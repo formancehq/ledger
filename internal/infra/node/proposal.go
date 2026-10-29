@@ -10,6 +10,8 @@ type Proposal struct {
 	drainMarker       bool
 	releaseMarker     bool
 	membershipBarrier bool
+	// expectedTerm fences a drain preflight against a later leadership term.
+	expectedTerm uint64
 }
 
 func NewProposal(commandID uint64, data []byte) *Proposal {

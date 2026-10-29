@@ -51,6 +51,13 @@ If the caller times out after enqueuing a marker, the local membership fence
 stays closed until the marker applies or Raft definitively drops it. A timeout
 alone never reopens membership admission.
 
+The preflight captures the leader's Raft term with its member list. The
+orchestrate loop checks that term and leadership immediately before handing
+the marker to Raft. If leadership changed during peer checks, the queued
+marker is rejected and the pending local admission fence is released; the
+operator retries the same epoch with a fresh membership snapshot. Release
+proposals use the same term fence after their capability preflight.
+
 The leader serializes marker enqueue with the final `Node.Propose` step used
 by ordinary writes. Its local gate closes at enqueue, before any later
 proposal can enter the queue. The applied marker closes admission on every

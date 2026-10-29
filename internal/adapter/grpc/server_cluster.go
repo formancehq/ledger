@@ -214,7 +214,7 @@ func (impl *ClusterServiceServerImpl) BeginDrain(ctx context.Context, req *clust
 		if currentEpoch != req.GetEpoch() {
 			return nil, status.Error(codes.FailedPrecondition, "cluster is already draining under another epoch")
 		}
-		decision, err := impl.node.BeginDrain(ctx, req.GetEpoch(), nil)
+		decision, err := impl.node.BeginDrain(ctx, req.GetEpoch(), nil, 0)
 		if err != nil {
 			return nil, drainBeginError(err)
 		}
@@ -223,11 +223,11 @@ func (impl *ClusterServiceServerImpl) BeginDrain(ctx context.Context, req *clust
 	}
 	var decision *raftcmdpb.DrainState
 	err := impl.node.WithStableDrainMembership(ctx, func() error {
-		members, err := impl.preflightDrainMembers(ctx, false)
+		members, term, err := impl.preflightDrainMembers(ctx, false)
 		if err != nil {
 			return err
 		}
-		decision, err = impl.node.BeginDrain(ctx, req.GetEpoch(), members)
+		decision, err = impl.node.BeginDrain(ctx, req.GetEpoch(), members, term)
 
 		return err
 	})
@@ -258,11 +258,11 @@ func (impl *ClusterServiceServerImpl) EndDrain(ctx context.Context, req *cluster
 	}
 	var decision *raftcmdpb.DrainState
 	err := impl.node.WithStableDrainMembership(ctx, func() error {
-		if _, err := impl.preflightDrainMembers(ctx, true); err != nil {
+		_, term, err := impl.preflightDrainMembers(ctx, true)
+		if err != nil {
 			return err
 		}
-		var err error
-		decision, err = impl.node.EndDrain(ctx, req.GetEpoch())
+		decision, err = impl.node.EndDrain(ctx, req.GetEpoch(), term)
 
 		return err
 	})
@@ -277,45 +277,46 @@ func (impl *ClusterServiceServerImpl) EndDrain(ctx context.Context, req *cluster
 	return &clusterpb.EndDrainResponse{ReleaseIndex: decision.GetReleasedIndex(), Members: decision.GetMembers()}, nil
 }
 
-func (impl *ClusterServiceServerImpl) preflightDrainMembers(ctx context.Context, requireRelease bool) ([]uint64, error) {
+func (impl *ClusterServiceServerImpl) preflightDrainMembers(ctx context.Context, requireRelease bool) ([]uint64, uint64, error) {
 	state, err := impl.node.GetClusterState(ctx)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
-	if state.GetState() != "Leader" || len(state.GetNodes()) == 0 {
-		return nil, status.Error(codes.FailedPrecondition, "cluster membership unavailable")
+	term := state.GetRaftStatus().GetTerm()
+	if state.GetState() != "Leader" || len(state.GetNodes()) == 0 || term == 0 {
+		return nil, 0, status.Error(codes.FailedPrecondition, "cluster membership unavailable")
 	}
 	members := make([]uint64, 0, len(state.GetNodes()))
 	for _, member := range state.GetNodes() {
 		if err := ctx.Err(); err != nil {
-			return nil, status.FromContextError(err).Err()
+			return nil, 0, status.FromContextError(err).Err()
 		}
 		id := member.GetId()
 		if id == 0 {
-			return nil, status.Error(codes.FailedPrecondition, "cluster membership contains node zero")
+			return nil, 0, status.Error(codes.FailedPrecondition, "cluster membership contains node zero")
 		}
 		if id != impl.node.GetNodeID() {
 			conn := impl.servicePool.GetConnection(id)
 			if conn == nil {
-				return nil, status.Errorf(codes.Unavailable, "member %d is unreachable", id)
+				return nil, 0, status.Errorf(codes.Unavailable, "member %d is unreachable", id)
 			}
 			peerCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
 			peer, err := clusterpb.NewClusterServiceClient(conn).GetDrainStatus(peerCtx, &clusterpb.GetDrainStatusRequest{})
 			cancel()
 			if err != nil {
-				return nil, drainPeerPreflightError(ctx, id, err)
+				return nil, 0, drainPeerPreflightError(ctx, id, err)
 			}
 			if peer.GetLocalNode() != id || !peer.GetSupportsDrain() {
-				return nil, status.Errorf(codes.FailedPrecondition, "member %d has not confirmed drain support", id)
+				return nil, 0, status.Errorf(codes.FailedPrecondition, "member %d has not confirmed drain support", id)
 			}
 			if requireRelease && !peer.GetSupportsRelease() {
-				return nil, status.Errorf(codes.FailedPrecondition, "member %d has not confirmed drain release support", id)
+				return nil, 0, status.Errorf(codes.FailedPrecondition, "member %d has not confirmed drain release support", id)
 			}
 		}
 		members = append(members, id)
 	}
 
-	return members, nil
+	return members, term, nil
 }
 
 func drainPeerPreflightError(ctx context.Context, id uint64, err error) error {

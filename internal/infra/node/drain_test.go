@@ -5,6 +5,10 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	"go.etcd.io/raft/v3"
+	"go.etcd.io/raft/v3/raftpb"
+
+	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 )
@@ -15,6 +19,80 @@ func TestProposeRejectsAfterDrainEnqueue(t *testing.T) {
 	n.drainOutstanding = 1
 	_, err := n.Propose(t.Context(), NewProposal(1, []byte("business")))
 	require.ErrorIs(t, err, domain.ErrMaintenanceMode)
+}
+
+func TestDrainProposalRejectsPreflightFromPriorLeadershipTerm(t *testing.T) {
+	t.Parallel()
+	n, setup := newTestMaintenanceNode(t)
+	rn, err := raft.NewRawNode(&raft.Config{
+		ID: 1, ElectionTick: 10, HeartbeatTick: 1, Storage: setup.wal,
+		MaxSizePerMsg: 1024 * 1024, MaxInflightMsgs: 256,
+		Logger: NewLoggerAdapter(logging.Testing()),
+	})
+	require.NoError(t, err)
+	n.rawNode = rn
+	n.logger = logging.Testing()
+	n.proposeCh = make(chan *Proposal, 1)
+	n.indexTracker = NewIndexTracker(1)
+	require.NoError(t, rn.Campaign())
+	for rn.HasReady() {
+		ready := rn.Ready()
+		require.NoError(t, setup.wal.Append(ready.HardState, ready.Entries))
+		rn.Advance(ready)
+	}
+	preflightTerm := rn.Status().GetTerm()
+	require.Equal(t, raft.StateLeader, rn.Status().RaftState)
+
+	// The original preflight captured member 1. A higher-term leader takes
+	// over, adds member 2, then this node wins leadership again.
+	require.NoError(t, rn.Step(&raftpb.Message{
+		Type: new(raftpb.MsgHeartbeat), From: new(uint64(2)), To: new(uint64(1)),
+		Term: new(preflightTerm + 1),
+	}))
+	rn.ApplyConfChange(&raftpb.ConfChangeV2{Changes: []*raftpb.ConfChangeSingle{{
+		Type: new(raftpb.ConfChangeAddLearnerNode), NodeId: new(uint64(2)),
+	}}})
+	require.NoError(t, rn.Campaign())
+	for rn.HasReady() {
+		ready := rn.Ready()
+		require.NoError(t, setup.wal.Append(ready.HardState, ready.Entries))
+		rn.Advance(ready)
+	}
+	require.Equal(t, raft.StateLeader, rn.Status().RaftState)
+	require.Greater(t, rn.Status().GetTerm(), preflightTerm)
+	require.Contains(t, rn.Status().Progress, uint64(2))
+	require.False(t, rn.HasReady())
+
+	marker := NewProposal(1, []byte("stale drain marker for member 1"))
+	marker.drainMarker = true
+	marker.expectedTerm = preflightTerm
+	n.indexTracker.Lock()
+	future, err := n.Propose(t.Context(), marker)
+	n.indexTracker.Unlock()
+	require.NoError(t, err)
+	require.Same(t, marker, <-n.proposeCh)
+	n.handleProposal(marker)
+	_, err = marker.Wait(t.Context())
+	require.ErrorIs(t, err, ErrLeadershipLost)
+	_, err = future.Wait(t.Context())
+	require.ErrorIs(t, err, ErrLeadershipLost)
+	require.False(t, n.drainActiveOrPending())
+	require.False(t, rn.HasReady(), "stale marker must not enter the Raft log")
+
+	release := NewProposal(2, []byte("stale release marker"))
+	release.releaseMarker = true
+	release.expectedTerm = preflightTerm
+	n.indexTracker.Lock()
+	releaseFuture, err := n.Propose(t.Context(), release)
+	n.indexTracker.Unlock()
+	require.NoError(t, err)
+	require.Same(t, release, <-n.proposeCh)
+	n.handleProposal(release)
+	_, err = release.Wait(t.Context())
+	require.ErrorIs(t, err, ErrLeadershipLost)
+	_, err = releaseFuture.Wait(t.Context())
+	require.ErrorIs(t, err, ErrLeadershipLost)
+	require.False(t, rn.HasReady(), "stale release must not enter the Raft log")
 }
 
 func TestMembershipFenceOutlivesTimedOutDrainCaller(t *testing.T) {

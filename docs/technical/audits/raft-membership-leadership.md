@@ -129,6 +129,9 @@ Trace capability preflight on every current member, the membership operation
 lock, the Raft fence for already accepted changes, marker enqueue and apply,
 and a concurrent add, promotion or normal removal. An old member that lacks
 the drain RPC must make preflight fail closed during a rolling upgrade. After
+preflight, a loss and regain of leadership must reject the old-term marker
+before Raft append, even if the new leader changed membership in between.
+The same term fence applies to a release preflight. After
 enqueue, a timed-out caller cannot lift the pending membership fence until
 the marker applies or Raft definitively drops it. The first applied marker
 fixes the captured set and cutoff; retries with its epoch cannot move them,

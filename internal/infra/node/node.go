@@ -2354,7 +2354,16 @@ func (node *Node) releaseDroppedDrain(generation uint64) {
 // if Raft drops the proposal (e.g. the node is no longer leader).
 // Must be called from the readyLoop goroutine.
 func (node *Node) handleProposal(p *Proposal) {
-	err := node.rawNode.Propose(p.data)
+	var err error
+	if p.expectedTerm != 0 {
+		status := node.rawNode.Status()
+		if status.GetTerm() != p.expectedTerm || status.RaftState != raft.StateLeader {
+			err = ErrLeadershipLost
+		}
+	}
+	if err == nil {
+		err = node.rawNode.Propose(p.data)
+	}
 	if err != nil {
 		// The IndexTracker was optimistically incremented in Propose().
 		// Since Raft rejected this proposal, no log entry was created—

@@ -78,7 +78,7 @@ func (node *Node) waitForPriorMembership(ctx context.Context) error {
 // BeginDrain proposes the Raft-ordered admission cutoff. All proposals that
 // cross Propose before this marker are ahead of it in the local queue. The
 // FSM enforces the cutoff by Raft index even after a leadership change.
-func (node *Node) BeginDrain(ctx context.Context, epoch string, members []uint64) (*raftcmdpb.DrainState, error) {
+func (node *Node) BeginDrain(ctx context.Context, epoch string, members []uint64, expectedTerm uint64) (*raftcmdpb.DrainState, error) {
 	if epoch == "" || len(epoch) > 128 {
 		return nil, errors.New("drain epoch must contain 1 to 128 bytes")
 	}
@@ -121,6 +121,7 @@ func (node *Node) BeginDrain(ctx context.Context, epoch string, members []uint64
 	}
 	proposal := NewProposal(cmd.GetId(), data)
 	proposal.drainMarker = true
+	proposal.expectedTerm = expectedTerm
 
 	// The same tracker lock used by business admission serializes our queue
 	// insertion with its final proposal step. PredictedIndex stays zero because
@@ -152,7 +153,7 @@ func (node *Node) BeginDrain(ctx context.Context, epoch string, members []uint64
 // EndDrain commits an epoch-matched release marker. Admission stays closed
 // until this marker is applied locally, and every follower reopens at the
 // same Raft position before applying subsequent writes.
-func (node *Node) EndDrain(ctx context.Context, epoch string) (*raftcmdpb.DrainState, error) {
+func (node *Node) EndDrain(ctx context.Context, epoch string, expectedTerm uint64) (*raftcmdpb.DrainState, error) {
 	if epoch == "" || len(epoch) > 128 {
 		return nil, errors.New("drain epoch must contain 1 to 128 bytes")
 	}
@@ -185,6 +186,7 @@ func (node *Node) EndDrain(ctx context.Context, epoch string) (*raftcmdpb.DrainS
 	}
 	proposal := NewProposal(cmd.GetId(), data)
 	proposal.releaseMarker = true
+	proposal.expectedTerm = expectedTerm
 	node.indexTracker.Lock()
 	future, err := node.Propose(ctx, proposal)
 	node.indexTracker.Unlock()
