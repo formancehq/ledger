@@ -221,11 +221,16 @@ func (impl *ClusterServiceServerImpl) BeginDrain(ctx context.Context, req *clust
 
 		return &clusterpb.BeginDrainResponse{CutoffIndex: decision.GetIndex(), Members: decision.GetMembers()}, nil
 	}
-	members, err := impl.preflightDrainMembers(ctx, false)
-	if err != nil {
-		return nil, err
-	}
-	decision, err := impl.node.BeginDrain(ctx, req.GetEpoch(), members)
+	var decision *raftcmdpb.DrainState
+	err := impl.node.WithStableDrainMembership(ctx, func() error {
+		members, err := impl.preflightDrainMembers(ctx, false)
+		if err != nil {
+			return err
+		}
+		decision, err = impl.node.BeginDrain(ctx, req.GetEpoch(), members)
+
+		return err
+	})
 	if err != nil {
 		return nil, drainBeginError(err)
 	}
@@ -251,10 +256,16 @@ func (impl *ClusterServiceServerImpl) EndDrain(ctx context.Context, req *cluster
 
 		return leader.EndDrain(ctx, req)
 	}
-	if _, err := impl.preflightDrainMembers(ctx, true); err != nil {
-		return nil, err
-	}
-	decision, err := impl.node.EndDrain(ctx, req.GetEpoch())
+	var decision *raftcmdpb.DrainState
+	err := impl.node.WithStableDrainMembership(ctx, func() error {
+		if _, err := impl.preflightDrainMembers(ctx, true); err != nil {
+			return err
+		}
+		var err error
+		decision, err = impl.node.EndDrain(ctx, req.GetEpoch())
+
+		return err
+	})
 	if err != nil {
 		return nil, drainBeginError(err)
 	}
@@ -309,6 +320,9 @@ func (impl *ClusterServiceServerImpl) preflightDrainMembers(ctx context.Context,
 }
 
 func drainBeginError(err error) error {
+	if _, ok := status.FromError(err); ok {
+		return err
+	}
 	switch {
 	case errors.Is(err, context.Canceled):
 		return status.Error(codes.Canceled, err.Error())

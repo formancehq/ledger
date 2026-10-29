@@ -33,6 +33,17 @@ func drainReleaseProposal(id uint64, epoch string) *raftcmdpb.Proposal {
 	return p
 }
 
+func TestDrainAllowsEmptyMembershipBarrier(t *testing.T) {
+	t.Parallel()
+	machine, store, _ := newTestMachine(t)
+	_, err := machine.ApplyEntries(t.Context(), store, makeEntry(t, 1, drainProposal(1, "epoch-one")))
+	require.NoError(t, err)
+	result, err := machine.ApplyEntries(t.Context(), store, makeEntry(t, 2, makeProposal(2)))
+	require.NoError(t, err)
+	require.NoError(t, result.Results[0].Error)
+	require.Equal(t, uint64(1), machine.DrainDecision().GetIndex())
+}
+
 func TestDrainMarkerClearedForCrossClusterRestore(t *testing.T) {
 	t.Parallel()
 	machine, store, _ := newTestMachine(t)

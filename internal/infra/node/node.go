@@ -28,6 +28,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/infra/membership"
 	"github.com/formancehq/ledger/v3/internal/infra/state"
+	"github.com/formancehq/ledger/v3/internal/pkg/commands"
 	"github.com/formancehq/ledger/v3/internal/pkg/futures"
 	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
 	"github.com/formancehq/ledger/v3/internal/query"
@@ -2283,7 +2284,7 @@ func (node *Node) Propose(ctx context.Context, proposal *Proposal) (*futures.Fut
 		node.drainGeneration++
 		node.drainOutstanding = 0
 	}
-	if !proposal.drainMarker && !proposal.releaseMarker {
+	if !proposal.drainMarker && !proposal.releaseMarker && !proposal.membershipBarrier {
 		if _, index := node.fsm.Drain(); index != 0 || node.drainOutstanding != 0 {
 			return nil, domain.ErrMaintenanceMode
 		}
@@ -3021,6 +3022,69 @@ func (node *Node) AddLearner(ctx context.Context, nodeID uint64, raftAddr, servi
 	return node.addLearner(ctx, nodeID, raftAddr, serviceAddr, instanceID, false)
 }
 
+// WithStableDrainMembership serializes a drain capability preflight and its
+// marker with external Raft membership changes. The callback must not call a
+// membership operation, which would acquire confChangeMu again.
+func (node *Node) WithStableDrainMembership(ctx context.Context, fn func() error) error {
+	for !node.confChangeMu.TryLock() {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(10 * time.Millisecond):
+		}
+	}
+	defer node.confChangeMu.Unlock()
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	// A caller can cancel after a ConfChange was accepted but before it
+	// applied, releasing confChangeMu. This ordered empty entry settles any
+	// such earlier change before the capability snapshot is taken.
+	if err := node.waitForPriorMembership(ctx); err != nil {
+		return err
+	}
+
+	return fn()
+}
+
+func (node *Node) waitForPriorMembership(ctx context.Context) error {
+	if err := node.WaitLeaderReady(ctx); err != nil {
+		return err
+	}
+	// A canceled membership call may leave an admitted command in the
+	// orchestrator's queue. Fence that queue first; the Raft entry below then
+	// waits for any ConfChange that command proposed to apply.
+	if err := node.execClusterCommand(ctx, true, func() error { return nil }); err != nil {
+		return fmt.Errorf("fencing membership commands: %w", err)
+	}
+	cmd := commands.NewCommand()
+	cmd.CallerSnapshot = commands.SystemCallerSnapshot(commands.ComponentClusterPeer)
+	data, err := cmd.MarshalVT()
+	if err != nil {
+		return fmt.Errorf("marshaling membership barrier: %w", err)
+	}
+	proposal := NewProposal(cmd.GetId(), data)
+	proposal.membershipBarrier = true
+	node.indexTracker.Lock()
+	future, err := node.Propose(ctx, proposal)
+	node.indexTracker.Unlock()
+	if err != nil {
+		return fmt.Errorf("proposing membership barrier: %w", err)
+	}
+	if _, err := proposal.Wait(ctx); err != nil {
+		return fmt.Errorf("waiting for membership barrier consensus: %w", err)
+	}
+	result, err := future.Wait(ctx)
+	if err != nil {
+		return fmt.Errorf("waiting for membership barrier apply: %w", err)
+	}
+	if result.Error != nil {
+		return fmt.Errorf("applying membership barrier: %w", result.Error)
+	}
+
+	return nil
+}
+
 // JoinAsLearner is the bootstrap admission path for a process with an empty
 // WAL. It deliberately keeps EN-1436's stricter stale-progress handling
 // separate from administrative AddLearner retries.
@@ -3096,6 +3160,9 @@ func (node *Node) addLearner(ctx context.Context, nodeID uint64, raftAddr, servi
 					Context: ccCtx,
 				})
 			}
+		}
+		if _, drainIndex := node.fsm.Drain(); drainIndex != 0 {
+			return domain.ErrMaintenanceMode
 		}
 
 		return node.rawNode.ProposeConfChange(&raftpb.ConfChangeV2{

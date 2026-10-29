@@ -5,10 +5,11 @@ import "github.com/formancehq/ledger/v3/internal/pkg/futures"
 type Proposal struct {
 	*futures.Future[any]
 
-	commandID     uint64
-	data          []byte
-	drainMarker   bool
-	releaseMarker bool
+	commandID         uint64
+	data              []byte
+	drainMarker       bool
+	releaseMarker     bool
+	membershipBarrier bool
 }
 
 func NewProposal(commandID uint64, data []byte) *Proposal {

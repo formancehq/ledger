@@ -17,6 +17,21 @@ func TestProposeRejectsAfterDrainEnqueue(t *testing.T) {
 	require.ErrorIs(t, err, domain.ErrMaintenanceMode)
 }
 
+func TestStableDrainMembershipWaitsForConfChangeAndHonorsCancellation(t *testing.T) {
+	t.Parallel()
+	n := &Node{}
+	n.confChangeMu.Lock()
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	err := n.WithStableDrainMembership(ctx, func() error {
+		t.Fatal("callback ran before membership change completed")
+
+		return nil
+	})
+	require.ErrorIs(t, err, context.Canceled)
+	n.confChangeMu.Unlock()
+}
+
 func TestReleaseMarkerCanCrossClosedAdmission(t *testing.T) {
 	t.Parallel()
 	n, _ := newTestMaintenanceNode(t)
