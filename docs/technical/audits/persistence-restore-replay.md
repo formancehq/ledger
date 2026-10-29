@@ -113,6 +113,12 @@ its batch and qualifying status fsync. A non-empty post-checkpoint business
 delta still needs its own parity oracle; clearing the transient drain zone is
 not evidence that business history was exported or rebuilt correctly.
 
+`TestDrainCheckpointIncrementalRestoreDiscardsSourceState` exercises a real
+checkpoint containing an active marker and prior released epoch, a nonempty
+post-checkpoint business export, restore preparation, checker validation and
+subsequent admission. `TestFinalizeRestorePublishesRebuiltPostCheckpointDelta`
+also checks that the published restore checkpoint has no source drain state.
+
 ## Delete and reset parity
 
 Incremental parity includes absence. For a checkpoint-era ledger deleted in the
