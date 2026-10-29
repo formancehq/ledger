@@ -5,6 +5,13 @@ The Ledger v3 Operator owns the Kubernetes lifecycle of a Raft cluster: the
 deletion protection, and operational controllers that must remain outside the
 deterministic Ledger FSM.
 
+Scale-down records the previous replica count on the StatefulSet before Raft
+membership removal and replica reduction. Removed-ordinal PVC cleanup reads
+that durable marker and the claim templates on each reconcile, so a failed
+delete or operator restart cannot strand old claims before a later scale-up.
+The marker is removed only after the deletion requests succeed. See the
+[operator scale-down contract](../../../../../misc/operator/README.md#overview).
+
 Ledger CR target identity is fixed at creation by API-server CEL transition
 rules on `spec.name` and `spec.clusterRef`. This prevents a Pending creation,
 promotion, index update or finalization from being redirected by a spec edit.

@@ -2,9 +2,11 @@ package controller
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"maps"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -29,6 +31,10 @@ import (
 // StatefulSet status churn.
 const volumeBindRequeueInterval = 10 * time.Second
 
+// Kept on the StatefulSet until every removed ordinal's PVC deletion succeeds.
+// The old replica count cannot be recovered from spec.replicas after scale-down.
+const annotationScaleDownPVCFrom = "ledger.formance.com/scale-down-pvc-from"
+
 func (r *ClusterReconciler) reconcileStatefulSet(ctx context.Context, ledger *ledgerv1alpha1.Cluster, specHash string, credentials []credentialsKeyInfo) (ctrl.Result, error) {
 	return r.reconcileStatefulSetWithExec(ctx, ledger, specHash, credentials, podExecWithTimeout)
 }
@@ -44,6 +50,9 @@ func (r *ClusterReconciler) reconcileStatefulSetWithExec(ctx context.Context, le
 	existingForTLS, err := r.fetchExistingStatefulSet(ctx, ledger)
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("fetching StatefulSet for TLS state: %w", err)
+	}
+	if err := r.cleanupPendingScaleDownPVCs(ctx, ledger, existingForTLS); err != nil {
+		return ctrl.Result{}, err
 	}
 
 	targetTLSMode := computeTargetTLSMode(
@@ -92,6 +101,10 @@ func (r *ClusterReconciler) reconcileStatefulSetWithExec(ctx context.Context, le
 			effective.Spec.Replicas = &previousReplicas
 			_, err := controllerutil.CreateOrUpdate(ctx, r.Client, sts, func() error {
 				sts.Labels = commonLabels(ledger)
+				if sts.Annotations == nil {
+					sts.Annotations = make(map[string]string)
+				}
+				sts.Annotations[annotationScaleDownPVCFrom] = strconv.FormatInt(int64(previousReplicas), 10)
 				desired := buildStatefulSetSpec(effective, specHash, credentials, targetTLSMode)
 
 				if sts.CreationTimestamp.IsZero() {
@@ -142,7 +155,7 @@ func (r *ClusterReconciler) reconcileStatefulSetWithExec(ctx context.Context, le
 	existing := &appsv1.StatefulSet{}
 	if err := r.Get(ctx, types.NamespacedName{Name: name, Namespace: ledger.Namespace}, existing); err == nil {
 		if volumeClaimTemplatesChanged(existing.Spec.VolumeClaimTemplates, desired.VolumeClaimTemplates) {
-			if deferRCVolumeClaimRecreation(ledger.Spec.Image.Tag, existing) {
+			if scalingDown || deferRCVolumeClaimRecreation(ledger.Spec.Image.Tag, existing) {
 				logger.Info("deferring StatefulSet recreation until RC rollout converges")
 				desired.Template = preserveExistingStorageWiring(existing.Spec.Template, desired.Template)
 			} else {
@@ -183,11 +196,11 @@ func (r *ClusterReconciler) reconcileStatefulSetWithExec(ctx context.Context, le
 		return ctrl.Result{}, err
 	}
 
-	// After the StatefulSet is updated (pods terminated), delete orphaned PVCs.
+	// The old count was persisted on the StatefulSet before the replica reduction.
+	// A later reconcile can resume this step after a crash or failed DELETE.
 	if scalingDown && r.Clientset != nil {
-		volNames := pvcVolumeNames(&ledger.Spec.Persistence)
-		if err := deleteScaledDownPVCs(ctx, r.Clientset, ledger.Namespace, name, previousReplicas, desiredReplicas, volNames); err != nil {
-			return ctrl.Result{}, fmt.Errorf("deleting PVCs after scale-down: %w", err)
+		if err := r.cleanupPendingScaleDownPVCs(ctx, ledger, sts); err != nil {
+			return ctrl.Result{}, err
 		}
 	}
 
@@ -210,6 +223,45 @@ func (r *ClusterReconciler) reconcileStatefulSetWithExec(ctx context.Context, le
 	}
 
 	return ctrl.Result{}, nil
+}
+
+func (r *ClusterReconciler) cleanupPendingScaleDownPVCs(ctx context.Context, ledger *ledgerv1alpha1.Cluster, sts *appsv1.StatefulSet) error {
+	if sts == nil {
+		return nil
+	}
+	from, pending := sts.Annotations[annotationScaleDownPVCFrom]
+	if !pending {
+		return nil
+	}
+	if r.Clientset == nil {
+		return errors.New("pending StatefulSet scale-down PVC cleanup requires a Kubernetes clientset")
+	}
+	if !metav1.IsControlledBy(sts, ledger) {
+		return fmt.Errorf("StatefulSet %q with pending PVC cleanup is not controlled by Cluster %q", sts.Name, ledger.Name)
+	}
+	previous, err := strconv.ParseInt(from, 10, 32)
+	if err != nil || previous < 1 || sts.Spec.Replicas == nil {
+		return fmt.Errorf("invalid StatefulSet scale-down PVC cleanup state %q", from)
+	}
+	current := *sts.Spec.Replicas
+	if int32(previous) <= current {
+		// The replica reduction has not committed yet.
+		return nil
+	}
+	volumeNames := make([]string, 0, len(sts.Spec.VolumeClaimTemplates))
+	for _, claim := range sts.Spec.VolumeClaimTemplates {
+		volumeNames = append(volumeNames, claim.Name)
+	}
+	if err := deleteScaledDownPVCs(ctx, r.Clientset, ledger.Namespace, sts.Name, int32(previous), current, volumeNames); err != nil {
+		return fmt.Errorf("deleting PVCs after scale-down: %w", err)
+	}
+	before := sts.DeepCopy()
+	delete(sts.Annotations, annotationScaleDownPVCFrom)
+	if err := r.Patch(ctx, sts, client.MergeFrom(before)); err != nil {
+		return fmt.Errorf("clearing StatefulSet scale-down PVC cleanup state: %w", err)
+	}
+
+	return nil
 }
 
 // preserveExistingStorageWiring keeps the Pod template compatible with the
