@@ -2309,13 +2309,19 @@ func (node *Node) Propose(ctx context.Context, proposal *Proposal) (*futures.Fut
 	if err := node.terminalError(); err != nil {
 		return nil, err
 	}
-	if released := node.fsm.DrainReleaseIndex(); released > node.drainReleaseSeen {
-		node.drainReleaseSeen = released
-		node.drainGeneration++
-		node.drainOutstanding = 0
+	if node.fsm != nil {
+		if released := node.fsm.DrainReleaseIndex(); released > node.drainReleaseSeen {
+			node.drainReleaseSeen = released
+			node.drainGeneration++
+			node.drainOutstanding = 0
+		}
 	}
 	if !proposal.drainMarker && !proposal.releaseMarker && !proposal.membershipBarrier {
-		if _, index := node.fsm.Drain(); index != 0 || node.drainOutstanding != 0 {
+		var drainIndex uint64
+		if node.fsm != nil {
+			_, drainIndex = node.fsm.Drain()
+		}
+		if drainIndex != 0 || node.drainOutstanding != 0 {
 			return nil, domain.ErrMaintenanceMode
 		}
 	}
