@@ -21,11 +21,11 @@ Producers serialize the oneof directly through the shared plan runner, including
 plan rebuilds and retries. A batch uses field 11 and a policy control uses field
 12. The deprecated fields remain available for reading historical proposals.
 
-This format requires a **full-stop upgrade** from RC.1 to RC.2. Every source
-node must stop before any target node starts. An RC.1 decoder skips the unknown
+This format requires a **full-stop upgrade** from RC.2 to RC.3. Every source
+node must stop before any target node starts. An RC.2 decoder skips the unknown
 payload fields without executing their intent, so mixed binaries are unsafe,
 even when business writes are paused: startup can propose technical batches.
-The release depends on the operator's required-downtime transition in
+The release uses the operator's required-downtime transition introduced in
 [PR #2410](https://github.com/formancehq/ledger/pull/2410).
 For deployments outside that operator, follow the coordinated restart procedure
 in [server upgrades](../../../../ops/upgrades.md).
@@ -87,10 +87,10 @@ snapshot to the staging store. Older manifests continue to restore their
 checkpoint and historical policy logs. See the
 [incremental restore contract](../backup/incremental-restore-contract.md#operational-cluster-policy).
 
-Do not restart RC.1 on volumes used by the target binary. The first payload
+Do not restart RC.2 on volumes used by the target binary. The first payload
 entry appended to the WAL closes the rollback window, including a technical
 entry emitted during startup. Maintenance mode does not delay this boundary.
-A return to RC.1 requires a separately validated recovery procedure using a
+A return to RC.2 requires a separately validated recovery procedure using a
 pre-upgrade backup and accounting for later writes. Service gRPC revision stays
 at 40. The audit response schema and historical hash preimages are unchanged;
 new operational policy changes no longer appear in business audit listings.
@@ -107,20 +107,20 @@ policy payloads without legacy fields, transfers leadership, restarts nodes,
 and checks balances. All nodes use the candidate binary.
 
 ```sh
-bash scripts/check-proposal-payload v3.0.0-rc.1
+bash scripts/check-proposal-payload v3.0.0-rc.2
 go test ./internal/pkg/proposals -run '^$' -bench BenchmarkPayloadReaders -benchmem
 ```
 
-The compatibility script builds distinct RC.1 and candidate test binaries.
+The compatibility script builds distinct RC.2 and candidate test binaries.
 Numeric wire tags provide an oracle independent of the candidate codec. It
 compares historical audit entries, items and hashes byte-for-byte between the
 released and current binaries. Native policies are unaudited: the probe asserts
 exact audit counts, verifies every remaining chain link and compares final
-policy, ledgers, applied index and HLC. It also closes an RC.1 Pebble store
+policy, ledgers, applied index and HLC. It also closes an RC.2 Pebble store
 and WAL, opens them with the candidate, replays a committed legacy entry, writes
 new policy and business payloads, then reopens the result in another candidate
 process. The historical prefix, including retained legacy WAL replay, must equal the
-uninterrupted RC.1 reference byte-for-byte. Final business and operational state must match its
+uninterrupted RC.2 reference byte-for-byte. Final business and operational state must match its
 semantics, and the post-restart report must match the upgraded report exactly.
 
 This probe validates persisted-format migration, not Kubernetes sequencing or

@@ -27,10 +27,9 @@ Outside a mandatory stopped boundary, when an RC image change also changes
 volume templates, the operator completes the RC rollout before recreating the
 StatefulSet for the volume change.
 Old and new voters must communicate and apply each committed entry identically
-while they coexist. The embedded operator can require a complete stop at a
-listed release boundary, but no boundary is active for `v3.0.0-rc.3`:
-`rc.2` to `rc.3` remains a rolling upgrade. `rc.2` already includes the drain
-barrier needed by a future stopped upgrade. RC adjacency remains mandatory.
+while they coexist. The embedded operator requires a complete stop at the
+`v3.0.0-rc.3` boundary because RC.2 cannot execute native proposal payloads.
+`rc.2` includes the drain barrier used for this upgrade. RC adjacency remains mandatory.
 The `rc.1` to `rc.2` transition uses the separately validated maintenance-based
 procedure below.
 When the running version precedes a mandatory boundary, pin the target to a
@@ -44,16 +43,14 @@ projections. Document the upgrade procedure and rollback boundary in the
 release notes. Delay the release if the target cannot read or migrate the source
 state.
 
-The upgrade classes below describe existing procedures. An explicitly listed
-operator boundary selects a stopped restart for the affected RC; no current
-boundary is listed, so `rc.2` to `rc.3` uses the rolling class. Rebuild or
-restore applies only to the cases
-listed below.
+The upgrade classes below describe existing procedures. The operator boundary
+at `rc.3` selects a stopped restart from `rc.2`; rebuild or restore applies
+only to the cases listed below.
 
 | Class | When it applies | Procedure |
 |-------|-----------------|-----------|
 | Rolling | Default between adjacent RCs on the same release line. | Restart followers one at a time, wait for each to catch up, transfer leadership to an upgraded voter, then restart the old leader. |
-| Operator-required stopped restart | An adjacent RC crossing a listed operator boundary; none is active for `rc.3`. | Establish an operator-owned drain and verify its durable barrier on every member; retain the existing PVCs, delete the StatefulSet, wait until it and every old Pod are gone, then recreate it with the target image and the same claims. The cluster is unavailable throughout the stop. |
+| Operator-required stopped restart | An adjacent RC crossing a listed operator boundary; `rc.2` to `rc.3` crosses one. | Establish an operator-owned drain and verify its durable barrier on every member; retain the existing PVCs, delete the StatefulSet, wait until it and every old Pod are gone, then recreate it with the target image and the same claims. The cluster is unavailable throughout the stop. |
 | Coordinated restart | A separate compatibility line that cannot safely mix binaries. | Enable maintenance mode, wait for every voter to apply the maintenance barrier durably, stop every node, replace all binaries, then restart without a mixed-version window. Preserve or migrate the released data. |
 | Migrate or restore | A separate line with a changed persisted or backup format, or development state before the first RC. | Follow a tested migration or restore a backup supported by the target release. A wipe or external rebuild is permitted only for unsupported pre-RC development state. Verify the complete state before serving writes. |
 
@@ -152,8 +149,8 @@ Before any server upgrade:
 ## Rolling Procedure
 
 Use this only when the target release permits rolling upgrades and mixed-version
-validation passes. For RC.1 to RC.2, use the [coordinated restart](#coordinated-restart)
-and install the [required-downtime operator](#proposal-payload-cutover) first.
+validation passes. For RC.1 to RC.2, use the [coordinated restart](#coordinated-restart).
+For RC.2 to RC.3, use the [operator-required stopped restart](#operator-required-stopped-restart).
 
 1. Record the current leader and voter set with `ledgerctl cluster status`.
 2. Restart one follower on the target binary.
@@ -186,8 +183,7 @@ cannot protect an old leader or previously committed proposals.
 
 For `rc.1` to `rc.2`, use the maintenance-based coordinated procedure below;
 the published `rc.1` binary cannot participate in an operator-owned drain.
-The `rc.2` to `rc.3` upgrade is rolling; the drain-based stopped-upgrade path
-is available for a later release that explicitly lists a boundary.
+The `rc.2` to `rc.3` upgrade uses the operator-owned drain and stopped restart.
 
 1. With every voter still on the source binary, establish a healthy, consistent
    audit history and take a backup. Existing divergent history is an incident;
@@ -254,9 +250,9 @@ When persisted storage is compatible but mixed binaries are not:
 upgrade Ledger servers or decide whether a server revision is storage- or
 wire-compatible.
 
-## Proposal payload expansion
+## Proposal payload cutover
 
-The RC.1 to RC.2 transition requires the coordinated restart procedure above.
+The RC.2 to RC.3 transition requires the operator-owned stopped restart above.
 Stop every old node before starting any target node, and keep the WAL and data
 volumes. The target reads historical entries and writes `ExecutionBatch` or
 `SetClusterPolicyProposal` directly. Existing snapshots, backups and audit
@@ -266,7 +262,6 @@ with unchanged hashes. Incremental backups preserve newer policy in a separate
 manifest snapshot, including policy-only changes. No capability flag enables
 this format.
 
-This phase adds no new rollback restriction. Emitting payload-only Raft entries
-is a separate, future cutover requiring cluster-wide decoder readiness and its
-own rollback boundary. Do not infer permission to emit them merely because the
-new binary can decode them. See the [proposal migration contract](../technical/architecture/subsystems/consensus/proposal-payloads.md).
+The first native payload appended to the WAL closes the rollback window for
+RC.2. Restarting RC.2 on that storage requires a separately validated recovery
+procedure. See the [proposal migration contract](../technical/architecture/subsystems/consensus/proposal-payloads.md).

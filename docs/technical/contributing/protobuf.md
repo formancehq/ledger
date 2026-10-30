@@ -86,7 +86,7 @@ change; review behavior changes separately for client impact.
    field numbers, wire types, field identity, and enum numbers. Internal-only
    fields may change only when existing persisted data remains readable or has
    a safe migration, and the release upgrade contract remains satisfied. The
-   RC.1 to RC.2 payload cutover requires a full stop and the corresponding
+   RC.2 to RC.3 payload cutover requires a full stop and the corresponding
    [operator support](../../ops/upgrades.md#proposal-payload-cutover).
    Reserve removed numbers and names when they must not be reused; a
    reservation does not replace migration.

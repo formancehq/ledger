@@ -22,7 +22,7 @@ compare_semantics() {
                     <(jq -S '{Policy, Ledgers, Applied, Timestamp}' "$2")
 }
 
-baseline=${1:-v3.0.0-rc.1}
+baseline=${1:-v3.0.0-rc.2}
 repo=$(git rev-parse --show-toplevel)
 mkdir -p "$repo/build"
 probe_dir=$(mktemp -d "$repo/build/proposal-compat.XXXXXX")
