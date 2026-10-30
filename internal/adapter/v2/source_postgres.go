@@ -15,6 +15,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/feature/rds/auth"
 	"github.com/aws/aws-sdk-go-v2/service/sts"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"go.opentelemetry.io/otel"
 
@@ -253,7 +254,17 @@ func (s *PostgresSource) Close() error {
 func buildPgxPoolConfig(ctx context.Context, cfg *commonpb.PostgresMirrorSourceConfig) (*pgxpool.Config, error) {
 	poolCfg, err := pgxpool.ParseConfig(cfg.GetDsn())
 	if err != nil {
-		return nil, fmt.Errorf("parsing mirror DSN: %w", err)
+		// pgx errors retain the DSN and may expose query credentials or invalid
+		// option values. Return only static diagnostics, without the cause.
+		if parseErr, ok := errors.AsType[*pgconn.ParseConfigError](err); ok {
+			diagnostic := *parseErr
+			diagnostic.ConnString = ""
+			if strings.HasPrefix(diagnostic.Error(), "cannot parse ``: invalid connect_timeout (") {
+				return nil, errors.New("parsing mirror DSN: invalid connect_timeout")
+			}
+		}
+
+		return nil, errors.New("parsing mirror DSN: invalid PostgreSQL configuration")
 	}
 
 	iam := cfg.GetAwsIamAuth()
