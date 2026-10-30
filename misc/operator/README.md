@@ -92,14 +92,17 @@ audit records, backup formats, or service APIs.
 
 ## Derived object ownership
 
-Every object the operator derives from a Cluster name belongs to that Cluster
-only through a controller reference carrying its UID; a name match is never
-proof of ownership. The operator refuses to adopt or update an existing object
-it does not control, skips it when pruning a disabled feature, pins every
-name-based delete to the UID it inspected, and execs only into a pod
-controlled by the Cluster's own StatefulSet. Backup Jobs also require the
-ClusterIP Service they dial to be the Cluster's. A refused object is reported
-as `ResourceNamesAvailable=False` with reason `NameConflict`, phase `Error`, a
+Directly owned resources derived from a Cluster name carry a controller
+reference with that Cluster's UID; a name match is never proof of ownership.
+Pods instead carry the StatefulSet UID: the operator checks the Cluster to
+StatefulSet to Pod ownership chain before exec. It refuses to adopt or update
+an existing resource it does not control. When pruning a disabled feature, it
+leaves a foreign object untouched and logs the skip without a `NameConflict`
+condition or requeue. Guarded name-based deletes use a precondition with the
+inspected UID; scale-down PVC cleanup deletes by deterministic name and does
+not provide that UID guarantee. Backup Jobs also require the ClusterIP Service
+they dial to be the Cluster's. Blocking ownership conflicts are reported as
+`ResourceNamesAvailable=False` with reason `NameConflict`, phase `Error`, a
 `ResourceNameConflict` event and a one-minute requeue.
 
 Upgrading the operator changes nothing for objects it created, which already
