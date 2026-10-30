@@ -28,7 +28,8 @@
     "internal/infra/state/drain_test.go",
     "internal/pkg/proposals/**",
     "internal/pkg/commands/**",
-    "internal/infra/plan/runner.go"  ],
+    "internal/infra/plan/runner.go"
+  ],
   "related_docs": [
     "AGENTS.md",
     "docs/technical/agent-context.md",
@@ -44,7 +45,8 @@
     "docs/technical/contributing/testing.md",
     "docs/technical/architecture/subsystems/api/atomic-ledger-creation.md",
     "docs/technical/architecture/subsystems/consensus/controlled-shutdown.md",
-    "docs/technical/architecture/subsystems/consensus/proposal-payloads.md"  ],
+    "docs/technical/architecture/subsystems/consensus/proposal-payloads.md"
+  ],
   "invariants": [
     "An UncommittedFailure after a checkpoint produces no audit/item/log or frozen idempotency delta and does not advance the last applied HLC; restore parity must preserve this absence and the next retry behavior without inventing an export segment.",
     "For every committed effect intended to survive cross-cluster restore, live(prefix + delta) and restore(checkpoint(prefix), delta) must produce the same logical persisted state and the same next admission/apply behavior. The delta must be non-empty and contain the operation under examination; byte equality is required only where the storage contract requires it.",

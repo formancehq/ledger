@@ -71,7 +71,8 @@
     "docs/technical/contributing/ai-audit.md",
     "docs/technical/contributing/ai-audit-challenge.md",
     "docs/technical/architecture/subsystems/consensus/controlled-shutdown.md",
-    "docs/technical/architecture/subsystems/consensus/proposal-payloads.md"  ],
+    "docs/technical/architecture/subsystems/consensus/proposal-payloads.md"
+  ],
   "invariants": [
     "Valid historical remove/add/remove cycles at one ordinal replay in one Ready or across delayed cleanup without conflicts. Each committed removal retains independent identity admission protection until its durable applied index and matching tuple tombstone are verified; exact duplicates reuse the event, same-index contradictory identities fail, and stale cleanup cannot release another event. Caller cancellation cannot own protection.",
     "A normal Raft entry or ConfChange becomes committed only under the quorum rules of the configuration that governs that transition; no minority, stale leader, learner, or removed member may acknowledge a successful quorum-dependent operation.",
