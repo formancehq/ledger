@@ -360,41 +360,56 @@ func runServer(cmd *cobra.Command, bindings network.Bindings) error {
 		appModule,
 	}
 
-	defer func() {
-		switch loggerProvider := otel.GetLoggerProvider().(type) {
-		case *sdklog.LoggerProvider:
-			err := loggerProvider.ForceFlush(context.Background())
-			if err != nil {
-				logger.Errorf("Failed to flush logs: %v", err)
-			}
-
-			err = loggerProvider.Shutdown(context.Background())
-			if err != nil {
-				logger.Errorf("Failed to shutdown logs: %v", err)
-			}
-		default:
-			logger.Errorf("Unknown logger provider type: %T", loggerProvider)
-		}
-	}()
+	budget, err := cmd.Flags().GetDuration(service.TotalStopTimeoutFlag)
+	if err != nil {
+		return fmt.Errorf("reading shutdown timeout: %w", err)
+	}
+	termination := newServerTermination(cmd.Context(), budget)
+	defer termination.close()
+	opts = append(opts, fx.Supply(termination.join))
 
 	// Register before startup: service readiness precedes Fx's signal handler.
-	// Queue shutdown through Fx without canceling an in-flight OnStart hook.
+	// Preserve queued shutdown while interrupting only learner registration;
+	// Fx needs the live startup context to roll back earlier hooks.
 	signals := make(chan os.Signal, 1)
 	signal.Notify(signals, os.Interrupt, syscall.SIGTERM)
 	defer signal.Stop(signals)
 	done := make(chan struct{})
 	defer close(done)
-	opts = append(opts, terminationSignals(signals, done))
+	opts = append(opts, terminationSignals(signals, done, termination))
 
-	// Run the application (handles startup, signal handling, and graceful shutdown)
-	return service.NewWithLogger(logger, opts...).Run(cmd)
+	originalContext := cmd.Context()
+	cmd.SetContext(termination.startup)
+	defer cmd.SetContext(originalContext)
+	err = service.NewWithLogger(logger, opts...).Run(cmd)
+
+	return termination.finish(err, func(ctx context.Context) error {
+		switch loggerProvider := otel.GetLoggerProvider().(type) {
+		case *sdklog.LoggerProvider:
+			flushErr := loggerProvider.ForceFlush(ctx)
+			if flushErr != nil {
+				logger.Errorf("Failed to flush logs: %v", flushErr)
+			}
+			shutdownErr := loggerProvider.Shutdown(ctx)
+			if shutdownErr != nil {
+				logger.Errorf("Failed to shutdown logs: %v", shutdownErr)
+			}
+
+			return errors.Join(flushErr, shutdownErr)
+		default:
+			logger.Errorf("Unknown logger provider type: %T", loggerProvider)
+
+			return nil
+		}
+	})
 }
 
-func terminationSignals(signals <-chan os.Signal, done <-chan struct{}) fx.Option {
+func terminationSignals(signals <-chan os.Signal, done <-chan struct{}, termination *serverTermination) fx.Option {
 	return fx.Invoke(func(shutdowner fx.Shutdowner, logger logging.Logger) {
 		go func() {
 			select {
 			case <-signals:
+				termination.interrupt()
 				if err := shutdowner.Shutdown(); err != nil {
 					logger.Errorf("Failed to request application shutdown: %v", err)
 				}

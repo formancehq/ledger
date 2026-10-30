@@ -15,7 +15,6 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes"
@@ -37,6 +36,8 @@ type ClusterReconciler struct {
 	Config    *rest.Config
 	Clientset kubernetes.Interface
 	Recorder  record.EventRecorder
+	// stopVersions overrides the shipped boundary list in focused tests.
+	stopVersions []string
 }
 
 // +kubebuilder:rbac:groups=ledger.formance.com,resources=clusters,verbs=get;list;watch;create;update;patch;delete
@@ -58,7 +59,7 @@ type ClusterReconciler struct {
 // +kubebuilder:rbac:groups=admissionregistration.k8s.io,resources=validatingadmissionpolicybindings,verbs=get;list;watch
 
 // Reconcile handles the reconciliation loop for Cluster resources.
-func (r *ClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+func (r *ClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (result ctrl.Result, retErr error) {
 	logger := log.FromContext(ctx)
 
 	// Fetch the Cluster CR
@@ -104,6 +105,12 @@ func (r *ClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 			logger.Error(statusErr, "failed to update status")
 		}
 	}()
+	// Runs before the status write above (deferred calls run last-in,
+	// first-out): any step that met an object it does not control under a
+	// derived name surfaces the conflict through the persisted status.
+	defer func() {
+		result, retErr = r.reportResourceNameConflict(ctx, ledger, result, retErr)
+	}()
 
 	// An in-flight drain owns the workload until its release completes. This
 	// also lets annotation removal reopen admission even if a later spec edit
@@ -134,9 +141,14 @@ func (r *ClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		return ctrl.Result{}, fmt.Errorf("fetching StatefulSet for RC upgrade validation: %w", err)
 	}
 	var rcUpgradeError error
-	if existingStatefulSet == nil {
+	switch {
+	case ledger.Status.Upgrade != nil:
+		if ledger.Spec.Image.Tag != ledger.Status.Upgrade.Target {
+			rcUpgradeError = fmt.Errorf("stopped upgrade is in progress; restore spec.image.tag to %s", ledger.Status.Upgrade.Target)
+		}
+	case existingStatefulSet == nil:
 		rcUpgradeError = r.validateRCUpgradeWithoutStatefulSet(ctx, ledger)
-	} else {
+	default:
 		rcUpgradeError = validateRCUpgrade(ledger.Spec.Image.Tag, existingStatefulSet)
 	}
 	if rcUpgradeError != nil {
@@ -147,6 +159,12 @@ func (r *ClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 			Message:            rcUpgradeError.Error(),
 			ObservedGeneration: ledger.Generation,
 		})
+		if ledger.Status.Upgrade != nil {
+			meta.SetStatusCondition(&ledger.Status.Conditions, metav1.Condition{
+				Type: "Upgrade", Status: metav1.ConditionFalse, Reason: "Blocked",
+				Message: rcUpgradeError.Error(), ObservedGeneration: ledger.Generation,
+			})
+		}
 		ledger.Status.Phase = "Error"
 
 		return ctrl.Result{}, nil
@@ -159,7 +177,6 @@ func (r *ClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		Reason:             "Valid",
 		ObservedGeneration: ledger.Generation,
 	})
-
 	// Prune optional Services whose spec marks them disabled BEFORE running
 	// the drift guard: an edit that both disables a Service and tweaks
 	// additionalLabels would otherwise abort on drift detected on the
@@ -243,6 +260,45 @@ func (r *ClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		}
 	}
 
+	// Keep dependencies needed by old and replacement pods available while the
+	// stop gate holds all workload mutations. A missing headless Service prevents
+	// ledgerctl from reaching the old voters; a missing TLS Secret prevents
+	// replacement pods from starting.
+	if err := r.reconcileHeadlessService(ctx, ledger); err != nil {
+		return ctrl.Result{}, fmt.Errorf("reconciling HeadlessService: %w", err)
+	}
+	if err := r.reconcileClusterSecretForTLSState(ctx, ledger, false); err != nil {
+		return ctrl.Result{}, fmt.Errorf("reconciling ClusterSecret: %w", err)
+	}
+	if ledger.Status.Upgrade != nil {
+		if err := r.reconcileServiceAccount(ctx, ledger); err != nil {
+			return ctrl.Result{}, fmt.Errorf("reconciling ServiceAccount during stopped upgrade: %w", err)
+		}
+		if _, _, err := r.reconcileAuthKeysWithDeletion(ctx, ledger, false); err != nil {
+			return ctrl.Result{}, fmt.Errorf("reconciling AuthKeys during stopped upgrade: %w", err)
+		}
+	}
+	// A persisted scale-down cleanup marker lives on the source StatefulSet.
+	// Finish that cleanup before the stopped-upgrade gate may delete it.
+	if err := r.cleanupPendingScaleDownPVCs(ctx, ledger, existingStatefulSet); err != nil {
+		return ctrl.Result{}, fmt.Errorf("completing pending scale-down PVC cleanup before stopped upgrade: %w", err)
+	}
+
+	// The stop gate runs before any generic template mutation, including the
+	// scale-down and immutable claim-template recreation paths.
+	proceed, upgradeResult, err := r.reconcileRequiredUpgrade(ctx, ledger, existingStatefulSet)
+	if err != nil {
+		meta.SetStatusCondition(&ledger.Status.Conditions, metav1.Condition{Type: "Upgrade", Status: metav1.ConditionFalse, Reason: "Blocked", Message: err.Error(), ObservedGeneration: ledger.Generation})
+		ledger.Status.Phase = "Error"
+
+		return ctrl.Result{}, fmt.Errorf("reconciling required stopped upgrade: %w", err)
+	}
+	if !proceed {
+		ledger.Status.Phase = "Pending"
+
+		return upgradeResult, nil
+	}
+
 	// Compute spec hash for rolling updates
 	specHash := computeSpecHash(&ledger.Spec)
 
@@ -252,7 +308,6 @@ func (r *ClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		fn   func(context.Context, *ledgerv1alpha1.Cluster) error
 	}{
 		{"ServiceAccount", r.reconcileServiceAccount},
-		{"HeadlessService", r.reconcileHeadlessService},
 		{"Service", r.reconcileService},
 		{"GrpcService", r.reconcileGrpcService},
 		{"Ingress", r.reconcileIngress},
@@ -275,22 +330,6 @@ func (r *ClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		logger.Error(err, "failed to reconcile auth keys")
 
 		return ctrl.Result{}, fmt.Errorf("reconciling AuthKeys: %w", err)
-	}
-
-	// Reconcile the cluster-secret (TLS static bearer token) BEFORE the
-	// AuthKeysPending gate, but only its SAFE (create/update) side: mayDelete=false.
-	// Creating/keeping the Secret while any StatefulSet references it never mutates
-	// the pod template or triggers a rollout, so it is safe (and necessary) even
-	// while the auth-keys fail-safe holds the StatefulSet pass — otherwise a Secret
-	// that went missing during a long Credentials-non-distribution window would
-	// crash restarted pods referencing CLUSTER_SECRET via SecretKeyRef. Deletion
-	// (TLS-off) is deferred to AFTER reconcileStatefulSet on the non-pending path,
-	// so we never delete a Secret still referenced by a StatefulSet we cannot update
-	// (EN-1487; only the pod-template mutation may be frozen, not this).
-	if err := r.reconcileClusterSecretForTLSState(ctx, ledger, false); err != nil {
-		logger.Error(err, "failed to reconcile cluster secret")
-
-		return ctrl.Result{}, fmt.Errorf("reconciling ClusterSecret: %w", err)
 	}
 
 	// Fail-safe (EN-1487): the auth-key set cannot be safely reconciled yet.
@@ -340,7 +379,7 @@ func (r *ClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	meta.RemoveStatusCondition(&ledger.Status.Conditions, "AuthKeysPending")
 
 	// StatefulSet needs the specHash and credentials info
-	result, err := r.reconcileStatefulSet(ctx, ledger, specHash, credentials)
+	stsResult, err := r.reconcileStatefulSet(ctx, ledger, specHash, credentials)
 	if err != nil {
 		logger.Error(err, "failed to reconcile StatefulSet")
 
@@ -356,13 +395,14 @@ func (r *ClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 
 		return ctrl.Result{}, fmt.Errorf("reconciling ClusterSecret after StatefulSet: %w", err)
 	}
+	markResourceNamesOwned(ledger)
 
 	drainResult, err := r.reconcileAnnotatedDrain(ctx, ledger, r.PreflightDrainBarrier, r.EnsureDrainBarrier, r.EnsureDrainReleased)
 	if err != nil || drainResult.Requeue || drainResult.RequeueAfter > 0 {
 		return drainResult, err
 	}
 
-	return result, nil
+	return stsResult, nil
 }
 
 // deletionProtectionPolicyInstalled reports whether the cluster-scoped volume
@@ -448,6 +488,11 @@ func (r *ClusterReconciler) updateStatus(ctx context.Context, ledger *ledgerv1al
 		Name:      resourceName(ledger.Name),
 		Namespace: ledger.Namespace,
 	}, sts)
+	if err == nil && notControlledBy(sts, ledger) {
+		// Never report the readiness of a StatefulSet this Cluster did not
+		// create.
+		err = apierrors.NewNotFound(appsv1.Resource("statefulsets"), sts.Name)
+	}
 	if err != nil {
 		if apierrors.IsNotFound(err) {
 			// If the reconciler already set a phase (e.g. "Degraded" from
@@ -476,6 +521,8 @@ func (r *ClusterReconciler) updateStatus(ctx context.Context, ledger *ledgerv1al
 		// users and automation that key off .status.phase.
 		case reconciledPhase == "Error":
 			latest.Status.Phase = "Error"
+		case latest.Status.Upgrade != nil:
+			latest.Status.Phase = "Pending"
 		case sts.Status.ReadyReplicas == replicas:
 			latest.Status.Phase = "Running"
 		case sts.Status.ReadyReplicas > 0:
@@ -488,6 +535,7 @@ func (r *ClusterReconciler) updateStatus(ctx context.Context, ledger *ledgerv1al
 	latest.Status.ObservedGeneration = latest.Generation
 	latest.Status.Endpoints = ledger.Status.Endpoints
 	latest.Status.TLSMigrationPhase = ledger.Status.TLSMigrationPhase
+	latest.Status.Upgrade = ledger.Status.Upgrade
 
 	// Set condition
 	condition := metav1.Condition{
@@ -546,31 +594,6 @@ func resolveEndpoints(ledger *ledgerv1alpha1.Cluster) *ledgerv1alpha1.EndpointsS
 		HTTP:     httpEndpoint,
 		External: external,
 	}
-}
-
-// deleteIfExists deletes a resource if it exists, ignoring not-found errors.
-func (r *ClusterReconciler) deleteIfExists(ctx context.Context, obj client.Object) error {
-	err := r.Get(ctx, types.NamespacedName{
-		Name:      obj.GetName(),
-		Namespace: obj.GetNamespace(),
-	}, obj)
-	if err != nil {
-		return ignoreNotFound(err)
-	}
-
-	return r.Delete(ctx, obj)
-}
-
-func (r *ClusterReconciler) deleteUnstructuredIfExists(ctx context.Context, obj *unstructured.Unstructured) error {
-	err := r.Get(ctx, types.NamespacedName{
-		Namespace: obj.GetNamespace(),
-		Name:      obj.GetName(),
-	}, obj)
-	if err != nil {
-		return ignoreNotFound(err)
-	}
-
-	return r.Delete(ctx, obj)
 }
 
 // ignoreNotFound returns nil on NotFound and NoKindMatch errors.

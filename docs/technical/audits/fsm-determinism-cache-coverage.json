@@ -39,6 +39,7 @@
     "docs/technical/architecture/subsystems/consensus/controlled-shutdown.md"
   ],
   "invariants": [
+    "Production submission admits at most one technical update and allows it alongside business orders only for MirrorSync. Unsupported compositions fail before serialization or Raft submission and release preload loaders; committed-entry replay retains its historical interpreter. MirrorSync progress publishes only when its paired business orders succeed.",
     "An UncommittedFailure is a deterministic unaudited transition: staged business writes are discarded, no audit/item/log or frozen idempotency row is emitted, the prior HLC is restored, and replicas agree on the technical error and next corrected outcome.",
     "Post-commit sentinel expectations must follow successful ordered effects, including same-proposal and cross-entry ledger deletion and ephemeral purge. Captured expectations must own reused WriteSet data; legitimate removal must not fail live apply or WAL replay, while missing or changed surviving volumes and any rows left by a deleted ledger's cascade must remain fatal, even if their aggregate is balanced or deletion is the only order in a batch.",
     "For a fixed committed proposal, Raft index, and prior committed state, every replica and replay must produce the same apply outcome, audit bytes, counters, cache mutations, and durable writes. Wall clock, randomness, goroutine scheduling, map iteration, process identity, host resources, and node-local configuration must not affect that transition.",

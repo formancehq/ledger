@@ -171,6 +171,18 @@ func TestAddFilterFlags(t *testing.T) {
 		require.NotNil(t, cmd.Flags().Lookup("prefix"))
 	})
 
+	t.Run("filter help override", func(t *testing.T) {
+		t.Parallel()
+
+		cmd := &cobra.Command{}
+		cmdutil.AddFilterFlags(cmd, cmdutil.FilterOptions{})
+		require.Contains(t, cmd.Flags().Lookup("filter").Usage, "metadata[k] == v")
+
+		cmd = &cobra.Command{}
+		cmdutil.AddFilterFlags(cmd, cmdutil.FilterOptions{FilterHelp: "custom help"})
+		require.Equal(t, "custom help", cmd.Flags().Lookup("filter").Usage)
+	})
+
 	t.Run("reads values", func(t *testing.T) {
 		t.Parallel()
 

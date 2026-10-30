@@ -175,6 +175,37 @@ A stalled initialization or drain can therefore retain the hook and its
 resources until it completes. Fatal `Run` errors retain their existing
 process-failure behavior.
 
+#### Termination during learner preflight
+
+The join preflight precedes inbound Raft serving, membership startup and
+`Node.Run`. Its outbound registration connections and cancellation subscription
+belong to the preflight itself; Fx does not stop a hook whose start failed.
+SIGTERM or interrupt latches process termination, retains the Fx shutdown
+notification, and cancels only the dedicated registration child context. Keeping
+the private application startup context live permits rollback of previously
+started dependency hooks after intentional registration cancellation.
+
+A positive `total-stop-timeout` arms an absolute signal-time deadline for startup
+unwind and deferred logger finalization. At expiry the private application
+context is canceled and outer waiting fails. As with an expired Fx stop context,
+this is not proof of hook completion or resource closure. Zero leaves this
+waiting unlimited. If startup succeeds, the retained notification invokes normal
+Fx stopping with its existing separate stop budget; the signal deadline is not
+one end-to-end budget for every lifecycle phase. Signal-time logger finalization
+uses the remaining signal deadline and cannot turn expiry into success.
+
+Successful intentional cancellation requires successful rollback and
+finalization; fatal registration statuses, marker-write errors and cleanup
+failures retain failure status even when a signal races them. A later signal does
+not reclassify a completed peer cancellation:
+the registration RPC captures its local cancellation cause in gRPC's completion
+callback, before connection cleanup or caller-side result handling. Cancellation
+does not reverse a remotely committed learner addition. A canceled response can
+leave membership without `CLUSTER_JOINED`; restart still follows the existing
+`AlreadyExists` versus stale-progress rules. See
+[cluster operations](../../../../ops/cluster-operations.md#phase-3-learner-registration-preflight)
+and [server termination](../../../../ops/cli.md#server-termination).
+
 #### Leader readiness generations
 
 Leadership acquisition does not admit writes immediately. The node first
@@ -276,6 +307,23 @@ Drain points ensure the pending commit completes before barriers, checkpoints, s
 - Refresh an existing peer's pooled connection after a committed address update
   while preserving that peer's send loop and queues; a transient optional-TLS
   probe failure retains the committed target for the loop's next retry
+- Retain the committed endpoint and create a peer loop even when the first
+  optional-TLS probe fails. Join preflight deliberately precedes the joining
+  node's listener, so connection refusal during committed learner wiring is
+  recoverable. The pool records the desired address before probing; a network
+  error leaves a pending entry without selecting plaintext. The Raft loop
+  reports unreachable, drains queued sends with their accounting, and retries
+  through its existing one-second delay. Once the listener starts, replication
+  and automatic promotion can resume without a new membership proposal.
+  Removal cancels and joins the loop before deleting the pool entry; transport
+  shutdown rejects new peer loops and joins existing owners before pool closure.
+
+This recovery state is local routing state reconstructed from committed
+membership; it changes no persisted format or service protocol. It reuses one
+loop and the existing bounded priority queues per peer. Probe attempts retain
+the existing timeout and retry pacing; no additional reconciliation worker is
+created. Service-pool consumers retain a failed registration's target too, but
+retry it through their existing registration paths rather than a Raft send loop.
 
 The shared Raft and service connection pools also send gRPC keepalives every
 ten seconds with a five-second response timeout. Raft, service, restore, and

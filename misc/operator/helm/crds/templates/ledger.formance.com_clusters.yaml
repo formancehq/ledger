@@ -4243,6 +4243,48 @@ spec:
                 - mode
                 - secretName
                 type: object
+              upgrade:
+                description: |-
+                  Upgrade records an interrupted mandatory stop-and-recreate upgrade.
+                  It is persisted before the old StatefulSet is deleted.
+                properties:
+                  claimUIDs:
+                    additionalProperties:
+                      type: string
+                    description: ClaimUIDs pins each pre-existing volume to its original
+                      claim.
+                    type: object
+                  drainEpoch:
+                    description: DrainEpoch identifies the Raft admission cutoff across
+                      operator restarts.
+                    type: string
+                  expectedReplicas:
+                    format: int32
+                    type: integer
+                  phase:
+                    type: string
+                  source:
+                    type: string
+                  statefulSetUID:
+                    type: string
+                  target:
+                    type: string
+                  targetSpecHash:
+                    type: string
+                  volumeUIDs:
+                    additionalProperties:
+                      type: string
+                    description: VolumeUIDs pins every bound PV reused by the original
+                      claims.
+                    type: object
+                required:
+                - expectedReplicas
+                - phase
+                - source
+                - statefulSetUID
+                - target
+                - targetSpecHash
+                type: object
             type: object
         type: object
     served: true

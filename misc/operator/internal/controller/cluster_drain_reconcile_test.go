@@ -22,7 +22,7 @@ func TestAnnotatedDrainPersistsEpochAndReleaseIntentAcrossReconcile(t *testing.T
 	require.NoError(t, ledgerv1alpha1.AddToScheme(scheme))
 	require.NoError(t, appsv1.AddToScheme(scheme))
 	cluster := &ledgerv1alpha1.Cluster{
-		ObjectMeta: metav1.ObjectMeta{Name: "annotated", Namespace: "test", Annotations: map[string]string{ClusterDrainAnnotation: "true"}},
+		ObjectMeta: metav1.ObjectMeta{Name: "annotated", Namespace: "test", UID: "annotated-uid", Annotations: map[string]string{ClusterDrainAnnotation: "true"}},
 		Spec:       ledgerv1alpha1.ClusterSpec{Replicas: new(int32(1)), GrpcPort: 8888},
 	}
 	sts := &appsv1.StatefulSet{
@@ -30,6 +30,7 @@ func TestAnnotatedDrainPersistsEpochAndReleaseIntentAcrossReconcile(t *testing.T
 		Spec:       appsv1.StatefulSetSpec{Replicas: new(int32(1)), Template: corev1.PodTemplateSpec{Spec: corev1.PodSpec{Containers: []corev1.Container{{Name: "ledger", Ports: []corev1.ContainerPort{{Name: "grpc", ContainerPort: 8888, Protocol: corev1.ProtocolTCP}}, Env: []corev1.EnvVar{{Name: "TLS_MODE", Value: tlsModeDisabled}}}}}}},
 		Status:     appsv1.StatefulSetStatus{ReadyReplicas: 1},
 	}
+	controlledByCluster(sts, cluster)
 	r := &ClusterReconciler{Client: fake.NewClientBuilder().WithScheme(scheme).WithStatusSubresource(cluster, sts).WithObjects(cluster, sts).Build()}
 	key := types.NamespacedName{Name: cluster.Name, Namespace: cluster.Namespace}
 	load := func() *ledgerv1alpha1.Cluster {
@@ -117,7 +118,7 @@ func TestAnnotatedDrainCancellationAfterFailedPreflight(t *testing.T) {
 	require.NoError(t, ledgerv1alpha1.AddToScheme(scheme))
 	require.NoError(t, appsv1.AddToScheme(scheme))
 	cluster := &ledgerv1alpha1.Cluster{
-		ObjectMeta: metav1.ObjectMeta{Name: "unsupported", Namespace: "test", Annotations: map[string]string{ClusterDrainAnnotation: "true"}},
+		ObjectMeta: metav1.ObjectMeta{Name: "unsupported", Namespace: "test", UID: "unsupported-uid", Annotations: map[string]string{ClusterDrainAnnotation: "true"}},
 		Spec:       ledgerv1alpha1.ClusterSpec{Replicas: new(int32(1)), GrpcPort: 8888},
 	}
 	sts := &appsv1.StatefulSet{
@@ -125,6 +126,7 @@ func TestAnnotatedDrainCancellationAfterFailedPreflight(t *testing.T) {
 		Spec:       appsv1.StatefulSetSpec{Replicas: new(int32(1)), Template: corev1.PodTemplateSpec{Spec: corev1.PodSpec{Containers: []corev1.Container{{Name: "ledger", Ports: []corev1.ContainerPort{{Name: "grpc", ContainerPort: 8888, Protocol: corev1.ProtocolTCP}}}}}}},
 		Status:     appsv1.StatefulSetStatus{ReadyReplicas: 1},
 	}
+	controlledByCluster(sts, cluster)
 	r := &ClusterReconciler{Client: fake.NewClientBuilder().WithScheme(scheme).WithStatusSubresource(cluster, sts).WithObjects(cluster, sts).Build()}
 	key := types.NamespacedName{Name: cluster.Name, Namespace: cluster.Namespace}
 	load := func() *ledgerv1alpha1.Cluster {
@@ -166,7 +168,7 @@ func TestAnnotatedDrainReaddedDuringReleaseStartsNewEpoch(t *testing.T) {
 	require.NoError(t, ledgerv1alpha1.AddToScheme(scheme))
 	require.NoError(t, appsv1.AddToScheme(scheme))
 	cluster := &ledgerv1alpha1.Cluster{
-		ObjectMeta: metav1.ObjectMeta{Name: "readded", Namespace: "test", Annotations: map[string]string{ClusterDrainAnnotation: "true"}},
+		ObjectMeta: metav1.ObjectMeta{Name: "readded", Namespace: "test", UID: "readded-uid", Annotations: map[string]string{ClusterDrainAnnotation: "true"}},
 		Spec:       ledgerv1alpha1.ClusterSpec{Replicas: new(int32(1)), GrpcPort: 8888},
 		Status:     ledgerv1alpha1.ClusterStatus{Drain: &ledgerv1alpha1.DrainStatus{Epoch: "old-epoch", Phase: drainPhaseReleasing}},
 	}
@@ -175,6 +177,7 @@ func TestAnnotatedDrainReaddedDuringReleaseStartsNewEpoch(t *testing.T) {
 		Spec:       appsv1.StatefulSetSpec{Replicas: new(int32(1)), Template: corev1.PodTemplateSpec{Spec: corev1.PodSpec{Containers: []corev1.Container{{Name: "ledger", Ports: []corev1.ContainerPort{{Name: "grpc", ContainerPort: 8888, Protocol: corev1.ProtocolTCP}}}}}}},
 		Status:     appsv1.StatefulSetStatus{ReadyReplicas: 1},
 	}
+	controlledByCluster(sts, cluster)
 	r := &ClusterReconciler{Client: fake.NewClientBuilder().WithScheme(scheme).WithStatusSubresource(cluster, sts).WithObjects(cluster, sts).Build()}
 	key := types.NamespacedName{Name: cluster.Name, Namespace: cluster.Namespace}
 	preflight := func(context.Context, *ledgerv1alpha1.Cluster, string) error { return nil }

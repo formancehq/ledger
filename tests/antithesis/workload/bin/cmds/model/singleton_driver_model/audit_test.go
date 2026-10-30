@@ -68,10 +68,10 @@ func TestAuditSuccessMismatchPinsOneBulk(t *testing.T) {
 	why, _ := auditSuccessMismatch(entry, logs, bulks, 12)
 	require.Empty(t, why)
 
-	archived := entry
-	archived.itemSeqs = nil
-	why, _ = auditSuccessMismatch(archived, logs, bulks, 12)
-	require.Empty(t, why, "purged items are not a mismatch")
+	listed := entry
+	listed.itemSeqs = nil
+	why, _ = auditSuccessMismatch(listed, logs, bulks, 12)
+	require.Empty(t, why, "list pages omit per-order items")
 
 	e := entry
 	e.ledgers = []string{"a"}
@@ -112,6 +112,27 @@ func TestAuditSuccessMismatchPinsOneBulk(t *testing.T) {
 	delete(logs, 11)
 	why, _ = auditSuccessMismatch(entry, logs, bulks, 12)
 	require.Contains(t, why, "no committed log")
+}
+
+func TestValidateAuditEntryRequiresItemsForCommittedSuccess(t *testing.T) {
+	t.Parallel()
+
+	c := &Checker{
+		ledgerNames:    []string{"L"},
+		modelState:     committedStateWithSequences(t, 10, 11, 12),
+		committedLogs:  metadataLogs(10, 11, 12),
+		committedBulks: map[uint64]committedBulk{10: {minSeq: 10, maxSeq: 12, orders: 3}},
+	}
+	entry := auditEntry{seq: 7, ledgers: []string{"L"}, orderCount: 3, minLog: 10, maxLog: 12, itemSeqs: []uint64{10, 11, 12}}
+	require.Empty(t, c.validateAuditEntry(0, entry).finding)
+
+	entry.itemSeqs = nil
+	verdict := c.validateAuditEntry(0, entry)
+	require.Equal(t, "audit entry outside model", verdict.finding)
+	require.Equal(t, "0 items for 3 logs", verdict.why)
+
+	require.Empty(t, c.validateAuditPage(0, c.auditLearnSeq, []auditEntry{entry}, false, nil, 5, 0, "").finding,
+		"ListAuditEntries intentionally omits per-order items")
 }
 
 func TestRejectionExplainsMatchesLedgersOrdersAndReason(t *testing.T) {

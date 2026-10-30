@@ -2,6 +2,16 @@
 
 Kubernetes operator for deploying and managing high-availability [Formance Ledger](https://github.com/formancehq/ledger) instances using Raft consensus.
 
+The embedded operator can require a complete StatefulSet stop when an image
+upgrade crosses a listed release boundary. No boundary is active for rc.3:
+rc.2-to-rc.3 remains rolling. For a future listed boundary, it uses the drain
+barrier available from rc.2 to stop writes and wait for durable replication,
+retains the existing PVCs, waits for the old StatefulSet and Pods to disappear,
+then recreates the StatefulSet with the requested image. The rc.1-to-rc.2
+transition still requires the manual maintenance procedure. See the
+[server upgrade procedure](../../docs/ops/upgrades.md#operator-required-stopped-restart)
+for preflight, recovery and rollback limits.
+
 ## Overview
 
 The Ledger Operator manages `Cluster` and `EventSink` custom resources to automate the lifecycle of distributed ledger clusters and event delivery on Kubernetes. It handles:
@@ -79,6 +89,30 @@ behavior: it attempts external deletion and then removes the finalizer even
 when endpoint resolution or execution fails; the external ledger may remain.
 This change does not add controller binding state or alter Ledger storage,
 audit records, backup formats, or service APIs.
+
+## Derived object ownership
+
+Directly owned resources derived from a Cluster name carry a controller
+reference with that Cluster's UID; a name match is never proof of ownership.
+Pods instead carry the StatefulSet UID: the operator checks the Cluster to
+StatefulSet to Pod ownership chain before exec. It refuses to adopt or update
+an existing resource it does not control. When pruning a disabled feature, it
+leaves a foreign object untouched and logs the skip without a `NameConflict`
+condition or requeue. Guarded name-based deletes use a precondition with the
+inspected UID; scale-down PVC cleanup deletes by deterministic name and does
+not provide that UID guarantee. Backup Jobs also require the ClusterIP Service
+they dial to be the Cluster's. Blocking ownership conflicts are reported as
+`ResourceNamesAvailable=False` with reason `NameConflict`, phase `Error`, a
+`ResourceNameConflict` event and a one-minute requeue.
+
+Upgrading the operator changes nothing for objects it created, which already
+carry the controller reference. Two situations that were silently adopted now
+stop the Cluster until resolved: objects left by `kubectl delete --cascade=orphan`
+when the Cluster is recreated (delete them, keeping the PVCs, or restore their
+owner references), and a pre-existing ServiceAccount named `ledger-<name>`
+(set `serviceAccount.create: false` and `serviceAccount.name`). See
+[derived object ownership](../../docs/technical/architecture/subsystems/operator/derived-object-ownership.md)
+for each guarded path and the accepted races.
 
 ## Declarative ledger indexes
 

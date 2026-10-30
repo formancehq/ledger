@@ -9,10 +9,8 @@ import (
 	"github.com/google/uuid"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
-	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
 
 	ledgerv1alpha1 "github.com/formancehq/ledger/misc/operator/api/v1alpha1"
@@ -89,9 +87,12 @@ func (r *ClusterReconciler) reconcileAnnotatedDrain(
 		return ctrl.Result{}, nil
 	}
 
-	sts := &appsv1.StatefulSet{}
-	if err := r.Get(ctx, types.NamespacedName{Name: resourceName(cluster.Name), Namespace: cluster.Namespace}, sts); err != nil {
-		if apierrors.IsNotFound(err) {
+	// Replica count, gRPC port and TLS mode come from the live workload, so it
+	// must be the Cluster's own; a StatefulSet it does not control is a name
+	// conflict, not a drain target.
+	sts, err := fetchClusterStatefulSet(ctx, r.Client, cluster)
+	if err != nil {
+		if errors.Is(err, errClusterRuntimeAbsent) {
 			return ctrl.Result{RequeueAfter: drainRequeueInterval}, nil
 		}
 

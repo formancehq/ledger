@@ -663,6 +663,26 @@ covers the default 1–2s leader-election window without extending every failed
 call to the former declared 50 attempts. The Antithesis per-node connections
 use their retry interceptors without a second native retry policy.
 
+Maintenance rejections retain `Unavailable`, the Ledger `MAINTENANCE_MODE`
+reason, and their original public message and details. The unary and streaming
+error interceptors attach `grpc-retry-pushback-ms: -1` so native gRPC retries stop
+when this rejection arrives. The serving node derives the hint from the
+validated reason/code pair, including decoded leader errors; it does not rely
+on forwarding the leader's trailers. Bare `Unavailable`, foreign details, and
+invalid reason/code pairs do not receive the hint. Ordinary transient failures
+retain the five-attempt policy. The transport regressions in
+`internal/adapter/grpc/maintenance_retry_test.go` exercise the actual error
+interceptors with that policy and preserve the complete status across both
+unary and streaming calls.
+
+Existing clients can decode the same status and details without a protocol
+revision change. Native retry suppression takes effect when the client-facing
+server is upgraded; an older forwarding node may still retry during rollout.
+No client configuration or persisted-state migration is required. Explicit
+application retry loops can continue across maintenance, as the Antithesis
+retry-forever client does below. The hint does not prove that an earlier attempt
+failed to commit; keyed recovery still requires the same key and payload.
+
 The regressions in
 `tests/antithesis/workload/internal/client_transport_test.go` commit against a
 real Ledger node and close the peer connection before response delivery. They

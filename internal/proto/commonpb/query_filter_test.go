@@ -229,9 +229,13 @@ func TestQueryFilterUnmarshalErrors(t *testing.T) {
 		{"null address rejected", `{"$match":{"address":null}}`, "must not be null"},
 		{"null ledger rejected", `{"$match":{"ledger":null}}`, "must not be null"},
 		{"null range bound rejected", `{"$gt":{"timestamp":null}}`, "must not be null"},
-		// $match on a numeric built-in is rejected (range-only fields).
-		{"match on timestamp rejected", `{"$match":{"timestamp":"1"}}`, "unsupported field"},
-		{"match on id rejected", `{"$match":{"id":"1"}}`, "unsupported field"},
+		// $match on a numeric built-in is an equality; its value must parse.
+		{"match on id non-uint", `{"$match":{"id":"x"}}`, "expected uint value"},
+		{"match on id negative", `{"$match":{"id":-1}}`, "expected uint value"},
+		{"match on logId bool", `{"$match":{"logId":true}}`, "expected uint value"},
+		{"match on timestamp garbage", `{"$match":{"timestamp":"not-a-date"}}`, "RFC3339"},
+		// Audit field names only resolve with the audit target.
+		{"match on audit field without target", `{"$match":{"outcome":"failure"}}`, "unsupported field"},
 	}
 
 	for _, tc := range cases {
@@ -301,12 +305,11 @@ func TestQueryFilterMarshalUnrepresentablePrefix(t *testing.T) {
 	}
 }
 
-// TestQueryFilterAuditNotJSONExposed asserts the audit oneof arm is refused on
-// the REST-JSON surface. AuditCondition is a gRPC-only filter (ledgerctl audit
-// list --filter, carried as protobuf); it never legitimately reaches this codec
-// and cannot round-trip through the field-name-dispatched DSL without colliding
-// with the ledger/timestamp conditions. Marshaling one must fail loud rather
-// than emit a node that would decode back to the wrong condition type.
+// TestQueryFilterAuditNotJSONExposed asserts the target-independent codec
+// refuses the audit oneof arm. Audit field names only resolve with the audit
+// target (DecodeQueryFilterJSON); through UnmarshalJSON they would collide with
+// the ledger/timestamp conditions. Marshaling one must fail loud rather than
+// emit a node that would decode back to the wrong condition type.
 func TestQueryFilterAuditNotJSONExposed(t *testing.T) {
 	t.Parallel()
 
@@ -319,12 +322,98 @@ func TestQueryFilterAuditNotJSONExposed(t *testing.T) {
 
 	_, err := json.Marshal(auditFilter)
 	require.Error(t, err)
-	require.Contains(t, err.Error(), "audit conditions are not supported over REST JSON")
+	require.Contains(t, err.Error(), "audit conditions have no target-independent JSON encoding")
 
-	// An audit-only field name is likewise refused on decode (unknown field),
-	// via the existing $match/$gt "unsupported field" paths — no silent accept.
+	// An audit-only field name is likewise refused by the target-independent
+	// decoder (unknown field), via the existing $match/$gt "unsupported field"
+	// paths — no silent accept. Only DecodeQueryFilterJSON with the audit
+	// target resolves them (TestDecodeQueryFilterJSONAuditTarget).
 	require.Error(t, json.Unmarshal([]byte(`{"$match":{"outcome":"failure"}}`), &QueryFilter{}))
 	require.Error(t, json.Unmarshal([]byte(`{"$match":{"orderType":"create_transaction"}}`), &QueryFilter{}))
+}
+
+// TestQueryFilterMatchOnBuiltinUintIsEquality asserts that $match on a builtin
+// uint range field decodes to the closed inclusive range [v, v] — the proto the
+// textual `field == v` builds — for literal and parameter values.
+func TestQueryFilterMatchOnBuiltinUintIsEquality(t *testing.T) {
+	t.Parallel()
+
+	got := &QueryFilter{}
+	require.NoError(t, json.Unmarshal([]byte(`{"$match":{"id":3}}`), got))
+	bu := got.GetBuiltinUint()
+	require.NotNil(t, bu)
+	require.Equal(t, TransactionBuiltinIndex_TX_BUILTIN_INDEX_ID, bu.GetField())
+	require.Equal(t, uint64(3), bu.GetCond().GetMin())
+	require.Equal(t, uint64(3), bu.GetCond().GetMax())
+	require.False(t, bu.GetCond().GetMinExclusive())
+	require.False(t, bu.GetCond().GetMaxExclusive())
+
+	got = &QueryFilter{}
+	require.NoError(t, json.Unmarshal([]byte(`{"$match":{"logId":{"$param":"l"}}}`), got))
+	require.Equal(t, "l", got.GetLogId().GetCond().GetParamMin())
+	require.Equal(t, "l", got.GetLogId().GetCond().GetParamMax())
+
+	got = &QueryFilter{}
+	require.NoError(t, json.Unmarshal([]byte(`{"$match":{"date":"2023-11-14T22:13:20Z"}}`), got))
+	lb := got.GetLogBuiltinUint()
+	require.NotNil(t, lb)
+	require.Equal(t, uint64(1700000000000000), lb.GetCond().GetMin())
+	require.Equal(t, uint64(1700000000000000), lb.GetCond().GetMax())
+}
+
+// TestDecodeQueryFilterJSONAuditTarget asserts the target-aware decoder
+// resolves the bare audit fields to the audit arm on QUERY_TARGET_AUDIT — and
+// that the colliding names (ledger, timestamp) keep their transaction/log
+// meaning on every other target.
+func TestDecodeQueryFilterJSONAuditTarget(t *testing.T) {
+	t.Parallel()
+
+	f, err := DecodeQueryFilterJSON([]byte(`{"$match":{"ledger":"main"}}`), QueryTarget_QUERY_TARGET_AUDIT)
+	require.NoError(t, err)
+	require.Equal(t, AuditField_AUDIT_FIELD_LEDGER, f.GetAudit().GetField())
+	require.Equal(t, "main", f.GetAudit().GetStringCond().GetHardcoded())
+
+	f, err = DecodeQueryFilterJSON([]byte(`{"$match":{"ledger":"main"}}`), QueryTarget_QUERY_TARGET_LOGS)
+	require.NoError(t, err)
+	require.NotNil(t, f.GetLedger())
+
+	f, err = DecodeQueryFilterJSON([]byte(`{"$and":[{"$gt":{"timestamp":"2023-11-14T22:13:20Z"}},{"$lte":{"timestamp":1700000000000001}}]}`), QueryTarget_QUERY_TARGET_AUDIT)
+	require.NoError(t, err)
+	uc := f.GetAudit().GetUintCond()
+	require.NotNil(t, uc, "a closed audit range folds into one audit condition")
+	require.Equal(t, AuditField_AUDIT_FIELD_TIMESTAMP, f.GetAudit().GetField())
+	require.Equal(t, uint64(1700000000000000), uc.GetMin())
+	require.True(t, uc.GetMinExclusive())
+	require.Equal(t, uint64(1700000000000001), uc.GetMax())
+
+	f, err = DecodeQueryFilterJSON([]byte(`{"$not":{"$match":{"seq":"42"}}}`), QueryTarget_QUERY_TARGET_AUDIT)
+	require.NoError(t, err, "the audit target threads through combinators")
+	require.Equal(t, AuditField_AUDIT_FIELD_SEQUENCE, f.GetNot().GetFilter().GetAudit().GetField())
+
+	f, err = DecodeQueryFilterJSON([]byte(`{"$gte":{"timestamp":1}}`), QueryTarget_QUERY_TARGET_TRANSACTIONS)
+	require.NoError(t, err)
+	require.NotNil(t, f.GetBuiltinUint())
+
+	// A key mixing both quote characters has no textual spelling but is a
+	// plain JSON string.
+	f, err = DecodeQueryFilterJSON([]byte(`{"$match":{"idempotency_key":"a\"b'c"}}`), QueryTarget_QUERY_TARGET_AUDIT)
+	require.NoError(t, err)
+	require.Equal(t, `a"b'c`, f.GetAudit().GetStringCond().GetHardcoded())
+
+	for _, tc := range []struct {
+		raw     string
+		wantErr string
+	}{
+		{`{"$match":{"outcome":{"$param":"o"}}}`, "does not support parameters"},
+		{`{"$lt":{"proposal_id":{"$param":"p"}}}`, "does not support parameters"},
+		{`{"$gt":{"order_type":"x"}}`, "supports $match only"},
+		{`{"$match":{"outcome":1}}`, "expected string value"},
+		{`{"$match":{"log_seq":"x"}}`, "expected uint value"},
+	} {
+		_, err := DecodeQueryFilterJSON([]byte(tc.raw), QueryTarget_QUERY_TARGET_AUDIT)
+		require.Error(t, err, tc.raw)
+		require.Contains(t, err.Error(), tc.wantErr, tc.raw)
+	}
 }
 
 // TestQueryFilterClosedRangeFolding asserts that an $and of two same-field bounds

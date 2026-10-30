@@ -96,7 +96,7 @@ func TestReconcileRejectsSkippedRCBeforeChangingStatefulSet(t *testing.T) {
 	replicas := int32(3)
 	cluster.Spec.Replicas = &replicas
 	cluster.Spec.Image.Tag = "v3.0.0-rc.3"
-	sts := rcStatefulSet("ghcr.io/formancehq/ledger:v3.0.0-rc.1", true)
+	sts := controlledByCluster(rcStatefulSet("ghcr.io/formancehq/ledger:v3.0.0-rc.1", true), cluster)
 	sts.Name = resourceName(cluster.Name)
 	sts.Namespace = cluster.Namespace
 	sts.CreationTimestamp = metav1.Now()
@@ -205,6 +205,7 @@ func TestRCVolumeClaimRecreationWaitsForRollout(t *testing.T) {
 	sts.Name = resourceName(cluster.Name)
 	sts.Namespace = cluster.Namespace
 	sts.CreationTimestamp = metav1.Now()
+	controlledByCluster(sts, cluster)
 	scheme := runtime.NewScheme()
 	require.NoError(t, clientgoscheme.AddToScheme(scheme))
 	require.NoError(t, ledgerv1alpha1.AddToScheme(scheme))

@@ -7,6 +7,7 @@ import (
 	"crypto/ed25519"
 	"math/big"
 
+	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/pkg/actions"
@@ -23,6 +24,7 @@ var _ = Describe("Request Signing", func() {
 		var (
 			ctx     context.Context
 			client  servicepb.BucketServiceClient
+			cluster clusterpb.ClusterServiceClient
 			pubKey  ed25519.PublicKey
 			privKey ed25519.PrivateKey
 		)
@@ -38,6 +40,7 @@ var _ = Describe("Request Signing", func() {
 			var node *testutil.ServiceWithClient
 			ctx, node = testutil.SetupSingleNode()
 			client = node.Client
+			cluster = node.ClusterClient
 		})
 
 		It("should accept unsigned requests when no keys exist", func() {
@@ -129,6 +132,24 @@ var _ = Describe("Request Signing", func() {
 			// The batch signature lives on AppliedProposal (proposal.proto); no
 			// public read endpoint yet — acceptance under require-signatures is
 			// what's observable here.
+		})
+
+		It("should allow the operator drain barrier while signatures are required", func() {
+			const epoch = "signing-required-drain"
+			begin, err := cluster.BeginDrain(ctx, &clusterpb.BeginDrainRequest{Epoch: epoch})
+			Expect(err).To(Succeed())
+			Expect(begin.CutoffIndex).To(BeNumerically(">", 0))
+
+			Eventually(func(g Gomega) {
+				state, err := cluster.GetDrainStatus(ctx, &clusterpb.GetDrainStatusRequest{})
+				g.Expect(err).To(Succeed())
+				g.Expect(state.DrainEpoch).To(Equal(epoch))
+				g.Expect(state.LastPersistedIndex).To(BeNumerically(">=", begin.CutoffIndex))
+			}).Should(Succeed())
+
+			end, err := cluster.EndDrain(ctx, &clusterpb.EndDrainRequest{Epoch: epoch})
+			Expect(err).To(Succeed())
+			Expect(end.ReleaseIndex).To(BeNumerically(">", begin.CutoffIndex))
 		})
 
 		It("should disable require-signatures via signed config change", func() {

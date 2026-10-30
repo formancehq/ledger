@@ -518,10 +518,18 @@ func ascendingReference(t *testing.T, store *readstore.Store, target commonpb.Qu
 
 	reader := store.DB()
 
-	iter, err := query.Compile(
-		reader, dal.NewKeyBuilder(), filter,
-		target, parityLedger,
-		nil, paritySchema(), parityInfo(), parityRegistry(), parityResolver(), nil, reader, parityPin)
+	iter, err := query.Compile(filter, query.CompileOptions{
+		IndexReader:     reader,
+		KeyBuilder:      dal.NewKeyBuilder(),
+		Target:          target,
+		LedgerName:      parityLedger,
+		Schema:          paritySchema(),
+		LedgerInfo:      parityInfo(),
+		IndexRegistry:   parityRegistry(),
+		IndexVersionFor: parityResolver(),
+		MainReader:      reader,
+		Pin:             parityPin,
+	})
 	require.NoError(t, err)
 
 	defer iter.Close()
@@ -550,10 +558,18 @@ func descendingByPages(t *testing.T, store *readstore.Store, target commonpb.Que
 
 	// A generous page budget: any traversal needing more than this is looping.
 	for range 100 {
-		iter, err := query.CompileReverse(
-			reader, dal.NewKeyBuilder(), filter,
-			target, parityLedger,
-			nil, paritySchema(), parityInfo(), parityRegistry(), parityResolver(), nil, reader, parityPin)
+		iter, err := query.CompileReverse(filter, query.CompileOptions{
+			IndexReader:     reader,
+			KeyBuilder:      dal.NewKeyBuilder(),
+			Target:          target,
+			LedgerName:      parityLedger,
+			Schema:          paritySchema(),
+			LedgerInfo:      parityInfo(),
+			IndexRegistry:   parityRegistry(),
+			IndexVersionFor: parityResolver(),
+			MainReader:      reader,
+			Pin:             parityPin,
+		})
 		require.NoError(t, err)
 
 		items, _, pErr := readstore.PaginateReverse(iter, pageSize, before)
@@ -894,10 +910,18 @@ func TestDescendingParity_CursorBoundaries(t *testing.T) {
 	require.NotEmpty(t, want)
 
 	page := func(before []byte, size uint32) []string {
-		iter, err := query.CompileReverse(
-			reader, dal.NewKeyBuilder(), filter,
-			commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS, parityLedger,
-			nil, paritySchema(), parityInfo(), parityRegistry(), parityResolver(), nil, reader, parityPin)
+		iter, err := query.CompileReverse(filter, query.CompileOptions{
+			IndexReader:     reader,
+			KeyBuilder:      dal.NewKeyBuilder(),
+			Target:          commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
+			LedgerName:      parityLedger,
+			Schema:          paritySchema(),
+			LedgerInfo:      parityInfo(),
+			IndexRegistry:   parityRegistry(),
+			IndexVersionFor: parityResolver(),
+			MainReader:      reader,
+			Pin:             parityPin,
+		})
 		require.NoError(t, err)
 
 		defer iter.Close()
@@ -935,10 +959,19 @@ func TestDescendingParity_NoFullMaterialization(t *testing.T) {
 	profileFor := func(filter *commonpb.QueryFilter) *query.QueryProfile {
 		profile := &query.QueryProfile{}
 
-		iter, err := query.CompileReverse(
-			reader, dal.NewKeyBuilder(), filter,
-			commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS, parityLedger,
-			nil, paritySchema(), parityInfo(), parityRegistry(), parityResolver(), profile, reader, parityPin)
+		iter, err := query.CompileReverse(filter, query.CompileOptions{
+			IndexReader:     reader,
+			KeyBuilder:      dal.NewKeyBuilder(),
+			Target:          commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
+			LedgerName:      parityLedger,
+			Schema:          paritySchema(),
+			LedgerInfo:      parityInfo(),
+			IndexRegistry:   parityRegistry(),
+			IndexVersionFor: parityResolver(),
+			Profile:         profile,
+			MainReader:      reader,
+			Pin:             parityPin,
+		})
 		require.NoError(t, err)
 
 		defer iter.Close()
@@ -960,10 +993,19 @@ func TestDescendingParity_NoFullMaterialization(t *testing.T) {
 		"the value-ordered range keeps its ONE materialization")
 
 	ascProfile := &query.QueryProfile{}
-	ascIter, err := query.Compile(
-		reader, dal.NewKeyBuilder(), uintRangeFieldFilter("size", 1, 2),
-		commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS, parityLedger,
-		nil, paritySchema(), parityInfo(), parityRegistry(), parityResolver(), ascProfile, reader, parityPin)
+	ascIter, err := query.Compile(uintRangeFieldFilter("size", 1, 2), query.CompileOptions{
+		IndexReader:     reader,
+		KeyBuilder:      dal.NewKeyBuilder(),
+		Target:          commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
+		LedgerName:      parityLedger,
+		Schema:          paritySchema(),
+		LedgerInfo:      parityInfo(),
+		IndexRegistry:   parityRegistry(),
+		IndexVersionFor: parityResolver(),
+		Profile:         ascProfile,
+		MainReader:      reader,
+		Pin:             parityPin,
+	})
 	require.NoError(t, err)
 
 	for ascIter.Next() {

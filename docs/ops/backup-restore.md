@@ -513,9 +513,11 @@ enforces `--total-stop-timeout`. That budget includes `--grace-period` and all
 Fx stop hooks. Deadline expiry returns a shutdown error and an unsuccessful
 command exit without guaranteeing that every hook completed. Process exit can
 therefore interrupt cleanup and leave staging files or an uncleanly closed
-staging store. Deferred log-export cleanup runs after the Fx lifecycle and is
-outside this timeout; size the process termination grace period to allow that
-additional work. Staging-store close errors are logged under the existing close
+staging store. Deferred log-export cleanup runs after the Fx lifecycle. After a
+termination signal it uses the remaining signal-time deadline, distinct from
+the normal Fx stop budget; expiry or finalization failure exits unsuccessfully.
+See [server termination](cli.md#server-termination) for startup-unwind and zero
+timeout behavior. Staging-store close errors are logged under the existing close
 policy and are not returned by the restore stop hook.
 
 ### Step 2: Validate (Required for gRPC Finalization)
@@ -671,7 +673,7 @@ ledgerctl store bootstrap --driver s3 --s3-bucket my-bucket --s3-region us-east-
 
 1. **Fresh directory guard**: Rejects a `RESTORED` marker, live database or incompatible checkpoint layout. A lone unmarked `checkpoints/0` from interrupted finalization is reclaimed before downloading.
 2. **Download**: Reads the manifest from the configured backend, creates or opens the selected data directory, then inspects `restore-staging/` with rooted `Lstat`. An existing symlink (even to a target inside the data directory) or non-directory is rejected. Any old real staging directory is removed through the data-directory root before a fresh directory is created and opened. Downloads checkpoint files sequentially through a filesystem root opened on staging. Each manifest filename is converted from slash-separated form and must be lexically local before parent creation, object lookup or file creation for that entry. Rooted parent and file creation reject symlink escapes. Each checkpoint file is verified against its manifest size and the sha256 in its object key; a mismatch aborts bootstrap and names the file. Staging is reset even for an export-only manifest.
-3. **Apply exports**: If the manifest contains incremental export segments, applies them to the staging database and rebuilds derived state.
+3. **Apply exports**: If the manifest contains incremental export segments, applies them to the staging database and rebuilds derived state. Before downloading any segment, bootstrap rejects a manifest whose log, audit, or audit-item segments do not continue each other from the checkpoint boundary, so a missing interior segment or an overlap fails even without `--validate`. A missing final segment is not detected by this check; use `--validate` to catch it.
 4. **Preview**: Opens the staging as a read-only Pebble database, reads metadata (last applied index, timestamp, ledger list), and displays a summary table.
 5. **Validate** (optional): If `--validate` is set, runs the full integrity checker (`check.Checker`) -- the same checker used by `store check` and `restore validate`. Execution failures or reported integrity errors abort bootstrap before confirmation, preparation, and finalization. Without this flag, bootstrap skips Checker entirely.
 6. **Confirm**: Unless `--yes` is set, prompts for user confirmation.

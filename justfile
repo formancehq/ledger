@@ -94,6 +94,12 @@ go-mod-download:
     echo "==> controller-gen (download and build)"
     {{controller-gen}} --version
 
+# Trim the shared Namespace CI cache volume; run nightly by the Cache Expiry
+# workflow. Outside GitHub Actions it only runs as a preview:
+# DRY_RUN=1 just ci-expire-caches
+ci-expire-caches:
+    bash scripts/ci-expire-caches
+
 # All optional feature build tags
 all_tags := "kafka,nats,clickhouse,databricks,s3,azure,pyroscope"
 
@@ -248,13 +254,21 @@ test-coverage:
     echo "==> Unit tests with coverage..."
     scripts/go-test-coverage {{coverage_dir}}/unit.out -race -coverpkg={{coverage_pkgs}} -timeout 20m ./...
 
-# Execute internal and offline bootstrap assertions behind optional feature tags (requires Docker).
+# Execute internal assertions behind optional feature tags (requires Docker).
 test-internal-coverage:
     #!/usr/bin/env bash
     set -euo pipefail
     mkdir -p {{coverage_dir}}
     echo "==> Internal tests with optional features and coverage..."
-    scripts/go-test-coverage {{coverage_dir}}/internal.out -race -tags "{{all_tags}}" -coverpkg={{coverage_pkgs}} -timeout 20m ./internal/... ./cmd/ledgerctl/store
+    scripts/go-test-coverage {{coverage_dir}}/internal.out -race -tags "{{all_tags}}" -coverpkg={{coverage_pkgs}} -timeout 20m ./internal/...
+
+# Run the optional-feature offline bootstrap assertions in a separate CI job.
+test-store-coverage:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    mkdir -p {{coverage_dir}}
+    echo "==> Store command tests with optional features and coverage..."
+    scripts/go-test-coverage {{coverage_dir}}/store.out -race -tags "{{all_tags}}" -coverpkg={{coverage_pkgs}} -timeout 20m ./cmd/ledgerctl/store
 
 # Run PostgreSQL mirror integration regressions (requires Docker or LEDGER_TEST_POSTGRES_DSN).
 test-postgres-mirror-coverage:
@@ -312,7 +326,7 @@ coverage-merge:
     set -euo pipefail
     mkdir -p {{coverage_dir}}
     profiles=()
-    for f in {{coverage_dir}}/unit.out {{coverage_dir}}/internal.out {{coverage_dir}}/antithesis.out {{coverage_dir}}/e2e.out {{coverage_dir}}/scenario.out {{coverage_dir}}/fuzz.out; do
+    for f in {{coverage_dir}}/unit.out {{coverage_dir}}/internal.out {{coverage_dir}}/store.out {{coverage_dir}}/postgres-mirror.out {{coverage_dir}}/antithesis.out {{coverage_dir}}/e2e.out {{coverage_dir}}/scenario.out {{coverage_dir}}/fuzz.out; do
         [ -f "$f" ] && profiles+=("$f")
     done
     if [ ${#profiles[@]} -eq 0 ]; then
@@ -336,7 +350,7 @@ coverage-html: coverage-merge
     echo "HTML report: {{coverage_dir}}/coverage.html"
 
 # Run all tests with coverage and merge
-coverage-all: test-coverage test-internal-coverage test-antithesis-assertions test-e2e-coverage test-scenarios-coverage fuzz-check-coverage coverage-merge
+coverage-all: test-coverage test-internal-coverage test-store-coverage test-postgres-mirror-coverage test-antithesis-assertions test-e2e-coverage test-scenarios-coverage fuzz-check-coverage coverage-merge
 
 # Run Schemathesis API conformity and fuzzing tests
 test-schemathesis:

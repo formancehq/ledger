@@ -88,7 +88,8 @@
     "docs/technical/contributing/ai-audit.md",
     "docs/ops/cluster-operations.md",
     "docs/ops/deployment.md",
-    "docs/technical/architecture/subsystems/consensus/controlled-shutdown.md"
+    "docs/technical/architecture/subsystems/consensus/controlled-shutdown.md",
+    "docs/ops/cli.md"
   ],
   "invariants": [
     "A PostgreSQL mirror gap reread owns its pooled transaction until commit or rollback. NOWAIT lock conflicts return no batch. Caller cancellation must not return a live transaction or SHARE lock to the pool: rollback uses a detached context bounded to five seconds, and pgx closes a connection whose rollback fails. No source transaction survives into translation, preload or Raft application; distinguish this source-session cleanup from the unchanged applied-cursor contract.",
@@ -106,7 +107,8 @@
     "Event sink implementations, including optional Kafka, NATS, ClickHouse, Databricks, and HTTP workers, must not accept new sends after their emitter is stopped and must release retry, batching, network, and metrics resources before the owning sink is closed.",
     "Concurrent start, stop, retry, leadership, configuration-reconcile, and error paths must not deadlock, double-close, leak, or allow use-after-close of channels, queues, futures, stores, transports, listeners, or metrics registrations.",
     "Admission-side lifecycle locks have an explicit owner and bounded lifetime. They must be released before admission waits for the proposal future and must never remain held through FSM application. Caller cancellation, proposal failure, leader change, and FSM delay must not retain a lifecycle lock or serialize unrelated requests. Read handles remain request-scoped and must close at their owning boundary.",
-    "A drain marker that has entered the proposal queue retains its local membership and write-admission fence despite caller cancellation or timeout until Raft applies it or definitively drops it. Release reopens admission only when its own ordered entry applies."
+    "A drain marker that has entered the proposal queue retains its local membership and write-admission fence despite caller cancellation or timeout until Raft applies it or definitively drops it. Release reopens admission only when its own ordered entry applies.",
+    "Learner preflight owns its outbound connections and termination subscription before inbound Raft startup. A latched signal cancels only its registration child context and retains Fx Shutdown; the private startup context remains live for rollback until the positive signal-time startup deadline. Timer, subscription release and concurrent completion must not leak, double-close or lose cancellation. Zero is unlimited; normal successful startup keeps its separate Fx stop budget. Rollback and logger failure or expiry cannot become success, and timeout is not a join or closure proof."
   ],
   "adversarial_questions": [
     "For each goroutine, callback, registration, and mutable snapshot in scope, which exact authority token from the invariants owns it? If repository evidence does not define the token, report an audit question instead of assuming a generic generation invariant.",
@@ -122,9 +124,11 @@
     "Can an admission request enumerate persisted state or retain a lifecycle lock while waiting for proposal or FSM completion? A retained lifecycle lock is a blocking finding. Check caller cancellation, proposal rejection, apply delay, read-handle ownership, and whether the state-dependent work has an explicit trigger and cardinality budget.",
     "Do lifecycle tests for bootstrap hooks, servers, Node/Applier, worker primitives, managers, builders, and sessions use time.Sleep to claim a specific interleaving instead of deterministic synchronization?",
     "Do optional event sinks and disabled-feature implementations obey the same Start, Stop, Close, retry, and flush ownership contract as the default build?",
-    "Can a BeginDrain timeout after marker enqueue reopen a membership or write-admission gate while the marker can still apply? Can a release race a newer epoch or a pending proposal and open the wrong gate?"
+    "Can a BeginDrain timeout after marker enqueue reopen a membership or write-admission gate while the marker can still apply? Can a release race a newer epoch or a pending proposal and open the wrong gate?",
+    "Can a signal before subscription, during registration RPC/backoff, or concurrent with successful/fatal registration lose cancellation, suppress a marker/fatal error, cancel Fx rollback too early, or leak the subscription/timer? Does startup deadline expiry bound outer waiting and signal-time logger finalization without claiming worker closure or replacing the separate normal-stop budget?"
   ],
   "dynamic_checks_to_consider": [
+    "Complete a fatal peer Canceled registration response before local termination while holding caller-side classification or connection cleanup; preserve that fatal result and retain independent in-flight local cancellation coverage.",
     "Inspect the integration-only PostgreSQL gap-cancellation regression in internal/adapter/v2: a real pgx query tracer cancels immediately after successful SHARE lock acquisition, then checks no returned rows, a successful retry with one pooled connection and a subsequent source INSERT without a leaked lock. Preserve independent manager startup-cancellation tests. Use an explicitly supplied disposable native PostgreSQL service when Docker is prohibited locally; otherwise these integration fixtures require Docker.",
     "go test -race ./internal/bootstrap ./internal/adapter/grpc ./internal/application/ctrl ./internal/infra/node ./internal/infra/transport ./internal/pkg/worker ./internal/pkg/tailworker ./internal/pkg/futures ./internal/pkg/signal",
     "go test -race ./internal/application/events ./internal/application/mirror ./internal/application/backup ./internal/infra/backup",
@@ -141,6 +145,7 @@
     "register/observe/unregister races for main-store, readstore, usagestore, cache, builder, tailworker, and disk-usage metrics while their stores or workers stop or a restore swaps the backing database",
     "optional-feature event sink lifecycle and repeated-construction tests under the kafka, nats, clickhouse, and databricks build tags with their required test infrastructure",
     "go test -race -tags pyroscope ./internal/infra/monitoring/pyroscope/... for the optional profiler's Fx Start/Stop hooks",
-    "Deterministically pause a drain marker after enqueue, cancel the caller, interleave membership and write proposals, then separately apply or definitively drop the marker; assert fence lifetime, cutoff and eventual release without sleeps."
+    "Deterministically pause a drain marker after enqueue, cancel the caller, interleave membership and write proposals, then separately apply or definitively drop the marker; assert fence lifetime, cutoff and eventual release without sleeps.",
+    "Use synctest or deterministic barriers for pre-latched and in-flight registration cancellation, signal/subscription-release/timer races, success/AlreadyExists marker writes, fatal-error races, inherited cancellation, rollback failures, positive and zero budgets, blocked/failing logger finalization, and expiry/result races. Keep queued Fx notification and failed-preflight-before-inbound regressions additive; assert owned listener/store closure and same-path reuse independently of outer return."
   ]
 }

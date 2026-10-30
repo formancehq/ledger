@@ -219,7 +219,7 @@ type auditEntry struct {
 	reason     string   // failure only, in the domain's vocabulary
 	minLog     uint64   // success only
 	maxLog     uint64   // success only
-	itemSeqs   []uint64 // success only, one per order; empty once archived
+	itemSeqs   []uint64 // success only, one per order on direct reads; absent on list pages
 }
 
 func auditEntryOf(e *auditpb.AuditEntry) auditEntry {
@@ -589,7 +589,7 @@ func auditSuccessMismatch(e auditEntry, logs map[uint64]committedLog, bulks map[
 		return "order count " + strconv.FormatUint(uint64(e.orderCount), 10) + " for " + strconv.FormatUint(span, 10) + " logs", 0
 	}
 
-	// Items are purged from archived entries; a present list is one per order.
+	// ListAuditEntries omits items; when present, there must be one per order.
 	if len(e.itemSeqs) != 0 && uint64(len(e.itemSeqs)) != span {
 		return strconv.Itoa(len(e.itemSeqs)) + " items for " + strconv.FormatUint(span, 10) + " logs", 0
 	}
@@ -1394,6 +1394,9 @@ func (c *Checker) validateAuditEntry(maxTicket uint64, e auditEntry) auditVerdic
 
 	if why, missing := auditSuccessMismatch(e, logs, c.committedBulks, committedMax); why != "" {
 		return auditVerdict{finding: "audit entry outside model", entry: describeAuditEntry(e), why: why, missingSeq: missing}
+	}
+	if uint64(len(e.itemSeqs)) != uint64(e.orderCount) {
+		return auditVerdict{finding: "audit entry outside model", entry: describeAuditEntry(e), why: strconv.Itoa(len(e.itemSeqs)) + " items for " + strconv.FormatUint(uint64(e.orderCount), 10) + " logs"}
 	}
 
 	return auditVerdict{}

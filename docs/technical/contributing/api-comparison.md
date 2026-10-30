@@ -232,7 +232,7 @@ JWT/anonymous policy; no new endpoint or authorization requirement is introduced
 | List numscript versions | ✅ | ❌ | Per-ledger, `GET .../numscripts/{name}/versions`, current latest + every stored version |
 | **Audit Log** |
 | Audit log (success + failure) | ✅ | ❌ | Replicated via Raft, stored in Pebble |
-| List audit entries | ✅ | ❌ | `GET /v3/_/audit-entries` (HTTP) + gRPC stream. Bucket-wide; `pageSize`/`cursor`/`reverse` ([pagination](#pagination)) + a bare-audit-field filter expression (`outcome`, `ledger`, `seq`, `proposal_id`, `timestamp`, `log_seq`, `caller_subject`, `order_type`, `idempotency_key`; the last supports `==`, `in`, and `^=` prefix matching), resolved against the audit query target — EN-1549 replaced the old `audit[...]` namespaced syntax; textual form only, audit has no structured JSON form — see [Filter input formats](#filter-input-formats-dual-format-contract-en-1511) |
+| List audit entries | ✅ | ❌ | `GET /v3/_/audit-entries` (HTTP) + gRPC stream. Bucket-wide; `pageSize`/`cursor`/`reverse` ([pagination](#pagination)) + a bare-audit-field filter expression (`outcome`, `ledger`, `seq`, `proposal_id`, `timestamp`, `log_seq`, `caller_subject`, `order_type`, `idempotency_key`; the last supports `==`, `in`, and `^=` prefix matching), resolved against the audit query target in both the textual and the structured JSON form (`{"$match":{"outcome":"failure"}}`; the `^=` prefix is textual-only) — EN-1549 replaced the old `audit[...]` namespaced syntax — see [Filter input formats](#filter-input-formats-dual-format-contract-en-1511) |
 | Get audit entry by sequence | ✅ | ❌ | `GET /v3/_/audit-entries/{sequence}` (HTTP) + gRPC. Populates per-order `items` |
 | Audit log disable/enable | ❌ | ❌ | Not implemented |
 | **Error Handling** |
@@ -739,10 +739,12 @@ On a fresh ledger the counter builds up organically from cursor=0.
 
 Every filtered surface accepts one `filter` in either the textual `filterexpr`
 grammar or the structured v2 JSON DSL; both compile to the same
-`*commonpb.QueryFilter`. The full contract — parameter classification, the
-textual/structured expressiveness asymmetries (address prefix, reference, audit),
-date coercion (EN-1544), AND-combination, and the removed `prefix`/`reference`
-aliases (EN-1540) — is documented once in
+`*commonpb.QueryFilter`. Both forms cover the same fields (`reference`,
+`reverted`, `id`, `insertedAt`, `revertedAt`, `logId`, the audit fields, …); only
+a few prefix operators remain textual-only. The full contract — parameter
+classification, the field parity table and operator asymmetries, date coercion
+(EN-1544), AND-combination, and the removed `prefix`/`reference` aliases
+(EN-1540) — is documented once in
 [query-filter.md](../architecture/subsystems/read-path/query-filter.md).
 
 ### 10. Prepared Queries and User-Configurable Indexes
@@ -1508,6 +1510,16 @@ Two properties are enforced by tests rather than convention:
 Note that `POST /v3/{ledgerName}/bulk` shares this classifier but can only express the four `LedgerAction` variants its JSON decoder accepts (`CREATE_TRANSACTION`, `ADD_METADATA`, `REVERT_TRANSACTION`, `DELETE_METADATA`), so the table's top-level rows are unreachable over HTTP bulk.
 
 ### gRPC Error Mapping
+
+Maintenance mode is a v3 cluster operation without a corresponding v2 service
+gRPC contract. Its rejection remains `UNAVAILABLE` with Ledger reason
+`MAINTENANCE_MODE`; the server adds `grpc-retry-pushback-ms: -1` to stop native
+gRPC retries. Local and forwarded statuses preserve their message and details,
+and `ledgerctl` renders a clear cluster-maintenance message. HTTP remains
+503 `MAINTENANCE_MODE`; routes, JSON envelopes, and OpenAPI are unchanged.
+Explicit application retries and keyed recovery after an uncertain commit
+retain their own policy. See the [gRPC error contract](../architecture/subsystems/api/grpc-api.md#error-handling)
+for rollout and compatibility details.
 
 Business errors from the processing layer are mapped to gRPC status codes with structured `ErrorInfo` details via the `Describable` contract in `internal/domain`. This allows clients to programmatically identify error types without parsing error messages. See `internal/domain/errors.go` for the canonical list — the `Reason()` method on each typed error returns the constant below, while `FailureDetails()` supplies the typed variant that determines the code and public structured context for serializable errors. `domain.PublicErrorDetails` renders the public message and facts without exposing diagnostic `Error()` text; the keys listed below describe the public response.
 

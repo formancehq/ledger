@@ -16,7 +16,7 @@ func (r *ClusterReconciler) reconcileGrpcService(ctx context.Context, ledger *le
 	name := grpcServiceName(ledger.Name)
 
 	if ledger.Spec.IngressGrpc == nil || !ledger.Spec.IngressGrpc.Enabled {
-		return r.deleteIfExists(ctx, &corev1.Service{
+		return r.deleteIfExists(ctx, ledger, &corev1.Service{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      name,
 				Namespace: ledger.Namespace,
@@ -52,7 +52,7 @@ func (r *ClusterReconciler) reconcileGrpcService(ctx context.Context, ledger *le
 			Selector: selectorLabels(ledger),
 		}
 
-		return controllerutil.SetControllerReference(ledger, svc, r.Scheme)
+		return setOwnedControllerReference(ledger, svc, r.Scheme, "Service")
 	})
 
 	return err
