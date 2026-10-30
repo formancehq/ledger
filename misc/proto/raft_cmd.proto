@@ -452,7 +452,34 @@ message TechnicalUpdate {
     BackupOrder backup_order = 6;                          // Full-backup lifecycle
     IncrementalBackupOrder incremental_backup_order = 7;  // Incremental-backup lifecycle
     bytes audit_key = 8;  // One-time replicated audit key initialization.
+    DrainMarker drain_marker = 9; // Operator-initiated write-admission cutoff.
+    DrainRelease drain_release = 10; // Operator-initiated, Raft-ordered return to admission.
   }
+}
+
+// DrainMarker is an idempotent, Raft-ordered shutdown barrier. The first
+// applied marker fixes both its epoch and the entry's Raft index; a replay of
+// the same epoch keeps that original index.
+message DrainMarker {
+  string epoch = 1;
+  repeated uint64 members = 2; // Membership captured before marker proposal.
+}
+
+// DrainRelease lifts only the active marker with the same epoch.
+message DrainRelease {
+  string epoch = 1;
+}
+
+// DrainState is the persisted decision for the active or most recently
+// released epoch. It survives snapshots and node restarts. A new epoch may
+// replace a released decision, but never an active one. prior_epochs keeps
+// released epoch IDs from being reused after later drains.
+message DrainState {
+  string epoch = 1;
+  fixed64 index = 2;
+  repeated uint64 members = 3;
+  fixed64 released_index = 4; // Zero while admission is closed.
+  repeated string prior_epochs = 5;
 }
 
 // ============================================================================

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"strconv"
 	"testing"
 
 	"github.com/spf13/cobra"
@@ -9,6 +10,58 @@ import (
 
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/cmdutil"
 )
+
+// TestTransferLeaderCommandContract guards the operational command through the
+// real root, including both parent registrations and handler error propagation.
+func TestTransferLeaderCommandContract(t *testing.T) {
+	// Root execution loads connection profiles. Isolate configuration on every
+	// platform; process-wide environment changes prevent parallel execution.
+	tmp := t.TempDir()
+	t.Setenv("HOME", tmp)
+	t.Setenv("XDG_CONFIG_HOME", tmp)
+	t.Setenv("APPDATA", tmp)
+	t.Setenv("LOCALAPPDATA", tmp)
+	t.Setenv("LEDGERCTL_PROFILE", "")
+
+	root := newRootCommand()
+	cmd, remaining, err := root.Find([]string{"cluster", "transfer-leader"})
+	require.NoError(t, err)
+	require.Empty(t, remaining)
+	require.Equal(t, "ledgerctl cluster transfer-leader", cmd.CommandPath())
+
+	alias, remaining, err := root.Find([]string{"cl", "tl"})
+	require.NoError(t, err)
+	require.Empty(t, remaining)
+	require.Same(t, cmd, alias)
+
+	require.NotNil(t, cmd.Args)
+	require.Error(t, cmd.Args(cmd, nil))
+	require.NoError(t, cmd.Args(cmd, []string{"1"}))
+	require.Error(t, cmd.Args(cmd, []string{"1", "2"}))
+	require.NotNil(t, cmd.RunE)
+
+	timeout := cmd.Flags().Lookup("timeout")
+	require.NotNil(t, timeout)
+	require.Equal(t, "duration", timeout.Value.Type())
+	require.Equal(t, "10s", timeout.DefValue)
+
+	require.NotNil(t, cmd.ValidArgsFunction)
+	suggestions, directive := cmd.ValidArgsFunction(cmd, nil, "")
+	require.Empty(t, suggestions)
+	require.Equal(t, cobra.ShellCompDirectiveNoFileComp, directive)
+
+	// A typed parsing error proves the real handler ran and its error crossed
+	// root execution, rather than an earlier configuration failure satisfying it.
+	root = newRootCommand()
+	root.SilenceErrors = true
+	root.SetArgs([]string{"cluster", "transfer-leader", "not-a-node"})
+	err = root.Execute()
+	var parseErr *strconv.NumError
+	require.ErrorAs(t, err, &parseErr)
+	require.Equal(t, "ParseUint", parseErr.Func)
+	require.Equal(t, "not-a-node", parseErr.Num)
+	require.ErrorIs(t, err, strconv.ErrSyntax)
+}
 
 // TestLedgerFlagCompletionRegistered asserts that every command exposing a
 // --ledger flag (locally or via the inherited persistent flag) has the

@@ -146,15 +146,60 @@ the live replica count and the two volume kinds, not Ledger business cardinality
 
 ## Deletion boundaries
 
-After Raft membership removal succeeds, the Cluster reconciler persists the
-reduced StatefulSet replica count. That write requests Pod termination; it does
-not wait for it. Manual ordinal-PVC deletion is authorized only by the effective
-`whenScaled: Delete` policy. Omission or `Retain` preserves the PVC/PV identities
-and bindings, independently of `whenDeleted`. PVC protection controls removal of
-in-use claims. An error after the replica write does not roll it back; existing
-membership removals remain committed and claims may remain after a failed
-cleanup. Retain does not attempt cleanup and must not depend on protection
-admission rejecting an otherwise unauthorized delete.
+Manual ordinal-PVC deletion requires effective `whenScaled: Delete`.
+Omission or `Retain` preserves the PVC/PV identities and bindings, independently
+of `whenDeleted`. Retain must not depend on admission rejecting an unauthorized
+DELETE. Kubernetes can independently apply the StatefulSet retention policy;
+these checks fence the Operator's own deletion requests.
+
+Before Raft removal or replica reduction, the controller validates the source
+workload and claims. Its preparatory StatefulSet update retains the old replica
+count and persists both `ledger.formance.com/scale-down-pvc-from` and a versioned
+JSON inventory in `ledger.formance.com/scale-down-pvc-plan`. The inventory binds
+the operation to the Cluster UID, StatefulSet UID and replica range. Each entry
+records the exact PVC identity, its observed version, expected ordinal/volume,
+original Pod ownership evidence and, when bound, the PV name/UID and complete
+claim reference. A predictable name is a lookup key, never deletion authority.
+The saved inventory must exist before an external step can leave only the
+reduced replica count behind.
+Once persisted, this inventory is reused even when a Raft step fails before
+replicas decrease. A new claim, including one absent during the first capture,
+never becomes a target during that retry. A changed pending replica range is
+rejected: complete the recorded scale-down or cancel remaining Operator cleanup
+with `Retain` before requesting another range.
+
+After all required Raft removals succeed, the controller persists the reduced
+replica count. That write requests Pod termination; it does not wait for it.
+Cleanup reuses the frozen inventory after a failed write or Operator restart,
+before any later scale-up can reuse the old claims. Immediately before each
+DELETE it directly rereads the owned StatefulSet incarnation, verifies the
+actual reduced replica range and retention, then rereads the PVC and bound PV.
+PVC UID, volume name, PV UID and claim reference must match the saved
+inventory. Any present PVC owner must refer to the recorded StatefulSet or
+original Pod identity. Ordinals observed as current or retained are not deletion
+targets. The DELETE
+carries the recorded PVC UID and the freshly validated resourceVersion.
+A conflict requires another read and validation; refreshing a version must not
+refresh the authorized UID or binding.
+
+A missing original claim is idempotent. A matching original claim already
+terminating needs no additional DELETE. A same-name replacement, foreign owner
+or changed binding produces an error before a new deletion request. Accepted
+partial cleanup is not rolled back. Failed cleanup retains the reduced count
+and the exact inventory; the marker-clear patch is optimistic and happens only
+after all authorized deletions are accepted or already complete. Switching the
+desired policy to `Retain` cancels further Operator cleanup without deleting
+claims. It does not reverse earlier accepted deletes or native garbage
+collection. PVC protection still controls eventual removal of in-use claims.
+The PVC preconditions do not make the source/PVC/PV reads or native garbage
+collection a multi-object transaction.
+
+A legacy previous-count marker without an inventory cannot authorize explicit
+Delete cleanup. Do not fill missing identity from the current same-name claim
+or clear recovery markers to force progress. An operator-reviewed recovery
+decision must use independently verified original identities. Finish or safely
+cancel pending cleanup before an Operator downgrade: an older binary can ignore
+the inventory and resume name-only cleanup.
 
 The separate hostPath/PVC layout recreation path also uses deletion fences.
 Before orphan deletion it requires a nonempty observed UID/resourceVersion and

@@ -87,7 +87,7 @@ func newMembershipServiceNodeWithPool(t *testing.T) (*Service, *transport.Connec
 	synchronizer := state.NewSynchronizer(fsm, recovery, dal.NewIncomingRestoreFactory(store))
 	responses := node.NewLocalResponses()
 	applier, err := node.NewApplier(fsm, recovery, synchronizer, sp, store, w, logger, meter,
-		0, 1000, nil, func() {}, responses)
+		0, 1000, nil, m, responses)
 	require.NoError(t, err)
 	n, err := node.NewNode(node.NodeConfig{
 		NodeID: 1, AdvertiseAddr: "self:7777", ServiceAdvertiseAddr: "self:8888",

@@ -91,14 +91,22 @@ type fsmCoverageItem struct {
 
 // applyFSMPurgeProposal drives one proposal through the real apply path,
 // resolving the execution plan the gated attribute reads need.
-func applyFSMPurgeProposal(
+func applyFSMPurgeProposal(t *testing.T, machine *state.Machine, store *dal.Store, attrs *attributes.Attributes, index uint64, orders ...*raftcmdpb.Order) {
+	t.Helper()
+	result := applyFSMPurgeProposalResult(t, machine, store, attrs, index, orders...)
+	for _, r := range result.Results {
+		require.NoError(t, r.Error)
+	}
+}
+
+func applyFSMPurgeProposalResult(
 	t *testing.T,
 	machine *state.Machine,
 	store *dal.Store,
 	attrs *attributes.Attributes,
 	index uint64,
 	orders ...*raftcmdpb.Order,
-) {
+) *state.ApplyEntriesResult {
 	t.Helper()
 
 	var (
@@ -235,9 +243,7 @@ func applyFSMPurgeProposal(
 	})
 	require.NoError(t, err)
 
-	for _, r := range result.Results {
-		require.NoError(t, r.Error)
-	}
+	return result
 }
 
 func fsmPurgeCreateLedgerOrder(persistence commonpb.AccountTypePersistence) *raftcmdpb.Order {

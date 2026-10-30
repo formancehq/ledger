@@ -323,6 +323,24 @@ build a single real `*node.Node` over real storage in temporary directories:
   calls `Membership.Start`, so registering a learner commits the ConfChange
   without dialing the learner's address, and the tests run in a synctest
   bubble.
+- **Small WAL segments:** etcd preallocates each Raft WAL segment, plus one
+  spare, at 64 MB. On APFS a test binary that opens many WALs turns that into
+  GBs of physical writes and temporary space. In the default untagged
+  root-module suite (`go test ./...`, which local validation runs), every test
+  binary that opens a WAL, directly or in a process it re-executes, calls
+  `waltest.UseSmallSegments()` (`internal/storage/wal/waltest`) from its
+  `TestMain` before `m.Run`. The tagged `e2e` and `scenario` suites and the
+  separate Antithesis workload module do not call it yet, so they still
+  allocate production-size segments. A binary that imports `cmd/server` does
+  not inherit its `TestMain`. It sets etcd's process-wide
+  `wal.SegmentSizeBytes` to 1 MiB, except under `-test.bench`. Set it only
+  there: etcd reads the value on every append, so changing it while a WAL is
+  open races with parallel tests. The binaries that set it today are the root
+  package, `cmd/server`, `internal/bootstrap`, `internal/infra/node`,
+  `internal/storage/wal` and `internal/application/membership`. Add a new
+  binary to this list when its tests start opening WALs. Size segment-boundary
+  fixtures from the live `wal.SegmentSizeBytes`, never from a hard-coded size.
+  The `waltest` package's own binary keeps the production size and covers it.
 
 Multi-node behavior is covered in three places:
 
@@ -358,6 +376,16 @@ contract, native Linux checks and local commands, and
 every driver's generation boundary. The Hegel dependency stays in the workload
 module; scenario blocks expose a dependency-free typed randomness interface.
 Root-module tests do not execute these nested-module property tests.
+
+### Launch tooling
+
+The manual `Run Antithesis` workflow and the launch recipes accept an optional
+comma-separated `test_templates` selection. An empty selection runs all
+templates. Compose `just run` takes minutes and sends `antithesis.duration`;
+convert older hour-based invocations to minutes. Deploy compatible Antithesis
+launchers before using the updated parameters. See the
+[launch selection guide](../../../tests/antithesis/README.md#launch-selection)
+for recipe examples and workflow compatibility with older source refs.
 
 ### Drivers and templates
 
@@ -825,9 +853,21 @@ Tests built with event-sink feature tags such as `kafka` or `clickhouse` start T
 
 ### Optional-feature internal tests
 
+CI includes the offline bootstrap command tests in the optional-feature coverage
+recipe below. Run just these command tests with the `s3` tag:
+
+```bash
+nix develop .#ci --command go test -race -tags s3 ./cmd/ledgerctl/store -count=1 -timeout 5m
+```
+
+These command tests use an in-process object-store HTTP endpoint, without Docker
+or cloud credentials. The retry regression creates a real full checkpoint and
+nonempty incremental delta, interrupts after completed or partially committed
+rebuild, then checks exact volumes/balances and Checker health after retry.
+
 CI's `Tests` job runs `just test-internal-coverage` after light unit coverage.
-It selects `./internal/...` with every optional feature tag from `all_tags` and
-the race detector. This executes Kafka, NATS, ClickHouse and Databricks event
+It selects `./internal/...` and `./cmd/ledgerctl/store` with every optional feature
+tag from `all_tags` and the race detector. This executes Kafka, NATS, ClickHouse and Databricks event
 tests, S3 and Azure backup tests, and the S3 bootstrap lifecycle regression.
 Full-tag E2E runs select different packages and do not execute these assertions.
 The separate `integration` tag is not enabled by this recipe.

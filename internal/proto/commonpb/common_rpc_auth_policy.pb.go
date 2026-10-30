@@ -22,6 +22,12 @@ func RPCAuthPolicyForMethod(fullMethod string) (*MethodAuthPolicy, error) {
 	switch fullMethod {
 	case "/cluster.ClusterService/GetClusterState":
 		return &MethodAuthPolicy{Policy: &MethodAuthPolicy_FixedScope{FixedScope: AuthScope_AUTH_SCOPE_CLUSTER_READ}}, nil
+	case "/cluster.ClusterService/BeginDrain":
+		return &MethodAuthPolicy{Policy: &MethodAuthPolicy_FixedScope{FixedScope: AuthScope_AUTH_SCOPE_CLUSTER_WRITE}}, nil
+	case "/cluster.ClusterService/EndDrain":
+		return &MethodAuthPolicy{Policy: &MethodAuthPolicy_FixedScope{FixedScope: AuthScope_AUTH_SCOPE_CLUSTER_WRITE}}, nil
+	case "/cluster.ClusterService/GetDrainStatus":
+		return &MethodAuthPolicy{Policy: &MethodAuthPolicy_FixedScope{FixedScope: AuthScope_AUTH_SCOPE_CLUSTER_READ}}, nil
 	case "/cluster.ClusterService/GetDiskUsage":
 		return &MethodAuthPolicy{Policy: &MethodAuthPolicy_FixedScope{FixedScope: AuthScope_AUTH_SCOPE_CLUSTER_READ}}, nil
 	case "/cluster.ClusterService/GetNodeTime":
@@ -129,6 +135,9 @@ func RPCAuthPolicyForMethod(fullMethod string) (*MethodAuthPolicy, error) {
 func AllRPCAuthPolicies() map[string]*MethodAuthPolicy {
 	return map[string]*MethodAuthPolicy{
 		"/cluster.ClusterService/GetClusterState":            &MethodAuthPolicy{Policy: &MethodAuthPolicy_FixedScope{FixedScope: AuthScope_AUTH_SCOPE_CLUSTER_READ}},
+		"/cluster.ClusterService/BeginDrain":                 &MethodAuthPolicy{Policy: &MethodAuthPolicy_FixedScope{FixedScope: AuthScope_AUTH_SCOPE_CLUSTER_WRITE}},
+		"/cluster.ClusterService/EndDrain":                   &MethodAuthPolicy{Policy: &MethodAuthPolicy_FixedScope{FixedScope: AuthScope_AUTH_SCOPE_CLUSTER_WRITE}},
+		"/cluster.ClusterService/GetDrainStatus":             &MethodAuthPolicy{Policy: &MethodAuthPolicy_FixedScope{FixedScope: AuthScope_AUTH_SCOPE_CLUSTER_READ}},
 		"/cluster.ClusterService/GetDiskUsage":               &MethodAuthPolicy{Policy: &MethodAuthPolicy_FixedScope{FixedScope: AuthScope_AUTH_SCOPE_CLUSTER_READ}},
 		"/cluster.ClusterService/GetNodeTime":                &MethodAuthPolicy{Policy: &MethodAuthPolicy_FixedScope{FixedScope: AuthScope_AUTH_SCOPE_CLUSTER_READ}},
 		"/cluster.ClusterService/TransferLeadership":         &MethodAuthPolicy{Policy: &MethodAuthPolicy_FixedScope{FixedScope: AuthScope_AUTH_SCOPE_CLUSTER_WRITE}},

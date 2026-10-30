@@ -1258,6 +1258,25 @@ ledgerctl cluster maintenance disable
 
 The maintenance mode flag is replicated through Raft consensus and enforced at both the admission layer and the FSM level. Clients receive gRPC `UNAVAILABLE` errors during maintenance.
 
+The operator also has a controlled drain for checking the cluster-wide write
+barrier while Pods keep running. Apply the annotation after every Ledger
+member has been upgraded to a drain-capable binary:
+
+```bash
+kubectl annotate cluster my-cluster ledger.formance.com/drain=true
+kubectl get cluster my-cluster -o jsonpath='{.status.drain.phase}'
+# Wait for Drained, then remove the annotation to resume writes.
+kubectl annotate cluster my-cluster ledger.formance.com/drain-
+```
+
+The operator persists the epoch in `status.drain`, waits for each member's
+local Pebble persistence cursor, and reports `Drained` only when all members
+have applied the marker durably. Removing the annotation commits a Raft
+release and clears `status.drain` after every member acknowledges it. The
+annotation does not scale down Pods or trigger an upgrade. See
+[controlled shutdown](../technical/architecture/subsystems/consensus/controlled-shutdown.md)
+for the failure and recovery contract.
+
 ### Cluster State Verification
 
 ```bash

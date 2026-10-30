@@ -49,6 +49,8 @@ Each pass takes a persisted projection, re-derives the expected value by replayi
 | 14 | log key/value sequence agreement | Each `Log` row's `sequence` field equals the sequence encoded in its Pebble key. Log rows are not hash-bound, and `query.ReadLastSequence` reads the value's field, so a single edited field used to resize the whole run; the checker no longer reads it at all (see [Stored log bounds](#stored-log-bounds)). The row is reported **and still replayed** under its key sequence: the field is not an input to replay, so the divergence is one finding rather than the head of a cascade | The Pebble key, which every projection is keyed on | `LOG_SEQUENCE_MISMATCH` |
 | 15 | `logBoundsVerifier.compare` | The stored `Log` KEY sequences agree with the range the audit chain accounts for, in **both** directions and **independently**: a deleted log **tail**, which the interior gap scan of pass 1 cannot see, and rows above everything the audit produced. Bounds the audited interval from **above only** — its lower end is pinned in the log loop, which reports a row at reserved key sequence 0 (a position `NextSequenceID` never allocates, and one no other pass can see) | Union of the chain-verified `AuditSuccess` `[min_log_sequence, max_log_sequence]` ranges, each validated against its own entry's chain-verified `AuditItem` sequences | `SEQUENCE_GAP` (tail), `LOG_UNAUDITED`, `LOG_VERIFICATION_INCOMPLETE` |
 | 16 | `ledgerPolicyVerifier.compare` | Canonical `SubAttrLedger` and global `SubGlobLedgerInfo` rows, each keyed independently: presence, name, schema, account types, default enforcement, mode, mirror source and deletion timestamp | Ledger policies exported from the isolated FSM replay of successful chain-verified audit proposals | `MISSING_LEDGER`, `UNAUDITED_LEDGER`, `SCHEMA_MISMATCH`, `ACCOUNT_TYPE_MISMATCH`, `DEFAULT_ENFORCEMENT_MODE_MISMATCH`, `LEDGER_INFO_MISMATCH` |
+| 17 | `compareBoundaries` | Stored `LedgerBoundaries.next_transaction_id` and `next_log_id`, including missing and surplus rows | Final boundaries exported from the existing isolated FSM replay of successful chain-verified audit proposals; comparison requires a complete replay | `BOUNDARY_MISMATCH` |
+| 18 | Audit-item physical identity and membership | Every retained item has an exact canonical key, nonzero parent sequence, an existing parent with matching sequence identity, and matching item order index, including zero-log items | Independent scan of the entire `AuditItem` prefix on the pinned primary snapshot; parent membership is structural evidence only | `HASH_MISMATCH` |
 
 Notes:
 
@@ -181,6 +183,64 @@ the live primary store keeps its normal WAL and recovery guarantees.
 
 The transaction merge operator is associative. On a partial merge — Pebble compacting operands without the base value, `includesBase=false` — it defers the ordered ops as a `txOpBatch` instead of collapsing them into a finalized snapshot: a metadata delete has no snapshot representation, so collapsing would silently drop it and a later fold with the base could not undo it. Only a base-inclusive fold (at read, or the LSM bottom) resolves to a finalized `TransactionState`.
 
+## Allocation boundaries and audit-item membership
+
+A clean check must not let two corrupt values validate one another. An orphan
+`AuditItem` carrying a mirror fill-gap order can otherwise raise an expected
+transaction allocation boundary to agree with a corrupt stored boundary, even
+though the item never passed chain verification. Boundary expectations therefore
+come exclusively from the final `AuditReplayer` store already used to reconstruct
+expected logs and ledger policies. `compareBoundaries` compares `nextTransactionId`
+and `nextLogId` against that result, including missing and surplus rows. It does
+not seed expectations from stored logs, live boundaries, or independently scanned
+serialized orders.
+
+Successful, chain-verified proposals execute through the canonical FSM processor;
+that execution accounts for mirror fill gaps, duplicate/no-op orders, rejection,
+ledger deletion and checked sequence exhaustion. Export reads canonical boundary
+attributes from the isolated replay store and decodes ledger keys into a
+name-keyed map. An incomplete audit chain or isolated replay suppresses the final
+boundary comparison, as it does the final ledger-policy comparison: a verified
+prefix is not the expected final store. The previously reported corruption or
+execution failure remains evidence that the check is unhealthy.
+
+Independently, the checker scans the **entire retained AuditItem prefix** on the
+pinned primary snapshot, rather than only items reached from an audit entry or a
+log. This includes zero-log items. A valid physical key is exactly 14 bytes:
+the two-byte history/item prefix, an eight-byte parent sequence and a four-byte
+order index. The parent sequence must be nonzero. The parent must exist at that
+sequence and its payload sequence must agree with its key; the item's payload
+`OrderIndex` must agree with the index encoded in its own key. Malformed keys,
+orphans and identity disagreements emit the existing `HASH_MISMATCH` type.
+Repeated structural findings are aggregated with bounded diagnostic samples.
+Cancellation and iterator/read/decode errors remain execution failures.
+
+This structural pass does not prove hash membership or authorize replay. An item
+under a real parent is still subject to the entry's existing hash and outcome
+verification, so surplus items under that parent cannot become expected state
+merely by passing the parent-existence check. The independent scan also runs
+when the audit chain is incomplete; its physical checks do not depend on a
+complete business oracle.
+
+The on-demand check performs one linear traversal of retained items, with one
+parent lookup per distinct encountered sequence and only the preceding parent
+cached. Boundary export is linear in replayed ledger-boundary rows and retains
+an `O(ledgers)` map. It adds no second business replay or absent-sequence
+enumeration and no work to admission or FSM apply. Regression evidence pairs a
+healthy FSM-produced mirror store with boundary-only, orphan-only and coordinated
+corruption; it inspects all typed callbacks and terminal status. Edge probes
+cover physical identity, zero-log items, legitimate no-ops and gaps, deletion,
+exhaustion and incomplete replay.
+
+This correction is read-only. Existing persisted state, audit hashes and wire
+formats remain valid; no migration is required and protocol revision remains
+`40`. Previously silent retained-state corruption becomes observable through
+existing events. Canonical replay shares producer logic and is not independent
+proof against common accounting defects. Bare-prefix boundary-row coverage and
+stream send-error handling remain separate scope limitations. The existing
+`last_mirror_v2_log_id` comparison remains separate, as do peer-store usage
+counters outside the main-store checker scope.
+
 ## Pass-by-pass derivation flow
 
 ```mermaid
@@ -204,6 +264,8 @@ flowchart TB
     C --> K
     P --> K
     Q --> K
+    B -->|"complete isolated replay"| R["compareBoundaries"]
+    R --> K
 ```
 
 `ledgerPolicyVerifier` compares both persisted ledger projections independently
@@ -234,7 +296,11 @@ mismatches. Events identify the keyspace, ledger and field without printing
 mirror configuration, which may contain credentials. Invalid stored values or
 iterator failures return an execution error. The pass is suppressed when the
 verified chain or isolated replay is incomplete; the already reported audit or
-replay failure remains the evidence of an unhealthy check.
+replay failure remains the evidence of an unhealthy check. A successful
+chain-verified entry containing an undecodable or typeless order emits
+`HASH_MISMATCH` with the entry and item identity before suppressing final
+ledger-policy and allocation-boundary comparisons, including when the item
+produced no log. A valid hash alone does not establish replayable business intent.
 
 This policy pass deliberately excludes creation timestamps and numeric ledger
 IDs, whose projection verification remains a separate coverage gap. Read-time

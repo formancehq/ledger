@@ -4198,6 +4198,19 @@ spec:
                   - type
                   type: object
                 type: array
+              drain:
+                description: |-
+                  Drain records the operator-owned epoch and transition across restarts.
+                  It is cleared after all members durably apply the release.
+                properties:
+                  epoch:
+                    type: string
+                  phase:
+                    type: string
+                required:
+                - epoch
+                - phase
+                type: object
               endpoints:
                 description: Endpoints holds the resolved external and internal endpoints
                   for this service.

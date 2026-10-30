@@ -5,7 +5,7 @@
 ### One file per command (CLI)
 
 Each CLI sub-command has its own file in a sub-package under `cmd/ledgerctl/`:
-- `cmd/ledgerctl/ledgers/root.go` - Parent command
+- `cmd/ledgerctl/ledgers/command.go` - Parent command
 - `cmd/ledgerctl/ledgers/create.go` - `ledgers create`
 - `cmd/ledgerctl/ledgers/list.go` - `ledgers list`
 - `cmd/ledgerctl/ledgers/get.go` - `ledgers get`
@@ -125,12 +125,33 @@ package-mode import path in a single directive so the package loads once.
 
 ## Adding a New CLI Command
 
-1. Create `cmd/ledgerctl/<group>/<action>.go` with:
-   - Command variable (`var fooBarCmd = &cobra.Command{...}`)
-   - `init()` function to register it under the parent
-   - `runFooBar()` function with the logic
+1. Create `cmd/ledgerctl/<group>/<action>.go` with a
+   `New<Action>Command() *cobra.Command` constructor returning a fresh command.
+   Set `Use`, help text, an explicit `Args` validator, and `RunE` for execution.
+   Keep flags and options local to the constructor or an options struct;
+   do not use global command or flag variables.
 
-2. The command is automatically registered via `init()`.
+2. Define positional completion with `ValidArgsFunction` (use
+   `cobra.NoFileCompletions` when appropriate), and register completion for
+   flags that offer known choices or resource names. Reuse `cmdutil` helpers
+   for shared flags, connections, completion, and error handling. Return errors
+   from `RunE`; follow the existing `cmdutil.CLIError` convention for errors
+   already displayed so the root does not print them twice.
+
+3. Explicitly call `cmd.AddCommand(New<Action>Command())` in the parent's
+   `NewCommand()` in `cmd/ledgerctl/<group>/command.go`. For a new top-level
+   group, also register its constructor in `newRootCommand()` in
+   `cmd/ledgerctl/main.go`. Constructors and `AddCommand` assemble the tree;
+   there is no automatic `init()` registration.
+
+4. Test the command's behavior and add root-level contract coverage where
+   registration matters: resolve the full command path, check argument
+   validation and relevant flags/completion, and exercise error propagation
+   through the real command tree. Keep assertions independent of exact help
+   or error wording.
+
+5. Update `docs/ops/cli.md` when commands, flags, or behavior change, and
+   regenerate the relevant demo GIFs when applicable.
 
 ## Adding a New HTTP Handler
 

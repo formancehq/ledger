@@ -142,6 +142,13 @@ func (r *Recovery) RecoverState() error {
 	}
 
 	r.apply.sharedState.SetMaintenanceMode(maintenanceMode)
+	if newState.DrainState != nil {
+		if newState.DrainState.GetReleasedIndex() != 0 {
+			r.apply.sharedState.SetDrainReleased(newState.DrainState.GetReleasedIndex())
+		} else {
+			r.apply.sharedState.SetDrain(newState.DrainState.GetEpoch(), newState.DrainState.GetIndex())
+		}
+	}
 
 	if newState.LastClusterConfig != nil {
 		r.apply.Registry.Cache.SetGenerationThreshold(newState.LastClusterConfig.GetRotationThreshold())

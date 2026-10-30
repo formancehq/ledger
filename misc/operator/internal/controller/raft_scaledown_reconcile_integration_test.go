@@ -29,7 +29,7 @@ func TestReconcileScaleDownReplacementMembership(t *testing.T) {
 	t.Parallel()
 
 	for _, replacement := range []string{"pending", "missing"} {
-		for _, outcome := range []string{"success", "failure_then_retry", "later_failure_then_retry", "committed_response_lost"} {
+		for _, outcome := range []string{"success", "failure_then_retry", "later_failure_then_retry", "committed_response_lost", "later_failure_replaced_claim"} {
 			t.Run(replacement+"/"+outcome, func(t *testing.T) {
 				t.Parallel()
 
@@ -47,10 +47,14 @@ func TestReconcileScaleDownReplacementMembership(t *testing.T) {
 					Client: k8sClient, Scheme: k8sClient.Scheme(),
 					Config: testEnv.Config, Clientset: clientset,
 				}
+				fixtureOutcome := outcome
+				if outcome == "later_failure_replaced_claim" {
+					fixtureOutcome = "later_failure_then_retry"
+				}
 				fixture := &scaleDownReconcileMembership{
 					t: t, namespace: namespace, pod0: podName(ledger.Name, 0),
 					members: map[int]bool{1: true, 2: true, 3: true},
-					outcome: outcome, forceThird: replacement == "missing",
+					outcome: fixtureOutcome, forceThird: replacement == "missing",
 				}
 				_, err = reconciler.reconcileStatefulSetWithExec(ctx, ledger, "initial", nil, fixture.exec)
 				require.NoError(t, err)
@@ -60,7 +64,7 @@ func TestReconcileScaleDownReplacementMembership(t *testing.T) {
 					createScaleDownReconcilePod(t, clientset, namespace, podName(ledger.Name, ordinal), corev1.PodRunning)
 					for _, volume := range []string{"wal", "data"} {
 						_, err := clientset.CoreV1().PersistentVolumeClaims(namespace).Create(ctx, &corev1.PersistentVolumeClaim{
-							ObjectMeta: metav1.ObjectMeta{Name: fmt.Sprintf("%s-%s-%d", volume, resourceName(ledger.Name), ordinal)},
+							ObjectMeta: scaleDownReconcileClaimMetadata(t, clientset, namespace, resourceName(ledger.Name), volume, ordinal),
 							Spec: corev1.PersistentVolumeClaimSpec{
 								AccessModes: []corev1.PersistentVolumeAccessMode{corev1.ReadWriteOnce},
 								Resources:   corev1.VolumeResourceRequirements{Requests: corev1.ResourceList{corev1.ResourceStorage: resource.MustParse("1Gi")}},
@@ -81,7 +85,7 @@ func TestReconcileScaleDownReplacementMembership(t *testing.T) {
 				require.Equal(t, map[int]bool{1: true, 2: true, 3: true}, fixture.members)
 				ledger.Spec.Replicas = new(int32(1))
 				_, err = reconciler.reconcileStatefulSetWithExec(ctx, ledger, "scaled", nil, fixture.exec)
-				if outcome == "failure_then_retry" || outcome == "later_failure_then_retry" {
+				if outcome == "failure_then_retry" || outcome == "later_failure_then_retry" || outcome == "later_failure_replaced_claim" {
 					require.ErrorContains(t, err, "injected removal failure")
 					requireScaleDownReconcileState(t, clientset, namespace, resourceName(ledger.Name), 3)
 					t.Logf("failed removal preserved replicas=3 and all PVCs; membership=%v; removal attempts=%v", fixture.members, fixture.removals)
@@ -99,6 +103,34 @@ func TestReconcileScaleDownReplacementMembership(t *testing.T) {
 						Config: testEnv.Config, Clientset: clientset,
 					}
 					fixture.transferred = false
+					if outcome == "later_failure_replaced_claim" {
+						sts, getErr := clientset.AppsV1().StatefulSets(namespace).Get(ctx, resourceName(ledger.Name), metav1.GetOptions{})
+						require.NoError(t, getErr)
+						originalInventory := sts.Annotations[annotationScaleDownPVCPlan]
+						name := fmt.Sprintf("data-%s-2", sts.Name)
+						oldClaim, getErr := clientset.CoreV1().PersistentVolumeClaims(namespace).Get(ctx, name, metav1.GetOptions{})
+						require.NoError(t, getErr)
+						oldClaim.Finalizers = nil
+						oldClaim, getErr = clientset.CoreV1().PersistentVolumeClaims(namespace).Update(ctx, oldClaim, metav1.UpdateOptions{})
+						require.NoError(t, getErr)
+						require.NoError(t, clientset.CoreV1().PersistentVolumeClaims(namespace).Delete(ctx, name, metav1.DeleteOptions{Preconditions: &metav1.Preconditions{UID: &oldClaim.UID, ResourceVersion: &oldClaim.ResourceVersion}}))
+						replacement, createErr := clientset.CoreV1().PersistentVolumeClaims(namespace).Create(ctx, &corev1.PersistentVolumeClaim{ObjectMeta: scaleDownReconcileClaimMetadata(t, clientset, namespace, sts.Name, "data", 2), Spec: oldClaim.Spec}, metav1.CreateOptions{})
+						require.NoError(t, createErr)
+						require.NotEqual(t, oldClaim.UID, replacement.UID)
+						commands := len(fixture.commands)
+						_, err = reconciler.reconcileStatefulSetWithExec(ctx, ledger, "scaled", nil, fixture.exec)
+						require.ErrorContains(t, err, "identity changed")
+						require.Len(t, fixture.commands, commands, "the frozen inventory must be checked before another Raft call")
+						sts, getErr = clientset.AppsV1().StatefulSets(namespace).Get(ctx, sts.Name, metav1.GetOptions{})
+						require.NoError(t, getErr)
+						require.EqualValues(t, 3, *sts.Spec.Replicas)
+						require.Equal(t, originalInventory, sts.Annotations[annotationScaleDownPVCPlan])
+						kept, getErr := clientset.CoreV1().PersistentVolumeClaims(namespace).Get(ctx, name, metav1.GetOptions{})
+						require.NoError(t, getErr)
+						require.Equal(t, replacement.UID, kept.UID)
+						require.Nil(t, kept.DeletionTimestamp)
+						return
+					}
 					_, err = reconciler.reconcileStatefulSetWithExec(ctx, ledger, "scaled", nil, fixture.exec)
 				}
 				require.NoError(t, err)
@@ -130,7 +162,7 @@ type scaleDownReconcileMembership struct {
 	removals    []int
 }
 
-func (f *scaleDownReconcileMembership) exec(_ context.Context, _ *rest.Config, _ kubernetes.Interface,
+func (f *scaleDownReconcileMembership) exec(_ context.Context, _ *rest.Config, cs kubernetes.Interface,
 	namespace, pod, container string, command []string,
 ) (*execResult, error) {
 	f.t.Helper()
@@ -140,6 +172,20 @@ func (f *scaleDownReconcileMembership) exec(_ context.Context, _ *rest.Config, _
 	require.Len(f.t, command, 3)
 	shell := command[2]
 	f.commands = append(f.commands, shell)
+	stsName := f.pod0[:strings.LastIndex(f.pod0, "-")]
+	sts, err := cs.AppsV1().StatefulSets(namespace).Get(ctx, stsName, metav1.GetOptions{})
+	require.NoError(f.t, err)
+	if sts.Spec.PersistentVolumeClaimRetentionPolicy != nil && sts.Spec.PersistentVolumeClaimRetentionPolicy.WhenScaled == appsv1.DeletePersistentVolumeClaimRetentionPolicyType {
+		var plan scaleDownPVCPlan
+		require.NoError(f.t, json.Unmarshal([]byte(sts.Annotations[annotationScaleDownPVCPlan]), &plan), "claim identities must be durable before every Raft command")
+		require.Equal(f.t, sts.UID, plan.StatefulSetUID)
+		require.EqualValues(f.t, plan.From, *sts.Spec.Replicas, "replicas must not reduce before membership removal")
+		for _, expected := range plan.Claims {
+			pvc, getErr := cs.CoreV1().PersistentVolumeClaims(namespace).Get(ctx, expected.Name, metav1.GetOptions{})
+			require.NoError(f.t, getErr)
+			require.Equal(f.t, expected.UID, pvc.UID)
+		}
+	}
 	if strings.Contains(shell, "'cluster' 'transfer-leader' '1'") {
 		f.transferred = true
 		return &execResult{}, nil
@@ -182,9 +228,16 @@ func (f *scaleDownReconcileMembership) exec(_ context.Context, _ *rest.Config, _
 
 func createScaleDownReconcilePod(t *testing.T, clientset kubernetes.Interface, namespace, name string, phase corev1.PodPhase) {
 	t.Helper()
+	stsName := name[:strings.LastIndex(name, "-")]
+	sts, err := clientset.AppsV1().StatefulSets(namespace).Get(ctx, stsName, metav1.GetOptions{})
+	require.NoError(t, err)
+	volumes := make([]corev1.Volume, 0, len(sts.Spec.VolumeClaimTemplates))
+	for _, c := range sts.Spec.VolumeClaimTemplates {
+		volumes = append(volumes, corev1.Volume{Name: c.Name, VolumeSource: corev1.VolumeSource{PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{ClaimName: c.Name + "-" + name}}})
+	}
 	pod, err := clientset.CoreV1().Pods(namespace).Create(ctx, &corev1.Pod{
-		ObjectMeta: metav1.ObjectMeta{Name: name},
-		Spec:       corev1.PodSpec{Containers: []corev1.Container{{Name: "ledger", Image: "ledger:test"}}},
+		ObjectMeta: metav1.ObjectMeta{Name: name, OwnerReferences: []metav1.OwnerReference{*metav1.NewControllerRef(sts, appsv1.SchemeGroupVersion.WithKind("StatefulSet"))}},
+		Spec:       corev1.PodSpec{Containers: []corev1.Container{{Name: "ledger", Image: "ledger:test"}}, Volumes: volumes},
 	}, metav1.CreateOptions{})
 	require.NoError(t, err)
 	pod.Status.Phase = phase
@@ -287,4 +340,14 @@ func TestReconcileScaleDownRetainsClaims(t *testing.T) {
 			}
 		})
 	}
+}
+
+// The API fixture establishes the same claim authority as a live StatefulSet.
+// A StatefulSet reference also preserves authority when the ordinal's Pod is
+// absent; the membership regressions must keep exercising that original case.
+func scaleDownReconcileClaimMetadata(t *testing.T, cs kubernetes.Interface, namespace, stsName, volume string, ordinal int) metav1.ObjectMeta {
+	t.Helper()
+	sts, err := cs.AppsV1().StatefulSets(namespace).Get(ctx, stsName, metav1.GetOptions{})
+	require.NoError(t, err)
+	return metav1.ObjectMeta{Name: fmt.Sprintf("%s-%s-%d", volume, stsName, ordinal), OwnerReferences: []metav1.OwnerReference{*metav1.NewControllerRef(sts, appsv1.SchemeGroupVersion.WithKind("StatefulSet"))}}
 }

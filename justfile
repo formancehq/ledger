@@ -30,12 +30,15 @@ test-dashboards: generate-dashboards
 lint:
     #!/usr/bin/env bash
     set -euo pipefail
+    # golangci-lint otherwise takes a lock in $TMPDIR and fails after 5s when
+    # another run holds it. Validation shares one TMPDIR across concurrent
+    # worktrees, and the shared lint cache is safe for parallel runners.
     echo "==> golangci-lint (.)"
-    golangci-lint run --fix --build-tags it,local,enable_antithesis_sdk,{{all_tags}} --timeout 5m
+    golangci-lint run --allow-parallel-runners --fix --build-tags it,local,enable_antithesis_sdk,{{all_tags}} --timeout 5m
     echo "==> golangci-lint (operator)"
-    (cd misc/operator && golangci-lint run --fix --timeout 5m)
+    (cd misc/operator && golangci-lint run --allow-parallel-runners --fix --timeout 5m)
     echo "==> golangci-lint (model workload)"
-    (cd tests/antithesis/workload && golangci-lint run --fix --build-tags enable_antithesis_sdk --timeout 5m)
+    (cd tests/antithesis/workload && golangci-lint run --allow-parallel-runners --fix --build-tags enable_antithesis_sdk --timeout 5m)
 
 # Go modules kept tidy by `just tidy` (and checked by the Dirty CI job).
 tidy_modules := ". misc/operator tests/antithesis/workload"
@@ -245,13 +248,13 @@ test-coverage:
     echo "==> Unit tests with coverage..."
     scripts/go-test-coverage {{coverage_dir}}/unit.out -race -coverpkg={{coverage_pkgs}} -timeout 20m ./...
 
-# Execute internal assertions behind optional feature tags (requires Docker).
+# Execute internal and offline bootstrap assertions behind optional feature tags (requires Docker).
 test-internal-coverage:
     #!/usr/bin/env bash
     set -euo pipefail
     mkdir -p {{coverage_dir}}
     echo "==> Internal tests with optional features and coverage..."
-    scripts/go-test-coverage {{coverage_dir}}/internal.out -race -tags "{{all_tags}}" -coverpkg={{coverage_pkgs}} -timeout 20m ./internal/...
+    scripts/go-test-coverage {{coverage_dir}}/internal.out -race -tags "{{all_tags}}" -coverpkg={{coverage_pkgs}} -timeout 20m ./internal/... ./cmd/ledgerctl/store
 
 # Run PostgreSQL mirror integration regressions (requires Docker or LEDGER_TEST_POSTGRES_DSN).
 test-postgres-mirror-coverage:
@@ -514,7 +517,7 @@ operator-docker-build-pr image: (_assert-pr-image image)
     # GITHUB_TOKEN is removed on purpose: a PR build must never reach the GitHub
     # releases API, even if a release step were enabled by mistake.
     env -u GITHUB_TOKEN -u GH_TOKEN \
-        goreleaser release --nightly --clean --config .goreleaser.pr.yml --skip=archive,release
+        goreleaser release --nightly --clean --config .goreleaser.pr.yml --skip=archive
 
 # Package and publish operator Helm charts to GHCR. Args are positional: version then suffix.
 operator-helm-publish version='' suffix='':
@@ -542,7 +545,7 @@ docker-build-pr image: (_assert-pr-image image)
     # GITHUB_TOKEN is removed on purpose: a PR build must never reach the GitHub
     # releases API, even if a release step were enabled by mistake.
     env -u GITHUB_TOKEN -u GH_TOKEN \
-        goreleaser release --nightly --clean --config .goreleaser.pr.yml --skip=archive,release
+        goreleaser release --nightly --clean --config .goreleaser.pr.yml --skip=archive
 
 # Refuse any PR image reference that is not `<repository>:pr-<num>-<sha7>`, so a
 # PR build cannot move `latest`, `nightly` or a release tag.

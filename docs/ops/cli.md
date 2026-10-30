@@ -2357,8 +2357,8 @@ ledgerctl store bootstrap --driver s3 --s3-bucket <bucket> --data-dir /path/to/d
 
 **Behavior:**
 
-1. Verifies the target data directory is fresh (no existing checkpoints via `ScanLatestCheckpointID`)
-2. Creates or opens the selected data directory and downloads checkpoint files sequentially into `restore-staging/` through rooted filesystem operations. Rejects a staging-root symlink (including one pointing inside the data directory), non-local manifest filenames and symlink escapes. Each filename is checked before its parent directories are created or its object is read; file size and sha256 verification still apply.
+1. Rejects a `RESTORED` marker, live database or incompatible checkpoint layout; reclaims a lone unmarked `checkpoints/0` left by interrupted finalization.
+2. Creates or opens the selected data directory, rejects a symlink or non-directory at `restore-staging/`, removes any old real staging directory through the data-directory root, then creates a fresh staging directory. Downloads checkpoint files sequentially through rooted filesystem operations. Rejects non-local manifest filenames and symlink escapes. Each filename is checked before its parent directories are created or its object is read; file size and sha256 verification still apply.
 3. Applies export segments and rebuilds derived state from logs (if any)
 4. Opens the staging as a read-only Pebble database and displays a preview (ledger count, timestamps)
 5. If `--validate` is set, runs the full integrity checker (same as `store check`); aborts before finalizing if any integrity error is found
@@ -2367,10 +2367,15 @@ ledgerctl store bootstrap --driver s3 --s3-bucket <bucket> --data-dir /path/to/d
 8. Hard-links staging to `checkpoints/0`, writes `RESTORED` marker
 9. Cleans up the staging directory
 
-Staging is created even for export-only manifests. Download root handles close
-before replay and preview. A download failure stops before validation,
-confirmation and finalization, but can leave earlier or partially written files
-in staging; the command does not automatically clean up failed downloads.
+Every attempt resets staging, including export-only restores. This command
+requires exclusive offline use of the target directory. Reset failure aborts
+before replay or publication and may leave old staging partly removed or absent.
+Download root handles close before replay and preview. Download/rebuild failures
+or confirmation EOF may leave new partial or fully rebuilt staging; the next
+attempt discards it and starts from the backup again so additive projections
+are not replayed twice. A successful finalization places the checkpoint before
+writing the `RESTORED` commit marker, then removes staging. A marked restore
+cannot be overwritten by retrying this command.
 
 After bootstrap, start the server with `--bootstrap` to use the restored data.
 
@@ -2741,6 +2746,16 @@ ledgerctl cluster status --node-id 2
 - **Raft Status**: Term, applied index, commit index, last index
 - **Cluster Nodes**: List of all nodes with ID, address, suffrage, and status
 - **Replication Progress**: Replication status for each follower (only shown when querying leader)
+
+The operator uses three hidden transport commands: `cluster begin-drain <epoch>
+--json` calls the authenticated Raft cutoff RPC, `cluster end-drain <epoch>
+--json` releases the same epoch through Raft after a canceled shutdown, and
+`cluster drain-status --json` reads the current Pod's local cursor. A status
+response certifies durability only when its active drain index, or its last
+release index when there is no active drain, is nonzero and at or below the
+reported persisted index; that response includes a Pebble WAL
+fsync. These commands are not a
+user-facing shutdown workflow. See [controlled shutdown](../technical/architecture/subsystems/consensus/controlled-shutdown.md).
 
 #### cluster watch
 
@@ -5117,6 +5132,30 @@ The HTTP sink sends each event as an individual POST request with headers:
 - `X-Webhook-Signature`: `sha256=<hex>` HMAC signature (only when `--http-secret` is set)
 
 Only a 2xx response acknowledges an event. The sink does not follow redirects: any 3xx response is a delivery failure, so `--http-endpoint` must be the final URL.
+
+### Databricks sequence column upgrade
+
+New Databricks sink tables use `DECIMAL(20,0)` for `log_sequence`. This exact
+numeric type holds every global-log sequence Ledger admits. Existing tables
+created with `BIGINT` are not changed by sink startup's `CREATE TABLE IF NOT
+EXISTS`. Before upgrading the sink, check the column with `DESCRIBE TABLE
+catalog.schema.table` and, if it is `BIGINT`, widen it while preserving rows:
+
+```sql
+ALTER TABLE catalog.schema.table SET TBLPROPERTIES ('delta.enableTypeWidening' = 'true');
+ALTER TABLE catalog.schema.table ALTER COLUMN log_sequence TYPE DECIMAL(20,0);
+```
+
+Run this once per existing sink table during the upgrade window, then verify
+`DESCRIBE TABLE` reports `DECIMAL(20,0)` and existing sequence values still
+match. Databricks type widening requires a supported Delta table and upgrades
+its table protocol; check other readers and writers for compatibility before
+enabling it. If that feature is unavailable, create a replacement table with
+the new schema and migrate existing rows before switching the sink to it.
+Low sequence values remain numerically identical, so old and new Ledger
+writers can coexist during a rolling upgrade. Queries or clients that read
+`log_sequence` into signed 64-bit values must change to a decimal or string
+representation before values exceed `MaxInt64`.
 
 ### `events remove-sink`
 

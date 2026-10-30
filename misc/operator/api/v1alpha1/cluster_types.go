@@ -1356,6 +1356,10 @@ type ClusterStatus struct {
 	// replacement. The operator restores that workload before newer spec edits.
 	// +optional
 	ClaimTemplateRecovery *ClaimTemplateRecoveryStatus `json:"claimTemplateRecovery,omitempty"`
+	// Drain records the operator-owned epoch and transition across restarts.
+	// It is cleared after all members durably apply the release.
+	// +optional
+	Drain *DrainStatus `json:"drain,omitempty"`
 
 	// TLSRollout preserves certificate references and mode across operator restarts
 	// and StatefulSet recreation. Cleared after the disabled rollout converges.
@@ -1406,6 +1410,12 @@ type ClaimTemplateRecoveryStatus struct {
 	ConfigMapUID string `json:"configMapUID,omitempty"`
 	// +optional
 	Completed bool `json:"completed,omitempty"`
+}
+
+// DrainStatus tracks an annotation-triggered drain lifecycle.
+type DrainStatus struct {
+	Epoch string `json:"epoch"`
+	Phase string `json:"phase"`
 }
 
 // EndpointsStatus contains the resolved endpoints for a Cluster.

@@ -23,6 +23,11 @@ on:
         required: false
         type: string
         default: ''
+      test_templates:
+        description: Optional comma-separated test templates to run (e.g. main or model)
+        required: false
+        type: string
+        default: ''
 
 permissions:
   contents: read
@@ -45,6 +50,7 @@ jobs:
       ANTITHESIS_TENANT: ${{ vars.ANTITHESIS_TENANT }}
       GOPATH: /tmp/go
       INCLUDE: ${{ inputs.include }}
+      TEST_TEMPLATES: ${{ inputs.test_templates }}
       RUN_DESCRIPTION: ${{ inputs.name }}
       RUN_DURATION_MINUTES: ${{ inputs.duration_minutes }}
       SOURCE_REF: ${{ inputs.source_ref }}
@@ -80,6 +86,12 @@ jobs:
           if ! nix develop .#ci --command just --justfile tests/antithesis/Justfile --summary |
             tr ' ' '\n' | grep -qx 'k8s-launch-minutes'; then
             echo "${SOURCE_REF} does not provide the required k8s-launch-minutes recipe" >&2
+            exit 1
+          fi
+          if [[ -n "$TEST_TEMPLATES" ]] &&
+            ! nix develop .#ci --command just --justfile tests/antithesis/Justfile --dry-run \
+              k8s-launch-minutes "$RUN_DURATION_MINUTES" "$RUN_DESCRIPTION" "$TEST_TEMPLATES" >/dev/null 2>&1; then
+            echo "${SOURCE_REF} does not support test_templates; select a newer source_ref or leave test_templates empty" >&2
             exit 1
           fi
 
@@ -119,10 +131,14 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          launch_args=("$RUN_DURATION_MINUTES" "$RUN_DESCRIPTION")
+          if [[ -n "$TEST_TEMPLATES" ]]; then
+            launch_args+=("$TEST_TEMPLATES")
+          fi
           response_file="$RUNNER_TEMP/antithesis-launch-response"
           nix develop .#ci --command just --quiet \
             tag='${{ steps.image.outputs.tag }}' \
-            k8s-launch-minutes "$RUN_DURATION_MINUTES" "$RUN_DESCRIPTION" \
+            k8s-launch-minutes "${launch_args[@]}" \
             > "$response_file"
 
           response="$(cat "$response_file")"
@@ -160,6 +176,7 @@ jobs:
             echo "| Commit | \`${SOURCE_SHA:-not resolved}\` |"
             echo "| Image tag | \`${IMAGE_TAG:-not published}\` |"
             echo "| Duration | ${RUN_DURATION_MINUTES} minutes |"
+            echo "| Test templates | ${TEST_TEMPLATES:-all} |"
             echo "| Launch outcome | ${LAUNCH_OUTCOME:-unknown} |"
             if [[ "${LAUNCH_OUTCOME:-}" == success ]]; then
               if [[ -n "${RUN_ID:-}" ]]; then

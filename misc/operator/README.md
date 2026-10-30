@@ -40,10 +40,39 @@ with effective `spec.persistence.retentionPolicy.whenScaled: Delete`. Omitted
 policy and `Retain` preserve all claims, even when `whenDeleted: Delete`; the
 Cluster-deletion policy does not authorize scale-down cleanup. The
 StatefulSet update requests Pod termination; it does not wait for termination to
-finish. If a membership check or removal fails, replicas and PVCs are retained,
-although the template update and earlier membership removals may already have
-succeeded. A later reconciliation checks membership again and skips ordinals
-already removed.
+finish. Before removing membership, the operator validates the claims and saves
+an exact deletion inventory in `ledger.formance.com/scale-down-pvc-plan`, beside
+`ledger.formance.com/scale-down-pvc-from`. This preparatory StatefulSet update
+keeps the old replica count. The versioned inventory records the Cluster and
+StatefulSet UIDs, replica range, PVC UIDs, volume bindings and ownership evidence.
+The previous count and matching claim names alone never authorize deletion.
+The same inventory is reused after a Raft failure before replicas decrease.
+Changing the pending replica range is rejected until that operation completes
+or remaining Operator cleanup is cancelled through `whenScaled: Retain`.
+
+After the reduced replica count is persisted, each reconciliation uses that
+saved inventory, including after an operator restart. Immediately before each
+DELETE it rereads the workload, claim and bound PV, verifies the recorded
+identities, owners and binding, and sends the claim UID plus its freshly read
+resourceVersion as delete preconditions. A same-name replacement, foreign
+owner or changed binding is retained and reported as an error. A conflict
+keeps the inventory for a new read and validation; it must not adopt the newer
+claim. An absent original claim or that same claim already terminating needs
+no new DELETE. Cleanup state is cleared with an optimistic patch only after all
+authorized deletions are accepted or already complete. Failed cleanup retains
+the lower replica count and inventory and runs before a later scale-up.
+
+If a membership check or removal fails, replicas and PVCs are retained, although
+the template update and earlier membership removals may already have succeeded.
+A later reconciliation checks membership again and skips ordinals already
+removed. Switching the desired scale-down policy to `Retain` cancels further
+operator cleanup; it cannot reverse a DELETE already accepted by Kubernetes.
+A previous-count annotation without its deletion inventory is not sufficient
+for explicit-Delete recovery. Do not reconstruct the missing inventory from
+current names. Resolve that state from independently verified original storage
+identities before authorizing cleanup. Complete or safely cancel pending cleanup
+before downgrading to an Operator that ignores the inventory. See the
+[deletion-boundary contract](../../docs/technical/architecture/subsystems/operator/storage-reconciliation.md#deletion-boundaries).
 
 ## Ledger target identity
 

@@ -28,6 +28,8 @@ through the complete transition:
   log alone and have no store gate;
 - for snapshot catch-up, the snapshot term/index/ConfState, FSM snapshot horizon,
   spooled committed suffix, and main-store synchronization horizon.
+- for controlled drain, the epoch, captured member IDs, marker index, cutoff
+  index, local persisted index and release index on each member.
 
 Supported entries include bootstrap and join, explicit learner add/promotion,
 automatic promotion, normal removal, emergency force removal, leadership
@@ -120,6 +122,29 @@ election, commit, ReadIndex, and transfer. A partition experiment must record
 which voters acknowledged the relevant term/index. Availability loss on a
 minority side is expected CP behavior; success without the required majority is
 the violation.
+
+### Controlled drain membership fence
+
+Trace capability preflight on every current member, the membership operation
+lock, the Raft fence for already accepted changes, marker enqueue and apply,
+and a concurrent add, promotion or normal removal. An old member that lacks
+the drain RPC must make preflight fail closed during a rolling upgrade. After
+preflight, a loss and regain of leadership must reject the old-term marker
+before Raft append, even if the new leader changed membership in between.
+The same term fence applies to a release preflight. After
+enqueue, a timed-out caller cannot lift the pending membership fence until
+the marker applies or Raft definitively drops it. The first applied marker
+fixes the captured set and cutoff; retries with its epoch cannot move them,
+and an already released epoch cannot be reused.
+
+Require the operator's `Drained` certificate to match current membership and
+each captured member's locally persisted cutoff. Leader `Match` is insufficient
+to prove follower Pebble durability. A lost or replaced member prevents the
+all-member certificate; emergency force removal can change the set and must
+not silently satisfy the old certificate. Repeat with leader transfer, member
+restart, retained-log catch-up and snapshot catch-up. The operator audit owns
+phase persistence and retry decisions, and the persistence audit owns local
+drain-state reconstruction and the cross-cluster restore discard rule.
 
 ### Force removal
 
@@ -232,6 +257,35 @@ This domain owns the consensus-side selection, transfer, installation order and
 authority gates. General checkpoint/restore content correctness belongs to
 `persistence-restore-replay`; filesystem containment belongs to
 `filesystem-confinement-contracts`.
+
+## Antithesis witness and convergence evidence
+
+The workload's operational sentinels capture the complete acknowledged
+transaction and compare it after restart, scaling, configuration changes,
+quorum recovery and leadership transfer. These witnesses have private ledgers
+excluded from generic mutation. An ambiguous write is not an acknowledged
+witness; a transient read does not prove survival. Transfer coverage requires
+a fresh acknowledged business write as well as the transfer response.
+
+`eventually_cross_node_identity` requires every current member, including
+learners, to reach an exact durable horizon before comparing complete account
+listings and audit identity. Treat inaccessible current members as incomplete
+recovery evidence, not as replicas that can be excluded. Compare presence as
+well as contents; require successful stream completion and valid pagination.
+Read attribution depends on direct per-node addresses matching advertised
+membership, not a load-balanced service. The routed `GetClusterState` identity
+check validates the status response; it does not independently authenticate the
+endpoint of a stale read.
+Publish divergence only after final per-node/global/membership fences qualify
+the observation, retrying changed horizons. Keep qualification failures separate
+from actual unequal data. A one-member observation cannot prove replica
+agreement. This oracle does not compare uncommitted Raft suffixes or establish
+that every snapshot-install path was exercised.
+
+The local SDK sensitivity fixtures prove that these observations detect their
+target failures. They do not substitute for a remote campaign report or a
+quorum-backed distributed transition. See the
+[harness evidence contract](../../../tests/antithesis/README.md#raft-and-sentinel-evidence).
 
 ## Ownership and deduplication
 

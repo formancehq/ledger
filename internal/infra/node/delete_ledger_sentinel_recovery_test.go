@@ -143,6 +143,12 @@ func TestDeleteLedgerSentinelRecovery(t *testing.T) {
 
 func newDeleteSentinelApplier(t *testing.T, dir string) (*testApplierSetup, func()) {
 	t.Helper()
+
+	return newSentinelApplier(t, dir, true)
+}
+
+func newSentinelApplier(t *testing.T, dir string, sentinelMode bool) (*testApplierSetup, func()) {
+	t.Helper()
 	logger := logging.Testing()
 	provider := noop.NewMeterProvider()
 	meter := provider.Meter("delete-sentinel")
@@ -163,7 +169,7 @@ func newDeleteSentinelApplier(t *testing.T, dir string) (*testApplierSetup, func
 	require.NoError(t, err)
 	registry := state.NewStateRegistry(c, attributes.New())
 	fsm, err := state.NewMachine(logger, registry, state.NewCacheSnapshotter(logger, registry, nil),
-		s, dal.NewSentinelFactory(s, true), provider, nil, state.NewSharedState(), newNoopNotifier(t), nil,
+		s, dal.NewSentinelFactory(s, sentinelMode), provider, nil, state.NewSharedState(), newNoopNotifier(t), nil,
 		"", 0, func(*raftpb.Entry, *dal.WriteSession) error { return nil })
 	require.NoError(t, err)
 	recovery := state.NewRecovery(fsm, s)
@@ -176,7 +182,7 @@ func newDeleteSentinelApplier(t *testing.T, dir string) (*testApplierSetup, func
 	}
 	sink := make(LocalResponses, 10)
 	applier, err := NewApplier(fsm, recovery, state.NewSynchronizer(fsm, recovery, dal.NewIncomingRestoreFactory(s)),
-		sp, s, w, logger, meter, 0, 1000, nil, func() {}, sink)
+		sp, s, w, logger, meter, 0, 1000, nil, noopSnapshotMembership{}, sink)
 	require.NoError(t, err)
 
 	return &testApplierSetup{applier: applier, store: s, wal: w, spool: sp, fsm: fsm,

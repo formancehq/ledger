@@ -115,6 +115,13 @@ func (r *ClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		}
 	}()
 
+	// An in-flight drain owns the workload until its release completes. This
+	// also lets annotation removal reopen admission even if a later spec edit
+	// is invalid or a rollout would otherwise start.
+	if ledger.Status.Drain != nil {
+		return r.reconcileAnnotatedDrain(ctx, ledger, r.PreflightDrainBarrier, r.EnsureDrainBarrier, r.EnsureDrainReleased)
+	}
+
 	// Restore an interrupted claim-template replacement before applying any new
 	// desired changes, including an invalid spec or a changed RC target.
 	if handled, result, err := r.resumeClaimTemplateRecovery(ctx, ledger); handled || err != nil {
@@ -369,6 +376,11 @@ func (r *ClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		logger.Error(err, "failed to reconcile cluster secret after StatefulSet")
 
 		return ctrl.Result{}, fmt.Errorf("reconciling ClusterSecret after StatefulSet: %w", err)
+	}
+
+	drainResult, err := r.reconcileAnnotatedDrain(ctx, ledger, r.PreflightDrainBarrier, r.EnsureDrainBarrier, r.EnsureDrainReleased)
+	if err != nil || drainResult.Requeue || drainResult.RequeueAfter > 0 {
+		return drainResult, err
 	}
 
 	return result, nil

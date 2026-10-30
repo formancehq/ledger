@@ -22,6 +22,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/infra/state"
 	"github.com/formancehq/ledger/v3/internal/proto/auditpb"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/proto/restorepb"
 	"github.com/formancehq/ledger/v3/internal/query"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
@@ -295,6 +296,9 @@ func TestFinalizeRestorePublishesRebuiltPostCheckpointDelta(t *testing.T) {
 	// later log/audit delta.
 	batch := source.OpenWriteSession()
 	require.NoError(t, state.SaveLedger(batch, "restored-ledger", &commonpb.LedgerInfo{Name: "restored-ledger"}))
+	require.NoError(t, batch.SetProto([]byte{dal.ZoneClusterTransient, dal.SubTransientDrainState}, &raftcmdpb.DrainState{
+		Epoch: "source-epoch", Index: 1, Members: []uint64{1, 2, 3}, PriorEpochs: []string{"released-source-epoch"},
+	}))
 	writeHistory(batch, 1, "restored-ledger", 1)
 	require.NoError(t, batch.Commit())
 	checkpointPath, err := source.CreateTemporaryCheckpoint("before-delta")
@@ -321,6 +325,9 @@ func TestFinalizeRestorePublishesRebuiltPostCheckpointDelta(t *testing.T) {
 	require.NotNil(t, marker)
 	checkpoint, err := dal.OpenDirect(filepath.Join(server.dataDir, "checkpoints", "0"), noopLogger{})
 	require.NoError(t, err)
+	drain, err := query.ReadDrainState(checkpoint)
+	require.NoError(t, err)
+	require.Nil(t, drain, "the published restore must discard the source cluster's drain state")
 	for _, name := range []string{"restored-ledger", "delta-ledger"} {
 		info, queryErr := query.GetLedgerByName(t.Context(), checkpoint, name)
 		require.NoError(t, queryErr)
