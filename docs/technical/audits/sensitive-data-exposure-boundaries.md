@@ -112,7 +112,10 @@ passwords and sslpassword; NATS mixed-scheme lists and bare tokens; ClickHouse
 multi-host authorities, HTTP transport and encoded HTTP proxy credentials;
 HTTP(S) passwordless userinfo; malformed URLs/queries; unsupported cross-format
 values; and depth-exhausted proxies. Each query layer is decoded once and proxy
-nesting is bounded at eight edges. Keep safe hosts/paths/options when supported;
+nesting is bounded at eight edges. Decode the projected chain to prove the leaf
+at exactly eight edges remains a sanitized URL, while the ninth edge is replaced
+wholesale with `xxxxx`, including for deeper chains. Canary absence alone does
+not prove the traversal bound. Keep safe hosts/paths/options when supported;
 fixed markers are expected for unsupported formats and malformed components.
 Retain current/checkpoint gRPC, routed HTTP and CLI output regressions. Compare
 original protobufs and detached nested slices before/after projection. No worker,
