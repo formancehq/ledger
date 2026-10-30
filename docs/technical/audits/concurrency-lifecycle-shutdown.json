@@ -122,7 +122,8 @@
     "Can an admission request enumerate persisted state or retain a lifecycle lock while waiting for proposal or FSM completion? A retained lifecycle lock is a blocking finding. Check caller cancellation, proposal rejection, apply delay, read-handle ownership, and whether the state-dependent work has an explicit trigger and cardinality budget.",
     "Do lifecycle tests for bootstrap hooks, servers, Node/Applier, worker primitives, managers, builders, and sessions use time.Sleep to claim a specific interleaving instead of deterministic synchronization?",
     "Do optional event sinks and disabled-feature implementations obey the same Start, Stop, Close, retry, and flush ownership contract as the default build?",
-    "Can a BeginDrain timeout after marker enqueue reopen a membership or write-admission gate while the marker can still apply? Can a release race a newer epoch or a pending proposal and open the wrong gate?"
+    "Can a BeginDrain timeout after marker enqueue reopen a membership or write-admission gate while the marker can still apply? Can a release race a newer epoch or a pending proposal and open the wrong gate?",
+    "Can a bounded delivery-result queue lose the only signal that releases Raft StateSnapshot, or can a blocked result publisher retain a Ready-task, peer or transport shutdown join? Is each pending message attempt completed at most once when a late response races abandoned-delivery cleanup?"
   ],
   "dynamic_checks_to_consider": [
     "Inspect the integration-only PostgreSQL gap-cancellation regression in internal/adapter/v2: a real pgx query tracer cancels immediately after successful SHARE lock acquisition, then checks no returned rows, a successful retry with one pooled connection and a subsequent source INSERT without a leaked lock. Preserve independent manager startup-cancellation tests. Use an explicitly supplied disposable native PostgreSQL service when Docker is prohibited locally; otherwise these integration fixtures require Docker.",
@@ -141,6 +142,7 @@
     "register/observe/unregister races for main-store, readstore, usagestore, cache, builder, tailworker, and disk-usage metrics while their stores or workers stop or a restore swaps the backing database",
     "optional-feature event sink lifecycle and repeated-construction tests under the kafka, nats, clickhouse, and databricks build tags with their required test infrastructure",
     "go test -race -tags pyroscope ./internal/infra/monitoring/pyroscope/... for the optional profiler's Fx Start/Stop hooks",
-    "Deterministically pause a drain marker after enqueue, cancel the caller, interleave membership and write proposals, then separately apply or definitively drop the marker; assert fence lifetime, cutoff and eventual release without sleeps."
+    "Deterministically pause a drain marker after enqueue, cancel the caller, interleave membership and write proposals, then separately apply or definitively drop the marker; assert fence lifetime, cutoff and eventual release without sleeps.",
+    "fill or leave unconsumed the local delivery-result queue, then cancel the peer or stop the transport and prove its publishers exit; reject a dispatcher batch in the real Ready worker with a full status queue and join Node.Run before transport shutdown while its run context remains live; race message response handling with abandoned-delivery cleanup and check that an old attempt cannot publish a second outcome"
   ]
 }

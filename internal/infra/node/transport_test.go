@@ -147,6 +147,8 @@ func newTestPeerConn(t *testing.T, peerID uint64, unreachable func(uint64) bool)
 		logger:                 logging.Testing(),
 		peerID:                 peerID,
 		pushUnreachable:        unreachable,
+		stopCtx:                context.Background(),
+		reportDelivery:         func(_ <-chan struct{}, _ DeliveryResult) {}, // These fixtures observe unreachable accounting only.
 		sendQueueLoadHistogram: [3]metric.Int64Histogram{loadH, loadH, loadH},
 		sendQueueFullCounter:   [3]metric.Int64Counter{fullC, fullC, fullC},
 	}
@@ -271,6 +273,7 @@ func newTestTransport(t *testing.T, pendingCap int) *DefaultTransport {
 		logger:                   logging.Testing(),
 		pendingSendQueue:         make(chan []*raftpb.Message, pendingCap),
 		unreachableCh:            make(chan uint64, 16),
+		deliveryResultsCh:        make(chan DeliveryResult, 16),
 		pendingSendLoadHistogram: loadH,
 		pendingSendFullCounter:   fullC,
 		unreachableLoadHistogram: loadH,
@@ -293,7 +296,7 @@ func TestDefaultTransport_Send_EmitsUnreachablePerUniquePeer(t *testing.T) {
 		{To: proto.Uint64(3)},
 		{To: proto.Uint64(2)}, // duplicate — must not fire Unreachable again
 		{To: proto.Uint64(5)},
-	})
+	}, t.Context().Done())
 
 	// Drain unreachableCh.
 	got := make(map[uint64]int)
@@ -320,7 +323,7 @@ func TestDefaultTransport_Send_NoUnreachableOnHappyPath(t *testing.T) {
 
 	tr := newTestTransport(t, 4)
 
-	tr.Send([]*raftpb.Message{{To: proto.Uint64(2)}, {To: proto.Uint64(3)}})
+	tr.Send([]*raftpb.Message{{To: proto.Uint64(2)}, {To: proto.Uint64(3)}}, t.Context().Done())
 
 	require.Len(t, tr.unreachableCh, 0, "happy path must not push to unreachableCh")
 }

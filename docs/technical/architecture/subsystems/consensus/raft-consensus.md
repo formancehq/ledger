@@ -654,39 +654,64 @@ compacted boundary; the previous process's catch-up margin is not reconstructed.
 
 #### Snapshot Transfer (MsgSnap)
 
-When a follower is too far behind for log replay, the leader sends a **MsgSnap** (InstallSnapshot) message:
+When a follower is too far behind for retained-log replay, the leader sends
+`MsgSnap`. The leader's progress for that destination enters `StateSnapshot`,
+which suppresses further appends until a snapshot result or follower append
+acknowledgement moves it back to probing.
 
 ```mermaid
 sequenceDiagram
     participant Leader
-    participant Follower as Follower (behind)
-    
-    Leader->>Leader: Check: follower.Next < compactIndex?
-    Note over Leader: Yes → WAL entries no longer available
-    
-    Leader->>Leader: Create snapshot at lastIndex
-    Leader->>Follower: MsgSnap (full snapshot data)
-    Note over Follower: Progress state → StateSnapshot
-    
-    Follower->>Follower: Apply snapshot to WAL
-    Follower->>Follower: Restore FSM state
-    Follower->>Follower: Sync business logs via gRPC
-    
-    Follower->>Leader: MsgSnapStatus (success)
-    Note over Follower: Progress state → StateReplicate
-    
-    Leader->>Follower: Resume normal AppendEntries
+    participant Transport as Leader transport
+    participant Follower
+    Leader->>Transport: MsgSnap; destination progress = StateSnapshot
+    Transport->>Follower: Queue snapshot message
+    Follower-->>Transport: Transport acknowledgement
+    Transport-->>Leader: DeliveryResult(destination peer ID, MsgSnap, success)
+    Note over Leader: ReportSnapshot returns progress to StateProbe
+    Follower->>Follower: Persist Ready, install snapshot, fetch checkpoint
+    Leader->>Follower: Resume AppendEntries after probing
+    Follower-->>Leader: MsgAppResp; progress advances normally
 ```
 
-#### Progress States
+#### Sent snapshot results
 
-The leader tracks each follower's state:
+`DefaultTransport` reports a generic per-message delivery outcome through its
+local `DeliveryResults` channel: destination peer ID, Raft message type and
+success. The transport does not import Raft snapshot-status semantics. Node
+ignores non-snapshot outcomes and translates `MsgSnap` outcomes to
+`SnapshotFinish` or `SnapshotFailure`. The orchestrate goroutine alone calls
+`RawNode.ReportSnapshot`, using the destination **peer ID**, never the snapshot
+index. A positive transport acknowledgement means the peer queued the message;
+it does not certify that the follower installed the snapshot, applied the
+suffix, or completed its independent checkpoint restore.
 
-| State | Description |
-|-------|-------------|
-| `StateProbe` | Follower's `Match` is unknown, sending one entry at a time |
-| `StateReplicate` | Normal operation, pipeline enabled |
-| `StateSnapshot` | Snapshot is being sent, waiting for confirmation |
+Queue rejection, failed delivery and abandoned pending responses report
+failure; acknowledged acceptance reports success. A pending response keeps
+only its outcome metadata and a reported flag, not the message payload.
+Abandonment sets that flag before a late response can report a second outcome.
+The bounded result channel backpressures publishers rather than dropping results; peer removal cancels
+peer publishers, and transport shutdown releases dispatcher and peer publishers.
+Dispatcher-queue rejection runs synchronously in the Ready worker and also
+observes that task's stop channel through `Transport.Send`. Node shutdown closes
+the task stop channels before joining Ready; it must not wait for the later
+transport stop hook or for its still-live run context to be cancelled. During
+normal operation a full result queue continues to backpressure the publisher.
+
+Each message adds one bounded-channel publication and one orchestrator receive,
+including ordinary traffic. Pending metadata is constant-size per in-flight
+message; no payload copy, log scan, RPC or durable write is added. The queue
+bounds memory and backpressures producers; all owners cancel publication before
+joining. Only snapshot outcomes call into Raft or trigger a Ready check.
+
+This result is necessary even when the network later becomes healthy. If a
+follower's `MsgAppResp` is lost, `ReportUnreachable` and heartbeat replies alone
+do not move a leader out of `StateSnapshot`. The follower can therefore answer
+a quorum ReadIndex at index 40 while its independent checkpoint restored only
+index 39 and its Raft log still ends at snapshot 36. Its read correctly waits
+for local application, but that application cannot progress until the sender
+resumes appends. Reporting snapshot delivery restores progress without a
+rescue write or a weaker read barrier.
 
 #### Receiving a snapshot Ready
 
@@ -725,32 +750,28 @@ a rolling upgrade. The WAL suffix is cluster-local Raft state; cross-cluster
 restore continues to rebuild its independent Raft domain from the restored
 business checkpoint and exported delta.
 
-#### Snapshot Synchronization Flow
+#### Checkpoint synchronization
 
-The checkpoint is fetched from a donor the follower picks on each attempt:
-the leader first, then the other voters in turn, never itself. The leader
-can be unreachable, or resynchronizing itself after winning an election while
-out of sync; a donor in that state refuses and the follower tries the next
-one. See [Donor Selection](../../data-flows.md#donor-selection).
+The follower selects a donor on each attempt: the leader first, then the other
+voters, never itself. A donor that is unreachable or still restoring its own
+store is skipped on the next attempt. See
+[Donor Selection](../../data-flows.md#donor-selection).
 
-The `SynchronizeWithLeader` method handles the complex task of bringing the store up to date:
+`Synchronizer.SynchronizeWithLeader` fetches and activates a fresh Pebble
+checkpoint whose applied index is at least the received Raft snapshot index,
+restores caches, and recovers FSM state from that checkpoint. Spool replay
+skips entries already covered by the checkpoint and applies the remaining
+committed suffix before normal application resumes. Checkpoint progress can
+therefore temporarily exceed the local Raft WAL horizon; it does not replace
+Raft replication of the missing entries.
 
-1. **Ledger reconciliation**: Compare FSM ledgers with store ledgers
-   - Delete ledgers that exist in store but not in FSM
-   - Register new ledgers that exist in FSM but not in store
-2. **Log synchronization**: For each ledger, stream missing logs from the leader
-3. **Store update**: Apply logs to bring balances and metadata up to date
-
-#### Why Two-Level Synchronization?
-
-The snapshot contains only the **FSM state** (ledger metadata, next IDs). After receiving a snapshot, the follower must also sync **business logs** from the leader's Store:
-
-1. **Snapshot** → FSM state (lightweight, ~KB)
-2. **gRPC StreamLogs** → Transaction logs per ledger (can be large, ~GB)
-
-This two-level approach avoids embedding large transaction data in Raft snapshots.
-
-See [Follower Synchronization](../../data-flows.md#follower-synchronization) for the detailed synchronization flow
+Snapshot delivery feedback is sender-local. It changes no wire fields,
+persisted formats, deterministic FSM rules or service protocol revision.
+Existing RC state remains readable and old/new voters may coexist during a
+rolling upgrade. Default reads still wait for their quorum-certified index to
+be durably applied locally. See
+[Follower Synchronization](../../data-flows.md#follower-synchronization) and the
+[follower checkpoint protocol](../storage/follower-sync.md).
 
 #### Network Partition
 

@@ -46,6 +46,7 @@ func newRaceTestPeerConn(t *testing.T) *peerConnection {
 		loopDone:               loopDone,
 		logger:                 logging.Testing(),
 		pushUnreachable:        func(uint64) bool { return true },
+		reportDelivery:         func(_ <-chan struct{}, _ DeliveryResult) {}, // This fixture checks queue teardown only.
 		sendQueueLoadHistogram: [3]metric.Int64Histogram{loadH, loadH, loadH},
 		sendQueueFullCounter:   [3]metric.Int64Counter{fullC, fullC, fullC},
 	}

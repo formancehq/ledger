@@ -295,7 +295,8 @@ func NewLocalResponses() LocalResponses {
 type readyResult struct {
 	rd raft.Ready
 	// snapshotApplied is true when a leader snapshot was installed; orchestrate
-	// must call rawNode.ReportSnapshot.
+	// must refresh its ConfState shadow. Only sender-local transport results
+	// report snapshot delivery to rawNode.
 	snapshotApplied bool
 	// confChanges are committed ConfChangeV2 entries extracted from rd.CommittedEntries;
 	// orchestrate must call rawNode.ApplyConfChange for each. The entry index is
@@ -1587,7 +1588,7 @@ func (node *Node) installReadySnapshot(ctx context.Context, stop chan struct{}, 
 			return fmt.Errorf("installing snapshot: %w", err)
 		}
 
-		// Defer ReportSnapshot to orchestrate goroutine (rawNode is not thread-safe).
+		// Defer the ConfState shadow refresh to the orchestrate goroutine.
 		result.snapshotApplied = true
 
 		node.logger.WithFields(map[string]any{
@@ -1630,7 +1631,7 @@ func (node *Node) sendReadyMessages(stop chan struct{}, rd raft.Ready, result *r
 	appendResponses, applyResponses, outbound := splitReadyMessages(node.config.NodeID, rd.Messages)
 	result.applyResponses = applyResponses
 
-	node.transport.Send(outbound)
+	node.transport.Send(outbound, stop)
 
 	if len(appendResponses) > 0 {
 		select {
@@ -1666,8 +1667,6 @@ func (node *Node) finishReady(result readyResult, stop chan struct{}) error {
 	rd := result.rd
 
 	if result.snapshotApplied {
-		node.rawNode.ReportSnapshot(rd.Snapshot.GetMetadata().GetIndex(), raft.SnapshotFinish)
-
 		// Re-sync the in-memory ConfState shadow from the just-installed
 		// snapshot. wal.ApplySnapshot already persisted the correct ConfState;
 		// without this, the reconcile block below loads the stale shadow and
@@ -1952,6 +1951,7 @@ func shouldTickRaft(status int32) bool {
 }
 
 func (node *Node) orchestrate(ctx context.Context, stop chan struct{}) error {
+	deliveryResultsCh := node.transport.DeliveryResults()
 	tickInterval := node.config.TickInterval
 	if tickInterval == 0 {
 		tickInterval = 100 * time.Millisecond
@@ -2026,6 +2026,19 @@ func (node *Node) orchestrate(ctx context.Context, stop chan struct{}) error {
 		}
 	}
 
+	// Transport owns delivery only; Raft feedback stays on its single owner.
+	reportDelivery := func(result DeliveryResult) {
+		if result.Type != raftpb.MsgSnap {
+			return
+		}
+		status := raft.SnapshotFailure
+		if result.Success {
+			status = raft.SnapshotFinish
+		}
+		node.rawNode.ReportSnapshot(result.PeerID, status)
+		maybeCreateReady()
+	}
+
 	// stepResponses drains a batch from node.localResponseCh: it Steps the
 	// responses back into rawNode (bumping Applied for the batch that
 	// runCommitter just committed) and then checks whether the new state
@@ -2070,6 +2083,8 @@ func (node *Node) orchestrate(ctx context.Context, stop chan struct{}) error {
 			if err := stepResponses(msgs); err != nil {
 				return err
 			}
+		case result := <-deliveryResultsCh:
+			reportDelivery(result)
 		case <-stop:
 			node.logger.Infof("Stopping readyLoop as context was cancelled")
 			node.applier.Interrupt()
@@ -2088,6 +2103,8 @@ func (node *Node) orchestrate(ctx context.Context, stop chan struct{}) error {
 				if err := stepResponses(msgs); err != nil {
 					return err
 				}
+			case result := <-deliveryResultsCh:
+				reportDelivery(result)
 			case msgs := <-node.transport.RecvMediumPriority():
 				err := stepMessages(msgs)
 				if err != nil {
@@ -2152,6 +2169,8 @@ func (node *Node) orchestrate(ctx context.Context, stop chan struct{}) error {
 					return nil
 				case nodeID := <-node.transport.Unreachable():
 					node.rawNode.ReportUnreachable(nodeID)
+				case result := <-deliveryResultsCh:
+					reportDelivery(result)
 				case msgs := <-node.transport.RecvHighPriority():
 					err := stepMessages(msgs)
 					if err != nil {

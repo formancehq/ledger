@@ -40,7 +40,7 @@ func TestProcessReadyPersistsBeforeSendingAndDefersLocalWork(t *testing.T) {
 	applyResp := msg(raftpb.MsgStorageApplyResp, raft.LocalApplyThread, 1)
 	outbound := msg(raftpb.MsgApp, 1, 2)
 
-	transport.EXPECT().Send([]*raftpb.Message{outbound}).Do(func([]*raftpb.Message) {
+	transport.EXPECT().Send([]*raftpb.Message{outbound}, (<-chan struct{})(setup.stop)).Do(func([]*raftpb.Message, <-chan struct{}) {
 		hs, _, stateErr := setup.wal.InitialState()
 		require.NoError(t, stateErr)
 		require.Equal(t, uint64(1), hs.GetTerm())

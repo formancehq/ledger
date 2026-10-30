@@ -228,3 +228,20 @@ bash scripts/ai-audit-challenge <audit-result.json>
 
 The same clean HEAD must be used for both passes. Manifest work must not launch
 the product audit. Jira publication and fixes remain separately authorized.
+
+## Message delivery result publishers
+
+A per-message delivery result belongs to the peer connection's lifetime and is consumed
+by the node's orchestrate owner. The bounded result queue must backpressure
+instead of silently losing the only event that releases `StateSnapshot`. Peer
+removal cancels its publishers before joining the connection; transport stop
+releases dispatcher publishers as well. Dispatcher-queue rejection is published
+by the Ready worker and must additionally observe its task stop channel. Fill
+the result queue without a consumer, then stop and join Node.Run before
+transport shutdown while keeping the run context live; cancellation of a
+context supplied only by the test does not prove this production caller. Delayed acknowledgement and abandoned
+pending-response cleanup must produce at most one outcome per message attempt.
+The same cancellation and duplicate-suppression contract covers ordinary
+messages; only Node translates snapshot outcomes into Raft snapshot status.
+Exercise both connection rejection/recovery and cancellation while no result
+consumer is available; transport acceptance alone does not prove FSM readiness.
