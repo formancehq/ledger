@@ -471,38 +471,3 @@ func isAlreadyLeader(stderr string) bool {
 	return strings.Contains(lower, "already the leader") ||
 		strings.Contains(lower, "already leader")
 }
-
-// deleteScaledDownPVCs deletes PVCs for pod ordinals that no longer exist after
-// a scale-down. Only PVC-backed volumes are considered; hostPath volumes have
-// no PVC to clean up. This must be called after the StatefulSet replica update
-// requests termination of the removed pods; that write does not wait for Pod
-// termination to complete.
-func deleteScaledDownPVCs(ctx context.Context, clientset kubernetes.Interface,
-	namespace, stsName string, previousReplicas, currentReplicas int32,
-	volumeNames []string,
-) error {
-	logger := log.FromContext(ctx)
-	pvcs := clientset.CoreV1().PersistentVolumeClaims(namespace)
-
-	for ordinal := previousReplicas - 1; ordinal >= currentReplicas; ordinal-- {
-		for _, vol := range volumeNames {
-			pvcName := fmt.Sprintf("%s-%s-%d", vol, stsName, ordinal)
-			logger.Info("deleting PVC for removed replica",
-				"pvc", pvcName,
-				"ordinal", ordinal,
-			)
-			if err := pvcs.Delete(ctx, pvcName, metav1.DeleteOptions{}); err != nil {
-				// Already gone — idempotent.
-				if kerrors.IsNotFound(err) {
-					logger.Info("PVC already deleted, skipping", "pvc", pvcName)
-
-					continue
-				}
-
-				return fmt.Errorf("deleting PVC %s: %w", pvcName, err)
-			}
-		}
-	}
-
-	return nil
-}

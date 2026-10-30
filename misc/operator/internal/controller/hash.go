@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"k8s.io/apimachinery/pkg/api/resource"
+
 	ledgerv1alpha1 "github.com/formancehq/ledger/misc/operator/api/v1alpha1"
 )
 
@@ -15,6 +17,12 @@ import (
 // Fields that map to separate Kubernetes resources (Service, Ingress, NetworkPolicy,
 // DNSEndpoint) are excluded because changes to them do not require a pod restart.
 func computeSpecHash(spec *ledgerv1alpha1.ClusterSpec) string {
+	return computePodSpecHash(spec, true)
+}
+
+// computePodSpecHash also recognizes the pre-storage-reconciliation hash
+// during migration. The legacy variant is never used for new Pod templates.
+func computePodSpecHash(spec *ledgerv1alpha1.ClusterSpec, omitClaimSettings bool) string {
 	// Copy the spec and nil out fields that should not trigger a rolling update.
 	cp := *spec
 
@@ -36,6 +44,20 @@ func computeSpecHash(spec *ledgerv1alpha1.ClusterSpec) string {
 	cp.Persistence.DeletionProtection = nil
 	cp.Persistence.WAL.AutoExpansion = nil
 	cp.Persistence.Data.AutoExpansion = nil
+	// Claim declarations are reconciled or diagnosed on PVCs and immutable
+	// templates. Capacity, profile, StorageClass and access mode do not change
+	// the Pod's volume references or mounts. Keep HostPath hashed: it changes
+	// Pod wiring. Keep ServiceAccount hashed: annotations affect Pod admission.
+	if omitClaimSettings {
+		cp.Persistence.WAL.Size = resource.Quantity{}
+		cp.Persistence.Data.Size = resource.Quantity{}
+		cp.Persistence.WAL.VolumeAttributesClassName = ""
+		cp.Persistence.Data.VolumeAttributesClassName = ""
+		cp.Persistence.WAL.StorageClass = ""
+		cp.Persistence.Data.StorageClass = ""
+		cp.Persistence.WAL.AccessMode = ""
+		cp.Persistence.Data.AccessMode = ""
+	}
 
 	data, _ := json.Marshal(&cp) //nolint:errchkjson // spec is always serializable
 
