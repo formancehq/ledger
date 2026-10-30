@@ -98,6 +98,20 @@ uppercase and mixed-case HTTP(S) schemes. Human add-sink output omits the
 Secret row when no HMAC secret is configured; structured output reports
 `(none)`. Configured HMAC secrets display as `(set)`.
 
+### PostgreSQL mirror constructor diagnostic oracle
+
+Exercise non-IAM create-ledger admission with an invalid `connect_timeout` and
+query password, then the real PostgreSQL constructor and Manager reconciliation
+of stored configuration. Capture constructor errors and their entire error
+chains plus structured manager logs. Require absence of raw and URL-encoded
+passwords, retained invalid-option diagnostics and destination ledger identity,
+no worker startup, and an unchanged internal DSN. Include userinfo-password,
+keyword-password and `sslpassword` controls, malformed DSNs and secret-valued
+invalid options. Parsing must fail before source database access. These errors
+occur before worker startup; do not claim worker-status replication coverage.
+The adapter and manager diagnostic tests own this oracle; admission's mirror
+configuration test preserves the accepted non-IAM trigger.
+
 ## Surface inventory required at execution
 
 Before testing, build a matrix with one row per sensitive field and columns for

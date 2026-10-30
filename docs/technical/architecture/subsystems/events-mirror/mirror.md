@@ -100,6 +100,25 @@ Two concrete implementations:
 
 Both adapters return v2 log entries in their native shape; translation to v3 orders happens upstream of the source interface.
 
+### PostgreSQL parsing diagnostics
+
+PostgreSQL source construction parses the configured DSN before allocating a
+pool or accessing the source database. Parser failures return a fresh static
+`parsing mirror DSN: invalid PostgreSQL configuration` diagnostic, or
+`parsing mirror DSN: invalid connect_timeout` for that recognized parser
+category. No DSN, option value or original parser error is retained in the
+returned error chain: pgx errors can contain query passwords, TLS key passwords,
+and invalid option values even when userinfo is redacted.
+
+Non-IAM admission continues to accept these options; construction diagnoses
+invalid configurations loaded from authoritative storage. Manager reconciliation
+logs the safe diagnostic with the destination ledger identity and starts no
+worker. This constructor failure does not propose a worker error status or
+advance ingestion. Stored configuration and audit evidence remain unchanged.
+The change affects leader-side diagnostics only, with no persisted format,
+committed-order, API or protocol revision change. Upgrade all possible leaders
+to protect constructor diagnostics throughout leadership changes.
+
 ### PostgreSQL visibility and permanent gaps
 
 A live migration must retain every committed source log, including a lower ID
