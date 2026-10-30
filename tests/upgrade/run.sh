@@ -47,25 +47,24 @@ case "$(docker info --format '{{.Architecture}}')" in
 esac
 build_revision() {
 	local name="$1" tree="$2" context="$workdir/image-$1" image="ledger-upgrade:$1-${3:0:12}"
-	mkdir -p "$context"
-	mkdir -p "$context/tmp"
-	chmod 1777 "$context/tmp"
-	touch "$context/tmp/.keep"
+	mkdir -p "$context/tmp" || return 1
+	chmod 1777 "$context/tmp" || return 1
+	touch "$context/tmp/.keep" || return 1
 	if [ -n "${IN_NIX_SHELL:-}" ]; then
 		(cd "$tree" && CGO_ENABLED=0 GOOS=linux GOARCH="$goarch" go build -tags invariants -o "$context/ledger-server" . && \
-			CGO_ENABLED=0 GOOS=linux GOARCH="$goarch" go build -tags invariants -o "$context/ledgerctl" ./cmd/ledgerctl)
+			CGO_ENABLED=0 GOOS=linux GOARCH="$goarch" go build -tags invariants -o "$context/ledgerctl" ./cmd/ledgerctl) || return 1
 	else
 		(cd "$tree" && nix develop .#ci --command bash -c \
 			'CGO_ENABLED=0 GOOS=linux GOARCH="$1" go build -tags invariants -o "$2/ledger-server" . && CGO_ENABLED=0 GOOS=linux GOARCH="$1" go build -tags invariants -o "$2/ledgerctl" ./cmd/ledgerctl' \
-			bash "$goarch" "$context")
+			bash "$goarch" "$context") || return 1
 	fi
-	shasum -a 256 "$context/ledger-server" "$context/ledgerctl" | tee "$workdir/$name-binaries.sha256"
-	docker build -q -f "$script_dir/Dockerfile" -t "$image" "$context"
-	docker image inspect "$image" --format '{{.Id}}' | tee "$workdir/$name-image-id.txt"
+	shasum -a 256 "$context/ledger-server" "$context/ledgerctl" | tee "$workdir/$name-binaries.sha256" >&2 || return 1
+	docker build -q -f "$script_dir/Dockerfile" -t "$image" "$context" > "$workdir/$name-docker-build.txt" || return 1
+	docker image inspect "$image" --format '{{.Id}}' | tee "$workdir/$name-image-id.txt" >&2 || return 1
 	printf '%s\n' "$image"
 }
-source_image="$(build_revision source "$workdir/source" "$source_sha" | tail -1)"
-target_image="$(build_revision target "$workdir/target" "$target_sha" | tail -1)"
+source_image="$(build_revision source "$workdir/source" "$source_sha")" || exit 1
+target_image="$(build_revision target "$workdir/target" "$target_sha")" || exit 1
 printf 'sourceImage=%s\ntargetImage=%s\n' "$source_image" "$target_image" | tee -a "$workdir/revisions.txt"
 
 kind create cluster --name "$cluster"
