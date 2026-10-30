@@ -2,6 +2,19 @@ package sensitive
 
 import "strings"
 
+func redactPostgres(raw string) string {
+	if !strings.Contains(raw, "://") && strings.Contains(raw, "=") {
+		return redactKeywordDSN(raw)
+	}
+	if result, ok := redactConnectionURL(raw, urlPolicy{
+		schemes: []string{"postgres", "postgresql"}, allowEmptyHost: true,
+	}, 0); ok {
+		return result
+	}
+
+	return Marker
+}
+
 // redactKeywordDSN scans libpq/pgx keyword-value syntax without loading ambient
 // credentials, service files or TLS keys. Preserve original non-secret values,
 // including quoting/escaping, and mask every occurrence of a secret key. Invalid
@@ -15,7 +28,9 @@ func redactKeywordDSN(raw string) string {
 			return Marker
 		}
 		key := strings.Trim(rest[:eq], space)
-		if key == "" || strings.ContainsAny(key, space+"'\\") {
+		// A URI scheme is not a keyword name. In particular, malformed opaque
+		// URLs such as postgres:password=... must not survive as harmless keys.
+		if key == "" || strings.ContainsAny(key, space+"'\\:") {
 			return Marker
 		}
 		rest = strings.TrimLeft(rest[eq+1:], space)
