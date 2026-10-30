@@ -71,9 +71,13 @@ type testSnapshotDonor struct {
 	waitErr            error
 	lastPersistedIndex uint64
 	resynchronizing    bool
+	waitCalls          *atomic.Int32
 }
 
 func (d testSnapshotDonor) WaitForCheckpointable(context.Context, uint64) error {
+	if d.waitCalls != nil {
+		d.waitCalls.Add(1)
+	}
 	return d.waitErr
 }
 
@@ -242,6 +246,30 @@ func TestPrepareSnapshotSerializesDifferentFollowers(t *testing.T) {
 	require.NoError(t, <-firstDone)
 	require.NoError(t, <-secondDone)
 	require.Equal(t, int32(1), store.maxActive.Load())
+}
+
+func TestPrepareSnapshotDoesNotShareUnidentifiedRequests(t *testing.T) {
+	store := &blockingCheckpointStore{root: t.TempDir(), firstStarted: make(chan struct{}), secondStarted: make(chan struct{}), releaseFirst: make(chan struct{})}
+	waitCalls := new(atomic.Int32)
+	server := NewSnapshotServiceServer(noopLogger{}, store, 0, testSnapshotDonor{waitCalls: waitCalls}).(*SnapshotServiceServerImpl)
+	firstDone := make(chan error, 1)
+	go func() {
+		_, err := server.PrepareSnapshot(t.Context(), &snapshotpb.PrepareSnapshotRequest{})
+		firstDone <- err
+	}()
+	<-store.firstStarted
+	secondDone := make(chan error, 1)
+	go func() {
+		_, err := server.PrepareSnapshot(t.Context(), &snapshotpb.PrepareSnapshotRequest{})
+		secondDone <- err
+	}()
+	require.Eventually(t, func() bool { return waitCalls.Load() == 2 }, time.Second, time.Millisecond)
+	require.Equal(t, int32(1), store.calls.Load())
+	close(store.releaseFirst)
+	<-store.secondStarted
+	require.NoError(t, <-firstDone)
+	require.NoError(t, <-secondDone)
+	require.Equal(t, int32(2), store.calls.Load())
 }
 
 func TestPrepareSnapshotLiveWaiterReplacesCanceledQueuedPreparation(t *testing.T) {
