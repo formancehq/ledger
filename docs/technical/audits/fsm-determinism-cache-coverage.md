@@ -42,6 +42,22 @@ preimages and ordered protobuf output. A log statement or metric may differ
 only when it is explicitly node-local and cannot affect apply control flow or
 authoritative output.
 
+## Proposal serialization and predicted-index boundary
+
+Proposal payloads are serialized before the shared tracker lock is acquired.
+`NewProposal` reserves the fixed-width predicted-index suffix in the backing
+buffer, and `SetPredictedIndex` patches that suffix without allocating or
+copying the payload-sized prefix while the lock is held. Preload and
+generation-boundary rebuild paths must preserve the same invariant. The audit
+must compare exact serialized bytes, backing-capacity behavior at allocation
+boundaries, and the critical-section work for both paths.
+
+Capability declarations, policy updates, and membership evidence travel through
+the same proposal/apply/replay contract. Their transition bytes must therefore
+remain deterministic when a proposal is rebuilt or replayed on a replica with a
+different cache history; a local capability or cache state must never alter the
+committed interpretation.
+
 ## Declaration-to-enforcement proof
 
 Every cache-keyed read needs a complete chain at the audited SHA:

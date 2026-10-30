@@ -500,7 +500,7 @@ func (impl *ClusterServiceServerImpl) AddLearner(ctx context.Context, req *clust
 	// Administrative registration is allowed only for a concrete peer
 	// incarnation. The caller must read the target's persisted INSTANCE_ID;
 	// creating an identity-less phantom member is forbidden.
-	if err := impl.membership.AddLearner(ctx, req.GetNodeId(), req.GetRaftAddress(), req.GetServiceAddress(), req.GetInstanceId()); err != nil {
+	if err := impl.membership.AddLearner(ctx, req.GetNodeId(), req.GetRaftAddress(), req.GetServiceAddress(), req.GetInstanceId(), req.GetCapabilities()); err != nil {
 		return nil, err
 	}
 

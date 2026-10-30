@@ -517,6 +517,8 @@ message ClusterPolicy {
   fixed64 metadata_max_value_bytes = 6;
   fixed64 metadata_max_entity_bytes = 7;
   fixed64 metadata_max_command_bytes = 8;
+  // Capability activation is replicated policy, never a node-local flag.
+  repeated CapabilityActivation capability_activations = 13;
 }
 
 // CreatedPreparedQueryLog records the creation of a prepared query.
@@ -2730,4 +2732,11 @@ message ListOptions {
   // valid conditions depends on the endpoint's QueryTarget; the server
   // rejects unsupported variants with InvalidArgument.
   QueryFilter filter = 5;
+}
+
+// CapabilityActivation is intentionally small and wire-stable. IDs are fixed
+// integers owned by the producer, not hashes of implementation names.
+message CapabilityActivation {
+  fixed32 id = 1;
+  bool active = 2;
 }

@@ -679,6 +679,6 @@ After the reset, the preloader falls back to Pebble reads (0xF1 zone) for all ca
 - [Data Flows](../technical/architecture/data-flows.md) - Spool mechanics, entry processing
 - [Spool](../technical/architecture/subsystems/storage/spool.md) - Spool technical implementation
 - [Deployment](./deployment.md) - Helm chart configuration, CLI flags
-- [CLI Reference](./cli.md) - cluster commands
+- [CLI Reference](./cli.md) - `cluster promote-learner` and other cluster commands
 - [Memory Management](./memory.md) - Cache rotation threshold memory impact
 - [Availability and Disaster Recovery](./availability-and-recovery.md) - Failure-domain placement and quorum-loss recovery

@@ -5,6 +5,7 @@ package clusterbootstrappb
 
 import (
 	bytes "bytes"
+	slices "slices"
 )
 
 // GetPeersRequestReader provides read-only access to GetPeersRequest.
@@ -143,6 +144,7 @@ type PeerInfoReader interface {
 	GetRaftAddress() string
 	GetServiceAddress() string
 	GetInstanceId() []byte
+	GetCapabilities() []uint32
 	Mutate() *PeerInfo
 }
 
@@ -162,6 +164,10 @@ func (r *peerInfoReadonly) GetServiceAddress() string {
 
 func (r *peerInfoReadonly) GetInstanceId() []byte {
 	return bytes.Clone((*PeerInfo)(r).GetInstanceId())
+}
+
+func (r *peerInfoReadonly) GetCapabilities() []uint32 {
+	return slices.Clone((*PeerInfo)(r).GetCapabilities())
 }
 
 func (r *peerInfoReadonly) Mutate() *PeerInfo {
@@ -223,6 +229,7 @@ type JoinAsLearnerRequestReader interface {
 	GetRaftAddress() string
 	GetServiceAddress() string
 	GetInstanceId() []byte
+	GetCapabilities() []uint32
 	Mutate() *JoinAsLearnerRequest
 }
 
@@ -242,6 +249,10 @@ func (r *joinAsLearnerRequestReadonly) GetServiceAddress() string {
 
 func (r *joinAsLearnerRequestReadonly) GetInstanceId() []byte {
 	return bytes.Clone((*JoinAsLearnerRequest)(r).GetInstanceId())
+}
+
+func (r *joinAsLearnerRequestReadonly) GetCapabilities() []uint32 {
+	return slices.Clone((*JoinAsLearnerRequest)(r).GetCapabilities())
 }
 
 func (r *joinAsLearnerRequestReadonly) Mutate() *JoinAsLearnerRequest {
@@ -358,4 +369,153 @@ func (l joinAsLearnerResponseListReadonly) Range(yield func(int, JoinAsLearnerRe
 // view aliases the underlying slice; do not mutate s afterwards.
 func NewJoinAsLearnerResponseListReader(s []*JoinAsLearnerResponse) JoinAsLearnerResponseListReader {
 	return joinAsLearnerResponseListReadonly(s)
+}
+
+// RefreshMembershipRequestReader provides read-only access to RefreshMembershipRequest.
+// Call Mutate() to obtain a mutable clone.
+type RefreshMembershipRequestReader interface {
+	GetNodeId() uint64
+	GetRaftAddress() string
+	GetServiceAddress() string
+	GetInstanceId() []byte
+	GetCapabilities() []uint32
+	Mutate() *RefreshMembershipRequest
+}
+
+type refreshMembershipRequestReadonly RefreshMembershipRequest
+
+func (r *refreshMembershipRequestReadonly) GetNodeId() uint64 {
+	return (*RefreshMembershipRequest)(r).GetNodeId()
+}
+
+func (r *refreshMembershipRequestReadonly) GetRaftAddress() string {
+	return (*RefreshMembershipRequest)(r).GetRaftAddress()
+}
+
+func (r *refreshMembershipRequestReadonly) GetServiceAddress() string {
+	return (*RefreshMembershipRequest)(r).GetServiceAddress()
+}
+
+func (r *refreshMembershipRequestReadonly) GetInstanceId() []byte {
+	return bytes.Clone((*RefreshMembershipRequest)(r).GetInstanceId())
+}
+
+func (r *refreshMembershipRequestReadonly) GetCapabilities() []uint32 {
+	return slices.Clone((*RefreshMembershipRequest)(r).GetCapabilities())
+}
+
+func (r *refreshMembershipRequestReadonly) Mutate() *RefreshMembershipRequest {
+	return (*RefreshMembershipRequest)(r).CloneVT()
+}
+
+// AsReader returns a read-only view of this RefreshMembershipRequest.
+func (m *RefreshMembershipRequest) AsReader() RefreshMembershipRequestReader {
+	if m == nil {
+		return nil
+	}
+	return (*refreshMembershipRequestReadonly)(m)
+}
+
+// Mutate returns a mutable deep clone of this RefreshMembershipRequest.
+func (m *RefreshMembershipRequest) Mutate() *RefreshMembershipRequest {
+	return m.CloneVT()
+}
+
+// RefreshMembershipRequestListReader provides read-only iteration over []*RefreshMembershipRequest.
+type RefreshMembershipRequestListReader interface {
+	Len() int
+	Get(i int) RefreshMembershipRequestReader
+	Range(yield func(int, RefreshMembershipRequestReader) bool)
+}
+
+type refreshMembershipRequestListReadonly []*RefreshMembershipRequest
+
+func (l refreshMembershipRequestListReadonly) Len() int { return len(l) }
+
+func (l refreshMembershipRequestListReadonly) Get(i int) RefreshMembershipRequestReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l refreshMembershipRequestListReadonly) Range(yield func(int, RefreshMembershipRequestReader) bool) {
+	for i, v := range l {
+		var r RefreshMembershipRequestReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewRefreshMembershipRequestListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewRefreshMembershipRequestListReader(s []*RefreshMembershipRequest) RefreshMembershipRequestListReader {
+	return refreshMembershipRequestListReadonly(s)
+}
+
+// RefreshMembershipResponseReader provides read-only access to RefreshMembershipResponse.
+// Call Mutate() to obtain a mutable clone.
+type RefreshMembershipResponseReader interface {
+	Mutate() *RefreshMembershipResponse
+}
+
+type refreshMembershipResponseReadonly RefreshMembershipResponse
+
+func (r *refreshMembershipResponseReadonly) Mutate() *RefreshMembershipResponse {
+	return (*RefreshMembershipResponse)(r).CloneVT()
+}
+
+// AsReader returns a read-only view of this RefreshMembershipResponse.
+func (m *RefreshMembershipResponse) AsReader() RefreshMembershipResponseReader {
+	if m == nil {
+		return nil
+	}
+	return (*refreshMembershipResponseReadonly)(m)
+}
+
+// Mutate returns a mutable deep clone of this RefreshMembershipResponse.
+func (m *RefreshMembershipResponse) Mutate() *RefreshMembershipResponse {
+	return m.CloneVT()
+}
+
+// RefreshMembershipResponseListReader provides read-only iteration over []*RefreshMembershipResponse.
+type RefreshMembershipResponseListReader interface {
+	Len() int
+	Get(i int) RefreshMembershipResponseReader
+	Range(yield func(int, RefreshMembershipResponseReader) bool)
+}
+
+type refreshMembershipResponseListReadonly []*RefreshMembershipResponse
+
+func (l refreshMembershipResponseListReadonly) Len() int { return len(l) }
+
+func (l refreshMembershipResponseListReadonly) Get(i int) RefreshMembershipResponseReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l refreshMembershipResponseListReadonly) Range(yield func(int, RefreshMembershipResponseReader) bool) {
+	for i, v := range l {
+		var r RefreshMembershipResponseReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewRefreshMembershipResponseListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewRefreshMembershipResponseListReader(s []*RefreshMembershipResponse) RefreshMembershipResponseListReader {
+	return refreshMembershipResponseListReadonly(s)
 }

@@ -158,8 +158,14 @@ type Machine struct {
 	// cluster membership atomic with FSM state and makes the spool/WAL
 	// replay path naturally idempotent — every replay of the entry
 	// re-asserts the membership row. EN-1413.
-	confChangeHandler func(entry *raftpb.Entry, session *dal.WriteSession) error
+	confChangeHandler             func(entry *raftpb.Entry, session *dal.WriteSession) error
+	capabilityPolicyCommitHandler func(*commonpb.ClusterPolicy)
 }
+
+// NoopCapabilityPolicyCommitHandler is an explicit dependency for callers
+// that do not maintain an in-memory membership gate (for example replay and
+// isolated FSM tests). Production bootstrap injects the membership publisher.
+func NoopCapabilityPolicyCommitHandler(*commonpb.ClusterPolicy) {}
 
 // NewMachine constructs the hot-path FSM. It composes pre-built sub-objects
 // (Registry, CacheSnapshotter) so the constructor reads no Pebble and keeps
@@ -171,7 +177,11 @@ type Machine struct {
 // confChangeHandler is invoked from PrepareEntries for every
 // EntryConfChange* in the in-flight batch (see the field comment on
 // Machine). Must be non-nil.
-func NewMachine(logger logging.Logger, registry *StateRegistry, cacheSnapshotter *CacheSnapshotter, fileArtifacts dal.QueryCheckpoints, sentinel dal.SentinelFactory, meterProvider metric.MeterProvider, ks *keystore.KeyStore, sharedState *SharedState, notifier Notifier, bloomFilters *bloom.FilterSet, auditKey string, numscriptCacheSize int, confChangeHandler func(entry *raftpb.Entry, session *dal.WriteSession) error) (*Machine, error) {
+func NewMachine(logger logging.Logger, registry *StateRegistry, cacheSnapshotter *CacheSnapshotter, fileArtifacts dal.QueryCheckpoints, sentinel dal.SentinelFactory, meterProvider metric.MeterProvider, ks *keystore.KeyStore, sharedState *SharedState, notifier Notifier, bloomFilters *bloom.FilterSet, auditKey string, numscriptCacheSize int, confChangeHandler func(entry *raftpb.Entry, session *dal.WriteSession) error, capabilityPolicyCommitHandler func(*commonpb.ClusterPolicy)) (*Machine, error) {
+	if capabilityPolicyCommitHandler == nil {
+		return nil, errors.New("capability policy commit handler is required")
+	}
+
 	sentinelMode := sentinel.IsEnabled()
 	// raft.* metrics describe the consensus engine and follow the
 	// upstream etcd-raft naming convention; numscript.* metrics are
@@ -246,6 +256,7 @@ func NewMachine(logger logging.Logger, registry *StateRegistry, cacheSnapshotter
 		bloomRebuildCh:                 make(chan string, 1),
 		auditHashBuf:                   make([]byte, 0, 4096),
 		confChangeHandler:              confChangeHandler,
+		capabilityPolicyCommitHandler:  capabilityPolicyCommitHandler,
 	}
 	fsm.appliedCond = sync.NewCond(&fsm.appliedMu)
 	fsm.cacheSnapshotter = cacheSnapshotter
@@ -312,6 +323,16 @@ func (fsm *Machine) DrainDecision() *raftcmdpb.DrainState {
 // "is this index durable?" checks.
 func (fsm *Machine) LastAppliedIndex() uint64 {
 	return fsm.State.LastAppliedIndex
+}
+
+// ClusterPolicy returns the policy state at the current apply position. It is
+// intended for callbacks invoked while PrepareEntries holds fsm.mu.
+func (fsm *Machine) ClusterPolicy() *commonpb.ClusterPolicy {
+	if fsm.State.ClusterPolicy == nil {
+		return nil
+	}
+
+	return fsm.State.ClusterPolicy.CloneVT()
 }
 
 // RestoreState atomically replaces the FSM-level state. The intended callers
@@ -798,6 +819,9 @@ func (fsm *Machine) PrepareDecodedEntries(ctx context.Context, sessions dal.Writ
 		bloomReplacementEpoch: bloomReplacementEpoch,
 		entryCount:            len(decoded),
 	}
+	if fsm.State.ClusterPolicy != nil {
+		pb.capabilityPolicy = fsm.State.ClusterPolicy.CloneVT()
+	}
 
 	// Capture sentinel data before releasing the lock.
 	if fsm.sentinelMode {
@@ -834,6 +858,9 @@ func (fsm *Machine) CommitPreparedBatch(ctx context.Context, pb *PreparedBatch) 
 	pb.batch = nil // committed, prevent double-close
 	if pb.bloomReplacement {
 		fsm.BloomFilters.ConfirmPersistedReplacement(pb.bloomReplacementEpoch)
+	}
+	if fsm.capabilityPolicyCommitHandler != nil && pb.capabilityPolicy != nil {
+		fsm.capabilityPolicyCommitHandler(pb.capabilityPolicy)
 	}
 
 	fsm.batchCommitHistogram.Record(ctx, time.Since(commitStart).Seconds())
@@ -2062,6 +2089,7 @@ type PreparedBatch struct {
 	sentinelLedgerNames        []string
 	sentinelDeletedLedgerNames map[string]struct{}
 	sentinelTracer             *SentinelTracer
+	capabilityPolicy           *commonpb.ClusterPolicy
 
 	entryCount int
 }

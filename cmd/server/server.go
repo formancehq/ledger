@@ -852,6 +852,7 @@ func discoverPeersFromCluster(raftAddr string, tlsCfg bootstrap.TLSConfig, clust
 			Address:        p.GetRaftAddress(),
 			ServiceAddress: p.GetServiceAddress(),
 			InstanceID:     p.GetInstanceId(),
+			Capabilities:   append([]uint32(nil), p.GetCapabilities()...),
 		})
 	}
 

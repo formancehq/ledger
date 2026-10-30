@@ -53,7 +53,7 @@ func (node *Node) waitForPriorMembership(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("marshaling membership barrier: %w", err)
 	}
-	proposal := NewProposal(cmd.GetId(), data)
+	proposal := newProposal(cmd.GetId(), data, nil)
 	proposal.membershipBarrier = true
 	node.indexTracker.Lock()
 	future, err := node.Propose(ctx, proposal)
@@ -119,7 +119,7 @@ func (node *Node) BeginDrain(ctx context.Context, epoch string, members []uint64
 	if err != nil {
 		return nil, fmt.Errorf("marshaling drain marker: %w", err)
 	}
-	proposal := NewProposal(cmd.GetId(), data)
+	proposal := newProposal(cmd.GetId(), data, nil)
 	proposal.drainMarker = true
 	proposal.expectedTerm = expectedTerm
 
@@ -184,7 +184,7 @@ func (node *Node) EndDrain(ctx context.Context, epoch string, expectedTerm uint6
 	if err != nil {
 		return nil, fmt.Errorf("marshaling drain release: %w", err)
 	}
-	proposal := NewProposal(cmd.GetId(), data)
+	proposal := newProposal(cmd.GetId(), data, nil)
 	proposal.releaseMarker = true
 	proposal.expectedTerm = expectedTerm
 	node.indexTracker.Lock()

@@ -79,6 +79,7 @@ needs_schemathesis=false
 needs_operator=false
 needs_protocol=false
 needs_proto_lint=false
+needs_capability_contract=false
 has_change=false
 changed_packages=()
 
@@ -99,10 +100,25 @@ classify_path() {
     # Service contract or revision edits are classified against the base by
     # scripts/checkprotocolversion, independently of the gates below.
     case "$path" in
+        misc/proto/common.proto|misc/proto/raft_cmd.proto)
+            needs_protocol=true
+            needs_capability_contract=true
+            ;;
         misc/proto/*|pkg/grpcprotocol/*) needs_protocol=true ;;
     esac
     case "$path" in
         misc/proto/*|tools/buf-plugin-ledger/*) needs_proto_lint=true ;;
+    esac
+
+    # A protocol-semantic change does not have to alter the protobuf schema.
+    # Require the capability contract gate for production FSM/admission code
+    # as well, while allowing focused tests to evolve independently.
+    case "$path" in
+        internal/domain/processing/*.go|internal/application/admission/*.go|internal/infra/plan/*.go|internal/infra/membership/*.go|internal/infra/node/*.go)
+            if [[ "$path" != *_test.go ]]; then
+                needs_capability_contract=true
+            fi
+            ;;
     esac
 
     case "$status" in
@@ -240,6 +256,9 @@ fi
 if [[ "$needs_proto_lint" == true ]]; then
     gates+=(proto-lint)
 fi
+if [[ "$needs_capability_contract" == true ]]; then
+    gates+=(capability-contract)
+fi
 
 if [[ "$mode" == list ]]; then
     printf '%s\n' "${gates[@]}"
@@ -304,6 +323,9 @@ if [[ "$mode" == normalize ]]; then
 fi
 
 echo "==> agent-check-pr: selected local gates: ${gates[*]}"
+if [[ "$needs_capability_contract" == true ]]; then
+    bash "$SCRIPT_DIR/check-capability-contract" "$base_sha"
+fi
 if [[ "$needs_protocol" == true ]]; then
     # Cheap and decisive: run before the long suites.
     PROTOCOL_BASE_SHA="$base_sha" just check-protocol-version

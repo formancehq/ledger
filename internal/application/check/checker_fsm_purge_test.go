@@ -69,6 +69,7 @@ func newFSMPurgeMachine(t *testing.T) (*state.Machine, *dal.Store, *attributes.A
 		fsmPurgeAuditKey,
 		0,
 		func(*raftpb.Entry, *dal.WriteSession) error { return nil },
+		state.NoopCapabilityPolicyCommitHandler,
 	)
 	require.NoError(t, err)
 

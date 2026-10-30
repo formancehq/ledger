@@ -64,7 +64,7 @@ func recoveredAuditKeyMachine(t *testing.T, store *dal.Store) *state.Machine {
 	registry := state.NewStateRegistry(c, attributes.New())
 	m, err := state.NewMachine(testLogger(), registry, state.NewCacheSnapshotter(testLogger(), registry, nil), store,
 		dal.NewSentinelFactory(store, false), meter, keystore.NewKeyStore(), state.NewSharedState(),
-		signingParityNotifier{}, nil, "", 0, func(*raftpb.Entry, *dal.WriteSession) error { return nil })
+		signingParityNotifier{}, nil, "", 0, func(*raftpb.Entry, *dal.WriteSession) error { return nil }, state.NoopCapabilityPolicyCommitHandler)
 	require.NoError(t, err)
 	require.NoError(t, state.NewRecovery(m, store).RecoverState())
 
