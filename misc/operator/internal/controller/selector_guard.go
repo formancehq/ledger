@@ -39,7 +39,7 @@ var errSelectorDrift = errors.New("selector drift detected")
 func (r *ClusterReconciler) pruneDisabledOptionalServices(
 	ctx context.Context, ledger *ledgerv1alpha1.Cluster,
 ) error {
-	if ledger.Spec.HeadlessService.Enabled != nil && !*ledger.Spec.HeadlessService.Enabled {
+	if ledger.Spec.HeadlessService.Enabled != nil && !*ledger.Spec.HeadlessService.Enabled && ledger.Status.Upgrade == nil {
 		if err := r.deleteIfExists(ctx, ledger, &corev1.Service{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      headlessServiceName(ledger.Name),

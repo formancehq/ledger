@@ -54,6 +54,10 @@ e2e-cluster-up: _e2e-build-ledger
     docker pull natsio/nats-box:0.19.2
     kind load docker-image ledger-operator:e2e --name ledger-e2e
     kind load docker-image ledger:e2e --name ledger-e2e
+    docker pull ghcr.io/formancehq/ledger:v3.0.0-rc.2
+    docker tag ledger:e2e ledger:v3.0.0-rc.3
+    kind load docker-image ghcr.io/formancehq/ledger:v3.0.0-rc.2 --name ledger-e2e
+    kind load docker-image ledger:v3.0.0-rc.3 --name ledger-e2e
     kind load docker-image ghcr.io/formancehq/minio:RELEASE.2025-10-15T17-29-55Z --name ledger-e2e
     kind load docker-image nats:2.12.14-alpine --name ledger-e2e
     kind load docker-image natsio/nats-box:0.19.2 --name ledger-e2e

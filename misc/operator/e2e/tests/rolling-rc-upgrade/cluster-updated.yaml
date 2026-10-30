@@ -1,0 +1,10 @@
+apiVersion: ledger.formance.com/v1alpha1
+kind: Cluster
+metadata:
+  name: required-upgrade
+spec:
+  replicas: 3
+  image:
+    repository: ledger
+    tag: v3.0.0-rc.3
+    pullPolicy: Never

@@ -1354,6 +1354,10 @@ type ClusterStatus struct {
 	// +optional
 	Drain *DrainStatus `json:"drain,omitempty"`
 
+	// Upgrade records an interrupted mandatory stop-and-recreate upgrade.
+	// It is persisted before the old StatefulSet is deleted.
+	// +optional
+	Upgrade *ClusterUpgradeStatus `json:"upgrade,omitempty"`
 	// TLSRollout preserves certificate references and mode across operator restarts
 	// and StatefulSet recreation. Cleared after the disabled rollout converges.
 	// +optional
@@ -1392,6 +1396,22 @@ type ClusterStatus struct {
 type DrainStatus struct {
 	Epoch string `json:"epoch"`
 	Phase string `json:"phase"`
+}
+
+// ClusterUpgradeStatus fences recreation until the old workload is fully gone.
+type ClusterUpgradeStatus struct {
+	Source           string `json:"source"`
+	Target           string `json:"target"`
+	StatefulSetUID   string `json:"statefulSetUID"`
+	TargetSpecHash   string `json:"targetSpecHash"`
+	ExpectedReplicas int32  `json:"expectedReplicas"`
+	// DrainEpoch identifies the Raft admission cutoff across operator restarts.
+	DrainEpoch string `json:"drainEpoch,omitempty"`
+	// ClaimUIDs pins each pre-existing volume to its original claim.
+	ClaimUIDs map[string]string `json:"claimUIDs,omitempty"`
+	// VolumeUIDs pins every bound PV reused by the original claims.
+	VolumeUIDs map[string]string `json:"volumeUIDs,omitempty"`
+	Phase      string            `json:"phase"`
 }
 
 // EndpointsStatus contains the resolved endpoints for a Cluster.

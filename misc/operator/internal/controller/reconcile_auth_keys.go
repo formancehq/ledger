@@ -180,6 +180,13 @@ type authKeyEntry struct {
 // the ConfigMap may still have been refreshed. A complete carried set, an
 // issuer-backed cluster, and any partial resolution all return authKeysNotPending.
 func (r *ClusterReconciler) reconcileAuthKeys(ctx context.Context, ledger *ledgerv1alpha1.Cluster) ([]credentialsKeyInfo, authKeysPendingReason, error) {
+	return r.reconcileAuthKeysWithDeletion(ctx, ledger, true)
+}
+
+// During a stopped upgrade, a Pod may still reference the existing ConfigMap.
+// Keep it when Credentials temporarily stop matching; the ordinary pass may
+// delete it after the workload is free to reconcile again.
+func (r *ClusterReconciler) reconcileAuthKeysWithDeletion(ctx context.Context, ledger *ledgerv1alpha1.Cluster, mayDelete bool) ([]credentialsKeyInfo, authKeysPendingReason, error) {
 	logger := log.FromContext(ctx)
 
 	// Collect keys from cluster-scoped Credentials. matched counts Credentials
@@ -198,6 +205,9 @@ func (r *ClusterReconciler) reconcileAuthKeys(ctx context.Context, ledger *ledge
 	// Case 1: no Credentials match (matched == 0) — legitimate removal. Delete
 	// the ConfigMap if it exists.
 	if matched == 0 {
+		if !mayDelete {
+			return nil, authKeysNotPending, nil
+		}
 		cm := &corev1.ConfigMap{}
 		if err := r.Get(ctx, types.NamespacedName{Namespace: ledger.Namespace, Name: cmName}, cm); err != nil {
 			if !apierrors.IsNotFound(err) {
@@ -427,6 +437,9 @@ func (r *ClusterReconciler) reconcileAuthKeys(ctx context.Context, ledger *ledge
 	// preserve (the server needs no key set here), so delete the ConfigMap like any
 	// other no-effective-keys removal rather than ship an empty one.
 	if len(merged) == 0 {
+		if !mayDelete {
+			return nil, authKeysNotPending, nil
+		}
 		cm := &corev1.ConfigMap{}
 		if err := r.Get(ctx, types.NamespacedName{Namespace: ledger.Namespace, Name: cmName}, cm); err != nil {
 			if !apierrors.IsNotFound(err) {
