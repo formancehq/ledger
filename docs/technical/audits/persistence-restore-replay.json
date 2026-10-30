@@ -29,7 +29,8 @@
     "internal/infra/state/drain_test.go",
     "internal/pkg/proposals/**",
     "internal/pkg/commands/**",
-    "internal/infra/plan/runner.go"  ],
+    "internal/infra/plan/runner.go"
+  ],
   "related_docs": [
     "AGENTS.md",
     "docs/technical/agent-context.md",
