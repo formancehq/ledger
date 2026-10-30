@@ -160,3 +160,44 @@ func TestDrainMarkerOrdersWritesAndSurvivesRecovery(t *testing.T) {
 		})
 	}
 }
+
+func TestDrainFenceRejectsNativePayloads(t *testing.T) {
+	t.Parallel()
+	machine, store, _ := newTestMachine(t)
+
+	marker, err := machine.ApplyEntries(t.Context(), store, makeEntry(t, 1, payloadProposal(t, drainProposal(1, "native-epoch"))))
+	require.NoError(t, err)
+	require.NoError(t, marker.Results[0].Error)
+	require.Equal(t, "native-epoch", machine.DrainDecision().GetEpoch())
+	beforeAudit := machine.State.NextAuditSequenceID
+	beforePolicy := machine.State.ClusterPolicy.GetRevision()
+
+	blockedBusiness, err := machine.ApplyEntries(t.Context(), store, makeEntry(t, 2, payloadProposal(t, makeProposal(2, createLedgerOrder("blocked")))))
+	require.NoError(t, err)
+	require.ErrorIs(t, blockedBusiness.Results[0].Error, domain.ErrMaintenanceMode)
+	_, err = query.GetLedgerByName(t.Context(), store, "blocked")
+	require.ErrorIs(t, err, domain.ErrNotFound)
+
+	technical := makeProposal(3)
+	technical.TechnicalUpdates = []*raftcmdpb.TechnicalUpdate{{
+		Kind: &raftcmdpb.TechnicalUpdate_ClusterConfig{ClusterConfig: &commonpb.ClusterConfig{RotationThreshold: 12}},
+	}}
+	blockedTechnical, err := machine.ApplyEntries(t.Context(), store, makeEntry(t, 3, payloadProposal(t, technical)))
+	require.NoError(t, err)
+	require.ErrorIs(t, blockedTechnical.Results[0].Error, domain.ErrMaintenanceMode)
+
+	blockedPolicy, err := machine.ApplyEntries(t.Context(), store, makeEntry(t, 4, payloadProposal(t, makeProposal(4, clusterPolicyOrder(idempotencyTestPolicy(2, 100))))))
+	require.NoError(t, err)
+	require.ErrorIs(t, blockedPolicy.Results[0].Error, domain.ErrMaintenanceMode)
+	require.Equal(t, beforePolicy, machine.State.ClusterPolicy.GetRevision())
+	require.Equal(t, beforeAudit, machine.State.NextAuditSequenceID)
+
+	release, err := machine.ApplyEntries(t.Context(), store, makeEntry(t, 5, payloadProposal(t, drainReleaseProposal(5, "native-epoch"))))
+	require.NoError(t, err)
+	require.NoError(t, release.Results[0].Error)
+	require.Equal(t, uint64(5), machine.DrainReleaseIndex())
+
+	resumed, err := machine.ApplyEntries(t.Context(), store, makeEntry(t, 6, payloadProposal(t, makeProposal(6, createLedgerOrder("resumed")))))
+	require.NoError(t, err)
+	require.NoError(t, resumed.Results[0].Error)
+}
