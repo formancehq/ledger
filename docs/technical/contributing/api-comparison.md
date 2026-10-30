@@ -1175,10 +1175,11 @@ also keyed per `(account, asset, color)` while `first_usage` is per address.
 - Hash-based content verification (BLAKE3)
 - Stored in generation-based cache and persisted to Pebble
 - Maximum key length: 256 characters (validated at admission)
+- The key stores the batch's outcome, success **or** definitive business refusal (for example `INSUFFICIENT_FUNDS`). A retry with the same content replays the refusal; a different body under the same key returns `IDEMPOTENCY_KEY_CONFLICT` until the key expires
 
-**Original:** Same mechanism.
+**Original:** Same mechanism, but a refused transaction does not keep its key: a later request with a different body can use it.
 
-**Status:** ✅ Compliant
+**Status:** ⚠️ Different — refusals hold the key in v3. Clients that relied on a key being taken only by a committed transaction should use the transaction `reference` instead, which only a commit takes
 
 See [Idempotency](../architecture/subsystems/admission/idempotency.md) for detailed documentation.
 
