@@ -6307,9 +6307,9 @@ components:
             - TRANSACTIONS
             - LOGS
           description: >-
-            Target entity type. `LOGS` queries return log entries; the log-only
-            filter fields (`id`, `date`, `ledger`) are valid only when the
-            target is `LOGS`.
+            Target entity type. `LOGS` queries return log entries. The `id`
+            field resolves to a transaction ID for `TRANSACTIONS` and a log ID
+            for `LOGS`; `date` and `ledger` are log-only fields.
         filter:
           $ref: '#/components/schemas/PreparedQueryFilterInput'
           description: >-
