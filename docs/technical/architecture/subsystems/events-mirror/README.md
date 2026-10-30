@@ -10,7 +10,7 @@ Two leader-only background workers that tail the global log.
 | Document | Description |
 |----------|-------------|
 | [events.md](events.md) | Domain event types, event sinks, nested ClickHouse account metadata and table upgrades, NATS ledger-name token encoding, and HTTP acknowledgement and redirect rules. |
-| [mirror.md](mirror.md) | Mirror worker, PostgreSQL visibility and permanent-gap synchronization, source prerequisites and sequence-cache transition evidence, safe HTTP URL parsing and transport diagnostics, ascending HTTP continuation, v2 source payload identity contract, and promotion at cutover. |
+| [mirror.md](mirror.md) | Mirror worker, PostgreSQL visibility and permanent-gap synchronization, source prerequisites and sequence-cache transition evidence, safe HTTP URL parsing and redirect-aware transport diagnostics, ascending HTTP continuation, v2 source payload identity contract, and promotion at cutover. |
 | [cel-rewrite.md](cel-rewrite.md) | CEL rewrite engine that transforms transactions during mirror translation (rename addresses, transform metadata, drop transactions). |
 
 Mirror [source initialization and cancellation](mirror.md#source-initialization-and-cancellation)
