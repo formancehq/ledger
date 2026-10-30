@@ -22,6 +22,7 @@ import (
 	"k8s.io/client-go/tools/record"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
@@ -38,10 +39,12 @@ type ClusterReconciler struct {
 	Recorder  record.EventRecorder
 }
 
+const operatorCredentialsFinalizer = "ledger.formance.com/operator-credentials"
+
 // +kubebuilder:rbac:groups=ledger.formance.com,resources=clusters,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=ledger.formance.com,resources=clusters/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=ledger.formance.com,resources=clusters/finalizers,verbs=update
-// +kubebuilder:rbac:groups=ledger.formance.com,resources=credentials,verbs=get;list;watch
+// +kubebuilder:rbac:groups=ledger.formance.com,resources=credentials,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=apps,resources=statefulsets,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups="",resources=services;serviceaccounts,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups="",resources=secrets,verbs=get;list;watch
@@ -66,10 +69,30 @@ func (r *ClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (re
 		return ctrl.Result{}, ignoreNotFound(err)
 	}
 
-	// Handle deletion — owned resources are garbage-collected via owner references.
+	// Credentials is cluster-scoped while Cluster is namespaced, so Kubernetes
+	// cannot garbage-collect the generated credential through an owner reference.
+	// Use a Cluster finalizer to remove it explicitly.
 	if !ledger.DeletionTimestamp.IsZero() {
+		credentials := &ledgerv1alpha1.Credentials{ObjectMeta: metav1.ObjectMeta{Name: operatorCredentialsName(ledger)}}
+		if err := r.Delete(ctx, credentials); err != nil && !apierrors.IsNotFound(err) {
+			return ctrl.Result{}, fmt.Errorf("deleting operator Credentials: %w", err)
+		}
+		if controllerutil.ContainsFinalizer(ledger, operatorCredentialsFinalizer) {
+			controllerutil.RemoveFinalizer(ledger, operatorCredentialsFinalizer)
+			if err := r.Update(ctx, ledger); err != nil {
+				return ctrl.Result{}, fmt.Errorf("removing operator Credentials finalizer: %w", err)
+			}
+		}
+
 		return ctrl.Result{}, nil
 	}
+	if !controllerutil.ContainsFinalizer(ledger, operatorCredentialsFinalizer) {
+		controllerutil.AddFinalizer(ledger, operatorCredentialsFinalizer)
+		if err := r.Update(ctx, ledger); err != nil {
+			return ctrl.Result{}, fmt.Errorf("adding operator Credentials finalizer: %w", err)
+		}
+	}
+
 	// Commit the identity before any resource can start a Ledger process. An
 	// update conflict aborts this reconcile; the next read uses the winning ID.
 	if ledger.Spec.ClusterID == "" {
@@ -156,6 +179,25 @@ func (r *ClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (re
 
 		return ctrl.Result{}, nil
 	}
+	if err := validatePeerPortImmutability(ledger, existingStatefulSet); err != nil {
+		meta.SetStatusCondition(&ledger.Status.Conditions, metav1.Condition{
+			Type:               "PeerPortImmutable",
+			Status:             metav1.ConditionFalse,
+			Reason:             "PeerPortChanged",
+			Message:            err.Error(),
+			ObservedGeneration: ledger.Generation,
+		})
+		ledger.Status.Phase = "Error"
+
+		return ctrl.Result{}, nil
+	}
+	meta.SetStatusCondition(&ledger.Status.Conditions, metav1.Condition{
+		Type:               "PeerPortImmutable",
+		Status:             metav1.ConditionTrue,
+		Reason:             "Stable",
+		Message:            "grpcPeerPort matches the existing StatefulSet",
+		ObservedGeneration: ledger.Generation,
+	})
 
 	// Clear any previous validation failure.
 	meta.SetStatusCondition(&ledger.Status.Conditions, metav1.Condition{
@@ -274,6 +316,22 @@ func (r *ClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (re
 		}
 	}
 
+	operatorCredentialReady, err := r.reconcileOperatorCredentials(ctx, ledger)
+	if err != nil {
+		return ctrl.Result{}, fmt.Errorf("reconciling operator Credentials: %w", err)
+	}
+	if ledger.Spec.Auth != nil && ledger.Spec.Auth.Enabled != nil && *ledger.Spec.Auth.Enabled && !operatorCredentialReady {
+		meta.SetStatusCondition(&ledger.Status.Conditions, metav1.Condition{
+			Type:               "OperatorCredentialsPending",
+			Status:             metav1.ConditionTrue,
+			Reason:             "CredentialsNotReady",
+			Message:            "waiting for the operator-managed Credentials keypair to be distributed",
+			ObservedGeneration: ledger.Generation,
+		})
+		return ctrl.Result{RequeueAfter: authKeysPendingRequeueInterval}, nil
+	}
+	meta.RemoveStatusCondition(&ledger.Status.Conditions, "OperatorCredentialsPending")
+
 	// Reconcile auth keys from Credentials (before StatefulSet).
 	credentials, pendingReason, err := r.reconcileAuthKeys(ctx, ledger)
 	if err != nil {
@@ -282,16 +340,9 @@ func (r *ClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (re
 		return ctrl.Result{}, fmt.Errorf("reconciling AuthKeys: %w", err)
 	}
 
-	// Reconcile the cluster-secret (TLS static bearer token) BEFORE the
-	// AuthKeysPending gate, but only its SAFE (create/update) side: mayDelete=false.
-	// Creating/keeping the Secret while any StatefulSet references it never mutates
-	// the pod template or triggers a rollout, so it is safe (and necessary) even
-	// while the auth-keys fail-safe holds the StatefulSet pass — otherwise a Secret
-	// that went missing during a long Credentials-non-distribution window would
-	// crash restarted pods referencing CLUSTER_SECRET via SecretKeyRef. Deletion
-	// (TLS-off) is deferred to AFTER reconcileStatefulSet on the non-pending path,
-	// so we never delete a Secret still referenced by a StatefulSet we cannot update
-	// (EN-1487; only the pod-template mutation may be frozen, not this).
+	// Reconcile the cluster-secret before the AuthKeysPending gate, but only
+	// its safe (create/update) side. Deletion is deferred until after the
+	// StatefulSet pass below so no live pod references a deleted Secret.
 	if err := r.reconcileClusterSecretForTLSState(ctx, ledger, false); err != nil {
 		logger.Error(err, "failed to reconcile cluster secret")
 
@@ -369,6 +420,31 @@ func (r *ClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (re
 	}
 
 	return stsResult, nil
+}
+
+func validatePeerPortImmutability(ledger *ledgerv1alpha1.Cluster, statefulSet *appsv1.StatefulSet) error {
+	if statefulSet == nil || len(statefulSet.Spec.Template.Spec.Containers) == 0 {
+		return nil
+	}
+
+	for _, env := range statefulSet.Spec.Template.Spec.Containers[0].Env {
+		if env.Name != "GRPC_PEER_PORT" {
+			continue
+		}
+		persistedPort, err := strconv.Atoi(env.Value)
+		if err != nil {
+			return fmt.Errorf("existing StatefulSet has invalid GRPC_PEER_PORT %q: %w", env.Value, err)
+		}
+		if int32(persistedPort) != grpcPeerPort(ledger) {
+			return fmt.Errorf("grpcPeerPort is immutable after initialization: StatefulSet uses %d, requested %d", persistedPort, grpcPeerPort(ledger))
+		}
+
+		return nil
+	}
+
+	// StatefulSets created before the peer-port split have no marker. Allow one
+	// reconciliation to add it; subsequent edits are rejected by this guard.
+	return nil
 }
 
 // deletionProtectionPolicyInstalled reports whether the cluster-scoped volume
@@ -599,6 +675,13 @@ func applyDefaults(ledger *ledgerv1alpha1.Cluster) {
 	if ledger.Spec.GrpcPort == 0 {
 		ledger.Spec.GrpcPort = 8888
 	}
+	if ledger.Spec.GrpcPeerPort == 0 {
+		if ledger.Spec.Service.GrpcPort != 0 {
+			ledger.Spec.GrpcPeerPort = ledger.Spec.Service.GrpcPort + 1
+		} else {
+			ledger.Spec.GrpcPeerPort = ledger.Spec.GrpcPort + 1
+		}
+	}
 	if ledger.Spec.HttpPort == 0 {
 		ledger.Spec.HttpPort = 9000
 	}
@@ -655,6 +738,27 @@ func validateSpec(ledger *ledgerv1alpha1.Cluster) error {
 // this only rejects values that would either be silently ignored or that the
 // server would refuse.
 func validateClusterConfig(spec *ledgerv1alpha1.ClusterSpec) error {
+	if spec.GrpcPeerPort != 0 {
+		if spec.GrpcPeerPort < 1 || spec.GrpcPeerPort > 65535 {
+			return fmt.Errorf("grpcPeerPort must be between 1 and 65535, got %d", spec.GrpcPeerPort)
+		}
+		if spec.GrpcPort != 0 && spec.GrpcPeerPort == spec.GrpcPort {
+			return fmt.Errorf("grpcPeerPort must differ from grpcPort, both are %d", spec.GrpcPeerPort)
+		}
+		if spec.HttpPort != 0 && spec.GrpcPeerPort == spec.HttpPort {
+			return fmt.Errorf("grpcPeerPort must differ from httpPort, both are %d", spec.GrpcPeerPort)
+		}
+		if spec.Service.GrpcPort != 0 && spec.GrpcPeerPort == spec.Service.GrpcPort {
+			return fmt.Errorf("grpcPeerPort must differ from service.grpcPort, both are %d", spec.GrpcPeerPort)
+		}
+		if spec.Service.HttpPort != 0 && spec.GrpcPeerPort == spec.Service.HttpPort {
+			return fmt.Errorf("grpcPeerPort must differ from service.httpPort, both are %d", spec.GrpcPeerPort)
+		}
+		if spec.GrpcPeerPort == raftPortFromBindAddr(spec.BindAddr) {
+			return fmt.Errorf("grpcPeerPort must differ from the Raft port, both are %d", spec.GrpcPeerPort)
+		}
+	}
+
 	// Auth requires TLS. The ledger server rejects --auth-enabled unless
 	// --tls-mode=required, and buildEnvVars defers auth env until TLS converges
 	// to `required`. Without this guard a CR with auth.enabled=true but

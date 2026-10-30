@@ -298,9 +298,10 @@ func raftNodePresent(ctx context.Context, cfg *rest.Config, clientset kubernetes
 	return false, nil
 }
 
-// ledgerctlCommand builds a shell command that runs ledgerctl with the cluster
-// secret for authentication. The command is wrapped in sh -c so that env vars
-// like $CLUSTER_SECRET, $TLS_CA_CERT_FILE, $POD_NAME and $POD_NAMESPACE are
+// ledgerctlCommand builds a shell command that runs ledgerctl with a short-lived
+// JWT signed by the operator Credentials seed. The command is wrapped in sh -c
+// so that env vars like $OPERATOR_SIGNING_KEY, $TLS_CA_CERT_FILE, $POD_NAME and
+// $POD_NAMESPACE are
 // expanded at runtime inside the pod.
 //
 // serverAddr is the host:port the client should dial. For in-pod execs the
@@ -332,7 +333,7 @@ func ledgerctlCommand(serverAddr, tlsMode string, args ...string) []string {
 		head, tail = args[:i], args[i:]
 	}
 
-	cmd := otelExecPrologue + fmt.Sprintf(`./ledgerctl %s --server "%s" %s --auth-token "$CLUSTER_SECRET"`,
+	cmd := otelExecPrologue + `if [ -n "${OPERATOR_SIGNING_KEY:-}" ]; then OPERATOR_AUTH_TOKEN="$(./ledgerctl auth generate-token --signing-key "$OPERATOR_SIGNING_KEY" --key-id "$OPERATOR_SIGNING_KEY_ID" --subject ledger-operator --scopes ledger:ReadOps,ledger:WriteOps,ledger:ReadCluster,ledger:WriteCluster --expiration 5m)"; fi; ` + fmt.Sprintf(`./ledgerctl %s --server "%s" %s --auth-token "${OPERATOR_AUTH_TOKEN:-}"`,
 		shellQuoteJoin(head), serverAddr, ledgerctlTLSFlag(tlsMode))
 	if len(tail) > 0 {
 		cmd += " " + shellQuoteJoin(tail)

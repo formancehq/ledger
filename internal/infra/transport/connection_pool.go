@@ -89,25 +89,37 @@ func (p TLSPolicy) AllowsTLS() bool { return p.TLSConfig != nil }
 // per peer.
 func (p TLSPolicy) IsOptional() bool { return p.TLSConfig != nil && !p.Strict }
 
-// staticTokenCredentials implements grpc.PerRPCCredentials by injecting a static bearer token.
+// staticTokenCredentials implements grpc.PerRPCCredentials by injecting a
+// static transport credential and, when present in the context, the original
+// caller's bearer token.
 type staticTokenCredentials struct {
-	token string
+	token  string
+	header string
 }
 
-func (c staticTokenCredentials) GetRequestMetadata(_ context.Context, _ ...string) (map[string]string, error) {
-	return map[string]string{
-		"authorization": "Bearer " + c.token,
-	}, nil
+func (c staticTokenCredentials) GetRequestMetadata(ctx context.Context, _ ...string) (map[string]string, error) {
+	header := c.header
+	if header == "" {
+		header = "authorization"
+	}
+	metadata := map[string]string{header: "Bearer " + c.token}
+	if header == PeerAuthMetadataKey {
+		if forwarded := ForwardedBearerToken(ctx); forwarded != "" {
+			metadata["authorization"] = "Bearer " + forwarded
+		}
+	}
+
+	return metadata, nil
 }
 
 func (c staticTokenCredentials) RequireTransportSecurity() bool {
-	return false
+	return true
 }
 
 // BearerTokenDialOption returns a gRPC DialOption that injects a static bearer token
 // into every outgoing call. Returns nil if token is empty.
 func BearerTokenDialOption(token string) grpc.DialOption {
-	return grpc.WithPerRPCCredentials(staticTokenCredentials{token: token})
+	return grpc.WithPerRPCCredentials(staticTokenCredentials{token: token, header: "authorization"})
 }
 
 // dialOptions returns the common gRPC dial options derived from PoolConfig.
@@ -145,7 +157,7 @@ func dialOptions(creds credentials.TransportCredentials, cfg PoolConfig) []grpc.
 		))
 	}
 	if cfg.AuthToken != "" {
-		opts = append(opts, grpc.WithPerRPCCredentials(staticTokenCredentials{token: cfg.AuthToken}))
+		opts = append(opts, grpc.WithPerRPCCredentials(staticTokenCredentials{token: cfg.AuthToken, header: PeerAuthMetadataKey}))
 	}
 
 	return opts
@@ -273,6 +285,10 @@ func (p *ConnectionPool) dialPeer(id uint64, addr string) (*peerEntry, error) {
 // falls back to plaintext, whereas a network-level failure is returned to
 // the caller (which will retry later).
 func (p *ConnectionPool) decideTLS(addr string) (bool, error) {
+	if p.config.AuthToken != "" && (!p.policy.AllowsTLS() || !p.policy.Strict) {
+		return false, fmt.Errorf("peer authentication requires strict TLS for %s", addr)
+	}
+
 	switch {
 	case !p.policy.AllowsTLS():
 		return false, nil

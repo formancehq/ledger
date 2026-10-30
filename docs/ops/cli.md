@@ -4556,24 +4556,29 @@ the value configured on the existing cluster nodes
 
 When `--cluster-secret` is set, every inter-node gRPC call (Raft transport,
 snapshot transfer, cluster bootstrap, and follower-to-leader forwarding on the
-service API) carries this shared secret as a bearer token. The value must be
-the same on all nodes in the cluster.
+dedicated peer service API) carries this shared secret as a transport
+credential. Raft and bootstrap use the `authorization` metadata; the peer
+service API uses `x-ledger-peer-auth`. The value must be the same on all nodes
+in the cluster.
+
+`--cluster-secret` is not a `ledgerctl` credential. Calls to the public
+service API with it are rejected; only the dedicated peer service API and the
+Raft plane may use it. User JWTs remain in the standard `authorization`
+metadata when a request is forwarded and are evaluated by the terminal node.
 
 The cluster secret and `--auth-enabled` are separate mechanisms:
 
 - `--auth-enabled` authenticates external clients on the service API with
   JWT or Ed25519 tokens.
-- `--cluster-secret` authenticates nodes to each other. The server does not
-  require it when `--auth-enabled` is set, and `--auth-enabled` does not
-  protect the Raft port.
+- `--cluster-secret` authenticates nodes to each other. It is required when
+  `--auth-enabled` is set, and `--auth-enabled` does not protect the Raft port.
 
 The two flags interact in one place. When `--auth-enabled` is set, a follower
 forwards writes to the leader with the original caller's identity. The leader
 accepts that identity only from a peer that presents the cluster secret on the
-service API. In a multi-node cluster with `--auth-enabled` and no cluster
-secret, writes sent to a follower fail with `PermissionDenied`.
-
-The server does not check at startup that a multi-node cluster has a secret.
+service API. Authentication therefore fails at startup if `--auth-enabled` is
+set without `--cluster-secret`, rather than allowing a partially configured
+multi-node cluster to start.
 The Kubernetes operator creates a random secret and injects `CLUSTER_SECRET`
 into every pod whenever TLS is active (`optional` or `required`), whether
 authentication is enabled or not. Manual deployments must set the flag
@@ -4618,9 +4623,9 @@ the value configured on the existing cluster nodes (and --tls-mode, which
 
 If the joining node *does* pass a secret but it does not match, the hint
 instead tells you to verify the secret against the existing cluster nodes. The
-Kubernetes operator injects `CLUSTER_SECRET` into every pod whenever TLS is
-active, so this failure surfaces only in manual/non-operator deployments where
-one node's secret drifted from the rest of the cluster.
+Kubernetes operator injects the cluster secret for inter-node transport and
+keeps it separate from user-facing `ledgerctl` credentials. Operator
+maintenance commands use a scoped `Credentials` JWT instead.
 
 ```bash
 ledger run --cluster-secret "my-cluster-secret" --auth-enabled \

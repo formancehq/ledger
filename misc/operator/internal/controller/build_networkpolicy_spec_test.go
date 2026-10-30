@@ -38,9 +38,16 @@ func TestBuildNetworkPolicySpec_DefaultCIDR(t *testing.T) {
 	assert.Equal(t, "ledger", spec.PodSelector.MatchLabels[labelName])
 	assert.Equal(t, "test", spec.PodSelector.MatchLabels[labelInstance])
 
-	// Egress-only policy.
-	require.Len(t, spec.PolicyTypes, 1)
-	assert.Equal(t, networkingv1.PolicyTypeEgress, spec.PolicyTypes[0])
+	// Public ports remain reachable, while private peer ports are restricted to
+	// Pods belonging to this Ledger cluster.
+	require.Equal(t, []networkingv1.PolicyType{networkingv1.PolicyTypeIngress, networkingv1.PolicyTypeEgress}, spec.PolicyTypes)
+	require.Len(t, spec.Ingress, 2)
+	assert.Empty(t, spec.Ingress[0].From)
+	assert.Equal(t, int32(8888), spec.Ingress[0].Ports[0].Port.IntVal)
+	assert.Equal(t, int32(9000), spec.Ingress[0].Ports[1].Port.IntVal)
+	require.Len(t, spec.Ingress[1].From, 1)
+	assert.Equal(t, "test", spec.Ingress[1].From[0].PodSelector.MatchLabels[labelInstance])
+	assert.Equal(t, int32(8889), spec.Ingress[1].Ports[1].Port.IntVal)
 
 	// 3 egress rules.
 	require.Len(t, spec.Egress, 3)
@@ -79,15 +86,17 @@ func TestBuildNetworkPolicySpec_InterNodeRule(t *testing.T) {
 	assert.Equal(t, "inter", interNode.To[0].PodSelector.MatchLabels[labelInstance])
 	assert.Equal(t, "ledger", interNode.To[0].PodSelector.MatchLabels[labelName])
 
-	// Default ports: raft=7777, grpc=8888, http=9000.
-	require.Len(t, interNode.Ports, 3)
+	// Default ports: raft=7777, grpc=8888, grpc-peer=8889, http=9000.
+	require.Len(t, interNode.Ports, 4)
 	tcp := corev1.ProtocolTCP
 	assert.Equal(t, int32(7777), interNode.Ports[0].Port.IntVal)
 	assert.Equal(t, &tcp, interNode.Ports[0].Protocol)
 	assert.Equal(t, int32(8888), interNode.Ports[1].Port.IntVal)
 	assert.Equal(t, &tcp, interNode.Ports[1].Protocol)
-	assert.Equal(t, int32(9000), interNode.Ports[2].Port.IntVal)
+	assert.Equal(t, int32(8889), interNode.Ports[2].Port.IntVal)
 	assert.Equal(t, &tcp, interNode.Ports[2].Protocol)
+	assert.Equal(t, int32(9000), interNode.Ports[3].Port.IntVal)
+	assert.Equal(t, &tcp, interNode.Ports[3].Protocol)
 }
 
 func TestBuildNetworkPolicySpec_InterNodeCustomPorts(t *testing.T) {
@@ -100,10 +109,11 @@ func TestBuildNetworkPolicySpec_InterNodeCustomPorts(t *testing.T) {
 	spec := buildNetworkPolicySpec(ls)
 
 	interNode := spec.Egress[0]
-	require.Len(t, interNode.Ports, 3)
+	require.Len(t, interNode.Ports, 4)
 	assert.Equal(t, int32(17777), interNode.Ports[0].Port.IntVal)
 	assert.Equal(t, int32(18888), interNode.Ports[1].Port.IntVal)
-	assert.Equal(t, int32(19000), interNode.Ports[2].Port.IntVal)
+	assert.Equal(t, int32(18889), interNode.Ports[2].Port.IntVal)
+	assert.Equal(t, int32(19000), interNode.Ports[3].Port.IntVal)
 }
 
 func TestBuildNetworkPolicySpec_DNSRule(t *testing.T) {

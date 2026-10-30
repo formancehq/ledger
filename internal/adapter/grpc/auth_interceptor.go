@@ -2,15 +2,19 @@ package grpc
 
 import (
 	"context"
+	"crypto/subtle"
+	"strings"
 	"time"
 
 	ggrpc "google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
 	internalauth "github.com/formancehq/ledger/v3/internal/adapter/auth"
+	"github.com/formancehq/ledger/v3/internal/infra/transport"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/internal/query"
@@ -62,8 +66,19 @@ func queryProfileClockStreamInterceptor(logger logging.Logger, slowThreshold tim
 	}
 }
 
-func authUnaryInterceptor(cfg internalauth.AuthConfig) ggrpc.UnaryServerInterceptor {
+func authUnaryInterceptor(cfg internalauth.AuthConfig, peerOnly bool) ggrpc.UnaryServerInterceptor {
 	return func(ctx context.Context, req any, info *ggrpc.UnaryServerInfo, handler ggrpc.UnaryHandler) (any, error) {
+		if !peerOnly {
+			if err := rejectDirectClusterSecret(ctx, cfg); err != nil {
+				return nil, err
+			}
+		}
+		if peerOnly {
+			if err := requirePeerCredential(ctx, cfg); err != nil {
+				return nil, err
+			}
+			ctx = internalauth.WithClusterInternal(ctx, true)
+		}
 		policy, protected, err := protectedRPCPolicy(info.FullMethod)
 		if err != nil {
 			return nil, err
@@ -72,7 +87,7 @@ func authUnaryInterceptor(cfg internalauth.AuthConfig) ggrpc.UnaryServerIntercep
 			return handler(ctx, req)
 		}
 
-		ctx, err = internalauth.EvaluateGRPCCredentials(ctx, cfg)
+		ctx, err = evaluatePeerOrUserCredentials(ctx, cfg, peerOnly)
 		if err != nil {
 			return nil, err
 		}
@@ -85,17 +100,27 @@ func authUnaryInterceptor(cfg internalauth.AuthConfig) ggrpc.UnaryServerIntercep
 	}
 }
 
-func authStreamInterceptor(cfg internalauth.AuthConfig) ggrpc.StreamServerInterceptor {
+func authStreamInterceptor(cfg internalauth.AuthConfig, peerOnly bool) ggrpc.StreamServerInterceptor {
 	return func(srv any, stream ggrpc.ServerStream, info *ggrpc.StreamServerInfo, handler ggrpc.StreamHandler) error {
+		ctx := stream.Context()
+		if peerOnly {
+			if err := requirePeerCredential(ctx, cfg); err != nil {
+				return err
+			}
+			ctx = internalauth.WithClusterInternal(ctx, true)
+		} else if err := rejectDirectClusterSecret(ctx, cfg); err != nil {
+			return err
+		}
+
 		policy, protected, err := protectedRPCPolicy(info.FullMethod)
 		if err != nil {
 			return err
 		}
 		if !protected {
-			return handler(srv, stream)
+			return handler(srv, &authServerStream{ServerStream: stream, ctx: ctx})
 		}
 
-		ctx, err := internalauth.EvaluateGRPCCredentials(stream.Context(), cfg)
+		ctx, err = evaluatePeerOrUserCredentials(ctx, cfg, peerOnly)
 		if err != nil {
 			return err
 		}
@@ -122,6 +147,76 @@ func authStreamInterceptor(cfg internalauth.AuthConfig) ggrpc.StreamServerInterc
 
 		return handler(srv, stream)
 	}
+}
+
+func rejectDirectClusterSecret(ctx context.Context, cfg internalauth.AuthConfig) error {
+	if cfg.ClusterSecret == "" {
+		return nil
+	}
+	token, presented, err := internalauth.BearerTokenFromGRPCContext(ctx)
+	if err != nil {
+		return err
+	}
+	if presented && len(token) == len(cfg.ClusterSecret) && subtle.ConstantTimeCompare([]byte(token), []byte(cfg.ClusterSecret)) == 1 {
+		return status.Error(codes.Unauthenticated, "cluster secret is reserved for inter-node forwarding")
+	}
+
+	return nil
+}
+
+func requirePeerCredential(ctx context.Context, cfg internalauth.AuthConfig) error {
+	// Auth-disabled clusters historically had no shared secret. They still get
+	// a dedicated peer listener, but there is no credential to validate in that
+	// mode. Authenticated clusters must present the cluster-secret here; a JWT
+	// is never accepted as a peer credential.
+	if cfg.ClusterSecret == "" && !cfg.Enabled {
+		return nil
+	}
+
+	if cfg.ClusterSecret == "" {
+		return status.Error(codes.Unauthenticated, "cluster secret is required on the peer service")
+	}
+
+	md, ok := metadata.FromIncomingContext(ctx)
+	if !ok {
+		return status.Error(codes.Unauthenticated, "peer transport credential is required")
+	}
+	values := md.Get(transport.PeerAuthMetadataKey)
+	if len(values) == 1 && strings.HasPrefix(values[0], "Bearer ") {
+		token := strings.TrimPrefix(values[0], "Bearer ")
+		if token == "" || strings.ContainsAny(token, " \t\r\n") {
+			return status.Error(codes.Unauthenticated, "invalid peer transport credential")
+		}
+		if len(token) == len(cfg.ClusterSecret) && subtle.ConstantTimeCompare([]byte(token), []byte(cfg.ClusterSecret)) == 1 {
+			return nil
+		}
+	}
+
+	return status.Error(codes.Unauthenticated, "invalid peer transport credential")
+}
+
+func evaluatePeerOrUserCredentials(ctx context.Context, cfg internalauth.AuthConfig, peerOnly bool) (context.Context, error) {
+	if !peerOnly {
+		return internalauth.EvaluateGRPCCredentials(ctx, cfg)
+	}
+
+	// A peer transport is authenticated independently of the caller. When a
+	// forwarded user token is present, evaluate it normally. Calls without one
+	// are internal node actions and retain the existing system-level scope
+	// behavior without treating CLUSTER_SECRET as a user bearer token.
+	_, presented, err := internalauth.BearerTokenFromGRPCContext(ctx)
+	if err != nil {
+		return ctx, err
+	}
+	if presented {
+		return internalauth.EvaluateGRPCCredentials(ctx, cfg)
+	}
+
+	if !cfg.Enabled {
+		return internalauth.EvaluateGRPCCredentials(ctx, cfg)
+	}
+
+	return internalauth.WithPeerSystemAuthentication(ctx), nil
 }
 
 func protectedRPCPolicy(method string) (*commonpb.MethodAuthPolicy, bool, error) {

@@ -407,6 +407,7 @@ func buildPodTemplate(ledger *ledgerv1alpha1.Cluster, specHash string, credentia
 	ports := []corev1.ContainerPort{
 		{Name: "http", ContainerPort: spec.HttpPort, Protocol: corev1.ProtocolTCP},
 		{Name: "grpc", ContainerPort: spec.GrpcPort, Protocol: corev1.ProtocolTCP},
+		{Name: "grpc-peer", ContainerPort: grpcPeerPort(ledger), Protocol: corev1.ProtocolTCP},
 		{Name: "raft", ContainerPort: raftPortFromBindAddr(spec.BindAddr), Protocol: corev1.ProtocolTCP},
 	}
 
@@ -493,6 +494,21 @@ func buildPodTemplate(ledger *ledgerv1alpha1.Cluster, specHash string, credentia
 					SecretName: spec.TLS.SecretName,
 				},
 			},
+		})
+	}
+
+	if spec.Auth != nil && spec.Auth.Enabled != nil && *spec.Auth.Enabled && targetTLSMode != tlsModeDisabled {
+		credentialsName := operatorCredentialsName(ledger)
+		volumeMounts = append(volumeMounts, corev1.VolumeMount{
+			Name:      "operator-credentials",
+			MountPath: "/operator-credentials",
+			ReadOnly:  true,
+		})
+		volumes = append(volumes, corev1.Volume{
+			Name: "operator-credentials",
+			VolumeSource: corev1.VolumeSource{Secret: &corev1.SecretVolumeSource{
+				SecretName: operatorCredentialsSecretName(credentialsName),
+			}},
 		})
 	}
 

@@ -5,7 +5,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net"
 	"slices"
+	"strconv"
 	"sync"
 
 	"go.etcd.io/raft/v3/raftpb"
@@ -64,6 +66,7 @@ type Membership struct {
 	selfNodeID      uint64
 	selfRaftAddr    string
 	selfServiceAddr string
+	servicePort     int
 	selfInstanceID  []byte
 	logger          logging.Logger
 
@@ -95,15 +98,25 @@ type Membership struct {
 // boot with an empty cache while the WAL ConfState still claims the
 // cluster has voters.
 func NewMembership(store *PeerStore, transport Transport, pool Pool, selfNodeID uint64, selfRaftAddr, selfServiceAddr string, selfInstanceID []byte, logger logging.Logger) (*Membership, error) {
+	return newMembership(store, transport, pool, selfNodeID, selfRaftAddr, selfServiceAddr, 0, selfInstanceID, logger)
+}
+
+// NewMembershipWithServicePort is the production constructor for clusters
+// that use a dedicated peer service port. Legacy membership rows are migrated
+// by Rehydrate after WAL replay or snapshot installation, then explicit peer
+// service ports are preserved on every reload.
+func NewMembershipWithServicePort(store *PeerStore, transport Transport, pool Pool, selfNodeID uint64, selfRaftAddr, selfServiceAddr string, servicePort int, selfInstanceID []byte, logger logging.Logger) (*Membership, error) {
+	return newMembership(store, transport, pool, selfNodeID, selfRaftAddr, selfServiceAddr, servicePort, selfInstanceID, logger)
+}
+
+func newMembership(store *PeerStore, transport Transport, pool Pool, selfNodeID uint64, selfRaftAddr, selfServiceAddr string, servicePort int, selfInstanceID []byte, logger logging.Logger) (*Membership, error) {
 	if err := ValidateInstanceID(selfInstanceID); err != nil {
 		return nil, fmt.Errorf("invalid self identity: %w", err)
 	}
-
 	addresses, err := store.LoadAll()
 	if err != nil {
 		return nil, fmt.Errorf("loading peers from pebble: %w", err)
 	}
-
 	logger.WithFields(map[string]any{
 		"peerCount": len(addresses),
 	}).Infof("Loaded cluster membership from Pebble")
@@ -115,10 +128,29 @@ func NewMembership(store *PeerStore, transport Transport, pool Pool, selfNodeID 
 		selfNodeID:      selfNodeID,
 		selfRaftAddr:    selfRaftAddr,
 		selfServiceAddr: selfServiceAddr,
+		servicePort:     servicePort,
 		selfInstanceID:  bytes.Clone(selfInstanceID),
 		logger:          logger,
 		addresses:       addresses,
 	}, nil
+}
+
+func normalizeServiceAddresses(addresses map[uint64]ConfChangeContext, servicePort int) map[uint64]ConfChangeContext {
+	if servicePort == 0 {
+		return addresses
+	}
+
+	for nodeID, addr := range addresses {
+		host, _, err := net.SplitHostPort(addr.ServiceAddress)
+		if err != nil {
+			continue
+		}
+
+		addr.ServiceAddress = net.JoinHostPort(host, strconv.Itoa(servicePort))
+		addresses[nodeID] = addr
+	}
+
+	return addresses
 }
 
 // Start wires every peer currently in the cache into the transport +
@@ -470,6 +502,10 @@ func confStateContains(cs *raftpb.ConfState, nodeID uint64) bool {
 // atomic is more important than allowing concurrent membership reads during
 // that lifecycle reconciliation.
 func (m *Membership) Rehydrate() error {
+	if err := m.store.migrateLegacyServiceAddresses(m.servicePort); err != nil {
+		return fmt.Errorf("migrating membership format: %w", err)
+	}
+
 	fresh, err := m.store.LoadAll()
 	if err != nil {
 		return fmt.Errorf("loading peers from pebble: %w", err)
@@ -591,6 +627,9 @@ func (m *Membership) WriteConfChange(entry *raftpb.Entry, session *dal.WriteSess
 		}); err != nil {
 			return fmt.Errorf("session write peer %d: %w", nodeID, err)
 		}
+		if err := m.store.writePeerFormat(session, nodeID); err != nil {
+			return err
+		}
 
 		return nil
 	}
@@ -602,6 +641,9 @@ func (m *Membership) WriteConfChange(entry *raftpb.Entry, session *dal.WriteSess
 		case raftpb.ConfChangeRemoveNode:
 			if err := session.DeleteKey(peerKey(nodeID)); err != nil {
 				return fmt.Errorf("session delete peer %d: %w", nodeID, err)
+			}
+			if err := session.DeleteKey(peerFormatKey(nodeID)); err != nil {
+				return fmt.Errorf("session delete peer %d membership format: %w", nodeID, err)
 			}
 
 			if err := m.store.MarkRemoved(session, &raftcmdpb.RemovedMemberEntry{

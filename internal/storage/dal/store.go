@@ -333,6 +333,13 @@ const (
 	// from a complete scan. It lives outside SubGlobBloom so the prior binary's
 	// block reader ignores it during rollback.
 	SubGlobBloomProjectionSeal byte = 0x16
+	// SubGlobMembershipFormat stores the format revision for the persisted
+	// cluster membership directory.
+	SubGlobMembershipFormat byte = 0x17
+	// SubGlobPeerFormats stores the per-peer format revision for persisted
+	// membership rows. It distinguishes legacy rows from rows written by a
+	// peer-port-aware binary during recovery before the global migration runs.
+	SubGlobPeerFormats byte = 0x18
 )
 
 // ClusterTransient sub-prefixes (zone 0x07).

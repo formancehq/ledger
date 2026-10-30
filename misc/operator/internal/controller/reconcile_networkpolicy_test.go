@@ -38,9 +38,15 @@ func TestReconcile_NetworkPolicyEnabled(t *testing.T) {
 	assert.Equal(t, "ledger", np.Spec.PodSelector.MatchLabels[labelName])
 	assert.Equal(t, "np-basic", np.Spec.PodSelector.MatchLabels[labelInstance])
 
-	// Verify policy types.
-	require.Len(t, np.Spec.PolicyTypes, 1)
-	assert.Equal(t, networkingv1.PolicyTypeEgress, np.Spec.PolicyTypes[0])
+	// Verify policy types and ingress isolation.
+	require.Equal(t, []networkingv1.PolicyType{networkingv1.PolicyTypeIngress, networkingv1.PolicyTypeEgress}, np.Spec.PolicyTypes)
+	require.Len(t, np.Spec.Ingress, 2)
+	assert.Empty(t, np.Spec.Ingress[0].From)
+	assert.Equal(t, int32(8888), np.Spec.Ingress[0].Ports[0].Port.IntVal)
+	assert.Equal(t, int32(9000), np.Spec.Ingress[0].Ports[1].Port.IntVal)
+	require.Len(t, np.Spec.Ingress[1].From, 1)
+	assert.Equal(t, "np-basic", np.Spec.Ingress[1].From[0].PodSelector.MatchLabels[labelInstance])
+	assert.Equal(t, int32(8889), np.Spec.Ingress[1].Ports[1].Port.IntVal)
 
 	// Verify 3 egress rules.
 	require.Len(t, np.Spec.Egress, 3)
@@ -199,4 +205,3 @@ func TestReconcile_NetworkPolicyUpdate(t *testing.T) {
 
 	assert.Equal(t, []string{"10.0.0.0/8"}, np.Spec.Egress[2].To[0].IPBlock.Except)
 }
-

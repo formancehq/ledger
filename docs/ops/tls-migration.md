@@ -132,6 +132,12 @@ at least partially active (`mode != disabled`). Sending a
 static token over plaintext is an anti-pattern, so the secret only exists
 when the wire is encrypted.
 
+Operator maintenance commands use an Ed25519 credential from the `Credentials`
+CRD. The private seed remains in the Credentials Secret and the public key is
+mounted into Ledger through `AUTH_ED25519_KEYS`; the operator signs short-lived
+JWTs for `ledgerctl` and backup Jobs. The Raft `cluster-secret` is never exposed
+as a direct client token.
+
 This means **authentication requires TLS**. Note the two guards differ in
 strictness:
 
@@ -186,9 +192,12 @@ To migrate a hand-managed cluster:
 3. Once all nodes are running `optional`, restart them with
    `--tls-mode=required`.
 
-The dialer probes each peer the first time it connects in `optional` mode
-and re-probes on persistent connection failures, so a peer flipping
-between modes during the migration is followed automatically.
+The unauthenticated dialer probes each peer the first time it connects in
+`optional` mode and re-probes on persistent connection failures, so a peer
+flipping between modes during the migration is followed automatically. A pool
+configured with a cluster secret refuses optional/plaintext transport: the
+secret is sent only after strict TLS has converged. Authenticated deployments
+must therefore complete the transition before enabling peer credentials.
 
 ## Troubleshooting
 

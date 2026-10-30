@@ -48,6 +48,12 @@ func (r *ClusterReconciler) reconcileHeadlessService(ctx context.Context, ledger
 					Protocol:   corev1.ProtocolTCP,
 				},
 				{
+					Name:       "grpc-peer",
+					Port:       serviceGrpcPeerPort(ledger),
+					TargetPort: intstr.FromString("grpc-peer"),
+					Protocol:   corev1.ProtocolTCP,
+				},
+				{
 					Name:       "http",
 					Port:       serviceHttpPort(ledger),
 					TargetPort: intstr.FromString("http"),
@@ -78,6 +84,18 @@ func serviceGrpcPort(ledger *ledgerv1alpha1.Cluster) int32 {
 	}
 
 	return 8888
+}
+
+func serviceGrpcPeerPort(ledger *ledgerv1alpha1.Cluster) int32 {
+	return grpcPeerPort(ledger)
+}
+
+func grpcPeerPort(ledger *ledgerv1alpha1.Cluster) int32 {
+	if ledger.Spec.GrpcPeerPort != 0 {
+		return ledger.Spec.GrpcPeerPort
+	}
+
+	return serviceGrpcPort(ledger) + 1
 }
 
 func serviceHttpPort(ledger *ledgerv1alpha1.Cluster) int32 {

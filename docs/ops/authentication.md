@@ -1,6 +1,6 @@
 # Authentication & Authorization
 
-The ledger supports optional JWT/OIDC authentication with scope-based authorization. When enabled, all API requests (HTTP and gRPC) must carry a valid Bearer token issued by a trusted OIDC provider.
+The ledger supports optional JWT/OIDC authentication with scope-based authorization. When enabled, public HTTP and gRPC API requests must carry a valid Bearer token issued by a trusted OIDC provider. Authenticated node-to-node forwarding uses the separate peer transport credential described below.
 
 ## Quick Start
 
@@ -94,10 +94,11 @@ The server enforces the following rules at startup:
   intercepted and replayed by an on-path attacker, so both
   `--tls-mode=disabled` and `--tls-mode=optional` are rejected at startup —
   `optional` runs a dual listener that still accepts plaintext client
-  connections, so it is not sufficient. This is intentionally stricter than the
-  `--cluster-secret` rule (which permits `optional`): the operator drives
-  zero-downtime inter-node TLS migration through the transitional `optional`
-  mode, but the external service API has no such requirement. There is no
+  connections, so it is not sufficient. This also applies to peer transport:
+  a cluster secret is accepted only over strict TLS. The transitional
+  `optional` mode is therefore limited to unauthenticated transport during a
+  controlled TLS transition; authenticated clusters must converge to
+  `required` before peer credentials are used. There is no
   opt-out; terminate TLS on the ledger process itself even when an ingress or
   service mesh also terminates TLS upstream. Note this guard covers the
   **gRPC service transport** only — `--tls-mode` does not govern the HTTP
@@ -161,6 +162,12 @@ gRPC clients must include the JWT token in the `authorization` metadata:
 md := metadata.Pairs("authorization", "Bearer <token>")
 ctx := metadata.NewOutgoingContext(ctx, md)
 ```
+
+Ledger's internal peer listener uses a separate `x-ledger-peer-auth` metadata
+value for node-to-node transport authentication. It is not a user credential
+and is never accepted as a JWT on the public gRPC listener. Forwarded requests
+carry the original user JWT in `authorization`, which is evaluated by the node
+that executes the operation.
 
 ## HTTP Authentication
 
@@ -415,3 +422,15 @@ The generated key configuration and `kubectl-ledger credentials get-key` bundle
 use `superuser` as well. Update Credentials manifests, auth key JSON, OIDC claim
 mappings, and token-generation commands together. The previous privileged field,
 claim, and flag were removed before `v3.0.0-rc.1`.
+
+
+The injected `LEDGERCTL_SERVER` uses the pod DNS name covered by the TLS
+certificate rather than `localhost` or `127.0.0.1`. For authenticated clusters,
+the operator creates a scoped, operator-owned `Credentials` resource and uses
+its private signing key to mint short-lived tokens for maintenance commands.
+The cluster secret is never used as a `ledgerctl` user token. When
+`tls.caSecretKey` is configured, the operator also injects
+`LEDGERCTL_TLS_CA_CERT`; for a plaintext cluster it injects
+`LEDGERCTL_INSECURE=true`. These values follow TLS mode transitions through
+StatefulSet rollouts. If `headlessService.enabled` is `false`, `spec.extraEnv`
+must override `LEDGERCTL_SERVER` with a resolvable address.

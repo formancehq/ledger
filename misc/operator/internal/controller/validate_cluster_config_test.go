@@ -6,10 +6,27 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	appsv1 "k8s.io/api/apps/v1"
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	ledgerv1alpha1 "github.com/formancehq/ledger/misc/operator/api/v1alpha1"
 )
+
+func TestValidatePeerPortImmutability(t *testing.T) {
+	cluster := newTestCluster("ledger", &ledgerv1alpha1.NetworkPolicySpec{})
+	cluster.Spec.GrpcPeerPort = 8890
+
+	statefulSet := &appsv1.StatefulSet{Spec: appsv1.StatefulSetSpec{Template: corev1.PodTemplateSpec{
+		Spec: corev1.PodSpec{Containers: []corev1.Container{{Env: []corev1.EnvVar{{Name: "GRPC_PEER_PORT", Value: "8891"}}}}},
+	}}}
+
+	err := validatePeerPortImmutability(cluster, statefulSet)
+	require.ErrorContains(t, err, "grpcPeerPort is immutable")
+
+	statefulSet.Spec.Template.Spec.Containers[0].Env[0].Value = "8890"
+	require.NoError(t, validatePeerPortImmutability(cluster, statefulSet))
+}
 
 func TestValidateSpec_NameLengthBoundary(t *testing.T) {
 	t.Parallel()
@@ -40,6 +57,57 @@ func TestValidateClusterConfig_AcceptsNilAndEmpty(t *testing.T) {
 		Cache: &ledgerv1alpha1.CacheConfig{},
 		Bloom: &ledgerv1alpha1.BloomConfig{},
 	}))
+}
+
+func TestValidateClusterConfig_RejectsPeerPortCollisionsAndOverflow(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		spec ledgerv1alpha1.ClusterSpec
+		want string
+	}{
+		{
+			name: "public grpc collision",
+			spec: ledgerv1alpha1.ClusterSpec{GrpcPort: 8999, GrpcPeerPort: 8999},
+			want: "grpcPeerPort must differ from grpcPort",
+		},
+		{
+			name: "http collision",
+			spec: ledgerv1alpha1.ClusterSpec{HttpPort: 9000, GrpcPeerPort: 9000},
+			want: "grpcPeerPort must differ from httpPort",
+		},
+		{
+			name: "service grpc collision",
+			spec: ledgerv1alpha1.ClusterSpec{
+				GrpcPeerPort: 18888,
+				Service:      ledgerv1alpha1.ServiceSpec{GrpcPort: 18888},
+			},
+			want: "grpcPeerPort must differ from service.grpcPort",
+		},
+		{
+			name: "raft collision",
+			spec: ledgerv1alpha1.ClusterSpec{
+				BindAddr:     "0.0.0.0:7777",
+				GrpcPeerPort: 7777,
+			},
+			want: "grpcPeerPort must differ from the Raft port",
+		},
+		{
+			name: "overflow",
+			spec: ledgerv1alpha1.ClusterSpec{GrpcPeerPort: 65536},
+			want: "grpcPeerPort must be between 1 and 65535",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			err := validateClusterConfig(&tt.spec)
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), tt.want)
+		})
+	}
 }
 
 func TestValidateClusterConfig_AuthRequiresTLS(t *testing.T) {

@@ -149,6 +149,7 @@ type Config struct {
 	Debug                  bool
 	HTTPPort               int
 	GRPCPort               int
+	GRPCPeerPort           int
 	TransportConfig        node.TransportConfig
 	DataDir                string
 	PebbleConfig           dal.Config
@@ -456,6 +457,10 @@ func (c Config) validateAuthConfig() error {
 			return errors.New("--auth-enabled requires --tls-mode=required (with --tls-cert-file / --tls-key-file); bearer tokens would otherwise be exposed to plaintext interception (--tls-mode=optional still accepts plaintext connections)")
 		}
 
+		if c.ClusterSecret == "" {
+			return errors.New("--auth-enabled requires --cluster-secret; peer forwarding requires the cluster secret")
+		}
+
 		return nil
 	}
 
@@ -494,4 +499,28 @@ func (c Config) ServiceAdvertiseAddr() string {
 	}
 
 	return net.JoinHostPort(host, strconv.Itoa(c.GRPCPort))
+}
+
+// PeerGRPCPort is the dedicated service port used for authenticated
+// inter-node forwarding. A zero value keeps programmatic configurations
+// backwards-compatible by placing it immediately after the public service
+// port.
+func (c Config) PeerGRPCPort() int {
+	if c.GRPCPeerPort != 0 {
+		return c.GRPCPeerPort
+	}
+
+	return c.GRPCPort + 1
+}
+
+// PeerServiceAdvertiseAddr returns the address other Ledger nodes use for
+// authenticated service forwarding. The public service address remains
+// available through ServiceAdvertiseAddr.
+func (c Config) PeerServiceAdvertiseAddr() string {
+	host, _, err := net.SplitHostPort(c.RaftConfig.AdvertiseAddr)
+	if err != nil {
+		host = c.RaftConfig.AdvertiseAddr
+	}
+
+	return net.JoinHostPort(host, strconv.Itoa(c.PeerGRPCPort()))
 }

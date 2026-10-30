@@ -1400,6 +1400,8 @@ func TestBuildEnvVars_LedgerctlConnection(t *testing.T) {
 			t.Parallel()
 			ls := newMinimalCluster()
 			ls.Spec.TLS = &ledgerv1alpha1.TLSConfig{CASecretKey: "ca.crt"}
+			enabled := true
+			ls.Spec.Auth = &ledgerv1alpha1.AuthorizationConfig{Enabled: &enabled}
 
 			envs := buildEnvVars(ls, tlsMode, nil)
 
@@ -1408,12 +1410,15 @@ func TestBuildEnvVars_LedgerctlConnection(t *testing.T) {
 			assertNoEnv(t, envs, "LEDGERCTL_INSECURE")
 			assertEnv(t, envs, "LEDGERCTL_TLS_CA_CERT", "/tls/ca.crt")
 
-			authToken := findEnv(envs, "LEDGERCTL_AUTH_TOKEN")
-			require.NotNil(t, authToken)
-			require.NotNil(t, authToken.ValueFrom)
-			require.NotNil(t, authToken.ValueFrom.SecretKeyRef)
-			require.Equal(t, clusterSecretName(ls.Name), authToken.ValueFrom.SecretKeyRef.Name)
-			require.Equal(t, clusterSecretKey, authToken.ValueFrom.SecretKeyRef.Key)
+			signingKey := findEnv(envs, "OPERATOR_SIGNING_KEY")
+			require.NotNil(t, signingKey)
+			require.Equal(t, "/operator-credentials/seed.hex", signingKey.Value)
+			keyID := findEnv(envs, "OPERATOR_SIGNING_KEY_ID")
+			require.NotNil(t, keyID)
+			require.NotNil(t, keyID.ValueFrom)
+			require.NotNil(t, keyID.ValueFrom.SecretKeyRef)
+			require.Equal(t, operatorCredentialsSecretName(operatorCredentialsName(ls)), keyID.ValueFrom.SecretKeyRef.Name)
+			require.Equal(t, "key-id", keyID.ValueFrom.SecretKeyRef.Key)
 		})
 	}
 
@@ -1421,6 +1426,8 @@ func TestBuildEnvVars_LedgerctlConnection(t *testing.T) {
 		t.Parallel()
 		ls := newMinimalCluster()
 		ls.Spec.TLS = &ledgerv1alpha1.TLSConfig{}
+		enabled := true
+		ls.Spec.Auth = &ledgerv1alpha1.AuthorizationConfig{Enabled: &enabled}
 
 		envs := buildEnvVars(ls, tlsModeRequired, nil)
 
@@ -1429,12 +1436,9 @@ func TestBuildEnvVars_LedgerctlConnection(t *testing.T) {
 		assertNoEnv(t, envs, "LEDGERCTL_INSECURE")
 		assertNoEnv(t, envs, "LEDGERCTL_TLS_CA_CERT")
 
-		authToken := findEnv(envs, "LEDGERCTL_AUTH_TOKEN")
-		require.NotNil(t, authToken)
-		require.NotNil(t, authToken.ValueFrom)
-		require.NotNil(t, authToken.ValueFrom.SecretKeyRef)
-		require.Equal(t, clusterSecretName(ls.Name), authToken.ValueFrom.SecretKeyRef.Name)
-		require.Equal(t, clusterSecretKey, authToken.ValueFrom.SecretKeyRef.Key)
+		signingKey := findEnv(envs, "OPERATOR_SIGNING_KEY")
+		require.NotNil(t, signingKey)
+		require.Equal(t, "/operator-credentials/seed.hex", signingKey.Value)
 	})
 }
 

@@ -852,7 +852,9 @@ func buildBaseServer(name, host string, port int, logger logging.Logger, tlsCfg 
 // service). When empty, the server runs unauthenticated — historical default,
 // matches single-node setups that never set --cluster-secret. When set, the
 // caller MUST present `authorization: Bearer <clusterSecret>` on every call
-// or the RPC is rejected with codes.Unauthenticated (#310).
+// or the RPC is rejected with codes.Unauthenticated (#310). The service peer
+// listener uses a separate x-ledger-peer-auth metadata value; this server is
+// the Raft-plane listener and keeps the standard authorization header.
 func NewRaftServer(port int, logger logging.Logger, tlsCfg *tls.Config, acceptPlaintext bool, clusterSecret string, opts ...Option) (*RaftServer, error) {
 	serverOpts := []ggrpc.ServerOption{
 		ggrpc.KeepaliveEnforcementPolicy(keepalive.EnforcementPolicy{MinTime: 5 * time.Second, PermitWithoutStream: true}),
@@ -909,6 +911,7 @@ type ServiceAuthPolicy uint8
 
 const (
 	ServiceAuthPolicyPublic ServiceAuthPolicy = iota + 1
+	ServiceAuthPolicyPeer
 	ServiceAuthPolicyRestore
 )
 
@@ -919,7 +922,7 @@ const (
 // interceptors and is outside the BucketService and ClusterService inventory.
 // See NewRaftServer for the (tlsCfg, acceptPlaintext) semantics.
 func NewServiceServer(authPolicy ServiceAuthPolicy, authCfg internalauth.AuthConfig, host string, port int, logger logging.Logger, debug bool, slowThreshold time.Duration, tlsCfg *tls.Config, acceptPlaintext bool, opts ...Option) (*ServiceServer, error) {
-	if authPolicy != ServiceAuthPolicyPublic && authPolicy != ServiceAuthPolicyRestore {
+	if authPolicy != ServiceAuthPolicyPublic && authPolicy != ServiceAuthPolicyPeer && authPolicy != ServiceAuthPolicyRestore {
 		return nil, fmt.Errorf("unknown service authentication policy %d", authPolicy)
 	}
 
@@ -943,11 +946,12 @@ func NewServiceServer(authPolicy ServiceAuthPolicy, authCfg internalauth.AuthCon
 		errorConversionStreamInterceptor(logger),
 		protocolVersionStreamInterceptor(),
 	}
-	if authPolicy == ServiceAuthPolicyPublic {
+	if authPolicy == ServiceAuthPolicyPublic || authPolicy == ServiceAuthPolicyPeer {
+		peerOnly := authPolicy == ServiceAuthPolicyPeer
 		// Stamp the query-profile clock before authentication so profiled reads
 		// measure the same preparation span as their HTTP counterparts.
-		unaryInterceptors = append(unaryInterceptors, queryProfileClockUnaryInterceptor(logger, slowThreshold), authUnaryInterceptor(authCfg))
-		streamInterceptors = append(streamInterceptors, queryProfileClockStreamInterceptor(logger, slowThreshold), authStreamInterceptor(authCfg))
+		unaryInterceptors = append(unaryInterceptors, queryProfileClockUnaryInterceptor(logger, slowThreshold), authUnaryInterceptor(authCfg, peerOnly))
+		streamInterceptors = append(streamInterceptors, queryProfileClockStreamInterceptor(logger, slowThreshold), authStreamInterceptor(authCfg, peerOnly))
 	}
 
 	serverOpts := []ggrpc.ServerOption{
@@ -971,7 +975,7 @@ func NewServiceServer(authPolicy ServiceAuthPolicy, authCfg internalauth.AuthCon
 	for _, opt := range opts {
 		opt(bs)
 	}
-	bs.validatePublicRPCPolicies = authPolicy == ServiceAuthPolicyPublic
+	bs.validatePublicRPCPolicies = authPolicy == ServiceAuthPolicyPublic || authPolicy == ServiceAuthPolicyPeer
 
 	srv := &ServiceServer{baseServer: bs}
 	srv.registerReflection()

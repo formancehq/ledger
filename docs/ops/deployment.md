@@ -57,6 +57,7 @@ Available flags for `run`:
 - `--cluster-id`: Cluster ID for inter-node communication and persisted configuration validation (required)
 - `--bind-addr`: Address to bind to for Raft transport (internal inter-node communication, default: `0.0.0.0:7777`)
 - `--grpc-port`: Port for gRPC service API (external client-facing, default: `8888`)
+- `--grpc-peer-port`: Port for authenticated inter-node service forwarding (default: `8889`)
 - `--advertise-addr`: Address to advertise to other nodes (defaults to bind-addr)
 - `--wal-dir`: WAL directory for Raft (default: `./wal`)
 - `--data-dir`: Data directory for application storage (default: `./data`)
@@ -68,11 +69,18 @@ Available flags for `run`:
 - `--health-wal-threshold`: WAL volume usage threshold, 0.0-1.0 (default: `0.8`)
 - `--health-data-threshold`: Data volume usage threshold, 0.0-1.0 (default: `0.8`)
 
-The service address published to peers uses the host from `--advertise-addr`
-and the port from `--grpc-port`. IPv6 hosts retain their brackets: for example,
-`--advertise-addr '[2001:db8::1]:7777' --grpc-port 8888` publishes
-`[2001:db8::1]:8888` for service RPCs while keeping `[2001:db8::1]:7777` for Raft.
-IPv4 addresses and hostnames use the same host with the configured service port.
+The public service address uses the host from `--advertise-addr` and the port
+from `--grpc-port`. Inter-node service forwarding uses the same host with
+`--grpc-peer-port`; Raft continues to use the port from `--bind-addr`.
+IPv6 hosts retain their brackets.
+
+During the peer-port format transition, membership rows written by the new
+binary carry a per-peer format marker. On recovery, legacy rows are rewritten
+to `--grpc-peer-port`, while rows already written by replay keep their explicit
+peer port. The compatibility migration is temporary and is removed after the
+RC in which every supported node and operator writes the new format.
+Once the StatefulSet has recorded `GRPC_PEER_PORT`, the operator rejects changes
+to `grpcPeerPort`; changing it requires a dedicated membership migration.
 
 ### Configuration
 
@@ -158,23 +166,23 @@ metadata:
   namespace: ledger
 spec:
   replicas: 3  # Must be odd for Raft
+  grpcPeerPort: 8889
   image:
     repository: ghcr.io/formancehq/ledger
     tag: latest
-  config:
-    bindAddr: "0.0.0.0:7777"
-    grpcPort: 8888
-    httpPort: 9000
-    dataDir: "/data/app"
-    walDir: "/data/raft"
-    raft:
-      maintenanceInterval: "30s"
-      compactionMargin: 1000
-      electionTick: 10
-      heartbeatTick: 1
-      maxSizePerMsg: 1048576
-      maxInflightMsgs: 256
-      tickInterval: "100ms"
+  bindAddr: "0.0.0.0:7777"
+  grpcPort: 8888
+  httpPort: 9000
+  dataDir: "/data/app"
+  walDir: "/data/raft"
+  raft:
+    maintenanceInterval: "30s"
+    compactionMargin: 1000
+    electionTick: 10
+    heartbeatTick: 1
+    maxSizePerMsg: 1048576
+    maxInflightMsgs: 256
+    tickInterval: "100ms"
 ```
 
 The operator creates and manages all sub-resources: StatefulSet, Services, Ingresses, ServiceAccount, PDB, etc.
@@ -231,6 +239,7 @@ spec:
 
 ```yaml
 spec:
+  grpcPeerPort: 8889
   service:
     type: ClusterIP
     httpPort: 9000
@@ -249,6 +258,15 @@ spec:
     enabled: true
     annotations: {}
 ```
+
+The headless Service also carries the internal peer gRPC port. This port is not
+published by the public gRPC Ingress and should be restricted with a
+`NetworkPolicy` so only Ledger pods can reach it. Peer requests authenticate
+the node transport with the cluster secret in the dedicated
+`x-ledger-peer-auth` metadata. This metadata is distinct from the user
+`authorization` header: when a request is forwarded, the original JWT remains
+the caller credential and is evaluated at the terminal node. The cluster
+secret is not a public API credential.
 
 #### Custom Labels
 
@@ -405,10 +423,11 @@ Once a learner has caught up with the leader's log (within the threshold configu
 
 ### Using ledgerctl inside a cluster pod
 
-The operator configures the `ledgerctl` binary shipped in every ledger pod with
-the pod's own headless DNS address and the transport credentials matching the
-current TLS mode. After entering a pod, commands therefore work without
-connection flags when the operator-managed headless Service is enabled:
+The operator configures the `ledgerctl` binary shipped in every Ledger pod with
+the pod's own headless DNS address and the transport settings matching the
+current TLS mode. In an unauthenticated cluster, an interactive shell can use
+`ledgerctl` directly without connection flags when the operator-managed
+headless Service is enabled:
 
 ```bash
 ledgerctl cluster status
@@ -416,21 +435,22 @@ ledgerctl ledgers list
 ```
 
 The injected `LEDGERCTL_SERVER` uses the pod DNS name covered by the TLS
-certificate rather than `localhost` or `127.0.0.1`. For TLS clusters the
-operator injects `LEDGERCTL_AUTH_TOKEN` and, when `tls.caSecretKey` is
-configured, `LEDGERCTL_TLS_CA_CERT`; for a plaintext cluster it injects
+certificate rather than `localhost` or `127.0.0.1`. For authenticated clusters,
+the operator creates a scoped, operator-owned `Credentials` resource and uses
+its private signing key to mint short-lived tokens for maintenance commands.
+The cluster secret is never used as a `ledgerctl` user token. When
+`tls.caSecretKey` is configured, the operator also injects
+`LEDGERCTL_TLS_CA_CERT`; for a plaintext cluster it injects
 `LEDGERCTL_INSECURE=true`. These values follow TLS mode transitions through
 StatefulSet rollouts. If `headlessService.enabled` is `false`, `spec.extraEnv`
-must override `LEDGERCTL_SERVER` with a resolvable address. `spec.extraEnv` can
-also override any other injected `LEDGERCTL_*` value when a deployment needs
-custom client behavior.
+must override `LEDGERCTL_SERVER` with a resolvable address.
 
 ### Disk Space Limiting
 
 The cluster monitors disk usage across all nodes and rejects write operations when usage exceeds configurable thresholds. See [Disk Space Limiting](./disk-space.md) for detailed architecture documentation.
 
 ```yaml
-config:
+spec:
   health:
     interval: "30s"       # Health check interval
     walThreshold: 0.8     # WAL volume threshold (80%)
@@ -694,7 +714,7 @@ The ServiceMonitor scrapes metrics from the `/metrics` endpoint on the HTTP port
 #### Timeouts
 
 ```yaml
-config:
+spec:
   raft:
     electionTick: 10      # Election timeout (10 * tickInterval)
     heartbeatTick: 1       # Heartbeat interval (1 * tickInterval)
@@ -708,7 +728,7 @@ config:
 #### Performance
 
 ```yaml
-config:
+spec:
   raft:
     maxSizePerMsg: 1048576    # 1MB - Max size per message
     maxInflightMsgs: 256      # Max number of messages in flight
@@ -719,7 +739,7 @@ config:
 #### Global Configuration
 
 ```yaml
-config:
+spec:
   raft:
     maintenanceInterval: "30s"  # Periodic maintenance interval (default: 30s)
     compactionMargin: 1000      # Minimum WAL entries retained after compaction (default: 1000)

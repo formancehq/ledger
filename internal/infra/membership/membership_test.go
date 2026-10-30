@@ -104,6 +104,18 @@ func newTestPeerStore(t *testing.T) *PeerStore {
 	return NewPeerStore(store)
 }
 
+func putLegacyPeer(t *testing.T, ps *PeerStore, nodeID uint64, raftAddr, serviceAddr string, instanceID []byte) {
+	t.Helper()
+	session := ps.store.OpenWriteSession()
+	require.NoError(t, session.SetProto(peerKey(nodeID), &raftcmdpb.PeerAddress{
+		NodeId:         nodeID,
+		RaftAddress:    raftAddr,
+		ServiceAddress: serviceAddr,
+		InstanceId:     instanceID,
+	}))
+	require.NoError(t, session.Commit())
+}
+
 // testSelfNodeID / testSelfRaftAddr / testSelfServiceAddr identify the
 // synthetic "self" used by Membership tests. Kept far away from the
 // peer IDs the tests exercise (1, 2, 3, 7, ...) so a `self.NodeID`
@@ -145,6 +157,72 @@ func TestPeerStore_PutLoadAll(t *testing.T) {
 	require.Equal(t, ConfChangeContext{RaftAddress: "pod-0:7777", ServiceAddress: "pod-0:8888", InstanceID: fixedInstanceID(1)}, peers[1])
 	require.Equal(t, ConfChangeContext{RaftAddress: "pod-1:7777", ServiceAddress: "pod-1:8888", InstanceID: fixedInstanceID(2)}, peers[2])
 	require.Equal(t, ConfChangeContext{RaftAddress: "pod-2:7777", ServiceAddress: "pod-2:8888", InstanceID: fixedInstanceID(3)}, peers[3])
+}
+
+func TestMembership_MigratesLegacyServicePortsOnce(t *testing.T) {
+	t.Parallel()
+
+	ps := newTestPeerStore(t)
+	putLegacyPeer(t, ps, 1, "pod-0:7777", "pod-0:1111", fixedInstanceID(1))
+	putLegacyPeer(t, ps, 2, "pod-1:7777", "pod-1:2222", fixedInstanceID(2))
+
+	m, err := NewMembershipWithServicePort(
+		ps,
+		noopTransport{},
+		noopPool{},
+		testSelfNodeID,
+		testSelfRaftAddr,
+		testSelfServiceAddr,
+		9999,
+		fixedInstanceID(0x42),
+		logging.Testing(),
+	)
+	require.NoError(t, err)
+
+	legacy, err := ps.LoadAll()
+	require.NoError(t, err)
+	require.Equal(t, "pod-0:1111", legacy[1].ServiceAddress)
+	require.Equal(t, "pod-1:2222", legacy[2].ServiceAddress)
+	require.NoError(t, m.Rehydrate())
+
+	legacy, err = ps.LoadAll()
+	require.NoError(t, err)
+	require.Equal(t, "pod-0:9999", legacy[1].ServiceAddress)
+	require.Equal(t, "pod-1:9999", legacy[2].ServiceAddress)
+
+	// A row written by WAL replay with the peer-port-aware format is marked in
+	// the same transaction and must not be rewritten by the migration.
+	require.NoError(t, ps.Put(3, "pod-2:7777", "pod-2:3333", fixedInstanceID(3)))
+	require.NoError(t, m.Rehydrate())
+	legacy, err = ps.LoadAll()
+	require.NoError(t, err)
+	require.Equal(t, "pod-2:3333", legacy[3].ServiceAddress)
+
+	// Once the format is current, explicit per-peer ports survive a later
+	// constructor or Rehydrate instead of being normalized to the local port.
+	require.NoError(t, ps.Put(1, "pod-0:7777", "pod-0:1111", fixedInstanceID(1)))
+	require.NoError(t, ps.Put(2, "pod-1:7777", "pod-1:2222", fixedInstanceID(2)))
+	require.NoError(t, m.Rehydrate())
+	require.Equal(t, "pod-0:1111", m.PeerAddresses()[1].ServiceAddress)
+	require.Equal(t, "pod-1:2222", m.PeerAddresses()[2].ServiceAddress)
+
+	_, err = NewMembershipWithServicePort(
+		ps,
+		noopTransport{},
+		noopPool{},
+		testSelfNodeID,
+		testSelfRaftAddr,
+		testSelfServiceAddr,
+		9999,
+		fixedInstanceID(0x42),
+		logging.Testing(),
+	)
+	require.NoError(t, err)
+
+	current, err := ps.LoadAll()
+	require.NoError(t, err)
+	require.Equal(t, "pod-0:1111", current[1].ServiceAddress)
+	require.Equal(t, "pod-1:2222", current[2].ServiceAddress)
 }
 
 func TestPeerStore_RejectsInvalidInstanceID(t *testing.T) {
