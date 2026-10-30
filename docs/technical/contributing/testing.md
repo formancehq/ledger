@@ -472,6 +472,9 @@ restart. It catches:
 - **Illegal business outcomes** — a failure the model can't reproduce under any
   serialization, or a linearizable read returning state outside the candidate
   set.
+- **Incomplete direct audit reads** — `GetAuditEntry` must return one
+  `AuditItem` per order for a modeled, committed success. `ListAuditEntries`
+  omits item bodies, so the model checks its entries without this count rule.
 
 It exercises the chart of accounts, STRICT/AUDIT enforcement switches through
 both setter forms, transactions and reverts (with post-commit volumes), color
