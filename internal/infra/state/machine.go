@@ -1163,25 +1163,27 @@ func authorizedInMaintenanceMode(orders []*raftcmdpb.Order) bool {
 }
 
 func drainMarkerOnly(proposal *raftcmdpb.Proposal) bool {
-	if len(proposal.GetOrders()) != 0 || len(proposal.GetTechnicalUpdates()) != 1 {
+	updates := proposals.TechnicalUpdates(proposal)
+	if proposals.IntentCount(proposal) != 0 || len(updates) != 1 {
 		return false
 	}
-	_, ok := proposal.GetTechnicalUpdates()[0].GetKind().(*raftcmdpb.TechnicalUpdate_DrainMarker)
+	_, ok := updates[0].GetKind().(*raftcmdpb.TechnicalUpdate_DrainMarker)
 
 	return ok
 }
 
 func drainReleaseOnly(proposal *raftcmdpb.Proposal) bool {
-	if len(proposal.GetOrders()) != 0 || len(proposal.GetTechnicalUpdates()) != 1 {
+	updates := proposals.TechnicalUpdates(proposal)
+	if proposals.IntentCount(proposal) != 0 || len(updates) != 1 {
 		return false
 	}
-	_, ok := proposal.GetTechnicalUpdates()[0].GetKind().(*raftcmdpb.TechnicalUpdate_DrainRelease)
+	_, ok := updates[0].GetKind().(*raftcmdpb.TechnicalUpdate_DrainRelease)
 
 	return ok
 }
 
 func containsDrainMarker(proposal *raftcmdpb.Proposal) bool {
-	for _, update := range proposal.GetTechnicalUpdates() {
+	for _, update := range proposals.TechnicalUpdates(proposal) {
 		if _, ok := update.GetKind().(*raftcmdpb.TechnicalUpdate_DrainMarker); ok {
 			return true
 		}
@@ -1191,7 +1193,7 @@ func containsDrainMarker(proposal *raftcmdpb.Proposal) bool {
 }
 
 func containsDrainRelease(proposal *raftcmdpb.Proposal) bool {
-	for _, update := range proposal.GetTechnicalUpdates() {
+	for _, update := range proposals.TechnicalUpdates(proposal) {
 		if _, ok := update.GetKind().(*raftcmdpb.TechnicalUpdate_DrainRelease); ok {
 			return true
 		}
@@ -1330,7 +1332,7 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 		return result, nil
 	}
 	if drain := fsm.State.DrainState; drain != nil && drain.GetReleasedIndex() == 0 && raftIndex > drain.GetIndex() &&
-		(len(proposal.GetOrders()) > 0 || len(proposal.GetTechnicalUpdates()) > 0) && !drainMarkerOnly(proposal) && !drainReleaseOnly(proposal) {
+		(proposals.IntentCount(proposal) > 0 || len(proposals.TechnicalUpdates(proposal)) > 0) && !drainMarkerOnly(proposal) && !drainReleaseOnly(proposal) {
 		result.Error = &domain.BusinessError{Err: domain.ErrMaintenanceMode}
 
 		return result, nil

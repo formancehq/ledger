@@ -4,7 +4,7 @@
 
 The checker (`internal/application/check`) verifies that the data persisted in Pebble matches what the [audit hash chain](audit-chain.md) says it should hold. It is invoked **on demand** through the `BucketService.CheckStore` gRPC streaming RPC — there is no built-in cron — and emits a stream of `CheckStoreEvent`s, one per finding, plus periodic `progress` events.
 
-Its job is to enforce the system-wide invariant that the audit log is the only source of truth and every other persisted dataset is a re-derivable projection. Anything the checker doesn't verify is, by definition, an unmonitored tampering vector.
+Its job is to verify audit-bound business truth and the persisted projections derived from it. Operational consensus state such as native cluster policy is outside the business audit and checker; its durability and restore behavior have separate contracts. A business projection the checker does not verify is an integrity gap unless it is rebuilt or explicitly exempted by its lifecycle contract.
 
 `Checker.Check` runs four ordered phases: `pinCheckSnapshots` pins the peer read-index snapshot before the primary snapshot and reads the log head from the primary Log key; `verifyCheckAudit` verifies the audit chain and builds the business oracle even when there are no logs; `replayLogs` scans logs once, emits replay findings and progress, and derives expected state; `compareProjections` checks stored rows against that state. The replay store and both snapshots stay open through the projection phase. This ordering is part of the streamed event contract: audit findings precede replay progress, and projection findings follow it.
 
