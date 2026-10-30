@@ -93,7 +93,7 @@ func TestHTTPSinkRedirectEmitterCursorAndRetry(t *testing.T) {
 			require.Len(t, proposer.captured, 1)
 			proposal := &raftcmdpb.Proposal{}
 			require.NoError(t, proposal.UnmarshalVT(proposer.captured[0]))
-			update := proposal.GetTechnicalUpdates()[0].GetEventsSink()
+			update := proposal.GetBatch().GetTechnicalUpdates()[0].GetEventsSink()
 			requests, acknowledged := receiver.snapshot()
 			t.Logf("status=%d publishErr=%v returnedCursor=%d proposedCursor=%d HTTP-acknowledged POSTs=%d", status, publishErr, cursor, update.GetCursor(), len(acknowledged))
 			for _, request := range requests {
@@ -174,7 +174,7 @@ func TestHTTPSinkRedirectPartialBatchRetry(t *testing.T) {
 			require.Len(t, acknowledged, 1)
 			update := &raftcmdpb.Proposal{}
 			require.NoError(t, update.UnmarshalVT(proposer.captured[0]))
-			require.Zero(t, update.GetTechnicalUpdates()[0].GetEventsSink().GetCursor())
+			require.Zero(t, update.GetBatch().GetTechnicalUpdates()[0].GetEventsSink().GetCursor())
 			receiver.mu.Lock()
 			receiver.recovered = true
 			receiver.mu.Unlock()
@@ -188,8 +188,8 @@ func TestHTTPSinkRedirectPartialBatchRetry(t *testing.T) {
 			require.Len(t, proposer.captured, 2)
 			update.Reset()
 			require.NoError(t, update.UnmarshalVT(proposer.captured[1]))
-			require.Equal(t, uint64(2), update.GetTechnicalUpdates()[0].GetEventsSink().GetCursor())
-			require.True(t, update.GetTechnicalUpdates()[0].GetEventsSink().GetClearError())
+			require.Equal(t, uint64(2), update.GetBatch().GetTechnicalUpdates()[0].GetEventsSink().GetCursor())
+			require.True(t, update.GetBatch().GetTechnicalUpdates()[0].GetEventsSink().GetClearError())
 		})
 	}
 }

@@ -115,6 +115,7 @@ func TestDrainCheckpointIncrementalRestoreDiscardsSourceState(t *testing.T) {
 	require.Zero(t, cutoff)
 	require.Zero(t, destination.DrainReleaseIndex())
 	admitted := newScriptedNode(t, restored)
+	auditBeforePolicy := lastAuditForKeyTest(t, restored).GetSequence()
 	admitted.applyClusterPolicy(&commonpb.ClusterPolicy{
 		Revision: 1, QueryCheckpointLimit: 10,
 		MetadataMaxEntriesPerEntity: domain.DefaultMetadataMaxEntriesPerEntity,
@@ -123,10 +124,12 @@ func TestDrainCheckpointIncrementalRestoreDiscardsSourceState(t *testing.T) {
 		MetadataMaxEntityBytes:      domain.DefaultMetadataMaxEntityBytes,
 		MetadataMaxCommandBytes:     domain.DefaultMetadataMaxCommandBytes,
 	})
+	// Native policy controls must not create an audit entry after restore.
+	require.Equal(t, auditBeforePolicy, lastAuditForKeyTest(t, restored).GetSequence())
 	admitted.apply(actions.CreateLedgerAction("new-on-destination", nil))
 	created, err := query.GetLedgerByName(t.Context(), restored, "new-on-destination")
 	require.NoError(t, err)
 	require.Equal(t, "new-on-destination", created.GetName())
-	require.Equal(t, uint64(4), lastAuditForKeyTest(t, restored).GetSequence())
+	require.Equal(t, auditBeforePolicy+1, lastAuditForKeyTest(t, restored).GetSequence())
 	auditKeyCheckerClean(t, restored)
 }

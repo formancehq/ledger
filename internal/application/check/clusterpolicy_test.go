@@ -1,17 +1,14 @@
 package check
 
 import (
-	"context"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 
-	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
-
-	"github.com/formancehq/ledger/v3/internal/infra/attributes"
+	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
 
@@ -35,177 +32,50 @@ func setClusterPolicyOrder(policy *commonpb.ClusterPolicy) *raftcmdpb.Order {
 	}
 }
 
-func collectClusterPolicyEvents(t *testing.T, store *dal.Store, v *clusterPolicyVerifier) []*servicepb.CheckStoreError {
-	t.Helper()
-
-	handle, err := store.NewReadHandle()
-	require.NoError(t, err)
-
-	defer func() { _ = handle.Close() }()
-
-	var got []*servicepb.CheckStoreError
-
-	require.NoError(t, v.compare(handle, func(event *servicepb.CheckStoreEvent) {
-		if e, ok := event.GetType().(*servicepb.CheckStoreEvent_Error); ok {
-			got = append(got, e.Error)
+// Operational policy is deliberately outside the business integrity contract.
+// Historical policy orders still replay to preserve their original log slots.
+func TestCheckClusterPolicyIsOperationalState(t *testing.T) {
+	t.Parallel()
+	for _, legacy := range []bool{false, true} {
+		name := "native"
+		if legacy {
+			name = "legacy"
 		}
-	}))
-
-	return got
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			machine, store, attrs := newFSMPurgeMachine(t)
+			policy := machine.State.ClusterPolicy.CloneVT()
+			policy.Revision = 2
+			policy.MetadataMaxValueBytes = domain.DefaultMetadataMaxValueBytes * 2
+			policy.MetadataMaxEntityBytes = max(policy.GetMetadataMaxEntityBytes(), policy.GetMetadataMaxValueBytes()*2)
+			policy.MetadataMaxCommandBytes = max(policy.GetMetadataMaxCommandBytes(), policy.GetMetadataMaxEntityBytes())
+			if legacy {
+				applyFSMPurgeProposal(t, machine, store, attrs, 1, setClusterPolicyOrder(policy))
+			} else {
+				// No audit predecessor carries the live policy for native business replay.
+				machine.State.UpdateClusterPolicy(policy)
+				writeClusterPolicyRow(t, store, policy)
+			}
+			applyFSMPurgeProposal(t, machine, store, attrs, machine.State.LastAppliedIndex+1, fsmPurgeCreateLedgerOrder(commonpb.AccountTypePersistence_ACCOUNT_TYPE_NORMAL))
+			applyFSMPurgeProposal(t, machine, store, attrs, machine.State.LastAppliedIndex+1,
+				fsmPurgeSaveMetadataOrder("t-13:001", "large", strings.Repeat("x", int(domain.DefaultMetadataMaxValueBytes)+1)))
+			require.NoError(t, store.Flush())
+			require.Empty(t, runFSMPurgeCheck(t, store, attrs))
+			// Even a malformed or absent operational row is not business corruption.
+			writeClusterPolicyRow(t, store, &commonpb.ClusterPolicy{Revision: 99, MetadataMaxValueBytes: 1})
+			require.Empty(t, runFSMPurgeCheck(t, store, attrs))
+			batch := store.OpenWriteSession()
+			require.NoError(t, batch.DeleteKey([]byte{dal.ZoneGlobal, dal.SubGlobClusterPolicy}))
+			require.NoError(t, batch.Commit())
+			require.Empty(t, runFSMPurgeCheck(t, store, attrs))
+		})
+	}
 }
 
-// A stored policy that matches the folded SetClusterPolicy orders passes.
-func TestClusterPolicyVerifier_Consistent(t *testing.T) {
+func TestCheckClusterPolicyWithoutBusinessHistory(t *testing.T) {
 	t.Parallel()
-
-	store := createTestStore(t)
-	policy := &commonpb.ClusterPolicy{Revision: 3, IdempotencyTtlMicros: 1000, QueryCheckpointLimit: 5}
-	writeClusterPolicyRow(t, store, policy)
-
-	v := newClusterPolicyVerifier()
-	v.applyOrder(setClusterPolicyOrder(policy))
-
-	require.Empty(t, collectClusterPolicyEvents(t, store, v))
-}
-
-// Both absent — no policy audited, none stored — is consistent.
-func TestClusterPolicyVerifier_BothAbsent(t *testing.T) {
-	t.Parallel()
-
-	store := createTestStore(t)
-
-	v := newClusterPolicyVerifier()
-
-	require.Empty(t, collectClusterPolicyEvents(t, store, v))
-}
-
-// A stored policy with no audited SetClusterPolicy order is flagged as injected.
-func TestClusterPolicyVerifier_InjectedFlagged(t *testing.T) {
-	t.Parallel()
-
-	store := createTestStore(t)
-	writeClusterPolicyRow(t, store, &commonpb.ClusterPolicy{Revision: 2, QueryCheckpointLimit: 3})
-
-	v := newClusterPolicyVerifier()
-
-	events := collectClusterPolicyEvents(t, store, v)
-	require.Len(t, events, 1)
-	require.Equal(t, servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_CLUSTER_POLICY_MISMATCH, events[0].GetErrorType())
-}
-
-// An audited policy with no stored row is flagged as lost.
-func TestClusterPolicyVerifier_MissingFlagged(t *testing.T) {
-	t.Parallel()
-
-	store := createTestStore(t)
-
-	v := newClusterPolicyVerifier()
-	v.applyOrder(setClusterPolicyOrder(&commonpb.ClusterPolicy{Revision: 4, QueryCheckpointLimit: 1}))
-
-	events := collectClusterPolicyEvents(t, store, v)
-	require.Len(t, events, 1)
-	require.Contains(t, events[0].GetMessage(), "revision 4")
-}
-
-// A stored policy whose contents diverge from the audited one is corruption.
-func TestClusterPolicyVerifier_ContentMismatch(t *testing.T) {
-	t.Parallel()
-
-	store := createTestStore(t)
-	writeClusterPolicyRow(t, store, &commonpb.ClusterPolicy{Revision: 3, QueryCheckpointLimit: 9})
-
-	v := newClusterPolicyVerifier()
-	v.applyOrder(setClusterPolicyOrder(&commonpb.ClusterPolicy{Revision: 3, QueryCheckpointLimit: 5}))
-
-	events := collectClusterPolicyEvents(t, store, v)
-	require.Len(t, events, 1)
-	require.Equal(t, servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_CLUSTER_POLICY_MISMATCH, events[0].GetErrorType())
-}
-
-// The fold keeps the highest revision regardless of the order orders arrive in.
-func TestClusterPolicyVerifier_MaxRevisionWins(t *testing.T) {
-	t.Parallel()
-
-	store := createTestStore(t)
-	latest := &commonpb.ClusterPolicy{Revision: 5, QueryCheckpointLimit: 8}
-	writeClusterPolicyRow(t, store, latest)
-
-	v := newClusterPolicyVerifier()
-	v.applyOrder(setClusterPolicyOrder(&commonpb.ClusterPolicy{Revision: 2, QueryCheckpointLimit: 1}))
-	v.applyOrder(setClusterPolicyOrder(latest))
-	v.applyOrder(setClusterPolicyOrder(&commonpb.ClusterPolicy{Revision: 3, QueryCheckpointLimit: 1}))
-
-	require.Empty(t, collectClusterPolicyEvents(t, store, v))
-}
-
-// A truncated fold (audit chain break) skips the comparison and reports
-// coverage instead of mismatches it cannot substantiate.
-func TestClusterPolicyVerifier_IncompleteReported(t *testing.T) {
-	t.Parallel()
-
 	store := createTestStore(t)
 	writeClusterPolicyRow(t, store, &commonpb.ClusterPolicy{Revision: 3, QueryCheckpointLimit: 5})
-
-	v := newClusterPolicyVerifier()
-	v.markLiveTruncated()
-
-	events := collectClusterPolicyEvents(t, store, v)
-	require.Len(t, events, 1)
-	require.Equal(t, servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_CLUSTER_POLICY_VERIFICATION_INCOMPLETE, events[0].GetErrorType())
-}
-
-// TestCheck_ClusterPolicyProjection_EmptyAuditWiring pins that the cluster
-// policy comparison runs when the store holds no logs. Until EN-1526 the only
-// zero-log call site was inside the removed lastSequence == 0 branch, so the
-// wiring had no Check()-level coverage of its own — unlike the signing, query
-// checkpoint and reverse-map passes that branch also carried. The policy is
-// cluster-global, so a store with no logs can still hold a row, and no log means
-// no audited SetClusterPolicy order behind it.
-func TestCheck_ClusterPolicyProjection_EmptyAuditWiring(t *testing.T) {
-	t.Parallel()
-
-	runCheck := func(t *testing.T, seed func(*dal.Store)) []*servicepb.CheckStoreError {
-		t.Helper()
-
-		store := createTestStore(t)
-		if seed != nil {
-			seed(store)
-		}
-
-		// No readstore handle: the reverse-map pass skips itself, keeping the
-		// events attributable to the policy comparison alone.
-		checker := NewChecker(store, attributes.New(), nil, logging.Testing())
-
-		var got []*servicepb.CheckStoreError
-
-		require.NoError(t, checker.Check(context.Background(), func(event *servicepb.CheckStoreEvent) {
-			if e, ok := event.GetType().(*servicepb.CheckStoreEvent_Error); ok {
-				got = append(got, e.Error)
-			}
-		}))
-
-		return got
-	}
-
-	t.Run("injected policy row is reported", func(t *testing.T) {
-		t.Parallel()
-
-		got := runCheck(t, func(store *dal.Store) {
-			writeClusterPolicyRow(t, store, &commonpb.ClusterPolicy{
-				Revision:             3,
-				IdempotencyTtlMicros: 1000,
-				QueryCheckpointLimit: 5,
-			})
-		})
-
-		require.Len(t, got, 1, "a cluster policy row with no audited order behind it must be reported")
-		require.Equal(t, servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_CLUSTER_POLICY_MISMATCH, got[0].GetErrorType())
-	})
-
-	t.Run("untouched store stays clean", func(t *testing.T) {
-		t.Parallel()
-
-		require.Empty(t, runCheck(t, nil),
-			"an empty store holds no policy row, so the empty expectation must match it exactly")
-	})
+	_, _, attrs := newFSMPurgeMachine(t)
+	require.Empty(t, runFSMPurgeCheck(t, store, attrs))
 }

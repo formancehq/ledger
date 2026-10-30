@@ -80,7 +80,7 @@ import (
 // not a statement that a success range can reach backwards.
 //
 // The expectation is never seeded from the log stream under test — that is the
-// same rule signingVerifier and clusterPolicyVerifier follow, and here it is
+// same rule signingVerifier follows, and here it is
 // what makes a missing tail visible at all.
 type logBoundsVerifier struct {
 	// expectedMax is the highest log sequence the chain-verified success ranges
@@ -107,7 +107,7 @@ func newLogBoundsVerifier() *logBoundsVerifier {
 
 // markLiveTruncated records that the live audit fold stopped short of the end of
 // the range. Called from every non-error early exit in verifyAuditHashChain,
-// alongside the signing and cluster-policy verifiers.
+// alongside the signing verifier.
 func (v *logBoundsVerifier) markLiveTruncated() {
 	v.markIncomplete("the expected log range could not be derived over the whole history: the audit range " +
 		"was cut short by a hash chain break, so every log produced after it is unaccounted for. The " +

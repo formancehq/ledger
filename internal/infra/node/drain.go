@@ -110,11 +110,10 @@ func (node *Node) BeginDrain(ctx context.Context, epoch string, members []uint64
 		return nil, errors.New("drain requires cluster members")
 	}
 
-	cmd := commands.NewCommand()
-	cmd.CallerSnapshot = commands.SystemCallerSnapshot(commands.ComponentClusterPeer)
-	cmd.TechnicalUpdates = []*raftcmdpb.TechnicalUpdate{{
+	cmd := commands.NewTechnicalCommand(&raftcmdpb.TechnicalUpdate{
 		Kind: &raftcmdpb.TechnicalUpdate_DrainMarker{DrainMarker: &raftcmdpb.DrainMarker{Epoch: epoch, Members: append([]uint64(nil), members...)}},
-	}}
+	})
+	cmd.CallerSnapshot = commands.SystemCallerSnapshot(commands.ComponentClusterPeer)
 	data, err := cmd.MarshalVT()
 	if err != nil {
 		return nil, fmt.Errorf("marshaling drain marker: %w", err)
@@ -175,11 +174,10 @@ func (node *Node) EndDrain(ctx context.Context, epoch string, expectedTerm uint6
 		return nil, fmt.Errorf("waiting for persisted drain marker: %w", err)
 	}
 
-	cmd := commands.NewCommand()
-	cmd.CallerSnapshot = commands.SystemCallerSnapshot(commands.ComponentClusterPeer)
-	cmd.TechnicalUpdates = []*raftcmdpb.TechnicalUpdate{{
+	cmd := commands.NewTechnicalCommand(&raftcmdpb.TechnicalUpdate{
 		Kind: &raftcmdpb.TechnicalUpdate_DrainRelease{DrainRelease: &raftcmdpb.DrainRelease{Epoch: epoch}},
-	}}
+	})
+	cmd.CallerSnapshot = commands.SystemCallerSnapshot(commands.ComponentClusterPeer)
 	data, err := cmd.MarshalVT()
 	if err != nil {
 		return nil, fmt.Errorf("marshaling drain release: %w", err)

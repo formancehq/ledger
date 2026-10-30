@@ -376,7 +376,7 @@ func (o *Orchestrator) proposeTerminal(populate func(*raftcmdpb.Proposal), jobID
 // and proposeTechnical re-wraps with %w so `errors.Is(err, sentinel)`
 // works at every layer.
 func (o *Orchestrator) proposeAndWait(ctx context.Context, populate func(*raftcmdpb.Proposal)) error {
-	cmd := commands.NewCommand()
+	cmd := commands.NewTechnicalCommand()
 	cmd.CallerSnapshot = commands.SystemCallerSnapshot(commands.ComponentBackup)
 	populate(cmd)
 
@@ -398,7 +398,7 @@ func (o *Orchestrator) proposeAndWait(ctx context.Context, populate func(*raftcm
 // declared in the execution plan.
 func wrapFullBackupOrder(order *raftcmdpb.BackupOrder) func(*raftcmdpb.Proposal) {
 	return func(p *raftcmdpb.Proposal) {
-		p.TechnicalUpdates = append(p.TechnicalUpdates, &raftcmdpb.TechnicalUpdate{
+		p.GetBatch().TechnicalUpdates = append(p.GetBatch().TechnicalUpdates, &raftcmdpb.TechnicalUpdate{
 			Kind: &raftcmdpb.TechnicalUpdate_BackupOrder{BackupOrder: order},
 		})
 	}
@@ -407,7 +407,7 @@ func wrapFullBackupOrder(order *raftcmdpb.BackupOrder) func(*raftcmdpb.Proposal)
 // wrapIncrementalBackupOrder is the incremental-pipeline counterpart.
 func wrapIncrementalBackupOrder(order *raftcmdpb.IncrementalBackupOrder) func(*raftcmdpb.Proposal) {
 	return func(p *raftcmdpb.Proposal) {
-		p.TechnicalUpdates = append(p.TechnicalUpdates, &raftcmdpb.TechnicalUpdate{
+		p.GetBatch().TechnicalUpdates = append(p.GetBatch().TechnicalUpdates, &raftcmdpb.TechnicalUpdate{
 			Kind: &raftcmdpb.TechnicalUpdate_IncrementalBackupOrder{IncrementalBackupOrder: order},
 		})
 	}

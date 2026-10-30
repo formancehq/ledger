@@ -905,7 +905,7 @@ func (c *Checker) compareProjections(ctx context.Context, snap dal.PebbleReader,
 	expectedNumscriptContent := state.expectedNumscriptContent
 	expectedNumscriptLatest := state.expectedNumscriptLatest
 	derivedLiveCheckpoints := state.derivedLiveCheckpoints
-	signing, policy, bounds := folds.signing, folds.policy, folds.bounds
+	signing, bounds := folds.signing, folds.bounds
 
 	// Comparison passes: expected = replayed state. A cell SimulateEphemeralPurge
 	// deleted from the replay store must be absent from the live store too.
@@ -967,13 +967,6 @@ func (c *Checker) compareProjections(ctx context.Context, snap dal.PebbleReader,
 	// pass exists to report.
 	if err := signing.compare(snap, callback); err != nil {
 		return fmt.Errorf("comparing signing projections: %w", err)
-	}
-
-	// The cluster policy is cluster-global too, and verified on the same
-	// grounds: no log means no audited SetClusterPolicy order, so a stored
-	// policy row is unaudited.
-	if err := policy.compare(snap, callback); err != nil {
-		return fmt.Errorf("comparing cluster policy projection: %w", err)
 	}
 
 	if err := folds.ledgerMetadata.compare(snap, c.attrs, callback); err != nil {
@@ -2278,10 +2271,7 @@ func compareTransactionPostCommitVolumes(
 type chainVerifierFolds struct {
 	// signing re-derives the signing key/config expectation from chain-bound
 	// signing orders (invariant #8). Never seeded from the live projection.
-	signing *signingVerifier
-	// policy re-derives the cluster policy from chain-bound SetClusterPolicy
-	// orders.
-	policy         *clusterPolicyVerifier
+	signing        *signingVerifier
 	ledgerMetadata *ledgerMetadataVerifier
 	ledgerPolicy   *ledgerPolicyVerifier
 	// bounds re-derives the highest log sequence the chain accounts for, from
@@ -2294,7 +2284,6 @@ type chainVerifierFolds struct {
 func newChainVerifierFolds() chainVerifierFolds {
 	return chainVerifierFolds{
 		signing:        newSigningVerifier(),
-		policy:         newClusterPolicyVerifier(),
 		ledgerMetadata: newLedgerMetadataVerifier(),
 		ledgerPolicy:   &ledgerPolicyVerifier{},
 		bounds:         newLogBoundsVerifier(),
@@ -2306,7 +2295,6 @@ func newChainVerifierFolds() chainVerifierFolds {
 // verifyAuditHashChain.
 func (f chainVerifierFolds) markLiveTruncated() {
 	f.signing.markLiveTruncated()
-	f.policy.markLiveTruncated()
 	f.ledgerMetadata.liveTruncated = true
 	f.ledgerPolicy.liveTruncated = true
 	f.bounds.markLiveTruncated()
@@ -2634,7 +2622,6 @@ func (c *Checker) verifyAuditHashChain(
 				}
 
 				folds.signing.applyOrder(order)
-				folds.policy.applyOrder(order)
 				folds.ledgerMetadata.applyOrder(order)
 			}
 		}

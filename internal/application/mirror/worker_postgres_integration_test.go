@@ -80,7 +80,7 @@ func TestWorker_PostgresGapCommitAndRollback(t *testing.T) {
 				builder := plan.NewBuilder(tracker, c, attrs, store, nil, logger, 0)
 				var applied []*raftcmdpb.MirrorLogEntry
 				proposer := &applyingMirrorProposer{t: t, machine: machine, store: store, tracker: tracker, beforeApply: func(cmd *raftcmdpb.Proposal) {
-					for _, order := range cmd.GetOrders() {
+					for _, order := range cmd.GetBatch().GetOrders() {
 						applied = append(applied, order.GetLedgerScoped().GetMirrorIngest().GetEntry().CloneVT())
 					}
 				}}

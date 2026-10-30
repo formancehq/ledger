@@ -151,9 +151,9 @@ func runBootstrap(cmd *cobra.Command, _ []string) error {
 
 	logger := logging.NopZap()
 
-	// Apply export segments and rebuild derived state (if any).
-	if len(manifest.Exports) > 0 {
-		exportSpinner := cmdutil.StartSpinner("Applying export segments and rebuilding derived state...")
+	// Restore incremental history and operational state, including policy-only updates.
+	if len(manifest.Exports) > 0 || manifest.ClusterPolicy != nil {
+		exportSpinner := cmdutil.StartSpinner("Applying incremental backup state...")
 
 		exportStore, err := dal.OpenDirect(stagingDir, logger)
 		if err != nil {
@@ -175,7 +175,7 @@ func runBootstrap(cmd *cobra.Command, _ []string) error {
 			return cmdutil.Displayed(err)
 		}
 
-		exportSpinner.Success(fmt.Sprintf("Applied %d export segments and rebuilt derived state", len(manifest.Exports)))
+		exportSpinner.Success(fmt.Sprintf("Restored incremental state (%d history segments)", len(manifest.Exports)))
 	}
 
 	// Open staging as read-only to read metadata.

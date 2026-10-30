@@ -225,16 +225,14 @@ const (
 	// expectations are never seeded from the live projection -- that would
 	// verify old, never-touched keys against a copy of themselves.
 	CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_SIGNING_VERIFICATION_INCOMPLETE CheckStoreErrorType = 23
-	// Emitted when the persisted cluster policy (SubGlobClusterPolicy) differs
-	// from the policy re-derived from chain-bound SetClusterPolicy orders. The
-	// policy gates idempotency expiration and query-checkpoint admission
-	// cluster-wide, so a tampered row silently changes replay/expiry and
-	// checkpoint behavior. The audit chain is the source of truth.
+	// Historical result retained for wire compatibility. Operational cluster
+	// policy is no longer compared against business audit history.
+	//
+	// Deprecated: Marked as deprecated in bucket.proto.
 	CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_CLUSTER_POLICY_MISMATCH CheckStoreErrorType = 24
-	// Emitted when the cluster policy could not be verified over the whole audit
-	// history: the live audit range was cut short by a hash chain break, so any
-	// policy update recorded after the break is unread. The pass reports this
-	// rather than presenting a partial replay as clean.
+	// Historical result retained for wire compatibility; no longer emitted.
+	//
+	// Deprecated: Marked as deprecated in bucket.proto.
 	CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_CLUSTER_POLICY_VERIFICATION_INCOMPLETE CheckStoreErrorType = 25
 	// Emitted when the persisted query-checkpoint rows (SubGlobQueryCheckpoint)
 	// diverge from the set the checker re-derived from chain-bound
@@ -9723,7 +9721,7 @@ const file_bucket_proto_rawDesc = "" +
 	"!NUMSCRIPT_DIAGNOSTIC_KIND_VERSION\x10\x01\x12$\n" +
 	" NUMSCRIPT_DIAGNOSTIC_KIND_SYNTAX\x10\x02\x12%\n" +
 	"!NUMSCRIPT_DIAGNOSTIC_KIND_FEATURE\x10\x03\x12%\n" +
-	"!NUMSCRIPT_DIAGNOSTIC_KIND_COMPILE\x10\x04*\xdd\f\n" +
+	"!NUMSCRIPT_DIAGNOSTIC_KIND_COMPILE\x10\x04*\xe5\f\n" +
 	"\x13CheckStoreErrorType\x12&\n" +
 	"\"CHECK_STORE_ERROR_TYPE_UNSPECIFIED\x10\x00\x12(\n" +
 	"$CHECK_STORE_ERROR_TYPE_HASH_MISMATCH\x10\x01\x12'\n" +
@@ -9749,9 +9747,9 @@ const file_bucket_proto_rawDesc = "" +
 	")CHECK_STORE_ERROR_TYPE_REVERSE_MAP_ORPHAN\x10\x14\x12/\n" +
 	"+CHECK_STORE_ERROR_TYPE_SIGNING_KEY_MISMATCH\x10\x15\x122\n" +
 	".CHECK_STORE_ERROR_TYPE_SIGNING_CONFIG_MISMATCH\x10\x16\x12:\n" +
-	"6CHECK_STORE_ERROR_TYPE_SIGNING_VERIFICATION_INCOMPLETE\x10\x17\x122\n" +
-	".CHECK_STORE_ERROR_TYPE_CLUSTER_POLICY_MISMATCH\x10\x18\x12A\n" +
-	"=CHECK_STORE_ERROR_TYPE_CLUSTER_POLICY_VERIFICATION_INCOMPLETE\x10\x19\x124\n" +
+	"6CHECK_STORE_ERROR_TYPE_SIGNING_VERIFICATION_INCOMPLETE\x10\x17\x126\n" +
+	".CHECK_STORE_ERROR_TYPE_CLUSTER_POLICY_MISMATCH\x10\x18\x1a\x02\b\x01\x12E\n" +
+	"=CHECK_STORE_ERROR_TYPE_CLUSTER_POLICY_VERIFICATION_INCOMPLETE\x10\x19\x1a\x02\b\x01\x124\n" +
 	"0CHECK_STORE_ERROR_TYPE_QUERY_CHECKPOINT_MISMATCH\x10\x1a\x12<\n" +
 	"8CHECK_STORE_ERROR_TYPE_DEFAULT_ENFORCEMENT_MODE_MISMATCH\x10\x1b\x120\n" +
 	",CHECK_STORE_ERROR_TYPE_LOG_SEQUENCE_MISMATCH\x10\x1c\x126\n" +

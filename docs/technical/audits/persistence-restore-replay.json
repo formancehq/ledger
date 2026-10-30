@@ -25,7 +25,10 @@
     "tests/oracle/**",
     "tests/e2e/cluster/restore*_test.go",
     "internal/infra/node/drain.go",
-    "internal/infra/state/drain_test.go"
+    "internal/infra/state/drain_test.go",
+    "internal/pkg/proposals/**",
+    "internal/pkg/commands/**",
+    "internal/infra/plan/runner.go"
   ],
   "related_docs": [
     "AGENTS.md",
@@ -41,7 +44,8 @@
     "docs/ops/backup-restore.md",
     "docs/technical/contributing/testing.md",
     "docs/technical/architecture/subsystems/api/atomic-ledger-creation.md",
-    "docs/technical/architecture/subsystems/consensus/controlled-shutdown.md"
+    "docs/technical/architecture/subsystems/consensus/controlled-shutdown.md",
+    "docs/technical/architecture/subsystems/consensus/proposal-payloads.md"
   ],
   "invariants": [
     "An UncommittedFailure after a checkpoint produces no audit/item/log or frozen idempotency delta and does not advance the last applied HLC; restore parity must preserve this absence and the next retry behavior without inventing an export segment.",
@@ -61,7 +65,8 @@
     "Caches, preload state, peer read stores, usage stores, and other rebuildable local projections must not become authoritative over restored primary state. Their discard or reconstruction must converge from the complete restored history without overwriting newer post-checkpoint primary values.",
     "The once-committed audit key is preserved checkpoint state: a full checkpoint must contain it before any incremental audit delta, restore must keep it while discarding source cluster identity, and post-restore writes and backups must continue under the restored key.",
     "CreatedLedgerLog carries initial metadata so post-checkpoint creation reconstructs canonical metadata during ApplyExportsAndRebuild. Persisted LedgerInfo does not duplicate the canonical metadata projection.",
-    "Raft-applied drain marker and release state advance with the applied index in the same Pebble batch, and qualifying member status fsyncs the WAL before certifying that index. Restart and in-cluster snapshot sync restore an active cutoff before admission; cross-cluster restore deliberately discards the cluster-transient drain state."
+    "Raft-applied drain marker and release state advance with the applied index in the same Pebble batch, and qualifying member status fsyncs the WAL before certifying that index. Restart and in-cluster snapshot sync restore an active cutoff before admission; cross-cluster restore deliberately discards the cluster-transient drain state.",
+    "After a full-stop upgrade, production Raft writers serialize ExecutionBatch and SetClusterPolicyProposal payloads directly. No source binary may coexist with the target or reopen its WAL after new writes. Historical replay must preserve exact audit bytes and hashes. Native policy controls are unaudited operational state and must not be lowered to orders. Compare final state across encodings, verify each audit chain and exact policy omission, and preserve the historical prefix byte-for-byte. Incremental manifests must preserve policy-only changes as well as mixed legacy/native deltas. Both forms preserve coverage targets, checkpoint boundaries, technical-only HLC behavior, and post-checkpoint policy restore. Preserve legacy decoding and test reopening the released store/WAL, replaying retained legacy entries, writing new payloads, and restarting."
   ],
   "adversarial_questions": [
     "Does a post-checkpoint technical interruption spuriously advance the exported audit bound or restored HLC, create a frozen result, or hide a later definitive outcome from the delta?",
@@ -70,7 +75,7 @@
     "Can an incremental manifest omit the first or last sequence, accept a gap/overlap/duplicate, mix segment types or ranges, apply a valid prefix then fail, or publish before every referenced object is durable? What remains in the destination and staging store after each interruption?",
     "Which RebuildDelta branches assign, add, take a maximum, union, delete, range-delete, or fold a tombstone? Are their checkpoint seeds correct for multiple incremental rounds and for create-update-delete, revoke-cascade, promote, retype, revert, purge, and repeated idempotency sequences?",
     "Does DeleteLedger after the checkpoint remove every checkpoint-era and delta-era child removed by live apply, including rows without a standalone delete log? Can a later replay branch recreate a deleted child, or can an interrupted cleanup be mistaken for a valid completed deletion?",
-    "Do LedgerInfo, account-type charts/default enforcement, cluster policy, signing state, query checkpoints and their schedule, index registry, numscripts, mirror boundaries, maintenance mode, sink configuration, reversions and idempotency outcomes use facts actually present in exported history? What happens when a field is absent rather than explicitly zero or empty?",
+    "Do LedgerInfo, account-type charts/default enforcement, cluster policy, signing state, query checkpoints and their schedule, index registry, numscripts, mirror boundaries, maintenance mode, sink configuration, reversions and idempotency outcomes use facts actually present in exported history or the explicit operational policy snapshot? What happens when a field is absent rather than explicitly zero or empty?",
     "Can source-cluster applied indexes in rebuilt query-checkpoint or business rows be mistaken for destination progress, especially when the new Raft domain numerically overtakes them? Are restored markers, genesis boundary, publication and later deletion handled atomically enough to avoid an intermediate certificate?",
     "Does a newly added durable cluster-local key inherit the whole-zone delete, or can it leak source identity or authority into the destination? Does a post-checkpoint failed or successful business proposal leave the destination HLC behind the restored audit head?",
     "Can stale checkpoint cache or bloom rows mask or overwrite delta-rebuilt attributes on first access? Can cold-cache/preload recovery omit a key needed by the next admitted order or reconstruct from a peer projection rather than restored primary truth?",

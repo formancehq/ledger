@@ -12,6 +12,9 @@ import (
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
+	"github.com/formancehq/ledger/v3/internal/domain"
+	"github.com/formancehq/ledger/v3/internal/infra/state"
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
 
@@ -236,7 +239,7 @@ func ApplyExports(
 
 // ApplyExportsAndRebuild applies the manifest's incremental export segments to
 // the staged store and rebuilds derived state from them, leaving the staging
-// directory fully restored. It is a no-op when the manifest carries no exports.
+// directory fully restored. It also restores operational policy when no history was exported.
 //
 // Both the offline bootstrap (cmd/ledgerctl/store) and the gRPC restore path
 // (internal/adapter/grpc) call this so the two cannot drift: skipping it loses
@@ -249,7 +252,25 @@ func ApplyExports(
 // the same directory in the same process. Reusing one handle eliminates that
 // re-open hazard.
 func ApplyExportsAndRebuild(ctx context.Context, logger logging.Logger, storage Storage, store *dal.Store, manifest *Manifest) error {
-	if manifest == nil || len(manifest.Exports) == 0 {
+	if manifest == nil {
+		return nil
+	}
+
+	// Decode/validate operational state before mutating the staging store.
+	var policy *commonpb.ClusterPolicy
+	if snapshot := manifest.ClusterPolicy; snapshot != nil {
+		policy = &commonpb.ClusterPolicy{}
+		if err := policy.UnmarshalVT(snapshot.Data); err != nil {
+			return fmt.Errorf("decoding backup cluster policy: %w", err)
+		}
+		if policy.GetRevision() == 0 || policy.GetQueryCheckpointLimit() == 0 {
+			return errors.New("invalid backup cluster policy")
+		}
+		if err := domain.MetadataLimitsFromPolicy(policy).Validate(); err != nil {
+			return fmt.Errorf("invalid backup cluster policy limits: %w", err)
+		}
+	}
+	if len(manifest.Exports) == 0 && policy == nil {
 		return nil
 	}
 
@@ -266,8 +287,23 @@ func ApplyExportsAndRebuild(ctx context.Context, logger logging.Logger, storage 
 		fromAuditSeq = manifest.Checkpoint.LastAuditSequence
 	}
 
-	if err := RebuildDelta(ctx, logger, store, fromLogSeq, fromAuditSeq); err != nil {
-		return fmt.Errorf("rebuilding derived state: %w", err)
+	if len(manifest.Exports) > 0 {
+		if err := RebuildDelta(ctx, logger, store, fromLogSeq, fromAuditSeq); err != nil {
+			return fmt.Errorf("rebuilding derived state: %w", err)
+		}
+	}
+
+	// Legacy log folds run first; the explicit operational snapshot is newer
+	// and supersedes them. Activation only follows a successful staging restore.
+	if policy != nil {
+		batch := store.OpenWriteSession()
+		defer func() { _ = batch.Cancel() }()
+		if err := state.SaveClusterPolicy(batch, policy); err != nil {
+			return fmt.Errorf("restoring operational policy: %w", err)
+		}
+		if err := batch.Commit(); err != nil {
+			return fmt.Errorf("committing operational policy: %w", err)
+		}
 	}
 
 	return nil

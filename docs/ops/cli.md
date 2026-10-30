@@ -5502,3 +5502,8 @@ repository root. It exits nonzero on invalid input or an output error; discard
 partial output after any failure. It does not connect to ClickHouse.
 Follow the complete [migration procedure](clickhouse-account-metadata.md),
 including preflights, backup, source preservation, import and verification.
+
+Incremental backup restoration also applies operational policy from the manifest,
+including a policy-only update with zero history segments. The offline
+`ledgerctl store bootstrap` and server restore paths use the same reconstruction
+routine; see the [restore contract](../technical/architecture/subsystems/backup/incremental-restore-contract.md#operational-cluster-policy).

@@ -15,7 +15,10 @@ import (
 //   - same revision, different payload: contract violation, rejected;
 //   - lower revision: stale, rejected (a newer policy already won).
 func processSetClusterPolicy(order *raftcmdpb.SetClusterPolicyOrder, ctx *Context) (*commonpb.LogPayload, domain.SerializableError) {
-	newPolicy := order.GetPolicy()
+	return applyClusterPolicy(order.GetPolicy(), ctx.Scope)
+}
+
+func applyClusterPolicy(newPolicy *commonpb.ClusterPolicy, scope Scope) (*commonpb.LogPayload, domain.SerializableError) {
 	if newPolicy == nil {
 		return nil, &domain.ErrClusterPolicyInvalid{Detail: "missing policy"}
 	}
@@ -38,13 +41,13 @@ func processSetClusterPolicy(order *raftcmdpb.SetClusterPolicyOrder, ctx *Contex
 		return nil, err
 	}
 
-	current := ctx.Scope.GetClusterPolicy()
+	current := scope.GetClusterPolicy()
 	appliedRev := current.GetRevision()
 	newRev := newPolicy.GetRevision()
 
 	switch {
 	case newRev > appliedRev:
-		ctx.Scope.SetClusterPolicy(newPolicy)
+		scope.SetClusterPolicy(newPolicy)
 
 		return &commonpb.LogPayload{
 			Type: &commonpb.LogPayload_SetClusterPolicy{
@@ -75,4 +78,16 @@ func validateClusterPolicyMetadataLimits(policy *commonpb.ClusterPolicy) domain.
 	}
 
 	return nil
+}
+
+// ProcessClusterPolicy applies operational state without allocating business logs.
+// The released order handler above retains its original audited replay behavior.
+func (p *RequestProcessor) ProcessClusterPolicy(policy *commonpb.ClusterPolicy, factory ScopeFactory) domain.SerializableError {
+	scope, err := factory.NewScope(nil)
+	if err != nil {
+		return &domain.ErrInvalidExecutionPlan{Reason_: err.Error()}
+	}
+	_, processErr := applyClusterPolicy(policy, scope)
+
+	return processErr
 }

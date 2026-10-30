@@ -3,6 +3,7 @@ package node
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 	"go.etcd.io/raft/v3"
@@ -11,7 +12,73 @@ import (
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
+	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
+
+func TestDrainProducersEmitNativeTechnicalPayloads(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		prepare func(*Node)
+		propose func(context.Context, *Node) error
+		check   func(*testing.T, *raftcmdpb.TechnicalUpdate)
+	}{
+		{
+			name: "marker",
+			propose: func(ctx context.Context, n *Node) error {
+				_, err := n.BeginDrain(ctx, "epoch", []uint64{1, 2}, 0)
+
+				return err
+			},
+			check: func(t *testing.T, update *raftcmdpb.TechnicalUpdate) {
+				require.Equal(t, "epoch", update.GetDrainMarker().GetEpoch())
+				require.Equal(t, []uint64{1, 2}, update.GetDrainMarker().GetMembers())
+			},
+		},
+		{
+			name: "release",
+			prepare: func(n *Node) {
+				n.fsm.State.DrainState = &raftcmdpb.DrainState{Epoch: "epoch"}
+			},
+			propose: func(ctx context.Context, n *Node) error {
+				_, err := n.EndDrain(ctx, "epoch", 0)
+
+				return err
+			},
+			check: func(t *testing.T, update *raftcmdpb.TechnicalUpdate) {
+				require.Equal(t, "epoch", update.GetDrainRelease().GetEpoch())
+			},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			n, _ := newTestMaintenanceNode(t)
+			n.proposeCh = make(chan *Proposal, 1)
+			n.indexTracker = NewIndexTracker(1)
+			if tc.prepare != nil {
+				tc.prepare(n)
+			}
+			ctx, cancel := context.WithCancel(t.Context())
+			defer cancel()
+			done := make(chan error, 1)
+			go func() { done <- tc.propose(ctx, n) }()
+
+			var proposal *Proposal
+			select {
+			case proposal = <-n.proposeCh:
+			case <-time.After(5 * time.Second):
+				t.Fatal("drain producer did not enqueue a proposal")
+			}
+			var wire raftcmdpb.Proposal
+			require.NoError(t, wire.UnmarshalVT(proposal.Data()))
+			require.NotNil(t, wire.GetBatch())
+			require.Empty(t, wire.GetOrders())
+			require.Empty(t, wire.GetTechnicalUpdates())
+			require.Len(t, wire.GetBatch().GetTechnicalUpdates(), 1)
+			tc.check(t, wire.GetBatch().GetTechnicalUpdates()[0])
+			cancel()
+			require.ErrorIs(t, <-done, context.Canceled)
+		})
+	}
+}
 
 func TestProposeRejectsAfterDrainEnqueue(t *testing.T) {
 	t.Parallel()

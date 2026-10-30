@@ -3712,6 +3712,149 @@ func NewDeleteLedgerMetadataOrderListReader(s []*DeleteLedgerMetadataOrder) Dele
 	return deleteLedgerMetadataOrderListReadonly(s)
 }
 
+// ExecutionBatchReader provides read-only access to ExecutionBatch.
+// Call Mutate() to obtain a mutable clone.
+type ExecutionBatchReader interface {
+	GetOrders() OrderListReader
+	GetTechnicalUpdates() TechnicalUpdateListReader
+	Mutate() *ExecutionBatch
+}
+
+type executionBatchReadonly ExecutionBatch
+
+func (r *executionBatchReadonly) GetOrders() OrderListReader {
+	return NewOrderListReader((*ExecutionBatch)(r).GetOrders())
+}
+
+func (r *executionBatchReadonly) GetTechnicalUpdates() TechnicalUpdateListReader {
+	return NewTechnicalUpdateListReader((*ExecutionBatch)(r).GetTechnicalUpdates())
+}
+
+func (r *executionBatchReadonly) Mutate() *ExecutionBatch {
+	return (*ExecutionBatch)(r).CloneVT()
+}
+
+// AsReader returns a read-only view of this ExecutionBatch.
+func (m *ExecutionBatch) AsReader() ExecutionBatchReader {
+	if m == nil {
+		return nil
+	}
+	return (*executionBatchReadonly)(m)
+}
+
+// Mutate returns a mutable deep clone of this ExecutionBatch.
+func (m *ExecutionBatch) Mutate() *ExecutionBatch {
+	return m.CloneVT()
+}
+
+// ExecutionBatchListReader provides read-only iteration over []*ExecutionBatch.
+type ExecutionBatchListReader interface {
+	Len() int
+	Get(i int) ExecutionBatchReader
+	Range(yield func(int, ExecutionBatchReader) bool)
+}
+
+type executionBatchListReadonly []*ExecutionBatch
+
+func (l executionBatchListReadonly) Len() int { return len(l) }
+
+func (l executionBatchListReadonly) Get(i int) ExecutionBatchReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l executionBatchListReadonly) Range(yield func(int, ExecutionBatchReader) bool) {
+	for i, v := range l {
+		var r ExecutionBatchReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewExecutionBatchListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewExecutionBatchListReader(s []*ExecutionBatch) ExecutionBatchListReader {
+	return executionBatchListReadonly(s)
+}
+
+// SetClusterPolicyProposalReader provides read-only access to SetClusterPolicyProposal.
+// Call Mutate() to obtain a mutable clone.
+type SetClusterPolicyProposalReader interface {
+	GetPolicy() commonpb.ClusterPolicyReader
+	Mutate() *SetClusterPolicyProposal
+}
+
+type setClusterPolicyProposalReadonly SetClusterPolicyProposal
+
+func (r *setClusterPolicyProposalReadonly) GetPolicy() commonpb.ClusterPolicyReader {
+	v := (*SetClusterPolicyProposal)(r).GetPolicy()
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (r *setClusterPolicyProposalReadonly) Mutate() *SetClusterPolicyProposal {
+	return (*SetClusterPolicyProposal)(r).CloneVT()
+}
+
+// AsReader returns a read-only view of this SetClusterPolicyProposal.
+func (m *SetClusterPolicyProposal) AsReader() SetClusterPolicyProposalReader {
+	if m == nil {
+		return nil
+	}
+	return (*setClusterPolicyProposalReadonly)(m)
+}
+
+// Mutate returns a mutable deep clone of this SetClusterPolicyProposal.
+func (m *SetClusterPolicyProposal) Mutate() *SetClusterPolicyProposal {
+	return m.CloneVT()
+}
+
+// SetClusterPolicyProposalListReader provides read-only iteration over []*SetClusterPolicyProposal.
+type SetClusterPolicyProposalListReader interface {
+	Len() int
+	Get(i int) SetClusterPolicyProposalReader
+	Range(yield func(int, SetClusterPolicyProposalReader) bool)
+}
+
+type setClusterPolicyProposalListReadonly []*SetClusterPolicyProposal
+
+func (l setClusterPolicyProposalListReadonly) Len() int { return len(l) }
+
+func (l setClusterPolicyProposalListReadonly) Get(i int) SetClusterPolicyProposalReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l setClusterPolicyProposalListReadonly) Range(yield func(int, SetClusterPolicyProposalReader) bool) {
+	for i, v := range l {
+		var r SetClusterPolicyProposalReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewSetClusterPolicyProposalListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewSetClusterPolicyProposalListReader(s []*SetClusterPolicyProposal) SetClusterPolicyProposalListReader {
+	return setClusterPolicyProposalListReadonly(s)
+}
+
 // ProposalReader provides read-only access to Proposal.
 // Call Mutate() to obtain a mutable clone.
 type ProposalReader interface {
@@ -3724,6 +3867,7 @@ type ProposalReader interface {
 	GetIdempotency() commonpb.IdempotencyReader
 	GetSignature() signaturepb.SignedApplyBatchReader
 	GetTechnicalUpdates() TechnicalUpdateListReader
+	GetPayload() isProposal_Payload
 	Mutate() *Proposal
 }
 
@@ -3783,6 +3927,10 @@ func (r *proposalReadonly) GetSignature() signaturepb.SignedApplyBatchReader {
 
 func (r *proposalReadonly) GetTechnicalUpdates() TechnicalUpdateListReader {
 	return NewTechnicalUpdateListReader((*Proposal)(r).GetTechnicalUpdates())
+}
+
+func (r *proposalReadonly) GetPayload() isProposal_Payload {
+	return (*Proposal)(r).GetPayload()
 }
 
 func (r *proposalReadonly) Mutate() *Proposal {

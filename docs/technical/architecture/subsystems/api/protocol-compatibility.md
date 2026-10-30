@@ -131,10 +131,11 @@ server-specific compatibility repair.
 HTTP consumers do not send this gRPC metadata. Internal forwarding from HTTP
 uses the server's service client and is subject to the same gate at the peer.
 Nodes with different service revisions can therefore fail forwarded requests;
-the revision-40 wire contract alone does not prove a rolling upgrade safe. RC
-updates must also preserve peer communication, Raft apply, and persisted-state
-compatibility while old and new servers coexist. The separate Raft transport and
-snapshot server retain their own contracts. See [server upgrades](../../../../ops/upgrades.md).
+the revision-40 wire contract alone does not prove a rolling upgrade safe.
+Releases that permit rolling must preserve peer communication, Raft apply and
+persisted-state compatibility while old and new servers coexist. RC.2 to RC.3
+instead requires a full stop, with no mixed-binary window and preserved data.
+The separate Raft transport and snapshot server retain their own contracts. See [server upgrades](../../../../ops/upgrades.md).
 
 ## Apply execution provenance (revision 7)
 
@@ -347,10 +348,11 @@ must use the matching revision.
 ## Private cluster policy command (revision 26)
 
 Revision 26 removes `Request.set_cluster_policy` from the public
-`BucketService.Apply` envelope. Cluster policy reconciliation is now admitted
-only through the server-internal `Admission.AdmitClusterPolicy` entry point,
-which still commits the internal Raft `SetClusterPolicyOrder` and audited
-`SetClusterPolicy` log payload.
+`BucketService.Apply` envelope. At that revision, reconciliation moved to the
+server-internal `Admission.AdmitClusterPolicy` entry point and committed an
+audited `SetClusterPolicyOrder`. Those historical orders remain readable. RC.3
+uses an unaudited native `SetClusterPolicyProposal`; see the operational-policy
+section below.
 
 A revision-25 client can still encode field 28 in `Request.type`, but a
 revision-26 server no longer interprets that field as a valid Apply request.
@@ -607,8 +609,8 @@ Revision 36 removes the `cluster_policy_invalid`,
 proposal or an admission coverage contract violation. An affected proposal
 returns its typed error without an `AuditFailure` entry or frozen idempotency
 result; staged order writes are discarded. A corrected proposal can be retried.
-Successful cluster-policy updates still produce audited orders and the policy
-projection remains checker-verified. The removed arms were renumbered before
+At revision 36, successful cluster-policy updates still produced audited orders and the policy
+projection was checker-verified. The removed arms were renumbered before
 the first RC. This shared gRPC change requires revision 36 on both sides.
 
 ## Technical failures outside the audited outcome (revision 37)
@@ -715,3 +717,11 @@ Custom and anonymous scope mappings must use the new granular values; see the
 [authentication migration](../../../../ops/authentication.md#migration-from-rc1-granular-labels).
 Persisted audit snapshots retain the exact effective scope strings captured at
 admission, so historical hashes remain verifiable without a storage migration.
+
+### Operational policy (RC.3)
+
+Native policy controls update operational state without business audit entries.
+Historical policy orders retain their audit fields and exact hash preimages.
+`AuditItem` and service revision 40 are unchanged. Discovery exposes the current
+policy. See [proposal payloads](../consensus/proposal-payloads.md) for the full-stop
+cutover and backup preservation contract.
