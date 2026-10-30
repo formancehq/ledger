@@ -72,7 +72,7 @@ const coverageRetypeMessage = coveragePrefix + "a query was served while a retyp
 
 const (
 	coverageDeletionMessage  = coveragePrefix + "ledger deletion and reserved-name rejection verified"
-	coveragePromotionMessage = coveragePrefix + "mirror promotion and write recovery verified"
+	coveragePromotionMessage = coveragePrefix + "mirror promotion eligibility verified"
 )
 
 // Query probes are evaluated by served pages; lifecycle probes are evaluated

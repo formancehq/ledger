@@ -35,6 +35,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/adapter/apitrace"
 	internalauth "github.com/formancehq/ledger/v3/internal/adapter/auth"
 	"github.com/formancehq/ledger/v3/internal/adapter/grpcerr"
+	"github.com/formancehq/ledger/v3/internal/application/admission"
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/domain/crypto/signing"
 	"github.com/formancehq/ledger/v3/internal/infra/backup"
@@ -622,6 +623,20 @@ func convertToGRPCErrorWithContext(ctx context.Context, err error, logger loggin
 		errors.Is(err, node.ErrLearnerNotEligible) {
 		return status.Error(codes.FailedPrecondition, err.Error())
 	}
+	if _, ok := errors.AsType[*admission.ErrMirrorNotCaughtUp](err); ok {
+		// Keep this admission-only precondition classifiable after a follower
+		// forwards the leader's status. The generic marker matches the HTTP
+		// INVALID_REQUEST code without adding an RC protobuf ErrorReason.
+		st := status.New(codes.FailedPrecondition, err.Error())
+		detailed, detailErr := st.WithDetails(&errdetails.ErrorInfo{
+			Reason: "INVALID_REQUEST", Domain: errorDomain,
+		})
+		if detailErr == nil {
+			return detailed.Err()
+		}
+
+		return st.Err()
+	}
 
 	// Backup-destination busy: stable retry signal so clients can distinguish
 	// a normal concurrent-backup rejection from an opaque server error. The
@@ -669,7 +684,8 @@ func convertToGRPCErrorWithContext(ctx context.Context, err error, logger loggin
 	// a transport guard, a read-path argument check — flows through one
 	// exhaustive Kind switch in classifiableToGRPCStatus. Kind is all the
 	// status code needs; the Reason and its metadata are read there only from
-	// the errors that own a public wire contract.
+	// the errors that own a public wire contract. The mirror catch-up guard
+	// above adds a generic ErrorInfo solely to preserve forwarding semantics.
 	if c, ok := errors.AsType[domain.Classifiable](err); ok {
 		if c.Kind() == domain.KindInternal {
 			recordGRPCInternalError(ctx, logger, err)

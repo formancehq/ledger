@@ -694,6 +694,12 @@ Converts the mirror ledger to normal mode. After promotion:
 - The `mirrorSource` configuration is cleared
 
 Promoting a non-mirror ledger returns HTTP 400 (`LEDGER_NOT_IN_MIRROR_MODE`) or gRPC `FailedPrecondition`.
+For a fresh promotion, an expired idempotency key, or a different batch,
+promotion of a mirror with no observed source head, a cursor behind that head,
+or an active sync error is rejected before proposal with a precondition error.
+A matching, unexpired keyed retry of a recorded failure returns that original
+failure without proposing or checking current mirror sync progress.
+The service request and protobuf reason enum are unchanged for RC compatibility.
 
 **gRPC:** Both create-mirror and promote operations go through the `Apply` method using `CreateLedgerRequest` (with `mode` and `mirror_source` fields) and `PromoteLedgerRequest`.
 
@@ -1602,7 +1608,7 @@ The REST adapter uses the same `Describable.Reason()` as the JSON `errorCode` fi
 
 Every response the table maps to 503 also carries `Retry-After: 1` — the kind is by definition retry-now, so the header covers the whole class, not just the no-leader sentinel.
 
-**Classified failures with no reason (EN-2081).** A `domain.Classifiable` declares a `Kind` and nothing else, so it has no `Reason()` to publish. The status code comes from the same table, but the response carries a coarse kind-level `errorCode` — `INVALID_REQUEST`, `UNAVAILABLE`, `CONFLICT`, … — and the gRPC surface sends no `ErrorInfo` at all. A bulk element answers the same status and message with the generic element `errorCode` `ERROR`.
+**Classified failures with no reason (EN-2081).** A `domain.Classifiable` declares a `Kind` and nothing else, so it has no `Reason()` to publish. The status code comes from the same table, but the response carries a coarse kind-level `errorCode` such as `INVALID_REQUEST`, `UNAVAILABLE`, or `CONFLICT`. The gRPC surface normally sends no `ErrorInfo`; the mirror-promotion catch-up precondition is the exception: it sends `ErrorInfo` with the generic `INVALID_REQUEST` reason and `ledger` domain so a follower can preserve the classification when forwarding the leader's rejection. This does not add a typed business reason or a protobuf enum value. A bulk element answers the same status and message with the generic element `errorCode` `ERROR`.
 
 This is the tier for failures that name no business outcome a client could branch on:
 

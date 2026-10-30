@@ -2,6 +2,14 @@
 
 The admission pipeline (`internal/application/admission`) is the gateway every write request goes through before reaching the FSM. It authenticates the request, validates signatures, converts external requests into internal orders, preloads dependent state, and proposes the resulting command into Raft.
 
+For `PromoteLedger`, admission checks the mirror's durable cursor, latest
+observed source head, and replicated synchronization error before proposal.
+This guard is local to admission so rolling RC voters apply the same committed
+order identically. An unknown source head is rejected; an observed head alone
+does not prove that the external source has stopped advancing.
+The batch scan and per-promotion snapshot budget are documented in the
+[pipeline cost boundary](pipeline.md#mirror-promotion-admission-budget).
+
 ## Documents
 
 | Document | Description |

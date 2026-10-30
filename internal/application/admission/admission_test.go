@@ -37,7 +37,7 @@ const testLedgerName = "test-ledger"
 // Admit need the policy so the write-readiness gate lets business writes
 // through; tests that exercise the gate's not-ready path use
 // createTestStoreWithoutPolicy.
-func createTestStore(t *testing.T) *dal.Store {
+func createTestStore(t testing.TB) *dal.Store {
 	t.Helper()
 
 	s := createTestStoreWithoutPolicy(t)
@@ -48,7 +48,7 @@ func createTestStore(t *testing.T) *dal.Store {
 
 // commitClusterPolicy writes a committed cluster policy (revision > 0) directly
 // to the store, standing in for the reconciler's replicated proposal.
-func commitClusterPolicy(t *testing.T, store *dal.Store, revision uint64) {
+func commitClusterPolicy(t testing.TB, store *dal.Store, revision uint64) {
 	t.Helper()
 
 	batch := store.OpenWriteSession()
@@ -69,7 +69,7 @@ func commitClusterPolicy(t *testing.T, store *dal.Store, revision uint64) {
 
 // createTestStoreWithoutPolicy creates a test store with a registered ledger and
 // no committed cluster policy.
-func createTestStoreWithoutPolicy(t *testing.T) *dal.Store {
+func createTestStoreWithoutPolicy(t testing.TB) *dal.Store {
 	t.Helper()
 	tmpDir := t.TempDir()
 	ctx := logging.TestingContext()
@@ -101,7 +101,7 @@ func createTestStoreWithoutPolicy(t *testing.T) *dal.Store {
 // createTestAdmission creates an Admission instance for testing.
 // It returns both the Admission and the Attributes so tests can set up
 // transaction state directly in Pebble.
-func createTestAdmission(t *testing.T, store *dal.Store) (*Admission, *attributes.Attributes) {
+func createTestAdmission(t testing.TB, store *dal.Store) (*Admission, *attributes.Attributes) {
 	t.Helper()
 
 	ctx := logging.TestingContext()

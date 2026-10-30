@@ -546,6 +546,25 @@ func TestConvertToGRPCError_BusinessError(t *testing.T) {
 	require.Equal(t, codes.NotFound, st.Code())
 }
 
+func TestConvertToGRPCError_MirrorNotCaughtUp(t *testing.T) {
+	t.Parallel()
+	err := &admission.ErrMirrorNotCaughtUp{Ledger: "m1", Cursor: 0, Head: 20}
+	encoded := convertToGRPCError(err, testLogger())
+	st := status.Convert(encoded)
+	require.Equal(t, codes.FailedPrecondition, st.Code())
+	require.Contains(t, st.Message(), "cursor=0 head=20")
+	require.Len(t, st.Details(), 1)
+	info, ok := st.Details()[0].(*errdetails.ErrorInfo)
+	require.True(t, ok)
+	require.Equal(t, "INVALID_REQUEST", info.GetReason())
+	require.Equal(t, errorDomain, info.GetDomain())
+	forwarded := grpcerr.FromStatusError(encoded)
+	classification, ok := errors.AsType[domain.Classifiable](forwarded)
+	require.True(t, ok, "forwarding must preserve the precondition kind")
+	require.Equal(t, domain.KindPrecondition, classification.Kind())
+	require.Equal(t, codes.FailedPrecondition, status.Code(forwarded))
+}
+
 // TestConvertToGRPCError_UnknownErrorIsSanitized pins the fix for #326.
 // Unmapped errors used to be returned verbatim, leaking internal error
 // strings (Pebble messages, file paths, invariant text) to API clients.

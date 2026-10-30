@@ -1,0 +1,191 @@
+package admission
+
+import (
+	"bytes"
+	"context"
+	"fmt"
+	"time"
+
+	"github.com/formancehq/ledger/v3/internal/domain"
+	"github.com/formancehq/ledger/v3/internal/domain/processing"
+	"github.com/formancehq/ledger/v3/internal/infra/state"
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
+	"github.com/formancehq/ledger/v3/internal/query"
+)
+
+// ErrMirrorNotCaughtUp is an admission-only precondition. It is deliberately
+// not a new ErrorReason: the rc.1 protobuf and service protocol are frozen.
+type ErrMirrorNotCaughtUp struct {
+	Ledger    string
+	Cursor    uint64
+	Head      uint64
+	SyncError bool
+}
+
+func (e *ErrMirrorNotCaughtUp) Error() string {
+	return fmt.Sprintf("mirror %s is not caught up: cursor=%d head=%d sync_error=%t",
+		e.Ledger, e.Cursor, e.Head, e.SyncError)
+}
+
+func (*ErrMirrorNotCaughtUp) Kind() domain.ErrorKind { return domain.KindPrecondition }
+
+// checkMirrorPromotions uses one read handle for each promotion. An unknown
+// source head is unsafe: it also describes a mirror whose worker never reached
+// the source. Apply remains unchanged so old and new voters replay committed
+// PromoteLedger entries identically during an RC rolling upgrade.
+func (a *Admission) checkMirrorPromotions(ctx context.Context, orders []*raftcmdpb.Order, idempotencyKey string) error {
+	promotions, createdLedgers := mirrorPromotionBatch(orders)
+	var orderHash []byte
+	for _, ledgerOrder := range promotions {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		_, createdInBatch := createdLedgers[ledgerOrder.GetLedger()]
+
+		handle, err := a.store.NewReadHandle()
+		if err != nil {
+			return fmt.Errorf("opening mirror promotion read handle: %w", err)
+		}
+		info, infoErr := query.ReadLedgerInfoRow(handle, ledgerOrder.GetLedger())
+		if infoErr != nil {
+			_ = handle.Close()
+
+			return fmt.Errorf("reading ledger for mirror promotion: %w", infoErr)
+		}
+		if info == nil || (createdInBatch && info.GetDeletedAt() != nil) {
+			// An absent ledger might be created as a mirror before proposal;
+			// never let an unobserved head bypass the eligibility gate. A
+			// create-then-promote batch has the same problem, even if a
+			// previous ledger with this name left a tombstone.
+			_ = handle.Close()
+
+			return &domain.BusinessError{Err: &domain.ErrLedgerNotFound{Name: ledgerOrder.GetLedger()}}
+		}
+		if info.GetDeletedAt() != nil {
+			// Deleted names cannot be recreated. Let the FSM distinguish a
+			// fresh rejection from a keyed replay after deletion.
+			if err := handle.Close(); err != nil {
+				return fmt.Errorf("closing mirror promotion read handle: %w", err)
+			}
+
+			continue
+		}
+		if info.GetMode() != commonpb.LedgerMode_LEDGER_MODE_MIRROR {
+			// A committed promotion changes the ledger to NORMAL. Only this
+			// post-promotion state can bypass eligibility for a keyed retry.
+			// An expired retained key is harmless here: the FSM may decline
+			// replay, but cannot freshly promote an already-normal ledger.
+			if idempotencyKey != "" {
+				value, readErr := state.LoadIdempotencyKey(handle, idempotencyKey)
+				if readErr != nil {
+					_ = handle.Close()
+
+					return fmt.Errorf("reading mirror promotion idempotency key: %w", readErr)
+				}
+				if value != nil {
+					if err := handle.Close(); err != nil {
+						return fmt.Errorf("closing mirror promotion read handle: %w", err)
+					}
+
+					continue
+				}
+			}
+			_ = handle.Close()
+
+			return &domain.BusinessError{Err: &domain.ErrLedgerNotInMirrorMode{Name: ledgerOrder.GetLedger()}}
+		}
+		if idempotencyKey != "" {
+			stored, readErr := state.LoadIdempotencyKey(handle, idempotencyKey)
+			if readErr != nil {
+				_ = handle.Close()
+
+				return fmt.Errorf("reading mirror promotion idempotency key: %w", readErr)
+			}
+			if stored.GetFailure() != nil {
+				if orderHash == nil {
+					orderHash = processing.HashOrders(orders)
+				}
+			}
+			if stored.GetFailure() != nil && bytes.Equal(stored.GetHash(), orderHash) {
+				// A committed business failure can leave the ledger in MIRROR.
+				// Reconstruct that exact outcome before the current sync state can
+				// hide it. Never propose on this path: an expired key could otherwise
+				// execute a fresh promotion after the admission check.
+				now := uint64(time.Now().UnixMicro())
+				lastApplied, timestampErr := query.ReadLastAppliedTimestamp(handle)
+				if timestampErr != nil {
+					_ = handle.Close()
+
+					return fmt.Errorf("reading timestamp for mirror promotion replay: %w", timestampErr)
+				}
+				if lastApplied > now {
+					now = lastApplied
+				}
+				if !state.IdempotencyExpired(stored.GetExpiresAt(), now) {
+					failure := stored.GetFailure()
+					facts, factsErr := domain.FailureFactsFromDetails(failure.GetDetails())
+					if factsErr != nil {
+						_ = handle.Close()
+
+						return fmt.Errorf("invalid stored mirror promotion failure: %w", factsErr)
+					}
+					message, _ := domain.RenderFailureFacts(facts)
+					if err := handle.Close(); err != nil {
+						return fmt.Errorf("closing mirror promotion read handle: %w", err)
+					}
+
+					return &domain.BusinessError{Err: &domain.ReplayedFailure{
+						ErrReason: domain.ReasonString(failure.GetReason()), Msg: message,
+						Details: failure.GetDetails(),
+					}}
+				}
+			}
+		}
+		progress, readErr := query.ReadMirrorSyncProgress(ctx, handle, a.attrs.Boundary, ledgerOrder.GetLedger())
+		closeErr := handle.Close()
+		if readErr != nil {
+			return fmt.Errorf("reading mirror promotion progress: %w", readErr)
+		}
+		if closeErr != nil {
+			return fmt.Errorf("closing mirror promotion read handle: %w", closeErr)
+		}
+		if progress.GetSourceLogCount() == 0 || progress.GetCursor() < progress.GetSourceLogCount() || progress.GetError() != nil {
+			return &ErrMirrorNotCaughtUp{
+				Ledger: ledgerOrder.GetLedger(), Cursor: progress.GetCursor(),
+				Head: progress.GetSourceLogCount(), SyncError: progress.GetError() != nil,
+			}
+		}
+	}
+
+	return nil
+}
+
+// mirrorPromotionBatch finds promotions before any read handle holds the store
+// lifecycle lock. Only batches with a promotion need the second pass that
+// records creates, including those after a promotion in the same batch.
+func mirrorPromotionBatch(orders []*raftcmdpb.Order) ([]*raftcmdpb.LedgerScopedOrder, map[string]struct{}) {
+	var promotions []*raftcmdpb.LedgerScopedOrder
+	for _, order := range orders {
+		ledgerOrder := order.GetLedgerScoped()
+		if ledgerOrder != nil && ledgerOrder.GetPromoteLedger() != nil {
+			promotions = append(promotions, ledgerOrder)
+		}
+	}
+	if len(promotions) == 0 {
+		return nil, nil
+	}
+
+	var createdLedgers map[string]struct{}
+	for _, order := range orders {
+		ledgerOrder := order.GetLedgerScoped()
+		if ledgerOrder != nil && ledgerOrder.GetCreateLedger() != nil {
+			if createdLedgers == nil {
+				createdLedgers = make(map[string]struct{})
+			}
+			createdLedgers[ledgerOrder.GetLedger()] = struct{}{}
+		}
+	}
+
+	return promotions, createdLedgers
+}

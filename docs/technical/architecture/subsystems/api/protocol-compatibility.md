@@ -25,6 +25,18 @@ client during a rolling upgrade; clients must wait for the server rollout
 before calling the new RPC. The operation has no persisted, Raft, snapshot,
 backup, or audit format effect.
 
+EN-3037 retains revision 40 and the existing `PromoteLedgerRequest` message.
+New servers reject mirror promotion before proposal when the mirror is not
+caught up; old clients can decode the `FailedPrecondition` status. No `force`
+field or new protobuf error reason is added. During a rolling upgrade, send
+mirror promotion requests to an upgraded leader to obtain the guard. Existing
+committed mirror promotion entries retain their original apply semantics on
+mixed voters.
+
+The mirror precondition carries a generic `INVALID_REQUEST` ErrorInfo detail
+with `FailedPrecondition` so forwarding through a follower preserves its HTTP
+400 classification; it does not add a protobuf enum value.
+
 ## Wire contract and failure behavior
 
 `pkg/grpcprotocol.Version` is the compiled service protocol revision, currently

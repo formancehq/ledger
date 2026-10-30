@@ -512,6 +512,12 @@ func learnTxStamps(gs *oracle.GlobalState, bulk oracle.Bulk, logs []*commonpb.Lo
 // fresh on each base, its own requests can never "explain" its own rejection.
 // Caller holds c.mu.
 func (c *Checker) validateFailure(maxTicket uint64, failedBulk oracle.Bulk, reqErr error) {
+	if isUnobservedMirrorPromotion(failedBulk, reqErr) {
+		emitCoverage(true, coveragePromotionMessage, internal.Details{"kinds": requestKinds(failedBulk)})
+		dbgf("MODEL FAIL OK: unobserved mirror promotion rejected: %s", bulkLedgers(failedBulk))
+
+		return
+	}
 	var reason string
 
 	matched := false

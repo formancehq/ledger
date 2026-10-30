@@ -497,7 +497,7 @@ so a layer commits only to what it can actually honour (EN-2081):
 
 | Interface | Adds | Who implements it | What an adapter does with it |
 |---|---|---|---|
-| `Classifiable` | `Kind() ErrorKind` | anything that names no business outcome — the gRPC envelope guard, the admission idempotency-key and checkpoint-order guards, the read path's prepared-query argument checks | selects the status code; sends no `ErrorInfo` and no `errorCode` beyond the coarse kind-level one (a bulk element answers the generic `ERROR`) |
+| `Classifiable` | `Kind() ErrorKind` | anything that names no business outcome — the gRPC envelope guard, the admission idempotency-key and checkpoint-order guards, the mirror-promotion catch-up precondition, the read path's prepared-query argument checks | selects the status code and coarse kind-level `errorCode` (a bulk element answers the generic `ERROR`); normally sends no `ErrorInfo`, except the mirror-promotion catch-up precondition sends a generic ledger-domain `INVALID_REQUEST` marker so follower forwarding preserves its classification |
 | `Describable` | `Reason() string` | every domain business error | adds the `ErrorInfo` / `errorCode` clients pattern-match on |
 | `SerializableError` | `FailureDetails()` | FSM-returned errors, including uncommitted technical failures | supplies typed details for audited outcomes; uncommitted failures have no audited details |
 
@@ -615,9 +615,9 @@ one code, because every enum reason reaches the wire through
 nothing else. The check stays reason-keyed rather than kind-keyed so a reason
 that must travel under a second code can be widened on its own, as the removed
 `READ_INDEX_NOT_CAUGHT_UP` did, without relaxing the kind mapping the encoder
-shares. The three reasons the server hand-builds an `ErrorInfo` for
+shares. The four reasons the server hand-builds an `ErrorInfo` for
 (`EXTERNAL_SERVICE_ERROR`, `RAFT_NODE_NOT_IN_CLUSTER`,
-`RAFT_NODE_REMOVAL_COMMITTED`) are not enum members, so they take the
+`RAFT_NODE_REMOVAL_COMMITTED`, `INVALID_REQUEST` for mirror promotion) are not enum members, so they take the
 unknown-reason path and are never validated here.
 
 A reason arriving under a code outside its allowed set is a **protocol fault**,
