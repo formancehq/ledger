@@ -25,6 +25,7 @@ func (s *Server) handleUpdatePreparedQuery(w http.ResponseWriter, r *http.Reques
 	}
 
 	var body struct {
+		Target *string         `json:"target"`
 		Filter json.RawMessage `json:"filter"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
@@ -35,6 +36,11 @@ func (s *Server) handleUpdatePreparedQuery(w http.ResponseWriter, r *http.Reques
 
 	filterInput := bytes.TrimSpace(body.Filter)
 	if len(filterInput) == 0 {
+		if body.Target != nil {
+			writeBadRequest(w, "INVALID_REQUEST", errors.New("filter is required when updating target; use null to clear it"))
+
+			return
+		}
 		queries, err := s.backend.ListPreparedQueries(r.Context(), ledgerName)
 		if err != nil {
 			handleError(w, r, err)
@@ -55,18 +61,22 @@ func (s *Server) handleUpdatePreparedQuery(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	// The update request carries only the new filter, not the target: the target
-	// is immutable and lives on the stored prepared query. Per-target filter
-	// validity is enforced against the stored target by the FSM (processUpdatePreparedQuery →
-	// domain.ValidateFilterForTarget), which is authoritative on apply. An update
-	// cannot smuggle in a condition invalid for the query's target (EN-1504).
-	// This handler stays purely structural: it accepts either the structured v2
-	// JSON DSL or a JSON-quoted textual filterexpr expression (EN-1511) and defers
-	// the target gate to the FSM. Bare-field resolution uses a non-audit target
-	// (EN-1549). Admission resolves provisional transaction ID conditions against
-	// the stored LOGS target before commitment, without requiring query-read
-	// authorization from the caller.
-	filter, err := filterexpr.DecodeDualFormatStructuralOnly(body.Filter, commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS)
+	// New clients supply the target so public id is decoded for the intended
+	// entity before the order enters Raft. Targetless legacy requests retain
+	// their stored target and are validated there by the FSM.
+	target := commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS
+	var explicitTarget *commonpb.QueryTarget
+	if body.Target != nil {
+		var err error
+		target, err = parsePreparedQueryTarget(*body.Target)
+		if err != nil {
+			writeBadRequest(w, "INVALID_REQUEST", err)
+
+			return
+		}
+		explicitTarget = target.Enum()
+	}
+	filter, err := filterexpr.DecodeDualFormatStructuralOnly(body.Filter, target)
 	if err != nil {
 		writeBadRequest(w, "INVALID_REQUEST", err)
 
@@ -85,6 +95,7 @@ func (s *Server) handleUpdatePreparedQuery(w http.ResponseWriter, r *http.Reques
 				Ledger: ledgerName,
 				Name:   queryName,
 				Filter: filter,
+				Target: explicitTarget,
 			},
 		},
 	})

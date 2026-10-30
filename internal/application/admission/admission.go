@@ -522,7 +522,6 @@ type admissionPlan struct {
 	businessBatch         bool
 	checkAfterMaintenance func() error
 	buildOrders           func(context.Context) ([]*raftcmdpb.Order, *bulkOverlay, error)
-	replay                *domain.ApplyResult
 }
 
 func (a *Admission) buildApplyAdmissionPlan(ctx context.Context, req *servicepb.ApplyRequest) (*admissionPlan, error) {
@@ -599,9 +598,6 @@ func (a *Admission) admit(ctx context.Context, buildPlan func(context.Context) (
 	}
 
 	orders, needs, perOrder, err := a.prepareOrders(ctx, admPlan)
-	if admPlan.replay != nil {
-		return admPlan.replay, nil
-	}
 	if orders != nil {
 		// Every built order shares the atomic batch outcome, including preparation failures.
 		defer a.recordActionOutcome(ctx, orders, &err)
@@ -681,15 +677,6 @@ func (a *Admission) prepareOrders(ctx context.Context, admPlan *admissionPlan) (
 	orders, overlay, err := admPlan.buildOrders(ctx)
 	if err != nil {
 		return nil, nil, nil, fmt.Errorf("converting requests to orders: %w", err)
-	}
-	replay, err := a.replayPreparedQueryIDRetry(ctx, admPlan.key, orders)
-	if err != nil {
-		return nil, nil, nil, fmt.Errorf("resolving prepared query idempotency retry: %w", err)
-	}
-	if replay != nil {
-		admPlan.replay = replay
-
-		return nil, nil, nil, nil
 	}
 
 	// Enforce the metadata size contract over the whole command. It runs here,
@@ -2258,10 +2245,6 @@ func (a *Admission) requestToOrder(ctx context.Context, req *servicepb.Request, 
 	} else if !a.ledgerRequestToOrder(order, req, overlay) && !a.systemRequestToOrder(order, req, batchSig, overlay) {
 		return nil, fmt.Errorf("unsupported request type: %T", req.GetType())
 	}
-	if err := a.resolvePreparedQueryIDOrder(ctx, order, overlay); err != nil {
-		return nil, err
-	}
-
 	// Validate storage-safety invariants (null bytes in ledger names, metadata keys, etc.)
 	if err := validateOrder(order); err != nil {
 		return nil, err
@@ -2350,12 +2333,17 @@ func (a *Admission) ledgerRequestToOrder(order *raftcmdpb.Order, req *servicepb.
 			},
 		})
 	case *servicepb.Request_UpdatePreparedQuery:
+		var target *commonpb.QueryTarget
+		if reqType.UpdatePreparedQuery.Target != nil {
+			target = reqType.UpdatePreparedQuery.GetTarget().Enum()
+		}
 		wrapLedgerScoped(order, &raftcmdpb.LedgerScopedOrder{
 			Ledger: reqType.UpdatePreparedQuery.GetLedger(),
 			Payload: &raftcmdpb.LedgerScopedOrder_UpdatePreparedQuery{
 				UpdatePreparedQuery: &raftcmdpb.UpdatePreparedQueryOrder{
 					Name:   reqType.UpdatePreparedQuery.GetName(),
 					Filter: reqType.UpdatePreparedQuery.GetFilter(),
+					Target: target,
 				},
 			},
 		})

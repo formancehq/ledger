@@ -1311,6 +1311,14 @@ func (m *UpdatedPreparedQueryLog) CloneVT() *UpdatedPreparedQueryLog {
 	r.Name = m.Name
 	r.PreviousFilter = m.PreviousFilter.CloneVT()
 	r.NewFilter = m.NewFilter.CloneVT()
+	if rhs := m.PreviousTarget; rhs != nil {
+		tmpVal := *rhs
+		r.PreviousTarget = &tmpVal
+	}
+	if rhs := m.NewTarget; rhs != nil {
+		tmpVal := *rhs
+		r.NewTarget = &tmpVal
+	}
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
 		copy(r.unknownFields, m.unknownFields)
@@ -11073,6 +11081,12 @@ func (this *UpdatedPreparedQueryLog) EqualVT(that *UpdatedPreparedQueryLog) bool
 		return false
 	}
 	if !this.NewFilter.EqualVT(that.NewFilter) {
+		return false
+	}
+	if p, q := this.PreviousTarget, that.PreviousTarget; (p == nil && q != nil) || (p != nil && (q == nil || *p != *q)) {
+		return false
+	}
+	if p, q := this.NewTarget, that.NewTarget; (p == nil && q != nil) || (p != nil && (q == nil || *p != *q)) {
 		return false
 	}
 	return string(this.unknownFields) == string(that.unknownFields)
@@ -26358,6 +26372,16 @@ func (m *UpdatedPreparedQueryLog) MarshalToSizedBufferVT(dAtA []byte) (int, erro
 	if m.unknownFields != nil {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
+	}
+	if m.NewTarget != nil {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(*m.NewTarget))
+		i--
+		dAtA[i] = 0x30
+	}
+	if m.PreviousTarget != nil {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(*m.PreviousTarget))
+		i--
+		dAtA[i] = 0x28
 	}
 	if m.NewFilter != nil {
 		size, err := m.NewFilter.MarshalToSizedBufferVT(dAtA[:i])
@@ -44705,6 +44729,12 @@ func (m *UpdatedPreparedQueryLog) SizeVT() (n int) {
 		l = m.NewFilter.SizeVT()
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
+	if m.PreviousTarget != nil {
+		n += 1 + protohelpers.SizeOfVarint(uint64(*m.PreviousTarget))
+	}
+	if m.NewTarget != nil {
+		n += 1 + protohelpers.SizeOfVarint(uint64(*m.NewTarget))
+	}
 	n += len(m.unknownFields)
 	return n
 }
@@ -59566,6 +59596,46 @@ func (m *UpdatedPreparedQueryLog) UnmarshalVT(dAtA []byte) error {
 				return err
 			}
 			iNdEx = postIndex
+		case 5:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field PreviousTarget", wireType)
+			}
+			var v QueryTarget
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				v |= QueryTarget(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			m.PreviousTarget = &v
+		case 6:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field NewTarget", wireType)
+			}
+			var v QueryTarget
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				v |= QueryTarget(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			m.NewTarget = &v
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])

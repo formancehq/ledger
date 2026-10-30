@@ -33,6 +33,14 @@ listed release boundary, but no boundary is active for `v3.0.0-rc.3`:
 barrier needed by a future stopped upgrade. RC adjacency remains mandatory.
 The `rc.1` to `rc.2` transition uses the separately validated maintenance-based
 procedure below.
+An `UpdatePreparedQuery` order that changes the target cannot be committed
+while old and new voters coexist: the old processor retains the stored target,
+whereas the new processor replaces it and records the change in the audit log.
+The release containing target-changing updates must list and validate a
+mandatory stopped boundary before clients submit them. The operator drain path
+is in place; [PR #2404](https://github.com/formancehq/ledger/pull/2404) proposes
+the next boundary. Do not release target-changing updates before that boundary
+is active; until then, clients must use delete plus create for target changes.
 When the running version precedes a mandatory boundary, pin the target to a
 canonical version tag. Moving or non-canonical tags such as `latest` cannot
 prove whether the boundary is crossed, so the operator blocks the change.

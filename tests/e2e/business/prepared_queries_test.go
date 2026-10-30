@@ -131,6 +131,37 @@ var _ = Describe("PreparedQueries", Ordered, func() {
 			Expect(fieldCond.GetStringCond().GetHardcoded()).To(Equal("superadmin"))
 		})
 
+		It("Should change target atomically and replay the same explicit update after recreation", func() {
+			filter, err := filterexpr.Parse("id == 7", commonpb.QueryTarget_QUERY_TARGET_LOGS)
+			Expect(err).To(Succeed())
+			target := commonpb.QueryTarget_QUERY_TARGET_LOGS
+			update := &servicepb.Request{Type: &servicepb.Request_UpdatePreparedQuery{
+				UpdatePreparedQuery: &servicepb.UpdatePreparedQueryRequest{
+					Ledger: ledgerName, Name: "admins", Filter: filter, Target: target.Enum(),
+				},
+			}}
+			first, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("pq-target-change", update))
+			Expect(err).To(Succeed())
+			queries, err := sharedClient.ListPreparedQueries(sharedCtx, &servicepb.ListPreparedQueriesRequest{Ledger: ledgerName})
+			Expect(err).To(Succeed())
+			Expect(queries.GetQueries()).To(HaveLen(1))
+			Expect(queries.GetQueries()[0].GetTarget()).To(Equal(target))
+			Expect(queries.GetQueries()[0].GetFilter().GetLogId()).NotTo(BeNil())
+
+			_, err = sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.DeletePreparedQueryAction(ledgerName, "admins")))
+			Expect(err).To(Succeed())
+			_, err = sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreatePreparedQueryAction("admins", ledgerName, commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS, nil)))
+			Expect(err).To(Succeed())
+			replayed, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("pq-target-change", update))
+			Expect(err).To(Succeed())
+			Expect(replayed.GetLogs()).To(Equal(first.GetLogs()))
+			queries, err = sharedClient.ListPreparedQueries(sharedCtx, &servicepb.ListPreparedQueriesRequest{Ledger: ledgerName})
+			Expect(err).To(Succeed())
+			Expect(queries.GetQueries()).To(HaveLen(1))
+			Expect(queries.GetQueries()[0].GetTarget()).To(Equal(commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS))
+			expectStoreValid(sharedCtx, sharedClient)
+		})
+
 		It("Should delete the prepared query", func() {
 			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
 				Type: &servicepb.Request_DeletePreparedQuery{DeletePreparedQuery: &servicepb.DeletePreparedQueryRequest{

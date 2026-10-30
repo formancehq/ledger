@@ -18,6 +18,16 @@ contract has not changed. Release SemVer does not currently encode the
 compatibility of development revisions. During the RC line, revision 40 is
 frozen and the published gRPC wire contract must remain compatible.
 
+`UpdatePreparedQueryRequest` adds an optional `target` field without changing
+existing field numbers or revision 40. An omitted target retains the stored
+target and the existing filter-only behavior. New clients supply a target to
+replace it atomically with the filter and to decode public `id` against that
+target. Older clients can still send targetless updates; callers using `id` for
+LOGS updates must upgrade to send the explicit target. A target-changing order
+also changes replicated apply and audit semantics, so its release requires the
+stopped-upgrade boundary described in [server upgrades](../../../../ops/upgrades.md)
+before new clients submit that form.
+
 The additive `BucketService.AnalyzeNumscript` RPC (EN-3153) uses new messages
 and field numbers and leaves all published fields and RPC behavior intact.
 Revision 40 remains unchanged. Older servers return `Unimplemented` to a new

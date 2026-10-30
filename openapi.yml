@@ -6308,7 +6308,7 @@ components:
             - LOGS
           description: >-
             Target entity type. `LOGS` queries return log entries; the log-only
-            filter fields (`logId`, `date`, `ledger`) are valid only when the
+            filter fields (`id`, `date`, `ledger`) are valid only when the
             target is `LOGS`.
         filter:
           $ref: '#/components/schemas/PreparedQueryFilterInput'
@@ -6320,12 +6320,21 @@ components:
     UpdatePreparedQueryRequest:
       type: object
       properties:
+        target:
+          type: string
+          enum: [ACCOUNTS, TRANSACTIONS, LOGS]
+          description: >-
+            Replacement query target. Supply it when using the public id field
+            so id is decoded for the selected entity. Omit it to retain the
+            stored target for existing clients. A target change also replaces
+            the filter; send the intended filter or null to clear it.
         filter:
           $ref: '#/components/schemas/PreparedQueryFilterInput'
           description: >-
             Replacement filter. Omit the field to leave the stored filter
-            unchanged; set it to `null` to remove the filter and make the query
-            match all entities in its target. An empty object or empty textual
+            unchanged when target is also omitted; set it to `null` to remove
+            the filter and make the query match all entities in the selected
+            target. An empty object or empty textual
             expression is invalid.
 
     ExecutePreparedQueryRequest:

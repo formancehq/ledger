@@ -753,6 +753,10 @@ Prepared queries are reusable, named queries stored per-ledger. A nil filter is
 a match-all definition for the selected target. HTTP create accepts omitted or
 null `filter`; HTTP update treats omission as no change and null as filter
 removal. `Apply(UpdatePreparedQuery)` uses a nil protobuf filter for removal.
+HTTP update accepts a `target` alongside the replacement filter and changes
+both atomically. Supplying `target` requires an explicit `filter` (use `null`
+to clear it); omitting `target` retains the stored target for older clients.
+The new CLI requires `--target` and decodes public `id` against it before Apply.
 Empty objects and empty textual expressions are invalid. Queries can be
 executed in two modes: `LIST` (returns matching entity IDs with cursor
 pagination, ascending by default and descending with `reverse`) and `AGGREGATE_VOLUMES` (returns aggregated volumes per asset for

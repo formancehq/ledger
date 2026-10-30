@@ -3727,15 +3727,16 @@ Displays each query's name, target, and filter in human-readable DSL format.
 
 #### queries update
 
-Update the filter of an existing prepared query. Omit `--filter` to remove the
-stored filter and make the query match all entities in its target. Supplying an
+Replace the target and filter of an existing prepared query in one action.
+`--target` is required. Omit `--filter` to remove the
+stored filter and make the query match all entities in the selected target. Supplying an
 empty or whitespace-only `--filter` is invalid.
 For a LOGS query, `--filter 'id == 7'` or its structured JSON equivalent
-selects log ID 7. The server resolves `id` against the stored query target
-before committing the update; the command needs only query-write permission.
+selects log ID 7. The CLI decodes `id` against the explicit target; the command
+needs only query-write permission.
 
 ```bash
-ledgerctl queries update <name> --ledger <ledger-name> [--filter "<new-filter>"] [flags]
+ledgerctl queries update <name> --ledger <ledger-name> --target <target> [--filter "<new-filter>"] [flags]
 ```
 
 #### queries delete

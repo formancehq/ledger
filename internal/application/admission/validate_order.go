@@ -395,8 +395,17 @@ func validateOrderPreparedQuery(order *raftcmdpb.Order) domain.Describable {
 			return err
 		}
 
-		// The update carries no target, so the per-target gate runs in the FSM
-		// against the stored query; the target-independent shape gate runs here.
+		// Historical and targetless updates retain the stored target, which the
+		// FSM validates. Explicit-target updates can be checked before proposal.
+		if p.UpdatePreparedQuery.Target != nil {
+			if !domain.IsPreparedQueryExecutableTarget(p.UpdatePreparedQuery.GetTarget()) {
+				return domain.ErrPreparedQueryTargetUnsupported
+			}
+			if err := domain.ValidateFilterForTarget(p.UpdatePreparedQuery.GetFilter(), p.UpdatePreparedQuery.GetTarget()); err != nil {
+				return err
+			}
+		}
+
 		return domain.ValidateFilterAdmissionShape(p.UpdatePreparedQuery.GetFilter())
 	case *raftcmdpb.LedgerScopedOrder_DeletePreparedQuery:
 		return domain.ValidatePreparedQueryName(p.DeletePreparedQuery.GetName())

@@ -381,7 +381,7 @@ func NewCreatePreparedQueryOrderListReader(s []*CreatePreparedQueryOrder) Create
 type UpdatePreparedQueryOrderReader interface {
 	GetName() string
 	GetFilter() commonpb.QueryFilterReader
-	GetIdResolvedToLogPaths() []string
+	GetTarget() commonpb.QueryTarget
 	Mutate() *UpdatePreparedQueryOrder
 }
 
@@ -399,8 +399,8 @@ func (r *updatePreparedQueryOrderReadonly) GetFilter() commonpb.QueryFilterReade
 	return v.AsReader()
 }
 
-func (r *updatePreparedQueryOrderReadonly) GetIdResolvedToLogPaths() []string {
-	return slices.Clone((*UpdatePreparedQueryOrder)(r).GetIdResolvedToLogPaths())
+func (r *updatePreparedQueryOrderReadonly) GetTarget() commonpb.QueryTarget {
+	return (*UpdatePreparedQueryOrder)(r).GetTarget()
 }
 
 func (r *updatePreparedQueryOrderReadonly) Mutate() *UpdatePreparedQueryOrder {

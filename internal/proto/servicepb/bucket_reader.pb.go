@@ -8043,6 +8043,7 @@ type UpdatePreparedQueryRequestReader interface {
 	GetLedger() string
 	GetName() string
 	GetFilter() commonpb.QueryFilterReader
+	GetTarget() commonpb.QueryTarget
 	Mutate() *UpdatePreparedQueryRequest
 }
 
@@ -8062,6 +8063,10 @@ func (r *updatePreparedQueryRequestReadonly) GetFilter() commonpb.QueryFilterRea
 		return nil
 	}
 	return v.AsReader()
+}
+
+func (r *updatePreparedQueryRequestReadonly) GetTarget() commonpb.QueryTarget {
+	return (*UpdatePreparedQueryRequest)(r).GetTarget()
 }
 
 func (r *updatePreparedQueryRequestReadonly) Mutate() *UpdatePreparedQueryRequest {

@@ -105,6 +105,11 @@ and its `testdata/` inventory guard the schema and actual JSON codec. Exercise
 actual prepared-query create/update serializers
 with structured, nested, textual, null and omitted filters. A standalone helper
 or OpenAPI lint result alone cannot establish request corruption or preservation.
+For update, include an explicit `target` with an `id` filter for both LOGS and
+TRANSACTIONS, an explicit ACCOUNTS zero enum, a targetless legacy request, and
+the HTTP target-only error. Check that the adapter preserves target presence
+through the service request and order, and that target plus filter update in
+one FSM action rather than a delete/recreate pair.
 The OpenAPI 3.0 filter union uses a QueryFilter reference and an inline nullable
 string, without a dummy null-only object or ignored nullable `$ref` sibling.
 Check `TestOpenAPISpec_NoBareObjects` for inline and component schema coverage:

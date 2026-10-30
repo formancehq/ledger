@@ -94,6 +94,15 @@ place; after commit, durable state contains the complete fold and startup loads
 that value into the scheduler. The audit-bound schedule log is the replay
 evidence; schedule checker coverage remains a separate integrity concern.
 
+Prepared-query target and filter are **rebuilt** projections. Apply stages both
+fields in one prepared-query write after validating the explicit update target;
+the durable audit log records the previous and new target when the order carries
+one. A post-checkpoint `UpdatedPreparedQueryLog` replaces both fields in the
+rebuild fold, while a historical filter-only log replaces just the filter.
+Later deletion removes the definition, and recreation supplies a new seed.
+The checkpoint carries the earlier definition; a failed rebuild batch leaves
+that checkpoint value durable until a successful retry commits the delta.
+
 If the ledger-log payload omits information that the live apply used, inspect the
 chain-bound serialized order in `AuditItem` and the `AppliedProposal` companion
 record. Do not silently default a missing fact. Prefer a shared, pure decoder for

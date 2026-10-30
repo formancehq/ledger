@@ -33,7 +33,11 @@ Source: `internal/domain/processing/processor_prepared_query.go`.
 
 Storage is per-ledger under the attributes zone, keyed by `PreparedQueryKey{LedgerName, Name}` (`internal/domain/keys.go:384`). The canonical key layout is the standard 64-byte padded ledger name followed by the query name string.
 
-There is no explicit version field. An update mutates the filter atomically — the previous filter is captured in the audit log payload (for the chain) but is **not** queryable through any read API. Clients see only the current filter via `ListPreparedQueries`. If a query needs historical visibility, the audit chain is the source.
+There is no explicit version field. An update can replace the target and filter
+atomically. Its audit log records the previous and new filter and, for an
+explicit-target update, both targets. Older orders without a target retain the
+stored target and their historical audit encoding. Clients see only the current
+definition via `ListPreparedQueries`; the audit chain is the historical source.
 
 ## Filter expressions
 
@@ -237,10 +241,11 @@ and reads the log payloads from Pebble (`query.EnrichLogs`). Consequently the
 log-only filter fields (`date`, `ledger`) are valid only when the target is
 `LOGS`; the REST create decode rejects them for `ACCOUNTS`/`TRANSACTIONS`, and the
 compile layer is the backstop (it rejects those conditions on non-LOGS targets at
-execute time). The update path carries only the new filter; the target is immutable.
-Admission reads the stored target through the write-authorized path when `id`
-needs resolution and commits the target-specific condition to Raft. The FSM
-still performs authoritative stored-target validation on apply.
+execute time). New update clients send the intended target with the replacement
+filter, so public `id` is decoded before the order enters Raft. The FSM
+validates the filter against the target carried by the order and atomically
+stores both. Legacy targetless orders retain the stored target and validate
+against it. The update path never reads the stored target in admission.
 
 ## Recent changes
 

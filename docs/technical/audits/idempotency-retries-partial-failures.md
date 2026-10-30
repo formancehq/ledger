@@ -15,23 +15,13 @@ same-key retry of an earlier committed outcome does not execute it again.
 
 ## Prepared-query ID target changes (EN-2601)
 
-Admission resolves public `id` for a prepared-query update before Raft apply.
-If a keyed retry sees a different target after query deletion or recreation,
-its resolved order hash may differ although the client repeated the same
-request. A linearizable barrier and fresh snapshot let admission inspect the
-stored key and original audit orders. The accepted order records which leaves
-admission converted from public `id` to log ID, so explicit legacy `logId`
-cannot be mistaken for the same intent in a mixed filter. Only a proven match
-within the key's TTL
-returns the original frozen outcome without another proposal. Different
-conditions continue to the FSM conflict check; an expired or evicted key is a
-new operation. `TestRestorePreparedQueryIDRetryAfterDeletion` covers mixed
-targets in one batch with both exact and range ID conditions, changed IDs,
-explicit and mixed `logId`, expiry, a barrier race,
-and store closure during the barrier. The logarithmic audit-read bound is
-tested by `TestLocateRetryAuditEntryCostShape` and measured by the in-memory
-and warm-Pebble `BenchmarkLocateRetryAuditEntry` variants. See the admission
-pipeline cost budget for measured latency and excluded barrier/log work.
+New prepared-query updates carry their target explicitly. A retry of the same
+request therefore hashes the same order even if the stored query was deleted
+and recreated with another target. The FSM's ordinary key lookup returns the
+frozen outcome without a second mutation. A changed target or filter conflicts
+while the key remains live; an expired or evicted key is a fresh operation.
+The prepared-query E2E regression changes the target, deletes and recreates the
+query, retries the keyed update, and verifies the replacement query is intact.
 
 ## Peer closure followed by maintenance (EN-2212)
 
