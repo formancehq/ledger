@@ -3,11 +3,13 @@ package agentvalidationenv
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
@@ -45,7 +47,9 @@ func TestSharedCacheEnvironment(t *testing.T) {
 	require.Equal(t, first["GOPATH"], other["GOPATH"])
 	require.Equal(t, first["XDG_CACHE_HOME"], other["XDG_CACHE_HOME"])
 	require.Equal(t, first["GOLANGCI_LINT_CACHE"], other["GOLANGCI_LINT_CACHE"])
-	require.NotEqual(t, first["TMPDIR"], second["TMPDIR"])
+	// An unchanged TMPDIR keeps TempDir-using test results cacheable.
+	require.Equal(t, first["TMPDIR"], second["TMPDIR"])
+	require.Equal(t, first["TMPDIR"], other["TMPDIR"])
 	resolvedCacheRoot := resolvedPath(t, cacheRoot)
 	require.Contains(t, first["GOCACHE"], filepath.Join(resolvedCacheRoot, "go-build-generations")+string(filepath.Separator))
 	require.FileExists(t, filepath.Join(filepath.Dir(first["GOCACHE"]), ".ledger-ai-go-cache-generation"))
@@ -158,6 +162,33 @@ func TestGoCacheIgnoresStaleLeaseFromReusedPID(t *testing.T) {
 	require.NoDirExists(t, first)
 }
 
+func TestGoCacheKeepsGenerationLeasedByUnsignalableProcess(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	repository := filepath.Join(root, "candidate")
+	cacheRoot := filepath.Join(root, "shared-cache")
+	require.NoError(t, os.MkdirAll(repository, 0o755))
+	runGit(t, repository, "init")
+
+	// A non-root caller gets EPERM from kill -0 1, as a sandboxed validator does
+	// for a run started outside its sandbox. The process exists, so its lease
+	// must keep the generation alive through rotation. A caller allowed to
+	// signal PID 1 cannot reach the EPERM branch; the stubbed contract test
+	// TestProcessExistsTreatsOnlyESRCHAsGone covers it everywhere.
+	if err := syscall.Kill(1, 0); !errors.Is(err, syscall.EPERM) {
+		t.Skipf("kill -0 1 must fail with EPERM to exercise an unsignalable lease, got %v", err)
+	}
+	first := captureGoCache(t, repository, cacheRoot, root, filepath.Join(root, "run-one"))
+	require.NoError(t, os.WriteFile(filepath.Join(first, "oversized"), make([]byte, 2<<20), 0o644))
+	lease := filepath.Join(filepath.Dir(first), "leases", "unsignalable")
+	require.NoError(t, os.WriteFile(lease, []byte("1\n\n"), 0o644))
+
+	second := captureGoCache(t, repository, cacheRoot, root, filepath.Join(root, "run-two"))
+	require.NotEqual(t, first, second)
+	require.DirExists(t, first)
+}
+
 func TestConcurrentGoCacheInitializersShareOneGeneration(t *testing.T) {
 	t.Parallel()
 
@@ -183,6 +214,115 @@ func TestConcurrentGoCacheInitializersShareOneGeneration(t *testing.T) {
 	for index := 1; index < peers; index++ {
 		require.Equal(t, result.Output["peer-0"], result.Output[fmt.Sprintf("peer-%d", index)])
 	}
+}
+
+func TestGoCacheLeaseIdentityUsesOneOwnerSnapshot(t *testing.T) {
+	t.Parallel()
+
+	command := testenv.Command(t, "bash", "-euc", `
+source "$1"
+lease="$2/owner"
+printf '%s\noriginal\n' "$$" >"$lease"
+printf '%s\nreplacement\n' "$$" >"$lease.next"
+# Publish a successor after the PID is read, before its identity is checked.
+kill() { mv -- "$lease.next" "$lease"; }
+process_identity() { printf 'original\n'; }
+lease_is_live "$lease"
+[[ "$(sed -n '2p' "$lease")" == replacement ]]
+`, "lease-snapshot", filepath.Join(filepath.Dir(validationEnvPath(t)), "agent-cache-contract"), t.TempDir())
+	output, err := command.CombinedOutput()
+	require.NoError(t, err, string(output))
+}
+
+func TestProcessExistsTreatsOnlyESRCHAsGone(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name, failure string
+		exists        bool
+	}{
+		{"permission denied", "Operation not permitted", true},
+		{"no such process", "No such process", false},
+	} {
+		command := testenv.Command(t, "bash", "-euc", `
+source "$1"
+# Replace the builtin so the probe result does not depend on who runs the test.
+kill() { printf 'bash: kill: (%s) - %s\n' "$2" "$PROBE_FAILURE" >&2; return 1; }
+process_exists 4242
+`, "process-exists", filepath.Join(filepath.Dir(validationEnvPath(t)), "agent-cache-contract"))
+		command.Env = append(command.Env, "PROBE_FAILURE="+tc.failure)
+		output, err := command.CombinedOutput()
+		if tc.exists {
+			require.NoError(t, err, "%s: %s", tc.name, output)
+		} else {
+			require.Error(t, err, "%s: %s", tc.name, output)
+		}
+	}
+}
+
+func TestGoCacheDisappearingLeaseDefersRecovery(t *testing.T) {
+	t.Parallel()
+
+	command := testenv.Command(t, "bash", "-euc", `
+source "$1"
+# The owner can disappear after the acquisition loop checks its existence.
+# Defer recovery so that a successor published at the same path stays intact.
+lease_is_live "$2/missing-owner"
+`, "lease-release", filepath.Join(filepath.Dir(validationEnvPath(t)), "agent-cache-contract"), t.TempDir())
+	output, err := command.CombinedOutput()
+	require.NoError(t, err, string(output))
+}
+
+func TestGoCacheStaleCleanerPreservesSuccessorOwner(t *testing.T) {
+	t.Parallel()
+
+	command := testenv.Command(t, "bash", "-euc", `
+source "$1"
+go_cache_namespace="$2"
+go_cache_lock="$2/lock"
+mkdir "$go_cache_lock"
+printf 'stale\n' >"$go_cache_lock/owner"
+lease_is_live() {
+    # Another cleaner retires this directory and a successor claims the path
+    # while this cleaner is still checking the stale owner's process identity.
+    rm -- "$go_cache_lock/owner"
+    rmdir -- "$go_cache_lock"
+    mkdir "$go_cache_lock"
+    printf 'successor\n' >"$go_cache_lock/owner"
+    return 1
+}
+reap_go_cache_lock
+[[ "$(cat "$go_cache_lock/owner")" == successor ]]
+`, "stale-cleaner", filepath.Join(filepath.Dir(validationEnvPath(t)), "agent-cache-contract"), t.TempDir())
+	output, err := command.CombinedOutput()
+	require.NoError(t, err, string(output))
+}
+
+func TestGoCacheCreatorPreservesSuccessorOwner(t *testing.T) {
+	t.Parallel()
+
+	command := testenv.Command(t, "bash", "-euc", `
+source "$1"
+go_cache_namespace="$2"
+go_cache_lock="$2/lock"
+mkdir "$go_cache_lock"
+write_process_identity() {
+    # Ownerless-lock recovery removes a delayed creator's directory before
+    # publication, then a successor acquires the same public path.
+    rmdir -- "$go_cache_lock"
+    mkdir "$go_cache_lock"
+    printf 'successor\n' >"$go_cache_lock/owner"
+    printf 'creator\n' >"$1"
+}
+if claim_go_cache_lock; then
+    echo 'creator unexpectedly claimed a replacement directory' >&2
+    exit 1
+fi
+[[ "$(cat "$go_cache_lock/owner")" == successor ]]
+[[ ! -e "$go_cache_namespace/claim-$$" ]]
+`, "delayed-creator", filepath.Join(filepath.Dir(validationEnvPath(t)), "agent-cache-contract"), t.TempDir())
+	output, err := command.CombinedOutput()
+	require.NoError(t, err, string(output))
 }
 
 func TestGoCacheRecoversStaleLockAndRejectsInvalidConfiguration(t *testing.T) {
@@ -573,7 +713,8 @@ func lintCommand(t *testing.T, repository, cacheRoot, runDirectory string, extra
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	t.Cleanup(cancel)
-	arguments := []string{validationEnvPath(t), runDirectory, "golangci-lint", "run", "-v", "--issues-exit-code", "0"}
+	// Mirror the justfile lint recipe, which allows parallel runners.
+	arguments := []string{validationEnvPath(t), runDirectory, "golangci-lint", "run", "--allow-parallel-runners", "-v", "--issues-exit-code", "0"}
 	arguments = append(arguments, extraArguments...)
 	arguments = append(arguments, "./...")
 	command := exec.CommandContext(ctx, "bash", arguments...)

@@ -18,7 +18,7 @@ record, or a read-side projection:
 | Class | Definition | Examples | Required control |
 | --- | --- | --- | --- |
 | Business truth | Changes balances, transactions, metadata, reversions, ledger lifecycle, indexes, or any user-visible business decision. | `AuditEntry`, `Log`, `Volume`, `Metadata`, `Transaction`, `Reference`, reversion bitsets, idempotency outcomes, index registry. | The command must produce an audit entry, and persisted projections must be checked by `internal/application/check`. |
-| Governance truth | Changes who can write, how writes are accepted, or how business evidence is produced. It may not change balances directly, but it changes the control plane around business truth. | Signing keys, maintenance mode, ledger default enforcement mode, query-checkpoint schedules, hash algorithm selection, cluster policy (idempotency TTL and query-checkpoint limit). | Prefer an audited order. If a persisted projection of governance state can be altered after the fact so admission or lifecycle code accepts or rejects future writes differently, it must be checker-verified or read back from an audit-bound source — not merely trusted because an audited order once recorded the intent. The signing-key and signing-config rows (`SubGlobSigningKey` / `SubGlobSigningConfig`) **discharge** that obligation: `signingVerifier` (`internal/application/check/signing.go`) re-derives both from the chain-bound signing orders on every `Check()` run — see [checker/checker.md](subsystems/checker/checker.md). The cluster-policy row (`SubGlobClusterPolicy`) likewise discharges it: `clusterPolicyVerifier` (`internal/application/check/clusterpolicy.go`) re-derives the policy from the chain-bound `SetClusterPolicy` orders on every `Check()` run. `LedgerInfo.default_enforcement_mode` is verified the same way by `compareDefaultEnforcementModes`, which folds `CreateLedger` and later `UpdateDefaultEnforcementMode` logs. Maintenance mode (`SubGlobMaintenanceMode`) does **not**: it is persisted, read back into shared state on recovery, gates write acceptance, and has no compare pass, so it remains a tracked gap. Non-persisted operator controls (in-memory toggles) do not carry this obligation. |
+| Governance truth | Changes who can write, how writes are accepted, or how business evidence is produced. It may not change balances directly, but it changes the control plane around business truth. | Signing keys, maintenance mode, ledger default enforcement mode, query-checkpoint schedules, hash algorithm selection, cluster policy (idempotency TTL and query-checkpoint limit). | Prefer an audited order. If a persisted projection of governance state can be altered after the fact so admission or lifecycle code accepts or rejects future writes differently, it must be checker-verified or read back from an audit-bound source — not merely trusted because an audited order once recorded the intent. The signing-key and signing-config rows (`SubGlobSigningKey` / `SubGlobSigningConfig`) **discharge** that obligation: `signingVerifier` (`internal/application/check/signing.go`) re-derives both from the chain-bound signing orders on every `Check()` run — see [checker/checker.md](subsystems/checker/checker.md). The cluster-policy row (`SubGlobClusterPolicy`) likewise discharges it: `clusterPolicyVerifier` (`internal/application/check/clusterpolicy.go`) re-derives the policy from the chain-bound `SetClusterPolicy` orders on every `Check()` run. `ledgerPolicyVerifier` verifies `LedgerInfo.default_enforcement_mode`, schema, account types, mode, mirror source, name and deletion state in both canonical and global ledger rows against the existing isolated FSM replay of successful verified audit proposals; retained tombstones are included. Maintenance mode (`SubGlobMaintenanceMode`) does **not**: it is persisted, read back into shared state on recovery, gates write acceptance, and has no compare pass, so it remains a tracked gap. Non-persisted operator controls (in-memory toggles) do not carry this obligation. |
 | Operational consensus state | Coordinates background work or external delivery, but does not itself define ledger business truth. | Event sink cursors/status, backup job state, removed-member registry, mirror status/source-head. | Raft replication applies the same logical proposal on every replica; it is sufficient **only** when a value corrupted before it is proposed cannot silently change a business result. Raft cannot detect a value tampered or corrupted before it is proposed (its logical effect then applies everywhere) — any such projection needs checker coverage regardless of replication. |
 | Rebuildable local projection | Speeds reads or background work and can be regenerated from audit-bound data. **A projection only belongs here if it is genuinely thrown away and rebuilt** — not merely rebuildable in principle. | Bloom filters (discarded and rebuilt on the backup/restore path — `internal/infra/attributes/prepare.go` deletes the persisted blocks so restore rebuilds them from a full attribute scan — and on a bloom-config change applied via cluster config, where `applyClusterConfigUpdate` (`internal/infra/state/machine_technical_updates.go`) purges the `SubGlobBloom` blocks, calls `BloomFilters.Rebuild`, and signals `StartAsyncBloomPopulate`; note that on normal restart / follower sync they are instead *restored from the persisted Pebble blocks*, so those blocks are durably trusted between backups — see the floor note below), cache mirrors, snapshots/spool. | Rebuild path is the control **when the projection is actually rebuilt as part of a lifecycle path**. A *durably persisted* projection **in the main store** that is trusted between rebuilds and can shape a business-visible result (e.g. persisted bloom blocks reloaded on restart — see below) additionally needs main-store checker coverage, because nothing rebuilds it before it is served. A projection in a *peer* per-replica store (the readstore inverted index) is instead the index builder's rebuild-health concern, out of main-store checker scope as a rule — with one narrow exception, the readstore reverse map (`0x03`), which `compareReverseMapOrphans` does verify. See "Readstore and Indexes" below. |
 
@@ -61,12 +61,13 @@ attribute scan, and on a bloom-config change applied through cluster config,
 where `applyClusterConfigUpdate` (`internal/infra/state/machine_technical_updates.go`)
 purges the `SubGlobBloom` blocks, calls `BloomFilters.Rebuild`, and signals
 `StartAsyncBloomPopulate` to repopulate from a full attribute scan. On the
-normal restart / follower-sync path bloom blocks are
-**not** discarded — `CacheSnapshotter.RestoreFromStore`
-(`internal/infra/state/cache_snapshotter.go`) loads the persisted bloom blocks
-from Pebble via `restoreBloomFilters`, and the full attribute scan
-(`StartAsyncBloomPopulate`) runs only on first boot when no persisted blocks
-exist. So the persisted bloom blocks are a durably trusted projection between
+normal restart / follower-sync path, blocks with a projection seal matching the
+durable applied index are **not** discarded — `CacheSnapshotter.RestoreFromStore`
+(`internal/infra/state/cache_snapshotter.go`) loads them from Pebble via
+`restoreBloomFilters`. Missing blocks, unsealed blocks, a stale seal after
+rollback-era writes, or configuration drift instead trigger a full asynchronous
+attribute scan (`StartAsyncBloomPopulate`). So sealed persisted bloom blocks are
+a durably trusted projection between
 backups, and the discard-and-rebuild control does not cover a block corrupted or
 tampered while it sits on disk. Raft replication is **not** a substitute for
 checker coverage: it only guarantees that every replica applies the *same logical
@@ -96,6 +97,16 @@ The transaction pass has a narrower, field-level gap: it re-derives
 hash-bind their source date as of EN-1854, yet no checker pass currently compares
 those two derived log fields against it. This is an existing primary-store
 projection gap, not an exemption created by the mirror-date change.
+
+Canonical `SubAttrLedger` and global `SubGlobLedgerInfo` are both primary-store
+projections, even though one serves cached FSM reads and the other serves query
+reads. Their ledger policy comparison is independent against audit-derived
+state, so agreement between two corrupted copies cannot establish integrity.
+Promotion clears the source configuration and switches mode to normal; deletion
+retains each ledger row as a tombstone with its final policy. Creation timestamp
+and numeric ledger ID are not yet covered by this policy pass. Read-time metadata
+and mirror progress are not persisted policy fields. Verification changes no
+stored format, restore classification or committed-entry semantics.
 
 ### Technical execution metadata is excluded from the audit business-intent hash (EN-1558)
 
@@ -254,10 +265,10 @@ skipped. The absent-row check is suppressed only for a ledger audited as
 removes the boundary row on deletion, so its missing row is legitimate, not
 corruption. Present-row equality still applies to every ledger.
 
-There is **no** legacy / no-backfill leniency: existing pre-field clusters are
-**unsupported** — we do not ship a compat shim, and a store that predates
-`last_mirror_v2_log_id` would fail this equality (and simply re-mirror), which is
-acceptable pre-GA.
+There is **no** legacy / no-backfill leniency for development clusters before
+`v3.0.0-rc.1`. A store that predates `last_mirror_v2_log_id` would fail this
+equality and re-mirror. Later releases must preserve or migrate this boundary
+under the [upgrade policy](../../ops/upgrades.md#release-requirement-from-v300-rc1).
 
 ## Readstore and Indexes
 

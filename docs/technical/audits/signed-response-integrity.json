@@ -7,7 +7,9 @@
     "internal/adapter/grpc/server_bucket.go",
     "internal/bootstrap/module.go",
     "cmd/ledgerctl/cmdutil/signing.go",
+    "cmd/ledgerctl/cmdutil/signing_response_test.go",
     "cmd/ledgerctl/transactions/**",
+    "cmd/ledgerctl/numscripts/**",
     "tests/e2e/cluster/response_signing_test.go",
     "cmd/ledgerctl/apply_response_signatures_test.go"
   ],
@@ -17,6 +19,7 @@
     "docs/technical/contributing/ai-audit.md",
     "docs/technical/audits/signed-response-integrity.md",
     "docs/technical/architecture/subsystems/admission/signing.md",
+    "docs/ops/cli.md",
     "docs/ops/signing.md"
   ],
   "invariants": [
@@ -28,16 +31,17 @@
   ],
   "adversarial_questions": [
     "Which registered response paths invoke responseSigner.SignLog, and can a path return a log after signing has been skipped or the log changed?",
-    "Does verification compare the authenticated payload with the visible log, or only verify the detached bytes in SignedLog? Which consumer relies on the result?",
+    "Does verification decode the authenticated payload and compare it with the visible log after clearing only the envelope, or only verify the detached bytes in SignedLog? Which consumer relies on the result?",
     "Can a valid signature from one log or node be attached to a different visible log and accepted under the configured verification key?",
     "How does the client obtain and trust the response public key, and what happens when Discovery and a response come from different nodes or key epochs?",
     "Are missing keys, malformed envelopes, nil signatures, and serialization errors distinguishable from an intentional unsigned configuration?",
     "Is a suspected failure already owned by request signing, audit-chain integrity, transport translation, or a concurrent PR?"
   ],
   "dynamic_checks_to_consider": [
-    "Use a committed non-empty log with known fields; sign it, mutate each visible field and the envelope independently, and compare the actual client acceptance with the required binding.",
+    "Use a committed non-empty log with known fields; sign it, mutate transaction identity, posting amount, sequence, and the envelope independently, and compare the actual client acceptance with the required binding.",
     "Exercise multiple returned logs and supported command paths with verification enabled and disabled, including a missing signature in the middle of a response.",
     "Compare the node's Discovery public key and key ID with an actual returned signature, then repeat across supported key configuration changes.",
-    "Use the existing response signing e2e and ledgerctl tests as leads, recording the exact assertions and any untested path rather than treating green tests as proof."
+    "Use the existing response signing e2e and ledgerctl tests as leads, recording the exact assertions and any untested path rather than treating green tests as proof.",
+    "Exercise transactions set-metadata/delete-metadata and numscripts save through Apply with missing, corrupt, wrong-key and modified visible logs. Verify rejection before success output or returned script identity is displayed; retain valid-signature and verification-disabled controls."
   ]
 }

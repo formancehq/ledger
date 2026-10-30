@@ -10,7 +10,6 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
-	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
 	ledgerv1alpha1 "github.com/formancehq/ledger/misc/operator/api/v1alpha1"
@@ -51,7 +50,7 @@ func (r *ClusterReconciler) reconcileClusterSecret(ctx context.Context, ledger *
 			}
 		}
 
-		return controllerutil.SetControllerReference(ledger, secret, r.Scheme)
+		return setOwnedControllerReference(ledger, secret, r.Scheme, "Secret")
 	})
 
 	return err
@@ -72,12 +71,13 @@ func (r *ClusterReconciler) deleteClusterSecret(ctx context.Context, ledger *led
 
 		return err
 	}
-
-	if err := r.Delete(ctx, secret, &client.DeleteOptions{}); err != nil && !apierrors.IsNotFound(err) {
-		return err
+	if notControlledBy(secret, ledger) {
+		// Never delete a Secret under the derived name that this Cluster
+		// did not create.
+		return nil
 	}
 
-	return nil
+	return deleteInspected(ctx, r.Client, secret)
 }
 
 // reconcileClusterSecretForTLSState converges the cluster-secret with the TLS
@@ -109,7 +109,7 @@ func (r *ClusterReconciler) reconcileClusterSecretForTLSState(ctx context.Contex
 	}
 	targetTLS := computeTargetTLSMode(
 		desiredTLSMode(ledger),
-		currentTLSModeFromStatefulSet(existingSTS),
+		observedTLSMode(ledger, existingSTS),
 		rolloutConverged(existingSTS),
 	)
 

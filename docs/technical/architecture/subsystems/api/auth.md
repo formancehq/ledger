@@ -24,6 +24,16 @@ This page covers both. The cryptographic request-signing layer (Ed25519, used to
 
 Both formats coexist via a **composite keyset** (`internal/bootstrap/module.go:1626`). EdDSA tokens skip issuer verification (they're self-signed); OIDC tokens go through full issuer + JWKS verification.
 
+The static loader requires every `keyId` to be nonempty and unique by exact
+string equality. Repeated entries are rejected even when their keys, scopes and
+superuser policies are identical, so one key's signature cannot select another
+entry's authorization policy. The duplicate check precedes loading the duplicate
+entry's public-key file; an invalid file in an earlier entry can still fail
+first. On rejection the loader returns no keyset or policy maps, and
+`buildAuthConfig` propagates the error before installing the static/composite
+keyset and its scope/superuser maps. This is constructor/startup validation;
+per-request scope and superuser checks still use the successfully loaded policy.
+
 ### Wire shape
 
 | Transport | Where the token lives |
@@ -42,6 +52,7 @@ If no bearer is present, the request is treated as **anonymous** and given whate
 3. Verify signature against the composite keyset (OIDC JWKS + Ed25519 statics).
 4. Verify expiration.
 5. For OIDC, verify issuer.
+6. For Ed25519, enforce the key's scope allowlist (`ed25519_keys.go:enforceAllowedScopes`). Each claimed scope must be listed verbatim by the key, or expand through the scope mapping to a non-empty granular set covered by the key's expanded allowlist. A key allowed `ledger:read` can therefore sign a `ledger:ReadTransaction`-only token; an unknown scope never passes by expansion.
 
 The lack of cache is deliberate at this stage — JWKS lookups are local to the in-memory keyset (the OIDC discovery is done once at boot, see below).
 
@@ -50,16 +61,16 @@ The lack of cache is deliberate at this stage — JWKS lookups are local to the 
 `internal/adapter/auth/scopes.go:21-36` defines 14 granular scopes:
 
 ```
-ledger:LedgerRead       ledger:LedgerWrite
-ledger:TransactionRead  ledger:TransactionWrite
-ledger:AccountRead      ledger:MetadataWrite
-ledger:AuditRead        ledger:AuditWrite
-ledger:OpsRead          ledger:OpsWrite
-ledger:QueryRead        ledger:QueryWrite
-ledger:ClusterRead      ledger:ClusterWrite
+ledger:ReadLedger       ledger:WriteLedger
+ledger:ReadTransaction  ledger:WriteTransaction
+ledger:ReadAccount      ledger:WriteMetadata
+ledger:ReadAudit        ledger:WriteAudit
+ledger:ReadOps          ledger:WriteOps
+ledger:ReadQuery        ledger:WriteQuery
+ledger:ReadCluster      ledger:WriteCluster
 ```
 
-Tokens may carry either **granular** scopes (used as-is) or **virtual** scopes (for example `ledger:read`, `ledger:write`, `ledger:admin`) that expand into a granular set via a configurable mapping (`scopes.go:56-89`). Granular scopes are always in the Ledger application namespace with the `ledger:<Resource><Action>` shape, matching the Membership scope convention. The mapping can be a JSON file, an environment variable, or a built-in default. Once expanded, only the granular form is consulted at authorization time.
+Tokens may carry either **granular** scopes (used as-is) or **virtual** scopes (for example `ledger:read`, `ledger:write`, `ledger:admin`) that expand into a granular set via a configurable mapping (`scopes.go:58-113`). Granular scopes are always in the Ledger application namespace with the `ledger:<Action><Resource>` shape, matching the Membership scope convention. The mapping can be a JSON file, an environment variable, or a built-in default. Once expanded, only the granular form is consulted at authorization time. [RC.1 migration details](../../../../ops/authentication.md#migration-from-rc1-granular-labels) cover tokens, custom mappings, anonymous grants, and historical audit records.
 
 ### Authorization enforcement
 
@@ -95,7 +106,7 @@ Failures are structured-logged with reason, key ID, remote address, and an OTel 
 |------------|--------|
 | `""` (default) | Every request must be authenticated. |
 | `"*:read"` | Public reads, authenticated writes. |
-| `"ledger:LedgerRead,ledger:TransactionRead"` | Specific anonymous reads, nothing else. |
+| `"ledger:ReadLedger,ledger:ReadTransaction"` | Specific anonymous reads, nothing else. |
 
 This is the right setting to relax for embedded / dev deployments without disabling auth altogether.
 
@@ -111,7 +122,7 @@ Raft transport uses a **shared cluster secret**, not JWT. `internal/adapter/grpc
 - Comparison uses `crypto/subtle.ConstantTimeCompare` to avoid timing attacks.
 - If `--cluster-secret` is empty, the legacy "no auth" mode is used (not recommended).
 
-There is a **fast path** when the cluster secret is presented through the client surface (`grpc_auth.go:EvaluateGRPCCredentials`): the request bypasses JWT validation, gets every granular scope, is marked as cluster-internal in the context, and — if the request is a leader forwarding a follower's work — carries the forwarded `CallerSnapshot` so the audit chain still attributes the operation to the original caller. If a request carries a forwarded snapshot but the connection is **not** cluster-internal (cluster secret unset or mismatched), the leader **rejects** it with `PermissionDenied` rather than silently dropping the identity (`server_bucket.go:adoptForwardedSnapshotIfTrusted`) — a misconfiguration surfaces as a failed write instead of an unattributed audit entry.
+There is a **fast path** when the cluster secret is presented through the client surface (`grpc_auth.go:EvaluateGRPCCredentials`): the request bypasses JWT validation, gets every granular scope, is marked as cluster-internal in the context, and — if the request is a leader forwarding a follower's work — carries the forwarded `CallerSnapshot` so the audit chain still attributes the operation to the original caller. Auth-disabled snapshots are the exception: each node derives that explicit principal locally, so followers do not forward it. If a request carries a forwarded snapshot but the connection is **not** cluster-internal (cluster secret unset or mismatched), the leader **rejects** it with `PermissionDenied` rather than silently dropping the identity (`server_bucket.go:adoptForwardedSnapshotIfTrusted`) — a misconfiguration surfaces as a failed write instead of an unattributed audit entry.
 
 ## Caller identity in the audit chain
 
@@ -150,7 +161,7 @@ It is resolved into an opaque, validated `attribution.Capability` by
 `ResolveCallerAttribution()` (`internal/adapter/auth/caller_snapshot.go`), in precedence order:
 
 1. **System actor** — a background action marked with `WithSystemActor(ctx, component)` resolves to a `system` principal (e.g. `query-checkpoint-scheduler`, `mirror`, `events-sink`, `cluster-config`, `idempotency-eviction`, `backup`).
-2. **Trusted forwarded snapshot** — a follower authenticated with the cluster secret sends the snapshot it captured, including `auth_disabled`; the leader validates and freezes it before installing an opaque capability in the context. Absent forwarded attribution resolves to `cluster-peer`; malformed supplied snapshots are rejected. A snapshot on a non-cluster-internal connection is rejected as spoofing. Plaintext clusters without a cluster secret are not trusted forwarding hops; because authentication is disabled in that topology, the leader derives the same explicit `auth_disabled` principal locally.
+2. **Trusted forwarded snapshot** — a follower authenticated with the cluster secret sends the authenticated, anonymous, or system snapshot it captured; the leader validates and freezes it before installing an opaque capability in the context. Auth-disabled snapshots are never forwarded: the leader derives the same explicit `auth_disabled` principal locally. Absent forwarded attribution resolves to `cluster-peer`; malformed supplied snapshots are rejected. A snapshot on a non-cluster-internal connection is rejected as spoofing. Plaintext clusters without a cluster secret are not trusted forwarding hops.
 3. **Cluster peer** — a request authenticated by the cluster secret with no forwarded caller resolves to the `cluster-peer` system principal rather than to an anonymous caller with transport-level scopes.
 4. **Local authentication state** — otherwise `buildCallerSnapshot()` produces `authenticated` from validated OIDC/Ed25519 claims, `anonymous` from configured anonymous access, or `auth_disabled` when authentication is disabled.
 

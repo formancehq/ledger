@@ -197,6 +197,40 @@ func (b *WriteSet) QueueMirrorSync(w MirrorSyncWrite) {
 	b.pendingMirrorSyncs = append(b.pendingMirrorSyncs, w)
 }
 
+type mergeDirtyWord struct {
+	ledgerName string
+	wordIndex  uint64
+}
+
+// mergeDrained holds the overlay output until every zone has been flushed.
+// Keeping one snapshot makes overlay dependencies and write order explicit.
+type mergeDrained struct {
+	ledgerUpdates             []attributes.Update[domain.LedgerKey, *commonpb.LedgerInfo]
+	ledgerDeletions           []attributes.Deletion[domain.LedgerKey]
+	volumeUpdates             []attributes.Update[domain.VolumeKey, *raftcmdpb.VolumePair]
+	partResult                volumePartitionResult
+	metadataUpdates           []attributes.Update[domain.MetadataKey, *commonpb.MetadataValue]
+	metadataDeletions         []attributes.Deletion[domain.MetadataKey]
+	referenceUpdates          []attributes.Update[domain.TransactionReferenceKey, *commonpb.TransactionReferenceValue]
+	referenceDeletions        []attributes.Deletion[domain.TransactionReferenceKey]
+	boundaryUpdates           []attributes.Update[domain.LedgerKey, *raftcmdpb.LedgerBoundaries]
+	boundaryDeletions         []attributes.Deletion[domain.LedgerKey]
+	transactionUpdates        []attributes.Update[domain.TransactionKey, *commonpb.TransactionState]
+	transactionDeletions      []attributes.Deletion[domain.TransactionKey]
+	ledgerMetadataUpdates     []attributes.Update[domain.LedgerMetadataKey, *commonpb.MetadataValue]
+	ledgerMetadataDeletions   []attributes.Deletion[domain.LedgerMetadataKey]
+	sinkConfigUpdates         []attributes.Update[domain.SinkConfigKey, *commonpb.SinkConfig]
+	sinkConfigDeletions       []attributes.Deletion[domain.SinkConfigKey]
+	numscriptVersionUpdates   []attributes.Update[domain.NumscriptVersionKey, *commonpb.NumscriptVersionValue]
+	numscriptVersionDeletions []attributes.Deletion[domain.NumscriptVersionKey]
+	numscriptContentUpdates   []attributes.Update[domain.NumscriptEntryKey, *commonpb.NumscriptInfo]
+	numscriptContentDeletions []attributes.Deletion[domain.NumscriptEntryKey]
+	preparedQueryUpdates      []attributes.Update[domain.PreparedQueryKey, *commonpb.PreparedQuery]
+	preparedQueryDeletions    []attributes.Deletion[domain.PreparedQueryKey]
+	indexUpdates              []attributes.Update[domain.IndexKey, *commonpb.Index]
+	indexDeletions            []attributes.Deletion[domain.IndexKey]
+}
+
 // Merge drains the WriteSet's accumulated overlay into the Pebble batch and
 // applies the side effects of the proposal. `logsOrRefs` is the per-order
 // output of processor.ProcessOrders (one entry per order: either a freshly
@@ -211,9 +245,8 @@ func (b *WriteSet) QueueMirrorSync(w MirrorSyncWrite) {
 // path and improving SST layout on flush. The phases are:
 //
 //  1. Overlay drain (no Pebble writes) — call derived.Merge() on each
-//     DerivedKeyStore in dependency order. updateBoundaryCounters reads volume
-//     / metadata / reference deltas, so those overlays drain before
-//     Boundaries.
+//     DerivedKeyStore in its established order; partition volumes after
+//     draining the volume overlay.
 //  2. Cross-zone in-memory side effects — invariant checks, transient volume
 //     collection, in-memory bitset mutation (SetReverted), purged-by-log
 //     computation and per-log PurgedVolumes injection.
@@ -222,7 +255,7 @@ func (b *WriteSet) QueueMirrorSync(w MirrorSyncWrite) {
 //     SubAttrVolume (01) → Metadata (02) → Transaction (03) → Ledger (04)
 //     → Boundary (05) → Reference (06) → LedgerMetadata (07) → SinkConfig
 //     (08) → NumscriptVersion (09) → NumscriptContent (0A) → PreparedQuery
-//     (0B). Cache writes are emitted paired with the attribute writes via
+//     (0B) → Index (0C). Cache writes are emitted paired with the attribute writes via
 //     mergeSimpleWithCache so the marshaled value bytes are shared.
 //     ZonePerLedger (0x03): SubPLReversions (01) → MirrorSourceHead (04) →
 //     MirrorStatus (06). Sub-prefix 05 is reserved and unused (EN-1513).
@@ -231,51 +264,74 @@ func (b *WriteSet) QueueMirrorSync(w MirrorSyncWrite) {
 //     after Merge returns, preserving the global History ordering.
 //     ZoneIdempotency (0x05).
 //     ZoneGlobal (0x06): LedgerInfo (03) → SigningKey (04) → SigningConfig
-//     (05) → MaintenanceMode (09) → QueryCheckpoint (0B) →
-//     NextQueryCheckpointID (0C) → QueryCheckpointSchedule (0D) →
-//     NextLedgerID (10).
+//     (05) → MaintenanceMode (09) → ClusterPolicy (13) →
+//     QueryCheckpoint (0A) → NextQueryCheckpointID (0B) →
+//     QueryCheckpointSchedule (0D) → NextLedgerID (10).
+//     ClusterPolicy's existing placement is a sub-prefix back-step; it is
+//     retained here to preserve its in-memory mutation timing.
 //  4. Deleted-ledger range deletes and in-memory FSM state finalisation —
 //     deletedLedgers use DeleteRange (range tombstones live in a
 //     separate skiplist and do not affect point-write monotonicity).
 //
-// Any new write site must respect this ordering. If a new write would land
-// between zones already drained, route it through the appropriate sub-step
-// — never append at the end as a fresh block.
+// New write sites must follow the relevant zone and sub-prefix. Route a new
+// write through its zone helper rather than appending it after finalization.
 func (b *WriteSet) Merge(batch *dal.WriteSession, logsOrRefs []*raftcmdpb.CreatedLogOrReference) error {
-	// gen0 byte for incremental 0xFF cache writes.
+	// A generation byte is shared by every attribute/cache flush in this batch.
 	genByte := byte(b.fsm.Registry.Cache.CurrentGeneration() % 2)
-
-	// === Phase 1: overlay drain (no Pebble writes) ============================
-	//
-	// derived.Merge() pulls each DerivedKeyStore's dirty values into a
-	// (updates, deletions) pair and resets the overlay. Order is dictated by
-	// downstream consumers: counter aggregation reads Volume / Metadata /
-	// Reference deltas, so those overlays must drain before Boundaries.Merge.
-
-	ledgerUpdates, ledgerDeletions, err := b.Derived.Ledgers.Merge()
+	d, err := b.drainDerived()
 	if err != nil {
-		return fmt.Errorf("failed to merge ledgers: %w", err)
+		return err
+	}
+	dirtyWords, createdLogs, err := b.prepareMerge(d, logsOrRefs)
+	if err != nil {
+		return err
+	}
+	if err := b.flushAttributes(batch, genByte, d); err != nil {
+		return err
+	}
+	if err := b.flushPerLedger(batch, dirtyWords); err != nil {
+		return err
+	}
+	// History logs precede the later history rows written by applyProposal.
+	if err := AppendLogs(batch, createdLogs); err != nil {
+		return fmt.Errorf("failed appending pending logs: %w", err)
+	}
+	if err := b.Derived.Idempotency.Merge(batch); err != nil {
+		return fmt.Errorf("failed to merge idempotency keys: %w", err)
+	}
+	if err := b.flushGlobal(batch, d); err != nil {
+		return err
 	}
 
-	volumeUpdates, _, err := b.Derived.Volumes.Merge()
+	return b.finalizeMerge(batch)
+}
+
+// drainDerived merges overlays in their existing dependency order; it writes no Pebble keys.
+func (b *WriteSet) drainDerived() (d mergeDrained, err error) {
+	d.ledgerUpdates, d.ledgerDeletions, err = b.Derived.Ledgers.Merge()
 	if err != nil {
-		return fmt.Errorf("failed to merge volumes: %w", err)
+		return d, fmt.Errorf("failed to merge ledgers: %w", err)
+	}
+
+	d.volumeUpdates, _, err = b.Derived.Volumes.Merge()
+	if err != nil {
+		return d, fmt.Errorf("failed to merge volumes: %w", err)
 	}
 
 	// Partition volumes by persistence mode: normal (kept), ephemeral (purged), transient (skipped).
-	partResult, err := b.partitionVolumes(volumeUpdates)
+	d.partResult, err = b.partitionVolumes(d.volumeUpdates)
 	if err != nil {
-		return fmt.Errorf("partitioning volumes: %w", err)
+		return d, fmt.Errorf("partitioning volumes: %w", err)
 	}
 
-	metadataUpdates, metadataDeletions, err := b.Derived.AccountMetadata.Merge()
+	d.metadataUpdates, d.metadataDeletions, err = b.Derived.AccountMetadata.Merge()
 	if err != nil {
-		return fmt.Errorf("failed to merge account metadata: %w", err)
+		return d, fmt.Errorf("failed to merge account metadata: %w", err)
 	}
 
-	referenceUpdates, referenceDeletions, err := b.Derived.References.Merge()
+	d.referenceUpdates, d.referenceDeletions, err = b.Derived.References.Merge()
 	if err != nil {
-		return fmt.Errorf("failed to merge references: %w", err)
+		return d, fmt.Errorf("failed to merge references: %w", err)
 	}
 
 	// No boundary-counter mutation here anymore: every per-ledger counter
@@ -286,65 +342,91 @@ func (b *WriteSet) Merge(batch *dal.WriteSession, logsOrRefs []*raftcmdpb.Create
 	// The `new_volumes` list is computed post-merge alongside `purged_volumes`
 	// — see the log-injection block below.
 
-	boundaryUpdates, boundaryDeletions, err := b.Derived.Boundaries.Merge()
+	d.boundaryUpdates, d.boundaryDeletions, err = b.Derived.Boundaries.Merge()
 	if err != nil {
-		return fmt.Errorf("failed to merge boundaries: %w", err)
+		return d, fmt.Errorf("failed to merge boundaries: %w", err)
 	}
 
-	transactionUpdates, transactionDeletions, err := b.Derived.Transactions.Merge()
+	d.transactionUpdates, d.transactionDeletions, err = b.Derived.Transactions.Merge()
 	if err != nil {
-		return fmt.Errorf("failed to merge transactions: %w", err)
+		return d, fmt.Errorf("failed to merge transactions: %w", err)
 	}
 
-	ledgerMetadataUpdates, ledgerMetadataDeletions, err := b.Derived.LedgerMetadata.Merge()
+	d.ledgerMetadataUpdates, d.ledgerMetadataDeletions, err = b.Derived.LedgerMetadata.Merge()
 	if err != nil {
-		return fmt.Errorf("failed to merge ledger metadata: %w", err)
+		return d, fmt.Errorf("failed to merge ledger metadata: %w", err)
 	}
 
-	sinkConfigUpdates, sinkConfigDeletions, err := b.Derived.SinkConfigs.Merge()
+	d.sinkConfigUpdates, d.sinkConfigDeletions, err = b.Derived.SinkConfigs.Merge()
 	if err != nil {
-		return fmt.Errorf("failed to merge sink configs: %w", err)
+		return d, fmt.Errorf("failed to merge sink configs: %w", err)
 	}
 
-	numscriptVersionUpdates, numscriptVersionDeletions, err := b.Derived.NumscriptVersions.Merge()
+	d.numscriptVersionUpdates, d.numscriptVersionDeletions, err = b.Derived.NumscriptVersions.Merge()
 	if err != nil {
-		return fmt.Errorf("failed to merge numscript versions: %w", err)
+		return d, fmt.Errorf("failed to merge numscript versions: %w", err)
 	}
 
-	numscriptContentUpdates, numscriptContentDeletions, err := b.Derived.NumscriptContents.Merge()
+	d.numscriptContentUpdates, d.numscriptContentDeletions, err = b.Derived.NumscriptContents.Merge()
 	if err != nil {
-		return fmt.Errorf("failed to merge numscript contents: %w", err)
+		return d, fmt.Errorf("failed to merge numscript contents: %w", err)
 	}
 
-	preparedQueryUpdates, preparedQueryDeletions, err := b.Derived.PreparedQueries.Merge()
+	d.preparedQueryUpdates, d.preparedQueryDeletions, err = b.Derived.PreparedQueries.Merge()
 	if err != nil {
-		return fmt.Errorf("failed to merge prepared queries: %w", err)
+		return d, fmt.Errorf("failed to merge prepared queries: %w", err)
 	}
 
-	indexUpdates, indexDeletions, err := b.Derived.Indexes.Merge()
+	d.indexUpdates, d.indexDeletions, err = b.Derived.Indexes.Merge()
 	if err != nil {
-		return fmt.Errorf("failed to merge indexes: %w", err)
+		return d, fmt.Errorf("failed to merge indexes: %w", err)
 	}
 
-	// === Phase 2: cross-zone in-memory side effects (no Pebble writes) ========
+	return d, nil
+}
 
+// prepareMerge checks accounting, updates in-memory state, and annotates fresh logs.
+func (b *WriteSet) prepareMerge(d mergeDrained, logsOrRefs []*raftcmdpb.CreatedLogOrReference) ([]mergeDirtyWord, []*commonpb.Log, error) {
+	if err := b.checkAndRecordVolumes(d); err != nil {
+		return nil, nil, err
+	}
+	// Flush pending reversions to the authoritative in-memory bitset and
+	// collect the per-word dirty list. The Pebble writes for these dirty
+	// words happen in phase 3 (ZonePerLedger drain).
+	var dirtyWords []mergeDirtyWord
+
+	for _, txKey := range b.Derived.PendingReversions {
+		wi := b.fsm.Registry.SetReverted(txKey)
+		dirtyWords = append(dirtyWords, mergeDirtyWord{ledgerName: txKey.LedgerName, wordIndex: wi})
+	}
+
+	createdLogs, err := b.annotateLogs(d.partResult, logsOrRefs)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	return dirtyWords, createdLogs, nil
+}
+
+// checkAndRecordVolumes validates the logical and persisted partitions before any Pebble write.
+func (b *WriteSet) checkAndRecordVolumes(d mergeDrained) error {
 	// Trace volume partitions for sentinel diagnostics.
 	if b.fsm.sentinelMode {
-		b.fsm.sentinelTracer.TraceVolumeUpdates(partResult.kept, partResult.transient, partResult.purged)
+		b.fsm.sentinelTracer.TraceVolumeUpdates(d.partResult.kept, d.partResult.transient, d.partResult.purged)
 	}
 
 	// Collect unique transient (account, asset) volumes per ledger for the
 	// AppliedProposal entry. Purged volumes are not aggregated here — the
 	// per-log subset is computed below via buildPurgedByLog and injected
 	// into each LedgerLog.purged_volumes.
-	if len(partResult.transient) > 0 {
-		b.transientVolumes = collectUniqueVolumes(partResult.transient)
+	if len(d.partResult.transient) > 0 {
+		b.transientVolumes = collectUniqueVolumes(d.partResult.transient)
 	}
 
 	// Defensive check: double-entry invariant (on all updates, including purged).
-	if err := checkDoubleEntryInvariant(volumeUpdates); err != nil {
+	if err := checkDoubleEntryInvariant(d.volumeUpdates); err != nil {
 		assert.Unreachable("all volume updates conserve double entry", map[string]any{
-			"updates": len(volumeUpdates), "error": err.Error(),
+			"updates": len(d.volumeUpdates), "error": err.Error(),
 		})
 
 		return err
@@ -356,9 +438,9 @@ func (b *WriteSet) Merge(batch *dal.WriteSession, logsOrRefs []*raftcmdpb.Create
 	// Transient volumes are excluded: they are never written to Pebble and their
 	// individual zero-balance is verified separately by ValidateTransientVolumes.
 	if b.fsm.sentinelMode {
-		persistedUpdates := make([]attributes.Update[domain.VolumeKey, *raftcmdpb.VolumePair], 0, len(partResult.kept)+len(partResult.purged))
-		persistedUpdates = append(persistedUpdates, partResult.kept...)
-		persistedUpdates = append(persistedUpdates, partResult.purged...)
+		persistedUpdates := make([]attributes.Update[domain.VolumeKey, *raftcmdpb.VolumePair], 0, len(d.partResult.kept)+len(d.partResult.purged))
+		persistedUpdates = append(persistedUpdates, d.partResult.kept...)
+		persistedUpdates = append(persistedUpdates, d.partResult.purged...)
 		if err := checkDoubleEntryInvariant(persistedUpdates); err != nil {
 			assert.Unreachable("persisted volume updates conserve double entry", map[string]any{
 				"updates": len(persistedUpdates), "error": err.Error(),
@@ -383,7 +465,7 @@ func (b *WriteSet) Merge(batch *dal.WriteSession, logsOrRefs []*raftcmdpb.Create
 				}).Errorf("PERSISTED VOLUME UPDATE at invariant violation")
 			}
 
-			for _, u := range partResult.transient {
+			for _, u := range d.partResult.transient {
 				b.fsm.logger.WithFields(map[string]any{
 					"ledger":  u.Key.LedgerName,
 					"account": u.Key.Account,
@@ -400,7 +482,7 @@ func (b *WriteSet) Merge(batch *dal.WriteSession, logsOrRefs []*raftcmdpb.Create
 
 	// Defensive check: volumes must never decrease (stale base detection).
 	if b.fsm.sentinelMode {
-		if err := verifyVolumeUpdateMonotonicity(volumeUpdates); err != nil {
+		if err := verifyVolumeUpdateMonotonicity(d.volumeUpdates); err != nil {
 			return err
 		}
 	}
@@ -408,31 +490,21 @@ func (b *WriteSet) Merge(batch *dal.WriteSession, logsOrRefs []*raftcmdpb.Create
 	// Store both sets: all updates for delta/posting cross-check (needs purged
 	// entries too), and kept-only for post-commit Pebble verification (purged
 	// entries are intentionally deleted from Pebble by applyEphemeralPurge).
-	b.allVolumeUpdates = volumeUpdates
-	b.keptVolumeUpdates = partResult.kept
+	b.allVolumeUpdates = d.volumeUpdates
+	b.keptVolumeUpdates = d.partResult.kept
 
 	// Fresh slice each Merge: exposed via ApplyResult and read later by
 	// deduplicateVolumeUpdates, so it must not alias a reused buffer.
-	b.purgedVolumeKeys = make([]domain.VolumeKey, len(partResult.purged))
-	for i, purged := range partResult.purged {
+	b.purgedVolumeKeys = make([]domain.VolumeKey, len(d.partResult.purged))
+	for i, purged := range d.partResult.purged {
 		b.purgedVolumeKeys[i] = purged.Key
 	}
 
-	// Flush pending reversions to the authoritative in-memory bitset and
-	// collect the per-word dirty list. The Pebble writes for these dirty
-	// words happen in phase 3 (ZonePerLedger drain).
-	type dirtyWord struct {
-		ledgerName string
-		wordIndex  uint64
-	}
+	return nil
+}
 
-	var dirtyWords []dirtyWord
-
-	for _, txKey := range b.Derived.PendingReversions {
-		wi := b.fsm.Registry.SetReverted(txKey)
-		dirtyWords = append(dirtyWords, dirtyWord{ledgerName: txKey.LedgerName, wordIndex: wi})
-	}
-
+// annotateLogs maps per-order volume changes onto fresh logs, skipping replays.
+func (b *WriteSet) annotateLogs(partResult volumePartitionResult, logsOrRefs []*raftcmdpb.CreatedLogOrReference) ([]*commonpb.Log, error) {
 	// Build createdLogs (skipping idempotency replays) and inject the
 	// per-log volume annotation lists before persisting. Three disjoint
 	// sets — draining-purged, new-kept, and pure-ephemeral — are
@@ -469,12 +541,12 @@ func (b *WriteSet) Merge(batch *dal.WriteSession, logsOrRefs []*raftcmdpb.Create
 		if hasPurged || hasNewKept || hasEphemeral {
 			apply := log.GetPayload().GetApply()
 			if apply == nil {
-				return fmt.Errorf("invariant: order %d produced volume annotations but its log payload is not an ApplyLedgerLog (payload=%T)",
+				return nil, fmt.Errorf("invariant: order %d produced volume annotations but its log payload is not an ApplyLedgerLog (payload=%T)",
 					i, log.GetPayload())
 			}
 			ledgerLog := apply.GetLog()
 			if ledgerLog == nil {
-				return fmt.Errorf("invariant: order %d produced volume annotations but its ApplyLedgerLog carries no LedgerLog", i)
+				return nil, fmt.Errorf("invariant: order %d produced volume annotations but its ApplyLedgerLog carries no LedgerLog", i)
 			}
 			if hasPurged {
 				ledgerLog.PurgedVolumes = b.purgedByLog[i]
@@ -490,15 +562,76 @@ func (b *WriteSet) Merge(batch *dal.WriteSession, logsOrRefs []*raftcmdpb.Create
 		createdLogs = append(createdLogs, log)
 	}
 
-	// === Phase 3: Pebble flush in monotone zone+sub order =====================
-	//
-	// Within each (zone, sub) bucket, paired attribute (0x01) + cache (0x02)
-	// writes still micro-zigzag at byte 0 — this is intentional:
-	// mergeSimpleWithCache shares the marshaled value bytes between the two
-	// writes and the issue explicitly calls this out as a paired logical step.
+	return createdLogs, nil
+}
 
+func (b *WriteSet) flushAttributes(batch *dal.WriteSession, genByte byte, d mergeDrained) error {
 	// ZoneAttributes (0x01) + ZoneCache (0x02), sub-prefix monotone.
 
+	if err := b.flushVolumes(batch, genByte, d.partResult); err != nil {
+		return err
+	}
+
+	// SubAttrMetadata (0x02)
+	if err := flushAttributeAndCache(b.attrs.Metadata, batch, genByte, dal.SubAttrMetadata, d.metadataUpdates, d.metadataDeletions, &b.bloomUpdates.Metadata, "account metadata"); err != nil {
+		return err
+	}
+
+	// SubAttrTransaction (0x03)
+	if err := flushAttributeAndCache(b.attrs.Transaction, batch, genByte, dal.SubAttrTransaction, d.transactionUpdates, d.transactionDeletions, &b.bloomUpdates.Transactions, "transactions"); err != nil {
+		return err
+	}
+
+	// SubAttrLedger (0x04)
+	if err := flushAttributeAndCache(b.attrs.Ledger, batch, genByte, dal.SubAttrLedger, d.ledgerUpdates, d.ledgerDeletions, &b.bloomUpdates.Ledgers, "ledgers"); err != nil {
+		return err
+	}
+
+	// SubAttrBoundary (0x05)
+	if err := flushAttributeAndCache(b.attrs.Boundary, batch, genByte, dal.SubAttrBoundary, d.boundaryUpdates, d.boundaryDeletions, &b.bloomUpdates.Boundaries, "boundaries"); err != nil {
+		return err
+	}
+
+	// SubAttrReference (0x06)
+	if err := flushAttributeAndCache(b.attrs.References, batch, genByte, dal.SubAttrReference, d.referenceUpdates, d.referenceDeletions, &b.bloomUpdates.References, "references"); err != nil {
+		return err
+	}
+
+	// SubAttrLedgerMetadata (0x07)
+	if err := flushAttributeAndCache(b.attrs.LedgerMetadata, batch, genByte, dal.SubAttrLedgerMetadata, d.ledgerMetadataUpdates, d.ledgerMetadataDeletions, &b.bloomUpdates.LedgerMetadata, "ledger metadata"); err != nil {
+		return err
+	}
+
+	// SubAttrSinkConfig (0x08)
+	if err := flushAttributeAndCache(b.attrs.SinkConfig, batch, genByte, dal.SubAttrSinkConfig, d.sinkConfigUpdates, d.sinkConfigDeletions, &b.bloomUpdates.SinkConfigs, "sink configs"); err != nil {
+		return err
+	}
+
+	// SubAttrNumscriptVersion (0x09)
+	if err := flushAttributeAndCache(b.attrs.NumscriptVersion, batch, genByte, dal.SubAttrNumscriptVersion, d.numscriptVersionUpdates, d.numscriptVersionDeletions, &b.bloomUpdates.NumscriptVersions, "numscript versions"); err != nil {
+		return err
+	}
+
+	// SubAttrNumscriptContent (0x0A)
+	if err := flushAttributeAndCache(b.attrs.NumscriptContent, batch, genByte, dal.SubAttrNumscriptContent, d.numscriptContentUpdates, d.numscriptContentDeletions, &b.bloomUpdates.NumscriptContents, "numscript contents"); err != nil {
+		return err
+	}
+
+	// SubAttrPreparedQuery (0x0B)
+	if err := flushAttributeAndCache(b.attrs.PreparedQuery, batch, genByte, dal.SubAttrPreparedQuery, d.preparedQueryUpdates, d.preparedQueryDeletions, &b.bloomUpdates.PreparedQueries, "prepared queries"); err != nil {
+		return err
+	}
+
+	// SubAttrIndex (0x0C) — bucket-scoped index registry (per-ledger or bucket).
+	if err := flushAttributeAndCache(b.attrs.Index, batch, genByte, dal.SubAttrIndex, d.indexUpdates, d.indexDeletions, &b.bloomUpdates.Indexes, "indexes"); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// flushVolumes applies kept, purged, and transient cells in their original order.
+func (b *WriteSet) flushVolumes(batch *dal.WriteSession, genByte byte, partResult volumePartitionResult) error {
 	// SubAttrVolume (0x01): kept go through mergeSimpleWithCache + bloom;
 	// purged go through applyEphemeralPurge (attribute Delete + cache tombstone);
 	// transient go through tombstoneVolumeCache (cache absence, no Pebble attribute
@@ -527,61 +660,10 @@ func (b *WriteSet) Merge(batch *dal.WriteSession, logsOrRefs []*raftcmdpb.Create
 		return fmt.Errorf("failed tombstoning transient volumes in cache: %w", err)
 	}
 
-	// SubAttrMetadata (0x02)
-	if err := flushAttributeAndCache(b.attrs.Metadata, batch, genByte, dal.SubAttrMetadata, metadataUpdates, metadataDeletions, &b.bloomUpdates.Metadata, "account metadata"); err != nil {
-		return err
-	}
+	return nil
+}
 
-	// SubAttrTransaction (0x03)
-	if err := flushAttributeAndCache(b.attrs.Transaction, batch, genByte, dal.SubAttrTransaction, transactionUpdates, transactionDeletions, &b.bloomUpdates.Transactions, "transactions"); err != nil {
-		return err
-	}
-
-	// SubAttrLedger (0x04)
-	if err := flushAttributeAndCache(b.attrs.Ledger, batch, genByte, dal.SubAttrLedger, ledgerUpdates, ledgerDeletions, &b.bloomUpdates.Ledgers, "ledgers"); err != nil {
-		return err
-	}
-
-	// SubAttrBoundary (0x05)
-	if err := flushAttributeAndCache(b.attrs.Boundary, batch, genByte, dal.SubAttrBoundary, boundaryUpdates, boundaryDeletions, &b.bloomUpdates.Boundaries, "boundaries"); err != nil {
-		return err
-	}
-
-	// SubAttrReference (0x06)
-	if err := flushAttributeAndCache(b.attrs.References, batch, genByte, dal.SubAttrReference, referenceUpdates, referenceDeletions, &b.bloomUpdates.References, "references"); err != nil {
-		return err
-	}
-
-	// SubAttrLedgerMetadata (0x07)
-	if err := flushAttributeAndCache(b.attrs.LedgerMetadata, batch, genByte, dal.SubAttrLedgerMetadata, ledgerMetadataUpdates, ledgerMetadataDeletions, &b.bloomUpdates.LedgerMetadata, "ledger metadata"); err != nil {
-		return err
-	}
-
-	// SubAttrSinkConfig (0x08)
-	if err := flushAttributeAndCache(b.attrs.SinkConfig, batch, genByte, dal.SubAttrSinkConfig, sinkConfigUpdates, sinkConfigDeletions, &b.bloomUpdates.SinkConfigs, "sink configs"); err != nil {
-		return err
-	}
-
-	// SubAttrNumscriptVersion (0x09)
-	if err := flushAttributeAndCache(b.attrs.NumscriptVersion, batch, genByte, dal.SubAttrNumscriptVersion, numscriptVersionUpdates, numscriptVersionDeletions, &b.bloomUpdates.NumscriptVersions, "numscript versions"); err != nil {
-		return err
-	}
-
-	// SubAttrNumscriptContent (0x0A)
-	if err := flushAttributeAndCache(b.attrs.NumscriptContent, batch, genByte, dal.SubAttrNumscriptContent, numscriptContentUpdates, numscriptContentDeletions, &b.bloomUpdates.NumscriptContents, "numscript contents"); err != nil {
-		return err
-	}
-
-	// SubAttrPreparedQuery (0x0B)
-	if err := flushAttributeAndCache(b.attrs.PreparedQuery, batch, genByte, dal.SubAttrPreparedQuery, preparedQueryUpdates, preparedQueryDeletions, &b.bloomUpdates.PreparedQueries, "prepared queries"); err != nil {
-		return err
-	}
-
-	// SubAttrIndex (0x0C) — bucket-scoped index registry (per-ledger or bucket).
-	if err := flushAttributeAndCache(b.attrs.Index, batch, genByte, dal.SubAttrIndex, indexUpdates, indexDeletions, &b.bloomUpdates.Indexes, "indexes"); err != nil {
-		return err
-	}
-
+func (b *WriteSet) flushPerLedger(batch *dal.WriteSession, dirtyWords []mergeDirtyWord) error {
 	// ZonePerLedger (0x03), sub-prefix monotone.
 
 	// SubPLReversions (0x01)
@@ -617,26 +699,17 @@ func (b *WriteSet) Merge(batch *dal.WriteSession, logsOrRefs []*raftcmdpb.Create
 		}
 	}
 
-	// ZoneHistory (0x04), SubHistoryLog (0x01) only. The higher History sub-prefixes
-	// (SubHistoryAudit, SubHistoryAuditItem, SubHistoryAppliedProposal) are written by
-	// applyProposal AFTER Merge returns, preserving the global History
-	// sub-prefix monotonicity established by PR #542.
-	if err := AppendLogs(batch, createdLogs); err != nil {
-		return fmt.Errorf("failed appending pending logs: %w", err)
-	}
+	return nil
+}
 
-	// ZoneIdempotency (0x05).
-	if err := b.Derived.Idempotency.Merge(batch); err != nil {
-		return fmt.Errorf("failed to merge idempotency keys: %w", err)
-	}
-
+func (b *WriteSet) flushGlobal(batch *dal.WriteSession, d mergeDrained) error {
 	// ZoneGlobal (0x06), sub-prefix monotone.
 
 	// SubGlobLedgerInfo (0x03)
-	for _, update := range ledgerUpdates {
+	for _, update := range d.ledgerUpdates {
 		// Key off the canonical attribute key, not update.New.GetName(): this
 		// row and the SubAttrLedger attribute/cache row above are flushed from
-		// the same ledgerUpdates slice, so deriving one key from the payload
+		// the same ledger updates, so deriving one key from the payload
 		// and the other from the canonical key would let a divergent
 		// LedgerInfo.name split them apart.
 		if err := SaveLedger(batch, string(update.CanonicalKey), update.New); err != nil {
@@ -699,7 +772,7 @@ func (b *WriteSet) Merge(batch *dal.WriteSession, logsOrRefs []*raftcmdpb.Create
 		b.fsm.State.UpdateClusterPolicy(b.pendingClusterPolicyUpdate.policy)
 	}
 
-	// SubGlobQueryCheckpoint (0x0B) — saves then deletes, both on the same
+	// SubGlobQueryCheckpoint (0x0A) — saves then deletes, both on the same
 	// sub-prefix. The (checkpoint_id BE 8) tail keeps per-call ordering
 	// deterministic; the contract is at zone+sub only.
 	for _, cp := range b.pendingQueryCheckpointSaves {
@@ -724,14 +797,14 @@ func (b *WriteSet) Merge(batch *dal.WriteSession, logsOrRefs []*raftcmdpb.Create
 		delete(b.fsm.State.LiveQueryCheckpointIDs, cpID)
 	}
 
-	// SubGlobNextQueryCheckpointID (0x0F)
+	// SubGlobNextQueryCheckpointID (0x0B)
 	if b.NextQueryCheckpointID != b.fsm.State.NextQueryCheckpointID {
 		if err := StoreNextQueryCheckpointID(batch, b.NextQueryCheckpointID); err != nil {
 			return fmt.Errorf("storing next query checkpoint ID: %w", err)
 		}
 	}
 
-	// SubGlobQueryCheckpointSchedule (0x10)
+	// SubGlobQueryCheckpointSchedule (0x0D)
 	if b.queryCheckpointScheduleUpdate != nil {
 		if *b.queryCheckpointScheduleUpdate == "" {
 			err := DeleteQueryCheckpointScheduleFromBatch(batch)
@@ -755,17 +828,12 @@ func (b *WriteSet) Merge(batch *dal.WriteSession, logsOrRefs []*raftcmdpb.Create
 		}
 	}
 
-	// === Phase 4: deleted-ledger range deletes + FSM state finalisation ======
-	//
-	// The deletedLedgers block emits DeleteRange calls (range tombstones) on
-	// ZoneAttributes and ZonePerLedger, plus a handful of point deletes
-	// (deleteLedgerData). Range tombstones live in a dedicated skiplist,
-	// separate from the point-write skiplist, so they do not break the
-	// monotonicity invariant established in phase 3. The trailing point
-	// deletes are bounded by the number of deleted ledgers (not the hot-path
-	// order count) so any residual back-step they introduce is amortised
-	// across batches.
+	return nil
+}
 
+func (b *WriteSet) finalizeMerge(batch *dal.WriteSession) error {
+	// Range tombstones use a separate skiplist. The bounded trailing point
+	// deletes retain the original cleanup sequence and failure behavior.
 	// Physically remove ledger-owned projections in the same apply that
 	// records the deletion. The Boundary deletion itself was already queued
 	// by processDeleteLedger through the gated Scope (Derived.Boundaries

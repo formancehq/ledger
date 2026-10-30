@@ -104,6 +104,16 @@ A validation error at FSM time is hash-bound as an `AuditFailure`, so a checker 
    with `PaginateReverse`. An aligned read trims either direction to the
    main-store horizon (`NewFilterIterator` / `NewFilterReverseIterator`).
 
+**List page size.** The shared `internal/query` pagination policy defaults zero
+to 100 and clamps values above 1000 to 1000. HTTP and service gRPC normalize
+`LIST` inputs before passing them downstream, and the executor enforces the same
+policy before collecting IDs, enriching entities or materializing the response.
+`PreparedQueryCursor.page_size` reports this effective size in both directions.
+An HTTP `pageSize` query parameter overrides the body when supplied, including
+an empty or zero value (which selects 100). Negative, fractional or overflowing uint32
+inputs are invalid rather than narrowed. `AGGREGATE_VOLUMES` ignores page size
+and still aggregates all matching accounts.
+
 **List order and cursor.** `LIST` returns entities in ascending entity order
 (account address, transaction id, log id) and in descending order with
 `reverse`. `cursor` is a page token (`pkg/pagecursor`) whose key is the

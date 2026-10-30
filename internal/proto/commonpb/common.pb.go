@@ -664,10 +664,9 @@ func (MirrorSyncState) EnumDescriptor() ([]byte, []int) {
 // (domain.ReasonCode / domain.ReasonString) with no hand-maintained table.
 // FailureDetails declares this on each variant so the error kind can be
 // re-derived from the reason (domain.KindForReason) at replay and check time.
-// While v3 remains unreleased and its state is wiped between revisions,
-// removing a value also realigns the remaining numbers sequentially, per the
-// repository protobuf policy. After release these persisted values become
-// append-only and must never be renumbered or removed. Completeness against
+// Since v3.0.0-rc.1, these persisted values are append-only. Never renumber or
+// reuse a published number; reserve removed values and migrate stored data when
+// required. Completeness against
 // domain errors is enforced by TestEveryDomainErrorImplementsDescribable.
 type ErrorReason int32
 
@@ -766,10 +765,6 @@ const (
 	// Creation never evicts; an existing checkpoint must be deleted first. See
 	// EN-1501.
 	ErrorReason_ERROR_REASON_CHECKPOINT_LIMIT_REACHED ErrorReason = 65
-	// ERROR_REASON_INVALID_CALLER_ATTRIBUTION: a proposal reached admission or
-	// the FSM without a complete canonical caller principal. This is an internal
-	// trust-boundary violation and is never client-correctable.
-	ErrorReason_ERROR_REASON_INVALID_CALLER_ATTRIBUTION ErrorReason = 72
 	// ERROR_REASON_CHECKPOINT_NOT_FOUND: a DeleteQueryCheckpoint targeted an id
 	// that is not live (never created, or already deleted). See EN-1501.
 	ErrorReason_ERROR_REASON_CHECKPOINT_NOT_FOUND ErrorReason = 66
@@ -883,7 +878,6 @@ var (
 		63: "ERROR_REASON_CLUSTER_POLICY_REVISION_CONFLICT",
 		64: "ERROR_REASON_CLUSTER_POLICY_INVALID",
 		65: "ERROR_REASON_CHECKPOINT_LIMIT_REACHED",
-		72: "ERROR_REASON_INVALID_CALLER_ATTRIBUTION",
 		66: "ERROR_REASON_CHECKPOINT_NOT_FOUND",
 		67: "ERROR_REASON_SEQUENCE_EXHAUSTED",
 		68: "ERROR_REASON_INDEX_ALREADY_EXISTS",
@@ -960,7 +954,6 @@ var (
 		"ERROR_REASON_CLUSTER_POLICY_REVISION_CONFLICT": 63,
 		"ERROR_REASON_CLUSTER_POLICY_INVALID":           64,
 		"ERROR_REASON_CHECKPOINT_LIMIT_REACHED":         65,
-		"ERROR_REASON_INVALID_CALLER_ATTRIBUTION":       72,
 		"ERROR_REASON_CHECKPOINT_NOT_FOUND":             66,
 		"ERROR_REASON_SEQUENCE_EXHAUSTED":               67,
 		"ERROR_REASON_INDEX_ALREADY_EXISTS":             68,
@@ -1004,7 +997,7 @@ type ChartEnforcementMode int32
 
 const (
 	ChartEnforcementMode_CHART_ENFORCEMENT_STRICT ChartEnforcementMode = 0 // Reject transactions with invalid addresses (default)
-	ChartEnforcementMode_CHART_ENFORCEMENT_AUDIT  ChartEnforcementMode = 1 // Log warning but allow the transaction
+	ChartEnforcementMode_CHART_ENFORCEMENT_AUDIT  ChartEnforcementMode = 1 // Allow unmatched accounts without reporting them
 )
 
 // Enum value maps for ChartEnforcementMode.
@@ -23678,7 +23671,7 @@ const file_common_proto_rawDesc = "" +
 	"\x12LEDGER_MODE_MIRROR\x10\x01*Q\n" +
 	"\x0fMirrorSyncState\x12\x1d\n" +
 	"\x19MIRROR_SYNC_STATE_SYNCING\x10\x00\x12\x1f\n" +
-	"\x1bMIRROR_SYNC_STATE_FOLLOWING\x10\x01*\xe6\x17\n" +
+	"\x1bMIRROR_SYNC_STATE_FOLLOWING\x10\x01*\xe8\x17\n" +
 	"\vErrorReason\x12\x1c\n" +
 	"\x18ERROR_REASON_UNSPECIFIED\x10\x00\x12&\n" +
 	"\"ERROR_REASON_LEDGER_ALREADY_EXISTS\x10\x01\x12!\n" +
@@ -23746,8 +23739,7 @@ const file_common_proto_rawDesc = "" +
 	"!ERROR_REASON_STALE_CLUSTER_POLICY\x10>\x121\n" +
 	"-ERROR_REASON_CLUSTER_POLICY_REVISION_CONFLICT\x10?\x12'\n" +
 	"#ERROR_REASON_CLUSTER_POLICY_INVALID\x10@\x12)\n" +
-	"%ERROR_REASON_CHECKPOINT_LIMIT_REACHED\x10A\x12+\n" +
-	"'ERROR_REASON_INVALID_CALLER_ATTRIBUTION\x10H\x12%\n" +
+	"%ERROR_REASON_CHECKPOINT_LIMIT_REACHED\x10A\x12%\n" +
 	"!ERROR_REASON_CHECKPOINT_NOT_FOUND\x10B\x12#\n" +
 	"\x1fERROR_REASON_SEQUENCE_EXHAUSTED\x10C\x12%\n" +
 	"!ERROR_REASON_INDEX_ALREADY_EXISTS\x10D\x12(\n" +
@@ -23755,7 +23747,7 @@ const file_common_proto_rawDesc = "" +
 	"+ERROR_REASON_REVERT_TARGET_CREATED_IN_BATCH\x10F\x12)\n" +
 	"%ERROR_REASON_SINK_CONTROLLER_MISMATCH\x10G\x12(\n" +
 	"$ERROR_REASON_NUMSCRIPT_COMPILE_ERROR\x10I\x12*\n" +
-	"&ERROR_REASON_NUMSCRIPT_EXECUTION_ERROR\x10J*Q\n" +
+	"&ERROR_REASON_NUMSCRIPT_EXECUTION_ERROR\x10J\"\x04\bH\x10H*'ERROR_REASON_INVALID_CALLER_ATTRIBUTION*Q\n" +
 	"\x14ChartEnforcementMode\x12\x1c\n" +
 	"\x18CHART_ENFORCEMENT_STRICT\x10\x00\x12\x1b\n" +
 	"\x17CHART_ENFORCEMENT_AUDIT\x10\x01*i\n" +

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"time"
 
+	appsv1 "k8s.io/api/apps/v1"
 	batchv1 "k8s.io/api/batch/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
@@ -45,6 +46,9 @@ import (
 type BackupRunReconciler struct {
 	client.Client
 
+	// APIReader reads the Cluster Service directly from the API server, so a
+	// Service replaced before Job creation is not hidden by a stale cache.
+	APIReader client.Reader
 	Scheme    *runtime.Scheme
 	Clientset kubernetes.Interface
 }
@@ -135,27 +139,19 @@ func (r *BackupRunReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		}
 		// A transport error does not prove Create failed. Keep the reservation
 		// and retry the deterministic name, including after AlreadyExists.
-		provisioningErr := fmt.Errorf("provisioning backup Job: %w", err)
-		if run.Status.Message != provisioningErr.Error() {
-			run.Status.Message = provisioningErr.Error()
-			if err := r.Status().Update(ctx, &run); err != nil {
-				return ctrl.Result{}, errors.Join(provisioningErr, fmt.Errorf("recording provisioning error: %w", err))
-			}
-		}
-
-		return ctrl.Result{}, provisioningErr
-	}
-
-	// Clear a previous provisioning diagnostic once the owned Job is available.
-	if run.Status.Message != "" {
-		run.Status.Message = ""
-		if err := r.Status().Update(ctx, &run); err != nil {
-			return ctrl.Result{}, err
-		}
+		return r.retryRun(ctx, &run, fmt.Errorf("provisioning backup Job: %w", err))
 	}
 
 	succeeded, terminal, jobMsg := jobTerminalCondition(job)
 	if !terminal {
+		// Clear a previous diagnostic once the owned Job is available and running.
+		if run.Status.Message != "" {
+			run.Status.Message = ""
+			if err := r.Status().Update(ctx, &run); err != nil {
+				return ctrl.Result{}, err
+			}
+		}
+
 		// Job still running: wait for the next status update via the Owns watch.
 		logger.V(1).Info("backup Job still in progress", "job", job.Name, "active", job.Status.Active)
 
@@ -171,13 +167,19 @@ func (r *BackupRunReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		return r.setRunFailed(ctx, &run, message)
 	}
 
-	// Success: parse the JSON summary from the pod logs and lift it onto status.
+	// A completed Job's result may be temporarily unavailable. Retry observation
+	// without releasing the reservation or misclassifying the execution outcome.
 	if err := r.applyJobResult(ctx, &run, &cluster, job); err != nil {
+		if _, ok := errors.AsType[*backupResultReadError](err); ok {
+			return r.retryRun(ctx, &run, fmt.Errorf("reading backup result: %w", err))
+		}
+
 		return r.setRunFailed(ctx, &run, fmt.Sprintf("reading backup result: %v", err))
 	}
 
 	completion := metav1.Now()
 	run.Status.Phase = ledgerv1alpha1.BackupRunPhaseSucceeded
+	run.Status.Message = ""
 	run.Status.CompletionTime = &completion
 	meta.SetStatusCondition(&run.Status.Conditions, metav1.Condition{
 		Type:               "BackupCompleted",
@@ -221,12 +223,41 @@ func (r *BackupRunReconciler) ensureBackupJob(
 		return nil, fmt.Errorf("looking up Job: %w", err)
 	}
 
-	tlsMode, err := fetchTLSMode(ctx, r.Client, ls.Namespace, resourceName(ls.Name))
-	if err != nil {
-		return nil, fmt.Errorf("resolving TLS mode for Cluster %q: %w", ls.Name, err)
+	// Desired spec may already omit TLS while the live workload is optional.
+	// Resolve both transport and trust from the same owned workload snapshot.
+	// Absence during orphan/recreate is retryable, never a plaintext fallback.
+	sts := &appsv1.StatefulSet{}
+	if err := r.Get(ctx, types.NamespacedName{Name: resourceName(ls.Name), Namespace: ls.Namespace}, sts); err != nil {
+		return nil, fmt.Errorf("resolving TLS workload for Cluster %q: %w", ls.Name, err)
+	}
+	if !metav1.IsControlledBy(sts, ls) {
+		return nil, fmt.Errorf("StatefulSet %q is not controlled by Cluster %q (UID %s)", sts.Name, ls.Name, ls.UID)
+	}
+	// The Job dials the ClusterIP Service backupServerAddr names, not the
+	// StatefulSet, so that Service must be the Cluster's too. Checking it,
+	// rather than dialing a pod address, keeps the Service's routing to any pod
+	// (the leader proxies the backup) and its certificate SAN; the ownership of
+	// its endpoints follows from the operator writing its selector. The read is
+	// uncached so a replacement that already happened is seen; a Service
+	// replaced after this check, while the Job starts, is not detected.
+	if r.APIReader == nil {
+		return nil, errors.New("APIReader not configured")
+	}
+	if err := requireClusterService(ctx, r.APIReader, ls); err != nil {
+		return nil, fmt.Errorf("resolving the Service of Cluster %q: %w", ls.Name, err)
+	}
+	tlsMode := currentTLSModeFromStatefulSet(sts)
+	effective := ls.DeepCopy()
+	if tlsMode == tlsModeRequired || tlsMode == tlsModeOptional {
+		effective.Spec.TLS = tlsConfigFromStatefulSet(sts)
+		if effective.Spec.TLS == nil {
+			return nil, fmt.Errorf("TLS workload %q has no certificate Secret reference", sts.Name)
+		}
+	} else if tlsMode != tlsModeDisabled {
+		return nil, fmt.Errorf("workload %q has invalid TLS mode %q", sts.Name, tlsMode)
 	}
 
-	desired, err := buildBackupJob(run, backup, ls, tlsMode)
+	desired, err := buildBackupJob(run, backup, effective, tlsMode)
 	if err != nil {
 		return nil, &permanentBackupJobError{err}
 	}
@@ -261,7 +292,7 @@ func (r *BackupRunReconciler) applyJobResult(
 ) error {
 	payload, err := fetchJobResultPayload(ctx, r.Clientset, job.Namespace, job.Name)
 	if err != nil {
-		return err
+		return &backupResultReadError{err}
 	}
 
 	now := metav1.Now()
@@ -305,6 +336,27 @@ func (r *BackupRunReconciler) applyJobResult(
 	}
 
 	return nil
+}
+
+// backupResultReadError distinguishes unavailable evidence from an acquired
+// payload that definitively cannot be interpreted as a backup summary.
+type backupResultReadError struct {
+	error
+}
+
+func (e *backupResultReadError) Unwrap() error { return e.error }
+
+// retryRun preserves the execution reservation and records changed diagnostics.
+// Returning the cause asks controller-runtime to retry with its error backoff.
+func (r *BackupRunReconciler) retryRun(ctx context.Context, run *ledgerv1alpha1.BackupRun, cause error) (ctrl.Result, error) {
+	if run.Status.Message != cause.Error() {
+		run.Status.Message = cause.Error()
+		if err := r.Status().Update(ctx, run); err != nil {
+			return ctrl.Result{}, errors.Join(cause, fmt.Errorf("recording retry error: %w", err))
+		}
+	}
+
+	return ctrl.Result{}, cause
 }
 
 // setRunFailed transitions the run to Failed with the given message and returns a terminal result.

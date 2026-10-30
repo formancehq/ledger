@@ -29,32 +29,34 @@ import (
 func TestCheckerBoundaryRebuildRejectsExhaustedCounters(t *testing.T) {
 	t.Parallel()
 
-	t.Run("ledger log", func(t *testing.T) {
-		t.Parallel()
-
-		expected := make(map[string]*raftcmdpb.LedgerBoundaries)
-		err := advanceExpectedBoundaries(expected, "ledger", &commonpb.LedgerLog{Id: math.MaxUint64})
-		var exhausted *domain.ErrSequenceExhausted
-		require.ErrorAs(t, err, &exhausted)
-		require.Equal(t, domain.SequenceCounterLedgerLogID, exhausted.Counter)
-		require.Equal(t, uint64(1), expected["ledger"].GetNextLogId())
-	})
-
-	t.Run("transaction", func(t *testing.T) {
-		t.Parallel()
-
-		expected := make(map[string]*raftcmdpb.LedgerBoundaries)
-		log := &commonpb.LedgerLog{Id: 1, Data: &commonpb.LedgerLogPayload{
-			Payload: &commonpb.LedgerLogPayload_CreatedTransaction{CreatedTransaction: &commonpb.CreatedTransaction{
-				Transaction: &commonpb.Transaction{Id: math.MaxUint64},
-			}},
-		}}
-		err := advanceExpectedBoundaries(expected, "ledger", log)
-		var exhausted *domain.ErrSequenceExhausted
-		require.ErrorAs(t, err, &exhausted)
-		require.Equal(t, domain.SequenceCounterTransactionID, exhausted.Counter)
-		require.Equal(t, uint64(1), expected["ledger"].GetNextTransactionId())
-	})
+	for _, tc := range []struct {
+		name   string
+		tamper func(*commonpb.LedgerLog)
+	}{
+		{name: "ledger log", tamper: func(log *commonpb.LedgerLog) { log.Id = math.MaxUint64 }},
+		{name: "transaction", tamper: func(log *commonpb.LedgerLog) {
+			log.GetData().GetCreatedTransaction().Transaction.Id = math.MaxUint64
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			engine := newTestEngine(t)
+			engine.processAndCommit(createLedgerOrder("ledger"))
+			logs := engine.processAndCommit(createTransactionOrder("ledger", true, &commonpb.Posting{
+				Source: "world", Destination: "alice", Asset: "USD", Amount: commonpb.NewUint256FromUint64(1),
+			}))
+			require.Empty(t, runFSMPurgeCheck(t, engine.store, engine.attrs))
+			log := logs[0]
+			tc.tamper(log.GetPayload().GetApply().GetLog())
+			batch := engine.store.OpenWriteSession()
+			require.NoError(t, state.AppendLogs(batch, []*commonpb.Log{log}))
+			require.NoError(t, batch.Commit())
+			findings := runFSMPurgeCheck(t, engine.store, engine.attrs)
+			require.NotEmpty(t, errorsOfType(findings, servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_LOG_PAYLOAD_MISMATCH))
+			require.Empty(t, errorsOfType(findings, servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_BOUNDARY_MISMATCH),
+				"a forged terminal ID must not seed or wrap the boundary expectation")
+		})
+	}
 
 	t.Run("audit-derived transaction allocation", func(t *testing.T) {
 		t.Parallel()

@@ -2,6 +2,7 @@ package grpc
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"path/filepath"
 	"strconv"
@@ -14,26 +15,31 @@ import (
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
+	"github.com/formancehq/ledger/v3/internal/infra/state"
 	"github.com/formancehq/ledger/v3/internal/proto/snapshotpb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
 
-// WaitForAppliedFunc blocks until the FSM has applied entries up to targetIndex.
-type WaitForAppliedFunc func(ctx context.Context, targetIndex uint64) error
+// SnapshotDonor exposes the applier state needed by the snapshot service.
+// SnapshotReadiness must not wait or create a checkpoint.
+type SnapshotDonor interface {
+	WaitForCheckpointable(ctx context.Context, targetIndex uint64) error
+	SnapshotReadiness() (lastPersistedIndex uint64, resynchronizing bool)
+}
 
 // SnapshotServiceServerImpl implements the SnapshotService gRPC server.
 type SnapshotServiceServerImpl struct {
 	snapshotpb.UnimplementedSnapshotServiceServer
 
-	logger         logging.Logger
-	store          *dal.Store
-	sessions       *snapshotSessionStore
-	nextSyncID     atomic.Uint64
-	waitForApplied WaitForAppliedFunc
+	logger     logging.Logger
+	store      *dal.Store
+	sessions   *snapshotSessionStore
+	nextSyncID atomic.Uint64
+	donor      SnapshotDonor
 }
 
 // NewSnapshotServiceServer creates a new SnapshotServiceServer.
-func NewSnapshotServiceServer(logger logging.Logger, s *dal.Store, sessionTTL time.Duration, waitForApplied WaitForAppliedFunc) snapshotpb.SnapshotServiceServer {
+func NewSnapshotServiceServer(logger logging.Logger, s *dal.Store, sessionTTL time.Duration, donor SnapshotDonor) snapshotpb.SnapshotServiceServer {
 	l := logger.WithField("component", "snapshot-server")
 
 	if sessionTTL == 0 {
@@ -41,11 +47,24 @@ func NewSnapshotServiceServer(logger logging.Logger, s *dal.Store, sessionTTL ti
 	}
 
 	return &SnapshotServiceServerImpl{
-		logger:         l,
-		store:          s,
-		sessions:       newSnapshotSessionStore(s, l, sessionTTL),
-		waitForApplied: waitForApplied,
+		logger:   l,
+		store:    s,
+		sessions: newSnapshotSessionStore(s, l, sessionTTL),
+		donor:    donor,
 	}
+}
+
+// CheckSnapshotReadiness reports whether a checkpoint can be served without
+// creating one. The result is advisory: PrepareSnapshot repeats the durable
+// readiness check because the state may change between the two calls.
+func (s *SnapshotServiceServerImpl) CheckSnapshotReadiness(_ context.Context, req *snapshotpb.CheckSnapshotReadinessRequest) (*snapshotpb.CheckSnapshotReadinessResponse, error) {
+	lastPersistedIndex, resynchronizing := s.donor.SnapshotReadiness()
+
+	return &snapshotpb.CheckSnapshotReadinessResponse{
+		Ready:              !resynchronizing && lastPersistedIndex >= req.GetMinAppliedIndex(),
+		LastPersistedIndex: lastPersistedIndex,
+		Resynchronizing:    resynchronizing,
+	}, nil
 }
 
 // StartSnapshotService starts the session reaper. Keeping this acquisition in
@@ -77,19 +96,25 @@ func (s *SnapshotServiceServerImpl) PrepareSnapshot(ctx context.Context, req *sn
 	// Wait until the FSM has applied at least the requested index before
 	// creating the Pebble checkpoint. Without this, the checkpoint could be
 	// taken before the FSM commits entries the follower needs, causing the
-	// follower to restore a state behind its Raft snapshot index.
-	if minIdx := req.GetMinAppliedIndex(); minIdx > 0 && s.waitForApplied != nil {
-		waitStart := time.Now()
-		if err := s.waitForApplied(ctx, minIdx); err != nil {
-			return nil, fmt.Errorf("waiting for FSM to apply index %d: %w", minIdx, err)
+	// follower to restore a state behind its Raft snapshot index. A store
+	// that is itself resynchronizing is refused outright: the requester
+	// treats FailedPrecondition as final and moves on to another donor
+	// instead of waiting out its PrepareSnapshot budget here.
+	minIdx := req.GetMinAppliedIndex()
+	waitStart := time.Now()
+	if err := s.donor.WaitForCheckpointable(ctx, minIdx); err != nil {
+		if errors.Is(err, state.ErrStoreResynchronizing) {
+			return nil, status.Error(codes.FailedPrecondition, err.Error())
 		}
 
-		if d := time.Since(waitStart); d > 100*time.Millisecond {
-			s.logger.WithFields(map[string]any{
-				"minAppliedIndex": minIdx,
-				"duration":        d.String(),
-			}).Infof("FSM caught up to minAppliedIndex for PrepareSnapshot")
-		}
+		return nil, fmt.Errorf("waiting for FSM to apply index %d: %w", minIdx, err)
+	}
+
+	if d := time.Since(waitStart); d > 100*time.Millisecond {
+		s.logger.WithFields(map[string]any{
+			"minAppliedIndex": minIdx,
+			"duration":        d.String(),
+		}).Infof("FSM caught up to minAppliedIndex for PrepareSnapshot")
 	}
 
 	syncName := "follower-sync-" + strconv.FormatUint(s.nextSyncID.Add(1), 10)

@@ -8,6 +8,10 @@ see [audit-chain.md](audit-chain.md) for the trust boundary.
 
 The checker (`internal/application/check`) is the integrity verification subsystem. It does **not** sit on the request path — it is invoked on demand via gRPC (`BucketService.CheckStore`) and produces a stream of `CheckStoreEvent`s describing any divergence between the persisted projections and what the audit chain says they should hold.
 
+Account metadata and transaction comparison report malformed canonical keys as
+typed mismatch events, including surplus rows with valid protobuf values; see
+[the verification passes](checker.md#the-verification-passes).
+
 For rejected proposals, it derives the reason and stable failure code from the
 persisted `FailureDetails` oneof and verifies that it contains only the facts
 defined by that variant. See [audit-chain.md](audit-chain.md) for the hash binding.
@@ -75,6 +79,23 @@ exemptions. The two signing projections (`SubGlobSigningKey`,
 `signingVerifier` (`internal/application/check/signing.go`) against the
 chain-bound signing orders; maintenance mode has the identical shape and gap but
 is deliberately deferred.
+
+The ledger policy pass verifies canonical `SubAttrLedger` and global
+`SubGlobLedgerInfo` independently against the existing isolated FSM replay of
+successful verified audit proposals. It covers presence, embedded name, schema,
+account types, default enforcement, normal/mirror mode, complete mirror source
+and deletion timestamp, including retained tombstones. A partial chain or
+replay suppresses this final-state comparison. Undecodable or typeless orders
+in successful verified entries emit `HASH_MISMATCH` so suppression cannot
+make an incomplete check appear healthy. Creation timestamp and numeric
+ledger ID remain outside that pass; read-time metadata and mirror progress
+are excluded enrichments. See [checker.md](checker.md) for errors and scope.
+
+The allocation-boundary pass derives `nextTransactionId` and `nextLogId` from
+that same completed, verified FSM replay. A separate full-prefix scan validates
+every retained audit item's physical identity and parent membership, including
+items with no log. Parent presence alone never authorizes an item as an
+expectation source. See [the boundary and membership contract](checker.md#allocation-boundaries-and-audit-item-membership).
 
 ## Related
 

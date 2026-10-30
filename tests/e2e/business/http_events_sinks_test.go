@@ -26,6 +26,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	"github.com/formancehq/ledger/v3/pkg/actions"
 	"github.com/formancehq/ledger/v3/pkg/grpcprotocol"
 	"github.com/formancehq/ledger/v3/pkg/testserver"
 	"github.com/formancehq/ledger/v3/tests/e2e/testutil"
@@ -33,8 +34,10 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/metadata"
+	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
 )
@@ -276,7 +279,7 @@ var _ = Describe("HTTP events sinks mutations", func() {
 })
 
 var _ = Describe("HTTP events sinks mutation scopes", func() {
-	It("requires ledger:OpsWrite for both mutations on an authenticated node", func() {
+	It("requires ledger:WriteOps for both mutations on an authenticated node", func() {
 		ctx := GinkgoT().Context()
 		dir := GinkgoT().TempDir()
 		public, private, err := ed25519.GenerateKey(rand.Reader)
@@ -285,7 +288,7 @@ var _ = Describe("HTTP events sinks mutation scopes", func() {
 		Expect(os.WriteFile(publicPath, fmt.Appendf(nil, "%x\n", public), 0600)).To(Succeed())
 		config, err := json.Marshal(internalauth.Ed25519KeysConfig{Keys: []internalauth.Ed25519KeyEntry{{
 			KeyID: "http-sinks-scope-key", PublicKeyFile: publicPath,
-			Scopes: []string{"ledger:admin", "ledger:OpsRead", "ledger:OpsWrite", "ledger:TransactionWrite"},
+			Scopes: []string{"ledger:admin", "ledger:ReadOps", "ledger:WriteOps", "ledger:WriteTransaction", "ledger:WriteLedger"},
 		}}})
 		Expect(err).To(Succeed())
 		configPath := filepath.Join(dir, "auth.json")
@@ -338,11 +341,20 @@ var _ = Describe("HTTP events sinks mutation scopes", func() {
 		DeferCleanup(func() { Expect(conn.Close()).To(Succeed()) })
 		cluster := clusterpb.NewClusterServiceClient(conn)
 		adminCtx := metadata.AppendToOutgoingContext(ctx, "authorization", "Bearer "+token("ledger:admin"))
-		Eventually(func(g Gomega) uint32 {
+		Eventually(func(g Gomega) uint64 {
 			state, err := cluster.GetClusterState(adminCtx, &clusterpb.GetClusterStateRequest{})
 			g.Expect(err).To(Succeed())
 			return state.GetLeader()
 		}).Within(10 * time.Second).ShouldNot(BeZero())
+		// Leadership is visible before its first write-gate verdict. Probe with
+		// invalid input so readiness cannot create business state.
+		bucket := servicepb.NewBucketServiceClient(conn)
+		probe := servicepb.UnsignedApplyRequest("write-gate-probe", actions.CreateLedgerAction("", nil))
+		probeCtx := metadata.AppendToOutgoingContext(ctx, "authorization", "Bearer "+token("ledger:WriteLedger"))
+		Eventually(func() codes.Code {
+			_, err := bucket.Apply(probeCtx, probe)
+			return status.Code(err)
+		}).Within(5 * time.Second).ProbeEvery(10 * time.Millisecond).Should(Equal(codes.InvalidArgument))
 		transport := &http.Transport{TLSClientConfig: tlsConfig}
 		DeferCleanup(transport.CloseIdleConnections)
 		client := &http.Client{Transport: transport, Timeout: 10 * time.Second}
@@ -375,7 +387,7 @@ var _ = Describe("HTTP events sinks mutation scopes", func() {
 		sink := newTestSinkConfig("http-sinks-scopes", "http.events.scopes")
 		body, err := protojson.Marshal(sink)
 		Expect(err).To(Succeed())
-		for _, scope := range []string{"", "ledger:OpsRead", "ledger:TransactionWrite"} {
+		for _, scope := range []string{"", "ledger:ReadOps", "ledger:WriteTransaction"} {
 			code, raw := request(http.MethodPost, "", scope, body)
 			expected := http.StatusForbidden
 			if scope == "" {
@@ -383,10 +395,10 @@ var _ = Describe("HTTP events sinks mutation scopes", func() {
 			}
 			Expect(code).To(Equal(expected), "scope=%q body=%s", scope, raw)
 		}
-		code, raw := request(http.MethodPost, "", "ledger:OpsWrite", body)
+		code, raw := request(http.MethodPost, "", "ledger:WriteOps", body)
 		Expect(code).To(Equal(http.StatusCreated), string(raw))
 		Expect(string(raw)).To(MatchJSON(`{"data":{"name":"http-sinks-scopes"}}`))
-		for _, scope := range []string{"", "ledger:OpsRead", "ledger:TransactionWrite"} {
+		for _, scope := range []string{"", "ledger:ReadOps", "ledger:WriteTransaction"} {
 			code, raw := request(http.MethodDelete, "/"+sink.GetName(), scope, nil)
 			expected := http.StatusForbidden
 			if scope == "" {
@@ -394,13 +406,13 @@ var _ = Describe("HTTP events sinks mutation scopes", func() {
 			}
 			Expect(code).To(Equal(expected), "scope=%q body=%s", scope, raw)
 		}
-		code, raw = request(http.MethodGet, "", "ledger:OpsRead", nil)
+		code, raw = request(http.MethodGet, "", "ledger:ReadOps", nil)
 		Expect(code).To(Equal(http.StatusOK), string(raw))
 		Expect(configuredSinks(raw)).To(ContainElement(HaveField("Name", sink.GetName())))
-		code, raw = request(http.MethodDelete, "/"+sink.GetName(), "ledger:OpsWrite", nil)
+		code, raw = request(http.MethodDelete, "/"+sink.GetName(), "ledger:WriteOps", nil)
 		Expect(code).To(Equal(http.StatusNoContent), string(raw))
 		Expect(raw).To(BeEmpty())
-		code, raw = request(http.MethodGet, "", "ledger:OpsRead", nil)
+		code, raw = request(http.MethodGet, "", "ledger:ReadOps", nil)
 		Expect(code).To(Equal(http.StatusOK), string(raw))
 		Expect(configuredSinks(raw)).NotTo(ContainElement(HaveField("Name", sink.GetName())))
 	})

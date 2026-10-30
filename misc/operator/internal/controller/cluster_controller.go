@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"time"
 
 	"github.com/google/uuid"
 	appsv1 "k8s.io/api/apps/v1"
@@ -14,7 +15,6 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes"
@@ -57,7 +57,7 @@ type ClusterReconciler struct {
 // +kubebuilder:rbac:groups=admissionregistration.k8s.io,resources=validatingadmissionpolicybindings,verbs=get;list;watch
 
 // Reconcile handles the reconciliation loop for Cluster resources.
-func (r *ClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+func (r *ClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (result ctrl.Result, retErr error) {
 	logger := log.FromContext(ctx)
 
 	// Fetch the Cluster CR
@@ -103,6 +103,19 @@ func (r *ClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 			logger.Error(statusErr, "failed to update status")
 		}
 	}()
+	// Runs before the status write above (deferred calls run last-in,
+	// first-out): any step that met an object it does not control under a
+	// derived name surfaces the conflict through the persisted status.
+	defer func() {
+		result, retErr = r.reportResourceNameConflict(ctx, ledger, result, retErr)
+	}()
+
+	// An in-flight drain owns the workload until its release completes. This
+	// also lets annotation removal reopen admission even if a later spec edit
+	// is invalid or a rollout would otherwise start.
+	if ledger.Status.Drain != nil {
+		return r.reconcileAnnotatedDrain(ctx, ledger, r.PreflightDrainBarrier, r.EnsureDrainBarrier, r.EnsureDrainReleased)
+	}
 
 	// Validate spec — report errors via status condition instead of retrying.
 	if err := validateSpec(ledger); err != nil {
@@ -116,6 +129,32 @@ func (r *ClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		ledger.Status.Phase = "Error"
 
 		return ctrl.Result{}, nil // Don't requeue; wait for spec change.
+	}
+
+	// Check the live image before reconciling any resource. The Cluster API has
+	// no source-version field: the current StatefulSet template is the source of
+	// truth for an RC transition.
+	existingStatefulSet, err := r.fetchExistingStatefulSet(ctx, ledger)
+	if err != nil {
+		return ctrl.Result{}, fmt.Errorf("fetching StatefulSet for RC upgrade validation: %w", err)
+	}
+	var rcUpgradeError error
+	if existingStatefulSet == nil {
+		rcUpgradeError = r.validateRCUpgradeWithoutStatefulSet(ctx, ledger)
+	} else {
+		rcUpgradeError = validateRCUpgrade(ledger.Spec.Image.Tag, existingStatefulSet)
+	}
+	if rcUpgradeError != nil {
+		meta.SetStatusCondition(&ledger.Status.Conditions, metav1.Condition{
+			Type:               "ConfigValid",
+			Status:             metav1.ConditionFalse,
+			Reason:             "ValidationFailed",
+			Message:            rcUpgradeError.Error(),
+			ObservedGeneration: ledger.Generation,
+		})
+		ledger.Status.Phase = "Error"
+
+		return ctrl.Result{}, nil
 	}
 
 	// Clear any previous validation failure.
@@ -306,7 +345,7 @@ func (r *ClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	meta.RemoveStatusCondition(&ledger.Status.Conditions, "AuthKeysPending")
 
 	// StatefulSet needs the specHash and credentials info
-	result, err := r.reconcileStatefulSet(ctx, ledger, specHash, credentials)
+	stsResult, err := r.reconcileStatefulSet(ctx, ledger, specHash, credentials)
 	if err != nil {
 		logger.Error(err, "failed to reconcile StatefulSet")
 
@@ -322,8 +361,14 @@ func (r *ClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 
 		return ctrl.Result{}, fmt.Errorf("reconciling ClusterSecret after StatefulSet: %w", err)
 	}
+	markResourceNamesOwned(ledger)
 
-	return result, nil
+	drainResult, err := r.reconcileAnnotatedDrain(ctx, ledger, r.PreflightDrainBarrier, r.EnsureDrainBarrier, r.EnsureDrainReleased)
+	if err != nil || drainResult.Requeue || drainResult.RequeueAfter > 0 {
+		return drainResult, err
+	}
+
+	return stsResult, nil
 }
 
 // deletionProtectionPolicyInstalled reports whether the cluster-scoped volume
@@ -409,6 +454,11 @@ func (r *ClusterReconciler) updateStatus(ctx context.Context, ledger *ledgerv1al
 		Name:      resourceName(ledger.Name),
 		Namespace: ledger.Namespace,
 	}, sts)
+	if err == nil && notControlledBy(sts, ledger) {
+		// Never report the readiness of a StatefulSet this Cluster did not
+		// create.
+		err = apierrors.NewNotFound(appsv1.Resource("statefulsets"), sts.Name)
+	}
 	if err != nil {
 		if apierrors.IsNotFound(err) {
 			// If the reconciler already set a phase (e.g. "Degraded" from
@@ -509,31 +559,6 @@ func resolveEndpoints(ledger *ledgerv1alpha1.Cluster) *ledgerv1alpha1.EndpointsS
 	}
 }
 
-// deleteIfExists deletes a resource if it exists, ignoring not-found errors.
-func (r *ClusterReconciler) deleteIfExists(ctx context.Context, obj client.Object) error {
-	err := r.Get(ctx, types.NamespacedName{
-		Name:      obj.GetName(),
-		Namespace: obj.GetNamespace(),
-	}, obj)
-	if err != nil {
-		return ignoreNotFound(err)
-	}
-
-	return r.Delete(ctx, obj)
-}
-
-func (r *ClusterReconciler) deleteUnstructuredIfExists(ctx context.Context, obj *unstructured.Unstructured) error {
-	err := r.Get(ctx, types.NamespacedName{
-		Namespace: obj.GetNamespace(),
-		Name:      obj.GetName(),
-	}, obj)
-	if err != nil {
-		return ignoreNotFound(err)
-	}
-
-	return r.Delete(ctx, obj)
-}
-
 // ignoreNotFound returns nil on NotFound and NoKindMatch errors.
 // NoKindMatch occurs when optional CRDs (DNSEndpoint)
 // are not installed in the cluster.
@@ -625,8 +650,8 @@ func validateSpec(ledger *ledgerv1alpha1.Cluster) error {
 	return nil
 }
 
-// validateClusterConfig validates cluster-wide cache and bloom parameters that
-// flow to the server via env vars. Defaults are server-side (loadBloomConfig);
+// validateClusterConfig validates cluster-wide parameters that
+// flow to the server via env vars. Defaults are server-side;
 // this only rejects values that would either be silently ignored or that the
 // server would refuse.
 func validateClusterConfig(spec *ledgerv1alpha1.ClusterSpec) error {
@@ -647,6 +672,15 @@ func validateClusterConfig(spec *ledgerv1alpha1.ClusterSpec) error {
 
 	if spec.Cache != nil && spec.Cache.RotationThreshold != nil && *spec.Cache.RotationThreshold <= 0 {
 		return fmt.Errorf("cache.rotationThreshold must be > 0, got %d", *spec.Cache.RotationThreshold)
+	}
+	if spec.Health != nil && spec.Health.Interval != "" {
+		interval, err := time.ParseDuration(spec.Health.Interval)
+		if err != nil {
+			return fmt.Errorf("health.interval %q is not a valid duration: %w", spec.Health.Interval, err)
+		}
+		if interval <= 0 {
+			return fmt.Errorf("health.interval must be greater than zero, got %q", spec.Health.Interval)
+		}
 	}
 	if spec.Bloom == nil {
 		return nil

@@ -32,6 +32,7 @@ The cooperative cache policy does not relax publication identity:
 | `GOPATH` | `go-path/` |
 | `GOLANGCI_LINT_CACHE` | `golangci-lint/` |
 | `XDG_CACHE_HOME` | `xdg/` |
+| `TMPDIR` | not shared: inherited unchanged (see [Inherited TMPDIR](#inherited-tmpdir)) |
 
 The wrapper also appends `-trimpath` to `GOFLAGS`, keeping any flags the caller
 already set. Without it, Go hashes each workspace package's absolute directory
@@ -47,9 +48,40 @@ The cache root must be absolute and outside the candidate worktree, trusted
 root, and disposable validation directory. Run cleanup never removes it.
 `HOME` is inherited for validation; it is not synthesized per run. Reviewer
 adapters may still isolate `HOME`/`CODEX_HOME` to exclude personal reviewer
-configuration, while their Go and lint caches use the shared root. `TMPDIR`
-remains per run because temporary filenames and cleanup are process lifecycle
-state rather than reusable cache state.
+configuration, while their Go and lint caches use the shared root.
+
+### Inherited TMPDIR
+
+`agent-validation-env` exports the caller's `TMPDIR` unchanged (`/tmp` when
+unset). It only rejects a value that is relative, missing, or resolves inside
+the candidate worktree. `agent-check-pr` repeats that check in its
+`SHARED_CACHE_GATE`. The ephemeral run directory is created inside `TMPDIR`
+only after the check.
+
+Earlier revisions exported a fresh `$VALIDATION_RUN_DIR/tmp` per run. Go keys a
+cached test result on the environment variables the test read, and `t.TempDir`
+reads `TMPDIR`, so every `TempDir`-using package re-ran on every run. On
+2026-10-14 only 47 of 105 root-module packages hit the test cache on a warm
+`agent-check-full`, which took 8m13s. The heaviest race suites re-ran each time.
+A per-run directory was not needed for isolation: `t.TempDir`, `os.MkdirTemp`
+and Go's build work directories create uniquely named entries, so concurrent
+runs can share one `TMPDIR`. The only thing given up is the guaranteed removal
+of temporary files leaked by a crashed or careless test. Those now stay in the
+inherited `TMPDIR`. Whether anything removes them depends on that directory's
+own retention policy: the OS may clean `/tmp`, but nothing cleans a custom
+`TMPDIR` automatically.
+
+One tool did rely on a private `TMPDIR`. By default golangci-lint locks
+`$TMPDIR/golangci-lint.lock` and gives up after 5s with `parallel golangci-lint
+is running` when another run holds it. The `justfile` lint recipe therefore
+passes `--allow-parallel-runners`, so concurrent validations in different
+worktrees lint in parallel, as they did with per-run directories. See
+[golangci-lint cross-worktree safety](#golangci-lint-cross-worktree-safety).
+
+Test results still re-run in a fresh worktree whenever a package's tests open
+files from the checkout (fixtures, `testdata/`, or Go sources they parse). Go
+records each opened file's absolute path and modification time in the cache
+key, so a different worktree path always misses.
 
 ### Bounded Go build-cache generations
 
@@ -59,7 +91,20 @@ managed `GOCACHE` generation. Runs that start together reuse the same current
 generation. When its measured size exceeds the soft budget, a later run
 atomically selects a fresh generation; processes already running keep using the
 retired generation through a PID lease. A retired generation is removed only
-after none of its lease processes exists.
+after none of its lease processes exists. A lease counts as live when
+`kill -0` fails with `EPERM`: the process exists but the caller may not signal
+it. That happens for another user's process, or when a sandboxed validator
+probes a run started outside its sandbox. Only `ESRCH` proves a lease process
+is gone.
+
+Lease checks read the PID and process identity from one published owner snapshot.
+If an owner file disappears during lock handoff, the waiting initializer defers
+recovery to its next acquisition attempt rather than treating the missing file
+as a stale successor. Owner publication uses a hard link that cannot replace an
+existing owner. Publication and cleanup operate relative to an opened lock
+directory, so recovery of an older directory cannot remove a successor's owner
+at the same public path. A creator that cannot publish its claim retries
+acquisition without replacing the owner that won the handoff.
 
 Cache size measurement happens before acquiring the selection lock and is used
 only if the current generation has not changed. Retirement detaches idle
@@ -87,12 +132,17 @@ cache cleanup.
 
 ### golangci-lint cross-worktree safety
 
-The development shell provides upstream golangci-lint v2.13.2 through
-`flake.lock`, without a package override or source patch. Identical packages
+The development shell provides upstream golangci-lint v2.15.0 through
+`flake.lock`, without a source patch. Identical packages
 share cache entries across worktrees; current-module issue positions are stored
 relative to the module and rebased to the consuming checkout on load. A
 payload-format salt excludes the unsafe v2.12.2 entries, which stored absolute
 producer paths ([upstream #6695](https://github.com/golangci/golangci-lint/issues/6695)).
+
+Concurrent runs share the lint cache: the `justfile` recipe passes
+`--allow-parallel-runners`, and
+`TestConcurrentLintRunsSafelyShareCacheAcrossWorktrees` exercises two
+simultaneous runs against one cache.
 
 Cached diagnostics must not reopen the producer's files after it is removed.
 Suggested fixes use the rebased issue filename and retain byte offsets; the
@@ -119,7 +169,7 @@ while another validation is using it.
 | --- | --- | --- | --- |
 | Stable cache directory per canonical worktree | Safe across worktrees, including symlink aliases after canonicalization | Warm only within one physical path; duplicates entries and leaves namespaces after removed worktrees | Not selected once the upstream value fix became available |
 | Absolute worktree path in the cache key | Safe because different paths cannot hit the same entry | Same hit topology as per-worktree directories, with no cross-worktree reuse | Upstream temporarily used this fallback in #6697 |
-| Relative positions rebased on load | Safe when every path-bearing cached value is normalized and old payloads are salted out | Preserves global cross-worktree hits | Provided by the pinned upstream v2.13.2 package |
+| Relative positions rebased on load | Safe when every path-bearing cached value is normalized and old payloads are salted out | Preserves global cross-worktree hits | Provided by the pinned upstream package (since v2.13.2) |
 | Per-execution lint cache | Safe | No lint-cache warm path; repeats analysis on every validation | Rejected on performance grounds |
 | v2.12.2 global cache plus routine cleaning | Unsafe between cleans | Fast only until another checkout supplies a location-bound value | Rejected; cleaning is recovery, not isolation |
 

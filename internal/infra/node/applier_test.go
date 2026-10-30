@@ -7,6 +7,7 @@ import (
 	"io"
 	"sync"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/stretchr/testify/require"
@@ -29,6 +30,11 @@ import (
 	"github.com/formancehq/ledger/v3/internal/storage/spool"
 	"github.com/formancehq/ledger/v3/internal/storage/wal"
 )
+
+type noopSnapshotMembership struct{}
+
+func (noopSnapshotMembership) SnapshotDonorCandidates() []uint64 { return nil }
+func (noopSnapshotMembership) OnSnapshotInstalled()              {}
 
 func newNoopNotifier(t *testing.T) *MockNotifier {
 	t.Helper()
@@ -88,6 +94,7 @@ type testApplierSetup struct {
 	walDir       string
 	spool        *spool.Default
 	fsm          *state.Machine
+	sharedState  *state.SharedState
 	stop         chan struct{}
 	confState    *raftpb.ConfState
 	responseSink LocalResponses
@@ -155,9 +162,10 @@ func newTestApplierSetupWithHandlers(t *testing.T, sink LocalResponses, notifier
 
 	nodeRegistry := state.NewStateRegistry(nodeCache, nodeAttrs)
 	nodeSnapshotter := state.NewCacheSnapshotter(logger, nodeRegistry, nil)
+	sharedState := state.NewSharedState()
 	fsm, err := state.NewMachine(
 		logger, nodeRegistry, nodeSnapshotter, pebbleStore, dal.NewSentinelFactory(pebbleStore, false), meterProvider,
-		nil, state.NewSharedState(), notifier, nil, "test-cluster", 0,
+		nil, sharedState, notifier, nil, "test-cluster", 0,
 		handler,
 	)
 	require.NoError(t, err)
@@ -171,7 +179,7 @@ func newTestApplierSetupWithHandlers(t *testing.T, sink LocalResponses, notifier
 
 	applier, err := NewApplier(
 		fsm, recovery, synchronizer, defaultSpool, pebbleStore, w, logger, meter,
-		0, 1000, nil, func() {}, sink,
+		0, 1000, nil, noopSnapshotMembership{}, sink,
 	)
 	require.NoError(t, err)
 
@@ -190,6 +198,7 @@ func newTestApplierSetupWithHandlers(t *testing.T, sink LocalResponses, notifier
 		walDir:       walDir,
 		spool:        defaultSpool,
 		fsm:          fsm,
+		sharedState:  sharedState,
 		stop:         stop,
 		confState:    confState,
 		responseSink: sink,
@@ -240,40 +249,42 @@ func makeCreateLedgerEntry(t *testing.T, index uint64, name string) (*raftpb.Ent
 func TestApplierRunAppliesEntries(t *testing.T) {
 	t.Parallel()
 
-	ctx := logging.TestingContext()
-	setup := newTestApplierSetup(t)
+	synctest.Test(t, func(t *testing.T) {
+		ctx := logging.TestingContext()
+		setup := newTestApplierSetup(t)
 
-	// Start the Run goroutine.
-	runDone := make(chan error, 1)
+		// Start the Run goroutine.
+		runDone := make(chan error, 1)
 
-	go func() {
-		runDone <- setup.applier.Run(ctx, setup.stop)
-	}()
+		go func() {
+			runDone <- setup.applier.Run(ctx, setup.stop)
+		}()
 
-	// Submit 3 CreateLedger entries.
-	for i := uint64(1); i <= 3; i++ {
-		entry, _ := makeCreateLedgerEntry(t, i, fmt.Sprintf("ledger-%d", i))
-		setup.applier.Submit([]*raftpb.Entry{entry}, nil, nil, setup.stop)
-	}
+		// Submit 3 CreateLedger entries.
+		for i := uint64(1); i <= 3; i++ {
+			entry, _ := makeCreateLedgerEntry(t, i, fmt.Sprintf("ledger-%d", i))
+			setup.applier.Submit([]*raftpb.Entry{entry}, nil, nil, setup.stop)
+		}
 
-	// Drain to ensure all entries are processed.
-	setup.applier.Drain(setup.stop)
+		// Drain to ensure all entries are processed.
+		setup.applier.Drain(setup.stop)
 
-	// Verify all 3 ledgers exist in the store.
-	for i := uint64(1); i <= 3; i++ {
-		require.True(t, listLedgerContains(setup.store, fmt.Sprintf("ledger-%d", i)),
-			"ledger-%d should exist after apply", i)
-	}
+		// Verify all 3 ledgers exist in the store.
+		for i := uint64(1); i <= 3; i++ {
+			require.True(t, listLedgerContains(setup.store, fmt.Sprintf("ledger-%d", i)),
+				"ledger-%d should exist after apply", i)
+		}
 
-	// Stop and verify Run returns nil.
-	close(setup.stop)
+		// Stop and verify Run returns nil.
+		close(setup.stop)
 
-	select {
-	case err := <-runDone:
-		require.NoError(t, err)
-	case <-time.After(2 * time.Second):
-		t.Fatal("Run did not return after stop")
-	}
+		select {
+		case err := <-runDone:
+			require.NoError(t, err)
+		case <-time.After(2 * time.Second):
+			t.Fatal("Run did not return after stop")
+		}
+	})
 }
 
 // TestApplierRunStopPrecedenceOverCtxCancel verifies the invariant the
@@ -286,148 +297,158 @@ func TestApplierRunAppliesEntries(t *testing.T) {
 func TestApplierRunStopPrecedenceOverCtxCancel(t *testing.T) {
 	t.Parallel()
 
-	ctx, cancel := context.WithCancel(logging.TestingContext())
-	setup := newTestApplierSetup(t)
+	synctest.Test(t, func(t *testing.T) {
+		ctx, cancel := context.WithCancel(logging.TestingContext())
+		setup := newTestApplierSetup(t)
 
-	runDone := make(chan error, 1)
+		runDone := make(chan error, 1)
 
-	go func() {
-		runDone <- setup.applier.Run(ctx, setup.stop)
-	}()
+		go func() {
+			runDone <- setup.applier.Run(ctx, setup.stop)
+		}()
 
-	// Cancel ctx FIRST, then close stop — the order seen by the buggy
-	// pre-fix bootstrap hook (cancelRun() before node.Stop()).
-	cancel()
-	close(setup.stop)
+		// Cancel ctx FIRST, then close stop — the order seen by the buggy
+		// pre-fix bootstrap hook (cancelRun() before node.Stop()).
+		cancel()
+		close(setup.stop)
 
-	select {
-	case err := <-runDone:
-		require.NoError(t, err, "Run must return nil when stop is closed even if ctx was cancelled")
-	case <-time.After(2 * time.Second):
-		t.Fatal("Run did not return after stop")
-	}
+		select {
+		case err := <-runDone:
+			require.NoError(t, err, "Run must return nil when stop is closed even if ctx was cancelled")
+		case <-time.After(2 * time.Second):
+			t.Fatal("Run did not return after stop")
+		}
+	})
 }
 
 func TestApplierRunSpoolsWhenNotNormal(t *testing.T) {
 	t.Parallel()
 
-	ctx := logging.TestingContext()
-	setup := newTestApplierSetup(t)
+	synctest.Test(t, func(t *testing.T) {
+		ctx := logging.TestingContext()
+		setup := newTestApplierSetup(t)
 
-	// Set status to syncing before starting.
-	setup.applier.setOutOfSync() // Set to non-normal status for spooling test
+		// Set status to syncing before starting.
+		setup.applier.setOutOfSync() // Set to non-normal status for spooling test
 
-	// Start the Run goroutine.
-	runDone := make(chan error, 1)
+		// Start the Run goroutine.
+		runDone := make(chan error, 1)
 
-	go func() {
-		runDone <- setup.applier.Run(ctx, setup.stop)
-	}()
+		go func() {
+			runDone <- setup.applier.Run(ctx, setup.stop)
+		}()
 
-	// Submit 3 CreateLedger entries.
-	for i := uint64(1); i <= 3; i++ {
-		entry, _ := makeCreateLedgerEntry(t, i, fmt.Sprintf("ledger-%d", i))
-		setup.applier.Submit([]*raftpb.Entry{entry}, nil, nil, setup.stop)
-	}
+		// Submit 3 CreateLedger entries.
+		for i := uint64(1); i <= 3; i++ {
+			entry, _ := makeCreateLedgerEntry(t, i, fmt.Sprintf("ledger-%d", i))
+			setup.applier.Submit([]*raftpb.Entry{entry}, nil, nil, setup.stop)
+		}
 
-	// Drain to ensure all entries are processed.
-	setup.applier.Drain(setup.stop)
+		// Drain to ensure all entries are processed.
+		setup.applier.Drain(setup.stop)
 
-	// Verify ledgers do NOT exist in store (they were spooled, not applied).
-	for i := uint64(1); i <= 3; i++ {
-		require.False(t, listLedgerContains(setup.store, fmt.Sprintf("ledger-%d", i)),
-			"ledger-%d should NOT exist when spooling", i)
-	}
+		// Verify ledgers do NOT exist in store (they were spooled, not applied).
+		for i := uint64(1); i <= 3; i++ {
+			require.False(t, listLedgerContains(setup.store, fmt.Sprintf("ledger-%d", i)),
+				"ledger-%d should NOT exist when spooling", i)
+		}
 
-	// Verify spool has data (End position advanced).
-	pos, err := setup.spool.End()
-	require.NoError(t, err)
-	require.Positive(t, pos.Offset, "spool should have data (offset=%d)", pos.Offset)
-
-	// Stop.
-	close(setup.stop)
-
-	select {
-	case err := <-runDone:
+		// Verify spool has data (End position advanced).
+		pos, err := setup.spool.End()
 		require.NoError(t, err)
-	case <-time.After(2 * time.Second):
-		t.Fatal("Run did not return after stop")
-	}
+		require.Positive(t, pos.Offset, "spool should have data (offset=%d)", pos.Offset)
+
+		// Stop.
+		close(setup.stop)
+
+		select {
+		case err := <-runDone:
+			require.NoError(t, err)
+		case <-time.After(2 * time.Second):
+			t.Fatal("Run did not return after stop")
+		}
+	})
 }
 
 func TestApplierDrainAbortsOnStop(t *testing.T) {
 	t.Parallel()
 
-	setup := newTestApplierSetup(t)
+	synctest.Test(t, func(t *testing.T) {
+		setup := newTestApplierSetup(t)
 
-	// Close stop before calling Drain.
-	close(setup.stop)
+		// Close stop before calling Drain.
+		close(setup.stop)
 
-	drainDone := make(chan struct{})
+		drainDone := make(chan struct{})
 
-	go func() {
-		setup.applier.Drain(setup.stop)
-		close(drainDone)
-	}()
+		go func() {
+			setup.applier.Drain(setup.stop)
+			close(drainDone)
+		}()
 
-	select {
-	case <-drainDone:
-		// Drain returned as expected.
-	case <-time.After(1 * time.Second):
-		t.Fatal("Drain did not return when stop is closed")
-	}
+		select {
+		case <-drainDone:
+			// Drain returned as expected.
+		case <-time.After(1 * time.Second):
+			t.Fatal("Drain did not return when stop is closed")
+		}
+	})
 }
 
 func TestApplierSubmitAbortsOnStop(t *testing.T) {
 	t.Parallel()
 
-	setup := newTestApplierSetup(t)
+	synctest.Test(t, func(t *testing.T) {
+		setup := newTestApplierSetup(t)
 
-	// Fill the channel buffer manually.
-	entry, _ := makeCreateLedgerEntry(t, 1, "filler")
-	setup.applier.ch <- applyWork{entries: []*raftpb.Entry{entry}}
+		// Fill the channel buffer manually.
+		entry, _ := makeCreateLedgerEntry(t, 1, "filler")
+		setup.applier.ch <- applyWork{entries: []*raftpb.Entry{entry}}
 
-	// Close stop.
-	close(setup.stop)
+		// Close stop.
+		close(setup.stop)
 
-	// Submit should return immediately via stop.
-	submitDone := make(chan struct{})
+		// Submit should return immediately via stop.
+		submitDone := make(chan struct{})
 
-	go func() {
-		entry2, _ := makeCreateLedgerEntry(t, 2, "blocked")
-		setup.applier.Submit([]*raftpb.Entry{entry2}, nil, nil, setup.stop)
-		close(submitDone)
-	}()
+		go func() {
+			entry2, _ := makeCreateLedgerEntry(t, 2, "blocked")
+			setup.applier.Submit([]*raftpb.Entry{entry2}, nil, nil, setup.stop)
+			close(submitDone)
+		}()
 
-	select {
-	case <-submitDone:
-		// Submit returned as expected.
-	case <-time.After(1 * time.Second):
-		t.Fatal("Submit did not return when stop is closed and channel is full")
-	}
+		select {
+		case <-submitDone:
+			// Submit returned as expected.
+		case <-time.After(1 * time.Second):
+			t.Fatal("Submit did not return when stop is closed and channel is full")
+		}
+	})
 }
 
 func TestApplierRunExitsOnStop(t *testing.T) {
 	t.Parallel()
 
-	ctx := logging.TestingContext()
-	setup := newTestApplierSetup(t)
+	synctest.Test(t, func(t *testing.T) {
+		ctx := logging.TestingContext()
+		setup := newTestApplierSetup(t)
 
-	runDone := make(chan error, 1)
+		runDone := make(chan error, 1)
 
-	go func() {
-		runDone <- setup.applier.Run(ctx, setup.stop)
-	}()
+		go func() {
+			runDone <- setup.applier.Run(ctx, setup.stop)
+		}()
 
-	// Close stop and verify Run returns nil.
-	close(setup.stop)
+		// Close stop and verify Run returns nil.
+		close(setup.stop)
 
-	select {
-	case err := <-runDone:
-		require.NoError(t, err)
-	case <-time.After(2 * time.Second):
-		t.Fatal("Run did not exit after stop")
-	}
+		select {
+		case err := <-runDone:
+			require.NoError(t, err)
+		case <-time.After(2 * time.Second):
+			t.Fatal("Run did not exit after stop")
+		}
+	})
 }
 
 // TestApplierTrySyncSnapshotIsNonBlocking verifies the EN-1431 follow-up
@@ -440,82 +461,86 @@ func TestApplierRunExitsOnStop(t *testing.T) {
 func TestApplierTrySyncSnapshotIsNonBlocking(t *testing.T) {
 	t.Parallel()
 
-	setup := newTestApplierSetup(t)
+	synctest.Test(t, func(t *testing.T) {
+		setup := newTestApplierSetup(t)
 
-	// First call succeeds: channel has capacity 1.
-	require.True(t, setup.applier.TrySyncSnapshot(1),
-		"first TrySyncSnapshot must enqueue with an empty channel")
+		// First call succeeds: channel has capacity 1.
+		require.True(t, setup.applier.TrySyncSnapshot(1),
+			"first TrySyncSnapshot must enqueue with an empty channel")
 
-	// Second call must return false immediately (channel is full — the
-	// Run goroutine isn't started in this test, so nothing drains it).
-	done := make(chan bool, 1)
-	go func() {
-		done <- setup.applier.TrySyncSnapshot(1)
-	}()
+		// Second call must return false immediately (channel is full — the
+		// Run goroutine isn't started in this test, so nothing drains it).
+		done := make(chan bool, 1)
+		go func() {
+			done <- setup.applier.TrySyncSnapshot(1)
+		}()
 
-	select {
-	case result := <-done:
-		require.False(t, result, "second TrySyncSnapshot on a full channel must return false")
-	case <-time.After(1 * time.Second):
-		t.Fatal("TrySyncSnapshot blocked instead of returning false when channel was full")
-	}
+		select {
+		case result := <-done:
+			require.False(t, result, "second TrySyncSnapshot on a full channel must return false")
+		case <-time.After(1 * time.Second):
+			t.Fatal("TrySyncSnapshot blocked instead of returning false when channel was full")
+		}
+	})
 }
 
 func TestApplierFutureResolution(t *testing.T) {
 	t.Parallel()
 
-	ctx := logging.TestingContext()
-	setup := newTestApplierSetup(t)
+	synctest.Test(t, func(t *testing.T) {
+		ctx := logging.TestingContext()
+		setup := newTestApplierSetup(t)
 
-	// Create entry and register a future for the proposal ID. Term matches
-	// the entry's term so the post-apply sweep leaves it untouched.
-	entry, proposalID := makeCreateLedgerEntry(t, 1, "future-ledger")
-	future := futures.New[state.ApplyResult]()
-	setup.applier.StoreFuture(proposalID, entry.GetTerm(), future)
+		// Create entry and register a future for the proposal ID. Term matches
+		// the entry's term so the post-apply sweep leaves it untouched.
+		entry, proposalID := makeCreateLedgerEntry(t, 1, "future-ledger")
+		future := futures.New[state.ApplyResult]()
+		setup.applier.StoreFuture(proposalID, entry.GetTerm(), future)
 
-	// Start the Run goroutine.
-	runDone := make(chan error, 1)
+		// Start the Run goroutine.
+		runDone := make(chan error, 1)
 
-	go func() {
-		runDone <- setup.applier.Run(ctx, setup.stop)
-	}()
+		go func() {
+			runDone <- setup.applier.Run(ctx, setup.stop)
+		}()
 
-	// Submit the entry.
-	setup.applier.Submit([]*raftpb.Entry{entry}, nil, nil, setup.stop)
+		// Submit the entry.
+		setup.applier.Submit([]*raftpb.Entry{entry}, nil, nil, setup.stop)
 
-	// Wait for the future to resolve.
-	resultCh := make(chan state.ApplyResult, 1)
-	errCh := make(chan error, 1)
+		// Wait for the future to resolve.
+		resultCh := make(chan state.ApplyResult, 1)
+		errCh := make(chan error, 1)
 
-	go func() {
-		result, err := future.Wait(t.Context())
-		if err != nil {
-			errCh <- err
+		go func() {
+			result, err := future.Wait(t.Context())
+			if err != nil {
+				errCh <- err
 
-			return
+				return
+			}
+
+			resultCh <- result
+		}()
+
+		select {
+		case result := <-resultCh:
+			require.NotEmpty(t, result.Logs, "future result should have non-empty Logs")
+		case err := <-errCh:
+			t.Fatalf("future resolved with error: %v", err)
+		case <-time.After(5 * time.Second):
+			t.Fatal("future did not resolve in time")
 		}
 
-		resultCh <- result
-	}()
+		// Stop.
+		close(setup.stop)
 
-	select {
-	case result := <-resultCh:
-		require.NotEmpty(t, result.Logs, "future result should have non-empty Logs")
-	case err := <-errCh:
-		t.Fatalf("future resolved with error: %v", err)
-	case <-time.After(5 * time.Second):
-		t.Fatal("future did not resolve in time")
-	}
-
-	// Stop.
-	close(setup.stop)
-
-	select {
-	case err := <-runDone:
-		require.NoError(t, err)
-	case <-time.After(2 * time.Second):
-		t.Fatal("Run did not return after stop")
-	}
+		select {
+		case err := <-runDone:
+			require.NoError(t, err)
+		case <-time.After(2 * time.Second):
+			t.Fatal("Run did not return after stop")
+		}
+	})
 }
 
 // makeCreateLedgerEntryWithTerm is a variant of makeCreateLedgerEntry that
@@ -574,106 +599,112 @@ func waitFutureBounded(f *futures.Future[state.ApplyResult], d time.Duration) (e
 func TestApplierFailFuturesBelowTerm(t *testing.T) {
 	t.Parallel()
 
-	setup := newTestApplierSetup(t)
+	synctest.Test(t, func(t *testing.T) {
+		setup := newTestApplierSetup(t)
 
-	type entry struct {
-		id   uint64
-		term uint64
-	}
+		type entry struct {
+			id   uint64
+			term uint64
+		}
 
-	entries := []entry{
-		{id: 1, term: 2},
-		{id: 2, term: 3},
-		{id: 3, term: 3},
-		{id: 4, term: 5},
-	}
+		entries := []entry{
+			{id: 1, term: 2},
+			{id: 2, term: 3},
+			{id: 3, term: 3},
+			{id: 4, term: 5},
+		}
 
-	fs := make(map[uint64]*futures.Future[state.ApplyResult])
+		fs := make(map[uint64]*futures.Future[state.ApplyResult])
 
-	for _, e := range entries {
-		fs[e.id] = futures.New[state.ApplyResult]()
-		setup.applier.StoreFuture(e.id, e.term, fs[e.id])
-	}
+		for _, e := range entries {
+			fs[e.id] = futures.New[state.ApplyResult]()
+			setup.applier.StoreFuture(e.id, e.term, fs[e.id])
+		}
 
-	sentinel := errors.New("sweep sentinel")
-	setup.applier.FailFuturesBelowTerm(3, sentinel)
+		sentinel := errors.New("sweep sentinel")
+		setup.applier.FailFuturesBelowTerm(3, sentinel)
 
-	// Only the term=2 future is below threshold and should resolve.
-	gotErr, ok := waitFutureBounded(fs[1], time.Second)
-	require.True(t, ok, "term=2 future must resolve below threshold")
-	require.ErrorIs(t, gotErr, sentinel)
+		// Only the term=2 future is below threshold and should resolve.
+		gotErr, ok := waitFutureBounded(fs[1], time.Second)
+		require.True(t, ok, "term=2 future must resolve below threshold")
+		require.ErrorIs(t, gotErr, sentinel)
 
-	// Higher-term futures stay pending.
-	for _, id := range []uint64{2, 3, 4} {
-		_, resolved := waitFutureBounded(fs[id], 100*time.Millisecond)
-		require.False(t, resolved, "future id=%d at term >= threshold must remain pending", id)
-	}
+		// Higher-term futures stay pending.
+		for _, id := range []uint64{2, 3, 4} {
+			_, resolved := waitFutureBounded(fs[id], 100*time.Millisecond)
+			require.False(t, resolved, "future id=%d at term >= threshold must remain pending", id)
+		}
+	})
 }
 
 func TestApplierTermOlderThanBatchFails(t *testing.T) {
 	t.Parallel()
 
-	ctx := logging.TestingContext()
-	setup := newTestApplierSetup(t)
+	synctest.Test(t, func(t *testing.T) {
+		ctx := logging.TestingContext()
+		setup := newTestApplierSetup(t)
 
-	// Orphan future at term=2 (no matching entry in the batch).
-	orphanFuture := futures.New[state.ApplyResult]()
-	const orphanProposalID uint64 = 99999
+		// Orphan future at term=2 (no matching entry in the batch).
+		orphanFuture := futures.New[state.ApplyResult]()
+		const orphanProposalID uint64 = 99999
 
-	setup.applier.StoreFuture(orphanProposalID, 2, orphanFuture)
+		setup.applier.StoreFuture(orphanProposalID, 2, orphanFuture)
 
-	// Apply an unrelated entry at term=3.
-	entry, _ := makeCreateLedgerEntryWithTerm(t, 3, 1, "term-advance-trigger")
+		// Apply an unrelated entry at term=3.
+		entry, _ := makeCreateLedgerEntryWithTerm(t, 3, 1, "term-advance-trigger")
 
-	runDone := make(chan error, 1)
-	go func() { runDone <- setup.applier.Run(ctx, setup.stop) }()
+		runDone := make(chan error, 1)
+		go func() { runDone <- setup.applier.Run(ctx, setup.stop) }()
 
-	setup.applier.Submit([]*raftpb.Entry{entry}, nil, nil, setup.stop)
-	setup.applier.Drain(setup.stop)
+		setup.applier.Submit([]*raftpb.Entry{entry}, nil, nil, setup.stop)
+		setup.applier.Drain(setup.stop)
 
-	gotErr, resolved := waitFutureBounded(orphanFuture, 2*time.Second)
-	require.True(t, resolved, "orphan future must resolve once higher-term entry applies")
-	require.ErrorIs(t, gotErr, ErrLeadershipLost)
+		gotErr, resolved := waitFutureBounded(orphanFuture, 2*time.Second)
+		require.True(t, resolved, "orphan future must resolve once higher-term entry applies")
+		require.ErrorIs(t, gotErr, ErrLeadershipLost)
 
-	close(setup.stop)
-	<-runDone
+		close(setup.stop)
+		require.NoError(t, <-runDone)
+	})
 }
 
 func TestApplierMixedTermBatchV1RaceFixed(t *testing.T) {
 	t.Parallel()
 
-	ctx := logging.TestingContext()
-	setup := newTestApplierSetup(t)
+	synctest.Test(t, func(t *testing.T) {
+		ctx := logging.TestingContext()
+		setup := newTestApplierSetup(t)
 
-	// committedEntry at term=2 — has a matching future.
-	committedEntry, committedID := makeCreateLedgerEntryWithTerm(t, 2, 1, "committed-via-old-leader")
-	advanceEntry, _ := makeCreateLedgerEntryWithTerm(t, 3, 2, "new-leader-noop")
+		// committedEntry at term=2 — has a matching future.
+		committedEntry, committedID := makeCreateLedgerEntryWithTerm(t, 2, 1, "committed-via-old-leader")
+		advanceEntry, _ := makeCreateLedgerEntryWithTerm(t, 3, 2, "new-leader-noop")
 
-	committedFuture := futures.New[state.ApplyResult]()
-	orphanFuture := futures.New[state.ApplyResult]()
-	const orphanID uint64 = 99999
+		committedFuture := futures.New[state.ApplyResult]()
+		orphanFuture := futures.New[state.ApplyResult]()
+		const orphanID uint64 = 99999
 
-	setup.applier.StoreFuture(committedID, 2, committedFuture)
-	setup.applier.StoreFuture(orphanID, 2, orphanFuture)
+		setup.applier.StoreFuture(committedID, 2, committedFuture)
+		setup.applier.StoreFuture(orphanID, 2, orphanFuture)
 
-	runDone := make(chan error, 1)
-	go func() { runDone <- setup.applier.Run(ctx, setup.stop) }()
+		runDone := make(chan error, 1)
+		go func() { runDone <- setup.applier.Run(ctx, setup.stop) }()
 
-	setup.applier.Submit([]*raftpb.Entry{committedEntry, advanceEntry}, nil, nil, setup.stop)
-	setup.applier.Drain(setup.stop)
+		setup.applier.Submit([]*raftpb.Entry{committedEntry, advanceEntry}, nil, nil, setup.stop)
+		setup.applier.Drain(setup.stop)
 
-	// committed future resolves with success (commandID match, leader-completeness).
-	committedErr, committedResolved := waitFutureBounded(committedFuture, 2*time.Second)
-	require.True(t, committedResolved, "committed future must resolve")
-	require.NoError(t, committedErr, "committed future must resolve with success even though the batch also advances term")
+		// committed future resolves with success (commandID match, leader-completeness).
+		committedErr, committedResolved := waitFutureBounded(committedFuture, 2*time.Second)
+		require.True(t, committedResolved, "committed future must resolve")
+		require.NoError(t, committedErr, "committed future must resolve with success even though the batch also advances term")
 
-	// orphan future fails with ErrLeadershipLost (truncated by new term).
-	orphanErr, orphanResolved := waitFutureBounded(orphanFuture, 2*time.Second)
-	require.True(t, orphanResolved, "orphan future must resolve once the higher-term entry applies")
-	require.ErrorIs(t, orphanErr, ErrLeadershipLost)
+		// orphan future fails with ErrLeadershipLost (truncated by new term).
+		orphanErr, orphanResolved := waitFutureBounded(orphanFuture, 2*time.Second)
+		require.True(t, orphanResolved, "orphan future must resolve once the higher-term entry applies")
+		require.ErrorIs(t, orphanErr, ErrLeadershipLost)
 
-	close(setup.stop)
-	<-runDone
+		close(setup.stop)
+		require.NoError(t, <-runDone)
+	})
 }
 
 func TestApplierResolveDroppedFuture(t *testing.T) {
@@ -968,121 +999,116 @@ func TestApplierCascadingQueryCheckpointsDuringReplay(t *testing.T) {
 func TestApplierRejectedTriggerDoesNotDropTail(t *testing.T) {
 	t.Parallel()
 
-	ctx := logging.TestingContext()
-	setup := newTestApplierSetup(t)
+	synctest.Test(t, func(t *testing.T) {
+		ctx := logging.TestingContext()
+		setup := newTestApplierSetup(t)
 
-	runDone := make(chan error, 1)
-	go func() { runDone <- setup.applier.Run(ctx, setup.stop) }()
+		runDone := make(chan error, 1)
+		go func() { runDone <- setup.applier.Run(ctx, setup.stop) }()
 
-	// Entry 1: a CreateQueryCheckpoint whose PredictedIndex (99) does not
-	// match the raft index (1), so checkStaleProposal rejects it. The
-	// structural pre-split still detects the trigger, so the slice is split
-	// into head=[1] and tail=[2]. CheckpointRequired remains false because
-	// the order never runs.
-	stale, _ := makeStaleCreateQueryCheckpointEntry(t, 1, 99)
+		// Entry 1: a CreateQueryCheckpoint whose PredictedIndex (99) does not
+		// match the raft index (1), so checkStaleProposal rejects it. The
+		// structural pre-split still detects the trigger, so the slice is split
+		// into head=[1] and tail=[2]. CheckpointRequired remains false because
+		// the order never runs.
+		stale, _ := makeStaleCreateQueryCheckpointEntry(t, 1, 99)
 
-	// Entry 2: a regular CreateLedger that must still be applied — it was
-	// the entry being dropped by the bug.
-	tail, _ := makeCreateLedgerEntry(t, 2, "tail-ledger")
+		// Entry 2: a regular CreateLedger that must still be applied — it was
+		// the entry being dropped by the bug.
+		tail, _ := makeCreateLedgerEntry(t, 2, "tail-ledger")
 
-	setup.applier.Submit([]*raftpb.Entry{stale, tail}, setup.confState, nil, setup.stop)
-	setup.applier.Drain(setup.stop)
+		setup.applier.Submit([]*raftpb.Entry{stale, tail}, setup.confState, nil, setup.stop)
+		setup.applier.Drain(setup.stop)
 
-	require.True(t, listLedgerContains(setup.store, "tail-ledger"),
-		"tail-ledger must exist — entries past a rejected checkpoint trigger were dropped before the fix")
+		require.True(t, listLedgerContains(setup.store, "tail-ledger"),
+			"tail-ledger must exist — entries past a rejected checkpoint trigger were dropped before the fix")
 
-	close(setup.stop)
+		close(setup.stop)
 
-	select {
-	case err := <-runDone:
-		require.NoError(t, err)
-	case <-time.After(2 * time.Second):
-		t.Fatal("Run did not return after stop")
-	}
+		select {
+		case err := <-runDone:
+			require.NoError(t, err)
+		case <-time.After(2 * time.Second):
+			t.Fatal("Run did not return after stop")
+		}
+	})
 }
 
 func TestApplierSnapshotGatingCycle(t *testing.T) {
 	t.Parallel()
 
-	ctx := logging.TestingContext()
-	// Snapshot threshold of 5: after 5 applied entries, a snapshot is triggered.
-	setup := newTestApplierSetup(t)
+	synctest.Test(t, func(t *testing.T) {
+		ctx := logging.TestingContext()
+		// Snapshot threshold of 5: after 5 applied entries, a snapshot is triggered.
+		setup := newTestApplierSetup(t)
 
-	// Start the Run goroutine.
-	runDone := make(chan error, 1)
+		// Start the Run goroutine.
+		runDone := make(chan error, 1)
 
-	go func() {
-		runDone <- setup.applier.Run(ctx, setup.stop)
-	}()
+		go func() {
+			runDone <- setup.applier.Run(ctx, setup.stop)
+		}()
 
-	// Submit 8 entries sequentially.
-	// Entries 1-5 are applied directly. Entry 5 triggers snapshot + gating.
-	// Entries 6-8 are spooled during gating, then replayed after unspool.
-	for i := uint64(1); i <= 8; i++ {
-		entry, _ := makeCreateLedgerEntry(t, i, fmt.Sprintf("gating-ledger-%d", i))
-		setup.applier.Submit([]*raftpb.Entry{entry}, setup.confState, nil, setup.stop)
-	}
-
-	// Eventually all 8 ledgers should exist (after unspool replays the spooled entries).
-	require.Eventually(t, func() bool {
+		// Submit 8 entries sequentially.
+		// Entries 1-5 are applied directly. Entry 5 triggers snapshot + gating.
+		// Entries 6-8 are spooled during gating, then replayed after unspool.
 		for i := uint64(1); i <= 8; i++ {
-			if !listLedgerContains(setup.store, fmt.Sprintf("gating-ledger-%d", i)) {
-				return false
-			}
+			entry, _ := makeCreateLedgerEntry(t, i, fmt.Sprintf("gating-ledger-%d", i))
+			setup.applier.Submit([]*raftpb.Entry{entry}, setup.confState, nil, setup.stop)
 		}
 
-		return true
-	}, 30*time.Second, 100*time.Millisecond, "all 8 ledgers should exist after snapshot gating cycle")
+		// The gating cycle is event-driven: once every goroutine parks, unspool
+		// has replayed the spooled entries.
+		synctest.Wait()
+		for i := uint64(1); i <= 8; i++ {
+			require.True(t, listLedgerContains(setup.store, fmt.Sprintf("gating-ledger-%d", i)),
+				"gating-ledger-%d should exist after snapshot gating cycle", i)
+		}
+		require.EqualValues(t, statusNormal, setup.applier.Status(), "status should return to normal after gating")
 
-	// Verify status returned to normal.
-	require.Eventually(t, func() bool {
-		return setup.applier.Status() == statusNormal
-	}, 5*time.Second, 50*time.Millisecond, "status should return to normal after gating")
+		// Stop.
+		close(setup.stop)
 
-	// Stop.
-	close(setup.stop)
-
-	select {
-	case err := <-runDone:
-		require.NoError(t, err)
-	case <-time.After(5 * time.Second):
-		t.Fatal("Run did not return after stop")
-	}
+		select {
+		case err := <-runDone:
+			require.NoError(t, err)
+		case <-time.After(5 * time.Second):
+			t.Fatal("Run did not return after stop")
+		}
+	})
 }
 
 func TestStartMaintenanceTaskReportsFailureOnTaskError(t *testing.T) {
 	t.Parallel()
 
-	ctx := logging.TestingContext()
-	setup := newTestApplierSetup(t)
-	taskErr := errors.New("checkpoint failed")
+	synctest.Test(t, func(t *testing.T) {
+		ctx := logging.TestingContext()
+		setup := newTestApplierSetup(t)
+		taskErr := errors.New("checkpoint failed")
 
-	gatingTerminated := setup.applier.startMaintenanceTask(ctx, func(ctx context.Context) (maintenanceTaskResult, error) {
-		return maintenanceTaskResult{}, taskErr
-	}, nil)
+		gatingTerminated := setup.applier.startMaintenanceTask(ctx, func(ctx context.Context) (maintenanceTaskResult, error) {
+			return maintenanceTaskResult{}, taskErr
+		}, nil)
 
-	var result gatingResult
-	require.Eventually(t, func() bool {
+		var result gatingResult
+		synctest.Wait()
 		select {
 		case result = <-gatingTerminated:
-			return true
 		default:
-			return false
+			t.Fatal("maintenance task did not report gating termination")
 		}
-	}, time.Second, 10*time.Millisecond)
 
-	require.True(t, result.taskFailed)
-	require.False(t, result.syncFailed)
+		require.True(t, result.taskFailed)
+		require.False(t, result.syncFailed)
 
-	var err error
-	require.Eventually(t, func() bool {
+		var err error
+		synctest.Wait()
 		select {
 		case err = <-setup.applier.TaskError():
-			return true
 		default:
-			return false
+			t.Fatal("maintenance task did not report its error")
 		}
-	}, time.Second, 10*time.Millisecond)
 
-	require.ErrorIs(t, err, taskErr)
+		require.ErrorIs(t, err, taskErr)
+	})
 }

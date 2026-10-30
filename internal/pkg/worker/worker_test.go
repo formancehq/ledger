@@ -5,6 +5,7 @@ import (
 	"errors"
 	"sync/atomic"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/stretchr/testify/require"
@@ -15,17 +16,20 @@ import (
 func TestWorkerRunStop(t *testing.T) {
 	t.Parallel()
 
-	w := New()
+	synctest.Test(t, func(t *testing.T) {
+		w := New()
 
-	var ran atomic.Bool
+		var ran atomic.Bool
 
-	w.Run(func(stop <-chan struct{}) {
-		ran.Store(true)
-		<-stop
+		w.Run(func(stop <-chan struct{}) {
+			ran.Store(true)
+			<-stop
+		})
+
+		synctest.Wait()
+		require.True(t, ran.Load())
+		w.Stop()
 	})
-
-	require.Eventually(t, ran.Load, time.Second, 10*time.Millisecond)
-	w.Stop()
 }
 
 // TestWorkerRunCtxCancelsOnStop guards the contract of RunCtx: the context
@@ -37,85 +41,92 @@ func TestWorkerRunStop(t *testing.T) {
 func TestWorkerRunCtxCancelsOnStop(t *testing.T) {
 	t.Parallel()
 
-	w := New()
+	// The watchdogs run on the bubble's fake clock, so they fire only when
+	// every goroutine is blocked for good, never because of CI load.
+	synctest.Test(t, func(t *testing.T) {
+		w := New()
 
-	var (
-		started    = make(chan struct{})
-		observed   atomic.Value // stores ctx.Err() seen by the callback
-		callbackOk = make(chan struct{})
-	)
+		var (
+			started    = make(chan struct{})
+			observed   atomic.Value // stores ctx.Err() seen by the callback
+			callbackOk = make(chan struct{})
+		)
 
-	w.RunCtx(func(ctx context.Context) {
-		close(started)
-		<-ctx.Done()
-		observed.Store(ctx.Err())
-		close(callbackOk)
+		w.RunCtx(func(ctx context.Context) {
+			close(started)
+			<-ctx.Done()
+			observed.Store(ctx.Err())
+			close(callbackOk)
+		})
+
+		select {
+		case <-started:
+		case <-time.After(time.Second):
+			t.Fatal("RunCtx callback never started")
+		}
+
+		stopDone := make(chan struct{})
+
+		go func() {
+			w.Stop()
+			close(stopDone)
+		}()
+
+		select {
+		case <-stopDone:
+		case <-time.After(2 * time.Second):
+			t.Fatal("Stop did not return — ctx was not cancelled")
+		}
+
+		select {
+		case <-callbackOk:
+		case <-time.After(time.Second):
+			t.Fatal("callback never observed ctx.Done()")
+		}
+
+		err, ok := observed.Load().(error)
+		require.True(t, ok)
+		require.True(t, errors.Is(err, context.Canceled),
+			"RunCtx ctx must be cancelled by Stop, got %v", err)
 	})
-
-	select {
-	case <-started:
-	case <-time.After(time.Second):
-		t.Fatal("RunCtx callback never started")
-	}
-
-	stopDone := make(chan struct{})
-
-	go func() {
-		w.Stop()
-		close(stopDone)
-	}()
-
-	select {
-	case <-stopDone:
-	case <-time.After(2 * time.Second):
-		t.Fatal("Stop did not return — ctx was not cancelled")
-	}
-
-	select {
-	case <-callbackOk:
-	case <-time.After(time.Second):
-		t.Fatal("callback never observed ctx.Done()")
-	}
-
-	err, ok := observed.Load().(error)
-	require.True(t, ok)
-	require.True(t, errors.Is(err, context.Canceled),
-		"RunCtx ctx must be cancelled by Stop, got %v", err)
 }
 
 func TestWorkerStopBlocksUntilDone(t *testing.T) {
 	t.Parallel()
 
-	w := New()
-	released := make(chan struct{})
+	synctest.Test(t, func(t *testing.T) {
+		w := New()
+		released := make(chan struct{})
 
-	w.Run(func(stop <-chan struct{}) {
-		<-stop
-		// Simulate cleanup delay
-		<-released
+		w.Run(func(stop <-chan struct{}) {
+			<-stop
+			// Simulate cleanup delay
+			<-released
+		})
+
+		done := make(chan struct{})
+
+		go func() {
+			w.Stop()
+			close(done)
+		}()
+
+		// Once every goroutine is durably blocked, Stop is parked on fn.
+		synctest.Wait()
+		select {
+		case <-done:
+			t.Fatal("Stop returned before fn finished")
+		default:
+		}
+
+		close(released)
+
+		select {
+		case <-done:
+		case <-time.After(time.Second):
+			t.Fatal("Stop did not return after fn finished")
+		}
 	})
-
-	done := make(chan struct{})
-
-	go func() {
-		w.Stop()
-		close(done)
-	}()
-
-	// Stop should block while fn hasn't returned
-	select {
-	case <-done:
-		t.Fatal("Stop returned before fn finished")
-	case <-time.After(50 * time.Millisecond):
-	}
-
-	close(released)
-
-	select {
-	case <-done:
-	case <-time.After(time.Second):
-		t.Fatal("Stop did not return after fn finished")
-	}
 }
 
 func TestRetryWithBackoffSuccess(t *testing.T) {
@@ -139,104 +150,118 @@ func TestRetryWithBackoffSuccess(t *testing.T) {
 func TestRetryWithBackoffRetries(t *testing.T) {
 	t.Parallel()
 
-	logger := logging.FromContext(logging.TestingContext())
+	synctest.Test(t, func(t *testing.T) {
+		logger := logging.FromContext(logging.TestingContext())
 
-	var calls atomic.Int32
+		var calls atomic.Int32
 
-	stop := make(chan struct{})
+		stop := make(chan struct{})
+		start := time.Now()
 
-	RetryWithBackoff(stop, logger, func() error {
-		n := calls.Add(1)
-		if n < 3 {
-			return errors.New("transient error")
-		}
+		RetryWithBackoff(stop, logger, func() error {
+			n := calls.Add(1)
+			if n < 3 {
+				return errors.New("transient error")
+			}
 
-		return nil
+			return nil
+		})
+
+		require.Equal(t, int32(3), calls.Load())
+		// Two backoffs elapsed on the fake clock: 100ms then 200ms.
+		require.Equal(t, 300*time.Millisecond, time.Since(start))
 	})
-
-	require.Equal(t, int32(3), calls.Load())
 }
 
 func TestRetryWithBackoffErrNotLeader(t *testing.T) {
 	t.Parallel()
 
-	logger := logging.FromContext(logging.TestingContext())
+	synctest.Test(t, func(t *testing.T) {
+		logger := logging.FromContext(logging.TestingContext())
 
-	var calls atomic.Int32
+		var calls atomic.Int32
 
-	stop := make(chan struct{})
+		stop := make(chan struct{})
+		start := time.Now()
 
-	RetryWithBackoff(stop, logger, func() error {
-		n := calls.Add(1)
-		if n < 3 {
-			return ErrNotLeader
-		}
+		RetryWithBackoff(stop, logger, func() error {
+			n := calls.Add(1)
+			if n < 3 {
+				return ErrNotLeader
+			}
 
-		return nil
+			return nil
+		})
+
+		require.Equal(t, int32(3), calls.Load())
+		// Two backoffs elapsed on the fake clock: 100ms then 200ms.
+		require.Equal(t, 300*time.Millisecond, time.Since(start))
 	})
-
-	require.Equal(t, int32(3), calls.Load())
 }
 
 func TestRetryWithBackoffStop(t *testing.T) {
 	t.Parallel()
 
-	logger := logging.FromContext(logging.TestingContext())
+	synctest.Test(t, func(t *testing.T) {
+		logger := logging.FromContext(logging.TestingContext())
 
-	stop := make(chan struct{})
+		stop := make(chan struct{})
 
-	var calls atomic.Int32
+		var calls atomic.Int32
 
-	done := make(chan struct{})
+		done := make(chan struct{})
 
-	go func() {
-		RetryWithBackoff(stop, logger, func() error {
-			calls.Add(1)
+		go func() {
+			RetryWithBackoff(stop, logger, func() error {
+				calls.Add(1)
 
-			return errors.New("permanent error")
-		})
-		close(done)
-	}()
+				return errors.New("permanent error")
+			})
+			close(done)
+		}()
 
-	// Let it retry at least once
-	require.Eventually(t, func() bool {
-		return calls.Load() >= 2
-	}, 2*time.Second, 10*time.Millisecond)
+		// Let it retry exactly once: the second backoff (200ms) is pending.
+		time.Sleep(150 * time.Millisecond)
+		synctest.Wait()
+		require.Equal(t, int32(2), calls.Load())
 
-	close(stop)
+		close(stop)
 
-	select {
-	case <-done:
-	case <-time.After(time.Second):
-		t.Fatal("RetryWithBackoff did not stop")
-	}
+		select {
+		case <-done:
+		case <-time.After(time.Second):
+			t.Fatal("RetryWithBackoff did not stop")
+		}
+	})
 }
 
 func TestRunTicker(t *testing.T) {
 	t.Parallel()
 
-	var calls atomic.Int32
+	synctest.Test(t, func(t *testing.T) {
+		var calls atomic.Int32
 
-	stop := make(chan struct{})
+		stop := make(chan struct{})
 
-	done := make(chan struct{})
+		done := make(chan struct{})
 
-	go func() {
-		RunTicker(stop, 10*time.Millisecond, func() {
-			calls.Add(1)
-		})
-		close(done)
-	}()
+		go func() {
+			RunTicker(stop, 10*time.Millisecond, func() {
+				calls.Add(1)
+			})
+			close(done)
+		}()
 
-	require.Eventually(t, func() bool {
-		return calls.Load() >= 3
-	}, time.Second, 10*time.Millisecond)
+		time.Sleep(35 * time.Millisecond)
+		synctest.Wait()
+		require.Equal(t, int32(3), calls.Load())
 
-	close(stop)
+		close(stop)
 
-	select {
-	case <-done:
-	case <-time.After(time.Second):
-		t.Fatal("RunTicker did not stop")
-	}
+		select {
+		case <-done:
+		case <-time.After(time.Second):
+			t.Fatal("RunTicker did not stop")
+		}
+	})
 }

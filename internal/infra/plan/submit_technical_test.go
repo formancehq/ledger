@@ -4,7 +4,7 @@ import (
 	"context"
 	"sync"
 	"testing"
-	"time"
+	"testing/synctest"
 
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel/metric/noop"
@@ -166,24 +166,28 @@ func TestSubmitTechnical_ExhaustsStaleRetryBound(t *testing.T) {
 func TestSubmitTechnical_CancelBeforeRaftAcceptance(t *testing.T) {
 	t.Parallel()
 
-	builder := newSubmitTestBuilder(t, node.NewIndexTracker(1))
-	proposer := &recordingProposer{holdRaft: true}
+	synctest.Test(t, func(t *testing.T) {
+		builder := newSubmitTestBuilder(t, node.NewIndexTracker(1))
+		proposer := &recordingProposer{holdRaft: true}
 
-	ctx, cancel := context.WithCancel(context.Background())
+		ctx, cancel := context.WithCancel(context.Background())
 
-	errCh := make(chan error, 1)
-	go func() {
-		errCh <- SubmitTechnical(ctx, builder, proposer, &raftcmdpb.Proposal{}, nil, "test")
-	}()
+		errCh := make(chan error, 1)
+		go func() {
+			errCh <- SubmitTechnical(ctx, builder, proposer, &raftcmdpb.Proposal{}, nil, "test")
+		}()
 
-	// Wait until Propose has been reached (Raft acceptance outstanding).
-	require.Eventually(t, func() bool { return proposer.callCount() == 1 }, time.Second, time.Millisecond)
-	cancel()
+		// Wait returns once SubmitTechnical is parked on the outstanding
+		// Raft acceptance, which it can only reach through Propose.
+		synctest.Wait()
+		require.Equal(t, 1, proposer.callCount())
+		cancel()
 
-	err := <-errCh
-	require.Error(t, err)
-	require.ErrorIs(t, err, context.Canceled)
-	require.Contains(t, err.Error(), "waiting for raft acceptance")
+		err := <-errCh
+		require.Error(t, err)
+		require.ErrorIs(t, err, context.Canceled)
+		require.Contains(t, err.Error(), "waiting for raft acceptance")
+	})
 }
 
 // TestSubmitTechnical_CancelAfterRaftAcceptance pins that cancellation
@@ -192,23 +196,26 @@ func TestSubmitTechnical_CancelBeforeRaftAcceptance(t *testing.T) {
 func TestSubmitTechnical_CancelAfterRaftAcceptance(t *testing.T) {
 	t.Parallel()
 
-	builder := newSubmitTestBuilder(t, node.NewIndexTracker(1))
-	proposer := &recordingProposer{holdFSM: true}
+	synctest.Test(t, func(t *testing.T) {
+		builder := newSubmitTestBuilder(t, node.NewIndexTracker(1))
+		proposer := &recordingProposer{holdFSM: true}
 
-	ctx, cancel := context.WithCancel(context.Background())
+		ctx, cancel := context.WithCancel(context.Background())
 
-	errCh := make(chan error, 1)
-	go func() {
-		errCh <- SubmitTechnical(ctx, builder, proposer, &raftcmdpb.Proposal{}, nil, "test")
-	}()
+		errCh := make(chan error, 1)
+		go func() {
+			errCh <- SubmitTechnical(ctx, builder, proposer, &raftcmdpb.Proposal{}, nil, "test")
+		}()
 
-	require.Eventually(t, func() bool { return proposer.callCount() == 1 }, time.Second, time.Millisecond)
-	cancel()
+		synctest.Wait()
+		require.Equal(t, 1, proposer.callCount())
+		cancel()
 
-	err := <-errCh
-	require.Error(t, err)
-	require.ErrorIs(t, err, context.Canceled)
-	require.Contains(t, err.Error(), "waiting for FSM apply")
+		err := <-errCh
+		require.Error(t, err)
+		require.ErrorIs(t, err, context.Canceled)
+		require.Contains(t, err.Error(), "waiting for FSM apply")
+	})
 }
 
 // referencePreloadNeeds returns a Coverage carrying a single absent
@@ -308,28 +315,31 @@ func TestSubmitTechnical_ReleasesLoadersOnCancellation(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			builder := newSubmitTestBuilder(t, node.NewIndexTracker(1))
-			proposer := &recordingProposer{holdRaft: tc.holdRaft, holdFSM: tc.holdFSM}
+			synctest.Test(t, func(t *testing.T) {
+				builder := newSubmitTestBuilder(t, node.NewIndexTracker(1))
+				proposer := &recordingProposer{holdRaft: tc.holdRaft, holdFSM: tc.holdFSM}
 
-			needs, expectedID := referencePreloadNeeds(t, builder)
+				needs, expectedID := referencePreloadNeeds(t, builder)
 
-			ctx, cancel := context.WithCancel(context.Background())
+				ctx, cancel := context.WithCancel(context.Background())
 
-			errCh := make(chan error, 1)
-			go func() {
-				errCh <- SubmitTechnical(ctx, builder, proposer, &raftcmdpb.Proposal{}, []WriteOperation{{Coverage: needs}}, "test")
-			}()
+				errCh := make(chan error, 1)
+				go func() {
+					errCh <- SubmitTechnical(ctx, builder, proposer, &raftcmdpb.Proposal{}, []WriteOperation{{Coverage: needs}}, "test")
+				}()
 
-			// Wait until Propose has been reached.
-			require.Eventually(t, func() bool { return proposer.callCount() == 1 }, time.Second, time.Millisecond)
-			cancel()
+				// Wait until Propose has been reached and its future is pending.
+				synctest.Wait()
+				require.Equal(t, 1, proposer.callCount())
+				cancel()
 
-			err := <-errCh
-			require.Error(t, err)
-			require.ErrorIs(t, err, context.Canceled)
-			require.Contains(t, err.Error(), tc.wantMsg)
+				err := <-errCh
+				require.Error(t, err)
+				require.ErrorIs(t, err, context.Canceled)
+				require.Contains(t, err.Error(), tc.wantMsg)
 
-			requireReferenceReloads(t, builder, expectedID)
+				requireReferenceReloads(t, builder, expectedID)
+			})
 		})
 	}
 }

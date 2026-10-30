@@ -3,12 +3,16 @@ package grpc
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
+	"strings"
 	"sync"
 	"testing"
 	"testing/synctest"
@@ -479,11 +483,12 @@ func restoreCheckpointFixture(t *testing.T) (*backup.Manifest, map[string][]byte
 			return relErr
 		}
 		name := filepath.ToSlash(rel)
-		key := "fixture/" + name
 		data, readErr := os.ReadFile(path)
 		if readErr != nil {
 			return readErr
 		}
+		sum := sha256.Sum256(data)
+		key := backup.CheckpointFileKey("fixture", name, hex.EncodeToString(sum[:]))
 
 		files[name] = backup.CheckpointFile{Size: int64(len(data)), Key: key}
 		objects[key] = data
@@ -494,4 +499,82 @@ func restoreCheckpointFixture(t *testing.T) (*backup.Manifest, map[string][]byte
 	require.NotEmpty(t, files)
 
 	return &backup.Manifest{Checkpoint: &backup.CheckpointManifest{Files: files}}, objects
+}
+
+// TestRestoreDownloadRejectsCorruptedCheckpointObject pins that a checkpoint
+// object whose bytes no longer hash to the sha256 embedded in its
+// content-addressed key fails the download job, names the file, and leaves no
+// staging store behind. The corrupted object keeps its original size, so only
+// the checksum can catch it.
+func TestRestoreDownloadRejectsCorruptedCheckpointObject(t *testing.T) {
+	t.Parallel()
+
+	manifest, objects := restoreCheckpointFixture(t)
+	manifestData, err := json.Marshal(manifest)
+	require.NoError(t, err)
+
+	names := make([]string, 0, len(manifest.Checkpoint.Files))
+	for name, cf := range manifest.Checkpoint.Files {
+		if cf.Size > 0 {
+			names = append(names, name)
+		}
+	}
+	slices.Sort(names)
+	require.NotEmpty(t, names)
+
+	corrupted := names[0]
+	key := manifest.Checkpoint.Files[corrupted].Key
+	tampered := bytes.Clone(objects[key])
+	for i := range tampered {
+		tampered[i] ^= 0xff
+	}
+	objects[key] = tampered
+
+	manifestKey := backup.ManifestKey(testRestoreClusterID)
+	storage := NewMockStorage(gomock.NewController(t))
+	storage.EXPECT().
+		GetFile(gomock.Any(), gomock.Any()).
+		AnyTimes().
+		DoAndReturn(func(_ context.Context, key string) (io.ReadCloser, error) {
+			if key == manifestKey {
+				return io.NopCloser(bytes.NewReader(manifestData)), nil
+			}
+
+			data, ok := objects[key]
+			if !ok {
+				return nil, fmt.Errorf("unexpected storage key %q", key)
+			}
+
+			return io.NopCloser(bytes.NewReader(data)), nil
+		})
+
+	server := newServerForTest(t, staticFactory(storage))
+	t.Cleanup(server.Shutdown)
+	started, err := server.StartDownloadBackup(context.Background(), &restorepb.StartDownloadBackupRequest{})
+	require.NoError(t, err)
+
+	server.mu.Lock()
+	job := server.job
+	server.mu.Unlock()
+	select {
+	case <-job.done:
+	case <-time.After(10 * time.Second):
+		t.Fatal("download did not terminate")
+	}
+
+	resp, err := server.GetDownloadStatus(context.Background(), &restorepb.GetDownloadStatusRequest{JobId: started.GetJobId()})
+	require.NoError(t, err)
+	require.Equal(t, restorepb.DownloadState_DOWNLOAD_STATE_FAILED, resp.GetState())
+	require.Contains(t, resp.GetErrorMessage(), corrupted)
+	require.True(t, strings.Contains(resp.GetErrorMessage(), "sha256 mismatch"), resp.GetErrorMessage())
+
+	server.mu.Lock()
+	downloaded := server.downloaded
+	store := server.stagingStore
+	server.mu.Unlock()
+	require.False(t, downloaded)
+	require.Nil(t, store)
+
+	_, statErr := os.Stat(server.stagingDir())
+	require.ErrorIs(t, statErr, os.ErrNotExist, "a failed download must wipe the staging directory")
 }

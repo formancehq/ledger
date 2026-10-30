@@ -5,7 +5,6 @@ import (
 	"fmt"
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
-	"github.com/antithesishq/antithesis-sdk-go/random"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
@@ -15,13 +14,14 @@ import (
 	"github.com/formancehq/ledger/v3/tests/oracle"
 
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
+	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal/generation"
 )
 
 // runRead picks a read target — usually a known account, sometimes one the model
 // holds no state for — issues a linearizable GetAccount, and validates the result
 // (the picked asset's volumes and the account's whole metadata map) against the
 // model (see validateAccountRead).
-func runRead(ctx context.Context, client servicepb.BucketServiceClient, c *Checker) {
+func runRead(src *generation.Source, ctx context.Context, client servicepb.BucketServiceClient, c *Checker) {
 	c.mu.Lock()
 	state := c.modelState
 	readID := c.registerRead()
@@ -30,7 +30,7 @@ func runRead(ctx context.Context, client servicepb.BucketServiceClient, c *Check
 
 	// Picking runs lock-free on the snapshot; registering the read first only
 	// holds the drain gate a little longer, never less.
-	ledger, addr, asset, absentAccount, absentLedger, ok := pickReadTarget(state, liveLedgerNames(state, c.ledgerNamesSnapshot()))
+	ledger, addr, asset, absentAccount, absentLedger, ok := pickReadTarget(src, state, liveLedgerNames(state, c.ledgerNamesSnapshot()))
 	if !ok {
 		return
 	}
@@ -55,7 +55,7 @@ func runRead(ctx context.Context, client servicepb.BucketServiceClient, c *Check
 
 	// Colour collapse is a result-stage fold: every colour of an asset is summed
 	// into the uncolored bucket.
-	collapsed := oneIn(3)
+	collapsed := oneIn(src, 3)
 
 	responseFrontier := c.beginResponseFrontier()
 	acct, err := client.GetAccount(readCtx, &servicepb.GetAccountRequest{
@@ -109,15 +109,15 @@ func isShutdownError(err error) bool {
 	}
 }
 
-// percentChance reports true with probability pct/100, drawing from the
-// Antithesis-controlled source so the fuzzer steers how often the branch is taken.
-func percentChance(pct uint64) bool {
-	return internal.Rand().Uint64()%100 < pct
+// percentChance compares a callback-scoped Hegel integer draw with pct.
+// pct/100 is a nominal weight; Hegel controls the actual branch frequency.
+func percentChance(src *generation.Source, pct uint64) bool {
+	return src.Uint64Range(0, 100-1) < pct
 }
 
 // pickReadTarget chooses what GetAccount reads back. Most reads hit a known
-// account (pickCell); ~5% probe an account the model has no state for in a known
-// ledger (pickAbsentAccount, absentAccount=true); ~2% probe any account in a
+// account (pickCell); nominally 5% probe an account the model has no state for in a known
+// ledger (pickAbsentAccount, absentAccount=true); nominally 2% probe any account in a
 // ledger outside the fleet (absentLedger=true). Both probes close blind spots
 // pickCell can't reach — it only ever targets accounts the model already holds,
 // so GetAccount is otherwise structurally blind to server state the model lacks
@@ -125,18 +125,18 @@ func percentChance(pct uint64) bool {
 // back to pickCell when no absent account is found. Runs lock-free on a state
 // snapshot. A choice, not an expectation — see the package doc on generator and
 // validator roles.
-func pickReadTarget(g oracle.GlobalState, ledgers []string) (ledger, addr, asset string, absentAccount, absentLedger, ok bool) {
-	if len(ledgers) > 0 && percentChance(2) {
-		return absentLedgerName(ledgers), poolAddress(), random.RandomChoice(assets), false, true, true
+func pickReadTarget(src *generation.Source, g oracle.GlobalState, ledgers []string) (ledger, addr, asset string, absentAccount, absentLedger, ok bool) {
+	if len(ledgers) > 0 && percentChance(src, 2) {
+		return absentLedgerName(ledgers), poolAddress(src), generation.Choice(src, assets), false, true, true
 	}
 
-	if percentChance(5) {
-		if ledger, addr, asset, ok = pickAbsentAccount(g, ledgers); ok {
+	if percentChance(src, 5) {
+		if ledger, addr, asset, ok = pickAbsentAccount(src, g, ledgers); ok {
 			return ledger, addr, asset, true, false, true
 		}
 	}
 
-	ledger, addr, asset, ok = pickCell(g, ledgers)
+	ledger, addr, asset, ok = pickCell(src, g, ledgers)
 
 	return ledger, addr, asset, false, false, ok
 }
@@ -147,17 +147,17 @@ func pickReadTarget(g oracle.GlobalState, ledgers []string) (ledger, addr, asset
 // asset can be caught. ok=false when no ledger exists or no absent address turned
 // up in a few tries (the pool space is far larger than what is touched, so this is
 // rare). Runs lock-free on a state snapshot.
-func pickAbsentAccount(g oracle.GlobalState, ledgers []string) (ledger, addr, asset string, ok bool) {
+func pickAbsentAccount(src *generation.Source, g oracle.GlobalState, ledgers []string) (ledger, addr, asset string, ok bool) {
 	if len(ledgers) == 0 {
 		return "", "", "", false
 	}
 
-	ledger = random.RandomChoice(ledgers)
+	ledger = generation.Choice(src, ledgers)
 	ls := g.Ledger(ledger)
 	for range 8 {
-		cand := poolAddress()
+		cand := poolAddress(src)
 		if !modelKnowsAccount(ls, cand) {
-			return ledger, cand, random.RandomChoice(assets), true
+			return ledger, cand, generation.Choice(src, assets), true
 		}
 	}
 
@@ -186,34 +186,34 @@ func modelKnowsAccount(ls oracle.LedgerState, addr string) bool {
 // pickCell returns a random readable account as (ledger, address, asset), or
 // ok=false if the model holds nothing readable. It seeks a random pool-space
 // probe into a random ledger's tables — O(log n) per pick, no table walk.
-// ~1/4 of picks target a metadata-bearing address with an empty asset, so a
+// nominally 1/4 of picks target a metadata-bearing address with an empty asset, so a
 // metadata-only account is still reachable — the read validates that account's
 // whole metadata map regardless of the asset. Ledgers are tried round-robin
 // from a random start so an empty one doesn't blind the pick.
-func pickCell(g oracle.GlobalState, ledgers []string) (ledger, addr, asset string, ok bool) {
+func pickCell(src *generation.Source, g oracle.GlobalState, ledgers []string) (ledger, addr, asset string, ok bool) {
 	if len(ledgers) == 0 {
 		return "", "", "", false
 	}
 
-	start := int(internal.Rand().Uint64() % uint64(len(ledgers)))
-	metaPick := percentChance(25)
+	start := int(src.Uint64Range(0, (uint64(len(ledgers)))-1))
+	metaPick := percentChance(src, 25)
 
 	for i := range ledgers {
 		name := ledgers[(start+i)%len(ledgers)]
 		ls := g.Ledger(name)
 
 		if metaPick {
-			if mk, _, found := pickAtOrAfter(ls.Metadata(), oracle.MetaKey{Address: poolAddress(), Key: metaKey()}); found {
+			if mk, _, found := pickAtOrAfter(ls.Metadata(), oracle.MetaKey{Address: poolAddress(src), Key: metaKey(src)}); found {
 				return name, mk.Address, "", true
 			}
 		}
 
-		if k, _, found := pickAtOrAfter(ls.Volumes(), oracle.VolumeKey{Address: poolAddress(), Asset: random.RandomChoice(assets)}); found {
+		if k, _, found := pickAtOrAfter(ls.Volumes(), oracle.VolumeKey{Address: poolAddress(src), Asset: generation.Choice(src, assets)}); found {
 			return name, k.Address, k.Asset, true
 		}
 
 		// No volumes in this ledger: a metadata-only account still qualifies.
-		if mk, _, found := pickAtOrAfter(ls.Metadata(), oracle.MetaKey{Address: poolAddress(), Key: metaKey()}); found {
+		if mk, _, found := pickAtOrAfter(ls.Metadata(), oracle.MetaKey{Address: poolAddress(src), Key: metaKey(src)}); found {
 			return name, mk.Address, "", true
 		}
 	}
@@ -274,24 +274,24 @@ func absentLedgerName(ledgers []string) string {
 }
 
 // pickLedgerReadTarget chooses a ledger for a ledger-scoped read: usually a known
-// fleet ledger, else an absent one (absent=true) with probability absentPct. The
+// fleet ledger, else an absent one (absent=true) with nominal weight absentPct/100. The
 // absent probe closes the blind spot a known-only pick leaves — a ledger-scoped
 // read can never otherwise detect the server serving a ledger the model never
 // created. An absent ledger must answer NotFound; a served snapshot is a finding.
-func pickLedgerReadTarget(ledgers []string, absentPct uint64) (ledger string, absent bool) {
-	if len(ledgers) == 0 || percentChance(absentPct) {
+func pickLedgerReadTarget(src *generation.Source, ledgers []string, absentPct uint64) (ledger string, absent bool) {
+	if len(ledgers) == 0 || percentChance(src, absentPct) {
 		return absentLedgerName(ledgers), true
 	}
 
-	return random.RandomChoice(ledgers), false
+	return generation.Choice(src, ledgers), false
 }
 
 // runLedgerRead issues a linearizable GetLedger — usually on a fleet ledger,
 // sometimes on an absent one — and checks the result against the model: a fleet
 // ledger's whole snapshot (account types and ledger metadata, see
 // validateLedgerRead), or an absent ledger's mandatory NotFound.
-func runLedgerRead(ctx context.Context, client servicepb.BucketServiceClient, c *Checker) {
-	ledger, absent := pickLedgerReadTarget(c.liveLedgerNamesSnapshot(), 2)
+func runLedgerRead(src *generation.Source, ctx context.Context, client servicepb.BucketServiceClient, c *Checker) {
+	ledger, absent := pickLedgerReadTarget(src, c.liveLedgerNamesSnapshot(), 2)
 
 	c.mu.Lock()
 	readID := c.registerRead()
@@ -337,22 +337,22 @@ func runLedgerRead(ctx context.Context, client servicepb.BucketServiceClient, c 
 // pickTransactionID picks a ledger and a transaction id to read back. Usually a
 // fleet ledger, probing up to a small slack past the committed frontier so the id
 // may land on a committed transaction, an in-flight one, or an unassigned id (a
-// legal NotFound). ~2% target a ledger outside the fleet (absentLedger=true),
+// legal NotFound). Nominally 2% target a ledger outside the fleet (absentLedger=true),
 // where no transaction can exist and any id must resolve NotFound. ok=false only
 // before any ledger exists.
-func pickTransactionID(g oracle.GlobalState, ledgers []string) (ledger string, id uint64, absentLedger, ok bool) {
+func pickTransactionID(src *generation.Source, g oracle.GlobalState, ledgers []string) (ledger string, id uint64, absentLedger, ok bool) {
 	if len(ledgers) == 0 {
 		return "", 0, false, false
 	}
 
-	if percentChance(2) {
-		return absentLedgerName(ledgers), 1 + internal.Rand().Uint64()%64, true, true
+	if percentChance(src, 2) {
+		return absentLedgerName(ledgers), 1 + src.Uint64Range(0, 64-1), true, true
 	}
 
-	ledger = random.RandomChoice(ledgers)
+	ledger = generation.Choice(src, ledgers)
 	const slack = 8
 	frontier := uint64(g.Ledger(ledger).Txs().Len())
-	id = 1 + internal.Rand().Uint64()%(frontier+slack)
+	id = 1 + src.Uint64Range(0, (frontier+slack)-1)
 
 	return ledger, id, false, true
 }
@@ -361,14 +361,14 @@ func pickTransactionID(g oracle.GlobalState, ledgers []string) (ledger string, i
 // checks the observation — a returned transaction, or NotFound — against the
 // model (see validateTransactionRead). This is the only path that reads
 // accumulated transaction metadata back.
-func runTransactionRead(ctx context.Context, client servicepb.BucketServiceClient, c *Checker) {
+func runTransactionRead(src *generation.Source, ctx context.Context, client servicepb.BucketServiceClient, c *Checker) {
 	c.mu.Lock()
 	state := c.modelState
 	readID := c.registerRead()
 	c.mu.Unlock()
 	defer c.finishRead(readID)
 
-	ledger, id, absentLedger, ok := pickTransactionID(state, liveLedgerNames(state, c.ledgerNamesSnapshot()))
+	ledger, id, absentLedger, ok := pickTransactionID(src, state, liveLedgerNames(state, c.ledgerNamesSnapshot()))
 	if !ok {
 		return
 	}
@@ -413,8 +413,8 @@ func runTransactionRead(ctx context.Context, client servicepb.BucketServiceClien
 // field types (account / transaction / ledger) against the model (see
 // validateSchemaRead) — the read-back that verifies the declared-schema
 // projection, not just the per-op SetMetadataFieldType echo.
-func runSchemaRead(ctx context.Context, client servicepb.BucketServiceClient, c *Checker) {
-	ledger, absent := pickLedgerReadTarget(c.liveLedgerNamesSnapshot(), 3)
+func runSchemaRead(src *generation.Source, ctx context.Context, client servicepb.BucketServiceClient, c *Checker) {
+	ledger, absent := pickLedgerReadTarget(src, c.liveLedgerNamesSnapshot(), 3)
 
 	c.mu.Lock()
 	readID := c.registerRead()

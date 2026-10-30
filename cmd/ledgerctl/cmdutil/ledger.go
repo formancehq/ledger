@@ -71,10 +71,9 @@ func SelectLedger(cmd *cobra.Command, client servicepb.BucketServiceClient) (str
 	}
 
 	// Multiple ledgers exist, prompt for selection using interactive select
-	selectedLedger, err := pterm.DefaultInteractiveSelect.
+	selectedLedger, err := PromptSelect(pterm.DefaultInteractiveSelect.
 		WithOptions(ledgerNames).
-		WithDefaultText("Select a ledger").
-		Show()
+		WithDefaultText("Select a ledger"))
 	if err != nil {
 		return "", fmt.Errorf("failed to select ledger: %w", err)
 	}

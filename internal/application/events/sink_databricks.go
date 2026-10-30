@@ -8,6 +8,7 @@ import (
 	"database/sql/driver"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 
 	dbsql "github.com/databricks/databricks-sql-go"
@@ -17,7 +18,7 @@ import (
 )
 
 func init() {
-	registerSinkFactory("databricks", func(sc *commonpb.SinkConfig, _ Format) (Sink, error) {
+	registerSinkFactory("databricks", func(ctx context.Context, sc *commonpb.SinkConfig, _ Format) (Sink, error) {
 		s := sc.GetType().(*commonpb.SinkConfig_Databricks)
 
 		cfg, err := databricksConfigFromProto(s.Databricks)
@@ -25,7 +26,7 @@ func init() {
 			return nil, err
 		}
 
-		return NewDatabricksSink(context.Background(), cfg)
+		return NewDatabricksSink(ctx, cfg)
 	})
 }
 
@@ -64,11 +65,11 @@ func databricksConfigFromProto(pb *commonpb.DatabricksSinkConfig) (DatabricksSin
 const defaultDatabricksTable = "ledger_events"
 
 // DatabricksCreateTableDDL returns the CREATE TABLE statement for the events
-// Delta table. The data column uses STRING to hold JSON — Databricks can query
-// it with from_json() or the : JSON path operator.
+// Delta table. DECIMAL(20,0) preserves every admitted uint64 log sequence;
+// the data column uses STRING to hold queryable JSON.
 func DatabricksCreateTableDDL(qualifiedTable string) string {
 	return fmt.Sprintf(`CREATE TABLE IF NOT EXISTS %s (
-    log_sequence BIGINT,
+    log_sequence DECIMAL(20,0),
     type         STRING,
     ledger       STRING,
     date         TIMESTAMP,
@@ -147,8 +148,17 @@ func NewDatabricksSink(ctx context.Context, cfg DatabricksSinkConfig) (_ *Databr
 		return nil, err
 	}
 
-	db := sql.OpenDB(connector)
+	sink, err := initializeDatabricksSink(ctx, sql.OpenDB(connector), cfg)
+	if err != nil {
+		return nil, err
+	}
+	sink.errors = sanitizer
 
+	return sink, nil
+}
+
+// initializeDatabricksSink owns db until Ping and table creation succeed.
+func initializeDatabricksSink(ctx context.Context, db *sql.DB, cfg DatabricksSinkConfig) (*DatabricksSink, error) {
 	// Deferred close covers every error path between OpenDB and the successful
 	// return. Without this any post-Open failure (Ping, DDL, future steps)
 	// leaks the connection pool plus the OAuth token-refresh goroutines.
@@ -179,7 +189,6 @@ func NewDatabricksSink(ctx context.Context, cfg DatabricksSinkConfig) (_ *Databr
 	success = true
 
 	return &DatabricksSink{
-		errors:         sanitizer,
 		db:             db,
 		qualifiedTable: qualifiedTable,
 	}, nil
@@ -213,9 +222,12 @@ func (s *DatabricksSink) Publish(ctx context.Context, events []*eventspb.Event) 
 			sb.WriteString(", ")
 		}
 
-		sb.WriteString("(?, ?, ?, ?, ?)")
+		// Bind the exact base-10 digits as STRING: database/sql and the
+		// Databricks driver reject uint64 values above MaxInt64 before SQL runs.
+		// Cast explicitly so the warehouse stores an exact numeric sequence.
+		sb.WriteString("(CAST(? AS DECIMAL(20,0)), ?, ?, ?, ?)")
 
-		args = append(args, event.GetLogSequence(), eventType, event.GetLedger(), eventDate, string(data))
+		args = append(args, strconv.FormatUint(event.GetLogSequence(), 10), eventType, event.GetLedger(), eventDate, string(data))
 	}
 
 	if _, err := s.db.ExecContext(ctx, sb.String(), args...); err != nil {

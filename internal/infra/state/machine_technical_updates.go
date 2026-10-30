@@ -3,6 +3,7 @@ package state
 import (
 	"errors"
 	"fmt"
+	"slices"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/domain/processing"
@@ -54,6 +55,46 @@ func (fsm *Machine) applyTechnicalUpdates(scopeFactory processing.ScopeFactory, 
 					return fmt.Errorf("persisting audit key: %w", err)
 				}
 				fsm.State.InstallAuditKey(kind.AuditKey)
+			}
+		case *raftcmdpb.TechnicalUpdate_DrainMarker:
+			if kind.DrainMarker == nil || kind.DrainMarker.GetEpoch() == "" || len(kind.DrainMarker.GetEpoch()) > 128 || len(kind.DrainMarker.GetMembers()) == 0 {
+				return fmt.Errorf("technical_updates[%d]: invalid drain epoch", i)
+			}
+			seen := make(map[uint64]struct{}, len(kind.DrainMarker.GetMembers()))
+			for _, id := range kind.DrainMarker.GetMembers() {
+				if id == 0 {
+					return fmt.Errorf("technical_updates[%d]: drain member zero", i)
+				}
+				if _, exists := seen[id]; exists {
+					return fmt.Errorf("technical_updates[%d]: duplicate drain member %d", i, id)
+				}
+				seen[id] = struct{}{}
+			}
+			// The first marker of an active epoch wins. A new epoch may start
+			// only after a Raft-ordered release of the previous one.
+			if previous := fsm.State.DrainState; previous == nil || previous.GetReleasedIndex() != 0 && previous.GetEpoch() != kind.DrainMarker.GetEpoch() && !slices.Contains(previous.GetPriorEpochs(), kind.DrainMarker.GetEpoch()) {
+				decision := &raftcmdpb.DrainState{Epoch: kind.DrainMarker.GetEpoch(), Index: raftIndex, Members: append([]uint64(nil), kind.DrainMarker.GetMembers()...)}
+				if previous != nil {
+					decision.PriorEpochs = append(append([]string(nil), previous.GetPriorEpochs()...), previous.GetEpoch())
+				}
+				if err := batch.SetProto([]byte{dal.ZoneClusterTransient, dal.SubTransientDrainState}, decision); err != nil {
+					return fmt.Errorf("persisting drain state: %w", err)
+				}
+				fsm.State.DrainState = decision
+				fsm.sharedState.SetDrain(decision.GetEpoch(), decision.GetIndex())
+			}
+		case *raftcmdpb.TechnicalUpdate_DrainRelease:
+			if kind.DrainRelease == nil || kind.DrainRelease.GetEpoch() == "" || len(kind.DrainRelease.GetEpoch()) > 128 {
+				return fmt.Errorf("technical_updates[%d]: invalid drain release epoch", i)
+			}
+			if current := fsm.State.DrainState; current != nil && current.GetEpoch() == kind.DrainRelease.GetEpoch() && current.GetReleasedIndex() == 0 {
+				released := current.CloneVT()
+				released.ReleasedIndex = raftIndex
+				if err := batch.SetProto([]byte{dal.ZoneClusterTransient, dal.SubTransientDrainState}, released); err != nil {
+					return fmt.Errorf("persisting drain release: %w", err)
+				}
+				fsm.State.DrainState = released
+				fsm.sharedState.SetDrainReleased(raftIndex)
 			}
 		case *raftcmdpb.TechnicalUpdate_ClusterConfig:
 			if err := fsm.applyClusterConfig(batch, raftIndex, kind.ClusterConfig); err != nil {
@@ -178,6 +219,9 @@ func (fsm *Machine) applyClusterConfig(batch *dal.WriteSession, raftIndex uint64
 			[]byte{dal.ZoneClusterPersistent, dal.SubGlobBloom + 1},
 		); err != nil {
 			return fmt.Errorf("purging bloom blocks: %w", err)
+		}
+		if err := batch.DeleteKey([]byte{dal.ZoneClusterPersistent, dal.SubGlobBloomProjectionSeal}); err != nil {
+			return fmt.Errorf("purging Bloom projection seal: %w", err)
 		}
 
 		// Rebuild filters with new dimensions (sets IsReady=false).

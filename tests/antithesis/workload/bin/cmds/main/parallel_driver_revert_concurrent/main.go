@@ -12,18 +12,20 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
+	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal/generation"
 )
 
 func main() {
-	internal.RunDriver("parallel_driver_revert_concurrent", func(ctx context.Context, client servicepb.BucketServiceClient, ledger string) {
+	internal.RunGeneratedDriver("parallel_driver_revert_concurrent", func(ctx context.Context, client servicepb.BucketServiceClient, ledger string, src *generation.Source) {
 		// 1. Create a transaction to revert.
+		postings := internal.GeneratedPostings(src)
 		resp, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
 			Type: &servicepb.Request_Apply{
 				Apply: &servicepb.LedgerApplyRequest{
 					Ledger: ledger,
 					Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
 						CreateTransaction: &servicepb.CreateTransactionPayload{
-							Postings: internal.RandomPostings(),
+							Postings: postings,
 							Force:    true,
 						},
 					}},
@@ -64,32 +66,46 @@ func main() {
 		})
 
 		var (
-			wg   sync.WaitGroup
-			err1 error
-			err2 error
+			wg           sync.WaitGroup
+			err1         error
+			err2         error
+			resp1, resp2 *servicepb.ApplyResponse
 		)
 
 		wg.Add(2)
 		go func() {
 			defer wg.Done()
 
-			_, err1 = client.Apply(ctx, revertReq)
+			resp1, err1 = client.Apply(ctx, revertReq)
 		}()
 		go func() {
 			defer wg.Done()
 
-			_, err2 = client.Apply(ctx, revertReq)
+			resp2, err2 = client.Apply(ctx, revertReq)
 		}()
 		wg.Wait()
 
-		// If both are transient, nothing to check.
+		// Inspect only acknowledged successes. Unkeyed interceptor retries can
+		// return already-reverted after losing a committed success response;
+		// neither that outcome nor a transient error proves absence of an effect.
+		for i, result := range []*servicepb.ApplyResponse{resp1, resp2} {
+			if []error{err1, err2}[i] != nil {
+				continue
+			}
+			checkErr := validateReversal(result, ledger, txID, postings)
+			assert.AlwaysOrUnreachable(checkErr == nil,
+				"successful concurrent revert contains exactly the expected reversal",
+				details.With(internal.Details{"worker": i, "error": checkErr}))
+		}
+
+		// If both are transient, nothing conclusive to check.
 		if internal.IsTransient(err1) && internal.IsTransient(err2) {
 			return
 		}
 
-		// 3. Exactly one should succeed and the other should fail with
-		// TRANSACTION_ALREADY_REVERTED (FailedPrecondition).
-		// Under chaos, both may fail transiently, which is acceptable.
+		// 3. At most one call may report success. An unkeyed retry after a
+		// lost success can leave both calls reporting already-reverted; both
+		// may also fail transiently. Neither implies that no revert committed.
 		successes := 0
 		alreadyReverted := 0
 

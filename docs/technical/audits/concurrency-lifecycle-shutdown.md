@@ -16,7 +16,7 @@ that authorizes each operation:
 | Token | Current examples | Required rejection or join boundary |
 | --- | --- | --- |
 | Fx process lifetime | bootstrap hooks, HTTP/gRPC servers, stores, metrics registrations, health workers | Failed start unwinds only acquired resources. Stop rejects new work, unregisters callbacks and joins owned goroutines before dependencies close. An expired graceful HTTP drain cancels request contexts, closes active transports and joins handlers; a timed-out outer Fx call alone is not proof that a hook or worker has exited. |
-| Node run generation | `Node.Run`, `Applier`, transport, maintenance and FSM tasks | The persistent stop request is published once. Commit drain and child joins complete before node-owned storage or transport can close. |
+| Node run generation | `Node.Run`, `Applier`, transport, maintenance and FSM tasks | The persistent stop request is published once. Commit drain and child joins complete before node-owned storage or transport can close. After the ready processor exits, cancel and join the final leader-ready waiter and synchronous callback before FSM cleanup or Run completion, including task failure and prior leadership loss. |
 | Ordered leadership generation | node observer, event and mirror managers, backup orchestrator, leader-only reconcilers | The transition is recorded synchronously in observer order. Work that captured generation N cannot install or remove generation N+1 resources; Stop advances a terminal generation. |
 
 | Replicated resource identity | named sink configuration, mirror ledger incarnation/source, backup job and destination | Replacement invalidates old local ownership even if a human-readable name is reused. The successor resumes only from the replicated cursor/state promised by that subsystem. |
@@ -26,6 +26,7 @@ that authorizes each operation:
 | Durable cursor | indexbuilder, auditindexer, usagebuilder and tail workers | Process Stop joins the fold. Restart resumes from the subsystem's atomic durable cursor contract; leadership alone does not restart per-replica workers. |
 | Request or session context | snapshot, restore, file stream, read lease and query checkpoint | Cancellation and completion converge on exactly-once release and cannot publish partial or superseded output. |
 | Admission request and proposal future | admission read handles, proposal guards and any request-scoped lifecycle lock | A request owns only the work it declared. Release every lifecycle lock before waiting for the proposal future. Never retain that lock through FSM application. The proposal guard is released when `Propose` returns; read handles close at their owning boundary. |
+| Drain epoch and pending marker | `Node.BeginDrain`, membership fence and proposal queue | Once a marker is enqueued, caller cancellation cannot reopen membership or write admission. Keep the pending fence until the marker applies or Raft definitively drops it. A release clears the applied gate only when its own Raft entry applies. |
 
 For event sinks, include startup-error report and clear proposals in the
 leadership-generation check. A manager-owned emitter waits for startup-error
@@ -36,6 +37,28 @@ Cache rotation is an FSM/cache consistency mechanism, not authority to restart
 unrelated workers. Likewise a leadership term alone is not a complete resource
 identity when configuration, ledger incarnation or pending version can change
 within the term.
+
+## Node hook deadline ownership
+
+Once the bootstrap node stop hook is entered, it calls `Node.Stop` with the
+original stop context, joins `Run` independently of that context and of the
+Stop result, then cancels the run context and returns any original Stop error.
+The context must stay live while a blocked commit drains. Leadership transfer
+still precedes the persistent stop request; direct `Node.Stop` callers retain
+their bounded wait. A permanently stalled drain can hold the entered hook.
+
+Use deterministic hook barriers for cancellation during Stop, deadline expiry,
+an already-expired context, an ordinary Stop error and early successful Stop.
+Assert that hook return and run-context cancellation follow actual Run exit.
+Complement that oracle with a real-node blocked post-commit notification: the
+proposal remains pending until release, then its durable result and Run join
+must complete. Preserve successful drain and failed-start regression triggers.
+
+Check real Fx execution separately: its outer `App.Stop` may return before the
+hook joins and its expired context skips remaining dependency stop hooks. Prove
+normal dependency release after Run exit; explicitly release skipped resources
+only after joining in the timeout fixture. Do not infer process survival or
+complete dependency cleanup from the hook's join guarantee.
 
 ## Evidence required for a finding
 
@@ -87,7 +110,41 @@ construction can register concurrently, require synchronization and idempotent
 identity; do not classify immutable generated tables or sentinel errors as
 lifecycle state merely because they are global variables.
 
+Event sink construction receives the captured leadership-generation context
+through the factory registry. Loss or terminal Stop must cancel that context
+before reconciliation is joined. Verify independent blocked-constructor loss/
+regain and direct-Stop cases, as well as successful obsolete returns: the latter
+must close exactly once before emitter startup, and obsolete errors must not
+report status or schedule retries. Constructor failure cleanup remains owned by
+the constructor; successful-result cleanup transfers to the Manager. Preserve
+the independent emitter delivery/cursor drain lifetime.
+
+The oracle proves context propagation and cooperative cancellation, not prompt
+termination of all driver work. Inspect real adapters as well as controlled
+Ping/DDL connections: native ClickHouse dial/handshake/Ping reads may wait for
+driver timeouts, and Databricks polling/operation/session cleanup can detach
+cancellation. Record these limits rather than treating a cooperative fake or
+resource-close count as evidence of a whole-constructor shutdown bound. See the
+[events initialization contract](../architecture/subsystems/events-mirror/events.md#sink-initialization-and-cancellation-en-2921).
+
 ## Concurrent transition scenarios
+
+PostgreSQL mirror gap reads add a source-session lifetime beneath the worker.
+A gap read owns one pooled `READ COMMITTED` transaction and a bucket-wide
+`SHARE` lock until commit or rollback. `NOWAIT` conflicts return immediately;
+the failed transaction must still be rolled back. When the fetch context is
+cancelled after lock acquisition, rollback uses a detached context with a
+five-second timeout. A failed pgx rollback closes the connection. No live
+transaction may return to the pool, and no source lock may survive into
+translation, preload or Raft application.
+
+The adapter's integration regression cancels from a real pgx query tracer
+immediately after successful lock acquisition. Its oracle includes no returned
+rows, retry through a single-connection pool, and an independent source INSERT
+afterward to detect leaked locks. Keep the manager's existing independent
+initialization/leadership-loss cancellation tests: cancelling a gap fetch does
+not prove cancellation of source construction, or vice versa. Applied source
+ordering and permanent-gap semantics belong to `mirror-ingestion-contracts`.
 
 At minimum, attempt to falsify these sequences with deterministic barriers:
 
@@ -110,6 +167,23 @@ At minimum, attempt to falsify these sequences with deterministic barriers:
    application is a failure. Separately verify the read-handle owner and close
    boundary, and whether an unrelated request can proceed. Repeat with a type
    transition that claims a wider lifecycle scope.
+8. A drain marker is enqueued and the caller times out before its result is
+   known. Interleave a membership change and a write with marker application
+   or definitive drop. Verify the fence stays closed until the outcome is
+   known, and that cancellation does not advance the cutoff or release epoch.
+
+For node readiness, hold a synchronous `LeaderReadyEvent` callback after entry
+and separately hold the real FSM catch-up wait. Exercise normal stop and task
+failure, then assert the final generation is cancelled and joined before
+`Run` publishes completion. Repeat cancellation after leadership loss and with
+concurrent callers to prove close-once behavior without skipping any join.
+Cancellation cannot forcibly interrupt an executing observer; dependency closure
+must wait for it to return. The production cluster-config observer must use the
+readiness event's generation context for its blocking proposal. Hold its FSM
+future after Raft acceptance, cancel the generation, and prove the observer
+returns without waiting for its independent 30-second timeout. Retain the normal
+HTTP-failure process regression to cover application shutdown wiring. Preserve
+the independent commit-drain and leadership-loss ordering regressions.
 
 Record initial and final generations, identities, goroutine completion, resource
 close counts, proposal/publication counts and durable cursor bytes. A test using
@@ -130,6 +204,7 @@ reports and active fixes by mechanism, not only title.
 | `event-delivery-contracts` / `mirror-ingestion-contracts` | Own delivery acknowledgement/cursor semantics and source transformation respectively. This domain owns leader/config generation, resource shutdown and stale callback effects. |
 | `idempotency-retries-partial-failures` | Owns logical retry identity and ambiguous external outcomes. This domain owns the retry goroutine or callback outliving its authority token. |
 | `runtime-health-admission-contracts` | Owns measurement-to-verdict and admission consumption. This domain owns health worker/callback start, stop, join and stale-owner behavior. |
+| `operator-reconciliation-durability` | Owns persisted annotation intent, phase transitions and retries across controller replacement. This domain owns local cancellation and lock lifetime while a drain call is pending. |
 | `test-reachability-enforcement` | Owns test collection and CI execution. A missing concurrency test supports a concrete finding here but is not a separate product defect. |
 
 Follow callees outside the manifest only to prove the scoped lifecycle path. If

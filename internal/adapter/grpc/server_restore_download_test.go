@@ -2,6 +2,8 @@ package grpc
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"io"
 	"strings"
@@ -18,6 +20,9 @@ import (
 	"github.com/formancehq/ledger/v3/internal/infra/backup"
 	"github.com/formancehq/ledger/v3/internal/proto/restorepb"
 )
+
+// checkpointPayload is the body every mocked checkpoint object serves.
+const checkpointPayload = "payload"
 
 func TestClampParallelism(t *testing.T) {
 	t.Parallel()
@@ -249,7 +254,7 @@ func TestDownloadCheckpointFiles_RespectsParallelism(t *testing.T) {
 				<-barrierFull
 			}
 
-			return io.NopCloser(strings.NewReader("payload")), nil
+			return io.NopCloser(strings.NewReader(checkpointPayload)), nil
 		})
 
 	s := NewRestoreServiceServer(t.TempDir(), "test-cluster", parallelism, noopLogger{})
@@ -351,10 +356,15 @@ func TestStartDownloadBackup_RejectsAfterSuccess(t *testing.T) {
 // content-addressed key derived from its filename (the mock storage ignores the
 // key, so the exact hash is irrelevant here).
 func checkpointFilesFor(n int) map[string]backup.CheckpointFile {
+	// Every mocked object serves checkpointPayload, so each entry carries its
+	// real size and sha256 and passes CopyVerified.
+	sum := sha256.Sum256([]byte(checkpointPayload))
+	hash := hex.EncodeToString(sum[:])
+
 	files := make(map[string]backup.CheckpointFile, n)
 	for i := range n {
 		name := uniqueName(i)
-		files[name] = backup.CheckpointFile{Size: 7, Key: "prefix/" + name + ".hash"}
+		files[name] = backup.CheckpointFile{Size: int64(len(checkpointPayload)), Key: backup.CheckpointFileKey("prefix", name, hash)}
 	}
 
 	return files

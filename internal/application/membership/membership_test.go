@@ -3,6 +3,7 @@ package membership
 import (
 	"context"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/stretchr/testify/assert"
@@ -50,15 +51,17 @@ func TestService_AddLearner_ValidatesRequest(t *testing.T) {
 func TestService_AddLearner_RejectionPreservesServiceRouting(t *testing.T) {
 	t.Parallel()
 
-	s, servicePool := newMembershipServiceNodeWithPool(t)
-	const committedAddr = "self:8888"
-	require.NoError(t, servicePool.AddPeer(1, committedAddr))
-	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
-	defer cancel()
+	synctest.Test(t, func(t *testing.T) {
+		s, servicePool := newMembershipServiceNodeWithPool(t)
+		const committedAddr = "self:8888"
+		require.NoError(t, servicePool.AddPeer(1, committedAddr))
+		ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+		defer cancel()
 
-	err := s.AddLearner(ctx, 1, "self:7777", "attacker:8080", []byte("self-instance-id"))
-	require.ErrorIs(t, err, node.ErrNodeAlreadyInCluster)
-	require.Equal(t, committedAddr, servicePool.GetPeerAddress(1))
+		err := s.AddLearner(ctx, 1, "self:7777", "attacker:8080", []byte("self-instance-id"))
+		require.ErrorIs(t, err, node.ErrNodeAlreadyInCluster)
+		require.Equal(t, committedAddr, servicePool.GetPeerAddress(1))
+	})
 }
 
 func TestService_JoinAsLearner_RejectsMissingInstanceID(t *testing.T) {

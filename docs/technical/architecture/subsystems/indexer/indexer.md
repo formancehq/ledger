@@ -71,12 +71,19 @@ flowchart TB
     C -->|CreateIndex / DropIndex| H6[config mutation]
     H1 & H2 & H3 & H4 --> WB[Buffer writes into WriteBatch]
     H5 & H6 --> WB
-    WB --> D{Batch non-empty<br/>or checkpoint pending?}
-    D -->|yes| E[Pass 2: write progress cursor +<br/>commit batch to ReadStore]
-    D -->|no| F[Defer progress write to next non-empty batch]
+    WB --> D{Checkpoint action pending?}
+    D -->|yes| G[Commit projection batch<br/>without progress cursor]
+    G --> H[Run checkpoint filesystem action]
+    H --> I[Commit progress cursor separately]
+    D -->|no| J{Index writes or<br/>fixed target reached?}
+    J -->|yes| E[Pass 2: write progress cursor +<br/>commit batch to ReadStore]
+    J -->|no| F[Defer progress write to next committed batch]
 ```
 
-`internal/application/indexbuilder/process_logs.go`.
+`internal/application/indexbuilder/process_logs.go` owns the fold and progress
+commits; `process_logs_checkpoint.go` owns checkpoint provenance,
+materialization, and deletion; `process_logs_indexing.go` owns payload dispatch
+and index handlers.
 
 ### Pass 1 — iterate + dispatch
 
@@ -88,9 +95,23 @@ flowchart TB
 
 ### Pass 2 — commit (or skip)
 
-- If the batch is non-empty (or a checkpoint action is pending), the progress cursor is **written into the same batch** and the batch is committed in one `batch.Commit()`. This makes "index writes" and "indexer progress" atomic — a crash mid-pass cannot leave the progress ahead of the data.
-- If the batch is **empty** (no log type in the range produced index writes), the Pebble batch is skipped entirely and the progress cursor is persisted lazily on the next non-empty batch (or via a small dedicated batch at loop exit). This reduces fsyncs to `O(1)` per active batch instead of `O(1)` per tick.
+- When a batch without a checkpoint action is committed, the progress cursor is **written into the same batch** as its index writes. A crash mid-pass cannot leave progress ahead of the data.
+- If a batch has no index writes, has not reached the fixed native target, and has no checkpoint action, its Pebble batch is skipped. The progress cursor is persisted with the next committed batch or in one dedicated batch at loop exit. This coalesces progress writes across empty batches.
 - Query-checkpoint create/delete operations force a batch boundary so the checkpoint state is never persisted across two passes.
+- A continuation retains the first main-store snapshot's native and Raft target.
+  Its consumed native frontier bounds each batch, including empty batches whose
+  progress write is coalesced. Logs committed after that target wait for a new
+  pass. A checkpoint log is carried into its own batch. Its projection batch
+  commits first, then the filesystem create/delete action runs, then a separate
+  progress batch moves the durable cursor past that log. Failure before the last
+  commit leaves the cursor before the checkpoint log for retry; a ready
+  directory makes a repeated materialization harmless. Restored checkpoints
+  and checkpoints already deleted in the fixed snapshot wait for the full
+  destination Raft target before certification.
+- A run of batches without projection writes commits native and
+  AppliedProposal progress once at exit. It includes the Raft certificate only
+  after reaching the fixed native target. When Raft advances without a native
+  log, the builder commits the certificate alone after reaching that target.
 - `WriteBatch` records which event zones actually received an event-key put.
   The builder snapshots that mask before commit and advances the corresponding
   in-memory GC write epochs only after `Flush` succeeds. Failed, cancelled,
@@ -113,7 +134,7 @@ At `CreateIndex`, `EMPTY` promotes a fresh version directly (`current > 0`, `pen
 
 ## Handlers
 
-`internal/application/indexbuilder/process_logs.go` — the `indexPayload` dispatcher and every per-payload handler live in this single file.
+`internal/application/indexbuilder/process_logs_indexing.go` — the `indexPayload` dispatcher and every per-payload handler live in this file.
 
 | Log type | Handler | What it writes |
 |----------|---------|---------------|
@@ -230,9 +251,9 @@ entity-first layout grouped all metadata for one entity but forced schema
 rewrite, old-version GC, and field removal to scan the whole namespace.
 Field/version-first makes those operations proportional to the affected field
 and version. The ingestion benchmarks cover 1, 4, and 12 indexed fields so the
-lost per-entity write locality remains measurable. Ledger v3 is unreleased, so
-the format changes directly without migration, dual-format writes, or fallback
-reads.
+lost per-entity write locality remains measurable. This format change preceded
+`v3.0.0-rc.1`; later releases must preserve or migrate existing data under the
+[upgrade policy](../../../../ops/upgrades.md#release-requirement-from-v300-rc1).
 
 ### Value encoding
 

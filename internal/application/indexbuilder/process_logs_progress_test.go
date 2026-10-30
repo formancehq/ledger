@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/stretchr/testify/require"
@@ -102,6 +103,55 @@ func TestProjectionTargetSnapshotExcludesCommitBetweenReads(t *testing.T) {
 	require.NoError(t, err)
 	require.Zero(t, sequence,
 		"the target sequence read must share the snapshot captured before the concurrent commit")
+}
+
+func TestPinProjectionTargetKeepsFirstSnapshotAcrossContinuation(t *testing.T) {
+	t.Parallel()
+	b := newTestBuilderWithStore(t)
+	seedLogTarget(t, b, 9, 2)
+	handle, err := b.pebbleStore.NewReadHandle()
+	require.NoError(t, err)
+	require.NoError(t, b.pinProjectionTarget(handle))
+	require.NoError(t, handle.Close())
+	require.Equal(t, uint64(9), b.projectionTargetAppliedIndex)
+	require.Equal(t, uint64(2), b.projectionTargetSequence)
+
+	seedLogTarget(t, b, 10, 3)
+	handle, err = b.pebbleStore.NewReadHandle()
+	require.NoError(t, err)
+	defer func() { _ = handle.Close() }()
+	require.NoError(t, b.pinProjectionTarget(handle))
+	require.Equal(t, uint64(9), b.projectionTargetAppliedIndex)
+	require.Equal(t, uint64(2), b.projectionTargetSequence)
+}
+
+func TestCheckpointHorizonUsesDestinationForRestoredOrDeletedState(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name     string
+		seed     bool
+		restored bool
+		want     uint64
+	}{
+		{name: "live", seed: true, want: 7},
+		{name: "restored", seed: true, restored: true, want: 11},
+		{name: "deleted in snapshot", want: 11},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			b := newTestBuilderWithStore(t)
+			if tc.seed {
+				seedQueryCheckpointState(t, b, 3, 7, tc.restored)
+			}
+			handle, err := b.pebbleStore.NewReadHandle()
+			require.NoError(t, err)
+			defer func() { _ = handle.Close() }()
+			horizon, restored, err := checkpointHorizon(handle, 3, 7, 11)
+			require.NoError(t, err)
+			require.Equal(t, tc.want, horizon)
+			require.Equal(t, tc.restored || !tc.seed, restored)
+		})
+	}
 }
 
 func TestProcessLogsPublishesRaftHorizonOnlyAfterFinalNativeBatch(t *testing.T) {
@@ -294,73 +344,74 @@ func TestProcessLogsWaitsForAuditBeforeFreezingQueryCheckpoint(t *testing.T) {
 func TestProcessLogsWaitsWhenAuditStartsRebuilding(t *testing.T) {
 	t.Parallel()
 
-	b := newTestBuilderWithStore(t)
-	b.notifications = signal.NewNotifications()
-	b.batchSize = 1
+	synctest.Test(t, func(t *testing.T) {
+		b := newTestBuilderWithStore(t)
+		b.notifications = signal.NewNotifications()
+		b.batchSize = 1
 
-	const (
-		checkpointID = uint64(42)
-		horizon      = uint64(32)
-	)
-	batch := b.pebbleStore.OpenWriteSession()
-	require.NoError(t, state.AppendLogs(batch, []*commonpb.Log{{
-		Sequence: 1,
-		Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_CreatedQueryCheckpoint{
-			CreatedQueryCheckpoint: &commonpb.CreatedQueryCheckpointLog{
-				CheckpointId: checkpointID,
-				MaxSequence:  1,
-				AppliedIndex: horizon,
-			},
-		}},
-	}}))
-	require.NoError(t, state.SetAppliedIndex(batch, horizon))
-	require.NoError(t, batch.Commit())
-	seedQueryCheckpointState(t, b, checkpointID, horizon, false)
+		const (
+			checkpointID = uint64(42)
+			horizon      = uint64(32)
+		)
+		batch := b.pebbleStore.OpenWriteSession()
+		require.NoError(t, state.AppendLogs(batch, []*commonpb.Log{{
+			Sequence: 1,
+			Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_CreatedQueryCheckpoint{
+				CreatedQueryCheckpoint: &commonpb.CreatedQueryCheckpointLog{
+					CheckpointId: checkpointID,
+					MaxSequence:  1,
+					AppliedIndex: horizon,
+				},
+			}},
+		}}))
+		require.NoError(t, state.SetAppliedIndex(batch, horizon))
+		require.NoError(t, batch.Commit())
+		seedQueryCheckpointState(t, b, checkpointID, horizon, false)
 
-	type result struct {
-		cursor uint64
-		err    error
-	}
-	ctx, cancel := context.WithCancel(t.Context())
-	defer cancel()
-	done := make(chan result, 1)
-	go func() {
-		cursor, err := b.processLogs(ctx, 0, time.Time{})
-		done <- result{cursor: cursor, err: err}
-	}()
+		type result struct {
+			cursor uint64
+			err    error
+		}
+		ctx, cancel := context.WithCancel(t.Context())
+		defer cancel()
+		done := make(chan result, 1)
+		go func() {
+			cursor, err := b.processLogs(ctx, 0, time.Time{})
+			done <- result{cursor: cursor, err: err}
+		}()
 
-	require.Eventually(t, func() bool {
+		// Wait returns once processLogs is parked on the audit wait.
+		synctest.Wait()
 		progress, err := b.readStore.ReadRaftProgress()
+		require.NoError(t, err)
+		require.Equal(t, horizon, progress)
+		b.readStore.SetAuditProjectionState(false, true)
+		auditBatch := b.readStore.NewBatch()
+		require.NoError(t, b.readStore.WriteAuditRaftProgress(auditBatch, horizon))
+		require.NoError(t, auditBatch.Commit())
+		b.readStore.NotifyProgress()
 
-		return err == nil && progress == horizon
-	}, 5*time.Second, 10*time.Millisecond)
-	b.readStore.SetAuditProjectionState(false, true)
-	auditBatch := b.readStore.NewBatch()
-	require.NoError(t, b.readStore.WriteAuditRaftProgress(auditBatch, horizon))
-	require.NoError(t, auditBatch.Commit())
-	b.readStore.NotifyProgress()
-
-	require.Never(t, func() bool {
+		// Wait returns only after processLogs has observed the rebuilding
+		// projection and parked again.
+		synctest.Wait()
 		select {
 		case <-done:
-			return true
+			t.Fatal("processLogs must not abandon a checkpoint while the audit projection rebuilds")
 		default:
-			return false
 		}
-	}, 100*time.Millisecond, 10*time.Millisecond,
-		"processLogs must not abandon a checkpoint while the audit projection rebuilds")
-	require.False(t, dal.CheckpointDirReady(b.pebbleStore.QueryCheckpointReadIndexDir(checkpointID)),
-		"a rebuilding audit projection must keep the checkpoint unmaterialized")
+		require.False(t, dal.CheckpointDirReady(b.pebbleStore.QueryCheckpointReadIndexDir(checkpointID)),
+			"a rebuilding audit projection must keep the checkpoint unmaterialized")
 
-	b.readStore.SetAuditProjectionState(false, false)
-	select {
-	case got := <-done:
-		require.NoError(t, got.err)
-		require.Equal(t, uint64(1), got.cursor)
-	case <-time.After(5 * time.Second):
-		t.Fatal("processLogs did not resume after the audit projection became ready")
-	}
-	require.True(t, dal.CheckpointDirReady(b.pebbleStore.QueryCheckpointReadIndexDir(checkpointID)))
+		b.readStore.SetAuditProjectionState(false, false)
+		select {
+		case got := <-done:
+			require.NoError(t, got.err)
+			require.Equal(t, uint64(1), got.cursor)
+		case <-time.After(5 * time.Second):
+			t.Fatal("processLogs did not resume after the audit projection became ready")
+		}
+		require.True(t, dal.CheckpointDirReady(b.pebbleStore.QueryCheckpointReadIndexDir(checkpointID)))
+	})
 }
 
 func TestProcessLogsLeavesCheckpointUnavailableWhenAuditIsDisabled(t *testing.T) {

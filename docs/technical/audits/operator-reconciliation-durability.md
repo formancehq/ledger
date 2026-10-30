@@ -49,15 +49,153 @@ Ledger process restart and cluster-level availability from recovery of the
 intended PVC/node. Record inspected areas and untested boundaries in residual
 risk rather than claiming exhaustive coverage.
 
+## Annotated drain and release boundary
+
+`ledger.formance.com/drain` is an intent on the Cluster CR. The persisted
+`status.drain` epoch and phase, not an in-memory reconcile invocation, identify
+the transition across retries and controller replacement. `Preflighting` can be
+cancelled before a marker is proposed. Once a marker may have been committed,
+removing the annotation requires release of the same epoch; `Releasing` must be
+persisted before the release call. A re-added annotation after release needs a
+new epoch. `Drained=True` requires a matching current membership and a durable
+cutoff acknowledgement from every captured member. A missing or syncing member
+keeps the phase incomplete and the Pods running.
+
+Trace the actual status-write, Ledger-RPC and annotation-observation order,
+including a lost RPC response and restart after each durable prefix. During a
+transition, the live owned StatefulSet supplies replica count, gRPC port and
+TLS mode. A simultaneous desired storage-backend edit remains a separate
+operator transition risk tracked in EN-3230; do not assume the live transport
+snapshot makes the StatefulSet recreation safe. Use the annotated-drain
+Chainsaw test for the admission/release path, and a fresh reconciler after
+interrupted phase writes for recovery evidence. The Ledger consensus audit owns
+the marker and member durability semantics; this domain owns the controller's
+decision and truthful status.
+
+## Derived object ownership boundary
+
+Cluster-derived object names are not unique by construction (see
+[derived object ownership](../architecture/subsystems/operator/derived-object-ownership.md)).
+A name match is never proof of ownership. A finding here must show a reachable
+path that adopts, mutates, deletes, reports or execs into an object under a
+derived name without first establishing that the Cluster's UID controls it
+(for a pod: that the Cluster's StatefulSet UID controls it), or that deletes it
+by name without pinning the delete to the inspected UID. A refused orphan or a
+same-name object awaiting garbage collection is the documented
+`ResourceNamesAvailable=False` behaviour, not a defect by itself.
+
+The UID delete precondition guarantees identity only: an ownerReference change
+on the same object between the read and the delete is an accepted race, and so
+is a pod replaced between its ownership read and the exec stream, or a Service
+replaced between its check and a backup Job dialing it. A finding about one of
+these must show more than that window.
+
+## Ledger target admission boundary
+
+Ledger `spec.name` and `spec.clusterRef` are immutable from CR creation through
+API-server CEL transition validation. Include Pending resources and updates
+combined with promotion or index changes: an unknown creation outcome must not
+permit retargeting. API-server rejection must leave the stored target unchanged;
+deleting that CR must select the original ledger and leave distinguishable
+external ledgers in either Cluster untouched. Fake clients and exported JSON
+schemas do not enforce this transition boundary.
+
+For upgrades, distinguish newly admitted edits from target drift already stored
+before these rules were installed. The operator must be stopped while existing
+CRs, including ambiguous Pending creations, are inventoried and recovered before
+installing the rules. The applied hash cannot recover original identity, and
+installing immutability freezes the current values. Do not treat rejection of
+future edits as retrospective identity recovery, external ownership proof, or
+fencing against a Cluster recreated under the same name. Ledger cleanup remains
+best-effort after target selection; endpoint/exec failure can leave the external
+ledger after finalizer removal.
+
 ## Backup Secret delivery boundary
 
 Backup S3 static authentication uses same-namespace Secret key references.
-Reconciliation persists the Job before setting the BackupRun to Running; kubelet
+Reconciliation reserves the BackupRun as Running before persisting the Job; kubelet
 credential resolution happens later. A missing required Secret/key prevents
 container startup, so Running does not establish delivery or backup success.
 Subsequent container starts resolve current Secret values; existing process
 environments do not change on Secret updates. Check these transitions separately
 from confidentiality, which is owned by `sensitive-data-exposure-boundaries`.
+
+## TLS disable recovery boundary
+
+Removing `spec.tls`, or setting `enabled: false` while clearing `secretName`,
+is a supported disable request. Optional mode must retain the previous
+certificate Secret and CA references. Trace `status.tlsRollout` persistence
+before StatefulSet mutation or orphan deletion, then reconstruct a fresh
+reconciler from each persisted prefix. A failed recovery-status write must
+leave the workload untouched. A missing StatefulSet with retained rollout state
+is interrupted reconciliation, not evidence of a new plaintext bootstrap.
+New backup Jobs must resolve mode and certificate/CA references from one
+current owned StatefulSet template, rather than mixing observed mode with
+already-cleared desired TLS. Missing workloads during recreation must cause
+retry without creating a plaintext Job; foreign ownership must reject creation.
+In-pod ledgerctl calls from Ledger and EventSink reconciliation must also
+return a retryable lookup error before exec while the StatefulSet is absent,
+then read the recreated workload mode on retry. Cover both callers separately
+and exercise missing-then-recreated optional, required and disabled workloads.
+An existing Job's persisted template remains its configuration source. Prove a
+real missing-workload failure followed by successful provisioning after owned
+workload recovery, and preserve prior backup error/response-loss regressions.
+The certificate Secret remains user-owned and available until disable finishes;
+its lifetime differs from the operator-managed inter-node bearer Secret.
+
+Prove both omitted TLS and a cleared certificate reference through the real
+StatefulSet reconcile path. Interrupt after recovery-state persistence and
+after orphan deletion, replace the reconciler, and assert optional-mode
+certificate/CA continuity, the recovered mode, unchanged desired spec and final
+disabled-template convergence before recovery-state cleanup. Selecting a
+disabled template or reporting `tlsMigrationPhase: disabled` alone does not
+establish that every Pod has rolled. Use non-empty pre/post transaction data
+as the availability/data oracle in the TLS-disable Chainsaw fixture. Fake
+clients establish API-write ordering, not StatefulSet adoption, admission,
+rolling-update behavior or real peer/CLI connectivity; disclose those limits.
+
+## Scale-down PVC cleanup boundary
+
+The StatefulSet annotation recording the previous replica count is written
+before Raft membership removal. A failed membership step leaves the old
+StatefulSet replica count intact. After the lower replica count is persisted,
+the annotation and the StatefulSet claim templates identify removed-ordinal
+PVCs on a fresh reconcile. Cleanup must run before a later scale-up can reuse
+them. A failed deletion or marker-clear write leaves retryable state; a
+successful deletion of an already-absent PVC is idempotent. Verify the marker
+survives a failed DELETE after the replica write and disappears only after all
+removed PVC deletions are accepted. Distinguish API acceptance from eventual
+Kubernetes garbage collection and check the actual PVC identities after retry.
+
+## Sequential RC and storage transition boundary
+
+For an RC target, trace the running image rather than assuming the desired CR
+is the predecessor. Reject a skipped RC or an unfinished source rollout before
+mutating the StatefulSet. When an adjacent RC change coincides with an immutable
+WAL/data claim-template change, the interim image rollout must retain the old
+Pod storage volumes and mounts as well as the old claim templates. Only after
+the RC rollout converges may orphan/recreate install the requested storage
+layout. Test both hostPath-to-PVC and PVC-to-hostPath against a Kubernetes API
+server: a fake client does not validate the interim Pod template. Reconstruct
+an interrupted rollout with a fresh reconciler, and inspect retained Pods or
+PVCs when the StatefulSet is absent so source verification cannot be skipped.
+
+## Completed backup result observation
+
+For a successful owned Job, distinguish result acquisition from interpretation.
+Pod-list failures, temporarily absent Pods and fallback log open/read errors must
+preserve the nonterminal reservation and retry across fresh reconciler instances.
+A malformed acquired summary or failed Job remains terminal. Inspect diagnostic
+write failures and repeated errors as separate persisted prefixes: no completion
+or successful summary is certified before the result status write succeeds.
+
+Use the result-read and fallback-log recovery regressions as evidence oracles:
+verify actual fail-then-success acquisition, unchanged Job identity, final literal
+summary values, sibling exclusion and parent full-summary/incremental eligibility.
+With zero history retention, the run must survive pending acquisition and can be
+pruned only after terminal accounting is recorded. These fake-client and HTTP
+fixtures do not prove Kubernetes garbage collection, kubelet execution or live
+manager backoff. Historical terminal failures are not automatically reopened.
 
 ## Severity
 
@@ -119,8 +257,8 @@ corrections; explain their dependency.
   Explicit volume-retention choices, admission exemptions and intermediate TLS
   modes must be assessed against their actual contracts.
 - Rollback means compensating an interrupted operation or reverting a supported
-  desired-state edit. It does not require wire/storage compatibility between
-  unreleased v3 revisions or safe arbitrary binary downgrade.
+  desired-state edit. Upgrades from `v3.0.0-rc.1` onward must preserve data;
+  safe arbitrary binary downgrade is outside scope.
 - Dynamic scenarios in the manifest are optional evidence strategies, not
   authorization to mutate an external cluster or add a reproducer during an
   audit. The native audit and challenge remain read-only. Report diagnostics

@@ -145,9 +145,10 @@ not include usagestore.
 
 ## Reconstruction semantics
 
-Ledger v3 is unreleased and its audit history is permanent. The usagestore may
+Ledger v3 audit history is permanent. The usagestore may
 therefore always be reconstructed completely from audit sequence 0; there is no
-lossy cutover boundary or compatibility path for an older v3 storage format.
+lossy cutover boundary. Storage formats from before `v3.0.0-rc.1` are outside
+the release upgrade guarantee; later versions must preserve the audit history.
 Fresh and rebuilt ledgers converge to the same counters derived from the full
 audit chain.
 

@@ -117,7 +117,7 @@ var _ = Describe("Events Sinks Databricks", Ordered, func() {
 		qualifiedTable := fmt.Sprintf("%s.%s.%s", dbCatalog, dbSchema, table)
 
 		type eventRow struct {
-			LogSequence int64
+			LogSequence string
 			Type        string
 			Ledger      string
 			Date        time.Time

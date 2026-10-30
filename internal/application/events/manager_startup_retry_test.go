@@ -7,6 +7,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/stretchr/testify/require"
@@ -221,57 +222,66 @@ func TestManager_RetriesTransientSinkConstructorFailure(t *testing.T) {
 		delete(sinkFactories, "nats")
 	})
 
-	var attempts atomic.Int64
-	allowSuccess := make(chan struct{})
-	sinkFactories["nats"] = func(*commonpb.SinkConfig, Format) (Sink, error) {
-		attempts.Add(1)
-		select {
-		case <-allowSuccess:
-		default:
-			return nil, errors.New("dependency temporarily unavailable")
+	synctest.Test(t, func(t *testing.T) {
+		var attempts atomic.Int64
+		allowSuccess := make(chan struct{})
+		sinkFactories["nats"] = func(context.Context, *commonpb.SinkConfig, Format) (Sink, error) {
+			attempts.Add(1)
+			select {
+			case <-allowSuccess:
+			default:
+				return nil, errors.New("dependency temporarily unavailable")
+			}
+
+			return startupRetryTestSink{}, nil
 		}
 
-		return startupRetryTestSink{}, nil
-	}
-
-	builder, store := newTestBuilder(t)
-	attrs := attributes.New()
-	config := &commonpb.SinkConfig{
-		Name: "transient-constructor-failure",
-		Type: &commonpb.SinkConfig_Nats{
-			Nats: &commonpb.NatsSinkConfig{
-				Url:   "nats://dependency.invalid:4222",
-				Topic: "ledger.events",
+		builder, store := newTestBuilder(t)
+		attrs := attributes.New()
+		config := &commonpb.SinkConfig{
+			Name: "transient-constructor-failure",
+			Type: &commonpb.SinkConfig_Nats{
+				Nats: &commonpb.NatsSinkConfig{
+					Url:   "nats://dependency.invalid:4222",
+					Topic: "ledger.events",
+				},
 			},
-		},
-	}
-	saveManagedSinkConfig(t, attrs, store, config)
+		}
+		saveManagedSinkConfig(t, attrs, store, config)
 
-	proposer := &startupStatusProposer{store: store}
-	m := NewManager(store, attrs, proposer, builder, logging.Testing(), signal.NewNotifications())
-	m.Start()
-	t.Cleanup(m.Stop)
-	m.OnLeadershipChange(true)
+		proposer := &startupStatusProposer{store: store}
+		m := NewManager(store, attrs, proposer, builder, logging.Testing(), signal.NewNotifications())
+		m.Start()
+		t.Cleanup(m.Stop)
+		m.OnLeadershipChange(true)
 
-	require.Eventually(t, func() bool {
+		// No fake time has passed, so the retry timer cannot have fired yet.
+		synctest.Wait()
 		status, err := startupStatusView(store, config)
+		require.NoError(t, err)
+		require.Equal(t, "sink startup: dependency temporarily unavailable", status.GetError().GetMessage())
+		require.NotNil(t, status.GetError().GetOccurredAt())
+		require.True(t, pendingStartupRetry(m, config.GetName()),
+			"the initial leadership reconcile must try the sink constructor and schedule a retry")
+		require.Equal(t, int64(1), attempts.Load())
+		require.Equal(t, int64(1), proposer.updates.Load())
 
-		return err == nil && status.GetError().GetMessage() == "sink startup: dependency temporarily unavailable" &&
-			status.GetError().GetOccurredAt() != nil && pendingStartupRetry(m, config.GetName())
-	}, time.Second, 10*time.Millisecond, "the initial leadership reconcile must try the sink constructor and schedule a retry")
-	require.Equal(t, int64(1), proposer.updates.Load())
-	require.Eventually(t, func() bool { return attempts.Load() >= 2 }, 3*time.Second, 10*time.Millisecond)
-	require.Equal(t, int64(1), proposer.updates.Load(), "unchanged constructor errors must not be proposed on every retry")
-	close(allowSuccess)
+		time.Sleep(3 * sinkStartupRetryDelay)
+		synctest.Wait()
+		require.GreaterOrEqual(t, attempts.Load(), int64(3))
+		require.Equal(t, int64(1), proposer.updates.Load(), "unchanged constructor errors must not be proposed on every retry")
+		close(allowSuccess)
 
-	require.Eventually(t, func() bool {
-		status, err := startupStatusView(store, config)
-
-		return err == nil && status.GetError() == nil &&
-			managedSinkByName(m, config.GetName()) != nil && !pendingStartupRetry(m, config.GetName())
-	}, 3*time.Second, 10*time.Millisecond,
-		"the unchanged sink config must recover after its constructor dependency becomes available")
-	require.Equal(t, int64(2), proposer.updates.Load(), "an unchanged retry must not re-propose the same error")
+		time.Sleep(sinkStartupRetryDelay)
+		synctest.Wait()
+		status, err = startupStatusView(store, config)
+		require.NoError(t, err)
+		require.Nil(t, status.GetError(),
+			"the unchanged sink config must recover after its constructor dependency becomes available")
+		require.NotNil(t, managedSinkByName(m, config.GetName()))
+		require.False(t, pendingStartupRetry(m, config.GetName()))
+		require.Equal(t, int64(2), proposer.updates.Load(), "an unchanged retry must not re-propose the same error")
+	})
 }
 
 func TestManager_StopCancelsSinkConstructorRetry(t *testing.T) {
@@ -286,86 +296,90 @@ func TestManager_StopCancelsSinkConstructorRetry(t *testing.T) {
 		delete(sinkFactories, "nats")
 	})
 
-	var attempts atomic.Int64
-	sinkFactories["nats"] = func(*commonpb.SinkConfig, Format) (Sink, error) {
-		attempts.Add(1)
+	synctest.Test(t, func(t *testing.T) {
+		var attempts atomic.Int64
+		sinkFactories["nats"] = func(context.Context, *commonpb.SinkConfig, Format) (Sink, error) {
+			attempts.Add(1)
 
-		return nil, errors.New("dependency unavailable")
-	}
+			return nil, errors.New("dependency unavailable")
+		}
 
-	builder, store := newTestBuilder(t)
-	attrs := attributes.New()
-	config := &commonpb.SinkConfig{
-		Name: "constructor-failure-during-stop",
-		Type: &commonpb.SinkConfig_Nats{
-			Nats: &commonpb.NatsSinkConfig{
-				Url:   "nats://dependency.invalid:4222",
-				Topic: "ledger.events",
+		builder, store := newTestBuilder(t)
+		attrs := attributes.New()
+		config := &commonpb.SinkConfig{
+			Name: "constructor-failure-during-stop",
+			Type: &commonpb.SinkConfig_Nats{
+				Nats: &commonpb.NatsSinkConfig{
+					Url:   "nats://dependency.invalid:4222",
+					Topic: "ledger.events",
+				},
 			},
-		},
-	}
-	saveManagedSinkConfig(t, attrs, store, config)
+		}
+		saveManagedSinkConfig(t, attrs, store, config)
 
-	m := NewManager(store, attrs, &startupStatusProposer{store: store}, builder, logging.Testing(), signal.NewNotifications())
-	m.Start()
-	m.OnLeadershipChange(true)
+		m := NewManager(store, attrs, &startupStatusProposer{store: store}, builder, logging.Testing(), signal.NewNotifications())
+		m.Start()
+		t.Cleanup(m.Stop)
+		m.OnLeadershipChange(true)
 
-	require.Eventually(t, func() bool {
-		return attempts.Load() == 1 && pendingStartupRetry(m, config.GetName())
-	}, time.Second, 10*time.Millisecond, "the constructor failure must schedule a retry before shutdown")
+		synctest.Wait()
+		require.Equal(t, int64(1), attempts.Load())
+		require.True(t, pendingStartupRetry(m, config.GetName()), "the constructor failure must schedule a retry before shutdown")
 
-	m.Stop()
-	require.Never(t, func() bool {
-		return attempts.Load() > 1
-	}, 2*sinkStartupRetryDelay, 10*time.Millisecond,
-		"manager shutdown must cancel the pending constructor retry")
+		m.Stop()
+		time.Sleep(5 * sinkStartupRetryDelay)
+		synctest.Wait()
+		require.Equal(t, int64(1), attempts.Load(), "manager shutdown must cancel the pending constructor retry")
+	})
 }
 
 func TestManager_WaitStartedFailureIsReportedAndCleared(t *testing.T) {
 	t.Parallel()
-	builder, store := newTestBuilder(t)
-	attrs := attributes.New()
-	config := &commonpb.SinkConfig{Name: "cursor-read-failure", Type: &commonpb.SinkConfig_Http{
-		Http: &commonpb.HttpSinkConfig{Endpoint: "https://example.invalid/events"},
-	}}
-	saveManagedSinkConfig(t, attrs, store, config)
-	proposer := &startupStatusProposer{store: store}
-	m := NewManager(store, attrs, proposer, builder, logging.Testing(), signal.NewNotifications())
-	var failRead atomic.Bool
-	var reads atomic.Int64
-	failRead.Store(true)
-	m.readSinkCursor = func(reader dal.PebbleGetter, name string) (uint64, error) {
-		reads.Add(1)
-		if failRead.Load() {
-			return 0, errors.New("cursor temporarily unavailable")
+	synctest.Test(t, func(t *testing.T) {
+		builder, store := newTestBuilder(t)
+		attrs := attributes.New()
+		config := &commonpb.SinkConfig{Name: "cursor-read-failure", Type: &commonpb.SinkConfig_Http{
+			Http: &commonpb.HttpSinkConfig{Endpoint: "https://example.invalid/events"},
+		}}
+		saveManagedSinkConfig(t, attrs, store, config)
+		proposer := &startupStatusProposer{store: store}
+		m := NewManager(store, attrs, proposer, builder, logging.Testing(), signal.NewNotifications())
+		var failRead atomic.Bool
+		var reads atomic.Int64
+		failRead.Store(true)
+		m.readSinkCursor = func(reader dal.PebbleGetter, name string) (uint64, error) {
+			reads.Add(1)
+			if failRead.Load() {
+				return 0, errors.New("cursor temporarily unavailable")
+			}
+
+			return query.ReadSinkCursor(reader, name)
 		}
-
-		return query.ReadSinkCursor(reader, name)
-	}
-	m.Start()
-	t.Cleanup(m.Stop)
-	m.OnLeadershipChange(true)
-	require.Eventually(t, func() bool {
+		m.Start()
+		t.Cleanup(m.Stop)
+		m.OnLeadershipChange(true)
+		synctest.Wait()
 		status, err := startupStatusView(store, config)
+		require.NoError(t, err)
+		require.NotNil(t, status.GetError().GetOccurredAt())
+		require.Contains(t, status.GetError().GetMessage(), "sink startup:")
+		require.True(t, pendingStartupRetry(m, config.GetName()))
+		require.Equal(t, int64(1), reads.Load())
 
-		return err == nil && status.GetError() != nil &&
-			status.GetError().GetOccurredAt() != nil && pendingStartupRetry(m, config.GetName())
-	}, time.Second, 10*time.Millisecond)
-	require.Contains(t, func() string {
-		status, _ := startupStatusView(store, config)
+		time.Sleep(3 * sinkStartupRetryDelay)
+		synctest.Wait()
+		require.GreaterOrEqual(t, reads.Load(), int64(3))
+		require.Equal(t, int64(1), proposer.updates.Load(), "unchanged startup read errors must not be proposed on every retry")
 
-		return status.GetError().GetMessage()
-	}(), "sink startup:")
-	require.Eventually(t, func() bool { return reads.Load() >= 2 }, 3*time.Second, 10*time.Millisecond)
-	require.Equal(t, int64(1), proposer.updates.Load(), "unchanged startup read errors must not be proposed on every retry")
-
-	failRead.Store(false)
-	require.Eventually(t, func() bool {
-		status, err := startupStatusView(store, config)
-
-		return err == nil && status.GetError() == nil && managedSinkByName(m, config.GetName()) != nil
-	}, 3*time.Second, 10*time.Millisecond)
-	require.Equal(t, int64(2), proposer.updates.Load())
+		failRead.Store(false)
+		time.Sleep(sinkStartupRetryDelay)
+		synctest.Wait()
+		status, err = startupStatusView(store, config)
+		require.NoError(t, err)
+		require.Nil(t, status.GetError())
+		require.NotNil(t, managedSinkByName(m, config.GetName()))
+		require.Equal(t, int64(2), proposer.updates.Load())
+	})
 }
 
 func TestManager_UncertainStartupReportClearedAfterRecovery(t *testing.T) {
@@ -377,77 +391,82 @@ func TestManager_UncertainStartupReportClearedAfterRecovery(t *testing.T) {
 			delete(sinkFactories, "nats")
 		}
 	})
-	var attempts atomic.Int64
-	sink := &startupGateTestSink{}
-	sinkFactories["nats"] = func(*commonpb.SinkConfig, Format) (Sink, error) {
-		if attempts.Add(1) == 1 {
-			return nil, errors.New("temporary startup failure")
+	synctest.Test(t, func(t *testing.T) {
+		var attempts atomic.Int64
+		sink := &startupGateTestSink{}
+		sinkFactories["nats"] = func(context.Context, *commonpb.SinkConfig, Format) (Sink, error) {
+			if attempts.Add(1) == 1 {
+				return nil, errors.New("temporary startup failure")
+			}
+
+			return sink, nil
 		}
-
-		return sink, nil
-	}
-	builder, store := newTestBuilder(t)
-	attrs := attributes.New()
-	config := &commonpb.SinkConfig{Name: "uncertain-startup-report", Type: &commonpb.SinkConfig_Nats{
-		Nats: &commonpb.NatsSinkConfig{Url: "nats://dependency.invalid:4222", Topic: "ledger.events"},
-	}}
-	saveManagedSinkConfig(t, attrs, store, config)
-	batch := store.OpenWriteSession()
-	require.NoError(t, state.AppendLogs(batch, []*commonpb.Log{{
-		Sequence: 1,
-		Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_CreateLedger{
-			CreateLedger: &commonpb.CreatedLedgerLog{Name: "orders", CreatedAt: commonpb.NewTimestamp(libtime.Now())},
-		}},
-	}}))
-	require.NoError(t, state.SetAppliedIndex(batch, 1))
-	require.NoError(t, batch.Commit())
-	proposer := &delayedStartupStatusProposer{store: store, barrierProposed: make(chan struct{}), clearProposed: make(chan struct{}), release: make(chan struct{}), reportApplied: make(chan struct{}), releaseClear: make(chan struct{})}
-	var releaseOnce sync.Once
-	t.Cleanup(func() { releaseOnce.Do(func() { close(proposer.release) }) })
-	var clearOnce sync.Once
-	t.Cleanup(func() { clearOnce.Do(func() { close(proposer.releaseClear) }) })
-	m := NewManager(store, attrs, proposer, builder, logging.Testing(), signal.NewNotifications())
-	m.Start()
-	t.Cleanup(m.Stop)
-	m.OnLeadershipChange(true)
-	require.Eventually(t, func() bool { return attempts.Load() >= 2 }, 5*time.Second, 10*time.Millisecond)
-	select {
-	case <-proposer.barrierProposed:
-	case <-time.After(2 * time.Second):
-		t.Fatal("a successful start must wait for accepted status updates")
-	}
-	releaseOnce.Do(func() { close(proposer.release) })
-	select {
-	case <-proposer.reportApplied:
-	case <-time.After(2 * time.Second):
-		t.Fatal("the accepted startup report did not apply")
-	}
-	status, err := startupStatusView(store, config)
-	require.NoError(t, err)
-	require.Equal(t, "sink startup: temporary startup failure", status.GetError().GetMessage())
-	select {
-	case <-proposer.clearProposed:
-	case <-time.After(2 * time.Second):
-		t.Fatal("the startup error was not cleared after the status barrier")
-	}
-	require.Never(t, func() bool { return sink.called.Load() > 0 },
-		300*time.Millisecond, 10*time.Millisecond,
-		"the emitter must not publish while its startup clear is pending")
-	clearOnce.Do(func() { close(proposer.releaseClear) })
-	require.Eventually(t, func() bool {
+		builder, store := newTestBuilder(t)
+		attrs := attributes.New()
+		config := &commonpb.SinkConfig{Name: "uncertain-startup-report", Type: &commonpb.SinkConfig_Nats{
+			Nats: &commonpb.NatsSinkConfig{Url: "nats://dependency.invalid:4222", Topic: "ledger.events"},
+		}}
+		saveManagedSinkConfig(t, attrs, store, config)
+		batch := store.OpenWriteSession()
+		require.NoError(t, state.AppendLogs(batch, []*commonpb.Log{{
+			Sequence: 1,
+			Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_CreateLedger{
+				CreateLedger: &commonpb.CreatedLedgerLog{Name: "orders", CreatedAt: commonpb.NewTimestamp(libtime.Now())},
+			}},
+		}}))
+		require.NoError(t, state.SetAppliedIndex(batch, 1))
+		require.NoError(t, batch.Commit())
+		proposer := &delayedStartupStatusProposer{store: store, barrierProposed: make(chan struct{}), clearProposed: make(chan struct{}), release: make(chan struct{}), reportApplied: make(chan struct{}), releaseClear: make(chan struct{})}
+		var releaseOnce sync.Once
+		t.Cleanup(func() { releaseOnce.Do(func() { close(proposer.release) }) })
+		var clearOnce sync.Once
+		t.Cleanup(func() { clearOnce.Do(func() { close(proposer.releaseClear) }) })
+		m := NewManager(store, attrs, proposer, builder, logging.Testing(), signal.NewNotifications())
+		m.Start()
+		t.Cleanup(m.Stop)
+		m.OnLeadershipChange(true)
+		// The unapplied first report times out before the retry runs, so this
+		// waits through deliveredCursorUpdateTimeout and sinkStartupRetryDelay.
+		require.Eventually(t, func() bool { return attempts.Load() >= 2 }, 5*time.Second, 10*time.Millisecond)
+		select {
+		case <-proposer.barrierProposed:
+		case <-time.After(2 * time.Second):
+			t.Fatal("a successful start must wait for accepted status updates")
+		}
+		releaseOnce.Do(func() { close(proposer.release) })
+		select {
+		case <-proposer.reportApplied:
+		case <-time.After(2 * time.Second):
+			t.Fatal("the accepted startup report did not apply")
+		}
 		status, err := startupStatusView(store, config)
+		require.NoError(t, err)
+		require.Equal(t, "sink startup: temporary startup failure", status.GetError().GetMessage())
+		select {
+		case <-proposer.clearProposed:
+		case <-time.After(2 * time.Second):
+			t.Fatal("the startup error was not cleared after the status barrier")
+		}
+		// Stay below deliveredCursorUpdateTimeout so the pending clear is still awaited.
+		time.Sleep(300 * time.Millisecond)
+		synctest.Wait()
+		require.Zero(t, sink.called.Load(), "the emitter must not publish while its startup clear is pending")
+		clearOnce.Do(func() { close(proposer.releaseClear) })
+		synctest.Wait()
+		status, err = startupStatusView(store, config)
+		require.NoError(t, err)
+		require.Positive(t, sink.called.Load())
+		require.Equal(t, "delivery blocked", status.GetError().GetMessage(), "a delivery error after startup must survive the startup clear")
+		require.NotNil(t, managedSinkByName(m, config.GetName()))
+		sink.allowSuccess.Store(true)
+		managedSinkByName(m, config.GetName()).emitter.Notify()
+		// The emitter retries after its jittered failure backoff.
+		require.Eventually(t, func() bool {
+			status, err := startupStatusView(store, config)
 
-		return err == nil && sink.called.Load() > 0 &&
-			status.GetError().GetMessage() == "delivery blocked" &&
-			managedSinkByName(m, config.GetName()) != nil
-	}, 3*time.Second, 10*time.Millisecond, "a delivery error after startup must survive the startup clear")
-	sink.allowSuccess.Store(true)
-	managedSinkByName(m, config.GetName()).emitter.Notify()
-	require.Eventually(t, func() bool {
-		status, err := startupStatusView(store, config)
-
-		return err == nil && status.GetError() == nil && status.GetCursor() == 1
-	}, 4*time.Second, 10*time.Millisecond)
+			return err == nil && status.GetError() == nil && status.GetCursor() == 1
+		}, 4*time.Second, 10*time.Millisecond)
+	})
 }
 
 func TestManager_PreservesDeliveryErrorAcrossStartupFailure(t *testing.T) {
@@ -459,58 +478,63 @@ func TestManager_PreservesDeliveryErrorAcrossStartupFailure(t *testing.T) {
 			delete(sinkFactories, "nats")
 		}
 	})
-	allowSuccess := make(chan struct{})
-	sinkFactories["nats"] = func(*commonpb.SinkConfig, Format) (Sink, error) {
-		select {
-		case <-allowSuccess:
-			return startupRetryTestSink{}, nil
-		default:
-			return nil, errors.New("constructor unavailable")
+	synctest.Test(t, func(t *testing.T) {
+		allowSuccess := make(chan struct{})
+		sinkFactories["nats"] = func(context.Context, *commonpb.SinkConfig, Format) (Sink, error) {
+			select {
+			case <-allowSuccess:
+				return startupRetryTestSink{}, nil
+			default:
+				return nil, errors.New("constructor unavailable")
+			}
 		}
-	}
-	builder, store := newTestBuilder(t)
-	attrs := attributes.New()
-	config := &commonpb.SinkConfig{Name: "prior-delivery-error", Type: &commonpb.SinkConfig_Nats{
-		Nats: &commonpb.NatsSinkConfig{Url: "nats://dependency.invalid:4222", Topic: "ledger.events"},
-	}}
-	saveManagedSinkConfig(t, attrs, store, config)
-	batch := store.OpenWriteSession()
-	require.NoError(t, state.SetSinkStatus(batch, &commonpb.SinkStatus{SinkName: config.GetName(), Error: &commonpb.SinkError{Message: "delivery failed"}}))
-	require.NoError(t, batch.Commit())
-	proposer := &startupStatusProposer{store: store}
-	m := NewManager(store, attrs, proposer, builder, logging.Testing(), signal.NewNotifications())
-	m.Start()
-	t.Cleanup(m.Stop)
-	m.OnLeadershipChange(true)
-	require.Eventually(t, func() bool { return pendingStartupRetry(m, config.GetName()) }, time.Second, 10*time.Millisecond)
-	status, err := startupStatusView(store, config)
-	require.NoError(t, err)
-	require.Equal(t, "delivery failed", status.GetError().GetMessage())
-	require.Zero(t, proposer.updates.Load())
-	close(allowSuccess)
-	require.Eventually(t, func() bool { return managedSinkByName(m, config.GetName()) != nil }, 3*time.Second, 10*time.Millisecond)
-	status, err = startupStatusView(store, config)
-	require.NoError(t, err)
-	require.Equal(t, "delivery failed", status.GetError().GetMessage())
-	require.Zero(t, proposer.updates.Load())
-
-	batch = store.OpenWriteSession()
-	require.NoError(t, state.AppendLogs(batch, []*commonpb.Log{{
-		Sequence: 1,
-		Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_CreateLedger{
-			CreateLedger: &commonpb.CreatedLedgerLog{
-				Name: "orders", CreatedAt: commonpb.NewTimestamp(libtime.Now()),
-			},
-		}},
-	}}))
-	require.NoError(t, state.SetAppliedIndex(batch, 1))
-	require.NoError(t, batch.Commit())
-	managedSinkByName(m, config.GetName()).emitter.Notify()
-	require.Eventually(t, func() bool {
+		builder, store := newTestBuilder(t)
+		attrs := attributes.New()
+		config := &commonpb.SinkConfig{Name: "prior-delivery-error", Type: &commonpb.SinkConfig_Nats{
+			Nats: &commonpb.NatsSinkConfig{Url: "nats://dependency.invalid:4222", Topic: "ledger.events"},
+		}}
+		saveManagedSinkConfig(t, attrs, store, config)
+		batch := store.OpenWriteSession()
+		require.NoError(t, state.SetSinkStatus(batch, &commonpb.SinkStatus{SinkName: config.GetName(), Error: &commonpb.SinkError{Message: "delivery failed"}}))
+		require.NoError(t, batch.Commit())
+		proposer := &startupStatusProposer{store: store}
+		m := NewManager(store, attrs, proposer, builder, logging.Testing(), signal.NewNotifications())
+		m.Start()
+		t.Cleanup(m.Stop)
+		m.OnLeadershipChange(true)
+		synctest.Wait()
+		require.True(t, pendingStartupRetry(m, config.GetName()))
 		status, err := startupStatusView(store, config)
+		require.NoError(t, err)
+		require.Equal(t, "delivery failed", status.GetError().GetMessage())
+		require.Zero(t, proposer.updates.Load())
+		close(allowSuccess)
+		time.Sleep(sinkStartupRetryDelay)
+		synctest.Wait()
+		require.NotNil(t, managedSinkByName(m, config.GetName()))
+		status, err = startupStatusView(store, config)
+		require.NoError(t, err)
+		require.Equal(t, "delivery failed", status.GetError().GetMessage())
+		require.Zero(t, proposer.updates.Load())
 
-		return err == nil && status.GetError() == nil && status.GetCursor() == 1
-	}, 3*time.Second, 10*time.Millisecond, "the delivery error clears only after a successful publish")
+		batch = store.OpenWriteSession()
+		require.NoError(t, state.AppendLogs(batch, []*commonpb.Log{{
+			Sequence: 1,
+			Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_CreateLedger{
+				CreateLedger: &commonpb.CreatedLedgerLog{
+					Name: "orders", CreatedAt: commonpb.NewTimestamp(libtime.Now()),
+				},
+			}},
+		}}))
+		require.NoError(t, state.SetAppliedIndex(batch, 1))
+		require.NoError(t, batch.Commit())
+		managedSinkByName(m, config.GetName()).emitter.Notify()
+		synctest.Wait()
+		status, err = startupStatusView(store, config)
+		require.NoError(t, err)
+		require.Nil(t, status.GetError(), "the delivery error clears only after a successful publish")
+		require.Equal(t, uint64(1), status.GetCursor())
+	})
 }
 
 func TestManager_PreservesPendingDeliveryErrorAcrossStartup(t *testing.T) {
@@ -522,45 +546,47 @@ func TestManager_PreservesPendingDeliveryErrorAcrossStartup(t *testing.T) {
 			delete(sinkFactories, "nats")
 		}
 	})
-	sinkFactories["nats"] = func(*commonpb.SinkConfig, Format) (Sink, error) {
-		return startupRetryTestSink{}, nil
-	}
-	builder, store := newTestBuilder(t)
-	attrs := attributes.New()
-	config := &commonpb.SinkConfig{Name: "pending-delivery-error", Type: &commonpb.SinkConfig_Nats{
-		Nats: &commonpb.NatsSinkConfig{Url: "nats://dependency.invalid:4222", Topic: "ledger.events"},
-	}}
-	saveManagedSinkConfig(t, attrs, store, config)
-	proposer := &delayedStartupStatusProposer{
-		store: store, barrierProposed: make(chan struct{}), clearProposed: make(chan struct{}),
-		release: make(chan struct{}), reportApplied: make(chan struct{}), releaseClear: make(chan struct{}),
-		pending:       &raftcmdpb.EventsSinkUpdate{SinkName: config.GetName(), Error: &commonpb.SinkError{Message: "delivery failed"}},
-		pendingFuture: futures.New[state.ApplyResult](),
-	}
-	var releaseOnce sync.Once
-	t.Cleanup(func() { releaseOnce.Do(func() { close(proposer.release) }) })
-	m := NewManager(store, attrs, proposer, builder, logging.Testing(), signal.NewNotifications())
-	m.Start()
-	t.Cleanup(m.Stop)
-	m.OnLeadershipChange(true)
-	select {
-	case <-proposer.barrierProposed:
-	case <-time.After(2 * time.Second):
-		t.Fatal("startup did not wait for the pending delivery update")
-	}
-	status, err := startupStatusView(store, config)
-	require.NoError(t, err)
-	require.Nil(t, status.GetError(), "the delivery update is still pending")
-	releaseOnce.Do(func() { close(proposer.release) })
-	require.Eventually(t, func() bool {
+	synctest.Test(t, func(t *testing.T) {
+		sinkFactories["nats"] = func(context.Context, *commonpb.SinkConfig, Format) (Sink, error) {
+			return startupRetryTestSink{}, nil
+		}
+		builder, store := newTestBuilder(t)
+		attrs := attributes.New()
+		config := &commonpb.SinkConfig{Name: "pending-delivery-error", Type: &commonpb.SinkConfig_Nats{
+			Nats: &commonpb.NatsSinkConfig{Url: "nats://dependency.invalid:4222", Topic: "ledger.events"},
+		}}
+		saveManagedSinkConfig(t, attrs, store, config)
+		proposer := &delayedStartupStatusProposer{
+			store: store, barrierProposed: make(chan struct{}), clearProposed: make(chan struct{}),
+			release: make(chan struct{}), reportApplied: make(chan struct{}), releaseClear: make(chan struct{}),
+			pending:       &raftcmdpb.EventsSinkUpdate{SinkName: config.GetName(), Error: &commonpb.SinkError{Message: "delivery failed"}},
+			pendingFuture: futures.New[state.ApplyResult](),
+		}
+		var releaseOnce sync.Once
+		t.Cleanup(func() { releaseOnce.Do(func() { close(proposer.release) }) })
+		m := NewManager(store, attrs, proposer, builder, logging.Testing(), signal.NewNotifications())
+		m.Start()
+		t.Cleanup(m.Stop)
+		m.OnLeadershipChange(true)
+		select {
+		case <-proposer.barrierProposed:
+		case <-time.After(2 * time.Second):
+			t.Fatal("startup did not wait for the pending delivery update")
+		}
 		status, err := startupStatusView(store, config)
-
-		return err == nil && status.GetError().GetMessage() == "delivery failed" &&
-			managedSinkByName(m, config.GetName()) != nil
-	}, 3*time.Second, 10*time.Millisecond)
-	select {
-	case <-proposer.clearProposed:
-		t.Fatal("startup cleared a previously accepted delivery error")
-	default:
-	}
+		require.NoError(t, err)
+		require.Nil(t, status.GetError(), "the delivery update is still pending")
+		releaseOnce.Do(func() { close(proposer.release) })
+		// Startup has settled, so a clear would already have been proposed.
+		synctest.Wait()
+		status, err = startupStatusView(store, config)
+		require.NoError(t, err)
+		require.Equal(t, "delivery failed", status.GetError().GetMessage())
+		require.NotNil(t, managedSinkByName(m, config.GetName()))
+		select {
+		case <-proposer.clearProposed:
+			t.Fatal("startup cleared a previously accepted delivery error")
+		default:
+		}
+	})
 }

@@ -1,0 +1,137 @@
+apiVersion: chainsaw.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: annotated-drain
+spec:
+  timeouts:
+    assert: 5m
+  steps:
+    - name: Deploy a live three-member cluster
+      try:
+        - apply:
+            file: cluster.yaml
+        - assert:
+            resource:
+              apiVersion: apps/v1
+              kind: StatefulSet
+              metadata:
+                name: ledger-annotated-drain
+              status:
+                readyReplicas: 3
+        - script:
+            content: |
+              kubectl exec ledger-annotated-drain-0 -n $NAMESPACE -c ledger -- \
+                /bin/sh -c './ledgerctl ledgers create before-drain --server 127.0.0.1:8888 --insecure --auth-token "$CLUSTER_SECRET"'
+              for n in 0 1 2; do
+                uid=$(kubectl get pod ledger-annotated-drain-$n -n $NAMESPACE -o jsonpath='{.metadata.uid}')
+                kubectl annotate namespace $NAMESPACE e2e-drain-uid-$n="$uid" --overwrite
+              done
+            timeout: 90s
+      cleanup:
+        - script:
+            content: |
+              for pvc in $(kubectl get pvc -n $NAMESPACE -l app.kubernetes.io/instance=annotated-drain -o name 2>/dev/null); do
+                pv=$(kubectl get "$pvc" -n $NAMESPACE -o jsonpath='{.spec.volumeName}')
+                kubectl annotate "$pvc" -n $NAMESPACE formance.com/allow-deletion=true --overwrite
+                if [ -n "$pv" ]; then
+                  kubectl annotate pv "$pv" formance.com/allow-deletion=true --overwrite
+                fi
+              done
+            timeout: 30s
+
+    - name: Request drain through the Cluster annotation
+      try:
+        - script:
+            content: |
+              kubectl annotate cluster annotated-drain -n $NAMESPACE ledger.formance.com/drain=true --overwrite
+              for i in $(seq 1 90); do
+                phase=$(kubectl get cluster annotated-drain -n $NAMESPACE -o jsonpath='{.status.drain.phase}')
+                [ "$phase" = Drained ] && break
+                sleep 2
+              done
+              [ "$phase" = Drained ] || { echo "drain did not complete: $phase"; exit 1; }
+              epoch=$(kubectl get cluster annotated-drain -n $NAMESPACE -o jsonpath='{.status.drain.epoch}')
+              [ -n "$epoch" ] || { echo 'missing drain epoch'; exit 1; }
+              kubectl annotate namespace $NAMESPACE e2e-drain-epoch="$epoch" --overwrite
+            timeout: 240s
+
+    - name: Pods and reads continue while writes are blocked
+      try:
+        - assert:
+            resource:
+              apiVersion: apps/v1
+              kind: StatefulSet
+              metadata:
+                name: ledger-annotated-drain
+              status:
+                readyReplicas: 3
+        - script:
+            content: |
+              for n in 0 1 2; do
+                before=$(kubectl get namespace $NAMESPACE -o jsonpath="{.metadata.annotations.e2e-drain-uid-$n}")
+                after=$(kubectl get pod ledger-annotated-drain-$n -n $NAMESPACE -o jsonpath='{.metadata.uid}')
+                [ "$before" = "$after" ] || { echo "pod $n restarted during drain"; exit 1; }
+              done
+              kubectl exec ledger-annotated-drain-0 -n $NAMESPACE -c ledger -- \
+                /bin/sh -c './ledgerctl ledgers list --server 127.0.0.1:8888 --insecure --auth-token "$CLUSTER_SECRET"' \
+                | grep before-drain
+              set +e
+              output=$(kubectl exec ledger-annotated-drain-0 -n $NAMESPACE -c ledger -- \
+                /bin/sh -c './ledgerctl ledgers create during-drain --server 127.0.0.1:8888 --insecure --auth-token "$CLUSTER_SECRET"' 2>&1)
+              code=$?
+              set -e
+              echo "$output"
+              [ "$code" -ne 0 ] || { echo 'write unexpectedly succeeded during drain'; exit 1; }
+              echo "$output" | grep -qi 'maintenance mode'
+            timeout: 90s
+
+    - name: Remove annotation and resume writes
+      try:
+        - script:
+            content: |
+              kubectl annotate cluster annotated-drain -n $NAMESPACE ledger.formance.com/drain-
+              for i in $(seq 1 90); do
+                phase=$(kubectl get cluster annotated-drain -n $NAMESPACE -o jsonpath='{.status.drain.phase}')
+                [ -z "$phase" ] && break
+                sleep 2
+              done
+              [ -z "$phase" ] || { echo "drain release did not complete: $phase"; exit 1; }
+              kubectl exec ledger-annotated-drain-0 -n $NAMESPACE -c ledger -- \
+                /bin/sh -c './ledgerctl ledgers create after-drain --server 127.0.0.1:8888 --insecure --auth-token "$CLUSTER_SECRET"'
+            timeout: 240s
+
+    - name: A second cycle uses a fresh epoch
+      try:
+        - script:
+            content: |
+              kubectl annotate cluster annotated-drain -n $NAMESPACE ledger.formance.com/drain=true --overwrite
+              for i in $(seq 1 90); do
+                phase=$(kubectl get cluster annotated-drain -n $NAMESPACE -o jsonpath='{.status.drain.phase}')
+                [ "$phase" = Drained ] && break
+                sleep 2
+              done
+              [ "$phase" = Drained ] || { echo "second drain did not complete: $phase"; exit 1; }
+              first=$(kubectl get namespace $NAMESPACE -o jsonpath='{.metadata.annotations.e2e-drain-epoch}')
+              second=$(kubectl get cluster annotated-drain -n $NAMESPACE -o jsonpath='{.status.drain.epoch}')
+              [ "$first" != "$second" ] || { echo 'drain epoch was reused'; exit 1; }
+              kubectl annotate cluster annotated-drain -n $NAMESPACE ledger.formance.com/drain-
+              for i in $(seq 1 90); do
+                phase=$(kubectl get cluster annotated-drain -n $NAMESPACE -o jsonpath='{.status.drain.phase}')
+                [ -z "$phase" ] && break
+                sleep 2
+              done
+              [ -z "$phase" ] || { echo "second release did not complete: $phase"; exit 1; }
+            timeout: 240s
+
+    - name: Permit deletion of test volumes
+      try:
+        - script:
+            content: |
+              for pvc in $(kubectl get pvc -n $NAMESPACE -l app.kubernetes.io/instance=annotated-drain -o name); do
+                pv=$(kubectl get "$pvc" -n $NAMESPACE -o jsonpath='{.spec.volumeName}')
+                kubectl annotate "$pvc" -n $NAMESPACE formance.com/allow-deletion=true --overwrite
+                if [ -n "$pv" ]; then
+                  kubectl annotate pv "$pv" formance.com/allow-deletion=true --overwrite
+                fi
+              done
+            timeout: 30s

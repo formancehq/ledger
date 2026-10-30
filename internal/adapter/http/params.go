@@ -109,17 +109,12 @@ func requirePathParameter(w http.ResponseWriter, r *http.Request, name, label st
 	return value, true
 }
 
-const (
-	defaultPageSize uint32 = 100
-	maxPageSize     uint32 = 1000
-)
-
 // parsePageSize extracts and validates the optional pageSize query parameter.
-// Returns defaultPageSize when not specified or zero. Caps at maxPageSize.
+// Applies the shared list-page default and maximum.
 func parsePageSize(w http.ResponseWriter, r *http.Request) (uint32, bool) {
 	ps := r.URL.Query().Get("pageSize")
 	if ps == "" {
-		return defaultPageSize, true
+		return query.ClampPageSize(0), true
 	}
 
 	parsed, err := strconv.ParseUint(ps, 10, 32)
@@ -129,16 +124,7 @@ func parsePageSize(w http.ResponseWriter, r *http.Request) (uint32, bool) {
 		return 0, false
 	}
 
-	size := uint32(parsed)
-	if size == 0 {
-		size = defaultPageSize
-	}
-
-	if size > maxPageSize {
-		size = maxPageSize
-	}
-
-	return size, true
+	return query.ClampPageSize(uint32(parsed)), true
 }
 
 // parseMetadataBody reads and validates a metadata JSON body from the request.

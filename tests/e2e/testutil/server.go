@@ -37,7 +37,7 @@ type ServiceWithClient struct {
 	DataDir       string
 	HTTPPort      int
 	GRPCPort      int
-	NodeID        uint32
+	NodeID        uint64
 	// lease owns the node's ports. RestartNode needs it to rebind the same
 	// addresses: the node's peers still hold its old Raft address.
 	lease *testserver.NodeLease
@@ -240,7 +240,7 @@ func SetupMultiNodeCluster(
 			DataDir:       dataTmpDir,
 			HTTPPort:      nodePorts[i].HTTP(),
 			GRPCPort:      nodePorts[i].GRPC(),
-			NodeID:        uint32(i + 1),
+			NodeID:        uint64(i + 1),
 			lease:         leases[i],
 		})
 	}
@@ -254,7 +254,7 @@ func SetupMultiNodeCluster(
 		state, err := servers[0].ClusterClient.GetClusterState(ctx, &clusterpb.GetClusterStateRequest{})
 		g.Expect(err).To(Succeed())
 		g.Expect(state.GetLeader()).NotTo(BeZero())
-		leaderID = uint64(state.GetLeader())
+		leaderID = state.GetLeader()
 	}).Within(10 * time.Second).ProbeEvery(100 * time.Millisecond).Should(Succeed())
 
 	// Nodes 1..N-1: join the bootstrap node via the RaftServer port.

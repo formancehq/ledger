@@ -1,11 +1,8 @@
 package http
 
 import (
-	"errors"
 	"net/http"
 	"time"
-
-	"github.com/go-chi/chi/v5"
 
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
@@ -53,10 +50,8 @@ func (s *Server) handleGetNumscriptUsage(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	name := chi.URLParam(r, "name")
-	if name == "" {
-		writeBadRequest(w, "INVALID_REQUEST", errors.New("numscript name is required"))
-
+	name, ok := requirePathParameter(w, r, "name", "numscript name")
+	if !ok {
 		return
 	}
 
@@ -67,5 +62,5 @@ func (s *Server) handleGetNumscriptUsage(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	writeOK(w, toTemplateUsageJSON(usage))
+	writeOK(w, r, toTemplateUsageJSON(usage))
 }

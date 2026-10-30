@@ -5,6 +5,10 @@ removed. Establish the specific removal decision, its exact code range, and
 the surviving behavior before searching for residue. A vocabulary match alone
 is not a defect.
 
+For protobuf removals after `v3.0.0-rc.1`, preserve published field and enum
+numbers. Reserve removed numbers and names, and assess whether persisted data
+needs a migration. Generated bindings and hand-written wire helpers must agree.
+
 ## Evidence contract
 
 Build an inventory of the removed feature's identifiers across production

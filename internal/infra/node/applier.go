@@ -6,20 +6,24 @@ import (
 	"fmt"
 	"math"
 	"runtime/pprof"
+	"slices"
 	"sync"
 	"sync/atomic"
 	"time"
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
 	"github.com/antithesishq/antithesis-sdk-go/lifecycle"
+	"github.com/dustin/go-humanize"
 	"go.etcd.io/raft/v3/raftpb"
 	"go.opentelemetry.io/otel/metric"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
+	"github.com/formancehq/ledger/v3/internal/infra/cache"
 	"github.com/formancehq/ledger/v3/internal/infra/state"
 	"github.com/formancehq/ledger/v3/internal/pkg/futures"
 	"github.com/formancehq/ledger/v3/internal/pkg/worker"
+	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/query"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 	"github.com/formancehq/ledger/v3/internal/storage/spool"
@@ -65,6 +69,14 @@ type gatingResult struct {
 	taskFailed bool // true if the task returned an error, node should stay gated until shutdown
 }
 
+// SnapshotMembership provides the membership operations needed by Applier
+// while recovering a checkpoint. Keeping this contract narrow avoids coupling
+// Applier to the storage and transport details owned by Membership.
+type SnapshotMembership interface {
+	SnapshotDonorCandidates() []uint64
+	OnSnapshotInstalled()
+}
+
 // Applier owns all FSM application logic and gating/spool lifecycle.
 // It runs as a dedicated goroutine, decoupling WAL writes (processReadies)
 // from FSM application so they can overlap across consecutive Ready cycles.
@@ -82,6 +94,10 @@ type Applier struct {
 	replayBatchSize         int
 	snapshotFetcherProvider state.SnapshotFetcherProvider
 
+	// snapshotMembership resolves donor candidates and refreshes the membership
+	// cache after a checkpoint has been installed.
+	snapshotMembership SnapshotMembership
+
 	status           *atomic.Int32
 	gatingReason     atomic.Int32 // gatingReason* constants — for observability
 	syncProgress     atomic.Pointer[state.SyncProgress]
@@ -93,16 +109,6 @@ type Applier struct {
 	// pending holds the in-flight commit result channel, if any.
 	// At most one at a time. Drained before barriers, checkpoints, and shutdown.
 	pending *pendingCommit
-
-	// onSnapshotInstalled is invoked by the maintenance-task wrapper
-	// AFTER a leader-checkpoint sync + subsequent replaySpool have both
-	// landed on Pebble. Running it post-replay is deliberate: an
-	// earlier position would race with the still-spooled post-snapshot
-	// ConfChanges and drop those peers from the Membership cache. The
-	// hook fires inside the maintenance goroutine, synchronously with
-	// the restore, so the next Raft tick already sees the up-to-date
-	// cache + transport. (EN-1413)
-	onSnapshotInstalled func()
 
 	// responseSink receives MsgStorageApplyResp messages after the apply (or
 	// spool append) completes for a batch. Same channel instance the Node
@@ -143,6 +149,7 @@ type pendingFuture struct {
 type pendingApplyFuture struct {
 	term   uint64
 	future *futures.Future[state.ApplyResult]
+	onDrop func()
 }
 
 type commitWork struct {
@@ -179,9 +186,12 @@ func NewApplier(
 	compactionMargin uint64,
 	replayBatchSize int,
 	snapshotFetcherProvider state.SnapshotFetcherProvider,
-	onSnapshotInstalled func(),
+	snapshotMembership SnapshotMembership,
 	responseSink LocalResponses,
 ) (*Applier, error) {
+	if snapshotMembership == nil {
+		return nil, errors.New("snapshotMembership is required")
+	}
 	if responseSink == nil {
 		return nil, errors.New("responseSink is required (nil LocalResponses)")
 	}
@@ -190,7 +200,7 @@ func NewApplier(
 	initialStatus.Store(statusNormal)
 
 	a := &Applier{
-		onSnapshotInstalled:     onSnapshotInstalled,
+		snapshotMembership:      snapshotMembership,
 		fsm:                     fsm,
 		recovery:                recovery,
 		synchronizer:            synchronizer,
@@ -358,6 +368,13 @@ func (a *Applier) StoreFuture(commandID, term uint64, future *futures.Future[sta
 	a.futures.Store(commandID, &pendingApplyFuture{term: term, future: future})
 }
 
+// StoreFutureWithDrop registers a proposal whose local admission latch must
+// be released if Raft definitively drops or truncates it. The callback runs
+// once because every resolution path takes ownership with LoadAndDelete.
+func (a *Applier) StoreFutureWithDrop(commandID, term uint64, future *futures.Future[state.ApplyResult], onDrop func()) {
+	a.futures.Store(commandID, &pendingApplyFuture{term: term, future: future, onDrop: onDrop})
+}
+
 // DeleteFuture removes the future for a given command ID.
 func (a *Applier) DeleteFuture(commandID uint64) {
 	a.futures.Delete(commandID)
@@ -371,6 +388,9 @@ func (a *Applier) DeleteFuture(commandID uint64) {
 func (a *Applier) ResolveDroppedFuture(commandID uint64, err error) {
 	if paf, ok := a.futures.LoadAndDelete(commandID); ok {
 		paf.future.Resolve(state.ApplyResult{}, err)
+		if paf.onDrop != nil {
+			paf.onDrop()
+		}
 	}
 }
 
@@ -401,6 +421,9 @@ func (a *Applier) FailFuturesBelowTerm(threshold uint64, err error) {
 		}
 
 		paf.future.Resolve(state.ApplyResult{}, err)
+		if paf.onDrop != nil {
+			paf.onDrop()
+		}
 		resolved++
 
 		// Coverage anchor for the leadership-lost error taxonomy: proves the
@@ -540,19 +563,36 @@ func (a *Applier) setOutOfSync() {
 // it marks the applier as out-of-sync so SynchronizeWithLeader runs.
 // Returns true when the store was up to date and replay succeeded.
 func (a *Applier) RecoverAndReplay(ctx context.Context) (bool, error) {
+	recoveryStart := time.Now()
+	a.logger.Infof("Startup recovery started")
+
 	// Reset the spool unconditionally: any data from a previous run is stale.
 	// A SIGKILL can leave a partially-written spool that causes corrupt record
 	// errors and entry index gaps during post-sync replay.
+	spoolResetStart := time.Now()
+	a.logger.Infof("Resetting startup spool")
 	if err := a.spool.Reset(); err != nil {
 		return false, fmt.Errorf("resetting spool: %w", err)
 	}
+	a.logger.WithFields(map[string]any{
+		"duration": time.Since(spoolResetStart).String(),
+	}).Infof("Startup spool reset")
 
+	storeCheckStart := time.Now()
+	a.logger.Infof("Checking startup store against WAL snapshot")
 	isStoreUpToDate, err := a.synchronizer.IsStoreUpToDate(ctx)
 	if err != nil {
 		return false, fmt.Errorf("checking if store is up to date: %w", err)
 	}
+	a.logger.WithFields(map[string]any{
+		"duration":      time.Since(storeCheckStart).String(),
+		"storeUpToDate": isStoreUpToDate,
+	}).Infof("Startup store check completed")
 
 	if !isStoreUpToDate {
+		a.logger.WithFields(map[string]any{
+			"duration": time.Since(recoveryStart).String(),
+		}).Infof("Startup recovery requires synchronization with leader")
 		if a.logger.Enabled(logging.DebugLevel) {
 			a.logger.Debugf("Store is not up to date, resuming from snapshot and tagging node as out of sync")
 		}
@@ -566,9 +606,14 @@ func (a *Applier) RecoverAndReplay(ctx context.Context) (bool, error) {
 	// NewMachine → RecoverState in the constructor and Pebble has not changed
 	// since (InstallSnapshot only touches in-memory state, and the
 	// SynchronizeWithLeader path exits earlier via setOutOfSync).
+	cacheStart := time.Now()
+	a.logger.Infof("Restoring startup cache from Pebble")
 	if err := a.recovery.RestoreCacheFromStore(); err != nil {
 		return false, fmt.Errorf("restoring cache from store on restart: %w", err)
 	}
+	a.logger.WithFields(map[string]any{
+		"duration": time.Since(cacheStart).String(),
+	}).Infof("Startup cache restored")
 
 	storeLastAppliedIndex, err := query.ReadLastAppliedIndex(a.store)
 	if err != nil {
@@ -578,9 +623,16 @@ func (a *Applier) RecoverAndReplay(ctx context.Context) (bool, error) {
 	// The live store still sits at the applied index it had when the process
 	// died, so a query checkpoint whose main store was left unmaterialized at
 	// that index can be rebuilt from it — before WAL replay moves the store on.
+	checkpointStart := time.Now()
+	a.logger.WithFields(map[string]any{
+		"lastAppliedIndex": storeLastAppliedIndex,
+	}).Infof("Recovering query checkpoint main stores")
 	if err := recoverQueryCheckpointMainStores(a.store, a.logger, storeLastAppliedIndex); err != nil {
 		return false, fmt.Errorf("recovering query checkpoint main stores: %w", err)
 	}
+	a.logger.WithFields(map[string]any{
+		"duration": time.Since(checkpointStart).String(),
+	}).Infof("Query checkpoint main stores recovered")
 
 	replayStart := time.Now()
 
@@ -589,6 +641,9 @@ func (a *Applier) RecoverAndReplay(ctx context.Context) (bool, error) {
 	if err := a.replayWAL(ctx, storeLastAppliedIndex); err != nil {
 		return false, fmt.Errorf("replaying WAL: %w", err)
 	}
+	a.logger.WithFields(map[string]any{
+		"duration": time.Since(recoveryStart).String(),
+	}).Infof("Startup recovery completed")
 
 	assert.Reachable("startup recovery completed", map[string]any{
 		"duration": time.Since(replayStart).String(),
@@ -614,7 +669,7 @@ const (
 	// this as a shutdown signal and return without further work.
 	fireStopped
 	// fireCtxDone — ctx cancelled. Same shutdown story as fireStopped,
-	// but arriving via the context path (fx OnStop outer timeout, etc.).
+	// but arriving via cancellation of the caller-owned run context.
 	fireCtxDone
 )
 
@@ -792,7 +847,7 @@ func (a *Applier) Run(ctx context.Context, stop chan struct{}) error {
 	// Local handle on the decoded channel so we can stop selecting on it once
 	// the decoder has closed it. The decoder only ever closes decodedCh from
 	// its ctx.Done() path (a.ch is never closed), i.e. runCtx was cancelled —
-	// the OnStart/OnStop-timeout fallback in bootstrap, NOT a graceful stop.
+	// direct caller cancellation, NOT bootstrap's graceful stop or timeout.
 	// A closed channel always wins the select with a zero value, so without
 	// disabling this branch the loop would busy-spin on the empty batch. We
 	// do NOT return here: the applier task must exit via `stop` (see the fx
@@ -849,8 +904,12 @@ func (a *Applier) Run(ctx context.Context, stop chan struct{}) error {
 					return err
 				}
 
-				a.status.Store(statusGated)
+				// The reason is stored before the status: readers such as
+				// IsResynchronizing load both without the lock, and a reason
+				// seen with the old status is harmless while the reverse is
+				// a gated status with a stale reason.
 				a.gatingReason.Store(gatingReasonSyncing)
+				a.status.Store(statusGated)
 				syncingLeader = work.syncLeader
 				a.startSyncSnapshot(ctx, work.syncLeader)
 				waitStart = time.Now()
@@ -1045,7 +1104,16 @@ func (a *Applier) startSyncSnapshot(ctx context.Context, leader uint64) {
 	a.syncProgress.Store(progress)
 
 	a.gatingTerminated = a.startMaintenanceTask(ctx, func(ctx context.Context) (maintenanceTaskResult, error) {
-		snapshotFetcher, err := a.snapshotFetcherProvider.GetForPeer(leader)
+		candidateIDs := []uint64{leader}
+		for _, candidateID := range a.snapshotMembership.SnapshotDonorCandidates() {
+			if candidateID == 0 || candidateID == leader || slices.Contains(candidateIDs, candidateID) {
+				continue
+			}
+
+			candidateIDs = append(candidateIDs, candidateID)
+		}
+
+		snapshotFetcher, err := a.snapshotFetcherProvider.GetForPeers(candidateIDs)
 		if err != nil {
 			a.logger.WithFields(map[string]any{
 				"leader": leader,
@@ -1069,7 +1137,7 @@ func (a *Applier) startSyncSnapshot(ctx context.Context, leader uint64) {
 
 		a.syncProgress.Store(nil)
 
-		// The onSnapshotInstalled hook is deliberately NOT fired here.
+		// The snapshot membership hook is deliberately NOT fired here.
 		// The outer maintenance wrapper fires it AFTER replaySpool so
 		// any post-snapshot ConfChange sitting in the spool has landed
 		// in Pebble before Rehydrate reads it (EN-1413). See
@@ -1111,6 +1179,41 @@ func (a *Applier) IsSyncing() bool {
 	return a.status.Load() == statusGated && a.gatingReason.Load() == gatingReasonSyncing
 }
 
+// IsResynchronizing reports whether the store is behind the Raft log: the
+// node is waiting for a donor, fetching a checkpoint, or installing a Raft
+// snapshot.
+func (a *Applier) IsResynchronizing() bool {
+	switch a.status.Load() {
+	case statusOutOfSync, statusInstallingSnapshot:
+		return true
+	case statusGated:
+		return a.gatingReason.Load() == gatingReasonSyncing
+	default:
+		return false
+	}
+}
+
+// WaitForCheckpointable blocks until a checkpoint taken from the store would
+// contain targetIndex. A resynchronizing store fails at once with
+// state.ErrStoreResynchronizing: it reaches targetIndex only after fetching a
+// checkpoint itself, and the peer asking would otherwise spend its whole
+// PrepareSnapshot budget on a donor that cannot deliver.
+func (a *Applier) WaitForCheckpointable(ctx context.Context, targetIndex uint64) error {
+	if a.IsResynchronizing() {
+		return state.ErrStoreResynchronizing
+	}
+
+	return a.fsm.WaitForApplied(ctx, targetIndex)
+}
+
+// SnapshotReadiness returns the durable cursor and whether this node is
+// currently unable to serve a checkpoint while it resynchronizes itself.
+// Callers use this cheap snapshot-sync probe before asking the node to create
+// a temporary checkpoint.
+func (a *Applier) SnapshotReadiness() (lastPersistedIndex uint64, resynchronizing bool) {
+	return a.fsm.LastPersistedIndex(), a.IsResynchronizing()
+}
+
 // GetSyncProgress returns the current sync progress, or nil if not syncing.
 func (a *Applier) GetSyncProgress() *state.SyncProgress {
 	return a.syncProgress.Load()
@@ -1150,8 +1253,7 @@ func (a *Applier) applyEntriesAndResolveCommands(ctx context.Context, decoded ..
 }
 
 // applyReplayEntries applies a slice of entries during replay (spool or WAL),
-// splitting on checkpoint boundaries so each FSM batch contains at most one
-// trigger entry (always last). Each checkpoint is handled synchronously
+// splitting on checkpoint and cache rotation boundaries. Each checkpoint is handled synchronously
 // (createMainStoreCheckpoint) before continuing.
 // Cascading checkpoints in the same slice are handled by the loop.
 func (a *Applier) applyReplayEntries(ctx context.Context, entries []*raftpb.Entry) error {
@@ -1163,7 +1265,7 @@ func (a *Applier) applyReplayEntries(ctx context.Context, entries []*raftpb.Entr
 	defer state.ReleaseDecodedEntries(decoded)
 
 	for offset := 0; offset < len(decoded); {
-		boundary := findCheckpointBoundaryDecoded(decoded[offset:])
+		boundary := findApplyBoundaryDecoded(decoded[offset:], a.fsm.Registry.Cache.GenerationThreshold())
 
 		end := offset + boundary
 
@@ -1221,10 +1323,11 @@ func (a *Applier) submitAsyncCommit(pb *state.PreparedBatch, pfs []pendingFuture
 //
 // The only exit is ctx.Done(): a.ch is never closed (closing it would panic
 // the producers — Submit/SyncSnapshot/Barrier/…), so the decoder runs until
-// runCtx is cancelled. That cancel is the bootstrap OnStart/OnStop-timeout
-// fallback, never a graceful stop — graceful stop goes through the task
-// `stop` channel, which the decoder does not watch. On ctx.Done() the decoder
-// drops any in-flight decode result (releasing its pooled Proposals) and
+// its decoder context is cancelled. Run cancels it after draining the pending
+// commit and joining the committer, including during graceful shutdown via
+// the task `stop` channel. Direct caller cancellation of runCtx also reaches
+// the decoder; bootstrap preserves runCtx until Node.Run exits. On ctx.Done(),
+// the decoder drops any in-flight decode result (releasing its pooled Proposals) and
 // returns; the deferred close(a.decodedCh) then unblocks the main loop, which
 // disables its decodedCh select branch (see Run), and the Run defer drains
 // anything still buffered.
@@ -1274,7 +1377,7 @@ func (a *Applier) runDecoder(ctx context.Context) {
 // stop is the Applier task's shutdown channel — closed by taskSet.stop() at
 // the same instant as orchestrate's stop. It's a second escape hatch on the
 // response-sink send: node.Stop closes the task stop channels but does NOT
-// cancel ctx (only fx OnStop's outer timeout might), so a runCommitter that
+// cancel ctx (bootstrap keeps it live until Node.Run exits). A committer that
 // races into the sink send AFTER orchestrate stopped draining would sit
 // forever on ctx.Done alone (finding 70740916). Selecting on stop too
 // unblocks the send synchronously with orchestrate's exit.
@@ -1449,8 +1552,9 @@ func (a *Applier) resolveFutures(result *state.ApplyEntriesResult) {
 //
 // To preserve the "one PrepareEntries call = one commit through runCommitter"
 // invariant, callers must never mix a checkpoint-trigger entry with later
-// entries in the same FSM batch. We split the input slice at each checkpoint
-// trigger and apply each prefix as its own batch; entries past a trigger that
+// entries in the same FSM batch. A batch must also stop before an entry that
+// rotates or resets the cache: the preceding batch must reach Pebble before
+// either operation evicts its entries. We split at both boundaries. Entries past a trigger that
 // actually fires (CheckpointRequired) are spooled before we hand control to
 // the maintenance task so the spool replay picks them up once gating clears.
 //
@@ -1465,11 +1569,20 @@ func (a *Applier) applyDecodedEntriesToFSM(ctx context.Context, stop chan struct
 	defer state.ReleaseDecodedEntries(decoded)
 
 	for offset := 0; offset < len(decoded); {
-		boundary := findCheckpointBoundaryDecoded(decoded[offset:])
+		threshold := a.fsm.Registry.Cache.GenerationThreshold()
+		boundary := findApplyBoundaryDecoded(decoded[offset:], threshold)
 
 		end := offset + boundary
 		head := decoded[offset:end]
 		tail := decoded[end:]
+		if cache.Gen(head[0].Entry.GetIndex(), threshold) != a.fsm.Registry.Cache.CurrentGeneration() || changesRotationThreshold(head[0], threshold) {
+			// applyEntriesPipelined prepares before it waits for the previous
+			// commit. Rotation or a threshold-change reset cannot use that
+			// overlap: either could evict values not yet visible in Pebble.
+			if err := a.waitPendingCommit(ctx); err != nil {
+				return fmt.Errorf("waiting for commit before cache eviction: %w", err)
+			}
+		}
 
 		// Attach responses only to the sub-batch that reaches the end of
 		// the decoded slice — that commit's completion means "everything
@@ -1597,6 +1710,47 @@ func findCheckpointBoundaryDecoded(decoded []state.DecodedEntry) int {
 	return len(decoded)
 }
 
+// findApplyBoundaryDecoded ends a batch before its first cache rotation or
+// after its first checkpoint trigger. It isolates threshold-changing cluster
+// configuration entries so the next sub-batch uses the updated threshold.
+func findApplyBoundaryDecoded(decoded []state.DecodedEntry, threshold uint64) int {
+	if len(decoded) == 0 {
+		return 0
+	}
+
+	generation := cache.Gen(decoded[0].Entry.GetIndex(), threshold)
+	for i := range decoded {
+		if cache.Gen(decoded[i].Entry.GetIndex(), threshold) != generation {
+			return i
+		}
+		if changesRotationThreshold(decoded[i], threshold) {
+			if i > 0 {
+				return i
+			}
+
+			return 1
+		}
+		if state.DecodedEntryRequiresCheckpoint(decoded[i]) {
+			return i + 1
+		}
+	}
+
+	return len(decoded)
+}
+
+func changesRotationThreshold(decoded state.DecodedEntry, threshold uint64) bool {
+	if decoded.Proposal == nil {
+		return false
+	}
+	for _, update := range decoded.Proposal.GetTechnicalUpdates() {
+		if config, ok := update.GetKind().(*raftcmdpb.TechnicalUpdate_ClusterConfig); ok && config.ClusterConfig.GetRotationThreshold() != threshold {
+			return true
+		}
+	}
+
+	return false
+}
+
 // maintenanceTask is the body of a gated maintenance task. It receives the
 // deferred future + result extracted from the entry that triggered gating
 // (both may be nil if there was no future for that proposalID) and the
@@ -1636,8 +1790,8 @@ func (a *Applier) gateAndLaunchMaintenance(
 ) error {
 	frozenAtIndex := entries[len(entries)-1].GetIndex()
 
-	a.status.Store(statusGated)
 	a.gatingReason.Store(gatingReason)
+	a.status.Store(statusGated)
 
 	deferredResult, deferredFuture := a.extractDeferredFuture(applyResult)
 
@@ -1710,7 +1864,7 @@ type maintenanceTaskResult struct {
 	syncFailed    bool // if true, skip spool replay and mark node out-of-sync
 	// snapshotInstalled is set by startSyncSnapshot when a leader
 	// checkpoint has just replaced our Pebble. The outer wrapper fires
-	// onSnapshotInstalled AFTER replaySpool has drained the spool onto
+	// The snapshot membership hook fires AFTER replaySpool has drained the spool onto
 	// the fresh Pebble — if the hook fired inside the sync task
 	// (i.e., BEFORE replaySpool), Rehydrate would see leader's Pebble
 	// without the post-snapshot ConfChanges still sitting in the spool
@@ -1773,7 +1927,7 @@ func (a *Applier) startMaintenanceTask(
 		// them missing), leaving the node with a stale transport view
 		// until the next rehydrate. (EN-1413)
 		if taskResult.snapshotInstalled {
-			a.onSnapshotInstalled()
+			a.snapshotMembership.OnSnapshotInstalled()
 		}
 
 		a.maintenanceReplaySpoolHistogram.Record(context.Background(), time.Since(replayStart).Seconds())
@@ -1872,10 +2026,20 @@ func (a *Applier) replayWAL(ctx context.Context, afterIndex uint64) error {
 
 	commitIndex := hardState.GetCommit()
 	if commitIndex <= afterIndex {
+		a.logger.WithFields(map[string]any{
+			"lastAppliedIndex": afterIndex,
+			"commitIndex":      commitIndex,
+		}).Infof("Startup WAL replay not needed")
+
 		return nil
 	}
 
 	lo := afterIndex + 1
+	a.logger.WithFields(map[string]any{
+		"fromIndex": lo,
+		"toIndex":   commitIndex,
+	}).Infof("Reading committed WAL entries for startup replay")
+	readStart := time.Now()
 
 	if a.logger.Enabled(logging.DebugLevel) {
 		a.logger.WithFields(map[string]any{
@@ -1888,17 +2052,42 @@ func (a *Applier) replayWAL(ctx context.Context, afterIndex uint64) error {
 	if err != nil {
 		return fmt.Errorf("reading WAL entries [%d, %d): %w", lo, commitIndex+1, err)
 	}
+	var payloadBytes int64
+	for _, entry := range entries {
+		payloadBytes += int64(len(entry.GetData()))
+	}
+	a.logger.WithFields(map[string]any{
+		"duration":         time.Since(readStart).String(),
+		"entryCount":       len(entries),
+		"payloadBytes":     payloadBytes,
+		"payloadSizeHuman": humanize.IBytes(uint64(payloadBytes)),
+	}).Infof("Committed WAL entries loaded for startup replay")
 
 	if len(entries) == 0 {
 		return nil
 	}
 
+	replayStart := time.Now()
 	for i := 0; i < len(entries); i += a.replayBatchSize {
 		end := min(i+a.replayBatchSize, len(entries))
+		batchStart := time.Now()
+		a.logger.WithFields(map[string]any{
+			"fromIndex": entries[i].GetIndex(),
+			"toIndex":   entries[end-1].GetIndex(),
+			"processed": i,
+			"total":     len(entries),
+		}).Infof("Applying startup WAL batch")
 
 		if err := a.applyReplayEntries(ctx, entries[i:end]); err != nil {
 			return fmt.Errorf("applying WAL entries: %w", err)
 		}
+		a.logger.WithFields(map[string]any{
+			"appliedIndex":  entries[end-1].GetIndex(),
+			"processed":     end,
+			"total":         len(entries),
+			"batchDuration": time.Since(batchStart).String(),
+			"duration":      time.Since(replayStart).String(),
+		}).Infof("Startup WAL replay progressed")
 	}
 
 	if a.logger.Enabled(logging.DebugLevel) {

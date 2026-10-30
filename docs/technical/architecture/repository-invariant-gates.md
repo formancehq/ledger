@@ -14,19 +14,26 @@ because it has not been staged yet.
 
 The current rules are:
 
-1. Go test files must not call `time.Sleep`. Tests should synchronize on the
-   state they need or use `require.Eventually` / `require.Never` with a bounded
-   deadline.
+1. Go test files must not call `time.Sleep` outside a `testing/synctest`
+   bubble. Tests should synchronize on the state they need, run in a bubble,
+   or use `require.Eventually` / `require.Never` with a bounded deadline. A
+   call is exempt only when it is lexically inside the function literal passed
+   directly to `synctest.Test`, where it advances the bubble's fake clock. A
+   helper function called from a bubble is still flagged, because the checker
+   cannot prove that the helper runs inside a bubble. A nested function literal
+   is exempt only when it is invoked in place (directly or through `go` or
+   `defer`) or registered with `Cleanup` on the bubble's own `t`, whose
+   cleanups run before the bubble ends. A literal that is assigned, returned,
+   or passed to any other function is flagged, because it may run after the
+   bubble returns.
 2. Production Go files under the deterministic FSM boundary must not call
    `os.Getenv`, `os.LookupEnv`, or `os.Environ`. Node-local configuration may
    gate admission but cannot affect how a committed entry is applied.
-3. Protocol definitions under `misc/proto` must not declare `reserved` fields
-   while Ledger v3 remains unreleased and field numbers are kept sequential.
-4. The nested monitoring-dashboard Go tests must remain reachable from the
+3. The nested monitoring-dashboard Go tests must remain reachable from the
    Default CI workflow. The dashboard test recipe regenerates the committed
    dashboards before testing them, and `pre-commit` must continue to invoke
    that recipe.
-5. The `Default` GitHub Actions workflow must retain an unconditional
+4. The `Default` GitHub Actions workflow must retain an unconditional
    `Tests-Operator` job that runs the full default-tag `misc/operator` unit
    suite through the pinned Nix toolchain. The command is kept explicit so
    the nested Go module cannot silently fall outside root-module `./...` tests.
@@ -45,9 +52,9 @@ comments and string literals, recognizes explicit and dot-import aliases, and
 distinguishes an imported package name from a shadowing local variable. Files
 are parsed independently, so build tags do not remove a file from the check.
 
-The protobuf check masks comments and quoted strings before detecting the
-`reserved` keyword. Declarations remain detectable when the keyword and its
-field numbers are split across lines.
+Since `v3.0.0-rc.1`, `reserved` declarations protect published protobuf numbers
+and names from reuse. The checker no longer rejects them. See the
+[protobuf maintenance rules](../contributing/protobuf.md#modifying-protocol-definitions).
 
 The dashboard reachability check inspects the tracked nested module, Just
 recipe metadata, and the Default workflow. It fails if the module loses its

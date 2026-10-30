@@ -62,29 +62,45 @@ go install github.com/planetscale/vtprotobuf/cmd/protoc-gen-go-vtproto@v0.6.1-0.
 ## Modifying Protocol Definitions
 
 The service API has a compiled protocol revision independent of release versions.
-For every exposed wire or semantic change, assess client/server compatibility and
-bump `pkg/grpcprotocol.Version` in the same change when the contract breaks.
-Renumbering exposed fields is a breaking change even if the generated code still
-compiles. Internal persisted/Raft-only changes require an impact assessment of
-shared service types rather than an automatic service revision bump. See the
+For every exposed wire or behavior change, assess its effect on published clients.
+During the v3 release-candidate phase the revision is frozen: do not bump
+`pkg/grpcprotocol.Version`. Preserve published gRPC service and method names,
+request and response types, field numbers, wire types, field identity, and enum
+numbers. Behavior and configuration changes can ship when their client impact
+and upgrade steps are documented. Internal persisted/Raft-only
+changes require an impact assessment of existing data and shared service types
+rather than an automatic service revision bump. See the
 [service protocol contract](../architecture/subsystems/api/protocol-compatibility.md)
-for the gate, client obligations, and review criteria. This does not change the
-unreleased-v3 rule: remove obsolete fields and realign their numbers; do not add
-migrations, reserved fields, or support for older v3 formats.
+for the gate, client obligations, and review criteria. Starting with
+`v3.0.0-rc.1`, existing persisted data must remain readable or have a safe
+migration. Follow the [upgrade policy](../../ops/upgrades.md#release-requirement-from-v300-rc1).
 
-1. Edit the `.proto` file in `misc/proto/`
-2. **Realign field numbers sequentially** when adding/removing fields (no gaps, remove obsolete `reserved` entries)
-3. **Audit the hand-rolled wire sites** before renumbering — see below
+CI enforces the service wire freeze with
+`PROTOCOL_BASE_SHA=<target-sha> just check-protocol-version`. It fails if the
+revision changes or `buf breaking` finds a wire-incompatible change in a type
+reachable from a gated service. Run it locally before pushing a `.proto`
+change; review behavior changes separately for client impact.
+
+1. Edit the `.proto` file in `misc/proto/`.
+2. Preserve published service and method names, request and response types,
+   field numbers, wire types, field identity, and enum numbers. Internal-only
+   fields may change only when existing persisted data remains readable or has
+   a safe migration, and the RC rolling-upgrade contract remains satisfied.
+   Reserve removed numbers and names when they must not be reused; a
+   reservation does not replace migration.
+3. **Audit the hand-rolled wire sites** before changing a field's encoding or
+   adding a new field — see below.
 4. Run `just generate-proto` **immediately**
 5. Update Go code that uses the generated types
 6. Rebuild: `go build ./...`
 
-### Renumbering: audit the hand-rolled wire sites first
+### Wire changes: audit the hand-rolled wire sites first
 
-Most code goes through the generated marshallers and follows a renumbering automatically. A few
-hot paths bypass them and encode or decode protobuf by hand, and those break **silently** — the
-compiler sees nothing, and a wrong field number is not a decode error, just a field that never
-matches. Grep **both** directions before you renumber:
+Most code goes through the generated marshallers and follows a permitted
+internal-only renumbering automatically. A few hot paths bypass them and
+encode or decode protobuf by hand, and those break **silently**: the compiler
+sees nothing, and a wrong field number is not a decode error. Grep **both**
+directions before changing an internal-only field number or wire type:
 
 ```bash
 # write side
@@ -102,8 +118,45 @@ The two known sites behave differently, and only one of them is self-healing:
 
 `protowire_postings.go` decodes `Log`, `LogPayload`, `ApplyLedgerLog`, `LedgerLog`,
 `CreatedTransaction`, `RevertedTransaction`, `Transaction`, `TouchedVolume` and `Posting`. If you
-renumber any field of those messages, update the corresponding `case num == N` arm in the same
-commit.
+change an internal-only field number in those messages, update the corresponding
+`case num == N` arm in the same commit and prove the upgrade contract.
+
+## Convention checks
+
+`just lint-proto` (`go run ./scripts/lintproto`) runs `buf lint` on `misc/proto/`
+with the check plugin in `tools/buf-plugin-ledger`. It is part of
+`just pre-commit`, so the required `Dirty` CI job runs it.
+Plugin build failures include the captured compiler or module-download
+diagnostics; lint violations stream their diagnostics directly from buf.
+
+| Rule | Requirement |
+|---|---|
+| `LEDGER_NO_RESERVED` | New messages and enums declare no `reserved` numbers or names |
+| `LEDGER_FIELD_NUMBERS_SEQUENTIAL` | New message field numbers are exactly `1..N`, oneof members included; map entries are exempt |
+| `LEDGER_ENUM_NUMBERS_SEQUENTIAL` | New enum value numbers are exactly `0..N-1`, without aliases |
+
+These are initial-layout conventions, not compatibility checks. Existing types
+are identified by their fully qualified names in
+`tools/buf-plugin-ledger/existing-types.txt`, captured from the descriptors at
+`ce910700e0b696a40067d00a3c76147b72fafd06` (the target branch when this
+lint was introduced). All three rules exempt those types, including legitimate
+gaps and reservations. New nested types are checked even inside an existing
+message. Do not add names to the baseline to silence findings. Types introduced
+after this baseline remain subject to these conventions; a later compatible
+removal requiring gaps or reservations needs an explicit, reviewed baseline
+update with release evidence before lint can accept it. Never renumber a
+published type to satisfy lint.
+
+The service wire freeze remains enforced independently by
+`just check-protocol-version`; lint does not prove persisted-format or rolling
+upgrade compatibility. Those still require the review and tests described above.
+`just test-buf-plugin` runs the separate module's tests with the race detector,
+including existing-type exemptions and new nested types.
+
+Imported files such as `google/protobuf/descriptor.proto` are not checked. To
+add a rule, add a `check.RuleSpec` to the plugin with a fixture-based test, list
+its ID under `lint.use` in `misc/proto/buf.yaml`, and confirm `just lint-proto`
+passes on the current tree.
 
 ## vtprotobuf (Fast Serialization)
 

@@ -24,6 +24,51 @@ presence, command flags, implementation comments and tests at the audited SHA.
 A stale table is not proof of a missing route. Conflicting sources or unspecified
 null/unknown-field/trailing-input policies become **questions**, not assumed bugs.
 
+For query-name validation, enumerate actual `/v3` route registrations and each
+operation's query parameters in `openapi.yml`. On every route, an unknown name
+or malformed query encoding must return `400 INVALID_REQUEST` before reaching
+the backend. Check the removed account `prefix` and transaction `reference`
+names for the `filter` hint, and `checkpointId` for the gRPC-only pinned-read
+hint. Preserve every declared query name at this boundary; value parsing has
+its own route-specific contract. The unversioned ops routes are outside this
+validation and retain their prior handling. Use the registered-router tests
+`TestQueryParameters_RejectUnknownAtRouter`,
+`TestQueryParameters_MatchOpenAPI`,
+`TestQueryParameters_LeaveOpsProbesUnchanged`, and
+`TestKnownQuery_AllowsDeclaredParameters` as the dynamic oracle, then inspect
+the route registrations and error body when diagnosing a failure.
+
+For Numscript source analysis, trace `POST /v3/numscripts/analyze` and
+`BucketService.AnalyzeNumscript` through their query-read guards into the shared
+analyser. The scope is `ledger:ReadQuery` when authentication is enabled;
+configured anonymous scopes and disabled authentication remain valid. Compare
+sorted external inputs and the version, syntax, feature and compile diagnostic
+kind, code, message and available zero-based ranges across both transports.
+Recognized source failures return diagnostics with no inputs; internal parser or
+compiler failures return transport errors without an analysis payload. Prove
+that neither adapter opens a ledger or mutates state.
+
+Exercise the source budget before the Numscript parser: over 64 KiB, more than
+32 `/*` openers nested deeply, and more than 32 openers in balanced pairs inside
+one outer block comment. The upstream lexer retains recursive alternatives even
+when pairs close, so a peak-depth-only probe is insufficient. The conservative
+marker count also includes text in string literals. At HTTP, consume the entire
+JSON body through the 4 MiB middleware limit; a second value or trailing junk
+must reject, and an oversized body must return 413. Keep the parser's internal
+grammar and runtime semantics with the scripting subsystem; this domain owns
+the observable API boundary and its resource budget.
+
+Prepared-query `LIST` page-size evidence must reach the registered HTTP execute
+route and service gRPC handler. Capture downstream requests for 0, 1000, 1001
+and uint32 maximum in both directions: zero selects 100, oversized values select
+1000, and the response reports the effective size. Supplied HTTP query values
+override the body, including empty/zero; overflowing uint32 values reject before
+the backend. Preserve caller-owned inputs and unchanged `AGGREGATE_VOLUMES`
+requests. This domain owns adapter normalization and response presentation;
+`query-semantic-equivalence` owns executor enforcement before ID collection and
+enrichment, with exact fixed-state windows and continuation. Neither claims
+snapshot stability across live requests.
+
 Establish which error tier a failure belongs to before asserting that its
 presentation is wrong. The three contracts in `internal/domain` — `Classifiable`,
 `Describable`, `SerializableError` — are described in the "Three Error Contract
@@ -91,16 +136,31 @@ text through the generated operation, as described in `tests/sdk/README.md`.
 Compare documented write scopes with both the granular route guard and default
 aggregate mapping. Creation metadata remains EN-2686's separate server contract.
 
-HTTP monetary negotiation follows the v2 contract: posting amounts, volume
-inputs/outputs and signed balances use exact decimal JSON number tokens by
-default, and canonical strings with a truthy `Formance-Bigint-As-String` header.
-Posting input accepts canonical unsigned decimal strings or integer tokens
-within uint256; volume codecs retain arbitrary precision and signed balances.
-Review option propagation through custom nested codecs, checked-response
-buffering and concurrent mixed-header requests. CLI, protobuf, event and
-storage codecs keep their existing representations. Use the generated SDK
-integration in `tests/sdk` and exact raw-token handler assertions as evidence;
-a number/string schema union alone cannot prove the selected mode.
+HTTP large-integer negotiation preserves the v2 monetary default and extends it
+by type: every response `Uint256`, `BigUint` and `SignedBigInt` uses exact decimal
+JSON number tokens by default and canonical strings with case-insensitive
+`true`, `yes`, `y` or `1` in `Formance-Bigint-As-String`, without trimming.
+Include standalone values and nonmonetary fields inside structs, maps, slices
+and custom public projections. Trace shared streaming, checked, paged and bulk
+writers from the request through option-aware nested codecs; dedicated protojson
+projections must contain none of these types, including in nested descriptors.
+Preserve null/zero/omission shapes, escaping, streaming newlines and checked
+failure buffering. Concurrent mixed-header requests must remain isolated.
+Ordinary integer IDs/counts, metadata and explicitly string-encoded counters
+retain their current representation. CLI, protobuf, event and storage codecs
+also keep their existing representations; response negotiation does not expand
+request decoding. Posting input still accepts canonical unsigned decimal strings
+or integer tokens within uint256; volumes retain arbitrary precision and signed
+balances.
+
+Use exact raw-token assertions at zero, 2^53 boundaries, Uint256 maximum,
+arbitrary precision beyond 256 bits and negative signed values. Preserve
+validation failures for invalid magnitudes and negative zero. The generated SDK
+integration in `tests/sdk` exercises the 12 operations currently exposing these
+types; future fields inherit the same type-based rule without a new business
+classification. Bind the actual schema/generator/dependencies and prove exact
+opt-in strings through generated operations. A number/string schema union or a
+helper-only probe cannot prove routed SDK preservation.
 
 ## Boundaries
 
@@ -240,7 +300,7 @@ See [the creation contract](../architecture/subsystems/api/atomic-ledger-creatio
 ## HTTP event sink mutations
 
 Trace POST and DELETE under `/v3/_/events-sinks` through the registered
-`ledger:OpsWrite` route guards and unsigned Apply requests. POST accepts a
+`ledger:WriteOps` route guards and unsigned Apply requests. POST accepts a
 direct protobuf JSON configuration with a name and one sink variant; verify
 full-body limits, strict JSON decoding and field preservation for all five
 variants. Its acknowledgement includes only the committed name. GET retains
@@ -271,3 +331,36 @@ oneofs. Get/list fixtures in `internal/adapter/http/testdata/ledger_info_rewrite
 are shared routed-response and generated SDK operation inputs. Marshal failure must return sanitized 500 before
 headers. The confidentiality oracle belongs to sensitive-data-exposure-boundaries.
 See [LedgerInfo](../architecture/subsystems/api/ledger-info.md).
+
+## Cluster node identities
+
+Cluster state projections, targeted peer requests, per-node enrichment,
+leadership transfer and primary/secondary store-metrics targets must preserve
+uint64 IDs, including colliding low 32 bits
+(`1` and `4294967297`). Verify the real Node.GetClusterState projection against
+nested Raft status and capture actual adapter and Cobra RPC targets. Include
+small-ID controls, uint64 maximum, and pre-dial rejection of invalid, zero or
+overflowing transfer arguments. Metrics target zero remains local; unknown
+targets must not fall back to a colliding low-ID peer. Capture both metrics RPCs
+through Cobra and the forwarding adapter, including uint64 maximum. The six
+original cluster fields and two metrics target fields retain names,
+numbers and unsigned-varint encoding without a parallel compatibility field.
+This domain owns projection, parsing and routing fidelity; election correctness
+and member persistence remain in raft-membership-leadership. Varint decoding
+alone does not establish full-range support in old uint32 readers. Require the
+client/server rollout limitation documented in the service protocol contract.
+
+## CLI posting amount boundaries
+
+`TestTransactionsCreatePostingAmounts` exercises the registered transaction
+creation command against a local gRPC Apply fixture. Cover colored and uncolored
+postings with negative one, zero, a positive control, uint256 maximum and 2^256.
+Invalid amounts must return ordinary errors without constructor panic or Apply,
+even after an earlier valid posting; accepted amounts must reach Apply exactly.
+The zero flag value remains accepted by the CLI parser.
+
+On Linux and macOS, `TestTransactionsCreateInteractiveAmount` drives the actual
+command through a pseudoterminal and checks overflowing input is rejected before
+Apply, alongside the existing negative and zero rejection. Terminal readiness
+is observed rather than inferred from a delay. These are CLI input-contract
+oracles; they do not claim server accounting or committed-state coverage.

@@ -213,3 +213,46 @@ func TestCreateIndex_MissingIndexCoverageIsNotAbsence(t *testing.T) {
 	require.Equal(t, domain.ErrReasonCoverageMiss, miss.Reason())
 	require.Empty(t, result.Results[0].Logs)
 }
+
+// TestDropIndex_MissingIndexIsIdempotent pins the documented dropIndex
+// contract: dropping an index that is absent from the registry, whether never
+// created or already dropped, succeeds and records a DroppedIndexLog. Only an
+// unknown ledger answers not found.
+func TestDropIndex_MissingIndexIsIdempotent(t *testing.T) {
+	t.Parallel()
+
+	machine, store, attrs := newTestMachine(t)
+	const ledger = "index-drop-missing"
+	id := indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_ACCOUNT, "never-indexed")
+	apply := func(sequence uint64, orders ...*raftcmdpb.Order) ApplyResult {
+		t.Helper()
+		result, err := machine.ApplyEntries(t.Context(), store, makeEntry(t, sequence, indexProposal(sequence, ledger, id, orders...)))
+		require.NoError(t, err)
+
+		return result.Results[0]
+	}
+	require.NoError(t, apply(1, createLedgerOrder(ledger)).Error)
+
+	for sequence := uint64(2); sequence <= 3; sequence++ {
+		dropped := apply(sequence, indexDropOrder(ledger, id))
+		require.NoError(t, dropped.Error)
+		require.Len(t, dropped.Logs, 1)
+		droppedLog := dropped.Logs[0].GetCreatedLog().GetPayload().GetApply().GetLog().GetData().GetDropIndex()
+		require.NotNil(t, droppedLog, "each drop records a DroppedIndexLog")
+		require.True(t, indexes.Equal(id, droppedLog.GetId()))
+	}
+
+	handle, err := store.NewDirectReadHandle()
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, handle.Close()) })
+	row, err := attrs.Index.Get(handle, indexes.KeyFor(ledger, id).Bytes())
+	require.NoError(t, err)
+	require.Nil(t, row, "a drop of a missing index must not create a registry row")
+
+	const unknownLedger = "index-drop-unknown-ledger"
+	result, err := machine.ApplyEntries(t.Context(), store, makeEntry(t, 4, indexProposal(4, unknownLedger, id, indexDropOrder(unknownLedger, id))))
+	require.NoError(t, err)
+	var notFound *domain.ErrLedgerNotFound
+	require.ErrorAs(t, result.Results[0].Error, &notFound)
+	require.Empty(t, result.Results[0].Logs)
+}

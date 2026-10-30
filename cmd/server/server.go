@@ -13,7 +13,7 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
-	"go.opentelemetry.io/otel/log/global"
+	"go.opentelemetry.io/otel"
 	sdklog "go.opentelemetry.io/otel/sdk/log"
 	"go.uber.org/fx"
 	"go.yaml.in/yaml/v3"
@@ -158,7 +158,7 @@ func NewRunCommandWithBindings(bindings network.Bindings) *cobra.Command {
 	runCmd.Flags().Int("max-execution-plan-size", 4096, "Maximum number of AttributePlan entries an ExecutionPlan may carry; admission rejects proposals beyond this (0 = unlimited)")
 
 	// Health check configuration flags
-	runCmd.Flags().Duration("health-check-interval", 30*time.Second, "Interval between health checks (default: 30s)")
+	runCmd.Flags().Duration("health-check-interval", 30*time.Second, "Interval between health checks; must be greater than zero (default: 30s)")
 	runCmd.Flags().Float64("health-wal-threshold", 0.8, "WAL volume usage threshold (0.0-1.0, default: 0.8 = 80%)")
 	runCmd.Flags().Float64("health-data-threshold", 0.8, "Data volume usage threshold (0.0-1.0, default: 0.8 = 80%)")
 	runCmd.Flags().Float64("health-wal-resume-threshold", 0.75, "WAL volume usage resume threshold for hysteresis (must satisfy 0 < resume < health-wal-threshold; when unset, derived as 0.9375 x the block threshold)")
@@ -361,7 +361,7 @@ func runServer(cmd *cobra.Command, bindings network.Bindings) error {
 	}
 
 	defer func() {
-		switch loggerProvider := global.GetLoggerProvider().(type) {
+		switch loggerProvider := otel.GetLoggerProvider().(type) {
 		case *sdklog.LoggerProvider:
 			err := loggerProvider.ForceFlush(context.Background())
 			if err != nil {
@@ -667,11 +667,13 @@ func LoadConfig(ctx context.Context, cmd *cobra.Command) (*bootstrap.Config, err
 	loadBloomConfig(cmd, cfg.BloomConfig)
 
 	// Hash algorithm for log chain
-	switch getString("hash-algorithm", "blake3") {
+	switch algorithm := getString("hash-algorithm", "blake3"); algorithm {
 	case "xxh3":
 		cfg.BloomConfig.HashAlgorithm = commonpb.HashAlgorithm_HASH_ALGORITHM_XXH3
-	default:
+	case "blake3":
 		cfg.BloomConfig.HashAlgorithm = commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3
+	default:
+		return nil, fmt.Errorf("invalid --hash-algorithm %q: must be blake3 or xxh3", algorithm)
 	}
 
 	// Read index configuration

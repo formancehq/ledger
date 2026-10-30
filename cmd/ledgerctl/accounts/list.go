@@ -257,11 +257,13 @@ func fetchAccountsWithPager(cmd *cobra.Command, client servicepb.BucketServiceCl
 		// Declining the prompt below ends the walk, so both tokens are shown
 		// first.
 		cmdutil.EmitCursorHints(cmd, cursors)
+		if !cmdutil.CanPrompt() {
+			return nil
+		}
 
-		result, err := pterm.DefaultInteractiveConfirm.
+		result, err := cmdutil.PromptConfirm(pterm.DefaultInteractiveConfirm.
 			WithDefaultText("Load next page?").
-			WithDefaultValue(true).
-			Show()
+			WithDefaultValue(true))
 		if err != nil {
 			return fmt.Errorf("failed to read input: %w", err)
 		}

@@ -47,5 +47,5 @@ func (s *Server) handleGetLedgerStats(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeOK(w, toLedgerStatsJSON(stats))
+	writeOK(w, r, toLedgerStatsJSON(stats))
 }

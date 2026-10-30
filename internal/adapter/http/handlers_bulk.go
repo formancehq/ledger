@@ -11,7 +11,6 @@ import (
 	internalauth "github.com/formancehq/ledger/v3/internal/adapter/auth"
 	"github.com/formancehq/ledger/v3/internal/adapter/json"
 	"github.com/formancehq/ledger/v3/internal/domain"
-	"github.com/formancehq/ledger/v3/internal/infra/plan"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
@@ -59,6 +58,17 @@ func (s *Server) serveBulk(w http.ResponseWriter, r *http.Request) {
 			fmt.Errorf("bulk size exceeded, max size is %d", s.bulkMaxSize))
 
 		return
+	}
+
+	// A JSON null entry decodes to a nil element; everything downstream
+	// relies on elements being non-nil.
+	for i, elem := range elements {
+		if elem == nil {
+			writeBulkErrorResponse(w, http.StatusBadRequest, "VALIDATION",
+				fmt.Errorf("element %d is null", i))
+
+			return
+		}
 	}
 
 	// Per-element scope check: each element may require a different granular
@@ -220,13 +230,13 @@ func (s *Server) runBulkSequential(ctx context.Context, requests []*servicepb.Re
 
 // writeBulkResponse writes the bulk response. Each per-element error is
 // mapped to the HTTP status it would carry as a single request (via
-// perElementStatus, which mirrors handleError). The top-level status is
+// bulkElementError, which shares handleError's classifyError). The top-level status is
 // then the "worst" of those statuses, with two rollup rules:
 //
 //   - **Aborted** (`context.Canceled` sentinel emitted by runBulkSequential
-//     when `continueOnFailure=false` and a prior element failed): perElementStatus
+//     when `continueOnFailure=false` and a prior element failed): bulkElementError
 //     returns 0 and the element contributes nothing to the rollup.
-//   - **Per-element business** (4xx from a domain Describable): rolled up per
+//   - **Per-element business** (any other 4xx): rolled up per
 //     `continueOnFailure` — suppressed to 200 when opt-in, surfaced as its
 //     own status (typically 400/404/409) otherwise.
 //
@@ -243,7 +253,8 @@ func writeBulkResponse(w http.ResponseWriter, r *http.Request, elements []*servi
 		var data any
 
 		if result.err != nil {
-			switch st := perElementStatus(result.err); {
+			st, code, description := bulkElementError(r, result.err)
+			switch {
 			case st == 0:
 				// Aborted sentinel — no top-level status contribution.
 			case st >= 500:
@@ -263,29 +274,10 @@ func writeBulkResponse(w http.ResponseWriter, r *http.Request, elements []*servi
 				}
 			}
 
-			// A contradicting reason/code pair is a protocol fault, not a
-			// per-element business outcome. bulkErrorCode already withholds
-			// the claimed reason, but result.err.Error() would still put the
-			// received reason and code in the client-visible description, so
-			// this element carries the same generic correlated internal error
-			// the unitary path answers through writeInternalServerError.
-			if _, ok := apierr.InvalidWire(result.err); ok {
-				id := correlationID(r)
-				recordHTTPInternalError(r, id, result.err)
-
-				apiResults[i] = bulkAPIResult{
-					ResponseType:     "ERROR",
-					ErrorCode:        "INTERNAL_ERROR",
-					ErrorDescription: fmt.Sprintf("internal server error (correlation ID: %s)", id),
-				}
-
-				continue
-			}
-
 			apiResults[i] = bulkAPIResult{
 				ResponseType:     "ERROR",
-				ErrorCode:        bulkErrorCode(result.err),
-				ErrorDescription: bulkErrorDescription(r, result.err),
+				ErrorCode:        code,
+				ErrorDescription: description,
 			}
 
 			continue
@@ -337,64 +329,30 @@ func writeBulkResponse(w http.ResponseWriter, r *http.Request, elements []*servi
 	}
 
 	response := bulkResponse{Data: apiResults}
-	writeMonetaryJSONResponse(w, r, statusCode, response)
+	writeJSONResponse(w, r, statusCode, response)
 }
 
-// perElementStatus returns the HTTP status a given per-element error would
-// carry as a single request, or 0 for the runBulkSequential context.Canceled
-// sentinel that marks skipped elements. The mapping mirrors handleError so
-// bulk stays consistent with single-request handling.
-func perElementStatus(err error) int {
-	// Aborted sentinel: runBulkSequential sets this on remaining elements
-	// after the first failure when continueOnFailure=false. Not a status
-	// contributor — the originating error drives the rollup.
+// bulkElementError renders a per-element failure with the status and
+// description handleError answers for it on a single request. The code is the
+// apierr reason, INTERNAL_ERROR for a contradicting reason/code pair, and the
+// generic "ERROR" for every failure without a reason. The runBulkSequential
+// context.Canceled sentinel marking skipped elements has no single-request
+// counterpart: it carries status 0 and contributes nothing to the rollup — the
+// originating error drives it.
+func bulkElementError(r *http.Request, err error) (status int, code, description string) {
 	if errors.Is(err, context.Canceled) {
-		return 0
+		return 0, "ERROR", err.Error()
 	}
 
-	// Retryable infra sentinels handled before Describable dispatch,
-	// mirroring handleError.
-	if errors.Is(err, commonpb.ErrNoLeader) || errors.Is(err, plan.ErrCacheHorizonExceeded) {
-		return http.StatusServiceUnavailable
-	}
-
+	c := classifyError(err)
+	code = "ERROR"
 	if d, ok := apierr.Describe(err); ok {
-		return kindToHTTPStatus(d.Kind)
+		code = d.Reason
+	} else if _, ok := apierr.InvalidWire(err); ok {
+		code = c.code
 	}
 
-	// Unknown error: 500. Can't be masked as 200 under continueOnFailure.
-	return http.StatusInternalServerError
-}
-
-// bulkErrorDescription applies the same diagnostics and public presentation as
-// single-request errors while preserving the bulk envelope, reasons and rollup.
-func bulkErrorDescription(r *http.Request, err error) string {
-	internal := perElementStatus(err) == http.StatusInternalServerError
-	var id string
-	if internal {
-		id = correlationID(r)
-		recordHTTPInternalError(r, id, err)
-	}
-	if d, ok := apierr.Describe(err); ok {
-		return d.Message
-	}
-	if internal {
-		return fmt.Sprintf("internal server error (correlation ID: %s)", id)
-	}
-
-	return err.Error()
-}
-
-// bulkErrorCode returns a machine-readable code for a per-element bulk failure.
-// Domain-typed errors and failures decoded from the leader both expose it
-// through the apierr boundary contract; anything else keeps the generic
-// "ERROR" fallback rather than leaking a raw string.
-func bulkErrorCode(err error) string {
-	if d, ok := apierr.Describe(err); ok {
-		return d.Reason
-	}
-
-	return "ERROR"
+	return c.status, code, c.publicMessage(r, err)
 }
 
 // writeBulkErrorResponse writes a bulk error response.
@@ -404,7 +362,7 @@ func writeBulkErrorResponse(w http.ResponseWriter, statusCode int, errorCode str
 		errorMsg = err.Error()
 	}
 
-	writeJSONResponse(w, statusCode, bulkResponse{
+	writeJSONResponse(w, nil, statusCode, bulkResponse{
 		ErrorCode:    errorCode,
 		ErrorMessage: errorMsg,
 	})

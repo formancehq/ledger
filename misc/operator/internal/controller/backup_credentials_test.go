@@ -44,7 +44,7 @@ func TestBackupRunCredentialsStayInSecrets(t *testing.T) {
 				require.NoError(t, batchv1.AddToScheme(scheme))
 				require.NoError(t, ledgerv1alpha1.AddToScheme(scheme))
 				cluster := &ledgerv1alpha1.Cluster{
-					ObjectMeta: metav1.ObjectMeta{Name: "ledger", Namespace: "test"},
+					ObjectMeta: metav1.ObjectMeta{Name: "ledger", Namespace: "test", UID: "cluster-uid"},
 					Spec: ledgerv1alpha1.ClusterSpec{
 						Image: ledgerv1alpha1.ImageSpec{Repository: "ledger", Tag: "test"},
 						TLS:   &ledgerv1alpha1.TLSConfig{Enabled: true, SecretName: "ledger-tls", CASecretKey: "ca.crt"},
@@ -64,17 +64,13 @@ func TestBackupRunCredentialsStayInSecrets(t *testing.T) {
 					ObjectMeta: metav1.ObjectMeta{Name: "run", Namespace: "test", UID: "run-uid"},
 					Spec:       ledgerv1alpha1.BackupRunSpec{BackupRef: backup.Name, Type: runType},
 				}
-				sts := &appsv1.StatefulSet{
-					ObjectMeta: metav1.ObjectMeta{Name: resourceName(cluster.Name), Namespace: "test"},
-					Spec: appsv1.StatefulSetSpec{Template: corev1.PodTemplateSpec{Spec: corev1.PodSpec{
-						Containers: []corev1.Container{{Name: "ledger", Env: []corev1.EnvVar{{Name: "TLS_MODE", Value: tlsModeRequired}}}},
-					}}},
-				}
+				sts := backupTLSWorkload(cluster, tlsModeRequired)
+
 				secret := &corev1.Secret{ObjectMeta: metav1.ObjectMeta{Name: "s3-auth", Namespace: "test"},
 					Data: map[string][]byte{"access": []byte(accessKey), "secret": []byte(secretKey)}}
 				c := fake.NewClientBuilder().WithScheme(scheme).WithStatusSubresource(run).
-					WithObjects(cluster, backup, run, sts, secret).Build()
-				r := &BackupRunReconciler{Client: c, Scheme: scheme}
+					WithObjects(cluster, backup, run, sts, backupClusterService(cluster), secret).Build()
+				r := &BackupRunReconciler{Client: c, APIReader: c, Scheme: scheme}
 				_, err := r.Reconcile(t.Context(), ctrl.Request{NamespacedName: client.ObjectKeyFromObject(run)})
 				require.NoError(t, err)
 				job := &batchv1.Job{}

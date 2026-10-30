@@ -1,0 +1,26 @@
+# Used by scripts/checkprotocolversion (breaking) and scripts/lintproto (lint).
+# Code generation stays on protoc (see `just generate-proto`). The declared
+# plugin is built from tools/buf-plugin-ledger by both commands: a bare
+# `buf lint` or `buf breaking` needs it on PATH.
+version: v2
+breaking:
+  # WIRE flags changes that make an existing peer decode bytes differently
+  # (deleted or renumbered fields, incompatible type changes). Published
+  # numbers are preserved during the RC, including reserved numbers.
+  # Removed services and RPCs are added because a peer still calling them
+  # breaks even though the remaining bytes decode the same way.
+  use:
+    - WIRE
+    - SERVICE_NO_DELETE
+    - RPC_NO_DELETE
+lint:
+  # Initial-layout conventions for new types only; existing-types.txt exempts
+  # types present when lint was introduced. See contributing/protobuf.md. The
+  # builtin buf categories are not enabled: they mostly flag naming choices
+  # that are part of the published API.
+  use:
+    - LEDGER_NO_RESERVED
+    - LEDGER_FIELD_NUMBERS_SEQUENTIAL
+    - LEDGER_ENUM_NUMBERS_SEQUENTIAL
+plugins:
+  - plugin: buf-plugin-ledger

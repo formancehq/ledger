@@ -54,6 +54,14 @@ matches; source builds reporting `dev` still carry a defined protocol revision.
 See the [service protocol contract](../technical/architecture/subsystems/api/protocol-compatibility.md)
 for SDKs, custom gRPC clients, and internal forwarding.
 
+## Server byte-size flags
+
+Server byte-size flags accept non-negative integer bytes with optional binary
+(`Ki` through `Ei`) or decimal (`k`, `M`, `G`, `T`, `P`, `E`) suffixes. The
+expanded size must fit in an int64. Negative values and overflow are rejected;
+zero keeps the flag's documented default or disabled meaning. See the
+[server configuration contract](deployment.md#configuration) for details.
+
 ## Global Flags
 
 These flags are available for all commands:
@@ -212,7 +220,8 @@ scripting against the CLI predictable across resources.
 | Pagination | `--page-size` | uint32 | Number of items per page (clamped server-side; default `10`). |
 | Pagination | `--cursor` | string | Page token printed by a previous page (`next_cursor` or `previous_cursor`). Pass the same `--reverse` and `--filter` on every page of a walk. See [Page tokens](#page-tokens). |
 | Pagination | `--reverse` | bool | Reverse iteration order. Available on commands whose server endpoint supports it. |
-| Pagination | `--all` | bool | Fetch every page at once (no interactive pagination). Available on `accounts` and `transactions`. |
+| Pagination | `--all` | bool | Fetch every page at once (no interactive pagination). Available on `accounts`, `transactions` and `queries execute`. |
+
 | Filter | `--filter` | string | Boolean filter expression — textual `filterexpr` grammar OR the structured JSON `QueryFilter` DSL (dual-format, EN-1511). |
 | Filter | `--prefix` | string | Account-address prefix shortcut. Only on `accounts list` (server-side `HardcodedPrefix` optimization). |
 | Consistency | `--checkpoint-id` | uint64 | Read from a named query checkpoint instead of the live store. |
@@ -222,6 +231,8 @@ scripting against the CLI predictable across resources.
 | Aliases | `list` | — | `ls`, `l` |
 | Aliases | `get` | — | `g`, `show`, `describe` |
 | Aliases | `inspect` | — | `i` |
+
+When stdin is not a terminal, commands that need an interactive value or confirmation fail immediately. Supply the required arguments and flags (including `--var` for Numscript variables and `--yes` for confirmations). Interactive pagers stop after the first page; account and transaction lists still print their cursor hints, while `queries execute` prints a reminder to use `--all`. Use `--all` to fetch all pages in scripts.
 
 Structured JSON and YAML output preserve the full precision of integer metadata,
 transaction IDs, and posting amounts, including values greater than `2^53`.
@@ -250,16 +261,16 @@ These commands still honor `--json` / `--yaml`.
 
 #### Default pagination behaviour
 
-Paginated `list` commands fall into two groups depending on what happens when
+Paginated `list` commands fall into three groups depending on what happens when
 neither `--page-size` nor `--cursor` is set:
 
 | Group | Commands | Default behaviour |
 |---|---|---|
-| Drain-by-default | `accounts list`, `transactions list`, `ledgers list`, `numscripts list`, `queries list`, `signing keys list` | Follow the trailer chain to the end and print every page in one shot. Set `--page-size` or `--cursor` to switch back to single-page output (and print the page hints). |
+| Interactive page walk | `accounts list`, `transactions list` | Prompt between pages on terminal stdin. On non-terminal stdin, print the first page and cursor hints, then stop. Use `--all` to fetch every page in scripts. |
+| Drain-by-default | `ledgers list`, `numscripts list`, `queries list`, `signing keys list` | Follow the trailer chain to the end and print every page in one shot. Set `--page-size` or `--cursor` to request a single page and print its cursor hints. |
 | Single-page-only | `audit list`, `logs list` | Always print one page and its page hints, even with no flags set. Resume with `--cursor <token>`. These resources commonly hold tens of thousands of rows; defaulting to a single page avoids accidentally streaming the whole history. |
 
-Both groups expose the same `--page-size` / `--cursor` semantics; only the
-flagless default differs.
+All groups expose `--page-size` and `--cursor`; the flagless behavior differs.
 
 #### Page tokens
 
@@ -849,7 +860,7 @@ ledgerctl indexes drop [flags]
 
 **Behavior:**
 - Queries using the dropped index will be rejected after the drop
-- Dropping a non-existent index returns an error
+- Dropping an index that does not exist (never created, or already dropped) succeeds and still records a `DROP_INDEX` log entry; only an unknown ledger returns an error. Run `ledgerctl indexes list` first to check a mistyped index.
 - `--target` and `--key` are only valid with `--type metadata`; passing them with any other type is rejected.
 
 **Example:**
@@ -1590,6 +1601,11 @@ ledgerctl transactions create [flags]
 | `--json` | `false` | Output as JSON |
 | `--timeout` | `10s` | Request timeout |
 
+Posting flag amounts must be decimal integers between `0` and `2^256 - 1`
+(inclusive). Interactive amounts must be positive and obey the same upper
+bound. Negative and overflowing amounts return a validation error before any
+Apply RPC; accepted amounts retain their exact value, including uint256 maximum.
+
 **Creating transactions with postings:**
 
 ```bash
@@ -1915,7 +1931,7 @@ ledgerctl account-types set-default-enforcement [flags]
 | Flag | Default | Description |
 |------|---------|-------------|
 | `--ledger` | *(required)* | Name of the ledger |
-| `--mode` | | Enforcement mode: `STRICT` (reject untyped accounts) or `AUDIT` (warn only) |
+| `--mode` | | Enforcement mode: `STRICT` (reject untyped accounts) or `AUDIT` (accept untyped accounts without reporting them) |
 
 **Example:**
 
@@ -2044,6 +2060,12 @@ Storage operations.
 
 Get metrics from the primary Pebble storage engine.
 
+Both store-metrics commands accept `--node-id` through `18446744073709551615`;
+negative, malformed and overflowing values reject before dialing. For IDs above
+`4294967295`, upgrade the CLI and every server on the forwarding path first:
+older servers truncate request IDs. See the
+[rollout limitation](../technical/architecture/subsystems/api/protocol-compatibility.md#cluster-node-id-width).
+
 **Aliases:** `store p m`
 
 ```bash
@@ -2056,7 +2078,7 @@ ledgerctl store primary metrics [flags]
 |------|---------|-------------|
 | `--json` | `false` | Output as JSON |
 | `--timeout` | `10s` | Request timeout |
-| `--node-id` | `0` | Target node ID (0 = local node) |
+| `--node-id` | `0` | Unsigned 64-bit target node ID (0 = local node) |
 
 **Example:**
 
@@ -2085,7 +2107,7 @@ ledgerctl store secondary metrics [flags]
 |------|---------|-------------|
 | `--json` | `false` | Output as JSON |
 | `--timeout` | `10s` | Request timeout |
-| `--node-id` | `0` | Target node ID (0 = local node) |
+| `--node-id` | `0` | Unsigned 64-bit target node ID (0 = local node) |
 
 **Example:**
 
@@ -2388,8 +2410,8 @@ ledgerctl store bootstrap --driver s3 --s3-bucket <bucket> --data-dir /path/to/d
 
 **Behavior:**
 
-1. Verifies the target data directory is fresh (no existing checkpoints via `ScanLatestCheckpointID`)
-2. Downloads backup files from the configured backend into a staging directory
+1. Rejects a `RESTORED` marker, live database or incompatible checkpoint layout; reclaims a lone unmarked `checkpoints/0` left by interrupted finalization.
+2. Creates or opens the selected data directory, rejects a symlink or non-directory at `restore-staging/`, removes any old real staging directory through the data-directory root, then creates a fresh staging directory. Downloads checkpoint files sequentially through rooted filesystem operations. Rejects non-local manifest filenames and symlink escapes. Each filename is checked before its parent directories are created or its object is read; file size and sha256 verification still apply.
 3. Applies export segments and rebuilds derived state from logs (if any)
 4. Opens the staging as a read-only Pebble database and displays a preview (ledger count, timestamps)
 5. If `--validate` is set, runs the full integrity checker (same as `store check`); aborts before finalizing if any integrity error is found
@@ -2397,6 +2419,16 @@ ledgerctl store bootstrap --driver s3 --s3-bucket <bucket> --data-dir /path/to/d
 7. Prepares attributes for backup (Global-zone resets): preserves the applied index as the genesis boundary (the WAL-snapshot index the restored genesis occupies, so joiners must sync a checkpoint; fallback 1 for a genesis checkpoint), strips persisted config, drops persisted bloom blocks; the attribute zone is left intact
 8. Hard-links staging to `checkpoints/0`, writes `RESTORED` marker
 9. Cleans up the staging directory
+
+Every attempt resets staging, including export-only restores. This command
+requires exclusive offline use of the target directory. Reset failure aborts
+before replay or publication and may leave old staging partly removed or absent.
+Download root handles close before replay and preview. Download/rebuild failures
+or confirmation EOF may leave new partial or fully rebuilt staging; the next
+attempt discards it and starts from the backup again so additive projections
+are not replayed twice. A successful finalization places the checkpoint before
+writing the `RESTORED` commit marker, then removes staging. A marked restore
+cannot be overwritten by retrying this command.
 
 After bootstrap, start the server with `--bootstrap` to use the restored data.
 
@@ -2474,6 +2506,10 @@ ledgerctl audit list [flags]
 |------|---------|-------------|
 | `--expand` | `false` | Expand orders within each audit entry |
 
+Each entry's header line ends with its batch signing key (`signature=<keyId>`)
+or `unsigned`. With `--expand`, that marker moves to a line above the orders,
+together with the batch `idempotency=<key>` when one is set.
+
 Audit has **no dedicated filter flags** — there is no `--failures-only` and no
 `--ledger`. Selecting failures or scoping to a ledger is done through the generic
 `--filter` (e.g. `--filter 'outcome == failure'`,
@@ -2534,7 +2570,6 @@ full-chain scan.
 - By default, shows the order count summary; use `--expand` to show full order details
 - Below each entry, all orders are listed in a tree structure with:
   - Order type and details (ledger name, reference, etc.)
-  - Signing key ID used (`key=<id>`) or `unsigned` if the order was not signed
   - Consecutive identical orders are grouped compactly (e.g. `MirrorIngest x500`)
 - If audit is disabled on the server, a warning message is displayed instead of an error
 - After the page, the command prints the [page hints](#page-tokens): `Previous page — go back with --cursor <token>` when an earlier page exists and `More results available — resume with --cursor <token>` when a later one does
@@ -2582,12 +2617,20 @@ ledgerctl audit list --json
 **Sample output:**
 
 ```
-  #1      2025-01-01T00:00:00Z  proposal=1    OK  logs=[1]
-    └─ CreateLedger name=default  key=unsigned
+  #1      2025-01-01T00:00:00Z  proposal=1    OK  logs=[1]  unsigned
+    └─ 1 orders
+  #2      2025-01-01T00:00:01Z  proposal=2    OK  logs=[2]  signature=admin-key
+    └─ 1 orders
+  #3      2025-01-01T00:00:02Z  proposal=3    FAIL  [INSUFFICIENT_FUNDS] ...  signature=admin-key
+    └─ 1 orders
+```
+
+With `--expand`:
+
+```
   #2      2025-01-01T00:00:01Z  proposal=2    OK  logs=[2]
-    └─ CreateTransaction ledger=default ref=tx-001  key=admin-key
-  #3      2025-01-01T00:00:02Z  proposal=3    FAIL  [INSUFFICIENT_FUNDS] ...
-    └─ CreateTransaction ledger=default  key=admin-key
+    signature=admin-key  idempotency=ik-1
+    └─ CreateTransaction ledger=default ref=tx-001
 ```
 
 #### audit get
@@ -2607,7 +2650,7 @@ ledgerctl audit get <sequence> [flags]
 
 **Behavior:**
 - Retrieves a single audit entry by sequence number
-- Displays the same tree format as `audit list` for the single entry
+- Displays the same tree format as `audit list --expand` for the single entry, including the batch `signature=<keyId>` / `unsigned` line and the `idempotency=<key>` when set
 - Returns an error if the entry does not exist
 
 **Example:**
@@ -2723,6 +2766,10 @@ Manage and inspect the Raft cluster.
 
 #### cluster status
 
+`--node-id` accepts unsigned 64-bit IDs; zero routes to the leader. Node lists,
+leader/local IDs and peer details preserve the full identity. In JSON/YAML
+output, protobuf uint64 identity fields are decimal strings.
+
 Display the current state of the Raft cluster, including node information and replication status.
 
 **Aliases:** `st`
@@ -2762,7 +2809,19 @@ ledgerctl cluster status --node-id 2
 - **Cluster Nodes**: List of all nodes with ID, address, suffrage, and status
 - **Replication Progress**: Replication status for each follower (only shown when querying leader)
 
+The operator uses three hidden transport commands: `cluster begin-drain <epoch>
+--json` calls the authenticated Raft cutoff RPC, `cluster end-drain <epoch>
+--json` releases the same epoch through Raft after a canceled shutdown, and
+`cluster drain-status --json` reads the current Pod's local cursor. A status
+response certifies durability only when its active drain index, or its last
+release index when there is no active drain, is nonzero and at or below the
+reported persisted index; that response includes a Pebble WAL
+fsync. These commands are not a
+user-facing shutdown workflow. See [controlled shutdown](../technical/architecture/subsystems/consensus/controlled-shutdown.md).
+
 #### cluster watch
+
+`--node-id` accepts the same unsigned 64-bit IDs as `cluster status`.
 
 Continuously poll and display the cluster status with in-place updates (similar to the Unix `watch` command).
 
@@ -2805,6 +2864,13 @@ ledgerctl cluster watch --interval 5s --timeout 3s
 
 Transfer the Raft cluster leadership to a specific node. The request is automatically forwarded to the current leader.
 
+The target must be a nonzero unsigned 64-bit integer (up to
+`18446744073709551615`); for example, `transfer-leader 4294967297` preserves the
+full target ID. Invalid, zero and overflowing arguments reject before dialing.
+For IDs above `4294967295`, update the CLI and all participating servers first;
+older protobuf readers can truncate the target. See the
+[rolling-upgrade limitation](../technical/architecture/subsystems/api/protocol-compatibility.md#cluster-node-id-width).
+
 **Aliases:** `tl`
 
 ```bash
@@ -2830,76 +2896,6 @@ ledgerctl cluster transfer-leader 2
 
 # Transfer with custom timeout
 ledgerctl cluster transfer-leader 3 --timeout 5s
-```
-
-#### cluster add-learner
-
-Add a non-voting (learner) node to the Raft cluster. The request is forwarded to the current leader.
-
-```bash
-ledgerctl cluster add-learner <node-id> <raft-address> <service-address> <instance-id> [flags]
-```
-
-**Flags:**
-
-| Flag | Default | Description |
-|------|---------|-------------|
-| `--timeout` | `10s` | Request timeout |
-
-**Behavior:**
-- The request is forwarded to the current leader if sent to a follower
-- `instance-id` is the 32-character hexadecimal encoding of the target node's 16-byte persisted `INSTANCE_ID` file
-- An existing member with replicated progress rejects a different identity with `FailedPrecondition`; retrying the same active identity returns `AlreadyExists`. With no replicated progress, a different identity refreshes the registration.
-- For stale progress, retire the old instance, remove its membership, then retry. If quorum is unavailable, use the leader-only `cluster remove-node --force` procedure in [Cluster operations](./cluster-operations.md), ensuring the retired instance cannot rejoin.
-- The leader proposes a ConfChange to add the node as a learner (non-voting member)
-- Once committed, all nodes add the learner to their transport and service pool
-- The learner receives log entries and snapshots but cannot vote or become leader
-
-**Example:**
-
-```bash
-# Read the INSTANCE_ID from the target node's configured --wal-dir (default: ./wal).
-# When running under the Formance Operator, the mount path is /data/raft by default.
-WAL_DIR=${WAL_DIR:-./wal}
-INSTANCE_ID_HEX=$(od -An -tx1 "$WAL_DIR/INSTANCE_ID" | tr -d ' \n')
-
-# Add node 4 as a learner
-ledgerctl cluster add-learner 4 node-4:7777 node-4:8888 "$INSTANCE_ID_HEX"
-
-# Add node 5 as a learner - read its own WAL directory for its unique INSTANCE_ID.
-# Reusing node-4 identity here would register node-5 under the wrong incarnation.
-NODE5_WAL_DIR=${NODE5_WAL_DIR:-./wal}
-NODE5_INSTANCE_ID_HEX=$(od -An -tx1 "$NODE5_WAL_DIR/INSTANCE_ID" | tr -d ' \n')
-ledgerctl cluster add-learner 5 node-5:7777 node-5:8888 "$NODE5_INSTANCE_ID_HEX" --timeout 30s
-```
-
-#### cluster promote-learner
-
-Promote a learner (non-voting) node to a full voter in the Raft cluster. The request is forwarded to the leader.
-
-```bash
-ledgerctl cluster promote-learner <node-id> [flags]
-```
-
-**Flags:**
-
-| Flag | Default | Description |
-|------|---------|-------------|
-| `--timeout` | `30s` | Request timeout |
-
-**Behavior:**
-- The request is forwarded to the current leader if sent to a follower
-- The leader proposes a ConfChange to promote the learner to a voter
-- Once committed, the node participates in elections and can become leader
-
-**Example:**
-
-```bash
-# Promote learner node 4 to voter
-ledgerctl cluster promote-learner 4
-
-# Promote with custom timeout
-ledgerctl cluster promote-learner 5 --timeout 60s
 ```
 
 #### cluster remove-node
@@ -3766,14 +3762,23 @@ ledgerctl queries execute <name> --ledger <ledger-name> [flags]
 | `--page-size` | `10` | Number of results per page |
 | `--mode` | `list` | Query mode: `list` or `aggregate` |
 | `--reverse` | `false` | List results in descending order. Rejected in `aggregate` mode |
+| `--all` | `false` | Fetch every page and print all results at once, without the interactive prompt. List mode only |
 | `--analyze` | `false` | Display the query profile: server-side phase timing (prepare/execute/barrier/deliver) plus iterator stats |
-| `--timeout` | `10s` | Request timeout |
+| `--timeout` | `10s` | Request timeout, applied to each page request |
+
+**Behavior:**
+- In list mode without `--all`, the CLI prints one page and asks before it loads the next one. With `--json` or `--yaml`, it prints only the first page
+- With `--all`, the CLI sends one request per page of `--page-size` results. It follows the response cursor until the server reports no more results, then prints every result in one table or one JSON/YAML array
+- With `--all --analyze`, the profile shown is the profile of the last page request
 
 **Examples:**
 
 ```bash
 # Execute without parameters
 ledgerctl queries execute active-users --ledger my-ledger
+
+# Fetch every result as one JSON array
+ledgerctl queries execute active-users --ledger my-ledger --all --json
 
 # Execute with parameters
 ledgerctl queries execute by-tier --ledger my-ledger --param tier=gold
@@ -4144,6 +4149,10 @@ Selects the hash function used for log chain integrity. This is a cluster-wide s
 - **`blake3`** (default): Cryptographic hash, 32-byte output. Detects both corruption and intentional tampering.
 - **`xxh3`**: Non-cryptographic hash (XXH3-128), 16-byte output. ~5-10x faster. Detects corruption only.
 
+The server rejects unsupported values before startup. `HASH_ALGORITHM` selects the same
+setting through the environment; an explicit CLI flag takes precedence. Omitting the
+setting or passing an empty value retains the `blake3` default.
+
 Each log records which algorithm was used in its `hash_version` field, so switching algorithms mid-stream is safe and the `store check` command verifies each log with the correct algorithm.
 
 ```bash
@@ -4177,10 +4186,17 @@ ledger run --response-signing-key ./response-keys/seed.hex [other flags...]
 ledgerctl --response-verify-key ./response-keys/pubkey.hex transactions create --ledger my-ledger --posting "world,bank,1000,USD"
 ```
 
-With `--response-verify-key`, prepared query create/update/delete and query
-checkpoint create/delete verify the returned Apply log signatures before
-reporting success or reading the created checkpoint ID. Missing or invalid
-signatures cause the command to fail.
+With `--response-verify-key`, `transactions set-metadata`/`delete-metadata`,
+`numscripts save`, prepared query create/update/delete, and query checkpoint
+create/delete verify the returned Apply log signatures before reporting
+success or reading returned fields such as a script name/version or checkpoint
+ID. Verification also checks that each visible log matches the authenticated
+payload. Missing or invalid signatures, signatures from another key, and
+mismatched logs cause the command to fail. Without this flag, verification is
+optional and unsigned responses remain accepted.
+
+Verification happens after the mutation RPC completes. A verification failure
+does not roll back the mutation; the client cannot authenticate its outcome.
 
 Clients can also discover the server's public key via the `Discovery` RPC.
 
@@ -4353,6 +4369,10 @@ Configure in-memory caches used by the FSM and Numscript parser.
 
 The FSM attribute cache uses a two-generation scheme. After `cache-rotation-threshold` entries are applied, the active generation is rotated. Higher values use more memory but reduce cache misses. This is a mutable cluster-wide setting: change it with the [rolling upgrade procedure](./cluster-operations.md#cluster-configuration-updates) so the leader propagates the new value deterministically through Raft.
 
+Zero resolves to 1000 before the leader compares or proposes the desired
+configuration. See the [zero-default rollout restrictions](./cluster-operations.md#zero-default-rollout-and-existing-committed-zero-entries)
+when older binaries can still become leader or a zero value was already committed.
+
 ```bash
 # Default: rotate every 1000 entries
 ledger run [other flags...]
@@ -4445,7 +4465,7 @@ Configure disk-usage and clock-skew monitoring. The health checker runs on the c
 
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
-| `--health-check-interval` | duration | `30s` | Interval between health-check polls |
+| `--health-check-interval` | duration | `30s` | Interval between health-check polls; must be greater than zero |
 | `--health-wal-threshold` | float64 | `0.8` | WAL volume usage fraction (0.0–1.0) at which writes are blocked (high-water / block mark) |
 | `--health-data-threshold` | float64 | `0.8` | Data volume usage fraction (0.0–1.0) at which writes are blocked (high-water / block mark) |
 | `--health-wal-resume-threshold` | float64 | `0.75` | WAL volume usage fraction below which a blocked write gate re-opens (low-water / resume mark). Must be `< --health-wal-threshold` |
@@ -4600,9 +4620,35 @@ the value configured on the existing cluster nodes
 
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
-| `--cluster-secret` | string | `""` | Shared secret for inter-node gRPC authentication (required when auth is enabled) |
+| `--cluster-secret` | string | `""` | Shared secret for inter-node gRPC authentication. Requires TLS (`--tls-mode` other than `disabled`). Multi-node deployments must set it |
 
-When authentication is enabled, all inter-node gRPC calls use this shared secret as a bearer token. Must be the same on all nodes in the cluster.
+When `--cluster-secret` is set, every inter-node gRPC call (Raft transport,
+snapshot transfer, cluster bootstrap, and follower-to-leader forwarding on the
+service API) carries this shared secret as a bearer token. The value must be
+the same on all nodes in the cluster.
+
+The cluster secret and `--auth-enabled` are separate mechanisms:
+
+- `--auth-enabled` authenticates external clients on the service API with
+  JWT or Ed25519 tokens.
+- `--cluster-secret` authenticates nodes to each other. The server does not
+  require it when `--auth-enabled` is set, and `--auth-enabled` does not
+  protect the Raft port.
+
+The two flags interact in one place. When `--auth-enabled` is set, a follower
+forwards writes to the leader with the original caller's identity. The leader
+accepts that identity only from a peer that presents the cluster secret on the
+service API. In a multi-node cluster with `--auth-enabled` and no cluster
+secret, writes sent to a follower fail with `PermissionDenied`.
+
+The server does not check at startup that a multi-node cluster has a secret.
+The Kubernetes operator creates a random secret and injects `CLUSTER_SECRET`
+into every pod whenever TLS is active (`optional` or `required`), whether
+authentication is enabled or not. Manual deployments must set the flag
+themselves.
+
+When client authentication is disabled, caller attribution is derived
+independently on each node; followers do not forward an auth-disabled snapshot.
 
 **TLS is required when `--cluster-secret` is set.** The server refuses to start
 if a cluster secret is configured without TLS (`--tls-cert-file` and
@@ -4615,7 +4661,12 @@ server-side interceptor that rejects any call whose `authorization: Bearer …`
 metadata does not match the configured secret with `codes.Unauthenticated`.
 The comparison is constant-time. Leaving `--cluster-secret` empty preserves the
 historical unauthenticated behavior for single-node setups; multi-node
-deployments **MUST** set it.
+deployments **MUST** set it. Without a secret, the Raft port has no
+authentication. The `ClusterBootstrapService` checks only the `--cluster-id`
+metadata, which is not a secret, so any client that can reach the port can
+call `GetPeers` and `JoinAsLearner` and change cluster membership. This holds even when `--auth-enabled` is set.
+Keep `--bind-addr` (default `0.0.0.0:7777`) off untrusted networks, or set a
+secret.
 
 Peer discovery also fails immediately when a discovered member has a missing or malformed 16-byte `instance_id`; retrying cannot repair this invalid cluster identity. Transient discovery failures still use exponential backoff.
 
@@ -4696,7 +4747,7 @@ on/off TLS toggle workflow.
 | `--auth-anonymous-scopes` | string | `""` | Comma-separated granular scopes (or `*:read` / `*:write` wildcards) granted to requests that arrive without a bearer token |
 | `--auth-discovery-timeout` | duration | `10s` | Bound the HTTP calls used for OIDC discovery and JWKS fetches (`0` = unbounded). Applies one operator-controlled timeout to both the discovery call and later JWKS key fetches. |
 
-Allows expanding virtual scopes into granular Ledger scopes. For example, mapping `ledger:read` to scopes such as `ledger:LedgerRead` and `ledger:TransactionRead`. Granular Ledger scopes use the `ledger:<Resource><Action>` shape. The mapping can also be provided via the `AUTH_SCOPE_MAPPING` environment variable (JSON string).
+Allows expanding virtual scopes into granular Ledger scopes. For example, mapping `ledger:read` to scopes such as `ledger:ReadLedger` and `ledger:ReadTransaction`. Granular Ledger scopes use the `ledger:<Action><Resource>` shape. The mapping can also be provided via the `AUTH_SCOPE_MAPPING` environment variable (JSON string).
 
 ```bash
 ledger run --auth-scope-mapping-file /etc/ledger/scope-mapping.json [other flags...]
@@ -4858,7 +4909,7 @@ ledger run \
   [other flags...]
 ```
 
-When enabled, the server performs OIDC discovery, downloads the JWKS, and validates JWT signatures, issuer, and expiration on every request. By default, tokens may use the virtual scopes `ledger:read`, `ledger:write`, and `ledger:admin`, which expand to granular `ledger:<Resource><Action>` scopes.
+When enabled, the server performs OIDC discovery, downloads the JWKS, and validates JWT signatures, issuer, and expiration on every request. By default, tokens may use the virtual scopes `ledger:read`, `ledger:write`, and `ledger:admin`, which expand to granular `ledger:<Action><Resource>` scopes.
 
 When `--auth-ed25519-keys` is set, both OIDC and Ed25519 authentication can coexist. See [Authentication Guide](authentication.md) for full Ed25519 setup instructions.
 
@@ -5011,6 +5062,15 @@ export LEDGERCTL_TLS_CA_CERT=/path/to/ca.pem
 ledgerctl ledgers list
 ```
 
+Command-specific flags use the same `LEDGERCTL_` prefix with the flag name
+uppercased and hyphens replaced by underscores (for example,
+`LEDGERCTL_MODE` for `--mode`). Environment values never mark a flag as
+explicitly changed, so a command-line flag always takes precedence. Safety
+flags such as `--force` and `--yes` are intentionally CLI-only; `FORCE`, `YES`,
+and their prefixed forms are ignored. The backup commands additionally retain
+the documented `S3_ACCESS_KEY_ID` and `S3_SECRET_ACCESS_KEY` aliases for
+Kubernetes Secret-backed Jobs.
+
 ---
 
 ## Event Sinks
@@ -5029,8 +5089,11 @@ progress, not proof of external delivery: internal or filtered logs can advance
 the cursor without a publish. The human view also shows the error occurrence time.
 Startup errors clear after the sink starts successfully.
 Human, JSON, YAML, and JSON result-file output mask credentials embedded in
-NATS, HTTP, and ClickHouse URLs. Usernames and connection details remain
-visible, while passwords and token-only NATS userinfo display as `****`.
+NATS, HTTP, and ClickHouse URLs. Connection details and usernames paired with
+passwords remain visible. HTTP endpoints use the shared sensitive-URL policy:
+passwords, passwordless userinfo tokens, and credential query values such as
+`access_token` display as `xxxxx`; harmless query controls remain visible.
+NATS and ClickHouse credentials display as `****`.
 
 ```bash
 ledgerctl events list
@@ -5048,6 +5111,10 @@ Add a named event sink configuration. An existing name is rejected; the configur
 
 After a successful update, the displayed configuration applies the same URL
 credential masking as `events list`; the submitted configuration is unchanged.
+This applies to human, JSON, YAML, and JSON result-file output. JSON, YAML,
+and JSON result-file output represent HTTP HMAC secrets with `(set)` / `(none)`
+presence markers. Human output shows `Secret: (set)` when configured and
+omits the Secret row when no HMAC secret is set.
 
 Currently supported sink types: **NATS JetStream**, **ClickHouse**, **Kafka**, **HTTP**, **Databricks**.
 
@@ -5131,6 +5198,32 @@ The HTTP sink sends each event as an individual POST request with headers:
 - `X-Ledger`: ledger name
 - `X-Log-Sequence`: global log sequence number
 - `X-Webhook-Signature`: `sha256=<hex>` HMAC signature (only when `--http-secret` is set)
+
+Only a 2xx response acknowledges an event. The sink does not follow redirects: any 3xx response is a delivery failure, so `--http-endpoint` must be the final URL.
+
+### Databricks sequence column upgrade
+
+New Databricks sink tables use `DECIMAL(20,0)` for `log_sequence`. This exact
+numeric type holds every global-log sequence Ledger admits. Existing tables
+created with `BIGINT` are not changed by sink startup's `CREATE TABLE IF NOT
+EXISTS`. Before upgrading the sink, check the column with `DESCRIBE TABLE
+catalog.schema.table` and, if it is `BIGINT`, widen it while preserving rows:
+
+```sql
+ALTER TABLE catalog.schema.table SET TBLPROPERTIES ('delta.enableTypeWidening' = 'true');
+ALTER TABLE catalog.schema.table ALTER COLUMN log_sequence TYPE DECIMAL(20,0);
+```
+
+Run this once per existing sink table during the upgrade window, then verify
+`DESCRIBE TABLE` reports `DECIMAL(20,0)` and existing sequence values still
+match. Databricks type widening requires a supported Delta table and upgrades
+its table protocol; check other readers and writers for compatibility before
+enabling it. If that feature is unavailable, create a replacement table with
+the new schema and migrate existing rows before switching the sink to it.
+Low sequence values remain numerically identical, so old and new Ledger
+writers can coexist during a rolling upgrade. Queries or clients that read
+`log_sequence` into signed 64-bit values must change to a decimal or string
+representation before values exceed `MaxInt64`.
 
 ### `events remove-sink`
 
@@ -5397,3 +5490,13 @@ ledgerctl query-checkpoint get-schedule
 # Output (no schedule):
 #  SUCCESS  No query checkpoint schedule configured (automatic creation disabled)
 ```
+
+## ClickHouse legacy account metadata conversion
+
+The standalone `scripts/clickhouse-account-metadata` utility reads the migration's
+JSONEachRow export from stdin and writes converted rows to stdout. Run it with
+`nix develop --command go run ./scripts/clickhouse-account-metadata` from the
+repository root. It exits nonzero on invalid input or an output error; discard
+partial output after any failure. It does not connect to ClickHouse.
+Follow the complete [migration procedure](clickhouse-account-metadata.md),
+including preflights, backup, source preservation, import and verification.

@@ -1,6 +1,10 @@
 package state
 
 import (
+	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -10,6 +14,44 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
+
+func TestAuditReplayerDisablesWAL(t *testing.T) {
+	t.Parallel()
+
+	replayer, err := NewAuditReplayer(logging.Testing(), "test-cluster")
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		require.NoError(t, replayer.Close())
+	})
+	replayDir := replayer.store.DataDir()
+
+	_, err = replayer.Replay(&commonpb.Timestamp{Data: 1}, []*raftcmdpb.Order{{
+		Type: &raftcmdpb.Order_SystemScoped{SystemScoped: &raftcmdpb.SystemScopedOrder{
+			Payload: &raftcmdpb.SystemScopedOrder_CreateQueryCheckpoint{
+				CreateQueryCheckpoint: &raftcmdpb.CreateQueryCheckpointOrder{},
+			},
+		}},
+	}})
+	require.NoError(t, err)
+
+	err = filepath.WalkDir(replayDir, func(path string, entry os.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if !entry.IsDir() && strings.HasSuffix(entry.Name(), ".log") {
+			info, err := entry.Info()
+			if err != nil {
+				return err
+			}
+			if info.Size() != 0 {
+				return fmt.Errorf("unexpected WAL contents in %s", path)
+			}
+		}
+
+		return nil
+	})
+	require.NoError(t, err)
+}
 
 func TestAuditReplayerUsesRecoveredQueryCheckpointCounter(t *testing.T) {
 	t.Parallel()
@@ -109,4 +151,78 @@ send $amt (
 	})})
 	require.NoError(t, err, "a library script without compiled code must be compiled by the replay")
 	requirePosting(t, logs, 250)
+}
+
+func TestAuditReplayerLedgerBoundaries(t *testing.T) {
+	t.Parallel()
+
+	replayer, err := NewAuditReplayer(logging.Testing(), "test-cluster")
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, replayer.Close()) })
+
+	boundaries, err := replayer.LedgerBoundaries()
+	require.NoError(t, err)
+	require.Empty(t, boundaries)
+
+	const ledger = "mirror-boundaries"
+	create := createLedgerOrder(ledger)
+	create.GetLedgerScoped().GetCreateLedger().Mode = commonpb.LedgerMode_LEDGER_MODE_MIRROR
+	_, err = replayer.Replay(&commonpb.Timestamp{Data: 1}, []*raftcmdpb.Order{create})
+	require.NoError(t, err)
+
+	requireBoundaries := func(nextTx, nextLog, mirrorID uint64) {
+		t.Helper()
+		rows, err := replayer.LedgerBoundaries()
+		require.NoError(t, err)
+		require.Len(t, rows, 1)
+		require.Contains(t, rows, ledger, "export must decode the canonical ledger key")
+		require.Equal(t, nextTx, rows[ledger].GetNextTransactionId())
+		require.Equal(t, nextLog, rows[ledger].GetNextLogId())
+		require.Equal(t, mirrorID, rows[ledger].GetLastMirrorV2LogId())
+	}
+	requireBoundaries(1, 1, 0)
+
+	for _, step := range []struct {
+		sourceID uint64
+		skipped  uint64
+		nextTx   uint64
+		nextLog  uint64
+		mirrorID uint64
+		logCount int
+	}{
+		{sourceID: 1, skipped: 99, nextTx: 100, nextLog: 2, mirrorID: 1, logCount: 1},
+		// A replayed source position is a no-op even if its serialized order
+		// carries a larger skipped transaction ID.
+		{sourceID: 1, skipped: 999, nextTx: 100, nextLog: 2, mirrorID: 1, logCount: 0},
+		{sourceID: 2, skipped: 199, nextTx: 200, nextLog: 3, mirrorID: 2, logCount: 1},
+	} {
+		order := &raftcmdpb.Order{Type: &raftcmdpb.Order_LedgerScoped{LedgerScoped: &raftcmdpb.LedgerScopedOrder{
+			Ledger: ledger,
+			Payload: &raftcmdpb.LedgerScopedOrder_MirrorIngest{MirrorIngest: &raftcmdpb.MirrorIngestOrder{
+				Entry: &raftcmdpb.MirrorLogEntry{
+					V2LogId: step.sourceID,
+					Data: &raftcmdpb.MirrorLogEntry_FillGap{FillGap: &raftcmdpb.MirrorFillGap{
+						SkippedTransactionIds: []uint64{step.skipped},
+					}},
+				},
+			}},
+		}}}
+		logs, err := replayer.Replay(&commonpb.Timestamp{Data: 2}, []*raftcmdpb.Order{order})
+		require.NoError(t, err)
+		require.Len(t, logs, step.logCount)
+		requireBoundaries(step.nextTx, step.nextLog, step.mirrorID)
+	}
+
+	_, err = replayer.Replay(&commonpb.Timestamp{Data: 3}, []*raftcmdpb.Order{{
+		Type: &raftcmdpb.Order_LedgerScoped{LedgerScoped: &raftcmdpb.LedgerScopedOrder{
+			Ledger: ledger,
+			Payload: &raftcmdpb.LedgerScopedOrder_DeleteLedger{
+				DeleteLedger: &raftcmdpb.DeleteLedgerOrder{},
+			},
+		}},
+	}})
+	require.NoError(t, err)
+	boundaries, err = replayer.LedgerBoundaries()
+	require.NoError(t, err)
+	require.Empty(t, boundaries, "canonical deletion removes the ledger boundary")
 }

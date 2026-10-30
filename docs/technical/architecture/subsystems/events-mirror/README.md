@@ -9,13 +9,17 @@ Two leader-only background workers that tail the global log.
 
 | Document | Description |
 |----------|-------------|
-| [events.md](events.md) | Domain event types, event sinks, NATS ledger-name token encoding, and HTTP acknowledgement and redirect rules. |
-| [mirror.md](mirror.md) | Mirror worker, safe HTTP URL parsing diagnostics, ascending HTTP continuation, v2 source payload identity contract, and promotion at cutover. |
+| [events.md](events.md) | Domain event types, event sinks, nested ClickHouse account metadata and table upgrades, NATS ledger-name token encoding, and HTTP acknowledgement and redirect rules. |
+| [mirror.md](mirror.md) | Mirror worker, PostgreSQL visibility and permanent-gap synchronization, source prerequisites and sequence-cache transition evidence, safe HTTP URL parsing diagnostics, ascending HTTP continuation, v2 source payload identity contract, and promotion at cutover. |
 | [cel-rewrite.md](cel-rewrite.md) | CEL rewrite engine that transforms transactions during mirror translation (rename addresses, transform metadata, drop transactions). |
 
 Mirror [source initialization and cancellation](mirror.md#source-initialization-and-cancellation)
 documents generation ownership, shutdown ordering, and source cleanup when
 PostgreSQL startup is blocked.
+
+Events [sink initialization and cancellation](events.md#sink-initialization-and-cancellation-en-2921)
+documents generation-scoped construction, cleanup ownership, and the remaining
+driver cancellation limits during leadership loss and shutdown.
 
 ## Related
 

@@ -80,7 +80,7 @@ func (r *ClusterReconciler) applyDNSEndpoint(
 			return err
 		}
 
-		return controllerutil.SetControllerReference(ledger, obj, r.Scheme)
+		return setOwnedControllerReference(ledger, obj, r.Scheme, "DNSEndpoint")
 	})
 
 	return err
@@ -116,7 +116,7 @@ func (r *ClusterReconciler) pruneDNSEndpoints(ctx context.Context, ledger *ledge
 		if !metav1.IsControlledBy(obj, ledger) {
 			continue
 		}
-		if err := r.deleteUnstructuredIfExists(ctx, obj); err != nil {
+		if err := r.deleteIfExists(ctx, ledger, obj); err != nil {
 			return err
 		}
 	}

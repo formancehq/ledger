@@ -229,6 +229,14 @@ Three guards keep the matrix from passing for the wrong reason. `TestDescendingP
 
 ## Pagination
 
+User-visible entity lists and prepared-query `LIST` execution share the
+`internal/query` page-size policy: zero selects 100 and values above 1000 are
+clamped to 1000. Controller internal peek requests retain their separate
+1001-row allowance. Prepared-query adapters normalize the request, and its
+executor applies the cap before collecting and enriching rows; its response
+reports the effective size. Aggregate queries do not use the LIST page cap.
+Index inspection retains its own endpoint policy.
+
 ### Page tokens
 
 Every paged list exchanges **page tokens** built by `pkg/pagecursor`. A token is base64url (unpadded, RFC 4648 §5) of the JSON object `{"key": <string>, "back": <bool>}`; both fields are omitted when empty and unknown fields are rejected. `key` is a position in the endpoint's textual form:

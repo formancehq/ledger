@@ -6,6 +6,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/stretchr/testify/require"
@@ -50,71 +51,78 @@ func TestWaitForApplied_FastPath(t *testing.T) {
 // waiter's lastPersistedIndex.Load() check and its Cond.Wait() call —
 // the broadcast then lands on an empty wait queue and the waiter sleeps
 // until ctx times out (#327).
+//
+// The bubble's fake clock fires the watchdogs only once every goroutine is
+// durably blocked, so CI load cannot fake a hang.
 func TestWaitForApplied_LatePublish(t *testing.T) {
 	t.Parallel()
 
-	fsm, _, _ := newTestMachine(t)
-	waiting := make(chan struct{})
-	fsm.appliedCond = sync.NewCond(&notifyingLocker{
-		Locker:  &fsm.appliedMu,
-		waiting: waiting,
+	synctest.Test(t, func(t *testing.T) {
+		fsm, _, _ := newTestMachine(t)
+		waiting := make(chan struct{})
+		fsm.appliedCond = sync.NewCond(&notifyingLocker{
+			Locker:  &fsm.appliedMu,
+			waiting: waiting,
+		})
+
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+
+		done := make(chan error, 1)
+		go func() { done <- fsm.WaitForApplied(ctx, 7) }()
+
+		select {
+		case <-waiting:
+		case <-time.After(time.Second):
+			t.Fatal("WaitForApplied did not enter Cond.Wait")
+		}
+
+		fsm.publishApplied(7)
+
+		select {
+		case err := <-done:
+			require.NoError(t, err)
+		case <-time.After(time.Second):
+			t.Fatal("WaitForApplied hung after publishApplied — lost wakeup (#327)")
+		}
 	})
-
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-	defer cancel()
-
-	done := make(chan error, 1)
-	go func() { done <- fsm.WaitForApplied(ctx, 7) }()
-
-	select {
-	case <-waiting:
-	case <-time.After(time.Second):
-		t.Fatal("WaitForApplied did not enter Cond.Wait")
-	}
-
-	fsm.publishApplied(7)
-
-	select {
-	case err := <-done:
-		require.NoError(t, err)
-	case <-time.After(time.Second):
-		t.Fatal("WaitForApplied hung after publishApplied — lost wakeup (#327)")
-	}
 }
 
 // Cancellation must wake an idle FSM without relying on a later publish.
 func TestWaitForApplied_Cancellation(t *testing.T) {
 	t.Parallel()
 
-	fsm, _, _ := newTestMachine(t)
-	waiting := make(chan struct{})
-	fsm.appliedCond = sync.NewCond(&notifyingLocker{
-		Locker:  &fsm.appliedMu,
-		waiting: waiting,
+	synctest.Test(t, func(t *testing.T) {
+		fsm, _, _ := newTestMachine(t)
+		waiting := make(chan struct{})
+		fsm.appliedCond = sync.NewCond(&notifyingLocker{
+			Locker:  &fsm.appliedMu,
+			waiting: waiting,
+		})
+
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+
+		done := make(chan error, 1)
+		go func() { done <- fsm.WaitForApplied(ctx, 7) }()
+
+		select {
+		case <-waiting:
+		case <-time.After(time.Second):
+			t.Fatal("WaitForApplied did not enter Cond.Wait")
+		}
+
+		cancel()
+
+		select {
+		case err := <-done:
+			require.ErrorIs(t, err, context.Canceled)
+		case <-time.After(time.Second):
+			// Release the waiter even when the cancellation wakeup is broken.
+			fsm.publishApplied(7)
+			t.Fatal("WaitForApplied hung after cancellation without a publish")
+		}
 	})
-
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	done := make(chan error, 1)
-	go func() { done <- fsm.WaitForApplied(ctx, 7) }()
-
-	select {
-	case <-waiting:
-	case <-time.After(time.Second):
-		t.Fatal("WaitForApplied did not enter Cond.Wait")
-	}
-
-	cancel()
-
-	select {
-	case err := <-done:
-		require.ErrorIs(t, err, context.Canceled)
-	case <-time.After(time.Second):
-		// Release the waiter even when the cancellation wakeup is broken.
-		fsm.publishApplied(7)
-		t.Fatal("WaitForApplied hung after cancellation without a publish")
-	}
 }
 
 func TestWaitForApplied_AlreadyCancelled(t *testing.T) {
@@ -132,57 +140,61 @@ func TestWaitForApplied_AlreadyCancelled(t *testing.T) {
 // target <= N. The test runs 200 publishes paired with 200 waiters with
 // staggered targets; each waiter must return inside its own timeout. With
 // the pre-fix code, the unsynchronised Store + Broadcast pair drops
-// wake-ups under contention and the test deadlines.
+// wake-ups under contention and the test deadlines. In the bubble a waiter's
+// timeout elapses only once every goroutine is durably blocked, so a
+// counted hang is a genuinely lost wake-up rather than a slow scheduler.
 func TestWaitForApplied_NoLostWakeupUnderContention(t *testing.T) {
 	t.Parallel()
 
-	fsm, _, _ := newTestMachine(t)
+	synctest.Test(t, func(t *testing.T) {
+		fsm, _, _ := newTestMachine(t)
 
-	const targets = 200
+		const targets = 200
 
-	var (
-		wg      sync.WaitGroup
-		hangs   atomic.Int64
-		ctxErrs atomic.Int64
-		wakeups atomic.Int64
-		ctx, cn = context.WithTimeout(context.Background(), 5*time.Second)
-	)
-	defer cn()
+		var (
+			wg      sync.WaitGroup
+			hangs   atomic.Int64
+			ctxErrs atomic.Int64
+			wakeups atomic.Int64
+			ctx, cn = context.WithTimeout(context.Background(), 5*time.Second)
+		)
+		defer cn()
 
-	for i := uint64(1); i <= targets; i++ {
-		wg.Go(func() {
-			waitCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
-			defer cancel()
-
-			if err := fsm.WaitForApplied(waitCtx, i); err != nil {
-				if waitCtx.Err() != nil {
-					hangs.Add(1)
-				} else {
-					ctxErrs.Add(1)
-				}
-
-				return
-			}
-			wakeups.Add(1)
-		})
-	}
-
-	// Yield once so most waiters reach Cond.Wait before we start publishing,
-	// keeping the writer on the wake-up path rather than the fast path.
-	runtime.Gosched()
-
-	go func() {
 		for i := uint64(1); i <= targets; i++ {
-			fsm.publishApplied(i)
+			wg.Go(func() {
+				waitCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
+				defer cancel()
+
+				if err := fsm.WaitForApplied(waitCtx, i); err != nil {
+					if waitCtx.Err() != nil {
+						hangs.Add(1)
+					} else {
+						ctxErrs.Add(1)
+					}
+
+					return
+				}
+				wakeups.Add(1)
+			})
 		}
-	}()
 
-	wg.Wait()
+		// Yield once so most waiters reach Cond.Wait before we start publishing,
+		// keeping the writer on the wake-up path rather than the fast path.
+		runtime.Gosched()
 
-	require.Zero(t, hangs.Load(),
-		"%d waiters timed out → lost wakeup (#327)", hangs.Load())
-	require.Zero(t, ctxErrs.Load(),
-		"%d waiters returned an unexpected error", ctxErrs.Load())
-	require.Equal(t, int64(targets), wakeups.Load(),
-		"expected %d wake-ups, got %d", targets, wakeups.Load())
+		go func() {
+			for i := uint64(1); i <= targets; i++ {
+				fsm.publishApplied(i)
+			}
+		}()
+
+		wg.Wait()
+
+		require.Zero(t, hangs.Load(),
+			"%d waiters timed out → lost wakeup (#327)", hangs.Load())
+		require.Zero(t, ctxErrs.Load(),
+			"%d waiters returned an unexpected error", ctxErrs.Load())
+		require.Equal(t, int64(targets), wakeups.Load(),
+			"expected %d wake-ups, got %d", targets, wakeups.Load())
+	})
 }

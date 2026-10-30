@@ -4,6 +4,7 @@ import (
 	"crypto/ed25519"
 	"crypto/rand"
 	"encoding/hex"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"testing"
@@ -123,10 +124,10 @@ func TestEnforceAllowedScopes_Valid(t *testing.T) {
 		"bot": {"ledger:read", "ledger:write"},
 	}
 
-	err := enforceAllowedScopes([]string{"ledger:read"}, "bot", allowed, nil)
+	err := enforceAllowedScopes([]string{"ledger:read"}, "bot", allowed, nil, DefaultMapping("ledger"))
 	require.NoError(t, err)
 
-	err = enforceAllowedScopes([]string{"ledger:read", "ledger:write"}, "bot", allowed, nil)
+	err = enforceAllowedScopes([]string{"ledger:read", "ledger:write"}, "bot", allowed, nil, DefaultMapping("ledger"))
 	require.NoError(t, err)
 }
 
@@ -137,10 +138,60 @@ func TestEnforceAllowedScopes_ExcessiveScope(t *testing.T) {
 		"bot": {"ledger:read"},
 	}
 
-	err := enforceAllowedScopes([]string{"ledger:read", "ledger:admin"}, "bot", allowed, nil)
+	err := enforceAllowedScopes([]string{"ledger:read", "ledger:admin"}, "bot", allowed, nil, DefaultMapping("ledger"))
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "ledger:admin")
 	assert.Contains(t, err.Error(), "not allowed")
+}
+
+func TestEnforceAllowedScopes_GranularScopeCoveredByVirtualScope(t *testing.T) {
+	t.Parallel()
+
+	allowed := map[string][]string{
+		"reader": {"ledger:read"},
+	}
+
+	// A least-privilege token claims one granular scope that "ledger:read" expands to.
+	err := enforceAllowedScopes([]string{"ledger:ReadTransaction"}, "reader", allowed, nil, DefaultMapping("ledger"))
+	require.NoError(t, err)
+}
+
+func TestEnforceAllowedScopes_GranularScopeOutsideVirtualScope(t *testing.T) {
+	t.Parallel()
+
+	allowed := map[string][]string{
+		"reader": {"ledger:read"},
+	}
+
+	err := enforceAllowedScopes([]string{"ledger:WriteTransaction"}, "reader", allowed, nil, DefaultMapping("ledger"))
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), `scope "ledger:WriteTransaction" not allowed for key "reader"`)
+}
+
+func TestEnforceAllowedScopes_UnknownScopeRejected(t *testing.T) {
+	t.Parallel()
+
+	allowed := map[string][]string{
+		"reader": {"ledger:read"},
+	}
+
+	// An unknown scope expands to nothing; it must not be treated as covered.
+	err := enforceAllowedScopes([]string{"ledger:unknown"}, "reader", allowed, nil, DefaultMapping("ledger"))
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), `scope "ledger:unknown" not allowed for key "reader"`)
+}
+
+func TestEnforceAllowedScopes_VirtualScopeNotCoveredByPartialGranularAllowlist(t *testing.T) {
+	t.Parallel()
+
+	allowed := map[string][]string{
+		"narrow": {"ledger:ReadTransaction"},
+	}
+
+	// "ledger:read" expands to more than the key allows.
+	err := enforceAllowedScopes([]string{"ledger:read"}, "narrow", allowed, nil, DefaultMapping("ledger"))
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), `scope "ledger:read" not allowed for key "narrow"`)
 }
 
 func TestEnforceAllowedScopes_UnknownKey(t *testing.T) {
@@ -150,7 +201,7 @@ func TestEnforceAllowedScopes_UnknownKey(t *testing.T) {
 		"bot": {"ledger:read"},
 	}
 
-	err := enforceAllowedScopes([]string{"ledger:read"}, "unknown-key", allowed, nil)
+	err := enforceAllowedScopes([]string{"ledger:read"}, "unknown-key", allowed, nil, DefaultMapping("ledger"))
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "unknown key ID")
 }
@@ -164,7 +215,7 @@ func TestEnforceAllowedScopes_SuperuserKeyBypassesCheck(t *testing.T) {
 	superuserKeys := map[string]bool{"admin": true}
 
 	// Superuser key can claim any scope regardless of allowlist.
-	err := enforceAllowedScopes([]string{"ledger:admin", "ledger:write"}, "admin", allowed, superuserKeys)
+	err := enforceAllowedScopes([]string{"ledger:admin", "ledger:write"}, "admin", allowed, superuserKeys, DefaultMapping("ledger"))
 	require.NoError(t, err)
 }
 
@@ -185,4 +236,55 @@ func TestEnforceSuperuserClaim_NotAllowed(t *testing.T) {
 	err := enforceSuperuserClaim("bot", superuserKeys)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "not allowed to claim superuser mode")
+}
+
+func TestLoadEd25519KeySet_DuplicateKeyID(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name                 string
+		firstScopes          []string
+		secondScopes         []string
+		firstSuperuser       bool
+		secondSuperuser      bool
+		sameKey              bool
+		nonadjacent          bool
+		invalidDuplicateFile bool
+	}{
+		{name: "conflicting scopes", firstScopes: []string{"ledger:read"}, secondScopes: []string{"ledger:read", "ledger:admin"}},
+		{name: "later superuser", firstScopes: []string{"ledger:read"}, secondSuperuser: true},
+		{name: "earlier superuser", firstSuperuser: true, secondScopes: []string{"ledger:read"}},
+		{name: "identical entries", sameKey: true},
+		{name: "empty scopes", firstScopes: []string{}, secondScopes: []string{}},
+		{name: "nonadjacent duplicate", nonadjacent: true},
+		{name: "duplicate precedes file validation", invalidDuplicateFile: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			dir := t.TempDir()
+			writeTestKey(t, dir, "first")
+			writeTestKey(t, dir, "second")
+			firstFile := filepath.Join(dir, "first.pubkey.hex")
+			secondFile := filepath.Join(dir, "second.pubkey.hex")
+			if tc.sameKey {
+				secondFile = firstFile
+			}
+			if tc.invalidDuplicateFile {
+				secondFile = filepath.Join(dir, "missing.hex")
+			}
+			entries := []Ed25519KeyEntry{{KeyID: "dup", PublicKeyFile: firstFile, Scopes: tc.firstScopes, Superuser: tc.firstSuperuser}}
+			if tc.nonadjacent {
+				entries = append(entries, Ed25519KeyEntry{KeyID: "other", PublicKeyFile: firstFile})
+			}
+			entries = append(entries, Ed25519KeyEntry{KeyID: "dup", PublicKeyFile: secondFile, Scopes: tc.secondScopes, Superuser: tc.secondSuperuser})
+			data, err := json.Marshal(Ed25519KeysConfig{Keys: entries})
+			require.NoError(t, err)
+			configPath := filepath.Join(dir, "auth-keys.json")
+			require.NoError(t, os.WriteFile(configPath, data, 0600))
+
+			result, err := LoadEd25519KeySet(configPath)
+			require.EqualError(t, err, `Ed25519 keys config contains duplicate keyId "dup"`)
+			require.Equal(t, Ed25519KeySetResult{}, result)
+		})
+	}
 }

@@ -128,5 +128,5 @@ func (s *Server) handleListTransactions(w http.ResponseWriter, r *http.Request) 
 	}
 
 	finishProfile(w, r, profile)
-	writeMonetaryPageOK(w, r, transactions, links)
+	writePageOK(w, r, transactions, links)
 }

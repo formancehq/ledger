@@ -13,3 +13,112 @@ managed_go_cache_valid() {
     marker="$generation_root/.ledger-ai-go-cache-generation"
     [[ -f "$marker" && ! -L "$marker" && "$(<"$marker")" == "$go_cache_generation_marker" ]]
 }
+
+# Validation inherits TMPDIR unchanged; it only has to be an absolute existing
+# directory outside the candidate worktree, so temporary files never land in
+# the checkout under review.
+validation_tmpdir_valid() {
+    local tmpdir=$1 candidate_root=$2 resolved
+    [[ "$tmpdir" = /* ]] || return 1
+    resolved=$(cd "$tmpdir" 2>/dev/null && pwd -P) || return 1
+    [[ -z "$candidate_root" ]] && return 0
+    case "$resolved/" in
+        "$candidate_root/"*) return 1 ;;
+    esac
+}
+
+# EPERM means the process exists but this caller may not signal it: another
+# user's process, or a sandboxed validator probing a run started outside its
+# sandbox. Only ESRCH proves the process is gone; treating EPERM as dead would
+# let a sandboxed run reap a live lock owner or retire a Go cache generation
+# that a live run still uses.
+process_exists() {
+    local error
+    error=$(LC_ALL=C kill -0 "$1" 2>&1) && return 0
+    [[ "$error" == *"ot permitted"* ]]
+}
+
+process_identity() {
+    local pid=$1 boot_id start_ticks identity
+    [[ "$pid" =~ ^[1-9][0-9]*$ ]] || return 1
+    process_exists "$pid" || return 1
+
+    if [[ -r "/proc/$pid/stat" && -r /proc/sys/kernel/random/boot_id ]]; then
+        boot_id=$(</proc/sys/kernel/random/boot_id)
+        start_ticks=$(sed 's/^.*) //' "/proc/$pid/stat" | awk '{print $20}')
+        [[ -n "$boot_id" && "$start_ticks" =~ ^[0-9]+$ ]] || return 1
+        printf 'linux:%s:%s\n' "$boot_id" "$start_ticks"
+        return
+    fi
+
+    identity=$(LC_ALL=C ps -o lstart= -p "$pid" 2>/dev/null || true)
+    [[ -n "$identity" ]] || return 1
+    printf 'ps:%s\n' "$identity"
+}
+
+lease_is_live() {
+    local lease=$1 pid expected_identity actual_identity contents
+    # Identity records are immutable once published. Read one snapshot so
+    # lock handoff cannot mix one process's PID with its successor's identity.
+    # A disappearing owner is a concurrent release, not evidence of a stale
+    # successor; let the acquisition loop retry instead of deleting its file.
+    contents=$(cat -- "$lease" 2>/dev/null) || return 0
+    pid=${contents%%$'\n'*}
+    [[ "$pid" =~ ^[1-9][0-9]*$ ]] || return 1
+    process_exists "$pid" || return 1
+    expected_identity=
+    if [[ "$contents" == *$'\n'* ]]; then
+        expected_identity=${contents#*$'\n'}
+        expected_identity=${expected_identity%%$'\n'*}
+    fi
+    actual_identity=$(process_identity "$pid" 2>/dev/null || true)
+    [[ -z "$expected_identity" || -z "$actual_identity" || "$expected_identity" == "$actual_identity" ]]
+}
+
+write_process_identity() {
+    local target=$1 identity temporary_identity
+    identity=$(process_identity "$$" 2>/dev/null || true)
+    # Keep staging files outside lock/retirement directories so interrupted
+    # publication cannot prevent their later removal with rmdir.
+    temporary_identity="$go_cache_namespace/process-$$-${RANDOM}"
+    printf '%s\n%s\n' "$$" "$identity" >"$temporary_identity" || return 1
+    mv -f -- "$temporary_identity" "$target"
+}
+
+release_go_cache_lock() {
+    (
+        local owner_pid
+        [[ -d "$go_cache_lock" && ! -L "$go_cache_lock" ]] || exit 0
+        cd "$go_cache_lock" 2>/dev/null || exit 0
+        [[ -f owner && ! -L owner ]] || exit 0
+        IFS= read -r owner_pid <owner || exit 0
+        [[ "$owner_pid" == "$$" ]] || exit 0
+        rm -f -- owner || exit 1
+        rmdir -- "$go_cache_lock" 2>/dev/null || true
+    )
+}
+
+claim_go_cache_lock() {
+    (
+        cd "$go_cache_lock" 2>/dev/null || exit 1
+        [[ ! -e owner && ! -L owner ]] || exit 1
+        claim="$go_cache_namespace/claim-$$"
+        write_process_identity "$claim" || exit 1
+        claimed=false
+        if ln -- "$claim" owner 2>/dev/null; then
+            claimed=true
+        fi
+        rm -f -- "$claim" || exit 1
+        [[ "$claimed" == true ]]
+    )
+}
+
+reap_go_cache_lock() {
+    (
+        cd "$go_cache_lock" 2>/dev/null || exit 1
+        [[ -f owner && ! -L owner ]] || exit 1
+        ! lease_is_live owner 2>/dev/null || exit 1
+        rm -f -- owner || exit 1
+        rmdir -- "$go_cache_lock" 2>/dev/null || true
+    )
+}

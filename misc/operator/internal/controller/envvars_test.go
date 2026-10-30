@@ -779,8 +779,8 @@ func TestBuildEnvVars_AuthScopeMapping(t *testing.T) {
 		ls := newMinimalCluster()
 		ls.Spec.Auth = &ledgerv1alpha1.AuthorizationConfig{
 			ScopeMapping: map[string][]string{
-				"ledger:read":  {"ledger:TransactionRead", "ledger:AccountRead"},
-				"ledger:write": {"ledger:TransactionWrite"},
+				"ledger:read":  {"ledger:ReadTransaction", "ledger:ReadAccount"},
+				"ledger:write": {"ledger:WriteTransaction"},
 			},
 		}
 		envs := buildEnvVars(ls, "required", nil)
@@ -822,12 +822,12 @@ func TestBuildEnvVars_AuthAnonymousScopes(t *testing.T) {
 		t.Parallel()
 		ls := newMinimalCluster()
 		ls.Spec.Auth = &ledgerv1alpha1.AuthorizationConfig{
-			AnonymousScopes: []string{"ledger:LedgerRead", "ledger:AccountRead"},
+			AnonymousScopes: []string{"ledger:ReadLedger", "ledger:ReadAccount"},
 		}
 		envs := buildEnvVars(ls, "required", nil)
 		e := findEnv(envs, "AUTH_ANONYMOUS_SCOPES")
 		require.NotNil(t, e)
-		assert.Equal(t, "ledger:LedgerRead,ledger:AccountRead", e.Value)
+		assert.Equal(t, "ledger:ReadLedger,ledger:ReadAccount", e.Value)
 	})
 
 	t.Run("empty slice omitted", func(t *testing.T) {
@@ -1530,4 +1530,31 @@ func TestBuildEnvVars_MetadataLimits(t *testing.T) {
 		assertNoEnv(t, envs, "METADATA_MAX_VALUE_BYTES")
 		assertNoEnv(t, envs, "METADATA_MAX_ENTITY_BYTES")
 	})
+}
+
+func TestBuildEnvVars_HealthInterval(t *testing.T) {
+	t.Parallel()
+
+	for _, tt := range []struct {
+		name   string
+		health *ledgerv1alpha1.HealthConfig
+		want   string
+	}{
+		{name: "omitted"},
+		{name: "empty", health: &ledgerv1alpha1.HealthConfig{}},
+		{name: "positive", health: &ledgerv1alpha1.HealthConfig{Interval: "1m30s"}, want: "1m30s"},
+		{name: "smallest positive", health: &ledgerv1alpha1.HealthConfig{Interval: "1ns"}, want: "1ns"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			cluster := newMinimalCluster()
+			cluster.Spec.Health = tt.health
+			envs := buildEnvVars(cluster, "", nil)
+			if tt.want == "" {
+				assertNoEnv(t, envs, "HEALTH_CHECK_INTERVAL")
+			} else {
+				assertEnv(t, envs, "HEALTH_CHECK_INTERVAL", tt.want)
+			}
+		})
+	}
 }

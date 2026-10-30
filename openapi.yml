@@ -458,7 +458,7 @@ paths:
         reads and sequence-only bounds scan the audit zone directly without
         waiting for the audit projection.
 
-        Requires `ledger:AuditRead` scope.
+        Requires `ledger:ReadAudit` scope.
       operationId: listAuditEntries
       tags:
         - Audit
@@ -558,7 +558,7 @@ paths:
       description: |
         Returns a single audit entry by its global sequence, with per-order
         `items` populated (the list endpoint omits `items` for compactness).
-        Requires `ledger:AuditRead` scope.
+        Requires `ledger:ReadAudit` scope.
       operationId: getAuditEntry
       tags:
         - Audit
@@ -717,7 +717,7 @@ paths:
         `cursor`), an optional date range (`startDate`/`endDate`),
         and the generic `filter` parameter (e.g. reference selection via
         `filter={"$match":{"reference":"..."}}`, URL-encoded). Requires
-        `ledger:TransactionRead` scope.
+        `ledger:ReadTransaction` scope.
 
         This is a live read, linearizable by default. `X-Consistency: stale`
         reads the receiving node's local state, which may lag the leader. Every
@@ -966,7 +966,7 @@ paths:
         Returns aggregated volumes (input/output/balance per asset) across all accounts in the ledger.
         Supports filtering accounts with the generic `filter` parameter, grouping by account prefixes,
         and max-precision merging.
-        Requires `ledger:AccountRead` scope.
+        Requires `ledger:ReadAccount` scope.
       operationId: aggregateVolumes
       tags:
         - Volumes
@@ -1029,7 +1029,7 @@ paths:
       summary: Save ledger metadata
       description: >-
         Saves metadata key-value pairs on the ledger itself. Requires
-        `ledger:MetadataWrite`; `ledger:write` grants it under the default scope
+        `ledger:WriteMetadata`; `ledger:write` grants it under the default scope
         mapping. Custom scope mappings can differ.
       operationId: saveLedgerMetadata
       tags:
@@ -1078,7 +1078,7 @@ paths:
   /v3/{ledgerName}/metadata/{key}:
     delete:
       summary: Delete ledger metadata
-      description: Deletes a metadata key from the ledger. Requires `ledger:MetadataWrite` scope (included in the default `ledger:write` mapping).
+      description: Deletes a metadata key from the ledger. Requires `ledger:WriteMetadata` scope (included in the default `ledger:write` mapping).
       operationId: deleteLedgerMetadata
       tags:
         - Ledgers
@@ -1114,7 +1114,7 @@ paths:
   /v3/{ledgerName}/accounts/{address}/metadata:
     post:
       summary: Save account metadata
-      description: Saves metadata for a specific account in the ledger. Requires `ledger:MetadataWrite` scope (included in the default `ledger:write` mapping).
+      description: Saves metadata for a specific account in the ledger. Requires `ledger:WriteMetadata` scope (included in the default `ledger:write` mapping).
       operationId: saveAccountMetadata
       tags:
         - Accounts
@@ -1164,7 +1164,7 @@ paths:
   /v3/{ledgerName}/transactions/{transactionId}/metadata:
     post:
       summary: Save transaction metadata
-      description: Saves metadata for a specific transaction in the ledger. Requires `ledger:MetadataWrite` scope (included in the default `ledger:write` mapping).
+      description: Saves metadata for a specific transaction in the ledger. Requires `ledger:WriteMetadata` scope (included in the default `ledger:write` mapping).
       operationId: saveTransactionMetadata
       tags:
         - Transactions
@@ -1213,7 +1213,7 @@ paths:
   /v3/{ledgerName}/accounts/{address}/metadata/{key}:
     delete:
       summary: Delete account metadata
-      description: Deletes a metadata key for a specific account in the ledger. Requires `ledger:MetadataWrite` scope (included in the default `ledger:write` mapping).
+      description: Deletes a metadata key for a specific account in the ledger. Requires `ledger:WriteMetadata` scope (included in the default `ledger:write` mapping).
       operationId: deleteAccountMetadata
       tags:
         - Accounts
@@ -1250,7 +1250,7 @@ paths:
   /v3/{ledgerName}/transactions/{transactionId}/metadata/{key}:
     delete:
       summary: Delete transaction metadata
-      description: Deletes a metadata key for a specific transaction in the ledger. Requires `ledger:MetadataWrite` scope (included in the default `ledger:write` mapping).
+      description: Deletes a metadata key for a specific transaction in the ledger. Requires `ledger:WriteMetadata` scope (included in the default `ledger:write` mapping).
       operationId: deleteTransactionMetadata
       tags:
         - Transactions
@@ -1291,8 +1291,10 @@ paths:
         Reverts a transaction by creating a reverse transaction that undoes its effects. Requires `ledger:write` scope.
         The body is optional; an absent or empty body uses default options. Supplied
         options and metadata are decoded for both known-length and HTTP/1.1 chunked
-        requests. Malformed or truncated JSON, extra values and trailing non-whitespace
-        return 400 before applying the revert. The complete body, including trailing
+        requests. Malformed or truncated JSON, extra values, trailing non-whitespace
+        and options of the wrong JSON type (for example `"atEffectiveDate": "true"`
+        or a non-object `metadata`) return 400 before applying the revert. A JSON
+        `null` option uses its default. The complete body, including trailing
         whitespace, counts towards the 4 MiB limit; exceeding it returns 413.
       operationId: revertTransaction
       tags:
@@ -1564,7 +1566,7 @@ paths:
       description: |
         Declares or changes the type used to encode a metadata key in an attached query index.
         Metadata values are neither validated nor converted by this declaration, and existing primary values remain unchanged.
-        Any attached index is rewritten asynchronously. Requires `ledger:MetadataWrite` scope (included in the default `ledger:write` mapping).
+        Any attached index is rewritten asynchronously. Requires `ledger:WriteMetadata` scope (included in the default `ledger:write` mapping).
       operationId: setMetadataFieldType
       tags:
         - Metadata Schema
@@ -1606,7 +1608,7 @@ paths:
       summary: Remove metadata field type
       description: |
         Removes the type declaration for a metadata key on a ledger.
-        Existing metadata values remain unchanged and any attached index is dropped. Requires `ledger:MetadataWrite` scope (included in the default `ledger:write` mapping).
+        Existing metadata values remain unchanged and any attached index is dropped. Requires `ledger:WriteMetadata` scope (included in the default `ledger:write` mapping).
       operationId: removeMetadataFieldType
       tags:
         - Metadata Schema
@@ -1638,6 +1640,40 @@ paths:
           $ref: '#/components/responses/InternalServerError'
         '405':
           $ref: '#/components/responses/MethodNotAllowed'
+
+  /v3/numscripts/analyze:
+    post:
+      summary: Analyze Numscript source
+      description: Validates Numscript v1 and returns the external input schema without reading or changing ledger state. Recognized source failures are returned as diagnostics with an empty input list. Sources over 64 KiB or with more than 32 block-comment open markers receive a syntax diagnostic; internal failures return a server error.
+      operationId: analyzeNumscript
+      tags:
+        - Numscript Library
+      security:
+        - BearerAuth: []
+        - {}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AnalyzeNumscriptRequest'
+      responses:
+        '200':
+          description: Analysis result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AnalyzeNumscriptResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '413':
+          $ref: '#/components/responses/RequestEntityTooLarge'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
 
   /v3/{ledgerName}/numscripts:
     get:
@@ -1704,7 +1740,7 @@ paths:
           required: true
           schema:
             type: string
-          description: Name of the numscript
+          description: Name of the numscript, URL-encoded as one path segment. Decoded exactly once.
         - name: version
           in: query
           required: false
@@ -1761,7 +1797,7 @@ paths:
           required: true
           schema:
             type: string
-          description: Name of the numscript
+          description: Name of the numscript, URL-encoded as one path segment. Decoded exactly once.
       requestBody:
         required: true
         content:
@@ -1833,7 +1869,7 @@ paths:
           required: true
           schema:
             type: string
-          description: Name of the numscript
+          description: Name of the numscript, URL-encoded as one path segment. Decoded exactly once.
       responses:
         '200':
           description: Numscript versions retrieved successfully
@@ -1878,7 +1914,7 @@ paths:
           required: true
           schema:
             type: string
-          description: Name of the numscript template
+          description: Name of the numscript template, URL-encoded as one path segment. Decoded exactly once.
       responses:
         '200':
           description: Template usage retrieved successfully
@@ -2090,7 +2126,7 @@ paths:
       summary: Create a prepared query
       description: |
         Creates a new prepared query for a ledger. A prepared query defines a reusable
-        filter that can be executed later with parameter substitution. Requires `ledger:QueryWrite` scope.
+        filter that can be executed later with parameter substitution. Requires `ledger:WriteQuery` scope.
       operationId: createPreparedQuery
       tags:
         - Prepared Queries
@@ -2129,7 +2165,7 @@ paths:
           $ref: '#/components/responses/MethodNotAllowed'
     get:
       summary: List prepared queries
-      description: Returns a list of all prepared queries for a ledger. Requires `ledger:QueryRead` scope.
+      description: Returns a list of all prepared queries for a ledger. Requires `ledger:ReadQuery` scope.
       operationId: listPreparedQueries
       tags:
         - Prepared Queries
@@ -2165,7 +2201,7 @@ paths:
     put:
       summary: Update a prepared query
       description: |
-        Updates the filter of an existing prepared query. Requires `ledger:QueryWrite` scope.
+        Updates the filter of an existing prepared query. Requires `ledger:WriteQuery` scope.
       operationId: updatePreparedQuery
       tags:
         - Prepared Queries
@@ -2204,7 +2240,7 @@ paths:
           $ref: '#/components/responses/MethodNotAllowed'
     delete:
       summary: Delete a prepared query
-      description: Deletes a prepared query from a ledger. Requires `ledger:QueryWrite` scope.
+      description: Deletes a prepared query from a ledger. Requires `ledger:WriteQuery` scope.
       operationId: deletePreparedQuery
       tags:
         - Prepared Queries
@@ -2241,8 +2277,11 @@ paths:
       summary: Execute a prepared query
       description: |
         Executes a prepared query with optional parameter substitution. Supports LIST and
-        AGGREGATE_VOLUMES modes with cursor pagination. Also accepts pageSize, cursor and
-        reverse as query parameters. Requires `ledger:QueryRead` scope.
+        AGGREGATE_VOLUMES modes. LIST uses cursor pagination with an effective page size
+        of 100 when omitted or zero, capped at 1000 before collecting and enriching rows.
+        AGGREGATE_VOLUMES ignores pageSize and aggregates all matching accounts. Also
+        accepts pageSize, cursor and reverse as query parameters. Supplied pageSize and
+        reverse values, and nonempty cursor values, override the body. Requires `ledger:ReadQuery` scope.
       operationId: executePreparedQuery
       tags:
         - Prepared Queries
@@ -2256,10 +2295,16 @@ paths:
         - $ref: '#/components/parameters/QueryName'
         - name: pageSize
           in: query
-          description: Maximum number of results per page (overrides body value)
+          description: |
+            LIST page size. A supplied value overrides the body, including empty or
+            zero (default 100). The effective maximum is 1000; larger uint32 values
+            are accepted and clamped, not rejected. Ignored for AGGREGATE_VOLUMES.
           schema:
             type: integer
             format: uint32
+            minimum: 0
+            maximum: 4294967295
+            default: 100
         - name: cursor
           in: query
           description: |
@@ -2310,7 +2355,7 @@ paths:
       summary: Add an account type
       description: |
         Adds a new account type to a ledger's chart of accounts. Account types define
-        address patterns for account validation. Requires `ledger:MetadataWrite` scope.
+        address patterns for account validation. Requires `ledger:WriteMetadata` scope.
       operationId: addAccountType
       tags:
         - Account Types
@@ -2350,7 +2395,7 @@ paths:
       summary: List account types
       description: |
         Returns all account types defined on a ledger, sorted by name.
-        Requires `ledger:AccountRead` scope.
+        Requires `ledger:ReadAccount` scope.
       operationId: listAccountTypes
       tags:
         - Account Types
@@ -2387,7 +2432,10 @@ paths:
       summary: Set default enforcement mode
       description: |
         Sets the default enforcement mode for accounts that do not match any defined
-        account type. Must be STRICT or AUDIT. Requires `ledger:MetadataWrite` scope.
+        account type. Must be STRICT or AUDIT. STRICT rejects an order that uses an
+        unmatched account with `400 ACCOUNT_NOT_MATCHING_TYPE`. AUDIT accepts the
+        order and does not report the unmatched account: the response carries no
+        warning. Requires `ledger:WriteMetadata` scope.
       operationId: setDefaultEnforcementMode
       tags:
         - Account Types
@@ -2427,7 +2475,7 @@ paths:
   /v3/{ledgerName}/account-types/{typeName}:
     get:
       summary: Get an account type
-      description: Retrieves a specific account type by name from a ledger. Requires `ledger:AccountRead` scope.
+      description: Retrieves a specific account type by name from a ledger. Requires `ledger:ReadAccount` scope.
       operationId: getAccountType
       tags:
         - Account Types
@@ -2461,7 +2509,7 @@ paths:
           $ref: '#/components/responses/MethodNotAllowed'
     delete:
       summary: Remove an account type
-      description: Removes an account type from a ledger's chart of accounts. Requires `ledger:MetadataWrite` scope.
+      description: Removes an account type from a ledger's chart of accounts. Requires `ledger:WriteMetadata` scope.
       operationId: removeAccountType
       tags:
         - Account Types
@@ -2498,7 +2546,7 @@ paths:
       summary: Get a single system log by bucket-wide sequence
       description: |
         Returns the system log entry with the given bucket-wide sequence number.
-        Requires `ledger:OpsRead` scope.
+        Requires `ledger:ReadOps` scope.
       operationId: getLog
       tags:
         - Logs
@@ -2542,7 +2590,7 @@ paths:
       summary: List configured event sinks
       description: |
         Returns every event sink configured on the cluster. Requires
-        `ledger:OpsRead` scope.
+        `ledger:ReadOps` scope.
       operationId: getEventsSinks
       tags:
         - Ops
@@ -2582,7 +2630,9 @@ paths:
                           additionalProperties: true
                           description: >
                             SinkStatus (protobuf JSON representation): per-sink
-                            error status and last-emitted cursor.
+                            error status and last-emitted cursor. Contains one
+                            entry per configured sink; removed sinks are not
+                            listed.
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
@@ -2593,7 +2643,7 @@ paths:
     post:
       summary: Add an event sink
       description: |
-        Adds a named event sink to the cluster. Requires `ledger:OpsWrite` scope.
+        Adds a named event sink to the cluster. Requires `ledger:WriteOps` scope.
         The body is a direct SinkConfig in protobuf JSON form, without a config
         wrapper. A non-empty name and exactly one sink type are required.
         Unknown fields, malformed protobuf JSON and multiple oneof members are
@@ -2656,7 +2706,7 @@ paths:
     delete:
       summary: Remove an event sink
       description: |
-        Removes a named event sink from the cluster. Requires `ledger:OpsWrite`
+        Removes a named event sink from the cluster. Requires `ledger:WriteOps`
         scope. A non-empty controllerId must match the sink's controllerId;
         a mismatch returns `SINK_CONTROLLER_MISMATCH` (409). An omitted or empty
         controllerId removes the sink without an ownership precondition.
@@ -2709,7 +2759,7 @@ paths:
       summary: List registered Ed25519 signing keys
       description: |
         Lists the Ed25519 signing keys registered on the cluster, paged by key
-        id (ascending unless `reverse=true`). Requires `ledger:OpsRead` scope.
+        id (ascending unless `reverse=true`). Requires `ledger:ReadOps` scope.
 
         This route performs a live read, linearizable by default.
         `X-Consistency: stale` reads the receiving node's local state, which
@@ -2773,7 +2823,7 @@ paths:
         entries whose owning ledger no longer exists; `bucket` surfaces only
         bucket-scoped entries (empty ledger, e.g. audit indexes). Use
         `GET /v3/{ledgerName}/indexes` for the per-ledger view. Requires
-        `ledger:OpsRead` scope.
+        `ledger:ReadOps` scope.
       operationId: listBucketIndexes
       tags:
         - Indexes
@@ -2822,7 +2872,7 @@ paths:
         through `GET /v3/{ledgerName}/indexes/{canonicalId}` — the two
         keyspaces are distinct so a bucket-scoped lookup with the same
         canonical will NotFound if only the ledger-scoped entry exists.
-        Requires `ledger:OpsRead` scope.
+        Requires `ledger:ReadOps` scope.
       operationId: getBucketIndex
       tags:
         - Indexes
@@ -2868,7 +2918,7 @@ paths:
       description: |
         Returns the `IndexEntry` (registry entry + backfill cursor +
         per-replica IndexVersionState) for a bucket-scoped index.
-        Requires `ledger:OpsRead` scope.
+        Requires `ledger:ReadOps` scope.
       operationId: getBucketIndexEntryStatus
       tags:
         - Indexes
@@ -2917,7 +2967,7 @@ paths:
         counters (LastIndexedSequence, LastLogSequence, Lag, IndexFileSize).
         The optional `ledger` query parameter narrows the per-index entries to
         a single ledger; the aggregated counters always cover the bucket.
-        Requires `ledger:OpsRead` scope.
+        Requires `ledger:ReadOps` scope.
       operationId: getIndexStatus
       tags:
         - Indexes
@@ -2958,7 +3008,7 @@ paths:
       summary: List indexes for a ledger
       description: |
         Streams the indexes registered on a specific ledger. Requires
-        `ledger:LedgerRead` scope.
+        `ledger:ReadLedger` scope.
       operationId: listLedgerIndexes
       tags:
         - Indexes
@@ -3004,7 +3054,7 @@ paths:
         the original result. The indexbuilder processes the accepted creation.
         The request body carries the target `IndexID` in
         canonical form (see `DELETE /v3/{ledgerName}/indexes/{canonicalId}`
-        for the format). Requires `ledger:LedgerWrite` scope.
+        for the format). Requires `ledger:WriteLedger` scope.
       operationId: createIndex
       tags:
         - Indexes
@@ -3073,7 +3123,7 @@ paths:
       description: |
         Returns the `Index` registry entry (id, ledger, createdAt,
         forwardEncodingVersion) for a single index, serialized in
-        protobuf-JSON camelCase. Requires `ledger:LedgerRead` scope.
+        protobuf-JSON camelCase. Requires `ledger:ReadLedger` scope.
       operationId: getIndex
       tags:
         - Indexes
@@ -3118,7 +3168,14 @@ paths:
       description: |
         Removes an index from a ledger. The path parameter carries the target
         `IndexID` in canonical form (e.g. `metadata:TARGET_TYPE_ACCOUNT:color`,
-        `tx_builtin:TX_BUILTIN_INDEX_TIMESTAMP`). Requires `ledger:LedgerWrite` scope.
+        `tx_builtin:TX_BUILTIN_INDEX_TIMESTAMP`). Requires `ledger:WriteLedger` scope.
+
+        The drop is idempotent. An `IndexID` that has no registry entry on the
+        ledger (never created, or already dropped) also answers `204`, and each
+        committed drop appends a `DROP_INDEX` entry to the ledger log. A
+        mistyped canonical id is therefore not reported; read the index with
+        `GET /v3/{ledgerName}/indexes/{canonicalId}` first when the caller must
+        know that it exists. `404` means that the ledger does not exist.
       operationId: dropIndex
       tags:
         - Indexes
@@ -3139,7 +3196,7 @@ paths:
             type: string
       responses:
         '204':
-          description: Index removed.
+          description: Index removed, or no index with this id was registered on the ledger.
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
@@ -3147,7 +3204,11 @@ paths:
         '403':
           $ref: '#/components/responses/Forbidden'
         '404':
-          $ref: '#/components/responses/NotFound'
+          description: The ledger does not exist. A missing index does not produce `404`.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '409':
           $ref: '#/components/responses/Conflict'
         '500':
@@ -3165,7 +3226,7 @@ paths:
         joined with the backfill cursor and the per-replica
         IndexVersionState (current + pending version). Use this to poll
         for backfill completion after a `POST /v3/{ledgerName}/indexes`.
-        Requires `ledger:LedgerRead` scope.
+        Requires `ledger:ReadLedger` scope.
       operationId: getIndexEntryStatus
       tags:
         - Indexes
@@ -3245,11 +3306,15 @@ components:
       in: header
       required: false
       description: |
-        Render monetary amounts (postings, volume input/output and balances) as
-        canonical decimal strings. Case-insensitive true, yes, y and 1 enable
+        Render all response Uint256, BigUint and SignedBigInt values as canonical
+        decimal strings, regardless of business meaning, including posting
+        amounts, volume input/output and balances. Ordinary integer IDs/counts,
+        metadata and explicitly string-encoded counters keep their existing
+        representation. Case-insensitive true, yes, y and 1 enable
         this option, matching Ledger v2. Whitespace is not trimmed. Omission and
         every other value retain JSON number tokens. This affects only this
-        response, including nested transaction/log/cursor and bulk results.
+        response, including nested objects, maps, arrays, transaction/log/cursor
+        and bulk results. Request decoding is unchanged.
       schema:
         type: string
       example: 'true'
@@ -3278,7 +3343,10 @@ components:
       required: true
       schema:
         type: string
-      description: Account address
+        example: users:001
+      description: |
+        Raw account address, for example users:001. Direct HTTP clients may
+        URL-encode it as one path segment (users%3A001). Decoded exactly once.
 
     MetadataKey:
       name: key
@@ -3313,7 +3381,7 @@ components:
       required: true
       schema:
         type: string
-      description: Prepared query name
+      description: Prepared query name, URL-encoded as one path segment. Decoded exactly once.
 
     TypeName:
       name: typeName
@@ -3321,7 +3389,7 @@ components:
       required: true
       schema:
         type: string
-      description: Account type name
+      description: Account type name, URL-encoded as one path segment. Decoded exactly once.
 
     IdempotencyKey:
       name: Idempotency-Key
@@ -3467,6 +3535,13 @@ components:
         format: byte
 
   responses:
+    RequestEntityTooLarge:
+      description: Request body exceeds the 4 MiB HTTP limit (`BODY_TOO_LARGE`)
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+
     ResourceExhausted:
       description: >-
         Resource exhausted. Write admission can reject with
@@ -3599,8 +3674,10 @@ components:
 
     UnsignedMonetaryAmount:
       description: |
-        Exact unsigned integer encoded as a JSON number by default, or a
-        canonical decimal string when Formance-Bigint-As-String is enabled.
+        Arbitrary-precision unsigned BigUint value encoded as a JSON number by
+        default, or a canonical decimal string when Formance-Bigint-As-String
+        is enabled. The same rule applies to every response BigUint value,
+        including nested fields, regardless of business meaning.
         JavaScript consumers should enable the header to avoid number rounding.
       oneOf:
         - type: integer
@@ -3611,8 +3688,10 @@ components:
 
     SignedMonetaryAmount:
       description: |
-        Exact signed integer encoded as a JSON number by default, or a
-        canonical decimal string when Formance-Bigint-As-String is enabled.
+        Arbitrary-precision SignedBigInt value encoded as a JSON number by
+        default, or a canonical decimal string when Formance-Bigint-As-String
+        is enabled. The same rule applies to every response SignedBigInt value,
+        including nested fields, regardless of business meaning.
       oneOf:
         - type: integer
           format: bigint
@@ -3624,7 +3703,8 @@ components:
         Unsigned amount from 0 through 2^256-1. Requests accept JSON integer
         tokens or canonical decimal strings independently of the response
         header; the server enforces the bound for both forms. Responses use
-        numbers by default and strings with Formance-Bigint-As-String enabled.
+        numbers by default and strings with Formance-Bigint-As-String enabled,
+        as do all response Uint256 values regardless of business meaning.
       oneOf:
         - type: integer
           format: bigint
@@ -3915,23 +3995,6 @@ components:
           metadata:
             category: premium
 
-    ChartViolation:
-      type: object
-      description: A chart of accounts violation reported in AUDIT enforcement mode
-      required:
-        - type
-        - message
-      properties:
-        type:
-          type: string
-          description: The type of violation
-        message:
-          type: string
-          description: Human-readable description of the violation
-        account:
-          type: string
-          description: The account address that caused the violation
-
     MetadataValue:
       description: >-
         A typed metadata value (string, integer, boolean, or null). Integer
@@ -3982,14 +4045,14 @@ components:
           additionalProperties:
             $ref: '#/components/schemas/MetadataValue'
           description: >-
-            Initial typed metadata, persisted atomically with creation in NORMAL and MIRROR modes. Creation requires ledger:LedgerWrite, including initial metadata; later metadata saves require ledger:MetadataWrite. JSON null entries are omitted. Schema declarations govern indexing and queries, not write-time value coercion. Cluster policy defaults allow 128 entries per entity, 256 bytes per key, 16384 bytes per value, 65536 bytes per entity, and 1048576 bytes per request. Effective ceilings are configurable through the replicated cluster policy.
+            Initial typed metadata, persisted atomically with creation in NORMAL and MIRROR modes. Creation requires ledger:WriteLedger, including initial metadata; later metadata saves require ledger:WriteMetadata. JSON null entries are omitted. Schema declarations govern indexing and queries, not write-time value coercion. Cluster policy defaults allow 128 entries per entity, 256 bytes per key, 16384 bytes per value, 65536 bytes per entity, and 1048576 bytes per request. Effective ceilings are configurable through the replicated cluster policy.
         mode:
           type: string
           enum:
             - NORMAL
             - MIRROR
           default: NORMAL
-          description: Ledger mode. MIRROR creates a read-only ledger that syncs from an external v2 source.
+          description: Ledger mode. MIRROR creates a read-only ledger that syncs from an external v2 source. Values are case-sensitive; any other value is rejected with 400 INVALID_REQUEST.
         mirrorSource:
           $ref: '#/components/schemas/MirrorSourceConfig'
         defaultEnforcementMode:
@@ -4195,7 +4258,11 @@ components:
               $ref: '#/components/schemas/MetadataValue'
           description: >-
             Metadata for accounts involved in the transaction (supports typed
-            values). Each account's map is bounded independently. Cluster policy defaults allow 128 entries per entity, 256 bytes per key, 16384 bytes per value, 65536 bytes per entity, and 1048576 bytes per request. Effective ceilings are configurable through the replicated cluster policy.
+            values). Account addresses must be nonempty and contain only letters,
+            digits, colons, underscores and hyphens, without empty segments.
+            Malformed addresses are rejected before submission; competing invalid
+            addresses select the lexicographically smallest address.
+            Each account's map is bounded independently. Cluster policy defaults allow 128 entries per entity, 256 bytes per key, 16384 bytes per value, 65536 bytes per entity, and 1048576 bytes per request. Effective ceilings are configurable through the replicated cluster policy.
         timestamp:
           type: string
           format: date-time
@@ -4516,17 +4583,6 @@ components:
                 type: object
                 additionalProperties: true
               description: Metadata for accounts involved in the transaction
-            previousAccountMetadata:
-              type: object
-              additionalProperties:
-                type: object
-                additionalProperties: true
-              description: Previous account metadata values (for index replay)
-            warnings:
-              type: array
-              items:
-                $ref: '#/components/schemas/ChartViolation'
-              description: Chart of accounts violations (AUDIT mode only, empty in STRICT mode)
 
     OrderSkippedResponse:
       type: object
@@ -4849,11 +4905,6 @@ components:
         revertTransaction:
           $ref: '#/components/schemas/TransactionResponse'
           description: The new transaction that reverses the original transaction
-        warnings:
-          type: array
-          items:
-            $ref: '#/components/schemas/ChartViolation'
-          description: Chart of accounts violations (AUDIT mode only, empty in STRICT mode)
 
     RevertedTransactionResponse:
       type: object
@@ -5857,6 +5908,61 @@ components:
       type: object
       description: Turns the entry into a fill-gap that preserves log-ID and tx-ID continuity.
 
+    AnalyzeNumscriptRequest:
+      type: object
+      required: [source, version]
+      properties:
+        source:
+          type: string
+          description: UTF-8 source text, at most 64 KiB. The complete HTTP JSON body is limited to 4 MiB.
+        version:
+          type: string
+          description: Numscript language version; currently v1.
+          example: v1
+    AnalyzeNumscriptResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: object
+          required: [inputs, diagnostics]
+          properties:
+            inputs:
+              type: array
+              items:
+                type: object
+                required: [name, type]
+                properties:
+                  name:
+                    type: string
+                  type:
+                    type: string
+                    description: Numscript type spelling.
+            diagnostics:
+              type: array
+              items:
+                type: object
+                required: [kind, code, message]
+                properties:
+                  kind:
+                    type: string
+                    enum: [version, syntax, feature, compile]
+                  code:
+                    type: string
+                  message:
+                    type: string
+                  startLine:
+                    type: integer
+                    minimum: 0
+                  startColumn:
+                    type: integer
+                    minimum: 0
+                  endLine:
+                    type: integer
+                    minimum: 0
+                  endColumn:
+                    type: integer
+                    minimum: 0
     SaveNumscriptRequest:
       type: object
       required:
@@ -6063,6 +6169,7 @@ components:
         uniqueValues:
           type: integer
           format: int64
+          description: Number of distinct values observed at this segment position.
         examples:
           type: array
           items:
@@ -6231,8 +6338,15 @@ components:
           description: Parameter values for the query (substituted into filter placeholders)
         pageSize:
           type: integer
-          format: int32
-          description: Maximum number of results per page
+          format: uint32
+          minimum: 0
+          maximum: 4294967295
+          default: 100
+          description: |
+            LIST page size. Omitted or zero means 100. The effective maximum is
+            1000; larger uint32 values are accepted and clamped, not rejected.
+            A supplied query parameter overrides this value. Ignored for
+            AGGREGATE_VOLUMES.
         cursor:
           type: string
           description: |
@@ -6470,6 +6584,10 @@ components:
           properties:
             pageSize:
               type: integer
+              format: uint32
+              minimum: 1
+              maximum: 1000
+              description: Effective LIST page size after applying the default and cap.
             hasMore:
               type: boolean
               description: True when a following page exists; set iff `next` is.

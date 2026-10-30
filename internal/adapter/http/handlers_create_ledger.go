@@ -96,9 +96,16 @@ func (s *Server) handleCreateLedger(w http.ResponseWriter, r *http.Request) {
 
 		createReq.Metadata = body.Metadata.GetValues()
 
-		if body.Mode == "MIRROR" {
-			createReq.Mode = commonpb.LedgerMode_LEDGER_MODE_MIRROR
+		ledgerMode, err := parseLedgerMode(body.Mode)
+		if err != nil {
+			writeBadRequest(w, "INVALID_REQUEST", err)
 
+			return
+		}
+
+		createReq.Mode = ledgerMode
+
+		if ledgerMode == commonpb.LedgerMode_LEDGER_MODE_MIRROR {
 			if body.MirrorSource != nil {
 				cfg, err := mirrorSourceToProto(body.MirrorSource)
 				if err != nil {
@@ -170,7 +177,7 @@ func (s *Server) handleCreateLedger(w http.ResponseWriter, r *http.Request) {
 
 	info := createLedgerLog.ToLedgerInfo()
 	info.Metadata = createLedgerLog.GetMetadata()
-	writeCreated(w, info)
+	writeCreated(w, r, info)
 }
 
 // mirrorSourceToProto converts the HTTP body to the proto MirrorSourceConfig.

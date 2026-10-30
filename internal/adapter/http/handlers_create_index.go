@@ -69,5 +69,5 @@ func (s *Server) handleCreateIndex(w http.ResponseWriter, r *http.Request) {
 
 	// Return the canonical id (round-trip normalized via indexes.Canonical) so
 	// REST clients get the exact identifier for the follow-up GET/DELETE routes.
-	writeCreated(w, createIndexResult{ID: indexes.Canonical(id)})
+	writeCreated(w, r, createIndexResult{ID: indexes.Canonical(id)})
 }

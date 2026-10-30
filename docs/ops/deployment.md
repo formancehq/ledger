@@ -11,10 +11,11 @@ service clients to declare the protocol they implement. Servers implementing
 EN-1851 reject business RPCs with a missing or different protocol revision.
 Servers predating EN-1851 do not enforce this gate: the new CLI sends a protocol
 declaration without a preflight, so it cannot protect calls to an older, ungated
-server. Different builds may communicate when they implement the same service
-protocol, but mixed wire-format rolling upgrades are not guaranteed. See the
+server. Updates within the RC line keep the service wire contract at revision
+40 and must support mixed-binary rolling upgrades. The protocol match alone
+does not prove that Raft apply and persisted data remain compatible. See the
 [service protocol contract](../technical/architecture/subsystems/api/protocol-compatibility.md)
-for scope and failure behavior.
+and [server upgrades](upgrades.md) for the required validation.
 
 ## Local Deployment
 
@@ -63,7 +64,7 @@ Available flags for `run`:
 - `--join`: Raft transport address of an existing cluster member to join as a learner (e.g., `--join node-1:7777`; mutually exclusive with `--bootstrap`). Discovery and learner registration go through the inter-node `ClusterBootstrapService` on the RaftServer — no user JWT is required. If the target cluster enforces a `--cluster-secret` and this node's secret is missing or wrong, startup **fails fast** with an actionable error rather than retrying forever (EN-1080); a `--cluster-id` the target does not accept fails fast the same way (EN-2738). See the [`--cluster-secret`](cli.md#server-cluster-secret-flag) section.
 - `--learner-promotion-threshold`: Max log entry lag before auto-promoting a caught-up learner to voter (default: `100`, `0` = disable auto-promotion)
 - `--http-port`: HTTP server port (default: `9000`)
-- `--health-check-interval`: Interval between disk usage health checks (default: `30s`)
+- `--health-check-interval`: Interval between disk usage health checks; must be greater than zero (default: `30s`)
 - `--health-wal-threshold`: WAL volume usage threshold, 0.0-1.0 (default: `0.8`)
 - `--health-data-threshold`: Data volume usage threshold, 0.0-1.0 (default: `0.8`)
 
@@ -87,6 +88,15 @@ named in the diagnostic; Ledger does not open its service listeners or report
 readiness. When the same flag is explicitly supplied on the command line, that
 higher-precedence value is used and the lower-precedence environment value is
 ignored.
+
+Byte-size flags accept non-negative integer bytes or an integer with a binary
+suffix (`Ki`, `Mi`, `Gi`, `Ti`, `Pi`, `Ei`) or decimal suffix (`k`, `M`, `G`,
+`T`, `P`, `E`). The expanded byte count must not exceed 9223372036854775807
+(`MaxInt64`); negative values and overflow fail parsing before configuration
+conversion or defaulting. For example, `--raft-max-size-per-msg=16Ei` is rejected.
+Explicit zero retains each flag's documented sentinel meaning, including the
+1 MiB default for `--raft-max-size-per-msg=0`. Individual consumers may impose
+smaller limits.
 
 Enabled bloom filters require a finite false-positive rate strictly between
 `0` and `1`. Direct server flags normalize rate `0` to `0.01`; setting expected
@@ -168,6 +178,19 @@ spec:
 ```
 
 The operator creates and manages all sub-resources: StatefulSet, Services, Ingresses, ServiceAccount, PDB, etc.
+
+Each sub-resource is named after the Cluster (`ledger-<name>`,
+`ledger-<name>-headless`, `ledger-<name>-grpc`, ...) and owned through a
+controller reference to the Cluster UID. The operator never adopts, modifies,
+deletes or execs into an existing object under one of these names that the
+Cluster does not control. It reports the conflict as
+`ResourceNamesAvailable=False` (reason `NameConflict`), phase `Error` and a
+`ResourceNameConflict` event, and retries every minute. Remove the conflicting
+object, or restore its controller reference to the Cluster, to resume. In
+particular, a Cluster recreated after `kubectl delete --cascade=orphan` does not
+re-adopt the orphaned objects: delete them (keep the PVCs) or restore their
+owner references first. See
+[derived object ownership](../technical/architecture/subsystems/operator/derived-object-ownership.md).
 
 When an operator-managed Cluster omits `spec.clusterID`, the operator commits a
 random UUID to the Cluster spec before creating any workload. All replicas use
@@ -263,6 +286,10 @@ spec:
     annotations: {}
     name: ""
 ```
+
+With `create: true` (the default) the operator owns the ServiceAccount and
+refuses an existing one it did not create. To run the pods under a
+ServiceAccount you manage, set `create: false` and `name`.
 
 #### Resource Limits
 
@@ -748,7 +775,8 @@ This refactor changes two things that are not backward-compatible with persisted
 - The **attribute hash scheme** moves from seeded XXH3 (`DefaultSeeds`) to unseeded XXH3. Persisted cache U128 keys (zone `0xFF`) and persisted bloom blocks were computed under the old hash, so they no longer match the IDs the new binary computes for the same canonical inputs.
 - The **audit hash chain** moves from an unkeyed hash to one keyed by a value derived from the immutable `cluster-id` (`processing.HashGenerator`). Audit entries written by the old binary become unverifiable under the new scheme.
 
-The service is not yet stable, so this break is accepted instead of adding migration code. **The only supported upgrade path is a full data wipe**:
+This change predates `v3.0.0-rc.1`. No migration was provided for clusters from
+that development period. **Their only supported upgrade path was a full data wipe**:
 
 1. Drain the cluster.
 2. Delete the Pebble data directory on every node.
@@ -779,7 +807,7 @@ Changes in this release line that fall under the rule:
 | EN-1536 (`8b24ee535`) | `buildAuditFailure` resolves the outermost `Describable` instead of `errors.As`-unwrapping, and takes `Message` from `d.Error()` — reason, message and context can all shift for a wrapped failure | any wrapped FSM failure |
 | EN-1379 | a preload coverage miss stops being flattened into `ERROR_REASON_STORAGE_OPERATION_FAILED` and surfaces as `ERROR_REASON_COVERAGE_MISS`, with `attribute`, `canonicalHex`, `idHex`, `raftIndex` intact | coverage misses only — themselves admission-contract violations that must never fire (invariant #7), so in a healthy cluster the window is empty |
 
-**Revision 30 requires a state replacement for any cluster with pre-30 data.** It replaces persisted audit failure `message/context`, idempotency failure `message/metadata`, and skipped-order `context` with `reason/code/facts`. The protocol revision changes, but `storage-schema-version` does not reject the old records at startup. A coordinated restart alone cannot convert those records or make their old audit hashes verifiable under the new pre-image. Because v3 has not reached RC, there is no in-place migration: drain and stop every node, discard the old Pebble and Raft state (including pre-30 snapshots), bootstrap a fresh revision-30 cluster, and rebuild business state from a trusted external source through the new binary. Do not restore a pre-30 Ledger backup into it. If the state cannot be rebuilt, keep the pre-30 deployment until a migration path exists.
+**Revision 30 required a state replacement for any development cluster with pre-30 data.** It replaced persisted audit failure `message/context`, idempotency failure `message/metadata`, and skipped-order `context` with `reason/code/facts`. The protocol revision changed, but `storage-schema-version` did not reject the old records at startup. A coordinated restart alone could not convert those records or make their old audit hashes verifiable under the new pre-image. Before the first RC, there was no in-place migration: drain and stop every node, discard the old Pebble and Raft state (including pre-30 snapshots), bootstrap a fresh revision-30 cluster, and rebuild business state from a trusted external source through the new binary. Do not restore a pre-30 Ledger backup into it. If the state cannot be rebuilt, keep the pre-30 deployment until a migration path exists. For upgrades from `v3.0.0-rc.1` onward, follow the [release migration requirement](upgrades.md#release-requirement-from-v300-rc1).
 
 Mixed binaries that disagree on the failure-facts schema still require a coordinated restart after the replacement. Revision 30 removes presentation wording from that schema, reducing the changes that can affect future entries in the chain. See [coverage-gate.md](../technical/architecture/subsystems/fsm/coverage-gate.md#upgrade-note-the-reason-is-hash-bound) for the mechanism in detail.
 
@@ -824,14 +852,14 @@ a rollback reverses the versions. A store checker can replay an affected audit
 entry differently from the stored outcome, and a locally consistent audit
 chain does not by itself prove that replicas agree with each other.
 
-For a library change that can alter script outcomes, do not use a mixed-version
-rolling upgrade. During unreleased v3 development, state is wiped on pushes
-to `release/v3.0`; a clean cluster restart with reset state is the supported
-boundary for such a change. Before a stable release, maintaining data across
-such an upgrade would require a separately designed, replicated semantic
-version boundary covering in-flight Raft entries and audit replay. Merely
-stopping all nodes does not establish that boundary when unapplied entries or
-replayable history remain.
+For a library change that can alter script outcomes, design a staged rollout
+that keeps old and new voters deterministic while they coexist and preserves
+replay of existing audited entries. Before `v3.0.0-rc.1`, state was wiped on
+pushes to `release/v3.0`; a clean cluster restart with reset state was the
+supported boundary for such a change. During the RC line, that reset is no
+longer an upgrade path. A replicated semantic version boundary must cover
+in-flight Raft entries and audit replay. Merely stopping all nodes does not
+establish a safe boundary when unapplied entries or replayable history remain.
 
 ### Audit hash keying — threat model
 
@@ -897,6 +925,25 @@ ledgerctl cluster maintenance disable
 ```
 
 The maintenance mode flag is replicated through Raft consensus and enforced at both the admission layer and the FSM level. Clients receive gRPC `UNAVAILABLE` errors during maintenance.
+
+The operator also has a controlled drain for checking the cluster-wide write
+barrier while Pods keep running. Apply the annotation after every Ledger
+member has been upgraded to a drain-capable binary:
+
+```bash
+kubectl annotate cluster my-cluster ledger.formance.com/drain=true
+kubectl get cluster my-cluster -o jsonpath='{.status.drain.phase}'
+# Wait for Drained, then remove the annotation to resume writes.
+kubectl annotate cluster my-cluster ledger.formance.com/drain-
+```
+
+The operator persists the epoch in `status.drain`, waits for each member's
+local Pebble persistence cursor, and reports `Drained` only when all members
+have applied the marker durably. Removing the annotation commits a Raft
+release and clears `status.drain` after every member acknowledges it. The
+annotation does not scale down Pods or trigger an upgrade. See
+[controlled shutdown](../technical/architecture/subsystems/consensus/controlled-shutdown.md)
+for the failure and recovery contract.
 
 ### Cluster State Verification
 

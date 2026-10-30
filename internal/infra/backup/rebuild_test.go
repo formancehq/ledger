@@ -8,6 +8,7 @@ import (
 	"slices"
 	"sync/atomic"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/stretchr/testify/require"
@@ -701,23 +702,28 @@ func TestRebuildDelta_ReplaysDeletedQueryCheckpointSchedule(t *testing.T) {
 	restoredSchedule := readSchedule()
 	require.Empty(t, restoredSchedule, "the post-checkpoint deletion must remove the checkpoint-seeded schedule")
 
-	var proposed atomic.Int32
-	scheduler := state.NewQueryCheckpointScheduler(
-		testLogger(),
-		func() bool { return true },
-		func() string { return restoredSchedule },
-		func() error {
-			proposed.Add(1)
+	// Only the scheduler runs in the bubble: an hour of fake time covers 3600
+	// periods of the seeded every-second cron at no wall-clock cost.
+	synctest.Test(t, func(t *testing.T) {
+		var proposed atomic.Int32
+		scheduler := state.NewQueryCheckpointScheduler(
+			testLogger(),
+			func() bool { return true },
+			func() string { return restoredSchedule },
+			func() error {
+				proposed.Add(1)
 
-			return nil
-		},
-		signal.New(),
-	)
-	scheduler.Start()
-	t.Cleanup(scheduler.Stop)
+				return nil
+			},
+			signal.New(),
+		)
+		scheduler.Start()
+		t.Cleanup(scheduler.Stop)
 
-	require.Never(t, func() bool { return proposed.Load() != 0 }, 1500*time.Millisecond, 25*time.Millisecond,
-		"the restored scheduler must remain disabled")
+		time.Sleep(time.Hour)
+		synctest.Wait()
+		require.Zero(t, proposed.Load(), "the restored scheduler must remain disabled")
+	})
 }
 
 func TestRebuildDelta_DeletedQueryCheckpointScheduleErrorKeepsCheckpointSeed(t *testing.T) {

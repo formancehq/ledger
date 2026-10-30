@@ -12,6 +12,7 @@ import (
 	"go.uber.org/mock/gomock"
 	"google.golang.org/protobuf/proto"
 
+	ledgerjson "github.com/formancehq/ledger/v3/internal/adapter/json"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
 
@@ -192,11 +193,14 @@ func TestMonetaryResponseDefaultCompatibility(t *testing.T) {
 			r := httptest.NewRequest(http.MethodGet, "/", nil)
 			legacy, current := httptest.NewRecorder(), httptest.NewRecorder()
 			if checked {
-				writeOKChecked(legacy, r, transaction)
-				writeMonetaryOKChecked(current, r, transaction)
+				body, err := ledgerjson.Marshal(BaseResponse[any]{Data: transaction})
+				require.NoError(t, err)
+				_, err = legacy.Write(body)
+				require.NoError(t, err)
+				writeOKChecked(current, r, transaction)
 			} else {
-				writeOK(legacy, transaction)
-				writeMonetaryOK(current, r, transaction)
+				require.NoError(t, ledgerjson.MarshalWrite(legacy, BaseResponse[any]{Data: transaction}))
+				writeOK(current, r, transaction)
 			}
 			require.JSONEq(t, legacy.Body.String(), current.Body.String())
 			type wire struct {
@@ -211,7 +215,7 @@ func TestMonetaryResponseDefaultCompatibility(t *testing.T) {
 			require.Equal(t, !checked, current.Body.Bytes()[current.Body.Len()-1] == '\n')
 			r.Header.Set(HeaderBigIntAsString, "true")
 			optIn := httptest.NewRecorder()
-			writeMonetaryOKChecked(optIn, r, transaction)
+			writeOKChecked(optIn, r, transaction)
 			require.Contains(t, optIn.Body.String(), `"amount":9007199254740993`, "integer metadata stays numeric")
 			require.Contains(t, optIn.Body.String(), `"amount":"9007199254740993"`, "only the posting opts into strings")
 		})
