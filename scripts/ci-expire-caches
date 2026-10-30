@@ -1,0 +1,183 @@
+#!/usr/bin/env bash
+# Deletes stale entries from the Namespace CI cache volume to keep it below
+# the runner profile's cache size. A generation that grows past that size is
+# committed but not cloned, and every job on its lineage then starts empty.
+#
+# The Cache Expiry workflow runs this through `just ci-expire-caches` inside
+# `nix develop .#ci`, after Setup Env has mounted /nix and the Go caches:
+#   - Go build and golangci-lint entries unused for CACHE_MAX_AGE_DAYS are
+#     deleted. Both caches refresh an entry's mtime when they use it (at most
+#     once an hour), so mtime is the last use within an hour.
+#   - The Go module cache never evicts anything, so it is rebuilt with the
+#     modules the checked-out revision needs (the default branch when
+#     scheduled).
+#   - The Nix store is garbage-collected down to the dev shells CI enters and
+#     the flake inputs needed to evaluate them. Store paths carry no usage
+#     time, so closures of other flake revisions are refetched on first use.
+#   - If the caches still exceed CACHE_BUDGET_GB GiB, the Go build and
+#     golangci-lint age limit is lowered a day at a time, ending with entries
+#     unused for an hour. On the nightly run nothing else has used them in
+#     that hour, so this empties both caches; a manual run during working
+#     hours keeps what overlapping jobs just used. A job that still ends over
+#     budget warns rather than fails: a failed job commits nothing, which
+#     would also discard the trimming done so far.
+#
+# DRY_RUN=1 reports what the first pass would delete and the total against
+# the budget, without deleting anything. It does not simulate the lower age
+# limits a real run applies when the total stays over budget. Outside GitHub
+# Actions the script only runs with DRY_RUN=1, because a real run would wipe
+# the local Go module cache and garbage-collect the local Nix store.
+set -euo pipefail
+
+max_age_days=${CACHE_MAX_AGE_DAYS:-3}
+# GiB; 30% headroom under the 50 GB profile cache size for the day's new entries.
+budget_gb=${CACHE_BUDGET_GB:-35}
+dry_run=${DRY_RUN:-0}
+# Dev shells entered by .github/workflows; keep in sync when a job adds one.
+ci_shells=(ci operator-tests)
+
+if [[ $dry_run != 1 && ${GITHUB_ACTIONS:-} != true ]]; then
+    echo "ci-expire-caches deletes from the caches of the machine it runs on;" \
+        "outside GitHub Actions run it with DRY_RUN=1" >&2
+    exit 1
+fi
+
+# Upper bounds keep the cutoff arithmetic far from overflow and the budget
+# loop short; Go trims its own cache after five days anyway.
+check_range() {
+    local name=$1 value=$2 max=$3
+    if ! [[ $value =~ ^[1-9][0-9]{0,3}$ ]] || ((value > max)); then
+        # %q keeps a crafted value from injecting workflow commands.
+        printf '%s must be an integer from 1 to %s, got %q\n' "$name" "$max" "$value" >&2
+        exit 1
+    fi
+}
+check_range CACHE_MAX_AGE_DAYS "$max_age_days" 30
+check_range CACHE_BUDGET_GB "$budget_gb" 1000
+
+cd "$(git rev-parse --show-toplevel)"
+go_cache=$(go env GOCACHE)
+go_mod_cache=$(go env GOMODCACHE)
+lint_cache=${GOLANGCI_LINT_CACHE:-$HOME/.cache/golangci-lint}
+# Setup Env caches all of /nix; store and var are its contents, listed
+# separately because macOS adds unreadable system directories to /nix.
+cache_paths=(/nix/store /nix/var "$go_cache" "$go_mod_cache" "$lint_cache")
+
+roots=$(mktemp -d)
+trap 'rm -rf "$roots"' EXIT
+
+report_usage() {
+    echo "==> Cache usage ($1)"
+    local path
+    for path in "${cache_paths[@]}"; do
+        if [[ -d $path ]]; then
+            du -sh "$path"
+        else
+            echo "absent  $path"
+        fi
+    done
+}
+
+total_usage_kib() {
+    local path kib=0 size
+    for path in "${cache_paths[@]}"; do
+        if [[ -d $path ]]; then
+            size=$(du -sk "$path" | cut -f1)
+            kib=$((kib + size))
+        fi
+    done
+    echo "$kib"
+}
+
+format_gib() {
+    awk -v kib="$1" 'BEGIN { printf "%.1f GiB", kib / 1024 / 1024 }'
+}
+
+# Mirrors the Go cache's own trim, which only touches the xx/<hash>-a and
+# xx/<hash>-d entries (-d is a directory for cached executables) and, like
+# it, adds an hour to the limit because use refreshes mtime at most hourly.
+expire_go_style_cache() {
+    local dir=$1 age_days=$2
+    if [[ ! -d $dir ]]; then
+        echo "==> $dir: absent, nothing to expire"
+        return
+    fi
+    local find_args=("$dir" -mindepth 2 -maxdepth 2 -path "$dir/[0-9a-f][0-9a-f]/*"
+        \( -name '*-a' -o -name '*-d' \) -mmin "+$((age_days * 24 * 60 + 60))")
+    local stale
+    stale=$(find "${find_args[@]}" | wc -l | tr -d ' ')
+    echo "==> $dir: $stale entries unused for more than $age_days days"
+    if [[ $dry_run != 1 ]]; then
+        find "${find_args[@]}" -print0 | xargs -0 rm -rf
+    fi
+}
+
+rebuild_module_cache() {
+    if [[ $dry_run == 1 ]]; then
+        echo "==> $go_mod_cache: would be rebuilt with the checked-out revision's modules"
+        return
+    fi
+    echo "==> $go_mod_cache: rebuilding with the checked-out revision's modules"
+    # Not `go clean -modcache`: it removes the directory itself, which is a
+    # bind mount here and fails with EBUSY. Module files are read-only.
+    if [[ -d $go_mod_cache ]]; then
+        chmod -R u+w "$go_mod_cache"
+        find "$go_mod_cache" -mindepth 1 -maxdepth 1 -exec rm -rf {} +
+    fi
+    just go-mod-download
+}
+
+collect_nix_garbage() {
+    local shell
+    for shell in "${ci_shells[@]}"; do
+        # A dev-shell profile is a GC root for the shell's whole environment.
+        nix develop ".#$shell" --profile "$roots/shell-$shell" --command true
+    done
+
+    # Keep the flake inputs too, so the next `nix develop` evaluates without
+    # downloading nixpkgs again. The repository source itself is not kept.
+    local input_paths path i=0
+    input_paths=$(nix flake archive --json | jq -r '.inputs | .. | objects | .path? // empty')
+    while IFS= read -r path; do
+        [[ -n $path ]] || continue
+        nix-store --add-root "$roots/input-$i" --realise "$path" >/dev/null
+        i=$((i + 1))
+    done <<<"$input_paths"
+    echo "==> Nix: kept ${#ci_shells[@]} dev shells and $i flake inputs"
+
+    if [[ $dry_run == 1 ]]; then
+        echo "==> Nix: $(nix-store --gc --print-dead | wc -l | tr -d ' ') store paths would be deleted"
+    else
+        nix store gc
+    fi
+}
+
+enforce_budget() {
+    local usage age_days=$max_age_days budget_kib=$((budget_gb * 1024 * 1024))
+    usage=$(total_usage_kib)
+    if [[ $dry_run == 1 ]]; then
+        echo "==> Total: $(format_gib "$usage") before deletion, budget ${budget_gb} GiB"
+        return
+    fi
+    # Age 0 keeps only entries used in the last hour.
+    while ((usage > budget_kib && age_days > 0)); do
+        age_days=$((age_days - 1))
+        echo "==> Total: $(format_gib "$usage") over the ${budget_gb} GiB budget, lowering the age limit to $age_days days"
+        expire_go_style_cache "$go_cache" "$age_days"
+        expire_go_style_cache "$lint_cache" "$age_days"
+        usage=$(total_usage_kib)
+    done
+    if ((usage > budget_kib)); then
+        echo "::warning::CI caches use $(format_gib "$usage") after expiry, over the ${budget_gb} GiB budget"
+    else
+        echo "==> Total: $(format_gib "$usage"), within the ${budget_gb} GiB budget"
+    fi
+}
+
+report_usage before
+expire_go_style_cache "$go_cache" "$max_age_days"
+expire_go_style_cache "$lint_cache" "$max_age_days"
+rebuild_module_cache
+collect_nix_garbage
+enforce_budget
+report_usage after
