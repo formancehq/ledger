@@ -368,6 +368,7 @@ for the full discriminator list and the information retained in the projection.
 - ✅ Numscript variables support
 - ✅ Balance verification (insufficient funds)
 - ✅ `force` option (bypass balance checks)
+- ✅ Automatic metadata-only execution when a Numscript emits account metadata but no postings
 - ✅ Transaction metadata
 - ✅ Account metadata in the same request
 - ✅ Transaction reference

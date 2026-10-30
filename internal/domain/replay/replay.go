@@ -103,6 +103,25 @@ func ReplayLedgerLog(
 			}
 		}
 
+	case *commonpb.LedgerLogPayload_AccountMetadataUpdated:
+		if p.AccountMetadataUpdated == nil {
+			return nil
+		}
+		for account, metadataMap := range p.AccountMetadataUpdated.GetAccountMetadata() {
+			if metadataMap == nil {
+				continue
+			}
+			for key, value := range metadataMap.GetValues() {
+				if value == nil {
+					continue
+				}
+				mk := domain.MetadataKey{AccountKey: domain.AccountKey{LedgerName: ledger, Account: account}, Key: key}
+				if err := w.SetMetadata(mk.Bytes(), value); err != nil {
+					return fmt.Errorf("setting metadata-only account metadata: %w", err)
+				}
+			}
+		}
+
 	case *commonpb.LedgerLogPayload_RevertedTransaction:
 		if p.RevertedTransaction == nil || p.RevertedTransaction.GetRevertTransaction() == nil {
 			return nil

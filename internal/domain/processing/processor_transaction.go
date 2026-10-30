@@ -106,10 +106,15 @@ func processCreateTransaction(ledger string, order *raftcmdpb.CreateTransactionO
 	// is therefore not allocatable: advancing it would wrap the boundary to zero
 	// and make existing transaction keys reusable (EN-1860). Check before the
 	// posting producer stages any volume mutation.
-	nextTransactionID := boundaries.GetNextTransactionId()
-	advancedTransactionID, exhausted := domain.CheckedNextSequence(nextTransactionID, domain.SequenceCounterTransactionID)
-	if exhausted != nil {
-		return nil, exhausted
+	metadataOnlyCandidate := isNumscript && len(order.GetPostings()) == 0
+	var nextTransactionID, advancedTransactionID uint64
+	if !metadataOnlyCandidate {
+		nextTransactionID = boundaries.GetNextTransactionId()
+		advanced, exhausted := domain.CheckedNextSequence(nextTransactionID, domain.SequenceCounterTransactionID)
+		if exhausted != nil {
+			return nil, exhausted
+		}
+		advancedTransactionID = advanced
 	}
 
 	// Produce postings (handles balance checks and buffer updates)
@@ -125,7 +130,18 @@ func processCreateTransaction(ledger string, order *raftcmdpb.CreateTransactionO
 	// here. Without this guard the FSM commits a zero-posting log entry
 	// (#452).
 	if len(result.Postings) == 0 {
+		if len(result.AccountsMetadata) > 0 || len(order.GetAccountMetadata()) > 0 {
+			return processMetadataOnly(ledger, order, result, ctx)
+		}
 		return nil, domain.ErrEmptyTransaction
+	}
+	if metadataOnlyCandidate {
+		nextTransactionID = boundaries.GetNextTransactionId()
+		var exhausted *domain.ErrSequenceExhausted
+		advancedTransactionID, exhausted = domain.CheckedNextSequence(nextTransactionID, domain.SequenceCounterTransactionID)
+		if exhausted != nil {
+			return nil, exhausted
+		}
 	}
 
 	boundaries.NextTransactionId = advancedTransactionID
@@ -304,6 +320,56 @@ func processCreateTransaction(ledger string, order *raftcmdpb.CreateTransactionO
 			},
 		},
 	}, nil
+}
+
+// processMetadataOnly applies account metadata emitted by a Numscript without
+// allocating a transaction ID or creating TransactionState. It deliberately
+// shares the producer and validation path with normal transaction creation, so
+// script execution, metadata limits, address validation, and proposal rollback
+// retain the same semantics.
+func processMetadataOnly(ledger string, order *raftcmdpb.CreateTransactionOrder, result *produceResult, ctx *Context) (*commonpb.LedgerLogPayload, domain.SerializableError) {
+	if len(result.Postings) > 0 {
+		return nil, domain.ErrPostingsAndScriptConflict
+	}
+
+	accountMetadata := make(map[string]*commonpb.MetadataMap, len(result.AccountsMetadata)+len(order.GetAccountMetadata()))
+	for account, values := range result.AccountsMetadata {
+		accountMetadata[account] = &commonpb.MetadataMap{Values: values}
+	}
+	for account, mm := range order.GetAccountMetadata() {
+		existing := accountMetadata[account]
+		if existing == nil {
+			accountMetadata[account] = mm
+			continue
+		}
+		maps.Copy(existing.GetValues(), mm.GetValues())
+	}
+	if len(accountMetadata) == 0 {
+		return nil, domain.ErrEmptyTransaction
+	}
+
+	limits := domain.MetadataLimitsFromPolicy(ctx.Scope.GetClusterPolicy())
+	if metaErr := validateMergedAccountMetadata(accountMetadata, limits); metaErr != nil {
+		return nil, metaErr
+	}
+	inputBytes := domain.OrderMetadataSize(&raftcmdpb.Order{Type: &raftcmdpb.Order_LedgerScoped{LedgerScoped: &raftcmdpb.LedgerScopedOrder{Payload: &raftcmdpb.LedgerScopedOrder_Apply{Apply: &raftcmdpb.LedgerApplyOrder{Data: &raftcmdpb.LedgerApplyOrder_CreateTransaction{CreateTransaction: order}}}}}})
+	if ctx.metadataBudget == nil {
+		ctx.metadataBudget = &commandMetadataBudget{bytes: inputBytes}
+	}
+	total := ctx.metadataBudget.bytes + transactionMetadataSize(nil, accountMetadata) - inputBytes
+	if metaErr := limits.ValidateCommandBytes(total); metaErr != nil {
+		return nil, metaErr
+	}
+	if err := domain.ValidateAccountMetadataAddresses(accountMetadata); err != nil {
+		return nil, err
+	}
+	for account, mm := range accountMetadata {
+		for key, value := range mm.GetValues() {
+			ctx.Scope.AccountMetadata().Put(domain.MetadataKey{AccountKey: domain.AccountKey{LedgerName: ledger, Account: account}, Key: key}, value)
+		}
+	}
+	ctx.metadataBudget.bytes = total
+	return &commonpb.LedgerLogPayload{Payload: &commonpb.LedgerLogPayload_AccountMetadataUpdated{AccountMetadataUpdated: &commonpb.AccountMetadataUpdated{AccountMetadata: accountMetadata}}}, nil
 }
 
 // validateMergedAccountMetadata checks every account's merged metadata map

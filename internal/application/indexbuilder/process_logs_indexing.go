@@ -27,6 +27,16 @@ func (b *Builder) indexPayload(
 		return b.indexRevertedTransaction(kb, cfg, ledgerName, p.RevertedTransaction, excludedVolumes)
 	case *commonpb.LedgerLogPayload_SavedMetadata:
 		return b.indexSavedMetadata(kb, cfg, ledgerName, p.SavedMetadata)
+	case *commonpb.LedgerLogPayload_AccountMetadataUpdated:
+		for account, metadata := range p.AccountMetadataUpdated.GetAccountMetadata() {
+			if err := b.indexSavedMetadata(kb, cfg, ledgerName, &commonpb.SavedMetadata{
+				Target:   &commonpb.Target{Target: &commonpb.Target_Account{Account: &commonpb.TargetAccount{Addr: account}}},
+				Metadata: metadata.GetValues(),
+			}); err != nil {
+				return err
+			}
+		}
+		return nil
 	case *commonpb.LedgerLogPayload_DeletedMetadata:
 		return b.indexDeletedMetadata(kb, cfg, ledgerName, p.DeletedMetadata)
 	case *commonpb.LedgerLogPayload_SetMetadataFieldType:
@@ -144,6 +154,16 @@ func (b *Builder) indexLogEntry(cfg *ledgerIndexConfig, log *commonpb.Log, propo
 		return b.indexRevertedTransaction(b.kb, cfg, ledgerName, p.RevertedTransaction, excludedVolumes)
 	case *commonpb.LedgerLogPayload_SavedMetadata:
 		return b.indexSavedMetadata(b.kb, cfg, ledgerName, p.SavedMetadata)
+	case *commonpb.LedgerLogPayload_AccountMetadataUpdated:
+		for account, metadata := range p.AccountMetadataUpdated.GetAccountMetadata() {
+			if err := b.indexSavedMetadata(b.kb, cfg, ledgerName, &commonpb.SavedMetadata{
+				Target:   &commonpb.Target{Target: &commonpb.Target_Account{Account: &commonpb.TargetAccount{Addr: account}}},
+				Metadata: metadata.GetValues(),
+			}); err != nil {
+				return err
+			}
+		}
+		return nil
 	case *commonpb.LedgerLogPayload_DeletedMetadata:
 		return b.indexDeletedMetadata(b.kb, cfg, ledgerName, p.DeletedMetadata)
 	}

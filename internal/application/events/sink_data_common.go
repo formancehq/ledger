@@ -153,6 +153,9 @@ func sinkPopulateApply(data *sinkEventData, apply *commonpb.ApplyLedgerLog) {
 		data.TargetType, data.TargetID = sinkConvertTarget(lp.SavedMetadata.GetTarget())
 		data.Metadata = sinkConvertMetadata(lp.SavedMetadata.GetMetadata())
 
+	case *commonpb.LedgerLogPayload_AccountMetadataUpdated:
+		data.AccountMetadata = sinkConvertAccountMetadataMap(lp.AccountMetadataUpdated.GetAccountMetadata())
+
 	case *commonpb.LedgerLogPayload_DeletedMetadata:
 		data.TargetType, data.TargetID = sinkConvertTarget(lp.DeletedMetadata.GetTarget())
 		data.Key = &lp.DeletedMetadata.Key
