@@ -895,7 +895,8 @@ After the harness is integrated into `release/v3.0`, run
 `just test-rc1-rolling-upgrade` from a clean checkout of the integrated
 revision. `tests/upgrade/run.sh` fetches the target branch, records both exact
 commit SHAs, builds Linux images from those revisions, and runs the Chainsaw
-scenario in a dedicated kind cluster. Its three Pods use separate persistent
+scenario in a dedicated kind cluster. Build and provenance-recording failures
+abort before cluster creation. Its three Pods use separate persistent
 WAL and data claims; Chainsaw replaces followers and then the old leader while
 maintenance remains active. The test checks source and target transactions,
 reads on every voter, rejected ledger creation and transaction posting on every

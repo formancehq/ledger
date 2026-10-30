@@ -235,6 +235,8 @@ just test-rc1-rolling-upgrade
 The Chainsaw launcher in `tests/upgrade/` fetches `origin/release/v3.0` once,
 resolves both it and `v3.0.0-rc.1` to commit SHAs, and records those SHAs,
 Linux binary hashes, and local image IDs.
+Compilation, hashing, image build, and image inspection must all succeed before
+the kind cluster is created; a locally cached image cannot replace a failed build.
 It requires a clean harness checkout, the target to contain its commit, and the
 target to descend from rc.1; it never merges or moves a local branch.
 `KEEP_WORKDIR=1` retains the extracted
