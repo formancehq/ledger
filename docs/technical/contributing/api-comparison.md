@@ -1694,7 +1694,7 @@ Admission rejects the exact names `_` (system API routes) and `_system`
 This applies equally to HTTP and gRPC. Other underscore-prefixed names,
 including `_systemx` and `_System`, remain valid.
 
-### RC.2 operational policy
+### RC.3 operational policy
 
 New cluster-policy controls no longer appear in business audit listings.
 Historical policy audit entries remain readable. Audit response fields and
