@@ -1,0 +1,100 @@
+{{- if eq (include "ledger-operator.rbacScope" .) "namespaced" }}
+{{- /*
+The generated ClusterRole (clusterrole.yaml) is bound through a RoleBinding, so
+its namespaced rules only apply inside watchNamespace. Rules for cluster-scoped
+kinds are inert through a RoleBinding; the ones the operator needs are granted
+again below with a dedicated, minimal ClusterRole.
+*/}}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ include "ledger-operator.fullname" . }}
+  namespace: {{ .Values.watchNamespace }}
+  labels:
+    {{- include "ledger-operator.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ include "ledger-operator.fullname" . }}
+subjects:
+- kind: ServiceAccount
+  name: {{ include "ledger-operator.serviceAccountName" . }}
+  namespace: {{ .Release.Namespace }}
+---
+# Leader election lease and its events live in the release namespace.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ include "ledger-operator.fullname" . }}-leader-election
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "ledger-operator.labels" . | nindent 4 }}
+rules:
+- apiGroups: ["coordination.k8s.io"]
+  resources: ["leases"]
+  verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+- apiGroups: [""]
+  resources: ["events"]
+  verbs: ["create", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ include "ledger-operator.fullname" . }}-leader-election
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "ledger-operator.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {{ include "ledger-operator.fullname" . }}-leader-election
+subjects:
+- kind: ServiceAccount
+  name: {{ include "ledger-operator.serviceAccountName" . }}
+  namespace: {{ .Release.Namespace }}
+---
+# Cluster-scoped kinds the operator reads or owns regardless of watchNamespace:
+# Credentials is a cluster-scoped CRD whose controller is always registered;
+# volume expansion and deletion protection inspect PersistentVolumes,
+# StorageClasses and the ValidatingAdmissionPolicyBindings.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "ledger-operator.fullname" . }}-cluster-scoped
+  labels:
+    {{- include "ledger-operator.labels" . | nindent 4 }}
+rules:
+- apiGroups: ["ledger.formance.com"]
+  resources: ["credentials"]
+  verbs: ["create", "delete", "get", "list", "patch", "update", "watch"]
+- apiGroups: ["ledger.formance.com"]
+  resources: ["credentials/finalizers"]
+  verbs: ["update"]
+- apiGroups: ["ledger.formance.com"]
+  resources: ["credentials/status"]
+  verbs: ["get", "patch", "update"]
+- apiGroups: [""]
+  resources: ["persistentvolumes"]
+  verbs: ["get", "list", "patch"]
+- apiGroups: ["storage.k8s.io"]
+  resources: ["storageclasses"]
+  verbs: ["get"]
+- apiGroups: ["admissionregistration.k8s.io"]
+  resources: ["validatingadmissionpolicybindings"]
+  verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ include "ledger-operator.fullname" . }}-cluster-scoped
+  labels:
+    {{- include "ledger-operator.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ include "ledger-operator.fullname" . }}-cluster-scoped
+subjects:
+- kind: ServiceAccount
+  name: {{ include "ledger-operator.serviceAccountName" . }}
+  namespace: {{ .Release.Namespace }}
+{{- end }}
