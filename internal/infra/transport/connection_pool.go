@@ -198,8 +198,8 @@ func NewConnectionPool(policy TLSPolicy, cfg PoolConfig) *ConnectionPool {
 
 // AddPeer adds a peer to the pool and creates a raw gRPC connection.
 // If the peer already has a live connection at the same address, it is a no-op;
-// a same-address registration retries a closed entry. When a replacement dial
-// fails, the committed target address is retained on the closed entry so the
+// a same-address registration retries a pending or closed entry. When a dial
+// fails, the committed target address is retained on the entry so the
 // owning peer loop or a repeated registration retries that target rather than
 // the superseded endpoint.
 func (p *ConnectionPool) AddPeer(id uint64, addr string) error {
@@ -219,6 +219,10 @@ func (p *ConnectionPool) AddPeer(id uint64, addr string) error {
 	if existing, ok := p.peers[id]; ok {
 		p.teardownLocked(existing)
 		existing.addr = addr
+	} else {
+		// Registration represents desired routing, even when a joining peer has
+		// not opened its listener yet. The owning Raft loop can retry this entry.
+		p.peers[id] = &peerEntry{addr: addr}
 	}
 
 	entry, err := p.dialPeer(id, addr)

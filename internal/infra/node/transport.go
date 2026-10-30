@@ -343,15 +343,24 @@ func (t *DefaultTransport) closePeers() error {
 }
 
 // AddPeer adds a peer to the transport. An existing peer keeps its send loop
-// and queues, but its pooled connection is refreshed when addr changed.
+// and queues, but its pooled connection is refreshed when addr changed. A failed
+// first dial retains the registered endpoint and a loop to retry it.
 func (t *DefaultTransport) AddPeer(id uint64, addr string) {
 	t.peersMu.Lock()
 	defer t.peersMu.Unlock()
 
+	if t.stopped.Load() {
+		return
+	}
+
 	if err := t.connectionPool.AddPeer(id, addr); err != nil {
 		t.logger.WithFields(map[string]any{"peer": strconv.FormatUint(id, 16), "addr": addr, "error": err}).Errorf("Failed to add peer to client pool")
 
-		return
+		// A probe failure retains desired routing. The peer loop owns retry;
+		// a closed pool rejects registration and must not acquire a new owner.
+		if t.connectionPool.GetPeerAddress(id) != addr {
+			return
+		}
 	}
 
 	if _, exists := t.peers[id]; exists {
@@ -881,13 +890,18 @@ func (conn *peerConnection) loop() {
 		conn.logger.Infof("Creating stream to peer %x...", conn.peerID)
 
 		grpcPeerConnection := conn.connectionPool.GetConnection(conn.peerID)
+		var (
+			stopped bool
+			err     error
+		)
 		if grpcPeerConnection == nil {
-			conn.logger.Errorf("No gRPC connection for peer %x, peer may have been removed", conn.peerID)
-
-			return
+			// The first optional-TLS probe can fail before a gRPC connection
+			// exists. Use the same paced retry path as an established stream.
+			// RemovePeer cancels and joins this owner before removing its entry.
+			err = fmt.Errorf("no gRPC connection for peer %x", conn.peerID)
+		} else {
+			stopped, err = conn.handleConnection(grpcPeerConnection)
 		}
-
-		stopped, err := conn.handleConnection(grpcPeerConnection)
 		if stopped {
 			return
 		}

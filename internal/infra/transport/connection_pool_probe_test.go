@@ -183,6 +183,60 @@ func TestConnectionPool_AddressReplacementRetriesCommittedTarget(t *testing.T) {
 	}
 }
 
+func TestConnectionPool_InitialProbeFailureRetainsRetryTarget(t *testing.T) {
+	t.Parallel()
+
+	pool := NewConnectionPool(TLSPolicy{TLSConfig: &tls.Config{MinVersion: tls.VersionTLS12}}, PoolConfig{})
+	t.Cleanup(func() { require.NoError(t, pool.Close()) })
+	probeFailure := errors.New("joining listener has not started")
+	var attempts []string
+	pool.probeTLS = func(addr string, _ *tls.Config, _ time.Duration) error {
+		attempts = append(attempts, addr)
+		if len(attempts) == 1 {
+			return probeFailure
+		}
+
+		return nil
+	}
+
+	const addr = "joining.example:9000"
+	require.ErrorIs(t, pool.AddPeer(2, addr), probeFailure)
+	require.Equal(t, addr, pool.GetPeerAddress(2), "first registration must retain the committed endpoint")
+	require.Nil(t, pool.GetConnection(2), "a network failure must not silently downgrade to plaintext")
+	require.NoError(t, pool.RestartConnection(2), "the existing retry owner must recover without re-registration")
+	require.Equal(t, []string{addr, addr}, attempts)
+	require.NotNil(t, pool.GetConnection(2))
+	require.Equal(t, []uint64{2}, pool.PeerIDs())
+}
+
+func TestConnectionPool_PendingRegistrationCannotRestartAfterRemoval(t *testing.T) {
+	t.Parallel()
+	for _, closePool := range []bool{false, true} {
+		t.Run(fmt.Sprintf("close=%t", closePool), func(t *testing.T) {
+			t.Parallel()
+			pool := NewConnectionPool(TLSPolicy{TLSConfig: &tls.Config{MinVersion: tls.VersionTLS12}}, PoolConfig{})
+			t.Cleanup(func() { require.NoError(t, pool.Close()) })
+			attempts := 0
+			pool.probeTLS = func(string, *tls.Config, time.Duration) error {
+				attempts++
+
+				return errors.New("listener unavailable")
+			}
+			require.ErrorContains(t, pool.AddPeer(2, "joining.example:9000"), "listener unavailable")
+			require.Equal(t, "joining.example:9000", pool.GetPeerAddress(2))
+			if closePool {
+				require.NoError(t, pool.Close())
+				require.ErrorContains(t, pool.AddPeer(2, "joining.example:9000"), "closed")
+			} else {
+				require.NoError(t, pool.RemovePeer(2))
+			}
+			require.ErrorContains(t, pool.RestartConnection(2), "no connection for peer")
+			require.Equal(t, 1, attempts, "removal must prevent another probe")
+			require.Empty(t, pool.PeerIDs())
+		})
+	}
+}
+
 func TestConnectionPool_StaleOptionalMonitorDoesNotRestartReplacement(t *testing.T) {
 	t.Parallel()
 

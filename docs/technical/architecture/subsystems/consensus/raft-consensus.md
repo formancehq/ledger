@@ -276,6 +276,23 @@ Drain points ensure the pending commit completes before barriers, checkpoints, s
 - Refresh an existing peer's pooled connection after a committed address update
   while preserving that peer's send loop and queues; a transient optional-TLS
   probe failure retains the committed target for the loop's next retry
+- Retain the committed endpoint and create a peer loop even when the first
+  optional-TLS probe fails. Join preflight deliberately precedes the joining
+  node's listener, so connection refusal during committed learner wiring is
+  recoverable. The pool records the desired address before probing; a network
+  error leaves a pending entry without selecting plaintext. The Raft loop
+  reports unreachable, drains queued sends with their accounting, and retries
+  through its existing one-second delay. Once the listener starts, replication
+  and automatic promotion can resume without a new membership proposal.
+  Removal cancels and joins the loop before deleting the pool entry; transport
+  shutdown rejects new peer loops and joins existing owners before pool closure.
+
+This recovery state is local routing state reconstructed from committed
+membership; it changes no persisted format or service protocol. It reuses one
+loop and the existing bounded priority queues per peer. Probe attempts retain
+the existing timeout and retry pacing; no additional reconciliation worker is
+created. Service-pool consumers retain a failed registration's target too, but
+retry it through their existing registration paths rather than a Raft send loop.
 
 The shared Raft and service connection pools also send gRPC keepalives every
 ten seconds with a five-second response timeout. Raft, service, restore, and

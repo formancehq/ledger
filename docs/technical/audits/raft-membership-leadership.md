@@ -167,6 +167,19 @@ exceeds its stated operator-owned risk or fails to converge on retry/snapshot.
 
 ### Transport, forwarding, and ReadIndex
 
+Initial registration and replacement are distinct recovery triggers. Hold a
+fresh learner's Raft listener closed through production join preflight with
+optional TLS. Record the term, committed addition index, durable learner
+membership and valid persisted instance identity. A failed first probe must
+retain the committed endpoint and a live retry owner without downgrading a
+network error to plaintext. After listener startup, require autonomous
+replication, catch-up and automatic promotion without voter restart, another
+registration or another membership refresh. Verify pending retries terminate
+on removal and shutdown and cannot create a peer after shutdown. The lifecycle
+regression is `internal/bootstrap/join_transport_recovery_test.go`; independent
+pool and actual-stream delivery tests preserve the first-registration trigger
+separately from existing endpoint-replacement and monitor-fencing coverage.
+
 An interrupted cluster command on a stopped Raft run must surface as retryable
 gRPC `Unavailable`, including a wrapped `raft.ErrStopped`. Verify the shared
 unary/streaming conversion without classifying unrelated failures as transient;
