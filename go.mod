@@ -2,6 +2,8 @@ module github.com/formancehq/ledger/v3
 
 go 1.27.0
 
+replace go.etcd.io/etcd/server/v3 => github.com/gfyrag/etcd/server/v3 v3.7.0-ledger.1
+
 toolchain go1.27.3
 
 require (

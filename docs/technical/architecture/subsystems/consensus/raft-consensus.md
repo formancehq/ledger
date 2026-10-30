@@ -252,6 +252,13 @@ Drain points ensure the pending commit completes before barriers, checkpoints, s
 - **Entries**: Raft log entries
 - **Snapshots**: System snapshots
 
+WAL replay does not retain every protobuf payload in memory. The Ledger keeps a
+bounded payload cache (64 MiB by default) and a compact index of each entry's
+segment and byte offset. `Entries` and `Term` load an evicted entry with one
+direct file read, so memory usage is capped while Raft retains the same storage
+semantics. The cache limit is configurable with `WithEntryCacheBytes` for
+resource-constrained deployments and tests.
+
 #### Transport
 
 `internal/infra/node/transport.go` manages communication between nodes:
