@@ -8,7 +8,10 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
+	"go.etcd.io/raft/v3"
 	"go.etcd.io/raft/v3/raftpb"
+	"go.uber.org/mock/gomock"
+	"google.golang.org/protobuf/proto"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
@@ -33,6 +36,111 @@ func newTestMaintenanceNode(t *testing.T) (*Node, *testApplierSetup) {
 	node.confState.Store(setup.confState)
 
 	return node, setup
+}
+
+// TestDoMaintenanceRetainsEntriesUntilRaftApplyAcked reproduces the election
+// crash reported by EN-3134: the FSM can be durable several entries ahead of
+// RawNode while the apply response is queued. Compaction must follow the
+// acknowledged Raft cursor, not the FSM cursor, or the election scan of the
+// unapplied interval returns raft.ErrCompacted.
+func TestDoMaintenanceRetainsEntriesUntilRaftApplyAcked(t *testing.T) {
+	t.Parallel()
+
+	node, setup := newTestMaintenanceNode(t)
+	setup.applier.compactionMargin = 1
+
+	entries := make([]*raftpb.Entry, 4)
+	for i := range entries {
+		entries[i], _ = makeCreateLedgerEntry(t, uint64(i+1), "maintenance-ledger-"+string(rune('a'+i)))
+	}
+	require.NoError(t, node.wal.Append(&raftpb.HardState{
+		Term:   proto.Uint64(1),
+		Vote:   proto.Uint64(1),
+		Commit: proto.Uint64(4),
+	}, entries))
+
+	// Use a real RawNode so this regression exercises the same apply-response
+	// contract as production: etcd/raft advances Applied from the last entry
+	// in MsgStorageApplyResp. An index-only message would bypass that contract
+	// and could leave the test green while the orchestrator path is broken.
+	rawNode, err := raft.NewRawNode(&raft.Config{
+		ID:              1,
+		ElectionTick:    10,
+		HeartbeatTick:   1,
+		Storage:         node.wal,
+		Applied:         1,
+		MaxSizePerMsg:   1024 * 1024,
+		MaxInflightMsgs: 256,
+		Logger:          NewLoggerAdapter(logging.Testing()),
+	})
+	require.NoError(t, err)
+	node.rawNode = rawNode
+
+	// Route the response through orchestrate, which is the production owner of
+	// RawNode.Step and recordRaftApplyResponse. Returning nil transport channels
+	// keeps this isolated test focused on the local response queue.
+	transport := NewMockTransport(gomock.NewController(t))
+	transport.EXPECT().RecvHighPriority().AnyTimes().Return((<-chan []*raftpb.Message)(nil))
+	transport.EXPECT().RecvMediumPriority().AnyTimes().Return((<-chan []*raftpb.Message)(nil))
+	transport.EXPECT().RecvLowPriority().AnyTimes().Return((<-chan []*raftpb.Message)(nil))
+	transport.EXPECT().Unreachable().AnyTimes().Return((<-chan uint64)(nil))
+	node.transport = transport
+	node.localResponseCh = NewLocalResponses()
+	node.readies = make(chan raft.Ready, 8)
+
+	runDone := make(chan error, 1)
+	go func() { runDone <- setup.applier.Run(context.Background(), setup.stop) }()
+	setup.applier.Submit(entries, nil, nil, setup.stop)
+	setup.applier.Drain(setup.stop)
+	close(setup.stop)
+	require.NoError(t, <-runDone)
+	require.Equal(t, uint64(4), node.fsm.LastPersistedIndex())
+
+	// FSM=4, but the orchestrator has not stepped the apply response beyond 1.
+	node.lastRaftApplied.Store(1)
+	require.NoError(t, node.doMaintenance())
+	snapshot, err := node.wal.Snapshot()
+	require.NoError(t, err)
+	require.Equal(t, uint64(4), snapshot.GetMetadata().GetIndex())
+	_, err = node.wal.Entries(2, 5, ^uint64(0))
+	require.NoError(t, err, "entries needed by the election scan must remain available")
+
+	// Once the orchestrator receives the apply response for the whole batch,
+	// the normal margin can apply. Production responses carry the applied
+	// entries and leave Index unset; Step the real RawNode first, then record
+	// the same response in the node's shadow cursor.
+	applyResp := &raftpb.Message{
+		Type:    raftpb.MsgStorageApplyResp.Enum(),
+		To:      proto.Uint64(1),
+		From:    proto.Uint64(raft.LocalApplyThread),
+		Entries: entries,
+	}
+	orchestrateStop := make(chan struct{})
+	orchestrateDone := make(chan error, 1)
+	readyDrainDone := make(chan struct{})
+	go func() {
+		defer close(readyDrainDone)
+		for {
+			select {
+			case <-node.readies:
+			case <-orchestrateStop:
+				return
+			}
+		}
+	}()
+	go func() { orchestrateDone <- node.orchestrate(context.Background(), orchestrateStop) }()
+	node.localResponseCh <- []*raftpb.Message{applyResp}
+	require.Eventually(t, func() bool {
+		return node.lastRaftApplied.Load() == 4
+	}, time.Second, time.Millisecond)
+	close(orchestrateStop)
+	require.NoError(t, <-orchestrateDone)
+	<-readyDrainDone
+	require.Equal(t, uint64(4), node.rawNode.Status().Applied)
+	require.Equal(t, uint64(4), node.lastRaftApplied.Load())
+	require.NoError(t, node.doMaintenance())
+	_, err = node.wal.Entries(2, 5, ^uint64(0))
+	require.ErrorIs(t, err, raft.ErrCompacted)
 }
 
 // applyEntry feeds a single entry through the Applier synchronously by

@@ -573,7 +573,7 @@ Raft logs grow indefinitely. Snapshots allow:
 
 ### Snapshot Creation
 
-Snapshots are created automatically by a periodic background maintenance timer (`--maintenance-interval`, default 30s). On each tick, if `lastPersistedIndex` has advanced since the last snapshot, a new snapshot is created, followed by WAL compaction and Pebble checkpoint creation.
+Snapshots are created automatically by a periodic background maintenance timer (`--maintenance-interval`, default 30s). On each tick, if `lastPersistedIndex` has advanced since the last snapshot, a new snapshot is created. The snapshot file is written and fsynced before its matching snapshot record is appended to the consensus WAL; only after both durable writes succeed is the new snapshot published in memory and eligible for compaction. If the WAL-record write fails, the file remains an orphan and the previous snapshot authority remains active so a later tick can retry without compacting against an unrecorded snapshot. WAL compaction is bounded by the minimum of the durable FSM cursor and the Raft `Applied` cursor (minus `CompactionMargin`), so an apply response still queued in the orchestrator cannot expose an election scan to `ErrCompacted`; a later tick compacts once RawNode acknowledges the batch. Pebble checkpoint creation is an independent maintenance step and may already have completed on the earlier tick.
 
 #### Missing directories
 
