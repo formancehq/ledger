@@ -722,6 +722,7 @@ func (d *FieldCond) idToProto(target commonpb.QueryTarget) (*commonpb.QueryFilte
 				LogId: &commonpb.LogIdCondition{Cond: uc},
 			}}, nil
 		}
+
 		return txBuiltinQF(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_ID, uc), nil
 	case "logId":
 		return &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_LogId{

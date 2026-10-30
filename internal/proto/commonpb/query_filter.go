@@ -999,6 +999,7 @@ func (d filterDecoder) buildRange(field string, bounds []bound) (*QueryFilter, e
 		if d.target == QueryTarget_QUERY_TARGET_LOGS {
 			return &QueryFilter{Filter: &QueryFilter_LogId{LogId: &LogIdCondition{Cond: uc}}}, nil
 		}
+
 		return &QueryFilter{Filter: &QueryFilter_BuiltinUint{BuiltinUint: &BuiltinUintCondition{
 			Field: TransactionBuiltinIndex_TX_BUILTIN_INDEX_ID, Cond: uc,
 		}}}, nil
