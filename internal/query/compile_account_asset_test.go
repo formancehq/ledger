@@ -59,10 +59,15 @@ func TestCompile_AccountHasAsset_RequiresReady(t *testing.T) {
 		return readstore.ResolvedIndexVersion{BindingKnown: true}, true, nil
 	}
 
-	_, err := query.Compile(
-		nil, dal.NewKeyBuilder(), accountHasAssetFilter("USD", 2),
-		commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS, ledgerName,
-		nil, nil, info, registry, resolverZero, nil, nil, 0)
+	_, err := query.Compile(accountHasAssetFilter("USD", 2), query.CompileOptions{
+		KeyBuilder:      dal.NewKeyBuilder(),
+		Target:          commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
+		LedgerName:      ledgerName,
+		LedgerInfo:      info,
+		IndexRegistry:   registry,
+		IndexVersionFor: resolverZero,
+		Pin:             0,
+	})
 	require.Error(t, err, "compiler must refuse when CurrentVersion=0")
 
 	var building *domain.ErrIndexBuilding
@@ -115,10 +120,17 @@ func TestCompile_AccountHasAsset_PrefixScan(t *testing.T) {
 		return readstore.ResolvedIndexVersion{Version: 1, BindingKnown: true}, true, nil
 	}
 
-	iter, err := query.Compile(
-		reader, dal.NewKeyBuilder(), accountHasAssetFilter("USD", 2),
-		commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS, ledgerName,
-		nil, nil, info, registry, resolverReady, nil, reader, 0)
+	iter, err := query.Compile(accountHasAssetFilter("USD", 2), query.CompileOptions{
+		IndexReader:     reader,
+		KeyBuilder:      dal.NewKeyBuilder(),
+		Target:          commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
+		LedgerName:      ledgerName,
+		LedgerInfo:      info,
+		IndexRegistry:   registry,
+		IndexVersionFor: resolverReady,
+		MainReader:      reader,
+		Pin:             0,
+	})
 	require.NoError(t, err)
 
 	t.Cleanup(iter.Close)
@@ -177,10 +189,17 @@ func TestCompile_AccountHasAsset_PinExcludesLaterFirstTouch(t *testing.T) {
 	}
 
 	scan := func(pin uint64) []string {
-		iter, cErr := query.Compile(
-			reader, dal.NewKeyBuilder(), accountHasAssetFilter("USD", 2),
-			commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS, ledgerName,
-			nil, nil, info, registry, resolverReady, nil, reader, pin)
+		iter, cErr := query.Compile(accountHasAssetFilter("USD", 2), query.CompileOptions{
+			IndexReader:     reader,
+			KeyBuilder:      dal.NewKeyBuilder(),
+			Target:          commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
+			LedgerName:      ledgerName,
+			LedgerInfo:      info,
+			IndexRegistry:   registry,
+			IndexVersionFor: resolverReady,
+			MainReader:      reader,
+			Pin:             pin,
+		})
 		require.NoError(t, cErr)
 
 		defer iter.Close()
@@ -252,10 +271,17 @@ func TestCompile_RevertedAt_PinExcludesLaterRevert(t *testing.T) {
 	}}
 
 	scan := func(pin uint64) []uint64 {
-		iter, cErr := query.Compile(
-			reader, dal.NewKeyBuilder(), filter,
-			commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS, ledgerName,
-			nil, nil, info, registry, resolverReady, nil, reader, pin)
+		iter, cErr := query.Compile(filter, query.CompileOptions{
+			IndexReader:     reader,
+			KeyBuilder:      dal.NewKeyBuilder(),
+			Target:          commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS,
+			LedgerName:      ledgerName,
+			LedgerInfo:      info,
+			IndexRegistry:   registry,
+			IndexVersionFor: resolverReady,
+			MainReader:      reader,
+			Pin:             pin,
+		})
 		require.NoError(t, cErr)
 
 		defer iter.Close()

@@ -72,10 +72,17 @@ func TestCompile_FieldConditionBindsToTheVersionType(t *testing.T) {
 
 		t.Cleanup(func() { _ = rs.Close() })
 
-		iter, err := Compile(
-			rs.DB(), dal.NewKeyBuilder(), stringCond,
-			commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS, ledgerName,
-			nil, schema, info, indexRegistry, boundToString, nil, nil, 0)
+		iter, err := Compile(stringCond, CompileOptions{
+			IndexReader:     rs.DB(),
+			KeyBuilder:      dal.NewKeyBuilder(),
+			Target:          commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
+			LedgerName:      ledgerName,
+			Schema:          schema,
+			LedgerInfo:      info,
+			IndexRegistry:   indexRegistry,
+			IndexVersionFor: boundToString,
+			Pin:             0,
+		})
 		require.NoError(t, err,
 			"a string condition over the still-string-encoded version must compile — rejecting it makes the whole window unqueryable")
 
@@ -85,10 +92,15 @@ func TestCompile_FieldConditionBindsToTheVersionType(t *testing.T) {
 	t.Run("new-kind condition is rejected until the switch", func(t *testing.T) {
 		t.Parallel()
 
-		_, err := Compile(
-			nil, nil, intCond,
-			commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS, ledgerName,
-			nil, schema, info, indexRegistry, boundToString, nil, nil, 0)
+		_, err := Compile(intCond, CompileOptions{
+			Target:          commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
+			LedgerName:      ledgerName,
+			Schema:          schema,
+			LedgerInfo:      info,
+			IndexRegistry:   indexRegistry,
+			IndexVersionFor: boundToString,
+			Pin:             0,
+		})
 		require.Error(t, err,
 			"an int condition compiled against string-encoded rows scans a disjoint byte range — partial results, must be refused")
 
@@ -103,10 +115,15 @@ func TestCompile_FieldConditionBindsToTheVersionType(t *testing.T) {
 			return readstore.ResolvedIndexVersion{Version: 1, BindingKnown: true}, true, nil
 		}
 
-		_, err := Compile(
-			nil, nil, stringCond,
-			commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS, ledgerName,
-			nil, schema, info, indexRegistry, boundToNothing, nil, nil, 0)
+		_, err := Compile(stringCond, CompileOptions{
+			Target:          commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
+			LedgerName:      ledgerName,
+			Schema:          schema,
+			LedgerInfo:      info,
+			IndexRegistry:   indexRegistry,
+			IndexVersionFor: boundToNothing,
+			Pin:             0,
+		})
 		require.Error(t, err)
 
 		var notFound *domain.ErrIndexNotFound

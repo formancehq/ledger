@@ -940,7 +940,19 @@ func (ctrl *DefaultController) AggregateVolumes(ctx context.Context, ledgerName 
 
 	indexStart := time.Now()
 
-	compiled, err := query.Compile(indexReader, kb, filter, commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS, ledgerInfo.GetName(), nil, schemaFields, ledgerInfo, query.NewPebbleIndexReader(ctrl.attrs.Index, handle), indexVersionFor, profile, handle, mainSeq)
+	compiled, err := query.Compile(filter, query.CompileOptions{
+		IndexReader:     indexReader,
+		KeyBuilder:      kb,
+		Target:          commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
+		LedgerName:      ledgerInfo.GetName(),
+		Schema:          schemaFields,
+		LedgerInfo:      ledgerInfo,
+		IndexRegistry:   query.NewPebbleIndexReader(ctrl.attrs.Index, handle),
+		IndexVersionFor: indexVersionFor,
+		Profile:         profile,
+		MainReader:      handle,
+		Pin:             mainSeq,
+	})
 	if err != nil {
 		return nil, domain.WrapCompileError(err)
 	}
@@ -1698,9 +1710,20 @@ func (ctrl *DefaultController) paginateLogIDs(handle *dal.ReadHandle, snap *pebb
 	versionFor := ctrl.readStore.PinnedVersionResolver(snap, ledgerInfo.GetName(), mainSeq)
 	keep := query.MainHorizonKeep(commonpb.QueryTarget_QUERY_TARGET_LOGS, handle, snap, ledgerInfo.GetName(), mainSeq)
 
+	compileOptions := query.CompileOptions{
+		IndexReader:     snap,
+		KeyBuilder:      kb,
+		Target:          commonpb.QueryTarget_QUERY_TARGET_LOGS,
+		LedgerName:      ledgerInfo.GetName(),
+		LedgerInfo:      ledgerInfo,
+		IndexRegistry:   indexReader,
+		IndexVersionFor: versionFor,
+		MainReader:      handle,
+		Pin:             mainSeq,
+	}
+
 	if reverse {
-		compiled, err := query.CompileReverse(snap, kb, filter, commonpb.QueryTarget_QUERY_TARGET_LOGS,
-			ledgerInfo.GetName(), nil, nil, ledgerInfo, indexReader, versionFor, nil, handle, mainSeq)
+		compiled, err := query.CompileReverse(filter, compileOptions)
 		if err != nil {
 			return nil, fmt.Errorf("compiling log filter: %w", err)
 		}
@@ -1716,8 +1739,7 @@ func (ctrl *DefaultController) paginateLogIDs(handle *dal.ReadHandle, snap *pebb
 		return logIDs, nil
 	}
 
-	compiled, err := query.Compile(snap, kb, filter, commonpb.QueryTarget_QUERY_TARGET_LOGS,
-		ledgerInfo.GetName(), nil, nil, ledgerInfo, indexReader, versionFor, nil, handle, mainSeq)
+	compiled, err := query.Compile(filter, compileOptions)
 	if err != nil {
 		return nil, fmt.Errorf("compiling log filter: %w", err)
 	}

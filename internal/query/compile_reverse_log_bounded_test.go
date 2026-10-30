@@ -64,10 +64,18 @@ func TestReverseLogPageIsBoundedByThePage(t *testing.T) {
 		} {
 			profile := &query.QueryProfile{}
 
-			iter, err := query.CompileReverse(
-				store.DB(), dal.NewKeyBuilder(), tc.filter,
-				commonpb.QueryTarget_QUERY_TARGET_LOGS, parityLedger,
-				nil, nil, parityInfo(), parityRegistry(), parityResolver(), profile, store.DB(), parityPin)
+			iter, err := query.CompileReverse(tc.filter, query.CompileOptions{
+				IndexReader:     store.DB(),
+				KeyBuilder:      dal.NewKeyBuilder(),
+				Target:          commonpb.QueryTarget_QUERY_TARGET_LOGS,
+				LedgerName:      parityLedger,
+				LedgerInfo:      parityInfo(),
+				IndexRegistry:   parityRegistry(),
+				IndexVersionFor: parityResolver(),
+				Profile:         profile,
+				MainReader:      store.DB(),
+				Pin:             parityPin,
+			})
 			require.NoError(t, err, tc.name)
 
 			items, hasMore, err := readstore.PaginateReverse(iter, pageSize, tc.before)

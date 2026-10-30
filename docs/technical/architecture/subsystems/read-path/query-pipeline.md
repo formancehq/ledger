@@ -61,6 +61,21 @@ sequenceDiagram
 
 The HTTP REST surface (`internal/adapter/http/`) is a thin wrapper that routes to the same controller methods.
 
+### Named compilation inputs
+
+`query.Compile(filter, options)` and `query.CompileReverse(filter, options)`
+share `query.CompileOptions`. The named fields make the two reader roles and
+their horizon explicit: `MainReader` is the main snapshot used by primary-store
+leaves and enrichment, and `Pin` is its native applied sequence. `IndexReader`
+is the index snapshot used for iteration; `IndexVersionFor` must resolve through
+that same snapshot at the supplied pin. Ledger information, schema, and the
+index registry come from the main snapshot.
+
+The options borrow these resources. Compilation creates fresh recursive state
+but does not acquire or close snapshots or leases; callers still perform
+alignment, horizon trimming, and cleanup. Forward and reverse entry points
+retain their directional iterator construction and share the same input defaults.
+
 ### Filter input: one `*commonpb.QueryFilter`
 
 Whatever the transport, a filter reaches the pipeline as a single
