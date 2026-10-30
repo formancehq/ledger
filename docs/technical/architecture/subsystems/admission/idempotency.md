@@ -65,13 +65,11 @@ type IdempotencyKeyValue struct {
 | Same key (after TTL expiration) | Process normally (key treated as new) |
 | No idempotency key | Process normally, no idempotency tracking |
 
-The same-content row includes a narrow prepared-query update case: the same
-public `id` can produce a different internal order after its query target
-changes. Admission proves that equivalence from the accepted converted-leaf paths
-and the original audit order under a fresh, post-barrier snapshot, then returns
-the frozen outcome directly. An explicit `logId` or any other changed content
-keeps the conflict result. See the [admission pipeline](pipeline.md#prepared-query-id-retry-after-a-target-change)
-for the trigger, expiry boundary, read cost, and failure behavior.
+Prepared-query updates carrying an explicit target are hashed independently of
+the stored query's current target. Repeating the same target and filter with the
+same key therefore follows the ordinary frozen-outcome path, even after the
+query has been deleted or recreated. Changing either field produces a normal
+idempotency-key conflict.
 
 ## Historical outcomes and checkpoint readiness
 
