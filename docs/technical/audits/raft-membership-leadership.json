@@ -104,12 +104,9 @@
     "When a committed ConfChangeUpdateNode refreshes an existing peer address, do Pebble, the membership cache, and the operational Raft and service connection pools converge before the next Raft tick without recreating the peer identity or send loop? Does a transient optional-TLS probe failure during the address refresh preserve the committed target for the loop's next retry, or does it strand the peer with no active retry owner?",
     "Can a follower-to-leader forwarded request loop, fall back locally without a valid leader/barrier, lose cancellation or committed-outcome metadata, or be executed twice because transport identity is confused with logical proposal identity?",
     "Which immediate leadership observers update routing and membership authority synchronously, and can their failure expose stale authority? Deep goroutine ownership, cancellation, shutdown joins, and event/mirror/backup worker generations belong to concurrency-lifecycle-shutdown.",
-<<<<<<< HEAD
     "Can snapshot installation discard entries carried by the same Ready, and what in-memory snapshot/cache state and durable WAL prefix remain if suffix restoration fails before storage acknowledgement?",
-    "Can a mixed-version member pass preflight, or can a membership change slip between preflight and marker application? If leadership is lost and regained after preflight while another leader changes membership, does the old-term marker or release get rejected before Raft append? Can a timed-out marker, lost member, leader transfer or force removal make the operator accept an obsolete captured set or a follower that has not persisted the cutoff?"
-=======
     "During a follower-first rolling upgrade, what happens when RefreshMembership reaches an older peer that returns Unimplemented? Does startup remain available with conservative evidence and eventual retry, and does a later committed refresh converge the membership row? Can capability activation or declaration be applied against stale or pre-refresh evidence, or bypass the authoritative policy gate?"
->>>>>>> 284f3ada3 (fix(consensus): close shipfox review findings)
+    ,"Can a mixed-version member pass preflight, or can a membership change slip between preflight and marker application? If leadership is lost and regained after preflight while another leader changes membership, does the old-term marker or release get rejected before Raft append? Can a timed-out marker, lost member, leader transfer or force removal make the operator accept an obsolete captured set or a follower that has not persisted the cutoff?"
   ],
   "dynamic_checks_to_consider": [
     "replay remove(A), add(B), remove(B) through a real follower RawNode Ready and WAL restart; compare with durable apply between changes, retain both tombstones, delay cleanup across newer events, cancel foreground waits, and test duplicate observation, same-index contradictory identity, stale pointer deletion and per-ordinal cost shape",
@@ -129,11 +126,8 @@
     "blackhole an existing TCP connection without closing it, move the peer endpoint, and verify a new dial plus delivered Raft message; repeat under sustained nonempty queues and delayed or stale probe responses to distinguish recovery from false disconnects",
     "commit ConfChangeUpdateNode for an existing Match=0 learner at a new endpoint, inject one optional-TLS probe failure before recovery, then prove Pebble, cache, and the retried live Raft dial target use that endpoint while ConfState and peer identity remain unchanged; the existing send loop and retry owner must survive the probe failure without being removed",
     "differentially compare uninterrupted execution with leader crash, transfer, restart, retained-log replay, and snapshot catch-up using the same admitted operations and final ConfState",
-<<<<<<< HEAD
     "exercise combined snapshot/entry Ready suffix preservation through LastIndex, Term, Entries, HardState and ConfState and across real WAL reopen, with snapshot-only processing retaining its existing write budget (internal/infra/node/process_ready_snapshot_test.go)",
-    "Exercise old-member Unimplemented preflight, concurrent add/promotion/removal, lost marker response, leader loss plus membership change plus re-election, and member restart; assert old-term proposals are rejected before Raft append, marker/cutoff identity, and each member persisted-index certificate before Drained."
-=======
     "Run a follower-first rolling upgrade against a peer that returns Unimplemented for RefreshMembership; assert readiness opens with conservative evidence, retries continue, and a later compatible peer commits the refresh. Then exercise capability declaration/activation and membership ConfChange in the same or adjacent FSM batch, recording committed policy, evidence, ConfState, and final admission decisions on every replica."
->>>>>>> 284f3ada3 (fix(consensus): close shipfox review findings)
+    ,"Exercise old-member Unimplemented preflight, concurrent add/promotion/removal, lost marker response, leader loss plus membership change plus re-election, and member restart; assert old-term proposals are rejected before Raft append, marker/cutoff identity, and each member persisted-index certificate before Drained."
   ]
 }
