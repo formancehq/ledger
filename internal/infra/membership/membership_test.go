@@ -444,7 +444,7 @@ func TestMembership_SnapshotDonorCandidates(t *testing.T) {
 	require.NoError(t, ps.Put(2, "peer-2:7000", "peer-2:8000", fixedInstanceID(2)))
 	require.NoError(t, ps.Put(testSelfNodeID, testSelfRaftAddr, testSelfServiceAddr, fixedInstanceID(0x42)))
 
-	m, err := NewMembership(ps, noopTransport{}, noopPool{}, testSelfNodeID, testSelfRaftAddr, testSelfServiceAddr, fixedInstanceID(0x42), logging.Testing())
+	m, err := NewMembership(ps, noopTransport{}, noopPool{}, testSelfNodeID, testSelfRaftAddr, testSelfServiceAddr, fixedInstanceID(0x42), logging.Testing(), NoopClusterPolicyProvider)
 	require.NoError(t, err)
 
 	require.Equal(t, []uint64{2, 9}, m.SnapshotDonorCandidates())

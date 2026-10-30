@@ -125,6 +125,41 @@ func PrepareProposal(proposal *raftcmdpb.Proposal) (PreparedProposal, error) {
 	return PreparedProposal{required: required}, nil
 }
 
+// ValidateFinalProposal verifies that the declaration carried by the
+// serialized proposal matches both its semantic payload and the metadata
+// captured by the proposal factory. It is a defensive check at the Raft
+// boundary; normal admission performs the same gate before reserving an index.
+func ValidateFinalProposal(data []byte, declared []CapabilityID) error {
+	proposal := new(raftcmdpb.Proposal)
+	if err := proposal.UnmarshalVT(data); err != nil {
+		return fmt.Errorf("decode final proposal: %w", err)
+	}
+	expected, err := RequiredCapabilities(proposal)
+	if err != nil {
+		return err
+	}
+	wire := make([]CapabilityID, len(proposal.GetRequiredCapabilities()))
+	for i, id := range proposal.GetRequiredCapabilities() {
+		wire[i] = CapabilityID(id)
+	}
+	wire, err = Normalize(wire)
+	if err != nil {
+		return err
+	}
+	declared, err = Normalize(declared)
+	if err != nil {
+		return err
+	}
+	if !slices.Equal(wire, expected) {
+		return fmt.Errorf("%w: wire declaration does not match semantic payload", ErrMissingCapability)
+	}
+	if !slices.Equal(wire, declared) {
+		return fmt.Errorf("%w: declaration does not match final payload", ErrMissingCapability)
+	}
+
+	return nil
+}
+
 func (s State) Validate() error {
 	return nil
 }
