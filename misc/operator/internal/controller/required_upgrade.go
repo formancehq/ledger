@@ -11,7 +11,6 @@ import (
 	"github.com/google/uuid"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
-	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -21,14 +20,14 @@ import (
 	ledgerv1alpha1 "github.com/formancehq/ledger/misc/operator/api/v1alpha1"
 )
 
-// A release listed here cannot coexist with its predecessor. Entries denote
-// the first target version requiring a complete stop, including allowed jumps
-// that cross the boundary. RC adjacency is still checked by validateRCUpgrade.
-var mandatoryStopVersions = []string{"v3.0.0-rc.3"}
+// Add a target here only after its release has been proven incompatible with
+// a rolling upgrade. rc.3 has no mandatory stop; the mechanism ships dormant.
+// RC adjacency is still checked by validateRCUpgrade.
+var mandatoryStopVersions = []string{}
 
 const requiredUpgradePoll = 5 * time.Second
 
-func requiresStoppedUpgrade(source, target string) bool {
+func requiresStoppedUpgrade(source, target string, boundaries []string) bool {
 	if source == target || !strings.HasPrefix(source, "v") || !strings.HasPrefix(target, "v") {
 		return false
 	}
@@ -40,7 +39,7 @@ func requiresStoppedUpgrade(source, target string) bool {
 	if err != nil || !to.GreaterThan(from) {
 		return false
 	}
-	for _, boundary := range mandatoryStopVersions {
+	for _, boundary := range boundaries {
 		version, err := semver.StrictNewVersion(strings.TrimPrefix(boundary, "v"))
 		if err != nil {
 			panic("invalid mandatory stop version: " + boundary)
@@ -55,7 +54,7 @@ func requiresStoppedUpgrade(source, target string) bool {
 
 // A moving or non-canonical target cannot establish whether a mandatory
 // boundary will be crossed, so an older published source must stay pinned.
-func requiresPinnedUpgradeTarget(source, target string) bool {
+func requiresPinnedUpgradeTarget(source, target string, boundaries []string) bool {
 	if source == target || !strings.HasPrefix(source, "v") {
 		return false
 	}
@@ -69,7 +68,7 @@ func requiresPinnedUpgradeTarget(source, target string) bool {
 			return false
 		}
 	}
-	for _, boundary := range mandatoryStopVersions {
+	for _, boundary := range boundaries {
 		version, err := semver.StrictNewVersion(strings.TrimPrefix(boundary, "v"))
 		if err != nil {
 			panic("invalid mandatory stop version: " + boundary)
@@ -100,10 +99,14 @@ func (r *ClusterReconciler) reconcileRequiredUpgradeWithExec(ctx context.Context
 		if err != nil {
 			return true, ctrl.Result{}, nil
 		}
-		if requiresPinnedUpgradeTarget(source, ledger.Spec.Image.Tag) {
+		boundaries := mandatoryStopVersions
+		if r.stopVersions != nil {
+			boundaries = r.stopVersions
+		}
+		if requiresPinnedUpgradeTarget(source, ledger.Spec.Image.Tag, boundaries) {
 			return false, ctrl.Result{}, fmt.Errorf("cannot verify mandatory stopped upgrade from %s to image tag %q; pin a canonical version tag", source, ledger.Spec.Image.Tag)
 		}
-		if !requiresStoppedUpgrade(source, ledger.Spec.Image.Tag) {
+		if !requiresStoppedUpgrade(source, ledger.Spec.Image.Tag, boundaries) {
 			return true, ctrl.Result{}, nil
 		}
 		if _, requested := ledger.Annotations[ClusterDrainAnnotation]; requested || ledger.Status.Drain != nil {
@@ -246,8 +249,7 @@ func (r *ClusterReconciler) reconcileRequiredUpgradeWithExec(ctx context.Context
 				if !ready {
 					return false, ctrl.Result{RequeueAfter: requiredUpgradePoll}, nil
 				}
-				background := metav1.DeletePropagationBackground
-				if err := r.Delete(ctx, sts, &client.DeleteOptions{PropagationPolicy: &background}); err != nil && !apierrors.IsNotFound(err) {
+				if err := deleteInspected(ctx, r.Client, sts, client.PropagationPolicy(metav1.DeletePropagationBackground)); err != nil {
 					return false, ctrl.Result{}, fmt.Errorf("deleting source StatefulSet: %w", err)
 				}
 			}
@@ -433,7 +435,7 @@ func (r *ClusterReconciler) advanceUpgrade(ctx context.Context, ledger *ledgerv1
 func (r *ClusterReconciler) upgradeDrainCluster(live *ledgerv1alpha1.Cluster, sts *appsv1.StatefulSet, exec ledgerctlExec) *ledgerctlDrainCluster {
 	return &ledgerctlDrainCluster{
 		cluster: live, tlsMode: currentTLSModeFromStatefulSet(sts),
-		config: r.Config, clientset: r.Clientset, exec: exec,
+		config: r.Config, clientset: r.Clientset, exec: ownedPodExec(sts, exec),
 	}
 }
 

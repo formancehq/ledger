@@ -36,6 +36,8 @@ type ClusterReconciler struct {
 	Config    *rest.Config
 	Clientset kubernetes.Interface
 	Recorder  record.EventRecorder
+	// stopVersions overrides the shipped boundary list in focused tests.
+	stopVersions []string
 }
 
 // +kubebuilder:rbac:groups=ledger.formance.com,resources=clusters,verbs=get;list;watch;create;update;patch;delete

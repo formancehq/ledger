@@ -27,14 +27,12 @@ Outside a mandatory stopped boundary, when an RC image change also changes
 volume templates, the operator completes the RC rollout before recreating the
 StatefulSet for the volume change.
 Old and new voters must communicate and apply each committed entry identically
-while they coexist, except when the embedded operator requires a complete stop
-at a hardcoded release boundary. The first such boundary is `v3.0.0-rc.3`:
-the operator requires a stopped upgrade from `v3.0.0-rc.2` to `rc.3`.
-`rc.2` introduces the drain barrier; deploy it to every member before using
-the operator-required stopped upgrade. The `rc.1` to `rc.2` transition uses
-the separately validated maintenance-based procedure below.
-RC adjacency remains mandatory. Later RCs use the normal rolling path unless
-another boundary is explicitly added to the operator.
+while they coexist. The embedded operator can require a complete stop at a
+listed release boundary, but no boundary is active for `v3.0.0-rc.3`:
+`rc.2` to `rc.3` remains a rolling upgrade. `rc.2` already includes the drain
+barrier needed by a future stopped upgrade. RC adjacency remains mandatory.
+The `rc.1` to `rc.2` transition uses the separately validated maintenance-based
+procedure below.
 When the running version precedes a mandatory boundary, pin the target to a
 canonical version tag. Moving or non-canonical tags such as `latest` cannot
 prove whether the boundary is crossed, so the operator blocks the change.
@@ -46,15 +44,16 @@ projections. Document the upgrade procedure and rollback boundary in the
 release notes. Delay the release if the target cannot read or migrate the source
 state.
 
-The upgrade classes below describe existing procedures. The operator's
-hardcoded boundary selects a stopped restart for the affected RC; other RC
-updates use the rolling class. Rebuild or restore applies only to the cases
+The upgrade classes below describe existing procedures. An explicitly listed
+operator boundary selects a stopped restart for the affected RC; no current
+boundary is listed, so `rc.2` to `rc.3` uses the rolling class. Rebuild or
+restore applies only to the cases
 listed below.
 
 | Class | When it applies | Procedure |
 |-------|-----------------|-----------|
 | Rolling | Default between adjacent RCs on the same release line. | Restart followers one at a time, wait for each to catch up, transfer leadership to an upgraded voter, then restart the old leader. |
-| Operator-required stopped restart | An adjacent RC crossing a hardcoded operator boundary (`v3.0.0-rc.3`). | Establish an operator-owned drain and verify its durable barrier on every member; retain the existing PVCs, delete the StatefulSet, wait until it and every old Pod are gone, then recreate it with the target image and the same claims. The cluster is unavailable throughout the stop. |
+| Operator-required stopped restart | An adjacent RC crossing a listed operator boundary; none is active for `rc.3`. | Establish an operator-owned drain and verify its durable barrier on every member; retain the existing PVCs, delete the StatefulSet, wait until it and every old Pod are gone, then recreate it with the target image and the same claims. The cluster is unavailable throughout the stop. |
 | Coordinated restart | A separate compatibility line that cannot safely mix binaries. | Enable maintenance mode, wait for every voter to apply the maintenance barrier durably, stop every node, replace all binaries, then restart without a mixed-version window. Preserve or migrate the released data. |
 | Migrate or restore | A separate line with a changed persisted or backup format, or development state before the first RC. | Follow a tested migration or restore a backup supported by the target release. A wipe or external rebuild is permitted only for unsupported pre-RC development state. Verify the complete state before serving writes. |
 
@@ -182,9 +181,8 @@ cannot protect an old leader or previously committed proposals.
 
 For `rc.1` to `rc.2`, use the maintenance-based coordinated procedure below;
 the published `rc.1` binary cannot participate in an operator-owned drain.
-The operator-required drain-based stop begins with `rc.2` to `rc.3`. The
-rolling procedure below applies only where a separately validated manual
-rollout is required outside that operator boundary.
+The `rc.2` to `rc.3` upgrade is rolling; the drain-based stopped-upgrade path
+is available for a later release that explicitly lists a boundary.
 
 1. With every voter still on the source binary, establish a healthy, consistent
    audit history and take a backup. Existing divergent history is an incident;

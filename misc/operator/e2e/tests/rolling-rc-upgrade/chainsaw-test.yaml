@@ -1,7 +1,7 @@
 apiVersion: chainsaw.kyverno.io/v1alpha1
 kind: Test
 metadata:
-  name: required-upgrade
+  name: rolling-rc-upgrade
 spec:
   timeouts:
     assert: 10m
@@ -40,21 +40,11 @@ spec:
                 done
               done
             timeout: 180s
-    - name: Request the mandatory stopped upgrade
+    - name: Request the rolling rc.2 to rc.3 upgrade
       try:
         - apply:
             file: cluster-updated.yaml
-        - assert:
-            resource:
-              apiVersion: ledger.formance.com/v1alpha1
-              kind: Cluster
-              metadata:
-                name: required-upgrade
-              status:
-                upgrade:
-                  source: v3.0.0-rc.2
-                  target: v3.0.0-rc.3
-    - name: Wait for replacement and unblocking
+    - name: Wait for the rolling update
       try:
         - assert:
             resource:
@@ -70,6 +60,7 @@ spec:
                         image: ledger:v3.0.0-rc.3
               status:
                 readyReplicas: 3
+                updatedReplicas: 3
         - assert:
             resource:
               apiVersion: ledger.formance.com/v1alpha1
@@ -78,14 +69,14 @@ spec:
                 name: required-upgrade
               status:
                 (upgrade == null): true
-    - name: Verify replacement preserved claims and business data
+    - name: Verify the StatefulSet, claims and business data
       try:
         - script:
             content: |
               set -eu
               old_sts=$(cat /tmp/required-upgrade-sts-"$NAMESPACE")
               new_sts=$(kubectl get statefulset ledger-required-upgrade -n "$NAMESPACE" -o jsonpath='{.metadata.uid}')
-              [ "$old_sts" != "$new_sts" ] || { echo 'StatefulSet was not recreated'; exit 1; }
+              [ "$old_sts" = "$new_sts" ] || { echo 'StatefulSet was unexpectedly recreated'; exit 1; }
               for ordinal in 0 1 2; do
                 old_pod=$(cat /tmp/required-upgrade-pod-"$NAMESPACE"-"$ordinal")
                 new_pod=$(kubectl get pod ledger-required-upgrade-"$ordinal" -n "$NAMESPACE" -o jsonpath='{.metadata.uid}')
@@ -102,7 +93,7 @@ spec:
               actual=$(kubectl exec ledger-required-upgrade-0 -n "$NAMESPACE" -c ledger -- \
                 /bin/sh -c './ledgerctl transactions list --ledger marketplace --all --json --server 127.0.0.1:8888 --insecure --auth-token "$CLUSTER_SECRET"' | jq -cS .)
               [ "$actual" = "$expected" ] || { echo 'Marketplace transactions changed during upgrade'; exit 1; }
-              # The stopped upgrade retains PVCs. Permit Chainsaw's namespace
+              # The rolling upgrade retains PVCs. Permit Chainsaw's namespace
               # cleanup only after all preservation assertions have passed.
               for ordinal in 0 1 2; do
                 for volume in wal data; do
