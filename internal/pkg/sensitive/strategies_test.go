@@ -155,19 +155,47 @@ func TestRedactDeclaredConnectionFields(t *testing.T) {
 
 func TestRedactBoundsNestedProxyURLs(t *testing.T) {
 	t.Parallel()
-	proxy := "https://canary@proxy/leaf?token=canary"
-	for range 12 {
-		proxy = "https://proxy/path?http_proxy=" + url.QueryEscape(proxy)
+	// Keep the contract's literal boundary independent of maxProxyDepth so an
+	// accidental change to the production limit also fails this regression.
+	for _, edges := range []int{8, 9, 13} {
+		t.Run(strconv.Itoa(edges), func(t *testing.T) {
+			t.Parallel()
+			proxy := "https://canary@proxy/leaf?token=canary"
+			for range edges - 1 {
+				proxy = "https://proxy/path?http_proxy=" + url.QueryEscape(proxy)
+			}
+			source := &commonpb.ClickHouseSinkConfig{Dsn: "clickhouse://db/ledger?http_proxy=" + url.QueryEscape(proxy) + "&compress=true"}
+			original := proto.Clone(source)
+			projected := Redact(source)
+			data, err := protojson.Marshal(projected)
+			require.NoError(t, err)
+			require.NotContains(t, string(data), "canary")
+			require.True(t, proto.Equal(original, source))
+
+			root, err := url.Parse(projected.GetDsn())
+			require.NoError(t, err)
+			require.Equal(t, "true", root.Query().Get("compress"))
+			next := root.Query().Get("http_proxy")
+			for depth := 1; depth <= min(edges, 8); depth++ {
+				hop, err := url.Parse(next)
+				require.NoError(t, err)
+				require.Equal(t, "https", hop.Scheme, "depth %d", depth)
+				require.Equal(t, "proxy", hop.Host, "depth %d", depth)
+				if depth == edges {
+					require.Equal(t, "/leaf", hop.Path)
+					require.Equal(t, "xxxxx", hop.User.Username())
+					require.Equal(t, "xxxxx", hop.Query().Get("token"))
+					require.Empty(t, hop.Query().Get("http_proxy"))
+				} else {
+					require.Equal(t, "/path", hop.Path)
+				}
+				next = hop.Query().Get("http_proxy")
+			}
+			if edges > 8 {
+				require.Equal(t, "xxxxx", next, "the ninth edge must be replaced wholesale")
+			}
+		})
 	}
-	source := &commonpb.ClickHouseSinkConfig{Dsn: "clickhouse://db/ledger?http_proxy=" + url.QueryEscape(proxy) + "&compress=true"}
-	original := proto.Clone(source)
-	projected := Redact(source)
-	data, err := protojson.Marshal(projected)
-	require.NoError(t, err)
-	require.NotContains(t, string(data), "canary")
-	require.Contains(t, string(data), "compress=true")
-	require.Contains(t, string(data), "xxxxx")
-	require.True(t, proto.Equal(original, source))
 }
 
 func BenchmarkRedactNATSServerList(b *testing.B) {
