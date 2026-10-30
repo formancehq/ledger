@@ -42,7 +42,7 @@ account, transaction, or log is now on the canonical surface.
 | `GET /v3/{ledger}/accounts` | filter (ACCOUNTS) | — | `after`(addr), `pageSize`, `reverse` | — | canonical |
 | `GET /v3/{ledger}/transactions` | filter (TRANSACTIONS) | `startDate`,`endDate` | `after`(txID), `pageSize`, `reverse` | — | canonical |
 | `GET /v3/{ledger}/logs` | filter (LOGS) | `startDate`,`endDate` | `after`(logID), `pageSize` | — | canonical |
-| `GET /v3/_/audit-entries` | filter (AUDIT, textual-only) | — | `after`(seq), `pageSize`, `reverse` | — | canonical |
+| `GET /v3/_/audit-entries` | filter (AUDIT) | — | `after`(seq), `pageSize`, `reverse` | — | canonical |
 | `GET /v3/{ledger}/volumes` | filter (ACCOUNTS) | — | — | `useMaxPrecision`, `collapseColors`, `groupByPrefixes` | canonical |
 | `GET /v3/{ledger}/accounts/{addr}` | — | — | — | `collapseColors` | option-only |
 | `GET /v3/_/indexes/status` | — | — | — | `ledger` | option-only |
@@ -72,14 +72,49 @@ The four roles:
 
 ## 3. Textual vs structured expressiveness
 
-The two serializations are interchangeable for the common case but are **not**
-equally expressive. There are three asymmetries; each is one-directional.
+The two serializations cover the **same fields under the same names**. A bare
+field name is resolved against the query target in both decoders
+(`filterexpr.Parse` and `commonpb.DecodeQueryFilterJSON`), and both reject the
+same names off their target. `TestDualFormatFieldParity`
+(`internal/pkg/filterexpr/parity_test.go`) locks the pairing: every row decodes to
+the identical proto in both forms, and `filterexpr.Format` emits text that parses
+back to that proto. A new filter field must be added to both decoders, to
+`Format`, and to that table in the same change.
 
-| Capability | Textual | Structured JSON | Note |
+| Field | Target | Textual | Structured JSON |
 |---|---|---|---|
-| Arbitrary raw address prefix | `address ^= "users"` | only when value ends `:` → `{"$match":{"address":"users:"}}` | a non-`:` byte prefix is textual-only |
-| Transaction reference match | *(rejected: unknown field)* | `{"$match":{"reference":"ref-1"}}` | reference is structured-only |
-| Audit conditions | `outcome == failure` (bare, EN-1549) | *(rejected: no JSON form)* | audit is textual-only |
+| `metadata[<key>]` | accounts, transactions | `metadata[k] == v`, `>`, `between`, `exists`, `in` | `$match`, `$gt`…, `$exists` |
+| `address` / `source` / `destination` | accounts, transactions | `==`, `^=`, `in` | `$match` (trailing `:` = prefix) |
+| `has asset` | accounts | `has asset USD/2` | `{"$exists":{"asset":"USD/2"}}` |
+| `reference` | transactions | `reference == "ref-1"`, `in (…)`, `$param` | `{"$match":{"reference":"ref-1"}}` |
+| `reverted` | transactions | `reverted == true` | `{"$match":{"reverted":true}}` |
+| `id` | transactions | `id == 3`, `>`, `between` | `{"$match":{"id":3}}`, `$gt`… |
+| `timestamp`, `insertedAt`, `revertedAt` | transactions | `insertedAt >= "2023-11-14T22:13:20Z"` | `{"$gte":{"insertedAt":"…"}}`, `$match` |
+| `logId` | logs | `logId == 7`, `>`, `between` | `{"$match":{"logId":7}}`, `$gt`… |
+| `date` | logs | `date >= "…"` | `{"$gte":{"date":"…"}}`, `$match` |
+| `ledger` | logs | `ledger == main`, `$param` | `{"$match":{"ledger":"main"}}` |
+| audit fields (§7) | audit | `outcome == failure`, `seq between 1 and 9` | `{"$match":{"outcome":"failure"}}`, `$gte`… |
+
+On the uint fields, `$match` is an equality: it decodes to the closed range from the
+value to itself, the proto textual `==` builds. A closed range written as two bounds
+(`id > 3 and id < 9`, or a JSON `$and` of `$gt` and `$lt`) folds into one range
+condition in both decoders.
+
+A bound of a non-audit uint range (`id`, `timestamp`, `insertedAt`,
+`revertedAt`, `logId`, `date`) may be a parameter in both forms: textual
+`id >= $from` and structured `{"$gte":{"id":{"$param":"from"}}}` decode to the
+same `ParamMin`, resolved when a prepared query executes. `Format` renders a
+parameter bound as `$name`, so a parameterized range survives the
+`ledgers configuration export` / `apply` round-trip; a literal and a parameter
+bound can be mixed (`id >= 3 and id <= $hi`). The audit fields take literal
+operands only: audit reads have no parameter-resolution context.
+
+The remaining asymmetries are operator-level, not field-level:
+
+| Capability | Textual | Structured JSON | Why |
+|---|---|---|---|
+| Byte-level address prefix | `address ^= "users"` | only a prefix ending `:` → `{"$match":{"address":"users:"}}` | the JSON DSL has no prefix operator (`$like` was dropped, EN-1465) |
+| Audit `idempotency_key` prefix | `idempotency_key ^= "import-"` | *(none)* | same |
 
 ## 4. Removed aliases → canonical replacements
 
@@ -92,12 +127,13 @@ longer exist):
   dual-format `filter`, compiled for the Accounts target, is now the sole account
   selector on `GET /v3/{ledger}/volumes`; the aggregation options
   (`useMaxPrecision`, `collapseColors`, `groupByPrefixes`) are unaffected.
-- `reference=` (transactions) → `{"$match":{"reference":"..."}}` (**structured
-  only** — the textual grammar has no `reference` field).
+- `reference=` (transactions) → `filter=reference == "ref-1"` (textual) or the
+  structured `{"$match":{"reference":"ref-1"}}`.
 
-URL-encoded, the structured reference replacement is:
+URL-encoded, the two reference replacements are:
 
 ```http
+GET /v3/{ledger}/transactions?filter=reference%20%3D%3D%20%22ref-1%22
 GET /v3/{ledger}/transactions?filter=%7B%22%24match%22%3A%7B%22reference%22%3A%22ref-1%22%7D%7D
 ```
 
@@ -139,10 +175,21 @@ microseconds. Pre-epoch values are rejected (EN-1542). Do not read this section 
 
 ## 7. Audit
 
-Audit filtering is **textual-only**. The bare fields are `outcome`, `ledger`,
-`seq`, `proposal_id`, `timestamp`, `log_seq`, `caller_subject`, `order_type`
-(EN-1549). There is no structured JSON form for audit conditions; the textual
-grammar is the canonical serialization for `GET /v3/_/audit-entries`.
+The audit target has its own bare field vocabulary
+(`commonpb.LookupAuditField`, shared by both decoders): `outcome`, `ledger`,
+`caller_subject`, `order_type`, `idempotency_key` (strings: `==`/`in`, or
+`$match`), and `seq`, `proposal_id`, `log_seq`, `timestamp` (uints, `timestamp`
+also RFC3339: `==`/ranges/`between`, or `$match`/`$gt`…). On
+`QUERY_TARGET_AUDIT` these names win over the colliding transaction/log meanings
+of `ledger` and `timestamp` (EN-1549): `ledger == main` and
+`{"$match":{"ledger":"main"}}` are both the audit ledger condition there. Audit
+conditions take no `$param` (audit reads have no parameter context), and only the
+textual form has the `idempotency_key ^=` prefix match.
+
+The JSON **encoder** (`QueryFilter.MarshalJSON`) has no target, so it refuses audit
+conditions rather than emit a node that would decode back to the wrong arm through
+the target-independent `UnmarshalJSON`. No JSON-encoded filter is audit-targeted:
+prepared queries are never audit queries.
 
 ---
 

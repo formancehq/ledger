@@ -217,6 +217,31 @@ func TestHandleListAuditEntries_OutcomeFilter(t *testing.T) {
 	require.Equal(t, http.StatusOK, w.Code)
 }
 
+// TestHandleListAuditEntries_StructuredOutcomeFilter exercises the structured
+// JSON form of the same audit outcome filter: the AUDIT target resolves the bare
+// `outcome` field to the audit arm in both serializations.
+func TestHandleListAuditEntries_StructuredOutcomeFilter(t *testing.T) {
+	t.Parallel()
+
+	backend := NewMockBackend(gomock.NewController(t))
+	backend.EXPECT().ListAuditEntries(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
+		func(_ context.Context, _ uint32, _ uint64, filter *commonpb.QueryFilter, _ bool) (cursor.Cursor[*auditpb.AuditEntry], error) {
+			require.NotNil(t, filter)
+			require.Equal(t, commonpb.AuditField_AUDIT_FIELD_OUTCOME, filter.GetAudit().GetField())
+			require.Equal(t, "failure", filter.GetAudit().GetStringCond().GetHardcoded())
+
+			return cursor.NewSliceCursor[*auditpb.AuditEntry](nil), nil
+		}).Times(1)
+	srv := newTestServer(t, backend)
+
+	w := httptest.NewRecorder()
+	r := newRequest(t, http.MethodGet, "/_/audit-entries?filter="+url.QueryEscape(`{"$match":{"outcome":"failure"}}`), nil, nil)
+
+	srv.handleListAuditEntries(w, r)
+
+	require.Equal(t, http.StatusOK, w.Code)
+}
+
 func TestHandleListAuditEntries_IdempotencyKeyPrefixFilter(t *testing.T) {
 	t.Parallel()
 

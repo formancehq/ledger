@@ -385,9 +385,19 @@ func validateOrderPreparedQuery(order *raftcmdpb.Order) domain.Describable {
 			return domain.ErrPreparedQueryTargetUnsupported
 		}
 
-		return domain.ValidateFilterForTarget(q.GetFilter(), q.GetTarget())
+		if err := domain.ValidateFilterForTarget(q.GetFilter(), q.GetTarget()); err != nil {
+			return err
+		}
+
+		return domain.ValidateFilterAdmissionShape(q.GetFilter())
 	case *raftcmdpb.LedgerScopedOrder_UpdatePreparedQuery:
-		return domain.ValidatePreparedQueryName(p.UpdatePreparedQuery.GetName())
+		if err := domain.ValidatePreparedQueryName(p.UpdatePreparedQuery.GetName()); err != nil {
+			return err
+		}
+
+		// The update carries no target, so the per-target gate runs in the FSM
+		// against the stored query; the target-independent shape gate runs here.
+		return domain.ValidateFilterAdmissionShape(p.UpdatePreparedQuery.GetFilter())
 	case *raftcmdpb.LedgerScopedOrder_DeletePreparedQuery:
 		return domain.ValidatePreparedQueryName(p.DeletePreparedQuery.GetName())
 	default:

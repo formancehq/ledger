@@ -28,12 +28,18 @@ func NewListCommand() *cobra.Command {
 Accounts are displayed in alphabetical order by default. Use --reverse for Z→A.
 Press Enter to load the next page, or 'q' to quit.
 
+Filter fields (--filter, textual grammar or JSON DSL): metadata[key]
+(comparisons and "exists"), address (== or ^=), and "has asset BASE[/PRECISION]"
+(requires the account-asset index). Values containing ':' or '-' must be quoted.
+
 Examples:
   ledgerctl accounts list --ledger my-ledger
   ledgerctl accounts list --ledger my-ledger --page-size 20
   ledgerctl accounts list --ledger my-ledger --prefix users:
   ledgerctl accounts list --ledger my-ledger --filter "metadata[category] == premium"
-  ledgerctl accounts list --ledger my-ledger --filter "metadata[active] == true or address ^= users:"
+  ledgerctl accounts list --ledger my-ledger --filter 'metadata[active] == true or address ^= "users:"'
+  ledgerctl accounts list --ledger my-ledger --filter "metadata[kyc] exists"
+  ledgerctl accounts list --ledger my-ledger --filter "has asset USD/2"
   ledgerctl accounts list --reverse --ledger my-ledger   # Reverse alphabetical (Z→A)
   ledgerctl accounts list --all --ledger my-ledger   # Fetch all accounts without pagination
   ledgerctl accounts list --cursor eyJrZXkiOiJ1c2Vyczpib2IifQ --ledger my-ledger   # Resume after users:bob (page token for {"key":"users:bob"})`,

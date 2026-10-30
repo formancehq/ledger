@@ -339,29 +339,41 @@ func TestFormatDate_RawMicrosOutsideRFC3339Range(t *testing.T) {
 
 // TestFormatDate_OnlyEmitsParseableFields is the regression for the flemzord
 // MEDIUM: Format used to emit id/insertedAt/revertedAt expressions the textual
-// parser (DateCond) cannot read back, so Parse(Format(f)) failed for those arms.
-// Format now renders only the fields the grammar admits (timestamp, date); other
-// builtin fields render as an explicit unknown marker rather than a lie that
-// won't reparse.
+// parser could not read back, so Parse(Format(f)) failed for those arms. The
+// grammar now admits every transaction builtin field, so each one must format to
+// a string that re-parses to the same condition — never to an unparseable lie.
 func TestFormatDate_OnlyEmitsParseableFields(t *testing.T) {
 	t.Parallel()
 
-	nonParseable := []commonpb.TransactionBuiltinIndex{
+	lo := wantDateMicros
+	for _, field := range []commonpb.TransactionBuiltinIndex{
 		commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_ID,
+		commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP,
 		commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_INSERTED_AT,
 		commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REVERTED_AT,
-	}
-
-	lo := wantDateMicros
-	for _, field := range nonParseable {
+	} {
 		f := &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_BuiltinUint{
 			BuiltinUint: &commonpb.BuiltinUintCondition{
 				Field: field,
 				Cond:  &commonpb.UintCondition{Min: &lo},
 			},
 		}}
-		assert.Equal(t, "<unknown builtin field>", Format(f), field.String())
+		got := Format(f)
+		reparsed, err := Parse(got, tx)
+		require.NoError(t, err, "%s: Format emitted %q", field, got)
+		require.True(t, proto.Equal(f, reparsed), "%s: %q did not round-trip", field, got)
 	}
+
+	// A builtin index kind that is not a uint range field (reference, address)
+	// still renders as an explicit unknown marker rather than a string that
+	// would parse as something else.
+	unknown := &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_BuiltinUint{
+		BuiltinUint: &commonpb.BuiltinUintCondition{
+			Field: commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE,
+			Cond:  &commonpb.UintCondition{Min: &lo},
+		},
+	}}
+	assert.Equal(t, "<unknown builtin field>", Format(unknown))
 
 	// And the two fields we DO emit must round-trip through Parse for every
 	// single-bound operator shape (== is covered by TestFormatDate_RoundTrip).
@@ -404,15 +416,27 @@ func TestParseDate_RejectsGarbageValue(t *testing.T) {
 	assert.Contains(t, err.Error(), "RFC3339")
 }
 
-func TestParseDate_RejectsParam(t *testing.T) {
+func TestParseDate_AcceptsParam(t *testing.T) {
 	t.Parallel()
 
-	// date/timestamp are index-resolved range fields evaluated without a
-	// parameter-resolution context; a $param operand is rejected, mirroring the
-	// audit datetime field.
-	_, err := Parse(`date >= $since`, tx)
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "does not support parameters")
+	// A $param bound on a date/timestamp range is resolved when a prepared query
+	// executes (query.resolveUintBounds with the execution parameters), exactly
+	// like the structured {"$gte":{"date":{"$param":"since"}}}. Only the audit
+	// datetime field, which has no parameter-resolution context, rejects it.
+	f, err := Parse(`date >= $since`, tx)
+	require.NoError(t, err)
+	require.NotNil(t, f.GetLogBuiltinUint())
+	uc := f.GetLogBuiltinUint().GetCond()
+	assert.Equal(t, "since", uc.GetParamMin())
+	assert.Nil(t, uc.Min)
+	assert.Empty(t, uc.GetParamMax())
+
+	f, err = Parse(`timestamp between "2023-11-14T22:13:20Z" and $until`, tx)
+	require.NoError(t, err)
+	uc = f.GetBuiltinUint().GetCond()
+	assert.Equal(t, uint64(1700000000000000), uc.GetMin())
+	assert.Equal(t, "until", uc.GetParamMax())
+	assert.Nil(t, uc.Max)
 }
 
 // TestParseDate_KeywordsUsableAsBareValues guards that `date`/`timestamp` remain
