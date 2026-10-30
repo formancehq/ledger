@@ -26,6 +26,7 @@ func TestDrainProducersEmitNativeTechnicalPayloads(t *testing.T) {
 			name: "marker",
 			propose: func(ctx context.Context, n *Node) error {
 				_, err := n.BeginDrain(ctx, "epoch", []uint64{1, 2}, 0)
+
 				return err
 			},
 			check: func(t *testing.T, update *raftcmdpb.TechnicalUpdate) {
@@ -40,6 +41,7 @@ func TestDrainProducersEmitNativeTechnicalPayloads(t *testing.T) {
 			},
 			propose: func(ctx context.Context, n *Node) error {
 				_, err := n.EndDrain(ctx, "epoch", 0)
+
 				return err
 			},
 			check: func(t *testing.T, update *raftcmdpb.TechnicalUpdate) {
