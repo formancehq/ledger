@@ -1,0 +1,67 @@
+name: Release operator upgrade
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_branch:
+        description: Release branch to test, for example release/v3.0
+        required: true
+        type: string
+  workflow_call:
+    inputs:
+      release_branch:
+        description: Release branch to test, for example release/v3.0
+        required: true
+        type: string
+    secrets:
+      NUMARY_GITHUB_TOKEN:
+        required: true
+
+permissions:
+  contents: read
+  packages: read
+
+concurrency:
+  group: release-operator-upgrade-${{ inputs.release_branch }}
+  cancel-in-progress: false
+
+jobs:
+  upgrade:
+    runs-on: namespace-profile-linux-amd64-4vcpu
+    timeout-minutes: 60
+    env:
+      GOPATH: /tmp/go
+      RELEASE_BRANCH: ${{ inputs.release_branch }}
+    steps:
+      - uses: namespacelabs/nscloud-checkout-action@66f2dc6f6c42a8ac6c4e53473c4840006822831e # v9
+        with:
+          ref: main
+          fetch-depth: 0
+          dissociate: true
+      - name: Setup Env
+        uses: ./.github/actions/default
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
+        with:
+          registry: ghcr.io
+          username: NumaryBot
+          password: ${{ secrets.NUMARY_GITHUB_TOKEN }}
+      - name: Test published release to branch HEAD
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: nix develop .#upgrade --command just test-release-operator-upgrade
+      - name: Upload upgrade evidence
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-operator-upgrade-evidence
+          path: |
+            build/upgrade-operator/run.*/revisions.txt
+            build/upgrade-operator/run.*/source-pull.txt
+            build/upgrade-operator/run.*/source-operator-pull.txt
+            build/upgrade-operator/run.*/operator-build.txt
+            build/upgrade-operator/run.*/target-build.txt
+            build/upgrade-operator/run.*/kubernetes.yaml
+            build/upgrade-operator/run.*/*.log
+          retention-days: 14
+          if-no-files-found: warn

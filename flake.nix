@@ -159,6 +159,13 @@
           # API-server admission regressions for the operator, without Docker.
           operator-tests = mkTaskShell [ pkgs-unstable.setup-envtest ];
 
+          # Three-voter rc.1 binary upgrade in an isolated kind cluster.
+          upgrade = pkgs.mkShell {
+            packages = ciPackages ++ (with pkgs; [ kyverno-chainsaw kind kubectl docker-client gh ]);
+            GOTOOLCHAIN = "local";
+            LEDGER_UPGRADE_SHELL = "1";
+          };
+
           default = pkgs.mkShell {
             packages = ciPackages ++ localPackages;
             GOTOOLCHAIN = "local";

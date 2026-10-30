@@ -204,6 +204,15 @@ test-model duration="60":
 test-model-cluster duration="180":
     tests/antithesis/run_model_test.sh --cluster {{duration}}
 
+# Run after main is integrated into release/v3.0. Fetch and pin the target HEAD,
+# build both exact revisions, then exercise the maintenance-gated rc.1 upgrade.
+test-rc1-rolling-upgrade:
+    tests/upgrade/run.sh
+
+# Validate a published release -> release branch HEAD using the Kubernetes operator.
+test-release-operator-upgrade:
+    tests/upgrade/run_operator.sh "$RELEASE_BRANCH"
+
 # Run all fuzz tests (seed corpus replay, no active fuzzing — fast CI check)
 fuzz-check:
     #!/usr/bin/env bash

@@ -224,6 +224,91 @@ Rollback while maintenance is active must retain the same barrier discipline.
 After reopening writes on the fixed binary, do not reintroduce an affected old
 voter or downgrade without a separately validated procedure.
 
+### Reproducible rc.1 to release branch validation
+
+After integrating the harness into `release/v3.0`, run from that revision:
+
+```bash
+just test-rc1-rolling-upgrade
+```
+
+The Chainsaw launcher in `tests/upgrade/` fetches `origin/release/v3.0` once,
+resolves both it and `v3.0.0-rc.1` to commit SHAs, and records those SHAs,
+Linux binary hashes, and local image IDs.
+Compilation, hashing, image build, and image inspection must all succeed before
+the kind cluster is created; a locally cached image cannot replace a failed build.
+It requires a clean harness checkout, the target to contain its commit, and the
+target to descend from rc.1; it never merges or moves a local branch.
+`KEEP_WORKDIR=1` retains the extracted
+trees, binaries, image IDs, failed Pod logs, and revision record for the release
+validation report. `TARGET_REF=<sha> just test-rc1-rolling-upgrade` rehearses a
+specific local commit without fetching the release branch. The default command
+refuses to run while `release/v3.0` lacks the integrated harness.
+
+The test creates a dedicated kind cluster and Chainsaw namespace. Three Pods
+mount separate persistent WAL and data claims and boot from an image containing
+the compiled rc.1 binary. It creates a ledger and transaction through gRPC,
+then verifies the account on every voter. At the
+maintenance barrier it requires each voter to be normal and durably past the
+leader's recorded commit index. It replaces each follower separately, probes
+ledger creation and transaction posting against the existing ledger on every
+ready live voter during deletion, rejoin, and catch-up, retries inconclusive
+responses in the deletion gap, and checks both rejections and
+unchanged account data on every voter in stable maintenance windows. It
+transfers leadership to an upgraded voter and replaces the old leader. After
+all three voters run the target binary, it completes a final maintenance
+window, disables maintenance, and verifies the original
+account, commits another transaction, checks its readback on every voter, and
+runs the audit and derived-state checker on each voter. Missing observations or
+an unexpected write success fail the run.
+
+This local test does not cover backup restore, snapshot installation, operator
+rollout, or every business operation and persisted record type. It requires
+Docker and Nix; the `.#upgrade` shell supplies kind, kubectl, Chainsaw, and jq.
+The existing
+model and restore suites and release-specific migration tests remain separate
+gates. It also does not authorize rollback onto storage opened by the target.
+
+### Operator-managed release to branch HEAD validation
+
+Run the `Release operator upgrade` GitHub Actions workflow with an input such as
+`release/v3.0`, or run the same recipe locally:
+
+```bash
+RELEASE_BRANCH=release/v3.0 just test-release-operator-upgrade
+```
+
+The launcher fetches the named release branch, selects the highest published
+stable or RC tag on that branch's history and release line, and records both
+the release commit and the branch HEAD. It refuses an empty upgrade or a
+branch outside `release/vX.Y`. It pulls the published Ledger and operator
+images for that release, builds the target operator and Ledger images from the
+exact branch HEAD, and loads all four into an isolated kind cluster. The target
+Ledger image is tagged with its full local image ID, so the Cluster CR refers
+to immutable build content and each restarted Pod can be checked against that
+ID. The workflow uploads the
+revision, image, Chainsaw, Kubernetes, Ledger Pod, and operator logs as evidence.
+The harness keeps the Chainsaw namespace until it collects those diagnostics,
+then deletes the Kind cluster.
+
+Chainsaw creates a three-voter Cluster with the published operator and Ledger
+images, then commits data and records the Pod and PVC identities. It upgrades
+the operator through Helm to the HEAD image first, verifies its Pod and image
+changed, and checks that Ledger data remained intact. Only then does it update
+`spec.image` to the built Ledger HEAD image. It observes ready, non-terminating
+old and new Ledger Pods coexisting, waits for the StatefulSet rollout, and
+checks that all Pods changed while PVCs did not. It commits another transaction,
+checks the account on all
+voters, and runs each voter's audit/derived-store checker. The test makes no
+business writes during mixed Ledger versions and does not establish that such
+writes are safe; the maintenance-gated binary test above covers the specific
+rc.1 metadata-validation change separately.
+
+The image-ID tag is deliberately not a published RC tag. This exercise tests
+the operator rollout and binary compatibility with the latest release; it does
+not exercise the operator's adjacent-RC tag admission rule. Keep the canonical
+RC admission tests and the pinned binary-level test above as separate gates.
+
 ## Coordinated Restart
 
 When persisted storage is compatible but mixed binaries are not:

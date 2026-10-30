@@ -889,6 +889,44 @@ this suite. A failure blocks the existing `Tests` release and image gates.
 
 ### E2E Tests
 
+#### Pinned RC binary upgrade (Chainsaw)
+
+After the harness is integrated into `release/v3.0`, run
+`just test-rc1-rolling-upgrade` from a clean checkout of the integrated
+revision. `tests/upgrade/run.sh` fetches the target branch, records both exact
+commit SHAs, builds Linux images from those revisions, and runs the Chainsaw
+scenario in a dedicated kind cluster. Build and provenance-recording failures
+abort before cluster creation. Its three Pods use separate persistent
+WAL and data claims; Chainsaw replaces followers and then the old leader while
+maintenance remains active. The test checks source and target transactions,
+reads on every voter, rejected ledger creation and transaction posting on every
+ready live voter during mixed windows and replacement, durable Raft cursors,
+leadership transfer, and each voter’s audit/derived-store checker. Transient
+RPC failures are retried for a bounded period; an accepted write fails at once.
+
+The `.#upgrade` Nix shell provides Chainsaw, kind, kubectl, gh, and Docker client;
+a local Docker daemon is still required. `UPGRADE_PHASE_SECONDS` sets the
+minimum mixed-window soak (default 15 seconds). Use `KEEP_WORKDIR=1` to retain
+revision and image hashes and failed Pod logs. The runner is separate from the
+Antithesis model suite because that driver intentionally toggles maintenance.
+
+#### Published release to branch HEAD (operator)
+
+Dispatch `.github/workflows/release-operator-upgrade.yml` with a
+`release/vX.Y` branch, or run
+`RELEASE_BRANCH=release/v3.0 just test-release-operator-upgrade` locally. The
+launcher selects the latest published stable or RC release tag reachable from
+the branch HEAD, pulls its published Ledger and operator images, builds both
+target images from the exact HEAD, and runs Chainsaw in an isolated kind cluster.
+The target Pod image tag is its full local image ID. The test checks a real
+operator upgrade before the Ledger StatefulSet rollout, a ready old/new Ledger
+Pod coexistence window, retained PVC identities,
+data before and after, and every voter's store check. It does not write during
+the mixed-Ledger-version interval or test maintenance-mode rejection.
+The workflow saves the evidence under `build/upgrade-operator/` and uploads it
+even on failure. A Docker daemon and access to the published GHCR image are
+required. The image-ID tag does not exercise adjacent-RC tag admission.
+
 ```bash
 # With Ginkgo
 ginkgo run -tags e2e ./tests/e2e
