@@ -73,14 +73,15 @@ func TestHTTPDriver(t *testing.T) {
 func TestHTTPDriverClosesResponseBodies(t *testing.T) {
 	t.Parallel()
 
-	// Every connection the driver opens must be closed once Accept returns. An unread,
-	// unclosed body keeps the connection and its transport goroutines alive for the life
-	// of the process, one per push.
 	var opened, closed atomic.Int32
 	testServer := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_, _ = io.Copy(io.Discard, r.Body)
 		w.WriteHeader(http.StatusAccepted)
-		_, _ = w.Write([]byte(`{"accepted":true}`))
+		// A body that never completes cannot be pooled: every push opens a connection,
+		// and only a closed body lets the transport close it.
+		_, _ = w.Write([]byte("{"))
+		w.(http.Flusher).Flush()
+		<-r.Context().Done()
 	}))
 	testServer.Config.ConnState = func(_ net.Conn, state http.ConnState) {
 		switch state {
@@ -91,7 +92,10 @@ func TestHTTPDriverClosesResponseBodies(t *testing.T) {
 		}
 	}
 	testServer.Start()
-	t.Cleanup(testServer.Close)
+	t.Cleanup(func() {
+		testServer.CloseClientConnections()
+		testServer.Close()
+	})
 
 	driver, err := NewDriver(Config{URL: testServer.URL}, logging.Testing())
 	require.NoError(t, err)
@@ -108,7 +112,7 @@ func TestHTTPDriverClosesResponseBodies(t *testing.T) {
 	require.EqualValues(t, pushes, opened.Load())
 	require.Eventually(t, func() bool {
 		return closed.Load() == opened.Load()
-	}, 5*time.Second, 10*time.Millisecond, "opened %d connections, closed %d", opened.Load(), closed.Load())
+	}, 5*time.Second, 10*time.Millisecond)
 }
 
 func TestHTTPDriverReturnsWithoutReadingBody(t *testing.T) {

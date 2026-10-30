@@ -46,11 +46,8 @@ func (c *Driver) Accept(ctx context.Context, logs ...drivers.LogWithLedger) ([]e
 	if err != nil {
 		return nil, err
 	}
-	// Close the body without reading it. Only the status code matters, and reading
-	// the body would make Accept wait on the exporter: a stalled or endless reply
-	// would hold up every batch behind it. Closing an unread body makes the
-	// transport drop the connection instead of pooling it, which frees the socket
-	// and its goroutines right away. Connection reuse is deliberately given up.
+	// Only the status code is used. Close the body unread so the transport releases
+	// the connection; reading it would make Accept wait on the exporter.
 	defer func() {
 		_ = rsp.Body.Close()
 	}()
