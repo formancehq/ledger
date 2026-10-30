@@ -159,6 +159,7 @@ func main() {
 	}
 
 	if err = (&controller.BackupRunReconciler{
+		APIReader: mgr.GetAPIReader(),
 		Client:    mgr.GetClient(),
 		Scheme:    mgr.GetScheme(),
 		Clientset: clientset,

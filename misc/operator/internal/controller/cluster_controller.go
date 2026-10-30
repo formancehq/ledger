@@ -15,7 +15,6 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes"
@@ -62,7 +61,7 @@ type ClusterReconciler struct {
 // +kubebuilder:rbac:groups=admissionregistration.k8s.io,resources=validatingadmissionpolicybindings,verbs=get;list;watch
 
 // Reconcile handles the reconciliation loop for Cluster resources.
-func (r *ClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+func (r *ClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (result ctrl.Result, retErr error) {
 	logger := log.FromContext(ctx)
 
 	// Fetch the Cluster CR
@@ -113,6 +112,12 @@ func (r *ClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		if statusErr := r.updateStatus(ctx, ledger); statusErr != nil {
 			logger.Error(statusErr, "failed to update status")
 		}
+	}()
+	// Runs before the status write above (deferred calls run last-in,
+	// first-out): any step that met an object it does not control under a
+	// derived name surfaces the conflict through the persisted status.
+	defer func() {
+		result, retErr = r.reportResourceNameConflict(ctx, ledger, result, retErr)
 	}()
 
 	// An in-flight drain owns the workload until its release completes. This
@@ -356,7 +361,7 @@ func (r *ClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	meta.RemoveStatusCondition(&ledger.Status.Conditions, "AuthKeysPending")
 
 	// StatefulSet needs the specHash and credentials info
-	result, err := r.reconcileStatefulSet(ctx, ledger, specHash, credentials)
+	stsResult, err := r.reconcileStatefulSet(ctx, ledger, specHash, credentials)
 	if err != nil {
 		logger.Error(err, "failed to reconcile StatefulSet")
 
@@ -377,13 +382,14 @@ func (r *ClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 
 		return ctrl.Result{}, fmt.Errorf("reconciling ClusterSecret after StatefulSet: %w", err)
 	}
+	markResourceNamesOwned(ledger)
 
 	drainResult, err := r.reconcileAnnotatedDrain(ctx, ledger, r.PreflightDrainBarrier, r.EnsureDrainBarrier, r.EnsureDrainReleased)
 	if err != nil || drainResult.Requeue || drainResult.RequeueAfter > 0 {
 		return drainResult, err
 	}
 
-	return result, nil
+	return stsResult, nil
 }
 
 // deletionProtectionPolicyInstalled reports whether the cluster-scoped volume
@@ -469,6 +475,11 @@ func (r *ClusterReconciler) updateStatus(ctx context.Context, ledger *ledgerv1al
 		Name:      resourceName(ledger.Name),
 		Namespace: ledger.Namespace,
 	}, sts)
+	if err == nil && notControlledBy(sts, ledger) {
+		// Never report the readiness of a StatefulSet this Cluster did not
+		// create.
+		err = apierrors.NewNotFound(appsv1.Resource("statefulsets"), sts.Name)
+	}
 	if err != nil {
 		if apierrors.IsNotFound(err) {
 			// If the reconciler already set a phase (e.g. "Degraded" from
@@ -567,31 +578,6 @@ func resolveEndpoints(ledger *ledgerv1alpha1.Cluster) *ledgerv1alpha1.EndpointsS
 		HTTP:     httpEndpoint,
 		External: external,
 	}
-}
-
-// deleteIfExists deletes a resource if it exists, ignoring not-found errors.
-func (r *ClusterReconciler) deleteIfExists(ctx context.Context, obj client.Object) error {
-	err := r.Get(ctx, types.NamespacedName{
-		Name:      obj.GetName(),
-		Namespace: obj.GetNamespace(),
-	}, obj)
-	if err != nil {
-		return ignoreNotFound(err)
-	}
-
-	return r.Delete(ctx, obj)
-}
-
-func (r *ClusterReconciler) deleteUnstructuredIfExists(ctx context.Context, obj *unstructured.Unstructured) error {
-	err := r.Get(ctx, types.NamespacedName{
-		Namespace: obj.GetNamespace(),
-		Name:      obj.GetName(),
-	}, obj)
-	if err != nil {
-		return ignoreNotFound(err)
-	}
-
-	return r.Delete(ctx, obj)
 }
 
 // ignoreNotFound returns nil on NotFound and NoKindMatch errors.

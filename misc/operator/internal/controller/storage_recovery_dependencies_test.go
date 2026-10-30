@@ -189,6 +189,8 @@ func TestStorageRecoveryAuthKeysRolloutDeferredClearsAfterSuccessfulNormalWorklo
 	cm := authKeysConfigMapWithEntries(ledger.Name, ledger.Namespace, map[string]struct{ keyID, pubKey string }{
 		"previous-credential": {keyID: "previous-key", pubKey: "synthetic-previous-public-key"},
 	})
+	cm.OwnerReferences = nil // The shared fixture uses a different synthetic Cluster UID.
+	controlledByCluster(cm, ledger)
 	c := fake.NewClientBuilder().WithScheme(scheme).WithStatusSubresource(ledger, sts).WithObjects(ledger, sts, cred, cm).Build()
 	require.NoError(t, c.Get(t.Context(), client.ObjectKeyFromObject(ledger), ledger))
 	deferred = *meta.FindStatusCondition(ledger.Status.Conditions, "AuthKeysRolloutDeferred")

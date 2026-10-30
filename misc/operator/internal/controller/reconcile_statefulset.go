@@ -166,7 +166,7 @@ func (r *ClusterReconciler) reconcileStatefulSetWithExec(ctx context.Context, le
 				// Bind the resolved template in the same write before any Raft call.
 				recordPodConfigHash(sts, specHash)
 
-				return controllerutil.SetControllerReference(ledger, sts, r.Scheme)
+				return setOwnedControllerReference(ledger, sts, r.Scheme, "StatefulSet")
 			})
 			effective.Spec.Replicas = savedReplicas
 			if err != nil {
@@ -181,7 +181,10 @@ func (r *ClusterReconciler) reconcileStatefulSetWithExec(ctx context.Context, le
 			// taken before the CreateOrUpdate above): the rolling update has not yet
 			// started, so pod-0's gRPC server is still on the old TLS_MODE.
 			runningTLSMode := currentTLSModeFromStatefulSet(existingForTLS)
-			if err := raftScaleDown(ctx, r.Config, r.Clientset, ledger, previousReplicas, desiredReplicas, runningTLSMode, exec); err != nil {
+			// sts is now the live StatefulSet the Cluster controls (the mutate
+			// function refused any other): every exec into a pod first checks
+			// that this StatefulSet controls it.
+			if err := raftScaleDown(ctx, r.Config, r.Clientset, ledger, previousReplicas, desiredReplicas, runningTLSMode, ownedPodExec(sts, exec)); err != nil {
 				return ctrl.Result{}, fmt.Errorf("removing Raft nodes before scale-down: %w", err)
 			}
 		}
@@ -200,6 +203,9 @@ func (r *ClusterReconciler) reconcileStatefulSetWithExec(ctx context.Context, le
 	// VCTs are immutable — we must delete-recreate with orphan propagation.
 	existing := &appsv1.StatefulSet{}
 	if err := r.Get(ctx, types.NamespacedName{Name: name, Namespace: ledger.Namespace}, existing); err == nil {
+		if notControlledBy(existing, ledger) {
+			return ctrl.Result{}, nameConflictError("StatefulSet", existing, ledger)
+		}
 		var hashErr error
 		desired.Template, hashErr = r.resolveStorageSpecHash(ctx, effective, existing, desired.Template, specHash)
 		if hashErr != nil {
@@ -302,7 +308,7 @@ func (r *ClusterReconciler) reconcileStatefulSetWithExec(ctx context.Context, le
 		}
 		recordPodConfigHash(sts, specHash)
 
-		return controllerutil.SetControllerReference(ledger, sts, r.Scheme)
+		return setOwnedControllerReference(ledger, sts, r.Scheme, "StatefulSet")
 	})
 	if err != nil {
 		return ctrl.Result{}, err

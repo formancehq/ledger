@@ -29,7 +29,7 @@ func TestBackupRunLogResultRecovery(t *testing.T) {
 			ctx := t.Context()
 			c, run := backupRunRecoveryFixture(t)
 			req := ctrl.Request{NamespacedName: client.ObjectKeyFromObject(run)}
-			r := &BackupRunReconciler{Client: c, Scheme: c.Scheme()}
+			r := &BackupRunReconciler{Client: c, APIReader: c, Scheme: c.Scheme()}
 			_, err := r.Reconcile(ctx, req)
 			require.NoError(t, err)
 			require.NoError(t, c.Get(ctx, req.NamespacedName, run))
@@ -97,7 +97,7 @@ func TestBackupRunLogResultRecovery(t *testing.T) {
 
 			// Restarting the reconciler must recover from persisted state,
 			// reacquire the whole result, and keep the original owned Job.
-			r = &BackupRunReconciler{Client: c, Scheme: c.Scheme(), Clientset: clientset}
+			r = &BackupRunReconciler{Client: c, APIReader: c, Scheme: c.Scheme(), Clientset: clientset}
 			_, err = r.Reconcile(ctx, req)
 			require.NoError(t, err)
 			require.NoError(t, c.Get(ctx, req.NamespacedName, run))

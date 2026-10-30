@@ -41,7 +41,7 @@ func (r *ClusterReconciler) reconcileService(ctx context.Context, ledger *ledger
 			Selector: selectorLabels(ledger),
 		}
 
-		return controllerutil.SetControllerReference(ledger, svc, r.Scheme)
+		return setOwnedControllerReference(ledger, svc, r.Scheme, "Service")
 	})
 
 	return err

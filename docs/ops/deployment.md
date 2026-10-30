@@ -179,6 +179,19 @@ spec:
 
 The operator creates and manages all sub-resources: StatefulSet, Services, Ingresses, ServiceAccount, PDB, etc.
 
+Each sub-resource is named after the Cluster (`ledger-<name>`,
+`ledger-<name>-headless`, `ledger-<name>-grpc`, ...) and owned through a
+controller reference to the Cluster UID. The operator never adopts, modifies,
+deletes or execs into an existing object under one of these names that the
+Cluster does not control. It reports the conflict as
+`ResourceNamesAvailable=False` (reason `NameConflict`), phase `Error` and a
+`ResourceNameConflict` event, and retries every minute. Remove the conflicting
+object, or restore its controller reference to the Cluster, to resume. In
+particular, a Cluster recreated after `kubectl delete --cascade=orphan` does not
+re-adopt the orphaned objects: delete them (keep the PVCs) or restore their
+owner references first. See
+[derived object ownership](../technical/architecture/subsystems/operator/derived-object-ownership.md).
+
 When an operator-managed Cluster omits `spec.clusterID`, the operator commits a
 random UUID to the Cluster spec before creating any workload. All replicas use
 that value. It remains stable across reconciliations, operator and pod restarts,
@@ -622,6 +635,10 @@ spec:
     annotations: {}
     name: ""
 ```
+
+With `create: true` (the default) the operator owns the ServiceAccount and
+refuses an existing one it did not create. To run the pods under a
+ServiceAccount you manage, set `create: false` and `name`.
 
 #### Resource Limits
 

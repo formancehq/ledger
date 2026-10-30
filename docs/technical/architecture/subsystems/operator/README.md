@@ -23,10 +23,17 @@ stopped before installing the rules; the applied-spec hash does not retain the
 original target. See [Ledger target identity](../../../../../misc/operator/README.md#ledger-target-identity)
 for the upgrade procedure and same-name Cluster replacement boundary.
 
+Objects derived from a Cluster name are owned only through a controller
+reference carrying the Cluster UID. The operator never adopts, mutates,
+deletes or execs into a same-name object it does not control, and reports the
+conflict as `ResourceNamesAvailable=False`.
+
 ## Documents
 
 - [Declarative storage reconciliation](storage-reconciliation.md) — configured
   PVC minima/profiles, actual CSI status, durable claim-template recovery,
   scale-down retention and guarded layout deletion.
+- [Derived object ownership](derived-object-ownership.md) — ownership checks on
+  writes, prunes, status and execs, conflict reporting, and accepted races.
 - [Automatic PVC expansion](volume-auto-expansion.md) — opt-in capacity policy,
   measurement path, convergence, cooldown, failure modes, and observability.
