@@ -133,9 +133,11 @@ message CreatePreparedQueryOrder {
 message UpdatePreparedQueryOrder {
   string name = 1;
   common.QueryFilter filter = 2;
-  // Paths of public id leaves converted for a LOGS target. Per-leaf
-  // business-intent provenance distinguishes them from explicit logId leaves.
-  repeated string id_resolved_to_log_paths = 3;
+  reserved 3;
+  reserved "id_resolved_to_log_paths";
+  // Omitted by historical orders and existing clients, in which case the
+  // stored target is retained. New updates may replace the target atomically.
+  optional common.QueryTarget target = 4;
 }
 
 message DeletePreparedQueryOrder {

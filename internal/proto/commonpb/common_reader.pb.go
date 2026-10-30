@@ -3696,6 +3696,8 @@ type UpdatedPreparedQueryLogReader interface {
 	GetName() string
 	GetPreviousFilter() QueryFilterReader
 	GetNewFilter() QueryFilterReader
+	GetPreviousTarget() QueryTarget
+	GetNewTarget() QueryTarget
 	Mutate() *UpdatedPreparedQueryLog
 }
 
@@ -3723,6 +3725,14 @@ func (r *updatedPreparedQueryLogReadonly) GetNewFilter() QueryFilterReader {
 		return nil
 	}
 	return v.AsReader()
+}
+
+func (r *updatedPreparedQueryLogReadonly) GetPreviousTarget() QueryTarget {
+	return (*UpdatedPreparedQueryLog)(r).GetPreviousTarget()
+}
+
+func (r *updatedPreparedQueryLogReadonly) GetNewTarget() QueryTarget {
+	return (*UpdatedPreparedQueryLog)(r).GetNewTarget()
 }
 
 func (r *updatedPreparedQueryLogReadonly) Mutate() *UpdatedPreparedQueryLog {
