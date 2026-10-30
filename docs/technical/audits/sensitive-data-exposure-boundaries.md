@@ -244,3 +244,25 @@ does not establish historical audit/log or sink-read remediation.
 See [LedgerInfo](../architecture/subsystems/api/ledger-info.md) and regressions
 in internal/pkg/sensitive/projection_test.go, internal/adapter/http/ledger_info_contract_test.go
 and internal/adapter/grpc/ledger_info_read_test.go.
+
+### HTTP mirror transport diagnostic oracle
+
+Valid HTTP(S) mirror configurations can carry a passwordless userinfo token.
+Exercise both HTTPSource methods with a deterministic failing transport and
+raw/escaped tokens plus conventional username/password controls. Include a
+transport cause that echoes the URL, so sanitizing only the outer `url.Error`
+cannot pass. Follow real client redirects to a transport that fails with distinct
+redirect credentials, including passwords masked in net/http's final URL error.
+Cover credentials equal to the replacement marker. Preserve custom redirect
+policy, the default redirect limit and cancellation identity. Inspect each
+returned error's chain and alternate formatting.
+The real worker fixture must capture head and batch logs, accepted serialized
+`MirrorSyncUpdate` proposals and applied status. Require raw and encoded canary
+absence, retained ledger identity and harmless failure markers, unchanged request
+authentication and configured URL, and no ingestion-boundary advancement.
+Do not retain unsafe URL error objects behind a safe display string. Keep the
+malformed-URL admission/runtime regressions as independent production triggers.
+The executable oracles are `TestHTTPSource_TransportDiagnostics` and the worker
+transport regression in `internal/application/mirror/worker_diagnostic_test.go`.
+This protects newly emitted diagnostics; it does not rewrite historical status
+or classify configuration/audit read projections as safe.

@@ -185,7 +185,7 @@ from them. Previously consumed gaps are not repaired automatically. If a mirror 
 already skipped committed source history, rebuild it from the source into a
 fresh destination ledger rather than rewinding its immutable audit history.
 
-### HTTP URL parsing diagnostics
+### HTTP URL diagnostics
 
 At creation, admission parses `mirrorSource.http.baseUrl` and requires an
 absolute HTTP(S) URL with a nonempty hostname. Invalid configuration returns
@@ -218,6 +218,32 @@ HTTP source calls, worker logs, serialized proposals, real FSM application and
 ledger progress reads with a synthetic password and a transport that rejects
 any attempted network request. Adapter tests also cover invalid ports,
 userinfo escapes and control characters, including wrapped error chains.
+
+Valid HTTP(S) source URLs may carry passwordless userinfo tokens or a
+username/password pair. A transport failure is a separate diagnostic boundary:
+`net/http` can include passwordless userinfo in its URL wrapper, and a transport
+cause can repeat the credential-bearing URL. Before returning that failure,
+HTTPSource observes the original and redirected request credentials through a
+per-call copy of the HTTP client, preserving the configured redirect policy
+and the default ten-request limit. It removes userinfo and its raw and
+URL-encoded credential forms from the rendered diagnostic and detaches it from the original error chain. Safe
+transport markers remain available; cancellation and deadline identity are
+preserved using their credential-free context sentinels. The original source
+configuration and request authentication remain unchanged. Replacement text
+must not reintroduce a credential equal to the redaction marker; such values
+are removed instead.
+
+`TestHTTPSource_TransportDiagnostics` exercises both head and batch calls with
+a deterministic failing transport, raw/escaped tokens and password controls,
+including causes that echo the request URL, redirects introducing different
+credentials, and credentials equal to the replacement marker. It checks
+returned errors and alternate formatting through the safe chain. The worker transport regression
+captures both log paths and serialized accepted technical proposals, applies
+the status through the real FSM and checks the stored status and progress.
+Failure retains ledger identity and the harmless marker without advancing the
+ingestion boundary. These tests supplement the malformed-URL regressions.
+This changes newly emitted diagnostics only; persisted formats, accepted orders,
+audit evidence and historical status records are unchanged.
 
 Ingestion must return the oldest available logs strictly after the supplied
 boundary, so replaying history cannot replace available transactions with
