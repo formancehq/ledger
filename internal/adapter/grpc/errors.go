@@ -3,13 +3,29 @@ package grpc
 import (
 	"google.golang.org/genproto/googleapis/rpc/errdetails"
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 
+	"github.com/formancehq/ledger/v3/internal/adapter/apierr"
 	"github.com/formancehq/ledger/v3/internal/adapter/grpcerr"
 	"github.com/formancehq/ledger/v3/internal/domain"
 )
 
 const errorDomain = "ledger"
+
+// maintenanceRetryPushback stops native gRPC retries of an operational refusal
+// that requires an operator action. Decode validates the Ledger reason/code
+// pair, including when a follower re-emits a leader's status. Other Unavailable
+// failures retain their retry policy. This says nothing about earlier attempts
+// that may have committed before their response was lost.
+func maintenanceRetryPushback(err error) metadata.MD {
+	d, ok := apierr.Describe(grpcerr.Decode(err))
+	if !ok || d.Reason != domain.ErrReasonMaintenanceMode {
+		return nil
+	}
+
+	return metadata.Pairs("grpc-retry-pushback-ms", "-1")
+}
 
 // validationError is a transport-layer validation error for request guards
 // whose vocabulary is gRPC-specific (e.g. "envelope") and therefore must not

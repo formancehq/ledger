@@ -24,6 +24,7 @@
   ],
   "related_docs": ["docs/technical/audits/idempotency-retries-partial-failures.md", "AGENTS.md", "docs/technical/agent-context.md", "docs/technical/architecture/subsystems/admission/", "docs/technical/architecture/subsystems/api/", "docs/technical/architecture/subsystems/backup/incremental-restore-contract.md", "docs/technical/architecture/subsystems/consensus/", "docs/technical/architecture/subsystems/fsm/", "docs/technical/contributing/ai-audit.md", "docs/ops/cli.md", "docs/ops/deployment.md", "docs/technical/architecture/subsystems/api/atomic-ledger-creation.md"],
   "invariants": [
+    "The server's negative native gRPC retry pushback for validated MAINTENANCE_MODE preserves the original Unavailable status/details and does not redefine an earlier interrupted attempt as uncommitted. Explicit application retry loops, including Antithesis retry-forever recovery, retain the original key/payload and may ride the maintenance window out to recover a frozen result.",
     "A first keyed attempt interrupted by UncommittedFailure writes no frozen outcome or audit entry and may be retried after repair; a previously frozen outcome is replayed before that technical branch and must not execute again.",
     "Retrying one logical mutation must not create duplicate committed business effects when the API promises or relies on idempotence.",
     "A timeout or cancelled response must not be interpreted internally as proof that the mutation did not commit.",

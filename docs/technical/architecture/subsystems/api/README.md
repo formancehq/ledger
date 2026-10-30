@@ -19,6 +19,9 @@ validation of supplied page sizes before backend invocation (EN-2905).
 
 Interrupted cluster commands on a stopped Raft run return retryable
 `Unavailable`; see [gRPC error handling](grpc-api.md#error-handling).
+Maintenance rejections retain that status but stop native gRPC retries with a
+negative retry-pushback trailer; explicit application recovery loops retain
+their own retry policy.
 
 Decoded leader errors retain their exact gRPC status through routing wrappers
 and streaming cursors. See [forwarding and cancellation](http-api.md#forwarded-writes-and-the-transport-seam)
