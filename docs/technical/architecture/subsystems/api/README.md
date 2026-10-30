@@ -11,7 +11,7 @@ Client-facing transport layers (`internal/adapter/grpc`, `internal/adapter/http`
 | [protocol-compatibility.md](protocol-compatibility.md) | Mandatory service protocol revision, client/server rejection behavior, diagnostics, and revision maintenance (EN-1851). |
 | [http-api.md](http-api.md) | HTTP endpoint lifecycle and failure shutdown, REST API endpoints, instance-wide event sink creation/removal, single-decoding metadata key and path identifier segments, response formats, type-based large-integer response negotiation, exact metadata number decoding, ledger-log JSON output and discriminators, error handling, and the `apierr`/`grpcerr` error boundary crossed by a forwarded write. |
 | [auth.md](auth.md) | Client JWT authentication (OIDC + Ed25519), scope-based authorization, and the Raft inter-node cluster-secret auth layer. |
-| [sensitive-projection.md](sensitive-projection.md) | Detached, descriptor-driven secret projection and its ownership boundary. |
+| [sensitive-projection.md](sensitive-projection.md) | Detached secret projection, explicit connector-format strategies and their ownership boundary. |
 
 The [HTTP index inspection contract](http-api.md#inspect-a-metadata-index)
 defines accepted modes, omission defaults, and

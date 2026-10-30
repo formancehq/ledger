@@ -143,55 +143,64 @@ func TestCloneMasksMirrorDiagnostic(t *testing.T) {
 func TestRedactURL(t *testing.T) {
 	t.Parallel()
 	cases := []struct {
-		name string
-		in   string
-		want string
+		field protoreflect.FullName
+		name  string
+		in    string
+		want  string
 	}{
 		{
-			name: "empty",
-			in:   "",
-			want: "",
+			field: "common.HttpSinkConfig.endpoint",
+			name:  "empty",
+			in:    "",
+			want:  "",
 		},
 		{
-			name: "clickhouse with password",
-			in:   "clickhouse://user:secret@host:9000/db",
-			want: "clickhouse://user:xxxxx@host:9000/db",
+			field: "common.ClickHouseSinkConfig.dsn",
+			name:  "clickhouse with password",
+			in:    "clickhouse://user:secret@host:9000/db",
+			want:  "clickhouse://user:xxxxx@host:9000/db",
 		},
 		{
-			name: "clickhouse password in query",
-			in:   "clickhouse://host:9000/db?password=secret",
-			want: "clickhouse://host:9000/db?password=xxxxx",
+			field: "common.ClickHouseSinkConfig.dsn",
+			name:  "clickhouse password in query",
+			in:    "clickhouse://host:9000/db?password=secret",
+			want:  "clickhouse://host:9000/db?password=xxxxx",
 		},
 		{
-			name: "nats token in username",
-			in:   "nats://mytoken@host:4222",
-			want: "nats://xxxxx@host:4222",
+			field: "common.NatsSinkConfig.url",
+			name:  "nats token in username",
+			in:    "nats://mytoken@host:4222",
+			want:  "nats://xxxxx@host:4222",
 		},
 		{
-			name: "nats with password",
-			in:   "nats://user:secret@host:4222",
-			want: "nats://user:xxxxx@host:4222",
+			field: "common.NatsSinkConfig.url",
+			name:  "nats with password",
+			in:    "nats://user:secret@host:4222",
+			want:  "nats://user:xxxxx@host:4222",
 		},
 		{
-			name: "postgres password in url",
-			in:   "postgres://user:hunter2@host:5432/ledger?sslmode=disable",
-			want: "postgres://user:xxxxx@host:5432/ledger?sslmode=disable",
+			field: "common.PostgresMirrorSourceConfig.dsn",
+			name:  "postgres password in url",
+			in:    "postgres://user:hunter2@host:5432/ledger?sslmode=disable",
+			want:  "postgres://user:xxxxx@host:5432/ledger?sslmode=disable",
 		},
 		{
-			name: "no credentials preserved",
-			in:   "clickhouse://host:9000/db",
-			want: "clickhouse://host:9000/db",
+			field: "common.ClickHouseSinkConfig.dsn",
+			name:  "no credentials preserved",
+			in:    "clickhouse://host:9000/db",
+			want:  "clickhouse://host:9000/db",
 		},
 		{
-			name: "unparseable falls back to Marker",
-			in:   "not a url",
-			want: Marker,
+			field: "common.HttpSinkConfig.endpoint",
+			name:  "unparseable falls back to Marker",
+			in:    "not a url",
+			want:  Marker,
 		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			require.Equal(t, tc.want, redactURL(tc.in))
+			require.Equal(t, tc.want, projectConnection(t, tc.field, tc.in))
 		})
 	}
 }
@@ -244,7 +253,7 @@ func TestRedactURLClickHouseProxy(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			require.Equal(t, tc.want, redactURL(tc.in))
+			require.Equal(t, tc.want, Redact(&commonpb.ClickHouseSinkConfig{Dsn: tc.in}).GetDsn())
 		})
 	}
 }
@@ -285,7 +294,7 @@ func TestRedactURLNATSMultiServer(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			require.Equal(t, tc.want, redactURL(tc.in))
+			require.Equal(t, tc.want, Redact(&commonpb.NatsSinkConfig{Url: tc.in}).GetUrl())
 		})
 	}
 }
@@ -294,7 +303,7 @@ func TestRedactURLProxyDoubleEncode(t *testing.T) {
 	t.Parallel()
 	// Inner proxy URL with encoded delimiters in the token must not expose suffix.
 	in := "clickhouse://host:9000/db?http_proxy=http%3A%2F%2Fproxy%2F%3Ftoken%3Dprefix%2526suffix%253Dsecret"
-	result := redactURL(in)
+	result := Redact(&commonpb.ClickHouseSinkConfig{Dsn: in}).GetDsn()
 	require.NotContains(t, result, "prefix")
 	require.NotContains(t, result, "secret")
 	require.NotContains(t, result, "suffix")
@@ -304,7 +313,7 @@ func TestRedactURLClickHouseMultiHost(t *testing.T) {
 	t.Parallel()
 	// Multi-host ClickHouse DSN must preserve both hosts, database and options.
 	in := "clickhouse://alice:review-password@host1:9000,host2:9000/default?compress=true"
-	result := redactURL(in)
+	result := Redact(&commonpb.ClickHouseSinkConfig{Dsn: in}).GetDsn()
 	require.NotContains(t, result, "review-password")
 	require.Contains(t, result, "host1:9000,host2:9000")
 	require.Contains(t, result, "/default")
@@ -393,6 +402,9 @@ func TestCloneMasksPasswordlessURLUserinfo(t *testing.T) {
 			original := proto.Clone(ledger)
 			view := Redact(ledger)
 			want := scheme + "://xxxxx@source.example:8080/prefix?access_token=xxxxx&region=eu"
+			if scheme == "nats" {
+				want = Marker
+			}
 			require.Equal(t, want, view.GetMirrorSource().GetHttp().GetBaseUrl())
 			require.Equal(t, want, view.GetMirrorSource().GetHttp().GetOauth2ClientCredentials().GetTokenEndpoint())
 			require.Equal(t, "client", view.GetMirrorSource().GetHttp().GetOauth2ClientCredentials().GetClientId())

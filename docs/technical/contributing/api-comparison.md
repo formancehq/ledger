@@ -87,6 +87,12 @@ zero values and decimal-string counters (`string/bigint` in OpenAPI), preserving
 uint64 precision in TypeScript SDKs. v2 stats/log IDs use numeric JSON with
 `integer/int64` or `integer/bigint`; v2 has no equivalent mirror progress. The
 v3-specific counter representation intentionally differs for lossless decoding.
+Connection redaction selects formats by declared protobuf field identity.
+Supported PostgreSQL, NATS, ClickHouse and HTTP(S) values retain safe connection
+information; unsupported cross-format values and unregistered annotated fields
+are fully masked. Inputs, endpoints, envelopes and status/error behavior remain
+unchanged. This v3 projection has no equivalent typed mirror configuration in
+v2; see [sensitive projection](../architecture/subsystems/api/sensitive-projection.md).
 Nested read mirror configuration masks passwordless HTTP(S) URL userinfo as
 well as passwords and uses a distinct schema
 from unchanged flat creation input. Read rewrite actions model protojson

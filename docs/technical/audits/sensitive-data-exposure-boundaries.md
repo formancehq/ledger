@@ -98,6 +98,27 @@ uppercase and mixed-case HTTP(S) schemes. Human add-sink output omits the
 Secret row when no HMAC secret is configured; structured output reports
 `(none)`. Configured HMAC secrets display as `(set)`.
 
+## Explicit connection-format projection oracle
+
+`internal/pkg/sensitive/strategies.go` selects PostgreSQL, NATS, ClickHouse or
+HTTP(S) policy by full protobuf field identity. Enumerate all `sensitive_url`
+declarations independently and require a safe representative output for each;
+an unregistered annotated field must be fully masked. PostgreSQL keyword syntax
+must never be inferred for HTTP, NATS or ClickHouse fields. Exercise real
+`Redact` descriptors and registered public boundaries, not a replacement parser.
+
+Preserve PostgreSQL URL/socket and keyword DSN controls, duplicate/escaped
+passwords and sslpassword; NATS mixed-scheme lists and bare tokens; ClickHouse
+multi-host authorities, HTTP transport and encoded HTTP proxy credentials;
+HTTP(S) passwordless userinfo; malformed URLs/queries; unsupported cross-format
+values; and depth-exhausted proxies. Each query layer is decoded once and proxy
+nesting is bounded at eight edges. Keep safe hosts/paths/options when supported;
+fixed markers are expected for unsupported formats and malformed components.
+Retain current/checkpoint gRPC, routed HTTP and CLI output regressions. Compare
+original protobufs and detached nested slices before/after projection. No worker,
+sink, persistence or signed/audit bytes may be mutated. Strategy regressions live
+in `internal/pkg/sensitive/strategies_test.go` and `projection_test.go`.
+
 ## Surface inventory required at execution
 
 Before testing, build a matrix with one row per sensitive field and columns for
