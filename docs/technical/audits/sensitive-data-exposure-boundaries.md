@@ -251,7 +251,11 @@ Valid HTTP(S) mirror configurations can carry a passwordless userinfo token.
 Exercise both HTTPSource methods with a deterministic failing transport and
 raw/escaped tokens plus conventional username/password controls. Include a
 transport cause that echoes the URL, so sanitizing only the outer `url.Error`
-cannot pass. Inspect each returned error's chain and alternate formatting.
+cannot pass. Follow real client redirects to a transport that fails with distinct
+redirect credentials, including passwords masked in net/http's final URL error.
+Cover credentials equal to the replacement marker. Preserve custom redirect
+policy, the default redirect limit and cancellation identity. Inspect each
+returned error's chain and alternate formatting.
 The real worker fixture must capture head and batch logs, accepted serialized
 `MirrorSyncUpdate` proposals and applied status. Require raw and encoded canary
 absence, retained ledger identity and harmless failure markers, unchanged request

@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"sort"
 	"strconv"
 	"strings"
 )
@@ -51,9 +52,28 @@ func (s *HTTPSource) doGet(ctx context.Context, path string, query url.Values) (
 		return nil, fmt.Errorf("creating request: %w", err)
 	}
 
-	resp, err := s.httpClient.Do(req)
+	// Observe credentials before net/http masks passwords in its final URL
+	// error. Copy the client so concurrent source calls keep separate state.
+	users := []*url.Userinfo{u.User}
+	client := *s.httpClient
+	client.CheckRedirect = func(next *http.Request, via []*http.Request) error {
+		users = append(users, next.URL.User)
+		if s.httpClient.CheckRedirect != nil {
+			err := s.httpClient.CheckRedirect(next, via)
+			users = append(users, next.URL.User)
+
+			return err
+		}
+		// Preserve net/http's default redirect limit when no policy was supplied.
+		if len(via) >= 10 {
+			return errors.New("stopped after 10 redirects")
+		}
+
+		return nil
+	}
+	resp, err := client.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("fetching %s: %w", path, s.transportDiagnostic(err, u))
+		return nil, fmt.Errorf("fetching %s: %w", path, s.transportDiagnostic(err, users...))
 	}
 
 	if resp.StatusCode != http.StatusOK {
@@ -69,28 +89,44 @@ func (s *HTTPSource) doGet(ctx context.Context, path string, query url.Values) (
 // transportDiagnostic detaches the diagnostic from the unsafe client error.
 // net/http masks passwords in its URL wrapper, but not passwordless userinfo;
 // transport causes may also repeat credentials. Never retain that error chain.
-func (s *HTTPSource) transportDiagnostic(err error, requestURL *url.URL) error {
-	message := err.Error()
-	if user := requestURL.User; user != nil {
-		// Remove the complete encoded userinfo before individual components so
-		// overlapping usernames and passwords cannot leave a partial credential.
-		if userinfo := user.String(); userinfo != "" {
-			message = strings.ReplaceAll(message, userinfo, "[redacted]")
+func (s *HTTPSource) transportDiagnostic(err error, users ...*url.Userinfo) error {
+	values := []string{}
+	for _, user := range users {
+		if user == nil {
+			continue
 		}
-		credentials := []string{}
+		values = append(values, user.String())
+		credentials := []string{user.Username()}
 		if password, ok := user.Password(); ok {
 			credentials = append(credentials, password)
 		}
-		credentials = append(credentials, user.Username())
 		for _, credential := range credentials {
 			if credential == "" {
 				continue
 			}
-			for _, value := range []string{url.User(credential).String(), url.QueryEscape(credential), url.PathEscape(credential), credential} {
-				message = strings.ReplaceAll(message, value, "[redacted]")
-			}
+			values = append(values, url.User(credential).String(), url.QueryEscape(credential), url.PathEscape(credential), credential)
 		}
 	}
+	// A credential can itself equal the usual replacement marker. In that case
+	// remove it rather than reintroducing it through the replacement text.
+	replacement := "[redacted]"
+	for _, value := range values {
+		if value != "" && strings.Contains(replacement, value) {
+			replacement = ""
+
+			break
+		}
+	}
+	// Prefer complete userinfo and longer overlapping forms. A single pass
+	// prevents subsequent replacements from modifying already redacted text.
+	sort.SliceStable(values, func(i, j int) bool { return len(values[i]) > len(values[j]) })
+	pairs := make([]string, 0, 2*len(values))
+	for _, value := range values {
+		if value != "" {
+			pairs = append(pairs, value, replacement)
+		}
+	}
+	message := strings.NewReplacer(pairs...).Replace(err.Error())
 	// Preserve cancellation identity without retaining dependency error objects.
 	for _, cancellation := range []error{context.Canceled, context.DeadlineExceeded} {
 		if errors.Is(err, cancellation) {

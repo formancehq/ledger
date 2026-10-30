@@ -6,8 +6,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
+	"strings"
 	"testing"
 	"time"
 
@@ -159,20 +161,32 @@ func TestWorker_MalformedURLDoesNotDisclosePassword(t *testing.T) {
 // request URL as a transport might, exercising sanitization of both net/http's
 // outer url.Error and its underlying diagnostic without contacting a network.
 type failingHTTPMirrorTransport struct {
-	t     *testing.T
-	user  *url.Userinfo
-	calls []string
+	t            *testing.T
+	user         *url.Userinfo
+	calls        []string
+	redirectUser *url.Userinfo
 }
 
 func (r *failingHTTPMirrorTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	r.t.Helper()
+	if r.redirectUser != nil && req.URL.Host == "source.invalid" {
+		r.calls = append(r.calls, req.URL.Query().Get("sort"))
+
+		return &http.Response{StatusCode: http.StatusFound, Header: http.Header{"Location": {"https://" + r.redirectUser.String() + "@redirect.invalid/final"}}, Body: io.NopCloser(strings.NewReader("")), Request: req}, nil
+	}
+	expectedUser := r.user
+	if r.redirectUser != nil {
+		expectedUser = r.redirectUser
+	}
 	username, password, ok := req.BasicAuth()
-	expectedPassword, _ := r.user.Password()
+	expectedPassword, _ := expectedUser.Password()
 	require.True(r.t, ok)
-	require.Equal(r.t, r.user.Username(), username)
+	require.Equal(r.t, expectedUser.Username(), username)
 	require.Equal(r.t, expectedPassword, password)
-	require.Equal(r.t, r.user.String(), req.URL.User.String())
-	r.calls = append(r.calls, req.URL.Query().Get("sort"))
+	require.Equal(r.t, expectedUser.String(), req.URL.User.String())
+	if r.redirectUser == nil {
+		r.calls = append(r.calls, req.URL.Query().Get("sort"))
+	}
 
 	return nil, fmt.Errorf("mirror transport sentinel: %s", req.URL.String())
 }
@@ -184,6 +198,7 @@ func TestWorker_TransportErrorsDoNotDiscloseCredentials(t *testing.T) {
 		scheme string
 		user   *url.Userinfo
 	}{
+		{name: "replacement marker", scheme: "https", user: url.User("[redacted]")},
 		{name: "http passwordless token", scheme: "http", user: url.User("WORKER_TOKEN_91a7")},
 		{name: "https escaped passwordless token", scheme: "https", user: url.User("WORKER/TOKEN?91a7")},
 		{name: "http username and password", scheme: "http", user: url.UserPassword("WORKER_USER_91a7", "WORKER_PASS_91a7")},
@@ -191,116 +206,128 @@ func TestWorker_TransportErrorsDoNotDiscloseCredentials(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			const ledgerName = "transport-mirror"
-			const diagnostic = "mirror transport sentinel"
-			ctx, cancel := context.WithTimeout(internalauth.WithSystemActor(context.Background(), commands.ComponentMirror), 10*time.Second)
-			defer cancel()
-			var logs bytes.Buffer
-			log := logrus.New()
-			log.SetOutput(&logs)
-			log.SetFormatter(&logrus.JSONFormatter{})
-			logger := logging.NewLogrus(log)
-			meters := noop.NewMeterProvider()
-			store, err := dal.NewStore(t.TempDir(), logger, meters.Meter("test"), dal.DefaultConfig())
-			require.NoError(t, err)
-			seedMirrorAuditKey(t, store)
-			t.Cleanup(func() { require.NoError(t, store.Close()) })
-			attrs := attributes.New()
-			c, err := cache.New(100, meters.Meter("test"))
-			require.NoError(t, err)
-			registry := state.NewStateRegistry(c, attrs)
-			keys := keystore.NewKeyStore()
-			shared := state.NewSharedState()
-			machine, err := state.NewMachine(logger, registry, state.NewCacheSnapshotter(logger, registry, nil), store, dal.NewSentinelFactory(store, false), meters, keys, shared, signal.NewNotifications(), nil, "test-cluster", 0, func(*raftpb.Entry, *dal.WriteSession) error { return nil })
-			require.NoError(t, err)
-			writeMirrorMetadataPolicy(t, store, mirrorMetadataPolicy())
-			require.NoError(t, state.NewRecovery(machine, store).RecoverState())
-			tracker := node.NewIndexTracker(1)
-			builder := plan.NewBuilder(tracker, c, attrs, store, nil, logger, 0)
-			proposer := &applyingMirrorProposer{t: t, machine: machine, store: store, tracker: tracker}
-			writeGate := health.NewMockWriteGate(gomock.NewController(t))
-			writeGate.EXPECT().CheckWritesAllowed().Return(nil)
-			adm := admission.NewAdmission(store, logger, proposer, builder, meters, writeGate, keys, shared, attrs, numscript.NewNumscriptCache(0), func(context.Context) error { return nil })
+			for _, redirect := range []bool{false, true} {
+				t.Run(fmt.Sprintf("redirect=%t", redirect), func(t *testing.T) {
+					t.Parallel()
+					const ledgerName = "transport-mirror"
+					const diagnostic = "mirror transport sentinel"
+					ctx, cancel := context.WithTimeout(internalauth.WithSystemActor(context.Background(), commands.ComponentMirror), 10*time.Second)
+					defer cancel()
+					var logs bytes.Buffer
+					log := logrus.New()
+					log.SetOutput(&logs)
+					log.SetFormatter(&logrus.JSONFormatter{})
+					logger := logging.NewLogrus(log)
+					meters := noop.NewMeterProvider()
+					store, err := dal.NewStore(t.TempDir(), logger, meters.Meter("test"), dal.DefaultConfig())
+					require.NoError(t, err)
+					seedMirrorAuditKey(t, store)
+					t.Cleanup(func() { require.NoError(t, store.Close()) })
+					attrs := attributes.New()
+					c, err := cache.New(100, meters.Meter("test"))
+					require.NoError(t, err)
+					registry := state.NewStateRegistry(c, attrs)
+					keys := keystore.NewKeyStore()
+					shared := state.NewSharedState()
+					machine, err := state.NewMachine(logger, registry, state.NewCacheSnapshotter(logger, registry, nil), store, dal.NewSentinelFactory(store, false), meters, keys, shared, signal.NewNotifications(), nil, "test-cluster", 0, func(*raftpb.Entry, *dal.WriteSession) error { return nil })
+					require.NoError(t, err)
+					writeMirrorMetadataPolicy(t, store, mirrorMetadataPolicy())
+					require.NoError(t, state.NewRecovery(machine, store).RecoverState())
+					tracker := node.NewIndexTracker(1)
+					builder := plan.NewBuilder(tracker, c, attrs, store, nil, logger, 0)
+					proposer := &applyingMirrorProposer{t: t, machine: machine, store: store, tracker: tracker}
+					writeGate := health.NewMockWriteGate(gomock.NewController(t))
+					writeGate.EXPECT().CheckWritesAllowed().Return(nil)
+					adm := admission.NewAdmission(store, logger, proposer, builder, meters, writeGate, keys, shared, attrs, numscript.NewNumscriptCache(0), func(context.Context) error { return nil })
 
-			baseURL := (&url.URL{Scheme: tc.scheme, Host: "source.invalid", User: tc.user}).String()
-			config := &commonpb.MirrorSourceConfig{
-				LedgerName: "source-ledger",
-				Type:       &commonpb.MirrorSourceConfig_Http{Http: &commonpb.HttpMirrorSourceConfig{BaseUrl: baseURL}},
+					sourceUser := tc.user
+					if redirect {
+						sourceUser = url.User("INITIAL_WORKER_TOKEN")
+					}
+					baseURL := (&url.URL{Scheme: tc.scheme, Host: "source.invalid", User: sourceUser}).String()
+					config := &commonpb.MirrorSourceConfig{
+						LedgerName: "source-ledger",
+						Type:       &commonpb.MirrorSourceConfig_Http{Http: &commonpb.HttpMirrorSourceConfig{BaseUrl: baseURL}},
+					}
+					_, err = adm.Admit(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
+						Type: &servicepb.Request_CreateLedger{CreateLedger: &servicepb.CreateLedgerRequest{Name: ledgerName, Mode: commonpb.LedgerMode_LEDGER_MODE_MIRROR, MirrorSource: config}},
+					}))
+					require.NoError(t, err)
+					controller := ctrl.NewDefaultController(adm, store, logger, attrs, nil, nil, meters.Meter("test"))
+					ledger, err := controller.GetLedgerByName(ctx, ledgerName)
+					require.NoError(t, err)
+					require.Equal(t, baseURL, ledger.GetMirrorSource().GetHttp().GetBaseUrl())
+					require.Nil(t, ledger.GetMirrorSyncProgress().GetError())
+					transport := &failingHTTPMirrorTransport{t: t, user: sourceUser}
+					if redirect {
+						transport.redirectUser = tc.user
+					}
+					source := v2.NewHTTPSource(baseURL, config.GetLedgerName(), &http.Client{Transport: transport})
+					t.Cleanup(func() { require.NoError(t, source.Close()) })
+					w := NewWorker(ledgerName, 100, source, nil, store, proposer, builder, logger, meters)
+					assertSafe := func(diagnosticText string) {
+						t.Helper()
+						password, hasPassword := tc.user.Password()
+						secrets := []string{sourceUser.Username(), tc.user.Username(), url.User(tc.user.Username()).String(), tc.user.String()}
+						if hasPassword {
+							secrets = append(secrets, password, url.User(password).String())
+						}
+						for _, secret := range secrets {
+							require.NotContains(t, diagnosticText, secret)
+						}
+					}
+					proposed := 0
+					proposer.beforeApply = func(cmd *raftcmdpb.Proposal) {
+						proposed++
+						require.Empty(t, cmd.GetOrders())
+						require.Len(t, cmd.GetTechnicalUpdates(), 1)
+						update := cmd.GetTechnicalUpdates()[0].GetMirrorSync()
+						require.Equal(t, ledgerName, update.GetLedgerName())
+						require.Contains(t, update.GetError().GetMessage(), diagnostic)
+						encoded, err := cmd.MarshalVT()
+						require.NoError(t, err)
+						assertSafe(string(encoded))
+					}
+					// Follow the startup loop synchronously with an immediately ready backoff.
+					w.backoff = -time.Nanosecond
+					w.refreshSourceHead(ctx)
+					w.processLogs(ctx)
+					require.Equal(t, []string{"id:desc", "id:asc"}, transport.calls)
+					require.Equal(t, 1, proposed)
+					// Inspect each structured log independently so both request paths must retain
+					// their operation, ledger identity and harmless transport diagnostic.
+					decoder := json.NewDecoder(bytes.NewReader(logs.Bytes()))
+					observed := map[string]bool{}
+					for decoder.More() {
+						var entry map[string]any
+						require.NoError(t, decoder.Decode(&entry))
+						message, _ := entry["msg"].(string)
+						if message != "Failed to query source head" && message != "Mirror sync error" {
+							continue
+						}
+						observed[message] = true
+						require.Equal(t, ledgerName, entry["ledger"])
+						require.Contains(t, entry["error"], diagnostic)
+						assertSafe(fmt.Sprint(entry["error"]))
+					}
+					require.True(t, observed["Failed to query source head"])
+					require.True(t, observed["Mirror sync error"])
+					assertSafe(logs.String())
+					status, err := query.ReadMirrorStatus(store, ledgerName)
+					require.NoError(t, err)
+					require.Contains(t, status.GetMessage(), diagnostic)
+					assertSafe(status.GetMessage())
+					ledger, err = controller.GetLedgerByName(ctx, ledgerName)
+					require.NoError(t, err)
+					require.Equal(t, baseURL, ledger.GetMirrorSource().GetHttp().GetBaseUrl(), "diagnostics must not rewrite persisted authentication")
+					progress := ledger.GetMirrorSyncProgress()
+					require.Contains(t, progress.GetError().GetMessage(), diagnostic)
+					encoded, err := protojson.Marshal(progress)
+					require.NoError(t, err)
+					assertSafe(string(encoded))
+					require.Zero(t, progress.GetCursor(), "failure must not advance the ingestion boundary")
+				})
 			}
-			_, err = adm.Admit(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
-				Type: &servicepb.Request_CreateLedger{CreateLedger: &servicepb.CreateLedgerRequest{Name: ledgerName, Mode: commonpb.LedgerMode_LEDGER_MODE_MIRROR, MirrorSource: config}},
-			}))
-			require.NoError(t, err)
-			controller := ctrl.NewDefaultController(adm, store, logger, attrs, nil, nil, meters.Meter("test"))
-			ledger, err := controller.GetLedgerByName(ctx, ledgerName)
-			require.NoError(t, err)
-			require.Equal(t, baseURL, ledger.GetMirrorSource().GetHttp().GetBaseUrl())
-			require.Nil(t, ledger.GetMirrorSyncProgress().GetError())
-			transport := &failingHTTPMirrorTransport{t: t, user: tc.user}
-			source := v2.NewHTTPSource(baseURL, config.GetLedgerName(), &http.Client{Transport: transport})
-			t.Cleanup(func() { require.NoError(t, source.Close()) })
-			w := NewWorker(ledgerName, 100, source, nil, store, proposer, builder, logger, meters)
-			assertSafe := func(diagnosticText string) {
-				t.Helper()
-				password, hasPassword := tc.user.Password()
-				secrets := []string{tc.user.Username(), url.User(tc.user.Username()).String(), tc.user.String()}
-				if hasPassword {
-					secrets = append(secrets, password, url.User(password).String())
-				}
-				for _, secret := range secrets {
-					require.NotContains(t, diagnosticText, secret)
-				}
-			}
-			proposed := 0
-			proposer.beforeApply = func(cmd *raftcmdpb.Proposal) {
-				proposed++
-				require.Empty(t, cmd.GetOrders())
-				require.Len(t, cmd.GetTechnicalUpdates(), 1)
-				update := cmd.GetTechnicalUpdates()[0].GetMirrorSync()
-				require.Equal(t, ledgerName, update.GetLedgerName())
-				require.Contains(t, update.GetError().GetMessage(), diagnostic)
-				encoded, err := cmd.MarshalVT()
-				require.NoError(t, err)
-				assertSafe(string(encoded))
-			}
-			// Follow the startup loop synchronously with an immediately ready backoff.
-			w.backoff = -time.Nanosecond
-			w.refreshSourceHead(ctx)
-			w.processLogs(ctx)
-			require.Equal(t, []string{"id:desc", "id:asc"}, transport.calls)
-			require.Equal(t, 1, proposed)
-			// Inspect each structured log independently so both request paths must retain
-			// their operation, ledger identity and harmless transport diagnostic.
-			decoder := json.NewDecoder(bytes.NewReader(logs.Bytes()))
-			observed := map[string]bool{}
-			for decoder.More() {
-				var entry map[string]any
-				require.NoError(t, decoder.Decode(&entry))
-				message, _ := entry["msg"].(string)
-				if message != "Failed to query source head" && message != "Mirror sync error" {
-					continue
-				}
-				observed[message] = true
-				require.Equal(t, ledgerName, entry["ledger"])
-				require.Contains(t, entry["error"], diagnostic)
-				assertSafe(fmt.Sprint(entry["error"]))
-			}
-			require.True(t, observed["Failed to query source head"])
-			require.True(t, observed["Mirror sync error"])
-			assertSafe(logs.String())
-			status, err := query.ReadMirrorStatus(store, ledgerName)
-			require.NoError(t, err)
-			require.Contains(t, status.GetMessage(), diagnostic)
-			assertSafe(status.GetMessage())
-			ledger, err = controller.GetLedgerByName(ctx, ledgerName)
-			require.NoError(t, err)
-			require.Equal(t, baseURL, ledger.GetMirrorSource().GetHttp().GetBaseUrl(), "diagnostics must not rewrite persisted authentication")
-			progress := ledger.GetMirrorSyncProgress()
-			require.Contains(t, progress.GetError().GetMessage(), diagnostic)
-			encoded, err := protojson.Marshal(progress)
-			require.NoError(t, err)
-			assertSafe(string(encoded))
-			require.Zero(t, progress.GetCursor(), "failure must not advance the ingestion boundary")
 		})
 	}
 }
