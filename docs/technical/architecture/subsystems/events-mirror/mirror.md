@@ -185,7 +185,7 @@ from them. Previously consumed gaps are not repaired automatically. If a mirror 
 already skipped committed source history, rebuild it from the source into a
 fresh destination ledger rather than rewinding its immutable audit history.
 
-### HTTP URL parsing diagnostics
+### HTTP URL diagnostics
 
 At creation, admission parses `mirrorSource.http.baseUrl` and requires an
 absolute HTTP(S) URL with a nonempty hostname. Invalid configuration returns
@@ -218,6 +218,27 @@ HTTP source calls, worker logs, serialized proposals, real FSM application and
 ledger progress reads with a synthetic password and a transport that rejects
 any attempted network request. Adapter tests also cover invalid ports,
 userinfo escapes and control characters, including wrapped error chains.
+
+Valid HTTP(S) source URLs may carry passwordless userinfo tokens or a
+username/password pair. A transport failure is a separate diagnostic boundary:
+`net/http` can include passwordless userinfo in its URL wrapper, and a transport
+cause can repeat the credential-bearing URL. Before returning that failure,
+HTTPSource removes userinfo and its raw and URL-encoded credential forms from
+the rendered diagnostic and detaches it from the original error chain. Safe
+transport markers remain available; cancellation and deadline identity are
+preserved using their credential-free context sentinels. The original source
+configuration and request authentication remain unchanged.
+
+`TestHTTPSource_TransportDiagnostics` exercises both head and batch calls with
+a deterministic failing transport, raw/escaped tokens and password controls,
+including causes that echo the request URL. It checks returned errors and
+alternate formatting through the safe chain. The worker transport regression
+captures both log paths and serialized accepted technical proposals, applies
+the status through the real FSM and checks the stored status and progress.
+Failure retains ledger identity and the harmless marker without advancing the
+ingestion boundary. These tests supplement the malformed-URL regressions.
+This changes newly emitted diagnostics only; persisted formats, accepted orders,
+audit evidence and historical status records are unchanged.
 
 Ingestion must return the oldest available logs strictly after the supplied
 boundary, so replaying history cannot replace available transactions with

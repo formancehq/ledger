@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/url"
 	"strconv"
+	"strings"
 )
 
 // HTTPSource is a Source that fetches logs from a v2 ledger HTTP API.
@@ -52,7 +53,7 @@ func (s *HTTPSource) doGet(ctx context.Context, path string, query url.Values) (
 
 	resp, err := s.httpClient.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("fetching %s: %w", path, err)
+		return nil, fmt.Errorf("fetching %s: %w", path, s.transportDiagnostic(err, u))
 	}
 
 	if resp.StatusCode != http.StatusOK {
@@ -63,6 +64,41 @@ func (s *HTTPSource) doGet(ctx context.Context, path string, query url.Values) (
 	}
 
 	return resp, nil
+}
+
+// transportDiagnostic detaches the diagnostic from the unsafe client error.
+// net/http masks passwords in its URL wrapper, but not passwordless userinfo;
+// transport causes may also repeat credentials. Never retain that error chain.
+func (s *HTTPSource) transportDiagnostic(err error, requestURL *url.URL) error {
+	message := err.Error()
+	if user := requestURL.User; user != nil {
+		// Remove the complete encoded userinfo before individual components so
+		// overlapping usernames and passwords cannot leave a partial credential.
+		if userinfo := user.String(); userinfo != "" {
+			message = strings.ReplaceAll(message, userinfo, "[redacted]")
+		}
+		credentials := []string{}
+		if password, ok := user.Password(); ok {
+			credentials = append(credentials, password)
+		}
+		credentials = append(credentials, user.Username())
+		for _, credential := range credentials {
+			if credential == "" {
+				continue
+			}
+			for _, value := range []string{url.User(credential).String(), url.QueryEscape(credential), url.PathEscape(credential), credential} {
+				message = strings.ReplaceAll(message, value, "[redacted]")
+			}
+		}
+	}
+	// Preserve cancellation identity without retaining dependency error objects.
+	for _, cancellation := range []error{context.Canceled, context.DeadlineExceeded} {
+		if errors.Is(err, cancellation) {
+			return fmt.Errorf("%s: %w", message, cancellation)
+		}
+	}
+
+	return errors.New(message)
 }
 
 // FetchLogs fetches logs from the v2 API.
