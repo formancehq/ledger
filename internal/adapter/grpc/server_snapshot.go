@@ -18,7 +18,6 @@ import (
 
 	"github.com/formancehq/ledger/v3/internal/infra/state"
 	"github.com/formancehq/ledger/v3/internal/proto/snapshotpb"
-	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
 
 // SnapshotDonor exposes the applier state needed by the snapshot service.
@@ -38,7 +37,7 @@ type SnapshotServiceServerImpl struct {
 	snapshotpb.UnimplementedSnapshotServiceServer
 
 	logger       logging.Logger
-	store        *dal.Store
+	store        snapshotCheckpointStore
 	sessions     *snapshotSessionStore
 	nextSyncID   atomic.Uint64
 	donor        SnapshotDonor
@@ -56,7 +55,7 @@ type snapshotPreparation struct {
 }
 
 // NewSnapshotServiceServer creates a new SnapshotServiceServer.
-func NewSnapshotServiceServer(logger logging.Logger, s *dal.Store, sessionTTL time.Duration, donor SnapshotDonor) snapshotpb.SnapshotServiceServer {
+func NewSnapshotServiceServer(logger logging.Logger, s snapshotCheckpointStore, sessionTTL time.Duration, donor SnapshotDonor) snapshotpb.SnapshotServiceServer {
 	l := logger.WithField("component", "snapshot-server")
 
 	if sessionTTL == 0 {
@@ -102,8 +101,15 @@ func StopSnapshotService(server snapshotpb.SnapshotServiceServer) {
 	}
 }
 
-// PrepareSnapshot creates a fresh Pebble checkpoint, builds a manifest, and
-// returns a session ID that can be used for parallel FetchFile calls.
+// PrepareSnapshot waits for the requested applied index, then creates or
+// reuses a Pebble checkpoint and returns a session ID for parallel FetchFile
+// calls. Identified retries share a preparation only when its applied-index
+// floor is sufficient; a higher floor waits for the older preparation and
+// starts a fresh checkpoint. Unidentified requests never coalesce. Every
+// preparation shares one checkpoint slot. A queued cancellation discards its
+// preparation, while a live same-follower waiter may create its replacement;
+// manifest construction is detached so a caller timeout cannot abandon the
+// checkpoint after it has started.
 func (s *SnapshotServiceServerImpl) PrepareSnapshot(ctx context.Context, req *snapshotpb.PrepareSnapshotRequest) (*snapshotpb.PrepareSnapshotResponse, error) {
 	overallStart := time.Now()
 
@@ -167,12 +173,17 @@ func (s *SnapshotServiceServerImpl) PrepareSnapshot(ctx context.Context, req *sn
 						return nil, ctx.Err()
 					}
 				}
+				existing.waiters.Add(1)
 				done := existing.done
 				s.prepareMu.Unlock()
 				select {
 				case <-done:
+					existing.waiters.Add(-1)
+
 					continue
 				case <-ctx.Done():
+					existing.waiters.Add(-1)
+
 					return nil, ctx.Err()
 				}
 			}
