@@ -180,6 +180,13 @@ type authKeyEntry struct {
 // the ConfigMap may still have been refreshed. A complete carried set, an
 // issuer-backed cluster, and any partial resolution all return authKeysNotPending.
 func (r *ClusterReconciler) reconcileAuthKeys(ctx context.Context, ledger *ledgerv1alpha1.Cluster) ([]credentialsKeyInfo, authKeysPendingReason, error) {
+	return r.reconcileAuthKeysWithDeletion(ctx, ledger, true)
+}
+
+// During a stopped upgrade, a Pod may still reference the existing ConfigMap.
+// Keep it when Credentials temporarily stop matching; the ordinary pass may
+// delete it after the workload is free to reconcile again.
+func (r *ClusterReconciler) reconcileAuthKeysWithDeletion(ctx context.Context, ledger *ledgerv1alpha1.Cluster, mayDelete bool) ([]credentialsKeyInfo, authKeysPendingReason, error) {
 	logger := log.FromContext(ctx)
 
 	// Collect keys from cluster-scoped Credentials. matched counts Credentials
@@ -198,13 +205,18 @@ func (r *ClusterReconciler) reconcileAuthKeys(ctx context.Context, ledger *ledge
 	// Case 1: no Credentials match (matched == 0) — legitimate removal. Delete
 	// the ConfigMap if it exists.
 	if matched == 0 {
+		if !mayDelete {
+			return nil, authKeysNotPending, nil
+		}
 		cm := &corev1.ConfigMap{}
 		if err := r.Get(ctx, types.NamespacedName{Namespace: ledger.Namespace, Name: cmName}, cm); err != nil {
 			if !apierrors.IsNotFound(err) {
 				return nil, authKeysNotPending, fmt.Errorf("checking auth-keys ConfigMap: %w", err)
 			}
+		} else if notControlledBy(cm, ledger) {
+			logger.Info("not deleting auth-keys ConfigMap not controlled by this Cluster", "name", cmName)
 		} else {
-			if err := r.Delete(ctx, cm); err != nil && !apierrors.IsNotFound(err) {
+			if err := deleteInspected(ctx, r.Client, cm); err != nil {
 				return nil, authKeysNotPending, fmt.Errorf("deleting auth-keys ConfigMap: %w", err)
 			}
 			logger.Info("deleted auth-keys ConfigMap (no matching credentials)")
@@ -277,7 +289,7 @@ func (r *ClusterReconciler) reconcileAuthKeys(ctx context.Context, ledger *ledge
 	existingEntries := map[string]authKeyEntry{}
 	existingPubKeys := map[string]string{}
 	if len(unresolved) > 0 && !authExplicitlyDisabled {
-		entries, pubKeys, err := r.readExistingAuthKeys(ctx, ledger.Namespace, cmName)
+		entries, pubKeys, err := r.readExistingAuthKeys(ctx, ledger, cmName)
 		switch {
 		case errors.Is(err, errMalformedAuthKeys):
 			// The ConfigMap read SUCCEEDED but its auth-keys.json is corrupt. This is
@@ -425,13 +437,18 @@ func (r *ClusterReconciler) reconcileAuthKeys(ctx context.Context, ledger *ledge
 	// preserve (the server needs no key set here), so delete the ConfigMap like any
 	// other no-effective-keys removal rather than ship an empty one.
 	if len(merged) == 0 {
+		if !mayDelete {
+			return nil, authKeysNotPending, nil
+		}
 		cm := &corev1.ConfigMap{}
 		if err := r.Get(ctx, types.NamespacedName{Namespace: ledger.Namespace, Name: cmName}, cm); err != nil {
 			if !apierrors.IsNotFound(err) {
 				return nil, authKeysNotPending, fmt.Errorf("checking auth-keys ConfigMap: %w", err)
 			}
+		} else if notControlledBy(cm, ledger) {
+			logger.Info("not deleting auth-keys ConfigMap not controlled by this Cluster", "name", cmName)
 		} else {
-			if err := r.Delete(ctx, cm); err != nil && !apierrors.IsNotFound(err) {
+			if err := deleteInspected(ctx, r.Client, cm); err != nil {
 				return nil, authKeysNotPending, fmt.Errorf("deleting auth-keys ConfigMap: %w", err)
 			}
 			logger.Info("deleted auth-keys ConfigMap (no effective auth keys)")
@@ -477,7 +494,7 @@ func (r *ClusterReconciler) reconcileAuthKeys(ctx context.Context, ledger *ledge
 		}
 		maps.Copy(cm.Data, pubKeyData)
 
-		return controllerutil.SetControllerReference(ledger, cm, r.Scheme)
+		return setOwnedControllerReference(ledger, cm, r.Scheme, "ConfigMap")
 	})
 	if err != nil {
 		return nil, authKeysNotPending, fmt.Errorf("reconciling auth-keys ConfigMap: %w", err)
@@ -510,14 +527,21 @@ func (r *ClusterReconciler) reconcileAuthKeys(ctx context.Context, ledger *ledge
 // It returns the auth-keys.json entries keyed by their PublicKeyFile basename and
 // the hex public-key blobs keyed by the same filename. A missing ConfigMap
 // yields empty maps and no error: there is simply nothing to carry forward.
-func (r *ClusterReconciler) readExistingAuthKeys(ctx context.Context, namespace, cmName string) (map[string]authKeyEntry, map[string]string, error) {
+//
+// A ConfigMap under the name that this Cluster does not control is refused
+// with errResourceNameConflict: its keys must never be carried into this
+// Cluster's trust set.
+func (r *ClusterReconciler) readExistingAuthKeys(ctx context.Context, ledger *ledgerv1alpha1.Cluster, cmName string) (map[string]authKeyEntry, map[string]string, error) {
 	cm := &corev1.ConfigMap{}
-	if err := r.Get(ctx, types.NamespacedName{Namespace: namespace, Name: cmName}, cm); err != nil {
+	if err := r.Get(ctx, types.NamespacedName{Namespace: ledger.Namespace, Name: cmName}, cm); err != nil {
 		if apierrors.IsNotFound(err) {
 			return map[string]authKeyEntry{}, map[string]string{}, nil
 		}
 
 		return nil, nil, fmt.Errorf("reading existing auth-keys ConfigMap: %w", err)
+	}
+	if notControlledBy(cm, ledger) {
+		return nil, nil, nameConflictError("ConfigMap", cm, ledger)
 	}
 
 	entries := map[string]authKeyEntry{}

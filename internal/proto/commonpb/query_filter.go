@@ -30,8 +30,12 @@ import (
 //     `destination` for role-scoped address matches
 //   - `reference`, `reverted` (bool), `ledger`
 //   - built-in transaction uint fields: `id`, `timestamp`, `insertedAt`,
-//     `revertedAt`; log fields: `logId`, `date`
+//     `revertedAt`; log fields: `logId`, `date` — ranges via $gt/$gte/$lt/$lte,
+//     equality via $match
 //   - `asset` (has-asset, via $exists)
+//   - on QUERY_TARGET_AUDIT only (DecodeQueryFilterJSON): the bare audit fields
+//     of LookupAuditField — the same names as the textual grammar — via $match
+//     and, for the uint/datetime ones, the range operators
 //
 // A value is either a JSON literal or a parameter reference `{"$param": "name"}`
 // (prepared-query parameters resolved at execution time).
@@ -311,17 +315,16 @@ func marshalLeaf(x *QueryFilter) (map[string]any, error) {
 			return nil, fmt.Errorf("logBuiltinUint: unsupported field %v", f.LogBuiltinUint.GetField())
 		}
 	case *QueryFilter_Audit:
-		// AuditCondition is a gRPC-only filter (ledgerctl audit list --filter,
-		// carried as protobuf). It is deliberately NOT exposed on the REST-JSON
-		// surface: the only JSON entry point for QueryFilter is prepared queries,
-		// which are scoped to ACCOUNTS/TRANSACTIONS (see
-		// http.preparedQueryTargets), and this field-name-dispatched DSL cannot
-		// round-trip an audit condition losslessly anyway — audit field names
+		// An audit condition only decodes back with the audit target
+		// (DecodeQueryFilterJSON with QUERY_TARGET_AUDIT): its bare field names
 		// (ledger, timestamp, …) collide with the transaction/log conditions the
-		// decoder already claims for those names. Fail loud (invariant #7) rather
-		// than emit a JSON node that would silently decode back to the wrong
-		// condition type.
-		return nil, errors.New("query filter: audit conditions are not supported over REST JSON (gRPC-only)")
+		// target-independent decoder claims for those names. This encoder has no
+		// target and no caller needs an audit encoding (prepared queries — the
+		// only JSON-encoded filters — are never audit-targeted, see
+		// http.preparedQueryTargets). Fail loud (invariant #7) rather than emit a
+		// JSON node that would silently decode back to the wrong condition type
+		// through UnmarshalJSON.
+		return nil, errors.New("query filter: audit conditions have no target-independent JSON encoding")
 	default:
 		return nil, fmt.Errorf("query filter: unhandled leaf %T", f)
 	}
@@ -585,19 +588,14 @@ func marshalAddressMatch(am *AddressMatch) (map[string]any, error) {
 // UnmarshalJSON
 // ============================================================================
 
-// UnmarshalJSON implements json.Unmarshaler for QueryFilter.
+// UnmarshalJSON implements json.Unmarshaler for QueryFilter. It decodes the
+// target-independent vocabulary, which is the non-audit one: a bare `ledger` /
+// `timestamp` resolves to the transaction/log conditions, and the audit-only
+// field names are rejected. Callers that know the query target use
+// DecodeQueryFilterJSON instead, so the audit target resolves the bare audit
+// fields.
 func (x *QueryFilter) UnmarshalJSON(data []byte) error {
-	var m map[string]json.RawMessage
-	if err := json.Unmarshal(data, &m); err != nil {
-		return err
-	}
-
-	op, raw, err := singleOperator(m)
-	if err != nil {
-		return err
-	}
-
-	filter, err := decodeExpression(op, raw)
+	filter, err := filterDecoder{}.decode(data)
 	if err != nil {
 		return err
 	}
@@ -605,6 +603,40 @@ func (x *QueryFilter) UnmarshalJSON(data []byte) error {
 	x.Filter = filter.GetFilter()
 
 	return nil
+}
+
+// DecodeQueryFilterJSON decodes the structured JSON DSL, resolving bare field
+// names against target exactly like the textual filterexpr grammar does
+// (EN-1549): on QUERY_TARGET_AUDIT the bare audit fields (see LookupAuditField)
+// resolve to the AuditCondition arm — so `{"$match":{"ledger":"main"}}` is the
+// audit ledger condition there — and on every other target the decoding is the
+// target-independent one of UnmarshalJSON. It does not run the per-target
+// validity gate (domain.ValidateFilterForTarget); callers do.
+func DecodeQueryFilterJSON(data []byte, target QueryTarget) (*QueryFilter, error) {
+	return filterDecoder{audit: target == QueryTarget_QUERY_TARGET_AUDIT}.decode(data)
+}
+
+// filterDecoder carries the target-dependent field resolution through the
+// recursive descent. The zero value is the target-independent (non-audit)
+// decoder.
+type filterDecoder struct {
+	// audit resolves the bare audit field names to the AuditCondition arm.
+	audit bool
+}
+
+// decode decodes one DSL node (a JSON object with a single operator key).
+func (d filterDecoder) decode(data []byte) (*QueryFilter, error) {
+	var m map[string]json.RawMessage
+	if err := json.Unmarshal(data, &m); err != nil {
+		return nil, err
+	}
+
+	op, raw, err := singleOperator(m)
+	if err != nil {
+		return nil, err
+	}
+
+	return d.decodeExpression(op, raw)
 }
 
 // singleOperator returns the single top-level operator key and its raw value.
@@ -622,25 +654,25 @@ func singleOperator(m map[string]json.RawMessage) (string, json.RawMessage, erro
 }
 
 // decodeExpression decodes one DSL node into a QueryFilter.
-func decodeExpression(op string, raw json.RawMessage) (*QueryFilter, error) {
+func (d filterDecoder) decodeExpression(op string, raw json.RawMessage) (*QueryFilter, error) {
 	switch op {
 	case opAnd, opOr:
-		return decodeCombinator(op, raw)
+		return d.decodeCombinator(op, raw)
 	case opNot:
-		inner := &QueryFilter{}
-		if err := json.Unmarshal(raw, inner); err != nil {
+		inner, err := d.decode(raw)
+		if err != nil {
 			return nil, fmt.Errorf("$not: %w", err)
 		}
 
 		return &QueryFilter{Filter: &QueryFilter_Not{Not: &NotFilter{Filter: inner}}}, nil
 	case opMatch, opGt, opGte, opLt, opLte, opExists, opIn:
-		return decodeLeaf(op, raw)
+		return d.decodeLeaf(op, raw)
 	default:
 		return nil, fmt.Errorf("query filter: unknown operator %q", op)
 	}
 }
 
-func decodeCombinator(op string, raw json.RawMessage) (*QueryFilter, error) {
+func (d filterDecoder) decodeCombinator(op string, raw json.RawMessage) (*QueryFilter, error) {
 	var items []json.RawMessage
 	if err := json.Unmarshal(raw, &items); err != nil {
 		return nil, fmt.Errorf("%s: expected an array: %w", op, err)
@@ -654,7 +686,7 @@ func decodeCombinator(op string, raw json.RawMessage) (*QueryFilter, error) {
 	// a closed range `{"$and":[{"$gte":{"timestamp":1}},{"$lte":{"timestamp":9}}]}`
 	// round-tripping to one BuiltinUintCondition.
 	if op == opAnd {
-		if folded, ok, err := foldRangeAnd(items); err != nil {
+		if folded, ok, err := d.foldRangeAnd(items); err != nil {
 			return nil, err
 		} else if ok {
 			return folded, nil
@@ -663,8 +695,8 @@ func decodeCombinator(op string, raw json.RawMessage) (*QueryFilter, error) {
 
 	filters := make([]*QueryFilter, 0, len(items))
 	for i, it := range items {
-		sub := &QueryFilter{}
-		if err := json.Unmarshal(it, sub); err != nil {
+		sub, err := d.decode(it)
+		if err != nil {
 			return nil, fmt.Errorf("%s[%d]: %w", op, i, err)
 		}
 		filters = append(filters, sub)
@@ -680,7 +712,7 @@ func decodeCombinator(op string, raw json.RawMessage) (*QueryFilter, error) {
 // foldRangeAnd detects an $and array of exactly two range-bound leaves on the
 // same field with complementary directions (one lower, one upper) and folds them
 // into a single range condition. ok=false leaves the $and intact.
-func foldRangeAnd(items []json.RawMessage) (*QueryFilter, bool, error) {
+func (d filterDecoder) foldRangeAnd(items []json.RawMessage) (*QueryFilter, bool, error) {
 	if len(items) != 2 {
 		return nil, false, nil
 	}
@@ -714,7 +746,7 @@ func foldRangeAnd(items []json.RawMessage) (*QueryFilter, bool, error) {
 	}
 
 	sortBounds(bounds)
-	qf, err := buildRange(bounds[0].field, bounds)
+	qf, err := d.buildRange(bounds[0].field, bounds)
 	if err != nil {
 		return nil, false, err
 	}
@@ -748,7 +780,7 @@ func leafKV(op string, raw json.RawMessage) (string, jsonValue, error) {
 	return field, v, nil
 }
 
-func decodeLeaf(op string, raw json.RawMessage) (*QueryFilter, error) {
+func (d filterDecoder) decodeLeaf(op string, raw json.RawMessage) (*QueryFilter, error) {
 	field, value, err := leafKV(op, raw)
 	if err != nil {
 		return nil, err
@@ -758,9 +790,9 @@ func decodeLeaf(op string, raw json.RawMessage) (*QueryFilter, error) {
 	case opExists:
 		return decodeExists(field, value)
 	case opMatch:
-		return decodeMatch(field, value)
+		return d.decodeMatch(field, value)
 	case opGt, opGte, opLt, opLte:
-		return decodeSingleBound(op, field, value)
+		return d.decodeSingleBound(op, field, value)
 	case opIn:
 		return nil, errors.New("$in: not supported for this filter surface")
 	default:
@@ -807,7 +839,13 @@ func decodeExists(field string, value jsonValue) (*QueryFilter, error) {
 	}
 }
 
-func decodeMatch(field string, value jsonValue) (*QueryFilter, error) {
+func (d filterDecoder) decodeMatch(field string, value jsonValue) (*QueryFilter, error) {
+	if d.audit {
+		if spec, ok := LookupAuditField(field); ok {
+			return decodeAuditMatch(field, spec, value)
+		}
+	}
+
 	switch field {
 	case "address", "source", "destination":
 		return decodeAddressMatch(field, value)
@@ -835,6 +873,14 @@ func decodeMatch(field string, value jsonValue) (*QueryFilter, error) {
 		}
 
 		return &QueryFilter{Filter: &QueryFilter_Reverted{Reverted: &RevertedCondition{Value: b}}}, nil
+	case "id", "timestamp", "insertedAt", "revertedAt", "logId", "date":
+		// $match on a builtin uint range field is an equality: a closed inclusive
+		// range with both bounds on the same value — the proto the textual
+		// `field == value` builds. The value may be a parameter, like a range bound.
+		return d.buildRange(field, []bound{
+			{op: opGte, field: field, value: value},
+			{op: opLte, field: field, value: value},
+		})
 	default:
 		if key, ok := parseMetadataKey(field); ok {
 			return decodeMetadataMatch(key, value)
@@ -902,10 +948,10 @@ func decodeMetadataMatch(key string, value jsonValue) (*QueryFilter, error) {
 
 // decodeSingleBound decodes a lone $gt/$gte/$lt/$lte into a range proto
 // condition with only one bound set.
-func decodeSingleBound(op, field string, value jsonValue) (*QueryFilter, error) {
+func (d filterDecoder) decodeSingleBound(op, field string, value jsonValue) (*QueryFilter, error) {
 	b := bound{op: op, field: field, value: value}
 
-	return buildRange(field, []bound{b})
+	return d.buildRange(field, []bound{b})
 }
 
 // bound is a decoded range endpoint.
@@ -932,7 +978,13 @@ var dateSemanticFields = map[string]struct{}{
 
 // buildRange assembles one or two same-field bounds into the matching range
 // proto condition, dispatching on the field name.
-func buildRange(field string, bounds []bound) (*QueryFilter, error) {
+func (d filterDecoder) buildRange(field string, bounds []bound) (*QueryFilter, error) {
+	if d.audit {
+		if spec, ok := LookupAuditField(field); ok {
+			return decodeAuditRange(field, spec, bounds)
+		}
+	}
+
 	// Date-semantic bounds coerce RFC3339 strings to micros; every other uint
 	// field parses raw uints only.
 	coerce := boundUintCoercer(field)
@@ -1056,21 +1108,28 @@ func intConditionFromBounds(bounds []bound) (*IntCondition, error) {
 // string on, say, `id` still fails as before.
 func boundUintCoercer(field string) func(jsonValue) (uint64, error) {
 	if _, ok := dateSemanticFields[field]; ok {
-		return func(v jsonValue) (uint64, error) {
-			s, err := v.asString()
-			if err != nil {
-				// A JSON number literal (e.g. {"$gte":{"date":1700000000000000}})
-				// is not a string; fall back to the raw-uint decoding so both the
-				// numeric and decimal-string micro forms keep working.
-				return v.asUint64()
-			}
-
-			return CoerceDatetimeMicros(s)
-		}
+		return datetimeBound
 	}
 
-	return func(v jsonValue) (uint64, error) { return v.asUint64() }
+	return rawUintBound
 }
+
+// datetimeBound parses a date-semantic bound: an RFC3339 string or raw
+// unsigned microseconds (JSON number or decimal string).
+func datetimeBound(v jsonValue) (uint64, error) {
+	s, err := v.asString()
+	if err != nil {
+		// A JSON number literal (e.g. {"$gte":{"date":1700000000000000}})
+		// is not a string; fall back to the raw-uint decoding so both the
+		// numeric and decimal-string micro forms keep working.
+		return v.asUint64()
+	}
+
+	return CoerceDatetimeMicros(s)
+}
+
+// rawUintBound parses a plain uint bound (JSON number or decimal string).
+func rawUintBound(v jsonValue) (uint64, error) { return v.asUint64() }
 
 func uintConditionFromBounds(bounds []bound, coerce func(jsonValue) (uint64, error)) (*UintCondition, error) {
 	uc := &UintCondition{}
@@ -1110,4 +1169,64 @@ func sortBounds(bounds []bound) {
 	sort.SliceStable(bounds, func(i, j int) bool {
 		return bounds[i].isLower() && !bounds[j].isLower()
 	})
+}
+
+// --- audit fields (QUERY_TARGET_AUDIT only) ------------------------------
+
+// decodeAuditMatch decodes `{"$match":{"<auditField>": value}}`: an exact match
+// on a string audit field, an equality on a uint/datetime one. Audit reads are
+// evaluated without a parameter-resolution context, so a $param value is
+// rejected — the same rule the textual grammar applies.
+func decodeAuditMatch(name string, spec AuditFieldSpec, value jsonValue) (*QueryFilter, error) {
+	if value.isParam() {
+		return nil, fmt.Errorf("audit field %q does not support parameters", name)
+	}
+
+	if spec.Kind == AuditFieldKindString {
+		s, err := value.asString()
+		if err != nil {
+			return nil, fmt.Errorf("audit field %q: %w", name, err)
+		}
+
+		return auditFilter(spec.Field, &AuditCondition{Condition: &AuditCondition_StringCond{
+			StringCond: &StringCondition{Value: &StringCondition_Hardcoded{Hardcoded: s}},
+		}}), nil
+	}
+
+	return decodeAuditRange(name, spec, []bound{
+		{op: opGte, field: name, value: value},
+		{op: opLte, field: name, value: value},
+	})
+}
+
+// decodeAuditRange decodes one or two bounds on a uint/datetime audit field into
+// a single AuditCondition range. String audit fields have no range form.
+func decodeAuditRange(name string, spec AuditFieldSpec, bounds []bound) (*QueryFilter, error) {
+	if spec.Kind == AuditFieldKindString {
+		return nil, fmt.Errorf("audit field %q supports $match only", name)
+	}
+
+	for _, b := range bounds {
+		if b.value.isParam() {
+			return nil, fmt.Errorf("audit field %q does not support parameters", name)
+		}
+	}
+
+	coerce := rawUintBound
+	if spec.Kind == AuditFieldKindDatetime {
+		coerce = datetimeBound
+	}
+
+	uc, err := uintConditionFromBounds(bounds, coerce)
+	if err != nil {
+		return nil, fmt.Errorf("audit field %q: %w", name, err)
+	}
+
+	return auditFilter(spec.Field, &AuditCondition{Condition: &AuditCondition_UintCond{UintCond: uc}}), nil
+}
+
+func auditFilter(field AuditField, cond *AuditCondition) *QueryFilter {
+	cond.Field = field
+
+	return &QueryFilter{Filter: &QueryFilter_Audit{Audit: cond}}
 }

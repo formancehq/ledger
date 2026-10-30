@@ -15,7 +15,7 @@ func (r *ClusterReconciler) reconcileIngress(ctx context.Context, ledger *ledger
 	name := resourceName(ledger.Name)
 
 	if ledger.Spec.Ingress == nil || !ledger.Spec.Ingress.Enabled {
-		return r.deleteIfExists(ctx, &networkingv1.Ingress{
+		return r.deleteIfExists(ctx, ledger, &networkingv1.Ingress{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      name,
 				Namespace: ledger.Namespace,
@@ -49,7 +49,7 @@ func (r *ClusterReconciler) reconcileIngress(ctx context.Context, ledger *ledger
 
 		ing.Spec = spec
 
-		return controllerutil.SetControllerReference(ledger, ing, r.Scheme)
+		return setOwnedControllerReference(ledger, ing, r.Scheme, "Ingress")
 	})
 
 	return err

@@ -1078,3 +1078,34 @@ func TestGlobalState_MalformedPreparedQueryRefusedAtAdmission(t *testing.T) {
 	require.False(t, got.OK)
 	require.Equal(t, domain.ErrReasonFilterCompilation, got.Reason)
 }
+
+// TestPreparedQueryAdmissionReasonMirrorsAdmissionShapeGate pins that the
+// oracle predicts the admission-only filter shape refusals on create and
+// update (an empty param name, a nil logId range), while the payload check it
+// shares with the FSM mirror keeps accepting them.
+func TestPreparedQueryAdmissionReasonMirrorsAdmissionShapeGate(t *testing.T) {
+	t.Parallel()
+
+	emptyParam := &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_Reference{Reference: &commonpb.ReferenceCondition{
+		Cond: &commonpb.StringCondition{Value: &commonpb.StringCondition_Param{Param: ""}},
+	}}}
+	nilLogID := &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_LogId{LogId: &commonpb.LogIdCondition{}}}
+
+	cases := map[string]struct {
+		filter *commonpb.QueryFilter
+		target commonpb.QueryTarget
+	}{
+		"empty param": {emptyParam, commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS},
+		"nil logId":   {nilLogID, commonpb.QueryTarget_QUERY_TARGET_LOGS},
+	}
+
+	for name, tc := range cases {
+		want := domain.ValidateFilterAdmissionShape(tc.filter)
+		require.NotNil(t, want, name)
+
+		require.Equal(t, want.Reason(), preparedQueryAdmissionReason(pqReq("q", tc.target, tc.filter)), "create %s", name)
+		require.Equal(t, want.Reason(), preparedQueryAdmissionReason(pqUpdateReq("q", tc.filter)), "update %s", name)
+		require.Empty(t, preparedQueryPayloadReason(&commonpb.PreparedQuery{Name: "q", Target: tc.target, Filter: tc.filter}),
+			"the FSM mirror must not refuse %s", name)
+	}
+}

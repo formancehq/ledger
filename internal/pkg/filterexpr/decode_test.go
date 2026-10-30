@@ -283,23 +283,27 @@ func TestDecodeDualFormat_Malformed(t *testing.T) {
 	}
 }
 
-// TestDecodeDualFormat_AuditTextOnly documents and locks the audit-arm decision:
-// an audit condition parses only via the textual form; the structured JSON DSL
-// has no representation for it and is rejected by the codec (EN-1241). Both flow
-// through the single shared decoder.
-func TestDecodeDualFormat_AuditTextOnly(t *testing.T) {
+// TestDecodeDualFormat_AuditBothForms locks the audit-arm decision: both
+// serializations resolve the bare audit fields against QUERY_TARGET_AUDIT and
+// decode to the same audit condition (the exhaustive field table is
+// TestDualFormatFieldParity). It replaces the former text-only audit contract
+// (EN-1241), which left every audit filter unreachable through the JSON DSL.
+func TestDecodeDualFormat_AuditBothForms(t *testing.T) {
 	t.Parallel()
 
 	fromText, err := DecodeDualFormat([]byte(`outcome == failure`), commonpb.QueryTarget_QUERY_TARGET_AUDIT)
 	require.NoError(t, err, "textual audit filter must decode")
-	require.NotNil(t, fromText)
 	require.IsType(t, &commonpb.QueryFilter_Audit{}, fromText.GetFilter())
 
-	// There is no structured JSON representation of an audit condition — the codec
-	// rejects any attempt to carry one (its field names collide with the
-	// transaction/log conditions the JSON DSL already claims).
-	_, err = DecodeDualFormat([]byte(`{"$match":{"outcome":"failure"}}`), commonpb.QueryTarget_QUERY_TARGET_AUDIT)
-	require.Error(t, err, "audit has no structured JSON form; a structured filter must not decode to a valid audit condition")
+	fromJSON, err := DecodeDualFormat([]byte(`{"$match":{"outcome":"failure"}}`), commonpb.QueryTarget_QUERY_TARGET_AUDIT)
+	require.NoError(t, err, "structured audit filter must decode")
+	require.True(t, proto.Equal(fromText, fromJSON))
+
+	// The audit names only resolve on the audit target: off it, the same JSON is
+	// an unknown field, exactly like the textual form.
+	_, err = DecodeDualFormat([]byte(`{"$match":{"outcome":"failure"}}`), commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "unsupported field")
 }
 
 // TestDecodeDualFormat_BareFieldTargetAwareResolution is the core EN-1549 check:

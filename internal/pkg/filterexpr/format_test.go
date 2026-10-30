@@ -1,6 +1,7 @@
 package filterexpr
 
 import (
+	"strconv"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -658,4 +659,124 @@ func TestFormatIntConditionEdgeCases(t *testing.T) {
 		f := intField("x", &commonpb.IntCondition{})
 		assert.Equal(t, "metadata[x] <int?>", Format(f))
 	})
+}
+
+// TestFormatNilUintConditionDoesNotPanic pins that a uint range leaf persisted
+// with no condition (admission refuses it now, older data may hold it) renders
+// as a placeholder the grammar refuses, so `queries list` and configuration
+// export keep working and `configuration apply` fails loudly instead of
+// re-creating a different filter.
+func TestFormatNilUintConditionDoesNotPanic(t *testing.T) {
+	t.Parallel()
+
+	cases := map[string]struct {
+		filter *commonpb.QueryFilter
+		target commonpb.QueryTarget
+		want   string
+	}{
+		"logId": {
+			filter: &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_LogId{LogId: &commonpb.LogIdCondition{}}},
+			target: commonpb.QueryTarget_QUERY_TARGET_LOGS,
+			want:   "logId <uint?>",
+		},
+		"timestamp": {
+			filter: &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_BuiltinUint{BuiltinUint: &commonpb.BuiltinUintCondition{
+				Field: commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP,
+			}}},
+			target: commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS,
+			want:   "timestamp <uint?>",
+		},
+	}
+
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			var out string
+			require.NotPanics(t, func() { out = Format(tc.filter) })
+			assert.Equal(t, tc.want, out)
+
+			_, err := DecodeDualFormatStructuralOnly([]byte(out), tc.target)
+			require.Error(t, err)
+		})
+	}
+}
+
+// TestParamNameGateMatchesGrammar pins that commonpb.IsTextualFilterParamName,
+// which admission enforces, accepts exactly the names the textual parser reads
+// back as a single parameter reference.
+func TestParamNameGateMatchesGrammar(t *testing.T) {
+	t.Parallel()
+
+	names := []string{"n", "_x", "andy", "x_1", "1n", "a-b", "n or reverted == true", "USD/2"}
+	names = append(names, commonpb.FilterGrammarKeywords...)
+
+	for _, name := range names {
+		parsed, err := Parse("reference == $"+name, commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS)
+		roundTrips := err == nil && parsed.GetReference().GetCond().GetParam() == name
+		assert.Equal(t, commonpb.IsTextualFilterParamName(name), roundTrips, "name %q", name)
+	}
+}
+
+// TestFormatInvalidParamNameFailsReparse pins the export side of the param
+// name gate: a stored name the grammar cannot read back renders as text the
+// parser refuses, instead of `$n or reverted == true`, which would re-apply as
+// a wider filter.
+func TestFormatInvalidParamNameFailsReparse(t *testing.T) {
+	t.Parallel()
+
+	bad := "n or reverted == true"
+	cases := map[string]*commonpb.QueryFilter{
+		"uint range": {Filter: &commonpb.QueryFilter_BuiltinUint{BuiltinUint: &commonpb.BuiltinUintCondition{
+			Field: commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_ID,
+			Cond:  &commonpb.UintCondition{ParamMin: bad},
+		}}},
+		"reference": {Filter: &commonpb.QueryFilter_Reference{Reference: &commonpb.ReferenceCondition{
+			Cond: &commonpb.StringCondition{Value: &commonpb.StringCondition_Param{Param: bad}},
+		}}},
+		"address": {Filter: &commonpb.QueryFilter_Address{Address: &commonpb.AddressMatch{
+			Match: &commonpb.AddressMatch_ParamExact{ParamExact: bad},
+		}}},
+	}
+
+	for name, f := range cases {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			out := Format(f)
+			assert.Contains(t, out, `$<invalid param "n or reverted == true">`)
+
+			_, err := DecodeDualFormatStructuralOnly([]byte(out), commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS)
+			require.Error(t, err)
+		})
+	}
+}
+
+// TestFormatStringWithQuotesRoundTrips pins that a string value carrying a
+// quote character exports to text that re-parses as the same value: the
+// lexer's String token has no escapes, so a value with `"` must use single
+// quotes, and a value with both quote kinds must fail re-parse loudly rather
+// than round-trip into a different value.
+func TestFormatStringWithQuotesRoundTrips(t *testing.T) {
+	t.Parallel()
+
+	target := commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS
+
+	for _, ref := range []string{`a"b`, `it's`, `"`, `'`} {
+		raw := []byte(`{"$match":{"reference":` + strconv.Quote(ref) + `}}`)
+		f, err := DecodeDualFormatStructuralOnly(raw, target)
+		require.NoError(t, err, ref)
+
+		back, err := Parse(Format(f), target)
+		require.NoError(t, err, "ref %q exported as %s", ref, Format(f))
+		assert.Equal(t, ref, back.GetReference().GetCond().GetHardcoded(), "ref %q", ref)
+	}
+
+	both := &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_Reference{Reference: &commonpb.ReferenceCondition{
+		Cond: &commonpb.StringCondition{Value: &commonpb.StringCondition_Hardcoded{Hardcoded: `a"b'c`}},
+	}}}
+	out := Format(both)
+	assert.Contains(t, out, "<unrepresentable string")
+	_, err := Parse(out, target)
+	require.Error(t, err)
 }

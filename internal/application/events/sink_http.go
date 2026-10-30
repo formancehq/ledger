@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/formancehq/ledger/v3/internal/pkg/httptransport"
 	"github.com/formancehq/ledger/v3/internal/proto/eventspb"
 )
 
@@ -30,25 +31,39 @@ type HTTPSinkConfig struct {
 // sink never follows redirects: any 3xx is a delivery failure, so the body, its
 // signature and the endpoint URL never reach an unconfigured destination.
 type HTTPSink struct {
-	errors   sinkErrorSanitizer
-	client   *http.Client
-	endpoint string
-	secret   string
-	format   Format
+	errors sinkErrorSanitizer
+	client *http.Client
+	// ownsTransport is false when the client shares an uncloneable
+	// http.DefaultTransport, whose idle connections Close must leave alone.
+	ownsTransport bool
+	endpoint      string
+	secret        string
+	format        Format
 }
 
 // NewHTTPSink creates a new HTTP webhook sink.
-func NewHTTPSink(cfg HTTPSinkConfig) (_ *HTTPSink, retErr error) {
+func NewHTTPSink(cfg HTTPSinkConfig) (*HTTPSink, error) {
+	return newHTTPSink(cfg, http.DefaultTransport)
+}
+
+// newHTTPSink builds the sink on a transport derived from defaultTransport.
+func newHTTPSink(cfg HTTPSinkConfig, defaultTransport http.RoundTripper) (_ *HTTPSink, retErr error) {
 	sanitizer := newSinkErrorSanitizer([]string{cfg.Endpoint}, cfg.Secret)
 	defer sanitizer.sanitizeReturned(&retErr)
 	if cfg.Endpoint == "" {
 		return nil, errors.New("HTTP sink endpoint is required")
 	}
 
+	// Own the transport when possible: Close must not drop connections of
+	// other sinks or of any other client sharing the default transport.
+	transport, ownsTransport := httptransport.Clone(defaultTransport)
+
 	return &HTTPSink{
-		errors: sanitizer,
+		errors:        sanitizer,
+		ownsTransport: ownsTransport,
 		client: &http.Client{
-			Timeout: 30 * time.Second,
+			Transport: transport,
+			Timeout:   30 * time.Second,
 			// Return every redirect response to post, which reports it as a failure.
 			CheckRedirect: func(*http.Request, []*http.Request) error {
 				return http.ErrUseLastResponse
@@ -78,7 +93,9 @@ func (s *HTTPSink) Publish(ctx context.Context, events []*eventspb.Event) (retEr
 
 func (s *HTTPSink) Close() (retErr error) {
 	defer s.errors.sanitizeReturned(&retErr)
-	s.client.CloseIdleConnections()
+	if s.ownsTransport {
+		s.client.CloseIdleConnections()
+	}
 
 	return nil
 }

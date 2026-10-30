@@ -73,7 +73,7 @@ func TestBackupRunCommittedCreateLostResponseIntegration(t *testing.T) {
 			return nil
 		},
 	})
-	reconciler := &BackupRunReconciler{Client: wrapped, Scheme: c.Scheme(), Clientset: clientset}
+	reconciler := &BackupRunReconciler{Client: wrapped, APIReader: wrapped, Scheme: c.Scheme(), Clientset: clientset}
 	_, err = reconciler.Reconcile(testCtx, req)
 	require.ErrorIs(t, err, context.DeadlineExceeded)
 	require.NoError(t, c.Get(testCtx, req.NamespacedName, run))
@@ -98,7 +98,7 @@ func TestBackupRunCommittedCreateLostResponseIntegration(t *testing.T) {
 	}
 	require.NoError(t, c.Create(testCtx, sibling))
 	// A fresh controller has no memory of the timed-out request.
-	reconciler = &BackupRunReconciler{Client: wrapped, Scheme: c.Scheme(), Clientset: clientset}
+	reconciler = &BackupRunReconciler{Client: wrapped, APIReader: wrapped, Scheme: c.Scheme(), Clientset: clientset}
 	result, err := reconciler.Reconcile(testCtx, ctrl.Request{NamespacedName: client.ObjectKeyFromObject(sibling)})
 	require.NoError(t, err)
 	require.Equal(t, concurrencyRequeue, result.RequeueAfter)

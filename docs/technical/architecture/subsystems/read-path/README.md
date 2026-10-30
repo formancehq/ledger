@@ -26,7 +26,7 @@ their general materializing path.
 | [prepared-queries.md](prepared-queries.md) | Named pre-validated query templates: lifecycle, filter DSL, execution, shared LIST page-size limits, unfiltered volume aggregation, bloom acceleration. |
 | [query-checkpoints.md](query-checkpoints.md) | Point-in-time snapshots, per-replica readiness, historical replay results, and concurrent deletion. |
 | [typed-metadata.md](typed-metadata.md) | Typed values, immutable primary metadata, declared schemas, and versioned index coercion. |
-| [query-filter.md](query-filter.md) | Canonical HTTP QueryFilter surface: dual-format filter, parameter classification, textual/structured asymmetries, date coercion, AND-combination, audit text-only. |
+| [query-filter.md](query-filter.md) | Canonical HTTP QueryFilter surface: dual-format filter, parameter classification, textual/structured field parity and operator asymmetries, date coercion, AND-combination, audit field resolution. |
 | [query-profile.md](query-profile.md) | Per-request read diagnostics: server-side phase breakdown (prepare/execute/barrier/deliver), why barrier and delivery are excluded from the server total, gRPC/HTTP parity, iterator tree. |
 
 ## Related

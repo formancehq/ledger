@@ -85,7 +85,7 @@ func matchingCredentials(name string, selector map[string]string, distributed bo
 // existingAuthKeysConfigMap returns a ConfigMap standing in for a previously
 // reconciled auth-keys ConfigMap for the given Cluster.
 func existingAuthKeysConfigMap(clusterName, namespace string) *corev1.ConfigMap {
-	return &corev1.ConfigMap{
+	return controlledByCluster(&corev1.ConfigMap{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      authKeysConfigMapName(clusterName),
 			Namespace: namespace,
@@ -93,7 +93,7 @@ func existingAuthKeysConfigMap(clusterName, namespace string) *corev1.ConfigMap 
 		Data: map[string]string{
 			"auth-keys.json": `{"keys":[{"keyId":"stale","publicKeyFile":"/auth-keys/stale.hex","scopes":["read"]}]}`,
 		},
-	}
+	}, clusterNamed(clusterName))
 }
 
 // authKeysConfigMapWithEntries builds an auth-keys ConfigMap whose auth-keys.json
@@ -122,13 +122,13 @@ func authKeysConfigMapWithEntries(clusterName, namespace string, entries map[str
 	}
 	data["auth-keys.json"] = string(raw)
 
-	return &corev1.ConfigMap{
+	return controlledByCluster(&corev1.ConfigMap{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      authKeysConfigMapName(clusterName),
 			Namespace: namespace,
 		},
 		Data: data,
-	}
+	}, clusterNamed(clusterName))
 }
 
 // TestReconcileAuthKeys_TransientNonDistribution_PreservesConfigMap covers the
@@ -211,13 +211,13 @@ func TestReconcileAuthKeys_TransientNonDistribution_CompleteCarriedSet_RollsWith
 	}}}
 	priorRaw, err := json.Marshal(prior)
 	require.NoError(t, err)
-	existingCM := &corev1.ConfigMap{
+	existingCM := controlledByCluster(&corev1.ConfigMap{
 		ObjectMeta: metav1.ObjectMeta{Name: authKeysConfigMapName(clusterName), Namespace: namespace},
 		Data: map[string]string{
 			"auth-keys.json": string(priorRaw),
 			fileName:         "deadbeef",
 		},
-	}
+	}, clusterNamed(clusterName))
 
 	// Live Credentials: still undistributed, but authorization has been narrowed
 	// to read-only with superuser cleared (matchingCredentials sets Scopes=["read"],
@@ -278,14 +278,14 @@ func TestReconcileAuthKeys_TransientNonDistribution_IncompleteCarriedSet_StaysPe
 	}}
 	priorRaw, err := json.Marshal(prior)
 	require.NoError(t, err)
-	existingCM := &corev1.ConfigMap{
+	existingCM := controlledByCluster(&corev1.ConfigMap{
 		ObjectMeta: metav1.ObjectMeta{Name: authKeysConfigMapName(clusterName), Namespace: namespace},
 		Data: map[string]string{
 			"auth-keys.json": string(priorRaw),
 			fileA:            "aaaa",
 			// fileB blob intentionally omitted -> cred-b cannot be carried forward.
 		},
-	}
+	}, clusterNamed(clusterName))
 	credA := matchingCredentials("thierry-cred-a", selector, false, "", "")
 	credB := matchingCredentials("thierry-cred-b", selector, false, "", "")
 
@@ -605,7 +605,7 @@ func TestReconcileAuthKeys_FullyResolved_MalformedConfigMap_SelfHeals(t *testing
 
 	scheme := authKeysScheme(t)
 	// Malformed existing ConfigMap: auth-keys.json is not valid JSON.
-	malformedCM := &corev1.ConfigMap{
+	malformedCM := controlledByCluster(&corev1.ConfigMap{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      authKeysConfigMapName(clusterName),
 			Namespace: namespace,
@@ -613,7 +613,7 @@ func TestReconcileAuthKeys_FullyResolved_MalformedConfigMap_SelfHeals(t *testing
 		Data: map[string]string{
 			"auth-keys.json": `{"keys":[{"keyId":"corrupt",`, // truncated / invalid JSON
 		},
-	}
+	}, clusterNamed(clusterName))
 	cred := matchingCredentials("thierry-cred", selector, true, namespace, secretName)
 	secret := &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{Name: secretName, Namespace: namespace},
@@ -666,7 +666,7 @@ func TestReconcileAuthKeys_Partial_MalformedConfigMap_SelfHeals(t *testing.T) {
 
 	scheme := authKeysScheme(t)
 	// Existing ConfigMap present but its auth-keys.json is corrupt.
-	malformedCM := &corev1.ConfigMap{
+	malformedCM := controlledByCluster(&corev1.ConfigMap{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      authKeysConfigMapName(clusterName),
 			Namespace: namespace,
@@ -674,7 +674,7 @@ func TestReconcileAuthKeys_Partial_MalformedConfigMap_SelfHeals(t *testing.T) {
 		Data: map[string]string{
 			"auth-keys.json": `{"keys":[{"keyId":"corrupt",`, // invalid JSON
 		},
-	}
+	}, clusterNamed(clusterName))
 	credA := matchingCredentials("thierry-cred-a", selector, true, namespace, secretName)
 	credB := matchingCredentials("thierry-cred-b", selector, false, "", "")
 	secret := &corev1.Secret{
@@ -1101,7 +1101,7 @@ func TestReconcileVolumeProtectionPass_RequeuesWhilePreservingStatefulSet(t *tes
 	// pending window untouched. The typed clientset holds it so we can assert the
 	// volume-protection pass never mutates it.
 	existingReplicas := int32(3)
-	existingSTS := &appsv1.StatefulSet{
+	existingSTS := controlledByCluster(&appsv1.StatefulSet{
 		ObjectMeta: metav1.ObjectMeta{Name: stsName, Namespace: namespace, ResourceVersion: "424242"},
 		Spec: appsv1.StatefulSetSpec{
 			Replicas: &existingReplicas,
@@ -1114,7 +1114,7 @@ func TestReconcileVolumeProtectionPass_RequeuesWhilePreservingStatefulSet(t *tes
 				},
 			},
 		},
-	}
+	}, clusterNamed(clusterName))
 	// No PVCs exist yet -> the pass must report pending (requeue).
 	cs := k8sfake.NewClientset(existingSTS)
 
@@ -1213,10 +1213,10 @@ func TestReconcileClusterSecretForTLSState_DeletesWhenTLSDisabledAndMayDelete(t 
 	scheme := authKeysScheme(t)
 	require.NoError(t, appsv1.AddToScheme(scheme))
 
-	existingSecret := &corev1.Secret{
+	existingSecret := controlledByCluster(&corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{Name: clusterSecretName(clusterName), Namespace: namespace},
 		Data:       map[string][]byte{clusterSecretKey: []byte("stale-token")},
-	}
+	}, clusterNamed(clusterName))
 	c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(existingSecret).Build()
 	r := &ClusterReconciler{Client: c, Scheme: scheme}
 
@@ -1256,7 +1256,7 @@ func TestReconcileClusterSecretForTLSState_KeepsSecretWhileStillReferenced(t *te
 
 	// Converged StatefulSet still at TLS_MODE=optional -> it references CLUSTER_SECRET.
 	replicas := int32(1)
-	existingSTS := &appsv1.StatefulSet{
+	existingSTS := controlledByCluster(&appsv1.StatefulSet{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: resourceName(clusterName), Namespace: namespace, Generation: 1,
 		},
@@ -1274,11 +1274,11 @@ func TestReconcileClusterSecretForTLSState_KeepsSecretWhileStillReferenced(t *te
 		Status: appsv1.StatefulSetStatus{
 			ObservedGeneration: 1, UpdatedReplicas: 1, ReadyReplicas: 1,
 		},
-	}
-	existingSecret := &corev1.Secret{
+	}, clusterNamed(clusterName))
+	existingSecret := controlledByCluster(&corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{Name: clusterSecretName(clusterName), Namespace: namespace},
 		Data:       map[string][]byte{clusterSecretKey: []byte("still-referenced")},
-	}
+	}, clusterNamed(clusterName))
 	c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(existingSTS, existingSecret).Build()
 	r := &ClusterReconciler{Client: c, Scheme: scheme}
 

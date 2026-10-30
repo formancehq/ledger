@@ -13,9 +13,10 @@ steps are documented. Follow [the upgrade policy](docs/ops/upgrades.md#release-r
 
 Each RC update is upgraded sequentially from the immediately preceding RC in
 the same release line. The operator rejects skipped RCs by comparing the
-current StatefulSet image tag with the requested Cluster image tag. Old and new
-voters must communicate and apply the same committed entries identically while
-they coexist.
+current StatefulSet image tag with the requested Cluster image tag. RC upgrades
+are rolling unless the embedded operator lists a mandatory stopped-upgrade
+boundary. Such a boundary must preserve committed data and prove non-empty
+replay. Old and new voters must apply entries identically whenever they coexist.
 
 - Classify persisted, Raft, snapshot, backup, and audit changes against the RC
   baseline. Include a tested migration or prove existing data remains valid.

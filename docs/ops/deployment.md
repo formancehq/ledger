@@ -12,7 +12,8 @@ EN-1851 reject business RPCs with a missing or different protocol revision.
 Servers predating EN-1851 do not enforce this gate: the new CLI sends a protocol
 declaration without a preflight, so it cannot protect calls to an older, ungated
 server. Updates within the RC line keep the service wire contract at revision
-40 and must support mixed-binary rolling upgrades. The protocol match alone
+40 and normally support mixed-binary rolling upgrades. At a hardcoded operator
+boundary, follow the stopped procedure in [server upgrades](upgrades.md). The protocol match alone
 does not prove that Raft apply and persisted data remain compatible. See the
 [service protocol contract](../technical/architecture/subsystems/api/protocol-compatibility.md)
 and [server upgrades](upgrades.md) for the required validation.
@@ -179,6 +180,19 @@ spec:
 
 The operator creates and manages all sub-resources: StatefulSet, Services, Ingresses, ServiceAccount, PDB, etc.
 
+Each sub-resource is named after the Cluster (`ledger-<name>`,
+`ledger-<name>-headless`, `ledger-<name>-grpc`, ...) and owned through a
+controller reference to the Cluster UID. The operator never adopts, modifies,
+deletes or execs into an existing object under one of these names that the
+Cluster does not control. It reports the conflict as
+`ResourceNamesAvailable=False` (reason `NameConflict`), phase `Error` and a
+`ResourceNameConflict` event, and retries every minute. Remove the conflicting
+object, or restore its controller reference to the Cluster, to resume. In
+particular, a Cluster recreated after `kubectl delete --cascade=orphan` does not
+re-adopt the orphaned objects: delete them (keep the PVCs) or restore their
+owner references first. See
+[derived object ownership](../technical/architecture/subsystems/operator/derived-object-ownership.md).
+
 When an operator-managed Cluster omits `spec.clusterID`, the operator commits a
 random UUID to the Cluster spec before creating any workload. All replicas use
 that value. It remains stable across reconciliations, operator and pod restarts,
@@ -273,6 +287,10 @@ spec:
     annotations: {}
     name: ""
 ```
+
+With `create: true` (the default) the operator owns the ServiceAccount and
+refuses an existing one it did not create. To run the pods under a
+ServiceAccount you manage, set `create: false` and `name`.
 
 #### Resource Limits
 
