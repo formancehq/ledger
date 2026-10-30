@@ -17,6 +17,8 @@ current StatefulSet image tag with the requested Cluster image tag. RC upgrades
 are rolling unless the embedded operator lists a mandatory stopped-upgrade
 boundary. Such a boundary must preserve committed data and prove non-empty
 replay. Old and new voters must apply entries identically whenever they coexist.
+The RC.2 to RC.3 proposal payload cutover is a mandatory stopped boundary:
+the operator must stop every RC.2 voter before starting an RC.3 voter.
 
 - Classify persisted, Raft, snapshot, backup, and audit changes against the RC
   baseline. Include a tested migration or prove existing data remains valid.
@@ -26,8 +28,9 @@ replay. Old and new voters must apply entries identically whenever they coexist.
   numbers, wire types, field identity, and enum numbers during the RC.
 - Preserve field and enum numbers stored in released Raft, snapshots, backups,
   and audit records. Internal-only format changes require a safe migration and
-  a mixed-version rollout design. Reserve removed numbers and names when they
-  must not be reused; a reservation does not migrate data.
+  a rollout design that accounts for any mandatory stopped boundary. Reserve
+  removed numbers and names when they must not be reused; a reservation does
+  not migrate data.
 - Read `docs/technical/contributing/protobuf.md` before changing `.proto` files.
 
 ### Service protocol revision — frozen during the release-candidate phase
