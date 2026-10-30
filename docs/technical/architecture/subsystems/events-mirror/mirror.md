@@ -341,7 +341,9 @@ precondition, not an FSM apply rule: already committed orders replay with the
 same result on old and new RC voters. If a batch idempotency key already has a
 committed outcome, admission forwards the retry to the FSM's replay or conflict
 check when the ledger is now normal. A ledger still in mirror mode must satisfy
-the catch-up gate even if its key remains stored past expiry. A keyed retry after
+the catch-up gate even if its key remains stored past expiry. A matching,
+unexpired keyed retry of a frozen failure instead returns that recorded failure
+without proposing or checking current sync progress. A keyed retry after
 promotion and deletion also reaches the FSM replay gate, provided the batch
 does not create the ledger again. The head is the latest **observed** count,
 not a live lease on the source; operators must stop source writes and verify

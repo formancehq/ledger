@@ -694,8 +694,11 @@ Converts the mirror ledger to normal mode. After promotion:
 - The `mirrorSource` configuration is cleared
 
 Promoting a non-mirror ledger returns HTTP 400 (`LEDGER_NOT_IN_MIRROR_MODE`) or gRPC `FailedPrecondition`.
-Promotion of a mirror with no observed source head, a cursor behind that head,
+For a fresh promotion, an expired idempotency key, or a different batch,
+promotion of a mirror with no observed source head, a cursor behind that head,
 or an active sync error is rejected before proposal with a precondition error.
+A matching, unexpired keyed retry of a recorded failure returns that original
+failure without proposing or checking current mirror sync progress.
 The service request and protobuf reason enum are unchanged for RC compatibility.
 
 **gRPC:** Both create-mirror and promote operations go through the `Apply` method using `CreateLedgerRequest` (with `mode` and `mirror_source` fields) and `PromoteLedgerRequest`.
