@@ -456,7 +456,7 @@ func HashOrders(orders []*raftcmdpb.Order) []byte {
 // (AuditItem.serialized_order) and the idempotency hash (hashOrder) bind — so a
 // new technical field can never silently diverge the two.
 //
-// All admission-derived fields live on OrderTechnical, which is excluded so the
+// Execution-only admission-derived fields live on OrderTechnical, which is excluded so the
 // SAME logical request always serializes identically (idempotency dedup / replay
 // must match across retries, and the audit proves only accepted intent).
 // OrderTechnical carries:

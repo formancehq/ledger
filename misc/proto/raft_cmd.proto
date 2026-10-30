@@ -133,6 +133,11 @@ message CreatePreparedQueryOrder {
 message UpdatePreparedQueryOrder {
   string name = 1;
   common.QueryFilter filter = 2;
+  reserved 3;
+  reserved "id_resolved_to_log_paths";
+  // Omitted by historical orders and existing clients, in which case the
+  // stored target is retained. New updates may replace the target atomically.
+  optional common.QueryTarget target = 4;
 }
 
 message DeletePreparedQueryOrder {

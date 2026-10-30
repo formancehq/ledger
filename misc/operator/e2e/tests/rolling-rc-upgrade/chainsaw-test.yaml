@@ -1,7 +1,7 @@
 apiVersion: chainsaw.kyverno.io/v1alpha1
 kind: Test
 metadata:
-  name: rolling-rc-upgrade
+  name: stopped-rc-upgrade
 spec:
   timeouts:
     assert: 10m
@@ -40,11 +40,11 @@ spec:
                 done
               done
             timeout: 180s
-    - name: Request the rolling rc.2 to rc.3 upgrade
+    - name: Request the stopped rc.2 to rc.3 upgrade
       try:
         - apply:
             file: cluster-updated.yaml
-    - name: Wait for the rolling update
+    - name: Wait for the stopped upgrade
       try:
         - assert:
             resource:
@@ -89,7 +89,7 @@ spec:
               set -eu
               old_sts=$(cat /tmp/required-upgrade-sts-"$NAMESPACE")
               new_sts=$(kubectl get statefulset ledger-required-upgrade -n "$NAMESPACE" -o jsonpath='{.metadata.uid}')
-              [ "$old_sts" = "$new_sts" ] || { echo 'StatefulSet was unexpectedly recreated'; exit 1; }
+              [ "$old_sts" != "$new_sts" ] || { echo 'StatefulSet was not recreated'; exit 1; }
               for ordinal in 0 1 2; do
                 old_pod=$(cat /tmp/required-upgrade-pod-"$NAMESPACE"-"$ordinal")
                 new_pod=$(kubectl get pod ledger-required-upgrade-"$ordinal" -n "$NAMESPACE" -o jsonpath='{.metadata.uid}')
@@ -106,7 +106,10 @@ spec:
               actual=$(kubectl exec ledger-required-upgrade-0 -n "$NAMESPACE" -c ledger -- \
                 /bin/sh -c './ledgerctl transactions list --ledger marketplace --all --json --server 127.0.0.1:8888 --insecure --auth-token "$CLUSTER_SECRET"' | jq -cS .)
               [ "$actual" = "$expected" ] || { echo 'Marketplace transactions changed during upgrade'; exit 1; }
-              # The rolling upgrade retains PVCs. Permit Chainsaw's namespace
+              kubectl exec ledger-required-upgrade-0 -n "$NAMESPACE" -c ledger -- \
+                /bin/sh -c './ledgerctl store check --json --server 127.0.0.1:8888 --insecure --auth-token "$CLUSTER_SECRET"' |
+                jq -e '.valid == true and .errorCount == 0' >/dev/null
+              # The stopped upgrade retains PVCs. Permit Chainsaw's namespace
               # cleanup only after all preservation assertions have passed.
               for ordinal in 0 1 2; do
                 for volume in wal data; do

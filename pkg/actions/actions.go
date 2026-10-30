@@ -610,7 +610,7 @@ func CreatePreparedQueryAction(name, ledger string, target commonpb.QueryTarget,
 	}
 }
 
-// UpdatePreparedQueryAction creates an action for updating a prepared query's filter.
+// UpdatePreparedQueryAction creates a legacy filter-only update action.
 func UpdatePreparedQueryAction(ledger, name string, filter *commonpb.QueryFilter) *servicepb.Request {
 	return &servicepb.Request{
 		Type: &servicepb.Request_UpdatePreparedQuery{
@@ -621,6 +621,15 @@ func UpdatePreparedQueryAction(ledger, name string, filter *commonpb.QueryFilter
 			},
 		},
 	}
+}
+
+// UpdatePreparedQueryForTargetAction replaces a prepared query's target and filter.
+// The explicit target also determines how public id is decoded by the caller.
+func UpdatePreparedQueryForTargetAction(ledger, name string, target commonpb.QueryTarget, filter *commonpb.QueryFilter) *servicepb.Request {
+	request := UpdatePreparedQueryAction(ledger, name, filter)
+	request.GetUpdatePreparedQuery().Target = target.Enum()
+
+	return request
 }
 
 // DeletePreparedQueryAction creates an action for removing a prepared query.

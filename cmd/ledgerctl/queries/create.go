@@ -25,7 +25,7 @@ cover the same fields. Valid fields per --target:
   accounts:      metadata[key], address, has asset BASE[/PRECISION]
   transactions:  metadata[key], address, source, destination, reference,
                  reverted, id, timestamp, insertedAt, revertedAt
-  logs:          logId, date, ledger
+  logs:          id, date, ledger (legacy logId ranges remain accepted)
 Transaction amounts are not filterable.
 
 Examples:

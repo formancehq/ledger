@@ -494,9 +494,22 @@ func rebuildDelta(
 
 					return fmt.Errorf("updating missing prepared query %q in ledger %q at log %d", updated.GetName(), updated.GetLedger(), seq)
 				}
+				if (updated.PreviousTarget == nil) != (updated.NewTarget == nil) {
+					_ = batch.Cancel()
+
+					return fmt.Errorf("incomplete prepared query target change at log %d", seq)
+				}
 
 				replacement := existing.CloneVT()
 				replacement.Filter = updated.GetNewFilter()
+				if updated.NewTarget != nil {
+					if existing.GetTarget() != updated.GetPreviousTarget() {
+						_ = batch.Cancel()
+
+						return fmt.Errorf("prepared query target mismatch at log %d", seq)
+					}
+					replacement.Target = updated.GetNewTarget()
+				}
 				if err := state.SavePreparedQuery(batch, updated.GetLedger(), replacement); err != nil {
 					_ = batch.Cancel()
 

@@ -116,6 +116,15 @@ The remaining asymmetries are operator-level, not field-level:
 | Byte-level address prefix | `address ^= "users"` | only a prefix ending `:` → `{"$match":{"address":"users:"}}` | the JSON DSL has no prefix operator (`$like` was dropped, EN-1465) |
 | Audit `idempotency_key` prefix | `idempotency_key ^= "import-"` | *(none)* | same |
 
+For `TRANSACTIONS` and `LOGS`, `id` is the public exact and range field. The
+query target resolves it to the transaction or log ID condition. For example,
+`id == 7` and `{"$match":{"id":"7"}}` select the same entity, including
+inside `or`/`$or` and `not`/`$not`. Numeric IDs are unsigned decimal values;
+quote JSON values above 2^53 to preserve precision. `id between 1 and 9`
+corresponds to an inclusive `$gte`/`$lte` pair. Existing `logId` JSON range
+filters remain accepted while Console migrates to `id`; new filters should use
+`id`.
+
 ## 4. Removed aliases → canonical replacements
 
 The following convenience aliases have been **removed** (not deprecated — they no

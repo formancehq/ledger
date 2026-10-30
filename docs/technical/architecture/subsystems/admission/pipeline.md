@@ -96,6 +96,11 @@ If `RequireSignatures()` is true cluster-wide, an unsigned batch is rejected her
 
 `requestsToOrders()` walks every `Request` in the batch. `requestToOrder()` routes Apply through its admission checks and action converter, ledger-scoped requests through `ledgerRequestToOrder()`, and cluster-wide requests through `systemRequestToOrder()`. Each family retains an explicit protobuf request-to-order mapping. The common final `validateOrder()` checks storage safety for every converted order. SaveNumscript and events-sink requests also update the intra-batch overlay; signing-key registration takes its parent key ID from the batch signature. Orders are the FSM's input language; requests are the wire language. Revert conversion observes the target transaction locally so admission can declare coverage and bind an observation digest; the FSM still makes the authoritative business decision.
 
+For a prepared-query update, new clients decode public `id` against the target
+they carry in the request. Admission copies that explicit target into the
+order; it does not read the stored query or rewrite filter leaves. Legacy
+targetless orders retain the stored target and are validated by the FSM.
+
 ### 5. Preload coverage extraction
 
 `extractPreloadNeeds()` — the function name kept the older word; the type it returns is `*plan.Coverage` — aggregates the per-order coverage declared by each order's converter, returning both the proposal-wide aggregate and the per-order slice the `coverage_bits` computation needs. **Each component owns its own declaration** (per [invariant #6](../../../../../AGENTS.md)): there is no central helper that introspects orders to compute what they read — the order's producer declares it upfront. Admission, the mirror worker, the events emitter and the idempotency-eviction scheduler each declare their own.
@@ -170,7 +175,10 @@ Two-stage check:
 - **Admission**: the idempotency key's *shape* is validated (UTF-8, length ≤ 256). The key becomes part of the proposal's `plan.Coverage` — on its separate `IdempotencyKeys` channel, not as a cache attribute — so the FSM can look it up.
 - **FSM**: `processProposal` consults the replay cache (`SubIdempKeys` in Pebble). A hit returns the stored outcome reference (sequence + outcome) without re-executing the orders. A miss falls through to normal processing, and the outcome gets recorded under the same key on the way out.
 
-This split exists because the *uniqueness* check requires committed state — admission can only validate that the key is well-formed.
+An explicit-target update hashes the same order on every retry, even if the
+stored query was deleted or recreated meanwhile. The FSM's ordinary key lookup
+returns the frozen outcome without reapplying the update. A different target or
+filter changes the order hash and produces the normal key conflict.
 
 ## Validation: structural vs behavioural
 

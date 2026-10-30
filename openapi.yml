@@ -6307,9 +6307,9 @@ components:
             - TRANSACTIONS
             - LOGS
           description: >-
-            Target entity type. `LOGS` queries return log entries; the log-only
-            filter fields (`logId`, `date`, `ledger`) are valid only when the
-            target is `LOGS`.
+            Target entity type. `LOGS` queries return log entries. The `id`
+            field resolves to a transaction ID for `TRANSACTIONS` and a log ID
+            for `LOGS`; `date` and `ledger` are log-only fields.
         filter:
           $ref: '#/components/schemas/PreparedQueryFilterInput'
           description: >-
@@ -6320,12 +6320,21 @@ components:
     UpdatePreparedQueryRequest:
       type: object
       properties:
+        target:
+          type: string
+          enum: [ACCOUNTS, TRANSACTIONS, LOGS]
+          description: >-
+            Replacement query target. Supply it when using the public id field
+            so id is decoded for the selected entity. Omit it to retain the
+            stored target for existing clients. A target change also replaces
+            the filter; send the intended filter or null to clear it.
         filter:
           $ref: '#/components/schemas/PreparedQueryFilterInput'
           description: >-
             Replacement filter. Omit the field to leave the stored filter
-            unchanged; set it to `null` to remove the filter and make the query
-            match all entities in its target. An empty object or empty textual
+            unchanged when target is also omitted; set it to `null` to remove
+            the filter and make the query match all entities in the selected
+            target. An empty object or empty textual
             expression is invalid.
 
     ExecutePreparedQueryRequest:
@@ -6458,6 +6467,8 @@ components:
         `log_seq`, `caller_subject`, `order_type`, `idempotency_key`) replace the
         `ledger`/`timestamp` meanings above: `$match` on any of them, range
         operators on the numeric ones, no `$param` values.
+        The public `id` field selects transaction or log IDs by query target.
+        The legacy `logId` spelling remains accepted for log ID ranges.
         The log-only fields (`logId`, `date`, `ledger`) are valid only when the
         prepared query targets `LOGS`; they are rejected on `ACCOUNTS` and
         `TRANSACTIONS` targets.

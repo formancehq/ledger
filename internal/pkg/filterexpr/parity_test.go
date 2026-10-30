@@ -197,10 +197,8 @@ func TestDecodeDualFormat_NewFieldsGatedPerTarget(t *testing.T) {
 	}{
 		{`reference == x`, commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS},
 		{`reverted == true`, logs},
-		{`id == 1`, logs},
 		{`logId == 1`, tx},
 		{`{"$match":{"logId":1}}`, tx},
-		{`{"$match":{"id":1}}`, logs},
 	} {
 		_, err := DecodeDualFormat([]byte(tc.raw), tc.target)
 		require.Error(t, err, "%s on %s", tc.raw, tc.target)
@@ -242,20 +240,17 @@ func TestDecodeDualFormat_AuditJSONRejections(t *testing.T) {
 	}
 }
 
-// TestDecodeDualFormatStructuralOnly_NonAuditResolutionIsTargetIndependent
-// locks the assumption the prepared-query update paths (ledgerctl queries
-// update, PATCH prepared query) rely on when they decode with a hard-coded
-// TRANSACTIONS target: every non-audit target resolves every bare intrinsic
-// field to the same proto, in both forms, so the stored target (applied by the
-// FSM gate) is never needed for resolution.
-func TestDecodeDualFormatStructuralOnly_NonAuditResolutionIsTargetIndependent(t *testing.T) {
+// TestDecodeDualFormatStructuralOnly_OtherNonAuditFieldsAreTargetIndependent
+// verifies that non-ID intrinsic fields retain their shared resolution. The
+// public ID field is target-aware and is covered separately.
+func TestDecodeDualFormatStructuralOnly_OtherNonAuditFieldsAreTargetIndependent(t *testing.T) {
 	t.Parallel()
 
 	for _, raw := range []string{
-		`id == 1`, `timestamp >= 1`, `insertedAt < 2`, `revertedAt > 3`,
+		`timestamp >= 1`, `insertedAt < 2`, `revertedAt > 3`,
 		`reference == r`, `reverted == true`, `logId between 1 and 2`, `date <= 4`,
 		`ledger == main`, `metadata[k] == v`, `address ^= "users:"`, `has asset USD/2`,
-		`{"$match":{"id":1}}`, `{"$match":{"reference":"r"}}`, `{"$match":{"ledger":"main"}}`,
+		`{"$match":{"reference":"r"}}`, `{"$match":{"ledger":"main"}}`,
 		`{"$gte":{"timestamp":1}}`, `{"$match":{"logId":1}}`,
 	} {
 		want, err := DecodeDualFormatStructuralOnly([]byte(raw), tx)

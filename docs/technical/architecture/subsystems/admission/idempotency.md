@@ -65,6 +65,12 @@ type IdempotencyKeyValue struct {
 | Same key (after TTL expiration) | Process normally (key treated as new) |
 | No idempotency key | Process normally, no idempotency tracking |
 
+Prepared-query updates carrying an explicit target are hashed independently of
+the stored query's current target. Repeating the same target and filter with the
+same key therefore follows the ordinary frozen-outcome path, even after the
+query has been deleted or recreated. Changing either field produces a normal
+idempotency-key conflict.
+
 ## Historical outcomes and checkpoint readiness
 
 The FSM marks a replay explicitly in its transient `ApplyResult`. Admission

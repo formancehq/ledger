@@ -644,6 +644,8 @@ func TestBackup_PreparedQueryMutationsRoundTrip(t *testing.T) {
 	attrs := attributes.New()
 	oldFilter := &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_Reverted{Reverted: &commonpb.RevertedCondition{Value: false}}}
 	newFilter := &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_Reverted{Reverted: &commonpb.RevertedCondition{Value: true}}}
+	newLogFilter, err := commonpb.DecodeQueryFilterJSON([]byte(`{"$match":{"id":7}}`), commonpb.QueryTarget_QUERY_TARGET_LOGS)
+	require.NoError(t, err)
 	queryQ := &commonpb.PreparedQuery{Name: "q", Target: commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS, Filter: oldFilter}
 	queryR := &commonpb.PreparedQuery{Name: "r", Target: commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS, Filter: oldFilter}
 	queryS := &commonpb.PreparedQuery{Name: "s", Target: commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS, Filter: oldFilter}
@@ -667,7 +669,10 @@ func TestBackup_PreparedQueryMutationsRoundTrip(t *testing.T) {
 	require.EqualValues(t, 1, full.LastLogSequence)
 
 	delta := src.OpenWriteSession()
-	require.NoError(t, delta.SetProto(coldLogKey(2), preparedQueryLog(2, &commonpb.LogPayload{Type: &commonpb.LogPayload_UpdatedPreparedQuery{UpdatedPreparedQuery: &commonpb.UpdatedPreparedQueryLog{Ledger: ledger, Name: "q", PreviousFilter: oldFilter, NewFilter: newFilter}}})))
+	require.NoError(t, delta.SetProto(coldLogKey(2), preparedQueryLog(2, &commonpb.LogPayload{Type: &commonpb.LogPayload_UpdatedPreparedQuery{UpdatedPreparedQuery: &commonpb.UpdatedPreparedQueryLog{
+		Ledger: ledger, Name: "q", PreviousFilter: oldFilter, NewFilter: newLogFilter,
+		PreviousTarget: commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS.Enum(), NewTarget: commonpb.QueryTarget_QUERY_TARGET_LOGS.Enum(),
+	}}})))
 	require.NoError(t, delta.SetProto(coldLogKey(3), preparedQueryLog(3, &commonpb.LogPayload{Type: &commonpb.LogPayload_DeletedPreparedQuery{DeletedPreparedQuery: &commonpb.DeletedPreparedQueryLog{Ledger: ledger, Name: "r"}}})))
 	require.NoError(t, delta.SetProto(coldLogKey(4), preparedQueryLog(4, &commonpb.LogPayload{Type: &commonpb.LogPayload_CreatedPreparedQuery{CreatedPreparedQuery: &commonpb.CreatedPreparedQueryLog{Ledger: ledger, Query: queryS}}})))
 	require.NoError(t, delta.SetProto(coldLogKey(5), preparedQueryLog(5, &commonpb.LogPayload{Type: &commonpb.LogPayload_UpdatedPreparedQuery{UpdatedPreparedQuery: &commonpb.UpdatedPreparedQueryLog{Ledger: ledger, Name: "s", PreviousFilter: oldFilter, NewFilter: newFilter}}})))
@@ -676,7 +681,8 @@ func TestBackup_PreparedQueryMutationsRoundTrip(t *testing.T) {
 		require.NoError(t, delta.SetProto(coldAuditKey(seq), auditSuccess(seq, seq, seq)))
 	}
 	updatedQ := queryQ.CloneVT()
-	updatedQ.Filter = newFilter
+	updatedQ.Filter = newLogFilter
+	updatedQ.Target = commonpb.QueryTarget_QUERY_TARGET_LOGS
 	require.NoError(t, state.SavePreparedQuery(delta, ledger, updatedQ))
 	require.NoError(t, state.DeletePreparedQuery(delta, ledger, "r"))
 	require.NoError(t, delta.Commit())
@@ -715,7 +721,7 @@ func TestBackup_PreparedQueryMutationsRoundTrip(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, sourceQueries, restoredQueries)
 	require.Len(t, restoredQueries, 1)
-	require.True(t, restoredQueries[0].EqualVT(updatedQ), "the restored definition must contain the post-checkpoint filter")
+	require.True(t, restoredQueries[0].EqualVT(updatedQ), "the restored definition must contain the post-checkpoint target and filter")
 
 	for _, deletedName := range []string{"r", "s"} {
 		deleted, err := attrs.PreparedQuery.Get(restoredHandle, domain.PreparedQueryKey{LedgerName: ledger, Name: deletedName}.Bytes())

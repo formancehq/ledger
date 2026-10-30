@@ -61,6 +61,9 @@ type Admission struct {
 	attrs           *attributes.Attributes
 	numscriptCache  *numscript.NumscriptCache
 	waitLeaderReady func(context.Context) error
+	// readBarrier makes the rare direct idempotency replay linearizable with
+	// writes already committed before its outcome snapshot is opened.
+	readBarrier func(context.Context) error
 	// auditProjectionState is node-local admission state. It may reject a
 	// checkpoint proposal before Raft, but never affects deterministic apply.
 	auditProjectionState func() (disabled, rebuilding bool)
@@ -160,6 +163,15 @@ func NewAdmission(
 		attrs:           attrs,
 		numscriptCache:  numscriptCache,
 		waitLeaderReady: waitLeaderReady,
+	}
+	if reader, ok := proposer.(interface {
+		ReadIndexAndWait(context.Context) (*node.ReadBarrierInfo, error)
+	}); ok {
+		a.readBarrier = func(ctx context.Context) error {
+			_, err := reader.ReadIndexAndWait(ctx)
+
+			return err
+		}
 	}
 	for _, opt := range opts {
 		opt(a)
@@ -2233,7 +2245,6 @@ func (a *Admission) requestToOrder(ctx context.Context, req *servicepb.Request, 
 	} else if !a.ledgerRequestToOrder(order, req, overlay) && !a.systemRequestToOrder(order, req, batchSig, overlay) {
 		return nil, fmt.Errorf("unsupported request type: %T", req.GetType())
 	}
-
 	// Validate storage-safety invariants (null bytes in ledger names, metadata keys, etc.)
 	if err := validateOrder(order); err != nil {
 		return nil, err
@@ -2322,12 +2333,17 @@ func (a *Admission) ledgerRequestToOrder(order *raftcmdpb.Order, req *servicepb.
 			},
 		})
 	case *servicepb.Request_UpdatePreparedQuery:
+		var target *commonpb.QueryTarget
+		if reqType.UpdatePreparedQuery.Target != nil {
+			target = reqType.UpdatePreparedQuery.GetTarget().Enum()
+		}
 		wrapLedgerScoped(order, &raftcmdpb.LedgerScopedOrder{
 			Ledger: reqType.UpdatePreparedQuery.GetLedger(),
 			Payload: &raftcmdpb.LedgerScopedOrder_UpdatePreparedQuery{
 				UpdatePreparedQuery: &raftcmdpb.UpdatePreparedQueryOrder{
 					Name:   reqType.UpdatePreparedQuery.GetName(),
 					Filter: reqType.UpdatePreparedQuery.GetFilter(),
+					Target: target,
 				},
 			},
 		})

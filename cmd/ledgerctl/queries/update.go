@@ -18,25 +18,27 @@ import (
 func NewUpdateCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "update <name>",
-		Short: "Update a prepared query filter",
-		Long: `Update the filter of an existing prepared query. Omit --filter to clear
-the existing filter and make the query match all entities in its target.
+		Short: "Update a prepared query target and filter",
+		Long: `Replace the target and filter of an existing prepared query. Omit --filter to clear
+the existing filter and make the query match all entities in the selected target.
 
 --filter accepts the textual grammar or the JSON DSL; both forms cover the same
 fields. The fields valid for the query's target are listed in
 "ledgerctl queries create --help".
 
 Examples:
-  ledgerctl queries update active-users --ledger my-ledger --filter "metadata[active] == true and metadata[tier] == gold"
-  ledgerctl queries update order-lookup --ledger my-ledger --filter 'reference == "order-42"'
-  ledgerctl queries update order-lookup --ledger my-ledger --filter '{"$match":{"reference":"order-42"}}'
-  ledgerctl queries update active-users --ledger my-ledger`,
+  ledgerctl queries update active-users --ledger my-ledger --target accounts --filter "metadata[active] == true and metadata[tier] == gold"
+  ledgerctl queries update order-lookup --ledger my-ledger --target transactions --filter 'reference == "order-42"'
+  ledgerctl queries update log-lookup --ledger my-ledger --target logs --filter 'id == $wanted'
+  ledgerctl queries update active-users --ledger my-ledger --target accounts`,
 		Args:              cobra.ExactArgs(1),
 		ValidArgsFunction: completeQueryNames,
 		RunE:              runUpdate,
 	}
 
 	cmdutil.AddLedgerFlag(cmd)
+	cmd.Flags().String("target", "", "Query target: accounts, transactions, or logs (required)")
+	cmdutil.RegisterEnumCompletion(cmd, "target", "accounts", "transactions", "logs")
 	cmd.Flags().String("filter", "", `New filter expression: textual grammar ("metadata[k] == v") or JSON DSL ('{"$match":{"metadata[k]":"v"}}')`)
 	cmd.Flags().Duration("timeout", cmdutil.DefaultTimeout, "Request timeout")
 
@@ -45,6 +47,14 @@ Examples:
 
 func runUpdate(cmd *cobra.Command, args []string) error {
 	name := args[0]
+	targetStr, _ := cmd.Flags().GetString("target")
+	if targetStr == "" {
+		return errors.New("--target is required")
+	}
+	target, err := parseTarget(targetStr)
+	if err != nil {
+		return err
+	}
 	filterExpr, _ := cmd.Flags().GetString("filter")
 	filterSet := cmd.Flags().Changed("filter")
 	if filterSet && strings.TrimSpace(filterExpr) == "" {
@@ -52,9 +62,8 @@ func runUpdate(cmd *cobra.Command, args []string) error {
 	}
 
 	var filter *commonpb.QueryFilter
-	var err error
 	if filterSet {
-		filter, err = filterexpr.DecodeDualFormatStructuralOnly([]byte(filterExpr), commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS)
+		filter, err = filterexpr.DecodeDualFormatStructuralOnly([]byte(filterExpr), target)
 		if err != nil {
 			return fmt.Errorf("invalid filter expression: %w", err)
 		}
@@ -73,18 +82,9 @@ func runUpdate(cmd *cobra.Command, args []string) error {
 
 	ledgerName, _ := cmd.Flags().GetString(cmdutil.LedgerFlagName)
 
-	// The update carries only the new filter, not the target — the target is
-	// immutable and lives on the stored prepared query (the FSM re-validates the
-	// filter against it). DecodeDualFormatStructuralOnly is the shared "target not
-	// known here" entry point: it resolves bare fields with a non-audit target
-	// (prepared queries are never audit) and defers the per-target validity gate
-	// to the server (EN-1549). Every non-audit target resolves every bare field
-	// identically (TestDecodeDualFormatStructuralOnly_NonAuditResolutionIsTargetIndependent),
-	// so the hard-coded TRANSACTIONS target never changes the decoded filter.
 	ctx, cancel := cmdutil.GetContext(cmd)
 	defer cancel()
-
-	applyReq, err := cmdutil.BuildApplyRequest(cmd, actions.UpdatePreparedQueryAction(ledgerName, name, filter))
+	applyReq, err := cmdutil.BuildApplyRequest(cmd, actions.UpdatePreparedQueryForTargetAction(ledgerName, name, target, filter))
 	if err != nil {
 		return cmdutil.Displayed(err)
 	}

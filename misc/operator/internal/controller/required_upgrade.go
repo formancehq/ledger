@@ -20,10 +20,10 @@ import (
 	ledgerv1alpha1 "github.com/formancehq/ledger/misc/operator/api/v1alpha1"
 )
 
-// Add a target here only after its release has been proven incompatible with
-// a rolling upgrade. rc.3 has no mandatory stop; the mechanism ships dormant.
-// RC adjacency is still checked by validateRCUpgrade.
-var mandatoryStopVersions = []string{}
+// Explicit-target prepared-query orders cannot be applied identically by rc.2
+// voters. Stop every rc.2 node before starting rc.3; RC adjacency is still
+// checked by validateRCUpgrade.
+var mandatoryStopVersions = []string{"v3.0.0-rc.3"}
 
 const requiredUpgradePoll = 5 * time.Second
 

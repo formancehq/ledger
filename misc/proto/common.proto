@@ -531,6 +531,10 @@ message UpdatedPreparedQueryLog {
   string name = 2;
   QueryFilter previous_filter = 3;
   QueryFilter new_filter = 4;
+  // Present for updates that explicitly set a target. Historical filter-only
+  // updates omit both fields so their existing audit bytes remain unchanged.
+  optional QueryTarget previous_target = 5;
+  optional QueryTarget new_target = 6;
 }
 
 // DeletedPreparedQueryLog records the deletion of a prepared query.

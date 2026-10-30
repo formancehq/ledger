@@ -781,7 +781,7 @@ type resolvedUintBounds struct {
 
 // isEquality returns true if the resolved bounds cover exactly one value.
 func (b resolvedUintBounds) isEquality() bool {
-	return b.hasMin && b.hasMax && b.max == b.min+1
+	return b.hasMin && ((b.hasMax && b.max == b.min+1) || (!b.hasMax && b.min == math.MaxUint64))
 }
 
 // applyMinExclusiveUint turns `field > v` into `field >= v+1`. Returns

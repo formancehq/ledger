@@ -1224,10 +1224,10 @@ backward compatibility). They are rejected on other list endpoints.
 | `has asset BASE/PRECISION` | Accounts that have ever touched asset `BASE` with the given precision (requires `account-asset` index) |
 | `reference == value` / `reference in (v1, v2)` | Transaction reference exact match (transactions only; requires `reference` index). JSON: `{"$match":{"reference":"…"}}` |
 | `reverted == true` / `reverted == false` | Transaction revert status (transactions only). JSON: `{"$match":{"reverted":true}}` |
-| `id OP value` | Transaction id: `==`, `>`, `>=`, `<`, `<=`, `between` on raw unsigned integers (transactions only). JSON: `{"$match":{"id":3}}`, `{"$gte":{"id":3}}` |
+| `id OP value` | Transaction ID for transaction queries, ledger-local log ID for log queries: `==`, `>`, `>=`, `<`, `<=`, `between` on raw unsigned integers. JSON: `{"$match":{"id":3}}`, `{"$gte":{"id":3}}` |
 | `timestamp OP value` | Transaction effective date (transactions only; requires `timestamp` index). Same operators; RFC3339 (quoted) or raw unix microseconds |
 | `insertedAt OP value` / `revertedAt OP value` | Transaction insertion / revert date (transactions only; requires `inserted-at` / `reverted-at` index). Same operators and values as `timestamp` |
-| `logId OP value` | Ledger-local log id: `==`, `>`, `>=`, `<`, `<=`, `between` (logs only). JSON: `{"$match":{"logId":7}}` |
+| `logId OP value` | Legacy spelling for log ID ranges (logs only); prefer `id`. JSON: `{"$match":{"logId":7}}` |
 | `date OP value` | Log date (logs only). Same operators and values as `timestamp` |
 | `ledger == value` | Ledger name (logs only) |
 
@@ -1324,8 +1324,8 @@ backward compatibility). They are rejected on other list endpoints.
 # The same reference filter in the structured JSON form
 --filter '{"$match":{"reference":"order-123"}}'
 
-# Log id range (logs only)
---filter 'logId between 100 and 200'
+# Log ID range (logs only)
+--filter 'id between 100 and 200'
 ```
 
 ##### Filter fields by target
@@ -1338,7 +1338,7 @@ textual grammar and the JSON DSL cover the same fields under the same names:
 |--------|-------------------------------|
 | accounts (`accounts list`, `accounts aggregate-volumes`) | `metadata[key]`, `address`, `has asset` (JSON: `$exists` on `asset`) |
 | transactions (`transactions list`) | `metadata[key]`, `address`, `source`, `destination`, `reference`, `reverted`, `id`, `timestamp`, `insertedAt`, `revertedAt` |
-| logs (`logs list`) | `logId`, `date`, `ledger` |
+| logs (`logs list`) | `id`, `date`, `ledger`; legacy `logId` ranges remain accepted |
 | audit (`audit list`) | the bare audit fields, see [audit list](#audit-list) |
 
 Only two operators exist in one form alone: an `address ^=` prefix that does
@@ -2718,14 +2718,14 @@ ledgerctl logs list --ledger my-ledger --reverse
 # Next or previous page, with a token printed by the previous call
 ledgerctl logs list --ledger my-ledger --page-size 20 --cursor <token>
 
-# Filter by date and log id (textual grammar or JSON DSL). Logs accept only
-# logId, date and ledger conditions; metadata, address, source and
+# Filter by date and log ID (textual grammar or JSON DSL). Logs accept only
+# id, date and ledger conditions (with logId as a legacy range spelling); metadata, address, source and
 # destination conditions are rejected on logs.
 ledgerctl logs list --ledger my-ledger --filter 'date >= "2026-01-01T00:00:00Z"'
-ledgerctl logs list --ledger my-ledger --filter 'logId >= 100'
+ledgerctl logs list --ledger my-ledger --filter 'id >= 100'
 
-# The same log id range in the JSON DSL
-ledgerctl logs list --ledger my-ledger --filter '{"$gte":{"logId":100}}'
+# The same log ID range in the JSON DSL
+ledgerctl logs list --ledger my-ledger --filter '{"$gte":{"id":100}}'
 
 # Output as JSON
 ledgerctl logs list --ledger my-ledger --json
@@ -3727,12 +3727,16 @@ Displays each query's name, target, and filter in human-readable DSL format.
 
 #### queries update
 
-Update the filter of an existing prepared query. Omit `--filter` to remove the
-stored filter and make the query match all entities in its target. Supplying an
+Replace the target and filter of an existing prepared query in one action.
+`--target` is required. Omit `--filter` to remove the
+stored filter and make the query match all entities in the selected target. Supplying an
 empty or whitespace-only `--filter` is invalid.
+For a LOGS query, `--filter 'id == 7'` or its structured JSON equivalent
+selects log ID 7. The CLI decodes `id` against the explicit target; the command
+needs only query-write permission.
 
 ```bash
-ledgerctl queries update <name> --ledger <ledger-name> [--filter "<new-filter>"] [flags]
+ledgerctl queries update <name> --ledger <ledger-name> --target <target> [--filter "<new-filter>"] [flags]
 ```
 
 #### queries delete

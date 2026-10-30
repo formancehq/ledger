@@ -394,7 +394,7 @@ func (a *FieldCond) toProto(target commonpb.QueryTarget) (*commonpb.QueryFilter,
 		return a.auditToProto()
 	}
 
-	return a.intrinsicToProto()
+	return a.intrinsicToProto(target)
 }
 
 // auditToProto resolves a bare field on the AUDIT target into the matching
@@ -422,7 +422,7 @@ func (a *FieldCond) auditToProto() (*commonpb.QueryFilter, error) {
 // logs / accounts) into its own proto arm, using the field names of the
 // structured JSON DSL so both forms cover the same fields:
 //
-//   - `id` → transaction id range (raw uint);
+//   - `id` → transaction or log id range by query target (raw uint);
 //   - `timestamp`, `insertedAt`, `revertedAt` → transaction date ranges;
 //   - `reference` → ReferenceCondition; `reverted` → RevertedCondition;
 //   - `logId` → log id range (raw uint); `date` → log date range;
@@ -433,15 +433,16 @@ func (a *FieldCond) auditToProto() (*commonpb.QueryFilter, error) {
 // vanish. Whether a resolved field is valid on the SPECIFIC non-audit target
 // (e.g. `date` on transactions) is not decided here — the downstream per-target
 // validity gate (domain.ValidateFilterForTarget) handles that, the same way the
-// structured JSON DSL does. The resolution itself never depends on which
-// non-audit target is queried, which is what lets the prepared-query update
-// path parse without knowing the stored target.
-func (a *FieldCond) intrinsicToProto() (*commonpb.QueryFilter, error) {
+// structured JSON DSL does. The public `id` field is the exception: it resolves
+// to a log ID on LOGS and a transaction ID otherwise. Admission resolves
+// provisional transaction ID conditions against the stored prepared-query
+// target before Raft commitment.
+func (a *FieldCond) intrinsicToProto(target commonpb.QueryTarget) (*commonpb.QueryFilter, error) {
 	switch a.Field {
 	case "timestamp", "date", "insertedAt", "revertedAt":
 		return a.dateToProto()
 	case "id", "logId":
-		return a.idToProto()
+		return a.idToProto(target)
 	case "reference":
 		return a.referenceToProto()
 	case "reverted":
@@ -696,11 +697,11 @@ func txBuiltinQF(field commonpb.TransactionBuiltinIndex, uc *commonpb.UintCondit
 
 // --- Id conditions ---
 
-// idToProto resolves the bare `id OP value` (transactions) / `logId OP value`
-// (logs) range filter. Ids are plain counters: the operand is a raw unsigned
+// idToProto resolves `id OP value` by query target, and accepts `logId OP value`
+// as a legacy log range alias. IDs are plain counters: the operand is a raw unsigned
 // integer, never an RFC3339 timestamp. Like the date fields, a bound may be a
 // $param, resolved when a prepared query executes.
-func (d *FieldCond) idToProto() (*commonpb.QueryFilter, error) {
+func (d *FieldCond) idToProto(target commonpb.QueryTarget) (*commonpb.QueryFilter, error) {
 	parse := func(v *Value) (uint64, error) {
 		n, err := strconv.ParseUint(v.resolve(), 10, 64)
 		if err != nil {
@@ -717,6 +718,12 @@ func (d *FieldCond) idToProto() (*commonpb.QueryFilter, error) {
 
 	switch d.Field {
 	case "id":
+		if target == commonpb.QueryTarget_QUERY_TARGET_LOGS {
+			return &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_LogId{
+				LogId: &commonpb.LogIdCondition{Cond: uc},
+			}}, nil
+		}
+
 		return txBuiltinQF(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_ID, uc), nil
 	case "logId":
 		return &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_LogId{

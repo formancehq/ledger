@@ -13,6 +13,16 @@ the branch is reached. Evidence must distinguish those cases and show that a
 same-key retry after repair can establish one definitive outcome, while a
 same-key retry of an earlier committed outcome does not execute it again.
 
+## Prepared-query ID target changes (EN-2601)
+
+New prepared-query updates carry their target explicitly. A retry of the same
+request therefore hashes the same order even if the stored query was deleted
+and recreated with another target. The FSM's ordinary key lookup returns the
+frozen outcome without a second mutation. A changed target or filter conflicts
+while the key remains live; an expired or evicted key is a fresh operation.
+The prepared-query E2E regression changes the target, deletes and recreates the
+query, retries the keyed update, and verifies the replacement query is intact.
+
 ## Peer closure followed by maintenance (EN-2212)
 
 The Antithesis `NewGRPCConn` factory retries in interceptors after EN-1627; a

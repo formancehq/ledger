@@ -10,8 +10,36 @@ import (
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/proto"
 
+	"github.com/formancehq/ledger/v3/internal/pkg/filterexpr"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
+
+func TestConfigIDFilterExportApplyRoundTrip(t *testing.T) {
+	t.Parallel()
+	ledger := &commonpb.LedgerInfo{Name: "ledger1"}
+	for _, target := range []commonpb.QueryTarget{
+		commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS,
+		commonpb.QueryTarget_QUERY_TARGET_LOGS,
+	} {
+		filter, err := filterexpr.Parse("id > $min and id < $max", target)
+		require.NoError(t, err)
+		query := &commonpb.PreparedQuery{Name: "by-id", Target: target, Filter: filter}
+		exported := ConfigFromProto(ledger, nil, []*commonpb.PreparedQuery{query}, nil)
+		var buf bytes.Buffer
+		require.NoError(t, exported.WriteJSON(&buf))
+		path := filepath.Join(t.TempDir(), "config.json")
+		require.NoError(t, os.WriteFile(path, buf.Bytes(), 0o600))
+		parsed, err := ReadConfigFile(path)
+		require.NoError(t, err)
+		current := ConfigFromProto(ledger, nil, nil, nil)
+		actions, err := ComputeDiff(ledger.GetName(), current, parsed)
+		require.NoError(t, err)
+		require.Len(t, actions, 1)
+		created := actions[0].Request.GetCreatePreparedQuery().GetQuery()
+		require.Equal(t, target, created.GetTarget())
+		require.True(t, proto.Equal(filter, created.GetFilter()))
+	}
+}
 
 // TestConfigStructuredRoundTrip is the regression test for #493: exporting a
 // configuration as YAML/JSON (the shape produced by `ledgers configuration
@@ -197,11 +225,7 @@ func TestDiffAccountTypePersistenceSpellingEquivalence(t *testing.T) {
 	}
 }
 
-// TestDiffPreparedQueryTargetChange asserts ComputeDiff emits a delete + create
-// pair when only the target of an existing prepared query is edited.
-// UpdatePreparedQueryRequest carries no Target field — an in-place update
-// would silently drop the new target and leave the original in place
-// (#502 review, Paul Nicolas).
+// TestDiffPreparedQueryTargetChange asserts that a target change is atomic.
 func TestDiffPreparedQueryTargetChange(t *testing.T) {
 	t.Parallel()
 
@@ -218,17 +242,15 @@ func TestDiffPreparedQueryTargetChange(t *testing.T) {
 
 	actions, err := ComputeDiff("any-ledger", current, desired)
 	require.NoError(t, err)
-	require.Len(t, actions, 2, "target change must produce delete + create, not an in-place update")
+	require.Len(t, actions, 1)
 	require.Equal(t, "preparedQuery", actions[0].Section)
-	require.Equal(t, "remove", actions[0].Operation)
-	require.Equal(t, "preparedQuery", actions[1].Section)
-	require.Equal(t, "add", actions[1].Operation)
+	require.Equal(t, "update", actions[0].Operation)
+	require.Equal(t, commonpb.QueryTarget_QUERY_TARGET_LOGS, actions[0].Request.GetUpdatePreparedQuery().GetTarget())
+	require.NotNil(t, actions[0].Request.GetUpdatePreparedQuery().Target)
 }
 
 // TestDiffPreparedQueryFilterChange asserts that when only the filter (not the
-// target) moves, ComputeDiff still emits the cheap in-place update — the
-// remove+create path is only justified when the server has no equivalent
-// updater.
+// target) moves, ComputeDiff emits an in-place update with an explicit target.
 func TestDiffPreparedQueryFilterChange(t *testing.T) {
 	t.Parallel()
 
@@ -248,6 +270,7 @@ func TestDiffPreparedQueryFilterChange(t *testing.T) {
 	require.Len(t, actions, 1)
 	require.Equal(t, "preparedQuery", actions[0].Section)
 	require.Equal(t, "update", actions[0].Operation)
+	require.NotNil(t, actions[0].Request.GetUpdatePreparedQuery().Target)
 }
 
 func assertRoundTrip(
