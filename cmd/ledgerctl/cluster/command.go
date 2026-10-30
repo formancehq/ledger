@@ -15,7 +15,7 @@ func NewCommand() *cobra.Command {
 	cmd.AddCommand(NewWatchCommand())
 	cmd.AddCommand(NewDiskUsageCommand())
 	cmd.AddCommand(NewTransferLeaderCommand())
-	cmd.AddCommand(NewPromoteLearnerCommand())
+	cmd.AddCommand(NewAddLearnerCommand())
 	cmd.AddCommand(NewRemoveNodeCommand())
 	cmd.AddCommand(NewMaintenanceCommand())
 	cmd.AddCommand(NewBeginDrainCommand())
