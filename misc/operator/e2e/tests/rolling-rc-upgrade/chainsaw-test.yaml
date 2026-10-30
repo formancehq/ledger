@@ -58,6 +58,19 @@ spec:
                     containers:
                       - name: ledger
                         image: ledger:v3.0.0-rc.3
+        - script:
+            content: |
+              set -eu
+              kubectl rollout status statefulset/ledger-required-upgrade -n "$NAMESPACE" --timeout=5m
+              kubectl get statefulset ledger-required-upgrade -n "$NAMESPACE" -o json |
+                jq -e '.status.observedGeneration >= .metadata.generation and .status.currentRevision == .status.updateRevision' >/dev/null
+            timeout: 310s
+        - assert:
+            resource:
+              apiVersion: apps/v1
+              kind: StatefulSet
+              metadata:
+                name: ledger-required-upgrade
               status:
                 readyReplicas: 3
                 updatedReplicas: 3
