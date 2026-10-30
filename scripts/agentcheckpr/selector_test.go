@@ -126,6 +126,11 @@ func TestSelectsLocalValidationGatesFromCompleteDiff(t *testing.T) {
 			expected: []string{"pre-commit", "agent-check", "test-race:./internal/infra/cache"},
 		},
 		{
+			name:     "two files in one package",
+			paths:    []string{"internal/infra/cache/a.go", "internal/infra/cache/b.go"},
+			expected: []string{"pre-commit", "agent-check", "test-race:./internal/infra/cache"},
+		},
+		{
 			name:     "AI tooling",
 			paths:    []string{"scripts/agent-validation-env"},
 			expected: []string{"pre-commit", "agent-check", "test-tooling"},
@@ -159,10 +164,44 @@ func TestSelectsLocalValidationGatesFromCompleteDiff(t *testing.T) {
 				runGit(t, repository, "-c", "user.name=Agent Check PR Test", "-c", "user.email=agent-check-pr@example.com", "commit", "-m", "changes")
 			}
 
-			stdout, _ := runSelectorList(t, repository, testenv.Environment("AI_REVIEW_BASE_SHA="+baseSHA))
-			require.Equal(t, testCase.expected, strings.Fields(stdout))
+			for _, interpreter := range selectorInterpreters(t) {
+				stdout, _ := runSelectorListWith(t, interpreter, repository, testenv.Environment("AI_REVIEW_BASE_SHA="+baseSHA))
+				require.Equal(t, testCase.expected, strings.Fields(stdout), "interpreter %s", interpreter)
+			}
 		})
 	}
+}
+
+// legacyBashCandidates are system shells that may predate bash 4.4. macOS
+// ships bash 3.2 as /bin/bash, and `bash scripts/agent-check-pr` resolves to it
+// outside the Nix shell: gate selection runs before the Nix re-exec, so it
+// must work there too.
+var legacyBashCandidates = []string{"/bin/bash"}
+
+// selectorInterpreters returns the PATH bash plus any available bash older than
+// 4.4. Before 4.4, expanding an empty array under set -u is an unbound-variable
+// error, and BASH_COMPAT does not reproduce that on newer shells, so the
+// regression is only observable with a real legacy interpreter.
+func selectorInterpreters(t *testing.T) []string {
+	t.Helper()
+
+	interpreters := []string{"bash"}
+	for _, candidate := range legacyBashCandidates {
+		output, err := exec.Command(candidate, "-c", `echo "${BASH_VERSINFO[0]} ${BASH_VERSINFO[1]}"`).Output()
+		if err != nil {
+			continue
+		}
+
+		var major, minor int
+		if _, err := fmt.Sscanf(string(output), "%d %d", &major, &minor); err != nil {
+			continue
+		}
+		if major < 4 || (major == 4 && minor < 4) {
+			interpreters = append(interpreters, candidate)
+		}
+	}
+
+	return interpreters
 }
 
 func TestSelectorListKeepsDiagnosticsOutOfStructuredStdout(t *testing.T) {
@@ -186,7 +225,13 @@ func TestSelectorListKeepsDiagnosticsOutOfStructuredStdout(t *testing.T) {
 func runSelectorList(t *testing.T, repository string, environment []string) (string, string) {
 	t.Helper()
 
-	command := exec.Command("bash", selectorPath(t), "--list")
+	return runSelectorListWith(t, "bash", repository, environment)
+}
+
+func runSelectorListWith(t *testing.T, interpreter, repository string, environment []string) (string, string) {
+	t.Helper()
+
+	command := exec.Command(interpreter, selectorPath(t), "--list")
 	command.Dir = repository
 	command.Env = environment
 	var stderr bytes.Buffer
