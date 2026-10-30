@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"net/http/httptrace"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -44,6 +45,61 @@ func TestHTTPSource_FetchLogs_Success(t *testing.T) {
 	require.Len(t, result, 2)
 	require.Equal(t, uint64(1), result[0].ID)
 	require.Equal(t, uint64(2), result[1].ID)
+}
+
+// Closing one default-client source must not drop another source's idle
+// connections through a shared http.DefaultTransport.
+func TestHTTPSource_CloseDoesNotAffectOtherSources(t *testing.T) {
+	t.Parallel()
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(V2LogPage{})
+	}))
+	defer srv.Close()
+
+	active := NewHTTPSource(srv.URL, "default", nil)
+	defer func() { _ = active.Close() }()
+	closed := NewHTTPSource(srv.URL, "default", nil)
+
+	_, _, err := active.FetchLogs(context.Background(), 0, 10)
+	require.NoError(t, err)
+	require.NoError(t, closed.Close())
+
+	var reused bool
+	ctx := httptrace.WithClientTrace(context.Background(), &httptrace.ClientTrace{
+		GotConn: func(info httptrace.GotConnInfo) { reused = info.Reused },
+	})
+	_, _, err = active.FetchLogs(ctx, 0, 10)
+	require.NoError(t, err)
+	require.True(t, reused, "the active source's idle connection must survive another source's Close")
+}
+
+type closeCountingTransport struct {
+	http.RoundTripper
+
+	closes int
+}
+
+func (c *closeCountingTransport) CloseIdleConnections() { c.closes++ }
+
+// A default-client source sharing an uncloneable http.DefaultTransport must
+// leave its idle connections alone on Close; a caller-supplied client keeps
+// being closed as before.
+func TestHTTPSource_CloseIdleOwnership(t *testing.T) {
+	t.Parallel()
+
+	shared := &closeCountingTransport{RoundTripper: http.DefaultTransport}
+	source := newHTTPSource("http://example.com", "default", nil, shared)
+	require.Same(t, shared, source.httpClient.Transport, "an uncloneable default must be used as-is")
+	require.NoError(t, source.Close())
+	require.Zero(t, shared.closes)
+
+	unused := &closeCountingTransport{RoundTripper: http.DefaultTransport}
+	supplied := &closeCountingTransport{RoundTripper: http.DefaultTransport}
+	require.NoError(t, newHTTPSource("http://example.com", "default", &http.Client{Transport: supplied}, unused).Close())
+	require.Equal(t, 1, supplied.closes)
+	require.Zero(t, unused.closes)
 }
 
 func TestHTTPSource_FetchLogs_WithAfterID(t *testing.T) {
