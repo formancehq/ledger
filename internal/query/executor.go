@@ -183,8 +183,23 @@ func Execute(
 		keep = MainHorizonKeep(pq.GetTarget(), handle, indexSnap, ledgerInfo.GetName(), mainSeq)
 	}
 
+	compileOptions := CompileOptions{
+		IndexReader:     indexSnap,
+		KeyBuilder:      kb,
+		Target:          pq.GetTarget(),
+		LedgerName:      ledgerInfo.GetName(),
+		Parameters:      req.GetParameters(),
+		Schema:          schema,
+		LedgerInfo:      ledgerInfo,
+		IndexRegistry:   indexRegistry,
+		IndexVersionFor: indexVersionFor,
+		Profile:         profile,
+		MainReader:      handle,
+		Pin:             mainSeq,
+	}
+
 	if req.GetMode() == commonpb.QueryMode_QUERY_MODE_LIST && page.ReadReverse(req.GetReverse()) {
-		compiled, compileErr := CompileReverse(indexSnap, kb, pq.GetFilter(), pq.GetTarget(), ledgerInfo.GetName(), req.GetParameters(), schema, ledgerInfo, indexRegistry, indexVersionFor, profile, handle, mainSeq)
+		compiled, compileErr := CompileReverse(pq.GetFilter(), compileOptions)
 		if compileErr != nil {
 			return nil, domain.WrapCompileError(compileErr)
 		}
@@ -200,7 +215,7 @@ func Execute(
 		}, page, pq.GetTarget(), req, profile, handle, indexSnap, ledgerInfo.GetName(), enricher)
 	}
 
-	compiled, compileErr := Compile(indexSnap, kb, pq.GetFilter(), pq.GetTarget(), ledgerInfo.GetName(), req.GetParameters(), schema, ledgerInfo, indexRegistry, indexVersionFor, profile, handle, mainSeq)
+	compiled, compileErr := Compile(pq.GetFilter(), compileOptions)
 	if compileErr != nil {
 		return nil, domain.WrapCompileError(compileErr)
 	}

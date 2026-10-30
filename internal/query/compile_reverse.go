@@ -7,7 +7,6 @@ import (
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/domain/indexes"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/storage/dal"
 	"github.com/formancehq/ledger/v3/internal/storage/readstore"
 )
 
@@ -39,51 +38,14 @@ import (
 // second complete-result copy.
 
 // CompileReverse translates a QueryFilter proto into a descending
-// ReverseIterator tree. Arguments mirror Compile exactly; see its doc comment.
-func CompileReverse(
-	indexReader dal.PebbleReader,
-	kb *dal.KeyBuilder,
-	filter *commonpb.QueryFilter,
-	target commonpb.QueryTarget,
-	ledgerName string,
-	params map[string]*commonpb.ParameterValue,
-	schema map[string]*commonpb.MetadataFieldSchema,
-	info *commonpb.LedgerInfo,
-	indexRegistry indexes.Lookup,
-	indexVersionFor readstore.IndexVersionResolver,
-	profile *QueryProfile,
-	pebbleReader dal.PebbleReader,
-	pin uint64,
-) (readstore.ReverseIterator, error) {
-	// Same early target guard as Compile: an unsupported target must fail
-	// loudly rather than reach compileUniverse's default arm and read as an
-	// empty-but-successful page.
-	if !isSupportedTarget(target) {
-		return nil, domain.NewFilterCompilationError("unsupported query target %v", target)
+// ReverseIterator tree using the same borrowed inputs as Compile.
+func CompileReverse(filter *commonpb.QueryFilter, options CompileOptions) (readstore.ReverseIterator, error) {
+	// Keep the same early target rejection as Compile.
+	if !isSupportedTarget(options.Target) {
+		return nil, domain.NewFilterCompilationError("unsupported query target %v", options.Target)
 	}
 
-	if indexVersionFor == nil {
-		indexVersionFor = func(string) (readstore.ResolvedIndexVersion, bool, error) {
-			return readstore.ResolvedIndexVersion{Version: 1}, true, nil
-		}
-	}
-
-	ctx := &compileCtx{
-		kb:              kb,
-		pebbleReader:    pebbleReader,
-		indexReader:     indexReader,
-		target:          target,
-		ledgerName:      ledgerName,
-		params:          params,
-		schema:          schema,
-		info:            info,
-		indexRegistry:   indexRegistry,
-		indexVersionFor: indexVersionFor,
-		pin:             pin,
-		profile:         profile,
-	}
-
-	return compileRev(ctx, filter)
+	return compileRev(newCompileCtx(options), filter)
 }
 
 // trackReverse wraps a reverse iterator with a TrackedReverseIterator when

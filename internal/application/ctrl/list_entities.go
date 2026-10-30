@@ -147,12 +147,19 @@ func listWithoutIndex[T interface{ ~string | ~uint64 }](snap dal.PebbleReader, p
 func listAscending[T interface{ ~string | ~uint64 }](indexReader dal.PebbleReader, params entityListParams[T], out *[][]byte) error {
 	kb := dal.NewKeyBuilder()
 
-	compiled, err := query.Compile(
-		indexReader, kb, params.filter,
-		params.target,
-		params.ledgerName, nil, params.schema, params.info, params.indexRegistry, params.indexVersionFor, params.profile,
-		params.pebbleReader, params.pin,
-	)
+	compiled, err := query.Compile(params.filter, query.CompileOptions{
+		IndexReader:     indexReader,
+		KeyBuilder:      kb,
+		Target:          params.target,
+		LedgerName:      params.ledgerName,
+		Schema:          params.schema,
+		LedgerInfo:      params.info,
+		IndexRegistry:   params.indexRegistry,
+		IndexVersionFor: params.indexVersionFor,
+		Profile:         params.profile,
+		MainReader:      params.pebbleReader,
+		Pin:             params.pin,
+	})
 	if err != nil {
 		return domain.WrapCompileError(err)
 	}
@@ -285,12 +292,19 @@ func newReverseIterator[T interface{ ~string | ~uint64 }](indexReader dal.Pebble
 func listDescFiltered[T interface{ ~string | ~uint64 }](indexReader dal.PebbleReader, params entityListParams[T], out *[][]byte) error {
 	kb := dal.NewKeyBuilder()
 
-	compiled, err := query.CompileReverse(
-		indexReader, kb, params.filter,
-		params.target,
-		params.ledgerName, nil, params.schema, params.info, params.indexRegistry, params.indexVersionFor, params.profile,
-		params.pebbleReader, params.pin,
-	)
+	compiled, err := query.CompileReverse(params.filter, query.CompileOptions{
+		IndexReader:     indexReader,
+		KeyBuilder:      kb,
+		Target:          params.target,
+		LedgerName:      params.ledgerName,
+		Schema:          params.schema,
+		LedgerInfo:      params.info,
+		IndexRegistry:   params.indexRegistry,
+		IndexVersionFor: params.indexVersionFor,
+		Profile:         params.profile,
+		MainReader:      params.pebbleReader,
+		Pin:             params.pin,
+	})
 	if err != nil {
 		return domain.WrapCompileError(err)
 	}
