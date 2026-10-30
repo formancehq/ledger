@@ -166,6 +166,7 @@ func Module() fx.Option {
 				return ctrl.GRPCSnapshotFetcherProvider(
 					transport,
 					logger,
+					cfg.RaftConfig.NodeID,
 					cfg.SnapshotSyncConfig.Parallelism,
 					cfg.SnapshotSyncConfig.RetryCount,
 					cfg.SnapshotSyncConfig.FileRetryCount,

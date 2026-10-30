@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"path/filepath"
 	"strconv"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -17,7 +18,6 @@ import (
 
 	"github.com/formancehq/ledger/v3/internal/infra/state"
 	"github.com/formancehq/ledger/v3/internal/proto/snapshotpb"
-	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
 
 // SnapshotDonor exposes the applier state needed by the snapshot service.
@@ -27,19 +27,35 @@ type SnapshotDonor interface {
 	SnapshotReadiness() (lastPersistedIndex uint64, resynchronizing bool)
 }
 
+type snapshotCheckpointStore interface {
+	CreateTemporaryCheckpoint(name string) (string, error)
+	RemoveTemporaryCheckpoint(name string) error
+}
+
 // SnapshotServiceServerImpl implements the SnapshotService gRPC server.
 type SnapshotServiceServerImpl struct {
 	snapshotpb.UnimplementedSnapshotServiceServer
 
-	logger     logging.Logger
-	store      *dal.Store
-	sessions   *snapshotSessionStore
-	nextSyncID atomic.Uint64
-	donor      SnapshotDonor
+	logger       logging.Logger
+	store        snapshotCheckpointStore
+	sessions     *snapshotSessionStore
+	nextSyncID   atomic.Uint64
+	donor        SnapshotDonor
+	prepareMu    sync.Mutex
+	prepareSlots chan struct{}
+	preparations map[string]*snapshotPreparation
+}
+
+type snapshotPreparation struct {
+	done            chan struct{}
+	minAppliedIndex uint64
+	resp            *snapshotpb.PrepareSnapshotResponse
+	err             error
+	waiters         atomic.Int32
 }
 
 // NewSnapshotServiceServer creates a new SnapshotServiceServer.
-func NewSnapshotServiceServer(logger logging.Logger, s *dal.Store, sessionTTL time.Duration, donor SnapshotDonor) snapshotpb.SnapshotServiceServer {
+func NewSnapshotServiceServer(logger logging.Logger, s snapshotCheckpointStore, sessionTTL time.Duration, donor SnapshotDonor) snapshotpb.SnapshotServiceServer {
 	l := logger.WithField("component", "snapshot-server")
 
 	if sessionTTL == 0 {
@@ -47,10 +63,12 @@ func NewSnapshotServiceServer(logger logging.Logger, s *dal.Store, sessionTTL ti
 	}
 
 	return &SnapshotServiceServerImpl{
-		logger:   l,
-		store:    s,
-		sessions: newSnapshotSessionStore(s, l, sessionTTL),
-		donor:    donor,
+		logger:       l,
+		store:        s,
+		sessions:     newSnapshotSessionStore(s, l, sessionTTL),
+		donor:        donor,
+		prepareSlots: make(chan struct{}, 1),
+		preparations: make(map[string]*snapshotPreparation),
 	}
 }
 
@@ -83,8 +101,15 @@ func StopSnapshotService(server snapshotpb.SnapshotServiceServer) {
 	}
 }
 
-// PrepareSnapshot creates a fresh Pebble checkpoint, builds a manifest, and
-// returns a session ID that can be used for parallel FetchFile calls.
+// PrepareSnapshot waits for the requested applied index, then creates or
+// reuses a Pebble checkpoint and returns a session ID for parallel FetchFile
+// calls. Identified retries share a preparation only when its applied-index
+// floor is sufficient; a higher floor waits for the older preparation and
+// starts a fresh checkpoint. Unidentified requests never coalesce. Every
+// preparation shares one checkpoint slot. A queued cancellation discards its
+// preparation, while a live same-follower waiter may create its replacement;
+// manifest construction is detached so a caller timeout cannot abandon the
+// checkpoint after it has started.
 func (s *SnapshotServiceServerImpl) PrepareSnapshot(ctx context.Context, req *snapshotpb.PrepareSnapshotRequest) (*snapshotpb.PrepareSnapshotResponse, error) {
 	overallStart := time.Now()
 
@@ -100,21 +125,97 @@ func (s *SnapshotServiceServerImpl) PrepareSnapshot(ctx context.Context, req *sn
 	// that is itself resynchronizing is refused outright: the requester
 	// treats FailedPrecondition as final and moves on to another donor
 	// instead of waiting out its PrepareSnapshot budget here.
-	minIdx := req.GetMinAppliedIndex()
+	minAppliedIndex := req.GetMinAppliedIndex()
 	waitStart := time.Now()
-	if err := s.donor.WaitForCheckpointable(ctx, minIdx); err != nil {
+	if err := s.donor.WaitForCheckpointable(ctx, minAppliedIndex); err != nil {
 		if errors.Is(err, state.ErrStoreResynchronizing) {
 			return nil, status.Error(codes.FailedPrecondition, err.Error())
 		}
 
-		return nil, fmt.Errorf("waiting for FSM to apply index %d: %w", minIdx, err)
+		return nil, fmt.Errorf("waiting for FSM to apply index %d: %w", minAppliedIndex, err)
 	}
 
 	if d := time.Since(waitStart); d > 100*time.Millisecond {
 		s.logger.WithFields(map[string]any{
-			"minAppliedIndex": minIdx,
+			"minAppliedIndex": minAppliedIndex,
 			"duration":        d.String(),
 		}).Infof("FSM caught up to minAppliedIndex for PrepareSnapshot")
+	}
+
+	nodeID := req.GetNodeId()
+	var prep *snapshotPreparation
+	for {
+		s.prepareMu.Lock()
+		if s.prepareSlots == nil {
+			s.prepareSlots = make(chan struct{}, 1)
+		}
+		if s.preparations == nil {
+			s.preparations = make(map[string]*snapshotPreparation)
+		}
+		if nodeID != "" {
+			if existing, ok := s.preparations[nodeID]; ok {
+				if existing.minAppliedIndex >= minAppliedIndex {
+					existing.waiters.Add(1)
+					s.prepareMu.Unlock()
+					defer existing.waiters.Add(-1)
+					select {
+					case <-existing.done:
+						if errors.Is(existing.err, context.Canceled) || errors.Is(existing.err, context.DeadlineExceeded) {
+							if err := ctx.Err(); err != nil {
+								return nil, err
+							}
+
+							continue
+						}
+
+						return existing.resp, existing.err
+					case <-ctx.Done():
+						return nil, ctx.Err()
+					}
+				}
+				existing.waiters.Add(1)
+				done := existing.done
+				s.prepareMu.Unlock()
+				select {
+				case <-done:
+					existing.waiters.Add(-1)
+
+					continue
+				case <-ctx.Done():
+					existing.waiters.Add(-1)
+
+					return nil, ctx.Err()
+				}
+			}
+		}
+		prep = &snapshotPreparation{done: make(chan struct{}), minAppliedIndex: minAppliedIndex}
+		if nodeID != "" {
+			s.preparations[nodeID] = prep
+		}
+		s.prepareMu.Unlock()
+		defer func() {
+			s.prepareMu.Lock()
+			if nodeID != "" && s.preparations[nodeID] == prep {
+				delete(s.preparations, nodeID)
+			}
+			close(prep.done)
+			s.prepareMu.Unlock()
+		}()
+		select {
+		case s.prepareSlots <- struct{}{}:
+			defer func() { <-s.prepareSlots }()
+		case <-ctx.Done():
+			prep.err = ctx.Err()
+
+			return nil, prep.err
+		}
+		if err := ctx.Err(); err != nil {
+			prep.err = err
+
+			return nil, prep.err
+		}
+
+		break
 	}
 
 	syncName := "follower-sync-" + strconv.FormatUint(s.nextSyncID.Add(1), 10)
@@ -122,7 +223,9 @@ func (s *SnapshotServiceServerImpl) PrepareSnapshot(ctx context.Context, req *sn
 	checkpointStart := time.Now()
 	checkpointPath, err := s.store.CreateTemporaryCheckpoint(syncName)
 	if err != nil {
-		return nil, fmt.Errorf("creating temporary checkpoint: %w", err)
+		prep.err = fmt.Errorf("creating temporary checkpoint: %w", err)
+
+		return nil, prep.err
 	}
 
 	s.logger.WithFields(map[string]any{
@@ -131,14 +234,16 @@ func (s *SnapshotServiceServerImpl) PrepareSnapshot(ctx context.Context, req *sn
 	}).Infof("Temporary checkpoint created for follower sync")
 
 	manifestStart := time.Now()
-	manifest, err := buildManifest(ctx, checkpointPath)
+	manifest, err := buildManifest(context.WithoutCancel(ctx), checkpointPath)
 	if err != nil {
 		// Clean up checkpoint on manifest build failure.
 		if rmErr := s.store.RemoveTemporaryCheckpoint(syncName); rmErr != nil {
 			s.logger.Errorf("Failed to remove checkpoint after manifest error: %v", rmErr)
 		}
 
-		return nil, fmt.Errorf("building manifest: %w", err)
+		prep.err = fmt.Errorf("building manifest: %w", err)
+
+		return nil, prep.err
 	}
 
 	sessionID, err := s.sessions.create(syncName, checkpointPath)
@@ -147,7 +252,9 @@ func (s *SnapshotServiceServerImpl) PrepareSnapshot(ctx context.Context, req *sn
 			s.logger.Errorf("Failed to remove checkpoint after session creation error: %v", rmErr)
 		}
 
-		return nil, fmt.Errorf("creating session: %w", err)
+		prep.err = fmt.Errorf("creating session: %w", err)
+
+		return nil, prep.err
 	}
 
 	s.logger.WithFields(map[string]any{
@@ -157,10 +264,12 @@ func (s *SnapshotServiceServerImpl) PrepareSnapshot(ctx context.Context, req *sn
 		"totalDuration":    time.Since(overallStart).String(),
 	}).Infof("Snapshot session created")
 
-	return &snapshotpb.PrepareSnapshotResponse{
+	prep.resp = &snapshotpb.PrepareSnapshotResponse{
 		SessionId: sessionID,
 		Manifest:  manifest,
-	}, nil
+	}
+
+	return prep.resp, nil
 }
 
 // FetchFile streams a single file from a prepared snapshot session.

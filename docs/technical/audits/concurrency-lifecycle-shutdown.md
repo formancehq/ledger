@@ -25,6 +25,7 @@ that authorizes each operation:
 | Task invocation | bloom snapshot/epoch and cache snapshot invocation | Completion publishes only while the captured filter snapshot remains current. Interrupt joins before replacement publication. |
 | Durable cursor | indexbuilder, auditindexer, usagebuilder and tail workers | Process Stop joins the fold. Restart resumes from the subsystem's atomic durable cursor contract; leadership alone does not restart per-replica workers. |
 | Request or session context | snapshot, restore, file stream, read lease and query checkpoint | Cancellation and completion converge on exactly-once release and cannot publish partial or superseded output. |
+| Snapshot preparation identity and floor | follower `NodeId`, requested `MinAppliedIndex`, preparation state and session ownership | Only an identified retry whose requested floor is covered may join. A higher floor waits for completion and starts a new preparation; an empty identity never joins. The single Pebble checkpoint slot is acquired before creation, queued cancellation discards the owner, and a live waiter may replace it without inheriting the canceled context. Manifest completion remains owned until its session is published or cleaned up. |
 | Admission request and proposal future | admission read handles, proposal guards and any request-scoped lifecycle lock | A request owns only the work it declared. Release every lifecycle lock before waiting for the proposal future. Never retain that lock through FSM application. The proposal guard is released when `Propose` returns; read handles close at their owning boundary. |
 | Drain epoch and pending marker | `Node.BeginDrain`, membership fence and proposal queue | Once a marker is enqueued, caller cancellation cannot reopen membership or write admission. Keep the pending fence until the marker applies or Raft definitively drops it. A release clears the applied gate only when its own Raft entry applies. |
 
@@ -89,6 +90,21 @@ P0, P1 and P2 findings require a reachable production path and concrete harmful
 postcondition. A missing generation counter, mutex, test or context is not on
 its own a finding. If ownership, Stop cardinality or timeout semantics are not
 defined by code and authoritative documentation, emit an audit question.
+
+## Follower snapshot preparation lifecycle
+
+`PrepareSnapshot` is a shared lifecycle state machine, not an unconditional
+fresh-checkpoint call. The serving FSM first reaches the requested applied
+floor. Identified retries may join only a preparation whose recorded floor is
+at least the request's floor; a higher floor waits for completion and creates a
+new preparation, while an empty identity never joins another caller. All
+checkpoint creation is serialized by one slot. A cancellation while queued
+discards that preparation, and a live same-follower waiter may replace it
+without inheriting the canceled context. Once Pebble checkpointing starts,
+manifest construction is detached from the request wait and must publish one
+session or clean the temporary checkpoint. Tests must synchronize on actual
+checkpoint entry, waiter registration and slot release, and assert no overlap,
+no stale floor reuse and no abandoned session ownership.
 
 ## Stale callback and global-state proof
 

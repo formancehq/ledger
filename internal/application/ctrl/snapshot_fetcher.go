@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -58,6 +59,7 @@ type snapshotClientSource func() (snapshotpb.SnapshotServiceClient, error)
 type grpcSnapshotFetcher struct {
 	clientSource   snapshotClientSource
 	logger         logging.Logger
+	nodeID         uint64
 	parallelism    int
 	retryCount     int
 	fileRetryCount int
@@ -358,6 +360,7 @@ func (f *grpcSnapshotFetcher) prepareSnapshotWithHeartbeat(ctx context.Context, 
 
 	go func() {
 		resp, err := client.PrepareSnapshot(callCtx, &snapshotpb.PrepareSnapshotRequest{
+			NodeId:          strconv.FormatUint(f.nodeID, 10),
 			MinAppliedIndex: minAppliedIndex,
 		})
 		done <- result{resp: resp, err: err}
@@ -504,6 +507,7 @@ func sessionBackoffWait(ctx context.Context, attempt int) error {
 type grpcSnapshotFetcherProvider struct {
 	transport      *node.DefaultTransport
 	logger         logging.Logger
+	nodeID         uint64
 	parallelism    int
 	retryCount     int
 	fileRetryCount int
@@ -526,6 +530,7 @@ func (p *grpcSnapshotFetcherProvider) GetForPeer(id uint64) (state.SnapshotFetch
 	return &grpcSnapshotFetcher{
 		clientSource:   clientSource,
 		logger:         p.logger,
+		nodeID:         p.nodeID,
 		parallelism:    p.parallelism,
 		retryCount:     p.retryCount,
 		fileRetryCount: p.fileRetryCount,
@@ -574,10 +579,11 @@ func (p *grpcSnapshotFetcherProvider) GetForPeers(ids []uint64) (state.SnapshotF
 // carries a logger, so FromContext would degrade to go-libs' bare logrus
 // stderr fallback and emit lines in a different format than the rest of the
 // process.
-func GRPCSnapshotFetcherProvider(transport *node.DefaultTransport, logger logging.Logger, parallelism, retryCount, fileRetryCount int) state.SnapshotFetcherProvider {
+func GRPCSnapshotFetcherProvider(transport *node.DefaultTransport, logger logging.Logger, nodeID uint64, parallelism, retryCount, fileRetryCount int) state.SnapshotFetcherProvider {
 	return &grpcSnapshotFetcherProvider{
 		transport:      transport,
 		logger:         logger.WithFields(map[string]any{"cmp": "snapshot-fetcher"}),
+		nodeID:         nodeID,
 		parallelism:    parallelism,
 		retryCount:     retryCount,
 		fileRetryCount: fileRetryCount,
