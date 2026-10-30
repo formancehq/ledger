@@ -40,7 +40,7 @@ func (r *ClusterReconciler) pruneDisabledOptionalServices(
 	ctx context.Context, ledger *ledgerv1alpha1.Cluster,
 ) error {
 	if ledger.Spec.HeadlessService.Enabled != nil && !*ledger.Spec.HeadlessService.Enabled {
-		if err := r.deleteIfExists(ctx, &corev1.Service{
+		if err := r.deleteIfExists(ctx, ledger, &corev1.Service{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      headlessServiceName(ledger.Name),
 				Namespace: ledger.Namespace,
@@ -50,7 +50,7 @@ func (r *ClusterReconciler) pruneDisabledOptionalServices(
 		}
 	}
 	if ledger.Spec.IngressGrpc == nil || !ledger.Spec.IngressGrpc.Enabled {
-		if err := r.deleteIfExists(ctx, &corev1.Service{
+		if err := r.deleteIfExists(ctx, ledger, &corev1.Service{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      grpcServiceName(ledger.Name),
 				Namespace: ledger.Namespace,
@@ -63,7 +63,7 @@ func (r *ClusterReconciler) pruneDisabledOptionalServices(
 		// reconcileIngressGrpc, which runs AFTER the guard. Drop it here too
 		// so a drift on the primary Service / StatefulSet does not strand
 		// an Ingress pointing at a deleted backend.
-		if err := r.deleteIfExists(ctx, &networkingv1.Ingress{
+		if err := r.deleteIfExists(ctx, ledger, &networkingv1.Ingress{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      grpcIngressName(ledger.Name),
 				Namespace: ledger.Namespace,
@@ -111,6 +111,10 @@ func (r *ClusterReconciler) validateSelectorImmutability(
 			if err != nil {
 				return nil, false, err
 			}
+			// Another owner's selector is not drift of this Cluster.
+			if notControlledBy(svc, ledger) {
+				return nil, false, nameConflictError("Service", svc, ledger)
+			}
 
 			return svc.Spec.Selector, true, nil
 		}
@@ -131,6 +135,9 @@ func (r *ClusterReconciler) validateSelectorImmutability(
 			}
 			if err != nil {
 				return nil, false, err
+			}
+			if notControlledBy(sts, ledger) {
+				return nil, false, nameConflictError("StatefulSet", sts, ledger)
 			}
 			if sts.Spec.Selector == nil {
 				return nil, true, nil
