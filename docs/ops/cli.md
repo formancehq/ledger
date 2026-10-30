@@ -62,6 +62,30 @@ expanded size must fit in an int64. Negative values and overflow are rejected;
 zero keeps the flag's documented default or disabled meaning. See the
 [server configuration contract](deployment.md#configuration) for details.
 
+## Server termination
+
+SIGTERM and interrupt request graceful server shutdown. During learner
+registration, the signal cancels only the registration child context so Fx can
+roll back previously started hooks with a live startup context. A positive
+`--total-stop-timeout` also arms a deadline measured from the signal for startup
+unwind and deferred log-export `ForceFlush`/`Shutdown`. Zero leaves this waiting
+unlimited. Expiry returns failure and may leave cleanup unfinished.
+
+If startup completes, the queued Fx notification still triggers normal
+shutdown. Normal Fx stop hooks, including `--grace-period`, retain their existing
+separate `--total-stop-timeout` budget; this is not one shared budget across
+startup unwind, successful startup, and normal stopping. Signal-time log-export
+finalization uses only the time remaining before the signal deadline. Without a termination
+signal, deferred log-export errors retain their existing log-only behavior.
+
+Intentional registration cancellation exits successfully only after rollback
+and finalization succeed within the applicable deadline. Fatal registration
+errors, marker-write failures, rollback failures, deadline expiry, and
+signal-time finalization failures remain unsuccessful exits. A deadline return
+or PID exit is not evidence that every resource closed cleanly. See
+[learner registration](cluster-operations.md#phase-3-learner-registration-preflight)
+for the remote membership ambiguity after cancellation.
+
 ## Global Flags
 
 These flags are available for all commands:
@@ -3748,7 +3772,8 @@ enforces `--total-stop-timeout` across all Fx stop hooks, including
 command exits unsuccessfully, even if a hook is still waiting for backend
 initialization or staging cleanup. Interrupted cleanup can leave staging files
 or an uncleanly closed staging store. Deferred log-export cleanup runs after
-the Fx lifecycle and is outside this timeout. See
+the Fx lifecycle; after a termination signal it uses the remaining signal-time
+budget described in [server termination](#server-termination). See
 [restore shutdown](backup-restore.md#step-1-download) for the cleanup sequence.
 
 The server downloads files in parallel; tune the worker count with the server

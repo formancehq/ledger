@@ -38,6 +38,40 @@ unrelated workers. Likewise a leadership term alone is not a complete resource
 identity when configuration, ledger incarnation or pending version can change
 within the term.
 
+## Learner preflight and startup unwind
+
+The preflight owns its outbound registration connections and termination
+subscription before inbound Raft traffic or the node run loop starts. A signal
+must remain latched if it precedes subscription, cancel only the registration
+child context, and preserve the queued Fx shutdown notification. Subscription
+release, timer shutdown and concurrent signal delivery must be race-safe and
+exactly once. The private startup context remains live while failed preflight
+returns and Fx rolls back acquired dependencies; immediately canceling that
+context would let Fx skip dependency cleanup.
+
+Use deterministic barriers or synctest for in-flight RPC and backoff
+cancellation, pre-latched signals, success/AlreadyExists and marker-write
+failures, fatal status races and unrelated inherited cancellation. Preserve the
+existing failed-preflight-before-inbound and queued-notification regression
+triggers. Cancellation may leave a remotely committed member without a local
+joined marker; it is not a rollback of that distributed effect.
+
+For a positive `total-stop-timeout`, an absolute signal-time deadline bounds
+startup unwind and deferred logger finalization. Expiry cancels the private
+application context and fails outer waiting; zero leaves waiting unlimited.
+Successful startup still consumes the queued notification and keeps its
+existing separate normal Fx stop budget. Do not reinterpret the signal deadline
+as one total budget across all lifecycle phases.
+
+Test rollback failure, blocked/failing finalization, expiry/result races and
+signal/timer/subscription-close races. Finalization gets the remaining signal
+deadline and cannot turn expiry into success. Only intentional cancellation
+after successful rollback and finalization can become success; fatal statuses,
+marker errors and cleanup errors must survive a concurrent signal. Verify
+listener/store closure and same-path reuse independently of timeout return or
+process exit. The real OS signal/PID/exit-status oracle belongs to
+`process-boundary-recovery`.
+
 ## Node hook deadline ownership
 
 Once the bootstrap node stop hook is entered, it calls `Node.Stop` with the

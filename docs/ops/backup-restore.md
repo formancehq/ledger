@@ -513,9 +513,11 @@ enforces `--total-stop-timeout`. That budget includes `--grace-period` and all
 Fx stop hooks. Deadline expiry returns a shutdown error and an unsuccessful
 command exit without guaranteeing that every hook completed. Process exit can
 therefore interrupt cleanup and leave staging files or an uncleanly closed
-staging store. Deferred log-export cleanup runs after the Fx lifecycle and is
-outside this timeout; size the process termination grace period to allow that
-additional work. Staging-store close errors are logged under the existing close
+staging store. Deferred log-export cleanup runs after the Fx lifecycle. After a
+termination signal it uses the remaining signal-time deadline, distinct from
+the normal Fx stop budget; expiry or finalization failure exits unsuccessfully.
+See [server termination](cli.md#server-termination) for startup-unwind and zero
+timeout behavior. Staging-store close errors are logged under the existing close
 policy and are not returned by the restore stop hook.
 
 ### Step 2: Validate (Required for gRPC Finalization)

@@ -740,12 +740,17 @@ func Module() fx.Option {
 				lc fx.Lifecycle,
 				cfg Config,
 				logger logging.Logger,
+				termination startupTerminationParams,
 			) {
 				if !shouldRunJoinPreflight(cfg, logger) {
 					return
 				}
 
-				lc.Append(joinPreflightHook(cfg, logger))
+				hook := joinPreflightHook(cfg, logger)
+				if termination.Termination != nil {
+					hook = termination.Termination.hook(hook)
+				}
+				lc.Append(hook)
 			},
 			func(
 				lc fx.Lifecycle,
@@ -1317,6 +1322,9 @@ func tryAddLearner(ctx context.Context, cfg Config, tlsCfg TLSConfig, logger log
 			}
 
 			st, ok := status.FromError(err)
+			if ok && st.Code() == codes.Canceled && ctx.Err() != nil {
+				return joinCancellation(ctx)
+			}
 			// EN-1436: the leader detected this nodeID in its raft Progress
 			// with a non-zero Match but we (the caller) have no CLUSTER_JOINED
 			// marker on our WAL. The leader's Match for us points at state we
@@ -1411,7 +1419,7 @@ func tryAddLearner(ctx context.Context, cfg Config, tlsCfg TLSConfig, logger log
 
 		select {
 		case <-ctx.Done():
-			return ctx.Err()
+			return joinCancellation(ctx)
 		case <-time.After(backoff):
 		}
 

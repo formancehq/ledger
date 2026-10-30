@@ -75,7 +75,8 @@
     "docs/technical/contributing/testing.md",
     "docs/ops/cluster-operations.md",
     "docs/ops/deployment.md",
-    "docs/technical/audits/configuration-startup-contracts.md"
+    "docs/technical/audits/configuration-startup-contracts.md",
+    "docs/ops/cli.md"
   ],
   "invariants": [
     "Each execution of the production Ledger binary must reconstruct the intended node identity, cluster role, network addresses, storage locations, and supported runtime settings from the documented CLI, environment, and deployment inputs plus durable state; correctness after exec must not depend on memory or process-local state from an earlier execution.",
@@ -86,7 +87,8 @@
     "Graceful exit, failed startup unwind, and OS-enforced process death must leave kernel-managed listeners and application-managed files, locks, temporary artifacts, and ownership markers in a state that permits a safe immediate re-exec on the same configured endpoints and durable paths, or produces a clear fail-closed error.",
     "Evidence for process restart recovery must prove that a different OS process reopened and validated the intended node-local state. Cluster forwarding, leader reads, snapshot installation, peer repair, or orchestrator replacement may be part of a distributed recovery scenario but must not be accepted as proof of local reopen correctness; Raft quorum, membership, routing, and leadership safety themselves remain owned by raft-membership-leadership, while collection and validation-layer enforcement of process tests remain owned by test-reachability-enforcement.",
     "If process death interrupts persistence-affecting background work, every externally meaningful durable progress state must let a newly executed process resume, retry, roll back, or fail closed without silently publishing incomplete work. This domain owns the hard-death and re-exec boundary; normal cancellation, Stop joining, and worker-generation ownership remain owned by concurrency-lifecycle-shutdown, while the underlying persistence transition remains owned by its subsystem audit.",
-    "Configuration resolution, static operator value translation, validation predicates and constructor-to-consumer wiring are owned by configuration-startup-contracts. This domain retains real-exec reconstruction, readiness/exit sequencing and recovery after rejected startup or process death. Attribute shared symptoms by root cause and required correction; do not duplicate a parameter defect merely because its consequence is visible in a subprocess."
+    "Configuration resolution, static operator value translation, validation predicates and constructor-to-consumer wiring are owned by configuration-startup-contracts. This domain retains real-exec reconstruction, readiness/exit sequencing and recovery after rejected startup or process death. Attribute shared symptoms by root cause and required correction; do not duplicate a parameter defect merely because its consequence is visible in a subprocess.",
+    "During learner registration, a supported termination signal cancels registration while leaving the private startup context live for Fx rollback until a positive total-stop-timeout signal deadline expires. Successful intentional termination requires successful rollback and signal-time logger finalization before expiry; fatal registration, marker, rollback and finalization failures remain failures. Zero is unlimited. Startup success retains the queued Fx notification and the separate existing normal-stop budget. Deadline return bounds outer waiting, not cleanup completion, and cancellation does not undo remotely committed membership."
   ],
   "adversarial_questions": [
     "Which production behaviors are exercised only by main.go and the pinned service.Execute/service.App implementation, and which tests instead call Cobra ExecuteContext in a goroutine and stop by cancelling a context? What signal, environment-binding, deferred-cleanup, or exit-code behavior is bypassed in the latter case?",
@@ -100,7 +102,8 @@
     "Do restart tests prove PID replacement, preservation of the exact WAL/data paths or PVCs, and a node-local sentinel across the replacement, or can a test named restart execute only an in-process Stop/Start cycle, observe an old PID, or validate only cluster-level availability?",
     "When a leader or follower process is killed and re-executed, which observations establish process-boundary recovery separately from the Raft domain's quorum, membership, leadership-transfer, catch-up, and routing guarantees?",
     "Can hard death during cache or query checkpointing, projection indexing, usage aggregation, or backup orchestration leave a durable progress marker that suppresses necessary work or publishes incomplete work after the new process starts?",
-    "Do Schemathesis, the local model runner, operator/Chainsaw, and Antithesis wait for and assert the Ledger process's own termination and replacement outcomes, or only clean up a child/container and later observe an orchestrator-managed service?"
+    "Do Schemathesis, the local model runner, operator/Chainsaw, and Antithesis wait for and assert the Ledger process's own termination and replacement outcomes, or only clean up a child/container and later observe an orchestrator-managed service?",
+    "Does a real SIGTERM or interrupt during repeated Unavailable learner registration cancel in-flight RPC/backoff and exit within a positive signal-time startup/finalization budget without converting fatal statuses or cleanup errors into success? Are zero, pre-latched signals, startup success with queued notification, and remote commit without a local joined marker distinguished?"
   ],
   "dynamic_checks_to_consider": [
     "build and spawn the production Ledger binary with isolated fixed WAL/data directories and kernel-assigned endpoints, record its PID, send SIGTERM, wait for the exact child status, and immediately exec a new PID on the same resources",
@@ -111,6 +114,7 @@
     "in a multi-node run, kill and re-exec both follower and leader PIDs while preserving their local volumes, then verify PID replacement, local integrity/state with forwarding disabled, and cluster recovery as separate assertions",
     "hold peers unavailable during a restarted node's local verification so snapshot installation, leader forwarding, and quorum reads cannot mask a broken local reopen path",
     "interrupt cache/query checkpointing, projection builders, usage aggregation, and backup work with SIGKILL at deterministic barriers, then re-exec and verify durable progress is resumed, retried, rolled back, or rejected according to the owning subsystem contract",
-    "run the production container entrypoint as PID 1, exercise graceful and zero-grace container termination, and assert signal delivery, exit status, persistent-volume reuse, listener reuse, and a new container/PID identity"
+    "run the production container entrypoint as PID 1, exercise graceful and zero-grace container termination, and assert signal delivery, exit status, persistent-volume reuse, listener reuse, and a new container/PID identity",
+    "Spawn the production binary against a controlled bootstrap gRPC peer returning valid discovery and repeated Unavailable registration; observe repeated calls, signal the exact PID, and assert bounded successful exit only after clean unwind. Separately verify listener/store closure and a new PID reusing the exact paths; test fatal response/signal races, deadline failures, zero unlimited, and committed membership with a lost response without treating test cleanup kill/reap as product termination."
   ]
 }
