@@ -107,7 +107,7 @@ func newLogBoundsVerifier() *logBoundsVerifier {
 
 // markLiveTruncated records that the live audit fold stopped short of the end of
 // the range. Called from every non-error early exit in verifyAuditHashChain,
-// alongside the signing and cluster-policy verifiers.
+// alongside the signing verifier.
 func (v *logBoundsVerifier) markLiveTruncated() {
 	v.markIncomplete("the expected log range could not be derived over the whole history: the audit range " +
 		"was cut short by a hash chain break, so every log produced after it is unaccounted for. The " +
