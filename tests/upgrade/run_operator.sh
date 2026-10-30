@@ -109,5 +109,5 @@ UPGRADE_SOURCE_REPOSITORY="$source_repository" UPGRADE_SOURCE_TAG="$source_tag" 
 UPGRADE_TARGET_REPOSITORY="$target_repository" UPGRADE_TARGET_TAG="$target_tag" \
 UPGRADE_TARGET_IMAGE_ID="$target_id" \
 	chainsaw test --config "$script_dir/chainsaw/config.yaml" \
-		--test-dir "$script_dir/operator" --kube-context "kind-$cluster" \
+		--test-dir "$script_dir/operator" --kube-context "kind-$cluster" --skip-delete \
 		2>&1 | tee "$workdir/chainsaw.log"

@@ -287,7 +287,9 @@ exact branch HEAD, and loads all four into an isolated kind cluster. The target
 Ledger image is tagged with its full local image ID, so the Cluster CR refers
 to immutable build content and each restarted Pod can be checked against that
 ID. The workflow uploads the
-revision, image, Chainsaw, Kubernetes, and operator logs as evidence.
+revision, image, Chainsaw, Kubernetes, Ledger Pod, and operator logs as evidence.
+The harness keeps the Chainsaw namespace until it collects those diagnostics,
+then deletes the Kind cluster.
 
 Chainsaw creates a three-voter Cluster with the published operator and Ledger
 images, then commits data and records the Pod and PVC identities. It upgrades
