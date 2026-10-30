@@ -108,8 +108,9 @@ func TestSIGTERMDuringLearnerRegistrationStopsServerProcess(t *testing.T) {
 				t.Fatal("server remained alive after SIGTERM during persistent learner registration")
 			}
 			require.False(t, wal.IsClusterJoined(filepath.Join(storage, "wal")), "unavailable registration must not create the joined marker")
-			identity, err := wal.EnsureInstanceID(filepath.Join(storage, "wal"))
+			identity, err := wal.ReadInstanceID(filepath.Join(storage, "wal"))
 			require.NoError(t, err)
+			require.Len(t, identity, wal.InstanceIDLen, "server must persist its identity before registration")
 			if generation == 0 {
 				instanceID = identity
 			} else {

@@ -13,7 +13,9 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel/metric/noop"
 	"go.uber.org/fx"
+	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/status"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
@@ -23,6 +25,37 @@ import (
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 	"github.com/formancehq/ledger/v3/internal/storage/wal"
 )
+
+func TestStartupTerminationPreservesCompletedPeerCancellation(t *testing.T) {
+	t.Parallel()
+
+	address := serveBootstrap(t, terminationBootstrapServer{join: func(context.Context) (*clusterbootstrappb.JoinAsLearnerResponse, error) {
+		return nil, status.Error(codes.Canceled, "peer rejected registration")
+	}})
+	termination := NewStartupTermination()
+	conn, err := grpc.NewClient(address,
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+		grpc.WithUnaryInterceptor(func(ctx context.Context, method string, req, reply any, cc *grpc.ClientConn, invoke grpc.UnaryInvoker, opts ...grpc.CallOption) error {
+			err := invoke(ctx, method, req, reply, cc, opts...)
+			// The peer result has completed, but the caller has not yet
+			// classified it or closed the connection.
+			termination.Interrupt()
+			<-ctx.Done()
+
+			return err
+		}),
+	)
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, conn.Close()) })
+	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
+	defer cancel()
+	err = termination.run(ctx, func(ctx context.Context) error {
+		return registerLearner(ctx, clusterbootstrappb.NewClusterBootstrapServiceClient(conn), &clusterbootstrappb.JoinAsLearnerRequest{NodeId: 2})
+	})
+	require.Equal(t, codes.Canceled, status.Code(err))
+	require.ErrorContains(t, err, "peer rejected registration")
+	require.NotErrorIs(t, err, ErrStartupTerminated)
+}
 
 type terminationBootstrapServer struct {
 	clusterbootstrappb.UnimplementedClusterBootstrapServiceServer

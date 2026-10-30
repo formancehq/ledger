@@ -128,6 +128,7 @@
     "Can a signal before subscription, during registration RPC/backoff, or concurrent with successful/fatal registration lose cancellation, suppress a marker/fatal error, cancel Fx rollback too early, or leak the subscription/timer? Does startup deadline expiry bound outer waiting and signal-time logger finalization without claiming worker closure or replacing the separate normal-stop budget?"
   ],
   "dynamic_checks_to_consider": [
+    "Complete a fatal peer Canceled registration response before local termination while holding caller-side classification or connection cleanup; preserve that fatal result and retain independent in-flight local cancellation coverage.",
     "Inspect the integration-only PostgreSQL gap-cancellation regression in internal/adapter/v2: a real pgx query tracer cancels immediately after successful SHARE lock acquisition, then checks no returned rows, a successful retry with one pooled connection and a subsequent source INSERT without a leaked lock. Preserve independent manager startup-cancellation tests. Use an explicitly supplied disposable native PostgreSQL service when Docker is prohibited locally; otherwise these integration fixtures require Docker.",
     "go test -race ./internal/bootstrap ./internal/adapter/grpc ./internal/application/ctrl ./internal/infra/node ./internal/infra/transport ./internal/pkg/worker ./internal/pkg/tailworker ./internal/pkg/futures ./internal/pkg/signal",
     "go test -race ./internal/application/events ./internal/application/mirror ./internal/application/backup ./internal/infra/backup",

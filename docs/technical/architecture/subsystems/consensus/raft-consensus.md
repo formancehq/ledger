@@ -196,8 +196,11 @@ uses the remaining signal deadline and cannot turn expiry into success.
 
 Successful intentional cancellation requires successful rollback and
 finalization; fatal registration statuses, marker-write errors and cleanup
-failures retain failure status even when a signal races them. Cancellation does
-not reverse a remotely committed learner addition. A canceled response can
+failures retain failure status even when a signal races them. A later signal does
+not reclassify a completed peer cancellation:
+the registration RPC captures its local cancellation cause in gRPC's completion
+callback, before connection cleanup or caller-side result handling. Cancellation
+does not reverse a remotely committed learner addition. A canceled response can
 leave membership without `CLUSTER_JOINED`; restart still follows the existing
 `AlreadyExists` versus stale-progress rules. See
 [cluster operations](../../../../ops/cluster-operations.md#phase-3-learner-registration-preflight)

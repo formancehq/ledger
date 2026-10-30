@@ -106,6 +106,7 @@
     "Does a real SIGTERM or interrupt during repeated Unavailable learner registration cancel in-flight RPC/backoff and exit within a positive signal-time startup/finalization budget without converting fatal statuses or cleanup errors into success? Are zero, pre-latched signals, startup success with queued notification, and remote commit without a local joined marker distinguished?"
   ],
   "dynamic_checks_to_consider": [
+    "Race termination after a peer Canceled registration response completes but before caller classification; preserve failure. After process exit and same-path re-exec, read INSTANCE_ID without creation or repair, require valid bytes and compare both generations.",
     "build and spawn the production Ledger binary with isolated fixed WAL/data directories and kernel-assigned endpoints, record its PID, send SIGTERM, wait for the exact child status, and immediately exec a new PID on the same resources",
     "commit a node-local sentinel, send SIGKILL without invoking Stop, wait for the exact child death, re-exec on the same WAL/data paths, and verify the sentinel directly on that process",
     "repeat abrupt death at instrumented WAL append, spool append/replay, Pebble commit, checkpoint publication, and progress-marker boundaries, then classify the fresh process outcome as recover, repair, or explicit fail-closed rejection",

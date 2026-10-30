@@ -163,6 +163,11 @@ resource-close count as evidence of a whole-constructor shutdown bound. See the
 
 ## Concurrent transition scenarios
 
+For learner preflight, complete a peer `Canceled` response before delivering
+local termination, while holding caller-side result handling or connection
+cleanup. The completed fatal response must remain a failure. Also retain the
+independent in-flight local cancellation and rollback-context regressions.
+
 PostgreSQL mirror gap reads add a source-session lifetime beneath the worker.
 A gap read owns one pooled `READ COMMITTED` transaction and a bucket-wide
 `SHARE` lock until commit or rollback. `NOWAIT` conflicts return immediately;

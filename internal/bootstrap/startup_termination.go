@@ -3,8 +3,14 @@ package bootstrap
 import (
 	"context"
 	"errors"
+	"sync"
 
 	"go.uber.org/fx"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
+
+	"github.com/formancehq/ledger/v3/internal/proto/clusterbootstrappb"
 )
 
 // ErrStartupTerminated identifies an interrupted preflight, after which Fx must
@@ -72,6 +78,25 @@ func joinCancellation(ctx context.Context) error {
 	}
 
 	return ctx.Err()
+}
+
+// registerLearner captures local cancellation at RPC completion, before caller
+// cleanup or an interceptor can deliver a later signal. The completion channel
+// also synchronizes callbacks that gRPC may execute on another goroutine.
+func registerLearner(ctx context.Context, client clusterbootstrappb.ClusterBootstrapServiceClient, req *clusterbootstrappb.JoinAsLearnerRequest) error {
+	completed := make(chan error, 1)
+	var once sync.Once
+	_, err := client.JoinAsLearner(ctx, req, grpc.OnFinish(func(error) {
+		// Early stream-setup cleanup can repeat this callback. Preserve the
+		// first completion cause without blocking the RPC's return path.
+		once.Do(func() { completed <- joinCancellation(ctx) })
+	}))
+	cancellation := <-completed
+	if status.Code(err) == codes.Canceled && cancellation != nil {
+		return cancellation
+	}
+
+	return err
 }
 
 type startupTerminationParams struct {

@@ -1306,7 +1306,7 @@ func tryAddLearner(ctx context.Context, cfg Config, tlsCfg TLSConfig, logger log
 			}
 
 			client := clusterbootstrappb.NewClusterBootstrapServiceClient(conn)
-			_, err = client.JoinAsLearner(ctx, req)
+			err = registerLearner(ctx, client, req)
 			_ = conn.Close()
 
 			if err == nil {
@@ -1322,8 +1322,8 @@ func tryAddLearner(ctx context.Context, cfg Config, tlsCfg TLSConfig, logger log
 			}
 
 			st, ok := status.FromError(err)
-			if ok && st.Code() == codes.Canceled && ctx.Err() != nil {
-				return joinCancellation(ctx)
+			if errors.Is(err, ErrStartupTerminated) || errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+				return err
 			}
 			// EN-1436: the leader detected this nodeID in its raft Progress
 			// with a non-zero Match but we (the caller) have no CLUSTER_JOINED

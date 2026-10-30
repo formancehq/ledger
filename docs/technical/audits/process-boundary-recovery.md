@@ -39,6 +39,9 @@ failures as unsuccessful exits. Outer timeout bounds waiting and can skip or
 outlive cleanup; it is not proof that every hook or worker closed.
 
 Retain fatal registration and marker-write failures when they race a signal.
+Cover a peer cancellation completed before local termination but not yet
+classified by its caller. Read the identity marker without creating or repairing
+it after each process exit; require a valid marker and identical bytes on re-exec.
 Cancellation cannot undo remote membership committed before a reply was lost:
 record remote membership and local `CLUSTER_JOINED` independently, then verify
 restart follows the existing idempotent or stale-progress outcome. This process
