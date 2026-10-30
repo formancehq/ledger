@@ -29,9 +29,10 @@ import (
 //   - address:  `address` (trailing ":" = prefix, else exact); `source` /
 //     `destination` for role-scoped address matches
 //   - `reference`, `reverted` (bool), `ledger`
-//   - built-in transaction uint fields: `id`, `timestamp`, `insertedAt`,
-//     `revertedAt`; log fields: `logId`, `date` — ranges via $gt/$gte/$lt/$lte,
-//     equality via $match
+//   - `id` selects the transaction or log ID by query target; transaction uint
+//     fields: `timestamp`, `insertedAt`, `revertedAt`; log field: `date`.
+//     `logId` remains a legacy log-range alias. Ranges use $gt/$gte/$lt/$lte,
+//     and $match is equality.
 //   - `asset` (has-asset, via $exists)
 //   - on QUERY_TARGET_AUDIT only (DecodeQueryFilterJSON): the bare audit fields
 //     of LookupAuditField — the same names as the textual grammar — via $match
@@ -588,12 +589,9 @@ func marshalAddressMatch(am *AddressMatch) (map[string]any, error) {
 // UnmarshalJSON
 // ============================================================================
 
-// UnmarshalJSON implements json.Unmarshaler for QueryFilter. It decodes the
-// target-independent vocabulary, which is the non-audit one: a bare `ledger` /
-// `timestamp` resolves to the transaction/log conditions, and the audit-only
-// field names are rejected. Callers that know the query target use
-// DecodeQueryFilterJSON instead, so the audit target resolves the bare audit
-// fields.
+// UnmarshalJSON implements json.Unmarshaler for QueryFilter. Without a query
+// target, `id` uses transaction semantics; audit-only field names are rejected.
+// Callers that know the target use DecodeQueryFilterJSON instead.
 func (x *QueryFilter) UnmarshalJSON(data []byte) error {
 	filter, err := filterDecoder{}.decode(data)
 	if err != nil {
@@ -609,16 +607,15 @@ func (x *QueryFilter) UnmarshalJSON(data []byte) error {
 // names against target exactly like the textual filterexpr grammar does
 // (EN-1549): on QUERY_TARGET_AUDIT the bare audit fields (see LookupAuditField)
 // resolve to the AuditCondition arm — so `{"$match":{"ledger":"main"}}` is the
-// audit ledger condition there — and on every other target the decoding is the
-// target-independent one of UnmarshalJSON. It does not run the per-target
+// audit ledger condition there. On LOGS, `id` resolves to a log ID; on other
+// non-audit targets it resolves to a transaction ID. It does not run the per-target
 // validity gate (domain.ValidateFilterForTarget); callers do.
 func DecodeQueryFilterJSON(data []byte, target QueryTarget) (*QueryFilter, error) {
 	return filterDecoder{audit: target == QueryTarget_QUERY_TARGET_AUDIT, target: target}.decode(data)
 }
 
 // filterDecoder carries the target-dependent field resolution through the
-// recursive descent. The zero value is the target-independent (non-audit)
-// decoder.
+// recursive descent. The zero value uses transaction ID and non-audit semantics.
 type filterDecoder struct {
 	// audit resolves the bare audit field names to the AuditCondition arm.
 	audit  bool
