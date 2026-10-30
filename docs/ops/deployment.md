@@ -447,13 +447,18 @@ The server exposes four HTTP probes on the management port:
 |-------------|--------------------------------------------------------------------------------------------|------------------------------------------------------------------|
 | `/livez`    | the process is running                                                                     | Kubernetes liveness probe                                        |
 | `/readyz`   | the local Raft loop has started (any role: PreCandidate, Candidate, Follower, Leader)      | Kubernetes readiness probe / StatefulSet `OrderedReady` gate     |
-| `/clusterz` | the local node is connected to a healthy cluster: leader elected, disk and clock checks OK | Monitoring; clients that need cluster-availability semantics     |
+| `/clusterz` | the local Raft state is healthy and a leader has been elected                      | Monitoring; clients that need cluster-availability semantics     |
 | `/health`   | the local Raft node is a Leader or Follower (connected to the cluster)                     | Legacy compatibility check                                       |
 
 `/readyz` is intentionally permissive: it must report Ready even before quorum
 exists, so that the StatefulSet's `OrderedReady` policy can bring up peer pods
 during a cold start. The stricter "cluster is actually serving" signal lives
 on `/clusterz`.
+
+These probes do not wait for the leader's FSM catch-up or for leader-only
+workers to initialize. `/clusterz` does not test the disk and clock write gate:
+admission checks that gate separately and requires a current-leadership-epoch
+verdict. See the [capability-specific leader-readiness contract](../technical/architecture/subsystems/consensus/raft-consensus.md#leader-readiness-generations).
 
 None of these probes covers a gRPC listener that dies after startup: `/readyz`
 only reflects the local Raft loop. So a Raft or service gRPC server whose `Serve`
