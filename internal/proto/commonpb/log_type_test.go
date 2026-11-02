@@ -76,6 +76,7 @@ func TestLogTypeJSONNames(t *testing.T) {
 		commonpb.AddedAccountTypeLogType:              "ADDED_ACCOUNT_TYPE",
 		commonpb.RemovedAccountTypeLogType:            "REMOVED_ACCOUNT_TYPE",
 		commonpb.UpdatedDefaultEnforcementModeLogType: "UPDATED_DEFAULT_ENFORCEMENT_MODE",
+		commonpb.AccountMetadataUpdatedLogType:        "ACCOUNT_METADATA_UPDATED",
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()

@@ -104,8 +104,12 @@ func processCreateTransaction(ledger string, order *raftcmdpb.CreateTransactionO
 
 	// The persisted boundary stores the next allocatable ID. MaxUint64 itself
 	// is therefore not allocatable: advancing it would wrap the boundary to zero
-	// and make existing transaction keys reusable (EN-1860). Check before the
-	// posting producer stages any volume mutation.
+	// and make existing transaction keys reusable (EN-1860). For ordinary
+	// transaction candidates, check before the posting producer stages any
+	// volume mutation. Script candidates with no declared postings defer this
+	// check until the producer confirms whether the script is metadata-only;
+	// the proposal scope rolls back staged mutations if it turns out to be a
+	// transaction and the sequence is exhausted.
 	metadataOnlyCandidate := isNumscript && len(order.GetPostings()) == 0
 	var nextTransactionID, advancedTransactionID uint64
 	if !metadataOnlyCandidate {
@@ -130,7 +134,10 @@ func processCreateTransaction(ledger string, order *raftcmdpb.CreateTransactionO
 	// here. Without this guard the FSM commits a zero-posting log entry
 	// (#452).
 	if len(result.Postings) == 0 {
-		if len(result.AccountsMetadata) > 0 || len(order.GetAccountMetadata()) > 0 {
+		if len(result.TransactionMetadata) > 0 && (hasScriptAccountMetadataUpdates(result.AccountsMetadata) || hasAccountMetadataUpdates(order.GetAccountMetadata())) {
+			return nil, domain.ErrMetadataOnlyTransactionMetadata
+		}
+		if hasScriptAccountMetadataUpdates(result.AccountsMetadata) || hasAccountMetadataUpdates(order.GetAccountMetadata()) {
 			return processMetadataOnly(ledger, order, result, ctx)
 		}
 		return nil, domain.ErrEmptyTransaction
@@ -344,8 +351,11 @@ func processMetadataOnly(ledger string, order *raftcmdpb.CreateTransactionOrder,
 		}
 		maps.Copy(existing.GetValues(), mm.GetValues())
 	}
-	if len(accountMetadata) == 0 {
+	if !hasAccountMetadataUpdates(accountMetadata) {
 		return nil, domain.ErrEmptyTransaction
+	}
+	if order.GetReference() != "" {
+		return nil, domain.ErrMetadataOnlyReference
 	}
 
 	limits := domain.MetadataLimitsFromPolicy(ctx.Scope.GetClusterPolicy())
@@ -370,6 +380,24 @@ func processMetadataOnly(ledger string, order *raftcmdpb.CreateTransactionOrder,
 	}
 	ctx.metadataBudget.bytes = total
 	return &commonpb.LedgerLogPayload{Payload: &commonpb.LedgerLogPayload_AccountMetadataUpdated{AccountMetadataUpdated: &commonpb.AccountMetadataUpdated{AccountMetadata: accountMetadata}}}, nil
+}
+
+func hasAccountMetadataUpdates(accountMetadata map[string]*commonpb.MetadataMap) bool {
+	for _, metadata := range accountMetadata {
+		if metadata != nil && len(metadata.GetValues()) > 0 {
+			return true
+		}
+	}
+	return false
+}
+
+func hasScriptAccountMetadataUpdates(accountMetadata map[string]map[string]*commonpb.MetadataValue) bool {
+	for _, metadata := range accountMetadata {
+		if len(metadata) > 0 {
+			return true
+		}
+	}
+	return false
 }
 
 // validateMergedAccountMetadata checks every account's merged metadata map
