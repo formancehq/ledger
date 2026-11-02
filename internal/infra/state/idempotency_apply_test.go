@@ -89,22 +89,23 @@ func TestApplyProposal_ReplaysPromotionAndDeletionAfterLedgerIsGone(t *testing.T
 	result, err := machine.ApplyEntries(ctx, dataStore, makeEntry(t, 1, makeProposal(1, create)))
 	require.NoError(t, err)
 	require.NoError(t, result.Results[0].Error)
-	batch := func(id uint64) *raftcmdpb.Proposal {
+	batch := func(id uint64, checked bool) *raftcmdpb.Proposal {
 		promote := &raftcmdpb.Order{Type: &raftcmdpb.Order_LedgerScoped{LedgerScoped: &raftcmdpb.LedgerScopedOrder{
 			Ledger: ledgerName, Payload: &raftcmdpb.LedgerScopedOrder_PromoteLedger{PromoteLedger: &raftcmdpb.PromoteLedgerOrder{}},
 		}}}
+		promote.Technical = &raftcmdpb.OrderTechnical{RequireMirrorCatchUp: checked}
 		proposal := makeProposal(id, promote, deleteLedgerOrder(ledgerName))
 		proposal.Idempotency = &commonpb.Idempotency{Key: "promote-delete-key"}
 
 		return proposal
 	}
-	result, err = machine.ApplyEntries(ctx, dataStore, makeEntry(t, 2, batch(2)))
+	result, err = machine.ApplyEntries(ctx, dataStore, makeEntry(t, 2, batch(2, false)))
 	require.NoError(t, err)
 	require.NoError(t, result.Results[0].Error)
 	require.False(t, result.Results[0].Replayed)
 	_, err = query.GetLedgerByName(ctx, dataStore, ledgerName)
 	require.ErrorIs(t, err, domain.ErrNotFound)
-	result, err = machine.ApplyEntries(ctx, dataStore, makeEntry(t, 3, batch(3)))
+	result, err = machine.ApplyEntries(ctx, dataStore, makeEntry(t, 3, batch(3, true)))
 	require.NoError(t, err)
 	require.NoError(t, result.Results[0].Error)
 	require.True(t, result.Results[0].Replayed)
@@ -114,20 +115,21 @@ func TestApplyProposal_FrozenFailurePrecedesMissingPromotionTarget(t *testing.T)
 	t.Parallel()
 	machine, dataStore, _ := newTestMachine(t)
 	ctx := context.Background()
-	batch := func(id uint64) *raftcmdpb.Proposal {
+	batch := func(id uint64, checked bool) *raftcmdpb.Proposal {
 		promotion := &raftcmdpb.Order{Type: &raftcmdpb.Order_LedgerScoped{LedgerScoped: &raftcmdpb.LedgerScopedOrder{
-			Ledger: "missing-b", Payload: &raftcmdpb.LedgerScopedOrder_PromoteLedger{PromoteLedger: &raftcmdpb.PromoteLedgerOrder{RequireCatchUp: true}},
+			Ledger: "missing-b", Payload: &raftcmdpb.LedgerScopedOrder_PromoteLedger{PromoteLedger: &raftcmdpb.PromoteLedgerOrder{}},
 		}}}
+		promotion.Technical = &raftcmdpb.OrderTechnical{RequireMirrorCatchUp: checked}
 		proposal := makeProposal(id, deleteLedgerOrder("missing-a"), promotion)
 		proposal.Idempotency = &commonpb.Idempotency{Key: "frozen-missing-delete"}
 
 		return proposal
 	}
-	first, err := machine.ApplyEntries(ctx, dataStore, makeEntry(t, 1, batch(1)))
+	first, err := machine.ApplyEntries(ctx, dataStore, makeEntry(t, 1, batch(1, false)))
 	require.NoError(t, err)
 	require.Error(t, first.Results[0].Error)
 	require.True(t, first.Results[0].AuditEntryWritten)
-	retry, err := machine.ApplyEntries(ctx, dataStore, makeEntry(t, 2, batch(2)))
+	retry, err := machine.ApplyEntries(ctx, dataStore, makeEntry(t, 2, batch(2, true)))
 	require.NoError(t, err)
 	require.True(t, retry.Results[0].Replayed)
 	require.Contains(t, retry.Results[0].Error.Error(), "missing-a")

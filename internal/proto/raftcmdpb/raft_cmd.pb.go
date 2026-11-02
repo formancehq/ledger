@@ -292,8 +292,12 @@ type OrderTechnical struct {
 	// checks, so a target that is unknown or already reverted keeps returning
 	// those reasons. Empty for every non-revert order.
 	RevertTargetDigest []byte `protobuf:"bytes,4,opt,name=revert_target_digest,json=revertTargetDigest,proto3" json:"revert_target_digest,omitempty"`
-	unknownFields      protoimpl.UnknownFields
-	sizeCache          protoimpl.SizeCache
+	// New mirror promotions require the FSM catch-up check. This is excluded
+	// from business intent so a retry of a pre-upgrade order keeps its hash.
+	// Historical persisted orders lack it and retain their apply behavior.
+	RequireMirrorCatchUp bool `protobuf:"varint,5,opt,name=require_mirror_catch_up,json=requireMirrorCatchUp,proto3" json:"require_mirror_catch_up,omitempty"`
+	unknownFields        protoimpl.UnknownFields
+	sizeCache            protoimpl.SizeCache
 }
 
 func (x *OrderTechnical) Reset() {
@@ -352,6 +356,13 @@ func (x *OrderTechnical) GetRevertTargetDigest() []byte {
 		return x.RevertTargetDigest
 	}
 	return nil
+}
+
+func (x *OrderTechnical) GetRequireMirrorCatchUp() bool {
+	if x != nil {
+		return x.RequireMirrorCatchUp
+	}
+	return false
 }
 
 // LedgerScopedOrder is the wrapper for every Order variant that targets a
@@ -2195,12 +2206,9 @@ func (x *MirrorDeletedMetadata) GetKey() string {
 }
 
 type PromoteLedgerOrder struct {
-	state protoimpl.MessageState `protogen:"open.v1"`
-	// New orders require the FSM catch-up check. Legacy persisted orders lack
-	// this field and retain their original apply semantics during replay.
-	RequireCatchUp bool `protobuf:"varint,1,opt,name=require_catch_up,json=requireCatchUp,proto3" json:"require_catch_up,omitempty"`
-	unknownFields  protoimpl.UnknownFields
-	sizeCache      protoimpl.SizeCache
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *PromoteLedgerOrder) Reset() {
@@ -2231,13 +2239,6 @@ func (x *PromoteLedgerOrder) ProtoReflect() protoreflect.Message {
 // Deprecated: Use PromoteLedgerOrder.ProtoReflect.Descriptor instead.
 func (*PromoteLedgerOrder) Descriptor() ([]byte, []int) {
 	return file_raft_cmd_proto_rawDescGZIP(), []int{28}
-}
-
-func (x *PromoteLedgerOrder) GetRequireCatchUp() bool {
-	if x != nil {
-		return x.RequireCatchUp
-	}
-	return false
 }
 
 type DeleteLedgerOrder struct {
@@ -5767,12 +5768,13 @@ const file_raft_cmd_proto_rawDesc = "" +
 	"\rledger_scoped\x18\x01 \x01(\v2\x17.raft.LedgerScopedOrderH\x00R\fledgerScoped\x12>\n" +
 	"\rsystem_scoped\x18\x02 \x01(\v2\x17.raft.SystemScopedOrderH\x00R\fsystemScoped\x122\n" +
 	"\ttechnical\x18\x03 \x01(\v2\x14.raft.OrderTechnicalR\ttechnicalB\x06\n" +
-	"\x04type\"\xce\x01\n" +
+	"\x04type\"\x85\x02\n" +
 	"\x0eOrderTechnical\x12#\n" +
 	"\rcoverage_bits\x18\x01 \x01(\fR\fcoverageBits\x124\n" +
 	"\x16inputs_resolution_hash\x18\x02 \x01(\fR\x14inputsResolutionHash\x12/\n" +
 	"\x13preload_unavailable\x18\x03 \x01(\bR\x12preloadUnavailable\x120\n" +
-	"\x14revert_target_digest\x18\x04 \x01(\fR\x12revertTargetDigest\"\xda\x06\n" +
+	"\x14revert_target_digest\x18\x04 \x01(\fR\x12revertTargetDigest\x125\n" +
+	"\x17require_mirror_catch_up\x18\x05 \x01(\bR\x14requireMirrorCatchUp\"\xda\x06\n" +
 	"\x11LedgerScopedOrder\x12\x16\n" +
 	"\x06ledger\x18\x01 \x01(\tR\x06ledger\x12.\n" +
 	"\x05apply\x18\x02 \x01(\v2\x16.raft.LedgerApplyOrderH\x00R\x05apply\x12>\n" +
@@ -5901,9 +5903,8 @@ const file_raft_cmd_proto_rawDesc = "" +
 	"\x05value\x18\x02 \x01(\v2\x15.common.MetadataValueR\x05value:\x028\x01\"Q\n" +
 	"\x15MirrorDeletedMetadata\x12&\n" +
 	"\x06target\x18\x01 \x01(\v2\x0e.common.TargetR\x06target\x12\x10\n" +
-	"\x03key\x18\x02 \x01(\tR\x03key\">\n" +
-	"\x12PromoteLedgerOrder\x12(\n" +
-	"\x10require_catch_up\x18\x01 \x01(\bR\x0erequireCatchUp\"\x13\n" +
+	"\x03key\x18\x02 \x01(\tR\x03key\"\x14\n" +
+	"\x12PromoteLedgerOrder\"\x13\n" +
 	"\x11DeleteLedgerOrder\"\xb8\a\n" +
 	"\x10LedgerApplyOrder\x12M\n" +
 	"\x12create_transaction\x18\x01 \x01(\v2\x1c.raft.CreateTransactionOrderH\x00R\x11createTransaction\x12<\n" +
