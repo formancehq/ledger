@@ -30,8 +30,8 @@ Old and new voters must communicate and apply each committed entry identically
 while they coexist. The embedded operator requires a complete stop at the
 `v3.0.0-rc.3` boundary because RC.2 cannot execute native proposal payloads.
 `rc.2` includes the drain barrier used for this upgrade. RC adjacency remains mandatory.
-The `rc.1` to `rc.2` transition uses the separately validated maintenance-based
-procedure below.
+The `rc.1` to `rc.2` transition rolls one voter at a time with a maintenance
+barrier that pauses writes; it does not stop the whole cluster.
 When the running version precedes a mandatory boundary, pin the target to a
 canonical version tag. Moving or non-canonical tags such as `latest` cannot
 prove whether the boundary is crossed, so the operator blocks the change.
@@ -179,7 +179,8 @@ is retained. Install a compatible Operator to resume reconciliation.
 ## Rolling Procedure
 
 Use this only when the target release permits rolling upgrades and mixed-version
-validation passes. For RC.1 to RC.2, use the [coordinated restart](#coordinated-restart).
+validation passes. For RC.1 to RC.2, follow the
+[maintenance-barrier rolling procedure](#account-metadata-address-validation).
 For RC.2 to RC.3, use the [operator-required stopped restart](#operator-required-stopped-restart).
 
 1. Record the current leader and voter set with `ledgerctl cluster status`.
@@ -201,8 +202,10 @@ procedure.
 
 ## Account metadata address validation
 
-If the target release requires a full stop, including RC.2, follow the coordinated
-restart procedure instead. The procedure below applies when rolling is permitted.
+RC.1 to RC.2 uses the maintenance-barrier rolling procedure below: writes pause,
+but voters are replaced one at a time and quorum remains available. RC.2 to RC.3
+uses the [operator-required stopped restart](#operator-required-stopped-restart)
+instead; do not use the steps below for that transition.
 
 Upgrading from a binary with unordered transaction account-metadata address
 validation (including `v3.0.0-rc.1`) to deterministic smallest-address selection
@@ -211,9 +214,7 @@ with writes enabled is unsafe: an old voter may select a different typed
 failure, forking the authoritative audit hash. Admission on a new leader alone
 cannot protect an old leader or previously committed proposals.
 
-For `rc.1` to `rc.2`, use the maintenance-based coordinated procedure below;
-the published `rc.1` binary cannot participate in an operator-owned drain.
-The `rc.2` to `rc.3` upgrade uses the operator-owned drain and stopped restart.
+The published `rc.1` binary cannot participate in an operator-owned drain.
 
 1. With every voter still on the source binary, establish a healthy, consistent
    audit history and take a backup. Existing divergent history is an incident;

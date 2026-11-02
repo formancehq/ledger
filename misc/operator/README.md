@@ -7,10 +7,11 @@ upgrade crosses a listed release boundary. RC.2 to RC.3 crosses a mandatory
 boundary because RC.2 cannot execute native proposal payloads. The operator
 uses the drain barrier available from RC.2 to stop writes and wait for durable replication,
 retains the existing PVCs, waits for the old StatefulSet and Pods to disappear,
-then recreates the StatefulSet with the requested image. The rc.1-to-rc.2
-transition still requires the manual maintenance procedure. See the
-[server upgrade procedure](../../docs/ops/upgrades.md#operator-required-stopped-restart)
-for preflight, recovery and rollback limits.
+then recreates the StatefulSet with the requested image. See the
+[stopped restart procedure](../../docs/ops/upgrades.md#operator-required-stopped-restart)
+for preflight, recovery and rollback limits. The rc.1-to-rc.2 transition instead
+uses a [maintenance-barrier rolling procedure](../../docs/ops/upgrades.md#account-metadata-address-validation):
+writes pause while voters are replaced one at a time.
 
 ## Overview
 
