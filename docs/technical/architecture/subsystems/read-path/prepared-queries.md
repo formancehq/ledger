@@ -94,7 +94,8 @@ A validation error at FSM time is hash-bound as an `AuditFailure`, so a checker 
    volume rows; uint256 overflow is propagated as an error.
 5. Otherwise, opens the read-index snapshot and waits for alignment only when
    `AlignmentOwed` is true: the filter tree contains a read-index leaf or the
-   target is LOGS. It then calls `Compile(indexSnap, kb, pq.GetFilter(), ...)`
+   target is LOGS. It then calls `Compile(pq.GetFilter(), compileOptions)` with
+   the shared named [compilation inputs](query-pipeline.md#named-compilation-inputs)
    and executes the iterator. `LIST` streams matching entities through the
    standard cursor pipeline; `AGGREGATE_VOLUMES` scans volumes per candidate
    account through `AggregateVolumes`. Empty or parameterized non-nil filters

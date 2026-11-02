@@ -90,10 +90,15 @@ func TestCompile_NotOverDegenerateRange_YieldsUniverse(t *testing.T) {
 		}}},
 	}}}
 
-	iter, err := Compile(
-		reader, dal.NewKeyBuilder(), filter,
-		commonpb.QueryTarget_QUERY_TARGET_LOGS, ledgerName,
-		nil, nil, info, nil, nil, nil, reader, 0)
+	iter, err := Compile(filter, CompileOptions{
+		IndexReader: reader,
+		KeyBuilder:  dal.NewKeyBuilder(),
+		Target:      commonpb.QueryTarget_QUERY_TARGET_LOGS,
+		LedgerName:  ledgerName,
+		LedgerInfo:  info,
+		MainReader:  reader,
+		Pin:         0,
+	})
 	require.NoError(t, err)
 
 	t.Cleanup(iter.Close)
