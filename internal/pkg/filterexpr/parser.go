@@ -434,9 +434,7 @@ func (a *FieldCond) auditToProto() (*commonpb.QueryFilter, error) {
 // (e.g. `date` on transactions) is not decided here — the downstream per-target
 // validity gate (domain.ValidateFilterForTarget) handles that, the same way the
 // structured JSON DSL does. The public `id` field is the exception: it resolves
-// to a log ID on LOGS and a transaction ID otherwise. Admission resolves
-// provisional transaction ID conditions against the stored prepared-query
-// target before Raft commitment.
+// to a log ID on LOGS and a transaction ID otherwise.
 func (a *FieldCond) intrinsicToProto(target commonpb.QueryTarget) (*commonpb.QueryFilter, error) {
 	switch a.Field {
 	case "timestamp", "date", "insertedAt", "revertedAt":
