@@ -308,7 +308,7 @@ func TestProcessPromoteLedger_KeysOffEnvelope(t *testing.T) {
 		}).AsReader(), nil)
 	expectPutLedger(t, mockStore, domain.LedgerKey{Name: envelopeLedger}, nil)
 
-	payload, derr := processPromoteLedger(envelopeLedger, &Context{Scope: mockStore})
+	payload, derr := processPromoteLedger(envelopeLedger, &raftcmdpb.PromoteLedgerOrder{}, &Context{Scope: mockStore})
 	require.Nil(t, derr)
 	require.NotNil(t, payload)
 

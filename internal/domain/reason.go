@@ -116,6 +116,7 @@ func KindForReason(code commonpb.ErrorReason) ErrorKind {
 		commonpb.ErrorReason_ERROR_REASON_BALANCE_NOT_FOUND,
 		commonpb.ErrorReason_ERROR_REASON_AUDIT_DISABLED,
 		commonpb.ErrorReason_ERROR_REASON_LEDGER_NOT_IN_MIRROR_MODE,
+		commonpb.ErrorReason_ERROR_REASON_MIRROR_NOT_CAUGHT_UP,
 		commonpb.ErrorReason_ERROR_REASON_INDEX_NOT_FOUND,
 		commonpb.ErrorReason_ERROR_REASON_METADATA_FIELD_NOT_IN_SCHEMA,
 		commonpb.ErrorReason_ERROR_REASON_ACCOUNT_NOT_MATCHING_TYPE,
