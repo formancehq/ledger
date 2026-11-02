@@ -64,13 +64,31 @@ func TestCompileHistoricalAddressIndependentOfCurrentAccount(t *testing.T) {
 				var err error
 				filter := addressExactFilter(address, commonpb.AddressRole_ADDRESS_ROLE_ANY)
 				if reverse {
-					accountIter, err = query.CompileReverse(store.DB(), dal.NewKeyBuilder(), filter,
-						commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS, parityLedger, nil,
-						paritySchema(), parityInfo(), parityRegistry(), parityResolver(), nil, store.DB(), parityPin)
+					accountIter, err = query.CompileReverse(filter, query.CompileOptions{
+						IndexReader:     store.DB(),
+						KeyBuilder:      dal.NewKeyBuilder(),
+						Target:          commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
+						LedgerName:      parityLedger,
+						Schema:          paritySchema(),
+						LedgerInfo:      parityInfo(),
+						IndexRegistry:   parityRegistry(),
+						IndexVersionFor: parityResolver(),
+						MainReader:      store.DB(),
+						Pin:             parityPin,
+					})
 				} else {
-					accountIter, err = query.Compile(store.DB(), dal.NewKeyBuilder(), filter,
-						commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS, parityLedger, nil,
-						paritySchema(), parityInfo(), parityRegistry(), parityResolver(), nil, store.DB(), parityPin)
+					accountIter, err = query.Compile(filter, query.CompileOptions{
+						IndexReader:     store.DB(),
+						KeyBuilder:      dal.NewKeyBuilder(),
+						Target:          commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
+						LedgerName:      parityLedger,
+						Schema:          paritySchema(),
+						LedgerInfo:      parityInfo(),
+						IndexRegistry:   parityRegistry(),
+						IndexVersionFor: parityResolver(),
+						MainReader:      store.DB(),
+						Pin:             parityPin,
+					})
 				}
 				require.NoError(t, err)
 				hasAccount := accountIter.Next()
@@ -134,16 +152,36 @@ func historicalAddressPages(t *testing.T, store *readstore.Store, filter *common
 		var more bool
 		var err error
 		if reverse {
-			iter, compileErr := query.CompileReverse(reader, dal.NewKeyBuilder(), filter,
-				commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS, parityLedger, params,
-				paritySchema(), parityInfo(), registry, parityResolver(), nil, reader, parityPin)
+			iter, compileErr := query.CompileReverse(filter, query.CompileOptions{
+				IndexReader:     reader,
+				KeyBuilder:      dal.NewKeyBuilder(),
+				Target:          commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS,
+				LedgerName:      parityLedger,
+				Parameters:      params,
+				Schema:          paritySchema(),
+				LedgerInfo:      parityInfo(),
+				IndexRegistry:   registry,
+				IndexVersionFor: parityResolver(),
+				MainReader:      reader,
+				Pin:             parityPin,
+			})
 			require.NoError(t, compileErr)
 			items, more, err = readstore.PaginateReverse(iter, 1, cursor)
 			iter.Close()
 		} else {
-			iter, compileErr := query.Compile(reader, dal.NewKeyBuilder(), filter,
-				commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS, parityLedger, params,
-				paritySchema(), parityInfo(), registry, parityResolver(), nil, reader, parityPin)
+			iter, compileErr := query.Compile(filter, query.CompileOptions{
+				IndexReader:     reader,
+				KeyBuilder:      dal.NewKeyBuilder(),
+				Target:          commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS,
+				LedgerName:      parityLedger,
+				Parameters:      params,
+				Schema:          paritySchema(),
+				LedgerInfo:      parityInfo(),
+				IndexRegistry:   registry,
+				IndexVersionFor: parityResolver(),
+				MainReader:      reader,
+				Pin:             parityPin,
+			})
 			require.NoError(t, compileErr)
 			items, more, err = readstore.PaginateForward(iter, 1, cursor)
 			iter.Close()

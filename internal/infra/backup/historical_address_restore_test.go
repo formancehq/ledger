@@ -188,11 +188,31 @@ func restoredHistoricalAddressIDs(t *testing.T, main *dal.Store, rs *readstore.S
 		Close()
 	}
 	if reverse {
-		iterator, err = query.CompileReverse(snapshot, dal.NewKeyBuilder(), filter,
-			commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS, ledger, params, nil, info, registry, resolver, nil, handle, pin)
+		iterator, err = query.CompileReverse(filter, query.CompileOptions{
+			IndexReader:     snapshot,
+			KeyBuilder:      dal.NewKeyBuilder(),
+			Target:          commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS,
+			LedgerName:      ledger,
+			Parameters:      params,
+			LedgerInfo:      info,
+			IndexRegistry:   registry,
+			IndexVersionFor: resolver,
+			MainReader:      handle,
+			Pin:             pin,
+		})
 	} else {
-		iterator, err = query.Compile(snapshot, dal.NewKeyBuilder(), filter,
-			commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS, ledger, params, nil, info, registry, resolver, nil, handle, pin)
+		iterator, err = query.Compile(filter, query.CompileOptions{
+			IndexReader:     snapshot,
+			KeyBuilder:      dal.NewKeyBuilder(),
+			Target:          commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS,
+			LedgerName:      ledger,
+			Parameters:      params,
+			LedgerInfo:      info,
+			IndexRegistry:   registry,
+			IndexVersionFor: resolver,
+			MainReader:      handle,
+			Pin:             pin,
+		})
 	}
 	require.NoError(t, err)
 	defer iterator.Close()
