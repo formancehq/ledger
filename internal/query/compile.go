@@ -249,7 +249,7 @@ func compileAnd(ctx *compileCtx, and *commonpb.AndFilter) (readstore.EntityItera
 	// Coalesce multiple range predicates on the same metadata field so that
 	// `a >= X AND a < Y` compiles to a single bounded IntCondition, not two
 	// materialized half-ranges. See mergeFieldRanges for the rules.
-	filters := mergeFieldRanges(and.GetFilters())
+	filters := mergeFieldRanges(and.GetFilters(), validateFieldCondition(ctx))
 
 	children := make([]readstore.EntityIterator, 0, len(filters))
 
@@ -480,6 +480,16 @@ func resolveFieldMetadataCtx(ctx *compileCtx, fc *commonpb.FieldCondition) (*com
 	}
 
 	return fc, mc, nil
+}
+
+// validateFieldCondition binds resolveFieldMetadataCtx's validation and
+// coercion to ctx, for rewrites that must see a leaf as compile will.
+func validateFieldCondition(ctx *compileCtx) func(*commonpb.FieldCondition) (*commonpb.FieldCondition, error) {
+	return func(fc *commonpb.FieldCondition) (*commonpb.FieldCondition, error) {
+		validated, _, err := resolveFieldMetadataCtx(ctx, fc)
+
+		return validated, err
+	}
 }
 
 // compileFieldCondition compiles a FieldCondition (metadata filter) into a leaf iterator.

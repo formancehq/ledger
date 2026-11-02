@@ -22,7 +22,16 @@ import (
 // at compile time. Mixed equality + range on the same field is also passed
 // through (equality is already optimal and won't benefit from intersection
 // with a wider range).
-func mergeFieldRanges(filters []*commonpb.QueryFilter) []*commonpb.QueryFilter {
+//
+// When validate is set, each numeric metadata leaf is merged in its validated
+// form (validate's result) and a leaf validate rejects is passed through
+// unmerged. Intersection drops the looser bound, so merging an unvalidated
+// leaf could discard the very bound that makes it invalid, such as `n >= -1`
+// next to `n >= 0` on an unsigned field.
+func mergeFieldRanges(
+	filters []*commonpb.QueryFilter,
+	validate func(*commonpb.FieldCondition) (*commonpb.FieldCondition, error),
+) []*commonpb.QueryFilter {
 	if len(filters) < 2 {
 		return filters
 	}
@@ -32,7 +41,14 @@ func mergeFieldRanges(filters []*commonpb.QueryFilter) []*commonpb.QueryFilter {
 	firstIdx := make(map[string]int, len(filters))
 	merged := make([]*commonpb.QueryFilter, 0, len(filters))
 
-	for _, f := range filters {
+	for _, original := range filters {
+		f, valid := validatedMergeCandidate(original, validate)
+		if !valid {
+			merged = append(merged, f)
+
+			continue
+		}
+
 		key, kind, ok := mergeableFieldKey(f)
 		if !ok {
 			merged = append(merged, f)
@@ -59,6 +75,35 @@ func mergeFieldRanges(filters []*commonpb.QueryFilter) []*commonpb.QueryFilter {
 	}
 
 	return merged
+}
+
+// validatedMergeCandidate returns the form of f that mergeFieldRanges may
+// fold, and false when validate rejects f.
+func validatedMergeCandidate(
+	f *commonpb.QueryFilter,
+	validate func(*commonpb.FieldCondition) (*commonpb.FieldCondition, error),
+) (*commonpb.QueryFilter, bool) {
+	fc := f.GetField()
+	if validate == nil || fc.GetField().GetMetadata() == "" {
+		return f, true
+	}
+
+	switch fc.GetCondition().(type) {
+	case *commonpb.FieldCondition_IntCond, *commonpb.FieldCondition_UintCond:
+	default:
+		return f, true
+	}
+
+	validated, err := validate(fc)
+	if err != nil {
+		return f, false
+	}
+
+	if validated == fc {
+		return f, true
+	}
+
+	return &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_Field{Field: validated}}, true
 }
 
 // fieldKind tags which numeric branch of FieldCondition a filter occupies, so
