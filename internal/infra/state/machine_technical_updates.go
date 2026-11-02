@@ -21,11 +21,11 @@ import (
 // IdempotencyEviction, ClusterConfig, BackupOrder, IncrementalBackupOrder)
 // ship with empty bits and never consult their scope.
 //
-// Reads and attribute-cache writes both flow through `buffer` — the same
-// WriteSet that ProcessOrders will use. Attribute mutations queue in
-// `buffer.Derived` and reach the cache + Pebble at WriteSet.Merge. Any
-// handler error short-circuits the loop before Merge, so no half-written
-// tech-update mutations leak into the cache.
+// MirrorSync stages its writes in the same WriteSet as ProcessOrders and
+// publishes only at Merge. Other updates write directly to batch and may
+// mutate in-memory operational state. Builder.Run therefore admits at most
+// one technical update, and only MirrorSync may accompany orders. Historical
+// committed compositions retain their existing interpretation during replay.
 //
 // Backup lifecycle handlers (BackupOrder / IncrementalBackupOrder) return
 // the typed sentinels ErrBackupInProgress / ErrBackupJobNotFound /
