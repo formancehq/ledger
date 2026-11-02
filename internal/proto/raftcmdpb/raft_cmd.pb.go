@@ -5646,12 +5646,12 @@ const file_raft_cmd_proto_rawDesc = "" +
 	"\x12set_cluster_policy\x18\v \x01(\v2\x1b.raft.SetClusterPolicyOrderH\x00R\x10setClusterPolicyB\t\n" +
 	"\apayload\"G\n" +
 	"\x18CreatePreparedQueryOrder\x12+\n" +
-	"\x05query\x18\x01 \x01(\v2\x15.common.PreparedQueryR\x05query\"\xb8\x01\n" +
+	"\x05query\x18\x01 \x01(\v2\x15.common.PreparedQueryR\x05query\"\x98\x01\n" +
 	"\x18UpdatePreparedQueryOrder\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12+\n" +
 	"\x06filter\x18\x02 \x01(\v2\x13.common.QueryFilterR\x06filter\x120\n" +
 	"\x06target\x18\x04 \x01(\x0e2\x13.common.QueryTargetH\x00R\x06target\x88\x01\x01B\t\n" +
-	"\a_targetJ\x04\b\x03\x10\x04R\x18id_resolved_to_log_paths\".\n" +
+	"\a_target\".\n" +
 	"\x18DeletePreparedQueryOrder\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\"@\n" +
 	"\x12AddEventsSinkOrder\x12*\n" +
