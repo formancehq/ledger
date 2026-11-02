@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"testing"
 	"time"
 
@@ -35,7 +36,7 @@ func TestIsUnobservedMirrorPromotion(t *testing.T) {
 	for _, syncError := range []bool{false, true} {
 		st, err := status.New(codes.FailedPrecondition, "mirror not caught up").WithDetails(&errdetails.ErrorInfo{
 			Reason:   domain.ErrReasonMirrorNotCaughtUp,
-			Metadata: map[string]string{"name": "sample", "cursor": "0", "sourceLogCount": "0", "syncError": fmt.Sprint(syncError)},
+			Metadata: map[string]string{"name": "sample", "cursor": "0", "sourceLogCount": "0", "syncError": strconv.FormatBool(syncError)},
 		})
 		require.NoError(t, err)
 		require.True(t, isUnobservedMirrorPromotion(bulk, st.Err()))
