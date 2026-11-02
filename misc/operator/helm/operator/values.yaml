@@ -16,6 +16,18 @@ replicaCount: 1
 leaderElection: true
 watchNamespace: ""
 
+rbac:
+  # -- How the operator ServiceAccount is bound to the generated ClusterRole.
+  # `cluster`: a ClusterRoleBinding; the operator may manage ledgers in any
+  # namespace (required when watchNamespace is empty).
+  # `namespaced`: requires watchNamespace. The generated ClusterRole is bound with a
+  # RoleBinding in watchNamespace only, leader election gets a Role in the release
+  # namespace, and a separate minimal ClusterRole covers the cluster-scoped kinds the
+  # operator still needs (Credentials, PersistentVolumes, StorageClasses,
+  # ValidatingAdmissionPolicyBindings). Secrets, pods/exec and the other namespaced
+  # grants are then limited to watchNamespace.
+  scope: cluster
+
 resources:
   requests:
     cpu: 100m

@@ -26,6 +26,22 @@ app.kubernetes.io/name: {{ include "ledger-operator.name" . }}
 app.kubernetes.io/instance: {{ .Release.Name }}
 {{- end }}
 
+{{/*
+Validated rbac.scope. Fails the render on an unknown value, or on
+`namespaced` without a watchNamespace (the operator would still watch every
+namespace while only being authorized in one).
+*/}}
+{{- define "ledger-operator.rbacScope" -}}
+{{- $scope := .Values.rbac.scope -}}
+{{- if not (has $scope (list "cluster" "namespaced")) -}}
+{{- fail (printf "rbac.scope must be \"cluster\" or \"namespaced\", got %q" $scope) -}}
+{{- end -}}
+{{- if and (eq $scope "namespaced") (not .Values.watchNamespace) -}}
+{{- fail "rbac.scope=namespaced requires watchNamespace to be set" -}}
+{{- end -}}
+{{- $scope -}}
+{{- end }}
+
 {{- define "ledger-operator.serviceAccountName" -}}
 {{- if .Values.serviceAccount.create }}
 {{- default (include "ledger-operator.fullname" .) .Values.serviceAccount.name }}
