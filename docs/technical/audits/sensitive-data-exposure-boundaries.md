@@ -274,10 +274,14 @@ external secret storage are outside this revision.
 ## LedgerInfo read oracle (EN-1635 / EN-2780)
 
 Seed OAuth secrets, HTTP source/OAuth endpoint URL passwords and passwordless
-HTTP(S) userinfo tokens, and PostgreSQL URL/query/keyword passwords, including escaped
-quotes, duplicate passwords, sslpassword, empty and malformed inputs. Exercise
-routed HTTP get/list and actual service current/checkpoint get/list controllers
-and streams. Serialized canaries must be absent, non-secret connection/OAuth/IAM
+HTTP(S) userinfo tokens, and PostgreSQL URL/query passwords and legacy keyword
+DSNs, including escaped quotes, duplicate passwords, sslpassword, empty and
+malformed inputs. Exercise routed HTTP get/list and actual service
+current/checkpoint get/list controllers
+and streams. Serialized canaries must be absent. Non-secret connection fields
+must survive for supported URL forms; legacy PostgreSQL keyword DSNs and other
+unsupported or malformed formats must be fully replaced with `[redacted]`,
+without requiring their connection metadata to survive. Non-secret OAuth/IAM
 fields must survive, and original nested scopes/configuration must remain intact
 for internal consumers. The shared projection uses the EN-1632/#1977 annotation
 contract; check deep clones and unknown-field removal. Configuration projection

@@ -54,11 +54,16 @@ selection and pagination, and preserves stream headers/trailers and errors.
 HTTP source and OAuth token-endpoint URL userinfo/query credentials are masked,
 including passwordless HTTP(S) userinfo, which may hold reusable tokens,
 while host/path and non-secret settings are preserved. OAuth client secrets
-become `[redacted]` presence markers. PostgreSQL passwords
-in URL userinfo/query settings or keyword/value DSNs become `xxxxx`. Non-secret
-connection metadata remains visible; malformed connection strings are fully
-redacted. Empty secrets remain empty/omitted. Detached protobuf views discard
-unknown wire fields, whose confidentiality cannot be established by the schema.
+become `[redacted]` presence markers. PostgreSQL passwords in supported
+`postgres://` and `postgresql://` URL userinfo/query settings become `xxxxx`,
+while non-secret connection metadata remains visible. Legacy keyword/value
+DSNs, malformed connection strings and unsupported formats are fully replaced
+with `[redacted]`; their connection metadata is not preserved. New PostgreSQL
+mirror configurations require URL form at admission; existing committed
+configuration remains unchanged. See [sensitive projection](sensitive-projection.md)
+for the supported formats. Empty secrets remain empty/omitted. Detached protobuf
+views discard unknown wire fields, whose confidentiality cannot be established
+by the schema.
 The original object, nested maps/slices and stored bytes remain unchanged.
 
 Do not apply this projection to controller/worker configuration, persistence,
@@ -93,7 +98,8 @@ constraints, zero/large counters and invalid values. Routed HTTP tests check
 get/list, credential canaries, non-mutation, OpenAPI conformance and clean marshal
 failures. gRPC tests exercise actual current/checkpoint controller reads and
 streaming list output, and verify that unprojected internal queries retain the
-credentials. Shared projection tests cover URL/keyword DSNs and detached slices.
+credentials. Shared projection tests cover metadata preservation for supported
+URLs, full masking of legacy keyword DSNs and detached slices.
 Temporary generated SDK list/get calls verify operation-level decoding from
 these HTTP representations. Downstream platform-ui regeneration/delivery is
 separately owned and is not changed by this Ledger PR.
