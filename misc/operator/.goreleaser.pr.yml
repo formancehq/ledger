@@ -3,13 +3,14 @@
 # PR image publication for the operator, used by `just operator-docker-build-pr`
 # from the repository root (the recipe runs goreleaser inside misc/operator).
 #
-# The operator is its own Go module and has no canonical GoReleaser release
-# (nightly and tagged operator images are still built by
-# `just operator-docker-build`). This file only covers PR images, and mirrors
-# misc/operator/Dockerfile: a static CGO_ENABLED=0 build of ./cmd/operator for
-# linux/amd64 and linux/arm64.
+# The operator is its own Go module. The tagged release workflow builds its
+# images with `just operator-docker-build <tag>`; the main-branch nightly
+# workflow does not publish operator images. This file only covers PR images
+# and mirrors misc/operator/Dockerfile: a static CGO_ENABLED=0 build of
+# ./cmd/operator for linux/amd64 and linux/arm64.
 #
-# Always run with `--nightly`: the only tag pushed is nightly.version_template.
+# Run this PR config with GoReleaser's `--nightly` mode only to select the
+# custom PR image tag from nightly.version_template.
 version: 2
 dist: build/pr-images
 project_name: ledger-operator
