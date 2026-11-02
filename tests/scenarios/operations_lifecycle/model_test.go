@@ -92,7 +92,15 @@ func TestLifecycleModelMatchesService(t *testing.T) {
 	for range 2 {
 		_, err = sc.Client.Apply(sc.Ctx(), servicepb.UnsignedApplyRequest("", promote))
 		require.Equal(t, codes.FailedPrecondition, status.Code(err))
-		require.ErrorContains(t, err, "cursor=0 head=0", "an unobserved source cannot be promoted")
+		var precondition *errdetails.ErrorInfo
+		for _, detail := range status.Convert(err).Details() {
+			if info, ok := detail.(*errdetails.ErrorInfo); ok && info.GetReason() == domain.ErrReasonMirrorNotCaughtUp {
+				precondition = info
+			}
+		}
+		require.NotNil(t, precondition, "an unobserved source cannot be promoted")
+		require.Equal(t, "0", precondition.GetMetadata()["cursor"])
+		require.Equal(t, "0", precondition.GetMetadata()["sourceLogCount"])
 	}
 	apply(oracletest.TxReqL("mirror", "world", "cash:1", "USD/2", 1))
 	info, err := sc.Client.GetLedger(sc.Ctx(), &servicepb.GetLedgerRequest{Ledger: "mirror"})
