@@ -185,6 +185,7 @@ func (r *stoppedUpgradeReconciler) reconcile(ctx context.Context, ledger *ledger
 		if err := r.validateRCUpgradeWithoutStatefulSet(ctx, ledger); err != nil {
 			return false, ctrl.Result{}, err
 		}
+
 		return true, ctrl.Result{}, nil
 	}
 	if state == nil {
