@@ -33,16 +33,26 @@ func TestIsUnobservedMirrorPromotion(t *testing.T) {
 		PromoteLedger: &servicepb.PromoteLedgerRequest{Ledger: "sample"},
 	}}}}
 	for _, syncError := range []bool{false, true} {
-		err := status.Errorf(codes.FailedPrecondition,
-			"applying raft requests: mirror sample is not caught up: cursor=0 head=0 sync_error=%t", syncError)
-		require.True(t, isUnobservedMirrorPromotion(bulk, err))
+		st, err := status.New(codes.FailedPrecondition, "mirror not caught up").WithDetails(&errdetails.ErrorInfo{
+			Reason:   domain.ErrReasonMirrorNotCaughtUp,
+			Metadata: map[string]string{"name": "sample", "cursor": "0", "sourceLogCount": "0", "syncError": fmt.Sprint(syncError)},
+		})
+		require.NoError(t, err)
+		require.True(t, isUnobservedMirrorPromotion(bulk, st.Err()))
 	}
-	require.False(t, isUnobservedMirrorPromotion(bulk,
-		status.Error(codes.FailedPrecondition, "mirror other is not caught up: cursor=0 head=0 sync_error=false")))
-	require.False(t, isUnobservedMirrorPromotion(bulk,
-		status.Error(codes.FailedPrecondition, "mirror sample is not caught up: cursor=1 head=2 sync_error=false")))
-	require.False(t, isUnobservedMirrorPromotion(bulk, status.Error(codes.Internal,
-		"mirror sample is not caught up: cursor=0 head=0 sync_error=false")))
+	st, err := status.New(codes.FailedPrecondition, "mirror not caught up").WithDetails(&errdetails.ErrorInfo{
+		Reason:   domain.ErrReasonMirrorNotCaughtUp,
+		Metadata: map[string]string{"name": "other", "cursor": "0", "sourceLogCount": "0"},
+	})
+	require.NoError(t, err)
+	require.False(t, isUnobservedMirrorPromotion(bulk, st.Err()))
+	st, err = status.New(codes.FailedPrecondition, "mirror not caught up").WithDetails(&errdetails.ErrorInfo{
+		Reason:   domain.ErrReasonMirrorNotCaughtUp,
+		Metadata: map[string]string{"name": "sample", "cursor": "1", "sourceLogCount": "2"},
+	})
+	require.NoError(t, err)
+	require.False(t, isUnobservedMirrorPromotion(bulk, st.Err()))
+	require.False(t, isUnobservedMirrorPromotion(bulk, status.Error(codes.Internal, "mirror not caught up")))
 }
 
 func (immediateApplyClient) Apply(context.Context, *servicepb.ApplyRequest, ...grpc.CallOption) (*servicepb.ApplyResponse, error) {
