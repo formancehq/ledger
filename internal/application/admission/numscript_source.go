@@ -132,7 +132,11 @@ func (b *batchEffects) addBalanceDelta(key domain.VolumeKey, delta *big.Int) {
 }
 
 // mergeDiscovery folds a resolved order's effects into the batch accumulator.
-func (b *batchEffects) mergeDiscovery(deltas map[domain.VolumeKey]*big.Int, metaWrites map[domain.MetadataKey]string) {
+func (b *batchEffects) mergeDiscovery(
+	deltas map[domain.VolumeKey]*big.Int,
+	metaWrites map[domain.MetadataKey]string,
+	metaDeletes map[domain.MetadataKey]struct{},
+) {
 	for key, delta := range deltas {
 		b.addBalanceDelta(key, delta)
 	}
@@ -140,6 +144,12 @@ func (b *batchEffects) mergeDiscovery(deltas map[domain.VolumeKey]*big.Int, meta
 	// A later write for the same key wins (last-writer within the batch).
 	for key, value := range metaWrites {
 		b.setMetadata(key, value)
+	}
+
+	// The script reports its net effect, so a key is either written or
+	// deleted, never both.
+	for key := range metaDeletes {
+		b.deleteMetadata(key)
 	}
 }
 

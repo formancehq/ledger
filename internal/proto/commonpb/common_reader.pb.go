@@ -372,6 +372,73 @@ func (m metadataMap_valuesMapReadonly) Range(yield func(string, MetadataValueRea
 	}
 }
 
+// MetadataKeysReader provides read-only access to MetadataKeys.
+// Call Mutate() to obtain a mutable clone.
+type MetadataKeysReader interface {
+	GetKeys() []string
+	Mutate() *MetadataKeys
+}
+
+type metadataKeysReadonly MetadataKeys
+
+func (r *metadataKeysReadonly) GetKeys() []string {
+	return slices.Clone((*MetadataKeys)(r).GetKeys())
+}
+
+func (r *metadataKeysReadonly) Mutate() *MetadataKeys {
+	return (*MetadataKeys)(r).CloneVT()
+}
+
+// AsReader returns a read-only view of this MetadataKeys.
+func (m *MetadataKeys) AsReader() MetadataKeysReader {
+	if m == nil {
+		return nil
+	}
+	return (*metadataKeysReadonly)(m)
+}
+
+// Mutate returns a mutable deep clone of this MetadataKeys.
+func (m *MetadataKeys) Mutate() *MetadataKeys {
+	return m.CloneVT()
+}
+
+// MetadataKeysListReader provides read-only iteration over []*MetadataKeys.
+type MetadataKeysListReader interface {
+	Len() int
+	Get(i int) MetadataKeysReader
+	Range(yield func(int, MetadataKeysReader) bool)
+}
+
+type metadataKeysListReadonly []*MetadataKeys
+
+func (l metadataKeysListReadonly) Len() int { return len(l) }
+
+func (l metadataKeysListReadonly) Get(i int) MetadataKeysReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l metadataKeysListReadonly) Range(yield func(int, MetadataKeysReader) bool) {
+	for i, v := range l {
+		var r MetadataKeysReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewMetadataKeysListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewMetadataKeysListReader(s []*MetadataKeys) MetadataKeysListReader {
+	return metadataKeysListReadonly(s)
+}
+
 // ParameterValueReader provides read-only access to ParameterValue.
 // Call Mutate() to obtain a mutable clone.
 type ParameterValueReader interface {
@@ -16307,6 +16374,7 @@ func NewFilledGapLogListReader(s []*FilledGapLog) FilledGapLogListReader {
 type CreatedTransactionReader interface {
 	GetTransaction() TransactionReader
 	GetAccountMetadata() CreatedTransaction_AccountMetadataMapReader
+	GetDeletedAccountMetadata() CreatedTransaction_DeletedAccountMetadataMapReader
 	Mutate() *CreatedTransaction
 }
 
@@ -16322,6 +16390,10 @@ func (r *createdTransactionReadonly) GetTransaction() TransactionReader {
 
 func (r *createdTransactionReadonly) GetAccountMetadata() CreatedTransaction_AccountMetadataMapReader {
 	return createdTransaction_accountMetadataMapReadonly((*CreatedTransaction)(r).GetAccountMetadata())
+}
+
+func (r *createdTransactionReadonly) GetDeletedAccountMetadata() CreatedTransaction_DeletedAccountMetadataMapReader {
+	return createdTransaction_deletedAccountMetadataMapReadonly((*CreatedTransaction)(r).GetDeletedAccountMetadata())
 }
 
 func (r *createdTransactionReadonly) Mutate() *CreatedTransaction {
@@ -16400,6 +16472,37 @@ func (m createdTransaction_accountMetadataMapReadonly) Get(k string) (MetadataMa
 func (m createdTransaction_accountMetadataMapReadonly) Range(yield func(string, MetadataMapReader) bool) {
 	for k, v := range m {
 		var r MetadataMapReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(k, r) {
+			return
+		}
+	}
+}
+
+// CreatedTransaction_DeletedAccountMetadataMapReader provides read-only access to CreatedTransaction.DeletedAccountMetadata.
+type CreatedTransaction_DeletedAccountMetadataMapReader interface {
+	Len() int
+	Get(k string) (MetadataKeysReader, bool)
+	Range(yield func(string, MetadataKeysReader) bool)
+}
+
+type createdTransaction_deletedAccountMetadataMapReadonly map[string]*MetadataKeys
+
+func (m createdTransaction_deletedAccountMetadataMapReadonly) Len() int { return len(m) }
+
+func (m createdTransaction_deletedAccountMetadataMapReadonly) Get(k string) (MetadataKeysReader, bool) {
+	v, ok := m[k]
+	if !ok || v == nil {
+		return nil, ok
+	}
+	return v.AsReader(), true
+}
+
+func (m createdTransaction_deletedAccountMetadataMapReadonly) Range(yield func(string, MetadataKeysReader) bool) {
+	for k, v := range m {
+		var r MetadataKeysReader
 		if v != nil {
 			r = v.AsReader()
 		}

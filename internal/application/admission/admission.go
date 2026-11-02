@@ -2155,7 +2155,7 @@ func (a *Admission) resolveScriptsAndEnrichNeeds(ctx context.Context, orders []*
 
 			// Fold this script's effects into the batch accumulator so a later
 			// order in the same atomic batch resolves against them (EN-1406 P1-1).
-			effects.mergeDiscovery(discovered.NetBalanceDeltas, discovered.MetadataWrites)
+			effects.mergeDiscovery(discovered.NetBalanceDeltas, discovered.MetadataWrites, discovered.MetadataDeletes)
 		}
 
 		// Caller-supplied account metadata is folded AFTER the script's writes

@@ -850,6 +850,10 @@ This matches the shared analytical projection; encoding each account's map as
 a JSON string would lose its queryable structure. Ordinary transaction metadata
 and metadata-update events retain their separate `Map(String, String)` fields.
 
+Account metadata keys a Numscript transaction deleted appear in
+`deletedAccountMetadata`, as account address → sorted list of keys. The table
+DDL has no type hint for this path, so ClickHouse infers its type.
+
 Live native inserts quote only `transaction.postings[].amount` and
 `revertTransaction.postings[].amount` as decimal strings. On ClickHouse
 24.10.2.80 with simdjson enabled, unquoted amounts above UInt64 are rejected
