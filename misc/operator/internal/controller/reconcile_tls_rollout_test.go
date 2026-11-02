@@ -150,6 +150,11 @@ func TestTLSDisableResumesUntilConverged(t *testing.T) {
 func TestTLSDisableResumesAfterStatefulSetRecreation(t *testing.T) {
 	t.Parallel()
 	c, cluster := tlsDisableFixture(t)
+	cluster.Spec.Image.Tag = "v3.0.0"
+	current := &appsv1.StatefulSet{}
+	require.NoError(t, c.Get(context.Background(), client.ObjectKey{Name: resourceName(cluster.Name), Namespace: cluster.Namespace}, current))
+	current.Spec.Template.Spec.Containers[0].Image = cluster.Spec.Image.Repository + ":" + cluster.Spec.Image.Tag
+	require.NoError(t, c.Update(context.Background(), current))
 	cluster.Spec.TLS = nil
 	cluster.Spec.Persistence.WAL = ledgerv1alpha1.VolumeSpec{HostPath: &ledgerv1alpha1.HostPathVolumeSpec{Path: "/mnt/wal"}}
 	require.NoError(t, c.Update(context.Background(), cluster))

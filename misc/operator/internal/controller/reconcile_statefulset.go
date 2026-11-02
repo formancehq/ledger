@@ -134,6 +134,9 @@ func (r *ClusterReconciler) reconcileStatefulSetWithExec(ctx context.Context, le
 				logger.Info("deferring StatefulSet recreation until RC rollout converges")
 				desired.Template = preserveExistingStorageWiring(existing.Spec.Template, desired.Template)
 			} else {
+				if !pinnedVersionTag(ledger.Spec.Image.Tag) {
+					return ctrl.Result{}, fmt.Errorf("cannot recreate StatefulSet with image tag %q; pin a canonical version tag before changing VolumeClaimTemplates", ledger.Spec.Image.Tag)
+				}
 				logger.Info("VolumeClaimTemplates changed, recreating StatefulSet with orphan propagation")
 				// Pinned to the inspected UID: a StatefulSet replaced under the
 				// name since the ownership check above is never deleted.

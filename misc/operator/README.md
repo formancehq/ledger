@@ -13,6 +13,11 @@ for preflight, recovery and rollback limits. The rc.1-to-rc.2 transition
 uses a [maintenance-barrier rolling procedure](../../docs/ops/upgrades.md#account-metadata-address-validation):
 writes pause while voters are replaced one at a time. RC.2 to RC.3 remains rolling.
 
+Changes to immutable volume claim templates also require a canonical pinned
+Ledger image tag. The operator rejects moving tags such as `latest` before
+deleting the StatefulSet, so an interrupted recreation cannot pull a different
+Ledger version onto retained volumes.
+
 ## Overview
 
 The Ledger Operator manages `Cluster` and `EventSink` custom resources to automate the lifecycle of distributed ledger clusters and event delivery on Kubernetes. It handles:
