@@ -247,6 +247,29 @@ run a sink created inside the checkpoint. `TestSyncDonor`,
 `TestAddLearnerWaitsForLeaderReady`, `TestCheckAndPromoteLearnersWaitsForLeaderReady`,
 and `TestManagerLeadership` pin the donor rotation and the gates.
 
+Permanent donor loss is an independent recovery trigger. In
+`tests/e2e/cluster/checkpoint_donor_loss_test.go`, hold the recovering voter's
+real `PrepareSnapshot`, keep another checkpointable voter alive, and stop the
+original donor without restarting it. Prevent the healthy voter from initiating
+an election so the syncing voter must win, verify its store-dependent reads
+remain gated, then release preparation and require recovery plus a new
+acknowledged write. Compare literal balances on both surviving stores, including
+business data committed while synchronization was held. This proves survival of
+that committed suffix, but does not distinguish whether the later donor
+checkpoint contains it or spool replay supplies it; retain the existing
+out-of-sync restart regression separately.
+
+`internal/application/ctrl/snapshot_fetcher_donor_loss_test.go` isolates donor
+loss during preparation and after partial file bytes reach the real staging
+file. The RPC boundary is mocked, while the session, file verification and
+filesystem machinery execute normally. Require exact RPC attempts and distinct
+session identities, cleanup of the failed temporary file even when closing the
+dead donor's session fails, and removal of completed files from the abandoned
+session before the surviving donor starts. The winning session must produce
+literal final bytes and progress counters without accumulating abandoned data.
+These tests establish recovery after an explicit transport failure; they do not
+establish a recovery latency bound or detect an indefinitely stalled stream.
+
 After real snapshot catch-up, `tests/e2e/cluster/raft_test.go` restarts the
 recovered voter again and verifies retained business state through a
 linearizable read. Accept a healthy `Follower` or `Leader` with a known leader:

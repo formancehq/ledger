@@ -49,6 +49,7 @@
     "tests/e2e/cluster/transfer_leadership_test.go",
     "tests/e2e/cluster/get_ledger_snapshot_test.go",
     "tests/e2e/cluster/out_of_sync_election_test.go",
+    "tests/e2e/cluster/checkpoint_donor_loss_test.go",
     "tests/antithesis/**",
     "tests/oracle/**"
   ],
@@ -125,6 +126,7 @@
     "commit ConfChangeUpdateNode for an existing Match=0 learner at a new endpoint, inject one optional-TLS probe failure before recovery, then prove Pebble, cache, and the retried live Raft dial target use that endpoint while ConfState and peer identity remain unchanged; the existing send loop and retry owner must survive the probe failure without being removed",
     "differentially compare uninterrupted execution with leader crash, transfer, restart, retained-log replay, and snapshot catch-up using the same admitted operations and final ConfState",
     "exercise combined snapshot/entry Ready suffix preservation through LastIndex, Term, Entries, HardState and ConfState and across real WAL reopen, with snapshot-only processing retaining its existing write budget (internal/infra/node/process_ready_snapshot_test.go)",
-    "Exercise old-member Unimplemented preflight, concurrent add/promotion/removal, lost marker response, leader loss plus membership change plus re-election, and member restart; assert old-term proposals are rejected before Raft append, marker/cutoff identity, and each member persisted-index certificate before Drained."
+    "Exercise old-member Unimplemented preflight, concurrent add/promotion/removal, lost marker response, leader loss plus membership change plus re-election, and member restart; assert old-term proposals are rejected before Raft append, marker/cutoff identity, and each member persisted-index certificate before Drained.",
+    "stop the original checkpoint donor permanently while a syncing voter is in PrepareSnapshot, keep another checkpointable voter alive, force the syncing voter to win on its log, retain the serving gate until restore completes, then compare literal business balances on both survivors and acknowledge a new write (tests/e2e/cluster/checkpoint_donor_loss_test.go); separately lose a donor during PrepareSnapshot and after partial FetchFile bytes reach disk, require complete-session fallback, exact attempt counts, staging and progress reset, correct final bytes, and temporary-file cleanup (internal/application/ctrl/snapshot_fetcher_donor_loss_test.go)"
   ]
 }
