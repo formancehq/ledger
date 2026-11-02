@@ -133,6 +133,12 @@ New backup Jobs must resolve mode and certificate/CA references from one
 current owned StatefulSet template, rather than mixing observed mode with
 already-cleared desired TLS. Missing workloads during recreation must cause
 retry without creating a plaintext Job; foreign ownership must reject creation.
+The Job's Ledger image must also come from that owned StatefulSet template.
+An omitted `spec.image.tag` is resolved by the Cluster reconciler only in
+memory, so reading the stored Cluster tag can produce an invalid backup image.
+Check both an omitted tag and a desired tag awaiting rollout; the Job must use
+the existing workload image in either case. A missing Ledger container or
+empty workload image must prevent Job creation and remain retryable.
 In-pod ledgerctl calls from Ledger and EventSink reconciliation must also
 return a retryable lookup error before exec while the StatefulSet is absent,
 then read the recreated workload mode on retry. Cover both callers separately

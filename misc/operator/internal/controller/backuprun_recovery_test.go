@@ -38,9 +38,44 @@ func backupRunRecoveryFixture(t *testing.T) (client.WithWatch, *ledgerv1alpha1.B
 		ObjectMeta: metav1.ObjectMeta{Name: "backup", Namespace: run.Namespace},
 		Spec:       ledgerv1alpha1.BackupSpec{ClusterRef: "cluster", Destination: ledgerv1alpha1.BackupDestination{Driver: "s3", S3: &ledgerv1alpha1.S3Config{Bucket: "bucket"}}},
 	}
-	cluster := &ledgerv1alpha1.Cluster{ObjectMeta: metav1.ObjectMeta{Name: "cluster", Namespace: run.Namespace, UID: "cluster-uid"}}
+	cluster := &ledgerv1alpha1.Cluster{
+		ObjectMeta: metav1.ObjectMeta{Name: "cluster", Namespace: run.Namespace, UID: "cluster-uid"},
+		Spec: ledgerv1alpha1.ClusterSpec{Image: ledgerv1alpha1.ImageSpec{
+			Repository: "ghcr.io/formancehq/ledger", Tag: "v3.0.0-rc.3",
+		}},
+	}
 
 	return fake.NewClientBuilder().WithScheme(scheme).WithStatusSubresource(run, &batchv1.Job{}, &ledgerv1alpha1.Backup{}).WithObjects(run, backup, cluster, backupTLSWorkload(cluster, tlsModeDisabled), backupClusterService(cluster)).Build(), run
+}
+
+func TestBackupRunUsesOwnedWorkloadImage(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name       string
+		desiredTag string
+	}{
+		{name: "omitted Cluster tag"},
+		{name: "new tag pending rollout", desiredTag: "v3.0.0-rc.4"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			ctx := t.Context()
+			c, run := backupRunRecoveryFixture(t)
+			cluster := &ledgerv1alpha1.Cluster{}
+			key := client.ObjectKey{Name: "cluster", Namespace: run.Namespace}
+			require.NoError(t, c.Get(ctx, key, cluster))
+			cluster.Spec.Image.Tag = tc.desiredTag
+			require.NoError(t, c.Update(ctx, cluster))
+
+			r := &BackupRunReconciler{Client: c, APIReader: c, Scheme: c.Scheme()}
+			_, err := r.Reconcile(ctx, ctrl.Request{NamespacedName: client.ObjectKeyFromObject(run)})
+			require.NoError(t, err)
+
+			job := &batchv1.Job{}
+			require.NoError(t, c.Get(ctx, client.ObjectKey{Namespace: run.Namespace, Name: backupJobName(run)}, job))
+			require.Equal(t, "ghcr.io/formancehq/ledger:v3.0.0-rc.3", job.Spec.Template.Spec.Containers[0].Image)
+		})
+	}
 }
 
 func TestBackupRunCommittedCreateLostResponse(t *testing.T) {
