@@ -104,11 +104,11 @@ Both adapters return v2 log entries in their native shape; translation to v3 ord
 
 PostgreSQL source construction parses the configured DSN before allocating a
 pool or accessing the source database. Parser failures return a fresh static
-`parsing mirror DSN: invalid PostgreSQL configuration` diagnostic, or
-`parsing mirror DSN: invalid connect_timeout` for that recognized parser
-category. No DSN, option value or original parser error is retained in the
-returned error chain: pgx errors can contain query passwords, TLS key passwords,
-and invalid option values even when userinfo is redacted.
+`parsing mirror DSN: invalid PostgreSQL configuration` diagnostic for every
+parse failure, without inspecting pgx error text. No DSN, option value or
+original parser error is retained in the returned error chain: pgx errors can
+contain query passwords, TLS key passwords, and invalid option values even when
+userinfo is redacted.
 
 Non-IAM admission continues to accept these options; construction diagnoses
 invalid configurations loaded from authoritative storage. Manager reconciliation

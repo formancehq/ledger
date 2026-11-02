@@ -45,7 +45,7 @@ func TestManager_PostgresParseErrorDoesNotDiscloseCredentials(t *testing.T) {
 			require.Empty(t, workerNames(m))
 			require.Contains(t, logs.String(), "Failed to create mirror source")
 			require.Contains(t, logs.String(), `"ledger":"diagnostic-ledger"`)
-			require.Contains(t, logs.String(), "invalid connect_timeout")
+			require.Contains(t, logs.String(), "parsing mirror DSN: invalid PostgreSQL configuration")
 			require.NotContains(t, logs.String(), secret)
 			require.NotContains(t, logs.String(), url.QueryEscape(secret))
 			handle, err := store.NewDirectReadHandle()

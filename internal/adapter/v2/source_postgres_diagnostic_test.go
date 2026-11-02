@@ -28,7 +28,7 @@ func TestNewPostgresSource_ParseErrorDoesNotDiscloseCredentials(t *testing.T) {
 			cfg := &commonpb.PostgresMirrorSourceConfig{Dsn: dsn}
 			source, err := NewPostgresSource(context.Background(), cfg, "source-ledger")
 			require.Nil(t, source)
-			require.ErrorContains(t, err, "invalid connect_timeout")
+			require.EqualError(t, err, "parsing mirror DSN: invalid PostgreSQL configuration")
 			for current := err; current != nil; current = errors.Unwrap(current) {
 				for _, credential := range []string{secret, encoded, url.PathEscape(secret)} {
 					require.NotContains(t, fmt.Sprintf("%+v", current), credential)
@@ -55,7 +55,7 @@ func TestNewPostgresSource_ParseErrorDoesNotDiscloseInvalidValues(t *testing.T) 
 			cfg := &commonpb.PostgresMirrorSourceConfig{Dsn: dsn}
 			source, err := NewPostgresSource(context.Background(), cfg, "source-ledger")
 			require.Nil(t, source)
-			require.ErrorContains(t, err, "parsing mirror DSN: invalid")
+			require.EqualError(t, err, "parsing mirror DSN: invalid PostgreSQL configuration")
 			require.NotContains(t, err.Error(), secret)
 			require.NotContains(t, err.Error(), url.QueryEscape(secret))
 			require.Nil(t, errors.Unwrap(err))

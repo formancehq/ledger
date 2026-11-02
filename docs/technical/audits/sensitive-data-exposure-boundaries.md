@@ -104,8 +104,8 @@ Exercise non-IAM create-ledger admission with an invalid `connect_timeout` and
 query password, then the real PostgreSQL constructor and Manager reconciliation
 of stored configuration. Capture constructor errors and their entire error
 chains plus structured manager logs. Require absence of raw and URL-encoded
-passwords, retained invalid-option diagnostics and destination ledger identity,
-no worker startup, and an unchanged internal DSN. Include userinfo-password,
+passwords, a static invalid-configuration diagnostic and destination ledger
+identity, no worker startup, and an unchanged internal DSN. Include userinfo-password,
 keyword-password and `sslpassword` controls, malformed DSNs and secret-valued
 invalid options. Parsing must fail before source database access. These errors
 occur before worker startup; do not claim worker-status replication coverage.
