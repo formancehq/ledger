@@ -19,6 +19,11 @@ and existing server flags. Activation is automatic after all members advertise
 support; there is no activation setting in the Cluster CRD. Binary rollback
 closes when a volume's schema migration commits, not when a capability activates.
 
+Changes to immutable volume claim templates also require a canonical pinned
+Ledger image tag. The operator rejects moving tags such as `latest` before
+deleting the StatefulSet, so an interrupted recreation cannot pull a different
+Ledger version onto retained volumes.
+
 ## Overview
 
 The Ledger Operator manages `Cluster` and `EventSink` custom resources to automate the lifecycle of distributed ledger clusters and event delivery on Kubernetes. It handles:
