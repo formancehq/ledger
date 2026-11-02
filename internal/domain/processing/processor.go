@@ -47,6 +47,10 @@ type Context struct {
 	// new orders. Audit replay retains the historical creation semantics.
 	strictCreateLedgerAccountTypes bool
 
+	// MirrorPromotionProgress reads the FSM's committed source observation plus
+	// technical updates staged earlier in this proposal. Nil for legacy orders
+	// and audit replay, which do not re-run the eligibility decision.
+	MirrorPromotionProgress func(string) (uint64, bool)
 	// Metadata budget is shared by all orders in one atomic proposal.
 	metadataBudget *commandMetadataBudget
 
@@ -233,8 +237,8 @@ func (r *OrdersResult) recordCreatedLog(log *commonpb.Log) bool {
 // Successive calls return independent scopes — the previous scope's
 // coverage map is never mutated. Per-order isolation is therefore
 // structural: order N's scope cannot read keys declared by order M.
-func (p *RequestProcessor) ProcessOrders(orders []*raftcmdpb.Order, scopeFactory ScopeFactory, sink SignalSink) (*OrdersResult, domain.Describable) {
-	return p.processOrders(orders, scopeFactory, sink, false, true)
+func (p *RequestProcessor) ProcessOrders(orders []*raftcmdpb.Order, scopeFactory ScopeFactory, sink SignalSink, mirrorProgress ...func(string) (uint64, bool)) (*OrdersResult, domain.Describable) {
+	return p.processOrders(orders, scopeFactory, sink, false, true, mirrorProgress...)
 }
 
 // ProcessAuditedOrders verifies recorded business effects. Operational quotas
@@ -246,7 +250,7 @@ func (p *RequestProcessor) ProcessAuditedOrders(orders []*raftcmdpb.Order, scope
 	return p.processOrders(orders, scopeFactory, sink, true, false)
 }
 
-func (p *RequestProcessor) processOrders(orders []*raftcmdpb.Order, scopeFactory ScopeFactory, sink SignalSink, auditReplay bool, strictCreateLedgerAccountTypes bool) (*OrdersResult, domain.Describable) {
+func (p *RequestProcessor) processOrders(orders []*raftcmdpb.Order, scopeFactory ScopeFactory, sink SignalSink, auditReplay bool, strictCreateLedgerAccountTypes bool, mirrorProgress ...func(string) (uint64, bool)) (*OrdersResult, domain.Describable) {
 	clear(p.compiledTypesCache)
 	clear(p.assetCache)
 
@@ -261,6 +265,9 @@ func (p *RequestProcessor) processOrders(orders []*raftcmdpb.Order, scopeFactory
 		CompiledTypes:                  p.compiledTypesCache,
 		AssetCache:                     p.assetCache,
 		batchInitialNextTxID:           make(map[string]uint64),
+	}
+	if len(mirrorProgress) != 0 {
+		ctx.MirrorPromotionProgress = mirrorProgress[0]
 	}
 
 	ctx.metadataBudget = &commandMetadataBudget{}
@@ -601,7 +608,7 @@ func processLedgerScoped(ls *raftcmdpb.LedgerScopedOrder, ctx *Context) (*common
 	case *raftcmdpb.LedgerScopedOrder_MirrorIngest:
 		return processMirrorIngest(ledger, payload.MirrorIngest, ctx)
 	case *raftcmdpb.LedgerScopedOrder_PromoteLedger:
-		return processPromoteLedger(ledger, ctx)
+		return processPromoteLedger(ledger, payload.PromoteLedger, ctx)
 	case *raftcmdpb.LedgerScopedOrder_SaveLedgerMetadata:
 		return processAddLedgerMetadata(ledger, payload.SaveLedgerMetadata, ctx)
 	case *raftcmdpb.LedgerScopedOrder_DeleteLedgerMetadata:

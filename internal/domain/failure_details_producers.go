@@ -269,6 +269,12 @@ func (e *ErrLedgerNotInMirrorMode) FailureDetails() *commonpb.FailureDetails {
 	}}}
 }
 
+func (e *ErrMirrorNotCaughtUp) FailureDetails() *commonpb.FailureDetails {
+	return &commonpb.FailureDetails{Kind: &commonpb.FailureDetails_MirrorNotCaughtUp{MirrorNotCaughtUp: &commonpb.MirrorNotCaughtUpDetails{
+		Name: new(e.Name), Cursor: new(e.Cursor), SourceLogCount: new(e.Head), SyncError: new(e.SyncError),
+	}}}
+}
+
 func (e *ErrPreparedQueryAlreadyExists) FailureDetails() *commonpb.FailureDetails {
 	return &commonpb.FailureDetails{Kind: &commonpb.FailureDetails_PreparedQueryAlreadyExists{PreparedQueryAlreadyExists: &commonpb.PreparedQueryAlreadyExistsDetails{
 		Ledger: new(e.Ledger),
