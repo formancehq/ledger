@@ -67,6 +67,7 @@ e2e-cluster-up: _e2e-build-ledger
     helm upgrade --install ledger-operator ./helm/operator \
         --set image.repository=ledger-operator \
         --set image.tag=e2e \
+        --set ledgerImage.tag=e2e \
         --set image.pullPolicy=Never \
         --set leaderElection=false \
         --set pvcProtection.enabled=true \
@@ -121,7 +122,7 @@ helm-package version='' suffix='':
                 chart_version="${chart_version}-{{ suffix }}"
             fi
         fi
-        (cd "$dir" && helm package . --version "${chart_version}")
+        (cd "$dir" && helm package . --version "${chart_version}" --app-version "v${chart_version}")
     done
 
 helm-publish version='' suffix='': (helm-package version suffix)

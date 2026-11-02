@@ -38,6 +38,8 @@ type ClusterReconciler struct {
 	Recorder  record.EventRecorder
 	// stopVersions overrides the shipped boundary list in focused tests.
 	stopVersions []string
+	// OperatorVersion is the release version embedded in the running binary.
+	OperatorVersion string
 }
 
 // +kubebuilder:rbac:groups=ledger.formance.com,resources=clusters,verbs=get;list;watch;create;update;patch;delete
@@ -117,6 +119,30 @@ func (r *ClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (re
 	// is invalid or a rollout would otherwise start.
 	if ledger.Status.Drain != nil {
 		return r.reconcileAnnotatedDrain(ctx, ledger, r.PreflightDrainBarrier, r.EnsureDrainBarrier, r.EnsureDrainReleased)
+	}
+
+	versionReason, versionErr := validateLedgerVersion(ledger, r.OperatorVersion)
+	versionStatus := metav1.ConditionTrue
+	versionMessage := "Declared Ledger image tag does not exceed the Ledger Operator release"
+	if versionReason == "DevelopmentVersions" {
+		versionStatus = metav1.ConditionUnknown
+		versionMessage = fmt.Sprintf("development versions %q and %q cannot be compared", ledger.Spec.Image.Tag, r.OperatorVersion)
+	}
+	if versionErr != nil {
+		versionStatus = metav1.ConditionFalse
+		versionMessage = versionErr.Error()
+	}
+	meta.SetStatusCondition(&ledger.Status.Conditions, metav1.Condition{
+		Type:               "VersionCompatible",
+		Status:             versionStatus,
+		Reason:             versionReason,
+		Message:            versionMessage,
+		ObservedGeneration: ledger.Generation,
+	})
+	if versionErr != nil {
+		ledger.Status.Phase = "Error"
+
+		return ctrl.Result{}, nil
 	}
 
 	// Validate spec — report errors via status condition instead of retrying.
@@ -481,6 +507,10 @@ func (r *ClusterReconciler) updateStatus(ctx context.Context, ledger *ledgerv1al
 	// Preserve the phase set during reconciliation (e.g. "Degraded" from
 	// validation failure) before we try to recompute from StatefulSet state.
 	reconciledPhase := ledger.Status.Phase
+	replicas := int32(3)
+	if latest.Spec.Replicas != nil {
+		replicas = *latest.Spec.Replicas
+	}
 
 	// Get the StatefulSet to read ready replicas
 	sts := &appsv1.StatefulSet{}
@@ -508,11 +538,6 @@ func (r *ClusterReconciler) updateStatus(ctx context.Context, ledger *ledgerv1al
 		}
 	} else {
 		latest.Status.ReadyReplicas = sts.Status.ReadyReplicas
-
-		replicas := int32(3)
-		if latest.Spec.Replicas != nil {
-			replicas = *latest.Spec.Replicas
-		}
 
 		switch {
 		// An "Error" phase is set when reconciliation hit a hard stop
@@ -550,7 +575,11 @@ func (r *ClusterReconciler) updateStatus(ctx context.Context, ledger *ledgerv1al
 	} else {
 		condition.Status = metav1.ConditionFalse
 		condition.Reason = "ReplicasNotReady"
-		condition.Message = fmt.Sprintf("%d/%d replicas ready", latest.Status.ReadyReplicas, *latest.Spec.Replicas)
+		condition.Message = fmt.Sprintf("%d/%d replicas ready", latest.Status.ReadyReplicas, replicas)
+		if versionCondition := meta.FindStatusCondition(latest.Status.Conditions, "VersionCompatible"); versionCondition != nil && versionCondition.Status == metav1.ConditionFalse {
+			condition.Reason = versionCondition.Reason
+			condition.Message = versionCondition.Message
+		}
 	}
 	meta.SetStatusCondition(&latest.Status.Conditions, condition)
 

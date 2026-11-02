@@ -149,6 +149,16 @@ Before any server upgrade:
 5. Ensure clients use stable idempotency keys for retries during leadership
    changes or transient unavailability.
 
+The Ledger Operator blocks a declared Ledger image tag newer than its own
+release version, or one that cannot be compared, before changing the
+StatefulSet. Upgrade the Operator first, then change the Ledger image. This
+ordering check applies before an Operator-managed workload change; it does
+not establish mixed-version compatibility or make a downgrade safe. Mutable
+registry tags can serve different contents, which this check cannot verify.
+If an Operator downgrade encounters a newer declared Ledger version,
+reconciliation stops with `VersionCompatible=False` while the existing workload
+is retained. Install a compatible Operator to resume reconciliation.
+
 ## Rolling Procedure
 
 Use this for RC updates after the mixed-version validation above passes:

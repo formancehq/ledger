@@ -23,6 +23,8 @@ builds:
 - id: operator
   binary: operator
   main: ./cmd/operator
+  ldflags:
+  - -X main.version={{ .Version }}
   env:
   - CGO_ENABLED=0
   goos:

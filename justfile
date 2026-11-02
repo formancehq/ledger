@@ -503,6 +503,7 @@ operator-docker-build tag='':
     image='{{ operator_image_repository }}'
     if [ -n "{{ tag }}" ]; then
         docker buildx build -t "${image}:{{ tag }}" -t "${image}:latest" \
+            --build-arg "OPERATOR_VERSION={{ tag }}" \
             --platform linux/amd64,linux/arm64 --push misc/operator
     else
         docker buildx build -t "${image}:latest" \
