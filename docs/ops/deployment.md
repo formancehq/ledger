@@ -211,11 +211,12 @@ reason `OperatorVersionUnknown`.
 An opaque Ledger tag such as `latest`, `e2e`, or a commit SHA cannot be ordered.
 A release Operator blocks it with reason `LedgerVersionUnknown`. Development
 Operator builds accept opaque Ledger tags and report `VersionCompatible=Unknown`
-with reason `DevelopmentVersions`. Existing release-managed Clusters using
-`latest` must select a semantic tag before their next reconciliation can
-update workloads. The check compares the declared image tag; custom registries
-may serve different contents under that tag, so verify image provenance before
-relying on the check.
+with reason `DevelopmentVersions`. Before upgrading an existing Cluster using
+`latest`, follow the [source-version preflight](upgrades.md#preflight-for-clusters-using-latest).
+Changing only the Cluster tag after the Operator upgrade can leave the
+StatefulSet's `latest` source blocked by the RC upgrade check. The check compares
+the declared image tag; custom registries may serve different contents under
+that tag, so verify image provenance before relying on the check.
 
 When an operator-managed Cluster omits `spec.clusterID`, the operator commits a
 random UUID to the Cluster spec before creating any workload. All replicas use
