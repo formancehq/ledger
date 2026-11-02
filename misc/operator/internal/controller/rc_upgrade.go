@@ -46,6 +46,12 @@ func rcCandidate(value string) bool {
 	return strings.Contains(value, "-rc")
 }
 
+func pinnedVersionTag(value string) bool {
+	version, err := semver.StrictNewVersion(strings.TrimPrefix(value, "v"))
+
+	return err == nil && "v"+version.String() == value
+}
+
 func ledgerImageTag(sts *appsv1.StatefulSet) (string, error) {
 	return ledgerContainerTag(sts.Spec.Template.Spec.Containers)
 }
@@ -89,7 +95,7 @@ func (r *ClusterReconciler) validateRCUpgradeWithoutStatefulSet(ctx context.Cont
 		}
 		matchingPod = true
 		source, err := ledgerContainerTag(pod.Spec.Containers)
-		if err != nil || source != ledger.Spec.Image.Tag || !strings.HasPrefix(source, "v") {
+		if err != nil || source != ledger.Spec.Image.Tag || !pinnedVersionTag(source) {
 			return fmt.Errorf("cannot change RC while StatefulSet %q is absent and Pod %q retains another or unknown image; restore the source image tag first", name, pod.Name)
 		}
 	}
