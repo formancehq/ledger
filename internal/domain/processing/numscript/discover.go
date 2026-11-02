@@ -39,7 +39,8 @@ import (
 // hashes stale and is rejected forever. NetBalanceDeltas is keyed by
 // (ledger, account, asset, color) and holds (input−output) deltas — the same
 // quantity balance() returns for that color bucket. MetadataWrites holds the raw
-// values set_account_meta wrote.
+// values set_account_meta wrote; MetadataDeletes holds the keys
+// delete_account_metadata removed.
 type DiscoveryResult struct {
 	ReadVolumes   map[domain.VolumeKey]struct{}
 	WriteVolumes  map[domain.VolumeKey]struct{}
@@ -49,6 +50,7 @@ type DiscoveryResult struct {
 
 	NetBalanceDeltas map[domain.VolumeKey]*big.Int
 	MetadataWrites   map[domain.MetadataKey]string
+	MetadataDeletes  map[domain.MetadataKey]struct{}
 }
 
 // DiscoverNumscriptDependencies statically resolves the accounts, assets and
@@ -207,6 +209,16 @@ func DiscoverNumscriptDependencies(
 				AccountKey: domain.AccountKey{LedgerName: ledgerName, Account: row.Account},
 				Key:        row.Key,
 			}] = row.Value
+		}
+	}
+
+	if deletions := AccountMetadataDeletions(execResult); len(deletions) > 0 {
+		result.MetadataDeletes = make(map[domain.MetadataKey]struct{}, len(deletions))
+		for _, deletion := range deletions {
+			result.MetadataDeletes[domain.MetadataKey{
+				AccountKey: domain.AccountKey{LedgerName: ledgerName, Account: deletion.Account},
+				Key:        deletion.Key,
+			}] = struct{}{}
 		}
 	}
 

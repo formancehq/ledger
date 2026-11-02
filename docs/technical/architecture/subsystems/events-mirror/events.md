@@ -850,6 +850,10 @@ This matches the shared analytical projection; encoding each account's map as
 a JSON string would lose its queryable structure. Ordinary transaction metadata
 and metadata-update events retain their separate `Map(String, String)` fields.
 
+Account metadata keys a Numscript transaction deleted appear in
+`deletedAccountMetadata`, as account address → sorted list of keys. The table
+DDL has no type hint for this path, so ClickHouse infers its type.
+
 Existing tables are unchanged by `CREATE TABLE IF NOT EXISTS`. Tables created
 with the former flat account-metadata hint require the explicit, non-destructive
 [ClickHouse table migration](../../../../ops/clickhouse-account-metadata.md)

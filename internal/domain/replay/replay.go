@@ -103,6 +103,22 @@ func ReplayLedgerLog(
 			}
 		}
 
+		for account, keys := range p.CreatedTransaction.GetDeletedAccountMetadata() {
+			for _, key := range keys.GetKeys() {
+				mk := domain.MetadataKey{
+					AccountKey: domain.AccountKey{
+						LedgerName: ledger,
+						Account:    account,
+					},
+					Key: key,
+				}
+
+				if err := w.DeleteMetadata(mk.Bytes()); err != nil {
+					return fmt.Errorf("deleting account metadata: %w", err)
+				}
+			}
+		}
+
 	case *commonpb.LedgerLogPayload_RevertedTransaction:
 		if p.RevertedTransaction == nil || p.RevertedTransaction.GetRevertTransaction() == nil {
 			return nil
