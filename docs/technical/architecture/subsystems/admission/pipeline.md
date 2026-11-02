@@ -192,7 +192,7 @@ PR.
 
 ### Mirror promotion apply check
 
-Admission marks new `PromoteLedger` orders with `require_catch_up` and does not
+Admission marks new `PromoteLedger` orders with `OrderTechnical.require_mirror_catch_up` and does not
 read mirror progress. The FSM checks progress after idempotency replay, using
 in-memory state reconstructed from existing durable rows and advanced by
 committed technical updates. This adds one bounded ledger-boundary lookup in

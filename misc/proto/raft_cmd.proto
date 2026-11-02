@@ -84,6 +84,10 @@ message OrderTechnical {
   // checks, so a target that is unknown or already reverted keeps returning
   // those reasons. Empty for every non-revert order.
   bytes revert_target_digest = 4;
+  // New mirror promotions require the FSM catch-up check. This is excluded
+  // from business intent so a retry of a pre-upgrade order keeps its hash.
+  // Historical persisted orders lack it and retain their apply behavior.
+  bool require_mirror_catch_up = 5;
 }
 
 // LedgerScopedOrder is the wrapper for every Order variant that targets a
@@ -269,11 +273,7 @@ message MirrorDeletedMetadata {
   string key = 2;
 }
 
-message PromoteLedgerOrder {
-  // New orders require the FSM catch-up check. Legacy persisted orders lack
-  // this field and retain their original apply semantics during replay.
-  bool require_catch_up = 1;
-}
+message PromoteLedgerOrder {}
 
 message DeleteLedgerOrder {}
 

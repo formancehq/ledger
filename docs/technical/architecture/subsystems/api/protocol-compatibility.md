@@ -37,7 +37,7 @@ before calling the new RPC. The operation has no persisted, Raft, snapshot,
 backup, or audit format effect.
 
 EN-3037 retains revision 40 and the existing `PromoteLedgerRequest` message.
-New promotion orders carry `require_catch_up`; the FSM checks the replicated
+New promotion orders carry `OrderTechnical.require_mirror_catch_up`; the FSM checks the replicated
 source-head observation, ingestion cursor, and synchronization error after
 idempotency replay. A failed check has the dedicated
 `ERROR_REASON_MIRROR_NOT_CAUGHT_UP` reason and `FailedPrecondition` status.
