@@ -531,7 +531,7 @@ func TestWriteSetResetIsolation(t *testing.T) {
 // and query.ReadMirrorStatus closes the loop end-to-end.
 func TestWriteSetMergeDrainsMirrorSyncs(t *testing.T) {
 	t.Parallel()
-	buf, _, dataStore := newTestBuffer(t)
+	buf, machine, dataStore := newTestBuffer(t)
 
 	buf.QueueMirrorSync(MirrorSyncWrite{
 		LedgerName:     "test",
@@ -542,6 +542,7 @@ func TestWriteSetMergeDrainsMirrorSyncs(t *testing.T) {
 	batch := dataStore.OpenWriteSession()
 	require.NoError(t, buf.Merge(batch, nil))
 	require.NoError(t, batch.Commit())
+	require.Equal(t, mirrorPromotionState{Head: 120}, machine.State.MirrorPromotion["test"])
 
 	rh, err := dataStore.NewReadHandle()
 	require.NoError(t, err)

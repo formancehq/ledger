@@ -682,9 +682,6 @@ func (a *Admission) prepareBatchOrders(ctx context.Context, batch verifiedBatch)
 	if err != nil {
 		return nil, nil, nil, fmt.Errorf("converting requests to orders: %w", err)
 	}
-	if err := a.checkMirrorPromotions(ctx, orders, admPlan.key); err != nil {
-		return orders, nil, nil, err
-	}
 
 	// Step 1: Extract preload needs from orders (excludes script-dependent needs)
 	needs, perOrder, err := a.extractPreloadNeeds(ctx, orders, overlay)
@@ -2306,7 +2303,7 @@ func (a *Admission) ledgerRequestToOrder(order *raftcmdpb.Order, req *servicepb.
 		wrapLedgerScoped(order, &raftcmdpb.LedgerScopedOrder{
 			Ledger: reqType.PromoteLedger.GetLedger(),
 			Payload: &raftcmdpb.LedgerScopedOrder_PromoteLedger{
-				PromoteLedger: &raftcmdpb.PromoteLedgerOrder{},
+				PromoteLedger: &raftcmdpb.PromoteLedgerOrder{RequireCatchUp: true},
 			},
 		})
 	case *servicepb.Request_CreatePreparedQuery:

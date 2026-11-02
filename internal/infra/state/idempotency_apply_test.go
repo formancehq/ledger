@@ -110,6 +110,30 @@ func TestApplyProposal_ReplaysPromotionAndDeletionAfterLedgerIsGone(t *testing.T
 	require.True(t, result.Results[0].Replayed)
 }
 
+func TestApplyProposal_FrozenFailurePrecedesMissingPromotionTarget(t *testing.T) {
+	t.Parallel()
+	machine, dataStore, _ := newTestMachine(t)
+	ctx := context.Background()
+	batch := func(id uint64) *raftcmdpb.Proposal {
+		promotion := &raftcmdpb.Order{Type: &raftcmdpb.Order_LedgerScoped{LedgerScoped: &raftcmdpb.LedgerScopedOrder{
+			Ledger: "missing-b", Payload: &raftcmdpb.LedgerScopedOrder_PromoteLedger{PromoteLedger: &raftcmdpb.PromoteLedgerOrder{RequireCatchUp: true}},
+		}}}
+		proposal := makeProposal(id, deleteLedgerOrder("missing-a"), promotion)
+		proposal.Idempotency = &commonpb.Idempotency{Key: "frozen-missing-delete"}
+
+		return proposal
+	}
+	first, err := machine.ApplyEntries(ctx, dataStore, makeEntry(t, 1, batch(1)))
+	require.NoError(t, err)
+	require.Error(t, first.Results[0].Error)
+	require.True(t, first.Results[0].AuditEntryWritten)
+	retry, err := machine.ApplyEntries(ctx, dataStore, makeEntry(t, 2, batch(2)))
+	require.NoError(t, err)
+	require.True(t, retry.Results[0].Replayed)
+	require.Contains(t, retry.Results[0].Error.Error(), "missing-a")
+	require.False(t, retry.Results[0].AuditEntryWritten)
+}
+
 // TestApplyProposal_PerProposalIdempotency exercises the per-proposal
 // idempotency the FSM applies in applyProposal: a duplicate proposal (same key,
 // same ordered orders) replays the first outcome instead of re-executing, a

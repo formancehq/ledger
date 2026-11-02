@@ -52,6 +52,12 @@ func NewFailureDetails(code string, facts map[string]string) (*FailureDetails, e
 				return nil, fmt.Errorf("fact %q is not canonical unsigned decimal", key)
 			}
 			message.Set(field, protoreflect.ValueOfUint64(number))
+		case protoreflect.BoolKind:
+			value, err := strconv.ParseBool(raw)
+			if err != nil || strconv.FormatBool(value) != raw {
+				return nil, fmt.Errorf("fact %q is not a canonical boolean", key)
+			}
+			message.Set(field, protoreflect.ValueOfBool(value))
 		default:
 			return nil, fmt.Errorf("unsupported failure fact type %s", field.Kind())
 		}
@@ -158,6 +164,8 @@ func FailureDetailsFacts(details *FailureDetails) map[string]string {
 			facts[field.JSONName()] = value.String()
 		case protoreflect.Uint64Kind:
 			facts[field.JSONName()] = strconv.FormatUint(value.Uint(), 10)
+		case protoreflect.BoolKind:
+			facts[field.JSONName()] = strconv.FormatBool(value.Bool())
 		}
 	}
 

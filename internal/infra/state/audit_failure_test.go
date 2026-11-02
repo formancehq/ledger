@@ -235,6 +235,14 @@ func auditFailureCases() []auditFailureCase {
 			wantContext: map[string]string{"name": "normal-ledger"},
 		},
 		{
+			name:       "MirrorNotCaughtUp",
+			err:        &domain.ErrMirrorNotCaughtUp{Name: "mirror-ledger", Cursor: 4, Head: 5, SyncError: true},
+			wantReason: domain.ErrReasonMirrorNotCaughtUp,
+			wantContext: map[string]string{
+				"name": "mirror-ledger", "cursor": "4", "sourceLogCount": "5", "syncError": "true",
+			},
+		},
+		{
 			name:        "CheckpointLimitReached",
 			err:         &domain.ErrCheckpointLimitReached{Limit: 10},
 			wantReason:  domain.ErrReasonCheckpointLimitReached,

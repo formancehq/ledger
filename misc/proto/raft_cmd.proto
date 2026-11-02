@@ -269,7 +269,11 @@ message MirrorDeletedMetadata {
   string key = 2;
 }
 
-message PromoteLedgerOrder {}
+message PromoteLedgerOrder {
+  // New orders require the FSM catch-up check. Legacy persisted orders lack
+  // this field and retain their original apply semantics during replay.
+  bool require_catch_up = 1;
+}
 
 message DeleteLedgerOrder {}
 

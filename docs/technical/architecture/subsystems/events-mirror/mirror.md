@@ -466,22 +466,17 @@ The ingestion position is not stored here. It lives on the per-ledger `LedgerBou
 
 A mirror ledger can be promoted to a normal ledger via `PromoteLedgerOrder` (`raft_cmd.proto:246`). The FSM emits a `PromotedLedgerLog` (`common.proto:315`), the WriteSet flags `mirrorConfigChanged = true`, and `Manager.reconcile()` stops the worker on the next reconciliation tick.
 
-Before proposing a new promotion, admission reads one store snapshot and
-requires an observed source head greater than zero, a durable ingestion cursor
-at or beyond that head, and no recorded synchronization error. A mirror whose
-source was never reached therefore cannot be promoted. This is an admission
-precondition, not an FSM apply rule: already committed orders replay with the
-same result on old and new RC voters. If a batch idempotency key already has a
-committed outcome, admission forwards the retry to the FSM's replay or conflict
-check when the ledger is now normal. A ledger still in mirror mode must satisfy
-the catch-up gate even if its key remains stored past expiry. A matching,
-unexpired keyed retry of a frozen failure instead returns that recorded failure
-without proposing or checking current sync progress. A keyed retry after
-promotion and deletion also reaches the FSM replay gate, provided the batch
-does not create the ledger again. The head is the latest **observed** count,
-not a live lease on the source; operators must stop source writes and verify
-the final source head before cutover. There is no force override in the frozen
-RC service request.
+New promotion orders carry `require_catch_up`. After the FSM checks any
+idempotency replay, it requires an observed source head greater than zero, a
+durable ingestion cursor at or beyond that head, and no recorded synchronization
+error. The head and error are reconstructed from existing durable mirror rows
+at recovery and advanced by committed technical updates; the cursor remains in
+`LedgerBoundaries`. A rejected order produces an audited, frozen
+`MIRROR_NOT_CAUGHT_UP` precondition failure. Historical orders without the flag
+retain their original replay behavior. The head is the latest **observed**
+count, not a live lease on the source; operators must stop source writes and
+verify the final source head before cutover. There is no force override.
+The `rc.2` to `rc.3` upgrade requires the operator's stopped restart.
 
 After promotion, the ledger accepts normal write requests. The boundary's `last_mirror_v2_log_id` and the source-head row are kept for forensic purposes but no longer advance.
 
