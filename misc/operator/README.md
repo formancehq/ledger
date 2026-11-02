@@ -609,6 +609,11 @@ kubectl ledger scale my-ledger --replicas 7
 kubectl ledger restart my-ledger -y
 ```
 
+If `image.tag` is omitted from `kubectl ledger create`, the Cluster inherits
+the Ledger image tag configured on the Operator (`ledgerImage.tag`, or the
+chart's `appVersion`). Set `image.tag` explicitly to select a different
+compatible release.
+
 Plain `kubectl rollout restart statefulset/<name>` also works: the operator
 preserves the `kubectl.kubernetes.io/restartedAt` annotation kubectl stamps on
 the pod template instead of reverting it on the next reconcile. Prefer

@@ -2,6 +2,12 @@
 
 `ledgerctl` is the command-line client for interacting with Ledger v3 servers via gRPC.
 
+The separate [`kubectl ledger` plugin](../../misc/operator/README.md#kubectl-plugin)
+manages Kubernetes Cluster resources. When `kubectl ledger create` omits
+`--set image.tag`, the Cluster inherits the Ledger image tag configured on its
+Operator. Use `--set image.tag=<release-tag>` to pin a specific release; a
+release Operator requires a semantic release tag no newer than its own version.
+
 ## Getting Started
 
 ![Getting Started](../../misc/demo/demo_getting_started.gif)
