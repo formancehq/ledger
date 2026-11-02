@@ -83,6 +83,42 @@ func requiresPinnedUpgradeTarget(source, target string, boundaries []string) boo
 	return false
 }
 
+// An unidentified source cannot prove it already passed a boundary that a
+// canonical target has reached.
+func requiresIdentifiedUpgradeSource(source, target string, boundaries []string) bool {
+	if source == target || canonicalVersion(source) != nil {
+		return false
+	}
+	to := canonicalVersion(target)
+	if to == nil {
+		return false
+	}
+	for _, boundary := range boundaries {
+		version, err := semver.StrictNewVersion(strings.TrimPrefix(boundary, "v"))
+		if err != nil {
+			panic("invalid mandatory stop version: " + boundary)
+		}
+		if !to.LessThan(version) {
+			return true
+		}
+	}
+
+	return false
+}
+
+func canonicalVersion(tag string) *semver.Version {
+	after, ok := strings.CutPrefix(tag, "v")
+	if !ok {
+		return nil
+	}
+	version, err := semver.StrictNewVersion(after)
+	if err != nil || "v"+version.String() != tag {
+		return nil
+	}
+
+	return version
+}
+
 // reconcileRequiredUpgrade returns proceed=true only when ordinary StatefulSet
 // reconciliation may safely run. A persisted intent also owns the missing-STS
 // case, so the generic create path cannot start a new pod before the old pods
@@ -97,13 +133,16 @@ func (r *ClusterReconciler) reconcileRequiredUpgradeWithExec(ctx context.Context
 		return true, ctrl.Result{}, nil
 	}
 	if state == nil {
-		source, err := ledgerImageTag(sts)
-		if err != nil {
-			return true, ctrl.Result{}, nil
-		}
 		boundaries := mandatoryStopVersions
 		if r.stopVersions != nil {
 			boundaries = r.stopVersions
+		}
+		source, err := ledgerImageTag(sts)
+		if requiresIdentifiedUpgradeSource(source, ledger.Spec.Image.Tag, boundaries) {
+			return false, ctrl.Result{}, fmt.Errorf("cannot verify mandatory stopped upgrade from running image tag %q to %s; run a canonical version tag first", source, ledger.Spec.Image.Tag)
+		}
+		if err != nil {
+			return true, ctrl.Result{}, nil
 		}
 		if requiresPinnedUpgradeTarget(source, ledger.Spec.Image.Tag, boundaries) {
 			return false, ctrl.Result{}, fmt.Errorf("cannot verify mandatory stopped upgrade from %s to image tag %q; pin a canonical version tag", source, ledger.Spec.Image.Tag)

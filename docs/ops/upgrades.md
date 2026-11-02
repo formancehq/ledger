@@ -37,6 +37,8 @@ procedure below.
 When the running version precedes a mandatory boundary, pin the target to a
 canonical version tag. Moving or non-canonical tags such as `latest` cannot
 prove whether the boundary is crossed, so the operator blocks the change.
+Likewise, the operator blocks a canonical target at or past a boundary when the
+running image has no canonical version tag, such as `latest` or a digest.
 
 Before tagging a new release, verify the upgrade with state created by the
 supported source releases. Cover affected Pebble records, Raft log and snapshot
