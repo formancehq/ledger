@@ -2406,6 +2406,7 @@ func (c *Checker) verifyAuditHashChain(
 				if replayErr != nil {
 					return nil, fmt.Errorf("replaying chain-verified audit entry %d: %w", entry.GetSequence(), replayErr)
 				}
+				reconcileMetadataOnlyChainBound(items, orders, logs, chainBound)
 				for _, log := range logs {
 					if _, duplicate := expectedLogs[log.GetSequence()]; duplicate {
 						return nil, fmt.Errorf("invariant: audit replay produced duplicate log sequence %d", log.GetSequence())
@@ -2490,6 +2491,44 @@ func (c *Checker) verifyAuditHashChain(
 	}
 
 	return result, nil
+}
+
+// reconcileMetadataOnlyChainBound corrects checker-only projections that are
+// derived from the serialized order before the FSM resolves a Numscript. A
+// metadata-only script has no transaction ID, while collectExpectedSkippable
+// must conservatively derive IDs from orders alone for older log formats.
+// Replay gives us the authoritative payload shape, so remove the speculative
+// transaction slot and fold script-emitted account metadata into the skip
+// timeline.
+func reconcileMetadataOnlyChainBound(items []*auditpb.AuditItem, orders []*raftcmdpb.Order, logs []*commonpb.Log, chainBound *chainBoundState) {
+	bySequence := make(map[uint64]*commonpb.Log, len(logs))
+	for _, log := range logs {
+		if log != nil {
+			bySequence[log.GetSequence()] = log
+		}
+	}
+	for i, order := range orders {
+		if i >= len(items) || order == nil {
+			continue
+		}
+		log := bySequence[items[i].GetLogSequence()]
+		if log == nil {
+			continue
+		}
+		payload := log.GetPayload().GetApply().GetLog().GetData().GetAccountMetadataUpdated()
+		if payload == nil {
+			continue
+		}
+		ledger := order.GetLedgerScoped().GetLedger()
+		if next, ok := chainBound.nextTxID[ledger]; ok && next > 1 {
+			chainBound.nextTxID[ledger] = next - 1
+		}
+		for account, metadata := range payload.GetAccountMetadata() {
+			for key := range metadata.GetValues() {
+				appendMetadataMutation(chainBound.metadata, ledger, metadataTimelineTarget(false, account), key, items[i].GetLogSequence(), true)
+			}
+		}
+	}
 }
 
 // chainBoundState aggregates the audit-derived state the verifier consults

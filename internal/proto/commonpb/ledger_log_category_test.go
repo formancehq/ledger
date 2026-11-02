@@ -28,6 +28,7 @@ func TestLedgerLogCategoryCompleteness(t *testing.T) {
 		{"removed account type", &LedgerLogPayload{Payload: &LedgerLogPayload_RemovedAccountType{}}, LedgerLogCategory_LEDGER_LOG_CATEGORY_CONTROL},
 		{"updated default enforcement mode", &LedgerLogPayload{Payload: &LedgerLogPayload_UpdatedDefaultEnforcementMode{}}, LedgerLogCategory_LEDGER_LOG_CATEGORY_CONTROL},
 		{"order skipped", &LedgerLogPayload{Payload: &LedgerLogPayload_OrderSkipped{}}, LedgerLogCategory_LEDGER_LOG_CATEGORY_HISTORY},
+		{"account metadata updated", &LedgerLogPayload{Payload: &LedgerLogPayload_AccountMetadataUpdated{}}, LedgerLogCategory_LEDGER_LOG_CATEGORY_HISTORY},
 	}
 
 	descriptor := (&LedgerLogPayload{}).ProtoReflect().Descriptor()

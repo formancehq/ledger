@@ -2165,6 +2165,16 @@ func (a *Admission) resolveScriptsAndEnrichNeeds(ctx context.Context, orders []*
 			// Fold this script's effects into the batch accumulator so a later
 			// order in the same atomic batch resolves against them (EN-1406 P1-1).
 			effects.mergeDiscovery(discovered.NetBalanceDeltas, discovered.MetadataWrites)
+
+			// A script with discovered volume effects will create a transaction
+			// and persist its reference. A script with metadata effects only must
+			// not claim the reference: the metadata-only FSM path deliberately
+			// rejects references and does not write a reference row.
+			if len(discovered.NetBalanceDeltas) > 0 {
+				if txRef := createTx.CreateTransaction.GetReference(); txRef != "" {
+					effects.recordReference(domain.TransactionReferenceKey{LedgerName: ledgerName, Reference: txRef})
+				}
+			}
 		}
 
 		// Caller-supplied account metadata is folded AFTER the script's writes
@@ -2174,14 +2184,11 @@ func (a *Admission) resolveScriptsAndEnrichNeeds(ctx context.Context, orders []*
 		// not the script value, for the same key.
 		foldCallerAccountMetadata(effects, ledgerName, createTx.CreateTransaction)
 
-		// Record this create's transaction reference (if any) so a later
-		// same-batch create carrying the same reference is predicted to skip
-		// (TRANSACTION_REFERENCE_CONFLICT). We reach here only for a create that
-		// was NOT predicted to skip, so it registers the reference exactly as the
-		// FSM will (processCreateTransaction stores it in TransactionReferences).
-		if txRef := createTx.CreateTransaction.GetReference(); txRef != "" {
-			effects.recordReference(domain.TransactionReferenceKey{LedgerName: ledgerName, Reference: txRef})
-		}
+		// Do not claim transaction references for script-backed candidates here.
+		// A zero-posting script is metadata-only and cannot persist a reference;
+		// a script that emits postings is resolved only by the FSM. Deferring this
+		// claim keeps admission from predicting a duplicate skip that the
+		// metadata-only apply path cannot materialize.
 
 		// For references: preload the content for the version admission observed
 		// (the discovered greatest for "latest", or the exact semver). The FSM

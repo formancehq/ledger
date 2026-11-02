@@ -692,7 +692,7 @@ paths:
     post:
       summary: Create a new transaction
       description: |
-        Creates a new transaction in the specified ledger with the specified postings. Requires `ledger:write` scope.
+        Creates a new transaction in the specified ledger with the specified postings. A Numscript that updates account metadata without postings is applied without creating a transaction and returns 204. Requires `ledger:write` scope.
         Signed requests use `application/json` (including MIME parameters) with
         `request` and standard-base64 `payload`. Either signing header, even if
         empty, selects this wrapper; with neither header present, the ordinary REST body applies.
@@ -747,6 +747,8 @@ paths:
               parameters:
                 ledgerName: '$request.path.ledgerName'
                 transactionId: '$response.body#/data/transaction/id'
+        '204':
+          description: Account metadata updated without creating a transaction
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
@@ -4304,6 +4306,7 @@ components:
             - ADDED_ACCOUNT_TYPE
             - REMOVED_ACCOUNT_TYPE
             - UPDATED_DEFAULT_ENFORCEMENT_MODE
+            - ACCOUNT_METADATA_UPDATED
         data:
           type: object
           additionalProperties: true
@@ -4315,7 +4318,8 @@ components:
             TRANSACTION) and targetId: an account-address string or an unsigned
             64-bit transaction integer, including zero. SET_METADATA also
             contains metadata; DELETE_METADATA contains key. ORDER_SKIPPED
-            contains reason and optional context. Other types carry the fields
+            contains reason and optional context. ACCOUNT_METADATA_UPDATED
+            contains accountMetadata written by a metadata-only script. Other types carry the fields
             of their corresponding operation directly. FILL_GAP contains originalId,
             a uint64 encoded as a decimal JSON number. Transaction IDs,
             revertedTransactionId and transaction targetId are JSON numbers;
