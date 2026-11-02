@@ -540,7 +540,7 @@ func processMirrorRevertedTransaction(ledger string, rt *raftcmdpb.MirrorReverte
 // processPromoteLedger promotes a mirror ledger to normal mode. The
 // MirrorConfigChange signal (post-commit mirror worker reconciliation)
 // is derived from the PromotedLedgerLog by deriveSignals.
-func processPromoteLedger(ledger string, order *raftcmdpb.PromoteLedgerOrder, ctx *Context) (*commonpb.LogPayload, domain.SerializableError) {
+func processPromoteLedger(ledger string, ctx *Context) (*commonpb.LogPayload, domain.SerializableError) {
 	s := ctx.Scope
 
 	info, loadErr := loadLiveLedger(s, ledger)
@@ -551,7 +551,7 @@ func processPromoteLedger(ledger string, order *raftcmdpb.PromoteLedgerOrder, ct
 	if info.GetMode() != commonpb.LedgerMode_LEDGER_MODE_MIRROR {
 		return nil, &domain.ErrLedgerNotInMirrorMode{Name: ledger}
 	}
-	if order.GetRequireCatchUp() {
+	if ctx.RequireMirrorCatchUp {
 		boundaries, loadErr := loadBoundaries(s, ledger)
 		if loadErr != nil {
 			return nil, loadErr

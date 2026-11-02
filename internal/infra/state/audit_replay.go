@@ -181,12 +181,6 @@ func (r *AuditReplayer) Replay(at *commonpb.Timestamp, orders []*raftcmdpb.Order
 	// observation from the audit-derived replay state so the current processor
 	// can execute the historical business order.
 	for _, order := range orders {
-		// Audit replay reconstructs effects of an already successful order.
-		// Mirror source observations are technical (not audited) state, so the
-		// original eligibility decision cannot and need not be re-evaluated.
-		if promote := order.GetLedgerScoped().GetPromoteLedger(); promote != nil {
-			promote.RequireCatchUp = false
-		}
 		ls := order.GetLedgerScoped()
 		revert := ls.GetApply().GetRevertTransaction()
 		if revert == nil || len(order.GetTechnical().GetRevertTargetDigest()) != 0 {

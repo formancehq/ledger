@@ -91,6 +91,7 @@ type OrderTechnicalReader interface {
 	GetInputsResolutionHash() []byte
 	GetPreloadUnavailable() bool
 	GetRevertTargetDigest() []byte
+	GetRequireMirrorCatchUp() bool
 	Mutate() *OrderTechnical
 }
 
@@ -110,6 +111,10 @@ func (r *orderTechnicalReadonly) GetPreloadUnavailable() bool {
 
 func (r *orderTechnicalReadonly) GetRevertTargetDigest() []byte {
 	return bytes.Clone((*OrderTechnical)(r).GetRevertTargetDigest())
+}
+
+func (r *orderTechnicalReadonly) GetRequireMirrorCatchUp() bool {
+	return (*OrderTechnical)(r).GetRequireMirrorCatchUp()
 }
 
 func (r *orderTechnicalReadonly) Mutate() *OrderTechnical {
@@ -2290,15 +2295,10 @@ func NewMirrorDeletedMetadataListReader(s []*MirrorDeletedMetadata) MirrorDelete
 // PromoteLedgerOrderReader provides read-only access to PromoteLedgerOrder.
 // Call Mutate() to obtain a mutable clone.
 type PromoteLedgerOrderReader interface {
-	GetRequireCatchUp() bool
 	Mutate() *PromoteLedgerOrder
 }
 
 type promoteLedgerOrderReadonly PromoteLedgerOrder
-
-func (r *promoteLedgerOrderReadonly) GetRequireCatchUp() bool {
-	return (*PromoteLedgerOrder)(r).GetRequireCatchUp()
-}
 
 func (r *promoteLedgerOrderReadonly) Mutate() *PromoteLedgerOrder {
 	return (*PromoteLedgerOrder)(r).CloneVT()
