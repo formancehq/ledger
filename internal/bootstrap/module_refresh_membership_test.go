@@ -27,7 +27,7 @@ func TestIsRetryableMembershipRefreshError(t *testing.T) {
 		want bool
 	}{
 		{name: "unavailable", code: codes.Unavailable, want: true},
-		{name: "old peer missing rpc", code: codes.Unimplemented, want: true},
+		{name: "unsupported peer", code: codes.Unimplemented, want: false},
 		{name: "invalid request", code: codes.InvalidArgument, want: false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -89,16 +89,16 @@ func refreshTestConfig(t *testing.T, peerAddress string) Config {
 	}
 }
 
-func TestTryRefreshMembershipRetriesUnimplementedUntilPeerSupportsRPC(t *testing.T) {
+func TestTryRefreshMembershipDoesNotRetryUnsupportedPeer(t *testing.T) {
 	t.Parallel()
 
-	peer := &retryingRefreshServer{firstErr: status.Error(codes.Unimplemented, "old peer")}
+	peer := &retryingRefreshServer{firstErr: status.Error(codes.Unimplemented, "unsupported peer")}
 	cfg := refreshTestConfig(t, serveRefreshMembership(t, peer))
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	t.Cleanup(cancel)
-	require.NoError(t, tryRefreshMembership(ctx, cfg, cfg.TLSConfig, logging.Testing()))
-	require.Equal(t, int32(2), peer.attempts.Load())
+	require.ErrorContains(t, tryRefreshMembership(ctx, cfg, cfg.TLSConfig, logging.Testing()), "unsupported peer")
+	require.Equal(t, int32(1), peer.attempts.Load())
 }
 
 func TestTryRefreshMembershipStopsRetryingWhenContextIsCanceled(t *testing.T) {
