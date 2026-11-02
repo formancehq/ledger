@@ -78,6 +78,7 @@ func (d testSnapshotDonor) WaitForCheckpointable(context.Context, uint64) error 
 	if d.waitCalls != nil {
 		d.waitCalls.Add(1)
 	}
+
 	return d.waitErr
 }
 
