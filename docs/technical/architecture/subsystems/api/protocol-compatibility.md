@@ -18,12 +18,12 @@ contract has not changed. Release SemVer does not currently encode the
 compatibility of development revisions. During the RC line, revision 40 is
 frozen and the published gRPC wire contract must remain compatible.
 
-`UpdatePreparedQueryRequest` adds an optional `target` field without changing
-existing field numbers or revision 40. An omitted target retains the stored
-target and the existing filter-only behavior. New clients supply a target to
-replace it atomically with the filter and to decode public `id` against that
-target. Older clients can still send targetless updates; callers using `id` for
-LOGS updates must upgrade to send the explicit target. Every explicit-target
+`UpdatePreparedQueryRequest` adds a presence-tracked `target` field without
+changing existing field numbers or revision 40. Admission requires it and
+rejects targetless updates; clients must send the desired target on every
+update. The target replaces the stored target atomically with the filter and
+determines how public `id` is decoded. Historical targetless orders still
+replay with their stored target. Every explicit-target
 order changes the accepted audit bytes, even if the target value is unchanged;
 changing the value also changes replicated state. The operator requires the
 [stopped rc.2-to-rc.3 upgrade](../../../../ops/upgrades.md) so incompatible

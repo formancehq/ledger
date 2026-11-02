@@ -6797,23 +6797,20 @@ components:
 
     UpdatePreparedQueryRequest:
       type: object
+      required: [target, filter]
       properties:
         target:
           type: string
           enum: [ACCOUNTS, TRANSACTIONS, LOGS]
           description: >-
-            Replacement query target. Supply it when using the public id field
-            so id is decoded for the selected entity. Omit it to retain the
-            stored target for existing clients. A target change also replaces
-            the filter; send the intended filter or null to clear it.
+            Required replacement query target. It determines how public id is
+            decoded. Send the intended filter or null to clear it.
         filter:
           $ref: '#/components/schemas/PreparedQueryFilterInput'
           description: >-
-            Replacement filter. Omit the field to leave the stored filter
-            unchanged when target is also omitted; set it to `null` to remove
-            the filter and make the query match all entities in the selected
-            target. An empty object or empty textual
-            expression is invalid.
+            Required replacement filter. Set it to `null` to remove the filter
+            and make the query match all entities in the selected target. An
+            empty object or empty textual expression is invalid.
 
     ExecutePreparedQueryRequest:
       type: object

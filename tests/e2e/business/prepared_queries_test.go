@@ -114,6 +114,7 @@ var _ = Describe("PreparedQueries", Ordered, func() {
 				Type: &servicepb.Request_UpdatePreparedQuery{UpdatePreparedQuery: &servicepb.UpdatePreparedQueryRequest{
 					Ledger: ledgerName,
 					Name:   "admins",
+					Target: commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS.Enum(),
 					Filter: actions.StringMetadataFilter("role", "superadmin"),
 				}},
 			}))
@@ -1005,6 +1006,7 @@ var _ = Describe("PreparedQueries", Ordered, func() {
 				Type: &servicepb.Request_UpdatePreparedQuery{UpdatePreparedQuery: &servicepb.UpdatePreparedQueryRequest{
 					Ledger: ledgerName,
 					Name:   "admin-volumes",
+					Target: commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS.Enum(),
 					Filter: nil,
 				}},
 			}))
@@ -1164,6 +1166,7 @@ var _ = Describe("PreparedQueries", Ordered, func() {
 				Type: &servicepb.Request_UpdatePreparedQuery{UpdatePreparedQuery: &servicepb.UpdatePreparedQueryRequest{
 					Ledger: ledgerName,
 					Name:   "has-asset-update",
+					Target: commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS.Enum(),
 					Filter: overflow,
 				}},
 			}))
@@ -1176,6 +1179,7 @@ var _ = Describe("PreparedQueries", Ordered, func() {
 				Type: &servicepb.Request_UpdatePreparedQuery{UpdatePreparedQuery: &servicepb.UpdatePreparedQueryRequest{
 					Ledger: ledgerName,
 					Name:   "does-not-exist",
+					Target: commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS.Enum(),
 					Filter: actions.StringMetadataFilter("role", "admin"),
 				}},
 			}))

@@ -114,6 +114,7 @@ var _ = Describe("Prepared query and numscript work after ledger cache eviction"
 			Type: &servicepb.Request_UpdatePreparedQuery{UpdatePreparedQuery: &servicepb.UpdatePreparedQueryRequest{
 				Ledger: ledgerName,
 				Name:   "after-rotation",
+				Target: commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS.Enum(),
 				Filter: actions.AddressPrefixFilter("admins:"),
 			}},
 		}))

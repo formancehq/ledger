@@ -7245,8 +7245,8 @@ type UpdatePreparedQueryRequest struct {
 	// Nil explicitly removes the stored filter and makes the query match all
 	// entities in its target.
 	Filter *commonpb.QueryFilter `protobuf:"bytes,3,opt,name=filter,proto3" json:"filter,omitempty"`
-	// When present, replaces the query target along with the filter. Omission
-	// preserves the stored target for existing clients.
+	// Required by admission: replaces the query target along with the filter.
+	// Presence is tracked so omission can be rejected even when ACCOUNTS is 0.
 	Target        *commonpb.QueryTarget `protobuf:"varint,4,opt,name=target,proto3,enum=common.QueryTarget,oneof" json:"target,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache

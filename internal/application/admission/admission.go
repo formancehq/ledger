@@ -2214,6 +2214,11 @@ func (a *Admission) resolveScriptsAndEnrichNeeds(ctx context.Context, orders []*
 // Validation remains after conversion so every family uses the same storage rules.
 func (a *Admission) requestToOrder(ctx context.Context, req *servicepb.Request, batchSig *signaturepb.SignedApplyBatch, overlay *bulkOverlay) (*raftcmdpb.Order, error) {
 	order := &raftcmdpb.Order{}
+	if update, ok := req.GetType().(*servicepb.Request_UpdatePreparedQuery); ok {
+		if update.UpdatePreparedQuery == nil || update.UpdatePreparedQuery.Target == nil {
+			return nil, domain.ErrPreparedQueryTargetRequired
+		}
+	}
 
 	if apply, ok := req.GetType().(*servicepb.Request_Apply); ok {
 		if err := a.applyRequestToOrder(ctx, order, apply.Apply, overlay); err != nil {
@@ -2320,6 +2325,7 @@ func (a *Admission) ledgerRequestToOrder(order *raftcmdpb.Order, req *servicepb.
 				UpdatePreparedQuery: &raftcmdpb.UpdatePreparedQueryOrder{
 					Name:   reqType.UpdatePreparedQuery.GetName(),
 					Filter: reqType.UpdatePreparedQuery.GetFilter(),
+					Target: reqType.UpdatePreparedQuery.GetTarget().Enum(),
 				},
 			},
 		})

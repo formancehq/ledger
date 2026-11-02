@@ -27,7 +27,7 @@ func TestHandleUpdatePreparedQuery_Success(t *testing.T) {
 
 	w := httptest.NewRecorder()
 	r := newRequest(t, http.MethodPut, "/ledger1/prepared-queries/my-query",
-		strings.NewReader(`{"filter":`+validFieldFilterJSON+`}`),
+		strings.NewReader(`{"target":"TRANSACTIONS","filter":`+validFieldFilterJSON+`}`),
 		map[string]string{
 			"ledgerName": "ledger1",
 			"queryName":  "my-query",
@@ -54,6 +54,7 @@ func TestHandleUpdatePreparedQuery_NestedOneofs(t *testing.T) {
 	srv := newTestServer(t, backend)
 
 	body := `{
+		"target": "TRANSACTIONS",
 		"filter": {
 			"$or": [
 				{"$match": {"metadata[tier]": "gold"}},
@@ -168,17 +169,14 @@ func TestHandleUpdatePreparedQuery_InvalidBody(t *testing.T) {
 	require.Equal(t, http.StatusBadRequest, w.Code)
 }
 
-func TestHandleUpdatePreparedQuery_OmittedFilterIsNoOp(t *testing.T) {
+func TestHandleUpdatePreparedQuery_RequiresTarget(t *testing.T) {
 	t.Parallel()
 
-	backend := NewMockBackend(gomock.NewController(t))
-	backend.EXPECT().ListPreparedQueries(gomock.Any(), "ledger1").Return(
-		[]*commonpb.PreparedQuery{{Name: "my-query"}}, nil)
-	srv := newTestServer(t, backend)
+	srv := newTestServer(t, NewMockBackend(gomock.NewController(t)))
 
 	w := httptest.NewRecorder()
 	r := newRequest(t, http.MethodPut, "/ledger1/prepared-queries/my-query",
-		strings.NewReader(`{}`),
+		strings.NewReader(`{"filter":`+validFieldFilterJSON+`}`),
 		map[string]string{
 			"ledgerName": "ledger1",
 			"queryName":  "my-query",
@@ -186,19 +184,17 @@ func TestHandleUpdatePreparedQuery_OmittedFilterIsNoOp(t *testing.T) {
 
 	srv.handleUpdatePreparedQuery(w, r)
 
-	require.Equal(t, http.StatusNoContent, w.Code)
+	require.Equal(t, http.StatusBadRequest, w.Code)
 }
 
-func TestHandleUpdatePreparedQuery_OmittedFilterStillChecksExistence(t *testing.T) {
+func TestHandleUpdatePreparedQuery_RequiresFilter(t *testing.T) {
 	t.Parallel()
 
-	backend := NewMockBackend(gomock.NewController(t))
-	backend.EXPECT().ListPreparedQueries(gomock.Any(), "ledger1").Return(nil, nil)
-	srv := newTestServer(t, backend)
+	srv := newTestServer(t, NewMockBackend(gomock.NewController(t)))
 
 	w := httptest.NewRecorder()
 	r := newRequest(t, http.MethodPut, "/ledger1/prepared-queries/missing",
-		strings.NewReader(`{}`),
+		strings.NewReader(`{"target":"ACCOUNTS"}`),
 		map[string]string{
 			"ledgerName": "ledger1",
 			"queryName":  "missing",
@@ -206,7 +202,7 @@ func TestHandleUpdatePreparedQuery_OmittedFilterStillChecksExistence(t *testing.
 
 	srv.handleUpdatePreparedQuery(w, r)
 
-	require.Equal(t, http.StatusNotFound, w.Code)
+	require.Equal(t, http.StatusBadRequest, w.Code)
 }
 
 func TestHandleUpdatePreparedQuery_NullFilterClears(t *testing.T) {
@@ -224,7 +220,7 @@ func TestHandleUpdatePreparedQuery_NullFilterClears(t *testing.T) {
 
 	w := httptest.NewRecorder()
 	r := newRequest(t, http.MethodPut, "/ledger1/prepared-queries/my-query",
-		strings.NewReader(`{"filter":null}`),
+		strings.NewReader(`{"target":"ACCOUNTS","filter":null}`),
 		map[string]string{
 			"ledgerName": "ledger1",
 			"queryName":  "my-query",
@@ -244,7 +240,7 @@ func TestHandleUpdatePreparedQuery_EmptyFilter(t *testing.T) {
 
 	w := httptest.NewRecorder()
 	r := newRequest(t, http.MethodPut, "/ledger1/prepared-queries/my-query",
-		strings.NewReader(`{"filter":{}}`),
+		strings.NewReader(`{"target":"ACCOUNTS","filter":{}}`),
 		map[string]string{
 			"ledgerName": "ledger1",
 			"queryName":  "my-query",
@@ -266,7 +262,7 @@ func TestHandleUpdatePreparedQuery_EmptyTextFilter(t *testing.T) {
 
 			w := httptest.NewRecorder()
 			r := newRequest(t, http.MethodPut, "/ledger1/prepared-queries/my-query",
-				strings.NewReader(`{"filter":`+filter+`}`),
+				strings.NewReader(`{"target":"ACCOUNTS","filter":`+filter+`}`),
 				map[string]string{
 					"ledgerName": "ledger1",
 					"queryName":  "my-query",
@@ -291,7 +287,7 @@ func TestHandleUpdatePreparedQuery_NotFound(t *testing.T) {
 
 	w := httptest.NewRecorder()
 	r := newRequest(t, http.MethodPut, "/ledger1/prepared-queries/missing",
-		strings.NewReader(`{"filter":`+validFieldFilterJSON+`}`),
+		strings.NewReader(`{"target":"TRANSACTIONS","filter":`+validFieldFilterJSON+`}`),
 		map[string]string{
 			"ledgerName": "ledger1",
 			"queryName":  "missing",

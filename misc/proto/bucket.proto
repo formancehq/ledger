@@ -1253,8 +1253,8 @@ message UpdatePreparedQueryRequest {
   // Nil explicitly removes the stored filter and makes the query match all
   // entities in its target.
   common.QueryFilter filter = 3;
-  // When present, replaces the query target along with the filter. Omission
-  // preserves the stored target for existing clients.
+  // Required by admission: replaces the query target along with the filter.
+  // Presence is tracked so omission can be rejected even when ACCOUNTS is 0.
   optional common.QueryTarget target = 4;
 }
 

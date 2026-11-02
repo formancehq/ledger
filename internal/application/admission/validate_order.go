@@ -399,8 +399,8 @@ func validateOrderPreparedQuery(order *raftcmdpb.Order) domain.Describable {
 			return err
 		}
 
-		// Historical and targetless updates retain the stored target, which the
-		// FSM validates. Explicit-target updates can be checked before proposal.
+		// New requests have an explicit target. Keep the nil path for historical
+		// targetless orders, whose stored target the FSM validates during replay.
 		if p.UpdatePreparedQuery.Target != nil {
 			if !domain.IsPreparedQueryExecutableTarget(p.UpdatePreparedQuery.GetTarget()) {
 				return domain.ErrPreparedQueryTargetUnsupported
