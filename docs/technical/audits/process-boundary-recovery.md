@@ -21,6 +21,33 @@ whether partially written local state affects the next execution. Capture
 resource ownership and exact failure stage; an error inside a test helper is
 not necessarily a production failure path.
 
+## Startup registration termination
+
+Exercise the production binary against a controlled bootstrap peer that answers
+`GetPeers` and repeatedly returns `Unavailable` from `JoinAsLearner`. Observe
+multiple registration calls before signaling the exact child PID. Successful
+intentional termination requires completed rollback and signal-time logger
+finalization; test cleanup that kills or reaps a stuck child cannot satisfy the
+oracle. Verify resource closure and immediate re-exec on the exact paths and
+endpoints separately from observing PID exit.
+
+For a positive `total-stop-timeout`, measure the startup-unwind and deferred
+logger deadline from signal receipt. Zero retains unlimited waiting. A queued
+Fx notification must still stop an application whose startup succeeds, using
+the existing separate normal-stop budget. Cover expiry and finalizer/rollback
+failures as unsuccessful exits. Outer timeout bounds waiting and can skip or
+outlive cleanup; it is not proof that every hook or worker closed.
+
+Retain fatal registration and marker-write failures when they race a signal.
+Cover a peer cancellation completed before local termination but not yet
+classified by its caller. Read the identity marker without creating or repairing
+it after each process exit; require a valid marker and identical bytes on re-exec.
+Cancellation cannot undo remote membership committed before a reply was lost:
+record remote membership and local `CLUSTER_JOINED` independently, then verify
+restart follows the existing idempotent or stale-progress outcome. This process
+oracle supplements the in-process cancellation, rollback-context and ownership
+checks in `concurrency-lifecycle-shutdown`; neither substitutes for the other.
+
 ## Ownership boundaries
 
 `configuration-startup-contracts` owns configuration values, validation and

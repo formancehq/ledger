@@ -175,6 +175,37 @@ A stalled initialization or drain can therefore retain the hook and its
 resources until it completes. Fatal `Run` errors retain their existing
 process-failure behavior.
 
+#### Termination during learner preflight
+
+The join preflight precedes inbound Raft serving, membership startup and
+`Node.Run`. Its outbound registration connections and cancellation subscription
+belong to the preflight itself; Fx does not stop a hook whose start failed.
+SIGTERM or interrupt latches process termination, retains the Fx shutdown
+notification, and cancels only the dedicated registration child context. Keeping
+the private application startup context live permits rollback of previously
+started dependency hooks after intentional registration cancellation.
+
+A positive `total-stop-timeout` arms an absolute signal-time deadline for startup
+unwind and deferred logger finalization. At expiry the private application
+context is canceled and outer waiting fails. As with an expired Fx stop context,
+this is not proof of hook completion or resource closure. Zero leaves this
+waiting unlimited. If startup succeeds, the retained notification invokes normal
+Fx stopping with its existing separate stop budget; the signal deadline is not
+one end-to-end budget for every lifecycle phase. Signal-time logger finalization
+uses the remaining signal deadline and cannot turn expiry into success.
+
+Successful intentional cancellation requires successful rollback and
+finalization; fatal registration statuses, marker-write errors and cleanup
+failures retain failure status even when a signal races them. A later signal does
+not reclassify a completed peer cancellation:
+the registration RPC captures its local cancellation cause in gRPC's completion
+callback, before connection cleanup or caller-side result handling. Cancellation
+does not reverse a remotely committed learner addition. A canceled response can
+leave membership without `CLUSTER_JOINED`; restart still follows the existing
+`AlreadyExists` versus stale-progress rules. See
+[cluster operations](../../../../ops/cluster-operations.md#phase-3-learner-registration-preflight)
+and [server termination](../../../../ops/cli.md#server-termination).
+
 #### Leader readiness generations
 
 Leadership acquisition does not admit writes immediately. The node first

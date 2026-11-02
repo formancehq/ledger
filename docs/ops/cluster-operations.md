@@ -62,7 +62,7 @@ ledger run \
 
 ### Join Sequence
 
-The join process has four phases: peer discovery, node initialization, startup, and learner registration. Both discovery and registration go through the inter-node `ClusterBootstrapService` exposed on the RaftServer — gated by cluster-id metadata (and cluster-secret bearer when configured), without the user-JWT auth pipeline.
+The join process has four phases: peer discovery, node initialization, learner registration preflight, and startup. Both discovery and registration go through the inter-node `ClusterBootstrapService` exposed on the RaftServer — gated by cluster-id metadata (and cluster-secret bearer when configured), without the user-JWT auth pipeline.
 
 #### Phase 1: Peer Discovery
 
@@ -98,7 +98,7 @@ retried forever:
   the target cluster's. Discovery aborts immediately with a
   `JoinClusterIDError` that names the `--join` address and the rejected value.
 
-Learner registration (Phase 4) applies the same rules.
+Learner registration (Phase 3) applies the same rules.
 
 #### Phase 2: Node Initialization
 
@@ -124,37 +124,72 @@ RawNode starts with this configuration
 
 The joining node sees the existing members as voters and itself as a learner.
 
-#### Phase 3: Startup
+#### Phase 3: Learner Registration Preflight
 
-The fx lifecycle starts all components:
-- Raft transport and service pool register the discovered peers
-- gRPC servers start (Raft transport + service API)
-- The Raft node `Run()` begins the orchestrate loop
-- The ConfChange observer is wired to handle cluster membership changes
+An Fx `OnStart` hook registers a joining node when bootstrap is disabled,
+discovered peers are configured, and the WAL directory has no `CLUSTER_JOINED`
+marker. It runs before the Raft gRPC server accepts inbound traffic, membership
+connections start, or `Node.Run` steps received messages. This ordering lets the
+leader reject stale replication progress before it can send messages that the
+joining node's empty log cannot accept.
 
-#### Phase 4: Learner Registration
-
-An fx `OnStart` hook detects this is a fresh start (empty WAL before `NewNode` modified it) with `--join`:
+The preflight dials discovered peers directly with short-lived outbound gRPC
+connections; it does not require the local Raft listener or connection pool:
 
 ```
-freshStart == true && !Bootstrap && len(Peers) > 0
-    │
-    ▼
-Connect to first discovered peer's RaftServer
-    │
-    ▼
 Call JoinAsLearner RPC → forwarded to leader if needed
     │
     ▼
 Leader proposes ConfChangeAddLearnerNode
     │
     ▼
-ConfChange committed → all nodes update transport & service pool
+ConfChange committed → existing nodes update transport & service pool
+    │
+    ▼
+Successful response or AlreadyExists → write CLUSTER_JOINED marker
 ```
 
-The registration loop has no deadline of its own: it retries `Unavailable` with backoff until it succeeds or the process is terminated, and every other status is final.
+The registration loop has no deadline of its own. It retries `Unavailable`
+with backoff until success or cancellation; `AlreadyExists` is an idempotent
+success, and other statuses are final. SIGTERM or interrupt cancels its dedicated
+registration context, including an in-flight RPC or backoff. The application
+startup context remains live so Fx can roll back hooks that already started.
+The failed preflight closes its own outbound connections; it has not started a
+Raft run loop. The graceful Fx notification remains queued if startup completes
+while the signal is being handled.
 
-On **restart** (WAL not empty), this registration step is **skipped** because the node is already a cluster member.
+A positive `--total-stop-timeout` starts a signal-time deadline for startup
+unwind and deferred log-export finalization. Expiry cancels the private
+application context and returns failure; it does not prove every hook, worker,
+or resource has finished closing. Zero leaves this waiting unlimited. If startup
+succeeds, normal Fx stopping retains its separate stop budget. See the
+[server termination contract](cli.md#server-termination) for deadline scope and
+exit status.
+
+A signal does not suppress a fatal registration status, marker-write failure,
+rollback failure, or signal-time finalization failure. Only intentional
+registration cancellation followed by successful rollback and finalization
+produces a successful termination.
+
+Cancellation cannot undo a learner addition that the remote cluster already
+committed. A canceled or lost response can leave remote membership without a
+local marker. The next execution retries the existing registration protocol:
+`AlreadyExists` permits writing the marker only while the leader's progress is
+still zero; replicated progress produces the stale-membership failure described
+below. A process exit alone is not evidence that remote membership was removed.
+
+On restart, an existing `CLUSTER_JOINED` marker skips preflight. WAL presence
+alone is not this gate.
+
+#### Phase 4: Startup
+
+After preflight succeeds, the Fx lifecycle starts the components that accept
+inbound Raft traffic:
+
+- Raft transport and service pool register the discovered peers.
+- gRPC servers start (Raft transport and service API).
+- The Raft node `Run()` begins the orchestrate loop.
+- The ConfChange observer handles cluster membership changes.
 
 ### ConfChange Observer
 
