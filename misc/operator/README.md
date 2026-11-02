@@ -346,10 +346,10 @@ storage.
 | Key | Default | Description |
 |-----|---------|-------------|
 | `image.repository` | `ghcr.io/formancehq/ledger-operator` | Operator image |
-| `image.tag` | `latest` | Operator image tag |
+| `image.tag` | `""` (chart `appVersion`) | Operator image tag. Set a value to override the chart application version. |
 | `ledgerImage.registry` | `ghcr.io` | Default ledger image registry |
 | `ledgerImage.name` | `formancehq/ledger` | Default ledger image name |
-| `ledgerImage.tag` | `latest` | Default ledger image tag |
+| `ledgerImage.tag` | `""` (chart `appVersion`) | Default Ledger image tag. Set a value to override the chart application version. |
 | `replicaCount` | `1` | Operator replicas |
 | `leaderElection` | `true` | Enable HA leader election |
 | `watchNamespace` | `""` | Namespace to watch (empty = all) |
