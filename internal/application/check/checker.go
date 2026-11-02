@@ -1095,8 +1095,11 @@ type compareIndexesScope struct {
 // compareIndexes emits INDEX_MISMATCH events when the stored SubAttrIndex
 // registry diverges from the set the checker re-derived from the audit-bound
 // CreateIndex / DropIndex / RemovedMetadataFieldType / DeleteLedger logs.
-// Three failure shapes are surfaced:
+// Four failure shapes are surfaced:
 //
+//   - stored key that does not round-trip to its decoded IndexKey's canonical
+//     encoding → "noncanonical key"; such a row never satisfies an expected
+//     entry, so the expected entry is also reported missing
 //   - stored entry that has no matching audit-derived CreateIndex (or survives
 //     a DropIndex / RemoveMetadataFieldType cascade / ledger deletion) →
 //     "no matching audit entry"
@@ -1104,7 +1107,7 @@ type compareIndexesScope struct {
 //   - identity drift: stored Ledger or Id field disagrees with the audit
 //     payload that produced the entry → "diverges from audit-derived"
 //
-// Bucket-scoped entries (LedgerName == "") are skipped
+// Bucket-scoped entries (LedgerName == "") are skipped after the key checks
 // because no audit-chain producer exists for them today (#436 reserved).
 // Drift on those is invisible to this pass until the bucket-scoped producer
 // lands and threads an audit-bound order through the same machinery.
@@ -1150,6 +1153,18 @@ func (c *Checker) compareIndexes(
 				servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_INDEX_MISMATCH,
 				fmt.Sprintf("stored index has unparsable canonical key %x: %v", entry.CanonicalKey, err),
 				0, stored.GetLedger(), "", "",
+			))
+
+			continue
+		}
+
+		// Decoding stops at the first NUL of the ledger-name padding, so bytes
+		// after it can alias a canonical key that point lookups never reach.
+		if !bytes.Equal(key.Bytes(), entry.CanonicalKey) {
+			callback(errorEvent(
+				servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_INDEX_MISMATCH,
+				fmt.Sprintf("stored index for ledger %q id %q has noncanonical key %x", key.LedgerName, key.Canonical, entry.CanonicalKey),
+				0, key.LedgerName, "", "",
 			))
 
 			continue

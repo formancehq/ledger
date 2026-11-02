@@ -60,7 +60,7 @@ jobs:
             exit 1
           fi
 
-  Tests:
+  Tests-Unit:
     runs-on: namespace-profile-linux-amd64-4vcpu
     env:
       GOPATH: /tmp/go
@@ -74,12 +74,95 @@ jobs:
       - name: Run unit tests with coverage
         run: >
           nix develop .#ci --command just test-coverage
+      - name: Upload coverage profile
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: coverage-unit
+          path: build/coverage/unit.out
+          retention-days: 7
+          if-no-files-found: ignore
+
+  Tests-Internal:
+    runs-on: namespace-profile-linux-amd64-4vcpu
+    env:
+      GOPATH: /tmp/go
+    steps:
+      - uses: namespacelabs/nscloud-checkout-action@66f2dc6f6c42a8ac6c4e53473c4840006822831e # v9
+        with:
+          fetch-depth: 0
+          dissociate: true
+      - name: Setup Env
+        uses: ./.github/actions/default
       - name: Run internal tests with optional features and coverage
         run: >
           nix develop .#ci --command just test-internal-coverage
+      - name: Upload coverage profile
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: coverage-internal
+          path: build/coverage/internal.out
+          retention-days: 7
+          if-no-files-found: ignore
+
+  Tests-Store:
+    runs-on: namespace-profile-linux-amd64-4vcpu
+    env:
+      GOPATH: /tmp/go
+    steps:
+      - uses: namespacelabs/nscloud-checkout-action@66f2dc6f6c42a8ac6c4e53473c4840006822831e # v9
+        with:
+          fetch-depth: 0
+          dissociate: true
+      - name: Setup Env
+        uses: ./.github/actions/default
+      - name: Run store command tests with optional features and coverage
+        run: >
+          nix develop .#ci --command just test-store-coverage
+      - name: Upload coverage profile
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: coverage-store
+          path: build/coverage/store.out
+          retention-days: 7
+          if-no-files-found: ignore
+
+  Tests-Postgres-Mirror:
+    runs-on: namespace-profile-linux-amd64-4vcpu
+    env:
+      GOPATH: /tmp/go
+    steps:
+      - uses: namespacelabs/nscloud-checkout-action@66f2dc6f6c42a8ac6c4e53473c4840006822831e # v9
+        with:
+          fetch-depth: 0
+          dissociate: true
+      - name: Setup Env
+        uses: ./.github/actions/default
       - name: Run PostgreSQL mirror integration regressions
         run: >
           nix develop .#ci --command just test-postgres-mirror-coverage
+      - name: Upload coverage profile
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: coverage-postgres-mirror
+          path: build/coverage/postgres-mirror.out
+          retention-days: 7
+          if-no-files-found: ignore
+
+  Tests-Antithesis-Assertions:
+    runs-on: namespace-profile-linux-amd64-4vcpu
+    env:
+      GOPATH: /tmp/go
+    steps:
+      - uses: namespacelabs/nscloud-checkout-action@66f2dc6f6c42a8ac6c4e53473c4840006822831e # v9
+        with:
+          fetch-depth: 0
+          dissociate: true
+      - name: Setup Env
+        uses: ./.github/actions/default
       - name: Run Antithesis assertion-emission contract tests
         run: >
           nix develop .#ci --command just test-antithesis-assertions
@@ -87,14 +170,32 @@ jobs:
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: coverage-unit
-          path: |
-            build/coverage/unit.out
-            build/coverage/internal.out
-            build/coverage/antithesis.out
-            build/coverage/postgres-mirror.out
+          name: coverage-antithesis
+          path: build/coverage/antithesis.out
           retention-days: 7
           if-no-files-found: ignore
+
+  # Preserve the existing Tests status check while the suites run independently.
+  Tests:
+    if: always()
+    needs: [Tests-Unit, Tests-Internal, Tests-Store, Tests-Postgres-Mirror, Tests-Antithesis-Assertions]
+    runs-on: namespace-profile-linux-amd64-4vcpu
+    env:
+      UNIT: ${{ needs.tests-unit.result }}
+      INTERNAL: ${{ needs.tests-internal.result }}
+      STORE: ${{ needs.tests-store.result }}
+      POSTGRES_MIRROR: ${{ needs.tests-postgres-mirror.result }}
+      ANTITHESIS: ${{ needs.tests-antithesis-assertions.result }}
+    steps:
+      - name: Check all test suites
+        shell: bash
+        run: |
+          for result in "$UNIT" "$INTERNAL" "$STORE" "$POSTGRES_MIRROR" "$ANTITHESIS"; do
+            if [ "$result" != success ]; then
+              echo "A required test suite finished with status: $result"
+              exit 1
+            fi
+          done
 
   Tests-Operator:
     runs-on: namespace-profile-linux-amd64-4vcpu
@@ -244,7 +345,7 @@ jobs:
         run: |
           nix develop .#ci --command bash -c '
             cd build/coverage
-            required_profiles=(internal.out postgres-mirror.out e2e-business.out e2e-cluster.out)
+            required_profiles=(unit.out internal.out store.out postgres-mirror.out antithesis.out e2e-business.out e2e-cluster.out)
             for f in "${required_profiles[@]}"; do
               if [ ! -s "$f" ]; then
                 echo "Missing required coverage profile: $f"

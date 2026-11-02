@@ -6,6 +6,13 @@ window. Unkeyed attempts and expired keys remain outside the single-effect
 guarantee. Error presentation at API boundaries is owned by
 `api-boundary-contracts`; a transport code alone never establishes non-commit.
 
+The service error boundary sends `grpc-retry-pushback-ms: -1` with a validated
+`Unavailable` / `MAINTENANCE_MODE` rejection. That stops native gRPC retries;
+it does not change the commit ambiguity of an earlier interrupted attempt.
+Explicit application retry loops retain their policy. Preserve the actual
+Antithesis factory's maintenance recovery regression below to prove that the
+hint does not end retry-forever keyed recovery.
+
 `UncommittedFailure` is a retryable technical interruption, not a frozen
 failure. A keyed first attempt on this branch writes no audit entry or
 idempotency result. An existing frozen outcome may still be replayed before
