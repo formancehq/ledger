@@ -54,3 +54,18 @@ func TestRequestToOrderPreparedQueryRejectsDeepFilter(t *testing.T) {
 	_, err = (&Admission{}).requestToOrder(context.Background(), request, nil, newBulkOverlay())
 	require.ErrorIs(t, err, domain.ErrFilterTooDeep)
 }
+
+func TestRequestToOrderPreparedQueryRequiresTarget(t *testing.T) {
+	t.Parallel()
+	request := &servicepb.Request{Type: &servicepb.Request_UpdatePreparedQuery{
+		UpdatePreparedQuery: &servicepb.UpdatePreparedQueryRequest{Ledger: "ledger1", Name: "q1"},
+	}}
+	_, err := (&Admission{}).requestToOrder(context.Background(), request, nil, newBulkOverlay())
+	require.ErrorIs(t, err, domain.ErrPreparedQueryTargetRequired)
+
+	request.GetUpdatePreparedQuery().Target = commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS.Enum()
+	order, err := (&Admission{}).requestToOrder(context.Background(), request, nil, newBulkOverlay())
+	require.NoError(t, err)
+	require.NotNil(t, order.GetLedgerScoped().GetUpdatePreparedQuery().Target)
+	require.Equal(t, commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS, order.GetLedgerScoped().GetUpdatePreparedQuery().GetTarget())
+}

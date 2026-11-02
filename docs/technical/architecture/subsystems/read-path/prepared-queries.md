@@ -242,11 +242,12 @@ and reads the log payloads from Pebble (`query.EnrichLogs`). Consequently the
 log-only filter fields (`date`, `ledger`) are valid only when the target is
 `LOGS`; the REST create decode rejects them for `ACCOUNTS`/`TRANSACTIONS`, and the
 compile layer is the backstop (it rejects those conditions on non-LOGS targets at
-execute time). New update clients send the intended target with the replacement
+execute time). Update clients send the intended target with the replacement
 filter, so public `id` is decoded before the order enters Raft. The FSM
 validates the filter against the target carried by the order and atomically
-stores both. Legacy targetless orders retain the stored target and validate
-against it. The update path never reads the stored target in admission.
+stores both. Historical targetless orders retain the stored target and validate
+against it during replay. Admission rejects new targetless requests and never
+reads the stored target.
 
 ## Recent changes
 
