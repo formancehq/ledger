@@ -230,7 +230,20 @@ the declared type and range, be ordered, and cover every sequence for log,
 audit, and audit-item segments. Applied-proposal sequences may be sparse because
 failed proposals have no applied-proposal row. Physical EOF, trailing bytes,
 size mismatch, empty segment, or missing sequence fails the download before
-the staging restore can be considered successful. `ApplyExports` writes large segments in
+the staging restore can be considered successful. These per-object checks
+cannot see a whole segment missing from the manifest, because every remaining
+object stays valid. `ApplyExportsAndRebuild` therefore validates the manifest's
+ranges before downloading anything: per type, in manifest order, each log,
+audit, and audit-item segment must start right after the previous one, the first
+right after the checkpoint's `LastLogSequence` or `LastAuditSequence` (0 for an
+export-only manifest). Applied-proposal segments must only be ordered and
+disjoint above the audit boundary. A gap, overlap, or reordering fails with
+`ErrExportCoverageGap` before any export segment is downloaded or applied, on
+both the offline bootstrap and the gRPC download path. Checkpoint files are
+already in staging at that point: the gRPC download job wipes them, and offline
+bootstrap leaves them for the next attempt to discard. The check does not
+detect a missing final segment, which leaves the manifest a consistent prefix
+of the source history. `ApplyExports` writes large segments in
 bounded Pebble batches, so batches committed before a later read failure can
 remain until the caller discards or retries that staging directory. The gRPC
 download job wipes staging on failure and never enables finalization; an
