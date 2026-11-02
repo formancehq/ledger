@@ -6,7 +6,7 @@ spec:
   replicas: 3
   image:
     repository: ghcr.io/formancehq/ledger
-    tag: latest
+    tag: v3.0.0-rc.2
   podAntiAffinity:
     enabled: true
     type: hard

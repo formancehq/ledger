@@ -65,8 +65,14 @@ Install the operator and its CRD dependency, then start from the maintained
 helm dependency build misc/operator/helm/operator
 helm install ledger-operator misc/operator/helm/operator \
   --namespace ledger-system \
-  --create-namespace
+  --create-namespace \
+  --set image.tag=v3.0.0-rc.2 \
+  --set ledgerImage.tag=v3.0.0-rc.2
 ```
+
+Use matching published Operator and Ledger release tags with the source chart.
+Its `appVersion` is a development placeholder. Packaged release charts use
+their release version as the default image tag.
 
 For a three-node deployment, make scheduling and resources explicit:
 

@@ -226,8 +226,14 @@ for runtime delivery, missing-key behavior and ambient authentication.
 helm dependency build misc/operator/helm/operator
 helm install ledger-operator misc/operator/helm/operator \
   --namespace ledger-system \
-  --create-namespace
+  --create-namespace \
+  --set image.tag=v3.0.0-rc.2 \
+  --set ledgerImage.tag=v3.0.0-rc.2
 ```
+
+Use matching published Operator and Ledger release tags. The source chart's
+`appVersion` is a development placeholder; packaged release charts use their
+release version as the image tag by default.
 
 ### Deploy a Ledger Cluster
 
@@ -248,7 +254,7 @@ spec:
   replicas: 3
   image:
     repository: ghcr.io/formancehq/ledger
-    tag: latest
+    tag: v3.0.0-rc.2
   podAntiAffinity:
     enabled: true
     type: hard
@@ -586,7 +592,7 @@ kubectl ledger explain spec.raft
 kubectl ledger create my-ledger \
   --set replicas=5 \
   --set image.repository=ghcr.io/formancehq/ledger \
-  --set image.tag=latest \
+  --set image.tag=v3.0.0-rc.2 \
   --set podAntiAffinity.enabled=true \
   --set podAntiAffinity.type=hard \
   --set resources.requests.cpu=2000m \
