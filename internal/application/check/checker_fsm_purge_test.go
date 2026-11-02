@@ -13,6 +13,7 @@ import (
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/domain/crypto/keystore"
+	"github.com/formancehq/ledger/v3/internal/domain/indexes"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
 	"github.com/formancehq/ledger/v3/internal/infra/cache"
 	"github.com/formancehq/ledger/v3/internal/infra/state"
@@ -138,6 +139,10 @@ func applyFSMPurgeProposalResult(
 			}
 		}
 
+		if createIndex := order.GetLedgerScoped().GetApply().GetCreateIndex(); createIndex != nil {
+			add(dal.SubAttrIndex, domain.IndexKey{LedgerName: ledger, Canonical: indexes.Canonical(createIndex.GetId())}.Bytes())
+		}
+
 		create := order.GetLedgerScoped().GetApply().GetCreateTransaction()
 		if create == nil {
 			continue
@@ -196,6 +201,12 @@ func applyFSMPurgeProposalResult(
 			}
 		case dal.SubAttrReference:
 			value, getErr := attrs.References.Get(handle, item.key)
+			require.NoError(t, getErr)
+			if value != nil {
+				raw, err = value.MarshalVT()
+			}
+		case dal.SubAttrIndex:
+			value, getErr := attrs.Index.Get(handle, item.key)
 			require.NoError(t, getErr)
 			if value != nil {
 				raw, err = value.MarshalVT()
