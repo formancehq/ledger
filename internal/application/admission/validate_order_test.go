@@ -1171,7 +1171,7 @@ func TestValidateOrder_MirrorIAMRegion(t *testing.T) {
 					AwsIamAuth: &commonpb.PostgresAwsIamAuth{Region: "eu-west-1"},
 				},
 			}},
-			wantErr: ErrMirrorIAMRequiresTLS,
+			wantErr: ErrMirrorPostgresURLInvalid,
 		},
 		{
 			name: "http mirror source unaffected",

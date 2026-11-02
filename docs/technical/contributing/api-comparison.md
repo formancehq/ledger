@@ -155,9 +155,15 @@ mirror progress.
 Connection redaction selects formats by declared protobuf field identity.
 Supported PostgreSQL, NATS, ClickHouse and HTTP(S) values retain safe connection
 information; unsupported cross-format values and unregistered annotated fields
-are fully masked. Inputs, endpoints, envelopes and status/error behavior remain
-unchanged. This v3 projection has no equivalent typed mirror configuration in
-v2; see [sensitive projection](../architecture/subsystems/api/sensitive-projection.md).
+are fully masked. New PostgreSQL mirror configurations require `postgres://` or
+`postgresql://`;
+new NATS sinks require an explicit scheme per server and ClickHouse sinks require
+`clickhouse://`, `http://` or `https://`. Invalid forms fail before Raft with safe
+`VALIDATION` errors (HTTP 400 / gRPC InvalidArgument). Existing committed values
+remain usable and legacy keyword DSNs are fully masked on reads. Endpoints and
+envelopes are unchanged. The v2 API has no equivalent typed mirror/sink
+configuration endpoints, so this v3-specific input policy has no v2 request to
+preserve; see [sensitive projection](../architecture/subsystems/api/sensitive-projection.md).
 Nested read mirror configuration masks passwordless HTTP(S) URL userinfo as
 well as passwords and uses a distinct schema
 from unchanged flat creation input. Read rewrite actions model protojson

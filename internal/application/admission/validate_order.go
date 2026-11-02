@@ -14,6 +14,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/adapter/v2/celrewrite"
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/domain/indexes"
+	"github.com/formancehq/ledger/v3/internal/pkg/connectionurl"
 	"github.com/formancehq/ledger/v3/internal/pkg/semver"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
@@ -57,6 +58,10 @@ func validateOrder(order *raftcmdpb.Order) error {
 	}
 
 	if err := validateOrderMirrorSource(order); err != nil {
+		return &domain.BusinessError{Err: err}
+	}
+
+	if err := validateOrderSinkURL(order); err != nil {
 		return &domain.BusinessError{Err: err}
 	}
 
@@ -450,6 +455,12 @@ func validateOrderMirrorSource(order *raftcmdpb.Order) domain.Describable {
 	pg := src.GetPostgres()
 	if pg == nil {
 		return nil
+	}
+
+	// Admission only: older committed configurations retain their runtime and
+	// replay semantics during mixed-version upgrades.
+	if _, ok := connectionurl.Parse(pg.GetDsn(), true, "postgres", "postgresql"); !ok || (!strings.HasPrefix(pg.GetDsn(), "postgres://") && !strings.HasPrefix(pg.GetDsn(), "postgresql://")) {
+		return ErrMirrorPostgresURLInvalid
 	}
 
 	iam := pg.GetAwsIamAuth()

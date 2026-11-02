@@ -29,7 +29,7 @@ selects these policies; there is no runtime registration or plugin loading:
 
 | Protobuf field | Format |
 | --- | --- |
-| `common.PostgresMirrorSourceConfig.dsn` | PostgreSQL URL or keyword DSN |
+| `common.PostgresMirrorSourceConfig.dsn` | PostgreSQL URL (`postgres://` or `postgresql://`) |
 | `common.NatsSinkConfig.url` | NATS/TLS/WebSocket server URL list |
 | `common.ClickHouseSinkConfig.dsn` | ClickHouse native or HTTP(S) DSN |
 | `common.HttpSinkConfig.endpoint` | HTTP(S) |
@@ -42,10 +42,11 @@ This explicit boundary prevents PostgreSQL syntax from being inferred for every
 annotated URL and keeps connector policy outside generic protobuf traversal.
 A protobuf format option is unnecessary for the current six fields.
 
-PostgreSQL alone uses the lexical keyword scanner, preserving harmless quoting
-and escaping while masking every occurrence of a credential key, including
-`password` and `sslpassword`. URL form supports empty-host/socket connections.
-No driver parser loads ambient credentials, service files or TLS keys.
+PostgreSQL uses URL form, including empty-host/socket connections. Legacy
+keyword DSNs are fully masked rather than scanned. No driver parser loads
+ambient credentials, service files or TLS keys. Admission and projection share
+the lexical parser in `internal/pkg/connectionurl`; connector policies choose
+the supported schemes and whether an empty host is permitted.
 NATS splits server lists before parsing and masks passwordless token userinfo
 on every server. ClickHouse keeps comma-separated hosts in one authority.
 HTTP(S), including ClickHouse HTTP transport and proxy URLs, masks passwordless
@@ -65,14 +66,16 @@ path contents or fragments.
 
 Supported safe public output is preserved. Unsupported cross-format values may
 become more opaque: for example, a persisted `nats://` value in an HTTP mirror
-field is fully masked. Inputs, routes, envelopes, admission, status codes and
-worker behavior are unchanged. No protobuf/wire or persisted format changes;
+field is fully masked. New PostgreSQL mirror and NATS/ClickHouse sink
+configurations require URL form at admission; see [the validation contract](../admission/validation.md#connector-url-admission).
+Routes, envelopes and worker behavior are unchanged. No protobuf/wire or
+persisted format changes;
 protocol revision 40 remains unchanged and no migration is required. During a
 rolling upgrade, public reads can differ in opacity for unsupported formats.
 
 Projection work is bounded by returned configuration size: deep cloning and
 traversal remain proportional to message size, field selection is constant,
-URL/keyword scanning follows string size, and query encoding sorts parameter
+URL parsing follows string size, and query encoding sorts parameter
 keys. Proxy nesting has a fixed depth bound. No storage reads, network calls,
 Raft/FSM work or background lifecycle is added.
 

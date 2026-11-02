@@ -474,3 +474,11 @@ There is no automatic "skip the broken log" mode. Operators investigate, fix the
 - **It does not reconcile against v2 hashes.** The worker trusts the source's log content; it does not cross-check that the resulting v3 state has the same balances as v2. That kind of comparison is a future work item (and would require v2 exposing canonical state hashes).
 - **It does not run on followers.** Leadership change suspends the worker until the new leader's manager picks it up.
 - **It does not act as a generic CDC sink.** The only sources are Ledger v2 instances; arbitrary event streams are the [events](events.md) subsystem's concern.
+
+## PostgreSQL connection URL admission
+
+New mirror configurations require `postgres://` or `postgresql://` URL form;
+keyword/value DSNs are rejected before Raft. Socket URLs remain supported and
+IAM still requires explicit TLS and a region. Existing stored keyword DSNs
+remain usable by workers but are fully masked in public projections. See the
+[connector admission contract](../admission/validation.md#connector-url-admission).

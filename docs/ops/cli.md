@@ -433,7 +433,7 @@ The ledger name is a positional argument for `ledgers create`, `ledgers delete`,
 | `--mirror-oauth2-client-secret` | | OAuth2 client secret for the v2 API (for `http` source) |
 | `--mirror-oauth2-token-endpoint` | | OAuth2 token endpoint URL (for `http` source) |
 | `--mirror-oauth2-scopes` | | OAuth2 scopes (for `http` source, repeatable) |
-| `--mirror-dsn` | | PostgreSQL DSN (required for `postgres` source) |
+| `--mirror-dsn` | | `postgres://` or `postgresql://` URL (required for `postgres` source; keyword DSNs are rejected for new requests) |
 | `--mirror-aws-iam-region` | | When set, enables AWS RDS IAM authentication for the `postgres` source. Credentials are taken from the ambient AWS chain (IRSA, instance profile, env vars, profile). |
 | `--mirror-aws-iam-assume-role-arn` | | Optional STS role ARN to assume before minting the RDS IAM token (cross-account / multi-tenant mirrors). Requires `--mirror-aws-iam-region`. |
 | `--mirror-batch-size` | `0` | Max logs per batch (0 = server default, capped by `--mirror-max-batch-size`) |
@@ -5250,9 +5250,9 @@ ledgerctl events add-sink --name webhook --http-endpoint https://example.com/web
 |------|---------|-------------|
 | `--name` | *(required)* | Unique name for this sink |
 | `--controller-id` | | Opaque EventSink controller identity (CR UID); omit for a manually managed sink |
-| `--nats-url` | | NATS server URL (required for NATS sinks) |
+| `--nats-url` | | Comma-separated NATS server URLs, each with `nats://`, `tls://`, `ws://` or `wss://` (required for NATS sinks) |
 | `--nats-topic` | | NATS topic/subject for events (required for NATS sinks) |
-| `--clickhouse-dsn` | | ClickHouse DSN (required for ClickHouse sinks, e.g. `clickhouse://user:pass@host:9000/db`) |
+| `--clickhouse-dsn` | | ClickHouse URL with `clickhouse://`, `http://` or `https://` (required for ClickHouse sinks, e.g. `clickhouse://user:pass@host:9000/db`) |
 | `--clickhouse-table` | `ledger_events` | ClickHouse table name |
 | `--kafka-brokers` | | Kafka broker addresses (comma-separated, required for Kafka sinks) |
 | `--kafka-topic` | | Kafka topic name (required for Kafka sinks) |

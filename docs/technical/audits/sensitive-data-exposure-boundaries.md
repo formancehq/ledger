@@ -118,11 +118,15 @@ configuration test preserves the accepted non-IAM trigger.
 HTTP(S) policy by full protobuf field identity. Enumerate all `sensitive_url`
 declarations independently and require a safe representative output for each;
 an unregistered annotated field must be fully masked. PostgreSQL keyword syntax
-must never be inferred for HTTP, NATS or ClickHouse fields. Exercise real
+is unsupported by projection and must be fully masked for every field. New
+PostgreSQL mirror and NATS/ClickHouse sink configurations must fail admission
+before proposal unless they use the declared URL forms. Errors must never echo
+raw input or credential-bearing URL parser errors; exercise the real admission
+path and require the original configuration to remain unchanged. Exercise real
 `Redact` descriptors and registered public boundaries, not a replacement parser.
 
-Preserve PostgreSQL URL/socket and keyword DSN controls, duplicate/escaped
-passwords and sslpassword; NATS mixed-scheme lists and bare tokens; ClickHouse
+Preserve PostgreSQL URL/socket controls and full masking of legacy keyword
+DSNs, including duplicate/escaped passwords and sslpassword; NATS mixed-scheme lists and bare tokens; ClickHouse
 multi-host authorities, HTTP transport and encoded HTTP proxy credentials;
 HTTP(S) passwordless userinfo; malformed URLs/queries; unsupported cross-format
 values; and depth-exhausted proxies. Each query layer is decoded once and proxy

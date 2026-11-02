@@ -4134,7 +4134,7 @@ components:
       properties:
         url:
           type: string
-          description: NATS server URL
+          description: Comma-separated server URLs, each with nats://, tls://, ws:// or wss:// and a hostname
         topic:
           type: string
           description: NATS topic
@@ -4146,7 +4146,7 @@ components:
       properties:
         dsn:
           type: string
-          description: ClickHouse connection DSN, which may include credentials
+          description: ClickHouse URL with clickhouse://, http:// or https:// and a hostname; may include credentials and comma-separated hosts
           example: clickhouse://user:pass@host:9000/db
         table:
           type: string
@@ -5826,7 +5826,7 @@ components:
       properties:
         dsn:
           type: string
-          description: Connection string with password material masked; malformed values are fully redacted
+          description: PostgreSQL URL with password material masked; legacy keyword DSNs and malformed values are fully redacted
         awsIamAuth:
           $ref: '#/components/schemas/MirrorAwsIamAuthRead'
 
@@ -5873,7 +5873,7 @@ components:
           description: OAuth2 scopes (HTTP source only)
         dsn:
           type: string
-          description: PostgreSQL connection string (required for PostgreSQL source)
+          description: PostgreSQL URL with postgres:// or postgresql:// (required for PostgreSQL source); keyword DSNs are rejected for new requests
         batchSize:
           type: integer
           minimum: 0

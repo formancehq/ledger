@@ -2,8 +2,9 @@ package sensitive
 
 import (
 	"net/url"
-	"slices"
 	"strings"
+
+	"github.com/formancehq/ledger/v3/internal/pkg/connectionurl"
 )
 
 // credentialQueryKeys are query parameter names that commonly carry credentials.
@@ -34,8 +35,8 @@ func redactConnectionURL(raw string, policy urlPolicy, depth int) (string, bool)
 	if depth > maxProxyDepth {
 		return "", false
 	}
-	parsed, err := url.Parse(strings.TrimSpace(raw))
-	if err != nil || !slices.Contains(policy.schemes, parsed.Scheme) || parsed.Opaque != "" || (!policy.allowEmptyHost && parsed.Host == "") {
+	parsed, ok := connectionurl.Parse(strings.TrimSpace(raw), policy.allowEmptyHost, policy.schemes...)
+	if !ok {
 		return "", false
 	}
 	if parsed.User != nil {

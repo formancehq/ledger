@@ -42,7 +42,7 @@ func TestRedactSelectsConnectionFormatByField(t *testing.T) {
 	t.Parallel()
 	raw := "host=db password=canary dbname=ledger"
 	postgres := &commonpb.PostgresMirrorSourceConfig{Dsn: raw}
-	require.Equal(t, "host=db password='xxxxx' dbname=ledger", Redact(postgres).GetDsn())
+	require.Equal(t, Marker, Redact(postgres).GetDsn())
 	require.Equal(t, raw, postgres.GetDsn())
 	for _, source := range []proto.Message{
 		&commonpb.HttpSinkConfig{Endpoint: raw},
@@ -71,7 +71,7 @@ func TestRedactConnectionFormats(t *testing.T) {
 	}{
 		{"postgres socket", "common.PostgresMirrorSourceConfig.dsn", "postgresql:///ledger?host=%2Ftmp&password=canary&sslmode=disable", "postgresql:///ledger?host=%2Ftmp&password=xxxxx&sslmode=disable"},
 		{"postgres username", "common.PostgresMirrorSourceConfig.dsn", "postgres://alice@db/ledger", "postgres://alice@db/ledger"},
-		{"keyword duplicates and escapes", "common.PostgresMirrorSourceConfig.dsn", `host=db password='first canary' password=second\ canary sslpassword='third\'canary' dbname=ledger`, "host=db password='xxxxx'" + " password='xxxxx' sslpassword='xxxxx' dbname=ledger"},
+		{"keyword duplicates and escapes", "common.PostgresMirrorSourceConfig.dsn", `host=db password='first canary' password=second\ canary sslpassword='third\'canary' dbname=ledger`, Marker},
 		{"keyword malformed", "common.PostgresMirrorSourceConfig.dsn", "host=db password='canary", Marker},
 		{"postgres opaque", "common.PostgresMirrorSourceConfig.dsn", "postgres:canary", Marker},
 		{"postgres opaque with assignment", "common.PostgresMirrorSourceConfig.dsn", "postgres:password=canary", Marker},
@@ -125,7 +125,7 @@ func TestRedactDeclaredConnectionFields(t *testing.T) {
 	// Enumerate the schema independently of the registry: a new annotation must
 	// acquire an explicit, reviewed format and a representative observable output.
 	expected := map[protoreflect.FullName]struct{ raw, want string }{
-		"common.PostgresMirrorSourceConfig.dsn":         {"host=db password=canary", "host=db password='xxxxx'"},
+		"common.PostgresMirrorSourceConfig.dsn":         {"postgres://reader:canary@db/ledger", "postgres://reader:xxxxx@db/ledger"},
 		"common.NatsSinkConfig.url":                     {"nats://canary@host", "nats://xxxxx@host"},
 		"common.ClickHouseSinkConfig.dsn":               {"clickhouse://alice:canary@host/db", "clickhouse://alice:xxxxx@host/db"},
 		"common.HttpSinkConfig.endpoint":                {"https://canary@host/path", "https://xxxxx@host/path"},

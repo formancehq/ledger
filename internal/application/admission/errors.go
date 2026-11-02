@@ -7,6 +7,11 @@ import "github.com/formancehq/ledger/v3/internal/domain"
 // Domain errors stay in internal/domain; cross-cutting application errors
 // live here so the domain package keeps its narrow ledger-semantics scope.
 var (
+	// Connection syntax errors never echo credential-bearing input or parser errors.
+	ErrMirrorPostgresURLInvalid = &invalidConnectionURL{message: "mirrorSource.postgres.dsn must be a postgres:// or postgresql:// URL"}
+	ErrSinkNATSURLInvalid       = &invalidConnectionURL{message: "sink.nats.url must contain explicit nats://, tls://, ws:// or wss:// server URLs"}
+	ErrSinkClickHouseURLInvalid = &invalidConnectionURL{message: "sink.clickhouse.dsn must be a clickhouse://, http:// or https:// URL with a host"}
+
 	// ErrMirrorHTTPURLInvalid rejects unusable HTTP source URLs before the
 	// configuration reaches Raft. Never include the credential-bearing input
 	// or the URL parser's error in this public validation message.
