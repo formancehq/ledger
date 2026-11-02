@@ -140,13 +140,14 @@ func assertOldWALSegmentsPurged(t *testing.T, triggerReclamation func(*DefaultWA
 
 	w := newTestWAL(t, withPurgeInterval(100*time.Millisecond))
 
-	// Write enough data to force WAL segment rotation.
-	// etcd WAL segments are 64MB, so writing ~200MB should create at least 3 segments.
-	// ReleaseLockTo requires at least 3 segments to actually release the oldest lock,
-	// because it always keeps the segment just before the target index locked.
+	// Write enough data to force WAL segment rotation: ten half-segment entries
+	// span about five segments. ReleaseLockTo requires at least 3 segments to
+	// actually release the oldest lock, because it always keeps the segment
+	// just before the target index locked. Sizing from the live segment size
+	// keeps this valid when a benchmark run leaves the production size in place.
 	const numEntries = 10
 
-	entryData := make([]byte, 20*1024*1024)
+	entryData := make([]byte, etcdwal.SegmentSizeBytes/2)
 	for i := uint64(1); i <= numEntries; i++ {
 		err := w.Append(
 			hs(1, 1, i),
@@ -156,7 +157,7 @@ func assertOldWALSegmentsPurged(t *testing.T, triggerReclamation func(*DefaultWA
 	}
 
 	segmentsAfterWrite := countWALFiles(t, w.etcdWalDir)
-	require.GreaterOrEqual(t, segmentsAfterWrite, 3, "writing ~200MB should create at least 3 WAL segments")
+	require.GreaterOrEqual(t, segmentsAfterWrite, 3, "writing five segments of data should create at least 3 WAL segments")
 
 	triggerReclamation(w, numEntries)
 
