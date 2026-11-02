@@ -25,6 +25,7 @@ func isUnobservedMirrorPromotion(bulk oracle.Bulk, err error) bool {
 	for _, detail := range status.Convert(err).Details() {
 		if candidate, ok := detail.(*errdetails.ErrorInfo); ok && candidate.GetReason() == domain.ErrReasonMirrorNotCaughtUp {
 			info = candidate
+
 			break
 		}
 	}
