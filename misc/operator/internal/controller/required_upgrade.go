@@ -91,6 +91,9 @@ func (r *ClusterReconciler) reconcileRequiredUpgrade(ctx context.Context, ledger
 func (r *ClusterReconciler) reconcileRequiredUpgradeWithExec(ctx context.Context, ledger *ledgerv1alpha1.Cluster, sts *appsv1.StatefulSet, exec ledgerctlExec) (proceed bool, result ctrl.Result, err error) {
 	state := ledger.Status.Upgrade
 	if state == nil && sts == nil {
+		if err := r.validateRCUpgradeWithoutStatefulSet(ctx, ledger); err != nil {
+			return false, ctrl.Result{}, err
+		}
 		return true, ctrl.Result{}, nil
 	}
 	if state == nil {

@@ -73,13 +73,10 @@ func ledgerContainerTag(containers []corev1.Container) (string, error) {
 
 // A missing StatefulSet can be an interrupted orphan-and-recreate operation,
 // not a new cluster. The old Pods retain the source image, and the old PVCs
-// remain when Pods have already gone. Refuse a new RC while that source cannot
-// be verified from a complete StatefulSet rollout.
+// remain when Pods have already gone. Refuse replacement while that source
+// cannot be verified from a complete StatefulSet rollout, including moving
+// image tags that could cross a mandatory stopped-upgrade boundary.
 func (r *ClusterReconciler) validateRCUpgradeWithoutStatefulSet(ctx context.Context, ledger *ledgerv1alpha1.Cluster) error {
-	if !rcCandidate(ledger.Spec.Image.Tag) {
-		return nil
-	}
-
 	name := resourceName(ledger.Name)
 	pods := &corev1.PodList{}
 	if err := r.List(ctx, pods, client.InNamespace(ledger.Namespace)); err != nil {
@@ -92,7 +89,7 @@ func (r *ClusterReconciler) validateRCUpgradeWithoutStatefulSet(ctx context.Cont
 		}
 		matchingPod = true
 		source, err := ledgerContainerTag(pod.Spec.Containers)
-		if err != nil || source != ledger.Spec.Image.Tag {
+		if err != nil || source != ledger.Spec.Image.Tag || !strings.HasPrefix(source, "v") {
 			return fmt.Errorf("cannot change RC while StatefulSet %q is absent and Pod %q retains another or unknown image; restore the source image tag first", name, pod.Name)
 		}
 	}
