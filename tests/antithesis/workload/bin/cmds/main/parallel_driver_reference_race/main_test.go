@@ -141,7 +141,7 @@ func TestReferenceOracleAcknowledgedPresence(t *testing.T) {
 			drivertest.CheckEmissions(t, func() {
 				ctx, client := drivertest.StartServer(t)
 				const ledger, reference = "refrace-presence", "presence-reference"
-				require.NoError(t, internal.CreateQueryOracleLedger(ctx, client, ledger, commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE))
+				require.NoError(t, internal.CreateQueryOracleLedger(ctx, client, ledger, ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE))
 				resp, err := createWithReference(ctx, client, ledger, reference, "presence-destination")
 				require.NoError(t, err)
 				txID, ok := actions.GetCreatedTransactionID(resp)
@@ -189,7 +189,7 @@ type hiddenReferenceClient struct {
 	stream *hiddenReferenceStream
 }
 
-func (c *hiddenReferenceClient) ListTransactions(ctx context.Context, req *servicepb.ListTransactionsRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[commonpb.Transaction], error) {
+func (c *hiddenReferenceClient) ListTransactions(ctx context.Context, req *servicepb.ListTransactionsRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[ledgerpb.Transaction], error) {
 	stream, err := c.BucketServiceClient.ListTransactions(ctx, req, opts...)
 	if err != nil {
 		return nil, err
@@ -200,13 +200,13 @@ func (c *hiddenReferenceClient) ListTransactions(ctx context.Context, req *servi
 }
 
 type hiddenReferenceStream struct {
-	grpc.ServerStreamingClient[commonpb.Transaction]
+	grpc.ServerStreamingClient[ledgerpb.Transaction]
 
 	hide   bool
 	hidden bool
 }
 
-func (s *hiddenReferenceStream) Recv() (*commonpb.Transaction, error) {
+func (s *hiddenReferenceStream) Recv() (*ledgerpb.Transaction, error) {
 	for {
 		tx, err := s.ServerStreamingClient.Recv()
 		if err != nil || !s.hide {

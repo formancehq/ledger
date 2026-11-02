@@ -36,7 +36,7 @@ func TestAnyFilterShapeIsTotal(t *testing.T) {
 
 		ls := buildLedger(t,
 			oracletest.TxReq("world", "acc:1", "USD/2", 1),
-			oracletest.AddAccountMetaReq("acc:1", "k0", commonpb.NewStringValue("x")),
+			oracletest.AddAccountMetaReq("acc:1", "k0", ledgerpb.NewStringValue("x")),
 		)
 		kinds := map[string]bool{}
 
@@ -48,7 +48,7 @@ func TestAnyFilterShapeIsTotal(t *testing.T) {
 
 			raw, err := f.MarshalVT()
 			require.NoError(t, err)
-			wire := &commonpb.QueryFilter{}
+			wire := &ledgerpb.QueryFilter{}
 			require.NoError(t, wire.UnmarshalVT(raw))
 
 			for _, target := range listTargets {
@@ -63,9 +63,9 @@ func TestAnyFilterShapeIsTotal(t *testing.T) {
 				}
 
 				switch target {
-				case commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS:
+				case ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS:
 					accountWindow(ls, f, "", 10, oneIn(src, 2))
-				case commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS:
+				case ledgerpb.QueryTarget_QUERY_TARGET_TRANSACTIONS:
 					transactionWindowRows(ls, f, 0, oneIn(src, 2))
 				default:
 					logWindowRows(ls, "L", f, 0, oneIn(src, 2))

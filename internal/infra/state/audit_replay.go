@@ -127,7 +127,7 @@ func (r *AuditReplayer) Close() error {
 // LedgerInfos returns the persisted ledger policies produced solely by the
 // verified orders replayed so far, including retained deletion tombstones.
 // Read-time metadata and mirror progress are not populated here.
-func (r *AuditReplayer) LedgerInfos() (map[string]*commonpb.LedgerInfo, error) {
+func (r *AuditReplayer) LedgerInfos() (map[string]*ledgerpb.LedgerInfo, error) {
 	reader, err := r.store.NewReadHandle()
 	if err != nil {
 		return nil, err
@@ -137,7 +137,7 @@ func (r *AuditReplayer) LedgerInfos() (map[string]*commonpb.LedgerInfo, error) {
 	if err != nil {
 		return nil, err
 	}
-	infos := make(map[string]*commonpb.LedgerInfo, len(rows))
+	infos := make(map[string]*ledgerpb.LedgerInfo, len(rows))
 	for _, row := range rows {
 		infos[string(row.CanonicalKey)] = row.Value
 	}

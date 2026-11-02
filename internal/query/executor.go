@@ -199,7 +199,7 @@ func Execute(
 		Pin:             mainSeq,
 	}
 
-	if req.GetMode() == commonpb.QueryMode_QUERY_MODE_LIST && page.ReadReverse(req.GetReverse()) {
+	if req.GetMode() == ledgerpb.QueryMode_QUERY_MODE_LIST && page.ReadReverse(req.GetReverse()) {
 		compiled, compileErr := CompileReverse(pq.GetFilter(), compileOptions)
 		if compileErr != nil {
 			return nil, domain.WrapCompileError(compileErr)

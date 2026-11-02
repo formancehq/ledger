@@ -76,7 +76,7 @@ func drainPage(b *testing.B, store *readstore.Store, after []byte) (rowsVisited,
 	iter, err := query.Compile(stringFieldFilter("colour", "red"), query.CompileOptions{
 		IndexReader:     reader,
 		KeyBuilder:      dal.NewKeyBuilder(),
-		Target:          commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
+		Target:          ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
 		LedgerName:      parityLedger,
 		Schema:          paritySchema(),
 		LedgerInfo:      parityInfo(),
@@ -136,7 +136,7 @@ func streamPage(b *testing.B, store *readstore.Store, before []byte) (rowsVisite
 	iter, err := query.CompileReverse(stringFieldFilter("colour", "red"), query.CompileOptions{
 		IndexReader:     reader,
 		KeyBuilder:      dal.NewKeyBuilder(),
-		Target:          commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
+		Target:          ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
 		LedgerName:      parityLedger,
 		Schema:          paritySchema(),
 		LedgerInfo:      parityInfo(),

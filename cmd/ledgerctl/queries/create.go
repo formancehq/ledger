@@ -103,7 +103,7 @@ func runCreate(cmd *cobra.Command, args []string) error {
 // widened to match-all, mirroring `queries update`. Like the list commands, it
 // leaves the per-target validity gate to the server, which applies it on
 // create.
-func parseCreateFilter(expr string, set bool, target commonpb.QueryTarget) (*commonpb.QueryFilter, error) {
+func parseCreateFilter(expr string, set bool, target ledgerpb.QueryTarget) (*ledgerpb.QueryFilter, error) {
 	if !set {
 		return nil, nil
 	}
@@ -120,7 +120,7 @@ func parseCreateFilter(expr string, set bool, target commonpb.QueryTarget) (*com
 	return filter, nil
 }
 
-func parseTarget(s string) (commonpb.QueryTarget, error) {
+func parseTarget(s string) (ledgerpb.QueryTarget, error) {
 	switch s {
 	case "accounts", "account":
 		return ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS, nil

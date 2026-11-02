@@ -11,6 +11,8 @@ import (
 
 	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	"github.com/formancehq/ledger/v3/tests/oracle"
+
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal/generation"
 )
@@ -30,10 +32,10 @@ import (
 func runInspectIndex(src *generation.Source, ctx context.Context, client servicepb.BucketServiceClient, c *Checker) {
 	ledger, absent := pickLedgerReadTarget(src, c.ledgerNamesSnapshot(), 2)
 
-	target := commonpb.TargetType_TARGET_TYPE_ACCOUNT
-	queryTarget := commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS
+	target := ledgerpb.TargetType_TARGET_TYPE_ACCOUNT
+	queryTarget := ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS
 	if oneIn(src, 2) {
-		target, queryTarget = commonpb.TargetType_TARGET_TYPE_TRANSACTION, commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS
+		target, queryTarget = ledgerpb.TargetType_TARGET_TYPE_TRANSACTION, ledgerpb.QueryTarget_QUERY_TARGET_TRANSACTIONS
 	}
 
 	key, declared := c.pickInspectKey(src, ledger, queryTarget)
@@ -168,9 +170,9 @@ func runInspectIndex(src *generation.Source, ctx context.Context, client service
 // pickInspectKey chooses a declared metadata key of the target, or — one read
 // in five — one the ledger never declared, whose index the registry does not
 // hold. Acquires c.mu.
-func (c *Checker) pickInspectKey(src *generation.Source, ledger string, target commonpb.QueryTarget) (key string, declared commonpb.MetadataType) {
+func (c *Checker) pickInspectKey(src *generation.Source, ledger string, target ledgerpb.QueryTarget) (key string, declared ledgerpb.MetadataType) {
 	if oneIn(src, 5) {
-		return "undeclared-" + metaKey(src), commonpb.MetadataType_METADATA_TYPE_STRING
+		return "undeclared-" + metaKey(src), ledgerpb.MetadataType_METADATA_TYPE_STRING
 	}
 
 	c.mu.Lock()

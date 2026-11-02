@@ -14,6 +14,8 @@ import (
 	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/internal/domain/indexes"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	"github.com/formancehq/ledger/v3/tests/oracle"
+
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal/generation"
 )
@@ -31,17 +33,17 @@ import (
 // genLogFilter builds a filter over the conditions valid on LOGS: ledger name,
 // log id range, and the boolean combinators. Returns nil for the unfiltered
 // case, which exercises the universe scan itself.
-func genLogFilter(src *generation.Source, ledger string, dates []uint64, depth int) *commonpb.QueryFilter {
+func genLogFilter(src *generation.Source, ledger string, dates []uint64, depth int) *ledgerpb.QueryFilter {
 	if depth >= 2 || oneIn(src, 3) {
 		return genLogLeaf(src, ledger, dates)
 	}
 
-	return genBoolean(src, depth, func(d int) *commonpb.QueryFilter { return genLogFilter(src, ledger, dates, d) })
+	return genBoolean(src, depth, func(d int) *ledgerpb.QueryFilter { return genLogFilter(src, ledger, dates, d) })
 }
 
 // genLogLeaf picks one LOGS-valid leaf. Bounds straddle the populated range so
 // empty, partial and total windows all occur.
-func genLogLeaf(src *generation.Source, ledger string, dates []uint64) *commonpb.QueryFilter {
+func genLogLeaf(src *generation.Source, ledger string, dates []uint64) *ledgerpb.QueryFilter {
 	switch generation.Choice(src, []uint8{0, 1, 2}) {
 	case 0:
 		name := ledger
@@ -55,21 +57,21 @@ func genLogLeaf(src *generation.Source, ledger string, dates []uint64) *commonpb
 			},
 		}}
 	case 1:
-		return &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_LogId{
-			LogId: &commonpb.LogIdCondition{Cond: genLogUintCond(src)},
+		return &ledgerpb.QueryFilter{Filter: &ledgerpb.QueryFilter_LogId{
+			LogId: &ledgerpb.LogIdCondition{Cond: genLogUintCond(src)},
 		}}
 	default:
-		return &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_LogBuiltinUint{
-			LogBuiltinUint: &commonpb.LogBuiltinUintCondition{
-				Field: commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE,
+		return &ledgerpb.QueryFilter{Filter: &ledgerpb.QueryFilter_LogBuiltinUint{
+			LogBuiltinUint: &ledgerpb.LogBuiltinUintCondition{
+				Field: ledgerpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE,
 				Cond:  genLogDateCond(src, dates),
 			},
 		}}
 	}
 }
 
-func genLogUintCond(src *generation.Source) *commonpb.UintCondition {
-	cond := &commonpb.UintCondition{}
+func genLogUintCond(src *generation.Source) *ledgerpb.UintCondition {
+	cond := &ledgerpb.UintCondition{}
 
 	if oneIn(src, 2) {
 		lower := src.Uint64Range(0, 32-1)
@@ -92,8 +94,8 @@ func genLogUintCond(src *generation.Source) *commonpb.UintCondition {
 // be total or empty; sampling a served date and jittering around it makes the
 // partial windows the date index is read for. With no date learned yet the
 // bounds stay unset and the leaf is the trivial match.
-func genLogDateCond(src *generation.Source, dates []uint64) *commonpb.UintCondition {
-	cond := &commonpb.UintCondition{}
+func genLogDateCond(src *generation.Source, dates []uint64) *ledgerpb.UintCondition {
+	cond := &ledgerpb.UintCondition{}
 	if len(dates) == 0 {
 		return cond
 	}
@@ -570,7 +572,7 @@ func logWindow(ls oracle.LedgerState, ledger string, filter *ledgerpb.QueryFilte
 func runLogQuery(src *generation.Source, ctx context.Context, client servicepb.BucketServiceClient, c *Checker) {
 	ledger, _ := pickLedgerReadTarget(src, c.liveLedgerNamesSnapshot(), 0)
 
-	var filter *commonpb.QueryFilter
+	var filter *ledgerpb.QueryFilter
 	if !oneIn(src, 4) {
 		filter = genLogFilter(src, ledger, c.modelLogDateSample(ledger), 0)
 	}

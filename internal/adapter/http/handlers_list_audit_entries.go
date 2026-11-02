@@ -91,6 +91,6 @@ func (s *Server) handleListAuditEntries(w http.ResponseWriter, r *http.Request) 
 // to the audit arm, exactly like the textual grammar. Only the
 // `idempotency_key ^=` prefix match is textual-only (the JSON DSL has no prefix
 // operator).
-func parseAuditFilter(w http.ResponseWriter, r *http.Request) (*commonpb.QueryFilter, bool) {
-	return parseListFilter(w, r, commonpb.QueryTarget_QUERY_TARGET_AUDIT)
+func parseAuditFilter(w http.ResponseWriter, r *http.Request) (*ledgerpb.QueryFilter, bool) {
+	return parseListFilter(w, r, ledgerpb.QueryTarget_QUERY_TARGET_AUDIT)
 }

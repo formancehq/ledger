@@ -129,14 +129,14 @@ func (c *MockBucketServiceClientAnalyzeAccountsCall) DoAndReturn(f func(context.
 }
 
 // AnalyzeNumscript mocks base method.
-func (m *MockBucketServiceClient) AnalyzeNumscript(ctx context.Context, in *servicepb.AnalyzeNumscriptRequest, opts ...grpc.CallOption) (*servicepb.AnalyzeNumscriptResponse, error) {
+func (m *MockBucketServiceClient) AnalyzeNumscript(ctx context.Context, in *ledgerpb.AnalyzeNumscriptRequest, opts ...grpc.CallOption) (*ledgerpb.AnalyzeNumscriptResponse, error) {
 	m.ctrl.T.Helper()
 	varargs := []any{ctx, in}
 	for _, a := range opts {
 		varargs = append(varargs, a)
 	}
 	ret := m.ctrl.Call(m, "AnalyzeNumscript", varargs...)
-	ret0, _ := ret[0].(*servicepb.AnalyzeNumscriptResponse)
+	ret0, _ := ret[0].(*ledgerpb.AnalyzeNumscriptResponse)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -155,19 +155,19 @@ type MockBucketServiceClientAnalyzeNumscriptCall struct {
 }
 
 // Return rewrite *gomock.Call.Return
-func (c *MockBucketServiceClientAnalyzeNumscriptCall) Return(arg0 *servicepb.AnalyzeNumscriptResponse, arg1 error) *MockBucketServiceClientAnalyzeNumscriptCall {
+func (c *MockBucketServiceClientAnalyzeNumscriptCall) Return(arg0 *ledgerpb.AnalyzeNumscriptResponse, arg1 error) *MockBucketServiceClientAnalyzeNumscriptCall {
 	c.Call = c.Call.Return(arg0, arg1)
 	return c
 }
 
 // Do rewrite *gomock.Call.Do
-func (c *MockBucketServiceClientAnalyzeNumscriptCall) Do(f func(context.Context, *servicepb.AnalyzeNumscriptRequest, ...grpc.CallOption) (*servicepb.AnalyzeNumscriptResponse, error)) *MockBucketServiceClientAnalyzeNumscriptCall {
+func (c *MockBucketServiceClientAnalyzeNumscriptCall) Do(f func(context.Context, *ledgerpb.AnalyzeNumscriptRequest, ...grpc.CallOption) (*ledgerpb.AnalyzeNumscriptResponse, error)) *MockBucketServiceClientAnalyzeNumscriptCall {
 	c.Call = c.Call.Do(f)
 	return c
 }
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockBucketServiceClientAnalyzeNumscriptCall) DoAndReturn(f func(context.Context, *servicepb.AnalyzeNumscriptRequest, ...grpc.CallOption) (*servicepb.AnalyzeNumscriptResponse, error)) *MockBucketServiceClientAnalyzeNumscriptCall {
+func (c *MockBucketServiceClientAnalyzeNumscriptCall) DoAndReturn(f func(context.Context, *ledgerpb.AnalyzeNumscriptRequest, ...grpc.CallOption) (*ledgerpb.AnalyzeNumscriptResponse, error)) *MockBucketServiceClientAnalyzeNumscriptCall {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }

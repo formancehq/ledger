@@ -226,9 +226,9 @@ func TestHandleListAuditEntries_StructuredOutcomeFilter(t *testing.T) {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().ListAuditEntries(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, _ uint32, _ uint64, filter *commonpb.QueryFilter, _ bool) (cursor.Cursor[*auditpb.AuditEntry], error) {
+		func(_ context.Context, _ uint32, _ uint64, filter *ledgerpb.QueryFilter, _ bool) (cursor.Cursor[*auditpb.AuditEntry], error) {
 			require.NotNil(t, filter)
-			require.Equal(t, commonpb.AuditField_AUDIT_FIELD_OUTCOME, filter.GetAudit().GetField())
+			require.Equal(t, ledgerpb.AuditField_AUDIT_FIELD_OUTCOME, filter.GetAudit().GetField())
 			require.Equal(t, "failure", filter.GetAudit().GetStringCond().GetHardcoded())
 
 			return cursor.NewSliceCursor[*auditpb.AuditEntry](nil), nil

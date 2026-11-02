@@ -13,6 +13,8 @@ import (
 
 	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	"github.com/formancehq/ledger/v3/tests/oracle"
+
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal/generation"
 )
@@ -213,13 +215,13 @@ func runLedgersList(src *generation.Source, ctx context.Context, client servicep
 // to a client like a fleet that happens to match. The rate is high because the
 // listing is one arm of one slot of the read mix: a rarer roll leaves the
 // rejection unexercised over a whole local run.
-func rollLedgerListFilter(src *generation.Source) (*commonpb.QueryFilter, bool) {
+func rollLedgerListFilter(src *generation.Source) (*ledgerpb.QueryFilter, bool) {
 	if !oneIn(src, 4) {
 		return nil, false
 	}
 
-	return &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_Address{Address: &commonpb.AddressMatch{
-		Match: &commonpb.AddressMatch_HardcodedPrefix{HardcodedPrefix: poolAddress(src)},
+	return &ledgerpb.QueryFilter{Filter: &ledgerpb.QueryFilter_Address{Address: &ledgerpb.AddressMatch{
+		Match: &ledgerpb.AddressMatch_HardcodedPrefix{HardcodedPrefix: poolAddress(src)},
 	}}}, true
 }
 

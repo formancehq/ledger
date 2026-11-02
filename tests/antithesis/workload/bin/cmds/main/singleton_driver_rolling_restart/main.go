@@ -194,9 +194,9 @@ func writeBurst(ctx context.Context, client servicepb.BucketServiceClient, commi
 		case <-tick.C:
 		}
 		// One pure generation episode per witness, owned by this goroutine.
-		var posting *commonpb.Posting
+		var posting *ledgerpb.Posting
 		if err := internal.RunOperationalGeneration("rolling-restart", func(src *generation.Source) {
-			posting = commonpb.NewPosting("world", "burst:rr", "COIN", internal.GeneratedBigInt(src))
+			posting = ledgerpb.NewPosting("world", "burst:rr", "COIN", internal.GeneratedBigInt(src))
 		}); err != nil {
 			log.Printf("singleton_driver_rolling_restart: generation failed: %s", err)
 
@@ -208,7 +208,7 @@ func writeBurst(ctx context.Context, client servicepb.BucketServiceClient, commi
 					Ledger: rrSentinelLedger,
 					Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
 						CreateTransaction: &servicepb.CreateTransactionPayload{
-							Postings: []*commonpb.Posting{posting},
+							Postings: []*ledgerpb.Posting{posting},
 							Force:    true,
 						},
 					}},

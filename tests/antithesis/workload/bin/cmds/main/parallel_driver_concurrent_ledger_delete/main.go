@@ -21,10 +21,10 @@ func main() {
 		payloads := make([]*servicepb.CreateTransactionPayload, 5)
 		for i := range payloads {
 			payloads[i] = &servicepb.CreateTransactionPayload{
-				Postings: []*commonpb.Posting{{
+				Postings: []*ledgerpb.Posting{{
 					Source:      "world",
 					Destination: fmt.Sprintf("users:%d", src.Intn(int(internal.UserAccountCount))),
-					Amount:      commonpb.NewUint256FromUint64(100),
+					Amount:      ledgerpb.NewUint256FromUint64(100),
 					Asset:       "USD/2",
 				}},
 				Force: true,

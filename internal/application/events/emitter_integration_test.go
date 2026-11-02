@@ -282,18 +282,18 @@ func TestEmitterIntegration_NotificationDrivenProcessing(t *testing.T) {
 		// Append logs and notify
 		now := libtime.Now()
 		appendTestLogs(t, store,
-			&commonpb.Log{
+			&ledgerpb.Log{
 				Sequence: 1,
-				Payload: &commonpb.LogPayload{
-					Type: &commonpb.LogPayload_Apply{
-						Apply: &commonpb.ApplyLedgerLog{
+				Payload: &ledgerpb.LogPayload{
+					Type: &ledgerpb.LogPayload_Apply{
+						Apply: &ledgerpb.ApplyLedgerLog{
 							LedgerName: "payments",
-							Log: commonpb.NewLedgerLog(&commonpb.LedgerLogPayload{
-								Payload: &commonpb.LedgerLogPayload_CreatedTransaction{
-									CreatedTransaction: &commonpb.CreatedTransaction{
-										Transaction: commonpb.NewTransaction().
+							Log: ledgerpb.NewLedgerLog(&ledgerpb.LedgerLogPayload{
+								Payload: &ledgerpb.LedgerLogPayload_CreatedTransaction{
+									CreatedTransaction: &ledgerpb.CreatedTransaction{
+										Transaction: ledgerpb.NewTransaction().
 											WithPostings(
-												commonpb.NewPosting("world", "merchant", "EUR", big.NewInt(500)),
+												ledgerpb.NewPosting("world", "merchant", "EUR", big.NewInt(500)),
 											).
 											WithID(1).
 											WithTimestamp(now),
@@ -314,7 +314,7 @@ func TestEmitterIntegration_NotificationDrivenProcessing(t *testing.T) {
 		require.NotEmpty(t, sink.getEvents(), "emitter should process after notification")
 
 		published := sink.getEvents()
-		require.Equal(t, commonpb.EventType_COMMITTED_TRANSACTION, published[0].GetType())
+		require.Equal(t, ledgerpb.EventType_COMMITTED_TRANSACTION, published[0].GetType())
 		require.Equal(t, "payments", published[0].GetLedger())
 	})
 }
@@ -828,52 +828,52 @@ func TestEmitterIntegration_FilteredLogDoesNotSkipPendingBatchOnFailure(t *testi
 		//   seq 3: COMMITTED_TRANSACTION (will be batched, triggers flush at BatchSize=2)
 		//   seq 4: SAVED_METADATA        (filtered out by config)
 		appendTestLogs(t, store,
-			&commonpb.Log{
+			&ledgerpb.Log{
 				Sequence: 1,
-				Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_Apply{Apply: &commonpb.ApplyLedgerLog{
+				Payload: &ledgerpb.LogPayload{Type: &ledgerpb.LogPayload_Apply{Apply: &ledgerpb.ApplyLedgerLog{
 					LedgerName: "test",
-					Log: commonpb.NewLedgerLog(&commonpb.LedgerLogPayload{
-						Payload: &commonpb.LedgerLogPayload_CreatedTransaction{CreatedTransaction: &commonpb.CreatedTransaction{
-							Transaction: commonpb.NewTransaction().
-								WithPostings(commonpb.NewPosting("world", "bank", "USD", big.NewInt(100))).
+					Log: ledgerpb.NewLedgerLog(&ledgerpb.LedgerLogPayload{
+						Payload: &ledgerpb.LedgerLogPayload_CreatedTransaction{CreatedTransaction: &ledgerpb.CreatedTransaction{
+							Transaction: ledgerpb.NewTransaction().
+								WithPostings(ledgerpb.NewPosting("world", "bank", "USD", big.NewInt(100))).
 								WithID(1).WithTimestamp(now),
 						}},
 					}).WithID(1).WithDate(now),
 				}}},
 			},
-			&commonpb.Log{
+			&ledgerpb.Log{
 				Sequence: 2,
-				Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_Apply{Apply: &commonpb.ApplyLedgerLog{
+				Payload: &ledgerpb.LogPayload{Type: &ledgerpb.LogPayload_Apply{Apply: &ledgerpb.ApplyLedgerLog{
 					LedgerName: "test",
-					Log: commonpb.NewLedgerLog(&commonpb.LedgerLogPayload{
-						Payload: &commonpb.LedgerLogPayload_SavedMetadata{SavedMetadata: &commonpb.SavedMetadata{
-							Target:   &commonpb.Target{Target: &commonpb.Target_Account{Account: &commonpb.TargetAccount{Addr: "bank"}}},
-							Metadata: commonpb.MetadataFromGoMap(map[string]string{"k": "v"}),
+					Log: ledgerpb.NewLedgerLog(&ledgerpb.LedgerLogPayload{
+						Payload: &ledgerpb.LedgerLogPayload_SavedMetadata{SavedMetadata: &ledgerpb.SavedMetadata{
+							Target:   &ledgerpb.Target{Target: &ledgerpb.Target_Account{Account: &ledgerpb.TargetAccount{Addr: "bank"}}},
+							Metadata: ledgerpb.MetadataFromGoMap(map[string]string{"k": "v"}),
 						}},
 					}).WithID(2).WithDate(now),
 				}}},
 			},
-			&commonpb.Log{
+			&ledgerpb.Log{
 				Sequence: 3,
-				Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_Apply{Apply: &commonpb.ApplyLedgerLog{
+				Payload: &ledgerpb.LogPayload{Type: &ledgerpb.LogPayload_Apply{Apply: &ledgerpb.ApplyLedgerLog{
 					LedgerName: "test",
-					Log: commonpb.NewLedgerLog(&commonpb.LedgerLogPayload{
-						Payload: &commonpb.LedgerLogPayload_CreatedTransaction{CreatedTransaction: &commonpb.CreatedTransaction{
-							Transaction: commonpb.NewTransaction().
-								WithPostings(commonpb.NewPosting("world", "alice", "USD", big.NewInt(50))).
+					Log: ledgerpb.NewLedgerLog(&ledgerpb.LedgerLogPayload{
+						Payload: &ledgerpb.LedgerLogPayload_CreatedTransaction{CreatedTransaction: &ledgerpb.CreatedTransaction{
+							Transaction: ledgerpb.NewTransaction().
+								WithPostings(ledgerpb.NewPosting("world", "alice", "USD", big.NewInt(50))).
 								WithID(2).WithTimestamp(now),
 						}},
 					}).WithID(3).WithDate(now),
 				}}},
 			},
-			&commonpb.Log{
+			&ledgerpb.Log{
 				Sequence: 4,
-				Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_Apply{Apply: &commonpb.ApplyLedgerLog{
+				Payload: &ledgerpb.LogPayload{Type: &ledgerpb.LogPayload_Apply{Apply: &ledgerpb.ApplyLedgerLog{
 					LedgerName: "test",
-					Log: commonpb.NewLedgerLog(&commonpb.LedgerLogPayload{
-						Payload: &commonpb.LedgerLogPayload_SavedMetadata{SavedMetadata: &commonpb.SavedMetadata{
-							Target:   &commonpb.Target{Target: &commonpb.Target_Account{Account: &commonpb.TargetAccount{Addr: "alice"}}},
-							Metadata: commonpb.MetadataFromGoMap(map[string]string{"k2": "v2"}),
+					Log: ledgerpb.NewLedgerLog(&ledgerpb.LedgerLogPayload{
+						Payload: &ledgerpb.LedgerLogPayload_SavedMetadata{SavedMetadata: &ledgerpb.SavedMetadata{
+							Target:   &ledgerpb.Target{Target: &ledgerpb.Target_Account{Account: &ledgerpb.TargetAccount{Addr: "alice"}}},
+							Metadata: ledgerpb.MetadataFromGoMap(map[string]string{"k2": "v2"}),
 						}},
 					}).WithID(4).WithDate(now),
 				}}},
@@ -882,8 +882,8 @@ func TestEmitterIntegration_FilteredLogDoesNotSkipPendingBatchOnFailure(t *testi
 
 		cfg := events.DefaultEmitterConfig()
 		cfg.BatchSize = 2
-		cfg.EventTypes = map[commonpb.EventType]struct{}{
-			commonpb.EventType_COMMITTED_TRANSACTION: {},
+		cfg.EventTypes = map[ledgerpb.EventType]struct{}{
+			ledgerpb.EventType_COMMITTED_TRANSACTION: {},
 		}
 
 		emitter := events.NewEmitter(store, sink, "lossy-sink", proposer, newPlanBuilder(t, store), logger, cfg)

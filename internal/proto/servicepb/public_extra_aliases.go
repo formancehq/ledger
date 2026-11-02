@@ -1,0 +1,21 @@
+package servicepb
+
+import "github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
+
+const CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_LEDGER_INFO_MISMATCH = ledgerpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_LEDGER_INFO_MISMATCH
+
+type BucketService_ListAccountsClient = ledgerpb.BucketService_ListAccountsClient
+type BucketService_ListTransactionsClient = ledgerpb.BucketService_ListTransactionsClient
+type AnalyzeNumscriptRequest = ledgerpb.AnalyzeNumscriptRequest
+type AnalyzeNumscriptResponse = ledgerpb.AnalyzeNumscriptResponse
+type NumscriptInput = ledgerpb.NumscriptInput
+type NumscriptDiagnostic = ledgerpb.NumscriptDiagnostic
+type NumscriptDiagnosticKind = ledgerpb.NumscriptDiagnosticKind
+
+const (
+	NumscriptDiagnosticKind_NUMSCRIPT_DIAGNOSTIC_KIND_UNSPECIFIED = ledgerpb.NumscriptDiagnosticKind_NUMSCRIPT_DIAGNOSTIC_KIND_UNSPECIFIED
+	NumscriptDiagnosticKind_NUMSCRIPT_DIAGNOSTIC_KIND_VERSION     = ledgerpb.NumscriptDiagnosticKind_NUMSCRIPT_DIAGNOSTIC_KIND_VERSION
+	NumscriptDiagnosticKind_NUMSCRIPT_DIAGNOSTIC_KIND_SYNTAX      = ledgerpb.NumscriptDiagnosticKind_NUMSCRIPT_DIAGNOSTIC_KIND_SYNTAX
+	NumscriptDiagnosticKind_NUMSCRIPT_DIAGNOSTIC_KIND_FEATURE     = ledgerpb.NumscriptDiagnosticKind_NUMSCRIPT_DIAGNOSTIC_KIND_FEATURE
+	NumscriptDiagnosticKind_NUMSCRIPT_DIAGNOSTIC_KIND_COMPILE     = ledgerpb.NumscriptDiagnosticKind_NUMSCRIPT_DIAGNOSTIC_KIND_COMPILE
+)

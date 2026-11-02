@@ -38,10 +38,10 @@ func runConflict(ctx context.Context, client servicepb.BucketServiceClient, ledg
 				Ledger: ledger,
 				Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
 					CreateTransaction: &servicepb.CreateTransactionPayload{
-						Postings: []*commonpb.Posting{{
+						Postings: []*ledgerpb.Posting{{
 							Source:      "world",
 							Destination: "users:0",
-							Amount:      commonpb.NewUint256FromUint64(firstAmount),
+							Amount:      ledgerpb.NewUint256FromUint64(firstAmount),
 							Asset:       "USD/2",
 						}},
 						Force: true,
@@ -73,7 +73,7 @@ func runConflict(ctx context.Context, client servicepb.BucketServiceClient, ledg
 				Ledger: ledger,
 				Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
 					CreateTransaction: &servicepb.CreateTransactionPayload{
-						Postings: []*commonpb.Posting{conflict},
+						Postings: []*ledgerpb.Posting{conflict},
 						Force:    true,
 					},
 				}},
@@ -102,10 +102,10 @@ func runConflict(ctx context.Context, client servicepb.BucketServiceClient, ledg
 // conflictingPosting preserves the original destination/asset conflict unless
 // amountOnly is selected. Equal Hegel draws must still produce a conflict;
 // toggling one bit works at both zero and MaxUint64 without overflow.
-func conflictingPosting(firstAmount, amount uint64, amountOnly bool) *commonpb.Posting {
-	posting := &commonpb.Posting{
+func conflictingPosting(firstAmount, amount uint64, amountOnly bool) *ledgerpb.Posting {
+	posting := &ledgerpb.Posting{
 		Source: "world", Destination: "users:1", Asset: "EUR/2",
-		Amount: commonpb.NewUint256FromUint64(amount),
+		Amount: ledgerpb.NewUint256FromUint64(amount),
 	}
 	if amountOnly {
 		if amount == firstAmount {
@@ -113,7 +113,7 @@ func conflictingPosting(firstAmount, amount uint64, amountOnly bool) *commonpb.P
 		}
 		posting.Destination = "users:0"
 		posting.Asset = "USD/2"
-		posting.Amount = commonpb.NewUint256FromUint64(amount)
+		posting.Amount = ledgerpb.NewUint256FromUint64(amount)
 	}
 
 	return posting

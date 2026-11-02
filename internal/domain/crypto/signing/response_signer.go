@@ -91,12 +91,12 @@ func VerifyResponseSignature(sr *signaturepb.SignedLog, publicKey ed25519.Public
 // VerifyResponseLog authenticates the log that the caller will consume, not
 // merely its detached signature envelope. Compare decoded protobuf values so
 // equivalent wire encodings from other clients do not require identical bytes.
-func VerifyResponseLog(log *commonpb.Log, publicKey ed25519.PublicKey) error {
+func VerifyResponseLog(log *ledgerpb.Log, publicKey ed25519.PublicKey) error {
 	if err := VerifyResponseSignature(log.GetResponseSignature(), publicKey); err != nil {
 		return err
 	}
 
-	var authenticated commonpb.Log
+	var authenticated ledgerpb.Log
 	if err := authenticated.UnmarshalVT(log.GetResponseSignature().GetPayload()); err != nil {
 		return fmt.Errorf("decode signed response log: %w", err)
 	}

@@ -1064,7 +1064,7 @@ func TestCompile_AbsentVersionRecordIsRemovedNotBuilding(t *testing.T) {
 			t.Parallel()
 
 			_, err := Compile(filter, CompileOptions{
-				Target:        commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
+				Target:        ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
 				LedgerName:    ledgerName,
 				Schema:        schema,
 				LedgerInfo:    info,

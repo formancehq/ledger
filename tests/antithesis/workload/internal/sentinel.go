@@ -26,7 +26,7 @@ type Sentinel struct {
 	Ledger    string
 	Reference string
 	TxID      uint64
-	expected  *commonpb.Transaction
+	expected  *ledgerpb.Transaction
 }
 
 // PreCommitSentinel commits a transaction with a unique reference and a
@@ -40,9 +40,9 @@ func PreCommitSentinel(ctx context.Context, client servicepb.BucketServiceClient
 	ref := fmt.Sprintf("sentinel-%d-%d", Rand().Uint64(), Rand().Uint64())
 	destination := fmt.Sprintf("sentinel:%d", Rand().Uint64())
 
-	var posting *commonpb.Posting
+	var posting *ledgerpb.Posting
 	if err := RunOperationalGeneration("sentinel", func(src *generation.Source) {
-		posting = commonpb.NewPosting("world", destination, "COIN", GeneratedBigInt(src))
+		posting = ledgerpb.NewPosting("world", destination, "COIN", GeneratedBigInt(src))
 	}); err != nil {
 		return nil, fmt.Errorf("generate sentinel: %w", err)
 	}
@@ -54,8 +54,8 @@ func PreCommitSentinel(ctx context.Context, client servicepb.BucketServiceClient
 				Ledger: ledger,
 				Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
 					CreateTransaction: &servicepb.CreateTransactionPayload{
-						Postings:  []*commonpb.Posting{posting},
-						Metadata:  map[string]*commonpb.MetadataValue{"sentinel": commonpb.NewStringValue(ref)},
+						Postings:  []*ledgerpb.Posting{posting},
+						Metadata:  map[string]*ledgerpb.MetadataValue{"sentinel": ledgerpb.NewStringValue(ref)},
 						Reference: ref,
 						Force:     true,
 					},
@@ -76,12 +76,12 @@ func PreCommitSentinel(ctx context.Context, client servicepb.BucketServiceClient
 }
 
 // newSentinel owns its snapshot; callers may reuse or mutate the Apply response.
-func newSentinel(ledger string, transaction *commonpb.Transaction) *Sentinel {
+func newSentinel(ledger string, transaction *ledgerpb.Transaction) *Sentinel {
 	return &Sentinel{
 		Ledger:    ledger,
 		Reference: transaction.GetReference(),
 		TxID:      transaction.GetId(),
-		expected:  proto.Clone(transaction).(*commonpb.Transaction),
+		expected:  proto.Clone(transaction).(*ledgerpb.Transaction),
 	}
 }
 

@@ -898,7 +898,7 @@ func newFilter(expectedKeys uint, fpRate float64, attrCode byte, meter metric.Me
 
 // NewFilterSet creates a stable lifecycle handle. Even a disabled committed
 // configuration needs a handle so a later committed update can enable filters.
-func NewFilterSet(cfg *commonpb.ClusterConfig, meter metric.Meter) *FilterSet {
+func NewFilterSet(cfg *ledgerpb.ClusterConfig, meter metric.Meter) *FilterSet {
 	if meter == nil {
 		meter = noop.Meter{}
 	}

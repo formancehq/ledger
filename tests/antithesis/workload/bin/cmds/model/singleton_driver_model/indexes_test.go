@@ -511,7 +511,7 @@ func TestGenerateIndexOp_UndeclaredFieldsOnBothTargets(t *testing.T) {
 		src := generation.NewSource(ht)
 
 		gs := oracle.NewGlobalState()
-		seen := map[commonpb.TargetType]bool{}
+		seen := map[ledgerpb.TargetType]bool{}
 		for range 4096 {
 			req := generateIndexOp(src, gs, "L")
 			field := req.GetCreateIndex().GetId().GetMetadata()
@@ -523,9 +523,9 @@ func TestGenerateIndexOp_UndeclaredFieldsOnBothTargets(t *testing.T) {
 			require.False(t, res.OK)
 			require.Equal(t, "METADATA_FIELD_NOT_IN_SCHEMA", res.Reason)
 		}
-		require.Equal(t, map[commonpb.TargetType]bool{
-			commonpb.TargetType_TARGET_TYPE_ACCOUNT:     true,
-			commonpb.TargetType_TARGET_TYPE_TRANSACTION: true,
+		require.Equal(t, map[ledgerpb.TargetType]bool{
+			ledgerpb.TargetType_TARGET_TYPE_ACCOUNT:     true,
+			ledgerpb.TargetType_TARGET_TYPE_TRANSACTION: true,
 		}, seen)
 	}, hegel.WithTestCases(1), hegel.WithDatabase(""), hegel.WithBackend(hegel.BackendURandom))
 }

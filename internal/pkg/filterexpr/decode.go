@@ -22,9 +22,7 @@ import (
 // The two representations are:
 //
 //   - structured — the v2 QueryFilter JSON DSL ($and/$or/$not + $match/$gt/…),
-//     decoded by commonpb.DecodeQueryFilterJSON (query_filter.go). The target
-//     distinguishes log `id` from transaction `id`; context-free
-//     QueryFilter.UnmarshalJSON uses transaction semantics;
+//     decoded by ledgerpb.DecodeQueryFilterJSON (query_filter.go);
 //   - textual    — the human-readable filterexpr grammar (metadata[k] == v,
 //     outcome == failure, …), parsed by Parse.
 //
@@ -98,7 +96,7 @@ func decodeDualFormat(raw []byte, target ledgerpb.QueryTarget) (*ledgerpb.QueryF
 	switch trimmed[0] {
 	case '{':
 		// Structured v2 QueryFilter JSON DSL.
-		filter, err := commonpb.DecodeQueryFilterJSON(trimmed, target)
+		filter, err := ledgerpb.DecodeQueryFilterJSON(trimmed, target)
 		if err != nil {
 			return nil, fmt.Errorf("filter: %w", err)
 		}
