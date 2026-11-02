@@ -1,5 +1,24 @@
 # API boundary audit evidence and ownership
 
+## Maintenance rejection retry hints
+
+Validated Ledger `MAINTENANCE_MODE` errors retain `Unavailable` and their full
+status details while the unary and streaming error interceptors attach
+`grpc-retry-pushback-ms: -1`. Native gRPC retries stop when this rejection arrives,
+including through a forwarding node that reconstructs the hint. Verify both
+local and decoded forwarded errors at the actual interceptor boundary with
+`actions.GRPCRetryPolicy`; assert one attempt and exact status preservation.
+Foreign details, bare statuses, and invalid reason/code pairs do not receive
+the hint. Preserve a real fail-then-success control for ordinary unavailable
+errors and a CLI regression for the clear maintenance message. The regressions
+are in `internal/adapter/grpc/maintenance_retry_test.go` and
+`cmd/ledgerctl/cmdutil/errors_test.go`.
+
+This is a transport/presentation contract. It does not establish that an earlier
+attempt did not commit or prohibit explicit application retry loops; keyed
+recovery and the Antithesis retry-forever contract remain owned by
+`idempotency-retries-partial-failures`.
+
 The [manifest](api-boundary-contracts.json) scopes a reusable audit of how HTTP,
 service gRPC and `ledgerctl` translate inputs and expose results. Existing domains
 cover the correctness of the resulting business operations and durable state;
