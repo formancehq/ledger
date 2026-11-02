@@ -2445,8 +2445,6 @@ func (node *Node) handleProposal(p *Proposal) {
 	if err == nil {
 		if validationErr := capabilities.ValidateFinalProposal(p.data, p.requiredCapabilities); validationErr != nil {
 			err = validationErr
-		} else {
-			err = node.rawNode.Propose(p.data)
 		}
 	}
 	if err == nil {
