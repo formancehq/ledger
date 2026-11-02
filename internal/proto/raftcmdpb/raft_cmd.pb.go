@@ -2195,9 +2195,12 @@ func (x *MirrorDeletedMetadata) GetKey() string {
 }
 
 type PromoteLedgerOrder struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// New orders require the FSM catch-up check. Legacy persisted orders lack
+	// this field and retain their original apply semantics during replay.
+	RequireCatchUp bool `protobuf:"varint,1,opt,name=require_catch_up,json=requireCatchUp,proto3" json:"require_catch_up,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
 }
 
 func (x *PromoteLedgerOrder) Reset() {
@@ -2228,6 +2231,13 @@ func (x *PromoteLedgerOrder) ProtoReflect() protoreflect.Message {
 // Deprecated: Use PromoteLedgerOrder.ProtoReflect.Descriptor instead.
 func (*PromoteLedgerOrder) Descriptor() ([]byte, []int) {
 	return file_raft_cmd_proto_rawDescGZIP(), []int{28}
+}
+
+func (x *PromoteLedgerOrder) GetRequireCatchUp() bool {
+	if x != nil {
+		return x.RequireCatchUp
+	}
+	return false
 }
 
 type DeleteLedgerOrder struct {
@@ -5891,8 +5901,9 @@ const file_raft_cmd_proto_rawDesc = "" +
 	"\x05value\x18\x02 \x01(\v2\x15.common.MetadataValueR\x05value:\x028\x01\"Q\n" +
 	"\x15MirrorDeletedMetadata\x12&\n" +
 	"\x06target\x18\x01 \x01(\v2\x0e.common.TargetR\x06target\x12\x10\n" +
-	"\x03key\x18\x02 \x01(\tR\x03key\"\x14\n" +
-	"\x12PromoteLedgerOrder\"\x13\n" +
+	"\x03key\x18\x02 \x01(\tR\x03key\">\n" +
+	"\x12PromoteLedgerOrder\x12(\n" +
+	"\x10require_catch_up\x18\x01 \x01(\bR\x0erequireCatchUp\"\x13\n" +
 	"\x11DeleteLedgerOrder\"\xb8\a\n" +
 	"\x10LedgerApplyOrder\x12M\n" +
 	"\x12create_transaction\x18\x01 \x01(\v2\x1c.raft.CreateTransactionOrderH\x00R\x11createTransaction\x12<\n" +

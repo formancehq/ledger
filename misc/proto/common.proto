@@ -1002,6 +1002,7 @@ message FailureDetails {
     NumscriptScopedMetadataNotFoundDetails numscript_scoped_metadata_not_found = 146 [(failure_reason) = ERROR_REASON_NUMSCRIPT_EXECUTION_ERROR];
     NumscriptScopedNegativeBalanceDetails numscript_scoped_negative_balance = 147 [(failure_reason) = ERROR_REASON_NUMSCRIPT_EXECUTION_ERROR];
     NumscriptVersionNotFoundDetails numscript_version_not_found = 148 [(failure_reason) = ERROR_REASON_NUMSCRIPT_NOT_FOUND];
+    MirrorNotCaughtUpDetails mirror_not_caught_up = 149 [(failure_reason) = ERROR_REASON_MIRROR_NOT_CAUGHT_UP];
   }
 }
 
@@ -1227,6 +1228,13 @@ message AccountMetadataValueContainsNullByteDetails {
 }
 
 message MirrorHttpUrlInvalidDetails {
+}
+
+message MirrorNotCaughtUpDetails {
+  optional string name = 1;
+  optional uint64 cursor = 2;
+  optional uint64 source_log_count = 3;
+  optional bool sync_error = 4;
 }
 
 message MirrorIamRegionRequiredDetails {
@@ -2216,6 +2224,9 @@ enum ErrorReason {
   // meta(), so the same script may succeed against other state
   // (Kind=Precondition).
   ERROR_REASON_NUMSCRIPT_EXECUTION_ERROR = 74;
+  // A mirror cannot become writable until it reaches the latest source head
+  // observed by the replicated sync worker and has no recorded sync error.
+  ERROR_REASON_MIRROR_NOT_CAUGHT_UP = 75;
 }
 
 // IdempotencyFailure captures a definitive business rejection so a retried key

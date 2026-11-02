@@ -2285,10 +2285,15 @@ func NewMirrorDeletedMetadataListReader(s []*MirrorDeletedMetadata) MirrorDelete
 // PromoteLedgerOrderReader provides read-only access to PromoteLedgerOrder.
 // Call Mutate() to obtain a mutable clone.
 type PromoteLedgerOrderReader interface {
+	GetRequireCatchUp() bool
 	Mutate() *PromoteLedgerOrder
 }
 
 type promoteLedgerOrderReadonly PromoteLedgerOrder
+
+func (r *promoteLedgerOrderReadonly) GetRequireCatchUp() bool {
+	return (*PromoteLedgerOrder)(r).GetRequireCatchUp()
+}
 
 func (r *promoteLedgerOrderReadonly) Mutate() *PromoteLedgerOrder {
 	return (*PromoteLedgerOrder)(r).CloneVT()

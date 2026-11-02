@@ -1593,7 +1593,7 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 	// never re-walks `logs` to rebuild them.
 	var ordersResult *processing.OrdersResult
 	if err == nil {
-		ordersResult, err = fsm.processor.ProcessOrders(orders, scopeFactory, buffer)
+		ordersResult, err = fsm.processor.ProcessOrders(orders, scopeFactory, buffer, buffer.mirrorPromotionProgress)
 		if ordersResult != nil {
 			logs = ordersResult.Logs
 		}

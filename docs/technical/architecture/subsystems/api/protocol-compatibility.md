@@ -26,16 +26,14 @@ before calling the new RPC. The operation has no persisted, Raft, snapshot,
 backup, or audit format effect.
 
 EN-3037 retains revision 40 and the existing `PromoteLedgerRequest` message.
-New servers reject mirror promotion before proposal when the mirror is not
-caught up; old clients can decode the `FailedPrecondition` status. No `force`
-field or new protobuf error reason is added. During a rolling upgrade, send
-mirror promotion requests to an upgraded leader to obtain the guard. Existing
-committed mirror promotion entries retain their original apply semantics on
-mixed voters.
-
-The mirror precondition carries a generic `INVALID_REQUEST` ErrorInfo detail
-with `FailedPrecondition` so forwarding through a follower preserves its HTTP
-400 classification; it does not add a protobuf enum value.
+New promotion orders carry `require_catch_up`; the FSM checks the replicated
+source-head observation, ingestion cursor, and synchronization error after
+idempotency replay. A failed check has the dedicated
+`ERROR_REASON_MIRROR_NOT_CAUGHT_UP` reason and `FailedPrecondition` status.
+Historical orders without the flag retain their committed behavior. The
+`rc.2` to `rc.3` upgrade is stopped because mixed voters could otherwise
+apply a new promotion differently. Clients that classify errors by reason
+must recognize the new value; clients can still decode the status and request.
 
 ## Wire contract and failure behavior
 

@@ -9498,6 +9498,88 @@ func NewMirrorHttpUrlInvalidDetailsListReader(s []*MirrorHttpUrlInvalidDetails) 
 	return mirrorHttpUrlInvalidDetailsListReadonly(s)
 }
 
+// MirrorNotCaughtUpDetailsReader provides read-only access to MirrorNotCaughtUpDetails.
+// Call Mutate() to obtain a mutable clone.
+type MirrorNotCaughtUpDetailsReader interface {
+	GetName() string
+	GetCursor() uint64
+	GetSourceLogCount() uint64
+	GetSyncError() bool
+	Mutate() *MirrorNotCaughtUpDetails
+}
+
+type mirrorNotCaughtUpDetailsReadonly MirrorNotCaughtUpDetails
+
+func (r *mirrorNotCaughtUpDetailsReadonly) GetName() string {
+	return (*MirrorNotCaughtUpDetails)(r).GetName()
+}
+
+func (r *mirrorNotCaughtUpDetailsReadonly) GetCursor() uint64 {
+	return (*MirrorNotCaughtUpDetails)(r).GetCursor()
+}
+
+func (r *mirrorNotCaughtUpDetailsReadonly) GetSourceLogCount() uint64 {
+	return (*MirrorNotCaughtUpDetails)(r).GetSourceLogCount()
+}
+
+func (r *mirrorNotCaughtUpDetailsReadonly) GetSyncError() bool {
+	return (*MirrorNotCaughtUpDetails)(r).GetSyncError()
+}
+
+func (r *mirrorNotCaughtUpDetailsReadonly) Mutate() *MirrorNotCaughtUpDetails {
+	return (*MirrorNotCaughtUpDetails)(r).CloneVT()
+}
+
+// AsReader returns a read-only view of this MirrorNotCaughtUpDetails.
+func (m *MirrorNotCaughtUpDetails) AsReader() MirrorNotCaughtUpDetailsReader {
+	if m == nil {
+		return nil
+	}
+	return (*mirrorNotCaughtUpDetailsReadonly)(m)
+}
+
+// Mutate returns a mutable deep clone of this MirrorNotCaughtUpDetails.
+func (m *MirrorNotCaughtUpDetails) Mutate() *MirrorNotCaughtUpDetails {
+	return m.CloneVT()
+}
+
+// MirrorNotCaughtUpDetailsListReader provides read-only iteration over []*MirrorNotCaughtUpDetails.
+type MirrorNotCaughtUpDetailsListReader interface {
+	Len() int
+	Get(i int) MirrorNotCaughtUpDetailsReader
+	Range(yield func(int, MirrorNotCaughtUpDetailsReader) bool)
+}
+
+type mirrorNotCaughtUpDetailsListReadonly []*MirrorNotCaughtUpDetails
+
+func (l mirrorNotCaughtUpDetailsListReadonly) Len() int { return len(l) }
+
+func (l mirrorNotCaughtUpDetailsListReadonly) Get(i int) MirrorNotCaughtUpDetailsReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l mirrorNotCaughtUpDetailsListReadonly) Range(yield func(int, MirrorNotCaughtUpDetailsReader) bool) {
+	for i, v := range l {
+		var r MirrorNotCaughtUpDetailsReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewMirrorNotCaughtUpDetailsListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewMirrorNotCaughtUpDetailsListReader(s []*MirrorNotCaughtUpDetails) MirrorNotCaughtUpDetailsListReader {
+	return mirrorNotCaughtUpDetailsListReadonly(s)
+}
+
 // MirrorIamRegionRequiredDetailsReader provides read-only access to MirrorIamRegionRequiredDetails.
 // Call Mutate() to obtain a mutable clone.
 type MirrorIamRegionRequiredDetailsReader interface {

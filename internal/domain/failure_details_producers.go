@@ -297,6 +297,12 @@ func (e *ErrLedgerNotInMirrorMode) FailureDetails() *commonpb.FailureDetails {
 	}}}
 }
 
+func (e *ErrMirrorNotCaughtUp) FailureDetails() *commonpb.FailureDetails {
+	return &commonpb.FailureDetails{Kind: &commonpb.FailureDetails_MirrorNotCaughtUp{MirrorNotCaughtUp: &commonpb.MirrorNotCaughtUpDetails{
+		Name: new(e.Name), Cursor: new(e.Cursor), SourceLogCount: new(e.Head), SyncError: new(e.SyncError),
+	}}}
+}
+
 func (e *ErrMirrorV2LogIDGap) FailureDetails() *commonpb.FailureDetails {
 	return nil // Technical failures are never persisted as audited outcomes.
 }

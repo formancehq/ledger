@@ -2,13 +2,10 @@
 
 Admission (`internal/application/admission`) prepares Raft proposals. Client `Apply` requests become audited execution batches after signature validation, order conversion, and preload. The internal cluster-policy reconciler creates a separate operational-control proposal with no orders. Both forms share caller attribution, write gates, guarded submission, and result handling.
 
-For `PromoteLedger`, admission checks the mirror's durable cursor, latest
-observed source head, and replicated synchronization error before proposal.
-This guard is local to admission so rolling RC voters apply the same committed
-order identically. An unknown source head is rejected; an observed head alone
-does not prove that the external source has stopped advancing.
-The batch scan and per-promotion snapshot budget are documented in the
-[pipeline cost boundary](pipeline.md#mirror-promotion-admission-budget).
+For `PromoteLedger`, admission marks new orders for a catch-up check. The FSM
+checks the durable mirror cursor, replicated source-head observation, and sync
+error after idempotency replay. An unknown source head is rejected. The
+observed head does not prove the external source has stopped advancing.
 
 ## Documents
 
