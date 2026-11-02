@@ -178,7 +178,7 @@ Admission validates **structural correctness** (UX-fast feedback before Raft): c
 
 The FSM validates **behavioural invariants** (audit-bound): balance sufficiency, account-type constraints, overflow, already-reverted transactions, etc.
 
-Both layers share the same domain sentinels (`domain.BusinessError`, `domain.ErrXxx`) so that an end-state caught at both layers reports the same error. See [validation.md](validation.md) for the per-rule split and the rationale.
+Both layers share the same domain sentinels (`domain.BusinessError`, `domain.ErrXxx`) so that an end-state caught at both layers reports the same error. The caller-attribution guard is deliberately an internal `Classifiable` rather than a `BusinessError`: it is a trust-boundary violation, not a client-visible business outcome. See [validation.md](validation.md) for the per-rule split and the rationale.
 
 Node-local operational policy is a separate category. Flags, environment variables, startup configuration, and version-dependent defaults may reject a request in admission, but must never alter how the FSM applies a committed entry. Differently configured leaders may therefore make different admission decisions during a rolling upgrade without risking replica divergence. See [FSM configuration boundary](../fsm/deterministic-fsm.md#34-node-local-configuration-and-rolling-upgrades), including the distinction between a soft admission limit and a strict reserved limit.
 

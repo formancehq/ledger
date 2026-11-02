@@ -55,6 +55,24 @@ contract and current code. Historical deployment snippets likewise may use an
 old CR shape. Conflicting sources, unspecified empty/zero semantics, or an
 unclear strict-versus-soft limit become audit questions, not asserted defects.
 
+## Cache rotation default handoff evidence
+
+Follow explicit zero, the omitted CLI default and a positive custom threshold
+through loading, validation, node construction and the serialized leader
+proposal. The initial cache and the captured committed configuration must use
+1000 for zero/default and retain positive custom values. Apply the captured
+bytes through the FSM and verify the persisted threshold; a matching committed
+1000 must not cause a redundant proposal when the desired input is zero.
+Preserve the shared Bloom message and caller-owned raw configuration.
+
+Use the bootstrap proposal-default regressions and the server subprocess
+restart regression as distinct evidence. The latter must observe a full
+persisted ClusterConfig, rather than the RPC's cache-only fallback, before
+stopping and restarting against the same storage. This proves prevention for
+new entries; it does not prove replay recovery of a historical committed zero.
+Keep that recovery limitation and mixed-version leader restrictions explicit
+in the cluster operations guidance.
+
 ## Byte-size input evidence
 
 Byte-size flags accept only non-negative expanded counts representable by int64.

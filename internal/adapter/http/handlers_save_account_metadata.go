@@ -1,10 +1,7 @@
 package http
 
 import (
-	"errors"
 	"net/http"
-
-	"github.com/go-chi/chi/v5"
 
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
@@ -17,10 +14,8 @@ func (s *Server) handleSaveAccountMetadata(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	address := chi.URLParam(r, "address")
-	if address == "" {
-		writeBadRequest(w, "INVALID_REQUEST", errors.New("account address is required"))
-
+	address, ok := requirePathParameter(w, r, "address", "account address")
+	if !ok {
 		return
 	}
 

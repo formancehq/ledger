@@ -78,7 +78,7 @@ func TestHandleListAccounts_WithPagination(t *testing.T) {
 // replacement for the removed `prefix=` alias: an address-prefix selection
 // passed through the generic `filter` as the textual `address ^= "<prefix>"`
 // reaches the backend as the same AddressMatch_HardcodedPrefix the old alias
-// produced, and the removed alias is no longer interpreted.
+// produced. Query rejection is covered at the router boundary.
 func TestHandleListAccounts_PrefixFilterCanonicalReplacement(t *testing.T) {
 	t.Parallel()
 
@@ -111,11 +111,6 @@ func TestHandleListAccounts_PrefixFilterCanonicalReplacement(t *testing.T) {
 	require.NotNil(t, fromFilter)
 	require.Equal(t, "users:", fromFilter.GetAddress().GetHardcodedPrefix(),
 		"textual address-prefix filter must reach the backend as HardcodedPrefix")
-
-	// The removed `prefix=` alias must no longer be interpreted: passed alone
-	// (no `filter=`), it yields an unfiltered read (nil filter).
-	aliasOnly := capture(t, "/ledger1/accounts?prefix=users:")
-	require.Nil(t, aliasOnly, "the removed prefix= alias must not build a filter")
 }
 
 func TestHandleListAccounts_InvalidPageSize(t *testing.T) {

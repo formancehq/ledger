@@ -2,9 +2,14 @@ package ctrl
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
 	"time"
 
+	"github.com/dustin/go-humanize"
 	"golang.org/x/sync/errgroup"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -27,11 +32,21 @@ const (
 	// blocks along with it (node.Run's WaitForApplied → /readyz → pod stuck
 	// at 0/1 for the whole probe budget).
 	prepareSnapshotTimeout = 60 * time.Second
+	// snapshotReadinessTimeout bounds the cheap donor probe independently from
+	// the much longer PrepareSnapshot timeout. A stalled donor must not block
+	// trying the next candidate.
+	snapshotReadinessTimeout = 5 * time.Second
 	// prepareSnapshotHeartbeat drives the periodic "still waiting" log
 	// during PrepareSnapshot. It's short enough to be visible during a
 	// human operator's live look, long enough not to flood.
 	prepareSnapshotHeartbeat = 10 * time.Second
 )
+
+// errSnapshotDonorIntegrity marks failures that are specific to a donor's
+// advertised checkpoint or streamed bytes. They are safe reasons to discard
+// the current donor session and try another candidate; local staging errors
+// deliberately do not use this sentinel.
+var errSnapshotDonorIntegrity = errors.New("snapshot donor integrity")
 
 // snapshotClientSource resolves the client for the peer being synced from.
 // It is called before every attempt so a fetch survives the Raft transport
@@ -46,6 +61,118 @@ type grpcSnapshotFetcher struct {
 	parallelism    int
 	retryCount     int
 	fileRetryCount int
+	checkReadiness bool
+}
+
+type snapshotDonorCandidate struct {
+	id       uint64
+	newFetch func() (state.SnapshotFetcher, error)
+}
+
+// fallbackSnapshotFetcher tries one complete checkpoint session per donor.
+// Sessions are never mixed: a session ID and its manifest belong to exactly
+// one donor, so changing source is only safe after the previous attempt has
+// been discarded and the staging directory has been reset.
+type fallbackSnapshotFetcher struct {
+	candidates []snapshotDonorCandidate
+	logger     logging.Logger
+}
+
+func (f *fallbackSnapshotFetcher) FetchSnapshot(ctx context.Context, targetDir string, progress *state.SyncProgress, minAppliedIndex uint64) (uint64, error) {
+	if len(f.candidates) == 0 {
+		return 0, fmt.Errorf("snapshot fetch: %w", state.ErrNotAvailable)
+	}
+
+	errs := make([]error, 0, len(f.candidates))
+	for i, candidate := range f.candidates {
+		if i > 0 {
+			if err := resetSnapshotTargetDir(targetDir); err != nil {
+				return 0, fmt.Errorf("resetting snapshot staging directory before donor %d: %w", candidate.id, err)
+			}
+			if progress != nil {
+				progress.Reset()
+			}
+		}
+
+		fetcher, err := candidate.newFetch()
+		if err != nil {
+			errs = append(errs, fmt.Errorf("donor %d: %w", candidate.id, err))
+
+			continue
+		}
+
+		size, err := fetcher.FetchSnapshot(ctx, targetDir, progress, minAppliedIndex)
+		if err == nil {
+			return size, nil
+		}
+
+		errs = append(errs, fmt.Errorf("donor %d: %w", candidate.id, err))
+		if !isDonorFallbackError(ctx, err) {
+			return 0, err
+		}
+
+		f.logger.WithFields(map[string]any{
+			"donor":           candidate.id,
+			"minAppliedIndex": minAppliedIndex,
+			"error":           err.Error(),
+		}).Errorf("Snapshot donor failed, trying next candidate")
+	}
+
+	return 0, fmt.Errorf("snapshot fetch failed from all donors: %w", errors.Join(errs...))
+}
+
+func isDonorFallbackError(ctx context.Context, err error) bool {
+	if errors.Is(err, state.ErrNotAvailable) || errors.Is(err, state.ErrSnapshotNotReady) || errors.Is(err, errSnapshotDonorIntegrity) {
+		return true
+	}
+	// PrepareSnapshot reports a donor that is itself resynchronizing as a
+	// FailedPrecondition. The status is donor-specific: another member may
+	// already have a checkpointable store, so keep walking the candidates.
+	if isDonorResynchronizingError(err) {
+		return true
+	}
+	// The heartbeat wrapper has its own deadline. When it expires while the
+	// overall sync context is still live, only this donor timed out and the
+	// next donor should get a chance.
+	if errors.Is(err, context.DeadlineExceeded) && ctx.Err() == nil {
+		return true
+	}
+
+	for current := err; current != nil; current = errors.Unwrap(current) {
+		if isRetryableError(ctx, current) || isSessionExpired(current) {
+			return true
+		}
+	}
+
+	return false
+}
+
+func isDonorResynchronizingError(err error) bool {
+	s, ok := status.FromError(err)
+
+	return ok && s.Code() == codes.FailedPrecondition && strings.Contains(s.Message(), state.ErrStoreResynchronizing.Error())
+}
+
+// resetSnapshotTargetDir removes only the contents of the restore staging
+// directory. IncomingRestoreFactory owns this directory, so clearing it
+// between donor sessions cannot affect the live Pebble store.
+func resetSnapshotTargetDir(targetDir string) error {
+	entries, err := os.ReadDir(targetDir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+
+		return err
+	}
+
+	for _, entry := range entries {
+		if err := os.RemoveAll(filepath.Join(targetDir, entry.Name())); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 // isUnavailableError checks if the error is a gRPC Unavailable error (connection refused, etc.)
@@ -85,8 +212,49 @@ func isSessionExpired(err error) bool {
 	return false
 }
 
+func (f *grpcSnapshotFetcher) checkSnapshotReadiness(ctx context.Context, client snapshotpb.SnapshotServiceClient, minAppliedIndex uint64) error {
+	// TODO(v3.0.0-rc.1): remove this compatibility probe before v3.0.0-rc.2.
+	probeCtx, cancel := context.WithTimeout(ctx, snapshotReadinessTimeout)
+	defer cancel()
+
+	resp, err := client.CheckSnapshotReadiness(probeCtx, &snapshotpb.CheckSnapshotReadinessRequest{
+		MinAppliedIndex: minAppliedIndex,
+	})
+	if err != nil {
+		// Mixed-version clusters may contain a donor that predates this probe.
+		// Keep the existing PrepareSnapshot path as the compatibility fallback;
+		// newer donors still get the cheap readiness filter.
+		if status.Code(err) == codes.Unimplemented {
+			return nil
+		}
+
+		return fmt.Errorf("checking snapshot readiness: %w", err)
+	}
+	if resp.GetReady() {
+		return nil
+	}
+
+	return fmt.Errorf("%w: last persisted index %d is below requested index %d (resynchronizing=%t)",
+		state.ErrSnapshotNotReady,
+		resp.GetLastPersistedIndex(),
+		minAppliedIndex,
+		resp.GetResynchronizing(),
+	)
+}
+
+func isRetryableSnapshotError(ctx context.Context, err error) bool {
+	for current := err; current != nil; current = errors.Unwrap(current) {
+		if isRetryableError(ctx, current) || isSessionExpired(current) {
+			return true
+		}
+	}
+
+	return false
+}
+
 func (f *grpcSnapshotFetcher) FetchSnapshot(ctx context.Context, targetDir string, progress *state.SyncProgress, minAppliedIndex uint64) (uint64, error) {
 	logger := f.logger.WithContext(ctx)
+	var lastErr error
 
 	for attempt := range f.retryCount {
 		if attempt > 0 {
@@ -102,16 +270,44 @@ func (f *grpcSnapshotFetcher) FetchSnapshot(ctx context.Context, targetDir strin
 			return 0, fmt.Errorf("snapshot fetch: %w: %w", state.ErrNotAvailable, err)
 		}
 
+		if f.checkReadiness {
+			if err := f.checkSnapshotReadiness(ctx, client, minAppliedIndex); err != nil {
+				lastErr = err
+
+				if errors.Is(err, state.ErrSnapshotNotReady) {
+					return 0, err
+				}
+
+				if !isRetryableSnapshotError(ctx, err) {
+					return 0, err
+				}
+
+				logger.WithFields(map[string]any{
+					"attempt": attempt + 1,
+					"error":   err.Error(),
+				}).Errorf("Snapshot readiness probe failed, will retry")
+
+				if attempt < f.retryCount-1 {
+					if waitErr := sessionBackoffWait(ctx, attempt); waitErr != nil {
+						return 0, waitErr
+					}
+				}
+
+				continue
+			}
+		}
+
 		size, err := f.fetchWithSession(ctx, client, targetDir, progress, minAppliedIndex)
 		if err == nil {
 			return size, nil
 		}
+		lastErr = err
 
 		if isUnavailableError(err) {
 			return 0, fmt.Errorf("snapshot fetch: %w", state.ErrNotAvailable)
 		}
 
-		if !isRetryableError(ctx, err) && !isSessionExpired(err) {
+		if !isRetryableSnapshotError(ctx, err) {
 			return 0, err
 		}
 
@@ -125,6 +321,10 @@ func (f *grpcSnapshotFetcher) FetchSnapshot(ctx context.Context, targetDir strin
 				return 0, waitErr
 			}
 		}
+	}
+
+	if lastErr != nil {
+		return 0, fmt.Errorf("snapshot fetch failed after %d attempts: %w", f.retryCount, lastErr)
 	}
 
 	return 0, fmt.Errorf("snapshot fetch failed after %d attempts", f.retryCount)
@@ -205,16 +405,17 @@ func (f *grpcSnapshotFetcher) fetchWithSession(ctx context.Context, client snaps
 
 	manifest := resp.GetManifest()
 	if err := validateSnapshotManifest(manifest); err != nil {
-		return 0, fmt.Errorf("validating snapshot manifest: %w", err)
+		return 0, fmt.Errorf("%w: validating snapshot manifest: %w", errSnapshotDonorIntegrity, err)
 	}
 
 	totalSize := manifestTotalSize(manifest)
 
 	logger.WithFields(map[string]any{
-		"sessionId":  sessionID,
-		"filesTotal": len(manifest.GetFiles()),
-		"totalSize":  totalSize,
-		"duration":   time.Since(prepareStart).String(),
+		"sessionId":      sessionID,
+		"filesTotal":     len(manifest.GetFiles()),
+		"totalSize":      totalSize,
+		"totalSizeHuman": humanize.IBytes(totalSize),
+		"duration":       time.Since(prepareStart).String(),
 	}).Infof("Snapshot session prepared")
 
 	// 2. Fetch every file in this session. The manifest intentionally carries
@@ -241,8 +442,9 @@ func (f *grpcSnapshotFetcher) fetchWithSession(ctx context.Context, client snaps
 	for _, entry := range pending {
 		g.Go(func() error {
 			logger.WithFields(map[string]any{
-				"path": entry.GetPath(),
-				"size": entry.GetSize(),
+				"path":      entry.GetPath(),
+				"size":      entry.GetSize(),
+				"sizeHuman": humanize.IBytes(entry.GetSize()),
 			}).Infof("Downloading snapshot file")
 
 			if err := ff.fetchFile(gCtx, entry, targetDir, progress); err != nil {
@@ -250,8 +452,9 @@ func (f *grpcSnapshotFetcher) fetchWithSession(ctx context.Context, client snaps
 			}
 
 			fields := map[string]any{
-				"path": entry.GetPath(),
-				"size": entry.GetSize(),
+				"path":      entry.GetPath(),
+				"size":      entry.GetSize(),
+				"sizeHuman": humanize.IBytes(entry.GetSize()),
 			}
 			if progress != nil {
 				fields["filesCompleted"] = progress.FilesCompleted()
@@ -326,6 +529,41 @@ func (p *grpcSnapshotFetcherProvider) GetForPeer(id uint64) (state.SnapshotFetch
 		parallelism:    p.parallelism,
 		retryCount:     p.retryCount,
 		fileRetryCount: p.fileRetryCount,
+		checkReadiness: true,
+	}, nil
+}
+
+// GetForPeers builds a lazy, ordered donor fallback. Connections are resolved
+// only when their candidate is attempted, so one unavailable peer cannot make
+// the whole provider construction fail.
+func (p *grpcSnapshotFetcherProvider) GetForPeers(ids []uint64) (state.SnapshotFetcher, error) {
+	candidates := make([]snapshotDonorCandidate, 0, len(ids))
+	seen := make(map[uint64]struct{}, len(ids))
+	for _, id := range ids {
+		if id == 0 {
+			continue
+		}
+		if _, ok := seen[id]; ok {
+			continue
+		}
+		seen[id] = struct{}{}
+
+		candidateID := id
+		candidates = append(candidates, snapshotDonorCandidate{
+			id: candidateID,
+			newFetch: func() (state.SnapshotFetcher, error) {
+				return p.GetForPeer(candidateID)
+			},
+		})
+	}
+
+	if len(candidates) == 0 {
+		return nil, errors.New("no snapshot donors available")
+	}
+
+	return &fallbackSnapshotFetcher{
+		candidates: candidates,
+		logger:     p.logger,
 	}, nil
 }
 

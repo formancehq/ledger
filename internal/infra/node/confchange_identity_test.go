@@ -141,7 +141,7 @@ func TestFinishReadyCommittedRemovalProtectsAdmissionBeforeApply(t *testing.T) {
 	require.NotContains(t, n.rawNode.Status().Progress, uint64(2))
 	require.NotContains(t, n.membership.PeerAddresses(), uint64(2))
 	require.True(t, n.isRemovalPending(2, identity), "commit observation must protect admission even without an originating RPC")
-	pending, exists := n.pendingRemovals.Load(2)
+	pending, exists := n.pendingRemovals.load(2, 42)
 	require.True(t, exists)
 	require.Equal(t, uint64(42), pending.committedIndex)
 	require.Less(t, n.fsm.LastPersistedIndex(), uint64(42), "commit observation installs the barrier before the FSM applies the removal")

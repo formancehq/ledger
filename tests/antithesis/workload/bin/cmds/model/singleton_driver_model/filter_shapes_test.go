@@ -7,6 +7,7 @@ import (
 	"google.golang.org/genproto/googleapis/rpc/errdetails"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	"hegel.dev/go/hegel"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/domain/indexes"
@@ -14,6 +15,8 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/tests/oracle"
 	"github.com/formancehq/ledger/v3/tests/oracle/oracletest"
+
+	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal/generation"
 )
 
 var listTargets = []commonpb.QueryTarget{
@@ -28,53 +31,56 @@ var listTargets = []commonpb.QueryTarget{
 // window functions, so each target's window only sees what that target accepts.
 func TestAnyFilterShapeIsTotal(t *testing.T) {
 	t.Parallel()
+	hegel.Test(t, func(ht *hegel.T) {
+		src := generation.NewSource(ht)
 
-	ls := buildLedger(t,
-		oracletest.TxReq("world", "acc:1", "USD/2", 1),
-		oracletest.AddAccountMetaReq("acc:1", "k0", commonpb.NewStringValue("x")),
-	)
-	kinds := map[string]bool{}
+		ls := buildLedger(t,
+			oracletest.TxReq("world", "acc:1", "USD/2", 1),
+			oracletest.AddAccountMetaReq("acc:1", "k0", commonpb.NewStringValue("x")),
+		)
+		kinds := map[string]bool{}
 
-	for range 5000 {
-		f := mutateFilter(genAccountFilter(nil))
-		if oneIn(2) {
-			f = genAnyFilter(0)
-		}
-
-		raw, err := f.MarshalVT()
-		require.NoError(t, err)
-		wire := &commonpb.QueryFilter{}
-		require.NoError(t, wire.UnmarshalVT(raw))
-
-		for _, target := range listTargets {
-			local := domain.ValidateFilterForTarget(f, target)
-			remote := domain.ValidateFilterForTarget(wire, target)
-			require.Equal(t, local == nil, remote == nil, "filter %s target %v", describeFilter(f), target)
-			kinds[map[bool]string{true: "accepted", false: "refused"}[local == nil]] = true
-
-			neededIndexCanonicals(f, target, map[string]struct{}{})
-			if classifyRejectedFilter(f, target).rejected {
-				continue
+		for range 5000 {
+			f := mutateFilter(src, genAccountFilter(src, nil))
+			if oneIn(src, 2) {
+				f = genAnyFilter(src, 0)
 			}
 
-			switch target {
-			case commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS:
-				accountWindow(ls, f, "", 10, oneIn(2))
-			case commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS:
-				transactionWindowRows(ls, f, 0, oneIn(2))
-			default:
-				logWindowRows(ls, "L", f, 0, oneIn(2))
+			raw, err := f.MarshalVT()
+			require.NoError(t, err)
+			wire := &commonpb.QueryFilter{}
+			require.NoError(t, wire.UnmarshalVT(raw))
+
+			for _, target := range listTargets {
+				local := domain.ValidateFilterForTarget(f, target)
+				remote := domain.ValidateFilterForTarget(wire, target)
+				require.Equal(t, local == nil, remote == nil, "filter %s target %v", describeFilter(f), target)
+				kinds[map[bool]string{true: "accepted", false: "refused"}[local == nil]] = true
+
+				neededIndexCanonicals(f, target, map[string]struct{}{})
+				if classifyRejectedFilter(f, target).rejected {
+					continue
+				}
+
+				switch target {
+				case commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS:
+					accountWindow(ls, f, "", 10, oneIn(src, 2))
+				case commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS:
+					transactionWindowRows(ls, f, 0, oneIn(src, 2))
+				default:
+					logWindowRows(ls, "L", f, 0, oneIn(src, 2))
+				}
 			}
+
+			describeFilter(f)
+			collectParams(f)
+			substituteParams(f, preparedParams{"p0": uintParam(1), "p1": stringParam("a")})
+			parameterizeFilter(src, f, preparedParams{})
+			neededLogIndexes(f)
 		}
 
-		describeFilter(f)
-		collectParams(f)
-		substituteParams(f, preparedParams{"p0": uintParam(1), "p1": stringParam("a")})
-		parameterizeFilter(f, preparedParams{})
-		neededLogIndexes(f)
-	}
-
-	require.True(t, kinds["accepted"] && kinds["refused"], "the walker must roll both accepted and refused shapes")
+		require.True(t, kinds["accepted"] && kinds["refused"], "the walker must roll both accepted and refused shapes")
+	}, hegel.WithTestCases(1), hegel.WithDatabase(""), hegel.WithBackend(hegel.BackendURandom))
 }
 
 func TestClassifyRejectedFilter(t *testing.T) {

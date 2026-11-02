@@ -5,8 +5,11 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	"hegel.dev/go/hegel"
 
 	"github.com/formancehq/ledger/v3/internal/application/ctrl"
+
+	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal/generation"
 )
 
 func TestNextCursorLegal_PresenceFollowsTheModelsVerdict(t *testing.T) {
@@ -78,21 +81,24 @@ func TestEffectivePageSize_MirrorsTheServerClamp(t *testing.T) {
 // answer to, and the two substituted shapes must both be reachable.
 func TestQueryPageSize_RollsTheSubstitutedShapes(t *testing.T) {
 	t.Parallel()
+	hegel.Test(t, func(ht *hegel.T) {
+		src := generation.NewSource(ht)
 
-	var defaulted, clamped int
+		var defaulted, clamped int
 
-	for range 4096 {
-		requested, effective := queryPageSize()
-		require.EqualValues(t, ctrl.ClampPageSize(uint32(requested)), effective)
+		for range 4096 {
+			requested, effective := queryPageSize(src)
+			require.EqualValues(t, ctrl.ClampPageSize(uint32(requested)), effective)
 
-		switch {
-		case requested == 0:
-			defaulted++
-		case requested > serverMaxPageSize:
-			clamped++
+			switch {
+			case requested == 0:
+				defaulted++
+			case requested > serverMaxPageSize:
+				clamped++
+			}
 		}
-	}
 
-	require.Positive(t, defaulted, "the server default is never left to the server")
-	require.Positive(t, clamped, "the server maximum is never exceeded")
+		require.Positive(t, defaulted, "the server default is never left to the server")
+		require.Positive(t, clamped, "the server maximum is never exceeded")
+	}, hegel.WithTestCases(1), hegel.WithDatabase(""), hegel.WithBackend(hegel.BackendURandom))
 }

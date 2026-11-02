@@ -48,7 +48,7 @@ func BenchmarkMonetaryResponse(b *testing.B) {
 				name   string
 				option func() jsonv2.Options
 			}{
-				{"SonicLegacy", nil}, {"V2Numbers", MonetaryAmountsAsNumbers}, {"V2Strings", MonetaryAmountsAsStrings},
+				{"SonicLegacy", nil}, {"V2Numbers", BigIntegersAsNumbers}, {"V2Strings", BigIntegersAsStrings},
 			} {
 				b.Run(codec.name, func(b *testing.B) {
 					b.Run("Marshal", func(b *testing.B) {

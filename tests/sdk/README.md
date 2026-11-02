@@ -41,7 +41,7 @@ atomic failures, malformed requests, authentication, both size limits and panic
 recovery. Local generation/testing proves the source contract; publishing a
 regenerated consumer SDK is a separate delivery step.
 
-## Monetary amount SDK contract tests
+## Large-integer response SDK contract tests
 
 Run `nix develop .#sdk --command just test-sdk-bigint` with Speakeasy authentication
 (`SPEAKEASY_API_KEY` or an existing CLI login).
@@ -49,7 +49,10 @@ The explicit target pins Speakeasy CLI 1.762.0 (generator 2.882.0), matching the
 generator metadata in the committed standalone Ledger SDK at
 `platform-ui/packages/sdks/ledger`. It regenerates from this checkout's
 `openapi.yml`, installs locked TypeScript/Zod dependencies, and compiles both the
-SDK and the typed operation tests covering all 12 monetary-returning operations. Generated files live under `build/sdk-bigint`.
+SDK and the typed operation tests covering all 12 operations that currently
+return Uint256, BigUint or SignedBigInt values. Negotiation applies by response type, including future nonmonetary fields;
+the operation inventory describes current fields rather than limiting the
+contract. Generated files live under `build/sdk-bigint`.
 No platform-ui checkout or changes are required.
 
 The tagged Go fixture in
@@ -63,7 +66,10 @@ defaults and exact strings, while transaction counts remain numeric. Paginated t
 previous cursor tokens and `hasMore` while returning exact monetary strings.
 Assertions cover numeric defaults, exact decimal string posting inputs and
 responses, typed header parameters, post-commit volumes, and unsigned/signed
-account volumes. String posting inputs also work without response negotiation.
+account volumes. Ordinary integer IDs/counts, metadata and explicitly
+string-encoded counters retain their existing representation. String posting
+inputs also work without response negotiation; response negotiation does not
+expand request decoding.
 This covers the transport and generated client contract; it does not execute the
 storage or FSM. Backend expectations verify the decoded posting amount.
 

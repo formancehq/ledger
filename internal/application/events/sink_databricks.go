@@ -8,6 +8,7 @@ import (
 	"database/sql/driver"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 
 	dbsql "github.com/databricks/databricks-sql-go"
@@ -64,11 +65,11 @@ func databricksConfigFromProto(pb *commonpb.DatabricksSinkConfig) (DatabricksSin
 const defaultDatabricksTable = "ledger_events"
 
 // DatabricksCreateTableDDL returns the CREATE TABLE statement for the events
-// Delta table. The data column uses STRING to hold JSON — Databricks can query
-// it with from_json() or the : JSON path operator.
+// Delta table. DECIMAL(20,0) preserves every admitted uint64 log sequence;
+// the data column uses STRING to hold queryable JSON.
 func DatabricksCreateTableDDL(qualifiedTable string) string {
 	return fmt.Sprintf(`CREATE TABLE IF NOT EXISTS %s (
-    log_sequence BIGINT,
+    log_sequence DECIMAL(20,0),
     type         STRING,
     ledger       STRING,
     date         TIMESTAMP,
@@ -221,9 +222,12 @@ func (s *DatabricksSink) Publish(ctx context.Context, events []*eventspb.Event) 
 			sb.WriteString(", ")
 		}
 
-		sb.WriteString("(?, ?, ?, ?, ?)")
+		// Bind the exact base-10 digits as STRING: database/sql and the
+		// Databricks driver reject uint64 values above MaxInt64 before SQL runs.
+		// Cast explicitly so the warehouse stores an exact numeric sequence.
+		sb.WriteString("(CAST(? AS DECIMAL(20,0)), ?, ?, ?, ?)")
 
-		args = append(args, event.GetLogSequence(), eventType, event.GetLedger(), eventDate, string(data))
+		args = append(args, strconv.FormatUint(event.GetLogSequence(), 10), eventType, event.GetLedger(), eventDate, string(data))
 	}
 
 	if _, err := s.db.ExecContext(ctx, sb.String(), args...); err != nil {

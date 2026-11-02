@@ -1037,7 +1037,7 @@ func TestApply_DoesNotForwardAuthDisabledSnapshot(t *testing.T) {
 	require.Nil(t, capturedApplyReq.GetForwardedCallerSnapshot())
 }
 
-func TestApply_ForwardsAuthDisabledSnapshotToTrustedPeer(t *testing.T) {
+func TestApply_DoesNotForwardAuthDisabledSnapshotToTrustedPeer(t *testing.T) {
 	t.Parallel()
 
 	ctrl := gomock.NewController(t)
@@ -1051,12 +1051,16 @@ func TestApply_ForwardsAuthDisabledSnapshotToTrustedPeer(t *testing.T) {
 			return &servicepb.ApplyResponse{}, nil
 		})
 
-	ctx, err := auth.EvaluateGRPCCredentials(context.Background(), auth.AuthConfig{})
+	ctx, err := auth.EvaluateGRPCCredentials(context.Background(), auth.AuthConfig{
+		ClusterSecret: "shared-cluster-secret",
+	})
 	require.NoError(t, err)
-	grpcClient := NewLedgerGrpcClient(mock, true)
+	grpcClient := NewLedgerGrpcClient(mock)
 	_, err = grpcClient.Apply(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{}))
 	require.NoError(t, err)
-	require.NotNil(t, capturedApplyReq.GetForwardedCallerSnapshot().GetAuthDisabled())
+	require.NotNil(t, capturedApplyReq)
+	require.Nil(t, capturedApplyReq.GetForwardedCallerSnapshot(),
+		"auth-disabled attribution must be derived locally by the leader even when the peer uses a cluster secret")
 }
 
 // TestApply_PropagatesExistingForwardedSnapshot verifies that a node
@@ -1085,7 +1089,7 @@ func TestApply_PropagatesExistingForwardedSnapshot(t *testing.T) {
 					Subject: "original-user",
 					Source:  &commonpb.CallerIdentity_KeyId{KeyId: "ed25519-7"},
 				},
-				Scopes: []string{"ledger:TransactionWrite"},
+				Scopes: []string{"ledger:WriteTransaction"},
 			},
 		},
 	}
@@ -1101,7 +1105,7 @@ func TestApply_PropagatesExistingForwardedSnapshot(t *testing.T) {
 	require.NotNil(t, fc)
 	require.Equal(t, "original-user", fc.GetAuthenticated().GetIdentity().GetSubject())
 	require.Equal(t, "ed25519-7", fc.GetAuthenticated().GetIdentity().GetKeyId())
-	require.Equal(t, []string{"ledger:TransactionWrite"}, fc.GetAuthenticated().GetScopes())
+	require.Equal(t, []string{"ledger:WriteTransaction"}, fc.GetAuthenticated().GetScopes())
 }
 
 func TestApply_RequiresLeaderExecutionProvenance(t *testing.T) {

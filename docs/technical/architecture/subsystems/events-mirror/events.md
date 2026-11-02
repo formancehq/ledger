@@ -243,7 +243,7 @@ If no notification arrives (e.g., after restart), the emitter polls at a configu
 
 The event system is gated by both the node's leader status and the presence of sink configs:
 
-- **On becoming leader**: The Raft observer records `Manager.OnLeadershipChange(true)` synchronously. The Manager's lifecycle-owned loop reconciles the latest recorded generation and starts one Emitter per configured sink.
+- **On leader readiness**: The Raft observer records `Manager.OnLeadershipChange(true)` synchronously on `LeaderReadyEvent`, once the FSM has applied the new leader's no-op entry. A leader elected while its store is behind its Raft log reaches that point only after fetching a checkpoint and replaying its spool, so the sink configs the Manager reads are current. The Manager's lifecycle-owned loop reconciles the latest recorded generation and starts one Emitter per configured sink.
 - **On losing leadership**: The Raft observer records `Manager.OnLeadershipChange(false)` synchronously. The same loop tears down all Emitters and Sinks; reconciliation from a superseded generation is discarded.
 - **On config change (while leader)**: The FSM signals the Manager via a `Signal` notification. The Manager reconciles by diffing the desired sink configs against the currently running emitters — only sinks that were added, removed, or changed are affected; unchanged sinks keep running.
 - **Followers**: Never emit events, regardless of config.
@@ -401,6 +401,22 @@ Events are published to a configurable topic/subject per sink type:
 - **HTTP**: Events are sent to the configured `endpoint` URL.
 - **ClickHouse**: Events are inserted into the configured `table`.
 - **Databricks**: Events are inserted into the configured `catalog.schema.table`.
+
+Databricks stores `log_sequence` as `DECIMAL(20,0)`, an exact numeric type that
+holds the full admitted global-log sequence range (`0` through `MaxUint64-1`).
+The sink binds the unsigned sequence as base-10 text and explicitly casts it to
+`DECIMAL(20,0)` in the `INSERT`; binding a high-bit `uint64` directly is rejected
+by `database/sql` before the warehouse sees it. Query it as a decimal value,
+for example `SELECT log_sequence FROM catalog.schema.table ORDER BY log_sequence`.
+Consumers using a signed 64-bit client type must scan or stringify the decimal
+instead of converting it to `BIGINT` or floating point.
+
+`CREATE TABLE IF NOT EXISTS` does not alter an existing Databricks sink table.
+Before upgrading a sink whose `log_sequence` column is `BIGINT`, widen that
+column to `DECIMAL(20,0)` while preserving its rows; see the upgrade procedure
+in [the CLI guide](../../../../ops/cli.md#databricks-sequence-column-upgrade).
+The sink continues to deliver at least once and advances its cursor only after
+a successful insert, so an incompatible table retains the cursor and retries.
 
 ### NATS ledger-name routing (EN-2023)
 
@@ -825,6 +841,26 @@ The HTTP sink sends each event as an individual HTTP POST request with the follo
 ### ClickHouse Sink Details
 
 The ClickHouse sink auto-creates the target table using the experimental JSON type with Variant support (ClickHouse 24.x-25.x compatibility). The `format` setting is ignored — events are always inserted as ClickHouse-native JSON for optimal query performance.
+
+Committed transactions preserve account metadata as account address → metadata
+key → string value. The typed JSON hint is
+`accountMetadata Map(String, Map(String, String))`, so queries such as
+`data.accountMetadata['users:001']['name']` return the metadata value directly.
+This matches the shared analytical projection; encoding each account's map as
+a JSON string would lose its queryable structure. Ordinary transaction metadata
+and metadata-update events retain their separate `Map(String, String)` fields.
+
+Existing tables are unchanged by `CREATE TABLE IF NOT EXISTS`. Tables created
+with the former flat account-metadata hint require the explicit, non-destructive
+[ClickHouse table migration](../../../../ops/clickhouse-account-metadata.md)
+before delivery resumes. The sink does not automatically alter customer-owned
+tables. The migration exports rows, converts metadata with the raw-token Go
+converter, and imports only after conversion succeeds. Typed UInt256 posting
+amounts travel as quoted decimal strings to bypass ClickHouse 24.x's generic
+JSON number parser, then recover their numeric types through the destination
+hints. No generic JSON extraction runs on the full event. This changes the
+external analytical schema only; Ledger persisted
+business data, audit history, Raft entries, and protocol revision are unchanged.
 
 NATS diagnostic credential extraction follows the driver's whitespace and
 implicit-scheme handling. ClickHouse diagnostics also register decoded

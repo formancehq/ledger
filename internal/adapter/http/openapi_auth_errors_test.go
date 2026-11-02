@@ -54,7 +54,7 @@ func TestOpenAPI_NumscriptAuthentication(t *testing.T) {
 				status             int
 			}{
 				{"missing credentials", "", "missing authentication\n", true, false, http.StatusUnauthorized},
-				{"insufficient scope", signToken(t, key, testClaims("ledger:OpsRead")), "missing required scope\n", true, false, http.StatusForbidden},
+				{"insufficient scope", signToken(t, key, testClaims("ledger:ReadOps")), "missing required scope\n", true, false, http.StatusForbidden},
 				{"invalid credentials", "invalid", "", true, false, http.StatusUnauthorized},
 				{"valid bearer", signToken(t, key, testClaims(string(operation.scope))), "", true, false, http.StatusNotFound},
 				{"anonymous scope", "", "", true, true, http.StatusNotFound},

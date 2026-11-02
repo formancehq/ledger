@@ -34,6 +34,7 @@ Follow extra callees only to complete this chain and load their owning contract.
 | Missing or stale observations | `diskusage.SampleUsable` requires successful, nonzero-capacity, timestamped WAL/data samples no older than one minute. A failed Statfs retains cached bytes but invalidates the sample. Committed members missing from the service pool or failing disk RPC contribute invalid samples: they cannot clear an existing disk block. A nil or previous-epoch gate rejects writes until the new leader polls fresh local WAL and data. An unavailable remote member alone does not impose a permanent initial block on a healthy quorum. Nonleaders do not publish a fresh verdict. |
 | Combined reasons | `gateState` is atomically published and loaded once; disk error wins over skew, while either blocks. `TestHealthChecker_LeadershipChangeInvalidatesWriteGate` and `TestCheckWritesAllowed_NoTornStateBetweenReasons` are current protections to challenge against, not new findings. |
 | Admission routes | `Admission.Admit` and `Barrier` call `CheckWritesAllowed` before proposing. Resolve actual HTTP/gRPC/controller forwarding and internal callers. A technical proposal outside these methods is not automatically a bypass defect; establish the promise for that operation. No global revocation of in-flight work is implied. |
+| Controlled drain | `ledger.formance.com/drain` requests a Raft-ordered cutoff. The leader's local proposal gate closes at marker enqueue; every member's applied gate and FSM reject later ordered writes. A request started earlier but not yet proposed may be rejected; one ordered before the marker retains its ordinary outcome. `Drained=True` certifies durable application by all captured members, not the annotation alone. Release reopens admission only when its entry applies. |
 | Progress prerequisites | `Admission.Admit`, `Node.WaitLeaderReady`, `waitClusterPolicyReady`, `checkQueryCheckpointProjectionReady` and `plan.resolve` expose distinct wait/reject conditions. This domain owns signal consumption and release; the computation of consensus progress, projection correctness and cache coverage belong to their neighbors. No universal lag threshold is promised. |
 | HTTP probes | `DefaultBackend` and health handlers: `/livez` is process liveness, `/readyz` local Raft-loop start, `/health` local Leader/Follower health and `/clusterz` connectivity plus elected leader. Disk/skew do not feed these readiness predicates. |
 | gRPC probes | `GRPCHealthUpdater.update` combines node health, elected leader and committed policy readiness for the service endpoint. Bootstrap registers a separate Raft-server health service. These are not interchangeable with HTTP readiness. |
@@ -54,6 +55,7 @@ are context, not current findings or authority to tune thresholds.
 | `configuration-startup-contracts` | Parsing, defaults, threshold validation and static constructor wiring. A wrong validated value delivered to the checker belongs there; a correctly delivered value misused during a transition belongs here. |
 | `concurrency-lifecycle-shutdown` | Goroutine ownership, cancellation/join and shutdown ordering, including stale workers. This domain can inspect atomic verdict consistency; worker lifetime defects remain with the lifecycle audit. |
 | `raft-membership-leadership` | Quorum, elections, membership, transport and correctness of leader-ready progress/forwarding. This domain consumes those signals without re-auditing how consensus establishes them. |
+| `operator-reconciliation-durability` | Owns annotation intent, persisted phase and all-member completion status. This domain owns the write-admission verdict and error seen by a client at each applied cutoff or release. |
 | `read-consistency-projections` | Read horizons, query results, projection/certificate correctness and reconstruction. This domain checks consumption of an available/unavailable projection signal by admission, not projection construction. |
 | `persistence-restore-replay` | FSM/cache coverage, deterministic apply and persistence/recovery correctness. This domain traces the operational cache-horizon refusal and retry release; it does not re-prove coverage or replay. |
 | `api-boundary-contracts` | General request validation and error classification/wire conversion. This domain follows health errors to prove a consumer outcome; a generic mapper defect belongs to the API domain. |
@@ -97,6 +99,17 @@ After review and merge, a separately authorized outer task may run
 Provider workers remain leaves. Manifest creation launches no product audit;
 first-pass findings remain hypotheses, and Jira publication and product fixes
 are separately authorized downstream actions.
+
+## Controlled drain admission oracle
+
+Exercise a write ordered before the marker, one whose pre-read began before
+but whose proposal reaches the queue after it, and a new write while drained.
+Assert the exact proposal index or absence of a proposal and the client error;
+the wall-clock start of an HTTP request is not the cutoff. Keep reads and
+process health available while Pods remain running. After a durable release,
+verify admission resumes; after an unresolved marker timeout or member restart,
+verify it does not reopen early. Consensus ordering and local persistence are
+owned by the Raft and persistence audits respectively.
 
 ## EN-2479 write-readiness gate
 

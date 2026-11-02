@@ -29,13 +29,13 @@ type BaseResponse[T any] struct {
 }
 
 // writeJSONResponse writes a JSON response with the given status code and data.
-// It streams JSON directly into the ResponseWriter to avoid allocating an
-// intermediate byte buffer.
-func writeJSONResponse(w http.ResponseWriter, statusCode int, data any) {
+// It streams JSON directly into the ResponseWriter with request-scoped
+// large-integer options, avoiding an intermediate byte buffer.
+func writeJSONResponse(w http.ResponseWriter, r *http.Request, statusCode int, data any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(statusCode)
 
-	if err := json.MarshalWrite(w, data); err != nil {
+	if err := json.MarshalWriteWithOptions(w, data, bigIntegerEncoding(r)); err != nil {
 		// Headers already sent; log but can't change the status code.
 		_, _ = fmt.Fprintf(w, `{"errorCode":"INTERNAL_ERROR","errorMessage":"failed to marshal response: %s"}`, err.Error())
 	}
@@ -48,22 +48,22 @@ func writeErrorResponse(w http.ResponseWriter, statusCode int, errorCode string,
 		errorMsg = err.Error()
 	}
 
-	writeJSONResponse(w, statusCode, ErrorResponse{
+	writeJSONResponse(w, nil, statusCode, ErrorResponse{
 		ErrorCode:    errorCode,
 		ErrorMessage: errorMsg,
 	})
 }
 
 // writeOK writes a 200 OK response with the given data wrapped in BaseResponse.
-func writeOK(w http.ResponseWriter, data any) {
-	writeJSONResponse(w, http.StatusOK, BaseResponse[any]{
+func writeOK(w http.ResponseWriter, r *http.Request, data any) {
+	writeJSONResponse(w, r, http.StatusOK, BaseResponse[any]{
 		Data: data,
 	})
 }
 
 // writeCreated writes a 201 Created response with the given data wrapped in BaseResponse.
-func writeCreated(w http.ResponseWriter, data any) {
-	writeJSONResponse(w, http.StatusCreated, BaseResponse[any]{
+func writeCreated(w http.ResponseWriter, r *http.Request, data any) {
+	writeJSONResponse(w, r, http.StatusCreated, BaseResponse[any]{
 		Data: data,
 	})
 }
@@ -87,7 +87,9 @@ func writeCreated(w http.ResponseWriter, data any) {
 // The remaining list/get handlers keep writeOK: their struct marshaling cannot
 // fail, so buffering would only add an allocation.
 func writeOKChecked(w http.ResponseWriter, r *http.Request, data any) {
-	writeOKCheckedEncoded(w, r, data, json.Marshal)
+	writeOKCheckedEncoded(w, r, data, func(value any) ([]byte, error) {
+		return json.MarshalWithOptions(value, bigIntegerEncoding(r))
+	})
 }
 
 func writeOKCheckedEncoded(w http.ResponseWriter, r *http.Request, data any, marshal func(any) ([]byte, error)) {
@@ -119,8 +121,9 @@ func writeCheckedJSONResponse(w http.ResponseWriter, r *http.Request, value any,
 // route emitted decimals and RFC3339. When the message has a MarshalJSON, that
 // method IS the public contract: use writeOKChecked.
 //
-// encoder_contract_test.go enforces this split.
-func writeProtoOK(w http.ResponseWriter, msg proto.Message) {
+// Nested large integers also require an option-aware public projection.
+// encoder_contract_test.go enforces this split against the descriptor graph.
+func writeProtoOK(w http.ResponseWriter, r *http.Request, msg proto.Message) {
 	raw, err := protojson.Marshal(msg)
 	if err != nil {
 		writeErrorResponse(w, http.StatusInternalServerError, "INTERNAL_ERROR", err)
@@ -128,17 +131,17 @@ func writeProtoOK(w http.ResponseWriter, msg proto.Message) {
 		return
 	}
 
-	writeOK(w, json.RawValue(raw))
+	writeOK(w, r, json.RawValue(raw))
 }
 
 // writeProtoListOK writes a 200 OK response whose `data` is a JSON array of
 // protobuf messages, each serialized via protojson (see writeProtoOK for when
 // that is correct — messages with no custom MarshalJSON only). protojson has no
 // slice entry point, so each element is marshaled individually and assembled
-// into the array here; sonic needs no equivalent, since it walks a slice and
+// into the array here; the option-aware encoder walks a slice and
 // calls MarshalJSON per element. A nil/empty slice serializes as `[]`, matching
 // the drained-cursor list handlers.
-func writeProtoListOK[T proto.Message](w http.ResponseWriter, msgs []T) {
+func writeProtoListOK[T proto.Message](w http.ResponseWriter, r *http.Request, msgs []T) {
 	data, err := protoListJSON(msgs)
 	if err != nil {
 		writeErrorResponse(w, http.StatusInternalServerError, "INTERNAL_ERROR", err)
@@ -146,7 +149,7 @@ func writeProtoListOK[T proto.Message](w http.ResponseWriter, msgs []T) {
 		return
 	}
 
-	writeOK(w, data)
+	writeOK(w, r, data)
 }
 
 // protoListJSON renders msgs as a JSON array of protojson objects.

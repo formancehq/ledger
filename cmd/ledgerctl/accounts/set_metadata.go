@@ -54,9 +54,8 @@ func runSetMetadata(cmd *cobra.Command, args []string) error {
 	if len(args) > 0 {
 		address = args[0]
 	} else {
-		address, err = pterm.DefaultInteractiveTextInput.
-			WithDefaultText("Enter account address").
-			Show()
+		address, err = cmdutil.PromptText(pterm.DefaultInteractiveTextInput.
+			WithDefaultText("Enter account address"))
 		if err != nil {
 			return fmt.Errorf("failed to read input: %w", err)
 		}
@@ -75,9 +74,8 @@ func runSetMetadata(cmd *cobra.Command, args []string) error {
 		pterm.Println("Enter metadata (key=value format, empty line to finish):")
 
 		for {
-			input, err := pterm.DefaultInteractiveTextInput.
-				WithDefaultText("Metadata (or empty to finish)").
-				Show()
+			input, err := cmdutil.PromptText(pterm.DefaultInteractiveTextInput.
+				WithDefaultText("Metadata (or empty to finish)"))
 			if err != nil {
 				return fmt.Errorf("failed to read input: %w", err)
 			}

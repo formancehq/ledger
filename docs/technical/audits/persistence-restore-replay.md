@@ -83,6 +83,7 @@ table is a discovery map, not a frozen exhaustive schema.
 | Raw delta application | `internal/infra/backup/restore.go`: verify manifest/type/range/key-shape/stream validation, batch commits, partial-prefix behavior and retry. Permanent history residency must equal the source logically. |
 | Derived-state rebuild | `internal/infra/backup/rebuild.go`, `internal/domain/replay/`: compare every replay branch and fold with its live writer. Essential facts may live in `LedgerLog`, chain-bound serialized `AuditItem`, or `AppliedProposal`; absence must not silently become a default. |
 | Restore preparation and bootstrap | `internal/infra/attributes/prepare.go`, `internal/bootstrap/`, restore gRPC and `ledgerctl` commands: distinguish retained genesis boundary and business provenance from cleared source identity, peers, transient jobs, cache/bloom state, and restored query-checkpoint provenance. |
+| Controlled drain state | `internal/infra/state/`, `internal/storage/dal/store.go`, and `internal/infra/backup/`: trace the Raft-applied marker/release, Pebble batch and applied index, qualifying status fsync, local reopen, in-cluster snapshot sync and cross-cluster restore preparation. Active drain is local operational state; it survives restart with the same volume but is discarded with `ZoneClusterTransient` on cross-cluster restore. |
 | Projection and cascade inventory | Balances/volumes, transactions/references, LedgerInfo/account types/default enforcement, the monotonic ledger-ID allocator, boundaries/mirror progress, ledger metadata, indexes/registry, numscripts, reversions, idempotency outcomes, signing, policy, maintenance mode, sink config, query checkpoints and their schedule. Test create/update/delete/reset variants actually present at the SHA. |
 | Integrity oracle | `internal/application/check/` and `CheckStore`: identify the independent audit-bound witness and actual checked fields. A clean checker result corroborates direct parity; it cannot launder an omitted projection or shared replay mistake. |
 | Cross-lifecycle evidence | `internal/infra/backup/*_test.go`, `tests/e2e/cluster/restore*_test.go`, restore-enabled model tests: record the exact post-checkpoint mutation, non-empty delta assertion, restore composition, logical comparison, checker result and next consuming operation actually reached. |
@@ -103,6 +104,20 @@ and applied-proposal history. It clears source identity, peers, cluster-transien
 jobs, cache and persisted bloom state, and marks query-checkpoint rows with
 restore provenance. Those facts are starting counterevidence, not permission to
 skip inspecting their current implementations and callers.
+
+For controlled drain, compare the source and destination explicitly: a member
+restart or in-cluster snapshot sync must reload an active cutoff before write
+admission resumes, while a cross-cluster restore must not import that cutoff or
+released-epoch history into the new cluster. A release is durable only after
+its batch and qualifying status fsync. A non-empty post-checkpoint business
+delta still needs its own parity oracle; clearing the transient drain zone is
+not evidence that business history was exported or rebuilt correctly.
+
+`TestDrainCheckpointIncrementalRestoreDiscardsSourceState` exercises a real
+checkpoint containing an active marker and prior released epoch, a nonempty
+post-checkpoint business export, restore preparation, checker validation and
+subsequent admission. `TestFinalizeRestorePublishesRebuiltPostCheckpointDelta`
+also checks that the published restore checkpoint has no source drain state.
 
 ## Delete and reset parity
 
@@ -160,6 +175,20 @@ the supported lifecycle, and assert final state, attempt count and temporary
 cleanup. A permanently unavailable dependency, setup crash, unrelated mismatch,
 or partial state that is never activated and remains safely retryable rejects
 the claimed correctness impact.
+
+Offline bootstrap must reset prior `restore-staging` before every checkpoint
+download or export-only replay. Inspect `downloadBootstrapCheckpoint` together
+with `ApplyExportsAndRebuild`: test completed rebuild followed by retry and a
+committed rebuild prefix followed by failure then retry, with a non-empty
+checkpoint/delta and exact balance/volume comparisons plus clean `CheckStore`.
+Raw-history overwrite alone does not prove additive projection retry safety.
+Reset failure stops before replay/publication and may leave old staging partly
+removed or absent; later failure or confirmation EOF may leave new partial or
+committed staging, which the next invocation discards. Preserve marker/fresh-target
+admission and exclusive offline ownership. Helper composition does not establish
+full CLI confirmation/finalization coverage. Rooted deletion and namespace safety
+belong to `filesystem-confinement-contracts`; no persisted format migration or
+repair of a finalized corrupt restore is introduced by this reset.
 
 Reject or downgrade a candidate when current evidence shows that the state is
 explicitly discarded and safely reseeded, the delta cannot change a preserved

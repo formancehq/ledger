@@ -139,9 +139,9 @@ func CodeForKind(k domain.ErrorKind) codes.Code {
 //
 // Should the transport and semantic axes have to disagree for some reason —
 // as they did for the removed READ_INDEX_NOT_CAUGHT_UP, sent as
-// codes.FailedPrecondition so callers skipped actions.GRPCRetryPolicy's fifty
-// Unavailable retries — widen the returned set for that reason rather than
-// relaxing the kind mapping, which the encoder shares.
+// codes.FailedPrecondition so callers skipped actions.GRPCRetryPolicy's five
+// total attempts on Unavailable — widen the returned set for that reason
+// rather than relaxing the kind mapping, which the encoder shares.
 //
 // The one reason with an empty set is UNSPECIFIED. It is the enum's absence
 // marker, not a business reason: no Describable carries it (pinned by

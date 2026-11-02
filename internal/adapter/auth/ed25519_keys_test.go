@@ -152,7 +152,7 @@ func TestEnforceAllowedScopes_GranularScopeCoveredByVirtualScope(t *testing.T) {
 	}
 
 	// A least-privilege token claims one granular scope that "ledger:read" expands to.
-	err := enforceAllowedScopes([]string{"ledger:TransactionRead"}, "reader", allowed, nil, DefaultMapping("ledger"))
+	err := enforceAllowedScopes([]string{"ledger:ReadTransaction"}, "reader", allowed, nil, DefaultMapping("ledger"))
 	require.NoError(t, err)
 }
 
@@ -163,9 +163,9 @@ func TestEnforceAllowedScopes_GranularScopeOutsideVirtualScope(t *testing.T) {
 		"reader": {"ledger:read"},
 	}
 
-	err := enforceAllowedScopes([]string{"ledger:TransactionWrite"}, "reader", allowed, nil, DefaultMapping("ledger"))
+	err := enforceAllowedScopes([]string{"ledger:WriteTransaction"}, "reader", allowed, nil, DefaultMapping("ledger"))
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), `scope "ledger:TransactionWrite" not allowed for key "reader"`)
+	assert.Contains(t, err.Error(), `scope "ledger:WriteTransaction" not allowed for key "reader"`)
 }
 
 func TestEnforceAllowedScopes_UnknownScopeRejected(t *testing.T) {
@@ -185,7 +185,7 @@ func TestEnforceAllowedScopes_VirtualScopeNotCoveredByPartialGranularAllowlist(t
 	t.Parallel()
 
 	allowed := map[string][]string{
-		"narrow": {"ledger:TransactionRead"},
+		"narrow": {"ledger:ReadTransaction"},
 	}
 
 	// "ledger:read" expands to more than the key allows.

@@ -270,6 +270,10 @@ type FilterOptions struct {
 	SupportsPrefix bool
 	// PrefixHelp overrides the default --prefix help string.
 	PrefixHelp string
+	// FilterHelp overrides the default --filter help string. Set it when the
+	// default metadata example is not valid on the command's query target
+	// (logs and audit reject metadata conditions).
+	FilterHelp string
 }
 
 // AddFilterFlags registers --filter on cmd, plus --prefix when SupportsPrefix
@@ -278,7 +282,12 @@ type FilterOptions struct {
 // same dual-format contract every server-side filtered endpoint honors
 // (EN-1511).
 func AddFilterFlags(cmd *cobra.Command, opts FilterOptions) {
-	cmd.Flags().String("filter", "", `Filter expression: textual grammar ("metadata[k] == v") or JSON DSL ('{"$match":{"metadata[k]":"v"}}')`)
+	filterHelp := opts.FilterHelp
+	if filterHelp == "" {
+		filterHelp = `Filter expression: textual grammar ("metadata[k] == v") or JSON DSL ('{"$match":{"metadata[k]":"v"}}')`
+	}
+
+	cmd.Flags().String("filter", "", filterHelp)
 
 	if opts.SupportsPrefix {
 		help := opts.PrefixHelp

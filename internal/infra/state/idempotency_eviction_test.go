@@ -7,6 +7,7 @@ import (
 	"errors"
 	"sync/atomic"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/cockroachdb/pebble/v2"
@@ -382,71 +383,75 @@ func TestIdempotencyEviction_MultiBatchConvergence(t *testing.T) {
 func TestIdempotencyEvictionScheduler_StopCancelsProposeFn(t *testing.T) {
 	t.Parallel()
 
-	store := newTestStore(t)
+	// The store and scheduler live in the bubble so the watchdogs run on
+	// fake time and fire only on a genuine hang, never under CI load.
+	synctest.Test(t, func(t *testing.T) {
+		store := newTestStore(t)
 
-	// Seed one expired entry so the scheduler's first tick has something
-	// to propose (otherwise proposeFn is never invoked).
-	const expiredTs uint64 = 1
+		// Seed one expired entry so the scheduler's first tick has something
+		// to propose (otherwise proposeFn is never invoked).
+		const expiredTs uint64 = 1
 
-	idemp := NewIdempotencyStore()
-	batch := store.OpenWriteSession()
-	value := &commonpb.IdempotencyKeyValue{ExpiresAt: expiredTs}
-	require.NoError(t, SaveIdempotencyKey(batch, "stop-test", value))
-	idemp.Put("stop-test", value)
-	require.NoError(t, batch.Commit())
+		idemp := NewIdempotencyStore()
+		batch := store.OpenWriteSession()
+		value := &commonpb.IdempotencyKeyValue{ExpiresAt: expiredTs}
+		require.NoError(t, SaveIdempotencyKey(batch, "stop-test", value))
+		idemp.Put("stop-test", value)
+		require.NoError(t, batch.Commit())
 
-	logger := logging.FromContext(logging.TestingContext())
+		logger := logging.FromContext(logging.TestingContext())
 
-	var (
-		callbackErr atomic.Value // stores ctx.Err() observed by the callback
-		started     = make(chan struct{})
-	)
+		var (
+			callbackErr atomic.Value // stores ctx.Err() observed by the callback
+			started     = make(chan struct{})
+		)
 
-	scheduler := NewIdempotencyEvictionScheduler(
-		logger,
-		func() bool { return true },
-		func(ctx context.Context, _ uint64, _ []byte, _ [][]byte) {
-			// Signal the test that the callback fired, then block until
-			// the scheduler cancels ctx via Stop().
-			select {
-			case <-started: // already closed → another tick fired; just block again
-			default:
-				close(started)
-			}
+		scheduler := NewIdempotencyEvictionScheduler(
+			logger,
+			func() bool { return true },
+			func(ctx context.Context, _ uint64, _ []byte, _ [][]byte) {
+				// Signal the test that the callback fired, then block until
+				// the scheduler cancels ctx via Stop().
+				select {
+				case <-started: // already closed → another tick fired; just block again
+				default:
+					close(started)
+				}
 
-			<-ctx.Done()
-			callbackErr.Store(ctx.Err())
-		},
-		store,
-		idemp,
-		10*time.Millisecond,
-	)
+				<-ctx.Done()
+				callbackErr.Store(ctx.Err())
+			},
+			store,
+			idemp,
+			10*time.Millisecond,
+		)
 
-	scheduler.Start()
+		scheduler.Start()
 
-	select {
-	case <-started:
-	case <-time.After(2 * time.Second):
-		t.Fatal("scheduler callback never fired — proposeFn was not invoked")
-	}
+		select {
+		case <-started:
+		case <-time.After(2 * time.Second):
+			t.Fatal("scheduler callback never fired — proposeFn was not invoked")
+		}
 
-	stopDone := make(chan struct{})
+		stopDone := make(chan struct{})
 
-	go func() {
-		scheduler.Stop()
-		close(stopDone)
-	}()
+		go func() {
+			scheduler.Stop()
+			close(stopDone)
+		}()
 
-	select {
-	case <-stopDone:
-	case <-time.After(2 * time.Second):
-		t.Fatal("scheduler.Stop() did not return — proposeFn ctx was not cancelled")
-	}
+		select {
+		case <-stopDone:
+		case <-time.After(2 * time.Second):
+			t.Fatal("scheduler.Stop() did not return — proposeFn ctx was not cancelled")
+		}
 
-	got, ok := callbackErr.Load().(error)
-	require.True(t, ok, "callback never observed ctx.Done()")
-	require.True(t, errors.Is(got, context.Canceled),
-		"proposeFn ctx must be cancelled by Stop, got %v", got)
+		got, ok := callbackErr.Load().(error)
+		require.True(t, ok, "callback never observed ctx.Done()")
+		require.True(t, errors.Is(got, context.Canceled),
+			"proposeFn ctx must be cancelled by Stop, got %v", got)
+	})
 }
 
 // countIdemTimeIndexRows counts eviction time-index rows

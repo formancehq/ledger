@@ -32,10 +32,10 @@ func TestPostingAmountJSONInput(t *testing.T) {
 				require.Equal(t, "USD", posting.GetAsset())
 				require.Equal(t, "blue", posting.GetColor())
 				for _, stringResponse := range []bool{false, true} {
-					options := MonetaryAmountsAsNumbers()
+					options := BigIntegersAsNumbers()
 					amountJSON := decimal
 					if stringResponse {
-						options = MonetaryAmountsAsStrings()
+						options = BigIntegersAsStrings()
 						amountJSON = `"` + decimal + `"`
 					}
 					encoded, err := json.MarshalWithOptions(&posting, options)

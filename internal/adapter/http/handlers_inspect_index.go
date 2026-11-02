@@ -171,7 +171,7 @@ func (s *Server) handleInspectIndex(w http.ResponseWriter, r *http.Request) {
 			values[i] = metadataValueToAny(v, declaredType)
 		}
 
-		writeOK(w, &inspectDistinctValuesJSON{
+		writeOK(w, r, &inspectDistinctValuesJSON{
 			Values:         values,
 			HasMore:        dv.GetHasMore(),
 			NextCursor:     dv.GetNextCursor(),
@@ -189,7 +189,7 @@ func (s *Server) handleInspectIndex(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 
-		writeOK(w, &inspectFacetsJSON{
+		writeOK(w, r, &inspectFacetsJSON{
 			Facets:         facets,
 			HasMore:        f.GetHasMore(),
 			NextCursor:     f.GetNextCursor(),
@@ -198,7 +198,7 @@ func (s *Server) handleInspectIndex(w http.ResponseWriter, r *http.Request) {
 
 	case *servicepb.InspectIndexResponse_Summary:
 		s := result.Summary
-		writeOK(w, &inspectSummaryJSON{
+		writeOK(w, r, &inspectSummaryJSON{
 			Cardinality:      s.GetCardinality(),
 			Min:              metadataValueToAny(s.GetMin(), declaredType),
 			Max:              metadataValueToAny(s.GetMax(), declaredType),

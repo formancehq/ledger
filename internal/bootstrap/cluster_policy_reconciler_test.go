@@ -5,6 +5,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/stretchr/testify/require"
@@ -23,21 +24,27 @@ import (
 func TestClusterPolicyReconciler_TicksUntilStopped(t *testing.T) {
 	t.Parallel()
 
-	var count atomic.Int32
+	synctest.Test(t, func(t *testing.T) {
+		var count atomic.Int32
 
-	r := NewClusterPolicyReconciler(func(context.Context) { count.Add(1) })
-	r.interval = 5 * time.Millisecond
-	r.Start()
+		r := NewClusterPolicyReconciler(func(context.Context) { count.Add(1) })
+		r.interval = 5 * time.Millisecond
+		r.Start()
 
-	require.Eventually(t, func() bool { return count.Load() >= 3 }, 2*time.Second, 5*time.Millisecond,
-		"reconcile must run repeatedly on the ticker")
+		// On the fake clock, two intervals yield exactly the immediate run plus
+		// one per tick.
+		time.Sleep(2 * r.interval)
+		synctest.Wait()
+		require.Equal(t, int32(3), count.Load(), "reconcile must run immediately, then on every tick")
 
-	r.Stop()
+		r.Stop()
 
-	// Stop is synchronous (waits for the goroutine), so the count is now final.
-	settled := count.Load()
-	require.Never(t, func() bool { return count.Load() > settled }, 100*time.Millisecond, 10*time.Millisecond,
-		"no reconcile must run after Stop")
+		// Stop is synchronous (waits for the goroutine), so the count is now final.
+		settled := count.Load()
+		time.Sleep(20 * r.interval)
+		synctest.Wait()
+		require.Equal(t, settled, count.Load(), "no reconcile must run after Stop")
+	})
 }
 
 type fakeAdmission struct {

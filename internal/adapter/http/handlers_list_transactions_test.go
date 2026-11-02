@@ -139,12 +139,6 @@ func TestHandleListTransactions_ReferenceFilterAndDateRange(t *testing.T) {
 	}
 	require.NotNil(t, refCond, "reference sub-filter must be present alongside the date range")
 	require.Equal(t, "ref-1", refCond.GetReference().GetCond().GetHardcoded())
-
-	// The removed `reference=` alias must no longer be interpreted: passed alone
-	// (no `filter=`), it yields an unfiltered read (nil filter), not a reference
-	// selection.
-	aliasOnly := capture(t, "/ledger1/transactions?reference=ref-1")
-	require.Nil(t, aliasOnly, "the removed reference= alias must not build a filter")
 }
 
 // TestHandleListTransactions_DualFormatFilter is the endpoint-level EN-1511

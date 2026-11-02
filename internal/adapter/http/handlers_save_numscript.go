@@ -1,10 +1,7 @@
 package http
 
 import (
-	"errors"
 	"net/http"
-
-	"github.com/go-chi/chi/v5"
 
 	"github.com/formancehq/ledger/v3/internal/adapter/json"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
@@ -17,10 +14,8 @@ func (s *Server) handleSaveNumscript(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	name := chi.URLParam(r, "name")
-	if name == "" {
-		writeBadRequest(w, "INVALID_REQUEST", errors.New("numscript name is required"))
-
+	name, ok := requirePathParameter(w, r, "name", "numscript name")
+	if !ok {
 		return
 	}
 
@@ -63,5 +58,5 @@ func (s *Server) handleSaveNumscript(w http.ResponseWriter, r *http.Request) {
 		panic(emptyLogPayload("save-numscript", logEntry, details))
 	}
 
-	writeCreated(w, saved.GetInfo())
+	writeCreated(w, r, saved.GetInfo())
 }

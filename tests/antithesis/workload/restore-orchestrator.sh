@@ -146,11 +146,12 @@ step_failure() {
 }
 
 # The exec's response can be lost mid-step (network partition, bounded client)
-# while the server-side operation completed, so the download/finalize retries
-# must recognise the FailedPrecondition a repeat then hits as prior success:
-# a repeated download reports "already downloaded"; a repeated finalize
-# reports "no backup downloaded" because finalize consumed the staging — and
-# the download step has already proven the staging existed.
+# while the server-side operation completed. A lost download response is safe
+# to recover from because the next download reports "already downloaded". A
+# lost finalize response is different: after a server restart the in-memory
+# staging flags are gone, so "no backup downloaded" is also the response for a
+# finalization that never committed. Only the durable checkpoint + RESTORED
+# marker prove that the intended restore reached its commit point.
 download_step() {
 	local out
 	out=$(exec_ledgerctl "$POD_PREFIX-0" "restore download" "${S3_ARGS[*]}" 2>&1) && return 0
@@ -172,10 +173,35 @@ validate_step() {
 
 finalize_step() {
 	local out
-	out=$(exec_ledgerctl "$POD_PREFIX-0" "restore finalize --yes" 2>&1) && return 0
-	case "$out" in *"no backup downloaded"*) return 0 ;; esac
+	out=$(exec_ledgerctl "$POD_PREFIX-0" "restore finalize --yes" 2>&1) && {
+		restore_commit_proof || {
+			log "restore finalize returned success without a durable checkpoint and RESTORED marker"
+			return 1
+		}
+		return 0
+	}
+	case "$out" in
+	*"no backup downloaded"*)
+		if restore_commit_proof; then
+			log "restore finalize response was lost after durable commit"
+			return 0
+		fi
+		;;
+	esac
 	log "finalize attempt failed: $(step_failure "$out")"
 	return 1
+}
+
+# restore_commit_proof verifies the server's durable finalization boundary.
+# RESTORED is written only after checkpoints/0 is atomically published, and the
+# restore-mode PVC is fresh for each cycle, so this proof belongs to the backup
+# just downloaded and validated rather than to a stale prior restore.
+restore_commit_proof() {
+	local marker
+	marker=$(k exec "$POD_PREFIX-0" -c ledger -- /bin/sh -c \
+		'test -s /data/app/RESTORED && test -d /data/app/checkpoints/0 && cat /data/app/RESTORED' \
+		2>/dev/null) || return 1
+	printf '%s\n' "$marker" | jq -e '.lastAppliedIndex > 0' >/dev/null 2>&1
 }
 
 # restore_from_backup -- one attempt at the post-teardown choreography:
@@ -254,10 +280,11 @@ do_one_restore() {
 	log "cluster back up on the restored (RebuildDelta) store"
 }
 
-log "waiting for $STS to reach $REPLICAS ready replicas"
-wait_ready_replicas "$REPLICAS" 1800 || log "WARNING: cluster not ready at startup; continuing"
+main() {
+	log "waiting for $STS to reach $REPLICAS ready replicas"
+	wait_ready_replicas "$REPLICAS" 1800 || log "WARNING: cluster not ready at startup; continuing"
 
-retry 10 capture_specs || { log "FATAL: cannot capture cluster spec"; exit 1; }
+	retry 10 capture_specs || { log "FATAL: cannot capture cluster spec"; exit 1; }
 
 FULL_BACKUP_OK=0
 log "taking initial full backup"
@@ -284,4 +311,9 @@ while true; do
 		# reach here: do_one_restore retries the restore until it lands.
 		printf 'err\n' > "$RESP"
 	fi
-done
+	done
+}
+
+if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
+	main
+fi

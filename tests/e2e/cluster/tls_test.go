@@ -126,7 +126,7 @@ type tlsServiceWithClient struct {
 	clusterClient clusterpb.ClusterServiceClient
 	grpcConn      *grpc.ClientConn
 	grpcPort      int
-	nodeID        uint32
+	nodeID        uint64
 }
 
 // setupTLSMultiNodeCluster creates a multi-node Raft cluster with TLS enabled on all nodes.
@@ -203,7 +203,7 @@ func setupTLSMultiNodeCluster(countInstances int) (context.Context, []*tlsServic
 			clusterClient: clusterClient,
 			grpcConn:      grpcConn,
 			grpcPort:      nodePorts[i].GRPC(),
-			nodeID:        uint32(i + 1),
+			nodeID:        uint64(i + 1),
 		})
 	}
 

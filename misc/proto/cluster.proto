@@ -17,6 +17,24 @@ service ClusterService {
     option (common.auth_policy) = { fixed_scope: AUTH_SCOPE_CLUSTER_READ };
   }
 
+  // BeginDrain closes write admission at a Raft-ordered marker. The operator
+  // waits for each reported member to persist cutoff_index before stopping Pods.
+  rpc BeginDrain(BeginDrainRequest) returns (BeginDrainResponse) {
+    option (common.auth_policy) = { fixed_scope: AUTH_SCOPE_CLUSTER_WRITE };
+  }
+
+  // EndDrain reopens admission through a Raft-ordered release of the active epoch.
+  rpc EndDrain(EndDrainRequest) returns (EndDrainResponse) {
+    option (common.auth_policy) = { fixed_scope: AUTH_SCOPE_CLUSTER_WRITE };
+  }
+
+  // GetDrainStatus reads only the responding node's local cursor. When its
+  // active drain index or last release index is nonzero and covered by
+  // last_persisted_index, the response follows a Pebble WAL fsync.
+  rpc GetDrainStatus(GetDrainStatusRequest) returns (DrainStatus) {
+    option (common.auth_policy) = { fixed_scope: AUTH_SCOPE_CLUSTER_READ };
+  }
+
   // GetDiskUsage returns the disk usage of the local node
   rpc GetDiskUsage(GetDiskUsageRequest) returns (DiskUsage) {
     option (common.auth_policy) = { fixed_scope: AUTH_SCOPE_CLUSTER_READ };
@@ -102,7 +120,38 @@ service ClusterService {
 
 message GetClusterStateRequest {
   // node_id indicates which node to query for cluster state (0 = route to leader)
-  uint32 node_id = 1;
+  uint64 node_id = 1;
+}
+
+message BeginDrainRequest {
+  string epoch = 1; // Stable operator-generated ID for retry after timeout.
+}
+
+message BeginDrainResponse {
+  fixed64 cutoff_index = 1;
+  repeated uint64 members = 2;
+}
+
+message EndDrainRequest {
+  string epoch = 1; // Must match the active drain epoch.
+}
+
+message EndDrainResponse {
+  fixed64 release_index = 1;
+  repeated uint64 members = 2;
+}
+
+message GetDrainStatusRequest {}
+
+message DrainStatus {
+  uint64 local_node = 1;
+  bool supports_drain = 2;
+  string drain_epoch = 3;
+  fixed64 drain_index = 4;
+  fixed64 last_persisted_index = 5;
+  string sync_status = 6;
+  fixed64 release_index = 7; // Durable only when covered by last_persisted_index in this response.
+  bool supports_release = 8; // Required before proposing an EndDrain marker.
 }
 
 // ============================================================================
@@ -111,7 +160,7 @@ message GetClusterStateRequest {
 
 // NodeInfo represents information about a node in the cluster
 message NodeInfo {
-  uint32 id = 1;
+  uint64 id = 1;
   string suffrage = 2;  // Voter or Learner
   ProgressInfo progress = 3;  // Progress information (only available when querying leader)
   string raft_address = 4;  // Raft transport address
@@ -149,15 +198,18 @@ message RaftStatus {
 // ClusterState represents the state of the Raft cluster
 message ClusterState {
   string state = 1;             // Leader, Follower, Candidate, Shutdown
-  uint32 leader = 2;            // ID of the current leader (0 if no leader)
+  uint64 leader = 2;            // ID of the current leader (0 if no leader)
   repeated NodeInfo nodes = 3;  // List of all nodes in the cluster
-  uint32 local_node = 4;        // ID of the local node
+  uint64 local_node = 4;        // ID of the local node
   RaftStatus raft_status = 5;   // Complete Raft status information
   bool maintenance_mode = 6;    // Whether maintenance mode is active
   SyncProgress sync_progress = 7; // Local node checkpoint sync progress
   IndexProgress index_progress = 8; // Local index builder progress
   common.ClusterConfig cluster_config = 9; // Raft-replicated mutable cluster configuration
   string node_version = 10;  // Build version of the responding (local) node
+  bool supports_drain = 11; // Capability handshake for mixed-version rollout.
+  string drain_epoch = 12; // Applied, persisted drain epoch, if any.
+  fixed64 drain_index = 13; // Raft index of the first marker for drain_epoch.
 }
 
 // IndexProgress tracks the index builder's position relative to Pebble.
@@ -178,11 +230,11 @@ message SyncProgress {
 // ============================================================================
 
 message TransferLeadershipRequest {
-  uint32 transferee = 1;  // Target node ID
+  uint64 transferee = 1;  // Target node ID
 }
 
 message TransferLeadershipResponse {
-  uint32 new_leader = 1;  // Confirmed new leader ID
+  uint64 new_leader = 1;  // Confirmed new leader ID
 }
 
 message GetDiskUsageRequest {}

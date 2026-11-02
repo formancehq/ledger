@@ -68,7 +68,7 @@ The three sets partition every volume update the log touched into DISJOINT categ
 
 ### Why disjoint (and not overlapping)
 
-An earlier encoding included ephemeral tuples in BOTH `purged_volumes` (as "evicted") and `new_volumes` (as "newly created"). Every ephemeral (account, asset) tuple paid its wire cost twice. On workloads with high ephemeral throughput (payout fan-out, escrow pass-throughs — 100+ ephemeral accounts per transaction is normal), the doubling adds a few MB/s of WAL / audit-chain growth for no functional benefit — the ephemeral net delta on `VolumeCount` is +0.
+An earlier encoding included ephemeral tuples in BOTH `purged_volumes` (as "evicted") and `new_volumes` (as "newly created"). Every ephemeral (account, asset, color) tuple paid its wire cost twice. On workloads with high ephemeral throughput (payout fan-out, escrow pass-throughs — 100+ ephemeral accounts per transaction is normal), the doubling adds a few MB/s of WAL / audit-chain growth for no functional benefit — the ephemeral net delta on `VolumeCount` is +0.
 
 The disjoint encoding pays exactly `len(ephemeral)` per log instead of `2 × len(ephemeral)`. The three lists are still complete: consumers that need "everything evicted from Pebble" take the union (see [indexer consumer](#indexer-consumer)); the volume-count formula becomes clean subtraction (`new_kept − purged`) with ephemeral contributing zero.
 
@@ -81,7 +81,7 @@ The disjoint encoding pays exactly `len(ephemeral)` per log instead of `2 × len
    - **ephemeral**: `!Old.IsDefined()` — the key had no prior persisted state, was touched, immediately purged.
    - **draining**: `Old.IsDefined()` — it had a prior persisted value, reached zero balance, and was evicted.
 3. `makeNewKeptKeySet(partResult.kept)` (new) yields the subset of `kept` where `!Old.IsDefined()` — the same defined-versus-tombstoned distinction — i.e. new persistent volumes.
-4. `buildTouchedByLog(volumes.Slots(), setX)` (new, generalised from the previous `buildPurgedByLog`) intersects the per-order touched-volume tracking with each of the three sets to produce the per-log annotation lists. Deduplication + deterministic sort by (account, asset) keeps the log payload byte-identical across nodes.
+4. `buildTouchedByLog(volumes.Slots(), setX)` (new, generalised from the previous `buildPurgedByLog`) intersects the per-order touched-volume tracking with each of the three sets to produce the per-log annotation lists. Deduplication + deterministic sort by (account, asset, color) keeps the log payload byte-identical across nodes.
 
 The three lists are injected into each `LedgerLog` inside the same `createdLogs` build loop that also injects `purged_volumes`. Note the audit hash chain does **not** cover `LedgerLog` content — it binds the audit header plus each item's order index, log sequence, and serialized order (see [Checker consumer](#checker-consumer) for what this means for tamper detection of the derived counters).
 

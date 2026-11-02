@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/stretchr/testify/require"
@@ -202,22 +203,27 @@ func TestCleanup_RunFillsDefaultInterval(t *testing.T) {
 
 func TestCleanup_RunTerminatesOnContextCancel(t *testing.T) {
 	t.Parallel()
-	ctrl := gomock.NewController(t)
 
-	c := NewCleanup(NewMockStaleProvider(ctrl), NewMockProposer(ctrl), NewMockLeaderProbe(ctrl), liveProbe(t), logging.Testing())
-	c.Interval = 5 * time.Millisecond
+	synctest.Test(t, func(t *testing.T) {
+		ctrl := gomock.NewController(t)
 
-	ctx, cancel := context.WithCancel(context.Background())
-	done := make(chan struct{})
-	go func() {
-		c.Run(ctx)
-		close(done)
-	}()
+		c := NewCleanup(NewMockStaleProvider(ctrl), NewMockProposer(ctrl), NewMockLeaderProbe(ctrl), liveProbe(t), logging.Testing())
+		c.Interval = 5 * time.Millisecond
 
-	cancel()
-	select {
-	case <-done:
-	case <-time.After(time.Second):
-		t.Fatal("Run did not return after ctx cancel")
-	}
+		ctx, cancel := context.WithCancel(context.Background())
+		done := make(chan struct{})
+		go func() {
+			c.Run(ctx)
+			close(done)
+		}()
+
+		// The fake clock cannot reach the first tick while Run has a ready
+		// ctx.Done case, so the expectation-free mocks are never consulted.
+		cancel()
+		select {
+		case <-done:
+		case <-time.After(time.Second):
+			t.Fatal("Run did not return after ctx cancel")
+		}
+	})
 }

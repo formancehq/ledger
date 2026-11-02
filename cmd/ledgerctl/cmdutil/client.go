@@ -136,7 +136,7 @@ func GetClient(cmd *cobra.Command) (servicepb.BucketServiceClient, *grpc.ClientC
 	conn, err := grpc.NewClient(serverAddr,
 		grpcprotocol.ClientOption(),
 		grpc.WithTransportCredentials(creds),
-		grpc.WithDefaultServiceConfig(actions.GRPCRetryPolicy), // Retry on UNAVAILABLE (no leader) up to 50 times with 200ms delay (10s max)
+		grpc.WithDefaultServiceConfig(actions.GRPCRetryPolicy), // Five total attempts on UNAVAILABLE, with 3.75s of backoff before jitter.
 		grpc.WithStatsHandler(otelgrpc.NewClientHandler()),     // Emit a client span per RPC and propagate W3C trace context.
 		grpc.WithDefaultCallOptions(grpc.MaxCallRecvMsgSize(MaxRecvMsgSize)),
 	)

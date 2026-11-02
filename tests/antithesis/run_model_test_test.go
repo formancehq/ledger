@@ -145,7 +145,7 @@ if [ "$#" -eq 2 ] && [ "$1" = "1" ] && [ "$2" = "0" ]; then exit 0; fi
 exec /usr/bin/seq "$@"
 `)
 	writeExecutable(t, fakeServer, `#!/bin/sh
-echo "Became leader"
+echo "Leader ready"
 trap 'exit 0' TERM INT
 while :; do sleep 1; done
 `)
@@ -440,7 +440,7 @@ func TestRunModelFixtureReportsDriverFailure(t *testing.T) {
 	require.NotErrorIs(t, err, context.DeadlineExceeded, output)
 	require.Contains(t, driverLog, "injected driver failure before readiness")
 	require.Contains(t, output, "server-0.log:")
-	require.Contains(t, output, "Became leader")
+	require.Contains(t, output, "Leader ready")
 }
 
 func TestModelFixtureClockWaitsForReadiness(t *testing.T) {

@@ -46,6 +46,38 @@ graph TB
 
 ## WAL (Write-Ahead Log)
 
+### Startup recovery diagnostics
+
+Startup logs distinguish the etcd WAL snapshot scan and `ReadAll` (which loads
+entries into memory), spool reset, the comparison of the live store with
+the WAL snapshot, main-store cache restoration, query-checkpoint recovery,
+the read of committed WAL entries, and their application to the FSM. The query
+checkpoint scan reports how many registered checkpoints were already ready,
+unavailable on this replica, or rebuilt after an interrupted materialization.
+The WAL replay reports each bounded batch's index range before application and
+its duration and applied index afterward. If startup stops mid-batch, the last
+"Applying startup WAL batch" record identifies the range in progress. Entry
+payloads and customer data are never logged.
+
+The main Pebble store, read index, and usage store label background compaction
+and flush events with their store name. Ordinary compactions and flushes are
+debug-only when debug logging is enabled; the start and successful completion
+or cancellation of compactions with at least 1 GiB of input, operations taking
+at least ten seconds, and Pebble disk-slow events are visible at info level.
+Pebble background errors are logged once through the background-error callback.
+Event logging uses a bounded, nonblocking handoff because some callbacks run
+under Pebble's DB mutex and disk-slow callbacks run on its health goroutine.
+If the log sink remains blocked and the handoff fills, additional event log
+records are dropped. Once the queue drains, an error log reports the number
+of dropped records. The main store's metrics listener runs independently.
+The main store retains its existing Pebble metrics listener. These events may
+run concurrently with `pebble.Open`: a compaction reported at the end of Open
+does not by itself explain Open's elapsed time.
+
+Size fields in startup, Pebble, and snapshot transfer logs retain their exact
+numeric byte values for queries. Companion `*Human` fields render those values
+in binary units (KiB, MiB, GiB) for quick inspection.
+
 ### Concept
 
 The WAL is the main log used by Raft to guarantee entry durability. It uses the `etcd/server/v3/storage/wal` library which provides:
@@ -95,6 +127,22 @@ The latest durable snapshot is also the compacted-prefix boundary after a
 restart. A compaction margin retained by the previous process is not
 reconstructed; the margin is a running leader's catch-up optimization, matching
 the etcd storage model.
+
+### Received snapshots with an entry suffix
+
+A Raft Ready may carry a snapshot and subsequent entries together. The node
+first appends the Ready entries and HardState durably, then installs the
+snapshot. `ApplySnapshot` clears the cached log window, so the node reappends
+the same Ready suffix before releasing storage or peer acknowledgements.
+Reordering the initial append after snapshot installation would change the
+crash prefix in which HardState and snapshot metadata become durable.
+
+The reappend adds one write proportional to the suffix bytes only for combined
+snapshot/entry Ready values. It adds no storage scan and no write to ordinary
+snapshot-free Ready processing. Tests verify the live Storage interface and a
+reopened WAL retain the suffix, term, HardState and ConfState. Snapshot receipt
+and sender delivery feedback are separate lifecycle boundaries; see the
+[consensus snapshot contract](../consensus/raft-consensus.md#receiving-a-snapshot-ready).
 
 ### WAL Management
 

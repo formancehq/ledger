@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"strconv"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -75,7 +76,7 @@ func TestRoutedController_GetLedgerFallbackDoesNotFenceCheckpointMetadata(t *tes
 	require.False(t, follower.IsLeader())
 	followerState, err := follower.GetClusterState(ctx)
 	require.NoError(t, err)
-	require.Equal(t, uint32(2), followerState.GetLocalNode())
+	require.Equal(t, uint64(2), followerState.GetLocalNode())
 	require.Equal(t, uint64(155), followerState.GetRaftStatus().GetLastPersistedIndex())
 	require.Empty(t, followerState.GetNodes(), "followers report their local cursor without leader topology")
 	routed := NewRoutedController(followerController, follower, pool)
@@ -136,63 +137,82 @@ func TestRoutedController_GetLedgerFallbackDoesNotFenceCheckpointMetadata(t *tes
 // wired. This tests the identity contract, not fault-driven Raft catch-up.
 func TestClusterService_CheckpointFenceIdentityAndLocalProgress(t *testing.T) {
 	t.Parallel()
-	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
-	defer cancel()
-	leaderStore, followerStore := newTestStore(t), newTestStore(t)
-	seedRoutedCheckpointMetadata(t, leaderStore, 521, 7, "@every 960000h", commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_AUDIT)
-	seedRoutedCheckpointMetadata(t, followerStore, 155, 4, "@every 950000h", commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT)
-	leaderListener, followerListener := checkpointFenceListener(t), checkpointFenceListener(t)
-	leaderAddr, followerAddr := leaderListener.Addr().String(), followerListener.Addr().String()
-	leaderPool := transport.NewConnectionPool(transport.TLSPolicy{}, transport.PoolConfig{})
-	followerPool := transport.NewConnectionPool(transport.TLSPolicy{}, transport.PoolConfig{})
-	t.Cleanup(func() { require.NoError(t, leaderPool.Close()) })
-	t.Cleanup(func() { require.NoError(t, followerPool.Close()) })
-	require.NoError(t, leaderPool.AddPeer(2, followerAddr))
-	require.NoError(t, followerPool.AddPeer(1, leaderAddr))
-	confState := &raftpb.ConfState{Voters: []uint64{1}, Learners: []uint64{2}}
-	leader := startCheckpointFenceNode(t, ctx, leaderStore, leaderPool, 1, 521, leaderAddr, 10*time.Millisecond, confState)
-	follower := startCheckpointFenceNode(t, ctx, followerStore, followerPool, 2, 155, followerAddr, time.Hour, confState)
-	establishCheckpointFenceLeader(t, ctx, follower)
-	require.Eventually(t, leader.node.IsLeader, 5*time.Second, time.Millisecond)
+	for _, followerID := range []uint64{2, 4294967297} {
+		t.Run(strconv.FormatUint(followerID, 10), func(t *testing.T) {
+			t.Parallel()
+			ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+			defer cancel()
+			leaderStore, followerStore := newTestStore(t), newTestStore(t)
+			seedRoutedCheckpointMetadata(t, leaderStore, 521, 7, "@every 960000h", commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_AUDIT)
+			seedRoutedCheckpointMetadata(t, followerStore, 155, 4, "@every 950000h", commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT)
+			leaderListener, followerListener := checkpointFenceListener(t), checkpointFenceListener(t)
+			leaderAddr, followerAddr := leaderListener.Addr().String(), followerListener.Addr().String()
+			leaderPool := transport.NewConnectionPool(transport.TLSPolicy{}, transport.PoolConfig{})
+			followerPool := transport.NewConnectionPool(transport.TLSPolicy{}, transport.PoolConfig{})
+			t.Cleanup(func() { require.NoError(t, leaderPool.Close()) })
+			t.Cleanup(func() { require.NoError(t, followerPool.Close()) })
+			require.NoError(t, leaderPool.AddPeer(followerID, followerAddr))
+			require.NoError(t, followerPool.AddPeer(1, leaderAddr))
+			confState := &raftpb.ConfState{Voters: []uint64{1}, Learners: []uint64{followerID}}
+			leader := startCheckpointFenceNode(t, ctx, leaderStore, leaderPool, 1, 521, leaderAddr, 10*time.Millisecond, confState)
+			follower := startCheckpointFenceNode(t, ctx, followerStore, followerPool, followerID, 155, followerAddr, time.Hour, confState)
+			establishCheckpointFenceLeader(t, ctx, follower)
+			require.Eventually(t, leader.node.IsLeader, 5*time.Second, time.Millisecond)
 
-	leaderServer, followerServer := grpc.NewServer(), grpc.NewServer()
-	clusterpb.RegisterClusterServiceServer(leaderServer, leader.clusterHandler(leaderStore, leaderPool, leaderAddr))
-	clusterpb.RegisterClusterServiceServer(followerServer, follower.clusterHandler(followerStore, followerPool, followerAddr))
-	serveCheckpointFenceRPCListener(t, leaderServer, leaderListener)
-	serveCheckpointFenceRPCListener(t, followerServer, followerListener)
-	pinned := clusterpb.NewClusterServiceClient(dialCheckpointFenceRPC(t, followerAddr))
+			leaderServer, followerServer := grpc.NewServer(), grpc.NewServer()
+			clusterpb.RegisterClusterServiceServer(leaderServer, leader.clusterHandler(leaderStore, leaderPool, leaderAddr))
+			clusterpb.RegisterClusterServiceServer(followerServer, follower.clusterHandler(followerStore, followerPool, followerAddr))
+			serveCheckpointFenceRPCListener(t, leaderServer, leaderListener)
+			serveCheckpointFenceRPCListener(t, followerServer, followerListener)
+			pinned := clusterpb.NewClusterServiceClient(dialCheckpointFenceRPC(t, followerAddr))
 
-	// The omitted ID routes from the pinned follower to the real leader. Its
-	// topology must map the address we actually dialed back to node 2.
-	topology, err := pinned.GetClusterState(ctx, &clusterpb.GetClusterStateRequest{})
-	require.NoError(t, err)
-	require.Equal(t, "Leader", topology.GetState())
-	require.Equal(t, uint32(1), topology.GetLocalNode())
-	require.GreaterOrEqual(t, topology.GetRaftStatus().GetLastPersistedIndex(), uint64(521))
-	require.Len(t, topology.GetNodes(), 2)
-	var resolvedID uint32
-	for _, peer := range topology.GetNodes() {
-		switch peer.GetId() {
-		case 1:
-			require.Equal(t, leaderAddr, peer.GetServiceAddress(), "the local leader advertises its serving endpoint")
-		case 2:
-			require.Equal(t, followerAddr, peer.GetServiceAddress(), "remote addresses come from the real service pool")
-			resolvedID = peer.GetId()
-		}
+			// The omitted ID routes from the pinned follower to the real leader. Its
+			// topology must map the address we actually dialed back to the follower.
+			topology, err := pinned.GetClusterState(ctx, &clusterpb.GetClusterStateRequest{})
+			require.NoError(t, err)
+			require.Equal(t, "Leader", topology.GetState())
+			require.Equal(t, uint64(1), topology.GetLocalNode())
+			require.GreaterOrEqual(t, topology.GetRaftStatus().GetLastPersistedIndex(), uint64(521))
+			require.Len(t, topology.GetNodes(), 2)
+			var resolvedID uint64
+			for _, peer := range topology.GetNodes() {
+				switch peer.GetId() {
+				case 1:
+					require.Equal(t, leaderAddr, peer.GetServiceAddress(), "the local leader advertises its serving endpoint")
+					require.Equal(t, "1", peer.GetVersion())
+					require.True(t, proto.Equal(topology.GetSyncProgress(), peer.GetSyncProgress()))
+					require.True(t, proto.Equal(topology.GetIndexProgress(), peer.GetIndexProgress()))
+				case followerID:
+					require.Equal(t, followerAddr, peer.GetServiceAddress(), "remote addresses come from the real service pool")
+					require.Equal(t, strconv.FormatUint(followerID, 10), peer.GetVersion())
+					require.NotNil(t, peer.GetSyncProgress())
+					require.NotNil(t, peer.GetIndexProgress())
+					resolvedID = peer.GetId()
+				default:
+					t.Fatalf("unexpected peer ID %d", peer.GetId())
+				}
+			}
+			require.Equal(t, followerID, resolvedID)
+
+			// The explicit discovered ID selects the follower's own durable cursor.
+			// Reusing the leader response, or requiring topology on this local response,
+			// would confuse leader progress with the metadata replica's progress.
+			local, err := pinned.GetClusterState(ctx, &clusterpb.GetClusterStateRequest{NodeId: resolvedID})
+			require.NoError(t, err)
+			require.Equal(t, "Follower", local.GetState())
+			require.Equal(t, resolvedID, local.GetLocalNode())
+			require.Equal(t, uint64(155), local.GetRaftStatus().GetLastPersistedIndex())
+			require.Equal(t, "normal", local.GetSyncProgress().GetStatus())
+			require.Empty(t, local.GetNodes())
+			require.Greater(t, topology.GetRaftStatus().GetLastPersistedIndex(), local.GetRaftStatus().GetLastPersistedIndex())
+			for _, peer := range topology.GetNodes() {
+				if peer.GetId() == followerID {
+					require.True(t, proto.Equal(local.GetSyncProgress(), peer.GetSyncProgress()), "the follower's enriched sync progress must come from its local response")
+					require.True(t, proto.Equal(local.GetIndexProgress(), peer.GetIndexProgress()), "the follower's enriched index progress must come from its local response")
+				}
+			}
+		})
 	}
-	require.Equal(t, uint32(2), resolvedID)
-
-	// The explicit discovered ID selects the follower's own durable cursor.
-	// Reusing the leader response, or requiring topology on this local response,
-	// would confuse leader progress with the metadata replica's progress.
-	local, err := pinned.GetClusterState(ctx, &clusterpb.GetClusterStateRequest{NodeId: resolvedID})
-	require.NoError(t, err)
-	require.Equal(t, "Follower", local.GetState())
-	require.Equal(t, resolvedID, local.GetLocalNode())
-	require.Equal(t, uint64(155), local.GetRaftStatus().GetLastPersistedIndex())
-	require.Equal(t, "normal", local.GetSyncProgress().GetStatus())
-	require.Empty(t, local.GetNodes())
-	require.Greater(t, topology.GetRaftStatus().GetLastPersistedIndex(), local.GetRaftStatus().GetLastPersistedIndex())
 }
 
 func checkpointMetadataHandler(store *dal.Store) clusterpb.ClusterServiceServer {
@@ -234,7 +254,7 @@ func (fixture checkpointFenceNode) clusterHandler(store *dal.Store, pool *transp
 	// initial progress through the same methods used by the production handler.
 	builder := indexbuilder.NewBuilder(store, nil, attributes.New(), logging.Testing(), noop.NewMeterProvider().Meter("checkpoint-fence"), 0)
 
-	return grpcadp.NewClusterServiceServer(fixture.node, fixture.raftTransport, pool, nil, store, fixture.cache, fixture.shared, builder, nil, nil, nil, logging.Testing(), fixture.raftAddr, serviceAddr, "checkpoint-fence", version.Info{})
+	return grpcadp.NewClusterServiceServer(fixture.node, fixture.raftTransport, pool, nil, store, fixture.cache, fixture.shared, builder, nil, nil, nil, logging.Testing(), fixture.raftAddr, serviceAddr, "checkpoint-fence", version.Info{Version: strconv.FormatUint(fixture.node.GetNodeID(), 10)})
 }
 
 func startCheckpointFenceNode(t *testing.T, ctx context.Context, store *dal.Store, pool *transport.ConnectionPool, id, applied uint64, serviceAddr string, tickInterval time.Duration, confState *raftpb.ConfState) checkpointFenceNode {
@@ -279,7 +299,7 @@ func startCheckpointFenceNode(t *testing.T, ctx context.Context, store *dal.Stor
 	member, err := membership.NewMembership(membership.NewPeerStore(store), raftTransport, pool, id, raftAddr, serviceAddr, instanceID, logger)
 	require.NoError(t, err)
 	responses := node.NewLocalResponses()
-	applier, err := node.NewApplier(machine, recovery, synchronizer, sp, store, w, logger, meter, 1000, 1000, nil, member.OnSnapshotInstalled, responses)
+	applier, err := node.NewApplier(machine, recovery, synchronizer, sp, store, w, logger, meter, 1000, 1000, nil, member, responses)
 	require.NoError(t, err)
 	raftNode, err := node.NewNode(node.NodeConfig{NodeID: id, AdvertiseAddr: raftAddr, ServiceAdvertiseAddr: serviceAddr, InstanceID: instanceID, TickInterval: tickInterval, ProcessingTickInterval: time.Millisecond, MaintenanceInterval: time.Hour}, raftTransport, applier, logger, meter, w, machine, recovery, synchronizer, member, responses)
 	require.NoError(t, err)
@@ -314,7 +334,7 @@ func establishCheckpointFenceLeader(t *testing.T, ctx context.Context, fixture c
 	streamCtx := metadata.NewOutgoingContext(ctx, metadata.Pairs(node.MetadataKeyNodeID, "1", node.MetadataKeyClusterID, "checkpoint-fence", node.MetadataKeyPriority, "high"))
 	stream, err := rafttransportpb.NewRaftTransportServiceClient(raftConn).StreamMessages(streamCtx)
 	require.NoError(t, err)
-	heartbeat, err := proto.Marshal(&raftpb.Message{Type: new(raftpb.MsgHeartbeat), From: proto.Uint64(1), To: proto.Uint64(2), Term: proto.Uint64(1), Commit: proto.Uint64(155)})
+	heartbeat, err := proto.Marshal(&raftpb.Message{Type: new(raftpb.MsgHeartbeat), From: proto.Uint64(1), To: new(fixture.node.GetNodeID()), Term: proto.Uint64(1), Commit: proto.Uint64(155)})
 	require.NoError(t, err)
 	require.NoError(t, stream.Send(&rafttransportpb.SendMessageRequest{Message: &rafttransportpb.SendMessageRequest_Raft{Raft: &rafttransportpb.RaftRequestBatch{Messages: []*rafttransportpb.RaftRequestMessage{{Id: 1, Message: heartbeat}}}}}))
 	response, err := stream.Recv()

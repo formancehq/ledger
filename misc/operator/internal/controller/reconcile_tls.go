@@ -2,10 +2,15 @@ package controller
 
 import (
 	"context"
+	"errors"
+	"fmt"
+	"path"
+	"reflect"
+	"strings"
 
 	appsv1 "k8s.io/api/apps/v1"
-	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
@@ -40,23 +45,37 @@ func desiredTLSMode(ledger *ledgerv1alpha1.Cluster) string {
 	return tlsModeDisabled
 }
 
-// fetchTLSMode returns the TLS_MODE currently in effect on the running pods of
-// the named Cluster, by reading the TLS_MODE env var from the
-// StatefulSet pod template. Returns an empty string (and no error) if the
-// StatefulSet does not exist yet; the caller's exec is meaningless in that
-// case and will fail on the pod lookup, but this keeps the bootstrap path
-// from masking the original error.
-func fetchTLSMode(ctx context.Context, c client.Client, namespace, name string) (string, error) {
+// errClusterRuntimeAbsent signals that the Cluster has no StatefulSet under its
+// derived name, so there is no pod of this Cluster to exec into or dial. A pod
+// named "<statefulset>-0" may still exist (e.g. orphaned during StatefulSet
+// recreation, or left by a deleted Cluster of the same name), which is exactly
+// why the exec paths must not proceed.
+var errClusterRuntimeAbsent = errors.New("cluster StatefulSet not found")
+
+// fetchClusterStatefulSet returns the Cluster's StatefulSet when the Cluster
+// controls it. It is the gate of every cross-CRD exec path (Ledger, ledger
+// indexes, EventSink) and of the TLS mode they use: a missing StatefulSet is
+// errClusterRuntimeAbsent, so callers retry before exec (orphaned pods may
+// still require TLS during StatefulSet recreation, so absence cannot safely
+// select plaintext), and one not controlled by the Cluster is
+// errResourceNameConflict. Exec paths then pass the returned StatefulSet to
+// ownedPodExec, which checks the target pod itself, and read the TLS mode from
+// it with currentTLSModeFromStatefulSet.
+func fetchClusterStatefulSet(ctx context.Context, c client.Client, cluster *ledgerv1alpha1.Cluster) (*appsv1.StatefulSet, error) {
 	sts := &appsv1.StatefulSet{}
-	if err := c.Get(ctx, types.NamespacedName{Name: name, Namespace: namespace}, sts); err != nil {
+	key := types.NamespacedName{Name: resourceName(cluster.Name), Namespace: cluster.Namespace}
+	if err := c.Get(ctx, key, sts); err != nil {
 		if apierrors.IsNotFound(err) {
-			return "", nil
+			return nil, fmt.Errorf("%w: %s: %w", errClusterRuntimeAbsent, key, err)
 		}
 
-		return "", err
+		return nil, err
+	}
+	if notControlledBy(sts, cluster) {
+		return nil, nameConflictError("StatefulSet", sts, cluster)
 	}
 
-	return currentTLSModeFromStatefulSet(sts), nil
+	return sts, nil
 }
 
 // currentTLSModeFromStatefulSet returns the TLS_MODE env var that is
@@ -159,7 +178,10 @@ func tlsMigrationPhase(desired, target string) string {
 }
 
 // fetchExistingStatefulSet retrieves the live StatefulSet for the ledger,
-// returning (nil, nil) if it doesn't exist yet (bootstrap case).
+// returning (nil, nil) if it doesn't exist yet (bootstrap case). A StatefulSet
+// under the name that the Cluster does not control is errResourceNameConflict:
+// its image, TLS mode and rollout state must never drive this Cluster's RC
+// upgrade check, TLS transition or cluster Secret.
 func (r *ClusterReconciler) fetchExistingStatefulSet(ctx context.Context, ledger *ledgerv1alpha1.Cluster) (*appsv1.StatefulSet, error) {
 	sts := &appsv1.StatefulSet{}
 
@@ -170,6 +192,9 @@ func (r *ClusterReconciler) fetchExistingStatefulSet(ctx context.Context, ledger
 		}
 
 		return nil, err
+	}
+	if notControlledBy(sts, ledger) {
+		return nil, nameConflictError("StatefulSet", sts, ledger)
 	}
 
 	return sts, nil
@@ -185,5 +210,85 @@ func shouldInjectClusterSecret(targetTLSMode string) bool {
 	return targetTLSMode != "" && targetTLSMode != tlsModeDisabled
 }
 
-// _ keeps corev1 imported in case future helpers need EnvVar/Volume.
-var _ = corev1.EnvVar{}
+// observedTLSMode falls back to durable rollout state while an orphaned
+// StatefulSet is absent. Absence alone must not bootstrap plaintext among TLS peers.
+func observedTLSMode(ledger *ledgerv1alpha1.Cluster, sts *appsv1.StatefulSet) string {
+	if sts == nil && ledger.Status.TLSRollout != nil {
+		return ledger.Status.TLSRollout.Mode
+	}
+
+	return currentTLSModeFromStatefulSet(sts)
+}
+
+// tlsConfigFromStatefulSet recovers the effective certificate and CA references
+// from the workload, including when the desired TLS block has already been removed.
+func tlsConfigFromStatefulSet(sts *appsv1.StatefulSet) *ledgerv1alpha1.TLSConfig {
+	if sts == nil {
+		return nil
+	}
+	var config ledgerv1alpha1.TLSConfig
+	for _, volume := range sts.Spec.Template.Spec.Volumes {
+		if volume.Name == "tls-certs" && volume.Secret != nil {
+			config.SecretName = volume.Secret.SecretName
+		}
+	}
+	for _, container := range sts.Spec.Template.Spec.Containers {
+		if container.Name != "ledger" {
+			continue
+		}
+		for _, env := range container.Env {
+			if env.Name == "TLS_CA_CERT_FILE" && strings.HasPrefix(env.Value, "/tls/") {
+				config.CASecretKey = path.Base(env.Value)
+			}
+		}
+	}
+	if config.SecretName == "" {
+		return nil
+	}
+
+	return &config
+}
+
+// prepareTLSRollout persists recovery state before any workload mutation. A
+// failed or conflicting status write leaves the existing StatefulSet untouched.
+// Desired spec is never rewritten with the effective transitional configuration.
+func prepareTLSRollout(ctx context.Context, c client.Client, ledger *ledgerv1alpha1.Cluster, sts *appsv1.StatefulSet, target string) (*ledgerv1alpha1.Cluster, error) {
+	actual := currentTLSModeFromStatefulSet(sts)
+	if sts != nil && (actual == tlsModeRequired || actual == tlsModeOptional) && !metav1.IsControlledBy(sts, ledger) {
+		return nil, fmt.Errorf("TLS StatefulSet %q is not controlled by Cluster %q (UID %s)", sts.Name, ledger.Name, ledger.UID)
+	}
+	var config *ledgerv1alpha1.TLSConfig
+	if desiredTLSMode(ledger) == tlsModeRequired {
+		config = ledger.Spec.TLS.DeepCopy()
+	} else {
+		config = tlsConfigFromStatefulSet(sts)
+		if config == nil && ledger.Status.TLSRollout != nil {
+			config = &ledgerv1alpha1.TLSConfig{
+				SecretName:  ledger.Status.TLSRollout.SecretName,
+				CASecretKey: ledger.Status.TLSRollout.CASecretKey,
+			}
+		}
+	}
+	if target != tlsModeDisabled && (config == nil || config.SecretName == "") {
+		return nil, fmt.Errorf("TLS mode %s requires a certificate Secret reference in the StatefulSet or retained rollout status", target)
+	}
+
+	var retained *ledgerv1alpha1.TLSRolloutStatus
+	if config != nil && (target != tlsModeDisabled || currentTLSModeFromStatefulSet(sts) != tlsModeDisabled || !rolloutConverged(sts)) {
+		retained = &ledgerv1alpha1.TLSRolloutStatus{Mode: target, SecretName: config.SecretName, CASecretKey: config.CASecretKey}
+	}
+	if !reflect.DeepEqual(ledger.Status.TLSRollout, retained) {
+		before := ledger.DeepCopy()
+		updated := ledger.DeepCopy()
+		updated.Status.TLSRollout = retained
+		if err := c.Status().Patch(ctx, updated, client.MergeFromWithOptions(before, client.MergeFromWithOptimisticLock{})); err != nil {
+			return nil, fmt.Errorf("persisting TLS rollout recovery state: %w", err)
+		}
+		ledger.ResourceVersion = updated.ResourceVersion
+		ledger.Status.TLSRollout = retained
+	}
+	effective := ledger.DeepCopy()
+	effective.Spec.TLS = config
+
+	return effective, nil
+}

@@ -6,6 +6,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"io"
 
 	"github.com/cockroachdb/pebble/v2"
 
@@ -56,6 +57,18 @@ func validateExportKey(seg ExportSegment, key []byte) error {
 	return nil
 }
 
+type exportCountingReader struct {
+	r io.Reader
+	n int64
+}
+
+func (r *exportCountingReader) Read(p []byte) (int, error) {
+	n, err := r.r.Read(p)
+	r.n += int64(n)
+
+	return n, err
+}
+
 // ApplyExports downloads export segments from storage and writes their raw KV
 // pairs into the given Pebble store. The segment types are log (0x01), audit
 // (0x02), audit-item (0x03), and applied-proposal (0x04) — all restored as raw
@@ -77,6 +90,9 @@ func ApplyExports(
 		if _, _, err := exportKeyShape(seg.Type); err != nil {
 			return fmt.Errorf("invalid export segment %s: %w", seg.Key, err)
 		}
+		if seg.Size < 9 || seg.StartSeq > seg.EndSeq {
+			return fmt.Errorf("invalid export segment %s: size %d or range [%d,%d]", seg.Key, seg.Size, seg.StartSeq, seg.EndSeq)
+		}
 
 		logger.WithFields(map[string]any{
 			"type":     seg.Type,
@@ -90,7 +106,8 @@ func ApplyExports(
 			return fmt.Errorf("downloading segment %s: %w", seg.Key, err)
 		}
 
-		kvReader := NewKVStreamReader(reader)
+		counted := &exportCountingReader{r: reader}
+		kvReader := NewKVStreamReader(counted)
 
 		if err := kvReader.ReadHeader(); err != nil {
 			_ = reader.Close()
@@ -104,6 +121,7 @@ func ApplyExports(
 			count    uint64
 			firstSeq uint64
 			lastSeq  uint64
+			lastItem uint32
 		)
 
 		for {
@@ -127,8 +145,25 @@ func ApplyExports(
 			}
 
 			seq := binary.BigEndian.Uint64(key[2:10])
+			if seg.Type == "auditItem" {
+				index := binary.BigEndian.Uint32(key[10:14])
+				if (count == 0 || seq != lastSeq) && index != 0 ||
+					(count > 0 && seq == lastSeq && (index <= lastItem || index-lastItem != 1)) {
+					_ = reader.Close()
+					_ = batch.Cancel()
+
+					return fmt.Errorf("audit item index gap or disorder in segment %s at sequence %d: index %d", seg.Key, seq, index)
+				}
+				lastItem = index
+			}
 			if count == 0 {
 				firstSeq = seq
+			} else if seq < lastSeq || (seq == lastSeq && seg.Type != "auditItem") ||
+				(seq > lastSeq && seg.Type != "appliedProposal" && seq-lastSeq != 1) {
+				_ = reader.Close()
+				_ = batch.Cancel()
+
+				return fmt.Errorf("sequence gap or disorder in segment %s: previous %d, current %d", seg.Key, lastSeq, seq)
 			}
 			lastSeq = seq
 
@@ -161,6 +196,27 @@ func ApplyExports(
 				"incomplete export segment %s: restored sequence coverage [%d,%d], expected [%d,%d]",
 				seg.Key, firstSeq, lastSeq, seg.StartSeq, seg.EndSeq,
 			)
+		}
+
+		var trailing [1]byte
+		n, readErr := counted.Read(trailing[:])
+		if n != 0 || readErr == nil {
+			_ = reader.Close()
+			_ = batch.Cancel()
+
+			return fmt.Errorf("trailing bytes after footer in segment %s", seg.Key)
+		}
+		if !errors.Is(readErr, io.EOF) {
+			_ = reader.Close()
+			_ = batch.Cancel()
+
+			return fmt.Errorf("checking end of segment %s: %w", seg.Key, readErr)
+		}
+		if counted.n != seg.Size {
+			_ = reader.Close()
+			_ = batch.Cancel()
+
+			return fmt.Errorf("size mismatch in segment %s: got %d bytes, manifest declares %d", seg.Key, counted.n, seg.Size)
 		}
 
 		_ = reader.Close()

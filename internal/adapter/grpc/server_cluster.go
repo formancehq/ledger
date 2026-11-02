@@ -148,6 +148,8 @@ func (impl *ClusterServiceServerImpl) getClusterStateLocal(ctx context.Context) 
 	// Populate maintenance mode from shared state
 	clusterState.MaintenanceMode = impl.sharedState.MaintenanceMode()
 	clusterState.NodeVersion = impl.info.Version
+	clusterState.SupportsDrain = true
+	clusterState.DrainEpoch, clusterState.DrainIndex = impl.sharedState.Drain()
 	// Read the full persisted cluster config (includes bloom filter settings).
 	// Fall back to a minimal config with just the rotation threshold if not yet persisted.
 	if persistedState, err := query.ReadClusterState(impl.store); err == nil && persistedState != nil {
@@ -169,7 +171,7 @@ func (impl *ClusterServiceServerImpl) getClusterStateLocal(ctx context.Context) 
 	localNodeID := impl.node.GetNodeID()
 
 	for _, nodeInfo := range clusterState.GetNodes() {
-		nodeID := uint64(nodeInfo.GetId())
+		nodeID := nodeInfo.GetId()
 		if nodeID == localNodeID {
 			nodeInfo.RaftAddress = impl.localRaftAddr
 			nodeInfo.ServiceAddress = impl.localServiceAddr
@@ -193,6 +195,178 @@ func (impl *ClusterServiceServerImpl) getClusterStateLocal(ctx context.Context) 
 	return clusterState, nil
 }
 
+// BeginDrain is accepted only after every current member confirms support for
+// the marker semantics. An older binary cannot apply the new technical update
+// deterministically, so mixed-version clusters fail closed until rollout ends.
+func (impl *ClusterServiceServerImpl) BeginDrain(ctx context.Context, req *clusterpb.BeginDrainRequest) (*clusterpb.BeginDrainResponse, error) {
+	if req.GetEpoch() == "" || len(req.GetEpoch()) > 128 {
+		return nil, status.Error(codes.InvalidArgument, "drain epoch must contain 1 to 128 bytes")
+	}
+	if !impl.node.IsLeader() {
+		leader, err := impl.leaderClient()
+		if err != nil {
+			return nil, err
+		}
+
+		return leader.BeginDrain(ctx, req)
+	}
+	if currentEpoch, index := impl.sharedState.Drain(); index != 0 {
+		if currentEpoch != req.GetEpoch() {
+			return nil, status.Error(codes.FailedPrecondition, "cluster is already draining under another epoch")
+		}
+		decision, err := impl.node.BeginDrain(ctx, req.GetEpoch(), nil, 0)
+		if err != nil {
+			return nil, drainBeginError(err)
+		}
+
+		return &clusterpb.BeginDrainResponse{CutoffIndex: decision.GetIndex(), Members: decision.GetMembers()}, nil
+	}
+	var decision *raftcmdpb.DrainState
+	err := impl.node.WithStableDrainMembership(ctx, func() error {
+		members, term, err := impl.preflightDrainMembers(ctx, false)
+		if err != nil {
+			return err
+		}
+		decision, err = impl.node.BeginDrain(ctx, req.GetEpoch(), members, term)
+
+		return err
+	})
+	if err != nil {
+		return nil, drainBeginError(err)
+	}
+	impl.logger.WithFields(map[string]any{
+		"epoch": decision.GetEpoch(), "cutoffIndex": decision.GetIndex(),
+		"members": decision.GetMembers(), "actor": "cluster-write caller",
+	}).Infof("controlled shutdown barrier committed")
+
+	return &clusterpb.BeginDrainResponse{CutoffIndex: decision.GetIndex(), Members: decision.GetMembers()}, nil
+}
+
+// EndDrain lifts the active epoch only after every current member confirms
+// that it can apply the Raft-ordered release marker.
+func (impl *ClusterServiceServerImpl) EndDrain(ctx context.Context, req *clusterpb.EndDrainRequest) (*clusterpb.EndDrainResponse, error) {
+	if req.GetEpoch() == "" || len(req.GetEpoch()) > 128 {
+		return nil, status.Error(codes.InvalidArgument, "drain epoch must contain 1 to 128 bytes")
+	}
+	if !impl.node.IsLeader() {
+		leader, err := impl.leaderClient()
+		if err != nil {
+			return nil, err
+		}
+
+		return leader.EndDrain(ctx, req)
+	}
+	var decision *raftcmdpb.DrainState
+	err := impl.node.WithStableDrainMembership(ctx, func() error {
+		_, term, err := impl.preflightDrainMembers(ctx, true)
+		if err != nil {
+			return err
+		}
+		decision, err = impl.node.EndDrain(ctx, req.GetEpoch(), term)
+
+		return err
+	})
+	if err != nil {
+		return nil, drainBeginError(err)
+	}
+	impl.logger.WithFields(map[string]any{
+		"epoch": decision.GetEpoch(), "releaseIndex": decision.GetReleasedIndex(),
+		"members": decision.GetMembers(), "actor": "cluster-write caller",
+	}).Infof("controlled shutdown barrier released")
+
+	return &clusterpb.EndDrainResponse{ReleaseIndex: decision.GetReleasedIndex(), Members: decision.GetMembers()}, nil
+}
+
+func (impl *ClusterServiceServerImpl) preflightDrainMembers(ctx context.Context, requireRelease bool) ([]uint64, uint64, error) {
+	state, err := impl.node.GetClusterState(ctx)
+	if err != nil {
+		return nil, 0, err
+	}
+	term := state.GetRaftStatus().GetTerm()
+	if state.GetState() != "Leader" || len(state.GetNodes()) == 0 || term == 0 {
+		return nil, 0, status.Error(codes.FailedPrecondition, "cluster membership unavailable")
+	}
+	members := make([]uint64, 0, len(state.GetNodes()))
+	for _, member := range state.GetNodes() {
+		if err := ctx.Err(); err != nil {
+			return nil, 0, status.FromContextError(err).Err()
+		}
+		id := member.GetId()
+		if id == 0 {
+			return nil, 0, status.Error(codes.FailedPrecondition, "cluster membership contains node zero")
+		}
+		if id != impl.node.GetNodeID() {
+			conn := impl.servicePool.GetConnection(id)
+			if conn == nil {
+				return nil, 0, status.Errorf(codes.Unavailable, "member %d is unreachable", id)
+			}
+			peerCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
+			peer, err := clusterpb.NewClusterServiceClient(conn).GetDrainStatus(peerCtx, &clusterpb.GetDrainStatusRequest{})
+			cancel()
+			if err != nil {
+				return nil, 0, drainPeerPreflightError(ctx, id, err)
+			}
+			if peer.GetLocalNode() != id || !peer.GetSupportsDrain() {
+				return nil, 0, status.Errorf(codes.FailedPrecondition, "member %d has not confirmed drain support", id)
+			}
+			if requireRelease && !peer.GetSupportsRelease() {
+				return nil, 0, status.Errorf(codes.FailedPrecondition, "member %d has not confirmed drain release support", id)
+			}
+		}
+		members = append(members, id)
+	}
+
+	return members, term, nil
+}
+
+func drainPeerPreflightError(ctx context.Context, id uint64, err error) error {
+	if ctx.Err() != nil {
+		return status.FromContextError(ctx.Err()).Err()
+	}
+	if status.Code(err) == codes.Unimplemented {
+		return status.Errorf(codes.FailedPrecondition, "member %d has not confirmed drain support", id)
+	}
+
+	return status.Errorf(codes.Unavailable, "member %d drain preflight: %v", id, err)
+}
+
+func drainBeginError(err error) error {
+	if _, ok := status.FromError(err); ok {
+		return err
+	}
+	switch {
+	case errors.Is(err, context.Canceled):
+		return status.Error(codes.Canceled, err.Error())
+	case errors.Is(err, context.DeadlineExceeded):
+		return status.Error(codes.DeadlineExceeded, err.Error())
+	case errors.Is(err, node.ErrDrainEpochConflict), errors.Is(err, node.ErrDrainEpochReused), errors.Is(err, node.ErrNoActiveDrain):
+		return status.Error(codes.FailedPrecondition, err.Error())
+	default:
+		return status.Error(codes.Unavailable, err.Error())
+	}
+}
+
+func (impl *ClusterServiceServerImpl) GetDrainStatus(ctx context.Context, _ *clusterpb.GetDrainStatusRequest) (*clusterpb.DrainStatus, error) {
+	local, err := impl.node.GetClusterState(ctx)
+	if err != nil {
+		return nil, err
+	}
+	epoch, index, releaseIndex := impl.sharedState.DrainSnapshot()
+	persisted := local.GetRaftStatus().GetLastPersistedIndex()
+	if target := max(index, releaseIndex); target != 0 && persisted >= target {
+		if err := impl.node.SyncDrainWAL(); err != nil {
+			return nil, status.Errorf(codes.Unavailable, "syncing drain marker WAL: %v", err)
+		}
+	}
+
+	return &clusterpb.DrainStatus{
+		LocalNode: local.GetLocalNode(), SupportsDrain: true, SupportsRelease: true,
+		DrainEpoch: epoch, DrainIndex: index, ReleaseIndex: releaseIndex,
+		LastPersistedIndex: persisted,
+		SyncStatus:         local.GetSyncProgress().GetStatus(),
+	}, nil
+}
+
 // fetchPeerState queries a peer node for its local cluster state (sync progress, index progress, etc).
 // Returns nil if the peer is unreachable.
 func (impl *ClusterServiceServerImpl) fetchPeerState(ctx context.Context, nodeID uint64) *clusterpb.ClusterState {
@@ -208,7 +382,7 @@ func (impl *ClusterServiceServerImpl) fetchPeerState(ctx context.Context, nodeID
 	client := clusterpb.NewClusterServiceClient(conn)
 
 	peerState, err := client.GetClusterState(ctx, &clusterpb.GetClusterStateRequest{
-		NodeId: uint32(nodeID),
+		NodeId: nodeID,
 	})
 	if err != nil {
 		return nil
@@ -238,7 +412,7 @@ func (impl *ClusterServiceServerImpl) TransferLeadership(ctx context.Context, re
 		return nil, errors.New("transferee node ID must be non-zero")
 	}
 
-	transferee := uint64(req.GetTransferee())
+	transferee := req.GetTransferee()
 
 	// If this node is not the leader, forward to the leader
 	if !impl.node.IsLeader() {

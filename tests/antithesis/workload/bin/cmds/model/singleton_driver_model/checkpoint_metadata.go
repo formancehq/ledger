@@ -106,7 +106,7 @@ func fenceCheckpointMetadata(ctx context.Context, node *internal.PerNodeConn) er
 // identity; its progress must never authorize a read of the pinned local store.
 // Refresh unresolved best-effort dial identities under the caller's deadline,
 // without mutating the PerNodeConn shared by concurrent model workers.
-func checkpointMetadataNodeID(ctx context.Context, node *internal.PerNodeConn) (uint32, error) {
+func checkpointMetadataNodeID(ctx context.Context, node *internal.PerNodeConn) (uint64, error) {
 	if node.Addr == "" {
 		return 0, errors.New("checkpoint metadata node has no pinned address")
 	}

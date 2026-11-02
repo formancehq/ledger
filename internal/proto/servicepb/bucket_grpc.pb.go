@@ -50,6 +50,7 @@ const (
 	BucketService_GetLedgerStats_FullMethodName          = "/ledger.BucketService/GetLedgerStats"
 	BucketService_AggregateVolumes_FullMethodName        = "/ledger.BucketService/AggregateVolumes"
 	BucketService_GetNumscript_FullMethodName            = "/ledger.BucketService/GetNumscript"
+	BucketService_AnalyzeNumscript_FullMethodName        = "/ledger.BucketService/AnalyzeNumscript"
 	BucketService_ListNumscripts_FullMethodName          = "/ledger.BucketService/ListNumscripts"
 	BucketService_GetTemplateUsage_FullMethodName        = "/ledger.BucketService/GetTemplateUsage"
 	BucketService_ListNumscriptVersions_FullMethodName   = "/ledger.BucketService/ListNumscriptVersions"
@@ -123,6 +124,8 @@ type BucketServiceClient interface {
 	AggregateVolumes(ctx context.Context, in *AggregateVolumesRequest, opts ...grpc.CallOption) (*commonpb.AggregateResult, error)
 	// GetNumscript returns a numscript by name and optional version
 	GetNumscript(ctx context.Context, in *GetNumscriptRequest, opts ...grpc.CallOption) (*commonpb.NumscriptInfo, error)
+	// AnalyzeNumscript validates source without reading or changing ledger state.
+	AnalyzeNumscript(ctx context.Context, in *AnalyzeNumscriptRequest, opts ...grpc.CallOption) (*AnalyzeNumscriptResponse, error)
 	// ListNumscripts streams all numscripts (latest version of each)
 	ListNumscripts(ctx context.Context, in *ListNumscriptsRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[commonpb.NumscriptInfo], error)
 	// GetTemplateUsage returns per-template invocation usage populated by the
@@ -528,6 +531,16 @@ func (c *bucketServiceClient) GetNumscript(ctx context.Context, in *GetNumscript
 	return out, nil
 }
 
+func (c *bucketServiceClient) AnalyzeNumscript(ctx context.Context, in *AnalyzeNumscriptRequest, opts ...grpc.CallOption) (*AnalyzeNumscriptResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(AnalyzeNumscriptResponse)
+	err := c.cc.Invoke(ctx, BucketService_AnalyzeNumscript_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *bucketServiceClient) ListNumscripts(ctx context.Context, in *ListNumscriptsRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[commonpb.NumscriptInfo], error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	stream, err := c.cc.NewStream(ctx, &BucketService_ServiceDesc.Streams[10], BucketService_ListNumscripts_FullMethodName, cOpts...)
@@ -653,6 +666,8 @@ type BucketServiceServer interface {
 	AggregateVolumes(context.Context, *AggregateVolumesRequest) (*commonpb.AggregateResult, error)
 	// GetNumscript returns a numscript by name and optional version
 	GetNumscript(context.Context, *GetNumscriptRequest) (*commonpb.NumscriptInfo, error)
+	// AnalyzeNumscript validates source without reading or changing ledger state.
+	AnalyzeNumscript(context.Context, *AnalyzeNumscriptRequest) (*AnalyzeNumscriptResponse, error)
 	// ListNumscripts streams all numscripts (latest version of each)
 	ListNumscripts(*ListNumscriptsRequest, grpc.ServerStreamingServer[commonpb.NumscriptInfo]) error
 	// GetTemplateUsage returns per-template invocation usage populated by the
@@ -764,6 +779,9 @@ func (UnimplementedBucketServiceServer) AggregateVolumes(context.Context, *Aggre
 }
 func (UnimplementedBucketServiceServer) GetNumscript(context.Context, *GetNumscriptRequest) (*commonpb.NumscriptInfo, error) {
 	return nil, status.Error(codes.Unimplemented, "method GetNumscript not implemented")
+}
+func (UnimplementedBucketServiceServer) AnalyzeNumscript(context.Context, *AnalyzeNumscriptRequest) (*AnalyzeNumscriptResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method AnalyzeNumscript not implemented")
 }
 func (UnimplementedBucketServiceServer) ListNumscripts(*ListNumscriptsRequest, grpc.ServerStreamingServer[commonpb.NumscriptInfo]) error {
 	return status.Error(codes.Unimplemented, "method ListNumscripts not implemented")
@@ -1253,6 +1271,24 @@ func _BucketService_GetNumscript_Handler(srv interface{}, ctx context.Context, d
 	return interceptor(ctx, in, info, handler)
 }
 
+func _BucketService_AnalyzeNumscript_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(AnalyzeNumscriptRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(BucketServiceServer).AnalyzeNumscript(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: BucketService_AnalyzeNumscript_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(BucketServiceServer).AnalyzeNumscript(ctx, req.(*AnalyzeNumscriptRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _BucketService_ListNumscripts_Handler(srv interface{}, stream grpc.ServerStream) error {
 	m := new(ListNumscriptsRequest)
 	if err := stream.RecvMsg(m); err != nil {
@@ -1418,6 +1454,10 @@ var BucketService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GetNumscript",
 			Handler:    _BucketService_GetNumscript_Handler,
+		},
+		{
+			MethodName: "AnalyzeNumscript",
+			Handler:    _BucketService_AnalyzeNumscript_Handler,
 		},
 		{
 			MethodName: "GetTemplateUsage",

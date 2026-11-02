@@ -31,13 +31,14 @@ import (
 	"github.com/formancehq/ledger/v3/pkg/actions"
 
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
+	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal/generation"
 )
 
 func main() {
-	internal.RunDriver("parallel_driver_reference_conflict_skip", run)
+	internal.RunGeneratedDriver("parallel_driver_reference_conflict_skip", run)
 }
 
-func run(ctx context.Context, client servicepb.BucketServiceClient, ledger string) {
+func run(ctx context.Context, client servicepb.BucketServiceClient, ledger string, src *generation.Source) {
 	ref := fmt.Sprintf("skipref-%d", internal.Rand().Uint64())
 	// The client retries ambiguous failures. Each logical step needs its own
 	// stable key so a lost response replays the committed outcome. Sharing one
@@ -52,7 +53,7 @@ func run(ctx context.Context, client servicepb.BucketServiceClient, ledger strin
 				Ledger: ledger,
 				Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
 					CreateTransaction: &servicepb.CreateTransactionPayload{
-						Postings:  internal.RandomPostings(),
+						Postings:  internal.GeneratedPostings(src),
 						Reference: ref,
 						Force:     true,
 					},
@@ -87,7 +88,7 @@ func run(ctx context.Context, client servicepb.BucketServiceClient, ledger strin
 					Ledger: ledger,
 					Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
 						CreateTransaction: &servicepb.CreateTransactionPayload{
-							Postings:  internal.RandomPostings(),
+							Postings:  internal.GeneratedPostings(src),
 							Reference: ref,
 							Force:     true,
 						},
@@ -174,7 +175,7 @@ func run(ctx context.Context, client servicepb.BucketServiceClient, ledger strin
 					Ledger: ledger,
 					Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
 						CreateTransaction: &servicepb.CreateTransactionPayload{
-							Postings:  internal.RandomPostings(),
+							Postings:  internal.GeneratedPostings(src),
 							Reference: freshRef,
 							Force:     true,
 						},

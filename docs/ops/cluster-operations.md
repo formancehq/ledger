@@ -62,7 +62,7 @@ ledger run \
 
 ### Join Sequence
 
-The join process has four phases: peer discovery, node initialization, startup, and learner registration. Both discovery and registration go through the inter-node `ClusterBootstrapService` exposed on the RaftServer — gated by cluster-id metadata (and cluster-secret bearer when configured), without the user-JWT auth pipeline.
+The join process has four phases: peer discovery, node initialization, learner registration preflight, and startup. Both discovery and registration go through the inter-node `ClusterBootstrapService` exposed on the RaftServer — gated by cluster-id metadata (and cluster-secret bearer when configured), without the user-JWT auth pipeline.
 
 #### Phase 1: Peer Discovery
 
@@ -98,7 +98,7 @@ retried forever:
   the target cluster's. Discovery aborts immediately with a
   `JoinClusterIDError` that names the `--join` address and the rejected value.
 
-Learner registration (Phase 4) applies the same rules.
+Learner registration (Phase 3) applies the same rules.
 
 #### Phase 2: Node Initialization
 
@@ -124,37 +124,72 @@ RawNode starts with this configuration
 
 The joining node sees the existing members as voters and itself as a learner.
 
-#### Phase 3: Startup
+#### Phase 3: Learner Registration Preflight
 
-The fx lifecycle starts all components:
-- Raft transport and service pool register the discovered peers
-- gRPC servers start (Raft transport + service API)
-- The Raft node `Run()` begins the orchestrate loop
-- The ConfChange observer is wired to handle cluster membership changes
+An Fx `OnStart` hook registers a joining node when bootstrap is disabled,
+discovered peers are configured, and the WAL directory has no `CLUSTER_JOINED`
+marker. It runs before the Raft gRPC server accepts inbound traffic, membership
+connections start, or `Node.Run` steps received messages. This ordering lets the
+leader reject stale replication progress before it can send messages that the
+joining node's empty log cannot accept.
 
-#### Phase 4: Learner Registration
-
-An fx `OnStart` hook detects this is a fresh start (empty WAL before `NewNode` modified it) with `--join`:
+The preflight dials discovered peers directly with short-lived outbound gRPC
+connections; it does not require the local Raft listener or connection pool:
 
 ```
-freshStart == true && !Bootstrap && len(Peers) > 0
-    │
-    ▼
-Connect to first discovered peer's RaftServer
-    │
-    ▼
 Call JoinAsLearner RPC → forwarded to leader if needed
     │
     ▼
 Leader proposes ConfChangeAddLearnerNode
     │
     ▼
-ConfChange committed → all nodes update transport & service pool
+ConfChange committed → existing nodes update transport & service pool
+    │
+    ▼
+Successful response or AlreadyExists → write CLUSTER_JOINED marker
 ```
 
-The registration loop has no deadline of its own: it retries `Unavailable` with backoff until it succeeds or the process is terminated, and every other status is final.
+The registration loop has no deadline of its own. It retries `Unavailable`
+with backoff until success or cancellation; `AlreadyExists` is an idempotent
+success, and other statuses are final. SIGTERM or interrupt cancels its dedicated
+registration context, including an in-flight RPC or backoff. The application
+startup context remains live so Fx can roll back hooks that already started.
+The failed preflight closes its own outbound connections; it has not started a
+Raft run loop. The graceful Fx notification remains queued if startup completes
+while the signal is being handled.
 
-On **restart** (WAL not empty), this registration step is **skipped** because the node is already a cluster member.
+A positive `--total-stop-timeout` starts a signal-time deadline for startup
+unwind and deferred log-export finalization. Expiry cancels the private
+application context and returns failure; it does not prove every hook, worker,
+or resource has finished closing. Zero leaves this waiting unlimited. If startup
+succeeds, normal Fx stopping retains its separate stop budget. See the
+[server termination contract](cli.md#server-termination) for deadline scope and
+exit status.
+
+A signal does not suppress a fatal registration status, marker-write failure,
+rollback failure, or signal-time finalization failure. Only intentional
+registration cancellation followed by successful rollback and finalization
+produces a successful termination.
+
+Cancellation cannot undo a learner addition that the remote cluster already
+committed. A canceled or lost response can leave remote membership without a
+local marker. The next execution retries the existing registration protocol:
+`AlreadyExists` permits writing the marker only while the leader's progress is
+still zero; replicated progress produces the stale-membership failure described
+below. A process exit alone is not evidence that remote membership was removed.
+
+On restart, an existing `CLUSTER_JOINED` marker skips preflight. WAL presence
+alone is not this gate.
+
+#### Phase 4: Startup
+
+After preflight succeeds, the Fx lifecycle starts the components that accept
+inbound Raft traffic:
+
+- Raft transport and service pool register the discovered peers.
+- gRPC servers start (Raft transport and service API).
+- The Raft node `Run()` begins the orchestrate loop.
+- The ConfChange observer handles cluster membership changes.
 
 ### ConfChange Observer
 
@@ -201,7 +236,7 @@ After joining, a node may need to catch up with the cluster's state. The synchro
 | `statusNormal` | 0 | Normal operation: committed entries applied directly to FSM |
 | `statusSyncing` | 1 | Checkpoint fetch in progress: entries spooled |
 | `statusSnapshotting` | 2 | Local snapshot creation in progress: entries spooled |
-| `statusOutOfSync` | 3 | Store behind FSM snapshot: waiting for leader discovery |
+| `statusOutOfSync` | 3 | Store behind the WAL snapshot: waiting for the next donor attempt |
 
 ### State Transitions
 
@@ -222,40 +257,41 @@ After joining, a node may need to catch up with the cluster's state. The synchro
            └─────────────────┘               │ resume      │   │
                                              └─────────────┘   │
                                                     ▲           │
-  startup ──►┌──────────────┐  leader    ┌─────────────────┐   │
-  (store     │statusOutOfSync│──found───►│  statusSyncing   │──┘
+  startup ──►┌──────────────┐  donor     ┌─────────────────┐   │
+  (store     │statusOutOfSync│──picked──►│  statusSyncing   │──┘
    behind)   └──────────────┘            └────────┬────────┘
                     ▲                             │
-                    │         peer unavailable     │
+                    │   donor unavailable or       │
+                    │   resynchronizing itself     │
                     └─────────────────────────────┘
 ```
 
 ### Startup Check
 
-When the node starts, `NewNode` checks whether the data store is up to date with the FSM snapshot:
+When the node starts, `NewNode` compares the store's last applied index with the WAL snapshot index (`IsStoreUpToDate`):
 
-- **Store up to date**: status stays `statusNormal`, spool entries are replayed
-- **Store behind**: status is set to `statusOutOfSync`
+- **Store at or above the WAL snapshot index**: status stays `statusNormal`. Every entry the store lacks is still in the local WAL, so the node catches up by replaying it and the spool, with no checkpoint transfer.
+- **Store below the WAL snapshot index**: status is set to `statusOutOfSync`. The entries between the store and the snapshot are no longer in the local WAL, so only a checkpoint from a donor can close the gap.
 
 ### Out-of-Sync State
 
-In `statusOutOfSync`, the node waits for a leader to be discovered. Tick processing is **suppressed** to prevent spurious elections. When a `SoftState` with a non-zero leader arrives, the node transitions to `statusSyncing` and begins the checkpoint fetch.
+In `statusOutOfSync`, the node keeps ticking: its Raft log is complete, so it votes and may campaign on it (see [Elections While Out of Sync](#elections-while-out-of-sync)). On the next Ready it picks a checkpoint donor, the known leader first, then the other voters in turn, never itself, transitions to `statusSyncing` and begins the checkpoint fetch. See [Donor Selection](../technical/architecture/data-flows.md#donor-selection).
 
 ### Syncing State (Checkpoint Fetch)
 
-The synchronization fetches a Pebble checkpoint from the leader:
+The synchronization fetches a Pebble checkpoint from a donor:
 
 ```
 statusOutOfSync
     │
-    │  SoftState reveals leader
+    │  Ready picks a donor (leader first)
     ▼
 statusSyncing
     │
     │  Background task starts:
     │
-    │  1. snapshotFetcher.GetForPeer(leaderID)
-    │     → gRPC-based fetcher for the leader
+    │  1. snapshotFetcher.GetForPeer(donorID)
+    │     → gRPC-based fetcher for the donor
     │
     │  2. fsm.SynchronizeWithLeader(fetcher)
     │     → Compare lastCheckpointID vs currentCheckpointID
@@ -273,10 +309,10 @@ statusNormal
 
 While in `statusSyncing`:
 - All new committed Raft entries are **spooled** (buffered), not applied to the FSM
-- Ticks are **suppressed** (no elections, no heartbeats)
+- Ticks keep firing: the node votes and may campaign on its log, while ReadIndex refuses and admission waits for `leaderReady`
 - `MsgTimeoutNow` messages are **rejected** (prevents forced leadership transfer to this node)
 
-If the leader is unreachable (`ErrNotAvailable`), the node falls back to `statusOutOfSync` and retries when a new leader is found.
+If the donor is unreachable, or refuses with `FailedPrecondition` because it is resynchronizing itself, the node falls back to `statusOutOfSync` and tries the next donor.
 
 ### Entry Spooling During Sync
 
@@ -311,15 +347,19 @@ When the background task completes:
    - Sets status to `statusNormal`
    - Prunes applied spool entries
 
-### Protection Against Premature Leadership
+### Elections While Out of Sync
 
-Two mechanisms prevent a syncing node from becoming leader prematurely:
+A node whose store is behind still holds a complete, durable Raft log, and elections are decided on the log alone. The node keeps ticking in `statusSyncing` and `statusOutOfSync`: it times out, votes, may campaign, and may win. Withholding its ticks would leave the cluster leaderless whenever the voters holding the newest log are the resynchronizing ones, since no candidate with an older log can collect their votes. Only `statusInstallingSnapshot`, the short window in which the WAL snapshot is rewritten, pauses the clock.
 
-1. **Tick suppression**: During `statusSyncing` and `statusOutOfSync`, `rawNode.Tick()` is not called. Without ticks, the node cannot trigger election timeouts and will never start an election.
+What needs the store waits for the store instead:
 
-2. **MsgTimeoutNow rejection**: If a leader tries to transfer leadership to a syncing node via `TransferLeadership` (which sends `MsgTimeoutNow` to force an immediate election), the message is silently dropped.
+1. **Write admission** waits for `leaderReady`, which completes only once the FSM has applied the new leader's no-op entry. On an out-of-sync leader that happens after its checkpoint sync and spool replay.
+2. **ReadIndex** refuses while the node is syncing or out of sync.
+3. **Membership changes** (`AddLearner`, `JoinAsLearner`, `PromoteLearner`, `RemoveNode`, automatic promotion) wait for the same readiness, so removed-member tombstones and instance identities are read from a current store.
+4. **Event sinks and mirrors** start on `LeaderReadyEvent`.
+5. **Leadership transfer** to such a node is still refused: the `MsgTimeoutNow` that `TransferLeadership` sends is dropped outside `statusNormal`. An operator cannot hand leadership to a node that is still restoring its checkpoint; it can only win an election on its own log.
 
-These protections ensure a node that is still restoring its Pebble checkpoint will not become leader, even if it appears active from Raft's perspective.
+An out-of-sync leader therefore serves nothing until its store is current, and it fetches its checkpoint from another voter (see [Donor Selection](../technical/architecture/data-flows.md#donor-selection)).
 
 ## Automatic Learner Promotion
 
@@ -359,19 +399,13 @@ When eligible, the leader proposes a `ConfChangeV2` with `ConfChangeAddNode`, wh
 # Auto-promote learners within 100 entries of the commit index (default)
 --learner-promotion-threshold 100
 
-# Disable auto-promotion (manual promotion only)
+# Disable auto-promotion
 --learner-promotion-threshold 0
 ```
 
-### Manual Promotion
-
-Learners can also be promoted manually via the CLI:
-
-```bash
-ledgerctl cluster promote-learner <node-id>
-```
-
-Or via the `PromoteLearner` gRPC RPC. The request is forwarded to the leader if it reaches a follower.
+The `PromoteLearner` gRPC RPC remains available for existing clients. It is
+forwarded to the leader when called on a follower. The operator CLI does not
+expose manual promotion.
 
 ## Kubernetes (Operator)
 
@@ -590,6 +624,35 @@ Mutable config parameters are propagated through the Raft log to ensure all node
 3. All nodes apply the config change at the same Raft index (deterministic).
 4. The change takes effect immediately -- no restart required for the nodes that already received the Raft entry.
 
+The leader resolves the local zero sentinel to the effective default of 1000
+before comparing or serializing the desired cache rotation threshold. Omitted
+and explicit-zero settings therefore produce the same positive committed
+threshold; positive custom settings retain their value. This normalization
+uses the same defaults as initial cache construction and does not mutate the
+shared Bloom configuration. It performs constant work per readiness callback.
+
+### Zero-default rollout and existing committed zero entries
+
+Older binaries can propose literal zero when elected with
+`--cache-rotation-threshold=0`. During a mixed-version rollout, configure every
+potentially elected older leader with an explicit positive threshold, such as
+1000. Use zero only after all potential leaders include proposal-side
+normalization. Positive committed entries retain their existing apply semantics.
+
+This prevention change does not recover an already committed zero entry.
+Applying that entry panics at the positive-threshold guard before resetting the
+cache or saving the new cluster configuration. The previous Pebble configuration
+remains, while the committed zero payload remains in the Raft WAL. Correcting
+startup flags or proposing a later positive value cannot bypass that earlier
+entry during replay.
+
+Historical recovery remains blocked pending a separately approved and tested
+compatibility design under the [RC upgrade contract](./upgrades.md#release-requirement-from-v300-rc1).
+Do not wipe state, rewrite or skip committed entries, or substitute node-local
+defaults during apply/replay. A recovery design must preserve committed business
+data, audit history and cluster state, and establish mixed-version behavior and
+rollback boundaries before it is used.
+
 ### Rolling Upgrade Procedure
 
 To change `--cache-rotation-threshold` from 1000 to 500 on a 3-node cluster:
@@ -651,6 +714,6 @@ After the reset, the preloader falls back to Pebble reads (0xF1 zone) for all ca
 - [Data Flows](../technical/architecture/data-flows.md) - Spool mechanics, entry processing
 - [Spool](../technical/architecture/subsystems/storage/spool.md) - Spool technical implementation
 - [Deployment](./deployment.md) - Helm chart configuration, CLI flags
-- [CLI Reference](./cli.md) - `cluster add-learner`, `cluster promote-learner` commands
+- [CLI Reference](./cli.md) - cluster commands
 - [Memory Management](./memory.md) - Cache rotation threshold memory impact
 - [Availability and Disaster Recovery](./availability-and-recovery.md) - Failure-domain placement and quorum-loss recovery

@@ -123,5 +123,7 @@ func pageSorted[T any](q pageQuery, rows []T, keyOf func(T) string) ([]T, pageLi
 // writePageOK writes a 200 paged list response. The body is marshaled before
 // any header is written, so a marshal failure is a clean 500.
 func writePageOK(w http.ResponseWriter, r *http.Request, data any, links pageLinks) {
-	writeCheckedJSONResponse(w, r, pagedResponse{Data: data, Next: links.Next, Previous: links.Previous, HasMore: links.HasMore}, json.Marshal)
+	writeCheckedJSONResponse(w, r, pagedResponse{Data: data, Next: links.Next, Previous: links.Previous, HasMore: links.HasMore}, func(value any) ([]byte, error) {
+		return json.MarshalWithOptions(value, bigIntegerEncoding(r))
+	})
 }

@@ -83,6 +83,17 @@ func TestHandlePanic_DoesNotLeakStackToClient(t *testing.T) {
 	}, events[0].Attributes)
 }
 
+func TestInvalidCallerAttributionHasNoPublicReasonOrDiagnostic(t *testing.T) {
+	t.Parallel()
+
+	err := &domain.ErrInvalidCallerAttribution{Detail: "principal from internal trust boundary"}
+	st := status.Convert(convertToGRPCError(err, testLogger()))
+
+	require.Equal(t, codes.Internal, st.Code())
+	require.Equal(t, "internal error", st.Message())
+	require.Empty(t, st.Details())
+}
+
 func TestBusinessErrorToGRPCStatus_LedgerAlreadyExists(t *testing.T) {
 	t.Parallel()
 
@@ -975,12 +986,14 @@ func TestConvertToGRPCError_RaftTransientErrors(t *testing.T) {
 		err  error
 	}{
 		{"proposal dropped", raft.ErrProposalDropped},
+		{"raft stopped", raft.ErrStopped},
 		{"not leader", node.ErrNotLeader},
 		{"node syncing", node.ErrNodeSyncing},
 		{"context deadline exceeded", context.DeadlineExceeded},
 		{"context canceled", context.Canceled},
 		{"wrapped deadline exceeded", fmt.Errorf("applying raft requests: %w", context.DeadlineExceeded)},
 		{"wrapped proposal dropped", fmt.Errorf("applying raft requests: %w", raft.ErrProposalDropped)},
+		{"wrapped raft stopped", fmt.Errorf("applying raft requests: %w", raft.ErrStopped)},
 	}
 
 	for _, tt := range tests {

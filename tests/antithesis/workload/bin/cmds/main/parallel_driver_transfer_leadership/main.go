@@ -1,12 +1,13 @@
 package main
 
 import (
+	"context"
 	"log"
-	"time"
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
 
 	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
+	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
 )
@@ -24,8 +25,10 @@ func main() {
 	}
 	defer func() { _ = conn.Close() }()
 
-	client := clusterpb.NewClusterServiceClient(conn)
+	runTransfer(ctx, clusterpb.NewClusterServiceClient(conn), servicepb.NewBucketServiceClient(conn))
+}
 
+func runTransfer(ctx context.Context, client clusterpb.ClusterServiceClient, bucket servicepb.BucketServiceClient) {
 	// 1. Get current cluster state to find leader and a non-leader voter.
 	state, err := client.GetClusterState(ctx, &clusterpb.GetClusterStateRequest{})
 	if err != nil {
@@ -46,7 +49,7 @@ func main() {
 	}
 
 	// Pick a non-leader voter as the transfer target.
-	var targetID uint32
+	var targetID uint64
 
 	for _, node := range state.GetNodes() {
 		if node.GetId() != currentLeader && node.GetSuffrage() == "Voter" {
@@ -67,12 +70,28 @@ func main() {
 		"targetNode":    targetID,
 	}
 
+	// Every concurrent invocation owns its transaction, while the stable ledger
+	// is excluded from generic writers. A successful transfer must preserve the
+	// exact acknowledged business payload, not just return the requested leader.
+	ledger := internal.PrefixSentinel.WithSuffix("leadership-transfer")
+	if err := internal.CreateLedger(ctx, bucket, ledger); err != nil && !internal.IsAlreadyExists(err) {
+		log.Printf("cannot create leadership-transfer witness ledger: %s", err)
+
+		return
+	}
+	before, err := internal.PreCommitSentinel(ctx, bucket, ledger)
+	if err != nil {
+		log.Printf("cannot acknowledge pre-transfer witness: %s", err)
+
+		return
+	}
+
 	// 2. Transfer leadership to the target node.
 	resp, err := client.TransferLeadership(ctx, &clusterpb.TransferLeadershipRequest{
 		Transferee: targetID,
 	})
 
-	assert.Sometimes(internal.IsTolerated(err),
+	assert.Sometimes(err == nil,
 		"should be able to transfer leadership", details.With(internal.Details{"error": err}))
 	if err != nil {
 		return
@@ -83,29 +102,33 @@ func main() {
 		details.With(internal.Details{"newLeader": resp.GetNewLeader()}))
 
 	assert.Reachable("leadership transfer completed", details)
+	before.Verify(ctx, bucket, "after_leadership_transfer")
 
-	// 3. Verify the cluster is still functional by getting state again.
-	//    A concurrent network fault may trigger a new election right after the
-	//    transfer, so we retry a few times before giving up.
-	var stateAfter *clusterpb.ClusterState
-	for attempt := range 5 {
-		if attempt > 0 {
-			time.Sleep(200 * time.Millisecond)
-		}
+	// A leader ID alone does not establish progress: an elected node can still
+	// be stuck accepting proposals. Require a fresh acknowledged business write
+	// for coverage, then verify its exact content through the ordinary read path.
+	// Faults are still active here, so a failed write is an exploration miss,
+	// not a claim of broken liveness after recovery.
+	after, err := internal.PreCommitSentinel(ctx, bucket, ledger)
+	assert.Sometimes(err == nil, "business write commits after leadership transfer", details.With(internal.Details{"error": err}))
+	if err != nil {
+		log.Printf("post-transfer witness was not acknowledged: %s", err)
 
-		stateAfter, err = client.GetClusterState(ctx, &clusterpb.GetClusterStateRequest{})
-		if err != nil {
-			internal.LogCleanupError("get cluster state after leadership transfer", err)
+		return
+	}
+	after.Verify(ctx, bucket, "new_write_after_leadership_transfer")
 
-			return
-		}
+	// Faults and other transfers are still active. A new election can remove
+	// the leader immediately after our acknowledged write; record availability
+	// coverage without turning that permitted CP outcome into a safety failure.
+	stateAfter, err := client.GetClusterState(ctx, &clusterpb.GetClusterStateRequest{})
+	if err != nil {
+		internal.LogCleanupError("get cluster state after leadership transfer", err)
 
-		if stateAfter.GetLeader() != 0 {
-			break
-		}
+		return
 	}
 
-	assert.AlwaysOrUnreachable(stateAfter.GetLeader() != 0,
+	assert.Sometimes(stateAfter.GetLeader() != 0,
 		"cluster should have a leader after transfer", details)
 
 	log.Printf("Leadership transferred: %d -> %d (confirmed leader: %d)",

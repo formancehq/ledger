@@ -219,6 +219,25 @@ func (m *Membership) PeerAddresses() map[uint64]ConfChangeContext {
 	return cp
 }
 
+// SnapshotDonorCandidates returns the current members that can be tried as
+// snapshot donors, excluding this node and keeping the order deterministic.
+// The cache is read under the same lock used by Rehydrate and membership
+// updates, so each recovery attempt observes one consistent membership view.
+func (m *Membership) SnapshotDonorCandidates() []uint64 {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	candidates := make([]uint64, 0, len(m.addresses))
+	for nodeID := range m.addresses {
+		if nodeID != m.selfNodeID {
+			candidates = append(candidates, nodeID)
+		}
+	}
+	slices.Sort(candidates)
+
+	return candidates
+}
+
 // GetInstanceID returns the peer's 16-byte identity UUID from the in-memory
 // cache, and ok=true when the peer is currently known. Returns (nil, false)
 // when the peer is not in the cache. Removal and promotion treat a missing

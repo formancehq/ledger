@@ -33,7 +33,7 @@ func GamingWalletBlocks() *BlockGroup {
 	}
 }
 
-func gamingTopUp(ctx context.Context, client servicepb.BucketServiceClient, r RandFunc) (*servicepb.ApplyResponse, error) {
+func gamingTopUp(ctx context.Context, client servicepb.BucketServiceClient, r Random) (*servicepb.ApplyResponse, error) {
 	playerID := 1 + RandIntN(r, GamingWalletNumPlayers)
 	usdAmount := int64(1000 + RandIntN(r, 10000))
 	coinAmount := usdAmount
@@ -48,7 +48,7 @@ func gamingTopUp(ctx context.Context, client servicepb.BucketServiceClient, r Ra
 	)
 }
 
-func gamingBuyItem(ctx context.Context, client servicepb.BucketServiceClient, r RandFunc) (*servicepb.ApplyResponse, error) {
+func gamingBuyItem(ctx context.Context, client servicepb.BucketServiceClient, r Random) (*servicepb.ApplyResponse, error) {
 	playerID := 1 + RandIntN(r, GamingWalletNumPlayers)
 	playerCoins := fmt.Sprintf("player:%d:coins", playerID)
 
@@ -74,7 +74,7 @@ func gamingBuyItem(ctx context.Context, client servicepb.BucketServiceClient, r 
 	)
 }
 
-func gamingP2PTrade(ctx context.Context, client servicepb.BucketServiceClient, r RandFunc) (*servicepb.ApplyResponse, error) {
+func gamingP2PTrade(ctx context.Context, client servicepb.BucketServiceClient, r Random) (*servicepb.ApplyResponse, error) {
 	fromID := 1 + RandIntN(r, GamingWalletNumPlayers)
 	toID := 1 + RandIntN(r, GamingWalletNumPlayers)
 	if fromID == toID {
@@ -100,7 +100,7 @@ func gamingP2PTrade(ctx context.Context, client servicepb.BucketServiceClient, r
 	)
 }
 
-func gamingPromotion(ctx context.Context, client servicepb.BucketServiceClient, r RandFunc) (*servicepb.ApplyResponse, error) {
+func gamingPromotion(ctx context.Context, client servicepb.BucketServiceClient, r Random) (*servicepb.ApplyResponse, error) {
 	playerID := 1 + RandIntN(r, GamingWalletNumPlayers)
 	promoCoins := int64(100 + RandIntN(r, 1000))
 	playerAddr := fmt.Sprintf("player:%d:coins", playerID)
@@ -112,7 +112,7 @@ func gamingPromotion(ctx context.Context, client servicepb.BucketServiceClient, 
 	)
 }
 
-func gamingClawback(ctx context.Context, client servicepb.BucketServiceClient, r RandFunc) (*servicepb.ApplyResponse, error) {
+func gamingClawback(ctx context.Context, client servicepb.BucketServiceClient, r Random) (*servicepb.ApplyResponse, error) {
 	playerID := 1 + RandIntN(r, GamingWalletNumPlayers)
 	playerCoins := fmt.Sprintf("player:%d:coins", playerID)
 

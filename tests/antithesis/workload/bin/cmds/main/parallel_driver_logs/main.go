@@ -11,10 +11,11 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
+	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal/generation"
 )
 
 func main() {
-	internal.RunDriver("parallel_driver_logs", func(ctx context.Context, client servicepb.BucketServiceClient, ledger string) {
+	internal.RunGeneratedDriver("parallel_driver_logs", func(ctx context.Context, client servicepb.BucketServiceClient, ledger string, src *generation.Source) {
 		// 1. Create a transaction to generate a log entry.
 		resp, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
 			Type: &servicepb.Request_Apply{
@@ -22,7 +23,7 @@ func main() {
 					Ledger: ledger,
 					Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
 						CreateTransaction: &servicepb.CreateTransactionPayload{
-							Postings: internal.RandomPostings(),
+							Postings: internal.GeneratedPostings(src),
 							Force:    true,
 						},
 					}},

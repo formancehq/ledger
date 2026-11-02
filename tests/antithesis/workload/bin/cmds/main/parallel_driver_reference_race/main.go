@@ -28,7 +28,6 @@ import (
 	"sync"
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
-	antirandom "github.com/antithesishq/antithesis-sdk-go/random"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
@@ -36,6 +35,7 @@ import (
 	"github.com/formancehq/ledger/v3/pkg/actions"
 
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
+	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal/generation"
 )
 
 // createWithReference attempts a single CreateTransaction carrying ref.
@@ -65,11 +65,10 @@ func createWithReference(
 	}))
 }
 
-// writeMarker commits a reference-less marker transaction and returns its log
-// sequence. The marker is proposed after every assertion-relevant response was
-// received, so a subsequent linearizable read covers any write those responses
-// could correspond to. Returns
-// (0, false) when the barrier could not be established (inconclusive).
+// writeMarker commits a reference-less marker after the create calls return.
+// Subsequent linearizable reads cover acknowledged writes. An ambiguous RPC
+// may still commit later; the marker does not establish its final outcome.
+// Returns false when the barrier could not be established (inconclusive).
 func writeMarker(ctx context.Context, client servicepb.BucketServiceClient, ledger string) bool {
 	resp, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
 		Type: &servicepb.Request_Apply{
@@ -112,11 +111,14 @@ func countTransactionsWithReference(
 
 // assertReferenceUnique is the shared end-state oracle for both halves of the
 // driver: after a marker barrier, a reference must map to at most one
-// committed transaction. Single call site per assertion message.
+// committed transaction. An acknowledged create also requires a nonempty
+// result; ambiguous RPC outcomes alone cannot establish that lower bound.
+// Single call site per assertion message.
 func assertReferenceUnique(
 	ctx context.Context,
 	client servicepb.BucketServiceClient,
 	ledger, ref string,
+	acknowledged bool,
 	details internal.Details,
 ) {
 	if !writeMarker(ctx, client, ledger) {
@@ -128,13 +130,20 @@ func assertReferenceUnique(
 		return
 	}
 
+	if acknowledged {
+		assert.Always(len(ids) > 0,
+			"an acknowledged reference create remains visible",
+			details.With(internal.Details{"reference": ref, "txIds": fmt.Sprintf("%v", ids)}))
+	}
+
 	assert.Always(len(ids) <= 1,
 		"a reference never maps to more than one committed transaction",
 		details.With(internal.Details{"reference": ref, "txIds": fmt.Sprintf("%v", ids)}))
 }
 
 func main() {
-	internal.RunDriver("parallel_driver_reference_race", func(ctx context.Context, client servicepb.BucketServiceClient, _ string) {
+	internal.RunGeneratedDriver("parallel_driver_reference_race", func(ctx context.Context, client servicepb.BucketServiceClient, _ string, src *generation.Source) {
+		// This identity isolates the oracle ledger and its retry/reference keys.
 		r := internal.Rand()
 
 		run := r.Uint64()
@@ -148,7 +157,7 @@ func main() {
 		// ---- Half 1: concurrent same-reference creates ----------------------
 
 		// Menu axis: degree of concurrency on the shared reference.
-		goroutines := antirandom.RandomChoice([]int{2, 4, 8})
+		goroutines := generation.Choice(src, []int{2, 4, 8})
 		raceRef := fmt.Sprintf("refrace-%d-race", run)
 
 		var (
@@ -196,13 +205,14 @@ func main() {
 			"at most one concurrent same-reference create is acked",
 			raceDetails)
 
-		// Coverage: prove the race actually produced a loser at least once
-		// across the run, so the Always above is not vacuously green.
+		// Coverage: observe a winner and a loser at least once across the run.
+		// This does not prove overlap inside admission: the scheduler may
+		// serialize the requests despite launching separate goroutines.
 		assert.Sometimes(okCount == 1 && conflictCount > 0,
 			"concurrent same-reference race produced a winner and a conflict loser",
 			raceDetails)
 
-		assertReferenceUnique(ctx, client, ledger, raceRef, raceDetails)
+		assertReferenceUnique(ctx, client, ledger, raceRef, okCount > 0, raceDetails)
 
 		// ---- Half 2: aged-reference reuse ------------------------------------
 
@@ -219,7 +229,7 @@ func main() {
 		// CACHE_ROTATION_THRESHOLD=50, so ~100+ subsequent entries push the
 		// original reference out of gen0+gen1 and onto the Pebble→preload→
 		// bloom path; 60 stays within the window as a control point.
-		fillerCount := antirandom.RandomChoice([]int{60, 120, 250})
+		fillerCount := generation.Choice(src, []int{60, 120, 250})
 
 		written := 0
 
@@ -257,6 +267,6 @@ func main() {
 				agedDetails.With(internal.Details{"error": err.Error()}))
 		}
 
-		assertReferenceUnique(ctx, client, ledger, agedRef, agedDetails)
+		assertReferenceUnique(ctx, client, ledger, agedRef, true, agedDetails)
 	})
 }

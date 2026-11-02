@@ -95,7 +95,7 @@ a3f8e2b1-9c4d-4e7a-b5f6-1234567890ab
 7b2c9d4e-5f6a-8b3c-d4e5-abcdef012345
 ```
 
-**Why:** Pebble is an LSM-tree. Keys with shared prefixes compact better and range scans (used for balance reconstruction and account listing) are more efficient. Sequential or monotonic suffixes keep related data physically close on disk.
+**Why:** Pebble is an LSM-tree. Keys with shared prefixes compact better and range scans used for account listing are more efficient. Sequential or monotonic suffixes keep related data physically close on disk.
 
 If you use UUID-based addresses, prefer **UUIDv7** (time-ordered) over UUIDv4 (random) to preserve temporal locality.
 
@@ -126,8 +126,8 @@ At 100K tx/s with 2 postings per transaction, that's 200K key lookups/writes per
 ### 2.3. Minimize Account Cardinality per Numscript
 
 Each distinct account in a Numscript execution requires:
-1. Cache lookup (or Pebble preload if not cached)
-2. Lock acquisition during admission (canonical ordering)
+1. Dependency and coverage planning during admission
+2. Cache lookup (or Pebble preload if not cached)
 3. Volume tracking in the FSM
 
 Fewer accounts per script = faster admission + faster apply.
@@ -186,15 +186,15 @@ In Ledger v2, a hot account (e.g., `bank`, `fees`, `treasury`) debited by many c
 
 ### The Solution (v3)
 
-v3 uses **append-only volume entries** (last-write-wins). Each transaction appends a new absolute volume value keyed by Raft index. No read-modify-write, no locks, no contention.
+v3 keeps **one current volume pair per account, color, and asset** (last-write-wins). The FSM applies committed entries sequentially in Raft index order. For each posting, it reads the current volumes from the in-memory cache, adds the amounts, and overwrites the single entry for that key. The FSM takes no database row locks for volume updates. Concurrent requests still wait for Raft proposal and apply.
 
 ```
-Transaction A: bank/USD/log_1 = {input: 1000, output: 100}  (append)
-Transaction B: bank/USD/log_2 = {input: 1000, output: 150}  (append, parallel)
-Transaction C: bank/USD/log_3 = {input: 1000, output: 225}  (append, parallel)
+Raft index 101 (Transaction A): bank/USD = {input: 1000, output: 100}  (overwrite)
+Raft index 102 (Transaction B): bank/USD = {input: 1000, output: 150}  (overwrite)
+Raft index 103 (Transaction C): bank/USD = {input: 1000, output: 225}  (overwrite)
 ```
 
-Balance is the latest absolute value (last-write-wins).
+The balance is the current entry. See [Balance Storage Model](../technical/architecture/subsystems/storage/storage-drivers.md#balance-storage-model).
 
 ### Recommendations
 
@@ -315,10 +315,11 @@ Client Request
     ▼
 Admission (leader, parallel)
     ├─ Numscript parse (cached via blake3 hash)
-    ├─ Account lock (canonical order, fine-grained)
+    ├─ Dependency and coverage planning
     ├─ Cache check: gen0 ∪ gen1 (RAM)
     ├─ Preload from Pebble (only for uncached accounts)
     ├─ Proposal marshal (vtprotobuf + sync.Pool buffer)
+    ├─ Proposal guard (short IndexTracker lock)
     │
     ▼
 Raft Consensus (replicated to all nodes)
@@ -326,9 +327,9 @@ Raft Consensus (replicated to all nodes)
     ▼
 FSM Apply (all nodes, sequential, RAM-only)
     ├─ Proposal unmarshal (vtprotobuf)
-    ├─ Balance check: base@boundary + overlay delta
+    ├─ Balance check: current cached volumes + in-batch changes
     ├─ Amounts: uint256 stack variables (zero allocation)
-    ├─ Volume diffs: append to Pebble batch (no sync)
+    ├─ VolumePair overwrites: add to Pebble batch (no sync)
     ├─ Order hash: reusable buffer (zero allocation)
     │
     ▼
@@ -344,7 +345,7 @@ Pebble Batch Commit (single commit per batch of entries)
 | **vtprotobuf** | ~2-3x faster serialization than standard protobuf. Registered transparently server-side. |
 | **64-shard concurrent map** | Cache-line padded shards with per-shard RWMutex. ~1.6% reader-writer collision probability. |
 | **XXH3 for cache keys** | 13ns vs 205ns (BLAKE3). 16x faster for non-cryptographic hashing. |
-| **Append-only volume entries** | No row-level locks. Hot accounts don't create contention. Last-write-wins semantics. |
+| **Single last-write-wins volume entry, sequential FSM apply** | No row-level locks. Raft ordering serializes updates, so hot accounts don't create lock contention. |
 | **Old entry cleanup at merge** | Runs in same Pebble batch as generation rotation. No background goroutine. |
 
 ---
@@ -357,7 +358,7 @@ Read operations (`GetLedger`, `ListAccounts`, `GetTransaction`, `GetBalances`) a
 
 ### Balance Reconstruction
 
-Current balance = `base + latest cumulative diff`. Pebble range scans are efficient for this pattern. Volume diffs are compacted at generation boundaries to keep the number of entries bounded (~2K per account/asset).
+The current balance is `input - output` from the current `VolumePair` for each account, color, and asset. Each persisted volume key has one current value; writes overwrite it. Cache generation rotation evicts in-memory entries and does not retain historical volume diffs.
 
 ---
 

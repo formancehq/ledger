@@ -52,3 +52,11 @@ func TestLookupReasonCodeResolvesEveryEnumName(t *testing.T) {
 		require.Equal(t, expected, code)
 	}
 }
+
+func TestCallerAttributionReasonIsInternalOnly(t *testing.T) {
+	t.Parallel()
+
+	code, known := LookupReasonCode("INVALID_CALLER_ATTRIBUTION")
+	require.False(t, known, "the internal-only sentinel must not be a public reason")
+	require.Equal(t, commonpb.ErrorReason_ERROR_REASON_UNSPECIFIED, code)
+}

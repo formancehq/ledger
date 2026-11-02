@@ -126,7 +126,7 @@ var _ = Describe("gRPC protocol version", Ordered, func() {
 		Expect(uint64(follower.NodeID)).NotTo(Equal(currentLeaderID))
 		state, err := follower.ClusterClient.GetClusterState(ctx, &clusterpb.GetClusterStateRequest{})
 		Expect(err).To(Succeed())
-		Expect(uint64(state.Leader)).To(Equal(currentLeaderID))
+		Expect(state.Leader).To(Equal(currentLeaderID))
 
 		const ledgerName = "protocol-http-forwarding"
 		req, err := http.NewRequestWithContext(ctx, http.MethodPost,
@@ -144,6 +144,6 @@ var _ = Describe("gRPC protocol version", Ordered, func() {
 		Expect(ledgerInfo.Name).To(Equal(ledgerName))
 		state, err = follower.ClusterClient.GetClusterState(ctx, &clusterpb.GetClusterStateRequest{})
 		Expect(err).To(Succeed())
-		Expect(uint64(state.Leader)).To(Equal(currentLeaderID), "the request must have used the follower-to-leader path")
+		Expect(state.Leader).To(Equal(currentLeaderID), "the request must have used the follower-to-leader path")
 	})
 })

@@ -39,6 +39,35 @@ An **executable** `ScriptReference` in a transaction is stricter — `version` i
 
 Scripts are parsed and validated **at save time**, not at transaction-creation time. This catches syntax errors early. The parser uses the same Numscript interpreter as transaction execution, with all experimental features enabled.
 
+### Read-only source analysis
+
+`BucketService.AnalyzeNumscript` and `POST /v3/numscripts/analyze` accept
+`{source, version}`. The required language version is `v1`; it is distinct from
+the semver attached to a saved library entry. Analysis parses and compiles the
+source with the Numscript library used for execution. It returns input names and
+Numscript type spellings in name order, excluding variables with in-script
+origins. Recognized source failures return no inputs and one or more diagnostics with
+`version`, `syntax`, `feature`, or `compile` kind, a machine-readable code,
+message, and zero-based source coordinates where available. Empty source and
+unsupported versions are diagnostics. Sources longer than 64 KiB receive
+`SOURCE_TOO_LONG`; sources with more than 32 `/*` markers receive
+`SOURCE_TOO_COMPLEX`, including when comments are balanced. The marker scan is
+conservative and also counts markers
+inside string literals. These limits are checked before invoking the parser
+because the upstream lexer uses a recursive rule for block comments. An
+internal parser or compiler failure returns a server error without an analysis
+payload. Malformed HTTP JSON is a transport 400; HTTP request bodies over
+4 MiB return `413 BODY_TOO_LARGE`.
+
+Scripts opt into experimental features with `#![feature("...")]`; the host
+permits the same feature set as transaction execution. Unknown flags and gated
+constructs receive `feature` diagnostics. Analysis never binds values,
+resolves `balance()` or `meta()` against state, executes a transaction, opens a
+ledger, saves a script, or enters Raft. It therefore cannot validate
+state-dependent expressions or runtime values. Both endpoints require the
+query-read scope. Repeated calls return the same schema or diagnostics for the
+same source and server version, with no persisted effect.
+
 ## API
 
 ### HTTP Endpoints

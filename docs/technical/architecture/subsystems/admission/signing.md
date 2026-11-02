@@ -23,7 +23,7 @@ Two consequences:
 
 ### Response signature: per log
 
-For every log that ends up in the response, the server signs an `ApplyLog` derived from it (with the `response_signature` field cleared so the signed bytes are deterministic). The signature is then attached back on `log.response_signature` as a `SignedLog`. Clients verifying signatures on disk re-clear the same field, recompute the bytes, and `ed25519.Verify` against the server's known public key.
+For every log that ends up in the response, the server signs a `Log` derived from it (with the `response_signature` field cleared). The signature is then attached back on `log.response_signature` as a `SignedLog`. A client first verifies the signature over the envelope's exact payload bytes, decodes those authenticated bytes as a `Log`, and compares that value with the visible log after clearing its `response_signature`. A valid envelope alone does not authenticate the separately supplied visible fields. `ledgerctl` rejects the response before consuming a mismatched log. Comparing decoded values also permits equivalent protobuf wire encodings without requiring client and server serialization to be byte-identical.
 
 ## Verification
 

@@ -187,5 +187,5 @@ func (s *Server) handleAnalyzeTransactions(w http.ResponseWriter, r *http.Reques
 
 		return
 	}
-	writeMonetaryOK(w, r, body)
+	writeOK(w, r, body)
 }

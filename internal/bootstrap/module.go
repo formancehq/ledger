@@ -198,7 +198,7 @@ func Module() fx.Option {
 					cfg.CompactionMargin,
 					cfg.ReplayBatchSize,
 					snapshotFetcherProvider,
-					membership.OnSnapshotInstalled,
+					membership,
 					localResponses,
 				)
 			},
@@ -226,9 +226,8 @@ func Module() fx.Option {
 			// PeerStore persists Raft cluster membership in Pebble under
 			// [ZoneClusterPersistent][SubGlobPeers] (EN-1413). Membership wraps it
 			// with the in-memory cache, owns the transport / service-pool
-			// wiring, and exposes the OnSnapshotInstalled /
-			// WriteConfChange callbacks injected into Applier and Machine
-			// via constructor.
+			// wiring, and is injected into Applier and Machine via their
+			// constructors.
 			raftmembership.NewPeerStore,
 			fx.Annotate(func(
 				store *raftmembership.PeerStore,
@@ -255,9 +254,7 @@ func Module() fx.Option {
 
 				return cache.New(threshold, meterProvider.Meter("cache"))
 			},
-			func(cfg Config, meterProvider metric.MeterProvider) *bloom.FilterSet {
-				return bloom.NewFilterSet(cfg.BloomConfig, meterProvider.Meter("bloom"))
-			},
+			newCommittedBloomFilterSet,
 			func(cfg Config, n *node.Node, c *cache.Cache, attrs *attributes.Attributes, store *dal.Store, bloomFilters *bloom.FilterSet, logger logging.Logger) *plan.Builder {
 				return plan.NewBuilder(n.IndexTracker(), c, attrs, store, bloomFilters, logger, cfg.MaxExecutionPlanSize)
 			},
@@ -428,8 +425,8 @@ func Module() fx.Option {
 			fx.Annotate(func(cfg Config, logger logging.Logger, c ctrl.Controller, localCtrl *ctrl.DefaultController, s *dal.Store, rs *readstore.Store, attrs *attributes.Attributes, ss *state.SharedState, respSigner *signing.ResponseSigner, meterProvider metric.MeterProvider, n *node.Node, servicePool *transport.ConnectionPool, info version.Info) servicepb.BucketServiceServer {
 				return grpcadp.NewBucketServiceServer(logger, c, localCtrl, s, rs, attrs, ss, respSigner, cfg.QueryProfileThreshold, cfg.ClusterID, meterProvider, n, servicePool, info)
 			}, fx.ParamTags(``, ``, ``, ``, ``, ``, ``, ``, ``, ``, ``, `name:"service"`, ``)),
-			func(cfg Config, logger logging.Logger, s *dal.Store, fsm *state.Machine) snapshotpb.SnapshotServiceServer {
-				return grpcadp.NewSnapshotServiceServer(logger, s, cfg.SnapshotSyncConfig.SessionTTL, fsm.WaitForApplied)
+			func(cfg Config, logger logging.Logger, s *dal.Store, applier *node.Applier) snapshotpb.SnapshotServiceServer {
+				return grpcadp.NewSnapshotServiceServer(logger, s, cfg.SnapshotSyncConfig.SessionTTL, applier)
 			},
 			func(cfg Config, meterProvider metric.MeterProvider) *diskusage.Collector {
 				return diskusage.NewCollector(
@@ -619,7 +616,6 @@ func Module() fx.Option {
 					defaultCtrl,
 					raftNode,
 					servicePool,
-					cfg.ClusterSecret != "",
 				), defaultCtrl
 			}, fx.ParamTags(``, `name:"service"`, ``, ``, ``, ``, ``, ``, ``)),
 			func(serviceServer *grpcadp.ServiceServer, n *node.Node, store *dal.Store, rs *readstore.Store) *clusterhealth.GRPCHealthUpdater {
@@ -744,12 +740,17 @@ func Module() fx.Option {
 				lc fx.Lifecycle,
 				cfg Config,
 				logger logging.Logger,
+				termination startupTerminationParams,
 			) {
 				if !shouldRunJoinPreflight(cfg, logger) {
 					return
 				}
 
-				lc.Append(joinPreflightHook(cfg, logger))
+				hook := joinPreflightHook(cfg, logger)
+				if termination.Termination != nil {
+					hook = termination.Termination.hook(hook)
+				}
+				lc.Append(hook)
 			},
 			func(
 				lc fx.Lifecycle,
@@ -896,14 +897,19 @@ func Module() fx.Option {
 						// cancellation. Apply it inline.
 						backupOrchestrator.OnLeadershipChange(e.IsLeader)
 
-						// Record the events / mirror transition inline so it
-						// cannot be reordered behind a later transition. The
-						// managers only update their desired generation here;
-						// their lifecycle-owned loops perform the potentially
-						// slow Pebble reconciliation asynchronously.
+						// Record a leadership loss for the events / mirror
+						// managers inline so it cannot be reordered behind a
+						// later transition; a gain reaches them through
+						// LeaderReadyEvent. The managers only update their
+						// desired generation here; their lifecycle-owned loops
+						// perform the potentially slow Pebble reconciliation
+						// asynchronously.
 						handleLeadershipChangeEvent(e, eventsManager, mirrorManager, logger)
 					case node.LeaderReadyEvent:
 						healthChecker.OnLeaderReady()
+						// Recorded before the cluster-config proposal, which
+						// can block on its own commit.
+						handleLeaderReadyEvent(eventsManager, mirrorManager, logger)
 						proposeClusterConfigIfNeeded(e.Context, n, builder, store, cfg, logger)
 					default:
 						logger.Errorf("Unknown observer event type: %T", event)
@@ -1300,7 +1306,7 @@ func tryAddLearner(ctx context.Context, cfg Config, tlsCfg TLSConfig, logger log
 			}
 
 			client := clusterbootstrappb.NewClusterBootstrapServiceClient(conn)
-			_, err = client.JoinAsLearner(ctx, req)
+			err = registerLearner(ctx, client, req)
 			_ = conn.Close()
 
 			if err == nil {
@@ -1316,6 +1322,9 @@ func tryAddLearner(ctx context.Context, cfg Config, tlsCfg TLSConfig, logger log
 			}
 
 			st, ok := status.FromError(err)
+			if errors.Is(err, ErrStartupTerminated) || errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+				return err
+			}
 			// EN-1436: the leader detected this nodeID in its raft Progress
 			// with a non-zero Match but we (the caller) have no CLUSTER_JOINED
 			// marker on our WAL. The leader's Match for us points at state we
@@ -1410,7 +1419,7 @@ func tryAddLearner(ctx context.Context, cfg Config, tlsCfg TLSConfig, logger log
 
 		select {
 		case <-ctx.Done():
-			return ctx.Err()
+			return joinCancellation(ctx)
 		case <-time.After(backoff):
 		}
 
@@ -1482,6 +1491,9 @@ func generateAuditKey() ([]byte, error) {
 // node becomes leader and the FSM is caught up (LeaderReadyEvent).
 func proposeClusterConfigIfNeeded(parent context.Context, n plan.Proposer, builder *plan.Builder, store *dal.Store, cfg Config, logger logging.Logger) {
 	clusterState, _ := query.ReadClusterState(store)
+
+	// Resolve local sentinels before replication, just as cache construction does.
+	cfg.RaftConfig.SetDefaults()
 
 	// Clone before mutating: cfg.BloomConfig is the process-wide fx-provided
 	// message, and LeaderReadyEvent can be dispatched concurrently (the
@@ -1783,17 +1795,25 @@ func applyAnonymousScopes(mapping internalauth.ScopeMapping, raw string, logger 
 	return nil
 }
 
-// handleLeadershipChangeEvent records the desired leadership generation for
-// the event and mirror managers. Each manager's lifecycle-owned loop performs
-// the potentially slow reconciliation and fences it against later generations.
+// leadershipChangeManager is the event or mirror manager's view of leadership.
+// Both learn of a gain through LeaderReadyEvent and of a loss through
+// LeadershipChangeEvent. Readiness means the FSM has applied the new leader's
+// no-op entry, so the store they read sink and mirror config from is current:
+// a leader elected while its store is behind its Raft log (see
+// node.shouldTickRaft) reaches readiness only after fetching a checkpoint and
+// replaying its spool. Each manager's lifecycle-owned loop performs the
+// potentially slow reconciliation and fences it against later generations.
 //
 // The backup orchestrator's OnLeadershipChange is intentionally NOT
-// called here: it has no asynchronous reconciliation and is updated directly
-// by the observer. See the observer's LeadershipChangeEvent branch.
+// called through this path: it has no asynchronous reconciliation and is
+// updated directly by the observer. See the observer's LeadershipChangeEvent
+// branch.
 type leadershipChangeManager interface {
 	OnLeadershipChange(bool)
 }
 
+// handleLeadershipChangeEvent records a leadership loss for the managers. A
+// gain is not recorded here; see handleLeaderReadyEvent.
 func handleLeadershipChangeEvent(
 	e node.LeadershipChangeEvent,
 	eventsManager leadershipChangeManager,
@@ -1801,13 +1821,27 @@ func handleLeadershipChangeEvent(
 	logger logging.Logger,
 ) {
 	if e.IsLeader {
-		logger.Infof("Became leader — reconciling event emitter and mirror workers")
-	} else {
-		logger.Infof("Lost leadership — tearing down event emitter and mirror workers")
+		return
 	}
 
-	eventsManager.OnLeadershipChange(e.IsLeader)
-	mirrorManager.OnLeadershipChange(e.IsLeader)
+	logger.Infof("Lost leadership — tearing down event emitter and mirror workers")
+
+	eventsManager.OnLeadershipChange(false)
+	mirrorManager.OnLeadershipChange(false)
+}
+
+// handleLeaderReadyEvent records leadership for the managers once the leader's
+// store is current. The model harness (tests/antithesis/run_model_test.sh)
+// waits for the "Leader ready" log line before driving a node.
+func handleLeaderReadyEvent(
+	eventsManager leadershipChangeManager,
+	mirrorManager leadershipChangeManager,
+	logger logging.Logger,
+) {
+	logger.Infof("Leader ready — reconciling event emitter and mirror workers")
+
+	eventsManager.OnLeadershipChange(true)
+	mirrorManager.OnLeadershipChange(true)
 }
 
 func buildNodeConfig(cfg Config) (node.NodeConfig, error) {

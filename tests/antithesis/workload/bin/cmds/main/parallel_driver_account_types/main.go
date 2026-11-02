@@ -12,10 +12,11 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
+	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal/generation"
 )
 
 func main() {
-	internal.RunDriver("parallel_driver_account_types", func(ctx context.Context, client servicepb.BucketServiceClient, _ string) {
+	internal.RunGeneratedDriver("parallel_driver_account_types", func(ctx context.Context, client servicepb.BucketServiceClient, _ string, src *generation.Source) {
 		r := internal.Rand()
 
 		// Create a dedicated ledger so account type patterns don't interfere
@@ -68,7 +69,7 @@ func main() {
 		assert.AlwaysOrUnreachable(found, "added account type should appear in ledger info", details)
 
 		// 3. Create a transaction using an address matching the pattern.
-		matchingAddr := fmt.Sprintf("%s:%d", typeName, r.Uint64()%1000)
+		matchingAddr := fmt.Sprintf("%s:%d", typeName, src.Uint64Range(0, 999))
 		typedTxResp, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
 			Type: &servicepb.Request_Apply{
 				Apply: &servicepb.LedgerApplyRequest{

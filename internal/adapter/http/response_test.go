@@ -29,7 +29,7 @@ func TestWriteJSONResponse(t *testing.T) {
 	t.Parallel()
 
 	w := httptest.NewRecorder()
-	writeJSONResponse(w, http.StatusOK, map[string]string{"key": "value"})
+	writeJSONResponse(w, httptest.NewRequest(http.MethodGet, "/", nil), http.StatusOK, map[string]string{"key": "value"})
 
 	require.Equal(t, http.StatusOK, w.Code)
 	require.Equal(t, "application/json", w.Header().Get("Content-Type"))
@@ -41,7 +41,7 @@ func TestWriteOK(t *testing.T) {
 	t.Parallel()
 
 	w := httptest.NewRecorder()
-	writeOK(w, "hello")
+	writeOK(w, httptest.NewRequest(http.MethodGet, "/", nil), "hello")
 
 	require.Equal(t, http.StatusOK, w.Code)
 	resp := decodeResponse[BaseResponse[string]](t, w)
@@ -52,7 +52,7 @@ func TestWriteCreated(t *testing.T) {
 	t.Parallel()
 
 	w := httptest.NewRecorder()
-	writeCreated(w, map[string]int{"id": 42})
+	writeCreated(w, httptest.NewRequest(http.MethodGet, "/", nil), map[string]int{"id": 42})
 
 	require.Equal(t, http.StatusCreated, w.Code)
 	resp := decodeResponse[BaseResponse[map[string]int]](t, w)

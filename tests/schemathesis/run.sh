@@ -9,7 +9,7 @@
 #   SCHEMATHESIS_SHRINK, REPO_ROOT, SCHEMATHESIS_OPENAPI_PATH
 #   SCHEMATHESIS_WORKERS=N runs the endpoint suite across N concurrent workers
 #   (default 1). Keep at 1 for the reproducible gate: >1 breaks the
-#   `derandomize` determinism (see test_api.py). The suite is fast at 1 worker.
+#   deterministic generation (see test_api.py). The suite is fast at 1 worker.
 #   SCHEMATHESIS_SHRINK=1 re-enables Hypothesis shrinking (minimal failing
 #   examples) for local debugging. Off by default — see test_api.py --shrink.
 set -euo pipefail
@@ -128,7 +128,7 @@ source "$VENV_DIR/bin/activate"
 echo "==> Installing/verifying pinned Schemathesis dependencies..."
 pip3 install -q -r "$SCRIPT_DIR/requirements.txt"
 
-echo "==> Verifying Schemathesis event accounting..."
+echo "==> Verifying Schemathesis reporting and CLI integration..."
 PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover \
     -s "$SCRIPT_DIR" -p 'test_*.py'
 

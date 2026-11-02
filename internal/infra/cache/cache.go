@@ -74,16 +74,6 @@ func (a *AttributeCache[T]) Put(k attributes.U128, v attributes.Entry[T]) {
 	a.gen0.Load().Put(k, v)
 }
 
-func (a *AttributeCache[T]) GetAndPut(k attributes.U128, v attributes.Entry[T]) (attributes.Entry[T], bool) {
-	old, existed := a.gen0.Load().GetAndPut(k, v)
-	if existed {
-		return old, true
-	}
-
-	// New value is already in gen0. Check gen1 for the old value.
-	return a.gen1.Load().Get(k)
-}
-
 func (a *AttributeCache[T]) Size() uint64 {
 	return a.gen0.Load().Size() + a.gen1.Load().Size()
 }

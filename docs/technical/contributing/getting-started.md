@@ -2,7 +2,7 @@
 
 ## Prerequisites
 
-- **Nix with Flakes enabled** (required) - provides Go 1.27+, Just, golangci-lint, protoc, Atlassian CLI (`acli`), and all other repository CLI dependencies
+- **Nix with Flakes enabled** (required) - provides Go 1.27.3, Just, golangci-lint, protoc, Atlassian CLI (`acli`), and all other repository CLI dependencies
 - **direnv** - [Installation](https://direnv.net/) and [shell hook](https://direnv.net/docs/hook.html)
 
 ## Setup
@@ -33,8 +33,31 @@ Repository scripts and contributor workflows must not rely on host-installed CLI
 | `demo` | `nix develop .#demo --command just generate-demo` | `ci` plus `vhs` (which wraps ffmpeg, ttyd and, on Linux, chromium) and `grpcurl`. |
 | `sdk` | `nix develop .#sdk --command just test-sdk-bigint` | `ci` plus Speakeasy and Node.js. |
 | `perf` | `nix develop .#perf` | `ci` plus `k6` and `benchstat` (goperf). |
+| `operator-tests` | `nix develop .#operator-tests` | `ci` plus pinned `setup-envtest` for Docker-free operator admission tests; select Kubernetes 1.32.x with `setup-envtest use 1.32.x -p path`. |
 
 Add a tool to `ci` only when a workflow step, or a recipe or script that a workflow step runs, executes it. Every CI job downloads the `ci` closure when its Nix cache is cold. A tool needed only by one local workflow goes in a task shell, not in `default`. To reproduce a CI step with exactly CI's tools, run it with `nix develop .#ci --command …`.
+
+Go uses the upstream `go_1_27` package from the locked stable `nixpkgs` input,
+so CI can reuse its binary cache instead of rebuilding an imported compiler
+recipe. Mockgen uses the same Go 1.27 builder so it can load the root module.
+The `go-tooling` input provides the complete upstream golangci-lint 2.15.0
+package on Linux and ARM macOS. Keeping its original dependencies lets Nix
+download the published binary instead of compiling a variant against stable.
+The locked stable input provides 2.12.2, whose shared-cache behavior is unsafe
+across worktrees; see [local validation](local-validation.md#golangci-lint-cross-worktree-safety).
+On Intel macOS, both flakes retain the linter recipe built against stable
+because the upstream `go-tooling` package set no longer supports that platform.
+The root shell still has a pre-existing Intel macOS limitation from its
+independently pinned unstable tools. Mockgen retains its Go 1.27 builder and
+can still require compilation when its store path is absent from the cache.
+Updating stable also updates the other tools selected from that input; check
+generated outputs with `just pre-commit`. The unstable and NUR inputs remain
+independently pinned.
+
+The standalone `misc/operator` flake uses the same stable Go 1.27.3 package
+and the same golangci-lint 2.15.0 package selection. Its unstable
+input remains independently pinned, and its module language minimum remains
+Go 1.26.0. Both flakes set `GOTOOLCHAIN=local` to use the selected compiler.
 
 ## Project Structure
 

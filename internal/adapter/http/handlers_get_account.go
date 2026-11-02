@@ -1,10 +1,7 @@
 package http
 
 import (
-	"errors"
 	"net/http"
-
-	"github.com/go-chi/chi/v5"
 
 	"github.com/formancehq/ledger/v3/internal/application/ctrl"
 )
@@ -18,10 +15,8 @@ func (s *Server) handleGetAccount(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	address := chi.URLParam(r, "address")
-	if address == "" {
-		writeBadRequest(w, "INVALID_REQUEST", errors.New("account address is required"))
-
+	address, ok := requirePathParameter(w, r, "address", "account address")
+	if !ok {
 		return
 	}
 
@@ -49,5 +44,5 @@ func (s *Server) handleGetAccount(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeMonetaryOK(w, r, account)
+	writeOK(w, r, account)
 }

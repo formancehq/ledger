@@ -35,15 +35,15 @@ var _ = DescribeTable("Rejected learner registration routing preserves active pe
 		var original *clusterpb.NodeInfo
 		var leaderRaftAddress string
 		Eventually(func(g Gomega) {
-			state, err := leader.ClusterClient.GetClusterState(ctx, &clusterpb.GetClusterStateRequest{NodeId: uint32(lid)})
+			state, err := leader.ClusterClient.GetClusterState(ctx, &clusterpb.GetClusterStateRequest{NodeId: lid})
 			g.Expect(err).To(Succeed())
-			g.Expect(state.GetLeader()).To(Equal(uint32(lid)))
+			g.Expect(state.GetLeader()).To(Equal(lid))
 			original = nil
 			for _, peer := range state.GetNodes() {
-				if peer.GetId() == uint32(lid) {
+				if peer.GetId() == lid {
 					leaderRaftAddress = peer.GetRaftAddress()
 				}
-				if peer.GetId() == uint32(targetID) {
+				if peer.GetId() == targetID {
 					original = peer
 				}
 			}
@@ -109,11 +109,11 @@ var _ = DescribeTable("Rejected learner registration routing preserves active pe
 		// GetClusterState reads addresses from the actual transport pools;
 		// GetPeers independently reads the committed membership cache. A
 		// cached identity alone cannot detect pre-admission pool rewiring.
-		state, err := leader.ClusterClient.GetClusterState(ctx, &clusterpb.GetClusterStateRequest{NodeId: uint32(lid)})
+		state, err := leader.ClusterClient.GetClusterState(ctx, &clusterpb.GetClusterStateRequest{NodeId: lid})
 		Expect(err).To(Succeed())
 		found := false
 		for _, peer := range state.GetNodes() {
-			if peer.GetId() == uint32(targetID) {
+			if peer.GetId() == targetID {
 				Expect(peer.GetServiceAddress()).To(Equal(original.GetServiceAddress()))
 				Expect(peer.GetRaftAddress()).To(Equal(original.GetRaftAddress()))
 				found = true
@@ -136,10 +136,10 @@ var _ = DescribeTable("Rejected learner registration routing preserves active pe
 		// Exercise the retained service connection, routing via the leader
 		// to the specific follower rather than using a direct client.
 		probeCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
-		forwarded, err := leader.ClusterClient.GetClusterState(probeCtx, &clusterpb.GetClusterStateRequest{NodeId: uint32(targetID)})
+		forwarded, err := leader.ClusterClient.GetClusterState(probeCtx, &clusterpb.GetClusterStateRequest{NodeId: targetID})
 		cancel()
 		Expect(err).To(Succeed())
-		Expect(forwarded.GetLocalNode()).To(Equal(uint32(targetID)))
+		Expect(forwarded.GetLocalNode()).To(Equal(targetID))
 	},
 	Entry("after administrative AddLearner stale-progress rejection", true, false),
 	Entry("after boot JoinAsLearner stale-progress rejection", false, false),

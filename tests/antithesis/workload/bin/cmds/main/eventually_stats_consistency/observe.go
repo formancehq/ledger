@@ -15,7 +15,7 @@ import (
 
 type observation struct {
 	Node              string            `json:"node,omitempty"`
-	NodeID            uint32            `json:"nodeId,omitempty"`
+	NodeID            uint64            `json:"nodeId,omitempty"`
 	Converged         bool              `json:"converged"`
 	WitnessReferences uint64            `json:"witnessReferences"`
 	Attempts          int               `json:"attempts"`

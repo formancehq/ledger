@@ -109,6 +109,12 @@ func runSave(cmd *cobra.Command, args []string) error {
 		return cmdutil.FormatGRPCError("failed to save numscript", err)
 	}
 
+	if err := cmdutil.VerifyResponseSignatures(cmd, resp.GetLogs()); err != nil {
+		spinner.Fail("Response signature verification failed")
+
+		return cmdutil.Displayed(fmt.Errorf("response signature verification failed: %w", err))
+	}
+
 	if len(resp.GetLogs()) > 0 {
 		if saved := resp.GetLogs()[0].GetPayload().GetSavedNumscript(); saved != nil {
 			spinner.Success("Saved")

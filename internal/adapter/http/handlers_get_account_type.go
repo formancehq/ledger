@@ -1,10 +1,7 @@
 package http
 
 import (
-	"errors"
 	"net/http"
-
-	"github.com/go-chi/chi/v5"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 )
@@ -16,10 +13,8 @@ func (s *Server) handleGetAccountType(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	typeName := chi.URLParam(r, "typeName")
-	if typeName == "" {
-		writeBadRequest(w, "INVALID_REQUEST", errors.New("type name is required"))
-
+	typeName, ok := requirePathParameter(w, r, "typeName", "type name")
+	if !ok {
 		return
 	}
 
@@ -39,5 +34,5 @@ func (s *Server) handleGetAccountType(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeOK(w, toAccountTypeJSON(at))
+	writeOK(w, r, toAccountTypeJSON(at))
 }

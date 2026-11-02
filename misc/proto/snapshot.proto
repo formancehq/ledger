@@ -10,9 +10,29 @@ option go_package = "github.com/formancehq/ledger/v3/internal/proto/snapshotpb";
 //   2. FetchFile streams a single file from the session (called N times in parallel).
 //   3. CloseSession releases the checkpoint and session resources.
 service SnapshotService {
+  // CheckSnapshotReadiness reports whether the node can serve a checkpoint
+  // without creating one. Callers use it to avoid expensive checkpoint
+  // creation on donors that are stale or resynchronizing.
+  rpc CheckSnapshotReadiness(CheckSnapshotReadinessRequest) returns (CheckSnapshotReadinessResponse);
   rpc PrepareSnapshot(PrepareSnapshotRequest) returns (PrepareSnapshotResponse);
   rpc FetchFile(FetchFileRequest) returns (stream FetchFileResponse);
   rpc CloseSession(CloseSessionRequest) returns (CloseSessionResponse);
+}
+
+message CheckSnapshotReadinessRequest {
+  // Minimum persisted index the checkpoint must include.
+  fixed64 minAppliedIndex = 1;
+}
+
+message CheckSnapshotReadinessResponse {
+  // True when the node is not resynchronizing and its durable FSM state has
+  // reached minAppliedIndex from the request.
+  bool ready = 1;
+  // Durable FSM cursor observed while evaluating readiness.
+  fixed64 lastPersistedIndex = 2;
+  // True when this node cannot serve a checkpoint until it completes its own
+  // snapshot synchronization.
+  bool resynchronizing = 3;
 }
 
 message PrepareSnapshotRequest {

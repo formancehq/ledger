@@ -64,7 +64,7 @@ func main() {
 		// election window where a deposed leader could answer.
 		if internal.Rand().Uint64()%2 == 0 {
 			if state, stateErr := clusterClient.GetClusterState(ctx, &clusterpb.GetClusterStateRequest{}); stateErr == nil {
-				leader := uint64(state.GetLeader())
+				leader := state.GetLeader()
 				if prevLeader != 0 && leader != 0 && leader != prevLeader {
 					leaderChanged = true
 				}

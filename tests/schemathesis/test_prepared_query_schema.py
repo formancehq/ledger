@@ -3,6 +3,8 @@
 import unittest
 from pathlib import Path
 
+import schemathesis
+from hypothesis import HealthCheck, given, settings
 import yaml
 from jsonschema import RefResolver
 from openapi_schema_validator import OAS30Validator
@@ -13,6 +15,30 @@ class PreparedQuerySchemaTest(unittest.TestCase):
     def setUpClass(cls):
         openapi_path = Path(__file__).resolve().parents[2] / "openapi.yml"
         cls.schema = yaml.safe_load(openapi_path.read_text())
+
+    def test_schema_derived_prepared_query_bodies(self):
+        # Exercise 50 native draws per operation. The v3 generator needed the
+        # removed fixed-body hook to avoid a too_slow health-check failure.
+        schema = schemathesis.openapi.from_path(
+            str(Path(__file__).resolve().parents[2] / "openapi.yml")
+        )
+        for path, method, request_name in (
+            ("/v3/{ledgerName}/prepared-queries", "POST", "CreatePreparedQueryRequest"),
+            ("/v3/{ledgerName}/prepared-queries/{queryName}", "PUT", "UpdatePreparedQueryRequest"),
+        ):
+            with self.subTest(method=method):
+                validator = OAS30Validator(
+                    self.schema["components"]["schemas"][request_name],
+                    resolver=RefResolver.from_schema(self.schema),
+                )
+
+                @settings(max_examples=50, derandomize=True, database=None,
+                          suppress_health_check=[HealthCheck.filter_too_much])
+                @given(schema[path][method].as_strategy())
+                def validate_generated(case):
+                    validator.validate(case.body)
+
+                validate_generated()
 
     def test_create_and_update_validate_filter_instances(self):
         schemas = self.schema["components"]["schemas"]

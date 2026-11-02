@@ -29,18 +29,21 @@ integration event in severity decisions.
 
 ## Schemathesis execution errors
 
-The Schemathesis reporter fails the run for every execution error, including
-transport errors. A later successful execution, even for the same method and
-path, does not prove that the failed request and its conformance checks were
-retried. Preserve the runner's errored count and report each execution error
-with its operation identity.
+The Schemathesis wrapper runs the pinned public CLI and reads its NDJSON
+report. Every execution error, including transport errors, fails the run. A
+later successful execution, even for the same method and path, does not prove
+that the failed request and its conformance checks were retried. Preserve
+error diagnostics and operation identity; neither a later successful scenario
+nor a zero CLI exit status may erase an observed error or check failure.
 
 Exercise this boundary through the reporting regressions in
 `tests/schemathesis/test_reporting.py`: an error followed by success on another
 path, another method, or the same operation must still fail. Successful checks
-without errors must pass; zero successful checks or a missing `Finished` event
-must fail. `tests/schemathesis/run.sh` runs these regressions before the API
-suite and preserves the reporter's exit status through `pipefail`.
+without errors must pass. Require an `EngineFinished` event, at least one
+successful check in a `ScenarioFinished` recorder, and a zero CLI exit status.
+An absent or malformed report, an unfinished run, or scenarios without
+successful checks must fail. `tests/schemathesis/run.sh` runs these regressions
+before the API suite and preserves the wrapper's exit status through `pipefail`.
 
 ## Antithesis source and build boundary
 

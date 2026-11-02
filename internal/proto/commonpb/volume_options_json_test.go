@@ -31,11 +31,11 @@ func TestVolumeAmountEncodingOptions(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
-			numeric, err := json.MarshalWithOptions(value, MonetaryAmountsAsNumbers())
+			numeric, err := json.MarshalWithOptions(value, BigIntegersAsNumbers())
 			require.NoError(t, err)
 			require.Contains(t, string(numeric), `"input":`+huge)
 			require.Contains(t, string(numeric), `"output":`+huge+"0")
-			quoted, err := json.MarshalWithOptions(value, MonetaryAmountsAsStrings())
+			quoted, err := json.MarshalWithOptions(value, BigIntegersAsStrings())
 			require.NoError(t, err)
 			require.Contains(t, string(quoted), `"input":"`+huge+`"`)
 			if name == "transaction" || name == "transactionCursor" || name == "ledgerLog" || name == "systemLog" {
@@ -69,16 +69,16 @@ func TestVolumeAmountEncodingValidation(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
-			_, err := json.MarshalWithOptions(value, MonetaryAmountsAsNumbers())
+			_, err := json.MarshalWithOptions(value, BigIntegersAsNumbers())
 			require.Error(t, err)
-			_, err = json.MarshalWithOptions(value, MonetaryAmountsAsStrings())
+			_, err = json.MarshalWithOptions(value, BigIntegersAsStrings())
 			require.Error(t, err)
 		})
 	}
 	for name, value := range map[string]any{"unsigned": (*BigUint)(nil), "signed": (*SignedBigInt)(nil), "volumes": (*Volumes)(nil), "balance": (*VolumesWithBalance)(nil)} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
-			encoded, err := json.MarshalWithOptions(value, MonetaryAmountsAsNumbers())
+			encoded, err := json.MarshalWithOptions(value, BigIntegersAsNumbers())
 			require.NoError(t, err)
 			require.Equal(t, "null", string(encoded))
 		})

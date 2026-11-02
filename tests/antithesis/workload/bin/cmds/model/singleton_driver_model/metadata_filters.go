@@ -3,12 +3,10 @@ package main
 import (
 	"math"
 
-	"github.com/antithesishq/antithesis-sdk-go/random"
-
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/tests/oracle"
 
-	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
+	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal/generation"
 )
 
 // Metadata Field filters. The compiler serves a Field condition from the
@@ -272,12 +270,12 @@ func sampleFieldSeeds(ls oracle.LedgerState, target commonpb.QueryTarget) []fiel
 // leaves on the key under And. One-in-eight it deliberately rolls a kind-MISMATCHED
 // leaf (the FILTER_COMPILATION_ERROR probe). Returns nil when the target has
 // no declared fields.
-func genFieldLeaf(seeds []fieldSeed) *commonpb.QueryFilter {
+func genFieldLeaf(src *generation.Source, seeds []fieldSeed) *commonpb.QueryFilter {
 	if len(seeds) == 0 {
 		return nil
 	}
 
-	seed := seeds[internal.Rand().Intn(len(seeds))]
+	seed := seeds[src.Intn(len(seeds))]
 
 	// Coerce the sample to the declared type — the value space the index holds.
 	var coerced *commonpb.MetadataValue
@@ -288,38 +286,38 @@ func genFieldLeaf(seeds []fieldSeed) *commonpb.QueryFilter {
 		}
 	}
 
-	if oneIn(6) {
-		return filterFieldExists(seed.key, oneIn(2))
+	if oneIn(src, 6) {
+		return filterFieldExists(seed.key, oneIn(src, 2))
 	}
 
 	switch {
 	case seed.declaredType == commonpb.MetadataType_METADATA_TYPE_STRING:
-		if sv, ok := coerced.GetType().(*commonpb.MetadataValue_StringValue); ok && !oneIn(4) {
+		if sv, ok := coerced.GetType().(*commonpb.MetadataValue_StringValue); ok && !oneIn(src, 4) {
 			return filterFieldString(seed.key, sv.StringValue)
 		}
 
 		return filterFieldString(seed.key, "absent-value")
 	case seed.declaredType == commonpb.MetadataType_METADATA_TYPE_BOOL:
-		return filterFieldBool(seed.key, oneIn(2))
+		return filterFieldBool(seed.key, oneIn(src, 2))
 	case commonpb.IsUnsignedType(seed.declaredType):
-		center := internal.Rand().Uint64() % 1024
-		if uv, ok := coerced.GetType().(*commonpb.MetadataValue_UintValue); ok && !oneIn(4) {
+		center := src.Uint64Range(0, 1024-1)
+		if uv, ok := coerced.GetType().(*commonpb.MetadataValue_UintValue); ok && !oneIn(src, 4) {
 			center = uv.UintValue
 		}
 
-		lo, hi := uintBound(center, true), uintBound(center, false)
-		if lo != nil && hi != nil && oneIn(3) {
+		lo, hi := uintBound(src, center, true), uintBound(src, center, false)
+		if lo != nil && hi != nil && oneIn(src, 3) {
 			// The range as two half-ranges on one key under And, the shape the
 			// compiler merges into a single scan.
 			low, high := filterFieldUint(seed.key, lo, nil), filterFieldUint(seed.key, nil, hi)
-			rollExclusiveUint(low.GetField().GetUintCond())
-			rollExclusiveUint(high.GetField().GetUintCond())
+			rollExclusiveUint(src, low.GetField().GetUintCond())
+			rollExclusiveUint(src, high.GetField().GetUintCond())
 
 			return filterAnd(low, high)
 		}
 
 		f := filterFieldUint(seed.key, lo, hi)
-		rollExclusiveUint(f.GetField().GetUintCond())
+		rollExclusiveUint(src, f.GetField().GetUintCond())
 
 		return f
 	default:
@@ -331,44 +329,44 @@ func genFieldLeaf(seeds []fieldSeed) *commonpb.QueryFilter {
 		case *commonpb.MetadataValue_DatetimeValue:
 			center = t.DatetimeValue
 		default:
-			center = internal.Rand().Int63n(1024)
+			center = src.Int63n(1024)
 		}
 
-		lo, hi := intBound(center, true), intBound(center, false)
-		if lo != nil && hi != nil && oneIn(3) {
+		lo, hi := intBound(src, center, true), intBound(src, center, false)
+		if lo != nil && hi != nil && oneIn(src, 3) {
 			low, high := filterFieldInt(seed.key, lo, nil), filterFieldInt(seed.key, nil, hi)
-			rollExclusiveInt(low.GetField().GetIntCond())
-			rollExclusiveInt(high.GetField().GetIntCond())
+			rollExclusiveInt(src, low.GetField().GetIntCond())
+			rollExclusiveInt(src, high.GetField().GetIntCond())
 
 			return filterAnd(low, high)
 		}
 
 		f := filterFieldInt(seed.key, lo, hi)
-		rollExclusiveInt(f.GetField().GetIntCond())
+		rollExclusiveInt(src, f.GetField().GetIntCond())
 
 		return f
 	}
 }
 
 // rollExclusiveUint makes each present bound exclusive one time in four.
-func rollExclusiveUint(cond *commonpb.UintCondition) {
+func rollExclusiveUint(src *generation.Source, cond *commonpb.UintCondition) {
 	if cond.Min != nil {
-		cond.MinExclusive = oneIn(4)
+		cond.MinExclusive = oneIn(src, 4)
 	}
 
 	if cond.Max != nil {
-		cond.MaxExclusive = oneIn(4)
+		cond.MaxExclusive = oneIn(src, 4)
 	}
 }
 
 // rollExclusiveInt makes each present bound exclusive one time in four.
-func rollExclusiveInt(cond *commonpb.IntCondition) {
+func rollExclusiveInt(src *generation.Source, cond *commonpb.IntCondition) {
 	if cond.Min != nil {
-		cond.MinExclusive = oneIn(4)
+		cond.MinExclusive = oneIn(src, 4)
 	}
 
 	if cond.Max != nil {
-		cond.MaxExclusive = oneIn(4)
+		cond.MaxExclusive = oneIn(src, 4)
 	}
 }
 
@@ -376,12 +374,12 @@ func rollExclusiveInt(cond *commonpb.IntCondition) {
 // declared type rejects — the FILTER_COMPILATION_ERROR probe. Emitted only at
 // the top level so the rejection attribution stays unambiguous. Returns nil
 // when the target declares no fields.
-func genMismatchedFieldLeaf(seeds []fieldSeed) *commonpb.QueryFilter {
+func genMismatchedFieldLeaf(src *generation.Source, seeds []fieldSeed) *commonpb.QueryFilter {
 	if len(seeds) == 0 {
 		return nil
 	}
 
-	seed := seeds[internal.Rand().Intn(len(seeds))]
+	seed := seeds[src.Intn(len(seeds))]
 
 	switch {
 	case seed.declaredType == commonpb.MetadataType_METADATA_TYPE_STRING:
@@ -400,18 +398,18 @@ func genMismatchedFieldLeaf(seeds []fieldSeed) *commonpb.QueryFilter {
 // intBound rolls a bound around center: lower ≤ center for lo, ≥ center for
 // hi, occasionally open (nil) and occasionally an extremum of the type, where
 // the compiler's bound arithmetic has no room left.
-func intBound(center int64, lo bool) *int64 {
-	if oneIn(4) {
+func intBound(src *generation.Source, center int64, lo bool) *int64 {
+	if oneIn(src, 4) {
 		return nil
 	}
 
-	if oneIn(8) {
-		v := random.RandomChoice([]int64{math.MinInt64, math.MaxInt64})
+	if oneIn(src, 8) {
+		v := generation.Choice(src, []int64{math.MinInt64, math.MaxInt64})
 
 		return &v
 	}
 
-	delta := internal.Rand().Int63n(64)
+	delta := src.Int63n(64)
 	v := center + delta
 	if lo {
 		v = center - delta
@@ -420,18 +418,18 @@ func intBound(center int64, lo bool) *int64 {
 	return &v
 }
 
-func uintBound(center uint64, lo bool) *uint64 {
-	if oneIn(4) {
+func uintBound(src *generation.Source, center uint64, lo bool) *uint64 {
+	if oneIn(src, 4) {
 		return nil
 	}
 
-	if oneIn(8) {
-		v := random.RandomChoice([]uint64{0, math.MaxUint64})
+	if oneIn(src, 8) {
+		v := generation.Choice(src, []uint64{0, math.MaxUint64})
 
 		return &v
 	}
 
-	delta := internal.Rand().Uint64() % 64
+	delta := src.Uint64Range(0, 64-1)
 	v := center + delta
 	if lo {
 		if delta > center {

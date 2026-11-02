@@ -149,6 +149,8 @@ func TestPrepareEntriesRejectsInvalidAttributionBeforeBusinessMutation(t *testin
 	require.Len(t, prepared.Result.Results, 1)
 	var invalid *domain.ErrInvalidCallerAttribution
 	require.ErrorAs(t, prepared.Result.Results[0].Error, &invalid)
+	_, business := errors.AsType[*domain.BusinessError](prepared.Result.Results[0].Error)
+	require.False(t, business, "replicated trust-boundary failures must not enter the public BusinessError contract")
 	require.Equal(t, uint64(1), prepared.Result.Results[0].AppliedIndex)
 	require.NoError(t, machine.CommitPreparedBatch(context.Background(), prepared))
 

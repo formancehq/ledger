@@ -47,7 +47,7 @@ func SubscriptionBlocks() *BlockGroup {
 	}
 }
 
-func subscriptionFund(ctx context.Context, client servicepb.BucketServiceClient, r RandFunc) (*servicepb.ApplyResponse, error) {
+func subscriptionFund(ctx context.Context, client servicepb.BucketServiceClient, r Random) (*servicepb.ApplyResponse, error) {
 	subID := 1 + RandIntN(r, SubscriptionNumSubscribers)
 	tiers := SubscriptionTiers()
 	tier := tiers[RandIntN(r, len(tiers))]
@@ -61,7 +61,7 @@ func subscriptionFund(ctx context.Context, client servicepb.BucketServiceClient,
 	)
 }
 
-func subscriptionCharge(ctx context.Context, client servicepb.BucketServiceClient, r RandFunc) (*servicepb.ApplyResponse, error) {
+func subscriptionCharge(ctx context.Context, client servicepb.BucketServiceClient, r Random) (*servicepb.ApplyResponse, error) {
 	subID := 1 + RandIntN(r, SubscriptionNumSubscribers)
 	tiers := SubscriptionTiers()
 	tier := tiers[(subID-1)%len(tiers)]
@@ -80,7 +80,7 @@ func subscriptionCharge(ctx context.Context, client servicepb.BucketServiceClien
 	)
 }
 
-func subscriptionRecognize(ctx context.Context, client servicepb.BucketServiceClient, r RandFunc) (*servicepb.ApplyResponse, error) {
+func subscriptionRecognize(ctx context.Context, client servicepb.BucketServiceClient, r Random) (*servicepb.ApplyResponse, error) {
 	bal, ok := GetAccountBalance(ctx, client, SubscriptionLedger, "revenue:deferred", "USD/2")
 	if !ok || bal.Sign() <= 0 {
 		return nil, ErrSkip
@@ -100,7 +100,7 @@ func subscriptionRecognize(ctx context.Context, client servicepb.BucketServiceCl
 	)
 }
 
-func subscriptionCredit(ctx context.Context, client servicepb.BucketServiceClient, r RandFunc) (*servicepb.ApplyResponse, error) {
+func subscriptionCredit(ctx context.Context, client servicepb.BucketServiceClient, r Random) (*servicepb.ApplyResponse, error) {
 	subID := 1 + RandIntN(r, SubscriptionNumSubscribers)
 	amount := int64(100 + RandIntN(r, 500))
 	address := fmt.Sprintf("subscriber:%d", subID)

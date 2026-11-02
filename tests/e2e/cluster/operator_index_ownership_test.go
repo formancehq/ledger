@@ -9,7 +9,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"runtime"
 	"testing"
 	"time"
 
@@ -38,7 +37,8 @@ func TestOperatorIndexOwnership(t *testing.T) {
 	cli := filepath.Join(buildDir, "ledgerctl")
 	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Minute)
 	defer cancel()
-	goTool := filepath.Join(runtime.GOROOT(), "bin", "go")
+	goTool, err := exec.LookPath("go")
+	require.NoError(t, err)
 	build := exec.CommandContext(ctx, goTool, "build", "-o", cli, "./cmd/ledgerctl")
 	build.Dir = root
 	output, err := build.CombinedOutput()

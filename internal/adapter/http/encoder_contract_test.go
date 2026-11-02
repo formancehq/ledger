@@ -13,6 +13,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/reflect/protoreflect"
 
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
@@ -71,6 +72,40 @@ func TestProtojsonRoutes_PayloadHasNoCustomMarshalJSON(t *testing.T) {
 	}
 }
 
+// Protojson does not dispatch request-specific integer marshalers. Check the
+// descriptor graph, including absent fields, so adding a nested large integer
+// requires moving the route to its option-aware public projection.
+func TestProtojsonRoutes_HaveNoNegotiatedBigIntegers(t *testing.T) {
+	t.Parallel()
+	for _, tc := range protojsonRoutes {
+		t.Run(tc.route, func(t *testing.T) {
+			t.Parallel()
+			seen := make(map[protoreflect.FullName]bool)
+			var check func(protoreflect.MessageDescriptor, string)
+			check = func(message protoreflect.MessageDescriptor, path string) {
+				if seen[message.FullName()] {
+					return
+				}
+				seen[message.FullName()] = true
+				switch message.FullName() {
+				case (&commonpb.Uint256{}).ProtoReflect().Descriptor().FullName(),
+					(&commonpb.BigUint{}).ProtoReflect().Descriptor().FullName(),
+					(&commonpb.SignedBigInt{}).ProtoReflect().Descriptor().FullName():
+					t.Fatalf("%s contains %s at %s: use an option-aware public projection instead of protojson", tc.route, message.FullName(), path)
+				}
+				fields := message.Fields()
+				for i := range fields.Len() {
+					field := fields.Get(i)
+					if nested := field.Message(); nested != nil {
+						check(nested, path+"."+string(field.Name()))
+					}
+				}
+			}
+			check(tc.msg.ProtoReflect().Descriptor(), string(tc.msg.ProtoReflect().Descriptor().Name()))
+		})
+	}
+}
+
 // TestMonetaryRoutes_PayloadHasCustomMarshalJSON is the converse: the routes
 // use both the legacy projection and its option-aware counterpart. If a
 // marshaller is deleted, the encoder falls back to the protoc-gen `json:` tags,
@@ -91,9 +126,9 @@ func TestMonetaryRoutes_PayloadHasCustomMarshalJSON(t *testing.T) {
 
 			_, hasCustom := msg.(json.Marshaler)
 			_, hasStreamingCustom := msg.(jsonv2.MarshalerTo)
-			require.Truef(t, hasStreamingCustom, "%T must propagate monetary marshalers through MarshalJSONTo", msg)
+			require.Truef(t, hasStreamingCustom, "%T must propagate large-integer marshalers through MarshalJSONTo", msg)
 			require.Truef(t, hasCustom,
-				"%T is served through monetary writers and MUST keep its custom "+
+				"%T is served through option-aware writers and MUST keep its custom "+
 					"MarshalJSON: without it sonic emits the protoc-gen snake_case tags.",
 				msg)
 		})

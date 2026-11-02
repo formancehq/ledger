@@ -14,6 +14,7 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/keepalive"
 	"google.golang.org/grpc/metadata"
+	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/proto"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
@@ -40,19 +41,26 @@ func (f MessageInterceptorFunc) InterceptRequest(msg *raftpb.Message) bool {
 	return f(msg)
 }
 
+// PrepareSnapshotInterceptor decides whether a PrepareSnapshot call reaches
+// the backend node. Returning false holds the call until the requester gives
+// up, which keeps the requester mid-sync: its WAL already carries the
+// leader's snapshot while its store does not.
+type PrepareSnapshotInterceptor func(req *snapshotpb.PrepareSnapshotRequest) bool
+
 // Gateway is a gRPC gateway that forwards requests to backend nodes
 // Each port forwards to a specific node, allowing network manipulation during tests.
 type Gateway struct {
 	logger logging.Logger
 	// ports are filled in by Start, which binds one loopback port per node.
-	ports         []int
-	nodes         []string // node addresses (e.g., "127.0.0.1:8000")
-	servers       []*grpc.Server
-	listeners     []net.Listener
-	conns         []*grpc.ClientConn // client connections to backend nodes
-	interceptor   MessageInterceptor
-	interceptorMu sync.RWMutex
-	wg            sync.WaitGroup
+	ports                      []int
+	nodes                      []string // node addresses (e.g., "127.0.0.1:8000")
+	servers                    []*grpc.Server
+	listeners                  []net.Listener
+	conns                      []*grpc.ClientConn // client connections to backend nodes
+	interceptor                MessageInterceptor
+	prepareSnapshotInterceptor PrepareSnapshotInterceptor
+	interceptorMu              sync.RWMutex
+	wg                         sync.WaitGroup
 }
 
 // NewGateway creates a new gateway that forwards to the given node addresses.
@@ -90,6 +98,23 @@ func (g *Gateway) GetInterceptor() MessageInterceptor {
 	defer g.interceptorMu.RUnlock()
 
 	return g.interceptor
+}
+
+// SetPrepareSnapshotInterceptor sets the interceptor consulted on every
+// PrepareSnapshot call passing through the gateway. Pass nil to remove it.
+func (g *Gateway) SetPrepareSnapshotInterceptor(interceptor PrepareSnapshotInterceptor) {
+	g.interceptorMu.Lock()
+	defer g.interceptorMu.Unlock()
+
+	g.prepareSnapshotInterceptor = interceptor
+}
+
+func (g *Gateway) allowPrepareSnapshot(req *snapshotpb.PrepareSnapshotRequest) bool {
+	g.interceptorMu.RLock()
+	interceptor := g.prepareSnapshotInterceptor
+	g.interceptorMu.RUnlock()
+
+	return interceptor == nil || interceptor(req)
 }
 
 // RemoveInterceptor removes the message interceptor from the gateway
@@ -160,7 +185,8 @@ func (g *Gateway) Start(ctx context.Context) error {
 				"gateway_port": port,
 				"node_addr":    nodeAddr,
 			}),
-			client: snapshotpb.NewSnapshotServiceClient(conn),
+			client:  snapshotpb.NewSnapshotServiceClient(conn),
+			gateway: g,
 		})
 
 		clusterbootstrappb.RegisterClusterBootstrapServiceServer(server, &clusterBootstrapServiceGateway{
@@ -402,11 +428,18 @@ func (g *raftTransportGateway) StreamMessages(stream grpc.BidiStreamingServer[ra
 type snapshotServiceGateway struct {
 	snapshotpb.UnimplementedSnapshotServiceServer
 
-	logger logging.Logger
-	client snapshotpb.SnapshotServiceClient
+	logger  logging.Logger
+	client  snapshotpb.SnapshotServiceClient
+	gateway *Gateway
 }
 
 func (g *snapshotServiceGateway) PrepareSnapshot(ctx context.Context, req *snapshotpb.PrepareSnapshotRequest) (*snapshotpb.PrepareSnapshotResponse, error) {
+	if !g.gateway.allowPrepareSnapshot(req) {
+		<-ctx.Done()
+
+		return nil, status.FromContextError(ctx.Err()).Err()
+	}
+
 	return g.client.PrepareSnapshot(forwardIncomingMetadata(ctx), req)
 }
 

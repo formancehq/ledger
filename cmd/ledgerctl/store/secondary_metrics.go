@@ -23,7 +23,7 @@ func NewSecondaryMetricsCommand() *cobra.Command {
 
 	cmdutil.AddOutputFlags(cmd)
 	cmd.Flags().Duration("timeout", cmdutil.DefaultTimeout, "Request timeout")
-	cmd.Flags().Uint32("node-id", 0, "Target node ID (0 = local node)")
+	cmd.Flags().Uint64("node-id", 0, "Target node ID (0 = local node)")
 
 	return cmd
 }
@@ -39,7 +39,10 @@ func runSecondaryMetrics(cmd *cobra.Command, _ []string) error {
 	ctx, cancel := cmdutil.GetContext(cmd)
 	defer cancel()
 
-	nodeID, _ := cmd.Flags().GetUint32("node-id")
+	nodeID, err := cmd.Flags().GetUint64("node-id")
+	if err != nil {
+		return err
+	}
 
 	spinner := cmdutil.StartSpinner("Fetching read index metrics...")
 

@@ -73,10 +73,10 @@ map[U128]...
 
 A deterministic 128-bit hash is computed from the canonical representation of the address.
 
-We use **XXH3** (seeded) from the `github.com/zeebo/xxh3` library:
+The current `KeyHasher` uses unseeded **XXH3** from the `github.com/zeebo/xxh3` library:
 
-- `xxh3.Hash128Seed(data, seed)` -> 128-bit ID
-- `xxh3.HashSeed(data, seed)` -> 64-bit collision tag
+- `xxh3.Hash128(data)` -> 128-bit ID
+- `xxh3.Hash(data)` -> 64-bit collision tag
 
 The pipeline:
 
@@ -84,18 +84,11 @@ The pipeline:
 address -> canonical bytes -> XXH3-128 -> U128
 ```
 
-Two independent seeds are derived at startup from a 32-byte master key using domain-separated BLAKE3:
-
-```
-IDSeed  = uint64(BLAKE3("attrid:v1:id128:" || masterKey)[:8])
-TagSeed = uint64(BLAKE3("attrid:v1:tag64:" || masterKey)[:8])
-```
-
 This is the **hot path** — every `Get`, `Put`, and `Delete` in the attribute cache calls `MakeKey()`.
 
 ### Why XXH3 over BLAKE3
 
-| Property | XXH3-128 Seeded | BLAKE3 Keyed |
+| Property | XXH3-128 | BLAKE3 Keyed |
 |---|---|---|
 | Speed (43-byte input, M1 Pro) | ~13 ns/op | ~205 ns/op |
 | Speedup | **16x** | 1x |
@@ -107,16 +100,14 @@ BLAKE3's cryptographic properties are unnecessary for attribute key hashing beca
 1. **Inputs are not adversarial** — keys come from Numscript programs and validated API requests
 2. **Injection is expensive** — each input must pass through Raft consensus before reaching the hash
 3. **128-bit collision space** — infeasible to find collisions even with a non-cryptographic hash
-4. **Seed is in-process** — unpredictable to external attackers, preventing hash-flooding
 
 ### Hash Flooding Analysis
 
 Hash flooding requires an attacker to craft many inputs that collide under the hash function. This attack is infeasible here because:
 
 - The attacker cannot observe hash outputs (they are in-process memory only)
-- The XXH3 seed is derived from a 32-byte master key and never exposed
 - Each attempt to inject a key requires a Raft proposal (network round-trip + disk sync + consensus)
-- Even without seeding, XXH3-128 has 2^128 output space — birthday bound is ~2^64 attempts
+- XXH3-128 has 2^128 output space — birthday bound is ~2^64 attempts
 
 ## Collision Detection
 
@@ -124,8 +115,8 @@ Even though collisions on 128 bits are extremely unlikely, we add a secondary 64
 
 ### Principle
 
-- `key128 = XXH3-128(address, IDSeed)`
-- `tag64  = XXH3-64(address, TagSeed)`
+- `key128 = XXH3-128(address)`
+- `tag64  = XXH3-64(address)`
 
 We store:
 
@@ -148,6 +139,16 @@ var attrs map[U128]Entry[T]
 - present + tag matches -> valid attribute
 - present + tag mismatch -> collision detected locally
 
+For `KeyStore.Get`, the tag check precedes tombstone handling. A tombstone
+with another key's tag is a collision, while a matching tombstone is absent.
+`KeyStore.Put` checks the currently visible Gen0 entry, or Gen1 when Gen0 is
+empty, before writing. The FSM is the sole writer; admission may read in
+parallel. It publishes to Gen0 only when the tags match or the key is absent.
+A matching tombstone can be revived; a
+different-tag tombstone cannot be claimed by another canonical key. A rejected
+write leaves both generations unchanged, so concurrent admission cannot observe
+a temporary colliding value between publication and rollback.
+
 ### Benefits
 
 - no DB read required
@@ -159,13 +160,11 @@ var attrs map[U128]Entry[T]
 The `KeyHasher` struct is lock-free:
 
 ```go
-type KeyHasher struct {
-    seeds Seeds
-}
+type KeyHasher struct{}
 
 func (kh *KeyHasher) MakeKey(canonical []byte) (U128, uint64) {
-    u := xxh3.Hash128Seed(canonical, kh.seeds.IDSeed)
-    tag := xxh3.HashSeed(canonical, kh.seeds.TagSeed)
+    u := xxh3.Hash128(canonical)
+    tag := xxh3.Hash(canonical)
     return NewU128(u.Hi, u.Lo), tag
 }
 ```

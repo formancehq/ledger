@@ -26,6 +26,7 @@ that authorizes each operation:
 | Durable cursor | indexbuilder, auditindexer, usagebuilder and tail workers | Process Stop joins the fold. Restart resumes from the subsystem's atomic durable cursor contract; leadership alone does not restart per-replica workers. |
 | Request or session context | snapshot, restore, file stream, read lease and query checkpoint | Cancellation and completion converge on exactly-once release and cannot publish partial or superseded output. |
 | Admission request and proposal future | admission read handles, proposal guards and any request-scoped lifecycle lock | A request owns only the work it declared. Release every lifecycle lock before waiting for the proposal future. Never retain that lock through FSM application. The proposal guard is released when `Propose` returns; read handles close at their owning boundary. |
+| Drain epoch and pending marker | `Node.BeginDrain`, membership fence and proposal queue | Once a marker is enqueued, caller cancellation cannot reopen membership or write admission. Keep the pending fence until the marker applies or Raft definitively drops it. A release clears the applied gate only when its own Raft entry applies. |
 
 For event sinks, include startup-error report and clear proposals in the
 leadership-generation check. A manager-owned emitter waits for startup-error
@@ -36,6 +37,40 @@ Cache rotation is an FSM/cache consistency mechanism, not authority to restart
 unrelated workers. Likewise a leadership term alone is not a complete resource
 identity when configuration, ledger incarnation or pending version can change
 within the term.
+
+## Learner preflight and startup unwind
+
+The preflight owns its outbound registration connections and termination
+subscription before inbound Raft traffic or the node run loop starts. A signal
+must remain latched if it precedes subscription, cancel only the registration
+child context, and preserve the queued Fx shutdown notification. Subscription
+release, timer shutdown and concurrent signal delivery must be race-safe and
+exactly once. The private startup context remains live while failed preflight
+returns and Fx rolls back acquired dependencies; immediately canceling that
+context would let Fx skip dependency cleanup.
+
+Use deterministic barriers or synctest for in-flight RPC and backoff
+cancellation, pre-latched signals, success/AlreadyExists and marker-write
+failures, fatal status races and unrelated inherited cancellation. Preserve the
+existing failed-preflight-before-inbound and queued-notification regression
+triggers. Cancellation may leave a remotely committed member without a local
+joined marker; it is not a rollback of that distributed effect.
+
+For a positive `total-stop-timeout`, an absolute signal-time deadline bounds
+startup unwind and deferred logger finalization. Expiry cancels the private
+application context and fails outer waiting; zero leaves waiting unlimited.
+Successful startup still consumes the queued notification and keeps its
+existing separate normal Fx stop budget. Do not reinterpret the signal deadline
+as one total budget across all lifecycle phases.
+
+Test rollback failure, blocked/failing finalization, expiry/result races and
+signal/timer/subscription-close races. Finalization gets the remaining signal
+deadline and cannot turn expiry into success. Only intentional cancellation
+after successful rollback and finalization can become success; fatal statuses,
+marker errors and cleanup errors must survive a concurrent signal. Verify
+listener/store closure and same-path reuse independently of timeout return or
+process exit. The real OS signal/PID/exit-status oracle belongs to
+`process-boundary-recovery`.
 
 ## Node hook deadline ownership
 
@@ -128,6 +163,28 @@ resource-close count as evidence of a whole-constructor shutdown bound. See the
 
 ## Concurrent transition scenarios
 
+For learner preflight, complete a peer `Canceled` response before delivering
+local termination, while holding caller-side result handling or connection
+cleanup. The completed fatal response must remain a failure. Also retain the
+independent in-flight local cancellation and rollback-context regressions.
+
+PostgreSQL mirror gap reads add a source-session lifetime beneath the worker.
+A gap read owns one pooled `READ COMMITTED` transaction and a bucket-wide
+`SHARE` lock until commit or rollback. `NOWAIT` conflicts return immediately;
+the failed transaction must still be rolled back. When the fetch context is
+cancelled after lock acquisition, rollback uses a detached context with a
+five-second timeout. A failed pgx rollback closes the connection. No live
+transaction may return to the pool, and no source lock may survive into
+translation, preload or Raft application.
+
+The adapter's integration regression cancels from a real pgx query tracer
+immediately after successful lock acquisition. Its oracle includes no returned
+rows, retry through a single-connection pool, and an independent source INSERT
+afterward to detect leaked locks. Keep the manager's existing independent
+initialization/leadership-loss cancellation tests: cancelling a gap fetch does
+not prove cancellation of source construction, or vice versa. Applied source
+ordering and permanent-gap semantics belong to `mirror-ingestion-contracts`.
+
 At minimum, attempt to falsify these sequences with deterministic barriers:
 
 1. Start blocks after acquiring a listener, store, registration or source; Stop
@@ -149,6 +206,10 @@ At minimum, attempt to falsify these sequences with deterministic barriers:
    application is a failure. Separately verify the read-handle owner and close
    boundary, and whether an unrelated request can proceed. Repeat with a type
    transition that claims a wider lifecycle scope.
+8. A drain marker is enqueued and the caller times out before its result is
+   known. Interleave a membership change and a write with marker application
+   or definitive drop. Verify the fence stays closed until the outcome is
+   known, and that cancellation does not advance the cutoff or release epoch.
 
 For node readiness, hold a synchronous `LeaderReadyEvent` callback after entry
 and separately hold the real FSM catch-up wait. Exercise normal stop and task
@@ -182,6 +243,7 @@ reports and active fixes by mechanism, not only title.
 | `event-delivery-contracts` / `mirror-ingestion-contracts` | Own delivery acknowledgement/cursor semantics and source transformation respectively. This domain owns leader/config generation, resource shutdown and stale callback effects. |
 | `idempotency-retries-partial-failures` | Owns logical retry identity and ambiguous external outcomes. This domain owns the retry goroutine or callback outliving its authority token. |
 | `runtime-health-admission-contracts` | Owns measurement-to-verdict and admission consumption. This domain owns health worker/callback start, stop, join and stale-owner behavior. |
+| `operator-reconciliation-durability` | Owns persisted annotation intent, phase transitions and retries across controller replacement. This domain owns local cancellation and lock lifetime while a drain call is pending. |
 | `test-reachability-enforcement` | Owns test collection and CI execution. A missing concurrency test supports a concrete finding here but is not a separate product defect. |
 
 Follow callees outside the manifest only to prove the scoped lifecycle path. If

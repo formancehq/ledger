@@ -248,14 +248,17 @@ func processCreateTransaction(ledger string, order *raftcmdpb.CreateTransactionO
 		return nil, metaErr
 	}
 
+	// Select the address failure before writing any account metadata. Its typed
+	// details enter the audit chain, so first-error map iteration would fork
+	// replicas even though the proposal's business writes are rolled back.
+	if err := domain.ValidateAccountMetadataAddresses(accountMetadata); err != nil {
+		return nil, err
+	}
+
 	// Stored values are immutable; the FSM does not coerce on write and no
 	// longer captures previous values into the log. The indexer resolves
 	// the old encoded value via the reverse map on overwrite.
 	for account, mm := range accountMetadata {
-		if err := domain.ValidateAccountAddress(account); err != nil {
-			return nil, err
-		}
-
 		for key, value := range mm.GetValues() {
 			metaKey := domain.MetadataKey{
 				AccountKey: domain.AccountKey{LedgerName: ledger, Account: account},

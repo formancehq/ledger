@@ -8,3 +8,4 @@ spec:
     repository: ledger
     tag: e2e
     pullPolicy: Never
+  tls: null

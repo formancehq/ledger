@@ -3,7 +3,6 @@ package commonpb
 import (
 	"bytes"
 	"encoding/json/jsontext"
-	jsonv2 "encoding/json/v2"
 	"fmt"
 	"math/big"
 
@@ -87,23 +86,6 @@ func (x *Posting) jsonValue() postingJSON {
 // MarshalJSONTo preserves the public posting shape for option-aware callers.
 func (x *Posting) MarshalJSONTo(enc *jsontext.Encoder) error {
 	return json.MarshalEncode(enc, x.jsonValue())
-}
-
-// PostingAmountsAsStrings overrides only posting amounts for one encoding call.
-// Uint256 values elsewhere and the protobuf message itself are unchanged.
-func PostingAmountsAsStrings() jsonv2.Options {
-	return jsonv2.WithMarshalers(postingAmountsAsStringMarshalers())
-}
-
-func postingAmountsAsStringMarshalers() *jsonv2.Marshalers {
-	return jsonv2.MarshalToFunc(func(enc *jsontext.Encoder, x *Posting) error {
-		value := x.jsonValue()
-		if x.GetAmount() != nil {
-			value.Amount = x.GetAmount().Dec()
-		}
-
-		return json.MarshalEncode(enc, value)
-	})
 }
 
 // NewPosting creates a new uncolored Posting. Use NewColoredPosting to set a

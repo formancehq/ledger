@@ -18,6 +18,13 @@ contract has not changed. Release SemVer does not currently encode the
 compatibility of development revisions. During the RC line, revision 40 is
 frozen and the published gRPC wire contract must remain compatible.
 
+The additive `BucketService.AnalyzeNumscript` RPC (EN-3153) uses new messages
+and field numbers and leaves all published fields and RPC behavior intact.
+Revision 40 remains unchanged. Older servers return `Unimplemented` to a new
+client during a rolling upgrade; clients must wait for the server rollout
+before calling the new RPC. The operation has no persisted, Raft, snapshot,
+backup, or audit format effect.
+
 ## Wire contract and failure behavior
 
 `pkg/grpcprotocol.Version` is the compiled service protocol revision, currently
@@ -49,6 +56,20 @@ and HTTP `GET /_info`'s `protocolVersion` report the server revision.
 Restore mode does not register Discovery: its service gate provides the
 compatibility error without requiring a preliminary Discovery call, while
 health and reflection remain exempt.
+
+Ledger policy integrity checking retains revision 40. `CheckStore`
+can emit the additive `LEDGER_INFO_MISMATCH` error type (32)
+for ledger identity, deletion state, mode and mirror-source divergence. Existing
+field-specific errors remain available and can now identify corruption in either
+canonical or global ledger rows, including retained tombstones. Older protobuf
+clients can decode the numeric enum value but may not have its symbolic name;
+consumers must treat an unknown error type in a check error event as an integrity
+failure. `ValidateRestore` detects the same corruption through its existing
+message-only `ValidateRestoreError` events; that stream exposes no error-type
+enum. Updating generated bindings provides the new `CheckStore` error name. Request and response
+envelopes, existing enum numbers, HTTP routes and protocol metadata are unchanged.
+This checker-only change writes no persisted state and changes no Raft apply
+semantics, so it requires no data migration or mixed-version apply transition.
 
 The prepared-query `LIST` pagination correction retains revision 40 and the
 published protobuf wire contract. Every entry point now defaults zero to 100
@@ -560,9 +581,11 @@ Revision 35 removes detail variants for failures that cannot be written to an
 audited order outcome. Read aggregation overflow, admission dependency discovery,
 execution-plan size, idempotency lookup, write health gates, and audit availability
 remain public errors with their existing reason, code, status and fact presentation.
-A malformed caller attribution and a maintenance gate can also reject a committed
+Malformed caller attribution and a maintenance gate can also reject a committed
 proposal in the FSM, but both return before the order-audit path; they are not
-`AuditFailure` records. `PRELOAD_UNAVAILABLE` also returns before order
+`AuditFailure` records. Maintenance mode remains a public operational error;
+malformed caller attribution is an internal trust-boundary failure with no
+public `ErrorReason`. `PRELOAD_UNAVAILABLE` also returns before order
 processing when no earlier idempotency outcome exists: it is a retryable
 preparation interruption with no audit entry or frozen result.
 `STALE_PROPOSAL` and `INVALID_EXECUTION_PLAN` remain typed audited outcomes.
@@ -658,3 +681,37 @@ page. The protobuf text changes only by a comment. Clients that previously
 treated the requested page as complete must now follow the cursor to read all
 results. This response behavior changes under revision 40 by the RC policy;
 the revision is frozen, and the client impact must be documented.
+
+## Cluster node ID width
+
+Cluster status, leadership-transfer identities and both store-metrics request
+targets widen their existing fields from `uint32` to `uint64`, retaining names,
+field numbers and unsigned-varint wire encoding. Revision 40 remains unchanged. Values through `4294967295`
+have the same representation and interpretation in old and new readers.
+Older generated readers truncate larger values to 32 bits: IDs `1` and
+`4294967297` can appear identical, and an old server can route a high-ID
+request to the wrong member. Old CLI builds also reject high transfer and
+store-metrics targets.
+ProtoJSON renders these widened fields as decimal strings rather than the
+previous uint32 JSON numbers, including structured CLI status output; JSON/YAML
+consumers must accept that representation. Regenerate clients from the updated
+schema and update the CLI and every server
+participating in status forwarding, leadership transfer or store-metrics routing
+before using these operations with IDs above `4294967295`. During rolling
+upgrades, those high-ID operations remain unreliable through older servers; complete the rollout first.
+This change does not alter persisted member identities, Raft transport,
+committed entry application, audit history, snapshots or backups, and requires
+no persisted-state migration. Existing configured high IDs remain intact.
+
+## Granular scope naming during the RC line
+
+The 14 Ledger granular authorization labels change from
+`ledger:<Resource><Action>` to `ledger:<Action><Resource>`. Clients that send
+granular labels in JWTs must request and receive the new labels. The aggregate
+`ledger:read`, `ledger:write`, and `ledger:admin` labels retain their meaning,
+and the gRPC wire contract remains at revision 40. This authentication behavior
+change requires updated token mappings but no client protocol revision change.
+Custom and anonymous scope mappings must use the new granular values; see the
+[authentication migration](../../../../ops/authentication.md#migration-from-rc1-granular-labels).
+Persisted audit snapshots retain the exact effective scope strings captured at
+admission, so historical hashes remain verifiable without a storage migration.

@@ -43,10 +43,10 @@ var _ = Describe("Leadership transfer", Ordered, func() {
 		GinkgoLogr.Info(fmt.Sprintf("Transferring leadership from node %d to node %d", lid, targetID))
 
 		resp, err := servers[lid-1].ClusterClient.TransferLeadership(ctx, &clusterpb.TransferLeadershipRequest{
-			Transferee: uint32(targetID),
+			Transferee: targetID,
 		})
 		Expect(err).To(Succeed())
-		Expect(resp.NewLeader).To(Equal(uint32(targetID)))
+		Expect(resp.NewLeader).To(Equal(targetID))
 
 		// Verify all nodes see the new leader
 		for i := range countInstances {
@@ -55,7 +55,7 @@ var _ = Describe("Leadership transfer", Ordered, func() {
 					NodeId: servers[i].NodeID,
 				})
 				g.Expect(err).To(Succeed())
-				return uint64(state.Leader)
+				return state.Leader
 			}).Should(Equal(targetID), fmt.Sprintf("node %d should see node %d as leader", i+1, targetID))
 		}
 
@@ -71,10 +71,10 @@ var _ = Describe("Leadership transfer", Ordered, func() {
 		GinkgoLogr.Info(fmt.Sprintf("Requesting transfer via follower %d, target node %d (leader is %d)", followerID, targetID, lid))
 
 		resp, err := servers[followerID-1].ClusterClient.TransferLeadership(ctx, &clusterpb.TransferLeadershipRequest{
-			Transferee: uint32(targetID),
+			Transferee: targetID,
 		})
 		Expect(err).To(Succeed())
-		Expect(resp.NewLeader).To(Equal(uint32(targetID)))
+		Expect(resp.NewLeader).To(Equal(targetID))
 
 		*leaderID = targetID
 	})
@@ -92,7 +92,7 @@ var _ = Describe("Leadership transfer", Ordered, func() {
 		// Transfer leadership
 		targetID := (lid % countInstances) + 1
 		_, err := servers[lid-1].ClusterClient.TransferLeadership(ctx, &clusterpb.TransferLeadershipRequest{
-			Transferee: uint32(targetID),
+			Transferee: targetID,
 		})
 		Expect(err).To(Succeed())
 
@@ -103,7 +103,7 @@ var _ = Describe("Leadership transfer", Ordered, func() {
 					NodeId: servers[i].NodeID,
 				})
 				g.Expect(err).To(Succeed())
-				return uint64(state.Leader)
+				return state.Leader
 			}).Should(Equal(targetID))
 		}
 
@@ -182,7 +182,7 @@ var _ = Describe("Leadership transfer", Ordered, func() {
 				NodeId: servers[followerIdx].NodeID,
 			})
 			g.Expect(err).To(Succeed())
-			newLeaderID = uint64(state.Leader)
+			newLeaderID = state.Leader
 			return newLeaderID != 0 && newLeaderID != oldLeaderID
 		}).Should(BeTrue(), "a new leader should be elected after the old leader stops")
 

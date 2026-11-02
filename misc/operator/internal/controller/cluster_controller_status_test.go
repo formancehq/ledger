@@ -59,10 +59,10 @@ func TestUpdateStatus_PreservesErrorPhaseAcrossStatefulSetState(t *testing.T) {
 			}
 			objects := []runtime.Object{ls}
 			if tt.stsExists {
-				objects = append(objects, &appsv1.StatefulSet{
+				objects = append(objects, controlledByCluster(&appsv1.StatefulSet{
 					ObjectMeta: metav1.ObjectMeta{Name: resourceName(crName), Namespace: namespace},
 					Status:     appsv1.StatefulSetStatus{ReadyReplicas: tt.stsReady},
-				})
+				}, ls))
 			}
 
 			c := fake.NewClientBuilder().
@@ -116,10 +116,10 @@ func TestUpdateStatus_RecomputesPhaseAfterRecovery(t *testing.T) {
 		Spec:       ledgerv1alpha1.ClusterSpec{Replicas: &replicas},
 		Status:     ledgerv1alpha1.ClusterStatus{Phase: "Error"},
 	}
-	sts := &appsv1.StatefulSet{
+	sts := controlledByCluster(&appsv1.StatefulSet{
 		ObjectMeta: metav1.ObjectMeta{Name: resourceName(crName), Namespace: namespace},
 		Status:     appsv1.StatefulSetStatus{ReadyReplicas: replicas},
-	}
+	}, persisted)
 	c := fake.NewClientBuilder().
 		WithScheme(scheme).
 		WithStatusSubresource(&ledgerv1alpha1.Cluster{}).

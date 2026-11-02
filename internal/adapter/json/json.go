@@ -1,5 +1,5 @@
 // Package json uses Sonic for ordinary JSON encoding and decoding, with a
-// scoped encoding/json/v2 path for option-aware HTTP monetary responses.
+// scoped encoding/json/v2 path for request-scoped HTTP response options.
 package json
 
 import (

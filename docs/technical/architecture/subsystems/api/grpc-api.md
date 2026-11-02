@@ -32,6 +32,30 @@ Explicit `CancelDownload` is narrower: it cancels the selected job, performs a
 bounded wait for that job to drain, and leaves the restore-mode application
 running so another download can be attempted.
 
+## Cluster node identities
+
+Configured Raft node IDs are nonzero unsigned 64-bit integers. Cluster state
+must preserve their full value in node lists, leader/local identities and
+per-node address, version and replication progress attribution. In particular,
+IDs `1` and `4294967297` name different members despite sharing their low
+32 bits. Targeted state requests and manual leadership transfer use the same
+full-width identities. Store metrics requests (`GetPrimaryMetricsRequest.node_id`
+and `GetSecondaryMetricsRequest.node_id`) also preserve the full target ID;
+zero selects the local store. Unknown nonzero targets return the existing
+node-not-reachable error without falling back to a colliding member.
+Zero in `GetClusterStateRequest.node_id` still routes
+to the leader, while zero is invalid for leadership transfer.
+
+The six cluster identity fields use `uint64` at their original field numbers:
+`GetClusterStateRequest.node_id`, `NodeInfo.id`, `ClusterState.leader`,
+`ClusterState.local_node`, `TransferLeadershipRequest.transferee` and
+`TransferLeadershipResponse.new_leader`. No parallel compatibility fields are
+maintained. Both store-metrics target fields use `uint64` at field number 1.
+See [protocol compatibility](protocol-compatibility.md#cluster-node-id-width)
+for old-reader limits and rolling upgrades. These service projections and
+control requests do not change persisted membership, Raft entries, audit
+records, snapshots or backups.
+
 ## Connection
 
 ### Default Port
@@ -122,6 +146,14 @@ the last successful values. Health and operator control loops reject invalid or
 older-than-one-minute samples.
 
 ## Read Operations
+
+### Analyze Numscript source
+
+`BucketService.AnalyzeNumscript` takes source text and the required language
+version `v1`. It returns sorted external inputs and typed diagnostics in the
+response. It needs query-read authorization and never accesses a ledger or
+changes state. See the [scripting contract](../scripting/numscript-library.md#read-only-source-analysis)
+for feature and diagnostic behavior.
 
 ### Ledger configuration confidentiality
 
@@ -623,7 +655,15 @@ preservation of unrelated, `Unknown`, and structured statuses during closure.
 This is an interrupted outcome, not a definitive business rejection:
 `Unavailable` can arrive **after a write has committed** when its response is
 lost. A client retry must retain the original idempotency key and payload.
-Without a key, replaying the request may execute it again. The regressions in
+Without a key, replaying the request may execute it again.
+`pkg/actions/grpc_test.go` count attempts against a server that always returns
+`Unavailable`. `actions.GRPCRetryPolicy` allows five total attempts, grpc-go's
+default cap, with four exponential backoffs totaling 3.75s before jitter. This
+covers the default 1–2s leader-election window without extending every failed
+call to the former declared 50 attempts. The Antithesis per-node connections
+use their retry interceptors without a second native retry policy.
+
+The regressions in
 `tests/antithesis/workload/internal/client_transport_test.go` commit against a
 real Ledger node and close the peer connection before response delivery. They
 retain the native gRPC retry control and separately exercise the actual
@@ -644,12 +684,26 @@ The fixture also passes the actual forwarded close error to
 | `ALREADY_EXISTS` | Ledger already exists, idempotency key conflict, reference conflict |
 | `INVALID_ARGUMENT` | Invalid request parameters, Numscript parse error, validation error |
 | `FAILED_PRECONDITION` | Insufficient balance, transaction already reverted, balance not found |
-| `UNAVAILABLE` | No leader available (client should retry) |
+| `UNAVAILABLE` | No leader available or the local Raft run has stopped (client should retry) |
 | `INTERNAL` | Unrecognized business error |
 
 ### Error Reason Constants
 
+A cluster command interrupted by local Raft shutdown returns `UNAVAILABLE`,
+including when the stopped sentinel is wrapped by the caller. Unary and streaming
+RPCs share this mapping so clients can retry against a live node during a restart.
+Unclassified failures still return a sanitized `UNKNOWN` with a correlation ID.
+This status correction preserves protocol revision 40 and changes no protobuf
+fields, committed state, audit records, snapshots, or backups. During a rolling
+upgrade, older nodes can still return `UNKNOWN` for this shutdown condition.
+
 All business errors carry an `ErrorInfo` detail with a machine-readable reason. The reason constants are defined in `internal/domain/processing/errors.go` and shared between server and client.
+
+The caller-attribution guard is not a business error: it is an internal
+trust-boundary violation. It has no `ErrorReason`, `ErrorInfo`, or public
+diagnostic text. Admission rejects it before proposing, and the FSM rejects a
+malformed committed entry before audit or business-state mutation; gRPC returns
+only `INTERNAL` with the generic `internal error` message.
 
 | Error | gRPC Code | Reason | Metadata |
 |-------|-----------|--------|----------|

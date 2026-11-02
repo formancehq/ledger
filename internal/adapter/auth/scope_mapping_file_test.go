@@ -13,8 +13,8 @@ func TestParseScopeMappingJSON_Valid(t *testing.T) {
 	t.Parallel()
 
 	data := []byte(`{
-		"ledger:read": ["ledger:LedgerRead", "ledger:TransactionRead", "ledger:AccountRead"],
-		"ledger:write": ["ledger:LedgerWrite", "ledger:TransactionWrite", "ledger:MetadataWrite"]
+		"ledger:read": ["ledger:ReadLedger", "ledger:ReadTransaction", "ledger:ReadAccount"],
+		"ledger:write": ["ledger:WriteLedger", "ledger:WriteTransaction", "ledger:WriteMetadata"]
 	}`)
 
 	mapping, err := ParseScopeMappingJSON(data)
@@ -32,7 +32,7 @@ func TestParseScopeMappingJSON_UnknownScope(t *testing.T) {
 	t.Parallel()
 
 	data := []byte(`{
-		"ledger:read": ["ledger:LedgerRead", "nonexistent:scope"]
+		"ledger:read": ["ledger:ReadLedger", "nonexistent:scope"]
 	}`)
 
 	_, err := ParseScopeMappingJSON(data)
@@ -61,8 +61,8 @@ func TestLoadScopeMappingFromFile(t *testing.T) {
 	t.Parallel()
 
 	content := `{
-		"custom:read": ["ledger:LedgerRead", "ledger:TransactionRead"],
-		"custom:write": ["ledger:LedgerWrite"]
+		"custom:read": ["ledger:ReadLedger", "ledger:ReadTransaction"],
+		"custom:write": ["ledger:WriteLedger"]
 	}`
 
 	dir := t.TempDir()
@@ -88,8 +88,8 @@ func TestParseScopeMappingJSON_AllScopes(t *testing.T) {
 
 	// Verify all 14 granular scopes can be used in a mapping
 	data := []byte(`{
-		"all:read": ["ledger:LedgerRead", "ledger:TransactionRead", "ledger:AccountRead", "ledger:AuditRead", "ledger:OpsRead", "ledger:QueryRead", "ledger:ClusterRead"],
-		"all:write": ["ledger:LedgerWrite", "ledger:TransactionWrite", "ledger:MetadataWrite", "ledger:AuditWrite", "ledger:OpsWrite", "ledger:QueryWrite", "ledger:ClusterWrite"]
+		"all:read": ["ledger:ReadLedger", "ledger:ReadTransaction", "ledger:ReadAccount", "ledger:ReadAudit", "ledger:ReadOps", "ledger:ReadQuery", "ledger:ReadCluster"],
+		"all:write": ["ledger:WriteLedger", "ledger:WriteTransaction", "ledger:WriteMetadata", "ledger:WriteAudit", "ledger:WriteOps", "ledger:WriteQuery", "ledger:WriteCluster"]
 	}`)
 
 	mapping, err := ParseScopeMappingJSON(data)
@@ -121,7 +121,7 @@ func TestParseScopeMappingJSON_WildcardMixedWithExplicit(t *testing.T) {
 	t.Parallel()
 
 	data := []byte(`{
-		"anonymous": ["*:read", "ledger:MetadataWrite"]
+		"anonymous": ["*:read", "ledger:WriteMetadata"]
 	}`)
 
 	mapping, err := ParseScopeMappingJSON(data)

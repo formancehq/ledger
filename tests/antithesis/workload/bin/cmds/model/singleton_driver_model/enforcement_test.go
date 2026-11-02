@@ -4,23 +4,30 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	"hegel.dev/go/hegel"
 
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/tests/oracle"
 	"github.com/formancehq/ledger/v3/tests/oracle/oracletest"
+
+	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal/generation"
 )
 
 func TestGenerateEnforcementMode(t *testing.T) {
 	t.Parallel()
-	for range 100 {
-		req := generateEnforcementMode("ledger")
-		result := oracle.NewGlobalState().Apply(oracle.Bulk{Requests: []*servicepb.Request{req}})
-		require.True(t, result.OK)
-		require.Equal(t, "ledger", oracle.LedgerOf(req))
-		require.Contains(t, []commonpb.ChartEnforcementMode{commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT, commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_AUDIT}, result.State.Ledger("ledger").DefaultEnforcementMode())
-		require.Equal(t, []uint64{1}, result.State.Ledger("ledger").LogIDs())
-	}
+	hegel.Test(t, func(ht *hegel.T) {
+		src := generation.NewSource(ht)
+
+		for range 100 {
+			req := generateEnforcementMode(src, "ledger")
+			result := oracle.NewGlobalState().Apply(oracle.Bulk{Requests: []*servicepb.Request{req}})
+			require.True(t, result.OK)
+			require.Equal(t, "ledger", oracle.LedgerOf(req))
+			require.Contains(t, []commonpb.ChartEnforcementMode{commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT, commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_AUDIT}, result.State.Ledger("ledger").DefaultEnforcementMode())
+			require.Equal(t, []uint64{1}, result.State.Ledger("ledger").LogIDs())
+		}
+	}, hegel.WithTestCases(1), hegel.WithDatabase(""), hegel.WithBackend(hegel.BackendURandom))
 }
 
 func TestLedgerReadRequiresModeFromSameSnapshot(t *testing.T) {

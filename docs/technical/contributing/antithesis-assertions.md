@@ -129,6 +129,17 @@ account, asset and color key, include `world`, and permit forced overdrafts.
 See the [sentinel lifecycle](../architecture/subsystems/fsm/deterministic-fsm.md)
 for the pre-purge and post-commit boundaries.
 
+The insufficient-funds workload owns a dedicated ledger and uses a different
+idempotency key for its funding, exact drain, rejected one-unit probe, and
+forced one-unit transfer. The ledger creation helper also keys its write. A
+successful explicit linearizable `GetAccount` after the drain must show a zero
+balance before a successful non-Force probe is reported as an overdraft defect.
+Transient failures in the balance precondition and transaction steps end that
+attempt without claiming the property; unexpected business errors remain
+assertion failures. Its local regression
+commits the funding write, drops that response once, and verifies the retry
+does not double the funding or turn the final rejection into a false finding.
+
 ## Coverage and campaign applicability
 
 These `Sometimes` properties describe actual milestones. An unmet target is an

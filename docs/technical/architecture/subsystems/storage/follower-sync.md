@@ -9,7 +9,13 @@ in parallel.
 
 1. `PrepareSnapshot` waits for the serving FSM to reach the requested Raft
    index, creates a temporary Pebble checkpoint, and returns a session ID plus
-   a manifest containing only each regular file's relative path and size.
+   a manifest containing only each regular file's relative path and size. A
+   server whose own store is behind its Raft log (out of sync, fetching a
+   checkpoint, or installing a Raft snapshot) refuses with
+   `FailedPrecondition` before waiting: it reaches the requested index only
+   after fetching a checkpoint itself. The fetcher treats that code as final
+   and the requester moves on to another voter (see
+   [Donor Selection](../../data-flows.md#donor-selection)).
 2. `FetchFile` streams one manifest file in chunks. The server computes SHA-256
    while reading the file and puts the lowercase hexadecimal digest on the EOF
    response.
@@ -44,12 +50,38 @@ checkpoint cannot be trusted from path and size alone.
 
 Transient means `Unavailable`, `Aborted`, `DeadlineExceeded`, `Internal`, and
 `Canceled` while the sync's own context is still live. The fetcher talks to the
-leader over the Raft transport's shared peer connection, which the transport
-may restart under it; calls on the closed connection fail with `Canceled`. The
-fetcher resolves the client from the transport before every session and file
-attempt, so the retry runs on the re-dialed connection. A `Canceled` caused by
-the sync's own context (interrupted sync, leader change) ends the fetch
-without retrying.
+selected donor over the Raft transport's shared peer connection, which the
+transport may restart under it; calls on the closed connection fail with
+`Canceled`. The fetcher resolves the client from the transport before every
+session and file attempt, so the retry runs on the re-dialed connection. A
+`Canceled` caused by the sync's own context (interrupted sync, leader change)
+ends the fetch without retrying.
+
+### Donor fallback
+
+The current leader is tried first, followed by the other members in the
+committed `ConfState` (with the local node excluded). A donor is selected
+lazily so an unavailable peer does not prevent the recovery task from trying
+the next candidate.
+
+Fallback happens only between complete sessions. A `session_id`, manifest, and
+temporary checkpoint belong to one donor and are never mixed with files from a
+different donor. If a session fails, the staging directory and progress
+counters are reset before the next candidate is attempted. Transport failures,
+expired sessions, and donor-side size/hash/manifest failures are candidate
+failures; local staging or restore errors stop the recovery instead of being
+masked by another donor.
+
+The fetcher first calls `CheckSnapshotReadiness` with a five-second timeout.
+A stale or resynchronizing donor is rejected immediately, without creating a
+checkpoint, and the next candidate is tried. A transient probe failure follows
+the normal retry/backoff budget; if that budget is exhausted, the donor is
+abandoned. Donors that return `Unimplemented` use the compatibility fallback
+to `PrepareSnapshot`. That call remains the final eligibility barrier: the
+serving FSM must have applied at least the requested snapshot index before the
+temporary checkpoint is created. A future protocol revision may expose the
+checkpoint index and source generation explicitly, but changing donors within
+one session is never valid.
 
 The final rename is the trust boundary. Truncated content, excess content, a
 missing or malformed digest, and a digest mismatch all leave the final path

@@ -49,6 +49,22 @@ func TestHTTPPublicInternalDetails(t *testing.T) {
 	}
 }
 
+func TestHTTPInvalidCallerAttributionIsSanitized(t *testing.T) {
+	t.Parallel()
+
+	const detail = "principal from internal trust boundary"
+	var logs bytes.Buffer
+	ctx := logging.ContextWithLogger(context.Background(), logging.NewDefaultLogger(&logs, false, false, false))
+	w := httptest.NewRecorder()
+	handleError(w, httptest.NewRequest(http.MethodPost, "/", nil).WithContext(ctx), &domain.ErrInvalidCallerAttribution{Detail: detail})
+
+	require.Equal(t, http.StatusInternalServerError, w.Code)
+	response := decodeResponse[ErrorResponse](t, w)
+	require.Equal(t, "INTERNAL_ERROR", response.ErrorCode)
+	require.NotContains(t, response.ErrorMessage, detail)
+	require.Contains(t, logs.String(), detail)
+}
+
 func TestHTTPPublicDetailsPreserveOtherWrappedErrors(t *testing.T) {
 	t.Parallel()
 	err := fmt.Errorf("existing context: %w", &domain.BusinessError{Err: &domain.ErrLedgerNotFound{Name: "test"}})

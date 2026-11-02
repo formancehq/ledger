@@ -91,6 +91,19 @@ func (r *EventSinkReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 
 		return r.sinkFailure(ctx, &sink, "WaitingForCluster", fmt.Errorf("getting StatefulSet: %w", err), sinkRequeueInterval)
 	}
+	if notControlledBy(&sts, &cluster) {
+		// The StatefulSet under the Cluster's name was not created by this
+		// Cluster: never configure or remove sinks on its runtime. A deleting
+		// sink has no runtime of its own Cluster to clean up, so it releases
+		// its finalizer instead of looping.
+		if !sink.DeletionTimestamp.IsZero() {
+			controllerutil.RemoveFinalizer(&sink, eventSinkFinalizer)
+
+			return ctrl.Result{}, r.Update(ctx, &sink)
+		}
+
+		return r.sinkFailure(ctx, &sink, "ResourceNameConflict", nameConflictError("StatefulSet", &sts, &cluster), sinkDriftCheckInterval)
+	}
 	desiredReplicas := int32(3)
 	if cluster.Spec.Replicas != nil {
 		desiredReplicas = *cluster.Spec.Replicas
@@ -104,7 +117,7 @@ func (r *EventSinkReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		defer cancel()
 		delegate := ClusterReconciler{Client: r.Client, Config: r.Config, Clientset: r.Clientset}
 
-		return delegate.ledgerctlExecOutput(execCtx, cluster.Namespace, cluster.Name, podName(cluster.Name, 0), cluster.Spec.GrpcPort, args...)
+		return delegate.ledgerctlExecOutput(execCtx, &cluster, cluster.Spec.GrpcPort, args...)
 	}
 	stdout, err := exec("events", "list", "--json")
 	if err != nil {

@@ -868,9 +868,14 @@ func TestBuiltinCompilers_GateOnLocalReadiness(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			_, err := Compile(
-				nil, nil, tc.filter, tc.target, ledgerName,
-				nil, nil, info, indexRegistry, indexResolverZero, nil, nil, 0)
+			_, err := Compile(tc.filter, CompileOptions{
+				Target:          tc.target,
+				LedgerName:      ledgerName,
+				LedgerInfo:      info,
+				IndexRegistry:   indexRegistry,
+				IndexVersionFor: indexResolverZero,
+				Pin:             0,
+			})
 			require.Error(t, err, "compiler must refuse when CurrentVersion=0")
 
 			var building *domain.ErrIndexBuilding
@@ -957,9 +962,12 @@ func TestCompile_RejectsUnsupportedTarget(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			iter, err := Compile(
-				nil, nil, tc.filter, badTarget, "ledger1",
-				nil, nil, info, nil, nil, nil, nil, 0)
+			iter, err := Compile(tc.filter, CompileOptions{
+				Target:     badTarget,
+				LedgerName: "ledger1",
+				LedgerInfo: info,
+				Pin:        0,
+			})
 			require.Error(t, err, "unsupported target must fail loudly, not return an (empty) iterator")
 			require.Nil(t, iter)
 
@@ -1054,15 +1062,17 @@ func TestCompile_AbsentVersionRecordIsRemovedNotBuilding(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			_, err := Compile(
-				nil, nil, filter,
-				commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS, ledgerName,
-				nil, schema, info, indexRegistry,
-				func(string) (readstore.ResolvedIndexVersion, bool, error) {
+			_, err := Compile(filter, CompileOptions{
+				Target:        commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
+				LedgerName:    ledgerName,
+				Schema:        schema,
+				LedgerInfo:    info,
+				IndexRegistry: indexRegistry,
+				IndexVersionFor: func(string) (readstore.ResolvedIndexVersion, bool, error) {
 					return readstore.ResolvedIndexVersion{BindingKnown: true}, tc.primed, nil
 				},
-				nil, nil, 0,
-			)
+				Pin: 0,
+			})
 			require.Error(t, err)
 			tc.assert(t, err)
 		})

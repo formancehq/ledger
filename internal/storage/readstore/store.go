@@ -153,6 +153,7 @@ func New(dir string, logger logging.Logger, cfg Config, options ...Option) (*Sto
 
 	opts := &pebble.Options{
 		Logger:             dal.NewPebbleLogger(logger),
+		EventListener:      dal.NewPebbleEventLogger(logger, "read-index"),
 		FormatMajorVersion: pebble.FormatNewest,
 		// Custom comparer: splits keys at [prefix][ledger\x00] boundary
 		// so bloom filters are built on ledger-scoped prefixes, enabling

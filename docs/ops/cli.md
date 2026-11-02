@@ -62,6 +62,30 @@ expanded size must fit in an int64. Negative values and overflow are rejected;
 zero keeps the flag's documented default or disabled meaning. See the
 [server configuration contract](deployment.md#configuration) for details.
 
+## Server termination
+
+SIGTERM and interrupt request graceful server shutdown. During learner
+registration, the signal cancels only the registration child context so Fx can
+roll back previously started hooks with a live startup context. A positive
+`--total-stop-timeout` also arms a deadline measured from the signal for startup
+unwind and deferred log-export `ForceFlush`/`Shutdown`. Zero leaves this waiting
+unlimited. Expiry returns failure and may leave cleanup unfinished.
+
+If startup completes, the queued Fx notification still triggers normal
+shutdown. Normal Fx stop hooks, including `--grace-period`, retain their existing
+separate `--total-stop-timeout` budget; this is not one shared budget across
+startup unwind, successful startup, and normal stopping. Signal-time log-export
+finalization uses only the time remaining before the signal deadline. Without a termination
+signal, deferred log-export errors retain their existing log-only behavior.
+
+Intentional registration cancellation exits successfully only after rollback
+and finalization succeed within the applicable deadline. Fatal registration
+errors, marker-write failures, rollback failures, deadline expiry, and
+signal-time finalization failures remain unsuccessful exits. A deadline return
+or PID exit is not evidence that every resource closed cleanly. See
+[learner registration](cluster-operations.md#phase-3-learner-registration-preflight)
+for the remote membership ambiguity after cancellation.
+
 ## Global Flags
 
 These flags are available for all commands:
@@ -221,6 +245,7 @@ scripting against the CLI predictable across resources.
 | Pagination | `--cursor` | string | Page token printed by a previous page (`next_cursor` or `previous_cursor`). Pass the same `--reverse` and `--filter` on every page of a walk. See [Page tokens](#page-tokens). |
 | Pagination | `--reverse` | bool | Reverse iteration order. Available on commands whose server endpoint supports it. |
 | Pagination | `--all` | bool | Fetch every page at once (no interactive pagination). Available on `accounts`, `transactions` and `queries execute`. |
+
 | Filter | `--filter` | string | Boolean filter expression — textual `filterexpr` grammar OR the structured JSON `QueryFilter` DSL (dual-format, EN-1511). |
 | Filter | `--prefix` | string | Account-address prefix shortcut. Only on `accounts list` (server-side `HardcodedPrefix` optimization). |
 | Consistency | `--checkpoint-id` | uint64 | Read from a named query checkpoint instead of the live store. |
@@ -230,6 +255,8 @@ scripting against the CLI predictable across resources.
 | Aliases | `list` | — | `ls`, `l` |
 | Aliases | `get` | — | `g`, `show`, `describe` |
 | Aliases | `inspect` | — | `i` |
+
+When stdin is not a terminal, commands that need an interactive value or confirmation fail immediately. Supply the required arguments and flags (including `--var` for Numscript variables and `--yes` for confirmations). Interactive pagers stop after the first page; account and transaction lists still print their cursor hints, while `queries execute` prints a reminder to use `--all`. Use `--all` to fetch all pages in scripts.
 
 Structured JSON and YAML output preserve the full precision of integer metadata,
 transaction IDs, and posting amounts, including values greater than `2^53`.
@@ -258,16 +285,16 @@ These commands still honor `--json` / `--yaml`.
 
 #### Default pagination behaviour
 
-Paginated `list` commands fall into two groups depending on what happens when
+Paginated `list` commands fall into three groups depending on what happens when
 neither `--page-size` nor `--cursor` is set:
 
 | Group | Commands | Default behaviour |
 |---|---|---|
-| Drain-by-default | `accounts list`, `transactions list`, `ledgers list`, `numscripts list`, `queries list`, `signing keys list` | Follow the trailer chain to the end and print every page in one shot. Set `--page-size` or `--cursor` to switch back to single-page output (and print the page hints). |
+| Interactive page walk | `accounts list`, `transactions list` | Prompt between pages on terminal stdin. On non-terminal stdin, print the first page and cursor hints, then stop. Use `--all` to fetch every page in scripts. |
+| Drain-by-default | `ledgers list`, `numscripts list`, `queries list`, `signing keys list` | Follow the trailer chain to the end and print every page in one shot. Set `--page-size` or `--cursor` to request a single page and print its cursor hints. |
 | Single-page-only | `audit list`, `logs list` | Always print one page and its page hints, even with no flags set. Resume with `--cursor <token>`. These resources commonly hold tens of thousands of rows; defaulting to a single page avoids accidentally streaming the whole history. |
 
-Both groups expose the same `--page-size` / `--cursor` semantics; only the
-flagless default differs.
+All groups expose `--page-size` and `--cursor`; the flagless behavior differs.
 
 #### Page tokens
 
@@ -1167,11 +1194,13 @@ The `--filter` flag accepts a human-readable boolean expression that maps to the
 
 > **Two interchangeable forms (EN-1511).** `--filter` also accepts the structured
 > JSON `QueryFilter` DSL, e.g. `--filter '{"$match":{"metadata[category]":"premium"}}'`.
-> The textual grammar below and the JSON DSL parse to the same filter and are
-> validated against the same per-target rules, so either form works everywhere
-> `--filter` is accepted (the same dual-format contract every server-side
-> filtered endpoint honors). The textual form is the recommended, more concise
-> one for CLI use.
+> The textual grammar below and the JSON DSL cover the same fields under the same
+> names, parse to the same filter and are validated against the same per-target
+> rules, so either form works everywhere `--filter` is accepted (the same
+> dual-format contract every server-side filtered endpoint honors). Only the
+> prefix operators `^=` without a trailing `:` (and `idempotency_key ^=` on audit)
+> are textual-only. The textual form is the recommended, more concise one for CLI
+> use.
 
 **Grammar:**
 
@@ -1181,14 +1210,16 @@ or_expr        := and_expr ("or" and_expr)*
 and_expr       := unary_expr ("and" unary_expr)*
 unary_expr     := "not" unary_expr | primary
 primary        := "(" expression ")" | condition
-condition      := metadata_cond | audit_cond | address_cond | source_cond | destination_cond | has_asset_cond
-metadata_cond  := "metadata" "[" KEY "]" ("==" VALUE | "!=" VALUE | ">" VALUE | ">=" VALUE | "<" VALUE | "<=" VALUE | "between" VALUE "and" VALUE | "exists")
-audit_cond     := "audit" "[" AUDIT_FIELD "]" ("==" VALUE | ">" VALUE | ">=" VALUE | "<" VALUE | "<=" VALUE | "between" VALUE "and" VALUE | "in" "(" VALUE ("," VALUE)* ")")
-address_cond   := "address" ("==" VALUE | "^=" VALUE)
-source_cond    := "source" ("==" VALUE | "^=" VALUE)
-destination_cond := "destination" ("==" VALUE | "^=" VALUE)
+condition      := metadata_cond | address_cond | has_asset_cond | field_cond
+metadata_cond  := "metadata" "[" KEY "]" ("==" VALUE | "!=" VALUE | ">" VALUE | ">=" VALUE | "<" VALUE | "<=" VALUE | "between" VALUE "and" VALUE | "exists" | "in" "(" VALUE ("," VALUE)* ")")
+address_cond   := ("address" | "source" | "destination") ("==" VALUE | "^=" VALUE | "in" "(" VALUE ("," VALUE)* ")")
 has_asset_cond := "has" "asset" ASSET_BASE ["/" PRECISION]
+field_cond     := FIELD ("==" VALUE | "^=" VALUE | ">" VALUE | ">=" VALUE | "<" VALUE | "<=" VALUE | "between" VALUE "and" VALUE | "in" "(" VALUE ("," VALUE)* ")")
 ```
+
+`FIELD` is a bare field name resolved against the command's query target; each
+field accepts only the operators listed in the conditions table below (or, for
+the audit fields, in [audit list](#audit-list)).
 
 A bare `KEY` or `VALUE` is a plain-alphanumeric identifier (`[a-zA-Z_][a-zA-Z0-9_]*`).
 Any key or value that contains a special character — `-`, `:`, `.`, `/`, spaces, etc.
@@ -1198,7 +1229,7 @@ asset reference in `has asset BASE/PRECISION`, whose `/` is part of the grammar
 (e.g. `has asset USD/2`).
 
 Bare audit fields (`outcome`, `ledger`, `seq`, `proposal_id`, `timestamp`,
-`log_seq`, `caller_subject`, `order_type`) are only valid on `audit list` (see
+`log_seq`, `caller_subject`, `order_type`, `idempotency_key`) are only valid on `audit list` (see
 [audit list](#audit-list) for the field/operator matrix). They are written
 without any prefix and resolved against the audit query target (EN-1549 — this
 replaced the old `audit[...]` namespaced syntax, a breaking change with no
@@ -1224,6 +1255,14 @@ backward compatibility). They are rejected on other list endpoints.
 | `destination ^= value` | Destination address prefix match (transactions only) |
 | `has asset BASE` | Accounts that have ever touched asset `BASE` with precision 0 (requires `account-asset` index) |
 | `has asset BASE/PRECISION` | Accounts that have ever touched asset `BASE` with the given precision (requires `account-asset` index) |
+| `reference == value` / `reference in (v1, v2)` | Transaction reference exact match (transactions only; requires `reference` index). JSON: `{"$match":{"reference":"…"}}` |
+| `reverted == true` / `reverted == false` | Transaction revert status (transactions only). JSON: `{"$match":{"reverted":true}}` |
+| `id OP value` | Transaction id: `==`, `>`, `>=`, `<`, `<=`, `between` on raw unsigned integers (transactions only). JSON: `{"$match":{"id":3}}`, `{"$gte":{"id":3}}` |
+| `timestamp OP value` | Transaction effective date (transactions only; requires `timestamp` index). Same operators; RFC3339 (quoted) or raw unix microseconds |
+| `insertedAt OP value` / `revertedAt OP value` | Transaction insertion / revert date (transactions only; requires `inserted-at` / `reverted-at` index). Same operators and values as `timestamp` |
+| `logId OP value` | Ledger-local log id: `==`, `>`, `>=`, `<`, `<=`, `between` (logs only). JSON: `{"$match":{"logId":7}}` |
+| `date OP value` | Log date (logs only). Same operators and values as `timestamp` |
+| `ledger == value` | Ledger name (logs only) |
 
 **Boolean operators** (precedence: `not` > `and` > `or`):
 
@@ -1275,7 +1314,7 @@ backward compatibility). They are rejected on other list endpoints.
 --filter "metadata[category] exists"
 
 # Address prefix
---filter "address ^= users:"
+--filter 'address ^= "users:"'
 
 # Exact address
 --filter 'address == "users:alice"'
@@ -1290,7 +1329,7 @@ backward compatibility). They are rejected on other list endpoints.
 --filter 'source ^= "merchants:" and destination ^= "users:"'
 
 # AND (both must match)
---filter "metadata[active] == true and address ^= users:"
+--filter 'metadata[active] == true and address ^= "users:"'
 
 # OR (either must match)
 --filter "metadata[category] == premium or metadata[category] == gold"
@@ -1299,7 +1338,7 @@ backward compatibility). They are rejected on other list endpoints.
 --filter "not metadata[blocked] == true"
 
 # Grouping
---filter "(metadata[a] == x or metadata[b] == y) and address ^= users:"
+--filter '(metadata[a] == x or metadata[b] == y) and address ^= "users:"'
 
 # Has asset (precision 0) — requires account-asset index
 --filter "has asset USD"
@@ -1308,8 +1347,49 @@ backward compatibility). They are rejected on other list endpoints.
 --filter "has asset USD/2"
 
 # Combine has asset with other conditions
---filter "has asset USD and address ^= users:"
+--filter 'has asset USD and address ^= "users:"'
+
+# Transaction reference, revert status and id window (transactions only)
+--filter 'reference == "order-123"'
+--filter 'reverted == false and id > 1000'
+--filter 'insertedAt >= "2023-11-14T22:13:20Z"'
+
+# The same reference filter in the structured JSON form
+--filter '{"$match":{"reference":"order-123"}}'
+
+# Log id range (logs only)
+--filter 'logId between 100 and 200'
 ```
+
+##### Filter fields by target
+
+The server validates every condition against the query target and rejects a
+condition the target does not support (for example `metadata` on logs). The
+textual grammar and the JSON DSL cover the same fields under the same names:
+
+| Target | Fields (textual and JSON DSL) |
+|--------|-------------------------------|
+| accounts (`accounts list`, `accounts aggregate-volumes`) | `metadata[key]`, `address`, `has asset` (JSON: `$exists` on `asset`) |
+| transactions (`transactions list`) | `metadata[key]`, `address`, `source`, `destination`, `reference`, `reverted`, `id`, `timestamp`, `insertedAt`, `revertedAt` |
+| logs (`logs list`) | `logId`, `date`, `ledger` |
+| audit (`audit list`) | the bare audit fields, see [audit list](#audit-list) |
+
+Only two operators exist in one form alone: an `address ^=` prefix that does
+not end in `:` and the audit `idempotency_key ^=` prefix are textual-only (the
+JSON DSL has no prefix operator). Range bounds on `id`, `logId` and the date
+fields may be `$param` values in both forms (`id >= $from` or
+`{"$gte":{"id":{"$param":"from"}}}`), resolved when a prepared query executes.
+
+```bash
+# The same transaction filters in both forms
+ledgerctl transactions list --ledger my-ledger --filter 'reference == "order-42"'
+ledgerctl transactions list --ledger my-ledger --filter '{"$match":{"reference":"order-42"}}'
+ledgerctl transactions list --ledger my-ledger --filter 'reverted == true and insertedAt >= "2026-01-01T00:00:00Z"'
+ledgerctl transactions list --ledger my-ledger --filter '{"$and":[{"$match":{"reverted":true}},{"$gte":{"insertedAt":"2026-01-01T00:00:00Z"}}]}'
+```
+
+`queries create` and `queries update` accept both formats. Transaction amounts
+are not filterable.
 
 #### accounts get
 
@@ -1553,6 +1633,11 @@ ledgerctl transactions create [flags]
 | `--force` | `false` | Bypass balance checks (allow accounts to go negative) |
 | `--json` | `false` | Output as JSON |
 | `--timeout` | `10s` | Request timeout |
+
+Posting flag amounts must be decimal integers between `0` and `2^256 - 1`
+(inclusive). Interactive amounts must be positive and obey the same upper
+bound. Negative and overflowing amounts return a validation error before any
+Apply RPC; accepted amounts retain their exact value, including uint256 maximum.
 
 **Creating transactions with postings:**
 
@@ -2008,6 +2093,12 @@ Storage operations.
 
 Get metrics from the primary Pebble storage engine.
 
+Both store-metrics commands accept `--node-id` through `18446744073709551615`;
+negative, malformed and overflowing values reject before dialing. For IDs above
+`4294967295`, upgrade the CLI and every server on the forwarding path first:
+older servers truncate request IDs. See the
+[rollout limitation](../technical/architecture/subsystems/api/protocol-compatibility.md#cluster-node-id-width).
+
 **Aliases:** `store p m`
 
 ```bash
@@ -2020,7 +2111,7 @@ ledgerctl store primary metrics [flags]
 |------|---------|-------------|
 | `--json` | `false` | Output as JSON |
 | `--timeout` | `10s` | Request timeout |
-| `--node-id` | `0` | Target node ID (0 = local node) |
+| `--node-id` | `0` | Unsigned 64-bit target node ID (0 = local node) |
 
 **Example:**
 
@@ -2049,7 +2140,7 @@ ledgerctl store secondary metrics [flags]
 |------|---------|-------------|
 | `--json` | `false` | Output as JSON |
 | `--timeout` | `10s` | Request timeout |
-| `--node-id` | `0` | Target node ID (0 = local node) |
+| `--node-id` | `0` | Unsigned 64-bit target node ID (0 = local node) |
 
 **Example:**
 
@@ -2352,8 +2443,8 @@ ledgerctl store bootstrap --driver s3 --s3-bucket <bucket> --data-dir /path/to/d
 
 **Behavior:**
 
-1. Verifies the target data directory is fresh (no existing checkpoints via `ScanLatestCheckpointID`)
-2. Creates or opens the selected data directory and downloads checkpoint files sequentially into `restore-staging/` through rooted filesystem operations. Rejects a staging-root symlink (including one pointing inside the data directory), non-local manifest filenames and symlink escapes. Each filename is checked before its parent directories are created or its object is read; file size and sha256 verification still apply.
+1. Rejects a `RESTORED` marker, live database or incompatible checkpoint layout; reclaims a lone unmarked `checkpoints/0` left by interrupted finalization.
+2. Creates or opens the selected data directory, rejects a symlink or non-directory at `restore-staging/`, removes any old real staging directory through the data-directory root, then creates a fresh staging directory. Downloads checkpoint files sequentially through rooted filesystem operations. Rejects non-local manifest filenames and symlink escapes. Each filename is checked before its parent directories are created or its object is read; file size and sha256 verification still apply.
 3. Applies export segments and rebuilds derived state from logs (if any)
 4. Opens the staging as a read-only Pebble database and displays a preview (ledger count, timestamps)
 5. If `--validate` is set, runs the full integrity checker (same as `store check`); aborts before finalizing if any integrity error is found
@@ -2362,10 +2453,15 @@ ledgerctl store bootstrap --driver s3 --s3-bucket <bucket> --data-dir /path/to/d
 8. Hard-links staging to `checkpoints/0`, writes `RESTORED` marker
 9. Cleans up the staging directory
 
-Staging is created even for export-only manifests. Download root handles close
-before replay and preview. A download failure stops before validation,
-confirmation and finalization, but can leave earlier or partially written files
-in staging; the command does not automatically clean up failed downloads.
+Every attempt resets staging, including export-only restores. This command
+requires exclusive offline use of the target directory. Reset failure aborts
+before replay or publication and may leave old staging partly removed or absent.
+Download root handles close before replay and preview. Download/rebuild failures
+or confirmation EOF may leave new partial or fully rebuilt staging; the next
+attempt discards it and starts from the backup again so additive projections
+are not replayed twice. A successful finalization places the checkpoint before
+writing the `RESTORED` commit marker, then removes staging. A marked restore
+cannot be overwritten by retrying this command.
 
 After bootstrap, start the server with `--bootstrap` to use the restored data.
 
@@ -2443,6 +2539,10 @@ ledgerctl audit list [flags]
 |------|---------|-------------|
 | `--expand` | `false` | Expand orders within each audit entry |
 
+Each entry's header line ends with its batch signing key (`signature=<keyId>`)
+or `unsigned`. With `--expand`, that marker moves to a line above the orders,
+together with the batch `idempotency=<key>` when one is set.
+
 Audit has **no dedicated filter flags** — there is no `--failures-only` and no
 `--ledger`. Selecting failures or scoping to a ledger is done through the generic
 `--filter` (e.g. `--filter 'outcome == failure'`,
@@ -2470,8 +2570,13 @@ they are valid on `audit list` alone:
 | `ledger` | string | `==`, `in` | Match-any over the entry's ledgers. |
 | `caller_subject` | string | `==`, `in` | Auth subject on the caller snapshot. |
 | `order_type` | string | `==`, `in` | Order kind token (e.g. `create_transaction`, `revert_transaction`, `save_numscript`); match-any over the entry's items. |
-| `idempotency_key` | string | `==`, `^=`, `in` | Batch idempotency key. Prefix matching is index-backed; a reused key returns every historical audit entry. |
-| | | | Bare alphanumeric values are accepted unquoted; values with `-`, `:`, spaces or other non-identifier characters must be single- or double-quoted. Keys containing both `"` and `'` cannot be expressed in the textual DSL and require the gRPC API directly: use `AuditCondition.string_cond` (one value) wrapped in a `QueryFilter_Audit` for exact lookups, an `OrFilter` of such leaves for `in` lookups, and `AuditCondition.string_prefix` for prefix lookups. |
+| `idempotency_key` | string | `==`, `^=`, `in` | Batch idempotency key. Prefix matching is index-backed (textual form only); a reused key returns every historical audit entry. |
+| | | | Bare alphanumeric values are accepted unquoted; values with `-`, `:`, spaces or other non-identifier characters must be single- or double-quoted. Keys containing both `"` and `'` cannot be expressed in the textual DSL: use the structured JSON form for exact and `in` lookups (`--filter '{"$match":{"idempotency_key":"…"}}'`, an `$or` of such leaves), and the gRPC API directly (`AuditCondition.string_prefix`) for prefix lookups. |
+
+The structured JSON form uses the same bare field names, resolved against the
+audit target the same way: `--filter '{"$match":{"outcome":"failure"}}'`,
+`--filter '{"$and":[{"$gte":{"seq":1000}},{"$lte":{"seq":2000}}]}'`. It takes no
+`$param` values and has no prefix operator.
 
 Unsupported conditions are rejected with `InvalidArgument` rather than silently
 ignored: `not`, `!=` (both need a complement the index cannot serve), and any
@@ -2498,7 +2603,6 @@ full-chain scan.
 - By default, shows the order count summary; use `--expand` to show full order details
 - Below each entry, all orders are listed in a tree structure with:
   - Order type and details (ledger name, reference, etc.)
-  - Signing key ID used (`key=<id>`) or `unsigned` if the order was not signed
   - Consecutive identical orders are grouped compactly (e.g. `MirrorIngest x500`)
 - If audit is disabled on the server, a warning message is displayed instead of an error
 - After the page, the command prints the [page hints](#page-tokens): `Previous page — go back with --cursor <token>` when an earlier page exists and `More results available — resume with --cursor <token>` when a later one does
@@ -2546,12 +2650,20 @@ ledgerctl audit list --json
 **Sample output:**
 
 ```
-  #1      2025-01-01T00:00:00Z  proposal=1    OK  logs=[1]
-    └─ CreateLedger name=default  key=unsigned
+  #1      2025-01-01T00:00:00Z  proposal=1    OK  logs=[1]  unsigned
+    └─ 1 orders
+  #2      2025-01-01T00:00:01Z  proposal=2    OK  logs=[2]  signature=admin-key
+    └─ 1 orders
+  #3      2025-01-01T00:00:02Z  proposal=3    FAIL  [INSUFFICIENT_FUNDS] ...  signature=admin-key
+    └─ 1 orders
+```
+
+With `--expand`:
+
+```
   #2      2025-01-01T00:00:01Z  proposal=2    OK  logs=[2]
-    └─ CreateTransaction ledger=default ref=tx-001  key=admin-key
-  #3      2025-01-01T00:00:02Z  proposal=3    FAIL  [INSUFFICIENT_FUNDS] ...
-    └─ CreateTransaction ledger=default  key=admin-key
+    signature=admin-key  idempotency=ik-1
+    └─ CreateTransaction ledger=default ref=tx-001
 ```
 
 #### audit get
@@ -2571,7 +2683,7 @@ ledgerctl audit get <sequence> [flags]
 
 **Behavior:**
 - Retrieves a single audit entry by sequence number
-- Displays the same tree format as `audit list` for the single entry
+- Displays the same tree format as `audit list --expand` for the single entry, including the batch `signature=<keyId>` / `unsigned` line and the `idempotency=<key>` when set
 - Returns an error if the entry does not exist
 
 **Example:**
@@ -2639,10 +2751,14 @@ ledgerctl logs list --ledger my-ledger --reverse
 # Next or previous page, with a token printed by the previous call
 ledgerctl logs list --ledger my-ledger --page-size 20 --cursor <token>
 
-# Filter via the shared filter grammar (only the fields documented under
-# "Shared Flag Contract → Filter grammar" are accepted: metadata[<key>],
-# address, source, destination, ledger)
-ledgerctl logs list --ledger my-ledger --filter 'metadata[origin] == "payments"'
+# Filter by date and log id (textual grammar or JSON DSL). Logs accept only
+# logId, date and ledger conditions; metadata, address, source and
+# destination conditions are rejected on logs.
+ledgerctl logs list --ledger my-ledger --filter 'date >= "2026-01-01T00:00:00Z"'
+ledgerctl logs list --ledger my-ledger --filter 'logId >= 100'
+
+# The same log id range in the JSON DSL
+ledgerctl logs list --ledger my-ledger --filter '{"$gte":{"logId":100}}'
 
 # Output as JSON
 ledgerctl logs list --ledger my-ledger --json
@@ -2683,6 +2799,10 @@ Manage and inspect the Raft cluster.
 
 #### cluster status
 
+`--node-id` accepts unsigned 64-bit IDs; zero routes to the leader. Node lists,
+leader/local IDs and peer details preserve the full identity. In JSON/YAML
+output, protobuf uint64 identity fields are decimal strings.
+
 Display the current state of the Raft cluster, including node information and replication status.
 
 **Aliases:** `st`
@@ -2722,7 +2842,19 @@ ledgerctl cluster status --node-id 2
 - **Cluster Nodes**: List of all nodes with ID, address, suffrage, and status
 - **Replication Progress**: Replication status for each follower (only shown when querying leader)
 
+The operator uses three hidden transport commands: `cluster begin-drain <epoch>
+--json` calls the authenticated Raft cutoff RPC, `cluster end-drain <epoch>
+--json` releases the same epoch through Raft after a canceled shutdown, and
+`cluster drain-status --json` reads the current Pod's local cursor. A status
+response certifies durability only when its active drain index, or its last
+release index when there is no active drain, is nonzero and at or below the
+reported persisted index; that response includes a Pebble WAL
+fsync. These commands are not a
+user-facing shutdown workflow. See [controlled shutdown](../technical/architecture/subsystems/consensus/controlled-shutdown.md).
+
 #### cluster watch
+
+`--node-id` accepts the same unsigned 64-bit IDs as `cluster status`.
 
 Continuously poll and display the cluster status with in-place updates (similar to the Unix `watch` command).
 
@@ -2765,6 +2897,13 @@ ledgerctl cluster watch --interval 5s --timeout 3s
 
 Transfer the Raft cluster leadership to a specific node. The request is automatically forwarded to the current leader.
 
+The target must be a nonzero unsigned 64-bit integer (up to
+`18446744073709551615`); for example, `transfer-leader 4294967297` preserves the
+full target ID. Invalid, zero and overflowing arguments reject before dialing.
+For IDs above `4294967295`, update the CLI and all participating servers first;
+older protobuf readers can truncate the target. See the
+[rolling-upgrade limitation](../technical/architecture/subsystems/api/protocol-compatibility.md#cluster-node-id-width).
+
 **Aliases:** `tl`
 
 ```bash
@@ -2790,76 +2929,6 @@ ledgerctl cluster transfer-leader 2
 
 # Transfer with custom timeout
 ledgerctl cluster transfer-leader 3 --timeout 5s
-```
-
-#### cluster add-learner
-
-Add a non-voting (learner) node to the Raft cluster. The request is forwarded to the current leader.
-
-```bash
-ledgerctl cluster add-learner <node-id> <raft-address> <service-address> <instance-id> [flags]
-```
-
-**Flags:**
-
-| Flag | Default | Description |
-|------|---------|-------------|
-| `--timeout` | `10s` | Request timeout |
-
-**Behavior:**
-- The request is forwarded to the current leader if sent to a follower
-- `instance-id` is the 32-character hexadecimal encoding of the target node's 16-byte persisted `INSTANCE_ID` file
-- An existing member with replicated progress rejects a different identity with `FailedPrecondition`; retrying the same active identity returns `AlreadyExists`. With no replicated progress, a different identity refreshes the registration.
-- For stale progress, retire the old instance, remove its membership, then retry. If quorum is unavailable, use the leader-only `cluster remove-node --force` procedure in [Cluster operations](./cluster-operations.md), ensuring the retired instance cannot rejoin.
-- The leader proposes a ConfChange to add the node as a learner (non-voting member)
-- Once committed, all nodes add the learner to their transport and service pool
-- The learner receives log entries and snapshots but cannot vote or become leader
-
-**Example:**
-
-```bash
-# Read the INSTANCE_ID from the target node's configured --wal-dir (default: ./wal).
-# When running under the Formance Operator, the mount path is /data/raft by default.
-WAL_DIR=${WAL_DIR:-./wal}
-INSTANCE_ID_HEX=$(od -An -tx1 "$WAL_DIR/INSTANCE_ID" | tr -d ' \n')
-
-# Add node 4 as a learner
-ledgerctl cluster add-learner 4 node-4:7777 node-4:8888 "$INSTANCE_ID_HEX"
-
-# Add node 5 as a learner - read its own WAL directory for its unique INSTANCE_ID.
-# Reusing node-4 identity here would register node-5 under the wrong incarnation.
-NODE5_WAL_DIR=${NODE5_WAL_DIR:-./wal}
-NODE5_INSTANCE_ID_HEX=$(od -An -tx1 "$NODE5_WAL_DIR/INSTANCE_ID" | tr -d ' \n')
-ledgerctl cluster add-learner 5 node-5:7777 node-5:8888 "$NODE5_INSTANCE_ID_HEX" --timeout 30s
-```
-
-#### cluster promote-learner
-
-Promote a learner (non-voting) node to a full voter in the Raft cluster. The request is forwarded to the leader.
-
-```bash
-ledgerctl cluster promote-learner <node-id> [flags]
-```
-
-**Flags:**
-
-| Flag | Default | Description |
-|------|---------|-------------|
-| `--timeout` | `30s` | Request timeout |
-
-**Behavior:**
-- The request is forwarded to the current leader if sent to a follower
-- The leader proposes a ConfChange to promote the learner to a voter
-- Once committed, the node participates in elections and can become leader
-
-**Example:**
-
-```bash
-# Promote learner node 4 to voter
-ledgerctl cluster promote-learner 4
-
-# Promote with custom timeout
-ledgerctl cluster promote-learner 5 --timeout 60s
 ```
 
 #### cluster remove-node
@@ -3650,11 +3719,13 @@ ledgerctl queries create <name> --ledger <ledger-name> [flags]
 |------|---------|-------------|
 | `--ledger` | *(required)* | Name of the ledger |
 | `--target` | `accounts` | Query target: `accounts`, `transactions`, or `logs` |
-| `--filter` | | Filter expression (same DSL as account/transaction list) |
+| `--filter` | | Filter expression: the textual grammar or the structured JSON `QueryFilter` DSL (same dual-format input as the list commands). See [Filter fields by target](#filter-fields-by-target) |
 | `--timeout` | `10s` | Request timeout |
 
 **Behavior:**
 - Submits a `create_prepared_query` action through `BucketService.Apply`, so the batch honours `--signing-key` like any other write
+- Omitting `--filter` creates a query that matches every entity in its target. A `--filter` that is set but empty or whitespace-only is refused, like `queries update`
+- Parameter names (`$name`, or `{"$param": "name"}` in JSON) must match `[a-zA-Z_][a-zA-Z0-9_]*` and must not be a filter keyword; the server refuses other names
 
 **Examples:**
 
@@ -3662,8 +3733,14 @@ ledgerctl queries create <name> --ledger <ledger-name> [flags]
 # Query accounts with specific metadata
 ledgerctl queries create active-users --ledger my-ledger --target accounts --filter "metadata[active] == true"
 
-# Query transactions above a threshold
-ledgerctl queries create big-txns --ledger my-ledger --target transactions --filter "amount > 1000"
+# Query pending payout transactions (transaction amounts are not filterable)
+ledgerctl queries create pending-payouts --ledger my-ledger --target transactions --filter 'source ^= "payouts:" and metadata[status] == pending'
+
+# Query transactions by reference (parameterized)
+ledgerctl queries create by-ref --ledger my-ledger --target transactions --filter 'reference == $ref'
+
+# The same query in the structured JSON form
+ledgerctl queries create by-ref-json --ledger my-ledger --target transactions --filter '{"$match":{"reference":{"$param":"ref"}}}'
 
 # Parameterized query (parameters prefixed with $)
 ledgerctl queries create by-tier --ledger my-ledger --target accounts --filter "metadata[tier] == \$tier"
@@ -3774,7 +3851,8 @@ enforces `--total-stop-timeout` across all Fx stop hooks, including
 command exits unsuccessfully, even if a hook is still waiting for backend
 initialization or staging cleanup. Interrupted cleanup can leave staging files
 or an uncleanly closed staging store. Deferred log-export cleanup runs after
-the Fx lifecycle and is outside this timeout. See
+the Fx lifecycle; after a termination signal it uses the remaining signal-time
+budget described in [server termination](#server-termination). See
 [restore shutdown](backup-restore.md#step-1-download) for the cleanup sequence.
 
 The server downloads files in parallel; tune the worker count with the server
@@ -4144,10 +4222,17 @@ ledger run --response-signing-key ./response-keys/seed.hex [other flags...]
 ledgerctl --response-verify-key ./response-keys/pubkey.hex transactions create --ledger my-ledger --posting "world,bank,1000,USD"
 ```
 
-With `--response-verify-key`, prepared query create/update/delete and query
-checkpoint create/delete verify the returned Apply log signatures before
-reporting success or reading the created checkpoint ID. Missing or invalid
-signatures cause the command to fail.
+With `--response-verify-key`, `transactions set-metadata`/`delete-metadata`,
+`numscripts save`, prepared query create/update/delete, and query checkpoint
+create/delete verify the returned Apply log signatures before reporting
+success or reading returned fields such as a script name/version or checkpoint
+ID. Verification also checks that each visible log matches the authenticated
+payload. Missing or invalid signatures, signatures from another key, and
+mismatched logs cause the command to fail. Without this flag, verification is
+optional and unsigned responses remain accepted.
+
+Verification happens after the mutation RPC completes. A verification failure
+does not roll back the mutation; the client cannot authenticate its outcome.
 
 Clients can also discover the server's public key via the `Discovery` RPC.
 
@@ -4319,6 +4404,10 @@ Configure in-memory caches used by the FSM and Numscript parser.
 | `--cache-rotation-threshold` | uint64 | `1000` | Cache rotation threshold: number of Raft entries applied before rotating the FSM attribute cache generation (0 = use default 1000) |
 
 The FSM attribute cache uses a two-generation scheme. After `cache-rotation-threshold` entries are applied, the active generation is rotated. Higher values use more memory but reduce cache misses. This is a mutable cluster-wide setting: change it with the [rolling upgrade procedure](./cluster-operations.md#cluster-configuration-updates) so the leader propagates the new value deterministically through Raft.
+
+Zero resolves to 1000 before the leader compares or proposes the desired
+configuration. See the [zero-default rollout restrictions](./cluster-operations.md#zero-default-rollout-and-existing-committed-zero-entries)
+when older binaries can still become leader or a zero value was already committed.
 
 ```bash
 # Default: rotate every 1000 entries
@@ -4594,6 +4683,9 @@ into every pod whenever TLS is active (`optional` or `required`), whether
 authentication is enabled or not. Manual deployments must set the flag
 themselves.
 
+When client authentication is disabled, caller attribution is derived
+independently on each node; followers do not forward an auth-disabled snapshot.
+
 **TLS is required when `--cluster-secret` is set.** The server refuses to start
 if a cluster secret is configured without TLS (`--tls-cert-file` and
 `--tls-key-file`), because the secret would be sent in plaintext otherwise.
@@ -4691,7 +4783,7 @@ on/off TLS toggle workflow.
 | `--auth-anonymous-scopes` | string | `""` | Comma-separated granular scopes (or `*:read` / `*:write` wildcards) granted to requests that arrive without a bearer token |
 | `--auth-discovery-timeout` | duration | `10s` | Bound the HTTP calls used for OIDC discovery and JWKS fetches (`0` = unbounded). Applies one operator-controlled timeout to both the discovery call and later JWKS key fetches. |
 
-Allows expanding virtual scopes into granular Ledger scopes. For example, mapping `ledger:read` to scopes such as `ledger:LedgerRead` and `ledger:TransactionRead`. Granular Ledger scopes use the `ledger:<Resource><Action>` shape. The mapping can also be provided via the `AUTH_SCOPE_MAPPING` environment variable (JSON string).
+Allows expanding virtual scopes into granular Ledger scopes. For example, mapping `ledger:read` to scopes such as `ledger:ReadLedger` and `ledger:ReadTransaction`. Granular Ledger scopes use the `ledger:<Action><Resource>` shape. The mapping can also be provided via the `AUTH_SCOPE_MAPPING` environment variable (JSON string).
 
 ```bash
 ledger run --auth-scope-mapping-file /etc/ledger/scope-mapping.json [other flags...]
@@ -4853,7 +4945,7 @@ ledger run \
   [other flags...]
 ```
 
-When enabled, the server performs OIDC discovery, downloads the JWKS, and validates JWT signatures, issuer, and expiration on every request. By default, tokens may use the virtual scopes `ledger:read`, `ledger:write`, and `ledger:admin`, which expand to granular `ledger:<Resource><Action>` scopes.
+When enabled, the server performs OIDC discovery, downloads the JWKS, and validates JWT signatures, issuer, and expiration on every request. By default, tokens may use the virtual scopes `ledger:read`, `ledger:write`, and `ledger:admin`, which expand to granular `ledger:<Action><Resource>` scopes.
 
 When `--auth-ed25519-keys` is set, both OIDC and Ed25519 authentication can coexist. See [Authentication Guide](authentication.md) for full Ed25519 setup instructions.
 
@@ -5006,6 +5098,15 @@ export LEDGERCTL_TLS_CA_CERT=/path/to/ca.pem
 ledgerctl ledgers list
 ```
 
+Command-specific flags use the same `LEDGERCTL_` prefix with the flag name
+uppercased and hyphens replaced by underscores (for example,
+`LEDGERCTL_MODE` for `--mode`). Environment values never mark a flag as
+explicitly changed, so a command-line flag always takes precedence. Safety
+flags such as `--force` and `--yes` are intentionally CLI-only; `FORCE`, `YES`,
+and their prefixed forms are ignored. The backup commands additionally retain
+the documented `S3_ACCESS_KEY_ID` and `S3_SECRET_ACCESS_KEY` aliases for
+Kubernetes Secret-backed Jobs.
+
 ---
 
 ## Event Sinks
@@ -5024,8 +5125,11 @@ progress, not proof of external delivery: internal or filtered logs can advance
 the cursor without a publish. The human view also shows the error occurrence time.
 Startup errors clear after the sink starts successfully.
 Human, JSON, YAML, and JSON result-file output mask credentials embedded in
-NATS, HTTP, and ClickHouse URLs. Usernames and connection details remain
-visible, while passwords and token-only NATS userinfo display as `****`.
+NATS, HTTP, and ClickHouse URLs. Connection details and usernames paired with
+passwords remain visible. HTTP endpoints use the shared sensitive-URL policy:
+passwords, passwordless userinfo tokens, and credential query values such as
+`access_token` display as `xxxxx`; harmless query controls remain visible.
+NATS and ClickHouse credentials display as `****`.
 
 ```bash
 ledgerctl events list
@@ -5043,6 +5147,10 @@ Add a named event sink configuration. An existing name is rejected; the configur
 
 After a successful update, the displayed configuration applies the same URL
 credential masking as `events list`; the submitted configuration is unchanged.
+This applies to human, JSON, YAML, and JSON result-file output. JSON, YAML,
+and JSON result-file output represent HTTP HMAC secrets with `(set)` / `(none)`
+presence markers. Human output shows `Secret: (set)` when configured and
+omits the Secret row when no HMAC secret is set.
 
 Currently supported sink types: **NATS JetStream**, **ClickHouse**, **Kafka**, **HTTP**, **Databricks**.
 
@@ -5128,6 +5236,30 @@ The HTTP sink sends each event as an individual POST request with headers:
 - `X-Webhook-Signature`: `sha256=<hex>` HMAC signature (only when `--http-secret` is set)
 
 Only a 2xx response acknowledges an event. The sink does not follow redirects: any 3xx response is a delivery failure, so `--http-endpoint` must be the final URL.
+
+### Databricks sequence column upgrade
+
+New Databricks sink tables use `DECIMAL(20,0)` for `log_sequence`. This exact
+numeric type holds every global-log sequence Ledger admits. Existing tables
+created with `BIGINT` are not changed by sink startup's `CREATE TABLE IF NOT
+EXISTS`. Before upgrading the sink, check the column with `DESCRIBE TABLE
+catalog.schema.table` and, if it is `BIGINT`, widen it while preserving rows:
+
+```sql
+ALTER TABLE catalog.schema.table SET TBLPROPERTIES ('delta.enableTypeWidening' = 'true');
+ALTER TABLE catalog.schema.table ALTER COLUMN log_sequence TYPE DECIMAL(20,0);
+```
+
+Run this once per existing sink table during the upgrade window, then verify
+`DESCRIBE TABLE` reports `DECIMAL(20,0)` and existing sequence values still
+match. Databricks type widening requires a supported Delta table and upgrades
+its table protocol; check other readers and writers for compatibility before
+enabling it. If that feature is unavailable, create a replacement table with
+the new schema and migrate existing rows before switching the sink to it.
+Low sequence values remain numerically identical, so old and new Ledger
+writers can coexist during a rolling upgrade. Queries or clients that read
+`log_sequence` into signed 64-bit values must change to a decimal or string
+representation before values exceed `MaxInt64`.
 
 ### `events remove-sink`
 
@@ -5394,3 +5526,13 @@ ledgerctl query-checkpoint get-schedule
 # Output (no schedule):
 #  SUCCESS  No query checkpoint schedule configured (automatic creation disabled)
 ```
+
+## ClickHouse legacy account metadata conversion
+
+The standalone `scripts/clickhouse-account-metadata` utility reads the migration's
+JSONEachRow export from stdin and writes converted rows to stdout. Run it with
+`nix develop --command go run ./scripts/clickhouse-account-metadata` from the
+repository root. It exits nonzero on invalid input or an output error; discard
+partial output after any failure. It does not connect to ClickHouse.
+Follow the complete [migration procedure](clickhouse-account-metadata.md),
+including preflights, backup, source preservation, import and verification.

@@ -63,7 +63,8 @@ func TestNodeHookCancelledStartupJoinsRun(t *testing.T) {
 		// Record violations without aborting: the unfixed hook still needs its
 		// blocked Run released before the synctest bubble can finish.
 		select {
-		case <-result:
+		case err := <-result:
+			assert.ErrorIs(t, err, context.Canceled)
 			t.Error("cancelled startup returned while Run was still initializing")
 		default:
 		}
@@ -76,7 +77,8 @@ func TestNodeHookCancelledStartupJoinsRun(t *testing.T) {
 			t.Error("cancelled startup did not request node shutdown")
 		}
 		select {
-		case <-result:
+		case err := <-result:
+			assert.ErrorIs(t, err, context.Canceled)
 			t.Error("cancelled startup returned before Run exited")
 		default:
 		}

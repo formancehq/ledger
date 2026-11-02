@@ -6,6 +6,7 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/cmdutil"
+	"github.com/formancehq/ledger/v3/internal/pkg/sensitive"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
@@ -31,8 +32,9 @@ func redactSecret(s string) string {
 }
 
 // redactSinkConfigInPlace mutates cfg, replacing every secret-bearing field
-// with a sentinel. URL-shaped DSNs go through ObfuscateDSN so the host and
-// user remain visible for operator troubleshooting.
+// with a sentinel. HTTP endpoints use the shared sensitive-URL projection;
+// other URL-shaped DSNs use the CLI obfuscation helpers. Non-secret connection
+// details remain visible for operator troubleshooting.
 //
 // Call redactSinkConfig (which clones first) when handing the result to an
 // encoder; this in-place variant is for callers that already own a deep copy.
@@ -48,7 +50,7 @@ func redactSinkConfigInPlace(cfg *commonpb.SinkConfig) {
 		}
 	case *commonpb.SinkConfig_Http:
 		if t.Http != nil {
-			t.Http.Endpoint = cmdutil.ObfuscateURLPassword(t.Http.GetEndpoint())
+			t.Http.Endpoint = sensitive.Redact(t.Http).GetEndpoint()
 			t.Http.Secret = redactSecret(t.Http.GetSecret())
 		}
 	case *commonpb.SinkConfig_Clickhouse:
@@ -96,7 +98,7 @@ func redactDatabricksAuthInPlace(d *commonpb.DatabricksSinkConfig) {
 // redactSinkConfig returns a deep clone of cfg with every secret-bearing
 // field replaced by a sentinel. Safe to hand to EncodeStructured / printf
 // without leaking PATs, OAuth client secrets, SASL passwords, HMAC keys, or
-// DSN passwords.
+// URL credentials.
 func redactSinkConfig(cfg *commonpb.SinkConfig) *commonpb.SinkConfig {
 	if cfg == nil {
 		return nil

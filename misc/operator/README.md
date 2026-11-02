@@ -2,6 +2,16 @@
 
 Kubernetes operator for deploying and managing high-availability [Formance Ledger](https://github.com/formancehq/ledger) instances using Raft consensus.
 
+The embedded operator can require a complete StatefulSet stop when an image
+upgrade crosses a listed release boundary. No boundary is active for rc.3:
+rc.2-to-rc.3 remains rolling. For a future listed boundary, it uses the drain
+barrier available from rc.2 to stop writes and wait for durable replication,
+retains the existing PVCs, waits for the old StatefulSet and Pods to disappear,
+then recreates the StatefulSet with the requested image. The rc.1-to-rc.2
+transition still requires the manual maintenance procedure. See the
+[server upgrade procedure](../../docs/ops/upgrades.md#operator-required-stopped-restart)
+for preflight, recovery and rollback limits.
+
 ## Overview
 
 The Ledger Operator manages `Cluster` and `EventSink` custom resources to automate the lifecycle of distributed ledger clusters and event delivery on Kubernetes. It handles:
@@ -11,7 +21,6 @@ The Ledger Operator manages `Cluster` and `EventSink` custom resources to automa
 - **Observability** with OpenTelemetry traces, Prometheus metrics, and Pyroscope profiling
 - **Security** with TLS, OIDC authentication, and Ed25519 response signing
 - **Backups** to S3-compatible backends, with [recoverable Job provisioning](../../docs/ops/backup-restore.md#scheduling-with-the-kubernetes-operator) and sibling-run exclusion
-- **Cold storage** archival to S3-compatible backends
 - **Event sinks** reconciled into Ledger's Raft-replicated runtime configuration
 - **Credentials** for application-level access control
 
@@ -38,10 +47,72 @@ substrings.
 Only after all removed ordinals satisfy that postcondition does the operator
 persist the reduced StatefulSet replica count and issue PVC deletions. The
 StatefulSet update requests Pod termination; it does not wait for termination to
-finish. If a membership check or removal fails, replicas and PVCs are retained,
+finish. Before removing membership, the operator records the previous replica
+count in a StatefulSet annotation. A failed membership removal leaves that
+annotation and the old replica count in place. Once the lower replica count is
+persisted, each reconciliation uses the annotation and the StatefulSet's claim
+templates to retry deletion of removed ordinals, including after an operator
+restart. The annotation is cleared only after every deletion is accepted or its
+PVC is already absent. A failed PVC deletion leaves the lower replica count and
+annotation in place; cleanup runs before any later scale-up can reuse the old
+claims. If a membership check or removal fails, replicas and PVCs are retained,
 although the template update and earlier membership removals may already have
 succeeded. A later reconciliation checks membership again and skips ordinals
 already removed.
+
+## Ledger target identity
+
+A `Ledger` CR's `spec.name` and `spec.clusterRef` are immutable from creation,
+including while Pending. Kubernetes rejects changes to either field before the
+controller can create, promote, reconcile indexes, or delete against a different
+target. Correct a target by deleting and recreating the CR. Index updates and
+mirror-to-normal promotion remain supported without changing the target.
+The generated CRDs, including the Helm CRD chart, enforce these CEL transition
+rules in the API server; exported JSON schemas alone do not enforce transitions.
+
+Before installing these rules on an existing deployment, stop all operator
+reconcilers and inventory existing Ledger CRs. Verify each stored name and
+cluster reference against the intended external ledger before resuming the
+operator. Recover any drifted target **before** installing the new CRDs: the
+rules freeze the currently stored values and will reject corrections afterward.
+Include Pending CRs in this inventory: a timed-out creation or failed status
+write may have left an external ledger even when the CR never became Ready.
+`status.appliedSpecHash` cannot reconstruct the original target; if that target
+is unknown, keep reconciliation stopped until external records establish it.
+Do not delete a drifted CR as a recovery step with the old controller, because
+deletion uses its currently stored target.
+
+Admission immutability fixes the target name and Cluster reference, not the
+incarnation of a Cluster recreated under the same name or ownership of an
+already-existing external ledger. Ledger deletion retains its best-effort
+behavior: it attempts external deletion and then removes the finalizer even
+when endpoint resolution or execution fails; the external ledger may remain.
+This change does not add controller binding state or alter Ledger storage,
+audit records, backup formats, or service APIs.
+
+## Derived object ownership
+
+Directly owned resources derived from a Cluster name carry a controller
+reference with that Cluster's UID; a name match is never proof of ownership.
+Pods instead carry the StatefulSet UID: the operator checks the Cluster to
+StatefulSet to Pod ownership chain before exec. It refuses to adopt or update
+an existing resource it does not control. When pruning a disabled feature, it
+leaves a foreign object untouched and logs the skip without a `NameConflict`
+condition or requeue. Guarded name-based deletes use a precondition with the
+inspected UID; scale-down PVC cleanup deletes by deterministic name and does
+not provide that UID guarantee. Backup Jobs also require the ClusterIP Service
+they dial to be the Cluster's. Blocking ownership conflicts are reported as
+`ResourceNamesAvailable=False` with reason `NameConflict`, phase `Error`, a
+`ResourceNameConflict` event and a one-minute requeue.
+
+Upgrading the operator changes nothing for objects it created, which already
+carry the controller reference. Two situations that were silently adopted now
+stop the Cluster until resolved: objects left by `kubectl delete --cascade=orphan`
+when the Cluster is recreated (delete them, keeping the PVCs, or restore their
+owner references), and a pre-existing ServiceAccount named `ledger-<name>`
+(set `serviceAccount.create: false` and `serviceAccount.name`). See
+[derived object ownership](../../docs/technical/architecture/subsystems/operator/derived-object-ownership.md)
+for each guarded path and the accepted races.
 
 ## Declarative ledger indexes
 
@@ -57,6 +128,33 @@ indexes are not adopted; replacements already visible during attribution are
 excluded. Manual replacement between verification and the unconditional drop
 can still be deleted: this race is explicitly accepted, and no atomic deletion
 precondition is provided. See the [audit attribution contract](../../docs/technical/architecture/subsystems/indexer/operator-ownership.md).
+
+## TLS disable recovery
+
+Removing `spec.tls`, or setting `tls.enabled: false` while clearing its Secret
+reference, drives the existing cluster through `optional` before `disabled`.
+The operator first persists `status.tlsRollout` (mode, certificate Secret name
+and CA key), then changes or recreates the StatefulSet using those references.
+If that status write fails, the workload remains unchanged. Desired spec is
+not rewritten. A replacement controller can resume even after orphan deletion
+has removed the StatefulSet; retained mode prevents plaintext bootstrap while
+TLS peers still exist.
+
+The retained reference remains until the disabled template has converged
+(current StatefulSet generation observed, all desired replicas updated and
+ready). A failed workload or cleanup write leaves durable recovery state for
+retry. Keep the externally owned certificate Secret until that convergence
+and rollout-state cleanup; the operator never deletes it. The separately
+managed inter-node `cluster-secret` is removed after the disabled template
+has dropped its reference. External authentication continues to require TLS.
+New backup Jobs resolve TLS mode and certificate/CA references from the same
+owned StatefulSet template, so removing desired TLS cannot strip trust from a
+Job targeting the optional phase. Missing workloads retry provisioning; foreign
+owners are rejected. Existing Jobs retain their own persisted templates.
+In-pod ledgerctl calls from Ledger and EventSink reconciliation also retry
+without exec when the StatefulSet is absent, then read its mode after recreation.
+See [TLS migration](../../docs/ops/tls-migration.md) for phases, interruption
+boundaries and recovery guidance.
 
 ## Pyroscope credentials
 
@@ -429,7 +527,7 @@ The `kubectl-ledger` plugin provides a CLI for managing Cluster resources.
 
 ### Installation
 
-**From source (requires Go 1.26+):**
+**From source (use Go 1.27.3; module language minimum Go 1.26.0):**
 
 ```bash
 go build -o $(go env GOPATH)/bin/kubectl-ledger ./cmd/kubectl-ledger
