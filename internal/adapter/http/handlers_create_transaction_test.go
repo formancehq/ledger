@@ -56,6 +56,30 @@ func TestHandleCreateTransaction_Success(t *testing.T) {
 	require.Equal(t, http.StatusCreated, w.Code)
 }
 
+func TestHandleCreateTransaction_MetadataOnlyReturnsNoContent(t *testing.T) {
+	t.Parallel()
+
+	log := &commonpb.Log{Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_Apply{
+		Apply: &commonpb.ApplyLedgerLog{Log: &commonpb.LedgerLog{Data: &commonpb.LedgerLogPayload{
+			Payload: &commonpb.LedgerLogPayload_AccountMetadataUpdated{
+				AccountMetadataUpdated: &commonpb.AccountMetadataUpdated{AccountMetadata: map[string]*commonpb.MetadataMap{
+					"users:alice": {Values: map[string]*commonpb.MetadataValue{"tier": commonpb.NewStringValue("gold")}},
+				}},
+			},
+		}}},
+	}}}
+	srv := newTestServer(t, backendReturningLogs(t, []*commonpb.Log{log}))
+
+	w := httptest.NewRecorder()
+	r := newRequest(t, http.MethodPost, "/ledger1/transactions", strings.NewReader(`{"script":{"plain":"set_account_meta(@users:alice, \"tier\", \"gold\")"}}`), map[string]string{
+		"ledgerName": "ledger1",
+	})
+
+	srv.handleCreateTransaction(w, r)
+
+	require.Equal(t, http.StatusNoContent, w.Code)
+}
+
 // TestHandleCreateTransaction_LogContractViolations locks in the exact-one
 // typed-log contract: exactly one non-nil Apply log carrying a CreatedTransaction
 // inner payload. Any other cardinality, a nil sole log, a non-Apply outer

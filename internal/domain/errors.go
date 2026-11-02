@@ -597,14 +597,16 @@ var ErrWritesBlockedClockSkew Describable = errWritesBlockedClockSkew{}
 // the comparison is stable). No per-occurrence metadata — the message is
 // the same every time and the Reason() is shared (ErrReasonValidation).
 var (
-	ErrTargetRequired              = NewValidationSentinel("TARGET_REQUIRED", "target is required")
-	ErrMetadataKeyRequired         = NewValidationSentinel("METADATA_KEY_REQUIRED", "key is required")
-	ErrNumscriptContentRequired    = NewValidationSentinel("NUMSCRIPT_CONTENT_REQUIRED", "numscript content is required")
-	ErrScriptAndReferenceConflict  = NewValidationSentinel("SCRIPT_AND_REFERENCE_CONFLICT", "cannot specify both script and scriptReference")
-	ErrEmptyTransaction            = NewValidationSentinel("EMPTY_TRANSACTION", "transaction must produce at least one posting")
-	ErrPostingsAndScriptConflict   = NewValidationSentinel("POSTINGS_AND_SCRIPT_CONFLICT", "postings cannot be combined with script or scriptReference")
-	ErrTransactionReferenceTooLong = NewValidationSentinel("TRANSACTION_REFERENCE_TOO_LONG", "transaction reference exceeds maximum length of 4096 bytes")
-	ErrScriptRequired              = NewValidationSentinel("SCRIPT_REQUIRED", "numscript: script is required")
+	ErrTargetRequired                  = NewValidationSentinel("TARGET_REQUIRED", "target is required")
+	ErrMetadataKeyRequired             = NewValidationSentinel("METADATA_KEY_REQUIRED", "key is required")
+	ErrNumscriptContentRequired        = NewValidationSentinel("NUMSCRIPT_CONTENT_REQUIRED", "numscript content is required")
+	ErrScriptAndReferenceConflict      = NewValidationSentinel("SCRIPT_AND_REFERENCE_CONFLICT", "cannot specify both script and scriptReference")
+	ErrEmptyTransaction                = NewValidationSentinel("EMPTY_TRANSACTION", "transaction must produce at least one posting")
+	ErrPostingsAndScriptConflict       = NewValidationSentinel("POSTINGS_AND_SCRIPT_CONFLICT", "postings cannot be combined with script or scriptReference")
+	ErrMetadataOnlyTransactionMetadata = NewValidationSentinel("METADATA_ONLY_TRANSACTION_METADATA", "metadata-only scripts cannot set transaction metadata")
+	ErrMetadataOnlyReference           = NewValidationSentinel("METADATA_ONLY_REFERENCE", "metadata-only scripts cannot set a transaction reference")
+	ErrTransactionReferenceTooLong     = NewValidationSentinel("TRANSACTION_REFERENCE_TOO_LONG", "transaction reference exceeds maximum length of 4096 bytes")
+	ErrScriptRequired                  = NewValidationSentinel("SCRIPT_REQUIRED", "numscript: script is required")
 	// Numscript identifier sentinels stay local: numscript is a
 	// ledger-internal DSL, not part of the Formance-wide invariants in
 	// github.com/formancehq/invariants.
