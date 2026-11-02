@@ -62,10 +62,11 @@ func TestExtractLedgerScopedNeeds_CoversEveryPayloadVariant(t *testing.T) {
 			name: "promote_ledger",
 			payload: &raftcmdpb.LedgerScopedOrder{
 				Ledger:  wrapperTestLedger,
-				Payload: &raftcmdpb.LedgerScopedOrder_PromoteLedger{PromoteLedger: &raftcmdpb.PromoteLedgerOrder{}},
+				Payload: &raftcmdpb.LedgerScopedOrder_PromoteLedger{PromoteLedger: &raftcmdpb.PromoteLedgerOrder{RequireCatchUp: true}},
 			},
 			assert: func(t *testing.T, n *plan.Coverage) {
 				require.True(t, n.Has(dal.SubAttrLedger, ledgerKey.Bytes()))
+				require.True(t, n.Has(dal.SubAttrBoundary, ledgerKey.Bytes()))
 			},
 		},
 		{
