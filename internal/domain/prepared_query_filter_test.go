@@ -450,8 +450,8 @@ func TestValidateFilterForTarget_RejectsMalformedLeaves(t *testing.T) {
 func TestValidateFilterForTargetStillAcceptsLogIdWithoutCondition(t *testing.T) {
 	t.Parallel()
 
-	f := &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_LogId{LogId: &commonpb.LogIdCondition{}}}
-	require.NoError(t, domain.ValidateFilterForTarget(f, commonpb.QueryTarget_QUERY_TARGET_LOGS))
+	f := &ledgerpb.QueryFilter{Filter: &ledgerpb.QueryFilter_LogId{LogId: &ledgerpb.LogIdCondition{}}}
+	require.NoError(t, domain.ValidateFilterForTarget(f, ledgerpb.QueryTarget_QUERY_TARGET_LOGS))
 	require.ErrorContains(t, domain.ValidateFilterAdmissionShape(f), "logId condition has no value")
 }
 
@@ -462,14 +462,14 @@ func TestValidateFilterForTargetStillAcceptsLogIdWithoutCondition(t *testing.T) 
 func TestValidateFilterAdmissionShapeAcceptsUnboundedRanges(t *testing.T) {
 	t.Parallel()
 
-	empty := &commonpb.UintCondition{MaxExclusive: true}
-	metaRef := &commonpb.FieldRef{Metadata: "k"}
-	cases := map[string]*commonpb.QueryFilter{
-		"logId":       {Filter: &commonpb.QueryFilter_LogId{LogId: &commonpb.LogIdCondition{Cond: empty}}},
-		"builtin":     {Filter: &commonpb.QueryFilter_BuiltinUint{BuiltinUint: &commonpb.BuiltinUintCondition{Field: commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REVERTED_AT, Cond: empty}}},
-		"log builtin": {Filter: &commonpb.QueryFilter_LogBuiltinUint{LogBuiltinUint: &commonpb.LogBuiltinUintCondition{Field: commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE, Cond: empty}}},
-		"meta uint":   {Filter: &commonpb.QueryFilter_Field{Field: &commonpb.FieldCondition{Field: metaRef, Condition: &commonpb.FieldCondition_UintCond{UintCond: empty}}}},
-		"meta int":    {Filter: &commonpb.QueryFilter_Field{Field: &commonpb.FieldCondition{Field: metaRef, Condition: &commonpb.FieldCondition_IntCond{IntCond: &commonpb.IntCondition{}}}}},
+	empty := &ledgerpb.UintCondition{MaxExclusive: true}
+	metaRef := &ledgerpb.FieldRef{Metadata: "k"}
+	cases := map[string]*ledgerpb.QueryFilter{
+		"logId":       {Filter: &ledgerpb.QueryFilter_LogId{LogId: &ledgerpb.LogIdCondition{Cond: empty}}},
+		"builtin":     {Filter: &ledgerpb.QueryFilter_BuiltinUint{BuiltinUint: &ledgerpb.BuiltinUintCondition{Field: ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REVERTED_AT, Cond: empty}}},
+		"log builtin": {Filter: &ledgerpb.QueryFilter_LogBuiltinUint{LogBuiltinUint: &ledgerpb.LogBuiltinUintCondition{Field: ledgerpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE, Cond: empty}}},
+		"meta uint":   {Filter: &ledgerpb.QueryFilter_Field{Field: &ledgerpb.FieldCondition{Field: metaRef, Condition: &ledgerpb.FieldCondition_UintCond{UintCond: empty}}}},
+		"meta int":    {Filter: &ledgerpb.QueryFilter_Field{Field: &ledgerpb.FieldCondition{Field: metaRef, Condition: &ledgerpb.FieldCondition_IntCond{IntCond: &ledgerpb.IntCondition{}}}}},
 	}
 
 	for name, f := range cases {

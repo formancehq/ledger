@@ -30,6 +30,7 @@ require (
 	github.com/dustin/go-humanize v1.0.1
 	github.com/formancehq/go-libs/v5 v5.10.0
 	github.com/formancehq/invariants v0.11.0
+	github.com/formancehq/ledger/pkg/proto/v3 v3.0.0
 	github.com/formancehq/numscript v0.1.3 // #199 compiler+VM, #211 Exec releases the store on return, #215/#216 typed errors
 	github.com/fsnotify/fsnotify v1.5.4
 	github.com/getkin/kin-openapi v0.149.0

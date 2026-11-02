@@ -36,11 +36,11 @@ func (s *sentinelCommitServer) Apply(_ context.Context, req *servicepb.ApplyRequ
 		return &servicepb.ApplyResponse{}, nil
 	}
 
-	return &servicepb.ApplyResponse{Logs: []*commonpb.Log{{
-		Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_Apply{
-			Apply: &commonpb.ApplyLedgerLog{LedgerName: "sentinel-ledger", Log: &commonpb.LedgerLog{
-				Data: &commonpb.LedgerLogPayload{Payload: &commonpb.LedgerLogPayload_CreatedTransaction{
-					CreatedTransaction: &commonpb.CreatedTransaction{Transaction: &commonpb.Transaction{
+	return &servicepb.ApplyResponse{Logs: []*ledgerpb.Log{{
+		Payload: &ledgerpb.LogPayload{Type: &ledgerpb.LogPayload_Apply{
+			Apply: &ledgerpb.ApplyLedgerLog{LedgerName: "sentinel-ledger", Log: &ledgerpb.LedgerLog{
+				Data: &ledgerpb.LedgerLogPayload{Payload: &ledgerpb.LedgerLogPayload_CreatedTransaction{
+					CreatedTransaction: &ledgerpb.CreatedTransaction{Transaction: &ledgerpb.Transaction{
 						Id:        42,
 						Reference: req.GetUnsigned().GetRequests()[0].GetApply().GetAction().GetCreateTransaction().GetReference(),
 					}},
@@ -131,7 +131,7 @@ func TestSentinelVerifySDK(t *testing.T) {
 				client := sdktest.Client(t, server, grpc.WithChainUnaryInterceptor(classifyUnaryInterceptor()))
 				ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
 				defer cancel()
-				sentinel := newSentinel("sdk-sentinel", &commonpb.Transaction{Id: 42})
+				sentinel := newSentinel("sdk-sentinel", &ledgerpb.Transaction{Id: 42})
 				sentinel.Verify(ctx, client, "after-operation")
 				require.EqualValues(t, 1, server.calls.Load())
 			})

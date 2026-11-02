@@ -34,7 +34,7 @@ func randomPostingsRequest(ledger string, src *generation.Source) *servicepb.Req
 				Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
 					CreateTransaction: &servicepb.CreateTransactionPayload{
 						Postings: internal.GeneratedPostings(src),
-						Metadata: commonpb.MetadataFromGoMap(internal.GeneratedMetadata(src)),
+						Metadata: ledgerpb.MetadataFromGoMap(internal.GeneratedMetadata(src)),
 						Force:    true,
 					},
 				}},

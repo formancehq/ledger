@@ -61,7 +61,7 @@ func TestCompile_AccountHasAsset_RequiresReady(t *testing.T) {
 
 	_, err := query.Compile(accountHasAssetFilter("USD", 2), query.CompileOptions{
 		KeyBuilder:      dal.NewKeyBuilder(),
-		Target:          commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
+		Target:          ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
 		LedgerName:      ledgerName,
 		LedgerInfo:      info,
 		IndexRegistry:   registry,
@@ -123,7 +123,7 @@ func TestCompile_AccountHasAsset_PrefixScan(t *testing.T) {
 	iter, err := query.Compile(accountHasAssetFilter("USD", 2), query.CompileOptions{
 		IndexReader:     reader,
 		KeyBuilder:      dal.NewKeyBuilder(),
-		Target:          commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
+		Target:          ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
 		LedgerName:      ledgerName,
 		LedgerInfo:      info,
 		IndexRegistry:   registry,
@@ -192,7 +192,7 @@ func TestCompile_AccountHasAsset_PinExcludesLaterFirstTouch(t *testing.T) {
 		iter, cErr := query.Compile(accountHasAssetFilter("USD", 2), query.CompileOptions{
 			IndexReader:     reader,
 			KeyBuilder:      dal.NewKeyBuilder(),
-			Target:          commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
+			Target:          ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
 			LedgerName:      ledgerName,
 			LedgerInfo:      info,
 			IndexRegistry:   registry,
@@ -274,7 +274,7 @@ func TestCompile_RevertedAt_PinExcludesLaterRevert(t *testing.T) {
 		iter, cErr := query.Compile(filter, query.CompileOptions{
 			IndexReader:     reader,
 			KeyBuilder:      dal.NewKeyBuilder(),
-			Target:          commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS,
+			Target:          ledgerpb.QueryTarget_QUERY_TARGET_TRANSACTIONS,
 			LedgerName:      ledgerName,
 			LedgerInfo:      info,
 			IndexRegistry:   registry,

@@ -346,14 +346,14 @@ func TestFormatDate_OnlyEmitsParseableFields(t *testing.T) {
 	t.Parallel()
 
 	lo := wantDateMicros
-	for _, field := range []commonpb.TransactionBuiltinIndex{
-		commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_ID,
-		commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP,
-		commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_INSERTED_AT,
-		commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REVERTED_AT,
+	for _, field := range []ledgerpb.TransactionBuiltinIndex{
+		ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_ID,
+		ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP,
+		ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_INSERTED_AT,
+		ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REVERTED_AT,
 	} {
-		f := &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_BuiltinUint{
-			BuiltinUint: &commonpb.BuiltinUintCondition{
+		f := &ledgerpb.QueryFilter{Filter: &ledgerpb.QueryFilter_BuiltinUint{
+			BuiltinUint: &ledgerpb.BuiltinUintCondition{
 				Field: field,
 				Cond:  &ledgerpb.UintCondition{Min: &lo},
 			},
@@ -367,10 +367,10 @@ func TestFormatDate_OnlyEmitsParseableFields(t *testing.T) {
 	// A builtin index kind that is not a uint range field (reference, address)
 	// still renders as an explicit unknown marker rather than a string that
 	// would parse as something else.
-	unknown := &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_BuiltinUint{
-		BuiltinUint: &commonpb.BuiltinUintCondition{
-			Field: commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE,
-			Cond:  &commonpb.UintCondition{Min: &lo},
+	unknown := &ledgerpb.QueryFilter{Filter: &ledgerpb.QueryFilter_BuiltinUint{
+		BuiltinUint: &ledgerpb.BuiltinUintCondition{
+			Field: ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE,
+			Cond:  &ledgerpb.UintCondition{Min: &lo},
 		},
 	}}
 	assert.Equal(t, "<unknown builtin field>", Format(unknown))

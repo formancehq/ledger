@@ -67,7 +67,7 @@ func TestReverseLogPageIsBoundedByThePage(t *testing.T) {
 			iter, err := query.CompileReverse(tc.filter, query.CompileOptions{
 				IndexReader:     store.DB(),
 				KeyBuilder:      dal.NewKeyBuilder(),
-				Target:          commonpb.QueryTarget_QUERY_TARGET_LOGS,
+				Target:          ledgerpb.QueryTarget_QUERY_TARGET_LOGS,
 				LedgerName:      parityLedger,
 				LedgerInfo:      parityInfo(),
 				IndexRegistry:   parityRegistry(),

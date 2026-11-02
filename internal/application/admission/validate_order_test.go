@@ -1437,18 +1437,18 @@ func TestValidateOrderSigningKey(t *testing.T) {
 func TestValidateOrder_PreparedQueryRejectsLogIdWithoutCondition(t *testing.T) {
 	t.Parallel()
 
-	bare := &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_LogId{LogId: &commonpb.LogIdCondition{}}}
-	nested := &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_Not{Not: &commonpb.NotFilter{
-		Filter: &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_Or{Or: &commonpb.OrFilter{
-			Filters: []*commonpb.QueryFilter{bare},
+	bare := &ledgerpb.QueryFilter{Filter: &ledgerpb.QueryFilter_LogId{LogId: &ledgerpb.LogIdCondition{}}}
+	nested := &ledgerpb.QueryFilter{Filter: &ledgerpb.QueryFilter_Not{Not: &ledgerpb.NotFilter{
+		Filter: &ledgerpb.QueryFilter{Filter: &ledgerpb.QueryFilter_Or{Or: &ledgerpb.OrFilter{
+			Filters: []*ledgerpb.QueryFilter{bare},
 		}}},
 	}}}
 
-	for name, filter := range map[string]*commonpb.QueryFilter{"bare": bare, "nested": nested} {
+	for name, filter := range map[string]*ledgerpb.QueryFilter{"bare": bare, "nested": nested} {
 		create := &raftcmdpb.Order{Type: &raftcmdpb.Order_LedgerScoped{LedgerScoped: &raftcmdpb.LedgerScopedOrder{
 			Ledger: "l", Payload: &raftcmdpb.LedgerScopedOrder_CreatePreparedQuery{
-				CreatePreparedQuery: &raftcmdpb.CreatePreparedQueryOrder{Query: &commonpb.PreparedQuery{
-					Name: "q", Target: commonpb.QueryTarget_QUERY_TARGET_LOGS, Filter: filter,
+				CreatePreparedQuery: &raftcmdpb.CreatePreparedQueryOrder{Query: &ledgerpb.PreparedQuery{
+					Name: "q", Target: ledgerpb.QueryTarget_QUERY_TARGET_LOGS, Filter: filter,
 				}},
 			},
 		}}}
@@ -1470,34 +1470,34 @@ func TestValidateOrder_PreparedQueryRejectsNonTextualParamName(t *testing.T) {
 	t.Parallel()
 
 	bad := "n or reverted == true"
-	filters := map[string]*commonpb.QueryFilter{
-		"uint range": {Filter: &commonpb.QueryFilter_BuiltinUint{BuiltinUint: &commonpb.BuiltinUintCondition{
-			Field: commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_ID,
-			Cond:  &commonpb.UintCondition{ParamMin: bad},
+	filters := map[string]*ledgerpb.QueryFilter{
+		"uint range": {Filter: &ledgerpb.QueryFilter_BuiltinUint{BuiltinUint: &ledgerpb.BuiltinUintCondition{
+			Field: ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_ID,
+			Cond:  &ledgerpb.UintCondition{ParamMin: bad},
 		}}},
-		"reference": {Filter: &commonpb.QueryFilter_Reference{Reference: &commonpb.ReferenceCondition{
-			Cond: &commonpb.StringCondition{Value: &commonpb.StringCondition_Param{Param: bad}},
+		"reference": {Filter: &ledgerpb.QueryFilter_Reference{Reference: &ledgerpb.ReferenceCondition{
+			Cond: &ledgerpb.StringCondition{Value: &ledgerpb.StringCondition_Param{Param: bad}},
 		}}},
-		"keyword": {Filter: &commonpb.QueryFilter_Reference{Reference: &commonpb.ReferenceCondition{
-			Cond: &commonpb.StringCondition{Value: &commonpb.StringCondition_Param{Param: "true"}},
+		"keyword": {Filter: &ledgerpb.QueryFilter_Reference{Reference: &ledgerpb.ReferenceCondition{
+			Cond: &ledgerpb.StringCondition{Value: &ledgerpb.StringCondition_Param{Param: "true"}},
 		}}},
-		"empty string param": {Filter: &commonpb.QueryFilter_Reference{Reference: &commonpb.ReferenceCondition{
-			Cond: &commonpb.StringCondition{Value: &commonpb.StringCondition_Param{Param: ""}},
+		"empty string param": {Filter: &ledgerpb.QueryFilter_Reference{Reference: &ledgerpb.ReferenceCondition{
+			Cond: &ledgerpb.StringCondition{Value: &ledgerpb.StringCondition_Param{Param: ""}},
 		}}},
-		"empty bool param": {Filter: &commonpb.QueryFilter_Field{Field: &commonpb.FieldCondition{
-			Field:     &commonpb.FieldRef{Metadata: "k"},
-			Condition: &commonpb.FieldCondition_BoolCond{BoolCond: &commonpb.BoolCondition{Value: &commonpb.BoolCondition_Param{Param: ""}}},
+		"empty bool param": {Filter: &ledgerpb.QueryFilter_Field{Field: &ledgerpb.FieldCondition{
+			Field:     &ledgerpb.FieldRef{Metadata: "k"},
+			Condition: &ledgerpb.FieldCondition_BoolCond{BoolCond: &ledgerpb.BoolCondition{Value: &ledgerpb.BoolCondition_Param{Param: ""}}},
 		}}},
-		"empty address param": {Filter: &commonpb.QueryFilter_Address{Address: &commonpb.AddressMatch{
-			Match: &commonpb.AddressMatch_ParamExact{ParamExact: ""},
+		"empty address param": {Filter: &ledgerpb.QueryFilter_Address{Address: &ledgerpb.AddressMatch{
+			Match: &ledgerpb.AddressMatch_ParamExact{ParamExact: ""},
 		}}},
 	}
 
 	for name, filter := range filters {
 		create := &raftcmdpb.Order{Type: &raftcmdpb.Order_LedgerScoped{LedgerScoped: &raftcmdpb.LedgerScopedOrder{
 			Ledger: "l", Payload: &raftcmdpb.LedgerScopedOrder_CreatePreparedQuery{
-				CreatePreparedQuery: &raftcmdpb.CreatePreparedQueryOrder{Query: &commonpb.PreparedQuery{
-					Name: "q", Target: commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS, Filter: filter,
+				CreatePreparedQuery: &raftcmdpb.CreatePreparedQueryOrder{Query: &ledgerpb.PreparedQuery{
+					Name: "q", Target: ledgerpb.QueryTarget_QUERY_TARGET_TRANSACTIONS, Filter: filter,
 				}},
 			},
 		}}}
@@ -1513,10 +1513,10 @@ func TestValidateOrder_PreparedQueryRejectsNonTextualParamName(t *testing.T) {
 
 	ok := &raftcmdpb.Order{Type: &raftcmdpb.Order_LedgerScoped{LedgerScoped: &raftcmdpb.LedgerScopedOrder{
 		Ledger: "l", Payload: &raftcmdpb.LedgerScopedOrder_CreatePreparedQuery{
-			CreatePreparedQuery: &raftcmdpb.CreatePreparedQueryOrder{Query: &commonpb.PreparedQuery{
-				Name: "q", Target: commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS,
-				Filter: &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_Reference{Reference: &commonpb.ReferenceCondition{
-					Cond: &commonpb.StringCondition{Value: &commonpb.StringCondition_Param{Param: "ref_1"}},
+			CreatePreparedQuery: &raftcmdpb.CreatePreparedQueryOrder{Query: &ledgerpb.PreparedQuery{
+				Name: "q", Target: ledgerpb.QueryTarget_QUERY_TARGET_TRANSACTIONS,
+				Filter: &ledgerpb.QueryFilter{Filter: &ledgerpb.QueryFilter_Reference{Reference: &ledgerpb.ReferenceCondition{
+					Cond: &ledgerpb.StringCondition{Value: &ledgerpb.StringCondition_Param{Param: "ref_1"}},
 				}}},
 			}},
 		},

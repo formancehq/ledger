@@ -61,9 +61,9 @@ var filterLexer = lexer.MustSimple([]lexer.SimpleRule{
 	{Name: "Dollar", Pattern: `\$`},
 	{Name: "String", Pattern: `"[^"]*"|'[^']*'`},
 	{Name: "Comma", Pattern: `,`},
-	// Built from commonpb.FilterGrammarKeywords, which IsTextualFilterParamName
+	// Built from ledgerpb.FilterGrammarKeywords, which IsTextualFilterParamName
 	// also reads, so a parameter name accepted at admission always lexes as Ident.
-	{Name: "Keyword", Pattern: `\b(` + strings.Join(commonpb.FilterGrammarKeywords, "|") + `)\b`},
+	{Name: "Keyword", Pattern: `\b(` + strings.Join(ledgerpb.FilterGrammarKeywords, "|") + `)\b`},
 	{Name: "Number", Pattern: `-?[0-9]+`},
 	// AssetRef is the base/precision asset reference (e.g. USD/2) used only in the
 	// `has asset` position. It is its own token — matched before Ident — because
@@ -192,12 +192,12 @@ func (e *AndExpr) toProto(target ledgerpb.QueryTarget) (*ledgerpb.QueryFilter, e
 
 // foldClosedRangeAnd merges exactly two complementary single-bound range clauses
 // on the same field into one range condition. It is the textual-parser
-// counterpart of commonpb.foldRangeAnd (which folds the JSON `$and` of a
+// counterpart of ledgerpb.foldRangeAnd (which folds the JSON `$and` of a
 // $gt/$gte and a $lt/$lte), so both DSLs collapse a closed range to the
 // identical proto. It fires on every uint range the bare fields produce: the
 // transaction builtins (id, timestamp, insertedAt, revertedAt), the log id and
 // date, and the uint/datetime audit fields. ok=false leaves the `and` untouched.
-func foldClosedRangeAnd(filters []*commonpb.QueryFilter) (*commonpb.QueryFilter, bool) {
+func foldClosedRangeAnd(filters []*ledgerpb.QueryFilter) (*ledgerpb.QueryFilter, bool) {
 	if len(filters) != 2 {
 		return nil, false
 	}
@@ -220,39 +220,39 @@ func foldClosedRangeAnd(filters []*commonpb.QueryFilter) (*commonpb.QueryFilter,
 // its field (two leaves fold only when their keys match), its condition, and a
 // constructor rebuilding the same leaf around a merged condition. ok=false for
 // every other leaf.
-func uintRangeLeaf(f *commonpb.QueryFilter) (string, *commonpb.UintCondition, func(*commonpb.UintCondition) *commonpb.QueryFilter, bool) {
+func uintRangeLeaf(f *ledgerpb.QueryFilter) (string, *ledgerpb.UintCondition, func(*ledgerpb.UintCondition) *ledgerpb.QueryFilter, bool) {
 	switch v := f.GetFilter().(type) {
-	case *commonpb.QueryFilter_BuiltinUint:
+	case *ledgerpb.QueryFilter_BuiltinUint:
 		field := v.BuiltinUint.GetField()
 
-		return "tx:" + field.String(), v.BuiltinUint.GetCond(), func(uc *commonpb.UintCondition) *commonpb.QueryFilter {
-			return &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_BuiltinUint{
-				BuiltinUint: &commonpb.BuiltinUintCondition{Field: field, Cond: uc},
+		return "tx:" + field.String(), v.BuiltinUint.GetCond(), func(uc *ledgerpb.UintCondition) *ledgerpb.QueryFilter {
+			return &ledgerpb.QueryFilter{Filter: &ledgerpb.QueryFilter_BuiltinUint{
+				BuiltinUint: &ledgerpb.BuiltinUintCondition{Field: field, Cond: uc},
 			}}
 		}, true
-	case *commonpb.QueryFilter_LogBuiltinUint:
+	case *ledgerpb.QueryFilter_LogBuiltinUint:
 		field := v.LogBuiltinUint.GetField()
 
-		return "log:" + field.String(), v.LogBuiltinUint.GetCond(), func(uc *commonpb.UintCondition) *commonpb.QueryFilter {
-			return &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_LogBuiltinUint{
-				LogBuiltinUint: &commonpb.LogBuiltinUintCondition{Field: field, Cond: uc},
+		return "log:" + field.String(), v.LogBuiltinUint.GetCond(), func(uc *ledgerpb.UintCondition) *ledgerpb.QueryFilter {
+			return &ledgerpb.QueryFilter{Filter: &ledgerpb.QueryFilter_LogBuiltinUint{
+				LogBuiltinUint: &ledgerpb.LogBuiltinUintCondition{Field: field, Cond: uc},
 			}}
 		}, true
-	case *commonpb.QueryFilter_LogId:
-		return "logId", v.LogId.GetCond(), func(uc *commonpb.UintCondition) *commonpb.QueryFilter {
-			return &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_LogId{
-				LogId: &commonpb.LogIdCondition{Cond: uc},
+	case *ledgerpb.QueryFilter_LogId:
+		return "logId", v.LogId.GetCond(), func(uc *ledgerpb.UintCondition) *ledgerpb.QueryFilter {
+			return &ledgerpb.QueryFilter{Filter: &ledgerpb.QueryFilter_LogId{
+				LogId: &ledgerpb.LogIdCondition{Cond: uc},
 			}}
 		}, true
-	case *commonpb.QueryFilter_Audit:
+	case *ledgerpb.QueryFilter_Audit:
 		uc := v.Audit.GetUintCond()
 		if uc == nil {
 			return "", nil, nil, false
 		}
 		field := v.Audit.GetField()
 
-		return "audit:" + field.String(), uc, func(uc *commonpb.UintCondition) *commonpb.QueryFilter {
-			return auditQF(field, &commonpb.AuditCondition{Condition: &commonpb.AuditCondition_UintCond{UintCond: uc}})
+		return "audit:" + field.String(), uc, func(uc *ledgerpb.UintCondition) *ledgerpb.QueryFilter {
+			return auditQF(field, &ledgerpb.AuditCondition{Condition: &ledgerpb.AuditCondition_UintCond{UintCond: uc}})
 		}, true
 	default:
 		return "", nil, nil, false
@@ -276,7 +276,7 @@ func mergeComplementaryBounds(x, y *ledgerpb.UintCondition) (*ledgerpb.UintCondi
 
 	// Each side is a literal or a $param; copying both the literal pointer and the
 	// param name carries whichever one is set.
-	return &commonpb.UintCondition{
+	return &ledgerpb.UintCondition{
 		Min:          lower.Min,
 		ParamMin:     lower.GetParamMin(),
 		Max:          upper.Max,
@@ -289,19 +289,19 @@ func mergeComplementaryBounds(x, y *ledgerpb.UintCondition) (*ledgerpb.UintCondi
 // isSingleLowerBound reports whether uc carries only a lower bound (a literal Min
 // or a ParamMin, and no upper bound of either kind). isSingleUpperBound is the
 // symmetric check.
-func isSingleLowerBound(uc *commonpb.UintCondition) bool {
+func isSingleLowerBound(uc *ledgerpb.UintCondition) bool {
 	return hasLowerBound(uc) && !hasUpperBound(uc)
 }
 
-func isSingleUpperBound(uc *commonpb.UintCondition) bool {
+func isSingleUpperBound(uc *ledgerpb.UintCondition) bool {
 	return hasUpperBound(uc) && !hasLowerBound(uc)
 }
 
-func hasLowerBound(uc *commonpb.UintCondition) bool {
+func hasLowerBound(uc *ledgerpb.UintCondition) bool {
 	return uc.Min != nil || uc.GetParamMin() != ""
 }
 
-func hasUpperBound(uc *commonpb.UintCondition) bool {
+func hasUpperBound(uc *ledgerpb.UintCondition) bool {
 	return uc.Max != nil || uc.GetParamMax() != ""
 }
 
@@ -373,7 +373,7 @@ func (c *Condition) toProto(target ledgerpb.QueryTarget) (*ledgerpb.QueryFilter,
 
 // FieldCond is the generic `field OP value` production for bare, target-aware
 // field names: the intrinsic fields (see intrinsicToProto) and — on the audit
-// target — the audit fields (commonpb.LookupAuditField). Which proto arm the
+// target — the audit fields (ledgerpb.LookupAuditField). Which proto arm the
 // field resolves to is decided at toProto time from the query target (EN-1549),
 // not by the grammar.
 //
@@ -399,20 +399,20 @@ func (a *FieldCond) toProto(target ledgerpb.QueryTarget) (*ledgerpb.QueryFilter,
 }
 
 // auditToProto resolves a bare field on the AUDIT target into the matching
-// AuditCondition arm. The field vocabulary is commonpb.LookupAuditField, shared
+// AuditCondition arm. The field vocabulary is ledgerpb.LookupAuditField, shared
 // with the structured JSON DSL.
-func (a *FieldCond) auditToProto() (*commonpb.QueryFilter, error) {
-	spec, ok := commonpb.LookupAuditField(a.Field)
+func (a *FieldCond) auditToProto() (*ledgerpb.QueryFilter, error) {
+	spec, ok := ledgerpb.LookupAuditField(a.Field)
 	if !ok {
 		return nil, fmt.Errorf("unknown audit field %q", a.Field)
 	}
 
 	switch spec.Kind {
-	case commonpb.AuditFieldKindUint:
+	case ledgerpb.AuditFieldKindUint:
 		return a.uintToProto(spec.Field)
-	case commonpb.AuditFieldKindDatetime:
+	case ledgerpb.AuditFieldKindDatetime:
 		return a.datetimeToProto(spec.Field)
-	case commonpb.AuditFieldKindString:
+	case ledgerpb.AuditFieldKindString:
 		return a.stringToProto(spec.Field)
 	default:
 		return nil, fmt.Errorf("unhandled audit field kind for %q", a.Field)
@@ -437,7 +437,7 @@ func (a *FieldCond) auditToProto() (*commonpb.QueryFilter, error) {
 // structured JSON DSL does. The resolution itself never depends on which
 // non-audit target is queried, which is what lets the prepared-query update
 // path parse without knowing the stored target.
-func (a *FieldCond) intrinsicToProto() (*commonpb.QueryFilter, error) {
+func (a *FieldCond) intrinsicToProto() (*ledgerpb.QueryFilter, error) {
 	switch a.Field {
 	case "timestamp", "date", "insertedAt", "revertedAt":
 		return a.dateToProto()
@@ -507,7 +507,7 @@ func coerceDatetimeValue(v *Value) (uint64, error) {
 // uintProtoWithParse assembles a uint audit condition from the operator, using
 // parse to turn each operand into a uint64. Shared by plain-uint fields and the
 // datetime timestamp field.
-func (a *FieldCond) uintProtoWithParse(field commonpb.AuditField, parse func(*Value) (uint64, error)) (*commonpb.QueryFilter, error) {
+func (a *FieldCond) uintProtoWithParse(field ledgerpb.AuditField, parse func(*Value) (uint64, error)) (*ledgerpb.QueryFilter, error) {
 	uc, err := uintConditionFromOp(a.Op, parse, false)
 	if err != nil {
 		return nil, fmt.Errorf("audit field %q: %w", a.Field, err)
@@ -517,7 +517,7 @@ func (a *FieldCond) uintProtoWithParse(field commonpb.AuditField, parse func(*Va
 }
 
 // uintConditionFromOp folds a comparison operator (==, >, >=, <, <=, between)
-// into a single commonpb.UintCondition, using parse to turn each literal operand
+// into a single ledgerpb.UintCondition, using parse to turn each literal operand
 // Value into a uint64. It is the shared range assembler for every textual uint
 // range field — the audit uint/datetime fields and the non-audit id/logId/date
 // fields (EN-1544) — so the operator-to-bound mapping lives in one place.
@@ -527,8 +527,8 @@ func (a *FieldCond) uintProtoWithParse(field commonpb.AuditField, parse func(*Va
 // a prepared query resolves it at execution (query.resolveUintBounds). Without
 // it, every operand goes through parse, whose closure rejects a $param with a
 // field-specific message: the audit fields have no parameter-resolution context.
-func uintConditionFromOp(op *MetadataOp, parse func(*Value) (uint64, error), allowParams bool) (*commonpb.UintCondition, error) {
-	uc := &commonpb.UintCondition{}
+func uintConditionFromOp(op *MetadataOp, parse func(*Value) (uint64, error), allowParams bool) (*ledgerpb.UintCondition, error) {
+	uc := &ledgerpb.UintCondition{}
 
 	setMin := func(v *Value, exclusive bool) error {
 		uc.MinExclusive = exclusive
@@ -663,7 +663,7 @@ func (a *FieldCond) stringToProto(field ledgerpb.AuditField) (*ledgerpb.QueryFil
 // continues with an Ident-continuation char (`-`, `:`, `.`, `/`) — e.g.
 // `metadata[date-range]` — because the keyword `\b` boundary matches before those
 // characters, breaking filters that parsed before.
-func (d *FieldCond) dateToProto() (*commonpb.QueryFilter, error) {
+func (d *FieldCond) dateToProto() (*ledgerpb.QueryFilter, error) {
 	uc, err := uintConditionFromOp(d.Op, coerceDatetimeValue, true)
 	if err != nil {
 		return nil, fmt.Errorf("%s field: %w", d.Field, err)
@@ -678,20 +678,20 @@ func (d *FieldCond) dateToProto() (*commonpb.QueryFilter, error) {
 			},
 		}}, nil
 	case "timestamp":
-		return txBuiltinQF(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP, uc), nil
+		return txBuiltinQF(ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP, uc), nil
 	case "insertedAt":
-		return txBuiltinQF(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_INSERTED_AT, uc), nil
+		return txBuiltinQF(ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_INSERTED_AT, uc), nil
 	case "revertedAt":
-		return txBuiltinQF(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REVERTED_AT, uc), nil
+		return txBuiltinQF(ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REVERTED_AT, uc), nil
 	default:
 		// Unreachable: intrinsicToProto only routes the date fields here.
 		return nil, fmt.Errorf("invariant: unhandled date field %q", d.Field)
 	}
 }
 
-func txBuiltinQF(field commonpb.TransactionBuiltinIndex, uc *commonpb.UintCondition) *commonpb.QueryFilter {
-	return &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_BuiltinUint{
-		BuiltinUint: &commonpb.BuiltinUintCondition{Field: field, Cond: uc},
+func txBuiltinQF(field ledgerpb.TransactionBuiltinIndex, uc *ledgerpb.UintCondition) *ledgerpb.QueryFilter {
+	return &ledgerpb.QueryFilter{Filter: &ledgerpb.QueryFilter_BuiltinUint{
+		BuiltinUint: &ledgerpb.BuiltinUintCondition{Field: field, Cond: uc},
 	}}
 }
 
@@ -701,7 +701,7 @@ func txBuiltinQF(field commonpb.TransactionBuiltinIndex, uc *commonpb.UintCondit
 // (logs) range filter. Ids are plain counters: the operand is a raw unsigned
 // integer, never an RFC3339 timestamp. Like the date fields, a bound may be a
 // $param, resolved when a prepared query executes.
-func (d *FieldCond) idToProto() (*commonpb.QueryFilter, error) {
+func (d *FieldCond) idToProto() (*ledgerpb.QueryFilter, error) {
 	parse := func(v *Value) (uint64, error) {
 		n, err := strconv.ParseUint(v.resolve(), 10, 64)
 		if err != nil {
@@ -718,10 +718,10 @@ func (d *FieldCond) idToProto() (*commonpb.QueryFilter, error) {
 
 	switch d.Field {
 	case "id":
-		return txBuiltinQF(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_ID, uc), nil
+		return txBuiltinQF(ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_ID, uc), nil
 	case "logId":
-		return &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_LogId{
-			LogId: &commonpb.LogIdCondition{Cond: uc},
+		return &ledgerpb.QueryFilter{Filter: &ledgerpb.QueryFilter_LogId{
+			LogId: &ledgerpb.LogIdCondition{Cond: uc},
 		}}, nil
 	default:
 		// Unreachable: intrinsicToProto only routes "id"/"logId" here.
@@ -735,10 +735,10 @@ func (d *FieldCond) idToProto() (*commonpb.QueryFilter, error) {
 // transaction filter into a ReferenceCondition (an `in` list desugars to an `or`
 // of equalities). The value may be a $param, honored at execution time like the
 // ledger condition.
-func (r *FieldCond) referenceToProto() (*commonpb.QueryFilter, error) {
-	mk := func(v *Value) *commonpb.QueryFilter {
-		return &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_Reference{
-			Reference: &commonpb.ReferenceCondition{Cond: stringCondition(v)},
+func (r *FieldCond) referenceToProto() (*ledgerpb.QueryFilter, error) {
+	mk := func(v *Value) *ledgerpb.QueryFilter {
+		return &ledgerpb.QueryFilter{Filter: &ledgerpb.QueryFilter_Reference{
+			Reference: &ledgerpb.ReferenceCondition{Cond: stringCondition(v)},
 		}}
 	}
 
@@ -746,7 +746,7 @@ func (r *FieldCond) referenceToProto() (*commonpb.QueryFilter, error) {
 	case r.Op.Eq != nil:
 		return mk(r.Op.Eq), nil
 	case len(r.Op.In) > 0:
-		filters := make([]*commonpb.QueryFilter, len(r.Op.In))
+		filters := make([]*ledgerpb.QueryFilter, len(r.Op.In))
 		for i, v := range r.Op.In {
 			filters[i] = mk(v)
 		}
@@ -761,7 +761,7 @@ func (r *FieldCond) referenceToProto() (*commonpb.QueryFilter, error) {
 // into a RevertedCondition. The operand must be a bare boolean literal; like the
 // structured `{"$match":{"reverted":…}}`, a $param is rejected (the condition
 // carries no parameter slot).
-func (r *FieldCond) revertedToProto() (*commonpb.QueryFilter, error) {
+func (r *FieldCond) revertedToProto() (*ledgerpb.QueryFilter, error) {
 	if r.Op.Eq == nil {
 		return nil, errors.New("reverted field supports == only")
 	}
@@ -774,8 +774,8 @@ func (r *FieldCond) revertedToProto() (*commonpb.QueryFilter, error) {
 		return nil, fmt.Errorf("reverted field requires true or false, got %q", r.Op.Eq.resolve())
 	}
 
-	return &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_Reverted{
-		Reverted: &commonpb.RevertedCondition{Value: r.Op.Eq.Bool == "true"},
+	return &ledgerpb.QueryFilter{Filter: &ledgerpb.QueryFilter_Reverted{
+		Reverted: &ledgerpb.RevertedCondition{Value: r.Op.Eq.Bool == "true"},
 	}}, nil
 }
 
@@ -923,21 +923,21 @@ func (l *FieldCond) ledgerToProto() (*ledgerpb.QueryFilter, error) {
 		return nil, errors.New("ledger field supports == only")
 	}
 
-	return &commonpb.QueryFilter{
-		Filter: &commonpb.QueryFilter_Ledger{
-			Ledger: &commonpb.LedgerCondition{Cond: stringCondition(l.Op.Eq)},
+	return &ledgerpb.QueryFilter{
+		Filter: &ledgerpb.QueryFilter_Ledger{
+			Ledger: &ledgerpb.LedgerCondition{Cond: stringCondition(l.Op.Eq)},
 		},
 	}, nil
 }
 
 // stringCondition builds the StringCondition of a string-valued intrinsic field:
 // a $param reference or the resolved hardcoded value.
-func stringCondition(v *Value) *commonpb.StringCondition {
+func stringCondition(v *Value) *ledgerpb.StringCondition {
 	if v.Param != "" {
-		return &commonpb.StringCondition{Value: &commonpb.StringCondition_Param{Param: v.Param}}
+		return &ledgerpb.StringCondition{Value: &ledgerpb.StringCondition_Param{Param: v.Param}}
 	}
 
-	return &commonpb.StringCondition{Value: &commonpb.StringCondition_Hardcoded{Hardcoded: v.resolve()}}
+	return &ledgerpb.StringCondition{Value: &ledgerpb.StringCondition_Hardcoded{Hardcoded: v.resolve()}}
 }
 
 // --- Address conditions ---

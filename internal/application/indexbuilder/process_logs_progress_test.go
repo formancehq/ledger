@@ -355,10 +355,10 @@ func TestProcessLogsWaitsWhenAuditStartsRebuilding(t *testing.T) {
 			horizon      = uint64(32)
 		)
 		batch := b.pebbleStore.OpenWriteSession()
-		require.NoError(t, state.AppendLogs(batch, []*commonpb.Log{{
+		require.NoError(t, state.AppendLogs(batch, []*ledgerpb.Log{{
 			Sequence: 1,
-			Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_CreatedQueryCheckpoint{
-				CreatedQueryCheckpoint: &commonpb.CreatedQueryCheckpointLog{
+			Payload: &ledgerpb.LogPayload{Type: &ledgerpb.LogPayload_CreatedQueryCheckpoint{
+				CreatedQueryCheckpoint: &ledgerpb.CreatedQueryCheckpointLog{
 					CheckpointId: checkpointID,
 					MaxSequence:  1,
 					AppliedIndex: horizon,

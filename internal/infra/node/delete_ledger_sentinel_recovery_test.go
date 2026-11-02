@@ -52,7 +52,7 @@ func TestDeleteLedgerSentinelRecovery(t *testing.T) {
 				require.NoError(t, initial.UnmarshalVT(createDeleted.GetData()))
 				initial.Orders = append([]*raftcmdpb.Order{{Type: &raftcmdpb.Order_SystemScoped{
 					SystemScoped: &raftcmdpb.SystemScopedOrder{Payload: &raftcmdpb.SystemScopedOrder_SetClusterPolicy{
-						SetClusterPolicy: &raftcmdpb.SetClusterPolicyOrder{Policy: &commonpb.ClusterPolicy{
+						SetClusterPolicy: &raftcmdpb.SetClusterPolicyOrder{Policy: &ledgerpb.ClusterPolicy{
 							Revision: 1, QueryCheckpointLimit: 10,
 							MetadataMaxEntriesPerEntity: domain.DefaultMetadataMaxEntriesPerEntity,
 							MetadataMaxKeyBytes:         domain.DefaultMetadataMaxKeyBytes,
@@ -133,8 +133,8 @@ func TestDeleteLedgerSentinelRecovery(t *testing.T) {
 					if account == "world" {
 						input, output = output, input
 					}
-					require.True(t, proto.Equal(commonpb.NewUint256FromUint64(input), volume.GetInput()))
-					require.True(t, proto.Equal(commonpb.NewUint256FromUint64(output), volume.GetOutput()))
+					require.True(t, proto.Equal(ledgerpb.NewUint256FromUint64(input), volume.GetInput()))
+					require.True(t, proto.Equal(ledgerpb.NewUint256FromUint64(output), volume.GetOutput()))
 				}
 			})
 		})

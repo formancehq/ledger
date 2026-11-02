@@ -913,7 +913,7 @@ func TestDescendingParity_CursorBoundaries(t *testing.T) {
 		iter, err := query.CompileReverse(filter, query.CompileOptions{
 			IndexReader:     reader,
 			KeyBuilder:      dal.NewKeyBuilder(),
-			Target:          commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
+			Target:          ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
 			LedgerName:      parityLedger,
 			Schema:          paritySchema(),
 			LedgerInfo:      parityInfo(),
@@ -962,7 +962,7 @@ func TestDescendingParity_NoFullMaterialization(t *testing.T) {
 		iter, err := query.CompileReverse(filter, query.CompileOptions{
 			IndexReader:     reader,
 			KeyBuilder:      dal.NewKeyBuilder(),
-			Target:          commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
+			Target:          ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
 			LedgerName:      parityLedger,
 			Schema:          paritySchema(),
 			LedgerInfo:      parityInfo(),
@@ -996,7 +996,7 @@ func TestDescendingParity_NoFullMaterialization(t *testing.T) {
 	ascIter, err := query.Compile(uintRangeFieldFilter("size", 1, 2), query.CompileOptions{
 		IndexReader:     reader,
 		KeyBuilder:      dal.NewKeyBuilder(),
-		Target:          commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
+		Target:          ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
 		LedgerName:      parityLedger,
 		Schema:          paritySchema(),
 		LedgerInfo:      parityInfo(),

@@ -84,7 +84,7 @@ type metadataCtx struct {
 
 // Compile translates a QueryFilter proto into an EntityIterator tree using the
 // borrowed inputs in options. A non-nil Profile tracks the iterator tree.
-func Compile(filter *commonpb.QueryFilter, options CompileOptions) (readstore.EntityIterator, error) {
+func Compile(filter *ledgerpb.QueryFilter, options CompileOptions) (readstore.EntityIterator, error) {
 	// Reject unsupported targets before constructing or reading any iterator.
 	if !isSupportedTarget(options.Target) {
 		return nil, domain.NewFilterCompilationError("unsupported query target %v", options.Target)

@@ -293,15 +293,15 @@ func TestDecodeDualFormat_AuditBothForms(t *testing.T) {
 
 	fromText, err := DecodeDualFormat([]byte(`outcome == failure`), ledgerpb.QueryTarget_QUERY_TARGET_AUDIT)
 	require.NoError(t, err, "textual audit filter must decode")
-	require.IsType(t, &commonpb.QueryFilter_Audit{}, fromText.GetFilter())
+	require.IsType(t, &ledgerpb.QueryFilter_Audit{}, fromText.GetFilter())
 
-	fromJSON, err := DecodeDualFormat([]byte(`{"$match":{"outcome":"failure"}}`), commonpb.QueryTarget_QUERY_TARGET_AUDIT)
+	fromJSON, err := DecodeDualFormat([]byte(`{"$match":{"outcome":"failure"}}`), ledgerpb.QueryTarget_QUERY_TARGET_AUDIT)
 	require.NoError(t, err, "structured audit filter must decode")
 	require.True(t, proto.Equal(fromText, fromJSON))
 
 	// The audit names only resolve on the audit target: off it, the same JSON is
 	// an unknown field, exactly like the textual form.
-	_, err = DecodeDualFormat([]byte(`{"$match":{"outcome":"failure"}}`), commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS)
+	_, err = DecodeDualFormat([]byte(`{"$match":{"outcome":"failure"}}`), ledgerpb.QueryTarget_QUERY_TARGET_TRANSACTIONS)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "unsupported field")
 }

@@ -362,15 +362,15 @@ func ValidateFilterLeaf(f *ledgerpb.QueryFilter) SerializableError {
 //     reverted transaction);
 //   - a parameter name, including an empty one, that the textual grammar
 //     cannot read back as a single `$name` reference
-//     (commonpb.IsTextualFilterParamName), which would export to text that
+//     (ledgerpb.IsTextualFilterParamName), which would export to text that
 //     re-parses as different conditions.
 //
 // The walk is bounded by MaxFilterDepth like ValidateFilterForTarget.
-func ValidateFilterAdmissionShape(f *commonpb.QueryFilter) SerializableError {
+func ValidateFilterAdmissionShape(f *ledgerpb.QueryFilter) SerializableError {
 	return validateFilterAdmissionShape(f, 0)
 }
 
-func validateFilterAdmissionShape(f *commonpb.QueryFilter, depth int) SerializableError {
+func validateFilterAdmissionShape(f *ledgerpb.QueryFilter, depth int) SerializableError {
 	if f == nil {
 		return nil
 	}
@@ -380,28 +380,28 @@ func validateFilterAdmissionShape(f *commonpb.QueryFilter, depth int) Serializab
 	}
 
 	switch v := f.GetFilter().(type) {
-	case *commonpb.QueryFilter_And:
+	case *ledgerpb.QueryFilter_And:
 		for _, sub := range v.And.GetFilters() {
 			if err := validateFilterAdmissionShape(sub, depth+1); err != nil {
 				return err
 			}
 		}
-	case *commonpb.QueryFilter_Or:
+	case *ledgerpb.QueryFilter_Or:
 		for _, sub := range v.Or.GetFilters() {
 			if err := validateFilterAdmissionShape(sub, depth+1); err != nil {
 				return err
 			}
 		}
-	case *commonpb.QueryFilter_Not:
+	case *ledgerpb.QueryFilter_Not:
 		return validateFilterAdmissionShape(v.Not.GetFilter(), depth+1)
-	case *commonpb.QueryFilter_LogId:
+	case *ledgerpb.QueryFilter_LogId:
 		if v.LogId.GetCond() == nil {
 			return filterShapeError("logId condition has no value")
 		}
 	}
 
-	for _, name := range commonpb.FilterLeafParamNames(f) {
-		if !commonpb.IsTextualFilterParamName(name) {
+	for _, name := range ledgerpb.FilterLeafParamNames(f) {
+		if !ledgerpb.IsTextualFilterParamName(name) {
 			return filterShapeError(fmt.Sprintf("parameter name %q must be an identifier ([a-zA-Z_][a-zA-Z0-9_]*) and not a filter keyword", name))
 		}
 	}
@@ -409,7 +409,7 @@ func validateFilterAdmissionShape(f *commonpb.QueryFilter, depth int) Serializab
 	return nil
 }
 
-func validateFieldConditionShape(fc *commonpb.FieldCondition) SerializableError {
+func validateFieldConditionShape(fc *ledgerpb.FieldCondition) SerializableError {
 	if fc.GetField() == nil {
 		return filterShapeError("field condition has no field reference")
 	}
@@ -487,7 +487,7 @@ func ValidateAccountAddress(address string) SerializableError {
 // ValidateAccountMetadataAddresses selects the lexicographically smallest
 // invalid address. The selected typed failure is audit-bound during apply and
 // must be independent of Go map iteration, including when the address is empty.
-func ValidateAccountMetadataAddresses(metadata map[string]*commonpb.MetadataMap) SerializableError {
+func ValidateAccountMetadataAddresses(metadata map[string]*ledgerpb.MetadataMap) SerializableError {
 	var selected string
 	var selectedErr SerializableError
 	for address := range metadata {

@@ -54,11 +54,11 @@ func formatFilter(f *ledgerpb.QueryFilter) (string, int) {
 		return formatBuiltinUintCondition(v.BuiltinUint)
 	case *ledgerpb.QueryFilter_LogBuiltinUint:
 		return formatLogBuiltinUintCondition(v.LogBuiltinUint)
-	case *commonpb.QueryFilter_LogId:
+	case *ledgerpb.QueryFilter_LogId:
 		return formatUintRange("logId", v.LogId.GetCond(), renderRawUint)
-	case *commonpb.QueryFilter_Reference:
+	case *ledgerpb.QueryFilter_Reference:
 		return "reference == " + formatStringCondValue(v.Reference.GetCond()), precLeaf
-	case *commonpb.QueryFilter_Reverted:
+	case *ledgerpb.QueryFilter_Reverted:
 		return fmt.Sprintf("reverted == %t", v.Reverted.GetValue()), precLeaf
 	default:
 		return "<unknown filter>", precLeaf
@@ -69,15 +69,15 @@ func formatFilter(f *ledgerpb.QueryFilter) (string, int) {
 // `field OP value`, the inverse of the parser's bare intrinsic fields: `id`
 // bounds render as raw uints, the date fields (`timestamp`, `insertedAt`,
 // `revertedAt`) as quoted RFC3339 (EN-1544).
-func formatBuiltinUintCondition(bc *commonpb.BuiltinUintCondition) (string, int) {
+func formatBuiltinUintCondition(bc *ledgerpb.BuiltinUintCondition) (string, int) {
 	switch bc.GetField() {
-	case commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_ID:
+	case ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_ID:
 		return formatUintRange("id", bc.GetCond(), renderRawUint)
-	case commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP:
+	case ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP:
 		return formatUintRange("timestamp", bc.GetCond(), renderDatetimeBound)
-	case commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_INSERTED_AT:
+	case ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_INSERTED_AT:
 		return formatUintRange("insertedAt", bc.GetCond(), renderDatetimeBound)
-	case commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REVERTED_AT:
+	case ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REVERTED_AT:
 		return formatUintRange("revertedAt", bc.GetCond(), renderDatetimeBound)
 	default:
 		return "<unknown builtin field>", precLeaf
@@ -88,7 +88,7 @@ func formatBuiltinUintCondition(bc *commonpb.BuiltinUintCondition) (string, int)
 // the textual grammar reads back is `date` (quoted RFC3339 output).
 func formatLogBuiltinUintCondition(lc *ledgerpb.LogBuiltinUintCondition) (string, int) {
 	switch lc.GetField() {
-	case commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE:
+	case ledgerpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE:
 		return formatUintRange("date", lc.GetCond(), renderDatetimeBound)
 	default:
 		return "<unknown log field>", precLeaf
@@ -107,7 +107,7 @@ func formatLogBuiltinUintCondition(lc *ledgerpb.LogBuiltinUintCondition) (string
 // back into the same single condition (see foldClosedRangeAnd), so the
 // exclusivity survives the round-trip instead of being silently widened. The
 // field names are bare, disambiguated only by the re-parse target (EN-1549).
-func formatUintRange(field string, uc *commonpb.UintCondition, render func(uint64) string) (string, int) {
+func formatUintRange(field string, uc *ledgerpb.UintCondition, render func(uint64) string) (string, int) {
 	// A nil condition can only come from data persisted before admission
 	// refused it (domain.ValidateFilterAdmissionShape). Render the same
 	// unparseable placeholder as an unbounded range so export/apply fails
@@ -161,7 +161,7 @@ func formatUintRange(field string, uc *commonpb.UintCondition, render func(uint6
 // rejects: export/apply then fails loudly rather than re-creating a filter
 // whose name was spliced into extra conditions.
 func renderParam(name string) string {
-	if commonpb.IsTextualFilterParamName(name) {
+	if ledgerpb.IsTextualFilterParamName(name) {
 		return "$" + name
 	}
 
@@ -228,8 +228,8 @@ func upperOp(exclusive bool) string {
 // only unambiguous when re-parsed on the audit target — `ledger`/`timestamp`
 // collide with the transaction/log arms otherwise — which is exactly the contract
 // (an audit filter is always re-parsed with QUERY_TARGET_AUDIT).
-func formatAuditCondition(ac *commonpb.AuditCondition) (string, int) {
-	key, ok := commonpb.AuditFieldName(ac.GetField())
+func formatAuditCondition(ac *ledgerpb.AuditCondition) (string, int) {
+	key, ok := ledgerpb.AuditFieldName(ac.GetField())
 	if !ok {
 		return "<unknown audit field>", precLeaf
 	}
@@ -237,16 +237,16 @@ func formatAuditCondition(ac *commonpb.AuditCondition) (string, int) {
 	switch cond := ac.GetCondition().(type) {
 	case *ledgerpb.AuditCondition_StringCond:
 		return fmt.Sprintf("%s == %s", key, formatStringCondValue(cond.StringCond)), precLeaf
-	case *commonpb.AuditCondition_UintCond:
+	case *ledgerpb.AuditCondition_UintCond:
 		// The timestamp field is a datetime: its bounds render as quoted RFC3339
 		// so the output round-trips through the datetime-aware parser.
 		render := renderRawUint
-		if ac.GetField() == commonpb.AuditField_AUDIT_FIELD_TIMESTAMP {
+		if ac.GetField() == ledgerpb.AuditField_AUDIT_FIELD_TIMESTAMP {
 			render = renderDatetimeBound
 		}
 
 		return formatUintRange(key, cond.UintCond, render)
-	case *commonpb.AuditCondition_StringPrefix:
+	case *ledgerpb.AuditCondition_StringPrefix:
 		return fmt.Sprintf("%s ^= %s", key, quoteIfNeeded(cond.StringPrefix)), precLeaf
 	default:
 		return key + " <unknown>", precLeaf
@@ -345,9 +345,9 @@ func formatFieldCondition(fc *ledgerpb.FieldCondition) string {
 
 func formatStringCondValue(sc *ledgerpb.StringCondition) string {
 	switch v := sc.GetValue().(type) {
-	case *commonpb.StringCondition_Param:
+	case *ledgerpb.StringCondition_Param:
 		return renderParam(v.Param)
-	case *commonpb.StringCondition_Hardcoded:
+	case *ledgerpb.StringCondition_Hardcoded:
 		return quoteIfNeeded(v.Hardcoded)
 	default:
 		return `""`
@@ -356,9 +356,9 @@ func formatStringCondValue(sc *ledgerpb.StringCondition) string {
 
 func formatBoolCondValue(bc *ledgerpb.BoolCondition) string {
 	switch v := bc.GetValue().(type) {
-	case *commonpb.BoolCondition_Param:
+	case *ledgerpb.BoolCondition_Param:
 		return renderParam(v.Param)
-	case *commonpb.BoolCondition_Hardcoded:
+	case *ledgerpb.BoolCondition_Hardcoded:
 		if v.Hardcoded {
 			return "true"
 		}
@@ -558,9 +558,9 @@ func formatAddressMatch(am *ledgerpb.AddressMatch) string {
 		return fmt.Sprintf("%s == %s", keyword, quoteIfNeeded(v.HardcodedExact))
 	case *ledgerpb.AddressMatch_HardcodedPrefix:
 		return fmt.Sprintf("%s ^= %s", keyword, quoteIfNeeded(v.HardcodedPrefix))
-	case *commonpb.AddressMatch_ParamExact:
+	case *ledgerpb.AddressMatch_ParamExact:
 		return fmt.Sprintf("%s == %s", keyword, renderParam(v.ParamExact))
-	case *commonpb.AddressMatch_ParamPrefix:
+	case *ledgerpb.AddressMatch_ParamPrefix:
 		return fmt.Sprintf("%s ^= %s", keyword, renderParam(v.ParamPrefix))
 	default:
 		return keyword + " <unknown>"

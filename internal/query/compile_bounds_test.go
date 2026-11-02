@@ -93,7 +93,7 @@ func TestCompile_NotOverDegenerateRange_YieldsUniverse(t *testing.T) {
 	iter, err := Compile(filter, CompileOptions{
 		IndexReader: reader,
 		KeyBuilder:  dal.NewKeyBuilder(),
-		Target:      commonpb.QueryTarget_QUERY_TARGET_LOGS,
+		Target:      ledgerpb.QueryTarget_QUERY_TARGET_LOGS,
 		LedgerName:  ledgerName,
 		LedgerInfo:  info,
 		MainReader:  reader,

@@ -20,42 +20,6 @@ func (e *UnknownRPCMethodError) Error() string {
 // Unknown methods fail closed with UnknownRPCMethodError.
 func RPCAuthPolicyForMethod(fullMethod string) (*MethodAuthPolicy, error) {
 	switch fullMethod {
-	case "/cluster.ClusterService/GetClusterState":
-		return &MethodAuthPolicy{Policy: &MethodAuthPolicy_FixedScope{FixedScope: AuthScope_AUTH_SCOPE_CLUSTER_READ}}, nil
-	case "/cluster.ClusterService/BeginDrain":
-		return &MethodAuthPolicy{Policy: &MethodAuthPolicy_FixedScope{FixedScope: AuthScope_AUTH_SCOPE_CLUSTER_WRITE}}, nil
-	case "/cluster.ClusterService/EndDrain":
-		return &MethodAuthPolicy{Policy: &MethodAuthPolicy_FixedScope{FixedScope: AuthScope_AUTH_SCOPE_CLUSTER_WRITE}}, nil
-	case "/cluster.ClusterService/GetDrainStatus":
-		return &MethodAuthPolicy{Policy: &MethodAuthPolicy_FixedScope{FixedScope: AuthScope_AUTH_SCOPE_CLUSTER_READ}}, nil
-	case "/cluster.ClusterService/GetDiskUsage":
-		return &MethodAuthPolicy{Policy: &MethodAuthPolicy_FixedScope{FixedScope: AuthScope_AUTH_SCOPE_CLUSTER_READ}}, nil
-	case "/cluster.ClusterService/GetNodeTime":
-		return &MethodAuthPolicy{Policy: &MethodAuthPolicy_FixedScope{FixedScope: AuthScope_AUTH_SCOPE_CLUSTER_READ}}, nil
-	case "/cluster.ClusterService/TransferLeadership":
-		return &MethodAuthPolicy{Policy: &MethodAuthPolicy_FixedScope{FixedScope: AuthScope_AUTH_SCOPE_CLUSTER_WRITE}}, nil
-	case "/cluster.ClusterService/AddLearner":
-		return &MethodAuthPolicy{Policy: &MethodAuthPolicy_FixedScope{FixedScope: AuthScope_AUTH_SCOPE_CLUSTER_WRITE}}, nil
-	case "/cluster.ClusterService/PromoteLearner":
-		return &MethodAuthPolicy{Policy: &MethodAuthPolicy_FixedScope{FixedScope: AuthScope_AUTH_SCOPE_CLUSTER_WRITE}}, nil
-	case "/cluster.ClusterService/RemoveNode":
-		return &MethodAuthPolicy{Policy: &MethodAuthPolicy_FixedScope{FixedScope: AuthScope_AUTH_SCOPE_CLUSTER_WRITE}}, nil
-	case "/cluster.ClusterService/CompactPrimary":
-		return &MethodAuthPolicy{Policy: &MethodAuthPolicy_FixedScope{FixedScope: AuthScope_AUTH_SCOPE_CLUSTER_WRITE}}, nil
-	case "/cluster.ClusterService/CompactSecondary":
-		return &MethodAuthPolicy{Policy: &MethodAuthPolicy_FixedScope{FixedScope: AuthScope_AUTH_SCOPE_CLUSTER_WRITE}}, nil
-	case "/cluster.ClusterService/CreateCheckpoint":
-		return &MethodAuthPolicy{Policy: &MethodAuthPolicy_FixedScope{FixedScope: AuthScope_AUTH_SCOPE_CLUSTER_WRITE}}, nil
-	case "/cluster.ClusterService/Backup":
-		return &MethodAuthPolicy{Policy: &MethodAuthPolicy_FixedScope{FixedScope: AuthScope_AUTH_SCOPE_CLUSTER_WRITE}}, nil
-	case "/cluster.ClusterService/IncrementalBackup":
-		return &MethodAuthPolicy{Policy: &MethodAuthPolicy_FixedScope{FixedScope: AuthScope_AUTH_SCOPE_CLUSTER_WRITE}}, nil
-	case "/cluster.ClusterService/ListQueryCheckpoints":
-		return &MethodAuthPolicy{Policy: &MethodAuthPolicy_FixedScope{FixedScope: AuthScope_AUTH_SCOPE_CLUSTER_READ}}, nil
-	case "/cluster.ClusterService/GetQueryCheckpointInfo":
-		return &MethodAuthPolicy{Policy: &MethodAuthPolicy_FixedScope{FixedScope: AuthScope_AUTH_SCOPE_CLUSTER_READ}}, nil
-	case "/cluster.ClusterService/GetQueryCheckpointSchedule":
-		return &MethodAuthPolicy{Policy: &MethodAuthPolicy_FixedScope{FixedScope: AuthScope_AUTH_SCOPE_CLUSTER_READ}}, nil
 	case "/ledger.BucketService/ListLedgers":
 		return &MethodAuthPolicy{Policy: &MethodAuthPolicy_FixedScope{FixedScope: AuthScope_AUTH_SCOPE_LEDGER_READ}}, nil
 	case "/ledger.BucketService/GetLedger":
@@ -128,6 +92,12 @@ func RPCAuthPolicyForMethod(fullMethod string) (*MethodAuthPolicy, error) {
 		return &MethodAuthPolicy{Policy: &MethodAuthPolicy_FixedScope{FixedScope: AuthScope_AUTH_SCOPE_OPS_READ}}, nil
 	case "/cluster.ClusterService/GetClusterState":
 		return &MethodAuthPolicy{Policy: &MethodAuthPolicy_FixedScope{FixedScope: AuthScope_AUTH_SCOPE_CLUSTER_READ}}, nil
+	case "/cluster.ClusterService/BeginDrain":
+		return &MethodAuthPolicy{Policy: &MethodAuthPolicy_FixedScope{FixedScope: AuthScope_AUTH_SCOPE_CLUSTER_WRITE}}, nil
+	case "/cluster.ClusterService/EndDrain":
+		return &MethodAuthPolicy{Policy: &MethodAuthPolicy_FixedScope{FixedScope: AuthScope_AUTH_SCOPE_CLUSTER_WRITE}}, nil
+	case "/cluster.ClusterService/GetDrainStatus":
+		return &MethodAuthPolicy{Policy: &MethodAuthPolicy_FixedScope{FixedScope: AuthScope_AUTH_SCOPE_CLUSTER_READ}}, nil
 	case "/cluster.ClusterService/GetDiskUsage":
 		return &MethodAuthPolicy{Policy: &MethodAuthPolicy_FixedScope{FixedScope: AuthScope_AUTH_SCOPE_CLUSTER_READ}}, nil
 	case "/cluster.ClusterService/GetNodeTime":
@@ -164,24 +134,6 @@ func RPCAuthPolicyForMethod(fullMethod string) (*MethodAuthPolicy, error) {
 // AllRPCAuthPolicies returns every generated method policy keyed by full method name.
 func AllRPCAuthPolicies() map[string]*MethodAuthPolicy {
 	return map[string]*MethodAuthPolicy{
-		"/cluster.ClusterService/GetClusterState":            &MethodAuthPolicy{Policy: &MethodAuthPolicy_FixedScope{FixedScope: AuthScope_AUTH_SCOPE_CLUSTER_READ}},
-		"/cluster.ClusterService/BeginDrain":                 &MethodAuthPolicy{Policy: &MethodAuthPolicy_FixedScope{FixedScope: AuthScope_AUTH_SCOPE_CLUSTER_WRITE}},
-		"/cluster.ClusterService/EndDrain":                   &MethodAuthPolicy{Policy: &MethodAuthPolicy_FixedScope{FixedScope: AuthScope_AUTH_SCOPE_CLUSTER_WRITE}},
-		"/cluster.ClusterService/GetDrainStatus":             &MethodAuthPolicy{Policy: &MethodAuthPolicy_FixedScope{FixedScope: AuthScope_AUTH_SCOPE_CLUSTER_READ}},
-		"/cluster.ClusterService/GetDiskUsage":               &MethodAuthPolicy{Policy: &MethodAuthPolicy_FixedScope{FixedScope: AuthScope_AUTH_SCOPE_CLUSTER_READ}},
-		"/cluster.ClusterService/GetNodeTime":                &MethodAuthPolicy{Policy: &MethodAuthPolicy_FixedScope{FixedScope: AuthScope_AUTH_SCOPE_CLUSTER_READ}},
-		"/cluster.ClusterService/TransferLeadership":         &MethodAuthPolicy{Policy: &MethodAuthPolicy_FixedScope{FixedScope: AuthScope_AUTH_SCOPE_CLUSTER_WRITE}},
-		"/cluster.ClusterService/AddLearner":                 &MethodAuthPolicy{Policy: &MethodAuthPolicy_FixedScope{FixedScope: AuthScope_AUTH_SCOPE_CLUSTER_WRITE}},
-		"/cluster.ClusterService/PromoteLearner":             &MethodAuthPolicy{Policy: &MethodAuthPolicy_FixedScope{FixedScope: AuthScope_AUTH_SCOPE_CLUSTER_WRITE}},
-		"/cluster.ClusterService/RemoveNode":                 &MethodAuthPolicy{Policy: &MethodAuthPolicy_FixedScope{FixedScope: AuthScope_AUTH_SCOPE_CLUSTER_WRITE}},
-		"/cluster.ClusterService/CompactPrimary":             &MethodAuthPolicy{Policy: &MethodAuthPolicy_FixedScope{FixedScope: AuthScope_AUTH_SCOPE_CLUSTER_WRITE}},
-		"/cluster.ClusterService/CompactSecondary":           &MethodAuthPolicy{Policy: &MethodAuthPolicy_FixedScope{FixedScope: AuthScope_AUTH_SCOPE_CLUSTER_WRITE}},
-		"/cluster.ClusterService/CreateCheckpoint":           &MethodAuthPolicy{Policy: &MethodAuthPolicy_FixedScope{FixedScope: AuthScope_AUTH_SCOPE_CLUSTER_WRITE}},
-		"/cluster.ClusterService/Backup":                     &MethodAuthPolicy{Policy: &MethodAuthPolicy_FixedScope{FixedScope: AuthScope_AUTH_SCOPE_CLUSTER_WRITE}},
-		"/cluster.ClusterService/IncrementalBackup":          &MethodAuthPolicy{Policy: &MethodAuthPolicy_FixedScope{FixedScope: AuthScope_AUTH_SCOPE_CLUSTER_WRITE}},
-		"/cluster.ClusterService/ListQueryCheckpoints":       &MethodAuthPolicy{Policy: &MethodAuthPolicy_FixedScope{FixedScope: AuthScope_AUTH_SCOPE_CLUSTER_READ}},
-		"/cluster.ClusterService/GetQueryCheckpointInfo":     &MethodAuthPolicy{Policy: &MethodAuthPolicy_FixedScope{FixedScope: AuthScope_AUTH_SCOPE_CLUSTER_READ}},
-		"/cluster.ClusterService/GetQueryCheckpointSchedule": &MethodAuthPolicy{Policy: &MethodAuthPolicy_FixedScope{FixedScope: AuthScope_AUTH_SCOPE_CLUSTER_READ}},
 		"/ledger.BucketService/ListLedgers":                  &MethodAuthPolicy{Policy: &MethodAuthPolicy_FixedScope{FixedScope: AuthScope_AUTH_SCOPE_LEDGER_READ}},
 		"/ledger.BucketService/GetLedger":                    &MethodAuthPolicy{Policy: &MethodAuthPolicy_FixedScope{FixedScope: AuthScope_AUTH_SCOPE_LEDGER_READ}},
 		"/ledger.BucketService/GetAccount":                   &MethodAuthPolicy{Policy: &MethodAuthPolicy_FixedScope{FixedScope: AuthScope_AUTH_SCOPE_ACCOUNT_READ}},
@@ -218,6 +170,9 @@ func AllRPCAuthPolicies() map[string]*MethodAuthPolicy {
 		"/ledger.BucketService/InspectIndex":                 &MethodAuthPolicy{Policy: &MethodAuthPolicy_FixedScope{FixedScope: AuthScope_AUTH_SCOPE_LEDGER_READ}},
 		"/ledger.BucketService/Barrier":                      &MethodAuthPolicy{Policy: &MethodAuthPolicy_FixedScope{FixedScope: AuthScope_AUTH_SCOPE_OPS_READ}},
 		"/cluster.ClusterService/GetClusterState":            &MethodAuthPolicy{Policy: &MethodAuthPolicy_FixedScope{FixedScope: AuthScope_AUTH_SCOPE_CLUSTER_READ}},
+		"/cluster.ClusterService/BeginDrain":                 &MethodAuthPolicy{Policy: &MethodAuthPolicy_FixedScope{FixedScope: AuthScope_AUTH_SCOPE_CLUSTER_WRITE}},
+		"/cluster.ClusterService/EndDrain":                   &MethodAuthPolicy{Policy: &MethodAuthPolicy_FixedScope{FixedScope: AuthScope_AUTH_SCOPE_CLUSTER_WRITE}},
+		"/cluster.ClusterService/GetDrainStatus":             &MethodAuthPolicy{Policy: &MethodAuthPolicy_FixedScope{FixedScope: AuthScope_AUTH_SCOPE_CLUSTER_READ}},
 		"/cluster.ClusterService/GetDiskUsage":               &MethodAuthPolicy{Policy: &MethodAuthPolicy_FixedScope{FixedScope: AuthScope_AUTH_SCOPE_CLUSTER_READ}},
 		"/cluster.ClusterService/GetNodeTime":                &MethodAuthPolicy{Policy: &MethodAuthPolicy_FixedScope{FixedScope: AuthScope_AUTH_SCOPE_CLUSTER_READ}},
 		"/cluster.ClusterService/TransferLeadership":         &MethodAuthPolicy{Policy: &MethodAuthPolicy_FixedScope{FixedScope: AuthScope_AUTH_SCOPE_CLUSTER_WRITE}},

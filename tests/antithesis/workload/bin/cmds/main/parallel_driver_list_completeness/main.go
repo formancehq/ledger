@@ -134,7 +134,7 @@ func assertListCompleteness(ctx context.Context, client servicepb.BucketServiceC
 		}
 		stream, err := client.ListTransactions(ctx, &servicepb.ListTransactionsRequest{
 			Ledger: ledger,
-			Options: &commonpb.ListOptions{
+			Options: &ledgerpb.ListOptions{
 				PageSize: pageSize,
 				Cursor:   cursor,
 				Reverse:  true, // oldest-first, so IDs must increase across pages

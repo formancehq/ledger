@@ -32,7 +32,7 @@ import (
 // an independent oracle. The independent half is the round trip through
 // state.IdempotencyValueFromAudit — the same derivation
 // check.expectedIdempotencyOutcome builds its expectation with — which crosses
-// the auditpb.AuditFailure to commonpb.IdempotencyFailure field mapping
+// the auditpb.AuditFailure to ledgerpb.IdempotencyFailure field mapping
 // (including code and facts) that describeFailure does not cover.
 func TestIdempotencyFailureFactsMatchAudit(t *testing.T) {
 	t.Parallel()

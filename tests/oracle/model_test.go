@@ -1087,17 +1087,17 @@ func TestGlobalState_MalformedPreparedQueryRefusedAtAdmission(t *testing.T) {
 func TestPreparedQueryAdmissionReasonMirrorsAdmissionShapeGate(t *testing.T) {
 	t.Parallel()
 
-	emptyParam := &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_Reference{Reference: &commonpb.ReferenceCondition{
-		Cond: &commonpb.StringCondition{Value: &commonpb.StringCondition_Param{Param: ""}},
+	emptyParam := &ledgerpb.QueryFilter{Filter: &ledgerpb.QueryFilter_Reference{Reference: &ledgerpb.ReferenceCondition{
+		Cond: &ledgerpb.StringCondition{Value: &ledgerpb.StringCondition_Param{Param: ""}},
 	}}}
-	nilLogID := &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_LogId{LogId: &commonpb.LogIdCondition{}}}
+	nilLogID := &ledgerpb.QueryFilter{Filter: &ledgerpb.QueryFilter_LogId{LogId: &ledgerpb.LogIdCondition{}}}
 
 	cases := map[string]struct {
-		filter *commonpb.QueryFilter
-		target commonpb.QueryTarget
+		filter *ledgerpb.QueryFilter
+		target ledgerpb.QueryTarget
 	}{
-		"empty param": {emptyParam, commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS},
-		"nil logId":   {nilLogID, commonpb.QueryTarget_QUERY_TARGET_LOGS},
+		"empty param": {emptyParam, ledgerpb.QueryTarget_QUERY_TARGET_TRANSACTIONS},
+		"nil logId":   {nilLogID, ledgerpb.QueryTarget_QUERY_TARGET_LOGS},
 	}
 
 	for name, tc := range cases {
@@ -1106,7 +1106,7 @@ func TestPreparedQueryAdmissionReasonMirrorsAdmissionShapeGate(t *testing.T) {
 
 		require.Equal(t, want.Reason(), preparedQueryAdmissionReason(pqReq("q", tc.target, tc.filter)), "create %s", name)
 		require.Equal(t, want.Reason(), preparedQueryAdmissionReason(pqUpdateReq("q", tc.filter)), "update %s", name)
-		require.Empty(t, preparedQueryPayloadReason(&commonpb.PreparedQuery{Name: "q", Target: tc.target, Filter: tc.filter}),
+		require.Empty(t, preparedQueryPayloadReason(&ledgerpb.PreparedQuery{Name: "q", Target: tc.target, Filter: tc.filter}),
 			"the FSM mirror must not refuse %s", name)
 	}
 }

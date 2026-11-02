@@ -13,6 +13,7 @@ require (
 	github.com/antithesishq/antithesis-sdk-go v0.8.0-default-no-op
 	github.com/formancehq/go-libs/v5 v5.10.0
 	github.com/formancehq/invariants v0.11.0
+	github.com/formancehq/ledger/pkg/proto/v3 v3.0.0
 	github.com/formancehq/ledger/v3 v3.0.0-00010101000000-000000000000
 	github.com/holiman/uint256 v1.3.2
 	github.com/stretchr/testify v1.12.1

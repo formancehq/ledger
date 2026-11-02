@@ -89,33 +89,33 @@ func TestConfigPreparedQueryFilterExportReapplies(t *testing.T) {
 	t.Parallel()
 
 	jsonFilters := map[string]struct {
-		target commonpb.QueryTarget
+		target ledgerpb.QueryTarget
 		json   string
 	}{
-		"by-ref":      {commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS, `{"$match":{"reference":{"$param":"ref"}}}`},
-		"reverted":    {commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS, `{"$match":{"reverted":true}}`},
-		"id-window":   {commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS, `{"$and":[{"$gt":{"id":10}},{"$lt":{"id":20}}]}`},
-		"inserted":    {commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS, `{"$gte":{"insertedAt":"2023-11-14T22:13:20Z"}}`},
-		"recent-logs": {commonpb.QueryTarget_QUERY_TARGET_LOGS, `{"$match":{"logId":7}}`},
+		"by-ref":      {ledgerpb.QueryTarget_QUERY_TARGET_TRANSACTIONS, `{"$match":{"reference":{"$param":"ref"}}}`},
+		"reverted":    {ledgerpb.QueryTarget_QUERY_TARGET_TRANSACTIONS, `{"$match":{"reverted":true}}`},
+		"id-window":   {ledgerpb.QueryTarget_QUERY_TARGET_TRANSACTIONS, `{"$and":[{"$gt":{"id":10}},{"$lt":{"id":20}}]}`},
+		"inserted":    {ledgerpb.QueryTarget_QUERY_TARGET_TRANSACTIONS, `{"$gte":{"insertedAt":"2023-11-14T22:13:20Z"}}`},
+		"recent-logs": {ledgerpb.QueryTarget_QUERY_TARGET_LOGS, `{"$match":{"logId":7}}`},
 		// Parameterized range bounds must survive export: a param-only bound
 		// used to export as "id <uint?>", and the param side of a mixed range
 		// was dropped, silently widening the re-applied query.
-		"id-param":       {commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS, `{"$match":{"id":{"$param":"n"}}}`},
-		"id-mixed":       {commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS, `{"$and":[{"$gte":{"id":3}},{"$lt":{"id":{"$param":"hi"}}}]}`},
-		"since-param":    {commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS, `{"$gte":{"timestamp":{"$param":"since"}}}`},
-		"logs-from-date": {commonpb.QueryTarget_QUERY_TARGET_LOGS, `{"$gte":{"date":{"$param":"from"}}}`},
+		"id-param":       {ledgerpb.QueryTarget_QUERY_TARGET_TRANSACTIONS, `{"$match":{"id":{"$param":"n"}}}`},
+		"id-mixed":       {ledgerpb.QueryTarget_QUERY_TARGET_TRANSACTIONS, `{"$and":[{"$gte":{"id":3}},{"$lt":{"id":{"$param":"hi"}}}]}`},
+		"since-param":    {ledgerpb.QueryTarget_QUERY_TARGET_TRANSACTIONS, `{"$gte":{"timestamp":{"$param":"since"}}}`},
+		"logs-from-date": {ledgerpb.QueryTarget_QUERY_TARGET_LOGS, `{"$gte":{"date":{"$param":"from"}}}`},
 	}
 
-	var queries []*commonpb.PreparedQuery
-	want := map[string]*commonpb.QueryFilter{}
+	var queries []*ledgerpb.PreparedQuery
+	want := map[string]*ledgerpb.QueryFilter{}
 	for name, tc := range jsonFilters {
-		filter, err := commonpb.DecodeQueryFilterJSON([]byte(tc.json), tc.target)
+		filter, err := ledgerpb.DecodeQueryFilterJSON([]byte(tc.json), tc.target)
 		require.NoError(t, err, name)
-		queries = append(queries, &commonpb.PreparedQuery{Name: name, Target: tc.target, Filter: filter})
+		queries = append(queries, &ledgerpb.PreparedQuery{Name: name, Target: tc.target, Filter: filter})
 		want[name] = filter
 	}
 
-	exported := ConfigFromProto(&commonpb.LedgerInfo{Name: "l"}, nil, queries, nil)
+	exported := ConfigFromProto(&ledgerpb.LedgerInfo{Name: "l"}, nil, queries, nil)
 
 	actions, err := diffPreparedQueries("l", &EditableConfig{}, exported)
 	require.NoError(t, err)

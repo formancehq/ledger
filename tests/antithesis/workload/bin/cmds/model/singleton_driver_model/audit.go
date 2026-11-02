@@ -1024,7 +1024,7 @@ func (c *Checker) noteAuditSamples(src *generation.Source, entries []auditEntry)
 // genAuditFilter rolls a ListAuditEntries filter: nothing, one leaf on any of
 // the eight audit fields, an And or Or of leaves, or one of the two shapes the
 // audit grammar refuses. Acquires c.mu.
-func (c *Checker) genAuditFilter(src *generation.Source) (*commonpb.QueryFilter, auditProbe) {
+func (c *Checker) genAuditFilter(src *generation.Source) (*ledgerpb.QueryFilter, auditProbe) {
 	c.mu.Lock()
 	var sample auditSample
 	if len(c.auditSamples) > 0 {
@@ -1036,8 +1036,8 @@ func (c *Checker) genAuditFilter(src *generation.Source) (*commonpb.QueryFilter,
 	logSeq, _, _ := pickLogSequence(src, state)
 
 	ledgers := c.ledgerNamesSnapshot()
-	leaf := func() *commonpb.QueryFilter { return genAuditLeaf(src, ledgers, sample, logSeq.sequence) }
-	indexed := func() *commonpb.QueryFilter {
+	leaf := func() *ledgerpb.QueryFilter { return genAuditLeaf(src, ledgers, sample, logSeq.sequence) }
+	indexed := func() *ledgerpb.QueryFilter {
 		for {
 			if f := leaf(); f.GetAudit().GetField() != ledgerpb.AuditField_AUDIT_FIELD_SEQUENCE {
 				return f
@@ -1056,7 +1056,7 @@ func (c *Checker) genAuditFilter(src *generation.Source) (*commonpb.QueryFilter,
 			return filterNot(leaf()), auditProbeNot
 		}
 
-		return filterOr(filterAuditUint(commonpb.AuditField_AUDIT_FIELD_SEQUENCE, satisfiableSeqRange(src, sample.seq)), indexed()), auditProbeSeqInOr
+		return filterOr(filterAuditUint(ledgerpb.AuditField_AUDIT_FIELD_SEQUENCE, satisfiableSeqRange(src, sample.seq)), indexed()), auditProbeSeqInOr
 	case oneIn(src, 4):
 		// One slot of the read mix reaches this read at all, so a refusal rolled
 		// much rarer than this is never drawn in a whole local run — the four
@@ -1064,7 +1064,7 @@ func (c *Checker) genAuditFilter(src *generation.Source) (*commonpb.QueryFilter,
 		// grammar refusals so it does not take theirs.
 		return genRefusedAuditLeaf(src, sample)
 	case oneIn(src, 4): //nolint:gocritic // dupCase: a fresh roll, not the arm above
-		return filterAnd(genChildren(src, maxQueryGenDepth, func(int) *commonpb.QueryFilter { return leaf() })...), auditProbeNone
+		return filterAnd(genChildren(src, maxQueryGenDepth, func(int) *ledgerpb.QueryFilter { return leaf() })...), auditProbeNone
 	case oneIn(src, 6): //nolint:gocritic // dupCase: a fresh roll, not the first arm
 		return filterOr(indexed(), indexed()), auditProbeNone
 	default:
@@ -1075,7 +1075,7 @@ func (c *Checker) genAuditFilter(src *generation.Source) (*commonpb.QueryFilter,
 // genAuditLeaf rolls one audit leaf, aimed at a served entry's values so ranges
 // straddle live entries: the model's committed log sequences for
 // log_sequence, the fleet for ledger, the indexer's tokens for order_type.
-func genAuditLeaf(src *generation.Source, ledgers []string, sample auditSample, logSeq uint64) *commonpb.QueryFilter {
+func genAuditLeaf(src *generation.Source, ledgers []string, sample auditSample, logSeq uint64) *ledgerpb.QueryFilter {
 	switch generation.Choice(src, []uint8{0, 1, 2, 3, 4, 5, 6, 7, 8}) {
 	case 0:
 		ledger := generation.Choice(src, ledgers)
@@ -1085,16 +1085,16 @@ func genAuditLeaf(src *generation.Source, ledgers []string, sample auditSample, 
 
 		return filterAuditString(ledgerpb.AuditField_AUDIT_FIELD_LEDGER, ledger)
 	case 1:
-		return filterAuditString(commonpb.AuditField_AUDIT_FIELD_OUTCOME, generation.Choice(src, []string{"success", "failure"}))
+		return filterAuditString(ledgerpb.AuditField_AUDIT_FIELD_OUTCOME, generation.Choice(src, []string{"success", "failure"}))
 	case 2:
-		return filterAuditUint(commonpb.AuditField_AUDIT_FIELD_SEQUENCE, uintRangeAround(src, sample.seq, 16))
+		return filterAuditUint(ledgerpb.AuditField_AUDIT_FIELD_SEQUENCE, uintRangeAround(src, sample.seq, 16))
 	case 3:
-		return filterAuditUint(commonpb.AuditField_AUDIT_FIELD_PROPOSAL_ID, uintRangeAround(src, sample.proposalID, 16))
+		return filterAuditUint(ledgerpb.AuditField_AUDIT_FIELD_PROPOSAL_ID, uintRangeAround(src, sample.proposalID, 16))
 	case 4:
 		// A second either side of a served timestamp, in microseconds.
-		return filterAuditUint(commonpb.AuditField_AUDIT_FIELD_TIMESTAMP, uintRangeAround(src, sample.timestamp, 1_000_000))
+		return filterAuditUint(ledgerpb.AuditField_AUDIT_FIELD_TIMESTAMP, uintRangeAround(src, sample.timestamp, 1_000_000))
 	case 5:
-		return filterAuditUint(commonpb.AuditField_AUDIT_FIELD_LOG_SEQUENCE, uintRangeAround(src, logSeq, 8))
+		return filterAuditUint(ledgerpb.AuditField_AUDIT_FIELD_LOG_SEQUENCE, uintRangeAround(src, logSeq, 8))
 	case 6:
 		subject := sample.subject
 		if subject == "" || oneIn(src, 8) {
@@ -1118,14 +1118,14 @@ func genAuditLeaf(src *generation.Source, ledgers []string, sample auditSample, 
 // prefix form. The prefix arm alternates between the driver's own key namespace
 // — which every entry this run produced shares, so the page is unfiltered in
 // practice — and a proper prefix of a key the trail served, which selects one.
-func genIdempotencyKeyLeaf(src *generation.Source, sample auditSample) *commonpb.QueryFilter {
+func genIdempotencyKeyLeaf(src *generation.Source, sample auditSample) *ledgerpb.QueryFilter {
 	key := sample.idemKey
 	if key == "" || oneIn(src, 8) {
 		key = "model-no-such-key"
 	}
 
 	if !oneIn(src, 2) {
-		return filterAuditString(commonpb.AuditField_AUDIT_FIELD_IDEMPOTENCY_KEY, key)
+		return filterAuditString(ledgerpb.AuditField_AUDIT_FIELD_IDEMPOTENCY_KEY, key)
 	}
 
 	prefix := idempotencyKeyNamespace
@@ -1141,17 +1141,17 @@ func genIdempotencyKeyLeaf(src *generation.Source, sample auditSample) *commonpb
 
 // genRefusedAuditLeaf rolls a leaf the audit compiler must refuse, with the
 // refusal it is built to draw. Each is a distinct guard in compileAuditLeaf.
-func genRefusedAuditLeaf(src *generation.Source, sample auditSample) (*commonpb.QueryFilter, auditProbe) {
+func genRefusedAuditLeaf(src *generation.Source, sample auditSample) (*ledgerpb.QueryFilter, auditProbe) {
 	switch generation.Choice(src, []uint8{0, 1, 2, 3}) {
 	case 0:
 		return filterAuditString(ledgerpb.AuditField_AUDIT_FIELD_UNSPECIFIED, "anything"), auditProbeUnspecifiedField
 	case 1:
 		// A string operand on a uint field, or a numeric one on a string field.
 		if oneIn(src, 2) {
-			return filterAuditString(commonpb.AuditField_AUDIT_FIELD_SEQUENCE, "not-a-number"), auditProbeTypeMismatch
+			return filterAuditString(ledgerpb.AuditField_AUDIT_FIELD_SEQUENCE, "not-a-number"), auditProbeTypeMismatch
 		}
 
-		return filterAuditUint(commonpb.AuditField_AUDIT_FIELD_LEDGER, uintRangeAround(src, sample.seq, 16)), auditProbeTypeMismatch
+		return filterAuditUint(ledgerpb.AuditField_AUDIT_FIELD_LEDGER, uintRangeAround(src, sample.seq, 16)), auditProbeTypeMismatch
 	case 2:
 		return &ledgerpb.QueryFilter{Filter: &ledgerpb.QueryFilter_Audit{Audit: &ledgerpb.AuditCondition{
 			Field: ledgerpb.AuditField_AUDIT_FIELD_IDEMPOTENCY_KEY,
@@ -1173,7 +1173,7 @@ func genRefusedAuditLeaf(src *generation.Source, sample auditSample) (*commonpb.
 // an IMPOSSIBLE range instead compiles to an empty narrowed set, which the union
 // represents happily (compileAuditSeqBound), so the Or would then serve a page.
 // A probe built on an arbitrary range is therefore not a probe.
-func satisfiableSeqRange(src *generation.Source, center uint64) *commonpb.UintCondition {
+func satisfiableSeqRange(src *generation.Source, center uint64) *ledgerpb.UintCondition {
 	lo := center - min(center, src.Uint64Range(0, 16-1))
 	hi := lo + src.Uint64Range(0, 16-1)
 
@@ -1182,10 +1182,10 @@ func satisfiableSeqRange(src *generation.Source, center uint64) *commonpb.UintCo
 
 // uintRangeAround rolls a two-sided range within spread of center, then opens
 // or makes exclusive either side the way the other range leaves do.
-func uintRangeAround(src *generation.Source, center, spread uint64) *commonpb.UintCondition {
+func uintRangeAround(src *generation.Source, center, spread uint64) *ledgerpb.UintCondition {
 	lo := center - min(center, src.Uint64Range(0, spread-1))
 	hi := center + src.Uint64Range(0, spread-1)
-	cond := &commonpb.UintCondition{Min: &lo, Max: &hi}
+	cond := &ledgerpb.UintCondition{Min: &lo, Max: &hi}
 	rollOpenOrExclusive(src, cond)
 
 	return cond

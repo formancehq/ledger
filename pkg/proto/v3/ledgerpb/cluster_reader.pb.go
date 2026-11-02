@@ -5,7 +5,6 @@ package ledgerpb
 
 import (
 	bytes "bytes"
-	commonpb "github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	slices "slices"
 )
 

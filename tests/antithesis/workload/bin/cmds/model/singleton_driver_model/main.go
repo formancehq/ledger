@@ -79,6 +79,8 @@ import (
 	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/pkg/actions"
+	"github.com/formancehq/ledger/v3/tests/oracle"
+
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal/generation"
 )
@@ -596,11 +598,11 @@ func runSecondaryRead(src *generation.Source, ctx context.Context, client servic
 // seeds the same declarations so the model's schema state matches the server's
 // from the start. Declaring a type creates no index (populateInitialSchema only
 // records the schema), so a later remove drops nothing.
-func initialSchema(src *generation.Source) []*commonpb.SetMetadataFieldTypeCommand {
+func initialSchema(src *generation.Source) []*ledgerpb.SetMetadataFieldTypeCommand {
 	n := int(generation.Choice(src, []uint8{0, 1, 2, 3}))
-	cmds := make([]*commonpb.SetMetadataFieldTypeCommand, 0, n)
+	cmds := make([]*ledgerpb.SetMetadataFieldTypeCommand, 0, n)
 	for range n {
-		cmds = append(cmds, &commonpb.SetMetadataFieldTypeCommand{
+		cmds = append(cmds, &ledgerpb.SetMetadataFieldTypeCommand{
 			TargetType: generation.Choice(src, metaTargetPool),
 			Key:        metaKey(src),
 			Type:       generation.Choice(src, metaTypePool),

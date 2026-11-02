@@ -670,20 +670,20 @@ func TestFormatNilUintConditionDoesNotPanic(t *testing.T) {
 	t.Parallel()
 
 	cases := map[string]struct {
-		filter *commonpb.QueryFilter
-		target commonpb.QueryTarget
+		filter *ledgerpb.QueryFilter
+		target ledgerpb.QueryTarget
 		want   string
 	}{
 		"logId": {
-			filter: &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_LogId{LogId: &commonpb.LogIdCondition{}}},
-			target: commonpb.QueryTarget_QUERY_TARGET_LOGS,
+			filter: &ledgerpb.QueryFilter{Filter: &ledgerpb.QueryFilter_LogId{LogId: &ledgerpb.LogIdCondition{}}},
+			target: ledgerpb.QueryTarget_QUERY_TARGET_LOGS,
 			want:   "logId <uint?>",
 		},
 		"timestamp": {
-			filter: &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_BuiltinUint{BuiltinUint: &commonpb.BuiltinUintCondition{
-				Field: commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP,
+			filter: &ledgerpb.QueryFilter{Filter: &ledgerpb.QueryFilter_BuiltinUint{BuiltinUint: &ledgerpb.BuiltinUintCondition{
+				Field: ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP,
 			}}},
-			target: commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS,
+			target: ledgerpb.QueryTarget_QUERY_TARGET_TRANSACTIONS,
 			want:   "timestamp <uint?>",
 		},
 	}
@@ -702,19 +702,19 @@ func TestFormatNilUintConditionDoesNotPanic(t *testing.T) {
 	}
 }
 
-// TestParamNameGateMatchesGrammar pins that commonpb.IsTextualFilterParamName,
+// TestParamNameGateMatchesGrammar pins that ledgerpb.IsTextualFilterParamName,
 // which admission enforces, accepts exactly the names the textual parser reads
 // back as a single parameter reference.
 func TestParamNameGateMatchesGrammar(t *testing.T) {
 	t.Parallel()
 
 	names := []string{"n", "_x", "andy", "x_1", "1n", "a-b", "n or reverted == true", "USD/2"}
-	names = append(names, commonpb.FilterGrammarKeywords...)
+	names = append(names, ledgerpb.FilterGrammarKeywords...)
 
 	for _, name := range names {
-		parsed, err := Parse("reference == $"+name, commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS)
+		parsed, err := Parse("reference == $"+name, ledgerpb.QueryTarget_QUERY_TARGET_TRANSACTIONS)
 		roundTrips := err == nil && parsed.GetReference().GetCond().GetParam() == name
-		assert.Equal(t, commonpb.IsTextualFilterParamName(name), roundTrips, "name %q", name)
+		assert.Equal(t, ledgerpb.IsTextualFilterParamName(name), roundTrips, "name %q", name)
 	}
 }
 
@@ -726,16 +726,16 @@ func TestFormatInvalidParamNameFailsReparse(t *testing.T) {
 	t.Parallel()
 
 	bad := "n or reverted == true"
-	cases := map[string]*commonpb.QueryFilter{
-		"uint range": {Filter: &commonpb.QueryFilter_BuiltinUint{BuiltinUint: &commonpb.BuiltinUintCondition{
-			Field: commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_ID,
-			Cond:  &commonpb.UintCondition{ParamMin: bad},
+	cases := map[string]*ledgerpb.QueryFilter{
+		"uint range": {Filter: &ledgerpb.QueryFilter_BuiltinUint{BuiltinUint: &ledgerpb.BuiltinUintCondition{
+			Field: ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_ID,
+			Cond:  &ledgerpb.UintCondition{ParamMin: bad},
 		}}},
-		"reference": {Filter: &commonpb.QueryFilter_Reference{Reference: &commonpb.ReferenceCondition{
-			Cond: &commonpb.StringCondition{Value: &commonpb.StringCondition_Param{Param: bad}},
+		"reference": {Filter: &ledgerpb.QueryFilter_Reference{Reference: &ledgerpb.ReferenceCondition{
+			Cond: &ledgerpb.StringCondition{Value: &ledgerpb.StringCondition_Param{Param: bad}},
 		}}},
-		"address": {Filter: &commonpb.QueryFilter_Address{Address: &commonpb.AddressMatch{
-			Match: &commonpb.AddressMatch_ParamExact{ParamExact: bad},
+		"address": {Filter: &ledgerpb.QueryFilter_Address{Address: &ledgerpb.AddressMatch{
+			Match: &ledgerpb.AddressMatch_ParamExact{ParamExact: bad},
 		}}},
 	}
 
@@ -746,7 +746,7 @@ func TestFormatInvalidParamNameFailsReparse(t *testing.T) {
 			out := Format(f)
 			assert.Contains(t, out, `$<invalid param "n or reverted == true">`)
 
-			_, err := DecodeDualFormatStructuralOnly([]byte(out), commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS)
+			_, err := DecodeDualFormatStructuralOnly([]byte(out), ledgerpb.QueryTarget_QUERY_TARGET_TRANSACTIONS)
 			require.Error(t, err)
 		})
 	}
@@ -760,7 +760,7 @@ func TestFormatInvalidParamNameFailsReparse(t *testing.T) {
 func TestFormatStringWithQuotesRoundTrips(t *testing.T) {
 	t.Parallel()
 
-	target := commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS
+	target := ledgerpb.QueryTarget_QUERY_TARGET_TRANSACTIONS
 
 	for _, ref := range []string{`a"b`, `it's`, `"`, `'`} {
 		raw := []byte(`{"$match":{"reference":` + strconv.Quote(ref) + `}}`)
@@ -772,8 +772,8 @@ func TestFormatStringWithQuotesRoundTrips(t *testing.T) {
 		assert.Equal(t, ref, back.GetReference().GetCond().GetHardcoded(), "ref %q", ref)
 	}
 
-	both := &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_Reference{Reference: &commonpb.ReferenceCondition{
-		Cond: &commonpb.StringCondition{Value: &commonpb.StringCondition_Hardcoded{Hardcoded: `a"b'c`}},
+	both := &ledgerpb.QueryFilter{Filter: &ledgerpb.QueryFilter_Reference{Reference: &ledgerpb.ReferenceCondition{
+		Cond: &ledgerpb.StringCondition{Value: &ledgerpb.StringCondition_Hardcoded{Hardcoded: `a"b'c`}},
 	}}}
 	out := Format(both)
 	assert.Contains(t, out, "<unrepresentable string")

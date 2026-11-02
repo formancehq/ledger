@@ -15,6 +15,8 @@ import (
 	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/internal/domain/indexes"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	"github.com/formancehq/ledger/v3/tests/oracle"
+
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal/generation"
 )
@@ -49,9 +51,9 @@ func runIndexIntrospection(src *generation.Source, ctx context.Context, client s
 // one of the ledger's declared metadata fields (whose registry entry the removal
 // cascade takes with the declaration), or — one in four — an id the workload
 // never registers, so the NotFound side is reached as often as the served one.
-func pickIntrospectIndex(src *generation.Source, c *Checker, ledger string) *commonpb.IndexID {
+func pickIntrospectIndex(src *generation.Source, c *Checker, ledger string) *ledgerpb.IndexID {
 	if oneIn(src, 4) {
-		return indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_ACCOUNT, "unregistered-"+metaKey(src))
+		return indexes.MetadataID(ledgerpb.TargetType_TARGET_TYPE_ACCOUNT, "unregistered-"+metaKey(src))
 	}
 
 	c.mu.Lock()

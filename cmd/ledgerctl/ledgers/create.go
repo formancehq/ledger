@@ -285,7 +285,7 @@ func parseSchemaEntries(cmd *cobra.Command, entries []string) ([]*ledgerpb.SetMe
 	return schema, nil
 }
 
-func schemaWizard() ([]*commonpb.SetMetadataFieldTypeCommand, error) {
+func schemaWizard() ([]*ledgerpb.SetMetadataFieldTypeCommand, error) {
 	addSchema, err := cmdutil.PromptConfirm(pterm.DefaultInteractiveConfirm.
 		WithDefaultText("Add metadata schema?").
 		WithDefaultValue(false))

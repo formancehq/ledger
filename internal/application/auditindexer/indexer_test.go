@@ -390,7 +390,7 @@ func TestProcessOnceWakesAuditWaiters(t *testing.T) {
 		writeAuditEntry(t, mainStore, &auditpb.AuditEntry{
 			Sequence:   1,
 			ProposalId: 7,
-			Timestamp:  &commonpb.Timestamp{Data: 1_000_000},
+			Timestamp:  &ledgerpb.Timestamp{Data: 1_000_000},
 			Outcome:    &auditpb.AuditEntry_Success{Success: &auditpb.AuditSuccess{}},
 			Ledgers:    []string{"main"},
 		})
@@ -503,7 +503,7 @@ func TestIndexerKeepsUpUnderLoad(t *testing.T) {
 		const total = 200
 		for s := uint64(1); s <= total; s++ {
 			writeAuditEntry(t, mainStore, &auditpb.AuditEntry{
-				Sequence: s, ProposalId: s, Timestamp: &commonpb.Timestamp{Data: s * 1_000_000},
+				Sequence: s, ProposalId: s, Timestamp: &ledgerpb.Timestamp{Data: s * 1_000_000},
 				Outcome: &auditpb.AuditEntry_Success{Success: &auditpb.AuditSuccess{}},
 				Ledgers: []string{"main"},
 			})

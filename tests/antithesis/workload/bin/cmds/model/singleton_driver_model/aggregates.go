@@ -15,6 +15,8 @@ import (
 
 	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	"github.com/formancehq/ledger/v3/tests/oracle"
+
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal/generation"
 )
@@ -36,7 +38,7 @@ func runAggregateQuery(src *generation.Source, ctx context.Context, client servi
 		filter = genAccountFilterFree(src, 0)
 	}
 	filter = rollFilterShape(src, filter)
-	refused := classifyRejectedFilter(filter, commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS)
+	refused := classifyRejectedFilter(filter, ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS)
 
 	needed := map[string]struct{}{}
 	neededIndexCanonicals(filter, ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS, needed)
@@ -187,7 +189,7 @@ func addAgg(sums map[assetColor]*aggPair, key assetColor, in, out *uint256.Int) 
 // colors summed into the uncolored bucket, each when asked. Stored zero cells
 // contribute buckets too: zero postings create normal volume cells, while
 // oracle.purgeZeroBalance removes purged cells from Volumes entirely.
-func modelAggregate(ls oracle.LedgerState, filter *commonpb.QueryFilter, opts aggOptions) map[assetColor]*aggPair {
+func modelAggregate(ls oracle.LedgerState, filter *ledgerpb.QueryFilter, opts aggOptions) map[assetColor]*aggPair {
 	return aggregateFold(ls, filter, opts, nil)
 }
 

@@ -13,6 +13,8 @@ import (
 	"github.com/formancehq/ledger/v3/internal/domain/accounttype"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/pkg/actions"
+	"github.com/formancehq/ledger/v3/tests/oracle"
+
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal/generation"
 )
@@ -289,9 +291,9 @@ func generateLifecycle(src *generation.Source, g oracle.GlobalState, ledgers []s
 	if len(live) < liveTarget {
 		if generation.Choice(src, []uint8{0, 1, 2, 3}) == 0 {
 			return &servicepb.Request{Type: &servicepb.Request_CreateLedger{CreateLedger: &servicepb.CreateLedgerRequest{
-				Name: newLedger, Mode: commonpb.LedgerMode_LEDGER_MODE_MIRROR,
+				Name: newLedger, Mode: ledgerpb.LedgerMode_LEDGER_MODE_MIRROR,
 				Metadata:     randomMetaMap(src),
-				MirrorSource: &commonpb.MirrorSourceConfig{LedgerName: "unused"},
+				MirrorSource: &ledgerpb.MirrorSourceConfig{LedgerName: "unused"},
 			}}}
 		}
 
@@ -469,7 +471,7 @@ func generateTransaction(src *generation.Source, ledger string, ls oracle.Ledger
 	// slots. The ordinary malformed branch below still emits unskipped conflicts.
 	if generation.Choice(src, indexPool(16)) == 0 {
 		if req := duplicateReferenceTransaction(src, ledger, ls); req != nil {
-			req.GetApply().SkippableReasons = []commonpb.ErrorReason{commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT}
+			req.GetApply().SkippableReasons = []ledgerpb.ErrorReason{ledgerpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT}
 
 			return req
 		}
@@ -491,9 +493,9 @@ func generateTransaction(src *generation.Source, ledger string, ls oracle.Ledger
 	// commit atomically and compose in order — an earlier posting can fund a
 	// later one's source (the running balance floor is per-posting).
 	n := 1 + int(generation.Choice(src, []uint8{0, 1, 2, 3}))
-	postings := make([]*commonpb.Posting, n)
+	postings := make([]*ledgerpb.Posting, n)
 	for i := range postings {
-		postings[i] = commonpb.NewColoredPosting(sourceAddress(src), poolAddress(src), assets[int(generation.Choice(src, []uint8{0, 1, 2}))], randomColor(src), internal.GeneratedBigInt(src))
+		postings[i] = ledgerpb.NewColoredPosting(sourceAddress(src), poolAddress(src), assets[int(generation.Choice(src, []uint8{0, 1, 2}))], randomColor(src), internal.GeneratedBigInt(src))
 	}
 
 	// Every transaction gets a unique reference so it is targetable by later
@@ -511,7 +513,7 @@ func generateTransaction(src *generation.Source, ledger string, ls oracle.Ledger
 	// nominally half also carry a user-supplied timestamp — stored verbatim and echoed on
 	// reads (it does not feed the HLC / log order). Backdated to stay non-future.
 	if generation.Choice(src, []uint8{0, 1}) == 0 {
-		payload.Timestamp = &commonpb.Timestamp{Data: 1 + src.Uint64Range(0, 1_500_000_000_000_000-1)}
+		payload.Timestamp = &ledgerpb.Timestamp{Data: 1 + src.Uint64Range(0, 1_500_000_000_000_000-1)}
 	}
 
 	// nominally 1/3 also set account metadata via the transaction payload, applied
@@ -519,7 +521,7 @@ func generateTransaction(src *generation.Source, ledger string, ls oracle.Ledger
 	// passes the posting chart check when the tx commits, so the account-metadata
 	// write never introduces a chart rejection.
 	if generation.Choice(src, []uint8{0, 1, 2}) == 0 {
-		payload.AccountMetadata = map[string]*commonpb.MetadataMap{
+		payload.AccountMetadata = map[string]*ledgerpb.MetadataMap{
 			postings[n-1].GetDestination(): {Values: randomMetaMap(src)},
 		}
 	}
@@ -575,7 +577,7 @@ func duplicateReferenceTransaction(src *generation.Source, ledger string, ls ora
 	}
 
 	return applyCreate(ledger, &servicepb.CreateTransactionPayload{
-		Postings:  []*commonpb.Posting{commonpb.NewPosting("world", poolAddress(src), assets[0], big.NewInt(1))},
+		Postings:  []*ledgerpb.Posting{ledgerpb.NewPosting("world", poolAddress(src), assets[0], big.NewInt(1))},
 		Reference: ref,
 	})
 }
@@ -620,7 +622,7 @@ func generateAddAccountType(src *generation.Source, ledger string) *servicepb.Re
 
 // NORMAL nominally 1/2, EPHEMERAL nominally 1/3, TRANSIENT nominally 1/6 — both non-NORMAL kinds
 // exercise distinct end-of-bulk machinery.
-func pickPersistence(src *generation.Source) commonpb.AccountTypePersistence {
+func pickPersistence(src *generation.Source) ledgerpb.AccountTypePersistence {
 	switch generation.Choice(src, []uint8{0, 1, 2, 3, 4, 5}) {
 	case 0, 1:
 		return ledgerpb.AccountTypePersistence_ACCOUNT_TYPE_EPHEMERAL
@@ -774,29 +776,29 @@ func generateMetadataOp(src *generation.Source, ledger string, ls oracle.LedgerS
 // int64, uint64, bool, null, datetime — from the small pools. The server stores
 // values verbatim, so each kind must round-trip unchanged regardless of any
 // declared field type.
-func randomMetaValue(src *generation.Source) *commonpb.MetadataValue {
+func randomMetaValue(src *generation.Source) *ledgerpb.MetadataValue {
 	switch generation.Choice(src, []uint8{0, 1, 2, 3, 4, 5}) {
 	case 0:
-		return commonpb.NewIntValue(generation.Choice(src, metaIntPool))
+		return ledgerpb.NewIntValue(generation.Choice(src, metaIntPool))
 	case 1:
-		return commonpb.NewUintValue(generation.Choice(src, metaUintPool))
+		return ledgerpb.NewUintValue(generation.Choice(src, metaUintPool))
 	case 2:
-		return commonpb.NewBoolValue(generation.Choice(src, []uint8{0, 1}) == 0)
+		return ledgerpb.NewBoolValue(generation.Choice(src, []uint8{0, 1}) == 0)
 	case 3:
-		return commonpb.NewNullValue(generation.Choice(src, metaNullOriginalPool))
+		return ledgerpb.NewNullValue(generation.Choice(src, metaNullOriginalPool))
 	case 4:
-		return commonpb.NewDatetimeValue(generation.Choice(src, metaDatetimePool))
+		return ledgerpb.NewDatetimeValue(generation.Choice(src, metaDatetimePool))
 	default:
-		return commonpb.NewStringValue(generation.Choice(src, metaValuePool))
+		return ledgerpb.NewStringValue(generation.Choice(src, metaValuePool))
 	}
 }
 
 // randomMetaMap builds a 1-2 key metadata map from the small key/value pools.
 // Small pools make concurrent sets of the same key to different values frequent
 // — the ordering chaos the model exists to check.
-func randomMetaMap(src *generation.Source) map[string]*commonpb.MetadataValue {
+func randomMetaMap(src *generation.Source) map[string]*ledgerpb.MetadataValue {
 	n := 1 + int(generation.Choice(src, []uint8{0, 1}))
-	md := make(map[string]*commonpb.MetadataValue, n)
+	md := make(map[string]*ledgerpb.MetadataValue, n)
 	for range n {
 		md[metaKey(src)] = randomMetaValue(src)
 	}
@@ -841,11 +843,11 @@ func generateDeleteMetadata(src *generation.Source, ledger string, ls oracle.Led
 
 	// Half the misses opt into the skip so the reason is reached at the rate the
 	// branch is rolled; the rest stay bare, where the miss rejects the bulk.
-	var skippable []commonpb.ErrorReason
+	var skippable []ledgerpb.ErrorReason
 	if generation.Choice(src, []uint8{0, 1}) == 0 {
 		key = "absent-" + metaKey(src)
 		if generation.Choice(src, []uint8{0, 1}) == 0 {
-			skippable = []commonpb.ErrorReason{commonpb.ErrorReason_ERROR_REASON_METADATA_NOT_FOUND}
+			skippable = []ledgerpb.ErrorReason{ledgerpb.ErrorReason_ERROR_REASON_METADATA_NOT_FOUND}
 		}
 	}
 

@@ -18,6 +18,8 @@ import (
 	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/internal/domain/indexes"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	"github.com/formancehq/ledger/v3/tests/oracle"
+
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal/generation"
 )
@@ -203,7 +205,7 @@ func hasAssetTarget(f *ledgerpb.QueryFilter) (base string, precision uint32, ok 
 // asset — the account-by-asset lifecycle path. Bare, its result set is exactly
 // EverAssetAccounts(base, precision); under a combinator, matchAccountFilterIn
 // composes it with the current-account leaves.
-func genAccountAssetFilter(src *generation.Source) *commonpb.QueryFilter {
+func genAccountAssetFilter(src *generation.Source) *ledgerpb.QueryFilter {
 	a := workloadAssets[int(generation.Choice(src, []uint8{0, 1, 2}))]
 
 	switch {
@@ -583,9 +585,9 @@ func rollIndexOp(src *generation.Source, ls oracle.LedgerState) bool {
 func generateIndexOp(src *generation.Source, g oracle.GlobalState, ledger string) *servicepb.Request {
 	if oneIn(src, 16) {
 		return createIndexReq(ledger, indexes.MetadataID(
-			generation.Choice(src, []commonpb.TargetType{
-				commonpb.TargetType_TARGET_TYPE_ACCOUNT,
-				commonpb.TargetType_TARGET_TYPE_TRANSACTION,
+			generation.Choice(src, []ledgerpb.TargetType{
+				ledgerpb.TargetType_TARGET_TYPE_ACCOUNT,
+				ledgerpb.TargetType_TARGET_TYPE_TRANSACTION,
 			}), "undeclared-"+metaKey(src)))
 	}
 

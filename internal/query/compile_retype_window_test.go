@@ -75,7 +75,7 @@ func TestCompile_FieldConditionBindsToTheVersionType(t *testing.T) {
 		iter, err := Compile(stringCond, CompileOptions{
 			IndexReader:     rs.DB(),
 			KeyBuilder:      dal.NewKeyBuilder(),
-			Target:          commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
+			Target:          ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
 			LedgerName:      ledgerName,
 			Schema:          schema,
 			LedgerInfo:      info,
@@ -93,7 +93,7 @@ func TestCompile_FieldConditionBindsToTheVersionType(t *testing.T) {
 		t.Parallel()
 
 		_, err := Compile(intCond, CompileOptions{
-			Target:          commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
+			Target:          ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
 			LedgerName:      ledgerName,
 			Schema:          schema,
 			LedgerInfo:      info,
@@ -116,7 +116,7 @@ func TestCompile_FieldConditionBindsToTheVersionType(t *testing.T) {
 		}
 
 		_, err := Compile(stringCond, CompileOptions{
-			Target:          commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
+			Target:          ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
 			LedgerName:      ledgerName,
 			Schema:          schema,
 			LedgerInfo:      info,

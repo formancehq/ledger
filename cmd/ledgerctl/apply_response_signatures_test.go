@@ -14,6 +14,8 @@ import (
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
 
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
+
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/numscripts"
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/queries"
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/querycheckpoint"
@@ -184,9 +186,9 @@ func TestMetadataAndNumscriptMutationResponseSignatures(t *testing.T) {
 						seed[0] = 1
 					}
 					signer := signing.NewResponseSigner(seed)
-					log := &commonpb.Log{Sequence: 7, Payload: &commonpb.LogPayload{
-						Type: &commonpb.LogPayload_SavedNumscript{SavedNumscript: &commonpb.SavedNumscriptLog{
-							Info: &commonpb.NumscriptInfo{Name: "returned-script", Version: "9.8.7"},
+					log := &ledgerpb.Log{Sequence: 7, Payload: &ledgerpb.LogPayload{
+						Type: &ledgerpb.LogPayload_SavedNumscript{SavedNumscript: &ledgerpb.SavedNumscriptLog{
+							Info: &ledgerpb.NumscriptInfo{Name: "returned-script", Version: "9.8.7"},
 						}},
 					}}
 					if signature.signed {
@@ -202,7 +204,7 @@ func TestMetadataAndNumscriptMutationResponseSignatures(t *testing.T) {
 					listener, err := net.Listen("tcp4", "127.0.0.1:0")
 					require.NoError(t, err)
 					server := grpc.NewServer()
-					fixture := &queryMutationSignatureServer{response: &servicepb.ApplyResponse{Logs: []*commonpb.Log{log}}}
+					fixture := &queryMutationSignatureServer{response: &servicepb.ApplyResponse{Logs: []*ledgerpb.Log{log}}}
 					servicepb.RegisterBucketServiceServer(server, fixture)
 					go func() { _ = server.Serve(listener) }() // Stop closes the owned listener.
 					t.Cleanup(server.Stop)

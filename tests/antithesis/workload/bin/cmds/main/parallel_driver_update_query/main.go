@@ -35,11 +35,11 @@ func main() {
 
 					Query: &ledgerpb.PreparedQuery{
 						Name:   queryName,
-						Target: commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
-						Filter: &commonpb.QueryFilter{
-							Filter: &commonpb.QueryFilter_Address{
-								Address: &commonpb.AddressMatch{
-									Match: &commonpb.AddressMatch_HardcodedPrefix{
+						Target: ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
+						Filter: &ledgerpb.QueryFilter{
+							Filter: &ledgerpb.QueryFilter_Address{
+								Address: &ledgerpb.AddressMatch{
+									Match: &ledgerpb.AddressMatch_HardcodedPrefix{
 										HardcodedPrefix: prefixes[0],
 									},
 								},
@@ -69,10 +69,10 @@ func main() {
 				UpdatePreparedQuery: &servicepb.UpdatePreparedQueryRequest{
 					Ledger: ledger,
 					Name:   queryName,
-					Filter: &commonpb.QueryFilter{
-						Filter: &commonpb.QueryFilter_Address{
-							Address: &commonpb.AddressMatch{
-								Match: &commonpb.AddressMatch_HardcodedPrefix{
+					Filter: &ledgerpb.QueryFilter{
+						Filter: &ledgerpb.QueryFilter_Address{
+							Address: &ledgerpb.AddressMatch{
+								Match: &ledgerpb.AddressMatch_HardcodedPrefix{
 									HardcodedPrefix: prefixes[1],
 								},
 							},

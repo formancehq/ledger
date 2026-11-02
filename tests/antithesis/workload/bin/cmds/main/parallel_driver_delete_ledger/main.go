@@ -53,8 +53,8 @@ func run(ctx context.Context, client servicepb.BucketServiceClient, src *generat
 				Ledger: ledgerName,
 				Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
 					CreateTransaction: &servicepb.CreateTransactionPayload{
-						Postings: []*commonpb.Posting{
-							commonpb.NewPosting("world", "users:0", "USD/2", internal.GeneratedBigInt(src)),
+						Postings: []*ledgerpb.Posting{
+							ledgerpb.NewPosting("world", "users:0", "USD/2", internal.GeneratedBigInt(src)),
 						},
 						Force: true,
 					},

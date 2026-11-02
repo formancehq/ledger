@@ -42,10 +42,10 @@ func runInsufficientFunds(ctx context.Context, client servicepb.BucketServiceCli
 				Ledger: ledger,
 				Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
 					CreateTransaction: &servicepb.CreateTransactionPayload{
-						Postings: []*commonpb.Posting{{
+						Postings: []*ledgerpb.Posting{{
 							Source:      "world",
 							Destination: account,
-							Amount:      commonpb.NewUint256FromUint64(fundAmount),
+							Amount:      ledgerpb.NewUint256FromUint64(fundAmount),
 							Asset:       asset,
 						}},
 						Force: true,
@@ -73,10 +73,10 @@ func runInsufficientFunds(ctx context.Context, client servicepb.BucketServiceCli
 				Ledger: ledger,
 				Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
 					CreateTransaction: &servicepb.CreateTransactionPayload{
-						Postings: []*commonpb.Posting{{
+						Postings: []*ledgerpb.Posting{{
 							Source:      account,
 							Destination: "world",
-							Amount:      commonpb.NewUint256FromUint64(fundAmount),
+							Amount:      ledgerpb.NewUint256FromUint64(fundAmount),
 							Asset:       asset,
 						}},
 					},
@@ -124,10 +124,10 @@ func runInsufficientFunds(ctx context.Context, client servicepb.BucketServiceCli
 				Ledger: ledger,
 				Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
 					CreateTransaction: &servicepb.CreateTransactionPayload{
-						Postings: []*commonpb.Posting{{
+						Postings: []*ledgerpb.Posting{{
 							Source:      account,
 							Destination: "world",
-							Amount:      commonpb.NewUint256FromUint64(1),
+							Amount:      ledgerpb.NewUint256FromUint64(1),
 							Asset:       asset,
 						}},
 					},
@@ -163,7 +163,7 @@ func runInsufficientFunds(ctx context.Context, client servicepb.BucketServiceCli
 			Ledger: ledger,
 			Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
 				CreateTransaction: &servicepb.CreateTransactionPayload{
-					Postings: []*commonpb.Posting{{Source: account, Destination: "world", Amount: commonpb.NewUint256FromUint64(1), Asset: asset}},
+					Postings: []*ledgerpb.Posting{{Source: account, Destination: "world", Amount: ledgerpb.NewUint256FromUint64(1), Asset: asset}},
 					Force:    true,
 				},
 			}},

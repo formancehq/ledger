@@ -36,7 +36,7 @@ func main() {
 								Postings: []*ledgerpb.Posting{{
 									Source:      "world",
 									Destination: addr1,
-									Amount:      commonpb.NewUint256FromUint64(src.Uint64Range(0, 999) + 1),
+									Amount:      ledgerpb.NewUint256FromUint64(src.Uint64Range(0, 999) + 1),
 									Asset:       "USD/2",
 								}},
 								Force: true,
@@ -54,7 +54,7 @@ func main() {
 								Postings: []*ledgerpb.Posting{{
 									Source:      "world",
 									Destination: addr2,
-									Amount:      commonpb.NewUint256FromUint64(src.Uint64Range(0, 999) + 1),
+									Amount:      ledgerpb.NewUint256FromUint64(src.Uint64Range(0, 999) + 1),
 									Asset:       "EUR/2",
 								}},
 								Force: true,

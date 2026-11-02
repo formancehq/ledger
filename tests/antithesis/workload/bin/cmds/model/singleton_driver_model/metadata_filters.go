@@ -3,6 +3,7 @@ package main
 import (
 	"math"
 
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/tests/oracle"
 
@@ -299,7 +300,7 @@ func genFieldLeaf(src *generation.Source, seeds []fieldSeed) *commonpb.QueryFilt
 		return filterFieldString(seed.key, "absent-value")
 	case seed.declaredType == commonpb.MetadataType_METADATA_TYPE_BOOL:
 		return filterFieldBool(seed.key, oneIn(src, 2))
-	case commonpb.IsUnsignedType(seed.declaredType):
+	case ledgerpb.IsUnsignedType(seed.declaredType):
 		center := src.Uint64Range(0, 1024-1)
 		if uv, ok := coerced.GetType().(*commonpb.MetadataValue_UintValue); ok && !oneIn(src, 4) {
 			center = uv.UintValue

@@ -24,7 +24,7 @@ func TestGenerateEnforcementMode(t *testing.T) {
 			result := oracle.NewGlobalState().Apply(oracle.Bulk{Requests: []*servicepb.Request{req}})
 			require.True(t, result.OK)
 			require.Equal(t, "ledger", oracle.LedgerOf(req))
-			require.Contains(t, []commonpb.ChartEnforcementMode{commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT, commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_AUDIT}, result.State.Ledger("ledger").DefaultEnforcementMode())
+			require.Contains(t, []ledgerpb.ChartEnforcementMode{ledgerpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT, ledgerpb.ChartEnforcementMode_CHART_ENFORCEMENT_AUDIT}, result.State.Ledger("ledger").DefaultEnforcementMode())
 			require.Equal(t, []uint64{1}, result.State.Ledger("ledger").LogIDs())
 		}
 	}, hegel.WithTestCases(1), hegel.WithDatabase(""), hegel.WithBackend(hegel.BackendURandom))

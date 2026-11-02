@@ -131,8 +131,8 @@ func writeProbeTransaction(ctx context.Context, client servicepb.BucketServiceCl
 					Ledger: ledger,
 					Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
 						CreateTransaction: &servicepb.CreateTransactionPayload{
-							Postings: []*commonpb.Posting{
-								commonpb.NewPosting("world", dest, "COIN", amount),
+							Postings: []*ledgerpb.Posting{
+								ledgerpb.NewPosting("world", dest, "COIN", amount),
 							},
 							Force: true,
 						},

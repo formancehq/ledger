@@ -25,7 +25,7 @@ func TestAuditReplayerDisablesWAL(t *testing.T) {
 	})
 	replayDir := replayer.store.DataDir()
 
-	_, err = replayer.Replay(&commonpb.Timestamp{Data: 1}, []*raftcmdpb.Order{{
+	_, err = replayer.Replay(&ledgerpb.Timestamp{Data: 1}, []*raftcmdpb.Order{{
 		Type: &raftcmdpb.Order_SystemScoped{SystemScoped: &raftcmdpb.SystemScopedOrder{
 			Payload: &raftcmdpb.SystemScopedOrder_CreateQueryCheckpoint{
 				CreateQueryCheckpoint: &raftcmdpb.CreateQueryCheckpointOrder{},
@@ -166,8 +166,8 @@ func TestAuditReplayerLedgerBoundaries(t *testing.T) {
 
 	const ledger = "mirror-boundaries"
 	create := createLedgerOrder(ledger)
-	create.GetLedgerScoped().GetCreateLedger().Mode = commonpb.LedgerMode_LEDGER_MODE_MIRROR
-	_, err = replayer.Replay(&commonpb.Timestamp{Data: 1}, []*raftcmdpb.Order{create})
+	create.GetLedgerScoped().GetCreateLedger().Mode = ledgerpb.LedgerMode_LEDGER_MODE_MIRROR
+	_, err = replayer.Replay(&ledgerpb.Timestamp{Data: 1}, []*raftcmdpb.Order{create})
 	require.NoError(t, err)
 
 	requireBoundaries := func(nextTx, nextLog, mirrorID uint64) {
@@ -207,13 +207,13 @@ func TestAuditReplayerLedgerBoundaries(t *testing.T) {
 				},
 			}},
 		}}}
-		logs, err := replayer.Replay(&commonpb.Timestamp{Data: 2}, []*raftcmdpb.Order{order})
+		logs, err := replayer.Replay(&ledgerpb.Timestamp{Data: 2}, []*raftcmdpb.Order{order})
 		require.NoError(t, err)
 		require.Len(t, logs, step.logCount)
 		requireBoundaries(step.nextTx, step.nextLog, step.mirrorID)
 	}
 
-	_, err = replayer.Replay(&commonpb.Timestamp{Data: 3}, []*raftcmdpb.Order{{
+	_, err = replayer.Replay(&ledgerpb.Timestamp{Data: 3}, []*raftcmdpb.Order{{
 		Type: &raftcmdpb.Order_LedgerScoped{LedgerScoped: &raftcmdpb.LedgerScopedOrder{
 			Ledger: ledger,
 			Payload: &raftcmdpb.LedgerScopedOrder_DeleteLedger{
