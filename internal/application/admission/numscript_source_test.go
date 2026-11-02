@@ -79,3 +79,27 @@ func TestAdmissionValueSource_Metadata_NonEmpty(t *testing.T) {
 	require.True(t, present)
 	require.Equal(t, "active", value)
 }
+
+// TestAdmissionValueSource_Metadata_ScriptDeletion pins that a key deleted by
+// an earlier script in the batch resolves absent for a later order, even
+// though the pre-batch snapshot still holds it.
+func TestAdmissionValueSource_Metadata_ScriptDeletion(t *testing.T) {
+	t.Parallel()
+
+	store := createTestStore(t)
+	admission, _ := createTestAdmission(t, store)
+
+	writeAccountMetadata(t, admission, testLedgerName, "users:001", "status", commonpb.NewStringValue("active"))
+
+	effects := newBatchEffects()
+	effects.mergeDiscovery(nil, nil, map[domain.MetadataKey]struct{}{
+		{AccountKey: domain.AccountKey{LedgerName: testLedgerName, Account: "users:001"}, Key: "status"}: {},
+	})
+
+	source := &admissionValueSource{admission: admission, ledgerName: testLedgerName, effects: effects}
+
+	value, present, err := source.Metadata("users:001", "status")
+	require.NoError(t, err)
+	require.False(t, present)
+	require.Equal(t, "", value)
+}
