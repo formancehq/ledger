@@ -193,9 +193,11 @@ validation, such as `USD/0` stored as `USD`; treat such a case as a documented
 limit unless the audited SHA promises detection. Mirror source configuration is
 immutable, so recovery is delete-and-recreate.
 
-Promotion admission requires an existing mirror with an observed nonzero source
-head, an applied boundary at or beyond it, and no recorded sync error. This
-also rejects a create-then-promote batch before the new mirror is visible.
+The FSM checks new marked promotion orders after idempotency replay. It requires
+an existing mirror with an observed nonzero source head, an applied boundary at
+or beyond it, and no recorded sync error. This also rejects a create-then-promote
+batch before the new mirror is visible. A keyed retry replays the frozen result;
+historical unmarked promotion orders retain their original apply behavior.
 Apply sets the ledger to `NORMAL`, clears its source and emits the named
 promotion log. Subsequent mirror ingest rejects at the mode gate; normal writes
 continue from retained boundaries. The manager reconciles the committed change.
