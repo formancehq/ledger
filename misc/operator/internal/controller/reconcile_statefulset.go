@@ -214,6 +214,9 @@ func (r *ClusterReconciler) reconcileStatefulSetWithExec(ctx context.Context, le
 				logger.Info("deferring StatefulSet recreation until RC rollout converges")
 				desired.Template = preserveExistingStorageWiring(existing.Spec.Template, desired.Template)
 			} else {
+				if !pinnedVersionTag(ledger.Spec.Image.Tag) {
+					return ctrl.Result{}, fmt.Errorf("cannot recreate StatefulSet with image tag %q; pin a canonical version tag before changing VolumeClaimTemplates", ledger.Spec.Image.Tag)
+				}
 				logger.Info("VolumeClaimTemplates changed, recreating StatefulSet with orphan propagation")
 				// A cached name is not deletion authority. Revalidate the exact
 				// owned incarnation through the API, then fence the remaining
