@@ -169,6 +169,28 @@ Kubernetes garbage collection and check the actual PVC identities after retry.
 
 ## Sequential RC and storage transition boundary
 
+### Operator and Ledger version admission
+
+Compare the declared Ledger image tag with the running Operator version before
+the controller publishes a workload image. For a release Operator, an older or
+equal semantic Ledger release is compatible; a newer release or opaque tag is
+blocked. A development Operator with an opaque Ledger tag remains a development
+case with `VersionCompatible=Unknown`. A semantic Ledger release paired with an
+unknown Operator version is blocked. Include RC-to-stable precedence and tags
+with and without a leading `v` in the matrix.
+
+For each blocked request, inspect the `VersionCompatible=False` reason and
+observed generation, `phase: Error`, and the actual StatefulSet template, Pods
+and PVCs before and after reconciliation. The version gate must leave an
+existing workload and its committed data intact. Distinguish an initial create
+from an edit to a running Cluster. Reconcile with a fresh Operator after the
+user restores an allowed tag or installs a compatible Operator, and verify that
+the status clears and the intended workload can converge without losing the
+original data. An existing opaque source image such as `latest` needs a separate
+upgrade-path check: a valid target tag alone does not prove that the RC source
+gate can admit the transition. Record a blocked transition as a finding rather
+than describing the tag correction as successful recovery.
+
 For a hardcoded mandatory stop, prove that the operator persists source, target,
 StatefulSet UID and PVC UIDs, persists a drain epoch, preflights member support,
 and verifies every member has durably applied the Raft admission cutoff before deletion. Then
