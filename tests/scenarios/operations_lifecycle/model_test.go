@@ -143,8 +143,8 @@ func TestCreateThenPromoteMirrorBatchIsRejected(t *testing.T) {
 	}}}
 	promote := &servicepb.Request{Type: &servicepb.Request_PromoteLedger{PromoteLedger: &servicepb.PromoteLedgerRequest{Ledger: "new-mirror"}}}
 	_, err := sc.Client.Apply(sc.Ctx(), servicepb.UnsignedApplyRequest("", create, promote))
-	require.Equal(t, codes.NotFound, status.Code(err))
-	require.ErrorContains(t, err, "new-mirror")
+	require.Equal(t, codes.FailedPrecondition, status.Code(err))
+	require.ErrorContains(t, err, "mirror not caught up")
 	_, err = sc.Client.GetLedger(sc.Ctx(), &servicepb.GetLedgerRequest{Ledger: "new-mirror"})
 	require.Equal(t, codes.NotFound, status.Code(err), "the rejected batch must commit no create order")
 }
