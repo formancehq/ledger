@@ -646,6 +646,16 @@ just build-plugin   # Build kubectl plugin
 just install-plugin # Install kubectl plugin to $GOPATH/bin
 ```
 
+### End-to-end tests
+
+From `misc/operator/`, run `just test-e2e` to build the images, create the kind
+cluster, and run the Chainsaw scenarios. The scenarios using the opaque `e2e`
+Ledger tag run with the development Operator. The rolling rc.2-to-rc.3 upgrade
+scenario then runs with an Operator built as `v3.0.0-rc.3`, so the release
+version admission check is exercised. After the images are loaded, use
+`just test-e2e-only` to rerun both groups without rebuilding the cluster.
+Use `just e2e-cluster-down` to remove it.
+
 ### JSON Schema
 
 `just generate` also writes standalone JSON Schema files under `config/crd/schemas/`:
