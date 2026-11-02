@@ -466,7 +466,7 @@ The ingestion position is not stored here. It lives on the per-ledger `LedgerBou
 
 A mirror ledger can be promoted to a normal ledger via `PromoteLedgerOrder` (`raft_cmd.proto:246`). The FSM emits a `PromotedLedgerLog` (`common.proto:315`), the WriteSet flags `mirrorConfigChanged = true`, and `Manager.reconcile()` stops the worker on the next reconciliation tick.
 
-New promotion orders carry `require_catch_up`. After the FSM checks any
+New promotion orders carry `OrderTechnical.require_mirror_catch_up`. After the FSM checks any
 idempotency replay, it requires an observed source head greater than zero, a
 durable ingestion cursor at or beyond that head, and no recorded synchronization
 error. The head and error are reconstructed from existing durable mirror rows

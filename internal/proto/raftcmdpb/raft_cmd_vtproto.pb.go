@@ -67,6 +67,7 @@ func (m *OrderTechnical) CloneVT() *OrderTechnical {
 	}
 	r := new(OrderTechnical)
 	r.PreloadUnavailable = m.PreloadUnavailable
+	r.RequireMirrorCatchUp = m.RequireMirrorCatchUp
 	if rhs := m.CoverageBits; rhs != nil {
 		tmpBytes := make([]byte, len(rhs))
 		copy(tmpBytes, rhs)
@@ -888,7 +889,6 @@ func (m *PromoteLedgerOrder) CloneVT() *PromoteLedgerOrder {
 		return (*PromoteLedgerOrder)(nil)
 	}
 	r := new(PromoteLedgerOrder)
-	r.RequireCatchUp = m.RequireCatchUp
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
 		copy(r.unknownFields, m.unknownFields)
@@ -2387,6 +2387,9 @@ func (this *OrderTechnical) EqualVT(that *OrderTechnical) bool {
 	if string(this.RevertTargetDigest) != string(that.RevertTargetDigest) {
 		return false
 	}
+	if this.RequireMirrorCatchUp != that.RequireMirrorCatchUp {
+		return false
+	}
 	return string(this.unknownFields) == string(that.unknownFields)
 }
 
@@ -3837,9 +3840,6 @@ func (this *PromoteLedgerOrder) EqualVT(that *PromoteLedgerOrder) bool {
 	if this == that {
 		return true
 	} else if this == nil || that == nil {
-		return false
-	}
-	if this.RequireCatchUp != that.RequireCatchUp {
 		return false
 	}
 	return string(this.unknownFields) == string(that.unknownFields)
@@ -6321,6 +6321,16 @@ func (m *OrderTechnical) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
+	if m.RequireMirrorCatchUp {
+		i--
+		if m.RequireMirrorCatchUp {
+			dAtA[i] = 1
+		} else {
+			dAtA[i] = 0
+		}
+		i--
+		dAtA[i] = 0x28
+	}
 	if len(m.RevertTargetDigest) > 0 {
 		i -= len(m.RevertTargetDigest)
 		copy(dAtA[i:], m.RevertTargetDigest)
@@ -8294,16 +8304,6 @@ func (m *PromoteLedgerOrder) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	if m.unknownFields != nil {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
-	}
-	if m.RequireCatchUp {
-		i--
-		if m.RequireCatchUp {
-			dAtA[i] = 1
-		} else {
-			dAtA[i] = 0
-		}
-		i--
-		dAtA[i] = 0x8
 	}
 	return len(dAtA) - i, nil
 }
@@ -12024,6 +12024,9 @@ func (m *OrderTechnical) SizeVT() (n int) {
 	if l > 0 {
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
+	if m.RequireMirrorCatchUp {
+		n += 2
+	}
 	n += len(m.unknownFields)
 	return n
 }
@@ -12883,9 +12886,6 @@ func (m *PromoteLedgerOrder) SizeVT() (n int) {
 	}
 	var l int
 	_ = l
-	if m.RequireCatchUp {
-		n += 2
-	}
 	n += len(m.unknownFields)
 	return n
 }
@@ -14688,6 +14688,26 @@ func (m *OrderTechnical) UnmarshalVT(dAtA []byte) error {
 				m.RevertTargetDigest = []byte{}
 			}
 			iNdEx = postIndex
+		case 5:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field RequireMirrorCatchUp", wireType)
+			}
+			var v int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				v |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			m.RequireMirrorCatchUp = bool(v != 0)
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
@@ -19264,26 +19284,6 @@ func (m *PromoteLedgerOrder) UnmarshalVT(dAtA []byte) error {
 			return fmt.Errorf("proto: PromoteLedgerOrder: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
-		case 1:
-			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field RequireCatchUp", wireType)
-			}
-			var v int
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				v |= int(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			m.RequireCatchUp = bool(v != 0)
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
