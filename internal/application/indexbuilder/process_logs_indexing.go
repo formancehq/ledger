@@ -36,6 +36,7 @@ func (b *Builder) indexPayload(
 				return err
 			}
 		}
+
 		return nil
 	case *commonpb.LedgerLogPayload_DeletedMetadata:
 		return b.indexDeletedMetadata(kb, cfg, ledgerName, p.DeletedMetadata)
@@ -163,6 +164,7 @@ func (b *Builder) indexLogEntry(cfg *ledgerIndexConfig, log *commonpb.Log, propo
 				return err
 			}
 		}
+
 		return nil
 	case *commonpb.LedgerLogPayload_DeletedMetadata:
 		return b.indexDeletedMetadata(b.kb, cfg, ledgerName, p.DeletedMetadata)
