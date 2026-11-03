@@ -523,17 +523,28 @@ it. The order is:
    it in memory:
    - an entry record at index `i` drops every entry at index `>= i`, whatever
      the replay snapshot index;
-   - a snapshot record counts only when its HardState is durable. The next
-     entry or HardState record must be a HardState whose commit reaches the
-     snapshot index; `ApplySnapshot` writes exactly that record between its
-     guard and barrier records. The snapshot index must also be at or below
-     the final `HardState.Commit`, as in etcd's `ValidSnapshotEntries`. A guard
-     left by a crash before its HardState was written is followed by the
-     restarted process's records instead. It stays ignored even after the
-     commit index passes it, because the log the node resumed with is valid;
+   - a snapshot record counts only when a durable HardState commits its
+     index. Either the HardState written before it already does, or the next
+     entry or HardState record is a HardState that does:
+     - `CreateSnapshot` runs on a committed position.
+     - `processReady` persists a received snapshot's Ready HardState, with
+       commit at the snapshot index, before `ApplySnapshot` writes its guard
+       record. The guard's sync flushes that HardState, so a crash right after
+       the guard still leaves the snapshot in force.
+     - `ApplySnapshot` writes a HardState between its guard and barrier
+       records.
+
+     The snapshot index must also be at or below the final `HardState.Commit`,
+     as in etcd's `ValidSnapshotEntries`. A guard left by a crash before any
+     such HardState is followed by the restarted process's records instead.
+     It stays ignored even after the commit index passes it, because the log
+     the node resumed with is valid;
    - a counted snapshot record whose `(index, term)` the rebuilt log holds is a
      local snapshot and changes nothing. One the log does not hold was
-     received, and it discards the rebuilt log;
+     received, and it discards the rebuilt log. When the position is at or
+     below the rebuilt log's last index but its term is unknown to the rebuild
+     (for example below the first retained record), the log is kept as
+     `ReadAll` would keep it, and the term check in step 5 still applies;
    - a received snapshot keeps the entries of the Save call just before it
      when they start right after the snapshot. `processReady` persists a
      combined Ready's entries before installing the snapshot and appends them

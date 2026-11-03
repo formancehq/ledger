@@ -102,8 +102,10 @@ func (l *replayLog) termAt(index uint64) (uint64, bool) {
 func (l *replayLog) appendEntry(id logID) {
 	switch {
 	case len(l.entries) > 0 && id.index > l.base.index && id.index <= l.lastIndex()+1:
-		// Overwrite or contiguous append inside the known window.
-		l.entries = append(l.entries[:id.index-l.base.index-1:id.index-l.base.index-1], id)
+		// Overwrite or contiguous append inside the known window. The slice is
+		// private to the rebuild, so appending in place keeps contiguous
+		// replay linear.
+		l.entries = append(l.entries[:id.index-l.base.index-1], id)
 	case len(l.entries) == 0 && id.index == l.base.index+1:
 		l.entries = append(l.entries, id)
 	default:
@@ -180,18 +182,27 @@ func contiguous(ids []logID) bool {
 // rebuildReplayLog replays records in write order and returns the log
 // positions above the replay snapshot.
 //
-// A snapshot record counts only once its HardState is durable: the next entry
-// or HardState record must be a HardState whose commit reaches the snapshot
-// index. ApplySnapshot writes exactly that record between its guard and
-// barrier records, and CreateSnapshot runs on a position already committed.
-// A guard left by a crash before its HardState was written is followed by the
-// restarted process's records instead, and is ignored even if the commit index
-// later passes it; the log the node resumed with stays valid. commit is the
-// final durable commit index; like etcd's ValidSnapshotEntries, snapshot
+// A snapshot record counts only once a durable HardState commits its index:
+//
+//   - the HardState written before it already does. CreateSnapshot runs on a
+//     committed position, and processReady persists a received snapshot's
+//     Ready HardState (commit at the snapshot index) before ApplySnapshot
+//     writes the guard. The guard's sync flushes that HardState, so a crash
+//     right after the guard still leaves the snapshot in force on restart;
+//   - or the next entry or HardState record is a HardState that does.
+//     ApplySnapshot writes exactly that record between its guard and barrier.
+//
+// A guard left by a crash before any such HardState was written is followed by
+// the restarted process's records instead. It is ignored even if the commit
+// index later passes it: the log the node resumed with stays valid. commit is
+// the final durable commit index; like etcd's ValidSnapshotEntries, snapshot
 // records above it never count.
 func rebuildReplayLog(records []replayRecord, replay logID, commit uint64) ([]logID, error) {
 	l := newReplayLog()
-	var pending *logID
+	var (
+		pending     *logID
+		stateCommit uint64
+	)
 	for _, rec := range records {
 		if rec.kind != wal.StateType && rec.kind != wal.MetadataType {
 			l.afterCut = false
@@ -203,6 +214,7 @@ func rebuildReplayLog(records []replayRecord, replay logID, commit uint64) ([]lo
 			pending = nil
 			l.appendEntry(rec.entry)
 		case wal.StateType:
+			stateCommit = rec.commit
 			if pending != nil && !l.afterCut {
 				if rec.commit >= pending.index {
 					l.applySnapshot(*pending)
@@ -212,7 +224,11 @@ func rebuildReplayLog(records []replayRecord, replay logID, commit uint64) ([]lo
 			l.applyState()
 		case wal.SnapshotType:
 			pending = nil
-			if rec.snapshot.index <= commit {
+			switch {
+			case rec.snapshot.index > commit:
+			case stateCommit >= rec.snapshot.index:
+				l.applySnapshot(rec.snapshot)
+			default:
 				id := rec.snapshot
 				pending = &id
 			}

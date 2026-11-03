@@ -5,6 +5,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 	"go.etcd.io/etcd/server/v3/storage/wal"
+	"go.etcd.io/etcd/server/v3/storage/wal/walpb"
 	"go.etcd.io/raft/v3/raftpb"
 )
 
@@ -94,6 +95,50 @@ func TestRestartKeepsReadySuffixPersistedBeforeSnapshotInstall(t *testing.T) {
 	require.NoError(t, w.Append(hs(6, 0, 8), entries(7, 8, 6)))
 	require.NoError(t, w.ApplySnapshot(receivedSnapshot(6, 4)))
 	// Crash before installReadySnapshot appends the suffix again.
+	require.NoError(t, w.Close())
+
+	requireRecoveredLog(t, dir, 8, 6)
+}
+
+// persistSnapshotGuardOnly runs the first durable steps of ApplySnapshot (the
+// snapshot file, then the synced guard record) and stops, as a crash right
+// after the guard would.
+func persistSnapshotGuardOnly(t *testing.T, w *DefaultWAL, snap *raftpb.Snapshot) {
+	t.Helper()
+
+	require.NoError(t, w.snapshotter.Save(snap))
+	require.NoError(t, w.wal.SaveSnapshot(&walpb.Snapshot{
+		Index:     new(snap.GetMetadata().GetIndex()),
+		Term:      new(snap.GetMetadata().GetTerm()),
+		ConfState: snap.GetMetadata().GetConfState(),
+	}))
+}
+
+// processReady persists a received snapshot's Ready HardState (commit at the
+// snapshot index) before ApplySnapshot writes its guard, and the guard's sync
+// flushes it. A crash right after the guard leaves the snapshot in force on
+// restart, so the discarded tail must not come back.
+func TestRestartDiscardsTailWhenCrashFollowsCommittedSnapshotGuard(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	w := newTestWALAt(t, dir)
+	require.NoError(t, w.Append(hs(5, 2, 5), append(entries(1, 5, 1), entries(6, 10, 5)...)))
+	require.NoError(t, w.Append(hs(6, 0, 6), nil))
+	persistSnapshotGuardOnly(t, w, receivedSnapshot(6, 4))
+	require.NoError(t, w.Close())
+
+	requireRecoveredLog(t, dir, 6, 4)
+}
+
+func TestRestartKeepsReadySuffixWhenCrashFollowsSnapshotGuard(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	w := newTestWALAt(t, dir)
+	require.NoError(t, w.Append(hs(5, 2, 5), append(entries(1, 5, 1), entries(6, 10, 5)...)))
+	require.NoError(t, w.Append(hs(6, 0, 8), entries(7, 8, 6)))
+	persistSnapshotGuardOnly(t, w, receivedSnapshot(6, 4))
 	require.NoError(t, w.Close())
 
 	requireRecoveredLog(t, dir, 8, 6)
@@ -245,6 +290,34 @@ func TestRebuildReplayLog(t *testing.T) {
 		}, logID{index: 1, term: 1}, 5)
 		require.ErrorIs(t, err, errReplayRebuild)
 	})
+}
+
+// Replay runs on every restart over every retained record, so contiguous
+// appends must not copy the retained log each time. Capping the retained slice
+// at every append copied the whole log per entry, about 1.3 GB for 10,000
+// entries; amortized growth stays near 1 MB.
+func TestRebuildReplayLogContiguousAppendsAllocateLinearly(t *testing.T) {
+	t.Parallel()
+
+	const n = 10_000
+	records := make([]replayRecord, 0, 2*n)
+	for i := uint64(1); i <= n; i++ {
+		records = append(records,
+			replayRecord{kind: wal.EntryType, entry: logID{index: i, term: 1}},
+			replayRecord{kind: wal.StateType, commit: i - 1},
+		)
+	}
+
+	result := testing.Benchmark(func(b *testing.B) {
+		b.ReportAllocs()
+		for b.Loop() {
+			got, err := rebuildReplayLog(records, logID{}, n)
+			if err != nil || len(got) != n {
+				b.Fatal("unexpected rebuild result")
+			}
+		}
+	})
+	require.Less(t, result.AllocedBytesPerOp(), int64(16<<20), "contiguous replay must amortize slice growth")
 }
 
 func TestTrimToRebuiltLog(t *testing.T) {

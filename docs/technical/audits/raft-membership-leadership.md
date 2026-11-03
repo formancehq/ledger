@@ -436,6 +436,8 @@ Check these histories against it:
 - a received snapshot whose stale tail has a higher term than the snapshot;
 - a combined snapshot/entry Ready that crashes before its suffix is appended
   again;
+- a crash right after the guard record of a received snapshot whose Ready
+  HardState already committed its index, with and without an entry suffix;
 - a segment cut between Save calls;
 - an uncommitted guard snapshot record, including one whose commit index
   later passes it after the node resumed its old log;
