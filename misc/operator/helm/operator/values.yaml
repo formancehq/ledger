@@ -3,13 +3,13 @@ ledger-operator-crds:
 
 image:
   repository: ghcr.io/formancehq/ledger-operator
-  tag: latest
+  tag: ""
   pullPolicy: IfNotPresent
 
 ledgerImage:
   registry: ghcr.io
   name: formancehq/ledger
-  tag: latest
+  tag: ""
 
 replicaCount: 1
 

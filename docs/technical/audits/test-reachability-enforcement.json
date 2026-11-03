@@ -74,6 +74,7 @@
     "inspect Skip, pending, focus, credential, environment, and dependency gates and prove whether the exact claimed runner reaches the core assertion rather than only collecting its container",
     "query GitHub workflow/check histories together with current rulesets, branch protection, and merge-queue configuration to build a job -> trigger -> status context -> enforced integration-event map",
     "map each relied-upon test family to source -> collector -> executed assertion -> result propagation -> validation layer -> enforcement, recording evidence both for and against suspected gaps",
-    "evaluate the discovery logic for a convention-following new module, tagged test, fuzz target, framework spec, driver, scenario, or verifier to determine whether claimed exhaustive protection is automatic or fail-closed"
+    "evaluate the discovery logic for a convention-following new module, tagged test, fuzz target, framework spec, driver, scenario, or verifier to determine whether claimed exhaustive protection is automatic or fail-closed",
+    "For typed trace sampling, follow Tests-Operator's operator-test-admission recipe into the nested Operator module with integration tags and the ^(TestLedgerAdmission|TestTraceSampling) selector. Confirm that both TestTraceSamplingAdmission and TestTraceSamplingReconcileConflictThenFix are collected alongside the existing Ledger target cases, using envtest assets; ordinary untagged Operator tests alone cannot execute these admission assertions."
   ]
 }

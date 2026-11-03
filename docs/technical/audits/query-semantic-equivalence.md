@@ -21,7 +21,7 @@ assuming exact historical account membership from a certificate alone.
 | Contract | Current production anchors and falsifiable observation |
 |---|---|
 | Supported plans | `internal/application/ctrl/list_entities.go` dispatches main-store-only, ascending, unfiltered descending and compiled descending reads. `internal/query/compile.go` and `compile_reverse.go` implement target guards and compilation. Identify the caller/branch actually reached; equal empty outputs do not establish reachability. |
-| Boolean and range semantics | `compile.go` implements universes, AND/OR/NOT, signed/unsigned bounds and existence; `compile_and_merge.go` coalesces hardcoded same-field numeric ranges and intentionally leaves parameterized bounds unmerged. Compare both forms with independently evaluated endpoint membership, not with the merge helper as oracle. |
+| Boolean and range semantics | `compile.go` implements universes, AND/OR/NOT, signed/unsigned bounds and existence; `compile_and_merge.go` coalesces hardcoded same-field numeric ranges after served-type validation, against the one version a compilation resolves per index, and intentionally leaves parameterized bounds and rejected leaves unmerged. Compare both forms with independently evaluated endpoint membership and acceptance, not with the merge helper as oracle. |
 | Metadata | `resolveFieldMetadataCtx`, `validateAndCoerceCondition`, `requireIndexReady` and `compileExistsCondition` in `compile.go`, plus `internal/proto/commonpb/metadata_convert.go`, anchor the served-type and null/existence rules. Primary values remain raw; derive expected indexed values independently for each finite fixture. `includeNull` includes null-derived entries, not missing keys. HTTP JSON null deletion is a separate adapter contract. |
 | Iterator ordering | `internal/storage/readstore/combinator_{and,or,not}.go`, `iterator_bounded_entity.go`, `iterator_address.go` and direction-specific leaves implement sorted identities, absolute seek and union/intersection. Compare exact windows, duplicates, terminal errors and reseeks with a separately sorted expected sequence. |
 | Prepared/direct | `internal/query/executor.go` loads the stored predicate, binds parameters through compilation and selects LIST or account aggregation. Direct callers normalize their own ordering: transaction list defaults cannot be equated with prepared traversal defaults. Compare effective ordering or full membership first, then verify each ordered window against its own documented direction. |
@@ -57,6 +57,50 @@ an older served version. Preparation found older lifecycle wording in
 claims. This note neither fixes that adjacent documentation nor declares a
 product defect from the discrepancy.
 
+## Shared cursor and generated acceptance contracts
+
+The scope explicitly includes `pkg/pagecursor/**` and
+`internal/pkg/cursor/**`, not only their query callers. Start from canonical
+decoded cursors and a frozen independently sorted sparse sequence, for example
+IDs `2, 5, 9, 14, 20`, plus string-key witnesses. Derive expected windows by
+slicing that sequence without calling `Page`, `Links`, `ReadReverse`, or the
+production skip predicate. Trace the actual controller/executor caller and
+wrapper chain; helper-only parity cannot establish consumer correctness.
+
+Cross both query orders with forward/backward navigation, size one, exact and
+partial final pages, keys equal to/between/outside matches, and a backward
+cursor with no key. Require exclusive continuation, unchanged query order,
+complete traversal and page round trips. An empty resumed forward page links
+back to the tail; an empty resumed backward page links to the head. Follow
+those links to verify the recovery window. Check one-row lookahead and an
+upstream source capped exactly at page size with `MoreReporter` evidence;
+trace whether each real wrapper preserves the evidence its consumer needs.
+Do not treat a source cap as clean complete exhaustion.
+
+Inject iteration failure before the first row, after a partial page and during
+lookahead through supported `FilteredCursor`, `SkipWhileCursor`, `Reverse`,
+`Collect` and production consumers. A non-EOF error must not become a falsely
+successful complete result. This domain owns resulting fixed-state omission
+or duplication; cursor resource lifetime belongs to concurrency lifecycle,
+and token decoding/encoding, error mapping and stream framing belong to API
+boundaries. Concurrent changes between requests remain a temporal question;
+this oracle does not promise retained snapshots across page tokens.
+
+`tools/protoc-gen-queryfilter-validity/**`, its descriptor inputs in
+`misc/proto/common.proto` and generated validity code are acceptance evidence.
+Independently enumerate every `QueryFilter` arm and `QueryTarget`, then compare
+annotations, emitted kinds/table and typed compiler verdicts with a separately
+justified expected target matrix. Include nested predicates and deliberately
+valid-on-none arms. Shared generated output can make all consumers agree on a
+wrong annotation, so exhaustive generation is not an independent semantic
+oracle. Temporary descriptor fixtures must reject missing declarations,
+contradictory declarations and unknown target numbers; explicit valid-on-none
+remains distinct from an accidentally absent declaration. Transport parser
+acceptance stays with `api-boundary-contracts`; this domain owns canonical
+engine acceptance. See [protobuf generation](../contributing/protobuf.md).
+
+These are proposed audit checks, not checks executed by editing this contract.
+
 ## Ownership and exclusions
 
 Assign a root cause by the violated contract and required correction, not by
@@ -87,6 +131,22 @@ v2 date; it remains on the general materializing path. Do not infer its
 ordering from the current ledger mode.
 
 ## Independent evidence and deduplication
+
+The shared leaf resolvers in `resolve_address_match.go` and
+`resolve_leaf_conditions.go` own direction-independent address, reference,
+asset, metadata point/existence and ID preparation. The public compiler tests
+`compile_leaf_resolution_test.go`, `compile_metadata_resolution_test.go` and
+`compile_id_resolution_test.go` assert independent identities for these
+families. Independent refusal assertions in these files cover address and
+reference parameter failures, readiness precedence and address-role gates;
+the metadata and ID files assert identities only. The separate
+`compile_error_parity_test.go` checks both directions against expected refusal
+substrings and identical messages for target/shape/depth, metadata schema/type
+and index-readiness failures; it does not establish comprehensive metadata or
+ID parameter-refusal coverage. Preserve readiness-before-parameter error order,
+role-specific address gates, served metadata versions, asset pin exclusion,
+missing point results and half-open ID bounds when challenging these helpers.
+Directional iterator construction and page oracles remain separate evidence.
 
 For each tested family, enumerate a non-empty target universe with positive and
 negative witnesses and the exact expected identities/cardinalities. Include

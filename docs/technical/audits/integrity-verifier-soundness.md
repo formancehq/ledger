@@ -94,6 +94,28 @@ this manifest.
   were removed. A partial fold can emit a mismatch/incomplete signal and stop;
   the contract does not demand every corruption be enumerated after failure.
 
+## Numscript lifecycle evidence
+
+Trace `numscript_projection.go` together with the selected-log hook in
+`Checker.replayLogs` and the existing slot in `compareProjections`. The composed
+owner must receive the log after audit-derived substitution, retaining the
+existing fallback when no audited expectation is available; extraction does not
+strengthen guarantees after a truncated chain. Keep greatest-version selection,
+whole `NumscriptInfo` equality and both comparison directions for content and
+latest pointers. Empty expectations still require scanning for surplus rows.
+
+`checker_numscript_test.go` covers saves out of version order, altered and
+missing/surplus content, missing/surplus latest pointers including empty history,
+and deletion across several names/versions with another ledger retained. A
+coordinated stored-log/content corruption must produce both the log-payload and
+Numscript mismatch while the audited save order remains intact. The
+healthy controls and deletion survivor probes inspect complete callbacks and
+terminal success. These fixtures use the real request processor with the test
+engine's persistence adapter; they do not independently prove the FSM's cleanup
+implementation. Preserve the audit witness when injecting stored rows. The
+owner is disposable checker memory: it adds no persisted projection, audit
+format, snapshot or peer-store read, and leaves alignment rules unchanged.
+
 ## Ledger policy evidence
 
 `internal/application/check/ledger_policy.go` verifies canonical `SubAttrLedger`

@@ -127,8 +127,10 @@ func backupJobName(run *ledgerv1alpha1.BackupRun) string {
 // tlsMode mirrors the running pod's TLS_MODE so the Job's ledgerctl negotiates
 // the same transport. Pre-existing volumes/secrets from the ledger StatefulSet
 // are reused (TLS secret, cluster-secret); the Job uses the same
-// ServiceAccount. Ambient S3 authentication is resolved on the Ledger server,
-// which performs the upload.
+// ServiceAccount. ledgerImage is the image from that owned StatefulSet, so a
+// Cluster whose image tag is defaulted in memory still produces a valid Job.
+// Ambient S3 authentication is resolved on the Ledger server, which performs
+// the upload.
 //
 // The caller is expected to set the owner reference on the returned Job
 // (BackupRun → Job) for cascade deletion.
@@ -137,6 +139,7 @@ func buildBackupJob(
 	backup *ledgerv1alpha1.Backup,
 	ls *ledgerv1alpha1.Cluster,
 	tlsMode string,
+	ledgerImage string,
 ) (*batchv1.Job, error) {
 	subcmd, err := backupSubcommand(run.Spec.Type)
 	if err != nil {
@@ -238,7 +241,7 @@ func buildBackupJob(
 					RestartPolicy:      corev1.RestartPolicyNever,
 					Containers: []corev1.Container{{
 						Name:         backupJobContainerName,
-						Image:        fmt.Sprintf("%s:%s", ls.Spec.Image.Repository, ls.Spec.Image.Tag),
+						Image:        ledgerImage,
 						Command:      cmd,
 						Env:          env,
 						VolumeMounts: mounts,

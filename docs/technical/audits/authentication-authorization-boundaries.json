@@ -27,7 +27,8 @@
     "misc/proto/snapshot.proto",
     "misc/proto/cluster_bootstrap.proto",
     "tests/e2e/cluster/**",
-    "internal/bootstrap/auth_ed25519_keys_test.go"
+    "internal/bootstrap/auth_ed25519_keys_test.go",
+    "tools/protoc-gen-rpcauth/**"
   ],
   "related_docs": [
     "AGENTS.md",
@@ -48,7 +49,8 @@
     "docs/ops/deployment.md",
     "docs/technical/contributing/testing.md",
     "docs/technical/architecture/subsystems/api/atomic-ledger-creation.md",
-    "docs/ops/authentication.md"
+    "docs/ops/authentication.md",
+    "docs/technical/contributing/protobuf.md"
   ],
   "invariants": [
     "Every hypothesis must identify an actually registered route or RPC, server mode, installed guards, credential state and downstream operation. Protected methods enforce their established granular scope requirements when authentication is enabled. Inventory unary and streaming methods separately, including request-dependent policies; a declared policy or helper test alone does not prove runtime enforcement. Public, internal and restore surfaces follow their own explicit contracts (companion contract A).",
@@ -60,7 +62,8 @@
     "The resolved caller snapshot is frozen for committed execution: later token expiration or node-local authentication configuration must not change FSM authorization, applied effects or interpretation of that attribution. The audit chain's binding of caller data is an evidence boundary, not permission to audit all hashing, storage or restore mechanics. Follow only enough of proposal capture to establish an attribution failure or disprove one (contract G).",
     "Initial metadata on normal or mirror creation is authorized by ledger:WriteLedger with the creation itself; subsequent metadata saves retain ledger:WriteMetadata.",
     "Write scopes are cluster-wide: no scope grants write access to one ledger but not another. Mechanisms that rely on this, such as the non-collision-resistant XXH3-128 Numscript script hash keying the FSM caches, must be revisited by any change introducing per-ledger or per-tenant write isolation.",
-    "Static Ed25519 configuration requires every nonempty keyId to be unique by exact string equality, including identical entries. Reject duplicates before loading their public-key file and publish no static keyset or scope/superuser maps on failure; an earlier invalid-file error may precede duplicate detection. Preserve the binding between each verified static key and its own scopes/superuser policy (contract C; EN-2918)."
+    "Static Ed25519 configuration requires every nonempty keyId to be unique by exact string equality, including identical entries. Reject duplicates before loading their public-key file and publish no static keyset or scope/superuser maps on failure; an earlier invalid-file error may precede duplicate detection. Preserve the binding between each verified static key and its own scopes/superuser policy (contract C; EN-2918).",
+    "RPC authorization generation must preserve every declared public, fixed-scope and dynamic-resolver policy for BucketService and ClusterService, rejecting absent, false-public, unspecified and unknown policies and missing required services. Independently reconcile source annotations, generated full-method keys and actual registered unary/streaming descriptors; unknown methods fail closed, and returned mutable policy values must not alter subsequent lookups. Generator success alone does not establish runtime interceptor enforcement (contract A)."
   ],
   "adversarial_questions": [
     "Which HTTP method/path and unary/streaming RPC pairs are registered in normal, Raft and restore modes at this SHA? Which exact public exceptions exist, and do actual installed middleware/interceptors or handler checks enforce the stated policy before protected work or stream output? Recount descriptors instead of copying historical method counts.",
@@ -75,7 +78,8 @@
     "Does any downstream decision re-evaluate token validity or node-local auth state after admission? Distinguish caller attribution loss here from independent audit encoding, replay or restore defects owned by persistence/checker domains.",
     "Does a proposed disclosure claim require changing an authorization decision, or is it the known public credential projection work in EN-1632/1634/1635? Route redaction, storage and driver causes to their existing owners; read access to sensitive-looking data alone does not establish an undocumented access-control rule.",
     "Can a caller with LedgerWrite create a ledger with initial metadata without MetadataWrite, while the same caller cannot use the later metadata-save operation without its required scope?",
-    "Can repeated static key IDs, including identical entries, conflicting scope/superuser policies, nil/empty allowlists and nonadjacent duplicates, bind a verified signature to another entry's privileges? Does duplicate rejection precede loading that duplicate file, while preserving earlier invalid-file error precedence and preventing partial static auth publication?"
+    "Can repeated static key IDs, including identical entries, conflicting scope/superuser policies, nil/empty allowlists and nonadjacent duplicates, bind a verified signature to another entry's privileges? Does duplicate rejection precede loading that duplicate file, while preserving earlier invalid-file error precedence and preventing partial static auth publication?",
+    "Can a descriptor option decoding, service selection or generated full-method naming error omit a method, substitute a policy, or admit an unknown method? Do missing required services and invalid option variants fail the actual plugin, and can mutation of a returned registry/policy change later authorization? Derive the expected method set from service descriptors and expected exceptional decisions from the source declarations rather than the generated registry itself."
   ],
   "dynamic_checks_to_consider": [
     "These are optional diagnostics for a separately authorized later audit. Use existing tests and allowed temporary diagnostics with the pinned Nix/native validation environment, synthetic keys/tokens and disposable local fixtures. Do not edit tracked files, implement reproducer patches, probe deployed services, expose real credentials, or invoke audit/challenge/Jira orchestration from a leaf provider. Report executed checks separately from reproduction plans.",
@@ -85,6 +89,7 @@
     "Use grpc_auth_test.go, scopes_test.go, ed25519_keys_test.go and composite_keyset_test.go fixtures for verified signatures, expiry, issuer, scope expansion and superuser-key restrictions. Resolve the pinned go-libs dependency when following JWT verification. Use a local fake issuer/JWKS for OIDC tests; only run post-EN-1926 audience scenarios against the refreshed implementation and record absent coverage honestly.",
     "Use caller_snapshot_test.go and the actual client/server forwarding fixtures to compare subject/source, sorted scopes and superuser state before and after forwarding/admission. Cover trusted and spoofed snapshots, absent attribution, explicit system components and auth-disabled/anonymous modes independently. Synthetic in-process markers must not stand in for proof that an external caller can set them.",
     "Use raft_auth_test.go and bootstrap registration evidence to distinguish Raft unary/stream protection from client JWT authentication. Check health policy separately for each server plane: configured Raft authentication also protects its health RPCs; service health/protocol exemptions do not imply a Raft exemption. Inspect restore's binding and service set without executing destructive restore RPCs. No real cluster secret rotation, operator rollout or live identity-provider traffic is authorized by this manifest.",
-    "Use TestLoadEd25519KeySet_DuplicateKeyID and TestBuildAuthConfig_DuplicateEd25519KeyIDs to prove exact named-ID rejection and absent keyset/policy maps. Pair real signed unique-ID credentials with installed public-service interceptor controls: rejected claims are Unauthenticated with no backend entry, valid insufficient scope is PermissionDenied with no entry, and authorized scope/superuser controls enter exactly once. Constructor evidence does not prove full-process listener/readiness sequencing; configuration-startup-contracts owns the validation/publication predicate."
+    "Use TestLoadEd25519KeySet_DuplicateKeyID and TestBuildAuthConfig_DuplicateEd25519KeyIDs to prove exact named-ID rejection and absent keyset/policy maps. Pair real signed unique-ID credentials with installed public-service interceptor controls: rejected claims are Unauthenticated with no backend entry, valid insufficient scope is PermissionDenied with no entry, and authorized scope/superuser controls enter exactly once. Constructor evidence does not prove full-process listener/readiness sequencing; configuration-startup-contracts owns the validation/publication predicate.",
+    "Use tools/protoc-gen-rpcauth/main_test.go invalid/complete-policy and missing-service fixtures as generator evidence; then independently run TestRPCAuthPoliciesCoverEveryPublicServiceMethod, TestRPCAuthPoliciesPinExceptionalMethods and TestRPCAuthPolicyLookupFailsClosedForUnknownMethod in commonpb. Compare the exact policy kind/value with source annotations, probe returned-policy mutation with a fresh lookup, and use installed unary and streaming interceptor controls for downstream entry counts. Run generation only in an allowed disposable fixture, recording the plugin/module versions; emitted source-string assertions or a registry compared only with its own enumeration do not prove enforcement or complete policy fidelity."
   ]
 }

@@ -249,7 +249,7 @@ func compileAnd(ctx *compileCtx, and *commonpb.AndFilter) (readstore.EntityItera
 	// Coalesce multiple range predicates on the same metadata field so that
 	// `a >= X AND a < Y` compiles to a single bounded IntCondition, not two
 	// materialized half-ranges. See mergeFieldRanges for the rules.
-	filters := mergeFieldRanges(and.GetFilters())
+	filters := mergeFieldRanges(and.GetFilters(), validateFieldCondition(ctx))
 
 	children := make([]readstore.EntityIterator, 0, len(filters))
 
@@ -482,6 +482,16 @@ func resolveFieldMetadataCtx(ctx *compileCtx, fc *commonpb.FieldCondition) (*com
 	return fc, mc, nil
 }
 
+// validateFieldCondition binds resolveFieldMetadataCtx's validation and
+// coercion to ctx, for rewrites that must see a leaf as compile will.
+func validateFieldCondition(ctx *compileCtx) func(*commonpb.FieldCondition) (*commonpb.FieldCondition, error) {
+	return func(fc *commonpb.FieldCondition) (*commonpb.FieldCondition, error) {
+		validated, _, err := resolveFieldMetadataCtx(ctx, fc)
+
+		return validated, err
+	}
+}
+
 // compileFieldCondition compiles a FieldCondition (metadata filter) into a leaf iterator.
 func compileFieldCondition(ctx *compileCtx, fc *commonpb.FieldCondition) (readstore.EntityIterator, error) {
 	fc, mc, err := resolveFieldMetadataCtx(ctx, fc)
@@ -508,12 +518,10 @@ func compileFieldCondition(ctx *compileCtx, fc *commonpb.FieldCondition) (readst
 // compileStringCondition -- point scan on exact string value.
 // Entities are naturally sorted (same value prefix -> entity suffix determines order).
 func compileStringCondition(ctx *compileCtx, mc *metadataCtx, cond *commonpb.StringCondition) (readstore.EntityIterator, error) {
-	value, err := resolveString(cond, ctx.params)
+	fullPrefix, err := resolveStringMetadataPrefix(ctx, mc, cond)
 	if err != nil {
 		return nil, err
 	}
-
-	fullPrefix := readstore.EncodeString(append([]byte{}, mc.prefix...), value)
 
 	iter, err := readstore.NewEventResolveIterator(ctx.indexReader, fullPrefix, ctx.pin)
 	if err != nil {
@@ -859,12 +867,10 @@ func compileUintCondition(ctx *compileCtx, mc *metadataCtx, cond *commonpb.UintC
 
 // compileBoolCondition -- point scan on exact bool value.
 func compileBoolCondition(ctx *compileCtx, mc *metadataCtx, cond *commonpb.BoolCondition) (readstore.EntityIterator, error) {
-	value, err := resolveBool(cond, ctx.params)
+	fullPrefix, err := resolveBoolMetadataPrefix(ctx, mc, cond)
 	if err != nil {
 		return nil, err
 	}
-
-	fullPrefix := readstore.EncodeBool(append([]byte{}, mc.prefix...), value)
 
 	iter, pErr := readstore.NewEventResolveIterator(ctx.indexReader, fullPrefix, ctx.pin)
 	if pErr != nil {
@@ -881,8 +887,8 @@ func compileBoolCondition(ctx *compileCtx, mc *metadataCtx, cond *commonpb.BoolC
 // compileExistsCondition -- streaming scan on the entity-ordered existence index (eidx).
 // Entities are stored in entity ID order, so no materialization or sorting is needed.
 func compileExistsCondition(ctx *compileCtx, mc *metadataCtx, cond *commonpb.ExistsCondition) (readstore.EntityIterator, error) {
-	nonNullPrefix := readstore.EntityExistsNonNullPrefixV(ctx.kb, ctx.ledgerName, mc.namespace, mc.metaKey, mc.version)
-	if !cond.GetIncludeNull() {
+	nonNullPrefix, nullPrefix := resolveExistsPrefixes(ctx, mc, cond)
+	if nullPrefix == nil {
 		// Only non-null entries
 		iter, err := readstore.NewEventResolveIterator(ctx.indexReader, nonNullPrefix, ctx.pin)
 		if err != nil {
@@ -897,8 +903,6 @@ func compileExistsCondition(ctx *compileCtx, mc *metadataCtx, cond *commonpb.Exi
 	}
 
 	// Both non-null and null entries: merge two prefix iterators
-	nullPrefix := readstore.EntityExistsNullPrefixV(ctx.kb, ctx.ledgerName, mc.namespace, mc.metaKey, mc.version)
-
 	nonNullIter, err := readstore.NewEventResolveIterator(ctx.indexReader, nonNullPrefix, ctx.pin)
 	if err != nil {
 		return nil, fmt.Errorf("creating exists non-null event iterator: %w", err)
@@ -969,39 +973,16 @@ func addressRoleBucketLabel(role commonpb.AddressRole) string {
 
 // compileAddressMatch compiles an address filter.
 func compileAddressMatch(ctx *compileCtx, am *commonpb.AddressMatch) (readstore.EntityIterator, error) {
-	role := am.GetRole()
-
-	// Address filtering on TRANSACTIONS target requires the account-tx index.
-	// For ACCOUNTS target, address matching uses the existence index (always on).
-	if ctx.target == commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS {
-		id, label := txAddressIndexID(role)
-		if _, err := requireIndexReady(ctx, id, label); err != nil {
-			return nil, err
-		}
+	match, err := resolveAddressMatch(ctx, am)
+	if err != nil {
+		return nil, err
 	}
 
-	switch m := am.GetMatch().(type) {
-	case *commonpb.AddressMatch_HardcodedPrefix:
-		return compileAddressPrefix(ctx, m.HardcodedPrefix, role)
-	case *commonpb.AddressMatch_HardcodedExact:
-		return compileAddressExact(ctx, m.HardcodedExact, role)
-	case *commonpb.AddressMatch_ParamPrefix:
-		value, err := extractString(ctx.params, m.ParamPrefix)
-		if err != nil {
-			return nil, err
-		}
-
-		return compileAddressPrefix(ctx, value, role)
-	case *commonpb.AddressMatch_ParamExact:
-		value, err := extractString(ctx.params, m.ParamExact)
-		if err != nil {
-			return nil, err
-		}
-
-		return compileAddressExact(ctx, value, role)
-	default:
-		return nil, domain.NewFilterCompilationError("unknown address match type: %T", am.GetMatch())
+	if match.prefix {
+		return compileAddressPrefix(ctx, match.value, match.role)
 	}
+
+	return compileAddressExact(ctx, match.value, match.role)
 }
 
 func compileAddressPrefix(ctx *compileCtx, addrPrefix string, role commonpb.AddressRole) (readstore.EntityIterator, error) {
@@ -1082,18 +1063,10 @@ func compileAddressExact(ctx *compileCtx, exactAddr string, role commonpb.Addres
 // compileReferenceCondition compiles a ReferenceCondition into a prefix scan on the transaction reference index.
 // Requires the reference builtin index to be READY.
 func compileReferenceCondition(ctx *compileCtx, rc *commonpb.ReferenceCondition) (readstore.EntityIterator, error) {
-	if _, err := requireIndexReady(ctx,
-		indexes.TxBuiltinID(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE),
-		"reference"); err != nil {
-		return nil, err
-	}
-
-	value, err := resolveString(rc.GetCond(), ctx.params)
+	value, prefix, err := resolveReferenceCondition(ctx, rc)
 	if err != nil {
 		return nil, err
 	}
-
-	prefix := readstore.TransactionReferencePrefix(ctx.kb, ctx.ledgerName, value)
 
 	iter, pErr := readstore.NewPrefixIterator(ctx.indexReader, prefix, len(prefix), 8)
 	if pErr != nil {
@@ -1115,12 +1088,6 @@ func compileReferenceCondition(ctx *compileCtx, rc *commonpb.ReferenceCondition)
 func compileAccountHasAssetCondition(ctx *compileCtx, c *commonpb.AccountHasAssetCondition) (readstore.EntityIterator, error) {
 	// Target validity (ACCOUNTS only) and the one-byte precision bound are
 	// enforced at the dispatch site by rejectInvalidCondition; no local guard.
-	if _, err := requireIndexReady(ctx,
-		indexes.AccountBuiltinID(commonpb.AccountBuiltinIndex_ACCT_BUILTIN_INDEX_ASSET),
-		"has asset"); err != nil {
-		return nil, err
-	}
-
 	// Key layout: [0x0C][ledger 64B][assetBase\x00][precision 1B][account].
 	// The account is the variable-length trailing segment after the prefix,
 	// so entityOffset = len(prefix) and entityLen = 0 (extends to end of key).
@@ -1131,7 +1098,10 @@ func compileAccountHasAssetCondition(ctx *compileCtx, c *commonpb.AccountHasAsse
 	// an account rendered address-only that no single state contains. The
 	// gate keeps purged accounts servable (their touch is below any later
 	// pin), which is the case the ACCOUNTS horizon carve-out protects.
-	prefix := readstore.AccountByAssetPrefix(ctx.kb, ctx.ledgerName, c.GetAssetBase(), uint8(c.GetPrecision()))
+	prefix, err := resolveAccountHasAssetPrefix(ctx, c)
+	if err != nil {
+		return nil, err
+	}
 
 	iter, pErr := readstore.NewStampGatedPrefixIterator(ctx.indexReader, prefix, len(prefix), 0, ctx.pin)
 	if pErr != nil {
@@ -1167,7 +1137,7 @@ func compileBuiltinUintCondition(ctx *compileCtx, cond *commonpb.BuiltinUintCond
 // compileTxIDCondition filters transactions by ID using Pebble transaction updates.
 // No index is required -- the Pebble history zone is always present and sorted by txID.
 func compileTxIDCondition(ctx *compileCtx, cond *commonpb.UintCondition) (readstore.EntityIterator, error) {
-	bounds, err := resolveUintBounds(cond, ctx.params)
+	bounds, txIDBytes, err := resolveTxIDCondition(ctx, cond)
 	if err != nil {
 		return nil, err
 	}
@@ -1176,20 +1146,8 @@ func compileTxIDCondition(ctx *compileCtx, cond *commonpb.UintCondition) (readst
 		return readstore.NewSliceIterator(nil), nil
 	}
 
-	// Equality optimization: single txID -> check existence in Pebble and return slice
+	// Equality preparation already checked existence; return the owned ID slice.
 	if bounds.isEquality() {
-		exists, pErr := pebbleTxExists(ctx.pebbleReader, ctx.ledgerName, bounds.min)
-		if pErr != nil {
-			return nil, fmt.Errorf("checking tx existence: %w", pErr)
-		}
-
-		if !exists {
-			return readstore.NewSliceIterator(nil), nil
-		}
-
-		txIDBytes := make([]byte, 8)
-		binary.BigEndian.PutUint64(txIDBytes, bounds.min)
-
 		iter := readstore.NewSliceIterator([][]byte{txIDBytes})
 
 		return trackIterator(iter, ctx.profile, &IteratorStats{
@@ -1200,17 +1158,7 @@ func compileTxIDCondition(ctx *compileCtx, cond *commonpb.UintCondition) (readst
 	}
 
 	// Range scan using Pebble
-	var lower, upper []byte
-
-	if bounds.hasMin {
-		lower = make([]byte, 8)
-		binary.BigEndian.PutUint64(lower, bounds.min)
-	}
-
-	if bounds.hasMax {
-		upper = make([]byte, 8)
-		binary.BigEndian.PutUint64(upper, bounds.max)
-	}
+	lower, upper := entityIDRangeBounds(bounds)
 
 	rangeIter, pErr := readstore.NewPebbleTxRangeIterator(ctx.pebbleReader, ctx.ledgerName, lower, upper)
 	if pErr != nil {
@@ -1385,17 +1333,12 @@ func compileLogIdCondition(ctx *compileCtx, cond *commonpb.UintCondition) (reads
 	// be represented by hasMax (applyMaxInclusiveUint drops it), and a range
 	// leaf built on the transaction-ID pattern must not increment MaxUint64.
 	if bounds.isEquality() || (bounds.hasMin && !bounds.hasMax && bounds.min == math.MaxUint64) {
-		logIDBytes := make([]byte, 8)
-		binary.BigEndian.PutUint64(logIDBytes, bounds.min)
-		key := readstore.LedgerLogKey(ctx.kb, ctx.ledgerName, bounds.min)
-
-		// Point lookup in Pebble index
-		exists, pErr := pebbleKeyExists(ctx.indexReader, key)
+		logIDBytes, pErr := resolveLogIDPoint(ctx, bounds.min)
 		if pErr != nil {
-			return nil, fmt.Errorf("checking log existence: %w", pErr)
+			return nil, pErr
 		}
 
-		if !exists {
+		if logIDBytes == nil {
 			return readstore.NewSliceIterator(nil), nil
 		}
 
@@ -1413,17 +1356,7 @@ func compileLogIdCondition(ctx *compileCtx, cond *commonpb.UintCondition) (reads
 	// sorting the whole range. lower/upper are the 8-byte BE ID bounds; an
 	// absent upper bound is closed by the successor of the prefix (see
 	// LedgerLogRangeIterator), which keeps a MaxUint64 log ID included.
-	var lower, upper []byte
-
-	if bounds.hasMin {
-		lower = make([]byte, 8)
-		binary.BigEndian.PutUint64(lower, bounds.min)
-	}
-
-	if bounds.hasMax {
-		upper = make([]byte, 8)
-		binary.BigEndian.PutUint64(upper, bounds.max)
-	}
+	lower, upper := entityIDRangeBounds(bounds)
 
 	iter, rErr := readstore.NewLedgerLogRangeIterator(ctx.indexReader, ctx.kb, ctx.ledgerName, lower, upper)
 	if rErr != nil {

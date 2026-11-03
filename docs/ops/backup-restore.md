@@ -30,6 +30,9 @@ CRD/chart updates before starting the operator; parent lists bypass the cache
 and use API-server field selection.
 
 The operator's `Backup` resource can schedule full and incremental S3 backups:
+Each BackupRun Job uses the Ledger container image from the Cluster's owned
+StatefulSet. This also covers Clusters that inherit their image tag from the
+Operator instead of storing it in `spec.image.tag`.
 
 ```yaml
 apiVersion: ledger.formance.com/v1alpha1

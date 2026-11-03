@@ -2,7 +2,7 @@
 
 Code: `internal/infra/monitoring/`.
 
-- [Trace sampling](trace-sampling.md): standard SDK export, collector ownership,
+- [Trace sampling](trace-sampling.md): typed standard SDK head sampling, collector ownership,
   error signals, and the EN-1588 acceptance experiment.
 
 See [deployment](../../../../ops/deployment.md#collector-side-trace-sampling) for

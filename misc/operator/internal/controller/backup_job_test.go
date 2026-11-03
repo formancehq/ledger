@@ -70,7 +70,7 @@ func TestBuildBackupJob_FullWithTLS(t *testing.T) {
 		Spec:       ledgerv1alpha1.BackupRunSpec{BackupRef: "blockchains", Type: ledgerv1alpha1.BackupRunTypeFull},
 	}
 
-	job, err := buildBackupJob(run, backup, ls, tlsModeRequired)
+	job, err := buildBackupJob(run, backup, ls, tlsModeRequired, "ghcr.io/formancehq/ledger:v0.0.8")
 	require.NoError(t, err)
 
 	require.Equal(t, "ledger-blockchains-manual-abc", job.Name)
@@ -154,7 +154,7 @@ func TestBuildBackupJob_DisabledTLS_NoClusterSecret(t *testing.T) {
 		Spec:       ledgerv1alpha1.BackupRunSpec{Type: ledgerv1alpha1.BackupRunTypeFull},
 	}
 
-	job, err := buildBackupJob(run, backup, ls, tlsModeDisabled)
+	job, err := buildBackupJob(run, backup, ls, tlsModeDisabled, "ledger:test")
 	require.NoError(t, err)
 	for _, e := range job.Spec.Template.Spec.Containers[0].Env {
 		require.NotEqual(t, "CLUSTER_SECRET", e.Name,
@@ -178,7 +178,7 @@ func TestBuildBackupJob_Incremental(t *testing.T) {
 		Spec:       ledgerv1alpha1.BackupRunSpec{Type: ledgerv1alpha1.BackupRunTypeIncremental},
 	}
 
-	job, err := buildBackupJob(run, backup, ls, tlsModeDisabled)
+	job, err := buildBackupJob(run, backup, ls, tlsModeDisabled, "ledger:test")
 	require.NoError(t, err)
 
 	shell := job.Spec.Template.Spec.Containers[0].Command[2]
@@ -198,7 +198,7 @@ func TestBuildBackupJob_UnknownType(t *testing.T) {
 		Spec:       ledgerv1alpha1.BackupRunSpec{Type: "Garbage"},
 	}
 
-	_, err := buildBackupJob(run, backup, ls, tlsModeDisabled)
+	_, err := buildBackupJob(run, backup, ls, tlsModeDisabled, "ledger:test")
 	require.Error(t, err)
 }
 
@@ -223,7 +223,7 @@ func TestBuildBackupJob_Timeout(t *testing.T) {
 				Timeout:     &metav1.Duration{Duration: 30 * time.Minute},
 			},
 		}
-		job, err := buildBackupJob(run, backup, ls, tlsModeDisabled)
+		job, err := buildBackupJob(run, backup, ls, tlsModeDisabled, "ledger:test")
 		require.NoError(t, err)
 		require.Contains(t, job.Spec.Template.Spec.Containers[0].Command[2], "'--timeout' '30m0s'")
 	})
@@ -234,7 +234,7 @@ func TestBuildBackupJob_Timeout(t *testing.T) {
 			ObjectMeta: metav1.ObjectMeta{Name: "b", Namespace: "ns"},
 			Spec:       ledgerv1alpha1.BackupSpec{Destination: ledgerv1alpha1.BackupDestination{Driver: "s3"}},
 		}
-		job, err := buildBackupJob(run, backup, ls, tlsModeDisabled)
+		job, err := buildBackupJob(run, backup, ls, tlsModeDisabled, "ledger:test")
 		require.NoError(t, err)
 		require.NotContains(t, job.Spec.Template.Spec.Containers[0].Command[2], "--timeout")
 	})
@@ -248,7 +248,7 @@ func TestBuildBackupJob_Timeout(t *testing.T) {
 				Timeout:     &metav1.Duration{Duration: 0},
 			},
 		}
-		job, err := buildBackupJob(run, backup, ls, tlsModeDisabled)
+		job, err := buildBackupJob(run, backup, ls, tlsModeDisabled, "ledger:test")
 		require.NoError(t, err)
 		require.NotContains(t, job.Spec.Template.Spec.Containers[0].Command[2], "--timeout")
 	})
@@ -461,7 +461,7 @@ func TestBuildBackupJob_DeclaresTerminationMessagePath(t *testing.T) {
 		Spec:       ledgerv1alpha1.BackupRunSpec{Type: ledgerv1alpha1.BackupRunTypeFull},
 	}
 
-	job, err := buildBackupJob(run, backup, ls, tlsModeDisabled)
+	job, err := buildBackupJob(run, backup, ls, tlsModeDisabled, "ledger:test")
 	require.NoError(t, err)
 
 	c := job.Spec.Template.Spec.Containers[0]

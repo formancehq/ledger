@@ -204,6 +204,15 @@ test-model duration="60":
 test-model-cluster duration="180":
     tests/antithesis/run_model_test.sh --cluster {{duration}}
 
+# Build both pinned revisions and exercise the maintenance-gated binary upgrade.
+[positional-arguments]
+test-rolling-upgrade source_ref target_ref:
+    tests/upgrade/run.sh "$1" "$2"
+
+# Validate an adjacent v3.0 RC -> exact release/v3.0 HEAD using the operator.
+test-release-operator-upgrade:
+    tests/upgrade/run_operator.sh "$RELEASE_BRANCH"
+
 # Run all fuzz tests (seed corpus replay, no active fuzzing — fast CI check)
 fuzz-check:
     #!/usr/bin/env bash
@@ -484,7 +493,7 @@ operator-install-plugin:
 operator-test:
     cd misc/operator && go test ./...
 
-# Run operator admission and backup recovery regressions in the operator-tests Nix shell.
+# Run operator admission, trace-sampling, and backup recovery regressions in the operator-tests Nix shell.
 operator-test-admission:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -492,7 +501,7 @@ operator-test-admission:
     KUBEBUILDER_ASSETS=$(setup-envtest use 1.32.x -p path)
     export KUBEBUILDER_ASSETS
     cd misc/operator
-    go test -race -tags integration ./internal/controller -run '^(TestLedgerAdmission|TestBackupRunAdmission|TestBackupRunParentSelectorIntegration$|TestBackupRunCommittedCreateLostResponseIntegration$|TestBackupRunManualAssociationIntegration$)' -count=1 -timeout 3m
+    go test -race -tags integration ./internal/controller -run '^(TestLedgerAdmission|TestTraceSampling|TestBackupRunAdmission|TestBackupRunParentSelectorIntegration$|TestBackupRunCommittedCreateLostResponseIntegration$|TestBackupRunManualAssociationIntegration$)' -count=1 -timeout 3m
 
 # Run operator pre-commit checks (generate + tidy + build)
 operator-pre-commit: operator-generate
@@ -511,6 +520,7 @@ operator-docker-build tag='':
     image='{{ operator_image_repository }}'
     if [ -n "{{ tag }}" ]; then
         docker buildx build -t "${image}:{{ tag }}" -t "${image}:latest" \
+            --build-arg "OPERATOR_VERSION={{ tag }}" \
             --platform linux/amd64,linux/arm64 --push misc/operator
     else
         docker buildx build -t "${image}:latest" \

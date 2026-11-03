@@ -122,6 +122,10 @@ its keyspace on disk, so a read the promoted version cannot serve yet, or is
 pinned below its activation, gets the replaced version under its own binding,
 exactly as during the rewrite. An initial build has no replaced version and
 reads as `INDEX_BUILDING` while in flight, as it did throughout its backfill.
+The mark is read live while the state comes from the read's snapshot, so a
+flush completing during a read changes what the resolver returns; a query
+compilation therefore resolves each index once and validates, merges and
+compiles every condition on it against that one version.
 The replaced version is retired — `Previous*` zeroed and its keyspace
 range-deleted in one batch — once the promotion is flushed and no live read
 lease sits between the two versions' activations, the only positions it can
