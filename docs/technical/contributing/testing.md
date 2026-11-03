@@ -154,6 +154,9 @@ runs through Job-result capture, parent events and accounting. These tests
 publish Job and Pod status themselves; they do not run a kubelet or prove
 garbage collection. Keep the recipe's selection aligned with these regression
 names so CI executes the API-server evidence as well as operator unit tests.
+`TestBackupRunParentSelectorIntegration` checks the CRD field selector and real
+manager-cache index with unlabeled runs, misleading labels, other parents,
+namespace isolation and empty results.
 
 ### Schemathesis API Conformance Tests
 

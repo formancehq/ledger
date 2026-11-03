@@ -492,7 +492,7 @@ operator-test-admission:
     KUBEBUILDER_ASSETS=$(setup-envtest use 1.32.x -p path)
     export KUBEBUILDER_ASSETS
     cd misc/operator
-    go test -race -tags integration ./internal/controller -run '^(TestLedgerAdmission|TestBackupRunAdmission|TestBackupRunCommittedCreateLostResponseIntegration$|TestBackupRunManualAssociationIntegration$)' -count=1 -timeout 3m
+    go test -race -tags integration ./internal/controller -run '^(TestLedgerAdmission|TestBackupRunAdmission|TestBackupRunParentSelectorIntegration$|TestBackupRunCommittedCreateLostResponseIntegration$|TestBackupRunManualAssociationIntegration$)' -count=1 -timeout 3m
 
 # Run operator pre-commit checks (generate + tidy + build)
 operator-pre-commit: operator-generate

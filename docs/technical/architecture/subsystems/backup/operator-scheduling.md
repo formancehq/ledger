@@ -29,12 +29,20 @@ and status updates remain supported. The event mapper defensively enqueues both 
 on updates; admission rejects reference edits before they can produce such an
 event. Existing Jobs keep their persisted configuration.
 Parent lists remain direct API-server reads; sibling lists retain their existing
-informer consistency. Both list runs in the namespace and filter by the spec,
-so response size and filtering cost are O(N) in namespace BackupRuns, rather than
-only label-selected children. A cache-only field index cannot replace the direct
-parent list required to protect durable summaries from informer lag. History
-limits reduce terminal history but do not bound active or externally retained
-runs. Large namespace histories therefore increase reconciliation cost.
+informer consistency. Both use a same-namespace `spec.backupRef` field selector.
+Both shipped CRDs declare `.spec.backupRef` in `selectableFields`, requiring
+Kubernetes 1.32 or later; install the updated CRDs before starting the operator.
+The manager registers the matching field index before starting the BackupRun
+controller. A cache-only index cannot replace the direct parent list required
+to protect durable summaries from informer lag.
+
+Direct responses and controller processing are proportional to the selected
+parent's runs, rather than all runs in the namespace. Server-side selection does
+not guarantee an indexed storage lookup or O(1) API-server work. The informer
+still watches namespace-wide runs and maintains the parent index; cached sibling
+queries return only that parent's runs. History limits reduce terminal history
+but do not bound active or externally retained runs, so large per-parent
+histories still increase reconciliation cost.
 
 The association change does not provide atomic execution exclusion across
 concurrent reconcilers; it preserves the existing Running-reservation policy.

@@ -64,7 +64,7 @@
   ],
   "dynamic_checks_to_consider": [
     "enumerate every go.mod and assign each *_test.go file to its containing module, package, and build-constraint expression",
-    "trace Tests-Operator through operator-test-admission in the pinned operator-tests shell; confirm its integration tag and explicit test selector execute Ledger and BackupRun target admission, labeled BackupRun lost-response recovery and minimally admitted manual BackupRun association against Kubernetes envtest with the race detector",
+    "trace Tests-Operator through operator-test-admission in the pinned operator-tests shell; confirm its integration tag and explicit test selector execute Ledger and BackupRun target admission, labeled BackupRun lost-response recovery and minimally admitted manual BackupRun association, and API-server/real-cache parent field selection against Kubernetes envtest with the race detector",
     "use go list -test and go test -list under the exact runner tag sets and package selectors to compare intended and effective Go collection without treating -coverpkg as execution",
     "render Just recipes and trace agent-check wrappers and GitHub workflow commands to map each source family to its effective package selectors, environment, trigger, and exit-status propagation",
     "perform framework-native dry discovery or result inspection for Ginkgo, Schemathesis, Chainsaw, scenarios, operator envtest/e2e, dashboard tests, and Antithesis image template/driver layouts",

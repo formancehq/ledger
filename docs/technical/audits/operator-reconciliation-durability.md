@@ -237,7 +237,17 @@ sibling waits behind an unlabeled Running run. Separately prove automatic parent
 updates through the registered manager watch for an unowned manual run. Envtest
 fixtures publish Job/Pod status themselves and do not prove kubelet execution or
 garbage collection. Direct parent lists must retain their stale-cache protection;
-namespace scan cost is documented in the scheduling contract.
+parent-selector cost is documented in the scheduling contract.
+
+### BackupRun parent selection
+
+Both shipped CRDs declare `.spec.backupRef` selectable on Kubernetes 1.32+.
+Direct parent reads must retain the APIReader and use the same namespaced field
+selector as cached sibling queries; manager setup must register that field index.
+The API-server and real-cache regression must include unlabeled runs, misleading
+labels, different parents and namespaces, and no matches. Selection reduces
+response size; it does not establish O(1) API-server storage work.
+
 
 ## Severity
 

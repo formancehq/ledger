@@ -81,6 +81,7 @@ type BackupRunStatus struct {
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
 // +kubebuilder:resource:shortName=bkr
+// +kubebuilder:selectablefield:JSONPath=".spec.backupRef"
 // +kubebuilder:printcolumn:name="Backup",type=string,JSONPath=`.spec.backupRef`
 // +kubebuilder:printcolumn:name="Type",type=string,JSONPath=`.spec.type`
 // +kubebuilder:printcolumn:name="Phase",type=string,JSONPath=`.status.phase`

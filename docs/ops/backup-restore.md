@@ -24,6 +24,11 @@ All backup/restore commands accept the same provider flags; only the `--driver` 
 
 ### Scheduling with the Kubernetes Operator
 
+Operator backups require Kubernetes 1.32 or later and updated BackupRun CRDs
+with `.spec.backupRef` declared in `selectableFields`. Install both matching
+CRD/chart updates before starting the operator; parent lists bypass the cache
+and use API-server field selection.
+
 The operator's `Backup` resource can schedule full and incremental S3 backups:
 
 ```yaml

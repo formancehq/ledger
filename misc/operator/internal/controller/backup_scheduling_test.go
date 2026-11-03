@@ -42,6 +42,7 @@ func newBackupSchedulingFixture(t *testing.T) *backupSchedulingFixture {
 		},
 	}
 	c := fake.NewClientBuilder().WithScheme(scheme).
+		WithIndex(&ledgerv1alpha1.BackupRun{}, backupRunParentField, backupRunParentIndex).
 		WithStatusSubresource(&ledgerv1alpha1.Backup{}, &ledgerv1alpha1.BackupRun{}).
 		WithObjects(backup, &ledgerv1alpha1.Cluster{ObjectMeta: metav1.ObjectMeta{Name: "ledger", Namespace: "test"}}).Build()
 

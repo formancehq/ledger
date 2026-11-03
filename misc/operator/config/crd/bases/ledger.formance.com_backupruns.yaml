@@ -257,6 +257,8 @@ spec:
         required:
         - spec
         type: object
+    selectableFields:
+    - jsonPath: .spec.backupRef
     served: true
     storage: true
     subresources:

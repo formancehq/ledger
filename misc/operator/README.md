@@ -215,8 +215,9 @@ for runtime delivery, missing-key behavior and ambient authentication.
 
 ### Prerequisites
 
-- Kubernetes cluster with `StatefulSetAutoDeletePVC` enabled (default since
-  1.27, stable since 1.32); a tested minimum version is not established.
+- Kubernetes 1.32 or later, with `StatefulSetAutoDeletePVC` enabled.
+  BackupRun parent queries require CRD `selectableFields`; install the updated
+  CRDs before starting the operator.
   PVC/PV deletion protection needs `ValidatingAdmissionPolicy` (stable since
   1.30); see [Volume Deletion Protection](#volume-deletion-protection).
 - Helm 3

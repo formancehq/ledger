@@ -126,10 +126,11 @@ go run . run
 
 ### Prerequisites
 
-- Kubernetes with `StatefulSetAutoDeletePVC` enabled (default since 1.27,
-  stable since 1.32). PVC/PV deletion protection needs the
-  `ValidatingAdmissionPolicy` API (stable since 1.30). The operator has no
-  established, tested minimum Kubernetes version; see
+- Kubernetes 1.32 or later with `StatefulSetAutoDeletePVC` enabled.
+  PVC/PV deletion protection needs the `ValidatingAdmissionPolicy` API
+  (stable since 1.30). BackupRun queries require the updated CRDs with
+  `.spec.backupRef` in `selectableFields`; install them before starting the
+  operator. See
   [Deployment Profiles](./deployment-profiles.md#kubernetes-operator-specifics).
 - Helm 3.0+ (for deploying the operator)
 - PersistentVolume support

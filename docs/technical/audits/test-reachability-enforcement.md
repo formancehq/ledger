@@ -74,7 +74,9 @@ collect the `integration`-tagged envtest suite. The Tests-Operator CI job also
 runs `just operator-test-admission` in the pinned `operator-tests` shell. Trace
 that recipe's explicit selection to the Ledger and BackupRun target admission tests and both
 `TestBackupRunCommittedCreateLostResponseIntegration` and
-`TestBackupRunManualAssociationIntegration`. Confirm execution against the
+`TestBackupRunManualAssociationIntegration`, plus
+`TestBackupRunParentSelectorIntegration` for direct API-server selection and
+production cache-index registration. Confirm execution against the
 selected Kubernetes assets with the race detector; merely compiling these
 functions or running root-module tests does not establish this evidence.
 

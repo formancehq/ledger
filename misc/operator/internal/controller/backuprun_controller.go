@@ -403,6 +403,10 @@ func (r *BackupRunReconciler) findBlockingSibling(ctx context.Context, run *ledg
 }
 
 func (r *BackupRunReconciler) SetupWithManager(mgr ctrl.Manager) error {
+	if err := indexBackupRunParent(context.Background(), mgr.GetFieldIndexer()); err != nil {
+		return err
+	}
+
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&ledgerv1alpha1.BackupRun{}).
 		Owns(&batchv1.Job{}).
