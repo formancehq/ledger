@@ -80,6 +80,7 @@ func verifyStagingMatchesManifest(targetDir string, manifest *snapshotpb.Snapsho
 	if err != nil {
 		return fmt.Errorf("opening snapshot staging root: %w", err)
 	}
+	// The root is only read; a close error cannot change the verdict below.
 	defer func() { _ = root.Close() }()
 
 	seen := 0
