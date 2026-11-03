@@ -15,6 +15,7 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes"
@@ -225,6 +226,18 @@ func (r *ClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (re
 		ledger.Status.Phase = "Error"
 
 		return ctrl.Result{}, nil // Don't requeue; wait for spec change.
+	}
+	if err := r.validateCredentialsAuthCompatibility(ctx, ledger); err != nil {
+		meta.SetStatusCondition(&ledger.Status.Conditions, metav1.Condition{
+			Type:               "ConfigValid",
+			Status:             metav1.ConditionFalse,
+			Reason:             "ValidationFailed",
+			Message:            err.Error(),
+			ObservedGeneration: ledger.Generation,
+		})
+		ledger.Status.Phase = "Error"
+
+		return ctrl.Result{}, nil
 	}
 
 	// Check the live image before reconciling any resource. The Cluster API has
@@ -548,6 +561,39 @@ func (r *ClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (re
 	}
 
 	return stsResult, nil
+}
+
+// validateCredentialsAuthCompatibility rejects an explicit auth opt-out when
+// a user Credentials resource selects the Cluster. An omitted auth.enabled
+// field is a deliberate no-auth default: matching Credentials are ignored by
+// reconcileAuthKeys and must not auto-enable the server.
+func (r *ClusterReconciler) validateCredentialsAuthCompatibility(ctx context.Context, ledger *ledgerv1alpha1.Cluster) error {
+	if ledger.Spec.Auth == nil || ledger.Spec.Auth.Enabled == nil || *ledger.Spec.Auth.Enabled {
+		return nil
+	}
+
+	var list ledgerv1alpha1.CredentialsList
+	if err := r.List(ctx, &list); err != nil {
+		return fmt.Errorf("listing Credentials for auth validation: %w", err)
+	}
+
+	clusterLabels := labels.Set(ledger.Labels)
+	operatorSelector := operatorCredentialsSelectorValue(ledger)
+	for i := range list.Items {
+		credentials := &list.Items[i]
+		if credentials.Labels[labelOperatorCredential] == operatorSelector {
+			continue
+		}
+		selector, err := metav1.LabelSelectorAsSelector(&credentials.Spec.Selector)
+		if err != nil {
+			continue
+		}
+		if selector.Matches(clusterLabels) {
+			return fmt.Errorf("auth.enabled=false conflicts with Credentials %q selecting this Cluster; remove the Credentials or enable authentication", credentials.Name)
+		}
+	}
+
+	return nil
 }
 
 func validatePeerPortImmutability(ledger *ledgerv1alpha1.Cluster, statefulSet *appsv1.StatefulSet) error {
