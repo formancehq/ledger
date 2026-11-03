@@ -765,6 +765,8 @@ type MonitoringConfig struct {
 }
 
 // TracesConfig holds trace configuration.
+// +kubebuilder:validation:XValidation:rule="!has(self.samplerArg) || (has(self.sampler) && self.sampler in ['traceidratio', 'parentbased_traceidratio'])",message="samplerArg requires a ratio sampler"
+// +kubebuilder:validation:XValidation:rule="!has(self.sampler) || !(self.sampler in ['traceidratio', 'parentbased_traceidratio']) || has(self.samplerArg)",message="ratio sampler requires samplerArg"
 type TracesConfig struct {
 	// Enabled enables tracing.
 	// +optional
@@ -793,6 +795,19 @@ type TracesConfig struct {
 	// Batch enables batch mode.
 	// +optional
 	Batch string `json:"batch,omitempty"`
+
+	// Sampler selects a standard OpenTelemetry head-sampling policy. Omitted
+	// values preserve the SDK default or raw extraEnv sampler configuration.
+	// Typed sampling cannot be combined with raw sampler variables in extraEnv.
+	// +kubebuilder:validation:Enum=always_on;always_off;traceidratio;parentbased_always_on;parentbased_always_off;parentbased_traceidratio
+	// +optional
+	Sampler string `json:"sampler,omitempty"`
+
+	// SamplerArg is the explicit finite ratio in [0,1] required by traceidratio
+	// and parentbased_traceidratio. Other policies must omit this argument.
+	// +kubebuilder:validation:XValidation:rule="double(self) >= 0.0 && double(self) <= 1.0",message="samplerArg must be a finite ratio in [0,1]"
+	// +optional
+	SamplerArg string `json:"samplerArg,omitempty"`
 }
 
 // MetricsConfig holds metrics configuration.

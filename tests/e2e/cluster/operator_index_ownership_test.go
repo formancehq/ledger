@@ -23,8 +23,8 @@ import (
 	"github.com/formancehq/ledger/v3/pkg/testserver"
 )
 
-// TestOperatorIndexOwnership runs the operator's controller boundary tests
-// against a real Ledger node and the real ledgerctl executable. The subprocess
+// TestOperatorIndexOwnership runs index ownership and mirror-promotion controller
+// tests against a real Ledger node and ledgerctl executable. The subprocess
 // bridges the independent Go modules without introducing a module dependency.
 func TestOperatorIndexOwnership(t *testing.T) {
 	t.Parallel()
@@ -68,7 +68,7 @@ func TestOperatorIndexOwnership(t *testing.T) {
 		return err == nil && state.GetLeader() != 0
 	}, 10*time.Second, 10*time.Millisecond)
 
-	tests := exec.CommandContext(ctx, goTool, "test", "-race", "./internal/controller", "-run", "^TestLedgerIndexOwnershipReal", "-count=1", "-v")
+	tests := exec.CommandContext(ctx, goTool, "test", "-race", "./internal/controller", "-run", "^TestLedger(IndexOwnershipReal|PromotionReal)", "-count=1", "-v")
 	tests.Dir = filepath.Join(root, "misc/operator")
 	tests.Env = append(os.Environ(), "LEDGER_INDEX_TEST_SERVER="+endpoint, "LEDGERCTL_BINARY="+cli)
 	output, err = tests.CombinedOutput()

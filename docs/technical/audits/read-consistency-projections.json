@@ -8,6 +8,9 @@
     "internal/storage/readstore/**",
     "internal/storage/usagestore/**",
     "internal/application/indexbuilder/**",
+    "tools/protoc-gen-ledger-log-category/**",
+    "misc/proto/common.proto",
+    "internal/proto/commonpb/common_ledger_log_category*.go",
     "internal/application/auditindexer/**",
     "internal/application/usagebuilder/**",
     "internal/infra/node/read_index.go",
@@ -44,7 +47,8 @@
     "docs/technical/architecture/subsystems/backup/incremental-restore-contract.md",
     "docs/technical/architecture/audit-vs-technical-state.md",
     "docs/technical/contributing/testing.md",
-    "docs/technical/architecture/subsystems/api/ledger-info.md"
+    "docs/technical/architecture/subsystems/api/ledger-info.md",
+    "docs/technical/contributing/protobuf.md"
   ],
   "invariants": [
     "A default live read executes ReadIndexAndWait, carries the barrier to local execution, and rejects a pinned main snapshot whose durable LastAppliedIndex is below it. A stale read may omit only the quorum barrier; it cannot be labeled default or bypass alignment for a projection it consults.",
@@ -58,7 +62,8 @@
     "A query checkpoint becomes discoverable only after main and read components represent its declared boundary and a ready marker is published last. Interrupted creation leaves no usable partial checkpoint; deletion preserves acquired readers, and a frozen projection behind its main horizon fails instead of waiting or returning partial data.",
     "Audit-index and usage projections expose coherent snapshots under their documented freshness semantics. Historical query-checkpoint responses never mix live usage data into frozen results; asynchronous rebuildability is not mislabeled as strong certification.",
     "Every finding identifies the temporal boundary violated, reachable production path, source and projection positions/versions, and single correction owner. Agreement between readers sharing a projection or helper is not proof of convergence to committed history.",
-    "ListLedgers mirror progress is enriched through the same owned main-store snapshot as the ledger row and metadata, in current and checkpoint reads. Normal ledgers add no mirror reads; mirror errors are terminal cursor errors, not silently missing progress (EN-2780)."
+    "ListLedgers mirror progress is enriched through the same owned main-store snapshot as the ledger row and metadata, in current and checkpoint reads. Normal ledgers add no mirror reads; mirror errors are terminal cursor errors, not silently missing progress (EN-2780).",
+    "Ledger-log HISTORY/CONTROL classification is exhaustive and explicit, distinguishing an absent option from explicit false. The independently justified classification controls the indexbuilder durable EMPTY/NON_EMPTY decision: the first HISTORY transitions to NON_EMPTY, CONTROL alone retains EMPTY, and missing/corrupt/unclassified state fails. The tracker and fold progress share the committing batch; EMPTY direct index promotion and NON_EMPTY backfill must both publish complete rows, including CONTROL log_date rows."
   ],
   "adversarial_questions": [
     "For every public read and mode, where is ReadIndexAndWait invoked, how is its index transported, and can a direct, prepared, inspect, audit, stats, or checkpoint path drop or relabel it?",
@@ -72,7 +77,9 @@
     "Can direct and prepared execution differ because one omits OpenReservedQueryHandle, AlignmentOwed, AlignedIndexSnapshot, MainHorizonKeep, version resolution, or release ordering? If state is proven identical, should the evidence instead go to query-semantic-equivalence?",
     "Can checkpoint components represent different boundaries, a markerless directory open, a ready marker survive incomplete creation, deletion invalidate a lease, or a frozen mismatch be treated as transient lag?",
     "Can stats, usage, audit listing, or historical reads stitch peer-store moments, claim stronger freshness than implemented, or combine frozen state with live-only projections?",
-    "Is an apparent defect actually restore loss, consensus failure, fixed-state semantics, API representation, or lifecycle cancellation? Which neighboring manifest owns the required correction, and what rejects duplication?"
+    "Is an apparent defect actually restore loss, consensus failure, fixed-state semantics, API representation, or lifecycle cancellation? Which neighboring manifest owns the required correction, and what rejects duplication?",
+    "Can a missing ledger_log_is_history option silently become CONTROL, or can annotations and generated classifiers agree on an incorrect category? Trace the verdict through observeLedgerPayload and handleCreatedIndexLog to direct promotion/backfill, rather than assuming every log implies business history.",
+    "Can CONTROL-only history, FilledGap, OrderSkipped, the first HISTORY before log_date creation, rollback, restart or delete/recreate give EMPTY direct promotion incomplete rows or omit a required NON_EMPTY backfill? Are durable history state, speculative date rows, index versions and progress observed at the same committed boundary?"
   ],
   "dynamic_checks_to_consider": [
     "Build a default/stale write-then-read matrix on leaders and followers. Record barrier R, main H and native sequence, consulted certificates/versions, and response identities; inject lag and leadership transfer at each handoff.",
@@ -83,6 +90,8 @@
     "Crash before and after each checkpoint component and ready-marker publication, then enumerate/open it. Acquire/read/delete concurrently; require matching frozen horizons and rejection or rebuild of incomplete directories.",
     "Drive audit-index and usage builders through lag, multi-field reads, flush failure, restart, and primary rollback. Compare every projected key/value with an independent fold and prove historical reads omit live-only usage.",
     "Use existing alignment/horizon, aligned-snapshot, indexbuilder progress/retype/checkpoint, readstore lease/version/progress, usage integration, e2e cross-store/checkpoint, and Antithesis projection tests as leads. Record commands and fault points; green tests or equal totals alone are not proof.",
-    "Use current/checkpoint GetLedger and ListLedgers controller fixtures to require mirror progress on both read paths, then mutate source head/status after a listing opens and verify subsequent rows retain the listing snapshot values. Verify Close and error paths release the original owned handle."
+    "Use current/checkpoint GetLedger and ListLedgers controller fixtures to require mirror progress on both read paths, then mutate source head/status after a listing opens and verify subsequent rows retain the listing snapshot values. Verify Close and error paths release the original owned handle.",
+    "Enumerate LedgerLogPayload descriptor arms independently of LedgerLogCategoryOf and the generator; compare explicit option presence, true/false values and generated runtime categories against a separately justified HISTORY/CONTROL matrix. Temporary descriptor fixtures must reject omitted annotations while accepting explicit false. Nil/empty payloads must remain unclassified and fail the builder invariant rather than certifying an empty ledger.",
+    "Fold CreatedLedger, CONTROL-only payloads (including FilledGap), then each HISTORY payload including OrderSkipped, with CreateIndex before/after the first HISTORY in separate proposals. Observe EMPTY direct promotion versus NON_EMPTY pending backfill and exact independently expected rows; include log_date CONTROL rows and its own creation log. Inject batch failure, reopen at the durable cursor, and delete/recreate the ledger; inspect tracker, versions, rows and progress together. Green classifier parity is insufficient without the reachable readiness consequence."
   ]
 }

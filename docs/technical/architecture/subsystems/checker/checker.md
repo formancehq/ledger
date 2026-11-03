@@ -8,6 +8,38 @@ Its job is to enforce the system-wide invariant that the audit log is the only s
 
 `Checker.Check` runs four ordered phases: `pinCheckSnapshots` pins the peer read-index snapshot before the primary snapshot and reads the log head from the primary Log key; `verifyCheckAudit` verifies the audit chain and builds the business oracle even when there are no logs; `replayLogs` scans logs once, emits replay findings and progress, and derives expected state; `compareProjections` checks stored rows against that state. The replay store and both snapshots stay open through the projection phase. This ordering is part of the streamed event contract: audit findings precede replay progress, and projection findings follow it.
 
+## Numscript projection ownership
+
+`numscriptProjection` in `internal/application/check/numscript_projection.go`
+owns the disposable content and latest-pointer expectations, their initialization,
+`SavedNumscript` and `DeleteLedger` transitions, and their final comparison.
+`replayLogs` passes the selected log after audit-derived substitution to the
+owner; `checkReplayState` transports that owner to the existing comparison slot.
+The `Checker.compareNumscripts` signature remains available for explicit
+expectations and delegates to the same comparison. Stored library rows never
+seed the expected maps.
+
+This boundary reduces the coordination needed to revise a family rule. For
+example, a diagnostic identifying the physical log sequence that last advanced
+a latest pointer needs a per-name sequence map. Previously, that map needed
+initialization and save/deletion handling in `replayLogs`, a `checkReplayState`
+field, return wiring, aliases and arguments in `compareProjections`, and a
+comparison input. With the owner, the field, initialization, save/deletion
+handling and diagnostic consumption stay in the family file; only the replay
+hook also changes to supply the physical sequence. Existing state transport,
+comparison orchestration and compatibility signature need no new wiring. This
+is an edit-surface example, not an added diagnostic: reported sequences,
+messages and other event fields remain unchanged.
+
+The extraction preserves the selected-log fallback after incomplete audit
+verification; it does not add a completeness guarantee or change truncation
+handling. Peer snapshots, reverse-map cursor alignment and other folds are
+unaffected. It retains one log traversal, two expectation maps, two stored
+keyspace scans and the existing map traversal on ledger deletion. Additional
+work is a constant dispatch per log, with no new storage reads, writes, replay
+or persisted format. The owner lives only for one check, so no migration or
+rolling-upgrade boundary is introduced.
+
 ## Surface
 
 `misc/proto/bucket.proto`:

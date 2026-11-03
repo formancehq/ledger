@@ -100,3 +100,15 @@ links.
 The manifest suggests diagnostics for a separately authorized, read-only
 audit. Updating this contract does not launch an audit, change CI policy, or
 authorize external publication.
+
+## Operator trace sampling admission
+
+`Tests-Operator` invokes `just operator-test-admission` in the `operator-tests`
+Nix shell. Its integration-tagged selector includes both `TestLedgerAdmission`
+and `TestTraceSampling`. Preserve the existing Ledger target tests while
+collecting `TestTraceSamplingAdmission` and
+`TestTraceSamplingReconcileConflictThenFix`: they prove generated CRD admission
+and corrected sampler conflicts through the actual controller/StatefulSet path.
+The nested module's untagged unit suite cannot execute these tests. Envtest
+assets and a running API server are prerequisites; a build-only pass or the
+presence of generated schemas does not prove admission assertions ran.

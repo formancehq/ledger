@@ -100,6 +100,7 @@ func NewRunCommandWithBindings(bindings network.Bindings) *cobra.Command {
 	// Add OpenTelemetry flags from go-libs
 	otlp.AddFlags(runCmd.Flags())
 	otlptraces.AddFlags(runCmd.Flags())
+	addTraceSamplerFlags(runCmd.Flags())
 	otlppyroscopetraces.AddFlags(runCmd.Flags())
 	// Namespace the ledger's own metrics (--otel-metrics-prefix); go-libs
 	// leaves the global provider, and so the Go runtime, host, HTTP and
@@ -258,6 +259,11 @@ func NewRunCommandWithBindings(bindings network.Bindings) *cobra.Command {
 }
 
 func runServer(cmd *cobra.Command, bindings network.Bindings) error {
+	tracesModule, err := tracesModuleFromFlags(cmd)
+	if err != nil {
+		return fmt.Errorf("configuring trace sampler: %w", err)
+	}
+
 	cfg, err := LoadConfig(cmd.Context(), cmd)
 	if err != nil {
 		return fmt.Errorf("loading config: %w", err)
@@ -345,7 +351,7 @@ func runServer(cmd *cobra.Command, bindings network.Bindings) error {
 		fx.Supply(info),
 		// Add OpenTelemetry modules from go-libs (using flags)
 		fx.Supply(telemetryResource),
-		observefx.TracesModuleFromFlags(cmd),
+		tracesModule,
 		// Decorates the trace.TracerProvider from TracesModule with a
 		// pyroscope.profile.id span attribute (see PyroscopeTracesModule doc
 		// comment) so Grafana can correlate a trace span with the Pyroscope

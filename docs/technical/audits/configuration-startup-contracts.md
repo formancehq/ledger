@@ -208,3 +208,31 @@ interval acceptance without starting a cluster. Operator regressions must
 exercise both first creation and existing-workload preservation, followed by a
 real invalid-to-valid reconcile sequence. These checks do not prove recovery
 across process death or Kubernetes admission rejection.
+
+## Standard trace sampler configuration
+
+Follow server `--trace-sampler` / `--trace-sampler-arg` and the corresponding
+`TRACE_SAMPLER*` bindings into the Fx `WithSampler` option. CLI values override
+their typed environment equivalents. Selecting either typed setting replaces
+the raw SDK sampler pair; ratio policies require an explicit finite probability
+in `[0,1]`, and non-ratio policies reject arguments. With neither typed setting
+selected, the SDK reads `OTEL_TRACES_SAMPLER*` directly, retaining its default
+`parentbased_always_on` policy and raw missing-ratio fallback to `1.0`.
+
+Follow admitted Operator `monitoring.traces.sampler` / `samplerArg` through
+controller validation into the standard SDK environment variables. Typed fields
+must reject all four competing names in `extraEnv`: `OTEL_TRACES_SAMPLER`,
+`OTEL_TRACES_SAMPLER_ARG`, `TRACE_SAMPLER`, and `TRACE_SAMPLER_ARG`, including
+`valueFrom` entries. Omitted typed fields preserve existing raw configuration.
+Ratio constraints are also enforced by the generated CRD. Controller rejection
+precedes workload changes but may follow cluster identity persistence.
+
+Use `TestServerTraceSamplerSDK` to observe actual SDK recording and export for
+all six policies, parent decisions, fixed fractional trace IDs and precedence;
+`TestServerTraceSamplerValidation` exercises the real server RunE rejection
+before storage/network configuration. Operator `TestTraceSampling` cases cover
+validation/rendering, real API-server admission and conflict-to-corrected
+reconciliation through the StatefulSet environment. They do not establish
+cross-process recovery, collector retention or measured end-to-end overhead.
+Keep sampler effects strictly node-local to telemetry, with no business state,
+Raft apply or local error-aware retention behavior.

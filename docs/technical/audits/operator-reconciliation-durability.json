@@ -11,6 +11,7 @@
     "misc/operator/go.mod",
     "misc/operator/go.sum",
     "misc/operator/e2e/**",
+    "tests/e2e/cluster/operator_index_ownership_test.go",
     "misc/operator/cmd/kubectl-ledger/**",
     "cmd/ledgerctl/cluster/**",
     "cmd/ledgerctl/store/backup.go",
@@ -56,6 +57,7 @@
     "A Cluster drain annotation transition retains one persisted epoch and phase across reconciler replacement. Preflighting cancellation without a proposed marker clears safely; a potentially committed marker requires release of the same epoch. Drained is reported only after every captured member durably acknowledges the cutoff and current membership matches."
   ],
   "adversarial_questions": [
+    "For mirror-to-normal promotion, can a lost exec acknowledgement or failed status write leave Ledger normal with persisted mirror CR status? Does a fresh controller explicitly request live linearizable mode despite pod LEDGERCTL_CONSISTENCY=stale or LEDGERCTL_CHECKPOINT_ID overrides before retrying, reject unavailable, malformed, unknown-mode or wrong-name observations, and resume declarative index reconciliation after status recovery without depending on idempotency retention?",
     "Can a Ledger target edit reach creation, promotion, index reconciliation or deletion before rejection? Check separate name/cluster changes, combined mutable-field changes, Pending and deletion-pending resources through real admission. For old stored drift, can installing immutability freeze the wrong target or prevent correction, and is pre-install recovery explicit?",
     "Which reconcilers are registered by the actual manager, with which clients, watches, predicates, namespace restrictions, RBAC and leader-election configuration? Can a dependency change or recovered transient failure trigger another pass without unrelated resource churn?",
     "For each multi-step reconcile, what is changed only in memory, what is committed to the API server, what commits in Ledger or S3, and what residual state remains after every prefix? Which fresh-process observation drives the next action?",
@@ -81,6 +83,7 @@
     "For release and development Operator builds, which Ledger image tags are admitted, rejected or incomparable? Does a rejected tag leave existing StatefulSet, Pods and PVCs unchanged while VersionCompatible and phase identify the current generation? After the tag is corrected or the Operator is upgraded, does a fresh reconciler resume from the observed workload without loss of data, including when the existing source image tag is opaque?"
   ],
   "dynamic_checks_to_consider": [
+    "Exercise a real mirror Ledger edited to normal through full reconciliation. Independently discard the promotion response after commit and fail the first post-promotion status write; replace the controller, verify actual normal mode with persisted mirror status, then recover status without a second promotion and reconcile a desired index. Include lagging-replica and historical-checkpoint observations under pod LEDGERCTL_CONSISTENCY=stale and LEDGERCTL_CHECKPOINT_ID overrides, independently and together, and require recovery without repeating promotion. Include failed observation followed by recovery and malformed/missing/unknown mode or wrong-name output; these must not claim success. Identify fake Kubernetes persistence and exec fault-injection limits separately from real Ledger/CLI evidence.",
     "Use the real API server and generated base/Helm CRDs to accept Ledger creates, no-op updates, index edits and same-target mirror promotion while rejecting name and clusterRef edits. With two distinguishable ledgers and two healthy Clusters, assert rejected updates preserve the stored target, then delete the CR and verify only its original ledger is deleted while unrelated sentinel data remains. Include Pending and deletion-pending updates; do not substitute fake-client behavior for CEL admission evidence.",
     "Inspect existing operator unit/envtest/Chainsaw cases and their module, API schema, fake-client limitations and assertions first. The audit may run existing checks or allowed temporary diagnostics, but must not edit tracked code, implement new reproducers, or operate a live user cluster; unexecuted scenarios are reproduction plans, not claimed test evidence.",
     "Use an API-server-backed fixture to reconcile an admitted CR twice, inject a conflict or response loss after a successful write, and reconcile with a fresh controller instance; verify external effect count, UID/owner identity and eventual persisted status.",

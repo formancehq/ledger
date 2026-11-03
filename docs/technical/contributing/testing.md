@@ -1293,3 +1293,12 @@ To learn more:
 1. [Development](./development.md) - How to write testable code
 2. [Architecture](../architecture/overview.md) - Understand the system to test
 3. [Data Flows](../architecture/data-flows.md) - Understand the flows to test
+
+### Operator API admission
+
+CI runs `just operator-test-admission` in `nix develop .#operator-tests`.
+The recipe selects integration-tagged `TestLedgerAdmission` and
+`TestTraceSampling` cases in the Operator module using envtest. This preserves
+Ledger target immutability coverage and exercises trace sampler schema
+validation plus typed/raw conflict correction through the real StatefulSet
+environment. Untagged `go test ./...` in that module covers unit tests only.

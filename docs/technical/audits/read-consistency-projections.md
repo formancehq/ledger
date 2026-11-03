@@ -69,6 +69,42 @@ when target-specific gates project it back to the main pin:
 - folded account membership retains the documented purged-address exception;
 - schema and `IndexVersionState` come from their owning pinned views.
 
+### Generated history classification and readiness
+
+Include `tools/protoc-gen-ledger-log-category/**`, its descriptor inputs in
+`misc/proto/common.proto` and generated classifier code as part of the
+readiness proof. The classifier feeds `observeLedgerPayload` in
+`internal/application/indexbuilder/ledger_history.go`; its verdict is not
+merely descriptive. `CreatedLedger` stages `EMPTY`, the first `HISTORY`
+payload stages `NON_EMPTY`, and `DeleteLedger` removes the incarnation's
+tracker. `handleCreatedIndexLog` in `index_config.go` uses that state to select
+direct current-version promotion for `EMPTY` or pending backfill for
+`NON_EMPTY`. Missing/corrupt state and unclassified payloads fail the replay
+invariant rather than establishing emptiness. Inspect batch overlay rollback,
+commit and reopen behavior alongside the fold cursor, versions and rows.
+
+Independently enumerate every `LedgerLogPayload` arm and justify its category
+from the documented business-history contract. Compare this matrix with
+explicit descriptor option presence/value and generated runtime categories;
+agreement among annotations, generator and consumers alone cannot establish
+correct classification. Explicit `false` means `CONTROL`; an omitted option
+must fail generation. Temporary descriptor fixtures must distinguish the two.
+Nil/empty payloads must remain unclassified at the builder boundary. See
+[index readiness](../architecture/subsystems/indexer/indexes.md#durable-emptynon_empty-decision)
+and [protobuf generation](../contributing/protobuf.md).
+
+Proposed evidence folds CONTROL-only history, including `FilledGap`, and each
+HISTORY kind, including `OrderSkipped`, with index creation before and after
+the first HISTORY and across proposal boundaries. Observe exact independently
+expected rows and served versions: `EMPTY` needs no business backfill, but
+`log_date` still owes earlier CONTROL rows and its own creation log. Exercise
+the speculative date-prefix cleanup when the first HISTORY precedes index
+creation, batch failure, restart at the durable cursor, and delete/recreate.
+Check tracker, speculative rows, pending/current versions and progress at each
+committed boundary. Do not infer correct readiness from classifier parity or
+advancing progress alone. These scenarios extend the audit contract; no audit
+or dynamic fault campaign is launched by this maintenance change.
+
 ### Audit and usage projections
 
 Audit-index and usagebuilder paths enter scope when their values are served.

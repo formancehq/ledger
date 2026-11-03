@@ -677,14 +677,40 @@ spec:
       mode: grpc
       insecure: "false"
       batch: "true"
-  extraEnv:
-    - name: OTEL_TRACES_SAMPLER
-      value: always_on
+      sampler: always_on
 ```
 
-Set the endpoint and TLS settings for the actual collector. When using the main
-Formance Operator's `LedgerConfiguration`, these fields are under `spec.cluster`.
-Verify the rendered pod environment on the deployed Operator version.
+The typed fields are `monitoring.traces.sampler` and
+`monitoring.traces.samplerArg`. To bound SDK recording/export volume instead,
+use `sampler: parentbased_traceidratio` and `samplerArg: "0.1"` (or
+`traceidratio` to ignore parent sampling decisions). The six supported policies
+are `always_on`, `always_off`, `traceidratio`, `parentbased_always_on`,
+`parentbased_always_off`, and `parentbased_traceidratio`.
+
+Typed ratio policies require a finite argument in `[0,1]`; other policies reject
+it, and an argument requires a policy. The CRD validates the policy and argument;
+controller validation also protects resources admitted under older schemas.
+Typed sampling combined with `OTEL_TRACES_SAMPLER`,
+`OTEL_TRACES_SAMPLER_ARG`, `TRACE_SAMPLER`, or `TRACE_SAMPLER_ARG` in `extraEnv`
+is rejected, including `valueFrom` entries.
+The controller reports `ConfigValid=False`, reason `ValidationFailed`, phase
+`Error` before workload changes. Existing workloads retain their previous
+configuration until the spec is corrected. Cluster identity defaults may already
+have been persisted before validation.
+
+With typed fields omitted, existing raw sampler entries in `extraEnv` pass
+through unchanged and retain SDK parsing/fallback semantics. With neither source
+configured, the default remains `parentbased_always_on`; no CRD sampler default
+is injected. SDK/head sampling can discard spans needed for later error-based
+retention and biases downstream span-derived metrics. Use `always_on` for
+collector tail sampling or complete span-derived metrics.
+
+Set the endpoint and TLS settings for the actual collector. Install matching
+Cluster CRDs and Operator. The main Formance Operator's `LedgerConfiguration`
+uses fields under `spec.cluster`; it must update its shared API dependency and
+regenerate its own CRD/schema before accepting these new typed fields. Those
+cross-repository artifacts are not shipped here. Raw `extraEnv` remains usable
+on older integrations. Verify support in the deployed Operator version.
 
 Remove the former `--trace-sampling-enabled` and `--trace-sampling-success-ratio`
 flags, `TRACE_SAMPLING_ENABLED` / `TRACE_SAMPLING_SUCCESS_RATIO` environment
