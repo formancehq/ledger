@@ -4,8 +4,9 @@ Kubernetes operator for deploying and managing high-availability [Formance Ledge
 
 The embedded operator can require a complete StatefulSet stop when an image
 upgrade crosses a listed release boundary. RC.3 to RC.4 crosses a mandatory
-boundary because RC.3 cannot execute native proposal payloads and encodes
-mirror asset mappings differently. The operator
+boundary because RC.3 cannot execute native proposal payloads, encodes mirror
+asset mappings differently, and has a different mirror promotion FSM result.
+The operator must be upgraded before changing the Ledger image from RC.3 to RC.4. It
 uses the drain barrier available from RC.3 to stop writes and wait for durable replication,
 retains the existing PVCs, waits for the old StatefulSet and Pods to disappear,
 then recreates the StatefulSet with the requested image. See the
