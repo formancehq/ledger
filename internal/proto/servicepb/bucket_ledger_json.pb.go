@@ -3,16 +3,137 @@
 
 package servicepb
 
-import ledgerjson "github.com/formancehq/ledger/v3/internal/adapter/json"
+import (
+	"encoding/json/jsontext"
+	jsonv2 "encoding/json/v2"
+	"fmt"
+	"strconv"
+	"time"
+	"unicode/utf8"
+
+	"google.golang.org/protobuf/reflect/protoreflect"
+)
+
+func marshalLedgerJSON(msg protoreflect.Message) ([]byte, error) {
+	value, err := ledgerJSONValue(msg)
+	if err != nil {
+		return nil, err
+	}
+	return jsonv2.Marshal(value, jsontext.EscapeForHTML(false), jsontext.EscapeForJS(false))
+}
+
+func ledgerJSONValue(msg protoreflect.Message) (map[string]any, error) {
+	if !msg.IsValid() {
+		return nil, nil
+	}
+	out := make(map[string]any)
+	var err error
+	msg.Range(func(field protoreflect.FieldDescriptor, value protoreflect.Value) bool {
+		out[field.JSONName()], err = ledgerJSONField(field, value)
+		return err == nil
+	})
+	return out, err
+}
+
+func ledgerJSONField(field protoreflect.FieldDescriptor, value protoreflect.Value) (any, error) {
+	if field.IsMap() {
+		out := make(map[string]any)
+		var err error
+		value.Map().Range(func(key protoreflect.MapKey, item protoreflect.Value) bool {
+			out[ledgerJSONMapKey(key)], err = ledgerJSONScalar(field.MapValue(), item)
+			return err == nil
+		})
+		return out, err
+	}
+	if field.IsList() {
+		out := make([]any, value.List().Len())
+		for i := range out {
+			var err error
+			out[i], err = ledgerJSONScalar(field, value.List().Get(i))
+			if err != nil {
+				return nil, err
+			}
+		}
+		return out, nil
+	}
+	return ledgerJSONScalar(field, value)
+}
+
+func ledgerJSONScalar(field protoreflect.FieldDescriptor, value protoreflect.Value) (any, error) {
+	if field.Message() != nil {
+		if marshaler, ok := value.Message().Interface().(interface{ MarshalJSON() ([]byte, error) }); ok {
+			raw, err := marshaler.MarshalJSON()
+			if err != nil {
+				return nil, err
+			}
+			var nested any
+			if err := jsonv2.Unmarshal(raw, &nested); err != nil {
+				return nil, err
+			}
+			return nested, nil
+		}
+		if field.Message().FullName() == "google.protobuf.Timestamp" {
+			seconds := value.Message().Get(field.Message().Fields().ByName("seconds")).Int()
+			nanos := value.Message().Get(field.Message().Fields().ByName("nanos")).Int()
+			return time.Unix(seconds, nanos).UTC().Format(time.RFC3339Nano), nil
+		}
+		return ledgerJSONValue(value.Message())
+	}
+	switch field.Kind() {
+	case protoreflect.BoolKind:
+		return value.Bool(), nil
+	case protoreflect.StringKind:
+		if !utf8.ValidString(value.String()) {
+			return nil, fmt.Errorf("invalid UTF-8 in protobuf string field %s", field.FullName())
+		}
+		return value.String(), nil
+	case protoreflect.BytesKind:
+		return value.Bytes(), nil
+	case protoreflect.Int32Kind, protoreflect.Sint32Kind, protoreflect.Sfixed32Kind,
+		protoreflect.Int64Kind, protoreflect.Sint64Kind, protoreflect.Sfixed64Kind:
+		return value.Int(), nil
+	case protoreflect.Uint32Kind, protoreflect.Fixed32Kind, protoreflect.Uint64Kind, protoreflect.Fixed64Kind:
+		return value.Uint(), nil
+	case protoreflect.FloatKind, protoreflect.DoubleKind:
+		return value.Float(), nil
+	case protoreflect.EnumKind:
+		enum := field.Enum().Values().ByNumber(value.Enum())
+		if enum == nil {
+			return int32(value.Enum()), nil
+		}
+		return string(enum.Name()), nil
+	default:
+		return nil, nil
+	}
+}
+
+func ledgerJSONMapKey(key protoreflect.MapKey) string {
+	switch value := key.Interface().(type) {
+	case string:
+		return value
+	case bool:
+		return strconv.FormatBool(value)
+	case uint32:
+		return strconv.FormatUint(uint64(value), 10)
+	case uint64:
+		return strconv.FormatUint(value, 10)
+	case int32:
+		return strconv.FormatInt(int64(value), 10)
+	case int64:
+		return strconv.FormatInt(value, 10)
+	default:
+		return fmt.Sprint(value)
+	}
+}
 
 func (x *GetEventsSinksResponse) MarshalJSON() ([]byte, error) {
-	return ledgerjson.MarshalMessageJSON(x)
+	return marshalLedgerJSON(x.ProtoReflect())
 }
 
 func (x *GetIndexStatusResponse) MarshalJSON() ([]byte, error) {
-	return ledgerjson.MarshalMessageJSON(x)
+	return marshalLedgerJSON(x.ProtoReflect())
 }
 
 func (x *IndexEntry) MarshalJSON() ([]byte, error) {
-	return ledgerjson.MarshalMessageJSON(x)
+	return marshalLedgerJSON(x.ProtoReflect())
 }
