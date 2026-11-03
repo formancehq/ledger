@@ -2,6 +2,7 @@ package check
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"encoding/binary"
 	"errors"
@@ -2546,6 +2547,23 @@ func reconcileMetadataOnlyChainBound(items []*auditpb.AuditItem, orders []*raftc
 			for key := range metadata.GetValues() {
 				appendMetadataMutation(chainBound.metadata, ledger, metadataTimelineTarget(false, account), key, items[i].GetLogSequence(), true)
 			}
+		}
+	}
+
+	// Order-fold mutations are collected before replay-derived mutations, but
+	// skip verification must observe the timeline by log sequence. Replay can
+	// therefore append an earlier transaction-metadata creation after a later
+	// DeleteMetadata order from the same proposal; restore chronological order
+	// before mutationStateWithWitness scans the timeline backwards.
+	for _, perTarget := range chainBound.metadata {
+		for target, perKey := range perTarget {
+			for key, mutations := range perKey {
+				slices.SortStableFunc(mutations, func(a, b chainBoundMutation) int {
+					return cmp.Compare(a.seq, b.seq)
+				})
+				perKey[key] = mutations
+			}
+			perTarget[target] = perKey
 		}
 	}
 }

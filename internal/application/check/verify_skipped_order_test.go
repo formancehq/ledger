@@ -1517,6 +1517,48 @@ func TestReconcileMetadataOnlyChainBound_UsesReplayedTransactionID(t *testing.T)
 	requireInvalidSkipEvent(t, events, 40)
 }
 
+func TestReconcileMetadataOnlyChainBound_SortsReplayMutationsBySequence(t *testing.T) {
+	t.Parallel()
+
+	deleteOrder := func(logSeq uint64, reasons ...commonpb.ErrorReason) *auditpb.AuditItem {
+		return buildAuditItem(t, logSeq, &raftcmdpb.Order{Type: &raftcmdpb.Order_LedgerScoped{
+			LedgerScoped: &raftcmdpb.LedgerScopedOrder{
+				Ledger: "L",
+				Payload: &raftcmdpb.LedgerScopedOrder_Apply{Apply: &raftcmdpb.LedgerApplyOrder{
+					Data: &raftcmdpb.LedgerApplyOrder_DeleteMetadata{DeleteMetadata: &raftcmdpb.DeleteMetadataOrder{
+						Target: &commonpb.Target{Target: &commonpb.Target_TransactionId{TransactionId: 1}},
+						Key:    "txkey",
+					}},
+					SkippableReasons: reasons,
+				}},
+			},
+		}})
+	}
+
+	items := []*auditpb.AuditItem{
+		buildCreateLedgerItem(t, "L", 10),
+		buildCreateTxWithTxMetadataItem(t, "L", "", "txkey", 20),
+		deleteOrder(30),
+		deleteOrder(40, commonpb.ErrorReason_ERROR_REASON_METADATA_NOT_FOUND),
+	}
+	chainBound := newChainBoundState()
+	expected := make(map[uint64]*expectedSkippableOrder)
+	requireCollectExpectedSkippable(t, items, 1, ^uint64(0), expected, chainBound)
+	reconcileMetadataOnlyChainBound(items, []*raftcmdpb.Order{
+		mustOrder(t, items[0]), mustOrder(t, items[1]), mustOrder(t, items[2]), mustOrder(t, items[3]),
+	}, []*commonpb.Log{
+		applyLog(20, &commonpb.LedgerLogPayload{Payload: &commonpb.LedgerLogPayload_CreatedTransaction{CreatedTransaction: &commonpb.CreatedTransaction{Transaction: &commonpb.Transaction{Id: 1, Metadata: map[string]*commonpb.MetadataValue{"txkey": commonpb.NewStringValue("v")}}}}}),
+		applyLog(30, &commonpb.LedgerLogPayload{Payload: &commonpb.LedgerLogPayload_DeletedMetadata{DeletedMetadata: &commonpb.DeletedMetadata{Target: &commonpb.Target{Target: &commonpb.Target_TransactionId{TransactionId: 1}}, Key: "txkey"}}}),
+	}, chainBound)
+
+	require.Equal(t, []chainBoundMutation{{seq: 20, exists: true}, {seq: 30, exists: false}, {seq: 40, exists: false}}, chainBound.metadata["L"][metadataTimelineTarget(true, "1")]["txkey"])
+	events := captureEventsState(t, "L", 40, skippedPayloadWithContext(commonpb.ErrorReason_ERROR_REASON_METADATA_NOT_FOUND, map[string]string{
+		"target": "1",
+		"key":    "txkey",
+	}), expected, chainBound)
+	require.Empty(t, events, "the second delete legitimately skips after the replayed delete")
+}
+
 // TestCollectExpectedSkippable_DedupesFoldOfLegacyDupKeyReplay pins the
 // double-fold finding (checker.go:2106/2138): an upgraded store with legacy
 // per-order idempotency can hold TWO items sharing LogSequence=N WITHIN the
