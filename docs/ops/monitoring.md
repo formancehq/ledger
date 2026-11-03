@@ -22,6 +22,21 @@ Every metric the server emits is documented here; a test fails when a new
 instrument has no entry. For dashboards, see the
 [Grafana Dashboard](#grafana-dashboards) section.
 
+## Trace sampling and span-derived metrics
+
+Use standard SDK head sampling to reduce recorded/exported trace volume through
+[server sampler flags](cli.md#server-trace-sampling) or typed Operator
+[`monitoring.traces.sampler` and `samplerArg`](deployment.md#collector-side-trace-sampling).
+The unchanged default is `parentbased_always_on` when no sampler is selected.
+
+Head sampling happens before later errors are known. Discarded spans cannot be
+recovered when a parent later reports an error, and metrics derived downstream
+from sampled spans have biased counts, error rates and latency distributions.
+Keep `always_on` when collector-side tail sampling or complete span-derived
+metrics are required, and derive those metrics before collector sampling.
+Ledger uses standard SDK samplers without local trace retention or error-aware
+export buffering. See the [sampling contract](../technical/architecture/subsystems/monitoring/trace-sampling.md).
+
 ## Shared telemetry resource
 
 Server OTLP logs, traces, and metrics use the same OpenTelemetry resource:

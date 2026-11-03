@@ -2118,9 +2118,41 @@
             "port": {
               "description": "Port for the trace exporter.",
               "type": "string"
+            },
+            "sampler": {
+              "description": "Sampler selects a standard OpenTelemetry head-sampling policy. Omitted\nvalues preserve the SDK default or raw extraEnv sampler configuration.\nTyped sampling cannot be combined with raw sampler variables in extraEnv.",
+              "enum": [
+                "always_on",
+                "always_off",
+                "traceidratio",
+                "parentbased_always_on",
+                "parentbased_always_off",
+                "parentbased_traceidratio"
+              ],
+              "type": "string"
+            },
+            "samplerArg": {
+              "description": "SamplerArg is the explicit finite ratio in [0,1] required by traceidratio\nand parentbased_traceidratio. Other policies must omit this argument.",
+              "type": "string",
+              "x-kubernetes-validations": [
+                {
+                  "message": "samplerArg must be a finite ratio in [0,1]",
+                  "rule": "double(self) \u003e= 0.0 \u0026\u0026 double(self) \u003c= 1.0"
+                }
+              ]
             }
           },
-          "type": "object"
+          "type": "object",
+          "x-kubernetes-validations": [
+            {
+              "message": "samplerArg requires a ratio sampler",
+              "rule": "!has(self.samplerArg) || (has(self.sampler) \u0026\u0026 self.sampler in ['traceidratio', 'parentbased_traceidratio'])"
+            },
+            {
+              "message": "ratio sampler requires samplerArg",
+              "rule": "!has(self.sampler) || !(self.sampler in ['traceidratio', 'parentbased_traceidratio']) || has(self.samplerArg)"
+            }
+          ]
         }
       },
       "type": "object"

@@ -420,6 +420,8 @@ func appendMonitoringEnvVars(envs []corev1.EnvVar, mon *ledgerv1alpha1.Monitorin
 	if mon.Traces != nil {
 		envs = appendIfBool(envs, "OTEL_TRACES", mon.Traces.Enabled)
 		envs = appendIfStr(envs, "OTEL_TRACES_BATCH", mon.Traces.Batch)
+		envs = appendIfStr(envs, "OTEL_TRACES_SAMPLER", mon.Traces.Sampler)
+		envs = appendIfStr(envs, "OTEL_TRACES_SAMPLER_ARG", mon.Traces.SamplerArg)
 		envs = appendIfStr(envs, "OTEL_TRACES_ENDPOINT", mon.Traces.Endpoint)
 		envs = appendIfStr(envs, "OTEL_TRACES_PORT", mon.Traces.Port)
 		envs = appendIfStr(envs, "OTEL_TRACES_EXPORTER", mon.Traces.Exporter)

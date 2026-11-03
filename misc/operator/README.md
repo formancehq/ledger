@@ -167,6 +167,22 @@ Reference changes trigger a rollout; rotating Secret contents requires a Pod
 restart. See [profiling deployment](../../docs/ops/deployment.md#pyroscope-continuous-profiling)
 for examples and missing-reference behavior.
 
+## Trace sampling
+
+`spec.monitoring.traces.sampler` and `samplerArg` configure standard OpenTelemetry
+SDK head sampling. Omitted settings retain raw `extraEnv` sampler configuration
+and the SDK's `parentbased_always_on` default. Ratio policies require an explicit
+finite argument in `[0,1]`; other policies reject arguments. Combining typed
+sampling with either raw `OTEL_TRACES_SAMPLER*` variable or typed
+`TRACE_SAMPLER*` alias in `extraEnv` is rejected
+before workload changes, including `valueFrom` sources. Correct the spec to
+resume reconciliation. See [deployment](../../docs/ops/deployment.md#collector-side-trace-sampling)
+for supported policies, validation/status behavior and upgrade guidance.
+
+Use `always_on` for collector tail sampling or complete span-derived metrics.
+Head sampling can discard spans before a later error is known and biases
+metrics derived from those spans. Ledger adds no local trace-retention buffer.
+
 ## Health check interval
 
 `spec.health.interval` accepts a Go duration that parses to a value greater
