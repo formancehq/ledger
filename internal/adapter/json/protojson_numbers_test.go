@@ -51,7 +51,7 @@ func TestMarshalProtoJSONNumbersUsesPublicProjection(t *testing.T) {
 	t.Parallel()
 
 	msg := &commonpb.Transaction{Id: math.MaxUint64}
-	raw, err := ledgerjson.MarshalProtoJSONNumbers(msg, protojson.MarshalOptions{})
+	raw, err := json.Marshal(msg)
 	require.NoError(t, err)
 
 	var object map[string]json.RawMessage

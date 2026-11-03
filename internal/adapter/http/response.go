@@ -3,6 +3,7 @@ package http
 import (
 	"bytes"
 	"encoding/base64"
+	stdjson "encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -110,9 +111,9 @@ func writeCheckedJSONResponse(w http.ResponseWriter, r *http.Request, value any,
 }
 
 // writeProtoOK writes a 200 OK response whose `data` is a single protobuf
-// message serialized via protojson, which renders protobuf-JSON camelCase from
-// the descriptor (e.g. lastIndexedSequence) rather than the snake_case Go
-// `json:` tags protoc-gen emits.
+// message serialized through its public MarshalJSON projection when one
+// exists, and otherwise through descriptor-based protojson with Ledger's
+// 64-bit number policy.
 //
 // Use this ONLY for messages that have no custom MarshalJSON. protojson works
 // off protobuf reflection and ignores json.Marshaler, so for a message that has
@@ -124,7 +125,13 @@ func writeCheckedJSONResponse(w http.ResponseWriter, r *http.Request, value any,
 // Nested large integers also require an option-aware public projection.
 // encoder_contract_test.go enforces this split against the descriptor graph.
 func writeProtoOK(w http.ResponseWriter, r *http.Request, msg proto.Message) {
-	raw, err := json.MarshalProtoJSONNumbers(msg, protojson.MarshalOptions{})
+	var raw []byte
+	var err error
+	if marshaler, ok := msg.(stdjson.Marshaler); ok {
+		raw, err = marshaler.MarshalJSON()
+	} else {
+		raw, err = json.MarshalProtoJSONNumbers(msg, protojson.MarshalOptions{})
+	}
 	if err != nil {
 		writeErrorResponse(w, http.StatusInternalServerError, "INTERNAL_ERROR", err)
 
@@ -135,12 +142,9 @@ func writeProtoOK(w http.ResponseWriter, r *http.Request, msg proto.Message) {
 }
 
 // writeProtoListOK writes a 200 OK response whose `data` is a JSON array of
-// protobuf messages, each serialized via protojson (see writeProtoOK for when
-// that is correct — messages with no custom MarshalJSON only). protojson has no
-// slice entry point, so each element is marshaled individually and assembled
-// into the array here; the option-aware encoder walks a slice and
-// calls MarshalJSON per element. A nil/empty slice serializes as `[]`, matching
-// the drained-cursor list handlers.
+// protobuf messages. Each element uses the same public-projection/fallback
+// policy as writeProtoOK. A nil/empty slice serializes as `[]`, matching the
+// drained-cursor list handlers.
 func writeProtoListOK[T proto.Message](w http.ResponseWriter, r *http.Request, msgs []T) {
 	data, err := protoListJSON(msgs)
 	if err != nil {
@@ -152,7 +156,7 @@ func writeProtoListOK[T proto.Message](w http.ResponseWriter, r *http.Request, m
 	writeOK(w, r, data)
 }
 
-// protoListJSON renders msgs as a JSON array of protojson objects.
+// protoListJSON renders msgs as a JSON array of public protobuf JSON objects.
 func protoListJSON[T proto.Message](msgs []T) (json.RawValue, error) {
 	var buf bytes.Buffer
 
@@ -163,7 +167,13 @@ func protoListJSON[T proto.Message](msgs []T) (json.RawValue, error) {
 			buf.WriteByte(',')
 		}
 
-		raw, err := json.MarshalProtoJSONNumbers(msg, protojson.MarshalOptions{})
+		var raw []byte
+		var err error
+		if marshaler, ok := any(msg).(stdjson.Marshaler); ok {
+			raw, err = marshaler.MarshalJSON()
+		} else {
+			raw, err = json.MarshalProtoJSONNumbers(msg, protojson.MarshalOptions{})
+		}
 		if err != nil {
 			return nil, err
 		}

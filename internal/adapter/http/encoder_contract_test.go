@@ -53,21 +53,20 @@ var protojsonRoutes = []struct {
 	{"GET /v3/_/events-sinks", "handlers_get_events_sinks.go", &servicepb.GetEventsSinksResponse{}},
 }
 
-func TestProtojsonRoutes_PayloadHasNoCustomMarshalJSON(t *testing.T) {
+func TestProtojsonRoutes_PayloadUsesThePublicProjectionWhenPresent(t *testing.T) {
 	t.Parallel()
 
 	for _, tc := range protojsonRoutes {
 		t.Run(tc.route, func(t *testing.T) {
 			t.Parallel()
 
-			_, hasCustom := tc.msg.(json.Marshaler)
 			_, hasStreamingCustom := tc.msg.(jsonv2.MarshalerTo)
-			require.Falsef(t, hasStreamingCustom, "%s serializes %T via protojson, which ignores MarshalJSONTo", tc.route, tc.msg)
-			require.Falsef(t, hasCustom,
-				"%s serializes %T via protojson, but %T now implements json.Marshaler. "+
-					"protojson ignores it, so the custom shape is silently discarded. "+
-					"Move the handler to writeOKChecked and type the response in openapi.yml.",
-				tc.route, tc.msg, tc.msg)
+			// writeProtoOK and protoListJSON use the shared adapter, which honors
+			// a public MarshalJSON projection before falling back to protojson.
+			// These routes may therefore use either projection style. Streaming
+			// projections are intentionally not used here because the helpers
+			// buffer protobuf output to surface marshal errors before headers.
+			require.Falsef(t, hasStreamingCustom, "%s uses a streaming custom projection in a buffered proto route", tc.route)
 		})
 	}
 }
