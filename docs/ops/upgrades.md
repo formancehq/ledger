@@ -37,6 +37,26 @@ When the running version precedes a mandatory boundary, pin the target to a
 canonical version tag. Moving or non-canonical tags such as `latest` cannot
 prove whether the boundary is crossed, so the operator blocks the change.
 
+### Preflight for Clusters using `latest`
+
+Before upgrading to a release Operator with version admission, inspect each
+Cluster's `spec.image.tag` and the Ledger image in its owned StatefulSet. The
+`v3.0.0-rc.1` Helm chart used `latest` as its Ledger image default. A release
+Operator rejects an opaque declared tag. If the Cluster requests an RC while
+the StatefulSet still uses `latest`, the RC source check also rejects the
+transition. Changing only `spec.image.tag` after the Operator upgrade does not
+repair that state.
+
+Do not start the Operator upgrade while either tag is `latest`. While the
+current Operator can still reconcile the Cluster, verify the running image
+digests against a published RC and pin the Cluster to that **same source RC**.
+Wait for the StatefulSet rollout to converge, then verify representative
+business data and audit history before upgrading to the next RC. Continue
+through each adjacent RC in order; do not jump to the newest RC. If the source
+cannot be identified or the current Operator already rejects the pinning step,
+stop and plan a separately validated migration. Do not delete the StatefulSet
+or PVCs to bypass the source check.
+
 Before tagging a new release, verify the upgrade with state created by the
 supported source releases. Cover affected Pebble records, Raft log and snapshot
 state, backup and restore formats, audit verification, and rebuildable
@@ -148,6 +168,16 @@ Before any server upgrade:
    opened by a newer binary unless that downgrade is explicitly supported.
 5. Ensure clients use stable idempotency keys for retries during leadership
    changes or transient unavailability.
+
+The Ledger Operator blocks a declared Ledger image tag newer than its own
+release version, or one that cannot be compared, before changing the
+StatefulSet. Upgrade the Operator first, then change the Ledger image. This
+ordering check applies before an Operator-managed workload change; it does
+not establish mixed-version compatibility or make a downgrade safe. Mutable
+registry tags can serve different contents, which this check cannot verify.
+If an Operator downgrade encounters a newer declared Ledger version,
+reconciliation stops with `VersionCompatible=False` while the existing workload
+is retained. Install a compatible Operator to resume reconciliation.
 
 ## Rolling Procedure
 

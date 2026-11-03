@@ -75,7 +75,7 @@ func TestStoppedUpgradeRepairsDependenciesBeforeWorkloadGate(t *testing.T) {
 	cred := matchingCredentials("test-cred", cluster.Labels, true, cluster.Namespace, "test-cred-secret")
 	keySecret := &corev1.Secret{ObjectMeta: metav1.ObjectMeta{Name: "test-cred-secret", Namespace: cluster.Namespace}, Data: map[string][]byte{"pubkey.hex": []byte("deadbeef"), "key-id": []byte("kid-123")}}
 	c := fake.NewClientBuilder().WithScheme(scheme).WithStatusSubresource(cluster).WithObjects(cluster, cred, keySecret).Build()
-	r := &ClusterReconciler{Client: c, Scheme: scheme}
+	r := &ClusterReconciler{Client: c, Scheme: scheme, OperatorVersion: "v3.0.0-rc.4"}
 	key := types.NamespacedName{Name: cluster.Name, Namespace: cluster.Namespace}
 
 	for attempt := range 2 {
@@ -179,7 +179,7 @@ func TestStoppedUpgradeDrainsPendingScaleDownCleanup(t *testing.T) {
 
 		return false, nil, nil
 	})
-	r := &ClusterReconciler{Client: c, Scheme: scheme, Clientset: clientset, stopVersions: testStopVersions}
+	r := &ClusterReconciler{Client: c, Scheme: scheme, Clientset: clientset, stopVersions: testStopVersions, OperatorVersion: "v3.0.0-rc.4"}
 	_, err := r.Reconcile(ctx, ctrl.Request{NamespacedName: types.NamespacedName{Name: cluster.Name, Namespace: cluster.Namespace}})
 	require.ErrorContains(t, err, "injected scale-down PVC deletion failure")
 	require.NoError(t, c.Get(ctx, types.NamespacedName{Name: sts.Name, Namespace: sts.Namespace}, sts))
@@ -542,7 +542,7 @@ func TestStoppedUpgradeTargetDriftUpdatesCondition(t *testing.T) {
 	require.NoError(t, clientgoscheme.AddToScheme(scheme))
 	require.NoError(t, ledgerv1alpha1.AddToScheme(scheme))
 	c := fake.NewClientBuilder().WithScheme(scheme).WithStatusSubresource(cluster, sts).WithObjects(cluster, sts).Build()
-	r := &ClusterReconciler{Client: c, Scheme: scheme}
+	r := &ClusterReconciler{Client: c, Scheme: scheme, OperatorVersion: "v3.0.0-rc.4"}
 	_, err := r.Reconcile(ctx, ctrl.Request{NamespacedName: types.NamespacedName{Name: cluster.Name, Namespace: cluster.Namespace}})
 	require.NoError(t, err)
 	require.NoError(t, c.Get(ctx, types.NamespacedName{Name: cluster.Name, Namespace: cluster.Namespace}, cluster))
