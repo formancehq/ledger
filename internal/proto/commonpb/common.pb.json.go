@@ -100,12 +100,44 @@ func (x *LogPayload) jsonValue() (any, error) {
 		return &struct {
 			Apply *ApplyLedgerLog `json:"apply,omitempty"`
 		}{Apply: p.Apply}, nil
+	case *LogPayload_RegisterSigningKey:
+		return map[string]any{"registerSigningKey": p.RegisterSigningKey}, nil
+	case *LogPayload_RevokeSigningKey:
+		return map[string]any{"revokeSigningKey": p.RevokeSigningKey}, nil
+	case *LogPayload_SetSigningConfig:
+		return map[string]any{"setSigningConfig": p.SetSigningConfig}, nil
+	case *LogPayload_AddedEventsSink:
+		return map[string]any{"addedEventsSink": p.AddedEventsSink}, nil
+	case *LogPayload_RemovedEventsSink:
+		return map[string]any{"removedEventsSink": p.RemovedEventsSink}, nil
+	case *LogPayload_SetMaintenanceMode:
+		return map[string]any{"setMaintenanceMode": p.SetMaintenanceMode}, nil
+	case *LogPayload_PromoteLedger:
+		return map[string]any{"promoteLedger": p.PromoteLedger}, nil
+	case *LogPayload_CreatedPreparedQuery:
+		return map[string]any{"createdPreparedQuery": p.CreatedPreparedQuery}, nil
+	case *LogPayload_UpdatedPreparedQuery:
+		return map[string]any{"updatedPreparedQuery": p.UpdatedPreparedQuery}, nil
+	case *LogPayload_DeletedPreparedQuery:
+		return map[string]any{"deletedPreparedQuery": p.DeletedPreparedQuery}, nil
+	case *LogPayload_SavedNumscript:
+		return map[string]any{"savedNumscript": p.SavedNumscript}, nil
+	case *LogPayload_CreatedQueryCheckpoint:
+		return map[string]any{"createdQueryCheckpoint": p.CreatedQueryCheckpoint}, nil
+	case *LogPayload_DeletedQueryCheckpoint:
+		return map[string]any{"deletedQueryCheckpoint": p.DeletedQueryCheckpoint}, nil
+	case *LogPayload_SetQueryCheckpointSchedule:
+		return map[string]any{"setQueryCheckpointSchedule": p.SetQueryCheckpointSchedule}, nil
+	case *LogPayload_DeleteQueryCheckpointSchedule:
+		return map[string]any{"deleteQueryCheckpointSchedule": p.DeleteQueryCheckpointSchedule}, nil
+	case *LogPayload_SavedLedgerMetadata:
+		return map[string]any{"savedLedgerMetadata": p.SavedLedgerMetadata}, nil
+	case *LogPayload_DeletedLedgerMetadata:
+		return map[string]any{"deletedLedgerMetadata": p.DeletedLedgerMetadata}, nil
+	case *LogPayload_SetClusterPolicy:
+		return map[string]any{"setClusterPolicy": p.SetClusterPolicy}, nil
 	default:
-		// Other variants use the descriptor fallback until their static
-		// projection is generated as well.
-		raw, err := MarshalLedgerJSONWithOptions(x, MarshalLedgerJSONOptions{})
-
-		return json.RawValue(raw), err
+		return nil, errors.New("missing log payload")
 	}
 }
 

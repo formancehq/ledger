@@ -72,10 +72,12 @@ message Timestamp {
 // declared type. It preserves the original raw value for debugging, but
 // signals to consumers that the value is unusable in its expected type.
 message NullValue {
+	option (ledger_json) = true;
   string original = 1;
 }
 
 message MetadataValue {
+	option (ledger_json) = true;
   oneof type {
     string string_value = 1;
     int64 int_value = 2;
@@ -414,6 +416,7 @@ message LogPayload {
 }
 
 message PromotedLedgerLog {
+	option (ledger_json) = true;
   string name = 1;
 }
 
@@ -423,6 +426,7 @@ message PromotedLedgerLog {
 
 // RegisteredSigningKeyLog records a signing key registration.
 message RegisteredSigningKeyLog {
+	option (ledger_json) = true;
   string key_id = 1;
   bytes public_key = 2;
   string parent_key_id = 3;
@@ -430,6 +434,7 @@ message RegisteredSigningKeyLog {
 
 // RevokedSigningKeyLog records a signing key revocation.
 message RevokedSigningKeyLog {
+	option (ledger_json) = true;
   string key_id = 1;
   repeated string cascaded_key_ids = 2;
 }
@@ -444,26 +449,31 @@ message SigningKey {
 
 // SetSigningConfigLog records a signing configuration change.
 message SetSigningConfigLog {
+	option (ledger_json) = true;
   bool require_signatures = 1;
 }
 
 // AddedEventsSinkLog records the addition of a named sink config.
 message AddedEventsSinkLog {
+	option (ledger_json) = true;
   SinkConfig config = 1;
 }
 
 // RemovedEventsSinkLog records the removal of a named sink config.
 message RemovedEventsSinkLog {
+	option (ledger_json) = true;
   string name = 1;
 }
 
 // SetMaintenanceModeLog records a maintenance mode change.
 message SetMaintenanceModeLog {
+	option (ledger_json) = true;
   bool enabled = 1;
 }
 
 // SetClusterPolicyLog records a cluster policy change.
 message SetClusterPolicyLog {
+	option (ledger_json) = true;
   ClusterPolicy policy = 1;
 }
 
@@ -532,12 +542,14 @@ message ClusterPolicy {
 
 // CreatedPreparedQueryLog records the creation of a prepared query.
 message CreatedPreparedQueryLog {
+	option (ledger_json) = true;
   string ledger = 1;
   PreparedQuery query = 2;
 }
 
 // UpdatedPreparedQueryLog records the update of a prepared query filter.
 message UpdatedPreparedQueryLog {
+	option (ledger_json) = true;
   string ledger = 1;
   string name = 2;
   QueryFilter previous_filter = 3;
@@ -546,6 +558,7 @@ message UpdatedPreparedQueryLog {
 
 // DeletedPreparedQueryLog records the deletion of a prepared query.
 message DeletedPreparedQueryLog {
+	option (ledger_json) = true;
   string ledger = 1;
   string name = 2;
 }
@@ -556,12 +569,14 @@ message DeletedPreparedQueryLog {
 
 // SavedLedgerMetadataLog records metadata being set on a ledger.
 message SavedLedgerMetadataLog {
+	option (ledger_json) = true;
   string ledger = 1;
   map<string, MetadataValue> metadata = 2;
 }
 
 // DeletedLedgerMetadataLog records a metadata key being removed from a ledger.
 message DeletedLedgerMetadataLog {
+	option (ledger_json) = true;
   string ledger = 1;
   string key = 2;
 }
@@ -599,6 +614,7 @@ message NumscriptInfo {
 
 // SavedNumscriptLog records a numscript version being saved to the library.
 message SavedNumscriptLog {
+	option (ledger_json) = true;
   NumscriptInfo info = 1;
 }
 
@@ -618,14 +634,18 @@ message TemplateUsage {
 
 // SetQueryCheckpointScheduleLog records a query checkpoint schedule change.
 message SetQueryCheckpointScheduleLog {
+	option (ledger_json) = true;
   string cron = 1;
 }
 
 // DeletedQueryCheckpointScheduleLog records the removal of the query checkpoint schedule.
-message DeletedQueryCheckpointScheduleLog {}
+message DeletedQueryCheckpointScheduleLog {
+	option (ledger_json) = true;
+}
 
 // CreatedQueryCheckpointLog records a query checkpoint being created.
 message CreatedQueryCheckpointLog {
+	option (ledger_json) = true;
   fixed64 checkpoint_id = 1;
   fixed64 max_sequence = 2;
   Timestamp created_at = 3;
@@ -634,6 +654,7 @@ message CreatedQueryCheckpointLog {
 
 // DeletedQueryCheckpointLog records a query checkpoint being deleted.
 message DeletedQueryCheckpointLog {
+	option (ledger_json) = true;
   fixed64 checkpoint_id = 1;
 }
 

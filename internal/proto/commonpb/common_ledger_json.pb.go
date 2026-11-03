@@ -171,6 +171,33 @@ func ledgerJSONMapKey(key protoreflect.MapKey) string {
 	}
 }
 
+func (x *NullValue) MarshalJSON() ([]byte, error) {
+	object := make(map[string]any)
+	if x.Original != "" {
+		object["original"] = x.Original
+	}
+	return jsonv2.Marshal(object)
+}
+
+func (x *MetadataValue) MarshalJSON() ([]byte, error) {
+	object := make(map[string]any)
+	switch oneofValue := x.Type.(type) {
+	case *MetadataValue_StringValue:
+		object["stringValue"] = oneofValue.StringValue
+	case *MetadataValue_IntValue:
+		object["intValue"] = oneofValue.IntValue
+	case *MetadataValue_BoolValue:
+		object["boolValue"] = oneofValue.BoolValue
+	case *MetadataValue_NullValue:
+		object["nullValue"] = oneofValue.NullValue
+	case *MetadataValue_UintValue:
+		object["uintValue"] = oneofValue.UintValue
+	case *MetadataValue_DatetimeValue:
+		object["datetimeValue"] = oneofValue.DatetimeValue
+	}
+	return jsonv2.Marshal(object)
+}
+
 func (x *MetadataIndexID) MarshalJSON() ([]byte, error) {
 	object := make(map[string]any)
 	if x.Target != 0 {
@@ -225,6 +252,39 @@ func (x *Idempotency) MarshalJSON() ([]byte, error) {
 	return jsonv2.Marshal(object)
 }
 
+func (x *PromotedLedgerLog) MarshalJSON() ([]byte, error) {
+	object := make(map[string]any)
+	if x.Name != "" {
+		object["name"] = x.Name
+	}
+	return jsonv2.Marshal(object)
+}
+
+func (x *RegisteredSigningKeyLog) MarshalJSON() ([]byte, error) {
+	object := make(map[string]any)
+	if x.KeyId != "" {
+		object["keyId"] = x.KeyId
+	}
+	if len(x.PublicKey) != 0 {
+		object["publicKey"] = x.PublicKey
+	}
+	if x.ParentKeyId != "" {
+		object["parentKeyId"] = x.ParentKeyId
+	}
+	return jsonv2.Marshal(object)
+}
+
+func (x *RevokedSigningKeyLog) MarshalJSON() ([]byte, error) {
+	object := make(map[string]any)
+	if x.KeyId != "" {
+		object["keyId"] = x.KeyId
+	}
+	if len(x.CascadedKeyIds) != 0 {
+		object["cascadedKeyIds"] = x.CascadedKeyIds
+	}
+	return jsonv2.Marshal(object)
+}
+
 func (x *SigningKey) MarshalJSON() ([]byte, error) {
 	object := make(map[string]any)
 	if x.KeyId != "" {
@@ -235,6 +295,153 @@ func (x *SigningKey) MarshalJSON() ([]byte, error) {
 	}
 	if x.ParentKeyId != "" {
 		object["parentKeyId"] = x.ParentKeyId
+	}
+	return jsonv2.Marshal(object)
+}
+
+func (x *SetSigningConfigLog) MarshalJSON() ([]byte, error) {
+	object := make(map[string]any)
+	if x.RequireSignatures {
+		object["requireSignatures"] = x.RequireSignatures
+	}
+	return jsonv2.Marshal(object)
+}
+
+func (x *AddedEventsSinkLog) MarshalJSON() ([]byte, error) {
+	object := make(map[string]any)
+	if x.Config != nil {
+		object["config"] = x.Config
+	}
+	return jsonv2.Marshal(object)
+}
+
+func (x *RemovedEventsSinkLog) MarshalJSON() ([]byte, error) {
+	object := make(map[string]any)
+	if x.Name != "" {
+		object["name"] = x.Name
+	}
+	return jsonv2.Marshal(object)
+}
+
+func (x *SetMaintenanceModeLog) MarshalJSON() ([]byte, error) {
+	object := make(map[string]any)
+	if x.Enabled {
+		object["enabled"] = x.Enabled
+	}
+	return jsonv2.Marshal(object)
+}
+
+func (x *SetClusterPolicyLog) MarshalJSON() ([]byte, error) {
+	object := make(map[string]any)
+	if x.Policy != nil {
+		object["policy"] = x.Policy
+	}
+	return jsonv2.Marshal(object)
+}
+
+func (x *CreatedPreparedQueryLog) MarshalJSON() ([]byte, error) {
+	object := make(map[string]any)
+	if x.Ledger != "" {
+		object["ledger"] = x.Ledger
+	}
+	if x.Query != nil {
+		object["query"] = x.Query
+	}
+	return jsonv2.Marshal(object)
+}
+
+func (x *UpdatedPreparedQueryLog) MarshalJSON() ([]byte, error) {
+	object := make(map[string]any)
+	if x.Ledger != "" {
+		object["ledger"] = x.Ledger
+	}
+	if x.Name != "" {
+		object["name"] = x.Name
+	}
+	if x.PreviousFilter != nil {
+		object["previousFilter"] = x.PreviousFilter
+	}
+	if x.NewFilter != nil {
+		object["newFilter"] = x.NewFilter
+	}
+	return jsonv2.Marshal(object)
+}
+
+func (x *DeletedPreparedQueryLog) MarshalJSON() ([]byte, error) {
+	object := make(map[string]any)
+	if x.Ledger != "" {
+		object["ledger"] = x.Ledger
+	}
+	if x.Name != "" {
+		object["name"] = x.Name
+	}
+	return jsonv2.Marshal(object)
+}
+
+func (x *SavedLedgerMetadataLog) MarshalJSON() ([]byte, error) {
+	object := make(map[string]any)
+	if x.Ledger != "" {
+		object["ledger"] = x.Ledger
+	}
+	if len(x.Metadata) != 0 {
+		object["metadata"] = x.Metadata
+	}
+	return jsonv2.Marshal(object)
+}
+
+func (x *DeletedLedgerMetadataLog) MarshalJSON() ([]byte, error) {
+	object := make(map[string]any)
+	if x.Ledger != "" {
+		object["ledger"] = x.Ledger
+	}
+	if x.Key != "" {
+		object["key"] = x.Key
+	}
+	return jsonv2.Marshal(object)
+}
+
+func (x *SavedNumscriptLog) MarshalJSON() ([]byte, error) {
+	object := make(map[string]any)
+	if x.Info != nil {
+		object["info"] = x.Info
+	}
+	return jsonv2.Marshal(object)
+}
+
+func (x *SetQueryCheckpointScheduleLog) MarshalJSON() ([]byte, error) {
+	object := make(map[string]any)
+	if x.Cron != "" {
+		object["cron"] = x.Cron
+	}
+	return jsonv2.Marshal(object)
+}
+
+func (x *DeletedQueryCheckpointScheduleLog) MarshalJSON() ([]byte, error) {
+	object := make(map[string]any)
+	return jsonv2.Marshal(object)
+}
+
+func (x *CreatedQueryCheckpointLog) MarshalJSON() ([]byte, error) {
+	object := make(map[string]any)
+	if x.CheckpointId != 0 {
+		object["checkpointId"] = x.CheckpointId
+	}
+	if x.MaxSequence != 0 {
+		object["maxSequence"] = x.MaxSequence
+	}
+	if x.CreatedAt != nil {
+		object["createdAt"] = x.CreatedAt
+	}
+	if x.AppliedIndex != 0 {
+		object["appliedIndex"] = x.AppliedIndex
+	}
+	return jsonv2.Marshal(object)
+}
+
+func (x *DeletedQueryCheckpointLog) MarshalJSON() ([]byte, error) {
+	object := make(map[string]any)
+	if x.CheckpointId != 0 {
+		object["checkpointId"] = x.CheckpointId
 	}
 	return jsonv2.Marshal(object)
 }
