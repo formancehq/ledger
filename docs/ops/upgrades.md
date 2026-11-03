@@ -185,6 +185,24 @@ is allowed only before the target has written incompatible persisted data, and
 only with a separately validated downgrade procedure. After that point, keep
 the target or restore through a supported forward recovery path.
 
+### rc.3 → rc.4 stopped restart details
+
+The rc.3 → rc.4 upgrade is not a rolling upgrade. The operator first performs
+the durable drain described above; once every voter has applied the maintenance
+barrier, it stops all Ledger Pods, updates the operator and Ledger image, and
+restarts the complete cluster with the existing PVCs. The first rc.4 startup
+migrates legacy Membership service addresses to the dedicated peer port after
+WAL replay and snapshot recovery. Do not run rc.3 and rc.4 voters together
+during this migration.
+
+Before publishing an RC update, demonstrate the applicable upgrade class from
+the immediately preceding RC binary to the target binary in one cluster. For a
+rolling update, include leadership transfer, writes, replay, and restart. For
+the rc.3 → rc.4 stopped restart, include the durable maintenance barrier,
+full stop, Membership migration, restart, and post-upgrade writes. Record the
+source and target builds and the results in release validation. Do not infer
+support from a successful single-node restart.
+
 For upgrades from builds before `v3.0.0-rc.1`, the change-specific constraints
 documented under
 [Upgrading from pre-#400 clusters](./deployment.md#upgrading-from-pre-400-clusters)
