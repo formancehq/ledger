@@ -1474,12 +1474,34 @@ func TestReconcileMetadataOnlyChainBound_UsesReplayedTransactionID(t *testing.T)
 		applyLog(20, &commonpb.LedgerLogPayload{Payload: &commonpb.LedgerLogPayload_AccountMetadataUpdated{AccountMetadataUpdated: &commonpb.AccountMetadataUpdated{AccountMetadata: map[string]*commonpb.MetadataMap{
 			"users:alice": {Values: map[string]*commonpb.MetadataValue{"role": commonpb.NewStringValue("viewer")}},
 		}}}}),
-		applyLog(30, &commonpb.LedgerLogPayload{Payload: &commonpb.LedgerLogPayload_CreatedTransaction{CreatedTransaction: &commonpb.CreatedTransaction{Transaction: &commonpb.Transaction{Id: 1, Metadata: map[string]*commonpb.MetadataValue{"txkey": commonpb.NewStringValue("v")}}}}}),
+		applyLog(30, &commonpb.LedgerLogPayload{Payload: &commonpb.LedgerLogPayload_CreatedTransaction{CreatedTransaction: &commonpb.CreatedTransaction{Transaction: &commonpb.Transaction{Id: 1, Reference: "ref-1", Metadata: map[string]*commonpb.MetadataValue{"txkey": commonpb.NewStringValue("v")}}}}}),
 	}, chainBound)
 
 	require.Equal(t, uint64(2), chainBound.nextTxID["L"])
 	require.NotEmpty(t, chainBound.metadata["L"][metadataTimelineTarget(true, "1")]["txkey"])
 	require.Empty(t, chainBound.metadata["L"][metadataTimelineTarget(true, "2")]["txkey"])
+	require.Equal(t, uint64(1), chainBound.referenceTxIDs["L"]["ref-1"])
+
+	conflictReason := commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT
+	conflictExpected := map[uint64]*expectedSkippableOrder{
+		40: {
+			reasons:   []commonpb.ErrorReason{conflictReason},
+			ledger:    "L",
+			reference: "ref-1",
+		},
+	}
+	conflictPayload := skippedPayloadWithContext(conflictReason, map[string]string{
+		"ledger":                "L",
+		"reference":             "ref-1",
+		"existingTransactionId": "1",
+	})
+	conflictPayload.GetOrderSkipped().Details = commonpb.MustFailureDetails("TRANSACTION_REFERENCE_CONFLICT", map[string]string{
+		"ledger":                "L",
+		"reference":             "ref-1",
+		"existingTransactionId": "1",
+	})
+	conflictEvents := captureEventsState(t, "L", 40, conflictPayload, conflictExpected, chainBound)
+	require.Empty(t, conflictEvents, "a reference conflict after metadata-only execution must retain the replayed transaction id")
 
 	reason := commonpb.ErrorReason_ERROR_REASON_METADATA_NOT_FOUND
 	expected := map[uint64]*expectedSkippableOrder{
