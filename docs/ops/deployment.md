@@ -144,6 +144,8 @@ helm dependency build misc/operator/helm/operator
 helm install ledger-operator misc/operator/helm/operator \
   --namespace ledger \
   --create-namespace \
+  --set image.tag=v3.0.0-rc.1 \
+  --set ledgerImage.tag=v3.0.0-rc.1 \
   --set watchNamespace=ledger
 ```
 
@@ -161,7 +163,7 @@ spec:
   replicas: 3  # Must be odd for Raft
   image:
     repository: ghcr.io/formancehq/ledger
-    tag: latest
+    tag: v3.0.0-rc.1
   config:
     bindAddr: "0.0.0.0:7777"
     grpcPort: 8888
@@ -192,6 +194,29 @@ particular, a Cluster recreated after `kubectl delete --cascade=orphan` does not
 re-adopt the orphaned objects: delete them (keep the PVCs) or restore their
 owner references first. See
 [derived object ownership](../technical/architecture/subsystems/operator/derived-object-ownership.md).
+
+Release charts default both image tags to the chart's published application
+version. When installing from a source checkout, set both tags to a matching
+release as in the example above. The Ledger Operator checks `spec.image.tag`
+against the version embedded
+in its own release binary before it creates or changes a Ledger workload. A
+newer Ledger release is blocked with
+`status.conditions[type=VersionCompatible]` set to `False`, reason
+`LedgerVersionAheadOfOperator`, and `status.phase=Error`. Upgrade the Ledger
+Operator first, then reconcile the Cluster again. Existing StatefulSets and
+volumes are left in place when the check fails. If a development or PR Operator
+build has no semantic release version, a semantic Ledger tag is blocked with
+reason `OperatorVersionUnknown`.
+
+An opaque Ledger tag such as `latest`, `e2e`, or a commit SHA cannot be ordered.
+A release Operator blocks it with reason `LedgerVersionUnknown`. Development
+Operator builds accept opaque Ledger tags and report `VersionCompatible=Unknown`
+with reason `DevelopmentVersions`. Before upgrading an existing Cluster using
+`latest`, follow the [source-version preflight](upgrades.md#preflight-for-clusters-using-latest).
+Changing only the Cluster tag after the Operator upgrade can leave the
+StatefulSet's `latest` source blocked by the RC upgrade check. The check compares
+the declared image tag; custom registries may serve different contents under
+that tag, so verify image provenance before relying on the check.
 
 When an operator-managed Cluster omits `spec.clusterID`, the operator commits a
 random UUID to the Cluster spec before creating any workload. All replicas use

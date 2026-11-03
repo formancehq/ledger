@@ -24,6 +24,11 @@ The Ledger Operator manages `Cluster` and `EventSink` custom resources to automa
 - **Event sinks** reconciled into Ledger's Raft-replicated runtime configuration
 - **Credentials** for application-level access control
 
+For release-tagged Ledger images, the Cluster controller rejects a server
+version newer than the running Ledger Operator before creating or updating the
+StatefulSet. See [deployment](../../docs/ops/deployment.md#creating-a-ledger-cluster)
+for the status conditions and the limits of tag-based comparison.
+
 During StatefulSet scale-down, every removed ordinal must satisfy the Raft
 membership removal postcondition (EN-1999). A replacement Pod can be Pending,
 missing, or have no container status while its stable node ID is still a voter;
@@ -221,8 +226,14 @@ for runtime delivery, missing-key behavior and ambient authentication.
 helm dependency build misc/operator/helm/operator
 helm install ledger-operator misc/operator/helm/operator \
   --namespace ledger-system \
-  --create-namespace
+  --create-namespace \
+  --set image.tag=v3.0.0-rc.2 \
+  --set ledgerImage.tag=v3.0.0-rc.2
 ```
+
+Use matching published Operator and Ledger release tags. The source chart's
+`appVersion` is a development placeholder; packaged release charts use their
+release version as the image tag by default.
 
 ### Deploy a Ledger Cluster
 
@@ -243,7 +254,7 @@ spec:
   replicas: 3
   image:
     repository: ghcr.io/formancehq/ledger
-    tag: latest
+    tag: v3.0.0-rc.2
   podAntiAffinity:
     enabled: true
     type: hard
@@ -335,10 +346,10 @@ storage.
 | Key | Default | Description |
 |-----|---------|-------------|
 | `image.repository` | `ghcr.io/formancehq/ledger-operator` | Operator image |
-| `image.tag` | `latest` | Operator image tag |
+| `image.tag` | `""` (chart `appVersion`) | Operator image tag. Set a value to override the chart application version. |
 | `ledgerImage.registry` | `ghcr.io` | Default ledger image registry |
 | `ledgerImage.name` | `formancehq/ledger` | Default ledger image name |
-| `ledgerImage.tag` | `latest` | Default ledger image tag |
+| `ledgerImage.tag` | `""` (chart `appVersion`) | Default Ledger image tag. Set a value to override the chart application version. |
 | `replicaCount` | `1` | Operator replicas |
 | `leaderElection` | `true` | Enable HA leader election |
 | `watchNamespace` | `""` | Namespace to watch (empty = all) |
@@ -581,7 +592,7 @@ kubectl ledger explain spec.raft
 kubectl ledger create my-ledger \
   --set replicas=5 \
   --set image.repository=ghcr.io/formancehq/ledger \
-  --set image.tag=latest \
+  --set image.tag=v3.0.0-rc.2 \
   --set podAntiAffinity.enabled=true \
   --set podAntiAffinity.type=hard \
   --set resources.requests.cpu=2000m \
@@ -597,6 +608,11 @@ kubectl ledger scale my-ledger --replicas 7
 # Rolling restart
 kubectl ledger restart my-ledger -y
 ```
+
+If `image.tag` is omitted from `kubectl ledger create`, the Cluster inherits
+the Ledger image tag configured on the Operator (`ledgerImage.tag`, or the
+chart's `appVersion`). Set `image.tag` explicitly to select a different
+compatible release.
 
 Plain `kubectl rollout restart statefulset/<name>` also works: the operator
 preserves the `kubectl.kubernetes.io/restartedAt` annotation kubectl stamps on
@@ -634,6 +650,16 @@ just pre-commit     # Run all checks (generate + tidy + build)
 just build-plugin   # Build kubectl plugin
 just install-plugin # Install kubectl plugin to $GOPATH/bin
 ```
+
+### End-to-end tests
+
+From `misc/operator/`, run `just test-e2e` to build the images, create the kind
+cluster, and run the Chainsaw scenarios. The scenarios using the opaque `e2e`
+Ledger tag run with the development Operator. The rolling rc.2-to-rc.3 upgrade
+scenario then runs with an Operator built as `v3.0.0-rc.3`, so the release
+version admission check is exercised. After the images are loaded, use
+`just test-e2e-only` to rerun both groups without rebuilding the cluster.
+Use `just e2e-cluster-down` to remove it.
 
 ### JSON Schema
 

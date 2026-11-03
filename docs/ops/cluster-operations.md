@@ -62,7 +62,7 @@ ledger run \
 
 ### Join Sequence
 
-The join process has four phases: peer discovery, node initialization, learner registration preflight, and startup. Both discovery and registration go through the inter-node `ClusterBootstrapService` exposed on the RaftServer — gated by cluster-id metadata (and cluster-secret bearer when configured), without the user-JWT auth pipeline.
+The join process has four phases: peer discovery, node initialization, learner registration preflight, and startup of inbound Raft traffic. Both discovery and registration go through the inter-node `ClusterBootstrapService` exposed on the RaftServer — gated by cluster-id metadata (and cluster-secret bearer when configured), without the user-JWT auth pipeline.
 
 #### Phase 1: Peer Discovery
 
@@ -181,7 +181,11 @@ below. A process exit alone is not evidence that remote membership was removed.
 On restart, an existing `CLUSTER_JOINED` marker skips preflight. WAL presence
 alone is not this gate.
 
-#### Phase 4: Startup
+The current voter quorum can commit a learner addition while its listener is
+still closed. If optional-TLS probing fails at that point, the voter retains
+the committed endpoint and its outbound retry loop.
+
+#### Phase 4: Startup of Inbound Raft Traffic
 
 After preflight succeeds, the Fx lifecycle starts the components that accept
 inbound Raft traffic:
@@ -190,6 +194,10 @@ inbound Raft traffic:
 - gRPC servers start (Raft transport and service API).
 - The Raft node `Run()` begins the orchestrate loop.
 - The ConfChange observer handles cluster membership changes.
+
+The existing voter's retry loop can then establish streams to the learner and
+deliver replication without another registration or a voter restart. Normal
+catch-up and automatic promotion follow.
 
 ### ConfChange Observer
 

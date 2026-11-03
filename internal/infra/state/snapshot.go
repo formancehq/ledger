@@ -22,7 +22,9 @@ var ErrSnapshotNotReady = errors.New("snapshot donor is not ready")
 // SnapshotFetcher fetches a fresh checkpoint from a peer.
 type SnapshotFetcher interface {
 	// FetchSnapshot requests a fresh checkpoint from the leader and writes it
-	// to targetDir. Returns the total size in bytes.
+	// to targetDir. Returns the total size in bytes. On success targetDir
+	// holds exactly the files of the one session that completed: every
+	// retried or abandoned session's files are removed first.
 	// minAppliedIndex is the minimum Raft index the checkpoint must include —
 	// the leader waits until its FSM has applied at least this index before
 	// creating the Pebble checkpoint.

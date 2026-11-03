@@ -287,3 +287,17 @@ all corruption callbacks and terminal status: require `METADATA_MISMATCH` or
 `TRANSACTION_UPDATE_MISMATCH` with raw-key/decoding evidence and unset identity
 fields, while terminal completion succeeds. Healthy controls must emit no
 corruption events. Malformed keys must not silently disappear from comparison.
+
+## Noncanonical index-registry keys (EN-3236)
+
+Logical equality is insufficient where a key decoder accepts several physical
+encodings. Ledger-name decoding stops at the first NUL of the fixed-width
+padding, so nonzero bytes after it alias the canonical key, which canonical
+point lookups then miss. `compareIndexes` requires a stored `SubAttrIndex` key
+to equal the canonical encoding of its decoded `IndexKey` before the row can
+satisfy an expected registration. `checker_index_alias_test.go` runs full
+`Check` on a real FSM-produced registry, confirms the healthy control is clean,
+moves the registration to a padding alias, confirms the canonical point lookup
+misses, and requires both the noncanonical-key and the missing-registration
+`INDEX_MISMATCH`. Other passes that decode ledger-name-keyed rows and match on
+the logical key are candidates for the same probe.
