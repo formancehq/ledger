@@ -13,6 +13,7 @@ import (
 	"google.golang.org/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
 
 type statusIdentityTestServer struct {
@@ -27,6 +28,11 @@ func (s *statusIdentityTestServer) GetClusterState(_ context.Context, req *clust
 	return &clusterpb.ClusterState{
 		Leader: req.GetNodeId(), LocalNode: req.GetNodeId(),
 		Nodes: []*clusterpb.NodeInfo{{Id: req.GetNodeId()}},
+		ClusterConfig: &commonpb.ClusterConfig{
+			RotationThreshold: 1000,
+			BloomVolumes:      &commonpb.BloomTypeConfig{ExpectedKeys: 42, FpRate: 0.01},
+			HashAlgorithm:     commonpb.HashAlgorithm_HASH_ALGORITHM_XXH3,
+		},
 	}, nil
 }
 
@@ -69,15 +75,25 @@ func TestStatusCommandPreservesFullNodeIDAndJSONNumbers(t *testing.T) {
 			payload, err := os.ReadFile(resultPath)
 			require.NoError(t, err)
 			var output struct {
-				Leader    uint64 `json:"leader"`
-				LocalNode uint64 `json:"localNode"`
-				Nodes     []struct {
+				Leader        uint64 `json:"leader"`
+				LocalNode     uint64 `json:"localNode"`
+				ClusterConfig struct {
+					RotationThreshold uint64 `json:"rotationThreshold"`
+					BloomVolumes      struct {
+						ExpectedKeys uint64 `json:"expectedKeys"`
+					} `json:"bloomVolumes"`
+					HashAlgorithm string `json:"hashAlgorithm"`
+				} `json:"clusterConfig"`
+				Nodes []struct {
 					ID uint64 `json:"id"`
 				} `json:"nodes"`
 			}
 			require.NoError(t, json.Unmarshal(payload, &output), "protobuf uint64 IDs must be decimal JSON numbers")
 			require.Equal(t, tc.want, output.Leader)
 			require.Equal(t, tc.want, output.LocalNode)
+			require.Equal(t, uint64(1000), output.ClusterConfig.RotationThreshold)
+			require.Equal(t, uint64(42), output.ClusterConfig.BloomVolumes.ExpectedKeys)
+			require.Equal(t, "HASH_ALGORITHM_XXH3", output.ClusterConfig.HashAlgorithm)
 			require.Len(t, output.Nodes, 1)
 			require.Equal(t, tc.want, output.Nodes[0].ID)
 		})

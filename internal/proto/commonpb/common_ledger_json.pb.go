@@ -260,6 +260,59 @@ func (x *SetClusterPolicyLog) MarshalJSON() ([]byte, error) {
 	})
 }
 
+func (x *BloomTypeConfig) MarshalJSON() ([]byte, error) {
+	return jsonv2.Marshal(struct {
+		ExpectedKeys uint64  `json:"expectedKeys"`
+		FpRate       float64 `json:"fpRate"`
+	}{
+		ExpectedKeys: x.ExpectedKeys,
+		FpRate:       x.FpRate,
+	})
+}
+
+func (x *ClusterConfig) MarshalJSON() ([]byte, error) {
+	return jsonv2.Marshal(struct {
+		RotationThreshold      uint64 `json:"rotationThreshold"`
+		BloomVolumes           any    `json:"bloomVolumes,omitempty,omitzero"`
+		BloomMetadata          any    `json:"bloomMetadata,omitempty,omitzero"`
+		BloomReferences        any    `json:"bloomReferences,omitempty,omitzero"`
+		BloomLedgers           any    `json:"bloomLedgers,omitempty,omitzero"`
+		BloomBoundaries        any    `json:"bloomBoundaries,omitempty,omitzero"`
+		BloomTransactions      any    `json:"bloomTransactions,omitempty,omitzero"`
+		BloomSinkConfigs       any    `json:"bloomSinkConfigs,omitempty,omitzero"`
+		BloomNumscriptVersions any    `json:"bloomNumscriptVersions,omitempty,omitzero"`
+		BloomNumscriptContents any    `json:"bloomNumscriptContents,omitempty,omitzero"`
+		HashAlgorithm          any    `json:"hashAlgorithm"`
+		BloomLedgerMetadata    any    `json:"bloomLedgerMetadata,omitempty,omitzero"`
+		BloomPreparedQueries   any    `json:"bloomPreparedQueries,omitempty,omitzero"`
+		BloomIndexes           any    `json:"bloomIndexes,omitempty,omitzero"`
+	}{
+		RotationThreshold:      x.RotationThreshold,
+		BloomVolumes:           x.BloomVolumes,
+		BloomMetadata:          x.BloomMetadata,
+		BloomReferences:        x.BloomReferences,
+		BloomLedgers:           x.BloomLedgers,
+		BloomBoundaries:        x.BloomBoundaries,
+		BloomTransactions:      x.BloomTransactions,
+		BloomSinkConfigs:       x.BloomSinkConfigs,
+		BloomNumscriptVersions: x.BloomNumscriptVersions,
+		BloomNumscriptContents: x.BloomNumscriptContents,
+		HashAlgorithm: func() any {
+			switch x.HashAlgorithm {
+			case HashAlgorithm_HASH_ALGORITHM_BLAKE3:
+				return "HASH_ALGORITHM_BLAKE3"
+			case HashAlgorithm_HASH_ALGORITHM_XXH3:
+				return "HASH_ALGORITHM_XXH3"
+			default:
+				return int32(x.HashAlgorithm)
+			}
+		}(),
+		BloomLedgerMetadata:  x.BloomLedgerMetadata,
+		BloomPreparedQueries: x.BloomPreparedQueries,
+		BloomIndexes:         x.BloomIndexes,
+	})
+}
+
 func (x *CreatedPreparedQueryLog) MarshalJSON() ([]byte, error) {
 	return jsonv2.Marshal(struct {
 		Ledger string `json:"ledger"`

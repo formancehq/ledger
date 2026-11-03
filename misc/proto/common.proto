@@ -479,6 +479,7 @@ message SetClusterPolicyLog {
 
 // BloomTypeConfig holds the configuration for a single bloom filter type.
 message BloomTypeConfig {
+	option (ledger_json) = true;
   uint64 expected_keys = 1;
   double fp_rate = 2;
 }
@@ -492,6 +493,7 @@ enum HashAlgorithm {
 // ClusterConfig holds mutable cluster-wide configuration parameters.
 // These are updated via Raft to ensure deterministic application across all nodes.
 message ClusterConfig {
+	option (ledger_json) = true;
   uint64 rotation_threshold = 1;
   BloomTypeConfig bloom_volumes = 2;
   BloomTypeConfig bloom_metadata = 3;
