@@ -1448,7 +1448,9 @@ func newMembershipPeerDialer(cfg Config, tlsCfg TLSConfig) (func(string) (*ggrpc
 	}
 
 	dialOpts := []ggrpc.DialOption{ggrpc.WithTransportCredentials(creds)}
-	if cfg.ClusterSecret != "" {
+	// Per-RPC credentials require transport security. Do not attach the
+	// cluster secret to a plaintext membership call.
+	if cfg.ClusterSecret != "" && tlsCfg.Mode != TLSModeDisabled {
 		dialOpts = append(dialOpts, transport.BearerTokenDialOption(cfg.ClusterSecret))
 	}
 
@@ -1585,7 +1587,6 @@ func tryAddLearner(ctx context.Context, cfg Config, tlsCfg TLSConfig, logger log
 	if err != nil {
 		return fmt.Errorf("loading TLS credentials for learner registration: %w", err)
 	}
-
 	backoff := 500 * time.Millisecond
 	maxBackoff := 5 * time.Second
 
