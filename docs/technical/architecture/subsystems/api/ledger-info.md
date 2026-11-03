@@ -84,7 +84,8 @@ consumed mirror adds three point reads, including rows outside the returned page
 v2 has no mirror-progress counterpart. Its stats/log-ID JSON uses numbers with
 `integer/int64` or `integer/bigint` schemas; the Go SDK maps bigint to big.Int.
 That schema alone does not guarantee lossless TypeScript decoding. The v3
-mirror-specific counter strings deliberately differ for precision. Existing
+mirror-specific counters are JSON numbers; clients must use lossless integer
+parsing when values may exceed JavaScript's safe-integer range. Existing
 REST camelCase properties, timestamps, metadata and envelopes are preserved.
 
 Codec regressions cover defaults, timestamps, typed metadata/schema, segment
