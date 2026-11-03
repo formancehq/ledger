@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -149,10 +150,10 @@ func (f *scaleDownReconcileMembership) exec(_ context.Context, _ *rest.Config, _
 	}
 	require.True(f.t, f.transferred, "leadership transfer must precede membership checks and removal")
 	if strings.Contains(shell, "'cluster' 'status'") {
-		nodes := make([]map[string]int, 0, len(f.members))
+		nodes := make([]map[string]string, 0, len(f.members))
 		for _, id := range []int{1, 2, 3} {
 			if f.members[id] {
-				nodes = append(nodes, map[string]int{"id": id})
+				nodes = append(nodes, map[string]string{"id": strconv.Itoa(id)})
 			}
 		}
 		encoded, err := json.Marshal(map[string]any{"state": "Leader", "nodes": nodes})
