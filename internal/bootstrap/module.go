@@ -1397,8 +1397,9 @@ func membershipRefreshHook(cfg Config, logger logging.Logger) fx.Hook {
 			// permanent rejection (for example a removed incarnation or invalid
 			// identity) must abort startup rather than letting stale WAL membership
 			// evidence escape into the cluster. Transient connectivity failures
-			// (including Unavailable) are handed to the background retry loop;
-			// permanent rejections remain startup failures.
+			// (including Unavailable) and rolling-upgrade compatibility responses
+			// are handed to the background retry loop; permanent rejections remain
+			// startup failures.
 			err := tryRefreshMembershipForStartup(ctx, cfg, cfg.TLSConfig, logger)
 			if err == nil {
 				return nil
@@ -1411,6 +1412,9 @@ func membershipRefreshHook(cfg Config, logger logging.Logger) fx.Hook {
 			cancel = refreshCancel
 			go func() {
 				if err := tryRefreshMembership(refreshCtx, cfg, cfg.TLSConfig, logger); err != nil {
+					// TODO(rc.3): remove this compatibility fallback once every
+					// supported peer implements RefreshMembership. The leader-side
+					// reconciler keeps retrying transient evidence until convergence.
 					logger.WithFields(map[string]any{"error": err}).Errorf("Membership capability refresh failed; continuing with conservative evidence")
 				}
 			}()
@@ -1726,7 +1730,12 @@ func isRetryableMembershipRefreshError(err error) bool {
 		return true
 	}
 
-	return false
+	// TODO(rc.3): remove this compatibility retry once every supported peer
+	// implements RefreshMembership. During the rc.1/rc.2 rolling upgrade, an
+	// older peer returns Unimplemented rather than Unavailable for this newly
+	// introduced RPC; treating it as transient lets the node keep trying newer
+	// peers without making the startup hook fail immediately.
+	return st.Code() == codes.Unimplemented
 }
 
 // isStaleRaftProgress reports whether a FailedPrecondition status carries the
