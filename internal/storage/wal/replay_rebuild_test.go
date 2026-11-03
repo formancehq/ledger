@@ -228,9 +228,9 @@ func TestRebuildReplayLog(t *testing.T) {
 		// Crash after the guard record: the restarted node resumes its old log,
 		// a leader repairs it from index 3, and commit later reaches 4.
 		got, err := rebuildReplayLog([]replayRecord{
-			entryRec(1, 1), entryRec(2, 1), entryRec(3, 2), replayRecord{kind: wal.StateType, commit: 1},
+			entryRec(1, 1), entryRec(2, 1), entryRec(3, 2), committed(1),
 			snapRec(3, 4),
-			entryRec(3, 4), entryRec(4, 4), replayRecord{kind: wal.StateType, commit: 4},
+			entryRec(3, 4), entryRec(4, 4), committed(4),
 		}, logID{index: 1, term: 1}, 4)
 		require.NoError(t, err)
 		require.Equal(t, []logID{{2, 1}, {3, 4}, {4, 4}}, got)
