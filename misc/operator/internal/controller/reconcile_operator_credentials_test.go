@@ -2,12 +2,15 @@ package controller
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
+	"sigs.k8s.io/controller-runtime/pkg/client/interceptor"
 
 	ledgerv1alpha1 "github.com/formancehq/ledger/misc/operator/api/v1alpha1"
 )
@@ -58,6 +61,30 @@ func TestValidateCredentialsAuthCompatibilityAllowsOperatorCredentialCleanup(t *
 	}
 
 	require.NoError(t, r.validateCredentialsAuthCompatibility(context.Background(), cluster))
+}
+
+func TestValidateCredentialsAuthCompatibilityReturnsRetryableListError(t *testing.T) {
+	scheme := authKeysScheme(t)
+	cluster := authEnabledCluster("ledger", "tenant-a", nil)
+	*cluster.Spec.Auth.Enabled = false
+	expected := errors.New("apiserver unavailable")
+	base := fake.NewClientBuilder().WithScheme(scheme).WithObjects(cluster).Build()
+	r := &ClusterReconciler{
+		Client: interceptor.NewClient(base, interceptor.Funcs{
+			List: func(ctx context.Context, c client.WithWatch, list client.ObjectList, opts ...client.ListOption) error {
+				if _, ok := list.(*ledgerv1alpha1.CredentialsList); ok {
+					return expected
+				}
+
+				return c.List(ctx, list, opts...)
+			},
+		}),
+		Scheme: scheme,
+	}
+
+	err := r.validateCredentialsAuthCompatibility(context.Background(), cluster)
+	require.ErrorIs(t, err, expected)
+	require.ErrorIs(t, err, errCredentialsAuthValidationUnavailable)
 }
 
 func TestReconcileOperatorCredentialsDeletesWhenAuthDisabled(t *testing.T) {

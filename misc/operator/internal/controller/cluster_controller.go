@@ -50,6 +50,8 @@ type ClusterReconciler struct {
 
 const operatorCredentialsFinalizer = "ledger.formance.com/operator-credentials"
 
+var errCredentialsAuthValidationUnavailable = errors.New("Credentials auth validation unavailable")
+
 // +kubebuilder:rbac:groups=ledger.formance.com,resources=clusters,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=ledger.formance.com,resources=clusters/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=ledger.formance.com,resources=clusters/finalizers,verbs=update
@@ -228,6 +230,10 @@ func (r *ClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (re
 		return ctrl.Result{}, nil // Don't requeue; wait for spec change.
 	}
 	if err := r.validateCredentialsAuthCompatibility(ctx, ledger); err != nil {
+		if errors.Is(err, errCredentialsAuthValidationUnavailable) {
+			return ctrl.Result{}, err
+		}
+
 		meta.SetStatusCondition(&ledger.Status.Conditions, metav1.Condition{
 			Type:               "ConfigValid",
 			Status:             metav1.ConditionFalse,
@@ -577,7 +583,7 @@ func (r *ClusterReconciler) validateCredentialsAuthCompatibility(ctx context.Con
 
 	var list ledgerv1alpha1.CredentialsList
 	if err := r.List(ctx, &list); err != nil {
-		return fmt.Errorf("listing Credentials for auth validation: %w", err)
+		return fmt.Errorf("%w: listing Credentials for auth validation: %w", errCredentialsAuthValidationUnavailable, err)
 	}
 
 	clusterLabels := labels.Set(ledger.Labels)
