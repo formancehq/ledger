@@ -444,7 +444,10 @@ finding. Check these histories against it:
   HardState already committed its index, with and without an entry suffix;
 - a segment cut between Save calls;
 - an uncommitted guard snapshot record, including one whose commit index
-  later passes it after the node resumed its old log;
+  later passes it after the node resumed its old log. etcd then selects that
+  guard as the replay snapshot of the next restart, so check the recovered
+  boundary through `New`, not only the rebuild. A rebuilt log that holds
+  another term at the replay snapshot index fails startup;
 - a ConfState update of the current snapshot.
 
 The rebuild may only remove a suffix of the `ReadAll` result. A removed suffix

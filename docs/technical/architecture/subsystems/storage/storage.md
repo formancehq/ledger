@@ -552,6 +552,13 @@ it. The order is:
      durable HardState may commit. Each Save call ends with one HardState
      record. The HardState etcd rewrites after a segment's metadata record is
      not a Save call.
+
+   etcd selects the replay snapshot with `ValidSnapshotEntries`, which
+   compares snapshot records with the final `HardState.Commit` only. A guard
+   the rebuild ignored can therefore become the replay snapshot once the
+   commit index passes it. Snapshots are of committed state, so the live log
+   holds the snapshot's term at that index. If the rebuilt log holds another
+   term there, startup fails closed.
 3. The `ReadAll` entries are trimmed to the rebuilt log. The rebuild may only
    remove a suffix. Any other difference fails startup.
 4. If the removed suffix starts at or below `HardState.Commit`, startup fails

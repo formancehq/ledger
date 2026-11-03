@@ -9,6 +9,7 @@ import (
 	"go.etcd.io/etcd/server/v3/storage/wal"
 	"go.etcd.io/etcd/server/v3/storage/wal/walpb"
 	"go.etcd.io/raft/v3/raftpb"
+	"go.opentelemetry.io/otel/metric/noop"
 	"go.uber.org/zap"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
@@ -209,6 +210,53 @@ func TestRestartKeepsEntriesAboveLocalSnapshot(t *testing.T) {
 	requireRecoveredLog(t, dir, logID{5, 2}, ids(6, 8, 2)...)
 }
 
+// abandonedGuardHistory crashes right after a received snapshot (3, term 4)
+// writes its guard while commit is 1, so the first restart resumes from the
+// local snapshot (1, term 2). A leader then repairs indexes 2..4 and commits 4,
+// which makes etcd select the abandoned guard as the replay snapshot of the
+// next restart.
+func abandonedGuardHistory(t *testing.T, repairTermAt3 uint64) string {
+	t.Helper()
+
+	dir := t.TempDir()
+	w := newTestWALAt(t, dir)
+	require.NoError(t, w.Append(hs(2, 1, 1), entries(1, 1, 2)))
+	require.NoError(t, w.CreateSnapshot(1, testConfState, nil))
+	persistSnapshotGuardOnly(t, w, receivedSnapshot(3, 4))
+	require.NoError(t, w.Close())
+
+	w = newTestWALAt(t, dir)
+	first, err := w.FirstIndex()
+	require.NoError(t, err)
+	require.Equal(t, uint64(2), first, "first restart ignores the uncommitted guard")
+	require.NoError(t, w.Append(hs(5, 0, 4), []*raftpb.Entry{
+		ent(2, 2, []byte{2}), ent(3, repairTermAt3, []byte{3}), ent(4, 5, []byte{4}),
+	}))
+	require.NoError(t, w.Close())
+
+	return dir
+}
+
+// A received snapshot is committed state, so the repairing leader holds the
+// snapshot's (3, term 4). The abandoned guard selected later agrees with the
+// live log.
+func TestRestartSelectsAbandonedGuardOnceCommitPassesIt(t *testing.T) {
+	t.Parallel()
+
+	requireRecoveredLog(t, abandonedGuardHistory(t, 4), logID{3, 4}, logID{4, 5})
+}
+
+// Raft cannot commit another term at the index of a committed snapshot. If the
+// WAL says it did, the selected replay snapshot contradicts the live log, and
+// startup must fail instead of reporting the snapshot term at that index.
+func TestRestartFailsClosedWhenReplaySnapshotContradictsLog(t *testing.T) {
+	t.Parallel()
+
+	dir := abandonedGuardHistory(t, 5)
+	_, err := New(dir, logging.FromContext(logging.TestingContext()), noop.NewMeterProvider().Meter("test"))
+	require.ErrorIs(t, err, errReplayRebuild)
+}
+
 // ApplySnapshot advances Commit to the snapshot index but keeps the current
 // election Term and its Vote: the snapshot term is only the term of the
 // snapshot's last entry.
@@ -311,16 +359,28 @@ func TestRebuildReplayLog(t *testing.T) {
 		t.Parallel()
 
 		// Crash after the guard record: the restarted node resumes its old log,
-		// a leader repairs it from index 3, and commit later reaches 4. The
-		// repair term (5) differs from the guard term (4): counting the guard
-		// would see a mismatch at index 3 and discard the repaired log.
+		// whose stale (3, term 2) differs from the guard. A leader repairs it
+		// from index 3 with the snapshot's (3, term 4), and commit later
+		// reaches 4. Counting the guard would treat it as received and discard
+		// the log it sits before.
 		got, err := rebuildReplayLog([]replayRecord{
 			entryRec(1, 1), entryRec(2, 1), entryRec(3, 2), committed(1),
 			snapRec(3, 4),
-			entryRec(3, 5), entryRec(4, 5), committed(4),
+			entryRec(3, 4), entryRec(4, 5), committed(4),
 		}, logID{index: 1, term: 1}, 4)
 		require.NoError(t, err)
-		require.Equal(t, []logID{{2, 1}, {3, 5}, {4, 5}}, got)
+		require.Equal(t, []logID{{2, 1}, {3, 4}, {4, 5}}, got)
+	})
+
+	t.Run("a replay snapshot whose term the rebuilt log contradicts fails closed", func(t *testing.T) {
+		t.Parallel()
+
+		_, err := rebuildReplayLog([]replayRecord{
+			entryRec(1, 1), entryRec(2, 1), entryRec(3, 2), committed(1),
+			snapRec(3, 4),
+			entryRec(3, 5), entryRec(4, 5), committed(4),
+		}, logID{index: 3, term: 4}, 4)
+		require.ErrorIs(t, err, errReplayRebuild)
 	})
 
 	t.Run("a received snapshot above the replay snapshot fails closed", func(t *testing.T) {

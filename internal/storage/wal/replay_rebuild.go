@@ -235,6 +235,13 @@ func rebuildReplayLog(records []replayRecord, replay logID, commit uint64) ([]lo
 		}
 	}
 
+	// etcd selects the replay snapshot by the final commit index, so it can
+	// pick a guard the rebuild ignored. Snapshots are of committed state, so
+	// any entry the live log holds at that index carries the snapshot's term.
+	if term, ok := l.termAt(replay.index); ok && replay.index > 0 && term != replay.term {
+		return nil, fmt.Errorf("%w: rebuilt log holds term %d at the replay snapshot (%d, term %d)",
+			errReplayRebuild, term, replay.index, replay.term)
+	}
 	if l.lastIndex() <= replay.index {
 		return nil, nil
 	}
