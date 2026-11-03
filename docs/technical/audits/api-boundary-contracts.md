@@ -181,6 +181,54 @@ classification. Bind the actual schema/generator/dependencies and prove exact
 opt-in strings through generated operations. A number/string schema union or a
 helper-only probe cannot prove routed SDK preservation.
 
+## Protobuf tooling at the API boundary
+
+The scope includes `tools/protoc-gen-reader/**`,
+`tools/protoc-gen-queryfilter-validity/**` and `tools/buf-plugin-ledger/**`,
+including their module inputs and fixtures. `misc/proto/buf.yaml`,
+`scripts/lintproto/**` and `scripts/checkprotocolversion/**` establish the actual
+lint and wire-gate wiring. Read [the protobuf tooling contract](../contributing/protobuf.md).
+Tooling inclusion covers its effect on these boundary contracts; it does not
+turn this domain into a general build/release audit.
+
+For reader-backed public projections, compare the concrete input message with
+the actual emitted response using descriptor-selected nested messages, bytes,
+scalar lists, maps, nil entries, explicit oneofs and optional values. Establish
+value/presence fidelity and whether projection changes its input independently
+of the generated getter implementation. A reader is a live view rather than a
+snapshot. Route general alias exposure and accepted-order mutation to
+`fsm-determinism-cache-coverage`; a oneof wrapper's apparent read-only interface
+alone is not proof of immutability.
+
+For QueryFilter validity, independently enumerate descriptor arms and target
+enum values and inspect raw annotations. Combine
+`TestConditionKindsCoverEveryOneofArm`,
+`TestTargetConditionValidityIsComplete`,
+`TestConditionValidityMatchesExpectedMatrix` and
+`TestNilFilterIsUnknownAndNeverValid` with routed allowed/denied target controls.
+Generated enumeration completeness and agreement between two consumers of the
+same table do not prove annotation fidelity. In allowed disposable generator
+fixtures, remove annotations, declare both markers, reference unknown target
+numbers, and add an arm/target. Observe explicit rejection or a complete
+regenerated mapping. These negative generator probes are proposed evidence,
+not a claim that existing tests execute them. Canonical compiler acceptance and
+fixed-state result semantics remain owned by `query-semantic-equivalence`;
+temporal visibility and projection alignment remain owned by
+`read-consistency-projections`.
+
+For the buf plugin, use valid/invalid fixtures and
+`TestExistingTypesRetainNumbersAndReservations` to distinguish new types from
+published types. Include new nested types inside an exempt parent, map entries,
+imports, enum aliases and reserved numbers/names. Require exact rule IDs and
+source locations through the actual plugin. Compare `existing-types.txt`
+membership with its documented source revision; never expand that baseline to
+silence a diagnostic. Layout lint must not force renumbering a published type.
+Verify its registration independently through the scripts and buf configuration.
+A passing lint result establishes initial layout only: the service wire-freeze
+gate and persisted/mixed-version compatibility have independent evidence and
+owners. No source proto, baseline or generated production file is changed by
+this contract preparation.
+
 ## Boundaries
 
 For index inspection (EN-2905), HTTP omission selects summary and preserves
@@ -383,3 +431,17 @@ command through a pseudoterminal and checks overflowing input is rejected before
 Apply, alongside the existing negative and zero rejection. Terminal readiness
 is observed rather than inferred from a delay. These are CLI input-contract
 oracles; they do not claim server accounting or committed-state coverage.
+
+## Opaque page-token boundary
+
+Include `pkg/pagecursor/**` for token parsing and wire representation. Derive
+base64url JSON fixtures independently of `Encode`, covering absent tokens,
+explicit first-page links, string keys, uint64 maximum/overflow, malformed
+base64/JSON, unknown fields, null/wrong field types and trailing data. Round-trip
+agreement alone cannot detect a shared encoding/decoding mistake. Trace invalid
+tokens through the real query and adapter validation boundary and assert its
+established error/status contract. Empty links and an encoded first-page token
+have different meanings. Fixed-state windows and link traversal belong to
+`query-semantic-equivalence`; temporal consistency belongs to
+`read-consistency-projections`. Do not invent a token authenticity or retained
+snapshot guarantee.

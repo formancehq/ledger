@@ -61,6 +61,30 @@ outside callers only far enough to prove or disprove an in-scope mechanism,
 loading the routed documentation. Resolve library behavior from the version in
 `go.mod`/`go.sum` rather than assuming JWT helper semantics from their names.
 
+## Authorization generator evidence
+
+`tools/protoc-gen-rpcauth/**` is explicitly in scope with its module and fixture
+tests. Read [the protobuf tooling contract](../contributing/protobuf.md) before
+following dynamic extension decoding, required-service selection and generated
+full-method names. Reconcile three independent inventories: source method
+annotations, generated policy kind/value, and actual registered unary/streaming
+service descriptors. A registry checked only against its own enumeration can
+miss a generator omission.
+
+Use the plugin's complete/invalid-policy and missing-service fixtures for
+positive and negative generation evidence. Missing declarations, `public:false`,
+unspecified/unknown enums and missing required services must reject. Then use
+`TestRPCAuthPoliciesCoverEveryPublicServiceMethod`,
+`TestRPCAuthPoliciesPinExceptionalMethods` and
+`TestRPCAuthPolicyLookupFailsClosedForUnknownMethod` for generated runtime
+behavior. Probe whether mutating a returned policy or map changes a fresh
+lookup. Pair each runtime decision with installed interceptor evidence and
+backend entry counts: generated source strings and successful generation alone
+do not prove enforcement. Keep startup validation/publication ownership with
+`configuration-startup-contracts`; this domain owns policy fidelity and request
+authorization. Run any generation diagnostic only in an allowed disposable
+fixture and record the exact plugin/module input versions.
+
 ## Source-backed contracts
 
 These anchors describe the preparation base. Reconcile current code, tests and
