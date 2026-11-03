@@ -51,10 +51,13 @@ risk rather than claiming exhaustive coverage.
 
 ## Mirror promotion recovery boundary
 
-For a Ready mirror Ledger edited to normal, trace the authoritative mode read,
-optional promotion commit, in-memory CR status mutation and deferred Kubernetes
-status write separately. A lost promotion response or failed status write can
-leave the service normal while persisted CR status remains mirror. A fresh
+For a Ready mirror Ledger edited to normal, require an explicitly linearizable
+live mode read (`--checkpoint-id 0`) even when Cluster `extraEnv` sets
+`LEDGERCTL_CONSISTENCY=stale` or `LEDGERCTL_CHECKPOINT_ID`.
+Trace the authoritative mode read, optional promotion commit, in-memory CR
+status mutation and deferred Kubernetes status write separately. A lost promotion
+response or failed status write can leave the service normal while persisted CR
+status remains mirror. A fresh
 controller must observe normal mode and recover successful status without
 repeating the non-idempotent promotion, then resume declarative indexes. Explicit
 mirror mode permits promotion; unavailable or malformed observations, unknown

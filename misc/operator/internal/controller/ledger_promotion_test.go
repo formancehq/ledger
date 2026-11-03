@@ -97,6 +97,54 @@ func TestLedgerPromotionObservationFailuresRecover(t *testing.T) {
 	}
 }
 
+// Pod environment can select a lagging replica or a historical checkpoint.
+// Model observations that report MIRROR until each read override is pinned.
+func TestLedgerPromotionObservationOverridesReadEnvironment(t *testing.T) {
+	t.Parallel()
+	for _, tt := range []struct {
+		name                         string
+		staleConsistency, checkpoint bool
+	}{
+		{name: "stale consistency", staleConsistency: true},
+		{name: "historical checkpoint", checkpoint: true},
+		{name: "both overrides", staleConsistency: true, checkpoint: true},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			h := newPromotionHarness(t)
+			c := h.client(interceptor.Funcs{})
+			reads, promotions := 0, 0
+			r := h.controller(c)
+			r.exec = func(_ context.Context, _ *rest.Config, _ kubernetes.Interface, _, _, _ string, command []string) (*execResult, error) {
+				if strings.Contains(command[2], "'ledgers' 'get'") {
+					reads++
+					stale := tt.staleConsistency && !strings.Contains(command[2], "'--consistency' 'linearizable'")
+					historical := tt.checkpoint && !strings.Contains(command[2], "'--checkpoint-id' '0'")
+					mode := "NORMAL"
+					if stale || historical {
+						mode = "MIRROR"
+					}
+
+					return &execResult{Stdout: `{"name":"promotion","mode":"` + mode + `"}`}, nil
+				}
+				require.Contains(t, command[2], "'ledgers' 'promote'")
+				promotions++
+
+				return nil, errors.New("ledger is already normal")
+			}
+			result, err := r.Reconcile(t.Context(), h.request())
+			require.NoError(t, err)
+			require.Equal(t, 1, reads)
+			require.Zero(t, promotions, "recovery must observe committed mode without retrying promotion")
+			require.True(t, result.Requeue)
+			stored := h.read(c)
+			require.Equal(t, "normal", stored.Status.Mode)
+			require.Equal(t, computeLedgerSpecHash(&stored.Spec), stored.Status.AppliedSpecHash)
+			require.Empty(t, stored.Status.Message)
+		})
+	}
+}
+
 func TestLedgerPromotionFailureRetries(t *testing.T) {
 	t.Parallel()
 	h := newPromotionHarness(t)

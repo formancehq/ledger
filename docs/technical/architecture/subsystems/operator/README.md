@@ -21,9 +21,10 @@ stopped before installing the rules; the applied-spec hash does not retain the
 original target. See [Ledger target identity](../../../../../misc/operator/README.md#ledger-target-identity)
 for the upgrade procedure and same-name Cluster replacement boundary.
 
-Mirror-to-normal promotion observes the live Ledger mode before proposing the
-transition. Normal mode repairs stale mirror CR status after a lost promotion
-response or status write, including after controller replacement. See
+Mirror-to-normal promotion explicitly reads live, linearizable Ledger mode
+before proposing the transition, overriding pod consistency and checkpoint
+environment settings. Normal mode repairs stale mirror CR status after a lost promotion response or
+status write, including after controller replacement. See
 [mirror promotion recovery](../../../../../misc/operator/README.md#mirror-promotion-recovery)
 for mutation order, retry conditions and the index-reconciliation handoff.
 

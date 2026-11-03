@@ -117,8 +117,11 @@ for each guarded path and the accepted races.
 ## Mirror promotion recovery
 
 When a Ready Ledger changes from mirror to normal mode, the controller first
-reads the target ledger with `ledgers get --json` using the default live,
-consistent read. An explicit `MIRROR` permits promotion; an explicit `NORMAL`
+reads the target ledger with `ledgers get --json --consistency linearizable
+--checkpoint-id 0`. Explicit flags override `LEDGERCTL_CONSISTENCY` and
+`LEDGERCTL_CHECKPOINT_ID`, including values supplied through Cluster `extraEnv`,
+so a lagging replica or historical checkpoint cannot authorize another promotion
+from old mode. An explicit `MIRROR` permits promotion; an explicit `NORMAL`
 recovers an already committed promotion without issuing it again. Failed reads,
 invalid output or a different returned ledger name leave the transition
 incomplete and retry. The existing Cluster/StatefulSet/Pod ownership checks

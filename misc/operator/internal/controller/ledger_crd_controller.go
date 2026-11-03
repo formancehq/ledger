@@ -286,8 +286,10 @@ func (r *LedgerReconciler) reconcilePromotion(ctx context.Context, ledger *ledge
 	// Promotion may have committed before its exec response or our status write
 	// was lost. Observe the live postcondition before repeating that effect;
 	// this also recovers across restarts without relying on idempotency TTLs.
+	// Pin live, linearizable reads so pod environment overrides cannot select
+	// a stale replica or historical checkpoint.
 	output, err := r.ledgerctlExecOutput(execCtx, cluster, grpcPort,
-		"ledgers", "get", "--json", "--", ledger.Spec.Name)
+		"ledgers", "get", "--json", "--consistency", "linearizable", "--checkpoint-id", "0", "--", ledger.Spec.Name)
 	if err == nil {
 		var observed struct {
 			Name string `json:"name"`
