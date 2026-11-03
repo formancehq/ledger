@@ -92,9 +92,12 @@ projections. Document the upgrade procedure and rollback boundary in the
 release notes. Delay the release if the target cannot read or migrate the source
 state.
 
-The upgrade classes below describe existing procedures. The operator boundary
-at `rc.4` selects a stopped restart from `rc.3`; rebuild or restore applies
-only to the cases listed below.
+The upgrade classes below describe existing procedures. RC changes use the
+rolling class when the two binaries can safely coexist. The `rc.3` → `rc.4`
+boundary is an explicit operator-required stopped restart: the peer-service
+split and Membership address migration require a durable drain, a full stop,
+and a complete restart without a mixed-version window. Rebuild or restore
+applies only to the cases listed below.
 
 | Class | When it applies | Procedure |
 |-------|-----------------|-----------|
@@ -184,6 +187,24 @@ with a non-empty source cluster before publishing. Rollback to an older binary
 is allowed only before the target has written incompatible persisted data, and
 only with a separately validated downgrade procedure. After that point, keep
 the target or restore through a supported forward recovery path.
+
+### rc.3 → rc.4 stopped restart details
+
+The rc.3 → rc.4 upgrade is not a rolling upgrade. The operator first performs
+the durable drain described above; once every voter has applied the maintenance
+barrier, it stops all Ledger Pods, updates the operator and Ledger image, and
+restarts the complete cluster with the existing PVCs. The first rc.4 startup
+migrates legacy Membership service addresses to the dedicated peer port after
+WAL replay and snapshot recovery. Do not run rc.3 and rc.4 voters together
+during this migration.
+
+Before publishing an RC update, demonstrate the applicable upgrade class from
+the immediately preceding RC binary to the target binary in one cluster. For a
+rolling update, include leadership transfer, writes, replay, and restart. For
+the rc.3 → rc.4 stopped restart, include the durable maintenance barrier,
+full stop, Membership migration, restart, and post-upgrade writes. Record the
+source and target builds and the results in release validation. Do not infer
+support from a successful single-node restart.
 
 For upgrades from builds before `v3.0.0-rc.1`, the change-specific constraints
 documented under
