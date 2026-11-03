@@ -2129,7 +2129,10 @@ spec:
                         ''parentbased_traceidratio'']) || has(self.samplerArg)'
                 type: object
               networkPolicy:
-                description: NetworkPolicy configuration for egress restrictions.
+                description: |-
+                  NetworkPolicy configuration for ingress and egress restrictions. When
+                  enabled, public HTTP/gRPC ingress is limited to the declared service
+                  ports, while Raft and peer gRPC ingress is limited to Ledger Pods.
                 properties:
                   additionalEgress:
                     description: |-
@@ -2324,7 +2327,10 @@ spec:
                       type: object
                     type: array
                   enabled:
-                    description: Enabled enables the egress NetworkPolicy.
+                    description: |-
+                      Enabled enables the NetworkPolicy. It restricts both egress and ingress:
+                      public HTTP/gRPC ports remain reachable according to the generated rules,
+                      while Raft and peer gRPC ports are reachable only between Ledger Pods.
                     type: boolean
                   externalCIDRExcept:
                     description: |-
