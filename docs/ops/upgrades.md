@@ -28,10 +28,11 @@ volume templates, the operator completes the RC rollout before recreating the
 StatefulSet for the volume change.
 Old and new voters must communicate and apply each committed entry identically
 while they coexist. The embedded operator requires a complete stop at the
-`v3.0.0-rc.3` boundary because RC.2 cannot execute native proposal payloads.
-`rc.2` includes the drain barrier used for this upgrade. RC adjacency remains mandatory.
+`v3.0.0-rc.4` boundary because RC.3 cannot execute native proposal payloads.
+`rc.3` includes the drain barrier used for this upgrade. RC adjacency remains mandatory.
 The `rc.1` to `rc.2` transition rolls one voter at a time with a maintenance
 barrier that pauses writes; it does not stop the whole cluster.
+The `rc.2` to `rc.3` transition remains rolling.
 When the running version precedes a mandatory boundary, pin the target to a
 canonical version tag. Moving or non-canonical tags such as `latest` cannot
 prove whether the boundary is crossed, so the operator blocks the change.
@@ -64,13 +65,13 @@ release notes. Delay the release if the target cannot read or migrate the source
 state.
 
 The upgrade classes below describe existing procedures. The operator boundary
-at `rc.3` selects a stopped restart from `rc.2`; rebuild or restore applies
+at `rc.4` selects a stopped restart from `rc.3`; rebuild or restore applies
 only to the cases listed below.
 
 | Class | When it applies | Procedure |
 |-------|-----------------|-----------|
 | Rolling | Default between adjacent RCs on the same release line. | Restart followers one at a time, wait for each to catch up, transfer leadership to an upgraded voter, then restart the old leader. |
-| Operator-required stopped restart | An adjacent RC crossing a listed operator boundary; `rc.2` to `rc.3` crosses one. | Establish an operator-owned drain and verify its durable barrier on every member; retain the existing PVCs, delete the StatefulSet, wait until it and every old Pod are gone, then recreate it with the target image and the same claims. The cluster is unavailable throughout the stop. |
+| Operator-required stopped restart | An adjacent RC crossing a listed operator boundary; `rc.3` to `rc.4` crosses one. | Establish an operator-owned drain and verify its durable barrier on every member; retain the existing PVCs, delete the StatefulSet, wait until it and every old Pod are gone, then recreate it with the target image and the same claims. The cluster is unavailable throughout the stop. |
 | Coordinated restart | A separate compatibility line that cannot safely mix binaries. | Enable maintenance mode, wait for every voter to apply the maintenance barrier durably, stop every node, replace all binaries, then restart without a mixed-version window. Preserve or migrate the released data. |
 | Migrate or restore | A separate line with a changed persisted or backup format, or development state before the first RC. | Follow a tested migration or restore a backup supported by the target release. A wipe or external rebuild is permitted only for unsupported pre-RC development state. Verify the complete state before serving writes. |
 
@@ -181,7 +182,7 @@ is retained. Install a compatible Operator to resume reconciliation.
 Use this only when the target release permits rolling upgrades and mixed-version
 validation passes. For RC.1 to RC.2, follow the
 [maintenance-barrier rolling procedure](#account-metadata-address-validation).
-For RC.2 to RC.3, use the [operator-required stopped restart](#operator-required-stopped-restart).
+For RC.3 to RC.4, use the [operator-required stopped restart](#operator-required-stopped-restart).
 
 1. Record the current leader and voter set with `ledgerctl cluster status`.
 2. Restart one follower on the target binary.
@@ -204,8 +205,8 @@ procedure.
 
 RC.1 to RC.2 uses the maintenance-barrier rolling procedure below: writes pause,
 but voters are replaced one at a time and quorum remains available. RC.2 to RC.3
-uses the [operator-required stopped restart](#operator-required-stopped-restart)
-instead; do not use the steps below for that transition.
+remains rolling. RC.3 to RC.4 uses the
+[operator-required stopped restart](#operator-required-stopped-restart).
 
 Upgrading from a binary with unordered transaction account-metadata address
 validation (including `v3.0.0-rc.1`) to deterministic smallest-address selection
@@ -406,7 +407,7 @@ wire-compatible.
 
 ## Proposal payload cutover
 
-The RC.2 to RC.3 transition requires the operator-owned stopped restart above.
+The RC.3 to RC.4 transition requires the operator-owned stopped restart above.
 Stop every old node before starting any target node, and keep the WAL and data
 volumes. The target reads historical entries and writes `ExecutionBatch` or
 `SetClusterPolicyProposal` directly. Existing snapshots, backups and audit
@@ -417,5 +418,5 @@ manifest snapshot, including policy-only changes. No capability flag enables
 this format.
 
 The first native payload appended to the WAL closes the rollback window for
-RC.2. Restarting RC.2 on that storage requires a separately validated recovery
+RC.3. Restarting RC.3 on that storage requires a separately validated recovery
 procedure. See the [proposal migration contract](../technical/architecture/subsystems/consensus/proposal-payloads.md).

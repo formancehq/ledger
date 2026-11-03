@@ -17,8 +17,8 @@ current StatefulSet image tag with the requested Cluster image tag. RC upgrades
 are rolling unless the embedded operator lists a mandatory stopped-upgrade
 boundary. Such a boundary must preserve committed data and prove non-empty
 replay. Old and new voters must apply entries identically whenever they coexist.
-The RC.2 to RC.3 proposal payload cutover is a mandatory stopped boundary:
-the operator must stop every RC.2 voter before starting an RC.3 voter.
+The RC.3 to RC.4 proposal payload cutover is a mandatory stopped boundary:
+the operator must stop every RC.3 voter before starting an RC.4 voter.
 
 - Classify persisted, Raft, snapshot, backup, and audit changes against the RC
   baseline. Include a tested migration or prove existing data remains valid.

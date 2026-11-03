@@ -1,6 +1,6 @@
 package state
 
-// This probe deliberately uses only the RC.1 API. scripts/check-proposal-payload
+// This probe deliberately uses only the RC.3 API. scripts/check-proposal-payload
 // compiles this same source against the released tree and the candidate. It
 // compares real FSM/audit results from separate binaries, not two modes of a
 // single decoder. Numeric wire tags below are the compatibility test oracle.
@@ -109,7 +109,7 @@ func TestProposalPayloadCompatibilityProbe(t *testing.T) {
 			require.NoError(t, err)
 			decoded := &raftcmdpb.Proposal{}
 			require.NoError(t, decoded.UnmarshalVT(entry.GetData()))
-			// RC.1 sees only the legacy orders; native controls contain none.
+			// RC.3 sees only the legacy orders; native controls contain none.
 			nativePolicy := len(decoded.GetOrders()) == 0 && (entry.GetIndex() == 1 || entry.GetIndex() == 4)
 			require.Equal(t, !nativePolicy, result.Results[0].AuditEntryWritten)
 		}

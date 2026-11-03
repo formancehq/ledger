@@ -133,8 +133,8 @@ uses the server's service client and is subject to the same gate at the peer.
 Nodes with different service revisions can therefore fail forwarded requests;
 the revision-40 wire contract alone does not prove a rolling upgrade safe.
 Releases that permit rolling must preserve peer communication, Raft apply and
-persisted-state compatibility while old and new servers coexist. RC.2 to RC.3
-instead requires a full stop, with no mixed-binary window and preserved data.
+persisted-state compatibility while old and new servers coexist. RC.3 to RC.4
+requires a full stop, with no mixed-binary window and preserved data.
 The separate Raft transport and snapshot server retain their own contracts. See [server upgrades](../../../../ops/upgrades.md).
 
 ## Apply execution provenance (revision 7)
@@ -350,7 +350,7 @@ must use the matching revision.
 Revision 26 removes `Request.set_cluster_policy` from the public
 `BucketService.Apply` envelope. At that revision, reconciliation moved to the
 server-internal `Admission.AdmitClusterPolicy` entry point and committed an
-audited `SetClusterPolicyOrder`. Those historical orders remain readable. RC.3
+audited `SetClusterPolicyOrder`. Those historical orders remain readable. RC.4
 uses an unaudited native `SetClusterPolicyProposal`; see the operational-policy
 section below.
 
@@ -718,7 +718,7 @@ Custom and anonymous scope mappings must use the new granular values; see the
 Persisted audit snapshots retain the exact effective scope strings captured at
 admission, so historical hashes remain verifiable without a storage migration.
 
-### Operational policy (RC.3)
+### Operational policy (RC.4)
 
 Native policy controls update operational state without business audit entries.
 Historical policy orders retain their audit fields and exact hash preimages.

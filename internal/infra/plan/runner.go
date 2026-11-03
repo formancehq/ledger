@@ -10,6 +10,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/infra/state"
 	"github.com/formancehq/ledger/v3/internal/pkg/commands"
 	"github.com/formancehq/ledger/v3/internal/pkg/futures"
+	"github.com/formancehq/ledger/v3/internal/pkg/proposals"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
 
@@ -132,8 +133,8 @@ func (p *Builder) Run(
 	// only update allowed alongside orders. Reject unsupported compositions
 	// before serialization or Raft submission; committed entries retain their
 	// existing interpreter during replay.
-	updates := cmd.GetTechnicalUpdates()
-	if len(updates) > 1 || (len(updates) == 1 && len(cmd.GetOrders()) > 0 && updates[0].GetMirrorSync() == nil) {
+	updates := proposals.TechnicalUpdates(cmd)
+	if len(updates) > 1 || (len(updates) == 1 && len(proposals.BatchOrders(cmd)) > 0 && updates[0].GetMirrorSync() == nil) {
 		build.ReleaseLoaders()
 
 		return nil, ErrUnsupportedTechnicalComposition
