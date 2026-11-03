@@ -35,7 +35,7 @@ func TestMissingStatefulSetCannotBypassStoppedUpgradeWithMovingTag(t *testing.T)
 	cluster.Spec.Image.Tag = "latest"
 	name := resourceName(cluster.Name)
 	pod := &corev1.Pod{ObjectMeta: metav1.ObjectMeta{Name: name + "-0", Namespace: cluster.Namespace},
-		Spec: corev1.PodSpec{Containers: []corev1.Container{{Name: "ledger", Image: "ghcr.io/formancehq/ledger:v3.0.0-rc.2"}}}}
+		Spec: corev1.PodSpec{Containers: []corev1.Container{{Name: "ledger", Image: "ghcr.io/formancehq/ledger:v3.0.0-rc.3"}}}}
 	scheme := runtime.NewScheme()
 	require.NoError(t, clientgoscheme.AddToScheme(scheme))
 	require.NoError(t, ledgerv1alpha1.AddToScheme(scheme))

@@ -20,8 +20,9 @@ import (
 	ledgerv1alpha1 "github.com/formancehq/ledger/misc/operator/api/v1alpha1"
 )
 
-// Proposal payloads cannot be applied by rc.3 voters. Stop every rc.3 node
-// before starting rc.4; RC adjacency is still checked by validateRCUpgrade.
+// Proposal payloads cannot be applied by rc.3 voters, and mirror promotion
+// gains a different FSM result in rc.4. Stop every rc.3 node before starting
+// rc.4; RC adjacency is still checked by validateRCUpgrade.
 var mandatoryStopVersions = []string{"v3.0.0-rc.4"}
 
 const requiredUpgradePoll = 5 * time.Second
