@@ -165,8 +165,8 @@ writers from the request through option-aware nested codecs; dedicated protojson
 projections must contain none of these types, including in nested descriptors.
 Preserve null/zero/omission shapes, escaping, streaming newlines and checked
 failure buffering. Concurrent mixed-header requests must remain isolated.
-Ordinary integer IDs/counts, metadata and explicitly string-encoded counters
-retain their current representation. CLI, protobuf, event and storage codecs
+Ordinary integer IDs/counts, metadata and mirror counters retain their current
+numeric JSON representation. CLI, protobuf, event and storage codecs
 also keep their existing representations; response negotiation does not expand
 request decoding. Posting input still accepts canonical unsigned decimal strings
 or integer tokens within uint256; volumes retain arbitrary precision and signed
@@ -385,9 +385,8 @@ inventing a new retry identity or an external-delivery guarantee.
 
 Require camelCase keys, short explicit enum defaults, typed metadata/schema, REST
 segment discriminators and unconstrained null, RFC3339 timestamps, and populated
-mirror state/counters at zero. Counter wire values are decimal strings with
-OpenAPI string/bigint; a generated TypeScript number for integer/bigint can round
-large counters despite successful decoding. Exercise actual generated list/get
+mirror state/counters at zero. Counter wire values are JSON numbers with OpenAPI
+integer/int64; clients must use lossless integer parsing above 2^53. Exercise actual generated list/get
 operations with >2^53 and uint64 maximum, alongside schema validation and the
 codec/routed HTTP fixtures. Read mirror schemas are nested, while flat create
 fixtures must still be accepted. Rewrite-rule read models must expose CEL

@@ -5525,9 +5525,10 @@ components:
       type: object
       description: >
         Read representation of a mirror rewrite rule, using protojson camelCase
-        names. Default scalar values (including empty regex replacements) are
-        omitted; missing replacements mean the empty string. Creation uses the
-        separate MirrorRewriteRule schema.
+        names. Default scalar values and empty collections follow the generated
+        protobuf JSON projection and are emitted for non-presence fields,
+        including empty regex replacements. Creation uses the separate
+        MirrorRewriteRule schema.
       properties:
         createdTransaction:
           $ref: '#/components/schemas/CreatedTransactionRuleRead'

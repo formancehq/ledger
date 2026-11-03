@@ -72,8 +72,8 @@ func writeCreated(w http.ResponseWriter, r *http.Request, data any) {
 // an already-committed 200 stream.
 //
 // This matters for the audit surface: audit DTOs render chain-bound submessages
-// (callerSnapshot, idempotency, signature) via the generated JSON projection, whose MarshalJSON can
-// genuinely fail (e.g. invalid UTF-8) and MUST propagate as an error rather than
+// (callerSnapshot, idempotency, signature) via the generated JSON projection,
+// whose MarshalJSON can genuinely fail (e.g. invalid UTF-8) and MUST propagate as an error rather than
 // a valid-looking truncated record (invariant #7).
 //
 // The transactions list and single-log routes are the second

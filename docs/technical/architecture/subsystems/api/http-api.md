@@ -97,7 +97,7 @@ selects the literal `users%3Aa`, which is not a valid account address.
 ### Ledger information
 
 See [LedgerInfo read contract](ledger-info.md) for camelCase properties, explicit
-defaults, decimal-string mirror counters, separate creation/read configuration
+defaults, numeric mirror counters, separate creation/read configuration
 schemas and credential-safe responses.
 
 ### Authentication
@@ -226,8 +226,9 @@ account/transaction/log cursors and aggregate results. Nested post-commit volume
 follow the same choice. The contract is type-based: future nonmonetary fields
 using these three types inherit it, including inside structs, maps, slices and
 custom public projections. Ordinary integer IDs/counts, typed metadata and
-timestamps retain their existing representation. Explicit string projections,
-such as mirror counters, also keep their existing representation.
+timestamps retain their existing representation. Mirror counters are JSON
+numbers and require lossless integer parsing above JavaScript's safe-integer
+range.
 
 Posting request amounts accept integer tokens and canonical unsigned decimal
 strings independently of the response header. Both forms are bounded by
@@ -1413,13 +1414,13 @@ The response writer selects the encoder from its payload contract:
 | Writer | Encoder | Use for |
 |---|---|---|
 | `writeOK` / `writeCreated` / `writeOKChecked` / `writePageOK` | request-scoped `encoding/json/v2` (`internal/adapter/json`) | Public custom JSON projections and hand-written DTOs, including nested large integers |
-| `writeProtoOK` / `writeProtoListOK` | `protojson` | Proto messages with **no** custom JSON projection or nested Uint256, BigUint or SignedBigInt |
+| `writeOK` / `writeCreated` / `writeOKChecked` / `writePageOK` | `encoding/json/v2` | Public DTOs and protobuf messages with generated or hand-written JSON projections |
 
 **The rule: custom JSON projections define the public shape.** Shared writers
 receive the request and apply large-integer negotiation automatically. Use
-`writeOKChecked` for fallible custom projections. `protojson` ignores both
-`MarshalJSON` and `MarshalJSONTo`, so it must not bypass a type's custom
-representation or render the internal structure of a nested large integer.
+`writeOKChecked` for fallible custom projections. Generated protobuf projections
+and hand-written DTOs are both encoded through the same `encoding/json/v2`
+path.
 
 The camelCase convention cannot arbitrate between the two — both encoders
 satisfy it. Custom projections and nested negotiated types determine which

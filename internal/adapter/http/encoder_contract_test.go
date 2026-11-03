@@ -20,18 +20,18 @@ import (
 )
 
 // protojsonRoutes lists every HTTP route whose 200 body is serialized from a
-// protobuf response through the shared JSON adapter.
+// protobuf response through the shared JSON adapter. The name is retained for
+// the historical contract inventory; the response path now uses generated or
+// hand-written JSON projections rather than protojson.Marshal.
 //
-// protojson works off protobuf reflection and ignores json.Marshaler, so a type
-// that has BOTH is silently rendered by the wrong one. That is the EN-1622
-// defect: Transaction and Log each had a hand-written MarshalJSON that
-// the protojson writers bypassed, so the list routes disagreed with their
-// sibling detail routes and leaked {v0}/{data} proto wrappers.
+// The historical defect was that protojson reflection ignored json.Marshaler,
+// so list routes disagreed with detail routes and leaked {v0}/{data} wrappers.
+// The current shared adapter dispatches the public projection first.
 //
-// If this test fails because you added a MarshalJSON to one of these types, do
-// NOT delete the row. The marshaller is the public contract once it exists:
-// move the handler to writeOKChecked, add wire assertions to its handler test,
-// and type the response in openapi.yml. Note the blast radius first — the CLI
+// If this test fails because you changed a public projection, do NOT delete the
+// row. The projection is the public contract once it exists: keep the handler
+// on the shared JSON adapter, add wire assertions to its handler test, and type
+// the response in openapi.yml. Note the blast radius first — the CLI
 // (cmd/ledgerctl/cmdutil/output.go) also prefers a custom MarshalJSON when one
 // exists, and misc/operator parses `ledgerctl indexes list --json`.
 //
