@@ -5,6 +5,8 @@ The ledger supports optional JWT/OIDC authentication with scope-based authorizat
 ## Quick Start
 
 ```bash
+export CLUSTER_SECRET="$(openssl rand -hex 32)"
+
 ledger run \
   --node-id 1 \
   --cluster-id prod-ledger \
@@ -12,6 +14,7 @@ ledger run \
   --tls-mode required \
   --tls-cert-file /etc/ledger/tls.crt \
   --tls-key-file /etc/ledger/tls.key \
+  --cluster-secret "$CLUSTER_SECRET" \
   --auth-enabled \
   --auth-issuer https://auth.example.com \
   --auth-service ledger
@@ -23,6 +26,10 @@ ledger run \
 > listener is not covered by `--tls-mode` and must be TLS-terminated separately
 > (HTTPS at the ingress/proxy) when authentication is enabled.
 > See [Configuration Invariants](#configuration-invariants).
+
+The `cluster-secret` above is the separate inter-node bearer used by Raft and
+peer forwarding. It is not a user JWT or an operator `Credentials` key, and
+the same value must be provisioned on every node in the cluster.
 
 ## CLI Flags
 
