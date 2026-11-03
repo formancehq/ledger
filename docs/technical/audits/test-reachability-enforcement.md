@@ -72,7 +72,7 @@ still agree with the documented templates and scheduling prefixes.
 The operator is a nested Go module. Its untagged `go test ./...` run does not
 collect the `integration`-tagged envtest suite. The Tests-Operator CI job also
 runs `just operator-test-admission` in the pinned `operator-tests` shell. Trace
-that recipe's explicit selection to the Ledger target admission tests and both
+that recipe's explicit selection to the Ledger and BackupRun target admission tests and both
 `TestBackupRunCommittedCreateLostResponseIntegration` and
 `TestBackupRunManualAssociationIntegration`. Confirm execution against the
 selected Kubernetes assets with the race detector; merely compiling these

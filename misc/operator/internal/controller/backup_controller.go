@@ -363,8 +363,7 @@ func (r *BackupReconciler) SetupWithManager(mgr ctrl.Manager) error {
 }
 
 // runToBackup also routes events from unowned manual runs. The map handler
-// enqueues both references on updates, so an admitted reference edit notifies
-// the old parent as well as the new one.
+// enqueues both references on updates defensively; admission prevents parent edits.
 func (r *BackupReconciler) runToBackup(_ context.Context, obj client.Object) []ctrl.Request {
 	run, ok := obj.(*ledgerv1alpha1.BackupRun)
 	if !ok || run.Spec.BackupRef == "" {

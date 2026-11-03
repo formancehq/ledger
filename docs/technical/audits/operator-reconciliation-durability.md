@@ -217,9 +217,16 @@ association labels and absent parent owner references. Trace parent discovery,
 event routing, scheduling, result summaries, completion cursors, pruning and
 directional sibling exclusion through the spec reference. A label naming a
 different Backup must neither transfer accounting nor block that parent's runs.
-Preserve namespace isolation and self exclusion. Verify old/new parent event
-routing when the admitted reference changes; do not infer immutability or Job
-retargeting from this association contract.
+Preserve namespace isolation and self exclusion. API-server CEL transition
+validation makes `spec.backupRef` immutable from creation. Reject updates and
+patches for new, Pending, Running and terminal runs while permitting same-parent
+metadata and status writes. A rejected edit after Job creation must preserve the
+original sibling reservation, Job UID and result attribution. Fake clients do
+not establish admission. Old/new parent event mapping remains defensive only.
+Before installing the rule, stop the operator and recover already stored
+retargeting and affected parent accounting; freezing the current reference is
+not retrospective identity recovery. Follow the
+[upgrade procedure](../architecture/subsystems/backup/operator-scheduling.md#upgrading-parent-admission).
 
 Exercise the API-server-backed manual execution path through a successful Job
 result and parent accounting before zero-retention pruning, then verify a labeled

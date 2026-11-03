@@ -121,6 +121,17 @@ func testBackupRunCommittedCreateLostResponseIntegration(t *testing.T, manual bo
 	require.True(t, metav1.IsControlledBy(&job, run))
 	committedUID := job.UID
 	require.NotEmpty(t, committedUID)
+	if manual {
+		// A committed Job must not transfer its reservation or result to a
+		// different Backup, even while its creation acknowledgement is lost.
+		retargeted := run.DeepCopy()
+		retargeted.Spec.BackupRef = "replacement"
+		err := c.Update(testCtx, retargeted)
+		require.True(t, apierrors.IsInvalid(err), "retargeting must fail admission: %v", err)
+		require.Contains(t, err.Error(), "backupRef is immutable")
+		require.NoError(t, c.Get(testCtx, req.NamespacedName, run))
+		require.Equal(t, backup.Name, run.Spec.BackupRef)
+	}
 
 	sibling := &ledgerv1alpha1.BackupRun{
 		ObjectMeta: metav1.ObjectMeta{

@@ -4,8 +4,14 @@
   "description": "BackupRunSpec defines the desired state of a BackupRun.",
   "properties": {
     "backupRef": {
-      "description": "BackupRef is the name of the parent Backup in the same namespace.\nDestination and clusterRef are inherited from the parent.",
-      "type": "string"
+      "description": "BackupRef is the name of the parent Backup in the same namespace, immutable from creation.\nDestination and clusterRef are inherited from the parent.",
+      "type": "string",
+      "x-kubernetes-validations": [
+        {
+          "message": "backupRef is immutable",
+          "rule": "self == oldSelf"
+        }
+      ]
     },
     "type": {
       "default": "Full",

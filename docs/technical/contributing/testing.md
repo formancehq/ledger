@@ -147,7 +147,7 @@ func TestStoreIntegration(t *testing.T) {
 ### Operator API-server regressions
 
 `nix develop .#operator-tests --command just operator-test-admission` runs
-Ledger target admission and BackupRun recovery/association regressions with
+Ledger and BackupRun target admission and BackupRun recovery/association regressions with
 the race detector against Kubernetes 1.32.x envtest. The selection includes
 both labeled lost-response recovery and minimally admitted, unlabeled manual
 runs through Job-result capture, parent events and accounting. These tests
@@ -988,7 +988,7 @@ export DOCKER_HOST=unix://$HOME/.orbstack/run/docker.sock
 
 ### Operator Integration Tests
 
-The default Nix shell provides `setup-envtest`, and its shell hook exports `KUBEBUILDER_ASSETS`. The first shell start downloads the etcd and kube-apiserver binaries. The lean `ci` shell does not include envtest. The `Tests-Operator` CI job uses the dedicated `operator-tests` shell for the focused Ledger target admission regressions, selecting Kubernetes 1.32.x assets:
+The default Nix shell provides `setup-envtest`, and its shell hook exports `KUBEBUILDER_ASSETS`. The first shell start downloads the etcd and kube-apiserver binaries. The lean `ci` shell does not include envtest. The `Tests-Operator` CI job uses the dedicated `operator-tests` shell for Ledger and BackupRun target admission plus BackupRun recovery and manual association regressions, selecting Kubernetes 1.32.x assets. See the [canonical selection description](#operator-api-server-regressions) above:
 
 ```bash
 nix develop .#operator-tests --command just operator-test-admission

@@ -19,8 +19,13 @@ manual runs are not adopted, and Kubernetes garbage collection still follows
 their actual owner references.
 
 BackupRun create, update and delete events enqueue the referenced parent,
-including unowned manual runs. A changed reference enqueues both old and new
-parents. This does not make the reference immutable or rewrite an existing Job.
+including unowned manual runs. API-server CEL transition validation makes
+`spec.backupRef` immutable from creation, including Pending and terminal runs.
+This prevents transferring an existing Job's reservation or result to another
+Backup. Create a new run to select another parent. Metadata and status updates
+remain supported. The event mapper defensively enqueues both observed references
+on updates; admission rejects reference edits before they can produce such an
+event. Existing Jobs keep their persisted configuration.
 Parent lists remain direct API-server reads; sibling lists retain their existing
 informer consistency. Both list runs in the namespace and filter by the spec,
 so response size and filtering cost are O(N) in namespace BackupRuns, rather than
@@ -31,6 +36,20 @@ runs. Large namespace histories therefore increase reconciliation cost.
 
 The association change does not provide atomic execution exclusion across
 concurrent reconcilers; it preserves the existing Running-reservation policy.
+
+### Upgrading parent admission
+
+The rule freezes the currently stored reference on existing runs; it cannot
+recover a reference changed before installation. Stop the operator before
+updating the CRDs and inventory existing runs and their owned Jobs. Recover
+any known original parent from execution evidence, correct the run reference
+before installing the rule, and reconcile any parent summaries/cursors already
+attributed to the wrong Backup. If identity is ambiguous, retain the run and
+Job evidence and resolve it before resuming the operator; do not guess or delete
+execution evidence. Install the matching base/Helm CRDs before restarting the
+operator. Unchanged runs need no rewrite. This affects Kubernetes control-plane
+state only; it changes no Ledger persisted format, backup data, service RPC or
+protocol revision.
 
 ## Retention must not reset the schedule (EN-2000)
 

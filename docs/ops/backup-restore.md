@@ -124,7 +124,12 @@ older operator remain terminal.
 
 To trigger a run directly, apply a `BackupRun` in the Backup's namespace with
 `metadata.name` and `spec.backupRef`; `spec.type` defaults to `Full`. No labels
-or owner references are required. The referenced Backup accounts for the run's
+or owner references are required. `spec.backupRef` is immutable from creation,
+including Pending and completed runs; create a new run for a different parent.
+When upgrading existing CRDs, stop the operator and recover any previously
+retargeted runs and affected parent accounting before installing the rule;
+see [the admission upgrade procedure](../technical/architecture/subsystems/backup/operator-scheduling.md#upgrading-parent-admission).
+The referenced Backup accounts for the run's
 result and completion cursor, applies its history limits, and includes it in
 sibling exclusion even if the association label is missing or incorrect.
 The operator watches unowned manual runs for parent updates without adopting

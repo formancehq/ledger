@@ -42,7 +42,7 @@ for observation failures, terminal payload failures and history pruning.
 same-namespace parent for accounting, scheduling, retention and execution
 exclusion. Labels and owner references are optional for manual runs. See
 [manual run association](operator-scheduling.md#manual-run-association) for
-parent events, existing-run behavior and namespace-list cost.
+parent admission and upgrade recovery, events, existing-run behavior and namespace-list cost.
 
 ## How a backup is taken
 
