@@ -184,6 +184,11 @@ selected interval at startup, including values supplied through that override.
 
 ## Backup scheduling
 
+Manual `BackupRun` resources use `spec.backupRef` to identify their parent in
+the same namespace. Association labels and owner references are not required
+for parent accounting, history retention or sibling exclusion. Events from
+unowned runs also reconcile their referenced parent.
+
 Backup schedules preserve their completion cursors in `Backup.status` before
 pruning run history. Zero retention therefore preserves scheduling across
 operator restarts. See the [scheduling contract](../../docs/technical/architecture/subsystems/backup/operator-scheduling.md)

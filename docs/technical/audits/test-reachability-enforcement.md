@@ -67,6 +67,17 @@ real-server integration tests. For the unfiltered workload, verify that the
 automatic `bin/cmds/<template>/<driver>` discovery and final Antithesis layout
 still agree with the documented templates and scheduling prefixes.
 
+## Operator API-server regression selection
+
+The operator is a nested Go module. Its untagged `go test ./...` run does not
+collect the `integration`-tagged envtest suite. The Tests-Operator CI job also
+runs `just operator-test-admission` in the pinned `operator-tests` shell. Trace
+that recipe's explicit selection to the Ledger target admission tests and both
+`TestBackupRunCommittedCreateLostResponseIntegration` and
+`TestBackupRunManualAssociationIntegration`. Confirm execution against the
+selected Kubernetes assets with the race detector; merely compiling these
+functions or running root-module tests does not establish this evidence.
+
 ## Ownership and deduplication
 
 | Owner | Boundary |

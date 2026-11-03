@@ -6,6 +6,32 @@ operational state, outside Ledger's audited store and exported backup data.
 Restoring Ledger data into another cluster does not restore these Kubernetes
 objects or their scheduling cursors.
 
+## Manual run association
+
+`BackupRun.spec.backupRef` identifies the parent Backup in the same namespace.
+It is authoritative for scheduling, result summaries, completion cursors,
+history pruning, and sibling execution exclusion. Directly applied runs need
+neither an association label nor a Backup owner reference. A missing or
+contradictory label does not exclude a run from its referenced parent's history
+or associate it with another parent. Existing terminal manual runs are included
+without metadata repair. Scheduled runs retain their labels and owner references;
+manual runs are not adopted, and Kubernetes garbage collection still follows
+their actual owner references.
+
+BackupRun create, update and delete events enqueue the referenced parent,
+including unowned manual runs. A changed reference enqueues both old and new
+parents. This does not make the reference immutable or rewrite an existing Job.
+Parent lists remain direct API-server reads; sibling lists retain their existing
+informer consistency. Both list runs in the namespace and filter by the spec,
+so response size and filtering cost are O(N) in namespace BackupRuns, rather than
+only label-selected children. A cache-only field index cannot replace the direct
+parent list required to protect durable summaries from informer lag. History
+limits reduce terminal history but do not bound active or externally retained
+runs. Large namespace histories therefore increase reconciliation cost.
+
+The association change does not provide atomic execution exclusion across
+concurrent reconcilers; it preserves the existing Running-reservation policy.
+
 ## Retention must not reset the schedule (EN-2000)
 
 History limits control retained Kubernetes execution records. Deleting those

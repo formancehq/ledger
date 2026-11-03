@@ -383,16 +383,13 @@ func (r *BackupRunReconciler) setRunFailed(ctx context.Context, run *ledgerv1alp
 // (same parent backup, Running phase) that blocks the current run, or "" if
 // none. Self is excluded.
 func (r *BackupRunReconciler) findBlockingSibling(ctx context.Context, run *ledgerv1alpha1.BackupRun) (string, error) {
-	var list ledgerv1alpha1.BackupRunList
-	if err := r.List(ctx, &list,
-		client.InNamespace(run.Namespace),
-		client.MatchingLabels{ledgerv1alpha1.LabelBackup: run.Spec.BackupRef},
-	); err != nil {
+	runs, err := listBackupRuns(ctx, r.Client, client.ObjectKey{Namespace: run.Namespace, Name: run.Spec.BackupRef})
+	if err != nil {
 		return "", err
 	}
 
-	for i := range list.Items {
-		s := &list.Items[i]
+	for i := range runs {
+		s := &runs[i]
 		if s.UID == run.UID {
 			continue
 		}

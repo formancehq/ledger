@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
+	appsv1 "k8s.io/api/apps/v1"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -21,6 +22,16 @@ import (
 
 func TestBackupRunCommittedCreateLostResponseIntegration(t *testing.T) {
 	t.Parallel()
+	testBackupRunCommittedCreateLostResponseIntegration(t, false)
+}
+
+func TestBackupRunManualAssociationIntegration(t *testing.T) {
+	t.Parallel()
+	testBackupRunCommittedCreateLostResponseIntegration(t, true)
+}
+
+func testBackupRunCommittedCreateLostResponseIntegration(t *testing.T, manual bool) {
+	t.Helper()
 	testCtx, cancelTest := context.WithTimeout(t.Context(), 30*time.Second)
 	defer cancelTest()
 	namespace := createTestNamespace(t)
@@ -43,6 +54,19 @@ func TestBackupRunCommittedCreateLostResponseIntegration(t *testing.T) {
 		},
 	}
 	require.NoError(t, c.Create(testCtx, backup))
+	// Finish initial parent reconciliation before creating the manual run,
+	// and ensure provisioning reaches Job Create rather than a missing transport.
+	require.Eventually(t, func() bool {
+		var observed ledgerv1alpha1.Backup
+		if err := c.Get(testCtx, client.ObjectKeyFromObject(backup), &observed); err != nil || observed.Status.Phase != ledgerv1alpha1.BackupPhaseReady {
+			return false
+		}
+		var sts appsv1.StatefulSet
+		if err := c.Get(testCtx, client.ObjectKey{Namespace: namespace, Name: resourceName(cluster.Name)}, &sts); err != nil {
+			return false
+		}
+		return metav1.IsControlledBy(&sts, cluster) && requireClusterService(testCtx, c, cluster) == nil
+	}, 10*time.Second, 50*time.Millisecond, "parent and Cluster transport must be ready before the run")
 	run := &ledgerv1alpha1.BackupRun{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "recovery-run", Namespace: namespace,
@@ -50,7 +74,16 @@ func TestBackupRunCommittedCreateLostResponseIntegration(t *testing.T) {
 		},
 		Spec: ledgerv1alpha1.BackupRunSpec{BackupRef: backup.Name, Type: ledgerv1alpha1.BackupRunTypeFull},
 	}
+	if manual {
+		run.Labels = nil
+		run.Spec.Type = "" // Exercise the API server's Full default.
+	}
 	require.NoError(t, c.Create(testCtx, run))
+	require.Equal(t, ledgerv1alpha1.BackupRunTypeFull, run.Spec.Type)
+	if manual {
+		require.Empty(t, run.Labels)
+		require.Empty(t, run.OwnerReferences)
+	}
 	req := ctrl.Request{NamespacedName: client.ObjectKeyFromObject(run)}
 	creates := 0
 	wrapped := interceptor.NewClient(c, interceptor.Funcs{
@@ -160,4 +193,31 @@ func TestBackupRunCommittedCreateLostResponseIntegration(t *testing.T) {
 	require.Len(t, jobs.Items, 1)
 	require.Equal(t, committedUID, jobs.Items[0].UID)
 	require.Equal(t, 1, creates, "recovery must reuse the committed Job without another Create")
+	if manual {
+		// The registered Backup manager must observe this unowned run's status
+		// event. No explicit parent reconcile or spec update supplies a retry.
+		require.Eventually(t, func() bool {
+			var observed ledgerv1alpha1.Backup
+			if err := c.Get(testCtx, client.ObjectKeyFromObject(backup), &observed); err != nil {
+				return false
+			}
+			return observed.Status.LastFullBackup != nil && observed.Status.LastFullRunCompletionTime != nil
+		}, 10*time.Second, 50*time.Millisecond, "unowned manual run must notify its parent")
+		require.NoError(t, c.Get(testCtx, client.ObjectKeyFromObject(backup), backup))
+		require.EqualValues(t, 7, backup.Status.LastFullBackup.FilesUploaded)
+		require.EqualValues(t, 42, backup.Status.LastFullBackup.LastAppliedIndex)
+		require.Equal(t, run.Status.CompletionTime, backup.Status.LastFullRunCompletionTime)
+		zero := int32(0)
+		backup.Spec.SuccessfulRunsHistoryLimit = &zero
+		backup.Spec.Schedule.Incremental = "0 4 * * *"
+		require.NoError(t, c.Update(testCtx, backup))
+		require.Eventually(t, func() bool {
+			var observed ledgerv1alpha1.Backup
+			if err := c.Get(testCtx, client.ObjectKeyFromObject(backup), &observed); err != nil {
+				return false
+			}
+			return observed.Status.LastFullBackup != nil && observed.Status.LastFullRunCompletionTime != nil &&
+				observed.Status.NextIncrementalBackupTime != nil && apierrors.IsNotFound(c.Get(testCtx, req.NamespacedName, &ledgerv1alpha1.BackupRun{}))
+		}, 10*time.Second, 50*time.Millisecond, "manual result must enable incrementals and survive zero-retention pruning")
+	}
 }

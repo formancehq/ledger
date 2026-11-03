@@ -24,7 +24,8 @@ const (
 	BackupRunTypeIncremental BackupRunType = "Incremental"
 )
 
-// Labels and annotations used to associate BackupRun resources with their parent.
+// Informational labels for BackupRun resources. Parent association is defined
+// by spec.backupRef; manual runs do not need these labels.
 const (
 	// LabelBackup carries the name of the parent Backup.
 	LabelBackup = "ledger.formance.com/backup"

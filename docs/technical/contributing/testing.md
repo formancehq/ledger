@@ -144,6 +144,17 @@ func TestStoreIntegration(t *testing.T) {
 }
 ```
 
+### Operator API-server regressions
+
+`nix develop .#operator-tests --command just operator-test-admission` runs
+Ledger target admission and BackupRun recovery/association regressions with
+the race detector against Kubernetes 1.32.x envtest. The selection includes
+both labeled lost-response recovery and minimally admitted, unlabeled manual
+runs through Job-result capture, parent events and accounting. These tests
+publish Job and Pod status themselves; they do not run a kubelet or prove
+garbage collection. Keep the recipe's selection aligned with these regression
+names so CI executes the API-server evidence as well as operator unit tests.
+
 ### Schemathesis API Conformance Tests
 
 **Location**: `tests/schemathesis/`

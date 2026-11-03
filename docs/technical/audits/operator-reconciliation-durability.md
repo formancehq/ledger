@@ -209,6 +209,26 @@ pruned only after terminal accounting is recorded. These fake-client and HTTP
 fixtures do not prove Kubernetes garbage collection, kubelet execution or live
 manager backoff. Historical terminal failures are not automatically reopened.
 
+## Manual backup parent association
+
+Use minimally admitted BackupRuns with only a name and same-namespace
+`spec.backupRef` (type defaults to Full), including missing and contradictory
+association labels and absent parent owner references. Trace parent discovery,
+event routing, scheduling, result summaries, completion cursors, pruning and
+directional sibling exclusion through the spec reference. A label naming a
+different Backup must neither transfer accounting nor block that parent's runs.
+Preserve namespace isolation and self exclusion. Verify old/new parent event
+routing when the admitted reference changes; do not infer immutability or Job
+retargeting from this association contract.
+
+Exercise the API-server-backed manual execution path through a successful Job
+result and parent accounting before zero-retention pruning, then verify a labeled
+sibling waits behind an unlabeled Running run. Separately prove automatic parent
+updates through the registered manager watch for an unowned manual run. Envtest
+fixtures publish Job/Pod status themselves and do not prove kubelet execution or
+garbage collection. Direct parent lists must retain their stale-cache protection;
+namespace scan cost is documented in the scheduling contract.
+
 ## Severity
 
 Use the native P0–P3 scale with demonstrated impact and explicit preconditions:
