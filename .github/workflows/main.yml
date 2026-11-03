@@ -323,7 +323,7 @@ jobs:
           nix develop .#ci --command just test-model-cluster 180
 
   Coverage:
-    if: always()
+    if: always() && github.event_name != 'merge_group'
     needs: [Tests, Tests-E2E-Business, Tests-E2E-Cluster, Tests-Scenarios]
     runs-on: namespace-profile-linux-amd64-4vcpu
     env:
