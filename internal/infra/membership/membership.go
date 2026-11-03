@@ -117,6 +117,12 @@ func newMembership(store *PeerStore, transport Transport, pool Pool, selfNodeID 
 	if err != nil {
 		return nil, fmt.Errorf("loading peers from pebble: %w", err)
 	}
+	// TODO(next RC): remove this in-memory legacy normalization once every
+	// supported rc.4 store has completed the persisted membership migration.
+	// NewNode can start from this cache without calling Rehydrate when its
+	// store is out of sync, so the peer pool must never be wired to a legacy
+	// public service port during that window.
+	addresses = normalizeServiceAddresses(addresses, servicePort)
 	logger.WithFields(map[string]any{
 		"peerCount": len(addresses),
 	}).Infof("Loaded cluster membership from Pebble")
