@@ -66,8 +66,37 @@ func newCompileCtx(options CompileOptions) *compileCtx {
 		schema:          options.Schema,
 		info:            options.LedgerInfo,
 		indexRegistry:   options.IndexRegistry,
-		indexVersionFor: indexVersionFor,
+		indexVersionFor: memoizeIndexVersions(indexVersionFor),
 		pin:             options.Pin,
 		profile:         options.Profile,
+	}
+}
+
+// memoizeIndexVersions pins each index to its first successful resolution for
+// the rest of the compilation. The resolver's in-flight check reads the live
+// promotion tracker, so a flush landing mid-compile would otherwise bind
+// validation, range merging, and leaf compilation to different versions of
+// the same field.
+func memoizeIndexVersions(resolve readstore.IndexVersionResolver) readstore.IndexVersionResolver {
+	type resolution struct {
+		version readstore.ResolvedIndexVersion
+		ok      bool
+	}
+
+	resolved := map[string]resolution{}
+
+	return func(canonical string) (readstore.ResolvedIndexVersion, bool, error) {
+		if r, cached := resolved[canonical]; cached {
+			return r.version, r.ok, nil
+		}
+
+		version, ok, err := resolve(canonical)
+		if err != nil {
+			return readstore.ResolvedIndexVersion{}, false, err
+		}
+
+		resolved[canonical] = resolution{version: version, ok: ok}
+
+		return version, ok, nil
 	}
 }
