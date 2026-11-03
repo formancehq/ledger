@@ -26,7 +26,7 @@ determines how public `id` is decoded. Historical targetless orders still
 replay with their stored target. Every explicit-target
 order changes the accepted audit bytes, even if the target value is unchanged;
 changing the value also changes replicated state. The operator requires the
-[stopped rc.2-to-rc.3 upgrade](../../../../ops/upgrades.md) so incompatible
+[stopped rc.3-to-rc.4 upgrade](../../../../ops/upgrades.md) so incompatible
 voters cannot apply these orders together.
 
 The additive `BucketService.AnalyzeNumscript` RPC (EN-3153) uses new messages
