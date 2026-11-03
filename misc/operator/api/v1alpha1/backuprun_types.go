@@ -93,7 +93,9 @@ type BackupRun struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
-	Spec   BackupRunSpec   `json:"spec,omitempty"`
+	// Spec is required so removing it cannot bypass parent immutability.
+	// +kubebuilder:validation:Required
+	Spec   BackupRunSpec   `json:"spec"`
 	Status BackupRunStatus `json:"status,omitempty"`
 }
 

@@ -57,7 +57,7 @@ spec:
           metadata:
             type: object
           spec:
-            description: BackupRunSpec defines the desired state of a BackupRun.
+            description: Spec is required so removing it cannot bypass parent immutability.
             properties:
               backupRef:
                 description: |-
@@ -254,6 +254,8 @@ spec:
                 format: date-time
                 type: string
             type: object
+        required:
+        - spec
         type: object
     served: true
     storage: true

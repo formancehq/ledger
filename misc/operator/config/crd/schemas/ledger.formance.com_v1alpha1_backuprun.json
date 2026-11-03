@@ -22,7 +22,7 @@
     },
     "spec": {
       "additionalProperties": false,
-      "description": "BackupRunSpec defines the desired state of a BackupRun.",
+      "description": "Spec is required so removing it cannot bypass parent immutability.",
       "properties": {
         "backupRef": {
           "description": "BackupRef is the name of the parent Backup in the same namespace, immutable from creation.\nDestination and clusterRef are inherited from the parent.",
@@ -237,6 +237,7 @@
     }
   },
   "required": [
+    "spec",
     "apiVersion",
     "kind"
   ],
