@@ -6,52 +6,43 @@ package servicepb
 import jsonv2 "encoding/json/v2"
 
 func (x *GetEventsSinksResponse) MarshalJSON() ([]byte, error) {
-	object := make(map[string]any)
-	if len(x.Sinks) != 0 {
-		object["sinks"] = x.Sinks
-	}
-	if len(x.SinkStatuses) != 0 {
-		object["sinkStatuses"] = x.SinkStatuses
-	}
-	return jsonv2.Marshal(object)
+	return jsonv2.Marshal(struct {
+		Sinks        any `json:"sinks,omitempty,omitzero"`
+		SinkStatuses any `json:"sinkStatuses,omitempty,omitzero"`
+	}{
+		Sinks:        x.Sinks,
+		SinkStatuses: x.SinkStatuses,
+	})
 }
 
 func (x *GetIndexStatusResponse) MarshalJSON() ([]byte, error) {
-	object := make(map[string]any)
-	if x.LastIndexedSequence != 0 {
-		object["lastIndexedSequence"] = x.LastIndexedSequence
-	}
-	if x.LastLogSequence != 0 {
-		object["lastLogSequence"] = x.LastLogSequence
-	}
-	if x.Lag != 0 {
-		object["lag"] = x.Lag
-	}
-	if x.IndexFileSize != 0 {
-		object["indexFileSize"] = x.IndexFileSize
-	}
-	if len(x.Indexes) != 0 {
-		object["indexes"] = x.Indexes
-	}
-	return jsonv2.Marshal(object)
+	return jsonv2.Marshal(struct {
+		LastIndexedSequence uint64 `json:"lastIndexedSequence,omitempty,omitzero"`
+		LastLogSequence     uint64 `json:"lastLogSequence,omitempty,omitzero"`
+		Lag                 uint64 `json:"lag,omitempty,omitzero"`
+		IndexFileSize       uint64 `json:"indexFileSize,omitempty,omitzero"`
+		Indexes             any    `json:"indexes,omitempty,omitzero"`
+	}{
+		LastIndexedSequence: x.LastIndexedSequence,
+		LastLogSequence:     x.LastLogSequence,
+		Lag:                 x.Lag,
+		IndexFileSize:       x.IndexFileSize,
+		Indexes:             x.Indexes,
+	})
 }
 
 func (x *IndexEntry) MarshalJSON() ([]byte, error) {
-	object := make(map[string]any)
-	if x.Ledger != "" {
-		object["ledger"] = x.Ledger
-	}
-	if x.Index != nil {
-		object["index"] = x.Index
-	}
-	if x.Cursor != 0 {
-		object["cursor"] = x.Cursor
-	}
-	if x.CurrentVersion != 0 {
-		object["currentVersion"] = x.CurrentVersion
-	}
-	if x.PendingVersion != 0 {
-		object["pendingVersion"] = x.PendingVersion
-	}
-	return jsonv2.Marshal(object)
+	return jsonv2.Marshal(struct {
+		Ledger         string `json:"ledger,omitempty,omitzero"`
+		Index          any    `json:"index,omitempty,omitzero"`
+		Cursor         uint64 `json:"cursor,omitempty,omitzero"`
+		CurrentVersion uint32 `json:"currentVersion,omitempty,omitzero"`
+		PendingVersion uint32 `json:"pendingVersion,omitempty,omitzero"`
+	}{
+		Ledger:         x.Ledger,
+		Index:          x.Index,
+		Cursor:         x.Cursor,
+		CurrentVersion: x.CurrentVersion,
+		PendingVersion: x.PendingVersion,
+	})
 }

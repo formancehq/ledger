@@ -196,40 +196,96 @@ func ledgerJSONMapKey(key protoreflect.MapKey) string {
 
 func emitMessage(g *protogen.GeneratedFile, message *protogen.Message) {
 	g.P("func (x *", message.GoIdent.GoName, ") MarshalJSON() ([]byte, error) {")
-	g.P("\tobject := make(map[string]any)")
-	emittedOneofs := make(map[string]bool)
+	var oneof *protogen.Oneof
 	for _, field := range message.Fields {
 		if field.Oneof != nil && !field.Oneof.Desc.IsSynthetic() {
-			if emittedOneofs[field.Oneof.GoName] {
-				continue
-			}
-			emittedOneofs[field.Oneof.GoName] = true
-			emitOneof(g, field.Oneof)
-			continue
+			oneof = field.Oneof
+			break
 		}
-		emitField(g, field)
 	}
-	g.P("\treturn jsonv2.Marshal(object)")
+	if oneof == nil {
+		emitStructReturn(g, message, nil, nil)
+	} else {
+		g.P("\tswitch oneofValue := x.", oneof.GoName, ".(type) {")
+		for _, field := range oneof.Fields {
+			g.P("\tcase *", field.GoIdent.GoName, ":")
+			emitStructReturn(g, message, oneof, field)
+		}
+		g.P("\tdefault:")
+		emitStructReturn(g, message, oneof, nil)
+		g.P("\t}")
+	}
 	g.P("}")
 	g.P()
 }
 
-func emitOneof(g *protogen.GeneratedFile, oneof *protogen.Oneof) {
-	g.P("\tswitch oneofValue := x.", oneof.GoName, ".(type) {")
-	for _, field := range oneof.Fields {
-		g.P("\tcase *", field.GoIdent.GoName, ":")
-		g.P("\t\tobject[\"", field.Desc.JSONName(), "\"] = ", enumOrValue("oneofValue."+field.GoName, field.Desc))
+func emitStructReturn(g *protogen.GeneratedFile, message *protogen.Message, oneof *protogen.Oneof, selected *protogen.Field) {
+	g.P("\t\treturn jsonv2.Marshal(struct {")
+	for _, field := range message.Fields {
+		if field.Oneof != nil && !field.Oneof.Desc.IsSynthetic() {
+			if selected == nil || field != selected {
+				continue
+			}
+			g.P("\t\t\t", field.GoName, " ", goJSONType(field.Desc, true), " `json:\"", field.Desc.JSONName(), "\"`")
+			continue
+		}
+		g.P("\t\t\t", field.GoName, " ", goJSONType(field.Desc, false), " `json:\"", field.Desc.JSONName(), ",omitempty,omitzero\"`")
 	}
-	g.P("\t}")
+	g.P("\t\t}{")
+	for _, field := range message.Fields {
+		if field.Oneof != nil && !field.Oneof.Desc.IsSynthetic() {
+			if selected == nil || field != selected {
+				continue
+			}
+			g.P("\t\t\t", field.GoName, ": ", jsonAssignment("oneofValue."+field.GoName, field.Desc, true), ",")
+			continue
+		}
+		g.P("\t\t\t", field.GoName, ": ", jsonAssignment("x."+field.GoName, field.Desc, false), ",")
+	}
+	g.P("\t\t})")
 }
 
-func emitField(g *protogen.GeneratedFile, field *protogen.Field) {
-	access := "x." + field.GoName
-	condition := presenceCondition(access, field.Desc)
-	value := fieldValue(access, field.Desc)
-	g.P("\tif ", condition, " {")
-	g.P("\t\tobject[\"", field.Desc.JSONName(), "\"] = ", value)
-	g.P("\t}")
+func goJSONType(field protoreflect.FieldDescriptor, oneof bool) string {
+	if field.IsList() || field.IsMap() || field.Message() != nil {
+		return "any"
+	}
+	switch field.Kind() {
+	case protoreflect.BoolKind:
+		return "bool"
+	case protoreflect.StringKind:
+		return "string"
+	case protoreflect.BytesKind:
+		return "[]byte"
+	case protoreflect.Int32Kind, protoreflect.Sint32Kind, protoreflect.Sfixed32Kind:
+		return "int32"
+	case protoreflect.Int64Kind, protoreflect.Sint64Kind, protoreflect.Sfixed64Kind:
+		return "int64"
+	case protoreflect.Uint32Kind, protoreflect.Fixed32Kind:
+		return "uint32"
+	case protoreflect.Uint64Kind, protoreflect.Fixed64Kind:
+		return "uint64"
+	case protoreflect.FloatKind:
+		return "float32"
+	case protoreflect.DoubleKind:
+		return "float64"
+	case protoreflect.EnumKind:
+		if !oneof {
+			return "*string"
+		}
+		return "string"
+	default:
+		return "any"
+	}
+}
+
+func jsonAssignment(access string, field protoreflect.FieldDescriptor, oneof bool) string {
+	if field.IsList() || field.IsMap() {
+		return access
+	}
+	if field.Kind() == protoreflect.EnumKind && !oneof {
+		return "func() *string { if " + access + " == 0 { return nil }; value := " + access + ".String(); return &value }()"
+	}
+	return enumOrValue(access, field)
 }
 
 func presenceCondition(access string, field protoreflect.FieldDescriptor) string {
@@ -251,14 +307,10 @@ func presenceCondition(access string, field protoreflect.FieldDescriptor) string
 	}
 }
 
-func fieldValue(access string, field protoreflect.FieldDescriptor) string {
+func enumOrValue(access string, field protoreflect.FieldDescriptor) string {
 	if field.IsList() || field.IsMap() {
 		return access
 	}
-	return enumOrValue(access, field)
-}
-
-func enumOrValue(access string, field protoreflect.FieldDescriptor) string {
 	if field.Kind() == protoreflect.EnumKind {
 		return access + ".String()"
 	}
