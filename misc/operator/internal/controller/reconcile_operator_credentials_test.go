@@ -32,6 +32,34 @@ func TestReconcileOperatorCredentialsCreatesScopedCredential(t *testing.T) {
 	require.Equal(t, map[string]string{labelOperatorCredential: operatorCredentialsSelectorValue(cluster)}, credentials.Spec.Selector.MatchLabels)
 }
 
+func TestValidateCredentialsAuthCompatibilityRejectsExplicitDisable(t *testing.T) {
+	scheme := authKeysScheme(t)
+	cluster := authEnabledCluster("ledger", "tenant-a", map[string]string{"tier": "gold"})
+	*cluster.Spec.Auth.Enabled = false
+	credentials := matchingCredentials("user-credentials", map[string]string{"tier": "gold"}, false, "", "")
+	r := &ClusterReconciler{
+		Client: fake.NewClientBuilder().WithScheme(scheme).WithObjects(cluster, credentials).Build(),
+		Scheme: scheme,
+	}
+
+	err := r.validateCredentialsAuthCompatibility(context.Background(), cluster)
+	require.ErrorContains(t, err, `auth.enabled=false conflicts with Credentials "user-credentials"`)
+}
+
+func TestValidateCredentialsAuthCompatibilityAllowsOperatorCredentialCleanup(t *testing.T) {
+	scheme := authKeysScheme(t)
+	cluster := authEnabledCluster("ledger", "tenant-a", map[string]string{"tier": "gold"})
+	*cluster.Spec.Auth.Enabled = false
+	credentials := matchingCredentials(operatorCredentialsName(cluster), map[string]string{"tier": "gold"}, false, "", "")
+	credentials.Labels = map[string]string{labelOperatorCredential: operatorCredentialsSelectorValue(cluster)}
+	r := &ClusterReconciler{
+		Client: fake.NewClientBuilder().WithScheme(scheme).WithObjects(cluster, credentials).Build(),
+		Scheme: scheme,
+	}
+
+	require.NoError(t, r.validateCredentialsAuthCompatibility(context.Background(), cluster))
+}
+
 func TestReconcileOperatorCredentialsDeletesWhenAuthDisabled(t *testing.T) {
 	scheme := authKeysScheme(t)
 	cluster := authEnabledCluster("ledger", "tenant-a", nil)
