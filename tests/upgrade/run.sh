@@ -5,28 +5,40 @@ set -euo pipefail
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 repo="$(cd "$script_dir/../.." && pwd)"
+[ "$#" -eq 2 ] || { echo "usage: tests/upgrade/run.sh <source-ref> <target-ref>" >&2; exit 2; }
 if [ "${LEDGER_UPGRADE_SHELL:-}" != 1 ]; then
 	exec nix develop "$repo#upgrade" --command "$script_dir/run.sh" "$@"
 fi
-target_ref="${TARGET_REF:-refs/remotes/origin/release/v3.0}"
-source_ref=v3.0.0-rc.1
-[ "$#" -eq 0 ] || { echo "usage: tests/upgrade/run.sh" >&2; exit 2; }
+source_ref="$1"
+target_ref="$2"
 [ -z "$(git -C "$repo" status --porcelain)" ] || {
 	echo "the harness checkout must be clean so its recorded SHA identifies the test code" >&2
 	exit 2
 }
-if [ "$target_ref" = refs/remotes/origin/release/v3.0 ]; then
-	git -C "$repo" fetch origin +refs/heads/release/v3.0:refs/remotes/origin/release/v3.0
-fi
-source_sha="$(git -C "$repo" rev-parse --verify "$source_ref^{commit}")"
-target_sha="$(git -C "$repo" rev-parse --verify "$target_ref^{commit}")"
+fetch_remote_branch() {
+	local ref="$1" branch
+	case "$ref" in
+		origin/*)
+			branch="${ref#origin/}"
+			git -C "$repo" check-ref-format "refs/heads/$branch" || {
+				echo "invalid remote branch: $ref" >&2; return 2;
+			}
+			git -C "$repo" fetch origin "+refs/heads/$branch:refs/remotes/origin/$branch"
+			;;
+	esac
+}
+fetch_remote_branch "$source_ref"
+fetch_remote_branch "$target_ref"
+source_sha="$(git -C "$repo" rev-parse --verify --end-of-options "$source_ref^{commit}")"
+target_sha="$(git -C "$repo" rev-parse --verify --end-of-options "$target_ref^{commit}")"
 harness_sha="$(git -C "$repo" rev-parse --verify HEAD)"
 git -C "$repo" merge-base --is-ancestor "$harness_sha" "$target_sha" || {
 	echo "target $target_sha does not contain harness $harness_sha; wait for main integration" >&2; exit 2;
 }
 git -C "$repo" merge-base --is-ancestor "$source_sha" "$target_sha" || {
-	echo "target $target_sha does not descend from rc.1 $source_sha" >&2; exit 2;
+	echo "target $target_sha does not descend from source $source_sha" >&2; exit 2;
 }
+[ "$source_sha" != "$target_sha" ] || { echo "source and target resolve to the same commit" >&2; exit 2; }
 
 workdir="$(mktemp -d "${TMPDIR:-/tmp}/ledger-upgrade.XXXXXX")"
 cluster="ledger-upgrade-$$"

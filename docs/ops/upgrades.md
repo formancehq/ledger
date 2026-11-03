@@ -254,30 +254,33 @@ Rollback while maintenance is active must retain the same barrier discipline.
 After reopening writes on the fixed binary, do not reintroduce an affected old
 voter or downgrade without a separately validated procedure.
 
-### Reproducible rc.1 to release branch validation
+### Reproducible binary rolling-upgrade validation
 
 After integrating the harness into `release/v3.0`, run from that revision:
 
 ```bash
-just test-rc1-rolling-upgrade
+just test-rolling-upgrade v3.0.0-rc.1 origin/release/v3.0
 ```
 
-The Chainsaw launcher in `tests/upgrade/` fetches `origin/release/v3.0` once,
-resolves both it and `v3.0.0-rc.1` to commit SHAs, and records those SHAs,
-Linux binary hashes, and local image IDs.
+The command takes source and target Git refs. Tags and commit SHAs must exist
+locally; an `origin/<branch>` argument fetches that branch before resolving it.
+The Chainsaw launcher resolves both refs to commit SHAs and records those
+SHAs, Linux binary hashes, and local image IDs.
 Compilation, hashing, image build, and image inspection must all succeed before
 the kind cluster is created; a locally cached image cannot replace a failed build.
 It requires a clean harness checkout, the target to contain its commit, and the
-target to descend from rc.1; it never merges or moves a local branch.
+target to descend from the distinct source commit; it never merges or moves a
+local branch.
 `KEEP_WORKDIR=1` retains the extracted
 trees, binaries, image IDs, failed Pod logs, and revision record for the release
-validation report. `TARGET_REF=<sha> just test-rc1-rolling-upgrade` rehearses a
-specific local commit without fetching the release branch. The default command
-refuses to run while `release/v3.0` lacks the integrated harness.
+validation report. `just test-rolling-upgrade v3.0.0-rc.1 <target-sha>`
+rehearses a specific local commit without fetching the release branch. The
+release-branch example refuses to run while `release/v3.0` lacks the integrated
+harness.
 
 The test creates a dedicated kind cluster and Chainsaw namespace. Three Pods
 mount separate persistent WAL and data claims and boot from an image containing
-the compiled rc.1 binary. It creates a ledger and transaction through gRPC,
+the compiled source binary. It creates a ledger and transaction through gRPC,
 then verifies the account on every voter. At the
 maintenance barrier it requires each voter to be normal and durably past the
 leader's recorded commit index. It replaces each follower separately, probes

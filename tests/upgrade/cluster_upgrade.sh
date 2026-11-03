@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Invoked by Chainsaw in its own namespace. Each Pod has a stable DNS name and
-# dedicated PVCs; deleting a Pod never deletes the rc.1-created data.
+# dedicated PVCs; deleting a Pod never deletes source-version data.
 set -euo pipefail
 
 namespace="$1"
@@ -62,7 +62,7 @@ create_pod() {
 	local i="$1" image="$2" mode="$3" name id
 	name="$(pod_name "$i")"; id="$((i+1))"
 	jq -n --arg name "$name" --arg image "$image" --arg id "$id" --arg mode "$mode" --arg namespace "$namespace" '
-	  ["run", "--node-id", $id, "--cluster-id", "chainsaw-rc1-upgrade", "--bind-addr", "0.0.0.0:7777",
+	  ["run", "--node-id", $id, "--cluster-id", "chainsaw-binary-upgrade", "--bind-addr", "0.0.0.0:7777",
 	   "--advertise-addr", ($name + ".ledger-upgrade." + $namespace + ".svc.cluster.local:7777"),
 	   "--grpc-port", "8888", "--http-port", "8080", "--wal-dir", "/wal", "--data-dir", "/data",
 	   "--health-wal-threshold", "0.95", "--health-data-threshold", "0.95"] as $base |
@@ -312,4 +312,4 @@ for i in 0 1 2; do
 	cli "$i" store check
 done
 wait_consistent false
-echo "PASS: rc.1 data, mixed maintenance, leadership transfer, and post-upgrade data verified"
+echo "PASS: source data, mixed maintenance, leadership transfer, and post-upgrade data verified"

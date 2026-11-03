@@ -913,11 +913,14 @@ failure cannot be hidden by another job's profile.
 
 ### E2E Tests
 
-#### Pinned RC binary upgrade (Chainsaw)
+#### Pinned binary rolling upgrade (Chainsaw)
 
 After the harness is integrated into `release/v3.0`, run
-`just test-rc1-rolling-upgrade` from a clean checkout of the integrated
-revision. `tests/upgrade/run.sh` fetches the target branch, records both exact
+`just test-rolling-upgrade v3.0.0-rc.1 origin/release/v3.0` from a clean
+checkout of the integrated revision. For another binary transition, pass its
+distinct source and target Git refs. The target must descend from the source
+and include the harness commit.
+`tests/upgrade/run.sh` fetches `origin/<branch>` refs, records both exact
 commit SHAs, builds Linux images from those revisions, and runs the Chainsaw
 scenario in a dedicated kind cluster. Build and provenance-recording failures
 abort before cluster creation. Its three Pods use separate persistent
