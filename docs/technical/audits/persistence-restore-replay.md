@@ -190,6 +190,20 @@ full CLI confirmation/finalization coverage. Rooted deletion and namespace safet
 belong to `filesystem-confinement-contracts`; no persisted format migration or
 repair of a finalized corrupt restore is introduced by this reset.
 
+Follower-sync staging follows the same rule per session, not only per donor.
+`grpcSnapshotFetcher.FetchSnapshot` empties staging and resets progress before
+every session retry, and `fallbackSnapshotFetcher` does the same before every
+donor change. A donor restart between two sessions changes the checkpoint file
+set, and a leftover `MANIFEST`, WAL or `marker.manifest.000001.*` from the
+failed session can make Pebble open a stale manifest over the new WAL. The
+result is a restored applied index that covers entries whose effects are
+missing. `TestGRPCSnapshotFetcher_SessionRetryDiscardsEarlierSessionFiles` is
+the evidence oracle: inspect the final staging listing, not only the bytes of
+the manifest files. `verifyStagingMatchesManifest` then enforces the same
+property before success, and `TestGRPCSnapshotFetcher_RejectsStagingEntryOutsideManifest`
+proves a stray entry fails the fetch as a local fault rather than a donor
+fallback.
+
 Reject or downgrade a candidate when current evidence shows that the state is
 explicitly discarded and safely reseeded, the delta cannot change a preserved
 value, the alleged export state is unreachable, validation fails before

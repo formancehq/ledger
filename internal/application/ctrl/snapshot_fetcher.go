@@ -263,6 +263,19 @@ func (f *grpcSnapshotFetcher) FetchSnapshot(ctx context.Context, targetDir strin
 				"maxAttempts":     f.retryCount,
 				"minAppliedIndex": minAppliedIndex,
 			}).Infof("Retrying snapshot fetch")
+
+			// Each attempt opens a new session, whose checkpoint the donor
+			// may have rebuilt with a different file set (after a restart or
+			// flush). A file left by the previous session that the new
+			// manifest does not list would survive in staging, and Pebble
+			// would open a mix of both checkpoints: two manifest markers with
+			// the same iteration tie, and the directory order picks one.
+			if err := resetSnapshotTargetDir(targetDir); err != nil {
+				return 0, fmt.Errorf("resetting snapshot staging directory before attempt %d: %w", attempt+1, err)
+			}
+			if progress != nil {
+				progress.Reset()
+			}
 		}
 
 		client, err := f.clientSource()
@@ -467,6 +480,13 @@ func (f *grpcSnapshotFetcher) fetchWithSession(ctx context.Context, client snaps
 	}
 
 	if err := g.Wait(); err != nil {
+		return 0, err
+	}
+
+	// A local staging fault, not a donor one: it is not wrapped in
+	// errSnapshotDonorIntegrity, so it stops the recovery instead of moving
+	// to another donor. The next sync starts from a freshly prepared staging.
+	if err := verifyStagingMatchesManifest(targetDir, manifest); err != nil {
 		return 0, err
 	}
 

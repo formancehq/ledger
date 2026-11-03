@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"sync/atomic"
 	"testing"
+	"testing/synctest"
 
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
@@ -997,6 +998,197 @@ func TestGRPCSnapshotFetcher_RetriesSessionOnRecycledConnection(t *testing.T) {
 	data, err := os.ReadFile(filepath.Join(targetDir, "data.bin"))
 	require.NoError(t, err)
 	require.Equal(t, content, data)
+}
+
+// TestGRPCSnapshotFetcher_SessionRetryDiscardsEarlierSessionFiles covers a
+// session retry against the same donor after that donor restarted: the new
+// checkpoint has a different Pebble file set. Files the failed session left in
+// staging must not survive, or Pebble opens a mix of the two checkpoints (two
+// marker.manifest.000001.* files tie and the listing order picks one).
+func TestGRPCSnapshotFetcher_SessionRetryDiscardsEarlierSessionFiles(t *testing.T) {
+	t.Parallel()
+
+	// The retry waits out the real session backoff; the bubble makes it free.
+	synctest.Test(t, func(t *testing.T) {
+		targetDir := t.TempDir()
+		clients := &recyclingSnapshotClients{}
+
+		oldFiles := []string{"MANIFEST-000097", "000099.log", "marker.manifest.000001.MANIFEST-000097", "000098.sst"}
+		oldEntries := make([]*snapshotpb.FileEntry, 0, len(oldFiles))
+		oldStreams := make(map[string]*MockServerStreamingClient[snapshotpb.FetchFileResponse], len(oldFiles))
+		for _, path := range oldFiles {
+			data := []byte("old:" + path)
+			oldEntries = append(oldEntries, &snapshotpb.FileEntry{Path: path, Size: uint64(len(data))})
+			oldStreams[path] = newFileStream(t, fileStreamScript{
+				responses: []*snapshotpb.FetchFileResponse{{Data: data, Eof: true, Sha256: fileSHA256(data)}},
+				failAt:    -1,
+			})
+		}
+		// The last file dies with the connection, after the others are staged.
+		failingStream := NewMockServerStreamingClient[snapshotpb.FetchFileResponse](gomock.NewController(t))
+		failingStream.EXPECT().Recv().DoAndReturn(func() (*snapshotpb.FetchFileResponse, error) {
+			clients.retired.Store(true)
+
+			return nil, closingConnErr
+		}).Times(1)
+		oldStreams["000098.sst"] = failingStream
+
+		oldClient, oldState := newMockSnapshotClient(t,
+			&snapshotpb.PrepareSnapshotResponse{
+				SessionId: "old-session",
+				Manifest:  &snapshotpb.SnapshotManifest{Files: oldEntries},
+			},
+			nil,
+			oldStreams,
+		)
+
+		newFiles := map[string][]byte{
+			"MANIFEST-000103":                        []byte("new:MANIFEST-000103"),
+			"000098.sst":                             []byte("new:000098.sst"),
+			"000102.sst":                             []byte("new:000102.sst"),
+			"000104.log":                             []byte("new:000104.log"),
+			"marker.manifest.000001.MANIFEST-000103": []byte("new:marker"),
+		}
+		newClient, newState := buildMockClient(t, newFiles)
+
+		clients.first, clients.second = oldClient, newClient
+
+		var newBytes uint64
+		for _, data := range newFiles {
+			newBytes += uint64(len(data))
+		}
+
+		progress := state.NewSyncProgress()
+		fetcher := &grpcSnapshotFetcher{clientSource: clients.source, logger: logging.Testing(), parallelism: 1, retryCount: 2, fileRetryCount: 1}
+		size, err := fetcher.FetchSnapshot(t.Context(), targetDir, progress, 0)
+		require.NoError(t, err)
+		require.Equal(t, newBytes, size)
+		require.Equal(t, int32(len(oldFiles)), oldState.fetchFileCalls.Load(), "the first session must have staged its files before failing")
+		require.Equal(t, int32(len(newFiles)), newState.fetchFileCalls.Load())
+
+		entries, err := os.ReadDir(targetDir)
+		require.NoError(t, err)
+		staged := make(map[string][]byte, len(entries))
+		for _, entry := range entries {
+			data, err := os.ReadFile(filepath.Join(targetDir, entry.Name()))
+			require.NoError(t, err)
+			staged[entry.Name()] = data
+		}
+		require.Equal(t, newFiles, staged)
+
+		// Counters describe the successful session only.
+		require.Equal(t, uint64(len(newFiles)), progress.FilesTotal())
+		require.Equal(t, uint64(len(newFiles)), progress.FilesCompleted())
+		require.Equal(t, newBytes, progress.BytesTotal())
+		require.Equal(t, newBytes, progress.BytesReceived())
+	})
+}
+
+// TestGRPCSnapshotFetcher_RejectsStagingEntryOutsideManifest covers the
+// staging check: a file no manifest entry names, left by any earlier writer,
+// fails the fetch instead of reaching Pebble open.
+func TestGRPCSnapshotFetcher_RejectsStagingEntryOutsideManifest(t *testing.T) {
+	t.Parallel()
+
+	targetDir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(targetDir, "marker.manifest.000001.MANIFEST-000097"), nil, 0o644))
+
+	client, csState := buildMockClient(t, map[string][]byte{"MANIFEST-000103": []byte("manifest")})
+	fetcher := &grpcSnapshotFetcher{clientSource: fixedSnapshotClient(client), logger: logging.Testing(), parallelism: 1, retryCount: 1, fileRetryCount: 1}
+
+	_, err := fetcher.FetchSnapshot(t.Context(), targetDir, nil, 0)
+	require.ErrorContains(t, err, `unexpected entry "marker.manifest.000001.MANIFEST-000097"`)
+	require.NotErrorIs(t, err, errSnapshotDonorIntegrity, "a local staging fault must not move on to another donor")
+	require.Equal(t, int32(1), csState.fetchFileCalls.Load(), "the check runs after the session's files are fetched")
+}
+
+func TestVerifyStagingMatchesManifest(t *testing.T) {
+	t.Parallel()
+
+	manifest := &snapshotpb.SnapshotManifest{Files: []*snapshotpb.FileEntry{
+		{Path: "CURRENT"},
+		{Path: "sub/dir/000001.sst"},
+	}}
+
+	write := func(t *testing.T, dir, rel string) {
+		t.Helper()
+		path := filepath.Join(dir, rel)
+		require.NoError(t, os.MkdirAll(filepath.Dir(path), 0o755))
+		require.NoError(t, os.WriteFile(path, []byte(rel), 0o644))
+	}
+
+	tests := []struct {
+		name    string
+		prepare func(t *testing.T, dir string)
+		wantErr string
+	}{
+		{
+			name: "exact file set with parent directories",
+			prepare: func(t *testing.T, dir string) {
+				write(t, dir, "CURRENT")
+				write(t, dir, "sub/dir/000001.sst")
+			},
+		},
+		{
+			name: "extra file",
+			prepare: func(t *testing.T, dir string) {
+				write(t, dir, "CURRENT")
+				write(t, dir, "sub/dir/000001.sst")
+				write(t, dir, "000099.log")
+			},
+			wantErr: `unexpected entry "000099.log"`,
+		},
+		{
+			name: "leftover temporary file",
+			prepare: func(t *testing.T, dir string) {
+				write(t, dir, "CURRENT")
+				write(t, dir, "sub/dir/000001.sst")
+				write(t, dir, "CURRENT.tmp")
+			},
+			wantErr: `unexpected entry "CURRENT.tmp"`,
+		},
+		{
+			name: "unexpected directory",
+			prepare: func(t *testing.T, dir string) {
+				write(t, dir, "CURRENT")
+				write(t, dir, "sub/dir/000001.sst")
+				require.NoError(t, os.Mkdir(filepath.Join(dir, "other"), 0o755))
+			},
+			wantErr: `unexpected directory "other"`,
+		},
+		{
+			name: "symlink in place of a manifest file",
+			prepare: func(t *testing.T, dir string) {
+				write(t, dir, "sub/dir/000001.sst")
+				require.NoError(t, os.Symlink(filepath.Join(dir, "sub/dir/000001.sst"), filepath.Join(dir, "CURRENT")))
+			},
+			wantErr: `unexpected entry "CURRENT"`,
+		},
+		{
+			name: "missing manifest file",
+			prepare: func(t *testing.T, dir string) {
+				write(t, dir, "CURRENT")
+			},
+			wantErr: "snapshot staging holds 1 of the 2 manifest files",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			dir := t.TempDir()
+			tc.prepare(t, dir)
+
+			err := verifyStagingMatchesManifest(dir, manifest)
+			if tc.wantErr == "" {
+				require.NoError(t, err)
+
+				return
+			}
+			require.ErrorContains(t, err, tc.wantErr)
+		})
+	}
 }
 
 // A Canceled status caused by the caller's own context is not a transport

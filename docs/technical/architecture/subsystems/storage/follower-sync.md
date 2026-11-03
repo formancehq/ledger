@@ -48,6 +48,28 @@ attempt produces only the complete file. A new session fetches every manifest
 file again: without a content digest in the manifest, a file left by an earlier
 checkpoint cannot be trusted from path and size alone.
 
+A session retry against the same donor first empties the staging directory and
+resets the progress counters, exactly like donor fallback. Re-fetching the
+manifest files is not enough: the donor may have rebuilt its checkpoint with a
+different file set (for example after a restart that flushed its WAL into a new
+SST), and any file the new manifest does not list would survive. Pebble would
+then open a mix of both checkpoints. Both sessions ship a
+`marker.manifest.000001.*` file. With equal iterations, Pebble keeps the first
+marker in the unsorted directory listing, so it can pick the old `MANIFEST`. It
+then ignores the new SSTs and replays the old WAL together with the new one.
+The result is an internally inconsistent store: a committed range of entries is
+missing, and only the keys a later entry rewrote are current. The Antithesis
+idempotence run `9fda11eff3a174b358e484f62b63021b-64-4` produced
+`:divergent-records` this way. A regression test stages a failed first session
+and checks that only the second session's files remain.
+
+After a session's downloads finish, the fetcher also checks that staging holds
+exactly the manifest's files and their parent directories. The check walks a
+root-scoped view of staging and rejects any other file, directory, symlink or
+leftover `.tmp`, and any missing manifest file. A failure here is a local
+staging fault, not a donor fault: it stops the recovery instead of moving to
+another donor, and the next sync starts from freshly prepared staging.
+
 Transient means `Unavailable`, `Aborted`, `DeadlineExceeded`, `Internal`, and
 `Canceled` while the sync's own context is still live. The fetcher talks to the
 selected donor over the Raft transport's shared peer connection, which the
