@@ -31,7 +31,8 @@ var testStopVersions = []string{"v3.0.0-rc.3"}
 
 func TestMandatoryStopVersionBoundary(t *testing.T) {
 	t.Parallel()
-	require.True(t, requiresStoppedUpgrade("v3.0.0-rc.2", "v3.0.0-rc.3", mandatoryStopVersions), "rc.3 must require a stopped upgrade")
+	require.False(t, requiresStoppedUpgrade("v3.0.0-rc.2", "v3.0.0-rc.3", mandatoryStopVersions), "rc.3 must remain rolling")
+	require.True(t, requiresStoppedUpgrade("v3.0.0-rc.3", "v3.0.0-rc.4", mandatoryStopVersions), "rc.4 must require a stopped upgrade")
 	require.True(t, requiresPinnedUpgradeTarget("v3.0.0-rc.2", "latest", mandatoryStopVersions))
 	for _, tt := range []struct {
 		source, target string

@@ -3,8 +3,8 @@
 Kubernetes operator for deploying and managing high-availability [Formance Ledger](https://github.com/formancehq/ledger) instances using Raft consensus.
 
 The embedded operator can require a complete StatefulSet stop when an image
-upgrade crosses a listed release boundary. rc.3 is listed, so rc.2-to-rc.3 is
-a stopped upgrade. It uses the drain
+upgrade crosses a listed release boundary. rc.4 is listed, so rc.3-to-rc.4 is
+a stopped upgrade; rc.2-to-rc.3 remains rolling. It uses the drain
 barrier available from rc.2 to stop writes and wait for durable replication,
 retains the existing PVCs, waits for the old StatefulSet and Pods to disappear,
 then recreates the StatefulSet with the requested image. The rc.1-to-rc.2

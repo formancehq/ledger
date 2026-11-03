@@ -28,10 +28,10 @@ volume templates, the operator completes the RC rollout before recreating the
 StatefulSet for the volume change.
 Old and new voters must communicate and apply each committed entry identically
 while they coexist. The embedded operator requires a complete stop at a
-listed release boundary. `v3.0.0-rc.3` is listed: `rc.2` to `rc.3` is an
-operator-required stopped restart, using the drain barrier `rc.2` already
-includes. See [mirror asset mappings](#mirror-asset-mappings). RC adjacency
-remains mandatory.
+listed release boundary. `v3.0.0-rc.4` is listed: `rc.2` to `rc.3` remains a
+rolling upgrade, and `rc.3` to `rc.4` is an operator-required stopped restart,
+using the drain barrier available since `rc.2`. See
+[mirror asset mappings](#mirror-asset-mappings). RC adjacency remains mandatory.
 The `rc.1` to `rc.2` transition uses the separately validated maintenance-based
 procedure below.
 When the running version precedes a mandatory boundary, pin the target to a
@@ -48,15 +48,16 @@ release notes. Delay the release if the target cannot read or migrate the source
 state.
 
 The upgrade classes below describe existing procedures. An explicitly listed
-operator boundary selects a stopped restart for the affected RC; `rc.3` is
-listed, so `rc.2` to `rc.3` uses the stopped class. Rebuild or
+operator boundary selects a stopped restart for the affected RC; `rc.4` is
+listed, so `rc.2` to `rc.3` uses the rolling class and `rc.3` to `rc.4` the
+stopped class. Rebuild or
 restore applies only to the cases
 listed below.
 
 | Class | When it applies | Procedure |
 |-------|-----------------|-----------|
 | Rolling | Default between adjacent RCs on the same release line that cross no listed operator boundary. | Restart followers one at a time, wait for each to catch up, transfer leadership to an upgraded voter, then restart the old leader. |
-| Operator-required stopped restart | An adjacent RC crossing a listed operator boundary, such as `rc.2` to `rc.3`. | Establish an operator-owned drain and verify its durable barrier on every member; retain the existing PVCs, delete the StatefulSet, wait until it and every old Pod are gone, then recreate it with the target image and the same claims. The cluster is unavailable throughout the stop. |
+| Operator-required stopped restart | An adjacent RC crossing a listed operator boundary, such as `rc.3` to `rc.4`. | Establish an operator-owned drain and verify its durable barrier on every member; retain the existing PVCs, delete the StatefulSet, wait until it and every old Pod are gone, then recreate it with the target image and the same claims. The cluster is unavailable throughout the stop. |
 | Coordinated restart | A separate compatibility line that cannot safely mix binaries. | Enable maintenance mode, wait for every voter to apply the maintenance barrier durably, stop every node, replace all binaries, then restart without a mixed-version window. Preserve or migrate the released data. |
 | Migrate or restore | A separate line with a changed persisted or backup format, or development state before the first RC. | Follow a tested migration or restore a backup supported by the target release. A wipe or external rebuild is permitted only for unsupported pre-RC development state. Verify the complete state before serving writes. |
 
@@ -184,7 +185,8 @@ cannot protect an old leader or previously committed proposals.
 
 For `rc.1` to `rc.2`, use the maintenance-based coordinated procedure below;
 the published `rc.1` binary cannot participate in an operator-owned drain.
-The `rc.2` to `rc.3` upgrade uses the operator-required stopped restart.
+The `rc.2` to `rc.3` upgrade is rolling; `rc.3` to `rc.4` uses the
+operator-required stopped restart.
 
 1. With every voter still on the source binary, establish a healthy, consistent
    audit history and take a backup. Existing divergent history is an incident;
@@ -268,9 +270,9 @@ therefore derive different `serialized_order` bytes, audit hash-chain entries
 and proposal hashes for the same committed `CreateLedger` entry, and their
 audit chains diverge from it. A leader running a release without asset-mapping
 support also ignores the field and ingests assets verbatim. The operator
-therefore lists `v3.0.0-rc.3` as a mandatory stop boundary, so no pre-`rc.3`
-member runs alongside an `rc.3` member. A cluster not managed by the operator
-must drain and stop every member before starting any `rc.3` member. See
+therefore lists `v3.0.0-rc.4` as a mandatory stop boundary, so no pre-`rc.4`
+member runs alongside an `rc.4` member. A cluster not managed by the operator
+must drain and stop every member before starting any `rc.4` member. See
 [asset mappings](../technical/architecture/subsystems/events-mirror/mirror.md#asset-mappings).
 
 A worker that finds assets v3 cannot represent among a mirror's stored volumes

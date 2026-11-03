@@ -23,9 +23,9 @@ import (
 // Add a target here only after its release has been proven incompatible with
 // a rolling upgrade. RC adjacency is still checked by validateRCUpgrade.
 //
-// rc.3: voters before it encode mirror asset mappings differently in the
+// rc.4: voters before it encode mirror asset mappings differently in the
 // audited CreateLedger order.
-var mandatoryStopVersions = []string{"v3.0.0-rc.3"}
+var mandatoryStopVersions = []string{"v3.0.0-rc.4"}
 
 const requiredUpgradePoll = 5 * time.Second
 
