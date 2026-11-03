@@ -1,9 +1,8 @@
 package http
 
 import (
-	"bytes"
 	"encoding/base64"
-	stdjson "encoding/json"
+	jsonv2 "encoding/json/v2"
 	"errors"
 	"fmt"
 	"net/http"
@@ -14,7 +13,6 @@ import (
 
 	"github.com/formancehq/ledger/v3/internal/adapter/apitrace"
 	"github.com/formancehq/ledger/v3/internal/adapter/json"
-	commonpb "github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/query"
 )
 
@@ -110,27 +108,11 @@ func writeCheckedJSONResponse(w http.ResponseWriter, r *http.Request, value any,
 	_, _ = w.Write(body)
 }
 
-// writeProtoOK writes a 200 OK response whose `data` is a single protobuf
-// message serialized through its public MarshalJSON projection when one
-// exists, and otherwise through the descriptor-based standard-library runtime.
-//
-// Use this ONLY for messages that have no custom MarshalJSON. The fallback
-// walks protobuf reflection and preserves native uint64 number tokens. When a
-// message has a custom MarshalJSON, that method is the public contract — that
-// transactions list leaked amount:{v0} and timestamp:{data} while the detail
-// route emitted decimals and RFC3339. When the message has a MarshalJSON, that
-// method IS the public contract: use writeOKChecked.
-//
-// Nested large integers also require an option-aware public projection.
-// encoder_contract_test.go enforces this split against the descriptor graph.
+// writeProtoOK writes a 200 OK response through encoding/json/v2. The standard
+// library dispatches to hand-written or generated MarshalJSON methods when a
+// protobuf type provides one, and otherwise applies its normal struct rules.
 func writeProtoOK(w http.ResponseWriter, r *http.Request, msg proto.Message) {
-	var raw []byte
-	var err error
-	if marshaler, ok := msg.(stdjson.Marshaler); ok {
-		raw, err = marshaler.MarshalJSON()
-	} else {
-		raw, err = commonpb.MarshalLedgerJSON(msg)
-	}
+	raw, err := jsonv2.Marshal(msg)
 	if err != nil {
 		writeErrorResponse(w, http.StatusInternalServerError, "INTERNAL_ERROR", err)
 
@@ -141,8 +123,7 @@ func writeProtoOK(w http.ResponseWriter, r *http.Request, msg proto.Message) {
 }
 
 // writeProtoListOK writes a 200 OK response whose `data` is a JSON array of
-// protobuf messages. Each element uses the same public-projection/fallback
-// policy as writeProtoOK. A nil/empty slice serializes as `[]`, matching the
+// protobuf messages. A nil/empty slice serializes as `[]`, matching the
 // drained-cursor list handlers.
 func writeProtoListOK[T proto.Message](w http.ResponseWriter, r *http.Request, msgs []T) {
 	data, err := protoListJSON(msgs)
@@ -157,32 +138,14 @@ func writeProtoListOK[T proto.Message](w http.ResponseWriter, r *http.Request, m
 
 // protoListJSON renders msgs as a JSON array of public protobuf JSON objects.
 func protoListJSON[T proto.Message](msgs []T) (json.RawValue, error) {
-	var buf bytes.Buffer
-
-	buf.WriteByte('[')
-
-	for i, msg := range msgs {
-		if i > 0 {
-			buf.WriteByte(',')
-		}
-
-		var raw []byte
-		var err error
-		if marshaler, ok := any(msg).(stdjson.Marshaler); ok {
-			raw, err = marshaler.MarshalJSON()
-		} else {
-			raw, err = commonpb.MarshalLedgerJSON(msg)
-		}
-		if err != nil {
-			return nil, err
-		}
-
-		buf.Write(raw)
+	if msgs == nil {
+		msgs = []T{}
 	}
-
-	buf.WriteByte(']')
-
-	return json.RawValue(buf.Bytes()), nil
+	raw, err := jsonv2.Marshal(msgs)
+	if err != nil {
+		return nil, err
+	}
+	return json.RawValue(raw), nil
 }
 
 // writeBadRequest writes a 400 Bad Request response.
