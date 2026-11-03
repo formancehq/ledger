@@ -54,15 +54,19 @@ func NewPeerStore(store *dal.Store) *PeerStore {
 	return &PeerStore{store: store}
 }
 
-// migrateLegacyServiceAddresses upgrades the old membership representation
+// migrateLegacyServiceAddresses upgrades the rc.3 membership representation
 // exactly once. Legacy rows carried the public service address, so their port
-// must be replaced with the configured peer port before the format is marked
+// must be replaced with the configured peer port before the store is marked
 // current. The rows and the revision marker are committed atomically.
-//
-// TODO(rc+1): remove this migration after every supported node and operator
-// has written membershipFormatRevisionPeerPort data.
 func (p *PeerStore) migrateLegacyServiceAddresses(servicePort int) error {
 	if servicePort == 0 {
+		return nil
+	}
+	revision, err := p.membershipFormatRevision()
+	if err != nil {
+		return err
+	}
+	if revision >= membershipFormatRevisionPeerPort {
 		return nil
 	}
 
@@ -70,34 +74,20 @@ func (p *PeerStore) migrateLegacyServiceAddresses(servicePort int) error {
 	if err != nil {
 		return fmt.Errorf("loading legacy membership: %w", err)
 	}
-	original := make(map[uint64]ConfChangeContext, len(addresses))
-	for nodeID, address := range addresses {
-		original[nodeID] = address
-	}
 	session := p.store.OpenWriteSession()
 	for nodeID, address := range addresses {
-		rowRevision, err := p.peerFormatRevision(nodeID)
-		if err != nil {
-			_ = session.Cancel()
-			return err
+		normalized := normalizeServiceAddresses(map[uint64]ConfChangeContext{nodeID: address}, servicePort)[nodeID]
+		if normalized.Equal(address) {
+			continue
 		}
-		if rowRevision == membershipFormatRevisionLegacy {
-			address = normalizeServiceAddresses(map[uint64]ConfChangeContext{nodeID: address}, servicePort)[nodeID]
-			if !address.Equal(original[nodeID]) {
-				if err := session.SetProto(peerKey(nodeID), &raftcmdpb.PeerAddress{
-					NodeId:         nodeID,
-					RaftAddress:    address.RaftAddress,
-					ServiceAddress: address.ServiceAddress,
-					InstanceId:     address.InstanceID,
-				}); err != nil {
-					_ = session.Cancel()
-					return fmt.Errorf("migrating peer %d: %w", nodeID, err)
-				}
-			}
-		}
-		if err := session.SetBytes(peerFormatKey(nodeID), membershipFormatRevisionBytes(membershipFormatRevisionPeerPort)); err != nil {
+		if err := session.SetProto(peerKey(nodeID), &raftcmdpb.PeerAddress{
+			NodeId:         nodeID,
+			RaftAddress:    normalized.RaftAddress,
+			ServiceAddress: normalized.ServiceAddress,
+			InstanceId:     normalized.InstanceID,
+		}); err != nil {
 			_ = session.Cancel()
-			return fmt.Errorf("marking peer %d membership format: %w", nodeID, err)
+			return fmt.Errorf("migrating peer %d: %w", nodeID, err)
 		}
 	}
 
@@ -120,41 +110,21 @@ func membershipFormatRevisionBytes(revision uint32) []byte {
 	return revisionBytes[:]
 }
 
-func (p *PeerStore) peerFormatRevision(nodeID uint64) (uint32, error) {
-	value, closer, err := p.store.Get(peerFormatKey(nodeID))
+func (p *PeerStore) membershipFormatRevision() (uint32, error) {
+	value, closer, err := p.store.Get(membershipFormatKey)
 	if errors.Is(err, pebble.ErrNotFound) {
 		return membershipFormatRevisionLegacy, nil
 	}
 	if err != nil {
-		return 0, fmt.Errorf("reading peer %d membership format: %w", nodeID, err)
+		return 0, fmt.Errorf("reading membership format revision: %w", err)
 	}
 	defer func() { _ = closer.Close() }()
 
 	if len(value) != 4 {
-		return 0, fmt.Errorf("peer %d membership format has invalid length %d", nodeID, len(value))
+		return 0, fmt.Errorf("membership format revision has invalid length %d", len(value))
 	}
 
 	return binary.BigEndian.Uint32(value), nil
-}
-
-// Legacy rows are identified by the absence of a per-row marker. New writes
-// mark their row in the same Pebble session, so a replayed explicit peer port
-// is never rewritten by the first post-replay migration.
-func (p *PeerStore) writePeerFormat(session *dal.WriteSession, nodeID uint64) error {
-	if err := session.SetBytes(peerFormatKey(nodeID), membershipFormatRevisionBytes(membershipFormatRevisionPeerPort)); err != nil {
-		return fmt.Errorf("marking peer %d membership format: %w", nodeID, err)
-	}
-
-	return nil
-}
-
-func peerFormatKey(nodeID uint64) []byte {
-	key := make([]byte, peerKeyLen)
-	key[0] = dal.ZoneClusterPersistent
-	key[1] = dal.SubGlobPeerFormats
-	binary.BigEndian.PutUint64(key[2:], nodeID)
-
-	return key
 }
 
 // OpenWriteSession returns a fresh write session on the underlying Pebble
@@ -173,10 +143,11 @@ func (p *PeerStore) OpenWriteSession() *dal.WriteSession {
 const peerKeyLen = 1 + 1 + 8
 
 const (
-	// membershipFormatRevisionLegacy identifies rows written before the
+	// membershipFormatRevisionLegacy identifies stores written before the
 	// dedicated peer service port was persisted.
 	membershipFormatRevisionLegacy uint32 = 0
-	// membershipFormatRevisionPeerPort stores explicit peer service ports.
+	// membershipFormatRevisionPeerPort marks the one-shot rc.3 → rc.4
+	// migration complete. Subsequent writes already use the peer port.
 	membershipFormatRevisionPeerPort uint32 = 1
 )
 
@@ -228,11 +199,6 @@ func (p *PeerStore) Put(nodeID uint64, raftAddr, serviceAddr string, instanceID 
 
 		return fmt.Errorf("writing peer %d: %w", nodeID, err)
 	}
-	if err := p.writePeerFormat(session, nodeID); err != nil {
-		_ = session.Cancel()
-		return err
-	}
-
 	return session.Commit()
 }
 
@@ -245,11 +211,6 @@ func (p *PeerStore) Delete(nodeID uint64) error {
 
 		return fmt.Errorf("deleting peer %d: %w", nodeID, err)
 	}
-	if err := session.DeleteKey(peerFormatKey(nodeID)); err != nil {
-		_ = session.Cancel()
-		return fmt.Errorf("deleting peer %d membership format: %w", nodeID, err)
-	}
-
 	return session.Commit()
 }
 
@@ -261,10 +222,6 @@ func (p *PeerStore) DeleteInSession(session *dal.WriteSession, nodeID uint64) er
 	if err := session.DeleteKey(peerKey(nodeID)); err != nil {
 		return fmt.Errorf("session delete peer %d: %w", nodeID, err)
 	}
-	if err := session.DeleteKey(peerFormatKey(nodeID)); err != nil {
-		return fmt.Errorf("session delete peer %d membership format: %w", nodeID, err)
-	}
-
 	return nil
 }
 

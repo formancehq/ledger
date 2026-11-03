@@ -191,16 +191,15 @@ func TestMembership_MigratesLegacyServicePortsOnce(t *testing.T) {
 	require.Equal(t, "pod-0:9999", legacy[1].ServiceAddress)
 	require.Equal(t, "pod-1:9999", legacy[2].ServiceAddress)
 
-	// A row written by WAL replay with the peer-port-aware format is marked in
-	// the same transaction and must not be rewritten by the migration.
+	// New rows written after the one-shot migration are already in the peer
+	// format and are not touched by a later rehydrate.
 	require.NoError(t, ps.Put(3, "pod-2:7777", "pod-2:3333", fixedInstanceID(3)))
 	require.NoError(t, m.Rehydrate())
 	legacy, err = ps.LoadAll()
 	require.NoError(t, err)
 	require.Equal(t, "pod-2:3333", legacy[3].ServiceAddress)
 
-	// Once the format is current, explicit per-peer ports survive a later
-	// constructor or Rehydrate instead of being normalized to the local port.
+	// Once the store-level format is current, later writes are not migrated.
 	require.NoError(t, ps.Put(1, "pod-0:7777", "pod-0:1111", fixedInstanceID(1)))
 	require.NoError(t, ps.Put(2, "pod-1:7777", "pod-1:2222", fixedInstanceID(2)))
 	require.NoError(t, m.Rehydrate())
