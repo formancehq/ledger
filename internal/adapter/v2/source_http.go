@@ -72,6 +72,12 @@ func (s *HTTPSource) doGet(ctx context.Context, path string, query url.Values) (
 	// error. Copy the client so concurrent source calls keep separate state.
 	users := []*url.Userinfo{u.User}
 	client := *s.httpClient
+	transport := client.Transport
+	if transport == nil {
+		transport = http.DefaultTransport
+	}
+	redirects := &mirrorRedirectTransport{RoundTripper: transport}
+	client.Transport = redirects
 	client.CheckRedirect = func(next *http.Request, via []*http.Request) error {
 		users = append(users, next.URL.User)
 		if s.httpClient.CheckRedirect != nil {
@@ -89,7 +95,7 @@ func (s *HTTPSource) doGet(ctx context.Context, path string, query url.Values) (
 	}
 	resp, err := client.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("fetching %s: %w", path, s.transportDiagnostic(err, users...))
+		return nil, fmt.Errorf("fetching %s: %w", path, s.transportDiagnostic(err, redirects.invalidURL, users...))
 	}
 
 	if resp.StatusCode != http.StatusOK {
@@ -105,7 +111,7 @@ func (s *HTTPSource) doGet(ctx context.Context, path string, query url.Values) (
 // transportDiagnostic detaches the diagnostic from the unsafe client error.
 // net/http masks passwords in its URL wrapper, but not passwordless userinfo;
 // transport causes may also repeat credentials. Never retain that error chain.
-func (s *HTTPSource) transportDiagnostic(err error, users ...*url.Userinfo) error {
+func (s *HTTPSource) transportDiagnostic(err error, invalidRedirect bool, users ...*url.Userinfo) error {
 	values := []string{}
 	for _, user := range users {
 		if user == nil {
@@ -142,7 +148,13 @@ func (s *HTTPSource) transportDiagnostic(err error, users ...*url.Userinfo) erro
 			pairs = append(pairs, value, replacement)
 		}
 	}
-	message := strings.NewReplacer(pairs...).Replace(err.Error())
+	// net/http includes an unparseable Location verbatim and never calls
+	// CheckRedirect, so its credentials cannot be collected there.
+	message := "invalid mirror redirect URL"
+	if !invalidRedirect {
+		message = err.Error()
+	}
+	message = strings.NewReplacer(pairs...).Replace(message)
 	// Preserve cancellation identity without retaining dependency error objects.
 	for _, cancellation := range []error{context.Canceled, context.DeadlineExceeded} {
 		if errors.Is(err, cancellation) {
@@ -213,4 +225,36 @@ func (s *HTTPSource) Close() error {
 	}
 
 	return nil
+}
+
+// mirrorRedirectTransport observes malformed redirect targets before net/http
+// renders them into errors. It leaves responses and redirect handling unchanged.
+// Each doGet owns its observer, including all requests in that redirect chain.
+type mirrorRedirectTransport struct {
+	http.RoundTripper
+
+	invalidURL bool
+}
+
+func (t *mirrorRedirectTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	resp, err := t.RoundTripper.RoundTrip(req)
+	if err == nil && resp != nil {
+		switch resp.StatusCode {
+		case http.StatusMovedPermanently, http.StatusFound, http.StatusSeeOther, http.StatusTemporaryRedirect, http.StatusPermanentRedirect:
+			if location := resp.Header.Get("Location"); location != "" {
+				if _, parseErr := req.URL.Parse(location); parseErr != nil {
+					t.invalidURL = true
+				}
+			}
+		}
+	}
+
+	return resp, err
+}
+
+// CancelRequest preserves cancellation for legacy caller-supplied transports.
+func (t *mirrorRedirectTransport) CancelRequest(req *http.Request) {
+	if canceler, ok := t.RoundTripper.(interface{ CancelRequest(*http.Request) }); ok {
+		canceler.CancelRequest(req)
+	}
 }

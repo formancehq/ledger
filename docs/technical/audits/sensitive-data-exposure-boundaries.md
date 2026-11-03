@@ -267,7 +267,11 @@ raw/escaped tokens plus conventional username/password controls. Include a
 transport cause that echoes the URL, so sanitizing only the outer `url.Error`
 cannot pass. Follow real client redirects to a transport that fails with distinct
 redirect credentials, including passwords masked in net/http's final URL error.
-Cover credentials equal to the replacement marker. Preserve custom redirect
+Include malformed redirect targets with distinct credentials and an invalid
+escape: parsing fails before `CheckRedirect`, so require the static
+`invalid mirror redirect URL` diagnostic and absence of the target and parser
+cause throughout the source and worker surfaces. Preserve this case alongside
+parseable redirects and direct failures. Cover credentials equal to the replacement marker. Preserve custom redirect
 policy, the default redirect limit and cancellation identity. Inspect each
 returned error's chain and alternate formatting.
 The real worker fixture must capture head and batch logs, accepted serialized
@@ -276,7 +280,8 @@ absence, retained ledger identity and harmless failure markers, unchanged reques
 authentication and configured URL, and no ingestion-boundary advancement.
 Do not retain unsafe URL error objects behind a safe display string. Keep the
 malformed-URL admission/runtime regressions as independent production triggers.
-The executable oracles are `TestHTTPSource_TransportDiagnostics` and the worker
+The executable oracles are `TestHTTPSource_TransportDiagnostics`,
+`TestHTTPSource_MalformedRedirectDiagnostics` and the worker
 transport regression in `internal/application/mirror/worker_diagnostic_test.go`.
 This protects newly emitted diagnostics; it does not rewrite historical status
 or classify configuration/audit read projections as safe.

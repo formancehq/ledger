@@ -161,10 +161,11 @@ func TestWorker_MalformedURLDoesNotDisclosePassword(t *testing.T) {
 // request URL as a transport might, exercising sanitization of both net/http's
 // outer url.Error and its underlying diagnostic without contacting a network.
 type failingHTTPMirrorTransport struct {
-	t            *testing.T
-	user         *url.Userinfo
-	calls        []string
-	redirectUser *url.Userinfo
+	t                 *testing.T
+	user              *url.Userinfo
+	calls             []string
+	redirectUser      *url.Userinfo
+	malformedRedirect bool
 }
 
 func (r *failingHTTPMirrorTransport) RoundTrip(req *http.Request) (*http.Response, error) {
@@ -172,7 +173,12 @@ func (r *failingHTTPMirrorTransport) RoundTrip(req *http.Request) (*http.Respons
 	if r.redirectUser != nil && req.URL.Host == "source.invalid" {
 		r.calls = append(r.calls, req.URL.Query().Get("sort"))
 
-		return &http.Response{StatusCode: http.StatusFound, Header: http.Header{"Location": {"https://" + r.redirectUser.String() + "@redirect.invalid/final"}}, Body: io.NopCloser(strings.NewReader("")), Request: req}, nil
+		location := "https://" + r.redirectUser.String() + "@redirect.invalid/final"
+		if r.malformedRedirect {
+			location += "/%zz"
+		}
+
+		return &http.Response{StatusCode: http.StatusFound, Header: http.Header{"Location": {location}}, Body: io.NopCloser(strings.NewReader("")), Request: req}, nil
 	}
 	expectedUser := r.user
 	if r.redirectUser != nil {
@@ -206,11 +212,14 @@ func TestWorker_TransportErrorsDoNotDiscloseCredentials(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			for _, redirect := range []bool{false, true} {
-				t.Run(fmt.Sprintf("redirect=%t", redirect), func(t *testing.T) {
+			for _, mode := range []string{"direct", "redirect", "malformed redirect"} {
+				t.Run(mode, func(t *testing.T) {
 					t.Parallel()
 					const ledgerName = "transport-mirror"
-					const diagnostic = "mirror transport sentinel"
+					diagnostic := "mirror transport sentinel"
+					if mode == "malformed redirect" {
+						diagnostic = "invalid mirror redirect URL"
+					}
 					ctx, cancel := context.WithTimeout(internalauth.WithSystemActor(context.Background(), commands.ComponentMirror), 10*time.Second)
 					defer cancel()
 					var logs bytes.Buffer
@@ -241,7 +250,7 @@ func TestWorker_TransportErrorsDoNotDiscloseCredentials(t *testing.T) {
 					adm := admission.NewAdmission(store, logger, proposer, builder, meters, writeGate, keys, shared, attrs, numscript.NewNumscriptCache(0), func(context.Context) error { return nil })
 
 					sourceUser := tc.user
-					if redirect {
+					if mode != "direct" {
 						sourceUser = url.User("INITIAL_WORKER_TOKEN")
 					}
 					baseURL := (&url.URL{Scheme: tc.scheme, Host: "source.invalid", User: sourceUser}).String()
@@ -259,8 +268,9 @@ func TestWorker_TransportErrorsDoNotDiscloseCredentials(t *testing.T) {
 					require.Equal(t, baseURL, ledger.GetMirrorSource().GetHttp().GetBaseUrl())
 					require.Nil(t, ledger.GetMirrorSyncProgress().GetError())
 					transport := &failingHTTPMirrorTransport{t: t, user: sourceUser}
-					if redirect {
+					if mode != "direct" {
 						transport.redirectUser = tc.user
+						transport.malformedRedirect = mode == "malformed redirect"
 					}
 					source := v2.NewHTTPSource(baseURL, config.GetLedgerName(), &http.Client{Transport: transport})
 					t.Cleanup(func() { require.NoError(t, source.Close()) })

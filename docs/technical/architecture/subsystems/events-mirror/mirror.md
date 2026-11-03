@@ -252,11 +252,22 @@ configuration and request authentication remain unchanged. Replacement text
 must not reintroduce a credential equal to the redaction marker; such values
 are removed instead.
 
+A redirect with an invalid `Location` fails parsing before `CheckRedirect`
+can observe its credentials. A per-call transport observer detects this parse
+failure without changing the response or redirect policy. When the client
+returns that failure, the adapter discards its unsafe error chain and emits
+`invalid mirror redirect URL`. The diagnostic retains the fetch operation and
+ledger identity, while omitting the unparseable target and its parser cause.
+
 `TestHTTPSource_TransportDiagnostics` exercises both head and batch calls with
 a deterministic failing transport, raw/escaped tokens and password controls,
 including causes that echo the request URL, redirects introducing different
 credentials, and credentials equal to the replacement marker. It checks
-returned errors and alternate formatting through the safe chain. The worker transport regression
+returned errors and alternate formatting through the safe chain.
+`TestHTTPSource_MalformedRedirectDiagnostics` independently covers redirect
+parsing failures for both source calls, including distinct redirect credentials;
+the worker transport regression also retains this trigger alongside direct
+transport failures and parseable redirects. The worker transport regression
 captures both log paths and serialized accepted technical proposals, applies
 the status through the real FSM and checks the stored status and progress.
 Failure retains ledger identity and the harmless marker without advancing the

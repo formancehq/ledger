@@ -17,6 +17,26 @@ type rejectingMirrorTransport struct {
 	t *testing.T
 }
 
+type cancelingMirrorTransport struct {
+	http.RoundTripper
+
+	canceled *http.Request
+}
+
+func (t *cancelingMirrorTransport) CancelRequest(req *http.Request) {
+	t.canceled = req
+}
+
+func TestMirrorRedirectTransport_ForwardsCancellation(t *testing.T) {
+	t.Parallel()
+	transport := &cancelingMirrorTransport{}
+	observer := &mirrorRedirectTransport{RoundTripper: transport}
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, "https://mirror.example", nil)
+	require.NoError(t, err)
+	observer.CancelRequest(req)
+	require.Same(t, req, transport.canceled)
+}
+
 func (r rejectingMirrorTransport) RoundTrip(*http.Request) (*http.Response, error) {
 	r.t.Error("malformed mirror URL reached the network")
 
@@ -61,6 +81,7 @@ type failingMirrorTransport struct {
 	redirectUser   *url.Userinfo
 	alwaysRedirect bool
 	calls          *int
+	redirectPath   string
 }
 
 func (r failingMirrorTransport) RoundTrip(req *http.Request) (*http.Response, error) {
@@ -69,7 +90,12 @@ func (r failingMirrorTransport) RoundTrip(req *http.Request) (*http.Response, er
 		*r.calls++
 	}
 	if r.redirectUser != nil && (req.URL.Host == "mirror.example" || r.alwaysRedirect) {
-		return &http.Response{StatusCode: http.StatusFound, Header: http.Header{"Location": {"https://" + r.redirectUser.String() + "@redirect.example/final"}}, Body: io.NopCloser(strings.NewReader("")), Request: req}, nil
+		path := "/final"
+		if r.redirectPath != "" {
+			path = r.redirectPath
+		}
+
+		return &http.Response{StatusCode: http.StatusFound, Header: http.Header{"Location": {"https://" + r.redirectUser.String() + "@redirect.example" + path}}, Body: io.NopCloser(strings.NewReader("")), Request: req}, nil
 	}
 	expectedUser := r.user
 	if r.redirectUser != nil {
@@ -86,6 +112,52 @@ func (r failingMirrorTransport) RoundTrip(req *http.Request) (*http.Response, er
 	}
 
 	return nil, fmt.Errorf("synthetic transport failure: %s", req.URL)
+}
+
+func TestHTTPSource_MalformedRedirectDiagnostics(t *testing.T) {
+	t.Parallel()
+	for _, user := range []*url.Userinfo{
+		url.User("REDIRECT_SECRET"),
+		url.UserPassword("REDIRECT_USER", "REDIRECT/PASSWORD+SECRET@"),
+	} {
+		t.Run(user.String(), func(t *testing.T) {
+			t.Parallel()
+			calls := 0
+			policyCalls := 0
+			client := &http.Client{
+				Transport: failingMirrorTransport{t: t, redirectUser: user, redirectPath: "/%zz", calls: &calls},
+				CheckRedirect: func(*http.Request, []*http.Request) error {
+					policyCalls++
+
+					return nil
+				},
+			}
+			source := NewHTTPSource("https://INITIAL_SOURCE_TOKEN@mirror.example", "source-ledger", client)
+			t.Cleanup(func() { require.NoError(t, source.Close()) })
+			_, headErr := source.GetLatestLogID(context.Background())
+			logs, more, batchErr := source.FetchLogs(context.Background(), 0, 100)
+			require.Empty(t, logs)
+			require.False(t, more)
+			require.Equal(t, 2, calls)
+			require.Zero(t, policyCalls, "Location parsing fails before CheckRedirect")
+			for _, err := range []error{headErr, batchErr} {
+				require.ErrorContains(t, err, "fetching logs: invalid mirror redirect URL")
+				secrets := []string{"INITIAL_SOURCE_TOKEN", user.Username(), user.String()}
+				if password, ok := user.Password(); ok {
+					secrets = append(secrets, password)
+				}
+				for cause := err; cause != nil; cause = errors.Unwrap(cause) {
+					for _, diagnostic := range []string{cause.Error(), fmt.Sprintf("%+v", cause), fmt.Sprintf("%#v", cause)} {
+						for _, secret := range secrets {
+							require.NotContains(t, diagnostic, secret)
+							require.NotContains(t, diagnostic, url.QueryEscape(secret))
+							require.NotContains(t, diagnostic, url.PathEscape(secret))
+						}
+					}
+				}
+			}
+		})
+	}
 }
 
 func TestHTTPSource_TransportDiagnostics(t *testing.T) {
@@ -149,6 +221,10 @@ func TestHTTPSource_TransportCancellationIdentity(t *testing.T) {
 			require.ErrorIs(t, err, cancellation)
 			require.ErrorContains(t, err, "synthetic transport failure")
 			require.NotContains(t, err.Error(), user.Username())
+			redirectErr := source.transportDiagnostic(fmt.Errorf("unsafe REDIRECT_SECRET: %w", cancellation), true, user)
+			require.ErrorIs(t, redirectErr, cancellation)
+			require.ErrorContains(t, redirectErr, "invalid mirror redirect URL")
+			require.NotContains(t, redirectErr.Error(), "REDIRECT_SECRET")
 		})
 	}
 }
