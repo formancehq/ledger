@@ -430,7 +430,11 @@ under `internal/storage/wal/`.
 Replay rebuilds the log from the raw records in write order. It treats a
 committed snapshot record that the rebuilt log does not hold as a received
 snapshot that discarded the log, except the Save call written just before it.
-Check these histories against it:
+When the snapshot position is at or below the rebuilt log's last index but its
+term is unknown to the rebuild (below the first retained record), the log is
+kept as `ReadAll` keeps it; only the term backstop then applies. Report a
+reachable history that leaves a received snapshot's position unknown as a
+finding. Check these histories against it:
 
 - a lower-term overwrite followed by a snapshot at that entry;
 - a received snapshot whose stale tail has a higher term than the snapshot;

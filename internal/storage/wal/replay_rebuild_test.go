@@ -1,12 +1,17 @@
 package wal
 
 import (
+	"math"
+	"slices"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 	"go.etcd.io/etcd/server/v3/storage/wal"
 	"go.etcd.io/etcd/server/v3/storage/wal/walpb"
 	"go.etcd.io/raft/v3/raftpb"
+	"go.uber.org/zap"
+
+	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 )
 
 var testConfState = &raftpb.ConfState{Voters: []uint64{1, 2, 3}}
@@ -19,24 +24,52 @@ func receivedSnapshot(index, term uint64) *raftpb.Snapshot {
 	}}
 }
 
-// requireRecoveredLog reopens dir and checks the recovered last (index, term)
-// and that no entry above it is addressable. It reopens twice: the result must
-// not depend on how many restarts happened since the faulty history.
-func requireRecoveredLog(t *testing.T, dir string, lastIndex, lastTerm uint64) {
+// requireRecoveredLog reopens dir and checks the whole recovered log: the
+// snapshot boundary, every retained (index, term) and payload above it, and
+// that nothing past the last entry is addressable. It reopens twice: the
+// result must not depend on how many restarts happened since the history.
+// Payloads follow the entries helper (one byte equal to the index).
+func requireRecoveredLog(t *testing.T, dir string, boundary logID, above ...logID) {
 	t.Helper()
 
 	for range 2 {
 		w := newTestWALAt(t, dir)
-		gotIndex, err := w.LastIndex()
+
+		firstIndex, err := w.FirstIndex()
 		require.NoError(t, err)
-		require.Equal(t, lastIndex, gotIndex, "recovered last index")
-		gotTerm, err := w.Term(gotIndex)
+		require.Equal(t, boundary.index+1, firstIndex, "recovered first index")
+		boundaryTerm, err := w.Term(boundary.index)
 		require.NoError(t, err)
-		require.Equal(t, lastTerm, gotTerm, "recovered last term")
-		_, err = w.Term(gotIndex + 1)
+		require.Equal(t, boundary.term, boundaryTerm, "recovered boundary term")
+
+		lastIndex, err := w.LastIndex()
+		require.NoError(t, err)
+		require.Equal(t, boundary.index+uint64(len(above)), lastIndex, "recovered last index")
+
+		var got []logID
+		if len(above) > 0 {
+			recovered, err := w.Entries(firstIndex, lastIndex+1, math.MaxUint64)
+			require.NoError(t, err)
+			for _, e := range recovered {
+				got = append(got, logID{index: e.GetIndex(), term: e.GetTerm()})
+				require.Equal(t, []byte{byte(e.GetIndex())}, e.GetData(), "payload of entry %d", e.GetIndex())
+			}
+		}
+		require.Equal(t, above, got, "recovered entries")
+
+		_, err = w.Term(lastIndex + 1)
 		require.Error(t, err)
 		require.NoError(t, w.Close())
 	}
+}
+
+func ids(from, to, term uint64) []logID {
+	var out []logID
+	for i := from; i <= to; i++ {
+		out = append(out, logID{index: i, term: term})
+	}
+
+	return out
 }
 
 func entries(from, to, term uint64) []*raftpb.Entry {
@@ -62,7 +95,7 @@ func TestRestartDiscardsTailAfterLowerTermOverwrite(t *testing.T) {
 	require.NoError(t, w.CreateSnapshot(5, testConfState, nil))
 	require.NoError(t, w.Close())
 
-	requireRecoveredLog(t, dir, 5, 2)
+	requireRecoveredLog(t, dir, logID{5, 2})
 }
 
 // An installed snapshot that did not match the log discards the whole log
@@ -77,7 +110,7 @@ func TestRestartDiscardsTailReplacedByReceivedSnapshot(t *testing.T) {
 	require.NoError(t, w.ApplySnapshot(receivedSnapshot(6, 4)))
 	require.NoError(t, w.Close())
 
-	requireRecoveredLog(t, dir, 6, 4)
+	requireRecoveredLog(t, dir, logID{6, 4})
 }
 
 // processReady persists a combined snapshot/entry Ready's entries before
@@ -97,7 +130,7 @@ func TestRestartKeepsReadySuffixPersistedBeforeSnapshotInstall(t *testing.T) {
 	// Crash before installReadySnapshot appends the suffix again.
 	require.NoError(t, w.Close())
 
-	requireRecoveredLog(t, dir, 8, 6)
+	requireRecoveredLog(t, dir, logID{6, 4}, ids(7, 8, 6)...)
 }
 
 // persistSnapshotGuardOnly runs the first durable steps of ApplySnapshot (the
@@ -128,7 +161,7 @@ func TestRestartDiscardsTailWhenCrashFollowsCommittedSnapshotGuard(t *testing.T)
 	persistSnapshotGuardOnly(t, w, receivedSnapshot(6, 4))
 	require.NoError(t, w.Close())
 
-	requireRecoveredLog(t, dir, 6, 4)
+	requireRecoveredLog(t, dir, logID{6, 4})
 }
 
 func TestRestartKeepsReadySuffixWhenCrashFollowsSnapshotGuard(t *testing.T) {
@@ -141,7 +174,7 @@ func TestRestartKeepsReadySuffixWhenCrashFollowsSnapshotGuard(t *testing.T) {
 	persistSnapshotGuardOnly(t, w, receivedSnapshot(6, 4))
 	require.NoError(t, w.Close())
 
-	requireRecoveredLog(t, dir, 8, 6)
+	requireRecoveredLog(t, dir, logID{6, 4}, ids(7, 8, 6)...)
 }
 
 func TestRestartKeepsReadySuffixAppendedAfterSnapshotInstall(t *testing.T) {
@@ -157,7 +190,7 @@ func TestRestartKeepsReadySuffixAppendedAfterSnapshotInstall(t *testing.T) {
 	require.NoError(t, w.Append(hs(6, 0, 8), suffix))
 	require.NoError(t, w.Close())
 
-	requireRecoveredLog(t, dir, 8, 6)
+	requireRecoveredLog(t, dir, logID{6, 4}, ids(7, 8, 6)...)
 }
 
 // A local snapshot, a ConfState update of that snapshot, and compaction never
@@ -173,7 +206,7 @@ func TestRestartKeepsEntriesAboveLocalSnapshot(t *testing.T) {
 	require.NoError(t, w.UpdateSnapshotConfState(&raftpb.ConfState{Voters: []uint64{1, 2, 3, 4}}))
 	require.NoError(t, w.Close())
 
-	requireRecoveredLog(t, dir, 8, 2)
+	requireRecoveredLog(t, dir, logID{5, 2}, ids(6, 8, 2)...)
 }
 
 // ApplySnapshot advances Commit to the snapshot index but keeps the current
@@ -210,15 +243,6 @@ func TestRebuildReplayLog(t *testing.T) {
 	snapRec := func(index, term uint64) replayRecord {
 		return replayRecord{kind: wal.SnapshotType, snapshot: logID{index: index, term: term}}
 	}
-	ids := func(from, to, term uint64) []logID {
-		var out []logID
-		for i := from; i <= to; i++ {
-			out = append(out, logID{index: i, term: term})
-		}
-
-		return out
-	}
-
 	t.Run("overwrite at or below the replay snapshot truncates the tail", func(t *testing.T) {
 		t.Parallel()
 
@@ -244,14 +268,30 @@ func TestRebuildReplayLog(t *testing.T) {
 		require.Equal(t, ids(3, 3, 6), got)
 	})
 
+	// The log holds (2, term 5), so snapshot (2, term 4) was received. Entry
+	// (3, term 6) starts right after it and would qualify as the Ready suffix.
+	suffixBeforeSnapshot := []replayRecord{
+		entryRec(1, 1), entryRec(2, 5), committed(1),
+		entryRec(3, 6), committed(1),
+	}
+
+	t.Run("the Save call just before a received snapshot is kept", func(t *testing.T) {
+		t.Parallel()
+
+		records := append(slices.Clone(suffixBeforeSnapshot),
+			snapRec(2, 4), committed(2), snapRec(2, 4))
+		got, err := rebuildReplayLog(records, logID{index: 2, term: 4}, 2)
+		require.NoError(t, err)
+		require.Equal(t, []logID{{3, 6}}, got)
+	})
+
 	t.Run("a second Save call before the snapshot drops the suffix candidate", func(t *testing.T) {
 		t.Parallel()
 
-		got, err := rebuildReplayLog([]replayRecord{
-			entryRec(1, 1), entryRec(2, 5), entryRec(3, 5), stateRec,
-			stateRec, // the snapshot Ready persists only a HardState
-			snapRec(2, 4), committed(2), snapRec(2, 4),
-		}, logID{index: 2, term: 4}, 2)
+		records := append(slices.Clone(suffixBeforeSnapshot),
+			committed(2), // the snapshot Ready persists only a HardState
+			snapRec(2, 4), committed(2), snapRec(2, 4))
+		got, err := rebuildReplayLog(records, logID{index: 2, term: 4}, 2)
 		require.NoError(t, err)
 		require.Empty(t, got)
 	})
@@ -271,14 +311,16 @@ func TestRebuildReplayLog(t *testing.T) {
 		t.Parallel()
 
 		// Crash after the guard record: the restarted node resumes its old log,
-		// a leader repairs it from index 3, and commit later reaches 4.
+		// a leader repairs it from index 3, and commit later reaches 4. The
+		// repair term (5) differs from the guard term (4): counting the guard
+		// would see a mismatch at index 3 and discard the repaired log.
 		got, err := rebuildReplayLog([]replayRecord{
 			entryRec(1, 1), entryRec(2, 1), entryRec(3, 2), committed(1),
 			snapRec(3, 4),
-			entryRec(3, 4), entryRec(4, 4), committed(4),
+			entryRec(3, 5), entryRec(4, 5), committed(4),
 		}, logID{index: 1, term: 1}, 4)
 		require.NoError(t, err)
-		require.Equal(t, []logID{{2, 1}, {3, 4}, {4, 4}}, got)
+		require.Equal(t, []logID{{2, 1}, {3, 5}, {4, 5}}, got)
 	})
 
 	t.Run("a received snapshot above the replay snapshot fails closed", func(t *testing.T) {
@@ -318,6 +360,30 @@ func TestRebuildReplayLogContiguousAppendsAllocateLinearly(t *testing.T) {
 		}
 	})
 	require.Less(t, result.AllocedBytesPerOp(), int64(16<<20), "contiguous replay must amortize slice growth")
+}
+
+// The rebuild removes a suffix that ReadAll kept; when that suffix starts at
+// or below the durable commit index, reconciliation must fail closed rather
+// than lower the commit. The discardStaleReplayTail backstop cannot catch a
+// missing check here: reconciliation already removed the suffix before it.
+func TestReconcileFailsClosedWhenRebuildDropsCommittedPosition(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	etcdWAL, err := wal.Create(zap.NewNop(), dir, nil)
+	require.NoError(t, err)
+	require.NoError(t, etcdWAL.Save(hs(1, 0, 0), entries(1, 5, 1)))
+	// Overwrite at 2 truncates 3..5 in the live log; a later local snapshot at
+	// 2 hides that overwrite from ReadAll. The commit index then claims 4.
+	require.NoError(t, etcdWAL.Save(hs(2, 0, 2), []*raftpb.Entry{ent(2, 2, []byte{2})}))
+	require.NoError(t, etcdWAL.SaveSnapshot(&walpb.Snapshot{Index: new(uint64(2)), Term: new(uint64(2)), ConfState: testConfState}))
+	require.NoError(t, etcdWAL.Save(hs(2, 0, 4), nil))
+	require.NoError(t, etcdWAL.Close())
+
+	readAll := entries(3, 5, 1)
+	_, err = reconcileReplayedEntries(dir, &raftpb.Snapshot{Metadata: snapshotMeta(2, 2, nil)}, hs(2, 0, 4), readAll,
+		logging.FromContext(logging.TestingContext()))
+	require.ErrorIs(t, err, errStaleTailIntersectsCommit)
 }
 
 func TestTrimToRebuiltLog(t *testing.T) {
