@@ -97,6 +97,10 @@ every retained audit item's physical identity and parent membership, including
 items with no log. Parent presence alone never authorizes an item as an
 expectation source. See [the boundary and membership contract](checker.md#allocation-boundaries-and-audit-item-membership).
 
+The [Numscript projection owner](checker.md#numscript-projection-ownership)
+keeps library expectation initialization, save/deletion transitions and comparison
+together while preserving the existing checker phases and diagnostics.
+
 ## Related
 
 - [Consensus → global-log.md](../consensus/global-log.md) — what produces the audit entries the chain links.
