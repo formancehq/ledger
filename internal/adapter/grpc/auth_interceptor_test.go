@@ -140,6 +140,24 @@ func TestAuthStreamInterceptorGuardsInfrastructureMethodsOnPeerListener(t *testi
 	require.True(t, called)
 }
 
+func TestPeerListenerDoesNotTrustSecretlessForwarding(t *testing.T) {
+	cfg := internalauth.AuthConfig{Enabled: false, ScopeMapping: internalauth.ScopeMapping{
+		internalauth.ScopeMappingAnonymousKey: {internalauth.ScopeOpsRead},
+	}}
+	interceptor := authUnaryInterceptor(cfg, true)
+	info := &ggrpc.UnaryServerInfo{FullMethod: "/ledger.BucketService/Barrier"}
+	called := false
+	_, err := interceptor(context.Background(), &servicepb.BarrierRequest{}, info, func(ctx context.Context, _ any) (any, error) {
+		called = true
+		require.False(t, internalauth.IsClusterInternal(ctx))
+		_, authErr := internalauth.EvaluateGRPCCredentials(ctx, cfg)
+		require.NoError(t, authErr)
+		return nil, nil
+	})
+	require.NoError(t, err)
+	require.True(t, called)
+}
+
 func (s *authInterceptorBucketServer) Barrier(ctx context.Context, _ *servicepb.BarrierRequest) (*servicepb.BarrierResponse, error) {
 	s.barrierCalls.Add(1)
 	s.barrierHasScope.Store(internalauth.HasScope(internalauth.ExpandedScopesFromContext(ctx), internalauth.ScopeOpsRead))
