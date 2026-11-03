@@ -5443,8 +5443,8 @@ components:
           type: string
         clientSecret:
           type: string
-          enum: ['[redacted]']
-          description: Presence marker only; reusable secret material is never returned
+          enum: ['', '[redacted]']
+          description: Empty when unset; otherwise a presence marker only. Reusable secret material is never returned
         tokenEndpoint:
           type: string
           description: OAuth endpoint URL with userinfo (including passwordless tokens) and query credentials masked
