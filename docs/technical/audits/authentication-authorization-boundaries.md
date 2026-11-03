@@ -61,6 +61,30 @@ outside callers only far enough to prove or disprove an in-scope mechanism,
 loading the routed documentation. Resolve library behavior from the version in
 `go.mod`/`go.sum` rather than assuming JWT helper semantics from their names.
 
+## Authorization generator evidence
+
+`tools/protoc-gen-rpcauth/**` is explicitly in scope with its module and fixture
+tests. Read [the protobuf tooling contract](../contributing/protobuf.md) before
+following dynamic extension decoding, required-service selection and generated
+full-method names. Reconcile three independent inventories: source method
+annotations, generated policy kind/value, and actual registered unary/streaming
+service descriptors. A registry checked only against its own enumeration can
+miss a generator omission.
+
+Use the plugin's complete/invalid-policy and missing-service fixtures for
+positive and negative generation evidence. Missing declarations, `public:false`,
+unspecified/unknown enums and missing required services must reject. Then use
+`TestRPCAuthPoliciesCoverEveryPublicServiceMethod`,
+`TestRPCAuthPoliciesPinExceptionalMethods` and
+`TestRPCAuthPolicyLookupFailsClosedForUnknownMethod` for generated runtime
+behavior. Probe whether mutating a returned policy or map changes a fresh
+lookup. Pair each runtime decision with installed interceptor evidence and
+backend entry counts: generated source strings and successful generation alone
+do not prove enforcement. Keep startup validation/publication ownership with
+`configuration-startup-contracts`; this domain owns policy fidelity and request
+authorization. Run any generation diagnostic only in an allowed disposable
+fixture and record the exact plugin/module input versions.
+
 ## Source-backed contracts
 
 These anchors describe the preparation base. Reconcile current code, tests and
@@ -93,6 +117,20 @@ actual server registration and pinned dependency versions.
 
 Tests under `tests/e2e/cluster/` are supporting authentication/forwarding evidence,
 not authorization for a repository-wide E2E or lifecycle campaign.
+
+### Verified caller source evidence
+
+Contract F requires the source oneof to follow successful credential validation:
+OIDC records its verified issuer even with a JWT `kid`, while static Ed25519
+records its key ID even with an issuer claim. Signing-key rotation must preserve
+the OIDC issuer/subject identity. Exercise real signed tokens through HTTP and
+the public gRPC interceptor chain into admission, and carry the captured caller
+through a trusted follower hop. Assert the source oneof, subject and frozen
+scopes at capture; a successful authentication assertion alone misses this
+failure. Pair authorized writes with insufficient-scope rejection before backend
+entry. `TestHTTPAuthenticatedCallerUsesVerifiedCredentialSource` covers all
+three supported OIDC algorithms and static Ed25519. Existing committed
+snapshots are not rewritten or reclassified by this capture correction.
 
 ## Ownership and exclusions
 
@@ -185,3 +223,35 @@ Initial metadata on normal or mirror creation is authorized by ledger:WriteLedge
 Can a caller with LedgerWrite create a ledger with initial metadata without MetadataWrite, while the same caller cannot use the later metadata-save operation without its required scope?
 
 See [the creation contract](../architecture/subsystems/api/atomic-ledger-creation.md) for the authorized semantics and regression evidence. Treat HTTP response/forwarding, actual FSM readback, keyed replay, nonempty checkpoint-plus-delta restore, and primary-projection tampering as separate evidence oracles; a helper-only test does not prove every boundary.
+
+## HTTP signed transactions and existing authorization
+
+Signed transaction create/revert/metadata and nonempty atomic bulk keep their
+existing JWT/anonymous route and element-scope requirements. The Ed25519 signing
+key does not replace the JWT caller or grant cluster/system trust. Both transports
+must reach the existing `resolveBatch` verifier with `ApplyRequest.signed` and
+the unchanged `SignedApplyBatch`; HTTP adds no independent signing authority.
+HTTP assembles it from body `payload` and exactly one nonempty
+`Formance-Signing-Key-Id` / `Formance-Signature` header each. Missing, duplicate,
+malformed or wrong-length signature headers reject 400. Either signing header
+with a non-JSON or missing content type or on an unsupported route rejects 415,
+preventing a signed attempt from silently executing unsigned. Signed requests use
+application/json (including MIME parameters); either header's presence, even if
+empty, selects the wrapper. With neither header present, ordinary unsigned decoding applies.
+Trace the installed route guards and caller capture with authorized and denied controls,
+not merely a well-formed signed envelope. A mismatch between the complete signed
+batch and the HTTP-derived batch must prevent backend dispatch. Every atomic
+bulk element remains subject to its own scope, and continueOnFailure must not
+suppress 401/403 from signature verification or authorization.
+
+The API boundary domain owns wrapper decoding, proto.Equal coverage, exact-byte
+forwarding and response representation. This domain follows dedicated
+`ledger.signing` ErrorInfo reconstruction under `internal/adapter/grpcerr/**` only
+to establish that existing signing failures remain distinguishable from bare or
+foreign gRPC auth failures and cannot change trust/scopes/attribution. Correct
+pairs are MISSING_SIGNATURE/Unauthenticated and INVALID_SIGNATURE or
+UNKNOWN_KEY_ID/PermissionDenied. Compare exact local and forwarded decisions,
+including absent/foreign/wrong-status controls. Public HTTP codes remain generic
+UNAUTHENTICATED/PERMISSION_DENIED; bare/foreign auth errors retain 500. Key lifecycle
+and cryptographic primitive analysis remain excluded. See
+[HTTP signing](../architecture/subsystems/api/http-api.md#signed-transaction-requests).

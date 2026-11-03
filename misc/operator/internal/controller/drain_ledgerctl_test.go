@@ -22,15 +22,15 @@ func TestLedgerctlDrainReadsLocalDurableCursors(t *testing.T) {
 			line := strings.Join(command, " ")
 			switch {
 			case strings.Contains(line, "'begin-drain'"):
-				return &execResult{Stdout: `{"cutoffIndex":"42","members":["1","2"]}`}, nil
+				return &execResult{Stdout: `{"cutoffIndex":42,"members":[1,2]}`}, nil
 			case strings.Contains(line, "'drain-status'"):
 				if pod != podName("", 1) {
 					return nil, fmt.Errorf("node 2 queried through %s", pod)
 				}
 
-				return &execResult{Stdout: `{"localNode":"2","supportsDrain":true,"supportsRelease":true,"drainEpoch":"e1","drainIndex":"42","releaseIndex":"0","lastPersistedIndex":"42","syncStatus":"normal"}`}, nil
+				return &execResult{Stdout: `{"localNode":2,"supportsDrain":true,"supportsRelease":true,"drainEpoch":"e1","drainIndex":42,"releaseIndex":0,"lastPersistedIndex":42,"syncStatus":"normal"}`}, nil
 			default:
-				return &execResult{Stdout: `{"state":"Leader","drainEpoch":"e1","drainIndex":"42","nodes":[{"id":"1"},{"id":"2"}]}`}, nil
+				return &execResult{Stdout: `{"state":"Leader","drainEpoch":"e1","drainIndex":42,"nodes":[{"id":1},{"id":2}]}`}, nil
 			}
 		},
 	}

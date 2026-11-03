@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/getkin/kin-openapi/openapi3"
@@ -79,6 +80,50 @@ func TestOpenAPISpec_DecodesStrictly(t *testing.T) {
 	var doc map[string]any
 	require.NoError(t, yaml.Unmarshal(spec, &doc))
 	require.Contains(t, doc, "paths")
+}
+
+func TestOpenAPISpec_OperationIDsAreUniqueAndV3Namespaced(t *testing.T) {
+	t.Parallel()
+
+	spec, err := os.ReadFile("../../../openapi.yml")
+	require.NoError(t, err)
+
+	var doc map[string]any
+	require.NoError(t, yaml.Unmarshal(spec, &doc))
+	paths, ok := doc["paths"].(map[string]any)
+	require.True(t, ok)
+
+	methods := map[string]struct{}{
+		"get": {}, "put": {}, "post": {}, "delete": {}, "options": {}, "head": {}, "patch": {}, "trace": {},
+	}
+	operationIDs := make(map[string]string)
+	for path, rawItem := range paths {
+		item, ok := rawItem.(map[string]any)
+		require.True(t, ok, path)
+		for method, rawOperation := range item {
+			if _, ok := methods[method]; !ok {
+				continue
+			}
+			operation, ok := rawOperation.(map[string]any)
+			require.True(t, ok, "%s %s", method, path)
+			operationID, ok := operation["operationId"].(string)
+			require.True(t, ok, "%s %s has no operationId", method, path)
+			if previous, exists := operationIDs[operationID]; exists {
+				t.Fatalf("operationId %q is used by %s and %s %s", operationID, previous, method, path)
+			}
+			operationIDs[operationID] = method + " " + path
+		}
+	}
+
+	for operationID, path := range operationIDs {
+		require.True(t, strings.HasPrefix(operationID, "v3"), "operationId %q is not v3-namespaced", operationID)
+		parts := strings.SplitN(path, " ", 2)
+		item := paths[parts[1]].(map[string]any)
+		operation := item[parts[0]].(map[string]any)
+		sdkName := operationID[2:]
+		require.NotEmpty(t, sdkName)
+		require.Equal(t, strings.ToUpper(sdkName[:1])+sdkName[1:], operation["x-speakeasy-name-override"], operationID)
+	}
 }
 
 func TestOpenAPISpec_BulkIdempotencyHeader(t *testing.T) {
@@ -161,8 +206,12 @@ func TestOpenAPISpec_SystemLogPayloadPreservation(t *testing.T) {
 			require.NoError(t, json.Unmarshal(encoded, &actual))
 			require.Contains(t, actual, field.JSONName())
 			require.Len(t, actual, 1)
+			// EmitUnpopulated projections may add protobuf default fields, but
+			// every configured fixture value must survive serialization. The
+			// apply fixture is output-only and cannot be decoded back into the
+			// protobuf input, so its schema/variant checks remain above.
 			if field.JSONName() != "apply" {
-				require.Equal(t, fixture, actual)
+				requireJSONSubset(t, fixture, actual)
 			}
 		})
 	}

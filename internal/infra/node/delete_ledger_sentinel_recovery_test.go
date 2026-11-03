@@ -50,6 +50,9 @@ func TestDeleteLedgerSentinelRecovery(t *testing.T) {
 				// transactions, so recovery restores the same metadata limits.
 				var initial raftcmdpb.Proposal
 				require.NoError(t, initial.UnmarshalVT(createDeleted.GetData()))
+				// This fixture models historical mixed policy/business entries.
+				initial.Orders = initial.GetBatch().GetOrders()
+				initial.Payload = nil
 				initial.Orders = append([]*raftcmdpb.Order{{Type: &raftcmdpb.Order_SystemScoped{
 					SystemScoped: &raftcmdpb.SystemScopedOrder{Payload: &raftcmdpb.SystemScopedOrder_SetClusterPolicy{
 						SetClusterPolicy: &raftcmdpb.SetClusterPolicyOrder{Policy: &commonpb.ClusterPolicy{

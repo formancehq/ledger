@@ -119,7 +119,7 @@ func processMirrorIngest(ledger string, order *raftcmdpb.MirrorIngestOrder, ctx 
 	wrapped := &raftcmdpb.Order{Type: &raftcmdpb.Order_LedgerScoped{LedgerScoped: &raftcmdpb.LedgerScopedOrder{
 		Ledger: ledger, Payload: &raftcmdpb.LedgerScopedOrder_MirrorIngest{MirrorIngest: order},
 	}}}
-	limits := domain.MetadataLimitsFromPolicy(s.GetClusterPolicy())
+	limits := ctx.metadataLimits()
 	if err := domain.ValidateOrderMetadata(wrapped, limits); err != nil {
 		return nil, err
 	}

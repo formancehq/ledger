@@ -233,6 +233,10 @@ func (r *BackupRunReconciler) ensureBackupJob(
 	if !metav1.IsControlledBy(sts, ls) {
 		return nil, fmt.Errorf("StatefulSet %q is not controlled by Cluster %q (UID %s)", sts.Name, ls.Name, ls.UID)
 	}
+	ledgerImage, err := backupLedgerImage(sts)
+	if err != nil {
+		return nil, fmt.Errorf("resolving Ledger image for Cluster %q: %w", ls.Name, err)
+	}
 	// The Job dials the ClusterIP Service backupServerAddr names, not the
 	// StatefulSet, so that Service must be the Cluster's too. Checking it,
 	// rather than dialing a pod address, keeps the Service's routing to any pod
@@ -257,7 +261,7 @@ func (r *BackupRunReconciler) ensureBackupJob(
 		return nil, fmt.Errorf("workload %q has invalid TLS mode %q", sts.Name, tlsMode)
 	}
 
-	desired, err := buildBackupJob(run, backup, effective, tlsMode)
+	desired, err := buildBackupJob(run, backup, effective, tlsMode, ledgerImage)
 	if err != nil {
 		return nil, &permanentBackupJobError{err}
 	}
@@ -275,6 +279,21 @@ func (r *BackupRunReconciler) ensureBackupJob(
 	}
 
 	return desired, nil
+}
+
+func backupLedgerImage(sts *appsv1.StatefulSet) (string, error) {
+	for _, container := range sts.Spec.Template.Spec.Containers {
+		if container.Name != ledgerContainer {
+			continue
+		}
+		if container.Image == "" {
+			return "", fmt.Errorf("StatefulSet %q has an empty Ledger container image", sts.Name)
+		}
+
+		return container.Image, nil
+	}
+
+	return "", fmt.Errorf("StatefulSet %q has no Ledger container", sts.Name)
 }
 
 // applyJobResult fetches the JSON summary produced by the Job's ledgerctl
@@ -383,16 +402,13 @@ func (r *BackupRunReconciler) setRunFailed(ctx context.Context, run *ledgerv1alp
 // (same parent backup, Running phase) that blocks the current run, or "" if
 // none. Self is excluded.
 func (r *BackupRunReconciler) findBlockingSibling(ctx context.Context, run *ledgerv1alpha1.BackupRun) (string, error) {
-	var list ledgerv1alpha1.BackupRunList
-	if err := r.List(ctx, &list,
-		client.InNamespace(run.Namespace),
-		client.MatchingLabels{ledgerv1alpha1.LabelBackup: run.Spec.BackupRef},
-	); err != nil {
+	runs, err := listBackupRuns(ctx, r.Client, client.ObjectKey{Namespace: run.Namespace, Name: run.Spec.BackupRef})
+	if err != nil {
 		return "", err
 	}
 
-	for i := range list.Items {
-		s := &list.Items[i]
+	for i := range runs {
+		s := &runs[i]
 		if s.UID == run.UID {
 			continue
 		}
@@ -406,6 +422,10 @@ func (r *BackupRunReconciler) findBlockingSibling(ctx context.Context, run *ledg
 }
 
 func (r *BackupRunReconciler) SetupWithManager(mgr ctrl.Manager) error {
+	if err := indexBackupRunParent(context.Background(), mgr.GetFieldIndexer()); err != nil {
+		return err
+	}
+
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&ledgerv1alpha1.BackupRun{}).
 		Owns(&batchv1.Job{}).

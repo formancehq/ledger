@@ -144,6 +144,20 @@ func TestStoreIntegration(t *testing.T) {
 }
 ```
 
+### Operator API-server regressions
+
+`nix develop .#operator-tests --command just operator-test-admission` runs
+Ledger and BackupRun target admission and BackupRun recovery/association regressions with
+the race detector against Kubernetes 1.32.x envtest. The selection includes
+both labeled lost-response recovery and minimally admitted, unlabeled manual
+runs through Job-result capture, parent events and accounting. These tests
+publish Job and Pod status themselves; they do not run a kubelet or prove
+garbage collection. Keep the recipe's selection aligned with these regression
+names so CI executes the API-server evidence as well as operator unit tests.
+`TestBackupRunParentSelectorIntegration` checks the CRD field selector and real
+manager-cache index with unlabeled runs, misleading labels, other parents,
+namespace isolation and empty results.
+
 ### Schemathesis API Conformance Tests
 
 **Location**: `tests/schemathesis/`
@@ -913,6 +927,55 @@ failure cannot be hidden by another job's profile.
 
 ### E2E Tests
 
+#### Pinned binary rolling upgrade (Chainsaw)
+
+After the harness is integrated into `release/v3.0`, run
+`just test-rolling-upgrade v3.0.0-rc.1 origin/release/v3.0` from a clean
+checkout of the integrated revision. For another binary transition, pass its
+distinct source and target Git refs. The target must descend from the source
+and include the harness commit.
+`tests/upgrade/run.sh` fetches `origin/<branch>` refs, records both exact
+commit SHAs, builds Linux images from those revisions, and runs the Chainsaw
+scenario in a dedicated kind cluster. Build and provenance-recording failures
+abort before cluster creation. Its three Pods use separate persistent
+WAL and data claims; Chainsaw replaces followers and then the old leader while
+maintenance remains active. The test checks source and target transactions,
+reads on every voter, rejected ledger creation and transaction posting on every
+ready live voter during mixed windows and replacement, durable Raft cursors,
+leadership transfer, and each voter’s audit/derived-store checker. Transient
+RPC failures are retried for a bounded period; an accepted write fails at once.
+
+The `.#upgrade` Nix shell provides Chainsaw, kind, kubectl, gh, and Docker client;
+a local Docker daemon is still required. `UPGRADE_PHASE_SECONDS` sets the
+minimum mixed-window soak (default 15 seconds). Use `KEEP_WORKDIR=1` to retain
+revision and image hashes and failed Pod logs. The runner is separate from the
+Antithesis model suite because that driver intentionally toggles maintenance.
+
+#### Adjacent v3.0 RC to branch HEAD (operator)
+
+Dispatch `.github/workflows/release-operator-upgrade.yml` with a
+`release/v3.0` branch and the default `rc2-to-rc3` transition, or run
+`RELEASE_BRANCH=release/v3.0 just test-release-operator-upgrade` locally after
+the harness on `main` has been integrated into that release branch. The
+launcher pins the published rc.2 source and exact release branch HEAD, pulls
+the source Ledger and operator images, and builds both target images from that
+one target commit. It tags the local images `v3.0.0-rc.3` without publishing
+them; recorded Docker and Pod image IDs prove which builds ran. Chainsaw
+checks an operator upgrade before the Ledger rollout, rejection of a
+non-adjacent RC request, old/new Ledger Pod coexistence with at least two
+Ready Pods, retained PVC identities, data and Raft progress before and after,
+and every voter's store check. The Ready Pod count does not establish Raft
+quorum during the mixed-version window. The test does not write during mixed
+Ledger versions or test maintenance-mode rejection.
+The workflow saves the evidence under `build/upgrade-operator/` and uploads it
+even on failure. A Docker daemon and access to the published GHCR image are
+required. The separate `rc3-to-rc4` transition is prepared for a future
+mandatory stopped boundary; run it only after rc.3 is published and the
+format-change PR adds rc.4 to the operator's stop list. It checks drain,
+absence of all old Pods before target Pod creation, retained PVCs, target-voter
+replay and post-upgrade audit. See [Server Binary Upgrades](../../ops/upgrades.md#operator-managed-rc2-to-rc3-rolling-validation)
+for the detailed coverage and limits.
+
 ```bash
 # With Ginkgo
 ginkgo run -tags e2e ./tests/e2e
@@ -977,7 +1040,7 @@ export DOCKER_HOST=unix://$HOME/.orbstack/run/docker.sock
 
 ### Operator Integration Tests
 
-The default Nix shell provides `setup-envtest`, and its shell hook exports `KUBEBUILDER_ASSETS`. The first shell start downloads the etcd and kube-apiserver binaries. The lean `ci` shell does not include envtest. The `Tests-Operator` CI job uses the dedicated `operator-tests` shell for the focused Ledger target admission regressions, selecting Kubernetes 1.32.x assets:
+The default Nix shell provides `setup-envtest`, and its shell hook exports `KUBEBUILDER_ASSETS`. The first shell start downloads the etcd and kube-apiserver binaries. The lean `ci` shell does not include envtest. The `Tests-Operator` CI job uses the dedicated `operator-tests` shell for Ledger and BackupRun target admission plus BackupRun recovery and manual association regressions, selecting Kubernetes 1.32.x assets. See the [canonical selection description](#operator-api-server-regressions) above:
 
 ```bash
 nix develop .#operator-tests --command just operator-test-admission
@@ -1244,3 +1307,12 @@ To learn more:
 1. [Development](./development.md) - How to write testable code
 2. [Architecture](../architecture/overview.md) - Understand the system to test
 3. [Data Flows](../architecture/data-flows.md) - Understand the flows to test
+
+### Operator API admission
+
+CI runs `just operator-test-admission` in `nix develop .#operator-tests`.
+The recipe selects integration-tagged `TestLedgerAdmission` and
+`TestTraceSampling` cases in the Operator module using envtest. This preserves
+Ledger target immutability coverage and exercises trace sampler schema
+validation plus typed/raw conflict correction through the real StatefulSet
+environment. Untagged `go test ./...` in that module covers unit tests only.

@@ -381,7 +381,10 @@ publication is a separate explicitly authorized action.
 
 Trace a sent `MsgSnap` through queueing, transport acknowledgement or failure,
 the sender's local status channel and the orchestrate owner's
-`ReportSnapshot(destinationPeerID, status)`. Receiving a snapshot is a separate
+`ReportSnapshot(destinationPeerID, status)`. Also retain Ready-completion
+reporting for every outbound snapshot, independently of transport feedback;
+compaction past the sent snapshot before a late acknowledgement must still
+allow a fresh snapshot (`leader_snapshot_report_test.go`). Receiving a snapshot is a separate
 operation and must not report its index as a peer ID. Lose the follower's
 `MsgAppResp`, heal communication, and prove that a ReadIndex horizon becomes
 locally applicable without another proposal. Healthy heartbeats alone do not
@@ -396,3 +399,31 @@ regressions are `snapshot_status_test.go`, `transport_snapshot_status_test.go`
 and `process_ready_snapshot_test.go` under `internal/infra/node/`.
 Snapshot-only processing retains its existing append count; a combined Ready
 reappends only the suffix once, with no retained-log scan.
+
+## Sent snapshot liveness evidence
+
+etcd/raft pauses every append to a peer whose Progress is in `StateSnapshot`.
+It leaves that state only when the leader calls `ReportSnapshot` for the peer
+or when an acknowledgement leaves `Match+1 >= firstIndex` on the leader.
+Prove that every outbound `MsgSnap` is reported from the orchestrate goroutine
+(`snapshotRecipients` in `sendReadyMessages`, then `finishReady`), and that a
+lost snapshot or a late acknowledgement after leader compaction leads to
+renewed probing or a fresh snapshot rather than a stalled peer. The focused
+regression is `leader_snapshot_report_test.go` under `internal/infra/node/`;
+the cluster-level triggers are the out-of-sync election and lost-follower
+specs under `tests/e2e/cluster/`.
+
+## Proposal payload cutover
+
+The proposal codec is part of this contract. Production writers serialize the
+execution and policy oneof directly after a full-stop upgrade. All source nodes
+must stop before any target starts, and old binaries must never reopen a WAL
+containing new payloads, including technical entries written during startup.
+Historical replay must retain exact audit bytes and hashes. Native policy
+controls are operational and emit neither audit nor business logs; they are never
+lowered to orders. Compare final state across formats, verify each chain and its
+expected audit count, and preserve the historical prefix byte-for-byte. Preserve
+coverage, HLC semantics and checkpoint boundaries. Test policy-only incremental
+manifest publication and mixed historical/native delta restore. Current policy
+and operational quotas are explicitly outside business checker scope.
+See [proposal payloads](../architecture/subsystems/consensus/proposal-payloads.md).

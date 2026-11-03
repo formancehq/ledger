@@ -177,6 +177,12 @@ linters:
           allowed direct use is cmd/ledgerctl/cmdutil/progressbar.go.
   exclusions:
     rules:
+    # Released Raft fields remain the wire/audit representation and the
+    # mandatory RC.1 replay path during proposal payload expansion.
+    # Permit only these generated legacy members, not other deprecated APIs.
+    - path: '^(internal|tests)/'
+      linters: [staticcheck]
+      text: 'SA1019: \(\*?github\.com/formancehq/ledger/v3/internal/proto/raftcmdpb\.(Proposal\)\.(GetOrders|Orders|GetTechnicalUpdates|TechnicalUpdates)|SystemScopedOrder\)\.GetSetClusterPolicy|SystemScopedOrder_SetClusterPolicy\)\.SetClusterPolicy) is deprecated:'
     # I2 exceptions for OpenWriteSession / NewWriteSessionFromDB.
     # Each path here is part of the declared "may write to a Pebble store" set.
     - path: internal/storage/dal/

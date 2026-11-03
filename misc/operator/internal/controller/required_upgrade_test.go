@@ -27,29 +27,32 @@ import (
 	ledgerv1alpha1 "github.com/formancehq/ledger/misc/operator/api/v1alpha1"
 )
 
-var testStopVersions = []string{"v3.0.0-rc.3"}
+var testStopVersions = []string{"v3.0.0-rc.4"}
 
 func TestMandatoryStopVersionBoundary(t *testing.T) {
 	t.Parallel()
 	require.False(t, requiresStoppedUpgrade("v3.0.0-rc.2", "v3.0.0-rc.3", mandatoryStopVersions), "rc.3 must remain rolling")
-	require.False(t, requiresPinnedUpgradeTarget("v3.0.0-rc.2", "latest", mandatoryStopVersions))
+	require.True(t, requiresStoppedUpgrade("v3.0.0-rc.3", "v3.0.0-rc.4", mandatoryStopVersions), "rc.4 must stop rc.3 voters before emitting payloads")
+	require.True(t, requiresPinnedUpgradeTarget("v3.0.0-rc.2", "latest", mandatoryStopVersions), "a moving tag could cross the rc.4 boundary")
+	require.True(t, requiresPinnedUpgradeTarget("v3.0.0-rc.3", "latest", mandatoryStopVersions))
 	for _, tt := range []struct {
 		source, target string
 		stop           bool
 	}{
 		{"v3.0.0-rc.1", "v3.0.0-rc.2", false},
-		{"v3.0.0-rc.2", "v3.0.0-rc.3", true},
-		{"v3.0.0-rc.1", "v3.0.0-rc.3", true}, // Selection crosses the boundary; admission still rejects the RC jump.
-		{"v3.0.0-rc.3", "v3.0.0-rc.4", false},
+		{"v3.0.0-rc.2", "v3.0.0-rc.3", false},
+		{"v3.0.0-rc.1", "v3.0.0-rc.3", false}, // Admission still rejects the RC jump.
+		{"v3.0.0-rc.3", "v3.0.0-rc.4", true},
+		{"v3.0.0-rc.2", "v3.0.0-rc.4", true}, // Selection crosses the boundary; admission still rejects the RC jump.
 		{"v3.0.0-rc.3", "v3.0.0-rc.3", false},
 		{"v3.0.0-rc.4", "v3.0.0-rc.3", false},
-		{"latest", "v3.0.0-rc.3", false},
+		{"latest", "v3.0.0-rc.4", false},
 	} {
 		require.Equal(t, tt.stop, requiresStoppedUpgrade(tt.source, tt.target, testStopVersions), "%s -> %s", tt.source, tt.target)
 	}
-	require.True(t, requiresPinnedUpgradeTarget("v3.0.0-rc.2", "latest", testStopVersions))
-	require.True(t, requiresPinnedUpgradeTarget("v3.0.0-rc.2", "3.0.0-rc.3", testStopVersions))
-	require.False(t, requiresPinnedUpgradeTarget("v3.0.0-rc.3", "latest", testStopVersions))
+	require.True(t, requiresPinnedUpgradeTarget("v3.0.0-rc.3", "latest", testStopVersions))
+	require.True(t, requiresPinnedUpgradeTarget("v3.0.0-rc.3", "3.0.0-rc.4", testStopVersions))
+	require.False(t, requiresPinnedUpgradeTarget("v3.0.0-rc.4", "latest", testStopVersions))
 }
 
 func TestStoppedUpgradeRepairsDependenciesBeforeWorkloadGate(t *testing.T) {
@@ -57,7 +60,7 @@ func TestStoppedUpgradeRepairsDependenciesBeforeWorkloadGate(t *testing.T) {
 	ctx := context.Background()
 	cluster := newMinimalCluster()
 	cluster.UID = types.UID("cluster-uid")
-	cluster.Spec.Image.Tag = "v3.0.0-rc.3"
+	cluster.Spec.Image.Tag = "v3.0.0-rc.4"
 	cluster.Spec.TLS = &ledgerv1alpha1.TLSConfig{Enabled: true}
 	cluster.Spec.Auth = &ledgerv1alpha1.AuthorizationConfig{Enabled: new(bool)}
 	*cluster.Spec.Auth.Enabled = true
@@ -65,7 +68,7 @@ func TestStoppedUpgradeRepairsDependenciesBeforeWorkloadGate(t *testing.T) {
 	cluster.Spec.Replicas = new(int32(1))
 	applyDefaults(cluster)
 	cluster.Status.Upgrade = &ledgerv1alpha1.ClusterUpgradeStatus{
-		Source: "v3.0.0-rc.2", Target: cluster.Spec.Image.Tag,
+		Source: "v3.0.0-rc.3", Target: cluster.Spec.Image.Tag,
 		StatefulSetUID: "old-sts", TargetSpecHash: computeSpecHash(&cluster.Spec),
 		ExpectedReplicas: 1, DrainEpoch: "upgrade-epoch", Phase: "Preflighting",
 	}
@@ -75,7 +78,7 @@ func TestStoppedUpgradeRepairsDependenciesBeforeWorkloadGate(t *testing.T) {
 	cred := matchingCredentials("test-cred", cluster.Labels, true, cluster.Namespace, "test-cred-secret")
 	keySecret := &corev1.Secret{ObjectMeta: metav1.ObjectMeta{Name: "test-cred-secret", Namespace: cluster.Namespace}, Data: map[string][]byte{"pubkey.hex": []byte("deadbeef"), "key-id": []byte("kid-123")}}
 	c := fake.NewClientBuilder().WithScheme(scheme).WithStatusSubresource(cluster).WithObjects(cluster, cred, keySecret).Build()
-	r := &ClusterReconciler{Client: c, Scheme: scheme}
+	r := &ClusterReconciler{Client: c, Scheme: scheme, OperatorVersion: "v3.0.0-rc.4"}
 	key := types.NamespacedName{Name: cluster.Name, Namespace: cluster.Namespace}
 
 	for attempt := range 2 {
@@ -127,9 +130,9 @@ func TestStoppedUpgradeRepairsDependenciesBeforeWorkloadGate(t *testing.T) {
 func TestStoppedUpgradeRequiresHeadlessService(t *testing.T) {
 	t.Parallel()
 	cluster := newMinimalCluster()
-	cluster.Spec.Image.Tag = "v3.0.0-rc.3"
+	cluster.Spec.Image.Tag = "v3.0.0-rc.4"
 	cluster.Spec.HeadlessService.Enabled = new(bool)
-	sts := rcStatefulSet("ghcr.io/formancehq/ledger:v3.0.0-rc.2", true)
+	sts := rcStatefulSet("ghcr.io/formancehq/ledger:v3.0.0-rc.3", true)
 	r := &ClusterReconciler{stopVersions: testStopVersions}
 	proceed, _, err := r.reconcileRequiredUpgrade(context.Background(), cluster, sts)
 	require.False(t, proceed)
@@ -140,9 +143,9 @@ func TestStoppedUpgradeRequiresHeadlessService(t *testing.T) {
 func TestStoppedUpgradeWaitsForAnnotatedDrain(t *testing.T) {
 	t.Parallel()
 	cluster := newMinimalCluster()
-	cluster.Spec.Image.Tag = "v3.0.0-rc.3"
+	cluster.Spec.Image.Tag = "v3.0.0-rc.4"
 	cluster.Annotations = map[string]string{ClusterDrainAnnotation: "true"}
-	sts := rcStatefulSet("ghcr.io/formancehq/ledger:v3.0.0-rc.2", true)
+	sts := rcStatefulSet("ghcr.io/formancehq/ledger:v3.0.0-rc.3", true)
 	r := &ClusterReconciler{stopVersions: testStopVersions}
 	proceed, _, err := r.reconcileRequiredUpgrade(t.Context(), cluster, sts)
 	require.False(t, proceed)
@@ -155,10 +158,10 @@ func TestStoppedUpgradeDrainsPendingScaleDownCleanup(t *testing.T) {
 	ctx := context.Background()
 	cluster := newMinimalCluster()
 	cluster.UID = types.UID("cluster-uid")
-	cluster.Spec.Image.Tag = "v3.0.0-rc.3"
+	cluster.Spec.Image.Tag = "v3.0.0-rc.4"
 	cluster.Spec.Replicas = new(int32(1))
 	applyDefaults(cluster)
-	sts := rcStatefulSet("ledger:v3.0.0-rc.2", true)
+	sts := rcStatefulSet("ledger:v3.0.0-rc.3", true)
 	sts.Name, sts.Namespace, sts.UID = resourceName(cluster.Name), cluster.Namespace, types.UID("source-sts")
 	sts.Spec.Replicas = new(int32(1))
 	sts.Status.UpdatedReplicas, sts.Status.ReadyReplicas = 1, 1
@@ -179,7 +182,7 @@ func TestStoppedUpgradeDrainsPendingScaleDownCleanup(t *testing.T) {
 
 		return false, nil, nil
 	})
-	r := &ClusterReconciler{Client: c, Scheme: scheme, Clientset: clientset, stopVersions: testStopVersions}
+	r := &ClusterReconciler{Client: c, Scheme: scheme, Clientset: clientset, stopVersions: testStopVersions, OperatorVersion: "v3.0.0-rc.4"}
 	_, err := r.Reconcile(ctx, ctrl.Request{NamespacedName: types.NamespacedName{Name: cluster.Name, Namespace: cluster.Namespace}})
 	require.ErrorContains(t, err, "injected scale-down PVC deletion failure")
 	require.NoError(t, c.Get(ctx, types.NamespacedName{Name: sts.Name, Namespace: sts.Namespace}, sts))
@@ -219,10 +222,10 @@ func TestStoppedUpgradeWaitsForOldPodsAndRetainsClaim(t *testing.T) {
 	ctx := context.Background()
 	cluster := newMinimalCluster()
 	cluster.UID = types.UID("cluster-uid")
-	cluster.Spec.Image.Tag = "v3.0.0-rc.3"
+	cluster.Spec.Image.Tag = "v3.0.0-rc.4"
 	cluster.Spec.Replicas = new(int32(1))
 	cluster.Spec.Persistence.RetentionPolicy = &ledgerv1alpha1.RetentionPolicySpec{WhenDeleted: "Delete", WhenScaled: "Delete"}
-	sts := rcStatefulSet("ghcr.io/formancehq/ledger:v3.0.0-rc.2", true)
+	sts := rcStatefulSet("ghcr.io/formancehq/ledger:v3.0.0-rc.3", true)
 	sts.Name, sts.Namespace, sts.UID = resourceName(cluster.Name), cluster.Namespace, types.UID("old-sts")
 	sts.Generation = 1
 	sts.OwnerReferences = []metav1.OwnerReference{{APIVersion: "ledger.formance.com/v1alpha1", Kind: "Cluster", Name: cluster.Name, UID: cluster.UID, Controller: new(true)}}
@@ -372,7 +375,7 @@ func TestStoppedUpgradeWaitsForOldPodsAndRetainsClaim(t *testing.T) {
 	require.Equal(t, types.UID("pv-uid"), pv.UID)
 	require.Equal(t, appsv1.RetainPersistentVolumeClaimRetentionPolicyType, buildRetentionPolicy(cluster).WhenDeleted)
 	// A replacement with the target image converges without deleting it again.
-	replacement := rcStatefulSet("ledger:v3.0.0-rc.3", true)
+	replacement := rcStatefulSet("ledger:v3.0.0-rc.4", true)
 	replacement.Name, replacement.Namespace, replacement.UID = sts.Name, sts.Namespace, types.UID("new-sts")
 	activeSts = replacement
 	replacement.OwnerReferences = sts.OwnerReferences
@@ -432,7 +435,7 @@ func TestStoppedUpgradeWaitsForOldPodsAndRetainsClaim(t *testing.T) {
 	require.ErrorContains(t, err, "replacement StatefulSet identity changed")
 	require.Equal(t, metav1.ConditionFalse, meta.FindStatusCondition(cluster.Status.Conditions, "Upgrade").Status)
 	require.True(t, drained)
-	replacement.Spec.Template.Spec.Containers[0].Image = "ledger:v3.0.0-rc.3"
+	replacement.Spec.Template.Spec.Containers[0].Image = "ledger:v3.0.0-rc.4"
 	replacement.Status.ReadyReplicas = 1
 	// A replacement can itself disappear. Wait for its old Pods, then recreate
 	// while keeping the drain fence and original volume identities.
@@ -497,9 +500,9 @@ func TestStoppedUpgradeRejectsChangedTargetAndMissingClaim(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	cluster := newMinimalCluster()
-	cluster.Spec.Image.Tag = "v3.0.0-rc.4"
+	cluster.Spec.Image.Tag = "v3.0.0-rc.5"
 	cluster.Spec.Replicas = new(int32(1))
-	cluster.Status.Upgrade = &ledgerv1alpha1.ClusterUpgradeStatus{Source: "v3.0.0-rc.2", Target: "v3.0.0-rc.3", StatefulSetUID: "old", ExpectedReplicas: 1, Phase: "Deleting"}
+	cluster.Status.Upgrade = &ledgerv1alpha1.ClusterUpgradeStatus{Source: "v3.0.0-rc.3", Target: "v3.0.0-rc.4", StatefulSetUID: "old", ExpectedReplicas: 1, Phase: "Deleting"}
 	scheme := runtime.NewScheme()
 	require.NoError(t, clientgoscheme.AddToScheme(scheme))
 	require.NoError(t, ledgerv1alpha1.AddToScheme(scheme))
@@ -508,7 +511,7 @@ func TestStoppedUpgradeRejectsChangedTargetAndMissingClaim(t *testing.T) {
 	proceed, _, err := r.reconcileRequiredUpgrade(ctx, cluster, nil)
 	require.False(t, proceed)
 	require.ErrorContains(t, err, "restore spec.image.tag")
-	cluster.Spec.Image.Tag = "v3.0.0-rc.3"
+	cluster.Spec.Image.Tag = "v3.0.0-rc.4"
 	cluster.Status.Upgrade.TargetSpecHash = computeSpecHash(&cluster.Spec)
 	cluster.Status.Upgrade.ClaimUIDs = map[string]string{"wal-ledger-0": "original"}
 	proceed, _, err = r.reconcileRequiredUpgrade(ctx, cluster, nil)
@@ -520,7 +523,7 @@ func TestStoppedUpgradeBlocksUnpinnedTarget(t *testing.T) {
 	t.Parallel()
 	cluster := newMinimalCluster()
 	cluster.Spec.Image.Tag = "latest"
-	sts := rcStatefulSet("ledger:v3.0.0-rc.2", true)
+	sts := rcStatefulSet("ledger:v3.0.0-rc.3", true)
 	r := &ClusterReconciler{stopVersions: testStopVersions}
 	proceed, _, err := r.reconcileRequiredUpgrade(context.Background(), cluster, sts)
 	require.False(t, proceed)
@@ -531,18 +534,18 @@ func TestStoppedUpgradeTargetDriftUpdatesCondition(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	cluster := newMinimalCluster()
-	cluster.Spec.Image.Tag = "v3.0.0-rc.4"
+	cluster.Spec.Image.Tag = "v3.0.0-rc.5"
 	cluster.Spec.Replicas = new(int32(3))
-	cluster.Status.Upgrade = &ledgerv1alpha1.ClusterUpgradeStatus{Source: "v3.0.0-rc.2", Target: "v3.0.0-rc.3", Phase: "Verifying"}
+	cluster.Status.Upgrade = &ledgerv1alpha1.ClusterUpgradeStatus{Source: "v3.0.0-rc.3", Target: "v3.0.0-rc.4", Phase: "Verifying"}
 	meta.SetStatusCondition(&cluster.Status.Conditions, metav1.Condition{Type: "Upgrade", Status: metav1.ConditionTrue, Reason: "Verifying", Message: "in progress"})
-	sts := rcStatefulSet("ledger:v3.0.0-rc.2", true)
+	sts := rcStatefulSet("ledger:v3.0.0-rc.3", true)
 	sts.Name, sts.Namespace = resourceName(cluster.Name), cluster.Namespace
 	sts.OwnerReferences = []metav1.OwnerReference{{APIVersion: "ledger.formance.com/v1alpha1", Kind: "Cluster", Name: cluster.Name, UID: cluster.UID, Controller: new(true)}}
 	scheme := runtime.NewScheme()
 	require.NoError(t, clientgoscheme.AddToScheme(scheme))
 	require.NoError(t, ledgerv1alpha1.AddToScheme(scheme))
 	c := fake.NewClientBuilder().WithScheme(scheme).WithStatusSubresource(cluster, sts).WithObjects(cluster, sts).Build()
-	r := &ClusterReconciler{Client: c, Scheme: scheme}
+	r := &ClusterReconciler{Client: c, Scheme: scheme, OperatorVersion: "v3.0.0-rc.5"}
 	_, err := r.Reconcile(ctx, ctrl.Request{NamespacedName: types.NamespacedName{Name: cluster.Name, Namespace: cluster.Namespace}})
 	require.NoError(t, err)
 	require.NoError(t, c.Get(ctx, types.NamespacedName{Name: cluster.Name, Namespace: cluster.Namespace}, cluster))
@@ -557,7 +560,7 @@ func TestStoppedUpgradeUsesLiveGRPCPort(t *testing.T) {
 	t.Parallel()
 	cluster := newMinimalCluster()
 	cluster.Spec.GrpcPort = 9999
-	sts := rcStatefulSet("ledger:v3.0.0-rc.2", true)
+	sts := rcStatefulSet("ledger:v3.0.0-rc.3", true)
 	sts.Name, sts.Namespace, sts.UID = resourceName(cluster.Name), cluster.Namespace, types.UID("source-sts")
 	sts.Spec.Template.Spec.Containers[0].Ports = []corev1.ContainerPort{{Name: "grpc", ContainerPort: 8888, Protocol: corev1.ProtocolTCP}}
 	pod := &corev1.Pod{ObjectMeta: metav1.ObjectMeta{Name: sts.Name + "-0", Namespace: sts.Namespace,

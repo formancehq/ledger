@@ -4,11 +4,12 @@ syntax = "proto3";
 package ledger;
 
 option go_package = "github.com/formancehq/ledger/v3/internal/proto/servicepb";
-
 import "common.proto";
 import "audit.proto";
 import "signature.proto";
 import "google/protobuf/descriptor.proto";
+
+option (common.ledger_json_default) = true;
 
 // allowed_skippable_reasons annotates a oneof case inside LedgerAction.data
 // with the business ErrorReasons a caller may list in
@@ -208,6 +209,7 @@ message GetTransactionRequest {
 }
 
 message GetTransactionResponse {
+	option (common.ledger_json_manual) = true;
   common.Transaction transaction = 1;
 }
 
@@ -563,6 +565,7 @@ message ResponseSigningInfo {
 
 // CreateTransactionPayload contains the data for creating a transaction
 message CreateTransactionPayload {
+	option (common.ledger_json_manual) = true;
   repeated common.Posting postings = 1;
   common.Script script = 2;
   common.Timestamp timestamp = 3;
@@ -575,6 +578,7 @@ message CreateTransactionPayload {
 
 // RevertTransactionPayload contains the data for reverting a transaction.
 message RevertTransactionPayload {
+	option (common.ledger_json_manual) = true;
   fixed64 transaction_id = 1;
   bool force = 2;
   bool at_effective_date = 3;
@@ -949,17 +953,11 @@ enum CheckStoreErrorType {
   // expectations are never seeded from the live projection -- that would
   // verify old, never-touched keys against a copy of themselves.
   CHECK_STORE_ERROR_TYPE_SIGNING_VERIFICATION_INCOMPLETE = 23;
-  // Emitted when the persisted cluster policy (SubGlobClusterPolicy) differs
-  // from the policy re-derived from chain-bound SetClusterPolicy orders. The
-  // policy gates idempotency expiration and query-checkpoint admission
-  // cluster-wide, so a tampered row silently changes replay/expiry and
-  // checkpoint behavior. The audit chain is the source of truth.
-  CHECK_STORE_ERROR_TYPE_CLUSTER_POLICY_MISMATCH = 24;
-  // Emitted when the cluster policy could not be verified over the whole audit
-  // history: the live audit range was cut short by a hash chain break, so any
-  // policy update recorded after the break is unread. The pass reports this
-  // rather than presenting a partial replay as clean.
-  CHECK_STORE_ERROR_TYPE_CLUSTER_POLICY_VERIFICATION_INCOMPLETE = 25;
+  // Historical result retained for wire compatibility. Operational cluster
+  // policy is no longer compared against business audit history.
+  CHECK_STORE_ERROR_TYPE_CLUSTER_POLICY_MISMATCH = 24 [deprecated = true];
+  // Historical result retained for wire compatibility; no longer emitted.
+  CHECK_STORE_ERROR_TYPE_CLUSTER_POLICY_VERIFICATION_INCOMPLETE = 25 [deprecated = true];
   // Emitted when the persisted query-checkpoint rows (SubGlobQueryCheckpoint)
   // diverge from the set the checker re-derived from chain-bound
   // CreatedQueryCheckpoint / DeletedQueryCheckpoint logs: a stored row the audit
@@ -1081,6 +1079,7 @@ message GetLogRequest {
 message GetEventsSinksRequest {}
 
 message GetEventsSinksResponse {
+	option (common.ledger_json) = true;
   repeated common.SinkConfig sinks = 1;
   repeated common.SinkStatus sink_statuses = 2;
 }
@@ -1094,12 +1093,14 @@ message GetMetadataSchemaStatusRequest {
 }
 
 message GetMetadataSchemaStatusResponse {
+	option (common.ledger_json) = true;
   map<string, MetadataFieldStatus> account_fields = 1;
   map<string, MetadataFieldStatus> transaction_fields = 2;
   map<string, MetadataFieldStatus> ledger_fields = 3;
 }
 
 message MetadataFieldStatus {
+	option (common.ledger_json) = true;
   common.MetadataType declared_type = 1;
 }
 
@@ -1304,6 +1305,7 @@ message GetIndexStatusRequest {
 }
 
 message GetIndexStatusResponse {
+	option (common.ledger_json) = true;
   fixed64 last_indexed_sequence = 1;
   fixed64 last_log_sequence = 2;
   fixed64 lag = 3;
@@ -1348,6 +1350,7 @@ message GetIndexEntryStatusRequest {
 // pending_version == 0 — the pre-retype keyspace stays live during
 // the rewrite.
 message IndexEntry {
+	option (common.ledger_json) = true;
   string ledger = 1;
   common.Index index = 2;     // identifier + created_at + forward_encoding_version
   fixed64 cursor = 3;         // backfill cursor (0 when not in backfill or done)

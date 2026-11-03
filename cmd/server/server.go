@@ -100,6 +100,7 @@ func NewRunCommandWithBindings(bindings network.Bindings) *cobra.Command {
 	// Add OpenTelemetry flags from go-libs
 	otlp.AddFlags(runCmd.Flags())
 	otlptraces.AddFlags(runCmd.Flags())
+	addTraceSamplerFlags(runCmd.Flags())
 	otlppyroscopetraces.AddFlags(runCmd.Flags())
 	// Namespace the ledger's own metrics (--otel-metrics-prefix); go-libs
 	// leaves the global provider, and so the Go runtime, host, HTTP and
@@ -124,14 +125,14 @@ func NewRunCommandWithBindings(bindings network.Bindings) *cobra.Command {
 	runCmd.Flags().Int("raft-heartbeat-tick", 1, "Heartbeat interval in ticks (0 = use default 1)")
 	bytesize.ByteSizeVar(runCmd, new(bytesize.ByteSize), "raft-max-size-per-msg", 0, "Maximum size per message (0 = use default 1Mi)")
 	runCmd.Flags().Int("raft-max-inflight-msgs", 0, "Maximum number of in-flight messages (0 = use default 256)")
-	runCmd.Flags().Duration("raft-tick-interval", 100*time.Millisecond, "Interval between Raft ticks (0 = use default 100ms)")
+	runCmd.Flags().Duration("raft-tick-interval", 100*time.Millisecond, "Interval between Raft ticks (0 = use default 100ms; at least 10ns when processing interval is 0)")
 	runCmd.Flags().Uint64("raft-compaction-margin", 1000, "Minimum log entries between snapshots (0 = use default 1000)")
 	runCmd.Flags().Duration("maintenance-interval", 30*time.Second, "Interval for background WAL snapshot + Pebble checkpoint (0 = use default 30s)")
 	runCmd.Flags().Int("raft-propose-queue-capacity", 0, "Capacity of the propose queue (0 = use default 100)")
 	runCmd.Flags().IntSlice("raft-transport-reception-queues", []int{}, "Comma-separated list of reception queue capacities per priority (e.g., \"10,512,512,512,128\")")
 	runCmd.Flags().IntSlice("raft-transport-send-queues", []int{}, "Comma-separated list of send queue capacities per priority (e.g., \"10,512,512,512,128\")")
 	bytesize.ByteSizeVar(runCmd, new(bytesize.ByteSize), "raft-transport-buffer-size", 0, "Per-peer send buffer capacity (0 = use default 10Mi)")
-	runCmd.Flags().Duration("raft-processing-tick-interval", 0, "Interval for processing committed entries (0 = tick-interval/10)")
+	runCmd.Flags().Duration("raft-processing-tick-interval", 0, "Idle Ready polling interval, including after Ready drains (0 = effective raft-tick-interval/10)")
 	runCmd.Flags().Int("raft-replay-batch-size", 0, "Number of entries per batch during spool replay (0 = use default 1000)")
 	runCmd.Flags().Bool("grpc-compression", false, "Enable gzip compression on gRPC calls")
 
@@ -258,6 +259,11 @@ func NewRunCommandWithBindings(bindings network.Bindings) *cobra.Command {
 }
 
 func runServer(cmd *cobra.Command, bindings network.Bindings) error {
+	tracesModule, err := tracesModuleFromFlags(cmd)
+	if err != nil {
+		return fmt.Errorf("configuring trace sampler: %w", err)
+	}
+
 	cfg, err := LoadConfig(cmd.Context(), cmd)
 	if err != nil {
 		return fmt.Errorf("loading config: %w", err)
@@ -345,7 +351,7 @@ func runServer(cmd *cobra.Command, bindings network.Bindings) error {
 		fx.Supply(info),
 		// Add OpenTelemetry modules from go-libs (using flags)
 		fx.Supply(telemetryResource),
-		observefx.TracesModuleFromFlags(cmd),
+		tracesModule,
 		// Decorates the trace.TracerProvider from TracesModule with a
 		// pyroscope.profile.id span attribute (see PyroscopeTracesModule doc
 		// comment) so Grafana can correlate a trace span with the Pyroscope

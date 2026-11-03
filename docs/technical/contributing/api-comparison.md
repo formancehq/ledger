@@ -44,6 +44,46 @@ integer schema spans `-9223372036854775808` through `18446744073709551615`,
 matching signed negative and unsigned nonnegative metadata values. See
 [Metadata number decoding](../architecture/subsystems/api/http-api.md#metadata-number-decoding).
 
+## HTTP transaction request signatures
+
+V3 adds opt-in signing headers with `application/json` for the
+existing transaction create/revert/metadata POST, transaction metadata DELETE,
+and nonempty `atomic=true` bulk operations. The wrapper carries the ordinary
+REST body in `request` (null for DELETE) and the standard-base64 `payload` of the
+complete protobuf batch derived from the URL, body and `Idempotency-Key`.
+`Formance-Signing-Key-Id` and `Formance-Signature` headers carry its key ID and
+standard-base64 Ed25519 signature; the adapter assembles the existing
+`SignedApplyBatch`. Each header is required exactly once with a nonempty value;
+the signature must decode to 64 bytes. Either header activates signed handling,
+even if empty; neither header preserves the ordinary unsigned REST body. JSON
+MIME parameters are accepted. The complete decoded protobuf values must match before the original signed bytes
+reach admission. Atomic bulk preserves its header key, ignored per-entry `ik`,
+request order and skippable reasons. Signed non-atomic bulk returns 400.
+
+V2's transaction and bulk methods/routes, ordinary JSON field names, envelopes,
+defaults and header identity remain the comparison baseline. Their ordinary v3
+JSON counterparts keep those established contracts; the opt-in signing headers
+and wrapper are an intentional additive divergence because v2 provides no equivalent opaque
+`ApplyBatch` signature proof. No route is renamed, so the endpoint map is
+unchanged. Response envelopes and bigint negotiation are unchanged. Request
+signing does not provide HTTP response authenticity.
+
+Malformed signed wrappers, missing/empty/repeated signing headers, invalid
+base64 and invalid signature length return 400; HTTP-to-signed-batch mismatch
+and invalid, unknown or revoked signing keys return 403 `PERMISSION_DENIED`. Mandatory missing
+signatures on ordinary unsigned requests return 401 `UNAUTHENTICATED`.
+Unsupported routes return 415 for either signing header; either signing header
+with a non-JSON or missing content type also returns 415. Bulk 401/403
+cannot be suppressed by `continueOnFailure`, and all processing outcomes remain available. JWT authentication/scopes remain separate.
+Forwarded signing failures use dedicated validated `ledger.signing` ErrorInfo
+details; bare/foreign gRPC auth failures retain the existing 500 contract.
+
+The 4 MiB body budget includes the whole wrapper and base64, reducing usable
+signed capacity. Upgrade receiving HTTP nodes before clients opt in. No protobuf,
+protocol revision (40), proposal or persisted format changes, or migration are
+needed. Existing retained-key replay, unkeyed re-execution and expired-key rules
+are unchanged. See [HTTP request signing](../../ops/signing.md#http-request-signing).
+
 ## Transaction metadata address validation
 
 Transaction creation (including bulk) rejects malformed `accountMetadata`
@@ -83,10 +123,11 @@ The v2 API has no equivalent Raft cluster-command lifecycle.
 
 Get/list use camelCase LedgerInfo properties and typed metadata; mode, enforcement
 and account persistence use explicit short enum defaults. Mirror progress includes
-zero values and decimal-string counters (`string/bigint` in OpenAPI), preserving
-uint64 precision in TypeScript SDKs. v2 stats/log IDs use numeric JSON with
-`integer/int64` or `integer/bigint`; v2 has no equivalent mirror progress. The
-v3-specific counter representation intentionally differs for lossless decoding.
+zero values and unsigned numeric counters (`integer/uint64` in OpenAPI), covering
+the full `0..18446744073709551615` range; clients must use lossless integer
+parsing above JavaScript's safe-integer range. v2 stats/log IDs
+use numeric JSON with `integer/int64` or `integer/bigint`; v2 has no equivalent
+mirror progress.
 Nested read mirror configuration masks passwordless HTTP(S) URL userinfo as
 well as passwords and uses a distinct schema
 from unchanged flat creation input. Read rewrite actions model protojson
@@ -109,6 +150,16 @@ explicitly allow `superuser` in their key configuration. The CLI exposes
 `--superuser`, operator Credentials expose `spec.superuser`, and audit callers
 report `superuser`. Service protocol revision 19 accompanies this rename;
 all granular-scope authorization behavior is unchanged.
+
+### Authenticated caller attribution
+
+Newly admitted OIDC writes record the verified issuer as the caller source,
+including tokens with a JWT `kid`; rotating that signing key preserves the
+issuer/subject identity. Static Ed25519 writes retain their signing key ID,
+including tokens that carry an issuer claim. This corrects attribution capture
+on HTTP and gRPC without changing token acceptance, authorization, endpoint
+shapes, or service protocol revision 40. Previously committed snapshots remain
+unchanged. See [caller identity](../architecture/subsystems/api/auth.md#caller-identity-in-the-audit-chain).
 
 ### Service protocol compatibility (EN-1851)
 
@@ -242,7 +293,7 @@ JWT/anonymous policy; no new endpoint or authorization requirement is introduced
 | Dynamic key management | ✅ | ❌ | Register/revoke/list keys via gRPC API (bootstrap: first key unsigned) |
 | Require signatures | ✅ | ❌ | Optional enforcement via `signing require` API call |
 | **Maintenance** |
-| Maintenance mode | ✅ | ❌ | Block all writes, Raft-replicated flag, dual check (admission + FSM) |
+| Maintenance mode | ✅ | ❌ | Block client business writes; leader-internal policy reconciliation remains available unless drained. Raft-replicated flag, dual check (admission + FSM) |
 | **Store Operations** |
 | Store metrics | ✅ | ❌ | Pebble storage metrics |
 | Store integrity check | ✅ | ❌ | Hash chain + derived data verification |
@@ -297,7 +348,7 @@ arbitrary-precision bounds and signedness. V3 selects response encoding by
 nested and future nonmonetary fields, rather than by endpoint or monetary field
 name. This generalization preserves v2 monetary behavior; v2 has no equivalent
 contract for these v3 message types. Ordinary integer IDs/counts, typed metadata
-and explicitly string-encoded counters retain their existing contract. Shared
+and other explicit string projections retain their existing contract. Shared
 HTTP writers negotiate the response, while custom nested projections forward
 options. Request decoding is unchanged.
 
@@ -575,8 +626,8 @@ error status without allowing partial application of the batch.
 
 **SDK error contract:** Processing failures retain the `data` array,
 including committed successes, the failed element and aborted later elements.
-Business statuses 400/401/403/404/409 are suppressed to 200 only when
-`continueOnFailure=true`. Processing 429/500/503 surface unconditionally;
+Business statuses 400/404/409 are suppressed to 200 only when
+`continueOnFailure=true`. Processing 401/403/429/500/503 surface unconditionally;
 503 retains `Retry-After: 1`. OpenAPI declares `BulkErrorResponse` as an `anyOf`
 union of the bulk envelope and ordinary ErrorResponse where both are accepted,
 and includes the optional batch idempotency header. Empty successful batches
@@ -1703,3 +1754,10 @@ Admission rejects the exact names `_` (system API routes) and `_system`
 (system events) on every ledger-scoped write, before proposing to Raft.
 This applies equally to HTTP and gRPC. Other underscore-prefixed names,
 including `_systemx` and `_System`, remain valid.
+
+### RC.4 operational policy
+
+Native cluster-policy controls introduced at the RC.3 to RC.4 cutover no longer
+appear in business audit listings.
+Historical policy audit entries remain readable. Audit response fields and
+service revision 40 are unchanged. Discovery still returns the committed policy.

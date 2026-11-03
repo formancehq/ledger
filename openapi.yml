@@ -1,7 +1,15 @@
 openapi: 3.0.3
 info:
   title: Ledger v3 API
-  description: API for the Ledger v3, a distributed accounting ledger with Raft consensus
+  description: |
+    API for Ledger v3, a distributed accounting ledger with Raft consensus.
+    Signed and ordinary transaction mutations use application/json, including
+    MIME parameters. Either Formance-Signing-Key-Id or Formance-Signature header,
+    even if empty, selects the signed wrapper containing request and payload on
+    the five supporting operations. Both headers are then required exactly once
+    and nonempty. With neither header present, the ordinary unsigned REST body applies.
+    Signing headers with a non-JSON or missing content type, or on other /v3
+    operations, reject with HTTP 415 and an ErrorResponse JSON body.
   version: 1.0.0
   contact:
     name: Formance
@@ -22,7 +30,8 @@ paths:
       description: |
         Lists the ledgers in the cluster, paged by name (ascending unless
         `reverse=true`). Requires `ledger:read` scope.
-      operationId: listAllLedgers
+      operationId: v3ListAllLedgers
+      x-speakeasy-name-override: ListAllLedgers
       tags:
         - Ledgers
       security:
@@ -55,6 +64,8 @@ paths:
           $ref: '#/components/responses/ServiceUnavailable'
         '500':
           $ref: '#/components/responses/InternalServerError'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
         '405':
           $ref: '#/components/responses/MethodNotAllowed'
 
@@ -62,7 +73,8 @@ paths:
     get:
       summary: Health check
       description: Returns the health status of the node. Returns 503 if the node is not connected to the cluster.
-      operationId: health
+      operationId: v3Health
+      x-speakeasy-name-override: Health
       tags:
         - Health
       responses:
@@ -79,7 +91,8 @@ paths:
     get:
       summary: Liveness probe
       description: Returns 200 as long as the process is alive. Suitable for Kubernetes liveness probes.
-      operationId: livez
+      operationId: v3Livez
+      x-speakeasy-name-override: Livez
       tags:
         - Health
       responses:
@@ -100,7 +113,8 @@ paths:
         peer pods can be brought up during a cold start where quorum cannot
         form until they exist. Use `/clusterz` for the stricter
         cluster-availability signal.
-      operationId: readyz
+      operationId: v3Readyz
+      x-speakeasy-name-override: Readyz
       tags:
         - Health
       responses:
@@ -125,7 +139,8 @@ paths:
         probes should target `/readyz` instead — this endpoint MUST NOT gate
         StatefulSet ordering, otherwise the cluster cannot recover from a
         full-kill cold start.
-      operationId: clusterz
+      operationId: v3Clusterz
+      x-speakeasy-name-override: Clusterz
       tags:
         - Health
       responses:
@@ -142,7 +157,8 @@ paths:
     get:
       summary: Get server build information
       description: Returns the server build metadata (version, commit, build date, Go runtime version). Unauthenticated.
-      operationId: info
+      operationId: v3Info
+      x-speakeasy-name-override: Info
       tags:
         - Health
       responses:
@@ -157,7 +173,8 @@ paths:
     get:
       summary: Get a ledger
       description: Retrieves a ledger by its name. Requires `ledger:read` scope.
-      operationId: getLedger
+      operationId: v3GetLedger
+      x-speakeasy-name-override: GetLedger
       tags:
         - Ledgers
       security:
@@ -185,6 +202,8 @@ paths:
           $ref: '#/components/responses/ServiceUnavailable'
         '500':
           $ref: '#/components/responses/InternalServerError'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
         '405':
           $ref: '#/components/responses/MethodNotAllowed'
     post:
@@ -198,7 +217,8 @@ paths:
         named `_` would be unreachable over REST. Creating it is rejected with a
         validation error. The exact name `_system` is also reserved for system
         events and rejected. Other underscore-prefixed names remain valid.
-      operationId: createLedger
+      operationId: v3CreateLedger
+      x-speakeasy-name-override: CreateLedger
       tags:
         - Ledgers
       security:
@@ -222,35 +242,35 @@ paths:
                 $ref: '#/components/schemas/CreateLedgerResponse'
           links:
             GetCreatedLedger:
-              operationId: getLedger
+              operationId: v3GetLedger
               parameters:
                 ledgerName: '$response.body#/data/name'
             DeleteCreatedLedger:
-              operationId: deleteLedger
+              operationId: v3DeleteLedger
               parameters:
                 ledgerName: '$response.body#/data/name'
             GetLedgerStats:
-              operationId: getLedgerStats
+              operationId: v3GetLedgerStats
               parameters:
                 ledgerName: '$response.body#/data/name'
             CreateTransactionInLedger:
-              operationId: createTransaction
+              operationId: v3CreateTransaction
               parameters:
                 ledgerName: '$response.body#/data/name'
             ListLedgerAccounts:
-              operationId: listAccounts
+              operationId: v3ListAccounts
               parameters:
                 ledgerName: '$response.body#/data/name'
             ListLedgerLogs:
-              operationId: listLedgerLogs
+              operationId: v3ListLedgerLogs
               parameters:
                 ledgerName: '$response.body#/data/name'
             SaveNumscriptInLedger:
-              operationId: saveNumscript
+              operationId: v3SaveNumscript
               parameters:
                 ledgerName: '$response.body#/data/name'
             BulkInLedger:
-              operationId: bulkOperations
+              operationId: v3BulkOperations
               parameters:
                 ledgerName: '$response.body#/data/name'
         '400':
@@ -267,12 +287,15 @@ paths:
           $ref: '#/components/responses/ServiceUnavailable'
         '500':
           $ref: '#/components/responses/InternalServerError'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
         '405':
           $ref: '#/components/responses/MethodNotAllowed'
     delete:
       summary: Delete a ledger
       description: Deletes a ledger by its name. This operation removes the ledger and its associated Raft group from the cluster. Requires `ledger:write` scope.
-      operationId: deleteLedger
+      operationId: v3DeleteLedger
+      x-speakeasy-name-override: DeleteLedger
       tags:
         - Ledgers
       security:
@@ -300,6 +323,8 @@ paths:
           $ref: '#/components/responses/ServiceUnavailable'
         '500':
           $ref: '#/components/responses/InternalServerError'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
         '405':
           $ref: '#/components/responses/MethodNotAllowed'
 
@@ -321,7 +346,8 @@ paths:
         `volumeCount`) are sourced from the live usagestore projection, which is not checkpoint-aware,
         and are returned as `0` at a checkpoint rather than a live value — treat `0` on a checkpoint
         read as "not available at this checkpoint".
-      operationId: getLedgerStats
+      operationId: v3GetLedgerStats
+      x-speakeasy-name-override: GetLedgerStats
       tags:
         - Ledgers
       security:
@@ -353,6 +379,8 @@ paths:
           $ref: '#/components/responses/ServiceUnavailable'
         '500':
           $ref: '#/components/responses/InternalServerError'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
         '405':
           $ref: '#/components/responses/MethodNotAllowed'
 
@@ -364,7 +392,8 @@ paths:
         (ascending unless `reverse=true`).
         Requires the builtin `LOG` index to be enabled on the ledger via `CreateIndex`.
         Requires `ledger:read` scope.
-      operationId: listLedgerLogs
+      operationId: v3ListLedgerLogs
+      x-speakeasy-name-override: ListLedgerLogs
       tags:
         - Logs
       security:
@@ -437,6 +466,8 @@ paths:
           $ref: '#/components/responses/ServiceUnavailable'
         '500':
           $ref: '#/components/responses/InternalServerError'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
         '405':
           $ref: '#/components/responses/MethodNotAllowed'
 
@@ -459,7 +490,8 @@ paths:
         waiting for the audit projection.
 
         Requires `ledger:ReadAudit` scope.
-      operationId: listAuditEntries
+      operationId: v3ListAuditEntries
+      x-speakeasy-name-override: ListAuditEntries
       tags:
         - Audit
       security:
@@ -549,6 +581,8 @@ paths:
           $ref: '#/components/responses/ServiceUnavailable'
         '500':
           $ref: '#/components/responses/InternalServerError'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
         '405':
           $ref: '#/components/responses/MethodNotAllowed'
 
@@ -559,7 +593,8 @@ paths:
         Returns a single audit entry by its global sequence, with per-order
         `items` populated (the list endpoint omits `items` for compactness).
         Requires `ledger:ReadAudit` scope.
-      operationId: getAuditEntry
+      operationId: v3GetAuditEntry
+      x-speakeasy-name-override: GetAuditEntry
       tags:
         - Audit
       security:
@@ -597,6 +632,8 @@ paths:
           $ref: '#/components/responses/ServiceUnavailable'
         '500':
           $ref: '#/components/responses/InternalServerError'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
         '405':
           $ref: '#/components/responses/MethodNotAllowed'
 
@@ -606,7 +643,8 @@ paths:
       description: |
         Promotes a mirror-mode ledger to normal mode. After promotion, the mirror sync
         worker is stopped and the ledger accepts direct write operations. Requires `ledger:write` scope.
-      operationId: promoteLedger
+      operationId: v3PromoteLedger
+      x-speakeasy-name-override: PromoteLedger
       tags:
         - Ledgers
       security:
@@ -645,14 +683,33 @@ paths:
           $ref: '#/components/responses/ServiceUnavailable'
         '500':
           $ref: '#/components/responses/InternalServerError'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
         '405':
           $ref: '#/components/responses/MethodNotAllowed'
 
   /v3/{ledgerName}/transactions:
     post:
       summary: Create a new transaction
-      description: Creates a new transaction in the specified ledger with the specified postings. Requires `ledger:write` scope.
-      operationId: createTransaction
+      description: |
+        Creates a new transaction in the specified ledger with the specified postings. Requires `ledger:write` scope.
+        Signed requests use `application/json` (including MIME parameters) with
+        `request` and standard-base64 `payload`. Either signing header, even if
+        empty, selects this wrapper; with neither header present, the ordinary REST body applies.
+        Runtime headers choose the representation from the documented anyOf.
+        The signed protobuf batch must
+        equal the route/body/Idempotency-Key-derived batch in full. Supply exactly
+        one nonempty Formance-Signing-Key-Id and Formance-Signature header; the
+        latter is a standard-base64 Ed25519 signature of 64 decoded bytes. Missing,
+        empty or repeated signing headers, invalid base64 and wrong signature
+        length return 400. Signing headers with a non-JSON or missing content type return 415.
+        Signature enforcement
+        returns 401 `UNAUTHENTICATED` when required but absent and 403
+        `PERMISSION_DENIED` for invalid, unknown/revoked-key or mismatched
+        signatures. Malformed signed envelopes return 400. The complete
+        wrapper counts toward the 4 MiB body limit. JWT scopes still apply.
+      operationId: v3CreateTransaction
+      x-speakeasy-name-override: CreateTransaction
       tags:
         - Transactions
       security:
@@ -662,12 +719,16 @@ paths:
         - $ref: '#/components/parameters/BigIntAsString'
         - $ref: '#/components/parameters/LedgerName'
         - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/SigningKeyId'
+        - $ref: '#/components/parameters/RequestSignature'
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/CreateTransactionRequest'
+              anyOf:
+                - $ref: '#/components/schemas/CreateTransactionRequest'
+                - $ref: '#/components/schemas/SignedCreateTransactionRequest'
       responses:
         '201':
           description: Transaction created successfully
@@ -677,12 +738,12 @@ paths:
                 $ref: '#/components/schemas/CreateTransactionResponse'
           links:
             GetCreatedTransaction:
-              operationId: getTransaction
+              operationId: v3GetTransaction
               parameters:
                 ledgerName: '$request.path.ledgerName'
                 transactionId: '$response.body#/data/transaction/id'
             RevertCreatedTransaction:
-              operationId: revertTransaction
+              operationId: v3RevertTransaction
               parameters:
                 ledgerName: '$request.path.ledgerName'
                 transactionId: '$response.body#/data/transaction/id'
@@ -706,6 +767,8 @@ paths:
           $ref: '#/components/responses/ServiceUnavailable'
         '500':
           $ref: '#/components/responses/InternalServerError'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
         '405':
           $ref: '#/components/responses/MethodNotAllowed'
     get:
@@ -725,7 +788,8 @@ paths:
         gRPC API, it does not accept the `checkpointId` option to pin the read
         to a specific historical snapshot — use gRPC for checkpoint-pinned
         reads. (Tracked follow-up, same carve-out as the audit reads.)
-      operationId: listLedgerTransactions
+      operationId: v3ListLedgerTransactions
+      x-speakeasy-name-override: ListLedgerTransactions
       tags:
         - Transactions
       security:
@@ -802,6 +866,8 @@ paths:
           $ref: '#/components/responses/ServiceUnavailable'
         '500':
           $ref: '#/components/responses/InternalServerError'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
         '405':
           $ref: '#/components/responses/MethodNotAllowed'
 
@@ -809,7 +875,8 @@ paths:
     get:
       summary: Get a transaction
       description: Retrieves a transaction by its ID from the specified ledger. Requires `ledger:read` scope.
-      operationId: getTransaction
+      operationId: v3GetTransaction
+      x-speakeasy-name-override: GetTransaction
       tags:
         - Transactions
       security:
@@ -839,6 +906,8 @@ paths:
           $ref: '#/components/responses/ServiceUnavailable'
         '500':
           $ref: '#/components/responses/InternalServerError'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
         '405':
           $ref: '#/components/responses/MethodNotAllowed'
 
@@ -850,7 +919,8 @@ paths:
         pagination and an optional generic `filter` (e.g. address-prefix
         selection via `filter=address ^= "users:"`). Requires `ledger:read`
         scope.
-      operationId: listAccounts
+      operationId: v3ListAccounts
+      x-speakeasy-name-override: ListAccounts
       tags:
         - Accounts
       security:
@@ -909,6 +979,8 @@ paths:
           $ref: '#/components/responses/ServiceUnavailable'
         '500':
           $ref: '#/components/responses/InternalServerError'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
         '405':
           $ref: '#/components/responses/MethodNotAllowed'
 
@@ -916,7 +988,8 @@ paths:
     get:
       summary: Get an account
       description: Retrieves account information including metadata for a specific account address. Requires `ledger:read` scope.
-      operationId: getAccount
+      operationId: v3GetAccount
+      x-speakeasy-name-override: GetAccount
       tags:
         - Accounts
       security:
@@ -956,6 +1029,8 @@ paths:
           $ref: '#/components/responses/ServiceUnavailable'
         '500':
           $ref: '#/components/responses/InternalServerError'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
         '405':
           $ref: '#/components/responses/MethodNotAllowed'
 
@@ -967,7 +1042,8 @@ paths:
         Supports filtering accounts with the generic `filter` parameter, grouping by account prefixes,
         and max-precision merging.
         Requires `ledger:ReadAccount` scope.
-      operationId: aggregateVolumes
+      operationId: v3AggregateVolumes
+      x-speakeasy-name-override: AggregateVolumes
       tags:
         - Volumes
       security:
@@ -1021,6 +1097,8 @@ paths:
           $ref: '#/components/responses/ServiceUnavailable'
         '500':
           $ref: '#/components/responses/InternalServerError'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
         '405':
           $ref: '#/components/responses/MethodNotAllowed'
 
@@ -1031,7 +1109,8 @@ paths:
         Saves metadata key-value pairs on the ledger itself. Requires
         `ledger:WriteMetadata`; `ledger:write` grants it under the default scope
         mapping. Custom scope mappings can differ.
-      operationId: saveLedgerMetadata
+      operationId: v3SaveLedgerMetadata
+      x-speakeasy-name-override: SaveLedgerMetadata
       tags:
         - Ledgers
       security:
@@ -1072,6 +1151,8 @@ paths:
           $ref: '#/components/responses/ServiceUnavailable'
         '500':
           $ref: '#/components/responses/InternalServerError'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
         '405':
           $ref: '#/components/responses/MethodNotAllowed'
 
@@ -1079,7 +1160,8 @@ paths:
     delete:
       summary: Delete ledger metadata
       description: Deletes a metadata key from the ledger. Requires `ledger:WriteMetadata` scope (included in the default `ledger:write` mapping).
-      operationId: deleteLedgerMetadata
+      operationId: v3DeleteLedgerMetadata
+      x-speakeasy-name-override: DeleteLedgerMetadata
       tags:
         - Ledgers
       security:
@@ -1108,6 +1190,8 @@ paths:
           $ref: '#/components/responses/ServiceUnavailable'
         '500':
           $ref: '#/components/responses/InternalServerError'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
         '405':
           $ref: '#/components/responses/MethodNotAllowed'
 
@@ -1115,7 +1199,8 @@ paths:
     post:
       summary: Save account metadata
       description: Saves metadata for a specific account in the ledger. Requires `ledger:WriteMetadata` scope (included in the default `ledger:write` mapping).
-      operationId: saveAccountMetadata
+      operationId: v3SaveAccountMetadata
+      x-speakeasy-name-override: SaveAccountMetadata
       tags:
         - Accounts
       security:
@@ -1158,14 +1243,33 @@ paths:
           $ref: '#/components/responses/ServiceUnavailable'
         '500':
           $ref: '#/components/responses/InternalServerError'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
         '405':
           $ref: '#/components/responses/MethodNotAllowed'
 
   /v3/{ledgerName}/transactions/{transactionId}/metadata:
     post:
       summary: Save transaction metadata
-      description: Saves metadata for a specific transaction in the ledger. Requires `ledger:WriteMetadata` scope (included in the default `ledger:write` mapping).
-      operationId: saveTransactionMetadata
+      description: |
+        Saves metadata for a specific transaction in the ledger. Requires `ledger:WriteMetadata` scope (included in the default `ledger:write` mapping).
+        Signed requests use `application/json` (including MIME parameters) with
+        `request` and standard-base64 `payload`. Either signing header, even if
+        empty, selects this wrapper; with neither header present, the ordinary REST body applies.
+        Runtime headers choose the representation from the documented anyOf.
+        The signed protobuf batch must
+        equal the route/body/Idempotency-Key-derived batch in full. Supply exactly
+        one nonempty Formance-Signing-Key-Id and Formance-Signature header; the
+        latter is a standard-base64 Ed25519 signature of 64 decoded bytes. Missing,
+        empty or repeated signing headers, invalid base64 and wrong signature
+        length return 400. Signing headers with a non-JSON or missing content type return 415.
+        Signature enforcement
+        returns 401 `UNAUTHENTICATED` when required but absent and 403
+        `PERMISSION_DENIED` for invalid, unknown/revoked-key or mismatched
+        signatures. Malformed signed envelopes return 400. The complete
+        wrapper counts toward the 4 MiB body limit. JWT scopes still apply.
+      operationId: v3SaveTransactionMetadata
+      x-speakeasy-name-override: SaveTransactionMetadata
       tags:
         - Transactions
       security:
@@ -1175,19 +1279,23 @@ paths:
         - $ref: '#/components/parameters/LedgerName'
         - $ref: '#/components/parameters/TransactionId'
         - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/SigningKeyId'
+        - $ref: '#/components/parameters/RequestSignature'
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              type: object
-              additionalProperties:
-                $ref: '#/components/schemas/MetadataValue'
-              description: Metadata key-value pairs (supports typed values)
-              example:
-                reason: correction
-                source: support
-                priority: 1
+              anyOf:
+                - type: object
+                  additionalProperties:
+                    $ref: '#/components/schemas/MetadataValue'
+                  description: Metadata key-value pairs (supports typed values)
+                  example:
+                    reason: correction
+                    source: support
+                    priority: 1
+                - $ref: '#/components/schemas/SignedSaveTransactionMetadataRequest'
       responses:
         '204':
           description: Transaction metadata saved successfully
@@ -1207,6 +1315,8 @@ paths:
           $ref: '#/components/responses/ServiceUnavailable'
         '500':
           $ref: '#/components/responses/InternalServerError'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
         '405':
           $ref: '#/components/responses/MethodNotAllowed'
 
@@ -1214,7 +1324,8 @@ paths:
     delete:
       summary: Delete account metadata
       description: Deletes a metadata key for a specific account in the ledger. Requires `ledger:WriteMetadata` scope (included in the default `ledger:write` mapping).
-      operationId: deleteAccountMetadata
+      operationId: v3DeleteAccountMetadata
+      x-speakeasy-name-override: DeleteAccountMetadata
       tags:
         - Accounts
       security:
@@ -1244,14 +1355,33 @@ paths:
           $ref: '#/components/responses/ServiceUnavailable'
         '500':
           $ref: '#/components/responses/InternalServerError'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
         '405':
           $ref: '#/components/responses/MethodNotAllowed'
 
   /v3/{ledgerName}/transactions/{transactionId}/metadata/{key}:
     delete:
       summary: Delete transaction metadata
-      description: Deletes a metadata key for a specific transaction in the ledger. Requires `ledger:WriteMetadata` scope (included in the default `ledger:write` mapping).
-      operationId: deleteTransactionMetadata
+      description: |
+        Deletes a metadata key for a specific transaction in the ledger. Requires `ledger:WriteMetadata` scope (included in the default `ledger:write` mapping).
+        Signed requests use `application/json` (including MIME parameters) with
+        `request` and standard-base64 `payload`. Either signing header, even if
+        empty, selects this wrapper; with neither header present, the ordinary REST body applies.
+        Runtime headers choose the representation from the documented anyOf.
+        The signed protobuf batch must
+        equal the route/body/Idempotency-Key-derived batch in full. Supply exactly
+        one nonempty Formance-Signing-Key-Id and Formance-Signature header; the
+        latter is a standard-base64 Ed25519 signature of 64 decoded bytes. Missing,
+        empty or repeated signing headers, invalid base64 and wrong signature
+        length return 400. Signing headers with a non-JSON or missing content type return 415.
+        Signature enforcement
+        returns 401 `UNAUTHENTICATED` when required but absent and 403
+        `PERMISSION_DENIED` for invalid, unknown/revoked-key or mismatched
+        signatures. Malformed signed envelopes return 400. The complete
+        wrapper counts toward the 4 MiB body limit. JWT scopes still apply.
+      operationId: v3DeleteTransactionMetadata
+      x-speakeasy-name-override: DeleteTransactionMetadata
       tags:
         - Transactions
       security:
@@ -1262,6 +1392,15 @@ paths:
         - $ref: '#/components/parameters/TransactionId'
         - $ref: '#/components/parameters/MetadataKey'
         - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/SigningKeyId'
+        - $ref: '#/components/parameters/RequestSignature'
+      requestBody:
+        required: false
+        description: Required when either signing header is present; request must be null. Unsigned DELETE remains bodyless.
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SignedDeleteTransactionMetadataRequest'
       responses:
         '204':
           description: Transaction metadata deleted successfully
@@ -1281,6 +1420,8 @@ paths:
           $ref: '#/components/responses/ServiceUnavailable'
         '500':
           $ref: '#/components/responses/InternalServerError'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
         '405':
           $ref: '#/components/responses/MethodNotAllowed'
 
@@ -1296,7 +1437,23 @@ paths:
         or a non-object `metadata`) return 400 before applying the revert. A JSON
         `null` option uses its default. The complete body, including trailing
         whitespace, counts towards the 4 MiB limit; exceeding it returns 413.
-      operationId: revertTransaction
+        Signed requests use `application/json` (including MIME parameters) with
+        `request` and standard-base64 `payload`. Either signing header, even if
+        empty, selects this wrapper; with neither header present, the ordinary REST body applies.
+        Runtime headers choose the representation from the documented anyOf.
+        The signed protobuf batch must
+        equal the route/body/Idempotency-Key-derived batch in full. Supply exactly
+        one nonempty Formance-Signing-Key-Id and Formance-Signature header; the
+        latter is a standard-base64 Ed25519 signature of 64 decoded bytes. Missing,
+        empty or repeated signing headers, invalid base64 and wrong signature
+        length return 400. Signing headers with a non-JSON or missing content type return 415.
+        Signature enforcement
+        returns 401 `UNAUTHENTICATED` when required but absent and 403
+        `PERMISSION_DENIED` for invalid, unknown/revoked-key or mismatched
+        signatures. Malformed signed envelopes return 400. The complete
+        wrapper counts toward the 4 MiB body limit. JWT scopes still apply.
+      operationId: v3RevertTransaction
+      x-speakeasy-name-override: RevertTransaction
       tags:
         - Transactions
       security:
@@ -1307,12 +1464,16 @@ paths:
         - $ref: '#/components/parameters/LedgerName'
         - $ref: '#/components/parameters/TransactionId'
         - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/SigningKeyId'
+        - $ref: '#/components/parameters/RequestSignature'
       requestBody:
         required: false
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/RevertTransactionRequestBody'
+              anyOf:
+                - $ref: '#/components/schemas/RevertTransactionRequestBody'
+                - $ref: '#/components/schemas/SignedRevertTransactionRequest'
       responses:
         '201':
           description: Transaction reverted successfully
@@ -1346,6 +1507,8 @@ paths:
           $ref: '#/components/responses/ServiceUnavailable'
         '500':
           $ref: '#/components/responses/InternalServerError'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
         '405':
           $ref: '#/components/responses/MethodNotAllowed'
 
@@ -1353,7 +1516,8 @@ paths:
     get:
       summary: Get metadata schema
       description: Returns the declared type of every metadata field on a ledger. Requires `ledger:read` scope.
-      operationId: getMetadataSchemaStatus
+      operationId: v3GetMetadataSchemaStatus
+      x-speakeasy-name-override: GetMetadataSchemaStatus
       tags:
         - Metadata Schema
       security:
@@ -1381,6 +1545,8 @@ paths:
           $ref: '#/components/responses/ServiceUnavailable'
         '500':
           $ref: '#/components/responses/InternalServerError'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
         '405':
           $ref: '#/components/responses/MethodNotAllowed'
 
@@ -1392,7 +1558,8 @@ paths:
         or a summary (cardinality, min/max, existence counts). The index must be
         in READY state. Only metadata indexes are inspectable (builtin indexes
         return 400). Requires `ledger:read` scope.
-      operationId: inspectIndex
+      operationId: v3InspectIndex
+      x-speakeasy-name-override: InspectIndex
       tags:
         - Indexes
       security:
@@ -1464,6 +1631,8 @@ paths:
           $ref: '#/components/responses/ServiceUnavailable'
         '500':
           $ref: '#/components/responses/InternalServerError'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
         '405':
           $ref: '#/components/responses/MethodNotAllowed'
 
@@ -1474,7 +1643,8 @@ paths:
         Scans all accounts in a ledger, discovers address patterns, and returns a
         suggested Chart of Accounts. Useful after a mirror import to understand
         account structure. Requires `ledger:read` scope.
-      operationId: analyzeAccounts
+      operationId: v3AnalyzeAccounts
+      x-speakeasy-name-override: AnalyzeAccounts
       tags:
         - Accounts
       security:
@@ -1510,6 +1680,8 @@ paths:
           $ref: '#/components/responses/ServiceUnavailable'
         '500':
           $ref: '#/components/responses/InternalServerError'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
         '405':
           $ref: '#/components/responses/MethodNotAllowed'
 
@@ -1520,7 +1692,8 @@ paths:
         Scans all transactions in a ledger, discovers flow patterns by normalizing
         account addresses, and returns statistics per flow type including temporal
         distribution and volume metrics. Requires `ledger:read` scope.
-      operationId: analyzeTransactions
+      operationId: v3AnalyzeTransactions
+      x-speakeasy-name-override: AnalyzeTransactions
       tags:
         - Transactions
       security:
@@ -1557,6 +1730,8 @@ paths:
           $ref: '#/components/responses/ServiceUnavailable'
         '500':
           $ref: '#/components/responses/InternalServerError'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
         '405':
           $ref: '#/components/responses/MethodNotAllowed'
 
@@ -1567,7 +1742,8 @@ paths:
         Declares or changes the type used to encode a metadata key in an attached query index.
         Metadata values are neither validated nor converted by this declaration, and existing primary values remain unchanged.
         Any attached index is rewritten asynchronously. Requires `ledger:WriteMetadata` scope (included in the default `ledger:write` mapping).
-      operationId: setMetadataFieldType
+      operationId: v3SetMetadataFieldType
+      x-speakeasy-name-override: SetMetadataFieldType
       tags:
         - Metadata Schema
       security:
@@ -1602,6 +1778,8 @@ paths:
           $ref: '#/components/responses/ServiceUnavailable'
         '500':
           $ref: '#/components/responses/InternalServerError'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
         '405':
           $ref: '#/components/responses/MethodNotAllowed'
     delete:
@@ -1609,7 +1787,8 @@ paths:
       description: |
         Removes the type declaration for a metadata key on a ledger.
         Existing metadata values remain unchanged and any attached index is dropped. Requires `ledger:WriteMetadata` scope (included in the default `ledger:write` mapping).
-      operationId: removeMetadataFieldType
+      operationId: v3RemoveMetadataFieldType
+      x-speakeasy-name-override: RemoveMetadataFieldType
       tags:
         - Metadata Schema
       security:
@@ -1638,6 +1817,8 @@ paths:
           $ref: '#/components/responses/ServiceUnavailable'
         '500':
           $ref: '#/components/responses/InternalServerError'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
         '405':
           $ref: '#/components/responses/MethodNotAllowed'
 
@@ -1645,7 +1826,8 @@ paths:
     post:
       summary: Analyze Numscript source
       description: Validates Numscript v1 and returns the external input schema without reading or changing ledger state. Recognized source failures are returned as diagnostics with an empty input list. Sources over 64 KiB or with more than 32 block-comment open markers receive a syntax diagnostic; internal failures return a server error.
-      operationId: analyzeNumscript
+      operationId: v3AnalyzeNumscript
+      x-speakeasy-name-override: AnalyzeNumscript
       tags:
         - Numscript Library
       security:
@@ -1658,6 +1840,8 @@ paths:
             schema:
               $ref: '#/components/schemas/AnalyzeNumscriptRequest'
       responses:
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
         '200':
           description: Analysis result
           content:
@@ -1681,7 +1865,8 @@ paths:
       description: |
         Lists every numscript of a ledger at its greatest stored version, paged
         by name (ascending unless `reverse=true`).
-      operationId: listNumscripts
+      operationId: v3ListNumscripts
+      x-speakeasy-name-override: ListNumscripts
       tags:
         - Numscript Library
       security:
@@ -1717,6 +1902,8 @@ paths:
           $ref: '#/components/responses/ServiceUnavailable'
         '500':
           $ref: '#/components/responses/InternalServerError'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
         '405':
           $ref: '#/components/responses/MethodNotAllowed'
 
@@ -1726,7 +1913,8 @@ paths:
       description: |
         Retrieves a numscript by name from a ledger. Use the `version` query parameter to get a specific
         semver version. If omitted or empty, the latest version is returned.
-      operationId: getNumscript
+      operationId: v3GetNumscript
+      x-speakeasy-name-override: GetNumscript
       tags:
         - Numscript Library
       security:
@@ -1775,6 +1963,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
         '405':
           $ref: '#/components/responses/MethodNotAllowed'
     put:
@@ -1784,7 +1974,8 @@ paths:
         field must be an explicit full semver (e.g. "1.0.0"); it creates a new
         version and fails if that version already exists. The per-name latest is
         always the greatest stored semver.
-      operationId: saveNumscript
+      operationId: v3SaveNumscript
+      x-speakeasy-name-override: SaveNumscript
       tags:
         - Numscript Library
       security:
@@ -1813,7 +2004,7 @@ paths:
                 $ref: '#/components/schemas/GetNumscriptResponse'
           links:
             GetSavedNumscript:
-              operationId: getNumscript
+              operationId: v3GetNumscript
               parameters:
                 ledgerName: '$request.path.ledgerName'
                 name: '$response.body#/data/name'
@@ -1846,6 +2037,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
         '405':
           $ref: '#/components/responses/MethodNotAllowed'
 
@@ -1855,7 +2048,8 @@ paths:
       description: |
         Returns the numscript's history: its current latest (greatest stored
         semver) and every stored version, highest-first.
-      operationId: listNumscriptVersions
+      operationId: v3ListNumscriptVersions
+      x-speakeasy-name-override: ListNumscriptVersions
       tags:
         - Numscript Library
       security:
@@ -1889,6 +2083,8 @@ paths:
           $ref: '#/components/responses/ServiceUnavailable'
         '500':
           $ref: '#/components/responses/InternalServerError'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
         '405':
           $ref: '#/components/responses/MethodNotAllowed'
 
@@ -1900,7 +2096,8 @@ paths:
         materialised asynchronously by the `usagebuilder` subsystem from the FSM audit chain and may
         lag the live FSM while the worker drains pending batches. A never-invoked template returns a
         zero-valued response (not 404), so clients handle "never used" uniformly.
-      operationId: getNumscriptUsage
+      operationId: v3GetNumscriptUsage
+      x-speakeasy-name-override: GetNumscriptUsage
       tags:
         - Numscript Library
       security:
@@ -1942,6 +2139,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
         '405':
           $ref: '#/components/responses/MethodNotAllowed'
 
@@ -1984,9 +2183,11 @@ paths:
            status is the "worst" of them, with `continueOnFailure`
            applying only to per-element business failures (4xx):
            - Business failures (validation, not-found, conflict,
-             precondition, permission — 4xx): rolled up per
+             precondition — 4xx, except authentication/permission): rolled up per
              `continueOnFailure`. `true` → `200`; `false` (default) →
              the highest 4xx among failing elements (typically `400`).
+           - Authentication and permission failures: `401`/`403`, regardless
+             of `continueOnFailure`, with all processing outcomes retained.
            - Resource exhaustion (`KindResourceExhausted`, `429`), including
              rate limits and permanent authoritative-sequence exhaustion:
              surface unconditionally as `429`.
@@ -1999,7 +2200,27 @@ paths:
            - Aborted elements (`context.Canceled` from the sequential
              runner after a prior failure): contribute nothing — the
              originating error drives the rollup.
-      operationId: bulkOperations
+        Signed requests use `application/json` (including MIME parameters) with
+        `request` and standard-base64 `payload`. Either signing header, even if
+        empty, selects this wrapper; with neither header present, the ordinary REST body applies.
+        Runtime headers choose the representation from the documented anyOf.
+        The signed protobuf batch must
+        equal the route/body/Idempotency-Key-derived batch in full. Supply exactly
+        one nonempty Formance-Signing-Key-Id and Formance-Signature header; the
+        latter is a standard-base64 Ed25519 signature of 64 decoded bytes. Missing,
+        empty or repeated signing headers, invalid base64 and wrong signature
+        length return 400. Signing headers with a non-JSON or missing content type return 415.
+        Signature enforcement
+        returns 401 `UNAUTHENTICATED` when required but absent and 403
+        `PERMISSION_DENIED` for invalid, unknown/revoked-key or mismatched
+        signatures. Malformed signed envelopes return 400. The complete
+        wrapper counts toward the 4 MiB body limit. JWT scopes still apply.
+        Signing requires a nonempty array and `atomic=true` (otherwise 400).
+        The header key applies; per-element `ik` is ignored. Authentication
+        and permission failures remain 401/403 even with continueOnFailure;
+        processing errors preserve every element outcome.
+      operationId: v3BulkOperations
+      x-speakeasy-name-override: BulkOperations
       tags:
         - Transactions
       security:
@@ -2009,6 +2230,8 @@ paths:
         - $ref: '#/components/parameters/BigIntAsString'
         - $ref: '#/components/parameters/LedgerName'
         - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/SigningKeyId'
+        - $ref: '#/components/parameters/RequestSignature'
         - name: continueOnFailure
           in: query
           schema:
@@ -2016,7 +2239,7 @@ paths:
             default: false
           description: |
             Continue sequential processing after a failure and suppress the
-            top-level status for business errors. Does not suppress 429 or 5xx
+            top-level status for business errors. Does not suppress 401, 403, 429 or 5xx
             failures, or permit partial application when atomic=true.
         - name: atomic
           in: query
@@ -2033,9 +2256,11 @@ paths:
         content:
           application/json:
             schema:
-              type: array
-              items:
-                $ref: '#/components/schemas/BulkElement'
+              anyOf:
+                - type: array
+                  items:
+                    $ref: '#/components/schemas/BulkElement'
+                - $ref: '#/components/schemas/SignedBulkRequest'
       responses:
         '200':
           description: Bulk operations completed
@@ -2060,7 +2285,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/BulkResponse'
         '401':
-          description: Authentication failure before processing or in an element
+          description: Authentication failure before processing or in an element, including a missing mandatory signature (UNAUTHENTICATED); never suppressed by continueOnFailure
           content:
             application/json:
               schema:
@@ -2069,7 +2294,7 @@ paths:
               schema:
                 type: string
         '403':
-          description: Insufficient scope before processing or permission failure in an element
+          description: Insufficient scope, mismatched signed batch, or invalid/unknown/revoked signature (PERMISSION_DENIED); never suppressed by continueOnFailure
           content:
             application/json:
               schema:
@@ -2118,6 +2343,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/BulkErrorResponse'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
         '405':
           $ref: '#/components/responses/MethodNotAllowed'
 
@@ -2127,7 +2354,8 @@ paths:
       description: |
         Creates a new prepared query for a ledger. A prepared query defines a reusable
         filter that can be executed later with parameter substitution. Requires `ledger:WriteQuery` scope.
-      operationId: createPreparedQuery
+      operationId: v3CreatePreparedQuery
+      x-speakeasy-name-override: CreatePreparedQuery
       tags:
         - Prepared Queries
       security:
@@ -2161,12 +2389,15 @@ paths:
           $ref: '#/components/responses/ServiceUnavailable'
         '500':
           $ref: '#/components/responses/InternalServerError'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
         '405':
           $ref: '#/components/responses/MethodNotAllowed'
     get:
       summary: List prepared queries
       description: Returns a list of all prepared queries for a ledger. Requires `ledger:ReadQuery` scope.
-      operationId: listPreparedQueries
+      operationId: v3ListPreparedQueries
+      x-speakeasy-name-override: ListPreparedQueries
       tags:
         - Prepared Queries
       security:
@@ -2194,6 +2425,8 @@ paths:
           $ref: '#/components/responses/ServiceUnavailable'
         '500':
           $ref: '#/components/responses/InternalServerError'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
         '405':
           $ref: '#/components/responses/MethodNotAllowed'
 
@@ -2202,7 +2435,8 @@ paths:
       summary: Update a prepared query
       description: |
         Updates the filter of an existing prepared query. Requires `ledger:WriteQuery` scope.
-      operationId: updatePreparedQuery
+      operationId: v3UpdatePreparedQuery
+      x-speakeasy-name-override: UpdatePreparedQuery
       tags:
         - Prepared Queries
       security:
@@ -2236,12 +2470,15 @@ paths:
           $ref: '#/components/responses/ServiceUnavailable'
         '500':
           $ref: '#/components/responses/InternalServerError'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
         '405':
           $ref: '#/components/responses/MethodNotAllowed'
     delete:
       summary: Delete a prepared query
       description: Deletes a prepared query from a ledger. Requires `ledger:WriteQuery` scope.
-      operationId: deletePreparedQuery
+      operationId: v3DeletePreparedQuery
+      x-speakeasy-name-override: DeletePreparedQuery
       tags:
         - Prepared Queries
       security:
@@ -2269,6 +2506,8 @@ paths:
           $ref: '#/components/responses/ServiceUnavailable'
         '500':
           $ref: '#/components/responses/InternalServerError'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
         '405':
           $ref: '#/components/responses/MethodNotAllowed'
 
@@ -2282,7 +2521,8 @@ paths:
         AGGREGATE_VOLUMES ignores pageSize and aggregates all matching accounts. Also
         accepts pageSize, cursor and reverse as query parameters. Supplied pageSize and
         reverse values, and nonempty cursor values, override the body. Requires `ledger:ReadQuery` scope.
-      operationId: executePreparedQuery
+      operationId: v3ExecutePreparedQuery
+      x-speakeasy-name-override: ExecutePreparedQuery
       tags:
         - Prepared Queries
       security:
@@ -2347,6 +2587,8 @@ paths:
           $ref: '#/components/responses/ServiceUnavailable'
         '500':
           $ref: '#/components/responses/InternalServerError'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
         '405':
           $ref: '#/components/responses/MethodNotAllowed'
 
@@ -2356,7 +2598,8 @@ paths:
       description: |
         Adds a new account type to a ledger's chart of accounts. Account types define
         address patterns for account validation. Requires `ledger:WriteMetadata` scope.
-      operationId: addAccountType
+      operationId: v3AddAccountType
+      x-speakeasy-name-override: AddAccountType
       tags:
         - Account Types
       security:
@@ -2389,6 +2632,8 @@ paths:
           $ref: '#/components/responses/ServiceUnavailable'
         '500':
           $ref: '#/components/responses/InternalServerError'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
         '405':
           $ref: '#/components/responses/MethodNotAllowed'
     get:
@@ -2396,7 +2641,8 @@ paths:
       description: |
         Returns all account types defined on a ledger, sorted by name.
         Requires `ledger:ReadAccount` scope.
-      operationId: listAccountTypes
+      operationId: v3ListAccountTypes
+      x-speakeasy-name-override: ListAccountTypes
       tags:
         - Account Types
       security:
@@ -2424,6 +2670,8 @@ paths:
           $ref: '#/components/responses/ServiceUnavailable'
         '500':
           $ref: '#/components/responses/InternalServerError'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
         '405':
           $ref: '#/components/responses/MethodNotAllowed'
 
@@ -2436,7 +2684,8 @@ paths:
         unmatched account with `400 ACCOUNT_NOT_MATCHING_TYPE`. AUDIT accepts the
         order and does not report the unmatched account: the response carries no
         warning. Requires `ledger:WriteMetadata` scope.
-      operationId: setDefaultEnforcementMode
+      operationId: v3SetDefaultEnforcementMode
+      x-speakeasy-name-override: SetDefaultEnforcementMode
       tags:
         - Account Types
       security:
@@ -2469,6 +2718,8 @@ paths:
           $ref: '#/components/responses/ServiceUnavailable'
         '500':
           $ref: '#/components/responses/InternalServerError'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
         '405':
           $ref: '#/components/responses/MethodNotAllowed'
 
@@ -2476,7 +2727,8 @@ paths:
     get:
       summary: Get an account type
       description: Retrieves a specific account type by name from a ledger. Requires `ledger:ReadAccount` scope.
-      operationId: getAccountType
+      operationId: v3GetAccountType
+      x-speakeasy-name-override: GetAccountType
       tags:
         - Account Types
       security:
@@ -2505,12 +2757,15 @@ paths:
           $ref: '#/components/responses/ServiceUnavailable'
         '500':
           $ref: '#/components/responses/InternalServerError'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
         '405':
           $ref: '#/components/responses/MethodNotAllowed'
     delete:
       summary: Remove an account type
       description: Removes an account type from a ledger's chart of accounts. Requires `ledger:WriteMetadata` scope.
-      operationId: removeAccountType
+      operationId: v3RemoveAccountType
+      x-speakeasy-name-override: RemoveAccountType
       tags:
         - Account Types
       security:
@@ -2538,6 +2793,8 @@ paths:
           $ref: '#/components/responses/ServiceUnavailable'
         '500':
           $ref: '#/components/responses/InternalServerError'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
         '405':
           $ref: '#/components/responses/MethodNotAllowed'
 
@@ -2547,7 +2804,8 @@ paths:
       description: |
         Returns the system log entry with the given bucket-wide sequence number.
         Requires `ledger:ReadOps` scope.
-      operationId: getLog
+      operationId: v3GetLog
+      x-speakeasy-name-override: GetLog
       tags:
         - Logs
       security:
@@ -2563,6 +2821,8 @@ paths:
             type: integer
             format: uint64
       responses:
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
         '200':
           description: Log retrieved successfully.
           content:
@@ -2591,7 +2851,8 @@ paths:
       description: |
         Returns every event sink configured on the cluster. Requires
         `ledger:ReadOps` scope.
-      operationId: getEventsSinks
+      operationId: v3GetEventsSinks
+      x-speakeasy-name-override: GetEventsSinks
       tags:
         - Ops
       security:
@@ -2600,6 +2861,8 @@ paths:
       parameters:
         - $ref: '#/components/parameters/Consistency'
       responses:
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
         '400':
           $ref: '#/components/responses/BadRequest'
         '200':
@@ -2652,7 +2915,8 @@ paths:
         does not guarantee that the sink can connect or publish events.
         `batchSize` above 100000 returns `SINK_BATCH_SIZE_TOO_LARGE` (400).
         An existing name returns `SINK_ALREADY_EXISTS` (409).
-      operationId: addEventsSink
+      operationId: v3AddEventsSink
+      x-speakeasy-name-override: AddEventsSink
       tags:
         - Ops
       security:
@@ -2667,6 +2931,8 @@ paths:
             schema:
               $ref: '#/components/schemas/SinkConfig'
       responses:
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
         '201':
           description: Event sink created successfully. Only its name is returned.
           content:
@@ -2713,7 +2979,8 @@ paths:
         A missing sink returns `SINK_NOT_FOUND` (404). Malformed query encoding
         or repeated controllerId parameters return `INVALID_REQUEST` (400)
         before Apply, instead of becoming unconditional removal.
-      operationId: removeEventsSink
+      operationId: v3RemoveEventsSink
+      x-speakeasy-name-override: RemoveEventsSink
       tags:
         - Ops
       security:
@@ -2735,6 +3002,8 @@ paths:
             type: string
         - $ref: '#/components/parameters/IdempotencyKey'
       responses:
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
         '204':
           description: Event sink removed successfully. No response body.
         '400':
@@ -2764,7 +3033,8 @@ paths:
         This route performs a live read, linearizable by default.
         `X-Consistency: stale` reads the receiving node's local state, which
         may lag the leader. Signing-key reads are live-only on both transports.
-      operationId: listSigningKeys
+      operationId: v3ListSigningKeys
+      x-speakeasy-name-override: ListSigningKeys
       tags:
         - Ops
       security:
@@ -2781,6 +3051,8 @@ paths:
             default: false
           description: List in descending key id order when true.
       responses:
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
         '200':
           description: Signing keys retrieved successfully.
           content:
@@ -2824,7 +3096,8 @@ paths:
         bucket-scoped entries (empty ledger, e.g. audit indexes). Use
         `GET /v3/{ledgerName}/indexes` for the per-ledger view. Requires
         `ledger:ReadOps` scope.
-      operationId: listBucketIndexes
+      operationId: v3ListBucketIndexes
+      x-speakeasy-name-override: ListBucketIndexes
       tags:
         - Indexes
       security:
@@ -2839,6 +3112,8 @@ paths:
             enum: [all, bucket]
             default: all
       responses:
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
         '200':
           description: Indexes retrieved successfully.
           content:
@@ -2873,7 +3148,8 @@ paths:
         keyspaces are distinct so a bucket-scoped lookup with the same
         canonical will NotFound if only the ledger-scoped entry exists.
         Requires `ledger:ReadOps` scope.
-      operationId: getBucketIndex
+      operationId: v3GetBucketIndex
+      x-speakeasy-name-override: GetBucketIndex
       tags:
         - Indexes
       security:
@@ -2888,6 +3164,8 @@ paths:
             type: string
           description: Canonical form of the target IndexID.
       responses:
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
         '200':
           description: Index retrieved successfully.
           content:
@@ -2919,7 +3197,8 @@ paths:
         Returns the `IndexEntry` (registry entry + backfill cursor +
         per-replica IndexVersionState) for a bucket-scoped index.
         Requires `ledger:ReadOps` scope.
-      operationId: getBucketIndexEntryStatus
+      operationId: v3GetBucketIndexEntryStatus
+      x-speakeasy-name-override: GetBucketIndexEntryStatus
       tags:
         - Indexes
       security:
@@ -2934,6 +3213,8 @@ paths:
             type: string
           description: Canonical form of the target IndexID.
       responses:
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
         '200':
           description: Index entry retrieved successfully.
           content:
@@ -2968,7 +3249,8 @@ paths:
         The optional `ledger` query parameter narrows the per-index entries to
         a single ledger; the aggregated counters always cover the bucket.
         Requires `ledger:ReadOps` scope.
-      operationId: getIndexStatus
+      operationId: v3GetIndexStatus
+      x-speakeasy-name-override: GetIndexStatus
       tags:
         - Indexes
       security:
@@ -2981,6 +3263,8 @@ paths:
           schema:
             type: string
       responses:
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
         '400':
           $ref: '#/components/responses/BadRequest'
         '200':
@@ -3009,7 +3293,8 @@ paths:
       description: |
         Streams the indexes registered on a specific ledger. Requires
         `ledger:ReadLedger` scope.
-      operationId: listLedgerIndexes
+      operationId: v3ListLedgerIndexes
+      x-speakeasy-name-override: ListLedgerIndexes
       tags:
         - Indexes
       security:
@@ -3019,6 +3304,8 @@ paths:
         - $ref: '#/components/parameters/Consistency'
         - $ref: '#/components/parameters/LedgerName'
       responses:
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
         '200':
           description: Indexes retrieved successfully.
           content:
@@ -3055,7 +3342,8 @@ paths:
         The request body carries the target `IndexID` in
         canonical form (see `DELETE /v3/{ledgerName}/indexes/{canonicalId}`
         for the format). Requires `ledger:WriteLedger` scope.
-      operationId: createIndex
+      operationId: v3CreateIndex
+      x-speakeasy-name-override: CreateIndex
       tags:
         - Indexes
       security:
@@ -3085,6 +3373,8 @@ paths:
                       `metadata:<TARGET_TYPE_*>:<key>`
                   example: metadata:TARGET_TYPE_ACCOUNT:color
       responses:
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
         '201':
           description: |
             Index creation queued. The body carries the canonical id of the
@@ -3124,7 +3414,8 @@ paths:
         Returns the `Index` registry entry (id, ledger, createdAt,
         forwardEncodingVersion) for a single index, serialized in
         protobuf-JSON camelCase. Requires `ledger:ReadLedger` scope.
-      operationId: getIndex
+      operationId: v3GetIndex
+      x-speakeasy-name-override: GetIndex
       tags:
         - Indexes
       security:
@@ -3140,6 +3431,8 @@ paths:
             type: string
           description: Canonical form of the target IndexID.
       responses:
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
         '200':
           description: Index retrieved successfully.
           content:
@@ -3176,7 +3469,8 @@ paths:
         mistyped canonical id is therefore not reported; read the index with
         `GET /v3/{ledgerName}/indexes/{canonicalId}` first when the caller must
         know that it exists. `404` means that the ledger does not exist.
-      operationId: dropIndex
+      operationId: v3DropIndex
+      x-speakeasy-name-override: DropIndex
       tags:
         - Indexes
       security:
@@ -3195,6 +3489,8 @@ paths:
           schema:
             type: string
       responses:
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
         '204':
           description: Index removed, or no index with this id was registered on the ledger.
         '400':
@@ -3227,7 +3523,8 @@ paths:
         IndexVersionState (current + pending version). Use this to poll
         for backfill completion after a `POST /v3/{ledgerName}/indexes`.
         Requires `ledger:ReadLedger` scope.
-      operationId: getIndexEntryStatus
+      operationId: v3GetIndexEntryStatus
+      x-speakeasy-name-override: GetIndexEntryStatus
       tags:
         - Indexes
       security:
@@ -3243,6 +3540,8 @@ paths:
             type: string
           description: Canonical form of the target IndexID.
       responses:
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
         '200':
           description: Index entry retrieved successfully.
           content:
@@ -3279,6 +3578,37 @@ components:
         `ledger:write` (write operations), `ledger:admin` (cluster operations).
 
   parameters:
+    SigningKeyId:
+      name: Formance-Signing-Key-Id
+      in: header
+      required: false
+      description: |
+        Signing key ID. Either signing header, even if empty, selects the signed
+        wrapper under application/json (including MIME parameters). Both headers
+        are then required exactly once and nonempty. With neither header present,
+        ordinary unsigned decoding applies. Missing, empty or repeated signing headers
+        return 400. A non-JSON or missing content type with either header returns
+        415. JWT authentication and scopes remain independent.
+      schema:
+        type: string
+        minLength: 1
+
+    RequestSignature:
+      name: Formance-Signature
+      in: header
+      required: false
+      description: |
+        Standard-base64 Ed25519 signature over the exact decoded body payload
+        (serialized protobuf ApplyBatch bytes). Either signing header, even if
+        empty, selects the signed wrapper under application/json (including MIME
+        parameters). Both headers are then required exactly once and nonempty.
+        With neither header present, ordinary unsigned decoding applies. The signature must
+        decode to 64 bytes. Missing, empty, repeated, invalid-base64 or wrong-length
+        signatures return 400. A non-JSON or missing content type returns 415.
+      schema:
+        type: string
+        format: byte
+
     PageSize:
       name: pageSize
       in: query
@@ -3535,6 +3865,13 @@ components:
         format: byte
 
   responses:
+    UnsupportedMediaType:
+      description: Signing headers are unsupported on this route or require application/json with an explicit content type.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+
     RequestEntityTooLarge:
       description: Request body exceeds the 4 MiB HTTP limit (`BODY_TOO_LARGE`)
       content:
@@ -3592,7 +3929,7 @@ components:
             $ref: '#/components/schemas/ErrorResponse'
 
     Unauthorized:
-      description: Authentication required (missing or invalid JWT token)
+      description: Authentication required (missing or invalid JWT token, or missing mandatory request signature with errorCode UNAUTHENTICATED)
       content:
         application/json:
           schema:
@@ -3602,7 +3939,7 @@ components:
             type: string
 
     Forbidden:
-      description: Insufficient permissions (missing required scope)
+      description: Insufficient permissions (missing required scope, or invalid/unknown/revoked request signature or batch mismatch with errorCode PERMISSION_DENIED)
       content:
         application/json:
           schema:
@@ -3974,9 +4311,9 @@ components:
             contains metadata; DELETE_METADATA contains key. ORDER_SKIPPED
             contains reason and optional context. Other types carry the fields
             of their corresponding operation directly. FILL_GAP contains originalId,
-            a uint64 encoded as a decimal JSON string by protobuf JSON.
-            Transaction IDs, revertedTransactionId and transaction targetId
-            are JSON numbers; consumers must preserve full integer precision.
+            a uint64 encoded as a decimal JSON number. Transaction IDs,
+            revertedTransactionId and transaction targetId are JSON numbers;
+            consumers must preserve full integer precision.
             Metadata integers are
             JSON numbers and null-valued keys are preserved.
         date:
@@ -4212,19 +4549,16 @@ components:
             - FOLLOWING
           description: Current sync state (SYNCING = catching up, FOLLOWING = up to date)
         cursor:
-          type: string
-          format: bigint
-          pattern: '^(0|[1-9][0-9]*)$'
+          type: integer
+          format: uint64
           description: Last ingested v2 log ID
         sourceLogCount:
-          type: string
-          format: bigint
-          pattern: '^(0|[1-9][0-9]*)$'
+          type: integer
+          format: uint64
           description: Latest known log ID in the v2 source
         remainingLogs:
-          type: string
-          format: bigint
-          pattern: '^(0|[1-9][0-9]*)$'
+          type: integer
+          format: uint64
           description: Number of remaining logs to sync (sourceLogCount - cursor)
         error:
           $ref: '#/components/schemas/MirrorSyncError'
@@ -4240,6 +4574,90 @@ components:
           type: string
           format: date-time
           description: When the error occurred
+
+    SignedBatchPayload:
+      type: string
+      format: byte
+      minLength: 1
+      description: |
+        Standard-base64 exact serialized protobuf ApplyBatch bytes signed by the
+        client. Formance-Signing-Key-Id and Formance-Signature headers supply the
+        other fields of the existing gRPC SignedApplyBatch envelope. The adapter
+        assembles that envelope and uses ApplyRequest.signed and the existing
+        admission, proposal and audit signature path. The server compares the
+        complete decoded batch with the HTTP-derived batch before forwarding the
+        original payload and signature bytes. No canonical protobuf encoding is
+        required. The proof does not sign JWT claims, ignored JSON fields,
+        presentation options or the HTTP response.
+
+    SignedCreateTransactionRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - request
+        - payload
+      properties:
+        request:
+          $ref: '#/components/schemas/CreateTransactionRequest'
+        payload:
+          $ref: '#/components/schemas/SignedBatchPayload'
+
+    SignedRevertTransactionRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - request
+        - payload
+      properties:
+        request:
+          $ref: '#/components/schemas/RevertTransactionRequestBody'
+        payload:
+          $ref: '#/components/schemas/SignedBatchPayload'
+
+    SignedSaveTransactionMetadataRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - request
+        - payload
+      properties:
+        request:
+          type: object
+          additionalProperties:
+            $ref: '#/components/schemas/MetadataValue'
+        payload:
+          $ref: '#/components/schemas/SignedBatchPayload'
+
+    SignedDeleteTransactionMetadataRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - request
+        - payload
+      properties:
+        request:
+          type: object
+          nullable: true
+          enum: [null]
+          additionalProperties: false
+          description: Explicit null; the command is entirely determined by the route and header.
+        payload:
+          $ref: '#/components/schemas/SignedBatchPayload'
+
+    SignedBulkRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - request
+        - payload
+      properties:
+        request:
+          type: array
+          minItems: 1
+          items:
+            $ref: '#/components/schemas/BulkElement'
+        payload:
+          $ref: '#/components/schemas/SignedBatchPayload'
 
     CreateTransactionRequest:
       type: object
@@ -5382,8 +5800,8 @@ components:
           type: string
         clientSecret:
           type: string
-          enum: ['[redacted]']
-          description: Presence marker only; reusable secret material is never returned
+          enum: ['', '[redacted]']
+          description: Empty when unset; otherwise a presence marker only. Reusable secret material is never returned
         tokenEndpoint:
           type: string
           description: OAuth endpoint URL with userinfo (including passwordless tokens) and query credentials masked
@@ -5464,9 +5882,10 @@ components:
       type: object
       description: >
         Read representation of a mirror rewrite rule, using protojson camelCase
-        names. Default scalar values (including empty regex replacements) are
-        omitted; missing replacements mean the empty string. Creation uses the
-        separate MirrorRewriteRule schema.
+        names. Default scalar values and empty collections follow the generated
+        protobuf JSON projection and are emitted for non-presence fields,
+        including empty regex replacements. Creation uses the separate
+        MirrorRewriteRule schema.
       properties:
         createdTransaction:
           $ref: '#/components/schemas/CreatedTransactionRuleRead'

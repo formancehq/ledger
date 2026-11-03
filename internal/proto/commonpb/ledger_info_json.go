@@ -1,10 +1,8 @@
 package commonpb
 
 import (
+	jsonv2 "encoding/json/v2"
 	"fmt"
-	"strconv"
-
-	"google.golang.org/protobuf/encoding/protojson"
 
 	"github.com/formancehq/ledger/v3/internal/adapter/json"
 )
@@ -51,7 +49,7 @@ func (x *LedgerInfo) MarshalJSON() ([]byte, error) {
 	if x.GetMirrorSource() != nil {
 		// This configuration's protojson shape is the documented read shape,
 		// including rewrite-rule oneofs; it differs from the flat create input.
-		b, err := protojson.Marshal(x.GetMirrorSource())
+		b, err := jsonv2.Marshal(x.GetMirrorSource())
 		if err != nil {
 			return nil, fmt.Errorf("ledger info mirror source: %w", err)
 		}
@@ -68,9 +66,9 @@ func (x *LedgerInfo) MarshalJSON() ([]byte, error) {
 			return nil, fmt.Errorf("ledger info: unknown mirror sync state %v", p.GetState())
 		}
 		progress = &ledgerMirrorProgressJSON{
-			State: state, Cursor: strconv.FormatUint(p.GetCursor(), 10),
-			SourceLogCount: strconv.FormatUint(p.GetSourceLogCount(), 10),
-			RemainingLogs:  strconv.FormatUint(p.GetRemainingLogs(), 10),
+			State: state, Cursor: p.GetCursor(),
+			SourceLogCount: p.GetSourceLogCount(),
+			RemainingLogs:  p.GetRemainingLogs(),
 		}
 		if e := p.GetError(); e != nil {
 			progress.Error = &ledgerMirrorErrorJSON{Message: e.GetMessage(), OccurredAt: e.GetOccurredAt()}
@@ -143,9 +141,9 @@ type ledgerAccountTypeJSON struct {
 
 type ledgerMirrorProgressJSON struct {
 	State          string                 `json:"state"`
-	Cursor         string                 `json:"cursor"`
-	SourceLogCount string                 `json:"sourceLogCount"`
-	RemainingLogs  string                 `json:"remainingLogs"`
+	Cursor         uint64                 `json:"cursor"`
+	SourceLogCount uint64                 `json:"sourceLogCount"`
+	RemainingLogs  uint64                 `json:"remainingLogs"`
 	Error          *ledgerMirrorErrorJSON `json:"error,omitempty"`
 }
 

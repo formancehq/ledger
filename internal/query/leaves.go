@@ -10,15 +10,14 @@ import (
 // First/Next versus Last/Prev, a bitset word walked from its lowest set bit
 // versus its highest, an event group resolved forwards versus backwards.
 //
-// It exists so that everything else about compiling a filter — predicate
-// resolution, schema validation, index-readiness gating, bound computation,
-// boolean composition, error wrapping, resource cleanup and profile-tree
-// construction — is written ONCE, in one recursion, and cannot be correct
-// ascending while being wrong or missing descending (EN-1966).
+// These factories describe the directional leaf boundary. The current
+// compilers still use separate recursive dispatch and constructors; they share
+// condition resolvers directly. Defining this interface does not by itself
+// unify validation, composition, cleanup or profile construction.
 //
 // Deliberately absent: the materializing range leaves. Draining a scan into a
-// sorted slice is direction-free, so the shared recursion builds the
-// ascending range scan and hands the one sorted result to Slice[D]. A
+// sorted slice is direction-free, so the descending compiler reuses the
+// ascending range scan and hands the one sorted result to Slice[Desc]. A
 // descending page over a materialized range therefore costs no second
 // collection.
 type leaves[D readstore.Direction] interface {

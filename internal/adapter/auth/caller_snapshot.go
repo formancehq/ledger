@@ -142,7 +142,8 @@ func buildCallerSnapshot(ctx context.Context) *commonpb.CallerSnapshot {
 		Subject: claims.Subject,
 	}
 
-	// Source: key_id for Ed25519, issuer for OIDC.
+	// Credential evaluation installs a key ID only for validated static
+	// Ed25519 credentials; an OIDC token's kid never overrides its issuer.
 	if keyID := KeyIDFromContext(ctx); keyID != "" {
 		identity.Source = &commonpb.CallerIdentity_KeyId{KeyId: keyID}
 	} else if claims.Issuer != "" {

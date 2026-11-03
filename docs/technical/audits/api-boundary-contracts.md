@@ -165,8 +165,8 @@ writers from the request through option-aware nested codecs; dedicated protojson
 projections must contain none of these types, including in nested descriptors.
 Preserve null/zero/omission shapes, escaping, streaming newlines and checked
 failure buffering. Concurrent mixed-header requests must remain isolated.
-Ordinary integer IDs/counts, metadata and explicitly string-encoded counters
-retain their current representation. CLI, protobuf, event and storage codecs
+Ordinary integer IDs/counts, metadata and mirror counters retain their current
+numeric JSON representation. CLI, protobuf, event and storage codecs
 also keep their existing representations; response negotiation does not expand
 request decoding. Posting input still accepts canonical unsigned decimal strings
 or integer tokens within uint256; volumes retain arbitrary precision and signed
@@ -180,6 +180,54 @@ types; future fields inherit the same type-based rule without a new business
 classification. Bind the actual schema/generator/dependencies and prove exact
 opt-in strings through generated operations. A number/string schema union or a
 helper-only probe cannot prove routed SDK preservation.
+
+## Protobuf tooling at the API boundary
+
+The scope includes `tools/protoc-gen-reader/**`,
+`tools/protoc-gen-queryfilter-validity/**` and `tools/buf-plugin-ledger/**`,
+including their module inputs and fixtures. `misc/proto/buf.yaml`,
+`scripts/lintproto/**` and `scripts/checkprotocolversion/**` establish the actual
+lint and wire-gate wiring. Read [the protobuf tooling contract](../contributing/protobuf.md).
+Tooling inclusion covers its effect on these boundary contracts; it does not
+turn this domain into a general build/release audit.
+
+For reader-backed public projections, compare the concrete input message with
+the actual emitted response using descriptor-selected nested messages, bytes,
+scalar lists, maps, nil entries, explicit oneofs and optional values. Establish
+value/presence fidelity and whether projection changes its input independently
+of the generated getter implementation. A reader is a live view rather than a
+snapshot. Route general alias exposure and accepted-order mutation to
+`fsm-determinism-cache-coverage`; a oneof wrapper's apparent read-only interface
+alone is not proof of immutability.
+
+For QueryFilter validity, independently enumerate descriptor arms and target
+enum values and inspect raw annotations. Combine
+`TestConditionKindsCoverEveryOneofArm`,
+`TestTargetConditionValidityIsComplete`,
+`TestConditionValidityMatchesExpectedMatrix` and
+`TestNilFilterIsUnknownAndNeverValid` with routed allowed/denied target controls.
+Generated enumeration completeness and agreement between two consumers of the
+same table do not prove annotation fidelity. In allowed disposable generator
+fixtures, remove annotations, declare both markers, reference unknown target
+numbers, and add an arm/target. Observe explicit rejection or a complete
+regenerated mapping. These negative generator probes are proposed evidence,
+not a claim that existing tests execute them. Canonical compiler acceptance and
+fixed-state result semantics remain owned by `query-semantic-equivalence`;
+temporal visibility and projection alignment remain owned by
+`read-consistency-projections`.
+
+For the buf plugin, use valid/invalid fixtures and
+`TestExistingTypesRetainNumbersAndReservations` to distinguish new types from
+published types. Include new nested types inside an exempt parent, map entries,
+imports, enum aliases and reserved numbers/names. Require exact rule IDs and
+source locations through the actual plugin. Compare `existing-types.txt`
+membership with its documented source revision; never expand that baseline to
+silence a diagnostic. Layout lint must not force renumbering a published type.
+Verify its registration independently through the scripts and buf configuration.
+A passing lint result establishes initial layout only: the service wire-freeze
+gate and persisted/mixed-version compatibility have independent evidence and
+owners. No source proto, baseline or generated production file is changed by
+this contract preparation.
 
 ## Boundaries
 
@@ -337,9 +385,9 @@ inventing a new retry identity or an external-delivery guarantee.
 
 Require camelCase keys, short explicit enum defaults, typed metadata/schema, REST
 segment discriminators and unconstrained null, RFC3339 timestamps, and populated
-mirror state/counters at zero. Counter wire values are decimal strings with
-OpenAPI string/bigint; a generated TypeScript number for integer/bigint can round
-large counters despite successful decoding. Exercise actual generated list/get
+mirror state/counters at zero. Counter wire values are unsigned JSON numbers
+with OpenAPI integer/uint64, covering `0..18446744073709551615`; clients must
+use lossless integer parsing above 2^53. Exercise actual generated list/get
 operations with >2^53 and uint64 maximum, alongside schema validation and the
 codec/routed HTTP fixtures. Read mirror schemas are nested, while flat create
 fixtures must still be accepted. Rewrite-rule read models must expose CEL
@@ -383,3 +431,62 @@ command through a pseudoterminal and checks overflowing input is rejected before
 Apply, alongside the existing negative and zero rejection. Terminal readiness
 is observed rather than inferred from a delay. These are CLI input-contract
 oracles; they do not claim server accounting or committed-state coverage.
+
+## Opaque page-token boundary
+
+Include `pkg/pagecursor/**` for token parsing and wire representation. Derive
+base64url JSON fixtures independently of `Encode`, covering absent tokens,
+explicit first-page links, string keys, uint64 maximum/overflow, malformed
+base64/JSON, unknown fields, null/wrong field types and trailing data. Round-trip
+agreement alone cannot detect a shared encoding/decoding mistake. Trace invalid
+tokens through the real query and adapter validation boundary and assert its
+established error/status contract. Empty links and an encoded first-page token
+have different meanings. Fixed-state windows and link traversal belong to
+`query-semantic-equivalence`; temporal consistency belongs to
+`read-consistency-projections`. Do not invent a token authenticity or retained
+snapshot guarantee.
+
+## HTTP signed transaction boundary
+
+Trace the five signed operations through their actual route registrations,
+wrapper middleware, ordinary HTTP conversion and backend Apply. The media type
+is `application/json`, including MIME parameters; either signing header's
+presence (even empty) activates the wrapper with required fields `request` and
+standard-base64 `payload`. Without either header, retain ordinary unsigned REST
+decoding. OpenAPI uses anyOf for overlapping ordinary and signed schemas; runtime
+headers choose the representation. DELETE transaction metadata uses request:null.
+The adapter assembles the existing `SignedApplyBatch` from that payload and the
+`Formance-Signing-Key-Id` / `Formance-Signature` headers. Require both headers
+exactly once, nonempty, with a standard-base64 signature of 64 decoded bytes.
+Unsupported business routes reject either signing header with 415; either header
+with a non-JSON or missing content type also rejects with 415. No signing
+attempt may silently become unsigned. Compare the complete decoded protobuf batch with the
+URL/body/header-derived batch, including order/count, oneofs, typed values,
+skippable reasons and batch identity, before forwarding the original bytes.
+Noncanonical but equivalent protobuf encodings must not require reserialization.
+Follow the same `SignedApplyBatch` through `ApplyRequest.signed`, admission's
+`resolveBatch`, `Proposal.signature` and `AuditEntry.signature` as gRPC. Require
+no alternate HTTP proof type, admission verifier or persisted field.
+Signed bulk is nonempty and atomic-only; its header key wins over ignored `ik`.
+
+Require distinct routed controls for malformed envelopes, missing/empty/repeated
+signing headers, invalid base64 or signature length 400, mismatch 403,
+missing mandatory signatures 401, invalid/unknown/revoked keys 403 and preserved
+legacy optional unsigned JSON. Check the 4 MiB limit over the entire wrapper,
+including base64 and duplicate command data. Processing 401/403 must survive
+continueOnFailure while retaining every element result. Dedicated forwarded
+signing ErrorInfo uses domain `ledger.signing` and reason/status pairs
+MISSING_SIGNATURE/Unauthenticated or INVALID_SIGNATURE and
+UNKNOWN_KEY_ID/PermissionDenied; preserve original gRPC status/message. Only
+validated pairs gain classifiable 401/403 handling, and the public codes remain
+UNAUTHENTICATED/PERMISSION_DENIED. Bare/foreign auth errors retain 500. Probe wrong
+domains, reasons and statuses separately from a real signature rejection.
+
+This domain owns conversion, exact-byte forwarding, media/schema/error
+presentation and wrapper budget. The authentication domain owns unchanged JWT
+scopes and caller attribution; admission owns Ed25519 verification and key
+lifecycle, and persistence/replay domains retain their existing boundaries.
+Request signing adds no HTTP response authenticity. See
+[the HTTP contract](../architecture/subsystems/api/http-api.md#signed-transaction-requests)
+and [client recipe](../../ops/signing.md#http-request-signing). No audit execution
+is authorized by this contract update.

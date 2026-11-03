@@ -173,6 +173,20 @@ subject and stable credential source; an Ed25519 token without `sub` remains
 attributable by key ID. Anonymous and authentication-disabled writes are
 different values, and system work names its component.
 
+For local JWT credentials, the successful validation path determines the
+source: OIDC callers retain the verified issuer even when the JWT header has a
+`kid`; static Ed25519 callers retain their signing key ID even when their claims
+contain an issuer. The JWT `kid` selects a verification key and is not by itself
+an authenticated credential mechanism. Rotating an OIDC signing key therefore
+does not change the recorded issuer/subject identity. Both HTTP and gRPC install
+the verified static key ID only after all token checks succeed, clearing any
+inherited key ID for OIDC callers before capturing attribution.
+
+This correction applies to newly admitted writes. Existing committed caller
+snapshots remain authoritative and are not rewritten; their wire format and
+validation are unchanged. Mixed-version nodes apply the frozen snapshot exactly
+as proposed, including a snapshot captured by an older admission node.
+
 The snapshot enters the audit-chain hash via `BuildHashedHeaderPayload` (see [audit-chain.md](../checker/audit-chain.md)). **It is not re-evaluated downstream** — the FSM, the checker, and any later observer see exactly what admission resolved. A token expiring between admission and FSM apply does not retroactively invalidate the proposal.
 
 ### Attribution enforcement and observability

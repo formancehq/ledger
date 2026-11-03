@@ -295,9 +295,13 @@ func NewLocalResponses() LocalResponses {
 type readyResult struct {
 	rd raft.Ready
 	// snapshotApplied is true when a leader snapshot was installed; orchestrate
-	// must refresh its ConfState shadow. Only sender-local transport results
-	// report snapshot delivery to rawNode.
+	// must refresh its ConfState shadow. Sender-local transport results and
+	// Ready completion report outbound snapshot progress to rawNode.
 	snapshotApplied bool
+	// snapshotRecipients are the peers this node (as leader) handed a MsgSnap
+	// to the transport for; orchestrate must call rawNode.ReportSnapshot for
+	// each of them. See finishReady.
+	snapshotRecipients []uint64
 	// confChanges are committed ConfChangeV2 entries extracted from rd.CommittedEntries;
 	// orchestrate must call rawNode.ApplyConfChange for each. The entry index is
 	// retained so callers can wait for the matching FSM batch to become durable.
@@ -475,6 +479,10 @@ func NewNode(
 	membership *membership.Membership,
 	localResponses LocalResponses,
 ) (*Node, error) {
+	if err := cfg.validateTickIntervals(); err != nil {
+		return nil, err
+	}
+
 	cfg.SetDefaults()
 
 	snapshot, err := wal.Snapshot()
@@ -1630,6 +1638,7 @@ func (node *Node) installReadySnapshot(ctx context.Context, stop chan struct{}, 
 func (node *Node) sendReadyMessages(stop chan struct{}, rd raft.Ready, result *readyResult) {
 	appendResponses, applyResponses, outbound := splitReadyMessages(node.config.NodeID, rd.Messages)
 	result.applyResponses = applyResponses
+	result.snapshotRecipients = snapshotRecipients(outbound)
 
 	node.transport.Send(outbound, stop)
 
@@ -1665,6 +1674,21 @@ func (node *Node) collectReadyConfChanges(rd raft.Ready, result *readyResult) er
 // and post-processing. Must be called from the orchestrate goroutine.
 func (node *Node) finishReady(result readyResult, stop chan struct{}) error {
 	rd := result.rd
+
+	// etcd/raft pauses replication to a peer while its Progress is in
+	// StateSnapshot. It leaves that state only on MsgSnapStatus (raised by
+	// the leader's ReportSnapshot) or on an acknowledgement at or past the
+	// leader's first retained index. If the snapshot is lost (peer down,
+	// stream reset) or acknowledged after the leader compacted beyond it,
+	// neither happens and the peer never receives another entry while this
+	// leader lasts. Report every sent snapshot as finished: the peer moves to
+	// StateProbe, and ordinary probing either resumes appends or sends a
+	// fresh snapshot. The MsgSnap carries no payload here (the checkpoint is
+	// fetched out-of-band), so handing it to the transport is the send.
+	// Non-leaders and peers no longer in StateSnapshot ignore the report.
+	for _, peerID := range result.snapshotRecipients {
+		node.rawNode.ReportSnapshot(peerID, raft.SnapshotFinish)
+	}
 
 	if result.snapshotApplied {
 		// Re-sync the in-memory ConfState shadow from the just-installed
@@ -1914,6 +1938,18 @@ func splitReadyMessages(nodeID uint64, msgs []*raftpb.Message) (appendResponses,
 	return appendResponses, applyResponses, outbound
 }
 
+// snapshotRecipients returns the destination of every outbound MsgSnap.
+func snapshotRecipients(outbound []*raftpb.Message) []uint64 {
+	var recipients []uint64
+	for _, m := range outbound {
+		if m.GetType() == raftpb.MsgSnap {
+			recipients = append(recipients, m.GetTo())
+		}
+	}
+
+	return recipients
+}
+
 // isStopping returns true if the stop channel has been closed or a signal is pending.
 func isStopping(stop chan struct{}) bool {
 	select {
@@ -2148,7 +2184,7 @@ func (node *Node) orchestrate(ctx context.Context, stop chan struct{}) error {
 					if node.rawNode.HasReady() {
 						node.readies <- node.rawNode.Ready()
 					} else {
-						processingTick.Reset(tickInterval / 10)
+						processingTick.Reset(processingTickInterval)
 
 						node.readyTerminated = nil
 					}

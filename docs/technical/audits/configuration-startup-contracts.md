@@ -73,6 +73,30 @@ new entries; it does not prove replay recovery of a historical committed zero.
 Keep that recovery limitation and mixed-version leader restrictions explicit
 in the cluster operations guidance.
 
+## Raft processing interval evidence
+
+Follow `RAFT_TICK_INTERVAL` / `RAFT_PROCESSING_TICK_INTERVAL` and their CLI
+flags through the real binder, config validation and direct `NewNode` callers.
+Both durations reject negatives. Zero tick keeps `100ms`; zero processing derives
+effective tick/10. Positive ticks below `10ns` require a positive processing
+override, otherwise integer division would violate the ticker precondition.
+The constructor guard must precede its first WAL access, without implying that
+upstream bootstrap has performed no I/O.
+
+Use `TestNodeConfigTickIntervals` for `1ns`, `9ns`, `10ns`, zero/default,
+negative and maximum durations, positive overrides and direct-constructor
+rejection. `TestRaftTickIntervalStartup` uses service.Execute in a subprocess
+to prove CLI/environment selection, precedence, fractional-zero semantics, named
+validation errors and exit status. Accepted cases deliberately stop at a later
+health validation error; they do not prove healthy cluster startup.
+`TestOrchestrateProcessingIntervalAfterReady` drives a real message-only Ready
+and its completion under `synctest`, proving both initial and rearmed polling
+use the effective default or explicit shorter/longer interval. Challenge reset
+independently of construction: recomputing tick/10 discards the override and
+can reintroduce zero. Immediate message/response Ready paths remain unpaced.
+This contract owns the configuration predicate and timer wiring, not general
+Raft algorithm correctness, scheduling performance or restart recovery.
+
 ## Byte-size input evidence
 
 Byte-size flags accept only non-negative expanded counts representable by int64.
@@ -200,3 +224,31 @@ interval acceptance without starting a cluster. Operator regressions must
 exercise both first creation and existing-workload preservation, followed by a
 real invalid-to-valid reconcile sequence. These checks do not prove recovery
 across process death or Kubernetes admission rejection.
+
+## Standard trace sampler configuration
+
+Follow server `--trace-sampler` / `--trace-sampler-arg` and the corresponding
+`TRACE_SAMPLER*` bindings into the Fx `WithSampler` option. CLI values override
+their typed environment equivalents. Selecting either typed setting replaces
+the raw SDK sampler pair; ratio policies require an explicit finite probability
+in `[0,1]`, and non-ratio policies reject arguments. With neither typed setting
+selected, the SDK reads `OTEL_TRACES_SAMPLER*` directly, retaining its default
+`parentbased_always_on` policy and raw missing-ratio fallback to `1.0`.
+
+Follow admitted Operator `monitoring.traces.sampler` / `samplerArg` through
+controller validation into the standard SDK environment variables. Typed fields
+must reject all four competing names in `extraEnv`: `OTEL_TRACES_SAMPLER`,
+`OTEL_TRACES_SAMPLER_ARG`, `TRACE_SAMPLER`, and `TRACE_SAMPLER_ARG`, including
+`valueFrom` entries. Omitted typed fields preserve existing raw configuration.
+Ratio constraints are also enforced by the generated CRD. Controller rejection
+precedes workload changes but may follow cluster identity persistence.
+
+Use `TestServerTraceSamplerSDK` to observe actual SDK recording and export for
+all six policies, parent decisions, fixed fractional trace IDs and precedence;
+`TestServerTraceSamplerValidation` exercises the real server RunE rejection
+before storage/network configuration. Operator `TestTraceSampling` cases cover
+validation/rendering, real API-server admission and conflict-to-corrected
+reconciliation through the StatefulSet environment. They do not establish
+cross-process recovery, collector retention or measured end-to-end overhead.
+Keep sampler effects strictly node-local to telemetry, with no business state,
+Raft apply or local error-aware retention behavior.

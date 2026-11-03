@@ -49,6 +49,30 @@ Ledger process restart and cluster-level availability from recovery of the
 intended PVC/node. Record inspected areas and untested boundaries in residual
 risk rather than claiming exhaustive coverage.
 
+## Mirror promotion recovery boundary
+
+For a Ready mirror Ledger edited to normal, require an explicitly linearizable
+live mode read (`--checkpoint-id 0`) even when Cluster `extraEnv` sets
+`LEDGERCTL_CONSISTENCY=stale` or `LEDGERCTL_CHECKPOINT_ID`.
+Trace the authoritative mode read, optional promotion commit, in-memory CR
+status mutation and deferred Kubernetes status write separately. A lost promotion
+response or failed status write can leave the service normal while persisted CR
+status remains mirror. A fresh
+controller must observe normal mode and recover successful status without
+repeating the non-idempotent promotion, then resume declarative indexes. Explicit
+mirror mode permits promotion; unavailable or malformed observations, unknown
+mode and a conflicting returned name must not establish success.
+
+Exercise both interruption triggers independently through full reconciliation,
+with a real Ledger and CLI where available, and verify service mode, persisted
+status, promotion effect count and subsequent index convergence. Distinguish
+the external effect from Kubernetes persistence. The root
+`tests/e2e/cluster/operator_index_ownership_test.go` harness supplies the real
+Ledger and CLI to the operator's promotion regressions. Fake clients and injected
+pod exec failures establish controller ordering, not API-server admission or live
+Kubernetes exec behavior. Existing stranded resources must recover without
+requiring an idempotency record or another spec edit.
+
 ## Annotated drain and release boundary
 
 `ledger.formance.com/drain` is an intent on the Cluster CR. The persisted
@@ -133,6 +157,12 @@ New backup Jobs must resolve mode and certificate/CA references from one
 current owned StatefulSet template, rather than mixing observed mode with
 already-cleared desired TLS. Missing workloads during recreation must cause
 retry without creating a plaintext Job; foreign ownership must reject creation.
+The Job's Ledger image must also come from that owned StatefulSet template.
+An omitted `spec.image.tag` is resolved by the Cluster reconciler only in
+memory, so reading the stored Cluster tag can produce an invalid backup image.
+Check both an omitted tag and a desired tag awaiting rollout; the Job must use
+the existing workload image in either case. A missing Ledger container or
+empty workload image must prevent Job creation and remain retryable.
 In-pod ledgerctl calls from Ledger and EventSink reconciliation must also
 return a retryable lookup error before exec while the StatefulSet is absent,
 then read the recreated workload mode on retry. Cover both callers separately
@@ -168,6 +198,28 @@ removed PVC deletions are accepted. Distinguish API acceptance from eventual
 Kubernetes garbage collection and check the actual PVC identities after retry.
 
 ## Sequential RC and storage transition boundary
+
+### Operator and Ledger version admission
+
+Compare the declared Ledger image tag with the running Operator version before
+the controller publishes a workload image. For a release Operator, an older or
+equal semantic Ledger release is compatible; a newer release or opaque tag is
+blocked. A development Operator with an opaque Ledger tag remains a development
+case with `VersionCompatible=Unknown`. A semantic Ledger release paired with an
+unknown Operator version is blocked. Include RC-to-stable precedence and tags
+with and without a leading `v` in the matrix.
+
+For each blocked request, inspect the `VersionCompatible=False` reason and
+observed generation, `phase: Error`, and the actual StatefulSet template, Pods
+and PVCs before and after reconciliation. The version gate must leave an
+existing workload and its committed data intact. Distinguish an initial create
+from an edit to a running Cluster. Reconcile with a fresh Operator after the
+user restores an allowed tag or installs a compatible Operator, and verify that
+the status clears and the intended workload can converge without losing the
+original data. An existing opaque source image such as `latest` needs a separate
+upgrade-path check: a valid target tag alone does not prove that the RC source
+gate can admit the transition. Record a blocked transition as a finding rather
+than describing the tag correction as successful recovery.
 
 For a hardcoded mandatory stop, prove that the operator persists source, target,
 StatefulSet UID and PVC UIDs, persists a drain epoch, preflights member support,
@@ -208,6 +260,46 @@ With zero history retention, the run must survive pending acquisition and can be
 pruned only after terminal accounting is recorded. These fake-client and HTTP
 fixtures do not prove Kubernetes garbage collection, kubelet execution or live
 manager backoff. Historical terminal failures are not automatically reopened.
+
+## Manual backup parent association
+
+Use minimally admitted BackupRuns with only a name and same-namespace
+`spec.backupRef` (type defaults to Full), including missing and contradictory
+association labels and absent parent owner references. Trace parent discovery,
+event routing, scheduling, result summaries, completion cursors, pruning and
+directional sibling exclusion through the spec reference. A label naming a
+different Backup must neither transfer accounting nor block that parent's runs.
+Preserve namespace isolation and self exclusion. API-server CEL transition
+validation makes `spec.backupRef` immutable from creation. Reject updates and
+patches for new, Pending, Running and terminal runs while permitting same-parent
+metadata and status writes. Require the root `spec` on creation and update;
+reject whole-spec removal by update, JSON Patch or merge patch and a subsequent
+attempt to re-add a different parent. Verify stored spec/status remain intact.
+A rejected edit after Job creation must preserve the original sibling reservation, Job UID and result attribution. Fake clients do
+not establish admission. Old/new parent event mapping remains defensive only.
+Before installing the rule, stop the operator and recover already stored
+retargeting, spec-less runs and affected parent accounting; recover original
+parent identity from execution evidence before restoring a missing spec. Freezing
+the current reference is not retrospective identity recovery. Follow the
+[upgrade procedure](../architecture/subsystems/backup/operator-scheduling.md#upgrading-parent-admission).
+
+Exercise the API-server-backed manual execution path through a successful Job
+result and parent accounting before zero-retention pruning, then verify a labeled
+sibling waits behind an unlabeled Running run. Separately prove automatic parent
+updates through the registered manager watch for an unowned manual run. Envtest
+fixtures publish Job/Pod status themselves and do not prove kubelet execution or
+garbage collection. Direct parent lists must retain their stale-cache protection;
+parent-selector cost is documented in the scheduling contract.
+
+### BackupRun parent selection
+
+Both shipped CRDs declare `.spec.backupRef` selectable on Kubernetes 1.32+.
+Direct parent reads must retain the APIReader and use the same namespaced field
+selector as cached sibling queries; manager setup must register that field index.
+The API-server and real-cache regression must include unlabeled runs, misleading
+labels, different parents and namespaces, and no matches. Selection reduces
+response size; it does not establish O(1) API-server storage work.
+
 
 ## Severity
 

@@ -67,6 +67,19 @@ real-server integration tests. For the unfiltered workload, verify that the
 automatic `bin/cmds/<template>/<driver>` discovery and final Antithesis layout
 still agree with the documented templates and scheduling prefixes.
 
+## Operator API-server regression selection
+
+The operator is a nested Go module. Its untagged `go test ./...` run does not
+collect the `integration`-tagged envtest suite. The Tests-Operator CI job also
+runs `just operator-test-admission` in the pinned `operator-tests` shell. Trace
+that recipe's explicit selection to the Ledger and BackupRun target admission tests and both
+`TestBackupRunCommittedCreateLostResponseIntegration` and
+`TestBackupRunManualAssociationIntegration`, plus
+`TestBackupRunParentSelectorIntegration` for direct API-server selection and
+production cache-index registration. Confirm execution against the
+selected Kubernetes assets with the race detector; merely compiling these
+functions or running root-module tests does not establish this evidence.
+
 ## Ownership and deduplication
 
 | Owner | Boundary |
@@ -100,3 +113,15 @@ links.
 The manifest suggests diagnostics for a separately authorized, read-only
 audit. Updating this contract does not launch an audit, change CI policy, or
 authorize external publication.
+
+## Operator trace sampling admission
+
+`Tests-Operator` invokes `just operator-test-admission` in the `operator-tests`
+Nix shell. Its integration-tagged selector includes both `TestLedgerAdmission`
+and `TestTraceSampling`. Preserve the existing Ledger target tests while
+collecting `TestTraceSamplingAdmission` and
+`TestTraceSamplingReconcileConflictThenFix`: they prove generated CRD admission
+and corrected sampler conflicts through the actual controller/StatefulSet path.
+The nested module's untagged unit suite cannot execute these tests. Envtest
+assets and a running API server are prerequisites; a build-only pass or the
+presence of generated schemas does not prove admission assertions ran.

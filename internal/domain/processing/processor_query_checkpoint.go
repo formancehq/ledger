@@ -19,7 +19,10 @@ func processCreateQueryCheckpoint(order *raftcmdpb.CreateQueryCheckpointOrder, c
 	// default before any policy is committed and means "no cap" (write readiness
 	// gates business writes until a policy is committed, so a real create sees a
 	// configured limit).
-	limit := s.GetClusterPolicy().GetQueryCheckpointLimit()
+	var limit uint64
+	if !ctx.auditReplay {
+		limit = s.GetClusterPolicy().GetQueryCheckpointLimit()
+	}
 	if limit != 0 && s.LiveQueryCheckpointCount() >= limit {
 		return nil, &domain.ErrCheckpointLimitReached{Limit: limit}
 	}

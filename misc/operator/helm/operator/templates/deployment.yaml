@@ -21,7 +21,7 @@ spec:
       {{- end }}
       containers:
       - name: operator
-        image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+        image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
         imagePullPolicy: {{ .Values.image.pullPolicy }}
         args:
         - --leader-elect={{ .Values.leaderElection }}
@@ -36,7 +36,7 @@ spec:
         - name: LEDGER_IMAGE_REPOSITORY
           value: "{{ .Values.ledgerImage.registry }}/{{ .Values.ledgerImage.name }}"
         - name: LEDGER_IMAGE_TAG
-          value: {{ .Values.ledgerImage.tag | quote }}
+          value: {{ .Values.ledgerImage.tag | default .Chart.AppVersion | quote }}
         ports:
         - name: metrics
           containerPort: 8080

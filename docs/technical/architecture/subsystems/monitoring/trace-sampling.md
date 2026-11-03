@@ -10,7 +10,7 @@ Optimizing those scans reduced CPU cost but retained the application-local
 buffer and duplicated sampling configuration between Ledger and the SDK.
 
 Ledger now uses the standard SDK exporter directly. The custom exporter,
-retention state, flags, and Operator `monitoring.traces.sampling` configuration
+retention state, legacy flags, and Operator `monitoring.traces.sampling` configuration
 have been removed. Tail-sampling retention belongs to the collector. This
 removes the local sampler's CPU and memory cost, but does not eliminate SDK
 recording/snapshot allocation, batching, serialization, or transport overhead.
@@ -20,7 +20,9 @@ collector rollout and controlled load tests described below.
 ## SDK and error signals
 
 `cmd/server/server.go` configures tracing through
-`observefx.TracesModuleFromFlags`, with no Ledger sampling decorator. The
+`tracesModuleFromFlags`, which composes `observefx.TracesModuleFromFlags` with
+an optional standard SDK `WithSampler` provider option. There is no Ledger
+sampling decorator. The
 OpenTelemetry SDK creates and exports batches according to its standard configuration.
 To send the complete Ledger span stream, keep the OTLP exporter enabled and set:
 
@@ -53,24 +55,49 @@ error exists, then the parent is exported with error status, attributes, excepti
 event, and intact trace/parent IDs. The CLI test rejects the removed flags, and
 Operator tests verify standard sampler configuration passes through `extraEnv`.
 
-## Deployment configuration
+## First-class configuration and deployment
 
-The Cluster API uses `spec.monitoring.traces` for OTLP export and `spec.extraEnv`
-for `OTEL_TRACES_SAMPLER`. The main Formance Operator forwards the corresponding
-`LedgerConfiguration.spec.cluster` fields. See the concrete
-[deployment example](../../../../ops/deployment.md#collector-side-trace-sampling).
+Operators need to bound trace volume before export without a custom retention
+mechanism. `spec.monitoring.traces.sampler` selects a built-in SDK policy and
+`samplerArg` carries its string argument to `OTEL_TRACES_SAMPLER_ARG`. Supported
+policies are `always_on`, `always_off`, `traceidratio`, `parentbased_always_on`,
+`parentbased_always_off`, and `parentbased_traceidratio`.
 
-Remove the former Ledger sampling flags, custom environment variables, and
-`monitoring.traces.sampling` objects from deployment configuration. Install the
-matching Operator/CRDs. The standard SDK variable is now the only sampling
-control needed inside Ledger for the collector path; no replacement custom flag
-or compatibility layer is provided for configuration predating `v3.0.0-rc.1`.
+Typed ratio policies require an explicit finite probability in `[0,1]`; other
+policies reject arguments. The schema and controller validate these settings.
+Controller validation rejects combining typed sampling with raw
+`OTEL_TRACES_SAMPLER*` variables or the server's `TRACE_SAMPLER*` aliases in
+`extraEnv`, including indirect Secret/ConfigMap sources, before
+changing workloads. A corrected spec resumes reconciliation. When the typed
+fields are omitted, raw values pass through and the SDK owns parsing/fallback.
+No typed default is materialized, preserving existing deployments and the
+`parentbased_always_on` SDK default.
 
-When the main Formance Operator bumps its dependency on this module, its tests
-that construct/assert the removed `TracesConfig.Sampling` field must be updated.
-Regenerate its `LedgerConfiguration` CRD/Helm schema and copied Cluster CRD test
-fixtures from the new shared types. Those cross-repository changes are separate
-from the embedded Operator/API cleanup in this repository.
+Standalone server `--trace-sampler` / `--trace-sampler-arg` flags (also bound from
+`TRACE_SAMPLER` / `TRACE_SAMPLER_ARG`) apply the same strict validation. CLI
+values override their corresponding typed environment values. Selecting either
+typed setting replaces the entire raw SDK sampler pair via `WithSampler`;
+with neither selected, no sampler option is supplied and the SDK reads the raw
+`OTEL_TRACES_SAMPLER*` variables. This preserves raw-only SDK fallback behavior,
+including the missing ratio argument default of `1.0`. No environment mutation,
+local sampler implementation, span retention, or per-export trace scan is added.
+Configuration/validation work is bounded at startup; sampling cost is that of
+the SDK's built-in sampler per span. No business state, Raft apply, stored
+format, service protocol revision or published RPC is changed.
+
+`TestServerTraceSamplerSDK` exercises actual Fx provider construction, recording
+and export for all six policies, raw environment fallback, flag precedence,
+parent sampling decisions and deterministic fractional trace IDs. Operator tests
+cover rendering, invalid specs, conflicts and real API-server schema admission.
+The existing child-before-parent-error regression continues to exercise the
+standard exporter without retention.
+
+The former error-aware flags and nested `monitoring.traces.sampling` object
+remain unsupported. Install matching Operator/Cluster CRDs and use the
+[deployment examples](../../../../ops/deployment.md#collector-side-trace-sampling).
+The main Formance Operator must bump the shared API dependency and regenerate
+its `LedgerConfiguration` CRD/schema to expose the typed fields under
+`spec.cluster`; that cross-repository rollout is separate.
 
 This repository does not deploy the production collector pipeline. Verify its
 version, rendered configuration, routing, capacity, and policies before relying

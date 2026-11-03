@@ -407,6 +407,26 @@ type NodeConfig struct {
 }
 ```
 
+### Processing interval precondition
+
+Every processing ticker construction and reset must receive a positive duration.
+`NodeConfig.Validate` and `NewNode` share an interval guard: both durations must
+be nonnegative, and a positive Raft tick below `10ns` requires a positive
+processing override. Rejecting that combination prevents integer division by
+ten from creating a zero timer; silently raising the Raft tick would also alter
+election and heartbeat timing. Zero Raft tick retains `100ms`, and zero
+processing interval derives one tenth of the effective Raft tick (`10ms` by
+default). These are local scheduling settings, never committed apply inputs.
+
+`orchestrate` resolves the effective processing interval once. It stops that
+ticker while a Ready is in flight and resets it to the same effective value
+when `finishReady` leaves no further Ready work. Explicit positive overrides
+therefore survive every idle rearm. Message and local-storage response fast
+paths still check `HasReady` immediately; polling is not a delay imposed on
+every commit. Tests exercise both shorter and longer overrides through real
+message-only Ready completion under `synctest`, alongside default cadence.
+No WAL, FSM, audit or recovery write ordering changes.
+
 ### Timeout Calculation
 
 Raft timeouts are calculated by multiplying ticks by `TickInterval`:
@@ -440,7 +460,7 @@ sequenceDiagram
     participant F1 as Follower 1
     participant F2 as Follower 2
     participant F3 as Follower 3
-    
+
     Note over F1,F3: Leader crash
     F1->>F1: Election Timeout
     F1->>F2: RequestVote (term 2)
@@ -710,19 +730,40 @@ acknowledgement moves it back to probing.
 ```mermaid
 sequenceDiagram
     participant Leader
-    participant Transport as Leader transport
-    participant Follower
-    Leader->>Transport: MsgSnap; destination progress = StateSnapshot
-    Transport->>Follower: Queue snapshot message
-    Follower-->>Transport: Transport acknowledgement
-    Transport-->>Leader: DeliveryResult(destination peer ID, MsgSnap, success)
-    Note over Leader: ReportSnapshot returns progress to StateProbe
-    Follower->>Follower: Persist Ready, install snapshot, fetch checkpoint
-    Leader->>Follower: Resume AppendEntries after probing
-    Follower-->>Leader: MsgAppResp; progress advances normally
+    participant Follower as Follower (behind)
+
+    Leader->>Leader: Check: follower.Next < compactIndex?
+    Note over Leader: Yes → WAL entries no longer available
+
+    Leader->>Follower: MsgSnap (latest WAL snapshot metadata, no payload)
+    Note over Leader: Progress[follower] → StateSnapshot (replication paused)
+    Leader->>Leader: finishReady: ReportSnapshot(follower, SnapshotFinish)
+    Note over Leader: Progress[follower] → StateProbe
+
+    Follower->>Follower: Apply snapshot to WAL
+    Follower->>Follower: Enqueue checkpoint synchronization (async, out-of-band gRPC)
+    Follower->>Leader: MsgAppResp (index = snapshot index)
+    Note over Leader: Progress[follower] → StateReplicate
+
+    Leader->>Follower: MsgApp from Match+1, or a fresh MsgSnap if compacted
 ```
 
-#### Sent snapshot results
+Progress is leader-side state; the follower never sends `MsgSnapStatus`.
+etcd/raft keeps a peer in `StateSnapshot` (all appends paused) until the
+leader calls `ReportSnapshot` or receives an acknowledgement that leaves
+`Match+1 >= firstIndex`. The acknowledgement only certifies the Raft snapshot:
+checkpoint restoration may still be running. Two ordinary events defeat the second exit: the
+`MsgSnap` is lost (peer down, stream reset), or the leader's maintenance
+compacts past the sent snapshot before the acknowledgement arrives. Either
+way the peer would receive no entry until the next leader change. The leader
+therefore collects every outbound `MsgSnap` destination in `sendReadyMessages`
+and reports `SnapshotFinish` for each from `finishReady` (the orchestrate
+goroutine owns `rawNode`). Because `MsgSnap` carries no payload, handing it to
+the transport is the send. The peer moves to `StateProbe`, so heartbeat
+responses and acknowledgements resume probing, and a peer still behind the
+compacted boundary gets a fresh snapshot.
+
+#### Sent snapshot delivery results
 
 `DefaultTransport` reports a generic per-message delivery outcome through its
 local `DeliveryResults` channel: destination peer ID, Raft message type and
@@ -752,7 +793,8 @@ message; no payload copy, log scan, RPC or durable write is added. The queue
 bounds memory and backpressures producers; all owners cancel publication before
 joining. Only snapshot outcomes call into Raft or trigger a Ready check.
 
-This result is necessary even when the network later becomes healthy. If a
+Ready completion provides the initial progress safeguard described above;
+transport results additionally report actual acceptance or failure. If a
 follower's `MsgAppResp` is lost, `ReportUnreachable` and heartbeat replies alone
 do not move a leader out of `StateSnapshot`. The follower can therefore answer
 a quorum ReadIndex at index 40 while its independent checkpoint restored only
@@ -760,6 +802,14 @@ index 39 and its Raft log still ends at snapshot 36. Its read correctly waits
 for local application, but that application cannot progress until the sender
 resumes appends. Reporting snapshot delivery restores progress without a
 rescue write or a weaker read barrier.
+
+#### Progress States
+
+| State | Description |
+|-------|-------------|
+| `StateProbe` | Follower's `Match` is unknown, sending one entry at a time |
+| `StateReplicate` | Normal operation, pipeline enabled |
+| `StateSnapshot` | Snapshot sent; appends paused until the leader reports it or an acknowledgement leaves `Match+1 >= firstIndex` |
 
 #### Receiving a snapshot Ready
 

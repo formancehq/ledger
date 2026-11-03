@@ -12,8 +12,8 @@ EN-1851 reject business RPCs with a missing or different protocol revision.
 Servers predating EN-1851 do not enforce this gate: the new CLI sends a protocol
 declaration without a preflight, so it cannot protect calls to an older, ungated
 server. Updates within the RC line keep the service wire contract at revision
-40 and normally support mixed-binary rolling upgrades. At a hardcoded operator
-boundary, follow the stopped procedure in [server upgrades](upgrades.md). The protocol match alone
+40 and normally support mixed-binary rolling upgrades. RC.3 to RC.4 crosses a
+hardcoded operator boundary; follow the stopped procedure in [server upgrades](upgrades.md). The protocol match alone
 does not prove that Raft apply and persisted data remain compatible. See the
 [service protocol contract](../technical/architecture/subsystems/api/protocol-compatibility.md)
 and [server upgrades](upgrades.md) for the required validation.
@@ -126,10 +126,11 @@ go run . run
 
 ### Prerequisites
 
-- Kubernetes with `StatefulSetAutoDeletePVC` enabled (default since 1.27,
-  stable since 1.32). PVC/PV deletion protection needs the
-  `ValidatingAdmissionPolicy` API (stable since 1.30). The operator has no
-  established, tested minimum Kubernetes version; see
+- Kubernetes 1.32 or later with `StatefulSetAutoDeletePVC` enabled.
+  PVC/PV deletion protection needs the `ValidatingAdmissionPolicy` API
+  (stable since 1.30). BackupRun queries require the updated CRDs with
+  `.spec.backupRef` in `selectableFields`; install them before starting the
+  operator. See
   [Deployment Profiles](./deployment-profiles.md#kubernetes-operator-specifics).
 - Helm 3.0+ (for deploying the operator)
 - PersistentVolume support
@@ -144,6 +145,8 @@ helm dependency build misc/operator/helm/operator
 helm install ledger-operator misc/operator/helm/operator \
   --namespace ledger \
   --create-namespace \
+  --set image.tag=v3.0.0-rc.1 \
+  --set ledgerImage.tag=v3.0.0-rc.1 \
   --set watchNamespace=ledger
 ```
 
@@ -161,7 +164,7 @@ spec:
   replicas: 3  # Must be odd for Raft
   image:
     repository: ghcr.io/formancehq/ledger
-    tag: latest
+    tag: v3.0.0-rc.1
   config:
     bindAddr: "0.0.0.0:7777"
     grpcPort: 8888
@@ -192,6 +195,29 @@ particular, a Cluster recreated after `kubectl delete --cascade=orphan` does not
 re-adopt the orphaned objects: delete them (keep the PVCs) or restore their
 owner references first. See
 [derived object ownership](../technical/architecture/subsystems/operator/derived-object-ownership.md).
+
+Release charts default both image tags to the chart's published application
+version. When installing from a source checkout, set both tags to a matching
+release as in the example above. The Ledger Operator checks `spec.image.tag`
+against the version embedded
+in its own release binary before it creates or changes a Ledger workload. A
+newer Ledger release is blocked with
+`status.conditions[type=VersionCompatible]` set to `False`, reason
+`LedgerVersionAheadOfOperator`, and `status.phase=Error`. Upgrade the Ledger
+Operator first, then reconcile the Cluster again. Existing StatefulSets and
+volumes are left in place when the check fails. If a development or PR Operator
+build has no semantic release version, a semantic Ledger tag is blocked with
+reason `OperatorVersionUnknown`.
+
+An opaque Ledger tag such as `latest`, `e2e`, or a commit SHA cannot be ordered.
+A release Operator blocks it with reason `LedgerVersionUnknown`. Development
+Operator builds accept opaque Ledger tags and report `VersionCompatible=Unknown`
+with reason `DevelopmentVersions`. Before upgrading an existing Cluster using
+`latest`, follow the [source-version preflight](upgrades.md#preflight-for-clusters-using-latest).
+Changing only the Cluster tag after the Operator upgrade can leave the
+StatefulSet's `latest` source blocked by the RC upgrade check. The check compares
+the declared image tag; custom registries may serve different contents under
+that tag, so verify image provenance before relying on the check.
 
 When an operator-managed Cluster omits `spec.clusterID`, the operator commits a
 random UUID to the Cluster spec before creating any workload. All replicas use
@@ -652,14 +678,40 @@ spec:
       mode: grpc
       insecure: "false"
       batch: "true"
-  extraEnv:
-    - name: OTEL_TRACES_SAMPLER
-      value: always_on
+      sampler: always_on
 ```
 
-Set the endpoint and TLS settings for the actual collector. When using the main
-Formance Operator's `LedgerConfiguration`, these fields are under `spec.cluster`.
-Verify the rendered pod environment on the deployed Operator version.
+The typed fields are `monitoring.traces.sampler` and
+`monitoring.traces.samplerArg`. To bound SDK recording/export volume instead,
+use `sampler: parentbased_traceidratio` and `samplerArg: "0.1"` (or
+`traceidratio` to ignore parent sampling decisions). The six supported policies
+are `always_on`, `always_off`, `traceidratio`, `parentbased_always_on`,
+`parentbased_always_off`, and `parentbased_traceidratio`.
+
+Typed ratio policies require a finite argument in `[0,1]`; other policies reject
+it, and an argument requires a policy. The CRD validates the policy and argument;
+controller validation also protects resources admitted under older schemas.
+Typed sampling combined with `OTEL_TRACES_SAMPLER`,
+`OTEL_TRACES_SAMPLER_ARG`, `TRACE_SAMPLER`, or `TRACE_SAMPLER_ARG` in `extraEnv`
+is rejected, including `valueFrom` entries.
+The controller reports `ConfigValid=False`, reason `ValidationFailed`, phase
+`Error` before workload changes. Existing workloads retain their previous
+configuration until the spec is corrected. Cluster identity defaults may already
+have been persisted before validation.
+
+With typed fields omitted, existing raw sampler entries in `extraEnv` pass
+through unchanged and retain SDK parsing/fallback semantics. With neither source
+configured, the default remains `parentbased_always_on`; no CRD sampler default
+is injected. SDK/head sampling can discard spans needed for later error-based
+retention and biases downstream span-derived metrics. Use `always_on` for
+collector tail sampling or complete span-derived metrics.
+
+Set the endpoint and TLS settings for the actual collector. Install matching
+Cluster CRDs and Operator. The main Formance Operator's `LedgerConfiguration`
+uses fields under `spec.cluster`; it must update its shared API dependency and
+regenerate its own CRD/schema before accepting these new typed fields. Those
+cross-repository artifacts are not shipped here. Raw `extraEnv` remains usable
+on older integrations. Verify support in the deployed Operator version.
 
 Remove the former `--trace-sampling-enabled` and `--trace-sampling-success-ratio`
 flags, `TRACE_SAMPLING_ENABLED` / `TRACE_SAMPLING_SUCCESS_RATIO` environment
@@ -705,6 +757,23 @@ config:
 **Recommendations**:
 - **Development**: `electionTick: 10`, `heartbeatTick: 1`, `tickInterval: "100ms"`
 - **Production**: `electionTick: 20`, `heartbeatTick: 2`, `tickInterval: "50ms"`
+
+`--raft-tick-interval=0` (or `RAFT_TICK_INTERVAL=0`) retains the `100ms`
+default. Zero `--raft-processing-tick-interval` derives one tenth of that
+effective tick, so a positive tick below `10ns` requires an explicit positive
+processing interval. Negative intervals and invalid combinations fail server
+configuration validation after loading/printing and possible join discovery,
+before Fx bootstrap. Direct `NewNode` callers run the same interval guard
+before that constructor reads the WAL; their callers may already have opened
+stores or persisted identity.
+
+On upgrade, replace a `1ns`–`9ns` tick with at least `10ns` or supply a positive
+processing interval. Explicit processing intervals now remain in effect after
+Ready drains, rather than reverting to tick/10. This changes local idle polling
+cadence only; normal `100ms` / `10ms` defaults remain unchanged. There is no
+persisted-format migration or service protocol revision change. Operator
+duration strings and `extraEnv` values reach this final server validation;
+this does not add operator admission validation.
 
 #### Performance
 
@@ -910,10 +979,10 @@ resources:
 
 ### Maintenance Mode
 
-Use maintenance mode to block all write operations cluster-wide before performing planned maintenance (upgrades, migrations, etc.). Read operations continue to work normally.
+Use maintenance mode to block client business writes cluster-wide before performing planned maintenance (upgrades, migrations, etc.). Read operations and leader-internal cluster-policy reconciliation continue to work. An active drain blocks policy reconciliation too.
 
 ```bash
-# Enable maintenance mode (blocks all writes)
+# Enable maintenance mode (blocks client business writes)
 ledgerctl cluster maintenance enable
 
 # Verify maintenance mode is active

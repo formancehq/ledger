@@ -106,7 +106,7 @@ func TestReconcileRejectsSkippedRCBeforeChangingStatefulSet(t *testing.T) {
 	c := fake.NewClientBuilder().WithScheme(scheme).
 		WithStatusSubresource(&ledgerv1alpha1.Cluster{}).
 		WithObjects(cluster, sts).Build()
-	r := &ClusterReconciler{Client: c, Scheme: scheme}
+	r := &ClusterReconciler{Client: c, Scheme: scheme, OperatorVersion: "v3.0.0-rc.4"}
 	key := types.NamespacedName{Name: cluster.Name, Namespace: cluster.Namespace}
 	stsKey := types.NamespacedName{Name: sts.Name, Namespace: sts.Namespace}
 
@@ -148,7 +148,7 @@ func TestReconcileRejectsSkippedRCWhenStatefulSetIsBeingRecreated(t *testing.T) 
 	c := fake.NewClientBuilder().WithScheme(scheme).
 		WithStatusSubresource(&ledgerv1alpha1.Cluster{}).
 		WithObjects(cluster, orphan).Build()
-	r := &ClusterReconciler{Client: c, Scheme: scheme} // New reconciler after orphan deletion.
+	r := &ClusterReconciler{Client: c, Scheme: scheme, OperatorVersion: "v3.0.0-rc.4"} // New reconciler after orphan deletion.
 	key := types.NamespacedName{Name: cluster.Name, Namespace: cluster.Namespace}
 	stsKey := types.NamespacedName{Name: resourceName(cluster.Name), Namespace: cluster.Namespace}
 

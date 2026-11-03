@@ -28,7 +28,6 @@ import (
 	"github.com/formancehq/ledger/v3/internal/infra/state"
 	"github.com/formancehq/ledger/v3/internal/pkg/bitset"
 	"github.com/formancehq/ledger/v3/internal/pkg/cursor"
-	"github.com/formancehq/ledger/v3/internal/pkg/semver"
 	"github.com/formancehq/ledger/v3/internal/proto/auditpb"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
@@ -200,18 +199,17 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 // checkReplayState contains the audit-derived projections produced by the single
 // forward log scan. Its fields are private to the checker phases.
 type checkReplayState struct {
-	replay                   *replayStore
-	observed                 storedLogObservations
-	excluded                 excludedVolumesSet
-	knownLedgers             map[string]struct{}
-	ledgerRevertedTxIDs      map[string]*bitset.Bitset
-	expectedIndexes          map[domain.IndexKey]*commonpb.Index
-	deletedInReplay          map[string]struct{}
-	expectedSchemas          map[string]*commonpb.MetadataSchema
-	boundaries               auditBoundaryExpectation
-	expectedNumscriptContent map[domain.NumscriptEntryKey]*commonpb.NumscriptInfo
-	expectedNumscriptLatest  map[domain.NumscriptVersionKey]string
-	derivedLiveCheckpoints   map[uint64]*commonpb.CreatedQueryCheckpointLog
+	replay                 *replayStore
+	observed               storedLogObservations
+	excluded               excludedVolumesSet
+	knownLedgers           map[string]struct{}
+	ledgerRevertedTxIDs    map[string]*bitset.Bitset
+	expectedIndexes        map[domain.IndexKey]*commonpb.Index
+	deletedInReplay        map[string]struct{}
+	expectedSchemas        map[string]*commonpb.MetadataSchema
+	boundaries             auditBoundaryExpectation
+	numscripts             *numscriptProjection
+	derivedLiveCheckpoints map[uint64]*commonpb.CreatedQueryCheckpointLog
 }
 
 // pinCheckSnapshots pins the peer before the primary store. The order keeps
@@ -367,12 +365,7 @@ func (c *Checker) replayLogs(ctx context.Context, snap dal.PebbleReader, replay 
 		// RemovedMetadataFieldType logs. Compared against the stored
 		// schema-dependent reverse-map diagnostics.
 		expectedSchemas = make(map[string]*commonpb.MetadataSchema)
-		// Expected numscript library projections derived from SavedNumscript /
-		// DeleteLedger logs. compareNumscripts diffs these against the stored
-		// SubAttrNumscriptContent (immutable version entries) and
-		// SubAttrNumscriptVersion (latest pointer = greatest stored semver).
-		expectedNumscriptContent = make(map[domain.NumscriptEntryKey]*commonpb.NumscriptInfo)
-		expectedNumscriptLatest  = make(map[domain.NumscriptVersionKey]string)
+		numscripts      = newNumscriptProjection()
 
 		// derivedLiveCheckpoints is the audit-derived set of live query checkpoints
 		// (cluster-global), keyed by id with the CreatedQueryCheckpoint log as the
@@ -621,6 +614,7 @@ func (c *Checker) replayLogs(ctx context.Context, snap dal.PebbleReader, replay 
 		// Hash chain verification is now done via audit entries (see audit hash pass below).
 
 		// 2. Replay log to update expected state
+		numscripts.observe(log)
 		if log.GetPayload() != nil {
 			switch payload := log.GetPayload().GetType().(type) {
 			case *commonpb.LogPayload_CreateLedger:
@@ -656,34 +650,6 @@ func (c *Checker) replayLogs(ctx context.Context, snap dal.PebbleReader, replay 
 						if key.LedgerName == name {
 							delete(expectedIndexes, key)
 						}
-					}
-
-					// DeleteLedger also range-deletes SubAttrNumscriptVersion /
-					// SubAttrNumscriptContent for the ledger (deleteLedgerData),
-					// so mirror the cascade on the expected numscript projections.
-					for key := range expectedNumscriptContent {
-						if key.LedgerName == name {
-							delete(expectedNumscriptContent, key)
-						}
-					}
-
-					for key := range expectedNumscriptLatest {
-						if key.LedgerName == name {
-							delete(expectedNumscriptLatest, key)
-						}
-					}
-				}
-			case *commonpb.LogPayload_SavedNumscript:
-				// A save writes an immutable content entry and advances the latest
-				// pointer to the greatest stored semver (versions may be saved out
-				// of order).
-				if info := payload.SavedNumscript.GetInfo(); info != nil {
-					ck := domain.NumscriptEntryKey{LedgerName: info.GetLedger(), Name: info.GetName(), Version: info.GetVersion()}
-					expectedNumscriptContent[ck] = info
-
-					vk := domain.NumscriptVersionKey{LedgerName: info.GetLedger(), Name: info.GetName()}
-					if cur, ok := expectedNumscriptLatest[vk]; !ok || numscriptVersionGreater(info.GetVersion(), cur) {
-						expectedNumscriptLatest[vk] = info.GetVersion()
 					}
 				}
 			case *commonpb.LogPayload_CreatedQueryCheckpoint:
@@ -884,10 +850,9 @@ func (c *Checker) replayLogs(ctx context.Context, snap dal.PebbleReader, replay 
 		knownLedgers: knownLedgers, ledgerRevertedTxIDs: ledgerRevertedTxIDs,
 		expectedIndexes: expectedIndexes,
 		deletedInReplay: deletedInReplay, expectedSchemas: expectedSchemas,
-		boundaries:               auditExpected.boundaries,
-		expectedNumscriptContent: expectedNumscriptContent,
-		expectedNumscriptLatest:  expectedNumscriptLatest,
-		derivedLiveCheckpoints:   derivedLiveCheckpoints,
+		boundaries:             auditExpected.boundaries,
+		numscripts:             numscripts,
+		derivedLiveCheckpoints: derivedLiveCheckpoints,
 	}, nil
 }
 
@@ -902,10 +867,8 @@ func (c *Checker) compareProjections(ctx context.Context, snap dal.PebbleReader,
 	expectedIndexes := state.expectedIndexes
 	deletedInReplay := state.deletedInReplay
 	expectedSchemas := state.expectedSchemas
-	expectedNumscriptContent := state.expectedNumscriptContent
-	expectedNumscriptLatest := state.expectedNumscriptLatest
 	derivedLiveCheckpoints := state.derivedLiveCheckpoints
-	signing, policy, bounds := folds.signing, folds.policy, folds.bounds
+	signing, bounds := folds.signing, folds.bounds
 
 	// Comparison passes: expected = replayed state. A cell SimulateEphemeralPurge
 	// deleted from the replay store must be absent from the live store too.
@@ -969,13 +932,6 @@ func (c *Checker) compareProjections(ctx context.Context, snap dal.PebbleReader,
 		return fmt.Errorf("comparing signing projections: %w", err)
 	}
 
-	// The cluster policy is cluster-global too, and verified on the same
-	// grounds: no log means no audited SetClusterPolicy order, so a stored
-	// policy row is unaudited.
-	if err := policy.compare(snap, callback); err != nil {
-		return fmt.Errorf("comparing cluster policy projection: %w", err)
-	}
-
 	if err := folds.ledgerMetadata.compare(snap, c.attrs, callback); err != nil {
 		return fmt.Errorf("comparing ledger metadata: %w", err)
 	}
@@ -984,7 +940,7 @@ func (c *Checker) compareProjections(ctx context.Context, snap dal.PebbleReader,
 		return err
 	}
 
-	c.compareNumscripts(snap, expectedNumscriptContent, expectedNumscriptLatest, deletedInReplay, callback)
+	state.numscripts.compare(snap, c.attrs, deletedInReplay, callback)
 
 	// Cluster-global too. Over a store with no logs derivedLiveCheckpoints is
 	// empty and every stored SubGlobQueryCheckpoint row is therefore unaudited;
@@ -1107,6 +1063,9 @@ type compareIndexesScope struct {
 //   - identity drift: stored Ledger or Id field disagrees with the audit
 //     payload that produced the entry → "diverges from audit-derived"
 //
+// Membership is decided by the physical key alone. A stored value without an
+// Id is malformed identity, never a reason to skip the row.
+//
 // Bucket-scoped entries (LedgerName == "") are skipped after the key checks
 // because no audit-chain producer exists for them today (#436 reserved).
 // Drift on those is invisible to this pass until the bucket-scoped producer
@@ -1143,9 +1102,6 @@ func (c *Checker) compareIndexes(
 		entry := iter.Entry()
 
 		stored := entry.Value
-		if stored == nil || stored.GetId() == nil {
-			continue
-		}
 
 		var key domain.IndexKey
 		if err := key.Unmarshal(entry.CanonicalKey); err != nil {
@@ -1445,30 +1401,8 @@ func (c *Checker) compareQueryCheckpoints(reader dal.PebbleReader, derived map[u
 	return nil
 }
 
-// numscriptVersionGreater reports whether a is a strictly greater full semver
-// than b. A non-semver b is treated as smaller so a valid version always wins.
-func numscriptVersionGreater(a, b string) bool {
-	av, aerr := semver.Parse(a)
-	bv, berr := semver.Parse(b)
-	if aerr != nil {
-		return false
-	}
-
-	if berr != nil {
-		return true
-	}
-
-	return av.Compare(bv) > 0
-}
-
-// compareNumscripts verifies the numscript library projections against the
-// state re-derived from the audit/log chain. SubAttrNumscriptContent holds the
-// immutable per-version entries; SubAttrNumscriptVersion holds the per-name
-// latest pointer (the greatest stored semver). Both are load-bearing for reads,
-// listing, version history, and admission-side reference resolution, so a
-// stored content row with no matching SavedNumscript, an altered content, or a
-// latest pointer that is not the greatest saved semver is tampering: a stored
-// row the replay never produced is a surplus/injected row and is flagged.
+// compareNumscripts retains the comparison interface for callers supplying
+// explicit expectations. Check carries the composed owner through replay.
 func (c *Checker) compareNumscripts(
 	reader dal.PebbleReader,
 	expectedContent map[domain.NumscriptEntryKey]*commonpb.NumscriptInfo,
@@ -1476,123 +1410,8 @@ func (c *Checker) compareNumscripts(
 	deletedInReplay map[string]struct{},
 	callback func(*servicepb.CheckStoreEvent),
 ) {
-	mismatch := func(msg, ledger string) {
-		callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_NUMSCRIPT_MISMATCH, msg, 0, ledger, "", ""))
-	}
-
-	// Content entries (immutable): every stored row must trace to a SavedNumscript.
-	contentIter, err := c.attrs.NumscriptContent.NewStreamingIter(reader, nil)
-	if err != nil {
-		mismatch(fmt.Sprintf("opening numscript content iterator: %v", err), "")
-
-		return
-	}
-
-	seenContent := make(map[domain.NumscriptEntryKey]struct{}, len(expectedContent))
-
-	for contentIter.Next() {
-		entry := contentIter.Entry()
-		if entry.Value == nil {
-			continue
-		}
-
-		var key domain.NumscriptEntryKey
-		if err := key.Unmarshal(entry.CanonicalKey); err != nil {
-			mismatch(fmt.Sprintf("stored numscript content has unparsable canonical key %x: %v", entry.CanonicalKey, err), "")
-
-			continue
-		}
-
-		seenContent[key] = struct{}{}
-
-		exp, ok := expectedContent[key]
-		if !ok {
-			if _, deleted := deletedInReplay[key.LedgerName]; deleted {
-				mismatch(fmt.Sprintf("stored numscript content %q@%q for ledger %q survives a replayed DeleteLedger + completed cleanup", key.Name, key.Version, key.LedgerName), key.LedgerName)
-
-				continue
-			}
-
-			mismatch(fmt.Sprintf("stored numscript content %q@%q for ledger %q has no matching SavedNumscript in the audit chain", key.Name, key.Version, key.LedgerName), key.LedgerName)
-
-			continue
-		}
-
-		// Compare the whole NumscriptInfo, not just Content: reads and listing
-		// serve every field (Name, Version, Ledger, CreatedAt) straight from
-		// this projection, so each must match the audit-derived value.
-		if !entry.Value.EqualVT(exp) {
-			mismatch(fmt.Sprintf("numscript %q@%q for ledger %q: stored entry diverges from the audit-derived NumscriptInfo", key.Name, key.Version, key.LedgerName), key.LedgerName)
-		}
-	}
-
-	if err := contentIter.Err(); err != nil {
-		mismatch(fmt.Sprintf("scanning numscript content: %v", err), "")
-	}
-
-	_ = contentIter.Close()
-
-	for key := range expectedContent {
-		if _, ok := seenContent[key]; !ok {
-			mismatch(fmt.Sprintf("audit chain expects numscript content %q@%q for ledger %q but the store has no matching entry", key.Name, key.Version, key.LedgerName), key.LedgerName)
-		}
-	}
-
-	// Latest pointers: the stored version string must match the greatest
-	// saved semver derived from the SavedNumscript sequence.
-	versionIter, err := c.attrs.NumscriptVersion.NewStreamingIter(reader, nil)
-	if err != nil {
-		mismatch(fmt.Sprintf("opening numscript version iterator: %v", err), "")
-
-		return
-	}
-
-	seenLatest := make(map[domain.NumscriptVersionKey]struct{}, len(expectedLatest))
-
-	for versionIter.Next() {
-		entry := versionIter.Entry()
-		if entry.Value == nil {
-			continue
-		}
-
-		var key domain.NumscriptVersionKey
-		if err := key.Unmarshal(entry.CanonicalKey); err != nil {
-			mismatch(fmt.Sprintf("stored numscript version pointer has unparsable canonical key %x: %v", entry.CanonicalKey, err), "")
-
-			continue
-		}
-
-		seenLatest[key] = struct{}{}
-
-		exp, ok := expectedLatest[key]
-		if !ok {
-			if _, deleted := deletedInReplay[key.LedgerName]; deleted {
-				mismatch(fmt.Sprintf("stored numscript latest pointer for %q on ledger %q survives a replayed DeleteLedger + completed cleanup", key.Name, key.LedgerName), key.LedgerName)
-
-				continue
-			}
-
-			mismatch(fmt.Sprintf("stored numscript latest pointer for %q on ledger %q has no matching SavedNumscript in the audit chain", key.Name, key.LedgerName), key.LedgerName)
-
-			continue
-		}
-
-		if entry.Value.GetVersion() != exp {
-			mismatch(fmt.Sprintf("numscript %q on ledger %q: stored latest pointer %q diverges from the audit-derived %q", key.Name, key.LedgerName, entry.Value.GetVersion(), exp), key.LedgerName)
-		}
-	}
-
-	if err := versionIter.Err(); err != nil {
-		mismatch(fmt.Sprintf("scanning numscript version pointers: %v", err), "")
-	}
-
-	_ = versionIter.Close()
-
-	for key := range expectedLatest {
-		if _, ok := seenLatest[key]; !ok {
-			mismatch(fmt.Sprintf("audit chain expects a numscript latest pointer for %q on ledger %q but the store has no matching entry", key.Name, key.LedgerName), key.LedgerName)
-		}
-	}
+	p := &numscriptProjection{content: expectedContent, latest: expectedLatest}
+	p.compare(reader, c.attrs, deletedInReplay, callback)
 }
 
 // excludedVolumesSet maps ledger name to the (account, asset, color) cells
@@ -2293,10 +2112,7 @@ func compareTransactionPostCommitVolumes(
 type chainVerifierFolds struct {
 	// signing re-derives the signing key/config expectation from chain-bound
 	// signing orders (invariant #8). Never seeded from the live projection.
-	signing *signingVerifier
-	// policy re-derives the cluster policy from chain-bound SetClusterPolicy
-	// orders.
-	policy         *clusterPolicyVerifier
+	signing        *signingVerifier
 	ledgerMetadata *ledgerMetadataVerifier
 	ledgerPolicy   *ledgerPolicyVerifier
 	// bounds re-derives the highest log sequence the chain accounts for, from
@@ -2309,7 +2125,6 @@ type chainVerifierFolds struct {
 func newChainVerifierFolds() chainVerifierFolds {
 	return chainVerifierFolds{
 		signing:        newSigningVerifier(),
-		policy:         newClusterPolicyVerifier(),
 		ledgerMetadata: newLedgerMetadataVerifier(),
 		ledgerPolicy:   &ledgerPolicyVerifier{},
 		bounds:         newLogBoundsVerifier(),
@@ -2321,7 +2136,6 @@ func newChainVerifierFolds() chainVerifierFolds {
 // verifyAuditHashChain.
 func (f chainVerifierFolds) markLiveTruncated() {
 	f.signing.markLiveTruncated()
-	f.policy.markLiveTruncated()
 	f.ledgerMetadata.liveTruncated = true
 	f.ledgerPolicy.liveTruncated = true
 	f.bounds.markLiveTruncated()
@@ -2649,7 +2463,6 @@ func (c *Checker) verifyAuditHashChain(
 				}
 
 				folds.signing.applyOrder(order)
-				folds.policy.applyOrder(order)
 				folds.ledgerMetadata.applyOrder(order)
 			}
 		}

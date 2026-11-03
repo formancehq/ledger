@@ -1,6 +1,7 @@
 package query
 
 import (
+	"errors"
 	"math"
 	"testing"
 
@@ -17,7 +18,7 @@ func TestMergeFieldRanges(t *testing.T) {
 		t.Parallel()
 
 		in := []*commonpb.QueryFilter{intRange("a", new(int64(10)), false, nil, false)}
-		got := mergeFieldRanges(in)
+		got := mergeFieldRanges(in, nil)
 
 		require.Len(t, got, 1)
 		assert.Same(t, in[0], got[0])
@@ -31,7 +32,7 @@ func TestMergeFieldRanges(t *testing.T) {
 			intRange("a", new(int64(10)), false, nil, false),
 			intRange("a", nil, false, new(int64(20)), true),
 		}
-		got := mergeFieldRanges(in)
+		got := mergeFieldRanges(in, nil)
 
 		require.Len(t, got, 1)
 		ic := got[0].GetField().GetIntCond()
@@ -52,7 +53,7 @@ func TestMergeFieldRanges(t *testing.T) {
 			intRange("a", new(int64(10)), false, nil, false),
 			intRange("a", nil, false, new(int64(19)), false),
 		}
-		got := mergeFieldRanges(in)
+		got := mergeFieldRanges(in, nil)
 
 		require.Len(t, got, 1)
 		ic := got[0].GetField().GetIntCond()
@@ -69,7 +70,7 @@ func TestMergeFieldRanges(t *testing.T) {
 			intRange("a", new(int64(10)), true, nil, false),
 			intRange("a", nil, false, new(int64(20)), true),
 		}
-		got := mergeFieldRanges(in)
+		got := mergeFieldRanges(in, nil)
 
 		require.Len(t, got, 1)
 		ic := got[0].GetField().GetIntCond()
@@ -88,7 +89,7 @@ func TestMergeFieldRanges(t *testing.T) {
 			intRange("a", new(int64(10)), false, nil, false),
 			intRange("a", new(int64(20)), false, nil, false),
 		}
-		got := mergeFieldRanges(in)
+		got := mergeFieldRanges(in, nil)
 
 		require.Len(t, got, 1)
 		ic := got[0].GetField().GetIntCond()
@@ -106,7 +107,7 @@ func TestMergeFieldRanges(t *testing.T) {
 			intRange("a", new(int64(20)), false, nil, false),
 			intRange("a", nil, false, new(int64(10)), true),
 		}
-		got := mergeFieldRanges(in)
+		got := mergeFieldRanges(in, nil)
 
 		require.Len(t, got, 1)
 		ic := got[0].GetField().GetIntCond()
@@ -125,7 +126,7 @@ func TestMergeFieldRanges(t *testing.T) {
 			intRange("a", new(int64(10)), false, nil, false),
 			intRange("b", nil, false, new(int64(20)), true),
 		}
-		got := mergeFieldRanges(in)
+		got := mergeFieldRanges(in, nil)
 
 		require.Len(t, got, 2)
 		assert.Same(t, in[0], got[0])
@@ -154,7 +155,7 @@ func TestMergeFieldRanges(t *testing.T) {
 			strFilter,
 			intRange("a", nil, false, new(int64(20)), true),
 		}
-		got := mergeFieldRanges(in)
+		got := mergeFieldRanges(in, nil)
 
 		require.Len(t, got, 2)
 
@@ -188,7 +189,7 @@ func TestMergeFieldRanges(t *testing.T) {
 			eqFilter,
 			intRange("a", new(int64(3)), false, nil, false),
 		}
-		got := mergeFieldRanges(in)
+		got := mergeFieldRanges(in, nil)
 
 		require.Len(t, got, 2)
 		assert.Same(t, in[0], got[0])
@@ -212,7 +213,7 @@ func TestMergeFieldRanges(t *testing.T) {
 			paramFilter,
 			intRange("a", nil, false, new(int64(20)), true),
 		}
-		got := mergeFieldRanges(in)
+		got := mergeFieldRanges(in, nil)
 
 		require.Len(t, got, 2)
 		assert.Same(t, in[0], got[0])
@@ -228,7 +229,7 @@ func TestMergeFieldRanges(t *testing.T) {
 			intRange("a", nil, false, new(int64(100)), true),
 			intRange("a", new(int64(20)), false, nil, false),
 		}
-		got := mergeFieldRanges(in)
+		got := mergeFieldRanges(in, nil)
 
 		require.Len(t, got, 1)
 		ic := got[0].GetField().GetIntCond()
@@ -273,7 +274,7 @@ func TestMergeFieldRanges_Uint(t *testing.T) {
 			uintRange("a", new(uint64(10)), false, nil, false),
 			uintRange("a", nil, false, new(uint64(20)), true),
 		}
-		got := mergeFieldRanges(in)
+		got := mergeFieldRanges(in, nil)
 
 		require.Len(t, got, 1)
 		uc := got[0].GetField().GetUintCond()
@@ -294,7 +295,7 @@ func TestMergeFieldRanges_Uint(t *testing.T) {
 			uintRange("a", new(uint64(10)), true, nil, false),
 			uintRange("a", nil, false, new(uint64(20)), true),
 		}
-		got := mergeFieldRanges(in)
+		got := mergeFieldRanges(in, nil)
 
 		require.Len(t, got, 1)
 		uc := got[0].GetField().GetUintCond()
@@ -313,7 +314,7 @@ func TestMergeFieldRanges_Uint(t *testing.T) {
 			uintRange("a", nil, false, new(uint64(50)), false),
 			uintRange("a", nil, false, new(uint64(20)), false),
 		}
-		got := mergeFieldRanges(in)
+		got := mergeFieldRanges(in, nil)
 
 		require.Len(t, got, 1)
 		uc := got[0].GetField().GetUintCond()
@@ -331,7 +332,7 @@ func TestMergeFieldRanges_Uint(t *testing.T) {
 			uintRange("a", new(uint64(20)), false, nil, false),
 			uintRange("a", nil, false, new(uint64(10)), true),
 		}
-		got := mergeFieldRanges(in)
+		got := mergeFieldRanges(in, nil)
 
 		require.Len(t, got, 1)
 		uc := got[0].GetField().GetUintCond()
@@ -350,7 +351,7 @@ func TestMergeFieldRanges_Uint(t *testing.T) {
 			boundedFilter,
 			uintRange("a", new(uint64(5)), false, nil, false),
 		}
-		got := mergeFieldRanges(in)
+		got := mergeFieldRanges(in, nil)
 
 		require.Len(t, got, 2)
 		assert.Same(t, in[0], got[0])
@@ -374,7 +375,7 @@ func TestMergeFieldRanges_Uint(t *testing.T) {
 			paramFilter,
 			uintRange("a", nil, false, new(uint64(20)), true),
 		}
-		got := mergeFieldRanges(in)
+		got := mergeFieldRanges(in, nil)
 
 		require.Len(t, got, 2)
 		assert.Same(t, in[0], got[0])
@@ -391,7 +392,7 @@ func TestMergeFieldRanges_Uint(t *testing.T) {
 			intRange("a", new(int64(10)), false, nil, false),
 			uintRange("a", nil, false, new(uint64(20)), true),
 		}
-		got := mergeFieldRanges(in)
+		got := mergeFieldRanges(in, nil)
 
 		require.Len(t, got, 2)
 	})
@@ -412,7 +413,7 @@ func TestMergeFieldRanges_Uint(t *testing.T) {
 			addr,
 			intRange("a", new(int64(10)), false, nil, false),
 		}
-		got := mergeFieldRanges(in)
+		got := mergeFieldRanges(in, nil)
 
 		require.Len(t, got, 2)
 		assert.Same(t, addr, got[0])
@@ -437,7 +438,7 @@ func TestMergeFieldRanges_Uint(t *testing.T) {
 			fc,
 			intRange("a", nil, false, new(int64(20)), true),
 		}
-		got := mergeFieldRanges(in)
+		got := mergeFieldRanges(in, nil)
 
 		require.Len(t, got, 2)
 		assert.Same(t, fc, got[0])
@@ -445,8 +446,31 @@ func TestMergeFieldRanges_Uint(t *testing.T) {
 
 	t.Run("nil filter list returns nil", func(t *testing.T) {
 		t.Parallel()
-		assert.Nil(t, mergeFieldRanges(nil))
+		assert.Nil(t, mergeFieldRanges(nil, nil))
 	})
+}
+
+func TestMergeFieldRanges_RejectedLeafIsNotMerged(t *testing.T) {
+	t.Parallel()
+
+	rejectNegative := func(fc *commonpb.FieldCondition) (*commonpb.FieldCondition, error) {
+		if fc.GetIntCond().GetMin() < 0 {
+			return nil, errors.New("negative")
+		}
+
+		return fc, nil
+	}
+
+	negative := intRange("a", new(int64(-1)), false, nil, false)
+	zero := intRange("a", new(int64(0)), false, nil, false)
+	one := intRange("a", new(int64(1)), false, nil, false)
+
+	for _, in := range [][]*commonpb.QueryFilter{{negative, zero, one}, {zero, negative, one}} {
+		got := mergeFieldRanges(in, rejectNegative)
+
+		require.Len(t, got, 2)
+		assert.Contains(t, got, negative, "the rejected leaf must reach compile unchanged")
+	}
 }
 
 func TestMergeFieldRanges_ExclusiveExtremaRemainEmpty(t *testing.T) {
@@ -512,7 +536,7 @@ func TestMergeFieldRanges_ExclusiveExtremaRemainEmpty(t *testing.T) {
 			t.Parallel()
 
 			for _, filters := range [][]*commonpb.QueryFilter{test.filters, {test.filters[1], test.filters[0]}} {
-				merged := mergeFieldRanges(filters)
+				merged := mergeFieldRanges(filters, nil)
 
 				require.Len(t, merged, 1)
 				empty, err := test.resolve(merged[0])

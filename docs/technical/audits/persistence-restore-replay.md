@@ -190,6 +190,20 @@ full CLI confirmation/finalization coverage. Rooted deletion and namespace safet
 belong to `filesystem-confinement-contracts`; no persisted format migration or
 repair of a finalized corrupt restore is introduced by this reset.
 
+Follower-sync staging follows the same rule per session, not only per donor.
+`grpcSnapshotFetcher.FetchSnapshot` empties staging and resets progress before
+every session retry, and `fallbackSnapshotFetcher` does the same before every
+donor change. A donor restart between two sessions changes the checkpoint file
+set, and a leftover `MANIFEST`, WAL or `marker.manifest.000001.*` from the
+failed session can make Pebble open a stale manifest over the new WAL. The
+result is a restored applied index that covers entries whose effects are
+missing. `TestGRPCSnapshotFetcher_SessionRetryDiscardsEarlierSessionFiles` is
+the evidence oracle: inspect the final staging listing, not only the bytes of
+the manifest files. `verifyStagingMatchesManifest` then enforces the same
+property before success, and `TestGRPCSnapshotFetcher_RejectsStagingEntryOutsideManifest`
+proves a stray entry fails the fetch as a local fault rather than a donor
+fallback.
+
 Reject or downgrade a candidate when current evidence shows that the state is
 explicitly discarded and safely reseeded, the delta cannot change a preserved
 value, the alleged export state is unreachable, validation fails before
@@ -230,3 +244,18 @@ CreatedLedgerLog carries initial metadata so post-checkpoint creation reconstruc
 Does a restore with nonempty checkpoint files and a nonempty post-checkpoint creation delta reproduce typed initial metadata for normal and mirror ledgers, including explicit protobuf null and a schema type mismatch?
 
 See [the creation contract](../architecture/subsystems/api/atomic-ledger-creation.md) for the authorized semantics and regression evidence. Treat HTTP response/forwarding, actual FSM readback, keyed replay, nonempty checkpoint-plus-delta restore, and primary-projection tampering as separate evidence oracles; a helper-only test does not prove every boundary.
+
+## Proposal payload cutover
+
+The proposal codec is part of this contract. Production writers serialize the
+execution and policy oneof directly after a full-stop upgrade. All source nodes
+must stop before any target starts, and old binaries must never reopen a WAL
+containing new payloads, including technical entries written during startup.
+Historical replay must retain exact audit bytes and hashes. Native policy
+controls are operational and emit neither audit nor business logs; they are never
+lowered to orders. Compare final state across formats, verify each chain and its
+expected audit count, and preserve the historical prefix byte-for-byte. Preserve
+coverage, HLC semantics and checkpoint boundaries. Test policy-only incremental
+manifest publication and mixed historical/native delta restore. Current policy
+and operational quotas are explicitly outside business checker scope.
+See [proposal payloads](../architecture/subsystems/consensus/proposal-payloads.md).

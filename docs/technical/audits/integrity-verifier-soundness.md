@@ -54,7 +54,7 @@ root cause across multiple affected passes or callers.
 | Pass selection and verdict | `internal/application/check/checker.go`: trace `Check`, every comparison and early exit. Inventory current calls, not a frozen count from the documentation table. `Check` returns execution errors and emits corruption through its callback; progress and a nil return are not alone a healthy verdict. |
 | Source chain and bounds | `verifyAuditHashChain`, `newProposalBoundaryReader`, `internal/query/audit.go`, `log.go`, `applied_proposal.go`, `internal/infra/state/audit_envelope.go`, `batch.go`, `machine.go`: identify entry/item/log/proposal key ranges and cardinalities, hash inputs and the verified source of replay inputs. Include first/last inclusivity and iterator terminal errors. |
 | Reconstruction | `checker.go`, `replay_store.go`, `internal/domain/replay/`, `internal/domain/processing/processor*.go`: establish order-to-log-to-projection provenance. Inspect producer code to establish semantics and correlated defects, without treating producer agreement as an independent oracle. |
-| Projection coverage | Inventory volumes, metadata, transactions and post-commit volumes, reversions, exclusions, idempotency outcomes, indexes, mirror position, numscript content/latest pointers, ledger presence/schema/account types/boundaries/references, signing, cluster policy and query checkpoints from actual calls. Map each field to expected-source and stored-row scans, including deletion and unmatched rows. This discovery list must be refreshed on the audited SHA. |
+| Projection coverage | Inventory volumes, metadata, transactions and post-commit volumes, reversions, exclusions, idempotency outcomes, indexes, mirror position, numscript content/latest pointers, ledger presence/schema/account types/boundaries/references, signing and query checkpoints from actual calls. Map each field to expected-source and stored-row scans, including deletion and unmatched rows. This discovery list must be refreshed on the audited SHA. |
 | Storage boundary | `internal/storage/dal/`, `internal/infra/attributes/`, `internal/storage/readstore/`, `reverse_map_orphans.go`: primary snapshot and cursor semantics; only the documented reverse-map exception reads peer data for a verdict. Broad globs are counterevidence sources, not a general storage or index audit. |
 | Result consumption | `internal/adapter/grpc/server_bucket.go` (`CheckStore`), `server_restore.go` (`CheckRestore`), `cmd/ledgerctl/store/check.go`, `bootstrap.go`: trace events, transport errors and final decisions. A staged store has no peer readstore; it cannot certify peer contents. Restore correctness itself belongs to the persistence domain. |
 | Existing evidence | `internal/application/check/*_test.go`, `internal/domain/replay/*_test.go`, relevant `tests/e2e/business/` and `tests/e2e/cluster/`: record assertions actually reached, not test names or line coverage as proof. |
@@ -93,6 +93,28 @@ this manifest.
   chapters, cold-store baselines, archival windows or pre-v3 compatibility that
   were removed. A partial fold can emit a mismatch/incomplete signal and stop;
   the contract does not demand every corruption be enumerated after failure.
+
+## Numscript lifecycle evidence
+
+Trace `numscript_projection.go` together with the selected-log hook in
+`Checker.replayLogs` and the existing slot in `compareProjections`. The composed
+owner must receive the log after audit-derived substitution, retaining the
+existing fallback when no audited expectation is available; extraction does not
+strengthen guarantees after a truncated chain. Keep greatest-version selection,
+whole `NumscriptInfo` equality and both comparison directions for content and
+latest pointers. Empty expectations still require scanning for surplus rows.
+
+`checker_numscript_test.go` covers saves out of version order, altered and
+missing/surplus content, missing/surplus latest pointers including empty history,
+and deletion across several names/versions with another ledger retained. A
+coordinated stored-log/content corruption must produce both the log-payload and
+Numscript mismatch while the audited save order remains intact. The
+healthy controls and deletion survivor probes inspect complete callbacks and
+terminal success. These fixtures use the real request processor with the test
+engine's persistence adapter; they do not independently prove the FSM's cleanup
+implementation. Preserve the audit witness when injecting stored rows. The
+owner is disposable checker memory: it adds no persisted projection, audit
+format, snapshot or peer-store read, and leaves alignment rules unchanged.
 
 ## Ledger policy evidence
 
@@ -301,3 +323,31 @@ moves the registration to a padding alias, confirms the canonical point lookup
 misses, and requires both the noncanonical-key and the missing-registration
 `INDEX_MISMATCH`. Other passes that decode ledger-name-keyed rows and match on
 the logical key are candidates for the same probe.
+
+## Index registrations without Id (EN-3237)
+
+A value field must not decide whether a row takes part in membership checks.
+Skipping a stored `Index` without an `Id` before parsing its key lets an
+unaudited Ledger-only row at a surplus ledger-scoped key leave `Check` clean.
+Every production writer sets `Id`, so `compareIndexes` decides membership from
+the physical key and lets the identity comparison report the missing `Id`. `checker_index_surplus_test.go` runs full `Check` on a real
+FSM-produced registry: a surplus row with and without `Id` must each produce
+exactly one "no matching CreateIndex" `INDEX_MISMATCH`, and an audited row
+stripped of its `Id` must produce exactly one `Id`-drift `INDEX_MISMATCH`.
+`collectIndexedFields` in the reverse-map pass still ignores rows without `Id`;
+that only widens its orphan verdicts, and `compareIndexes` reports the row.
+
+## Operational policy exemption
+
+Native policy controls have no business audit representation. Historical policy
+orders and their exact hash preimages remain readable and replayable. The current
+policy row is an explicit operational exemption, not an unchecked business
+projection. Replay accepted intent without metadata or checkpoint quotas and
+without reading this row. Verify actual effects, semantic rules, frozen
+idempotency outcomes and historical audit integrity. Retain tamper regressions
+for business projections; policy absence or different current limits alone must
+not produce a business-integrity finding.
+
+Restore evidence must include a policy-only incremental snapshot and a legacy
+policy log followed by a native override. Discovery and recovery validate the
+restored operational state independently of a clean business checker result.

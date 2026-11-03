@@ -19,20 +19,19 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
-// protojsonRoutes lists every HTTP route whose 200 body is serialized by
-// protojson — writeProtoOK, writeProtoListOK, protoListJSON, or an inline
-// protojson.Marshal.
+// protojsonRoutes lists every HTTP route whose 200 body is serialized from a
+// protobuf response through the shared JSON adapter. The name is retained for
+// the historical contract inventory; the response path now uses generated or
+// hand-written JSON projections rather than protojson.Marshal.
 //
-// protojson works off protobuf reflection and ignores json.Marshaler, so a type
-// that has BOTH is silently rendered by the wrong one. That is the EN-1622
-// defect: Transaction and Log each had a hand-written MarshalJSON that
-// the protojson writers bypassed, so the list routes disagreed with their
-// sibling detail routes and leaked {v0}/{data} proto wrappers.
+// The historical defect was that protojson reflection ignored json.Marshaler,
+// so list routes disagreed with detail routes and leaked {v0}/{data} wrappers.
+// The current shared adapter dispatches the public projection first.
 //
-// If this test fails because you added a MarshalJSON to one of these types, do
-// NOT delete the row. The marshaller is the public contract once it exists:
-// move the handler to writeOKChecked, add wire assertions to its handler test,
-// and type the response in openapi.yml. Note the blast radius first — the CLI
+// If this test fails because you changed a public projection, do NOT delete the
+// row. The projection is the public contract once it exists: keep the handler
+// on the shared JSON adapter, add wire assertions to its handler test, and type
+// the response in openapi.yml. Note the blast radius first — the CLI
 // (cmd/ledgerctl/cmdutil/output.go) also prefers a custom MarshalJSON when one
 // exists, and misc/operator parses `ledgerctl indexes list --json`.
 //
@@ -53,21 +52,48 @@ var protojsonRoutes = []struct {
 	{"GET /v3/_/events-sinks", "handlers_get_events_sinks.go", &servicepb.GetEventsSinksResponse{}},
 }
 
-func TestProtojsonRoutes_PayloadHasNoCustomMarshalJSON(t *testing.T) {
+// jsonWriterFiles is the checked-in inventory of HTTP production files that
+// invoke the shared response writers. Keeping this inventory explicit makes a
+// new route a review checkpoint instead of silently escaping the projection
+// contract tests below.
+var jsonWriterFiles = map[string]bool{
+	"handlers_add_events_sink.go": true, "handlers_aggregate_volumes.go": true,
+	"handlers_analyze_accounts.go": true, "handlers_analyze_numscript.go": true,
+	"handlers_analyze_transactions.go": true, "handlers_create_index.go": true,
+	"handlers_create_ledger.go": true, "handlers_create_transaction.go": true,
+	"handlers_get_account.go": true, "handlers_get_account_type.go": true,
+	"handlers_get_audit_entry.go": true, "handlers_get_bucket_index.go": true,
+	"handlers_get_bucket_index_entry_status.go": true, "handlers_get_events_sinks.go": true,
+	"handlers_get_index.go": true, "handlers_get_index_entry_status.go": true,
+	"handlers_get_index_status.go": true, "handlers_get_ledger.go": true,
+	"handlers_get_ledger_stats.go": true, "handlers_get_log.go": true,
+	"handlers_get_metadata_schema.go": true, "handlers_get_numscript.go": true,
+	"handlers_get_numscript_usage.go": true, "handlers_get_transaction.go": true,
+	"handlers_health.go": true, "handlers_inspect_index.go": true,
+	"handlers_list_account_types.go": true, "handlers_list_accounts.go": true,
+	"handlers_list_all_ledgers.go": true, "handlers_list_audit_entries.go": true,
+	"handlers_list_bucket_indexes.go": true, "handlers_list_ledger_indexes.go": true,
+	"handlers_list_ledger_logs.go": true, "handlers_list_numscript_versions.go": true,
+	"handlers_list_numscripts.go": true, "handlers_list_prepared_queries.go": true,
+	"handlers_list_signing_keys.go": true, "handlers_list_transactions.go": true,
+	"handlers_promote_ledger.go": true, "handlers_revert_transaction.go": true,
+	"handlers_save_numscript.go": true,
+}
+
+func TestProtojsonRoutes_PayloadUsesThePublicProjectionWhenPresent(t *testing.T) {
 	t.Parallel()
 
 	for _, tc := range protojsonRoutes {
 		t.Run(tc.route, func(t *testing.T) {
 			t.Parallel()
 
-			_, hasCustom := tc.msg.(json.Marshaler)
 			_, hasStreamingCustom := tc.msg.(jsonv2.MarshalerTo)
-			require.Falsef(t, hasStreamingCustom, "%s serializes %T via protojson, which ignores MarshalJSONTo", tc.route, tc.msg)
-			require.Falsef(t, hasCustom,
-				"%s serializes %T via protojson, but %T now implements json.Marshaler. "+
-					"protojson ignores it, so the custom shape is silently discarded. "+
-					"Move the handler to writeOKChecked and type the response in openapi.yml.",
-				tc.route, tc.msg, tc.msg)
+			// The shared adapter honors a public MarshalJSON projection before
+			// falling back to protobuf reflection.
+			// These routes may therefore use either projection style. Streaming
+			// projections are intentionally not used here because the helpers
+			// buffer protobuf output to surface marshal errors before headers.
+			require.Falsef(t, hasStreamingCustom, "%s uses a streaming custom projection in a buffered proto route", tc.route)
 		})
 	}
 }
@@ -136,9 +162,7 @@ func TestMonetaryRoutes_PayloadHasCustomMarshalJSON(t *testing.T) {
 }
 
 // allowedProtojsonImporters are the only files in this package permitted to
-// import protojson directly. response.go implements writeProtoOK and
-// writeProtoListOK; handlers_get_events_sinks.go predates those helpers and
-// calls protojson inline; handlers_create_ledger.go is the odd one out — it
+// import protojson directly. handlers_create_ledger.go is the odd one out — it
 // uses protojson.Unmarshal (decode-side) to parse a MirrorRewriteRule oneof
 // out of an incoming request body, which sonic's decoder cannot dispatch.
 // That file never marshals a response through protojson, so it carries no
@@ -191,8 +215,8 @@ func TestProtojsonImportIsRestricted(t *testing.T) {
 			}
 
 			require.Truef(t, allowedProtojsonImporters[name],
-				"%s imports protojson directly. Serialize through writeProtoOK or "+
-					"writeProtoListOK and add the route to protojsonRoutes with the exact "+
+				"%s imports protojson directly. Keep response serialization on the shared "+
+					"JSON adapter and add the route to protojsonRoutes with the exact "+
 					"message type the handler writes. If the handler genuinely must call "+
 					"protojson itself, add %s to allowedProtojsonImporters AND add its "+
 					"protojsonRoutes row — do not do only one.",
@@ -201,10 +225,9 @@ func TestProtojsonImportIsRestricted(t *testing.T) {
 	}
 }
 
-// TestProtojsonRoutes_TableIsComplete keeps protojsonRoutes honest. The table
-// above is hand-written, so a new protojson handler added without a row would
-// escape the guard entirely. Parse this package and compare the SET of files
-// containing a protojson call site against the set of files the table expects.
+// TestProtojsonRoutes_TableIsComplete keeps the route and writer inventories
+// honest. A new production file invoking a shared writer without adding it to
+// jsonWriterFiles fails this test and forces an explicit projection review.
 //
 // A bare count is not enough: a compensating add/remove pair (one handler
 // added, one removed) leaves the total unchanged, so a stale row plus an
@@ -215,62 +238,33 @@ func TestProtojsonImportIsRestricted(t *testing.T) {
 // the table's `file` field — not `route` — is what this test checks against.
 func TestProtojsonRoutes_TableIsComplete(t *testing.T) {
 	t.Parallel()
-
-	// parser.ParseDir is deprecated as of Go 1.25 (SA1019); walk the directory
-	// and parse each non-test file individually instead of grouping by package.
 	entries, err := os.ReadDir(".")
 	require.NoError(t, err)
-
-	fset := token.NewFileSet()
-
-	var sites []string     // "filename: calleeName", for the diagnosable failure message.
-	var siteFiles []string // filename only, for the set comparison below.
-
+	actual := make(map[string]bool)
 	for _, entry := range entries {
-		filename := entry.Name()
-		if entry.IsDir() || !strings.HasSuffix(filename, ".go") || strings.HasSuffix(filename, "_test.go") {
+		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".go") || strings.HasSuffix(entry.Name(), "_test.go") {
 			continue
 		}
-
-		file, err := parser.ParseFile(fset, filename, nil, 0)
+		file, err := parser.ParseFile(token.NewFileSet(), entry.Name(), nil, 0)
 		require.NoError(t, err)
-
-		ast.Inspect(file, func(n ast.Node) bool {
-			call, ok := n.(*ast.CallExpr)
+		ast.Inspect(file, func(node ast.Node) bool {
+			call, ok := node.(*ast.CallExpr)
 			if !ok {
 				return true
 			}
-
-			name := calleeName(call.Fun)
-			if name == "writeProtoOK" || name == "writeProtoListOK" || name == "protoListJSON" || name == "protojson.Marshal" {
-				sites = append(sites, filename+": "+name)
-				siteFiles = append(siteFiles, filename)
+			switch calleeName(call.Fun) {
+			case "writeOK", "writeCreated", "writeOKChecked", "writePageOK", "writePageOKChecked":
+				actual[entry.Name()] = true
 			}
 
 			return true
 		})
+		contents, err := os.ReadFile(entry.Name())
+		require.NoError(t, err)
+		require.NotContains(t, string(contents), "protojson.Marshal")
+		require.NotContains(t, string(contents), "MarshalProtoJSONNumbers")
 	}
-
-	// Built from the table so it cannot drift: one entry per route row, plus
-	// response.go three times for the implementation call sites inside
-	// writeProtoOK, protoListJSON, and writeProtoListOK's call to
-	// protoListJSON — those helpers are what every route row calls through,
-	// not routes of their own.
-	expected := make([]string, 0, len(protojsonRoutes)+3)
-	for _, tc := range protojsonRoutes {
-		expected = append(expected, tc.file)
-	}
-
-	expected = append(expected, "response.go", "response.go", "response.go")
-
-	require.ElementsMatchf(t, siteFiles, expected,
-		"protojson call sites %v do not match the expected set %v. If you added a "+
-			"protojson handler, add a row with the exact message type the handler "+
-			"writes — a placeholder type satisfies this check while guarding nothing. "+
-			"If you removed a handler, delete its row. If you added neither, calleeName "+
-			"probably did not recognise your call shape — fix the parser, do not delete "+
-			"a row.",
-		sites, expected)
+	require.Equal(t, jsonWriterFiles, actual)
 }
 
 // calleeName renders a call's function as "name" or "pkg.name".
@@ -278,7 +272,7 @@ func calleeName(fun ast.Expr) string {
 	switch f := fun.(type) {
 	case *ast.Ident:
 		return f.Name
-	case *ast.IndexExpr: // Generic instantiation, e.g. writeProtoListOK[T].
+	case *ast.IndexExpr: // Generic instantiation.
 		return calleeName(f.X)
 	case *ast.IndexListExpr: // Generic instantiation with multiple type parameters.
 		return calleeName(f.X)

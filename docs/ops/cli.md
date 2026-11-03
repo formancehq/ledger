@@ -2,6 +2,12 @@
 
 `ledgerctl` is the command-line client for interacting with Ledger v3 servers via gRPC.
 
+The separate [`kubectl ledger` plugin](../../misc/operator/README.md#kubectl-plugin)
+manages Kubernetes Cluster resources. When `kubectl ledger create` omits
+`--set image.tag`, the Cluster inherits the Ledger image tag configured on its
+Operator. Use `--set image.tag=<release-tag>` to pin a specific release; a
+release Operator requires a semantic release tag no newer than its own version.
+
 ## Getting Started
 
 ![Getting Started](../../misc/demo/demo_getting_started.gif)
@@ -2792,7 +2798,7 @@ Manage and inspect the Raft cluster.
 
 `--node-id` accepts unsigned 64-bit IDs; zero routes to the leader. Node lists,
 leader/local IDs and peer details preserve the full identity. In JSON/YAML
-output, protobuf uint64 identity fields are decimal strings.
+output, protobuf uint64 identity fields are decimal JSON numbers.
 
 Display the current state of the Raft cluster, including node information and replication status.
 
@@ -3009,7 +3015,7 @@ ledgerctl cluster du --json
 
 #### cluster maintenance
 
-Enable or disable cluster maintenance mode. When enabled, all write operations (Raft commands) are blocked at the admission layer. Only the maintenance mode command itself is allowed through (to disable maintenance mode). Read operations continue to work normally.
+Enable or disable cluster maintenance mode. When enabled, client business writes are blocked at admission. The maintenance mode command itself remains available to disable maintenance; leader-internal cluster-policy reconciliation also continues unless a drain is active. Read operations continue to work normally.
 
 ```bash
 ledgerctl cluster maintenance <true|false|enable|disable> [flags]
@@ -4062,10 +4068,12 @@ Controls the time-to-live for idempotency keys. After the TTL expires, an idempo
 
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
-| `--idempotency-ttl` | duration | `24h` | Desired time-to-live for idempotency keys (0 = never expire) |
+| `--idempotency-ttl` | duration | `24h` | Desired time-to-live for idempotency keys (0 = never expire; otherwise at least `1µs`) |
 | `--idempotency-eviction-interval` | duration | `60s` | How often the leader proposes eviction of expired keys |
 
 `--idempotency-ttl` names the *desired* TTL that the leader reconciles into the Raft-replicated cluster policy; the FSM freezes each outcome's absolute expiry from the committed policy at write time, so the flag never affects how an already-committed outcome is applied. It is not a persisted-config parameter and is not gated by `--unsafe-skip-config-validation`; changing the effective TTL is a cluster-policy revision bump. Keep the desired value consistent across nodes so the reconciled policy is unambiguous.
+
+The cluster policy stores the TTL in whole microseconds. A value below `1µs` other than `0` would truncate to the never-expire sentinel, so the server refuses to start with it. Longer values are truncated to whole microseconds (`1500ns` becomes `1µs`).
 
 ```bash
 # Default: 24h TTL, eviction every 60s
@@ -4350,10 +4358,19 @@ Tune the Raft consensus layer. These flags control election timing, message size
 | `--raft-compaction-margin` | uint64 | `1000` | Minimum log entries between snapshots (0 = use default 1000) |
 | `--maintenance-interval` | duration | `30s` | Interval for background WAL snapshot + Pebble checkpoint (0 = use default 30s) |
 | `--raft-propose-queue-capacity` | int | `100` | Capacity of the propose queue (0 = use default 100) |
-| `--raft-processing-tick-interval` | duration | `tick-interval/10` | Interval for processing committed entries (0 = tick-interval/10) |
+| `--raft-tick-interval` | duration | `100ms` | Interval between Raft ticks (0 = 100ms); must be at least 10ns when processing uses its default |
+| `--raft-processing-tick-interval` | duration | `tick-interval/10` | Idle Ready polling interval, retained after Ready drains (0 = effective tick-interval/10) |
 | `--raft-replay-batch-size` | int | `1000` | Number of entries per batch during spool replay (0 = use default 1000) |
 | `--spool-segment-max-bytes` | ByteSize | `256Mi` | Maximum spool segment size before rotation/sealing (0 = use default 256Mi). Lower values seal (and thus prune) segments more often at the cost of more files |
 | `--backup-max-segment-bytes` | ByteSize | `4Gi` | Maximum incremental-backup export segment size before splitting into a new segment (0 = use default 4Gi). Lower values produce more, smaller segments (smaller retry blast radius) at the cost of more objects |
+
+Both intervals reject negative durations. With zero processing interval, positive
+Raft ticks from `1ns` through `9ns` are rejected because division by ten would
+produce a zero-duration ticker. An explicit positive processing interval permits
+these tick values and remains in effect when Ready work drains. Zero Raft tick
+retains the `100ms` default, so both zero values resolve to `100ms` / `10ms`.
+Message and local-storage responses can trigger Ready immediately; this polling
+interval does not pace every commit.
 
 ```bash
 # Increase compaction margin for workloads with large snapshots
@@ -4840,23 +4857,55 @@ ledger run --flight-recorder-enabled --flight-recorder-max-bytes 50Mi --flight-r
 
 ### Server Trace Sampling
 
-Tracing uses the standard OpenTelemetry SDK configuration. There are no
-Ledger-specific trace sampling flags. To export all Ledger spans for collector
-sampling, keep the OTLP exporter and endpoint configured and set:
+Tracing uses standard OpenTelemetry SDK head sampling. With no sampler settings,
+the default remains `parentbased_always_on`: root spans are sampled, while
+children follow their parent's sampled flag.
+
+| Flag | Environment | Default | Description |
+| ---- | ----------- | ------- | ----------- |
+| `--trace-sampler` | `TRACE_SAMPLER` | unset | Standard SDK sampler policy; replaces the raw SDK sampler pair when selected. |
+| `--trace-sampler-arg` | `TRACE_SAMPLER_ARG` | unset | Explicit finite sampling probability in `[0,1]` for ratio policies. |
+
+Supported policies are `always_on`, `always_off`, `traceidratio`,
+`parentbased_always_on`, `parentbased_always_off`, and
+`parentbased_traceidratio`. The two ratio policies require an explicit argument;
+other policies reject an argument. An argument without a policy, an unknown
+policy, NaN, infinity, or a ratio outside `[0,1]` fails server startup, even when
+export is disabled. Names use the lowercase spellings above.
+
+```bash
+ledger run --trace-sampler=parentbased_traceidratio --trace-sampler-arg=0.1 [other flags...]
+```
+
+CLI flags override their corresponding `TRACE_SAMPLER*` environment values.
+When either typed setting is selected, this pair replaces both raw
+`OTEL_TRACES_SAMPLER` and `OTEL_TRACES_SAMPLER_ARG` values: arguments are never
+inherited from the raw pair. With neither typed setting selected, the SDK reads
+the raw variables directly and retains its standard defaults and fallback
+behavior, including a missing ratio argument defaulting to `1.0`.
+
+Use `always_on` with the exporter and endpoint enabled when collector-side tail
+sampling or complete span-derived metrics are required:
 
 ```bash
 export OTEL_TRACES_SAMPLER=always_on
+# Alternatively: ledger run --trace-sampler=always_on [other flags...]
 ```
 
-The SDK otherwise defaults to parent-based sampling, which may discard spans
-under an incoming unsampled parent. Ledger retains error status and exception
-information; the collector owns error/success retention policies and must compute
-span metrics before sampling.
+Head sampling reduces recording/export volume but may discard child spans before
+a later parent error exists. It cannot recover them when that error is recorded,
+and it biases downstream span-derived counts, error rates and latency metrics.
+The collector owns error/success retention and must compute complete span metrics
+before sampling. Ledger keeps no local OpenTelemetry span-retention buffer for
+error-aware sampling. The separate, opt-in [Flight Recorder](#server-flight-recorder-flags)
+buffers Go runtime trace data in memory; it does not retain OpenTelemetry spans
+or recover spans discarded by head sampling.
 
-The former `--trace-sampling-enabled` and `--trace-sampling-success-ratio` flags
-have been removed, along with `TRACE_SAMPLING_ENABLED` and
-`TRACE_SAMPLING_SUCCESS_RATIO`. Remove them from launch configuration and configure
-the collector as described in [deployment](deployment.md#collector-side-trace-sampling).
+The former `--trace-sampling-enabled` and `--trace-sampling-success-ratio` flags,
+`TRACE_SAMPLING_ENABLED`, and `TRACE_SAMPLING_SUCCESS_RATIO` remain unsupported.
+See [deployment](deployment.md#collector-side-trace-sampling) for the typed
+Operator configuration. These server flags do not configure the independent
+`ledgerctl` client tracer.
 
 ---
 
@@ -5538,3 +5587,8 @@ repository root. It exits nonzero on invalid input or an output error; discard
 partial output after any failure. It does not connect to ClickHouse.
 Follow the complete [migration procedure](clickhouse-account-metadata.md),
 including preflights, backup, source preservation, import and verification.
+
+Incremental backup restoration also applies operational policy from the manifest,
+including a policy-only update with zero history segments. The offline
+`ledgerctl store bootstrap` and server restore paths use the same reconstruction
+routine; see the [restore contract](../technical/architecture/subsystems/backup/incremental-restore-contract.md#operational-cluster-policy).

@@ -283,9 +283,36 @@ func (r *LedgerReconciler) reconcilePromotion(ctx context.Context, ledger *ledge
 	execCtx, cancel := context.WithTimeout(ctx, ledgerExecTimeout)
 	defer cancel()
 
-	log.Info("promoting mirror ledger to normal", "name", ledger.Spec.Name)
-	if err := r.ledgerctlExec(execCtx, cluster, grpcPort,
-		"ledgers", "promote", "--yes", "--", ledger.Spec.Name); err != nil {
+	// Promotion may have committed before its exec response or our status write
+	// was lost. Observe the live postcondition before repeating that effect;
+	// this also recovers across restarts without relying on idempotency TTLs.
+	// Pin live, linearizable reads so pod environment overrides cannot select
+	// a stale replica or historical checkpoint.
+	output, err := r.ledgerctlExecOutput(execCtx, cluster, grpcPort,
+		"ledgers", "get", "--json", "--consistency", "linearizable", "--checkpoint-id", "0", "--", ledger.Spec.Name)
+	if err == nil {
+		var observed struct {
+			Name string `json:"name"`
+			Mode string `json:"mode"`
+		}
+		if err = json.Unmarshal([]byte(output), &observed); err != nil {
+			err = fmt.Errorf("decoding ledger mode before promotion: %w", err)
+		} else if observed.Name != ledger.Spec.Name {
+			err = fmt.Errorf("observed ledger name %q does not match promotion target %q", observed.Name, ledger.Spec.Name)
+		} else {
+			switch observed.Mode {
+			case "NORMAL":
+				// The committed promotion only needs its CR status recovered.
+			case "MIRROR":
+				log.Info("promoting mirror ledger to normal", "name", ledger.Spec.Name)
+				err = r.ledgerctlExec(execCtx, cluster, grpcPort,
+					"ledgers", "promote", "--yes", "--", ledger.Spec.Name)
+			default:
+				err = fmt.Errorf("unexpected ledger mode %q before promotion", observed.Mode)
+			}
+		}
+	}
+	if err != nil {
 		meta.SetStatusCondition(&ledger.Status.Conditions, metav1.Condition{
 			Type:               conditionLedgerSynced,
 			Status:             metav1.ConditionFalse,

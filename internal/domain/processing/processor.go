@@ -12,6 +12,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/domain/accounttype"
 	"github.com/formancehq/ledger/v3/internal/domain/processing/numscript"
+	"github.com/formancehq/ledger/v3/internal/pkg/proposals"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
@@ -40,6 +41,9 @@ type RequestProcessor struct {
 // apply-child handlers. Per-batch fields (caches) are owned by the
 // *RequestProcessor and live for the lifetime of a ProcessOrders call.
 type Context struct {
+	// auditReplay executes recorded business intent without operational quotas.
+	auditReplay bool
+
 	// Metadata budget is shared by all orders in one atomic proposal.
 	metadataBudget *commandMetadataBudget
 
@@ -227,6 +231,16 @@ func (r *OrdersResult) recordCreatedLog(log *commonpb.Log) bool {
 // coverage map is never mutated. Per-order isolation is therefore
 // structural: order N's scope cannot read keys declared by order M.
 func (p *RequestProcessor) ProcessOrders(orders []*raftcmdpb.Order, scopeFactory ScopeFactory, sink SignalSink) (*OrdersResult, domain.SerializableError) {
+	return p.processOrders(orders, scopeFactory, sink, false)
+}
+
+// ProcessAuditedOrders verifies recorded business effects. Operational quotas
+// are live admission/apply concerns, not historical business invariants.
+func (p *RequestProcessor) ProcessAuditedOrders(orders []*raftcmdpb.Order, scopeFactory ScopeFactory, sink SignalSink) (*OrdersResult, domain.SerializableError) {
+	return p.processOrders(orders, scopeFactory, sink, true)
+}
+
+func (p *RequestProcessor) processOrders(orders []*raftcmdpb.Order, scopeFactory ScopeFactory, sink SignalSink, auditReplay bool) (*OrdersResult, domain.SerializableError) {
 	clear(p.compiledTypesCache)
 	clear(p.assetCache)
 
@@ -235,6 +249,7 @@ func (p *RequestProcessor) ProcessOrders(orders []*raftcmdpb.Order, scopeFactory
 	// per-apply fields (Boundaries, LedgerInfo) are populated by the apply
 	// orchestrators.
 	ctx := &Context{
+		auditReplay:          auditReplay,
 		NumscriptCache:       p.numscriptCache,
 		CompiledTypes:        p.compiledTypesCache,
 		AssetCache:           p.assetCache,
@@ -423,7 +438,7 @@ func (p *RequestProcessor) ProcessOrders(orders []*raftcmdpb.Order, scopeFactory
 // Single-threaded apply only (reuses p.hashBuf via computeOrderHash).
 func (p *RequestProcessor) HashProposal(proposal *raftcmdpb.Proposal) []byte {
 	h := blake3.New()
-	for _, order := range proposal.GetOrders() {
+	for _, order := range proposals.BatchOrders(proposal) {
 		var oh []byte
 		oh, p.hashBuf = hashOrder(order, p.hashBuf)
 		_, _ = h.Write(oh)
