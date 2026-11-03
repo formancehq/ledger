@@ -2515,11 +2515,28 @@ func reconcileMetadataOnlyChainBound(items []*auditpb.AuditItem, orders []*raftc
 		if log == nil {
 			continue
 		}
+
+		ledger := order.GetLedgerScoped().GetLedger()
+
+		// Seed transaction-scoped predicates from the replayed transaction, not
+		// from the order-derived counter: a metadata-only order earlier in the
+		// same entry consumes no FSM transaction id, so the speculative
+		// allocation is one too high for every later create.
+		if tx := log.GetPayload().GetApply().GetLog().GetData().GetCreatedTransaction().GetTransaction(); tx != nil {
+			if _, anchored := chainBound.ledgerCreationSeen[ledger]; anchored {
+				target := metadataTimelineTarget(true, strconv.FormatUint(tx.GetId(), 10))
+				for key := range tx.GetMetadata() {
+					appendMetadataMutation(chainBound.metadata, ledger, target, key, items[i].GetLogSequence(), true)
+				}
+			}
+
+			continue
+		}
+
 		payload := log.GetPayload().GetApply().GetLog().GetData().GetAccountMetadataUpdated()
 		if payload == nil {
 			continue
 		}
-		ledger := order.GetLedgerScoped().GetLedger()
 		if next, ok := chainBound.nextTxID[ledger]; ok && next > 1 {
 			chainBound.nextTxID[ledger] = next - 1
 		}
@@ -3122,15 +3139,6 @@ func recordChainBoundMutations(
 					rememberReferenceTxID(chainBound.referenceTxIDs, ledger, ref, txID)
 				}
 
-				// Seed under the SAME "tx:<id>" namespace verifySkippedOrder
-				// looks up via metadataTimelineTarget(isTx=true, id). A bare
-				// decimal target here would never match the verifier's keyed
-				// lookup, letting a forged METADATA_NOT_FOUND on tx metadata
-				// written by this successful transaction pass undetected.
-				target := metadataTimelineTarget(true, strconv.FormatUint(txID, 10))
-				for key := range ct.GetMetadata() {
-					appendMetadataMutation(chainBound.metadata, ledger, target, key, logSeq, true)
-				}
 			}
 		}
 	}
