@@ -299,45 +299,50 @@ The existing
 model and restore suites and release-specific migration tests remain separate
 gates. It also does not authorize rollback onto storage opened by the target.
 
-### Operator-managed release to branch HEAD validation
+### Operator-managed rc.2 to rc.3 rolling validation
 
-Run the `Release operator upgrade` GitHub Actions workflow with an input such as
-`release/v3.0`, or run the same recipe locally:
+After the current `main` has been integrated into `release/v3.0`, run the
+`Release operator upgrade` GitHub Actions workflow with `release/v3.0`, or run
+the same recipe locally from a clean harness checkout:
 
 ```bash
 RELEASE_BRANCH=release/v3.0 just test-release-operator-upgrade
 ```
 
-The launcher fetches the named release branch, selects the highest published
-stable or RC tag on that branch's history and release line, and records both
-the release commit and the branch HEAD. It refuses an empty upgrade or a
-branch outside `release/vX.Y`. It pulls the published Ledger and operator
-images for that release, builds the target operator and Ledger images from the
-exact branch HEAD, and loads all four into an isolated kind cluster. The target
-Ledger image is tagged with its full local image ID, so the Cluster CR refers
-to immutable build content and each restarted Pod can be checked against that
-ID. The workflow uploads the
-revision, image, Chainsaw, Kubernetes, Ledger Pod, and operator logs as evidence.
-The harness keeps the Chainsaw namespace until it collects those diagnostics,
-then deletes the Kind cluster.
+The launcher fetches and pins the exact `release/v3.0` HEAD and the published
+`v3.0.0-rc.2` source. It requires the target to descend from rc.2 and to
+contain the harness commit from `main`. It pulls the published rc.2 Ledger and
+operator images, then builds the target operator and Ledger images from that
+one pinned target SHA. It gives the local images canonical
+`v3.0.0-rc.3` tags and compiles the operator with that version for admission;
+this does not create a Git tag or publish either image. The recorded Docker
+image IDs and running Pod image IDs bind the test to the exact local builds.
+`TARGET_REF=<local-sha>` permits a local rehearsal against a commit containing
+the harness and rc.2, such as a temporary integration merge; the workflow
+always uses the fetched release branch HEAD. The workflow uploads revisions,
+image IDs, Raft status, Chainsaw output, Kubernetes resources and Pod logs.
+The harness keeps the Chainsaw namespace until diagnostics are collected, then
+deletes the Kind cluster.
 
-Chainsaw creates a three-voter Cluster with the published operator and Ledger
-images, then commits data and records the Pod and PVC identities. It upgrades
-the operator through Helm to the HEAD image first, verifies its Pod and image
-changed, and checks that Ledger data remained intact. Only then does it update
-`spec.image` to the built Ledger HEAD image. It observes ready, non-terminating
-old and new Ledger Pods coexisting, waits for the StatefulSet rollout, and
-checks that all Pods changed while PVCs did not. It commits another transaction,
-checks the account on all
-voters, and runs each voter's audit/derived-store checker. The test makes no
-business writes during mixed Ledger versions and does not establish that such
-writes are safe; the maintenance-gated binary test above covers the specific
-rc.1 metadata-validation change separately.
+Chainsaw creates a three-voter Cluster with published rc.2 images, commits
+non-empty business data, and records Pod, PVC and Raft identities. It upgrades
+the operator through Helm first, verifies the operator image and Pod changed
+while Ledger Pods, PVCs and data did not. With the rc.3 operator running, it
+requests a non-adjacent rc.1 downgrade and requires the RC admission error
+without any Ledger Pod, image or PVC change. It then requests the local rc.3
+Ledger image, observes ready old and new voters together with ready quorum,
+and requires the operator's stopped-upgrade state to stay empty. After every
+Pod is replaced and every PVC retains its identity, it verifies the original
+data on all voters, commits another transaction, requires the Raft commit index
+to advance, and runs each voter's audit and derived-store checker.
 
-The image-ID tag is deliberately not a published RC tag. This exercise tests
-the operator rollout and binary compatibility with the latest release; it does
-not exercise the operator's adjacent-RC tag admission rule. Keep the canonical
-RC admission tests and the pinned binary-level test above as separate gates.
+This scenario proves the operator-first rolling path, adjacent RC admission,
+non-empty data continuity, retained PVCs, and final Raft and audit health for
+the pinned rc.2 and target revisions. It does not write during mixed Ledger
+versions, exhaustively compare every persisted record type, exercise snapshot
+installation, backup/restore, rollback, or the dormant stopped-upgrade path.
+The pinned binary-level rc.1 test and relevant model, restore and migration
+suites remain separate gates.
 
 ## Coordinated Restart
 

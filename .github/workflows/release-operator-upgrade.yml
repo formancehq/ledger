@@ -46,7 +46,7 @@ jobs:
           registry: ghcr.io
           username: NumaryBot
           password: ${{ secrets.NUMARY_GITHUB_TOKEN }}
-      - name: Test published release to branch HEAD
+      - name: Test rc.2 to exact release branch HEAD as local rc.3
         env:
           GH_TOKEN: ${{ github.token }}
         run: nix develop .#upgrade --command just test-release-operator-upgrade
@@ -57,6 +57,7 @@ jobs:
           name: release-operator-upgrade-evidence
           path: |
             build/upgrade-operator/run.*/revisions.txt
+            build/upgrade-operator/run.*/raft-status.jsonl
             build/upgrade-operator/run.*/source-pull.txt
             build/upgrade-operator/run.*/source-operator-pull.txt
             build/upgrade-operator/run.*/operator-build.txt

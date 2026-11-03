@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Exercise a published release -> exact release-branch HEAD through the operator.
+# Exercise the published rc.2 -> exact release-branch HEAD as a local rc.3 image.
 set -euo pipefail
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -21,20 +21,21 @@ line="${branch#release/v}"
 git -C "$repo" fetch --no-tags origin \
 	"+refs/heads/$branch:refs/remotes/origin/$branch" \
 	"refs/tags/v$line.*:refs/tags/v$line.*"
-target_sha="$(git -C "$repo" rev-parse --verify "refs/remotes/origin/$branch^{commit}")"
+release_head="$(git -C "$repo" rev-parse --verify "refs/remotes/origin/$branch^{commit}")"
+target_sha="$(git -C "$repo" rev-parse --verify "${TARGET_REF:-$release_head}^{commit}")"
 harness_sha="$(git -C "$repo" rev-parse --verify HEAD)"
-source_tag=""
-while IFS= read -r candidate; do
-	if [ "$(gh release view "$candidate" --json isDraft --jq '.isDraft' 2>/dev/null)" = false ]; then
-		source_tag="$candidate"
-		break
-	fi
-done < <(git -C "$repo" tag --merged "$target_sha" | python3 "$script_dir/select_release.py" "$branch")
-[ -n "$source_tag" ] || { echo "no published release tag on $branch at $target_sha" >&2; exit 2; }
+source_tag=v3.0.0-rc.2
+target_tag=v3.0.0-rc.3
+[ "$branch" = release/v3.0 ] || { echo 'rc.2 to rc.3 requires release/v3.0' >&2; exit 2; }
+[ "$(gh release view "$source_tag" --json isDraft --jq '.isDraft')" = false ] || {
+	echo "$source_tag is not a published release" >&2; exit 2;
+}
 source_sha="$(git -C "$repo" rev-list -n 1 "$source_tag")"
-[ "$source_sha" != "$target_sha" ] || {
-	echo "$branch HEAD is already the latest published release $source_tag; nothing to upgrade" >&2
-	exit 2
+git -C "$repo" merge-base --is-ancestor "$source_sha" "$target_sha" || {
+	echo "target $target_sha does not descend from $source_tag" >&2; exit 2;
+}
+git -C "$repo" merge-base --is-ancestor "$harness_sha" "$target_sha" || {
+	echo "target $target_sha does not contain harness $harness_sha; integrate main into $branch first" >&2; exit 2;
 }
 
 mkdir -p "$repo/build/upgrade-operator"
@@ -61,8 +62,8 @@ trap on_exit EXIT
 
 source_repository="${UPGRADE_IMAGE_REPOSITORY:-ghcr.io/formancehq/ledger}"
 source_image="$source_repository:$source_tag"
-printf 'branch=%s\nsourceTag=%s\nsourceSHA=%s\ntargetSHA=%s\nharnessSHA=%s\n' \
-	"$branch" "$source_tag" "$source_sha" "$target_sha" "$harness_sha" | tee "$workdir/revisions.txt"
+printf 'branch=%s\nreleaseHeadSHA=%s\nsourceTag=%s\nsourceSHA=%s\ntargetTag=%s\ntargetSHA=%s\nharnessSHA=%s\n' \
+	"$branch" "$release_head" "$source_tag" "$source_sha" "$target_tag" "$target_sha" "$harness_sha" | tee "$workdir/revisions.txt"
 
 target_tree="$workdir/target"
 source_tree="$workdir/source"
@@ -70,8 +71,8 @@ mkdir -p "$source_tree" "$target_tree"
 git -C "$repo" archive "$source_sha" | tar -x -C "$source_tree"
 git -C "$repo" archive "$target_sha" | tar -x -C "$target_tree"
 source_operator_image="${UPGRADE_OPERATOR_IMAGE_REPOSITORY:-ghcr.io/formancehq/ledger-operator}:$source_tag"
-operator_image="ledger-operator:head-${target_sha:0:12}"
-docker build -q -t "$operator_image" "$target_tree/misc/operator" | tee "$workdir/operator-build.txt"
+operator_image="ledger-operator:$target_tag"
+docker build -q --build-arg "OPERATOR_VERSION=$target_tag" -t "$operator_image" "$target_tree/misc/operator" | tee "$workdir/operator-build.txt"
 docker pull "$source_image" | tee "$workdir/source-pull.txt"
 docker pull "$source_operator_image" | tee "$workdir/source-operator-pull.txt"
 source_id="$(docker image inspect "$source_image" --format '{{.Id}}')"
@@ -81,7 +82,6 @@ build_tag="ledger-upgrade:build-${target_sha:0:12}"
 docker build -q -t "$build_tag" "$target_tree" | tee "$workdir/target-build.txt"
 target_id="$(docker image inspect "$build_tag" --format '{{.Id}}')"
 target_repository=ledger-upgrade
-target_tag="sha-${target_id#sha256:}"
 target_image="$target_repository:$target_tag"
 docker tag "$build_tag" "$target_image"
 printf 'sourceImage=%s\nsourceImageID=%s\ntargetImage=%s\ntargetImageID=%s\nsourceOperatorImage=%s\nsourceOperatorImageID=%s\ntargetOperatorImage=%s\ntargetOperatorImageID=%s\n' \
@@ -108,6 +108,7 @@ UPGRADE_SOURCE_OPERATOR_IMAGE="$source_operator_image" UPGRADE_SOURCE_OPERATOR_I
 UPGRADE_SOURCE_REPOSITORY="$source_repository" UPGRADE_SOURCE_TAG="$source_tag" \
 UPGRADE_TARGET_REPOSITORY="$target_repository" UPGRADE_TARGET_TAG="$target_tag" \
 UPGRADE_TARGET_IMAGE_ID="$target_id" \
+	UPGRADE_EVIDENCE_DIR="$workdir" \
 	chainsaw test --config "$script_dir/chainsaw/config.yaml" \
 		--test-dir "$script_dir/operator" --kube-context "kind-$cluster" --skip-delete \
 		2>&1 | tee "$workdir/chainsaw.log"

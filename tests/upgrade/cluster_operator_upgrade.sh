@@ -9,7 +9,7 @@ namespace="$1"
   "${UPGRADE_SOURCE_OPERATOR_IMAGE_ID:?}" \
   "${UPGRADE_SOURCE_REPOSITORY:?}" "${UPGRADE_SOURCE_TAG:?}" \
   "${UPGRADE_TARGET_REPOSITORY:?}" "${UPGRADE_TARGET_TAG:?}" \
-  "${UPGRADE_TARGET_IMAGE_ID:?}"
+  "${UPGRADE_TARGET_IMAGE_ID:?}" "${UPGRADE_EVIDENCE_DIR:?}"
 source_image="$UPGRADE_SOURCE_REPOSITORY:$UPGRADE_SOURCE_TAG"
 target_image="$UPGRADE_TARGET_REPOSITORY:$UPGRADE_TARGET_TAG"
 cluster=upgrade-cluster
@@ -115,6 +115,20 @@ pvc_ids() {
   k get pvc -o json | jq -r --arg name "$statefulset" \
     '.items[] | select(.metadata.name | contains($name)) | .metadata.name + " " + .metadata.uid' | sort
 }
+record_raft() {
+  local phase="$1" ordinal
+  for ordinal in 0 1 2; do
+    status "$((ordinal+1))" | jq -c --arg phase "$phase" --argjson node "$((ordinal+1))" \
+      '{phase:$phase,node:$node,leader,raftStatus,syncProgress,maintenanceMode}' \
+      >> "$UPGRADE_EVIDENCE_DIR/raft-status.jsonl"
+  done
+}
+committed_index() {
+  local state leader
+  state="$(status 0)" || return 1
+  leader="$(jq -r '.leader' <<<"$state")"
+  status "$leader" | jq -r '.raftStatus.commit | tonumber'
+}
 
 jq -n --arg name "$cluster" --arg repository "$UPGRADE_SOURCE_REPOSITORY" --arg tag "$UPGRADE_SOURCE_TAG" '
   {apiVersion:"ledger.formance.com/v1alpha1",kind:"Cluster",metadata:{name:$name},
@@ -138,6 +152,8 @@ wait_consistent
 before="$(account 0)"
 jq -e '.address == "bank" and any(.volumes[]; .asset == "USD" and .volumes.balance == "100")' <<<"$before" >/dev/null
 check_data "$before"
+before_commit="$(committed_index)"
+record_raft before
 
 old_operator_uid="$(wait_operator "$UPGRADE_SOURCE_OPERATOR_IMAGE" "$UPGRADE_SOURCE_OPERATOR_IMAGE_ID")"
 helm upgrade ledger-operator "$UPGRADE_TARGET_OPERATOR_CHART" --namespace ledger-system \
@@ -155,6 +171,34 @@ after_operator_pods="$(k get pods -o json | jq -r --arg name "$statefulset" \
 [ "$after_operator_pods" = "$before_pods" ] || { echo 'Ledger Pods changed during operator upgrade' >&2; exit 1; }
 [ "$(pvc_ids)" = "$before_pvcs" ] || { echo 'PVC identity changed during operator upgrade' >&2; exit 1; }
 
+# A non-adjacent RC must be refused before touching the old StatefulSet.
+# A downgrade to rc.1 stays below the local rc.3 operator version, so this
+# exercises RC adjacency rather than the independent operator-version gate.
+rejected_patch="$(jq -n --arg tag v3.0.0-rc.1 '{spec:{image:{tag:$tag}}}')"
+k patch cluster "$cluster" --type=merge -p "$rejected_patch"
+deadline=$(( $(date +%s) + 60 ))
+rejected=0
+while [ "$(date +%s)" -lt "$deadline" ]; do
+  if k get cluster "$cluster" -o json | jq -e '
+    .metadata.generation as $generation |
+    any(.status.conditions[]?;
+      .type == "ConfigValid" and .status == "False" and
+      .observedGeneration == $generation and
+      (.message | contains("immediately next RC")))' >/dev/null; then
+    rejected=1
+    break
+  fi
+  sleep 2
+done
+[ "$rejected" -eq 1 ] || { echo 'non-adjacent RC was not rejected' >&2; exit 1; }
+[ "$(k get statefulset "$statefulset" -o json | jq -r '.spec.template.spec.containers[] | select(.name == "ledger") | .image')" = "$source_image" ] || {
+  echo 'rejected RC changed StatefulSet image' >&2; exit 1;
+}
+[ "$(pvc_ids)" = "$before_pvcs" ] || { echo 'rejected RC changed PVC identity' >&2; exit 1; }
+[ "$(k get pods -o json | jq -r --arg name "$statefulset" '.items[] | select(.metadata.name | startswith($name + "-")) | .metadata.name + " " + .metadata.uid' | sort)" = "$before_pods" ] || {
+  echo 'rejected RC replaced a Ledger Pod' >&2; exit 1;
+}
+
 patch="$(jq -n --arg repository "$UPGRADE_TARGET_REPOSITORY" --arg tag "$UPGRADE_TARGET_TAG" \
   '{spec:{image:{repository:$repository,tag:$tag,pullPolicy:"Never"}}}')"
 k patch cluster "$cluster" --type=merge -p "$patch"
@@ -171,6 +215,10 @@ while [ "$(date +%s)" -lt "$deadline" ]; do
        ordinal:(.metadata.name | split("-")[-1] | tonumber)}] as $pods |
     "\($pods | length) \([$pods[] | select(.image == $source)] | length) \([$pods[] | select(.image == $target)] | length) \([$pods[] | select(.image == $source and .ready)] | length) \([$pods[] | select(.image == $target and .ready)] | length)"' <<<"$pods")"
   read -r total old new old_ready new_ready <<<"$counts"
+  [ "$((old_ready + new_ready))" -ge 2 ] || { echo 'rolling upgrade lost ready quorum' >&2; exit 1; }
+  k get cluster "$cluster" -o json | jq -e '.status.upgrade == null' >/dev/null || {
+    echo 'rc.3 unexpectedly entered stopped-upgrade state' >&2; exit 1;
+  }
   if [ "$old_ready" -gt 0 ] && [ "$new_ready" -gt 0 ]; then mixed_seen=1; fi
   if [ "$total" -eq 3 ] && [ "$old" -eq 0 ] && [ "$new" -eq 3 ] && [ "$new_ready" -eq 3 ]; then break; fi
   sleep 2
@@ -197,6 +245,9 @@ wait_consistent
 after="$(account 0)"
 jq -e '.address == "bank" and any(.volumes[]; .asset == "USD" and .volumes.balance == "150")' <<<"$after" >/dev/null
 check_data "$after"
+after_commit="$(committed_index)"
+[ "$after_commit" -gt "$before_commit" ] || { echo 'Raft commit did not advance after upgrade' >&2; exit 1; }
+record_raft after
 for ordinal in 0 1 2; do
   echo "checking audit and derived store on node $((ordinal+1))"
   cli "$ordinal" store check
