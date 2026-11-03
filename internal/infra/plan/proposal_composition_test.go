@@ -46,10 +46,10 @@ func TestRun_RejectsUnsupportedTechnicalComposition(t *testing.T) {
 					}
 					proposer := &recordingProposer{tracker: tracker}
 					marshalled := false
-					result, err := builder.Run(t.Context(), cmd, build, func(p *raftcmdpb.Proposal) ([]byte, error) {
+					result, err := builder.Run(t.Context(), cmd, build, func(p *raftcmdpb.Proposal) error {
 						marshalled = true
 
-						return p.MarshalVT()
+						return nil
 					}, proposer)
 					require.ErrorIs(t, err, ErrUnsupportedTechnicalComposition)
 					require.Nil(t, result)
@@ -104,7 +104,7 @@ func TestRun_AllowsSupportedTechnicalComposition(t *testing.T) {
 				cmd.Orders = []*raftcmdpb.Order{{}}
 			}
 			proposeErr := errors.New("reached proposer")
-			_, err = builder.Run(t.Context(), cmd, build, (*raftcmdpb.Proposal).MarshalVT, stubFailingProposer{err: proposeErr})
+			_, err = builder.Run(t.Context(), cmd, build, func(*raftcmdpb.Proposal) error { return nil }, stubFailingProposer{err: proposeErr})
 			require.ErrorIs(t, err, proposeErr)
 		})
 	}
@@ -129,7 +129,7 @@ func TestRun_AllowsStandaloneOperationalUpdate(t *testing.T) {
 			require.NoError(t, err)
 			cmd := &raftcmdpb.Proposal{TechnicalUpdates: []*raftcmdpb.TechnicalUpdate{update}}
 			proposeErr := errors.New("reached proposer")
-			_, err = builder.Run(t.Context(), cmd, build, (*raftcmdpb.Proposal).MarshalVT, stubFailingProposer{err: proposeErr})
+			_, err = builder.Run(t.Context(), cmd, build, func(*raftcmdpb.Proposal) error { return nil }, stubFailingProposer{err: proposeErr})
 			require.ErrorIs(t, err, proposeErr)
 		})
 	}
