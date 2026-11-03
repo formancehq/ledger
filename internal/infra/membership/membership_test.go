@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.etcd.io/raft/v3/raftpb"
 	"go.opentelemetry.io/otel/metric/noop"
@@ -225,6 +226,33 @@ func TestMembership_MigratesLegacyServicePortsOnce(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "pod-0:1111", current[1].ServiceAddress)
 	require.Equal(t, "pod-1:2222", current[2].ServiceAddress)
+}
+
+func TestMembership_PreservesCurrentPeerPortsOnStartup(t *testing.T) {
+	t.Parallel()
+
+	ps := newTestPeerStore(t)
+	require.NoError(t, ps.Put(1, "pod-0:7777", "pod-0:8891", fixedInstanceID(1)))
+	require.NoError(t, ps.Put(2, "pod-1:7777", "pod-1:8892", fixedInstanceID(2)))
+	session := ps.store.OpenWriteSession()
+	require.NoError(t, session.SetBytes(membershipFormatKey, membershipFormatRevisionBytes(membershipFormatRevisionPeerPort)))
+	require.NoError(t, session.Commit())
+
+	m, err := NewMembershipWithServicePort(
+		ps,
+		noopTransport{},
+		noopPool{},
+		testSelfNodeID,
+		testSelfRaftAddr,
+		testSelfServiceAddr,
+		9999,
+		fixedInstanceID(0x42),
+		logging.Testing(),
+	)
+	require.NoError(t, err)
+
+	assert.Equal(t, "pod-0:8891", m.PeerAddresses()[1].ServiceAddress)
+	assert.Equal(t, "pod-1:8892", m.PeerAddresses()[2].ServiceAddress)
 }
 
 func TestPeerStore_RejectsInvalidInstanceID(t *testing.T) {

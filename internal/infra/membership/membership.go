@@ -138,7 +138,15 @@ func newMembership(store *PeerStore, transport Transport, pool Pool, selfNodeID 
 	// NewNode can start from this cache without calling Rehydrate when its
 	// store is out of sync, so the peer pool must never be wired to a legacy
 	// public service port during that window.
-	addresses = normalizeServiceAddresses(addresses, servicePort)
+	if servicePort != 0 {
+		revision, err := store.membershipFormatRevision()
+		if err != nil {
+			return nil, fmt.Errorf("reading membership format: %w", err)
+		}
+		if revision < membershipFormatRevisionPeerPort {
+			addresses = normalizeServiceAddresses(addresses, servicePort)
+		}
+	}
 	logger.WithFields(map[string]any{
 		"peerCount": len(addresses),
 	}).Infof("Loaded cluster membership from Pebble")
