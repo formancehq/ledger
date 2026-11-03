@@ -179,6 +179,8 @@ func TestMembership_MigratesLegacyServicePortsOnce(t *testing.T) {
 		logging.Testing(),
 	)
 	require.NoError(t, err)
+	require.Equal(t, "pod-0:9999", m.PeerAddresses()[1].ServiceAddress)
+	require.Equal(t, "pod-1:9999", m.PeerAddresses()[2].ServiceAddress)
 
 	legacy, err := ps.LoadAll()
 	require.NoError(t, err)
