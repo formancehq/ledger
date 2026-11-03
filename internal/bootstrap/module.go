@@ -1321,7 +1321,12 @@ func tryAddLearner(ctx context.Context, cfg Config, tlsCfg TLSConfig, logger log
 	}
 
 	dialOpts := []ggrpc.DialOption{ggrpc.WithTransportCredentials(creds)}
-	if cfg.ClusterSecret != "" {
+	// Per-RPC credentials require transport security. Do not attach the
+	// cluster secret to a plaintext join attempt; startup validation rejects
+	// that configuration and the target will return a fast authentication
+	// error instead of leaving the join loop retrying a client-side credential
+	// error until its context expires.
+	if cfg.ClusterSecret != "" && tlsCfg.Mode != TLSModeDisabled {
 		dialOpts = append(dialOpts, transport.BearerTokenDialOption(cfg.ClusterSecret))
 	}
 
