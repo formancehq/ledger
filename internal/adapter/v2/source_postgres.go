@@ -253,7 +253,9 @@ func (s *PostgresSource) Close() error {
 func buildPgxPoolConfig(ctx context.Context, cfg *commonpb.PostgresMirrorSourceConfig) (*pgxpool.Config, error) {
 	poolCfg, err := pgxpool.ParseConfig(cfg.GetDsn())
 	if err != nil {
-		return nil, fmt.Errorf("parsing mirror DSN: %w", err)
+		// pgx errors retain the DSN and may expose query credentials or invalid
+		// option values. Return only static diagnostics, without the cause.
+		return nil, errors.New("parsing mirror DSN: invalid PostgreSQL configuration")
 	}
 
 	iam := cfg.GetAwsIamAuth()

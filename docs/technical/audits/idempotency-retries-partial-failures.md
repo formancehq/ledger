@@ -6,6 +6,13 @@ window. Unkeyed attempts and expired keys remain outside the single-effect
 guarantee. Error presentation at API boundaries is owned by
 `api-boundary-contracts`; a transport code alone never establishes non-commit.
 
+The service error boundary sends `grpc-retry-pushback-ms: -1` with a validated
+`Unavailable` / `MAINTENANCE_MODE` rejection. That stops native gRPC retries;
+it does not change the commit ambiguity of an earlier interrupted attempt.
+Explicit application retry loops retain their policy. Preserve the actual
+Antithesis factory's maintenance recovery regression below to prove that the
+hint does not end retry-forever keyed recovery.
+
 `UncommittedFailure` is a retryable technical interruption, not a frozen
 failure. A keyed first attempt on this branch writes no audit entry or
 idempotency result. An existing frozen outcome may still be replayed before
@@ -53,3 +60,15 @@ Initial metadata shares the CreateLedger operation identity and proposal atomici
 After a keyed creation carrying metadata, does replay preserve the original metadata and audit sequence? Does an invalid metadata map leave neither a ledger nor metadata rows or a consumed ledger ID?
 
 See [the creation contract](../architecture/subsystems/api/atomic-ledger-creation.md) for the authorized semantics and regression evidence. Treat HTTP response/forwarding, actual FSM readback, keyed replay, nonempty checkpoint-plus-delta restore, and primary-projection tampering as separate evidence oracles; a helper-only test does not prove every boundary.
+
+## Technical-update submission boundary
+
+Production submission through `plan.Builder.Run` rejects more than one technical
+update and permits a technical update alongside orders only for MirrorSync.
+Verify rejection before serialization/Raft submission, loader cleanup on both
+preload paths, and unchanged standalone operational updates. Historical committed
+compositions keep their interpreter; this admission guard must never become a
+replay-time semantic change. Pair MirrorSync with real ingestion and a concurrent
+ledger promotion: rejected ingestion must preserve the prior source head and
+applied position through recovery; successful ingestion advances both.
+See [the composition contract](../architecture/subsystems/fsm/technical-update-atomicity.md).

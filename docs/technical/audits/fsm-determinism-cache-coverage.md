@@ -485,3 +485,15 @@ TestAccountMetadataMaintenanceBarrierSurvivesRecovery proves the FSM/recovery
 gate, not a real mixed-binary deployment. Release validation must prove that
 deployment separately. Historical audit failures and frozen outcomes retain
 their stored details; already-diverged audit chains are not repaired by this fix.
+
+## Technical-update submission boundary
+
+Production submission through `plan.Builder.Run` rejects more than one technical
+update and permits a technical update alongside orders only for MirrorSync.
+Verify rejection before serialization/Raft submission, loader cleanup on both
+preload paths, and unchanged standalone operational updates. Historical committed
+compositions keep their interpreter; this admission guard must never become a
+replay-time semantic change. Pair MirrorSync with real ingestion and a concurrent
+ledger promotion: rejected ingestion must preserve the prior source head and
+applied position through recovery; successful ingestion advances both.
+See [the composition contract](../architecture/subsystems/fsm/technical-update-atomicity.md).

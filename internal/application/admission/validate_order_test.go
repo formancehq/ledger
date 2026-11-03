@@ -1117,6 +1117,14 @@ func TestValidateOrder_MirrorIAMRegion(t *testing.T) {
 			}},
 		},
 		{
+			name: "non-IAM malformed PostgreSQL options reach source construction",
+			src: &commonpb.MirrorSourceConfig{Type: &commonpb.MirrorSourceConfig_Postgres{
+				Postgres: &commonpb.PostgresMirrorSourceConfig{
+					Dsn: "postgres://user@localhost/ledger?password=MIRROR_ADMISSION_SECRET&connect_timeout=invalid",
+				},
+			}},
+		},
+		{
 			name: "postgres mirror with IAM auth and region",
 			src: &commonpb.MirrorSourceConfig{Type: &commonpb.MirrorSourceConfig_Postgres{
 				Postgres: &commonpb.PostgresMirrorSourceConfig{

@@ -43,7 +43,11 @@ func FormatGRPCError(context string, err error) error {
 	decoded := grpcerr.Decode(err)
 
 	if remote, ok := errors.AsType[*apierr.Remote](decoded); ok {
-		msg := fmt.Sprintf("%s: %s", context, remote.Error())
+		message := remote.Error()
+		if remote.Reason() == domain.ErrReasonMaintenanceMode {
+			message = "cluster is in maintenance mode: write operations are blocked"
+		}
+		msg := fmt.Sprintf("%s: %s", context, message)
 		pterm.Error.Println(msg)
 		printErrorDetails(remote)
 

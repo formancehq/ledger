@@ -18,9 +18,10 @@ import (
 // proposer.Propose are returned bare (no wrapping) so callers can
 // attribute them to Raft-queue diagnostics.
 var (
-	ErrMarshalProposal      = errors.New("marshaling proposal")
-	ErrAcquireProposalGuard = errors.New("acquiring proposal guard")
-	ErrIncompleteCoverage   = errors.New("incomplete execution plan coverage")
+	ErrMarshalProposal                 = errors.New("marshaling proposal")
+	ErrAcquireProposalGuard            = errors.New("acquiring proposal guard")
+	ErrIncompleteCoverage              = errors.New("incomplete execution plan coverage")
+	ErrUnsupportedTechnicalComposition = errors.New("unsupported technical-update composition")
 )
 
 // Proposer is the canonical interface for submitting a built Raft
@@ -126,6 +127,18 @@ func (p *Builder) Run(
 	marshalFn func(*raftcmdpb.Proposal) ([]byte, error),
 	proposer Proposer,
 ) (*RunResult, error) {
+	// Operational updates write directly to the shared apply batch. Only
+	// MirrorSync stages its effects in the business WriteSet, so it is the
+	// only update allowed alongside orders. Reject unsupported compositions
+	// before serialization or Raft submission; committed entries retain their
+	// existing interpreter during replay and mixed-version rollouts.
+	updates := cmd.GetTechnicalUpdates()
+	if len(updates) > 1 || (len(updates) == 1 && len(cmd.GetOrders()) > 0 && updates[0].GetMirrorSync() == nil) {
+		build.ReleaseLoaders()
+
+		return nil, ErrUnsupportedTechnicalComposition
+	}
+
 	// Guarantee a unique command ID. The applier keys FSM futures by
 	// `cmd.Id` (`node.NewProposal(cmd.GetId(), data)` below); two in-flight
 	// proposals sharing Id=0 would overwrite each other in
