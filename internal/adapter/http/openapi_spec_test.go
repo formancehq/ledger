@@ -204,6 +204,8 @@ func TestOpenAPISpec_SystemLogPayloadPreservation(t *testing.T) {
 			require.NoError(t, err)
 			var actual map[string]any
 			require.NoError(t, json.Unmarshal(encoded, &actual))
+			require.Contains(t, actual, field.JSONName())
+			require.Len(t, actual, 1)
 			// EmitUnpopulated projections may add protobuf default fields, but
 			// every configured fixture value must survive serialization. The
 			// apply fixture is output-only and cannot be decoded back into the
