@@ -142,9 +142,9 @@ func yamlNumbers(value any) any {
 }
 
 // marshalJSON dispatches to the appropriate JSON encoder:
-//   - proto.Message with custom MarshalJSON → encoding/json (respects custom marshalers for Uint256, Timestamp, etc.)
-//   - proto.Message without custom MarshalJSON → the descriptor JSON runtime
-//   - slices/maps of proto types → same logic per element
+//   - proto.Message with custom MarshalJSON → encoding/json (including generated projections)
+//   - proto.Message without custom MarshalJSON → encoding/json/v2 with Go's standard fallback
+//   - slices/maps of proto types → the same logic per element
 //   - everything else → encoding/json
 func marshalJSON(data any) ([]byte, error) {
 	// Direct proto.Message
@@ -153,7 +153,7 @@ func marshalJSON(data any) ([]byte, error) {
 			return []byte("null"), nil
 		}
 
-		// Prefer custom MarshalJSON when available (handles Uint256, Timestamp, etc.)
+		// Prefer generated or hand-written MarshalJSON when available.
 		if _, ok := data.(json.Marshaler); ok {
 			return json.MarshalIndent(data, "", "  ")
 		}
