@@ -52,6 +52,34 @@ var protojsonRoutes = []struct {
 	{"GET /v3/_/events-sinks", "handlers_get_events_sinks.go", &servicepb.GetEventsSinksResponse{}},
 }
 
+// jsonWriterFiles is the checked-in inventory of HTTP production files that
+// invoke the shared response writers. Keeping this inventory explicit makes a
+// new route a review checkpoint instead of silently escaping the projection
+// contract tests below.
+var jsonWriterFiles = map[string]bool{
+	"handlers_add_events_sink.go": true, "handlers_aggregate_volumes.go": true,
+	"handlers_analyze_accounts.go": true, "handlers_analyze_numscript.go": true,
+	"handlers_analyze_transactions.go": true, "handlers_create_index.go": true,
+	"handlers_create_ledger.go": true, "handlers_create_transaction.go": true,
+	"handlers_get_account.go": true, "handlers_get_account_type.go": true,
+	"handlers_get_audit_entry.go": true, "handlers_get_bucket_index.go": true,
+	"handlers_get_bucket_index_entry_status.go": true, "handlers_get_events_sinks.go": true,
+	"handlers_get_index.go": true, "handlers_get_index_entry_status.go": true,
+	"handlers_get_index_status.go": true, "handlers_get_ledger.go": true,
+	"handlers_get_ledger_stats.go": true, "handlers_get_log.go": true,
+	"handlers_get_metadata_schema.go": true, "handlers_get_numscript.go": true,
+	"handlers_get_numscript_usage.go": true, "handlers_get_transaction.go": true,
+	"handlers_health.go": true, "handlers_inspect_index.go": true,
+	"handlers_list_account_types.go": true, "handlers_list_accounts.go": true,
+	"handlers_list_all_ledgers.go": true, "handlers_list_audit_entries.go": true,
+	"handlers_list_bucket_indexes.go": true, "handlers_list_ledger_indexes.go": true,
+	"handlers_list_ledger_logs.go": true, "handlers_list_numscript_versions.go": true,
+	"handlers_list_numscripts.go": true, "handlers_list_prepared_queries.go": true,
+	"handlers_list_signing_keys.go": true, "handlers_list_transactions.go": true,
+	"handlers_promote_ledger.go": true, "handlers_revert_transaction.go": true,
+	"handlers_save_numscript.go": true,
+}
+
 func TestProtojsonRoutes_PayloadUsesThePublicProjectionWhenPresent(t *testing.T) {
 	t.Parallel()
 
@@ -197,10 +225,9 @@ func TestProtojsonImportIsRestricted(t *testing.T) {
 	}
 }
 
-// TestProtojsonRoutes_TableIsComplete keeps protojsonRoutes honest. The table
-// above is hand-written, so a new protojson handler added without a row would
-// escape the guard entirely. Parse this package and compare the SET of files
-// containing a protojson call site against the set of files the table expects.
+// TestProtojsonRoutes_TableIsComplete keeps the route and writer inventories
+// honest. A new production file invoking a shared writer without adding it to
+// jsonWriterFiles fails this test and forces an explicit projection review.
 //
 // A bare count is not enough: a compensating add/remove pair (one handler
 // added, one removed) leaves the total unchanged, so a stale row plus an
@@ -213,15 +240,30 @@ func TestProtojsonRoutes_TableIsComplete(t *testing.T) {
 	t.Parallel()
 	entries, err := os.ReadDir(".")
 	require.NoError(t, err)
+	actual := make(map[string]bool)
 	for _, entry := range entries {
 		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".go") || strings.HasSuffix(entry.Name(), "_test.go") {
 			continue
 		}
+		file, err := parser.ParseFile(token.NewFileSet(), entry.Name(), nil, 0)
+		require.NoError(t, err)
+		ast.Inspect(file, func(node ast.Node) bool {
+			call, ok := node.(*ast.CallExpr)
+			if !ok {
+				return true
+			}
+			switch calleeName(call.Fun) {
+			case "writeOK", "writeCreated", "writeOKChecked", "writePageOK", "writePageOKChecked":
+				actual[entry.Name()] = true
+			}
+			return true
+		})
 		contents, err := os.ReadFile(entry.Name())
 		require.NoError(t, err)
 		require.NotContains(t, string(contents), "protojson.Marshal")
 		require.NotContains(t, string(contents), "MarshalProtoJSONNumbers")
 	}
+	require.Equal(t, jsonWriterFiles, actual)
 }
 
 // calleeName renders a call's function as "name" or "pkg.name".
