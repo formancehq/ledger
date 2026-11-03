@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
 	"time"
 
@@ -118,6 +119,16 @@ func TestDoMaintenanceRetainsEntriesUntilRaftApplyAcked(t *testing.T) {
 	orchestrateStop := make(chan struct{})
 	orchestrateDone := make(chan error, 1)
 	readyDrainDone := make(chan struct{})
+	var stopOrchestrator sync.Once
+	var orchestrateErr error
+	cleanupOrchestrator := func() {
+		stopOrchestrator.Do(func() {
+			close(orchestrateStop)
+			orchestrateErr = <-orchestrateDone
+			<-readyDrainDone
+		})
+	}
+	t.Cleanup(cleanupOrchestrator)
 	go func() {
 		defer close(readyDrainDone)
 		for {
@@ -133,9 +144,8 @@ func TestDoMaintenanceRetainsEntriesUntilRaftApplyAcked(t *testing.T) {
 	require.Eventually(t, func() bool {
 		return node.lastRaftApplied.Load() == 4
 	}, time.Second, time.Millisecond)
-	close(orchestrateStop)
-	require.NoError(t, <-orchestrateDone)
-	<-readyDrainDone
+	cleanupOrchestrator()
+	require.NoError(t, orchestrateErr)
 	require.Equal(t, uint64(4), node.rawNode.Status().Applied)
 	require.Equal(t, uint64(4), node.lastRaftApplied.Load())
 	require.NoError(t, node.doMaintenance())
