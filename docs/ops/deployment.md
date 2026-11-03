@@ -75,11 +75,11 @@ from `--grpc-port`. Inter-node service forwarding uses the same host with
 `--grpc-peer-port`; Raft continues to use the port from `--bind-addr`.
 IPv6 hosts retain their brackets.
 
-During the peer-port format transition, membership rows written by the new
-binary carry a per-peer format marker. On recovery, legacy rows are rewritten
-to `--grpc-peer-port`, while rows already written by replay keep their explicit
-peer port. The compatibility migration is temporary and is removed after the
-RC in which every supported node and operator writes the new format.
+At the rc.3 → rc.4 boundary, the first rc.4 startup rewrites legacy membership
+rows that still contain the public service port to `--grpc-peer-port`. The
+migration runs after WAL replay and snapshot recovery, commits the converted
+rows atomically, and records a store-level format revision. Subsequent writes
+use the peer port directly; rc.3 and rc.4 are not mixed during this migration.
 Once the StatefulSet has recorded `GRPC_PEER_PORT`, the operator rejects changes
 to `grpcPeerPort`; changing it requires a dedicated membership migration.
 
