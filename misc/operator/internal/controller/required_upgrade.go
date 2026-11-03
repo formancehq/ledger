@@ -20,10 +20,9 @@ import (
 	ledgerv1alpha1 "github.com/formancehq/ledger/misc/operator/api/v1alpha1"
 )
 
-// rc.3 voters cannot apply proposal payloads, and voters before rc.4 encode
-// mirror asset mappings differently in the audited CreateLedger order. Stop
-// every rc.3 node before starting rc.4; RC adjacency is still checked by
-// validateRCUpgrade.
+// RC.3 voters cannot apply proposal payloads, encode mirror asset mappings
+// differently, and produce a different mirror promotion FSM result. Stop every
+// RC.3 node before starting RC.4; validateRCUpgrade still checks adjacency.
 var mandatoryStopVersions = []string{"v3.0.0-rc.4"}
 
 const requiredUpgradePoll = 5 * time.Second
