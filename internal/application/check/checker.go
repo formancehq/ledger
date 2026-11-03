@@ -2524,6 +2524,8 @@ func reconcileMetadataOnlyChainBound(items []*auditpb.AuditItem, orders []*raftc
 		// allocation is one too high for every later create.
 		if tx := log.GetPayload().GetApply().GetLog().GetData().GetCreatedTransaction().GetTransaction(); tx != nil {
 			if _, anchored := chainBound.ledgerCreationSeen[ledger]; anchored {
+				rememberReferenceTxID(chainBound.referenceTxIDs, ledger, tx.GetReference(), tx.GetId())
+
 				target := metadataTimelineTarget(true, strconv.FormatUint(tx.GetId(), 10))
 				for key := range tx.GetMetadata() {
 					appendMetadataMutation(chainBound.metadata, ledger, target, key, items[i].GetLogSequence(), true)
@@ -3122,24 +3124,11 @@ func recordChainBoundMutations(
 				}
 			}
 
-			txID, err := allocateChainBoundTxID(ledger, chainBound)
+			_, err := allocateChainBoundTxID(ledger, chainBound)
 			if err != nil {
 				return err
 			}
 
-			// The successful CreateTransaction owns its reference — record
-			// the (ref → txID) binding so a later conflicting order's skip
-			// can have its context["existingTransactionId"] pinned. Only
-			// anchored ledgers get a reliable counter; on an unanchored
-			// ledger allocateChainBoundTxID defaults the counter and the id
-			// would be mis-attributed, so leave the binding absent and let
-			// the verifier stay permissive.
-			if _, anchored := chainBound.ledgerCreationSeen[ledger]; anchored {
-				if ref := ct.GetReference(); ref != "" {
-					rememberReferenceTxID(chainBound.referenceTxIDs, ledger, ref, txID)
-				}
-
-			}
 		}
 	}
 
