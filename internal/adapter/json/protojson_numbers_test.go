@@ -10,6 +10,7 @@ import (
 
 	ledgerjson "github.com/formancehq/ledger/v3/internal/adapter/json"
 	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
 
 func TestMarshalProtoJSONNumbersConvertsNested64BitScalars(t *testing.T) {
@@ -44,4 +45,18 @@ func TestMarshalProtoJSONNumbersPreservesDigitStrings(t *testing.T) {
 	var object map[string]any
 	require.NoError(t, json.Unmarshal(raw, &object))
 	require.Equal(t, "123", object["state"])
+}
+
+func TestMarshalProtoJSONNumbersUsesPublicProjection(t *testing.T) {
+	t.Parallel()
+
+	msg := &commonpb.Transaction{Id: math.MaxUint64}
+	raw, err := ledgerjson.MarshalProtoJSONNumbers(msg, protojson.MarshalOptions{})
+	require.NoError(t, err)
+
+	var object map[string]json.RawMessage
+	require.NoError(t, json.Unmarshal(raw, &object))
+	require.Equal(t, "18446744073709551615", string(object["id"]))
+	_, hasProtoField := object["postings"]
+	require.True(t, hasProtoField, "the public Transaction projection must be used")
 }

@@ -57,6 +57,14 @@ func Marshal(v any) ([]byte, error) {
 // walk avoids converting ordinary business strings that happen to contain
 // digits.
 func MarshalProtoJSONNumbers(msg proto.Message, opts protojson.MarshalOptions) ([]byte, error) {
+	// Public protobuf projections are the source of truth for messages that
+	// already define a REST-shaped MarshalJSON (camelCase, flattened fields,
+	// custom oneof layouts, timestamps, and domain-specific values). Do not
+	// discard that projection by forcing the message through protojson.
+	if marshaler, ok := msg.(interface{ MarshalJSON() ([]byte, error) }); ok {
+		return marshaler.MarshalJSON()
+	}
+
 	raw, err := opts.Marshal(msg)
 	if err != nil {
 		return nil, err
