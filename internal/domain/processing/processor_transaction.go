@@ -133,6 +133,7 @@ func processCreateTransaction(ledger string, order *raftcmdpb.CreateTransactionO
 		if len(result.AccountsMetadata) > 0 || len(order.GetAccountMetadata()) > 0 {
 			return processMetadataOnly(ledger, order, result, ctx)
 		}
+
 		return nil, domain.ErrEmptyTransaction
 	}
 	if metadataOnlyCandidate {
@@ -340,6 +341,7 @@ func processMetadataOnly(ledger string, order *raftcmdpb.CreateTransactionOrder,
 		existing := accountMetadata[account]
 		if existing == nil {
 			accountMetadata[account] = mm
+
 			continue
 		}
 		maps.Copy(existing.GetValues(), mm.GetValues())
@@ -369,6 +371,7 @@ func processMetadataOnly(ledger string, order *raftcmdpb.CreateTransactionOrder,
 		}
 	}
 	ctx.metadataBudget.bytes = total
+
 	return &commonpb.LedgerLogPayload{Payload: &commonpb.LedgerLogPayload_AccountMetadataUpdated{AccountMetadataUpdated: &commonpb.AccountMetadataUpdated{AccountMetadata: accountMetadata}}}, nil
 }
 

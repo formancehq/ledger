@@ -43,6 +43,11 @@ just generate-proto
 
 This reads `.proto` files, generates Go code using `protoc-gen-go`, `protoc-gen-go-grpc`, `protoc-gen-go-vtproto`, and the custom plugins under `tools/` — `protoc-gen-dethash`, `protoc-gen-reader`, `protoc-gen-queryfilter-validity`, `protoc-gen-ledger-log-category`, and `protoc-gen-rpcauth` — and places files according to the `go_package` option.
 
+The recipe builds `protoc-gen-go-vtproto` into `build/` from the runtime version
+locked in the root `go.mod` and passes that executable explicitly to `protoc`.
+Do not substitute the older Nix-packaged VT generator: its encoding of selected
+nil message oneofs differs, including paths used by deterministic audit hashing.
+
 ### Custom plugins
 
 - **`protoc-gen-dethash`** — deterministic (sorted-map) VT marshalers.

@@ -189,6 +189,15 @@ emits an auditable
 create `TransactionState`, or emit a `created_transaction` log. Replaying the
 audit log applies the same account metadata writes.
 
+A supplied transaction reference is checked for collision with existing
+monetary transactions, but a metadata-only execution does not reserve it.
+Repeated metadata-only executions can therefore reuse the same reference;
+use the batch idempotency key for replay protection. Supplied or script-emitted
+transaction metadata is not attached to the account update or a transaction.
+The accepted order remains unchanged for audit capture. JSON log output uses
+`ACCOUNT_METADATA_UPDATED` with `data.accountMetadata`, mapping account addresses
+to their typed metadata values.
+
 The existing transaction invariant remains unchanged: every created
 transaction has at least one posting. A script-backed create that emits neither
 postings nor account metadata still fails with `EMPTY_TRANSACTION`.

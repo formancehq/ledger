@@ -46,6 +46,7 @@ func TestLedgerLogJSONOutput(t *testing.T) {
 		payload *commonpb.LedgerLogPayload
 	}
 	cases := []logCase{
+		{"account-metadata", commonpb.AccountMetadataUpdatedLogType, &commonpb.LedgerLogPayload{Payload: &commonpb.LedgerLogPayload_AccountMetadataUpdated{AccountMetadataUpdated: &commonpb.AccountMetadataUpdated{AccountMetadata: map[string]*commonpb.MetadataMap{"users:alice": {Values: metadata}}}}}},
 		{"created", commonpb.NewTransactionLogType, &commonpb.LedgerLogPayload{Payload: &commonpb.LedgerLogPayload_CreatedTransaction{CreatedTransaction: &commonpb.CreatedTransaction{Transaction: transaction, AccountMetadata: map[string]*commonpb.MetadataMap{"users:alice": {Values: metadata}}}}}},
 		{"reverted", commonpb.RevertedTransactionLogType, &commonpb.LedgerLogPayload{Payload: &commonpb.LedgerLogPayload_RevertedTransaction{RevertedTransaction: &commonpb.RevertedTransaction{RevertedTransactionId: transaction.GetId(), RevertTransaction: revert}}}},
 		{"set-field", commonpb.SetMetadataFieldTypeLogType, &commonpb.LedgerLogPayload{Payload: &commonpb.LedgerLogPayload_SetMetadataFieldType{SetMetadataFieldType: &commonpb.SetMetadataFieldTypeLog{TargetType: commonpb.TargetType_TARGET_TYPE_TRANSACTION, Key: "count", Type: commonpb.MetadataType_METADATA_TYPE_UINT64}}}},
@@ -125,6 +126,9 @@ func TestLedgerLogJSONOutput(t *testing.T) {
 					}
 					require.NoError(t, err)
 					require.JSONEq(t, string(expected), string(envelope.Data))
+					if tc.name == "account-metadata" {
+						require.JSONEq(t, `{"accountMetadata":{"users:alice":{"label":"customer","active":true,"count":18446744073709551615,"debt":-9223372036854775808,"null":null}}}`, string(envelope.Data))
+					}
 					if tc.name == "created" || tc.name == "reverted" {
 						transactionField := "transaction"
 						wantID := "9007199254740993"

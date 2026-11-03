@@ -18,6 +18,7 @@ func TestLedgerLogCategoryCompleteness(t *testing.T) {
 		{"created transaction", &LedgerLogPayload{Payload: &LedgerLogPayload_CreatedTransaction{}}, LedgerLogCategory_LEDGER_LOG_CATEGORY_HISTORY},
 		{"reverted transaction", &LedgerLogPayload{Payload: &LedgerLogPayload_RevertedTransaction{}}, LedgerLogCategory_LEDGER_LOG_CATEGORY_HISTORY},
 		{"saved metadata", &LedgerLogPayload{Payload: &LedgerLogPayload_SavedMetadata{}}, LedgerLogCategory_LEDGER_LOG_CATEGORY_HISTORY},
+		{"account metadata updated", &LedgerLogPayload{Payload: &LedgerLogPayload_AccountMetadataUpdated{}}, LedgerLogCategory_LEDGER_LOG_CATEGORY_HISTORY},
 		{"deleted metadata", &LedgerLogPayload{Payload: &LedgerLogPayload_DeletedMetadata{}}, LedgerLogCategory_LEDGER_LOG_CATEGORY_HISTORY},
 		{"set metadata field type", &LedgerLogPayload{Payload: &LedgerLogPayload_SetMetadataFieldType{}}, LedgerLogCategory_LEDGER_LOG_CATEGORY_CONTROL},
 		{"removed metadata field type", &LedgerLogPayload{Payload: &LedgerLogPayload_RemovedMetadataFieldType{}}, LedgerLogCategory_LEDGER_LOG_CATEGORY_CONTROL},

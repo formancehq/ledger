@@ -1482,6 +1482,7 @@ component schemas; `DropAction` is the sole intentionally empty object.
 | `ADDED_ACCOUNT_TYPE` | Account type addition payload |
 | `REMOVED_ACCOUNT_TYPE` | Account type removal payload |
 | `UPDATED_DEFAULT_ENFORCEMENT_MODE` | Default enforcement mode update payload |
+| `ACCOUNT_METADATA_UPDATED` | `accountMetadata`: account addresses mapped to metadata values; no transaction is created |
 
 Metadata logs use `targetType` (`ACCOUNT` or `TRANSACTION`) and `targetId`: a
 string account address or an unsigned integer transaction ID, including zero.

@@ -3951,6 +3951,7 @@ components:
             - ADDED_ACCOUNT_TYPE
             - REMOVED_ACCOUNT_TYPE
             - UPDATED_DEFAULT_ENFORCEMENT_MODE
+            - ACCOUNT_METADATA_UPDATED
         data:
           type: object
           additionalProperties: true
@@ -3958,6 +3959,8 @@ components:
             Direct operation payload selected by type. NEW_TRANSACTION contains
             transaction and optional accountMetadata. REVERTED_TRANSACTION
             contains revertedTransactionId and revertTransaction.
+            ACCOUNT_METADATA_UPDATED contains accountMetadata, mapping account
+            addresses to metadata values, without a transaction.
             SET_METADATA and DELETE_METADATA contain targetType (ACCOUNT or
             TRANSACTION) and targetId: an account-address string or an unsigned
             64-bit transaction integer, including zero. SET_METADATA also

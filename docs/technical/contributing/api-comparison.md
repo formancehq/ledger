@@ -344,6 +344,11 @@ projection back into internal Go log types is not supported by this contract.
 See the [ledger-log JSON output contract](../architecture/subsystems/api/http-api.md#ledger-log-json-output)
 for the full discriminator list and the information retained in the projection.
 
+Metadata-only Numscript execution emits `ACCOUNT_METADATA_UPDATED`, with
+`data.accountMetadata` mapping each account address to its metadata values.
+It creates no monetary transaction; the JSON projection preserves metadata
+integers and nulls using the same representation as transaction account metadata.
+
 ---
 
 ## Features Implemented in POC

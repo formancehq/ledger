@@ -454,6 +454,15 @@ func (x *RevertedTransaction) jsonValue() (any, error) {
 	}, nil
 }
 
+// MarshalJSON uses the same typed account metadata projection as transaction logs.
+func (x *AccountMetadataUpdated) MarshalJSON() ([]byte, error) {
+	return json.Marshal(&struct {
+		AccountMetadata map[string]map[string]any `json:"accountMetadata"`
+	}{
+		AccountMetadata: AccountMetadataToAnyMap(x.GetAccountMetadata()),
+	})
+}
+
 // MarshalJSON emits the v2 targetType/targetId layout with v3 typed metadata.
 func (x *SavedMetadata) MarshalJSON() ([]byte, error) {
 	targetID, err := logMetadataTargetID(x.GetTarget())

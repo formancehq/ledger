@@ -374,10 +374,13 @@ generate-proto:
     @cd tools/protoc-gen-queryfilter-validity && go build -o ../../build/protoc-gen-queryfilter-validity .
     @cd tools/protoc-gen-ledger-log-category && go build -o ../../build/protoc-gen-ledger-log-category .
     @cd tools/protoc-gen-rpcauth && go build -o ../../build/protoc-gen-rpcauth .
+    # Match the runtime pin: older generators change nil oneof encoding and audit bytes.
+    @go build -o build/protoc-gen-go-vtproto github.com/planetscale/vtprotobuf/cmd/protoc-gen-go-vtproto
     @protoc --go_out=. --go_opt=module=github.com/formancehq/ledger/v3 \
         --go-grpc_out=. \
         --go-grpc_opt=module=github.com/formancehq/ledger/v3 \
         --go-vtproto_out=. \
+        --plugin=protoc-gen-go-vtproto=build/protoc-gen-go-vtproto \
         --go-vtproto_opt=module=github.com/formancehq/ledger/v3 \
         --go-vtproto_opt=features=marshal+unmarshal+size+clone+equal+pool \
         --go-vtproto_opt=pool=github.com/formancehq/ledger/v3/internal/proto/raftcmdpb.Proposal \
