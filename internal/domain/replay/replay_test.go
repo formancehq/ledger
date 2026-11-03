@@ -32,6 +32,7 @@ func (w *writerStub) SetMetadata(key []byte, value *commonpb.MetadataValue) erro
 	if w.setMetadata != nil {
 		return w.setMetadata(key, value)
 	}
+
 	return nil
 }
 func (w *writerStub) DeleteMetadata([]byte) error       { return nil }
@@ -104,6 +105,7 @@ func TestReplayLedgerLog_AccountMetadataUpdated(t *testing.T) {
 	var gotValue *commonpb.MetadataValue
 	w := &writerStub{setMetadata: func(key []byte, value *commonpb.MetadataValue) error {
 		gotKey, gotValue = key, value
+
 		return nil
 	}}
 	require.NoError(t, replayOne(t, w, &commonpb.Timestamp{Data: 1}, &commonpb.LedgerLogPayload{
