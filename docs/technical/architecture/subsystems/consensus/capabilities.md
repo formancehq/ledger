@@ -156,9 +156,10 @@ the node and its Raft gRPC server are started, a node whose WAL carries
 `CLUSTER_JOINED` sends an internal `RefreshMembership` request to a configured
 peer. Followers forward that request to the current leader over the Raft gRPC
 server. The node can therefore receive inbound Raft traffic before the refresh
-commits; the refresh is an evidence update, not a pre-traffic barrier. A
-temporarily unavailable leader or quorum is retried until the cluster can
-commit the refresh.
+commits; the refresh is an evidence update, not a pre-traffic barrier. During
+the rc.1/rc.2 rolling upgrade, an older peer that returns `Unimplemented` is
+treated as transient and the node keeps retrying in the background until a
+compatible peer is available.
 The leader validates the identity and capability evidence against the active
 policy, then proposes a
 `ConfChangeUpdateNode` containing the current endpoints and capabilities.
