@@ -143,16 +143,6 @@ func (p *Builder) Run(
 		return nil, ErrUnsupportedTechnicalComposition
 	}
 
-	// Every producer that uses the shared runner (mirror, events, backup and
-	// bootstrap maintenance) gets the same final policy check. Admission wraps
-	// its business writes separately with businessWrite=true; this default
-	// wrapper covers technical/control-plane proposals.
-	if p.store != nil {
-		proposer = NewCapabilityPolicyProposer(proposer, func() (*commonpb.ClusterPolicy, error) {
-			return query.ReadClusterPolicy(p.store)
-		}, p.readMembers, false)
-	}
-
 	// Guarantee a unique command ID. The applier keys FSM futures by
 	// `cmd.Id` (used by the node proposal factory); two in-flight
 	// proposals sharing Id=0 would overwrite each other in
