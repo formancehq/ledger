@@ -326,7 +326,7 @@ func newScopedHandler(t *testing.T, keySet oidc.KeySet) http.Handler {
 	return NewHandler(logging.Testing(), inertBackend(), internalauth.AuthConfig{
 		Enabled:      true,
 		KeySet:       keySet,
-		Issuer:       testAuthIssuer,
+		Issuers:      []string{testAuthIssuer},
 		Service:      "ledger",
 		ScopeMapping: internalauth.DefaultMapping("ledger"),
 	}, version.Info{})

@@ -316,6 +316,12 @@ func TestValidateAuthConfig(t *testing.T) {
 			wantErr: "",
 		},
 		{
+			name:    "auth enabled with plural issuers only over TLS required",
+			auth:    AuthFlagConfig{Enabled: true, Issuers: []string{"https://a.example.com", "https://b.example.com"}},
+			tlsMode: TLSModeRequired,
+			wantErr: "",
+		},
+		{
 			name:    "auth enabled with issuer over TLS optional is rejected",
 			auth:    AuthFlagConfig{Enabled: true, Issuer: "https://issuer.example.com"},
 			tlsMode: TLSModeOptional,
@@ -356,6 +362,13 @@ func TestValidateAuthConfig(t *testing.T) {
 			auth:    AuthFlagConfig{Enabled: false, Issuer: "https://issuer.example.com"},
 			tlsMode: TLSModeDisabled,
 			wantErr: "--auth-issuer",
+		},
+		{
+			// Clusters already running in this state must keep booting.
+			name:    "auth disabled with plural issuers set",
+			auth:    AuthFlagConfig{Enabled: false, Issuers: []string{"https://issuer.example.com"}},
+			tlsMode: TLSModeDisabled,
+			wantErr: "",
 		},
 	}
 
@@ -463,4 +476,24 @@ func TestConfigMismatchError_Error(t *testing.T) {
 	require.Contains(t, msg, "persisted=1")
 	require.Contains(t, msg, "current=2")
 	require.Contains(t, msg, "--unsafe-skip-config-validation")
+}
+
+func TestAuthFlagConfigTrustedIssuers(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name string
+		auth AuthFlagConfig
+		want []string
+	}{
+		{name: "none", auth: AuthFlagConfig{}, want: []string{}},
+		{name: "singular only", auth: AuthFlagConfig{Issuer: "https://a"}, want: []string{"https://a"}},
+		{name: "plural only", auth: AuthFlagConfig{Issuers: []string{"https://a", "https://b"}}, want: []string{"https://a", "https://b"}},
+		{name: "singular first, duplicates dropped", auth: AuthFlagConfig{Issuer: "https://b", Issuers: []string{"https://a", "https://b", "https://a"}}, want: []string{"https://b", "https://a"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			require.Equal(t, tc.want, tc.auth.TrustedIssuers())
+		})
+	}
 }

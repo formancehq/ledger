@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"slices"
 	"strconv"
 	"time"
 
@@ -20,6 +21,7 @@ import (
 type AuthFlagConfig struct {
 	Enabled          bool
 	Issuer           string
+	Issuers          []string
 	Service          string
 	Ed25519KeysFile  string
 	ScopeMappingFile string // path to JSON file mapping virtual scopes to granular scopes
@@ -35,6 +37,19 @@ type AuthFlagConfig struct {
 	// operator-controlled ceiling. 0 leaves them unbounded; the default (set in
 	// cmd/server/server.go) is 10s.
 	OIDCDiscoveryTimeout time.Duration
+}
+
+// TrustedIssuers returns the singular Issuer followed by Issuers, without
+// duplicates.
+func (a AuthFlagConfig) TrustedIssuers() []string {
+	issuers := make([]string, 0, len(a.Issuers)+1)
+	for _, issuer := range append([]string{a.Issuer}, a.Issuers...) {
+		if issuer != "" && !slices.Contains(issuers, issuer) {
+			issuers = append(issuers, issuer)
+		}
+	}
+
+	return issuers
 }
 
 // TLSMode controls the TLS posture of gRPC servers and the inter-node dialer.
@@ -436,13 +451,13 @@ func (c Config) validateTLSConfig() error {
 // validateAuthConfig enforces authentication configuration invariants.
 // It prevents unsafe combinations where credentials are configured but
 // authentication is disabled, or where authentication is enabled without
-// the required OIDC issuer.
+// an OIDC issuer or Ed25519 keys.
 func (c Config) validateAuthConfig() error {
 	auth := c.AuthConfig
 
 	if auth.Enabled {
-		if auth.Issuer == "" && auth.Ed25519KeysFile == "" {
-			return errors.New("--auth-enabled requires either --auth-issuer (OIDC) or --auth-ed25519-keys (Ed25519)")
+		if len(auth.TrustedIssuers()) == 0 && auth.Ed25519KeysFile == "" {
+			return errors.New("--auth-enabled requires either --auth-issuer / --auth-issuers (OIDC) or --auth-ed25519-keys (Ed25519)")
 		}
 
 		// Reject auth without full TLS — bearer JWT/Ed25519 tokens would be

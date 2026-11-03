@@ -346,7 +346,7 @@ func TestHandleBulk_RequestErrorContract(t *testing.T) {
 						panic("bulk contract panic")
 					}).Times(1)
 			}
-			cfg := internalauth.AuthConfig{Enabled: tc.auth, KeySet: keySet, Issuer: testAuthIssuer, Service: "ledger", ScopeMapping: internalauth.DefaultMapping("ledger")}
+			cfg := internalauth.AuthConfig{Enabled: tc.auth, KeySet: keySet, Issuers: []string{testAuthIssuer}, Service: "ledger", ScopeMapping: internalauth.DefaultMapping("ledger")}
 			handler := NewHandler(logging.Testing(), backend, cfg, version.Info{})
 			r := httptest.NewRequest(http.MethodPost, "/v3/ledger1/bulk?continueOnFailure=true", strings.NewReader(tc.body))
 			r.Header.Set("X-Request-ID", "bulk-contract")
