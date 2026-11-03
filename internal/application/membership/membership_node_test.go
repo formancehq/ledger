@@ -150,7 +150,7 @@ func TestService_LearnerRegistrationCommitsAndPreservesCallerIntent(t *testing.T
 				if bootJoin {
 					return s.JoinAsLearner(ctx, nodeID, raftAddr, serviceAddr, instanceID, capabilities)
 				}
-				return s.AddLearnerWithCapabilities(ctx, nodeID, raftAddr, serviceAddr, instanceID, capabilities)
+				return s.AddLearner(ctx, nodeID, raftAddr, serviceAddr, instanceID, capabilities)
 			}
 			require.NoError(t, register(ctx, 2, "peer:7777", "peer:8888", []byte("peer-instance-id"), nil))
 			peers, err := s.ListPeers(ctx)
@@ -227,7 +227,7 @@ func TestService_AddLearnerWithCapabilitiesPersistsEvidence(t *testing.T) {
 	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
 	defer cancel()
 
-	require.NoError(t, s.AddLearnerWithCapabilities(ctx, 2, "peer:7777", "peer:8888", []byte("peer-instance-id"), []uint32{7, 9}))
+	require.NoError(t, s.AddLearner(ctx, 2, "peer:7777", "peer:8888", []byte("peer-instance-id"), []uint32{7, 9}))
 
 	peer := s.infraMembership.PeerAddresses()[2]
 	require.Equal(t, []uint32{7, 9}, peer.Capabilities)
