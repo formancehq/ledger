@@ -77,11 +77,11 @@ that network path must present the cluster secret, which is reserved for this
 internal listener.
 
 Persisted membership records advertise the peer service address, including its
-peer port. After WAL replay or snapshot installation, Ledger runs a one-time
-migration for legacy records that still contain the public service port, records
-the membership format revision in Pebble, and then preserves explicit per-peer
-ports on later reloads. The migration is intended to be removed in the next
-release once all supported nodes have been upgraded.
+peer port. After WAL replay or snapshot installation, Ledger runs the one-shot
+rc.3 → rc.4 migration for records that still contain the public service port,
+records the store-level membership format revision in Pebble, and then uses the
+peer port for all subsequent writes. rc.3 and rc.4 are not mixed during this
+migration.
 
 ### Connection Example
 
