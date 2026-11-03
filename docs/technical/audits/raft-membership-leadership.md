@@ -424,12 +424,25 @@ the replay snapshot. An overwrite at or below the snapshot therefore leaves
 older records above it in the result. Build the WAL history explicitly:
 uncommitted tail, overwrite, snapshot, then no newer record above the snapshot.
 Then show the recovered log and the vote decision on the reopened storage. The
-focused regressions are in `replay_tail_test.go` under `internal/storage/wal/`.
+focused regressions are in `replay_tail_test.go` and `replay_rebuild_test.go`
+under `internal/storage/wal/`.
 
-The current replay check discards only a suffix that cannot belong to a Raft
-log: a term below the snapshot term or below its predecessor's term. Startup
-fails closed when that suffix starts at or below `HardState.Commit`. Report a
-resurrected tail that passes the check as a finding. Examples are a lower-term
-overwrite followed by a snapshot at that entry, and a received snapshot that
-discarded a conflicting suffix without writing entry records. Do not treat
-the check as proof of exact reconstruction.
+Replay rebuilds the log from the raw records in write order. It treats a
+committed snapshot record that the rebuilt log does not hold as a received
+snapshot that discarded the log, except the Save call written just before it.
+Check these histories against it:
+
+- a lower-term overwrite followed by a snapshot at that entry;
+- a received snapshot whose stale tail has a higher term than the snapshot;
+- a combined snapshot/entry Ready that crashes before its suffix is appended
+  again;
+- a segment cut between Save calls;
+- an uncommitted guard snapshot record, including one whose commit index
+  later passes it after the node resumed its old log;
+- a ConfState update of the current snapshot.
+
+The rebuild may only remove a suffix of the `ReadAll` result. A removed suffix
+at or below `HardState.Commit` fails startup. The term check that follows is a
+backstop whose `Unreachable` assertion must never fire. Treat a recovered entry
+that the pre-crash live log did not hold as a finding, as well as a dropped
+entry that it did hold.

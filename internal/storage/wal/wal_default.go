@@ -474,32 +474,24 @@ func New(dataDir string, logger logging.Logger, meter metric.Meter, opts ...Opti
 	}
 
 	// etcd's ReadAll can resurrect an uncommitted tail that a later leader had
-	// truncated; see discardStaleReplayTail. Drop it before Raft reads the log.
-	tail, err := discardStaleReplayTail(s.snapshot.GetMetadata().GetTerm(), s.hardState.GetCommit(), s.entries)
+	// truncated, or that an installed snapshot had discarded. Rebuild the live
+	// log from the raw records before Raft reads it.
+	entries, err := reconcileReplayedEntries(s.etcdWalDir, s.snapshot, s.hardState, s.entries, s.logger)
 	if err != nil {
-		assert.Unreachable("WAL replay produced an invalid suffix at or below the durable commit index", map[string]any{
-			"snapshotIndex": s.snapshot.GetMetadata().GetIndex(),
-			"snapshotTerm":  s.snapshot.GetMetadata().GetTerm(),
-			"commit":        s.hardState.GetCommit(),
-			"error":         err.Error(),
-		})
+		if errors.Is(err, errStaleTailIntersectsCommit) || errors.Is(err, errReplayRebuild) {
+			assert.Unreachable("WAL replay cannot reconcile the recovered log with the durable commit index", map[string]any{
+				"snapshotIndex": s.snapshot.GetMetadata().GetIndex(),
+				"snapshotTerm":  s.snapshot.GetMetadata().GetTerm(),
+				"commit":        s.hardState.GetCommit(),
+				"error":         err.Error(),
+			})
+		}
 		// Startup is aborting; the validation error is the one to report.
 		_ = s.wal.Close()
 
 		return nil, fmt.Errorf("validating replayed WAL entries: %w", err)
 	}
-	if tail.discarded > 0 {
-		s.logger.WithFields(map[string]any{
-			"snapshotIndex":       s.snapshot.GetMetadata().GetIndex(),
-			"snapshotTerm":        s.snapshot.GetMetadata().GetTerm(),
-			"commit":              s.hardState.GetCommit(),
-			"firstDiscardedIndex": tail.firstDiscarded.GetIndex(),
-			"firstDiscardedTerm":  tail.firstDiscarded.GetTerm(),
-			"discarded":           tail.discarded,
-			"kept":                len(tail.kept),
-		}).Errorf("Discarded stale uncommitted WAL tail resurrected by replay")
-	}
-	s.entries = tail.kept
+	s.entries = entries
 
 	// etcd WAL replay starts immediately after the latest durable full
 	// snapshot. That snapshot is therefore the compacted-prefix boundary after
@@ -997,10 +989,13 @@ func (s *DefaultWAL) ApplySnapshot(snap *raftpb.Snapshot) error {
 	s.compactedTerm = snap.GetMetadata().GetTerm()
 
 	// Ensure the HardState commit index is at least as high as the snapshot.
-	// A snapshot at index N implies all entries up to N are committed.
+	// A snapshot at index N implies all entries up to N are committed. Only
+	// Commit advances: the snapshot term is the term of its last entry, not
+	// the node's election term, and Vote belongs to the current Term. Copying
+	// the snapshot term could lower the durable term while keeping its vote.
 	if s.hardState.GetCommit() < snap.GetMetadata().GetIndex() {
 		s.hardState = &raftpb.HardState{
-			Term:   new(snap.GetMetadata().GetTerm()),
+			Term:   new(s.hardState.GetTerm()),
 			Vote:   new(s.hardState.GetVote()),
 			Commit: new(snap.GetMetadata().GetIndex()),
 		}

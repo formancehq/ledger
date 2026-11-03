@@ -508,29 +508,58 @@ then returns that stale tail as if it were still in the log. A voter
 restarting with such a tail can report a stale last term and grant its vote to
 a candidate missing committed entries.
 
-`DefaultWAL` validates the replayed entries before Raft reads them. The order
-is:
+A received snapshot causes the same problem. Raft installs a snapshot only when
+the log does not already hold its `(index, term)`. `DefaultWAL.ApplySnapshot`
+then discards the whole in-memory log but writes no entry records, so `ReadAll`
+can return the discarded entries above the snapshot.
+
+`DefaultWAL` rebuilds the live log from the raw WAL records before Raft reads
+it. The order is:
 
 1. `ReadAll` (including torn-tail repair) loads the HardState and the entries
    above the snapshot.
-2. The first entry whose term is lower than the snapshot term, or lower than
-   the previous entry's term, is located. A live Raft log never has such an
-   entry.
-3. If that entry's index is above `HardState.Commit`, it and every later entry
-   are dropped from the in-memory log, and an error is logged with the first
-   dropped index and term.
-4. If that entry's index is at or below `HardState.Commit`, startup fails
+2. Every retained segment is decoded again, read-only and in write order, with
+   the same CRC chain check. The log is rebuilt the way `DefaultWAL` changed
+   it in memory:
+   - an entry record at index `i` drops every entry at index `>= i`, whatever
+     the replay snapshot index;
+   - a snapshot record counts only when its HardState is durable. The next
+     entry or HardState record must be a HardState whose commit reaches the
+     snapshot index; `ApplySnapshot` writes exactly that record between its
+     guard and barrier records. The snapshot index must also be at or below
+     the final `HardState.Commit`, as in etcd's `ValidSnapshotEntries`. A guard
+     left by a crash before its HardState was written is followed by the
+     restarted process's records instead. It stays ignored even after the
+     commit index passes it, because the log the node resumed with is valid;
+   - a counted snapshot record whose `(index, term)` the rebuilt log holds is a
+     local snapshot and changes nothing. One the log does not hold was
+     received, and it discards the rebuilt log;
+   - a received snapshot keeps the entries of the Save call just before it
+     when they start right after the snapshot. `processReady` persists a
+     combined Ready's entries before installing the snapshot and appends them
+     again afterwards; a crash between the two must not lose entries the
+     durable HardState may commit. Each Save call ends with one HardState
+     record. The HardState etcd rewrites after a segment's metadata record is
+     not a Save call.
+3. The `ReadAll` entries are trimmed to the rebuilt log. The rebuild may only
+   remove a suffix. Any other difference fails startup.
+4. If the removed suffix starts at or below `HardState.Commit`, startup fails
    closed. Lowering the commit index to make startup succeed would discard a
-   committed position.
+   committed position. Otherwise the suffix is dropped from the in-memory log,
+   and an error is logged with the first dropped index and term.
+5. As a backstop, the first remaining entry whose term is lower than the
+   snapshot term or than its predecessor's term is located. A live Raft log
+   never has one, so finding one raises an Antithesis `Unreachable` assertion.
+   The entry and every later one are dropped above the commit index, and
+   startup fails at or below it.
 
 Dropped entries remain on disk as WAL records. They are dropped again on every
-restart until a newer record above the snapshot supersedes them. The WAL file
-format is unchanged.
+restart until a newer record supersedes them. The WAL file format is
+unchanged. The rebuild reads every retained segment once more at startup.
 
-This check is a safety net. It does not detect a resurrected tail whose terms
-are neither lower than the snapshot term nor decreasing. An example is a later
-leader overwriting a conflicting entry with an older-term entry, after which
-the follower snapshots at that entry.
+`ApplySnapshot` advances only `HardState.Commit` to the snapshot index. It
+keeps the durable Term and Vote: the snapshot term is the term of the
+snapshot's last entry, not the node's election term.
 
 For detailed explanation, see [WAL Compaction in Data Flows](../../data-flows.md#wal-compaction).
 
