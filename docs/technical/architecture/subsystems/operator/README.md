@@ -21,6 +21,12 @@ stopped before installing the rules; the applied-spec hash does not retain the
 original target. See [Ledger target identity](../../../../../misc/operator/README.md#ledger-target-identity)
 for the upgrade procedure and same-name Cluster replacement boundary.
 
+Mirror-to-normal promotion observes the live Ledger mode before proposing the
+transition. Normal mode repairs stale mirror CR status after a lost promotion
+response or status write, including after controller replacement. See
+[mirror promotion recovery](../../../../../misc/operator/README.md#mirror-promotion-recovery)
+for mutation order, retry conditions and the index-reconciliation handoff.
+
 Objects derived from a Cluster name are owned only through a controller
 reference carrying the Cluster UID. The operator never adopts, mutates,
 deletes or execs into a same-name object it does not control, and reports the

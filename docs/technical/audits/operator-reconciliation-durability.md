@@ -49,6 +49,27 @@ Ledger process restart and cluster-level availability from recovery of the
 intended PVC/node. Record inspected areas and untested boundaries in residual
 risk rather than claiming exhaustive coverage.
 
+## Mirror promotion recovery boundary
+
+For a Ready mirror Ledger edited to normal, trace the authoritative mode read,
+optional promotion commit, in-memory CR status mutation and deferred Kubernetes
+status write separately. A lost promotion response or failed status write can
+leave the service normal while persisted CR status remains mirror. A fresh
+controller must observe normal mode and recover successful status without
+repeating the non-idempotent promotion, then resume declarative indexes. Explicit
+mirror mode permits promotion; unavailable or malformed observations, unknown
+mode and a conflicting returned name must not establish success.
+
+Exercise both interruption triggers independently through full reconciliation,
+with a real Ledger and CLI where available, and verify service mode, persisted
+status, promotion effect count and subsequent index convergence. Distinguish
+the external effect from Kubernetes persistence. The root
+`tests/e2e/cluster/operator_index_ownership_test.go` harness supplies the real
+Ledger and CLI to the operator's promotion regressions. Fake clients and injected
+pod exec failures establish controller ordering, not API-server admission or live
+Kubernetes exec behavior. Existing stranded resources must recover without
+requiring an idempotency record or another spec edit.
+
 ## Annotated drain and release boundary
 
 `ledger.formance.com/drain` is an intent on the Cluster CR. The persisted
