@@ -76,6 +76,30 @@ but does not acquire or close snapshots or leases; callers still perform
 alignment, horizon trimming, and cleanup. Forward and reverse entry points
 retain their directional iterator construction and share the same input defaults.
 
+### Shared condition resolution
+
+Forward and reverse compilation retain separate recursive dispatch, Boolean
+assembly, iterator constructors and profile labels. Their direction-independent
+leaf preparation has shared owners: `resolveAddressMatch` classifies literal
+and parameter exact/prefix addresses and gates the selected transaction role
+index; `resolveReferenceCondition` gates and resolves reference prefixes;
+`resolveAccountHasAssetPrefix` gates and encodes the asset cell. Account address
+matching requires no transaction index. Address and reference readiness checks
+still precede parameter extraction.
+
+Metadata string/bool point prefixes and both existence arms are resolved once
+using the already selected metadata context and served version. Numeric bound,
+coercion and timestamp-arm helpers remain shared. Transaction-ID equality
+preparation checks main-store existence; log-ID point preparation checks the
+index. Both directions share half-open ID range encoding without overflowing
+an unbounded maximum. The existing forward log singleton-MaxUint64 point
+shortcut and reverse bounded scan remain directional construction choices.
+
+Resolvers own their encoded keys and open no iterators. Constructors retain
+pin gates, cleanup, profiling and physical traversal. Streaming leaves still
+seek to the cursor and stop at page lookahead; value-ordered ranges and
+transaction address unions retain their existing single materialization.
+
 ### Filter input: one `*commonpb.QueryFilter`
 
 Whatever the transport, a filter reaches the pipeline as a single
@@ -208,7 +232,16 @@ Before EN-1966 a filtered descending page drained **every** match into a slice, 
 
 Iterator *construction* is what is duplicated between the two entry points — and that is more than the leaves. `compileRev` carries its own recursion shape: the depth guard, the per-target `rejectInvalidCondition` check, the filter-type dispatch switch, and the AND/OR/NOT/universe composition together with its profile-tree wiring. A change to ascending composition semantics does **not** propagate on its own; it has to be mirrored by hand in `compile_reverse.go`.
 
-What *is* shared is what a filter means: predicate resolution, schema validation, index-readiness gating and bound computation are single functions called from both directions (`resolveFieldMetadataCtx`, `resolveIntBounds`/`resolveUintBounds`, `requireIndexReady`, `mergeFieldRanges`, `resolveTxTimestampArm`/`resolveLogDateArm`, `intRangeBounds`/`uintRangeBounds`/`timestampRangeBounds`). So the two directions cannot disagree about which entities a filter selects, nor about accepting or refusing it — only about which way they walk the result. `TestCompileErrorParity` pins the refusal half: for the target guard, the depth guard, the per-target validity table, schema and coercion checks, index readiness and the "condition has no value" arms, both entry points must fail with the *identical* error, and `TestCompileErrorParity_AcceptanceIsAlsoShared` pins the converse — every filter the ascending compiler accepts must compile descending too.
+Shared helpers own the condition resolution described above, together with
+schema validation, index readiness, numeric bounds, timestamp arms and range
+encoding. Separate dispatch and composition still require parity coverage:
+sharing leaf helpers alone cannot prove matching acceptance or membership.
+`TestCompileErrorParity` pins the same refusal and error message for target,
+depth, shape, schema, coercion and readiness failures, while
+`TestCompileErrorParity_AcceptanceIsAlsoShared` pins successful compilation in
+both directions. The focused leaf-resolution tests additionally assert
+independent expected identities, so a mistake in a shared resolver cannot pass
+merely because both directions agree.
 
 **Two leaf classes stay materializing**, both because their order genuinely forbids streaming:
 

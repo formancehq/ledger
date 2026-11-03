@@ -1,11 +1,9 @@
 package query
 
 import (
-	"encoding/binary"
 	"fmt"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
-	"github.com/formancehq/ledger/v3/internal/domain/indexes"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/storage/readstore"
 )
@@ -17,12 +15,12 @@ import (
 // stops after the page lookahead instead of draining every match and
 // reversing the result.
 //
-// Only iterator CONSTRUCTION is duplicated here. Every predicate resolution,
-// schema validation, index-readiness gate and bound computation is the
-// ascending path's — resolveIntBounds, resolveUintBounds, requireIndexReady,
-// validateAndCoerceCondition, mergeFieldRanges, pebbleAccountExists,
-// rejectInvalidCondition. A filter that compiles one way therefore compiles
-// the other way with the same verdict, and a semantic change lands in both.
+// The two recursive dispatchers retain direction-specific construction and
+// profiling. They share target/shape validation, metadata schema and served-type
+// binding, parameter resolution, readiness gates, numeric bounds, timestamp arms,
+// address classification, reference/asset prefixes, metadata point/existence
+// prefixes, and ID point/range preparation. Keep new semantic decisions in those
+// shared resolvers rather than independently extending the directional leaves.
 //
 // Two leaf classes cannot stream backwards and keep the materialization the
 // ascending path already pays:
@@ -384,12 +382,10 @@ func compileFieldConditionRev(ctx *compileCtx, fc *commonpb.FieldCondition) (rea
 }
 
 func compileStringConditionRev(ctx *compileCtx, mc *metadataCtx, cond *commonpb.StringCondition) (readstore.ReverseIterator, error) {
-	value, err := resolveString(cond, ctx.params)
+	fullPrefix, err := resolveStringMetadataPrefix(ctx, mc, cond)
 	if err != nil {
 		return nil, err
 	}
-
-	fullPrefix := readstore.EncodeString(append([]byte{}, mc.prefix...), value)
 
 	iter, err := readstore.NewReverseEventResolveIterator(ctx.indexReader, fullPrefix, ctx.pin)
 	if err != nil {
@@ -404,12 +400,10 @@ func compileStringConditionRev(ctx *compileCtx, mc *metadataCtx, cond *commonpb.
 }
 
 func compileBoolConditionRev(ctx *compileCtx, mc *metadataCtx, cond *commonpb.BoolCondition) (readstore.ReverseIterator, error) {
-	value, err := resolveBool(cond, ctx.params)
+	fullPrefix, err := resolveBoolMetadataPrefix(ctx, mc, cond)
 	if err != nil {
 		return nil, err
 	}
-
-	fullPrefix := readstore.EncodeBool(append([]byte{}, mc.prefix...), value)
 
 	iter, pErr := readstore.NewReverseEventResolveIterator(ctx.indexReader, fullPrefix, ctx.pin)
 	if pErr != nil {
@@ -424,8 +418,8 @@ func compileBoolConditionRev(ctx *compileCtx, mc *metadataCtx, cond *commonpb.Bo
 }
 
 func compileExistsConditionRev(ctx *compileCtx, mc *metadataCtx, cond *commonpb.ExistsCondition) (readstore.ReverseIterator, error) {
-	nonNullPrefix := readstore.EntityExistsNonNullPrefixV(ctx.kb, ctx.ledgerName, mc.namespace, mc.metaKey, mc.version)
-	if !cond.GetIncludeNull() {
+	nonNullPrefix, nullPrefix := resolveExistsPrefixes(ctx, mc, cond)
+	if nullPrefix == nil {
 		iter, err := readstore.NewReverseEventResolveIterator(ctx.indexReader, nonNullPrefix, ctx.pin)
 		if err != nil {
 			return nil, fmt.Errorf("creating reverse exists non-null event iterator: %w", err)
@@ -437,8 +431,6 @@ func compileExistsConditionRev(ctx *compileCtx, mc *metadataCtx, cond *commonpb.
 			Prefix: "eidx",
 		}), nil
 	}
-
-	nullPrefix := readstore.EntityExistsNullPrefixV(ctx.kb, ctx.ledgerName, mc.namespace, mc.metaKey, mc.version)
 
 	nonNullIter, err := readstore.NewReverseEventResolveIterator(ctx.indexReader, nonNullPrefix, ctx.pin)
 	if err != nil {
@@ -579,37 +571,16 @@ func compileUintConditionRev(ctx *compileCtx, mc *metadataCtx, cond *commonpb.Ui
 }
 
 func compileAddressMatchRev(ctx *compileCtx, am *commonpb.AddressMatch) (readstore.ReverseIterator, error) {
-	role := am.GetRole()
-
-	if ctx.target == commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS {
-		id, label := txAddressIndexID(role)
-		if _, err := requireIndexReady(ctx, id, label); err != nil {
-			return nil, err
-		}
+	match, err := resolveAddressMatch(ctx, am)
+	if err != nil {
+		return nil, err
 	}
 
-	switch m := am.GetMatch().(type) {
-	case *commonpb.AddressMatch_HardcodedPrefix:
-		return compileAddressPrefixRev(ctx, m.HardcodedPrefix, role)
-	case *commonpb.AddressMatch_HardcodedExact:
-		return compileAddressExactRev(ctx, m.HardcodedExact, role)
-	case *commonpb.AddressMatch_ParamPrefix:
-		value, err := extractString(ctx.params, m.ParamPrefix)
-		if err != nil {
-			return nil, err
-		}
-
-		return compileAddressPrefixRev(ctx, value, role)
-	case *commonpb.AddressMatch_ParamExact:
-		value, err := extractString(ctx.params, m.ParamExact)
-		if err != nil {
-			return nil, err
-		}
-
-		return compileAddressExactRev(ctx, value, role)
-	default:
-		return nil, domain.NewFilterCompilationError("unknown address match type: %T", am.GetMatch())
+	if match.prefix {
+		return compileAddressPrefixRev(ctx, match.value, match.role)
 	}
+
+	return compileAddressExactRev(ctx, match.value, match.role)
 }
 
 func compileAddressPrefixRev(ctx *compileCtx, addrPrefix string, role commonpb.AddressRole) (readstore.ReverseIterator, error) {
@@ -700,18 +671,10 @@ func compileAddressExactRev(ctx *compileCtx, exactAddr string, role commonpb.Add
 }
 
 func compileReferenceConditionRev(ctx *compileCtx, rc *commonpb.ReferenceCondition) (readstore.ReverseIterator, error) {
-	if _, err := requireIndexReady(ctx,
-		indexes.TxBuiltinID(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE),
-		"reference"); err != nil {
-		return nil, err
-	}
-
-	value, err := resolveString(rc.GetCond(), ctx.params)
+	value, prefix, err := resolveReferenceCondition(ctx, rc)
 	if err != nil {
 		return nil, err
 	}
-
-	prefix := readstore.TransactionReferencePrefix(ctx.kb, ctx.ledgerName, value)
 
 	iter, pErr := readstore.NewReversePrefixIterator(ctx.indexReader, prefix, len(prefix), 8)
 	if pErr != nil {
@@ -726,13 +689,10 @@ func compileReferenceConditionRev(ctx *compileCtx, rc *commonpb.ReferenceConditi
 }
 
 func compileAccountHasAssetConditionRev(ctx *compileCtx, c *commonpb.AccountHasAssetCondition) (readstore.ReverseIterator, error) {
-	if _, err := requireIndexReady(ctx,
-		indexes.AccountBuiltinID(commonpb.AccountBuiltinIndex_ACCT_BUILTIN_INDEX_ASSET),
-		"has asset"); err != nil {
+	prefix, err := resolveAccountHasAssetPrefix(ctx, c)
+	if err != nil {
 		return nil, err
 	}
-
-	prefix := readstore.AccountByAssetPrefix(ctx.kb, ctx.ledgerName, c.GetAssetBase(), uint8(c.GetPrecision()))
 
 	// Stamp-gated in BOTH directions. See compileAccountHasAssetCondition for
 	// why the gate exists; a descending scan without it would serve rows the
@@ -765,7 +725,7 @@ func compileBuiltinUintConditionRev(ctx *compileCtx, cond *commonpb.BuiltinUintC
 }
 
 func compileTxIDConditionRev(ctx *compileCtx, cond *commonpb.UintCondition) (readstore.ReverseIterator, error) {
-	bounds, err := resolveUintBounds(cond, ctx.params)
+	bounds, txIDBytes, err := resolveTxIDCondition(ctx, cond)
 	if err != nil {
 		return nil, err
 	}
@@ -775,18 +735,6 @@ func compileTxIDConditionRev(ctx *compileCtx, cond *commonpb.UintCondition) (rea
 	}
 
 	if bounds.isEquality() {
-		exists, pErr := pebbleTxExists(ctx.pebbleReader, ctx.ledgerName, bounds.min)
-		if pErr != nil {
-			return nil, fmt.Errorf("checking tx existence: %w", pErr)
-		}
-
-		if !exists {
-			return emptyReverse(), nil
-		}
-
-		txIDBytes := make([]byte, 8)
-		binary.BigEndian.PutUint64(txIDBytes, bounds.min)
-
 		iter := readstore.NewReverseSliceIterator([][]byte{txIDBytes})
 
 		return trackReverse(iter, ctx.profile, &IteratorStats{
@@ -798,17 +746,7 @@ func compileTxIDConditionRev(ctx *compileCtx, cond *commonpb.UintCondition) (rea
 
 	// The Pebble transaction zone is keyed by txID, so a bounded id range is
 	// entity-ordered and streams descending.
-	var lower, upper []byte
-
-	if bounds.hasMin {
-		lower = make([]byte, 8)
-		binary.BigEndian.PutUint64(lower, bounds.min)
-	}
-
-	if bounds.hasMax {
-		upper = make([]byte, 8)
-		binary.BigEndian.PutUint64(upper, bounds.max)
-	}
+	lower, upper := entityIDRangeBounds(bounds)
 
 	rangeIter, pErr := readstore.NewPebbleReverseTxRangeIterator(ctx.pebbleReader, ctx.ledgerName, lower, upper)
 	if pErr != nil {
@@ -898,16 +836,12 @@ func compileLogIdConditionRev(ctx *compileCtx, cond *commonpb.UintCondition) (re
 	}
 
 	if bounds.isEquality() {
-		logIDBytes := make([]byte, 8)
-		binary.BigEndian.PutUint64(logIDBytes, bounds.min)
-		key := readstore.LedgerLogKey(ctx.kb, ctx.ledgerName, bounds.min)
-
-		exists, pErr := pebbleKeyExists(ctx.indexReader, key)
+		logIDBytes, pErr := resolveLogIDPoint(ctx, bounds.min)
 		if pErr != nil {
-			return nil, fmt.Errorf("checking log existence: %w", pErr)
+			return nil, pErr
 		}
 
-		if !exists {
+		if logIDBytes == nil {
 			return emptyReverse(), nil
 		}
 
@@ -922,15 +856,7 @@ func compileLogIdConditionRev(ctx *compileCtx, cond *commonpb.UintCondition) (re
 
 	// Ledger-log keys are ordered by log id, so a bounded id range streams
 	// descending exactly as the ascending leaf streams ascending.
-	var lower, upper []byte
-
-	if bounds.hasMin {
-		lower = binary.BigEndian.AppendUint64(nil, bounds.min)
-	}
-
-	if bounds.hasMax {
-		upper = binary.BigEndian.AppendUint64(nil, bounds.max)
-	}
+	lower, upper := entityIDRangeBounds(bounds)
 
 	iter, rErr := readstore.NewReverseLedgerLogRangeIterator(ctx.indexReader, ctx.kb, ctx.ledgerName, lower, upper)
 	if rErr != nil {

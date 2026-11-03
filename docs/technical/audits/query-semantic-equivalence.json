@@ -52,6 +52,7 @@
     "Is this failure reachable at the audited SHA, already fixed historically, or already owned by an open PR/qualified finding? What evidence would disprove it?"
   ],
   "dynamic_checks_to_consider": [
+    "Exercise Compile and CompileReverse through compile_leaf_resolution_test.go, compile_metadata_resolution_test.go and compile_id_resolution_test.go against independent expected identities and error classes. Cover literal/parameter address roles and readiness-before-parameter failures, reference/asset prefixes, metadata false/null arms, absent ID points and exclusive ID ranges; shared resolvers must not become their own oracle.",
     "Build a finite independently enumerated non-empty fixture per supported target with known matching and nonmatching identities; compare each actual plan to exact sets and ordered pages, recording selected branches and cardinalities.",
     "Cross typed metadata with absent/NullValue/conversion failure/zero/false/empty, signed and unsigned extrema, datetime microsecond boundaries, includeNull and boolean compositions. Independently calculate expected coercions for chosen cases rather than calling production conversion helpers.",
     "Compare hardcoded and equivalently bound prepared predicates, ascending and descending compilation, coalescible and unmerged equivalent ranges, and supported nil-filter/main-store paths. Pin dataset, version and options; explicitly mark unavailable server plans.",
