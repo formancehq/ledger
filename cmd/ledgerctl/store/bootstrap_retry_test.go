@@ -61,7 +61,7 @@ func newBootstrapRetryAdmission(t *testing.T, store *dal.Store) *admission.Admis
 	notifier.EXPECT().NotifyConfigChanged().AnyTimes()
 	machine, err := state.NewMachine(logger, registry, state.NewCacheSnapshotter(logger, registry, nil), store,
 		dal.NewSentinelFactory(store, false), meters, keys, shared, notifier, nil,
-		"", 0, func(*raftpb.Entry, *dal.WriteSession) error { return nil })
+		"", 0, func(*raftpb.Entry, *dal.WriteSession) error { return nil }, state.NoopCapabilityPolicyCommitHandler)
 	require.NoError(t, err)
 	require.NoError(t, state.NewRecovery(machine, store).RecoverState())
 	next := machine.State.LastAppliedIndex + 1
