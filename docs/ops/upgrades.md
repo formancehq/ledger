@@ -302,7 +302,8 @@ gates. It also does not authorize rollback onto storage opened by the target.
 ### Operator-managed rc.2 to rc.3 rolling validation
 
 After the current `main` has been integrated into `release/v3.0`, run the
-`Release operator upgrade` GitHub Actions workflow with `release/v3.0`, or run
+`Release operator upgrade` GitHub Actions workflow with `release/v3.0` and
+`rc2-to-rc3`, or run
 the same recipe locally from a clean harness checkout:
 
 ```bash
@@ -310,11 +311,12 @@ RELEASE_BRANCH=release/v3.0 just test-release-operator-upgrade
 ```
 
 The launcher fetches and pins the exact `release/v3.0` HEAD and the published
-`v3.0.0-rc.2` source. It requires the target to descend from rc.2 and to
-contain the harness commit from `main`. It pulls the published rc.2 Ledger and
-operator images, then builds the target operator and Ledger images from that
-one pinned target SHA. It gives the local images canonical
-`v3.0.0-rc.3` tags and compiles the operator with that version for admission;
+source RC selected by the transition. It requires the target to descend from
+that source and to contain the harness commit from `main`. It pulls the
+published source Ledger and operator images, then builds the target operator
+and Ledger images from that one pinned target SHA. For the default transition,
+it gives the local images canonical `v3.0.0-rc.3` tags and compiles the
+operator with that version for admission;
 this does not create a Git tag or publish either image. The recorded Docker
 image IDs and running Pod image IDs bind the test to the exact local builds.
 `TARGET_REF=<local-sha>` permits a local rehearsal against a commit containing
@@ -324,7 +326,8 @@ image IDs, Raft status, Chainsaw output, Kubernetes resources and Pod logs.
 The harness keeps the Chainsaw namespace until diagnostics are collected, then
 deletes the Kind cluster.
 
-Chainsaw creates a three-voter Cluster with published rc.2 images, commits
+For the default transition, Chainsaw creates a three-voter Cluster with
+published rc.2 images, commits
 non-empty business data, and records Pod, PVC and Raft identities. It upgrades
 the operator through Helm first, verifies the operator image and Pod changed
 while Ledger Pods, PVCs and data did not. With the rc.3 operator running, it
@@ -343,6 +346,27 @@ versions, exhaustively compare every persisted record type, exercise snapshot
 installation, backup/restore, rollback, or the dormant stopped-upgrade path.
 The pinned binary-level rc.1 test and relevant model, restore and migration
 suites remain separate gates.
+
+The same harness has a separate, future `rc3-to-rc4` transition:
+
+```bash
+UPGRADE_TRANSITION=rc3-to-rc4 RELEASE_BRANCH=release/v3.0 just test-release-operator-upgrade
+```
+
+Run it only after `v3.0.0-rc.3` has been published and the PR changing the
+persisted format has added `v3.0.0-rc.4` to the operator's mandatory stop
+boundaries. The target operator and Ledger are still built from one exact
+release-branch HEAD and tagged locally as rc.4; the harness publishes no tag
+or image. This path requires the operator's drain barrier to advance past
+`Draining`, observes the StatefulSet and all old Pods absent before accepting
+any target Pod, and checks that the replacement StatefulSet has a new UID while
+PVC UIDs persist. It restarts a target voter to exercise replay, verifies the
+pre-upgrade account, commits another transaction, checks Raft progress and
+runs each voter's audit/derived-state checker after drain release. It fails
+against the current empty mandatory-stop list, so it is a release gate for the
+format-change PR, not evidence that rc.3 itself needs a stop. A future rc.4
+release still needs format-specific migration, snapshot, backup/restore and
+rollback validation outside this scenario.
 
 ## Coordinated Restart
 

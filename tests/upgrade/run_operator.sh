@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Exercise the published rc.2 -> exact release-branch HEAD as a local rc.3 image.
+# Exercise an adjacent published RC -> exact release-branch HEAD.
 set -euo pipefail
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -7,9 +7,15 @@ repo="$(cd "$script_dir/../.." && pwd)"
 if [ "${LEDGER_UPGRADE_SHELL:-}" != 1 ]; then
 	exec nix develop "$repo#upgrade" --command "$script_dir/run_operator.sh" "$@"
 fi
-[ "$#" -eq 1 ] || { echo "usage: tests/upgrade/run_operator.sh release/vX.Y" >&2; exit 2; }
+[ "$#" -eq 1 ] || { echo "usage: tests/upgrade/run_operator.sh release/v3.0" >&2; exit 2; }
 branch="$1"
-[[ "$branch" =~ ^release/v[0-9]+\.[0-9]+$ ]] || { echo "invalid release branch: $branch" >&2; exit 2; }
+[ "$branch" = release/v3.0 ] || { echo "invalid release branch: $branch" >&2; exit 2; }
+transition="${UPGRADE_TRANSITION:-rc2-to-rc3}"
+case "$transition" in
+	rc2-to-rc3) source_tag=v3.0.0-rc.2; target_tag=v3.0.0-rc.3; rejected_tag=v3.0.0-rc.1; rollout=rolling ;;
+	rc3-to-rc4) source_tag=v3.0.0-rc.3; target_tag=v3.0.0-rc.4; rejected_tag=v3.0.0-rc.2; rollout=stopped ;;
+	*) echo "unsupported upgrade transition: $transition" >&2; exit 2 ;;
+esac
 [ -z "$(git -C "$repo" status --porcelain)" ] || {
 	echo "the harness checkout must be clean so its SHA identifies the test code" >&2
 	exit 2
@@ -24,9 +30,6 @@ git -C "$repo" fetch --no-tags origin \
 release_head="$(git -C "$repo" rev-parse --verify "refs/remotes/origin/$branch^{commit}")"
 target_sha="$(git -C "$repo" rev-parse --verify "${TARGET_REF:-$release_head}^{commit}")"
 harness_sha="$(git -C "$repo" rev-parse --verify HEAD)"
-source_tag=v3.0.0-rc.2
-target_tag=v3.0.0-rc.3
-[ "$branch" = release/v3.0 ] || { echo 'rc.2 to rc.3 requires release/v3.0' >&2; exit 2; }
 [ "$(gh release view "$source_tag" --json isDraft --jq '.isDraft')" = false ] || {
 	echo "$source_tag is not a published release" >&2; exit 2;
 }
@@ -62,8 +65,8 @@ trap on_exit EXIT
 
 source_repository="${UPGRADE_IMAGE_REPOSITORY:-ghcr.io/formancehq/ledger}"
 source_image="$source_repository:$source_tag"
-printf 'branch=%s\nreleaseHeadSHA=%s\nsourceTag=%s\nsourceSHA=%s\ntargetTag=%s\ntargetSHA=%s\nharnessSHA=%s\n' \
-	"$branch" "$release_head" "$source_tag" "$source_sha" "$target_tag" "$target_sha" "$harness_sha" | tee "$workdir/revisions.txt"
+printf 'branch=%s\ntransition=%s\nrollout=%s\nreleaseHeadSHA=%s\nsourceTag=%s\nsourceSHA=%s\ntargetTag=%s\ntargetSHA=%s\nharnessSHA=%s\n' \
+	"$branch" "$transition" "$rollout" "$release_head" "$source_tag" "$source_sha" "$target_tag" "$target_sha" "$harness_sha" | tee "$workdir/revisions.txt"
 
 target_tree="$workdir/target"
 source_tree="$workdir/source"
@@ -108,6 +111,7 @@ UPGRADE_SOURCE_OPERATOR_IMAGE="$source_operator_image" UPGRADE_SOURCE_OPERATOR_I
 UPGRADE_SOURCE_REPOSITORY="$source_repository" UPGRADE_SOURCE_TAG="$source_tag" \
 UPGRADE_TARGET_REPOSITORY="$target_repository" UPGRADE_TARGET_TAG="$target_tag" \
 UPGRADE_TARGET_IMAGE_ID="$target_id" \
+	UPGRADE_ROLLOUT="$rollout" UPGRADE_REJECTED_TAG="$rejected_tag" \
 	UPGRADE_EVIDENCE_DIR="$workdir" \
 	chainsaw test --config "$script_dir/chainsaw/config.yaml" \
 		--test-dir "$script_dir/operator" --kube-context "kind-$cluster" --skip-delete \

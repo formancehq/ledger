@@ -9,7 +9,8 @@ namespace="$1"
   "${UPGRADE_SOURCE_OPERATOR_IMAGE_ID:?}" \
   "${UPGRADE_SOURCE_REPOSITORY:?}" "${UPGRADE_SOURCE_TAG:?}" \
   "${UPGRADE_TARGET_REPOSITORY:?}" "${UPGRADE_TARGET_TAG:?}" \
-  "${UPGRADE_TARGET_IMAGE_ID:?}" "${UPGRADE_EVIDENCE_DIR:?}"
+  "${UPGRADE_TARGET_IMAGE_ID:?}" "${UPGRADE_EVIDENCE_DIR:?}" \
+  "${UPGRADE_ROLLOUT:?}" "${UPGRADE_REJECTED_TAG:?}"
 source_image="$UPGRADE_SOURCE_REPOSITORY:$UPGRADE_SOURCE_TAG"
 target_image="$UPGRADE_TARGET_REPOSITORY:$UPGRADE_TARGET_TAG"
 cluster=upgrade-cluster
@@ -142,6 +143,7 @@ done
 before_pods="$(k get pods -o json | jq -r --arg name "$statefulset" \
   '.items[] | select(.metadata.name | startswith($name + "-")) | .metadata.name + " " + .metadata.uid' | sort)"
 [ "$(wc -l <<<"$before_pods" | tr -d ' ')" -eq 3 ] || { echo 'missing source Pods' >&2; exit 1; }
+before_sts_uid="$(k get statefulset "$statefulset" -o json | jq -r '.metadata.uid')"
 before_pvcs="$(pvc_ids)"
 [ "$(wc -l <<<"$before_pvcs" | tr -d ' ')" -ge 3 ] || { echo 'missing source PVCs' >&2; exit 1; }
 
@@ -171,10 +173,9 @@ after_operator_pods="$(k get pods -o json | jq -r --arg name "$statefulset" \
 [ "$after_operator_pods" = "$before_pods" ] || { echo 'Ledger Pods changed during operator upgrade' >&2; exit 1; }
 [ "$(pvc_ids)" = "$before_pvcs" ] || { echo 'PVC identity changed during operator upgrade' >&2; exit 1; }
 
-# A non-adjacent RC must be refused before touching the old StatefulSet.
-# A downgrade to rc.1 stays below the local rc.3 operator version, so this
-# exercises RC adjacency rather than the independent operator-version gate.
-rejected_patch="$(jq -n --arg tag v3.0.0-rc.1 '{spec:{image:{tag:$tag}}}')"
+# A non-adjacent downgrade stays below the local target operator version, so
+# this exercises RC adjacency rather than the independent version gate.
+rejected_patch="$(jq -n --arg tag "$UPGRADE_REJECTED_TAG" '{spec:{image:{tag:$tag}}}')"
 k patch cluster "$cluster" --type=merge -p "$rejected_patch"
 deadline=$(( $(date +%s) + 60 ))
 rejected=0
@@ -205,27 +206,61 @@ k patch cluster "$cluster" --type=merge -p "$patch"
 echo "requested operator rollout $source_image -> $target_image"
 
 deadline=$(( $(date +%s) + 600 ))
-mixed_seen=0
-while [ "$(date +%s)" -lt "$deadline" ]; do
-  pods="$(k get pods -o json)"
-  counts="$(jq -r --arg prefix "$statefulset-" --arg source "$source_image" --arg target "$target_image" '
-    [.items[] | select((.metadata.name | startswith($prefix)) and .metadata.deletionTimestamp == null) |
-      {image:([.spec.containers[] | select(.name == "ledger") | .image][0]),
-       ready:([.status.conditions[]? | select(.type == "Ready") | .status][0] == "True"),
-       ordinal:(.metadata.name | split("-")[-1] | tonumber)}] as $pods |
-    "\($pods | length) \([$pods[] | select(.image == $source)] | length) \([$pods[] | select(.image == $target)] | length) \([$pods[] | select(.image == $source and .ready)] | length) \([$pods[] | select(.image == $target and .ready)] | length)"' <<<"$pods")"
-  read -r total old new old_ready new_ready <<<"$counts"
-  [ "$((old_ready + new_ready))" -ge 2 ] || { echo 'rolling upgrade lost ready quorum' >&2; exit 1; }
-  k get cluster "$cluster" -o json | jq -e '.status.upgrade == null' >/dev/null || {
-    echo 'rc.3 unexpectedly entered stopped-upgrade state' >&2; exit 1;
+if [ "$UPGRADE_ROLLOUT" = rolling ]; then
+  mixed_seen=0
+  while [ "$(date +%s)" -lt "$deadline" ]; do
+    pods="$(k get pods -o json)"
+    counts="$(jq -r --arg prefix "$statefulset-" --arg source "$source_image" --arg target "$target_image" '
+      [.items[] | select((.metadata.name | startswith($prefix)) and .metadata.deletionTimestamp == null) |
+        {image:([.spec.containers[] | select(.name == "ledger") | .image][0]),
+         ready:([.status.conditions[]? | select(.type == "Ready") | .status][0] == "True")}] as $pods |
+      "\($pods | length) \([$pods[] | select(.image == $source)] | length) \([$pods[] | select(.image == $target)] | length) \([$pods[] | select(.image == $source and .ready)] | length) \([$pods[] | select(.image == $target and .ready)] | length)"' <<<"$pods")"
+    read -r total old new old_ready new_ready <<<"$counts"
+    [ "$((old_ready + new_ready))" -ge 2 ] || { echo 'rolling upgrade lost ready quorum' >&2; exit 1; }
+    k get cluster "$cluster" -o json | jq -e '.status.upgrade == null' >/dev/null || {
+      echo 'rolling RC unexpectedly entered stopped-upgrade state' >&2; exit 1;
+    }
+    if [ "$old_ready" -gt 0 ] && [ "$new_ready" -gt 0 ]; then mixed_seen=1; fi
+    if [ "$total" -eq 3 ] && [ "$old" -eq 0 ] && [ "$new" -eq 3 ] && [ "$new_ready" -eq 3 ]; then break; fi
+    sleep 2
+  done
+  [ "$mixed_seen" -eq 1 ] || { echo 'mixed-version Ledger window not observed' >&2; exit 1; }
+else
+  stopped_seen=0
+  barrier_seen=0
+  empty_seen=0
+  sts_absent_seen=0
+  while [ "$(date +%s)" -lt "$deadline" ]; do
+    pods="$(k get pods -o json)"
+    counts="$(jq -r --arg prefix "$statefulset-" --arg source "$source_image" --arg target "$target_image" '
+      [.items[] | select(.metadata.name | startswith($prefix)) |
+        {image:([.spec.containers[] | select(.name == "ledger") | .image][0]),
+         ready:([.status.conditions[]? | select(.type == "Ready") | .status][0] == "True")}] as $pods |
+      "\($pods | length) \([$pods[] | select(.image == $source)] | length) \([$pods[] | select(.image == $target)] | length) \([$pods[] | select(.image == $target and .ready)] | length)"' <<<"$pods")"
+    read -r total old new new_ready <<<"$counts"
+    phase="$(k get cluster "$cluster" -o json | jq -r '.status.upgrade.phase // empty')"
+    if [ -n "$phase" ]; then stopped_seen=1; fi
+    case "$phase" in Retaining|Deleting|Recreating|Verifying|Unblocking) barrier_seen=1 ;; esac
+    printf 'phase=%s total=%s old=%s new=%s readyNew=%s\n' "$phase" "$total" "$old" "$new" "$new_ready" >> "$UPGRADE_EVIDENCE_DIR/rollout-observations.txt"
+    [ "$old" -eq 0 ] || [ "$new" -eq 0 ] || { echo 'new Pod appeared while an old Pod remained' >&2; exit 1; }
+    if [ "$total" -eq 0 ]; then empty_seen=1; fi
+    if ! k get statefulset "$statefulset" >/dev/null 2>&1; then sts_absent_seen=1; fi
+    if [ "$total" -eq 3 ] && [ "$old" -eq 0 ] && [ "$new" -eq 3 ] && [ "$new_ready" -eq 3 ]; then break; fi
+    sleep 1
+  done
+  [ "$stopped_seen" -eq 1 ] && [ "$barrier_seen" -eq 1 ] && [ "$empty_seen" -eq 1 ] && [ "$sts_absent_seen" -eq 1 ] || {
+    echo 'stopped upgrade did not show drained barrier, empty Pods and absent StatefulSet' >&2; exit 1;
   }
-  if [ "$old_ready" -gt 0 ] && [ "$new_ready" -gt 0 ]; then mixed_seen=1; fi
-  if [ "$total" -eq 3 ] && [ "$old" -eq 0 ] && [ "$new" -eq 3 ] && [ "$new_ready" -eq 3 ]; then break; fi
-  sleep 2
-done
-[ "$mixed_seen" -eq 1 ] || { echo 'mixed-version Ledger window not observed' >&2; exit 1; }
+fi
 [ "$total" -eq 3 ] && [ "$new" -eq 3 ] && [ "$new_ready" -eq 3 ] || { echo 'operator rollout did not converge' >&2; exit 1; }
 k rollout status "statefulset/$statefulset" --timeout=120s
+if [ "$UPGRADE_ROLLOUT" = stopped ]; then
+  deadline=$(( $(date +%s) + 120 ))
+  until k get cluster "$cluster" -o json | jq -e '.status.upgrade == null' >/dev/null; do
+    [ "$(date +%s)" -lt "$deadline" ] || { echo 'stopped upgrade did not release drain' >&2; exit 1; }
+    sleep 2
+  done
+fi
 wait_consistent
 check_data "$before"
 for ordinal in 0 1 2; do
@@ -239,6 +274,25 @@ for ordinal in 0 1 2; do
   [ -n "$old_uid" ] && [ "$new_uid" != "$old_uid" ] || { echo "Pod $ordinal was not replaced" >&2; exit 1; }
 done
 [ "$(pvc_ids)" = "$before_pvcs" ] || { echo 'PVC identity changed during rollout' >&2; exit 1; }
+after_sts_uid="$(k get statefulset "$statefulset" -o json | jq -r '.metadata.uid')"
+if [ "$UPGRADE_ROLLOUT" = stopped ]; then
+  [ "$after_sts_uid" != "$before_sts_uid" ] || { echo 'stopped upgrade did not recreate StatefulSet' >&2; exit 1; }
+  replay_pod_uid="$(k get pod "$(pod 0)" -o json | jq -r '.metadata.uid')"
+  k delete pod "$(pod 0)" --wait=true
+  deadline=$(( $(date +%s) + 180 ))
+  until k get pod "$(pod 0)" >/dev/null 2>&1; do
+    [ "$(date +%s)" -lt "$deadline" ] || { echo 'target voter was not recreated for replay check' >&2; exit 1; }
+    sleep 2
+  done
+  k wait --for=condition=Ready "pod/$(pod 0)" --timeout=180s
+  [ "$(k get pod "$(pod 0)" -o json | jq -r '.metadata.uid')" != "$replay_pod_uid" ] || {
+    echo 'target voter did not restart for replay check' >&2; exit 1;
+  }
+  wait_consistent
+  check_data "$before"
+else
+  [ "$after_sts_uid" = "$before_sts_uid" ] || { echo 'rolling upgrade recreated StatefulSet' >&2; exit 1; }
+fi
 
 cli 0 transactions create --ledger "$ledger" --posting world,bank,50,USD --reference after-upgrade
 wait_consistent
@@ -252,4 +306,4 @@ for ordinal in 0 1 2; do
   echo "checking audit and derived store on node $((ordinal+1))"
   cli "$ordinal" store check
 done
-echo 'PASS: operator-first upgrade, Ledger rollout, immutable image ID, retained PVCs, and committed data verified'
+echo "PASS: operator-first $UPGRADE_ROLLOUT upgrade, RC admission, retained PVCs, Raft/audit and committed data verified"

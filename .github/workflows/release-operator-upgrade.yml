@@ -7,11 +7,24 @@ on:
         description: Release branch to test, for example release/v3.0
         required: true
         type: string
+      transition:
+        description: Adjacent RC upgrade to validate
+        required: true
+        default: rc2-to-rc3
+        type: choice
+        options:
+          - rc2-to-rc3
+          - rc3-to-rc4
   workflow_call:
     inputs:
       release_branch:
         description: Release branch to test, for example release/v3.0
         required: true
+        type: string
+      transition:
+        description: Adjacent RC upgrade to validate
+        required: false
+        default: rc2-to-rc3
         type: string
     secrets:
       NUMARY_GITHUB_TOKEN:
@@ -22,7 +35,7 @@ permissions:
   packages: read
 
 concurrency:
-  group: release-operator-upgrade-${{ inputs.release_branch }}
+  group: release-operator-upgrade-${{ inputs.release_branch }}-${{ inputs.transition }}
   cancel-in-progress: false
 
 jobs:
@@ -32,6 +45,7 @@ jobs:
     env:
       GOPATH: /tmp/go
       RELEASE_BRANCH: ${{ inputs.release_branch }}
+      UPGRADE_TRANSITION: ${{ inputs.transition }}
     steps:
       - uses: namespacelabs/nscloud-checkout-action@66f2dc6f6c42a8ac6c4e53473c4840006822831e # v9
         with:
@@ -46,7 +60,7 @@ jobs:
           registry: ghcr.io
           username: NumaryBot
           password: ${{ secrets.NUMARY_GITHUB_TOKEN }}
-      - name: Test rc.2 to exact release branch HEAD as local rc.3
+      - name: Test adjacent RC to exact release branch HEAD
         env:
           GH_TOKEN: ${{ github.token }}
         run: nix develop .#upgrade --command just test-release-operator-upgrade
@@ -58,6 +72,7 @@ jobs:
           path: |
             build/upgrade-operator/run.*/revisions.txt
             build/upgrade-operator/run.*/raft-status.jsonl
+            build/upgrade-operator/run.*/rollout-observations.txt
             build/upgrade-operator/run.*/source-pull.txt
             build/upgrade-operator/run.*/source-operator-pull.txt
             build/upgrade-operator/run.*/operator-build.txt
