@@ -211,8 +211,10 @@ same table do not prove annotation fidelity. In allowed disposable generator
 fixtures, remove annotations, declare both markers, reference unknown target
 numbers, and add an arm/target. Observe explicit rejection or a complete
 regenerated mapping. These negative generator probes are proposed evidence,
-not a claim that existing tests execute them. Query compiler and result
-semantics remain owned by `read-consistency-projections`.
+not a claim that existing tests execute them. Canonical compiler acceptance and
+fixed-state result semantics remain owned by `query-semantic-equivalence`;
+temporal visibility and projection alignment remain owned by
+`read-consistency-projections`.
 
 For the buf plugin, use valid/invalid fixtures and
 `TestExistingTypesRetainNumbersAndReservations` to distinguish new types from
