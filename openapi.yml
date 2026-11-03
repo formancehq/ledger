@@ -652,7 +652,8 @@ paths:
     post:
       summary: Create a new transaction
       description: Creates a new transaction in the specified ledger with the specified postings. Requires `ledger:write` scope.
-      operationId: createTransaction
+      operationId: v3CreateTransaction
+      x-speakeasy-name-override: CreateTransaction
       tags:
         - Transactions
       security:
@@ -677,12 +678,12 @@ paths:
                 $ref: '#/components/schemas/CreateTransactionResponse'
           links:
             GetCreatedTransaction:
-              operationId: getTransaction
+              operationId: v3GetTransaction
               parameters:
                 ledgerName: '$request.path.ledgerName'
                 transactionId: '$response.body#/data/transaction/id'
             RevertCreatedTransaction:
-              operationId: revertTransaction
+              operationId: v3RevertTransaction
               parameters:
                 ledgerName: '$request.path.ledgerName'
                 transactionId: '$response.body#/data/transaction/id'
@@ -809,7 +810,8 @@ paths:
     get:
       summary: Get a transaction
       description: Retrieves a transaction by its ID from the specified ledger. Requires `ledger:read` scope.
-      operationId: getTransaction
+      operationId: v3GetTransaction
+      x-speakeasy-name-override: GetTransaction
       tags:
         - Transactions
       security:
@@ -850,7 +852,8 @@ paths:
         pagination and an optional generic `filter` (e.g. address-prefix
         selection via `filter=address ^= "users:"`). Requires `ledger:read`
         scope.
-      operationId: listAccounts
+      operationId: v3ListAccounts
+      x-speakeasy-name-override: ListAccounts
       tags:
         - Accounts
       security:
@@ -916,7 +919,8 @@ paths:
     get:
       summary: Get an account
       description: Retrieves account information including metadata for a specific account address. Requires `ledger:read` scope.
-      operationId: getAccount
+      operationId: v3GetAccount
+      x-speakeasy-name-override: GetAccount
       tags:
         - Accounts
       security:
@@ -1296,7 +1300,8 @@ paths:
         or a non-object `metadata`) return 400 before applying the revert. A JSON
         `null` option uses its default. The complete body, including trailing
         whitespace, counts towards the 4 MiB limit; exceeding it returns 413.
-      operationId: revertTransaction
+      operationId: v3RevertTransaction
+      x-speakeasy-name-override: RevertTransaction
       tags:
         - Transactions
       security:

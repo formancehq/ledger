@@ -57,10 +57,10 @@ func TestOpenAPIMonetaryHeaderCoverage(t *testing.T) {
 	doc, err := openapi3.NewLoader().LoadFromFile("../../../openapi.yml")
 	require.NoError(t, err)
 	expected := map[string]bool{
-		"createTransaction": true, "getTransaction": true, "listLedgerTransactions": true,
-		"revertTransaction": true, "bulkOperations": true, "listLedgerLogs": true,
-		"getLog": true, "executePreparedQuery": true, "getAccount": true,
-		"listAccounts": true, "aggregateVolumes": true, "analyzeTransactions": true,
+		"v3CreateTransaction": true, "v3GetTransaction": true, "listLedgerTransactions": true,
+		"v3RevertTransaction": true, "bulkOperations": true, "listLedgerLogs": true,
+		"getLog": true, "executePreparedQuery": true, "v3GetAccount": true,
+		"v3ListAccounts": true, "aggregateVolumes": true, "analyzeTransactions": true,
 	}
 	for _, path := range doc.Paths.Map() {
 		for _, operation := range path.Operations() {
