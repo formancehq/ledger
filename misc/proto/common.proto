@@ -54,6 +54,12 @@ extend google.protobuf.MethodOptions {
   MethodAuthPolicy auth_policy = 71002;
 }
 
+// ledger_json marks a public protobuf message for generation of a standard
+// library MarshalJSON projection by protoc-gen-ledger-json.
+extend google.protobuf.MessageOptions {
+  bool ledger_json = 71003;
+}
+
 // ============================================================================
 // Core Data Types
 // ============================================================================
@@ -310,6 +316,7 @@ enum LogBuiltinIndex {
 
 // MetadataIndexID identifies a metadata-key index by its target entity and key.
 message MetadataIndexID {
+	option (ledger_json) = true;
   TargetType target = 1;
   string key = 2;
 }
@@ -318,6 +325,7 @@ message MetadataIndexID {
 // (transaction builtins, log builtins, account builtins, metadata keys, ...).
 // Future kinds (e.g. account_type) extend the oneof without touching other code.
 message IndexID {
+	option (ledger_json) = true;
   oneof kind {
     TransactionBuiltinIndex tx_builtin = 1;
     LogBuiltinIndex log_builtin = 2;
@@ -337,6 +345,7 @@ message IndexID {
 //
 // Entries live in the SubAttrIndex attribute zone, not in LedgerInfo.
 message Index {
+	option (ledger_json) = true;
   IndexID id = 1;
   Timestamp created_at = 2;
   string ledger = 3;  // empty for bucket-scoped indexes
@@ -426,6 +435,7 @@ message RevokedSigningKeyLog {
 
 // SigningKey represents a registered signing key with its parent relationship.
 message SigningKey {
+	option (ledger_json) = true;
   string key_id = 1;
   bytes public_key = 2;
   string parent_key_id = 3;

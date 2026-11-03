@@ -1081,6 +1081,7 @@ message GetLogRequest {
 message GetEventsSinksRequest {}
 
 message GetEventsSinksResponse {
+	option (common.ledger_json) = true;
   repeated common.SinkConfig sinks = 1;
   repeated common.SinkStatus sink_statuses = 2;
 }
@@ -1304,6 +1305,7 @@ message GetIndexStatusRequest {
 }
 
 message GetIndexStatusResponse {
+	option (common.ledger_json) = true;
   fixed64 last_indexed_sequence = 1;
   fixed64 last_log_sequence = 2;
   fixed64 lag = 3;
@@ -1348,6 +1350,7 @@ message GetIndexEntryStatusRequest {
 // pending_version == 0 — the pre-retype keyspace stays live during
 // the rewrite.
 message IndexEntry {
+	option (common.ledger_json) = true;
   string ledger = 1;
   common.Index index = 2;     // identifier + created_at + forward_encoding_version
   fixed64 cursor = 3;         // backfill cursor (0 when not in backfill or done)

@@ -4,9 +4,11 @@ package main
 
 import (
 	"google.golang.org/protobuf/compiler/protogen"
-	"google.golang.org/protobuf/reflect/protoreflect"
+	"google.golang.org/protobuf/encoding/protowire"
 	"google.golang.org/protobuf/types/pluginpb"
 )
+
+const ledgerJSONOptionNumber = protowire.Number(71003)
 
 func main() {
 	protogen.Options{}.Run(func(gen *protogen.Plugin) error {
@@ -22,7 +24,7 @@ func main() {
 			}
 			selectedMessages := make([]*protogen.Message, 0, len(messages))
 			for _, message := range messages {
-				if selected(message.Desc.FullName()) {
+				if selected(message) {
 					selectedMessages = append(selectedMessages, message)
 				}
 			}
@@ -56,12 +58,26 @@ func collectMessages(message *protogen.Message, out *[]*protogen.Message) {
 	}
 }
 
-func selected(name protoreflect.FullName) bool {
-	switch name {
-	case "common.IndexID", "common.MetadataIndexID", "common.Index", "common.SigningKey",
-		"ledger.IndexEntry", "ledger.GetIndexStatusResponse", "ledger.GetEventsSinksResponse":
-		return true
-	default:
+func selected(message *protogen.Message) bool {
+	options := message.Desc.Options()
+	if options == nil {
 		return false
 	}
+	unknown := options.ProtoReflect().GetUnknown()
+	for len(unknown) > 0 {
+		number, typ, tagSize := protowire.ConsumeTag(unknown)
+		if tagSize < 0 {
+			return false
+		}
+		if number == ledgerJSONOptionNumber && typ == protowire.VarintType {
+			value, valueSize := protowire.ConsumeVarint(unknown[tagSize:])
+			return valueSize >= 0 && value != 0
+		}
+		valueSize := protowire.ConsumeFieldValue(number, typ, unknown[tagSize:])
+		if valueSize < 0 {
+			return false
+		}
+		unknown = unknown[tagSize+valueSize:]
+	}
+	return false
 }
