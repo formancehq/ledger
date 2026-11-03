@@ -945,10 +945,11 @@ the source Ledger and operator images, and builds both target images from that
 one target commit. It tags the local images `v3.0.0-rc.3` without publishing
 them; recorded Docker and Pod image IDs prove which builds ran. Chainsaw
 checks an operator upgrade before the Ledger rollout, rejection of a
-non-adjacent RC request, ready old/new Ledger Pod coexistence with quorum,
-retained PVC identities, data and Raft progress before and after, and every
-voter's store check. It does not write during mixed Ledger versions or test
-maintenance-mode rejection.
+non-adjacent RC request, old/new Ledger Pod coexistence with at least two
+Ready Pods, retained PVC identities, data and Raft progress before and after,
+and every voter's store check. The Ready Pod count does not establish Raft
+quorum during the mixed-version window. The test does not write during mixed
+Ledger versions or test maintenance-mode rejection.
 The workflow saves the evidence under `build/upgrade-operator/` and uploads it
 even on failure. A Docker daemon and access to the published GHCR image are
 required. The separate `rc3-to-rc4` transition is prepared for a future

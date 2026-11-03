@@ -333,11 +333,12 @@ the operator through Helm first, verifies the operator image and Pod changed
 while Ledger Pods, PVCs and data did not. With the rc.3 operator running, it
 requests a non-adjacent rc.1 downgrade and requires the RC admission error
 without any Ledger Pod, image or PVC change. It then requests the local rc.3
-Ledger image, observes ready old and new voters together with ready quorum,
-and requires the operator's stopped-upgrade state to stay empty. After every
-Pod is replaced and every PVC retains its identity, it verifies the original
-data on all voters, commits another transaction, requires the Raft commit index
-to advance, and runs each voter's audit and derived-store checker.
+Ledger image, observes old and new voters Ready together with at least two
+Ready Pods, and requires the operator's stopped-upgrade state to stay empty.
+After every Pod is replaced and every PVC retains its identity, it verifies
+the original data on all voters, commits another transaction, requires the
+Raft commit index to advance, and runs each voter's audit and derived-store
+checker.
 
 This scenario proves the operator-first rolling path, adjacent RC admission,
 non-empty data continuity, retained PVCs, and final Raft and audit health for

@@ -216,7 +216,7 @@ if [ "$UPGRADE_ROLLOUT" = rolling ]; then
          ready:([.status.conditions[]? | select(.type == "Ready") | .status][0] == "True")}] as $pods |
       "\($pods | length) \([$pods[] | select(.image == $source)] | length) \([$pods[] | select(.image == $target)] | length) \([$pods[] | select(.image == $source and .ready)] | length) \([$pods[] | select(.image == $target and .ready)] | length)"' <<<"$pods")"
     read -r total old new old_ready new_ready <<<"$counts"
-    [ "$((old_ready + new_ready))" -ge 2 ] || { echo 'rolling upgrade lost ready quorum' >&2; exit 1; }
+    [ "$((old_ready + new_ready))" -ge 2 ] || { echo 'rolling upgrade had fewer than two Ready Pods' >&2; exit 1; }
     k get cluster "$cluster" -o json | jq -e '.status.upgrade == null' >/dev/null || {
       echo 'rolling RC unexpectedly entered stopped-upgrade state' >&2; exit 1;
     }
