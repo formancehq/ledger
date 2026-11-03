@@ -3,8 +3,6 @@
 package main
 
 import (
-	"strings"
-
 	"google.golang.org/protobuf/compiler/protogen"
 	"google.golang.org/protobuf/encoding/protowire"
 	"google.golang.org/protobuf/reflect/protoreflect"
@@ -41,11 +39,7 @@ func main() {
 			g.P()
 			g.P("package ", file.GoPackageName)
 			g.P()
-			if string(file.Desc.Package()) == "common" {
-				emitRuntime(g)
-			} else {
-				g.P(`import jsonv2 "encoding/json/v2"`)
-			}
+			g.P(`import jsonv2 "encoding/json/v2"`)
 			g.P()
 			for _, message := range selectedMessages {
 				emitMessage(g, message)
@@ -56,15 +50,14 @@ func main() {
 }
 
 func emitRuntime(g *protogen.GeneratedFile) {
-	for _, line := range strings.Split(runtimeSource, "\n") {
-		g.P(line)
-	}
+	// Kept as a no-op for compatibility with older generated-file layouts.
 }
 
 // runtimeSource is retained for hand-written legacy projections. The generated
 // MarshalJSON methods below do not use it: they access generated fields
 // directly and only use this helper through the older explicit APIs.
-const runtimeSource = `import (
+const runtimeSource = `` /* legacy runtime removed; retained temporarily for source compatibility */
+/* const legacyRuntimeSource = `import (
 	"encoding/json/jsontext"
 	jsonv2 "encoding/json/v2"
 	"fmt"
@@ -199,7 +192,7 @@ func ledgerJSONMapKey(key protoreflect.MapKey) string {
 	case int64: return strconv.FormatInt(value, 10)
 	default: return fmt.Sprint(value)
 	}
-}`
+}` */
 
 func emitMessage(g *protogen.GeneratedFile, message *protogen.Message) {
 	g.P("func (x *", message.GoIdent.GoName, ") MarshalJSON() ([]byte, error) {")

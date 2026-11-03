@@ -3,6 +3,8 @@ package cmdutil
 import (
 	"bytes"
 	"encoding/json"
+	"encoding/json/jsontext"
+	jsonv2 "encoding/json/v2"
 	"fmt"
 	"os"
 	"reflect"
@@ -12,18 +14,11 @@ import (
 	"github.com/spf13/cobra"
 	"go.yaml.in/yaml/v3"
 	"google.golang.org/protobuf/proto"
-
-	commonpb "github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
 
 var (
 	protoMessageType  = reflect.TypeFor[proto.Message]()
 	jsonMarshalerType = reflect.TypeFor[json.Marshaler]()
-	jsonOpts          = commonpb.MarshalLedgerJSONOptions{
-		Multiline:       true,
-		Indent:          "  ",
-		EmitUnpopulated: true,
-	}
 )
 
 // AddOutputFlags registers --json and --yaml flags on the command.
@@ -163,7 +158,7 @@ func marshalJSON(data any) ([]byte, error) {
 			return json.MarshalIndent(data, "", "  ")
 		}
 
-		return commonpb.MarshalLedgerJSONWithOptions(msg, jsonOpts)
+		return jsonv2.Marshal(msg, jsontext.Multiline(true), jsontext.WithIndent("  "))
 	}
 
 	rv := reflect.ValueOf(data)
@@ -304,7 +299,7 @@ func protoToAny(msg proto.Message) (any, error) {
 	if jm, ok := msg.(json.Marshaler); ok {
 		b, err = jm.MarshalJSON()
 	} else {
-		b, err = commonpb.MarshalLedgerJSONWithOptions(msg, jsonOpts)
+		b, err = jsonv2.Marshal(msg, jsontext.Multiline(true), jsontext.WithIndent("  "))
 	}
 
 	if err != nil {

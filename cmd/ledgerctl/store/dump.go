@@ -3,6 +3,7 @@ package store
 import (
 	"encoding/binary"
 	"encoding/hex"
+	jsonv2 "encoding/json/v2"
 	"fmt"
 	"strings"
 
@@ -313,7 +314,7 @@ func tryProtoJSON(val []byte, msg proto.Message) string {
 		return fmt.Sprintf("(proto decode error: %v) hex=%s", err, hex.EncodeToString(val))
 	}
 
-	jsonBytes, err := commonpb.MarshalLedgerJSONWithOptions(msg, commonpb.MarshalLedgerJSONOptions{})
+	jsonBytes, err := jsonv2.Marshal(msg)
 	if err != nil {
 		return fmt.Sprintf("(json encode error: %v) hex=%s", err, hex.EncodeToString(val))
 	}
