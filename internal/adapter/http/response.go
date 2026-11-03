@@ -124,7 +124,7 @@ func writeCheckedJSONResponse(w http.ResponseWriter, r *http.Request, value any,
 // Nested large integers also require an option-aware public projection.
 // encoder_contract_test.go enforces this split against the descriptor graph.
 func writeProtoOK(w http.ResponseWriter, r *http.Request, msg proto.Message) {
-	raw, err := protojson.Marshal(msg)
+	raw, err := json.MarshalProtoJSONNumbers(msg, protojson.MarshalOptions{})
 	if err != nil {
 		writeErrorResponse(w, http.StatusInternalServerError, "INTERNAL_ERROR", err)
 
@@ -163,7 +163,7 @@ func protoListJSON[T proto.Message](msgs []T) (json.RawValue, error) {
 			buf.WriteByte(',')
 		}
 
-		raw, err := protojson.Marshal(msg)
+		raw, err := json.MarshalProtoJSONNumbers(msg, protojson.MarshalOptions{})
 		if err != nil {
 			return nil, err
 		}

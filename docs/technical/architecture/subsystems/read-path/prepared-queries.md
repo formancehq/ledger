@@ -184,8 +184,8 @@ Fields: `metadata[<key>]`, `address`/`source`/`destination`, `reference`,
 `$match` (e.g. `{"$match": {"address": "users:"}}`); a parameterised prefix has no
 DSL form (a param value cannot carry the trailing `:` marker), and the byte-level
 `AddressMatch_ParamPrefix`/`HardcodedPrefix` proto arms are not producible through
-the JSON/REST surface. uint64 fields are carried as decimal strings to stay lossless
-above 2^53.
+the JSON/REST surface. Typed metadata uint64 bounds remain decimal strings so
+the decoder can distinguish them from int64 bounds and preserve values above 2^53.
 
 The codec is bidirectional and lossless. It fails loudly on an unknown operator, an
 empty `$and`/`$or`, an operator body without exactly one field, an unsupported field,

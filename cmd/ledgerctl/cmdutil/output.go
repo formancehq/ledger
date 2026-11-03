@@ -13,6 +13,8 @@ import (
 	"go.yaml.in/yaml/v3"
 	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
+
+	adapterjson "github.com/formancehq/ledger/v3/internal/adapter/json"
 )
 
 var (
@@ -162,7 +164,7 @@ func marshalJSON(data any) ([]byte, error) {
 			return json.MarshalIndent(data, "", "  ")
 		}
 
-		return protoJSONOpts.Marshal(msg)
+		return adapterjson.MarshalProtoJSONNumbers(msg, protoJSONOpts)
 	}
 
 	rv := reflect.ValueOf(data)
@@ -303,7 +305,7 @@ func protoToAny(msg proto.Message) (any, error) {
 	if jm, ok := msg.(json.Marshaler); ok {
 		b, err = jm.MarshalJSON()
 	} else {
-		b, err = protoJSONOpts.Marshal(msg)
+		b, err = adapterjson.MarshalProtoJSONNumbers(msg, protoJSONOpts)
 	}
 
 	if err != nil {

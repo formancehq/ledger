@@ -30,7 +30,7 @@ func (s *statusIdentityTestServer) GetClusterState(_ context.Context, req *clust
 	}, nil
 }
 
-func TestStatusCommandPreservesFullNodeIDAndJSONStrings(t *testing.T) {
+func TestStatusCommandPreservesFullNodeIDAndJSONNumbers(t *testing.T) {
 	t.Parallel()
 
 	for _, tc := range []struct {
@@ -69,17 +69,17 @@ func TestStatusCommandPreservesFullNodeIDAndJSONStrings(t *testing.T) {
 			payload, err := os.ReadFile(resultPath)
 			require.NoError(t, err)
 			var output struct {
-				Leader    string `json:"leader"`
-				LocalNode string `json:"localNode"`
+				Leader    uint64 `json:"leader"`
+				LocalNode uint64 `json:"localNode"`
 				Nodes     []struct {
-					ID string `json:"id"`
+					ID uint64 `json:"id"`
 				} `json:"nodes"`
 			}
-			require.NoError(t, json.Unmarshal(payload, &output), "protobuf uint64 IDs must be decimal JSON strings")
-			require.Equal(t, tc.argument, output.Leader)
-			require.Equal(t, tc.argument, output.LocalNode)
+			require.NoError(t, json.Unmarshal(payload, &output), "protobuf uint64 IDs must be decimal JSON numbers")
+			require.Equal(t, tc.want, output.Leader)
+			require.Equal(t, tc.want, output.LocalNode)
 			require.Len(t, output.Nodes, 1)
-			require.Equal(t, tc.argument, output.Nodes[0].ID)
+			require.Equal(t, tc.want, output.Nodes[0].ID)
 		})
 	}
 }

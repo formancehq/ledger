@@ -41,7 +41,7 @@ func TestHandleGetIndexStatus_Success(t *testing.T) {
 	// snake_case Go struct tags (last_indexed_sequence) that a plain sonic
 	// marshal would leak. See writeProtoOK.
 	body := w.Body.String()
-	require.Contains(t, body, `"lastIndexedSequence":"42"`)
+	require.Contains(t, body, `"lastIndexedSequence":42`)
 	require.NotContains(t, body, "last_indexed_sequence")
 	require.True(t, strings.HasPrefix(strings.TrimSpace(body), `{"data":`), "response must be wrapped in the data envelope, got: %s", body)
 }

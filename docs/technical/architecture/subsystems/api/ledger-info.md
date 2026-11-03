@@ -23,13 +23,9 @@ the same REST segment discriminators as account-type reads: `regex`, `uuid`,
 
 Mirror progress always contains `state` (`SYNCING` or `FOLLOWING`), `cursor`,
 `sourceLogCount` and `remainingLogs`, including zero values. Each counter is a
-canonical unsigned decimal JSON string, described by OpenAPI as `string` with
-`format: bigint`. This preserves all uint64 values while generated TypeScript
-clients expose native bigint values. The numeric alternative (`integer/bigint`)
-generated a TypeScript number and silently rounded 2^53+1 and uint64 maximum in
-an operation-level Speakeasy experiment. Ordinary JSON.parse consumers of the
-string representation also remain exact. Clients using JSON.stringify on a
-decoded native bigint must explicitly convert it to a decimal string first.
+JSON number containing the canonical unsigned decimal value. Clients must use
+lossless number handling when values can exceed 2^53; ordinary JavaScript
+`JSON.parse` is not sufficient for the full uint64 range.
 
 Read configuration uses `ledgerName` and exactly one nested `http` or `postgres`
 source, with optional `batchSize` and `rewriteRules`. HTTP sources include nested

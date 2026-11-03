@@ -242,7 +242,7 @@ func TestProtojsonRoutes_TableIsComplete(t *testing.T) {
 			}
 
 			name := calleeName(call.Fun)
-			if name == "writeProtoOK" || name == "writeProtoListOK" || name == "protoListJSON" || name == "protojson.Marshal" {
+			if name == "writeProtoOK" || name == "writeProtoListOK" || name == "protoListJSON" || name == "protojson.Marshal" || name == "json.MarshalProtoJSONNumbers" {
 				sites = append(sites, filename+": "+name)
 				siteFiles = append(siteFiles, filename)
 			}

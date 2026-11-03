@@ -11,6 +11,8 @@ import (
 	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
 
+	adapterjson "github.com/formancehq/ledger/v3/internal/adapter/json"
+
 	"github.com/formancehq/ledger/v3/internal/proto/auditpb"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/proposalpb"
@@ -316,7 +318,7 @@ func tryProtoJSON(val []byte, msg proto.Message) string {
 
 	opts := protojson.MarshalOptions{Multiline: false, EmitUnpopulated: false}
 
-	jsonBytes, err := opts.Marshal(msg)
+	jsonBytes, err := adapterjson.MarshalProtoJSONNumbers(msg, opts)
 	if err != nil {
 		return fmt.Sprintf("(json encode error: %v) hex=%s", err, hex.EncodeToString(val))
 	}

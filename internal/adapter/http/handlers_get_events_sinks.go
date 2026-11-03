@@ -29,10 +29,10 @@ func (s *Server) handleGetEventsSinks(w http.ResponseWriter, r *http.Request) {
 	for i, s := range sinks {
 		sinks[i] = sensitive.Redact(s)
 	}
-	raw, err := protojson.Marshal(&servicepb.GetEventsSinksResponse{
+	raw, err := json.MarshalProtoJSONNumbers(&servicepb.GetEventsSinksResponse{
 		Sinks:        sinks,
 		SinkStatuses: statuses,
-	})
+	}, protojson.MarshalOptions{})
 	if err != nil {
 		handleError(w, r, err)
 

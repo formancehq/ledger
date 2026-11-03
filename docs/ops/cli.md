@@ -2798,7 +2798,7 @@ Manage and inspect the Raft cluster.
 
 `--node-id` accepts unsigned 64-bit IDs; zero routes to the leader. Node lists,
 leader/local IDs and peer details preserve the full identity. In JSON/YAML
-output, protobuf uint64 identity fields are decimal strings.
+output, protobuf uint64 identity fields are decimal JSON numbers.
 
 Display the current state of the Raft cluster, including node information and replication status.
 

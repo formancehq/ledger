@@ -47,7 +47,7 @@ func protoFieldJSON(msg proto.Message) (json.RawValue, error) {
 		return nil, nil
 	}
 
-	b, err := protojson.Marshal(msg)
+	b, err := json.MarshalProtoJSONNumbers(msg, protojson.MarshalOptions{})
 	if err != nil {
 		return nil, err
 	}

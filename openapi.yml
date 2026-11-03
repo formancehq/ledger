@@ -4038,9 +4038,9 @@ components:
             contains metadata; DELETE_METADATA contains key. ORDER_SKIPPED
             contains reason and optional context. Other types carry the fields
             of their corresponding operation directly. FILL_GAP contains originalId,
-            a uint64 encoded as a decimal JSON string by protobuf JSON.
-            Transaction IDs, revertedTransactionId and transaction targetId
-            are JSON numbers; consumers must preserve full integer precision.
+            a uint64 encoded as a decimal JSON number. Transaction IDs,
+            revertedTransactionId and transaction targetId are JSON numbers;
+            consumers must preserve full integer precision.
             Metadata integers are
             JSON numbers and null-valued keys are preserved.
         date:
@@ -4276,19 +4276,16 @@ components:
             - FOLLOWING
           description: Current sync state (SYNCING = catching up, FOLLOWING = up to date)
         cursor:
-          type: string
-          format: bigint
-          pattern: '^(0|[1-9][0-9]*)$'
+          type: integer
+          format: uint64
           description: Last ingested v2 log ID
         sourceLogCount:
-          type: string
-          format: bigint
-          pattern: '^(0|[1-9][0-9]*)$'
+          type: integer
+          format: uint64
           description: Latest known log ID in the v2 source
         remainingLogs:
-          type: string
-          format: bigint
-          pattern: '^(0|[1-9][0-9]*)$'
+          type: integer
+          format: uint64
           description: Number of remaining logs to sync (sourceLogCount - cursor)
         error:
           $ref: '#/components/schemas/MirrorSyncError'

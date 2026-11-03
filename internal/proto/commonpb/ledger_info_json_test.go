@@ -64,11 +64,11 @@ func TestLedgerInfoJSONMirrorProgress(t *testing.T) {
 		progress *MirrorSyncProgress
 		want     string
 	}{
-		{"zero", &MirrorSyncProgress{}, `{"state":"SYNCING","cursor":"0","sourceLogCount":"0","remainingLogs":"0"}`},
+		{"zero", &MirrorSyncProgress{}, `{"state":"SYNCING","cursor":0,"sourceLogCount":0,"remainingLogs":0}`},
 		{"following", &MirrorSyncProgress{State: MirrorSyncState_MIRROR_SYNC_STATE_FOLLOWING,
 			Cursor: 9007199254740993, SourceLogCount: ^uint64(0), RemainingLogs: 1,
 			Error: &MirrorSyncError{Message: "source unavailable", OccurredAt: stamp}},
-			`{"state":"FOLLOWING","cursor":"9007199254740993","sourceLogCount":"18446744073709551615","remainingLogs":"1","error":{"message":"source unavailable","occurredAt":"2026-10-08T10:00:00Z"}}`},
+			`{"state":"FOLLOWING","cursor":9007199254740993,"sourceLogCount":18446744073709551615,"remainingLogs":1,"error":{"message":"source unavailable","occurredAt":"2026-10-08T10:00:00Z"}}`},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			data, err := json.Marshal(&LedgerInfo{Name: "mirror", Mode: LedgerMode_LEDGER_MODE_MIRROR,

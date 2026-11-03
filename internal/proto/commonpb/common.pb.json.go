@@ -20,7 +20,7 @@ func protoFieldJSON(msg proto.Message) json.RawValue {
 		return nil
 	}
 
-	b, err := protojson.Marshal(msg)
+	b, err := json.MarshalProtoJSONNumbers(msg, protojson.MarshalOptions{})
 	if err != nil {
 		return nil
 	}
@@ -102,7 +102,7 @@ func (x *LogPayload) jsonValue() (any, error) {
 		}{Apply: p.Apply}, nil
 	default:
 		// Other variants (signing, sinks, etc.) — use protojson for camelCase
-		raw, err := protojson.Marshal(x)
+		raw, err := json.MarshalProtoJSONNumbers(x, protojson.MarshalOptions{})
 
 		return json.RawValue(raw), err
 	}
@@ -194,7 +194,7 @@ func (x *LedgerLogPayload) MarshalJSON() ([]byte, error) {
 		return custom.MarshalJSON()
 	}
 
-	return protojson.Marshal(message)
+	return json.MarshalProtoJSONNumbers(message, protojson.MarshalOptions{})
 }
 
 // MarshalJSONTo dispatches without hiding nested postings behind an opaque
@@ -207,7 +207,7 @@ func (x *LedgerLogPayload) MarshalJSONTo(enc *jsontext.Encoder) error {
 	if _, ok := message.(interface{ MarshalJSON() ([]byte, error) }); ok {
 		return json.MarshalEncode(enc, message)
 	}
-	raw, err := protojson.Marshal(message)
+	raw, err := json.MarshalProtoJSONNumbers(message, protojson.MarshalOptions{})
 	if err != nil {
 		return err
 	}
