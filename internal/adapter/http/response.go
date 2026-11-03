@@ -107,23 +107,6 @@ func writeCheckedJSONResponse(w http.ResponseWriter, r *http.Request, value any,
 	_, _ = w.Write(body)
 }
 
-// writeProtoOK streams a protobuf response directly to the ResponseWriter.
-// writeOK's json/v2 encoder dispatches to hand-written or generated MarshalJSON
-// methods without first materializing the complete response body.
-func writeProtoOK(w http.ResponseWriter, r *http.Request, msg proto.Message) {
-	writeOK(w, r, msg)
-}
-
-// writeProtoListOK writes a 200 OK response whose `data` is a JSON array of
-// protobuf messages. A nil/empty slice serializes as `[]`, matching the
-// drained-cursor list handlers.
-func writeProtoListOK[T proto.Message](w http.ResponseWriter, r *http.Request, msgs []T) {
-	if msgs == nil {
-		msgs = []T{}
-	}
-	writeOK(w, r, msgs)
-}
-
 // writeBadRequest writes a 400 Bad Request response.
 // If the underlying error is a MaxBytesError (body too large), it writes
 // 413 Request Entity Too Large instead.

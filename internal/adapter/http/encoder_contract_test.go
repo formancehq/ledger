@@ -19,9 +19,8 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
-// protojsonRoutes lists every HTTP route whose 200 body is serialized by
-// protojson — writeProtoOK, writeProtoListOK, protoListJSON, or an inline
-// protojson.Marshal.
+// protojsonRoutes lists every HTTP route whose 200 body is serialized from a
+// protobuf response through the shared JSON adapter.
 //
 // protojson works off protobuf reflection and ignores json.Marshaler, so a type
 // that has BOTH is silently rendered by the wrong one. That is the EN-1622
@@ -61,8 +60,8 @@ func TestProtojsonRoutes_PayloadUsesThePublicProjectionWhenPresent(t *testing.T)
 			t.Parallel()
 
 			_, hasStreamingCustom := tc.msg.(jsonv2.MarshalerTo)
-			// writeProtoOK and protoListJSON use the shared adapter, which honors
-			// a public MarshalJSON projection before falling back to protojson.
+			// The shared adapter honors a public MarshalJSON projection before
+			// falling back to protobuf reflection.
 			// These routes may therefore use either projection style. Streaming
 			// projections are intentionally not used here because the helpers
 			// buffer protobuf output to surface marshal errors before headers.
@@ -135,9 +134,7 @@ func TestMonetaryRoutes_PayloadHasCustomMarshalJSON(t *testing.T) {
 }
 
 // allowedProtojsonImporters are the only files in this package permitted to
-// import protojson directly. response.go implements writeProtoOK and
-// writeProtoListOK; handlers_get_events_sinks.go predates those helpers and
-// calls protojson inline; handlers_create_ledger.go is the odd one out — it
+// import protojson directly. handlers_create_ledger.go is the odd one out — it
 // uses protojson.Unmarshal (decode-side) to parse a MirrorRewriteRule oneof
 // out of an incoming request body, which sonic's decoder cannot dispatch.
 // That file never marshals a response through protojson, so it carries no
@@ -190,8 +187,8 @@ func TestProtojsonImportIsRestricted(t *testing.T) {
 			}
 
 			require.Truef(t, allowedProtojsonImporters[name],
-				"%s imports protojson directly. Serialize through writeProtoOK or "+
-					"writeProtoListOK and add the route to protojsonRoutes with the exact "+
+				"%s imports protojson directly. Keep response serialization on the shared "+
+					"JSON adapter and add the route to protojsonRoutes with the exact "+
 					"message type the handler writes. If the handler genuinely must call "+
 					"protojson itself, add %s to allowedProtojsonImporters AND add its "+
 					"protojsonRoutes row — do not do only one.",
@@ -232,7 +229,7 @@ func calleeName(fun ast.Expr) string {
 	switch f := fun.(type) {
 	case *ast.Ident:
 		return f.Name
-	case *ast.IndexExpr: // Generic instantiation, e.g. writeProtoListOK[T].
+	case *ast.IndexExpr: // Generic instantiation.
 		return calleeName(f.X)
 	case *ast.IndexListExpr: // Generic instantiation with multiple type parameters.
 		return calleeName(f.X)

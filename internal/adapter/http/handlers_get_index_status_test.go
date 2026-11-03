@@ -39,7 +39,7 @@ func TestHandleGetIndexStatus_Success(t *testing.T) {
 	// The body must serialize the protobuf message in protobuf-JSON camelCase
 	// (lastIndexedSequence), wrapped in the {data:...} envelope — NOT the
 	// snake_case Go struct tags (last_indexed_sequence) that a plain sonic
-	// marshal would leak. See writeProtoOK.
+	// marshal would leak.
 	body := w.Body.String()
 	require.Contains(t, body, `"lastIndexedSequence":42`)
 	require.NotContains(t, body, "last_indexed_sequence")
