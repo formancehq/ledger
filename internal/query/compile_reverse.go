@@ -198,7 +198,7 @@ func compileLedgerConditionRev(ctx *compileCtx, lc *commonpb.LedgerCondition) (r
 }
 
 func compileAndRev(ctx *compileCtx, and *commonpb.AndFilter) (readstore.ReverseIterator, error) {
-	filters := mergeFieldRanges(and.GetFilters())
+	filters := mergeFieldRanges(and.GetFilters(), validateFieldCondition(ctx))
 
 	children := make([]readstore.ReverseIterator, 0, len(filters))
 
