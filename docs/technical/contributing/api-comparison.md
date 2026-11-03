@@ -83,8 +83,9 @@ The v2 API has no equivalent Raft cluster-command lifecycle.
 
 Get/list use camelCase LedgerInfo properties and typed metadata; mode, enforcement
 and account persistence use explicit short enum defaults. Mirror progress includes
-zero values and numeric counters (`integer/int64` in OpenAPI); clients must use
-lossless integer parsing above JavaScript's safe-integer range. v2 stats/log IDs
+zero values and unsigned numeric counters (`integer/uint64` in OpenAPI), covering
+the full `0..18446744073709551615` range; clients must use lossless integer
+parsing above JavaScript's safe-integer range. v2 stats/log IDs
 use numeric JSON with `integer/int64` or `integer/bigint`; v2 has no equivalent
 mirror progress.
 Nested read mirror configuration masks passwordless HTTP(S) URL userinfo as

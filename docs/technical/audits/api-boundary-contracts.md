@@ -385,8 +385,9 @@ inventing a new retry identity or an external-delivery guarantee.
 
 Require camelCase keys, short explicit enum defaults, typed metadata/schema, REST
 segment discriminators and unconstrained null, RFC3339 timestamps, and populated
-mirror state/counters at zero. Counter wire values are JSON numbers with OpenAPI
-integer/int64; clients must use lossless integer parsing above 2^53. Exercise actual generated list/get
+mirror state/counters at zero. Counter wire values are unsigned JSON numbers
+with OpenAPI integer/uint64, covering `0..18446744073709551615`; clients must
+use lossless integer parsing above 2^53. Exercise actual generated list/get
 operations with >2^53 and uint64 maximum, alongside schema validation and the
 codec/routed HTTP fixtures. Read mirror schemas are nested, while flat create
 fixtures must still be accepted. Rewrite-rule read models must expose CEL
