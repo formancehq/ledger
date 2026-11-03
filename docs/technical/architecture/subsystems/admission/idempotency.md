@@ -128,10 +128,12 @@ When no mutable read was attempted, only a `latest` selector keeps the same forw
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `--idempotency-ttl` | `24h` | Seeds the *desired* idempotency TTL in the cluster policy (0 = no expiration) |
+| `--idempotency-ttl` | `24h` | Seeds the *desired* idempotency TTL in the cluster policy (0 = no expiration; a positive value must be at least `1µs`) |
 | `--idempotency-eviction-interval` | `60s` | How often the leader proposes eviction |
 
 `--idempotency-ttl` is node-local admission-side configuration: it names the desired TTL that the reconciler proposes into the Raft-replicated [cluster policy](../fsm/deterministic-fsm.md#35-raft-replicated-cluster-policy). The FSM never reads the flag during apply. Instead, each apply freezes the outcome's absolute `expires_at` once, from the TTL in the committed policy (`FSMState.ClusterPolicy.IdempotencyTtlMicros`), as `created_at + ttl` (0 = never; overflow saturates). Because the expiry is stamped from committed state and stored on the outcome, every node computes the same value and the expiry decision (`IsExpired`) reads no node-local configuration — the FSM-determinism requirement. Changing the TTL is a cluster-policy revision bump, not a boot-config change, so it needs no `--unsafe-skip-config-validation`.
+
+The policy stores whole microseconds. Boot validation rejects a positive TTL below `1µs`, because truncation would turn it into the `0` never-expire sentinel.
 
 ### Eviction Mechanism
 
