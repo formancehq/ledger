@@ -527,9 +527,10 @@ any target Pod, and checks that the replacement StatefulSet has a new UID while
 PVC UIDs persist. It restarts a target voter to exercise replay, verifies the
 pre-upgrade account, commits another transaction, checks Raft progress and
 runs each voter's audit/derived-state checker after drain release. It fails
-against an operator without the rc.4 boundary. The rc.4 release still needs
-format-specific migration, snapshot, backup/restore and rollback validation
-outside this scenario.
+against an operator without the rc.4 boundary, so it is a release gate for the
+format-change PR, not evidence that rc.3 itself needs a stop. The rc.4 release
+still needs format-specific migration, snapshot, backup/restore and rollback
+validation outside this scenario.
 
 ## Coordinated Restart
 
