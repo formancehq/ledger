@@ -3025,12 +3025,10 @@ func collectExpectedSkippable(
 //
 //   - RemoveAccountType → chainBound.accountTypes (exists=false).
 //
-//   - CreateTransaction.metadata → chainBound.metadata (exists=true)
-//     at target=<allocated tx id>. The tx id is derived from the
-//     per-ledger nextTxID counter which mirrors the FSM's
-//     LedgerBoundaries.NextTransactionId. Skipped CreateTransactions
-//     (identified via the chain-bound reference already claimed) do
-//     NOT consume a slot — see chainBoundCreateTxSkipped.
+//   - CreateTransaction.metadata is seeded into chainBound.metadata by
+//     reconcileMetadataOnlyChainBound from the replayed CreatedTransaction's
+//     authoritative ID. It is intentionally not recorded from this order
+//     fold, whose nextTxID allocation cannot identify metadata-only creates.
 //
 //   - RevertTransaction.metadata → chainBound.metadata (exists=true)
 //     at target=<newly-allocated revert tx id>. The revert produces a
