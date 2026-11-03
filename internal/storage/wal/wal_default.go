@@ -44,7 +44,10 @@ type DefaultWAL struct {
 
 	// mu protects all mutable state (entries, snapshot, hardState)
 	mu sync.RWMutex
-	// walWriteMu serializes WAL writes and directory replacement. It precedes mu.
+	// walWriteMu serializes snapshot persistence, compaction, directory
+	// replacement, and Close. Append is serialized with ApplySnapshot by
+	// processReadies and must not wait for background snapshot I/O.
+	// It precedes mu.
 	walWriteMu sync.Mutex
 
 	// HardState contains the current term and commit index
@@ -665,8 +668,6 @@ func (s *DefaultWAL) Snapshot() (*raftpb.Snapshot, error) {
 
 // Append appends entries to the log.
 func (s *DefaultWAL) Append(hardState *raftpb.HardState, entries []*raftpb.Entry) error {
-	s.walWriteMu.Lock()
-	defer s.walWriteMu.Unlock()
 	s.mu.Lock()
 
 	if hardStateEqual(hardState, s.hardState) && len(entries) == 0 {
