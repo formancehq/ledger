@@ -454,6 +454,18 @@ func (r *ClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (re
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("reconciling operator Credentials: %w", err)
 	}
+
+	// Reconcile the cluster-secret before the Credentials gate. Recovery of a
+	// managed Secret must remain available while operator credentials are being
+	// created or redistributed, because existing Pods may still reference it.
+	// Deletion is deferred until after the StatefulSet pass below so no live pod
+	// references a deleted Secret.
+	if err := r.reconcileClusterSecretForTLSState(ctx, ledger, false); err != nil {
+		logger.Error(err, "failed to reconcile cluster secret")
+
+		return ctrl.Result{}, fmt.Errorf("reconciling ClusterSecret: %w", err)
+	}
+
 	if ledger.Spec.Auth != nil && ledger.Spec.Auth.Enabled != nil && *ledger.Spec.Auth.Enabled && !operatorCredentialReady {
 		meta.SetStatusCondition(&ledger.Status.Conditions, metav1.Condition{
 			Type:               "OperatorCredentialsPending",
@@ -472,15 +484,6 @@ func (r *ClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (re
 		logger.Error(err, "failed to reconcile auth keys")
 
 		return ctrl.Result{}, fmt.Errorf("reconciling AuthKeys: %w", err)
-	}
-
-	// Reconcile the cluster-secret before the AuthKeysPending gate, but only
-	// its safe (create/update) side. Deletion is deferred until after the
-	// StatefulSet pass below so no live pod references a deleted Secret.
-	if err := r.reconcileClusterSecretForTLSState(ctx, ledger, false); err != nil {
-		logger.Error(err, "failed to reconcile cluster secret")
-
-		return ctrl.Result{}, fmt.Errorf("reconciling ClusterSecret: %w", err)
 	}
 
 	// Fail-safe (EN-1487): the auth-key set cannot be safely reconciled yet.
