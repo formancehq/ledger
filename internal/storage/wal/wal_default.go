@@ -44,6 +44,8 @@ type DefaultWAL struct {
 
 	// mu protects all mutable state (entries, snapshot, hardState)
 	mu sync.RWMutex
+	// walWriteMu serializes WAL writes and directory replacement. It precedes mu.
+	walWriteMu sync.Mutex
 
 	// HardState contains the current term and commit index
 	hardState *raftpb.HardState
@@ -187,6 +189,9 @@ func New(dataDir string, logger logging.Logger, meter metric.Meter, opts ...Opti
 	if err := mkdirAllSynced(dataDir); err != nil {
 		return nil, fmt.Errorf("creating data directory: %w", err)
 	}
+	if err := recoverWALReplacement(dataDir); err != nil {
+		return nil, fmt.Errorf("recovering WAL replacement: %w", err)
+	}
 
 	logger = logger.WithFields(map[string]any{"cmp": "wal"})
 
@@ -212,7 +217,6 @@ func New(dataDir string, logger logging.Logger, meter metric.Meter, opts ...Opti
 		etcdWalDir:    filepath.Join(dataDir, etcdWalDir),
 		purgeInterval: defaultPurgeInterval,
 	}
-
 	for _, opt := range opts {
 		opt(s)
 	}
@@ -489,6 +493,9 @@ func New(dataDir string, logger logging.Logger, meter metric.Meter, opts ...Opti
 			"snapshot.Index":   s.snapshot.GetMetadata().GetIndex(),
 			"snapshot.Term":    s.snapshot.GetMetadata().GetTerm(),
 		}).Infof("WAL replay completed")
+	if err := cleanupReplacementWALs(dataDir); err != nil {
+		s.logger.WithFields(map[string]any{"error": err}).Errorf("Failed to clean inactive WAL directories")
+	}
 
 	// Start background purger to delete old WAL segment files that have been
 	// unlocked by ReleaseLockTo during compaction.
@@ -658,6 +665,8 @@ func (s *DefaultWAL) Snapshot() (*raftpb.Snapshot, error) {
 
 // Append appends entries to the log.
 func (s *DefaultWAL) Append(hardState *raftpb.HardState, entries []*raftpb.Entry) error {
+	s.walWriteMu.Lock()
+	defer s.walWriteMu.Unlock()
 	s.mu.Lock()
 
 	if hardStateEqual(hardState, s.hardState) && len(entries) == 0 {
@@ -773,6 +782,8 @@ func hardStateEqual(a, b *raftpb.HardState) bool {
 func (s *DefaultWAL) CreateSnapshot(index uint64, cs *raftpb.ConfState, data []byte) error {
 	s.snapshotPersistenceMu.Lock()
 	defer s.snapshotPersistenceMu.Unlock()
+	s.walWriteMu.Lock()
+	defer s.walWriteMu.Unlock()
 
 	s.mu.Lock()
 
@@ -872,6 +883,8 @@ func (s *DefaultWAL) CreateSnapshot(index uint64, cs *raftpb.ConfState, data []b
 func (s *DefaultWAL) UpdateSnapshotConfState(cs *raftpb.ConfState) error {
 	s.snapshotPersistenceMu.Lock()
 	defer s.snapshotPersistenceMu.Unlock()
+	s.walWriteMu.Lock()
+	defer s.walWriteMu.Unlock()
 
 	s.mu.Lock()
 
@@ -947,94 +960,104 @@ func (s *DefaultWAL) termLocked(i uint64) (uint64, error) {
 	return 0, raft.ErrUnavailable
 }
 
-// ApplySnapshot applies a snapshot to the storage.
-func (s *DefaultWAL) ApplySnapshot(snap *raftpb.Snapshot) error {
+// ApplySnapshot durably replaces the Raft log with an accepted received
+// snapshot and the entries from the same Ready that follow it.
+func (s *DefaultWAL) ApplySnapshot(snap *raftpb.Snapshot, suffix []*raftpb.Entry) error {
 	s.snapshotPersistenceMu.Lock()
 	defer s.snapshotPersistenceMu.Unlock()
+	s.walWriteMu.Lock()
+	defer s.walWriteMu.Unlock()
 
 	s.mu.Lock()
+	defer s.mu.Unlock()
+	snapIndex := snap.GetMetadata().GetIndex()
+	snapTerm := snap.GetMetadata().GetTerm()
 
 	s.logger.WithFields(map[string]any{
-		"snapIndex":      snap.GetMetadata().GetIndex(),
-		"snapTerm":       snap.GetMetadata().GetTerm(),
+		"snapIndex":      snapIndex,
+		"snapTerm":       snapTerm,
 		"prevSnapIndex":  s.snapshot.GetMetadata().GetIndex(),
 		"prevHardCommit": s.hardState.GetCommit(),
 		"cachedEntries":  len(s.entries),
 	}).Infof("WAL ApplySnapshot")
 
-	s.snapshot = snap
-	s.entries = nil // Clear entries after applying snapshot
-	s.compactedIndex = snap.GetMetadata().GetIndex()
-	s.compactedTerm = snap.GetMetadata().GetTerm()
-
-	// Ensure the HardState commit index is at least as high as the snapshot.
-	// A snapshot at index N implies all entries up to N are committed.
-	if s.hardState.GetCommit() < snap.GetMetadata().GetIndex() {
-		s.hardState = &raftpb.HardState{
-			Term:   new(snap.GetMetadata().GetTerm()),
-			Vote:   new(s.hardState.GetVote()),
-			Commit: new(snap.GetMetadata().GetIndex()),
+	for i, entry := range suffix {
+		if entry.GetIndex() != snapIndex+uint64(i)+1 {
+			return fmt.Errorf("received snapshot %d has noncontiguous Ready suffix at %d", snapIndex, entry.GetIndex())
 		}
 	}
+	state := &raftpb.HardState{
+		Term:   new(max(s.hardState.GetTerm(), snapTerm)),
+		Vote:   new(s.hardState.GetVote()),
+		Commit: new(max(s.hardState.GetCommit(), snapIndex)),
+	}
+	if state.GetTerm() > s.hardState.GetTerm() {
+		state.Vote = new(uint64(0))
+	}
+	lastIndex := snapIndex + uint64(len(suffix))
+	if state.GetCommit() > lastIndex {
+		return fmt.Errorf("received snapshot %d with suffix through %d is behind commit %d", snapIndex, lastIndex, state.GetCommit())
+	}
 
-	// Persist the full snapshot file before its WAL record, following etcd's
-	// crash-safety order: an orphaned snap file is harmless and cleaned up by a
-	// later snapshot, while a WAL snapshot record without its snap file would
-	// make restart fail. The in-memory snapshot and entry cache were already
-	// replaced above; a persistence failure returns an error but does not roll
-	// those in-memory mutations back.
+	// The full snapshot must be durable before a WAL generation can refer to it.
+	// Until the first directory rename the previous WAL remains the recovery source.
 	if err := s.snapshotter.Save(snap); err != nil {
-		s.mu.Unlock()
-
 		return fmt.Errorf("saving snapshot file: %w", err)
 	}
-
-	walSnap := &walpb.Snapshot{
-		Index:     new(snap.GetMetadata().GetIndex()),
-		Term:      new(snap.GetMetadata().GetTerm()),
-		ConfState: snap.GetMetadata().GetConfState(),
+	if err := s.prepareReplacementWAL(snap, state, suffix); err != nil {
+		return err
 	}
-	// Persist a guard snapshot record before advancing HardState. Until the
-	// HardState commit reaches this index, etcd ignores the record on restart
-	// and the older snapshot and WAL segments remain available. Once HardState
-	// is durable, this record guarantees that the new snapshot is recognized.
-	if err := s.wal.SaveSnapshot(walSnap); err != nil {
-		s.mu.Unlock()
-
-		return fmt.Errorf("saving guard snapshot to WAL: %w", err)
+	close(s.stopPurge)
+	<-s.purgeDone
+	if err := switchWALDirectory(s.dataDir); err != nil {
+		return fmt.Errorf("switching WAL directory: %w", err)
 	}
-
-	// A commit-only HardState update does not make etcd WAL Save sync by
-	// itself. Buffer it after the durable guard record, then write the same
-	// snapshot record again as the sync barrier. Every durable prefix is safe:
-	// either the old HardState ignores the guard record, or the new HardState
-	// has a matching snapshot record that was already synced before it.
-	if err := s.wal.Save(s.hardState, nil); err != nil {
-		s.mu.Unlock()
-
-		return fmt.Errorf("saving HardState after guard snapshot to WAL: %w", err)
+	walsnap := &walpb.Snapshot{Index: new(snapIndex), Term: new(snapTerm)}
+	newWAL, err := wal.Open(s.zapLogger, s.etcdWalDir, walsnap)
+	if err != nil {
+		return fmt.Errorf("opening replacement WAL: %w", err)
 	}
+	_, recoveredState, recoveredEntries, err := newWAL.ReadAll()
+	if err != nil {
+		_ = newWAL.Close()
 
-	if err := s.wal.SaveSnapshot(walSnap); err != nil {
-		s.mu.Unlock()
-
-		return fmt.Errorf("syncing snapshot and HardState to WAL: %w", err)
+		return fmt.Errorf("reading replacement WAL: %w", err)
 	}
+	if !hardStateEqual(state, recoveredState) || len(recoveredEntries) != len(suffix) {
+		_ = newWAL.Close()
 
-	// Safe to clean up old snap files now — the WAL record is persisted.
-	s.snapshotter.CleanupOlderThan(snap.GetMetadata().GetIndex())
-	s.mu.Unlock()
+		return errors.New("replacement WAL did not preserve HardState and Ready suffix")
+	}
+	for i := range suffix {
+		if !proto.Equal(suffix[i], recoveredEntries[i]) {
+			_ = newWAL.Close()
 
-	// Applying a received snapshot discards the entire cached entry slice.
-	// Release the matching etcd WAL segment locks immediately; this
-	// node may not apply local entries soon enough for Compact to do it.
-	s.releaseLockTo(snap.GetMetadata().GetIndex())
+			return fmt.Errorf("replacement WAL changed Ready suffix entry %d", suffix[i].GetIndex())
+		}
+	}
+	oldWAL := s.wal
+	s.wal = newWAL
+	s.stopPurge = make(chan struct{})
+	s.purgeDone, _ = fileutil.PurgeFileWithDoneNotify(zap.NewNop(), s.etcdWalDir, ".wal", 1, s.purgeInterval, s.stopPurge)
+	s.snapshot = snap
+	s.hardState = state
+	s.entries = append([]*raftpb.Entry(nil), suffix...)
+	s.compactedIndex, s.compactedTerm = snapIndex, snapTerm
+	s.snapshotter.CleanupOlderThan(snapIndex)
+	if err := oldWAL.Close(); err != nil {
+		s.logger.WithFields(map[string]any{"error": err}).Errorf("Failed to close inactive WAL")
+	}
+	if err := cleanupReplacementWALs(s.dataDir); err != nil {
+		s.logger.WithFields(map[string]any{"error": err}).Errorf("Failed to clean inactive WAL directories")
+	}
 
 	return nil
 }
 
 // Compact compacts the log up to the given index.
 func (s *DefaultWAL) Compact(compactIndex uint64) error {
+	s.walWriteMu.Lock()
+	defer s.walWriteMu.Unlock()
 	s.mu.Lock()
 
 	if compactIndex > s.snapshot.GetMetadata().GetIndex() {
@@ -1114,6 +1137,8 @@ func (s *DefaultWAL) releaseLockTo(index uint64) {
 
 // Close closes the DefaultWAL. Safe to call multiple times.
 func (s *DefaultWAL) Close() error {
+	s.walWriteMu.Lock()
+	defer s.walWriteMu.Unlock()
 	select {
 	case <-s.stopPurge:
 		// Already closed

@@ -12,6 +12,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 	"go.etcd.io/etcd/server/v3/storage/wal"
+	"go.etcd.io/etcd/server/v3/storage/wal/walpb"
 	"go.etcd.io/raft/v3"
 	"go.etcd.io/raft/v3/raftpb"
 	"go.opentelemetry.io/otel/metric/noop"
@@ -129,7 +130,7 @@ func TestPurgeOldWALSegments(t *testing.T) {
 		assertOldWALSegmentsPurged(t, func(w *DefaultWAL, snapshotIndex uint64) {
 			require.NoError(t, w.ApplySnapshot(&raftpb.Snapshot{
 				Metadata: snapshotMeta(snapshotIndex, 1, &raftpb.ConfState{Voters: []uint64{1}}),
-			}))
+			}, nil))
 		})
 	})
 }
@@ -1084,7 +1085,7 @@ func TestLastIndex_WithSnapshotOnly(t *testing.T) {
 		Metadata: snapshotMeta(10, 2, cs),
 		Data:     []byte("snapshot data"),
 	}
-	require.NoError(t, w.ApplySnapshot(snap))
+	require.NoError(t, w.ApplySnapshot(snap, nil))
 
 	idx, err := w.LastIndex()
 	require.NoError(t, err)
@@ -1217,6 +1218,51 @@ func TestUpdateSnapshotConfStateSerializesSnapshotPersistence(t *testing.T) {
 
 // --- ApplySnapshot tests ---
 
+func TestReceivedSnapshotRestartDiscardsReplacedTail(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	w := newTestWALAt(t, dir)
+	cs := &raftpb.ConfState{Voters: []uint64{1, 2, 3}}
+
+	// The old leader left an uncommitted suffix. A new leader replaced only
+	// its first two entries before sending a snapshot at the replacement end.
+	require.NoError(t, w.Append(hs(3, 2, 2), []*raftpb.Entry{
+		ent(1, 1, nil), ent(2, 1, nil), ent(3, 3, nil),
+		ent(4, 3, nil), ent(5, 3, nil),
+	}))
+	require.NoError(t, w.Append(hs(4, 1, 4), []*raftpb.Entry{
+		ent(3, 2, nil), ent(4, 2, nil),
+	}))
+	require.NoError(t, w.ApplySnapshot(&raftpb.Snapshot{
+		Metadata: snapshotMeta(4, 2, cs),
+		Data:     []byte("received"),
+	}, nil))
+	last, err := w.LastIndex()
+	require.NoError(t, err)
+	require.Equal(t, uint64(4), last)
+	require.NoError(t, w.Close())
+	legacyReader, err := wal.Open(w.zapLogger, filepath.Join(dir, etcdWalDir), &walpb.Snapshot{
+		Index: new(uint64(4)), Term: new(uint64(2)),
+	})
+	require.NoError(t, err)
+	_, legacyState, legacyEntries, err := legacyReader.ReadAll()
+	require.NoError(t, err)
+	require.Empty(t, legacyEntries, "the unchanged etcd WAL reader must not find the old tail")
+	require.Equal(t, uint64(4), legacyState.GetTerm())
+	require.NoError(t, legacyReader.Close())
+
+	restarted := newTestWALAt(t, dir)
+	last, err = restarted.LastIndex()
+	require.NoError(t, err)
+	require.Equal(t, uint64(4), last, "replay must not resurrect the replaced entry 5/3")
+	state, _, err := restarted.InitialState()
+	require.NoError(t, err)
+	require.Equal(t, uint64(4), state.GetTerm())
+	require.Equal(t, uint64(1), state.GetVote())
+	require.Equal(t, uint64(4), state.GetCommit())
+}
+
 func TestApplySnapshot(t *testing.T) {
 	t.Parallel()
 
@@ -1232,7 +1278,7 @@ func TestApplySnapshot(t *testing.T) {
 		Metadata: snapshotMeta(10, 5, &raftpb.ConfState{Voters: []uint64{1, 2, 3}}),
 		Data:     []byte("full-snapshot"),
 	}
-	require.NoError(t, w.ApplySnapshot(snap))
+	require.NoError(t, w.ApplySnapshot(snap, nil))
 
 	// Verify snapshot is applied
 	gotSnap, err := w.Snapshot()
@@ -1259,10 +1305,13 @@ func TestApplySnapshotUnlocksOnSnapshotSaveFailure(t *testing.T) {
 
 	err := w.ApplySnapshot(&raftpb.Snapshot{
 		Metadata: snapshotMeta(10, 2, &raftpb.ConfState{Voters: []uint64{1}}),
-	})
+	}, nil)
 	require.ErrorContains(t, err, "saving snapshot file")
 	require.True(t, w.mu.TryLock(), "ApplySnapshot must unlock after a persistence failure")
 	w.mu.Unlock()
+	last, lastErr := w.LastIndex()
+	require.NoError(t, lastErr)
+	require.Equal(t, uint64(0), last, "a pre-switch failure must leave the old in-memory log active")
 }
 
 // --- Append edge cases ---
@@ -1446,7 +1495,7 @@ func TestCompact_EmptyEntriesAfterApplySnapshot(t *testing.T) {
 	snap := &raftpb.Snapshot{
 		Metadata: snapshotMeta(10, 2, &raftpb.ConfState{Voters: []uint64{1}}),
 	}
-	require.NoError(t, w.ApplySnapshot(snap))
+	require.NoError(t, w.ApplySnapshot(snap, nil))
 
 	// Compact at snapshot index with no entries should succeed (no-op via empty entries path)
 	// firstIndex = snapshot.Metadata.Index + 1 = 11

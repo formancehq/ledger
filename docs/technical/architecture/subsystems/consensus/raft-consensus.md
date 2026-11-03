@@ -745,31 +745,29 @@ The leader tracks each follower's state:
    on a crash before snapshot installation.
 2. Ask the Applier to drain pending commits, interrupt conflicting maintenance,
    and enter `statusInstallingSnapshot` before changing snapshot/FSM state.
-3. `WAL.ApplySnapshot` replaces its in-memory snapshot and cached entry window.
-   It saves the full snapshot file, writes a durable guard snapshot record,
-   saves HardState, then writes the snapshot record again as the sync barrier.
-   Persistence failure leaves the preceding in-memory mutations visible and
-   returns an error; the node stops instead of acknowledging the Ready.
-4. If this same Ready carries entries after the snapshot, append that suffix
-   again to restore the cached Storage window before any peer or local storage
-   acknowledgement. This repeats at most the Ready suffix's bytes once, only
-   on a snapshot Ready; ordinary Ready persistence has no additional append.
+3. `WAL.ApplySnapshot` saves the full snapshot file and prepares a new WAL with
+   the snapshot, current HardState and any entries from this Ready after the
+   snapshot. It syncs the new WAL before replacing the active `etcd/` directory.
+   Startup resolves an interrupted directory replacement before WAL replay.
+4. After the replacement is durable, `ApplySnapshot` replaces its in-memory
+   snapshot and cached entry window with the same suffix. An error before the
+   directory switch leaves the old in-memory state; an error during the switch
+   stops the node for restart recovery. Neither path acknowledges the Ready.
 5. `Synchronizer.InstallSnapshot` records the expected snapshot index and resets
    caches. It does not install business data from the Raft message. Enqueue
    checkpoint synchronization, then release the Ready's messages and local
    storage responses.
 
-The suffix restoration uses the existing WAL format and append path. Live
-`LastIndex`, `Term` and `Entries` must expose the same suffix that a reopened
-WAL recovers. The repeated `Append` updates cached entries before its durable
-write. If that write fails, the installed snapshot and suffix stay
-visible in memory while disk retains the last successfully written WAL prefix.
-Ready processing stops before storage acknowledgement; these in-memory changes
-are not rolled back.
+The replacement uses the existing WAL record format and active directory path.
+Live `LastIndex`, `Term` and `Entries` expose the same suffix that a reopened
+WAL recovers. The old WAL is retained until the replacement has been synced;
+the new WAL carries the persisted term and vote rather than deriving them from
+the snapshot's log term. Ready processing stops before acknowledgement on any
+persistence failure.
 
-The suffix restoration changes no wire or persisted fields and requires no
-migration of released RC state. Old and new voters remain interoperable during
-a rolling upgrade. The WAL suffix is cluster-local Raft state; cross-cluster
+The replacement changes no wire or WAL record fields and requires no migration
+of released RC state. Old and new voters remain interoperable during a rolling
+upgrade. The WAL suffix is cluster-local Raft state; cross-cluster
 restore continues to rebuild its independent Raft domain from the restored
 business checkpoint and exported delta.
 
