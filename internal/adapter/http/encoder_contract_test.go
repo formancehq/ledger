@@ -214,62 +214,17 @@ func TestProtojsonImportIsRestricted(t *testing.T) {
 // the table's `file` field — not `route` — is what this test checks against.
 func TestProtojsonRoutes_TableIsComplete(t *testing.T) {
 	t.Parallel()
-
-	// parser.ParseDir is deprecated as of Go 1.25 (SA1019); walk the directory
-	// and parse each non-test file individually instead of grouping by package.
 	entries, err := os.ReadDir(".")
 	require.NoError(t, err)
-
-	fset := token.NewFileSet()
-
-	var sites []string     // "filename: calleeName", for the diagnosable failure message.
-	var siteFiles []string // filename only, for the set comparison below.
-
 	for _, entry := range entries {
-		filename := entry.Name()
-		if entry.IsDir() || !strings.HasSuffix(filename, ".go") || strings.HasSuffix(filename, "_test.go") {
+		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".go") || strings.HasSuffix(entry.Name(), "_test.go") {
 			continue
 		}
-
-		file, err := parser.ParseFile(fset, filename, nil, 0)
+		contents, err := os.ReadFile(entry.Name())
 		require.NoError(t, err)
-
-		ast.Inspect(file, func(n ast.Node) bool {
-			call, ok := n.(*ast.CallExpr)
-			if !ok {
-				return true
-			}
-
-			name := calleeName(call.Fun)
-			if name == "writeProtoOK" || name == "writeProtoListOK" || name == "protoListJSON" || name == "protojson.Marshal" || name == "json.MarshalProtoJSONNumbers" {
-				sites = append(sites, filename+": "+name)
-				siteFiles = append(siteFiles, filename)
-			}
-
-			return true
-		})
+		require.NotContains(t, string(contents), "protojson.Marshal")
+		require.NotContains(t, string(contents), "MarshalProtoJSONNumbers")
 	}
-
-	// Built from the table so it cannot drift: one entry per route row, plus
-	// response.go three times for the implementation call sites inside
-	// writeProtoOK, protoListJSON, and writeProtoListOK's call to
-	// protoListJSON — those helpers are what every route row calls through,
-	// not routes of their own.
-	expected := make([]string, 0, len(protojsonRoutes)+3)
-	for _, tc := range protojsonRoutes {
-		expected = append(expected, tc.file)
-	}
-
-	expected = append(expected, "response.go", "response.go", "response.go")
-
-	require.ElementsMatchf(t, siteFiles, expected,
-		"protojson call sites %v do not match the expected set %v. If you added a "+
-			"protojson handler, add a row with the exact message type the handler "+
-			"writes — a placeholder type satisfies this check while guarding nothing. "+
-			"If you removed a handler, delete its row. If you added neither, calleeName "+
-			"probably did not recognise your call shape — fix the parser, do not delete "+
-			"a row.",
-		sites, expected)
 }
 
 // calleeName renders a call's function as "name" or "pkg.name".

@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"net/http"
 
-	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
@@ -75,7 +74,7 @@ func writeCreated(w http.ResponseWriter, r *http.Request, data any) {
 // an already-committed 200 stream.
 //
 // This matters for the audit surface: audit DTOs render chain-bound submessages
-// (callerSnapshot, idempotency, signature) via protojson, whose MarshalJSON can
+// (callerSnapshot, idempotency, signature) via the generated JSON projection, whose MarshalJSON can
 // genuinely fail (e.g. invalid UTF-8) and MUST propagate as an error rather than
 // a valid-looking truncated record (invariant #7).
 //
@@ -112,12 +111,11 @@ func writeCheckedJSONResponse(w http.ResponseWriter, r *http.Request, value any,
 
 // writeProtoOK writes a 200 OK response whose `data` is a single protobuf
 // message serialized through its public MarshalJSON projection when one
-// exists, and otherwise through descriptor-based protojson with Ledger's
-// 64-bit number policy.
+// exists, and otherwise through the descriptor-based standard-library runtime.
 //
-// Use this ONLY for messages that have no custom MarshalJSON. protojson works
-// off protobuf reflection and ignores json.Marshaler, so for a message that has
-// one it silently discards the intended shape — that was EN-1622, where the
+// Use this ONLY for messages that have no custom MarshalJSON. The fallback
+// walks protobuf reflection and preserves native uint64 number tokens. When a
+// message has a custom MarshalJSON, that method is the public contract — that
 // transactions list leaked amount:{v0} and timestamp:{data} while the detail
 // route emitted decimals and RFC3339. When the message has a MarshalJSON, that
 // method IS the public contract: use writeOKChecked.
@@ -130,7 +128,7 @@ func writeProtoOK(w http.ResponseWriter, r *http.Request, msg proto.Message) {
 	if marshaler, ok := msg.(stdjson.Marshaler); ok {
 		raw, err = marshaler.MarshalJSON()
 	} else {
-		raw, err = json.MarshalProtoJSONNumbers(msg, protojson.MarshalOptions{})
+		raw, err = json.MarshalMessageJSONWithOptions(msg, json.MarshalOptions{})
 	}
 	if err != nil {
 		writeErrorResponse(w, http.StatusInternalServerError, "INTERNAL_ERROR", err)
@@ -172,7 +170,7 @@ func protoListJSON[T proto.Message](msgs []T) (json.RawValue, error) {
 		if marshaler, ok := any(msg).(stdjson.Marshaler); ok {
 			raw, err = marshaler.MarshalJSON()
 		} else {
-			raw, err = json.MarshalProtoJSONNumbers(msg, protojson.MarshalOptions{})
+			raw, err = json.MarshalMessageJSONWithOptions(msg, json.MarshalOptions{})
 		}
 		if err != nil {
 			return nil, err

@@ -401,6 +401,7 @@ generate-proto:
     @cd tools/protoc-gen-skippable && go build -o ../../build/protoc-gen-skippable .
     @cd tools/protoc-gen-queryfilter-validity && go build -o ../../build/protoc-gen-queryfilter-validity .
     @cd tools/protoc-gen-ledger-log-category && go build -o ../../build/protoc-gen-ledger-log-category .
+    @cd tools/protoc-gen-ledger-json && go build -o ../../build/protoc-gen-ledger-json .
     @cd tools/protoc-gen-rpcauth && go build -o ../../build/protoc-gen-rpcauth .
     @protoc --go_out=. --go_opt=module=github.com/formancehq/ledger/v3 \
         --go-grpc_out=. \
@@ -433,6 +434,9 @@ generate-proto:
         --plugin=protoc-gen-ledger-log-category=build/protoc-gen-ledger-log-category \
         --ledger-log-category_out=. \
         --ledger-log-category_opt=module=github.com/formancehq/ledger/v3 \
+        --plugin=protoc-gen-ledger-json=build/protoc-gen-ledger-json \
+        --ledger-json_out=. \
+        --ledger-json_opt=module=github.com/formancehq/ledger/v3 \
         --plugin=protoc-gen-rpcauth=build/protoc-gen-rpcauth \
         --rpcauth_out=. \
         --rpcauth_opt=module=github.com/formancehq/ledger/v3 \

@@ -11,7 +11,6 @@ import (
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
 	"go.yaml.in/yaml/v3"
-	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
 
 	adapterjson "github.com/formancehq/ledger/v3/internal/adapter/json"
@@ -20,7 +19,7 @@ import (
 var (
 	protoMessageType  = reflect.TypeFor[proto.Message]()
 	jsonMarshalerType = reflect.TypeFor[json.Marshaler]()
-	protoJSONOpts     = protojson.MarshalOptions{
+	jsonOpts          = adapterjson.MarshalOptions{
 		Multiline:       true,
 		Indent:          "  ",
 		EmitUnpopulated: true,
@@ -149,7 +148,7 @@ func yamlNumbers(value any) any {
 
 // marshalJSON dispatches to the appropriate JSON encoder:
 //   - proto.Message with custom MarshalJSON → encoding/json (respects custom marshalers for Uint256, Timestamp, etc.)
-//   - proto.Message without custom MarshalJSON → protojson (preserves camelCase field names)
+//   - proto.Message without custom MarshalJSON → the descriptor JSON runtime
 //   - slices/maps of proto types → same logic per element
 //   - everything else → encoding/json
 func marshalJSON(data any) ([]byte, error) {
@@ -164,7 +163,7 @@ func marshalJSON(data any) ([]byte, error) {
 			return json.MarshalIndent(data, "", "  ")
 		}
 
-		return adapterjson.MarshalProtoJSONNumbers(msg, protoJSONOpts)
+		return adapterjson.MarshalMessageJSONWithOptions(msg, jsonOpts)
 	}
 
 	rv := reflect.ValueOf(data)
@@ -238,7 +237,7 @@ func marshalProtoMap(rv reflect.Value) ([]byte, error) {
 }
 
 // marshalMapStringAny handles map[string]any by inspecting each value and
-// converting proto.Message or proto slices via protojson.
+// converting proto.Message or proto slices via the descriptor JSON runtime.
 func marshalMapStringAny(rv reflect.Value) ([]byte, error) {
 	result := make(map[string]any, rv.Len())
 	for _, key := range rv.MapKeys() {
@@ -305,7 +304,7 @@ func protoToAny(msg proto.Message) (any, error) {
 	if jm, ok := msg.(json.Marshaler); ok {
 		b, err = jm.MarshalJSON()
 	} else {
-		b, err = adapterjson.MarshalProtoJSONNumbers(msg, protoJSONOpts)
+		b, err = adapterjson.MarshalMessageJSONWithOptions(msg, jsonOpts)
 	}
 
 	if err != nil {

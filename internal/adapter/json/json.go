@@ -7,11 +7,13 @@ import (
 	stdjson "encoding/json"
 	"encoding/json/jsontext"
 	jsonv2 "encoding/json/v2"
+	"fmt"
 	"io"
 	"strconv"
+	"time"
+	"unicode/utf8"
 
 	"github.com/bytedance/sonic"
-	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/reflect/protoreflect"
 )
@@ -50,123 +52,179 @@ func Marshal(v any) ([]byte, error) {
 	return sonic.Marshal(v)
 }
 
-// MarshalProtoJSONNumbers emits protobuf JSON while representing all signed
-// and unsigned 64-bit scalar fields as JSON numbers. protojson deliberately
-// quotes these fields to preserve precision in JavaScript; Ledger's public
-// JSON contract instead uses decimal number tokens. The descriptor-guided
-// walk avoids converting ordinary business strings that happen to contain
-// digits.
-func MarshalProtoJSONNumbers(msg proto.Message, opts protojson.MarshalOptions) ([]byte, error) {
-	raw, err := opts.Marshal(msg)
+// MarshalMessageJSON is the standard-library JSON runtime used by
+// protoc-gen-ledger-json generated MarshalJSON methods. It intentionally
+// follows the Ledger API projection: descriptor JSON names, enum names, native
+// 64-bit JSON numbers, and recursive oneof/map/list handling.
+func MarshalMessageJSON(msg proto.Message) ([]byte, error) {
+	return MarshalMessageJSONWithOptions(msg, MarshalOptions{})
+}
+
+// MarshalOptions controls the standard-library protobuf JSON projection.
+// Unlike protojson, 64-bit integer fields are always emitted as JSON numbers.
+type MarshalOptions struct {
+	Multiline       bool
+	Indent          string
+	EmitUnpopulated bool
+}
+
+// MarshalMessageJSONWithOptions is the option-aware form used by CLI output
+// and persistence inspection tools.
+func MarshalMessageJSONWithOptions(msg proto.Message, options MarshalOptions) ([]byte, error) {
+	value, err := messageJSONValueWithOptions(msg.ProtoReflect(), options)
 	if err != nil {
 		return nil, err
 	}
-
-	normalized, err := normalizeProtoJSONNumbers(raw, msg.ProtoReflect().Descriptor())
-	if err != nil {
-		return nil, err
+	raw, err := stdjson.Marshal(value)
+	if err != nil || !options.Multiline {
+		return raw, err
 	}
-	if !opts.Multiline {
-		return normalized, nil
-	}
-
 	var formatted bytes.Buffer
-	if err := stdjson.Indent(&formatted, normalized, "", opts.Indent); err != nil {
+	if err := stdjson.Indent(&formatted, raw, "", options.Indent); err != nil {
 		return nil, err
 	}
-
 	return formatted.Bytes(), nil
 }
 
-func normalizeProtoJSONNumbers(raw []byte, desc protoreflect.MessageDescriptor) ([]byte, error) {
-	var object map[string]stdjson.RawMessage
-	if err := stdjson.Unmarshal(raw, &object); err != nil {
-		return nil, err
-	}
-
-	fields := desc.Fields()
-	for name, value := range object {
-		field := fields.ByJSONName(name)
-		if field == nil {
-			continue
-		}
-		normalized, err := normalizeProtoJSONValue(value, field)
-		if err != nil {
-			return nil, err
-		}
-		object[name] = normalized
-	}
-
-	return stdjson.Marshal(object)
+func messageJSONValue(msg protoreflect.Message) (map[string]any, error) {
+	return messageJSONValueWithOptions(msg, MarshalOptions{})
 }
 
-func normalizeProtoJSONValue(raw []byte, field protoreflect.FieldDescriptor) ([]byte, error) {
-	if field.IsMap() {
-		var object map[string]stdjson.RawMessage
-		if err := stdjson.Unmarshal(raw, &object); err != nil {
-			return nil, err
-		}
-		valueDesc := field.MapValue()
-		for key, value := range object {
-			normalized, err := normalizeProtoJSONScalarOrMessage(value, valueDesc)
-			if err != nil {
-				return nil, err
+func messageJSONValueWithOptions(msg protoreflect.Message, options MarshalOptions) (map[string]any, error) {
+	if !msg.IsValid() {
+		return nil, nil
+	}
+	out := make(map[string]any)
+	var err error
+	msg.Range(func(field protoreflect.FieldDescriptor, value protoreflect.Value) bool {
+		out[field.JSONName()], err = fieldJSONValue(field, value)
+		return err == nil
+	})
+	if options.EmitUnpopulated {
+		fields := msg.Descriptor().Fields()
+		for i := 0; i < fields.Len(); i++ {
+			field := fields.Get(i)
+			if _, ok := out[field.JSONName()]; ok || field.HasPresence() {
+				continue
 			}
-			object[key] = normalized
+			out[field.JSONName()] = defaultJSONValue(field)
 		}
+	}
+	return out, err
+}
 
-		return stdjson.Marshal(object)
+func defaultJSONValue(field protoreflect.FieldDescriptor) any {
+	if field.IsList() {
+		return []any{}
+	}
+	if field.IsMap() {
+		return map[string]any{}
+	}
+	if field.Message() != nil {
+		return nil
+	}
+	if field.Kind() == protoreflect.EnumKind {
+		if enum := field.Enum().Values().ByNumber(field.DefaultEnumValue().Number()); enum != nil {
+			return string(enum.Name())
+		}
+	}
+	return field.Default().Interface()
+}
+
+func fieldJSONValue(field protoreflect.FieldDescriptor, value protoreflect.Value) (any, error) {
+	if field.IsMap() {
+		out := make(map[string]any)
+		var mapErr error
+		value.Map().Range(func(key protoreflect.MapKey, item protoreflect.Value) bool {
+			converted, err := scalarJSONValue(field.MapValue(), item)
+			if err != nil {
+				mapErr = err
+				return false
+			}
+			out[mapKeyString(key)] = converted
+			return true
+		})
+		return out, mapErr
 	}
 	if field.IsList() {
-		var values []stdjson.RawMessage
-		if err := stdjson.Unmarshal(raw, &values); err != nil {
-			return nil, err
-		}
-		for i, value := range values {
-			normalized, err := normalizeProtoJSONScalarOrMessage(value, field)
+		values := make([]any, value.List().Len())
+		for i := range values {
+			converted, err := scalarJSONValue(field, value.List().Get(i))
 			if err != nil {
 				return nil, err
 			}
-			values[i] = normalized
+			values[i] = converted
 		}
-
-		return stdjson.Marshal(values)
+		return values, nil
 	}
-
-	return normalizeProtoJSONScalarOrMessage(raw, field)
+	return scalarJSONValue(field, value)
 }
 
-func normalizeProtoJSONScalarOrMessage(raw []byte, field protoreflect.FieldDescriptor) ([]byte, error) {
-	if nested := field.Message(); nested != nil {
-		return normalizeProtoJSONNumbers(raw, nested)
+func scalarJSONValue(field protoreflect.FieldDescriptor, value protoreflect.Value) (any, error) {
+	if field.Message() != nil {
+		if marshaler, ok := value.Message().Interface().(interface{ MarshalJSON() ([]byte, error) }); ok {
+			raw, err := marshaler.MarshalJSON()
+			if err != nil {
+				return nil, err
+			}
+			var nested any
+			if err := stdjson.Unmarshal(raw, &nested); err != nil {
+				return nil, err
+			}
+			return nested, nil
+		}
+		if field.Message().FullName() == "google.protobuf.Timestamp" {
+			seconds := value.Message().Get(field.Message().Fields().ByName("seconds")).Int()
+			nanos := value.Message().Get(field.Message().Fields().ByName("nanos")).Int()
+			return time.Unix(seconds, nanos).UTC().Format(time.RFC3339Nano), nil
+		}
+		return messageJSONValue(value.Message())
 	}
-
 	switch field.Kind() {
-	case protoreflect.Int64Kind, protoreflect.Sint64Kind, protoreflect.Sfixed64Kind:
-		var value string
-		if len(raw) > 0 && raw[0] == '"' {
-			if err := stdjson.Unmarshal(raw, &value); err != nil {
-				return nil, err
-			}
-			if _, err := strconv.ParseInt(value, 10, 64); err != nil {
-				return nil, err
-			}
-			return []byte(value), nil
+	case protoreflect.BoolKind:
+		return value.Bool(), nil
+	case protoreflect.StringKind:
+		if !utf8.ValidString(value.String()) {
+			return nil, fmt.Errorf("invalid UTF-8 in protobuf string field %s", field.FullName())
 		}
-	case protoreflect.Uint64Kind, protoreflect.Fixed64Kind:
-		var value string
-		if len(raw) > 0 && raw[0] == '"' {
-			if err := stdjson.Unmarshal(raw, &value); err != nil {
-				return nil, err
-			}
-			if _, err := strconv.ParseUint(value, 10, 64); err != nil {
-				return nil, err
-			}
-			return []byte(value), nil
+		return value.String(), nil
+	case protoreflect.BytesKind:
+		return value.Bytes(), nil
+	case protoreflect.Int32Kind, protoreflect.Sint32Kind, protoreflect.Sfixed32Kind,
+		protoreflect.Int64Kind, protoreflect.Sint64Kind, protoreflect.Sfixed64Kind:
+		return value.Int(), nil
+	case protoreflect.Uint32Kind, protoreflect.Fixed32Kind, protoreflect.Uint64Kind, protoreflect.Fixed64Kind:
+		return value.Uint(), nil
+	case protoreflect.FloatKind, protoreflect.DoubleKind:
+		return value.Float(), nil
+	case protoreflect.EnumKind:
+		enum := field.Enum().Values().ByNumber(value.Enum())
+		if enum == nil {
+			return int32(value.Enum()), nil
 		}
+		return string(enum.Name()), nil
+	default:
+		return nil, nil
 	}
+}
 
-	return raw, nil
+func mapKeyString(key protoreflect.MapKey) string {
+	switch value := key.Interface().(type) {
+	case string:
+		return value
+	case bool:
+		return strconv.FormatBool(value)
+	case uint32:
+		return strconv.FormatUint(uint64(value), 10)
+	case uint64:
+		return strconv.FormatUint(value, 10)
+	case int32:
+		return strconv.FormatInt(int64(value), 10)
+	case int64:
+		return strconv.FormatInt(value, 10)
+	default:
+		return fmt.Sprint(value)
+	}
 }
 
 // Unmarshal parses the JSON-encoded data and stores the result in the value pointed to by v.

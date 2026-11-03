@@ -3,8 +3,6 @@ package commonpb
 import (
 	"fmt"
 
-	"google.golang.org/protobuf/encoding/protojson"
-
 	"github.com/formancehq/ledger/v3/internal/adapter/json"
 )
 
@@ -50,7 +48,7 @@ func (x *LedgerInfo) MarshalJSON() ([]byte, error) {
 	if x.GetMirrorSource() != nil {
 		// This configuration's protojson shape is the documented read shape,
 		// including rewrite-rule oneofs; it differs from the flat create input.
-		b, err := json.MarshalProtoJSONNumbers(x.GetMirrorSource(), protojson.MarshalOptions{})
+		b, err := json.MarshalMessageJSONWithOptions(x.GetMirrorSource(), json.MarshalOptions{})
 		if err != nil {
 			return nil, fmt.Errorf("ledger info mirror source: %w", err)
 		}

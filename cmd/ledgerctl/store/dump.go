@@ -8,7 +8,6 @@ import (
 
 	"github.com/cockroachdb/pebble/v2"
 	"github.com/spf13/cobra"
-	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
 
 	adapterjson "github.com/formancehq/ledger/v3/internal/adapter/json"
@@ -316,9 +315,9 @@ func tryProtoJSON(val []byte, msg proto.Message) string {
 		return fmt.Sprintf("(proto decode error: %v) hex=%s", err, hex.EncodeToString(val))
 	}
 
-	opts := protojson.MarshalOptions{Multiline: false, EmitUnpopulated: false}
+	opts := adapterjson.MarshalOptions{Multiline: false, EmitUnpopulated: false}
 
-	jsonBytes, err := adapterjson.MarshalProtoJSONNumbers(msg, opts)
+	jsonBytes, err := adapterjson.MarshalMessageJSONWithOptions(msg, opts)
 	if err != nil {
 		return fmt.Sprintf("(json encode error: %v) hex=%s", err, hex.EncodeToString(val))
 	}

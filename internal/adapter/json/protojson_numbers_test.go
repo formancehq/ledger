@@ -6,14 +6,13 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
-	"google.golang.org/protobuf/encoding/protojson"
 
 	ledgerjson "github.com/formancehq/ledger/v3/internal/adapter/json"
 	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
 
-func TestMarshalProtoJSONNumbersConvertsNested64BitScalars(t *testing.T) {
+func TestMarshalMessageJSONConvertsNested64BitScalars(t *testing.T) {
 	t.Parallel()
 
 	msg := &clusterpb.ClusterState{
@@ -22,7 +21,7 @@ func TestMarshalProtoJSONNumbersConvertsNested64BitScalars(t *testing.T) {
 		Nodes:     []*clusterpb.NodeInfo{{Id: 1}},
 	}
 
-	raw, err := ledgerjson.MarshalProtoJSONNumbers(msg, protojson.MarshalOptions{})
+	raw, err := ledgerjson.MarshalMessageJSONWithOptions(msg, ledgerjson.MarshalOptions{})
 	require.NoError(t, err)
 
 	var object map[string]json.RawMessage
@@ -35,11 +34,11 @@ func TestMarshalProtoJSONNumbersConvertsNested64BitScalars(t *testing.T) {
 	require.Equal(t, "1", string(nodes[0]["id"]))
 }
 
-func TestMarshalProtoJSONNumbersPreservesDigitStrings(t *testing.T) {
+func TestMarshalMessageJSONPreservesDigitStrings(t *testing.T) {
 	t.Parallel()
 
 	msg := &clusterpb.ClusterState{State: "123"}
-	raw, err := ledgerjson.MarshalProtoJSONNumbers(msg, protojson.MarshalOptions{EmitUnpopulated: true})
+	raw, err := ledgerjson.MarshalMessageJSONWithOptions(msg, ledgerjson.MarshalOptions{EmitUnpopulated: true})
 	require.NoError(t, err)
 
 	var object map[string]any
@@ -47,7 +46,7 @@ func TestMarshalProtoJSONNumbersPreservesDigitStrings(t *testing.T) {
 	require.Equal(t, "123", object["state"])
 }
 
-func TestMarshalProtoJSONNumbersUsesPublicProjection(t *testing.T) {
+func TestMarshalMessageJSONUsesPublicProjection(t *testing.T) {
 	t.Parallel()
 
 	msg := &commonpb.Transaction{Id: math.MaxUint64}

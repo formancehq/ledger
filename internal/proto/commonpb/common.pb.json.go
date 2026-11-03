@@ -7,20 +7,20 @@ import (
 	"strconv"
 	"strings"
 
-	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
 
 	"github.com/formancehq/ledger/v3/internal/adapter/json"
 )
 
-// protoFieldJSON marshals a proto.Message field to json.RawValue using protojson,
+// protoFieldJSON marshals a proto.Message field to json.RawValue using the
+// descriptor JSON runtime,
 // preserving camelCase field names. Returns nil for nil/zero messages.
 func protoFieldJSON(msg proto.Message) json.RawValue {
 	if msg == nil {
 		return nil
 	}
 
-	b, err := json.MarshalProtoJSONNumbers(msg, protojson.MarshalOptions{})
+	b, err := json.MarshalMessageJSONWithOptions(msg, json.MarshalOptions{})
 	if err != nil {
 		return nil
 	}
@@ -101,8 +101,8 @@ func (x *LogPayload) jsonValue() (any, error) {
 			Apply *ApplyLedgerLog `json:"apply,omitempty"`
 		}{Apply: p.Apply}, nil
 	default:
-		// Other variants (signing, sinks, etc.) — use protojson for camelCase
-		raw, err := json.MarshalProtoJSONNumbers(x, protojson.MarshalOptions{})
+		// Other variants (signing, sinks, etc.) — use descriptor JSON for camelCase
+		raw, err := json.MarshalMessageJSONWithOptions(x, json.MarshalOptions{})
 
 		return json.RawValue(raw), err
 	}
@@ -194,11 +194,11 @@ func (x *LedgerLogPayload) MarshalJSON() ([]byte, error) {
 		return custom.MarshalJSON()
 	}
 
-	return json.MarshalProtoJSONNumbers(message, protojson.MarshalOptions{})
+	return json.MarshalMessageJSONWithOptions(message, json.MarshalOptions{})
 }
 
 // MarshalJSONTo dispatches without hiding nested postings behind an opaque
-// MarshalJSON boundary. Unrelated protobuf variants retain protojson output.
+// MarshalJSON boundary. Unrelated protobuf variants retain descriptor JSON output.
 func (x *LedgerLogPayload) MarshalJSONTo(enc *jsontext.Encoder) error {
 	message, err := x.jsonMessage()
 	if err != nil {
@@ -207,7 +207,7 @@ func (x *LedgerLogPayload) MarshalJSONTo(enc *jsontext.Encoder) error {
 	if _, ok := message.(interface{ MarshalJSON() ([]byte, error) }); ok {
 		return json.MarshalEncode(enc, message)
 	}
-	raw, err := json.MarshalProtoJSONNumbers(message, protojson.MarshalOptions{})
+	raw, err := json.MarshalMessageJSONWithOptions(message, json.MarshalOptions{})
 	if err != nil {
 		return err
 	}
