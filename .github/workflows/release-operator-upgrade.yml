@@ -4,9 +4,11 @@ on:
   workflow_dispatch:
     inputs:
       release_branch:
-        description: Release branch to test, for example release/v3.0
+        description: Supported release branch (release/v3.0 only)
         required: true
-        type: string
+        type: choice
+        options:
+          - release/v3.0
       transition:
         description: Adjacent RC upgrade to validate
         required: true
@@ -18,7 +20,7 @@ on:
   workflow_call:
     inputs:
       release_branch:
-        description: Release branch to test, for example release/v3.0
+        description: Supported release branch (release/v3.0 only)
         required: true
         type: string
       transition:

@@ -209,7 +209,7 @@ test-model-cluster duration="180":
 test-rc1-rolling-upgrade:
     tests/upgrade/run.sh
 
-# Validate a published release -> release branch HEAD using the Kubernetes operator.
+# Validate an adjacent v3.0 RC -> exact release/v3.0 HEAD using the operator.
 test-release-operator-upgrade:
     tests/upgrade/run_operator.sh "$RELEASE_BRANCH"
 

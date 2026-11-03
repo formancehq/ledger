@@ -934,22 +934,29 @@ minimum mixed-window soak (default 15 seconds). Use `KEEP_WORKDIR=1` to retain
 revision and image hashes and failed Pod logs. The runner is separate from the
 Antithesis model suite because that driver intentionally toggles maintenance.
 
-#### Published release to branch HEAD (operator)
+#### Adjacent v3.0 RC to branch HEAD (operator)
 
 Dispatch `.github/workflows/release-operator-upgrade.yml` with a
-`release/vX.Y` branch, or run
-`RELEASE_BRANCH=release/v3.0 just test-release-operator-upgrade` locally. The
-launcher selects the latest published stable or RC release tag reachable from
-the branch HEAD, pulls its published Ledger and operator images, builds both
-target images from the exact HEAD, and runs Chainsaw in an isolated kind cluster.
-The target Pod image tag is its full local image ID. The test checks a real
-operator upgrade before the Ledger StatefulSet rollout, a ready old/new Ledger
-Pod coexistence window, retained PVC identities,
-data before and after, and every voter's store check. It does not write during
-the mixed-Ledger-version interval or test maintenance-mode rejection.
+`release/v3.0` branch and the default `rc2-to-rc3` transition, or run
+`RELEASE_BRANCH=release/v3.0 just test-release-operator-upgrade` locally after
+the harness on `main` has been integrated into that release branch. The
+launcher pins the published rc.2 source and exact release branch HEAD, pulls
+the source Ledger and operator images, and builds both target images from that
+one target commit. It tags the local images `v3.0.0-rc.3` without publishing
+them; recorded Docker and Pod image IDs prove which builds ran. Chainsaw
+checks an operator upgrade before the Ledger rollout, rejection of a
+non-adjacent RC request, ready old/new Ledger Pod coexistence with quorum,
+retained PVC identities, data and Raft progress before and after, and every
+voter's store check. It does not write during mixed Ledger versions or test
+maintenance-mode rejection.
 The workflow saves the evidence under `build/upgrade-operator/` and uploads it
 even on failure. A Docker daemon and access to the published GHCR image are
-required. The image-ID tag does not exercise adjacent-RC tag admission.
+required. The separate `rc3-to-rc4` transition is prepared for a future
+mandatory stopped boundary; run it only after rc.3 is published and the
+format-change PR adds rc.4 to the operator's stop list. It checks drain,
+absence of all old Pods before target Pod creation, retained PVCs, target-voter
+replay and post-upgrade audit. See [Server Binary Upgrades](../../ops/upgrades.md#operator-managed-rc2-to-rc3-rolling-validation)
+for the detailed coverage and limits.
 
 ```bash
 # With Ginkgo
