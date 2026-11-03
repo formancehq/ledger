@@ -7,6 +7,7 @@ import (
 
 	"google.golang.org/protobuf/compiler/protogen"
 	"google.golang.org/protobuf/encoding/protowire"
+	"google.golang.org/protobuf/reflect/protoreflect"
 	"google.golang.org/protobuf/types/pluginpb"
 )
 
@@ -40,22 +41,14 @@ func main() {
 			g.P()
 			g.P("package ", file.GoPackageName)
 			g.P()
-			commonPackage := string(file.Desc.Package()) == "common"
-			if commonPackage {
+			if string(file.Desc.Package()) == "common" {
 				emitRuntime(g)
 			} else {
-				g.P(`import commonpb "github.com/formancehq/ledger/v3/internal/proto/commonpb"`)
+				g.P(`import jsonv2 "encoding/json/v2"`)
 			}
 			g.P()
 			for _, message := range selectedMessages {
-				g.P("func (x *", message.GoIdent.GoName, ") MarshalJSON() ([]byte, error) {")
-				if commonPackage {
-					g.P("\treturn MarshalLedgerJSON(x)")
-				} else {
-					g.P("\treturn commonpb.MarshalLedgerJSON(x)")
-				}
-				g.P("}")
-				g.P()
+				emitMessage(g, message)
 			}
 		}
 		return nil
@@ -68,6 +61,9 @@ func emitRuntime(g *protogen.GeneratedFile) {
 	}
 }
 
+// runtimeSource is retained for hand-written legacy projections. The generated
+// MarshalJSON methods below do not use it: they access generated fields
+// directly and only use this helper through the older explicit APIs.
 const runtimeSource = `import (
 	"encoding/json/jsontext"
 	jsonv2 "encoding/json/v2"
@@ -153,9 +149,7 @@ func ledgerJSONField(field protoreflect.FieldDescriptor, value protoreflect.Valu
 		for i := range out {
 			var err error
 			out[i], err = ledgerJSONScalar(field, value.List().Get(i), options)
-			if err != nil {
-				return nil, err
-			}
+			if err != nil { return nil, err }
 		}
 		return out, nil
 	}
@@ -166,13 +160,9 @@ func ledgerJSONScalar(field protoreflect.FieldDescriptor, value protoreflect.Val
 	if field.Message() != nil {
 		if marshaler, ok := value.Message().Interface().(interface{ MarshalJSON() ([]byte, error) }); ok {
 			raw, err := marshaler.MarshalJSON()
-			if err != nil {
-				return nil, err
-			}
+			if err != nil { return nil, err }
 			var nested any
-			if err := jsonv2.Unmarshal(raw, &nested); err != nil {
-				return nil, err
-			}
+			if err := jsonv2.Unmarshal(raw, &nested); err != nil { return nil, err }
 			return nested, nil
 		}
 		if field.Message().FullName() == "google.protobuf.Timestamp" {
@@ -183,51 +173,107 @@ func ledgerJSONScalar(field protoreflect.FieldDescriptor, value protoreflect.Val
 		return ledgerJSONValue(value.Message(), options)
 	}
 	switch field.Kind() {
-	case protoreflect.BoolKind:
-		return value.Bool(), nil
+	case protoreflect.BoolKind: return value.Bool(), nil
 	case protoreflect.StringKind:
-		if !utf8.ValidString(value.String()) {
-			return nil, fmt.Errorf("invalid UTF-8 in protobuf string field %s", field.FullName())
-		}
+		if !utf8.ValidString(value.String()) { return nil, fmt.Errorf("invalid UTF-8 in protobuf string field %s", field.FullName()) }
 		return value.String(), nil
-	case protoreflect.BytesKind:
-		return value.Bytes(), nil
-	case protoreflect.Int32Kind, protoreflect.Sint32Kind, protoreflect.Sfixed32Kind,
-		protoreflect.Int64Kind, protoreflect.Sint64Kind, protoreflect.Sfixed64Kind:
-		return value.Int(), nil
-	case protoreflect.Uint32Kind, protoreflect.Fixed32Kind, protoreflect.Uint64Kind, protoreflect.Fixed64Kind:
-		return value.Uint(), nil
-	case protoreflect.FloatKind, protoreflect.DoubleKind:
-		return value.Float(), nil
+	case protoreflect.BytesKind: return value.Bytes(), nil
+	case protoreflect.Int32Kind, protoreflect.Sint32Kind, protoreflect.Sfixed32Kind, protoreflect.Int64Kind, protoreflect.Sint64Kind, protoreflect.Sfixed64Kind: return value.Int(), nil
+	case protoreflect.Uint32Kind, protoreflect.Fixed32Kind, protoreflect.Uint64Kind, protoreflect.Fixed64Kind: return value.Uint(), nil
+	case protoreflect.FloatKind, protoreflect.DoubleKind: return value.Float(), nil
 	case protoreflect.EnumKind:
 		enum := field.Enum().Values().ByNumber(value.Enum())
-		if enum == nil {
-			return int32(value.Enum()), nil
-		}
+		if enum == nil { return int32(value.Enum()), nil }
 		return string(enum.Name()), nil
-	default:
-		return nil, nil
+	default: return nil, nil
 	}
 }
 
 func ledgerJSONMapKey(key protoreflect.MapKey) string {
 	switch value := key.Interface().(type) {
-	case string:
-		return value
-	case bool:
-		return strconv.FormatBool(value)
-	case uint32:
-		return strconv.FormatUint(uint64(value), 10)
-	case uint64:
-		return strconv.FormatUint(value, 10)
-	case int32:
-		return strconv.FormatInt(int64(value), 10)
-	case int64:
-		return strconv.FormatInt(value, 10)
-	default:
-		return fmt.Sprint(value)
+	case string: return value
+	case bool: return strconv.FormatBool(value)
+	case uint32: return strconv.FormatUint(uint64(value), 10)
+	case uint64: return strconv.FormatUint(value, 10)
+	case int32: return strconv.FormatInt(int64(value), 10)
+	case int64: return strconv.FormatInt(value, 10)
+	default: return fmt.Sprint(value)
 	}
 }`
+
+func emitMessage(g *protogen.GeneratedFile, message *protogen.Message) {
+	g.P("func (x *", message.GoIdent.GoName, ") MarshalJSON() ([]byte, error) {")
+	g.P("\tobject := make(map[string]any)")
+	emittedOneofs := make(map[string]bool)
+	for _, field := range message.Fields {
+		if field.Oneof != nil && !field.Oneof.Desc.IsSynthetic() {
+			if emittedOneofs[field.Oneof.GoName] {
+				continue
+			}
+			emittedOneofs[field.Oneof.GoName] = true
+			emitOneof(g, field.Oneof)
+			continue
+		}
+		emitField(g, field)
+	}
+	g.P("\treturn jsonv2.Marshal(object)")
+	g.P("}")
+	g.P()
+}
+
+func emitOneof(g *protogen.GeneratedFile, oneof *protogen.Oneof) {
+	g.P("\tswitch oneofValue := x.", oneof.GoName, ".(type) {")
+	for _, field := range oneof.Fields {
+		g.P("\tcase *", field.GoIdent.GoName, ":")
+		g.P("\t\tobject[\"", field.Desc.JSONName(), "\"] = ", enumOrValue("oneofValue."+field.GoName, field.Desc))
+	}
+	g.P("\t}")
+}
+
+func emitField(g *protogen.GeneratedFile, field *protogen.Field) {
+	access := "x." + field.GoName
+	condition := presenceCondition(access, field.Desc)
+	value := fieldValue(access, field.Desc)
+	g.P("\tif ", condition, " {")
+	g.P("\t\tobject[\"", field.Desc.JSONName(), "\"] = ", value)
+	g.P("\t}")
+}
+
+func presenceCondition(access string, field protoreflect.FieldDescriptor) string {
+	if field.IsList() || field.IsMap() {
+		return "len(" + access + ") != 0"
+	}
+	if field.HasPresence() {
+		return access + " != nil"
+	}
+	switch field.Kind() {
+	case protoreflect.BoolKind:
+		return access
+	case protoreflect.StringKind:
+		return access + " != \"\""
+	case protoreflect.BytesKind:
+		return "len(" + access + ") != 0"
+	default:
+		return access + " != 0"
+	}
+}
+
+func fieldValue(access string, field protoreflect.FieldDescriptor) string {
+	if field.IsList() || field.IsMap() {
+		return access
+	}
+	return enumOrValue(access, field)
+}
+
+func enumOrValue(access string, field protoreflect.FieldDescriptor) string {
+	if field.Kind() == protoreflect.EnumKind {
+		return access + ".String()"
+	}
+	if field.IsMap() && field.MapValue().Kind() == protoreflect.EnumKind {
+		return access
+	}
+	return access
+}
 
 func collectMessages(message *protogen.Message, out *[]*protogen.Message) {
 	*out = append(*out, message)

@@ -135,8 +135,7 @@ func ledgerJSONScalar(field protoreflect.FieldDescriptor, value protoreflect.Val
 		return value.String(), nil
 	case protoreflect.BytesKind:
 		return value.Bytes(), nil
-	case protoreflect.Int32Kind, protoreflect.Sint32Kind, protoreflect.Sfixed32Kind,
-		protoreflect.Int64Kind, protoreflect.Sint64Kind, protoreflect.Sfixed64Kind:
+	case protoreflect.Int32Kind, protoreflect.Sint32Kind, protoreflect.Sfixed32Kind, protoreflect.Int64Kind, protoreflect.Sint64Kind, protoreflect.Sfixed64Kind:
 		return value.Int(), nil
 	case protoreflect.Uint32Kind, protoreflect.Fixed32Kind, protoreflect.Uint64Kind, protoreflect.Fixed64Kind:
 		return value.Uint(), nil
@@ -173,17 +172,118 @@ func ledgerJSONMapKey(key protoreflect.MapKey) string {
 }
 
 func (x *MetadataIndexID) MarshalJSON() ([]byte, error) {
-	return MarshalLedgerJSON(x)
+	object := make(map[string]any)
+	if x.Target != 0 {
+		object["target"] = x.Target.String()
+	}
+	if x.Key != "" {
+		object["key"] = x.Key
+	}
+	return jsonv2.Marshal(object)
 }
 
 func (x *IndexID) MarshalJSON() ([]byte, error) {
-	return MarshalLedgerJSON(x)
+	object := make(map[string]any)
+	switch oneofValue := x.Kind.(type) {
+	case *IndexID_TxBuiltin:
+		object["txBuiltin"] = oneofValue.TxBuiltin.String()
+	case *IndexID_LogBuiltin:
+		object["logBuiltin"] = oneofValue.LogBuiltin.String()
+	case *IndexID_AccountBuiltin:
+		object["accountBuiltin"] = oneofValue.AccountBuiltin.String()
+	case *IndexID_Metadata:
+		object["metadata"] = oneofValue.Metadata
+	}
+	return jsonv2.Marshal(object)
 }
 
 func (x *Index) MarshalJSON() ([]byte, error) {
-	return MarshalLedgerJSON(x)
+	object := make(map[string]any)
+	if x.Id != nil {
+		object["id"] = x.Id
+	}
+	if x.CreatedAt != nil {
+		object["createdAt"] = x.CreatedAt
+	}
+	if x.Ledger != "" {
+		object["ledger"] = x.Ledger
+	}
+	if x.ForwardEncodingVersion != 0 {
+		object["forwardEncodingVersion"] = x.ForwardEncodingVersion
+	}
+	return jsonv2.Marshal(object)
 }
 
 func (x *SigningKey) MarshalJSON() ([]byte, error) {
-	return MarshalLedgerJSON(x)
+	object := make(map[string]any)
+	if x.KeyId != "" {
+		object["keyId"] = x.KeyId
+	}
+	if len(x.PublicKey) != 0 {
+		object["publicKey"] = x.PublicKey
+	}
+	if x.ParentKeyId != "" {
+		object["parentKeyId"] = x.ParentKeyId
+	}
+	return jsonv2.Marshal(object)
+}
+
+func (x *SinkConfig) MarshalJSON() ([]byte, error) {
+	object := make(map[string]any)
+	if x.Name != "" {
+		object["name"] = x.Name
+	}
+	switch oneofValue := x.Type.(type) {
+	case *SinkConfig_Nats:
+		object["nats"] = oneofValue.Nats
+	case *SinkConfig_Clickhouse:
+		object["clickhouse"] = oneofValue.Clickhouse
+	case *SinkConfig_Kafka:
+		object["kafka"] = oneofValue.Kafka
+	case *SinkConfig_Http:
+		object["http"] = oneofValue.Http
+	case *SinkConfig_Databricks:
+		object["databricks"] = oneofValue.Databricks
+	}
+	if x.Format != "" {
+		object["format"] = x.Format
+	}
+	if x.BatchSize != 0 {
+		object["batchSize"] = x.BatchSize
+	}
+	if x.BatchDelayMs != 0 {
+		object["batchDelayMs"] = x.BatchDelayMs
+	}
+	if len(x.EventTypes) != 0 {
+		object["eventTypes"] = x.EventTypes
+	}
+	if x.ControllerId != "" {
+		object["controllerId"] = x.ControllerId
+	}
+	return jsonv2.Marshal(object)
+}
+
+func (x *SinkStatus) MarshalJSON() ([]byte, error) {
+	object := make(map[string]any)
+	if x.SinkName != "" {
+		object["sinkName"] = x.SinkName
+	}
+	if x.Cursor != 0 {
+		object["cursor"] = x.Cursor
+	}
+	if x.Error != nil {
+		object["error"] = x.Error
+	}
+	return jsonv2.Marshal(object)
+}
+
+func (x *SinkError) MarshalJSON() ([]byte, error) {
+	object := make(map[string]any)
+	if x.Message != "" {
+		object["message"] = x.Message
+	}
+	if x.OccurredAt != nil {
+		object["occurredAt"] = x.OccurredAt
+	}
+	return jsonv2.Marshal(object)
 }
