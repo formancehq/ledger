@@ -88,6 +88,22 @@ ordering from the current ledger mode.
 
 ## Independent evidence and deduplication
 
+The shared leaf resolvers in `resolve_address_match.go` and
+`resolve_leaf_conditions.go` own direction-independent address, reference,
+asset, metadata point/existence and ID preparation. The public compiler tests
+`compile_leaf_resolution_test.go`, `compile_metadata_resolution_test.go` and
+`compile_id_resolution_test.go` assert independent identities for these
+families. Independent refusal assertions in these files cover address and
+reference parameter failures, readiness precedence and address-role gates;
+the metadata and ID files assert identities only. The separate
+`compile_error_parity_test.go` checks both directions against expected refusal
+substrings and identical messages for target/shape/depth, metadata schema/type
+and index-readiness failures; it does not establish comprehensive metadata or
+ID parameter-refusal coverage. Preserve readiness-before-parameter error order,
+role-specific address gates, served metadata versions, asset pin exclusion,
+missing point results and half-open ID bounds when challenging these helpers.
+Directional iterator construction and page oracles remain separate evidence.
+
 For each tested family, enumerate a non-empty target universe with positive and
 negative witnesses and the exact expected identities/cardinalities. Include
 intentional empty results only alongside witnesses proving the leaf was seeded.
