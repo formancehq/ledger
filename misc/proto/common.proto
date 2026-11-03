@@ -367,6 +367,7 @@ message Index {
 // ============================================================================
 
 message Idempotency {
+	option (ledger_json) = true;
   string key = 1;
   // HLC microseconds when this frozen outcome expires; 0 = never. Server-derived
   // (created_at + the policy TTL committed for that apply) and chain-bound in the
@@ -1671,6 +1672,7 @@ enum LedgerMode {
 }
 
 message MirrorSourceConfig {
+	option (ledger_json) = true;
   string ledger_name = 1;  // Source ledger name (common to all source types)
   oneof type {
     HttpMirrorSourceConfig http = 2;
@@ -1698,6 +1700,7 @@ message MirrorSourceConfig {
 // evaluated. Rewriting is a pure, deterministic translation-time projection
 // performed on the mirror leader; the source v2 ledger is never modified.
 message MirrorRewriteRule {
+	option (ledger_json) = true;
   // Exactly one must be set.
   oneof scope {
     CreatedTransactionRule created_transaction = 1;
@@ -1716,21 +1719,25 @@ message MirrorRewriteRule {
 // forbids reading fields of other variants by construction.
 
 message CreatedTransactionRule {
+	option (ledger_json) = true;
   string match = 1;
   repeated CreatedTransactionAction actions = 2;
 }
 
 message RevertedTransactionRule {
+	option (ledger_json) = true;
   string match = 1;
   repeated RevertedTransactionAction actions = 2;
 }
 
 message SavedMetadataRule {
+	option (ledger_json) = true;
   string match = 1;
   repeated SavedMetadataAction actions = 2;
 }
 
 message DeletedMetadataRule {
+	option (ledger_json) = true;
   string match = 1;
   repeated DeletedMetadataAction actions = 2;
 }
@@ -1740,6 +1747,7 @@ message DeletedMetadataRule {
 // fields. Its action set is restricted to operations that are meaningful on
 // every variant.
 message AnyVariantRule {
+	option (ledger_json) = true;
   string match = 1;
   repeated AnyVariantAction actions = 2;
 }
@@ -1749,6 +1757,7 @@ message AnyVariantRule {
 // because MirrorDeletedMetadata carries only a key, not a metadata map.
 
 message CreatedTransactionAction {
+	option (ledger_json) = true;
   oneof action {
     RewriteAddressAction rewrite_address = 1;
     SetMetadataAction set_metadata = 2;
@@ -1761,6 +1770,7 @@ message CreatedTransactionAction {
 }
 
 message RevertedTransactionAction {
+	option (ledger_json) = true;
   oneof action {
     RewriteAddressAction rewrite_address = 1;
     SetMetadataAction set_metadata = 2;
@@ -1770,6 +1780,7 @@ message RevertedTransactionAction {
 }
 
 message SavedMetadataAction {
+	option (ledger_json) = true;
   oneof action {
     RewriteAddressAction rewrite_address = 1;  // acts on Target only
     SetMetadataAction set_metadata = 2;
@@ -1779,6 +1790,7 @@ message SavedMetadataAction {
 }
 
 message DeletedMetadataAction {
+	option (ledger_json) = true;
   oneof action {
     RewriteAddressAction rewrite_address = 1;  // acts on Target only
     DropAction drop = 2;
@@ -1786,6 +1798,7 @@ message DeletedMetadataAction {
 }
 
 message AnyVariantAction {
+	option (ledger_json) = true;
   oneof action {
     RewriteAddressAction rewrite_address = 1;
     DropAction drop = 2;
@@ -1797,11 +1810,13 @@ message AnyVariantAction {
 // consumed by a typed Go executor.
 
 message RewriteAddressAction {
+	option (ledger_json) = true;
   string pattern = 1;      // RE2 pattern, validated at admission
   string replacement = 2;  // may reference groups from `pattern`
 }
 
 message SetMetadataAction {
+	option (ledger_json) = true;
   string key = 1;
   // Source of the metadata value. `value` is a literal string; `value_expr` is
   // a CEL expression evaluated at commit time against the current variant
@@ -1821,10 +1836,12 @@ message SetMetadataAction {
 }
 
 message DeleteMetadataAction {
+	option (ledger_json) = true;
   string key = 1;
 }
 
 message SetAccountMetadataAction {
+	option (ledger_json) = true;
   string account = 1;
   string key = 2;
   // See SetMetadataAction.source for the literal-vs-CEL semantics.
@@ -1837,6 +1854,7 @@ message SetAccountMetadataAction {
 }
 
 message DeleteAccountMetadataAction {
+	option (ledger_json) = true;
   string account = 1;
   string key = 2;
 }
@@ -1848,24 +1866,30 @@ message DeleteAccountMetadataAction {
 // so an operator can extract several fields from a single address in one pass
 // (e.g. worker id + acquirer name from `acquirer:acme:worker:001:bank`).
 message SetAccountMetadataFromAddressAction {
+	option (ledger_json) = true;
   string pattern = 1;  // RE2 pattern, should anchor with ^…$ for exact match
   repeated SetAccountMetadataFromAddressReplacement replacements = 2;
 }
 
 message SetAccountMetadataFromAddressReplacement {
+	option (ledger_json) = true;
   string key = 1;
   string replacement = 2;  // RE2 replacement (uses groups from the parent pattern)
   string type = 3;         // optional metadata type token — see SetMetadataAction.type
 }
 
-message DropAction {}
+message DropAction {
+	option (ledger_json) = true;
+}
 
 message HttpMirrorSourceConfig {
+	option (ledger_json) = true;
   string base_url = 1 [(sensitive_url) = true];
   OAuth2ClientCredentials oauth2_client_credentials = 2;
 }
 
 message OAuth2ClientCredentials {
+	option (ledger_json) = true;
   string client_id = 1;
   string client_secret = 2 [(sensitive) = true];
   string token_endpoint = 3 [(sensitive_url) = true];
@@ -1873,6 +1897,7 @@ message OAuth2ClientCredentials {
 }
 
 message PostgresMirrorSourceConfig {
+	option (ledger_json) = true;
   string dsn = 1 [(sensitive_url) = true];  // e.g. "postgres://user:pass@host:5432/ledger?sslmode=disable"
   // When set, the DSN password is overridden by a freshly minted AWS RDS IAM
   // authentication token on every new pool connection. Ambient AWS credentials
@@ -1883,6 +1908,7 @@ message PostgresMirrorSourceConfig {
 }
 
 message PostgresAwsIamAuth {
+	option (ledger_json) = true;
   string region = 1;  // AWS region of the RDS instance (e.g. "eu-west-1"); required for SigV4 signing
   // Optional STS role ARN to assume before minting the RDS IAM token. When
   // set, the mirror calls sts:AssumeRole on this ARN and signs the RDS token
@@ -2629,6 +2655,7 @@ message PersistedConfig {
 // source records the credential mechanism. An absent source means the
 // authenticated identity is a bare subject with no known origin.
 message CallerIdentity {
+	option (ledger_json) = true;
   string subject = 1;
   // scopes and superuser live on AuthenticatedCaller, not here: CallerIdentity is
   // identification only and carries no authorization decision.
@@ -2639,20 +2666,25 @@ message CallerIdentity {
 }
 
 message AuthenticatedCaller {
+	option (ledger_json) = true;
   CallerIdentity identity = 1;
   repeated string scopes = 2;
   bool superuser = 3;
 }
 
 message AnonymousCaller {
+	option (ledger_json) = true;
   repeated string scopes = 1;
 }
 
 message SystemCaller {
+	option (ledger_json) = true;
   string component = 1;
 }
 
-message AuthDisabledCaller {}
+message AuthDisabledCaller {
+	option (ledger_json) = true;
+}
 
 // CallerSnapshot is the *admission-time* record of who initiated an action.
 // Its required principal union keeps authenticated users, authorized anonymous
@@ -2663,6 +2695,7 @@ message AuthDisabledCaller {}
 // Carried on Proposals through Raft, then copied to AuditEntry by the FSM.
 // Application code must always set exactly one principal variant.
 message CallerSnapshot {
+	option (ledger_json) = true;
   oneof principal {
     AuthenticatedCaller authenticated = 1;
     AnonymousCaller anonymous = 2;

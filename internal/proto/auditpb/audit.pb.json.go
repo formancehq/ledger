@@ -2,6 +2,7 @@ package auditpb
 
 import (
 	"encoding/hex"
+	jsonv2 "encoding/json/v2"
 	"fmt"
 	"reflect"
 
@@ -47,7 +48,7 @@ func protoFieldJSON(msg proto.Message) (json.RawValue, error) {
 		return nil, nil
 	}
 
-	b, err := commonpb.MarshalLedgerJSONWithOptions(msg, commonpb.MarshalLedgerJSONOptions{})
+	b, err := jsonv2.Marshal(msg)
 	if err != nil {
 		return nil, err
 	}

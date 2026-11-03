@@ -2,6 +2,7 @@ package commonpb
 
 import (
 	"encoding/json/jsontext"
+	jsonv2 "encoding/json/v2"
 	"errors"
 	"fmt"
 	"strconv"
@@ -13,14 +14,13 @@ import (
 )
 
 // protoFieldJSON marshals a proto.Message field to json.RawValue using the
-// descriptor JSON runtime,
-// preserving camelCase field names. Returns nil for nil/zero messages.
+// generated or hand-written MarshalJSON method. Returns nil for nil messages.
 func protoFieldJSON(msg proto.Message) json.RawValue {
 	if msg == nil {
 		return nil
 	}
 
-	b, err := MarshalLedgerJSONWithOptions(msg, MarshalLedgerJSONOptions{})
+	b, err := jsonv2.Marshal(msg)
 	if err != nil {
 		return nil
 	}
