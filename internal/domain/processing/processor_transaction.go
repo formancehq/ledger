@@ -140,6 +140,7 @@ func processCreateTransaction(ledger string, order *raftcmdpb.CreateTransactionO
 		if hasScriptAccountMetadataUpdates(result.AccountsMetadata) || hasAccountMetadataUpdates(order.GetAccountMetadata()) {
 			return processMetadataOnly(ledger, order, result, ctx)
 		}
+
 		return nil, domain.ErrEmptyTransaction
 	}
 	if metadataOnlyCandidate {
@@ -347,6 +348,7 @@ func processMetadataOnly(ledger string, order *raftcmdpb.CreateTransactionOrder,
 		existing := accountMetadata[account]
 		if existing == nil {
 			accountMetadata[account] = mm
+
 			continue
 		}
 		maps.Copy(existing.GetValues(), mm.GetValues())
@@ -379,6 +381,7 @@ func processMetadataOnly(ledger string, order *raftcmdpb.CreateTransactionOrder,
 		}
 	}
 	ctx.metadataBudget.bytes = total
+
 	return &commonpb.LedgerLogPayload{Payload: &commonpb.LedgerLogPayload_AccountMetadataUpdated{AccountMetadataUpdated: &commonpb.AccountMetadataUpdated{AccountMetadata: accountMetadata}}}, nil
 }
 
@@ -388,6 +391,7 @@ func hasAccountMetadataUpdates(accountMetadata map[string]*commonpb.MetadataMap)
 			return true
 		}
 	}
+
 	return false
 }
 
@@ -397,6 +401,7 @@ func hasScriptAccountMetadataUpdates(accountMetadata map[string]map[string]*comm
 			return true
 		}
 	}
+
 	return false
 }
 
