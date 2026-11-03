@@ -47,7 +47,7 @@ func protoFieldJSON(msg proto.Message) (json.RawValue, error) {
 		return nil, nil
 	}
 
-	b, err := json.MarshalMessageJSONWithOptions(msg, json.MarshalOptions{})
+	b, err := commonpb.MarshalLedgerJSONWithOptions(msg, commonpb.MarshalLedgerJSONOptions{})
 	if err != nil {
 		return nil, err
 	}

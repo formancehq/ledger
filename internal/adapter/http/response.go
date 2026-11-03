@@ -14,6 +14,7 @@ import (
 
 	"github.com/formancehq/ledger/v3/internal/adapter/apitrace"
 	"github.com/formancehq/ledger/v3/internal/adapter/json"
+	commonpb "github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/query"
 )
 
@@ -128,7 +129,7 @@ func writeProtoOK(w http.ResponseWriter, r *http.Request, msg proto.Message) {
 	if marshaler, ok := msg.(stdjson.Marshaler); ok {
 		raw, err = marshaler.MarshalJSON()
 	} else {
-		raw, err = json.MarshalMessageJSONWithOptions(msg, json.MarshalOptions{})
+		raw, err = commonpb.MarshalLedgerJSON(msg)
 	}
 	if err != nil {
 		writeErrorResponse(w, http.StatusInternalServerError, "INTERNAL_ERROR", err)
@@ -170,7 +171,7 @@ func protoListJSON[T proto.Message](msgs []T) (json.RawValue, error) {
 		if marshaler, ok := any(msg).(stdjson.Marshaler); ok {
 			raw, err = marshaler.MarshalJSON()
 		} else {
-			raw, err = json.MarshalMessageJSONWithOptions(msg, json.MarshalOptions{})
+			raw, err = commonpb.MarshalLedgerJSON(msg)
 		}
 		if err != nil {
 			return nil, err

@@ -13,13 +13,13 @@ import (
 	"go.yaml.in/yaml/v3"
 	"google.golang.org/protobuf/proto"
 
-	adapterjson "github.com/formancehq/ledger/v3/internal/adapter/json"
+	commonpb "github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
 
 var (
 	protoMessageType  = reflect.TypeFor[proto.Message]()
 	jsonMarshalerType = reflect.TypeFor[json.Marshaler]()
-	jsonOpts          = adapterjson.MarshalOptions{
+	jsonOpts          = commonpb.MarshalLedgerJSONOptions{
 		Multiline:       true,
 		Indent:          "  ",
 		EmitUnpopulated: true,
@@ -163,7 +163,7 @@ func marshalJSON(data any) ([]byte, error) {
 			return json.MarshalIndent(data, "", "  ")
 		}
 
-		return adapterjson.MarshalMessageJSONWithOptions(msg, jsonOpts)
+		return commonpb.MarshalLedgerJSONWithOptions(msg, jsonOpts)
 	}
 
 	rv := reflect.ValueOf(data)
@@ -304,7 +304,7 @@ func protoToAny(msg proto.Message) (any, error) {
 	if jm, ok := msg.(json.Marshaler); ok {
 		b, err = jm.MarshalJSON()
 	} else {
-		b, err = adapterjson.MarshalMessageJSONWithOptions(msg, jsonOpts)
+		b, err = commonpb.MarshalLedgerJSONWithOptions(msg, jsonOpts)
 	}
 
 	if err != nil {

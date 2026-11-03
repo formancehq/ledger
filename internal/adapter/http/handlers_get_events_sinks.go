@@ -1,6 +1,7 @@
 package http
 
 import (
+	jsonv2 "encoding/json/v2"
 	"net/http"
 
 	"github.com/formancehq/ledger/v3/internal/adapter/json"
@@ -25,10 +26,10 @@ func (s *Server) handleGetEventsSinks(w http.ResponseWriter, r *http.Request) {
 	for i, s := range sinks {
 		sinks[i] = sensitive.Redact(s)
 	}
-	raw, err := json.MarshalMessageJSONWithOptions(&servicepb.GetEventsSinksResponse{
+	raw, err := jsonv2.Marshal(&servicepb.GetEventsSinksResponse{
 		Sinks:        sinks,
 		SinkStatuses: statuses,
-	}, json.MarshalOptions{})
+	})
 	if err != nil {
 		handleError(w, r, err)
 

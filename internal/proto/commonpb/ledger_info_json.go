@@ -48,7 +48,7 @@ func (x *LedgerInfo) MarshalJSON() ([]byte, error) {
 	if x.GetMirrorSource() != nil {
 		// This configuration's protojson shape is the documented read shape,
 		// including rewrite-rule oneofs; it differs from the flat create input.
-		b, err := json.MarshalMessageJSONWithOptions(x.GetMirrorSource(), json.MarshalOptions{})
+		b, err := MarshalLedgerJSONWithOptions(x.GetMirrorSource(), MarshalLedgerJSONOptions{})
 		if err != nil {
 			return nil, fmt.Errorf("ledger info mirror source: %w", err)
 		}

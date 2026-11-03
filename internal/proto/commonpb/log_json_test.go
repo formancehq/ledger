@@ -121,7 +121,7 @@ func TestLedgerLogJSONOutput(t *testing.T) {
 					if custom, ok := message.(json.Marshaler); ok {
 						expected, err = custom.MarshalJSON()
 					} else {
-						expected, err = ledgerjson.MarshalMessageJSONWithOptions(message, ledgerjson.MarshalOptions{})
+						expected, err = commonpb.MarshalLedgerJSONWithOptions(message, commonpb.MarshalLedgerJSONOptions{})
 					}
 					require.NoError(t, err)
 					require.JSONEq(t, string(expected), string(envelope.Data))

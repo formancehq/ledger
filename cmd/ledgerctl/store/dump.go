@@ -10,8 +10,6 @@ import (
 	"github.com/spf13/cobra"
 	"google.golang.org/protobuf/proto"
 
-	adapterjson "github.com/formancehq/ledger/v3/internal/adapter/json"
-
 	"github.com/formancehq/ledger/v3/internal/proto/auditpb"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/proposalpb"
@@ -315,9 +313,7 @@ func tryProtoJSON(val []byte, msg proto.Message) string {
 		return fmt.Sprintf("(proto decode error: %v) hex=%s", err, hex.EncodeToString(val))
 	}
 
-	opts := adapterjson.MarshalOptions{Multiline: false, EmitUnpopulated: false}
-
-	jsonBytes, err := adapterjson.MarshalMessageJSONWithOptions(msg, opts)
+	jsonBytes, err := commonpb.MarshalLedgerJSONWithOptions(msg, commonpb.MarshalLedgerJSONOptions{})
 	if err != nil {
 		return fmt.Sprintf("(json encode error: %v) hex=%s", err, hex.EncodeToString(val))
 	}

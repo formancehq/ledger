@@ -20,7 +20,7 @@ func protoFieldJSON(msg proto.Message) json.RawValue {
 		return nil
 	}
 
-	b, err := json.MarshalMessageJSONWithOptions(msg, json.MarshalOptions{})
+	b, err := MarshalLedgerJSONWithOptions(msg, MarshalLedgerJSONOptions{})
 	if err != nil {
 		return nil
 	}
@@ -102,7 +102,7 @@ func (x *LogPayload) jsonValue() (any, error) {
 		}{Apply: p.Apply}, nil
 	default:
 		// Other variants (signing, sinks, etc.) — use descriptor JSON for camelCase
-		raw, err := json.MarshalMessageJSONWithOptions(x, json.MarshalOptions{})
+		raw, err := MarshalLedgerJSONWithOptions(x, MarshalLedgerJSONOptions{})
 
 		return json.RawValue(raw), err
 	}
@@ -194,7 +194,7 @@ func (x *LedgerLogPayload) MarshalJSON() ([]byte, error) {
 		return custom.MarshalJSON()
 	}
 
-	return json.MarshalMessageJSONWithOptions(message, json.MarshalOptions{})
+	return MarshalLedgerJSONWithOptions(message, MarshalLedgerJSONOptions{})
 }
 
 // MarshalJSONTo dispatches without hiding nested postings behind an opaque
@@ -207,7 +207,7 @@ func (x *LedgerLogPayload) MarshalJSONTo(enc *jsontext.Encoder) error {
 	if _, ok := message.(interface{ MarshalJSON() ([]byte, error) }); ok {
 		return json.MarshalEncode(enc, message)
 	}
-	raw, err := json.MarshalMessageJSONWithOptions(message, json.MarshalOptions{})
+	raw, err := MarshalLedgerJSONWithOptions(message, MarshalLedgerJSONOptions{})
 	if err != nil {
 		return err
 	}

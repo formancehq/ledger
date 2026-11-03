@@ -14,33 +14,79 @@ import (
 	"google.golang.org/protobuf/reflect/protoreflect"
 )
 
-func marshalLedgerJSON(msg protoreflect.Message) ([]byte, error) {
-	value, err := ledgerJSONValue(msg)
+type MarshalLedgerJSONOptions struct {
+	Multiline       bool
+	Indent          string
+	EmitUnpopulated bool
+}
+
+type ledgerJSONMessage interface {
+	ProtoReflect() protoreflect.Message
+}
+
+func MarshalLedgerJSON(msg ledgerJSONMessage) ([]byte, error) {
+	return MarshalLedgerJSONWithOptions(msg, MarshalLedgerJSONOptions{})
+}
+
+func MarshalLedgerJSONWithOptions(msg ledgerJSONMessage, options MarshalLedgerJSONOptions) ([]byte, error) {
+	value, err := ledgerJSONValue(msg.ProtoReflect(), options)
 	if err != nil {
 		return nil, err
 	}
-	return jsonv2.Marshal(value, jsontext.EscapeForHTML(false), jsontext.EscapeForJS(false))
+	marshalOptions := []jsonv2.Options{jsontext.EscapeForHTML(false), jsontext.EscapeForJS(false)}
+	if options.Multiline {
+		marshalOptions = append(marshalOptions, jsontext.Multiline(true), jsontext.WithIndent(options.Indent))
+	}
+	return jsonv2.Marshal(value, marshalOptions...)
 }
 
-func ledgerJSONValue(msg protoreflect.Message) (map[string]any, error) {
+func ledgerJSONValue(msg protoreflect.Message, options MarshalLedgerJSONOptions) (map[string]any, error) {
 	if !msg.IsValid() {
 		return nil, nil
 	}
 	out := make(map[string]any)
 	var err error
 	msg.Range(func(field protoreflect.FieldDescriptor, value protoreflect.Value) bool {
-		out[field.JSONName()], err = ledgerJSONField(field, value)
+		out[field.JSONName()], err = ledgerJSONField(field, value, options)
 		return err == nil
 	})
+	if options.EmitUnpopulated {
+		fields := msg.Descriptor().Fields()
+		for i := 0; i < fields.Len(); i++ {
+			field := fields.Get(i)
+			if _, ok := out[field.JSONName()]; ok || field.HasPresence() {
+				continue
+			}
+			out[field.JSONName()] = ledgerJSONDefault(field)
+		}
+	}
 	return out, err
 }
 
-func ledgerJSONField(field protoreflect.FieldDescriptor, value protoreflect.Value) (any, error) {
+func ledgerJSONDefault(field protoreflect.FieldDescriptor) any {
+	if field.IsList() {
+		return []any{}
+	}
+	if field.IsMap() {
+		return map[string]any{}
+	}
+	if field.Message() != nil {
+		return nil
+	}
+	if field.Kind() == protoreflect.EnumKind {
+		if enum := field.Enum().Values().ByNumber(field.DefaultEnumValue().Number()); enum != nil {
+			return string(enum.Name())
+		}
+	}
+	return field.Default().Interface()
+}
+
+func ledgerJSONField(field protoreflect.FieldDescriptor, value protoreflect.Value, options MarshalLedgerJSONOptions) (any, error) {
 	if field.IsMap() {
 		out := make(map[string]any)
 		var err error
 		value.Map().Range(func(key protoreflect.MapKey, item protoreflect.Value) bool {
-			out[ledgerJSONMapKey(key)], err = ledgerJSONScalar(field.MapValue(), item)
+			out[ledgerJSONMapKey(key)], err = ledgerJSONScalar(field.MapValue(), item, options)
 			return err == nil
 		})
 		return out, err
@@ -49,17 +95,17 @@ func ledgerJSONField(field protoreflect.FieldDescriptor, value protoreflect.Valu
 		out := make([]any, value.List().Len())
 		for i := range out {
 			var err error
-			out[i], err = ledgerJSONScalar(field, value.List().Get(i))
+			out[i], err = ledgerJSONScalar(field, value.List().Get(i), options)
 			if err != nil {
 				return nil, err
 			}
 		}
 		return out, nil
 	}
-	return ledgerJSONScalar(field, value)
+	return ledgerJSONScalar(field, value, options)
 }
 
-func ledgerJSONScalar(field protoreflect.FieldDescriptor, value protoreflect.Value) (any, error) {
+func ledgerJSONScalar(field protoreflect.FieldDescriptor, value protoreflect.Value, options MarshalLedgerJSONOptions) (any, error) {
 	if field.Message() != nil {
 		if marshaler, ok := value.Message().Interface().(interface{ MarshalJSON() ([]byte, error) }); ok {
 			raw, err := marshaler.MarshalJSON()
@@ -77,7 +123,7 @@ func ledgerJSONScalar(field protoreflect.FieldDescriptor, value protoreflect.Val
 			nanos := value.Message().Get(field.Message().Fields().ByName("nanos")).Int()
 			return time.Unix(seconds, nanos).UTC().Format(time.RFC3339Nano), nil
 		}
-		return ledgerJSONValue(value.Message())
+		return ledgerJSONValue(value.Message(), options)
 	}
 	switch field.Kind() {
 	case protoreflect.BoolKind:
@@ -127,17 +173,17 @@ func ledgerJSONMapKey(key protoreflect.MapKey) string {
 }
 
 func (x *MetadataIndexID) MarshalJSON() ([]byte, error) {
-	return marshalLedgerJSON(x.ProtoReflect())
+	return MarshalLedgerJSON(x)
 }
 
 func (x *IndexID) MarshalJSON() ([]byte, error) {
-	return marshalLedgerJSON(x.ProtoReflect())
+	return MarshalLedgerJSON(x)
 }
 
 func (x *Index) MarshalJSON() ([]byte, error) {
-	return marshalLedgerJSON(x.ProtoReflect())
+	return MarshalLedgerJSON(x)
 }
 
 func (x *SigningKey) MarshalJSON() ([]byte, error) {
-	return marshalLedgerJSON(x.ProtoReflect())
+	return MarshalLedgerJSON(x)
 }
