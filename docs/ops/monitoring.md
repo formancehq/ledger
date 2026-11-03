@@ -34,8 +34,8 @@ recovered when a parent later reports an error, and metrics derived downstream
 from sampled spans have biased counts, error rates and latency distributions.
 Keep `always_on` when collector-side tail sampling or complete span-derived
 metrics are required, and derive those metrics before collector sampling.
-Ledger uses standard SDK samplers without local trace retention or error-aware
-export buffering. See the [sampling contract](../technical/architecture/subsystems/monitoring/trace-sampling.md).
+Ledger uses standard SDK samplers without local OpenTelemetry span retention or
+error-aware export buffering. See the [sampling contract](../technical/architecture/subsystems/monitoring/trace-sampling.md).
 
 ## Shared telemetry resource
 
@@ -883,7 +883,7 @@ buckets.
    max by (k8s_namespace_name, formance_ledger_cluster_name) (formance_ledger_raft_node_leader) == 0
    ```
    Duration: 30s
-   
+
 2. **Pebble Write Stall Active**
    ```promql
    formance_ledger_pebble_write_stall_active == 1

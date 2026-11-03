@@ -4879,7 +4879,10 @@ Head sampling reduces recording/export volume but may discard child spans before
 a later parent error exists. It cannot recover them when that error is recorded,
 and it biases downstream span-derived counts, error rates and latency metrics.
 The collector owns error/success retention and must compute complete span metrics
-before sampling. Ledger keeps no local trace-retention buffer.
+before sampling. Ledger keeps no local OpenTelemetry span-retention buffer for
+error-aware sampling. The separate, opt-in [Flight Recorder](#server-flight-recorder-flags)
+buffers Go runtime trace data in memory; it does not retain OpenTelemetry spans
+or recover spans discarded by head sampling.
 
 The former `--trace-sampling-enabled` and `--trace-sampling-success-ratio` flags,
 `TRACE_SAMPLING_ENABLED`, and `TRACE_SAMPLING_SUCCESS_RATIO` remain unsupported.
