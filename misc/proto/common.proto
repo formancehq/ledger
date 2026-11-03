@@ -693,18 +693,21 @@ message SinkError {
 
 // NatsSinkConfig holds NATS JetStream sink configuration.
 message NatsSinkConfig {
+	option (ledger_json) = true;
   string url = 1 [(sensitive_url) = true];  // may embed a token in the userinfo position
   string topic = 2;
 }
 
 // ClickHouseSinkConfig holds ClickHouse sink configuration.
 message ClickHouseSinkConfig {
+	option (ledger_json) = true;
   string dsn = 1 [(sensitive_url) = true];    // e.g. "clickhouse://user:pass@host:9000/db"
   string table = 2;  // Table name (default: "ledger_events")
 }
 
 // KafkaSinkConfig holds Apache Kafka sink configuration.
 message KafkaSinkConfig {
+	option (ledger_json) = true;
   repeated string brokers = 1;  // e.g. ["localhost:9092"]
   string topic = 2;             // Kafka topic name
   bool tls = 3;                 // Enable TLS
@@ -715,6 +718,7 @@ message KafkaSinkConfig {
 
 // HttpSinkConfig holds HTTP webhook sink configuration.
 message HttpSinkConfig {
+	option (ledger_json) = true;
   string endpoint = 1 [(sensitive_url) = true];  // Target URL (e.g. "https://example.com/webhooks/ledger")
   string secret = 2 [(sensitive) = true];            // Optional HMAC-SHA256 secret for X-Webhook-Signature header
 }
@@ -722,6 +726,7 @@ message HttpSinkConfig {
 // DatabricksSinkConfig holds Databricks SQL Warehouse sink configuration.
 // Exactly one of the auth oneof fields must be set.
 message DatabricksSinkConfig {
+	option (ledger_json) = true;
   string server_hostname = 1;  // e.g. "adb-123456.azuredatabricks.net"
   string http_path = 2;        // SQL Warehouse HTTP path (e.g. "/sql/1.0/warehouses/abc123")
   string catalog = 3;          // Unity Catalog name (e.g. "main")
@@ -736,6 +741,7 @@ message DatabricksSinkConfig {
 
 // DatabricksOAuthM2M holds OAuth M2M (client credentials) for a Databricks service principal.
 message DatabricksOAuthM2M {
+	option (ledger_json) = true;
   string client_id = 1;
   string client_secret = 2 [(sensitive) = true];
 }

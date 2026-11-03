@@ -237,10 +237,10 @@ func emitStructReturn(g *protogen.GeneratedFile, message *protogen.Message, oneo
 			if selected == nil || field != selected {
 				continue
 			}
-			g.P("\t\t\t", field.GoName, ": ", jsonAssignment("oneofValue."+field.GoName, field.Desc, true), ",")
+			g.P("\t\t\t", field.GoName, ": ", jsonAssignment("oneofValue."+field.GoName, field, true), ",")
 			continue
 		}
-		g.P("\t\t\t", field.GoName, ": ", jsonAssignment("x."+field.GoName, field.Desc, false), ",")
+		g.P("\t\t\t", field.GoName, ": ", jsonAssignment("x."+field.GoName, field, false), ",")
 	}
 	g.P("\t\t})")
 }
@@ -269,23 +269,35 @@ func goJSONType(field protoreflect.FieldDescriptor, oneof bool) string {
 	case protoreflect.DoubleKind:
 		return "float64"
 	case protoreflect.EnumKind:
-		if !oneof {
-			return "*string"
-		}
-		return "string"
+		return "any"
 	default:
 		return "any"
 	}
 }
 
-func jsonAssignment(access string, field protoreflect.FieldDescriptor, oneof bool) string {
-	if field.IsList() || field.IsMap() {
+func jsonAssignment(access string, field *protogen.Field, oneof bool) string {
+	if field.Desc.IsList() || field.Desc.IsMap() {
 		return access
 	}
-	if field.Kind() == protoreflect.EnumKind && !oneof {
-		return "func() *string { if " + access + " == 0 { return nil }; value := " + access + ".String(); return &value }()"
+	if field.Desc.Kind() == protoreflect.EnumKind {
+		return enumJSONAssignment(access, field, oneof)
 	}
-	return enumOrValue(access, field)
+	return enumOrValue(access, field.Desc)
+}
+
+func enumJSONAssignment(access string, field *protogen.Field, oneof bool) string {
+	values := field.Desc.Enum().Values()
+	expression := "func() any {"
+	if !oneof {
+		expression += " if " + access + " == 0 { return nil };"
+	}
+	expression += " switch " + access + " {"
+	for i := 0; i < values.Len(); i++ {
+		value := values.Get(i)
+		expression += " case " + field.Enum.Values[i].GoIdent.GoName + ": return \"" + string(value.Name()) + "\";"
+	}
+	expression += " default: return int32(" + access + "); } }()"
+	return expression
 }
 
 func presenceCondition(access string, field protoreflect.FieldDescriptor) string {
