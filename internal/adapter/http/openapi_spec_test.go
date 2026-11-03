@@ -115,19 +115,14 @@ func TestOpenAPISpec_OperationIDsAreUniqueAndV3Namespaced(t *testing.T) {
 		}
 	}
 
-	for operationID, sdkName := range map[string]string{
-		"v3CreateTransaction": "CreateTransaction",
-		"v3GetTransaction":    "GetTransaction",
-		"v3RevertTransaction": "RevertTransaction",
-		"v3ListAccounts":      "ListAccounts",
-		"v3GetAccount":        "GetAccount",
-	} {
-		path := operationIDs[operationID]
-		require.NotEmpty(t, path, "missing %s", operationID)
+	for operationID, path := range operationIDs {
+		require.True(t, strings.HasPrefix(operationID, "v3"), "operationId %q is not v3-namespaced", operationID)
 		parts := strings.SplitN(path, " ", 2)
 		item := paths[parts[1]].(map[string]any)
 		operation := item[parts[0]].(map[string]any)
-		require.Equal(t, sdkName, operation["x-speakeasy-name-override"], operationID)
+		sdkName := operationID[2:]
+		require.NotEmpty(t, sdkName)
+		require.Equal(t, strings.ToUpper(sdkName[:1])+sdkName[1:], operation["x-speakeasy-name-override"], operationID)
 	}
 }
 
