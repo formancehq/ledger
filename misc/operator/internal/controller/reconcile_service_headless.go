@@ -105,3 +105,27 @@ func serviceHttpPort(ledger *ledgerv1alpha1.Cluster) int32 {
 
 	return 9000
 }
+
+func effectiveRaftListenerPort(ledger *ledgerv1alpha1.Cluster) int32 {
+	if ledger.Spec.BindAddr != "" {
+		return raftPortFromBindAddr(ledger.Spec.BindAddr)
+	}
+
+	return 7777
+}
+
+func effectiveGrpcListenerPort(ledger *ledgerv1alpha1.Cluster) int32 {
+	if ledger.Spec.GrpcPort != 0 {
+		return ledger.Spec.GrpcPort
+	}
+
+	return 8888
+}
+
+func effectiveHttpListenerPort(ledger *ledgerv1alpha1.Cluster) int32 {
+	if ledger.Spec.HttpPort != 0 {
+		return ledger.Spec.HttpPort
+	}
+
+	return 9000
+}

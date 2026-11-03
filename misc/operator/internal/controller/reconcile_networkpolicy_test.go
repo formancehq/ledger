@@ -154,6 +154,9 @@ func TestReconcile_NetworkPolicyCustomPorts(t *testing.T) {
 	ls.Spec.Service.RaftPort = 17777
 	ls.Spec.Service.GrpcPort = 18888
 	ls.Spec.Service.HttpPort = 19000
+	ls.Spec.BindAddr = "0.0.0.0:27777"
+	ls.Spec.GrpcPort = 28888
+	ls.Spec.HttpPort = 29000
 	ls.Spec.NetworkPolicy = &ledgerv1alpha1.NetworkPolicySpec{
 		Enabled: true,
 	}
@@ -167,9 +170,9 @@ func TestReconcile_NetworkPolicyCustomPorts(t *testing.T) {
 	require.Len(t, np.Spec.Egress, 3)
 	interNode := np.Spec.Egress[0]
 	require.Len(t, interNode.Ports, 3)
-	assert.Equal(t, int32(17777), interNode.Ports[0].Port.IntVal)
-	assert.Equal(t, int32(18888), interNode.Ports[1].Port.IntVal)
-	assert.Equal(t, int32(19000), interNode.Ports[2].Port.IntVal)
+	assert.Equal(t, int32(27777), interNode.Ports[0].Port.IntVal)
+	assert.Equal(t, int32(28888), interNode.Ports[1].Port.IntVal)
+	assert.Equal(t, int32(29000), interNode.Ports[2].Port.IntVal)
 }
 
 func TestReconcile_NetworkPolicyUpdate(t *testing.T) {

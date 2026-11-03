@@ -57,10 +57,13 @@ func buildNetworkPolicySpec(ledger *ledgerv1alpha1.Cluster) networkingv1.Network
 		except = ledger.Spec.NetworkPolicy.ExternalCIDRExcept
 	}
 
-	raftPort := intstr.FromInt32(serviceRaftPort(ledger))
-	grpcPort := intstr.FromInt32(serviceGrpcPort(ledger))
-	grpcPeerPort := intstr.FromInt32(serviceGrpcPeerPort(ledger))
-	httpPort := intstr.FromInt32(serviceHttpPort(ledger))
+	// NetworkPolicy ports are evaluated on the destination Pod, not on the
+	// frontend Service. Use the effective container listener ports so custom
+	// Service port mappings do not block otherwise allowed traffic.
+	raftPort := intstr.FromInt32(effectiveRaftListenerPort(ledger))
+	grpcPort := intstr.FromInt32(effectiveGrpcListenerPort(ledger))
+	grpcPeerPort := intstr.FromInt32(grpcPeerPort(ledger))
+	httpPort := intstr.FromInt32(effectiveHttpListenerPort(ledger))
 	dnsPort := intstr.FromInt32(53)
 	tcp := corev1.ProtocolTCP
 	udp := corev1.ProtocolUDP

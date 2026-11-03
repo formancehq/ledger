@@ -106,14 +106,31 @@ func TestBuildNetworkPolicySpec_InterNodeCustomPorts(t *testing.T) {
 	ls.Spec.Service.RaftPort = 17777
 	ls.Spec.Service.GrpcPort = 18888
 	ls.Spec.Service.HttpPort = 19000
+	ls.Spec.BindAddr = "0.0.0.0:27777"
+	ls.Spec.GrpcPort = 28888
+	ls.Spec.HttpPort = 29000
 	spec := buildNetworkPolicySpec(ls)
 
 	interNode := spec.Egress[0]
 	require.Len(t, interNode.Ports, 4)
-	assert.Equal(t, int32(17777), interNode.Ports[0].Port.IntVal)
-	assert.Equal(t, int32(18888), interNode.Ports[1].Port.IntVal)
+	assert.Equal(t, int32(27777), interNode.Ports[0].Port.IntVal)
+	assert.Equal(t, int32(28888), interNode.Ports[1].Port.IntVal)
 	assert.Equal(t, int32(18889), interNode.Ports[2].Port.IntVal)
-	assert.Equal(t, int32(19000), interNode.Ports[3].Port.IntVal)
+	assert.Equal(t, int32(29000), interNode.Ports[3].Port.IntVal)
+}
+
+func TestBuildNetworkPolicySpec_UsesPodPortsForIngress(t *testing.T) {
+	t.Parallel()
+
+	ls := newTestCluster("mapped", &ledgerv1alpha1.NetworkPolicySpec{Enabled: true})
+	ls.Spec.Service.GrpcPort = 18888
+	ls.Spec.Service.HttpPort = 19000
+	ls.Spec.GrpcPort = 28888
+	ls.Spec.HttpPort = 29000
+	spec := buildNetworkPolicySpec(ls)
+
+	assert.Equal(t, int32(28888), spec.Ingress[0].Ports[0].Port.IntVal)
+	assert.Equal(t, int32(29000), spec.Ingress[0].Ports[1].Port.IntVal)
 }
 
 func TestBuildNetworkPolicySpec_DNSRule(t *testing.T) {
