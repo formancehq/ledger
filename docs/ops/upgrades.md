@@ -42,6 +42,7 @@ Old and new voters must communicate and apply each committed entry identically
 while they coexist. The embedded operator requires a complete stop at the
 `v3.0.0-rc.4` boundary because RC.3 cannot execute native proposal payloads
 and encodes [mirror asset mappings](#mirror-asset-mappings) differently.
+The mirror promotion FSM result also changes at this boundary.
 `rc.3` includes the drain barrier used for this upgrade. The `v3.0.0-rc.5`
 boundary is also a complete stop: RC.4 cannot read storage schema 3 or apply
 the independent configuration and capability controls
@@ -72,6 +73,9 @@ and validate the mandatory stopped boundary before clients submit them. The
 operator drain path is in place; [PR #2404](https://github.com/formancehq/ledger/pull/2404)
 coordinates that boundary. Until `rc.4` is active, clients must not submit
 explicit-target updates; use delete plus create for target changes.
+Promotion orders committed by `rc.3` must be applied durably on every member
+before the stopped upgrade begins. Audit replay reconstructs their original
+results after the restart.
 When the running version precedes a mandatory boundary, pin the target to a
 canonical version tag. Moving or non-canonical tags such as `latest` cannot
 prove whether the boundary is crossed, so the operator blocks the change.
@@ -575,6 +579,10 @@ failure, forking the authoritative audit hash. Admission on a new leader alone
 cannot protect an old leader or previously committed proposals.
 
 The published `rc.1` binary cannot participate in an operator-owned drain.
+The `rc.3` to `rc.4` transition uses the operator-required stopped restart.
+The operator drains every voter, stops all old Pods, and retains their PVCs
+before starting the target image. This prevents old and new FSMs from applying
+the same promotion with different outcomes.
 
 1. With every voter still on the source binary, establish a healthy, consistent
    audit history and take a backup. Existing divergent history is an incident;

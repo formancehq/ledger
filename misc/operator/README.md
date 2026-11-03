@@ -13,6 +13,11 @@ then recreates the StatefulSet with the requested image. See the
 for preflight, recovery and rollback limits. Other adjacent RC upgrades roll;
 the same guide names the transitions that also need a maintenance barrier.
 
+RC.3 to RC.4 crosses a mandatory boundary because RC.3 cannot execute native
+proposal payloads, encodes mirror asset mappings differently, and has a
+different mirror promotion FSM result. Upgrade the operator before changing
+the Ledger image; the drain barrier is available from RC.3.
+
 RC.4 to RC.5 is a second mandatory stopped boundary for the schema-3 control
 state migration and new native configuration/capability proposals. Keep the PVCs
 and existing server flags. Activation is automatic after all members advertise
