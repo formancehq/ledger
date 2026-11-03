@@ -229,7 +229,11 @@ func emitStructReturn(g *protogen.GeneratedFile, message *protogen.Message, oneo
 			g.P("\t\t\t", field.GoName, " ", goJSONType(field.Desc, true), " `json:\"", field.Desc.JSONName(), "\"`")
 			continue
 		}
-		g.P("\t\t\t", field.GoName, " ", goJSONType(field.Desc, false), " `json:\"", field.Desc.JSONName(), ",omitempty,omitzero\"`")
+		tag := "json:\"" + field.Desc.JSONName() + "\""
+		if field.Desc.HasPresence() {
+			tag = "json:\"" + field.Desc.JSONName() + ",omitempty,omitzero\""
+		}
+		g.P("\t\t\t", field.GoName, " ", goJSONType(field.Desc, false), " `", tag, "`")
 	}
 	g.P("\t\t}{")
 	for _, field := range message.Fields {
@@ -276,8 +280,11 @@ func goJSONType(field protoreflect.FieldDescriptor, oneof bool) string {
 }
 
 func jsonAssignment(access string, field *protogen.Field, oneof bool) string {
-	if field.Desc.IsList() || field.Desc.IsMap() {
-		return access
+	if field.Desc.IsList() {
+		return "func() any { if " + access + " == nil { return []any{} }; return " + access + " }()"
+	}
+	if field.Desc.IsMap() {
+		return "func() any { if " + access + " == nil { return map[string]any{} }; return " + access + " }()"
 	}
 	if field.Desc.Kind() == protoreflect.EnumKind {
 		return enumJSONAssignment(access, field, oneof)
@@ -288,9 +295,6 @@ func jsonAssignment(access string, field *protogen.Field, oneof bool) string {
 func enumJSONAssignment(access string, field *protogen.Field, oneof bool) string {
 	values := field.Desc.Enum().Values()
 	expression := "func() any {"
-	if !oneof {
-		expression += " if " + access + " == 0 { return nil };"
-	}
 	expression += " switch " + access + " {"
 	for i := 0; i < values.Len(); i++ {
 		value := values.Get(i)

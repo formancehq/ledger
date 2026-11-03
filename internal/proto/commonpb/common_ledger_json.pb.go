@@ -7,7 +7,7 @@ import jsonv2 "encoding/json/v2"
 
 func (x *NullValue) MarshalJSON() ([]byte, error) {
 	return jsonv2.Marshal(struct {
-		Original string `json:"original,omitempty,omitzero"`
+		Original string `json:"original"`
 	}{
 		Original: x.Original,
 	})
@@ -59,13 +59,10 @@ func (x *MetadataValue) MarshalJSON() ([]byte, error) {
 
 func (x *MetadataIndexID) MarshalJSON() ([]byte, error) {
 	return jsonv2.Marshal(struct {
-		Target any    `json:"target,omitempty,omitzero"`
-		Key    string `json:"key,omitempty,omitzero"`
+		Target any    `json:"target"`
+		Key    string `json:"key"`
 	}{
 		Target: func() any {
-			if x.Target == 0 {
-				return nil
-			}
 			switch x.Target {
 			case TargetType_TARGET_TYPE_ACCOUNT:
 				return "TARGET_TYPE_ACCOUNT"
@@ -156,8 +153,8 @@ func (x *Index) MarshalJSON() ([]byte, error) {
 	return jsonv2.Marshal(struct {
 		Id                     any    `json:"id,omitempty,omitzero"`
 		CreatedAt              any    `json:"createdAt,omitempty,omitzero"`
-		Ledger                 string `json:"ledger,omitempty,omitzero"`
-		ForwardEncodingVersion uint32 `json:"forwardEncodingVersion,omitempty,omitzero"`
+		Ledger                 string `json:"ledger"`
+		ForwardEncodingVersion uint32 `json:"forwardEncodingVersion"`
 	}{
 		Id:                     x.Id,
 		CreatedAt:              x.CreatedAt,
@@ -168,8 +165,8 @@ func (x *Index) MarshalJSON() ([]byte, error) {
 
 func (x *Idempotency) MarshalJSON() ([]byte, error) {
 	return jsonv2.Marshal(struct {
-		Key       string `json:"key,omitempty,omitzero"`
-		ExpiresAt uint64 `json:"expiresAt,omitempty,omitzero"`
+		Key       string `json:"key"`
+		ExpiresAt uint64 `json:"expiresAt"`
 	}{
 		Key:       x.Key,
 		ExpiresAt: x.ExpiresAt,
@@ -178,7 +175,7 @@ func (x *Idempotency) MarshalJSON() ([]byte, error) {
 
 func (x *PromotedLedgerLog) MarshalJSON() ([]byte, error) {
 	return jsonv2.Marshal(struct {
-		Name string `json:"name,omitempty,omitzero"`
+		Name string `json:"name"`
 	}{
 		Name: x.Name,
 	})
@@ -186,9 +183,9 @@ func (x *PromotedLedgerLog) MarshalJSON() ([]byte, error) {
 
 func (x *RegisteredSigningKeyLog) MarshalJSON() ([]byte, error) {
 	return jsonv2.Marshal(struct {
-		KeyId       string `json:"keyId,omitempty,omitzero"`
-		PublicKey   []byte `json:"publicKey,omitempty,omitzero"`
-		ParentKeyId string `json:"parentKeyId,omitempty,omitzero"`
+		KeyId       string `json:"keyId"`
+		PublicKey   []byte `json:"publicKey"`
+		ParentKeyId string `json:"parentKeyId"`
 	}{
 		KeyId:       x.KeyId,
 		PublicKey:   x.PublicKey,
@@ -198,19 +195,24 @@ func (x *RegisteredSigningKeyLog) MarshalJSON() ([]byte, error) {
 
 func (x *RevokedSigningKeyLog) MarshalJSON() ([]byte, error) {
 	return jsonv2.Marshal(struct {
-		KeyId          string `json:"keyId,omitempty,omitzero"`
-		CascadedKeyIds any    `json:"cascadedKeyIds,omitempty,omitzero"`
+		KeyId          string `json:"keyId"`
+		CascadedKeyIds any    `json:"cascadedKeyIds"`
 	}{
-		KeyId:          x.KeyId,
-		CascadedKeyIds: x.CascadedKeyIds,
+		KeyId: x.KeyId,
+		CascadedKeyIds: func() any {
+			if x.CascadedKeyIds == nil {
+				return []any{}
+			}
+			return x.CascadedKeyIds
+		}(),
 	})
 }
 
 func (x *SigningKey) MarshalJSON() ([]byte, error) {
 	return jsonv2.Marshal(struct {
-		KeyId       string `json:"keyId,omitempty,omitzero"`
-		PublicKey   []byte `json:"publicKey,omitempty,omitzero"`
-		ParentKeyId string `json:"parentKeyId,omitempty,omitzero"`
+		KeyId       string `json:"keyId"`
+		PublicKey   []byte `json:"publicKey"`
+		ParentKeyId string `json:"parentKeyId"`
 	}{
 		KeyId:       x.KeyId,
 		PublicKey:   x.PublicKey,
@@ -220,7 +222,7 @@ func (x *SigningKey) MarshalJSON() ([]byte, error) {
 
 func (x *SetSigningConfigLog) MarshalJSON() ([]byte, error) {
 	return jsonv2.Marshal(struct {
-		RequireSignatures bool `json:"requireSignatures,omitempty,omitzero"`
+		RequireSignatures bool `json:"requireSignatures"`
 	}{
 		RequireSignatures: x.RequireSignatures,
 	})
@@ -236,7 +238,7 @@ func (x *AddedEventsSinkLog) MarshalJSON() ([]byte, error) {
 
 func (x *RemovedEventsSinkLog) MarshalJSON() ([]byte, error) {
 	return jsonv2.Marshal(struct {
-		Name string `json:"name,omitempty,omitzero"`
+		Name string `json:"name"`
 	}{
 		Name: x.Name,
 	})
@@ -244,7 +246,7 @@ func (x *RemovedEventsSinkLog) MarshalJSON() ([]byte, error) {
 
 func (x *SetMaintenanceModeLog) MarshalJSON() ([]byte, error) {
 	return jsonv2.Marshal(struct {
-		Enabled bool `json:"enabled,omitempty,omitzero"`
+		Enabled bool `json:"enabled"`
 	}{
 		Enabled: x.Enabled,
 	})
@@ -260,7 +262,7 @@ func (x *SetClusterPolicyLog) MarshalJSON() ([]byte, error) {
 
 func (x *CreatedPreparedQueryLog) MarshalJSON() ([]byte, error) {
 	return jsonv2.Marshal(struct {
-		Ledger string `json:"ledger,omitempty,omitzero"`
+		Ledger string `json:"ledger"`
 		Query  any    `json:"query,omitempty,omitzero"`
 	}{
 		Ledger: x.Ledger,
@@ -270,8 +272,8 @@ func (x *CreatedPreparedQueryLog) MarshalJSON() ([]byte, error) {
 
 func (x *UpdatedPreparedQueryLog) MarshalJSON() ([]byte, error) {
 	return jsonv2.Marshal(struct {
-		Ledger         string `json:"ledger,omitempty,omitzero"`
-		Name           string `json:"name,omitempty,omitzero"`
+		Ledger         string `json:"ledger"`
+		Name           string `json:"name"`
 		PreviousFilter any    `json:"previousFilter,omitempty,omitzero"`
 		NewFilter      any    `json:"newFilter,omitempty,omitzero"`
 	}{
@@ -284,8 +286,8 @@ func (x *UpdatedPreparedQueryLog) MarshalJSON() ([]byte, error) {
 
 func (x *DeletedPreparedQueryLog) MarshalJSON() ([]byte, error) {
 	return jsonv2.Marshal(struct {
-		Ledger string `json:"ledger,omitempty,omitzero"`
-		Name   string `json:"name,omitempty,omitzero"`
+		Ledger string `json:"ledger"`
+		Name   string `json:"name"`
 	}{
 		Ledger: x.Ledger,
 		Name:   x.Name,
@@ -294,18 +296,23 @@ func (x *DeletedPreparedQueryLog) MarshalJSON() ([]byte, error) {
 
 func (x *SavedLedgerMetadataLog) MarshalJSON() ([]byte, error) {
 	return jsonv2.Marshal(struct {
-		Ledger   string `json:"ledger,omitempty,omitzero"`
-		Metadata any    `json:"metadata,omitempty,omitzero"`
+		Ledger   string `json:"ledger"`
+		Metadata any    `json:"metadata"`
 	}{
-		Ledger:   x.Ledger,
-		Metadata: x.Metadata,
+		Ledger: x.Ledger,
+		Metadata: func() any {
+			if x.Metadata == nil {
+				return map[string]any{}
+			}
+			return x.Metadata
+		}(),
 	})
 }
 
 func (x *DeletedLedgerMetadataLog) MarshalJSON() ([]byte, error) {
 	return jsonv2.Marshal(struct {
-		Ledger string `json:"ledger,omitempty,omitzero"`
-		Key    string `json:"key,omitempty,omitzero"`
+		Ledger string `json:"ledger"`
+		Key    string `json:"key"`
 	}{
 		Ledger: x.Ledger,
 		Key:    x.Key,
@@ -322,7 +329,7 @@ func (x *SavedNumscriptLog) MarshalJSON() ([]byte, error) {
 
 func (x *SetQueryCheckpointScheduleLog) MarshalJSON() ([]byte, error) {
 	return jsonv2.Marshal(struct {
-		Cron string `json:"cron,omitempty,omitzero"`
+		Cron string `json:"cron"`
 	}{
 		Cron: x.Cron,
 	})
@@ -335,10 +342,10 @@ func (x *DeletedQueryCheckpointScheduleLog) MarshalJSON() ([]byte, error) {
 
 func (x *CreatedQueryCheckpointLog) MarshalJSON() ([]byte, error) {
 	return jsonv2.Marshal(struct {
-		CheckpointId uint64 `json:"checkpointId,omitempty,omitzero"`
-		MaxSequence  uint64 `json:"maxSequence,omitempty,omitzero"`
+		CheckpointId uint64 `json:"checkpointId"`
+		MaxSequence  uint64 `json:"maxSequence"`
 		CreatedAt    any    `json:"createdAt,omitempty,omitzero"`
-		AppliedIndex uint64 `json:"appliedIndex,omitempty,omitzero"`
+		AppliedIndex uint64 `json:"appliedIndex"`
 	}{
 		CheckpointId: x.CheckpointId,
 		MaxSequence:  x.MaxSequence,
@@ -349,7 +356,7 @@ func (x *CreatedQueryCheckpointLog) MarshalJSON() ([]byte, error) {
 
 func (x *DeletedQueryCheckpointLog) MarshalJSON() ([]byte, error) {
 	return jsonv2.Marshal(struct {
-		CheckpointId uint64 `json:"checkpointId,omitempty,omitzero"`
+		CheckpointId uint64 `json:"checkpointId"`
 	}{
 		CheckpointId: x.CheckpointId,
 	})
@@ -359,108 +366,138 @@ func (x *SinkConfig) MarshalJSON() ([]byte, error) {
 	switch oneofValue := x.Type.(type) {
 	case *SinkConfig_Nats:
 		return jsonv2.Marshal(struct {
-			Name         string `json:"name,omitempty,omitzero"`
+			Name         string `json:"name"`
 			Nats         any    `json:"nats"`
-			Format       string `json:"format,omitempty,omitzero"`
-			BatchSize    int32  `json:"batchSize,omitempty,omitzero"`
-			BatchDelayMs int64  `json:"batchDelayMs,omitempty,omitzero"`
-			EventTypes   any    `json:"eventTypes,omitempty,omitzero"`
-			ControllerId string `json:"controllerId,omitempty,omitzero"`
+			Format       string `json:"format"`
+			BatchSize    int32  `json:"batchSize"`
+			BatchDelayMs int64  `json:"batchDelayMs"`
+			EventTypes   any    `json:"eventTypes"`
+			ControllerId string `json:"controllerId"`
 		}{
 			Name:         x.Name,
 			Nats:         oneofValue.Nats,
 			Format:       x.Format,
 			BatchSize:    x.BatchSize,
 			BatchDelayMs: x.BatchDelayMs,
-			EventTypes:   x.EventTypes,
+			EventTypes: func() any {
+				if x.EventTypes == nil {
+					return []any{}
+				}
+				return x.EventTypes
+			}(),
 			ControllerId: x.ControllerId,
 		})
 	case *SinkConfig_Clickhouse:
 		return jsonv2.Marshal(struct {
-			Name         string `json:"name,omitempty,omitzero"`
+			Name         string `json:"name"`
 			Clickhouse   any    `json:"clickhouse"`
-			Format       string `json:"format,omitempty,omitzero"`
-			BatchSize    int32  `json:"batchSize,omitempty,omitzero"`
-			BatchDelayMs int64  `json:"batchDelayMs,omitempty,omitzero"`
-			EventTypes   any    `json:"eventTypes,omitempty,omitzero"`
-			ControllerId string `json:"controllerId,omitempty,omitzero"`
+			Format       string `json:"format"`
+			BatchSize    int32  `json:"batchSize"`
+			BatchDelayMs int64  `json:"batchDelayMs"`
+			EventTypes   any    `json:"eventTypes"`
+			ControllerId string `json:"controllerId"`
 		}{
 			Name:         x.Name,
 			Clickhouse:   oneofValue.Clickhouse,
 			Format:       x.Format,
 			BatchSize:    x.BatchSize,
 			BatchDelayMs: x.BatchDelayMs,
-			EventTypes:   x.EventTypes,
+			EventTypes: func() any {
+				if x.EventTypes == nil {
+					return []any{}
+				}
+				return x.EventTypes
+			}(),
 			ControllerId: x.ControllerId,
 		})
 	case *SinkConfig_Kafka:
 		return jsonv2.Marshal(struct {
-			Name         string `json:"name,omitempty,omitzero"`
+			Name         string `json:"name"`
 			Kafka        any    `json:"kafka"`
-			Format       string `json:"format,omitempty,omitzero"`
-			BatchSize    int32  `json:"batchSize,omitempty,omitzero"`
-			BatchDelayMs int64  `json:"batchDelayMs,omitempty,omitzero"`
-			EventTypes   any    `json:"eventTypes,omitempty,omitzero"`
-			ControllerId string `json:"controllerId,omitempty,omitzero"`
+			Format       string `json:"format"`
+			BatchSize    int32  `json:"batchSize"`
+			BatchDelayMs int64  `json:"batchDelayMs"`
+			EventTypes   any    `json:"eventTypes"`
+			ControllerId string `json:"controllerId"`
 		}{
 			Name:         x.Name,
 			Kafka:        oneofValue.Kafka,
 			Format:       x.Format,
 			BatchSize:    x.BatchSize,
 			BatchDelayMs: x.BatchDelayMs,
-			EventTypes:   x.EventTypes,
+			EventTypes: func() any {
+				if x.EventTypes == nil {
+					return []any{}
+				}
+				return x.EventTypes
+			}(),
 			ControllerId: x.ControllerId,
 		})
 	case *SinkConfig_Http:
 		return jsonv2.Marshal(struct {
-			Name         string `json:"name,omitempty,omitzero"`
+			Name         string `json:"name"`
 			Http         any    `json:"http"`
-			Format       string `json:"format,omitempty,omitzero"`
-			BatchSize    int32  `json:"batchSize,omitempty,omitzero"`
-			BatchDelayMs int64  `json:"batchDelayMs,omitempty,omitzero"`
-			EventTypes   any    `json:"eventTypes,omitempty,omitzero"`
-			ControllerId string `json:"controllerId,omitempty,omitzero"`
+			Format       string `json:"format"`
+			BatchSize    int32  `json:"batchSize"`
+			BatchDelayMs int64  `json:"batchDelayMs"`
+			EventTypes   any    `json:"eventTypes"`
+			ControllerId string `json:"controllerId"`
 		}{
 			Name:         x.Name,
 			Http:         oneofValue.Http,
 			Format:       x.Format,
 			BatchSize:    x.BatchSize,
 			BatchDelayMs: x.BatchDelayMs,
-			EventTypes:   x.EventTypes,
+			EventTypes: func() any {
+				if x.EventTypes == nil {
+					return []any{}
+				}
+				return x.EventTypes
+			}(),
 			ControllerId: x.ControllerId,
 		})
 	case *SinkConfig_Databricks:
 		return jsonv2.Marshal(struct {
-			Name         string `json:"name,omitempty,omitzero"`
+			Name         string `json:"name"`
 			Databricks   any    `json:"databricks"`
-			Format       string `json:"format,omitempty,omitzero"`
-			BatchSize    int32  `json:"batchSize,omitempty,omitzero"`
-			BatchDelayMs int64  `json:"batchDelayMs,omitempty,omitzero"`
-			EventTypes   any    `json:"eventTypes,omitempty,omitzero"`
-			ControllerId string `json:"controllerId,omitempty,omitzero"`
+			Format       string `json:"format"`
+			BatchSize    int32  `json:"batchSize"`
+			BatchDelayMs int64  `json:"batchDelayMs"`
+			EventTypes   any    `json:"eventTypes"`
+			ControllerId string `json:"controllerId"`
 		}{
 			Name:         x.Name,
 			Databricks:   oneofValue.Databricks,
 			Format:       x.Format,
 			BatchSize:    x.BatchSize,
 			BatchDelayMs: x.BatchDelayMs,
-			EventTypes:   x.EventTypes,
+			EventTypes: func() any {
+				if x.EventTypes == nil {
+					return []any{}
+				}
+				return x.EventTypes
+			}(),
 			ControllerId: x.ControllerId,
 		})
 	default:
 		return jsonv2.Marshal(struct {
-			Name         string `json:"name,omitempty,omitzero"`
-			Format       string `json:"format,omitempty,omitzero"`
-			BatchSize    int32  `json:"batchSize,omitempty,omitzero"`
-			BatchDelayMs int64  `json:"batchDelayMs,omitempty,omitzero"`
-			EventTypes   any    `json:"eventTypes,omitempty,omitzero"`
-			ControllerId string `json:"controllerId,omitempty,omitzero"`
+			Name         string `json:"name"`
+			Format       string `json:"format"`
+			BatchSize    int32  `json:"batchSize"`
+			BatchDelayMs int64  `json:"batchDelayMs"`
+			EventTypes   any    `json:"eventTypes"`
+			ControllerId string `json:"controllerId"`
 		}{
 			Name:         x.Name,
 			Format:       x.Format,
 			BatchSize:    x.BatchSize,
 			BatchDelayMs: x.BatchDelayMs,
-			EventTypes:   x.EventTypes,
+			EventTypes: func() any {
+				if x.EventTypes == nil {
+					return []any{}
+				}
+				return x.EventTypes
+			}(),
 			ControllerId: x.ControllerId,
 		})
 	}
@@ -468,8 +505,8 @@ func (x *SinkConfig) MarshalJSON() ([]byte, error) {
 
 func (x *SinkStatus) MarshalJSON() ([]byte, error) {
 	return jsonv2.Marshal(struct {
-		SinkName string `json:"sinkName,omitempty,omitzero"`
-		Cursor   uint64 `json:"cursor,omitempty,omitzero"`
+		SinkName string `json:"sinkName"`
+		Cursor   uint64 `json:"cursor"`
 		Error    any    `json:"error,omitempty,omitzero"`
 	}{
 		SinkName: x.SinkName,
@@ -480,7 +517,7 @@ func (x *SinkStatus) MarshalJSON() ([]byte, error) {
 
 func (x *SinkError) MarshalJSON() ([]byte, error) {
 	return jsonv2.Marshal(struct {
-		Message    string `json:"message,omitempty,omitzero"`
+		Message    string `json:"message"`
 		OccurredAt any    `json:"occurredAt,omitempty,omitzero"`
 	}{
 		Message:    x.Message,
@@ -490,8 +527,8 @@ func (x *SinkError) MarshalJSON() ([]byte, error) {
 
 func (x *NatsSinkConfig) MarshalJSON() ([]byte, error) {
 	return jsonv2.Marshal(struct {
-		Url   string `json:"url,omitempty,omitzero"`
-		Topic string `json:"topic,omitempty,omitzero"`
+		Url   string `json:"url"`
+		Topic string `json:"topic"`
 	}{
 		Url:   x.Url,
 		Topic: x.Topic,
@@ -500,8 +537,8 @@ func (x *NatsSinkConfig) MarshalJSON() ([]byte, error) {
 
 func (x *ClickHouseSinkConfig) MarshalJSON() ([]byte, error) {
 	return jsonv2.Marshal(struct {
-		Dsn   string `json:"dsn,omitempty,omitzero"`
-		Table string `json:"table,omitempty,omitzero"`
+		Dsn   string `json:"dsn"`
+		Table string `json:"table"`
 	}{
 		Dsn:   x.Dsn,
 		Table: x.Table,
@@ -510,14 +547,19 @@ func (x *ClickHouseSinkConfig) MarshalJSON() ([]byte, error) {
 
 func (x *KafkaSinkConfig) MarshalJSON() ([]byte, error) {
 	return jsonv2.Marshal(struct {
-		Brokers       any    `json:"brokers,omitempty,omitzero"`
-		Topic         string `json:"topic,omitempty,omitzero"`
-		Tls           bool   `json:"tls,omitempty,omitzero"`
-		SaslMechanism string `json:"saslMechanism,omitempty,omitzero"`
-		SaslUsername  string `json:"saslUsername,omitempty,omitzero"`
-		SaslPassword  string `json:"saslPassword,omitempty,omitzero"`
+		Brokers       any    `json:"brokers"`
+		Topic         string `json:"topic"`
+		Tls           bool   `json:"tls"`
+		SaslMechanism string `json:"saslMechanism"`
+		SaslUsername  string `json:"saslUsername"`
+		SaslPassword  string `json:"saslPassword"`
 	}{
-		Brokers:       x.Brokers,
+		Brokers: func() any {
+			if x.Brokers == nil {
+				return []any{}
+			}
+			return x.Brokers
+		}(),
 		Topic:         x.Topic,
 		Tls:           x.Tls,
 		SaslMechanism: x.SaslMechanism,
@@ -528,8 +570,8 @@ func (x *KafkaSinkConfig) MarshalJSON() ([]byte, error) {
 
 func (x *HttpSinkConfig) MarshalJSON() ([]byte, error) {
 	return jsonv2.Marshal(struct {
-		Endpoint string `json:"endpoint,omitempty,omitzero"`
-		Secret   string `json:"secret,omitempty,omitzero"`
+		Endpoint string `json:"endpoint"`
+		Secret   string `json:"secret"`
 	}{
 		Endpoint: x.Endpoint,
 		Secret:   x.Secret,
@@ -540,12 +582,12 @@ func (x *DatabricksSinkConfig) MarshalJSON() ([]byte, error) {
 	switch oneofValue := x.Auth.(type) {
 	case *DatabricksSinkConfig_Token:
 		return jsonv2.Marshal(struct {
-			ServerHostname string `json:"serverHostname,omitempty,omitzero"`
-			HttpPath       string `json:"httpPath,omitempty,omitzero"`
-			Catalog        string `json:"catalog,omitempty,omitzero"`
-			Schema         string `json:"schema,omitempty,omitzero"`
-			Table          string `json:"table,omitempty,omitzero"`
-			Port           int32  `json:"port,omitempty,omitzero"`
+			ServerHostname string `json:"serverHostname"`
+			HttpPath       string `json:"httpPath"`
+			Catalog        string `json:"catalog"`
+			Schema         string `json:"schema"`
+			Table          string `json:"table"`
+			Port           int32  `json:"port"`
 			Token          string `json:"token"`
 		}{
 			ServerHostname: x.ServerHostname,
@@ -558,12 +600,12 @@ func (x *DatabricksSinkConfig) MarshalJSON() ([]byte, error) {
 		})
 	case *DatabricksSinkConfig_OauthM2M:
 		return jsonv2.Marshal(struct {
-			ServerHostname string `json:"serverHostname,omitempty,omitzero"`
-			HttpPath       string `json:"httpPath,omitempty,omitzero"`
-			Catalog        string `json:"catalog,omitempty,omitzero"`
-			Schema         string `json:"schema,omitempty,omitzero"`
-			Table          string `json:"table,omitempty,omitzero"`
-			Port           int32  `json:"port,omitempty,omitzero"`
+			ServerHostname string `json:"serverHostname"`
+			HttpPath       string `json:"httpPath"`
+			Catalog        string `json:"catalog"`
+			Schema         string `json:"schema"`
+			Table          string `json:"table"`
+			Port           int32  `json:"port"`
 			OauthM2M       any    `json:"oauthM2m"`
 		}{
 			ServerHostname: x.ServerHostname,
@@ -576,12 +618,12 @@ func (x *DatabricksSinkConfig) MarshalJSON() ([]byte, error) {
 		})
 	default:
 		return jsonv2.Marshal(struct {
-			ServerHostname string `json:"serverHostname,omitempty,omitzero"`
-			HttpPath       string `json:"httpPath,omitempty,omitzero"`
-			Catalog        string `json:"catalog,omitempty,omitzero"`
-			Schema         string `json:"schema,omitempty,omitzero"`
-			Table          string `json:"table,omitempty,omitzero"`
-			Port           int32  `json:"port,omitempty,omitzero"`
+			ServerHostname string `json:"serverHostname"`
+			HttpPath       string `json:"httpPath"`
+			Catalog        string `json:"catalog"`
+			Schema         string `json:"schema"`
+			Table          string `json:"table"`
+			Port           int32  `json:"port"`
 		}{
 			ServerHostname: x.ServerHostname,
 			HttpPath:       x.HttpPath,
@@ -595,8 +637,8 @@ func (x *DatabricksSinkConfig) MarshalJSON() ([]byte, error) {
 
 func (x *DatabricksOAuthM2M) MarshalJSON() ([]byte, error) {
 	return jsonv2.Marshal(struct {
-		ClientId     string `json:"clientId,omitempty,omitzero"`
-		ClientSecret string `json:"clientSecret,omitempty,omitzero"`
+		ClientId     string `json:"clientId"`
+		ClientSecret string `json:"clientSecret"`
 	}{
 		ClientId:     x.ClientId,
 		ClientSecret: x.ClientSecret,
@@ -606,14 +648,11 @@ func (x *DatabricksOAuthM2M) MarshalJSON() ([]byte, error) {
 func (x *CreatedIndexLog) MarshalJSON() ([]byte, error) {
 	return jsonv2.Marshal(struct {
 		Id                any  `json:"id,omitempty,omitzero"`
-		BoundType         any  `json:"boundType,omitempty,omitzero"`
-		BoundTypeDeclared bool `json:"boundTypeDeclared,omitempty,omitzero"`
+		BoundType         any  `json:"boundType"`
+		BoundTypeDeclared bool `json:"boundTypeDeclared"`
 	}{
 		Id: x.Id,
 		BoundType: func() any {
-			if x.BoundType == 0 {
-				return nil
-			}
 			switch x.BoundType {
 			case MetadataType_METADATA_TYPE_STRING:
 				return "METADATA_TYPE_STRING"
@@ -655,7 +694,7 @@ func (x *DroppedIndexLog) MarshalJSON() ([]byte, error) {
 
 func (x *FilledGapLog) MarshalJSON() ([]byte, error) {
 	return jsonv2.Marshal(struct {
-		OriginalId uint64 `json:"originalId,omitempty,omitzero"`
+		OriginalId uint64 `json:"originalId"`
 	}{
 		OriginalId: x.OriginalId,
 	})
@@ -663,14 +702,11 @@ func (x *FilledGapLog) MarshalJSON() ([]byte, error) {
 
 func (x *SetMetadataFieldTypeLog) MarshalJSON() ([]byte, error) {
 	return jsonv2.Marshal(struct {
-		TargetType any    `json:"targetType,omitempty,omitzero"`
-		Key        string `json:"key,omitempty,omitzero"`
-		Type       any    `json:"type,omitempty,omitzero"`
+		TargetType any    `json:"targetType"`
+		Key        string `json:"key"`
+		Type       any    `json:"type"`
 	}{
 		TargetType: func() any {
-			if x.TargetType == 0 {
-				return nil
-			}
 			switch x.TargetType {
 			case TargetType_TARGET_TYPE_ACCOUNT:
 				return "TARGET_TYPE_ACCOUNT"
@@ -684,9 +720,6 @@ func (x *SetMetadataFieldTypeLog) MarshalJSON() ([]byte, error) {
 		}(),
 		Key: x.Key,
 		Type: func() any {
-			if x.Type == 0 {
-				return nil
-			}
 			switch x.Type {
 			case MetadataType_METADATA_TYPE_STRING:
 				return "METADATA_TYPE_STRING"
@@ -719,14 +752,11 @@ func (x *SetMetadataFieldTypeLog) MarshalJSON() ([]byte, error) {
 
 func (x *RemovedMetadataFieldTypeLog) MarshalJSON() ([]byte, error) {
 	return jsonv2.Marshal(struct {
-		TargetType   any    `json:"targetType,omitempty,omitzero"`
-		Key          string `json:"key,omitempty,omitzero"`
+		TargetType   any    `json:"targetType"`
+		Key          string `json:"key"`
 		DroppedIndex any    `json:"droppedIndex,omitempty,omitzero"`
 	}{
 		TargetType: func() any {
-			if x.TargetType == 0 {
-				return nil
-			}
 			switch x.TargetType {
 			case TargetType_TARGET_TYPE_ACCOUNT:
 				return "TARGET_TYPE_ACCOUNT"
@@ -747,37 +777,52 @@ func (x *MirrorSourceConfig) MarshalJSON() ([]byte, error) {
 	switch oneofValue := x.Type.(type) {
 	case *MirrorSourceConfig_Http:
 		return jsonv2.Marshal(struct {
-			LedgerName   string `json:"ledgerName,omitempty,omitzero"`
+			LedgerName   string `json:"ledgerName"`
 			Http         any    `json:"http"`
-			BatchSize    uint32 `json:"batchSize,omitempty,omitzero"`
-			RewriteRules any    `json:"rewriteRules,omitempty,omitzero"`
+			BatchSize    uint32 `json:"batchSize"`
+			RewriteRules any    `json:"rewriteRules"`
 		}{
-			LedgerName:   x.LedgerName,
-			Http:         oneofValue.Http,
-			BatchSize:    x.BatchSize,
-			RewriteRules: x.RewriteRules,
+			LedgerName: x.LedgerName,
+			Http:       oneofValue.Http,
+			BatchSize:  x.BatchSize,
+			RewriteRules: func() any {
+				if x.RewriteRules == nil {
+					return []any{}
+				}
+				return x.RewriteRules
+			}(),
 		})
 	case *MirrorSourceConfig_Postgres:
 		return jsonv2.Marshal(struct {
-			LedgerName   string `json:"ledgerName,omitempty,omitzero"`
+			LedgerName   string `json:"ledgerName"`
 			Postgres     any    `json:"postgres"`
-			BatchSize    uint32 `json:"batchSize,omitempty,omitzero"`
-			RewriteRules any    `json:"rewriteRules,omitempty,omitzero"`
+			BatchSize    uint32 `json:"batchSize"`
+			RewriteRules any    `json:"rewriteRules"`
 		}{
-			LedgerName:   x.LedgerName,
-			Postgres:     oneofValue.Postgres,
-			BatchSize:    x.BatchSize,
-			RewriteRules: x.RewriteRules,
+			LedgerName: x.LedgerName,
+			Postgres:   oneofValue.Postgres,
+			BatchSize:  x.BatchSize,
+			RewriteRules: func() any {
+				if x.RewriteRules == nil {
+					return []any{}
+				}
+				return x.RewriteRules
+			}(),
 		})
 	default:
 		return jsonv2.Marshal(struct {
-			LedgerName   string `json:"ledgerName,omitempty,omitzero"`
-			BatchSize    uint32 `json:"batchSize,omitempty,omitzero"`
-			RewriteRules any    `json:"rewriteRules,omitempty,omitzero"`
+			LedgerName   string `json:"ledgerName"`
+			BatchSize    uint32 `json:"batchSize"`
+			RewriteRules any    `json:"rewriteRules"`
 		}{
-			LedgerName:   x.LedgerName,
-			BatchSize:    x.BatchSize,
-			RewriteRules: x.RewriteRules,
+			LedgerName: x.LedgerName,
+			BatchSize:  x.BatchSize,
+			RewriteRules: func() any {
+				if x.RewriteRules == nil {
+					return []any{}
+				}
+				return x.RewriteRules
+			}(),
 		})
 	}
 }
@@ -787,7 +832,7 @@ func (x *MirrorRewriteRule) MarshalJSON() ([]byte, error) {
 	case *MirrorRewriteRule_CreatedTransaction:
 		return jsonv2.Marshal(struct {
 			CreatedTransaction any  `json:"createdTransaction"`
-			Stop               bool `json:"stop,omitempty,omitzero"`
+			Stop               bool `json:"stop"`
 		}{
 			CreatedTransaction: oneofValue.CreatedTransaction,
 			Stop:               x.Stop,
@@ -795,7 +840,7 @@ func (x *MirrorRewriteRule) MarshalJSON() ([]byte, error) {
 	case *MirrorRewriteRule_RevertedTransaction:
 		return jsonv2.Marshal(struct {
 			RevertedTransaction any  `json:"revertedTransaction"`
-			Stop                bool `json:"stop,omitempty,omitzero"`
+			Stop                bool `json:"stop"`
 		}{
 			RevertedTransaction: oneofValue.RevertedTransaction,
 			Stop:                x.Stop,
@@ -803,7 +848,7 @@ func (x *MirrorRewriteRule) MarshalJSON() ([]byte, error) {
 	case *MirrorRewriteRule_SavedMetadata:
 		return jsonv2.Marshal(struct {
 			SavedMetadata any  `json:"savedMetadata"`
-			Stop          bool `json:"stop,omitempty,omitzero"`
+			Stop          bool `json:"stop"`
 		}{
 			SavedMetadata: oneofValue.SavedMetadata,
 			Stop:          x.Stop,
@@ -811,7 +856,7 @@ func (x *MirrorRewriteRule) MarshalJSON() ([]byte, error) {
 	case *MirrorRewriteRule_DeletedMetadata:
 		return jsonv2.Marshal(struct {
 			DeletedMetadata any  `json:"deletedMetadata"`
-			Stop            bool `json:"stop,omitempty,omitzero"`
+			Stop            bool `json:"stop"`
 		}{
 			DeletedMetadata: oneofValue.DeletedMetadata,
 			Stop:            x.Stop,
@@ -819,14 +864,14 @@ func (x *MirrorRewriteRule) MarshalJSON() ([]byte, error) {
 	case *MirrorRewriteRule_AnyVariant:
 		return jsonv2.Marshal(struct {
 			AnyVariant any  `json:"anyVariant"`
-			Stop       bool `json:"stop,omitempty,omitzero"`
+			Stop       bool `json:"stop"`
 		}{
 			AnyVariant: oneofValue.AnyVariant,
 			Stop:       x.Stop,
 		})
 	default:
 		return jsonv2.Marshal(struct {
-			Stop bool `json:"stop,omitempty,omitzero"`
+			Stop bool `json:"stop"`
 		}{
 			Stop: x.Stop,
 		})
@@ -835,51 +880,76 @@ func (x *MirrorRewriteRule) MarshalJSON() ([]byte, error) {
 
 func (x *CreatedTransactionRule) MarshalJSON() ([]byte, error) {
 	return jsonv2.Marshal(struct {
-		Match   string `json:"match,omitempty,omitzero"`
-		Actions any    `json:"actions,omitempty,omitzero"`
+		Match   string `json:"match"`
+		Actions any    `json:"actions"`
 	}{
-		Match:   x.Match,
-		Actions: x.Actions,
+		Match: x.Match,
+		Actions: func() any {
+			if x.Actions == nil {
+				return []any{}
+			}
+			return x.Actions
+		}(),
 	})
 }
 
 func (x *RevertedTransactionRule) MarshalJSON() ([]byte, error) {
 	return jsonv2.Marshal(struct {
-		Match   string `json:"match,omitempty,omitzero"`
-		Actions any    `json:"actions,omitempty,omitzero"`
+		Match   string `json:"match"`
+		Actions any    `json:"actions"`
 	}{
-		Match:   x.Match,
-		Actions: x.Actions,
+		Match: x.Match,
+		Actions: func() any {
+			if x.Actions == nil {
+				return []any{}
+			}
+			return x.Actions
+		}(),
 	})
 }
 
 func (x *SavedMetadataRule) MarshalJSON() ([]byte, error) {
 	return jsonv2.Marshal(struct {
-		Match   string `json:"match,omitempty,omitzero"`
-		Actions any    `json:"actions,omitempty,omitzero"`
+		Match   string `json:"match"`
+		Actions any    `json:"actions"`
 	}{
-		Match:   x.Match,
-		Actions: x.Actions,
+		Match: x.Match,
+		Actions: func() any {
+			if x.Actions == nil {
+				return []any{}
+			}
+			return x.Actions
+		}(),
 	})
 }
 
 func (x *DeletedMetadataRule) MarshalJSON() ([]byte, error) {
 	return jsonv2.Marshal(struct {
-		Match   string `json:"match,omitempty,omitzero"`
-		Actions any    `json:"actions,omitempty,omitzero"`
+		Match   string `json:"match"`
+		Actions any    `json:"actions"`
 	}{
-		Match:   x.Match,
-		Actions: x.Actions,
+		Match: x.Match,
+		Actions: func() any {
+			if x.Actions == nil {
+				return []any{}
+			}
+			return x.Actions
+		}(),
 	})
 }
 
 func (x *AnyVariantRule) MarshalJSON() ([]byte, error) {
 	return jsonv2.Marshal(struct {
-		Match   string `json:"match,omitempty,omitzero"`
-		Actions any    `json:"actions,omitempty,omitzero"`
+		Match   string `json:"match"`
+		Actions any    `json:"actions"`
 	}{
-		Match:   x.Match,
-		Actions: x.Actions,
+		Match: x.Match,
+		Actions: func() any {
+			if x.Actions == nil {
+				return []any{}
+			}
+			return x.Actions
+		}(),
 	})
 }
 
@@ -1039,8 +1109,8 @@ func (x *AnyVariantAction) MarshalJSON() ([]byte, error) {
 
 func (x *RewriteAddressAction) MarshalJSON() ([]byte, error) {
 	return jsonv2.Marshal(struct {
-		Pattern     string `json:"pattern,omitempty,omitzero"`
-		Replacement string `json:"replacement,omitempty,omitzero"`
+		Pattern     string `json:"pattern"`
+		Replacement string `json:"replacement"`
 	}{
 		Pattern:     x.Pattern,
 		Replacement: x.Replacement,
@@ -1051,9 +1121,9 @@ func (x *SetMetadataAction) MarshalJSON() ([]byte, error) {
 	switch oneofValue := x.Source.(type) {
 	case *SetMetadataAction_Value:
 		return jsonv2.Marshal(struct {
-			Key   string `json:"key,omitempty,omitzero"`
+			Key   string `json:"key"`
 			Value string `json:"value"`
-			Type  string `json:"type,omitempty,omitzero"`
+			Type  string `json:"type"`
 		}{
 			Key:   x.Key,
 			Value: oneofValue.Value,
@@ -1061,9 +1131,9 @@ func (x *SetMetadataAction) MarshalJSON() ([]byte, error) {
 		})
 	case *SetMetadataAction_ValueExpr:
 		return jsonv2.Marshal(struct {
-			Key       string `json:"key,omitempty,omitzero"`
+			Key       string `json:"key"`
 			ValueExpr string `json:"valueExpr"`
-			Type      string `json:"type,omitempty,omitzero"`
+			Type      string `json:"type"`
 		}{
 			Key:       x.Key,
 			ValueExpr: oneofValue.ValueExpr,
@@ -1071,8 +1141,8 @@ func (x *SetMetadataAction) MarshalJSON() ([]byte, error) {
 		})
 	default:
 		return jsonv2.Marshal(struct {
-			Key  string `json:"key,omitempty,omitzero"`
-			Type string `json:"type,omitempty,omitzero"`
+			Key  string `json:"key"`
+			Type string `json:"type"`
 		}{
 			Key:  x.Key,
 			Type: x.Type,
@@ -1082,7 +1152,7 @@ func (x *SetMetadataAction) MarshalJSON() ([]byte, error) {
 
 func (x *DeleteMetadataAction) MarshalJSON() ([]byte, error) {
 	return jsonv2.Marshal(struct {
-		Key string `json:"key,omitempty,omitzero"`
+		Key string `json:"key"`
 	}{
 		Key: x.Key,
 	})
@@ -1092,10 +1162,10 @@ func (x *SetAccountMetadataAction) MarshalJSON() ([]byte, error) {
 	switch oneofValue := x.Source.(type) {
 	case *SetAccountMetadataAction_Value:
 		return jsonv2.Marshal(struct {
-			Account string `json:"account,omitempty,omitzero"`
-			Key     string `json:"key,omitempty,omitzero"`
+			Account string `json:"account"`
+			Key     string `json:"key"`
 			Value   string `json:"value"`
-			Type    string `json:"type,omitempty,omitzero"`
+			Type    string `json:"type"`
 		}{
 			Account: x.Account,
 			Key:     x.Key,
@@ -1104,10 +1174,10 @@ func (x *SetAccountMetadataAction) MarshalJSON() ([]byte, error) {
 		})
 	case *SetAccountMetadataAction_ValueExpr:
 		return jsonv2.Marshal(struct {
-			Account   string `json:"account,omitempty,omitzero"`
-			Key       string `json:"key,omitempty,omitzero"`
+			Account   string `json:"account"`
+			Key       string `json:"key"`
 			ValueExpr string `json:"valueExpr"`
-			Type      string `json:"type,omitempty,omitzero"`
+			Type      string `json:"type"`
 		}{
 			Account:   x.Account,
 			Key:       x.Key,
@@ -1116,9 +1186,9 @@ func (x *SetAccountMetadataAction) MarshalJSON() ([]byte, error) {
 		})
 	default:
 		return jsonv2.Marshal(struct {
-			Account string `json:"account,omitempty,omitzero"`
-			Key     string `json:"key,omitempty,omitzero"`
-			Type    string `json:"type,omitempty,omitzero"`
+			Account string `json:"account"`
+			Key     string `json:"key"`
+			Type    string `json:"type"`
 		}{
 			Account: x.Account,
 			Key:     x.Key,
@@ -1129,8 +1199,8 @@ func (x *SetAccountMetadataAction) MarshalJSON() ([]byte, error) {
 
 func (x *DeleteAccountMetadataAction) MarshalJSON() ([]byte, error) {
 	return jsonv2.Marshal(struct {
-		Account string `json:"account,omitempty,omitzero"`
-		Key     string `json:"key,omitempty,omitzero"`
+		Account string `json:"account"`
+		Key     string `json:"key"`
 	}{
 		Account: x.Account,
 		Key:     x.Key,
@@ -1139,19 +1209,24 @@ func (x *DeleteAccountMetadataAction) MarshalJSON() ([]byte, error) {
 
 func (x *SetAccountMetadataFromAddressAction) MarshalJSON() ([]byte, error) {
 	return jsonv2.Marshal(struct {
-		Pattern      string `json:"pattern,omitempty,omitzero"`
-		Replacements any    `json:"replacements,omitempty,omitzero"`
+		Pattern      string `json:"pattern"`
+		Replacements any    `json:"replacements"`
 	}{
-		Pattern:      x.Pattern,
-		Replacements: x.Replacements,
+		Pattern: x.Pattern,
+		Replacements: func() any {
+			if x.Replacements == nil {
+				return []any{}
+			}
+			return x.Replacements
+		}(),
 	})
 }
 
 func (x *SetAccountMetadataFromAddressReplacement) MarshalJSON() ([]byte, error) {
 	return jsonv2.Marshal(struct {
-		Key         string `json:"key,omitempty,omitzero"`
-		Replacement string `json:"replacement,omitempty,omitzero"`
-		Type        string `json:"type,omitempty,omitzero"`
+		Key         string `json:"key"`
+		Replacement string `json:"replacement"`
+		Type        string `json:"type"`
 	}{
 		Key:         x.Key,
 		Replacement: x.Replacement,
@@ -1166,7 +1241,7 @@ func (x *DropAction) MarshalJSON() ([]byte, error) {
 
 func (x *HttpMirrorSourceConfig) MarshalJSON() ([]byte, error) {
 	return jsonv2.Marshal(struct {
-		BaseUrl                 string `json:"baseUrl,omitempty,omitzero"`
+		BaseUrl                 string `json:"baseUrl"`
 		Oauth2ClientCredentials any    `json:"oauth2ClientCredentials,omitempty,omitzero"`
 	}{
 		BaseUrl:                 x.BaseUrl,
@@ -1176,21 +1251,26 @@ func (x *HttpMirrorSourceConfig) MarshalJSON() ([]byte, error) {
 
 func (x *OAuth2ClientCredentials) MarshalJSON() ([]byte, error) {
 	return jsonv2.Marshal(struct {
-		ClientId      string `json:"clientId,omitempty,omitzero"`
-		ClientSecret  string `json:"clientSecret,omitempty,omitzero"`
-		TokenEndpoint string `json:"tokenEndpoint,omitempty,omitzero"`
-		Scopes        any    `json:"scopes,omitempty,omitzero"`
+		ClientId      string `json:"clientId"`
+		ClientSecret  string `json:"clientSecret"`
+		TokenEndpoint string `json:"tokenEndpoint"`
+		Scopes        any    `json:"scopes"`
 	}{
 		ClientId:      x.ClientId,
 		ClientSecret:  x.ClientSecret,
 		TokenEndpoint: x.TokenEndpoint,
-		Scopes:        x.Scopes,
+		Scopes: func() any {
+			if x.Scopes == nil {
+				return []any{}
+			}
+			return x.Scopes
+		}(),
 	})
 }
 
 func (x *PostgresMirrorSourceConfig) MarshalJSON() ([]byte, error) {
 	return jsonv2.Marshal(struct {
-		Dsn        string `json:"dsn,omitempty,omitzero"`
+		Dsn        string `json:"dsn"`
 		AwsIamAuth any    `json:"awsIamAuth,omitempty,omitzero"`
 	}{
 		Dsn:        x.Dsn,
@@ -1200,8 +1280,8 @@ func (x *PostgresMirrorSourceConfig) MarshalJSON() ([]byte, error) {
 
 func (x *PostgresAwsIamAuth) MarshalJSON() ([]byte, error) {
 	return jsonv2.Marshal(struct {
-		Region        string `json:"region,omitempty,omitzero"`
-		AssumeRoleArn string `json:"assumeRoleArn,omitempty,omitzero"`
+		Region        string `json:"region"`
+		AssumeRoleArn string `json:"assumeRoleArn"`
 	}{
 		Region:        x.Region,
 		AssumeRoleArn: x.AssumeRoleArn,
@@ -1257,17 +1337,14 @@ func (x *BytesConstraint) MarshalJSON() ([]byte, error) {
 
 func (x *AccountType) MarshalJSON() ([]byte, error) {
 	return jsonv2.Marshal(struct {
-		Name         string `json:"name,omitempty,omitzero"`
-		Pattern      string `json:"pattern,omitempty,omitzero"`
-		Persistence  any    `json:"persistence,omitempty,omitzero"`
-		SegmentTypes any    `json:"segmentTypes,omitempty,omitzero"`
+		Name         string `json:"name"`
+		Pattern      string `json:"pattern"`
+		Persistence  any    `json:"persistence"`
+		SegmentTypes any    `json:"segmentTypes"`
 	}{
 		Name:    x.Name,
 		Pattern: x.Pattern,
 		Persistence: func() any {
-			if x.Persistence == 0 {
-				return nil
-			}
 			switch x.Persistence {
 			case AccountTypePersistence_ACCOUNT_TYPE_NORMAL:
 				return "ACCOUNT_TYPE_NORMAL"
@@ -1279,7 +1356,12 @@ func (x *AccountType) MarshalJSON() ([]byte, error) {
 				return int32(x.Persistence)
 			}
 		}(),
-		SegmentTypes: x.SegmentTypes,
+		SegmentTypes: func() any {
+			if x.SegmentTypes == nil {
+				return map[string]any{}
+			}
+			return x.SegmentTypes
+		}(),
 	})
 }
 
@@ -1293,7 +1375,7 @@ func (x *AddedAccountTypeLog) MarshalJSON() ([]byte, error) {
 
 func (x *RemovedAccountTypeLog) MarshalJSON() ([]byte, error) {
 	return jsonv2.Marshal(struct {
-		Name string `json:"name,omitempty,omitzero"`
+		Name string `json:"name"`
 	}{
 		Name: x.Name,
 	})
@@ -1301,12 +1383,9 @@ func (x *RemovedAccountTypeLog) MarshalJSON() ([]byte, error) {
 
 func (x *UpdatedDefaultEnforcementModeLog) MarshalJSON() ([]byte, error) {
 	return jsonv2.Marshal(struct {
-		EnforcementMode any `json:"enforcementMode,omitempty,omitzero"`
+		EnforcementMode any `json:"enforcementMode"`
 	}{
 		EnforcementMode: func() any {
-			if x.EnforcementMode == 0 {
-				return nil
-			}
 			switch x.EnforcementMode {
 			case ChartEnforcementMode_CHART_ENFORCEMENT_STRICT:
 				return "CHART_ENFORCEMENT_STRICT"
@@ -1323,7 +1402,7 @@ func (x *CallerIdentity) MarshalJSON() ([]byte, error) {
 	switch oneofValue := x.Source.(type) {
 	case *CallerIdentity_Issuer:
 		return jsonv2.Marshal(struct {
-			Subject string `json:"subject,omitempty,omitzero"`
+			Subject string `json:"subject"`
 			Issuer  string `json:"issuer"`
 		}{
 			Subject: x.Subject,
@@ -1331,7 +1410,7 @@ func (x *CallerIdentity) MarshalJSON() ([]byte, error) {
 		})
 	case *CallerIdentity_KeyId:
 		return jsonv2.Marshal(struct {
-			Subject string `json:"subject,omitempty,omitzero"`
+			Subject string `json:"subject"`
 			KeyId   string `json:"keyId"`
 		}{
 			Subject: x.Subject,
@@ -1339,7 +1418,7 @@ func (x *CallerIdentity) MarshalJSON() ([]byte, error) {
 		})
 	default:
 		return jsonv2.Marshal(struct {
-			Subject string `json:"subject,omitempty,omitzero"`
+			Subject string `json:"subject"`
 		}{
 			Subject: x.Subject,
 		})
@@ -1349,26 +1428,36 @@ func (x *CallerIdentity) MarshalJSON() ([]byte, error) {
 func (x *AuthenticatedCaller) MarshalJSON() ([]byte, error) {
 	return jsonv2.Marshal(struct {
 		Identity  any  `json:"identity,omitempty,omitzero"`
-		Scopes    any  `json:"scopes,omitempty,omitzero"`
-		Superuser bool `json:"superuser,omitempty,omitzero"`
+		Scopes    any  `json:"scopes"`
+		Superuser bool `json:"superuser"`
 	}{
-		Identity:  x.Identity,
-		Scopes:    x.Scopes,
+		Identity: x.Identity,
+		Scopes: func() any {
+			if x.Scopes == nil {
+				return []any{}
+			}
+			return x.Scopes
+		}(),
 		Superuser: x.Superuser,
 	})
 }
 
 func (x *AnonymousCaller) MarshalJSON() ([]byte, error) {
 	return jsonv2.Marshal(struct {
-		Scopes any `json:"scopes,omitempty,omitzero"`
+		Scopes any `json:"scopes"`
 	}{
-		Scopes: x.Scopes,
+		Scopes: func() any {
+			if x.Scopes == nil {
+				return []any{}
+			}
+			return x.Scopes
+		}(),
 	})
 }
 
 func (x *SystemCaller) MarshalJSON() ([]byte, error) {
 	return jsonv2.Marshal(struct {
-		Component string `json:"component,omitempty,omitzero"`
+		Component string `json:"component"`
 	}{
 		Component: x.Component,
 	})

@@ -14,5 +14,5 @@ func TestGeneratedMarshalJSONUsesCamelCaseAndNumericUint64(t *testing.T) {
 		CurrentVersion: 2,
 	})
 	require.NoError(t, err)
-	require.JSONEq(t, `{"ledger":"main","cursor":9007199254740993,"currentVersion":2}`, string(raw))
+	require.JSONEq(t, `{"ledger":"main","cursor":9007199254740993,"currentVersion":2,"pendingVersion":0}`, string(raw))
 }

@@ -160,6 +160,7 @@ message DrainStatus {
 
 // NodeInfo represents information about a node in the cluster
 message NodeInfo {
+	option (common.ledger_json) = true;
   uint64 id = 1;
   string suffrage = 2;  // Voter or Learner
   ProgressInfo progress = 3;  // Progress information (only available when querying leader)
@@ -172,6 +173,7 @@ message NodeInfo {
 
 // ProgressInfo represents the progress information for a node
 message ProgressInfo {
+	option (common.ledger_json) = true;
   fixed64 match = 1;             // Match index: highest log entry known to be replicated to this node
   fixed64 next = 2;              // Next index: index of the next log entry to send to this node
   string state = 3;             // State: Probe, Replicate, or Snapshot
@@ -184,6 +186,7 @@ message ProgressInfo {
 
 // RaftStatus represents the complete Raft status information
 message RaftStatus {
+	option (common.ledger_json) = true;
   string state = 1;             // Current Raft state (Leader, Follower, Candidate, PreCandidate)
   fixed64 term = 2;              // Current term
   uint64 leader = 3;            // ID of the current leader (0 if no leader)
@@ -197,6 +200,7 @@ message RaftStatus {
 
 // ClusterState represents the state of the Raft cluster
 message ClusterState {
+	option (common.ledger_json) = true;
   string state = 1;             // Leader, Follower, Candidate, Shutdown
   uint64 leader = 2;            // ID of the current leader (0 if no leader)
   repeated NodeInfo nodes = 3;  // List of all nodes in the cluster
@@ -214,12 +218,14 @@ message ClusterState {
 
 // IndexProgress tracks the index builder's position relative to Pebble.
 message IndexProgress {
+	option (common.ledger_json) = true;
   fixed64 last_indexed_sequence = 1;  // Pebble progress cursor
   fixed64 pebble_last_sequence = 2;   // latest Pebble log sequence
 }
 
 // SyncProgress tracks the progress of a checkpoint fetch on the local node.
 message SyncProgress {
+	option (common.ledger_json) = true;
   string status = 1;              // "normal", "syncing", "snapshotting", "out_of_sync"
   fixed64 bytes_received = 2;      // Bytes received so far during checkpoint fetch
   fixed64 bytes_total = 3;         // Total bytes to fetch (0 if unknown)

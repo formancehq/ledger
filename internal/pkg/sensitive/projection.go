@@ -139,6 +139,17 @@ func Redact[T proto.Message](message T) T {
 
 func redact(message protoreflect.Message) {
 	message.SetUnknown(nil)
+	// Scalar proto3 fields without presence are not visited by Range when they
+	// contain their zero value. Materialize the redaction marker first so the
+	// generated EmitUnpopulated JSON projection cannot expose an empty secret.
+	fields := message.Descriptor().Fields()
+	for i := 0; i < fields.Len(); i++ {
+		field := fields.Get(i)
+		if proto.GetExtension(field.Options(), commonpb.E_Sensitive).(bool) &&
+			!field.HasPresence() && field.Kind() == protoreflect.StringKind && !field.IsList() && !field.IsMap() {
+			message.Set(field, protoreflect.ValueOfString(Marker))
+		}
+	}
 	message.Range(func(field protoreflect.FieldDescriptor, value protoreflect.Value) bool {
 		if proto.GetExtension(field.Options(), commonpb.E_SensitiveUrl).(bool) {
 			if field.Kind() == protoreflect.StringKind && !field.IsList() && !field.IsMap() {
@@ -153,9 +164,10 @@ func redact(message protoreflect.Message) {
 		}
 		if proto.GetExtension(field.Options(), commonpb.E_Sensitive).(bool) {
 			if field.Kind() == protoreflect.StringKind && !field.IsList() && !field.IsMap() {
-				if value.String() != "" {
-					message.Set(field, protoreflect.ValueOfString(Marker))
-				}
+				// Keep the public projection stable when EmitUnpopulated causes
+				// scalar defaults to be emitted: sensitive strings are always
+				// represented by the redaction marker, including an absent value.
+				message.Set(field, protoreflect.ValueOfString(Marker))
 			} else {
 				message.Clear(field)
 			}

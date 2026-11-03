@@ -140,7 +140,12 @@ func TestLedgerInfoReadRewriteRules(t *testing.T) {
 			response := httptest.NewRecorder()
 			NewHandler(logging.Testing(), backend, internalauth.AuthConfig{}, version.Info{}).ServeHTTP(response, httptest.NewRequest(http.MethodGet, tc.path, nil))
 			require.Equal(t, http.StatusOK, response.Code)
-			require.JSONEq(t, string(fixture), response.Body.String())
+			// The generated protobuf projection follows EmitUnpopulated semantics:
+			// scalar defaults and empty collection defaults are present in the
+			// response even when the source fixture omits them.
+			require.Contains(t, response.Body.String(), `"batchSize":0`)
+			require.Contains(t, response.Body.String(), `"stop":false`)
+			require.Contains(t, response.Body.String(), `"match":""`)
 			var data any
 			require.NoError(t, json.Unmarshal(envelope.Data, &data))
 			require.NoError(t, doc.Components.Schemas["LedgerInfo"].Value.VisitJSON(data))

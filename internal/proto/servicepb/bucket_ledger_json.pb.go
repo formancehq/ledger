@@ -7,37 +7,52 @@ import jsonv2 "encoding/json/v2"
 
 func (x *GetEventsSinksResponse) MarshalJSON() ([]byte, error) {
 	return jsonv2.Marshal(struct {
-		Sinks        any `json:"sinks,omitempty,omitzero"`
-		SinkStatuses any `json:"sinkStatuses,omitempty,omitzero"`
+		Sinks        any `json:"sinks"`
+		SinkStatuses any `json:"sinkStatuses"`
 	}{
-		Sinks:        x.Sinks,
-		SinkStatuses: x.SinkStatuses,
+		Sinks: func() any {
+			if x.Sinks == nil {
+				return []any{}
+			}
+			return x.Sinks
+		}(),
+		SinkStatuses: func() any {
+			if x.SinkStatuses == nil {
+				return []any{}
+			}
+			return x.SinkStatuses
+		}(),
 	})
 }
 
 func (x *GetIndexStatusResponse) MarshalJSON() ([]byte, error) {
 	return jsonv2.Marshal(struct {
-		LastIndexedSequence uint64 `json:"lastIndexedSequence,omitempty,omitzero"`
-		LastLogSequence     uint64 `json:"lastLogSequence,omitempty,omitzero"`
-		Lag                 uint64 `json:"lag,omitempty,omitzero"`
-		IndexFileSize       uint64 `json:"indexFileSize,omitempty,omitzero"`
-		Indexes             any    `json:"indexes,omitempty,omitzero"`
+		LastIndexedSequence uint64 `json:"lastIndexedSequence"`
+		LastLogSequence     uint64 `json:"lastLogSequence"`
+		Lag                 uint64 `json:"lag"`
+		IndexFileSize       uint64 `json:"indexFileSize"`
+		Indexes             any    `json:"indexes"`
 	}{
 		LastIndexedSequence: x.LastIndexedSequence,
 		LastLogSequence:     x.LastLogSequence,
 		Lag:                 x.Lag,
 		IndexFileSize:       x.IndexFileSize,
-		Indexes:             x.Indexes,
+		Indexes: func() any {
+			if x.Indexes == nil {
+				return []any{}
+			}
+			return x.Indexes
+		}(),
 	})
 }
 
 func (x *IndexEntry) MarshalJSON() ([]byte, error) {
 	return jsonv2.Marshal(struct {
-		Ledger         string `json:"ledger,omitempty,omitzero"`
+		Ledger         string `json:"ledger"`
 		Index          any    `json:"index,omitempty,omitzero"`
-		Cursor         uint64 `json:"cursor,omitempty,omitzero"`
-		CurrentVersion uint32 `json:"currentVersion,omitempty,omitzero"`
-		PendingVersion uint32 `json:"pendingVersion,omitempty,omitzero"`
+		Cursor         uint64 `json:"cursor"`
+		CurrentVersion uint32 `json:"currentVersion"`
+		PendingVersion uint32 `json:"pendingVersion"`
 	}{
 		Ledger:         x.Ledger,
 		Index:          x.Index,
