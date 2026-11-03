@@ -204,6 +204,15 @@ test-model duration="60":
 test-model-cluster duration="180":
     tests/antithesis/run_model_test.sh --cluster {{duration}}
 
+# Build both pinned revisions and exercise the maintenance-gated binary upgrade.
+[positional-arguments]
+test-rolling-upgrade source_ref target_ref:
+    tests/upgrade/run.sh "$1" "$2"
+
+# Validate an adjacent v3.0 RC -> exact release/v3.0 HEAD using the operator.
+test-release-operator-upgrade:
+    tests/upgrade/run_operator.sh "$RELEASE_BRANCH"
+
 # Run all fuzz tests (seed corpus replay, no active fuzzing — fast CI check)
 fuzz-check:
     #!/usr/bin/env bash
