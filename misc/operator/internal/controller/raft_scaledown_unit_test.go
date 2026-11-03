@@ -177,37 +177,37 @@ func TestRaftNodePresentRejectsNonLeaderStatus(t *testing.T) {
 func TestRaftNodePresentDecodesLedgerctlProtoJSONUint64IDs(t *testing.T) {
 	t.Parallel()
 
-	for _, force := range []bool{false, true} {
-		t.Run(map[bool]string{false: "normal", true: "force"}[force], func(t *testing.T) {
-			t.Parallel()
+	for _, encodedID := range []string{`"1"`, `1`} {
+		for _, force := range []bool{false, true} {
+			t.Run(map[bool]string{false: "normal", true: "force"}[force]+"/"+encodedID, func(t *testing.T) {
+				t.Parallel()
 
-			// This is the protojson shape emitted by ledgerctl: uint64 IDs are
-			// encoded as JSON strings, including the ordinary ID 1.
-			payload := `{"state":"Leader","nodes":[{"id":"1"},{"id":"4294967299"}]}`
+				payload := `{"state":"Leader","nodes":[{"id":` + encodedID + `},{"id":4294967299}]}`
 
-			exec := ledgerctlExec(func(
-				_ context.Context,
-				_ *rest.Config,
-				_ kubernetes.Interface,
-				_, _, _ string,
-				command []string,
-			) (*execResult, error) {
-				if force {
-					require.Contains(t, command[2], "'cluster' 'status' '--node-id' '1' '--json'")
-				} else {
-					require.Contains(t, command[2], "'cluster' 'status' '--json'")
-				}
+				exec := ledgerctlExec(func(
+					_ context.Context,
+					_ *rest.Config,
+					_ kubernetes.Interface,
+					_, _, _ string,
+					command []string,
+				) (*execResult, error) {
+					if force {
+						require.Contains(t, command[2], "'cluster' 'status' '--node-id' '1' '--json'")
+					} else {
+						require.Contains(t, command[2], "'cluster' 'status' '--json'")
+					}
 
-				return &execResult{Stdout: payload}, nil
+					return &execResult{Stdout: payload}, nil
+				})
+
+				present, err := raftNodePresent(
+					context.Background(), nil, nil,
+					"ns", "ledger-0", "ledger", "ledger-0:3068", "disabled", 1, force,
+					exec,
+				)
+				require.NoError(t, err)
+				require.True(t, present)
 			})
-
-			present, err := raftNodePresent(
-				context.Background(), nil, nil,
-				"ns", "ledger-0", "ledger", "ledger-0:3068", "disabled", 1, force,
-				exec,
-			)
-			require.NoError(t, err)
-			require.True(t, present)
-		})
+		}
 	}
 }
