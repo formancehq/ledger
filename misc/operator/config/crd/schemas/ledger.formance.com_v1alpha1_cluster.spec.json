@@ -2164,7 +2164,7 @@
     },
     "networkPolicy": {
       "additionalProperties": false,
-      "description": "NetworkPolicy configuration for egress restrictions.",
+      "description": "NetworkPolicy configuration for ingress and egress restrictions. When\nenabled, public HTTP/gRPC ingress is limited to the declared service\nports, while Raft and peer gRPC ingress is limited to Ledger Pods.",
       "properties": {
         "additionalEgress": {
           "description": "AdditionalEgress appends custom egress rules to the generated NetworkPolicy.\nUse this to allow traffic to cluster-internal services (e.g. databases, message brokers).",
@@ -2339,7 +2339,7 @@
           "type": "array"
         },
         "enabled": {
-          "description": "Enabled enables the egress NetworkPolicy.",
+          "description": "Enabled enables the NetworkPolicy. It restricts both egress and ingress:\npublic HTTP/gRPC ports remain reachable according to the generated rules,\nwhile Raft and peer gRPC ports are reachable only between Ledger Pods.",
           "type": "boolean"
         },
         "externalCIDRExcept": {
