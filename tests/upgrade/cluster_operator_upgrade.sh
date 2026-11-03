@@ -239,12 +239,21 @@ else
       "\($pods | length) \([$pods[] | select(.image == $source)] | length) \([$pods[] | select(.image == $target)] | length) \([$pods[] | select(.image == $target and .ready)] | length)"' <<<"$pods")"
     read -r total old new new_ready <<<"$counts"
     phase="$(k get cluster "$cluster" -o json | jq -r '.status.upgrade.phase // empty')"
+    sts_uid="$(k get statefulset "$statefulset" --ignore-not-found -o json | jq -r '.metadata.uid // empty')"
+    # Target Pods are valid only after an earlier observation proved the drain,
+    # empty Pod set, and disappearance of the original StatefulSet.
+    if [ "$new" -gt 0 ]; then
+      [ "$barrier_seen" -eq 1 ] && [ "$empty_seen" -eq 1 ] && [ "$sts_absent_seen" -eq 1 ] &&
+        [ -n "$sts_uid" ] && [ "$sts_uid" != "$before_sts_uid" ] || {
+        echo 'target Pod appeared before the stopped-upgrade barrier and StatefulSet replacement' >&2; exit 1;
+      }
+    fi
     if [ -n "$phase" ]; then stopped_seen=1; fi
     case "$phase" in Retaining|Deleting|Recreating|Verifying|Unblocking) barrier_seen=1 ;; esac
-    printf 'phase=%s total=%s old=%s new=%s readyNew=%s\n' "$phase" "$total" "$old" "$new" "$new_ready" >> "$UPGRADE_EVIDENCE_DIR/rollout-observations.txt"
+    printf 'phase=%s stsUID=%s total=%s old=%s new=%s readyNew=%s\n' "$phase" "$sts_uid" "$total" "$old" "$new" "$new_ready" >> "$UPGRADE_EVIDENCE_DIR/rollout-observations.txt"
     [ "$old" -eq 0 ] || [ "$new" -eq 0 ] || { echo 'new Pod appeared while an old Pod remained' >&2; exit 1; }
     if [ "$total" -eq 0 ]; then empty_seen=1; fi
-    if ! k get statefulset "$statefulset" >/dev/null 2>&1; then sts_absent_seen=1; fi
+    if [ -z "$sts_uid" ]; then sts_absent_seen=1; fi
     if [ "$total" -eq 3 ] && [ "$old" -eq 0 ] && [ "$new" -eq 3 ] && [ "$new_ready" -eq 3 ]; then break; fi
     sleep 1
   done
