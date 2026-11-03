@@ -2,7 +2,6 @@ package http
 
 import (
 	"encoding/base64"
-	jsonv2 "encoding/json/v2"
 	"errors"
 	"fmt"
 	"net/http"
@@ -108,44 +107,21 @@ func writeCheckedJSONResponse(w http.ResponseWriter, r *http.Request, value any,
 	_, _ = w.Write(body)
 }
 
-// writeProtoOK writes a 200 OK response through encoding/json/v2. The standard
-// library dispatches to hand-written or generated MarshalJSON methods when a
-// protobuf type provides one, and otherwise applies its normal struct rules.
+// writeProtoOK streams a protobuf response directly to the ResponseWriter.
+// writeOK's json/v2 encoder dispatches to hand-written or generated MarshalJSON
+// methods without first materializing the complete response body.
 func writeProtoOK(w http.ResponseWriter, r *http.Request, msg proto.Message) {
-	raw, err := jsonv2.Marshal(msg)
-	if err != nil {
-		writeErrorResponse(w, http.StatusInternalServerError, "INTERNAL_ERROR", err)
-
-		return
-	}
-
-	writeOK(w, r, json.RawValue(raw))
+	writeOK(w, r, msg)
 }
 
 // writeProtoListOK writes a 200 OK response whose `data` is a JSON array of
 // protobuf messages. A nil/empty slice serializes as `[]`, matching the
 // drained-cursor list handlers.
 func writeProtoListOK[T proto.Message](w http.ResponseWriter, r *http.Request, msgs []T) {
-	data, err := protoListJSON(msgs)
-	if err != nil {
-		writeErrorResponse(w, http.StatusInternalServerError, "INTERNAL_ERROR", err)
-
-		return
-	}
-
-	writeOK(w, r, data)
-}
-
-// protoListJSON renders msgs as a JSON array of public protobuf JSON objects.
-func protoListJSON[T proto.Message](msgs []T) (json.RawValue, error) {
 	if msgs == nil {
 		msgs = []T{}
 	}
-	raw, err := jsonv2.Marshal(msgs)
-	if err != nil {
-		return nil, err
-	}
-	return json.RawValue(raw), nil
+	writeOK(w, r, msgs)
 }
 
 // writeBadRequest writes a 400 Bad Request response.
