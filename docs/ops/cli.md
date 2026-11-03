@@ -4846,23 +4846,55 @@ ledger run --flight-recorder-enabled --flight-recorder-max-bytes 50Mi --flight-r
 
 ### Server Trace Sampling
 
-Tracing uses the standard OpenTelemetry SDK configuration. There are no
-Ledger-specific trace sampling flags. To export all Ledger spans for collector
-sampling, keep the OTLP exporter and endpoint configured and set:
+Tracing uses standard OpenTelemetry SDK head sampling. With no sampler settings,
+the default remains `parentbased_always_on`: root spans are sampled, while
+children follow their parent's sampled flag.
+
+| Flag | Environment | Default | Description |
+| ---- | ----------- | ------- | ----------- |
+| `--trace-sampler` | `TRACE_SAMPLER` | unset | Standard SDK sampler policy; replaces the raw SDK sampler pair when selected. |
+| `--trace-sampler-arg` | `TRACE_SAMPLER_ARG` | unset | Explicit finite sampling probability in `[0,1]` for ratio policies. |
+
+Supported policies are `always_on`, `always_off`, `traceidratio`,
+`parentbased_always_on`, `parentbased_always_off`, and
+`parentbased_traceidratio`. The two ratio policies require an explicit argument;
+other policies reject an argument. An argument without a policy, an unknown
+policy, NaN, infinity, or a ratio outside `[0,1]` fails server startup, even when
+export is disabled. Names use the lowercase spellings above.
+
+```bash
+ledger run --trace-sampler=parentbased_traceidratio --trace-sampler-arg=0.1 [other flags...]
+```
+
+CLI flags override their corresponding `TRACE_SAMPLER*` environment values.
+When either typed setting is selected, this pair replaces both raw
+`OTEL_TRACES_SAMPLER` and `OTEL_TRACES_SAMPLER_ARG` values: arguments are never
+inherited from the raw pair. With neither typed setting selected, the SDK reads
+the raw variables directly and retains its standard defaults and fallback
+behavior, including a missing ratio argument defaulting to `1.0`.
+
+Use `always_on` with the exporter and endpoint enabled when collector-side tail
+sampling or complete span-derived metrics are required:
 
 ```bash
 export OTEL_TRACES_SAMPLER=always_on
+# Alternatively: ledger run --trace-sampler=always_on [other flags...]
 ```
 
-The SDK otherwise defaults to parent-based sampling, which may discard spans
-under an incoming unsampled parent. Ledger retains error status and exception
-information; the collector owns error/success retention policies and must compute
-span metrics before sampling.
+Head sampling reduces recording/export volume but may discard child spans before
+a later parent error exists. It cannot recover them when that error is recorded,
+and it biases downstream span-derived counts, error rates and latency metrics.
+The collector owns error/success retention and must compute complete span metrics
+before sampling. Ledger keeps no local OpenTelemetry span-retention buffer for
+error-aware sampling. The separate, opt-in [Flight Recorder](#server-flight-recorder-flags)
+buffers Go runtime trace data in memory; it does not retain OpenTelemetry spans
+or recover spans discarded by head sampling.
 
-The former `--trace-sampling-enabled` and `--trace-sampling-success-ratio` flags
-have been removed, along with `TRACE_SAMPLING_ENABLED` and
-`TRACE_SAMPLING_SUCCESS_RATIO`. Remove them from launch configuration and configure
-the collector as described in [deployment](deployment.md#collector-side-trace-sampling).
+The former `--trace-sampling-enabled` and `--trace-sampling-success-ratio` flags,
+`TRACE_SAMPLING_ENABLED`, and `TRACE_SAMPLING_SUCCESS_RATIO` remain unsupported.
+See [deployment](deployment.md#collector-side-trace-sampling) for the typed
+Operator configuration. These server flags do not configure the independent
+`ledgerctl` client tracer.
 
 ---
 

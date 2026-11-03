@@ -721,6 +721,10 @@ func validateSpec(ledger *ledgerv1alpha1.Cluster) error {
 // this only rejects values that would either be silently ignored or that the
 // server would refuse.
 func validateClusterConfig(spec *ledgerv1alpha1.ClusterSpec) error {
+	if err := validateTraceSampling(spec); err != nil {
+		return err
+	}
+
 	// Auth requires TLS. The ledger server rejects --auth-enabled unless
 	// --tls-mode=required, and buildEnvVars defers auth env until TLS converges
 	// to `required`. Without this guard a CR with auth.enabled=true but
