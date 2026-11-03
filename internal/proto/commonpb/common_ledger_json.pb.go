@@ -299,6 +299,64 @@ func (x *SinkError) MarshalJSON() ([]byte, error) {
 	return jsonv2.Marshal(object)
 }
 
+func (x *CreatedIndexLog) MarshalJSON() ([]byte, error) {
+	object := make(map[string]any)
+	if x.Id != nil {
+		object["id"] = x.Id
+	}
+	if x.BoundType != 0 {
+		object["boundType"] = x.BoundType.String()
+	}
+	if x.BoundTypeDeclared {
+		object["boundTypeDeclared"] = x.BoundTypeDeclared
+	}
+	return jsonv2.Marshal(object)
+}
+
+func (x *DroppedIndexLog) MarshalJSON() ([]byte, error) {
+	object := make(map[string]any)
+	if x.Id != nil {
+		object["id"] = x.Id
+	}
+	return jsonv2.Marshal(object)
+}
+
+func (x *FilledGapLog) MarshalJSON() ([]byte, error) {
+	object := make(map[string]any)
+	if x.OriginalId != 0 {
+		object["originalId"] = x.OriginalId
+	}
+	return jsonv2.Marshal(object)
+}
+
+func (x *SetMetadataFieldTypeLog) MarshalJSON() ([]byte, error) {
+	object := make(map[string]any)
+	if x.TargetType != 0 {
+		object["targetType"] = x.TargetType.String()
+	}
+	if x.Key != "" {
+		object["key"] = x.Key
+	}
+	if x.Type != 0 {
+		object["type"] = x.Type.String()
+	}
+	return jsonv2.Marshal(object)
+}
+
+func (x *RemovedMetadataFieldTypeLog) MarshalJSON() ([]byte, error) {
+	object := make(map[string]any)
+	if x.TargetType != 0 {
+		object["targetType"] = x.TargetType.String()
+	}
+	if x.Key != "" {
+		object["key"] = x.Key
+	}
+	if x.DroppedIndex != nil {
+		object["droppedIndex"] = x.DroppedIndex
+	}
+	return jsonv2.Marshal(object)
+}
+
 func (x *MirrorSourceConfig) MarshalJSON() ([]byte, error) {
 	object := make(map[string]any)
 	if x.LedgerName != "" {
@@ -610,6 +668,77 @@ func (x *PostgresAwsIamAuth) MarshalJSON() ([]byte, error) {
 	}
 	if x.AssumeRoleArn != "" {
 		object["assumeRoleArn"] = x.AssumeRoleArn
+	}
+	return jsonv2.Marshal(object)
+}
+
+func (x *SegmentType) MarshalJSON() ([]byte, error) {
+	object := make(map[string]any)
+	switch oneofValue := x.Constraint.(type) {
+	case *SegmentType_Regex:
+		object["regex"] = oneofValue.Regex
+	case *SegmentType_Uuid:
+		object["uuid"] = oneofValue.Uuid
+	case *SegmentType_Uint64:
+		object["uint64"] = oneofValue.Uint64
+	case *SegmentType_Bytes:
+		object["bytes"] = oneofValue.Bytes
+	}
+	return jsonv2.Marshal(object)
+}
+
+func (x *UUIDConstraint) MarshalJSON() ([]byte, error) {
+	object := make(map[string]any)
+	return jsonv2.Marshal(object)
+}
+
+func (x *Uint64Constraint) MarshalJSON() ([]byte, error) {
+	object := make(map[string]any)
+	return jsonv2.Marshal(object)
+}
+
+func (x *BytesConstraint) MarshalJSON() ([]byte, error) {
+	object := make(map[string]any)
+	return jsonv2.Marshal(object)
+}
+
+func (x *AccountType) MarshalJSON() ([]byte, error) {
+	object := make(map[string]any)
+	if x.Name != "" {
+		object["name"] = x.Name
+	}
+	if x.Pattern != "" {
+		object["pattern"] = x.Pattern
+	}
+	if x.Persistence != 0 {
+		object["persistence"] = x.Persistence.String()
+	}
+	if len(x.SegmentTypes) != 0 {
+		object["segmentTypes"] = x.SegmentTypes
+	}
+	return jsonv2.Marshal(object)
+}
+
+func (x *AddedAccountTypeLog) MarshalJSON() ([]byte, error) {
+	object := make(map[string]any)
+	if x.AccountType != nil {
+		object["accountType"] = x.AccountType
+	}
+	return jsonv2.Marshal(object)
+}
+
+func (x *RemovedAccountTypeLog) MarshalJSON() ([]byte, error) {
+	object := make(map[string]any)
+	if x.Name != "" {
+		object["name"] = x.Name
+	}
+	return jsonv2.Marshal(object)
+}
+
+func (x *UpdatedDefaultEnforcementModeLog) MarshalJSON() ([]byte, error) {
+	object := make(map[string]any)
+	if x.EnforcementMode != 0 {
+		object["enforcementMode"] = x.EnforcementMode.String()
 	}
 	return jsonv2.Marshal(object)
 }

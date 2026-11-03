@@ -101,7 +101,8 @@ func (x *LogPayload) jsonValue() (any, error) {
 			Apply *ApplyLedgerLog `json:"apply,omitempty"`
 		}{Apply: p.Apply}, nil
 	default:
-		// Other variants (signing, sinks, etc.) — use descriptor JSON for camelCase
+		// Other variants use the descriptor fallback until their static
+		// projection is generated as well.
 		raw, err := MarshalLedgerJSONWithOptions(x, MarshalLedgerJSONOptions{})
 
 		return json.RawValue(raw), err
@@ -194,7 +195,7 @@ func (x *LedgerLogPayload) MarshalJSON() ([]byte, error) {
 		return custom.MarshalJSON()
 	}
 
-	return MarshalLedgerJSONWithOptions(message, MarshalLedgerJSONOptions{})
+	return jsonv2.Marshal(message)
 }
 
 // MarshalJSONTo dispatches without hiding nested postings behind an opaque
@@ -207,7 +208,7 @@ func (x *LedgerLogPayload) MarshalJSONTo(enc *jsontext.Encoder) error {
 	if _, ok := message.(interface{ MarshalJSON() ([]byte, error) }); ok {
 		return json.MarshalEncode(enc, message)
 	}
-	raw, err := MarshalLedgerJSONWithOptions(message, MarshalLedgerJSONOptions{})
+	raw, err := jsonv2.Marshal(message)
 	if err != nil {
 		return err
 	}

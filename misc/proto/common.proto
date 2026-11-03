@@ -1600,6 +1600,7 @@ message OrderSkippedLog {
 
 // CreatedIndexLog records the creation of an index.
 message CreatedIndexLog {
+	option (ledger_json) = true;
   IndexID id = 1;
   // bound_type is the declared type of the indexed metadata field at this
   // log's sequence, stamped by the FSM when the log is minted. The index's
@@ -1618,10 +1619,12 @@ message CreatedIndexLog {
 
 // DroppedIndexLog records the removal of an index.
 message DroppedIndexLog {
+	option (ledger_json) = true;
   IndexID id = 1;
 }
 
 message FilledGapLog {
+	option (ledger_json) = true;
   fixed64 original_id = 1;  // v2 log ID that this gap fills
 }
 
@@ -1648,6 +1651,7 @@ message DeletedMetadata {
 
 // SetMetadataFieldTypeLog records a metadata field type declaration.
 message SetMetadataFieldTypeLog {
+	option (ledger_json) = true;
   TargetType target_type = 1;
   string key = 2;
   MetadataType type = 3;
@@ -1657,6 +1661,7 @@ message SetMetadataFieldTypeLog {
 // When the removed field had an index, dropped_index identifies it so the
 // indexbuilder can purge the read-store entries in the same handler pass.
 message RemovedMetadataFieldTypeLog {
+	option (ledger_json) = true;
   TargetType target_type = 1;
   string key = 2;
   IndexID dropped_index = 3;  // nil when no index was attached to the field
@@ -2209,6 +2214,7 @@ enum AccountTypePersistence {
 // SegmentType defines the constraint for a variable segment in an account type pattern.
 // When no constraint is set, the segment accepts any non-empty string.
 message SegmentType {
+	option (ledger_json) = true;
   oneof constraint {
     string regex = 1;         // Custom regex pattern (e.g. "[a-z]+")
     UUIDConstraint uuid = 2;  // RFC 4122 UUID format
@@ -2217,12 +2223,19 @@ message SegmentType {
   }
 }
 
-message UUIDConstraint {}
-message Uint64Constraint {}
-message BytesConstraint {}
+message UUIDConstraint {
+	option (ledger_json) = true;
+}
+message Uint64Constraint {
+	option (ledger_json) = true;
+}
+message BytesConstraint {
+	option (ledger_json) = true;
+}
 
 // AccountType defines a single account address pattern for a ledger.
 message AccountType {
+	option (ledger_json) = true;
   string name = 1;                           // Unique identifier: "user-checking"
   string pattern = 2;                        // Address pattern: "users:{id}:checking"
   AccountTypePersistence persistence = 3;    // How volumes are stored (replaces bool ephemeral)
@@ -2231,16 +2244,19 @@ message AccountType {
 
 // AddedAccountTypeLog records the addition of an account type.
 message AddedAccountTypeLog {
+	option (ledger_json) = true;
   AccountType account_type = 1;
 }
 
 // RemovedAccountTypeLog records the removal of an account type.
 message RemovedAccountTypeLog {
+	option (ledger_json) = true;
   string name = 1;
 }
 
 // UpdatedDefaultEnforcementModeLog records a change to the ledger's default enforcement mode.
 message UpdatedDefaultEnforcementModeLog {
+	option (ledger_json) = true;
   ChartEnforcementMode enforcement_mode = 1;
 }
 
