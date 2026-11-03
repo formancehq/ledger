@@ -6,10 +6,10 @@ import (
 	"github.com/stretchr/testify/require"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/domain/indexes"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 	"github.com/formancehq/ledger/v3/internal/storage/readstore"
 )
@@ -27,38 +27,38 @@ func TestCompile_FieldConditionBindsToTheVersionType(t *testing.T) {
 
 	const ledgerName = "ledger1"
 
-	id := indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_ACCOUNT, "tier")
+	id := indexes.MetadataID(ledgerpb.TargetType_TARGET_TYPE_ACCOUNT, "tier")
 	indexRegistry := staticIndexLookup{
 		indexes.KeyFor(ledgerName, id): {Ledger: ledgerName, Id: id},
 	}
-	info := &commonpb.LedgerInfo{Name: ledgerName}
+	info := &ledgerpb.LedgerInfo{Name: ledgerName}
 
 	// Mid-window: the schema has flipped to INT64, the served version is
 	// still the STRING-encoded one.
-	schema := map[string]*commonpb.MetadataFieldSchema{
-		"tier": {Type: commonpb.MetadataType_METADATA_TYPE_INT64},
+	schema := map[string]*ledgerpb.MetadataFieldSchema{
+		"tier": {Type: ledgerpb.MetadataType_METADATA_TYPE_INT64},
 	}
 	boundToString := func(string) (readstore.ResolvedIndexVersion, bool, error) {
 		return readstore.ResolvedIndexVersion{
 			Version:      1,
-			Type:         commonpb.MetadataType_METADATA_TYPE_STRING,
+			Type:         ledgerpb.MetadataType_METADATA_TYPE_STRING,
 			TypeDeclared: true,
 			BindingKnown: true,
 		}, true, nil
 	}
 
-	stringCond := &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_Field{
-		Field: &commonpb.FieldCondition{
-			Field: &commonpb.FieldRef{Metadata: "tier"},
-			Condition: &commonpb.FieldCondition_StringCond{StringCond: &commonpb.StringCondition{
-				Value: &commonpb.StringCondition_Hardcoded{Hardcoded: "gold"},
+	stringCond := &ledgerpb.QueryFilter{Filter: &ledgerpb.QueryFilter_Field{
+		Field: &ledgerpb.FieldCondition{
+			Field: &ledgerpb.FieldRef{Metadata: "tier"},
+			Condition: &ledgerpb.FieldCondition_StringCond{StringCond: &ledgerpb.StringCondition{
+				Value: &ledgerpb.StringCondition_Hardcoded{Hardcoded: "gold"},
 			}},
 		},
 	}}
-	intCond := &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_Field{
-		Field: &commonpb.FieldCondition{
-			Field:     &commonpb.FieldRef{Metadata: "tier"},
-			Condition: &commonpb.FieldCondition_IntCond{IntCond: &commonpb.IntCondition{}},
+	intCond := &ledgerpb.QueryFilter{Filter: &ledgerpb.QueryFilter_Field{
+		Field: &ledgerpb.FieldCondition{
+			Field:     &ledgerpb.FieldRef{Metadata: "tier"},
+			Condition: &ledgerpb.FieldCondition_IntCond{IntCond: &ledgerpb.IntCondition{}},
 		},
 	}}
 
@@ -75,7 +75,7 @@ func TestCompile_FieldConditionBindsToTheVersionType(t *testing.T) {
 		iter, err := Compile(stringCond, CompileOptions{
 			IndexReader:     rs.DB(),
 			KeyBuilder:      dal.NewKeyBuilder(),
-			Target:          commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
+			Target:          ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
 			LedgerName:      ledgerName,
 			Schema:          schema,
 			LedgerInfo:      info,
@@ -93,7 +93,7 @@ func TestCompile_FieldConditionBindsToTheVersionType(t *testing.T) {
 		t.Parallel()
 
 		_, err := Compile(intCond, CompileOptions{
-			Target:          commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
+			Target:          ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
 			LedgerName:      ledgerName,
 			Schema:          schema,
 			LedgerInfo:      info,
@@ -116,7 +116,7 @@ func TestCompile_FieldConditionBindsToTheVersionType(t *testing.T) {
 		}
 
 		_, err := Compile(stringCond, CompileOptions{
-			Target:          commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
+			Target:          ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
 			LedgerName:      ledgerName,
 			Schema:          schema,
 			LedgerInfo:      info,

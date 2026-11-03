@@ -20,6 +20,7 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 
 	internalauth "github.com/formancehq/ledger/v3/internal/adapter/auth"
 	"github.com/formancehq/ledger/v3/internal/application/check"
@@ -35,7 +36,6 @@ import (
 	"github.com/formancehq/ledger/v3/internal/pkg/sensitive"
 	"github.com/formancehq/ledger/v3/internal/pkg/version"
 	"github.com/formancehq/ledger/v3/internal/proto/auditpb"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/internal/query"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
@@ -200,7 +200,7 @@ func (impl *BucketServiceServerImpl) apply(ctx context.Context, req *servicepb.A
 //
 // Called before response payload stripping: skip_response nils out the payload
 // that carries the checkpoint id, so a later scan would find nothing to wait on.
-func (impl *BucketServiceServerImpl) waitCreatedQueryCheckpoints(ctx context.Context, logs []*commonpb.Log) error {
+func (impl *BucketServiceServerImpl) waitCreatedQueryCheckpoints(ctx context.Context, logs []*ledgerpb.Log) error {
 	for _, log := range logs {
 		cp := log.GetPayload().GetCreatedQueryCheckpoint()
 		if cp == nil {
@@ -276,7 +276,7 @@ func (impl *BucketServiceServerImpl) GetTransaction(ctx context.Context, req *se
 	}
 
 	var (
-		tx  *commonpb.Transaction
+		tx  *ledgerpb.Transaction
 		err error
 	)
 
@@ -421,7 +421,7 @@ func (impl *BucketServiceServerImpl) resolveMissingMarker(ctx context.Context, c
 	}
 
 	if !exists {
-		return commonpb.NewNotFoundError("query checkpoint %d not found", checkpointID)
+		return ledgerpb.NewNotFoundError("query checkpoint %d not found", checkpointID)
 	}
 
 	// Applied between the two reads — registered now, materialization pending.
@@ -501,7 +501,7 @@ func (impl *BucketServiceServerImpl) ListTransactions(req *servicepb.ListTransac
 			req.GetLedger(), pageSize, afterTxID, page.Back, opts.GetFilter() != nil, opts.GetReverse())
 	}
 
-	var c cursor.Cursor[*commonpb.Transaction]
+	var c cursor.Cursor[*ledgerpb.Transaction]
 
 	if cpID := opts.GetRead().GetCheckpointId(); cpID > 0 {
 		mainStore, readIdx, cleanup, openErr := impl.openCheckpointStores(ctx, cpID)
@@ -528,7 +528,7 @@ func (impl *BucketServiceServerImpl) ListTransactions(req *servicepb.ListTransac
 }
 
 // txCursorOf returns a transaction's cursor key: its id in decimal.
-func txCursorOf(tx *commonpb.Transaction) string {
+func txCursorOf(tx *ledgerpb.Transaction) string {
 	return strconv.FormatUint(tx.GetId(), 10)
 }
 
@@ -573,11 +573,11 @@ func (impl *BucketServiceServerImpl) ListLedgers(req *servicepb.ListLedgersReque
 }
 
 // ledgerCursorOf returns a ledger's cursor key: its name.
-func ledgerCursorOf(l *commonpb.LedgerInfo) string {
+func ledgerCursorOf(l *ledgerpb.LedgerInfo) string {
 	return l.GetName()
 }
 
-func (impl *BucketServiceServerImpl) GetLedger(ctx context.Context, req *servicepb.GetLedgerRequest) (*commonpb.LedgerInfo, error) {
+func (impl *BucketServiceServerImpl) GetLedger(ctx context.Context, req *servicepb.GetLedgerRequest) (*ledgerpb.LedgerInfo, error) {
 	ctx, span := bucketTracer.Start(ctx, "grpc.GetLedger")
 	defer span.End()
 
@@ -601,7 +601,7 @@ func (impl *BucketServiceServerImpl) GetLedger(ctx context.Context, req *service
 	return sensitive.Redact(ledger), nil
 }
 
-func (impl *BucketServiceServerImpl) GetAccount(ctx context.Context, req *servicepb.GetAccountRequest) (*commonpb.Account, error) {
+func (impl *BucketServiceServerImpl) GetAccount(ctx context.Context, req *servicepb.GetAccountRequest) (*ledgerpb.Account, error) {
 	if req.GetLedger() == "" {
 		return nil, domain.ErrLedgerNameRequired
 	}
@@ -665,7 +665,7 @@ func (impl *BucketServiceServerImpl) ListAccounts(req *servicepb.ListAccountsReq
 }
 
 // accountCursorOf returns an account's cursor key: its address.
-func accountCursorOf(a *commonpb.Account) string {
+func accountCursorOf(a *ledgerpb.Account) string {
 	return a.GetAddress()
 }
 
@@ -715,7 +715,7 @@ func (impl *BucketServiceServerImpl) GetIndexStatus(ctx context.Context, req *se
 
 // GetIndex returns a single Index registry entry. Scope aligns with
 // ListIndexes SCOPE_LEDGER (a per-ledger read tokens must be accepted).
-func (impl *BucketServiceServerImpl) GetIndex(ctx context.Context, req *servicepb.GetIndexRequest) (*commonpb.Index, error) {
+func (impl *BucketServiceServerImpl) GetIndex(ctx context.Context, req *servicepb.GetIndexRequest) (*ledgerpb.Index, error) {
 	return impl.ctrl.GetIndex(ctx, req)
 }
 
@@ -827,7 +827,7 @@ func (impl *BucketServiceServerImpl) ListAuditEntries(req *servicepb.ListAuditEn
 	})
 }
 
-func (impl *BucketServiceServerImpl) GetLog(ctx context.Context, req *servicepb.GetLogRequest) (*commonpb.Log, error) {
+func (impl *BucketServiceServerImpl) GetLog(ctx context.Context, req *servicepb.GetLogRequest) (*ledgerpb.Log, error) {
 	c, cleanup, err := impl.readController(ctx, req.GetCheckpointId())
 	if err != nil {
 		return nil, err
@@ -887,7 +887,7 @@ func (impl *BucketServiceServerImpl) ListLogs(req *servicepb.ListLogsRequest, st
 	// which would publish a bogus key "0" and trap the client in an infinite
 	// resume loop. Return an empty key in that case so no link is published
 	// through that log.
-	return sendPagedToStream(ctx, cur, stream, "log", pageSize, page, func(l *commonpb.Log) string {
+	return sendPagedToStream(ctx, cur, stream, "log", pageSize, page, func(l *ledgerpb.Log) string {
 		apply := l.GetPayload().GetApply()
 		if apply == nil {
 			return ""
@@ -947,7 +947,7 @@ func (impl *BucketServiceServerImpl) ListSigningKeys(req *servicepb.ListSigningK
 	reverse := page.ReadReverse(opts.GetReverse())
 	pageSize := ctrl.ClampPageSize(opts.GetPageSize())
 
-	keyID := func(k *commonpb.SigningKey) string { return k.GetKeyId() }
+	keyID := func(k *ledgerpb.SigningKey) string { return k.GetKeyId() }
 
 	c, err := ApplyHandlerPagination(cursor.NewSliceCursor(keys), skipByStringKey(page.Key, reverse, keyID), reverse)
 	if err != nil {
@@ -1024,7 +1024,7 @@ func (impl *BucketServiceServerImpl) ListPreparedQueries(ctx context.Context, re
 }
 
 func (impl *BucketServiceServerImpl) ExecutePreparedQuery(ctx context.Context, req *servicepb.ExecutePreparedQueryRequest) (*servicepb.ExecutePreparedQueryResponse, error) {
-	if req != nil && req.GetMode() == commonpb.QueryMode_QUERY_MODE_LIST {
+	if req != nil && req.GetMode() == ledgerpb.QueryMode_QUERY_MODE_LIST {
 		req = proto.Clone(req).(*servicepb.ExecutePreparedQueryRequest)
 		req.PageSize = ctrl.ClampPageSize(req.GetPageSize())
 	}
@@ -1041,7 +1041,7 @@ func (impl *BucketServiceServerImpl) ExecutePreparedQuery(ctx context.Context, r
 	return resp, err
 }
 
-func (impl *BucketServiceServerImpl) GetLedgerStats(ctx context.Context, req *servicepb.GetLedgerStatsRequest) (*commonpb.LedgerStats, error) {
+func (impl *BucketServiceServerImpl) GetLedgerStats(ctx context.Context, req *servicepb.GetLedgerStatsRequest) (*ledgerpb.LedgerStats, error) {
 	if req.GetLedger() == "" {
 		return nil, domain.ErrLedgerNameRequired
 	}
@@ -1055,7 +1055,7 @@ func (impl *BucketServiceServerImpl) GetLedgerStats(ctx context.Context, req *se
 	return c.GetLedgerStats(ctx, req.GetLedger())
 }
 
-func (impl *BucketServiceServerImpl) AggregateVolumes(ctx context.Context, req *servicepb.AggregateVolumesRequest) (*commonpb.AggregateResult, error) {
+func (impl *BucketServiceServerImpl) AggregateVolumes(ctx context.Context, req *servicepb.AggregateVolumesRequest) (*ledgerpb.AggregateResult, error) {
 	ctx, profile := withTransportQueryProfile(ctx)
 	defer impl.emitProfile(ctx, profile)
 
@@ -1080,7 +1080,7 @@ func (impl *BucketServiceServerImpl) AggregateVolumes(ctx context.Context, req *
 	return result, err
 }
 
-func (impl *BucketServiceServerImpl) GetNumscript(ctx context.Context, req *servicepb.GetNumscriptRequest) (*commonpb.NumscriptInfo, error) {
+func (impl *BucketServiceServerImpl) GetNumscript(ctx context.Context, req *servicepb.GetNumscriptRequest) (*ledgerpb.NumscriptInfo, error) {
 	read := req.GetRead()
 
 	c, cleanup, err := impl.readController(ctx, read.GetCheckpointId())
@@ -1097,7 +1097,7 @@ func (impl *BucketServiceServerImpl) GetNumscript(ctx context.Context, req *serv
 // which is eventually consistent with the FSM. The usage projection is outside
 // EN-1946's certified projection horizon, so this endpoint does not wait for a
 // read-index or audit-index certificate.
-func (impl *BucketServiceServerImpl) GetTemplateUsage(ctx context.Context, req *servicepb.GetTemplateUsageRequest) (*commonpb.TemplateUsage, error) {
+func (impl *BucketServiceServerImpl) GetTemplateUsage(ctx context.Context, req *servicepb.GetTemplateUsageRequest) (*ledgerpb.TemplateUsage, error) {
 	c, cleanup, err := impl.readController(ctx, 0)
 	if err != nil {
 		return nil, err
@@ -1141,7 +1141,7 @@ func (impl *BucketServiceServerImpl) ListNumscripts(req *servicepb.ListNumscript
 	reverse := page.ReadReverse(opts.GetReverse())
 	pageSize := ctrl.ClampPageSize(opts.GetPageSize())
 
-	name := func(n *commonpb.NumscriptInfo) string { return n.GetName() }
+	name := func(n *ledgerpb.NumscriptInfo) string { return n.GetName() }
 
 	paginated, err := ApplyHandlerPagination(cursor.NewSliceCursor(scripts), skipByStringKey(page.Key, reverse, name), reverse)
 	if err != nil {
@@ -1203,7 +1203,7 @@ func (impl *BucketServiceServerImpl) Barrier(ctx context.Context, _ *servicepb.B
 func (impl *BucketServiceServerImpl) Discovery(_ context.Context, _ *servicepb.DiscoveryRequest) (*servicepb.DiscoveryResponse, error) {
 	// Read the committed policy, rather than server flags: policy reconciliation
 	// requires a revision bump and may not have applied the configured values.
-	var policy *commonpb.ClusterPolicy
+	var policy *ledgerpb.ClusterPolicy
 	if impl.store != nil {
 		var err error
 		policy, err = query.ReadClusterPolicy(impl.store)

@@ -13,13 +13,14 @@ import (
 	"github.com/cockroachdb/pebble/v2"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
 	"github.com/formancehq/ledger/v3/internal/infra/bloom"
 	"github.com/formancehq/ledger/v3/internal/infra/cache"
 	"github.com/formancehq/ledger/v3/internal/pkg/kv"
 	"github.com/formancehq/ledger/v3/internal/pkg/worker"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	commonpb "github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/query"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
@@ -327,17 +328,17 @@ func NewCacheSnapshotter(logger logging.Logger, registry *StateRegistry, bloomFi
 	c := registry.Cache
 
 	volumes := newProtoSnapshotSlot(dal.SubAttrVolume, c.Volumes, func() *raftcmdpb.VolumePair { return &raftcmdpb.VolumePair{} })
-	metadata := newProtoSnapshotSlot(dal.SubAttrMetadata, c.AccountMetadata, func() *commonpb.MetadataValue { return &commonpb.MetadataValue{} })
-	ledgers := newProtoSnapshotSlot(dal.SubAttrLedger, c.Ledgers, func() *commonpb.LedgerInfo { return &commonpb.LedgerInfo{} })
+	metadata := newProtoSnapshotSlot(dal.SubAttrMetadata, c.AccountMetadata, func() *ledgerpb.MetadataValue { return &ledgerpb.MetadataValue{} })
+	ledgers := newProtoSnapshotSlot(dal.SubAttrLedger, c.Ledgers, func() *ledgerpb.LedgerInfo { return &ledgerpb.LedgerInfo{} })
 	boundaries := newProtoSnapshotSlot(dal.SubAttrBoundary, c.Boundaries, func() *raftcmdpb.LedgerBoundaries { return &raftcmdpb.LedgerBoundaries{} })
 	references := newProtoSnapshotSlot(dal.SubAttrReference, c.References, func() *commonpb.TransactionReferenceValue { return &commonpb.TransactionReferenceValue{} })
 	transactions := newProtoSnapshotSlot(dal.SubAttrTransaction, c.Transactions, func() *commonpb.TransactionState { return &commonpb.TransactionState{} })
-	sinks := newProtoSnapshotSlot(dal.SubAttrSinkConfig, c.SinkConfigs, func() *commonpb.SinkConfig { return &commonpb.SinkConfig{} })
+	sinks := newProtoSnapshotSlot(dal.SubAttrSinkConfig, c.SinkConfigs, func() *ledgerpb.SinkConfig { return &ledgerpb.SinkConfig{} })
 	numscriptVersions := newProtoSnapshotSlot(dal.SubAttrNumscriptVersion, c.NumscriptVersions, func() *commonpb.NumscriptVersionValue { return &commonpb.NumscriptVersionValue{} })
-	numscriptContents := newProtoSnapshotSlot(dal.SubAttrNumscriptContent, c.NumscriptContents, func() *commonpb.NumscriptInfo { return &commonpb.NumscriptInfo{} })
-	preparedQueries := newProtoSnapshotSlot(dal.SubAttrPreparedQuery, c.PreparedQueries, func() *commonpb.PreparedQuery { return &commonpb.PreparedQuery{} })
-	ledgerMetadata := newProtoSnapshotSlot(dal.SubAttrLedgerMetadata, c.LedgerMetadata, func() *commonpb.MetadataValue { return &commonpb.MetadataValue{} })
-	indexEntries := newProtoSnapshotSlot(dal.SubAttrIndex, c.Indexes, func() *commonpb.Index { return &commonpb.Index{} })
+	numscriptContents := newProtoSnapshotSlot(dal.SubAttrNumscriptContent, c.NumscriptContents, func() *ledgerpb.NumscriptInfo { return &ledgerpb.NumscriptInfo{} })
+	preparedQueries := newProtoSnapshotSlot(dal.SubAttrPreparedQuery, c.PreparedQueries, func() *ledgerpb.PreparedQuery { return &ledgerpb.PreparedQuery{} })
+	ledgerMetadata := newProtoSnapshotSlot(dal.SubAttrLedgerMetadata, c.LedgerMetadata, func() *ledgerpb.MetadataValue { return &ledgerpb.MetadataValue{} })
+	indexEntries := newProtoSnapshotSlot(dal.SubAttrIndex, c.Indexes, func() *ledgerpb.Index { return &ledgerpb.Index{} })
 
 	return &CacheSnapshotter{
 		logger:       logger,

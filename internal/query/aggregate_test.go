@@ -6,9 +6,10 @@ import (
 	"github.com/holiman/uint256"
 	"github.com/stretchr/testify/require"
 
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
+
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
 
@@ -21,8 +22,8 @@ func makeEntry(ledgerName string, account, asset string, input, output uint64) a
 	return attributes.ComputedEntry[*raftcmdpb.VolumePair]{
 		CanonicalKey: vk.Bytes(),
 		Value: &raftcmdpb.VolumePair{
-			Input:  commonpb.NewUint256(uint256.NewInt(input)),
-			Output: commonpb.NewUint256(uint256.NewInt(output)),
+			Input:  ledgerpb.NewUint256(uint256.NewInt(input)),
+			Output: ledgerpb.NewUint256(uint256.NewInt(output)),
 		},
 	}
 }
@@ -322,8 +323,8 @@ func TestVolumeAggregator_UseMaxPrecision_FactorBoundary(t *testing.T) {
 		result, err := va.result()
 		require.NoError(t, err)
 		require.Len(t, result.GetVolumes(), 1)
-		require.Equal(t, commonpb.NewUint256FromUint64(1), result.GetVolumes()[0].GetInput())
-		require.Equal(t, commonpb.NewUint256FromUint64(1), result.GetVolumes()[0].GetOutput())
+		require.Equal(t, ledgerpb.NewUint256FromUint64(1), result.GetVolumes()[0].GetInput())
+		require.Equal(t, ledgerpb.NewUint256FromUint64(1), result.GetVolumes()[0].GetOutput())
 	})
 }
 
@@ -357,8 +358,8 @@ func makeColoredEntry(ledgerName, account, asset, color string, input, output ui
 	return attributes.ComputedEntry[*raftcmdpb.VolumePair]{
 		CanonicalKey: vk.Bytes(),
 		Value: &raftcmdpb.VolumePair{
-			Input:  commonpb.NewUint256(uint256.NewInt(input)),
-			Output: commonpb.NewUint256(uint256.NewInt(output)),
+			Input:  ledgerpb.NewUint256(uint256.NewInt(input)),
+			Output: ledgerpb.NewUint256(uint256.NewInt(output)),
 		},
 	}
 }
@@ -377,7 +378,7 @@ func TestVolumeAggregator_SegregatesColorsByDefault(t *testing.T) {
 	require.Len(t, result.GetVolumes(), 3,
 		"each (asset, color) bucket must yield its own AggregatedVolume entry by default")
 
-	byColor := map[string]*commonpb.AggregatedVolume{}
+	byColor := map[string]*ledgerpb.AggregatedVolume{}
 	for _, v := range result.GetVolumes() {
 		byColor[v.GetColor()] = v
 	}

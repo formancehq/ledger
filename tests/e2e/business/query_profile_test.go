@@ -3,17 +3,19 @@
 package business
 
 import (
-	"github.com/formancehq/ledger/v3/pkg/actions"
 	"io"
 	"math/big"
 	"time"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/protobuf/proto"
+
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
+
+	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	"github.com/formancehq/ledger/v3/pkg/actions"
 )
 
 var _ = Describe("QueryProfile", Ordered, func() {
@@ -28,10 +30,10 @@ var _ = Describe("QueryProfile", Ordered, func() {
 			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
 			Expect(err).To(Succeed())
 
-			_, err = sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+			_, err = sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*ledgerpb.Posting{
 				actions.NewPosting("world", "alice", big.NewInt(100), "USD"),
 			}, nil, nil),
-				actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+				actions.CreateTransactionAction(ledgerName, []*ledgerpb.Posting{
 					actions.NewPosting("world", "bob", big.NewInt(200), "USD"),
 				}, nil, nil)))
 			Expect(err).To(Succeed())
@@ -114,7 +116,7 @@ var _ = Describe("QueryProfile", Ordered, func() {
 			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
 			Expect(err).To(Succeed())
 
-			_, err = sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+			_, err = sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*ledgerpb.Posting{
 				actions.NewPosting("world", "alice", big.NewInt(100), "USD"),
 			}, nil, nil)))
 			Expect(err).To(Succeed())
@@ -166,22 +168,22 @@ var _ = Describe("QueryProfile", Ordered, func() {
 		const ledgerName = "profile-prepared-query"
 
 		BeforeAll(func() {
-			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerWithSchemaAction(ledgerName, nil, []*commonpb.SetMetadataFieldTypeCommand{
+			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerWithSchemaAction(ledgerName, nil, []*ledgerpb.SetMetadataFieldTypeCommand{
 				{
-					TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
+					TargetType: ledgerpb.TargetType_TARGET_TYPE_ACCOUNT,
 					Key:        "role",
-					Type:       commonpb.MetadataType_METADATA_TYPE_STRING,
+					Type:       ledgerpb.MetadataType_METADATA_TYPE_STRING,
 				},
 			}),
 				actions.CreateAccountMetadataIndexAction(ledgerName, "role")))
 			Expect(err).To(Succeed())
 
-			Expect(actions.WaitForMetadataIndexReady(sharedCtx, sharedClient, ledgerName, commonpb.TargetType_TARGET_TYPE_ACCOUNT, "role")).To(Succeed())
+			Expect(actions.WaitForMetadataIndexReady(sharedCtx, sharedClient, ledgerName, ledgerpb.TargetType_TARGET_TYPE_ACCOUNT, "role")).To(Succeed())
 
-			_, err = sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
+			_, err = sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateForceTransactionAction(ledgerName, []*ledgerpb.Posting{
 				actions.NewPosting("world", "alice", big.NewInt(100), "USD"),
 			}, nil),
-				actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
+				actions.CreateForceTransactionAction(ledgerName, []*ledgerpb.Posting{
 					actions.NewPosting("world", "bob", big.NewInt(200), "USD"),
 				}, nil),
 				actions.SaveAccountMetadataAction(ledgerName, "alice", map[string]string{"role": "admin"}),
@@ -192,9 +194,9 @@ var _ = Describe("QueryProfile", Ordered, func() {
 				Type: &servicepb.Request_CreatePreparedQuery{CreatePreparedQuery: &servicepb.CreatePreparedQueryRequest{
 					Ledger: ledgerName,
 
-					Query: &commonpb.PreparedQuery{
+					Query: &ledgerpb.PreparedQuery{
 						Name:   "find-admins",
-						Target: commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
+						Target: ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
 						Filter: actions.StringMetadataFilter("role", "admin"),
 					},
 				}},
@@ -209,7 +211,7 @@ var _ = Describe("QueryProfile", Ordered, func() {
 				resp, err := sharedClient.ExecutePreparedQuery(profileCtx, &servicepb.ExecutePreparedQueryRequest{
 					Ledger:    ledgerName,
 					QueryName: "find-admins",
-					Mode:      commonpb.QueryMode_QUERY_MODE_LIST,
+					Mode:      ledgerpb.QueryMode_QUERY_MODE_LIST,
 				})
 				g.Expect(err).To(Succeed())
 
@@ -228,7 +230,7 @@ var _ = Describe("QueryProfile", Ordered, func() {
 			resp, err := sharedClient.ExecutePreparedQuery(profileCtx, &servicepb.ExecutePreparedQueryRequest{
 				Ledger:    ledgerName,
 				QueryName: "find-admins",
-				Mode:      commonpb.QueryMode_QUERY_MODE_LIST,
+				Mode:      ledgerpb.QueryMode_QUERY_MODE_LIST,
 			})
 			Expect(err).To(Succeed())
 
@@ -249,13 +251,13 @@ var _ = Describe("QueryProfile", Ordered, func() {
 			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
 			Expect(err).To(Succeed())
 
-			_, err = sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+			_, err = sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*ledgerpb.Posting{
 				actions.NewPosting("world", "users:alice", big.NewInt(100), "USD"),
 			}, nil, nil),
-				actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+				actions.CreateTransactionAction(ledgerName, []*ledgerpb.Posting{
 					actions.NewPosting("world", "users:bob", big.NewInt(200), "USD"),
 				}, nil, nil),
-				actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+				actions.CreateTransactionAction(ledgerName, []*ledgerpb.Posting{
 					actions.NewPosting("world", "merchants:shop1", big.NewInt(50), "USD"),
 				}, nil, nil)))
 			Expect(err).To(Succeed())
@@ -267,13 +269,13 @@ var _ = Describe("QueryProfile", Ordered, func() {
 
 				stream, err := sharedClient.ListAccounts(profileCtx, &servicepb.ListAccountsRequest{
 					Ledger: ledgerName,
-					Options: &commonpb.ListOptions{
+					Options: &ledgerpb.ListOptions{
 						Filter: actions.AddressPrefixFilter("users:"),
 					},
 				})
 				g.Expect(err).To(Succeed())
 
-				var accounts []*commonpb.Account
+				var accounts []*ledgerpb.Account
 				for {
 					account, err := stream.Recv()
 					if err == io.EOF {

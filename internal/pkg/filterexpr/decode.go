@@ -6,12 +6,13 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
+
 	"github.com/formancehq/ledger/v3/internal/domain"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
 
 // DecodeDualFormat parses a filter supplied in EITHER of the two supported
-// representations into the SAME *commonpb.QueryFilter, then runs the single
+// representations into the SAME *ledgerpb.QueryFilter, then runs the single
 // per-target validity gate (domain.ValidateFilterForTarget) on the result. It is
 // the one entry point every filtered surface (list endpoints, prepared queries,
 // audit reads, ledgerctl --filter) uses, so a caller never has to know which
@@ -21,7 +22,7 @@ import (
 // The two representations are:
 //
 //   - structured — the v2 QueryFilter JSON DSL ($and/$or/$not + $match/$gt/…),
-//     decoded by commonpb.DecodeQueryFilterJSON (query_filter.go);
+//     decoded by ledgerpb.DecodeQueryFilterJSON (query_filter.go);
 //   - textual    — the human-readable filterexpr grammar (metadata[k] == v,
 //     outcome == failure, …), parsed by Parse.
 //
@@ -49,7 +50,7 @@ import (
 // read for the list endpoints. Callers that require a filter (prepared queries)
 // check for nil themselves — the same contract the previous per-endpoint
 // decoders had.
-func DecodeDualFormat(raw []byte, target commonpb.QueryTarget) (*commonpb.QueryFilter, error) {
+func DecodeDualFormat(raw []byte, target ledgerpb.QueryTarget) (*ledgerpb.QueryFilter, error) {
 	filter, err := decodeDualFormat(raw, target)
 	if err != nil {
 		return nil, err
@@ -86,12 +87,12 @@ func DecodeDualFormat(raw []byte, target commonpb.QueryTarget) (*commonpb.QueryF
 //
 // Every server-side list handler MUST use DecodeDualFormat instead, so form and
 // validity are checked in one place.
-func DecodeDualFormatStructuralOnly(raw []byte, target commonpb.QueryTarget) (*commonpb.QueryFilter, error) {
+func DecodeDualFormatStructuralOnly(raw []byte, target ledgerpb.QueryTarget) (*ledgerpb.QueryFilter, error) {
 	return decodeDualFormat(raw, target)
 }
 
 // decodeDualFormat performs form detection + parse, without the validity gate.
-func decodeDualFormat(raw []byte, target commonpb.QueryTarget) (*commonpb.QueryFilter, error) {
+func decodeDualFormat(raw []byte, target ledgerpb.QueryTarget) (*ledgerpb.QueryFilter, error) {
 	trimmed := bytes.TrimSpace(raw)
 	if len(trimmed) == 0 || string(trimmed) == "null" {
 		return nil, nil
@@ -100,7 +101,7 @@ func decodeDualFormat(raw []byte, target commonpb.QueryTarget) (*commonpb.QueryF
 	switch trimmed[0] {
 	case '{':
 		// Structured v2 QueryFilter JSON DSL.
-		filter, err := commonpb.DecodeQueryFilterJSON(trimmed, target)
+		filter, err := ledgerpb.DecodeQueryFilterJSON(trimmed, target)
 		if err != nil {
 			return nil, fmt.Errorf("filter: %w", err)
 		}
@@ -135,7 +136,7 @@ func decodeDualFormat(raw []byte, target commonpb.QueryTarget) (*commonpb.QueryF
 // against target, and treating an empty string as "no filter" for symmetry with
 // the empty-raw case (a body field of `""` or a query param of `?filter=` is an
 // explicit no-op, not a parse error).
-func parseTextual(expr string, target commonpb.QueryTarget) (*commonpb.QueryFilter, error) {
+func parseTextual(expr string, target ledgerpb.QueryTarget) (*ledgerpb.QueryFilter, error) {
 	if expr == "" {
 		return nil, nil
 	}

@@ -13,11 +13,11 @@ import (
 	"go.uber.org/mock/gomock"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 
 	internalauth "github.com/formancehq/ledger/v3/internal/adapter/auth"
 	"github.com/formancehq/ledger/v3/internal/application/ctrl"
 	"github.com/formancehq/ledger/v3/internal/pkg/version"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/query"
 )
 
@@ -31,12 +31,12 @@ func serveGetAccount(t *testing.T, headerValues ...string) (*httptest.ResponseRe
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().GetLedgerByName(gomock.Any(), gomock.Any()).
-		Return(&commonpb.LedgerInfo{Name: "ledger1"}, nil).AnyTimes()
+		Return(&ledgerpb.LedgerInfo{Name: "ledger1"}, nil).AnyTimes()
 	backend.EXPECT().GetAccount(gomock.Any(), "ledger1", "alice", gomock.Any()).
-		DoAndReturn(func(ctx context.Context, _, addr string, _ ctrl.GetAccountOptions) (*commonpb.Account, error) {
+		DoAndReturn(func(ctx context.Context, _, addr string, _ ctrl.GetAccountOptions) (*ledgerpb.Account, error) {
 			observed = query.ConsistencyFromContext(ctx)
 
-			return &commonpb.Account{Address: addr}, nil
+			return &ledgerpb.Account{Address: addr}, nil
 		}).AnyTimes()
 
 	handler := NewHandler(logging.Testing(), backend, internalauth.AuthConfig{}, version.Info{})

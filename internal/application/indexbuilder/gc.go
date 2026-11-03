@@ -3,7 +3,8 @@ package indexbuilder
 import (
 	"fmt"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
+
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 	"github.com/formancehq/ledger/v3/internal/storage/readstore"
 )
@@ -104,7 +105,7 @@ func (b *Builder) purgeOrphanVersions() error {
 				continue
 			}
 
-			meta, ok := idx.GetId().GetKind().(*commonpb.IndexID_Metadata)
+			meta, ok := idx.GetId().GetKind().(*ledgerpb.IndexID_Metadata)
 			if !ok || meta.Metadata == nil {
 				// Only metadata indexes are versioned today. Builtin
 				// indexes never carry a forward_encoding_version, so any

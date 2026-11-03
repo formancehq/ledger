@@ -13,9 +13,10 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
+
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/infra/state"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 	"github.com/formancehq/ledger/v3/internal/storage/readstore"
@@ -132,7 +133,7 @@ func TestOpenCheckpointStoresSurfacesDamagedMainStore(t *testing.T) {
 
 	notReady := &domain.ErrCheckpointNotReady{}
 	require.False(t, errors.As(err, &notReady), "damage must not be advertised as a materialization still in flight")
-	var notFound *commonpb.NotFoundError
+	var notFound *ledgerpb.NotFoundError
 	require.False(t, errors.As(err, &notFound), "the checkpoint exists; only this replica's copy is damaged")
 	require.Equal(t, codes.Unknown, status.Code(convertToGRPCError(err, testLogger())))
 }

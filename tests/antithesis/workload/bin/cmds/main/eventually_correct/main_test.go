@@ -11,7 +11,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal/sdktest"
@@ -26,18 +26,18 @@ type balanceSDKServer struct {
 	barriers atomic.Int32
 }
 
-func sdkAccount(balance string) *commonpb.Account {
-	return &commonpb.Account{Address: "users:1", Volumes: []*commonpb.AccountVolume{{
+func sdkAccount(balance string) *ledgerpb.Account {
+	return &ledgerpb.Account{Address: "users:1", Volumes: []*ledgerpb.AccountVolume{{
 		Asset: "COIN", Color: "blue",
-		Volumes: &commonpb.VolumesWithBalance{
-			Input:   commonpb.MustBigUintFromDecimal(balance),
-			Output:  commonpb.MustBigUintFromDecimal("0"),
-			Balance: commonpb.MustSignedBigIntFromDecimal(balance),
+		Volumes: &ledgerpb.VolumesWithBalance{
+			Input:   ledgerpb.MustBigUintFromDecimal(balance),
+			Output:  ledgerpb.MustBigUintFromDecimal("0"),
+			Balance: ledgerpb.MustSignedBigIntFromDecimal(balance),
 		},
 	}}}
 }
 
-func (s *balanceSDKServer) ListAccounts(_ *servicepb.ListAccountsRequest, stream grpc.ServerStreamingServer[commonpb.Account]) error {
+func (s *balanceSDKServer) ListAccounts(_ *servicepb.ListAccountsRequest, stream grpc.ServerStreamingServer[ledgerpb.Account]) error {
 	s.lists.Add(1)
 	if s.scenario == "empty" {
 		return nil
@@ -46,7 +46,7 @@ func (s *balanceSDKServer) ListAccounts(_ *servicepb.ListAccountsRequest, stream
 	return stream.Send(sdkAccount("10"))
 }
 
-func (s *balanceSDKServer) GetAccount(context.Context, *servicepb.GetAccountRequest) (*commonpb.Account, error) {
+func (s *balanceSDKServer) GetAccount(context.Context, *servicepb.GetAccountRequest) (*ledgerpb.Account, error) {
 	s.gets.Add(1)
 	switch s.scenario {
 	case "transient":

@@ -13,11 +13,11 @@ import (
 	"google.golang.org/grpc/status"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 
 	"github.com/formancehq/ledger/v3/internal/application/membership"
 	"github.com/formancehq/ledger/v3/internal/infra/node"
 	"github.com/formancehq/ledger/v3/internal/proto/clusterbootstrappb"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
 
 // ClusterBootstrapServiceServerImpl serves the inter-node bootstrap surface
@@ -166,7 +166,7 @@ func (impl *ClusterBootstrapServiceServerImpl) JoinAsLearner(ctx context.Context
 			impl.logger.Infof("JoinAsLearner: not leader and leader unreachable, returning ErrNoLeader")
 
 			// The RaftServer has no error-conversion interceptor;
-			// map commonpb.ErrNoLeader to codes.Unavailable here so
+			// map ledgerpb.ErrNoLeader to codes.Unavailable here so
 			// tryAddLearner treats it as transient and tries the
 			// next peer instead of failing fatally.
 			return nil, convertToGRPCErrorWithContext(ctx, err, impl.logger)
@@ -309,17 +309,17 @@ func forwardedCallError(err error) error {
 }
 
 // leaderRaftConn returns a gRPC connection to the current leader's
-// RaftServer, or commonpb.ErrNoLeader if the leader is unknown or
+// RaftServer, or ledgerpb.ErrNoLeader if the leader is unknown or
 // unreachable through the Raft transport.
 func (impl *ClusterBootstrapServiceServerImpl) leaderRaftConn() (*ggrpc.ClientConn, error) {
 	leaderID := impl.node.GetLeader()
 	if leaderID == 0 {
-		return nil, commonpb.ErrNoLeader
+		return nil, ledgerpb.ErrNoLeader
 	}
 
 	conn := impl.raftTransport.GetPeerConnection(leaderID)
 	if conn == nil {
-		return nil, commonpb.ErrNoLeader
+		return nil, ledgerpb.ErrNoLeader
 	}
 
 	return conn, nil

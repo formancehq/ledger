@@ -6,8 +6,9 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
+
 	"github.com/formancehq/ledger/v3/internal/adapter/json"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
@@ -20,7 +21,7 @@ func (s *Server) handleSetMetadataType(w http.ResponseWriter, r *http.Request) {
 
 	targetTypeStr := chi.URLParam(r, "targetType")
 
-	targetType, err := commonpb.ParseTargetType(targetTypeStr)
+	targetType, err := ledgerpb.ParseTargetType(targetTypeStr)
 	if err != nil {
 		writeBadRequest(w, "INVALID_REQUEST", err)
 
@@ -41,7 +42,7 @@ func (s *Server) handleSetMetadataType(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	mdType, err := commonpb.ParseMetadataType(body.Type)
+	mdType, err := ledgerpb.ParseMetadataType(body.Type)
 	if err != nil {
 		writeBadRequest(w, "INVALID_REQUEST", err)
 

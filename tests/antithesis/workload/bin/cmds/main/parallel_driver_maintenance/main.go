@@ -8,7 +8,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
@@ -45,8 +45,8 @@ func main() {
 					Ledger: ledger,
 					Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
 						CreateTransaction: &servicepb.CreateTransactionPayload{
-							Postings: []*commonpb.Posting{
-								commonpb.NewPosting("world", "users:0", "USD/2", internal.GeneratedBigInt(src)),
+							Postings: []*ledgerpb.Posting{
+								ledgerpb.NewPosting("world", "users:0", "USD/2", internal.GeneratedBigInt(src)),
 							},
 							Force: true,
 						},
@@ -84,8 +84,8 @@ func main() {
 					Ledger: ledger,
 					Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
 						CreateTransaction: &servicepb.CreateTransactionPayload{
-							Postings: []*commonpb.Posting{
-								commonpb.NewPosting("world", "users:0", "USD/2", internal.GeneratedBigInt(src)),
+							Postings: []*ledgerpb.Posting{
+								ledgerpb.NewPosting("world", "users:0", "USD/2", internal.GeneratedBigInt(src)),
 							},
 							Force: true,
 						},

@@ -8,12 +8,12 @@ import (
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 	libtime "github.com/formancehq/go-libs/v5/pkg/types/time"
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 
 	"github.com/formancehq/ledger/v3/internal/domain/indexes"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
 	"github.com/formancehq/ledger/v3/internal/infra/state"
 	"github.com/formancehq/ledger/v3/internal/pkg/cursor"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
@@ -37,14 +37,14 @@ func TestListIndexes_LivenessChecksShareScanSnapshot(t *testing.T) {
 	store := newCtrlTestStore(t)
 	attrs := attributes.New()
 
-	k0 := indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_TRANSACTION, "k0")
-	k1 := indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_TRANSACTION, "k1")
+	k0 := indexes.MetadataID(ledgerpb.TargetType_TARGET_TYPE_TRANSACTION, "k0")
+	k1 := indexes.MetadataID(ledgerpb.TargetType_TARGET_TYPE_TRANSACTION, "k1")
 
 	batch := store.OpenWriteSession()
 	for _, name := range []string{ledgerA, ledgerB} {
-		require.NoError(t, state.SaveLedger(batch, name, &commonpb.LedgerInfo{
+		require.NoError(t, state.SaveLedger(batch, name, &ledgerpb.LedgerInfo{
 			Name:      name,
-			CreatedAt: commonpb.NewTimestamp(libtime.Now()),
+			CreatedAt: ledgerpb.NewTimestamp(libtime.Now()),
 		}))
 	}
 	seedIndex(t, attrs, batch, ledgerB, k0)
@@ -64,10 +64,10 @@ func TestListIndexes_LivenessChecksShareScanSnapshot(t *testing.T) {
 	require.NoError(t, batch.Commit())
 
 	batch = store.OpenWriteSession()
-	require.NoError(t, state.SaveLedger(batch, ledgerB, &commonpb.LedgerInfo{
+	require.NoError(t, state.SaveLedger(batch, ledgerB, &ledgerpb.LedgerInfo{
 		Name:      ledgerB,
-		CreatedAt: commonpb.NewTimestamp(libtime.Now()),
-		DeletedAt: commonpb.NewTimestamp(libtime.Now()),
+		CreatedAt: ledgerpb.NewTimestamp(libtime.Now()),
+		DeletedAt: ledgerpb.NewTimestamp(libtime.Now()),
 	}))
 	require.NoError(t, state.DeleteLedgerData(batch, ledgerB))
 	require.NoError(t, batch.Commit())
@@ -79,10 +79,10 @@ func TestListIndexes_LivenessChecksShareScanSnapshot(t *testing.T) {
 	require.Equal(t, indexes.Canonical(k0), indexes.Canonical(got[0].GetId()))
 }
 
-func seedIndex(t *testing.T, attrs *attributes.Attributes, batch *dal.WriteSession, ledger string, id *commonpb.IndexID) {
+func seedIndex(t *testing.T, attrs *attributes.Attributes, batch *dal.WriteSession, ledger string, id *ledgerpb.IndexID) {
 	t.Helper()
 
-	_, err := attrs.Index.Set(batch, indexes.KeyFor(ledger, id).Bytes(), &commonpb.Index{
+	_, err := attrs.Index.Set(batch, indexes.KeyFor(ledger, id).Bytes(), &ledgerpb.Index{
 		Id:                     id,
 		Ledger:                 ledger,
 		ForwardEncodingVersion: 1,

@@ -7,8 +7,9 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
+
 	"github.com/formancehq/ledger/v3/internal/domain"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
 
@@ -33,10 +34,10 @@ func TestBuildPostCommitVolumes_PropagatesReadError(t *testing.T) {
 	// First pair read is the posting source ("world"); program it to fail.
 	volumes.expectGet(domain.NewVolumeKey("test", "world", "USD", ""), nil, sentinel)
 
-	postings := []*commonpb.Posting{{
+	postings := []*ledgerpb.Posting{{
 		Source:      "world",
 		Destination: "users:001",
-		Amount:      commonpb.NewUint256FromUint64(500),
+		Amount:      ledgerpb.NewUint256FromUint64(500),
 		Asset:       "USD",
 	}}
 
@@ -64,15 +65,15 @@ func TestBuildPostCommitVolumes_FoundAndAbsent(t *testing.T) {
 	// Source present with real volumes; destination left unregistered so the
 	// stub returns ErrNotFound -> synthesised zero balance.
 	sourceVol := &raftcmdpb.VolumePair{
-		Input:  commonpb.NewUint256FromUint64(100),
-		Output: commonpb.NewUint256FromUint64(40),
+		Input:  ledgerpb.NewUint256FromUint64(100),
+		Output: ledgerpb.NewUint256FromUint64(40),
 	}
 	volumes.expectGet(domain.NewVolumeKey("test", "bank", "USD", ""), sourceVol.AsReader(), nil)
 
-	postings := []*commonpb.Posting{{
+	postings := []*ledgerpb.Posting{{
 		Source:      "bank",
 		Destination: "users:001",
-		Amount:      commonpb.NewUint256FromUint64(60),
+		Amount:      ledgerpb.NewUint256FromUint64(60),
 		Asset:       "USD",
 	}}
 
@@ -95,7 +96,7 @@ func TestBuildPostCommitVolumes_FoundAndAbsent(t *testing.T) {
 
 // findVolumeEntry looks up the Volumes for a single (account, asset, color)
 // tuple in the flat per-account VolumeEntry list. Returns nil when absent.
-func findVolumeEntry(pcv *commonpb.PostCommitVolumes, account, asset, color string) *commonpb.Volumes {
+func findVolumeEntry(pcv *ledgerpb.PostCommitVolumes, account, asset, color string) *ledgerpb.Volumes {
 	byAssets, ok := pcv.GetVolumesByAccount()[account]
 	if !ok {
 		return nil

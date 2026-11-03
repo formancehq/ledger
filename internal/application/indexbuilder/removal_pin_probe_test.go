@@ -6,8 +6,9 @@ import (
 	"github.com/cockroachdb/pebble/v2"
 	"github.com/stretchr/testify/require"
 
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
+
 	"github.com/formancehq/ledger/v3/internal/domain/indexes"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 	"github.com/formancehq/ledger/v3/internal/storage/readstore"
 )
@@ -33,12 +34,12 @@ func TestFieldRemoval_LeavesNoVersionRecordOrRows(t *testing.T) {
 		account = "acct:1"
 	)
 
-	id := indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_ACCOUNT, metaKey)
+	id := indexes.MetadataID(ledgerpb.TargetType_TARGET_TYPE_ACCOUNT, metaKey)
 	canonical := indexes.Canonical(id)
 	kb := dal.NewKeyBuilder()
 
 	cfg := newLedgerIndexConfig()
-	cfg.byCanonical[canonical] = &commonpb.Index{Id: id}
+	cfg.byCanonical[canonical] = &ledgerpb.Index{Id: id}
 
 	// The index is live with one row.
 	batch := b.readStore.NewBatch()
@@ -90,8 +91,8 @@ func TestFieldRemoval_LeavesNoVersionRecordOrRows(t *testing.T) {
 	// The removal folds: this is the handler the builder runs.
 	batch = b.readStore.NewBatch()
 	b.initBatch(batch)
-	require.NoError(t, b.handleRemovedMetadataFieldType(b.kb, cfg, ledger, &commonpb.RemovedMetadataFieldTypeLog{
-		TargetType:   commonpb.TargetType_TARGET_TYPE_ACCOUNT,
+	require.NoError(t, b.handleRemovedMetadataFieldType(b.kb, cfg, ledger, &ledgerpb.RemovedMetadataFieldTypeLog{
+		TargetType:   ledgerpb.TargetType_TARGET_TYPE_ACCOUNT,
 		Key:          metaKey,
 		DroppedIndex: id,
 	}))

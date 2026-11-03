@@ -11,10 +11,10 @@ import (
 	"go.uber.org/mock/gomock"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 
 	internalauth "github.com/formancehq/ledger/v3/internal/adapter/auth"
 	"github.com/formancehq/ledger/v3/internal/pkg/version"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
@@ -100,7 +100,7 @@ func TestHandleInspectIndex_QueryOptionsRouting(t *testing.T) {
 				backend.EXPECT().InspectIndex(gomock.Any(), gomock.Any()).DoAndReturn(
 					func(_ context.Context, req *servicepb.InspectIndexRequest) (*servicepb.InspectIndexResponse, error) {
 						require.Equal(t, "ledger1", req.GetLedger())
-						require.Equal(t, commonpb.TargetType_TARGET_TYPE_ACCOUNT, req.GetTargetType())
+						require.Equal(t, ledgerpb.TargetType_TARGET_TYPE_ACCOUNT, req.GetTargetType())
 						require.Equal(t, "color", req.GetMetadataKey())
 						require.Equal(t, mode.want, req.GetMode())
 						require.Equal(t, size.want, req.GetPageSize())
@@ -110,7 +110,7 @@ func TestHandleInspectIndex_QueryOptionsRouting(t *testing.T) {
 							Result: &servicepb.InspectIndexResponse_Summary{Summary: &servicepb.InspectSummary{}},
 						}, nil
 					})
-				backend.EXPECT().GetLedgerByName(gomock.Any(), "ledger1").Return(&commonpb.LedgerInfo{Name: "ledger1"}, nil)
+				backend.EXPECT().GetLedgerByName(gomock.Any(), "ledger1").Return(&ledgerpb.LedgerInfo{Name: "ledger1"}, nil)
 				handler := NewHandler(logging.Testing(), backend, internalauth.AuthConfig{}, version.Info{})
 				w := httptest.NewRecorder()
 				r := httptest.NewRequest(http.MethodGet, "/v3/ledger1/indexes/metadata:TARGET_TYPE_ACCOUNT:color/inspect?"+mode.query+size.query+"cursor=page-token", nil)
@@ -140,8 +140,8 @@ func TestHandleInspectIndex_Success(t *testing.T) {
 			}, nil
 		}).AnyTimes()
 	backend.EXPECT().GetLedgerByName(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, name string) (*commonpb.LedgerInfo, error) {
-			return &commonpb.LedgerInfo{Name: name}, nil
+		func(_ context.Context, name string) (*ledgerpb.LedgerInfo, error) {
+			return &ledgerpb.LedgerInfo{Name: name}, nil
 		}).AnyTimes()
 	srv := newTestServer(t, backend)
 
@@ -157,13 +157,13 @@ func TestHandleInspectIndex_Success(t *testing.T) {
 	require.NotNil(t, capturedReq)
 	require.Equal(t, "ledger1", capturedReq.GetLedger())
 	require.Equal(t, "color", capturedReq.GetMetadataKey())
-	require.Equal(t, commonpb.TargetType_TARGET_TYPE_ACCOUNT, capturedReq.GetTargetType())
+	require.Equal(t, ledgerpb.TargetType_TARGET_TYPE_ACCOUNT, capturedReq.GetTargetType())
 }
 
 func TestHandleInspectIndex_TransactionTarget(t *testing.T) {
 	t.Parallel()
 
-	var capturedTarget commonpb.TargetType
+	var capturedTarget ledgerpb.TargetType
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().InspectIndex(gomock.Any(), gomock.Any()).DoAndReturn(
@@ -175,8 +175,8 @@ func TestHandleInspectIndex_TransactionTarget(t *testing.T) {
 			}, nil
 		}).AnyTimes()
 	backend.EXPECT().GetLedgerByName(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, name string) (*commonpb.LedgerInfo, error) {
-			return &commonpb.LedgerInfo{Name: name}, nil
+		func(_ context.Context, name string) (*ledgerpb.LedgerInfo, error) {
+			return &ledgerpb.LedgerInfo{Name: name}, nil
 		}).AnyTimes()
 	srv := newTestServer(t, backend)
 
@@ -189,7 +189,7 @@ func TestHandleInspectIndex_TransactionTarget(t *testing.T) {
 	srv.handleInspectIndex(w, r)
 
 	require.Equal(t, http.StatusOK, w.Code)
-	require.Equal(t, commonpb.TargetType_TARGET_TYPE_TRANSACTION, capturedTarget)
+	require.Equal(t, ledgerpb.TargetType_TARGET_TYPE_TRANSACTION, capturedTarget)
 }
 
 func TestHandleInspectIndex_RejectsBuiltinIndex(t *testing.T) {

@@ -9,7 +9,8 @@ import (
 	"os"
 	"strings"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
+
 	"github.com/formancehq/ledger/v3/internal/proto/signaturepb"
 )
 
@@ -39,7 +40,7 @@ func NewResponseSigner(seed []byte) *ResponseSigner {
 // SignLog signs a Log message and returns a SignedLog envelope.
 // It clones the log, clears response_signature (node-local),
 // serializes it, signs the bytes, and returns the signature envelope.
-func (s *ResponseSigner) SignLog(log *commonpb.Log) *signaturepb.SignedLog {
+func (s *ResponseSigner) SignLog(log *ledgerpb.Log) *signaturepb.SignedLog {
 	// Clone and clear non-deterministic/node-local fields
 	logCopy := log.CloneVT()
 	logCopy.ResponseSignature = nil
@@ -90,12 +91,12 @@ func VerifyResponseSignature(sr *signaturepb.SignedLog, publicKey ed25519.Public
 // VerifyResponseLog authenticates the log that the caller will consume, not
 // merely its detached signature envelope. Compare decoded protobuf values so
 // equivalent wire encodings from other clients do not require identical bytes.
-func VerifyResponseLog(log *commonpb.Log, publicKey ed25519.PublicKey) error {
+func VerifyResponseLog(log *ledgerpb.Log, publicKey ed25519.PublicKey) error {
 	if err := VerifyResponseSignature(log.GetResponseSignature(), publicKey); err != nil {
 		return err
 	}
 
-	var authenticated commonpb.Log
+	var authenticated ledgerpb.Log
 	if err := authenticated.UnmarshalVT(log.GetResponseSignature().GetPayload()); err != nil {
 		return fmt.Errorf("decode signed response log: %w", err)
 	}

@@ -13,20 +13,22 @@ import (
 	"os"
 	"time"
 
-	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
-	"github.com/formancehq/go-libs/v5/pkg/testing/testservice"
-	cmdserver "github.com/formancehq/ledger/v3/cmd/server"
-	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
-	"github.com/formancehq/ledger/v3/pkg/actions"
-	"github.com/formancehq/ledger/v3/pkg/testserver"
-	"github.com/formancehq/ledger/v3/tests/e2e/testutil"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+
+	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
+	"github.com/formancehq/go-libs/v5/pkg/testing/testservice"
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
+
+	cmdserver "github.com/formancehq/ledger/v3/cmd/server"
+	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
+	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	"github.com/formancehq/ledger/v3/pkg/actions"
+	"github.com/formancehq/ledger/v3/pkg/testserver"
+	"github.com/formancehq/ledger/v3/tests/e2e/testutil"
 )
 
 var _ = Describe("Auth writes-only mode", Ordered, func() {
@@ -141,7 +143,7 @@ var _ = Describe("Auth writes-only mode", Ordered, func() {
 		})
 
 		It("rejects writes without a token", func() {
-			_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction("writes-only-ledger", []*commonpb.Posting{
+			_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction("writes-only-ledger", []*ledgerpb.Posting{
 				actions.NewPosting("world", "bank", big.NewInt(100), "USD"),
 			}, nil, nil)))
 			Expect(err).To(HaveOccurred())
@@ -155,7 +157,7 @@ var _ = Describe("Auth writes-only mode", Ordered, func() {
 			Expect(err).To(Succeed())
 			authCtx := withAuthToken(ctx, token)
 
-			_, err = client.Apply(authCtx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction("writes-only-ledger", []*commonpb.Posting{
+			_, err = client.Apply(authCtx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction("writes-only-ledger", []*ledgerpb.Posting{
 				actions.NewPosting("world", "bank", big.NewInt(100), "USD"),
 			}, nil, nil)))
 			Expect(err).To(Succeed())

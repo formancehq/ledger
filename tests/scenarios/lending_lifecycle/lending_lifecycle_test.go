@@ -8,12 +8,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/stretchr/testify/require"
+
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
+
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/pkg/actions"
 	"github.com/formancehq/ledger/v3/pkg/scenario"
-	"github.com/stretchr/testify/require"
-
 	"github.com/formancehq/ledger/v3/tests/scenarios/scenariotest"
 )
 
@@ -296,8 +297,8 @@ func TestLendingLifecycle(t *testing.T) {
 		// 1. Parameterized string metadata — query by loan status at runtime
 		// Query for written-off loans — should find exactly the defaulters
 		resp, err := actions.ExecutePreparedQueryWithParams(ctx, client, ledger, "loans-by-status",
-			commonpb.QueryMode_QUERY_MODE_LIST, 100,
-			map[string]*commonpb.ParameterValue{"status_value": actions.StringParam("written-off")},
+			ledgerpb.QueryMode_QUERY_MODE_LIST, 100,
+			map[string]*ledgerpb.ParameterValue{"status_value": actions.StringParam("written-off")},
 		)
 		require.NoError(t, err, "ExecutePreparedQueryWithParams(written-off) failed")
 		cursor := resp.GetCursor()
@@ -307,8 +308,8 @@ func TestLendingLifecycle(t *testing.T) {
 
 		// Query for early-repaid loans — should find exactly 1 (borrower 5)
 		resp, err = actions.ExecutePreparedQueryWithParams(ctx, client, ledger, "loans-by-status",
-			commonpb.QueryMode_QUERY_MODE_LIST, 100,
-			map[string]*commonpb.ParameterValue{"status_value": actions.StringParam("repaid-early")},
+			ledgerpb.QueryMode_QUERY_MODE_LIST, 100,
+			map[string]*ledgerpb.ParameterValue{"status_value": actions.StringParam("repaid-early")},
 		)
 		require.NoError(t, err, "ExecutePreparedQueryWithParams(repaid-early) failed")
 		require.Equal(t, 1, len(resp.GetCursor().GetAccountData()),
@@ -316,8 +317,8 @@ func TestLendingLifecycle(t *testing.T) {
 
 		// Query for a status nobody has — should return 0
 		resp, err = actions.ExecutePreparedQueryWithParams(ctx, client, ledger, "loans-by-status",
-			commonpb.QueryMode_QUERY_MODE_LIST, 100,
-			map[string]*commonpb.ParameterValue{"status_value": actions.StringParam("active")},
+			ledgerpb.QueryMode_QUERY_MODE_LIST, 100,
+			map[string]*ledgerpb.ParameterValue{"status_value": actions.StringParam("active")},
 		)
 		require.NoError(t, err, "ExecutePreparedQueryWithParams(active) failed")
 		require.Empty(t, resp.GetCursor().GetAccountData(),
@@ -326,8 +327,8 @@ func TestLendingLifecycle(t *testing.T) {
 		// 2. Parameterized address prefix — filter borrower accounts by prefix
 		// Query for all borrower loan accounts
 		resp, err = actions.ExecutePreparedQueryWithParams(ctx, client, ledger, "accounts-by-prefix",
-			commonpb.QueryMode_QUERY_MODE_LIST, 100,
-			map[string]*commonpb.ParameterValue{"prefix": actions.StringParam("borrower:")},
+			ledgerpb.QueryMode_QUERY_MODE_LIST, 100,
+			map[string]*ledgerpb.ParameterValue{"prefix": actions.StringParam("borrower:")},
 		)
 		require.NoError(t, err, "ExecutePreparedQueryWithParams(borrower:) failed")
 		// 10 borrowers × 2 accounts each (loan + wallet) = 20
@@ -336,8 +337,8 @@ func TestLendingLifecycle(t *testing.T) {
 
 		// Query for funding accounts only
 		resp, err = actions.ExecutePreparedQueryWithParams(ctx, client, ledger, "accounts-by-prefix",
-			commonpb.QueryMode_QUERY_MODE_LIST, 100,
-			map[string]*commonpb.ParameterValue{"prefix": actions.StringParam("funding:")},
+			ledgerpb.QueryMode_QUERY_MODE_LIST, 100,
+			map[string]*ledgerpb.ParameterValue{"prefix": actions.StringParam("funding:")},
 		)
 		require.NoError(t, err, "ExecutePreparedQueryWithParams(funding:) failed")
 		require.Equal(t, 1, len(resp.GetCursor().GetAccountData()),

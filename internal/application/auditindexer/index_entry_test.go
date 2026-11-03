@@ -7,8 +7,9 @@ import (
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/proto"
 
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
+
 	"github.com/formancehq/ledger/v3/internal/proto/auditpb"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 	"github.com/formancehq/ledger/v3/internal/storage/readstore"
@@ -28,13 +29,13 @@ func TestAppendEntryKeys(t *testing.T) {
 	entry := &auditpb.AuditEntry{
 		Sequence:   9,
 		ProposalId: 3,
-		Timestamp:  &commonpb.Timestamp{Data: 1_000_000}, // 1 second in HLC micros
+		Timestamp:  &ledgerpb.Timestamp{Data: 1_000_000}, // 1 second in HLC micros
 		Outcome:    &auditpb.AuditEntry_Success{Success: &auditpb.AuditSuccess{}},
 		Ledgers:    []string{"a", "b"},
-		CallerSnapshot: &commonpb.CallerSnapshot{Principal: &commonpb.CallerSnapshot_Authenticated{
-			Authenticated: &commonpb.AuthenticatedCaller{Identity: &commonpb.CallerIdentity{Subject: "alice"}},
+		CallerSnapshot: &ledgerpb.CallerSnapshot{Principal: &ledgerpb.CallerSnapshot_Authenticated{
+			Authenticated: &ledgerpb.AuthenticatedCaller{Identity: &ledgerpb.CallerIdentity{Subject: "alice"}},
 		}},
-		Idempotency: &commonpb.Idempotency{Key: "retry-1"},
+		Idempotency: &ledgerpb.Idempotency{Key: "retry-1"},
 	}
 	createTx := &raftcmdpb.Order{Type: &raftcmdpb.Order_LedgerScoped{
 		LedgerScoped: &raftcmdpb.LedgerScopedOrder{Payload: &raftcmdpb.LedgerScopedOrder_Apply{
@@ -79,7 +80,7 @@ func TestAppendEntryKeysFailureNilCaller(t *testing.T) {
 	entry := &auditpb.AuditEntry{
 		Sequence:   2,
 		ProposalId: 1,
-		Timestamp:  &commonpb.Timestamp{Data: 1_000_000},
+		Timestamp:  &ledgerpb.Timestamp{Data: 1_000_000},
 		Outcome:    &auditpb.AuditEntry_Failure{Failure: &auditpb.AuditFailure{}},
 		Ledgers:    []string{"x"},
 	}
@@ -105,7 +106,7 @@ func TestAppendEntryKeysPropagatesIdempotencyIndexWriteError(t *testing.T) {
 	entry := &auditpb.AuditEntry{
 		Sequence: 1, ProposalId: 1,
 		Outcome:     &auditpb.AuditEntry_Success{Success: &auditpb.AuditSuccess{}},
-		Idempotency: &commonpb.Idempotency{Key: "retry-1"},
+		Idempotency: &ledgerpb.Idempotency{Key: "retry-1"},
 	}
 	err := appendEntryKeys(dal.NewKeyBuilder(), func(key []byte) error {
 		if key[2] == readstore.AuditFieldIdempotencyKey {

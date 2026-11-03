@@ -6,8 +6,9 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
+
 	"github.com/formancehq/ledger/v3/internal/domain"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
@@ -21,13 +22,13 @@ import (
 // `info = info.CloneVT()` after loadLedger would swap in a second allocation
 // without touching the Mutate() call count.
 type countingLedgerReader struct {
-	commonpb.LedgerInfoReader
+	ledgerpb.LedgerInfoReader
 
 	mutateCalls *int
-	mutated     **commonpb.LedgerInfo
+	mutated     **ledgerpb.LedgerInfo
 }
 
-func (r countingLedgerReader) Mutate() *commonpb.LedgerInfo {
+func (r countingLedgerReader) Mutate() *ledgerpb.LedgerInfo {
 	*r.mutateCalls++
 
 	clone := r.LedgerInfoReader.Mutate()
@@ -54,29 +55,29 @@ func TestProcessCreateTransaction_DoesNotCloneLedgerInfo(t *testing.T) {
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
-	now := &commonpb.Timestamp{Data: 1234567890}
+	now := &ledgerpb.Timestamp{Data: 1234567890}
 	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1}
 
 	sourceKey := domain.NewVolumeKey("test-ledger", "bank", "USD", "")
 	destKey := domain.NewVolumeKey("test-ledger", "users:123", "USD", "")
 
 	sourceVolume := &raftcmdpb.VolumePair{
-		Input:  commonpb.NewUint256FromUint64(1000),
-		Output: commonpb.NewUint256FromUint64(0),
+		Input:  ledgerpb.NewUint256FromUint64(1000),
+		Output: ledgerpb.NewUint256FromUint64(0),
 	}
 	destVolume := &raftcmdpb.VolumePair{
-		Input:  commonpb.NewUint256FromUint64(0),
-		Output: commonpb.NewUint256FromUint64(0),
+		Input:  ledgerpb.NewUint256FromUint64(0),
+		Output: ledgerpb.NewUint256FromUint64(0),
 	}
 
 	var mutateCalls int
 	ledgerReader := countingLedgerReader{
 		mutateCalls: &mutateCalls,
-		LedgerInfoReader: (&commonpb.LedgerInfo{
+		LedgerInfoReader: (&ledgerpb.LedgerInfo{
 			Name:                   "test-ledger",
 			Id:                     1,
-			DefaultEnforcementMode: commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_AUDIT,
-			AccountTypes: map[string]*commonpb.AccountType{
+			DefaultEnforcementMode: ledgerpb.ChartEnforcementMode_CHART_ENFORCEMENT_AUDIT,
+			AccountTypes: map[string]*ledgerpb.AccountType{
 				"user": {Name: "user", Pattern: "users:{id}"},
 			},
 		}).AsReader(),
@@ -99,11 +100,11 @@ func TestProcessCreateTransaction_DoesNotCloneLedgerInfo(t *testing.T) {
 				Ledger: "test-ledger",
 				Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
 					CreateTransaction: &servicepb.CreateTransactionPayload{
-						Postings: []*commonpb.Posting{
+						Postings: []*ledgerpb.Posting{
 							{
 								Source:      "bank",
 								Destination: "users:123",
-								Amount:      commonpb.NewUint256FromUint64(100),
+								Amount:      ledgerpb.NewUint256FromUint64(100),
 								Asset:       "USD",
 							},
 						},
@@ -132,23 +133,23 @@ func TestProcessAddAccountType_ClonesLedgerInfoOnce(t *testing.T) {
 
 	var (
 		mutateCalls int
-		mutated     *commonpb.LedgerInfo
+		mutated     *ledgerpb.LedgerInfo
 	)
 	ledgerReader := countingLedgerReader{
 		mutateCalls:      &mutateCalls,
 		mutated:          &mutated,
-		LedgerInfoReader: (&commonpb.LedgerInfo{Name: "l", Id: 1}).AsReader(),
+		LedgerInfoReader: (&ledgerpb.LedgerInfo{Name: "l", Id: 1}).AsReader(),
 	}
 
 	expectGetLedger(mockStore, domain.LedgerKey{Name: "l"}, ledgerReader, nil)
 
-	var putInfo *commonpb.LedgerInfo
-	expectPutLedger(t, mockStore, domain.LedgerKey{Name: "l"}, nil, func(_ string, info *commonpb.LedgerInfo) {
+	var putInfo *ledgerpb.LedgerInfo
+	expectPutLedger(t, mockStore, domain.LedgerKey{Name: "l"}, nil, func(_ string, info *ledgerpb.LedgerInfo) {
 		putInfo = info
 	})
 
 	order := &raftcmdpb.AddAccountTypeOrder{
-		AccountType: &commonpb.AccountType{Name: "new-type", Pattern: "users:{z}"},
+		AccountType: &ledgerpb.AccountType{Name: "new-type", Pattern: "users:{z}"},
 	}
 
 	payload, derr := processAddAccountType("l", order, &Context{Scope: mockStore})

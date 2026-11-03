@@ -1,6 +1,7 @@
 package main
 
 import (
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 
@@ -19,7 +20,7 @@ func generateEnforcementMode(src *generation.Source, ledger string) *servicepb.R
 	return enforcementModeRequest(ledger, mode, generation.Choice(src, []bool{false, true}))
 }
 
-func enforcementModeRequest(ledger string, mode commonpb.ChartEnforcementMode, nested bool) *servicepb.Request {
+func enforcementModeRequest(ledger string, mode ledgerpb.ChartEnforcementMode, nested bool) *servicepb.Request {
 	if nested {
 		return &servicepb.Request{Type: &servicepb.Request_Apply{Apply: &servicepb.LedgerApplyRequest{Ledger: ledger, Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_SetDefaultEnforcementMode{SetDefaultEnforcementMode: &servicepb.SetDefaultEnforcementModeRequest{EnforcementMode: mode}}}}}}
 	}

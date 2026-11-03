@@ -9,8 +9,9 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
+
 	"github.com/formancehq/ledger/v3/internal/domain"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
 
 func TestHandleGetLedger_Success(t *testing.T) {
@@ -18,8 +19,8 @@ func TestHandleGetLedger_Success(t *testing.T) {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().GetLedgerByName(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, name string) (*commonpb.LedgerInfo, error) {
-			return &commonpb.LedgerInfo{Name: name}, nil
+		func(_ context.Context, name string) (*ledgerpb.LedgerInfo, error) {
+			return &ledgerpb.LedgerInfo{Name: name}, nil
 		}).AnyTimes()
 	srv := newTestServer(t, backend)
 
@@ -53,7 +54,7 @@ func TestHandleGetLedger_NotFound(t *testing.T) {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().GetLedgerByName(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, _ string) (*commonpb.LedgerInfo, error) {
+		func(_ context.Context, _ string) (*ledgerpb.LedgerInfo, error) {
 			return nil, &domain.ErrLedgerNotFound{Name: "missing"}
 		}).AnyTimes()
 	srv := newTestServer(t, backend)

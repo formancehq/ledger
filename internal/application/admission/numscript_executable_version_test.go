@@ -6,8 +6,9 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
+
 	"github.com/formancehq/ledger/v3/internal/domain"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
@@ -87,8 +88,8 @@ func skippableRefRequest(ledger, txRef, scriptName, version string) *servicepb.R
 						},
 					},
 				},
-				SkippableReasons: []commonpb.ErrorReason{
-					commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT,
+				SkippableReasons: []ledgerpb.ErrorReason{
+					ledgerpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT,
 				},
 			},
 		},
@@ -106,11 +107,11 @@ func postingsRequest(ledger, txRef string) *servicepb.Request {
 					Data: &servicepb.LedgerAction_CreateTransaction{
 						CreateTransaction: &servicepb.CreateTransactionPayload{
 							Reference: txRef,
-							Postings: []*commonpb.Posting{{
+							Postings: []*ledgerpb.Posting{{
 								Source:      "world",
 								Destination: "dst",
 								Asset:       "USD",
-								Amount:      commonpb.NewUint256FromUint64(1),
+								Amount:      ledgerpb.NewUint256FromUint64(1),
 							}},
 						},
 					},

@@ -10,8 +10,8 @@ import (
 	"github.com/antithesishq/antithesis-sdk-go/assert"
 	"google.golang.org/grpc/status"
 
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/internal/domain"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/pkg/actions"
 )
@@ -20,7 +20,7 @@ import (
 // idempotent proposal as the ledger. In particular, index setup must not add
 // success proposals to the failed-bulk audit oracle. Each subsequent oracle
 // read waits for the indexes on the replica actually serving that query.
-func CreateQueryOracleLedger(ctx context.Context, client servicepb.BucketServiceClient, ledger string, indexes ...commonpb.TransactionBuiltinIndex) error {
+func CreateQueryOracleLedger(ctx context.Context, client servicepb.BucketServiceClient, ledger string, indexes ...ledgerpb.TransactionBuiltinIndex) error {
 	requests := []*servicepb.Request{actions.CreateLedgerAction(ledger, nil)}
 	for _, index := range indexes {
 		requests = append(requests, actions.CreateBuiltinTxIndexAction(ledger, index))
@@ -44,7 +44,7 @@ func CreateQueryOracleLedger(ctx context.Context, client servicepb.BucketService
 // INDEX_BUILDING retries start a fresh query, discarding any partial attempt.
 // Readiness is checked by the real linearizable query on its serving replica,
 // never inferred from a different node's GetIndexStatus response.
-func ReadOracleTransactions(ctx context.Context, client servicepb.BucketServiceClient, ledger string, filter *commonpb.QueryFilter) ([]uint64, error) {
+func ReadOracleTransactions(ctx context.Context, client servicepb.BucketServiceClient, ledger string, filter *ledgerpb.QueryFilter) ([]uint64, error) {
 	readCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 	for {
@@ -71,9 +71,9 @@ func ReadOracleTransactions(ctx context.Context, client servicepb.BucketServiceC
 	}
 }
 
-func readOracleTransactionPage(ctx context.Context, client servicepb.BucketServiceClient, ledger string, filter *commonpb.QueryFilter) ([]uint64, error) {
+func readOracleTransactionPage(ctx context.Context, client servicepb.BucketServiceClient, ledger string, filter *ledgerpb.QueryFilter) ([]uint64, error) {
 	stream, err := client.ListTransactions(ctx, &servicepb.ListTransactionsRequest{
-		Ledger: ledger, Options: &commonpb.ListOptions{PageSize: 10, Filter: filter},
+		Ledger: ledger, Options: &ledgerpb.ListOptions{PageSize: 10, Filter: filter},
 	})
 	if err != nil {
 		return nil, err

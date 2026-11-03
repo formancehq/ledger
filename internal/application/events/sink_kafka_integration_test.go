@@ -13,9 +13,9 @@ import (
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 	libtime "github.com/formancehq/go-libs/v5/pkg/types/time"
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 
 	"github.com/formancehq/ledger/v3/internal/application/events"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/eventspb"
 	"github.com/formancehq/ledger/v3/internal/query"
 )
@@ -68,27 +68,27 @@ func TestKafkaSinkIntegration_PublishAndConsume(t *testing.T) {
 	now := libtime.Now()
 
 	appendTestLogs(t, store,
-		&commonpb.Log{
+		&ledgerpb.Log{
 			Sequence: 1,
-			Payload: &commonpb.LogPayload{
-				Type: &commonpb.LogPayload_CreateLedger{
-					CreateLedger: &commonpb.CreatedLedgerLog{
-						Name: "orders", CreatedAt: commonpb.NewTimestamp(now),
+			Payload: &ledgerpb.LogPayload{
+				Type: &ledgerpb.LogPayload_CreateLedger{
+					CreateLedger: &ledgerpb.CreatedLedgerLog{
+						Name: "orders", CreatedAt: ledgerpb.NewTimestamp(now),
 					},
 				},
 			},
 		},
-		&commonpb.Log{
+		&ledgerpb.Log{
 			Sequence: 2,
-			Payload: &commonpb.LogPayload{
-				Type: &commonpb.LogPayload_Apply{
-					Apply: &commonpb.ApplyLedgerLog{
+			Payload: &ledgerpb.LogPayload{
+				Type: &ledgerpb.LogPayload_Apply{
+					Apply: &ledgerpb.ApplyLedgerLog{
 						LedgerName: "orders",
-						Log: commonpb.NewLedgerLog(&commonpb.LedgerLogPayload{
-							Payload: &commonpb.LedgerLogPayload_CreatedTransaction{
-								CreatedTransaction: &commonpb.CreatedTransaction{
-									Transaction: commonpb.NewTransaction().
-										WithPostings(commonpb.NewPosting("world", "bank", "USD", big.NewInt(1000))).
+						Log: ledgerpb.NewLedgerLog(&ledgerpb.LedgerLogPayload{
+							Payload: &ledgerpb.LedgerLogPayload_CreatedTransaction{
+								CreatedTransaction: &ledgerpb.CreatedTransaction{
+									Transaction: ledgerpb.NewTransaction().
+										WithPostings(ledgerpb.NewPosting("world", "bank", "USD", big.NewInt(1000))).
 										WithID(1).WithTimestamp(now),
 								},
 							},
@@ -162,17 +162,17 @@ func TestKafkaSinkIntegration_MessageKeyIsLedger(t *testing.T) {
 	now := libtime.Now()
 
 	appendTestLogs(t, store,
-		&commonpb.Log{
+		&ledgerpb.Log{
 			Sequence: 1,
-			Payload: &commonpb.LogPayload{
-				Type: &commonpb.LogPayload_Apply{
-					Apply: &commonpb.ApplyLedgerLog{
+			Payload: &ledgerpb.LogPayload{
+				Type: &ledgerpb.LogPayload_Apply{
+					Apply: &ledgerpb.ApplyLedgerLog{
 						LedgerName: "payments",
-						Log: commonpb.NewLedgerLog(&commonpb.LedgerLogPayload{
-							Payload: &commonpb.LedgerLogPayload_CreatedTransaction{
-								CreatedTransaction: &commonpb.CreatedTransaction{
-									Transaction: commonpb.NewTransaction().
-										WithPostings(commonpb.NewPosting("world", "merchant", "EUR", big.NewInt(500))).
+						Log: ledgerpb.NewLedgerLog(&ledgerpb.LedgerLogPayload{
+							Payload: &ledgerpb.LedgerLogPayload_CreatedTransaction{
+								CreatedTransaction: &ledgerpb.CreatedTransaction{
+									Transaction: ledgerpb.NewTransaction().
+										WithPostings(ledgerpb.NewPosting("world", "merchant", "EUR", big.NewInt(500))).
 										WithID(1).WithTimestamp(now),
 								},
 							},
@@ -226,17 +226,17 @@ func TestKafkaSinkIntegration_ProtobufFormat(t *testing.T) {
 	now := libtime.Now()
 
 	appendTestLogs(t, store,
-		&commonpb.Log{
+		&ledgerpb.Log{
 			Sequence: 1,
-			Payload: &commonpb.LogPayload{
-				Type: &commonpb.LogPayload_Apply{
-					Apply: &commonpb.ApplyLedgerLog{
+			Payload: &ledgerpb.LogPayload{
+				Type: &ledgerpb.LogPayload_Apply{
+					Apply: &ledgerpb.ApplyLedgerLog{
 						LedgerName: "payments",
-						Log: commonpb.NewLedgerLog(&commonpb.LedgerLogPayload{
-							Payload: &commonpb.LedgerLogPayload_CreatedTransaction{
-								CreatedTransaction: &commonpb.CreatedTransaction{
-									Transaction: commonpb.NewTransaction().
-										WithPostings(commonpb.NewPosting("world", "merchant", "EUR", big.NewInt(500))).
+						Log: ledgerpb.NewLedgerLog(&ledgerpb.LedgerLogPayload{
+							Payload: &ledgerpb.LedgerLogPayload_CreatedTransaction{
+								CreatedTransaction: &ledgerpb.CreatedTransaction{
+									Transaction: ledgerpb.NewTransaction().
+										WithPostings(ledgerpb.NewPosting("world", "merchant", "EUR", big.NewInt(500))).
 										WithID(1).WithTimestamp(now),
 								},
 							},
@@ -276,7 +276,7 @@ func TestKafkaSinkIntegration_ProtobufFormat(t *testing.T) {
 	require.NoError(t, evt.UnmarshalVT(msgs[0].Value))
 	require.Equal(t, events.EventApp, evt.GetApp())
 	require.Equal(t, events.EventVersion, evt.GetVersion())
-	require.Equal(t, commonpb.EventType_COMMITTED_TRANSACTION, evt.GetType())
+	require.Equal(t, ledgerpb.EventType_COMMITTED_TRANSACTION, evt.GetType())
 	require.Equal(t, "payments", evt.GetLedger())
 	require.Equal(t, uint64(1), evt.GetLogSequence())
 	require.NotNil(t, evt.GetLog(), "event should carry the full Log")

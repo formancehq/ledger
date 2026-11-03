@@ -9,13 +9,13 @@ import (
 	"go.opentelemetry.io/otel/metric/noop"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/domain/crypto/keystore"
 	"github.com/formancehq/ledger/v3/internal/domain/processing"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
 	"github.com/formancehq/ledger/v3/internal/infra/cache"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
@@ -127,7 +127,7 @@ func (r *AuditReplayer) Close() error {
 // LedgerInfos returns the persisted ledger policies produced solely by the
 // verified orders replayed so far, including retained deletion tombstones.
 // Read-time metadata and mirror progress are not populated here.
-func (r *AuditReplayer) LedgerInfos() (map[string]*commonpb.LedgerInfo, error) {
+func (r *AuditReplayer) LedgerInfos() (map[string]*ledgerpb.LedgerInfo, error) {
 	reader, err := r.store.NewReadHandle()
 	if err != nil {
 		return nil, err
@@ -137,7 +137,7 @@ func (r *AuditReplayer) LedgerInfos() (map[string]*commonpb.LedgerInfo, error) {
 	if err != nil {
 		return nil, err
 	}
-	infos := make(map[string]*commonpb.LedgerInfo, len(rows))
+	infos := make(map[string]*ledgerpb.LedgerInfo, len(rows))
 	for _, row := range rows {
 		infos[string(row.CanonicalKey)] = row.Value
 	}
@@ -172,7 +172,7 @@ func (r *AuditReplayer) LedgerBoundaries() (map[string]*raftcmdpb.LedgerBoundari
 
 // Replay applies one successful audited proposal and returns the exact logs
 // produced by the canonical request processor. Call proposals in audit order.
-func (r *AuditReplayer) Replay(at *commonpb.Timestamp, orders []*raftcmdpb.Order) ([]*commonpb.Log, error) {
+func (r *AuditReplayer) Replay(at *ledgerpb.Timestamp, orders []*raftcmdpb.Order) ([]*ledgerpb.Log, error) {
 	// Historical/unit-test stores may start their retained audit range before
 	// the first replicated policy entry. Give revision 0 the legacy defaults
 	// only when this proposal is not itself installing the real policy; a
@@ -187,7 +187,7 @@ func (r *AuditReplayer) Replay(at *commonpb.Timestamp, orders []*raftcmdpb.Order
 			}
 		}
 		if !installsPolicy {
-			r.machine.State.UpdateClusterPolicy(&commonpb.ClusterPolicy{
+			r.machine.State.UpdateClusterPolicy(&ledgerpb.ClusterPolicy{
 				Revision:                    0,
 				QueryCheckpointLimit:        10,
 				MetadataMaxEntriesPerEntity: domain.DefaultMetadataMaxEntriesPerEntity,
@@ -222,7 +222,7 @@ func (r *AuditReplayer) Replay(at *commonpb.Timestamp, orders []*raftcmdpb.Order
 		if order.GetTechnical() == nil {
 			order.Technical = &raftcmdpb.OrderTechnical{}
 		}
-		var postings []*commonpb.Posting
+		var postings []*ledgerpb.Posting
 		if stored != nil {
 			postings = stored.Mutate().GetPostings()
 		}
@@ -252,7 +252,7 @@ func (r *AuditReplayer) Replay(at *commonpb.Timestamp, orders []*raftcmdpb.Order
 		return nil, fmt.Errorf("committing audited orders: %w", err)
 	}
 
-	logs := make([]*commonpb.Log, len(result.CreatedLogs))
+	logs := make([]*ledgerpb.Log, len(result.CreatedLogs))
 	for i, log := range result.CreatedLogs {
 		logs[i] = log.CloneVT()
 	}

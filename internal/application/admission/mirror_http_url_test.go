@@ -10,10 +10,10 @@ import (
 	"go.uber.org/mock/gomock"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/infra/health"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/internal/query"
@@ -44,9 +44,9 @@ func TestValidateOrder_MirrorHTTPURL(t *testing.T) {
 			order := &raftcmdpb.Order{Type: &raftcmdpb.Order_LedgerScoped{LedgerScoped: &raftcmdpb.LedgerScopedOrder{
 				Ledger: "mirror",
 				Payload: &raftcmdpb.LedgerScopedOrder_CreateLedger{CreateLedger: &raftcmdpb.CreateLedgerOrder{
-					Mode: commonpb.LedgerMode_LEDGER_MODE_MIRROR,
-					MirrorSource: &commonpb.MirrorSourceConfig{LedgerName: "source", Type: &commonpb.MirrorSourceConfig_Http{
-						Http: &commonpb.HttpMirrorSourceConfig{BaseUrl: tc.baseURL},
+					Mode: ledgerpb.LedgerMode_LEDGER_MODE_MIRROR,
+					MirrorSource: &ledgerpb.MirrorSourceConfig{LedgerName: "source", Type: &ledgerpb.MirrorSourceConfig_Http{
+						Http: &ledgerpb.HttpMirrorSourceConfig{BaseUrl: tc.baseURL},
 					}},
 				}},
 			}}}
@@ -81,9 +81,9 @@ func TestAdmission_MalformedHTTPMirrorRejectedBeforeProposal(t *testing.T) {
 	ctx := attributedTestContext(context.Background())
 	_, err := a.Admit(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{Type: &servicepb.Request_CreateLedger{
 		CreateLedger: &servicepb.CreateLedgerRequest{
-			Name: ledgerName, Mode: commonpb.LedgerMode_LEDGER_MODE_MIRROR,
-			MirrorSource: &commonpb.MirrorSourceConfig{LedgerName: "source", Type: &commonpb.MirrorSourceConfig_Http{
-				Http: &commonpb.HttpMirrorSourceConfig{BaseUrl: "https://user:" + password + "@localhost/%zz"},
+			Name: ledgerName, Mode: ledgerpb.LedgerMode_LEDGER_MODE_MIRROR,
+			MirrorSource: &ledgerpb.MirrorSourceConfig{LedgerName: "source", Type: &ledgerpb.MirrorSourceConfig_Http{
+				Http: &ledgerpb.HttpMirrorSourceConfig{BaseUrl: "https://user:" + password + "@localhost/%zz"},
 			}},
 		},
 	}}))

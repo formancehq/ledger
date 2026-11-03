@@ -8,9 +8,10 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
+
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
 
 func TestKeyStoreForcedCollision(t *testing.T) {
@@ -22,10 +23,10 @@ func TestKeyStoreForcedCollision(t *testing.T) {
 				c, err := New(10, nil)
 				require.NoError(t, err)
 				ac := c.LedgerMetadata
-				store := attributes.NewKeyStore[domain.LedgerMetadataKey, *commonpb.MetadataValue](ac)
+				store := attributes.NewKeyStore[domain.LedgerMetadataKey, *ledgerpb.MetadataValue](ac)
 				canonical := []byte("forced-collision")
 				id, tag := attributes.MakeKey(canonical)
-				original := attributes.Entry[*commonpb.MetadataValue]{Tag: tag + 1, Data: commonpb.NewStringValue("original"), Deleted: deleted}
+				original := attributes.Entry[*ledgerpb.MetadataValue]{Tag: tag + 1, Data: ledgerpb.NewStringValue("original"), Deleted: deleted}
 				if generation == "gen0" {
 					ac.Gen0().Put(id, original)
 				} else {
@@ -34,7 +35,7 @@ func TestKeyStoreForcedCollision(t *testing.T) {
 				_, _, err = store.Get(canonical)
 				var collision *attributes.ErrCollisionDetected
 				require.ErrorAs(t, err, &collision)
-				_, _, err = store.Put(canonical, commonpb.NewStringValue("replacement"))
+				_, _, err = store.Put(canonical, ledgerpb.NewStringValue("replacement"))
 				require.ErrorAs(t, err, &collision)
 				visible, ok := ac.Get(id)
 				require.True(t, ok)
@@ -51,15 +52,15 @@ func TestKeyStoreCollisionNeverPublishedToAdmission(t *testing.T) {
 	c, err := New(10, nil)
 	require.NoError(t, err)
 	ac := c.LedgerMetadata
-	store := attributes.NewKeyStore[domain.LedgerMetadataKey, *commonpb.MetadataValue](ac)
+	store := attributes.NewKeyStore[domain.LedgerMetadataKey, *ledgerpb.MetadataValue](ac)
 	canonical := []byte("concurrent-collision")
 	id, tag := attributes.MakeKey(canonical)
-	ac.Gen1().Put(id, attributes.Entry[*commonpb.MetadataValue]{Tag: tag + 1, Data: commonpb.NewStringValue("original")})
+	ac.Gen1().Put(id, attributes.Entry[*ledgerpb.MetadataValue]{Tag: tag + 1, Data: ledgerpb.NewStringValue("original")})
 	var wg sync.WaitGroup
 	for range 4 {
 		wg.Go(func() {
 			for range 1000 {
-				_, _, putErr := store.Put(canonical, commonpb.NewStringValue("wrong"))
+				_, _, putErr := store.Put(canonical, ledgerpb.NewStringValue("wrong"))
 				if _, ok := errors.AsType[*attributes.ErrCollisionDetected](putErr); !ok {
 					t.Errorf("Put error = %v, want collision", putErr)
 
@@ -92,10 +93,10 @@ func TestKeyStoreMatchingTagAcrossGenerations(t *testing.T) {
 				c, err := New(10, nil)
 				require.NoError(t, err)
 				ac := c.LedgerMetadata
-				store := attributes.NewKeyStore[domain.LedgerMetadataKey, *commonpb.MetadataValue](ac)
+				store := attributes.NewKeyStore[domain.LedgerMetadataKey, *ledgerpb.MetadataValue](ac)
 				canonical := []byte("matching-tag")
 				id, tag := attributes.MakeKey(canonical)
-				old := attributes.Entry[*commonpb.MetadataValue]{Tag: tag, Data: commonpb.NewStringValue("old"), Deleted: deleted}
+				old := attributes.Entry[*ledgerpb.MetadataValue]{Tag: tag, Data: ledgerpb.NewStringValue("old"), Deleted: deleted}
 				if generation == "gen0" {
 					ac.Gen0().Put(id, old)
 				} else {
@@ -107,7 +108,7 @@ func TestKeyStoreMatchingTagAcrossGenerations(t *testing.T) {
 				} else {
 					require.NoError(t, readErr)
 				}
-				previous, gotID, err := store.Put(canonical, commonpb.NewStringValue("new"))
+				previous, gotID, err := store.Put(canonical, ledgerpb.NewStringValue("new"))
 				require.NoError(t, err)
 				require.Equal(t, id, gotID.ID)
 				require.Equal(t, tag, gotID.Tag)
@@ -118,7 +119,7 @@ func TestKeyStoreMatchingTagAcrossGenerations(t *testing.T) {
 				entry, ok := ac.Gen0().Get(id)
 				require.True(t, ok)
 				require.False(t, entry.Deleted)
-				require.Equal(t, commonpb.NewStringValue("new"), entry.Data)
+				require.Equal(t, ledgerpb.NewStringValue("new"), entry.Data)
 			})
 		}
 	}

@@ -8,7 +8,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/tests/oracle"
 	"github.com/formancehq/ledger/v3/tests/oracle/oracletest"
@@ -19,10 +19,10 @@ func TestCheckpointReadsRejectLiveMutation(t *testing.T) {
 	frozen := buildGlobal(t, oracletest.TxReqL("L", "world", "acc:1", "USD", 5))
 	result := frozen.Apply(oracle.Bulk{Requests: []*servicepb.Request{oracletest.RevertReqL("L", 1, true)}})
 	require.True(t, result.OK)
-	account := &commonpb.Account{Address: "acc:1", Volumes: []*commonpb.AccountVolume{{Asset: "USD", Volumes: &commonpb.VolumesWithBalance{Input: commonpb.MustBigUintFromDecimal("5"), Output: commonpb.MustBigUintFromDecimal("0"), Balance: commonpb.MustSignedBigIntFromDecimal("5")}}}}
+	account := &ledgerpb.Account{Address: "acc:1", Volumes: []*ledgerpb.AccountVolume{{Asset: "USD", Volumes: &ledgerpb.VolumesWithBalance{Input: ledgerpb.MustBigUintFromDecimal("5"), Output: ledgerpb.MustBigUintFromDecimal("0"), Balance: ledgerpb.MustSignedBigIntFromDecimal("5")}}}}
 	require.True(t, checkpointAccountReadMatches(frozen, "L", "acc:1", account, true, false))
-	account.Volumes[0].Volumes.Output = commonpb.MustBigUintFromDecimal("5")
-	account.Volumes[0].Volumes.Balance = commonpb.MustSignedBigIntFromDecimal("0")
+	account.Volumes[0].Volumes.Output = ledgerpb.MustBigUintFromDecimal("5")
+	account.Volumes[0].Volumes.Balance = ledgerpb.MustSignedBigIntFromDecimal("0")
 	require.True(t, checkpointAccountReadMatches(result.State, "L", "acc:1", account, true, false))
 	require.False(t, checkpointAccountReadMatches(frozen, "L", "acc:1", account, true, false))
 	require.True(t, checkpointTransactionReadMatches(frozen, "L", 1, serverTxFromRec(frozen.Ledger("L").Txs().Get(0)), true))
@@ -43,9 +43,9 @@ func TestCheckpointMissingRequiresNotFoundStatus(t *testing.T) {
 
 func TestCheckpointMetadataOnlyAccountWithLaterVolume(t *testing.T) {
 	t.Parallel()
-	value := &commonpb.MetadataValue{Type: &commonpb.MetadataValue_StringValue{StringValue: "before"}}
+	value := &ledgerpb.MetadataValue{Type: &ledgerpb.MetadataValue_StringValue{StringValue: "before"}}
 	frozen := buildGlobal(t, oracletest.TxReqL("L", "world", "z", "USD", 5), oracletest.AddAccountMetaReq("a", "phase", value))
-	account := &commonpb.Account{Address: "a", Metadata: map[string]*commonpb.MetadataValue{"phase": value}}
+	account := &ledgerpb.Account{Address: "a", Metadata: map[string]*ledgerpb.MetadataValue{"phase": value}}
 	require.True(t, checkpointAccountReadMatches(frozen, "L", "a", account, true, false))
 	require.False(t, checkpointAccountReadMatches(frozen, "L", "a", nil, false, false))
 }
@@ -53,8 +53,8 @@ func TestCheckpointMetadataOnlyAccountWithLaterVolume(t *testing.T) {
 func TestCheckpointReadAcceptsEmptyAccountWithoutInventingState(t *testing.T) {
 	t.Parallel()
 	frozen := oracle.NewGlobalState()
-	require.True(t, checkpointAccountReadMatches(frozen, "L", "empty", &commonpb.Account{Address: "empty"}, true, false))
-	require.False(t, checkpointAccountReadMatches(frozen, "L", "empty", &commonpb.Account{Address: "empty", Metadata: checkpointMetadata("ghost")}, true, false))
+	require.True(t, checkpointAccountReadMatches(frozen, "L", "empty", &ledgerpb.Account{Address: "empty"}, true, false))
+	require.False(t, checkpointAccountReadMatches(frozen, "L", "empty", &ledgerpb.Account{Address: "empty", Metadata: checkpointMetadata("ghost")}, true, false))
 }
 
 func TestDeletedCheckpointReadAcceptsOnlyFrozenSuccessOrNotFound(t *testing.T) {
@@ -66,12 +66,12 @@ func TestDeletedCheckpointReadAcceptsOnlyFrozenSuccessOrNotFound(t *testing.T) {
 	c.validateBulkSuccess(create, checkpointCreateResponse(11, 1))
 	require.False(t, c.checkpointReadOutcomeMatches(1, 0, false, status.Error(codes.NotFound, "missing live checkpoint")))
 	del := bulkOf(&servicepb.Request{Type: &servicepb.Request_DeleteQueryCheckpoint{DeleteQueryCheckpoint: &servicepb.DeleteQueryCheckpointRequest{CheckpointId: 1}}})
-	c.validateBulkSuccess(del, &servicepb.ApplyResponse{Logs: []*commonpb.Log{{Sequence: 12, Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_DeletedQueryCheckpoint{DeletedQueryCheckpoint: &commonpb.DeletedQueryCheckpointLog{CheckpointId: 1}}}}}})
+	c.validateBulkSuccess(del, &servicepb.ApplyResponse{Logs: []*ledgerpb.Log{{Sequence: 12, Payload: &ledgerpb.LogPayload{Type: &ledgerpb.LogPayload_DeletedQueryCheckpoint{DeletedQueryCheckpoint: &ledgerpb.DeletedQueryCheckpointLog{CheckpointId: 1}}}}}})
 	frozen = c.deletedCheckpointSnapshots[1].state
-	account := &commonpb.Account{Address: "acc:1", Volumes: []*commonpb.AccountVolume{{Asset: "USD", Volumes: &commonpb.VolumesWithBalance{Input: commonpb.MustBigUintFromDecimal("5"), Output: commonpb.MustBigUintFromDecimal("0"), Balance: commonpb.MustSignedBigIntFromDecimal("5")}}}}
+	account := &ledgerpb.Account{Address: "acc:1", Volumes: []*ledgerpb.AccountVolume{{Asset: "USD", Volumes: &ledgerpb.VolumesWithBalance{Input: ledgerpb.MustBigUintFromDecimal("5"), Output: ledgerpb.MustBigUintFromDecimal("0"), Balance: ledgerpb.MustSignedBigIntFromDecimal("5")}}}}
 	require.True(t, c.checkpointReadOutcomeMatches(1, 0, checkpointAccountReadMatches(frozen, "L", "acc:1", account, true, false), nil), "a replica may still serve the frozen checkpoint after deletion")
-	account.Volumes[0].Volumes.Input = commonpb.MustBigUintFromDecimal("9")
-	account.Volumes[0].Volumes.Balance = commonpb.MustSignedBigIntFromDecimal("9")
+	account.Volumes[0].Volumes.Input = ledgerpb.MustBigUintFromDecimal("9")
+	account.Volumes[0].Volumes.Balance = ledgerpb.MustSignedBigIntFromDecimal("9")
 	require.False(t, c.checkpointReadOutcomeMatches(1, 0, checkpointAccountReadMatches(frozen, "L", "acc:1", account, true, false), nil), "deletion must never permit newer business data")
 	require.True(t, c.checkpointReadOutcomeMatches(1, 0, false, status.Error(codes.NotFound, "deleted")))
 	require.False(t, c.checkpointReadOutcomeMatches(1, 0, true, status.Error(codes.Internal, "I/O failure")))

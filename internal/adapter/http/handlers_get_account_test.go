@@ -9,8 +9,9 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
+
 	"github.com/formancehq/ledger/v3/internal/application/ctrl"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
 
 func TestHandleGetAccount_Success(t *testing.T) {
@@ -18,12 +19,12 @@ func TestHandleGetAccount_Success(t *testing.T) {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().GetLedgerByName(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, _ string) (*commonpb.LedgerInfo, error) {
-			return &commonpb.LedgerInfo{Name: "ledger1"}, nil
+		func(_ context.Context, _ string) (*ledgerpb.LedgerInfo, error) {
+			return &ledgerpb.LedgerInfo{Name: "ledger1"}, nil
 		}).AnyTimes()
 	backend.EXPECT().GetAccount(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, _ string, addr string, _ ctrl.GetAccountOptions) (*commonpb.Account, error) {
-			return &commonpb.Account{Address: addr}, nil
+		func(_ context.Context, _ string, addr string, _ ctrl.GetAccountOptions) (*ledgerpb.Account, error) {
+			return &ledgerpb.Account{Address: addr}, nil
 		}).AnyTimes()
 	srv := newTestServer(t, backend)
 
@@ -47,13 +48,13 @@ func TestHandleGetAccount_PropagatesCollapseColors(t *testing.T) {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().GetLedgerByName(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, _ string) (*commonpb.LedgerInfo, error) {
-			return &commonpb.LedgerInfo{Name: "ledger1"}, nil
+		func(_ context.Context, _ string) (*ledgerpb.LedgerInfo, error) {
+			return &ledgerpb.LedgerInfo{Name: "ledger1"}, nil
 		}).AnyTimes()
 	// The matcher rejects the call if opts.CollapseColors is not true.
 	backend.EXPECT().GetAccount(gomock.Any(), gomock.Any(), gomock.Any(), ctrl.GetAccountOptions{CollapseColors: true}).
-		DoAndReturn(func(_ context.Context, _ string, addr string, _ ctrl.GetAccountOptions) (*commonpb.Account, error) {
-			return &commonpb.Account{Address: addr}, nil
+		DoAndReturn(func(_ context.Context, _ string, addr string, _ ctrl.GetAccountOptions) (*ledgerpb.Account, error) {
+			return &ledgerpb.Account{Address: addr}, nil
 		})
 	srv := newTestServer(t, backend)
 
@@ -78,30 +79,30 @@ func TestHandleGetAccount_VolumesInJSON(t *testing.T) {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().GetLedgerByName(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, _ string) (*commonpb.LedgerInfo, error) {
-			return &commonpb.LedgerInfo{Name: "ledger1"}, nil
+		func(_ context.Context, _ string) (*ledgerpb.LedgerInfo, error) {
+			return &ledgerpb.LedgerInfo{Name: "ledger1"}, nil
 		}).AnyTimes()
 	backend.EXPECT().GetAccount(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, _ string, addr string, _ ctrl.GetAccountOptions) (*commonpb.Account, error) {
-			return &commonpb.Account{
+		func(_ context.Context, _ string, addr string, _ ctrl.GetAccountOptions) (*ledgerpb.Account, error) {
+			return &ledgerpb.Account{
 				Address: addr,
-				Volumes: []*commonpb.AccountVolume{
+				Volumes: []*ledgerpb.AccountVolume{
 					{
 						Asset: "USD/2",
 						Color: "", // uncolored bucket — must appear in JSON with color:""
-						Volumes: &commonpb.VolumesWithBalance{
-							Input:   commonpb.MustBigUintFromDecimal("100"),
-							Output:  commonpb.MustBigUintFromDecimal("30"),
-							Balance: commonpb.MustSignedBigIntFromDecimal("70"),
+						Volumes: &ledgerpb.VolumesWithBalance{
+							Input:   ledgerpb.MustBigUintFromDecimal("100"),
+							Output:  ledgerpb.MustBigUintFromDecimal("30"),
+							Balance: ledgerpb.MustSignedBigIntFromDecimal("70"),
 						},
 					},
 					{
 						Asset: "USD/2",
 						Color: "GRANTS",
-						Volumes: &commonpb.VolumesWithBalance{
-							Input:   commonpb.MustBigUintFromDecimal("50"),
-							Output:  commonpb.MustBigUintFromDecimal("0"),
-							Balance: commonpb.MustSignedBigIntFromDecimal("50"),
+						Volumes: &ledgerpb.VolumesWithBalance{
+							Input:   ledgerpb.MustBigUintFromDecimal("50"),
+							Output:  ledgerpb.MustBigUintFromDecimal("0"),
+							Balance: ledgerpb.MustSignedBigIntFromDecimal("50"),
 						},
 					},
 				},
@@ -147,8 +148,8 @@ func TestHandleGetAccount_LedgerNotFound(t *testing.T) {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().GetLedgerByName(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, _ string) (*commonpb.LedgerInfo, error) {
-			return nil, commonpb.ErrNoLeader
+		func(_ context.Context, _ string) (*ledgerpb.LedgerInfo, error) {
+			return nil, ledgerpb.ErrNoLeader
 		}).AnyTimes()
 	srv := newTestServer(t, backend)
 

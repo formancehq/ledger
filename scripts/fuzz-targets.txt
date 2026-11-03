@@ -1,10 +1,6 @@
 ./internal/pkg/filterexpr/ FuzzFilterExprParse
 ./internal/pkg/semver/ FuzzSemverParse
 ./internal/pkg/semver/ FuzzSemverParsePartial
-./internal/proto/commonpb/ FuzzConvertMetadataValue
-./internal/proto/commonpb/ FuzzMetadataMapUnmarshalJSON
-./internal/proto/commonpb/ FuzzTimestampUnmarshalJSON
-./internal/proto/commonpb/ FuzzUint256UnmarshalJSON
 ./internal/proto/raftcmdpb/ FuzzOrderUnmarshalVT
 ./internal/proto/raftcmdpb/ FuzzProposalUnmarshalVT
 ./internal/proto/rafttransportpb/ FuzzRaftRequestBatchUnmarshalVT
@@ -15,3 +11,7 @@
 ./internal/proto/signaturepb/ FuzzSignedLogUnmarshalVT
 ./internal/proto/snapshotpb/ FuzzFetchFileResponseUnmarshalVT
 ./internal/proto/snapshotpb/ FuzzPrepareSnapshotResponseUnmarshalVT
+./pkg/proto/v3/ledgerpb/ FuzzConvertMetadataValue
+./pkg/proto/v3/ledgerpb/ FuzzMetadataMapUnmarshalJSON
+./pkg/proto/v3/ledgerpb/ FuzzTimestampUnmarshalJSON
+./pkg/proto/v3/ledgerpb/ FuzzUint256UnmarshalJSON

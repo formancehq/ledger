@@ -10,7 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/proto"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 )
 
 // TestConfigStructuredRoundTrip is the regression test for #493: exporting a
@@ -21,48 +21,48 @@ import (
 func TestConfigStructuredRoundTrip(t *testing.T) {
 	t.Parallel()
 
-	ledger := &commonpb.LedgerInfo{
+	ledger := &ledgerpb.LedgerInfo{
 		Name:                   "bitcoin-mainnet",
-		DefaultEnforcementMode: commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT,
-		AccountTypes: map[string]*commonpb.AccountType{
+		DefaultEnforcementMode: ledgerpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT,
+		AccountTypes: map[string]*ledgerpb.AccountType{
 			"blockchain": {Name: "blockchain", Pattern: "btc:{address}"},
 			"burn":       {Name: "burn", Pattern: "burn"},
 			// Non-default persistence values must round-trip — otherwise
 			// `apply` silently re-creates ephemeral/transient types as
 			// `normal`, flipping volume storage behavior (see #493).
-			"fees":    {Name: "fees", Pattern: "fees:{height}:{txhash}", Persistence: commonpb.AccountTypePersistence_ACCOUNT_TYPE_TRANSIENT},
-			"mempool": {Name: "mempool", Pattern: "mempool:{txhash}", Persistence: commonpb.AccountTypePersistence_ACCOUNT_TYPE_EPHEMERAL},
+			"fees":    {Name: "fees", Pattern: "fees:{height}:{txhash}", Persistence: ledgerpb.AccountTypePersistence_ACCOUNT_TYPE_TRANSIENT},
+			"mempool": {Name: "mempool", Pattern: "mempool:{txhash}", Persistence: ledgerpb.AccountTypePersistence_ACCOUNT_TYPE_EPHEMERAL},
 		},
-		MetadataSchema: &commonpb.MetadataSchema{
-			AccountFields: map[string]*commonpb.MetadataFieldSchema{
-				"miner": {Type: commonpb.MetadataType_METADATA_TYPE_BOOL},
+		MetadataSchema: &ledgerpb.MetadataSchema{
+			AccountFields: map[string]*ledgerpb.MetadataFieldSchema{
+				"miner": {Type: ledgerpb.MetadataType_METADATA_TYPE_BOOL},
 			},
-			TransactionFields: map[string]*commonpb.MetadataFieldSchema{
-				"block_height": {Type: commonpb.MetadataType_METADATA_TYPE_UINT64},
-				"coinbase":     {Type: commonpb.MetadataType_METADATA_TYPE_BOOL},
+			TransactionFields: map[string]*ledgerpb.MetadataFieldSchema{
+				"block_height": {Type: ledgerpb.MetadataType_METADATA_TYPE_UINT64},
+				"coinbase":     {Type: ledgerpb.MetadataType_METADATA_TYPE_BOOL},
 			},
 		},
 	}
 
 	// Indexes are no longer nested on LedgerInfo (#450). The CLI consumes them
 	// via BucketService.ListIndexes; the test wires them in as a separate slice.
-	ledgerIndexes := []*commonpb.Index{
-		{Id: &commonpb.IndexID{Kind: &commonpb.IndexID_TxBuiltin{TxBuiltin: commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE}}},
-		{Id: &commonpb.IndexID{Kind: &commonpb.IndexID_TxBuiltin{TxBuiltin: commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP}}},
-		{Id: &commonpb.IndexID{Kind: &commonpb.IndexID_Metadata{Metadata: &commonpb.MetadataIndexID{
-			Target: commonpb.TargetType_TARGET_TYPE_TRANSACTION,
+	ledgerIndexes := []*ledgerpb.Index{
+		{Id: &ledgerpb.IndexID{Kind: &ledgerpb.IndexID_TxBuiltin{TxBuiltin: ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE}}},
+		{Id: &ledgerpb.IndexID{Kind: &ledgerpb.IndexID_TxBuiltin{TxBuiltin: ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP}}},
+		{Id: &ledgerpb.IndexID{Kind: &ledgerpb.IndexID_Metadata{Metadata: &ledgerpb.MetadataIndexID{
+			Target: ledgerpb.TargetType_TARGET_TYPE_TRANSACTION,
 			Key:    "block_height",
 		}}}},
 	}
 
-	queries := []*commonpb.PreparedQuery{
-		{Name: "btc-txs", Target: commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS},
+	queries := []*ledgerpb.PreparedQuery{
+		{Name: "btc-txs", Target: ledgerpb.QueryTarget_QUERY_TARGET_TRANSACTIONS},
 		// Logs target must round-trip — without the dedicated case in
 		// `queryTargetString`, export emitted `target: unknown` and apply
 		// silently fell back to ACCOUNTS, swapping the query target.
-		{Name: "audit-trail", Target: commonpb.QueryTarget_QUERY_TARGET_LOGS},
+		{Name: "audit-trail", Target: ledgerpb.QueryTarget_QUERY_TARGET_LOGS},
 	}
-	numscripts := []*commonpb.NumscriptInfo{
+	numscripts := []*ledgerpb.NumscriptInfo{
 		{Name: "transfer", Content: "send 1 BTC from @user:alice to @user:bob", Version: "1"},
 		{Name: "burn", Content: "send 1 BTC from @user:alice to @burn", Version: "1"},
 	}
@@ -89,33 +89,33 @@ func TestConfigPreparedQueryFilterExportReapplies(t *testing.T) {
 	t.Parallel()
 
 	jsonFilters := map[string]struct {
-		target commonpb.QueryTarget
+		target ledgerpb.QueryTarget
 		json   string
 	}{
-		"by-ref":      {commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS, `{"$match":{"reference":{"$param":"ref"}}}`},
-		"reverted":    {commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS, `{"$match":{"reverted":true}}`},
-		"id-window":   {commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS, `{"$and":[{"$gt":{"id":10}},{"$lt":{"id":20}}]}`},
-		"inserted":    {commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS, `{"$gte":{"insertedAt":"2023-11-14T22:13:20Z"}}`},
-		"recent-logs": {commonpb.QueryTarget_QUERY_TARGET_LOGS, `{"$match":{"logId":7}}`},
+		"by-ref":      {ledgerpb.QueryTarget_QUERY_TARGET_TRANSACTIONS, `{"$match":{"reference":{"$param":"ref"}}}`},
+		"reverted":    {ledgerpb.QueryTarget_QUERY_TARGET_TRANSACTIONS, `{"$match":{"reverted":true}}`},
+		"id-window":   {ledgerpb.QueryTarget_QUERY_TARGET_TRANSACTIONS, `{"$and":[{"$gt":{"id":10}},{"$lt":{"id":20}}]}`},
+		"inserted":    {ledgerpb.QueryTarget_QUERY_TARGET_TRANSACTIONS, `{"$gte":{"insertedAt":"2023-11-14T22:13:20Z"}}`},
+		"recent-logs": {ledgerpb.QueryTarget_QUERY_TARGET_LOGS, `{"$match":{"logId":7}}`},
 		// Parameterized range bounds must survive export: a param-only bound
 		// used to export as "id <uint?>", and the param side of a mixed range
 		// was dropped, silently widening the re-applied query.
-		"id-param":       {commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS, `{"$match":{"id":{"$param":"n"}}}`},
-		"id-mixed":       {commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS, `{"$and":[{"$gte":{"id":3}},{"$lt":{"id":{"$param":"hi"}}}]}`},
-		"since-param":    {commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS, `{"$gte":{"timestamp":{"$param":"since"}}}`},
-		"logs-from-date": {commonpb.QueryTarget_QUERY_TARGET_LOGS, `{"$gte":{"date":{"$param":"from"}}}`},
+		"id-param":       {ledgerpb.QueryTarget_QUERY_TARGET_TRANSACTIONS, `{"$match":{"id":{"$param":"n"}}}`},
+		"id-mixed":       {ledgerpb.QueryTarget_QUERY_TARGET_TRANSACTIONS, `{"$and":[{"$gte":{"id":3}},{"$lt":{"id":{"$param":"hi"}}}]}`},
+		"since-param":    {ledgerpb.QueryTarget_QUERY_TARGET_TRANSACTIONS, `{"$gte":{"timestamp":{"$param":"since"}}}`},
+		"logs-from-date": {ledgerpb.QueryTarget_QUERY_TARGET_LOGS, `{"$gte":{"date":{"$param":"from"}}}`},
 	}
 
-	var queries []*commonpb.PreparedQuery
-	want := map[string]*commonpb.QueryFilter{}
+	var queries []*ledgerpb.PreparedQuery
+	want := map[string]*ledgerpb.QueryFilter{}
 	for name, tc := range jsonFilters {
-		filter, err := commonpb.DecodeQueryFilterJSON([]byte(tc.json), tc.target)
+		filter, err := ledgerpb.DecodeQueryFilterJSON([]byte(tc.json), tc.target)
 		require.NoError(t, err, name)
-		queries = append(queries, &commonpb.PreparedQuery{Name: name, Target: tc.target, Filter: filter})
+		queries = append(queries, &ledgerpb.PreparedQuery{Name: name, Target: tc.target, Filter: filter})
 		want[name] = filter
 	}
 
-	exported := ConfigFromProto(&commonpb.LedgerInfo{Name: "l"}, nil, queries, nil)
+	exported := ConfigFromProto(&ledgerpb.LedgerInfo{Name: "l"}, nil, queries, nil)
 
 	actions, err := diffPreparedQueries("l", &EditableConfig{}, exported)
 	require.NoError(t, err)

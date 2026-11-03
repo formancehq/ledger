@@ -5,17 +5,19 @@ package operationslifecycle
 import (
 	"testing"
 
+	"github.com/stretchr/testify/require"
+	"google.golang.org/genproto/googleapis/rpc/errdetails"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
+
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
+
 	"github.com/formancehq/ledger/v3/internal/domain"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/pkg/actions"
 	"github.com/formancehq/ledger/v3/tests/oracle"
 	"github.com/formancehq/ledger/v3/tests/oracle/oracletest"
 	"github.com/formancehq/ledger/v3/tests/scenarios/scenariotest"
-	"github.com/stretchr/testify/require"
-	"google.golang.org/genproto/googleapis/rpc/errdetails"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
 )
 
 // The same request stream crosses the real Apply RPC and the independent oracle.
@@ -60,7 +62,7 @@ func TestLifecycleModelMatchesService(t *testing.T) {
 	require.NoError(t, err)
 	transientTransactionsBefore, err := actions.ListTransactionsFiltered(sc.Ctx(), sc.Client, "transient-delete", 100, 0, nil)
 	require.NoError(t, err)
-	apply(actions.AddAccountTypeWithPersistenceAction("transient-delete", "temp", "temp:{id}", commonpb.AccountTypePersistence_ACCOUNT_TYPE_TRANSIENT), oracletest.TxReqL("transient-delete", "world", "temp:1", "USD/2", 1), actions.DeleteLedgerAction("transient-delete"))
+	apply(actions.AddAccountTypeWithPersistenceAction("transient-delete", "temp", "temp:{id}", ledgerpb.AccountTypePersistence_ACCOUNT_TYPE_TRANSIENT), oracletest.TxReqL("transient-delete", "world", "temp:1", "USD/2", 1), actions.DeleteLedgerAction("transient-delete"))
 	transientAfter, err := actions.GetLedger(sc.Ctx(), sc.Client, "transient-delete")
 	require.NoError(t, err)
 	transientStatsAfter, err := actions.GetLedgerStats(sc.Ctx(), sc.Client, "transient-delete")
@@ -76,7 +78,7 @@ func TestLifecycleModelMatchesService(t *testing.T) {
 	// Repeated delete still operates on the retained LedgerInfo tombstone.
 	apply(actions.DeleteLedgerAction("L"))
 
-	apply(&servicepb.Request{Type: &servicepb.Request_CreateLedger{CreateLedger: &servicepb.CreateLedgerRequest{Name: "mirror", Mode: commonpb.LedgerMode_LEDGER_MODE_MIRROR, MirrorSource: &commonpb.MirrorSourceConfig{LedgerName: "unconfigured"}}}}, actions.AddAccountTypeAction("mirror", "cash", "cash:{id}"))
+	apply(&servicepb.Request{Type: &servicepb.Request_CreateLedger{CreateLedger: &servicepb.CreateLedgerRequest{Name: "mirror", Mode: ledgerpb.LedgerMode_LEDGER_MODE_MIRROR, MirrorSource: &ledgerpb.MirrorSourceConfig{LedgerName: "unconfigured"}}}}, actions.AddAccountTypeAction("mirror", "cash", "cash:{id}"))
 	mirrorAccountsBefore, err := actions.ListAccountsFiltered(sc.Ctx(), sc.Client, "mirror", 100, "", nil)
 	require.NoError(t, err)
 	mirrorTransactionsBefore, err := actions.ListTransactionsFiltered(sc.Ctx(), sc.Client, "mirror", 100, 0, nil)
@@ -94,7 +96,7 @@ func TestLifecycleModelMatchesService(t *testing.T) {
 	apply(oracletest.TxReqL("mirror", "world", "cash:1", "USD/2", 1))
 	info, err := sc.Client.GetLedger(sc.Ctx(), &servicepb.GetLedgerRequest{Ledger: "mirror"})
 	require.NoError(t, err)
-	require.Equal(t, commonpb.LedgerMode_LEDGER_MODE_NORMAL, info.GetMode())
+	require.Equal(t, ledgerpb.LedgerMode_LEDGER_MODE_NORMAL, info.GetMode())
 	require.Nil(t, info.GetMirrorSource())
 
 	t.Cleanup(func() {

@@ -5,7 +5,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/pkg/actions"
 	"github.com/formancehq/ledger/v3/tests/oracle"
@@ -43,22 +43,22 @@ func TestEnforcementModesAgainstServer(t *testing.T) {
 	commit(oracletest.AddTypeReq("known"))
 	tx := oracletest.TxReq("world", "unknown:1", "USD", 10)
 	reject(tx)
-	resp := commit(enforcementModeRequest("L", commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_AUDIT, false), tx)
+	resp := commit(enforcementModeRequest("L", ledgerpb.ChartEnforcementMode_CHART_ENFORCEMENT_AUDIT, false), tx)
 	modeLog := resp.GetLogs()[0].GetPayload().GetApply().GetLog().GetData().GetUpdatedDefaultEnforcementMode()
 	require.NotNil(t, modeLog)
-	require.Equal(t, commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_AUDIT, modeLog.GetEnforcementMode())
+	require.Equal(t, ledgerpb.ChartEnforcementMode_CHART_ENFORCEMENT_AUDIT, modeLog.GetEnforcementMode())
 	commit(actions.SaveAccountMetadataAction("L", "unknown:1", map[string]string{"key": "value"}))
 	// A strict flip preceding an unmatched posting is rolled back with it.
-	reject(enforcementModeRequest("L", commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT, true), tx)
+	reject(enforcementModeRequest("L", ledgerpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT, true), tx)
 	info, err := client.GetLedger(ctx, &servicepb.GetLedgerRequest{Ledger: "L"})
 	require.NoError(t, err)
-	require.Equal(t, commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_AUDIT, info.GetDefaultEnforcementMode())
+	require.Equal(t, ledgerpb.ChartEnforcementMode_CHART_ENFORCEMENT_AUDIT, info.GetDefaultEnforcementMode())
 	// The nested setter takes effect for both metadata and revert validation.
-	commit(enforcementModeRequest("L", commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT, true))
+	commit(enforcementModeRequest("L", ledgerpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT, true))
 	reject(actions.SaveAccountMetadataAction("L", "unknown:1", map[string]string{"key": "rejected"}))
 	revert := oracletest.RevertReqL("L", 1, false)
 	reject(revert)
-	commit(enforcementModeRequest("L", commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_AUDIT, true), revert)
+	commit(enforcementModeRequest("L", ledgerpb.ChartEnforcementMode_CHART_ENFORCEMENT_AUDIT, true), revert)
 	// Successful metadata and IDs after rejection also pin rollback behavior.
 	commit(actions.SaveAccountMetadataAction("L", "unknown:1", map[string]string{"key": "after"}))
 	info, err = client.GetLedger(ctx, &servicepb.GetLedgerRequest{Ledger: "L"})
@@ -70,9 +70,9 @@ func TestMirrorBulkRejectsFirstFailingRequest(t *testing.T) {
 	t.Parallel()
 	create := &servicepb.Request{Type: &servicepb.Request_CreateLedger{CreateLedger: &servicepb.CreateLedgerRequest{
 		Name:         "L",
-		Mode:         commonpb.LedgerMode_LEDGER_MODE_MIRROR,
-		MirrorSource: &commonpb.MirrorSourceConfig{LedgerName: "source"},
-		AccountTypes: map[string]*commonpb.AccountType{
+		Mode:         ledgerpb.LedgerMode_LEDGER_MODE_MIRROR,
+		MirrorSource: &ledgerpb.MirrorSourceConfig{LedgerName: "source"},
+		AccountTypes: map[string]*ledgerpb.AccountType{
 			"known": {Name: "known", Pattern: "known:{id}"},
 		},
 	}}}

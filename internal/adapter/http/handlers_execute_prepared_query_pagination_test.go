@@ -12,10 +12,10 @@ import (
 	"go.uber.org/mock/gomock"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 
 	internalauth "github.com/formancehq/ledger/v3/internal/adapter/auth"
 	"github.com/formancehq/ledger/v3/internal/pkg/version"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
@@ -54,9 +54,9 @@ func TestExecutePreparedQueryRoutePagination(t *testing.T) {
 							require.Equal(t, reverse, req.GetReverse())
 							require.Equal(t, "ledger1", req.GetLedger())
 							require.Equal(t, "accounts", req.GetQueryName())
-							expectedMode := commonpb.QueryMode_QUERY_MODE_LIST
+							expectedMode := ledgerpb.QueryMode_QUERY_MODE_LIST
 							if tc.mode == "AGGREGATE_VOLUMES" {
-								expectedMode = commonpb.QueryMode_QUERY_MODE_AGGREGATE_VOLUMES
+								expectedMode = ledgerpb.QueryMode_QUERY_MODE_AGGREGATE_VOLUMES
 							}
 							require.Equal(t, expectedMode, req.GetMode())
 

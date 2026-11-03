@@ -25,7 +25,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
+
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/tests/oracle"
 )
@@ -309,7 +310,7 @@ func renderTypes(gs oracle.GlobalState, b oracle.Bulk) string {
 	return "[" + strings.Join(out, " ") + "]"
 }
 
-func renderMeta(m oracle.Map[string, *commonpb.MetadataValue]) string {
+func renderMeta(m oracle.Map[string, *ledgerpb.MetadataValue]) string {
 	parts := make([]string, 0, m.Len())
 	for k, v := range m.All() {
 		parts = append(parts, k+"="+oracle.MetaValueString(v))

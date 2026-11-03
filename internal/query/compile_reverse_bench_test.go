@@ -8,8 +8,8 @@ import (
 	"github.com/stretchr/testify/require"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/query"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 	"github.com/formancehq/ledger/v3/internal/storage/readstore"
@@ -76,7 +76,7 @@ func drainPage(b *testing.B, store *readstore.Store, after []byte) (rowsVisited,
 	iter, err := query.Compile(stringFieldFilter("colour", "red"), query.CompileOptions{
 		IndexReader:     reader,
 		KeyBuilder:      dal.NewKeyBuilder(),
-		Target:          commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
+		Target:          ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
 		LedgerName:      parityLedger,
 		Schema:          paritySchema(),
 		LedgerInfo:      parityInfo(),
@@ -136,7 +136,7 @@ func streamPage(b *testing.B, store *readstore.Store, before []byte) (rowsVisite
 	iter, err := query.CompileReverse(stringFieldFilter("colour", "red"), query.CompileOptions{
 		IndexReader:     reader,
 		KeyBuilder:      dal.NewKeyBuilder(),
-		Target:          commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
+		Target:          ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
 		LedgerName:      parityLedger,
 		Schema:          paritySchema(),
 		LedgerInfo:      parityInfo(),

@@ -9,8 +9,8 @@ import (
 	"github.com/stretchr/testify/require"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/storage/readstore"
 )
 
@@ -29,9 +29,9 @@ func TestIndexVersionState_RoundTrip(t *testing.T) {
 		RewriteProgress: []byte("cursor-bytes"),
 		// STRING is enum value zero, so it is exactly the value that would
 		// vanish if "declared" were conflated with the type's zero value.
-		CurrentType:         commonpb.MetadataType_METADATA_TYPE_STRING,
+		CurrentType:         ledgerpb.MetadataType_METADATA_TYPE_STRING,
 		CurrentTypeDeclared: true,
-		PendingType:         commonpb.MetadataType_METADATA_TYPE_UINT32,
+		PendingType:         ledgerpb.MetadataType_METADATA_TYPE_UINT32,
 		PendingTypeDeclared: true,
 	}
 

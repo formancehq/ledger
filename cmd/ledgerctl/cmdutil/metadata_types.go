@@ -4,41 +4,41 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 )
 
-// ParseTargetType converts "account"/"transaction" to commonpb.TargetType.
-func ParseTargetType(s string) (commonpb.TargetType, error) {
-	return commonpb.ParseTargetType(s)
+// ParseTargetType converts "account"/"transaction" to ledgerpb.TargetType.
+func ParseTargetType(s string) (ledgerpb.TargetType, error) {
+	return ledgerpb.ParseTargetType(s)
 }
 
-// ParseMetadataType converts "string"/"int64"/"bool"/etc to commonpb.MetadataType.
-func ParseMetadataType(s string) (commonpb.MetadataType, error) {
-	return commonpb.ParseMetadataType(s)
+// ParseMetadataType converts "string"/"int64"/"bool"/etc to ledgerpb.MetadataType.
+func ParseMetadataType(s string) (ledgerpb.MetadataType, error) {
+	return ledgerpb.ParseMetadataType(s)
 }
 
 // MetadataTypeString returns user-friendly name for a MetadataType.
-func MetadataTypeString(t commonpb.MetadataType) string {
-	return commonpb.MetadataTypeToString(t)
+func MetadataTypeString(t ledgerpb.MetadataType) string {
+	return ledgerpb.MetadataTypeToString(t)
 }
 
 // TargetTypeString returns user-friendly name for a TargetType.
-func TargetTypeString(t commonpb.TargetType) string {
-	return commonpb.TargetTypeToString(t)
+func TargetTypeString(t ledgerpb.TargetType) string {
+	return ledgerpb.TargetTypeToString(t)
 }
 
 // MetadataTypeOptions returns valid type names for interactive select.
 func MetadataTypeOptions() []string {
-	return commonpb.MetadataTypeOptions()
+	return ledgerpb.MetadataTypeOptions()
 }
 
 // TargetTypeOptions returns valid target names for interactive select.
 func TargetTypeOptions() []string {
-	return commonpb.TargetTypeOptions()
+	return ledgerpb.TargetTypeOptions()
 }
 
 // ParseSchemaEntry parses a "target:key:type" string into its components.
-func ParseSchemaEntry(s string) (commonpb.TargetType, string, commonpb.MetadataType, error) {
+func ParseSchemaEntry(s string) (ledgerpb.TargetType, string, ledgerpb.MetadataType, error) {
 	targetName, rest, ok := strings.Cut(s, ":")
 	separator := strings.LastIndex(rest, ":")
 	if !ok || separator < 0 {

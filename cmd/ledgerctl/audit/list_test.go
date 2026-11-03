@@ -8,6 +8,8 @@ import (
 	"github.com/pterm/pterm"
 	"github.com/stretchr/testify/require"
 
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
+
 	"github.com/formancehq/ledger/v3/internal/proto/auditpb"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
@@ -18,7 +20,7 @@ func TestCallerLabel_PrincipalKinds(t *testing.T) {
 	t.Parallel()
 
 	tests := map[string]struct {
-		snapshot *commonpb.CallerSnapshot
+		snapshot *ledgerpb.CallerSnapshot
 		want     string
 	}{
 		"authenticated subject": {
@@ -30,15 +32,15 @@ func TestCallerLabel_PrincipalKinds(t *testing.T) {
 			want:     "key:key-7",
 		},
 		"anonymous": {
-			snapshot: &commonpb.CallerSnapshot{Principal: &commonpb.CallerSnapshot_Anonymous{Anonymous: &commonpb.AnonymousCaller{}}},
+			snapshot: &ledgerpb.CallerSnapshot{Principal: &ledgerpb.CallerSnapshot_Anonymous{Anonymous: &ledgerpb.AnonymousCaller{}}},
 			want:     "anonymous",
 		},
 		"system": {
-			snapshot: &commonpb.CallerSnapshot{Principal: &commonpb.CallerSnapshot_System{System: &commonpb.SystemCaller{Component: "mirror"}}},
+			snapshot: &ledgerpb.CallerSnapshot{Principal: &ledgerpb.CallerSnapshot_System{System: &ledgerpb.SystemCaller{Component: "mirror"}}},
 			want:     "system:mirror",
 		},
 		"auth disabled": {
-			snapshot: &commonpb.CallerSnapshot{Principal: &commonpb.CallerSnapshot_AuthDisabled{AuthDisabled: &commonpb.AuthDisabledCaller{}}},
+			snapshot: &ledgerpb.CallerSnapshot{Principal: &ledgerpb.CallerSnapshot_AuthDisabled{AuthDisabled: &ledgerpb.AuthDisabledCaller{}}},
 			want:     "auth-disabled",
 		},
 	}
@@ -51,16 +53,16 @@ func TestCallerLabel_PrincipalKinds(t *testing.T) {
 	}
 }
 
-func authenticatedCaller(subject, issuer, keyID string) *commonpb.CallerSnapshot {
-	identity := &commonpb.CallerIdentity{Subject: subject}
+func authenticatedCaller(subject, issuer, keyID string) *ledgerpb.CallerSnapshot {
+	identity := &ledgerpb.CallerIdentity{Subject: subject}
 	if keyID != "" {
-		identity.Source = &commonpb.CallerIdentity_KeyId{KeyId: keyID}
+		identity.Source = &ledgerpb.CallerIdentity_KeyId{KeyId: keyID}
 	} else if issuer != "" {
-		identity.Source = &commonpb.CallerIdentity_Issuer{Issuer: issuer}
+		identity.Source = &ledgerpb.CallerIdentity_Issuer{Issuer: issuer}
 	}
 
-	return &commonpb.CallerSnapshot{Principal: &commonpb.CallerSnapshot_Authenticated{
-		Authenticated: &commonpb.AuthenticatedCaller{Identity: identity},
+	return &ledgerpb.CallerSnapshot{Principal: &ledgerpb.CallerSnapshot_Authenticated{
+		Authenticated: &ledgerpb.AuthenticatedCaller{Identity: identity},
 	}}
 }
 

@@ -7,6 +7,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"hegel.dev/go/hegel"
 
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal/generation"
@@ -15,21 +16,21 @@ import (
 // roundTripFilters covers every parameterizable arm: address prefix and exact,
 // a reference string, a ledger string, a uint range (two-sided, so each bound
 // rolls independently), a log-id range, and each FieldCondition value kind.
-func roundTripFilters() map[string]*commonpb.QueryFilter {
+func roundTripFilters() map[string]*ledgerpb.QueryFilter {
 	lo, hi := int64(-4), int64(9)
 	ulo, uhi := uint64(3), uint64(77)
 
-	return map[string]*commonpb.QueryFilter{
+	return map[string]*ledgerpb.QueryFilter{
 		"address prefix": filterAddrPrefix("acc:"),
 		"address exact":  filterAddrExact("acc:1"),
 		"reference":      filterReference("ref-1"),
 		"tx id range":    filterTxIDRange(2, 20),
 		"date range": filterDateRange(
-			commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP, 100, 900),
-		"log date range": {Filter: &commonpb.QueryFilter_LogBuiltinUint{
-			LogBuiltinUint: &commonpb.LogBuiltinUintCondition{
-				Field: commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE,
-				Cond:  &commonpb.UintCondition{Min: &ulo, Max: &uhi},
+			ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP, 100, 900),
+		"log date range": {Filter: &ledgerpb.QueryFilter_LogBuiltinUint{
+			LogBuiltinUint: &ledgerpb.LogBuiltinUintCondition{
+				Field: ledgerpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE,
+				Cond:  &ledgerpb.UintCondition{Min: &ulo, Max: &uhi},
 			},
 		}},
 		"field string": filterFieldString("k1", "v1"),
@@ -116,8 +117,8 @@ func TestParameterizeIsIdentityWithoutParams(t *testing.T) {
 func TestSubstituteParamsRejectsUnresolvable(t *testing.T) {
 	t.Parallel()
 
-	addrParam := &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_Address{
-		Address: &commonpb.AddressMatch{Match: &commonpb.AddressMatch_ParamPrefix{ParamPrefix: "p0"}},
+	addrParam := &ledgerpb.QueryFilter{Filter: &ledgerpb.QueryFilter_Address{
+		Address: &ledgerpb.AddressMatch{Match: &ledgerpb.AddressMatch_ParamPrefix{ParamPrefix: "p0"}},
 	}}
 
 	uintParamFilter := filterTxIDRange(0, 0)
@@ -126,7 +127,7 @@ func TestSubstituteParamsRejectsUnresolvable(t *testing.T) {
 
 	for _, tc := range []struct {
 		name   string
-		filter *commonpb.QueryFilter
+		filter *ledgerpb.QueryFilter
 		params preparedParams
 	}{
 		{"missing string param", addrParam, preparedParams{}},
@@ -187,10 +188,10 @@ func TestSubstituteParamsResolvesEveryValueKind(t *testing.T) {
 	uintFilter.GetField().GetUintCond().ParamMax = "pu"
 
 	boolFilter := filterFieldBool("k", false)
-	boolFilter.GetField().GetBoolCond().Value = &commonpb.BoolCondition_Param{Param: "pb"}
+	boolFilter.GetField().GetBoolCond().Value = &ledgerpb.BoolCondition_Param{Param: "pb"}
 
 	strFilter := filterFieldString("k", "")
-	strFilter.GetField().GetStringCond().Value = &commonpb.StringCondition_Param{Param: "ps"}
+	strFilter.GetField().GetStringCond().Value = &ledgerpb.StringCondition_Param{Param: "ps"}
 
 	params := preparedParams{
 		"pi": intParam(-3),

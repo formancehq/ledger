@@ -13,13 +13,14 @@ import (
 	"github.com/IBM/sarama"
 	"github.com/xdg-go/scram"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
+
 	"github.com/formancehq/ledger/v3/internal/proto/eventspb"
 )
 
 func init() {
-	registerSinkFactory("kafka", func(_ context.Context, sc *commonpb.SinkConfig, format Format) (Sink, error) {
-		s := sc.GetType().(*commonpb.SinkConfig_Kafka)
+	registerSinkFactory("kafka", func(_ context.Context, sc *ledgerpb.SinkConfig, format Format) (Sink, error) {
+		s := sc.GetType().(*ledgerpb.SinkConfig_Kafka)
 
 		return NewKafkaSink(KafkaSinkConfig{
 			Brokers:       s.Kafka.GetBrokers(),

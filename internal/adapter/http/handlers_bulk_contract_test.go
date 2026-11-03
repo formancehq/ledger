@@ -21,6 +21,7 @@ import (
 	"google.golang.org/grpc/status"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 
 	"github.com/formancehq/ledger/v3/internal/adapter/apierr"
 	internalauth "github.com/formancehq/ledger/v3/internal/adapter/auth"
@@ -28,16 +29,15 @@ import (
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/infra/plan"
 	"github.com/formancehq/ledger/v3/internal/pkg/version"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
-func bulkContractSuccess() *commonpb.Log {
-	return &commonpb.Log{Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_Apply{
-		Apply: &commonpb.ApplyLedgerLog{Log: &commonpb.LedgerLog{
+func bulkContractSuccess() *ledgerpb.Log {
+	return &ledgerpb.Log{Payload: &ledgerpb.LogPayload{Type: &ledgerpb.LogPayload_Apply{
+		Apply: &ledgerpb.ApplyLedgerLog{Log: &ledgerpb.LedgerLog{
 			Id: 17,
-			Data: &commonpb.LedgerLogPayload{Payload: &commonpb.LedgerLogPayload_CreatedTransaction{
-				CreatedTransaction: &commonpb.CreatedTransaction{Transaction: &commonpb.Transaction{Id: 7}},
+			Data: &ledgerpb.LedgerLogPayload{Payload: &ledgerpb.LedgerLogPayload_CreatedTransaction{
+				CreatedTransaction: &ledgerpb.CreatedTransaction{Transaction: &ledgerpb.Transaction{Id: 7}},
 			}},
 		}},
 	}}}
@@ -109,7 +109,7 @@ func TestHandleBulk_ProcessingResponseContract(t *testing.T) {
 							return nil, &apierr.Remote{KindValue: tc.kind, ReasonValue: "PEER_FAILURE", Msg: "peer failure"}
 						}
 
-						return &domain.ApplyResult{Logs: []*commonpb.Log{bulkContractSuccess()}}, nil
+						return &domain.ApplyResult{Logs: []*ledgerpb.Log{bulkContractSuccess()}}, nil
 					}).Times(map[bool]int{false: 2, true: 3}[continuation])
 				handler := NewHandler(logging.Testing(), backend, internalauth.AuthConfig{}, version.Info{})
 				body := "[" + strings.Trim(bulkWriteBody, "[]") + "," + strings.Trim(bulkWriteBody, "[]") + "," + strings.Trim(bulkWriteBody, "[]") + "]"
@@ -158,8 +158,8 @@ func TestHandleBulk_MatchesSingleRequestClassification(t *testing.T) {
 		{"idempotency-key-invalid-utf8", admission.ErrIdempotencyKeyInvalidUTF8, http.StatusBadRequest, "INVALID_REQUEST"},
 		{"classified-unavailable", classifiedOnly{domain.KindUnavailable}, http.StatusServiceUnavailable, "UNAVAILABLE"},
 		{"classified-internal", classifiedOnly{domain.KindInternal}, http.StatusInternalServerError, "INTERNAL_ERROR"},
-		{"typed-not-found", commonpb.NewNotFoundError("ledger %s not found", "ledger1"), http.StatusNotFound, "NOT_FOUND"},
-		{"typed-not-found-empty-message", commonpb.NewNotFoundError(""), http.StatusNotFound, "NOT_FOUND"},
+		{"typed-not-found", ledgerpb.NewNotFoundError("ledger %s not found", "ledger1"), http.StatusNotFound, "NOT_FOUND"},
+		{"typed-not-found-empty-message", ledgerpb.NewNotFoundError(""), http.StatusNotFound, "NOT_FOUND"},
 		{"not-found-sentinel", fmt.Errorf("reading ledger: %w", domain.ErrNotFound), http.StatusNotFound, "NOT_FOUND"},
 		{"grpc-invalid-argument", status.Error(codes.InvalidArgument, "bad filter"), http.StatusBadRequest, "INVALID_REQUEST"},
 		{"grpc-unavailable", status.Error(codes.Unavailable, "stream torn down"), http.StatusServiceUnavailable, "UNAVAILABLE"},
@@ -221,7 +221,7 @@ func TestHandleBulk_IdempotencyContract(t *testing.T) {
 						envelope := request.GetUnsigned()
 						keys = append(keys, envelope.GetIdempotencyKey())
 						batchSizes = append(batchSizes, len(envelope.GetRequests()))
-						logs := make([]*commonpb.Log, len(envelope.GetRequests()))
+						logs := make([]*ledgerpb.Log, len(envelope.GetRequests()))
 						for i, action := range envelope.GetRequests() {
 							require.Equal(t, "ledger1", action.GetApply().GetLedger())
 							logs[i] = bulkContractSuccess()
@@ -258,7 +258,7 @@ func TestHandleBulk_InfrastructureResponseContract(t *testing.T) {
 		err    error
 		status int
 	}{
-		{"no-leader", commonpb.ErrNoLeader, http.StatusServiceUnavailable},
+		{"no-leader", ledgerpb.ErrNoLeader, http.StatusServiceUnavailable},
 		{"cache-horizon", plan.ErrCacheHorizonExceeded, http.StatusServiceUnavailable},
 		{"unknown-error", errors.New("private storage failure"), http.StatusInternalServerError},
 	} {

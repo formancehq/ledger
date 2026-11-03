@@ -6,11 +6,13 @@ import (
 	"fmt"
 	"math/big"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
-	"github.com/formancehq/ledger/v3/pkg/actions"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
+
+	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	"github.com/formancehq/ledger/v3/pkg/actions"
 )
 
 // Reverted-filter set logic. The reverted condition is served from the reversion
@@ -31,7 +33,7 @@ var _ = Describe("Reverted filter set logic", Ordered, func() {
 		// Six funding transactions to distinct accounts (ids assigned in order).
 		var ids []uint64
 		for i := 0; i < 6; i++ {
-			resp, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+			resp, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*ledgerpb.Posting{
 				actions.NewPosting("world", fmt.Sprintf("acc:%d", i), big.NewInt(100), "USD"),
 			}, nil, nil)))
 			Expect(err).To(Succeed())

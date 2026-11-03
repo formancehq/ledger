@@ -6,11 +6,13 @@ import (
 	"math/big"
 	"time"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
-	"github.com/formancehq/ledger/v3/pkg/actions"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
+
+	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	"github.com/formancehq/ledger/v3/pkg/actions"
 )
 
 // The index builder's live log cursor reuses one proto message per scan
@@ -40,8 +42,8 @@ var _ = Describe("Address index across a cross-ledger purge bulk", Ordered, func
 			actions.CreateLedgerAction(ledgerA, nil),
 			actions.CreateLedgerAction(ledgerB, nil),
 			actions.AddEphemeralAccountTypeAction(ledgerA, "e", "e:{id}"),
-			actions.CreateAddressIndexAction(ledgerB, commonpb.AddressRole_ADDRESS_ROLE_DESTINATION),
-			actions.CreateAddressIndexAction(ledgerB, commonpb.AddressRole_ADDRESS_ROLE_ANY),
+			actions.CreateAddressIndexAction(ledgerB, ledgerpb.AddressRole_ADDRESS_ROLE_DESTINATION),
+			actions.CreateAddressIndexAction(ledgerB, ledgerpb.AddressRole_ADDRESS_ROLE_ANY),
 		))
 		Expect(err).To(Succeed())
 
@@ -51,8 +53,8 @@ var _ = Describe("Address index across a cross-ledger purge bulk", Ordered, func
 		Eventually(func(g Gomega) {
 			indexes, err := listLedgerIndexes(sharedCtx, sharedClient, ledgerB)
 			g.Expect(err).To(Succeed())
-			g.Expect(hasTxBuiltinIndex(indexes, commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_DESTINATION_ADDRESS)).To(BeTrue())
-			g.Expect(hasTxBuiltinIndex(indexes, commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_ADDRESS)).To(BeTrue())
+			g.Expect(hasTxBuiltinIndex(indexes, ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_DESTINATION_ADDRESS)).To(BeTrue())
+			g.Expect(hasTxBuiltinIndex(indexes, ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_ADDRESS)).To(BeTrue())
 		}).Within(5 * time.Second).ProbeEvery(200 * time.Millisecond).Should(Succeed())
 
 		// One bulk, two orders, two adjacent logs: the ledger-A wash ends its
@@ -60,11 +62,11 @@ var _ = Describe("Address index across a cross-ledger purge bulk", Ordered, func
 		// while the ledger-B funding leaves its own (e:1, USD) cell non-zero
 		// and must be indexed.
 		_, err = sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("",
-			actions.CreateTransactionAction(ledgerA, []*commonpb.Posting{
+			actions.CreateTransactionAction(ledgerA, []*ledgerpb.Posting{
 				actions.NewPosting("world", "e:1", big.NewInt(5), "USD"),
 				actions.NewPosting("e:1", "world", big.NewInt(5), "USD"),
 			}, nil, nil),
-			actions.CreateTransactionAction(ledgerB, []*commonpb.Posting{
+			actions.CreateTransactionAction(ledgerB, []*ledgerpb.Posting{
 				actions.NewPosting("world", "e:1", big.NewInt(5), "USD"),
 			}, nil, nil),
 		))
@@ -74,7 +76,7 @@ var _ = Describe("Address index across a cross-ledger purge bulk", Ordered, func
 	It("indexes the sibling ledger's funding despite the adjacent purge log", func() {
 		Eventually(func(g Gomega) {
 			txs, err := actions.ListTransactionsFiltered(sharedCtx, sharedClient, ledgerB, 0, 0,
-				roleFilter("e:1", commonpb.AddressRole_ADDRESS_ROLE_DESTINATION))
+				roleFilter("e:1", ledgerpb.AddressRole_ADDRESS_ROLE_DESTINATION))
 			g.Expect(err).To(Succeed())
 
 			ids := make([]uint64, len(txs))

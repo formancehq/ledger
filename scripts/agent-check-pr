@@ -85,7 +85,7 @@ changed_packages=()
 append_package() {
     local package=$1
     local existing
-    for existing in "${changed_packages[@]}"; do
+    for existing in "${changed_packages[@]+"${changed_packages[@]}"}"; do
         [[ "$existing" == "$package" ]] && return
     done
     changed_packages+=("$package")
@@ -217,7 +217,7 @@ else
     if [[ "$needs_tooling" == true ]]; then
         gates+=(test-tooling)
     else
-        for package in "${changed_packages[@]}"; do
+        for package in "${changed_packages[@]+"${changed_packages[@]}"}"; do
             gates+=("test-race:$package")
         done
     fi
@@ -323,7 +323,7 @@ else
         # Tooling fixtures use scripts/internal/testenv to exclude an outer
         # review binding without changing the validator's own exact identity.
         go test -race ./scripts/... -timeout 10m
-    elif [[ ${#changed_packages[@]} -gt 0 ]]; then
+    elif [[ -n "${changed_packages[0]:-}" ]]; then
         go test -race "${changed_packages[@]}" -timeout 10m
     fi
 fi

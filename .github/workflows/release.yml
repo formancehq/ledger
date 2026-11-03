@@ -7,6 +7,7 @@ on:
 permissions:
   contents: write
   packages: write
+  pull-requests: write
 
 jobs:
   GoReleaser:
@@ -22,6 +23,16 @@ jobs:
         uses: ./.github/actions/default
       - name: Set up Docker Buildx
         uses: namespacelabs/nscloud-setup-buildx-action@d059ed7184f0bc7c8b27e8810cea153d02bcc6dd # v0.0.23
+      - name: Validate release tag
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          version="${GITHUB_REF_NAME}"
+          if [[ ! "$version" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([.-].*)?$ ]]; then
+            echo "Unexpected release tag: $version" >&2
+            exit 1
+          fi
       - name: Login to GitHub Container Registry
         uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
         with:
@@ -42,3 +53,80 @@ jobs:
         run: |
           version="${GITHUB_REF_NAME#v}"
           nix develop .#ci --command just operator-helm-publish "$version"
+      - name: Prepare public module publication
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          version="${GITHUB_REF_NAME}"
+          tag_commit="${GITHUB_REF}^{commit}"
+          base_branch="release/public-modules-base-${version}"
+          branch="release/public-modules-${version}"
+
+          proto_tag_exists="$(git ls-remote --tags origin "refs/tags/pkg/proto/v3/${version}" | awk 'END { print $1 }')"
+          client_tag_exists="$(git ls-remote --tags origin "refs/tags/pkg/client/v3/${version}" | awk 'END { print $1 }')"
+          if [[ -n "$proto_tag_exists" && -n "$client_tag_exists" ]]; then
+            echo "Public modules ${version} are already published"
+            exit 0
+          fi
+
+          # Keep the publication PR on the exact server release snapshot. A
+          # base branch created from the tag avoids merging moving main into
+          # the module sources when a release branch is cut.
+          base_remote_sha="$(git ls-remote origin "refs/heads/${base_branch}" | awk '{print $1}')"
+          if [[ -n "$base_remote_sha" ]]; then
+            git fetch origin "$base_branch"
+            tag_sha="$(git rev-parse "$tag_commit")"
+            if [[ "$base_remote_sha" != "$tag_sha" ]]; then
+              # A previous publication PR may already have merged into the
+              # base branch while nested-tag publication was failing. Accept
+              # that retry state only when the merge is rooted at the server
+              # tag and changed only the client dependency metadata.
+              git merge-base --is-ancestor "$tag_sha" "$base_remote_sha" || {
+                echo "${base_branch} is not based on ${version}" >&2
+                exit 1
+              }
+              base_changed_files="$(git diff --name-only "$tag_sha" "$base_remote_sha")"
+              while IFS= read -r path; do
+                [[ -z "$path" || "$path" == "pkg/client/v3/go.mod" || "$path" == "pkg/client/v3/go.sum" ]] || {
+                  echo "${base_branch} contains unexpected changes after ${version}: ${path}" >&2
+                  exit 1
+                }
+              done <<< "$base_changed_files"
+            fi
+          else
+            git switch --create "$base_branch" "$tag_commit"
+            git push --set-upstream origin "$base_branch"
+          fi
+
+          if git ls-remote --exit-code --heads origin "$branch" >/dev/null 2>&1; then
+            git fetch origin "$branch"
+            git switch --create "$branch" --track "origin/$branch"
+          else
+            git switch --create "$branch" "origin/${base_branch}"
+          fi
+          go -C pkg/client/v3 mod edit -require="github.com/formancehq/ledger/pkg/proto/v3@${version}"
+          go -C pkg/client/v3 mod tidy
+          git add pkg/client/v3/go.mod pkg/client/v3/go.sum
+
+          if git diff --cached --quiet; then
+            # A no-op dependency update still needs a merge event to trigger
+            # publication. The empty commit is also safe to retry.
+            git -c user.name='github-actions[bot]' -c user.email='41898282+github-actions[bot]@users.noreply.github.com' \
+              commit --allow-empty -m "chore(release): publish public modules ${version}"
+          else
+            git -c user.name='github-actions[bot]' -c user.email='41898282+github-actions[bot]@users.noreply.github.com' \
+              commit -m "chore(release): align public modules to ${version}"
+          fi
+          git push --set-upstream origin "$branch"
+
+          if [[ -z "$(gh pr list --repo "$GITHUB_REPOSITORY" --head "$branch" --state open --json number --jq '.[].number')" ]]; then
+            gh pr create \
+              --repo "$GITHUB_REPOSITORY" \
+              --base "$base_branch" \
+              --head "$branch" \
+              --title "chore(release): publish public modules ${version}" \
+              --body "This automated release PR aligns pkg/client/v3 with pkg/proto/v3 at ${version}. Once merged, the public module publication workflow will tag both nested modules from the merged commit."
+          fi

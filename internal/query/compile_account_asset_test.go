@@ -7,10 +7,10 @@ import (
 	"github.com/stretchr/testify/require"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/domain/indexes"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/query"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 	"github.com/formancehq/ledger/v3/internal/storage/readstore"
@@ -18,9 +18,9 @@ import (
 
 // staticIndexLookup is an in-memory indexes.Lookup for the account-by-asset
 // compile tests. Keyed exactly like the production registry.
-type staticIndexLookup map[domain.IndexKey]*commonpb.Index
+type staticIndexLookup map[domain.IndexKey]*ledgerpb.Index
 
-func (s staticIndexLookup) Get(key domain.IndexKey) (commonpb.IndexReader, error) {
+func (s staticIndexLookup) Get(key domain.IndexKey) (ledgerpb.IndexReader, error) {
 	idx, ok := s[key]
 	if !ok {
 		return nil, domain.ErrNotFound
@@ -29,9 +29,9 @@ func (s staticIndexLookup) Get(key domain.IndexKey) (commonpb.IndexReader, error
 	return idx.AsReader(), nil
 }
 
-func accountHasAssetFilter(assetBase string, precision uint32) *commonpb.QueryFilter {
-	return &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_AccountHasAsset{
-		AccountHasAsset: &commonpb.AccountHasAssetCondition{
+func accountHasAssetFilter(assetBase string, precision uint32) *ledgerpb.QueryFilter {
+	return &ledgerpb.QueryFilter{Filter: &ledgerpb.QueryFilter_AccountHasAsset{
+		AccountHasAsset: &ledgerpb.AccountHasAssetCondition{
 			AssetBase: assetBase,
 			Precision: precision,
 		},
@@ -48,8 +48,8 @@ func TestCompile_AccountHasAsset_RequiresReady(t *testing.T) {
 
 	const ledgerName = "ledger1"
 
-	assetID := indexes.AccountBuiltinID(commonpb.AccountBuiltinIndex_ACCT_BUILTIN_INDEX_ASSET)
-	info := &commonpb.LedgerInfo{Name: ledgerName}
+	assetID := indexes.AccountBuiltinID(ledgerpb.AccountBuiltinIndex_ACCT_BUILTIN_INDEX_ASSET)
+	info := &ledgerpb.LedgerInfo{Name: ledgerName}
 
 	// Index IS declared, but the local replica reports CurrentVersion == 0.
 	registry := staticIndexLookup{
@@ -61,7 +61,7 @@ func TestCompile_AccountHasAsset_RequiresReady(t *testing.T) {
 
 	_, err := query.Compile(accountHasAssetFilter("USD", 2), query.CompileOptions{
 		KeyBuilder:      dal.NewKeyBuilder(),
-		Target:          commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
+		Target:          ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
 		LedgerName:      ledgerName,
 		LedgerInfo:      info,
 		IndexRegistry:   registry,
@@ -111,8 +111,8 @@ func TestCompile_AccountHasAsset_PrefixScan(t *testing.T) {
 
 	reader := store.DB()
 
-	assetID := indexes.AccountBuiltinID(commonpb.AccountBuiltinIndex_ACCT_BUILTIN_INDEX_ASSET)
-	info := &commonpb.LedgerInfo{Name: ledgerName}
+	assetID := indexes.AccountBuiltinID(ledgerpb.AccountBuiltinIndex_ACCT_BUILTIN_INDEX_ASSET)
+	info := &ledgerpb.LedgerInfo{Name: ledgerName}
 	registry := staticIndexLookup{
 		indexes.KeyFor(ledgerName, assetID): {Ledger: ledgerName, Id: assetID},
 	}
@@ -123,7 +123,7 @@ func TestCompile_AccountHasAsset_PrefixScan(t *testing.T) {
 	iter, err := query.Compile(accountHasAssetFilter("USD", 2), query.CompileOptions{
 		IndexReader:     reader,
 		KeyBuilder:      dal.NewKeyBuilder(),
-		Target:          commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
+		Target:          ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
 		LedgerName:      ledgerName,
 		LedgerInfo:      info,
 		IndexRegistry:   registry,
@@ -179,8 +179,8 @@ func TestCompile_AccountHasAsset_PinExcludesLaterFirstTouch(t *testing.T) {
 
 	reader := store.DB()
 
-	assetID := indexes.AccountBuiltinID(commonpb.AccountBuiltinIndex_ACCT_BUILTIN_INDEX_ASSET)
-	info := &commonpb.LedgerInfo{Name: ledgerName}
+	assetID := indexes.AccountBuiltinID(ledgerpb.AccountBuiltinIndex_ACCT_BUILTIN_INDEX_ASSET)
+	info := &ledgerpb.LedgerInfo{Name: ledgerName}
 	registry := staticIndexLookup{
 		indexes.KeyFor(ledgerName, assetID): {Ledger: ledgerName, Id: assetID},
 	}
@@ -192,7 +192,7 @@ func TestCompile_AccountHasAsset_PinExcludesLaterFirstTouch(t *testing.T) {
 		iter, cErr := query.Compile(accountHasAssetFilter("USD", 2), query.CompileOptions{
 			IndexReader:     reader,
 			KeyBuilder:      dal.NewKeyBuilder(),
-			Target:          commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
+			Target:          ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
 			LedgerName:      ledgerName,
 			LedgerInfo:      info,
 			IndexRegistry:   registry,
@@ -254,8 +254,8 @@ func TestCompile_RevertedAt_PinExcludesLaterRevert(t *testing.T) {
 
 	reader := store.DB()
 
-	rvatID := indexes.TxBuiltinID(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REVERTED_AT)
-	info := &commonpb.LedgerInfo{Name: ledgerName}
+	rvatID := indexes.TxBuiltinID(ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REVERTED_AT)
+	info := &ledgerpb.LedgerInfo{Name: ledgerName}
 	registry := staticIndexLookup{
 		indexes.KeyFor(ledgerName, rvatID): {Ledger: ledgerName, Id: rvatID},
 	}
@@ -263,10 +263,10 @@ func TestCompile_RevertedAt_PinExcludesLaterRevert(t *testing.T) {
 		return readstore.ResolvedIndexVersion{Version: 1, BindingKnown: true}, true, nil
 	}
 
-	filter := &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_BuiltinUint{
-		BuiltinUint: &commonpb.BuiltinUintCondition{
-			Field: commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REVERTED_AT,
-			Cond:  &commonpb.UintCondition{},
+	filter := &ledgerpb.QueryFilter{Filter: &ledgerpb.QueryFilter_BuiltinUint{
+		BuiltinUint: &ledgerpb.BuiltinUintCondition{
+			Field: ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REVERTED_AT,
+			Cond:  &ledgerpb.UintCondition{},
 		},
 	}}
 
@@ -274,7 +274,7 @@ func TestCompile_RevertedAt_PinExcludesLaterRevert(t *testing.T) {
 		iter, cErr := query.Compile(filter, query.CompileOptions{
 			IndexReader:     reader,
 			KeyBuilder:      dal.NewKeyBuilder(),
-			Target:          commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS,
+			Target:          ledgerpb.QueryTarget_QUERY_TARGET_TRANSACTIONS,
 			LedgerName:      ledgerName,
 			LedgerInfo:      info,
 			IndexRegistry:   registry,

@@ -6,8 +6,9 @@ import (
 	"errors"
 	"net/http"
 
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
+
 	"github.com/formancehq/ledger/v3/internal/pkg/filterexpr"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
@@ -65,7 +66,7 @@ func (s *Server) handleCreatePreparedQuery(w http.ResponseWriter, r *http.Reques
 		Type: &servicepb.Request_CreatePreparedQuery{
 			CreatePreparedQuery: &servicepb.CreatePreparedQueryRequest{
 				Ledger: ledgerName,
-				Query: &commonpb.PreparedQuery{
+				Query: &ledgerpb.PreparedQuery{
 					Name:   body.Name,
 					Filter: filter,
 					Target: target,

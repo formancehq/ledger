@@ -5,16 +5,17 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
+
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
 
 func TestValidateOrderMetadataMirrorVariants(t *testing.T) {
 	t.Parallel()
-	invalid := map[string]*commonpb.MetadataValue{"k": commonpb.NewStringValue("bad\x00value")}
+	invalid := map[string]*ledgerpb.MetadataValue{"k": ledgerpb.NewStringValue("bad\x00value")}
 	for name, entry := range map[string]*raftcmdpb.MirrorLogEntry{
 		"created transaction":  {Data: &raftcmdpb.MirrorLogEntry_CreatedTransaction{CreatedTransaction: &raftcmdpb.MirrorCreatedTransaction{Metadata: invalid}}},
-		"created account":      {Data: &raftcmdpb.MirrorLogEntry_CreatedTransaction{CreatedTransaction: &raftcmdpb.MirrorCreatedTransaction{AccountMetadata: map[string]*commonpb.MetadataMap{"account": {Values: invalid}}}}},
+		"created account":      {Data: &raftcmdpb.MirrorLogEntry_CreatedTransaction{CreatedTransaction: &raftcmdpb.MirrorCreatedTransaction{AccountMetadata: map[string]*ledgerpb.MetadataMap{"account": {Values: invalid}}}}},
 		"reverted transaction": {Data: &raftcmdpb.MirrorLogEntry_RevertedTransaction{RevertedTransaction: &raftcmdpb.MirrorRevertedTransaction{Metadata: invalid}}},
 		"saved":                {Data: &raftcmdpb.MirrorLogEntry_SavedMetadata{SavedMetadata: &raftcmdpb.MirrorSavedMetadata{Metadata: invalid}}},
 		"deleted":              {Data: &raftcmdpb.MirrorLogEntry_DeletedMetadata{DeletedMetadata: &raftcmdpb.MirrorDeletedMetadata{Key: "bad\x00key"}}},
@@ -36,9 +37,9 @@ func TestValidateOrderMetadataMirrorVariants(t *testing.T) {
 
 func TestValidateOrderMetadataDeterministicAccountAndKey(t *testing.T) {
 	t.Parallel()
-	metadata := map[string]*commonpb.MetadataMap{
-		"z": {Values: map[string]*commonpb.MetadataValue{"z": commonpb.NewStringValue("\x00")}},
-		"a": {Values: map[string]*commonpb.MetadataValue{"z": commonpb.NewStringValue("\x00"), "a": commonpb.NewStringValue("\x00")}},
+	metadata := map[string]*ledgerpb.MetadataMap{
+		"z": {Values: map[string]*ledgerpb.MetadataValue{"z": ledgerpb.NewStringValue("\x00")}},
+		"a": {Values: map[string]*ledgerpb.MetadataValue{"z": ledgerpb.NewStringValue("\x00"), "a": ledgerpb.NewStringValue("\x00")}},
 	}
 	order := &raftcmdpb.Order{Type: &raftcmdpb.Order_LedgerScoped{LedgerScoped: &raftcmdpb.LedgerScopedOrder{Payload: &raftcmdpb.LedgerScopedOrder_MirrorIngest{MirrorIngest: &raftcmdpb.MirrorIngestOrder{Entry: &raftcmdpb.MirrorLogEntry{Data: &raftcmdpb.MirrorLogEntry_CreatedTransaction{CreatedTransaction: &raftcmdpb.MirrorCreatedTransaction{AccountMetadata: metadata}}}}}}}}
 	for range 50 {
@@ -53,7 +54,7 @@ func TestValidateOrderMetadataDeterministicAccountAndKey(t *testing.T) {
 func TestValidateCommandMetadataCountsMapsAndBareKeys(t *testing.T) {
 	t.Parallel()
 	orders := []*raftcmdpb.Order{
-		{Type: &raftcmdpb.Order_LedgerScoped{LedgerScoped: &raftcmdpb.LedgerScopedOrder{Payload: &raftcmdpb.LedgerScopedOrder_SaveLedgerMetadata{SaveLedgerMetadata: &raftcmdpb.SaveLedgerMetadataOrder{Metadata: map[string]*commonpb.MetadataValue{"key": commonpb.NewStringValue("value")}}}}}},
+		{Type: &raftcmdpb.Order_LedgerScoped{LedgerScoped: &raftcmdpb.LedgerScopedOrder{Payload: &raftcmdpb.LedgerScopedOrder_SaveLedgerMetadata{SaveLedgerMetadata: &raftcmdpb.SaveLedgerMetadataOrder{Metadata: map[string]*ledgerpb.MetadataValue{"key": ledgerpb.NewStringValue("value")}}}}}},
 		{Type: &raftcmdpb.Order_LedgerScoped{LedgerScoped: &raftcmdpb.LedgerScopedOrder{Payload: &raftcmdpb.LedgerScopedOrder_MirrorIngest{MirrorIngest: &raftcmdpb.MirrorIngestOrder{Entry: &raftcmdpb.MirrorLogEntry{Data: &raftcmdpb.MirrorLogEntry_DeletedMetadata{DeletedMetadata: &raftcmdpb.MirrorDeletedMetadata{Key: "bare"}}}}}}}},
 	}
 	limits := MetadataLimits{MaxEntriesPerEntity: 2, MaxKeyBytes: 4, MaxValueBytes: 5, MaxTotalBytesPerEntity: 8, MaxTotalBytesPerCommand: 12}
@@ -71,25 +72,25 @@ func TestValidateCommandMetadataCountsMapsAndBareKeys(t *testing.T) {
 func TestCreateLedgerMetadataValidation(t *testing.T) {
 	t.Parallel()
 	limits := MetadataLimits{MaxEntriesPerEntity: 2, MaxKeyBytes: 8, MaxValueBytes: 16, MaxTotalBytesPerEntity: 40, MaxTotalBytesPerCommand: 60}
-	create := func(m map[string]*commonpb.MetadataValue) *raftcmdpb.Order {
+	create := func(m map[string]*ledgerpb.MetadataValue) *raftcmdpb.Order {
 		return &raftcmdpb.Order{Type: &raftcmdpb.Order_LedgerScoped{LedgerScoped: &raftcmdpb.LedgerScopedOrder{Ledger: "main", Payload: &raftcmdpb.LedgerScopedOrder_CreateLedger{CreateLedger: &raftcmdpb.CreateLedgerOrder{Metadata: m}}}}}
 	}
 	for _, tc := range []struct {
 		name      string
-		metadata  map[string]*commonpb.MetadataValue
+		metadata  map[string]*ledgerpb.MetadataValue
 		dimension string
 		invalid   bool
 	}{
 		{name: "omitted"},
-		{name: "supported null", metadata: map[string]*commonpb.MetadataValue{"k": commonpb.NewNullValue("original")}},
-		{name: "empty key", metadata: map[string]*commonpb.MetadataValue{"": commonpb.NewStringValue("v")}, invalid: true},
-		{name: "invalid key", metadata: map[string]*commonpb.MetadataValue{"bad%key": commonpb.NewStringValue("v")}, invalid: true},
-		{name: "invalid value", metadata: map[string]*commonpb.MetadataValue{"k": commonpb.NewStringValue("\x00")}, invalid: true},
-		{name: "empty value follows existing metadata contract", metadata: map[string]*commonpb.MetadataValue{"k": {}}},
-		{name: "entries", metadata: map[string]*commonpb.MetadataValue{"a": commonpb.NewStringValue("v"), "b": commonpb.NewStringValue("v"), "c": commonpb.NewStringValue("v")}, dimension: MetadataLimitDimensionEntries},
-		{name: "key", metadata: map[string]*commonpb.MetadataValue{"123456789": commonpb.NewStringValue("v")}, dimension: MetadataLimitDimensionKey},
-		{name: "value", metadata: map[string]*commonpb.MetadataValue{"k": commonpb.NewStringValue("12345678901234567")}, dimension: MetadataLimitDimensionValue},
-		{name: "entity", metadata: map[string]*commonpb.MetadataValue{"12345678": commonpb.NewStringValue("1234567890123456"), "abcdefgh": commonpb.NewStringValue("1234567890123456")}, dimension: MetadataLimitDimensionEntity},
+		{name: "supported null", metadata: map[string]*ledgerpb.MetadataValue{"k": ledgerpb.NewNullValue("original")}},
+		{name: "empty key", metadata: map[string]*ledgerpb.MetadataValue{"": ledgerpb.NewStringValue("v")}, invalid: true},
+		{name: "invalid key", metadata: map[string]*ledgerpb.MetadataValue{"bad%key": ledgerpb.NewStringValue("v")}, invalid: true},
+		{name: "invalid value", metadata: map[string]*ledgerpb.MetadataValue{"k": ledgerpb.NewStringValue("\x00")}, invalid: true},
+		{name: "empty value follows existing metadata contract", metadata: map[string]*ledgerpb.MetadataValue{"k": {}}},
+		{name: "entries", metadata: map[string]*ledgerpb.MetadataValue{"a": ledgerpb.NewStringValue("v"), "b": ledgerpb.NewStringValue("v"), "c": ledgerpb.NewStringValue("v")}, dimension: MetadataLimitDimensionEntries},
+		{name: "key", metadata: map[string]*ledgerpb.MetadataValue{"123456789": ledgerpb.NewStringValue("v")}, dimension: MetadataLimitDimensionKey},
+		{name: "value", metadata: map[string]*ledgerpb.MetadataValue{"k": ledgerpb.NewStringValue("12345678901234567")}, dimension: MetadataLimitDimensionValue},
+		{name: "entity", metadata: map[string]*ledgerpb.MetadataValue{"12345678": ledgerpb.NewStringValue("1234567890123456"), "abcdefgh": ledgerpb.NewStringValue("1234567890123456")}, dimension: MetadataLimitDimensionEntity},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
@@ -109,7 +110,7 @@ func TestCreateLedgerMetadataValidation(t *testing.T) {
 			}
 		})
 	}
-	metadata := map[string]*commonpb.MetadataValue{"12345678": commonpb.NewStringValue("1234567890123456"), "abcdefgh": commonpb.NewStringValue("12345678")}
+	metadata := map[string]*ledgerpb.MetadataValue{"12345678": ledgerpb.NewStringValue("1234567890123456"), "abcdefgh": ledgerpb.NewStringValue("12345678")}
 	first, second := create(metadata), create(metadata)
 	require.EqualValues(t, 40, OrderMetadataSize(first))
 	require.NoError(t, ValidateCommandMetadata([]*raftcmdpb.Order{first}, limits))

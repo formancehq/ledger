@@ -6,7 +6,8 @@ import (
 	"math/big"
 	"strconv"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
+
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/pkg/actions"
 )
@@ -106,7 +107,7 @@ func gamingPromotion(ctx context.Context, client servicepb.BucketServiceClient, 
 	playerAddr := fmt.Sprintf("player:%d:coins", playerID)
 
 	return ApplyActions(ctx, client,
-		actions.CreateForceTransactionAction(GamingWalletLedger, []*commonpb.Posting{
+		actions.CreateForceTransactionAction(GamingWalletLedger, []*ledgerpb.Posting{
 			actions.NewPosting("world", playerAddr, big.NewInt(promoCoins), "COINS"),
 		}, map[string]string{"type": "promotion", "reason": "bonus"}),
 	)
@@ -135,11 +136,11 @@ func gamingClawback(ctx context.Context, client servicepb.BucketServiceClient, r
 // account types, and numscript library for the gaming wallet scenario.
 func GamingWalletSetupActions() []*servicepb.Request {
 	return []*servicepb.Request{
-		actions.CreateLedgerWithSchemaAction(GamingWalletLedger, nil, []*commonpb.SetMetadataFieldTypeCommand{
+		actions.CreateLedgerWithSchemaAction(GamingWalletLedger, nil, []*ledgerpb.SetMetadataFieldTypeCommand{
 			{
-				TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
+				TargetType: ledgerpb.TargetType_TARGET_TYPE_ACCOUNT,
 				Key:        "tier",
-				Type:       commonpb.MetadataType_METADATA_TYPE_STRING,
+				Type:       ledgerpb.MetadataType_METADATA_TYPE_STRING,
 			},
 		}),
 		actions.AddAccountTypeAction(GamingWalletLedger, "player-usd", "player:{id}:usd"),
@@ -192,15 +193,15 @@ send $amount (
 )`, "1.0.0"),
 		actions.CreateAccountMetadataIndexAction(GamingWalletLedger, "tier"),
 		actions.CreatePreparedQueryAction("accounts-by-prefix", GamingWalletLedger,
-			commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
+			ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
 			actions.ParamAddressPrefixFilter("prefix"),
 		),
 		actions.CreatePreparedQueryAction("account-exact", GamingWalletLedger,
-			commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
+			ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
 			actions.ParamAddressExactFilter("addr"),
 		),
 		actions.CreatePreparedQueryAction("by-tier", GamingWalletLedger,
-			commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
+			ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
 			actions.ParamStringMetadataFilter("tier", "tier_value"),
 		),
 	}
@@ -255,7 +256,7 @@ func RunGamingWallet(r *Runner) error {
 		var reqs []*servicepb.Request
 		for i := 1; i <= 10; i++ {
 			reqs = append(reqs,
-				actions.CreateForceTransactionAction(ledger, []*commonpb.Posting{
+				actions.CreateForceTransactionAction(ledger, []*ledgerpb.Posting{
 					actions.NewPosting("world", fmt.Sprintf("player:%d:coins", i), big.NewInt(promoCoins), "COINS"),
 				}, map[string]string{
 					"type":   "promotion",

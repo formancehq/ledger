@@ -12,8 +12,9 @@ import (
 	"go.uber.org/mock/gomock"
 	"google.golang.org/protobuf/proto"
 
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
+
 	ledgerjson "github.com/formancehq/ledger/v3/internal/adapter/json"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
 
 func TestHandleGetTransaction_BigintHeader(t *testing.T) {
@@ -31,9 +32,9 @@ func TestHandleGetTransaction_BigintHeader(t *testing.T) {
 		t.Run(tc.header, func(t *testing.T) {
 			t.Parallel()
 			backend := NewMockBackend(gomock.NewController(t))
-			backend.EXPECT().GetLedgerByName(gomock.Any(), "ledger1").Return(&commonpb.LedgerInfo{Name: "ledger1"}, nil)
-			backend.EXPECT().GetTransaction(gomock.Any(), "ledger1", uint64(42)).Return(&commonpb.Transaction{
-				Id: 42, Postings: []*commonpb.Posting{{Source: "world", Destination: "bank", Asset: "USD", Amount: commonpb.NewUint256FromUint64(9007199254740993)}},
+			backend.EXPECT().GetLedgerByName(gomock.Any(), "ledger1").Return(&ledgerpb.LedgerInfo{Name: "ledger1"}, nil)
+			backend.EXPECT().GetTransaction(gomock.Any(), "ledger1", uint64(42)).Return(&ledgerpb.Transaction{
+				Id: 42, Postings: []*ledgerpb.Posting{{Source: "world", Destination: "bank", Asset: "USD", Amount: ledgerpb.NewUint256FromUint64(9007199254740993)}},
 			}, nil)
 			r := newRequest(t, http.MethodGet, "/ledger1/transactions/42", nil, map[string]string{"ledgerName": "ledger1", "transactionId": "42"})
 			r.Header.Set("Formance-Bigint-As-String", tc.header)
@@ -93,17 +94,17 @@ func TestOpenAPIMonetaryHeaderCoverage(t *testing.T) {
 
 func TestBigintHeaderConcurrentRequests(t *testing.T) {
 	t.Parallel()
-	transaction := &commonpb.Transaction{Id: 42, Postings: []*commonpb.Posting{{
-		Source: "world", Destination: "bank", Asset: "USD", Amount: commonpb.NewUint256FromUint64(9007199254740993),
+	transaction := &ledgerpb.Transaction{Id: 42, Postings: []*ledgerpb.Posting{{
+		Source: "world", Destination: "bank", Asset: "USD", Amount: ledgerpb.NewUint256FromUint64(9007199254740993),
 	}}}
 	const volume = "115792089237316195423570985008687907853269984665640564039457584007913129639936"
-	transaction.PostCommitVolumes = &commonpb.PostCommitVolumes{VolumesByAccount: map[string]*commonpb.VolumesByAssets{
-		"bank": {Volumes: []*commonpb.VolumeEntry{{Asset: "USD", Volumes: &commonpb.Volumes{Input: commonpb.MustBigUintFromDecimal(volume), Output: commonpb.MustBigUintFromDecimal("0")}}}},
+	transaction.PostCommitVolumes = &ledgerpb.PostCommitVolumes{VolumesByAccount: map[string]*ledgerpb.VolumesByAssets{
+		"bank": {Volumes: []*ledgerpb.VolumeEntry{{Asset: "USD", Volumes: &ledgerpb.Volumes{Input: ledgerpb.MustBigUintFromDecimal(volume), Output: ledgerpb.MustBigUintFromDecimal("0")}}}},
 	}}
 	before, err := proto.MarshalOptions{Deterministic: true}.Marshal(transaction)
 	require.NoError(t, err)
 	backend := NewMockBackend(gomock.NewController(t))
-	backend.EXPECT().GetLedgerByName(gomock.Any(), "ledger1").Return(&commonpb.LedgerInfo{Name: "ledger1"}, nil).Times(64)
+	backend.EXPECT().GetLedgerByName(gomock.Any(), "ledger1").Return(&ledgerpb.LedgerInfo{Name: "ledger1"}, nil).Times(64)
 	backend.EXPECT().GetTransaction(gomock.Any(), "ledger1", uint64(42)).Return(transaction, nil).Times(64)
 	server := newTestServer(t, backend)
 	start := make(chan struct{})
@@ -150,14 +151,14 @@ func TestMonetaryCheckedResponseNestedFailure(t *testing.T) {
 	for _, header := range []string{"", "true"} {
 		t.Run(header, func(t *testing.T) {
 			t.Parallel()
-			transaction := &commonpb.Transaction{PostCommitVolumes: &commonpb.PostCommitVolumes{
-				VolumesByAccount: map[string]*commonpb.VolumesByAssets{
-					"private-account": {Volumes: []*commonpb.VolumeEntry{{Asset: "USD"}}},
+			transaction := &ledgerpb.Transaction{PostCommitVolumes: &ledgerpb.PostCommitVolumes{
+				VolumesByAccount: map[string]*ledgerpb.VolumesByAssets{
+					"private-account": {Volumes: []*ledgerpb.VolumeEntry{{Asset: "USD"}}},
 				},
 			}}
-			log := &commonpb.Log{Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_Apply{Apply: &commonpb.ApplyLedgerLog{
-				Log: commonpb.NewLedgerLog(&commonpb.LedgerLogPayload{Payload: &commonpb.LedgerLogPayload_CreatedTransaction{
-					CreatedTransaction: &commonpb.CreatedTransaction{Transaction: transaction},
+			log := &ledgerpb.Log{Payload: &ledgerpb.LogPayload{Type: &ledgerpb.LogPayload_Apply{Apply: &ledgerpb.ApplyLedgerLog{
+				Log: ledgerpb.NewLedgerLog(&ledgerpb.LedgerLogPayload{Payload: &ledgerpb.LedgerLogPayload_CreatedTransaction{
+					CreatedTransaction: &ledgerpb.CreatedTransaction{Transaction: transaction},
 				}}),
 			}}}}
 			backend := NewMockBackend(gomock.NewController(t))
@@ -179,12 +180,12 @@ func TestMonetaryCheckedResponseNestedFailure(t *testing.T) {
 
 func TestMonetaryResponseDefaultCompatibility(t *testing.T) {
 	t.Parallel()
-	transaction := &commonpb.Transaction{
-		Id: 42, Reference: "<>&\u2028\u2029", Timestamp: &commonpb.Timestamp{Data: 1700000000000000},
-		Postings: []*commonpb.Posting{{Source: "world", Destination: "bank", Asset: "USD", Amount: commonpb.NewUint256FromUint64(9007199254740993)}},
-		Metadata: map[string]*commonpb.MetadataValue{
-			"amount": {Type: &commonpb.MetadataValue_IntValue{IntValue: 9007199254740993}},
-			"html":   {Type: &commonpb.MetadataValue_StringValue{StringValue: "<>&\u2028\u2029"}},
+	transaction := &ledgerpb.Transaction{
+		Id: 42, Reference: "<>&\u2028\u2029", Timestamp: &ledgerpb.Timestamp{Data: 1700000000000000},
+		Postings: []*ledgerpb.Posting{{Source: "world", Destination: "bank", Asset: "USD", Amount: ledgerpb.NewUint256FromUint64(9007199254740993)}},
+		Metadata: map[string]*ledgerpb.MetadataValue{
+			"amount": {Type: &ledgerpb.MetadataValue_IntValue{IntValue: 9007199254740993}},
+			"html":   {Type: &ledgerpb.MetadataValue_StringValue{StringValue: "<>&\u2028\u2029"}},
 		},
 	}
 	for _, checked := range []bool{false, true} {

@@ -6,24 +6,24 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 )
 
 func TestTypedFailureDetailsCoverEveryStableCode(t *testing.T) {
 	t.Parallel()
-	fields := (&commonpb.FailureDetails{}).ProtoReflect().Descriptor().Oneofs().ByName("kind").Fields()
+	fields := (&ledgerpb.FailureDetails{}).ProtoReflect().Descriptor().Oneofs().ByName("kind").Fields()
 	for i := range fields.Len() {
 		code := strings.ToUpper(string(fields.Get(i).Name()))
-		details, err := commonpb.NewFailureDetails(code, nil)
+		details, err := ledgerpb.NewFailureDetails(code, nil)
 		require.NoError(t, err, code)
-		require.Equal(t, code, commonpb.FailureDetailsCode(details))
-		require.NotEqual(t, commonpb.ErrorReason_ERROR_REASON_UNSPECIFIED, commonpb.FailureDetailsReason(details), code)
+		require.Equal(t, code, ledgerpb.FailureDetailsCode(details))
+		require.NotEqual(t, ledgerpb.ErrorReason_ERROR_REASON_UNSPECIFIED, ledgerpb.FailureDetailsReason(details), code)
 	}
 }
 
 func TestFailureDetailsTrackEveryScalarFactPresence(t *testing.T) {
 	t.Parallel()
-	arms := (&commonpb.FailureDetails{}).ProtoReflect().Descriptor().Oneofs().ByName("kind").Fields()
+	arms := (&ledgerpb.FailureDetails{}).ProtoReflect().Descriptor().Oneofs().ByName("kind").Fields()
 	for i := range arms.Len() {
 		arm := arms.Get(i)
 		fields := arm.Message().Fields()
@@ -43,40 +43,40 @@ func TestTypedFailureDetailsRoundTrip(t *testing.T) {
 	actual, err := FailureFactsFromDetails(details)
 	require.NoError(t, err)
 	require.Equal(t, f, actual)
-	require.Equal(t, commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT, f.Reason)
+	require.Equal(t, ledgerpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT, f.Reason)
 	require.Equal(t, uint64(42), details.GetTransactionReferenceConflict().GetExistingTransactionId())
 
 	_, err = FailureFactsFromDetails(nil)
 	require.ErrorContains(t, err, "missing")
-	_, err = commonpb.NewFailureDetails(f.Code, map[string]string{"arbitrary": "text"})
+	_, err = ledgerpb.NewFailureDetails(f.Code, map[string]string{"arbitrary": "text"})
 	require.ErrorContains(t, err, "not part of")
-	_, err = commonpb.NewFailureDetails(f.Code, map[string]string{"existingTransactionId": "042"})
+	_, err = ledgerpb.NewFailureDetails(f.Code, map[string]string{"existingTransactionId": "042"})
 	require.ErrorContains(t, err, "canonical")
 }
 
 func TestFailureFactPresenceFollowsSchema(t *testing.T) {
 	t.Parallel()
 
-	missingAmount := commonpb.MustFailureDetails("NUMSCRIPT_NEGATIVE_AMOUNT", nil)
+	missingAmount := ledgerpb.MustFailureDetails("NUMSCRIPT_NEGATIVE_AMOUNT", nil)
 	_, err := FailureFactsFromDetails(missingAmount)
 	require.ErrorContains(t, err, "missing required fact amount")
 	require.Panics(t, func() {
 		TypedFailureOf(&ErrNumscriptExecution{Details: missingAmount})
 	}, "an incomplete producer must fail before its outcome is audited")
 
-	withZero := commonpb.MustFailureDetails("NUMSCRIPT_POSTING_AMOUNT_OVERFLOW", map[string]string{
+	withZero := ledgerpb.MustFailureDetails("NUMSCRIPT_POSTING_AMOUNT_OVERFLOW", map[string]string{
 		"postingIndex": "0", "amount": "1",
 	})
-	require.NoError(t, commonpb.ValidateRequiredFailureFacts(withZero))
+	require.NoError(t, ledgerpb.ValidateRequiredFailureFacts(withZero))
 
-	withoutFacts := commonpb.MustFailureDetails("NUMSCRIPT_DIVIDE_BY_ZERO", nil)
-	require.NoError(t, commonpb.ValidateRequiredFailureFacts(withoutFacts))
+	withoutFacts := ledgerpb.MustFailureDetails("NUMSCRIPT_DIVIDE_BY_ZERO", nil)
+	require.NoError(t, ledgerpb.ValidateRequiredFailureFacts(withoutFacts))
 }
 
 func TestFailureFactsPreserveValues(t *testing.T) {
 	err := &ErrNumscriptExecution{
 		Detail:  "diagnostic only",
-		Details: commonpb.MustFailureDetails("NUMSCRIPT_INVALID_ACCOUNT_NAME", map[string]string{"name": "account"}),
+		Details: ledgerpb.MustFailureDetails("NUMSCRIPT_INVALID_ACCOUNT_NAME", map[string]string{"name": "account"}),
 	}
 	facts := FailureFactsOf(err)
 	require.NoError(t, ValidateFailureFacts(facts))

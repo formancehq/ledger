@@ -12,13 +12,14 @@ import (
 	"github.com/ClickHouse/clickhouse-go/v2"
 	"github.com/ClickHouse/clickhouse-go/v2/lib/driver"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
+
 	"github.com/formancehq/ledger/v3/internal/proto/eventspb"
 )
 
 func init() {
-	registerSinkFactory("clickhouse", func(ctx context.Context, sc *commonpb.SinkConfig, _ Format) (Sink, error) {
-		s := sc.GetType().(*commonpb.SinkConfig_Clickhouse)
+	registerSinkFactory("clickhouse", func(ctx context.Context, sc *ledgerpb.SinkConfig, _ Format) (Sink, error) {
+		s := sc.GetType().(*ledgerpb.SinkConfig_Clickhouse)
 
 		return NewClickHouseSink(ctx, ClickHouseSinkConfig{
 			DSN:   s.Clickhouse.GetDsn(),
@@ -195,7 +196,7 @@ func (s *ClickHouseSink) Publish(ctx context.Context, events []*eventspb.Event) 
 		}
 
 		eventType := strings.ToLower(event.GetType().String())
-		eventDate := event.GetDate().AsTime().Time
+		eventDate := event.GetDate().AsTime()
 
 		if err := batch.Append(
 			event.GetLogSequence(),

@@ -6,8 +6,9 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
+
 	"github.com/formancehq/ledger/v3/internal/domain"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
@@ -16,7 +17,7 @@ func numscriptSendRequest(script string) *servicepb.Request {
 	return &servicepb.Request{Type: &servicepb.Request_Apply{Apply: &servicepb.LedgerApplyRequest{
 		Ledger: "test-ledger",
 		Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
-			CreateTransaction: &servicepb.CreateTransactionPayload{Script: &commonpb.Script{Plain: script}},
+			CreateTransaction: &servicepb.CreateTransactionPayload{Script: &ledgerpb.Script{Plain: script}},
 		}},
 	}}}
 }
@@ -33,8 +34,8 @@ func TestProcessCreateTransaction_Numscript_TextOrderExecutes(t *testing.T) {
 	mockStore := NewMockScope(ctrl)
 	expectDefaultMetadataLimits(mockStore)
 	expectGetBoundaries(mockStore, domain.LedgerKey{Name: "test-ledger"}, (&raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1}).AsReader(), nil)
-	expectGetLedger(mockStore, domain.LedgerKey{Name: "test-ledger"}, (&commonpb.LedgerInfo{Name: "test-ledger", Id: 1}).AsReader(), nil).AnyTimes()
-	mockStore.EXPECT().GetDate().Return((&commonpb.Timestamp{Data: 1234567890}).AsReader()).AnyTimes()
+	expectGetLedger(mockStore, domain.LedgerKey{Name: "test-ledger"}, (&ledgerpb.LedgerInfo{Name: "test-ledger", Id: 1}).AsReader(), nil).AnyTimes()
+	mockStore.EXPECT().GetDate().Return((&ledgerpb.Timestamp{Data: 1234567890}).AsReader()).AnyTimes()
 	expectPutBoundaries(t, mockStore, domain.LedgerKey{Name: "test-ledger"}, nil)
 	setupNumscriptVolumeMocks(mockStore)
 	mockStore.EXPECT().GetNextSequenceID().Return(uint64(1))
@@ -66,7 +67,7 @@ func TestProcessCreateTransaction_Numscript_TextOrderCompileError(t *testing.T) 
 	mockStore := NewMockScope(ctrl)
 	expectDefaultMetadataLimits(mockStore)
 	expectGetBoundaries(mockStore, domain.LedgerKey{Name: "test-ledger"}, (&raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1}).AsReader(), nil)
-	expectGetLedger(mockStore, domain.LedgerKey{Name: "test-ledger"}, (&commonpb.LedgerInfo{Name: "test-ledger", Id: 1}).AsReader(), nil).AnyTimes()
+	expectGetLedger(mockStore, domain.LedgerKey{Name: "test-ledger"}, (&ledgerpb.LedgerInfo{Name: "test-ledger", Id: 1}).AsReader(), nil).AnyTimes()
 	setupNumscriptVolumeMocks(mockStore)
 
 	order := requestToOrderUnchecked(numscriptSendRequest(

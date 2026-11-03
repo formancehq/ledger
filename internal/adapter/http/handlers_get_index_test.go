@@ -9,7 +9,8 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
+
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
@@ -20,10 +21,10 @@ func TestHandleGetIndex_Success(t *testing.T) {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().GetIndex(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, req *servicepb.GetIndexRequest) (*commonpb.Index, error) {
+		func(_ context.Context, req *servicepb.GetIndexRequest) (*ledgerpb.Index, error) {
 			capturedReq = req
 
-			return &commonpb.Index{Ledger: req.GetLedger()}, nil
+			return &ledgerpb.Index{Ledger: req.GetLedger()}, nil
 		}).AnyTimes()
 	srv := newTestServer(t, backend)
 
@@ -39,7 +40,7 @@ func TestHandleGetIndex_Success(t *testing.T) {
 	require.NotNil(t, capturedReq)
 	require.Equal(t, "ledger1", capturedReq.GetLedger())
 	require.Equal(t, "color", capturedReq.GetId().GetMetadata().GetKey())
-	require.Equal(t, commonpb.TargetType_TARGET_TYPE_ACCOUNT, capturedReq.GetId().GetMetadata().GetTarget())
+	require.Equal(t, ledgerpb.TargetType_TARGET_TYPE_ACCOUNT, capturedReq.GetId().GetMetadata().GetTarget())
 }
 
 // TestHandleGetIndex_NamespacedMetadataKey pins the canonical-id unescape fix.
@@ -57,10 +58,10 @@ func TestHandleGetIndex_NamespacedMetadataKey(t *testing.T) {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().GetIndex(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, req *servicepb.GetIndexRequest) (*commonpb.Index, error) {
+		func(_ context.Context, req *servicepb.GetIndexRequest) (*ledgerpb.Index, error) {
 			capturedReq = req
 
-			return &commonpb.Index{Ledger: req.GetLedger()}, nil
+			return &ledgerpb.Index{Ledger: req.GetLedger()}, nil
 		}).AnyTimes()
 	srv := newTestServer(t, backend)
 
@@ -78,7 +79,7 @@ func TestHandleGetIndex_NamespacedMetadataKey(t *testing.T) {
 	require.Equal(t, http.StatusOK, w.Code)
 	require.NotNil(t, capturedReq)
 	require.Equal(t, "formance.com/reviewed", capturedReq.GetId().GetMetadata().GetKey())
-	require.Equal(t, commonpb.TargetType_TARGET_TYPE_ACCOUNT, capturedReq.GetId().GetMetadata().GetTarget())
+	require.Equal(t, ledgerpb.TargetType_TARGET_TYPE_ACCOUNT, capturedReq.GetId().GetMetadata().GetTarget())
 }
 
 func TestHandleGetIndex_NotFound(t *testing.T) {
@@ -86,8 +87,8 @@ func TestHandleGetIndex_NotFound(t *testing.T) {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().GetIndex(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, _ *servicepb.GetIndexRequest) (*commonpb.Index, error) {
-			return nil, commonpb.NewNotFoundError("index not found")
+		func(_ context.Context, _ *servicepb.GetIndexRequest) (*ledgerpb.Index, error) {
+			return nil, ledgerpb.NewNotFoundError("index not found")
 		}).AnyTimes()
 	srv := newTestServer(t, backend)
 

@@ -16,8 +16,8 @@ import (
 	"github.com/antithesishq/antithesis-sdk-go/assert"
 	"k8s.io/client-go/dynamic"
 
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
@@ -120,9 +120,9 @@ func runCycle(ctx context.Context, lsClient dynamic.ResourceInterface, clusterCl
 
 func verifyFreshCommit(ctx context.Context, client servicepb.BucketServiceClient, details internal.Details) {
 	// One pure generation episode per witness, owned by this goroutine.
-	var posting *commonpb.Posting
+	var posting *ledgerpb.Posting
 	if err := internal.RunOperationalGeneration("scaling-structured", func(src *generation.Source) {
-		posting = commonpb.NewPosting("world", "scaling:check", "COIN", internal.GeneratedBigInt(src))
+		posting = ledgerpb.NewPosting("world", "scaling:check", "COIN", internal.GeneratedBigInt(src))
 	}); err != nil {
 		log.Printf("singleton_driver_scaling_structured: generation failed: %s", err)
 
@@ -134,7 +134,7 @@ func verifyFreshCommit(ctx context.Context, client servicepb.BucketServiceClient
 				Ledger: sentinelLedger,
 				Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
 					CreateTransaction: &servicepb.CreateTransactionPayload{
-						Postings: []*commonpb.Posting{posting},
+						Postings: []*ledgerpb.Posting{posting},
 						Force:    true,
 					},
 				}},

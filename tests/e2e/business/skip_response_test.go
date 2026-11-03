@@ -5,11 +5,13 @@ package business
 import (
 	"math/big"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
-	"github.com/formancehq/ledger/v3/pkg/actions"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
+
+	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	"github.com/formancehq/ledger/v3/pkg/actions"
 )
 
 var _ = Describe("SkipResponse", Ordered, func() {
@@ -22,7 +24,7 @@ var _ = Describe("SkipResponse", Ordered, func() {
 
 	It("Should strip log payloads when skip_response=true", func() {
 		applyReq := servicepb.UnsignedApplyRequest("",
-			actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+			actions.CreateTransactionAction(ledgerName, []*ledgerpb.Posting{
 				actions.NewPosting("world", "skip-resp-1", big.NewInt(100), "USD"),
 			}, nil, nil),
 		)
@@ -40,7 +42,7 @@ var _ = Describe("SkipResponse", Ordered, func() {
 
 	It("Should include full payloads by default", func() {
 		resp, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("",
-			actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+			actions.CreateTransactionAction(ledgerName, []*ledgerpb.Posting{
 				actions.NewPosting("world", "skip-resp-2", big.NewInt(200), "USD"),
 			}, nil, nil),
 		))
@@ -57,13 +59,13 @@ var _ = Describe("SkipResponse", Ordered, func() {
 
 	It("Should strip payloads for batch operations", func() {
 		applyReq := servicepb.UnsignedApplyRequest("",
-			actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+			actions.CreateTransactionAction(ledgerName, []*ledgerpb.Posting{
 				actions.NewPosting("world", "skip-resp-batch-1", big.NewInt(100), "USD"),
 			}, nil, nil),
-			actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+			actions.CreateTransactionAction(ledgerName, []*ledgerpb.Posting{
 				actions.NewPosting("world", "skip-resp-batch-2", big.NewInt(200), "USD"),
 			}, nil, nil),
-			actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+			actions.CreateTransactionAction(ledgerName, []*ledgerpb.Posting{
 				actions.NewPosting("world", "skip-resp-batch-3", big.NewInt(300), "USD"),
 			}, nil, nil),
 		)
@@ -82,7 +84,7 @@ var _ = Describe("SkipResponse", Ordered, func() {
 	It("Should still apply transactions even when response is skipped", func() {
 		// Create a transaction with skip_response
 		applyReq := servicepb.UnsignedApplyRequest("",
-			actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+			actions.CreateTransactionAction(ledgerName, []*ledgerpb.Posting{
 				actions.NewPosting("world", "skip-resp-verify", big.NewInt(500), "USD"),
 			}, nil, nil),
 		)

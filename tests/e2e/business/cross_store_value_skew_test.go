@@ -9,14 +9,16 @@ import (
 	"sync"
 	"time"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
-	"github.com/formancehq/ledger/v3/pkg/actions"
-	"github.com/formancehq/ledger/v3/tests/e2e/testutil"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
+
+	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	"github.com/formancehq/ledger/v3/pkg/actions"
+	"github.com/formancehq/ledger/v3/tests/e2e/testutil"
 )
 
 // Cross-store value skew (EN-1748, metadata-flip half): a row selected by a
@@ -49,25 +51,25 @@ var _ = Describe("Cross-store value skew", Ordered, func() {
 		ctx, node = testutil.SetupSingleNode()
 		client = node.Client
 
-		_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerWithSchemaAction(ledgerName, nil, []*commonpb.SetMetadataFieldTypeCommand{
-			{TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT, Key: "tier", Type: commonpb.MetadataType_METADATA_TYPE_STRING},
+		_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerWithSchemaAction(ledgerName, nil, []*ledgerpb.SetMetadataFieldTypeCommand{
+			{TargetType: ledgerpb.TargetType_TARGET_TYPE_ACCOUNT, Key: "tier", Type: ledgerpb.MetadataType_METADATA_TYPE_STRING},
 		})))
 		Expect(err).To(Succeed())
 
 		// Fold cost per log is multiplicative in the live index count.
 		for _, req := range []*servicepb.Request{
-			actions.CreateBuiltinTxIndexAction(ledgerName, commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP),
-			actions.CreateBuiltinTxIndexAction(ledgerName, commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_INSERTED_AT),
-			actions.CreateBuiltinTxIndexAction(ledgerName, commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_ADDRESS),
-			actions.CreateBuiltinTxIndexAction(ledgerName, commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_SOURCE_ADDRESS),
-			actions.CreateBuiltinTxIndexAction(ledgerName, commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_DESTINATION_ADDRESS),
+			actions.CreateBuiltinTxIndexAction(ledgerName, ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP),
+			actions.CreateBuiltinTxIndexAction(ledgerName, ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_INSERTED_AT),
+			actions.CreateBuiltinTxIndexAction(ledgerName, ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_ADDRESS),
+			actions.CreateBuiltinTxIndexAction(ledgerName, ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_SOURCE_ADDRESS),
+			actions.CreateBuiltinTxIndexAction(ledgerName, ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_DESTINATION_ADDRESS),
 			actions.CreateAccountMetadataIndexAction(ledgerName, "tier"),
 			actions.CreateAccountAssetIndexAction(ledgerName),
 		} {
 			_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", req))
 			Expect(err).To(Succeed())
 		}
-		Expect(actions.WaitForMetadataIndexReady(ctx, client, ledgerName, commonpb.TargetType_TARGET_TYPE_ACCOUNT, "tier")).To(Succeed())
+		Expect(actions.WaitForMetadataIndexReady(ctx, client, ledgerName, ledgerpb.TargetType_TARGET_TYPE_ACCOUNT, "tier")).To(Succeed())
 	})
 
 	It("never returns a tier=gold row whose own metadata disagrees", func() {
@@ -100,13 +102,13 @@ var _ = Describe("Cross-store value skew", Ordered, func() {
 						a := fmt.Sprintf("load:%d:%d:a", w, n%128)
 						b := fmt.Sprintf("load:%d:%d:b", w, n%128)
 						round := n / 128
-						reqs = append(reqs, actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+						reqs = append(reqs, actions.CreateTransactionAction(ledgerName, []*ledgerpb.Posting{
 							actions.NewPosting("world", a, big.NewInt(1), "COIN"),
 							actions.NewPosting("world", b, big.NewInt(1), "EUR"),
 							actions.NewPosting("world", a, big.NewInt(1), "USD/2"),
-						}, nil, map[string]*commonpb.MetadataMap{
-							a: {Values: map[string]*commonpb.MetadataValue{"tier": commonpb.NewStringValue(flip[round%2])}},
-							b: {Values: map[string]*commonpb.MetadataValue{"tier": commonpb.NewStringValue(flip[(round+1)%2])}},
+						}, nil, map[string]*ledgerpb.MetadataMap{
+							a: {Values: map[string]*ledgerpb.MetadataValue{"tier": ledgerpb.NewStringValue(flip[round%2])}},
+							b: {Values: map[string]*ledgerpb.MetadataValue{"tier": ledgerpb.NewStringValue(flip[(round+1)%2])}},
 						}))
 					}
 					if _, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", reqs...)); err != nil {

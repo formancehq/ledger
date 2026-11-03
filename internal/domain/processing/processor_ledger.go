@@ -5,13 +5,14 @@ import (
 	"maps"
 	"slices"
 
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
+
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/domain/accounttype"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
 
-func processCreateLedger(ledger string, order *raftcmdpb.CreateLedgerOrder, ctx *Context) (*commonpb.LogPayload, domain.SerializableError) {
+func processCreateLedger(ledger string, order *raftcmdpb.CreateLedgerOrder, ctx *Context) (*ledgerpb.LogPayload, domain.SerializableError) {
 	s := ctx.Scope
 	existing, err := s.Ledgers().Get(domain.LedgerKey{Name: ledger})
 	if err != nil && !errors.Is(err, domain.ErrNotFound) {
@@ -46,9 +47,9 @@ func processCreateLedger(ledger string, order *raftcmdpb.CreateLedgerOrder, ctx 
 	// the audited order (EN-1533). A nil map value has GetPattern()=="" and
 	// is rejected by ValidatePattern ("pattern must not be empty") before the
 	// clone, so every entry cloned below is guaranteed non-nil.
-	var canonicalAccountTypes map[string]*commonpb.AccountType
+	var canonicalAccountTypes map[string]*ledgerpb.AccountType
 	if src := order.GetAccountTypes(); len(src) > 0 {
-		canonicalAccountTypes = make(map[string]*commonpb.AccountType, len(src))
+		canonicalAccountTypes = make(map[string]*ledgerpb.AccountType, len(src))
 	}
 	for _, name := range slices.Sorted(maps.Keys(order.GetAccountTypes())) {
 		at := order.GetAccountTypes()[name]
@@ -75,7 +76,7 @@ func processCreateLedger(ledger string, order *raftcmdpb.CreateLedgerOrder, ctx 
 	createdAt := s.GetDate().Mutate()
 	ledgerID := s.IncrementNextLedgerID()
 
-	info := &commonpb.LedgerInfo{
+	info := &ledgerpb.LedgerInfo{
 		Name:                   ledger,
 		Id:                     ledgerID,
 		CreatedAt:              createdAt,
@@ -105,17 +106,17 @@ func processCreateLedger(ledger string, order *raftcmdpb.CreateLedgerOrder, ctx 
 	// shares no mutable map or message with either the store or the order. The
 	// clones carry the same map-key canonical Name, so CreatedLedgerLog.
 	// ToLedgerInfo() reconstructs a LedgerInfo identical to the FSM-built one.
-	var logAccountTypes map[string]*commonpb.AccountType
+	var logAccountTypes map[string]*ledgerpb.AccountType
 	if len(canonicalAccountTypes) > 0 {
-		logAccountTypes = make(map[string]*commonpb.AccountType, len(canonicalAccountTypes))
+		logAccountTypes = make(map[string]*ledgerpb.AccountType, len(canonicalAccountTypes))
 		for k, v := range canonicalAccountTypes {
 			logAccountTypes[k] = v.CloneVT()
 		}
 	}
 
-	return &commonpb.LogPayload{
-		Type: &commonpb.LogPayload_CreateLedger{
-			CreateLedger: &commonpb.CreatedLedgerLog{
+	return &ledgerpb.LogPayload{
+		Type: &ledgerpb.LogPayload_CreateLedger{
+			CreateLedger: &ledgerpb.CreatedLedgerLog{
 				Name:                   ledger,
 				Metadata:               order.GetMetadata(),
 				Id:                     ledgerID,
@@ -130,7 +131,7 @@ func processCreateLedger(ledger string, order *raftcmdpb.CreateLedgerOrder, ctx 
 	}, nil
 }
 
-func processDeleteLedger(ledger string, ctx *Context) (*commonpb.LogPayload, domain.SerializableError) {
+func processDeleteLedger(ledger string, ctx *Context) (*ledgerpb.LogPayload, domain.SerializableError) {
 	s := ctx.Scope
 	l, loadErr := loadLedger(s, ledger)
 	if loadErr != nil {
@@ -171,9 +172,9 @@ func processDeleteLedger(ledger string, ctx *Context) (*commonpb.LogPayload, dom
 	// iter has no preload declaration). Dropping the loop keeps the
 	// coverage invariant intact.
 
-	return &commonpb.LogPayload{
-		Type: &commonpb.LogPayload_DeleteLedger{
-			DeleteLedger: &commonpb.DeletedLedgerLog{
+	return &ledgerpb.LogPayload{
+		Type: &ledgerpb.LogPayload_DeleteLedger{
+			DeleteLedger: &ledgerpb.DeletedLedgerLog{
 				Name:      ledger,
 				DeletedAt: l.GetDeletedAt(),
 			},

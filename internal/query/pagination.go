@@ -5,8 +5,9 @@ import (
 	"fmt"
 	"strconv"
 
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
+
 	"github.com/formancehq/ledger/v3/internal/domain"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/pkg/pagecursor"
 )
 
@@ -67,8 +68,8 @@ func CursorUint64(c pagecursor.Cursor) (uint64, error) {
 
 // entityCursorKey renders a compiled-iterator entity as a cursor key: the
 // decimal id for transactions and logs, the address for accounts.
-func entityCursorKey(target commonpb.QueryTarget, entity []byte) string {
-	if target == commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS {
+func entityCursorKey(target ledgerpb.QueryTarget, entity []byte) string {
+	if target == ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS {
 		return string(entity)
 	}
 
@@ -77,12 +78,12 @@ func entityCursorKey(target commonpb.QueryTarget, entity []byte) string {
 
 // entityFromCursorKey is the inverse of entityCursorKey. The empty key is no
 // position.
-func entityFromCursorKey(target commonpb.QueryTarget, c pagecursor.Cursor) ([]byte, error) {
+func entityFromCursorKey(target ledgerpb.QueryTarget, c pagecursor.Cursor) ([]byte, error) {
 	if c.Key == "" {
 		return nil, nil
 	}
 
-	if target == commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS {
+	if target == ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS {
 		return []byte(c.Key), nil
 	}
 

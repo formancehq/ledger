@@ -9,8 +9,8 @@ import (
 
 	"github.com/holiman/uint256"
 
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/internal/domain/accounttype"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/pkg/actions"
 	"github.com/formancehq/ledger/v3/tests/oracle"
@@ -272,7 +272,7 @@ func activeLedgers(g oracle.GlobalState, ledgers []string) []string {
 	live := liveLedgerNames(g, ledgers)
 	out := make([]string, 0, len(live))
 	for _, name := range live {
-		if lc, ok := g.Lifecycle(name); ok && lc.Mode != commonpb.LedgerMode_LEDGER_MODE_MIRROR {
+		if lc, ok := g.Lifecycle(name); ok && lc.Mode != ledgerpb.LedgerMode_LEDGER_MODE_MIRROR {
 			out = append(out, name)
 		}
 	}
@@ -291,9 +291,9 @@ func generateLifecycle(src *generation.Source, g oracle.GlobalState, ledgers []s
 	if len(live) < liveTarget {
 		if generation.Choice(src, []uint8{0, 1, 2, 3}) == 0 {
 			return &servicepb.Request{Type: &servicepb.Request_CreateLedger{CreateLedger: &servicepb.CreateLedgerRequest{
-				Name: newLedger, Mode: commonpb.LedgerMode_LEDGER_MODE_MIRROR,
+				Name: newLedger, Mode: ledgerpb.LedgerMode_LEDGER_MODE_MIRROR,
 				Metadata:     randomMetaMap(src),
-				MirrorSource: &commonpb.MirrorSourceConfig{LedgerName: "unused"},
+				MirrorSource: &ledgerpb.MirrorSourceConfig{LedgerName: "unused"},
 			}}}
 		}
 
@@ -316,7 +316,7 @@ func generateLifecycle(src *generation.Source, g oracle.GlobalState, ledgers []s
 	case 1:
 		mirrors := make([]string, 0, len(live))
 		for _, name := range live {
-			if lc, ok := g.Lifecycle(name); ok && lc.Mode == commonpb.LedgerMode_LEDGER_MODE_MIRROR {
+			if lc, ok := g.Lifecycle(name); ok && lc.Mode == ledgerpb.LedgerMode_LEDGER_MODE_MIRROR {
 				mirrors = append(mirrors, name)
 			}
 		}
@@ -438,7 +438,7 @@ func randomTransientType(src *generation.Source, ls oracle.LedgerState) *oracle.
 	// replayable / steerable via the Antithesis RNG.
 	var names []string
 	for name, t := range ls.Types().All() {
-		if t.Persistence == commonpb.AccountTypePersistence_ACCOUNT_TYPE_TRANSIENT {
+		if t.Persistence == ledgerpb.AccountTypePersistence_ACCOUNT_TYPE_TRANSIENT {
 			names = append(names, name)
 		}
 	}
@@ -471,7 +471,7 @@ func generateTransaction(src *generation.Source, ledger string, ls oracle.Ledger
 	// slots. The ordinary malformed branch below still emits unskipped conflicts.
 	if generation.Choice(src, indexPool(16)) == 0 {
 		if req := duplicateReferenceTransaction(src, ledger, ls); req != nil {
-			req.GetApply().SkippableReasons = []commonpb.ErrorReason{commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT}
+			req.GetApply().SkippableReasons = []ledgerpb.ErrorReason{ledgerpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT}
 
 			return req
 		}
@@ -493,9 +493,9 @@ func generateTransaction(src *generation.Source, ledger string, ls oracle.Ledger
 	// commit atomically and compose in order — an earlier posting can fund a
 	// later one's source (the running balance floor is per-posting).
 	n := 1 + int(generation.Choice(src, []uint8{0, 1, 2, 3}))
-	postings := make([]*commonpb.Posting, n)
+	postings := make([]*ledgerpb.Posting, n)
 	for i := range postings {
-		postings[i] = commonpb.NewColoredPosting(sourceAddress(src), poolAddress(src), assets[int(generation.Choice(src, []uint8{0, 1, 2}))], randomColor(src), internal.GeneratedBigInt(src))
+		postings[i] = ledgerpb.NewColoredPosting(sourceAddress(src), poolAddress(src), assets[int(generation.Choice(src, []uint8{0, 1, 2}))], randomColor(src), internal.GeneratedBigInt(src))
 	}
 
 	// Every transaction gets a unique reference so it is targetable by later
@@ -513,7 +513,7 @@ func generateTransaction(src *generation.Source, ledger string, ls oracle.Ledger
 	// nominally half also carry a user-supplied timestamp — stored verbatim and echoed on
 	// reads (it does not feed the HLC / log order). Backdated to stay non-future.
 	if generation.Choice(src, []uint8{0, 1}) == 0 {
-		payload.Timestamp = &commonpb.Timestamp{Data: 1 + src.Uint64Range(0, 1_500_000_000_000_000-1)}
+		payload.Timestamp = &ledgerpb.Timestamp{Data: 1 + src.Uint64Range(0, 1_500_000_000_000_000-1)}
 	}
 
 	// nominally 1/3 also set account metadata via the transaction payload, applied
@@ -521,7 +521,7 @@ func generateTransaction(src *generation.Source, ledger string, ls oracle.Ledger
 	// passes the posting chart check when the tx commits, so the account-metadata
 	// write never introduces a chart rejection.
 	if generation.Choice(src, []uint8{0, 1, 2}) == 0 {
-		payload.AccountMetadata = map[string]*commonpb.MetadataMap{
+		payload.AccountMetadata = map[string]*ledgerpb.MetadataMap{
 			postings[n-1].GetDestination(): {Values: randomMetaMap(src)},
 		}
 	}
@@ -530,7 +530,7 @@ func generateTransaction(src *generation.Source, ledger string, ls oracle.Ledger
 }
 
 // applyCreate wraps a CreateTransactionPayload as a ledger Apply request.
-func applyCreate(ledger string, payload *servicepb.CreateTransactionPayload, skippableReasons ...commonpb.ErrorReason) *servicepb.Request {
+func applyCreate(ledger string, payload *servicepb.CreateTransactionPayload, skippableReasons ...ledgerpb.ErrorReason) *servicepb.Request {
 	return &servicepb.Request{
 		Type: &servicepb.Request_Apply{
 			Apply: &servicepb.LedgerApplyRequest{
@@ -577,7 +577,7 @@ func duplicateReferenceTransaction(src *generation.Source, ledger string, ls ora
 	}
 
 	return applyCreate(ledger, &servicepb.CreateTransactionPayload{
-		Postings:  []*commonpb.Posting{commonpb.NewPosting("world", poolAddress(src), assets[0], big.NewInt(1))},
+		Postings:  []*ledgerpb.Posting{ledgerpb.NewPosting("world", poolAddress(src), assets[0], big.NewInt(1))},
 		Reference: ref,
 	})
 }
@@ -590,9 +590,9 @@ func overflowTransaction(src *generation.Source, ledger string) *servicepb.Reque
 	dst := poolAddress(src)
 
 	return applyCreate(ledger, &servicepb.CreateTransactionPayload{
-		Postings: []*commonpb.Posting{
-			commonpb.NewPosting("world", dst, assets[0], half),
-			commonpb.NewPosting("world", dst, assets[0], half),
+		Postings: []*ledgerpb.Posting{
+			ledgerpb.NewPosting("world", dst, assets[0], half),
+			ledgerpb.NewPosting("world", dst, assets[0], half),
 		},
 	})
 }
@@ -610,7 +610,7 @@ func generateAddAccountType(src *generation.Source, ledger string) *servicepb.Re
 		Type: &servicepb.Request_AddAccountType{
 			AddAccountType: &servicepb.AddAccountTypeLedgerRequest{
 				Ledger: ledger,
-				AccountType: &commonpb.AccountType{
+				AccountType: &ledgerpb.AccountType{
 					Name:        name,
 					Pattern:     pattern,
 					Persistence: persistence,
@@ -622,14 +622,14 @@ func generateAddAccountType(src *generation.Source, ledger string) *servicepb.Re
 
 // NORMAL nominally 1/2, EPHEMERAL nominally 1/3, TRANSIENT nominally 1/6 — both non-NORMAL kinds
 // exercise distinct end-of-bulk machinery.
-func pickPersistence(src *generation.Source) commonpb.AccountTypePersistence {
+func pickPersistence(src *generation.Source) ledgerpb.AccountTypePersistence {
 	switch generation.Choice(src, []uint8{0, 1, 2, 3, 4, 5}) {
 	case 0, 1:
-		return commonpb.AccountTypePersistence_ACCOUNT_TYPE_EPHEMERAL
+		return ledgerpb.AccountTypePersistence_ACCOUNT_TYPE_EPHEMERAL
 	case 2:
-		return commonpb.AccountTypePersistence_ACCOUNT_TYPE_TRANSIENT
+		return ledgerpb.AccountTypePersistence_ACCOUNT_TYPE_TRANSIENT
 	default:
-		return commonpb.AccountTypePersistence_ACCOUNT_TYPE_NORMAL
+		return ledgerpb.AccountTypePersistence_ACCOUNT_TYPE_NORMAL
 	}
 }
 
@@ -643,8 +643,8 @@ func txRequest(ledger, src, dest, asset, color string, amount *big.Int, force bo
 				Action: &servicepb.LedgerAction{
 					Data: &servicepb.LedgerAction_CreateTransaction{
 						CreateTransaction: &servicepb.CreateTransactionPayload{
-							Postings: []*commonpb.Posting{
-								commonpb.NewColoredPosting(src, dest, asset, color, amount),
+							Postings: []*ledgerpb.Posting{
+								ledgerpb.NewColoredPosting(src, dest, asset, color, amount),
 							},
 							Force: force,
 						},
@@ -676,7 +676,7 @@ func generateDrainTransaction(src *generation.Source, ledger string, ls oracle.L
 	consider := func(key oracle.VolumeKey, vp oracle.VolumePair) bool {
 		scanned++
 		if vp.Input.Cmp(&vp.Output) > 0 {
-			if t := ls.MatchAddress(key.Address); t != nil && t.Persistence == commonpb.AccountTypePersistence_ACCOUNT_TYPE_EPHEMERAL {
+			if t := ls.MatchAddress(key.Address); t != nil && t.Persistence == ledgerpb.AccountTypePersistence_ACCOUNT_TYPE_EPHEMERAL {
 				srcKey = key
 				balance.Sub(&vp.Input, &vp.Output)
 				found = true
@@ -710,8 +710,8 @@ func generateDrainTransaction(src *generation.Source, ledger string, ls oracle.L
 				Action: &servicepb.LedgerAction{
 					Data: &servicepb.LedgerAction_CreateTransaction{
 						CreateTransaction: &servicepb.CreateTransactionPayload{
-							Postings: []*commonpb.Posting{
-								commonpb.NewColoredPosting(srcKey.Address, "world", srcKey.Asset, srcKey.Color, balance.ToBig()),
+							Postings: []*ledgerpb.Posting{
+								ledgerpb.NewColoredPosting(srcKey.Address, "world", srcKey.Asset, srcKey.Color, balance.ToBig()),
 							},
 							Force: true,
 						},
@@ -730,10 +730,10 @@ func generateRemoveAccountType(src *generation.Source, ledger string) *servicepb
 // --- Metadata -------------------------------------------------------------
 
 // accountTarget builds a metadata Target pointing at an account address.
-func accountTarget(addr string) *commonpb.Target {
-	return &commonpb.Target{
-		Target: &commonpb.Target_Account{
-			Account: &commonpb.TargetAccount{Addr: addr},
+func accountTarget(addr string) *ledgerpb.Target {
+	return &ledgerpb.Target{
+		Target: &ledgerpb.Target_Account{
+			Account: &ledgerpb.TargetAccount{Addr: addr},
 		},
 	}
 }
@@ -776,29 +776,29 @@ func generateMetadataOp(src *generation.Source, ledger string, ls oracle.LedgerS
 // int64, uint64, bool, null, datetime — from the small pools. The server stores
 // values verbatim, so each kind must round-trip unchanged regardless of any
 // declared field type.
-func randomMetaValue(src *generation.Source) *commonpb.MetadataValue {
+func randomMetaValue(src *generation.Source) *ledgerpb.MetadataValue {
 	switch generation.Choice(src, []uint8{0, 1, 2, 3, 4, 5}) {
 	case 0:
-		return commonpb.NewIntValue(generation.Choice(src, metaIntPool))
+		return ledgerpb.NewIntValue(generation.Choice(src, metaIntPool))
 	case 1:
-		return commonpb.NewUintValue(generation.Choice(src, metaUintPool))
+		return ledgerpb.NewUintValue(generation.Choice(src, metaUintPool))
 	case 2:
-		return commonpb.NewBoolValue(generation.Choice(src, []uint8{0, 1}) == 0)
+		return ledgerpb.NewBoolValue(generation.Choice(src, []uint8{0, 1}) == 0)
 	case 3:
-		return commonpb.NewNullValue(generation.Choice(src, metaNullOriginalPool))
+		return ledgerpb.NewNullValue(generation.Choice(src, metaNullOriginalPool))
 	case 4:
-		return commonpb.NewDatetimeValue(generation.Choice(src, metaDatetimePool))
+		return ledgerpb.NewDatetimeValue(generation.Choice(src, metaDatetimePool))
 	default:
-		return commonpb.NewStringValue(generation.Choice(src, metaValuePool))
+		return ledgerpb.NewStringValue(generation.Choice(src, metaValuePool))
 	}
 }
 
 // randomMetaMap builds a 1-2 key metadata map from the small key/value pools.
 // Small pools make concurrent sets of the same key to different values frequent
 // — the ordering chaos the model exists to check.
-func randomMetaMap(src *generation.Source) map[string]*commonpb.MetadataValue {
+func randomMetaMap(src *generation.Source) map[string]*ledgerpb.MetadataValue {
 	n := 1 + int(generation.Choice(src, []uint8{0, 1}))
-	md := make(map[string]*commonpb.MetadataValue, n)
+	md := make(map[string]*ledgerpb.MetadataValue, n)
 	for range n {
 		md[metaKey(src)] = randomMetaValue(src)
 	}
@@ -818,7 +818,7 @@ func generateAddMetadata(src *generation.Source, ledger string) *servicepb.Reque
 				Ledger: ledger,
 				Action: &servicepb.LedgerAction{
 					Data: &servicepb.LedgerAction_AddMetadata{
-						AddMetadata: &commonpb.SaveMetadataCommand{
+						AddMetadata: &ledgerpb.SaveMetadataCommand{
 							Target:   accountTarget(addr),
 							Metadata: md,
 						},
@@ -843,11 +843,11 @@ func generateDeleteMetadata(src *generation.Source, ledger string, ls oracle.Led
 
 	// Half the misses opt into the skip so the reason is reached at the rate the
 	// branch is rolled; the rest stay bare, where the miss rejects the bulk.
-	var skippable []commonpb.ErrorReason
+	var skippable []ledgerpb.ErrorReason
 	if generation.Choice(src, []uint8{0, 1}) == 0 {
 		key = "absent-" + metaKey(src)
 		if generation.Choice(src, []uint8{0, 1}) == 0 {
-			skippable = []commonpb.ErrorReason{commonpb.ErrorReason_ERROR_REASON_METADATA_NOT_FOUND}
+			skippable = []ledgerpb.ErrorReason{ledgerpb.ErrorReason_ERROR_REASON_METADATA_NOT_FOUND}
 		}
 	}
 
@@ -858,7 +858,7 @@ func generateDeleteMetadata(src *generation.Source, ledger string, ls oracle.Led
 				SkippableReasons: skippable,
 				Action: &servicepb.LedgerAction{
 					Data: &servicepb.LedgerAction_DeleteMetadata{
-						DeleteMetadata: &commonpb.DeleteMetadataCommand{
+						DeleteMetadata: &ledgerpb.DeleteMetadataCommand{
 							Target: accountTarget(addr),
 							Key:    key,
 						},
@@ -896,7 +896,7 @@ func generateAddTxMetadata(src *generation.Source, ledger string, ls oracle.Ledg
 				Ledger: ledger,
 				Action: &servicepb.LedgerAction{
 					Data: &servicepb.LedgerAction_AddMetadata{
-						AddMetadata: &commonpb.SaveMetadataCommand{
+						AddMetadata: &ledgerpb.SaveMetadataCommand{
 							Target:   txTarget(uint64(id)),
 							Metadata: randomMetaMap(src),
 						},
@@ -943,7 +943,7 @@ func generateDeleteTxMetadata(src *generation.Source, ledger string, ls oracle.L
 					Ledger: ledger,
 					Action: &servicepb.LedgerAction{
 						Data: &servicepb.LedgerAction_DeleteMetadata{
-							DeleteMetadata: &commonpb.DeleteMetadataCommand{
+							DeleteMetadata: &ledgerpb.DeleteMetadataCommand{
 								Target: txTarget(uint64(id)),
 								Key:    key,
 							},
@@ -1020,9 +1020,9 @@ func txRef() string {
 // txTarget builds a transaction metadata target addressed by id (the proto
 // dropped reference targeting in #462; the caller resolves a tracked reference
 // to its id).
-func txTarget(id uint64) *commonpb.Target {
-	return &commonpb.Target{
-		Target: &commonpb.Target_TransactionId{TransactionId: id},
+func txTarget(id uint64) *ledgerpb.Target {
+	return &ledgerpb.Target{
+		Target: &ledgerpb.Target_TransactionId{TransactionId: id},
 	}
 }
 
@@ -1113,7 +1113,7 @@ func generateSetMetadataFieldType(src *generation.Source, ledger string, ls orac
 // model declares no field types.
 func generateRemoveMetadataFieldType(src *generation.Source, ledger string, ls oracle.LedgerState) *servicepb.Request {
 	type fieldRef struct {
-		target commonpb.TargetType
+		target ledgerpb.TargetType
 		key    string
 	}
 
@@ -1121,13 +1121,13 @@ func generateRemoveMetadataFieldType(src *generation.Source, ledger string, ls o
 	// sequence, so fields is deterministic.
 	var fields []fieldRef
 	for k := range ls.AccountFieldTypes().All() {
-		fields = append(fields, fieldRef{commonpb.TargetType_TARGET_TYPE_ACCOUNT, k})
+		fields = append(fields, fieldRef{ledgerpb.TargetType_TARGET_TYPE_ACCOUNT, k})
 	}
 	for k := range ls.LedgerFieldTypes().All() {
-		fields = append(fields, fieldRef{commonpb.TargetType_TARGET_TYPE_LEDGER, k})
+		fields = append(fields, fieldRef{ledgerpb.TargetType_TARGET_TYPE_LEDGER, k})
 	}
 	for k := range ls.TransactionFieldTypes().All() {
-		fields = append(fields, fieldRef{commonpb.TargetType_TARGET_TYPE_TRANSACTION, k})
+		fields = append(fields, fieldRef{ledgerpb.TargetType_TARGET_TYPE_TRANSACTION, k})
 	}
 
 	if len(fields) == 0 {

@@ -3,8 +3,9 @@ package processing
 import (
 	"github.com/holiman/uint256"
 
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
+
 	"github.com/formancehq/ledger/v3/internal/domain"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
 
 // buildPostCommitVolumes computes the post-commit volumes for all
@@ -26,7 +27,7 @@ import (
 // divergent PCV payloads for the same applied index, so a non-NotFound store error
 // is always surfaced. This mirrors applyPosting, which reads the same
 // source+destination keys.
-func buildPostCommitVolumes(s Scope, ledgerName string, postings []*commonpb.Posting) (*commonpb.PostCommitVolumes, domain.SerializableError) {
+func buildPostCommitVolumes(s Scope, ledgerName string, postings []*ledgerpb.Posting) (*ledgerpb.PostCommitVolumes, domain.SerializableError) {
 	type tuple struct {
 		account string
 		asset   string
@@ -51,7 +52,7 @@ func buildPostCommitVolumes(s Scope, ledgerName string, postings []*commonpb.Pos
 		add(tuple{account: p.GetDestination(), asset: p.GetAsset(), color: color})
 	}
 
-	volumesByAccount := make(map[string]*commonpb.VolumesByAssets, len(tuples))
+	volumesByAccount := make(map[string]*ledgerpb.VolumesByAssets, len(tuples))
 
 	var scratch uint256.Int
 
@@ -62,26 +63,26 @@ func buildPostCommitVolumes(s Scope, ledgerName string, postings []*commonpb.Pos
 		}
 
 		vol.GetInput().IntoUint256(&scratch)
-		input := commonpb.NewBigUintFromUint256(&scratch)
+		input := ledgerpb.NewBigUintFromUint256(&scratch)
 		vol.GetOutput().IntoUint256(&scratch)
-		output := commonpb.NewBigUintFromUint256(&scratch)
+		output := ledgerpb.NewBigUintFromUint256(&scratch)
 
 		byAssets, ok := volumesByAccount[t.account]
 		if !ok {
-			byAssets = &commonpb.VolumesByAssets{}
+			byAssets = &ledgerpb.VolumesByAssets{}
 			volumesByAccount[t.account] = byAssets
 		}
-		byAssets.Volumes = append(byAssets.Volumes, &commonpb.VolumeEntry{
+		byAssets.Volumes = append(byAssets.Volumes, &ledgerpb.VolumeEntry{
 			Asset: t.asset,
 			Color: t.color,
-			Volumes: &commonpb.Volumes{
+			Volumes: &ledgerpb.Volumes{
 				Input:  input,
 				Output: output,
 			},
 		})
 	}
 
-	out := &commonpb.PostCommitVolumes{VolumesByAccount: volumesByAccount}
+	out := &ledgerpb.PostCommitVolumes{VolumesByAccount: volumesByAccount}
 	out.SortVolumes()
 
 	return out, nil

@@ -5,7 +5,8 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
+
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
 
@@ -119,7 +120,7 @@ func TestDecodeOrderEffects(t *testing.T) {
 			// gap, not off how the transaction content was expressed.
 			name: "script-sourced transaction has no boundary effect",
 			order: applyCreateTransactionOrder("led", &raftcmdpb.CreateTransactionOrder{
-				Script: &commonpb.Script{Plain: "send [USD/2 1] (source = @a destination = @b)"},
+				Script: &ledgerpb.Script{Plain: "send [USD/2 1] (source = @a destination = @b)"},
 			}),
 			want: OrderEffects{},
 		},

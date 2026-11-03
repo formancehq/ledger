@@ -13,6 +13,7 @@ require (
 	github.com/antithesishq/antithesis-sdk-go v0.8.0-default-no-op
 	github.com/formancehq/go-libs/v5 v5.10.0
 	github.com/formancehq/invariants v0.11.0
+	github.com/formancehq/ledger/pkg/proto/v3 v3.0.0
 	github.com/formancehq/ledger/v3 v3.0.0-00010101000000-000000000000
 	github.com/holiman/uint256 v1.3.2
 	github.com/stretchr/testify v1.12.1
@@ -27,9 +28,10 @@ require (
 	k8s.io/client-go v0.36.1
 )
 
+replace github.com/formancehq/ledger/pkg/proto/v3 => ../../../pkg/proto/v3
+
 require (
 	cel.dev/expr v0.25.2 // indirect
-	dario.cat/mergo v1.0.2 // indirect
 	filippo.io/edwards25519 v1.2.0 // indirect
 	github.com/Azure/azure-sdk-for-go/sdk/azcore v1.21.1 // indirect
 	github.com/Azure/azure-sdk-for-go/sdk/azidentity v1.13.1 // indirect

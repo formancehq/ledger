@@ -6,7 +6,8 @@ import (
 	"github.com/cockroachdb/pebble/v2"
 	"github.com/stretchr/testify/require"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
+
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
 
@@ -23,7 +24,7 @@ func TestWriteBatchReverseMapRangeOverlayHonorsOperationOrder(t *testing.T) {
 	kb := dal.NewKeyBuilder()
 	reverseKey := AccountReverseMapKeyV(kb, ledger, entity, field, 1)
 	otherKey := AccountReverseMapKeyV(kb, ledger, entity, "team", 1)
-	encoded := EncodeMetadataValue(nil, commonpb.NewStringValue("open"))
+	encoded := EncodeMetadataValue(nil, ledgerpb.NewStringValue("open"))
 
 	seed := store.NewBatch()
 	require.NoError(t, seed.SetBytes(reverseKey, encoded))
@@ -81,8 +82,8 @@ func TestWriteBatchReverseMapRangeOverlayMatchesCommittedOrder(t *testing.T) {
 						entity = []byte{0, 0, 0, 0, 0, 0, 0, 1}
 						reverseKey = TransactionReverseMapKeyV(kb, "test", 1, "status", 1)
 					}
-					oldValue := EncodeMetadataValue(nil, commonpb.NewStringValue("old"))
-					newValue := EncodeMetadataValue(nil, commonpb.NewStringValue("new"))
+					oldValue := EncodeMetadataValue(nil, ledgerpb.NewStringValue("old"))
+					newValue := EncodeMetadataValue(nil, ledgerpb.NewStringValue("new"))
 					seed := store.NewBatch()
 					require.NoError(t, seed.SetBytes(reverseKey, oldValue))
 					require.NoError(t, seed.Commit())

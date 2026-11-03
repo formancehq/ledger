@@ -10,7 +10,8 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
+
 	"github.com/formancehq/ledger/v3/internal/proto/eventspb"
 )
 
@@ -66,10 +67,10 @@ func TestHTTPSink_Publish_Success(t *testing.T) {
 
 	events := []*eventspb.Event{
 		{
-			Type:        commonpb.EventType_COMMITTED_TRANSACTION,
+			Type:        ledgerpb.EventType_COMMITTED_TRANSACTION,
 			Ledger:      "orders",
 			LogSequence: 1,
-			Date:        &commonpb.Timestamp{Data: 1000},
+			Date:        &ledgerpb.Timestamp{Data: 1000},
 		},
 	}
 
@@ -102,7 +103,7 @@ func TestHTTPSink_Publish_WithSignature(t *testing.T) {
 
 	events := []*eventspb.Event{
 		{
-			Type:        commonpb.EventType_COMMITTED_TRANSACTION,
+			Type:        ledgerpb.EventType_COMMITTED_TRANSACTION,
 			Ledger:      "orders",
 			LogSequence: 1,
 		},
@@ -134,7 +135,7 @@ func TestHTTPSink_Publish_ProtoFormat(t *testing.T) {
 
 	events := []*eventspb.Event{
 		{
-			Type:        commonpb.EventType_COMMITTED_TRANSACTION,
+			Type:        ledgerpb.EventType_COMMITTED_TRANSACTION,
 			Ledger:      "orders",
 			LogSequence: 1,
 		},
@@ -161,7 +162,7 @@ func TestHTTPSink_Publish_ErrorStatus(t *testing.T) {
 
 	events := []*eventspb.Event{
 		{
-			Type:        commonpb.EventType_COMMITTED_TRANSACTION,
+			Type:        ledgerpb.EventType_COMMITTED_TRANSACTION,
 			Ledger:      "orders",
 			LogSequence: 1,
 		},

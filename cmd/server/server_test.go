@@ -11,9 +11,9 @@ import (
 
 	otlpmetrics "github.com/formancehq/go-libs/v5/pkg/observe/metrics"
 	"github.com/formancehq/go-libs/v5/pkg/service"
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 
 	ledgermetrics "github.com/formancehq/ledger/v3/internal/infra/monitoring/metrics"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
 
 func TestLoadBloomConfigIncludesLedgerMetadata(t *testing.T) {
@@ -24,7 +24,7 @@ func TestLoadBloomConfigIncludesLedgerMetadata(t *testing.T) {
 
 	require.NoError(t, cmd.Flags().Set("bloom-ledger-metadata-expected-keys", "42"))
 
-	cfg := &commonpb.ClusterConfig{}
+	cfg := &ledgerpb.ClusterConfig{}
 	loadBloomConfig(cmd, cfg)
 
 	require.Equal(t, uint64(42), cfg.GetBloomLedgerMetadata().GetExpectedKeys())
@@ -257,13 +257,13 @@ func TestLoadConfig_HashAlgorithm(t *testing.T) {
 	for _, test := range []struct {
 		name    string
 		args    []string
-		want    commonpb.HashAlgorithm
+		want    ledgerpb.HashAlgorithm
 		invalid string
 	}{
-		{name: "default", want: commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3},
-		{name: "empty retains default", args: []string{"--hash-algorithm="}, want: commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3},
-		{name: "blake3", args: []string{"--hash-algorithm=blake3"}, want: commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3},
-		{name: "xxh3", args: []string{"--hash-algorithm=xxh3"}, want: commonpb.HashAlgorithm_HASH_ALGORITHM_XXH3},
+		{name: "default", want: ledgerpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3},
+		{name: "empty retains default", args: []string{"--hash-algorithm="}, want: ledgerpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3},
+		{name: "blake3", args: []string{"--hash-algorithm=blake3"}, want: ledgerpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3},
+		{name: "xxh3", args: []string{"--hash-algorithm=xxh3"}, want: ledgerpb.HashAlgorithm_HASH_ALGORITHM_XXH3},
 		{name: "unsupported", args: []string{"--hash-algorithm=sha256"}, invalid: "sha256"},
 		{name: "case sensitive", args: []string{"--hash-algorithm=BLAKE3"}, invalid: "BLAKE3"},
 		{name: "whitespace", args: []string{"--hash-algorithm= xxh3 "}, invalid: " xxh3 "},
@@ -292,14 +292,14 @@ func TestLoadConfig_HashAlgorithmEnvironment(t *testing.T) {
 		name    string
 		env     string
 		args    []string
-		want    commonpb.HashAlgorithm
+		want    ledgerpb.HashAlgorithm
 		invalid bool
 	}{
-		{name: "empty retains default", want: commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3},
-		{name: "blake3", env: "blake3", want: commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3},
-		{name: "xxh3", env: "xxh3", want: commonpb.HashAlgorithm_HASH_ALGORITHM_XXH3},
+		{name: "empty retains default", want: ledgerpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3},
+		{name: "blake3", env: "blake3", want: ledgerpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3},
+		{name: "xxh3", env: "xxh3", want: ledgerpb.HashAlgorithm_HASH_ALGORITHM_XXH3},
 		{name: "invalid", env: "xxh33", invalid: true},
-		{name: "flag overrides invalid environment", env: "xxh33", args: []string{"--hash-algorithm=xxh3"}, want: commonpb.HashAlgorithm_HASH_ALGORITHM_XXH3},
+		{name: "flag overrides invalid environment", env: "xxh33", args: []string{"--hash-algorithm=xxh3"}, want: ledgerpb.HashAlgorithm_HASH_ALGORITHM_XXH3},
 		{name: "invalid flag overrides valid environment", env: "blake3", args: []string{"--hash-algorithm=xxh33"}, invalid: true},
 	} {
 		t.Run(test.name, func(t *testing.T) {

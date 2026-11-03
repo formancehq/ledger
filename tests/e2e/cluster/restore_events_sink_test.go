@@ -11,36 +11,38 @@ import (
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
-	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
-	"github.com/formancehq/go-libs/v5/pkg/testing/testservice"
-	cmdserver "github.com/formancehq/ledger/v3/cmd/server"
-	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/restorepb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
-	"github.com/formancehq/ledger/v3/pkg/actions"
-	"github.com/formancehq/ledger/v3/pkg/testserver"
-	"github.com/formancehq/ledger/v3/tests/e2e/testutil"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/wait"
 	"google.golang.org/grpc"
+
+	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
+	"github.com/formancehq/go-libs/v5/pkg/testing/testservice"
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
+
+	cmdserver "github.com/formancehq/ledger/v3/cmd/server"
+	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
+	"github.com/formancehq/ledger/v3/internal/proto/restorepb"
+	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	"github.com/formancehq/ledger/v3/pkg/actions"
+	"github.com/formancehq/ledger/v3/pkg/testserver"
+	"github.com/formancehq/ledger/v3/tests/e2e/testutil"
 )
 
-func restoreEventSinkConfig(name string) *commonpb.SinkConfig {
-	return &commonpb.SinkConfig{
+func restoreEventSinkConfig(name string) *ledgerpb.SinkConfig {
+	return &ledgerpb.SinkConfig{
 		Name:         name,
 		Format:       "json",
 		BatchSize:    1,
 		BatchDelayMs: 1,
-		Type: &commonpb.SinkConfig_Http{
-			Http: &commonpb.HttpSinkConfig{Endpoint: "https://example.invalid/events"},
+		Type: &ledgerpb.SinkConfig_Http{
+			Http: &ledgerpb.HttpSinkConfig{Endpoint: "https://example.invalid/events"},
 		},
 	}
 }
 
-func addRestoreEventSink(config *commonpb.SinkConfig) *servicepb.Request {
+func addRestoreEventSink(config *ledgerpb.SinkConfig) *servicepb.Request {
 	return &servicepb.Request{Type: &servicepb.Request_AddEventsSink{
 		AddEventsSink: &servicepb.AddEventsSinkRequest{Config: config},
 	}}
@@ -72,8 +74,8 @@ var _ = Describe("Restore removed event sink", Ordered, func() {
 		minioEndpoint  string
 	)
 
-	storage := func() *commonpb.BackupStorage {
-		return testutil.S3BackupStorage(&commonpb.S3StorageConfig{
+	storage := func() *ledgerpb.BackupStorage {
+		return testutil.S3BackupStorage(&ledgerpb.S3StorageConfig{
 			Bucket:   s3Bucket,
 			Region:   restoreS3Region,
 			Endpoint: minioEndpoint,

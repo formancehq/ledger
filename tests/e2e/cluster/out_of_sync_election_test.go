@@ -13,18 +13,19 @@ import (
 	"sync/atomic"
 	"time"
 
+	. "github.com/onsi/ginkgo/v2"
+	. "github.com/onsi/gomega"
+
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 
 	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/internal/proto/snapshotpb"
 	raftwal "github.com/formancehq/ledger/v3/internal/storage/wal"
 	"github.com/formancehq/ledger/v3/pkg/actions"
 	"github.com/formancehq/ledger/v3/pkg/testserver"
 	"github.com/formancehq/ledger/v3/tests/e2e/testutil"
-	. "github.com/onsi/ginkgo/v2"
-	. "github.com/onsi/gomega"
 )
 
 // Two voters hold the newest log but restart with their store behind their WAL
@@ -99,7 +100,7 @@ var _ = Describe("Out-of-sync election", func() {
 
 		writeTransactions := func(via uint64, count int) {
 			for range count {
-				_, err := servers[via-1].Client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+				_, err := servers[via-1].Client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*ledgerpb.Posting{
 					actions.NewPosting("world", "bank", big.NewInt(100), "USD"),
 				}, nil, nil)))
 				Expect(err).To(Succeed())
@@ -169,13 +170,13 @@ var _ = Describe("Out-of-sync election", func() {
 			// Both followers append this entry to their log and spool it: it
 			// reaches their stores only inside the checkpoint they fetch.
 			By("Creating an event sink while the followers' stores are behind")
-			_, err := servers[lid-1].Client.Apply(ctx, servicepb.UnsignedApplyRequest("", addEventsSinkAction(&commonpb.SinkConfig{
+			_, err := servers[lid-1].Client.Apply(ctx, servicepb.UnsignedApplyRequest("", addEventsSinkAction(&ledgerpb.SinkConfig{
 				Name:         "checkpointed-sink",
 				Format:       "json",
 				BatchSize:    1,
 				BatchDelayMs: 1,
-				Type: &commonpb.SinkConfig_Http{
-					Http: &commonpb.HttpSinkConfig{Endpoint: sinkReceiver.URL},
+				Type: &ledgerpb.SinkConfig_Http{
+					Http: &ledgerpb.HttpSinkConfig{Endpoint: sinkReceiver.URL},
 				},
 			})))
 			Expect(err).To(Succeed())

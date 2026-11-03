@@ -4,8 +4,9 @@ import (
 	"net/http"
 	"strconv"
 
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
+
 	"github.com/formancehq/ledger/v3/internal/proto/auditpb"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/query"
 )
 
@@ -90,6 +91,6 @@ func (s *Server) handleListAuditEntries(w http.ResponseWriter, r *http.Request) 
 // to the audit arm, exactly like the textual grammar. Only the
 // `idempotency_key ^=` prefix match is textual-only (the JSON DSL has no prefix
 // operator).
-func parseAuditFilter(w http.ResponseWriter, r *http.Request) (*commonpb.QueryFilter, bool) {
-	return parseListFilter(w, r, commonpb.QueryTarget_QUERY_TARGET_AUDIT)
+func parseAuditFilter(w http.ResponseWriter, r *http.Request) (*ledgerpb.QueryFilter, bool) {
+	return parseListFilter(w, r, ledgerpb.QueryTarget_QUERY_TARGET_AUDIT)
 }

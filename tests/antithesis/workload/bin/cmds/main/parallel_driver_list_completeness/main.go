@@ -28,7 +28,7 @@ import (
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/pkg/pagecursor"
 
@@ -61,10 +61,10 @@ func main() {
 						Ledger: ledger,
 						Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
 							CreateTransaction: &servicepb.CreateTransactionPayload{
-								Postings: []*commonpb.Posting{{
+								Postings: []*ledgerpb.Posting{{
 									Source:      "world",
 									Destination: fmt.Sprintf("listcomp-dst:%d", i%4),
-									Amount:      commonpb.NewUint256FromUint64(1),
+									Amount:      ledgerpb.NewUint256FromUint64(1),
 									Asset:       "USD/2",
 								}},
 								Reference: fmt.Sprintf("listcomp-%d-%d", run, i),
@@ -134,7 +134,7 @@ func assertListCompleteness(ctx context.Context, client servicepb.BucketServiceC
 		}
 		stream, err := client.ListTransactions(ctx, &servicepb.ListTransactionsRequest{
 			Ledger: ledger,
-			Options: &commonpb.ListOptions{
+			Options: &ledgerpb.ListOptions{
 				PageSize: pageSize,
 				Cursor:   cursor,
 				Reverse:  true, // oldest-first, so IDs must increase across pages

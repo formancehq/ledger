@@ -11,11 +11,11 @@ import (
 	context "context"
 	reflect "reflect"
 
+	ledgerpb "github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	ctrl "github.com/formancehq/ledger/v3/internal/application/ctrl"
 	domain "github.com/formancehq/ledger/v3/internal/domain"
 	cursor "github.com/formancehq/ledger/v3/internal/pkg/cursor"
 	auditpb "github.com/formancehq/ledger/v3/internal/proto/auditpb"
-	commonpb "github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	servicepb "github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	query "github.com/formancehq/ledger/v3/internal/query"
 	gomock "go.uber.org/mock/gomock"
@@ -46,10 +46,10 @@ func (m *MockController) EXPECT() *MockControllerMockRecorder {
 }
 
 // AggregateVolumes mocks base method.
-func (m *MockController) AggregateVolumes(ctx context.Context, ledgerName string, filter *commonpb.QueryFilter, opts query.AggregateOptions) (*commonpb.AggregateResult, error) {
+func (m *MockController) AggregateVolumes(ctx context.Context, ledgerName string, filter *ledgerpb.QueryFilter, opts query.AggregateOptions) (*ledgerpb.AggregateResult, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "AggregateVolumes", ctx, ledgerName, filter, opts)
-	ret0, _ := ret[0].(*commonpb.AggregateResult)
+	ret0, _ := ret[0].(*ledgerpb.AggregateResult)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -136,10 +136,10 @@ func (mr *MockControllerMockRecorder) ExecutePreparedQuery(ctx, req any) *gomock
 }
 
 // GetAccount mocks base method.
-func (m *MockController) GetAccount(ctx context.Context, ledgerName, address string, opts ctrl.GetAccountOptions) (*commonpb.Account, error) {
+func (m *MockController) GetAccount(ctx context.Context, ledgerName, address string, opts ctrl.GetAccountOptions) (*ledgerpb.Account, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetAccount", ctx, ledgerName, address, opts)
-	ret0, _ := ret[0].(*commonpb.Account)
+	ret0, _ := ret[0].(*ledgerpb.Account)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -166,11 +166,11 @@ func (mr *MockControllerMockRecorder) GetAuditEntry(ctx, sequence any) *gomock.C
 }
 
 // GetEventsSinks mocks base method.
-func (m *MockController) GetEventsSinks(ctx context.Context) ([]*commonpb.SinkConfig, []*commonpb.SinkStatus, error) {
+func (m *MockController) GetEventsSinks(ctx context.Context) ([]*ledgerpb.SinkConfig, []*ledgerpb.SinkStatus, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetEventsSinks", ctx)
-	ret0, _ := ret[0].([]*commonpb.SinkConfig)
-	ret1, _ := ret[1].([]*commonpb.SinkStatus)
+	ret0, _ := ret[0].([]*ledgerpb.SinkConfig)
+	ret1, _ := ret[1].([]*ledgerpb.SinkStatus)
 	ret2, _ := ret[2].(error)
 	return ret0, ret1, ret2
 }
@@ -182,10 +182,10 @@ func (mr *MockControllerMockRecorder) GetEventsSinks(ctx any) *gomock.Call {
 }
 
 // GetIndex mocks base method.
-func (m *MockController) GetIndex(ctx context.Context, req *servicepb.GetIndexRequest) (*commonpb.Index, error) {
+func (m *MockController) GetIndex(ctx context.Context, req *servicepb.GetIndexRequest) (*ledgerpb.Index, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetIndex", ctx, req)
-	ret0, _ := ret[0].(*commonpb.Index)
+	ret0, _ := ret[0].(*ledgerpb.Index)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -227,10 +227,10 @@ func (mr *MockControllerMockRecorder) GetIndexStatus(ctx, req any) *gomock.Call 
 }
 
 // GetLedgerByName mocks base method.
-func (m *MockController) GetLedgerByName(ctx context.Context, name string) (*commonpb.LedgerInfo, error) {
+func (m *MockController) GetLedgerByName(ctx context.Context, name string) (*ledgerpb.LedgerInfo, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetLedgerByName", ctx, name)
-	ret0, _ := ret[0].(*commonpb.LedgerInfo)
+	ret0, _ := ret[0].(*ledgerpb.LedgerInfo)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -242,10 +242,10 @@ func (mr *MockControllerMockRecorder) GetLedgerByName(ctx, name any) *gomock.Cal
 }
 
 // GetLedgerStats mocks base method.
-func (m *MockController) GetLedgerStats(ctx context.Context, ledgerName string) (*commonpb.LedgerStats, error) {
+func (m *MockController) GetLedgerStats(ctx context.Context, ledgerName string) (*ledgerpb.LedgerStats, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetLedgerStats", ctx, ledgerName)
-	ret0, _ := ret[0].(*commonpb.LedgerStats)
+	ret0, _ := ret[0].(*ledgerpb.LedgerStats)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -257,10 +257,10 @@ func (mr *MockControllerMockRecorder) GetLedgerStats(ctx, ledgerName any) *gomoc
 }
 
 // GetLog mocks base method.
-func (m *MockController) GetLog(ctx context.Context, sequence uint64) (*commonpb.Log, error) {
+func (m *MockController) GetLog(ctx context.Context, sequence uint64) (*ledgerpb.Log, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetLog", ctx, sequence)
-	ret0, _ := ret[0].(*commonpb.Log)
+	ret0, _ := ret[0].(*ledgerpb.Log)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -287,10 +287,10 @@ func (mr *MockControllerMockRecorder) GetMetadataSchemaStatus(ctx, ledgerName an
 }
 
 // GetNumscript mocks base method.
-func (m *MockController) GetNumscript(ctx context.Context, ledger, name, version string) (*commonpb.NumscriptInfo, error) {
+func (m *MockController) GetNumscript(ctx context.Context, ledger, name, version string) (*ledgerpb.NumscriptInfo, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetNumscript", ctx, ledger, name, version)
-	ret0, _ := ret[0].(*commonpb.NumscriptInfo)
+	ret0, _ := ret[0].(*ledgerpb.NumscriptInfo)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -302,10 +302,10 @@ func (mr *MockControllerMockRecorder) GetNumscript(ctx, ledger, name, version an
 }
 
 // GetTemplateUsage mocks base method.
-func (m *MockController) GetTemplateUsage(ctx context.Context, ledger, name string) (*commonpb.TemplateUsage, error) {
+func (m *MockController) GetTemplateUsage(ctx context.Context, ledger, name string) (*ledgerpb.TemplateUsage, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetTemplateUsage", ctx, ledger, name)
-	ret0, _ := ret[0].(*commonpb.TemplateUsage)
+	ret0, _ := ret[0].(*ledgerpb.TemplateUsage)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -317,10 +317,10 @@ func (mr *MockControllerMockRecorder) GetTemplateUsage(ctx, ledger, name any) *g
 }
 
 // GetTransaction mocks base method.
-func (m *MockController) GetTransaction(ctx context.Context, ledgerName string, transactionID uint64) (*commonpb.Transaction, error) {
+func (m *MockController) GetTransaction(ctx context.Context, ledgerName string, transactionID uint64) (*ledgerpb.Transaction, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetTransaction", ctx, ledgerName, transactionID)
-	ret0, _ := ret[0].(*commonpb.Transaction)
+	ret0, _ := ret[0].(*ledgerpb.Transaction)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -347,10 +347,10 @@ func (mr *MockControllerMockRecorder) InspectIndex(ctx, req any) *gomock.Call {
 }
 
 // ListAccounts mocks base method.
-func (m *MockController) ListAccounts(ctx context.Context, ledgerName string, pageSize uint32, afterAddress string, filter *commonpb.QueryFilter, reverse bool) (cursor.Cursor[*commonpb.Account], error) {
+func (m *MockController) ListAccounts(ctx context.Context, ledgerName string, pageSize uint32, afterAddress string, filter *ledgerpb.QueryFilter, reverse bool) (cursor.Cursor[*ledgerpb.Account], error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "ListAccounts", ctx, ledgerName, pageSize, afterAddress, filter, reverse)
-	ret0, _ := ret[0].(cursor.Cursor[*commonpb.Account])
+	ret0, _ := ret[0].(cursor.Cursor[*ledgerpb.Account])
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -362,7 +362,7 @@ func (mr *MockControllerMockRecorder) ListAccounts(ctx, ledgerName, pageSize, af
 }
 
 // ListAuditEntries mocks base method.
-func (m *MockController) ListAuditEntries(ctx context.Context, pageSize uint32, afterSequence uint64, filter *commonpb.QueryFilter, reverse bool) (cursor.Cursor[*auditpb.AuditEntry], error) {
+func (m *MockController) ListAuditEntries(ctx context.Context, pageSize uint32, afterSequence uint64, filter *ledgerpb.QueryFilter, reverse bool) (cursor.Cursor[*auditpb.AuditEntry], error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "ListAuditEntries", ctx, pageSize, afterSequence, filter, reverse)
 	ret0, _ := ret[0].(cursor.Cursor[*auditpb.AuditEntry])
@@ -377,10 +377,10 @@ func (mr *MockControllerMockRecorder) ListAuditEntries(ctx, pageSize, afterSeque
 }
 
 // ListIndexes mocks base method.
-func (m *MockController) ListIndexes(ctx context.Context, req *servicepb.ListIndexesRequest) (cursor.Cursor[*commonpb.Index], error) {
+func (m *MockController) ListIndexes(ctx context.Context, req *servicepb.ListIndexesRequest) (cursor.Cursor[*ledgerpb.Index], error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "ListIndexes", ctx, req)
-	ret0, _ := ret[0].(cursor.Cursor[*commonpb.Index])
+	ret0, _ := ret[0].(cursor.Cursor[*ledgerpb.Index])
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -392,10 +392,10 @@ func (mr *MockControllerMockRecorder) ListIndexes(ctx, req any) *gomock.Call {
 }
 
 // ListLedgers mocks base method.
-func (m *MockController) ListLedgers(ctx context.Context) (cursor.Cursor[*commonpb.LedgerInfo], error) {
+func (m *MockController) ListLedgers(ctx context.Context) (cursor.Cursor[*ledgerpb.LedgerInfo], error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "ListLedgers", ctx)
-	ret0, _ := ret[0].(cursor.Cursor[*commonpb.LedgerInfo])
+	ret0, _ := ret[0].(cursor.Cursor[*ledgerpb.LedgerInfo])
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -407,10 +407,10 @@ func (mr *MockControllerMockRecorder) ListLedgers(ctx any) *gomock.Call {
 }
 
 // ListLogs mocks base method.
-func (m *MockController) ListLogs(ctx context.Context, ledgerName string, afterSequence uint64, pageSize uint32, filter *commonpb.QueryFilter, reverse bool) (cursor.Cursor[*commonpb.Log], error) {
+func (m *MockController) ListLogs(ctx context.Context, ledgerName string, afterSequence uint64, pageSize uint32, filter *ledgerpb.QueryFilter, reverse bool) (cursor.Cursor[*ledgerpb.Log], error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "ListLogs", ctx, ledgerName, afterSequence, pageSize, filter, reverse)
-	ret0, _ := ret[0].(cursor.Cursor[*commonpb.Log])
+	ret0, _ := ret[0].(cursor.Cursor[*ledgerpb.Log])
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -422,11 +422,11 @@ func (mr *MockControllerMockRecorder) ListLogs(ctx, ledgerName, afterSequence, p
 }
 
 // ListNumscriptVersions mocks base method.
-func (m *MockController) ListNumscriptVersions(ctx context.Context, ledger, name string) (string, []*commonpb.NumscriptVersionEntry, error) {
+func (m *MockController) ListNumscriptVersions(ctx context.Context, ledger, name string) (string, []*ledgerpb.NumscriptVersionEntry, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "ListNumscriptVersions", ctx, ledger, name)
 	ret0, _ := ret[0].(string)
-	ret1, _ := ret[1].([]*commonpb.NumscriptVersionEntry)
+	ret1, _ := ret[1].([]*ledgerpb.NumscriptVersionEntry)
 	ret2, _ := ret[2].(error)
 	return ret0, ret1, ret2
 }
@@ -438,10 +438,10 @@ func (mr *MockControllerMockRecorder) ListNumscriptVersions(ctx, ledger, name an
 }
 
 // ListNumscripts mocks base method.
-func (m *MockController) ListNumscripts(ctx context.Context, ledger string) ([]*commonpb.NumscriptInfo, error) {
+func (m *MockController) ListNumscripts(ctx context.Context, ledger string) ([]*ledgerpb.NumscriptInfo, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "ListNumscripts", ctx, ledger)
-	ret0, _ := ret[0].([]*commonpb.NumscriptInfo)
+	ret0, _ := ret[0].([]*ledgerpb.NumscriptInfo)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -453,10 +453,10 @@ func (mr *MockControllerMockRecorder) ListNumscripts(ctx, ledger any) *gomock.Ca
 }
 
 // ListPreparedQueries mocks base method.
-func (m *MockController) ListPreparedQueries(ctx context.Context, ledger string) ([]*commonpb.PreparedQuery, error) {
+func (m *MockController) ListPreparedQueries(ctx context.Context, ledger string) ([]*ledgerpb.PreparedQuery, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "ListPreparedQueries", ctx, ledger)
-	ret0, _ := ret[0].([]*commonpb.PreparedQuery)
+	ret0, _ := ret[0].([]*ledgerpb.PreparedQuery)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -468,10 +468,10 @@ func (mr *MockControllerMockRecorder) ListPreparedQueries(ctx, ledger any) *gomo
 }
 
 // ListSigningKeys mocks base method.
-func (m *MockController) ListSigningKeys(ctx context.Context) (cursor.Cursor[*commonpb.SigningKey], error) {
+func (m *MockController) ListSigningKeys(ctx context.Context) (cursor.Cursor[*ledgerpb.SigningKey], error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "ListSigningKeys", ctx)
-	ret0, _ := ret[0].(cursor.Cursor[*commonpb.SigningKey])
+	ret0, _ := ret[0].(cursor.Cursor[*ledgerpb.SigningKey])
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -483,10 +483,10 @@ func (mr *MockControllerMockRecorder) ListSigningKeys(ctx any) *gomock.Call {
 }
 
 // ListTransactions mocks base method.
-func (m *MockController) ListTransactions(ctx context.Context, ledgerName string, pageSize uint32, afterTxID uint64, filter *commonpb.QueryFilter, reverse bool) (cursor.Cursor[*commonpb.Transaction], error) {
+func (m *MockController) ListTransactions(ctx context.Context, ledgerName string, pageSize uint32, afterTxID uint64, filter *ledgerpb.QueryFilter, reverse bool) (cursor.Cursor[*ledgerpb.Transaction], error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "ListTransactions", ctx, ledgerName, pageSize, afterTxID, filter, reverse)
-	ret0, _ := ret[0].(cursor.Cursor[*commonpb.Transaction])
+	ret0, _ := ret[0].(cursor.Cursor[*ledgerpb.Transaction])
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }

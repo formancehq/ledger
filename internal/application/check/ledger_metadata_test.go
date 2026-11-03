@@ -5,9 +5,10 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
+
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
@@ -33,11 +34,11 @@ func TestLedgerMetadataVerifier_LifecycleAndCorruption(t *testing.T) {
 				}
 				v.applyOrder(&raftcmdpb.Order{Type: &raftcmdpb.Order_LedgerScoped{LedgerScoped: ls}})
 			}
-			apply(&raftcmdpb.CreateLedgerOrder{Metadata: map[string]*commonpb.MetadataValue{"owner": commonpb.NewStringValue("initial"), "removed": commonpb.NewBoolValue(true)}})
-			apply(&raftcmdpb.SaveLedgerMetadataOrder{Metadata: map[string]*commonpb.MetadataValue{"owner": commonpb.NewStringValue("later"), "count": commonpb.NewUintValue(9007199254740993)}})
+			apply(&raftcmdpb.CreateLedgerOrder{Metadata: map[string]*ledgerpb.MetadataValue{"owner": ledgerpb.NewStringValue("initial"), "removed": ledgerpb.NewBoolValue(true)}})
+			apply(&raftcmdpb.SaveLedgerMetadataOrder{Metadata: map[string]*ledgerpb.MetadataValue{"owner": ledgerpb.NewStringValue("later"), "count": ledgerpb.NewUintValue(9007199254740993)}})
 			apply(&raftcmdpb.DeleteLedgerMetadataOrder{Key: "removed"})
 			batch := store.OpenWriteSession()
-			put := func(key string, value *commonpb.MetadataValue) {
+			put := func(key string, value *ledgerpb.MetadataValue) {
 				_, err := attrs.LedgerMetadata.Set(batch, domain.LedgerMetadataKey{LedgerName: "main", Key: key}.Bytes(), value)
 				require.NoError(t, err)
 			}
@@ -46,11 +47,11 @@ func TestLedgerMetadataVerifier_LifecycleAndCorruption(t *testing.T) {
 				if scenario == "changed" {
 					value = "corrupt"
 				}
-				put("owner", commonpb.NewStringValue(value))
+				put("owner", ledgerpb.NewStringValue(value))
 			}
-			put("count", commonpb.NewUintValue(9007199254740993))
+			put("count", ledgerpb.NewUintValue(9007199254740993))
 			if scenario == "injected" {
-				put("extra", commonpb.NewBoolValue(true))
+				put("extra", ledgerpb.NewBoolValue(true))
 			}
 			require.NoError(t, batch.Commit())
 			handle, err := store.NewReadHandle()

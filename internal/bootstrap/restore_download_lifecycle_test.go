@@ -19,10 +19,10 @@ import (
 	"google.golang.org/grpc/status"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 
 	grpcadp "github.com/formancehq/ledger/v3/internal/adapter/grpc"
 	"github.com/formancehq/ledger/v3/internal/pkg/network"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/restorepb"
 )
 
@@ -127,7 +127,7 @@ func TestRestoreDownloadStopsWithFxApplication(t *testing.T) {
 	require.NoError(t, app.Start(startCtx))
 
 	start, err := restoreServer.StartDownloadBackup(context.Background(), &restorepb.StartDownloadBackupRequest{
-		Storage: &commonpb.BackupStorage{Provider: &commonpb.BackupStorage_S3{S3: &commonpb.S3StorageConfig{
+		Storage: &ledgerpb.BackupStorage{Provider: &ledgerpb.BackupStorage_S3{S3: &ledgerpb.S3StorageConfig{
 			Bucket:          "backups",
 			Region:          "us-east-1",
 			Endpoint:        backend.URL,

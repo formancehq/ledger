@@ -7,9 +7,10 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+
+	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
 var _ = Describe("Server info", func() {

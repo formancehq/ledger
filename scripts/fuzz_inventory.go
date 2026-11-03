@@ -20,6 +20,10 @@ import (
 
 const fuzzRunnerInventoryPath = "scripts/fuzz-targets.txt"
 
+var supportedNestedFuzzModules = map[string]struct{}{
+	"pkg/proto/v3": {},
+}
+
 type fuzzTarget struct {
 	packagePath string
 	name        string
@@ -80,7 +84,9 @@ func discoverRepositoryFuzzTargets(files []string) ([]locatedFuzzTarget, error) 
 		}
 		var reason string
 		if module := nestedGoModuleForPath(path, nestedModules); module != "" {
-			reason = "the declaration belongs to nested Go module " + module
+			if _, supported := supportedNestedFuzzModules[module]; !supported {
+				reason = "the declaration belongs to unsupported nested Go module " + module
+			}
 		} else {
 			if platformSuffixes == nil {
 				platformSuffixes, err = goPlatformSuffixes()
@@ -212,7 +218,7 @@ func unreachableFuzzTargetFindings(targets []locatedFuzzTarget) []finding {
 
 		location := target.location
 		resolution := "move it to an unconstrained test file or extend the runner explicitly"
-		if strings.HasPrefix(target.unreachableReason, "the declaration belongs to nested Go module ") {
+		if strings.HasPrefix(target.unreachableReason, "the declaration belongs to unsupported nested Go module ") {
 			resolution = "extend the runner to invoke targets from that module before adding the target"
 		}
 		location.message = fmt.Sprintf(

@@ -7,8 +7,9 @@ import (
 	"math/big"
 	"time"
 
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
+
 	"github.com/formancehq/ledger/v3/internal/domain"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/eventspb"
 )
 
@@ -79,7 +80,7 @@ type sinkPosting struct {
 	// Color is always emitted (no `omitempty`) so downstream analytical
 	// consumers can distinguish the uncolored bucket (`color:""`) from an
 	// older payload that predates the dimension — same contract as
-	// commonpb.Posting.MarshalJSON, VolumeEntry, accountVolumeJSON.
+	// ledgerpb.Posting.MarshalJSON, VolumeEntry, accountVolumeJSON.
 	Color string `json:"color"`
 }
 
@@ -101,32 +102,32 @@ func eventToSinkJSON(event *eventspb.Event) ([]byte, error) {
 	}
 
 	switch p := log.GetPayload().GetType().(type) {
-	case *commonpb.LogPayload_CreateLedger:
+	case *ledgerpb.LogPayload_CreateLedger:
 		data.LedgerName = &p.CreateLedger.Name
 
-	case *commonpb.LogPayload_DeleteLedger:
+	case *ledgerpb.LogPayload_DeleteLedger:
 		data.LedgerName = &p.DeleteLedger.Name
 
-	case *commonpb.LogPayload_Apply:
+	case *ledgerpb.LogPayload_Apply:
 		sinkPopulateApply(&data, p.Apply)
 
-	case *commonpb.LogPayload_RegisterSigningKey:
+	case *ledgerpb.LogPayload_RegisterSigningKey:
 		data.SigningKeyID = &p.RegisterSigningKey.KeyId
 		pk := hex.EncodeToString(p.RegisterSigningKey.GetPublicKey())
 		data.PublicKey = &pk
 
-	case *commonpb.LogPayload_RevokeSigningKey:
+	case *ledgerpb.LogPayload_RevokeSigningKey:
 		data.SigningKeyID = &p.RevokeSigningKey.KeyId
 
-	case *commonpb.LogPayload_SetSigningConfig:
+	case *ledgerpb.LogPayload_SetSigningConfig:
 		data.RequireSignatures = &p.SetSigningConfig.RequireSignatures
 
-	case *commonpb.LogPayload_AddedEventsSink:
+	case *ledgerpb.LogPayload_AddedEventsSink:
 		if p.AddedEventsSink.GetConfig() != nil {
 			data.SinkName = &p.AddedEventsSink.Config.Name
 		}
 
-	case *commonpb.LogPayload_RemovedEventsSink:
+	case *ledgerpb.LogPayload_RemovedEventsSink:
 		data.SinkName = &p.RemovedEventsSink.Name
 	}
 
@@ -135,34 +136,34 @@ func eventToSinkJSON(event *eventspb.Event) ([]byte, error) {
 
 // ---------- Helpers ----------
 
-func sinkPopulateApply(data *sinkEventData, apply *commonpb.ApplyLedgerLog) {
+func sinkPopulateApply(data *sinkEventData, apply *ledgerpb.ApplyLedgerLog) {
 	if apply == nil || apply.GetLog() == nil || apply.GetLog().GetData() == nil {
 		return
 	}
 
 	switch lp := apply.GetLog().GetData().GetPayload().(type) {
-	case *commonpb.LedgerLogPayload_CreatedTransaction:
+	case *ledgerpb.LedgerLogPayload_CreatedTransaction:
 		data.Transaction = sinkConvertTransaction(lp.CreatedTransaction.GetTransaction())
 		data.AccountMetadata = sinkConvertAccountMetadataMap(lp.CreatedTransaction.GetAccountMetadata())
 
-	case *commonpb.LedgerLogPayload_RevertedTransaction:
+	case *ledgerpb.LedgerLogPayload_RevertedTransaction:
 		data.RevertedTransactionID = &lp.RevertedTransaction.RevertedTransactionId
 		data.RevertTransaction = sinkConvertTransaction(lp.RevertedTransaction.GetRevertTransaction())
 
-	case *commonpb.LedgerLogPayload_SavedMetadata:
+	case *ledgerpb.LedgerLogPayload_SavedMetadata:
 		data.TargetType, data.TargetID = sinkConvertTarget(lp.SavedMetadata.GetTarget())
 		data.Metadata = sinkConvertMetadata(lp.SavedMetadata.GetMetadata())
 
-	case *commonpb.LedgerLogPayload_DeletedMetadata:
+	case *ledgerpb.LedgerLogPayload_DeletedMetadata:
 		data.TargetType, data.TargetID = sinkConvertTarget(lp.DeletedMetadata.GetTarget())
 		data.Key = &lp.DeletedMetadata.Key
 
-	case *commonpb.LedgerLogPayload_SetMetadataFieldType:
+	case *ledgerpb.LedgerLogPayload_SetMetadataFieldType:
 		// Schema operations — no sink-specific data
-	case *commonpb.LedgerLogPayload_RemovedMetadataFieldType:
+	case *ledgerpb.LedgerLogPayload_RemovedMetadataFieldType:
 		// Schema operations — no sink-specific data
 
-	case *commonpb.LedgerLogPayload_OrderSkipped:
+	case *ledgerpb.LedgerLogPayload_OrderSkipped:
 		// Serialize the short public identifier (e.g. TRANSACTION_REFERENCE_CONFLICT)
 		// rather than the generated enum name (ERROR_REASON_...) so sink consumers
 		// can match against the same values callers submit in skippableReasons and
@@ -175,7 +176,7 @@ func sinkPopulateApply(data *sinkEventData, apply *commonpb.ApplyLedgerLog) {
 	}
 }
 
-func sinkConvertTransaction(tx *commonpb.Transaction) *sinkTransaction {
+func sinkConvertTransaction(tx *ledgerpb.Transaction) *sinkTransaction {
 	if tx == nil {
 		return nil
 	}
@@ -187,11 +188,11 @@ func sinkConvertTransaction(tx *commonpb.Transaction) *sinkTransaction {
 	}
 
 	if tx.GetTimestamp() != nil {
-		result.Timestamp = sinkTime(tx.GetTimestamp().AsTime().Time)
+		result.Timestamp = sinkTime(tx.GetTimestamp().AsTime())
 	}
 
 	if tx.GetInsertedAt() != nil {
-		result.InsertedAt = sinkTime(tx.GetInsertedAt().AsTime().Time)
+		result.InsertedAt = sinkTime(tx.GetInsertedAt().AsTime())
 	}
 
 	result.Postings = make([]sinkPosting, len(tx.GetPostings()))
@@ -210,7 +211,7 @@ func sinkConvertTransaction(tx *commonpb.Transaction) *sinkTransaction {
 	return result
 }
 
-func sinkConvertMetadata(m map[string]*commonpb.MetadataValue) map[string]string {
+func sinkConvertMetadata(m map[string]*ledgerpb.MetadataValue) map[string]string {
 	if len(m) == 0 {
 		return nil
 	}
@@ -218,14 +219,14 @@ func sinkConvertMetadata(m map[string]*commonpb.MetadataValue) map[string]string
 	result := make(map[string]string, len(m))
 	for key, value := range m {
 		if value != nil {
-			result[key] = commonpb.MetadataValueToString(value)
+			result[key] = ledgerpb.MetadataValueToString(value)
 		}
 	}
 
 	return result
 }
 
-func sinkConvertAccountMetadataMap(am map[string]*commonpb.MetadataMap) map[string]map[string]string {
+func sinkConvertAccountMetadataMap(am map[string]*ledgerpb.MetadataMap) map[string]map[string]string {
 	if len(am) == 0 {
 		return nil
 	}
@@ -238,17 +239,17 @@ func sinkConvertAccountMetadataMap(am map[string]*commonpb.MetadataMap) map[stri
 	return result
 }
 
-func sinkConvertTarget(target *commonpb.Target) (*string, any) {
+func sinkConvertTarget(target *ledgerpb.Target) (*string, any) {
 	if target == nil {
 		return nil, nil
 	}
 
 	switch t := target.GetTarget().(type) {
-	case *commonpb.Target_Account:
+	case *ledgerpb.Target_Account:
 		tt := "account"
 
 		return &tt, t.Account.GetAddr()
-	case *commonpb.Target_TransactionId:
+	case *ledgerpb.Target_TransactionId:
 		tt := "transaction"
 
 		return &tt, t.TransactionId

@@ -21,8 +21,8 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
 
 // ClusterGVR is the GroupVersionResource for the Cluster CRD.
@@ -404,7 +404,7 @@ func GetNonLeaderVoter(ctx context.Context, clusterClient clusterpb.ClusterServi
 
 // GetClusterConfig returns the ClusterConfig observed by the given node
 // (0 = route to leader).
-func GetClusterConfig(ctx context.Context, clusterClient clusterpb.ClusterServiceClient, nodeID uint64) (*commonpb.ClusterConfig, error) {
+func GetClusterConfig(ctx context.Context, clusterClient clusterpb.ClusterServiceClient, nodeID uint64) (*ledgerpb.ClusterConfig, error) {
 	state, err := clusterClient.GetClusterState(ctx, &clusterpb.GetClusterStateRequest{NodeId: nodeID})
 	if err != nil {
 		return nil, err
@@ -415,7 +415,7 @@ func GetClusterConfig(ctx context.Context, clusterClient clusterpb.ClusterServic
 
 // WaitForClusterConfig polls the leader's ClusterConfig until the predicate
 // returns true or timeout expires.
-func WaitForClusterConfig(ctx context.Context, clusterClient clusterpb.ClusterServiceClient, predicate func(*commonpb.ClusterConfig) bool, timeout time.Duration) bool {
+func WaitForClusterConfig(ctx context.Context, clusterClient clusterpb.ClusterServiceClient, predicate func(*ledgerpb.ClusterConfig) bool, timeout time.Duration) bool {
 	return WaitForClusterConfigOnNode(ctx, clusterClient, 0, predicate, timeout)
 }
 
@@ -424,7 +424,7 @@ func WaitForClusterConfig(ctx context.Context, clusterClient clusterpb.ClusterSe
 // Used to verify follower convergence after the leader has applied — Raft
 // entries reach followers a few hundred ms later, so a tight poll absorbs the
 // natural propagation delay without false-flagging an FSM divergence.
-func WaitForClusterConfigOnNode(ctx context.Context, clusterClient clusterpb.ClusterServiceClient, nodeID uint64, predicate func(*commonpb.ClusterConfig) bool, timeout time.Duration) bool {
+func WaitForClusterConfigOnNode(ctx context.Context, clusterClient clusterpb.ClusterServiceClient, nodeID uint64, predicate func(*ledgerpb.ClusterConfig) bool, timeout time.Duration) bool {
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 	for {

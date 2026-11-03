@@ -8,8 +8,9 @@ import (
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
 
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
+
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/cmdutil"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
@@ -74,7 +75,7 @@ func runList(cmd *cobra.Command, _ []string) error {
 	statusBySink := make(map[string]struct {
 		cursor     uint64
 		err        string
-		occurredAt *commonpb.Timestamp
+		occurredAt *ledgerpb.Timestamp
 	}, len(resp.GetSinkStatuses()))
 	for _, s := range resp.GetSinkStatuses() {
 		entry := statusBySink[s.GetSinkName()]
@@ -117,25 +118,25 @@ func runList(cmd *cobra.Command, _ []string) error {
 
 		// Sink type
 		switch s := sink.GetType().(type) {
-		case *commonpb.SinkConfig_Nats:
+		case *ledgerpb.SinkConfig_Nats:
 			data = append(data,
 				[]string{"Type", "NATS"},
 				[]string{"URL", s.Nats.GetUrl()},
 				[]string{"Topic", s.Nats.GetTopic()},
 			)
-		case *commonpb.SinkConfig_Http:
+		case *ledgerpb.SinkConfig_Http:
 			data = append(data,
 				[]string{"Type", "HTTP"},
 				[]string{"Endpoint", s.Http.GetEndpoint()},
 				[]string{"Secret", s.Http.GetSecret()},
 			)
-		case *commonpb.SinkConfig_Clickhouse:
+		case *ledgerpb.SinkConfig_Clickhouse:
 			data = append(data,
 				[]string{"Type", "ClickHouse"},
 				[]string{"DSN", s.Clickhouse.GetDsn()},
 				[]string{"Table", s.Clickhouse.GetTable()},
 			)
-		case *commonpb.SinkConfig_Kafka:
+		case *ledgerpb.SinkConfig_Kafka:
 			rows := [][]string{
 				{"Type", "Kafka"},
 				{"Brokers", strings.Join(s.Kafka.GetBrokers(), ",")},
@@ -151,7 +152,7 @@ func runList(cmd *cobra.Command, _ []string) error {
 			}
 
 			data = append(data, rows...)
-		case *commonpb.SinkConfig_Databricks:
+		case *ledgerpb.SinkConfig_Databricks:
 			db := s.Databricks
 			rows := [][]string{
 				{"Type", "Databricks"},
@@ -164,12 +165,12 @@ func runList(cmd *cobra.Command, _ []string) error {
 			}
 
 			switch a := db.GetAuth().(type) {
-			case *commonpb.DatabricksSinkConfig_Token:
+			case *ledgerpb.DatabricksSinkConfig_Token:
 				rows = append(rows,
 					[]string{"Auth Mode", "PAT"},
 					[]string{"Token", a.Token},
 				)
-			case *commonpb.DatabricksSinkConfig_OauthM2M:
+			case *ledgerpb.DatabricksSinkConfig_OauthM2M:
 				rows = append(rows, []string{"Auth Mode", "OAuth M2M"})
 				if a.OauthM2M != nil {
 					rows = append(rows,
@@ -201,7 +202,7 @@ func runList(cmd *cobra.Command, _ []string) error {
 	return nil
 }
 
-func appendSinkStatusRows(rows [][]string, cursor uint64, errorMessage string, occurredAt *commonpb.Timestamp, hasStatus bool) [][]string {
+func appendSinkStatusRows(rows [][]string, cursor uint64, errorMessage string, occurredAt *ledgerpb.Timestamp, hasStatus bool) [][]string {
 	rows = append(rows, []string{"Cursor", strconv.FormatUint(cursor, 10)})
 	switch {
 	case hasStatus && errorMessage != "":

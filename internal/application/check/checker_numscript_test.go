@@ -5,8 +5,10 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
+
 	"github.com/formancehq/ledger/v3/internal/domain"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	commonpb "github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
@@ -20,7 +22,7 @@ func saveNumscriptOrder(ledger, name, content, version string) *raftcmdpb.Order 
 	}}}
 }
 
-func tamperNumscriptContent(t *testing.T, e *testEngine, info *commonpb.NumscriptInfo) {
+func tamperNumscriptContent(t *testing.T, e *testEngine, info *ledgerpb.NumscriptInfo) {
 	t.Helper()
 
 	batch := e.store.OpenWriteSession()
@@ -128,7 +130,7 @@ func TestCheckerNumscript_ExtraContentDetected(t *testing.T) {
 	e := newTestEngine(t)
 	e.processAndCommit(createLedgerOrder("main"))
 
-	tamperNumscriptContent(t, e, &commonpb.NumscriptInfo{Name: "ghost", Version: "1.0.0", Content: numscriptTestContent, Ledger: "main"})
+	tamperNumscriptContent(t, e, &ledgerpb.NumscriptInfo{Name: "ghost", Version: "1.0.0", Content: numscriptTestContent, Ledger: "main"})
 
 	require.NotEmpty(t, numscriptMismatches(collectCheckErrors(t, e.store, e.attrs)))
 }

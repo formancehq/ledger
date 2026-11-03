@@ -15,7 +15,8 @@ import (
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/reflect/protoreflect"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
+
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
@@ -42,14 +43,14 @@ var protojsonRoutes = []struct {
 	file  string // Handler file containing this route's protojson call site.
 	msg   proto.Message
 }{
-	{"GET /v3/{ledgerName}/indexes", "handlers_list_ledger_indexes.go", &commonpb.Index{}},
-	{"GET /v3/{ledgerName}/indexes/{canonicalId}", "handlers_get_index.go", &commonpb.Index{}},
-	{"GET /v3/_/indexes", "handlers_list_bucket_indexes.go", &commonpb.Index{}},
-	{"GET /v3/_/indexes/{canonicalId}", "handlers_get_bucket_index.go", &commonpb.Index{}},
+	{"GET /v3/{ledgerName}/indexes", "handlers_list_ledger_indexes.go", &ledgerpb.Index{}},
+	{"GET /v3/{ledgerName}/indexes/{canonicalId}", "handlers_get_index.go", &ledgerpb.Index{}},
+	{"GET /v3/_/indexes", "handlers_list_bucket_indexes.go", &ledgerpb.Index{}},
+	{"GET /v3/_/indexes/{canonicalId}", "handlers_get_bucket_index.go", &ledgerpb.Index{}},
 	{"GET /v3/{ledgerName}/indexes/{canonicalId}/status", "handlers_get_index_entry_status.go", &servicepb.IndexEntry{}},
 	{"GET /v3/_/indexes/{canonicalId}/status", "handlers_get_bucket_index_entry_status.go", &servicepb.IndexEntry{}},
 	{"GET /v3/_/indexes/status", "handlers_get_index_status.go", &servicepb.GetIndexStatusResponse{}},
-	{"GET /v3/_/signing-keys", "handlers_list_signing_keys.go", &commonpb.SigningKey{}},
+	{"GET /v3/_/signing-keys", "handlers_list_signing_keys.go", &ledgerpb.SigningKey{}},
 	{"GET /v3/_/events-sinks", "handlers_get_events_sinks.go", &servicepb.GetEventsSinksResponse{}},
 }
 
@@ -88,9 +89,9 @@ func TestProtojsonRoutes_HaveNoNegotiatedBigIntegers(t *testing.T) {
 				}
 				seen[message.FullName()] = true
 				switch message.FullName() {
-				case (&commonpb.Uint256{}).ProtoReflect().Descriptor().FullName(),
-					(&commonpb.BigUint{}).ProtoReflect().Descriptor().FullName(),
-					(&commonpb.SignedBigInt{}).ProtoReflect().Descriptor().FullName():
+				case (&ledgerpb.Uint256{}).ProtoReflect().Descriptor().FullName(),
+					(&ledgerpb.BigUint{}).ProtoReflect().Descriptor().FullName(),
+					(&ledgerpb.SignedBigInt{}).ProtoReflect().Descriptor().FullName():
 					t.Fatalf("%s contains %s at %s: use an option-aware public projection instead of protojson", tc.route, message.FullName(), path)
 				}
 				fields := message.Fields()
@@ -115,11 +116,11 @@ func TestMonetaryRoutes_PayloadHasCustomMarshalJSON(t *testing.T) {
 	t.Parallel()
 
 	for _, msg := range []proto.Message{
-		&commonpb.Transaction{},
-		&commonpb.Log{},
-		&commonpb.Account{},
-		&commonpb.LedgerLog{},
-		&commonpb.PreparedQueryCursor{},
+		&ledgerpb.Transaction{},
+		&ledgerpb.Log{},
+		&ledgerpb.Account{},
+		&ledgerpb.LedgerLog{},
+		&ledgerpb.PreparedQueryCursor{},
 	} {
 		t.Run(reflect.TypeOf(msg).Elem().Name(), func(t *testing.T) {
 			t.Parallel()

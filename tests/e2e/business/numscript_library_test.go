@@ -3,15 +3,16 @@
 package business
 
 import (
-	"github.com/formancehq/ledger/v3/pkg/actions"
-
-	"github.com/formancehq/ledger/v3/internal/domain"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
+
+	"github.com/formancehq/ledger/v3/internal/domain"
+	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	"github.com/formancehq/ledger/v3/pkg/actions"
 )
 
 var _ = Describe("Numscript Library", Ordered, func() {
@@ -88,7 +89,7 @@ var _ = Describe("Numscript Library", Ordered, func() {
 		It("Should list numscripts at their greatest version", func() {
 			scripts, err := actions.ListNumscripts(sharedCtx, sharedClient, ledgerName)
 			Expect(err).To(Succeed())
-			byName := map[string]*commonpb.NumscriptInfo{}
+			byName := map[string]*ledgerpb.NumscriptInfo{}
 			for _, s := range scripts {
 				byName[s.GetName()] = s
 			}

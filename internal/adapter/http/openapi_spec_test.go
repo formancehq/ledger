@@ -12,7 +12,7 @@ import (
 	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/reflect/protoreflect"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 )
 
 func TestOpenAPISpec_NoBareObjects(t *testing.T) {
@@ -135,7 +135,7 @@ func TestOpenAPISpec_SystemLogPayloadPreservation(t *testing.T) {
 
 	// Reconcile the payload fixtures with the live descriptor and the actual custom
 	// JSON codec. A new variant or a JSON-name change must extend the regression.
-	fields := (&commonpb.LogPayload{}).ProtoReflect().Descriptor().Oneofs().ByName("type").Fields()
+	fields := (&ledgerpb.LogPayload{}).ProtoReflect().Descriptor().Oneofs().ByName("type").Fields()
 	for i := range fields.Len() {
 		field := fields.Get(i)
 		t.Run(field.JSONName(), func(t *testing.T) {
@@ -146,7 +146,7 @@ func TestOpenAPISpec_SystemLogPayloadPreservation(t *testing.T) {
 			require.Len(t, fixture, 1)
 			require.NoError(t, payload.VisitJSON(fixture))
 
-			message := (&commonpb.LogPayload{}).ProtoReflect()
+			message := (&ledgerpb.LogPayload{}).ProtoReflect()
 			message.Set(field, protoreflect.ValueOfMessage(message.NewField(field).Message()))
 			if field.JSONName() != "apply" {
 				// Non-apply fixtures also round-trip through the real wire codec.

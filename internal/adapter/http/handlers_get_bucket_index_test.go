@@ -9,7 +9,8 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
+
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
@@ -20,10 +21,10 @@ func TestHandleGetBucketIndex_Success(t *testing.T) {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().GetIndex(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, req *servicepb.GetIndexRequest) (*commonpb.Index, error) {
+		func(_ context.Context, req *servicepb.GetIndexRequest) (*ledgerpb.Index, error) {
 			capturedReq = req
 
-			return &commonpb.Index{}, nil
+			return &ledgerpb.Index{}, nil
 		}).AnyTimes()
 	srv := newTestServer(t, backend)
 
@@ -46,8 +47,8 @@ func TestHandleGetBucketIndex_NotFound(t *testing.T) {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().GetIndex(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, _ *servicepb.GetIndexRequest) (*commonpb.Index, error) {
-			return nil, commonpb.NewNotFoundError("index not found")
+		func(_ context.Context, _ *servicepb.GetIndexRequest) (*ledgerpb.Index, error) {
+			return nil, ledgerpb.NewNotFoundError("index not found")
 		}).AnyTimes()
 	srv := newTestServer(t, backend)
 

@@ -9,12 +9,12 @@ import (
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 	libtime "github.com/formancehq/go-libs/v5/pkg/types/time"
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
 	"github.com/formancehq/ledger/v3/internal/infra/plan"
 	"github.com/formancehq/ledger/v3/internal/pkg/signal"
 	"github.com/formancehq/ledger/v3/internal/pkg/worker"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/query"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
@@ -27,7 +27,7 @@ const sinkStartupErrorPrefix = "sink startup: "
 type managedSink struct {
 	emitter *Emitter
 	sink    Sink
-	config  *commonpb.SinkConfig
+	config  *ledgerpb.SinkConfig
 }
 
 // Manager manages the lifecycle of event emitters and sinks based on
@@ -35,7 +35,7 @@ type managedSink struct {
 // named sink, each with its own cursor and error status.
 type Manager struct {
 	store          *dal.Store
-	sinkConfigAttr *attributes.Attribute[*commonpb.SinkConfig]
+	sinkConfigAttr *attributes.Attribute[*ledgerpb.SinkConfig]
 	proposer       Proposer
 	builder        *plan.Builder
 	logger         logging.Logger
@@ -227,7 +227,7 @@ func (m *Manager) reconcileGeneration(generation uint64, isLeader, stopped bool)
 	}
 
 	// Build desired state as a map keyed by sink name
-	desired := make(map[string]*commonpb.SinkConfig, len(sinkCfgs))
+	desired := make(map[string]*ledgerpb.SinkConfig, len(sinkCfgs))
 	for _, sc := range sinkCfgs {
 		if sc.GetName() == "" {
 			m.logger.Errorf("Sink config has empty name, skipping")
@@ -278,7 +278,7 @@ func (m *Manager) reconcileGeneration(generation uint64, isLeader, stopped bool)
 
 // startSink creates and starts an emitter+sink pair from a SinkConfig.
 // Returns nil if the sink type is unsupported or creation fails.
-func (m *Manager) startSink(sc *commonpb.SinkConfig, generation uint64) *managedSink {
+func (m *Manager) startSink(sc *ledgerpb.SinkConfig, generation uint64) *managedSink {
 	emitterCfg := DefaultEmitterConfig()
 	if sc.GetFormat() != "" {
 		emitterCfg.Format = Format(sc.GetFormat())
@@ -293,7 +293,7 @@ func (m *Manager) startSink(sc *commonpb.SinkConfig, generation uint64) *managed
 	}
 
 	if len(sc.GetEventTypes()) > 0 {
-		emitterCfg.EventTypes = make(map[commonpb.EventType]struct{}, len(sc.GetEventTypes()))
+		emitterCfg.EventTypes = make(map[ledgerpb.EventType]struct{}, len(sc.GetEventTypes()))
 		for _, et := range sc.GetEventTypes() {
 			emitterCfg.EventTypes[et] = struct{}{}
 		}
@@ -367,7 +367,7 @@ func (m *Manager) startSink(sc *commonpb.SinkConfig, generation uint64) *managed
 	return &managedSink{emitter: emitter, sink: sink, config: sc}
 }
 
-func (m *Manager) readSinkStatus(name string) (*commonpb.SinkStatus, error) {
+func (m *Manager) readSinkStatus(name string) (*ledgerpb.SinkStatus, error) {
 	handle, err := m.store.NewDirectReadHandle()
 	if err != nil {
 		return nil, err
@@ -376,7 +376,7 @@ func (m *Manager) readSinkStatus(name string) (*commonpb.SinkStatus, error) {
 
 	kb := dal.NewKeyBuilder()
 	kb.PutZonePrefix(dal.ZoneGlobal, dal.SubGlobSinkStatus).PutString(name)
-	status, err := dal.ReadProto[*commonpb.SinkStatus](handle, kb.Build())
+	status, err := dal.ReadProto[*ledgerpb.SinkStatus](handle, kb.Build())
 	if err != nil {
 		return nil, fmt.Errorf("reading sink status for %q: %w", name, err)
 	}
@@ -427,8 +427,8 @@ func (m *Manager) reportStartupError(name string, startupErr error, generation u
 	if !current {
 		return
 	}
-	update := &raftcmdpb.EventsSinkUpdate{SinkName: name, Error: &commonpb.SinkError{
-		Message: message, OccurredAt: commonpb.NewTimestamp(libtime.Now()),
+	update := &raftcmdpb.EventsSinkUpdate{SinkName: name, Error: &ledgerpb.SinkError{
+		Message: message, OccurredAt: ledgerpb.NewTimestamp(libtime.Now()),
 	}}
 	ctx, cancel := context.WithTimeout(leaderContext, deliveredCursorUpdateTimeout)
 	defer cancel()
@@ -537,14 +537,14 @@ func (m *Manager) teardown() {
 // createSink creates a single Sink from a SinkConfig entry.
 // HTTP sinks are always available. Other sink types (Kafka, NATS, ClickHouse, Databricks)
 // are only available when compiled with their respective build tags.
-func (m *Manager) createSink(ctx context.Context, sc *commonpb.SinkConfig) (Sink, error) {
+func (m *Manager) createSink(ctx context.Context, sc *ledgerpb.SinkConfig) (Sink, error) {
 	format := Format(sc.GetFormat())
 	if format == "" {
 		format = FormatJSON
 	}
 
 	// HTTP sink is always available (no heavy dependencies).
-	if s, ok := sc.GetType().(*commonpb.SinkConfig_Http); ok {
+	if s, ok := sc.GetType().(*ledgerpb.SinkConfig_Http); ok {
 		return NewHTTPSink(HTTPSinkConfig{
 			Endpoint: s.Http.GetEndpoint(),
 			Secret:   s.Http.GetSecret(),

@@ -141,7 +141,7 @@ func TestParseActualIndexes_Empty(t *testing.T) {
 func TestParseActualIndexes_AllKinds(t *testing.T) {
 	t.Parallel()
 
-	// Shape mirrors protojson of []*commonpb.Index: oneof member inlined under
+	// Shape mirrors protojson of []*ledgerpb.Index: oneof member inlined under
 	// its camelCase name, enums as string names, EmitUnpopulated fills scalars.
 	const out = `[
 	  {"id": {"txBuiltin": "TX_BUILTIN_INDEX_REFERENCE"}, "ledger": "L", "forwardEncodingVersion": 1},

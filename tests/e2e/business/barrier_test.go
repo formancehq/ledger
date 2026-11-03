@@ -5,11 +5,13 @@ package business
 import (
 	"math/big"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
-	"github.com/formancehq/ledger/v3/pkg/actions"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
+
+	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	"github.com/formancehq/ledger/v3/pkg/actions"
 )
 
 var _ = Describe("Barrier", Ordered, func() {
@@ -27,7 +29,7 @@ var _ = Describe("Barrier", Ordered, func() {
 
 	It("Should guarantee prior writes are visible after return", func() {
 		// Create a transaction
-		_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+		_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*ledgerpb.Posting{
 			actions.NewPosting("world", "barrier-test-account", big.NewInt(500), "USD"),
 		}, nil, nil)))
 		Expect(err).To(Succeed())

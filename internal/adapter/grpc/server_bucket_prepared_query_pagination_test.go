@@ -9,7 +9,8 @@ import (
 	"go.uber.org/mock/gomock"
 	"google.golang.org/protobuf/proto"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
+
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
@@ -20,19 +21,19 @@ func TestExecutePreparedQueryAdapterPagination(t *testing.T) {
 			name     string
 			size     uint32
 			expected uint32
-			mode     commonpb.QueryMode
+			mode     ledgerpb.QueryMode
 		}{
-			{"default", 0, 100, commonpb.QueryMode_QUERY_MODE_LIST},
-			{"maximum", 1000, 1000, commonpb.QueryMode_QUERY_MODE_LIST},
-			{"over-maximum", 1001, 1000, commonpb.QueryMode_QUERY_MODE_LIST},
-			{"uint32-maximum", 4294967295, 1000, commonpb.QueryMode_QUERY_MODE_LIST},
-			{"aggregate", 4294967295, 4294967295, commonpb.QueryMode_QUERY_MODE_AGGREGATE_VOLUMES},
+			{"default", 0, 100, ledgerpb.QueryMode_QUERY_MODE_LIST},
+			{"maximum", 1000, 1000, ledgerpb.QueryMode_QUERY_MODE_LIST},
+			{"over-maximum", 1001, 1000, ledgerpb.QueryMode_QUERY_MODE_LIST},
+			{"uint32-maximum", 4294967295, 1000, ledgerpb.QueryMode_QUERY_MODE_LIST},
+			{"aggregate", 4294967295, 4294967295, ledgerpb.QueryMode_QUERY_MODE_AGGREGATE_VOLUMES},
 		} {
 			t.Run(fmt.Sprintf("%s/reverse=%t", tc.name, reverse), func(t *testing.T) {
 				t.Parallel()
 				controller := NewMockController(gomock.NewController(t))
 				server := &BucketServiceServerImpl{ctrl: controller}
-				request := &servicepb.ExecutePreparedQueryRequest{Ledger: "ledger1", QueryName: "accounts", PageSize: tc.size, Reverse: reverse, Mode: tc.mode, Cursor: "cursor", Parameters: map[string]*commonpb.ParameterValue{"address": {Value: &commonpb.ParameterValue_StringValue{StringValue: "users"}}}}
+				request := &servicepb.ExecutePreparedQueryRequest{Ledger: "ledger1", QueryName: "accounts", PageSize: tc.size, Reverse: reverse, Mode: tc.mode, Cursor: "cursor", Parameters: map[string]*ledgerpb.ParameterValue{"address": {Value: &ledgerpb.ParameterValue_StringValue{StringValue: "users"}}}}
 				original := proto.Clone(request).(*servicepb.ExecutePreparedQueryRequest)
 				expected := &servicepb.ExecutePreparedQueryResponse{}
 				controller.EXPECT().ExecutePreparedQuery(gomock.Any(), gomock.Any()).DoAndReturn(

@@ -3,7 +3,8 @@ package check
 import (
 	"fmt"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
+
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/internal/query"
@@ -27,7 +28,7 @@ import (
 type clusterPolicyVerifier struct {
 	// policy is the highest-revision SetClusterPolicy order folded so far, or nil
 	// if none was seen (no policy ever committed).
-	policy *commonpb.ClusterPolicy
+	policy *ledgerpb.ClusterPolicy
 	// liveTruncated records that the audit fold stopped short of the range
 	// end (an audit chain break); the accumulated prefix cannot be compared.
 	liveTruncated bool

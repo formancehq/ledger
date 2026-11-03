@@ -8,8 +8,8 @@ import (
 	"github.com/antithesishq/antithesis-sdk-go/assert"
 	"google.golang.org/grpc/metadata"
 
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/internal/domain"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
@@ -42,10 +42,10 @@ func runInsufficientFunds(ctx context.Context, client servicepb.BucketServiceCli
 				Ledger: ledger,
 				Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
 					CreateTransaction: &servicepb.CreateTransactionPayload{
-						Postings: []*commonpb.Posting{{
+						Postings: []*ledgerpb.Posting{{
 							Source:      "world",
 							Destination: account,
-							Amount:      commonpb.NewUint256FromUint64(fundAmount),
+							Amount:      ledgerpb.NewUint256FromUint64(fundAmount),
 							Asset:       asset,
 						}},
 						Force: true,
@@ -73,10 +73,10 @@ func runInsufficientFunds(ctx context.Context, client servicepb.BucketServiceCli
 				Ledger: ledger,
 				Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
 					CreateTransaction: &servicepb.CreateTransactionPayload{
-						Postings: []*commonpb.Posting{{
+						Postings: []*ledgerpb.Posting{{
 							Source:      account,
 							Destination: "world",
-							Amount:      commonpb.NewUint256FromUint64(fundAmount),
+							Amount:      ledgerpb.NewUint256FromUint64(fundAmount),
 							Asset:       asset,
 						}},
 					},
@@ -124,10 +124,10 @@ func runInsufficientFunds(ctx context.Context, client servicepb.BucketServiceCli
 				Ledger: ledger,
 				Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
 					CreateTransaction: &servicepb.CreateTransactionPayload{
-						Postings: []*commonpb.Posting{{
+						Postings: []*ledgerpb.Posting{{
 							Source:      account,
 							Destination: "world",
-							Amount:      commonpb.NewUint256FromUint64(1),
+							Amount:      ledgerpb.NewUint256FromUint64(1),
 							Asset:       asset,
 						}},
 					},
@@ -163,7 +163,7 @@ func runInsufficientFunds(ctx context.Context, client servicepb.BucketServiceCli
 			Ledger: ledger,
 			Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
 				CreateTransaction: &servicepb.CreateTransactionPayload{
-					Postings: []*commonpb.Posting{{Source: account, Destination: "world", Amount: commonpb.NewUint256FromUint64(1), Asset: asset}},
+					Postings: []*ledgerpb.Posting{{Source: account, Destination: "world", Amount: ledgerpb.NewUint256FromUint64(1), Asset: asset}},
 					Force:    true,
 				},
 			}},

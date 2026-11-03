@@ -7,15 +7,16 @@ import (
 	"strings"
 	"time"
 
-	"github.com/formancehq/ledger/v3/pkg/actions"
-
-	"github.com/formancehq/ledger/v3/internal/domain"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
+
+	"github.com/formancehq/ledger/v3/internal/domain"
+	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	"github.com/formancehq/ledger/v3/pkg/actions"
 )
 
 var _ = Describe("Numscript", Ordered, func() {
@@ -401,7 +402,7 @@ send $amount (
 			applyLog := log.Payload.GetApply()
 			createdTx := applyLog.Log.Data.GetCreatedTransaction()
 			Expect(createdTx.Transaction.Metadata).NotTo(BeNil())
-			metaMap := commonpb.MetadataToGoMap(createdTx.Transaction.Metadata)
+			metaMap := ledgerpb.MetadataToGoMap(createdTx.Transaction.Metadata)
 			Expect(metaMap["type"]).To(Equal("payment"))
 			Expect(metaMap["category"]).To(Equal("purchase"))
 		})
@@ -434,7 +435,7 @@ send $amount (
 				Address: "users:grace:savings",
 			})
 			Expect(err).To(Succeed())
-			metaMap := commonpb.MetadataToGoMap(account.Metadata)
+			metaMap := ledgerpb.MetadataToGoMap(account.Metadata)
 			Expect(metaMap["account_type"]).To(Equal("savings"))
 			Expect(metaMap["created_by"]).To(Equal("numscript"))
 		})

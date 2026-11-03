@@ -11,21 +11,23 @@ import (
 	"os"
 	"time"
 
-	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
-	"github.com/formancehq/go-libs/v5/pkg/testing/testservice"
-	cmdserver "github.com/formancehq/ledger/v3/cmd/server"
-	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
-	"github.com/formancehq/ledger/v3/pkg/actions"
-	"github.com/formancehq/ledger/v3/pkg/grpcprotocol"
-	"github.com/formancehq/ledger/v3/pkg/testserver"
-	"github.com/formancehq/ledger/v3/tests/e2e/testutil"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
+
+	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
+	"github.com/formancehq/go-libs/v5/pkg/testing/testservice"
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
+
+	cmdserver "github.com/formancehq/ledger/v3/cmd/server"
+	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
+	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	"github.com/formancehq/ledger/v3/pkg/actions"
+	"github.com/formancehq/ledger/v3/pkg/grpcprotocol"
+	"github.com/formancehq/ledger/v3/pkg/testserver"
+	"github.com/formancehq/ledger/v3/tests/e2e/testutil"
 )
 
 // newTLSGRPCClient creates a gRPC client that uses TLS with the given CA cert file.
@@ -283,7 +285,7 @@ var _ = Describe("TLS", Ordered, func() {
 
 		It("should serve data over TLS", func() {
 			// Create a transaction to verify full round-trip
-			resp, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction("tls-test-ledger", []*commonpb.Posting{
+			resp, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction("tls-test-ledger", []*ledgerpb.Posting{
 				actions.NewPosting("world", "bank", big.NewInt(1000), "USD"),
 			}, nil, nil)))
 			Expect(err).To(Succeed())
@@ -387,7 +389,7 @@ var _ = Describe("TLS Multi-Node", Ordered, func() {
 			var resp *servicepb.ApplyResponse
 			Eventually(func(g Gomega) {
 				var err error
-				resp, err = servers[0].client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction("tls-multi-ledger", []*commonpb.Posting{
+				resp, err = servers[0].client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction("tls-multi-ledger", []*ledgerpb.Posting{
 					actions.NewPosting("world", "bank", big.NewInt(5000), "USD"),
 				}, nil, nil)))
 				g.Expect(err).To(Succeed())
@@ -424,7 +426,7 @@ var _ = Describe("TLS Multi-Node", Ordered, func() {
 			Expect(resp).NotTo(BeNil())
 
 			// Create a transaction via node 2
-			resp, err = servers[2].client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction("tls-multi-ledger-node1", []*commonpb.Posting{
+			resp, err = servers[2].client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction("tls-multi-ledger-node1", []*ledgerpb.Posting{
 				actions.NewPosting("world", "alice", big.NewInt(100), "EUR"),
 			}, nil, nil)))
 			Expect(err).To(Succeed())

@@ -10,6 +10,7 @@ import (
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 	libtime "github.com/formancehq/go-libs/v5/pkg/types/time"
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 
 	v2 "github.com/formancehq/ledger/v3/internal/adapter/v2"
 	"github.com/formancehq/ledger/v3/internal/adapter/v2/celrewrite"
@@ -19,7 +20,6 @@ import (
 	"github.com/formancehq/ledger/v3/internal/pkg/signal"
 	"github.com/formancehq/ledger/v3/internal/pkg/vtmarshal"
 	"github.com/formancehq/ledger/v3/internal/pkg/worker"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/query"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
@@ -607,9 +607,9 @@ func (w *Worker) publishIdleStatus(ctx context.Context) {
 func (w *Worker) reportError(ctx context.Context, message string) {
 	update := &raftcmdpb.MirrorSyncUpdate{
 		LedgerName: w.ledgerName,
-		Error: &commonpb.MirrorSyncError{
+		Error: &ledgerpb.MirrorSyncError{
 			Message:    message,
-			OccurredAt: &commonpb.Timestamp{Data: uint64(libtime.Now().UnixMicro())},
+			OccurredAt: &ledgerpb.Timestamp{Data: uint64(libtime.Now().UnixMicro())},
 		},
 	}
 
@@ -642,7 +642,7 @@ func (w *Worker) reportError(ctx context.Context, message string) {
 // proposal is the dangerous case.
 func (w *Worker) proposeMirrorSync(ctx context.Context, update *raftcmdpb.MirrorSyncUpdate, label string) bool {
 	cmd := &raftcmdpb.Proposal{
-		Date:           &commonpb.Timestamp{Data: uint64(libtime.Now().UnixMicro())},
+		Date:           &ledgerpb.Timestamp{Data: uint64(libtime.Now().UnixMicro())},
 		CallerSnapshot: commands.SystemCallerSnapshot(commands.ComponentMirror),
 		TechnicalUpdates: []*raftcmdpb.TechnicalUpdate{{
 			Kind: &raftcmdpb.TechnicalUpdate_MirrorSync{MirrorSync: update},
@@ -753,7 +753,7 @@ func (w *Worker) extractMirrorNeeds(cmd *raftcmdpb.Proposal) (*plan.Coverage, []
 			continue
 		}
 
-		var postings []*commonpb.Posting
+		var postings []*ledgerpb.Posting
 		if ct := mi.GetEntry().GetCreatedTransaction(); ct != nil {
 			postings = ct.GetPostings()
 		} else if rt := mi.GetEntry().GetRevertedTransaction(); rt != nil {
@@ -780,18 +780,18 @@ func (w *Worker) extractMirrorNeeds(cmd *raftcmdpb.Proposal) (*plan.Coverage, []
 
 		if sm := mi.GetEntry().GetSavedMetadata(); sm != nil {
 			switch target := sm.GetTarget().GetTarget().(type) {
-			case *commonpb.Target_Account:
+			case *ledgerpb.Target_Account:
 				for key := range sm.GetMetadata() {
 					addAccountMetadata(p, target.Account.GetAddr(), key)
 				}
-			case *commonpb.Target_TransactionId:
+			case *ledgerpb.Target_TransactionId:
 				addTx(p, target.TransactionId)
 			}
 		}
 
 		if dm := mi.GetEntry().GetDeletedMetadata(); dm != nil {
 			switch target := dm.GetTarget().GetTarget().(type) {
-			case *commonpb.Target_Account:
+			case *ledgerpb.Target_Account:
 				// Same tombstone coverage as the admission-side
 				// MirrorIngest.DeletedMetadata path (see admission.go) —
 				// KeyStore.Tombstone lazy-fabricates the Gen0 tombstone
@@ -800,7 +800,7 @@ func (w *Worker) extractMirrorNeeds(cmd *raftcmdpb.Proposal) (*plan.Coverage, []
 					AccountKey: domain.AccountKey{LedgerName: w.ledgerName, Account: target.Account.GetAddr()},
 					Key:        dm.GetKey(),
 				}.Bytes())
-			case *commonpb.Target_TransactionId:
+			case *ledgerpb.Target_TransactionId:
 				addTx(p, target.TransactionId)
 			}
 		}

@@ -6,7 +6,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/pkg/actions"
 
@@ -28,12 +28,12 @@ func TestBulkAbsenceOraclesDetectCommittedActivity(t *testing.T) {
 	drivertest.CheckEmissions(t, func() {
 		ctx, client := drivertest.StartServer(t)
 		require.NoError(t, internal.CreateQueryOracleLedger(ctx, client, ledger,
-			commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE,
-			commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_ADDRESS,
+			ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE,
+			ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_ADDRESS,
 		))
-		request := actions.CreateForceTransactionAction(ledger, []*commonpb.Posting{{
+		request := actions.CreateForceTransactionAction(ledger, []*ledgerpb.Posting{{
 			Source: "world", Destination: account,
-			Amount: commonpb.NewUint256FromUint64(1), Asset: "USD/2",
+			Amount: ledgerpb.NewUint256FromUint64(1), Asset: "USD/2",
 		}}, nil)
 		request.GetApply().GetAction().GetCreateTransaction().Reference = reference
 		resp, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("sensitivity-seed", request))
@@ -43,7 +43,7 @@ func TestBulkAbsenceOraclesDetectCommittedActivity(t *testing.T) {
 
 		// Both real query paths must see the acknowledged seed. This deliberately
 		// seeded effect tests sensitivity; it is not a failed bulk that committed.
-		for _, filter := range []*commonpb.QueryFilter{actions.ReferenceFilter(reference), actions.AddressExactFilter(account)} {
+		for _, filter := range []*ledgerpb.QueryFilter{actions.ReferenceFilter(reference), actions.AddressExactFilter(account)} {
 			ids, err := internal.ReadOracleTransactions(ctx, client, ledger, filter)
 			require.NoError(t, err)
 			require.Equal(t, []uint64{txID}, ids)

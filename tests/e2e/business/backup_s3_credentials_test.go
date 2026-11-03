@@ -16,8 +16,9 @@ import (
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/wait"
 
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
+
 	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/pkg/actions"
 	"github.com/formancehq/ledger/v3/tests/e2e/testutil"
@@ -93,7 +94,7 @@ var _ = Describe("S3 Backup with explicit credentials", Ordered, func() {
 		Expect(err).To(Succeed())
 
 		_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateForceTransactionAction("creds-test",
-			[]*commonpb.Posting{
+			[]*ledgerpb.Posting{
 				actions.NewPosting("world", "users:alice", big.NewInt(1000), "USD"),
 			},
 			nil,
@@ -103,7 +104,7 @@ var _ = Describe("S3 Backup with explicit credentials", Ordered, func() {
 		// Trigger backup with explicit credentials — the server has bogus env vars,
 		// so this will only succeed if the request-level credentials are used.
 		resp, err := clusterClient.Backup(ctx, &clusterpb.BackupRequest{
-			Storage: testutil.S3BackupStorage(&commonpb.S3StorageConfig{
+			Storage: testutil.S3BackupStorage(&ledgerpb.S3StorageConfig{
 				Bucket:          s3CredsBucket,
 				Region:          s3CredsRegion,
 				Endpoint:        minioEndpoint,
@@ -120,7 +121,7 @@ var _ = Describe("S3 Backup with explicit credentials", Ordered, func() {
 	It("should succeed with explicit credentials in the incremental backup request", func() {
 		// Add more data
 		_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateForceTransactionAction("creds-test",
-			[]*commonpb.Posting{
+			[]*ledgerpb.Posting{
 				actions.NewPosting("world", "users:bob", big.NewInt(500), "EUR"),
 			},
 			nil,
@@ -128,7 +129,7 @@ var _ = Describe("S3 Backup with explicit credentials", Ordered, func() {
 		Expect(err).To(Succeed())
 
 		resp, err := clusterClient.IncrementalBackup(ctx, &clusterpb.IncrementalBackupRequest{
-			Storage: testutil.S3BackupStorage(&commonpb.S3StorageConfig{
+			Storage: testutil.S3BackupStorage(&ledgerpb.S3StorageConfig{
 				Bucket:          s3CredsBucket,
 				Region:          s3CredsRegion,
 				Endpoint:        minioEndpoint,
@@ -145,7 +146,7 @@ var _ = Describe("S3 Backup with explicit credentials", Ordered, func() {
 		// Same request but without explicit credentials — should fail because
 		// the server process has bogus AWS env vars.
 		_, err := clusterClient.Backup(ctx, &clusterpb.BackupRequest{
-			Storage: testutil.S3BackupStorage(&commonpb.S3StorageConfig{
+			Storage: testutil.S3BackupStorage(&ledgerpb.S3StorageConfig{
 				Bucket:   s3CredsBucket,
 				Region:   s3CredsRegion,
 				Endpoint: minioEndpoint,

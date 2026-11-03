@@ -6,7 +6,8 @@ import (
 	"math/big"
 	"strconv"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
+
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/pkg/actions"
 )
@@ -160,7 +161,7 @@ send $amount (
 	for _, dept := range departments {
 		reqs = append(reqs,
 			actions.CreateLedgerAction(dept.Ledger, nil),
-			actions.AddAccountTypeWithPersistenceAction(dept.Ledger, "payroll", "payroll:{type}", commonpb.AccountTypePersistence_ACCOUNT_TYPE_TRANSIENT),
+			actions.AddAccountTypeWithPersistenceAction(dept.Ledger, "payroll", "payroll:{type}", ledgerpb.AccountTypePersistence_ACCOUNT_TYPE_TRANSIENT),
 			actions.AddAccountTypeAction(dept.Ledger, "employee", "employee:{id}"),
 			actions.AddAccountTypeAction(dept.Ledger, "expense", "expense:{type}"),
 			actions.SaveNumscriptWithVersionAction(dept.Ledger, "fund_payroll", `vars {
