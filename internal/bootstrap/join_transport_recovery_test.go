@@ -136,7 +136,7 @@ func newJoinRecoveryNode(t *testing.T, id uint64, addr string, peers []node.Peer
 	t.Cleanup(func() { require.NoError(t, pool.Close()) })
 	t.Cleanup(func() { require.NoError(t, servicePool.Close()) })
 	tr := node.NewTransport(logger, pool, meters, id, node.TransportConfig{Reception: []int{32, 32, 32}, Send: []int{32, 32, 32}}, "join-recovery", 1024, addr, addr)
-	member, err := membership.NewMembership(membership.NewPeerStore(store), tr, servicePool, id, addr, addr, instanceID, logger, nil)
+	member, err := membership.NewMembership(membership.NewPeerStore(store), tr, servicePool, id, addr, addr, instanceID, logger, membership.NoopClusterPolicyProvider)
 	require.NoError(t, err)
 	cacheStore, err := cache.New(1000, meter)
 	require.NoError(t, err)
