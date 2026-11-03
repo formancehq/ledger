@@ -95,8 +95,10 @@ index. Both directions share half-open ID range encoding without overflowing
 an unbounded maximum. The existing forward log singleton-MaxUint64 point
 shortcut and reverse bounded scan remain directional construction choices.
 
-Resolvers own their encoded keys and open no iterators. Constructors retain
-pin gates, cleanup, profiling and physical traversal. Streaming leaves still
+Resolvers own their encoded keys and do not construct or retain result
+iterators. ID point-existence checks open short-lived bounded Pebble iterators
+and close them before returning. Constructors retain pin gates, cleanup,
+profiling and physical traversal. Streaming leaves still
 seek to the cursor and stop at page lookahead; value-ordered ranges and
 transaction address unions retain their existing single materialization.
 

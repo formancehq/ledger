@@ -10,7 +10,8 @@ import (
 )
 
 // These resolvers prepare predicates and owned keys without constructing or
-// retaining iterators. Callers choose physical traversal and own its cleanup.
+// retaining result iterators. ID point-existence probes open and close bounded
+// Pebble iterators before returning. Callers own result traversal and cleanup.
 func resolveReferenceCondition(ctx *compileCtx, rc *commonpb.ReferenceCondition) (string, []byte, error) {
 	if _, err := requireIndexReady(ctx,
 		indexes.TxBuiltinID(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE),
