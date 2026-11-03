@@ -77,7 +77,13 @@ func authUnaryInterceptor(cfg internalauth.AuthConfig, peerOnly bool) ggrpc.Unar
 			if err := requirePeerCredential(ctx, cfg); err != nil {
 				return nil, err
 			}
-			ctx = internalauth.WithClusterInternal(ctx, true)
+			// A secretless peer listener is intentionally unauthenticated. It is
+			// isolated by the network boundary, but it must not be treated as an
+			// authenticated forwarding hop: otherwise a reachable client could
+			// forge forwarded caller attribution.
+			if cfg.ClusterSecret != "" {
+				ctx = internalauth.WithClusterInternal(ctx, true)
+			}
 		}
 		policy, protected, err := protectedRPCPolicy(info.FullMethod)
 		if err != nil {
@@ -107,7 +113,9 @@ func authStreamInterceptor(cfg internalauth.AuthConfig, peerOnly bool) ggrpc.Str
 			if err := requirePeerCredential(ctx, cfg); err != nil {
 				return err
 			}
-			ctx = internalauth.WithClusterInternal(ctx, true)
+			if cfg.ClusterSecret != "" {
+				ctx = internalauth.WithClusterInternal(ctx, true)
+			}
 		} else if err := rejectDirectClusterSecret(ctx, cfg); err != nil {
 			return err
 		}
