@@ -20,7 +20,9 @@ func TestHandleGetEventsSinks_Success(t *testing.T) {
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().GetEventsSinks(gomock.Any()).DoAndReturn(
 		func(_ context.Context) ([]*commonpb.SinkConfig, []*commonpb.SinkStatus, error) {
-			return []*commonpb.SinkConfig{{Name: "kafka"}},
+			return []*commonpb.SinkConfig{{Name: "kafka", EventTypes: []commonpb.EventType{
+					commonpb.EventType_COMMITTED_TRANSACTION, commonpb.EventType(99),
+				}}},
 				[]*commonpb.SinkStatus{{SinkName: "kafka", Cursor: 42}}, nil
 		}).AnyTimes()
 	srv := newTestServer(t, backend)
@@ -43,6 +45,7 @@ func TestHandleGetEventsSinks_Success(t *testing.T) {
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &body))
 	require.Len(t, body.Data.Sinks, 1)
 	require.Len(t, body.Data.SinkStatuses, 1)
+	require.Equal(t, []any{"COMMITTED_TRANSACTION", float64(99)}, body.Data.Sinks[0]["eventTypes"])
 	require.Equal(t, "kafka", body.Data.SinkStatuses[0]["sinkName"])
 }
 

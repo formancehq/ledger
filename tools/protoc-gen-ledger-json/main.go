@@ -281,6 +281,9 @@ func goJSONType(field protoreflect.FieldDescriptor, oneof bool) string {
 
 func jsonAssignment(access string, field *protogen.Field, oneof bool) string {
 	if field.Desc.IsList() {
+		if field.Desc.Kind() == protoreflect.EnumKind {
+			return listEnumJSONAssignment(access, field)
+		}
 		return "func() any { if " + access + " == nil { return []any{} }; return " + access + " }()"
 	}
 	if field.Desc.IsMap() {
@@ -290,6 +293,12 @@ func jsonAssignment(access string, field *protogen.Field, oneof bool) string {
 		return enumJSONAssignment(access, field, oneof)
 	}
 	return enumOrValue(access, field.Desc)
+}
+
+func listEnumJSONAssignment(access string, field *protogen.Field) string {
+	expression := "func() any { if " + access + " == nil { return []any{} }; out := make([]any, len(" + access + ")); for i := range " + access + " { out[i] = "
+	expression += enumJSONAssignment(access+"[i]", field, false)
+	return expression + "; }; return out }()"
 }
 
 func enumJSONAssignment(access string, field *protogen.Field, oneof bool) string {

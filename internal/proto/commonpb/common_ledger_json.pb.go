@@ -383,7 +383,32 @@ func (x *SinkConfig) MarshalJSON() ([]byte, error) {
 				if x.EventTypes == nil {
 					return []any{}
 				}
-				return x.EventTypes
+				out := make([]any, len(x.EventTypes))
+				for i := range x.EventTypes {
+					out[i] = func() any {
+						switch x.EventTypes[i] {
+						case EventType_EVENT_TYPE_UNSPECIFIED:
+							return "EVENT_TYPE_UNSPECIFIED"
+						case EventType_COMMITTED_TRANSACTION:
+							return "COMMITTED_TRANSACTION"
+						case EventType_REVERTED_TRANSACTION:
+							return "REVERTED_TRANSACTION"
+						case EventType_SAVED_METADATA:
+							return "SAVED_METADATA"
+						case EventType_DELETED_METADATA:
+							return "DELETED_METADATA"
+						case EventType_CREATED_LEDGER:
+							return "CREATED_LEDGER"
+						case EventType_DELETED_LEDGER:
+							return "DELETED_LEDGER"
+						case EventType_SKIPPED_ORDER:
+							return "SKIPPED_ORDER"
+						default:
+							return int32(x.EventTypes[i])
+						}
+					}()
+				}
+				return out
 			}(),
 			ControllerId: x.ControllerId,
 		})
@@ -406,7 +431,32 @@ func (x *SinkConfig) MarshalJSON() ([]byte, error) {
 				if x.EventTypes == nil {
 					return []any{}
 				}
-				return x.EventTypes
+				out := make([]any, len(x.EventTypes))
+				for i := range x.EventTypes {
+					out[i] = func() any {
+						switch x.EventTypes[i] {
+						case EventType_EVENT_TYPE_UNSPECIFIED:
+							return "EVENT_TYPE_UNSPECIFIED"
+						case EventType_COMMITTED_TRANSACTION:
+							return "COMMITTED_TRANSACTION"
+						case EventType_REVERTED_TRANSACTION:
+							return "REVERTED_TRANSACTION"
+						case EventType_SAVED_METADATA:
+							return "SAVED_METADATA"
+						case EventType_DELETED_METADATA:
+							return "DELETED_METADATA"
+						case EventType_CREATED_LEDGER:
+							return "CREATED_LEDGER"
+						case EventType_DELETED_LEDGER:
+							return "DELETED_LEDGER"
+						case EventType_SKIPPED_ORDER:
+							return "SKIPPED_ORDER"
+						default:
+							return int32(x.EventTypes[i])
+						}
+					}()
+				}
+				return out
 			}(),
 			ControllerId: x.ControllerId,
 		})
@@ -429,7 +479,32 @@ func (x *SinkConfig) MarshalJSON() ([]byte, error) {
 				if x.EventTypes == nil {
 					return []any{}
 				}
-				return x.EventTypes
+				out := make([]any, len(x.EventTypes))
+				for i := range x.EventTypes {
+					out[i] = func() any {
+						switch x.EventTypes[i] {
+						case EventType_EVENT_TYPE_UNSPECIFIED:
+							return "EVENT_TYPE_UNSPECIFIED"
+						case EventType_COMMITTED_TRANSACTION:
+							return "COMMITTED_TRANSACTION"
+						case EventType_REVERTED_TRANSACTION:
+							return "REVERTED_TRANSACTION"
+						case EventType_SAVED_METADATA:
+							return "SAVED_METADATA"
+						case EventType_DELETED_METADATA:
+							return "DELETED_METADATA"
+						case EventType_CREATED_LEDGER:
+							return "CREATED_LEDGER"
+						case EventType_DELETED_LEDGER:
+							return "DELETED_LEDGER"
+						case EventType_SKIPPED_ORDER:
+							return "SKIPPED_ORDER"
+						default:
+							return int32(x.EventTypes[i])
+						}
+					}()
+				}
+				return out
 			}(),
 			ControllerId: x.ControllerId,
 		})
@@ -452,7 +527,32 @@ func (x *SinkConfig) MarshalJSON() ([]byte, error) {
 				if x.EventTypes == nil {
 					return []any{}
 				}
-				return x.EventTypes
+				out := make([]any, len(x.EventTypes))
+				for i := range x.EventTypes {
+					out[i] = func() any {
+						switch x.EventTypes[i] {
+						case EventType_EVENT_TYPE_UNSPECIFIED:
+							return "EVENT_TYPE_UNSPECIFIED"
+						case EventType_COMMITTED_TRANSACTION:
+							return "COMMITTED_TRANSACTION"
+						case EventType_REVERTED_TRANSACTION:
+							return "REVERTED_TRANSACTION"
+						case EventType_SAVED_METADATA:
+							return "SAVED_METADATA"
+						case EventType_DELETED_METADATA:
+							return "DELETED_METADATA"
+						case EventType_CREATED_LEDGER:
+							return "CREATED_LEDGER"
+						case EventType_DELETED_LEDGER:
+							return "DELETED_LEDGER"
+						case EventType_SKIPPED_ORDER:
+							return "SKIPPED_ORDER"
+						default:
+							return int32(x.EventTypes[i])
+						}
+					}()
+				}
+				return out
 			}(),
 			ControllerId: x.ControllerId,
 		})
@@ -475,7 +575,32 @@ func (x *SinkConfig) MarshalJSON() ([]byte, error) {
 				if x.EventTypes == nil {
 					return []any{}
 				}
-				return x.EventTypes
+				out := make([]any, len(x.EventTypes))
+				for i := range x.EventTypes {
+					out[i] = func() any {
+						switch x.EventTypes[i] {
+						case EventType_EVENT_TYPE_UNSPECIFIED:
+							return "EVENT_TYPE_UNSPECIFIED"
+						case EventType_COMMITTED_TRANSACTION:
+							return "COMMITTED_TRANSACTION"
+						case EventType_REVERTED_TRANSACTION:
+							return "REVERTED_TRANSACTION"
+						case EventType_SAVED_METADATA:
+							return "SAVED_METADATA"
+						case EventType_DELETED_METADATA:
+							return "DELETED_METADATA"
+						case EventType_CREATED_LEDGER:
+							return "CREATED_LEDGER"
+						case EventType_DELETED_LEDGER:
+							return "DELETED_LEDGER"
+						case EventType_SKIPPED_ORDER:
+							return "SKIPPED_ORDER"
+						default:
+							return int32(x.EventTypes[i])
+						}
+					}()
+				}
+				return out
 			}(),
 			ControllerId: x.ControllerId,
 		})
@@ -496,7 +621,32 @@ func (x *SinkConfig) MarshalJSON() ([]byte, error) {
 				if x.EventTypes == nil {
 					return []any{}
 				}
-				return x.EventTypes
+				out := make([]any, len(x.EventTypes))
+				for i := range x.EventTypes {
+					out[i] = func() any {
+						switch x.EventTypes[i] {
+						case EventType_EVENT_TYPE_UNSPECIFIED:
+							return "EVENT_TYPE_UNSPECIFIED"
+						case EventType_COMMITTED_TRANSACTION:
+							return "COMMITTED_TRANSACTION"
+						case EventType_REVERTED_TRANSACTION:
+							return "REVERTED_TRANSACTION"
+						case EventType_SAVED_METADATA:
+							return "SAVED_METADATA"
+						case EventType_DELETED_METADATA:
+							return "DELETED_METADATA"
+						case EventType_CREATED_LEDGER:
+							return "CREATED_LEDGER"
+						case EventType_DELETED_LEDGER:
+							return "DELETED_LEDGER"
+						case EventType_SKIPPED_ORDER:
+							return "SKIPPED_ORDER"
+						default:
+							return int32(x.EventTypes[i])
+						}
+					}()
+				}
+				return out
 			}(),
 			ControllerId: x.ControllerId,
 		})
