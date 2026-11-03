@@ -38,42 +38,6 @@ type ledgerctlExec func(
 
 const scaleDownLeaderNodeID int32 = 1
 
-// uint64JSON decodes protobuf JSON uint64 fields, which protojson renders as
-// JSON strings. The numeric form is accepted as a compatibility measure for
-// older ledgerctl versions and test fixtures, but values are always parsed as
-// uint64 without going through a floating-point representation.
-type uint64JSON uint64
-
-func (v *uint64JSON) UnmarshalJSON(data []byte) error {
-	if len(data) > 0 && data[0] == '"' {
-		var value string
-		if err := json.Unmarshal(data, &value); err != nil {
-			return err
-		}
-		parsed, err := strconv.ParseUint(value, 10, 64)
-		if err != nil {
-			return err
-		}
-		*v = uint64JSON(parsed)
-
-		return nil
-	}
-
-	decoder := json.NewDecoder(bytes.NewReader(data))
-	decoder.UseNumber()
-	var value json.Number
-	if err := decoder.Decode(&value); err != nil {
-		return err
-	}
-	parsed, err := strconv.ParseUint(string(value), 10, 64)
-	if err != nil {
-		return err
-	}
-	*v = uint64JSON(parsed)
-
-	return nil
-}
-
 // podExec runs a command inside a container using the Kubernetes exec API.
 func podExec(ctx context.Context, cfg *rest.Config, clientset kubernetes.Interface,
 	namespace, podName, container string, command []string,
@@ -315,7 +279,7 @@ func raftNodePresent(ctx context.Context, cfg *rest.Config, clientset kubernetes
 	var state struct {
 		State string `json:"state"`
 		Nodes []struct {
-			ID uint64JSON `json:"id"`
+			ID uint32 `json:"id"`
 		} `json:"nodes"`
 	}
 	if err := json.Unmarshal([]byte(result.Stdout), &state); err != nil {
@@ -326,7 +290,7 @@ func raftNodePresent(ctx context.Context, cfg *rest.Config, clientset kubernetes
 	}
 
 	for _, member := range state.Nodes {
-		if uint64(member.ID) == uint64(nodeID) {
+		if member.ID == uint32(nodeID) {
 			return true, nil
 		}
 	}
