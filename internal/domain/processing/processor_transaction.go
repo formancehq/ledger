@@ -134,7 +134,7 @@ func processCreateTransaction(ledger string, order *raftcmdpb.CreateTransactionO
 	// here. Without this guard the FSM commits a zero-posting log entry
 	// (#452).
 	if len(result.Postings) == 0 {
-		if len(result.TransactionMetadata) > 0 && (hasScriptAccountMetadataUpdates(result.AccountsMetadata) || hasAccountMetadataUpdates(order.GetAccountMetadata())) {
+		if (len(result.TransactionMetadata) > 0 || len(order.GetMetadata()) > 0) && (hasScriptAccountMetadataUpdates(result.AccountsMetadata) || hasAccountMetadataUpdates(order.GetAccountMetadata())) {
 			return nil, domain.ErrMetadataOnlyTransactionMetadata
 		}
 		if hasScriptAccountMetadataUpdates(result.AccountsMetadata) || hasAccountMetadataUpdates(order.GetAccountMetadata()) {
