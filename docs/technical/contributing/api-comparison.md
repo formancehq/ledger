@@ -762,7 +762,7 @@ ledgerctl transactions get --ledger <ledger-name> --id <transaction-id>
 
 ### 8. Mirror Ledgers
 
-Mirror mode enables one-way synchronization from an existing v2 ledger into a v3 ledger. The mirror ledger is read-only until promoted to normal mode.
+Mirror mode enables one-way synchronization from an existing v2 ledger into a v3 ledger. Mirrored transactions and metadata are read-only until promotion to normal mode. Ledger-local KV entries can be written while the ledger is in mirror mode; they are not imported from the v2 source.
 
 **Create a mirror ledger:** `POST /v3/{ledgerName}`
 
@@ -793,7 +793,7 @@ list is fixed at creation and is returned in `mirrorSource.assetMappings` by
 `GET /v3/{ledgerName}`. See
 [asset mappings](../architecture/subsystems/events-mirror/mirror.md#asset-mappings).
 
-**Write guard:** All direct write operations (create transaction, save metadata, delete metadata, revert transaction) are rejected on mirror-mode ledgers with HTTP 409 (`LEDGER_IN_MIRROR_MODE`) or gRPC `FailedPrecondition`.
+**Write guard:** Direct transaction and metadata writes (create transaction, save metadata, delete metadata, revert transaction) are rejected on mirror-mode ledgers with HTTP 409 (`LEDGER_IN_MIRROR_MODE`) or gRPC `FailedPrecondition`. PutKV and DeleteKV update ledger-local KV entries and remain available with ledger write permission.
 
 **Sync progress:** `GET /v3/{ledgerName}` returns a `mirrorSyncProgress` object for mirror ledgers with:
 - `state`: `SYNCING` (catching up with history) or `FOLLOWING` (up to date)
@@ -824,7 +824,7 @@ recreate it with the needed `assetMappings` or `drop` rewrite rules.
 
 Converts the mirror ledger to normal mode. After promotion:
 - The mirror worker is stopped
-- The ledger accepts direct writes
+- The ledger accepts direct transaction and metadata writes
 - The `mode` changes from `MIRROR` to `NORMAL`
 - The `mirrorSource` configuration is cleared
 
