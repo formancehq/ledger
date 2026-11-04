@@ -23,6 +23,7 @@ type fixtureDigestServer struct {
 	hash         []byte
 	hashForRange func(uint64, uint64) []byte
 	head         uint64
+	applied      uint64
 }
 
 func (s *fixtureDigestServer) GetRangeDigest(_ context.Context, req *rafttransportpb.GetRangeDigestRequest) (*rafttransportpb.GetRangeDigestResponse, error) {
@@ -33,11 +34,17 @@ func (s *fixtureDigestServer) GetRangeDigest(_ context.Context, req *rafttranspo
 
 	return &rafttransportpb.GetRangeDigestResponse{
 		FirstLogSequence: req.GetFirstLogSequence(), LastLogSequence: req.GetLastLogSequence(),
-		DigestVersion: DigestVersion, Digest: hash, AppliedIndex: req.GetMinAppliedIndex(),
+		DigestVersion: DigestVersion, Digest: hash, AppliedIndex: func() uint64 {
+			if s.applied != 0 {
+				return s.applied
+			}
+			return req.GetMinAppliedIndex()
+		}(),
 		LastLogSequenceOnNode: func() uint64 {
 			if s.head != 0 {
 				return s.head
 			}
+
 			return req.GetLastLogSequence()
 		}(),
 	}, nil
@@ -64,6 +71,29 @@ func TestObserverReportsPeerLogSuffix(t *testing.T) {
 	observer.comparePeerAtHead(t.Context(), 2, cursor, 1, 50, 5, 50)
 	require.Equal(t, uint64(51), cursor.next)
 	require.NotEmpty(t, cursor.lastMismatch)
+}
+
+func TestObserverDefersPeerSuffixAtNewerAppliedHorizon(t *testing.T) {
+	t.Parallel()
+	listener := bufconn.Listen(1024 * 1024)
+	remote := &fixtureDigestServer{hash: make([]byte, 32), head: 100, applied: 6}
+	server := grpc.NewServer()
+	rafttransportpb.RegisterLogIntegrityServiceServer(server, remote)
+	go func() { _ = server.Serve(listener) }()
+	t.Cleanup(server.Stop)
+	conn, err := grpc.NewClient("passthrough:///peer-newer-horizon", grpc.WithContextDialer(func(context.Context, string) (net.Conn, error) {
+		return listener.Dial()
+	}), grpc.WithTransportCredentials(insecure.NewCredentials()))
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, conn.Close()) })
+
+	local := &fixtureDigestServer{hash: make([]byte, 32)}
+	observer := NewObserver(nil, nil, fixturePeerConnection{conn}, local,
+		logging.FromContext(logging.TestingContext()), noop.NewMeterProvider().Meter("test"))
+	cursor := &peerCursor{next: 1}
+	observer.comparePeerAtHead(t.Context(), 2, cursor, 1, 50, 5, 50)
+	require.Equal(t, uint64(51), cursor.next)
+	require.Empty(t, cursor.lastMismatch)
 }
 
 func fixtureRangeHash(values []byte) func(uint64, uint64) []byte {

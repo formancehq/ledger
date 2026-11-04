@@ -7,7 +7,7 @@ records the result produced by FSM application. Equal audit hashes therefore
 do not by themselves show that every node produced the same result. Operators
 need a prompt signal when replicas persist different results at the same global
 log sequence. The on-demand checker remains the authority for comparing the
-whole primary store with audited history; this observer provides a narrower,
+implemented audit-derived projections with audited history; this observer provides a narrower,
 continuous cross-replica signal.
 
 The mechanism adds no persisted field, hash chain, Raft entry, or client API.
