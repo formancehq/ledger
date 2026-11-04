@@ -1,9 +1,9 @@
 package oracle
 
 import (
-	"fmt"
 	"context"
 	"errors"
+	"fmt"
 	"maps"
 	"math/big"
 	"slices"
@@ -86,10 +86,7 @@ func (s LedgerState) NumscriptContent(name, version string) (string, bool) {
 
 // Numscripts returns every stored library version.
 func (s LedgerState) Numscripts() map[NumscriptKey]string {
-	out := make(map[NumscriptKey]string, s.numscripts.Len())
-	for k, v := range s.numscripts.All() {
-		out[k] = v
-	}
+	out := maps.Collect(s.numscripts.All())
 
 	return out
 }
@@ -424,8 +421,7 @@ func (s *LedgerState) produceScriptWith(ct *servicepb.CreateTransactionPayload, 
 
 	result, runErr := parseScript(text).result.Run(context.Background(), vars, store)
 	if runErr != nil {
-		var missing numscript.MissingFundsErr
-		if errors.As(runErr, &missing) {
+		if _, ok := errors.AsType[numscript.MissingFundsErr](runErr); ok {
 			return scriptProduct{}, nil, domain.ErrReasonInsufficientFunds
 		}
 
@@ -433,8 +429,7 @@ func (s *LedgerState) produceScriptWith(ct *servicepb.CreateTransactionPayload, 
 			return scriptProduct{}, nil, domain.ErrReasonNumscriptExecutionError
 		}
 
-		var described domain.SerializableError
-		if errors.As(runErr, &described) {
+		if described, ok := errors.AsType[domain.SerializableError](runErr); ok {
 			return scriptProduct{}, nil, described.Reason()
 		}
 
@@ -568,7 +563,7 @@ func mergeScriptMetadata(ct *servicepb.CreateTransactionPayload, product scriptP
 			continue
 		}
 
-		maps.Copy(existing.Values, mm.GetValues())
+		maps.Copy(existing.GetValues(), mm.GetValues())
 	}
 
 	return txMeta, accountMeta
@@ -798,7 +793,6 @@ func (s *LedgerState) foldScriptEffects(ct *servicepb.CreateTransactionPayload, 
 		}
 	}
 }
-
 
 // isScriptError reports whether an interpreter error is a failure the script
 // caused — its text, its vars, or the balances and metadata it read — which the
