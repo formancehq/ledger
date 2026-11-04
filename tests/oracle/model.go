@@ -947,8 +947,6 @@ func (g GlobalState) ApplyAdmitted(bulk Bulk, admission Admission) ApplyResult {
 		return ApplyResult{OK: false, Reason: admission.reason, State: g}
 	}
 
-	forwarded := admission.forwarded
-
 	// Per-batch idempotency, checked after admission's structural and maintenance
 	// gates and before any other FSM outcome — mirroring the server,
 	// where the dedup runs in the apply path ahead of ProcessOrders. Only
@@ -963,6 +961,13 @@ func (g GlobalState) ApplyAdmitted(bulk Bulk, admission Admission) ApplyResult {
 
 			return ApplyResult{OK: true, State: g, Orders: fo.orders}
 		}
+	}
+
+	// A forwarded order means the batch was never fully prepared: the FSM
+	// rejects the whole proposal before executing any order, so no earlier
+	// order's business outcome is ever reached.
+	if len(admission.forwarded) > 0 {
+		return ApplyResult{Reason: domain.ErrReasonPreloadUnavailable, State: g, Orders: []OrderResult{{Reason: domain.ErrReasonPreloadUnavailable}}}
 	}
 
 	next := g.clone()
@@ -988,10 +993,7 @@ func (g GlobalState) ApplyAdmitted(bulk Bulk, admission Admission) ApplyResult {
 	// not declare volume coverage for — from one that already existed.
 	batchInitialTxCount := map[string]uint64{}
 
-	for i, req := range bulk.Requests {
-		if forwarded[i] {
-			return ApplyResult{Reason: domain.ErrReasonPreloadUnavailable, State: g, Orders: append(orders, OrderResult{Reason: domain.ErrReasonPreloadUnavailable})}
-		}
+	for _, req := range bulk.Requests {
 		if oc, handled := next.applyCheckpoint(req); handled {
 			orders = append(orders, oc)
 			if !oc.OK {
