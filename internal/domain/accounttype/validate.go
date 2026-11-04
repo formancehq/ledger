@@ -20,8 +20,8 @@ func ValidatePattern(pattern string) error {
 // ValidateSegmentTypes checks that segment_types references valid variable names
 // from the pattern and applies the constraint to each segment.
 func ValidateSegmentTypes(segments []PatternSegment, segTypes map[string]*commonpb.SegmentType) error {
-	return applySegmentTypes(segments, slices.Sorted(maps.Keys(segTypes)), func(name string) any {
-		return segTypes[name].GetConstraint()
+	return applySegmentTypes(segments, slices.Sorted(maps.Keys(segTypes)), func(name string) commonpb.SegmentTypeReader {
+		return segTypes[name].AsReader()
 	})
 }
 
@@ -38,22 +38,19 @@ func validateSegmentTypesReader(segments []PatternSegment, segTypes commonpb.Acc
 
 	slices.Sort(names)
 
-	return applySegmentTypes(segments, names, func(name string) any {
+	return applySegmentTypes(segments, names, func(name string) commonpb.SegmentTypeReader {
 		st, _ := segTypes.Get(name)
-		if st == nil {
-			return nil
-		}
 
-		return st.GetConstraint()
+		return st
 	})
 }
 
 // applySegmentTypes validates declared segment types against the pattern's
 // variable names and installs the corresponding per-segment matchers.
 // Iteration order is caller-provided (sorted) so error selection is
-// deterministic across replicas (invariant #2). get returns the constraint
-// for a declared variable name, or nil when the stored type carries none.
-func applySegmentTypes(segments []PatternSegment, names []string, get func(name string) any) error {
+// deterministic across replicas (invariant #2). get returns the read-only
+// segment type for a declared variable name, or nil when none is stored.
+func applySegmentTypes(segments []PatternSegment, names []string, get func(name string) commonpb.SegmentTypeReader) error {
 	vars := make(map[string]int, len(segments))
 
 	for i := range segments {
@@ -81,27 +78,28 @@ func applySegmentTypes(segments []PatternSegment, names []string, get func(name 
 	return nil
 }
 
-func buildMatcher(constraint any) (SegmentMatcher, error) {
-	if constraint == nil {
+func buildMatcher(segmentType commonpb.SegmentTypeReader) (SegmentMatcher, error) {
+	if segmentType == nil {
 		return nil, nil
 	}
 
-	switch c := constraint.(type) {
-	case *commonpb.SegmentType_Regex:
-		compiled, err := regexp.Compile("^(?:" + c.Regex + ")$")
+	switch segmentType.WhichConstraint() {
+	case commonpb.SegmentType_ConstraintReaderCase_Regex:
+		pattern := segmentType.GetRegex()
+		compiled, err := regexp.Compile("^(?:" + pattern + ")$")
 		if err != nil {
-			return nil, fmt.Errorf("invalid regex %q: %w", c.Regex, err)
+			return nil, fmt.Errorf("invalid regex %q: %w", pattern, err)
 		}
 
 		return compiled.MatchString, nil
 
-	case *commonpb.SegmentType_Uuid:
+	case commonpb.SegmentType_ConstraintReaderCase_Uuid:
 		return matchUUID, nil
 
-	case *commonpb.SegmentType_Uint64:
+	case commonpb.SegmentType_ConstraintReaderCase_Uint64:
 		return matchUint64, nil
 
-	case *commonpb.SegmentType_Bytes:
+	case commonpb.SegmentType_ConstraintReaderCase_Bytes:
 		return matchHexBytes, nil
 
 	default:
