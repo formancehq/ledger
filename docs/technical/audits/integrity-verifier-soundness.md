@@ -323,3 +323,16 @@ moves the registration to a padding alias, confirms the canonical point lookup
 misses, and requires both the noncanonical-key and the missing-registration
 `INDEX_MISMATCH`. Other passes that decode ledger-name-keyed rows and match on
 the logical key are candidates for the same probe.
+
+## Index registrations without Id (EN-3237)
+
+A value field must not decide whether a row takes part in membership checks.
+Skipping a stored `Index` without an `Id` before parsing its key lets an
+unaudited Ledger-only row at a surplus ledger-scoped key leave `Check` clean.
+Every production writer sets `Id`, so `compareIndexes` decides membership from
+the physical key and lets the identity comparison report the missing `Id`. `checker_index_surplus_test.go` runs full `Check` on a real
+FSM-produced registry: a surplus row with and without `Id` must each produce
+exactly one "no matching CreateIndex" `INDEX_MISMATCH`, and an audited row
+stripped of its `Id` must produce exactly one `Id`-drift `INDEX_MISMATCH`.
+`collectIndexedFields` in the reverse-map pass still ignores rows without `Id`;
+that only widens its orphan verdicts, and `compareIndexes` reports the row.
