@@ -290,7 +290,8 @@ All write operations support idempotency keys:
 | Delete transaction metadata | `DELETE /{ledger}/transactions/{id}/metadata/{key}` | Yes |
 | Create ledger | `POST /{ledger}` | Yes |
 | Delete ledger | `DELETE /{ledger}` | Yes |
-| Bulk operations | `POST /{ledger}/bulk` | Yes (per atomic batch) |
+| Bulk operations (non-atomic, default) | `POST /{ledger}/bulk` | Per-element `ik`; `Idempotency-Key` header ignored |
+| Bulk operations (atomic) | `POST /{ledger}/bulk?atomic=true` | Batch-level `Idempotency-Key` header; per-element `ik` ignored |
 
 ## Key Validation
 
