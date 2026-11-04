@@ -227,7 +227,10 @@ var _ = Describe("HTTP request signing", func() {
 	})
 
 	It("preserves signature rejections forwarded from a follower to its leader", func() {
-		_, nodes, _, leaderID := testutil.SetupMultiNodeCluster(2)
+		ctx, nodes, _, leaderID := testutil.SetupMultiNodeCluster(2)
+		DeferCleanup(func() {
+			testutil.StopServers(ctx, nodes)
+		})
 		var follower *testutil.ServiceWithClient
 		for _, candidate := range nodes {
 			if candidate.NodeID == *leaderID {
