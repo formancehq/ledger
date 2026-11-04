@@ -195,6 +195,22 @@ func (m *LedgerScopedOrder) MarshalToSizedBufferDeterministicVT(dAtA []byte) (in
 			i--
 			dAtA[i] = 0x62
 		}
+	case *LedgerScopedOrder_PutKv:
+		if v.PutKv != nil {
+			size, _ := v.PutKv.MarshalToSizedBufferVT(dAtA[:i])
+			i -= size
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+			i--
+			dAtA[i] = 0x6a
+		}
+	case *LedgerScopedOrder_DeleteKv:
+		if v.DeleteKv != nil {
+			size, _ := v.DeleteKv.MarshalToSizedBufferVT(dAtA[:i])
+			i -= size
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+			i--
+			dAtA[i] = 0x72
+		}
 	}
 	return len(dAtA) - i, nil
 }
@@ -1984,6 +2000,28 @@ func (m *RemovedMemberEntry) MarshalDeterministicVT(dAtA []byte) []byte {
 }
 
 func (m *AttributeID) MarshalDeterministicVT(dAtA []byte) []byte {
+	if m == nil {
+		return dAtA
+	}
+	b, err := m.MarshalVT()
+	if err != nil {
+		panic("MarshalDeterministicVT: " + err.Error())
+	}
+	return append(dAtA, b...)
+}
+
+func (m *PutKVOrder) MarshalDeterministicVT(dAtA []byte) []byte {
+	if m == nil {
+		return dAtA
+	}
+	b, err := m.MarshalVT()
+	if err != nil {
+		panic("MarshalDeterministicVT: " + err.Error())
+	}
+	return append(dAtA, b...)
+}
+
+func (m *DeleteKVOrder) MarshalDeterministicVT(dAtA []byte) []byte {
 	if m == nil {
 		return dAtA
 	}

@@ -60,6 +60,8 @@ func RPCAuthPolicyForMethod(fullMethod string) (*MethodAuthPolicy, error) {
 		return &MethodAuthPolicy{Policy: &MethodAuthPolicy_FixedScope{FixedScope: AuthScope_AUTH_SCOPE_LEDGER_READ}}, nil
 	case "/ledger.BucketService/GetLedger":
 		return &MethodAuthPolicy{Policy: &MethodAuthPolicy_FixedScope{FixedScope: AuthScope_AUTH_SCOPE_LEDGER_READ}}, nil
+	case "/ledger.BucketService/GetKV":
+		return &MethodAuthPolicy{Policy: &MethodAuthPolicy_FixedScope{FixedScope: AuthScope_AUTH_SCOPE_LEDGER_READ}}, nil
 	case "/ledger.BucketService/GetAccount":
 		return &MethodAuthPolicy{Policy: &MethodAuthPolicy_FixedScope{FixedScope: AuthScope_AUTH_SCOPE_ACCOUNT_READ}}, nil
 	case "/ledger.BucketService/GetTransaction":
@@ -154,6 +156,7 @@ func AllRPCAuthPolicies() map[string]*MethodAuthPolicy {
 		"/cluster.ClusterService/GetQueryCheckpointSchedule": &MethodAuthPolicy{Policy: &MethodAuthPolicy_FixedScope{FixedScope: AuthScope_AUTH_SCOPE_CLUSTER_READ}},
 		"/ledger.BucketService/ListLedgers":                  &MethodAuthPolicy{Policy: &MethodAuthPolicy_FixedScope{FixedScope: AuthScope_AUTH_SCOPE_LEDGER_READ}},
 		"/ledger.BucketService/GetLedger":                    &MethodAuthPolicy{Policy: &MethodAuthPolicy_FixedScope{FixedScope: AuthScope_AUTH_SCOPE_LEDGER_READ}},
+		"/ledger.BucketService/GetKV":                        &MethodAuthPolicy{Policy: &MethodAuthPolicy_FixedScope{FixedScope: AuthScope_AUTH_SCOPE_LEDGER_READ}},
 		"/ledger.BucketService/GetAccount":                   &MethodAuthPolicy{Policy: &MethodAuthPolicy_FixedScope{FixedScope: AuthScope_AUTH_SCOPE_ACCOUNT_READ}},
 		"/ledger.BucketService/GetTransaction":               &MethodAuthPolicy{Policy: &MethodAuthPolicy_FixedScope{FixedScope: AuthScope_AUTH_SCOPE_TRANSACTION_READ}},
 		"/ledger.BucketService/ListTransactions":             &MethodAuthPolicy{Policy: &MethodAuthPolicy_FixedScope{FixedScope: AuthScope_AUTH_SCOPE_TRANSACTION_READ}},

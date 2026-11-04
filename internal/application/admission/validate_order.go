@@ -32,6 +32,9 @@ func validateOrder(order *raftcmdpb.Order) error {
 	if err := validateOrderLedgerName(order); err != nil {
 		return &domain.BusinessError{Err: err}
 	}
+	if err := validateOrderKV(order); err != nil {
+		return &domain.BusinessError{Err: err}
+	}
 
 	if err := validateOrderMetadata(order); err != nil {
 		return &domain.BusinessError{Err: err}
@@ -70,6 +73,39 @@ func validateOrder(order *raftcmdpb.Order) error {
 
 	if err := validateOrderSigningKey(order); err != nil {
 		return &domain.BusinessError{Err: err}
+	}
+
+	return nil
+}
+
+type invalidKVOrder struct{ message string }
+
+func (e invalidKVOrder) Error() string        { return e.message }
+func (invalidKVOrder) Kind() domain.ErrorKind { return domain.KindValidation }
+func (invalidKVOrder) Reason() string         { return domain.ErrReasonValidation }
+func (e invalidKVOrder) PublicDetails() (string, map[string]string, bool) {
+	return e.message, nil, true
+}
+
+func validateOrderKV(order *raftcmdpb.Order) domain.Describable {
+	ls := order.GetLedgerScoped()
+	if ls == nil {
+		return nil
+	}
+	var key string
+	switch payload := ls.GetPayload().(type) {
+	case *raftcmdpb.LedgerScopedOrder_PutKv:
+		key = payload.PutKv.GetKey()
+		if len(payload.PutKv.GetValue()) > domain.MaxKVValueBytes {
+			return invalidKVOrder{message: "KV value exceeds 1 MiB"}
+		}
+	case *raftcmdpb.LedgerScopedOrder_DeleteKv:
+		key = payload.DeleteKv.GetKey()
+	default:
+		return nil
+	}
+	if key == "" || len(key) > domain.MaxKVKeyBytes {
+		return invalidKVOrder{message: "KV key must contain 1 to 256 bytes"}
 	}
 
 	return nil

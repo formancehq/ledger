@@ -23,6 +23,7 @@ const _ = grpc.SupportPackageIsVersion9
 const (
 	BucketService_ListLedgers_FullMethodName             = "/ledger.BucketService/ListLedgers"
 	BucketService_GetLedger_FullMethodName               = "/ledger.BucketService/GetLedger"
+	BucketService_GetKV_FullMethodName                   = "/ledger.BucketService/GetKV"
 	BucketService_GetAccount_FullMethodName              = "/ledger.BucketService/GetAccount"
 	BucketService_GetTransaction_FullMethodName          = "/ledger.BucketService/GetTransaction"
 	BucketService_ListTransactions_FullMethodName        = "/ledger.BucketService/ListTransactions"
@@ -68,6 +69,7 @@ type BucketServiceClient interface {
 	ListLedgers(ctx context.Context, in *ListLedgersRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[commonpb.LedgerInfo], error)
 	// GetLedger returns a ledger info by its name or ID
 	GetLedger(ctx context.Context, in *GetLedgerRequest, opts ...grpc.CallOption) (*commonpb.LedgerInfo, error)
+	GetKV(ctx context.Context, in *GetKVRequest, opts ...grpc.CallOption) (*GetKVResponse, error)
 	// GetAccount retrieves an account by address
 	GetAccount(ctx context.Context, in *GetAccountRequest, opts ...grpc.CallOption) (*commonpb.Account, error)
 	// GetTransaction retrieves a transaction by ID
@@ -174,6 +176,16 @@ func (c *bucketServiceClient) GetLedger(ctx context.Context, in *GetLedgerReques
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(commonpb.LedgerInfo)
 	err := c.cc.Invoke(ctx, BucketService_GetLedger_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *bucketServiceClient) GetKV(ctx context.Context, in *GetKVRequest, opts ...grpc.CallOption) (*GetKVResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GetKVResponse)
+	err := c.cc.Invoke(ctx, BucketService_GetKV_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -610,6 +622,7 @@ type BucketServiceServer interface {
 	ListLedgers(*ListLedgersRequest, grpc.ServerStreamingServer[commonpb.LedgerInfo]) error
 	// GetLedger returns a ledger info by its name or ID
 	GetLedger(context.Context, *GetLedgerRequest) (*commonpb.LedgerInfo, error)
+	GetKV(context.Context, *GetKVRequest) (*GetKVResponse, error)
 	// GetAccount retrieves an account by address
 	GetAccount(context.Context, *GetAccountRequest) (*commonpb.Account, error)
 	// GetTransaction retrieves a transaction by ID
@@ -698,6 +711,9 @@ func (UnimplementedBucketServiceServer) ListLedgers(*ListLedgersRequest, grpc.Se
 }
 func (UnimplementedBucketServiceServer) GetLedger(context.Context, *GetLedgerRequest) (*commonpb.LedgerInfo, error) {
 	return nil, status.Error(codes.Unimplemented, "method GetLedger not implemented")
+}
+func (UnimplementedBucketServiceServer) GetKV(context.Context, *GetKVRequest) (*GetKVResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetKV not implemented")
 }
 func (UnimplementedBucketServiceServer) GetAccount(context.Context, *GetAccountRequest) (*commonpb.Account, error) {
 	return nil, status.Error(codes.Unimplemented, "method GetAccount not implemented")
@@ -844,6 +860,24 @@ func _BucketService_GetLedger_Handler(srv interface{}, ctx context.Context, dec 
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(BucketServiceServer).GetLedger(ctx, req.(*GetLedgerRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _BucketService_GetKV_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetKVRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(BucketServiceServer).GetKV(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: BucketService_GetKV_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(BucketServiceServer).GetKV(ctx, req.(*GetKVRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -1382,6 +1416,10 @@ var BucketService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GetLedger",
 			Handler:    _BucketService_GetLedger_Handler,
+		},
+		{
+			MethodName: "GetKV",
+			Handler:    _BucketService_GetKV_Handler,
 		},
 		{
 			MethodName: "GetAccount",

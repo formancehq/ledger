@@ -226,6 +226,21 @@ func (mr *MockControllerMockRecorder) GetIndexStatus(ctx, req any) *gomock.Call 
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetIndexStatus", reflect.TypeOf((*MockController)(nil).GetIndexStatus), ctx, req)
 }
 
+// GetKV mocks base method.
+func (m *MockController) GetKV(ctx context.Context, ledger, key string) ([]byte, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetKV", ctx, ledger, key)
+	ret0, _ := ret[0].([]byte)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetKV indicates an expected call of GetKV.
+func (mr *MockControllerMockRecorder) GetKV(ctx, ledger, key any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetKV", reflect.TypeOf((*MockController)(nil).GetKV), ctx, ledger, key)
+}
+
 // GetLedgerByName mocks base method.
 func (m *MockController) GetLedgerByName(ctx context.Context, name string) (*commonpb.LedgerInfo, error) {
 	m.ctrl.T.Helper()
