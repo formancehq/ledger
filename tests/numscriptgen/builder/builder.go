@@ -223,7 +223,7 @@ func renderVars(
 	// Index it rather than ranging over it: `range` fixes the length up front
 	// and would leave the entries discovered here unrendered.
 	var originRHS []string
-	for id := range len(env.originVars) {
+	for id := 0; id < len(env.originVars); id++ { //nolint:intrange // the bound must be re-read
 		originRHS = append(originRHS, renderExprToString(env, env.originVars[id].origin))
 	}
 
