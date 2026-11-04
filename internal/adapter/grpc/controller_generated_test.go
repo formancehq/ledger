@@ -514,6 +514,45 @@ func (c *MockControllerGetIndexStatusCall) DoAndReturn(f func(context.Context, *
 	return c
 }
 
+// GetKV mocks base method.
+func (m *MockController) GetKV(ctx context.Context, ledger, key string) ([]byte, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetKV", ctx, ledger, key)
+	ret0, _ := ret[0].([]byte)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetKV indicates an expected call of GetKV.
+func (mr *MockControllerMockRecorder) GetKV(ctx, ledger, key any) *MockControllerGetKVCall {
+	mr.mock.ctrl.T.Helper()
+	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetKV", reflect.TypeOf((*MockController)(nil).GetKV), ctx, ledger, key)
+	return &MockControllerGetKVCall{Call: call}
+}
+
+// MockControllerGetKVCall wrap *gomock.Call
+type MockControllerGetKVCall struct {
+	*gomock.Call
+}
+
+// Return rewrite *gomock.Call.Return
+func (c *MockControllerGetKVCall) Return(arg0 []byte, arg1 error) *MockControllerGetKVCall {
+	c.Call = c.Call.Return(arg0, arg1)
+	return c
+}
+
+// Do rewrite *gomock.Call.Do
+func (c *MockControllerGetKVCall) Do(f func(context.Context, string, string) ([]byte, error)) *MockControllerGetKVCall {
+	c.Call = c.Call.Do(f)
+	return c
+}
+
+// DoAndReturn rewrite *gomock.Call.DoAndReturn
+func (c *MockControllerGetKVCall) DoAndReturn(f func(context.Context, string, string) ([]byte, error)) *MockControllerGetKVCall {
+	c.Call = c.Call.DoAndReturn(f)
+	return c
+}
+
 // GetLedgerByName mocks base method.
 func (m *MockController) GetLedgerByName(ctx context.Context, name string) (*commonpb.LedgerInfo, error) {
 	m.ctrl.T.Helper()

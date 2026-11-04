@@ -2786,6 +2786,8 @@ type LogPayloadReader interface {
 	GetSavedLedgerMetadata() SavedLedgerMetadataLogReader
 	GetDeletedLedgerMetadata() DeletedLedgerMetadataLogReader
 	GetSetClusterPolicy() SetClusterPolicyLogReader
+	GetPutKv() PutKVLogReader
+	GetDeleteKv() DeleteKVLogReader
 	WhichType() LogPayload_TypeReaderCase
 	Mutate() *LogPayload
 }
@@ -2960,6 +2962,22 @@ func (r *logPayloadReadonly) GetSetClusterPolicy() SetClusterPolicyLogReader {
 	return v.SetClusterPolicy.AsReader()
 }
 
+func (r *logPayloadReadonly) GetPutKv() PutKVLogReader {
+	v, ok := (*LogPayload)(r).GetType().(*LogPayload_PutKv)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.PutKv.AsReader()
+}
+
+func (r *logPayloadReadonly) GetDeleteKv() DeleteKVLogReader {
+	v, ok := (*LogPayload)(r).GetType().(*LogPayload_DeleteKv)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.DeleteKv.AsReader()
+}
+
 // LogPayload_TypeReaderCase identifies a selected oneof arm by its protobuf field number.
 type LogPayload_TypeReaderCase int32
 
@@ -2986,6 +3004,8 @@ const (
 	LogPayload_TypeReaderCase_SavedLedgerMetadata           LogPayload_TypeReaderCase = 19
 	LogPayload_TypeReaderCase_DeletedLedgerMetadata         LogPayload_TypeReaderCase = 20
 	LogPayload_TypeReaderCase_SetClusterPolicy              LogPayload_TypeReaderCase = 21
+	LogPayload_TypeReaderCase_PutKv                         LogPayload_TypeReaderCase = 22
+	LogPayload_TypeReaderCase_DeleteKv                      LogPayload_TypeReaderCase = 23
 )
 
 func (r *logPayloadReadonly) WhichType() LogPayload_TypeReaderCase {
@@ -3032,6 +3052,10 @@ func (r *logPayloadReadonly) WhichType() LogPayload_TypeReaderCase {
 		return LogPayload_TypeReaderCase_DeletedLedgerMetadata
 	case *LogPayload_SetClusterPolicy:
 		return LogPayload_TypeReaderCase_SetClusterPolicy
+	case *LogPayload_PutKv:
+		return LogPayload_TypeReaderCase_PutKv
+	case *LogPayload_DeleteKv:
+		return LogPayload_TypeReaderCase_DeleteKv
 	default:
 		return LogPayload_TypeReaderCase_Unset
 	}
@@ -27260,4 +27284,151 @@ func (m accountMetadataUpdated_accountMetadataMapReadonly) Range(yield func(stri
 			return
 		}
 	}
+}
+
+// PutKVLogReader provides read-only access to PutKVLog.
+// Call Mutate() to obtain a mutable clone.
+type PutKVLogReader interface {
+	GetLedger() string
+	GetKey() string
+	GetValue() []byte
+	Mutate() *PutKVLog
+}
+
+type putKVLogReadonly PutKVLog
+
+func (r *putKVLogReadonly) GetLedger() string {
+	return (*PutKVLog)(r).GetLedger()
+}
+
+func (r *putKVLogReadonly) GetKey() string {
+	return (*PutKVLog)(r).GetKey()
+}
+
+func (r *putKVLogReadonly) GetValue() []byte {
+	return bytes.Clone((*PutKVLog)(r).GetValue())
+}
+
+func (r *putKVLogReadonly) Mutate() *PutKVLog {
+	return (*PutKVLog)(r).CloneVT()
+}
+
+// AsReader returns a read-only view of this PutKVLog.
+func (m *PutKVLog) AsReader() PutKVLogReader {
+	if m == nil {
+		return nil
+	}
+	return (*putKVLogReadonly)(m)
+}
+
+// Mutate returns a mutable deep clone of this PutKVLog.
+func (m *PutKVLog) Mutate() *PutKVLog {
+	return m.CloneVT()
+}
+
+// PutKVLogListReader provides read-only iteration over []*PutKVLog.
+type PutKVLogListReader interface {
+	Len() int
+	Get(i int) PutKVLogReader
+	Range(yield func(int, PutKVLogReader) bool)
+}
+
+type putKVLogListReadonly []*PutKVLog
+
+func (l putKVLogListReadonly) Len() int { return len(l) }
+
+func (l putKVLogListReadonly) Get(i int) PutKVLogReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l putKVLogListReadonly) Range(yield func(int, PutKVLogReader) bool) {
+	for i, v := range l {
+		var r PutKVLogReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewPutKVLogListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewPutKVLogListReader(s []*PutKVLog) PutKVLogListReader { return putKVLogListReadonly(s) }
+
+// DeleteKVLogReader provides read-only access to DeleteKVLog.
+// Call Mutate() to obtain a mutable clone.
+type DeleteKVLogReader interface {
+	GetLedger() string
+	GetKey() string
+	Mutate() *DeleteKVLog
+}
+
+type deleteKVLogReadonly DeleteKVLog
+
+func (r *deleteKVLogReadonly) GetLedger() string {
+	return (*DeleteKVLog)(r).GetLedger()
+}
+
+func (r *deleteKVLogReadonly) GetKey() string {
+	return (*DeleteKVLog)(r).GetKey()
+}
+
+func (r *deleteKVLogReadonly) Mutate() *DeleteKVLog {
+	return (*DeleteKVLog)(r).CloneVT()
+}
+
+// AsReader returns a read-only view of this DeleteKVLog.
+func (m *DeleteKVLog) AsReader() DeleteKVLogReader {
+	if m == nil {
+		return nil
+	}
+	return (*deleteKVLogReadonly)(m)
+}
+
+// Mutate returns a mutable deep clone of this DeleteKVLog.
+func (m *DeleteKVLog) Mutate() *DeleteKVLog {
+	return m.CloneVT()
+}
+
+// DeleteKVLogListReader provides read-only iteration over []*DeleteKVLog.
+type DeleteKVLogListReader interface {
+	Len() int
+	Get(i int) DeleteKVLogReader
+	Range(yield func(int, DeleteKVLogReader) bool)
+}
+
+type deleteKVLogListReadonly []*DeleteKVLog
+
+func (l deleteKVLogListReadonly) Len() int { return len(l) }
+
+func (l deleteKVLogListReadonly) Get(i int) DeleteKVLogReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l deleteKVLogListReadonly) Range(yield func(int, DeleteKVLogReader) bool) {
+	for i, v := range l {
+		var r DeleteKVLogReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewDeleteKVLogListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewDeleteKVLogListReader(s []*DeleteKVLog) DeleteKVLogListReader {
+	return deleteKVLogListReadonly(s)
 }

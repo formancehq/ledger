@@ -2,6 +2,20 @@
 
 ## Release requirement from v3.0.0-rc.1
 
+### Ledger KV rollout
+
+The first release containing ledger KV uses a coordinated full-cluster stop.
+Stop writes, wait for the committed index to persist on every voter, stop all
+voters, replace every binary, then restart the cluster before permitting KV
+requests. Do not perform a rolling rollout for this release: an earlier binary
+cannot apply the new PutKV/DeleteKV Raft orders. Once the first KV order is
+committed, do not restart an earlier binary against that WAL or snapshot; use
+the new binary and forward recovery. Existing primary-store data needs no
+backfill, and the new KV keyspace starts empty. Record the source/target build,
+the stopped-voter evidence, and a replay plus CheckStore result in release
+validation. Operator-managed deployment must provide a stopped upgrade boundary
+before releasing this feature.
+
 `v3.0.0-rc.1` is the first supported v3 persisted-state baseline. Every later
 v3 release, including another RC and the stable release, must provide a tested
 forward upgrade from the preceding released version. Preserve committed

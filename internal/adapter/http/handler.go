@@ -150,6 +150,7 @@ func NewHandler(logger logging.Logger, backend Backend, authCfg internalauth.Aut
 			r.With(requireLedgersRead).Group(func(r chi.Router) {
 				r.Get("/", knownQuery(server.handleListAllLedgers, "pageSize", "cursor", "reverse"))
 				r.Get("/{ledgerName}", knownQuery(server.handleGetLedger))
+				r.Get("/{ledgerName}/kv/{key}", knownQuery(server.handleGetKV))
 				r.Get("/{ledgerName}/stats", knownQuery(server.handleGetLedgerStats))
 				r.Get("/{ledgerName}/logs", knownQuery(server.handleListLedgerLogs, "pageSize", "cursor", "reverse", "startDate", "endDate", "filter"))
 				r.Get("/{ledgerName}/numscripts", knownQuery(server.handleListNumscripts, "pageSize", "cursor", "reverse"))
@@ -220,6 +221,8 @@ func NewHandler(logger logging.Logger, backend Backend, authCfg internalauth.Aut
 			r.With(requireLedgersWrite).Group(func(r chi.Router) {
 				r.Post("/{ledgerName}", knownMutationQuery(server.handleCreateLedger))
 				r.Delete("/{ledgerName}", knownQuery(server.handleDeleteLedger))
+				r.Put("/{ledgerName}/kv/{key}", knownQuery(server.handlePutKV))
+				r.Delete("/{ledgerName}/kv/{key}", knownQuery(server.handleDeleteKV))
 				r.Post("/{ledgerName}/promote", knownMutationQuery(server.handlePromoteLedger))
 				r.Put("/{ledgerName}/numscripts/{name}", knownMutationQuery(server.handleSaveNumscript))
 				r.Post("/{ledgerName}/indexes", knownMutationQuery(server.handleCreateIndex))

@@ -424,6 +424,8 @@ message LogPayload {
     SavedLedgerMetadataLog saved_ledger_metadata = 19;
     DeletedLedgerMetadataLog deleted_ledger_metadata = 20;
     SetClusterPolicyLog set_cluster_policy = 21;
+    PutKVLog put_kv = 22;
+    DeleteKVLog delete_kv = 23;
   }
 }
 
@@ -2910,4 +2912,15 @@ message CapabilityActivation {
 // no transaction ID, postings, or TransactionState are created.
 message AccountMetadataUpdated {
   map<string, MetadataMap> account_metadata = 1;
+}
+
+message PutKVLog {
+  string ledger = 1;
+  string key = 2;
+  bytes value = 3;
+}
+
+message DeleteKVLog {
+  string ledger = 1;
+  string key = 2;
 }

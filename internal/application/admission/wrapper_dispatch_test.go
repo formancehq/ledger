@@ -304,6 +304,16 @@ func TestExtractLedgerScopedNeeds_CoversEveryPayloadVariant(t *testing.T) {
 			},
 		},
 		{
+			name:    "put_kv",
+			payload: &raftcmdpb.LedgerScopedOrder{Ledger: wrapperTestLedger, Payload: &raftcmdpb.LedgerScopedOrder_PutKv{PutKv: &raftcmdpb.PutKVOrder{Key: "key", Value: []byte("value")}}},
+			assert:  func(t *testing.T, n *plan.Coverage) { require.True(t, n.Has(dal.SubAttrLedger, ledgerKey.Bytes())) },
+		},
+		{
+			name:    "delete_kv",
+			payload: &raftcmdpb.LedgerScopedOrder{Ledger: wrapperTestLedger, Payload: &raftcmdpb.LedgerScopedOrder_DeleteKv{DeleteKv: &raftcmdpb.DeleteKVOrder{Key: "key"}}},
+			assert:  func(t *testing.T, n *plan.Coverage) { require.True(t, n.Has(dal.SubAttrLedger, ledgerKey.Bytes())) },
+		},
+		{
 			name: "apply_create_transaction_with_reference",
 			payload: &raftcmdpb.LedgerScopedOrder{
 				Ledger: wrapperTestLedger,
