@@ -201,6 +201,25 @@ the separate
 [Cluster Configuration Updates](./cluster-operations.md#cluster-configuration-updates)
 procedure.
 
+## Metadata-limit replay recovery
+
+Upgraded leaders can recover a retained keyed outcome when a retry's original
+metadata exceeds a subsequently tightened committed policy. The retry must
+still pass authentication, signatures, structural validation and write-readiness
+gates. A matching live key returns the historical success or definitive
+failure; live different content returns conflict; absent or expired keys retain
+the metadata-limit rejection. Maintenance and drain still refuse writes.
+
+This is an admission-only correction: old and new voters interpret committed
+entries identically. It changes no Raft, persisted, backup, audit or wire format,
+requires no data migration and keeps service protocol revision 40. During an
+otherwise supported rolling upgrade, a leader running the old binary may still
+return the limit rejection; transfer leadership to an upgraded voter to obtain
+the corrected recovery behavior. Clients should retain the original key and
+payload when recovering an ambiguous earlier attempt. The existing retention
+window and transport caps still apply; this adds no guarantee after expiry.
+See [the mechanism and cost boundary](../technical/architecture/subsystems/admission/idempotency.md#replay-after-metadata-limits-tighten).
+
 ## Account metadata address validation
 
 RC.1 to RC.2 uses the maintenance-barrier rolling procedure below: writes pause,

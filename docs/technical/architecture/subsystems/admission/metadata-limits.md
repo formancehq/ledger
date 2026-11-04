@@ -73,6 +73,12 @@ order; the shape validation, the size validation and the byte accounting all
 traverse it, so they cannot drift apart. HTTP, public gRPC and bulk converge on
 `requestsToOrders`. Mirror workers use a separate proposal path.
 
+A keyed batch rejected with the typed metadata-limit error may still replay a
+retained original outcome after a policy tightening. Admission uses an orderless
+barrier and a single durable snapshot; it never submits the oversized business
+orders. Missing/expired keys retain the rejection, and live different content
+returns the existing conflict. See [the replay contract](idempotency.md#replay-after-metadata-limits-tighten).
+
 **Mirror ingestion** — `Worker.processBatch`
 (`internal/application/mirror/worker.go`) checks the translated and rewritten
 orders against the committed cluster policy before building or proposing the

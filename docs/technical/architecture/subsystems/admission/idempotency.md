@@ -80,6 +80,64 @@ after deletion and while the original call is still waiting for materialization.
 They do not wait again or recreate anything. New creations retain the
 [checkpoint lifecycle wait](../read-path/query-checkpoints.md#readiness-and-error-contract).
 
+## Replay after metadata limits tighten
+
+A retained outcome must remain recoverable when the committed metadata policy
+becomes stricter than the original accepted payload. Otherwise a client whose
+response was lost could see `METADATA_LIMIT_EXCEEDED` instead of its committed
+success or definitive failure, despite retaining the original key and content.
+
+After successful request-to-order conversion, a typed metadata-limit rejection
+on a nonempty keyed batch takes a bounded replay lookup before returning the
+rejection. Earlier authentication, signature, key-shape, structural validation,
+write-readiness and maintenance checks retain their precedence. Unkeyed batches,
+empty orders and other preparation failures do not enter this lookup.
+
+1. Admission runs its ordinary orderless `Barrier`, including the write gate,
+   and waits for durable apply. The rejected business orders are never proposed.
+2. It opens one main-store snapshot whose persisted applied index is at least
+   the barrier index. This snapshot supplies the maintenance/drain and audit
+   sequence-capacity checks, last applied HLC timestamp, retained key, and any
+   historical response logs. It must not mix values from different horizons.
+3. Admission initializes a temporary `FSMState.LastAppliedTimestamp` from the
+   snapshot and calls `AdvanceHLC` with the captured request date, matching
+   apply's effective-clock calculation. It compares the frozen `expires_at`
+   with that effective HLC; it does not rewrite the stored expiry, TTL or
+   durable HLC. A missing or expired key returns the original typed
+   metadata-limit rejection without creating an outcome.
+4. A live key compares the canonical accepted business-content hash. Matching
+   content reconstructs the frozen success or definitive failure and marks it
+   `Replayed`. Different content returns the existing idempotency conflict.
+   Neither result executes orders, freezes a new outcome or appends audit rows.
+
+Barrier, snapshot and historical-log read failures surface as errors; a missing
+historical log must not become an empty successful response. Maintenance, drain
+and exhausted audit sequence capacity observed at the snapshot keep their
+established refusal precedence. No lifecycle lock spans the barrier wait, and
+the snapshot closes when response reconstruction finishes.
+
+The extra work is triggered only by the keyed typed limit rejection. It costs
+one orderless Raft/WAL entry, one snapshot, fixed state/key point reads,
+at most 64 forward seeks over the uint64 audit-sequence key space without
+cloning or decoding signed audit payloads (reverse Pebble iteration copies
+them even without a value read),
+canonical content hashing that includes deterministic map-key sorting (up to
+`O(K log K)` comparisons for `K` keys) and processing submitted bytes, and
+historical-log reads proportional to the retained response. It performs no namespace scan, business preload or business
+proposal serialization, and adds no business payload to the WAL, audit or FSM
+cache. Requests that fit the policy retain the existing proposal/FSM replay
+path. Cost-shape tests bound the replicated barrier independently of rejected
+request size; the local benchmark compares ordinary and tightened-policy replay
+with real FSM/Pebble state and an in-process proposer. It measures neither
+network consensus latency nor concurrent retry saturation; production capacity
+qualification must include large retained responses and concurrent retries.
+
+Doing nothing loses committed-outcome recovery after policy tightening.
+Forwarding oversized orders to the FSM would preserve its replay check but
+replicate the very payload the admission ceiling is intended to exclude. The
+barrier and pinned snapshot preserve recovery without changing committed-entry
+interpretation or introducing a new replicated format.
+
 ## Numscript Dependency-Resolution Failures
 
 Idempotency keys also govern a narrower, forward-vs-terminate decision admission has to make while *preparing* a `CreateTransaction` order that references a Numscript script. Before a script's order can be proposed, admission statically discovers the accounts, assets, and metadata it depends on (`DiscoverNumscriptDependencies`, `internal/domain/processing/numscript/discover.go` — see [Numscript Library](../scripting/numscript-library.md)) so the FSM never has to touch Pebble to resolve them. When that discovery fails, admission must decide whether the failure is **deterministic** — the script could never have succeeded, no matter how many times it is retried — or **state-dependent** — current state caused it, and a different (or later) state might not. `Admission.classifyResolutionFailure` (`internal/application/admission/admission.go`) makes this call from two signals Ledger already owns; it never inspects error strings or Numscript internals. The error's kind refines one case: `convertNumscriptError` maps the library's public resolver error types to `ErrNumscriptExecution` (`NUMSCRIPT_EXECUTION_ERROR`, `KindPrecondition`) when the script, its vars, or the state it read caused the failure.
@@ -232,7 +290,7 @@ All write operations support idempotency keys:
 | Delete transaction metadata | `DELETE /{ledger}/transactions/{id}/metadata/{key}` | Yes |
 | Create ledger | `POST /{ledger}` | Yes |
 | Delete ledger | `DELETE /{ledger}` | Yes |
-| Bulk operations | `POST /{ledger}/bulk` | Yes (per action) |
+| Bulk operations | `POST /{ledger}/bulk` | Yes (per atomic batch) |
 
 ## Key Validation
 
@@ -249,7 +307,7 @@ When a conflict is detected (same key, different content, within TTL):
 **HTTP Response:**
 ```json
 {
-  "errorCode": "CONFLICT",
+  "errorCode": "IDEMPOTENCY_KEY_CONFLICT",
   "errorMessage": "idempotency key conflict: same key used with different request content"
 }
 ```

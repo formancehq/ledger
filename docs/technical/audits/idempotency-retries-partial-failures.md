@@ -72,3 +72,30 @@ replay-time semantic change. Pair MirrorSync with real ingestion and a concurren
 ledger promotion: rejected ingestion must preserve the prior source head and
 applied position through recovery; successful ingestion advances both.
 See [the composition contract](../architecture/subsystems/fsm/technical-update-atomicity.md).
+
+## Metadata policy tightening and retained recovery
+
+A metadata-limit rejection after successful order conversion must not hide a
+retained same-content outcome. Trace the admission-only fallback through its
+orderless barrier, then one durable snapshot at or beyond that index. The
+snapshot owns gate precedence, the persisted HLC input, key/hash comparison
+and historical response reconstruction. Expiry uses the same `AdvanceHLC`
+calculation as apply, starting from the snapshot timestamp and the captured
+request date in a temporary `FSMState`; stored TTL/expiry and durable HLC remain
+unchanged. An unadvanced snapshot timestamp, independent clock calculation,
+point reads at mixed horizons, or a missing log softened into success violates
+the contract. Earlier structural/conversion failures do not enter the fallback.
+
+Prove frozen success and definitive failure recovery after policy tightening,
+live content conflict, exact expiry, missing/evicted key, read/cancellation
+failure, and maintenance/drain/audit-capacity refusal. Assert the replay marker
+and original failure/logs, no new business proposal or audit/outcome rows, and no
+duplicate effect. A barrier-only fixture does not prove response reconstruction;
+helper-only tests do not prove actual HTTP/gRPC bulk forwarding. Functional
+results need separate deterministic cost-shape and representative throughput and
+latency evidence for the new bounded admission path. Runtime gate ordering is
+shared with `runtime-health-admission-contracts`; deduplicate by root cause.
+
+This adds no persisted projection, audit format, FSM interpreter or restore
+contract. The original frozen outcome remains the audit authority. See
+[the admission contract](../architecture/subsystems/admission/idempotency.md#replay-after-metadata-limits-tighten).

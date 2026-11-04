@@ -124,3 +124,15 @@ Native policy reconciliation is operational and does not write business audit.
 It remains subject to its admission gates, while the business audit-key gate
 protects audited execution batches. Policy readiness and audit-key readiness
 remain distinct prerequisites.
+
+## Metadata-limit replay gate oracle
+
+The metadata-limit replay fallback is still write admission: earlier readiness
+checks retain precedence, its orderless barrier consumes the write gate, and its
+single durable response snapshot checks maintenance, drain and audit capacity
+before returning history. Exercise transitions between initial validation,
+barrier and snapshot with explicit synchronization. Prove the selected refusal
+and absence of rejected business proposals; a generic non-nil error is
+insufficient. This domain owns gate consumption/precedence, while
+`idempotency-retries-partial-failures` owns key expiry, content identity and
+historical outcome reconstruction. No new general Barrier gate is implied.
