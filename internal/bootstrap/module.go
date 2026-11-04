@@ -37,6 +37,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/application/ctrl"
 	"github.com/formancehq/ledger/v3/internal/application/events"
 	"github.com/formancehq/ledger/v3/internal/application/indexbuilder"
+	"github.com/formancehq/ledger/v3/internal/application/logintegrity"
 	"github.com/formancehq/ledger/v3/internal/application/membership"
 	"github.com/formancehq/ledger/v3/internal/application/mirror"
 	"github.com/formancehq/ledger/v3/internal/application/usagebuilder"
@@ -64,6 +65,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
+	"github.com/formancehq/ledger/v3/internal/proto/rafttransportpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/internal/proto/snapshotpb"
 	"github.com/formancehq/ledger/v3/internal/query"
@@ -427,6 +429,12 @@ func Module() fx.Option {
 			}, fx.ParamTags(``, ``, ``, ``, ``, ``, ``, ``, ``, ``, ``, `name:"service"`, ``)),
 			func(cfg Config, logger logging.Logger, s *dal.Store, applier *node.Applier) snapshotpb.SnapshotServiceServer {
 				return grpcadp.NewSnapshotServiceServer(logger, s, cfg.SnapshotSyncConfig.SessionTTL, applier)
+			},
+			func(s *dal.Store, applier *node.Applier) rafttransportpb.LogIntegrityServiceServer {
+				return grpcadp.NewLogIntegrityServiceServer(s, applier.WaitForCheckpointable)
+			},
+			func(s *dal.Store, n *node.Node, transport *node.DefaultTransport, local rafttransportpb.LogIntegrityServiceServer, logger logging.Logger, provider metric.MeterProvider) *logintegrity.Observer {
+				return logintegrity.NewObserver(s, n, transport, local, logger, provider.Meter("ledger.log_integrity"))
 			},
 			func(cfg Config, meterProvider metric.MeterProvider) *diskusage.Collector {
 				return diskusage.NewCollector(
@@ -794,6 +802,9 @@ func Module() fx.Option {
 
 				return nil
 			},
+			func(raftServer *grpcadp.RaftServer, service rafttransportpb.LogIntegrityServiceServer) {
+				rafttransportpb.RegisterLogIntegrityServiceServer(raftServer.GetServer(), service)
+			},
 			// Register business services on ServiceServer (external)
 			func(raftServer *grpcadp.RaftServer) error {
 				hs := health.NewServer()
@@ -920,6 +931,29 @@ func Module() fx.Option {
 				lc.Append(nodeHook(node, logger))
 
 				return node, nil
+			},
+			func(lc fx.Lifecycle, observer *logintegrity.Observer) {
+				ctx, cancel := context.WithCancel(context.Background())
+				done := make(chan struct{})
+				lc.Append(fx.Hook{
+					OnStart: func(context.Context) error {
+						go func() {
+							defer close(done)
+							observer.Run(ctx)
+						}()
+
+						return nil
+					},
+					OnStop: func(stopCtx context.Context) error {
+						cancel()
+						select {
+						case <-done:
+						case <-stopCtx.Done():
+						}
+
+						return nil
+					},
+				})
 			},
 			// Start Service server (external).
 			// Registered AFTER the Raft node so that fx stops it BEFORE the node

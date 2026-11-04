@@ -21,6 +21,152 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
+type GetRangeDigestRequest struct {
+	state            protoimpl.MessageState `protogen:"open.v1"`
+	FirstLogSequence uint64                 `protobuf:"fixed64,1,opt,name=first_log_sequence,json=firstLogSequence,proto3" json:"first_log_sequence,omitempty"`
+	LastLogSequence  uint64                 `protobuf:"fixed64,2,opt,name=last_log_sequence,json=lastLogSequence,proto3" json:"last_log_sequence,omitempty"`
+	// The requester sampled this durable Raft index with its log range. The
+	// receiver waits for it before reading a pinned Pebble snapshot.
+	MinAppliedIndex uint64 `protobuf:"fixed64,3,opt,name=min_applied_index,json=minAppliedIndex,proto3" json:"min_applied_index,omitempty"`
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
+}
+
+func (x *GetRangeDigestRequest) Reset() {
+	*x = GetRangeDigestRequest{}
+	mi := &file_raft_transport_proto_msgTypes[0]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetRangeDigestRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetRangeDigestRequest) ProtoMessage() {}
+
+func (x *GetRangeDigestRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_raft_transport_proto_msgTypes[0]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetRangeDigestRequest.ProtoReflect.Descriptor instead.
+func (*GetRangeDigestRequest) Descriptor() ([]byte, []int) {
+	return file_raft_transport_proto_rawDescGZIP(), []int{0}
+}
+
+func (x *GetRangeDigestRequest) GetFirstLogSequence() uint64 {
+	if x != nil {
+		return x.FirstLogSequence
+	}
+	return 0
+}
+
+func (x *GetRangeDigestRequest) GetLastLogSequence() uint64 {
+	if x != nil {
+		return x.LastLogSequence
+	}
+	return 0
+}
+
+func (x *GetRangeDigestRequest) GetMinAppliedIndex() uint64 {
+	if x != nil {
+		return x.MinAppliedIndex
+	}
+	return 0
+}
+
+type GetRangeDigestResponse struct {
+	state                 protoimpl.MessageState `protogen:"open.v1"`
+	FirstLogSequence      uint64                 `protobuf:"fixed64,1,opt,name=first_log_sequence,json=firstLogSequence,proto3" json:"first_log_sequence,omitempty"`
+	LastLogSequence       uint64                 `protobuf:"fixed64,2,opt,name=last_log_sequence,json=lastLogSequence,proto3" json:"last_log_sequence,omitempty"`
+	Digest                []byte                 `protobuf:"bytes,3,opt,name=digest,proto3" json:"digest,omitempty"`
+	DigestVersion         uint32                 `protobuf:"varint,4,opt,name=digest_version,json=digestVersion,proto3" json:"digest_version,omitempty"`
+	AppliedIndex          uint64                 `protobuf:"fixed64,5,opt,name=applied_index,json=appliedIndex,proto3" json:"applied_index,omitempty"`
+	LastLogSequenceOnNode uint64                 `protobuf:"fixed64,6,opt,name=last_log_sequence_on_node,json=lastLogSequenceOnNode,proto3" json:"last_log_sequence_on_node,omitempty"`
+	unknownFields         protoimpl.UnknownFields
+	sizeCache             protoimpl.SizeCache
+}
+
+func (x *GetRangeDigestResponse) Reset() {
+	*x = GetRangeDigestResponse{}
+	mi := &file_raft_transport_proto_msgTypes[1]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetRangeDigestResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetRangeDigestResponse) ProtoMessage() {}
+
+func (x *GetRangeDigestResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_raft_transport_proto_msgTypes[1]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetRangeDigestResponse.ProtoReflect.Descriptor instead.
+func (*GetRangeDigestResponse) Descriptor() ([]byte, []int) {
+	return file_raft_transport_proto_rawDescGZIP(), []int{1}
+}
+
+func (x *GetRangeDigestResponse) GetFirstLogSequence() uint64 {
+	if x != nil {
+		return x.FirstLogSequence
+	}
+	return 0
+}
+
+func (x *GetRangeDigestResponse) GetLastLogSequence() uint64 {
+	if x != nil {
+		return x.LastLogSequence
+	}
+	return 0
+}
+
+func (x *GetRangeDigestResponse) GetDigest() []byte {
+	if x != nil {
+		return x.Digest
+	}
+	return nil
+}
+
+func (x *GetRangeDigestResponse) GetDigestVersion() uint32 {
+	if x != nil {
+		return x.DigestVersion
+	}
+	return 0
+}
+
+func (x *GetRangeDigestResponse) GetAppliedIndex() uint64 {
+	if x != nil {
+		return x.AppliedIndex
+	}
+	return 0
+}
+
+func (x *GetRangeDigestResponse) GetLastLogSequenceOnNode() uint64 {
+	if x != nil {
+		return x.LastLogSequenceOnNode
+	}
+	return 0
+}
+
 type RaftRequestMessage struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Id            uint64                 `protobuf:"fixed64,1,opt,name=id,proto3" json:"id,omitempty"`
@@ -31,7 +177,7 @@ type RaftRequestMessage struct {
 
 func (x *RaftRequestMessage) Reset() {
 	*x = RaftRequestMessage{}
-	mi := &file_raft_transport_proto_msgTypes[0]
+	mi := &file_raft_transport_proto_msgTypes[2]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -43,7 +189,7 @@ func (x *RaftRequestMessage) String() string {
 func (*RaftRequestMessage) ProtoMessage() {}
 
 func (x *RaftRequestMessage) ProtoReflect() protoreflect.Message {
-	mi := &file_raft_transport_proto_msgTypes[0]
+	mi := &file_raft_transport_proto_msgTypes[2]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -56,7 +202,7 @@ func (x *RaftRequestMessage) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RaftRequestMessage.ProtoReflect.Descriptor instead.
 func (*RaftRequestMessage) Descriptor() ([]byte, []int) {
-	return file_raft_transport_proto_rawDescGZIP(), []int{0}
+	return file_raft_transport_proto_rawDescGZIP(), []int{2}
 }
 
 func (x *RaftRequestMessage) GetId() uint64 {
@@ -83,7 +229,7 @@ type RaftRequestBatch struct {
 
 func (x *RaftRequestBatch) Reset() {
 	*x = RaftRequestBatch{}
-	mi := &file_raft_transport_proto_msgTypes[1]
+	mi := &file_raft_transport_proto_msgTypes[3]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -95,7 +241,7 @@ func (x *RaftRequestBatch) String() string {
 func (*RaftRequestBatch) ProtoMessage() {}
 
 func (x *RaftRequestBatch) ProtoReflect() protoreflect.Message {
-	mi := &file_raft_transport_proto_msgTypes[1]
+	mi := &file_raft_transport_proto_msgTypes[3]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -108,7 +254,7 @@ func (x *RaftRequestBatch) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RaftRequestBatch.ProtoReflect.Descriptor instead.
 func (*RaftRequestBatch) Descriptor() ([]byte, []int) {
-	return file_raft_transport_proto_rawDescGZIP(), []int{1}
+	return file_raft_transport_proto_rawDescGZIP(), []int{3}
 }
 
 func (x *RaftRequestBatch) GetMessages() []*RaftRequestMessage {
@@ -129,7 +275,7 @@ type RaftResponseMessage struct {
 
 func (x *RaftResponseMessage) Reset() {
 	*x = RaftResponseMessage{}
-	mi := &file_raft_transport_proto_msgTypes[2]
+	mi := &file_raft_transport_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -141,7 +287,7 @@ func (x *RaftResponseMessage) String() string {
 func (*RaftResponseMessage) ProtoMessage() {}
 
 func (x *RaftResponseMessage) ProtoReflect() protoreflect.Message {
-	mi := &file_raft_transport_proto_msgTypes[2]
+	mi := &file_raft_transport_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -154,7 +300,7 @@ func (x *RaftResponseMessage) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RaftResponseMessage.ProtoReflect.Descriptor instead.
 func (*RaftResponseMessage) Descriptor() ([]byte, []int) {
-	return file_raft_transport_proto_rawDescGZIP(), []int{2}
+	return file_raft_transport_proto_rawDescGZIP(), []int{4}
 }
 
 func (x *RaftResponseMessage) GetRequestId() uint64 {
@@ -188,7 +334,7 @@ type RaftResponseBatch struct {
 
 func (x *RaftResponseBatch) Reset() {
 	*x = RaftResponseBatch{}
-	mi := &file_raft_transport_proto_msgTypes[3]
+	mi := &file_raft_transport_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -200,7 +346,7 @@ func (x *RaftResponseBatch) String() string {
 func (*RaftResponseBatch) ProtoMessage() {}
 
 func (x *RaftResponseBatch) ProtoReflect() protoreflect.Message {
-	mi := &file_raft_transport_proto_msgTypes[3]
+	mi := &file_raft_transport_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -213,7 +359,7 @@ func (x *RaftResponseBatch) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RaftResponseBatch.ProtoReflect.Descriptor instead.
 func (*RaftResponseBatch) Descriptor() ([]byte, []int) {
-	return file_raft_transport_proto_rawDescGZIP(), []int{3}
+	return file_raft_transport_proto_rawDescGZIP(), []int{5}
 }
 
 func (x *RaftResponseBatch) GetMessages() []*RaftResponseMessage {
@@ -232,7 +378,7 @@ type PingMessage struct {
 
 func (x *PingMessage) Reset() {
 	*x = PingMessage{}
-	mi := &file_raft_transport_proto_msgTypes[4]
+	mi := &file_raft_transport_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -244,7 +390,7 @@ func (x *PingMessage) String() string {
 func (*PingMessage) ProtoMessage() {}
 
 func (x *PingMessage) ProtoReflect() protoreflect.Message {
-	mi := &file_raft_transport_proto_msgTypes[4]
+	mi := &file_raft_transport_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -257,7 +403,7 @@ func (x *PingMessage) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PingMessage.ProtoReflect.Descriptor instead.
 func (*PingMessage) Descriptor() ([]byte, []int) {
-	return file_raft_transport_proto_rawDescGZIP(), []int{4}
+	return file_raft_transport_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *PingMessage) GetSeqId() uint64 {
@@ -276,7 +422,7 @@ type PongResponse struct {
 
 func (x *PongResponse) Reset() {
 	*x = PongResponse{}
-	mi := &file_raft_transport_proto_msgTypes[5]
+	mi := &file_raft_transport_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -288,7 +434,7 @@ func (x *PongResponse) String() string {
 func (*PongResponse) ProtoMessage() {}
 
 func (x *PongResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_raft_transport_proto_msgTypes[5]
+	mi := &file_raft_transport_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -301,7 +447,7 @@ func (x *PongResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PongResponse.ProtoReflect.Descriptor instead.
 func (*PongResponse) Descriptor() ([]byte, []int) {
-	return file_raft_transport_proto_rawDescGZIP(), []int{5}
+	return file_raft_transport_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *PongResponse) GetSeqId() uint64 {
@@ -325,7 +471,7 @@ type SendMessageRequest struct {
 
 func (x *SendMessageRequest) Reset() {
 	*x = SendMessageRequest{}
-	mi := &file_raft_transport_proto_msgTypes[6]
+	mi := &file_raft_transport_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -337,7 +483,7 @@ func (x *SendMessageRequest) String() string {
 func (*SendMessageRequest) ProtoMessage() {}
 
 func (x *SendMessageRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_raft_transport_proto_msgTypes[6]
+	mi := &file_raft_transport_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -350,7 +496,7 @@ func (x *SendMessageRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SendMessageRequest.ProtoReflect.Descriptor instead.
 func (*SendMessageRequest) Descriptor() ([]byte, []int) {
-	return file_raft_transport_proto_rawDescGZIP(), []int{6}
+	return file_raft_transport_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *SendMessageRequest) GetMessage() isSendMessageRequest_Message {
@@ -408,7 +554,7 @@ type SendMessageResponse struct {
 
 func (x *SendMessageResponse) Reset() {
 	*x = SendMessageResponse{}
-	mi := &file_raft_transport_proto_msgTypes[7]
+	mi := &file_raft_transport_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -420,7 +566,7 @@ func (x *SendMessageResponse) String() string {
 func (*SendMessageResponse) ProtoMessage() {}
 
 func (x *SendMessageResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_raft_transport_proto_msgTypes[7]
+	mi := &file_raft_transport_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -433,7 +579,7 @@ func (x *SendMessageResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SendMessageResponse.ProtoReflect.Descriptor instead.
 func (*SendMessageResponse) Descriptor() ([]byte, []int) {
-	return file_raft_transport_proto_rawDescGZIP(), []int{7}
+	return file_raft_transport_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *SendMessageResponse) GetMessage() isSendMessageResponse_Message {
@@ -481,7 +627,18 @@ var File_raft_transport_proto protoreflect.FileDescriptor
 
 const file_raft_transport_proto_rawDesc = "" +
 	"\n" +
-	"\x14raft_transport.proto\x12\x0eraft_transport\">\n" +
+	"\x14raft_transport.proto\x12\x0eraft_transport\"\x9d\x01\n" +
+	"\x15GetRangeDigestRequest\x12,\n" +
+	"\x12first_log_sequence\x18\x01 \x01(\x06R\x10firstLogSequence\x12*\n" +
+	"\x11last_log_sequence\x18\x02 \x01(\x06R\x0flastLogSequence\x12*\n" +
+	"\x11min_applied_index\x18\x03 \x01(\x06R\x0fminAppliedIndex\"\x90\x02\n" +
+	"\x16GetRangeDigestResponse\x12,\n" +
+	"\x12first_log_sequence\x18\x01 \x01(\x06R\x10firstLogSequence\x12*\n" +
+	"\x11last_log_sequence\x18\x02 \x01(\x06R\x0flastLogSequence\x12\x16\n" +
+	"\x06digest\x18\x03 \x01(\fR\x06digest\x12%\n" +
+	"\x0edigest_version\x18\x04 \x01(\rR\rdigestVersion\x12#\n" +
+	"\rapplied_index\x18\x05 \x01(\x06R\fappliedIndex\x128\n" +
+	"\x19last_log_sequence_on_node\x18\x06 \x01(\x06R\x15lastLogSequenceOnNode\">\n" +
 	"\x12RaftRequestMessage\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\x06R\x02id\x12\x18\n" +
 	"\amessage\x18\x02 \x01(\fR\amessage\"R\n" +
@@ -507,7 +664,9 @@ const file_raft_transport_proto_rawDesc = "" +
 	"\x04pong\x18\x02 \x01(\v2\x1c.raft_transport.PongResponseH\x00R\x04pongB\t\n" +
 	"\amessage2u\n" +
 	"\x14RaftTransportService\x12]\n" +
-	"\x0eStreamMessages\x12\".raft_transport.SendMessageRequest\x1a#.raft_transport.SendMessageResponse(\x010\x01B@Z>github.com/formancehq/ledger/v3/internal/proto/rafttransportpbb\x06proto3"
+	"\x0eStreamMessages\x12\".raft_transport.SendMessageRequest\x1a#.raft_transport.SendMessageResponse(\x010\x012v\n" +
+	"\x13LogIntegrityService\x12_\n" +
+	"\x0eGetRangeDigest\x12%.raft_transport.GetRangeDigestRequest\x1a&.raft_transport.GetRangeDigestResponseB@Z>github.com/formancehq/ledger/v3/internal/proto/rafttransportpbb\x06proto3"
 
 var (
 	file_raft_transport_proto_rawDescOnce sync.Once
@@ -521,28 +680,32 @@ func file_raft_transport_proto_rawDescGZIP() []byte {
 	return file_raft_transport_proto_rawDescData
 }
 
-var file_raft_transport_proto_msgTypes = make([]protoimpl.MessageInfo, 8)
+var file_raft_transport_proto_msgTypes = make([]protoimpl.MessageInfo, 10)
 var file_raft_transport_proto_goTypes = []any{
-	(*RaftRequestMessage)(nil),  // 0: raft_transport.RaftRequestMessage
-	(*RaftRequestBatch)(nil),    // 1: raft_transport.RaftRequestBatch
-	(*RaftResponseMessage)(nil), // 2: raft_transport.RaftResponseMessage
-	(*RaftResponseBatch)(nil),   // 3: raft_transport.RaftResponseBatch
-	(*PingMessage)(nil),         // 4: raft_transport.PingMessage
-	(*PongResponse)(nil),        // 5: raft_transport.PongResponse
-	(*SendMessageRequest)(nil),  // 6: raft_transport.SendMessageRequest
-	(*SendMessageResponse)(nil), // 7: raft_transport.SendMessageResponse
+	(*GetRangeDigestRequest)(nil),  // 0: raft_transport.GetRangeDigestRequest
+	(*GetRangeDigestResponse)(nil), // 1: raft_transport.GetRangeDigestResponse
+	(*RaftRequestMessage)(nil),     // 2: raft_transport.RaftRequestMessage
+	(*RaftRequestBatch)(nil),       // 3: raft_transport.RaftRequestBatch
+	(*RaftResponseMessage)(nil),    // 4: raft_transport.RaftResponseMessage
+	(*RaftResponseBatch)(nil),      // 5: raft_transport.RaftResponseBatch
+	(*PingMessage)(nil),            // 6: raft_transport.PingMessage
+	(*PongResponse)(nil),           // 7: raft_transport.PongResponse
+	(*SendMessageRequest)(nil),     // 8: raft_transport.SendMessageRequest
+	(*SendMessageResponse)(nil),    // 9: raft_transport.SendMessageResponse
 }
 var file_raft_transport_proto_depIdxs = []int32{
-	0, // 0: raft_transport.RaftRequestBatch.messages:type_name -> raft_transport.RaftRequestMessage
-	2, // 1: raft_transport.RaftResponseBatch.messages:type_name -> raft_transport.RaftResponseMessage
-	1, // 2: raft_transport.SendMessageRequest.raft:type_name -> raft_transport.RaftRequestBatch
-	4, // 3: raft_transport.SendMessageRequest.ping:type_name -> raft_transport.PingMessage
-	3, // 4: raft_transport.SendMessageResponse.raft:type_name -> raft_transport.RaftResponseBatch
-	5, // 5: raft_transport.SendMessageResponse.pong:type_name -> raft_transport.PongResponse
-	6, // 6: raft_transport.RaftTransportService.StreamMessages:input_type -> raft_transport.SendMessageRequest
-	7, // 7: raft_transport.RaftTransportService.StreamMessages:output_type -> raft_transport.SendMessageResponse
-	7, // [7:8] is the sub-list for method output_type
-	6, // [6:7] is the sub-list for method input_type
+	2, // 0: raft_transport.RaftRequestBatch.messages:type_name -> raft_transport.RaftRequestMessage
+	4, // 1: raft_transport.RaftResponseBatch.messages:type_name -> raft_transport.RaftResponseMessage
+	3, // 2: raft_transport.SendMessageRequest.raft:type_name -> raft_transport.RaftRequestBatch
+	6, // 3: raft_transport.SendMessageRequest.ping:type_name -> raft_transport.PingMessage
+	5, // 4: raft_transport.SendMessageResponse.raft:type_name -> raft_transport.RaftResponseBatch
+	7, // 5: raft_transport.SendMessageResponse.pong:type_name -> raft_transport.PongResponse
+	8, // 6: raft_transport.RaftTransportService.StreamMessages:input_type -> raft_transport.SendMessageRequest
+	0, // 7: raft_transport.LogIntegrityService.GetRangeDigest:input_type -> raft_transport.GetRangeDigestRequest
+	9, // 8: raft_transport.RaftTransportService.StreamMessages:output_type -> raft_transport.SendMessageResponse
+	1, // 9: raft_transport.LogIntegrityService.GetRangeDigest:output_type -> raft_transport.GetRangeDigestResponse
+	8, // [8:10] is the sub-list for method output_type
+	6, // [6:8] is the sub-list for method input_type
 	6, // [6:6] is the sub-list for extension type_name
 	6, // [6:6] is the sub-list for extension extendee
 	0, // [0:6] is the sub-list for field type_name
@@ -553,11 +716,11 @@ func file_raft_transport_proto_init() {
 	if File_raft_transport_proto != nil {
 		return
 	}
-	file_raft_transport_proto_msgTypes[6].OneofWrappers = []any{
+	file_raft_transport_proto_msgTypes[8].OneofWrappers = []any{
 		(*SendMessageRequest_Raft)(nil),
 		(*SendMessageRequest_Ping)(nil),
 	}
-	file_raft_transport_proto_msgTypes[7].OneofWrappers = []any{
+	file_raft_transport_proto_msgTypes[9].OneofWrappers = []any{
 		(*SendMessageResponse_Raft)(nil),
 		(*SendMessageResponse_Pong)(nil),
 	}
@@ -567,9 +730,9 @@ func file_raft_transport_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_raft_transport_proto_rawDesc), len(file_raft_transport_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   8,
+			NumMessages:   10,
 			NumExtensions: 0,
-			NumServices:   1,
+			NumServices:   2,
 		},
 		GoTypes:           file_raft_transport_proto_goTypes,
 		DependencyIndexes: file_raft_transport_proto_depIdxs,
