@@ -19,6 +19,7 @@ import (
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/cmdutil"
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/events"
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/indexes"
+	"github.com/formancehq/ledger/v3/cmd/ledgerctl/kv"
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/ledgers"
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/logs"
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/numscripts"
@@ -160,6 +161,7 @@ func newRootCommand() *cobra.Command {
 	rootCmd.AddCommand(querycheckpoint.NewCommand())
 	rootCmd.AddCommand(queries.NewCommand())
 	rootCmd.AddCommand(numscripts.NewCommand())
+	rootCmd.AddCommand(kv.NewCommand())
 
 	// Wire shell completion for every --ledger flag in the tree.
 	registerLedgerFlagCompletion(rootCmd)
