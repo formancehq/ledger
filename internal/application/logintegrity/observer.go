@@ -159,7 +159,7 @@ func (o *Observer) observe(ctx context.Context) {
 		if head == 0 {
 			last = 1
 		}
-		if head-cursor.next >= MaxRangeEntries {
+		if head != 0 && head-cursor.next >= MaxRangeEntries {
 			last = cursor.next + MaxRangeEntries - 1
 		}
 		checks.Go(func() {
@@ -203,9 +203,8 @@ func (o *Observer) comparePeerAtHead(ctx context.Context, id uint64, cursor *pee
 			advanceCursor(cursor, last)
 		} else {
 			o.logger.Errorf("Cannot digest local logs [%d,%d]: %v", first, last, err)
+			return
 		}
-
-		return
 	}
 	if err == nil && (local == nil || len(local.GetDigest()) != 32) {
 		o.logger.Errorf("Invalid local digest response for logs [%d,%d]", first, last)
@@ -236,7 +235,11 @@ func (o *Observer) comparePeerAtHead(ctx context.Context, id uint64, cursor *pee
 
 		return
 	}
-	if local != nil && remote.GetLastLogSequenceOnNode() > localHead && remote.GetAppliedIndex() == local.GetAppliedIndex() {
+	localApplied := applied
+	if local != nil {
+		localApplied = local.GetAppliedIndex()
+	}
+	if remote.GetLastLogSequenceOnNode() > localHead && remote.GetAppliedIndex() == localApplied {
 		o.reportMismatch(ctx, id, cursor, first, last, applied, fmt.Sprintf("peer log head %d exceeds local head %d", remote.GetLastLogSequenceOnNode(), localHead))
 		advanceCursor(cursor, last)
 

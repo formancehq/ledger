@@ -9,7 +9,9 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel/metric/noop"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/status"
 	"google.golang.org/grpc/test/bufconn"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
@@ -24,9 +26,13 @@ type fixtureDigestServer struct {
 	hashForRange func(uint64, uint64) []byte
 	head         uint64
 	applied      uint64
+	dataLoss     bool
 }
 
 func (s *fixtureDigestServer) GetRangeDigest(_ context.Context, req *rafttransportpb.GetRangeDigestRequest) (*rafttransportpb.GetRangeDigestResponse, error) {
+	if s.dataLoss {
+		return nil, status.Error(codes.DataLoss, "empty log")
+	}
 	hash := s.hash
 	if s.hashForRange != nil {
 		hash = s.hashForRange(req.GetFirstLogSequence(), req.GetLastLogSequence())
@@ -48,6 +54,29 @@ func (s *fixtureDigestServer) GetRangeDigest(_ context.Context, req *rafttranspo
 			return req.GetLastLogSequence()
 		}(),
 	}, nil
+}
+
+func TestObserverReportsPeerSuffixWithEmptyLocalLog(t *testing.T) {
+	t.Parallel()
+	listener := bufconn.Listen(1024 * 1024)
+	remote := &fixtureDigestServer{hash: make([]byte, 32), head: 100, applied: 5}
+	server := grpc.NewServer()
+	rafttransportpb.RegisterLogIntegrityServiceServer(server, remote)
+	go func() { _ = server.Serve(listener) }()
+	t.Cleanup(server.Stop)
+	conn, err := grpc.NewClient("passthrough:///peer-empty-local", grpc.WithContextDialer(func(context.Context, string) (net.Conn, error) {
+		return listener.Dial()
+	}), grpc.WithTransportCredentials(insecure.NewCredentials()))
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, conn.Close()) })
+
+	local := &fixtureDigestServer{dataLoss: true}
+	observer := NewObserver(nil, nil, fixturePeerConnection{conn}, local,
+		logging.FromContext(logging.TestingContext()), noop.NewMeterProvider().Meter("test"))
+	cursor := &peerCursor{next: 1}
+	observer.comparePeerAtHead(t.Context(), 2, cursor, 1, 1, 5, 0)
+	require.Equal(t, uint64(2), cursor.next)
+	require.NotEmpty(t, cursor.lastMismatch)
 }
 
 func TestObserverReportsPeerLogSuffix(t *testing.T) {
