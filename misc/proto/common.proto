@@ -27,6 +27,8 @@ enum AuthScope {
   AUTH_SCOPE_QUERY_WRITE = 12;
   AUTH_SCOPE_CLUSTER_READ = 13;
   AUTH_SCOPE_CLUSTER_WRITE = 14;
+  AUTH_SCOPE_KV_READ = 15;
+  AUTH_SCOPE_KV_WRITE = 16;
 }
 
 // DynamicAuthResolver names request-dependent policies that cannot be reduced
