@@ -115,6 +115,8 @@ func requestScopeCases() map[string]scopeCase {
 		"create_index":   {&servicepb.Request{Type: &servicepb.Request_CreateIndex{}}, ScopeLedgersWrite},
 		"drop_index":     {&servicepb.Request{Type: &servicepb.Request_DropIndex{}}, ScopeLedgersWrite},
 		"save_numscript": {&servicepb.Request{Type: &servicepb.Request_SaveNumscript{}}, ScopeLedgersWrite},
+		"put_kv":         {&servicepb.Request{Type: &servicepb.Request_PutKv{}}, ScopeLedgersWrite},
+		"delete_kv":      {&servicepb.Request{Type: &servicepb.Request_DeleteKv{}}, ScopeLedgersWrite},
 
 		// Cluster operations — ClusterService requires ledger:WriteCluster
 		// (server_cluster.go:442, 481), granted only by ledger:admin.

@@ -414,6 +414,24 @@ func rebuildDelta(
 					return fmt.Errorf("deleting ledger metadata at log %d: %w", seq, err)
 				}
 			}
+		case *commonpb.LogPayload_PutKv:
+			if p.PutKv == nil {
+				return fmt.Errorf("nil PutKV log at %d", seq)
+			}
+			if err := batch.SetBytes(dal.LedgerKVKey(p.PutKv.GetLedger(), p.PutKv.GetKey()), p.PutKv.GetValue()); err != nil {
+				_ = batch.Cancel()
+
+				return fmt.Errorf("replaying PutKV at log %d: %w", seq, err)
+			}
+		case *commonpb.LogPayload_DeleteKv:
+			if p.DeleteKv == nil {
+				return fmt.Errorf("nil DeleteKV log at %d", seq)
+			}
+			if err := batch.DeleteKey(dal.LedgerKVKey(p.DeleteKv.GetLedger(), p.DeleteKv.GetKey())); err != nil {
+				_ = batch.Cancel()
+
+				return fmt.Errorf("replaying DeleteKV at log %d: %w", seq, err)
+			}
 
 		case *commonpb.LogPayload_SavedNumscript:
 			if p.SavedNumscript != nil && p.SavedNumscript.GetInfo() != nil {

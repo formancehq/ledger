@@ -8,6 +8,7 @@ import (
 	"sort"
 	"strconv"
 	"time"
+	"unicode/utf8"
 
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -599,6 +600,26 @@ func (impl *BucketServiceServerImpl) GetLedger(ctx context.Context, req *service
 	}
 
 	return sensitive.Redact(ledger), nil
+}
+
+func (impl *BucketServiceServerImpl) GetKV(ctx context.Context, req *servicepb.GetKVRequest) (*servicepb.GetKVResponse, error) {
+	if req.GetLedger() == "" {
+		return nil, domain.ErrLedgerNameRequired
+	}
+	if req.GetKey() == "" || len(req.GetKey()) > domain.MaxKVKeyBytes || !utf8.ValidString(req.GetKey()) {
+		return nil, status.Error(codes.InvalidArgument, "KV key must contain 1 to 256 bytes")
+	}
+	c, cleanup, err := impl.readController(ctx, req.GetRead().GetCheckpointId())
+	if err != nil {
+		return nil, err
+	}
+	defer cleanup()
+	value, err := c.GetKV(ctx, req.GetLedger(), req.GetKey())
+	if err != nil {
+		return nil, err
+	}
+
+	return &servicepb.GetKVResponse{Value: value}, nil
 }
 
 func (impl *BucketServiceServerImpl) GetAccount(ctx context.Context, req *servicepb.GetAccountRequest) (*commonpb.Account, error) {

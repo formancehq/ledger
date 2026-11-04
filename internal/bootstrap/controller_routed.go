@@ -489,6 +489,15 @@ func (b *RoutedController) ListIndexes(ctx context.Context, req *servicepb.ListI
 
 var _ ctrl.Controller = (*RoutedController)(nil)
 
+func (b *RoutedController) GetKV(ctx context.Context, ledger, key string) ([]byte, error) {
+	c, _, err := b.readCtrl(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	return c.GetKV(ctx, ledger, key)
+}
+
 func NewRoutedController(localController ctrl.Controller, node *node.Node, servicePool *transport.ConnectionPool) *RoutedController {
 	routed := &RoutedController{
 		Node:            node,

@@ -505,7 +505,7 @@ func DeleteLedgerData(b *dal.WriteSession, ledgerName string) error {
 	}
 
 	// Range delete for per-ledger system keys scoped by [zone][sub][ledgerName padded].
-	for _, sub := range []byte{dal.SubPLPreparedQuery, dal.SubPLReversions} {
+	for _, sub := range []byte{dal.SubPLPreparedQuery, dal.SubPLReversions, dal.SubPLKV} {
 		start := buildLedgerScopedPrefix(dal.ZonePerLedger, sub, ledgerName)
 		end := buildLedgerScopedPrefixSuccessor(dal.ZonePerLedger, sub, ledgerName)
 

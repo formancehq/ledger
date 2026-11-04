@@ -45,6 +45,9 @@ service BucketService {
   rpc GetLedger(GetLedgerRequest) returns (common.LedgerInfo) {
     option (common.auth_policy) = { fixed_scope: AUTH_SCOPE_LEDGER_READ };
   }
+  rpc GetKV(GetKVRequest) returns (GetKVResponse) {
+    option (common.auth_policy) = { fixed_scope: AUTH_SCOPE_LEDGER_READ };
+  }
   // GetAccount retrieves an account by address
   rpc GetAccount(GetAccountRequest) returns (common.Account) {
     option (common.auth_policy) = { fixed_scope: AUTH_SCOPE_ACCOUNT_READ };
@@ -321,6 +324,8 @@ message Request {
     DeleteQueryCheckpointScheduleRequest delete_query_checkpoint_schedule = 25;
     SaveLedgerMetadataRequest save_ledger_metadata = 26;
     DeleteLedgerMetadataRequest delete_ledger_metadata = 27;
+    PutKVRequest put_kv = 28;
+    DeleteKVRequest delete_kv = 29;
   }
   // Signing happens at the batch level, never per request: a signed
   // ApplyRequest carries an opaque SignedApplyBatch whose payload is the
@@ -1023,6 +1028,7 @@ enum CheckStoreErrorType {
   // mirror source than the state replayed from verified audit orders. Applies
   // independently to canonical FSM attributes and global ledger information.
   CHECK_STORE_ERROR_TYPE_LEDGER_INFO_MISMATCH = 32;
+  CHECK_STORE_ERROR_TYPE_KV_MISMATCH = 33;
 }
 
 message CheckStoreError {
@@ -1622,4 +1628,25 @@ message BarrierResponse {
   // if two barriers return the same commit_index, no proposals were committed
   // between them.
   fixed64 commit_index = 1;
+}
+
+message GetKVRequest {
+  string ledger = 1;
+  string key = 2;
+  common.ReadOptions read = 3;
+}
+
+message GetKVResponse {
+  bytes value = 1;
+}
+
+message PutKVRequest {
+  string ledger = 1;
+  string key = 2;
+  bytes value = 3;
+}
+
+message DeleteKVRequest {
+  string ledger = 1;
+  string key = 2;
 }

@@ -1108,6 +1108,76 @@ paths:
         '405':
           $ref: '#/components/responses/MethodNotAllowed'
 
+  /v3/{ledgerName}/kv/{key}:
+    get:
+      summary: Get a ledger KV value
+      description: Returns the opaque bytes stored under a key in one ledger.
+      operationId: v3GetKV
+      x-speakeasy-name-override: GetKV
+      tags: [Ledgers]
+      security:
+        - BearerAuth: []
+        - {}
+      parameters:
+        - $ref: '#/components/parameters/LedgerName'
+        - name: key
+          in: path
+          required: true
+          schema: {type: string, minLength: 1, maxLength: 256}
+      responses:
+        '200':
+          description: Opaque value
+          content:
+            application/octet-stream:
+              schema: {type: string, format: binary}
+        '404': { $ref: '#/components/responses/NotFound' }
+    put:
+      summary: Put a ledger KV value
+      description: Replaces the value for a key. The mutation is Raft replicated and audited.
+      operationId: v3PutKV
+      x-speakeasy-name-override: PutKV
+      tags: [Ledgers]
+      security:
+        - BearerAuth: []
+        - {}
+      parameters:
+        - $ref: '#/components/parameters/LedgerName'
+        - name: key
+          in: path
+          required: true
+          schema: {type: string, minLength: 1, maxLength: 256}
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/octet-stream:
+            schema: {type: string, format: binary, maxLength: 1048576}
+      responses:
+        '204': {description: Value stored}
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '413': {description: Value exceeds 1 MiB}
+    delete:
+      summary: Delete a ledger KV value
+      description: Removes a key. An absent key is accepted as a no-op and the order is audited.
+      operationId: v3DeleteKV
+      x-speakeasy-name-override: DeleteKV
+      tags: [Ledgers]
+      security:
+        - BearerAuth: []
+        - {}
+      parameters:
+        - $ref: '#/components/parameters/LedgerName'
+        - name: key
+          in: path
+          required: true
+          schema: {type: string, minLength: 1, maxLength: 256}
+        - $ref: '#/components/parameters/IdempotencyKey'
+      responses:
+        '204': {description: Key absent}
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
   /v3/{ledgerName}/metadata:
     post:
       summary: Save ledger metadata
