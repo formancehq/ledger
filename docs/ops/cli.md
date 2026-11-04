@@ -4068,10 +4068,12 @@ Controls the time-to-live for idempotency keys. After the TTL expires, an idempo
 
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
-| `--idempotency-ttl` | duration | `24h` | Desired time-to-live for idempotency keys (0 = never expire) |
+| `--idempotency-ttl` | duration | `24h` | Desired time-to-live for idempotency keys (0 = never expire; otherwise at least `1µs`) |
 | `--idempotency-eviction-interval` | duration | `60s` | How often the leader proposes eviction of expired keys |
 
 `--idempotency-ttl` names the *desired* TTL that the leader reconciles into the Raft-replicated cluster policy; the FSM freezes each outcome's absolute expiry from the committed policy at write time, so the flag never affects how an already-committed outcome is applied. It is not a persisted-config parameter and is not gated by `--unsafe-skip-config-validation`; changing the effective TTL is a cluster-policy revision bump. Keep the desired value consistent across nodes so the reconciled policy is unambiguous.
+
+The cluster policy stores the TTL in whole microseconds. A value below `1µs` other than `0` would truncate to the never-expire sentinel, so the server refuses to start with it. Longer values are truncated to whole microseconds (`1500ns` becomes `1µs`).
 
 ```bash
 # Default: 24h TTL, eviction every 60s
