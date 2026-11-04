@@ -217,13 +217,21 @@ func TestScript_FingerprintDistinguishesLibraries(t *testing.T) {
 
 // Admission resolves a reference against every save ahead of it in the batch,
 // even one the FSM will refuse: a garbled save shadows the library, so the
-// reference resolves to text that does not parse instead of to nothing.
+// reference resolves to text that does not parse instead of to nothing. Under
+// "latest" that parse failure is forwarded, and the forwarded order rejects the
+// batch before the FSM reaches the save; under an exact version it rejects.
 func TestScript_ReferenceSeesRefusedSameBulkSave(t *testing.T) {
 	t.Parallel()
 
 	res := NewGlobalState().Apply(bulkOf(
 		saveReq("L", "ns", "1.0.0", "send ("),
 		referenceReq("L", "ns", "latest", nil),
+	))
+	require.Equal(t, domain.ErrReasonPreloadUnavailable, res.Reason)
+
+	res = NewGlobalState().Apply(bulkOf(
+		saveReq("L", "ns", "1.0.0", "send ("),
+		referenceReq("L", "ns", "1.0.0", nil),
 	))
 	require.Equal(t, domain.ErrReasonNumscriptParseError, res.Reason)
 
@@ -381,6 +389,23 @@ func TestScript_AdmissionOlderThanApply(t *testing.T) {
 	forwarded := bulkOf(scriptReq("L", metaReadScript, nil, false))
 	require.Equal(t, domain.ErrReasonPreloadUnavailable, live.Apply(forwarded).Reason)
 	require.Equal(t, domain.ErrReasonPreloadUnavailable, deleted.ApplyAdmitted(forwarded, live.Admit(forwarded)).Reason)
+}
+
+// A forwarded order rejects the whole batch before any order executes, even
+// when an earlier order would fail on its own.
+func TestScript_ForwardedOrderRejectsWholeBatch(t *testing.T) {
+	t.Parallel()
+
+	live, _ := scriptFixtures(t)
+
+	missingRevert := oracletest.RevertReqL("L", 999, false)
+	alone := live.Apply(bulkOf(missingRevert))
+	require.False(t, alone.OK)
+	require.NotEqual(t, domain.ErrReasonPreloadUnavailable, alone.Reason)
+
+	res := live.Apply(bulkOf(missingRevert, scriptReq("L", metaReadScript, nil, false)))
+	require.Equal(t, domain.ErrReasonPreloadUnavailable, res.Reason)
+	require.Len(t, res.Orders, 1)
 }
 
 // Admission on an already deleted ledger reads its purged data: the reference
