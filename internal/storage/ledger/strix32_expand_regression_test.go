@@ -283,3 +283,21 @@ func TestSTRIX32ExpandWithFeatureOff(t *testing.T) {
 	})
 	requireExpandRejected(t, err)
 }
+
+// TestSTRIX32ExpandWithEffectiveVolumesFeatureOff: with
+// MOVES_HISTORY_POST_COMMIT_EFFECTIVE_VOLUMES=DISABLED the "effectiveVolumes"
+// expand must be rejected with ErrInvalidQuery, proving the effective-volumes
+// feature gate stays in front of the sink. GREEN on both base and fix.
+func TestSTRIX32ExpandWithEffectiveVolumesFeatureOff(t *testing.T) {
+	t.Parallel()
+	store := newLedgerStore(t, func(cfg *ledger.Configuration) {
+		cfg.Features = features.DefaultFeatures.With(features.FeatureMovesHistoryPostCommitEffectiveVolumes, "DISABLED")
+	})
+	ctx := strix32Setup(t, store)
+
+	_, err := store.Accounts().GetOne(ctx, common.ResourceQuery[any]{
+		Builder: query.Match("address", strix32VictimAddr),
+		Expand:  []string{"effectiveVolumes"},
+	})
+	requireExpandRejected(t, err)
+}

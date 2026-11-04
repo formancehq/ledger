@@ -14,10 +14,12 @@ import (
 
 	"github.com/formancehq/go-libs/v5/pkg/authn/jwt"
 	"github.com/formancehq/go-libs/v5/pkg/storage/bun/paginate"
+	"github.com/formancehq/go-libs/v5/pkg/transport/api"
 	"github.com/formancehq/go-libs/v5/pkg/types/metadata"
 	"github.com/formancehq/go-libs/v5/pkg/types/pointer"
 
 	ledger "github.com/formancehq/ledger/internal"
+	"github.com/formancehq/ledger/internal/api/common"
 	storagecommon "github.com/formancehq/ledger/internal/storage/common"
 )
 
@@ -31,14 +33,10 @@ import (
 // storagecommon.ErrInvalidQuery.
 //
 // SAFE invariant asserted here: when the storage layer rejects an unsupported
-// expand value with ErrInvalidQuery, the v1 list route must answer an error
-// status (>= 400), never 200 with data. The v1 list handler maps unknown
-// errors through HandleCommonErrors, which has no ErrInvalidQuery case, so a
-// rejected expand currently surfaces as 500 INTERNAL — a boundary limit to
-// record, not a security leak: no SQL built from the payload is executed and
-// no data is rendered. The assertions below accept any error status, so they
-// stay green on a correct fix even if the v1 mapping is later improved to
-// 400 VALIDATION.
+// expand value with ErrInvalidQuery, the v1 list route must answer exactly
+// HTTP 400 with the VALIDATION error code. The v1 list handler maps unknown
+// errors through HandleCommonErrors, which maps ErrInvalidQuery to
+// 400 VALIDATION like the v2 pagination handler.
 
 const strix32Payload = `x,/**/(select/**/pg_sleep(2))as/**/y`
 
@@ -69,14 +67,17 @@ func TestSTRIX32V1ListRejectsUnsupportedExpand(t *testing.T) {
 
 	router.ServeHTTP(rec, req)
 
-	require.NotEqual(t, http.StatusOK, rec.Code, "unsupported expand must never yield a successful response")
-	require.GreaterOrEqual(t, rec.Code, 400)
+	require.Equal(t, http.StatusBadRequest, rec.Code, "unsupported expand must surface as 400 VALIDATION")
+	errResp := api.ErrorResponse{}
+	api.Decode(t, rec.Body, &errResp)
+	require.EqualValues(t, common.ErrValidation, errResp.ErrorCode)
 }
 
 // TestSTRIX32V1TamperedCursorCarriesExpand: the v1 list route accepts a
 // base64 cursor whose embedded "filters.expand" is attacker-controlled (no
 // signature). SAFE contract: when that expand value is rejected with
-// ErrInvalidQuery, the route must answer an error status, never 200 with data.
+// ErrInvalidQuery, the route must answer exactly 400 VALIDATION, never 200
+// with data.
 func TestSTRIX32V1TamperedCursorCarriesExpand(t *testing.T) {
 	t.Parallel()
 
@@ -117,8 +118,10 @@ func TestSTRIX32V1TamperedCursorCarriesExpand(t *testing.T) {
 
 	router.ServeHTTP(rec, req)
 
-	require.NotEqual(t, http.StatusOK, rec.Code, "tampered-cursor expand must never yield a successful response")
-	require.GreaterOrEqual(t, rec.Code, 400)
+	require.Equal(t, http.StatusBadRequest, rec.Code, "tampered-cursor expand must surface as 400 VALIDATION")
+	errResp := api.ErrorResponse{}
+	api.Decode(t, rec.Body, &errResp)
+	require.EqualValues(t, common.ErrValidation, errResp.ErrorCode)
 }
 
 // TestSTRIX32V1ListLegitimateExpandAccepted: legitimate expand values keep

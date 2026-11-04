@@ -35,10 +35,8 @@ import (
 // These tests pin the boundary behavior with the SAFE invariant: when the
 // storage layer rejects an unsupported expand value with ErrInvalidQuery, the
 // v2 list route answers 400 VALIDATION (HandleCommonPaginationErrors) and the
-// v2 read route answers an error status, never 200 with data
-// (HandleCommonErrors has no ErrInvalidQuery case, so the read route surfaces
-// it as 500 INTERNAL — a boundary limit to record, not a security leak: the
-// error path never executes SQL and never renders data). The mocks below
+// v2 read route also answers exactly 400 VALIDATION (HandleCommonErrors maps
+// ErrInvalidQuery to 400 VALIDATION, like the pagination handler). The mocks below
 // return exactly the error a correct storage layer returns; the assertions
 // encode only that safe outcome, so they pass on a fixed candidate and fail
 // on the vulnerable base where no such error exists.
@@ -85,8 +83,8 @@ func TestSTRIX32V2ListRejectsUnsupportedExpand(t *testing.T) {
 }
 
 // TestSTRIX32V2ReadRejectsUnsupportedExpand: v2 read with an unsupported
-// expand value must not return 200 with data; the storage ErrInvalidQuery
-// must surface as an error response (never a successful account payload).
+// expand value must surface the storage ErrInvalidQuery exactly as 400
+// VALIDATION (never a successful account payload).
 func TestSTRIX32V2ReadRejectsUnsupportedExpand(t *testing.T) {
 	t.Parallel()
 
@@ -108,8 +106,10 @@ func TestSTRIX32V2ReadRejectsUnsupportedExpand(t *testing.T) {
 
 	router.ServeHTTP(rec, req)
 
-	require.NotEqual(t, http.StatusOK, rec.Code, "unsupported expand must never yield a successful response")
-	require.GreaterOrEqual(t, rec.Code, 400)
+	require.Equal(t, http.StatusBadRequest, rec.Code, "unsupported expand must surface as 400 VALIDATION")
+	errResp := api.ErrorResponse{}
+	api.Decode(t, rec.Body, &errResp)
+	require.EqualValues(t, common.ErrValidation, errResp.ErrorCode)
 }
 
 // TestSTRIX32V2TamperedCursorCarriesExpand: a base64 cursor embeds
