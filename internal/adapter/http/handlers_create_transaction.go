@@ -33,7 +33,7 @@ func (s *Server) handleCreateTransaction(w http.ResponseWriter, r *http.Request)
 	// The unitary endpoint intentionally does NOT expose skippableReasons: a
 	// single-transaction caller can catch the 4xx directly. The opt-in lives
 	// on the bulk endpoint (per-entry) and on the gRPC LedgerApplyRequest.
-	logs, err := s.applyUnsigned(r.Context(), r.Header.Get("Idempotency-Key"), &servicepb.Request{
+	logs, err := s.applyRequests(r.Context(), r.Header.Get("Idempotency-Key"), &servicepb.Request{
 		Type: &servicepb.Request_Apply{
 			Apply: &servicepb.LedgerApplyRequest{
 				Ledger: ledgerName,

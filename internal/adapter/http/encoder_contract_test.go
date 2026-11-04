@@ -161,7 +161,10 @@ func TestMonetaryRoutes_PayloadHasCustomMarshalJSON(t *testing.T) {
 // rather than closed. Keep the allowlist minimal, justify every entry, and
 // treat a new entry as a review checkpoint: state whether the file marshals a
 // RESPONSE (needs a protojsonRoutes row) or only decodes a REQUEST (does not).
+// signed_request.go only decodes the client SignedApplyBatch envelope; it
+// never serializes a response and therefore needs no protojsonRoutes row.
 var allowedProtojsonImporters = map[string]bool{
+	"signed_request.go":            true,
 	"response.go":                  true,
 	"handlers_get_events_sinks.go": true,
 	"handlers_create_ledger.go":    true,

@@ -44,6 +44,39 @@ integer schema spans `-9223372036854775808` through `18446744073709551615`,
 matching signed negative and unsigned nonnegative metadata values. See
 [Metadata number decoding](../architecture/subsystems/api/http-api.md#metadata-number-decoding).
 
+## HTTP transaction request signatures
+
+V3 adds an opt-in `application/vnd.formance.signed-request+json` body for the
+existing transaction create/revert/metadata POST, transaction metadata DELETE,
+and nonempty `atomic=true` bulk operations. The wrapper carries the ordinary
+REST body in `request` (null for DELETE) and an Ed25519 `signedBatch` over the
+complete protobuf batch derived from the URL, body and `Idempotency-Key`. The
+complete decoded protobuf values must match before the original signed bytes
+reach admission. Atomic bulk preserves its header key, ignored per-entry `ik`,
+request order and skippable reasons. Signed non-atomic bulk returns 400.
+
+V2's transaction and bulk methods/routes, ordinary JSON field names, envelopes,
+defaults and header identity remain the comparison baseline. Their ordinary v3
+JSON counterparts keep those established contracts; the new media type is an
+intentional additive divergence because v2 provides no equivalent opaque
+`ApplyBatch` signature proof. No route is renamed, so the endpoint map is
+unchanged. Response envelopes and bigint negotiation are unchanged. Request
+signing does not provide HTTP response authenticity.
+
+Malformed signed wrappers return 400; HTTP-to-signed-batch mismatch and invalid,
+unknown or revoked signing keys return 403 `PERMISSION_DENIED`. Mandatory missing
+signatures return 401 `UNAUTHENTICATED`. Unsupported routes return 415 for this
+media type. Bulk 401/403 cannot be suppressed by `continueOnFailure`, and all
+processing outcomes remain available. JWT authentication/scopes remain separate.
+Forwarded signing failures use dedicated validated `ledger.signing` ErrorInfo
+details; bare/foreign gRPC auth failures retain the existing 500 contract.
+
+The 4 MiB body budget includes the whole wrapper and base64, reducing usable
+signed capacity. Upgrade receiving HTTP nodes before clients opt in. No protobuf,
+protocol revision (40), proposal or persisted format changes, or migration are
+needed. Existing retained-key replay, unkeyed re-execution and expired-key rules
+are unchanged. See [HTTP request signing](../../ops/signing.md#http-request-signing).
+
 ## Transaction metadata address validation
 
 Transaction creation (including bulk) rejects malformed `accountMetadata`
@@ -575,8 +608,8 @@ error status without allowing partial application of the batch.
 
 **SDK error contract:** Processing failures retain the `data` array,
 including committed successes, the failed element and aborted later elements.
-Business statuses 400/401/403/404/409 are suppressed to 200 only when
-`continueOnFailure=true`. Processing 429/500/503 surface unconditionally;
+Business statuses 400/404/409 are suppressed to 200 only when
+`continueOnFailure=true`. Processing 401/403/429/500/503 surface unconditionally;
 503 retains `Retry-After: 1`. OpenAPI declares `BulkErrorResponse` as an `anyOf`
 union of the bulk envelope and ordinary ErrorResponse where both are accepted,
 and includes the optional batch idempotency header. Empty successful batches

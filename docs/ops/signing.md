@@ -66,7 +66,163 @@ message SignedApplyBatch {
 }
 ```
 
-Because the wire form for a batch is a discriminated `oneof`, the batch bytes appear only once. There is no wrapper-vs-payload divergence class to guard against — the proto schema itself enforces "either you ship the raw `ApplyBatch`, or you ship the opaque signed envelope, not both".
+For gRPC, the discriminated `oneof` carries either the raw batch or the signed envelope. HTTP also carries the ordinary REST body and binds its decoded operation to the signed batch before admission, as described below.
+
+## HTTP request signing
+
+Use `Content-Type: application/vnd.formance.signed-request+json` on these existing
+routes (paths are relative to `/v3/{ledgerName}`):
+
+| Method and path | `request` value |
+| --- | --- |
+| POST `/transactions` | Ordinary create-transaction body |
+| POST `/transactions/{transactionId}/revert` | Revert options object; `{}` selects defaults |
+| POST `/transactions/{transactionId}/metadata` | Ordinary metadata object |
+| DELETE `/transactions/{transactionId}/metadata/{key}` | Explicit `null` |
+| POST `/bulk?atomic=true` | Nonempty ordinary bulk array |
+
+The complete body is one JSON document:
+
+```json
+{
+  "request": {"reviewed": "yes"},
+  "signedBatch": {
+    "keyId": "ops",
+    "signature": "<standard-base64 Ed25519 signature>",
+    "payload": "<standard-base64 serialized ApplyBatch>"
+  }
+}
+```
+
+Sign the exact serialized protobuf `ApplyBatch`, not this wrapper or the REST
+JSON. Build the same operation as the route and ordinary body decoder: ledger,
+transaction ID or metadata key from the URL; command fields and typed metadata
+from `request`; and the batch idempotency key from `Idempotency-Key` (empty if
+omitted). Bulk includes every request in order and its `skippableReasons`;
+atomic bulk uses the header key and ignores each element's `ik`. Use exactly one
+request for each unitary route. The server compares the entire decoded batch,
+including oneofs, count and ordering, with the HTTP-derived batch, then forwards
+the original bytes to admission for cryptographic verification. Protobuf wire
+encodings need not be canonical or identical across languages.
+
+The signature covers executed command semantics, including scripts, references,
+metadata and skip policy. It does not authenticate ignored JSON fields,
+`continueOnFailure`, response formatting, JWT claims or response contents.
+Ordinary JWT authentication and scopes still apply. Keep private seeds local;
+register only the public key through the existing signing-management API.
+
+### Go client recipe
+
+The following function saves transaction metadata using string values. It uses
+the repository's Go packages, whose protobuf types are under `internal/`, so run
+it from a package within the Ledger module. Other clients can use bindings for
+the published protobuf definitions and sign their own exact serialized bytes.
+The signing key must already be registered and the transaction must exist.
+
+```go
+package example
+
+import (
+    "bytes"
+    "context"
+    "crypto/ed25519"
+    "encoding/json"
+    "fmt"
+    "net/http"
+    "net/url"
+    "strconv"
+    "strings"
+
+    "github.com/formancehq/ledger/v3/internal/proto/servicepb"
+    "github.com/formancehq/ledger/v3/pkg/actions"
+    "google.golang.org/protobuf/encoding/protojson"
+)
+
+func SaveSignedMetadata(ctx context.Context, client *http.Client, baseURL, ledger string,
+    transactionID uint64, token, keyID, idempotencyKey string,
+    privateKey ed25519.PrivateKey) error {
+    metadata := map[string]string{"reviewed": "yes"}
+    batch := &servicepb.ApplyBatch{
+        Requests: []*servicepb.Request{
+            actions.SaveTransactionMetadataAction(ledger, transactionID, metadata),
+        },
+        IdempotencyKey: idempotencyKey,
+    }
+    signed, err := actions.SignBatch(batch, keyID, privateKey)
+    if err != nil {
+        return err
+    }
+    // protojson emits camelCase keys and standard base64 byte strings.
+    signedJSON, err := protojson.Marshal(signed.GetSigned())
+    if err != nil {
+        return err
+    }
+    body, err := json.Marshal(struct {
+        Request map[string]string `json:"request"`
+        SignedBatch json.RawMessage `json:"signedBatch"`
+    }{metadata, signedJSON})
+    if err != nil {
+        return err
+    }
+    endpoint := strings.TrimRight(baseURL, "/") + "/v3/" + url.PathEscape(ledger) +
+        "/transactions/" + strconv.FormatUint(transactionID, 10) + "/metadata"
+    req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(body))
+    if err != nil {
+        return err
+    }
+    req.Header.Set("Content-Type", "application/vnd.formance.signed-request+json")
+    req.Header.Set("Idempotency-Key", idempotencyKey)
+    if token != "" {
+        req.Header.Set("Authorization", "Bearer " + token)
+    }
+    resp, err := client.Do(req)
+    if err != nil {
+        return err // An ambiguous transport failure does not prove noncommit.
+    }
+    defer func() {
+        // Closing the response releases transport resources; status is already available.
+        _ = resp.Body.Close()
+    }()
+    if resp.StatusCode != http.StatusNoContent {
+        return fmt.Errorf("signed metadata save: HTTP %d", resp.StatusCode)
+    }
+    return nil
+}
+```
+
+For create or revert, use the matching `actions` helper and an equivalent legacy
+JSON body. For deletion, sign `actions.DeleteTransactionMetadataAction`, encode
+the raw metadata key as one URL segment and set `request` to null. For bulk, build
+one batch from the complete converted array, including its per-request skip
+reasons, and send `atomic=true`; signing each item independently is insufficient.
+A nonempty explicit timestamp must match both representations when supplied;
+omitted execution-time defaults remain omitted in the signed command.
+
+### Failures and rollout
+
+| Condition | HTTP result |
+| --- | --- |
+| Malformed wrapper, invalid base64/protobuf JSON, empty signed bulk or signed bulk without `atomic=true` | 400 |
+| Signed payload cannot be decoded or its batch differs from the HTTP-derived operation | 403 `PERMISSION_DENIED` |
+| Signature missing while cluster signing is mandatory | 401 `UNAUTHENTICATED` |
+| Invalid signature, unknown key or revoked key | 403 `PERMISSION_DENIED` |
+| Signed media type on an unsupported route | 415 |
+
+Legacy `application/json` remains unsigned and works when signing is optional.
+Enabling mandatory signing rejects those unsigned mutations; there is no silent
+fallback. `continueOnFailure` never suppresses bulk 401/403, and a processing
+failure retains all per-element results. Inspect them before deciding to retry.
+The 4 MiB HTTP limit includes the entire wrapper, duplicated command data,
+base64 expansion and trailing whitespace, reducing the usable signed payload
+capacity. Existing endpoint-specific oversized-body status mapping still applies.
+
+Upgrade HTTP nodes before enabling clients to send the new media type. No
+protobuf, protocol revision (40), persisted state or data migration changes are
+required. Signing adds no replay protection: retained idempotency keys replay
+the existing frozen outcome, an empty key permits re-execution, and an expired
+key follows the ordinary eviction contract. Preserve the same key and payload
+for retries while the key is retained. HTTP signing adds no response signature
+or independently authenticated transaction response.
 
 ## Key Management
 

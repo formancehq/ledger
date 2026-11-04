@@ -36,7 +36,6 @@ import (
 	internalauth "github.com/formancehq/ledger/v3/internal/adapter/auth"
 	"github.com/formancehq/ledger/v3/internal/adapter/grpcerr"
 	"github.com/formancehq/ledger/v3/internal/domain"
-	"github.com/formancehq/ledger/v3/internal/domain/crypto/signing"
 	"github.com/formancehq/ledger/v3/internal/infra/backup"
 	"github.com/formancehq/ledger/v3/internal/infra/node"
 	"github.com/formancehq/ledger/v3/internal/infra/plan"
@@ -541,17 +540,9 @@ func convertToGRPCErrorWithContext(ctx context.Context, err error, logger loggin
 		return err
 	}
 
-	// Convert signature errors to proper gRPC codes
-	if errors.Is(err, signing.ErrMissingSignature) {
-		return status.Error(codes.Unauthenticated, err.Error())
-	}
-
-	if errors.Is(err, signing.ErrInvalidSignature) {
-		return status.Error(codes.PermissionDenied, err.Error())
-	}
-
-	if errors.Is(err, signing.ErrUnknownKeyID) {
-		return status.Error(codes.PermissionDenied, err.Error())
+	// Preserve signing rejection identity across a follower forwarding hop.
+	if st := grpcerr.SigningStatus(err); st != nil {
+		return st.Err()
 	}
 
 	// A RemoveNode response can outlive the Raft mutation it initiated: the

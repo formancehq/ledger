@@ -445,3 +445,36 @@ have different meanings. Fixed-state windows and link traversal belong to
 `query-semantic-equivalence`; temporal consistency belongs to
 `read-consistency-projections`. Do not invent a token authenticity or retained
 snapshot guarantee.
+
+## HTTP signed transaction boundary
+
+Trace the five signed operations through their actual route registrations,
+wrapper middleware, ordinary HTTP conversion and backend Apply. The media type
+is `application/vnd.formance.signed-request+json`; required fields are `request`
+and `signedBatch`. DELETE transaction metadata uses request:null. Unsupported
+business routes return 415. Compare the complete decoded protobuf batch with the
+URL/body/header-derived batch, including order/count, oneofs, typed values,
+skippable reasons and batch identity, before forwarding the original bytes.
+Noncanonical but equivalent protobuf encodings must not require reserialization.
+Signed bulk is nonempty and atomic-only; its header key wins over ignored `ik`.
+
+Require distinct routed controls for malformed envelopes 400, mismatch 403,
+missing mandatory signatures 401, invalid/unknown/revoked keys 403 and preserved
+legacy optional unsigned JSON. Check the 4 MiB limit over the entire wrapper,
+including base64 and duplicate command data. Processing 401/403 must survive
+continueOnFailure while retaining every element result. Dedicated forwarded
+signing ErrorInfo uses domain `ledger.signing` and reason/status pairs
+MISSING_SIGNATURE/Unauthenticated or INVALID_SIGNATURE and
+UNKNOWN_KEY_ID/PermissionDenied; preserve original gRPC status/message. Only
+validated pairs gain classifiable 401/403 handling, and the public codes remain
+UNAUTHENTICATED/PERMISSION_DENIED. Bare/foreign auth errors retain 500. Probe wrong
+domains, reasons and statuses separately from a real signature rejection.
+
+This domain owns conversion, exact-byte forwarding, media/schema/error
+presentation and wrapper budget. The authentication domain owns unchanged JWT
+scopes and caller attribution; admission owns Ed25519 verification and key
+lifecycle, and persistence/replay domains retain their existing boundaries.
+Request signing adds no HTTP response authenticity. See
+[the HTTP contract](../architecture/subsystems/api/http-api.md#signed-transaction-requests)
+and [client recipe](../../ops/signing.md#http-request-signing). No audit execution
+is authorized by this contract update.

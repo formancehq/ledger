@@ -1,7 +1,12 @@
 openapi: 3.0.3
 info:
   title: Ledger v3 API
-  description: API for the Ledger v3, a distributed accounting ledger with Raft consensus
+  description: |
+    API for Ledger v3, a distributed accounting ledger with Raft consensus.
+    Signed transaction mutations opt in with
+    application/vnd.formance.signed-request+json on the five operations declaring
+    that media type. Other /v3 operations reject it with HTTP 415 and an
+    ErrorResponse JSON body. Legacy application/json remains unsigned.
   version: 1.0.0
   contact:
     name: Formance
@@ -56,6 +61,8 @@ paths:
           $ref: '#/components/responses/ServiceUnavailable'
         '500':
           $ref: '#/components/responses/InternalServerError'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
         '405':
           $ref: '#/components/responses/MethodNotAllowed'
 
@@ -192,6 +199,8 @@ paths:
           $ref: '#/components/responses/ServiceUnavailable'
         '500':
           $ref: '#/components/responses/InternalServerError'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
         '405':
           $ref: '#/components/responses/MethodNotAllowed'
     post:
@@ -275,6 +284,8 @@ paths:
           $ref: '#/components/responses/ServiceUnavailable'
         '500':
           $ref: '#/components/responses/InternalServerError'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
         '405':
           $ref: '#/components/responses/MethodNotAllowed'
     delete:
@@ -309,6 +320,8 @@ paths:
           $ref: '#/components/responses/ServiceUnavailable'
         '500':
           $ref: '#/components/responses/InternalServerError'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
         '405':
           $ref: '#/components/responses/MethodNotAllowed'
 
@@ -363,6 +376,8 @@ paths:
           $ref: '#/components/responses/ServiceUnavailable'
         '500':
           $ref: '#/components/responses/InternalServerError'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
         '405':
           $ref: '#/components/responses/MethodNotAllowed'
 
@@ -448,6 +463,8 @@ paths:
           $ref: '#/components/responses/ServiceUnavailable'
         '500':
           $ref: '#/components/responses/InternalServerError'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
         '405':
           $ref: '#/components/responses/MethodNotAllowed'
 
@@ -561,6 +578,8 @@ paths:
           $ref: '#/components/responses/ServiceUnavailable'
         '500':
           $ref: '#/components/responses/InternalServerError'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
         '405':
           $ref: '#/components/responses/MethodNotAllowed'
 
@@ -610,6 +629,8 @@ paths:
           $ref: '#/components/responses/ServiceUnavailable'
         '500':
           $ref: '#/components/responses/InternalServerError'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
         '405':
           $ref: '#/components/responses/MethodNotAllowed'
 
@@ -659,13 +680,23 @@ paths:
           $ref: '#/components/responses/ServiceUnavailable'
         '500':
           $ref: '#/components/responses/InternalServerError'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
         '405':
           $ref: '#/components/responses/MethodNotAllowed'
 
   /v3/{ledgerName}/transactions:
     post:
       summary: Create a new transaction
-      description: Creates a new transaction in the specified ledger with the specified postings. Requires `ledger:write` scope.
+      description: |
+        Creates a new transaction in the specified ledger with the specified postings. Requires `ledger:write` scope.
+        Signed requests use `application/vnd.formance.signed-request+json` with
+        `request` and `signedBatch`; the signed protobuf batch must equal the
+        route/body/Idempotency-Key-derived batch in full. Signature enforcement
+        returns 401 `UNAUTHENTICATED` when required but absent and 403
+        `PERMISSION_DENIED` for invalid, unknown/revoked-key or mismatched
+        signatures. Malformed signed envelopes return 400. The complete
+        wrapper counts toward the 4 MiB body limit. JWT scopes still apply.
       operationId: v3CreateTransaction
       x-speakeasy-name-override: CreateTransaction
       tags:
@@ -683,6 +714,9 @@ paths:
           application/json:
             schema:
               $ref: '#/components/schemas/CreateTransactionRequest'
+          application/vnd.formance.signed-request+json:
+            schema:
+              $ref: '#/components/schemas/SignedCreateTransactionRequest'
       responses:
         '201':
           description: Transaction created successfully
@@ -818,6 +852,8 @@ paths:
           $ref: '#/components/responses/ServiceUnavailable'
         '500':
           $ref: '#/components/responses/InternalServerError'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
         '405':
           $ref: '#/components/responses/MethodNotAllowed'
 
@@ -856,6 +892,8 @@ paths:
           $ref: '#/components/responses/ServiceUnavailable'
         '500':
           $ref: '#/components/responses/InternalServerError'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
         '405':
           $ref: '#/components/responses/MethodNotAllowed'
 
@@ -927,6 +965,8 @@ paths:
           $ref: '#/components/responses/ServiceUnavailable'
         '500':
           $ref: '#/components/responses/InternalServerError'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
         '405':
           $ref: '#/components/responses/MethodNotAllowed'
 
@@ -975,6 +1015,8 @@ paths:
           $ref: '#/components/responses/ServiceUnavailable'
         '500':
           $ref: '#/components/responses/InternalServerError'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
         '405':
           $ref: '#/components/responses/MethodNotAllowed'
 
@@ -1041,6 +1083,8 @@ paths:
           $ref: '#/components/responses/ServiceUnavailable'
         '500':
           $ref: '#/components/responses/InternalServerError'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
         '405':
           $ref: '#/components/responses/MethodNotAllowed'
 
@@ -1093,6 +1137,8 @@ paths:
           $ref: '#/components/responses/ServiceUnavailable'
         '500':
           $ref: '#/components/responses/InternalServerError'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
         '405':
           $ref: '#/components/responses/MethodNotAllowed'
 
@@ -1130,6 +1176,8 @@ paths:
           $ref: '#/components/responses/ServiceUnavailable'
         '500':
           $ref: '#/components/responses/InternalServerError'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
         '405':
           $ref: '#/components/responses/MethodNotAllowed'
 
@@ -1181,13 +1229,23 @@ paths:
           $ref: '#/components/responses/ServiceUnavailable'
         '500':
           $ref: '#/components/responses/InternalServerError'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
         '405':
           $ref: '#/components/responses/MethodNotAllowed'
 
   /v3/{ledgerName}/transactions/{transactionId}/metadata:
     post:
       summary: Save transaction metadata
-      description: Saves metadata for a specific transaction in the ledger. Requires `ledger:WriteMetadata` scope (included in the default `ledger:write` mapping).
+      description: |
+        Saves metadata for a specific transaction in the ledger. Requires `ledger:WriteMetadata` scope (included in the default `ledger:write` mapping).
+        Signed requests use `application/vnd.formance.signed-request+json` with
+        `request` and `signedBatch`; the signed protobuf batch must equal the
+        route/body/Idempotency-Key-derived batch in full. Signature enforcement
+        returns 401 `UNAUTHENTICATED` when required but absent and 403
+        `PERMISSION_DENIED` for invalid, unknown/revoked-key or mismatched
+        signatures. Malformed signed envelopes return 400. The complete
+        wrapper counts toward the 4 MiB body limit. JWT scopes still apply.
       operationId: v3SaveTransactionMetadata
       x-speakeasy-name-override: SaveTransactionMetadata
       tags:
@@ -1212,6 +1270,9 @@ paths:
                 reason: correction
                 source: support
                 priority: 1
+          application/vnd.formance.signed-request+json:
+            schema:
+              $ref: '#/components/schemas/SignedSaveTransactionMetadataRequest'
       responses:
         '204':
           description: Transaction metadata saved successfully
@@ -1269,13 +1330,23 @@ paths:
           $ref: '#/components/responses/ServiceUnavailable'
         '500':
           $ref: '#/components/responses/InternalServerError'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
         '405':
           $ref: '#/components/responses/MethodNotAllowed'
 
   /v3/{ledgerName}/transactions/{transactionId}/metadata/{key}:
     delete:
       summary: Delete transaction metadata
-      description: Deletes a metadata key for a specific transaction in the ledger. Requires `ledger:WriteMetadata` scope (included in the default `ledger:write` mapping).
+      description: |
+        Deletes a metadata key for a specific transaction in the ledger. Requires `ledger:WriteMetadata` scope (included in the default `ledger:write` mapping).
+        Signed requests use `application/vnd.formance.signed-request+json` with
+        `request` and `signedBatch`; the signed protobuf batch must equal the
+        route/body/Idempotency-Key-derived batch in full. Signature enforcement
+        returns 401 `UNAUTHENTICATED` when required but absent and 403
+        `PERMISSION_DENIED` for invalid, unknown/revoked-key or mismatched
+        signatures. Malformed signed envelopes return 400. The complete
+        wrapper counts toward the 4 MiB body limit. JWT scopes still apply.
       operationId: v3DeleteTransactionMetadata
       x-speakeasy-name-override: DeleteTransactionMetadata
       tags:
@@ -1288,6 +1359,13 @@ paths:
         - $ref: '#/components/parameters/TransactionId'
         - $ref: '#/components/parameters/MetadataKey'
         - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: false
+        description: Required when selecting the signed media type; request must be null.
+        content:
+          application/vnd.formance.signed-request+json:
+            schema:
+              $ref: '#/components/schemas/SignedDeleteTransactionMetadataRequest'
       responses:
         '204':
           description: Transaction metadata deleted successfully
@@ -1322,6 +1400,13 @@ paths:
         or a non-object `metadata`) return 400 before applying the revert. A JSON
         `null` option uses its default. The complete body, including trailing
         whitespace, counts towards the 4 MiB limit; exceeding it returns 413.
+        Signed requests use `application/vnd.formance.signed-request+json` with
+        `request` and `signedBatch`; the signed protobuf batch must equal the
+        route/body/Idempotency-Key-derived batch in full. Signature enforcement
+        returns 401 `UNAUTHENTICATED` when required but absent and 403
+        `PERMISSION_DENIED` for invalid, unknown/revoked-key or mismatched
+        signatures. Malformed signed envelopes return 400. The complete
+        wrapper counts toward the 4 MiB body limit. JWT scopes still apply.
       operationId: v3RevertTransaction
       x-speakeasy-name-override: RevertTransaction
       tags:
@@ -1340,6 +1425,9 @@ paths:
           application/json:
             schema:
               $ref: '#/components/schemas/RevertTransactionRequestBody'
+          application/vnd.formance.signed-request+json:
+            schema:
+              $ref: '#/components/schemas/SignedRevertTransactionRequest'
       responses:
         '201':
           description: Transaction reverted successfully
@@ -1409,6 +1497,8 @@ paths:
           $ref: '#/components/responses/ServiceUnavailable'
         '500':
           $ref: '#/components/responses/InternalServerError'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
         '405':
           $ref: '#/components/responses/MethodNotAllowed'
 
@@ -1493,6 +1583,8 @@ paths:
           $ref: '#/components/responses/ServiceUnavailable'
         '500':
           $ref: '#/components/responses/InternalServerError'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
         '405':
           $ref: '#/components/responses/MethodNotAllowed'
 
@@ -1540,6 +1632,8 @@ paths:
           $ref: '#/components/responses/ServiceUnavailable'
         '500':
           $ref: '#/components/responses/InternalServerError'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
         '405':
           $ref: '#/components/responses/MethodNotAllowed'
 
@@ -1588,6 +1682,8 @@ paths:
           $ref: '#/components/responses/ServiceUnavailable'
         '500':
           $ref: '#/components/responses/InternalServerError'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
         '405':
           $ref: '#/components/responses/MethodNotAllowed'
 
@@ -1634,6 +1730,8 @@ paths:
           $ref: '#/components/responses/ServiceUnavailable'
         '500':
           $ref: '#/components/responses/InternalServerError'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
         '405':
           $ref: '#/components/responses/MethodNotAllowed'
     delete:
@@ -1671,6 +1769,8 @@ paths:
           $ref: '#/components/responses/ServiceUnavailable'
         '500':
           $ref: '#/components/responses/InternalServerError'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
         '405':
           $ref: '#/components/responses/MethodNotAllowed'
 
@@ -1692,6 +1792,8 @@ paths:
             schema:
               $ref: '#/components/schemas/AnalyzeNumscriptRequest'
       responses:
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
         '200':
           description: Analysis result
           content:
@@ -1752,6 +1854,8 @@ paths:
           $ref: '#/components/responses/ServiceUnavailable'
         '500':
           $ref: '#/components/responses/InternalServerError'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
         '405':
           $ref: '#/components/responses/MethodNotAllowed'
 
@@ -1811,6 +1915,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
         '405':
           $ref: '#/components/responses/MethodNotAllowed'
     put:
@@ -1883,6 +1989,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
         '405':
           $ref: '#/components/responses/MethodNotAllowed'
 
@@ -1927,6 +2035,8 @@ paths:
           $ref: '#/components/responses/ServiceUnavailable'
         '500':
           $ref: '#/components/responses/InternalServerError'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
         '405':
           $ref: '#/components/responses/MethodNotAllowed'
 
@@ -1981,6 +2091,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
         '405':
           $ref: '#/components/responses/MethodNotAllowed'
 
@@ -2023,9 +2135,11 @@ paths:
            status is the "worst" of them, with `continueOnFailure`
            applying only to per-element business failures (4xx):
            - Business failures (validation, not-found, conflict,
-             precondition, permission — 4xx): rolled up per
+             precondition — 4xx, except authentication/permission): rolled up per
              `continueOnFailure`. `true` → `200`; `false` (default) →
              the highest 4xx among failing elements (typically `400`).
+           - Authentication and permission failures: `401`/`403`, regardless
+             of `continueOnFailure`, with all processing outcomes retained.
            - Resource exhaustion (`KindResourceExhausted`, `429`), including
              rate limits and permanent authoritative-sequence exhaustion:
              surface unconditionally as `429`.
@@ -2038,6 +2152,17 @@ paths:
            - Aborted elements (`context.Canceled` from the sequential
              runner after a prior failure): contribute nothing — the
              originating error drives the rollup.
+        Signed requests use `application/vnd.formance.signed-request+json` with
+        `request` and `signedBatch`; the signed protobuf batch must equal the
+        route/body/Idempotency-Key-derived batch in full. Signature enforcement
+        returns 401 `UNAUTHENTICATED` when required but absent and 403
+        `PERMISSION_DENIED` for invalid, unknown/revoked-key or mismatched
+        signatures. Malformed signed envelopes return 400. The complete
+        wrapper counts toward the 4 MiB body limit. JWT scopes still apply.
+        Signing requires a nonempty array and `atomic=true` (otherwise 400).
+        The header key applies; per-element `ik` is ignored. Authentication
+        and permission failures remain 401/403 even with continueOnFailure;
+        processing errors preserve every element outcome.
       operationId: v3BulkOperations
       x-speakeasy-name-override: BulkOperations
       tags:
@@ -2056,7 +2181,7 @@ paths:
             default: false
           description: |
             Continue sequential processing after a failure and suppress the
-            top-level status for business errors. Does not suppress 429 or 5xx
+            top-level status for business errors. Does not suppress 401, 403, 429 or 5xx
             failures, or permit partial application when atomic=true.
         - name: atomic
           in: query
@@ -2076,6 +2201,9 @@ paths:
               type: array
               items:
                 $ref: '#/components/schemas/BulkElement'
+          application/vnd.formance.signed-request+json:
+            schema:
+              $ref: '#/components/schemas/SignedBulkRequest'
       responses:
         '200':
           description: Bulk operations completed
@@ -2100,7 +2228,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/BulkResponse'
         '401':
-          description: Authentication failure before processing or in an element
+          description: Authentication failure before processing or in an element, including a missing mandatory signature (UNAUTHENTICATED); never suppressed by continueOnFailure
           content:
             application/json:
               schema:
@@ -2109,7 +2237,7 @@ paths:
               schema:
                 type: string
         '403':
-          description: Insufficient scope before processing or permission failure in an element
+          description: Insufficient scope, mismatched signed batch, or invalid/unknown/revoked signature (PERMISSION_DENIED); never suppressed by continueOnFailure
           content:
             application/json:
               schema:
@@ -2202,6 +2330,8 @@ paths:
           $ref: '#/components/responses/ServiceUnavailable'
         '500':
           $ref: '#/components/responses/InternalServerError'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
         '405':
           $ref: '#/components/responses/MethodNotAllowed'
     get:
@@ -2236,6 +2366,8 @@ paths:
           $ref: '#/components/responses/ServiceUnavailable'
         '500':
           $ref: '#/components/responses/InternalServerError'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
         '405':
           $ref: '#/components/responses/MethodNotAllowed'
 
@@ -2279,6 +2411,8 @@ paths:
           $ref: '#/components/responses/ServiceUnavailable'
         '500':
           $ref: '#/components/responses/InternalServerError'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
         '405':
           $ref: '#/components/responses/MethodNotAllowed'
     delete:
@@ -2313,6 +2447,8 @@ paths:
           $ref: '#/components/responses/ServiceUnavailable'
         '500':
           $ref: '#/components/responses/InternalServerError'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
         '405':
           $ref: '#/components/responses/MethodNotAllowed'
 
@@ -2392,6 +2528,8 @@ paths:
           $ref: '#/components/responses/ServiceUnavailable'
         '500':
           $ref: '#/components/responses/InternalServerError'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
         '405':
           $ref: '#/components/responses/MethodNotAllowed'
 
@@ -2435,6 +2573,8 @@ paths:
           $ref: '#/components/responses/ServiceUnavailable'
         '500':
           $ref: '#/components/responses/InternalServerError'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
         '405':
           $ref: '#/components/responses/MethodNotAllowed'
     get:
@@ -2471,6 +2611,8 @@ paths:
           $ref: '#/components/responses/ServiceUnavailable'
         '500':
           $ref: '#/components/responses/InternalServerError'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
         '405':
           $ref: '#/components/responses/MethodNotAllowed'
 
@@ -2517,6 +2659,8 @@ paths:
           $ref: '#/components/responses/ServiceUnavailable'
         '500':
           $ref: '#/components/responses/InternalServerError'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
         '405':
           $ref: '#/components/responses/MethodNotAllowed'
 
@@ -2554,6 +2698,8 @@ paths:
           $ref: '#/components/responses/ServiceUnavailable'
         '500':
           $ref: '#/components/responses/InternalServerError'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
         '405':
           $ref: '#/components/responses/MethodNotAllowed'
     delete:
@@ -2588,6 +2734,8 @@ paths:
           $ref: '#/components/responses/ServiceUnavailable'
         '500':
           $ref: '#/components/responses/InternalServerError'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
         '405':
           $ref: '#/components/responses/MethodNotAllowed'
 
@@ -2614,6 +2762,8 @@ paths:
             type: integer
             format: uint64
       responses:
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
         '200':
           description: Log retrieved successfully.
           content:
@@ -2652,6 +2802,8 @@ paths:
       parameters:
         - $ref: '#/components/parameters/Consistency'
       responses:
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
         '400':
           $ref: '#/components/responses/BadRequest'
         '200':
@@ -2720,6 +2872,8 @@ paths:
             schema:
               $ref: '#/components/schemas/SinkConfig'
       responses:
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
         '201':
           description: Event sink created successfully. Only its name is returned.
           content:
@@ -2789,6 +2943,8 @@ paths:
             type: string
         - $ref: '#/components/parameters/IdempotencyKey'
       responses:
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
         '204':
           description: Event sink removed successfully. No response body.
         '400':
@@ -2836,6 +2992,8 @@ paths:
             default: false
           description: List in descending key id order when true.
       responses:
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
         '200':
           description: Signing keys retrieved successfully.
           content:
@@ -2895,6 +3053,8 @@ paths:
             enum: [all, bucket]
             default: all
       responses:
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
         '200':
           description: Indexes retrieved successfully.
           content:
@@ -2945,6 +3105,8 @@ paths:
             type: string
           description: Canonical form of the target IndexID.
       responses:
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
         '200':
           description: Index retrieved successfully.
           content:
@@ -2992,6 +3154,8 @@ paths:
             type: string
           description: Canonical form of the target IndexID.
       responses:
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
         '200':
           description: Index entry retrieved successfully.
           content:
@@ -3040,6 +3204,8 @@ paths:
           schema:
             type: string
       responses:
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
         '400':
           $ref: '#/components/responses/BadRequest'
         '200':
@@ -3079,6 +3245,8 @@ paths:
         - $ref: '#/components/parameters/Consistency'
         - $ref: '#/components/parameters/LedgerName'
       responses:
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
         '200':
           description: Indexes retrieved successfully.
           content:
@@ -3146,6 +3314,8 @@ paths:
                       `metadata:<TARGET_TYPE_*>:<key>`
                   example: metadata:TARGET_TYPE_ACCOUNT:color
       responses:
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
         '201':
           description: |
             Index creation queued. The body carries the canonical id of the
@@ -3202,6 +3372,8 @@ paths:
             type: string
           description: Canonical form of the target IndexID.
       responses:
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
         '200':
           description: Index retrieved successfully.
           content:
@@ -3258,6 +3430,8 @@ paths:
           schema:
             type: string
       responses:
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
         '204':
           description: Index removed, or no index with this id was registered on the ledger.
         '400':
@@ -3307,6 +3481,8 @@ paths:
             type: string
           description: Canonical form of the target IndexID.
       responses:
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
         '200':
           description: Index entry retrieved successfully.
           content:
@@ -3599,6 +3775,13 @@ components:
         format: byte
 
   responses:
+    UnsupportedMediaType:
+      description: The signed-request media type is unsupported on this route.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+
     RequestEntityTooLarge:
       description: Request body exceeds the 4 MiB HTTP limit (`BODY_TOO_LARGE`)
       content:
@@ -3656,7 +3839,7 @@ components:
             $ref: '#/components/schemas/ErrorResponse'
 
     Unauthorized:
-      description: Authentication required (missing or invalid JWT token)
+      description: Authentication required (missing or invalid JWT token, or missing mandatory request signature with errorCode UNAUTHENTICATED)
       content:
         application/json:
           schema:
@@ -3666,7 +3849,7 @@ components:
             type: string
 
     Forbidden:
-      description: Insufficient permissions (missing required scope)
+      description: Insufficient permissions (missing required scope, or invalid/unknown/revoked request signature or batch mismatch with errorCode PERMISSION_DENIED)
       content:
         application/json:
           schema:
@@ -4304,6 +4487,103 @@ components:
           type: string
           format: date-time
           description: When the error occurred
+
+    SignedApplyBatch:
+      type: object
+      required:
+        - keyId
+        - signature
+        - payload
+      additionalProperties: false
+      description: |
+        Client-generated Ed25519 proof over the exact serialized protobuf
+        ApplyBatch in payload. Bytes use standard base64. The server compares
+        the complete decoded batch with the HTTP-derived batch and forwards
+        the original proof unchanged for admission verification. No canonical
+        protobuf byte encoding is required. This proof does not sign JWT claims,
+        ignored JSON fields, presentation options or the HTTP response.
+      properties:
+        keyId:
+          type: string
+          minLength: 1
+          description: Registered signing key ID.
+        signature:
+          type: string
+          format: byte
+          description: Standard-base64 Ed25519 signature (64 decoded bytes).
+        payload:
+          type: string
+          format: byte
+          description: Standard-base64 exact serialized ApplyBatch bytes signed by the client.
+
+    SignedCreateTransactionRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - request
+        - signedBatch
+      properties:
+        request:
+          $ref: '#/components/schemas/CreateTransactionRequest'
+        signedBatch:
+          $ref: '#/components/schemas/SignedApplyBatch'
+
+    SignedRevertTransactionRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - request
+        - signedBatch
+      properties:
+        request:
+          $ref: '#/components/schemas/RevertTransactionRequestBody'
+        signedBatch:
+          $ref: '#/components/schemas/SignedApplyBatch'
+
+    SignedSaveTransactionMetadataRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - request
+        - signedBatch
+      properties:
+        request:
+          type: object
+          additionalProperties:
+            $ref: '#/components/schemas/MetadataValue'
+        signedBatch:
+          $ref: '#/components/schemas/SignedApplyBatch'
+
+    SignedDeleteTransactionMetadataRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - request
+        - signedBatch
+      properties:
+        request:
+          type: object
+          nullable: true
+          enum: [null]
+          additionalProperties: false
+          description: Explicit null; the command is entirely determined by the route and header.
+        signedBatch:
+          $ref: '#/components/schemas/SignedApplyBatch'
+
+    SignedBulkRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - request
+        - signedBatch
+      properties:
+        request:
+          type: array
+          minItems: 1
+          items:
+            $ref: '#/components/schemas/BulkElement'
+        signedBatch:
+          $ref: '#/components/schemas/SignedApplyBatch'
 
     CreateTransactionRequest:
       type: object
