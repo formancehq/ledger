@@ -118,6 +118,20 @@ actual server registration and pinned dependency versions.
 Tests under `tests/e2e/cluster/` are supporting authentication/forwarding evidence,
 not authorization for a repository-wide E2E or lifecycle campaign.
 
+### Verified caller source evidence
+
+Contract F requires the source oneof to follow successful credential validation:
+OIDC records its verified issuer even with a JWT `kid`, while static Ed25519
+records its key ID even with an issuer claim. Signing-key rotation must preserve
+the OIDC issuer/subject identity. Exercise real signed tokens through HTTP and
+the public gRPC interceptor chain into admission, and carry the captured caller
+through a trusted follower hop. Assert the source oneof, subject and frozen
+scopes at capture; a successful authentication assertion alone misses this
+failure. Pair authorized writes with insufficient-scope rejection before backend
+entry. `TestHTTPAuthenticatedCallerUsesVerifiedCredentialSource` covers all
+three supported OIDC algorithms and static Ed25519. Existing committed
+snapshots are not rewritten or reclassified by this capture correction.
+
 ## Ownership and exclusions
 
 Static Ed25519 IDs must be nonempty and unique by exact string equality, even

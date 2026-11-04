@@ -150,6 +150,16 @@ explicitly allow `superuser` in their key configuration. The CLI exposes
 report `superuser`. Service protocol revision 19 accompanies this rename;
 all granular-scope authorization behavior is unchanged.
 
+### Authenticated caller attribution
+
+Newly admitted OIDC writes record the verified issuer as the caller source,
+including tokens with a JWT `kid`; rotating that signing key preserves the
+issuer/subject identity. Static Ed25519 writes retain their signing key ID,
+including tokens that carry an issuer claim. This corrects attribution capture
+on HTTP and gRPC without changing token acceptance, authorization, endpoint
+shapes, or service protocol revision 40. Previously committed snapshots remain
+unchanged. See [caller identity](../architecture/subsystems/api/auth.md#caller-identity-in-the-audit-chain).
+
 ### Service protocol compatibility (EN-1851)
 
 Revision 30 replaces failure messages stored in audit, idempotency, and
