@@ -39,6 +39,7 @@ var numscriptNames = []string{"ns0", "ns1", "ns2", "ns3", "ns4"}
 // requests; validation reads the stored script from the model.
 var scriptCatalog = struct {
 	sync.Mutex
+
 	byText map[string]catalogEntry
 }{byText: map[string]catalogEntry{}}
 
@@ -71,10 +72,10 @@ func recallScript(text string) (catalogEntry, bool) {
 
 // scriptAccounts draws the addresses a script's pool accounts stand for.
 // Repeats alias two pool accounts onto one address.
-func scriptAccounts() []string {
+func scriptAccounts(src *generation.Source) []string {
 	out := make([]string, 15)
 	for i := range out {
-		out[i] = poolAddress()
+		out[i] = poolAddress(src)
 	}
 
 	return out
@@ -94,7 +95,7 @@ func generateNumscriptBulk(src *generation.Source, g oracle.GlobalState, ledger 
 	case 0, 1, 2, 3:
 		gen, accounts := generateScript(src)
 
-		return append(seedScriptInputs(ledger, ls, gen), maybeAddSkippableReason(src, ls, scriptedCreate(src, ledger, inlineScript(gen), accounts)))
+		return append(seedScriptInputs(src, ledger, ls, gen), maybeAddSkippableReason(src, ls, scriptedCreate(src, ledger, inlineScript(src, gen), accounts)))
 	case 4, 5:
 		if req := referenceCreate(src, ledger, ls); req != nil {
 			return []*servicepb.Request{maybeAddSkippableReason(src, ls, req)}
@@ -128,7 +129,7 @@ func scriptRand(src *generation.Source) *rand.Rand {
 }
 
 func generateScript(src *generation.Source) (numscriptgen.Generated, []string) {
-	accounts := scriptAccounts()
+	accounts := scriptAccounts(src)
 	gen := numscriptgen.GenerateFor(scriptRand(src), accounts)
 	rememberScript(gen.Script, gen.Vars, accounts)
 
@@ -137,7 +138,7 @@ func generateScript(src *generation.Source) (numscriptgen.Generated, []string) {
 
 // inlineScript wraps a generated program as a create's inline script, rarely
 // broken: truncated text, a dropped var, or a var bound to garbage.
-func inlineScript(gen numscriptgen.Generated) *commonpb.Script {
+func inlineScript(src *generation.Source, gen numscriptgen.Generated) *commonpb.Script {
 	script := &commonpb.Script{Plain: gen.Script, Vars: maps.Clone(gen.Vars)}
 	if oneIn(src, 16) {
 		mutateScript(src, script)
@@ -147,16 +148,16 @@ func inlineScript(gen numscriptgen.Generated) *commonpb.Script {
 }
 
 func mutateScript(src *generation.Source, script *commonpb.Script) {
-	names := slices.Sorted(maps.Keys(script.Vars))
+	names := slices.Sorted(maps.Keys(script.GetVars()))
 
 	switch generation.Choice(src, indexPool(3)) {
 	case 0:
-		if len(script.Plain) > 1 {
-			script.Plain = script.Plain[:1+scriptRand(src).Uint64()%uint64(len(script.Plain)-1)]
+		if plain := script.GetPlain(); len(plain) > 1 {
+			script.Plain = plain[:1+scriptRand(src).Uint64()%uint64(len(plain)-1)]
 		}
 	case 1:
 		if len(names) > 0 {
-			delete(script.Vars, generation.Choice(src, names))
+			delete(script.GetVars(), generation.Choice(src, names))
 		}
 	default:
 		if len(names) > 0 {
@@ -171,7 +172,7 @@ func mutateScript(src *generation.Source, script *commonpb.Script) {
 // account metadata. Balances are read from a published snapshot, so concurrent
 // bulks can leave them off target — the script then just runs on other inputs.
 // A quarter of scripts run on the ledger as it stands.
-func seedScriptInputs(ledger string, ls oracle.LedgerState, gen numscriptgen.Generated) []*servicepb.Request {
+func seedScriptInputs(src *generation.Source, ledger string, ls oracle.LedgerState, gen numscriptgen.Generated) []*servicepb.Request {
 	if oneIn(src, 4) {
 		return nil
 	}
@@ -345,7 +346,7 @@ func saveNumscript(src *generation.Source, ledger string, ls oracle.LedgerState)
 	case oneIn(src, 12):
 		script := &commonpb.Script{Plain: content}
 		mutateScript(src, script)
-		content = script.Plain
+		content = script.GetPlain()
 	}
 
 	return &servicepb.Request{Type: &servicepb.Request_SaveNumscript{SaveNumscript: &servicepb.SaveNumscriptRequest{
@@ -390,7 +391,7 @@ func saveVersion(src *generation.Source, ls oracle.LedgerState, name string) str
 // reference with or without postings.
 func malformedScriptCreate(src *generation.Source, ledger string) *servicepb.Request {
 	gen, _ := generateScript(src)
-	posting := commonpb.NewPosting("world", poolAddress(), "USD/2", big.NewInt(1))
+	posting := commonpb.NewPosting("world", poolAddress(src), "USD/2", big.NewInt(1))
 
 	payload := &servicepb.CreateTransactionPayload{Reference: txRef()}
 	switch generation.Choice(src, indexPool(4)) {

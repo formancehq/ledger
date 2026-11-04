@@ -3,9 +3,8 @@ package main
 import (
 	"testing"
 
-	"google.golang.org/grpc/codes"
-
 	"github.com/stretchr/testify/require"
+	"google.golang.org/grpc/codes"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"

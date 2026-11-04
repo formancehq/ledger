@@ -498,7 +498,7 @@ func generateTransaction(src *generation.Source, ledger string, ls oracle.Ledger
 	if oneIn(src, 8) {
 		gen, accounts := generateScript(src)
 
-		return scriptedCreate(src, ledger, inlineScript(gen), accounts)
+		return scriptedCreate(src, ledger, inlineScript(src, gen), accounts)
 	}
 
 	// Force (nominally 1/8) skips the balance floor, letting a non-world source overdraft.
