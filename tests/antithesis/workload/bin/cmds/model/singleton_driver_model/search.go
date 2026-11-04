@@ -1,6 +1,7 @@
 package main
 
 import (
+	"slices"
 	"strings"
 
 	"github.com/formancehq/ledger/v3/tests/oracle"
@@ -215,5 +216,5 @@ func withVerdict(verdicts []oracle.Admission, v oracle.Admission) []oracle.Admis
 		}
 	}
 
-	return append(verdicts[:len(verdicts):len(verdicts)], v)
+	return append(slices.Clip(verdicts), v)
 }
