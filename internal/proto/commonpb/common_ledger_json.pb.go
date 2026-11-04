@@ -14,42 +14,42 @@ func (x *NullValue) MarshalJSON() ([]byte, error) {
 }
 
 func (x *MetadataValue) MarshalJSON() ([]byte, error) {
-	switch oneofValue := x.Type.(type) {
+	switch oneofValueType := x.Type.(type) {
 	case *MetadataValue_StringValue:
 		return jsonv2.Marshal(struct {
 			StringValue string `json:"stringValue"`
 		}{
-			StringValue: oneofValue.StringValue,
+			StringValue: oneofValueType.StringValue,
 		})
 	case *MetadataValue_IntValue:
 		return jsonv2.Marshal(struct {
 			IntValue int64 `json:"intValue"`
 		}{
-			IntValue: oneofValue.IntValue,
+			IntValue: oneofValueType.IntValue,
 		})
 	case *MetadataValue_BoolValue:
 		return jsonv2.Marshal(struct {
 			BoolValue bool `json:"boolValue"`
 		}{
-			BoolValue: oneofValue.BoolValue,
+			BoolValue: oneofValueType.BoolValue,
 		})
 	case *MetadataValue_NullValue:
 		return jsonv2.Marshal(struct {
 			NullValue any `json:"nullValue"`
 		}{
-			NullValue: oneofValue.NullValue,
+			NullValue: oneofValueType.NullValue,
 		})
 	case *MetadataValue_UintValue:
 		return jsonv2.Marshal(struct {
 			UintValue uint64 `json:"uintValue"`
 		}{
-			UintValue: oneofValue.UintValue,
+			UintValue: oneofValueType.UintValue,
 		})
 	case *MetadataValue_DatetimeValue:
 		return jsonv2.Marshal(struct {
 			DatetimeValue int64 `json:"datetimeValue"`
 		}{
-			DatetimeValue: oneofValue.DatetimeValue,
+			DatetimeValue: oneofValueType.DatetimeValue,
 		})
 	default:
 		return jsonv2.Marshal(struct {
@@ -79,13 +79,13 @@ func (x *MetadataIndexID) MarshalJSON() ([]byte, error) {
 }
 
 func (x *IndexID) MarshalJSON() ([]byte, error) {
-	switch oneofValue := x.Kind.(type) {
+	switch oneofValueKind := x.Kind.(type) {
 	case *IndexID_TxBuiltin:
 		return jsonv2.Marshal(struct {
 			TxBuiltin any `json:"txBuiltin"`
 		}{
 			TxBuiltin: func() any {
-				switch oneofValue.TxBuiltin {
+				switch oneofValueKind.TxBuiltin {
 				case TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE:
 					return "TX_BUILTIN_INDEX_REFERENCE"
 				case TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP:
@@ -103,7 +103,7 @@ func (x *IndexID) MarshalJSON() ([]byte, error) {
 				case TransactionBuiltinIndex_TX_BUILTIN_INDEX_REVERTED_AT:
 					return "TX_BUILTIN_INDEX_REVERTED_AT"
 				default:
-					return int32(oneofValue.TxBuiltin)
+					return int32(oneofValueKind.TxBuiltin)
 				}
 			}(),
 		})
@@ -112,13 +112,13 @@ func (x *IndexID) MarshalJSON() ([]byte, error) {
 			LogBuiltin any `json:"logBuiltin"`
 		}{
 			LogBuiltin: func() any {
-				switch oneofValue.LogBuiltin {
+				switch oneofValueKind.LogBuiltin {
 				case LogBuiltinIndex_LOG_BUILTIN_INDEX_UNSPECIFIED:
 					return "LOG_BUILTIN_INDEX_UNSPECIFIED"
 				case LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE:
 					return "LOG_BUILTIN_INDEX_DATE"
 				default:
-					return int32(oneofValue.LogBuiltin)
+					return int32(oneofValueKind.LogBuiltin)
 				}
 			}(),
 		})
@@ -127,13 +127,13 @@ func (x *IndexID) MarshalJSON() ([]byte, error) {
 			AccountBuiltin any `json:"accountBuiltin"`
 		}{
 			AccountBuiltin: func() any {
-				switch oneofValue.AccountBuiltin {
+				switch oneofValueKind.AccountBuiltin {
 				case AccountBuiltinIndex_ACCT_BUILTIN_INDEX_UNSPECIFIED:
 					return "ACCT_BUILTIN_INDEX_UNSPECIFIED"
 				case AccountBuiltinIndex_ACCT_BUILTIN_INDEX_ASSET:
 					return "ACCT_BUILTIN_INDEX_ASSET"
 				default:
-					return int32(oneofValue.AccountBuiltin)
+					return int32(oneofValueKind.AccountBuiltin)
 				}
 			}(),
 		})
@@ -141,7 +141,7 @@ func (x *IndexID) MarshalJSON() ([]byte, error) {
 		return jsonv2.Marshal(struct {
 			Metadata any `json:"metadata"`
 		}{
-			Metadata: oneofValue.Metadata,
+			Metadata: oneofValueKind.Metadata,
 		})
 	default:
 		return jsonv2.Marshal(struct {
@@ -402,6 +402,16 @@ func (x *SavedNumscriptLog) MarshalJSON() ([]byte, error) {
 	})
 }
 
+func (x *NumscriptVersionEntry) MarshalJSON() ([]byte, error) {
+	return jsonv2.Marshal(struct {
+		Version   string `json:"version"`
+		CreatedAt any    `json:"createdAt,omitempty,omitzero"`
+	}{
+		Version:   x.Version,
+		CreatedAt: x.CreatedAt,
+	})
+}
+
 func (x *SetQueryCheckpointScheduleLog) MarshalJSON() ([]byte, error) {
 	return jsonv2.Marshal(struct {
 		Cron string `json:"cron"`
@@ -438,7 +448,7 @@ func (x *DeletedQueryCheckpointLog) MarshalJSON() ([]byte, error) {
 }
 
 func (x *SinkConfig) MarshalJSON() ([]byte, error) {
-	switch oneofValue := x.Type.(type) {
+	switch oneofValueType := x.Type.(type) {
 	case *SinkConfig_Nats:
 		return jsonv2.Marshal(struct {
 			Name         string `json:"name"`
@@ -450,7 +460,7 @@ func (x *SinkConfig) MarshalJSON() ([]byte, error) {
 			ControllerId string `json:"controllerId"`
 		}{
 			Name:         x.Name,
-			Nats:         oneofValue.Nats,
+			Nats:         oneofValueType.Nats,
 			Format:       x.Format,
 			BatchSize:    x.BatchSize,
 			BatchDelayMs: x.BatchDelayMs,
@@ -498,7 +508,7 @@ func (x *SinkConfig) MarshalJSON() ([]byte, error) {
 			ControllerId string `json:"controllerId"`
 		}{
 			Name:         x.Name,
-			Clickhouse:   oneofValue.Clickhouse,
+			Clickhouse:   oneofValueType.Clickhouse,
 			Format:       x.Format,
 			BatchSize:    x.BatchSize,
 			BatchDelayMs: x.BatchDelayMs,
@@ -546,7 +556,7 @@ func (x *SinkConfig) MarshalJSON() ([]byte, error) {
 			ControllerId string `json:"controllerId"`
 		}{
 			Name:         x.Name,
-			Kafka:        oneofValue.Kafka,
+			Kafka:        oneofValueType.Kafka,
 			Format:       x.Format,
 			BatchSize:    x.BatchSize,
 			BatchDelayMs: x.BatchDelayMs,
@@ -594,7 +604,7 @@ func (x *SinkConfig) MarshalJSON() ([]byte, error) {
 			ControllerId string `json:"controllerId"`
 		}{
 			Name:         x.Name,
-			Http:         oneofValue.Http,
+			Http:         oneofValueType.Http,
 			Format:       x.Format,
 			BatchSize:    x.BatchSize,
 			BatchDelayMs: x.BatchDelayMs,
@@ -642,7 +652,7 @@ func (x *SinkConfig) MarshalJSON() ([]byte, error) {
 			ControllerId string `json:"controllerId"`
 		}{
 			Name:         x.Name,
-			Databricks:   oneofValue.Databricks,
+			Databricks:   oneofValueType.Databricks,
 			Format:       x.Format,
 			BatchSize:    x.BatchSize,
 			BatchDelayMs: x.BatchDelayMs,
@@ -804,7 +814,7 @@ func (x *HttpSinkConfig) MarshalJSON() ([]byte, error) {
 }
 
 func (x *DatabricksSinkConfig) MarshalJSON() ([]byte, error) {
-	switch oneofValue := x.Auth.(type) {
+	switch oneofValueAuth := x.Auth.(type) {
 	case *DatabricksSinkConfig_Token:
 		return jsonv2.Marshal(struct {
 			ServerHostname string `json:"serverHostname"`
@@ -821,7 +831,7 @@ func (x *DatabricksSinkConfig) MarshalJSON() ([]byte, error) {
 			Schema:         x.Schema,
 			Table:          x.Table,
 			Port:           x.Port,
-			Token:          oneofValue.Token,
+			Token:          oneofValueAuth.Token,
 		})
 	case *DatabricksSinkConfig_OauthM2M:
 		return jsonv2.Marshal(struct {
@@ -839,7 +849,7 @@ func (x *DatabricksSinkConfig) MarshalJSON() ([]byte, error) {
 			Schema:         x.Schema,
 			Table:          x.Table,
 			Port:           x.Port,
-			OauthM2M:       oneofValue.OauthM2M,
+			OauthM2M:       oneofValueAuth.OauthM2M,
 		})
 	default:
 		return jsonv2.Marshal(struct {
@@ -999,7 +1009,7 @@ func (x *RemovedMetadataFieldTypeLog) MarshalJSON() ([]byte, error) {
 }
 
 func (x *MirrorSourceConfig) MarshalJSON() ([]byte, error) {
-	switch oneofValue := x.Type.(type) {
+	switch oneofValueType := x.Type.(type) {
 	case *MirrorSourceConfig_Http:
 		return jsonv2.Marshal(struct {
 			LedgerName   string `json:"ledgerName"`
@@ -1008,7 +1018,7 @@ func (x *MirrorSourceConfig) MarshalJSON() ([]byte, error) {
 			RewriteRules any    `json:"rewriteRules"`
 		}{
 			LedgerName: x.LedgerName,
-			Http:       oneofValue.Http,
+			Http:       oneofValueType.Http,
 			BatchSize:  x.BatchSize,
 			RewriteRules: func() any {
 				if x.RewriteRules == nil {
@@ -1025,7 +1035,7 @@ func (x *MirrorSourceConfig) MarshalJSON() ([]byte, error) {
 			RewriteRules any    `json:"rewriteRules"`
 		}{
 			LedgerName: x.LedgerName,
-			Postgres:   oneofValue.Postgres,
+			Postgres:   oneofValueType.Postgres,
 			BatchSize:  x.BatchSize,
 			RewriteRules: func() any {
 				if x.RewriteRules == nil {
@@ -1053,13 +1063,13 @@ func (x *MirrorSourceConfig) MarshalJSON() ([]byte, error) {
 }
 
 func (x *MirrorRewriteRule) MarshalJSON() ([]byte, error) {
-	switch oneofValue := x.Scope.(type) {
+	switch oneofValueScope := x.Scope.(type) {
 	case *MirrorRewriteRule_CreatedTransaction:
 		return jsonv2.Marshal(struct {
 			CreatedTransaction any  `json:"createdTransaction"`
 			Stop               bool `json:"stop"`
 		}{
-			CreatedTransaction: oneofValue.CreatedTransaction,
+			CreatedTransaction: oneofValueScope.CreatedTransaction,
 			Stop:               x.Stop,
 		})
 	case *MirrorRewriteRule_RevertedTransaction:
@@ -1067,7 +1077,7 @@ func (x *MirrorRewriteRule) MarshalJSON() ([]byte, error) {
 			RevertedTransaction any  `json:"revertedTransaction"`
 			Stop                bool `json:"stop"`
 		}{
-			RevertedTransaction: oneofValue.RevertedTransaction,
+			RevertedTransaction: oneofValueScope.RevertedTransaction,
 			Stop:                x.Stop,
 		})
 	case *MirrorRewriteRule_SavedMetadata:
@@ -1075,7 +1085,7 @@ func (x *MirrorRewriteRule) MarshalJSON() ([]byte, error) {
 			SavedMetadata any  `json:"savedMetadata"`
 			Stop          bool `json:"stop"`
 		}{
-			SavedMetadata: oneofValue.SavedMetadata,
+			SavedMetadata: oneofValueScope.SavedMetadata,
 			Stop:          x.Stop,
 		})
 	case *MirrorRewriteRule_DeletedMetadata:
@@ -1083,7 +1093,7 @@ func (x *MirrorRewriteRule) MarshalJSON() ([]byte, error) {
 			DeletedMetadata any  `json:"deletedMetadata"`
 			Stop            bool `json:"stop"`
 		}{
-			DeletedMetadata: oneofValue.DeletedMetadata,
+			DeletedMetadata: oneofValueScope.DeletedMetadata,
 			Stop:            x.Stop,
 		})
 	case *MirrorRewriteRule_AnyVariant:
@@ -1091,7 +1101,7 @@ func (x *MirrorRewriteRule) MarshalJSON() ([]byte, error) {
 			AnyVariant any  `json:"anyVariant"`
 			Stop       bool `json:"stop"`
 		}{
-			AnyVariant: oneofValue.AnyVariant,
+			AnyVariant: oneofValueScope.AnyVariant,
 			Stop:       x.Stop,
 		})
 	default:
@@ -1179,48 +1189,48 @@ func (x *AnyVariantRule) MarshalJSON() ([]byte, error) {
 }
 
 func (x *CreatedTransactionAction) MarshalJSON() ([]byte, error) {
-	switch oneofValue := x.Action.(type) {
+	switch oneofValueAction := x.Action.(type) {
 	case *CreatedTransactionAction_RewriteAddress:
 		return jsonv2.Marshal(struct {
 			RewriteAddress any `json:"rewriteAddress"`
 		}{
-			RewriteAddress: oneofValue.RewriteAddress,
+			RewriteAddress: oneofValueAction.RewriteAddress,
 		})
 	case *CreatedTransactionAction_SetMetadata:
 		return jsonv2.Marshal(struct {
 			SetMetadata any `json:"setMetadata"`
 		}{
-			SetMetadata: oneofValue.SetMetadata,
+			SetMetadata: oneofValueAction.SetMetadata,
 		})
 	case *CreatedTransactionAction_DeleteMetadata:
 		return jsonv2.Marshal(struct {
 			DeleteMetadata any `json:"deleteMetadata"`
 		}{
-			DeleteMetadata: oneofValue.DeleteMetadata,
+			DeleteMetadata: oneofValueAction.DeleteMetadata,
 		})
 	case *CreatedTransactionAction_SetAccountMetadata:
 		return jsonv2.Marshal(struct {
 			SetAccountMetadata any `json:"setAccountMetadata"`
 		}{
-			SetAccountMetadata: oneofValue.SetAccountMetadata,
+			SetAccountMetadata: oneofValueAction.SetAccountMetadata,
 		})
 	case *CreatedTransactionAction_DeleteAccountMetadata:
 		return jsonv2.Marshal(struct {
 			DeleteAccountMetadata any `json:"deleteAccountMetadata"`
 		}{
-			DeleteAccountMetadata: oneofValue.DeleteAccountMetadata,
+			DeleteAccountMetadata: oneofValueAction.DeleteAccountMetadata,
 		})
 	case *CreatedTransactionAction_SetAccountMetadataFromAddress:
 		return jsonv2.Marshal(struct {
 			SetAccountMetadataFromAddress any `json:"setAccountMetadataFromAddress"`
 		}{
-			SetAccountMetadataFromAddress: oneofValue.SetAccountMetadataFromAddress,
+			SetAccountMetadataFromAddress: oneofValueAction.SetAccountMetadataFromAddress,
 		})
 	case *CreatedTransactionAction_Drop:
 		return jsonv2.Marshal(struct {
 			Drop any `json:"drop"`
 		}{
-			Drop: oneofValue.Drop,
+			Drop: oneofValueAction.Drop,
 		})
 	default:
 		return jsonv2.Marshal(struct {
@@ -1229,30 +1239,30 @@ func (x *CreatedTransactionAction) MarshalJSON() ([]byte, error) {
 }
 
 func (x *RevertedTransactionAction) MarshalJSON() ([]byte, error) {
-	switch oneofValue := x.Action.(type) {
+	switch oneofValueAction := x.Action.(type) {
 	case *RevertedTransactionAction_RewriteAddress:
 		return jsonv2.Marshal(struct {
 			RewriteAddress any `json:"rewriteAddress"`
 		}{
-			RewriteAddress: oneofValue.RewriteAddress,
+			RewriteAddress: oneofValueAction.RewriteAddress,
 		})
 	case *RevertedTransactionAction_SetMetadata:
 		return jsonv2.Marshal(struct {
 			SetMetadata any `json:"setMetadata"`
 		}{
-			SetMetadata: oneofValue.SetMetadata,
+			SetMetadata: oneofValueAction.SetMetadata,
 		})
 	case *RevertedTransactionAction_DeleteMetadata:
 		return jsonv2.Marshal(struct {
 			DeleteMetadata any `json:"deleteMetadata"`
 		}{
-			DeleteMetadata: oneofValue.DeleteMetadata,
+			DeleteMetadata: oneofValueAction.DeleteMetadata,
 		})
 	case *RevertedTransactionAction_Drop:
 		return jsonv2.Marshal(struct {
 			Drop any `json:"drop"`
 		}{
-			Drop: oneofValue.Drop,
+			Drop: oneofValueAction.Drop,
 		})
 	default:
 		return jsonv2.Marshal(struct {
@@ -1261,30 +1271,30 @@ func (x *RevertedTransactionAction) MarshalJSON() ([]byte, error) {
 }
 
 func (x *SavedMetadataAction) MarshalJSON() ([]byte, error) {
-	switch oneofValue := x.Action.(type) {
+	switch oneofValueAction := x.Action.(type) {
 	case *SavedMetadataAction_RewriteAddress:
 		return jsonv2.Marshal(struct {
 			RewriteAddress any `json:"rewriteAddress"`
 		}{
-			RewriteAddress: oneofValue.RewriteAddress,
+			RewriteAddress: oneofValueAction.RewriteAddress,
 		})
 	case *SavedMetadataAction_SetMetadata:
 		return jsonv2.Marshal(struct {
 			SetMetadata any `json:"setMetadata"`
 		}{
-			SetMetadata: oneofValue.SetMetadata,
+			SetMetadata: oneofValueAction.SetMetadata,
 		})
 	case *SavedMetadataAction_DeleteMetadata:
 		return jsonv2.Marshal(struct {
 			DeleteMetadata any `json:"deleteMetadata"`
 		}{
-			DeleteMetadata: oneofValue.DeleteMetadata,
+			DeleteMetadata: oneofValueAction.DeleteMetadata,
 		})
 	case *SavedMetadataAction_Drop:
 		return jsonv2.Marshal(struct {
 			Drop any `json:"drop"`
 		}{
-			Drop: oneofValue.Drop,
+			Drop: oneofValueAction.Drop,
 		})
 	default:
 		return jsonv2.Marshal(struct {
@@ -1293,18 +1303,18 @@ func (x *SavedMetadataAction) MarshalJSON() ([]byte, error) {
 }
 
 func (x *DeletedMetadataAction) MarshalJSON() ([]byte, error) {
-	switch oneofValue := x.Action.(type) {
+	switch oneofValueAction := x.Action.(type) {
 	case *DeletedMetadataAction_RewriteAddress:
 		return jsonv2.Marshal(struct {
 			RewriteAddress any `json:"rewriteAddress"`
 		}{
-			RewriteAddress: oneofValue.RewriteAddress,
+			RewriteAddress: oneofValueAction.RewriteAddress,
 		})
 	case *DeletedMetadataAction_Drop:
 		return jsonv2.Marshal(struct {
 			Drop any `json:"drop"`
 		}{
-			Drop: oneofValue.Drop,
+			Drop: oneofValueAction.Drop,
 		})
 	default:
 		return jsonv2.Marshal(struct {
@@ -1313,18 +1323,18 @@ func (x *DeletedMetadataAction) MarshalJSON() ([]byte, error) {
 }
 
 func (x *AnyVariantAction) MarshalJSON() ([]byte, error) {
-	switch oneofValue := x.Action.(type) {
+	switch oneofValueAction := x.Action.(type) {
 	case *AnyVariantAction_RewriteAddress:
 		return jsonv2.Marshal(struct {
 			RewriteAddress any `json:"rewriteAddress"`
 		}{
-			RewriteAddress: oneofValue.RewriteAddress,
+			RewriteAddress: oneofValueAction.RewriteAddress,
 		})
 	case *AnyVariantAction_Drop:
 		return jsonv2.Marshal(struct {
 			Drop any `json:"drop"`
 		}{
-			Drop: oneofValue.Drop,
+			Drop: oneofValueAction.Drop,
 		})
 	default:
 		return jsonv2.Marshal(struct {
@@ -1343,7 +1353,7 @@ func (x *RewriteAddressAction) MarshalJSON() ([]byte, error) {
 }
 
 func (x *SetMetadataAction) MarshalJSON() ([]byte, error) {
-	switch oneofValue := x.Source.(type) {
+	switch oneofValueSource := x.Source.(type) {
 	case *SetMetadataAction_Value:
 		return jsonv2.Marshal(struct {
 			Key   string `json:"key"`
@@ -1351,7 +1361,7 @@ func (x *SetMetadataAction) MarshalJSON() ([]byte, error) {
 			Type  string `json:"type"`
 		}{
 			Key:   x.Key,
-			Value: oneofValue.Value,
+			Value: oneofValueSource.Value,
 			Type:  x.Type,
 		})
 	case *SetMetadataAction_ValueExpr:
@@ -1361,7 +1371,7 @@ func (x *SetMetadataAction) MarshalJSON() ([]byte, error) {
 			Type      string `json:"type"`
 		}{
 			Key:       x.Key,
-			ValueExpr: oneofValue.ValueExpr,
+			ValueExpr: oneofValueSource.ValueExpr,
 			Type:      x.Type,
 		})
 	default:
@@ -1384,7 +1394,7 @@ func (x *DeleteMetadataAction) MarshalJSON() ([]byte, error) {
 }
 
 func (x *SetAccountMetadataAction) MarshalJSON() ([]byte, error) {
-	switch oneofValue := x.Source.(type) {
+	switch oneofValueSource := x.Source.(type) {
 	case *SetAccountMetadataAction_Value:
 		return jsonv2.Marshal(struct {
 			Account string `json:"account"`
@@ -1394,7 +1404,7 @@ func (x *SetAccountMetadataAction) MarshalJSON() ([]byte, error) {
 		}{
 			Account: x.Account,
 			Key:     x.Key,
-			Value:   oneofValue.Value,
+			Value:   oneofValueSource.Value,
 			Type:    x.Type,
 		})
 	case *SetAccountMetadataAction_ValueExpr:
@@ -1406,7 +1416,7 @@ func (x *SetAccountMetadataAction) MarshalJSON() ([]byte, error) {
 		}{
 			Account:   x.Account,
 			Key:       x.Key,
-			ValueExpr: oneofValue.ValueExpr,
+			ValueExpr: oneofValueSource.ValueExpr,
 			Type:      x.Type,
 		})
 	default:
@@ -1514,30 +1524,30 @@ func (x *PostgresAwsIamAuth) MarshalJSON() ([]byte, error) {
 }
 
 func (x *SegmentType) MarshalJSON() ([]byte, error) {
-	switch oneofValue := x.Constraint.(type) {
+	switch oneofValueConstraint := x.Constraint.(type) {
 	case *SegmentType_Regex:
 		return jsonv2.Marshal(struct {
 			Regex string `json:"regex"`
 		}{
-			Regex: oneofValue.Regex,
+			Regex: oneofValueConstraint.Regex,
 		})
 	case *SegmentType_Uuid:
 		return jsonv2.Marshal(struct {
 			Uuid any `json:"uuid"`
 		}{
-			Uuid: oneofValue.Uuid,
+			Uuid: oneofValueConstraint.Uuid,
 		})
 	case *SegmentType_Uint64:
 		return jsonv2.Marshal(struct {
 			Uint64 any `json:"uint64"`
 		}{
-			Uint64: oneofValue.Uint64,
+			Uint64: oneofValueConstraint.Uint64,
 		})
 	case *SegmentType_Bytes:
 		return jsonv2.Marshal(struct {
 			Bytes any `json:"bytes"`
 		}{
-			Bytes: oneofValue.Bytes,
+			Bytes: oneofValueConstraint.Bytes,
 		})
 	default:
 		return jsonv2.Marshal(struct {
@@ -1648,14 +1658,14 @@ func (x *LedgerStats) MarshalJSON() ([]byte, error) {
 }
 
 func (x *CallerIdentity) MarshalJSON() ([]byte, error) {
-	switch oneofValue := x.Source.(type) {
+	switch oneofValueSource := x.Source.(type) {
 	case *CallerIdentity_Issuer:
 		return jsonv2.Marshal(struct {
 			Subject string `json:"subject"`
 			Issuer  string `json:"issuer"`
 		}{
 			Subject: x.Subject,
-			Issuer:  oneofValue.Issuer,
+			Issuer:  oneofValueSource.Issuer,
 		})
 	case *CallerIdentity_KeyId:
 		return jsonv2.Marshal(struct {
@@ -1663,7 +1673,7 @@ func (x *CallerIdentity) MarshalJSON() ([]byte, error) {
 			KeyId   string `json:"keyId"`
 		}{
 			Subject: x.Subject,
-			KeyId:   oneofValue.KeyId,
+			KeyId:   oneofValueSource.KeyId,
 		})
 	default:
 		return jsonv2.Marshal(struct {
@@ -1718,30 +1728,30 @@ func (x *AuthDisabledCaller) MarshalJSON() ([]byte, error) {
 }
 
 func (x *CallerSnapshot) MarshalJSON() ([]byte, error) {
-	switch oneofValue := x.Principal.(type) {
+	switch oneofValuePrincipal := x.Principal.(type) {
 	case *CallerSnapshot_Authenticated:
 		return jsonv2.Marshal(struct {
 			Authenticated any `json:"authenticated"`
 		}{
-			Authenticated: oneofValue.Authenticated,
+			Authenticated: oneofValuePrincipal.Authenticated,
 		})
 	case *CallerSnapshot_Anonymous:
 		return jsonv2.Marshal(struct {
 			Anonymous any `json:"anonymous"`
 		}{
-			Anonymous: oneofValue.Anonymous,
+			Anonymous: oneofValuePrincipal.Anonymous,
 		})
 	case *CallerSnapshot_System:
 		return jsonv2.Marshal(struct {
 			System any `json:"system"`
 		}{
-			System: oneofValue.System,
+			System: oneofValuePrincipal.System,
 		})
 	case *CallerSnapshot_AuthDisabled:
 		return jsonv2.Marshal(struct {
 			AuthDisabled any `json:"authDisabled"`
 		}{
-			AuthDisabled: oneofValue.AuthDisabled,
+			AuthDisabled: oneofValuePrincipal.AuthDisabled,
 		})
 	default:
 		return jsonv2.Marshal(struct {

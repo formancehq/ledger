@@ -634,6 +634,7 @@ message SavedNumscriptLog {
 
 // NumscriptVersionEntry describes one stored, immutable version of a numscript.
 message NumscriptVersionEntry {
+	option (ledger_json) = true;
   string version = 1;
   Timestamp created_at = 2;
 }
