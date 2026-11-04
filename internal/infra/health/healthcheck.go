@@ -12,6 +12,7 @@ import (
 	"github.com/dustin/go-humanize"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
+	"google.golang.org/grpc"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
@@ -57,6 +58,12 @@ func (errWriteGateNotReady) Kind() domain.ErrorKind { return domain.KindUnavaila
 
 var errGateNotReady domain.Classifiable = errWriteGateNotReady{}
 
+// peerConnections resolves a committed member to its service connection, or
+// nil when none is available.
+type peerConnections interface {
+	GetConnection(peerID uint64) *grpc.ClientConn
+}
+
 // HealthChecker periodically samples disk usage and clock skew across cluster
 // nodes and maintains the write-gate state (gateState). It runs on every node
 // but only evaluates when this node is the leader: the leader owns the
@@ -65,7 +72,7 @@ var errGateNotReady domain.Classifiable = errWriteGateNotReady{}
 type HealthChecker struct {
 	node        nodeState
 	collector   *diskusage.Collector
-	servicePool *transport.ConnectionPool
+	servicePool peerConnections
 	logger      logging.Logger
 	interval    time.Duration
 
@@ -246,10 +253,12 @@ func (hc *HealthChecker) check(stop <-chan struct{}) {
 	hc.logIfAtBlock(localNodeID, localWalUsed, localWalTotal, localWalValid, localDataUsed, localDataTotal, localDataValid)
 
 	samples = append(samples, VolumeSample{
-		WALFraction:  safeFraction(localWalUsed, localWalTotal),
-		WALValid:     localWalValid,
-		DataFraction: safeFraction(localDataUsed, localDataTotal),
-		DataValid:    localDataValid,
+		WALFraction:    safeFraction(localWalUsed, localWalTotal),
+		WALValid:       localWalValid,
+		DataFraction:   safeFraction(localDataUsed, localDataTotal),
+		DataValid:      localDataValid,
+		walObservedAt:  localWAL.ObservedAt,
+		dataObservedAt: localData.ObservedAt,
 	})
 
 	reports = append(reports, nodeUsageReport{
@@ -301,6 +310,7 @@ func (hc *HealthChecker) check(stop <-chan struct{}) {
 
 		// Check disk usage
 		callCtx, callCancel := context.WithTimeout(baseCtx, healthCheckCallTimeout)
+		sentAt := time.Now()
 		resp, err := client.GetDiskUsage(callCtx, &clusterpb.GetDiskUsageRequest{})
 
 		callCancel()
@@ -333,10 +343,12 @@ func (hc *HealthChecker) check(stop <-chan struct{}) {
 			hc.logIfAtBlock(peerID, walUsed, walTotal, walValid, dataUsed, dataTotal, dataValid)
 
 			samples = append(samples, VolumeSample{
-				WALFraction:  safeFraction(walUsed, walTotal),
-				WALValid:     walValid,
-				DataFraction: safeFraction(dataUsed, dataTotal),
-				DataValid:    dataValid,
+				WALFraction:    safeFraction(walUsed, walTotal),
+				WALValid:       walValid,
+				DataFraction:   safeFraction(dataUsed, dataTotal),
+				DataValid:      dataValid,
+				walObservedAt:  remoteObservedAt(sentAt, walVolume, walValid),
+				dataObservedAt: remoteObservedAt(sentAt, dataVolume, dataValid),
 			})
 
 			reports = append(reports, nodeUsageReport{
@@ -378,7 +390,13 @@ func (hc *HealthChecker) check(stop <-chan struct{}) {
 		prevDiskBlocked = prev.diskBlocked
 		hasCurrentVerdict = true
 	}
-	if !hasCurrentVerdict && (!localWalValid || !localDataValid) {
+	// Peer polling can outlast a sample's remaining lifetime.
+	decidedAt := time.Now()
+	for i := range samples {
+		samples[i].expire(decidedAt)
+	}
+	local := samples[0]
+	if !hasCurrentVerdict && (!local.WALValid || !local.DataValid) {
 		// A new leader has no inherited hysteresis state. Its own WAL and data
 		// evidence must be fresh before it can publish any verdict. Unavailable
 		// remote members do not synthesize a permanent disk block: Raft quorum
@@ -450,6 +468,17 @@ func sampleAge(now, observedAt time.Time) time.Duration {
 	}
 
 	return age
+}
+
+// remoteObservedAt places a peer's observation on the local clock. The peer
+// computes the age after sentAt, so the estimate is never later than the real
+// observation.
+func remoteObservedAt(sentAt time.Time, volume *clusterpb.VolumeUsage, valid bool) time.Time {
+	if !valid {
+		return time.Time{}
+	}
+
+	return sentAt.Add(-time.Duration(volume.GetSampleAgeMs()) * time.Millisecond)
 }
 
 func remoteVolumeValidity(volume *clusterpb.VolumeUsage) (bool, string) {

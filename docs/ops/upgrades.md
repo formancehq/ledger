@@ -326,6 +326,11 @@ it gives the local images canonical `v3.0.0-rc.3` tags and compiles the
 operator with that version for admission;
 this does not create a Git tag or publish either image. The recorded Docker
 image IDs and running Pod image IDs bind the test to the exact local builds.
+The launcher saves an image archive for the Docker daemon's Linux architecture
+before loading Kind. Published source tags are multi-platform, but a pull may
+cache only one platform; importing the incomplete index for all platforms
+fails before Chainsaw starts. The selected `imageArchivePlatform` is recorded
+in `revisions.txt` alongside the image IDs.
 `TARGET_REF=<local-sha>` permits a local rehearsal against a commit containing
 the harness and rc.2, such as a temporary integration merge; the workflow
 always uses the fetched release branch HEAD. The workflow uploads revisions,

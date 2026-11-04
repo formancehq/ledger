@@ -92,7 +92,20 @@ printf 'sourceImage=%s\nsourceImageID=%s\ntargetImage=%s\ntargetImageID=%s\nsour
 
 kind create cluster --name "$cluster"
 kind get kubeconfig --name "$cluster" > "$workdir/kubeconfig"
-kind load docker-image "$source_image" "$target_image" "$source_operator_image" "$operator_image" --name "$cluster"
+# Docker may save a multi-platform index while only the host platform's blobs
+# are present after pull. Kind imports with --all-platforms, so make the archive
+# self-contained for the architecture of its Docker-backed node.
+case "$(docker info --format '{{.Architecture}}')" in
+	aarch64|arm64) image_platform=linux/arm64 ;;
+	x86_64|amd64) image_platform=linux/amd64 ;;
+	*) echo "unsupported Docker architecture for Kind image import" >&2; exit 2 ;;
+esac
+printf 'imageArchivePlatform=%s\n' "$image_platform" | tee -a "$workdir/revisions.txt"
+image_archive="$workdir/kind-images.tar"
+docker image save --platform "$image_platform" -o "$image_archive" \
+	"$source_image" "$target_image" "$source_operator_image" "$operator_image"
+kind load image-archive "$image_archive" --name "$cluster"
+rm -f "$image_archive"
 source_chart="$source_tree/misc/operator/helm/operator"
 target_chart="$target_tree/misc/operator/helm/operator"
 helm dependency build "$source_chart"
