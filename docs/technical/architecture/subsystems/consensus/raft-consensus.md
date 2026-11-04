@@ -407,6 +407,26 @@ type NodeConfig struct {
 }
 ```
 
+### Processing interval precondition
+
+Every processing ticker construction and reset must receive a positive duration.
+`NodeConfig.Validate` and `NewNode` share an interval guard: both durations must
+be nonnegative, and a positive Raft tick below `10ns` requires a positive
+processing override. Rejecting that combination prevents integer division by
+ten from creating a zero timer; silently raising the Raft tick would also alter
+election and heartbeat timing. Zero Raft tick retains `100ms`, and zero
+processing interval derives one tenth of the effective Raft tick (`10ms` by
+default). These are local scheduling settings, never committed apply inputs.
+
+`orchestrate` resolves the effective processing interval once. It stops that
+ticker while a Ready is in flight and resets it to the same effective value
+when `finishReady` leaves no further Ready work. Explicit positive overrides
+therefore survive every idle rearm. Message and local-storage response fast
+paths still check `HasReady` immediately; polling is not a delay imposed on
+every commit. Tests exercise both shorter and longer overrides through real
+message-only Ready completion under `synctest`, alongside default cadence.
+No WAL, FSM, audit or recovery write ordering changes.
+
 ### Timeout Calculation
 
 Raft timeouts are calculated by multiplying ticks by `TickInterval`:
