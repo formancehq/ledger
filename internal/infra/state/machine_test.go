@@ -363,7 +363,9 @@ func buildOrderDeclarations(orders []*raftcmdpb.Order) []*raftcmdpb.AttributeCov
 		case *raftcmdpb.LedgerScopedOrder_CreateLedger,
 			*raftcmdpb.LedgerScopedOrder_DeleteLedger,
 			*raftcmdpb.LedgerScopedOrder_PromoteLedger,
-			*raftcmdpb.LedgerScopedOrder_MirrorIngest:
+			*raftcmdpb.LedgerScopedOrder_MirrorIngest,
+			*raftcmdpb.LedgerScopedOrder_PutKv,
+			*raftcmdpb.LedgerScopedOrder_DeleteKv:
 			ledgers[ls.GetLedger()] = struct{}{}
 		}
 
