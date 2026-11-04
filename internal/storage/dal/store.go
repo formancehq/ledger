@@ -260,6 +260,7 @@ const (
 	SubPLPreparedQuery    byte = 0x02
 	SubPLMirrorSourceHead byte = 0x03
 	SubPLMirrorStatus     byte = 0x04
+	SubPLKV               byte = 0x05
 )
 
 // History sub-prefixes (zone 0x04).

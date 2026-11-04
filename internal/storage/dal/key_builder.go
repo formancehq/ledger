@@ -13,6 +13,13 @@ func NewKeyBuilder() *KeyBuilder {
 	return &KeyBuilder{buf: make([]byte, 0, 256)}
 }
 
+// LedgerKVKey identifies one opaque value within a ledger. The fixed ledger
+// prefix also lets ledger deletion remove the complete namespace by range.
+func LedgerKVKey(ledger, key string) []byte {
+	return NewKeyBuilder().PutZonePrefix(ZonePerLedger, SubPLKV).
+		PutLedgerNameFixed(ledger).PutString(key).Build()
+}
+
 // Reset clears the builder for reuse.
 func (kb *KeyBuilder) Reset() *KeyBuilder {
 	kb.buf = kb.buf[:0]

@@ -104,6 +104,8 @@ message LedgerScopedOrder {
     CreatePreparedQueryOrder create_prepared_query = 10;
     UpdatePreparedQueryOrder update_prepared_query = 11;
     DeletePreparedQueryOrder delete_prepared_query = 12;
+    PutKVOrder put_kv = 13;
+    DeleteKVOrder delete_kv = 14;
   }
 }
 
@@ -849,4 +851,13 @@ message RemovedMemberEntry {
 message AttributeID {
   bytes id = 1;           // 16-byte U128 identifier
   fixed64 tag = 2;
+}
+
+message PutKVOrder {
+  string key = 1;
+  bytes value = 2;
+}
+
+message DeleteKVOrder {
+  string key = 1;
 }

@@ -25,6 +25,7 @@ type Controller interface {
 	// Ledger management (read-only)
 	ListLedgers(ctx context.Context) (cursor.Cursor[*commonpb.LedgerInfo], error)
 	GetLedgerByName(ctx context.Context, name string) (*commonpb.LedgerInfo, error)
+	GetKV(ctx context.Context, ledger, key string) ([]byte, error)
 
 	// Read operations
 	GetTransaction(ctx context.Context, ledgerName string, transactionID uint64) (*commonpb.Transaction, error)

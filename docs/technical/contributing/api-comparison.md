@@ -263,6 +263,7 @@ JWT/anonymous policy; no new endpoint or authorization requirement is introduced
 | Delete transaction metadata | ✅ | ✅ | |
 | Save ledger metadata | ✅ | ❌ | New in v3 |
 | Delete ledger metadata | ✅ | ❌ | New in v3 |
+| Ledger KV Get/Put/Delete | ✅ | ❌ | Per-ledger opaque bytes; HTTP uses `application/octet-stream`, gRPC uses `BucketService.GetKV` and `Apply` requests. |
 | **Bulk** |
 | Bulk CREATE_TRANSACTION | ✅ | ✅ | |
 | Bulk ADD_METADATA | ✅ | ✅ | |

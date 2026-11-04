@@ -16,6 +16,11 @@ import (
 // invariants).
 const maxNumscriptNameLength = 256
 
+const (
+	MaxKVKeyBytes   = 256
+	MaxKVValueBytes = 1 << 20
+)
+
 // maxPreparedQueryNameLength caps prepared-query identifiers. Prepared queries
 // are a ledger-internal feature (CQRS read-side); the bound stays local for
 // the same reason as the numscript-name bound above.

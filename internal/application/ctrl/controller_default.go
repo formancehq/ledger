@@ -668,6 +668,31 @@ func (ctrl *DefaultController) GetLedgerByName(ctx context.Context, name string)
 	return ledgerInfo, nil
 }
 
+func (ctrl *DefaultController) GetKV(ctx context.Context, ledger, key string) ([]byte, error) {
+	handle, err := ctrl.store.NewReadHandle()
+	if err != nil {
+		return nil, fmt.Errorf("creating read handle: %w", err)
+	}
+	defer func() { _ = handle.Close() }()
+	if _, err := query.GetLedgerByName(ctx, handle, ledger); err != nil {
+		if errors.Is(err, domain.ErrNotFound) {
+			return nil, commonpb.NewNotFoundError("ledger %s not found", ledger)
+		}
+
+		return nil, err
+	}
+	value, closer, err := handle.Get(dal.LedgerKVKey(ledger, key))
+	if errors.Is(err, pebble.ErrNotFound) {
+		return nil, commonpb.NewNotFoundError("KV key %s not found", key)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("reading ledger KV: %w", err)
+	}
+	defer func() { _ = closer.Close() }()
+
+	return append([]byte(nil), value...), nil
+}
+
 // GetMetadataSchemaStatus returns the declared type of every metadata field.
 func (ctrl *DefaultController) GetMetadataSchemaStatus(ctx context.Context, ledgerName string) (*servicepb.GetMetadataSchemaStatusResponse, error) {
 	ledgerInfo, err := query.GetLedgerByName(ctx, ctrl.store, ledgerName)
