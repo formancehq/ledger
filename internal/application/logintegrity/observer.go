@@ -132,10 +132,6 @@ func (o *Observer) observe(ctx context.Context) {
 		return
 	}
 	o.lastSampleError = ""
-	if head == 0 {
-		return
-	}
-
 	members := o.cluster.MemberIDs()
 	slices.Sort(members)
 	var checks sync.WaitGroup
@@ -155,15 +151,19 @@ func (o *Observer) observe(ctx context.Context) {
 			cursor = &peerCursor{next: first}
 			o.cursors[id] = cursor
 		}
-		if cursor.done || cursor.next > head {
+		// Probe once even with an empty local log so a peer suffix is visible.
+		if cursor.done || (head != 0 && cursor.next > head) {
 			continue
 		}
 		last := head
+		if head == 0 {
+			last = 1
+		}
 		if head-cursor.next >= MaxRangeEntries {
 			last = cursor.next + MaxRangeEntries - 1
 		}
 		checks.Go(func() {
-			o.comparePeer(ctx, id, cursor, cursor.next, last, applied)
+			o.comparePeerAtHead(ctx, id, cursor, cursor.next, last, applied, head)
 		})
 	}
 	checks.Wait()
@@ -176,6 +176,10 @@ func (o *Observer) observe(ctx context.Context) {
 }
 
 func (o *Observer) comparePeer(ctx context.Context, id uint64, cursor *peerCursor, first, last, applied uint64) {
+	o.comparePeerAtHead(ctx, id, cursor, first, last, applied, last)
+}
+
+func (o *Observer) comparePeerAtHead(ctx context.Context, id uint64, cursor *peerCursor, first, last, applied, localHead uint64) {
 	started := time.Now()
 	attrs := metric.WithAttributes(attribute.String("peer_id", strconv.FormatUint(id, 10)))
 	req := &rafttransportpb.GetRangeDigestRequest{
@@ -186,7 +190,10 @@ func (o *Observer) comparePeer(ctx context.Context, id uint64, cursor *peerCurso
 		if ctx.Err() != nil {
 			return
 		}
-		if status.Code(err) == codes.DataLoss {
+		if status.Code(err) == codes.DataLoss && localHead == 0 {
+			// There is no local digest for an empty log; still query the peer
+			// so a non-empty peer suffix can be reported as a divergence.
+		} else if status.Code(err) == codes.DataLoss {
 			key := fmt.Sprintf("%d:%d:local", first, last)
 			if cursor.lastMismatch != key {
 				cursor.lastMismatch = key
@@ -200,7 +207,7 @@ func (o *Observer) comparePeer(ctx context.Context, id uint64, cursor *peerCurso
 
 		return
 	}
-	if local == nil || len(local.GetDigest()) != 32 {
+	if err == nil && (local == nil || len(local.GetDigest()) != 32) {
 		o.logger.Errorf("Invalid local digest response for logs [%d,%d]", first, last)
 
 		return
@@ -215,6 +222,10 @@ func (o *Observer) comparePeer(ctx context.Context, id uint64, cursor *peerCurso
 	defer cancel()
 	remote, err := rafttransportpb.NewLogIntegrityServiceClient(conn).GetRangeDigest(callCtx, req)
 	if err != nil {
+		if localHead == 0 && status.Code(err) == codes.DataLoss {
+			advanceCursor(cursor, last)
+			return
+		}
 		if status.Code(err) == codes.DataLoss {
 			o.reportMismatch(ctx, id, cursor, first, last, applied, fmt.Sprintf("peer data loss: %v", err))
 			advanceCursor(cursor, last)
@@ -222,6 +233,15 @@ func (o *Observer) comparePeer(ctx context.Context, id uint64, cursor *peerCurso
 			o.unavailable.Add(ctx, 1, metric.WithAttributes(attribute.String("peer_id", strconv.FormatUint(id, 10)), attribute.String("reason", status.Code(err).String())))
 		}
 
+		return
+	}
+	if remote.GetLastLogSequenceOnNode() > localHead {
+		o.reportMismatch(ctx, id, cursor, first, last, applied, fmt.Sprintf("peer log head %d exceeds local head %d", remote.GetLastLogSequenceOnNode(), localHead))
+		advanceCursor(cursor, last)
+		return
+	}
+	if localHead == 0 {
+		advanceCursor(cursor, last)
 		return
 	}
 	if remote.GetDigestVersion() != local.GetDigestVersion() ||
