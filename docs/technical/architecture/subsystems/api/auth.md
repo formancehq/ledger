@@ -58,7 +58,7 @@ The lack of cache is deliberate at this stage — JWKS lookups are local to the 
 
 ### Scopes
 
-`internal/adapter/auth/scopes.go:21-36` defines 14 granular scopes:
+`internal/adapter/auth/scopes.go` defines 16 granular scopes:
 
 ```
 ledger:ReadLedger       ledger:WriteLedger
@@ -68,9 +68,12 @@ ledger:ReadAudit        ledger:WriteAudit
 ledger:ReadOps          ledger:WriteOps
 ledger:ReadQuery        ledger:WriteQuery
 ledger:ReadCluster      ledger:WriteCluster
+ledger:ReadKV           ledger:WriteKV
 ```
 
 Tokens may carry either **granular** scopes (used as-is) or **virtual** scopes (for example `ledger:read`, `ledger:write`, `ledger:admin`) that expand into a granular set via a configurable mapping (`scopes.go:58-113`). Granular scopes are always in the Ledger application namespace with the `ledger:<Action><Resource>` shape, matching the Membership scope convention. The mapping can be a JSON file, an environment variable, or a built-in default. Once expanded, only the granular form is consulted at authorization time. [RC.1 migration details](../../../../ops/authentication.md#migration-from-rc1-granular-labels) cover tokens, custom mappings, anonymous grants, and historical audit records.
+
+Ledger KV uses `ledger:ReadKV` for Get and `ledger:WriteKV` for Put/Delete. Default `ledger:read` and `ledger:write` expansion includes them. Custom mappings and restricted Ed25519 key allowlists must add the new scopes to keep access to these endpoints; a token with only `ledger:ReadLedger` or `ledger:WriteLedger` cannot call them. Existing log and audit read scopes still expose the audited Put values through their respective APIs.
 
 ### Authorization enforcement
 

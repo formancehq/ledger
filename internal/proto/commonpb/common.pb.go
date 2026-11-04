@@ -45,6 +45,8 @@ const (
 	AuthScope_AUTH_SCOPE_QUERY_WRITE       AuthScope = 12
 	AuthScope_AUTH_SCOPE_CLUSTER_READ      AuthScope = 13
 	AuthScope_AUTH_SCOPE_CLUSTER_WRITE     AuthScope = 14
+	AuthScope_AUTH_SCOPE_KV_READ           AuthScope = 15
+	AuthScope_AUTH_SCOPE_KV_WRITE          AuthScope = 16
 )
 
 // Enum value maps for AuthScope.
@@ -65,6 +67,8 @@ var (
 		12: "AUTH_SCOPE_QUERY_WRITE",
 		13: "AUTH_SCOPE_CLUSTER_READ",
 		14: "AUTH_SCOPE_CLUSTER_WRITE",
+		15: "AUTH_SCOPE_KV_READ",
+		16: "AUTH_SCOPE_KV_WRITE",
 	}
 	AuthScope_value = map[string]int32{
 		"AUTH_SCOPE_UNSPECIFIED":       0,
@@ -82,6 +86,8 @@ var (
 		"AUTH_SCOPE_QUERY_WRITE":       12,
 		"AUTH_SCOPE_CLUSTER_READ":      13,
 		"AUTH_SCOPE_CLUSTER_WRITE":     14,
+		"AUTH_SCOPE_KV_READ":           15,
+		"AUTH_SCOPE_KV_WRITE":          16,
 	}
 )
 
@@ -23787,7 +23793,7 @@ const file_common_proto_rawDesc = "" +
 	"\x05value\x18\x03 \x01(\fR\x05value\"7\n" +
 	"\vDeleteKVLog\x12\x16\n" +
 	"\x06ledger\x18\x01 \x01(\tR\x06ledger\x12\x10\n" +
-	"\x03key\x18\x02 \x01(\tR\x03key*\xbb\x03\n" +
+	"\x03key\x18\x02 \x01(\tR\x03key*\xec\x03\n" +
 	"\tAuthScope\x12\x1a\n" +
 	"\x16AUTH_SCOPE_UNSPECIFIED\x10\x00\x12\x1a\n" +
 	"\x16AUTH_SCOPE_LEDGER_READ\x10\x01\x12\x1b\n" +
@@ -23804,7 +23810,9 @@ const file_common_proto_rawDesc = "" +
 	"\x15AUTH_SCOPE_QUERY_READ\x10\v\x12\x1a\n" +
 	"\x16AUTH_SCOPE_QUERY_WRITE\x10\f\x12\x1b\n" +
 	"\x17AUTH_SCOPE_CLUSTER_READ\x10\r\x12\x1c\n" +
-	"\x18AUTH_SCOPE_CLUSTER_WRITE\x10\x0e*\xdc\x01\n" +
+	"\x18AUTH_SCOPE_CLUSTER_WRITE\x10\x0e\x12\x16\n" +
+	"\x12AUTH_SCOPE_KV_READ\x10\x0f\x12\x17\n" +
+	"\x13AUTH_SCOPE_KV_WRITE\x10\x10*\xdc\x01\n" +
 	"\x13DynamicAuthResolver\x12%\n" +
 	"!DYNAMIC_AUTH_RESOLVER_UNSPECIFIED\x10\x00\x12\x1f\n" +
 	"\x1bDYNAMIC_AUTH_RESOLVER_APPLY\x10\x01\x12#\n" +

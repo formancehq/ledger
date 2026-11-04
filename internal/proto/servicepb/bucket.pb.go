@@ -10039,7 +10039,7 @@ const file_bucket_proto_rawDesc = "" +
 	"\rBucketService\x12G\n" +
 	"\vListLedgers\x12\x1a.ledger.ListLedgersRequest\x1a\x12.common.LedgerInfo\"\x06\xd2\xd5\"\x02\x10\x010\x01\x12A\n" +
 	"\tGetLedger\x12\x18.ledger.GetLedgerRequest\x1a\x12.common.LedgerInfo\"\x06\xd2\xd5\"\x02\x10\x01\x12<\n" +
-	"\x05GetKV\x12\x14.ledger.GetKVRequest\x1a\x15.ledger.GetKVResponse\"\x06\xd2\xd5\"\x02\x10\x01\x12@\n" +
+	"\x05GetKV\x12\x14.ledger.GetKVRequest\x1a\x15.ledger.GetKVResponse\"\x06\xd2\xd5\"\x02\x10\x0f\x12@\n" +
 	"\n" +
 	"GetAccount\x12\x19.ledger.GetAccountRequest\x1a\x0f.common.Account\"\x06\xd2\xd5\"\x02\x10\x05\x12W\n" +
 	"\x0eGetTransaction\x12\x1d.ledger.GetTransactionRequest\x1a\x1e.ledger.GetTransactionResponse\"\x06\xd2\xd5\"\x02\x10\x03\x12R\n" +

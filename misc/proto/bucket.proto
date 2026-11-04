@@ -46,7 +46,7 @@ service BucketService {
     option (common.auth_policy) = { fixed_scope: AUTH_SCOPE_LEDGER_READ };
   }
   rpc GetKV(GetKVRequest) returns (GetKVResponse) {
-    option (common.auth_policy) = { fixed_scope: AUTH_SCOPE_LEDGER_READ };
+    option (common.auth_policy) = { fixed_scope: AUTH_SCOPE_KV_READ };
   }
   // GetAccount retrieves an account by address
   rpc GetAccount(GetAccountRequest) returns (common.Account) {
