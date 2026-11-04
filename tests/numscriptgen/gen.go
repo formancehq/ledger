@@ -44,6 +44,7 @@ func nonUniform(rng *rand.Rand, r ratio, n int) int {
 	if weightedCoin(rng, r) {
 		return n
 	}
+
 	return nonUniform(rng, smallerRat(r), n+1)
 }
 
@@ -54,6 +55,7 @@ func nonUniformListOf[T any](rng *rand.Rand, g func() T) []T {
 	for i := range out {
 		out[i] = g()
 	}
+
 	return out
 }
 
@@ -89,6 +91,7 @@ func portionsList(rng *rand.Rand, withRemaining bool) []*big.Rat {
 	for i, x := range xs {
 		out[i] = big.NewRat(x, total)
 	}
+
 	return out
 }
 
@@ -123,6 +126,7 @@ func monetary(rng *rand.Rand, asset string) Monetary {
 	if rng.Intn(60) == 0 {
 		return Monetary{Asset: asset, AssetAsVar: asVar(rng), AsVar: asVar(rng), Amount: big.NewInt(-int64(rng.Intn(1000)) - 1)}
 	}
+
 	return Monetary{Asset: asset, AssetAsVar: asVar(rng), AsVar: asVar(rng), Amount: big.NewInt(int64(rng.Intn(1000)))}
 }
 
@@ -130,6 +134,7 @@ func monetary(rng *rand.Rand, asset string) Monetary {
 // multi-word big.Ints.
 func hugeAmount(rng *rand.Rand) *big.Int {
 	x := new(big.Int).Lsh(big.NewInt(1), uint(65+rng.Intn(60)))
+
 	return x.Add(x, big.NewInt(int64(rng.Intn(1000))))
 }
 
@@ -166,6 +171,7 @@ func overdraftAccount(rng *rand.Rand, poolSize int) string {
 	if rng.Intn(8) == 0 {
 		return "world"
 	}
+
 	return account(rng, poolSize)
 }
 
@@ -183,6 +189,7 @@ func zeroFreqIf(weight int, cond bool) int {
 	if cond {
 		return 0
 	}
+
 	return weight
 }
 
@@ -247,6 +254,7 @@ func capAsset(rng *rand.Rand, asset string) string {
 			return other
 		}
 	}
+
 	return asset
 }
 
@@ -257,6 +265,7 @@ func srcColor(rng *rand.Rand) (string, bool) {
 		return "", false
 	}
 	colors := []string{"RED", "BLU"}
+
 	return colors[rng.Intn(len(colors))], asVar(rng)
 }
 
@@ -274,6 +283,7 @@ func divPortion(rng *rand.Rand, withRemaining bool) *PortionDiv {
 	}
 	den := int64(rng.Intn(11) + 2)
 	num := int64(rng.Intn(int(den)+5)) - 3
+
 	return &PortionDiv{Num: big.NewInt(num), Den: big.NewInt(den)}
 }
 
@@ -291,6 +301,7 @@ func genSource(rng *rand.Rand, opts sourceOptions) Source {
 			zeroFreqIf(5, opts.isUnbounded),
 			func() Source {
 				color, colorAsVar := srcColor(rng)
+
 				return Source{Kind: SrcAccount, Account: "world", Color: color, ColorAsVar: colorAsVar}
 			},
 		},
@@ -298,6 +309,7 @@ func genSource(rng *rand.Rand, opts sourceOptions) Source {
 			15,
 			func() Source {
 				color, colorAsVar := srcColor(rng)
+
 				return Source{Kind: SrcAccount, Account: account(rng, opts.poolSize), AccountAsVar: asVar(rng), Color: color, ColorAsVar: colorAsVar}
 			},
 		},
@@ -306,6 +318,7 @@ func genSource(rng *rand.Rand, opts sourceOptions) Source {
 			func() Source {
 				m := monetary(rng, capAsset(rng, opts.asset))
 				color, colorAsVar := srcColor(rng)
+
 				return Source{Kind: SrcAccountOverdraft, Account: overdraftAccount(rng, opts.poolSize), AccountAsVar: asVar(rng), Overdraft: &m, Color: color, ColorAsVar: colorAsVar}
 			},
 		},
@@ -313,17 +326,19 @@ func genSource(rng *rand.Rand, opts sourceOptions) Source {
 			zeroFreqIf(5, opts.isUnbounded),
 			func() Source {
 				color, colorAsVar := srcColor(rng)
+
 				return Source{Kind: SrcAccountOverdraft, Account: overdraftAccount(rng, opts.poolSize), AccountAsVar: asVar(rng), Overdraft: nil, Color: color, ColorAsVar: colorAsVar}
 			},
 		},
 		{
 			zeroFreqIf(5, forceLeaf),
 			func() Source {
-				cap := addMonetary(opts.sentAmt, monetary(rng, capAsset(rng, opts.asset)))
+				limit := addMonetary(opts.sentAmt, monetary(rng, capAsset(rng, opts.asset)))
 				innerOpts := nestedOpts
 				innerOpts.isUnbounded = false
 				inner := genSource(rng, innerOpts)
-				return Source{Kind: SrcCapped, Cap: &cap, Inner: &inner}
+
+				return Source{Kind: SrcCapped, Cap: &limit, Inner: &inner}
 			},
 		},
 		{
@@ -333,6 +348,7 @@ func genSource(rng *rand.Rand, opts sourceOptions) Source {
 				if rng.Intn(12) == 0 {
 					list = nil
 				}
+
 				return Source{Kind: SrcInorder, Sources: list}
 			},
 		},
@@ -340,6 +356,7 @@ func genSource(rng *rand.Rand, opts sourceOptions) Source {
 			zeroFreqIf(8, stopRecursion || forceLeaf),
 			func() Source {
 				list := nonUniformListOf(rng, func() Source { return genSource(rng, nestedOpts) })
+
 				return Source{Kind: SrcOneof, Sources: list}
 			},
 		},
@@ -364,6 +381,7 @@ func genSource(rng *rand.Rand, opts sourceOptions) Source {
 					remaining := genSource(rng, innerOpts)
 					src.AllotmentRemaining = &remaining
 				}
+
 				return src
 			},
 		},
@@ -412,6 +430,7 @@ func genDestination(rng *rand.Rand, opts destinationOptions) Destination {
 					clauses = nil
 				}
 				remaining := genKeptOrDest(rng, nestedOpts)
+
 				return Destination{Kind: DestInorder, InorderClauses: clauses, Remaining: &remaining}
 			},
 		},
@@ -420,6 +439,7 @@ func genDestination(rng *rand.Rand, opts destinationOptions) Destination {
 			func() Destination {
 				clauses := inorderClauses()
 				remaining := genKeptOrDest(rng, nestedOpts)
+
 				return Destination{Kind: DestOneof, InorderClauses: clauses, Remaining: &remaining}
 			},
 		},
@@ -442,6 +462,7 @@ func genDestination(rng *rand.Rand, opts destinationOptions) Destination {
 					remaining := genKeptOrDest(rng, nestedOpts)
 					dest.AllotRemaining = &remaining
 				}
+
 				return dest
 			},
 		},
@@ -453,6 +474,7 @@ func genKeptOrDest(rng *rand.Rand, opts destinationOptions) KeptOrDest {
 		{1, func() KeptOrDest { return KeptOrDest{Kind: Kept} }},
 		{3, func() KeptOrDest {
 			d := genDestination(rng, opts)
+
 			return KeptOrDest{Kind: To, Dest: &d}
 		}},
 	})
@@ -472,6 +494,7 @@ func genStatement(rng *rand.Rand, poolSize int) Statement {
 	if pickUnbounded {
 		return Statement{IsSendAll: true, Asset: sent.Asset, Source: src, Destination: dest}
 	}
+
 	return Statement{IsSendAll: false, Amount: sent, Source: src, Destination: dest}
 }
 

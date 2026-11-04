@@ -2,7 +2,7 @@ package builder
 
 type Statement render
 
-// A bounded send statement
+// A bounded send statement.
 func StmtSend(
 	monetary Expression[ExprTypeMonetary],
 	source Source,
@@ -20,7 +20,7 @@ func StmtSend(
 	}
 }
 
-// An unbounded send statement
+// An unbounded send statement.
 func StmtSendAll(
 	asset Expression[ExprTypeAsset],
 	source Source,

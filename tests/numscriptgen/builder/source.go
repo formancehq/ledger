@@ -76,11 +76,11 @@ func SrcInorder(sources ...Source) Source {
 	}
 }
 
-// A source capped by a maximum amount: `max <amount> from <source>`
-func SrcCapped(max Expression[ExprTypeMonetary], source Source) Source {
+// A source capped by a maximum amount: `max <amount> from <source>`.
+func SrcCapped(limit Expression[ExprTypeMonetary], source Source) Source {
 	return func(env *env, w int) {
 		env.builder.WriteString("max ")
-		max(env, w)
+		limit(env, w)
 		env.builder.WriteString(" from ")
 		source(env, w)
 	}

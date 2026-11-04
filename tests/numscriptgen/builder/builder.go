@@ -14,6 +14,7 @@ const indentStr = "  "
 func (p *pool[T]) getFreshId() int {
 	id := p.nextId
 	p.nextId += 1
+
 	return id
 }
 
@@ -24,6 +25,7 @@ func (p *pool[T]) getItemId(elem T) int {
 		p.elems[elem] = elemId
 		previousLookup = elemId
 	}
+
 	return previousLookup
 }
 
@@ -65,7 +67,7 @@ func newEnv() env {
 	}
 }
 
-// The underlying type of any a pretty printing document
+// The underlying type of any a pretty printing document.
 type render = func(
 	env *env,
 
@@ -125,7 +127,6 @@ func renderVar[T comparable](
 		st.sb.WriteString(varName)
 		st.sb.WriteByte('\n')
 	}
-
 }
 
 func stringId(x string) string { return x }
@@ -137,7 +138,7 @@ func stringId(x string) string { return x }
 // variable).
 func writeStringLiteral(env *env, s string) {
 	env.builder.WriteByte('"')
-	for i := 0; i < len(s); i++ {
+	for i := range len(s) {
 		ch := s[i]
 		if ch == '"' || ch == '\\' {
 			env.builder.WriteByte('\\')
@@ -157,6 +158,7 @@ func renderExprToString(env *env, r render) string {
 	r(env, 0)
 	out := env.builder.String()
 	env.builder = saved
+
 	return out
 }
 
@@ -200,6 +202,7 @@ func originDeclOrder(originRHS []string) []int {
 	for id := range originRHS {
 		visit(id)
 	}
+
 	return order
 }
 
@@ -207,7 +210,6 @@ func renderVars(
 	st *varRenderState,
 	env *env,
 ) string {
-
 	// Render every origin var's RHS to a string FIRST: doing so may lazily
 	// register new entries into env's account/string/asset/number pools
 	// (e.g. an asset literal not otherwise referenced in the program body),
@@ -221,7 +223,7 @@ func renderVars(
 	// Index it rather than ranging over it: `range` fixes the length up front
 	// and would leave the entries discovered here unrendered.
 	var originRHS []string
-	for id := 0; id < len(env.originVars); id++ {
+	for id := range len(env.originVars) {
 		originRHS = append(originRHS, renderExprToString(env, env.originVars[id].origin))
 	}
 
@@ -273,18 +275,19 @@ func BuildProgram(statements ...Statement) (map[string]string, VarsEnv, string) 
 
 // Check feature flag has only lower chars and "-" chars.
 // Less declarative than a regex, but this way we don't need a more complex api user-wise
-// just for the sake of perfs (this should be good enough)
+// just for the sake of perfs (this should be good enough).
 func checkIsFlagValid(s string) bool {
 	if len(s) == 0 {
 		return false
 	}
 
-	for i := 0; i < len(s); i++ {
+	for i := range len(s) {
 		ch := s[i]
 		if (ch < 'a' || ch > 'z') && ch != '-' {
 			return false
 		}
 	}
+
 	return true
 }
 
@@ -292,7 +295,7 @@ func checkIsFlagValid(s string) bool {
 //
 // IMPORTANT NOTE: this function will panic if a feature flag doesn't match `^[a-z-]+$`. Flags are meant to be passed directly, and a sintactically
 // incorrect flag is treated as an argument error panic right away, not returned as an "error".
-// Also note we don't keep the list of valid flags here
+// Also note we don't keep the list of valid flags here.
 func BuildProgramWithFeatureFlags(
 	featureFlags []string,
 	statements ...Statement,
@@ -315,9 +318,9 @@ func BuildProgramWithFeatureFlags(
 		flagsArgs.WriteByte('"')
 		flagsArgs.WriteString(flag)
 		flagsArgs.WriteByte('"')
-
 	}
 
 	updatedScript := fmt.Sprintf("#![feature(%s)]\n%s", flagsArgs.String(), script)
+
 	return knownBindings, varsEnv, updatedScript
 }

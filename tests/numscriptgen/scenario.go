@@ -87,6 +87,7 @@ func boundaryAmount(rng *rand.Rand, sh *shadow) *big.Int {
 	if out.Sign() < 0 {
 		out.SetInt64(0)
 	}
+
 	return out
 }
 
@@ -109,8 +110,10 @@ func sortedBalanceKeys(balances map[BalanceKey]*big.Int) []BalanceKey {
 		if c := cmp.Compare(a.Account, b.Account); c != 0 {
 			return c
 		}
+
 		return cmp.Compare(a.Asset, b.Asset)
 	})
+
 	return keys
 }
 
@@ -122,9 +125,11 @@ func pickFocus(rng *rand.Rand, poolSize int, balances map[BalanceKey]*big.Int) (
 		keys := sortedBalanceKeys(balances)
 		k := keys[rng.Intn(len(keys))]
 		idx, _ := strconv.Atoi(strings.TrimPrefix(k.Account, "acc"))
+
 		return Focus(k), idx
 	}
 	idx := rng.Intn(poolSize)
+
 	return Focus{Account: fmt.Sprintf("acc%d", idx), Asset: pickAsset(rng)}, idx
 }
 
@@ -165,12 +170,14 @@ func genScenario(rng *rand.Rand, poolSize int, seeds Program, balances map[Balan
 	for range observers {
 		out = append(out, g.observe(observerKinds[rng.Intn(len(observerKinds))]))
 	}
+
 	return out, pos, focus
 }
 
 func (g *scenarioGen) amount() *big.Int {
 	q := boundaryAmount(g.rng, &g.sh)
 	g.sh.note(q)
+
 	return q
 }
 
@@ -189,6 +196,7 @@ func (g *scenarioGen) focusPlain() Source {
 
 func (g *scenarioGen) focusBounded(od *big.Int) Source {
 	m := g.mon(od)
+
 	return Source{Kind: SrcAccountOverdraft, Account: g.focus.Account, AccountAsVar: asVar(g.rng), Overdraft: &m}
 }
 
@@ -210,11 +218,13 @@ func (g *scenarioGen) toFocus() Destination {
 
 func (g *scenarioGen) send(kind string, amt *big.Int, src Source, dest Destination) ScenarioStmt {
 	st := Statement{Amount: g.mon(amt), Source: src, Destination: dest}
+
 	return ScenarioStmt{Kind: kind, Send: &st}
 }
 
 func (g *scenarioGen) sendAll(kind string, src Source, dest Destination) ScenarioStmt {
 	st := Statement{IsSendAll: true, Asset: g.focus.Asset, AssetAsVar: asVar(g.rng), Source: src, Destination: dest}
+
 	return ScenarioStmt{Kind: kind, Send: &st}
 }
 
@@ -223,6 +233,7 @@ func (g *scenarioGen) setup(kind string) ScenarioStmt {
 	case setupSave:
 		m := g.mon(g.amount())
 		g.sh.sub(m.Amount)
+
 		return ScenarioStmt{Kind: kind, Extra: &ExtraStatement{
 			Kind: ExtraSave, Monetary: &m, Account: g.focus.Account, AccountAsVar: asVar(g.rng),
 		}}
@@ -230,6 +241,7 @@ func (g *scenarioGen) setup(kind string) ScenarioStmt {
 	case setupSaveAll:
 		// both engines zero a positive balance and leave a negative one
 		g.sh.clampTo(big.NewInt(0))
+
 		return ScenarioStmt{Kind: kind, Extra: &ExtraStatement{
 			Kind: ExtraSaveAll, Asset: g.focus.Asset, AssetAsVar: asVar(g.rng),
 			Account: g.focus.Account, AccountAsVar: asVar(g.rng),
@@ -238,38 +250,45 @@ func (g *scenarioGen) setup(kind string) ScenarioStmt {
 	case setupFund:
 		n := g.amount()
 		g.sh.add(n)
+
 		return g.send(kind, n, Source{Kind: SrcAccount, Account: "world"}, g.toFocus())
 
 	case setupDrainPlain:
 		// both engines take max(balance, 0)
 		g.sh.clampTo(big.NewInt(0))
+
 		return g.sendAll(kind, g.focusPlain(), g.toOther())
 
 	case setupDrawPlain:
 		n := g.amount()
 		g.sh.sub(n)
+
 		return g.send(kind, n, g.focusPlain(), g.toOther())
 
 	case setupDrawBounded:
 		od, n := g.amount(), g.amount()
 		g.sh.sub(n)
+
 		return g.send(kind, n, g.focusBounded(od), g.toOther())
 
 	case setupDrainBounded:
 		// both engines take max(balance + od, 0), leaving -od
 		od := g.amount()
 		g.sh.clampTo(new(big.Int).Neg(od))
+
 		return g.sendAll(kind, g.focusBounded(od), g.toOther())
 
 	case setupDrawUnbounded:
 		n := g.amount()
 		g.sh.sub(n)
+
 		return g.send(kind, n, g.focusUnbounded(), g.toOther())
 
 	case setupKeptSplit:
 		n, k := g.amount(), g.amount()
 		g.sh.sub(n)
 		remaining := KeptOrDest{Kind: To, Dest: &Destination{Kind: DestAccount, Account: g.otherAccount(), AccountAsVar: asVar(g.rng)}}
+
 		return g.send(kind, n,
 			Source{Kind: SrcInorder, Sources: []Source{g.focusPlain(), g.otherUnbounded()}},
 			Destination{
@@ -287,21 +306,25 @@ func (g *scenarioGen) observe(kind string) ScenarioStmt {
 	switch kind {
 	case observeDrainPlain:
 		g.sh.clampTo(big.NewInt(0))
+
 		return g.sendAll(kind, g.focusPlain(), g.toOther())
 
 	case observeDrainBounded:
 		od := g.amount()
 		g.sh.clampTo(new(big.Int).Neg(od))
+
 		return g.sendAll(kind, g.focusBounded(od), g.toOther())
 
 	case observeDrawPlain:
 		n := g.amount()
 		g.sh.sub(n)
+
 		return g.send(kind, n, g.focusPlain(), g.toOther())
 
 	case observeDrawBounded:
 		od, n := g.amount(), g.amount()
 		g.sh.sub(n)
+
 		return g.send(kind, n, g.focusBounded(od), g.toOther())
 
 	case observeDrawFallback:
@@ -311,6 +334,7 @@ func (g *scenarioGen) observe(kind string) ScenarioStmt {
 		if g.rng.Intn(2) == 0 {
 			first = g.focusBounded(g.amount())
 		}
+
 		return g.send(kind, n,
 			Source{Kind: SrcInorder, Sources: []Source{first, g.otherUnbounded()}},
 			g.toOther())
@@ -320,6 +344,7 @@ func (g *scenarioGen) observe(kind string) ScenarioStmt {
 		g.sh.sub(n)
 		capped := g.mon(k)
 		inner := g.focusPlain()
+
 		return g.send(kind, n,
 			Source{Kind: SrcInorder, Sources: []Source{
 				{Kind: SrcCapped, Cap: &capped, Inner: &inner},

@@ -3,6 +3,7 @@ package numscriptgen
 import (
 	"fmt"
 	"math/rand"
+	"strconv"
 	"strings"
 )
 
@@ -31,7 +32,7 @@ func RerollVars(rng *rand.Rand, vars map[string]string, accounts []string) map[s
 		case "asset":
 			out[name] = pickAsset(rng)
 		case "number":
-			out[name] = fmt.Sprintf("%d", rng.Intn(2000)-500)
+			out[name] = strconv.Itoa(rng.Intn(2000) - 500)
 		case "monetary":
 			asset, _, _ := strings.Cut(value, " ")
 			out[name] = fmt.Sprintf("%s %d", asset, rng.Intn(1000))
