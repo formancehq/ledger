@@ -11,8 +11,11 @@ RUN go mod download
 
 COPY . .
 
+ARG OPERATOR_VERSION=dev
+
 # Cross-compile natively using Go's built-in support (no QEMU needed)
-RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -o build/operator ./cmd/operator
+RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build \
+    -ldflags="-X main.version=${OPERATOR_VERSION}" -o build/operator ./cmd/operator
 
 # Final stage: uses the target platform
 FROM alpine:3

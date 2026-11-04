@@ -73,14 +73,14 @@ type Membership struct {
 	// (OnStart hook, after the local Raft gRPC server is listening),
 	// Set / Remove / Register / Rehydrate mutate only the cache — the
 	// transport side effect is deferred. Wiring at construction time
-	// would race with the remote pods not yet listening: in
+	// can probe remote pods before they are listening: in
 	// --tls-mode=optional, pool.AddPeer probes the peer's TLS handshake
-	// and returns an error if the peer isn't up, and my earlier logs-
-	// and-move-on handling made those failures permanent. Deferring
-	// the initial wire to Start solves this: Start fires only after
+	// and returns an error if the peer isn't up. Deferring the initial
+	// wire to Start avoids unnecessary probes: Start fires only after
 	// the local Raft server is up, by which point the peer pods have
-	// had a chance to listen. Runtime Set / Remove (from finishReady,
-	// long after Start) wire inline as before.
+	// had a chance to listen. Failed probes retain the endpoint and
+	// Raft retry owner. Runtime Set / Remove (from finishReady, long
+	// after Start) wire inline as before.
 	started bool
 }
 
@@ -124,8 +124,9 @@ func NewMembership(store *PeerStore, transport Transport, pool Pool, selfNodeID 
 // Start wires every peer currently in the cache into the transport +
 // service pool. Called from an fx OnStart hook that fires AFTER the
 // local Raft gRPC server is listening, so remote pods have had a chance
-// to listen too (avoiding a --tls-mode=optional probe failure that
-// would silently drop the peer from the pool).
+// to listen too, avoiding unnecessary --tls-mode=optional probe failures.
+// Failed probes retain the registered endpoint; the Raft transport keeps
+// its retry owner, while service-pool consumers retry through registration.
 //
 // After Start returns, subsequent Set / Remove / Register / Rehydrate
 // calls wire the transport inline. Start is idempotent — a second call is a

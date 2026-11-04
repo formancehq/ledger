@@ -24,6 +24,11 @@ The Ledger Operator manages `Cluster` and `EventSink` custom resources to automa
 - **Event sinks** reconciled into Ledger's Raft-replicated runtime configuration
 - **Credentials** for application-level access control
 
+For release-tagged Ledger images, the Cluster controller rejects a server
+version newer than the running Ledger Operator before creating or updating the
+StatefulSet. See [deployment](../../docs/ops/deployment.md#creating-a-ledger-cluster)
+for the status conditions and the limits of tag-based comparison.
+
 During StatefulSet scale-down, every removed ordinal must satisfy the Raft
 membership removal postcondition (EN-1999). A replacement Pod can be Pending,
 missing, or have no container status while its stable node ID is still a voter;
@@ -114,6 +119,32 @@ owner references), and a pre-existing ServiceAccount named `ledger-<name>`
 [derived object ownership](../../docs/technical/architecture/subsystems/operator/derived-object-ownership.md)
 for each guarded path and the accepted races.
 
+## Mirror promotion recovery
+
+When a Ready Ledger changes from mirror to normal mode, the controller first
+reads the target ledger with `ledgers get --json --consistency linearizable
+--checkpoint-id 0`. Explicit flags override `LEDGERCTL_CONSISTENCY` and
+`LEDGERCTL_CHECKPOINT_ID`, including values supplied through Cluster `extraEnv`,
+so a lagging replica or historical checkpoint cannot authorize another promotion
+from old mode. An explicit `MIRROR` permits promotion; an explicit `NORMAL`
+recovers an already committed promotion without issuing it again. Failed reads,
+invalid output or a different returned ledger name leave the transition
+incomplete and retry. The existing Cluster/StatefulSet/Pod ownership checks
+apply to both observation and promotion.
+
+Promotion commits in Ledger before the controller changes its in-memory status
+to normal and attempts the Kubernetes status write. A lost exec response or a
+failed status write can therefore leave Ledger normal while persisted CR status
+still says mirror. A replacement controller observes normal mode, reconstructs
+the successful status and retries its persistence. Once status persists, the
+next reconciliation resumes declarative index reconciliation. Recovery does
+not depend on an in-memory operation ID or an unexpired idempotency record.
+
+This also repairs promotions stranded before the operator upgrade. Service
+protocols and persisted Ledger data formats are unchanged. Each pending
+promotion reconcile adds one bounded ledger read; ordinary Ready reconciliation
+does not perform this read.
+
 ## Declarative ledger indexes
 
 For a Ledger with `spec.indexes`, reconciliation creates missing indexes in
@@ -166,6 +197,22 @@ Plaintext `authToken` and `basicAuthPassword` fields are not supported.
 Reference changes trigger a rollout; rotating Secret contents requires a Pod
 restart. See [profiling deployment](../../docs/ops/deployment.md#pyroscope-continuous-profiling)
 for examples and missing-reference behavior.
+
+## Trace sampling
+
+`spec.monitoring.traces.sampler` and `samplerArg` configure standard OpenTelemetry
+SDK head sampling. Omitted settings retain raw `extraEnv` sampler configuration
+and the SDK's `parentbased_always_on` default. Ratio policies require an explicit
+finite argument in `[0,1]`; other policies reject arguments. Combining typed
+sampling with either raw `OTEL_TRACES_SAMPLER*` variable or typed
+`TRACE_SAMPLER*` alias in `extraEnv` is rejected
+before workload changes, including `valueFrom` sources. Correct the spec to
+resume reconciliation. See [deployment](../../docs/ops/deployment.md#collector-side-trace-sampling)
+for supported policies, validation/status behavior and upgrade guidance.
+
+Use `always_on` for collector tail sampling or complete span-derived metrics.
+Head sampling can discard spans before a later error is known and biases
+metrics derived from those spans. Ledger adds no local trace-retention buffer.
 
 ## Health check interval
 
@@ -221,8 +268,14 @@ for runtime delivery, missing-key behavior and ambient authentication.
 helm dependency build misc/operator/helm/operator
 helm install ledger-operator misc/operator/helm/operator \
   --namespace ledger-system \
-  --create-namespace
+  --create-namespace \
+  --set image.tag=v3.0.0-rc.2 \
+  --set ledgerImage.tag=v3.0.0-rc.2
 ```
+
+Use matching published Operator and Ledger release tags. The source chart's
+`appVersion` is a development placeholder; packaged release charts use their
+release version as the image tag by default.
 
 ### Deploy a Ledger Cluster
 
@@ -243,7 +296,7 @@ spec:
   replicas: 3
   image:
     repository: ghcr.io/formancehq/ledger
-    tag: latest
+    tag: v3.0.0-rc.2
   podAntiAffinity:
     enabled: true
     type: hard
@@ -335,10 +388,10 @@ storage.
 | Key | Default | Description |
 |-----|---------|-------------|
 | `image.repository` | `ghcr.io/formancehq/ledger-operator` | Operator image |
-| `image.tag` | `latest` | Operator image tag |
+| `image.tag` | `""` (chart `appVersion`) | Operator image tag. Set a value to override the chart application version. |
 | `ledgerImage.registry` | `ghcr.io` | Default ledger image registry |
 | `ledgerImage.name` | `formancehq/ledger` | Default ledger image name |
-| `ledgerImage.tag` | `latest` | Default ledger image tag |
+| `ledgerImage.tag` | `""` (chart `appVersion`) | Default Ledger image tag. Set a value to override the chart application version. |
 | `replicaCount` | `1` | Operator replicas |
 | `leaderElection` | `true` | Enable HA leader election |
 | `watchNamespace` | `""` | Namespace to watch (empty = all) |
@@ -581,7 +634,7 @@ kubectl ledger explain spec.raft
 kubectl ledger create my-ledger \
   --set replicas=5 \
   --set image.repository=ghcr.io/formancehq/ledger \
-  --set image.tag=latest \
+  --set image.tag=v3.0.0-rc.2 \
   --set podAntiAffinity.enabled=true \
   --set podAntiAffinity.type=hard \
   --set resources.requests.cpu=2000m \
@@ -597,6 +650,11 @@ kubectl ledger scale my-ledger --replicas 7
 # Rolling restart
 kubectl ledger restart my-ledger -y
 ```
+
+If `image.tag` is omitted from `kubectl ledger create`, the Cluster inherits
+the Ledger image tag configured on the Operator (`ledgerImage.tag`, or the
+chart's `appVersion`). Set `image.tag` explicitly to select a different
+compatible release.
 
 Plain `kubectl rollout restart statefulset/<name>` also works: the operator
 preserves the `kubectl.kubernetes.io/restartedAt` annotation kubectl stamps on
@@ -634,6 +692,16 @@ just pre-commit     # Run all checks (generate + tidy + build)
 just build-plugin   # Build kubectl plugin
 just install-plugin # Install kubectl plugin to $GOPATH/bin
 ```
+
+### End-to-end tests
+
+From `misc/operator/`, run `just test-e2e` to build the images, create the kind
+cluster, and run the Chainsaw scenarios. The scenarios using the opaque `e2e`
+Ledger tag run with the development Operator. The rolling rc.2-to-rc.3 upgrade
+scenario then runs with an Operator built as `v3.0.0-rc.3`, so the release
+version admission check is exercised. After the images are loaded, use
+`just test-e2e-only` to rerun both groups without rebuilding the cluster.
+Use `just e2e-cluster-down` to remove it.
 
 ### JSON Schema
 

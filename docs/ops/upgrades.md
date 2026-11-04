@@ -40,6 +40,26 @@ prove whether the boundary is crossed, so the operator blocks the change.
 Likewise, the operator blocks a canonical target at or past a boundary when the
 running image has no canonical version tag, such as `latest` or a digest.
 
+### Preflight for Clusters using `latest`
+
+Before upgrading to a release Operator with version admission, inspect each
+Cluster's `spec.image.tag` and the Ledger image in its owned StatefulSet. The
+`v3.0.0-rc.1` Helm chart used `latest` as its Ledger image default. A release
+Operator rejects an opaque declared tag. If the Cluster requests an RC while
+the StatefulSet still uses `latest`, the RC source check also rejects the
+transition. Changing only `spec.image.tag` after the Operator upgrade does not
+repair that state.
+
+Do not start the Operator upgrade while either tag is `latest`. While the
+current Operator can still reconcile the Cluster, verify the running image
+digests against a published RC and pin the Cluster to that **same source RC**.
+Wait for the StatefulSet rollout to converge, then verify representative
+business data and audit history before upgrading to the next RC. Continue
+through each adjacent RC in order; do not jump to the newest RC. If the source
+cannot be identified or the current Operator already rejects the pinning step,
+stop and plan a separately validated migration. Do not delete the StatefulSet
+or PVCs to bypass the source check.
+
 Before tagging a new release, verify the upgrade with state created by the
 supported source releases. Cover affected Pebble records, Raft log and snapshot
 state, backup and restore formats, audit verification, and rebuildable
@@ -153,6 +173,16 @@ Before any server upgrade:
 5. Ensure clients use stable idempotency keys for retries during leadership
    changes or transient unavailability.
 
+The Ledger Operator blocks a declared Ledger image tag newer than its own
+release version, or one that cannot be compared, before changing the
+StatefulSet. Upgrade the Operator first, then change the Ledger image. This
+ordering check applies before an Operator-managed workload change; it does
+not establish mixed-version compatibility or make a downgrade safe. Mutable
+registry tags can serve different contents, which this check cannot verify.
+If an Operator downgrade encounters a newer declared Ledger version,
+reconciliation stops with `VersionCompatible=False` while the existing workload
+is retained. Install a compatible Operator to resume reconciliation.
+
 ## Rolling Procedure
 
 Use this for RC updates after the mixed-version validation above passes:
@@ -227,6 +257,124 @@ storage-format or service-protocol revision changes are required.
 Rollback while maintenance is active must retain the same barrier discipline.
 After reopening writes on the fixed binary, do not reintroduce an affected old
 voter or downgrade without a separately validated procedure.
+
+### Reproducible binary rolling-upgrade validation
+
+After integrating the harness into `release/v3.0`, run from that revision:
+
+```bash
+just test-rolling-upgrade v3.0.0-rc.1 origin/release/v3.0
+```
+
+The command takes source and target Git refs. Tags and commit SHAs must exist
+locally; an `origin/<branch>` argument fetches that branch before resolving it.
+The Chainsaw launcher resolves both refs to commit SHAs and records those
+SHAs, Linux binary hashes, and local image IDs.
+Compilation, hashing, image build, and image inspection must all succeed before
+the kind cluster is created; a locally cached image cannot replace a failed build.
+It requires a clean harness checkout, the target to contain its commit, and the
+target to descend from the distinct source commit; it never merges or moves a
+local branch.
+`KEEP_WORKDIR=1` retains the extracted
+trees, binaries, image IDs, failed Pod logs, and revision record for the release
+validation report. `just test-rolling-upgrade v3.0.0-rc.1 <target-sha>`
+rehearses a specific local commit without fetching the release branch. The
+release-branch example refuses to run while `release/v3.0` lacks the integrated
+harness.
+
+The test creates a dedicated kind cluster and Chainsaw namespace. Three Pods
+mount separate persistent WAL and data claims and boot from an image containing
+the compiled source binary. It creates a ledger and transaction through gRPC,
+then verifies the account on every voter. At the
+maintenance barrier it requires each voter to be normal and durably past the
+leader's recorded commit index. It replaces each follower separately, probes
+ledger creation and transaction posting against the existing ledger on every
+ready live voter during deletion, rejoin, and catch-up, retries inconclusive
+responses in the deletion gap, and checks both rejections and
+unchanged account data on every voter in stable maintenance windows. It
+transfers leadership to an upgraded voter and replaces the old leader. After
+all three voters run the target binary, it completes a final maintenance
+window, disables maintenance, and verifies the original
+account, commits another transaction, checks its readback on every voter, and
+runs the audit and derived-state checker on each voter. Missing observations or
+an unexpected write success fail the run.
+
+This local test does not cover backup restore, snapshot installation, operator
+rollout, or every business operation and persisted record type. It requires
+Docker and Nix; the `.#upgrade` shell supplies kind, kubectl, Chainsaw, and jq.
+The existing
+model and restore suites and release-specific migration tests remain separate
+gates. It also does not authorize rollback onto storage opened by the target.
+
+### Operator-managed rc.2 to rc.3 rolling validation
+
+After the current `main` has been integrated into `release/v3.0`, run the
+`Release operator upgrade` GitHub Actions workflow with `release/v3.0` and
+`rc2-to-rc3`, or run
+the same recipe locally from a clean harness checkout:
+
+```bash
+RELEASE_BRANCH=release/v3.0 just test-release-operator-upgrade
+```
+
+The launcher fetches and pins the exact `release/v3.0` HEAD and the published
+source RC selected by the transition. It requires the target to descend from
+that source and to contain the harness commit from `main`. It pulls the
+published source Ledger and operator images, then builds the target operator
+and Ledger images from that one pinned target SHA. For the default transition,
+it gives the local images canonical `v3.0.0-rc.3` tags and compiles the
+operator with that version for admission;
+this does not create a Git tag or publish either image. The recorded Docker
+image IDs and running Pod image IDs bind the test to the exact local builds.
+`TARGET_REF=<local-sha>` permits a local rehearsal against a commit containing
+the harness and rc.2, such as a temporary integration merge; the workflow
+always uses the fetched release branch HEAD. The workflow uploads revisions,
+image IDs, Raft status, Chainsaw output, Kubernetes resources and Pod logs.
+The harness keeps the Chainsaw namespace until diagnostics are collected, then
+deletes the Kind cluster.
+
+For the default transition, Chainsaw creates a three-voter Cluster with
+published rc.2 images, commits
+non-empty business data, and records Pod, PVC and Raft identities. It upgrades
+the operator through Helm first, verifies the operator image and Pod changed
+while Ledger Pods, PVCs and data did not. With the rc.3 operator running, it
+requests a non-adjacent rc.1 downgrade and requires the RC admission error
+without any Ledger Pod, image or PVC change. It then requests the local rc.3
+Ledger image, observes old and new voters Ready together with at least two
+Ready Pods, and requires the operator's stopped-upgrade state to stay empty.
+After every Pod is replaced and every PVC retains its identity, it verifies
+the original data on all voters, commits another transaction, requires the
+Raft commit index to advance, and runs each voter's audit and derived-store
+checker.
+
+This scenario proves the operator-first rolling path, adjacent RC admission,
+non-empty data continuity, retained PVCs, and final Raft and audit health for
+the pinned rc.2 and target revisions. It does not write during mixed Ledger
+versions, exhaustively compare every persisted record type, exercise snapshot
+installation, backup/restore, rollback, or the dormant stopped-upgrade path.
+The pinned binary-level rc.1 test and relevant model, restore and migration
+suites remain separate gates.
+
+The same harness has a separate, future `rc3-to-rc4` transition:
+
+```bash
+UPGRADE_TRANSITION=rc3-to-rc4 RELEASE_BRANCH=release/v3.0 just test-release-operator-upgrade
+```
+
+Run it only after `v3.0.0-rc.3` has been published and the PR changing the
+persisted format has added `v3.0.0-rc.4` to the operator's mandatory stop
+boundaries. The target operator and Ledger are still built from one exact
+release-branch HEAD and tagged locally as rc.4; the harness publishes no tag
+or image. This path requires the operator's drain barrier to advance past
+`Draining`, observes the StatefulSet and all old Pods absent before accepting
+any target Pod, and checks that the replacement StatefulSet has a new UID while
+PVC UIDs persist. It restarts a target voter to exercise replay, verifies the
+pre-upgrade account, commits another transaction, checks Raft progress and
+runs each voter's audit/derived-state checker after drain release. It fails
+against the current empty mandatory-stop list, so it is a release gate for the
+format-change PR, not evidence that rc.3 itself needs a stop. A future rc.4
+release still needs format-specific migration, snapshot, backup/restore and
+rollback validation outside this scenario.
 
 ## Coordinated Restart
 

@@ -27,6 +27,9 @@ type flags struct {
 	watchNamespace string
 }
 
+// version is set by release builds. Development builds retain an opaque value.
+var version = "dev"
+
 func main() {
 	var f flags
 	flag.StringVar(&f.metricsAddr, "metrics-bind-address", ":8080", "The address the metric endpoint binds to.")
@@ -94,11 +97,12 @@ func main() {
 	}
 
 	if err = (&controller.ClusterReconciler{
-		Client:    mgr.GetClient(),
-		Scheme:    mgr.GetScheme(),
-		Config:    cfg,
-		Clientset: clientset,
-		Recorder:  mgr.GetEventRecorderFor("cluster-controller"),
+		Client:          mgr.GetClient(),
+		Scheme:          mgr.GetScheme(),
+		Config:          cfg,
+		Clientset:       clientset,
+		Recorder:        mgr.GetEventRecorderFor("cluster-controller"),
+		OperatorVersion: version,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "Cluster")
 		os.Exit(1)

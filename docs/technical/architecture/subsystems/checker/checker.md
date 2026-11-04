@@ -8,6 +8,38 @@ Its job is to enforce the system-wide invariant that the audit log is the only s
 
 `Checker.Check` runs four ordered phases: `pinCheckSnapshots` pins the peer read-index snapshot before the primary snapshot and reads the log head from the primary Log key; `verifyCheckAudit` verifies the audit chain and builds the business oracle even when there are no logs; `replayLogs` scans logs once, emits replay findings and progress, and derives expected state; `compareProjections` checks stored rows against that state. The replay store and both snapshots stay open through the projection phase. This ordering is part of the streamed event contract: audit findings precede replay progress, and projection findings follow it.
 
+## Numscript projection ownership
+
+`numscriptProjection` in `internal/application/check/numscript_projection.go`
+owns the disposable content and latest-pointer expectations, their initialization,
+`SavedNumscript` and `DeleteLedger` transitions, and their final comparison.
+`replayLogs` passes the selected log after audit-derived substitution to the
+owner; `checkReplayState` transports that owner to the existing comparison slot.
+The `Checker.compareNumscripts` signature remains available for explicit
+expectations and delegates to the same comparison. Stored library rows never
+seed the expected maps.
+
+This boundary reduces the coordination needed to revise a family rule. For
+example, a diagnostic identifying the physical log sequence that last advanced
+a latest pointer needs a per-name sequence map. Previously, that map needed
+initialization and save/deletion handling in `replayLogs`, a `checkReplayState`
+field, return wiring, aliases and arguments in `compareProjections`, and a
+comparison input. With the owner, the field, initialization, save/deletion
+handling and diagnostic consumption stay in the family file; only the replay
+hook also changes to supply the physical sequence. Existing state transport,
+comparison orchestration and compatibility signature need no new wiring. This
+is an edit-surface example, not an added diagnostic: reported sequences,
+messages and other event fields remain unchanged.
+
+The extraction preserves the selected-log fallback after incomplete audit
+verification; it does not add a completeness guarantee or change truncation
+handling. Peer snapshots, reverse-map cursor alignment and other folds are
+unaffected. It retains one log traversal, two expectation maps, two stored
+keyspace scans and the existing map traversal on ledger deletion. Additional
+work is a constant dispatch per log, with no new storage reads, writes, replay
+or persisted format. The owner lives only for one check, so no migration or
+rolling-upgrade boundary is introduced.
+
 ## Surface
 
 `misc/proto/bucket.proto`:
@@ -58,6 +90,7 @@ Notes:
 
 - **`compareIndexes` covers presence + identity** (`IndexID` match), **not `IndexVersionState`** — that state is by design local and may legitimately differ across nodes mid-rewrite (see [indexer / indexes.md](../indexer/indexes.md)).
 - **`compareIndexes` requires canonical registry keys.** A stored key must equal the canonical encoding of the `IndexKey` it decodes to. Decoding stops at the first NUL of the fixed-width ledger-name padding, so a key with nonzero bytes after it decodes to a valid logical key while canonical point lookups miss the row. Such a row emits `INDEX_MISMATCH` with the raw key and never satisfies an expected entry, so the audit-derived registration is also reported missing. The check runs before the bucket-scoped skip because it needs no audit oracle.
+- **`compareIndexes` decides membership from the physical key alone.** Every production writer sets `Index.Id`, so a stored value without one is malformed identity. At a surplus ledger-scoped key it is reported as having no matching `CreateIndex`; at an audited key it is reported as `Id` drift. Only the bucket-scoped key exemption skips a decodable row.
 - **`compareIndexes` has no unmatched-row tolerance.** Expected = the replayed registry state, and an unmatched stored entry is a hard mismatch. A tolerated stale or tampered registry row is what makes `compareReverseMapOrphans`' registry term treat orphaned reverse-map rows as legitimate — two corrupted projections could mask each other and leave `Check()` clean; do not introduce a tolerance without replacing that coverage.
 - **`compareNumscripts`** re-derives both numscript projections from the audit chain. The library is immutable and append-only: a `SavedNumscript` writes an immutable content entry and advances the per-name latest pointer to the greatest stored semver (versions may be saved out of order). It catches altered/missing/extra content and a latest pointer that is not the greatest saved semver. A stored row the replay never produced is flagged as surplus.
 - **`compareIdempotencyOutcomes`** consumes a side-effect of `verifyAuditHashChain` (the expected-outcome map). The two are coupled by design — re-deriving the idempotency outcome means re-walking the chain anyway. `signingVerifier` is coupled the same way: its live-range fold rides inside the chain walk, which already classifies entries as successful or failed, rather than iterating the audit range a second time.

@@ -323,7 +323,7 @@ jobs:
           nix develop .#ci --command just test-model-cluster 180
 
   Coverage:
-    if: always()
+    if: always() && github.event_name != 'merge_group'
     needs: [Tests, Tests-E2E-Business, Tests-E2E-Cluster, Tests-Scenarios]
     runs-on: namespace-profile-linux-amd64-4vcpu
     env:
@@ -466,11 +466,3 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GORELEASER_KEY: ${{ secrets.GORELEASER_KEY }}
-      - name: Build and push operator image
-        run: >
-          nix develop .#ci --command just operator-docker-build
-      - name: Publish operator Helm charts
-        run: >
-          nix develop .#ci --command just operator-helm-publish '' nightly
-        env:
-          GITHUB_TOKEN: ${{ secrets.NUMARY_GITHUB_TOKEN }}

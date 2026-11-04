@@ -485,3 +485,54 @@ TestAccountMetadataMaintenanceBarrierSurvivesRecovery proves the FSM/recovery
 gate, not a real mixed-binary deployment. Release validation must prove that
 deployment separately. Historical audit failures and frozen outcomes retain
 their stored details; already-diverged audit chains are not repaired by this fix.
+
+## Technical-update submission boundary
+
+Production submission through `plan.Builder.Run` rejects more than one technical
+update and permits a technical update alongside orders only for MirrorSync.
+Verify rejection before serialization/Raft submission, loader cleanup on both
+preload paths, and unchanged standalone operational updates. Historical committed
+compositions keep their interpreter; this admission guard must never become a
+replay-time semantic change. Pair MirrorSync with real ingestion and a concurrent
+ledger promotion: rejected ingestion must preserve the prior source head and
+applied position through recovery; successful ingestion advances both.
+See [the composition contract](../architecture/subsystems/fsm/technical-update-atomicity.md).
+
+## Generated code and shared primitive closure
+
+Include the implementations under `tools/protoc-gen-dethash`,
+`tools/protoc-gen-reader` and `tools/protoc-gen-skippable`, their descriptor
+inputs and the generated messages consumed by apply and audit hashing. A
+successful build or agreement between two callers of the same generated helper
+is insufficient evidence. Follow each candidate through a real production
+consumer and identify the committed or audited observation it can change.
+
+| Surface | Independent check | Required production witness |
+| --- | --- | --- |
+| Deterministic serialization | Equal nested map contents with different insertion orders; explicit sorted-key wire expectations and separate standard-runtime decode, including default/map-free controls | Business-intent bytes or audit hashes at the same committed index; do not assume different deterministic protobuf implementations promise identical byte ordering |
+| Generated reader ownership | Mutate retained nested map, slice, byte and oneof aliases through the exposed interface, then compare the original payload and intent bytes | Accepted-order lifetime through audit capture; distinguish deliberately live views from an actual reachable mutation capability |
+| Proposal stamping | Descriptor field number and kind, explicit fixed64 bytes, generated marshal and standard decode with an existing nonempty prefix | The real plan stamping path preserves other fields and the full supported index range |
+| Skip-policy generation | Enumerate descriptor annotations independently and compare all generated action whitelists, including unannotated and unknown controls | Actual admission plus a permitted skip after a staged write, a forbidden reason, rollback, skip audit and later-order behavior |
+| Key-value and bitset helpers | A map oracle distinguishing absent/defined-zero/replaced values; bit positions 0, 63, 64 and 65 with explicit expected word bytes | Attribute old-value capture, write-set rollback and reversion cache/snapshot consumers at an established observation boundary |
+
+Use the existing `reader_immutability_test.go` files in commonpb, raftcmdpb and
+auditpb and the predicted-index tests as evidence leads. Inspect generated
+output as well as generator source. Any regeneration or descriptor mutation
+needed for a diagnostic belongs in a temporary isolated fixture, with nested
+module boundaries and pinned tooling preserved; a native audit never edits the
+tracked checkout. Record unexecuted checks as plans and unavailable evidence as
+residual risk.
+
+For a generator change affecting a released format, retain nonempty intent and
+audit fixtures from the preceding supported RC with their recorded bytes and
+hashes. Candidate-generated expectations cannot prove historical compatibility.
+Verify old/new interpretation during supported mixed-version apply, preserve
+existing history, and record unavailable release fixtures as residual risk.
+
+These paths extend the existing determinism and immutable-order contract.
+`api-boundary-contracts` owns published wire compatibility, projection fidelity
+and request presentation; this domain owns consequences for apply, hashing and
+rollback. The concurrency domain owns helper races and resource lifetimes.
+Do not infer linearizable shard size or snapshot semantics while writers are
+active: compare entries and counters at a controlled quiescent boundary, and
+establish the real synchronization contract before reporting a defect.

@@ -94,6 +94,28 @@ this manifest.
   were removed. A partial fold can emit a mismatch/incomplete signal and stop;
   the contract does not demand every corruption be enumerated after failure.
 
+## Numscript lifecycle evidence
+
+Trace `numscript_projection.go` together with the selected-log hook in
+`Checker.replayLogs` and the existing slot in `compareProjections`. The composed
+owner must receive the log after audit-derived substitution, retaining the
+existing fallback when no audited expectation is available; extraction does not
+strengthen guarantees after a truncated chain. Keep greatest-version selection,
+whole `NumscriptInfo` equality and both comparison directions for content and
+latest pointers. Empty expectations still require scanning for surplus rows.
+
+`checker_numscript_test.go` covers saves out of version order, altered and
+missing/surplus content, missing/surplus latest pointers including empty history,
+and deletion across several names/versions with another ledger retained. A
+coordinated stored-log/content corruption must produce both the log-payload and
+Numscript mismatch while the audited save order remains intact. The
+healthy controls and deletion survivor probes inspect complete callbacks and
+terminal success. These fixtures use the real request processor with the test
+engine's persistence adapter; they do not independently prove the FSM's cleanup
+implementation. Preserve the audit witness when injecting stored rows. The
+owner is disposable checker memory: it adds no persisted projection, audit
+format, snapshot or peer-store read, and leaves alignment rules unchanged.
+
 ## Ledger policy evidence
 
 `internal/application/check/ledger_policy.go` verifies canonical `SubAttrLedger`
@@ -301,3 +323,16 @@ moves the registration to a padding alias, confirms the canonical point lookup
 misses, and requires both the noncanonical-key and the missing-registration
 `INDEX_MISMATCH`. Other passes that decode ledger-name-keyed rows and match on
 the logical key are candidates for the same probe.
+
+## Index registrations without Id (EN-3237)
+
+A value field must not decide whether a row takes part in membership checks.
+Skipping a stored `Index` without an `Id` before parsing its key lets an
+unaudited Ledger-only row at a surplus ledger-scoped key leave `Check` clean.
+Every production writer sets `Id`, so `compareIndexes` decides membership from
+the physical key and lets the identity comparison report the missing `Id`. `checker_index_surplus_test.go` runs full `Check` on a real
+FSM-produced registry: a surplus row with and without `Id` must each produce
+exactly one "no matching CreateIndex" `INDEX_MISMATCH`, and an audited row
+stripped of its `Id` must produce exactly one `Id`-drift `INDEX_MISMATCH`.
+`collectIndexedFields` in the reverse-map pass still ignores rows without `Id`;
+that only widens its orphan verdicts, and `compareIndexes` reports the row.

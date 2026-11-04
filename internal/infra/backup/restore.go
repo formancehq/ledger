@@ -57,6 +57,46 @@ func validateExportKey(seg ExportSegment, key []byte) error {
 	return nil
 }
 
+// ErrExportCoverageGap is returned by ApplyExportsAndRebuild when the manifest's
+// export segments do not cover a history stream from the checkpoint boundary.
+var ErrExportCoverageGap = errors.New("manifest export segments do not cover history contiguously")
+
+// validateExportCoverage checks the manifest's segment ranges across objects,
+// before any download: ApplyExports validates each object only on its own, so
+// dropping a whole segment reference leaves every remaining object valid. Log,
+// audit, and audit-item sequences are dense, so each segment must start right
+// after the previous one of its type, from the checkpoint boundary. Applied-
+// proposal sequences are sparse, so its segments must only be ordered and
+// disjoint above the audit boundary.
+func validateExportCoverage(manifest *Manifest) error {
+	var logEnd, auditEnd uint64
+	if manifest.Checkpoint != nil {
+		logEnd, auditEnd = manifest.Checkpoint.LastLogSequence, manifest.Checkpoint.LastAuditSequence
+	}
+
+	ends := map[string]uint64{"log": logEnd, "audit": auditEnd, "auditItem": auditEnd, "appliedProposal": auditEnd}
+	for _, seg := range manifest.Exports {
+		end, ok := ends[seg.Type]
+		if !ok {
+			return fmt.Errorf("invalid export segment %s: unsupported export segment type %q", seg.Key, seg.Type)
+		}
+
+		if seg.Type == "appliedProposal" {
+			if seg.StartSeq <= end {
+				return fmt.Errorf("%w: %q segment %s starts at %d, at or below the covered sequence %d",
+					ErrExportCoverageGap, seg.Type, seg.Key, seg.StartSeq, end)
+			}
+		} else if seg.StartSeq == 0 || seg.StartSeq-1 != end {
+			return fmt.Errorf("%w: %q segment %s starts at %d, expected %d",
+				ErrExportCoverageGap, seg.Type, seg.Key, seg.StartSeq, end+1)
+		}
+
+		ends[seg.Type] = seg.EndSeq
+	}
+
+	return nil
+}
+
 type exportCountingReader struct {
 	r io.Reader
 	n int64
@@ -251,6 +291,10 @@ func ApplyExports(
 func ApplyExportsAndRebuild(ctx context.Context, logger logging.Logger, storage Storage, store *dal.Store, manifest *Manifest) error {
 	if manifest == nil || len(manifest.Exports) == 0 {
 		return nil
+	}
+
+	if err := validateExportCoverage(manifest); err != nil {
+		return err
 	}
 
 	if err := ApplyExports(ctx, logger, storage, store, manifest.Exports); err != nil {

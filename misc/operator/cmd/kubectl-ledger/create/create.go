@@ -51,38 +51,9 @@ func runCreate(cmd *cobra.Command, opts *cmdutil.Options, setValues []string, dr
 		return fmt.Errorf("resolving namespace: %w", err)
 	}
 
-	overrides, err := flagbind.Collect(setValues)
+	ledger, overrides, err := buildCluster(name, ns, setValues)
 	if err != nil {
 		return err
-	}
-
-	// Apply create-specific defaults for fields not explicitly set.
-	if _, ok := overrides["replicas"]; !ok {
-		overrides["replicas"] = "1"
-	}
-	if _, ok := overrides["clusterID"]; !ok {
-		overrides["clusterID"] = uuid.New().String()
-	}
-	if img, ok := overrides["image"].(map[string]any); !ok || img["repository"] == nil {
-		flagbind.SetNested(overrides, []string{"image", "repository"}, "ghcr.io/formancehq/ledger")
-	}
-	if img, ok := overrides["image"].(map[string]any); !ok || img["tag"] == nil {
-		flagbind.SetNested(overrides, []string{"image", "tag"}, "latest")
-	}
-
-	ledger := &ledgerv1alpha1.Cluster{
-		TypeMeta: metav1.TypeMeta{
-			APIVersion: "ledger.formance.com/v1alpha1",
-			Kind:       "Cluster",
-		},
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      name,
-			Namespace: ns,
-		},
-	}
-
-	if err := flagbind.ApplyToStruct(&ledger.Spec, overrides); err != nil {
-		return fmt.Errorf("applying spec: %w", err)
 	}
 
 	// Show preview.
@@ -134,6 +105,40 @@ func runCreate(cmd *cobra.Command, opts *cmdutil.Options, setValues []string, dr
 	spinner.Success(fmt.Sprintf("Cluster %s created in namespace %s", pterm.Cyan(name), pterm.Cyan(ns)))
 
 	return nil
+}
+
+func buildCluster(name, ns string, setValues []string) (*ledgerv1alpha1.Cluster, map[string]any, error) {
+	overrides, err := flagbind.Collect(setValues)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	// Apply create-specific defaults for fields not explicitly set.
+	if _, ok := overrides["replicas"]; !ok {
+		overrides["replicas"] = "1"
+	}
+	if _, ok := overrides["clusterID"]; !ok {
+		overrides["clusterID"] = uuid.New().String()
+	}
+	if img, ok := overrides["image"].(map[string]any); !ok || img["repository"] == nil {
+		flagbind.SetNested(overrides, []string{"image", "repository"}, "ghcr.io/formancehq/ledger")
+	}
+	ledger := &ledgerv1alpha1.Cluster{
+		TypeMeta: metav1.TypeMeta{
+			APIVersion: "ledger.formance.com/v1alpha1",
+			Kind:       "Cluster",
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      name,
+			Namespace: ns,
+		},
+	}
+
+	if err := flagbind.ApplyToStruct(&ledger.Spec, overrides); err != nil {
+		return nil, nil, fmt.Errorf("applying spec: %w", err)
+	}
+
+	return ledger, overrides, nil
 }
 
 func resolveName(args []string) (string, error) {
