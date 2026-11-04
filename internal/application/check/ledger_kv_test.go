@@ -47,3 +47,22 @@ func TestLedgerKVVerifierDetectsProjectionDrift(t *testing.T) {
 		})
 	}
 }
+
+func TestLedgerKVVerifierIgnoresRetiredMirrorCursorRows(t *testing.T) {
+	t.Parallel()
+	store := createTestStore(t)
+	legacyKey := dal.NewKeyBuilder().PutZonePrefix(dal.ZonePerLedger, 0x05).
+		PutLedgerNameFixed("ledger").Build()
+	require.Equal(t, byte(0x06), dal.SubPLKV, "KV must not reuse the retired mirror cursor prefix")
+	batch := store.OpenWriteSession()
+	require.NoError(t, batch.SetBytes(legacyKey, []byte("old mirror cursor")))
+	require.NoError(t, batch.Commit())
+	handle, err := store.NewReadHandle()
+	require.NoError(t, err)
+	defer func() { require.NoError(t, handle.Close()) }()
+	var findings []*servicepb.CheckStoreError
+	require.NoError(t, newLedgerKVVerifier().compare(handle, func(e *servicepb.CheckStoreEvent) {
+		findings = append(findings, e.GetError())
+	}))
+	require.Empty(t, findings, "retired rows from a released store are outside the KV projection")
+}
