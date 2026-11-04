@@ -1117,6 +1117,7 @@ paths:
         - name: key
           in: path
           required: true
+          description: UTF-8 text key containing 1 to 256 bytes (the byte limit also applies to multibyte characters).
           schema: {type: string, minLength: 1, maxLength: 256}
       responses:
         '200':
@@ -1139,6 +1140,7 @@ paths:
         - name: key
           in: path
           required: true
+          description: UTF-8 text key containing 1 to 256 bytes (the byte limit also applies to multibyte characters).
           schema: {type: string, minLength: 1, maxLength: 256}
         - $ref: '#/components/parameters/IdempotencyKey'
       requestBody:
@@ -1165,6 +1167,7 @@ paths:
         - name: key
           in: path
           required: true
+          description: UTF-8 text key containing 1 to 256 bytes (the byte limit also applies to multibyte characters).
           schema: {type: string, minLength: 1, maxLength: 256}
         - $ref: '#/components/parameters/IdempotencyKey'
       responses:
