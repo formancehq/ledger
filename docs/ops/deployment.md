@@ -757,6 +757,23 @@ config:
 - **Development**: `electionTick: 10`, `heartbeatTick: 1`, `tickInterval: "100ms"`
 - **Production**: `electionTick: 20`, `heartbeatTick: 2`, `tickInterval: "50ms"`
 
+`--raft-tick-interval=0` (or `RAFT_TICK_INTERVAL=0`) retains the `100ms`
+default. Zero `--raft-processing-tick-interval` derives one tenth of that
+effective tick, so a positive tick below `10ns` requires an explicit positive
+processing interval. Negative intervals and invalid combinations fail server
+configuration validation after loading/printing and possible join discovery,
+before Fx bootstrap. Direct `NewNode` callers run the same interval guard
+before that constructor reads the WAL; their callers may already have opened
+stores or persisted identity.
+
+On upgrade, replace a `1ns`–`9ns` tick with at least `10ns` or supply a positive
+processing interval. Explicit processing intervals now remain in effect after
+Ready drains, rather than reverting to tick/10. This changes local idle polling
+cadence only; normal `100ms` / `10ms` defaults remain unchanged. There is no
+persisted-format migration or service protocol revision change. Operator
+duration strings and `extraEnv` values reach this final server validation;
+this does not add operator admission validation.
+
 #### Performance
 
 ```yaml

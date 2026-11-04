@@ -34,14 +34,14 @@ type NodeConfig struct {
 	DataDir             string        // Data directory (for detecting RESTORED marker)
 	MaintenanceInterval time.Duration // Interval for background WAL snapshot + Pebble checkpoint (default: 30s)
 
-	RotationThreshold    uint64 // Number of entries before rotating generations (default: 1000)
-	ElectionTick         int    // Election timeout in ticks (default: 10)
-	HeartbeatTick        int    // Heartbeat interval in ticks (default: 1)
-	MaxSizePerMsg        uint64 // Maximum size per message in bytes (default: 1MB)
-	MaxInflightMsgs      int    // Maximum number of in-flight messages (default: 256)
-	TickInterval         time.Duration
-	CompactionMargin     uint64 // Compaction margin in number of logs
-	ProposeQueueCapacity int    // Capacity of the propose queue (default: 100)
+	RotationThreshold    uint64        // Number of entries before rotating generations (default: 1000)
+	ElectionTick         int           // Election timeout in ticks (default: 10)
+	HeartbeatTick        int           // Heartbeat interval in ticks (default: 1)
+	MaxSizePerMsg        uint64        // Maximum size per message in bytes (default: 1MB)
+	MaxInflightMsgs      int           // Maximum number of in-flight messages (default: 256)
+	TickInterval         time.Duration // Raft tick interval (0 = 100ms); must be >= 10ns when processing uses its default
+	CompactionMargin     uint64        // Compaction margin in number of logs
+	ProposeQueueCapacity int           // Capacity of the propose queue (default: 100)
 	AdvertiseAddr        string
 	BindAddr             string
 	// ServiceAdvertiseAddr is the address this node advertises for its
@@ -59,7 +59,7 @@ type NodeConfig struct {
 	// before this config reaches the fx graph.
 	InstanceID             []byte
 	TransportBufferSize    int           // Per-peer send buffer capacity in bytes (default: 10MB)
-	ProcessingTickInterval time.Duration // Interval for processing committed entries (default: TickInterval/10)
+	ProcessingTickInterval time.Duration // Idle Ready polling interval, also used after Ready drains (0 = effective TickInterval/10)
 	ReplayBatchSize        int           // Number of entries per batch during spool replay (default: 1000)
 	Bootstrap              bool          // When true, initialize a new single-node cluster (this node is the sole voter)
 	AutoPromoteThreshold   uint64        // Number of log entries a learner may lag behind the commit index before auto-promotion (0 = disable)
@@ -116,12 +116,22 @@ func (cfg *NodeConfig) Validate() error {
 		return fmt.Errorf("--maintenance-interval must be ≥ 0 (got %s)", cfg.MaintenanceInterval)
 	}
 
+	return cfg.validateTickIntervals()
+}
+
+// validateTickIntervals also protects direct NewNode callers before WAL access.
+// Integer duration division must never derive a zero processing ticker.
+func (cfg *NodeConfig) validateTickIntervals() error {
 	if cfg.TickInterval < 0 {
-		return fmt.Errorf("--tick-interval must be ≥ 0 (got %s)", cfg.TickInterval)
+		return fmt.Errorf("--raft-tick-interval must be ≥ 0 (got %s)", cfg.TickInterval)
 	}
 
 	if cfg.ProcessingTickInterval < 0 {
-		return fmt.Errorf("--processing-tick-interval must be ≥ 0 (got %s)", cfg.ProcessingTickInterval)
+		return fmt.Errorf("--raft-processing-tick-interval must be ≥ 0 (got %s)", cfg.ProcessingTickInterval)
+	}
+
+	if cfg.ProcessingTickInterval == 0 && cfg.TickInterval > 0 && cfg.TickInterval < 10*time.Nanosecond {
+		return fmt.Errorf("--raft-tick-interval must be at least 10ns when --raft-processing-tick-interval is zero (got %s)", cfg.TickInterval)
 	}
 
 	return nil

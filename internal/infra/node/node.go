@@ -474,6 +474,10 @@ func NewNode(
 	membership *membership.Membership,
 	localResponses LocalResponses,
 ) (*Node, error) {
+	if err := cfg.validateTickIntervals(); err != nil {
+		return nil, err
+	}
+
 	cfg.SetDefaults()
 
 	snapshot, err := wal.Snapshot()
@@ -2131,7 +2135,7 @@ func (node *Node) orchestrate(ctx context.Context, stop chan struct{}) error {
 					if node.rawNode.HasReady() {
 						node.readies <- node.rawNode.Ready()
 					} else {
-						processingTick.Reset(tickInterval / 10)
+						processingTick.Reset(processingTickInterval)
 
 						node.readyTerminated = nil
 					}
