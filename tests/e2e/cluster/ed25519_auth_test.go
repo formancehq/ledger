@@ -240,6 +240,46 @@ var _ = Describe("Ed25519 Auth", Ordered, func() {
 			Expect(err).To(Succeed())
 		})
 
+		It("should isolate KV permissions from ledger permissions", func() {
+			const ledger = "ed25519-auth-test-ledger"
+			const key = "scope-check"
+			authContext := func(scope string) context.Context {
+				GinkgoHelper()
+				token, err := signEdDSAJWT(edPrivKey, keyID, makeEdDSAClaims(scope))
+				Expect(err).To(Succeed())
+				return metadata.AppendToOutgoingContext(ctx, "authorization", "Bearer "+token)
+			}
+			put := servicepb.UnsignedApplyRequest("", &servicepb.Request{Type: &servicepb.Request_PutKv{
+				PutKv: &servicepb.PutKVRequest{Ledger: ledger, Key: key, Value: []byte("secret")},
+			}})
+			_, err := client.Apply(authContext("ledger:WriteLedger"), put)
+			Expect(status.Code(err)).To(Equal(codes.PermissionDenied))
+			_, err = client.Apply(authContext("ledger:WriteKV"), put)
+			Expect(err).To(Succeed())
+
+			get := &servicepb.GetKVRequest{Ledger: ledger, Key: key}
+			_, err = client.GetKV(authContext("ledger:ReadLedger"), get)
+			Expect(status.Code(err)).To(Equal(codes.PermissionDenied))
+			value, err := client.GetKV(authContext("ledger:ReadKV"), get)
+			Expect(err).To(Succeed())
+			Expect(value.GetValue()).To(Equal([]byte("secret")))
+			value, err = client.GetKV(authContext("ledger:read"), get)
+			Expect(err).To(Succeed())
+			Expect(value.GetValue()).To(Equal([]byte("secret")))
+			_, err = client.GetLedger(authContext("ledger:ReadKV"), &servicepb.GetLedgerRequest{Ledger: ledger})
+			Expect(status.Code(err)).To(Equal(codes.PermissionDenied))
+
+			deleteKV := servicepb.UnsignedApplyRequest("", &servicepb.Request{Type: &servicepb.Request_DeleteKv{
+				DeleteKv: &servicepb.DeleteKVRequest{Ledger: ledger, Key: key},
+			}})
+			_, err = client.Apply(authContext("ledger:WriteLedger"), deleteKV)
+			Expect(status.Code(err)).To(Equal(codes.PermissionDenied))
+			_, err = client.Apply(authContext("ledger:WriteKV"), deleteKV)
+			Expect(err).To(Succeed())
+			_, err = client.Apply(authContext("ledger:write"), put)
+			Expect(err).To(Succeed())
+		})
+
 		It("should allow write operations to create transactions", func() {
 			token, err := signEdDSAJWT(edPrivKey, keyID, makeEdDSAClaims("ledger:write"))
 			Expect(err).To(Succeed())

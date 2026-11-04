@@ -101,7 +101,7 @@ func expectedFixedRPCAuthPolicies() map[string]commonpb.AuthScope {
 		"/ledger.BucketService/GetEventsSinks":               commonpb.AuthScope_AUTH_SCOPE_OPS_READ,
 		"/ledger.BucketService/GetIndexStatus":               commonpb.AuthScope_AUTH_SCOPE_OPS_READ,
 		"/ledger.BucketService/GetLedger":                    commonpb.AuthScope_AUTH_SCOPE_LEDGER_READ,
-		"/ledger.BucketService/GetKV":                        commonpb.AuthScope_AUTH_SCOPE_LEDGER_READ,
+		"/ledger.BucketService/GetKV":                        commonpb.AuthScope_AUTH_SCOPE_KV_READ,
 		"/ledger.BucketService/GetLedgerStats":               commonpb.AuthScope_AUTH_SCOPE_LEDGER_READ,
 		"/ledger.BucketService/GetLog":                       commonpb.AuthScope_AUTH_SCOPE_OPS_READ,
 		"/ledger.BucketService/GetMetadataSchemaStatus":      commonpb.AuthScope_AUTH_SCOPE_ACCOUNT_READ,

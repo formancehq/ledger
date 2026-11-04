@@ -281,7 +281,7 @@ JWT/anonymous policy; no new endpoint or authorization requirement is introduced
 | Delete transaction metadata | ✅ | ✅ | |
 | Save ledger metadata | ✅ | ❌ | New in v3 |
 | Delete ledger metadata | ✅ | ❌ | New in v3 |
-| Ledger KV Get/Put/Delete | ✅ | ❌ | Per-ledger opaque bytes; HTTP uses `application/octet-stream`, gRPC uses `BucketService.GetKV` and `Apply` requests. |
+| Ledger KV Get/Put/Delete | ✅ | ❌ | Per-ledger opaque bytes; HTTP uses `application/octet-stream`, gRPC uses `BucketService.GetKV` and `Apply` requests. Read requires `ledger:ReadKV`; Put/Delete require `ledger:WriteKV`. |
 | **Bulk** |
 | Bulk CREATE_TRANSACTION | ✅ | ✅ | |
 | Bulk ADD_METADATA | ✅ | ✅ | |
@@ -793,7 +793,7 @@ list is fixed at creation and is returned in `mirrorSource.assetMappings` by
 `GET /v3/{ledgerName}`. See
 [asset mappings](../architecture/subsystems/events-mirror/mirror.md#asset-mappings).
 
-**Write guard:** Direct transaction and metadata writes (create transaction, save metadata, delete metadata, revert transaction) are rejected on mirror-mode ledgers with HTTP 409 (`LEDGER_IN_MIRROR_MODE`) or gRPC `FailedPrecondition`. PutKV and DeleteKV update ledger-local KV entries and remain available with ledger write permission.
+**Write guard:** Direct transaction and metadata writes (create transaction, save metadata, delete metadata, revert transaction) are rejected on mirror-mode ledgers with HTTP 409 (`LEDGER_IN_MIRROR_MODE`) or gRPC `FailedPrecondition`. PutKV and DeleteKV update ledger-local KV entries and remain available with `ledger:WriteKV` permission.
 
 **Sync progress:** `GET /v3/{ledgerName}` returns a `mirrorSyncProgress` object for mirror ledgers with:
 - `state`: `SYNCING` (catching up with history) or `FOLLOWING` (up to date)
@@ -1629,6 +1629,7 @@ The governing rule: **a batched operation requires the same scope as its dedicat
 | `apply` (`add_metadata`, `delete_metadata`) | `ledger:WriteMetadata` | metadata routes |
 | `apply` (`add_account_type`, `remove_account_type`, `set_default_enforcement_mode`) | `ledger:WriteMetadata` | `/v3/{ledgerName}/account-types*` |
 | `create_ledger`, `delete_ledger`, `promote_ledger`, `create_index`, `drop_index`, `save_numscript` | `ledger:WriteLedger` | the `requireLedgersWrite` route group |
+| `put_kv`, `delete_kv` | `ledger:WriteKV` | `PUT` and `DELETE /v3/{ledgerName}/kv/{key}` |
 | `save_ledger_metadata`, `delete_ledger_metadata`, `add_account_type`, `remove_account_type`, `set_default_enforcement_mode`, `set_metadata_field_type`, `remove_metadata_field_type` | `ledger:WriteMetadata` | the `requireMetadataWrite` route group |
 | `create_prepared_query`, `update_prepared_query`, `delete_prepared_query` | `ledger:WriteQuery` | the `requireQueriesWrite` route group |
 | `create_query_checkpoint`, `delete_query_checkpoint`, `set_query_checkpoint_schedule`, `delete_query_checkpoint_schedule` | `ledger:WriteCluster` | none — `BucketService.Apply` only |

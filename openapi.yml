@@ -1111,7 +1111,7 @@ paths:
   /v3/{ledgerName}/kv/{key}:
     get:
       summary: Get a ledger KV value
-      description: Returns the opaque bytes stored under a key in one ledger.
+      description: Returns the opaque bytes stored under a key in one ledger. Requires `ledger:ReadKV` (included in the default `ledger:read` mapping).
       operationId: v3GetKV
       x-speakeasy-name-override: GetKV
       tags: [Ledgers]
@@ -1134,7 +1134,7 @@ paths:
         '404': { $ref: '#/components/responses/NotFound' }
     put:
       summary: Put a ledger KV value
-      description: Replaces the value for a key. The mutation is Raft replicated and audited.
+      description: Replaces the value for a key. The mutation is Raft replicated and audited. Requires `ledger:WriteKV` (included in the default `ledger:write` mapping).
       operationId: v3PutKV
       x-speakeasy-name-override: PutKV
       tags: [Ledgers]
@@ -1161,7 +1161,7 @@ paths:
         '413': {description: Value exceeds 1 MiB}
     delete:
       summary: Delete a ledger KV value
-      description: Removes a key. An absent key is accepted as a no-op and the order is audited.
+      description: Removes a key. An absent key is accepted as a no-op and the order is audited. Requires `ledger:WriteKV` (included in the default `ledger:write` mapping).
       operationId: v3DeleteKV
       x-speakeasy-name-override: DeleteKV
       tags: [Ledgers]
