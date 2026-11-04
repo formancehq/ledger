@@ -8,12 +8,13 @@ Ledger KV stores opaque byte values under UTF-8 keys scoped to one live ledger. 
 - gRPC `BucketService.GetKV` and HTTP `GET /v3/{ledgerName}/kv/{key}` read a stable primary-store view. The existing consistency router supplies the ReadIndex barrier by default and permits stale reads through the usual consistency metadata/header. gRPC also supports a query checkpoint through `read.checkpoint_id`.
 - gRPC `BucketService.Apply` accepts `PutKVRequest` and `DeleteKVRequest` within the existing atomic, signed or unsigned, idempotent batch. HTTP PUT and DELETE use the same Apply path and accept `Idempotency-Key`. HTTP values are raw `application/octet-stream` bodies and responses.
 - Read requires `ledger:ReadLedger`; mutations require `ledger:WriteLedger`.
+- KV is ledger-local configuration and is allowed on mirror-mode ledgers. Mirror ingestion does not import KV from the source ledger.
 
 ## Apply, audit and storage
 
 Admission validates key and value sizes and declares the ledger attribute needed by `loadLiveLedgerReader`. The FSM reads that ledger only through the coverage gate. KV mutation itself has no read dependency: it stages a copied value or deletion in `WriteSet`; Merge writes the last mutation for each key into the same Pebble batch as the log, audit entry and idempotency outcome. An order rejected before Merge leaves no KV projection. The ordered audit item binds the caller's key and value, and the emitted PutKV/DeleteKV log is the replay projection.
 
-Primary keys are `[ZonePerLedger][SubPLKV][ledger name padded to 64 bytes][UTF-8 key]`. This prefix isolates ledgers and allows `DeleteLedgerData` to purge the entire namespace. The checker folds successful chain-verified orders and compares every stored KV row against that expectation. A full checkpoint includes the KV projection. Incremental restore replays PutKV/DeleteKV logs after the checkpoint and applies the same ledger-deletion cascade. The namespace is a primary-store projection of audit-bound business truth.
+Primary keys are `[ZonePerLedger][SubPLKV = 0x06][ledger name padded to 64 bytes][UTF-8 key]`. Sub-prefix `0x05` remains reserved for retired mirror-cursor rows that can survive an upgrade from an earlier RC. The new prefix isolates ledgers and allows `DeleteLedgerData` to purge the entire KV namespace without touching those historical rows. The checker folds successful chain-verified orders and compares every stored KV row against that expectation. A full checkpoint includes the KV projection. Incremental restore replays PutKV/DeleteKV logs after the checkpoint and applies the same ledger-deletion cascade. The namespace is a primary-store projection of audit-bound business truth.
 
 ## Upgrade and cost
 
