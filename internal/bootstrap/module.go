@@ -1655,35 +1655,40 @@ func TimeoutHTTPClient(timeout time.Duration) *http.Client {
 
 // buildAuthConfig constructs an AuthConfig from the server configuration and optional OIDC KeySet.
 // If Ed25519 keys are configured, it creates a composite KeySet that handles both OIDC and EdDSA tokens.
-// When auth is enabled with an issuer and no external KeySet is injected, it discovers the OIDC
-// configuration and creates a remote KeySet automatically.
+// When auth is enabled with issuers and no external KeySet is injected, it discovers each issuer's
+// OIDC configuration and verifies every token with the remote KeySet of the issuer it names.
 // Scope mapping is loaded from file, env var, or defaults to the backward-compatible mapping.
 func buildAuthConfig(cfg Config, logger logging.Logger, oidcKeySet oidc.KeySet) (internalauth.AuthConfig, error) {
+	issuers := cfg.AuthConfig.TrustedIssuers()
 	authCfg := internalauth.AuthConfig{
 		Enabled: cfg.AuthConfig.Enabled,
-		Issuer:  cfg.AuthConfig.Issuer,
+		Issuers: issuers,
 		Service: cfg.AuthConfig.Service,
 	}
 
-	// When auth is enabled and an issuer is configured but no external KeySet was injected,
-	// discover the OIDC configuration and create a remote KeySet. Both the discovery
-	// call and the keyset's JWKS reads are bounded by OIDCDiscoveryTimeout so a slow or
-	// blackholed issuer cannot hang the process: the context deadline bounds
-	// oidc.Discover, and the keyset's http.Client.Timeout bounds JWKS fetches.
-	if oidcKeySet == nil && cfg.AuthConfig.Enabled && cfg.AuthConfig.Issuer != "" {
-		ctx, cancel := discoveryContext(cfg.AuthConfig.OIDCDiscoveryTimeout)
-		discovery, err := oidc.Discover(ctx, cfg.AuthConfig.Issuer, oidc.DiscoveryEndpoint)
-		cancel()
-		if err != nil {
-			return authCfg, fmt.Errorf("discovering OIDC configuration for issuer %q: %w", cfg.AuthConfig.Issuer, err)
+	// Each discovery call and the keysets' JWKS reads are bounded by
+	// OIDCDiscoveryTimeout so a slow or blackholed issuer cannot hang the process:
+	// the context deadline bounds oidc.Discover, and the keyset's
+	// http.Client.Timeout bounds JWKS fetches.
+	if oidcKeySet == nil && cfg.AuthConfig.Enabled && len(issuers) > 0 {
+		keySets := make(map[string]oidc.KeySet, len(issuers))
+		for _, issuer := range issuers {
+			ctx, cancel := discoveryContext(cfg.AuthConfig.OIDCDiscoveryTimeout)
+			discovery, err := oidc.Discover(ctx, issuer, oidc.DiscoveryEndpoint)
+			cancel()
+			if err != nil {
+				return authCfg, fmt.Errorf("discovering OIDC configuration for issuer %q: %w", issuer, err)
+			}
+
+			keySets[issuer] = oidcclient.NewRemoteKeySet(TimeoutHTTPClient(cfg.AuthConfig.OIDCDiscoveryTimeout), discovery.JwksURI)
+
+			logger.WithFields(map[string]any{
+				"issuer":   issuer,
+				"jwks_uri": discovery.JwksURI,
+			}).Infof("OIDC remote keyset configured via discovery")
 		}
 
-		oidcKeySet = oidcclient.NewRemoteKeySet(TimeoutHTTPClient(cfg.AuthConfig.OIDCDiscoveryTimeout), discovery.JwksURI)
-
-		logger.WithFields(map[string]any{
-			"issuer":   cfg.AuthConfig.Issuer,
-			"jwks_uri": discovery.JwksURI,
-		}).Infof("OIDC remote keyset configured via discovery")
+		oidcKeySet = internalauth.NewIssuerKeySet(keySets)
 	}
 
 	if cfg.AuthConfig.Ed25519KeysFile != "" {

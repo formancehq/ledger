@@ -30,13 +30,24 @@ ledger run \
 |------|------|---------|-------------|
 | `--auth-enabled` | bool | `false` | Enable JWT authentication and scope-based authorization. Requires `--tls-mode=required` — rejected with `--tls-mode=disabled` or `--tls-mode=optional` |
 | `--auth-issuer` | string | `""` | OIDC issuer URL (used for discovery and token validation) |
+| `--auth-issuers` | string slice | `[]` | Additional trusted OIDC issuer URLs, comma-separated (env `AUTH_ISSUERS`). Merged with `--auth-issuer` |
 | `--auth-service` | string | `""` | Service name prefix for scopes (e.g., `ledger` for `ledger:read`) |
 
 When `--auth-enabled` is set:
-1. The server performs OIDC discovery at `<issuer>/.well-known/openid-configuration`
-2. Downloads the JWKS (JSON Web Key Set) from the discovered `jwks_uri`
+1. The server performs OIDC discovery at `<issuer>/.well-known/openid-configuration` for every trusted issuer
+2. Downloads each issuer's JWKS (JSON Web Key Set) from its discovered `jwks_uri`
 3. Validates JWT signatures, issuer, and expiration on every request
 4. Enforces scope-based authorization on all endpoints
+
+### Multiple issuers
+
+The trusted issuers are `--auth-issuer` followed by `--auth-issuers`, with
+duplicates removed. The operator sets them from `spec.auth.issuer` and
+`spec.auth.issuers`. Startup fails when discovery fails for any trusted issuer.
+
+A token is accepted only if its `iss` claim names a trusted issuer and its
+signature verifies against that issuer's JWKS. The keys of one issuer never
+validate a token that names another issuer.
 
 ## Scopes
 
@@ -86,8 +97,8 @@ Do not rewrite historical audit entries during the rollout.
 
 The server enforces the following rules at startup:
 
-- `--auth-enabled` requires at least one of `--auth-issuer` (OIDC) or
-  `--auth-ed25519-keys` (Ed25519 key file). The server refuses to start
+- `--auth-enabled` requires at least one of `--auth-issuer` or
+  `--auth-issuers` (OIDC), or `--auth-ed25519-keys` (Ed25519 key file). The server refuses to start
   without a credential source.
 - `--auth-enabled` requires `--tls-mode=required`. Over a plaintext transport
   the bearer JWT/Ed25519 tokens would be sent in the clear and could be
@@ -106,6 +117,8 @@ The server enforces the following rules at startup:
 - Setting auth-related flags (`--auth-issuer`, `--auth-ed25519-keys`,
   `--auth-scope-mapping-file`) without `--auth-enabled` is rejected to
   prevent operators from believing authentication is active when it is not.
+  `--auth-issuers` is not part of this check: it is ignored when
+  authentication is disabled.
 
 ## Unauthenticated Endpoints
 

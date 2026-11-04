@@ -22,7 +22,15 @@ This page covers both. The cryptographic request-signing layer (Ed25519, used to
 | **OIDC** (RS256, ES256, PS256) | Production. Tokens issued by a configured OIDC provider; signing keys discovered via JWKS. |
 | **Ed25519** (EdDSA, self-signed) | Dev / CI / scripts. Static keyset loaded from a JSON file at boot. |
 
-Both formats coexist via a **composite keyset** (`internal/bootstrap/module.go:1626`). EdDSA tokens skip issuer verification (they're self-signed); OIDC tokens go through full issuer + JWKS verification.
+Both formats coexist via a **composite keyset** (`internal/bootstrap/module.go:buildAuthConfig`). EdDSA tokens skip issuer verification (they're self-signed); OIDC tokens go through full issuer + JWKS verification.
+
+The OIDC side trusts `--auth-issuer` followed by `--auth-issuers`, with
+duplicates removed (`AuthFlagConfig.TrustedIssuers`). An **issuer keyset**
+(`internal/adapter/auth/issuer_keyset.go`) holds one remote JWKS keyset per
+trusted issuer. It verifies a token only with the keyset of the issuer its
+unverified `iss` claim names, so issuers that share a `kid` cannot vouch for
+each other's tokens. A token naming an untrusted issuer fails signature
+verification.
 
 The static loader requires every `keyId` to be nonempty and unique by exact
 string equality. Repeated entries are rejected even when their keys, scopes and
@@ -49,9 +57,9 @@ If no bearer is present, the request is treated as **anonymous** and given whate
 
 1. Decode the token (`grpc_auth.go:validateToken`).
 2. Parse claims (`oidc.AccessTokenClaims`).
-3. Verify signature against the composite keyset (OIDC JWKS + Ed25519 statics).
-4. Verify expiration.
-5. For OIDC, verify issuer.
+3. Verify signature against the composite keyset (Ed25519 statics + the JWKS of the issuer the token names).
+4. For OIDC, verify the issuer is trusted.
+5. Verify expiration.
 6. For Ed25519, enforce the key's scope allowlist (`ed25519_keys.go:enforceAllowedScopes`). Each claimed scope must be listed verbatim by the key, or expand through the scope mapping to a non-empty granular set covered by the key's expanded allowlist. A key allowed `ledger:read` can therefore sign a `ledger:ReadTransaction`-only token; an unknown scope never passes by expansion.
 
 The lack of cache is deliberate at this stage — JWKS lookups are local to the in-memory keyset (the OIDC discovery is done once at boot, see below).
@@ -195,8 +203,8 @@ Only authenticated principals are eligible for the empty-subject signal; system,
 
 `OIDCDiscoveryTimeout` (config `internal/bootstrap/config.go:33-39`, default 10 s) bounds OIDC discovery + JWKS fetches at boot:
 
-- `oidc.Discover(ctx, issuer, DiscoveryEndpoint)` runs with `context.WithTimeout` (`module.go:1606`).
-- The HTTP client used for discovery + JWKS is decorated with the same timeout (`TimeoutHTTPClient`, `module.go:1579-1584`).
+- `oidc.Discover(ctx, issuer, DiscoveryEndpoint)` runs once per trusted issuer, each with its own `context.WithTimeout` (`module.go:buildAuthConfig`). Startup fails if any issuer's discovery fails.
+- The HTTP client used for JWKS fetches carries the same timeout (`TimeoutHTTPClient`).
 - A value of `0` reverts to legacy unbounded behaviour.
 
 This bound is what prevents a slow IdP from stalling node startup indefinitely.
@@ -223,4 +231,5 @@ This bound is what prevents a slow IdP from stalling node startup indefinitely.
 | System-actor snapshot + component aliases | `internal/pkg/commands/system_caller.go` |
 | Attribution observability | `internal/application/admission/admission.go` (`observeCallerSnapshot`) |
 | Raft cluster-secret interceptor | `internal/adapter/grpc/raft_auth.go` |
-| OIDC discovery + composite keyset wiring | `internal/bootstrap/module.go` (around lines 1587-1652) |
+| Per-issuer OIDC keyset routing | `internal/adapter/auth/issuer_keyset.go` |
+| OIDC discovery + composite keyset wiring | `internal/bootstrap/module.go` (`buildAuthConfig`) |
