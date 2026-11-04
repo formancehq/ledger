@@ -203,12 +203,14 @@ func TestReaders(t *testing.T) {
  if string(r.GetRaw()) != "safe" { t.Fatal("bytes escaped") }
  m.Payload = &Envelope_Child{Child: &dep.Child{Value: "original"}}
  child := r.GetChild()
+ if _, ok := child.(*dep.Child); ok { t.Fatal("mutable imported message payload leaked") }
  child.Mutate().Value = "changed"
  clone := r.Mutate(); clone.GetChild().Value = "changed"
  if child.GetValue() != "original" || m.GetChild().Value != "original" { t.Fatal("clone isolation") }
  m.Note = new(string); *m.Note = "optional"
  if r.GetNote() != "optional" { t.Fatal("synthetic optional getter") }
  m.Payload = &Envelope_Nested_{Nested: &Envelope_Nested{Choice: &Envelope_Nested_Enabled{Enabled: false}}}
+ if _, ok := any(r.GetNested()).(*Envelope_Nested); ok { t.Fatal("mutable nested message payload leaked") }
  if r.WhichPayload() != 31 || r.GetNested().WhichChoice() != 7 || r.GetNested().GetEnabled() { t.Fatal("nested discriminator") }
  var absent *Envelope
  if absent.AsReader() != nil { t.Fatal("nil receiver") }
