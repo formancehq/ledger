@@ -427,14 +427,48 @@ func NewPongResponseListReader(s []*PongResponse) PongResponseListReader {
 // SendMessageRequestReader provides read-only access to SendMessageRequest.
 // Call Mutate() to obtain a mutable clone.
 type SendMessageRequestReader interface {
-	GetMessage() isSendMessageRequest_Message
+	GetRaft() RaftRequestBatchReader
+	GetPing() PingMessageReader
+	WhichMessage() SendMessageRequest_MessageReaderCase
 	Mutate() *SendMessageRequest
 }
 
 type sendMessageRequestReadonly SendMessageRequest
 
-func (r *sendMessageRequestReadonly) GetMessage() isSendMessageRequest_Message {
-	return (*SendMessageRequest)(r).GetMessage()
+func (r *sendMessageRequestReadonly) GetRaft() RaftRequestBatchReader {
+	v, ok := (*SendMessageRequest)(r).GetMessage().(*SendMessageRequest_Raft)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.Raft.AsReader()
+}
+
+func (r *sendMessageRequestReadonly) GetPing() PingMessageReader {
+	v, ok := (*SendMessageRequest)(r).GetMessage().(*SendMessageRequest_Ping)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.Ping.AsReader()
+}
+
+// SendMessageRequest_MessageReaderCase identifies a selected oneof arm by its protobuf field number.
+type SendMessageRequest_MessageReaderCase int32
+
+const (
+	SendMessageRequest_MessageReaderCase_Unset SendMessageRequest_MessageReaderCase = 0
+	SendMessageRequest_MessageReaderCase_Raft  SendMessageRequest_MessageReaderCase = 1
+	SendMessageRequest_MessageReaderCase_Ping  SendMessageRequest_MessageReaderCase = 2
+)
+
+func (r *sendMessageRequestReadonly) WhichMessage() SendMessageRequest_MessageReaderCase {
+	switch (*SendMessageRequest)(r).GetMessage().(type) {
+	case *SendMessageRequest_Raft:
+		return SendMessageRequest_MessageReaderCase_Raft
+	case *SendMessageRequest_Ping:
+		return SendMessageRequest_MessageReaderCase_Ping
+	default:
+		return SendMessageRequest_MessageReaderCase_Unset
+	}
 }
 
 func (r *sendMessageRequestReadonly) Mutate() *SendMessageRequest {
@@ -494,14 +528,48 @@ func NewSendMessageRequestListReader(s []*SendMessageRequest) SendMessageRequest
 // SendMessageResponseReader provides read-only access to SendMessageResponse.
 // Call Mutate() to obtain a mutable clone.
 type SendMessageResponseReader interface {
-	GetMessage() isSendMessageResponse_Message
+	GetRaft() RaftResponseBatchReader
+	GetPong() PongResponseReader
+	WhichMessage() SendMessageResponse_MessageReaderCase
 	Mutate() *SendMessageResponse
 }
 
 type sendMessageResponseReadonly SendMessageResponse
 
-func (r *sendMessageResponseReadonly) GetMessage() isSendMessageResponse_Message {
-	return (*SendMessageResponse)(r).GetMessage()
+func (r *sendMessageResponseReadonly) GetRaft() RaftResponseBatchReader {
+	v, ok := (*SendMessageResponse)(r).GetMessage().(*SendMessageResponse_Raft)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.Raft.AsReader()
+}
+
+func (r *sendMessageResponseReadonly) GetPong() PongResponseReader {
+	v, ok := (*SendMessageResponse)(r).GetMessage().(*SendMessageResponse_Pong)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.Pong.AsReader()
+}
+
+// SendMessageResponse_MessageReaderCase identifies a selected oneof arm by its protobuf field number.
+type SendMessageResponse_MessageReaderCase int32
+
+const (
+	SendMessageResponse_MessageReaderCase_Unset SendMessageResponse_MessageReaderCase = 0
+	SendMessageResponse_MessageReaderCase_Raft  SendMessageResponse_MessageReaderCase = 1
+	SendMessageResponse_MessageReaderCase_Pong  SendMessageResponse_MessageReaderCase = 2
+)
+
+func (r *sendMessageResponseReadonly) WhichMessage() SendMessageResponse_MessageReaderCase {
+	switch (*SendMessageResponse)(r).GetMessage().(type) {
+	case *SendMessageResponse_Raft:
+		return SendMessageResponse_MessageReaderCase_Raft
+	case *SendMessageResponse_Pong:
+		return SendMessageResponse_MessageReaderCase_Pong
+	default:
+		return SendMessageResponse_MessageReaderCase_Unset
+	}
 }
 
 func (r *sendMessageResponseReadonly) Mutate() *SendMessageResponse {
