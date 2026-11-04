@@ -927,6 +927,7 @@ func NewWriteSet(fsm *Machine) *WriteSet {
 // coverage gate lives one layer up on gatedScope; WriteSet itself is the
 // raw engine (Derived → KeyStore → cache).
 func (b *WriteSet) Reset(at *commonpb.Timestamp) {
+	clear(b.pendingKV)
 	b.Date = at
 	b.NextSequenceID = b.fsm.State.NextSequenceID
 	b.NextAuditSequenceID = b.fsm.State.NextAuditSequenceID
