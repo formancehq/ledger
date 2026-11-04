@@ -79,6 +79,7 @@ func bodyStatements(s Script) []bodyStmt {
 	if s.ScenarioPos >= len(s.Order) {
 		scenario()
 	}
+
 	return out
 }
 
@@ -122,6 +123,7 @@ func computeShape(s Script) Shape {
 			if st.extra.VarIdx != nil && s.Vars[*st.extra.VarIdx].AccountFromVarIdx != nil {
 				sh.HasChainedOrigin = true
 			}
+
 			continue
 		}
 		asset := st.send.Amount.Asset
@@ -164,6 +166,7 @@ func computeShape(s Script) Shape {
 			}
 		}
 	}
+
 	return sh
 }
 
@@ -177,6 +180,7 @@ func saveOf(index int, e ExtraStatement, vars []VarDecl) (saveFact, bool) {
 			f.asset = e.Monetary.Asset
 			f.amount = e.Monetary.Amount
 		}
+
 		return f, true
 	case ExtraSaveAll:
 		return saveFact{index: index, account: e.Account, asset: e.Asset}, true
@@ -266,6 +270,7 @@ func boundedOverdraftAccounts(src Source, acc []string) []string {
 			acc = boundedOverdraftAccounts(*src.AllotmentRemaining, acc)
 		}
 	}
+
 	return acc
 }
 
@@ -281,6 +286,7 @@ func initialBalance(s Script, pair BalanceKey) *big.Int {
 			b.Add(b, seed.Amount.Amount)
 		}
 	}
+
 	return b
 }
 
@@ -292,6 +298,7 @@ func touchedBefore(stmts []bodyStmt, pair BalanceKey, s Script) bool {
 			return true
 		}
 	}
+
 	return false
 }
 
@@ -308,6 +315,7 @@ func touchedPairs(st bodyStmt, s Script) []BalanceKey {
 		for _, acc := range destinationAccounts(st.send.Destination, nil) {
 			out = append(out, BalanceKey{Account: acc, Asset: asset})
 		}
+
 		return out
 	}
 
@@ -321,6 +329,7 @@ func touchedPairs(st bodyStmt, s Script) []BalanceKey {
 		return []BalanceKey{{Account: e.Account, Asset: e.Asset}}
 	case ExtraSendVar:
 		asset := s.Vars[*e.VarIdx].Asset
+
 		return []BalanceKey{{Account: e.Account, Asset: asset}, {Account: e.Destination, Asset: asset}}
 	case ExtraSendFromAccountVar:
 		return []BalanceKey{
@@ -333,6 +342,7 @@ func touchedPairs(st bodyStmt, s Script) []BalanceKey {
 			{Account: s.AccountVars[*e.AccountVarIdx].Value, Asset: e.Monetary.Asset},
 		}
 	}
+
 	return nil
 }
 
@@ -358,6 +368,7 @@ func allotmentShapeSrc(src Source) (bool, bool) {
 			merge(allotmentShapeSrc(*src.AllotmentRemaining))
 		}
 	}
+
 	return remaining, portionVar
 }
 
@@ -387,6 +398,7 @@ func allotmentShapeDest(d Destination) (bool, bool) {
 			keptOrDest(*d.AllotRemaining)
 		}
 	}
+
 	return remaining, portionVar
 }
 
@@ -408,6 +420,7 @@ func sourceAccounts(src Source, acc []string) []string {
 			acc = sourceAccounts(*src.AllotmentRemaining, acc)
 		}
 	}
+
 	return acc
 }
 
@@ -430,6 +443,7 @@ func destinationAccounts(d Destination, acc []string) []string {
 			acc = keptOrDestAccounts(*d.AllotRemaining, acc)
 		}
 	}
+
 	return acc
 }
 
@@ -437,5 +451,6 @@ func keptOrDestAccounts(k KeptOrDest, acc []string) []string {
 	if k.Kind == To {
 		return destinationAccounts(*k.Dest, acc)
 	}
+
 	return acc
 }

@@ -24,6 +24,7 @@ func (rd renderer) toBuilder(p Program) []builder.Statement {
 	for i, s := range p {
 		out[i] = rd.toBuilderStatement(s)
 	}
+
 	return out
 }
 
@@ -34,6 +35,7 @@ func (rd renderer) toBuilderStatement(s Statement) builder.Statement {
 	if s.IsSendAll {
 		return builder.StmtSendAll(rd.toBuilderAsset(s.Asset, s.AssetAsVar), src, dest)
 	}
+
 	return builder.StmtSend(rd.toBuilderMonetary(s.Amount), src, dest)
 }
 
@@ -46,6 +48,7 @@ func (rd renderer) toBuilderAccount(address string, asVar bool) builder.Expressi
 	if asVar {
 		return builder.ExprAccount(address)
 	}
+
 	return builder.UnsafeAccount(address)
 }
 
@@ -54,6 +57,7 @@ func (rd renderer) toBuilderString(s string, asVar bool) builder.Expression[buil
 	if asVar {
 		return builder.ExprString(s)
 	}
+
 	return builder.ExprStringLit(s)
 }
 
@@ -64,6 +68,7 @@ func (rd renderer) toBuilderAsset(asset string, asVar bool) builder.Expression[b
 	if asVar {
 		return builder.ExprAsset(asset)
 	}
+
 	return builder.UnsafeAsset(asset)
 }
 
@@ -94,12 +99,14 @@ func (rd renderer) toBuilderMonetary(m Monetary) builder.Expression[builder.Expr
 		return builder.ExprMonetary(asset(), builder.ExprNumberVar(m.Amount))
 	case 1:
 		x, y := rd.split(m.Amount)
+
 		return builder.ExprMonetary(asset(), rd.sum(builder.ExprNumberBigInt(x), y))
 	case 2:
 		x, y := rd.split(m.Amount)
 		if y.Sign() < 0 {
 			return builder.ExprMonetarySub(lit(x), lit(new(big.Int).Neg(y)))
 		}
+
 		return builder.ExprMonetaryAdd(lit(x), lit(y))
 	case 3:
 		return builder.ExprParen(lit(m.Amount))
@@ -111,6 +118,7 @@ func (rd renderer) toBuilderMonetary(m Monetary) builder.Expression[builder.Expr
 // split draws x and y with x + y = n, x non-negative and y of either sign.
 func (rd renderer) split(n *big.Int) (x, y *big.Int) {
 	x = big.NewInt(int64(rd.rng.Intn(1000)))
+
 	return x, new(big.Int).Sub(n, x)
 }
 
@@ -119,6 +127,7 @@ func (rd renderer) sum(x builder.Expression[builder.ExprTypeNumber], y *big.Int)
 	if y.Sign() < 0 {
 		return builder.ExprSub(x, builder.ExprNumberBigInt(new(big.Int).Neg(y)))
 	}
+
 	return builder.ExprAdd(x, builder.ExprNumberBigInt(y))
 }
 
@@ -173,6 +182,7 @@ func setMeta[T builder.ExprType](account builder.Expression[builder.ExprTypeAcco
 	if account == nil {
 		return builder.StmtSetTxMeta(key, value)
 	}
+
 	return builder.StmtSetAccountMeta(account, key, value)
 }
 
@@ -242,6 +252,7 @@ func (rd renderer) toBuilderVarExprs(vars []VarDecl) varExprs {
 			panic("gen: unknown var decl kind")
 		}
 	}
+
 	return ve
 }
 
@@ -298,6 +309,7 @@ func (rd renderer) toBuilderExtra(e ExtraStatement, ve varExprs, accountVarExprs
 		} else {
 			mon = rd.toBuilderMonetary(*e.Monetary)
 		}
+
 		return builder.StmtSave(mon, rd.toBuilderAccount(e.Account, e.AccountAsVar))
 
 	case ExtraSaveAll:
@@ -310,6 +322,7 @@ func (rd renderer) toBuilderExtra(e ExtraStatement, ve varExprs, accountVarExprs
 		if e.StringValue != nil {
 			return builder.StmtSetTxMeta(e.Key, rd.toBuilderString(*e.StringValue, e.StringValueAsVar))
 		}
+
 		return builder.StmtSetTxMeta(e.Key, rd.toBuilderNumExpr(e.Value))
 
 	case ExtraSetAccountMeta:
@@ -320,6 +333,7 @@ func (rd renderer) toBuilderExtra(e ExtraStatement, ve varExprs, accountVarExprs
 		if e.StringValue != nil {
 			return builder.StmtSetAccountMeta(acct, e.Key, rd.toBuilderString(*e.StringValue, e.StringValueAsVar))
 		}
+
 		return builder.StmtSetAccountMeta(acct, e.Key, rd.toBuilderNumExpr(e.Value))
 
 	case ExtraSendVar:
@@ -361,6 +375,7 @@ func (rd renderer) toBuilderPortion(r *big.Rat, asVar bool) builder.Expression[b
 	if finiteDecimal(r) && rd.rng.Intn(3) == 0 {
 		return builder.ExprPercent(r)
 	}
+
 	return builder.ExprPortion(builder.NewPortion(new(big.Int).Set(r.Num()), new(big.Int).Set(r.Denom())))
 }
 
@@ -375,6 +390,7 @@ func finiteDecimal(r *big.Rat) bool {
 			d.Div(d, bp)
 		}
 	}
+
 	return d.Cmp(big.NewInt(1)) == 0
 }
 
@@ -384,6 +400,7 @@ func (rd renderer) toBuilderSource(s Source) builder.Source {
 		if s.Color != "" {
 			return builder.SrcColored(rd.toBuilderAccount(s.Account, s.AccountAsVar), rd.toBuilderString(s.Color, s.ColorAsVar))
 		}
+
 		return builder.SrcAccount(rd.toBuilderAccount(s.Account, s.AccountAsVar))
 
 	case SrcAccountOverdraft:
@@ -394,6 +411,7 @@ func (rd renderer) toBuilderSource(s Source) builder.Source {
 		if s.Color != "" {
 			return builder.SrcColoredOverdraft(rd.toBuilderAccount(s.Account, s.AccountAsVar), rd.toBuilderString(s.Color, s.ColorAsVar), overdraft)
 		}
+
 		return builder.SrcAccountOverdraft(rd.toBuilderAccount(s.Account, s.AccountAsVar), overdraft)
 
 	case SrcCapped:
@@ -407,6 +425,7 @@ func (rd renderer) toBuilderSource(s Source) builder.Source {
 		if s.Kind == SrcOneof {
 			return builder.SrcOneof(sources...)
 		}
+
 		return builder.SrcInorder(sources...)
 
 	case SrcAllotment:
@@ -420,6 +439,7 @@ func (rd renderer) toBuilderSource(s Source) builder.Source {
 		if s.AllotmentRemaining != nil {
 			return builder.SrcAllotmentWithRemaining(clauses, rd.toBuilderSource(*s.AllotmentRemaining))
 		}
+
 		return builder.SrcAllotment(clauses...)
 
 	default:
@@ -437,6 +457,7 @@ func (rd renderer) toBuilderClausePortion(r *big.Rat, asVar bool, div *PortionDi
 			builder.ExprNumberBigInt(div.Den),
 		)
 	}
+
 	return rd.toBuilderPortion(r, asVar)
 }
 
@@ -456,6 +477,7 @@ func (rd renderer) toBuilderDestination(d Destination) builder.Destination {
 		if d.Kind == DestOneof {
 			return builder.DestOneof(clauses, rd.toBuilderKeptOrDest(*d.Remaining))
 		}
+
 		return builder.DestInorder(clauses, rd.toBuilderKeptOrDest(*d.Remaining))
 
 	case DestAllotment:
@@ -469,6 +491,7 @@ func (rd renderer) toBuilderDestination(d Destination) builder.Destination {
 		if d.AllotRemaining != nil {
 			return builder.DestAllotmentWithRemaining(clauses, rd.toBuilderKeptOrDest(*d.AllotRemaining))
 		}
+
 		return builder.DestAllotment(clauses...)
 
 	default:
@@ -480,5 +503,6 @@ func (rd renderer) toBuilderKeptOrDest(k KeptOrDest) builder.KeptOrDest {
 	if k.Kind == Kept {
 		return builder.Kept()
 	}
+
 	return builder.To(rd.toBuilderDestination(*k.Dest))
 }
