@@ -1367,6 +1367,35 @@ func TestProcessCreateTransaction_MetadataOnly_PersistsWithoutTransaction(t *tes
 	require.Equal(t, "gold", commonpb.MetadataMapToGoMap(log.GetData().GetAccountMetadataUpdated().GetAccountMetadata()["users:alice"])["tier"])
 }
 
+func TestProcessCreateTransaction_MetadataOnly_RejectsCallerTransactionMetadata(t *testing.T) {
+	t.Parallel()
+
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+	mockStore := NewMockScope(ctrl)
+	expectDefaultMetadataLimits(mockStore)
+	processor, err := NewRequestProcessor(nil, 0)
+	require.NoError(t, err)
+
+	now := &commonpb.Timestamp{Data: 1234567890}
+	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 7, NextLogId: 3}
+	expectGetBoundaries(mockStore, domain.LedgerKey{Name: "test-ledger"}, boundaries.AsReader(), nil)
+	expectGetLedger(mockStore, domain.LedgerKey{Name: "test-ledger"}, (&commonpb.LedgerInfo{Name: "test-ledger", Id: 1}).AsReader(), nil).AnyTimes()
+	mockStore.EXPECT().GetDate().Return(now.AsReader()).AnyTimes()
+
+	request := &servicepb.Request{Type: &servicepb.Request_Apply{Apply: &servicepb.LedgerApplyRequest{
+		Ledger: "test-ledger",
+		Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{CreateTransaction: &servicepb.CreateTransactionPayload{
+			Script:   &commonpb.Script{Plain: `set_account_meta(@users:alice, "tier", "gold")`},
+			Metadata: map[string]*commonpb.MetadataValue{"receipt": commonpb.NewStringValue("x")},
+		}}},
+	}}}
+
+	_, err = processor.ProcessOrder(requestToOrder(t, request), mockStore)
+	require.ErrorIs(t, err, domain.ErrMetadataOnlyTransactionMetadata)
+	require.Equal(t, uint64(7), boundaries.GetNextTransactionId(), "rejected metadata-only execution must not allocate a transaction ID")
+}
+
 func TestProcessCreateTransaction_Force_InsufficientFunds(t *testing.T) {
 	t.Parallel()
 
