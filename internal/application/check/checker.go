@@ -2604,11 +2604,10 @@ type chainBoundState struct {
 	// transaction id) with the SAME first-claim-wins semantic, so the
 	// verifier can re-derive and pin OrderSkipped.context["existingTransactionId"]
 	// against audit-bound data. Every reference-claim source carries the
-	// owning tx id: a CreateTransaction gets it from the chain-bound
-	// counter (allocateChainBoundTxID), a mirror ingest from
-	// MirrorCreatedTransaction.transaction_id. An id of 0 means "claim seen
-	// but owning tx id not derivable" (an unanchored counter) — the verifier
-	// stays permissive in that case. See finding EN-1356
+	// owning tx id: a replayed CreatedTransaction supplies it for a regular
+	// create, while a mirror ingest supplies MirrorCreatedTransaction.transaction_id.
+	// An id of 0 means "claim seen but owning tx id not derivable" — the
+	// verifier stays permissive in that case. See finding EN-1356
 	// existingTransactionId (invariant #8).
 	referenceTxIDs map[string]map[string]uint64
 	reverted       map[string]map[uint64]uint64
@@ -3777,8 +3776,8 @@ func verifySkippedOrder(
 
 		// Pin context["existingTransactionId"] against the owning tx id the
 		// checker recorded for the first successful claim of this reference
-		// (chainBound.referenceTxIDs, populated from the CreateTransaction
-		// counter or mirror ingestion). A tamperer who rewrites this field to
+		// (chainBound.referenceTxIDs, populated from replayed CreatedTransaction
+		// data or mirror ingestion). A tamperer who rewrites this field to
 		// misattribute the conflicting transaction is caught here. Stays
 		// permissive only when the owning id is not derivable (ownerTxID==0).
 		if ownerTxID := chainBound.referenceTxIDs[ledger][expected.reference]; ownerTxID != 0 {
