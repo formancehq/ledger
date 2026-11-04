@@ -53,34 +53,72 @@ func main() {
 
 func emitMessage(g *protogen.GeneratedFile, message *protogen.Message) {
 	g.P("func (x *", message.GoIdent.GoName, ") MarshalJSON() ([]byte, error) {")
-	var oneof *protogen.Oneof
+	var oneofs []*protogen.Oneof
 	for _, field := range message.Fields {
 		if field.Oneof != nil && !field.Oneof.Desc.IsSynthetic() {
-			oneof = field.Oneof
-			break
+			found := false
+			for _, oneof := range oneofs {
+				if oneof == field.Oneof {
+					found = true
+					break
+				}
+			}
+			if !found {
+				oneofs = append(oneofs, field.Oneof)
+			}
 		}
 	}
-	if oneof == nil {
+	if len(oneofs) == 0 {
 		emitStructReturn(g, message, nil, nil)
 	} else {
-		g.P("\tswitch oneofValue := x.", oneof.GoName, ".(type) {")
-		for _, field := range oneof.Fields {
-			g.P("\tcase *", field.GoIdent.GoName, ":")
-			emitStructReturn(g, message, oneof, field)
-		}
-		g.P("\tdefault:")
-		emitStructReturn(g, message, oneof, nil)
-		g.P("\t}")
+		emitOneofSwitch(g, message, oneofs, 0, nil, nil)
 	}
 	g.P("}")
 	g.P()
 }
 
-func emitStructReturn(g *protogen.GeneratedFile, message *protogen.Message, oneof *protogen.Oneof, selected *protogen.Field) {
+func emitOneofSwitch(g *protogen.GeneratedFile, message *protogen.Message, oneofs []*protogen.Oneof, index int, selected map[*protogen.Oneof]*protogen.Field, accesses map[*protogen.Oneof]string) {
+	if index == len(oneofs) {
+		emitStructReturn(g, message, selected, accesses)
+		return
+	}
+	oneof := oneofs[index]
+	valueName := "oneofValue" + oneof.GoName
+	g.P("\tswitch ", valueName, " := x.", oneof.GoName, ".(type) {")
+	for _, field := range oneof.Fields {
+		g.P("\tcase *", field.GoIdent.GoName, ":")
+		selectedNext := cloneSelected(selected, oneof, field)
+		accessesNext := cloneAccesses(accesses, oneof, valueName+"."+field.GoName)
+		emitOneofSwitch(g, message, oneofs, index+1, selectedNext, accessesNext)
+	}
+	g.P("\tdefault:")
+	emitOneofSwitch(g, message, oneofs, index+1, selected, accesses)
+	g.P("\t}")
+}
+
+func cloneSelected(selected map[*protogen.Oneof]*protogen.Field, oneof *protogen.Oneof, field *protogen.Field) map[*protogen.Oneof]*protogen.Field {
+	result := make(map[*protogen.Oneof]*protogen.Field, len(selected)+1)
+	for key, value := range selected {
+		result[key] = value
+	}
+	result[oneof] = field
+	return result
+}
+
+func cloneAccesses(accesses map[*protogen.Oneof]string, oneof *protogen.Oneof, access string) map[*protogen.Oneof]string {
+	result := make(map[*protogen.Oneof]string, len(accesses)+1)
+	for key, value := range accesses {
+		result[key] = value
+	}
+	result[oneof] = access
+	return result
+}
+
+func emitStructReturn(g *protogen.GeneratedFile, message *protogen.Message, selected map[*protogen.Oneof]*protogen.Field, accesses map[*protogen.Oneof]string) {
 	g.P("\t\treturn jsonv2.Marshal(struct {")
 	for _, field := range message.Fields {
 		if field.Oneof != nil && !field.Oneof.Desc.IsSynthetic() {
-			if selected == nil || field != selected {
+			if selected == nil || field != selected[field.Oneof] {
 				continue
 			}
 			g.P("\t\t\t", field.GoName, " ", goJSONType(field.Desc, true), " `json:\"", field.Desc.JSONName(), "\"`")
@@ -95,10 +133,10 @@ func emitStructReturn(g *protogen.GeneratedFile, message *protogen.Message, oneo
 	g.P("\t\t}{")
 	for _, field := range message.Fields {
 		if field.Oneof != nil && !field.Oneof.Desc.IsSynthetic() {
-			if selected == nil || field != selected {
+			if selected == nil || field != selected[field.Oneof] {
 				continue
 			}
-			g.P("\t\t\t", field.GoName, ": ", jsonAssignment(g, "oneofValue."+field.GoName, field), ",")
+			g.P("\t\t\t", field.GoName, ": ", jsonAssignment(g, accesses[field.Oneof], field), ",")
 			continue
 		}
 		g.P("\t\t\t", field.GoName, ": ", jsonAssignment(g, "x."+field.GoName, field), ",")
