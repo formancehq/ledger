@@ -1560,6 +1560,65 @@ func TestReconcileMetadataOnlyChainBound_SortsReplayMutationsBySequence(t *testi
 	require.Empty(t, events, "the second delete legitimately skips after the replayed delete")
 }
 
+func TestReconcileMetadataOnlyChainBound_UsesReplayedRevertTransactionID(t *testing.T) {
+	t.Parallel()
+
+	deleteOrder := func(logSeq uint64, reasons ...commonpb.ErrorReason) *auditpb.AuditItem {
+		return buildAuditItem(t, logSeq, &raftcmdpb.Order{Type: &raftcmdpb.Order_LedgerScoped{
+			LedgerScoped: &raftcmdpb.LedgerScopedOrder{
+				Ledger: "L",
+				Payload: &raftcmdpb.LedgerScopedOrder_Apply{Apply: &raftcmdpb.LedgerApplyOrder{
+					Data: &raftcmdpb.LedgerApplyOrder_DeleteMetadata{DeleteMetadata: &raftcmdpb.DeleteMetadataOrder{
+						Target: &commonpb.Target{Target: &commonpb.Target_TransactionId{TransactionId: 1}},
+						Key:    "note",
+					}},
+					SkippableReasons: reasons,
+				}},
+			},
+		}})
+	}
+
+	items := []*auditpb.AuditItem{
+		buildCreateLedgerItem(t, "L", 10),
+		buildAuditItem(t, 20, &raftcmdpb.Order{Type: &raftcmdpb.Order_LedgerScoped{
+			LedgerScoped: &raftcmdpb.LedgerScopedOrder{Ledger: "L", Payload: &raftcmdpb.LedgerScopedOrder_Apply{Apply: &raftcmdpb.LedgerApplyOrder{
+				Data: &raftcmdpb.LedgerApplyOrder_CreateTransaction{CreateTransaction: &raftcmdpb.CreateTransactionOrder{}},
+			}}},
+		}}),
+		buildAuditItem(t, 30, &raftcmdpb.Order{Type: &raftcmdpb.Order_LedgerScoped{
+			LedgerScoped: &raftcmdpb.LedgerScopedOrder{Ledger: "L", Payload: &raftcmdpb.LedgerScopedOrder_Apply{Apply: &raftcmdpb.LedgerApplyOrder{
+				Data: &raftcmdpb.LedgerApplyOrder_RevertTransaction{RevertTransaction: &raftcmdpb.RevertTransactionOrder{
+					TransactionId: 1,
+					Metadata:      map[string]*commonpb.MetadataValue{"note": commonpb.NewStringValue("reverted")},
+				}},
+			}}},
+		}}),
+		deleteOrder(40),
+		deleteOrder(50, commonpb.ErrorReason_ERROR_REASON_METADATA_NOT_FOUND),
+	}
+
+	chainBound := newChainBoundState()
+	expected := make(map[uint64]*expectedSkippableOrder)
+	requireCollectExpectedSkippable(t, items, 1, ^uint64(0), expected, chainBound)
+	reconcileMetadataOnlyChainBound(items, []*raftcmdpb.Order{
+		mustOrder(t, items[0]), mustOrder(t, items[1]), mustOrder(t, items[2]), mustOrder(t, items[3]), mustOrder(t, items[4]),
+	}, []*commonpb.Log{
+		applyLog(20, &commonpb.LedgerLogPayload{Payload: &commonpb.LedgerLogPayload_AccountMetadataUpdated{AccountMetadataUpdated: &commonpb.AccountMetadataUpdated{AccountMetadata: map[string]*commonpb.MetadataMap{
+			"users:alice": {Values: map[string]*commonpb.MetadataValue{"role": commonpb.NewStringValue("viewer")}},
+		}}}}),
+		applyLog(30, &commonpb.LedgerLogPayload{Payload: &commonpb.LedgerLogPayload_RevertedTransaction{RevertedTransaction: &commonpb.RevertedTransaction{RevertedTransactionId: 1, RevertTransaction: &commonpb.Transaction{Id: 1, Metadata: map[string]*commonpb.MetadataValue{"note": commonpb.NewStringValue("reverted")}}}}}),
+		applyLog(40, &commonpb.LedgerLogPayload{Payload: &commonpb.LedgerLogPayload_DeletedMetadata{DeletedMetadata: &commonpb.DeletedMetadata{Target: &commonpb.Target{Target: &commonpb.Target_TransactionId{TransactionId: 1}}, Key: "note"}}}),
+	}, chainBound)
+
+	require.Equal(t, []chainBoundMutation{{seq: 30, exists: true}, {seq: 40, exists: false}, {seq: 50, exists: false}}, chainBound.metadata["L"][metadataTimelineTarget(true, "1")]["note"])
+	require.Empty(t, chainBound.metadata["L"][metadataTimelineTarget(true, "2")]["note"], "speculative revert ID must not receive metadata")
+	events := captureEventsState(t, "L", 50, skippedPayloadWithContext(commonpb.ErrorReason_ERROR_REASON_METADATA_NOT_FOUND, map[string]string{
+		"target": "1",
+		"key":    "note",
+	}), expected, chainBound)
+	require.Empty(t, events, "the second delete legitimately skips after the replayed revert metadata was deleted")
+}
+
 // TestCollectExpectedSkippable_DedupesFoldOfLegacyDupKeyReplay pins the
 // double-fold finding (checker.go:2106/2138): an upgraded store with legacy
 // per-order idempotency can hold TWO items sharing LogSequence=N WITHIN the
