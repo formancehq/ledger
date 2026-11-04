@@ -850,6 +850,23 @@ This matches the shared analytical projection; encoding each account's map as
 a JSON string would lose its queryable structure. Ordinary transaction metadata
 and metadata-update events retain their separate `Map(String, String)` fields.
 
+Live native inserts quote only `transaction.postings[].amount` and
+`revertTransaction.postings[].amount` as decimal strings. On ClickHouse
+24.10.2.80 with simdjson enabled, unquoted amounts above UInt64 are rejected
+while parsing the JSON document, before the UInt256 hint is applied. Quoting
+preserves the full supported amount range in numeric UInt256 subcolumns; the
+shared analytical projection and Databricks amounts remain JSON numbers.
+The conversion preserves other raw numeric tokens and metadata, and does not
+mutate the source event. It adds decoding, copying and encoding proportional
+to the event size, with no cross-event state or additional network calls.
+
+A rejected `Send` returns before cursor advancement. After repairing delivery,
+keep the same sink name and retained cursor so pending events can resume;
+successful publication clears the error with the cursor update. No Ledger data
+migration, protocol revision change or customer table alteration is required
+for this transport fix. The destination must already declare UInt256 amount
+hints. This does not repair previously stored external rows.
+
 Existing tables are unchanged by `CREATE TABLE IF NOT EXISTS`. Tables created
 with the former flat account-metadata hint require the explicit, non-destructive
 [ClickHouse table migration](../../../../ops/clickhouse-account-metadata.md)
