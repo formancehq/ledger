@@ -44,6 +44,7 @@ func mustOrder(t *testing.T, item *auditpb.AuditItem) *raftcmdpb.Order {
 	t.Helper()
 	order := &raftcmdpb.Order{}
 	require.NoError(t, order.UnmarshalVT(item.GetSerializedOrder()))
+
 	return order
 }
 

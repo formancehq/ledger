@@ -2550,7 +2550,6 @@ func reconcileMetadataOnlyChainBound(items []*auditpb.AuditItem, orders []*raftc
 			}
 		}
 	}
-
 }
 
 // chainBoundState aggregates the audit-derived state the verifier consults
@@ -3128,7 +3127,6 @@ func recordChainBoundMutations(
 			if err != nil {
 				return err
 			}
-
 		}
 	}
 
