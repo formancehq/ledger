@@ -390,13 +390,18 @@ publication is a separate explicitly authorized action.
 ## Received snapshot Ready suffix evidence
 
 For a Ready containing both a snapshot and subsequent entries, retain the
-original entries/HardState durability order, then verify that snapshot
-installation cannot erase the suffix from `LastIndex`, `Term`, `Entries` or
-a reopened WAL before storage acknowledgement. Identify the residual
-in-memory snapshot/cache and durable WAL prefix on any failure. The focused
+original entries/HardState durability order in the active WAL. Then verify
+that installation writes the full snapshot file, prepares and syncs a
+candidate WAL with the snapshot record, current HardState, and only the same
+Ready suffix, and publishes that WAL before storage acknowledgement. The
+suffix must remain visible through `LastIndex`, `Term`, and `Entries` and after
+reopening the WAL. Identify the residual in-memory snapshot/cache and durable
+WAL prefix at each preparation or directory-switch failure. The focused
 regression is `process_ready_snapshot_test.go` under `internal/infra/node/`.
-Snapshot-only processing retains its existing append count; a combined Ready
-reappends only the suffix once, with no retained-log scan.
+Ready persistence calls `Append` once; installation does not reappend the
+suffix through the node. Even a snapshot-only Ready builds and syncs a
+candidate WAL. Replacement work depends on the snapshot and Ready suffix,
+not on the retained log length.
 
 ## Sent snapshot liveness evidence
 
