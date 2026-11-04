@@ -9489,7 +9489,7 @@ const file_bucket_proto_rawDesc = "" +
 	"\x05sinks\x18\x01 \x03(\v2\x12.common.SinkConfigR\x05sinks\x127\n" +
 	"\rsink_statuses\x18\x02 \x03(\v2\x12.common.SinkStatusR\fsinkStatuses:\x04\xd8\xd5\"\x01\"8\n" +
 	"\x1eGetMetadataSchemaStatusRequest\x12\x16\n" +
-	"\x06ledger\x18\x01 \x01(\tR\x06ledger\"\xf3\x04\n" +
+	"\x06ledger\x18\x01 \x01(\tR\x06ledger\"\xf9\x04\n" +
 	"\x1fGetMetadataSchemaStatusResponse\x12a\n" +
 	"\x0eaccount_fields\x18\x01 \x03(\v2:.ledger.GetMetadataSchemaStatusResponse.AccountFieldsEntryR\raccountFields\x12m\n" +
 	"\x12transaction_fields\x18\x02 \x03(\v2>.ledger.GetMetadataSchemaStatusResponse.TransactionFieldsEntryR\x11transactionFields\x12^\n" +
@@ -9502,9 +9502,9 @@ const file_bucket_proto_rawDesc = "" +
 	"\x05value\x18\x02 \x01(\v2\x1b.ledger.MetadataFieldStatusR\x05value:\x028\x01\x1a\\\n" +
 	"\x11LedgerFieldsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x121\n" +
-	"\x05value\x18\x02 \x01(\v2\x1b.ledger.MetadataFieldStatusR\x05value:\x028\x01\"P\n" +
+	"\x05value\x18\x02 \x01(\v2\x1b.ledger.MetadataFieldStatusR\x05value:\x028\x01:\x04\xd8\xd5\"\x01\"V\n" +
 	"\x13MetadataFieldStatus\x129\n" +
-	"\rdeclared_type\x18\x01 \x01(\x0e2\x14.common.MetadataTypeR\fdeclaredType\"_\n" +
+	"\rdeclared_type\x18\x01 \x01(\x0e2\x14.common.MetadataTypeR\fdeclaredType:\x04\xd8\xd5\"\x01\"_\n" +
 	"\x16AnalyzeAccountsRequest\x12\x16\n" +
 	"\x06ledger\x18\x01 \x01(\tR\x06ledger\x12-\n" +
 	"\x12variable_threshold\x18\x02 \x01(\rR\x11variableThreshold\"t\n" +

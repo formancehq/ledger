@@ -3,6 +3,10 @@
 
 package servicepb
 
+import (
+	commonpb "github.com/formancehq/ledger/v3/internal/proto/commonpb"
+)
+
 import jsonv2 "encoding/json/v2"
 
 func (x *GetEventsSinksResponse) MarshalJSON() ([]byte, error) {
@@ -21,6 +25,68 @@ func (x *GetEventsSinksResponse) MarshalJSON() ([]byte, error) {
 				return []any{}
 			}
 			return x.SinkStatuses
+		}(),
+	})
+}
+
+func (x *GetMetadataSchemaStatusResponse) MarshalJSON() ([]byte, error) {
+	return jsonv2.Marshal(struct {
+		AccountFields     any `json:"accountFields"`
+		TransactionFields any `json:"transactionFields"`
+		LedgerFields      any `json:"ledgerFields"`
+	}{
+		AccountFields: func() any {
+			if x.AccountFields == nil {
+				return map[string]any{}
+			}
+			return x.AccountFields
+		}(),
+		TransactionFields: func() any {
+			if x.TransactionFields == nil {
+				return map[string]any{}
+			}
+			return x.TransactionFields
+		}(),
+		LedgerFields: func() any {
+			if x.LedgerFields == nil {
+				return map[string]any{}
+			}
+			return x.LedgerFields
+		}(),
+	})
+}
+
+func (x *MetadataFieldStatus) MarshalJSON() ([]byte, error) {
+	return jsonv2.Marshal(struct {
+		DeclaredType any `json:"declaredType"`
+	}{
+		DeclaredType: func() any {
+			switch x.DeclaredType {
+			case commonpb.MetadataType_METADATA_TYPE_STRING:
+				return "METADATA_TYPE_STRING"
+			case commonpb.MetadataType_METADATA_TYPE_INT64:
+				return "METADATA_TYPE_INT64"
+			case commonpb.MetadataType_METADATA_TYPE_BOOL:
+				return "METADATA_TYPE_BOOL"
+			case commonpb.MetadataType_METADATA_TYPE_UINT64:
+				return "METADATA_TYPE_UINT64"
+			case commonpb.MetadataType_METADATA_TYPE_INT8:
+				return "METADATA_TYPE_INT8"
+			case commonpb.MetadataType_METADATA_TYPE_INT16:
+				return "METADATA_TYPE_INT16"
+			case commonpb.MetadataType_METADATA_TYPE_INT32:
+				return "METADATA_TYPE_INT32"
+			case commonpb.MetadataType_METADATA_TYPE_UINT8:
+				return "METADATA_TYPE_UINT8"
+			case commonpb.MetadataType_METADATA_TYPE_UINT16:
+				return "METADATA_TYPE_UINT16"
+			case commonpb.MetadataType_METADATA_TYPE_UINT32:
+				return "METADATA_TYPE_UINT32"
+			case commonpb.MetadataType_METADATA_TYPE_DATETIME:
+				return "METADATA_TYPE_DATETIME"
+			default:
+				return int32(x.DeclaredType)
+			}
 		}(),
 	})
 }

@@ -3,8 +3,6 @@ package cmdutil
 import (
 	"bytes"
 	"encoding/json"
-	"encoding/json/jsontext"
-	jsonv2 "encoding/json/v2"
 	"fmt"
 	"os"
 	"reflect"
@@ -143,7 +141,7 @@ func yamlNumbers(value any) any {
 
 // marshalJSON dispatches to the appropriate JSON encoder:
 //   - proto.Message with custom MarshalJSON → encoding/json (including generated projections)
-//   - proto.Message without custom MarshalJSON → encoding/json/v2 with Go's standard fallback
+//   - proto.Message without custom MarshalJSON → an explicit error
 //   - slices/maps of proto types → the same logic per element
 //   - everything else → encoding/json
 func marshalJSON(data any) ([]byte, error) {
@@ -158,7 +156,7 @@ func marshalJSON(data any) ([]byte, error) {
 			return json.MarshalIndent(data, "", "  ")
 		}
 
-		return jsonv2.Marshal(msg, jsontext.Multiline(true), jsontext.WithIndent("  "))
+		return nil, fmt.Errorf("protobuf message %T has no generated JSON projection", msg)
 	}
 
 	rv := reflect.ValueOf(data)
@@ -232,7 +230,7 @@ func marshalProtoMap(rv reflect.Value) ([]byte, error) {
 }
 
 // marshalMapStringAny handles map[string]any by inspecting each value and
-// converting proto.Message or proto slices via the descriptor JSON runtime.
+// converting proto.Message or proto slices through their generated projections.
 func marshalMapStringAny(rv reflect.Value) ([]byte, error) {
 	result := make(map[string]any, rv.Len())
 	for _, key := range rv.MapKeys() {
@@ -288,20 +286,15 @@ func convertAnyValue(rv reflect.Value) (any, error) {
 	return iface, nil
 }
 
-// protoToAny marshals a proto.Message to JSON, then unmarshals to any so it
-// can be combined with other values in a json.MarshalIndent call.
-// Prefers custom MarshalJSON when available (handles Uint256, Timestamp, etc.).
+// protoToAny marshals a projected proto.Message to JSON, then unmarshals to any
+// so it can be combined with other values in a json.MarshalIndent call.
 // UseNumber keeps numeric tokens exact when composing proto slices and maps.
 func protoToAny(msg proto.Message) (any, error) {
-	var b []byte
-	var err error
-
-	if jm, ok := msg.(json.Marshaler); ok {
-		b, err = jm.MarshalJSON()
-	} else {
-		b, err = jsonv2.Marshal(msg, jsontext.Multiline(true), jsontext.WithIndent("  "))
+	jm, ok := msg.(json.Marshaler)
+	if !ok {
+		return nil, fmt.Errorf("protobuf message %T has no generated JSON projection", msg)
 	}
-
+	b, err := jm.MarshalJSON()
 	if err != nil {
 		return nil, err
 	}

@@ -5,6 +5,58 @@ package clusterpb
 
 import jsonv2 "encoding/json/v2"
 
+func (x *BeginDrainResponse) MarshalJSON() ([]byte, error) {
+	return jsonv2.Marshal(struct {
+		CutoffIndex uint64 `json:"cutoffIndex"`
+		Members     any    `json:"members"`
+	}{
+		CutoffIndex: x.CutoffIndex,
+		Members: func() any {
+			if x.Members == nil {
+				return []any{}
+			}
+			return x.Members
+		}(),
+	})
+}
+
+func (x *EndDrainResponse) MarshalJSON() ([]byte, error) {
+	return jsonv2.Marshal(struct {
+		ReleaseIndex uint64 `json:"releaseIndex"`
+		Members      any    `json:"members"`
+	}{
+		ReleaseIndex: x.ReleaseIndex,
+		Members: func() any {
+			if x.Members == nil {
+				return []any{}
+			}
+			return x.Members
+		}(),
+	})
+}
+
+func (x *DrainStatus) MarshalJSON() ([]byte, error) {
+	return jsonv2.Marshal(struct {
+		LocalNode          uint64 `json:"localNode"`
+		SupportsDrain      bool   `json:"supportsDrain"`
+		DrainEpoch         string `json:"drainEpoch"`
+		DrainIndex         uint64 `json:"drainIndex"`
+		LastPersistedIndex uint64 `json:"lastPersistedIndex"`
+		SyncStatus         string `json:"syncStatus"`
+		ReleaseIndex       uint64 `json:"releaseIndex"`
+		SupportsRelease    bool   `json:"supportsRelease"`
+	}{
+		LocalNode:          x.LocalNode,
+		SupportsDrain:      x.SupportsDrain,
+		DrainEpoch:         x.DrainEpoch,
+		DrainIndex:         x.DrainIndex,
+		LastPersistedIndex: x.LastPersistedIndex,
+		SyncStatus:         x.SyncStatus,
+		ReleaseIndex:       x.ReleaseIndex,
+		SupportsRelease:    x.SupportsRelease,
+	})
+}
+
 func (x *NodeInfo) MarshalJSON() ([]byte, error) {
 	return jsonv2.Marshal(struct {
 		Id             uint64 `json:"id"`
@@ -134,5 +186,33 @@ func (x *SyncProgress) MarshalJSON() ([]byte, error) {
 		Status:        x.Status,
 		BytesReceived: x.BytesReceived,
 		BytesTotal:    x.BytesTotal,
+	})
+}
+
+func (x *VolumeUsage) MarshalJSON() ([]byte, error) {
+	return jsonv2.Marshal(struct {
+		UsedBytes    uint64 `json:"usedBytes"`
+		TotalBytes   uint64 `json:"totalBytes"`
+		ObservedAtUs uint64 `json:"observedAtUs"`
+		SampleAgeMs  uint64 `json:"sampleAgeMs"`
+		Valid        bool   `json:"valid"`
+		Error        string `json:"error"`
+	}{
+		UsedBytes:    x.UsedBytes,
+		TotalBytes:   x.TotalBytes,
+		ObservedAtUs: x.ObservedAtUs,
+		SampleAgeMs:  x.SampleAgeMs,
+		Valid:        x.Valid,
+		Error:        x.Error,
+	})
+}
+
+func (x *DiskUsage) MarshalJSON() ([]byte, error) {
+	return jsonv2.Marshal(struct {
+		WalVolume  any `json:"walVolume,omitempty,omitzero"`
+		DataVolume any `json:"dataVolume,omitempty,omitzero"`
+	}{
+		WalVolume:  x.WalVolume,
+		DataVolume: x.DataVolume,
 	})
 }

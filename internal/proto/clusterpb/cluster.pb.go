@@ -2416,16 +2416,16 @@ const file_cluster_proto_rawDesc = "" +
 	"\x16GetClusterStateRequest\x12\x17\n" +
 	"\anode_id\x18\x01 \x01(\x04R\x06nodeId\")\n" +
 	"\x11BeginDrainRequest\x12\x14\n" +
-	"\x05epoch\x18\x01 \x01(\tR\x05epoch\"Q\n" +
+	"\x05epoch\x18\x01 \x01(\tR\x05epoch\"W\n" +
 	"\x12BeginDrainResponse\x12!\n" +
 	"\fcutoff_index\x18\x01 \x01(\x06R\vcutoffIndex\x12\x18\n" +
-	"\amembers\x18\x02 \x03(\x04R\amembers\"'\n" +
+	"\amembers\x18\x02 \x03(\x04R\amembers:\x04\xd8\xd5\"\x01\"'\n" +
 	"\x0fEndDrainRequest\x12\x14\n" +
-	"\x05epoch\x18\x01 \x01(\tR\x05epoch\"Q\n" +
+	"\x05epoch\x18\x01 \x01(\tR\x05epoch\"W\n" +
 	"\x10EndDrainResponse\x12#\n" +
 	"\rrelease_index\x18\x01 \x01(\x06R\freleaseIndex\x12\x18\n" +
-	"\amembers\x18\x02 \x03(\x04R\amembers\"\x17\n" +
-	"\x15GetDrainStatusRequest\"\xb8\x02\n" +
+	"\amembers\x18\x02 \x03(\x04R\amembers:\x04\xd8\xd5\"\x01\"\x17\n" +
+	"\x15GetDrainStatusRequest\"\xbe\x02\n" +
 	"\vDrainStatus\x12\x1d\n" +
 	"\n" +
 	"local_node\x18\x01 \x01(\x04R\tlocalNode\x12%\n" +
@@ -2438,7 +2438,7 @@ const file_cluster_proto_rawDesc = "" +
 	"\vsync_status\x18\x06 \x01(\tR\n" +
 	"syncStatus\x12#\n" +
 	"\rrelease_index\x18\a \x01(\x06R\freleaseIndex\x12)\n" +
-	"\x10supports_release\x18\b \x01(\bR\x0fsupportsRelease\"\xd0\x02\n" +
+	"\x10supports_release\x18\b \x01(\bR\x0fsupportsRelease:\x04\xd8\xd5\"\x01\"\xd0\x02\n" +
 	"\bNodeInfo\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\x04R\x02id\x12\x1a\n" +
 	"\bsuffrage\x18\x02 \x01(\tR\bsuffrage\x121\n" +
@@ -2510,7 +2510,7 @@ const file_cluster_proto_rawDesc = "" +
 	"\x13GetDiskUsageRequest\"\x14\n" +
 	"\x12GetNodeTimeRequest\"-\n" +
 	"\bNodeTime\x12!\n" +
-	"\ftimestamp_us\x18\x01 \x01(\x06R\vtimestampUs\"\xc3\x01\n" +
+	"\ftimestamp_us\x18\x01 \x01(\x06R\vtimestampUs\"\xc9\x01\n" +
 	"\vVolumeUsage\x12\x1d\n" +
 	"\n" +
 	"used_bytes\x18\x01 \x01(\x06R\tusedBytes\x12\x1f\n" +
@@ -2519,12 +2519,12 @@ const file_cluster_proto_rawDesc = "" +
 	"\x0eobserved_at_us\x18\x03 \x01(\x06R\fobservedAtUs\x12\"\n" +
 	"\rsample_age_ms\x18\x04 \x01(\x06R\vsampleAgeMs\x12\x14\n" +
 	"\x05valid\x18\x05 \x01(\bR\x05valid\x12\x14\n" +
-	"\x05error\x18\x06 \x01(\tR\x05error\"w\n" +
+	"\x05error\x18\x06 \x01(\tR\x05error:\x04\xd8\xd5\"\x01\"}\n" +
 	"\tDiskUsage\x123\n" +
 	"\n" +
 	"wal_volume\x18\x01 \x01(\v2\x14.cluster.VolumeUsageR\twalVolume\x125\n" +
 	"\vdata_volume\x18\x02 \x01(\v2\x14.cluster.VolumeUsageR\n" +
-	"dataVolume\"\x99\x01\n" +
+	"dataVolume:\x04\xd8\xd5\"\x01\"\x99\x01\n" +
 	"\x11AddLearnerRequest\x12\x17\n" +
 	"\anode_id\x18\x01 \x01(\x04R\x06nodeId\x12!\n" +
 	"\fraft_address\x18\x02 \x01(\tR\vraftAddress\x12'\n" +

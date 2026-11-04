@@ -128,6 +128,7 @@ message BeginDrainRequest {
 }
 
 message BeginDrainResponse {
+	option (common.ledger_json) = true;
   fixed64 cutoff_index = 1;
   repeated uint64 members = 2;
 }
@@ -137,6 +138,7 @@ message EndDrainRequest {
 }
 
 message EndDrainResponse {
+	option (common.ledger_json) = true;
   fixed64 release_index = 1;
   repeated uint64 members = 2;
 }
@@ -144,6 +146,7 @@ message EndDrainResponse {
 message GetDrainStatusRequest {}
 
 message DrainStatus {
+	option (common.ledger_json) = true;
   uint64 local_node = 1;
   bool supports_drain = 2;
   string drain_epoch = 3;
@@ -258,6 +261,7 @@ message NodeTime {
 
 // VolumeUsage represents the disk usage of a single filesystem volume.
 message VolumeUsage {
+	option (common.ledger_json) = true;
   fixed64 used_bytes = 1;       // Last known used bytes on the filesystem
   fixed64 total_bytes = 2;      // Last known total capacity of the filesystem in bytes
   fixed64 observed_at_us = 3;   // Unix timestamp in microseconds of the last successful sample
@@ -268,6 +272,7 @@ message VolumeUsage {
 
 // DiskUsage represents the filesystem-level disk usage on a node.
 message DiskUsage {
+	option (common.ledger_json) = true;
   VolumeUsage wal_volume = 1;   // WAL filesystem usage
   VolumeUsage data_volume = 2;  // Data filesystem usage
 }

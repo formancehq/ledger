@@ -241,10 +241,10 @@ func emitStructReturn(g *protogen.GeneratedFile, message *protogen.Message, oneo
 			if selected == nil || field != selected {
 				continue
 			}
-			g.P("\t\t\t", field.GoName, ": ", jsonAssignment("oneofValue."+field.GoName, field, true), ",")
+			g.P("\t\t\t", field.GoName, ": ", jsonAssignment(g, "oneofValue."+field.GoName, field, true), ",")
 			continue
 		}
-		g.P("\t\t\t", field.GoName, ": ", jsonAssignment("x."+field.GoName, field, false), ",")
+		g.P("\t\t\t", field.GoName, ": ", jsonAssignment(g, "x."+field.GoName, field, false), ",")
 	}
 	g.P("\t\t})")
 }
@@ -279,10 +279,10 @@ func goJSONType(field protoreflect.FieldDescriptor, oneof bool) string {
 	}
 }
 
-func jsonAssignment(access string, field *protogen.Field, oneof bool) string {
+func jsonAssignment(g *protogen.GeneratedFile, access string, field *protogen.Field, oneof bool) string {
 	if field.Desc.IsList() {
 		if field.Desc.Kind() == protoreflect.EnumKind {
-			return listEnumJSONAssignment(access, field)
+			return listEnumJSONAssignment(g, access, field)
 		}
 		return "func() any { if " + access + " == nil { return []any{} }; return " + access + " }()"
 	}
@@ -290,24 +290,24 @@ func jsonAssignment(access string, field *protogen.Field, oneof bool) string {
 		return "func() any { if " + access + " == nil { return map[string]any{} }; return " + access + " }()"
 	}
 	if field.Desc.Kind() == protoreflect.EnumKind {
-		return enumJSONAssignment(access, field, oneof)
+		return enumJSONAssignment(g, access, field, oneof)
 	}
 	return enumOrValue(access, field.Desc)
 }
 
-func listEnumJSONAssignment(access string, field *protogen.Field) string {
+func listEnumJSONAssignment(g *protogen.GeneratedFile, access string, field *protogen.Field) string {
 	expression := "func() any { if " + access + " == nil { return []any{} }; out := make([]any, len(" + access + ")); for i := range " + access + " { out[i] = "
-	expression += enumJSONAssignment(access+"[i]", field, false)
+	expression += enumJSONAssignment(g, access+"[i]", field, false)
 	return expression + "; }; return out }()"
 }
 
-func enumJSONAssignment(access string, field *protogen.Field, oneof bool) string {
+func enumJSONAssignment(g *protogen.GeneratedFile, access string, field *protogen.Field, oneof bool) string {
 	values := field.Desc.Enum().Values()
 	expression := "func() any {"
 	expression += " switch " + access + " {"
 	for i := 0; i < values.Len(); i++ {
 		value := values.Get(i)
-		expression += " case " + field.Enum.Values[i].GoIdent.GoName + ": return \"" + string(value.Name()) + "\";"
+		expression += " case " + g.QualifiedGoIdent(field.Enum.Values[i].GoIdent) + ": return \"" + string(value.Name()) + "\";"
 	}
 	expression += " default: return int32(" + access + "); } }()"
 	return expression

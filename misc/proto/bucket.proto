@@ -1095,12 +1095,14 @@ message GetMetadataSchemaStatusRequest {
 }
 
 message GetMetadataSchemaStatusResponse {
+	option (common.ledger_json) = true;
   map<string, MetadataFieldStatus> account_fields = 1;
   map<string, MetadataFieldStatus> transaction_fields = 2;
   map<string, MetadataFieldStatus> ledger_fields = 3;
 }
 
 message MetadataFieldStatus {
+	option (common.ledger_json) = true;
   common.MetadataType declared_type = 1;
 }
 
