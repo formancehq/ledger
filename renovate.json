@@ -2,5 +2,6 @@
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "extends": [
     "github>formancehq/shared-config//renovate/presets/golang"
-  ]
+  ],
+  "baseBranchPatterns": ["main", "release/v2.3", "release/v2.4"]
 }
