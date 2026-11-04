@@ -2,7 +2,6 @@ package check
 
 import (
 	"bytes"
-	"cmp"
 	"context"
 	"encoding/binary"
 	"errors"
@@ -12,6 +11,7 @@ import (
 	"math/big"
 	"math/bits"
 	"slices"
+	"sort"
 	"strconv"
 
 	"github.com/cockroachdb/pebble/v2"
@@ -2550,22 +2550,6 @@ func reconcileMetadataOnlyChainBound(items []*auditpb.AuditItem, orders []*raftc
 		}
 	}
 
-	// Order-fold mutations are collected before replay-derived mutations, but
-	// skip verification must observe the timeline by log sequence. Replay can
-	// therefore append an earlier transaction-metadata creation after a later
-	// DeleteMetadata order from the same proposal; restore chronological order
-	// before mutationStateWithWitness scans the timeline backwards.
-	for _, perTarget := range chainBound.metadata {
-		for target, perKey := range perTarget {
-			for key, mutations := range perKey {
-				slices.SortStableFunc(mutations, func(a, b chainBoundMutation) int {
-					return cmp.Compare(a.seq, b.seq)
-				})
-				perKey[key] = mutations
-			}
-			perTarget[target] = perKey
-		}
-	}
 }
 
 // chainBoundState aggregates the audit-derived state the verifier consults
@@ -3441,10 +3425,10 @@ func rememberFirstRevert(
 }
 
 // appendMetadataMutation appends a presence-flip to the per-(ledger,
-// target, key) chronological list. collectExpectedSkippable iterates in
-// seq order, so the append order matches seq order — the verifier's
-// backward scan finds the latest transition strictly before the skip
-// sequence.
+// target, key) chronological list. Replay-derived mutations can be inserted
+// after order-fold mutations from the same proposal, so keep the slice sorted
+// at insertion time; the verifier's backward scan then finds the latest
+// transition strictly before the skip sequence without rescanning history.
 func appendMetadataMutation(
 	metadata map[string]map[string]map[string][]chainBoundMutation,
 	ledger, target, key string,
@@ -3463,7 +3447,21 @@ func appendMetadataMutation(
 		perLedger[target] = perTarget
 	}
 
-	perTarget[key] = append(perTarget[key], chainBoundMutation{seq: logSeq, exists: exists})
+	mutations := perTarget[key]
+	mutation := chainBoundMutation{seq: logSeq, exists: exists}
+	if len(mutations) == 0 || mutations[len(mutations)-1].seq <= logSeq {
+		perTarget[key] = append(mutations, mutation)
+
+		return
+	}
+
+	index := sort.Search(len(mutations), func(i int) bool {
+		return mutations[i].seq > logSeq
+	})
+	mutations = append(mutations, chainBoundMutation{})
+	copy(mutations[index+1:], mutations[index:])
+	mutations[index] = mutation
+	perTarget[key] = mutations
 }
 
 // appendAccountTypeMutation is appendMetadataMutation's account-type
