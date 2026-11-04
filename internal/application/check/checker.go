@@ -2536,6 +2536,17 @@ func reconcileMetadataOnlyChainBound(items []*auditpb.AuditItem, orders []*raftc
 			continue
 		}
 
+		if tx := log.GetPayload().GetApply().GetLog().GetData().GetRevertedTransaction().GetRevertTransaction(); tx != nil {
+			if _, anchored := chainBound.ledgerCreationSeen[ledger]; anchored {
+				target := metadataTimelineTarget(true, strconv.FormatUint(tx.GetId(), 10))
+				for key := range tx.GetMetadata() {
+					appendMetadataMutation(chainBound.metadata, ledger, target, key, items[i].GetLogSequence(), true)
+				}
+			}
+
+			continue
+		}
+
 		payload := log.GetPayload().GetApply().GetLog().GetData().GetAccountMetadataUpdated()
 		if payload == nil {
 			continue
@@ -3138,21 +3149,11 @@ func recordChainBoundMutations(
 			// counter allocation.
 			rememberFirstRevert(chainBound.reverted, ledger, rt.GetTransactionId(), logSeq)
 
-			newTxID, err := allocateChainBoundTxID(ledger, chainBound)
+			_, err := allocateChainBoundTxID(ledger, chainBound)
 			if err != nil {
 				return err
 			}
 
-			if _, anchored := chainBound.ledgerCreationSeen[ledger]; anchored {
-				// Same "tx:<id>" namespacing as the CreateTransaction path
-				// above — the revert's metadata targets the newly-allocated
-				// revert tx, and verifySkippedOrder keys tx targets through
-				// metadataTimelineTarget(isTx=true, id).
-				target := metadataTimelineTarget(true, strconv.FormatUint(newTxID, 10))
-				for key := range rt.GetMetadata() {
-					appendMetadataMutation(chainBound.metadata, ledger, target, key, logSeq, true)
-				}
-			}
 		}
 	}
 
