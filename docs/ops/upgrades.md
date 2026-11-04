@@ -361,9 +361,8 @@ The same harness has a separate, future `rc3-to-rc4` transition:
 UPGRADE_TRANSITION=rc3-to-rc4 RELEASE_BRANCH=release/v3.0 just test-release-operator-upgrade
 ```
 
-Run it only after `v3.0.0-rc.3` has been published and the PR changing the
-persisted format has added `v3.0.0-rc.4` to the operator's mandatory stop
-boundaries. The target operator and Ledger are still built from one exact
+Run it against a release branch whose operator lists `v3.0.0-rc.4` as a
+mandatory stop boundary, which the mirror asset-mapping change requires. The target operator and Ledger are still built from one exact
 release-branch HEAD and tagged locally as rc.4; the harness publishes no tag
 or image. This path requires the operator's drain barrier to advance past
 `Draining`, observes the StatefulSet and all old Pods absent before accepting
@@ -371,10 +370,9 @@ any target Pod, and checks that the replacement StatefulSet has a new UID while
 PVC UIDs persist. It restarts a target voter to exercise replay, verifies the
 pre-upgrade account, commits another transaction, checks Raft progress and
 runs each voter's audit/derived-state checker after drain release. It fails
-against the current empty mandatory-stop list, so it is a release gate for the
-format-change PR, not evidence that rc.3 itself needs a stop. A future rc.4
-release still needs format-specific migration, snapshot, backup/restore and
-rollback validation outside this scenario.
+against an operator without the rc.4 boundary. The rc.4 release still needs
+format-specific migration, snapshot, backup/restore and rollback validation
+outside this scenario.
 
 ## Coordinated Restart
 

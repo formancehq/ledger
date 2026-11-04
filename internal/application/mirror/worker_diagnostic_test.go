@@ -274,7 +274,7 @@ func TestWorker_TransportErrorsDoNotDiscloseCredentials(t *testing.T) {
 					}
 					source := v2.NewHTTPSource(baseURL, config.GetLedgerName(), &http.Client{Transport: transport})
 					t.Cleanup(func() { require.NoError(t, source.Close()) })
-					w := NewWorker(ledgerName, 100, source, nil, store, proposer, builder, logger, meters)
+					w := NewWorker(ledgerName, 100, source, v2.TranslateOptions{}, store, proposer, builder, logger, meters)
 					assertSafe := func(diagnosticText string) {
 						t.Helper()
 						password, hasPassword := tc.user.Password()
