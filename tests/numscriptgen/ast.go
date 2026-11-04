@@ -28,7 +28,7 @@ const (
 	SrcCapped
 	SrcInorder
 	SrcAllotment
-	// experimental-oneof
+	// experimental-oneof.
 	SrcOneof
 )
 

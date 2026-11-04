@@ -46,6 +46,7 @@ func NewMonetaryVarFromBalance(
 		asset(env, w)
 		env.builder.WriteString(")")
 	}
+
 	return declareOriginVar[ExprTypeMonetary]("monetary", origin)
 }
 
@@ -60,6 +61,7 @@ func varFromMeta[T ExprType](typ string, account Expression[ExprTypeAccount], ke
 		writeStringLiteral(env, key)
 		env.builder.WriteString(")")
 	}
+
 	return declareOriginVar[T](typ, origin)
 }
 

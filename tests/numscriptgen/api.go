@@ -19,6 +19,7 @@ const (
 func RandFromBytes(b []byte) *rand.Rand {
 	h := fnv.New64a()
 	_, _ = h.Write(b) // hash.Hash.Write never errors
+
 	return rand.New(rand.NewSource(int64(h.Sum64())))
 }
 
@@ -99,5 +100,6 @@ func render(rng *rand.Rand, s Script) Generated {
 // GenerateScript is Generate without the Shape.
 func GenerateScript(rng *rand.Rand) (vars map[string]string, balances map[BalanceKey]*big.Int, metadata map[MetaKey]string, script string) {
 	g := Generate(rng)
+
 	return g.Vars, g.Balances, g.Metadata, g.Script
 }

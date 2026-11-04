@@ -6,6 +6,7 @@ import (
 	"math/big"
 	"math/rand"
 	"slices"
+	"strconv"
 )
 
 // seedAmount is for `world -> accN` funding statements, always positive.
@@ -37,6 +38,7 @@ func genSeedStatements(rng *rand.Rand, poolSize int, assets []string) Program {
 			})
 		}
 	}
+
 	return stmts
 }
 
@@ -86,6 +88,7 @@ func genBalances(rng *rand.Rand, poolSize int, assets []string) (map[BalanceKey]
 	if usePreset {
 		genPresetBalances(rng, poolSize, assets, balances)
 	}
+
 	return balances, seeds
 }
 
@@ -105,6 +108,7 @@ func genPresetMetadata(rng *rand.Rand, poolSize int, metadata map[MetaKey]string
 			metadata[k], types[k] = genMetaValue(rng, poolSize)
 		}
 	}
+
 	return types
 }
 
@@ -123,9 +127,10 @@ func genMetaValue(rng *rand.Rand, poolSize int) (string, MetaType) {
 		return account(rng, poolSize), MetaAccount
 	case 4:
 		den := rng.Intn(9) + 2
+
 		return fmt.Sprintf("%d/%d", rng.Intn(den)+1, den), MetaPortion
 	default:
-		return fmt.Sprintf("%d", rng.Intn(2000)-500), MetaNumber
+		return strconv.Itoa(rng.Intn(2000) - 500), MetaNumber
 	}
 }
 
@@ -159,6 +164,7 @@ func genVarDecls(rng *rand.Rand, poolSize int, balances map[BalanceKey]*big.Int,
 		if c := cmp.Compare(a.Account, b.Account); c != 0 {
 			return c
 		}
+
 		return cmp.Compare(a.Key, b.Key)
 	})
 
@@ -167,15 +173,18 @@ func genVarDecls(rng *rand.Rand, poolSize int, balances map[BalanceKey]*big.Int,
 		if len(metaKeys) > 0 && rng.Intn(3) == 0 {
 			k := metaKeys[rng.Intn(len(metaKeys))]
 			out[i] = VarDecl{Kind: VarFromMeta, Account: k.Account, AccountAsVar: accountAsVar(rng, k.Account), Key: k.Key, MetaType: metaTypes[k]}
+
 			continue
 		}
 		if rng.Intn(4) == 0 {
 			out[i] = VarDecl{Kind: VarFromBalance, Account: "world", Asset: pickAsset(rng), AssetAsVar: asVar(rng)}
+
 			continue
 		}
 		if len(fundedKeys) > 0 && rng.Intn(2) == 0 {
 			k := fundedKeys[rng.Intn(len(fundedKeys))]
 			out[i] = VarDecl{Kind: VarFromBalance, Account: k.Account, AccountAsVar: accountAsVar(rng, k.Account), Asset: k.Asset, AssetAsVar: asVar(rng)}
+
 			continue
 		}
 		out[i] = VarDecl{Kind: VarFromBalance, Account: account(rng, poolSize), AccountAsVar: asVar(rng), Asset: pickAsset(rng), AssetAsVar: asVar(rng)}
@@ -258,6 +267,7 @@ func genVarDecls(rng *rand.Rand, poolSize int, balances map[BalanceKey]*big.Int,
 				asset = pickAsset(rng)
 			}
 			out = append(out, VarDecl{Kind: VarFromBalance, Account: target, AccountFromVarIdx: &idx, Asset: asset, AssetAsVar: asVar(rng)})
+
 			continue
 		}
 		// meta($parent, "<key>") needs a preset (target, key): a missing-key
@@ -288,6 +298,7 @@ func metaAccountVarIndices(vars []VarDecl) []int {
 			idxs = append(idxs, i)
 		}
 	}
+
 	return idxs
 }
 
@@ -314,6 +325,7 @@ func genNumExpr(rng *rand.Rand, depth int) NumExpr {
 	}
 	e.Paren = rng.Intn(4) == 0
 	e.Neg = rng.Intn(8) == 0
+
 	return e
 }
 
@@ -332,6 +344,7 @@ func genMetaLiteral(rng *rand.Rand, poolSize int) *MetaLiteral {
 		return &MetaLiteral{Type: MetaAsset, Asset: pickAsset(rng)}
 	default:
 		den := int64(rng.Intn(9) + 2)
+
 		return &MetaLiteral{Type: MetaPortion, Portion: big.NewRat(int64(rng.Intn(int(den)+1)), den)}
 	}
 }
@@ -344,6 +357,7 @@ func genMetaStringValue(rng *rand.Rand) (*string, bool) {
 		return nil, false
 	}
 	s := fmt.Sprintf("str%d", rng.Intn(4))
+
 	return &s, asVar(rng)
 }
 
@@ -355,6 +369,7 @@ func varIndicesOfKind(vars []VarDecl, kind VarDeclKind) []int {
 			idxs = append(idxs, i)
 		}
 	}
+
 	return idxs
 }
 
@@ -371,6 +386,7 @@ func genAccountVarDecls(rng *rand.Rand, poolSize int) []AccountVarDecl {
 			out[i] = AccountVarDecl{Value: account(rng, poolSize)}
 		}
 	}
+
 	return out
 }
 
@@ -549,6 +565,7 @@ func riffleOrder(rng *rand.Rand, a, b int) []bool {
 	for ; b > 0; b-- {
 		order = append(order, false)
 	}
+
 	return order
 }
 
@@ -599,6 +616,7 @@ func generateScriptAST(rng *rand.Rand) Script {
 		s.Scenario, s.ScenarioPos, focus = genScenario(rng, poolSize, seeds, balances, 0)
 		s.Focus = &focus
 	}
+
 	return s
 }
 
@@ -615,5 +633,6 @@ func aliasedBalanceVarPair(vars []VarDecl) (int, int, bool) {
 		}
 		firstByAccount[v.Account] = i
 	}
+
 	return 0, 0, false
 }

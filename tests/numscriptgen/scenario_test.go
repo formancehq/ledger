@@ -14,6 +14,7 @@ func scenarioScripts(n int) []Script {
 			out = append(out, s)
 		}
 	}
+
 	return out
 }
 
@@ -27,6 +28,7 @@ func TestBodyStatementsSpliceTheScenarioContiguously(t *testing.T) {
 		for i, st := range body {
 			if st.send == s.Scenario[0].Send && st.extra == s.Scenario[0].Extra {
 				start = i
+
 				break
 			}
 		}

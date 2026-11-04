@@ -5,9 +5,11 @@ import (
 	"math/rand"
 	"testing"
 
-	gen "github.com/formancehq/ledger/v3/tests/numscriptgen"
-	"github.com/formancehq/numscript"
 	"github.com/stretchr/testify/require"
+
+	"github.com/formancehq/numscript"
+
+	gen "github.com/formancehq/ledger/v3/tests/numscriptgen"
 )
 
 // Allotments mostly sum the way the engines accept — exactly 1, or under 1
