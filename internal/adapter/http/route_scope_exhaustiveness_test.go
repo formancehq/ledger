@@ -81,10 +81,12 @@ func (row routeScope) probeMethod() string {
 
 // anyMethodMethods is the method set chi fans a r.Handle registration out to
 // (see chi's methodMap). An anyMethod row expands to one walk entry per method.
+// QUERY (RFC 10008) has no net/http constant yet — chi v5.4.0 added it to
+// methodMap — so it is spelled literally, as chi's own methodQuery is.
 var anyMethodMethods = []string{
 	http.MethodConnect, http.MethodDelete, http.MethodGet, http.MethodHead,
 	http.MethodOptions, http.MethodPatch, http.MethodPost, http.MethodPut,
-	http.MethodTrace,
+	http.MethodTrace, "QUERY",
 }
 
 // expectedRouteScopes is the declared route-to-scope contract for the REST
