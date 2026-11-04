@@ -51,151 +51,6 @@ func main() {
 	})
 }
 
-func emitRuntime(g *protogen.GeneratedFile) {
-	// Kept as a no-op for compatibility with older generated-file layouts.
-}
-
-// runtimeSource is retained for hand-written legacy projections. The generated
-// MarshalJSON methods below do not use it: they access generated fields
-// directly and only use this helper through the older explicit APIs.
-const runtimeSource = `` /* legacy runtime removed; retained temporarily for source compatibility */
-/* const legacyRuntimeSource = `import (
-	"encoding/json/jsontext"
-	jsonv2 "encoding/json/v2"
-	"fmt"
-	"strconv"
-	"time"
-	"unicode/utf8"
-
-	"google.golang.org/protobuf/reflect/protoreflect"
-)
-
-type MarshalLedgerJSONOptions struct {
-	Multiline       bool
-	Indent          string
-	EmitUnpopulated bool
-}
-
-type ledgerJSONMessage interface {
-	ProtoReflect() protoreflect.Message
-}
-
-func MarshalLedgerJSON(msg ledgerJSONMessage) ([]byte, error) {
-	return MarshalLedgerJSONWithOptions(msg, MarshalLedgerJSONOptions{})
-}
-
-func MarshalLedgerJSONWithOptions(msg ledgerJSONMessage, options MarshalLedgerJSONOptions) ([]byte, error) {
-	value, err := ledgerJSONValue(msg.ProtoReflect(), options)
-	if err != nil {
-		return nil, err
-	}
-	marshalOptions := []jsonv2.Options{jsontext.EscapeForHTML(false), jsontext.EscapeForJS(false)}
-	if options.Multiline {
-		marshalOptions = append(marshalOptions, jsontext.Multiline(true), jsontext.WithIndent(options.Indent))
-	}
-	return jsonv2.Marshal(value, marshalOptions...)
-}
-
-func ledgerJSONValue(msg protoreflect.Message, options MarshalLedgerJSONOptions) (map[string]any, error) {
-	if !msg.IsValid() {
-		return nil, nil
-	}
-	out := make(map[string]any)
-	var err error
-	msg.Range(func(field protoreflect.FieldDescriptor, value protoreflect.Value) bool {
-		out[field.JSONName()], err = ledgerJSONField(field, value, options)
-		return err == nil
-	})
-	if options.EmitUnpopulated {
-		fields := msg.Descriptor().Fields()
-		for i := 0; i < fields.Len(); i++ {
-			field := fields.Get(i)
-			if _, ok := out[field.JSONName()]; ok || field.HasPresence() {
-				continue
-			}
-			out[field.JSONName()] = ledgerJSONDefault(field)
-		}
-	}
-	return out, err
-}
-
-func ledgerJSONDefault(field protoreflect.FieldDescriptor) any {
-	if field.IsList() { return []any{} }
-	if field.IsMap() { return map[string]any{} }
-	if field.Message() != nil { return nil }
-	if field.Kind() == protoreflect.EnumKind {
-		if enum := field.Enum().Values().ByNumber(field.DefaultEnumValue().Number()); enum != nil { return string(enum.Name()) }
-	}
-	return field.Default().Interface()
-}
-
-func ledgerJSONField(field protoreflect.FieldDescriptor, value protoreflect.Value, options MarshalLedgerJSONOptions) (any, error) {
-	if field.IsMap() {
-		out := make(map[string]any)
-		var err error
-		value.Map().Range(func(key protoreflect.MapKey, item protoreflect.Value) bool {
-			out[ledgerJSONMapKey(key)], err = ledgerJSONScalar(field.MapValue(), item, options)
-			return err == nil
-		})
-		return out, err
-	}
-	if field.IsList() {
-		out := make([]any, value.List().Len())
-		for i := range out {
-			var err error
-			out[i], err = ledgerJSONScalar(field, value.List().Get(i), options)
-			if err != nil { return nil, err }
-		}
-		return out, nil
-	}
-	return ledgerJSONScalar(field, value, options)
-}
-
-func ledgerJSONScalar(field protoreflect.FieldDescriptor, value protoreflect.Value, options MarshalLedgerJSONOptions) (any, error) {
-	if field.Message() != nil {
-		if marshaler, ok := value.Message().Interface().(interface{ MarshalJSON() ([]byte, error) }); ok {
-			raw, err := marshaler.MarshalJSON()
-			if err != nil { return nil, err }
-			var nested any
-			if err := jsonv2.Unmarshal(raw, &nested); err != nil { return nil, err }
-			return nested, nil
-		}
-		if field.Message().FullName() == "google.protobuf.Timestamp" {
-			seconds := value.Message().Get(field.Message().Fields().ByName("seconds")).Int()
-			nanos := value.Message().Get(field.Message().Fields().ByName("nanos")).Int()
-			return time.Unix(seconds, nanos).UTC().Format(time.RFC3339Nano), nil
-		}
-		return ledgerJSONValue(value.Message(), options)
-	}
-	switch field.Kind() {
-	case protoreflect.BoolKind: return value.Bool(), nil
-	case protoreflect.StringKind:
-		if !utf8.ValidString(value.String()) { return nil, fmt.Errorf("invalid UTF-8 in protobuf string field %s", field.FullName()) }
-		return value.String(), nil
-	case protoreflect.BytesKind: return value.Bytes(), nil
-	case protoreflect.Int32Kind, protoreflect.Sint32Kind, protoreflect.Sfixed32Kind, protoreflect.Int64Kind, protoreflect.Sint64Kind, protoreflect.Sfixed64Kind: return value.Int(), nil
-	case protoreflect.Uint32Kind, protoreflect.Fixed32Kind, protoreflect.Uint64Kind, protoreflect.Fixed64Kind: return value.Uint(), nil
-	case protoreflect.FloatKind, protoreflect.DoubleKind: return value.Float(), nil
-	case protoreflect.EnumKind:
-		enum := field.Enum().Values().ByNumber(value.Enum())
-		if enum == nil { return int32(value.Enum()), nil }
-		return string(enum.Name()), nil
-	default: return nil, nil
-	}
-}
-
-func ledgerJSONMapKey(key protoreflect.MapKey) string {
-	switch value := key.Interface().(type) {
-	case string: return value
-	case bool: return strconv.FormatBool(value)
-	case uint32: return strconv.FormatUint(uint64(value), 10)
-	case uint64: return strconv.FormatUint(value, 10)
-	case int32: return strconv.FormatInt(int64(value), 10)
-	case int64: return strconv.FormatInt(value, 10)
-	default: return fmt.Sprint(value)
-	}
-}` */
-
 func emitMessage(g *protogen.GeneratedFile, message *protogen.Message) {
 	g.P("func (x *", message.GoIdent.GoName, ") MarshalJSON() ([]byte, error) {")
 	var oneof *protogen.Oneof
@@ -243,10 +98,10 @@ func emitStructReturn(g *protogen.GeneratedFile, message *protogen.Message, oneo
 			if selected == nil || field != selected {
 				continue
 			}
-			g.P("\t\t\t", field.GoName, ": ", jsonAssignment(g, "oneofValue."+field.GoName, field, true), ",")
+			g.P("\t\t\t", field.GoName, ": ", jsonAssignment(g, "oneofValue."+field.GoName, field), ",")
 			continue
 		}
-		g.P("\t\t\t", field.GoName, ": ", jsonAssignment(g, "x."+field.GoName, field, false), ",")
+		g.P("\t\t\t", field.GoName, ": ", jsonAssignment(g, "x."+field.GoName, field), ",")
 	}
 	g.P("\t\t})")
 }
@@ -303,7 +158,7 @@ func goJSONType(field protoreflect.FieldDescriptor, oneof bool) string {
 	}
 }
 
-func jsonAssignment(g *protogen.GeneratedFile, access string, field *protogen.Field, oneof bool) string {
+func jsonAssignment(g *protogen.GeneratedFile, access string, field *protogen.Field) string {
 	if field.Desc.IsList() {
 		if field.Desc.Kind() == protoreflect.EnumKind {
 			return listEnumJSONAssignment(g, access, field)
@@ -314,18 +169,18 @@ func jsonAssignment(g *protogen.GeneratedFile, access string, field *protogen.Fi
 		return "func() any { if " + access + " == nil { return map[string]any{} }; return " + access + " }()"
 	}
 	if field.Desc.Kind() == protoreflect.EnumKind {
-		return enumJSONAssignment(g, access, field, oneof)
+		return enumJSONAssignment(g, access, field)
 	}
-	return enumOrValue(access, field.Desc)
+	return access
 }
 
 func listEnumJSONAssignment(g *protogen.GeneratedFile, access string, field *protogen.Field) string {
 	expression := "func() any { if " + access + " == nil { return []any{} }; out := make([]any, len(" + access + ")); for i := range " + access + " { out[i] = "
-	expression += enumJSONAssignment(g, access+"[i]", field, false)
+	expression += enumJSONAssignment(g, access+"[i]", field)
 	return expression + "; }; return out }()"
 }
 
-func enumJSONAssignment(g *protogen.GeneratedFile, access string, field *protogen.Field, oneof bool) string {
+func enumJSONAssignment(g *protogen.GeneratedFile, access string, field *protogen.Field) string {
 	values := field.Desc.Enum().Values()
 	expression := "func() any {"
 	expression += " switch " + access + " {"
@@ -335,38 +190,6 @@ func enumJSONAssignment(g *protogen.GeneratedFile, access string, field *protoge
 	}
 	expression += " default: return int32(" + access + "); } }()"
 	return expression
-}
-
-func presenceCondition(access string, field protoreflect.FieldDescriptor) string {
-	if field.IsList() || field.IsMap() {
-		return "len(" + access + ") != 0"
-	}
-	if field.HasPresence() {
-		return access + " != nil"
-	}
-	switch field.Kind() {
-	case protoreflect.BoolKind:
-		return access
-	case protoreflect.StringKind:
-		return access + " != \"\""
-	case protoreflect.BytesKind:
-		return "len(" + access + ") != 0"
-	default:
-		return access + " != 0"
-	}
-}
-
-func enumOrValue(access string, field protoreflect.FieldDescriptor) string {
-	if field.IsList() || field.IsMap() {
-		return access
-	}
-	if field.Kind() == protoreflect.EnumKind {
-		return access + ".String()"
-	}
-	if field.IsMap() && field.MapValue().Kind() == protoreflect.EnumKind {
-		return access
-	}
-	return access
 }
 
 func collectMessages(message *protogen.Message, out *[]*protogen.Message) {
