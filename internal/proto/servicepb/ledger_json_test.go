@@ -1,6 +1,7 @@
 package servicepb
 
 import (
+	"bytes"
 	"encoding/json"
 	"testing"
 
@@ -15,7 +16,19 @@ func TestGeneratedMarshalJSONUsesCamelCaseAndNumericUint64(t *testing.T) {
 		CurrentVersion: 2,
 	})
 	require.NoError(t, err)
-	require.JSONEq(t, `{"ledger":"main","cursor":9007199254740993,"currentVersion":2,"pendingVersion":0}`, string(raw))
+	var got struct {
+		Ledger         string      `json:"ledger"`
+		Cursor         json.Number `json:"cursor"`
+		CurrentVersion uint64      `json:"currentVersion"`
+		PendingVersion uint64      `json:"pendingVersion"`
+	}
+	decoder := json.NewDecoder(bytes.NewReader(raw))
+	decoder.UseNumber()
+	require.NoError(t, decoder.Decode(&got))
+	require.Equal(t, "main", got.Ledger)
+	require.Equal(t, "9007199254740993", got.Cursor.String())
+	require.EqualValues(t, 2, got.CurrentVersion)
+	require.EqualValues(t, 0, got.PendingVersion)
 }
 
 func TestListNumscriptVersionsJSONProjectsNestedEntries(t *testing.T) {
