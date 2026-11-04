@@ -22368,7 +22368,7 @@ const file_common_proto_rawDesc = "" +
 	"\x15PersistedClusterState\x12-\n" +
 	"\x06config\x18\x01 \x01(\v2\x15.common.ClusterConfigR\x06config\x12\x1f\n" +
 	"\vcache_epoch\x18\x02 \x01(\x06R\n" +
-	"cacheEpoch\"\xc3\x03\n" +
+	"cacheEpoch\"\xc9\x03\n" +
 	"\rClusterPolicy\x12\x1a\n" +
 	"\brevision\x18\x01 \x01(\x06R\brevision\x124\n" +
 	"\x16idempotency_ttl_micros\x18\x02 \x01(\x06R\x14idempotencyTtlMicros\x124\n" +
@@ -22377,7 +22377,7 @@ const file_common_proto_rawDesc = "" +
 	"\x16metadata_max_key_bytes\x18\x05 \x01(\x06R\x13metadataMaxKeyBytes\x127\n" +
 	"\x18metadata_max_value_bytes\x18\x06 \x01(\x06R\x15metadataMaxValueBytes\x129\n" +
 	"\x19metadata_max_entity_bytes\x18\a \x01(\x06R\x16metadataMaxEntityBytes\x12;\n" +
-	"\x1ametadata_max_command_bytes\x18\b \x01(\x06R\x17metadataMaxCommandBytes\"d\n" +
+	"\x1ametadata_max_command_bytes\x18\b \x01(\x06R\x17metadataMaxCommandBytes:\x04\xd8\xd5\"\x01\"d\n" +
 	"\x17CreatedPreparedQueryLog\x12\x16\n" +
 	"\x06ledger\x18\x01 \x01(\tR\x06ledger\x12+\n" +
 	"\x05query\x18\x02 \x01(\v2\x15.common.PreparedQueryR\x05query:\x04\xd8\xd5\"\x01\"\xbd\x01\n" +

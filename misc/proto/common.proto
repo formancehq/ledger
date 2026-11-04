@@ -528,6 +528,7 @@ message PersistedClusterState {
 // Numscript program produces against them: a node-local limit would make one
 // committed entry apply differently per node.
 message ClusterPolicy {
+	option (ledger_json) = true;
   fixed64 revision = 1;
   fixed64 idempotency_ttl_micros = 2;  // 0 means never expires
   fixed64 query_checkpoint_limit = 3;  // must be >= 1

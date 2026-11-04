@@ -85,3 +85,14 @@ func TestLedgerInfoJSONMirrorProgress(t *testing.T) {
 		})
 	}
 }
+
+func TestSetClusterPolicyLogJSONProjectsNestedPolicy(t *testing.T) {
+	data, err := json.Marshal(&SetClusterPolicyLog{Policy: &ClusterPolicy{
+		Revision:                7,
+		IdempotencyTtlMicros:    86_400_000_000,
+		MetadataMaxKeyBytes:     256,
+		MetadataMaxCommandBytes: 16_384,
+	}})
+	require.NoError(t, err)
+	require.JSONEq(t, `{"policy":{"revision":7,"idempotencyTtlMicros":86400000000,"queryCheckpointLimit":0,"metadataMaxEntriesPerEntity":0,"metadataMaxKeyBytes":256,"metadataMaxValueBytes":0,"metadataMaxEntityBytes":0,"metadataMaxCommandBytes":16384}}`, string(data))
+}

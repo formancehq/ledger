@@ -313,6 +313,28 @@ func (x *ClusterConfig) MarshalJSON() ([]byte, error) {
 	})
 }
 
+func (x *ClusterPolicy) MarshalJSON() ([]byte, error) {
+	return jsonv2.Marshal(struct {
+		Revision                    uint64 `json:"revision"`
+		IdempotencyTtlMicros        uint64 `json:"idempotencyTtlMicros"`
+		QueryCheckpointLimit        uint64 `json:"queryCheckpointLimit"`
+		MetadataMaxEntriesPerEntity uint64 `json:"metadataMaxEntriesPerEntity"`
+		MetadataMaxKeyBytes         uint64 `json:"metadataMaxKeyBytes"`
+		MetadataMaxValueBytes       uint64 `json:"metadataMaxValueBytes"`
+		MetadataMaxEntityBytes      uint64 `json:"metadataMaxEntityBytes"`
+		MetadataMaxCommandBytes     uint64 `json:"metadataMaxCommandBytes"`
+	}{
+		Revision:                    x.Revision,
+		IdempotencyTtlMicros:        x.IdempotencyTtlMicros,
+		QueryCheckpointLimit:        x.QueryCheckpointLimit,
+		MetadataMaxEntriesPerEntity: x.MetadataMaxEntriesPerEntity,
+		MetadataMaxKeyBytes:         x.MetadataMaxKeyBytes,
+		MetadataMaxValueBytes:       x.MetadataMaxValueBytes,
+		MetadataMaxEntityBytes:      x.MetadataMaxEntityBytes,
+		MetadataMaxCommandBytes:     x.MetadataMaxCommandBytes,
+	})
+}
+
 func (x *CreatedPreparedQueryLog) MarshalJSON() ([]byte, error) {
 	return jsonv2.Marshal(struct {
 		Ledger string `json:"ledger"`
