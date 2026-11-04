@@ -260,7 +260,8 @@ const (
 	SubPLPreparedQuery    byte = 0x02
 	SubPLMirrorSourceHead byte = 0x03
 	SubPLMirrorStatus     byte = 0x04
-	SubPLKV               byte = 0x05
+	// 0x05 is reserved for retired MirrorCursor rows that may survive an RC upgrade.
+	SubPLKV byte = 0x06
 )
 
 // History sub-prefixes (zone 0x04).
