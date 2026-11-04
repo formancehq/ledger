@@ -42,13 +42,17 @@ This explicit boundary prevents PostgreSQL syntax from being inferred for every
 annotated URL and keeps connector policy outside generic protobuf traversal.
 A protobuf format option is unnecessary for the current six fields.
 
-PostgreSQL uses URL form, including empty-host/socket connections. Legacy
-keyword DSNs are fully masked rather than scanned. No driver parser loads
+PostgreSQL uses URL form, including empty-host/socket connections and port-only
+authorities. Legacy keyword DSNs are fully masked rather than scanned. No driver parser loads
 ambient credentials, service files or TLS keys. Admission and projection share
 the lexical parser in `internal/pkg/connectionurl`; connector policies choose
 the supported schemes and whether an empty host is permitted.
 NATS splits server lists before parsing and masks passwordless token userinfo
-on every server. ClickHouse keeps comma-separated hosts in one authority.
+on every server. Default-host and port-only URLs such as `nats://:4222`
+retain their safe authority so operator reconciliation does not mistake an
+unchanged persisted sink for configuration drift. Pathless empty authorities
+retain the explicit `://` form. ClickHouse keeps comma-separated hosts in one
+authority.
 HTTP(S), including ClickHouse HTTP transport and proxy URLs, masks passwordless
 userinfo tokens. Password-bearing userinfo retains its username and replaces
 the password with `xxxxx`; native ClickHouse and PostgreSQL retain non-secret

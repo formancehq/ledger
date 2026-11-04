@@ -15,7 +15,7 @@ func validateOrderSinkURL(order *raftcmdpb.Order) domain.Describable {
 	cfg := add.GetConfig()
 	if nats := cfg.GetNats(); nats != nil {
 		for server := range strings.SplitSeq(nats.GetUrl(), ",") {
-			if _, ok := connectionurl.Parse(strings.TrimSpace(server), false, "nats", "tls", "ws", "wss"); !ok {
+			if _, ok := connectionurl.Parse(strings.TrimSpace(server), true, "nats", "tls", "ws", "wss"); !ok {
 				return ErrSinkNATSURLInvalid
 			}
 		}

@@ -125,7 +125,12 @@ raw input or credential-bearing URL parser errors; exercise the real admission
 path and require the original configuration to remain unchanged. Exercise real
 `Redact` descriptors and registered public boundaries, not a replacement parser.
 
-Preserve PostgreSQL URL/socket controls and full masking of legacy keyword
+Preserve PostgreSQL URL/socket controls, including a port-only authority with a
+query-selected socket host, and NATS default-host/port-only URLs. Require safe
+port-only NATS values to survive byte-for-byte so operator equality does not
+remove unchanged persisted sinks; retain token/password masking independently.
+Pathless empty authorities must retain the explicit URL form.
+Preserve full masking of legacy keyword
 DSNs, including duplicate/escaped passwords and sslpassword; NATS mixed-scheme lists and bare tokens; ClickHouse
 multi-host authorities, HTTP transport and encoded HTTP proxy credentials;
 HTTP(S) passwordless userinfo; malformed URLs/queries; unsupported cross-format

@@ -76,5 +76,12 @@ func redactConnectionURL(raw string, policy urlPolicy, depth int) (string, bool)
 		}
 	}
 
-	return parsed.String(), true
+	result := parsed.String()
+	// URL.String omits an empty authority on pathless URLs (nats:// becomes
+	// nats:). Keep the explicit URL form accepted by admission and drivers.
+	if !strings.HasPrefix(result, parsed.Scheme+"://") {
+		result = strings.Replace(result, ":", "://", 1)
+	}
+
+	return result, true
 }

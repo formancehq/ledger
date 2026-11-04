@@ -123,8 +123,8 @@ legacy non-URL values preserves confidentiality without that parser.
 
 | Field | Accepted form |
 | --- | --- |
-| `mirrorSource.postgres.dsn` | `postgres://` or `postgresql://`; socket/default-host URLs such as `postgresql:///ledger?host=%2Ftmp` remain valid |
-| `sink.nats.url` | Comma-separated server URLs, each with `nats://`, `tls://`, `ws://` or `wss://` and a hostname; surrounding entry whitespace is allowed |
+| `mirrorSource.postgres.dsn` | `postgres://` or `postgresql://`; socket/default-host URLs such as `postgresql:///ledger?host=%2Ftmp` and port-only authorities such as `postgres://:5433/db?host=/var/run/postgresql` remain valid |
+| `sink.nats.url` | Comma-separated server URLs, each with `nats://`, `tls://`, `ws://` or `wss://`; empty/default hosts, including `nats://:4222`, and surrounding entry whitespace are allowed |
 | `sink.clickhouse.dsn` | `clickhouse://`, `http://` or `https://` with a hostname; comma-separated hosts remain one URL authority |
 
 The shared lexical parser rejects missing schemes, opaque URLs, invalid escapes

@@ -70,6 +70,13 @@ func TestRedactConnectionFormats(t *testing.T) {
 		raw, want string
 	}{
 		{"postgres socket", "common.PostgresMirrorSourceConfig.dsn", "postgresql:///ledger?host=%2Ftmp&password=canary&sslmode=disable", "postgresql:///ledger?host=%2Ftmp&password=xxxxx&sslmode=disable"},
+		{"postgres port only socket", "common.PostgresMirrorSourceConfig.dsn", "postgres://:5433/db?host=/var/run/postgresql&password=canary", "postgres://:5433/db?host=%2Fvar%2Frun%2Fpostgresql&password=xxxxx"},
+		{"postgres port only default host", "common.PostgresMirrorSourceConfig.dsn", "postgresql://alice:canary@:5433/db", "postgresql://alice:xxxxx@:5433/db"},
+		{"NATS default host and port", "common.NatsSinkConfig.url", "nats://", "nats://"},
+		{"NATS default host fragment", "common.NatsSinkConfig.url", "nats://#https://control", "nats://#https://control"},
+		{"NATS port only", "common.NatsSinkConfig.url", "nats://:4222", "nats://:4222"},
+		{"NATS port only password", "common.NatsSinkConfig.url", "nats://alice:canary@:4222", "nats://alice:xxxxx@:4222"},
+		{"NATS port only token", "common.NatsSinkConfig.url", "nats://canary@:4222", "nats://xxxxx@:4222"},
 		{"postgres username", "common.PostgresMirrorSourceConfig.dsn", "postgres://alice@db/ledger", "postgres://alice@db/ledger"},
 		{"keyword duplicates and escapes", "common.PostgresMirrorSourceConfig.dsn", `host=db password='first canary' password=second\ canary sslpassword='third\'canary' dbname=ledger`, Marker},
 		{"keyword malformed", "common.PostgresMirrorSourceConfig.dsn", "host=db password='canary", Marker},

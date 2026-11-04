@@ -7,7 +7,7 @@ func redactNATS(raw string) string {
 	servers := strings.Split(raw, ",")
 	for i, server := range servers {
 		result, ok := redactConnectionURL(server, urlPolicy{
-			schemes: []string{"nats", "tls", "ws", "wss"}, maskBareUserinfo: true,
+			schemes: []string{"nats", "tls", "ws", "wss"}, maskBareUserinfo: true, allowEmptyHost: true,
 		}, 0)
 		if !ok {
 			result = Marker
