@@ -9103,9 +9103,9 @@ const file_bucket_proto_rawDesc = "" +
 	"\x15GetTransactionRequest\x12\x16\n" +
 	"\x06ledger\x18\x01 \x01(\tR\x06ledger\x12%\n" +
 	"\x0etransaction_id\x18\x02 \x01(\x06R\rtransactionId\x12#\n" +
-	"\rcheckpoint_id\x18\x03 \x01(\x06R\fcheckpointId\"O\n" +
+	"\rcheckpoint_id\x18\x03 \x01(\x06R\fcheckpointId\"U\n" +
 	"\x16GetTransactionResponse\x125\n" +
-	"\vtransaction\x18\x01 \x01(\v2\x13.common.TransactionR\vtransaction\"`\n" +
+	"\vtransaction\x18\x01 \x01(\v2\x13.common.TransactionR\vtransaction:\x04\xe8\xd5\"\x01\"`\n" +
 	"\x17ListTransactionsRequest\x12\x16\n" +
 	"\x06ledger\x18\x01 \x01(\tR\x06ledger\x12-\n" +
 	"\aoptions\x18\x02 \x01(\v2\x13.common.ListOptionsR\aoptions\"\\\n" +
@@ -9300,7 +9300,7 @@ const file_bucket_proto_rawDesc = "" +
 	"\x13ResponseSigningInfo\x12\x1d\n" +
 	"\n" +
 	"public_key\x18\x01 \x01(\fR\tpublicKey\x12\x15\n" +
-	"\x06key_id\x18\x02 \x01(\tR\x05keyId\"\xf3\x04\n" +
+	"\x06key_id\x18\x02 \x01(\tR\x05keyId\"\xf9\x04\n" +
 	"\x18CreateTransactionPayload\x12+\n" +
 	"\bpostings\x18\x01 \x03(\v2\x0f.common.PostingR\bpostings\x12&\n" +
 	"\x06script\x18\x02 \x01(\v2\x0e.common.ScriptR\x06script\x12/\n" +
@@ -9315,7 +9315,7 @@ const file_bucket_proto_rawDesc = "" +
 	"\x05value\x18\x02 \x01(\v2\x15.common.MetadataValueR\x05value:\x028\x01\x1aW\n" +
 	"\x14AccountMetadataEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12)\n" +
-	"\x05value\x18\x02 \x01(\v2\x13.common.MetadataMapR\x05value:\x028\x01\"\xa3\x02\n" +
+	"\x05value\x18\x02 \x01(\v2\x13.common.MetadataMapR\x05value:\x028\x01:\x04\xe8\xd5\"\x01\"\xa9\x02\n" +
 	"\x18RevertTransactionPayload\x12%\n" +
 	"\x0etransaction_id\x18\x01 \x01(\x06R\rtransactionId\x12\x14\n" +
 	"\x05force\x18\x02 \x01(\bR\x05force\x12*\n" +
@@ -9323,7 +9323,7 @@ const file_bucket_proto_rawDesc = "" +
 	"\bmetadata\x18\x04 \x03(\v2..ledger.RevertTransactionPayload.MetadataEntryR\bmetadata\x1aR\n" +
 	"\rMetadataEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12+\n" +
-	"\x05value\x18\x02 \x01(\v2\x15.common.MetadataValueR\x05value:\x028\x01\"\xf7\x04\n" +
+	"\x05value\x18\x02 \x01(\v2\x15.common.MetadataValueR\x05value:\x028\x01:\x04\xe8\xd5\"\x01\"\xf7\x04\n" +
 	"\fLedgerAction\x12X\n" +
 	"\x12create_transaction\x18\x01 \x01(\v2 .ledger.CreateTransactionPayloadB\x05\xca\xd5\"\x01\x05H\x00R\x11createTransaction\x12@\n" +
 	"\fadd_metadata\x18\x02 \x01(\v2\x1b.common.SaveMetadataCommandH\x00R\vaddMetadata\x12X\n" +
@@ -9809,7 +9809,7 @@ const file_bucket_proto_rawDesc = "" +
 	"\x15ListNumscriptVersions\x12$.ledger.ListNumscriptVersionsRequest\x1a%.ledger.ListNumscriptVersionsResponse\"\x06\xd2\xd5\"\x02\x10\v\x12Q\n" +
 	"\fInspectIndex\x12\x1b.ledger.InspectIndexRequest\x1a\x1c.ledger.InspectIndexResponse\"\x06\xd2\xd5\"\x02\x10\x01\x12B\n" +
 	"\aBarrier\x12\x16.ledger.BarrierRequest\x1a\x17.ledger.BarrierResponse\"\x06\xd2\xd5\"\x02\x10\t:p\n" +
-	"\x19allowed_skippable_reasons\x12\x1d.google.protobuf.FieldOptions\x18٪\x04 \x03(\x0e2\x13.common.ErrorReasonR\x17allowedSkippableReasonsB:Z8github.com/formancehq/ledger/v3/internal/proto/servicepbb\x06proto3"
+	"\x19allowed_skippable_reasons\x12\x1d.google.protobuf.FieldOptions\x18٪\x04 \x03(\x0e2\x13.common.ErrorReasonR\x17allowedSkippableReasonsB>\xe0\xd5\"\x01Z8github.com/formancehq/ledger/v3/internal/proto/servicepbb\x06proto3"
 
 var (
 	file_bucket_proto_rawDescOnce sync.Once

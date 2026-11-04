@@ -9,6 +9,1501 @@ import (
 
 import jsonv2 "encoding/json/v2"
 
+func (x *GetAccountRequest) MarshalJSON() ([]byte, error) {
+	return jsonv2.Marshal(struct {
+		Ledger         string `json:"ledger"`
+		Address        string `json:"address"`
+		CheckpointId   uint64 `json:"checkpointId"`
+		CollapseColors bool   `json:"collapseColors"`
+	}{
+		Ledger:         x.Ledger,
+		Address:        x.Address,
+		CheckpointId:   x.CheckpointId,
+		CollapseColors: x.CollapseColors,
+	})
+}
+
+func (x *GetTransactionRequest) MarshalJSON() ([]byte, error) {
+	return jsonv2.Marshal(struct {
+		Ledger        string `json:"ledger"`
+		TransactionId uint64 `json:"transactionId"`
+		CheckpointId  uint64 `json:"checkpointId"`
+	}{
+		Ledger:        x.Ledger,
+		TransactionId: x.TransactionId,
+		CheckpointId:  x.CheckpointId,
+	})
+}
+
+func (x *ListTransactionsRequest) MarshalJSON() ([]byte, error) {
+	return jsonv2.Marshal(struct {
+		Ledger  string `json:"ledger"`
+		Options any    `json:"options,omitempty,omitzero"`
+	}{
+		Ledger:  x.Ledger,
+		Options: x.Options,
+	})
+}
+
+func (x *ListAccountsRequest) MarshalJSON() ([]byte, error) {
+	return jsonv2.Marshal(struct {
+		Ledger  string `json:"ledger"`
+		Options any    `json:"options,omitempty,omitzero"`
+	}{
+		Ledger:  x.Ledger,
+		Options: x.Options,
+	})
+}
+
+func (x *CreateLedgerRequest) MarshalJSON() ([]byte, error) {
+	return jsonv2.Marshal(struct {
+		Name                   string `json:"name"`
+		InitialSchema          any    `json:"initialSchema"`
+		Mode                   any    `json:"mode"`
+		MirrorSource           any    `json:"mirrorSource,omitempty,omitzero"`
+		AccountTypes           any    `json:"accountTypes"`
+		DefaultEnforcementMode any    `json:"defaultEnforcementMode"`
+		Metadata               any    `json:"metadata"`
+	}{
+		Name: x.Name,
+		InitialSchema: func() any {
+			if x.InitialSchema == nil {
+				return []any{}
+			}
+			return x.InitialSchema
+		}(),
+		Mode: func() any {
+			switch x.Mode {
+			case commonpb.LedgerMode_LEDGER_MODE_NORMAL:
+				return "LEDGER_MODE_NORMAL"
+			case commonpb.LedgerMode_LEDGER_MODE_MIRROR:
+				return "LEDGER_MODE_MIRROR"
+			default:
+				return int32(x.Mode)
+			}
+		}(),
+		MirrorSource: x.MirrorSource,
+		AccountTypes: func() any {
+			if x.AccountTypes == nil {
+				return map[string]any{}
+			}
+			return x.AccountTypes
+		}(),
+		DefaultEnforcementMode: func() any {
+			switch x.DefaultEnforcementMode {
+			case commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT:
+				return "CHART_ENFORCEMENT_STRICT"
+			case commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_AUDIT:
+				return "CHART_ENFORCEMENT_AUDIT"
+			default:
+				return int32(x.DefaultEnforcementMode)
+			}
+		}(),
+		Metadata: func() any {
+			if x.Metadata == nil {
+				return map[string]any{}
+			}
+			return x.Metadata
+		}(),
+	})
+}
+
+func (x *DeleteLedgerRequest) MarshalJSON() ([]byte, error) {
+	return jsonv2.Marshal(struct {
+		Name string `json:"name"`
+	}{
+		Name: x.Name,
+	})
+}
+
+func (x *DeleteLedgerResponse) MarshalJSON() ([]byte, error) {
+	return jsonv2.Marshal(struct {
+	}{})
+}
+
+func (x *ListLedgersRequest) MarshalJSON() ([]byte, error) {
+	return jsonv2.Marshal(struct {
+		Options any `json:"options,omitempty,omitzero"`
+	}{
+		Options: x.Options,
+	})
+}
+
+func (x *GetLedgerRequest) MarshalJSON() ([]byte, error) {
+	return jsonv2.Marshal(struct {
+		Ledger string `json:"ledger"`
+		Read   any    `json:"read,omitempty,omitzero"`
+	}{
+		Ledger: x.Ledger,
+		Read:   x.Read,
+	})
+}
+
+func (x *ApplyRequest) MarshalJSON() ([]byte, error) {
+	switch oneofValue := x.Variant.(type) {
+	case *ApplyRequest_Unsigned:
+		return jsonv2.Marshal(struct {
+			Unsigned                any  `json:"unsigned"`
+			ForwardedCallerSnapshot any  `json:"forwardedCallerSnapshot,omitempty,omitzero"`
+			SkipResponse            bool `json:"skipResponse"`
+		}{
+			Unsigned:                oneofValue.Unsigned,
+			ForwardedCallerSnapshot: x.ForwardedCallerSnapshot,
+			SkipResponse:            x.SkipResponse,
+		})
+	case *ApplyRequest_Signed:
+		return jsonv2.Marshal(struct {
+			Signed                  any  `json:"signed"`
+			ForwardedCallerSnapshot any  `json:"forwardedCallerSnapshot,omitempty,omitzero"`
+			SkipResponse            bool `json:"skipResponse"`
+		}{
+			Signed:                  oneofValue.Signed,
+			ForwardedCallerSnapshot: x.ForwardedCallerSnapshot,
+			SkipResponse:            x.SkipResponse,
+		})
+	default:
+		return jsonv2.Marshal(struct {
+			ForwardedCallerSnapshot any  `json:"forwardedCallerSnapshot,omitempty,omitzero"`
+			SkipResponse            bool `json:"skipResponse"`
+		}{
+			ForwardedCallerSnapshot: x.ForwardedCallerSnapshot,
+			SkipResponse:            x.SkipResponse,
+		})
+	}
+}
+
+func (x *ApplyBatch) MarshalJSON() ([]byte, error) {
+	return jsonv2.Marshal(struct {
+		Requests       any    `json:"requests"`
+		IdempotencyKey string `json:"idempotencyKey"`
+	}{
+		Requests: func() any {
+			if x.Requests == nil {
+				return []any{}
+			}
+			return x.Requests
+		}(),
+		IdempotencyKey: x.IdempotencyKey,
+	})
+}
+
+func (x *ApplyResponse) MarshalJSON() ([]byte, error) {
+	return jsonv2.Marshal(struct {
+		Logs any `json:"logs"`
+	}{
+		Logs: func() any {
+			if x.Logs == nil {
+				return []any{}
+			}
+			return x.Logs
+		}(),
+	})
+}
+
+func (x *Request) MarshalJSON() ([]byte, error) {
+	switch oneofValue := x.Type.(type) {
+	case *Request_Apply:
+		return jsonv2.Marshal(struct {
+			Apply any `json:"apply"`
+		}{
+			Apply: oneofValue.Apply,
+		})
+	case *Request_CreateLedger:
+		return jsonv2.Marshal(struct {
+			CreateLedger any `json:"createLedger"`
+		}{
+			CreateLedger: oneofValue.CreateLedger,
+		})
+	case *Request_DeleteLedger:
+		return jsonv2.Marshal(struct {
+			DeleteLedger any `json:"deleteLedger"`
+		}{
+			DeleteLedger: oneofValue.DeleteLedger,
+		})
+	case *Request_RegisterSigningKey:
+		return jsonv2.Marshal(struct {
+			RegisterSigningKey any `json:"registerSigningKey"`
+		}{
+			RegisterSigningKey: oneofValue.RegisterSigningKey,
+		})
+	case *Request_RevokeSigningKey:
+		return jsonv2.Marshal(struct {
+			RevokeSigningKey any `json:"revokeSigningKey"`
+		}{
+			RevokeSigningKey: oneofValue.RevokeSigningKey,
+		})
+	case *Request_SetSigningConfig:
+		return jsonv2.Marshal(struct {
+			SetSigningConfig any `json:"setSigningConfig"`
+		}{
+			SetSigningConfig: oneofValue.SetSigningConfig,
+		})
+	case *Request_AddEventsSink:
+		return jsonv2.Marshal(struct {
+			AddEventsSink any `json:"addEventsSink"`
+		}{
+			AddEventsSink: oneofValue.AddEventsSink,
+		})
+	case *Request_RemoveEventsSink:
+		return jsonv2.Marshal(struct {
+			RemoveEventsSink any `json:"removeEventsSink"`
+		}{
+			RemoveEventsSink: oneofValue.RemoveEventsSink,
+		})
+	case *Request_SetMaintenanceMode:
+		return jsonv2.Marshal(struct {
+			SetMaintenanceMode any `json:"setMaintenanceMode"`
+		}{
+			SetMaintenanceMode: oneofValue.SetMaintenanceMode,
+		})
+	case *Request_SetMetadataFieldType:
+		return jsonv2.Marshal(struct {
+			SetMetadataFieldType any `json:"setMetadataFieldType"`
+		}{
+			SetMetadataFieldType: oneofValue.SetMetadataFieldType,
+		})
+	case *Request_RemoveMetadataFieldType:
+		return jsonv2.Marshal(struct {
+			RemoveMetadataFieldType any `json:"removeMetadataFieldType"`
+		}{
+			RemoveMetadataFieldType: oneofValue.RemoveMetadataFieldType,
+		})
+	case *Request_PromoteLedger:
+		return jsonv2.Marshal(struct {
+			PromoteLedger any `json:"promoteLedger"`
+		}{
+			PromoteLedger: oneofValue.PromoteLedger,
+		})
+	case *Request_CreatePreparedQuery:
+		return jsonv2.Marshal(struct {
+			CreatePreparedQuery any `json:"createPreparedQuery"`
+		}{
+			CreatePreparedQuery: oneofValue.CreatePreparedQuery,
+		})
+	case *Request_UpdatePreparedQuery:
+		return jsonv2.Marshal(struct {
+			UpdatePreparedQuery any `json:"updatePreparedQuery"`
+		}{
+			UpdatePreparedQuery: oneofValue.UpdatePreparedQuery,
+		})
+	case *Request_DeletePreparedQuery:
+		return jsonv2.Marshal(struct {
+			DeletePreparedQuery any `json:"deletePreparedQuery"`
+		}{
+			DeletePreparedQuery: oneofValue.DeletePreparedQuery,
+		})
+	case *Request_CreateIndex:
+		return jsonv2.Marshal(struct {
+			CreateIndex any `json:"createIndex"`
+		}{
+			CreateIndex: oneofValue.CreateIndex,
+		})
+	case *Request_DropIndex:
+		return jsonv2.Marshal(struct {
+			DropIndex any `json:"dropIndex"`
+		}{
+			DropIndex: oneofValue.DropIndex,
+		})
+	case *Request_SaveNumscript:
+		return jsonv2.Marshal(struct {
+			SaveNumscript any `json:"saveNumscript"`
+		}{
+			SaveNumscript: oneofValue.SaveNumscript,
+		})
+	case *Request_AddAccountType:
+		return jsonv2.Marshal(struct {
+			AddAccountType any `json:"addAccountType"`
+		}{
+			AddAccountType: oneofValue.AddAccountType,
+		})
+	case *Request_RemoveAccountType:
+		return jsonv2.Marshal(struct {
+			RemoveAccountType any `json:"removeAccountType"`
+		}{
+			RemoveAccountType: oneofValue.RemoveAccountType,
+		})
+	case *Request_SetDefaultEnforcementMode:
+		return jsonv2.Marshal(struct {
+			SetDefaultEnforcementMode any `json:"setDefaultEnforcementMode"`
+		}{
+			SetDefaultEnforcementMode: oneofValue.SetDefaultEnforcementMode,
+		})
+	case *Request_CreateQueryCheckpoint:
+		return jsonv2.Marshal(struct {
+			CreateQueryCheckpoint any `json:"createQueryCheckpoint"`
+		}{
+			CreateQueryCheckpoint: oneofValue.CreateQueryCheckpoint,
+		})
+	case *Request_DeleteQueryCheckpoint:
+		return jsonv2.Marshal(struct {
+			DeleteQueryCheckpoint any `json:"deleteQueryCheckpoint"`
+		}{
+			DeleteQueryCheckpoint: oneofValue.DeleteQueryCheckpoint,
+		})
+	case *Request_SetQueryCheckpointSchedule:
+		return jsonv2.Marshal(struct {
+			SetQueryCheckpointSchedule any `json:"setQueryCheckpointSchedule"`
+		}{
+			SetQueryCheckpointSchedule: oneofValue.SetQueryCheckpointSchedule,
+		})
+	case *Request_DeleteQueryCheckpointSchedule:
+		return jsonv2.Marshal(struct {
+			DeleteQueryCheckpointSchedule any `json:"deleteQueryCheckpointSchedule"`
+		}{
+			DeleteQueryCheckpointSchedule: oneofValue.DeleteQueryCheckpointSchedule,
+		})
+	case *Request_SaveLedgerMetadata:
+		return jsonv2.Marshal(struct {
+			SaveLedgerMetadata any `json:"saveLedgerMetadata"`
+		}{
+			SaveLedgerMetadata: oneofValue.SaveLedgerMetadata,
+		})
+	case *Request_DeleteLedgerMetadata:
+		return jsonv2.Marshal(struct {
+			DeleteLedgerMetadata any `json:"deleteLedgerMetadata"`
+		}{
+			DeleteLedgerMetadata: oneofValue.DeleteLedgerMetadata,
+		})
+	default:
+		return jsonv2.Marshal(struct {
+		}{})
+	}
+}
+
+func (x *CreateQueryCheckpointRequest) MarshalJSON() ([]byte, error) {
+	return jsonv2.Marshal(struct {
+	}{})
+}
+
+func (x *DeleteQueryCheckpointRequest) MarshalJSON() ([]byte, error) {
+	return jsonv2.Marshal(struct {
+		CheckpointId uint64 `json:"checkpointId"`
+	}{
+		CheckpointId: x.CheckpointId,
+	})
+}
+
+func (x *PromoteLedgerRequest) MarshalJSON() ([]byte, error) {
+	return jsonv2.Marshal(struct {
+		Ledger string `json:"ledger"`
+	}{
+		Ledger: x.Ledger,
+	})
+}
+
+func (x *SaveLedgerMetadataRequest) MarshalJSON() ([]byte, error) {
+	return jsonv2.Marshal(struct {
+		Ledger   string `json:"ledger"`
+		Metadata any    `json:"metadata"`
+	}{
+		Ledger: x.Ledger,
+		Metadata: func() any {
+			if x.Metadata == nil {
+				return map[string]any{}
+			}
+			return x.Metadata
+		}(),
+	})
+}
+
+func (x *DeleteLedgerMetadataRequest) MarshalJSON() ([]byte, error) {
+	return jsonv2.Marshal(struct {
+		Ledger string `json:"ledger"`
+		Key    string `json:"key"`
+	}{
+		Ledger: x.Ledger,
+		Key:    x.Key,
+	})
+}
+
+func (x *AddEventsSinkRequest) MarshalJSON() ([]byte, error) {
+	return jsonv2.Marshal(struct {
+		Config any `json:"config,omitempty,omitzero"`
+	}{
+		Config: x.Config,
+	})
+}
+
+func (x *RemoveEventsSinkRequest) MarshalJSON() ([]byte, error) {
+	return jsonv2.Marshal(struct {
+		Name         string `json:"name"`
+		ControllerId string `json:"controllerId"`
+	}{
+		Name:         x.Name,
+		ControllerId: x.ControllerId,
+	})
+}
+
+func (x *RegisterSigningKeyRequest) MarshalJSON() ([]byte, error) {
+	return jsonv2.Marshal(struct {
+		KeyId     string `json:"keyId"`
+		PublicKey []byte `json:"publicKey"`
+	}{
+		KeyId:     x.KeyId,
+		PublicKey: x.PublicKey,
+	})
+}
+
+func (x *RevokeSigningKeyRequest) MarshalJSON() ([]byte, error) {
+	return jsonv2.Marshal(struct {
+		KeyId   string `json:"keyId"`
+		Cascade bool   `json:"cascade"`
+	}{
+		KeyId:   x.KeyId,
+		Cascade: x.Cascade,
+	})
+}
+
+func (x *SetSigningConfigRequest) MarshalJSON() ([]byte, error) {
+	return jsonv2.Marshal(struct {
+		RequireSignatures bool `json:"requireSignatures"`
+	}{
+		RequireSignatures: x.RequireSignatures,
+	})
+}
+
+func (x *ListSigningKeysRequest) MarshalJSON() ([]byte, error) {
+	return jsonv2.Marshal(struct {
+		Options any `json:"options,omitempty,omitzero"`
+	}{
+		Options: x.Options,
+	})
+}
+
+func (x *SetMaintenanceModeRequest) MarshalJSON() ([]byte, error) {
+	return jsonv2.Marshal(struct {
+		Enabled bool `json:"enabled"`
+	}{
+		Enabled: x.Enabled,
+	})
+}
+
+func (x *SetMetadataFieldTypeRequest) MarshalJSON() ([]byte, error) {
+	return jsonv2.Marshal(struct {
+		Ledger     string `json:"ledger"`
+		TargetType any    `json:"targetType"`
+		Key        string `json:"key"`
+		Type       any    `json:"type"`
+	}{
+		Ledger: x.Ledger,
+		TargetType: func() any {
+			switch x.TargetType {
+			case commonpb.TargetType_TARGET_TYPE_ACCOUNT:
+				return "TARGET_TYPE_ACCOUNT"
+			case commonpb.TargetType_TARGET_TYPE_TRANSACTION:
+				return "TARGET_TYPE_TRANSACTION"
+			case commonpb.TargetType_TARGET_TYPE_LEDGER:
+				return "TARGET_TYPE_LEDGER"
+			default:
+				return int32(x.TargetType)
+			}
+		}(),
+		Key: x.Key,
+		Type: func() any {
+			switch x.Type {
+			case commonpb.MetadataType_METADATA_TYPE_STRING:
+				return "METADATA_TYPE_STRING"
+			case commonpb.MetadataType_METADATA_TYPE_INT64:
+				return "METADATA_TYPE_INT64"
+			case commonpb.MetadataType_METADATA_TYPE_BOOL:
+				return "METADATA_TYPE_BOOL"
+			case commonpb.MetadataType_METADATA_TYPE_UINT64:
+				return "METADATA_TYPE_UINT64"
+			case commonpb.MetadataType_METADATA_TYPE_INT8:
+				return "METADATA_TYPE_INT8"
+			case commonpb.MetadataType_METADATA_TYPE_INT16:
+				return "METADATA_TYPE_INT16"
+			case commonpb.MetadataType_METADATA_TYPE_INT32:
+				return "METADATA_TYPE_INT32"
+			case commonpb.MetadataType_METADATA_TYPE_UINT8:
+				return "METADATA_TYPE_UINT8"
+			case commonpb.MetadataType_METADATA_TYPE_UINT16:
+				return "METADATA_TYPE_UINT16"
+			case commonpb.MetadataType_METADATA_TYPE_UINT32:
+				return "METADATA_TYPE_UINT32"
+			case commonpb.MetadataType_METADATA_TYPE_DATETIME:
+				return "METADATA_TYPE_DATETIME"
+			default:
+				return int32(x.Type)
+			}
+		}(),
+	})
+}
+
+func (x *RemoveMetadataFieldTypeRequest) MarshalJSON() ([]byte, error) {
+	return jsonv2.Marshal(struct {
+		Ledger     string `json:"ledger"`
+		TargetType any    `json:"targetType"`
+		Key        string `json:"key"`
+	}{
+		Ledger: x.Ledger,
+		TargetType: func() any {
+			switch x.TargetType {
+			case commonpb.TargetType_TARGET_TYPE_ACCOUNT:
+				return "TARGET_TYPE_ACCOUNT"
+			case commonpb.TargetType_TARGET_TYPE_TRANSACTION:
+				return "TARGET_TYPE_TRANSACTION"
+			case commonpb.TargetType_TARGET_TYPE_LEDGER:
+				return "TARGET_TYPE_LEDGER"
+			default:
+				return int32(x.TargetType)
+			}
+		}(),
+		Key: x.Key,
+	})
+}
+
+func (x *CreateIndexRequest) MarshalJSON() ([]byte, error) {
+	return jsonv2.Marshal(struct {
+		Ledger string `json:"ledger"`
+		Id     any    `json:"id,omitempty,omitzero"`
+	}{
+		Ledger: x.Ledger,
+		Id:     x.Id,
+	})
+}
+
+func (x *DropIndexRequest) MarshalJSON() ([]byte, error) {
+	return jsonv2.Marshal(struct {
+		Ledger string `json:"ledger"`
+		Id     any    `json:"id,omitempty,omitzero"`
+	}{
+		Ledger: x.Ledger,
+		Id:     x.Id,
+	})
+}
+
+func (x *AnalyzeNumscriptRequest) MarshalJSON() ([]byte, error) {
+	return jsonv2.Marshal(struct {
+		Source  string `json:"source"`
+		Version string `json:"version"`
+	}{
+		Source:  x.Source,
+		Version: x.Version,
+	})
+}
+
+func (x *NumscriptInput) MarshalJSON() ([]byte, error) {
+	return jsonv2.Marshal(struct {
+		Name string `json:"name"`
+		Type string `json:"type"`
+	}{
+		Name: x.Name,
+		Type: x.Type,
+	})
+}
+
+func (x *NumscriptDiagnostic) MarshalJSON() ([]byte, error) {
+	return jsonv2.Marshal(struct {
+		Kind        any     `json:"kind"`
+		Code        string  `json:"code"`
+		Message     string  `json:"message"`
+		StartLine   *uint32 `json:"startLine,omitempty,omitzero"`
+		StartColumn *uint32 `json:"startColumn,omitempty,omitzero"`
+		EndLine     *uint32 `json:"endLine,omitempty,omitzero"`
+		EndColumn   *uint32 `json:"endColumn,omitempty,omitzero"`
+	}{
+		Kind: func() any {
+			switch x.Kind {
+			case NumscriptDiagnosticKind_NUMSCRIPT_DIAGNOSTIC_KIND_UNSPECIFIED:
+				return "NUMSCRIPT_DIAGNOSTIC_KIND_UNSPECIFIED"
+			case NumscriptDiagnosticKind_NUMSCRIPT_DIAGNOSTIC_KIND_VERSION:
+				return "NUMSCRIPT_DIAGNOSTIC_KIND_VERSION"
+			case NumscriptDiagnosticKind_NUMSCRIPT_DIAGNOSTIC_KIND_SYNTAX:
+				return "NUMSCRIPT_DIAGNOSTIC_KIND_SYNTAX"
+			case NumscriptDiagnosticKind_NUMSCRIPT_DIAGNOSTIC_KIND_FEATURE:
+				return "NUMSCRIPT_DIAGNOSTIC_KIND_FEATURE"
+			case NumscriptDiagnosticKind_NUMSCRIPT_DIAGNOSTIC_KIND_COMPILE:
+				return "NUMSCRIPT_DIAGNOSTIC_KIND_COMPILE"
+			default:
+				return int32(x.Kind)
+			}
+		}(),
+		Code:        x.Code,
+		Message:     x.Message,
+		StartLine:   x.StartLine,
+		StartColumn: x.StartColumn,
+		EndLine:     x.EndLine,
+		EndColumn:   x.EndColumn,
+	})
+}
+
+func (x *AnalyzeNumscriptResponse) MarshalJSON() ([]byte, error) {
+	return jsonv2.Marshal(struct {
+		Inputs      any `json:"inputs"`
+		Diagnostics any `json:"diagnostics"`
+	}{
+		Inputs: func() any {
+			if x.Inputs == nil {
+				return []any{}
+			}
+			return x.Inputs
+		}(),
+		Diagnostics: func() any {
+			if x.Diagnostics == nil {
+				return []any{}
+			}
+			return x.Diagnostics
+		}(),
+	})
+}
+
+func (x *SaveNumscriptRequest) MarshalJSON() ([]byte, error) {
+	return jsonv2.Marshal(struct {
+		Name    string `json:"name"`
+		Content string `json:"content"`
+		Version string `json:"version"`
+		Ledger  string `json:"ledger"`
+	}{
+		Name:    x.Name,
+		Content: x.Content,
+		Version: x.Version,
+		Ledger:  x.Ledger,
+	})
+}
+
+func (x *GetNumscriptRequest) MarshalJSON() ([]byte, error) {
+	return jsonv2.Marshal(struct {
+		Name    string `json:"name"`
+		Version string `json:"version"`
+		Ledger  string `json:"ledger"`
+		Read    any    `json:"read,omitempty,omitzero"`
+	}{
+		Name:    x.Name,
+		Version: x.Version,
+		Ledger:  x.Ledger,
+		Read:    x.Read,
+	})
+}
+
+func (x *ListNumscriptsRequest) MarshalJSON() ([]byte, error) {
+	return jsonv2.Marshal(struct {
+		Ledger  string `json:"ledger"`
+		Options any    `json:"options,omitempty,omitzero"`
+	}{
+		Ledger:  x.Ledger,
+		Options: x.Options,
+	})
+}
+
+func (x *ListNumscriptVersionsRequest) MarshalJSON() ([]byte, error) {
+	return jsonv2.Marshal(struct {
+		Ledger string `json:"ledger"`
+		Name   string `json:"name"`
+		Read   any    `json:"read,omitempty,omitzero"`
+	}{
+		Ledger: x.Ledger,
+		Name:   x.Name,
+		Read:   x.Read,
+	})
+}
+
+func (x *ListNumscriptVersionsResponse) MarshalJSON() ([]byte, error) {
+	return jsonv2.Marshal(struct {
+		LatestVersion string `json:"latestVersion"`
+		Versions      any    `json:"versions"`
+	}{
+		LatestVersion: x.LatestVersion,
+		Versions: func() any {
+			if x.Versions == nil {
+				return []any{}
+			}
+			return x.Versions
+		}(),
+	})
+}
+
+func (x *GetTemplateUsageRequest) MarshalJSON() ([]byte, error) {
+	return jsonv2.Marshal(struct {
+		Ledger string `json:"ledger"`
+		Name   string `json:"name"`
+	}{
+		Ledger: x.Ledger,
+		Name:   x.Name,
+	})
+}
+
+func (x *ScriptReference) MarshalJSON() ([]byte, error) {
+	return jsonv2.Marshal(struct {
+		Name    string `json:"name"`
+		Version string `json:"version"`
+		Vars    any    `json:"vars"`
+	}{
+		Name:    x.Name,
+		Version: x.Version,
+		Vars: func() any {
+			if x.Vars == nil {
+				return map[string]any{}
+			}
+			return x.Vars
+		}(),
+	})
+}
+
+func (x *SetQueryCheckpointScheduleRequest) MarshalJSON() ([]byte, error) {
+	return jsonv2.Marshal(struct {
+		Cron string `json:"cron"`
+	}{
+		Cron: x.Cron,
+	})
+}
+
+func (x *DeleteQueryCheckpointScheduleRequest) MarshalJSON() ([]byte, error) {
+	return jsonv2.Marshal(struct {
+	}{})
+}
+
+func (x *DiscoveryRequest) MarshalJSON() ([]byte, error) {
+	return jsonv2.Marshal(struct {
+	}{})
+}
+
+func (x *ServerInfo) MarshalJSON() ([]byte, error) {
+	return jsonv2.Marshal(struct {
+		Version         string `json:"version"`
+		Commit          string `json:"commit"`
+		BuildDate       string `json:"buildDate"`
+		GoVersion       string `json:"goVersion"`
+		ProtocolVersion string `json:"protocolVersion"`
+	}{
+		Version:         x.Version,
+		Commit:          x.Commit,
+		BuildDate:       x.BuildDate,
+		GoVersion:       x.GoVersion,
+		ProtocolVersion: x.ProtocolVersion,
+	})
+}
+
+func (x *DiscoveryResponse) MarshalJSON() ([]byte, error) {
+	return jsonv2.Marshal(struct {
+		ResponseSigning any `json:"responseSigning,omitempty,omitzero"`
+		ServerInfo      any `json:"serverInfo,omitempty,omitzero"`
+		ClusterPolicy   any `json:"clusterPolicy,omitempty,omitzero"`
+	}{
+		ResponseSigning: x.ResponseSigning,
+		ServerInfo:      x.ServerInfo,
+		ClusterPolicy:   x.ClusterPolicy,
+	})
+}
+
+func (x *ResponseSigningInfo) MarshalJSON() ([]byte, error) {
+	return jsonv2.Marshal(struct {
+		PublicKey []byte `json:"publicKey"`
+		KeyId     string `json:"keyId"`
+	}{
+		PublicKey: x.PublicKey,
+		KeyId:     x.KeyId,
+	})
+}
+
+func (x *LedgerAction) MarshalJSON() ([]byte, error) {
+	switch oneofValue := x.Data.(type) {
+	case *LedgerAction_CreateTransaction:
+		return jsonv2.Marshal(struct {
+			CreateTransaction any `json:"createTransaction"`
+		}{
+			CreateTransaction: oneofValue.CreateTransaction,
+		})
+	case *LedgerAction_AddMetadata:
+		return jsonv2.Marshal(struct {
+			AddMetadata any `json:"addMetadata"`
+		}{
+			AddMetadata: oneofValue.AddMetadata,
+		})
+	case *LedgerAction_RevertTransaction:
+		return jsonv2.Marshal(struct {
+			RevertTransaction any `json:"revertTransaction"`
+		}{
+			RevertTransaction: oneofValue.RevertTransaction,
+		})
+	case *LedgerAction_DeleteMetadata:
+		return jsonv2.Marshal(struct {
+			DeleteMetadata any `json:"deleteMetadata"`
+		}{
+			DeleteMetadata: oneofValue.DeleteMetadata,
+		})
+	case *LedgerAction_AddAccountType:
+		return jsonv2.Marshal(struct {
+			AddAccountType any `json:"addAccountType"`
+		}{
+			AddAccountType: oneofValue.AddAccountType,
+		})
+	case *LedgerAction_RemoveAccountType:
+		return jsonv2.Marshal(struct {
+			RemoveAccountType any `json:"removeAccountType"`
+		}{
+			RemoveAccountType: oneofValue.RemoveAccountType,
+		})
+	case *LedgerAction_SetDefaultEnforcementMode:
+		return jsonv2.Marshal(struct {
+			SetDefaultEnforcementMode any `json:"setDefaultEnforcementMode"`
+		}{
+			SetDefaultEnforcementMode: oneofValue.SetDefaultEnforcementMode,
+		})
+	default:
+		return jsonv2.Marshal(struct {
+		}{})
+	}
+}
+
+func (x *LedgerApplyRequest) MarshalJSON() ([]byte, error) {
+	return jsonv2.Marshal(struct {
+		Ledger           string `json:"ledger"`
+		Action           any    `json:"action,omitempty,omitzero"`
+		SkippableReasons any    `json:"skippableReasons"`
+	}{
+		Ledger: x.Ledger,
+		Action: x.Action,
+		SkippableReasons: func() any {
+			if x.SkippableReasons == nil {
+				return []any{}
+			}
+			out := make([]any, len(x.SkippableReasons))
+			for i := range x.SkippableReasons {
+				out[i] = func() any {
+					switch x.SkippableReasons[i] {
+					case commonpb.ErrorReason_ERROR_REASON_UNSPECIFIED:
+						return "ERROR_REASON_UNSPECIFIED"
+					case commonpb.ErrorReason_ERROR_REASON_LEDGER_ALREADY_EXISTS:
+						return "ERROR_REASON_LEDGER_ALREADY_EXISTS"
+					case commonpb.ErrorReason_ERROR_REASON_LEDGER_NOT_FOUND:
+						return "ERROR_REASON_LEDGER_NOT_FOUND"
+					case commonpb.ErrorReason_ERROR_REASON_LEDGER_DELETED:
+						return "ERROR_REASON_LEDGER_DELETED"
+					case commonpb.ErrorReason_ERROR_REASON_IDEMPOTENCY_KEY_CONFLICT:
+						return "ERROR_REASON_IDEMPOTENCY_KEY_CONFLICT"
+					case commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT:
+						return "ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT"
+					case commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_NOT_FOUND:
+						return "ERROR_REASON_TRANSACTION_REFERENCE_NOT_FOUND"
+					case commonpb.ErrorReason_ERROR_REASON_TRANSACTION_NOT_FOUND:
+						return "ERROR_REASON_TRANSACTION_NOT_FOUND"
+					case commonpb.ErrorReason_ERROR_REASON_TRANSACTION_ALREADY_REVERTED:
+						return "ERROR_REASON_TRANSACTION_ALREADY_REVERTED"
+					case commonpb.ErrorReason_ERROR_REASON_INSUFFICIENT_FUNDS:
+						return "ERROR_REASON_INSUFFICIENT_FUNDS"
+					case commonpb.ErrorReason_ERROR_REASON_VOLUME_OVERFLOW:
+						return "ERROR_REASON_VOLUME_OVERFLOW"
+					case commonpb.ErrorReason_ERROR_REASON_BALANCE_NOT_PRELOADED:
+						return "ERROR_REASON_BALANCE_NOT_PRELOADED"
+					case commonpb.ErrorReason_ERROR_REASON_NUMSCRIPT_PARSE_ERROR:
+						return "ERROR_REASON_NUMSCRIPT_PARSE_ERROR"
+					case commonpb.ErrorReason_ERROR_REASON_VALIDATION:
+						return "ERROR_REASON_VALIDATION"
+					case commonpb.ErrorReason_ERROR_REASON_AUDIT_DISABLED:
+						return "ERROR_REASON_AUDIT_DISABLED"
+					case commonpb.ErrorReason_ERROR_REASON_SINK_ALREADY_EXISTS:
+						return "ERROR_REASON_SINK_ALREADY_EXISTS"
+					case commonpb.ErrorReason_ERROR_REASON_SINK_NOT_FOUND:
+						return "ERROR_REASON_SINK_NOT_FOUND"
+					case commonpb.ErrorReason_ERROR_REASON_SINK_BATCH_SIZE_TOO_LARGE:
+						return "ERROR_REASON_SINK_BATCH_SIZE_TOO_LARGE"
+					case commonpb.ErrorReason_ERROR_REASON_METADATA_NOT_FOUND:
+						return "ERROR_REASON_METADATA_NOT_FOUND"
+					case commonpb.ErrorReason_ERROR_REASON_MAINTENANCE_MODE:
+						return "ERROR_REASON_MAINTENANCE_MODE"
+					case commonpb.ErrorReason_ERROR_REASON_STALE_PROPOSAL:
+						return "ERROR_REASON_STALE_PROPOSAL"
+					case commonpb.ErrorReason_ERROR_REASON_INVALID_CRON_EXPRESSION:
+						return "ERROR_REASON_INVALID_CRON_EXPRESSION"
+					case commonpb.ErrorReason_ERROR_REASON_LEDGER_IN_MIRROR_MODE:
+						return "ERROR_REASON_LEDGER_IN_MIRROR_MODE"
+					case commonpb.ErrorReason_ERROR_REASON_LEDGER_NOT_IN_MIRROR_MODE:
+						return "ERROR_REASON_LEDGER_NOT_IN_MIRROR_MODE"
+					case commonpb.ErrorReason_ERROR_REASON_PREPARED_QUERY_ALREADY_EXISTS:
+						return "ERROR_REASON_PREPARED_QUERY_ALREADY_EXISTS"
+					case commonpb.ErrorReason_ERROR_REASON_PREPARED_QUERY_NOT_FOUND:
+						return "ERROR_REASON_PREPARED_QUERY_NOT_FOUND"
+					case commonpb.ErrorReason_ERROR_REASON_INDEX_NOT_FOUND:
+						return "ERROR_REASON_INDEX_NOT_FOUND"
+					case commonpb.ErrorReason_ERROR_REASON_INDEX_BUILDING:
+						return "ERROR_REASON_INDEX_BUILDING"
+					case commonpb.ErrorReason_ERROR_REASON_INDEX_INCONSISTENT:
+						return "ERROR_REASON_INDEX_INCONSISTENT"
+					case commonpb.ErrorReason_ERROR_REASON_METADATA_FIELD_NOT_IN_SCHEMA:
+						return "ERROR_REASON_METADATA_FIELD_NOT_IN_SCHEMA"
+					case commonpb.ErrorReason_ERROR_REASON_NUMSCRIPT_NOT_FOUND:
+						return "ERROR_REASON_NUMSCRIPT_NOT_FOUND"
+					case commonpb.ErrorReason_ERROR_REASON_NUMSCRIPT_VERSION_ALREADY_EXISTS:
+						return "ERROR_REASON_NUMSCRIPT_VERSION_ALREADY_EXISTS"
+					case commonpb.ErrorReason_ERROR_REASON_NUMSCRIPT_INVALID_VERSION:
+						return "ERROR_REASON_NUMSCRIPT_INVALID_VERSION"
+					case commonpb.ErrorReason_ERROR_REASON_ACCOUNT_NOT_MATCHING_TYPE:
+						return "ERROR_REASON_ACCOUNT_NOT_MATCHING_TYPE"
+					case commonpb.ErrorReason_ERROR_REASON_ACCOUNT_TYPE_NOT_FOUND:
+						return "ERROR_REASON_ACCOUNT_TYPE_NOT_FOUND"
+					case commonpb.ErrorReason_ERROR_REASON_ACCOUNT_TYPE_ALREADY_EXISTS:
+						return "ERROR_REASON_ACCOUNT_TYPE_ALREADY_EXISTS"
+					case commonpb.ErrorReason_ERROR_REASON_INVALID_PATTERN:
+						return "ERROR_REASON_INVALID_PATTERN"
+					case commonpb.ErrorReason_ERROR_REASON_ACCOUNT_TYPE_HAS_ACCOUNTS:
+						return "ERROR_REASON_ACCOUNT_TYPE_HAS_ACCOUNTS"
+					case commonpb.ErrorReason_ERROR_REASON_ACCOUNT_TYPE_CONFLICT:
+						return "ERROR_REASON_ACCOUNT_TYPE_CONFLICT"
+					case commonpb.ErrorReason_ERROR_REASON_TRANSIENT_ACCOUNT_NON_ZERO:
+						return "ERROR_REASON_TRANSIENT_ACCOUNT_NON_ZERO"
+					case commonpb.ErrorReason_ERROR_REASON_FILTER_COMPILATION_ERROR:
+						return "ERROR_REASON_FILTER_COMPILATION_ERROR"
+					case commonpb.ErrorReason_ERROR_REASON_INVALID_ORDER_TYPE:
+						return "ERROR_REASON_INVALID_ORDER_TYPE"
+					case commonpb.ErrorReason_ERROR_REASON_INVALID_APPLY_TYPE:
+						return "ERROR_REASON_INVALID_APPLY_TYPE"
+					case commonpb.ErrorReason_ERROR_REASON_INVALID_EXECUTION_PLAN:
+						return "ERROR_REASON_INVALID_EXECUTION_PLAN"
+					case commonpb.ErrorReason_ERROR_REASON_EXECUTION_PLAN_TOO_LARGE:
+						return "ERROR_REASON_EXECUTION_PLAN_TOO_LARGE"
+					case commonpb.ErrorReason_ERROR_REASON_COVERAGE_MISS:
+						return "ERROR_REASON_COVERAGE_MISS"
+					case commonpb.ErrorReason_ERROR_REASON_IDEMPOTENCY_CHECK_FAILED:
+						return "ERROR_REASON_IDEMPOTENCY_CHECK_FAILED"
+					case commonpb.ErrorReason_ERROR_REASON_STORAGE_OPERATION_FAILED:
+						return "ERROR_REASON_STORAGE_OPERATION_FAILED"
+					case commonpb.ErrorReason_ERROR_REASON_TRANSACTION_STATE_INCONSISTENT:
+						return "ERROR_REASON_TRANSACTION_STATE_INCONSISTENT"
+					case commonpb.ErrorReason_ERROR_REASON_CHECKPOINT_ID_REQUIRED:
+						return "ERROR_REASON_CHECKPOINT_ID_REQUIRED"
+					case commonpb.ErrorReason_ERROR_REASON_NUMSCRIPT_RUNTIME:
+						return "ERROR_REASON_NUMSCRIPT_RUNTIME"
+					case commonpb.ErrorReason_ERROR_REASON_VOLUME_NOT_MATERIALIZED:
+						return "ERROR_REASON_VOLUME_NOT_MATERIALIZED"
+					case commonpb.ErrorReason_ERROR_REASON_CLUSTER_UNHEALTHY:
+						return "ERROR_REASON_CLUSTER_UNHEALTHY"
+					case commonpb.ErrorReason_ERROR_REASON_WRITES_BLOCKED_DISK_FULL:
+						return "ERROR_REASON_WRITES_BLOCKED_DISK_FULL"
+					case commonpb.ErrorReason_ERROR_REASON_WRITES_BLOCKED_CLOCK_SKEW:
+						return "ERROR_REASON_WRITES_BLOCKED_CLOCK_SKEW"
+					case commonpb.ErrorReason_ERROR_REASON_CHECKPOINT_NOT_READY:
+						return "ERROR_REASON_CHECKPOINT_NOT_READY"
+					case commonpb.ErrorReason_ERROR_REASON_MIRROR_V2_LOG_ID_GAP:
+						return "ERROR_REASON_MIRROR_V2_LOG_ID_GAP"
+					case commonpb.ErrorReason_ERROR_REASON_MIRROR_V2_LOG_ID_INVALID:
+						return "ERROR_REASON_MIRROR_V2_LOG_ID_INVALID"
+					case commonpb.ErrorReason_ERROR_REASON_STALE_INPUTS_RESOLUTION:
+						return "ERROR_REASON_STALE_INPUTS_RESOLUTION"
+					case commonpb.ErrorReason_ERROR_REASON_PRELOAD_UNAVAILABLE:
+						return "ERROR_REASON_PRELOAD_UNAVAILABLE"
+					case commonpb.ErrorReason_ERROR_REASON_AGGREGATE_OVERFLOW:
+						return "ERROR_REASON_AGGREGATE_OVERFLOW"
+					case commonpb.ErrorReason_ERROR_REASON_BALANCE_NOT_FOUND:
+						return "ERROR_REASON_BALANCE_NOT_FOUND"
+					case commonpb.ErrorReason_ERROR_REASON_STALE_CLUSTER_POLICY:
+						return "ERROR_REASON_STALE_CLUSTER_POLICY"
+					case commonpb.ErrorReason_ERROR_REASON_CLUSTER_POLICY_REVISION_CONFLICT:
+						return "ERROR_REASON_CLUSTER_POLICY_REVISION_CONFLICT"
+					case commonpb.ErrorReason_ERROR_REASON_CLUSTER_POLICY_INVALID:
+						return "ERROR_REASON_CLUSTER_POLICY_INVALID"
+					case commonpb.ErrorReason_ERROR_REASON_CHECKPOINT_LIMIT_REACHED:
+						return "ERROR_REASON_CHECKPOINT_LIMIT_REACHED"
+					case commonpb.ErrorReason_ERROR_REASON_CHECKPOINT_NOT_FOUND:
+						return "ERROR_REASON_CHECKPOINT_NOT_FOUND"
+					case commonpb.ErrorReason_ERROR_REASON_SEQUENCE_EXHAUSTED:
+						return "ERROR_REASON_SEQUENCE_EXHAUSTED"
+					case commonpb.ErrorReason_ERROR_REASON_INDEX_ALREADY_EXISTS:
+						return "ERROR_REASON_INDEX_ALREADY_EXISTS"
+					case commonpb.ErrorReason_ERROR_REASON_METADATA_LIMIT_EXCEEDED:
+						return "ERROR_REASON_METADATA_LIMIT_EXCEEDED"
+					case commonpb.ErrorReason_ERROR_REASON_REVERT_TARGET_CREATED_IN_BATCH:
+						return "ERROR_REASON_REVERT_TARGET_CREATED_IN_BATCH"
+					case commonpb.ErrorReason_ERROR_REASON_SINK_CONTROLLER_MISMATCH:
+						return "ERROR_REASON_SINK_CONTROLLER_MISMATCH"
+					case commonpb.ErrorReason_ERROR_REASON_NUMSCRIPT_COMPILE_ERROR:
+						return "ERROR_REASON_NUMSCRIPT_COMPILE_ERROR"
+					case commonpb.ErrorReason_ERROR_REASON_NUMSCRIPT_EXECUTION_ERROR:
+						return "ERROR_REASON_NUMSCRIPT_EXECUTION_ERROR"
+					default:
+						return int32(x.SkippableReasons[i])
+					}
+				}()
+			}
+			return out
+		}(),
+	})
+}
+
+func (x *AddAccountTypeRequest) MarshalJSON() ([]byte, error) {
+	return jsonv2.Marshal(struct {
+		AccountType any `json:"accountType,omitempty,omitzero"`
+	}{
+		AccountType: x.AccountType,
+	})
+}
+
+func (x *RemoveAccountTypeRequest) MarshalJSON() ([]byte, error) {
+	return jsonv2.Marshal(struct {
+		Name string `json:"name"`
+	}{
+		Name: x.Name,
+	})
+}
+
+func (x *SetDefaultEnforcementModeRequest) MarshalJSON() ([]byte, error) {
+	return jsonv2.Marshal(struct {
+		EnforcementMode any `json:"enforcementMode"`
+	}{
+		EnforcementMode: func() any {
+			switch x.EnforcementMode {
+			case commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT:
+				return "CHART_ENFORCEMENT_STRICT"
+			case commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_AUDIT:
+				return "CHART_ENFORCEMENT_AUDIT"
+			default:
+				return int32(x.EnforcementMode)
+			}
+		}(),
+	})
+}
+
+func (x *SetDefaultEnforcementModeLedgerRequest) MarshalJSON() ([]byte, error) {
+	return jsonv2.Marshal(struct {
+		Ledger          string `json:"ledger"`
+		EnforcementMode any    `json:"enforcementMode"`
+	}{
+		Ledger: x.Ledger,
+		EnforcementMode: func() any {
+			switch x.EnforcementMode {
+			case commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT:
+				return "CHART_ENFORCEMENT_STRICT"
+			case commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_AUDIT:
+				return "CHART_ENFORCEMENT_AUDIT"
+			default:
+				return int32(x.EnforcementMode)
+			}
+		}(),
+	})
+}
+
+func (x *AddAccountTypeLedgerRequest) MarshalJSON() ([]byte, error) {
+	return jsonv2.Marshal(struct {
+		Ledger      string `json:"ledger"`
+		AccountType any    `json:"accountType,omitempty,omitzero"`
+	}{
+		Ledger:      x.Ledger,
+		AccountType: x.AccountType,
+	})
+}
+
+func (x *RemoveAccountTypeLedgerRequest) MarshalJSON() ([]byte, error) {
+	return jsonv2.Marshal(struct {
+		Ledger string `json:"ledger"`
+		Name   string `json:"name"`
+	}{
+		Ledger: x.Ledger,
+		Name:   x.Name,
+	})
+}
+
+func (x *GetPrimaryMetricsRequest) MarshalJSON() ([]byte, error) {
+	return jsonv2.Marshal(struct {
+		NodeId uint64 `json:"nodeId"`
+	}{
+		NodeId: x.NodeId,
+	})
+}
+
+func (x *GetPrimaryMetricsResponse) MarshalJSON() ([]byte, error) {
+	return jsonv2.Marshal(struct {
+		Available bool `json:"available"`
+		Metrics   any  `json:"metrics,omitempty,omitzero"`
+	}{
+		Available: x.Available,
+		Metrics:   x.Metrics,
+	})
+}
+
+func (x *GetSecondaryMetricsRequest) MarshalJSON() ([]byte, error) {
+	return jsonv2.Marshal(struct {
+		NodeId uint64 `json:"nodeId"`
+	}{
+		NodeId: x.NodeId,
+	})
+}
+
+func (x *GetSecondaryMetricsResponse) MarshalJSON() ([]byte, error) {
+	return jsonv2.Marshal(struct {
+		Available bool `json:"available"`
+		Metrics   any  `json:"metrics,omitempty,omitzero"`
+	}{
+		Available: x.Available,
+		Metrics:   x.Metrics,
+	})
+}
+
+func (x *PebbleMetrics) MarshalJSON() ([]byte, error) {
+	return jsonv2.Marshal(struct {
+		BlockCache     any    `json:"blockCache,omitempty,omitzero"`
+		Compact        any    `json:"compact,omitempty,omitzero"`
+		Flush          any    `json:"flush,omitempty,omitzero"`
+		MemTable       any    `json:"memTable,omitempty,omitzero"`
+		Snapshots      any    `json:"snapshots,omitempty,omitzero"`
+		Table          any    `json:"table,omitempty,omitzero"`
+		TableCache     any    `json:"tableCache,omitempty,omitzero"`
+		Wal            any    `json:"wal,omitempty,omitzero"`
+		Keys           any    `json:"keys,omitempty,omitzero"`
+		Levels         any    `json:"levels"`
+		DiskSpaceUsage uint64 `json:"diskSpaceUsage"`
+	}{
+		BlockCache: x.BlockCache,
+		Compact:    x.Compact,
+		Flush:      x.Flush,
+		MemTable:   x.MemTable,
+		Snapshots:  x.Snapshots,
+		Table:      x.Table,
+		TableCache: x.TableCache,
+		Wal:        x.Wal,
+		Keys:       x.Keys,
+		Levels: func() any {
+			if x.Levels == nil {
+				return []any{}
+			}
+			return x.Levels
+		}(),
+		DiskSpaceUsage: x.DiskSpaceUsage,
+	})
+}
+
+func (x *BlockCacheMetrics) MarshalJSON() ([]byte, error) {
+	return jsonv2.Marshal(struct {
+		Size   int64 `json:"size"`
+		Count  int64 `json:"count"`
+		Hits   int64 `json:"hits"`
+		Misses int64 `json:"misses"`
+	}{
+		Size:   x.Size,
+		Count:  x.Count,
+		Hits:   x.Hits,
+		Misses: x.Misses,
+	})
+}
+
+func (x *CompactMetrics) MarshalJSON() ([]byte, error) {
+	return jsonv2.Marshal(struct {
+		Count            int64  `json:"count"`
+		DefaultCount     int64  `json:"defaultCount"`
+		DeleteOnlyCount  int64  `json:"deleteOnlyCount"`
+		ElisionOnlyCount int64  `json:"elisionOnlyCount"`
+		MoveCount        int64  `json:"moveCount"`
+		ReadCount        int64  `json:"readCount"`
+		RewriteCount     int64  `json:"rewriteCount"`
+		MultiLevelCount  int64  `json:"multiLevelCount"`
+		EstimatedDebt    uint64 `json:"estimatedDebt"`
+		InProgressBytes  int64  `json:"inProgressBytes"`
+		NumInProgress    int64  `json:"numInProgress"`
+		MarkedFiles      int32  `json:"markedFiles"`
+	}{
+		Count:            x.Count,
+		DefaultCount:     x.DefaultCount,
+		DeleteOnlyCount:  x.DeleteOnlyCount,
+		ElisionOnlyCount: x.ElisionOnlyCount,
+		MoveCount:        x.MoveCount,
+		ReadCount:        x.ReadCount,
+		RewriteCount:     x.RewriteCount,
+		MultiLevelCount:  x.MultiLevelCount,
+		EstimatedDebt:    x.EstimatedDebt,
+		InProgressBytes:  x.InProgressBytes,
+		NumInProgress:    x.NumInProgress,
+		MarkedFiles:      x.MarkedFiles,
+	})
+}
+
+func (x *FlushMetrics) MarshalJSON() ([]byte, error) {
+	return jsonv2.Marshal(struct {
+		Count              int64  `json:"count"`
+		NumInProgress      int64  `json:"numInProgress"`
+		AsIngestCount      uint64 `json:"asIngestCount"`
+		AsIngestTableCount uint64 `json:"asIngestTableCount"`
+		AsIngestBytes      uint64 `json:"asIngestBytes"`
+	}{
+		Count:              x.Count,
+		NumInProgress:      x.NumInProgress,
+		AsIngestCount:      x.AsIngestCount,
+		AsIngestTableCount: x.AsIngestTableCount,
+		AsIngestBytes:      x.AsIngestBytes,
+	})
+}
+
+func (x *MemTableMetrics) MarshalJSON() ([]byte, error) {
+	return jsonv2.Marshal(struct {
+		Size        uint64 `json:"size"`
+		Count       int64  `json:"count"`
+		ZombieSize  uint64 `json:"zombieSize"`
+		ZombieCount int64  `json:"zombieCount"`
+	}{
+		Size:        x.Size,
+		Count:       x.Count,
+		ZombieSize:  x.ZombieSize,
+		ZombieCount: x.ZombieCount,
+	})
+}
+
+func (x *SnapshotsMetrics) MarshalJSON() ([]byte, error) {
+	return jsonv2.Marshal(struct {
+		Count          int32  `json:"count"`
+		EarliestSeqNum uint64 `json:"earliestSeqNum"`
+		PinnedKeys     uint64 `json:"pinnedKeys"`
+		PinnedSize     uint64 `json:"pinnedSize"`
+	}{
+		Count:          x.Count,
+		EarliestSeqNum: x.EarliestSeqNum,
+		PinnedKeys:     x.PinnedKeys,
+		PinnedSize:     x.PinnedSize,
+	})
+}
+
+func (x *TableMetrics) MarshalJSON() ([]byte, error) {
+	return jsonv2.Marshal(struct {
+		ZombieSize        uint64 `json:"zombieSize"`
+		ZombieCount       int64  `json:"zombieCount"`
+		BackingTableCount uint64 `json:"backingTableCount"`
+		BackingTableSize  uint64 `json:"backingTableSize"`
+	}{
+		ZombieSize:        x.ZombieSize,
+		ZombieCount:       x.ZombieCount,
+		BackingTableCount: x.BackingTableCount,
+		BackingTableSize:  x.BackingTableSize,
+	})
+}
+
+func (x *TableCacheMetrics) MarshalJSON() ([]byte, error) {
+	return jsonv2.Marshal(struct {
+		Size   int64 `json:"size"`
+		Count  int64 `json:"count"`
+		Hits   int64 `json:"hits"`
+		Misses int64 `json:"misses"`
+	}{
+		Size:   x.Size,
+		Count:  x.Count,
+		Hits:   x.Hits,
+		Misses: x.Misses,
+	})
+}
+
+func (x *WALMetrics) MarshalJSON() ([]byte, error) {
+	return jsonv2.Marshal(struct {
+		Files         int64  `json:"files"`
+		ObsoleteFiles int64  `json:"obsoleteFiles"`
+		Size          uint64 `json:"size"`
+		BytesIn       uint64 `json:"bytesIn"`
+		BytesWritten  uint64 `json:"bytesWritten"`
+	}{
+		Files:         x.Files,
+		ObsoleteFiles: x.ObsoleteFiles,
+		Size:          x.Size,
+		BytesIn:       x.BytesIn,
+		BytesWritten:  x.BytesWritten,
+	})
+}
+
+func (x *KeysMetrics) MarshalJSON() ([]byte, error) {
+	return jsonv2.Marshal(struct {
+		RangeKeySetsCount uint64 `json:"rangeKeySetsCount"`
+		TombstoneCount    uint64 `json:"tombstoneCount"`
+	}{
+		RangeKeySetsCount: x.RangeKeySetsCount,
+		TombstoneCount:    x.TombstoneCount,
+	})
+}
+
+func (x *LevelMetrics) MarshalJSON() ([]byte, error) {
+	return jsonv2.Marshal(struct {
+		Level           int32   `json:"level"`
+		NumFiles        int64   `json:"numFiles"`
+		Size            int64   `json:"size"`
+		Score           float64 `json:"score"`
+		BytesIn         uint64  `json:"bytesIn"`
+		BytesIngested   uint64  `json:"bytesIngested"`
+		BytesMoved      uint64  `json:"bytesMoved"`
+		BytesRead       uint64  `json:"bytesRead"`
+		BytesCompacted  uint64  `json:"bytesCompacted"`
+		BytesFlushed    uint64  `json:"bytesFlushed"`
+		TablesCompacted uint64  `json:"tablesCompacted"`
+		TablesFlushed   uint64  `json:"tablesFlushed"`
+		TablesIngested  uint64  `json:"tablesIngested"`
+		TablesMoved     uint64  `json:"tablesMoved"`
+	}{
+		Level:           x.Level,
+		NumFiles:        x.NumFiles,
+		Size:            x.Size,
+		Score:           x.Score,
+		BytesIn:         x.BytesIn,
+		BytesIngested:   x.BytesIngested,
+		BytesMoved:      x.BytesMoved,
+		BytesRead:       x.BytesRead,
+		BytesCompacted:  x.BytesCompacted,
+		BytesFlushed:    x.BytesFlushed,
+		TablesCompacted: x.TablesCompacted,
+		TablesFlushed:   x.TablesFlushed,
+		TablesIngested:  x.TablesIngested,
+		TablesMoved:     x.TablesMoved,
+	})
+}
+
+func (x *CheckStoreRequest) MarshalJSON() ([]byte, error) {
+	return jsonv2.Marshal(struct {
+	}{})
+}
+
+func (x *CheckStoreEvent) MarshalJSON() ([]byte, error) {
+	switch oneofValue := x.Type.(type) {
+	case *CheckStoreEvent_Error:
+		return jsonv2.Marshal(struct {
+			Error any `json:"error"`
+		}{
+			Error: oneofValue.Error,
+		})
+	case *CheckStoreEvent_Progress:
+		return jsonv2.Marshal(struct {
+			Progress any `json:"progress"`
+		}{
+			Progress: oneofValue.Progress,
+		})
+	default:
+		return jsonv2.Marshal(struct {
+		}{})
+	}
+}
+
+func (x *CheckStoreError) MarshalJSON() ([]byte, error) {
+	return jsonv2.Marshal(struct {
+		ErrorType     any    `json:"errorType"`
+		Message       string `json:"message"`
+		LogSequence   uint64 `json:"logSequence"`
+		Ledger        string `json:"ledger"`
+		Account       string `json:"account"`
+		Asset         string `json:"asset"`
+		TransactionId uint64 `json:"transactionId"`
+	}{
+		ErrorType: func() any {
+			switch x.ErrorType {
+			case CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_UNSPECIFIED:
+				return "CHECK_STORE_ERROR_TYPE_UNSPECIFIED"
+			case CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_HASH_MISMATCH:
+				return "CHECK_STORE_ERROR_TYPE_HASH_MISMATCH"
+			case CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_SEQUENCE_GAP:
+				return "CHECK_STORE_ERROR_TYPE_SEQUENCE_GAP"
+			case CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_VOLUME_MISMATCH:
+				return "CHECK_STORE_ERROR_TYPE_VOLUME_MISMATCH"
+			case CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_METADATA_MISMATCH:
+				return "CHECK_STORE_ERROR_TYPE_METADATA_MISMATCH"
+			case CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_UNKNOWN_LEDGER:
+				return "CHECK_STORE_ERROR_TYPE_UNKNOWN_LEDGER"
+			case CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_TRANSACTION_UPDATE_MISMATCH:
+				return "CHECK_STORE_ERROR_TYPE_TRANSACTION_UPDATE_MISMATCH"
+			case CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_REVERTED_MISMATCH:
+				return "CHECK_STORE_ERROR_TYPE_REVERTED_MISMATCH"
+			case CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_EXCLUSION_RECORD_MISMATCH:
+				return "CHECK_STORE_ERROR_TYPE_EXCLUSION_RECORD_MISMATCH"
+			case CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_IDEMPOTENCY_MISMATCH:
+				return "CHECK_STORE_ERROR_TYPE_IDEMPOTENCY_MISMATCH"
+			case CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_INDEX_MISMATCH:
+				return "CHECK_STORE_ERROR_TYPE_INDEX_MISMATCH"
+			case CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_INVALID_SKIP:
+				return "CHECK_STORE_ERROR_TYPE_INVALID_SKIP"
+			case CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_MIRROR_V2LOGID_MISMATCH:
+				return "CHECK_STORE_ERROR_TYPE_MIRROR_V2LOGID_MISMATCH"
+			case CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_SCHEMA_MISMATCH:
+				return "CHECK_STORE_ERROR_TYPE_SCHEMA_MISMATCH"
+			case CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_ACCOUNT_TYPE_MISMATCH:
+				return "CHECK_STORE_ERROR_TYPE_ACCOUNT_TYPE_MISMATCH"
+			case CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_MISSING_LEDGER:
+				return "CHECK_STORE_ERROR_TYPE_MISSING_LEDGER"
+			case CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_UNAUDITED_LEDGER:
+				return "CHECK_STORE_ERROR_TYPE_UNAUDITED_LEDGER"
+			case CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_REFERENCE_MISMATCH:
+				return "CHECK_STORE_ERROR_TYPE_REFERENCE_MISMATCH"
+			case CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_BOUNDARY_MISMATCH:
+				return "CHECK_STORE_ERROR_TYPE_BOUNDARY_MISMATCH"
+			case CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_NUMSCRIPT_MISMATCH:
+				return "CHECK_STORE_ERROR_TYPE_NUMSCRIPT_MISMATCH"
+			case CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_REVERSE_MAP_ORPHAN:
+				return "CHECK_STORE_ERROR_TYPE_REVERSE_MAP_ORPHAN"
+			case CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_SIGNING_KEY_MISMATCH:
+				return "CHECK_STORE_ERROR_TYPE_SIGNING_KEY_MISMATCH"
+			case CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_SIGNING_CONFIG_MISMATCH:
+				return "CHECK_STORE_ERROR_TYPE_SIGNING_CONFIG_MISMATCH"
+			case CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_SIGNING_VERIFICATION_INCOMPLETE:
+				return "CHECK_STORE_ERROR_TYPE_SIGNING_VERIFICATION_INCOMPLETE"
+			case CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_CLUSTER_POLICY_MISMATCH:
+				return "CHECK_STORE_ERROR_TYPE_CLUSTER_POLICY_MISMATCH"
+			case CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_CLUSTER_POLICY_VERIFICATION_INCOMPLETE:
+				return "CHECK_STORE_ERROR_TYPE_CLUSTER_POLICY_VERIFICATION_INCOMPLETE"
+			case CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_QUERY_CHECKPOINT_MISMATCH:
+				return "CHECK_STORE_ERROR_TYPE_QUERY_CHECKPOINT_MISMATCH"
+			case CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_DEFAULT_ENFORCEMENT_MODE_MISMATCH:
+				return "CHECK_STORE_ERROR_TYPE_DEFAULT_ENFORCEMENT_MODE_MISMATCH"
+			case CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_LOG_SEQUENCE_MISMATCH:
+				return "CHECK_STORE_ERROR_TYPE_LOG_SEQUENCE_MISMATCH"
+			case CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_LOG_VERIFICATION_INCOMPLETE:
+				return "CHECK_STORE_ERROR_TYPE_LOG_VERIFICATION_INCOMPLETE"
+			case CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_LOG_UNAUDITED:
+				return "CHECK_STORE_ERROR_TYPE_LOG_UNAUDITED"
+			case CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_LOG_PAYLOAD_MISMATCH:
+				return "CHECK_STORE_ERROR_TYPE_LOG_PAYLOAD_MISMATCH"
+			case CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_LEDGER_INFO_MISMATCH:
+				return "CHECK_STORE_ERROR_TYPE_LEDGER_INFO_MISMATCH"
+			default:
+				return int32(x.ErrorType)
+			}
+		}(),
+		Message:       x.Message,
+		LogSequence:   x.LogSequence,
+		Ledger:        x.Ledger,
+		Account:       x.Account,
+		Asset:         x.Asset,
+		TransactionId: x.TransactionId,
+	})
+}
+
+func (x *CheckStoreProgress) MarshalJSON() ([]byte, error) {
+	return jsonv2.Marshal(struct {
+		LogsChecked uint64 `json:"logsChecked"`
+		TotalLogs   uint64 `json:"totalLogs"`
+	}{
+		LogsChecked: x.LogsChecked,
+		TotalLogs:   x.TotalLogs,
+	})
+}
+
+func (x *ListAuditEntriesRequest) MarshalJSON() ([]byte, error) {
+	return jsonv2.Marshal(struct {
+		Options any `json:"options,omitempty,omitzero"`
+	}{
+		Options: x.Options,
+	})
+}
+
+func (x *GetAuditEntryRequest) MarshalJSON() ([]byte, error) {
+	return jsonv2.Marshal(struct {
+		Sequence uint64 `json:"sequence"`
+	}{
+		Sequence: x.Sequence,
+	})
+}
+
+func (x *ListLogsRequest) MarshalJSON() ([]byte, error) {
+	return jsonv2.Marshal(struct {
+		Ledger  string `json:"ledger"`
+		Options any    `json:"options,omitempty,omitzero"`
+	}{
+		Ledger:  x.Ledger,
+		Options: x.Options,
+	})
+}
+
+func (x *GetLogRequest) MarshalJSON() ([]byte, error) {
+	return jsonv2.Marshal(struct {
+		Sequence     uint64 `json:"sequence"`
+		CheckpointId uint64 `json:"checkpointId"`
+	}{
+		Sequence:     x.Sequence,
+		CheckpointId: x.CheckpointId,
+	})
+}
+
+func (x *GetEventsSinksRequest) MarshalJSON() ([]byte, error) {
+	return jsonv2.Marshal(struct {
+	}{})
+}
+
 func (x *GetEventsSinksResponse) MarshalJSON() ([]byte, error) {
 	return jsonv2.Marshal(struct {
 		Sinks        any `json:"sinks"`
@@ -26,6 +1521,14 @@ func (x *GetEventsSinksResponse) MarshalJSON() ([]byte, error) {
 			}
 			return x.SinkStatuses
 		}(),
+	})
+}
+
+func (x *GetMetadataSchemaStatusRequest) MarshalJSON() ([]byte, error) {
+	return jsonv2.Marshal(struct {
+		Ledger string `json:"ledger"`
+	}{
+		Ledger: x.Ledger,
 	})
 }
 
@@ -91,6 +1594,399 @@ func (x *MetadataFieldStatus) MarshalJSON() ([]byte, error) {
 	})
 }
 
+func (x *AnalyzeAccountsRequest) MarshalJSON() ([]byte, error) {
+	return jsonv2.Marshal(struct {
+		Ledger            string `json:"ledger"`
+		VariableThreshold uint32 `json:"variableThreshold"`
+	}{
+		Ledger:            x.Ledger,
+		VariableThreshold: x.VariableThreshold,
+	})
+}
+
+func (x *AnalyzeAccountsResponse) MarshalJSON() ([]byte, error) {
+	return jsonv2.Marshal(struct {
+		Patterns      any    `json:"patterns"`
+		TotalAccounts uint64 `json:"totalAccounts"`
+	}{
+		Patterns: func() any {
+			if x.Patterns == nil {
+				return []any{}
+			}
+			return x.Patterns
+		}(),
+		TotalAccounts: x.TotalAccounts,
+	})
+}
+
+func (x *AnalyzeProgress) MarshalJSON() ([]byte, error) {
+	return jsonv2.Marshal(struct {
+		Processed uint64 `json:"processed"`
+		Total     uint64 `json:"total"`
+		Phase     string `json:"phase"`
+	}{
+		Processed: x.Processed,
+		Total:     x.Total,
+		Phase:     x.Phase,
+	})
+}
+
+func (x *AnalyzeAccountsEvent) MarshalJSON() ([]byte, error) {
+	switch oneofValue := x.Type.(type) {
+	case *AnalyzeAccountsEvent_Progress:
+		return jsonv2.Marshal(struct {
+			Progress any `json:"progress"`
+		}{
+			Progress: oneofValue.Progress,
+		})
+	case *AnalyzeAccountsEvent_Result:
+		return jsonv2.Marshal(struct {
+			Result any `json:"result"`
+		}{
+			Result: oneofValue.Result,
+		})
+	default:
+		return jsonv2.Marshal(struct {
+		}{})
+	}
+}
+
+func (x *AnalyzeTransactionsEvent) MarshalJSON() ([]byte, error) {
+	switch oneofValue := x.Type.(type) {
+	case *AnalyzeTransactionsEvent_Progress:
+		return jsonv2.Marshal(struct {
+			Progress any `json:"progress"`
+		}{
+			Progress: oneofValue.Progress,
+		})
+	case *AnalyzeTransactionsEvent_Result:
+		return jsonv2.Marshal(struct {
+			Result any `json:"result"`
+		}{
+			Result: oneofValue.Result,
+		})
+	default:
+		return jsonv2.Marshal(struct {
+		}{})
+	}
+}
+
+func (x *AccountPattern) MarshalJSON() ([]byte, error) {
+	return jsonv2.Marshal(struct {
+		Pattern      string `json:"pattern"`
+		AccountCount uint64 `json:"accountCount"`
+		Assets       any    `json:"assets"`
+		MetadataKeys any    `json:"metadataKeys"`
+		Segments     any    `json:"segments"`
+	}{
+		Pattern:      x.Pattern,
+		AccountCount: x.AccountCount,
+		Assets: func() any {
+			if x.Assets == nil {
+				return []any{}
+			}
+			return x.Assets
+		}(),
+		MetadataKeys: func() any {
+			if x.MetadataKeys == nil {
+				return []any{}
+			}
+			return x.MetadataKeys
+		}(),
+		Segments: func() any {
+			if x.Segments == nil {
+				return []any{}
+			}
+			return x.Segments
+		}(),
+	})
+}
+
+func (x *PatternSegment) MarshalJSON() ([]byte, error) {
+	return jsonv2.Marshal(struct {
+		Position        uint32 `json:"position"`
+		Type            any    `json:"type"`
+		FixedValue      string `json:"fixedValue"`
+		VariableName    string `json:"variableName"`
+		InferredPattern string `json:"inferredPattern"`
+		UniqueValues    uint64 `json:"uniqueValues"`
+		Examples        any    `json:"examples"`
+	}{
+		Position: x.Position,
+		Type: func() any {
+			switch x.Type {
+			case PatternSegmentType_PATTERN_SEGMENT_TYPE_FIXED:
+				return "PATTERN_SEGMENT_TYPE_FIXED"
+			case PatternSegmentType_PATTERN_SEGMENT_TYPE_VARIABLE:
+				return "PATTERN_SEGMENT_TYPE_VARIABLE"
+			default:
+				return int32(x.Type)
+			}
+		}(),
+		FixedValue:      x.FixedValue,
+		VariableName:    x.VariableName,
+		InferredPattern: x.InferredPattern,
+		UniqueValues:    x.UniqueValues,
+		Examples: func() any {
+			if x.Examples == nil {
+				return []any{}
+			}
+			return x.Examples
+		}(),
+	})
+}
+
+func (x *AnalyzeTransactionsRequest) MarshalJSON() ([]byte, error) {
+	return jsonv2.Marshal(struct {
+		Ledger            string `json:"ledger"`
+		VariableThreshold uint32 `json:"variableThreshold"`
+	}{
+		Ledger:            x.Ledger,
+		VariableThreshold: x.VariableThreshold,
+	})
+}
+
+func (x *AnalyzeTransactionsResponse) MarshalJSON() ([]byte, error) {
+	return jsonv2.Marshal(struct {
+		FlowPatterns      any    `json:"flowPatterns"`
+		TotalTransactions uint64 `json:"totalTransactions"`
+		TotalReverted     uint64 `json:"totalReverted"`
+	}{
+		FlowPatterns: func() any {
+			if x.FlowPatterns == nil {
+				return []any{}
+			}
+			return x.FlowPatterns
+		}(),
+		TotalTransactions: x.TotalTransactions,
+		TotalReverted:     x.TotalReverted,
+	})
+}
+
+func (x *FlowPattern) MarshalJSON() ([]byte, error) {
+	return jsonv2.Marshal(struct {
+		Signature        string `json:"signature"`
+		Structure        any    `json:"structure"`
+		TransactionCount uint64 `json:"transactionCount"`
+		Postings         any    `json:"postings"`
+		Temporal         any    `json:"temporal,omitempty,omitzero"`
+		VolumeStats      any    `json:"volumeStats"`
+		MetadataKeys     any    `json:"metadataKeys"`
+	}{
+		Signature: x.Signature,
+		Structure: func() any {
+			switch x.Structure {
+			case PostingStructure_POSTING_STRUCTURE_SIMPLE:
+				return "POSTING_STRUCTURE_SIMPLE"
+			case PostingStructure_POSTING_STRUCTURE_MULTI_SOURCE:
+				return "POSTING_STRUCTURE_MULTI_SOURCE"
+			case PostingStructure_POSTING_STRUCTURE_MULTI_DESTINATION:
+				return "POSTING_STRUCTURE_MULTI_DESTINATION"
+			case PostingStructure_POSTING_STRUCTURE_COMPLEX:
+				return "POSTING_STRUCTURE_COMPLEX"
+			default:
+				return int32(x.Structure)
+			}
+		}(),
+		TransactionCount: x.TransactionCount,
+		Postings: func() any {
+			if x.Postings == nil {
+				return []any{}
+			}
+			return x.Postings
+		}(),
+		Temporal: x.Temporal,
+		VolumeStats: func() any {
+			if x.VolumeStats == nil {
+				return []any{}
+			}
+			return x.VolumeStats
+		}(),
+		MetadataKeys: func() any {
+			if x.MetadataKeys == nil {
+				return []any{}
+			}
+			return x.MetadataKeys
+		}(),
+	})
+}
+
+func (x *NormalizedPosting) MarshalJSON() ([]byte, error) {
+	return jsonv2.Marshal(struct {
+		SourcePattern      string `json:"sourcePattern"`
+		DestinationPattern string `json:"destinationPattern"`
+		Asset              string `json:"asset"`
+		Color              string `json:"color"`
+	}{
+		SourcePattern:      x.SourcePattern,
+		DestinationPattern: x.DestinationPattern,
+		Asset:              x.Asset,
+		Color:              x.Color,
+	})
+}
+
+func (x *TemporalStats) MarshalJSON() ([]byte, error) {
+	return jsonv2.Marshal(struct {
+		FirstSeen          any     `json:"firstSeen,omitempty,omitzero"`
+		LastSeen           any     `json:"lastSeen,omitempty,omitzero"`
+		TransactionsPerDay float64 `json:"transactionsPerDay"`
+		PeakHours          any     `json:"peakHours"`
+	}{
+		FirstSeen:          x.FirstSeen,
+		LastSeen:           x.LastSeen,
+		TransactionsPerDay: x.TransactionsPerDay,
+		PeakHours: func() any {
+			if x.PeakHours == nil {
+				return []any{}
+			}
+			return x.PeakHours
+		}(),
+	})
+}
+
+func (x *HourBucket) MarshalJSON() ([]byte, error) {
+	return jsonv2.Marshal(struct {
+		Hour  uint32 `json:"hour"`
+		Count uint64 `json:"count"`
+	}{
+		Hour:  x.Hour,
+		Count: x.Count,
+	})
+}
+
+func (x *AssetVolumeStats) MarshalJSON() ([]byte, error) {
+	return jsonv2.Marshal(struct {
+		Asset            string `json:"asset"`
+		TotalVolume      string `json:"totalVolume"`
+		AverageVolume    string `json:"averageVolume"`
+		MinVolume        string `json:"minVolume"`
+		MaxVolume        string `json:"maxVolume"`
+		TransactionCount uint64 `json:"transactionCount"`
+	}{
+		Asset:            x.Asset,
+		TotalVolume:      x.TotalVolume,
+		AverageVolume:    x.AverageVolume,
+		MinVolume:        x.MinVolume,
+		MaxVolume:        x.MaxVolume,
+		TransactionCount: x.TransactionCount,
+	})
+}
+
+func (x *CreatePreparedQueryRequest) MarshalJSON() ([]byte, error) {
+	return jsonv2.Marshal(struct {
+		Ledger string `json:"ledger"`
+		Query  any    `json:"query,omitempty,omitzero"`
+	}{
+		Ledger: x.Ledger,
+		Query:  x.Query,
+	})
+}
+
+func (x *UpdatePreparedQueryRequest) MarshalJSON() ([]byte, error) {
+	return jsonv2.Marshal(struct {
+		Ledger string `json:"ledger"`
+		Name   string `json:"name"`
+		Filter any    `json:"filter,omitempty,omitzero"`
+	}{
+		Ledger: x.Ledger,
+		Name:   x.Name,
+		Filter: x.Filter,
+	})
+}
+
+func (x *DeletePreparedQueryRequest) MarshalJSON() ([]byte, error) {
+	return jsonv2.Marshal(struct {
+		Ledger string `json:"ledger"`
+		Name   string `json:"name"`
+	}{
+		Ledger: x.Ledger,
+		Name:   x.Name,
+	})
+}
+
+func (x *ListPreparedQueriesRequest) MarshalJSON() ([]byte, error) {
+	return jsonv2.Marshal(struct {
+		Ledger string `json:"ledger"`
+	}{
+		Ledger: x.Ledger,
+	})
+}
+
+func (x *ListPreparedQueriesResponse) MarshalJSON() ([]byte, error) {
+	return jsonv2.Marshal(struct {
+		Queries any `json:"queries"`
+	}{
+		Queries: func() any {
+			if x.Queries == nil {
+				return []any{}
+			}
+			return x.Queries
+		}(),
+	})
+}
+
+func (x *ExecutePreparedQueryRequest) MarshalJSON() ([]byte, error) {
+	return jsonv2.Marshal(struct {
+		Ledger     string `json:"ledger"`
+		QueryName  string `json:"queryName"`
+		Parameters any    `json:"parameters"`
+		PageSize   uint32 `json:"pageSize"`
+		Cursor     string `json:"cursor"`
+		Mode       any    `json:"mode"`
+		Reverse    bool   `json:"reverse"`
+	}{
+		Ledger:    x.Ledger,
+		QueryName: x.QueryName,
+		Parameters: func() any {
+			if x.Parameters == nil {
+				return map[string]any{}
+			}
+			return x.Parameters
+		}(),
+		PageSize: x.PageSize,
+		Cursor:   x.Cursor,
+		Mode: func() any {
+			switch x.Mode {
+			case commonpb.QueryMode_QUERY_MODE_LIST:
+				return "QUERY_MODE_LIST"
+			case commonpb.QueryMode_QUERY_MODE_AGGREGATE_VOLUMES:
+				return "QUERY_MODE_AGGREGATE_VOLUMES"
+			default:
+				return int32(x.Mode)
+			}
+		}(),
+		Reverse: x.Reverse,
+	})
+}
+
+func (x *ExecutePreparedQueryResponse) MarshalJSON() ([]byte, error) {
+	switch oneofValue := x.Result.(type) {
+	case *ExecutePreparedQueryResponse_Cursor:
+		return jsonv2.Marshal(struct {
+			Cursor any `json:"cursor"`
+		}{
+			Cursor: oneofValue.Cursor,
+		})
+	case *ExecutePreparedQueryResponse_Aggregate:
+		return jsonv2.Marshal(struct {
+			Aggregate any `json:"aggregate"`
+		}{
+			Aggregate: oneofValue.Aggregate,
+		})
+	default:
+		return jsonv2.Marshal(struct {
+		}{})
+	}
+}
+
+func (x *GetIndexStatusRequest) MarshalJSON() ([]byte, error) {
+	return jsonv2.Marshal(struct {
+		Ledger string `json:"ledger"`
+	}{
+		Ledger: x.Ledger,
+	})
+}
+
 func (x *GetIndexStatusResponse) MarshalJSON() ([]byte, error) {
 	return jsonv2.Marshal(struct {
 		LastIndexedSequence uint64 `json:"lastIndexedSequence"`
@@ -112,6 +2008,26 @@ func (x *GetIndexStatusResponse) MarshalJSON() ([]byte, error) {
 	})
 }
 
+func (x *GetIndexRequest) MarshalJSON() ([]byte, error) {
+	return jsonv2.Marshal(struct {
+		Ledger string `json:"ledger"`
+		Id     any    `json:"id,omitempty,omitzero"`
+	}{
+		Ledger: x.Ledger,
+		Id:     x.Id,
+	})
+}
+
+func (x *GetIndexEntryStatusRequest) MarshalJSON() ([]byte, error) {
+	return jsonv2.Marshal(struct {
+		Ledger string `json:"ledger"`
+		Id     any    `json:"id,omitempty,omitzero"`
+	}{
+		Ledger: x.Ledger,
+		Id:     x.Id,
+	})
+}
+
 func (x *IndexEntry) MarshalJSON() ([]byte, error) {
 	return jsonv2.Marshal(struct {
 		Ledger         string `json:"ledger"`
@@ -125,5 +2041,271 @@ func (x *IndexEntry) MarshalJSON() ([]byte, error) {
 		Cursor:         x.Cursor,
 		CurrentVersion: x.CurrentVersion,
 		PendingVersion: x.PendingVersion,
+	})
+}
+
+func (x *ListIndexesRequest) MarshalJSON() ([]byte, error) {
+	return jsonv2.Marshal(struct {
+		Scope  any    `json:"scope"`
+		Ledger string `json:"ledger"`
+	}{
+		Scope: func() any {
+			switch x.Scope {
+			case ListIndexesRequest_SCOPE_ALL:
+				return "SCOPE_ALL"
+			case ListIndexesRequest_SCOPE_BUCKET:
+				return "SCOPE_BUCKET"
+			case ListIndexesRequest_SCOPE_LEDGER:
+				return "SCOPE_LEDGER"
+			default:
+				return int32(x.Scope)
+			}
+		}(),
+		Ledger: x.Ledger,
+	})
+}
+
+func (x *GetLedgerStatsRequest) MarshalJSON() ([]byte, error) {
+	return jsonv2.Marshal(struct {
+		Ledger       string `json:"ledger"`
+		CheckpointId uint64 `json:"checkpointId"`
+	}{
+		Ledger:       x.Ledger,
+		CheckpointId: x.CheckpointId,
+	})
+}
+
+func (x *AggregateVolumesRequest) MarshalJSON() ([]byte, error) {
+	return jsonv2.Marshal(struct {
+		Ledger          string `json:"ledger"`
+		Filter          any    `json:"filter,omitempty,omitzero"`
+		UseMaxPrecision bool   `json:"useMaxPrecision"`
+		GroupByPrefixes any    `json:"groupByPrefixes"`
+		CheckpointId    uint64 `json:"checkpointId"`
+		CollapseColors  bool   `json:"collapseColors"`
+	}{
+		Ledger:          x.Ledger,
+		Filter:          x.Filter,
+		UseMaxPrecision: x.UseMaxPrecision,
+		GroupByPrefixes: func() any {
+			if x.GroupByPrefixes == nil {
+				return []any{}
+			}
+			return x.GroupByPrefixes
+		}(),
+		CheckpointId:   x.CheckpointId,
+		CollapseColors: x.CollapseColors,
+	})
+}
+
+func (x *QueryProfile) MarshalJSON() ([]byte, error) {
+	return jsonv2.Marshal(struct {
+		IndexDurationUs      int64 `json:"indexDurationUs"`
+		EnrichmentDurationUs int64 `json:"enrichmentDurationUs"`
+		ItemsCollected       int32 `json:"itemsCollected"`
+		EnrichedCount        int32 `json:"enrichedCount"`
+		MaterializedRanges   int32 `json:"materializedRanges"`
+		MaterializedItems    int32 `json:"materializedItems"`
+		RootIterator         any   `json:"rootIterator,omitempty,omitzero"`
+		ServerDurationUs     int64 `json:"serverDurationUs"`
+		PrepareDurationUs    int64 `json:"prepareDurationUs"`
+		ExecuteDurationUs    int64 `json:"executeDurationUs"`
+		BarrierDurationUs    int64 `json:"barrierDurationUs"`
+		DeliverDurationUs    int64 `json:"deliverDurationUs"`
+		FirstRowDurationUs   int64 `json:"firstRowDurationUs"`
+		Forwarded            bool  `json:"forwarded"`
+	}{
+		IndexDurationUs:      x.IndexDurationUs,
+		EnrichmentDurationUs: x.EnrichmentDurationUs,
+		ItemsCollected:       x.ItemsCollected,
+		EnrichedCount:        x.EnrichedCount,
+		MaterializedRanges:   x.MaterializedRanges,
+		MaterializedItems:    x.MaterializedItems,
+		RootIterator:         x.RootIterator,
+		ServerDurationUs:     x.ServerDurationUs,
+		PrepareDurationUs:    x.PrepareDurationUs,
+		ExecuteDurationUs:    x.ExecuteDurationUs,
+		BarrierDurationUs:    x.BarrierDurationUs,
+		DeliverDurationUs:    x.DeliverDurationUs,
+		FirstRowDurationUs:   x.FirstRowDurationUs,
+		Forwarded:            x.Forwarded,
+	})
+}
+
+func (x *IteratorProfile) MarshalJSON() ([]byte, error) {
+	return jsonv2.Marshal(struct {
+		Label              string `json:"label"`
+		Kind               string `json:"kind"`
+		Bucket             string `json:"bucket"`
+		NextCalls          int64  `json:"nextCalls"`
+		SeekCalls          int64  `json:"seekCalls"`
+		Children           any    `json:"children"`
+		DurationUs         int64  `json:"durationUs"`
+		ItemsEmitted       int64  `json:"itemsEmitted"`
+		MaterializedRanges int32  `json:"materializedRanges"`
+		MaterializedItems  int64  `json:"materializedItems"`
+		ItemsSkipped       int64  `json:"itemsSkipped"`
+	}{
+		Label:     x.Label,
+		Kind:      x.Kind,
+		Bucket:    x.Bucket,
+		NextCalls: x.NextCalls,
+		SeekCalls: x.SeekCalls,
+		Children: func() any {
+			if x.Children == nil {
+				return []any{}
+			}
+			return x.Children
+		}(),
+		DurationUs:         x.DurationUs,
+		ItemsEmitted:       x.ItemsEmitted,
+		MaterializedRanges: x.MaterializedRanges,
+		MaterializedItems:  x.MaterializedItems,
+		ItemsSkipped:       x.ItemsSkipped,
+	})
+}
+
+func (x *InspectIndexRequest) MarshalJSON() ([]byte, error) {
+	return jsonv2.Marshal(struct {
+		Ledger       string `json:"ledger"`
+		TargetType   any    `json:"targetType"`
+		MetadataKey  string `json:"metadataKey"`
+		Mode         any    `json:"mode"`
+		PageSize     uint32 `json:"pageSize"`
+		Cursor       string `json:"cursor"`
+		CheckpointId uint64 `json:"checkpointId"`
+	}{
+		Ledger: x.Ledger,
+		TargetType: func() any {
+			switch x.TargetType {
+			case commonpb.TargetType_TARGET_TYPE_ACCOUNT:
+				return "TARGET_TYPE_ACCOUNT"
+			case commonpb.TargetType_TARGET_TYPE_TRANSACTION:
+				return "TARGET_TYPE_TRANSACTION"
+			case commonpb.TargetType_TARGET_TYPE_LEDGER:
+				return "TARGET_TYPE_LEDGER"
+			default:
+				return int32(x.TargetType)
+			}
+		}(),
+		MetadataKey: x.MetadataKey,
+		Mode: func() any {
+			switch x.Mode {
+			case InspectIndexMode_INSPECT_INDEX_MODE_DISTINCT_VALUES:
+				return "INSPECT_INDEX_MODE_DISTINCT_VALUES"
+			case InspectIndexMode_INSPECT_INDEX_MODE_FACETS:
+				return "INSPECT_INDEX_MODE_FACETS"
+			case InspectIndexMode_INSPECT_INDEX_MODE_SUMMARY:
+				return "INSPECT_INDEX_MODE_SUMMARY"
+			default:
+				return int32(x.Mode)
+			}
+		}(),
+		PageSize:     x.PageSize,
+		Cursor:       x.Cursor,
+		CheckpointId: x.CheckpointId,
+	})
+}
+
+func (x *InspectIndexResponse) MarshalJSON() ([]byte, error) {
+	switch oneofValue := x.Result.(type) {
+	case *InspectIndexResponse_DistinctValues:
+		return jsonv2.Marshal(struct {
+			DistinctValues any `json:"distinctValues"`
+		}{
+			DistinctValues: oneofValue.DistinctValues,
+		})
+	case *InspectIndexResponse_Facets:
+		return jsonv2.Marshal(struct {
+			Facets any `json:"facets"`
+		}{
+			Facets: oneofValue.Facets,
+		})
+	case *InspectIndexResponse_Summary:
+		return jsonv2.Marshal(struct {
+			Summary any `json:"summary"`
+		}{
+			Summary: oneofValue.Summary,
+		})
+	default:
+		return jsonv2.Marshal(struct {
+		}{})
+	}
+}
+
+func (x *InspectDistinctValues) MarshalJSON() ([]byte, error) {
+	return jsonv2.Marshal(struct {
+		Values         any    `json:"values"`
+		HasMore        bool   `json:"hasMore"`
+		NextCursor     string `json:"nextCursor"`
+		PreviousCursor string `json:"previousCursor"`
+	}{
+		Values: func() any {
+			if x.Values == nil {
+				return []any{}
+			}
+			return x.Values
+		}(),
+		HasMore:        x.HasMore,
+		NextCursor:     x.NextCursor,
+		PreviousCursor: x.PreviousCursor,
+	})
+}
+
+func (x *InspectFacet) MarshalJSON() ([]byte, error) {
+	return jsonv2.Marshal(struct {
+		Value any    `json:"value,omitempty,omitzero"`
+		Count uint64 `json:"count"`
+	}{
+		Value: x.Value,
+		Count: x.Count,
+	})
+}
+
+func (x *InspectFacets) MarshalJSON() ([]byte, error) {
+	return jsonv2.Marshal(struct {
+		Facets         any    `json:"facets"`
+		HasMore        bool   `json:"hasMore"`
+		NextCursor     string `json:"nextCursor"`
+		PreviousCursor string `json:"previousCursor"`
+	}{
+		Facets: func() any {
+			if x.Facets == nil {
+				return []any{}
+			}
+			return x.Facets
+		}(),
+		HasMore:        x.HasMore,
+		NextCursor:     x.NextCursor,
+		PreviousCursor: x.PreviousCursor,
+	})
+}
+
+func (x *InspectSummary) MarshalJSON() ([]byte, error) {
+	return jsonv2.Marshal(struct {
+		Cardinality      uint64 `json:"cardinality"`
+		Min              any    `json:"min,omitempty,omitzero"`
+		Max              any    `json:"max,omitempty,omitzero"`
+		EntitiesWithKey  uint64 `json:"entitiesWithKey"`
+		EntitiesWithNull uint64 `json:"entitiesWithNull"`
+	}{
+		Cardinality:      x.Cardinality,
+		Min:              x.Min,
+		Max:              x.Max,
+		EntitiesWithKey:  x.EntitiesWithKey,
+		EntitiesWithNull: x.EntitiesWithNull,
+	})
+}
+
+func (x *BarrierRequest) MarshalJSON() ([]byte, error) {
+	return jsonv2.Marshal(struct {
+	}{})
+}
+
+func (x *BarrierResponse) MarshalJSON() ([]byte, error) {
+	return jsonv2.Marshal(struct {
+		CommitIndex uint64 `json:"commitIndex"`
+	}{
+		CommitIndex: x.CommitIndex,
 	})
 }

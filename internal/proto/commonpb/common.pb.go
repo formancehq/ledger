@@ -22035,6 +22035,22 @@ var file_common_proto_extTypes = []protoimpl.ExtensionInfo{
 		Filename:      "common.proto",
 	},
 	{
+		ExtendedType:  (*descriptorpb.FileOptions)(nil),
+		ExtensionType: (*bool)(nil),
+		Field:         71004,
+		Name:          "common.ledger_json_default",
+		Tag:           "varint,71004,opt,name=ledger_json_default",
+		Filename:      "common.proto",
+	},
+	{
+		ExtendedType:  (*descriptorpb.MessageOptions)(nil),
+		ExtensionType: (*bool)(nil),
+		Field:         71005,
+		Name:          "common.ledger_json_manual",
+		Tag:           "varint,71005,opt,name=ledger_json_manual",
+		Filename:      "common.proto",
+	},
+	{
 		ExtendedType:  (*descriptorpb.FieldOptions)(nil),
 		ExtensionType: ([]QueryTarget)(nil),
 		Field:         50123,
@@ -22094,38 +22110,46 @@ var (
 var (
 	// optional bool ledger_json = 71003;
 	E_LedgerJson = &file_common_proto_extTypes[1]
+	// optional bool ledger_json_manual = 71005;
+	E_LedgerJsonManual = &file_common_proto_extTypes[3]
+)
+
+// Extension fields to descriptorpb.FileOptions.
+var (
+	// optional bool ledger_json_default = 71004;
+	E_LedgerJsonDefault = &file_common_proto_extTypes[2]
 )
 
 // Extension fields to descriptorpb.FieldOptions.
 var (
 	// repeated common.QueryTarget allowed_query_targets = 50123;
-	E_AllowedQueryTargets = &file_common_proto_extTypes[2]
+	E_AllowedQueryTargets = &file_common_proto_extTypes[4]
 	// valid_on_no_query_target declares that an arm is intentionally valid on no
 	// QueryTarget (rejected everywhere). It is the EXPLICIT opt-in the generator
 	// requires instead of inferring "valid nowhere" from a missing annotation.
 	//
 	// optional bool valid_on_no_query_target = 50124;
-	E_ValidOnNoQueryTarget = &file_common_proto_extTypes[3]
+	E_ValidOnNoQueryTarget = &file_common_proto_extTypes[5]
 	// ledger_log_is_history is mandatory on every LedgerLogPayload.payload arm.
 	// Explicit false classifies CONTROL; true classifies HISTORY. The generator
 	// rejects a missing annotation, so proto's false default cannot classify by
 	// accident.
 	//
 	// optional bool ledger_log_is_history = 50125;
-	E_LedgerLogIsHistory = &file_common_proto_extTypes[4]
+	E_LedgerLogIsHistory = &file_common_proto_extTypes[6]
 	// Sensitive projections reuse the detached public-view contract from EN-1632.
 	// Strings are masked; other field kinds are cleared. Never use for persistence.
 	//
 	// optional bool sensitive = 50126;
-	E_Sensitive = &file_common_proto_extTypes[5]
+	E_Sensitive = &file_common_proto_extTypes[7]
 	// Mask credentials in URL or PostgreSQL keyword/value connection strings.
 	//
 	// optional bool sensitive_url = 50127;
-	E_SensitiveUrl = &file_common_proto_extTypes[6]
+	E_SensitiveUrl = &file_common_proto_extTypes[8]
 	// Allowed coarse reasons for each typed audited failure variant.
 	//
 	// optional common.ErrorReason failure_reason = 50128;
-	E_FailureReason = &file_common_proto_extTypes[7]
+	E_FailureReason = &file_common_proto_extTypes[9]
 )
 
 var File_common_proto protoreflect.FileDescriptor
@@ -23550,7 +23574,7 @@ const file_common_proto_rawDesc = "" +
 	"\bprevious\x18\x04 \x01(\tR\bprevious\x122\n" +
 	"\faccount_data\x18\x05 \x03(\v2\x0f.common.AccountR\vaccountData\x12>\n" +
 	"\x10transaction_data\x18\x06 \x03(\v2\x13.common.TransactionR\x0ftransactionData\x12&\n" +
-	"\blog_data\x18\a \x03(\v2\v.common.LogR\alogData\"\x91\x03\n" +
+	"\blog_data\x18\a \x03(\v2\v.common.LogR\alogData\"\x97\x03\n" +
 	"\vLedgerStats\x12+\n" +
 	"\x11transaction_count\x18\x01 \x01(\x06R\x10transactionCount\x12!\n" +
 	"\fvolume_count\x18\x02 \x01(\x06R\vvolumeCount\x12'\n" +
@@ -23560,7 +23584,7 @@ const file_common_proto_rawDesc = "" +
 	"\x14transient_used_count\x18\x06 \x01(\x06R\x12transientUsedCount\x12!\n" +
 	"\frevert_count\x18\a \x01(\x06R\vrevertCount\x12:\n" +
 	"\x19numscript_execution_count\x18\b \x01(\x06R\x17numscriptExecutionCount\x12\x1b\n" +
-	"\tlog_count\x18\t \x01(\x06R\blogCount\"\x7f\n" +
+	"\tlog_count\x18\t \x01(\x06R\blogCount:\x04\xd8\xd5\"\x01\"\x7f\n" +
 	"\x0fPersistedConfig\x12\x17\n" +
 	"\anode_id\x18\x01 \x01(\x04R\x06nodeId\x12\x1d\n" +
 	"\n" +
@@ -23796,7 +23820,9 @@ const file_common_proto_rawDesc = "" +
 	"\vauth_policy\x12\x1e.google.protobuf.MethodOptions\x18ڪ\x04 \x01(\v2\x18.common.MethodAuthPolicyR\n" +
 	"authPolicy:B\n" +
 	"\vledger_json\x12\x1f.google.protobuf.MessageOptions\x18۪\x04 \x01(\bR\n" +
-	"ledgerJson:h\n" +
+	"ledgerJson:N\n" +
+	"\x13ledger_json_default\x12\x1c.google.protobuf.FileOptions\x18ܪ\x04 \x01(\bR\x11ledgerJsonDefault:O\n" +
+	"\x12ledger_json_manual\x12\x1f.google.protobuf.MessageOptions\x18ݪ\x04 \x01(\bR\x10ledgerJsonManual:h\n" +
 	"\x15allowed_query_targets\x12\x1d.google.protobuf.FieldOptions\x18ˇ\x03 \x03(\x0e2\x13.common.QueryTargetR\x13allowedQueryTargets:W\n" +
 	"\x18valid_on_no_query_target\x12\x1d.google.protobuf.FieldOptions\x18̇\x03 \x01(\bR\x14validOnNoQueryTarget:R\n" +
 	"\x15ledger_log_is_history\x12\x1d.google.protobuf.FieldOptions\x18͇\x03 \x01(\bR\x12ledgerLogIsHistory:=\n" +
@@ -24168,7 +24194,8 @@ var file_common_proto_goTypes = []any{
 	(*signaturepb.SignedLog)(nil),                           // 346: signature.SignedLog
 	(*descriptorpb.MethodOptions)(nil),                      // 347: google.protobuf.MethodOptions
 	(*descriptorpb.MessageOptions)(nil),                     // 348: google.protobuf.MessageOptions
-	(*descriptorpb.FieldOptions)(nil),                       // 349: google.protobuf.FieldOptions
+	(*descriptorpb.FileOptions)(nil),                        // 349: google.protobuf.FileOptions
+	(*descriptorpb.FieldOptions)(nil),                       // 350: google.protobuf.FieldOptions
 }
 var file_common_proto_depIdxs = []int32{
 	0,   // 0: common.MethodAuthPolicy.fixed_scope:type_name -> common.AuthScope
@@ -24593,19 +24620,21 @@ var file_common_proto_depIdxs = []int32{
 	282, // 419: common.AccountType.SegmentTypesEntry.value:type_name -> common.SegmentType
 	347, // 420: common.auth_policy:extendee -> google.protobuf.MethodOptions
 	348, // 421: common.ledger_json:extendee -> google.protobuf.MessageOptions
-	349, // 422: common.allowed_query_targets:extendee -> google.protobuf.FieldOptions
-	349, // 423: common.valid_on_no_query_target:extendee -> google.protobuf.FieldOptions
-	349, // 424: common.ledger_log_is_history:extendee -> google.protobuf.FieldOptions
-	349, // 425: common.sensitive:extendee -> google.protobuf.FieldOptions
-	349, // 426: common.sensitive_url:extendee -> google.protobuf.FieldOptions
-	349, // 427: common.failure_reason:extendee -> google.protobuf.FieldOptions
-	18,  // 428: common.auth_policy:type_name -> common.MethodAuthPolicy
-	16,  // 429: common.allowed_query_targets:type_name -> common.QueryTarget
-	11,  // 430: common.failure_reason:type_name -> common.ErrorReason
-	431, // [431:431] is the sub-list for method output_type
-	431, // [431:431] is the sub-list for method input_type
-	428, // [428:431] is the sub-list for extension type_name
-	420, // [420:428] is the sub-list for extension extendee
+	349, // 422: common.ledger_json_default:extendee -> google.protobuf.FileOptions
+	348, // 423: common.ledger_json_manual:extendee -> google.protobuf.MessageOptions
+	350, // 424: common.allowed_query_targets:extendee -> google.protobuf.FieldOptions
+	350, // 425: common.valid_on_no_query_target:extendee -> google.protobuf.FieldOptions
+	350, // 426: common.ledger_log_is_history:extendee -> google.protobuf.FieldOptions
+	350, // 427: common.sensitive:extendee -> google.protobuf.FieldOptions
+	350, // 428: common.sensitive_url:extendee -> google.protobuf.FieldOptions
+	350, // 429: common.failure_reason:extendee -> google.protobuf.FieldOptions
+	18,  // 430: common.auth_policy:type_name -> common.MethodAuthPolicy
+	16,  // 431: common.allowed_query_targets:type_name -> common.QueryTarget
+	11,  // 432: common.failure_reason:type_name -> common.ErrorReason
+	433, // [433:433] is the sub-list for method output_type
+	433, // [433:433] is the sub-list for method input_type
+	430, // [430:433] is the sub-list for extension type_name
+	420, // [420:430] is the sub-list for extension extendee
 	0,   // [0:420] is the sub-list for field type_name
 }
 
@@ -25053,7 +25082,7 @@ func file_common_proto_init() {
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_common_proto_rawDesc), len(file_common_proto_rawDesc)),
 			NumEnums:      18,
 			NumMessages:   328,
-			NumExtensions: 8,
+			NumExtensions: 10,
 			NumServices:   0,
 		},
 		GoTypes:           file_common_proto_goTypes,

@@ -2614,7 +2614,7 @@ const file_cluster_proto_rawDesc = "" +
 	"\x11IncrementalBackup\x12!.cluster.IncrementalBackupRequest\x1a\".cluster.IncrementalBackupResponse\"\x06\xd2\xd5\"\x02\x10\x0e\x12k\n" +
 	"\x14ListQueryCheckpoints\x12$.cluster.ListQueryCheckpointsRequest\x1a%.cluster.ListQueryCheckpointsResponse\"\x06\xd2\xd5\"\x02\x10\r\x12f\n" +
 	"\x16GetQueryCheckpointInfo\x12&.cluster.GetQueryCheckpointInfoRequest\x1a\x1c.cluster.QueryCheckpointInfo\"\x06\xd2\xd5\"\x02\x10\r\x12}\n" +
-	"\x1aGetQueryCheckpointSchedule\x12*.cluster.GetQueryCheckpointScheduleRequest\x1a+.cluster.GetQueryCheckpointScheduleResponse\"\x06\xd2\xd5\"\x02\x10\rB:Z8github.com/formancehq/ledger/v3/internal/proto/clusterpbb\x06proto3"
+	"\x1aGetQueryCheckpointSchedule\x12*.cluster.GetQueryCheckpointScheduleRequest\x1a+.cluster.GetQueryCheckpointScheduleResponse\"\x06\xd2\xd5\"\x02\x10\rB>\xe0\xd5\"\x01Z8github.com/formancehq/ledger/v3/internal/proto/clusterpbb\x06proto3"
 
 var (
 	file_cluster_proto_rawDescOnce sync.Once

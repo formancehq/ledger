@@ -3,6 +3,8 @@ package cmdutil
 import (
 	"bytes"
 	"encoding/json"
+	"encoding/json/jsontext"
+	jsonv2 "encoding/json/v2"
 	"fmt"
 	"os"
 	"reflect"
@@ -141,7 +143,7 @@ func yamlNumbers(value any) any {
 
 // marshalJSON dispatches to the appropriate JSON encoder:
 //   - proto.Message with custom MarshalJSON → encoding/json (including generated projections)
-//   - proto.Message without custom MarshalJSON → an explicit error
+//   - proto.Message without custom MarshalJSON → encoding/json/v2 fallback
 //   - slices/maps of proto types → the same logic per element
 //   - everything else → encoding/json
 func marshalJSON(data any) ([]byte, error) {
@@ -156,7 +158,7 @@ func marshalJSON(data any) ([]byte, error) {
 			return json.MarshalIndent(data, "", "  ")
 		}
 
-		return nil, fmt.Errorf("protobuf message %T has no generated JSON projection", msg)
+		return jsonv2.Marshal(msg, jsontext.Multiline(true), jsontext.WithIndent("  "))
 	}
 
 	rv := reflect.ValueOf(data)
@@ -286,15 +288,17 @@ func convertAnyValue(rv reflect.Value) (any, error) {
 	return iface, nil
 }
 
-// protoToAny marshals a projected proto.Message to JSON, then unmarshals to any
-// so it can be combined with other values in a json.MarshalIndent call.
+// protoToAny marshals a proto.Message to JSON, then unmarshals to any so it
+// can be combined with other values in a json.MarshalIndent call.
 // UseNumber keeps numeric tokens exact when composing proto slices and maps.
 func protoToAny(msg proto.Message) (any, error) {
-	jm, ok := msg.(json.Marshaler)
-	if !ok {
-		return nil, fmt.Errorf("protobuf message %T has no generated JSON projection", msg)
+	var b []byte
+	var err error
+	if jm, ok := msg.(json.Marshaler); ok {
+		b, err = jm.MarshalJSON()
+	} else {
+		b, err = jsonv2.Marshal(msg, jsontext.Multiline(true), jsontext.WithIndent("  "))
 	}
-	b, err := jm.MarshalJSON()
 	if err != nil {
 		return nil, err
 	}

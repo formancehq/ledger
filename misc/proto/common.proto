@@ -60,6 +60,17 @@ extend google.protobuf.MessageOptions {
   bool ledger_json = 71003;
 }
 
+// ledger_json_default enables projections for every message in a proto file.
+// Individual messages can opt out with ledger_json_manual when they have a
+// handwritten MarshalJSON implementation or intentionally use another shape.
+extend google.protobuf.FileOptions {
+  bool ledger_json_default = 71004;
+}
+
+extend google.protobuf.MessageOptions {
+  bool ledger_json_manual = 71005;
+}
+
 // ============================================================================
 // Core Data Types
 // ============================================================================
@@ -2668,6 +2679,7 @@ message PreparedQueryCursor {
 
 // LedgerStats contains aggregate statistics for a ledger.
 message LedgerStats {
+	option (ledger_json) = true;
   fixed64 transaction_count = 1;
   fixed64 volume_count = 2;
   fixed64 reference_count = 3;

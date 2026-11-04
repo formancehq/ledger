@@ -5,6 +5,22 @@ package clusterpb
 
 import jsonv2 "encoding/json/v2"
 
+func (x *GetClusterStateRequest) MarshalJSON() ([]byte, error) {
+	return jsonv2.Marshal(struct {
+		NodeId uint64 `json:"nodeId"`
+	}{
+		NodeId: x.NodeId,
+	})
+}
+
+func (x *BeginDrainRequest) MarshalJSON() ([]byte, error) {
+	return jsonv2.Marshal(struct {
+		Epoch string `json:"epoch"`
+	}{
+		Epoch: x.Epoch,
+	})
+}
+
 func (x *BeginDrainResponse) MarshalJSON() ([]byte, error) {
 	return jsonv2.Marshal(struct {
 		CutoffIndex uint64 `json:"cutoffIndex"`
@@ -17,6 +33,14 @@ func (x *BeginDrainResponse) MarshalJSON() ([]byte, error) {
 			}
 			return x.Members
 		}(),
+	})
+}
+
+func (x *EndDrainRequest) MarshalJSON() ([]byte, error) {
+	return jsonv2.Marshal(struct {
+		Epoch string `json:"epoch"`
+	}{
+		Epoch: x.Epoch,
 	})
 }
 
@@ -33,6 +57,11 @@ func (x *EndDrainResponse) MarshalJSON() ([]byte, error) {
 			return x.Members
 		}(),
 	})
+}
+
+func (x *GetDrainStatusRequest) MarshalJSON() ([]byte, error) {
+	return jsonv2.Marshal(struct {
+	}{})
 }
 
 func (x *DrainStatus) MarshalJSON() ([]byte, error) {
@@ -189,6 +218,40 @@ func (x *SyncProgress) MarshalJSON() ([]byte, error) {
 	})
 }
 
+func (x *TransferLeadershipRequest) MarshalJSON() ([]byte, error) {
+	return jsonv2.Marshal(struct {
+		Transferee uint64 `json:"transferee"`
+	}{
+		Transferee: x.Transferee,
+	})
+}
+
+func (x *TransferLeadershipResponse) MarshalJSON() ([]byte, error) {
+	return jsonv2.Marshal(struct {
+		NewLeader uint64 `json:"newLeader"`
+	}{
+		NewLeader: x.NewLeader,
+	})
+}
+
+func (x *GetDiskUsageRequest) MarshalJSON() ([]byte, error) {
+	return jsonv2.Marshal(struct {
+	}{})
+}
+
+func (x *GetNodeTimeRequest) MarshalJSON() ([]byte, error) {
+	return jsonv2.Marshal(struct {
+	}{})
+}
+
+func (x *NodeTime) MarshalJSON() ([]byte, error) {
+	return jsonv2.Marshal(struct {
+		TimestampUs uint64 `json:"timestampUs"`
+	}{
+		TimestampUs: x.TimestampUs,
+	})
+}
+
 func (x *VolumeUsage) MarshalJSON() ([]byte, error) {
 	return jsonv2.Marshal(struct {
 		UsedBytes    uint64 `json:"usedBytes"`
@@ -214,5 +277,212 @@ func (x *DiskUsage) MarshalJSON() ([]byte, error) {
 	}{
 		WalVolume:  x.WalVolume,
 		DataVolume: x.DataVolume,
+	})
+}
+
+func (x *AddLearnerRequest) MarshalJSON() ([]byte, error) {
+	return jsonv2.Marshal(struct {
+		NodeId         uint64 `json:"nodeId"`
+		RaftAddress    string `json:"raftAddress"`
+		ServiceAddress string `json:"serviceAddress"`
+		InstanceId     []byte `json:"instanceId"`
+	}{
+		NodeId:         x.NodeId,
+		RaftAddress:    x.RaftAddress,
+		ServiceAddress: x.ServiceAddress,
+		InstanceId:     x.InstanceId,
+	})
+}
+
+func (x *AddLearnerResponse) MarshalJSON() ([]byte, error) {
+	return jsonv2.Marshal(struct {
+	}{})
+}
+
+func (x *PromoteLearnerRequest) MarshalJSON() ([]byte, error) {
+	return jsonv2.Marshal(struct {
+		NodeId uint64 `json:"nodeId"`
+	}{
+		NodeId: x.NodeId,
+	})
+}
+
+func (x *PromoteLearnerResponse) MarshalJSON() ([]byte, error) {
+	return jsonv2.Marshal(struct {
+	}{})
+}
+
+func (x *RemoveNodeRequest) MarshalJSON() ([]byte, error) {
+	return jsonv2.Marshal(struct {
+		NodeId uint64 `json:"nodeId"`
+		Force  bool   `json:"force"`
+	}{
+		NodeId: x.NodeId,
+		Force:  x.Force,
+	})
+}
+
+func (x *RemoveNodeResponse) MarshalJSON() ([]byte, error) {
+	return jsonv2.Marshal(struct {
+	}{})
+}
+
+func (x *BackupRequest) MarshalJSON() ([]byte, error) {
+	return jsonv2.Marshal(struct {
+		BasePath string `json:"basePath"`
+		BucketId string `json:"bucketId"`
+		Storage  any    `json:"storage,omitempty,omitzero"`
+	}{
+		BasePath: x.BasePath,
+		BucketId: x.BucketId,
+		Storage:  x.Storage,
+	})
+}
+
+func (x *BackupResponse) MarshalJSON() ([]byte, error) {
+	return jsonv2.Marshal(struct {
+		FilesUploaded     uint32 `json:"filesUploaded"`
+		FilesDeleted      uint32 `json:"filesDeleted"`
+		TotalFiles        uint32 `json:"totalFiles"`
+		DurationMs        int64  `json:"durationMs"`
+		LastLogSequence   uint64 `json:"lastLogSequence"`
+		LastAuditSequence uint64 `json:"lastAuditSequence"`
+		LastAppliedIndex  uint64 `json:"lastAppliedIndex"`
+		OrphansDeleted    uint32 `json:"orphansDeleted"`
+	}{
+		FilesUploaded:     x.FilesUploaded,
+		FilesDeleted:      x.FilesDeleted,
+		TotalFiles:        x.TotalFiles,
+		DurationMs:        x.DurationMs,
+		LastLogSequence:   x.LastLogSequence,
+		LastAuditSequence: x.LastAuditSequence,
+		LastAppliedIndex:  x.LastAppliedIndex,
+		OrphansDeleted:    x.OrphansDeleted,
+	})
+}
+
+func (x *IncrementalBackupRequest) MarshalJSON() ([]byte, error) {
+	return jsonv2.Marshal(struct {
+		BasePath string `json:"basePath"`
+		BucketId string `json:"bucketId"`
+		Storage  any    `json:"storage,omitempty,omitzero"`
+	}{
+		BasePath: x.BasePath,
+		BucketId: x.BucketId,
+		Storage:  x.Storage,
+	})
+}
+
+func (x *IncrementalBackupResponse) MarshalJSON() ([]byte, error) {
+	return jsonv2.Marshal(struct {
+		LogEntriesExported   uint64 `json:"logEntriesExported"`
+		AuditEntriesExported uint64 `json:"auditEntriesExported"`
+		SegmentsUploaded     uint32 `json:"segmentsUploaded"`
+		DurationMs           int64  `json:"durationMs"`
+		LastLogSequence      uint64 `json:"lastLogSequence"`
+		LastAuditSequence    uint64 `json:"lastAuditSequence"`
+		OrphansDeleted       uint32 `json:"orphansDeleted"`
+	}{
+		LogEntriesExported:   x.LogEntriesExported,
+		AuditEntriesExported: x.AuditEntriesExported,
+		SegmentsUploaded:     x.SegmentsUploaded,
+		DurationMs:           x.DurationMs,
+		LastLogSequence:      x.LastLogSequence,
+		LastAuditSequence:    x.LastAuditSequence,
+		OrphansDeleted:       x.OrphansDeleted,
+	})
+}
+
+func (x *CompactPrimaryRequest) MarshalJSON() ([]byte, error) {
+	return jsonv2.Marshal(struct {
+	}{})
+}
+
+func (x *CompactPrimaryResponse) MarshalJSON() ([]byte, error) {
+	return jsonv2.Marshal(struct {
+		DurationMs int64 `json:"durationMs"`
+	}{
+		DurationMs: x.DurationMs,
+	})
+}
+
+func (x *CompactSecondaryRequest) MarshalJSON() ([]byte, error) {
+	return jsonv2.Marshal(struct {
+	}{})
+}
+
+func (x *CompactSecondaryResponse) MarshalJSON() ([]byte, error) {
+	return jsonv2.Marshal(struct {
+		DurationMs      int64  `json:"durationMs"`
+		SizeBeforeBytes uint64 `json:"sizeBeforeBytes"`
+		SizeAfterBytes  uint64 `json:"sizeAfterBytes"`
+	}{
+		DurationMs:      x.DurationMs,
+		SizeBeforeBytes: x.SizeBeforeBytes,
+		SizeAfterBytes:  x.SizeAfterBytes,
+	})
+}
+
+func (x *CreateCheckpointRequest) MarshalJSON() ([]byte, error) {
+	return jsonv2.Marshal(struct {
+	}{})
+}
+
+func (x *CreateCheckpointResponse) MarshalJSON() ([]byte, error) {
+	return jsonv2.Marshal(struct {
+		CheckpointId uint64 `json:"checkpointId"`
+	}{
+		CheckpointId: x.CheckpointId,
+	})
+}
+
+func (x *ListQueryCheckpointsRequest) MarshalJSON() ([]byte, error) {
+	return jsonv2.Marshal(struct {
+	}{})
+}
+
+func (x *ListQueryCheckpointsResponse) MarshalJSON() ([]byte, error) {
+	return jsonv2.Marshal(struct {
+		Checkpoints any `json:"checkpoints"`
+	}{
+		Checkpoints: func() any {
+			if x.Checkpoints == nil {
+				return []any{}
+			}
+			return x.Checkpoints
+		}(),
+	})
+}
+
+func (x *GetQueryCheckpointInfoRequest) MarshalJSON() ([]byte, error) {
+	return jsonv2.Marshal(struct {
+		CheckpointId uint64 `json:"checkpointId"`
+	}{
+		CheckpointId: x.CheckpointId,
+	})
+}
+
+func (x *GetQueryCheckpointScheduleRequest) MarshalJSON() ([]byte, error) {
+	return jsonv2.Marshal(struct {
+	}{})
+}
+
+func (x *GetQueryCheckpointScheduleResponse) MarshalJSON() ([]byte, error) {
+	return jsonv2.Marshal(struct {
+		Cron string `json:"cron"`
+	}{
+		Cron: x.Cron,
+	})
+}
+
+func (x *QueryCheckpointInfo) MarshalJSON() ([]byte, error) {
+	return jsonv2.Marshal(struct {
+		CheckpointId uint64 `json:"checkpointId"`
+		MaxSequence  uint64 `json:"maxSequence"`
+		CreatedAt    any    `json:"createdAt,omitempty,omitzero"`
+	}{
+		CheckpointId: x.CheckpointId,
+		MaxSequence:  x.MaxSequence,
+		CreatedAt:    x.CreatedAt,
 	})
 }

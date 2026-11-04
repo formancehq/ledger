@@ -4,11 +4,12 @@ syntax = "proto3";
 package ledger;
 
 option go_package = "github.com/formancehq/ledger/v3/internal/proto/servicepb";
-
 import "common.proto";
 import "audit.proto";
 import "signature.proto";
 import "google/protobuf/descriptor.proto";
+
+option (common.ledger_json_default) = true;
 
 // allowed_skippable_reasons annotates a oneof case inside LedgerAction.data
 // with the business ErrorReasons a caller may list in
@@ -208,6 +209,7 @@ message GetTransactionRequest {
 }
 
 message GetTransactionResponse {
+	option (common.ledger_json_manual) = true;
   common.Transaction transaction = 1;
 }
 
@@ -563,6 +565,7 @@ message ResponseSigningInfo {
 
 // CreateTransactionPayload contains the data for creating a transaction
 message CreateTransactionPayload {
+	option (common.ledger_json_manual) = true;
   repeated common.Posting postings = 1;
   common.Script script = 2;
   common.Timestamp timestamp = 3;
@@ -575,6 +578,7 @@ message CreateTransactionPayload {
 
 // RevertTransactionPayload contains the data for reverting a transaction.
 message RevertTransactionPayload {
+	option (common.ledger_json_manual) = true;
   fixed64 transaction_id = 1;
   bool force = 2;
   bool at_effective_date = 3;

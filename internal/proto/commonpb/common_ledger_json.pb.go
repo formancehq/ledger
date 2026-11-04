@@ -1623,6 +1623,30 @@ func (x *UpdatedDefaultEnforcementModeLog) MarshalJSON() ([]byte, error) {
 	})
 }
 
+func (x *LedgerStats) MarshalJSON() ([]byte, error) {
+	return jsonv2.Marshal(struct {
+		TransactionCount        uint64 `json:"transactionCount"`
+		VolumeCount             uint64 `json:"volumeCount"`
+		ReferenceCount          uint64 `json:"referenceCount"`
+		PostingCount            uint64 `json:"postingCount"`
+		EphemeralEvictedCount   uint64 `json:"ephemeralEvictedCount"`
+		TransientUsedCount      uint64 `json:"transientUsedCount"`
+		RevertCount             uint64 `json:"revertCount"`
+		NumscriptExecutionCount uint64 `json:"numscriptExecutionCount"`
+		LogCount                uint64 `json:"logCount"`
+	}{
+		TransactionCount:        x.TransactionCount,
+		VolumeCount:             x.VolumeCount,
+		ReferenceCount:          x.ReferenceCount,
+		PostingCount:            x.PostingCount,
+		EphemeralEvictedCount:   x.EphemeralEvictedCount,
+		TransientUsedCount:      x.TransientUsedCount,
+		RevertCount:             x.RevertCount,
+		NumscriptExecutionCount: x.NumscriptExecutionCount,
+		LogCount:                x.LogCount,
+	})
+}
+
 func (x *CallerIdentity) MarshalJSON() ([]byte, error) {
 	switch oneofValue := x.Source.(type) {
 	case *CallerIdentity_Issuer:

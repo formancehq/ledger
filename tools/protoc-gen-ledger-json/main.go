@@ -10,6 +10,8 @@ import (
 )
 
 const ledgerJSONOptionNumber = protowire.Number(71003)
+const ledgerJSONDefaultOptionNumber = protowire.Number(71004)
+const ledgerJSONManualOptionNumber = protowire.Number(71005)
 
 func main() {
 	protogen.Options{}.Run(func(gen *protogen.Plugin) error {
@@ -25,7 +27,7 @@ func main() {
 			}
 			selectedMessages := make([]*protogen.Message, 0, len(messages))
 			for _, message := range messages {
-				if selected(message) {
+				if selected(file, message) {
 					selectedMessages = append(selectedMessages, message)
 				}
 			}
@@ -253,6 +255,28 @@ func goJSONType(field protoreflect.FieldDescriptor, oneof bool) string {
 	if field.IsList() || field.IsMap() || field.Message() != nil {
 		return "any"
 	}
+	if field.HasPresence() && !oneof {
+		switch field.Kind() {
+		case protoreflect.BoolKind:
+			return "*bool"
+		case protoreflect.StringKind:
+			return "*string"
+		case protoreflect.BytesKind:
+			return "*[]byte"
+		case protoreflect.Int32Kind, protoreflect.Sint32Kind, protoreflect.Sfixed32Kind:
+			return "*int32"
+		case protoreflect.Int64Kind, protoreflect.Sint64Kind, protoreflect.Sfixed64Kind:
+			return "*int64"
+		case protoreflect.Uint32Kind, protoreflect.Fixed32Kind:
+			return "*uint32"
+		case protoreflect.Uint64Kind, protoreflect.Fixed64Kind:
+			return "*uint64"
+		case protoreflect.FloatKind:
+			return "*float32"
+		case protoreflect.DoubleKind:
+			return "*float64"
+		}
+	}
 	switch field.Kind() {
 	case protoreflect.BoolKind:
 		return "bool"
@@ -352,7 +376,10 @@ func collectMessages(message *protogen.Message, out *[]*protogen.Message) {
 	}
 }
 
-func selected(message *protogen.Message) bool {
+func selected(file *protogen.File, message *protogen.Message) bool {
+	if message.Desc.IsMapEntry() {
+		return false
+	}
 	options := message.Desc.Options()
 	if options == nil {
 		return false
@@ -363,7 +390,49 @@ func selected(message *protogen.Message) bool {
 		if tagSize < 0 {
 			return false
 		}
+		if number == ledgerJSONManualOptionNumber && typ == protowire.VarintType {
+			return false
+		}
+		valueSize := protowire.ConsumeFieldValue(number, typ, unknown[tagSize:])
+		if valueSize < 0 {
+			return false
+		}
+		unknown = unknown[tagSize+valueSize:]
+	}
+	if fileDefault(file) {
+		return true
+	}
+	unknown = options.ProtoReflect().GetUnknown()
+	for len(unknown) > 0 {
+		number, typ, tagSize := protowire.ConsumeTag(unknown)
+		if tagSize < 0 {
+			return false
+		}
 		if number == ledgerJSONOptionNumber && typ == protowire.VarintType {
+			value, valueSize := protowire.ConsumeVarint(unknown[tagSize:])
+			return valueSize >= 0 && value != 0
+		}
+		valueSize := protowire.ConsumeFieldValue(number, typ, unknown[tagSize:])
+		if valueSize < 0 {
+			return false
+		}
+		unknown = unknown[tagSize+valueSize:]
+	}
+	return false
+}
+
+func fileDefault(file *protogen.File) bool {
+	options := file.Desc.Options()
+	if options == nil {
+		return false
+	}
+	unknown := options.ProtoReflect().GetUnknown()
+	for len(unknown) > 0 {
+		number, typ, tagSize := protowire.ConsumeTag(unknown)
+		if tagSize < 0 {
+			return false
+		}
+		if number == ledgerJSONDefaultOptionNumber && typ == protowire.VarintType {
 			value, valueSize := protowire.ConsumeVarint(unknown[tagSize:])
 			return valueSize >= 0 && value != 0
 		}
