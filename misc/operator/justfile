@@ -56,8 +56,10 @@ e2e-cluster-up: _e2e-build-ledger
     kind load docker-image ledger-operator:e2e --name ledger-e2e
     kind load docker-image ledger-operator:rc4-e2e --name ledger-e2e
     kind load docker-image ledger:e2e --name ledger-e2e
+    docker pull ghcr.io/formancehq/ledger:v3.0.0-rc.2
     docker pull ghcr.io/formancehq/ledger:v3.0.0-rc.3
     docker tag ledger:e2e ledger:v3.0.0-rc.4
+    kind load docker-image ghcr.io/formancehq/ledger:v3.0.0-rc.2 --name ledger-e2e
     kind load docker-image ghcr.io/formancehq/ledger:v3.0.0-rc.3 --name ledger-e2e
     kind load docker-image ledger:v3.0.0-rc.4 --name ledger-e2e
     kind load docker-image ghcr.io/formancehq/minio:RELEASE.2025-10-15T17-29-55Z --name ledger-e2e
@@ -97,16 +99,32 @@ test-e2e-only: _ensure-chainsaw
     just _e2e-run-tests
 
 # Keep opaque-tag development scenarios separate from the semantic RC upgrade.
-# The release-versioned Operator can admit both rc.3 and rc.4 in the upgrade test.
+# The release-versioned Operator admits both tested adjacent RC transitions.
 _e2e-run-tests:
     #!/bin/bash
     set -euo pipefail
     just _e2e-install-operator e2e
     chainsaw test --config e2e/chainsaw-test.yaml --test-dir e2e/tests/ \
-        --exclude-test-regex stopped-rc-upgrade --kube-context kind-ledger-e2e
+        --exclude-test-regex rc-upgrade --kube-context kind-ledger-e2e
     just _e2e-install-operator rc4-e2e
     chainsaw test --config e2e/chainsaw-test.yaml \
-        --test-dir e2e/tests/rolling-rc-upgrade/ --kube-context kind-ledger-e2e
+        --test-dir e2e/tests/rc-upgrade/ --kube-context kind-ledger-e2e \
+        --set-string sourceRepository=ghcr.io/formancehq/ledger \
+        --set-string sourceTag=v3.0.0-rc.2 \
+        --set-string sourcePullPolicy=IfNotPresent \
+        --set-string targetRepository=ghcr.io/formancehq/ledger \
+        --set-string targetTag=v3.0.0-rc.3 \
+        --set-string targetPullPolicy=IfNotPresent \
+        --set-string upgradeMode=rolling
+    chainsaw test --config e2e/chainsaw-test.yaml \
+        --test-dir e2e/tests/rc-upgrade/ --kube-context kind-ledger-e2e \
+        --set-string sourceRepository=ghcr.io/formancehq/ledger \
+        --set-string sourceTag=v3.0.0-rc.3 \
+        --set-string sourcePullPolicy=IfNotPresent \
+        --set-string targetRepository=ledger \
+        --set-string targetTag=v3.0.0-rc.4 \
+        --set-string targetPullPolicy=Never \
+        --set-string upgradeMode=stopped
 
 # Verify the volume-protection policy renders only when the cluster supports
 # ValidatingAdmissionPolicy (K8s >= 1.30). Guards the default pvcProtection.enabled=true

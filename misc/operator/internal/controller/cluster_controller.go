@@ -50,8 +50,8 @@ type ClusterReconciler struct {
 // +kubebuilder:rbac:groups="",resources=services;serviceaccounts,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups="",resources=secrets,verbs=get;list;watch
 // +kubebuilder:rbac:groups="",resources=configmaps,verbs=get;list;watch;create;update;patch;delete
-// +kubebuilder:rbac:groups="",resources=persistentvolumeclaims,verbs=delete;get;list;patch
-// +kubebuilder:rbac:groups="",resources=persistentvolumes,verbs=get;list;patch
+// +kubebuilder:rbac:groups="",resources=persistentvolumeclaims,verbs=delete;get;list;patch;watch
+// +kubebuilder:rbac:groups="",resources=persistentvolumes,verbs=get;list;patch;watch
 // +kubebuilder:rbac:groups="",resources=pods,verbs=get;list
 // +kubebuilder:rbac:groups="",resources=pods/exec,verbs=create
 // +kubebuilder:rbac:groups="",resources=events,verbs=create;patch
