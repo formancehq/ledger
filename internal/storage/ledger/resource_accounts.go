@@ -3,7 +3,6 @@ package ledger
 import (
 	"fmt"
 
-	"github.com/stoewer/go-strcase"
 	"github.com/uptrace/bun"
 
 	"github.com/formancehq/ledger/internal/queries"
@@ -119,15 +118,25 @@ func (h accountsResourceHandler) Project(_ common.ResourceQuery[any], selectQuer
 }
 
 func (h accountsResourceHandler) Expand(opts common.ResourceQuery[any], property string) (*bun.SelectQuery, *common.JoinCondition, error) {
+	// The expand property is attacker-controlled (query parameter or cursor
+	// payload) and used below as a SQL alias. Only allow-listed names may
+	// reach the query; every other value is rejected before any SQL is built.
+	// The alias is a constant per supported name, quoted structurally with
+	// bun.Ident — never derived from the raw input via string transformation.
+	var alias string
 	switch property {
 	case "volumes":
 		if !h.store.ledger.HasFeature(features.FeatureMovesHistory, "ON") {
 			return nil, nil, common.NewErrInvalidQuery("feature %s must be 'ON' to use volumes", features.FeatureMovesHistory)
 		}
+		alias = "volumes"
 	case "effectiveVolumes":
 		if !h.store.ledger.HasFeature(features.FeatureMovesHistoryPostCommitEffectiveVolumes, "SYNC") {
 			return nil, nil, common.NewErrInvalidQuery("feature %s must be 'SYNC' to use effectiveVolumes", features.FeatureMovesHistoryPostCommitEffectiveVolumes)
 		}
+		alias = "effective_volumes"
+	default:
+		return nil, nil, common.NewErrInvalidQuery("invalid expand property %s", property)
 	}
 
 	selectRowsQuery := h.store.newScopedSelect().
@@ -157,7 +166,7 @@ func (h accountsResourceHandler) Expand(opts common.ResourceQuery[any], property
 		With("rows", selectRowsQuery).
 		ModelTableExpr("rows").
 		Column("accounts_address").
-		ColumnExpr("public.aggregate_objects(json_build_object(asset, json_build_object('input', (volumes).inputs, 'output', (volumes).outputs))::jsonb) as " + strcase.SnakeCase(property)).
+		ColumnExpr("public.aggregate_objects(json_build_object(asset, json_build_object('input', (volumes).inputs, 'output', (volumes).outputs))::jsonb) as ?", bun.Ident(alias)).
 		Group("accounts_address"), &common.JoinCondition{
 		Left:  "address",
 		Right: "accounts_address",

@@ -43,6 +43,8 @@ func HandleCommonErrors(w http.ResponseWriter, r *http.Request, err error) {
 		api.BadRequest(w, ErrSchemaNotSpecified, err)
 	case errors.Is(err, ledgercontroller.ErrSchemaNotFound{}):
 		api.NotFound(w, err)
+	case errors.Is(err, storagecommon.ErrInvalidQuery{}):
+		api.BadRequest(w, ErrValidation, err)
 	default:
 		InternalServerError(w, r, err)
 	}
