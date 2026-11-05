@@ -96,6 +96,14 @@ results need separate deterministic cost-shape and representative throughput and
 latency evidence for the new bounded admission path. Runtime gate ordering is
 shared with `runtime-health-admission-contracts`; deduplicate by root cause.
 
+Queue policy tightening, then an original prepared against the old policy,
+and apply only the policy before starting the retry. Hold the original and
+retry barrier unapplied: proposal acceptance must not complete either request.
+Apply the original and then the barrier, and require the retry to reconstruct
+the original's complete frozen failure, including metadata-key facts, without
+another audit or business effect. The barrier covers earlier proposals, not
+requests still preparing; a missing key at its snapshot remains a rejection.
+
 This adds no persisted projection, audit format, FSM interpreter or restore
 contract. The original frozen outcome remains the audit authority. See
 [the admission contract](../architecture/subsystems/admission/idempotency.md#replay-after-metadata-limits-tighten).

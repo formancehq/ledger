@@ -116,6 +116,14 @@ and exhausted audit sequence capacity observed at the snapshot keep their
 established refusal precedence. No lifecycle lock spans the barrier wait, and
 the snapshot closes when response reconstruction finishes.
 
+The barrier orders proposals already submitted before it, including an original
+request still awaiting durable apply. For example, an original prepared under
+the old policy can follow a queued policy tightening and freeze a metadata-limit
+failure; a concurrent retry waits for its barrier and replays that failure.
+An original still preparing when the barrier is submitted is outside this
+ordering guarantee. A missing key at the snapshot keeps the local rejection;
+the lookup does not wait for future proposals or reserve the key.
+
 The extra work is triggered only by the keyed typed limit rejection. It costs
 one orderless Raft/WAL entry, one snapshot, fixed state/key point reads,
 at most 64 forward seeks over the uint64 audit-sequence key space without

@@ -43,6 +43,8 @@ type metadataReplayHarness struct {
 	apply      func(*raftcmdpb.Proposal) state.ApplyResult
 	proposals  []*raftcmdpb.Proposal
 	afterApply func(*raftcmdpb.Proposal)
+	// When set, the test drives durable apply separately from proposal acceptance.
+	pendingApplies chan func()
 }
 
 func newMetadataReplayHarness(t testing.TB) *metadataReplayHarness {
@@ -90,13 +92,20 @@ func newMetadataReplayHarness(t testing.TB) *metadataReplayHarness {
 		decoded := &raftcmdpb.Proposal{}
 		require.NoError(t, proto.Unmarshal(p.Data(), decoded))
 		h.proposals = append(h.proposals, decoded)
-		result := applyBytes(p.Data())
-		if h.afterApply != nil {
-			h.afterApply(decoded)
+		future := futures.New[state.ApplyResult]()
+		apply := func() {
+			result := applyBytes(p.Data())
+			if h.afterApply != nil {
+				h.afterApply(decoded)
+			}
+			future.Resolve(result, result.Error)
+		}
+		if h.pendingApplies != nil {
+			h.pendingApplies <- apply
+		} else {
+			apply()
 		}
 		p.Resolve(nil, nil)
-		future := futures.New[state.ApplyResult]()
-		future.Resolve(result, result.Error)
 
 		return future, nil
 	}).AnyTimes()
