@@ -3195,7 +3195,6 @@ func recordChainBoundMutations(
 			if err != nil {
 				return err
 			}
-
 		}
 	}
 
