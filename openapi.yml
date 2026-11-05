@@ -349,6 +349,7 @@ paths:
         - BearerAuth: []
         - {}
       parameters:
+        - $ref: '#/components/parameters/SkipResponse'
         - $ref: '#/components/parameters/LedgerName'
         - $ref: '#/components/parameters/IdempotencyKey'
       requestBody:
@@ -363,7 +364,9 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/CreateLedgerResponse'
+                anyOf:
+                  - $ref: '#/components/schemas/CompactWriteResponse'
+                  - $ref: '#/components/schemas/CreateLedgerResponse'
           links:
             GetCreatedLedger:
               operationId: v3GetLedger
@@ -775,6 +778,7 @@ paths:
         - BearerAuth: []
         - {}
       parameters:
+        - $ref: '#/components/parameters/SkipResponse'
         - $ref: '#/components/parameters/LedgerName'
       responses:
         '201':
@@ -782,7 +786,9 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/PromoteLedgerResponse'
+                anyOf:
+                  - $ref: '#/components/schemas/CompactWriteResponse'
+                  - $ref: '#/components/schemas/PromoteLedgerResponse'
         '400':
           description: The request is invalid, or the ledger is not in mirror mode (`LEDGER_NOT_IN_MIRROR_MODE`).
           content:
@@ -840,6 +846,7 @@ paths:
         - BearerAuth: []
         - {}
       parameters:
+        - $ref: '#/components/parameters/SkipResponse'
         - $ref: '#/components/parameters/BigIntAsString'
         - $ref: '#/components/parameters/LedgerName'
         - $ref: '#/components/parameters/IdempotencyKey'
@@ -859,7 +866,9 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/CreateTransactionResponse'
+                anyOf:
+                  - $ref: '#/components/schemas/CompactWriteResponse'
+                  - $ref: '#/components/schemas/CreateTransactionResponse'
           links:
             GetCreatedTransaction:
               operationId: v3GetTransaction
@@ -1590,6 +1599,7 @@ paths:
         - BearerAuth: []
         - {}
       parameters:
+        - $ref: '#/components/parameters/SkipResponse'
         - $ref: '#/components/parameters/BigIntAsString'
         - $ref: '#/components/parameters/LedgerName'
         - $ref: '#/components/parameters/TransactionId'
@@ -1610,7 +1620,9 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/RevertedTransactionResponse'
+                anyOf:
+                  - $ref: '#/components/schemas/CompactWriteResponse'
+                  - $ref: '#/components/schemas/RevertedTransactionResponse'
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
@@ -2112,6 +2124,7 @@ paths:
         - BearerAuth: []
         - {}
       parameters:
+        - $ref: '#/components/parameters/SkipResponse'
         - $ref: '#/components/parameters/LedgerName'
         - name: name
           in: path
@@ -2131,7 +2144,9 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/GetNumscriptResponse'
+                anyOf:
+                  - $ref: '#/components/schemas/CompactWriteResponse'
+                  - $ref: '#/components/schemas/GetNumscriptResponse'
           links:
             GetSavedNumscript:
               operationId: v3GetNumscript
@@ -2357,6 +2372,7 @@ paths:
         - BearerAuth: []
         - {}
       parameters:
+        - $ref: '#/components/parameters/SkipResponse'
         - $ref: '#/components/parameters/BigIntAsString'
         - $ref: '#/components/parameters/LedgerName'
         - $ref: '#/components/parameters/IdempotencyKey'
@@ -3053,6 +3069,7 @@ paths:
         - BearerAuth: []
         - {}
       parameters:
+        - $ref: '#/components/parameters/SkipResponse'
         - $ref: '#/components/parameters/IdempotencyKey'
       requestBody:
         required: true
@@ -3064,19 +3081,21 @@ paths:
         '415':
           $ref: '#/components/responses/UnsupportedMediaType'
         '201':
-          description: Event sink created successfully. Only its name is returned.
+          description: Event sink created successfully. Returns its name by default, or the compact sequence acknowledgement with skipResponse=true.
           content:
             application/json:
               schema:
-                type: object
-                required: [data]
-                properties:
-                  data:
-                    type: object
-                    required: [name]
+                anyOf:
+                  - $ref: '#/components/schemas/CompactWriteResponse'
+                  - type: object
+                    required: [data]
                     properties:
-                      name:
-                        type: string
+                      data:
+                        type: object
+                        required: [name]
+                        properties:
+                          name:
+                            type: string
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
@@ -3480,6 +3499,7 @@ paths:
         - BearerAuth: []
         - {}
       parameters:
+        - $ref: '#/components/parameters/SkipResponse'
         - $ref: '#/components/parameters/LedgerName'
         - name: Idempotency-Key
           in: header
@@ -3507,13 +3527,16 @@ paths:
           $ref: '#/components/responses/UnsupportedMediaType'
         '201':
           description: |
-            Index creation queued. The body carries the canonical id of the
-            created index (round-trip normalized), usable directly on the
+            Index creation queued. With skipResponse=true the body carries only
+            the compact sequence acknowledgement. Otherwise it carries the
+            canonical id of the created index (round-trip normalized), usable directly on the
             follow-up GET/DELETE `/v3/{ledgerName}/indexes/{canonicalId}` routes.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/CreateIndexResponse'
+                anyOf:
+                  - $ref: '#/components/schemas/CompactWriteResponse'
+                  - $ref: '#/components/schemas/CreateIndexResponse'
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
@@ -3760,6 +3783,26 @@ components:
         Page token from a previous response's `next` or `previous` field (see
         the `PageToken` schema). Omit for the first page. Pass the same
         `reverse` and `filter` on every page of a walk.
+
+    SkipResponse:
+      name: skipResponse
+      in: query
+      required: false
+      description: |
+        Suppress successful business response data. Supply exactly one lowercase
+        true or false; empty, repeated or other values return 400 INVALID_REQUEST
+        before execution. Omitted or false preserves the existing response.
+        Single writes retain 201 and return data.sequence, the global unsigned
+        log sequence, without a signed receipt. Bulk retains responseType,
+        logID, status, errors and skip diagnostics; successful entries add
+        sequence and omit ordinary operation data. Empty bulk remains {}.
+        This option changes HTTP presentation only, including on keyed replay.
+        Older nodes reject this query name; upgrade every HTTP-serving node
+        before enabling it. Sequence remains a JSON number even with the
+        Formance-Bigint-As-String header; clients must preserve uint64 precision.
+      schema:
+        type: boolean
+        default: false
 
     BigIntAsString:
       name: Formance-Bigint-As-String
@@ -6942,6 +6985,31 @@ components:
           type: string
           description: Metadata key to delete
 
+    CompactWriteSequence:
+      type: integer
+      format: uint64
+      minimum: 1
+      maximum: 18446744073709551615
+      description: |
+        Global committed log sequence, distinct from transaction IDs and
+        ledger-local logID. A numeric unsigned acknowledgement, without a
+        cryptographic signature or signed-log receipt. Decode without loss of
+        uint64 precision; large-integer response negotiation does not change it.
+
+    CompactWriteResponse:
+      description: Successful single-write acknowledgement with skipResponse=true.
+      type: object
+      additionalProperties: false
+      required: [data]
+      properties:
+        data:
+          type: object
+          additionalProperties: false
+          required: [sequence]
+          properties:
+            sequence:
+              $ref: '#/components/schemas/CompactWriteSequence'
+
     BulkResponse:
       type: object
       properties:
@@ -6975,6 +7043,8 @@ components:
           type: integer
           format: int64
           description: Log ID of the applied operation (0 on error)
+        sequence:
+          $ref: '#/components/schemas/CompactWriteSequence'
         errorCode:
           type: string
           description: Error code (present only on error)
@@ -6987,7 +7057,10 @@ components:
             error codes and the bulk response shape are preserved.
         data:
           description: |
-            Operation result data. Shape depends on the originating action:
+            With skipResponse=true, ordinary successful operation data is
+            omitted; skips retain their complete OrderSkippedResponse. Errors
+            and aborted entries have no sequence. Omitted/false preserves the
+            existing operation data. Shape depends on the originating action:
               - `CREATE_TRANSACTION` success: a `TransactionResponse` — the
                 created Transaction object.
               - Any skippable action skip (when the item opted into

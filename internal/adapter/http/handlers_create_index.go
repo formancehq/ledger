@@ -54,15 +54,27 @@ func (s *Server) handleCreateIndex(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if _, err := s.applyUnsigned(r.Context(), r.Header.Get("Idempotency-Key"), &servicepb.Request{
+	logs, err := s.applyUnsigned(r.Context(), r.Header.Get("Idempotency-Key"), &servicepb.Request{
 		Type: &servicepb.Request_CreateIndex{
 			CreateIndex: &servicepb.CreateIndexRequest{
 				Ledger: ledgerName,
 				Id:     id,
 			},
 		},
-	}); err != nil {
+	})
+	if err != nil {
 		handleError(w, r, err)
+
+		return
+	}
+
+	if queryParamBool(r, "skipResponse") {
+		details := map[string]any{"ledger": ledgerName}
+		entry := exactlyOneLog("create-index", logs, details)
+		if entry.GetPayload().GetApply().GetLog().GetData().GetCreateIndex() == nil {
+			panic(unexpectedLogPayload("create-index", entry, details))
+		}
+		writeMutationCreated(w, r, entry, nil)
 
 		return
 	}

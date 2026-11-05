@@ -58,5 +58,5 @@ func (s *Server) handleSaveNumscript(w http.ResponseWriter, r *http.Request) {
 		panic(emptyLogPayload("save-numscript", logEntry, details))
 	}
 
-	writeCreated(w, r, saved.GetInfo())
+	writeMutationCreated(w, r, logEntry, saved.GetInfo())
 }
