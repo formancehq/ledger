@@ -643,6 +643,9 @@ paths:
       description: |
         Promotes a mirror-mode ledger to normal mode. After promotion, the mirror sync
         worker is stopped and the ledger accepts direct write operations. Requires `ledger:write` scope.
+        A new promotion requires a known source head, an applied cursor at or beyond
+        that head, and no recorded sync error. A matching, unexpired idempotent retry
+        returns its recorded outcome before these conditions are checked again.
       operationId: v3PromoteLedger
       x-speakeasy-name-override: PromoteLedger
       tags:
@@ -660,7 +663,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/PromoteLedgerResponse'
         '400':
-          description: The request is invalid, or the ledger is not in mirror mode (`LEDGER_NOT_IN_MIRROR_MODE`).
+          description: The request is invalid, the ledger is not in mirror mode (`LEDGER_NOT_IN_MIRROR_MODE`), or the mirror has not caught up (`MIRROR_NOT_CAUGHT_UP`).
           content:
             application/json:
               schema:
