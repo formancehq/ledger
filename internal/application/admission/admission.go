@@ -662,13 +662,17 @@ func (a *Admission) prepareBatchOrders(ctx context.Context, batch verifiedBatch)
 	if err != nil {
 		return nil, nil, nil, fmt.Errorf("converting requests to orders: %w", err)
 	}
-	if err := a.restorePreparedQueryIDRetry(ctx, admPlan.key, orders); err != nil {
-		return nil, nil, nil, fmt.Errorf("resolving prepared query idempotency retry: %w", err)
-	}
 
-	// Metadata shape was checked during conversion. Replicated metadata policy
-	// belongs to the FSM, after idempotency lookup: fresh refusals are audited,
-	// while retries retain their original outcome even after policy tightening.
+	// Enforce the metadata size contract over the whole execution batch. The
+	// ceiling spans every order in the atomic, signed unit. Policy controls do
+	// not enter this order path and can establish the policy independently.
+	policy, policyErr := query.ReadClusterPolicy(a.store)
+	if policyErr != nil {
+		return nil, nil, nil, fmt.Errorf("reading cluster policy for metadata limits: %w", policyErr)
+	}
+	if err := validateCommandMetadata(orders, domain.MetadataLimitsFromPolicy(policy)); err != nil {
+		return nil, nil, nil, err
+	}
 
 	// Step 1: Extract preload needs from orders (excludes script-dependent needs)
 	needs, perOrder, err := a.extractPreloadNeeds(ctx, orders, overlay)
@@ -955,10 +959,6 @@ func (a *Admission) resolveAdmissionResult(ctx context.Context, cmd *raftcmdpb.P
 		log, fetchErr := query.ReadLogBySequence(ctx, handle, refSeq)
 		if fetchErr != nil {
 			return nil, fmt.Errorf("fetching referenced log %d for idempotent response: %w", refSeq, fetchErr)
-		}
-
-		if log == nil {
-			return nil, fmt.Errorf("invariant: idempotent response references missing log %d", refSeq)
 		}
 
 		logs[i] = log
@@ -2227,10 +2227,6 @@ func (a *Admission) requestToOrder(ctx context.Context, req *servicepb.Request, 
 	} else if !a.ledgerRequestToOrder(order, req, overlay) && !a.systemRequestToOrder(order, req, batchSig, overlay) {
 		return nil, fmt.Errorf("unsupported request type: %T", req.GetType())
 	}
-	if err := a.resolvePreparedQueryIDOrder(ctx, order, overlay); err != nil {
-		return nil, err
-	}
-
 	// Validate storage-safety invariants (null bytes in ledger names, metadata keys, etc.)
 	if err := validateOrder(order); err != nil {
 		return nil, err
