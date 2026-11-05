@@ -97,13 +97,14 @@ type Worker struct {
 
 	// inventoryChecked records that the ledger's stored volumes were scanned
 	// once for assets ingested before asset-mapping support. A non-empty
-	// inventoryBlock holds the resulting error and stops ingestion for the
-	// worker's lifetime: such assets only disappear with the ledger, which
-	// stops the worker too. inventoryReported tracks whether the block was
+	// block stops ingestion for the worker's lifetime and is persisted as the
+	// sync error: it is set by that scan, whose offending assets only
+	// disappear with the ledger, or by blockIngestion for a configuration the
+	// worker cannot compile. blockReported tracks whether the block was
 	// confirmed persisted, so an abandoned report is retried next tick.
-	inventoryChecked  bool
-	inventoryBlock    string
-	inventoryReported bool
+	inventoryChecked bool
+	block            string
+	blockReported    bool
 
 	// Metrics
 	ledgerAttr        attribute.KeyValue
@@ -251,11 +252,11 @@ func (w *Worker) failTick(ctx context.Context, err error) {
 // block names, so the persisted status stays readable.
 const maxReportedInventoryAssets = 10
 
-// checkStoredAssets scans the ledger's volumes once and records, in
-// inventoryBlock, any stored (asset, color) that v3 cannot represent. Such
-// rows come from a release that ingested v2 assets verbatim; continuing would
-// spread one v2 asset across incompatible buckets, so the mirror must be
-// recreated with mappings instead.
+// checkStoredAssets scans the ledger's volumes once and records, in block,
+// any stored (asset, color) that v3 cannot represent. Such rows come from a
+// release that ingested v2 assets verbatim; continuing would spread one v2
+// asset across incompatible buckets, so the mirror must be recreated with
+// mappings instead.
 func (w *Worker) checkStoredAssets() error {
 	start := time.Now()
 
@@ -293,13 +294,20 @@ func (w *Worker) checkStoredAssets() error {
 		invalid = append(invalid[:maxReportedInventoryAssets], fmt.Sprintf("... and %d more", len(invalid)-maxReportedInventoryAssets))
 	}
 
-	w.inventoryBlock = fmt.Sprintf(
+	w.block = fmt.Sprintf(
 		"ledger contains assets ingested before asset-mapping support: %s; delete and recreate the mirror with assetMappings",
 		strings.Join(invalid, ", "),
 	)
-	w.logger.WithFields(map[string]any{"error": w.inventoryBlock}).Errorf("Mirror sync error")
+	w.logger.WithFields(map[string]any{"error": w.block}).Errorf("Mirror sync error")
 
 	return nil
+}
+
+// blockIngestion stops ingestion for the worker's lifetime and persists
+// message as the mirror's sync error. Call it before Start.
+func (w *Worker) blockIngestion(message string) {
+	w.block = message
+	w.logger.WithFields(map[string]any{"error": message}).Errorf("Mirror sync error")
 }
 
 // refreshSourceHead queries the v2 source for its latest log ID and stores
@@ -327,7 +335,9 @@ func (w *Worker) processLogs(ctx context.Context) {
 		default:
 		}
 
-		if !w.inventoryChecked {
+		// A mirror with asset mappings was created by a release that
+		// validates every proposed asset, so its volumes need no scan.
+		if w.block == "" && !w.inventoryChecked && w.translate.Assets == nil {
 			if err := w.checkStoredAssets(); err != nil {
 				w.failTick(ctx, err)
 
@@ -335,9 +345,9 @@ func (w *Worker) processLogs(ctx context.Context) {
 			}
 		}
 
-		if w.inventoryBlock != "" {
-			if !w.inventoryReported {
-				w.inventoryReported = w.reportError(ctx, w.inventoryBlock)
+		if w.block != "" {
+			if !w.blockReported {
+				w.blockReported = w.reportError(ctx, w.block)
 			}
 
 			return
@@ -729,7 +739,7 @@ func (w *Worker) reportError(ctx context.Context, message string) bool {
 // advance the published state, or a rejected proposal would suppress the retry
 // on the next tick. reportError marks the status dirty up front regardless,
 // because for that direction an unconfirmed-but-applied proposal is the
-// dangerous case; it forwards the bool only so the inventory block can retry
+// dangerous case; it forwards the bool only so a block can retry
 // an unconfirmed report.
 func (w *Worker) proposeMirrorSync(ctx context.Context, update *raftcmdpb.MirrorSyncUpdate, label string) bool {
 	cmd := &raftcmdpb.Proposal{

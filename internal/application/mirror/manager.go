@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"sync"
 
+	"github.com/antithesishq/antithesis-sdk-go/assert"
 	"go.opentelemetry.io/otel/metric"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
@@ -267,20 +268,20 @@ func (m *Manager) reconcileGeneration(leadership managerLeadership) {
 			continue
 		}
 
+		// Admission compiles rules and mappings with these same functions, so a
+		// failure here means the persisted config is corrupt. The worker still
+		// starts, blocked, so the failure is visible as the mirror's sync error.
+		var blocked string
 		rewriter, err := celrewrite.NewRewriter(info.GetMirrorSource().GetRewriteRules())
 		if err != nil {
-			// Rules are validated at admission time, so a compile failure here
-			// indicates corrupted config; skip the worker rather than crash.
-			m.logger.WithFields(map[string]any{"ledger": name}).Errorf("Failed to build mirror rewriter: %v", err)
-
-			continue
+			assert.Unreachable("mirror: persisted rewrite rules do not compile", map[string]any{"ledger": name, "error": err.Error()})
+			blocked = fmt.Sprintf("persisted rewrite rules do not compile: %v", err)
 		}
 
 		assets, err := v2.NewAssetMapper(info.GetMirrorSource().GetAssetMappings())
 		if err != nil {
-			m.logger.WithFields(map[string]any{"ledger": name}).Errorf("Failed to build mirror asset mapper: %v", err)
-
-			continue
+			assert.Unreachable("mirror: persisted asset mappings do not compile", map[string]any{"ledger": name, "error": err.Error()})
+			blocked = fmt.Sprintf("persisted asset mappings do not compile: %v", err)
 		}
 
 		source, err := createSource(leadership.initializationCtx, info.GetMirrorSource())
@@ -306,6 +307,9 @@ func (m *Manager) reconcileGeneration(leadership managerLeadership) {
 		}
 
 		w := NewWorker(name, batchSize, source, v2.TranslateOptions{Rewriter: rewriter, Assets: assets}, m.store, m.proposer, m.builder, m.logger, m.meterProvider)
+		if blocked != "" {
+			w.blockIngestion(blocked)
+		}
 		w.Start()
 		if !m.isCurrentLeader(generation) {
 			w.Stop()

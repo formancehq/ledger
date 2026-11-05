@@ -147,5 +147,45 @@ func TestWorkerStartupInventoryAllowsValidLedger(t *testing.T) {
 	w.processLogs(context.Background())
 
 	require.True(t, w.inventoryChecked)
-	require.Empty(t, w.inventoryBlock)
+	require.Empty(t, w.block)
+}
+
+func TestWorkerWithAssetMappingsSkipsInventory(t *testing.T) {
+	t.Parallel()
+
+	builder, store := newTestBuilder(t)
+	seedVolume(t, store, "mirrored", "users:001", "USDT_ETHEREUM/6", "")
+
+	source := v2.NewMockSource(gomock.NewController(t))
+	source.EXPECT().FetchLogs(gomock.Any(), uint64(0), gomock.Any()).Return(nil, false, nil)
+	assets, err := v2.NewAssetMapper([]*commonpb.MirrorAssetMapping{{SourceAsset: "USDT_ETHEREUM/6", Asset: "USDT/6", Color: "ETHEREUM"}})
+	require.NoError(t, err)
+	ctx := logging.TestingContext()
+	w := NewWorker("mirrored", 100, source, v2.TranslateOptions{Assets: assets}, store, nil, builder, logging.FromContext(ctx), noop.NewMeterProvider())
+
+	w.processLogs(context.Background())
+
+	require.False(t, w.inventoryChecked)
+	require.Empty(t, w.block)
+}
+
+func TestWorkerBlockIngestionReportsWithoutScanning(t *testing.T) {
+	t.Parallel()
+
+	builder, store := newTestBuilder(t)
+	seedVolume(t, store, "mirrored", "users:001", "USDT_ETHEREUM/6", "")
+
+	// gomock fails the test on any FetchLogs call: a blocked worker must not ingest.
+	source := v2.NewMockSource(gomock.NewController(t))
+	proposer := &stubProposer{outcome: proposeApplied}
+	w := newWorkerWithProposer(t, "mirrored", source, store, builder, proposer)
+	w.blockIngestion("invalid persisted mirror configuration: boom")
+
+	w.processLogs(context.Background())
+	w.processLogs(context.Background())
+
+	require.False(t, w.inventoryChecked)
+	recorded := proposer.recorded()
+	require.Len(t, recorded, 1)
+	require.Equal(t, "invalid persisted mirror configuration: boom", recorded[0].update.GetError().GetMessage())
 }

@@ -39,7 +39,7 @@ func NewAssetMapper(mappings []*commonpb.MirrorAssetMapping) (*AssetMapper, erro
 	}
 
 	if len(mappings) > MaxAssetMappings {
-		return nil, fmt.Errorf("too many asset mappings: %d (max %d)", len(mappings), MaxAssetMappings)
+		return nil, fmt.Errorf("assetMappings: %d entries exceed the maximum of %d", len(mappings), MaxAssetMappings)
 	}
 
 	m := &AssetMapper{
@@ -112,7 +112,7 @@ func (m *AssetMapper) apply(postings []*commonpb.Posting, seen map[string]struct
 			if source, clash := m.uncoloredTargets[asset]; clash {
 				return &AssetMappingError{
 					Asset:  asset,
-					Reason: fmt.Sprintf("pass-through asset %q collides with mapping target (%q, \"\") of sourceAsset %q; add an assetMappings entry for it", asset, asset, source),
+					Reason: fmt.Sprintf("pass-through asset %q collides with mapping target (%q, \"\") of sourceAsset %q; recreate the mirror with an assetMappings entry for it", asset, asset, source),
 				}
 			}
 		}
@@ -124,7 +124,7 @@ func (m *AssetMapper) apply(postings []*commonpb.Posting, seen map[string]struct
 		if err := domain.ValidateAsset(asset); err != nil {
 			return &AssetMappingError{
 				Asset:  asset,
-				Reason: fmt.Sprintf("no mapping for v2 asset %q; add an assetMappings entry or drop the transaction with a rewrite rule", asset),
+				Reason: fmt.Sprintf("no mapping for v2 asset %q; recreate the mirror with an assetMappings entry or a drop rewrite rule for it", asset),
 			}
 		}
 

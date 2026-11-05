@@ -444,7 +444,7 @@ func validateOrderMirrorSource(order *raftcmdpb.Order) domain.Describable {
 	// Same contract for asset mappings: NewAssetMapper is what the worker
 	// builds, so a nil error here guarantees the mapper compiles there.
 	if _, err := v2.NewAssetMapper(src.GetAssetMappings()); err != nil {
-		return ErrMirrorAssetMappingInvalid
+		return &mirrorAssetMappingError{cause: err}
 	}
 
 	if http := src.GetHttp(); http != nil {

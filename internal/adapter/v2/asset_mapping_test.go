@@ -63,7 +63,7 @@ func TestNewAssetMapper_Validation(t *testing.T) {
 		mappings []*commonpb.MirrorAssetMapping
 		wantErr  string
 	}{
-		{"too many", tooMany, "too many asset mappings"},
+		{"too many", tooMany, "exceed the maximum of 256"},
 		{"empty source", []*commonpb.MirrorAssetMapping{assetMapping("", "USD", "")}, "sourceAsset must not be empty"},
 		{"long source", []*commonpb.MirrorAssetMapping{assetMapping(strings.Repeat("A", MaxSourceAssetLength+1), "USD", "")}, "exceeds 64 bytes"},
 		{"duplicate source", []*commonpb.MirrorAssetMapping{assetMapping("USD/0", "USD", ""), assetMapping("USD/0", "USDZERO", "")}, `duplicate sourceAsset "USD/0"`},

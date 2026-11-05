@@ -146,10 +146,11 @@ type MirrorSourceSpec struct {
 type MirrorAssetMapping struct {
 	// SourceAsset is the asset as it appears in the v2 source ledger.
 	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=64
 	SourceAsset string `json:"sourceAsset"`
 
 	// Asset is the v3 asset the source asset is mirrored into.
-	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:Pattern=`^[A-Z][A-Z0-9]{0,16}(/([1-9][0-9]?|1[0-9]{2}|2[0-4][0-9]|25[0-5]))?$`
 	Asset string `json:"asset"`
 
 	// Color is the v3 color attached to the mirrored asset.

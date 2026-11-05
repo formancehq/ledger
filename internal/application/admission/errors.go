@@ -1,6 +1,9 @@
 package admission
 
-import "github.com/formancehq/ledger/v3/internal/domain"
+import (
+	"github.com/formancehq/ledger/v3/internal/domain"
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+)
 
 // Sentinel errors for admission-layer validation that does not belong to the
 // domain (e.g. integration-config invariants like AWS RDS IAM auth fields).
@@ -64,3 +67,23 @@ var (
 	// pre-Raft and cannot diverge state across a mixed-binary rolling upgrade.
 	ErrSigningKeyInvalidLength = domain.NewValidationSentinel("SIGNING_KEY_INVALID_LENGTH", "signing key public_key must be exactly 32 bytes (Ed25519)")
 )
+
+// mirrorAssetMappingError is ErrMirrorAssetMappingInvalid with the offending
+// entry named in its message.
+type mirrorAssetMappingError struct {
+	cause error
+}
+
+func (e *mirrorAssetMappingError) Error() string {
+	return "mirrorSource." + e.cause.Error()
+}
+
+func (e *mirrorAssetMappingError) Is(target error) bool {
+	return target == ErrMirrorAssetMappingInvalid
+}
+
+func (*mirrorAssetMappingError) Kind() domain.ErrorKind { return ErrMirrorAssetMappingInvalid.Kind() }
+func (*mirrorAssetMappingError) Reason() string         { return ErrMirrorAssetMappingInvalid.Reason() }
+func (*mirrorAssetMappingError) FailureDetails() *commonpb.FailureDetails {
+	return ErrMirrorAssetMappingInvalid.FailureDetails()
+}

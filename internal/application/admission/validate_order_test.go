@@ -1105,6 +1105,7 @@ func TestValidateOrder_MirrorIAMRegion(t *testing.T) {
 		name    string
 		src     *commonpb.MirrorSourceConfig
 		wantErr error
+		wantMsg string
 	}{
 		{
 			name: "no mirror source",
@@ -1275,6 +1276,7 @@ func TestValidateOrder_MirrorIAMRegion(t *testing.T) {
 				},
 			},
 			wantErr: ErrMirrorAssetMappingInvalid,
+			wantMsg: `mirrorSource.assetMappings[1]: duplicate sourceAsset "USD/0"`,
 		},
 		{
 			name: "asset mapping to an invalid v3 asset rejected at admission",
@@ -1324,6 +1326,9 @@ func TestValidateOrder_MirrorIAMRegion(t *testing.T) {
 			err := validateOrder(order)
 			if tt.wantErr != nil {
 				require.ErrorIs(t, err, tt.wantErr)
+				if tt.wantMsg != "" {
+					require.EqualError(t, err, tt.wantMsg)
+				}
 			} else {
 				require.NoError(t, err)
 			}

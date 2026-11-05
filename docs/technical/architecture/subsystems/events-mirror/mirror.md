@@ -388,20 +388,22 @@ mirror's sync error until the mirror is recreated. `MirrorSyncError.message` is
 the full text is in the worker's `Mirror sync error` log line. The messages are:
 
 ```text
-mapping assets of v2 log N (type=NEW_TRANSACTION): no mapping for v2 asset "X"; add an assetMappings entry or drop the transaction with a rewrite rule
-mapping assets of v2 log N (type=NEW_TRANSACTION): pass-through asset "X" collides with mapping target ("X", "") of sourceAsset "S"; add an assetMappings entry for it
+mapping assets of v2 log N (type=NEW_TRANSACTION): no mapping for v2 asset "X"; recreate the mirror with an assetMappings entry or a drop rewrite rule for it
+mapping assets of v2 log N (type=NEW_TRANSACTION): pass-through asset "X" collides with mapping target ("X", "") of sourceAsset "S"; recreate the mirror with an assetMappings entry for it
 ```
 
 Admission compiles the list with `v2.NewAssetMapper`, the same function the
-worker uses, and rejects an invalid list with `MIRROR_ASSET_MAPPING_INVALID`.
-A valid list has at most 256 entries. Each entry has a unique non-empty
+worker uses, and rejects an invalid list with `MIRROR_ASSET_MAPPING_INVALID`;
+the message names the first offending entry, such as
+`mirrorSource.assetMappings[1]: duplicate sourceAsset "USD/0"`. A valid list has at most 256 entries. Each entry has a unique non-empty
 `source_asset` of at most 64 bytes, a valid v3 `asset`, and a `color` matching
 `^[A-Z]{0,32}$`. No two entries share an `(asset, color)` target.
 
 **Stored-asset inventory.** A mirror that ingested v2 logs before mappings were
 validated may already hold volumes whose asset or color v3 cannot represent.
-When a worker starts, it scans the ledger's volumes once
-(`Worker.checkStoredAssets`). If any stored `(asset, color)` fails v3
+When a worker for a mirror without asset mappings starts, it scans the ledger's
+volumes once (`Worker.checkStoredAssets`). A mirror with mappings was created
+by a release that validates every proposed asset, so its worker skips the scan. If any stored `(asset, color)` fails v3
 validation, the worker persists the following sync error, naming at most ten
 offenders, and ingests nothing for its lifetime:
 
@@ -411,6 +413,14 @@ ledger contains assets ingested before asset-mapping support: A, B; delete and r
 
 The scan cannot detect precision aliasing that already happened. A v2 `USD/0`
 stored before validation landed in the valid `USD` bucket and reads as valid.
+
+**Uncompilable persisted configuration.** Admission compiles rewrite rules and
+asset mappings with the functions the manager uses, so a persisted
+configuration that fails to compile is an invariant violation. The manager
+raises an Antithesis `Unreachable` assertion, still starts the worker, and
+blocks it the same way: the worker persists `persisted rewrite rules do not
+compile: …` or `persisted asset mappings do not compile: …` as the sync error
+and ingests nothing.
 
 **Fixing a stalled mirror.** Mirror source configuration is immutable, so
 mappings cannot be added to an existing mirror. Delete the mirror ledger and
