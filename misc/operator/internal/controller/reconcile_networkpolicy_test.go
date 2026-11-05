@@ -157,6 +157,7 @@ func TestReconcile_NetworkPolicyCustomPorts(t *testing.T) {
 	ls.Spec.Service.HttpPort = 19000
 	ls.Spec.BindAddr = "0.0.0.0:27777"
 	ls.Spec.GrpcPort = 28888
+	ls.Spec.GrpcPeerPort = 28889
 	ls.Spec.HttpPort = 29000
 	ls.Spec.NetworkPolicy = &ledgerv1alpha1.NetworkPolicySpec{
 		Enabled: true,
