@@ -386,8 +386,14 @@ var _ = Describe("HTTP events sinks mutation scopes", func() {
 				Data json.RawMessage `json:"data"`
 			}
 			Expect(json.Unmarshal(raw, &envelope)).To(Succeed())
+			var public struct {
+				Sinks json.RawMessage `json:"sinks"`
+			}
+			Expect(json.Unmarshal(envelope.Data, &public)).To(Succeed())
 			var response servicepb.GetEventsSinksResponse
-			Expect(protojson.Unmarshal(envelope.Data, &response)).To(Succeed())
+			payload := append([]byte(`{"sinks":`), public.Sinks...)
+			payload = append(payload, '}')
+			Expect(protojson.Unmarshal(payload, &response)).To(Succeed())
 			return response.GetSinks()
 		}
 		sink := newTestSinkConfig("http-sinks-scopes", "http.events.scopes")
