@@ -2,11 +2,11 @@ package logintegrity
 
 import (
 	"context"
-	"crypto/sha256"
 	"net"
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	"github.com/zeebo/xxh3"
 	"go.opentelemetry.io/otel/metric/noop"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -59,7 +59,7 @@ func (s *fixtureDigestServer) GetRangeDigest(_ context.Context, req *rafttranspo
 func TestObserverReportsPeerSuffixWithEmptyLocalLog(t *testing.T) {
 	t.Parallel()
 	listener := bufconn.Listen(1024 * 1024)
-	remote := &fixtureDigestServer{hash: make([]byte, 32), head: 100, applied: 5}
+	remote := &fixtureDigestServer{hash: make([]byte, DigestSize), head: 100, applied: 5}
 	server := grpc.NewServer()
 	rafttransportpb.RegisterLogIntegrityServiceServer(server, remote)
 	go func() { _ = server.Serve(listener) }()
@@ -82,7 +82,7 @@ func TestObserverReportsPeerSuffixWithEmptyLocalLog(t *testing.T) {
 func TestObserverReportsPeerLogSuffix(t *testing.T) {
 	t.Parallel()
 	listener := bufconn.Listen(1024 * 1024)
-	remote := &fixtureDigestServer{hash: make([]byte, 32), head: 100}
+	remote := &fixtureDigestServer{hash: make([]byte, DigestSize), head: 100}
 	server := grpc.NewServer()
 	rafttransportpb.RegisterLogIntegrityServiceServer(server, remote)
 	go func() { _ = server.Serve(listener) }()
@@ -93,7 +93,7 @@ func TestObserverReportsPeerLogSuffix(t *testing.T) {
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, conn.Close()) })
 
-	local := &fixtureDigestServer{hash: make([]byte, 32)}
+	local := &fixtureDigestServer{hash: make([]byte, DigestSize)}
 	observer := NewObserver(nil, nil, fixturePeerConnection{conn}, local,
 		logging.FromContext(logging.TestingContext()), noop.NewMeterProvider().Meter("test"))
 	cursor := &peerCursor{next: 1}
@@ -105,7 +105,7 @@ func TestObserverReportsPeerLogSuffix(t *testing.T) {
 func TestObserverDefersPeerSuffixAtNewerAppliedHorizon(t *testing.T) {
 	t.Parallel()
 	listener := bufconn.Listen(1024 * 1024)
-	remote := &fixtureDigestServer{hash: make([]byte, 32), head: 100, applied: 6}
+	remote := &fixtureDigestServer{hash: make([]byte, DigestSize), head: 100, applied: 6}
 	server := grpc.NewServer()
 	rafttransportpb.RegisterLogIntegrityServiceServer(server, remote)
 	go func() { _ = server.Serve(listener) }()
@@ -116,7 +116,7 @@ func TestObserverDefersPeerSuffixAtNewerAppliedHorizon(t *testing.T) {
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, conn.Close()) })
 
-	local := &fixtureDigestServer{hash: make([]byte, 32)}
+	local := &fixtureDigestServer{hash: make([]byte, DigestSize)}
 	observer := NewObserver(nil, nil, fixturePeerConnection{conn}, local,
 		logging.FromContext(logging.TestingContext()), noop.NewMeterProvider().Meter("test"))
 	cursor := &peerCursor{next: 1}
@@ -127,7 +127,7 @@ func TestObserverDefersPeerSuffixAtNewerAppliedHorizon(t *testing.T) {
 
 func fixtureRangeHash(values []byte) func(uint64, uint64) []byte {
 	return func(first, last uint64) []byte {
-		h := sha256.New()
+		h := xxh3.New128()
 		// hash.Hash.Write does not return an error.
 		_, _ = h.Write(values[first-1 : last])
 
@@ -142,7 +142,7 @@ func (p fixturePeerConnection) GetPeerConnection(uint64) *grpc.ClientConn { retu
 func TestObserverComparesPeerDigestAndContinuesAfterMismatch(t *testing.T) {
 	t.Parallel()
 	listener := bufconn.Listen(1024 * 1024)
-	remote := &fixtureDigestServer{hash: make([]byte, 32)}
+	remote := &fixtureDigestServer{hash: make([]byte, DigestSize)}
 	server := grpc.NewServer()
 	rafttransportpb.RegisterLogIntegrityServiceServer(server, remote)
 	go func() { _ = server.Serve(listener) }()
@@ -154,7 +154,7 @@ func TestObserverComparesPeerDigestAndContinuesAfterMismatch(t *testing.T) {
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, conn.Close()) })
 
-	local := &fixtureDigestServer{hash: make([]byte, 32)}
+	local := &fixtureDigestServer{hash: make([]byte, DigestSize)}
 	observer := NewObserver(nil, nil, fixturePeerConnection{conn}, local,
 		logging.FromContext(logging.TestingContext()), noop.NewMeterProvider().Meter("test"))
 	cursor := &peerCursor{next: 1}
@@ -162,7 +162,7 @@ func TestObserverComparesPeerDigestAndContinuesAfterMismatch(t *testing.T) {
 	require.Equal(t, uint64(2), cursor.next)
 	require.Empty(t, cursor.lastMismatch)
 
-	remote.hash = make([]byte, 32)
+	remote.hash = make([]byte, DigestSize)
 	remote.hash[0] = 1
 	cursor.next = 1
 	observer.comparePeer(t.Context(), 2, cursor, 1, 1, 5)
@@ -187,7 +187,7 @@ func TestObserverKeepsOldPeerQueuedWithoutCorruptionAlarm(t *testing.T) {
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, conn.Close()) })
 
-	local := &fixtureDigestServer{hash: make([]byte, 32)}
+	local := &fixtureDigestServer{hash: make([]byte, DigestSize)}
 	observer := NewObserver(nil, nil, fixturePeerConnection{conn}, local,
 		logging.FromContext(logging.TestingContext()), noop.NewMeterProvider().Meter("test"))
 	cursor := &peerCursor{next: 1}

@@ -18,16 +18,18 @@ compared, not to writes on the request path.
 
 ## Digest and comparison
 
-`internal/application/logintegrity.DigestRange` computes BLAKE3 over a versioned
+`internal/application/logintegrity.DigestRange` computes XXH3-128 over a versioned
 domain tag, the inclusive first/last sequences, then every sequence, length,
 and deterministic protobuf encoding of its stored `Log`. The key sequence must
 equal the value sequence; holes and malformed rows fail instead of producing
 a digest of a shorter range. Protobuf map keys are serialized deterministically.
 `response_signature` is normally added only to a returned copy; if it is
 present in Pebble, it is included in the digest like every other persisted
-field. Digest version 1 is fixed by a golden test. Changing which
+field. Digest version 2 is fixed by a golden test. Changing which
 fields or encoding contribute requires a new version.
-The unkeyed digest is a comparison checksum, not independent tamper evidence.
+The unkeyed digest is a fast comparison checksum for accidental divergence
+detection, not independent tamper evidence. It is deliberately non-cryptographic;
+the audit chain and checker remain the integrity authorities.
 
 The internal Raft listener serves `LogIntegrityService.GetRangeDigest` to
 members using the existing inter-node authentication and connection pool. A

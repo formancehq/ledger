@@ -206,7 +206,7 @@ func (o *Observer) comparePeerAtHead(ctx context.Context, id uint64, cursor *pee
 			return
 		}
 	}
-	if err == nil && (local == nil || len(local.GetDigest()) != 32) {
+	if err == nil && (local == nil || len(local.GetDigest()) != DigestSize) {
 		o.logger.Errorf("Invalid local digest response for logs [%d,%d]", first, last)
 
 		return
@@ -253,7 +253,7 @@ func (o *Observer) comparePeerAtHead(ctx context.Context, id uint64, cursor *pee
 	if remote.GetDigestVersion() != local.GetDigestVersion() ||
 		remote.GetFirstLogSequence() != first || remote.GetLastLogSequence() != last ||
 		remote.GetAppliedIndex() < applied || remote.GetLastLogSequenceOnNode() < last ||
-		len(remote.GetDigest()) != 32 {
+		len(remote.GetDigest()) != DigestSize {
 		o.unavailable.Add(ctx, 1, metric.WithAttributes(attribute.String("peer_id", strconv.FormatUint(id, 10)), attribute.String("reason", "incompatible_response")))
 
 		return
@@ -309,7 +309,7 @@ func (o *Observer) firstDifference(ctx context.Context, conn *grpc.ClientConn, f
 		if err != nil {
 			return 0, err
 		}
-		if local == nil || remote == nil || len(local.GetDigest()) != 32 || len(remote.GetDigest()) != 32 ||
+		if local == nil || remote == nil || len(local.GetDigest()) != DigestSize || len(remote.GetDigest()) != DigestSize ||
 			local.GetDigestVersion() != remote.GetDigestVersion() || remote.GetAppliedIndex() < applied ||
 			remote.GetFirstLogSequence() != first || remote.GetLastLogSequence() != mid {
 			return 0, errors.New("incompatible digest response while locating first difference")

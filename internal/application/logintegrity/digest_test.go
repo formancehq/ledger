@@ -126,7 +126,7 @@ func TestDigestRangeGolden(t *testing.T) {
 	digest, err := digestDB(t, db, 1, 1)
 	require.NoError(t, err)
 	require.Equal(t, uint32(DigestVersion), digest.Version)
-	require.Equal(t, "b8be8e3c42dd95012d52bb14c4a1a6b3385d87609cfaf785bd0081316bbbd185", hex.EncodeToString(digest.Hash[:]))
+	require.Equal(t, "af962a48cc20c6d68bcf6037d944473d", hex.EncodeToString(digest.Hash[:]))
 }
 
 func TestLastLogSequenceUsesKey(t *testing.T) {

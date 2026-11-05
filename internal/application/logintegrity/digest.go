@@ -6,18 +6,20 @@ import (
 	"fmt"
 
 	"github.com/cockroachdb/pebble/v2"
-	"github.com/zeebo/blake3"
+	"github.com/zeebo/xxh3"
 
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
 
 const (
-	// DigestVersion identifies both the canonical Log encoding and the range framing.
-	DigestVersion = 1
+	// DigestVersion identifies the checksum algorithm, canonical Log encoding and range framing.
+	// Version 2 switches the comparison checksum to XXH3-128.
+	DigestVersion = 2
+	DigestSize    = 16
 	// MaxRangeEntries bounds the work and the lifetime of a pinned Pebble snapshot.
 	MaxRangeEntries = 4096
-	digestDomain    = "ledger-log-range:v1\x00"
+	digestDomain    = "ledger-log-range:xxh3-128:v1\x00"
 )
 
 // RangeDigest covers every log key in the inclusive range. A missing or malformed
@@ -26,7 +28,7 @@ type RangeDigest struct {
 	First   uint64
 	Last    uint64
 	Version uint32
-	Hash    [32]byte
+	Hash    [DigestSize]byte
 }
 
 // MissingLogError reports a hole at a sequence that the caller expects to be
@@ -85,7 +87,7 @@ func DigestRange(ctx context.Context, reader dal.PebbleReader, first, last uint6
 		_ = iter.Close()
 	}()
 
-	h := blake3.New()
+	h := xxh3.New128()
 	// hash.Hash.Write does not return an error.
 	_, _ = h.WriteString(digestDomain)
 	var word [8]byte
