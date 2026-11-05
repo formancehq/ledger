@@ -7,28 +7,30 @@ import jsonv2 "encoding/json/v2"
 // with components that do not use the Ledger JSON generator.
 func (x *SignedApplyBatch) MarshalJSON() ([]byte, error) {
 	object := make(map[string]any)
-	if x.KeyId != "" {
-		object["keyId"] = x.KeyId
+	if x.GetKeyId() != "" {
+		object["keyId"] = x.GetKeyId()
 	}
-	if len(x.Signature) != 0 {
-		object["signature"] = x.Signature
+	if len(x.GetSignature()) != 0 {
+		object["signature"] = x.GetSignature()
 	}
-	if len(x.Payload) != 0 {
-		object["payload"] = x.Payload
+	if len(x.GetPayload()) != 0 {
+		object["payload"] = x.GetPayload()
 	}
+
 	return jsonv2.Marshal(object)
 }
 
 func (x *SignedLog) MarshalJSON() ([]byte, error) {
 	object := make(map[string]any)
-	if x.KeyId != "" {
-		object["keyId"] = x.KeyId
+	if x.GetKeyId() != "" {
+		object["keyId"] = x.GetKeyId()
 	}
-	if len(x.Signature) != 0 {
-		object["signature"] = x.Signature
+	if len(x.GetSignature()) != 0 {
+		object["signature"] = x.GetSignature()
 	}
-	if len(x.Payload) != 0 {
-		object["payload"] = x.Payload
+	if len(x.GetPayload()) != 0 {
+		object["payload"] = x.GetPayload()
 	}
+
 	return jsonv2.Marshal(object)
 }

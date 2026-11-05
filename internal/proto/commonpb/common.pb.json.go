@@ -57,8 +57,11 @@ func (x *Log) jsonValue() (any, error) {
 		ResponseSignature *json.RawValue `json:"responseSignature,omitempty"`
 	}
 	var responseSignature *json.RawValue
-	if raw := protoFieldJSON(x.GetResponseSignature()); raw != nil {
-		responseSignature = &raw
+	if x.GetResponseSignature() != nil {
+		raw := protoFieldJSON(x.GetResponseSignature())
+		if raw != nil {
+			responseSignature = &raw
+		}
 	}
 
 	aux := Aux{

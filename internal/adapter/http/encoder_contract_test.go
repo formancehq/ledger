@@ -256,6 +256,7 @@ func TestProtojsonRoutes_TableIsComplete(t *testing.T) {
 			case "writeOK", "writeCreated", "writeOKChecked", "writePageOK", "writePageOKChecked":
 				actual[entry.Name()] = true
 			}
+
 			return true
 		})
 		contents, err := os.ReadFile(entry.Name())
