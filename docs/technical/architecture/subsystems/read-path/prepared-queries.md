@@ -77,9 +77,10 @@ Two layers, following the project-wide pattern (see [admission / validation.md](
 - The filter is not compiled at write time. Errors that depend on the ledger's declared-metadata schema, index state, or runtime parameters surface at execution.
 
 HTTP creation treats an omitted `filter` and explicit JSON `null` as match-all.
-HTTP update treats omission as no change and JSON `null` as an explicit request
-to remove the stored filter. Apply/gRPC represents that removal with a nil
-protobuf filter because protobuf has no separate JSON-null value for this field.
+HTTP update requires both `target` and `filter`. Omitting `filter` is rejected;
+use explicit JSON `null` to remove the stored filter. Apply/gRPC represents that
+removal with a nil protobuf filter because protobuf has no separate JSON-null
+value for this field.
 
 A validation error at FSM time is hash-bound as an `AuditFailure`, so a checker run can re-derive the rejection from the audit chain.
 
