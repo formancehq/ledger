@@ -1047,7 +1047,7 @@ Typed internal failures keep their reason and use stable public facts. Numscript
 diagnostic text remains available only in server logs.
 The `continueOnFailure` rollup and retry semantics are unaffected.
 
-- `atomic=true`: Execute atomically (all or nothing) - not yet supported
+- `atomic=true`: Execute the batch atomically (all or nothing). Signed bulk requires this mode and a nonempty array; see [Signed transaction requests](#signed-transaction-requests).
 
 ### Account Metadata
 

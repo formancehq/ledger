@@ -23,6 +23,7 @@ func TestOpenAPI_SignedRequestRepresentations(t *testing.T) {
 		t.Run(tc.method+" "+tc.path, func(t *testing.T) {
 			t.Parallel()
 			operation := doc.Paths.Value(tc.path).GetOperation(tc.method)
+			require.NotNil(t, operation.Responses.Value("415"), "signing headers without JSON content type return 415")
 			for _, name := range []string{"Formance-Signing-Key-Id", "Formance-Signature"} {
 				count := 0
 				for _, ref := range operation.Parameters {

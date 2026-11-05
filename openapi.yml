@@ -767,6 +767,8 @@ paths:
           $ref: '#/components/responses/ServiceUnavailable'
         '500':
           $ref: '#/components/responses/InternalServerError'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
         '405':
           $ref: '#/components/responses/MethodNotAllowed'
     get:
@@ -1313,6 +1315,8 @@ paths:
           $ref: '#/components/responses/ServiceUnavailable'
         '500':
           $ref: '#/components/responses/InternalServerError'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
         '405':
           $ref: '#/components/responses/MethodNotAllowed'
 
@@ -1416,6 +1420,8 @@ paths:
           $ref: '#/components/responses/ServiceUnavailable'
         '500':
           $ref: '#/components/responses/InternalServerError'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
         '405':
           $ref: '#/components/responses/MethodNotAllowed'
 
@@ -1501,6 +1507,8 @@ paths:
           $ref: '#/components/responses/ServiceUnavailable'
         '500':
           $ref: '#/components/responses/InternalServerError'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
         '405':
           $ref: '#/components/responses/MethodNotAllowed'
 
@@ -2335,6 +2343,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/BulkErrorResponse'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
         '405':
           $ref: '#/components/responses/MethodNotAllowed'
 
