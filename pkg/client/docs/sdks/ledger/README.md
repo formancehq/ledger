@@ -13,7 +13,7 @@ Show server information
 
 ### Example Usage
 
-<!-- UsageSnippet language="go" operationID="v2GetInfo" method="get" path="/v2/_info" -->
+<!-- UsageSnippet language="go" operationID="v2GetInfo" method="get" path="/_/info" -->
 ```go
 package main
 

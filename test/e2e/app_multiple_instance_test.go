@@ -85,7 +85,7 @@ var _ = Context("Ledger application multiple instance tests", func() {
 			for _, server := range allServers {
 				info, err := Client(server).Ledger.GetInfo(ctx)
 				Expect(err).NotTo(HaveOccurred())
-				Expect(info.V2ConfigInfoResponse.Data.Version).To(Equal("develop"))
+				Expect(info.V2ConfigInfoResponse.Version).To(Equal("develop"))
 			}
 		})
 

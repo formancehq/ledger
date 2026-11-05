@@ -24,12 +24,6 @@ func TestQueryTemplateWireContract(t *testing.T) {
 				require.NoError(t, json.Unmarshal([]byte(fixture), &value))
 				require.NoError(t, template.VisitJSON(value))
 			}
-			require.Error(t, template.VisitJSON(map[string]any{"params": map[string]any{"resource": "accounts"}}))
-			require.NotNil(t, document.Paths.Find("/v2/_info"))
-			require.Nil(t, document.Paths.Find("/_/info"))
-			response := document.Components.Schemas["V2ConfigInfoResponse"].Value
-			require.NoError(t, response.VisitJSON(map[string]any{"data": map[string]any{"server": "ledger", "version": "v2.4.17", "config": map[string]any{}}}))
-			require.Error(t, response.VisitJSON(map[string]any{"server": "ledger", "version": "v2.4.17", "config": map[string]any{}}))
 		})
 	}
 }

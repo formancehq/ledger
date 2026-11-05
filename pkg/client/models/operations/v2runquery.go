@@ -37,10 +37,7 @@ func (e *V2RunQueryQueryParamOrder) UnmarshalJSON(data []byte) error {
 
 type V2RunQueryRequestBody struct {
 	Cursor *string `json:"cursor,omitempty"`
-	// Parameters applied when running a query template. The query template's
-	// resource selects the target. groupBy and insertionDate are accepted only
-	// for volumes; other resources reject these fields.
-	//
+	// Parameters applied when running a query template
 	Params *components.V2QueryParams `json:"params,omitempty"`
 	Vars   map[string]string         `json:"vars,omitempty"`
 }

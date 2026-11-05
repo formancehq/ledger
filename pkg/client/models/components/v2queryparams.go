@@ -3,101 +3,614 @@
 package components
 
 import (
+	"encoding/json"
+	"errors"
+	"fmt"
 	"github.com/formancehq/ledger/pkg/client/internal/utils"
 	"time"
 )
 
-// V2QueryParams - Parameters applied when running a query template. The query template's
-// resource selects the target. groupBy and insertionDate are accepted only
-// for volumes; other resources reject these fields.
-type V2QueryParams struct {
-	// The maximum number of results to return per page.
-	//
-	PageSize *int64 `json:"pageSize,omitempty"`
-	// Additional data to include in the response, such as volumes
-	Expand []string `json:"expand,omitempty"`
-	// Start of the query time range
-	StartTime *time.Time `json:"startTime,omitempty"`
-	// End of the query time range
-	EndTime *time.Time `json:"endTime,omitempty"`
-	// Sort results using a field name and order (ascending or descending).
-	// Format: `<field>:<order>`, where `<field>` is the field name and `<order>` is either `asc` or `desc`.
-	//
-	Sort *string `json:"sort,omitempty"`
-	// Optional legacy field. Ignored; the query template resource selects the resource.
-	Resource *string `json:"resource,omitempty"`
-	// Volumes only. Use insertion dates instead of effective dates.
-	InsertionDate *bool `json:"insertionDate,omitempty"`
-	// Volumes only. Account address grouping level.
-	GroupBy *int64 `json:"groupBy,omitempty"`
+// QueryTemplatePlainParams - Parameters without a nested resource; the parent query selects the resource. groupBy and insertionDate apply only to volumes.
+type QueryTemplatePlainParams struct {
+	PageSize      *int64     `json:"pageSize,omitempty"`
+	Sort          *string    `json:"sort,omitempty"`
+	Expand        []string   `json:"expand,omitempty"`
+	StartTime     *time.Time `json:"startTime,omitempty"`
+	EndTime       *time.Time `json:"endTime,omitempty"`
+	InsertionDate *bool      `json:"insertionDate,omitempty"`
+	GroupBy       *int64     `json:"groupBy,omitempty"`
 }
 
-func (v V2QueryParams) MarshalJSON() ([]byte, error) {
-	return utils.MarshalJSON(v, "", false)
+func (q QueryTemplatePlainParams) MarshalJSON() ([]byte, error) {
+	return utils.MarshalJSON(q, "", false)
 }
 
-func (v *V2QueryParams) UnmarshalJSON(data []byte) error {
-	if err := utils.UnmarshalJSON(data, &v, "", false, nil); err != nil {
+func (q *QueryTemplatePlainParams) UnmarshalJSON(data []byte) error {
+	if err := utils.UnmarshalJSON(data, &q, "", false, nil); err != nil {
 		return err
 	}
 	return nil
 }
 
-func (v *V2QueryParams) GetPageSize() *int64 {
-	if v == nil {
+func (q *QueryTemplatePlainParams) GetPageSize() *int64 {
+	if q == nil {
 		return nil
 	}
-	return v.PageSize
+	return q.PageSize
 }
 
-func (v *V2QueryParams) GetExpand() []string {
-	if v == nil {
+func (q *QueryTemplatePlainParams) GetSort() *string {
+	if q == nil {
 		return nil
 	}
-	return v.Expand
+	return q.Sort
 }
 
-func (v *V2QueryParams) GetStartTime() *time.Time {
-	if v == nil {
+func (q *QueryTemplatePlainParams) GetExpand() []string {
+	if q == nil {
 		return nil
 	}
-	return v.StartTime
+	return q.Expand
 }
 
-func (v *V2QueryParams) GetEndTime() *time.Time {
-	if v == nil {
+func (q *QueryTemplatePlainParams) GetStartTime() *time.Time {
+	if q == nil {
 		return nil
 	}
-	return v.EndTime
+	return q.StartTime
 }
 
-func (v *V2QueryParams) GetSort() *string {
-	if v == nil {
+func (q *QueryTemplatePlainParams) GetEndTime() *time.Time {
+	if q == nil {
 		return nil
 	}
-	return v.Sort
+	return q.EndTime
 }
 
-func (v *V2QueryParams) GetResource() *string {
-	if v == nil {
+func (q *QueryTemplatePlainParams) GetInsertionDate() *bool {
+	if q == nil {
 		return nil
 	}
-	return v.Resource
+	return q.InsertionDate
 }
 
-func (v *V2QueryParams) GetInsertionDate() *bool {
-	if v == nil {
+func (q *QueryTemplatePlainParams) GetGroupBy() *int64 {
+	if q == nil {
 		return nil
 	}
-	return v.InsertionDate
+	return q.GroupBy
 }
 
-func (v *V2QueryParams) GetGroupBy() *int64 {
-	if v == nil {
+type V2QueryParams4Resource string
+
+const (
+	V2QueryParams4ResourceVolumes V2QueryParams4Resource = "volumes"
+)
+
+func (e V2QueryParams4Resource) ToPointer() *V2QueryParams4Resource {
+	return &e
+}
+func (e *V2QueryParams4Resource) UnmarshalJSON(data []byte) error {
+	var v string
+	if err := json.Unmarshal(data, &v); err != nil {
+		return err
+	}
+	switch v {
+	case "volumes":
+		*e = V2QueryParams4Resource(v)
+		return nil
+	default:
+		return fmt.Errorf("invalid value for V2QueryParams4Resource: %v", v)
+	}
+}
+
+type QueryTemplateVolumeParams struct {
+	Resource      V2QueryParams4Resource `json:"resource"`
+	InsertionDate *bool                  `json:"insertionDate,omitempty"`
+	GroupBy       *int64                 `json:"groupBy,omitempty"`
+	// The maximum number of results to return per page.
+	//
+	PageSize *int64 `json:"pageSize,omitempty"`
+	// Parameter used in pagination requests. Maximum page size is set to 15.
+	// Set to the value of next for the next page of results.
+	// Set to the value of previous for the previous page of results.
+	// No other parameters can be set when this parameter is set.
+	//
+	Cursor *string `json:"cursor,omitempty"`
+	// Additional data to include in the response, such as volumes
+	Expand *string `json:"expand,omitempty"`
+	// Point-in-time. Returns the state as it existed at this timestamp
+	Pit *time.Time `json:"pit,omitempty"`
+	// Sort results using a field name and order (ascending or descending).
+	// Format: `<field>:<order>`, where `<field>` is the field name and `<order>` is either `asc` or `desc`.
+	//
+	Sort *string `json:"sort,omitempty"`
+}
+
+func (q QueryTemplateVolumeParams) MarshalJSON() ([]byte, error) {
+	return utils.MarshalJSON(q, "", false)
+}
+
+func (q *QueryTemplateVolumeParams) UnmarshalJSON(data []byte) error {
+	if err := utils.UnmarshalJSON(data, &q, "", false, []string{"resource"}); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (q *QueryTemplateVolumeParams) GetResource() V2QueryParams4Resource {
+	if q == nil {
+		return V2QueryParams4Resource("")
+	}
+	return q.Resource
+}
+
+func (q *QueryTemplateVolumeParams) GetInsertionDate() *bool {
+	if q == nil {
 		return nil
 	}
-	return v.GroupBy
+	return q.InsertionDate
 }
 
-// #region class-body-v2queryparams
-// #endregion class-body-v2queryparams
+func (q *QueryTemplateVolumeParams) GetGroupBy() *int64 {
+	if q == nil {
+		return nil
+	}
+	return q.GroupBy
+}
+
+func (q *QueryTemplateVolumeParams) GetPageSize() *int64 {
+	if q == nil {
+		return nil
+	}
+	return q.PageSize
+}
+
+func (q *QueryTemplateVolumeParams) GetCursor() *string {
+	if q == nil {
+		return nil
+	}
+	return q.Cursor
+}
+
+func (q *QueryTemplateVolumeParams) GetExpand() *string {
+	if q == nil {
+		return nil
+	}
+	return q.Expand
+}
+
+func (q *QueryTemplateVolumeParams) GetPit() *time.Time {
+	if q == nil {
+		return nil
+	}
+	return q.Pit
+}
+
+func (q *QueryTemplateVolumeParams) GetSort() *string {
+	if q == nil {
+		return nil
+	}
+	return q.Sort
+}
+
+type V2QueryParams3Resource string
+
+const (
+	V2QueryParams3ResourceLogs V2QueryParams3Resource = "logs"
+)
+
+func (e V2QueryParams3Resource) ToPointer() *V2QueryParams3Resource {
+	return &e
+}
+func (e *V2QueryParams3Resource) UnmarshalJSON(data []byte) error {
+	var v string
+	if err := json.Unmarshal(data, &v); err != nil {
+		return err
+	}
+	switch v {
+	case "logs":
+		*e = V2QueryParams3Resource(v)
+		return nil
+	default:
+		return fmt.Errorf("invalid value for V2QueryParams3Resource: %v", v)
+	}
+}
+
+type QueryTemplateLogParams struct {
+	Resource V2QueryParams3Resource `json:"resource"`
+	// The maximum number of results to return per page.
+	//
+	PageSize *int64 `json:"pageSize,omitempty"`
+	// Parameter used in pagination requests. Maximum page size is set to 15.
+	// Set to the value of next for the next page of results.
+	// Set to the value of previous for the previous page of results.
+	// No other parameters can be set when this parameter is set.
+	//
+	Cursor *string `json:"cursor,omitempty"`
+	// Additional data to include in the response, such as volumes
+	Expand *string `json:"expand,omitempty"`
+	// Point-in-time. Returns the state as it existed at this timestamp
+	Pit *time.Time `json:"pit,omitempty"`
+	// Sort results using a field name and order (ascending or descending).
+	// Format: `<field>:<order>`, where `<field>` is the field name and `<order>` is either `asc` or `desc`.
+	//
+	Sort *string `json:"sort,omitempty"`
+}
+
+func (q QueryTemplateLogParams) MarshalJSON() ([]byte, error) {
+	return utils.MarshalJSON(q, "", false)
+}
+
+func (q *QueryTemplateLogParams) UnmarshalJSON(data []byte) error {
+	if err := utils.UnmarshalJSON(data, &q, "", false, []string{"resource"}); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (q *QueryTemplateLogParams) GetResource() V2QueryParams3Resource {
+	if q == nil {
+		return V2QueryParams3Resource("")
+	}
+	return q.Resource
+}
+
+func (q *QueryTemplateLogParams) GetPageSize() *int64 {
+	if q == nil {
+		return nil
+	}
+	return q.PageSize
+}
+
+func (q *QueryTemplateLogParams) GetCursor() *string {
+	if q == nil {
+		return nil
+	}
+	return q.Cursor
+}
+
+func (q *QueryTemplateLogParams) GetExpand() *string {
+	if q == nil {
+		return nil
+	}
+	return q.Expand
+}
+
+func (q *QueryTemplateLogParams) GetPit() *time.Time {
+	if q == nil {
+		return nil
+	}
+	return q.Pit
+}
+
+func (q *QueryTemplateLogParams) GetSort() *string {
+	if q == nil {
+		return nil
+	}
+	return q.Sort
+}
+
+type V2QueryParamsResource string
+
+const (
+	V2QueryParamsResourceTransactions V2QueryParamsResource = "transactions"
+)
+
+func (e V2QueryParamsResource) ToPointer() *V2QueryParamsResource {
+	return &e
+}
+func (e *V2QueryParamsResource) UnmarshalJSON(data []byte) error {
+	var v string
+	if err := json.Unmarshal(data, &v); err != nil {
+		return err
+	}
+	switch v {
+	case "transactions":
+		*e = V2QueryParamsResource(v)
+		return nil
+	default:
+		return fmt.Errorf("invalid value for V2QueryParamsResource: %v", v)
+	}
+}
+
+type QueryTemplateTransactionParams struct {
+	Resource V2QueryParamsResource `json:"resource"`
+	// The maximum number of results to return per page.
+	//
+	PageSize *int64 `json:"pageSize,omitempty"`
+	// Parameter used in pagination requests. Maximum page size is set to 15.
+	// Set to the value of next for the next page of results.
+	// Set to the value of previous for the previous page of results.
+	// No other parameters can be set when this parameter is set.
+	//
+	Cursor *string `json:"cursor,omitempty"`
+	// Additional data to include in the response, such as volumes
+	Expand *string `json:"expand,omitempty"`
+	// Point-in-time. Returns the state as it existed at this timestamp
+	Pit *time.Time `json:"pit,omitempty"`
+	// Sort results using a field name and order (ascending or descending).
+	// Format: `<field>:<order>`, where `<field>` is the field name and `<order>` is either `asc` or `desc`.
+	//
+	Sort *string `json:"sort,omitempty"`
+}
+
+func (q QueryTemplateTransactionParams) MarshalJSON() ([]byte, error) {
+	return utils.MarshalJSON(q, "", false)
+}
+
+func (q *QueryTemplateTransactionParams) UnmarshalJSON(data []byte) error {
+	if err := utils.UnmarshalJSON(data, &q, "", false, []string{"resource"}); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (q *QueryTemplateTransactionParams) GetResource() V2QueryParamsResource {
+	if q == nil {
+		return V2QueryParamsResource("")
+	}
+	return q.Resource
+}
+
+func (q *QueryTemplateTransactionParams) GetPageSize() *int64 {
+	if q == nil {
+		return nil
+	}
+	return q.PageSize
+}
+
+func (q *QueryTemplateTransactionParams) GetCursor() *string {
+	if q == nil {
+		return nil
+	}
+	return q.Cursor
+}
+
+func (q *QueryTemplateTransactionParams) GetExpand() *string {
+	if q == nil {
+		return nil
+	}
+	return q.Expand
+}
+
+func (q *QueryTemplateTransactionParams) GetPit() *time.Time {
+	if q == nil {
+		return nil
+	}
+	return q.Pit
+}
+
+func (q *QueryTemplateTransactionParams) GetSort() *string {
+	if q == nil {
+		return nil
+	}
+	return q.Sort
+}
+
+type V2QueryParams1Resource string
+
+const (
+	V2QueryParams1ResourceAccounts V2QueryParams1Resource = "accounts"
+)
+
+func (e V2QueryParams1Resource) ToPointer() *V2QueryParams1Resource {
+	return &e
+}
+func (e *V2QueryParams1Resource) UnmarshalJSON(data []byte) error {
+	var v string
+	if err := json.Unmarshal(data, &v); err != nil {
+		return err
+	}
+	switch v {
+	case "accounts":
+		*e = V2QueryParams1Resource(v)
+		return nil
+	default:
+		return fmt.Errorf("invalid value for V2QueryParams1Resource: %v", v)
+	}
+}
+
+type QueryTemplateAccountParams struct {
+	Resource V2QueryParams1Resource `json:"resource"`
+	// The maximum number of results to return per page.
+	//
+	PageSize *int64 `json:"pageSize,omitempty"`
+	// Parameter used in pagination requests. Maximum page size is set to 15.
+	// Set to the value of next for the next page of results.
+	// Set to the value of previous for the previous page of results.
+	// No other parameters can be set when this parameter is set.
+	//
+	Cursor *string `json:"cursor,omitempty"`
+	// Additional data to include in the response, such as volumes
+	Expand *string `json:"expand,omitempty"`
+	// Point-in-time. Returns the state as it existed at this timestamp
+	Pit *time.Time `json:"pit,omitempty"`
+	// Sort results using a field name and order (ascending or descending).
+	// Format: `<field>:<order>`, where `<field>` is the field name and `<order>` is either `asc` or `desc`.
+	//
+	Sort *string `json:"sort,omitempty"`
+}
+
+func (q QueryTemplateAccountParams) MarshalJSON() ([]byte, error) {
+	return utils.MarshalJSON(q, "", false)
+}
+
+func (q *QueryTemplateAccountParams) UnmarshalJSON(data []byte) error {
+	if err := utils.UnmarshalJSON(data, &q, "", false, []string{"resource"}); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (q *QueryTemplateAccountParams) GetResource() V2QueryParams1Resource {
+	if q == nil {
+		return V2QueryParams1Resource("")
+	}
+	return q.Resource
+}
+
+func (q *QueryTemplateAccountParams) GetPageSize() *int64 {
+	if q == nil {
+		return nil
+	}
+	return q.PageSize
+}
+
+func (q *QueryTemplateAccountParams) GetCursor() *string {
+	if q == nil {
+		return nil
+	}
+	return q.Cursor
+}
+
+func (q *QueryTemplateAccountParams) GetExpand() *string {
+	if q == nil {
+		return nil
+	}
+	return q.Expand
+}
+
+func (q *QueryTemplateAccountParams) GetPit() *time.Time {
+	if q == nil {
+		return nil
+	}
+	return q.Pit
+}
+
+func (q *QueryTemplateAccountParams) GetSort() *string {
+	if q == nil {
+		return nil
+	}
+	return q.Sort
+}
+
+type V2QueryParamsType string
+
+const (
+	V2QueryParamsTypeQueryTemplateAccountParams     V2QueryParamsType = "QueryTemplateAccountParams"
+	V2QueryParamsTypeQueryTemplateTransactionParams V2QueryParamsType = "QueryTemplateTransactionParams"
+	V2QueryParamsTypeQueryTemplateLogParams         V2QueryParamsType = "QueryTemplateLogParams"
+	V2QueryParamsTypeQueryTemplateVolumeParams      V2QueryParamsType = "QueryTemplateVolumeParams"
+	V2QueryParamsTypeQueryTemplatePlainParams       V2QueryParamsType = "QueryTemplatePlainParams"
+)
+
+// V2QueryParams - Parameters applied when running a query template
+type V2QueryParams struct {
+	QueryTemplateAccountParams     *QueryTemplateAccountParams     `queryParam:"inline" union:"member"`
+	QueryTemplateTransactionParams *QueryTemplateTransactionParams `queryParam:"inline" union:"member"`
+	QueryTemplateLogParams         *QueryTemplateLogParams         `queryParam:"inline" union:"member"`
+	QueryTemplateVolumeParams      *QueryTemplateVolumeParams      `queryParam:"inline" union:"member"`
+	QueryTemplatePlainParams       *QueryTemplatePlainParams       `queryParam:"inline" union:"member"`
+
+	Type V2QueryParamsType
+}
+
+func CreateV2QueryParamsQueryTemplateAccountParams(queryTemplateAccountParams QueryTemplateAccountParams) V2QueryParams {
+	typ := V2QueryParamsTypeQueryTemplateAccountParams
+
+	return V2QueryParams{
+		QueryTemplateAccountParams: &queryTemplateAccountParams,
+		Type:                       typ,
+	}
+}
+
+func CreateV2QueryParamsQueryTemplateTransactionParams(queryTemplateTransactionParams QueryTemplateTransactionParams) V2QueryParams {
+	typ := V2QueryParamsTypeQueryTemplateTransactionParams
+
+	return V2QueryParams{
+		QueryTemplateTransactionParams: &queryTemplateTransactionParams,
+		Type:                           typ,
+	}
+}
+
+func CreateV2QueryParamsQueryTemplateLogParams(queryTemplateLogParams QueryTemplateLogParams) V2QueryParams {
+	typ := V2QueryParamsTypeQueryTemplateLogParams
+
+	return V2QueryParams{
+		QueryTemplateLogParams: &queryTemplateLogParams,
+		Type:                   typ,
+	}
+}
+
+func CreateV2QueryParamsQueryTemplateVolumeParams(queryTemplateVolumeParams QueryTemplateVolumeParams) V2QueryParams {
+	typ := V2QueryParamsTypeQueryTemplateVolumeParams
+
+	return V2QueryParams{
+		QueryTemplateVolumeParams: &queryTemplateVolumeParams,
+		Type:                      typ,
+	}
+}
+
+func CreateV2QueryParamsQueryTemplatePlainParams(queryTemplatePlainParams QueryTemplatePlainParams) V2QueryParams {
+	typ := V2QueryParamsTypeQueryTemplatePlainParams
+
+	return V2QueryParams{
+		QueryTemplatePlainParams: &queryTemplatePlainParams,
+		Type:                     typ,
+	}
+}
+
+func (u *V2QueryParams) UnmarshalJSON(data []byte) error {
+
+	var queryTemplateAccountParams QueryTemplateAccountParams = QueryTemplateAccountParams{}
+	if err := utils.UnmarshalJSON(data, &queryTemplateAccountParams, "", true, nil); err == nil {
+		u.QueryTemplateAccountParams = &queryTemplateAccountParams
+		u.Type = V2QueryParamsTypeQueryTemplateAccountParams
+		return nil
+	}
+
+	var queryTemplateTransactionParams QueryTemplateTransactionParams = QueryTemplateTransactionParams{}
+	if err := utils.UnmarshalJSON(data, &queryTemplateTransactionParams, "", true, nil); err == nil {
+		u.QueryTemplateTransactionParams = &queryTemplateTransactionParams
+		u.Type = V2QueryParamsTypeQueryTemplateTransactionParams
+		return nil
+	}
+
+	var queryTemplateLogParams QueryTemplateLogParams = QueryTemplateLogParams{}
+	if err := utils.UnmarshalJSON(data, &queryTemplateLogParams, "", true, nil); err == nil {
+		u.QueryTemplateLogParams = &queryTemplateLogParams
+		u.Type = V2QueryParamsTypeQueryTemplateLogParams
+		return nil
+	}
+
+	var queryTemplateVolumeParams QueryTemplateVolumeParams = QueryTemplateVolumeParams{}
+	if err := utils.UnmarshalJSON(data, &queryTemplateVolumeParams, "", true, nil); err == nil {
+		u.QueryTemplateVolumeParams = &queryTemplateVolumeParams
+		u.Type = V2QueryParamsTypeQueryTemplateVolumeParams
+		return nil
+	}
+
+	var queryTemplatePlainParams QueryTemplatePlainParams = QueryTemplatePlainParams{}
+	if err := utils.UnmarshalJSON(data, &queryTemplatePlainParams, "", true, nil); err == nil {
+		u.QueryTemplatePlainParams = &queryTemplatePlainParams
+		u.Type = V2QueryParamsTypeQueryTemplatePlainParams
+		return nil
+	}
+
+	return fmt.Errorf("could not unmarshal `%s` into any supported union types for V2QueryParams", string(data))
+}
+
+func (u V2QueryParams) MarshalJSON() ([]byte, error) {
+	if u.QueryTemplateAccountParams != nil {
+		return utils.MarshalJSON(u.QueryTemplateAccountParams, "", true)
+	}
+
+	if u.QueryTemplateTransactionParams != nil {
+		return utils.MarshalJSON(u.QueryTemplateTransactionParams, "", true)
+	}
+
+	if u.QueryTemplateLogParams != nil {
+		return utils.MarshalJSON(u.QueryTemplateLogParams, "", true)
+	}
+
+	if u.QueryTemplateVolumeParams != nil {
+		return utils.MarshalJSON(u.QueryTemplateVolumeParams, "", true)
+	}
+
+	if u.QueryTemplatePlainParams != nil {
+		return utils.MarshalJSON(u.QueryTemplatePlainParams, "", true)
+	}
+
+	return nil, errors.New("could not marshal union type V2QueryParams: all fields are null")
+}

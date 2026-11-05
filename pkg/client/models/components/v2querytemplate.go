@@ -10,11 +10,8 @@ type V2QueryTemplate struct {
 	// Human-readable description of what the query returns
 	Description *string `json:"description,omitempty"`
 	// The resource a query template targets
-	Resource V2QueryResource `json:"resource"`
-	// Parameters applied when running a query template. The query template's
-	// resource selects the target. groupBy and insertionDate are accepted only
-	// for volumes; other resources reject these fields.
-	//
+	Resource *V2QueryResource `json:"resource,omitempty"`
+	// Parameters applied when running a query template
 	Params *V2QueryParams `json:"params,omitempty"`
 	// Variables the query accepts, keyed by variable name
 	Vars map[string]V2QueryTemplateVar `json:"vars,omitempty"`
@@ -27,7 +24,7 @@ func (v V2QueryTemplate) MarshalJSON() ([]byte, error) {
 }
 
 func (v *V2QueryTemplate) UnmarshalJSON(data []byte) error {
-	if err := utils.UnmarshalJSON(data, &v, "", false, []string{"resource"}); err != nil {
+	if err := utils.UnmarshalJSON(data, &v, "", false, nil); err != nil {
 		return err
 	}
 	return nil
@@ -40,9 +37,9 @@ func (v *V2QueryTemplate) GetDescription() *string {
 	return v.Description
 }
 
-func (v *V2QueryTemplate) GetResource() V2QueryResource {
+func (v *V2QueryTemplate) GetResource() *V2QueryResource {
 	if v == nil {
-		return V2QueryResource("")
+		return nil
 	}
 	return v.Resource
 }
