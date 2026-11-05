@@ -409,6 +409,7 @@ generate-proto:
         --go-vtproto_opt=module=github.com/formancehq/ledger/v3 \
         --go-vtproto_opt=features=marshal+unmarshal+size+clone+equal+pool \
         --go-vtproto_opt=pool=github.com/formancehq/ledger/v3/internal/proto/raftcmdpb.Proposal \
+        --go-vtproto_opt=pool=github.com/formancehq/ledger/v3/internal/proto/raftcmdpb.ExecutionBatch \
         --go-vtproto_opt=pool=github.com/formancehq/ledger/v3/internal/proto/raftcmdpb.ExecutionPlan \
         --go-vtproto_opt=pool=github.com/formancehq/ledger/v3/internal/proto/raftcmdpb.AttributeValue \
         --go-vtproto_opt=pool=github.com/formancehq/ledger/v3/internal/proto/raftcmdpb.AttributePlan \

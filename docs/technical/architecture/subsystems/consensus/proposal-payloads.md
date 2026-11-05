@@ -75,6 +75,13 @@ There is no historical scan or rewrite on admission or apply.
 `BenchmarkPayloadReaders` measures batches of 1, 100 and 1,000 orders: all
 three allocate 0 bytes and 0 objects (about 5–8 ns/op on Apple M5 Pro, Go 1.27.3).
 This measures envelope selection, not the existing per-order processing cost.
+`ExecutionBatch` is included in vtprotobuf pooling. Releasing a decoded
+`Proposal` returns its batch to the pool, retaining order and technical-update
+buffers for subsequent Raft entries. `BenchmarkDecodeEntriesProposal` measures
+the actual decode/release path: with 1,000 orders and one technical update, a
+native batch takes 2 allocations and 32 B/op versus 1 allocation and 16–24 B/op
+for the historical fields (Apple M5 Pro, Go 1.27.3). The benchmark measures
+wire decoding and pool release, not FSM processing.
 
 ## Persistence, restore, and rollback
 

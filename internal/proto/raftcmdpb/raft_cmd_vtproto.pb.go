@@ -1336,7 +1336,7 @@ func (m *ExecutionBatch) CloneVT() *ExecutionBatch {
 	if m == nil {
 		return (*ExecutionBatch)(nil)
 	}
-	r := new(ExecutionBatch)
+	r := ExecutionBatchFromVTPool()
 	if rhs := m.Orders; rhs != nil {
 		tmpContainer := make([]*Order, len(rhs))
 		for k, v := range rhs {
@@ -11351,6 +11351,37 @@ func OrderFromVTPool() *Order {
 	return vtprotoPool_Order.Get().(*Order)
 }
 
+var vtprotoPool_ExecutionBatch = sync.Pool{
+	New: func() interface{} {
+		return &ExecutionBatch{}
+	},
+}
+
+func (m *ExecutionBatch) ResetVT() {
+	if m != nil {
+		for _, mm := range m.Orders {
+			mm.ResetVT()
+		}
+		f0 := m.Orders[:0]
+		for _, mm := range m.TechnicalUpdates {
+			mm.ResetVT()
+		}
+		f1 := m.TechnicalUpdates[:0]
+		m.Reset()
+		m.Orders = f0
+		m.TechnicalUpdates = f1
+	}
+}
+func (m *ExecutionBatch) ReturnToVTPool() {
+	if m != nil {
+		m.ResetVT()
+		vtprotoPool_ExecutionBatch.Put(m)
+	}
+}
+func ExecutionBatchFromVTPool() *ExecutionBatch {
+	return vtprotoPool_ExecutionBatch.Get().(*ExecutionBatch)
+}
+
 var vtprotoPool_Proposal = sync.Pool{
 	New: func() interface{} {
 		return &Proposal{}
@@ -11368,6 +11399,9 @@ func (m *Proposal) ResetVT() {
 			mm.ResetVT()
 		}
 		f1 := m.TechnicalUpdates[:0]
+		if oneof, ok := m.Payload.(*Proposal_Batch); ok {
+			oneof.Batch.ReturnToVTPool()
+		}
 		m.Reset()
 		m.Orders = f0
 		m.TechnicalUpdates = f1
@@ -21574,7 +21608,14 @@ func (m *ExecutionBatch) UnmarshalVT(dAtA []byte) error {
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			m.Orders = append(m.Orders, &Order{})
+			if len(m.Orders) == cap(m.Orders) {
+				m.Orders = append(m.Orders, &Order{})
+			} else {
+				m.Orders = m.Orders[:len(m.Orders)+1]
+				if m.Orders[len(m.Orders)-1] == nil {
+					m.Orders[len(m.Orders)-1] = &Order{}
+				}
+			}
 			if err := m.Orders[len(m.Orders)-1].UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
 				return err
 			}
@@ -21608,7 +21649,14 @@ func (m *ExecutionBatch) UnmarshalVT(dAtA []byte) error {
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			m.TechnicalUpdates = append(m.TechnicalUpdates, &TechnicalUpdate{})
+			if len(m.TechnicalUpdates) == cap(m.TechnicalUpdates) {
+				m.TechnicalUpdates = append(m.TechnicalUpdates, &TechnicalUpdate{})
+			} else {
+				m.TechnicalUpdates = m.TechnicalUpdates[:len(m.TechnicalUpdates)+1]
+				if m.TechnicalUpdates[len(m.TechnicalUpdates)-1] == nil {
+					m.TechnicalUpdates[len(m.TechnicalUpdates)-1] = &TechnicalUpdate{}
+				}
+			}
 			if err := m.TechnicalUpdates[len(m.TechnicalUpdates)-1].UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
 				return err
 			}
@@ -22067,7 +22115,7 @@ func (m *Proposal) UnmarshalVT(dAtA []byte) error {
 					return err
 				}
 			} else {
-				v := &ExecutionBatch{}
+				v := ExecutionBatchFromVTPool()
 				if err := v.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
 					return err
 				}
