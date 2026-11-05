@@ -253,7 +253,6 @@ func (m *Membership) SnapshotDonorCandidates() []uint64 {
 	slices.Sort(candidates)
 
 	return candidates
-
 }
 
 // SetCapabilityGate publishes the committed activation gate used by

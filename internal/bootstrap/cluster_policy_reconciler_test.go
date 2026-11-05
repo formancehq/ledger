@@ -175,6 +175,7 @@ func TestReconcileClusterPolicy(t *testing.T) {
 		var memberReads atomic.Int32
 		reconcileClusterPolicy(context.Background(), admission, store, cfg, func() bool { return true }, logging.Testing(), func() []capabilities.Member {
 			memberReads.Add(1)
+
 			return []capabilities.Member{{NodeID: 1, Role: capabilities.Voter}}
 		})
 
@@ -198,6 +199,7 @@ func TestReconcileClusterPolicy(t *testing.T) {
 		var memberReads atomic.Int32
 		reconcileClusterPolicy(context.Background(), admission, store, cfg, func() bool { return true }, logging.Testing(), func() []capabilities.Member {
 			memberReads.Add(1)
+
 			return []capabilities.Member{{NodeID: 1, Role: capabilities.Voter}}
 		})
 
