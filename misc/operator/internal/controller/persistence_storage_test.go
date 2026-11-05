@@ -493,7 +493,7 @@ func TestPersistenceRejectsUnsupportedChanges(t *testing.T) {
 		{name: "foreign StatefulSet", mutate: func(t *testing.T, _ *ledgerv1alpha1.Cluster, sts *appsv1.StatefulSet, c client.Client) {
 			sts.OwnerReferences[0].UID = "other-cluster"
 			require.NoError(t, c.Update(t.Context(), sts))
-		}, message: "not controlled"},
+		}, message: "resource name conflict"},
 		{name: "foreign PVC", mutate: func(t *testing.T, _ *ledgerv1alpha1.Cluster, _ *appsv1.StatefulSet, c client.Client) {
 			pvc := readPersistencePVC(t, c, "data", 0)
 			pvc.OwnerReferences[0].UID = "other-statefulset"
@@ -893,7 +893,7 @@ func TestAutomaticExpansionRevalidatesSameUIDOwnershipAndRecovers(t *testing.T) 
 		wantErr        string
 	}{
 		{name: "PVC owner changes during measurement", wantErr: "foreign owner"},
-		{name: "StatefulSet owner changes during measurement", statefulSet: true, wantErr: "not controlled by Cluster"},
+		{name: "StatefulSet owner changes during measurement", statefulSet: true, wantErr: "resource name conflict"},
 		{name: "PVC owner changes before conflict retry", duringConflict: true, wantErr: "foreign owner"},
 		{name: "PVC owner changes during measurement with storage drift", storageDrift: true, wantErr: "foreign owner"},
 		{name: "PVC owner changes before conflict retry with storage drift", duringConflict: true, storageDrift: true, wantErr: "foreign owner"},

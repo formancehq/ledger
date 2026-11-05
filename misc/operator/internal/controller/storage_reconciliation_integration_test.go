@@ -3,8 +3,10 @@
 package controller
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -17,8 +19,12 @@ import (
 	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/config"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
+	"sigs.k8s.io/controller-runtime/pkg/envtest"
+	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 
 	ledgerv1alpha1 "github.com/formancehq/ledger/misc/operator/api/v1alpha1"
 )
@@ -28,11 +34,24 @@ import (
 // that envtest's absent StatefulSet controller, CSI and kubelet would supply.
 func storageManagerFixture(t *testing.T, legacyHash, implicitClass bool) (*ledgerv1alpha1.Cluster, *appsv1.StatefulSet, string, retainedClaimIdentity) {
 	t.Helper()
-	namespace := createTestNamespace(t)
+	return storageManagerFixtureWithClient(t, k8sClient, ctx, legacyHash, implicitClass, "")
+}
+
+func storageManagerFixtureWithClient(t *testing.T, k8sClient client.Client, ctx context.Context, legacyHash, implicitClass bool, imageTag string) (*ledgerv1alpha1.Cluster, *appsv1.StatefulSet, string, retainedClaimIdentity) {
+	t.Helper()
+	namespace := fmt.Sprintf("test-%d", nsCounter.Add(1))
+	ns := &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: namespace}}
+	require.NoError(t, k8sClient.Create(ctx, ns))
+	t.Cleanup(func() {
+		if err := k8sClient.Delete(ctx, ns); !apierrors.IsNotFound(err) {
+			assert.NoError(t, err)
+		}
+	})
 	className := "storage-manager-" + namespace
 	class := &storagev1.StorageClass{ObjectMeta: metav1.ObjectMeta{Name: className}, Provisioner: "example.csi", AllowVolumeExpansion: new(true)}
 	require.NoError(t, k8sClient.Create(ctx, class))
 	cluster := newCluster("storage-manager", namespace)
+	cluster.Spec.Image.Tag = imageTag
 	cluster.Spec.Replicas = new(int32(1))
 	cluster.Spec.Persistence = ledgerv1alpha1.PersistenceSpec{
 		DeletionProtection: new(false),
@@ -125,7 +144,7 @@ func storageManagerFixture(t *testing.T, legacyHash, implicitClass bool) (*ledge
 	require.NoError(t, controllerutil.SetControllerReference(source, pod, k8sClient.Scheme()))
 	require.NoError(t, k8sClient.Create(ctx, pod))
 	objects = append(objects, pod)
-	storageManagerSetConverged(t, source)
+	storageManagerSetConvergedWithClient(t, k8sClient, ctx, source)
 	for _, probe := range []*corev1.Probe{source.Spec.Template.Spec.Containers[0].LivenessProbe, source.Spec.Template.Spec.Containers[0].ReadinessProbe, source.Spec.Template.Spec.Containers[0].StartupProbe} {
 		require.EqualValues(t, 1, probe.TimeoutSeconds, "the API must have defaulted the source probes")
 		require.EqualValues(t, 1, probe.SuccessThreshold)
@@ -134,6 +153,11 @@ func storageManagerFixture(t *testing.T, legacyHash, implicitClass bool) (*ledge
 }
 
 func storageManagerSetConverged(t *testing.T, source *appsv1.StatefulSet) {
+	t.Helper()
+	storageManagerSetConvergedWithClient(t, k8sClient, ctx, source)
+}
+
+func storageManagerSetConvergedWithClient(t *testing.T, k8sClient client.Client, ctx context.Context, source *appsv1.StatefulSet) {
 	t.Helper()
 	source.Status.ObservedGeneration = source.Generation
 	source.Status.Replicas, source.Status.UpdatedReplicas, source.Status.ReadyReplicas = 1, 1, 1
@@ -308,10 +332,13 @@ func TestStorageServiceAccountRolloutThroughManagerIntegration(t *testing.T) {
 
 func TestStorageReleasedHashWorkloadRolloutThroughManagerIntegration(t *testing.T) {
 	t.Parallel()
+	// A separate API server prevents the development suite manager from also
+	// reconciling release-tagged fixtures with its unknown OperatorVersion.
+	k8sClient, ctx := storageReleaseManager(t)
 	for _, change := range []string{"RC upgrade", "configuration", "enable TLS", "disable TLS"} {
 		t.Run(change, func(t *testing.T) {
 			t.Parallel()
-			cluster, source, _, identity := storageManagerFixture(t, true, false)
+			cluster, source, _, identity := storageManagerFixtureWithClient(t, k8sClient, ctx, true, false, "v3.0.0-rc.1")
 			prior := cluster.DeepCopy()
 			prior.Spec.Replicas = new(int32(1))
 			prior.Spec.Image.Tag = "v3.0.0-rc.1"
@@ -327,7 +354,7 @@ func TestStorageReleasedHashWorkloadRolloutThroughManagerIntegration(t *testing.
 			source.Spec.Template = template
 			require.Empty(t, source.Annotations[annotationPodConfigHash])
 			require.NoError(t, k8sClient.Update(ctx, source))
-			storageManagerSetConverged(t, source)
+			storageManagerSetConvergedWithClient(t, k8sClient, ctx, source)
 			original := source.DeepCopy()
 			before := cluster.DeepCopy()
 			cluster.Spec.Replicas = new(int32(1))
@@ -458,4 +485,45 @@ func TestStorageHashMigrationRequiredThroughManagerIntegration(t *testing.T) {
 	require.Equal(t, original.Spec.Template, recovery.StatefulSet.Spec.Template)
 	require.Equal(t, original.Generation, recovery.SourceGeneration)
 	require.Equal(t, original.UID, recovery.SourceUID)
+}
+
+// storageReleaseManager exercises the real controller watch path with explicit
+// compatible release versions, without changing the shared development manager.
+func storageReleaseManager(t *testing.T) (client.Client, context.Context) {
+	t.Helper()
+	scheme := k8sClient.Scheme()
+	environment := &envtest.Environment{
+		CRDDirectoryPaths: []string{filepath.Join("..", "..", "config", "crd", "bases")},
+		Scheme:            scheme,
+	}
+	t.Cleanup(func() { assert.NoError(t, environment.Stop()) })
+	cfg, err := environment.Start()
+	require.NoError(t, err)
+	mgr, err := ctrl.NewManager(cfg, ctrl.Options{
+		Scheme:  scheme,
+		Metrics: metricsserver.Options{BindAddress: "0"},
+		// The shared suite already registered the production controller name.
+		// These managers use separate API servers and expose no metrics endpoint.
+		Controller: config.Controller{SkipNameValidation: new(true)},
+	})
+	require.NoError(t, err)
+	require.NoError(t, (&ClusterReconciler{
+		Client: mgr.GetClient(), APIReader: mgr.GetAPIReader(), Scheme: scheme,
+		Recorder: mgr.GetEventRecorderFor("cluster-controller"), OperatorVersion: "v3.0.0-rc.2",
+	}).SetupWithManager(mgr))
+	managerCtx, stop := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- mgr.Start(managerCtx) }()
+	// Registered after environment cleanup so LIFO cleanup always stops the
+	// manager first, including when client creation or cache sync fails.
+	t.Cleanup(func() {
+		stop()
+		assert.NoError(t, <-done)
+	})
+	apiClient, err := client.New(cfg, client.Options{Scheme: scheme})
+	require.NoError(t, err)
+	syncCtx, cancelSync := context.WithTimeout(managerCtx, 10*time.Second)
+	defer cancelSync()
+	require.True(t, mgr.GetCache().WaitForCacheSync(syncCtx), "release manager cache must start")
+	return apiClient, managerCtx
 }

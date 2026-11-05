@@ -124,6 +124,12 @@ func (r *ClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (re
 		result, retErr = r.reportResourceNameConflict(ctx, ledger, result, retErr)
 	}()
 
+	// Restore an interrupted claim-template replacement before applying any new
+	// desired changes, including an invalid spec or a changed RC target.
+	if handled, result, err := r.resumeClaimTemplateRecovery(ctx, ledger); handled || err != nil {
+		return result, err
+	}
+
 	// An in-flight drain owns the workload until its release completes. This
 	// also lets annotation removal reopen admission even if a later spec edit
 	// is invalid or a rollout would otherwise start.
@@ -153,12 +159,6 @@ func (r *ClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (re
 		ledger.Status.Phase = "Error"
 
 		return ctrl.Result{}, nil
-	}
-
-	// Restore an interrupted claim-template replacement before applying any new
-	// desired changes, including an invalid spec or a changed RC target.
-	if handled, result, err := r.resumeClaimTemplateRecovery(ctx, ledger); handled || err != nil {
-		return result, err
 	}
 
 	// Validate spec — report errors via status condition instead of retrying.
@@ -427,11 +427,13 @@ func (r *ClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (re
 
 		return ctrl.Result{}, fmt.Errorf("reconciling StatefulSet: %w", err)
 	}
-	if ledger.Status.ClaimTemplateRecovery == nil {
-		// The normal workload pass can now apply the refreshed key projection.
-		// A pass that just started a recovery must retain the deferred signal.
-		meta.RemoveStatusCondition(&ledger.Status.Conditions, "AuthKeysRolloutDeferred")
+	if ledger.Status.ClaimTemplateRecovery != nil {
+		// The saved workload owns recovery. Do not start a drain or remove
+		// dependencies while its StatefulSet may be absent.
+		return stsResult, nil
 	}
+	// The normal workload pass can now apply the refreshed key projection.
+	meta.RemoveStatusCondition(&ledger.Status.Conditions, "AuthKeysRolloutDeferred")
 
 	// Now that reconcileStatefulSet has run (not pending), the pod template has
 	// dropped the CLUSTER_SECRET SecretKeyRef if TLS is disabled — so it is finally

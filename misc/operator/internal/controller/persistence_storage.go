@@ -46,8 +46,11 @@ func (r *persistenceStorageReconciler) liveStatefulSet(ctx context.Context) (*ap
 	if err := r.reader.Get(ctx, types.NamespacedName{Namespace: r.ledger.Namespace, Name: resourceName(r.ledger.Name)}, &sts); err != nil {
 		return nil, fmt.Errorf("getting live StatefulSet: %w", err)
 	}
-	if r.ledger.UID == "" || sts.UID == "" || !metav1.IsControlledBy(&sts, r.ledger) {
-		return nil, fmt.Errorf("StatefulSet %s/%s is not controlled by Cluster UID %s", sts.Namespace, sts.Name, r.ledger.UID)
+	if notControlledBy(&sts, r.ledger) {
+		return nil, nameConflictError("StatefulSet", &sts, r.ledger)
+	}
+	if r.ledger.UID == "" || sts.UID == "" {
+		return nil, fmt.Errorf("StatefulSet %s/%s has no live Cluster or workload identity", sts.Namespace, sts.Name)
 	}
 	if !sts.DeletionTimestamp.IsZero() {
 		return nil, fmt.Errorf("StatefulSet %s/%s is being deleted", sts.Namespace, sts.Name)

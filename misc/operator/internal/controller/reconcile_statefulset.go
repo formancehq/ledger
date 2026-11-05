@@ -2,6 +2,7 @@ package controller
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"maps"
@@ -104,6 +105,19 @@ func (r *ClusterReconciler) reconcileStatefulSetWithExec(ctx context.Context, le
 			previousReplicas = *existing.Spec.Replicas
 			scalingDown = true
 
+			var cleanupPlanJSON string
+			if buildRetentionPolicy(ledger).WhenScaled == appsv1.DeletePersistentVolumeClaimRetentionPolicyType {
+				plan, err := prepareScaleDownPVCPlan(ctx, r.Clientset, r.storageAPIReader(), ledger, existing, desiredReplicas)
+				if err != nil {
+					return ctrl.Result{}, fmt.Errorf("preparing scale-down PVC identities: %w", err)
+				}
+				encoded, err := json.Marshal(plan)
+				if err != nil {
+					return ctrl.Result{}, fmt.Errorf("encoding scale-down PVC identities: %w", err)
+				}
+				cleanupPlanJSON = string(encoded)
+			}
+
 			// Update the StatefulSet with the current replica count first
 			// so that the image, env vars, etc. are applied. This allows
 			// pods to start (e.g. after an image change) before we attempt
@@ -111,18 +125,8 @@ func (r *ClusterReconciler) reconcileStatefulSetWithExec(ctx context.Context, le
 			savedReplicas := effective.Spec.Replicas
 			effective.Spec.Replicas = &previousReplicas
 			desired := buildStatefulSetSpec(effective, specHash, credentials, targetTLSMode)
-			var hashErr error
-			desired.Template, hashErr = r.resolveStorageSpecHash(ctx, effective, existing, desired.Template, specHash)
+			sts, err := r.upsertStatefulSet(ctx, ledger, desired, specHash, &statefulSetScaleDown{source: existing, cleanupPlanJSON: cleanupPlanJSON, effective: effective})
 			effective.Spec.Replicas = savedReplicas
-			if hashErr != nil {
-				setStorageSpecHashFailure(ledger, hashErr)
-
-				return ctrl.Result{}, hashErr
-			}
-			if volumeClaimTemplatesChanged(existing.Spec.VolumeClaimTemplates, desired.VolumeClaimTemplates) {
-				desired.Template = preserveExistingStorageWiring(existing.Spec.Template, desired.Template)
-			}
-			sts, err := r.upsertStatefulSet(ctx, ledger, desired, &previousReplicas, specHash)
 			if err != nil {
 				return ctrl.Result{}, fmt.Errorf("updating StatefulSet spec before scale-down: %w", err)
 			}
@@ -238,7 +242,7 @@ func (r *ClusterReconciler) reconcileStatefulSetWithExec(ctx context.Context, le
 		}
 	}
 
-	sts, err := r.upsertStatefulSet(ctx, ledger, desired, nil, specHash)
+	sts, err := r.upsertStatefulSet(ctx, ledger, desired, specHash, nil)
 	if err != nil {
 		return ctrl.Result{}, err
 	}
@@ -270,100 +274,6 @@ func (r *ClusterReconciler) reconcileStatefulSetWithExec(ctx context.Context, le
 	}
 
 	return ctrl.Result{}, nil
-}
-
-func (r *ClusterReconciler) cleanupPendingScaleDownPVCs(ctx context.Context, ledger *ledgerv1alpha1.Cluster, sts *appsv1.StatefulSet) error {
-	if sts == nil {
-		return nil
-	}
-	from, pending := sts.Annotations[annotationScaleDownPVCFrom]
-	if !pending {
-		return nil
-	}
-	if r.Clientset == nil {
-		return errors.New("pending StatefulSet scale-down PVC cleanup requires a Kubernetes clientset")
-	}
-	if !metav1.IsControlledBy(sts, ledger) {
-		return fmt.Errorf("StatefulSet %q with pending PVC cleanup is not controlled by Cluster %q", sts.Name, ledger.Name)
-	}
-	previous, err := strconv.ParseInt(from, 10, 32)
-	if err != nil || previous < 1 || sts.Spec.Replicas == nil {
-		return fmt.Errorf("invalid StatefulSet scale-down PVC cleanup state %q", from)
-	}
-	current := *sts.Spec.Replicas
-	if int32(previous) <= current {
-		// The replica reduction has not committed yet.
-		return nil
-	}
-	volumeNames := make([]string, 0, len(sts.Spec.VolumeClaimTemplates))
-	for _, claim := range sts.Spec.VolumeClaimTemplates {
-		volumeNames = append(volumeNames, claim.Name)
-	}
-	if err := deleteScaledDownPVCs(ctx, r.Clientset, ledger.Namespace, sts.Name, int32(previous), current, volumeNames); err != nil {
-		return fmt.Errorf("deleting PVCs after scale-down: %w", err)
-	}
-	before := sts.DeepCopy()
-	delete(sts.Annotations, annotationScaleDownPVCFrom)
-	if err := r.Patch(ctx, sts, client.MergeFrom(before)); err != nil {
-		return fmt.Errorf("clearing StatefulSet scale-down PVC cleanup state: %w", err)
-	}
-
-	return nil
-}
-
-// upsertStatefulSet is the single path that creates or updates the workload.
-// The stopped-upgrade gate calls the ordinary reconciler only after every old
-// Pod has disappeared; it never constructs a second StatefulSet spec.
-func (r *ClusterReconciler) upsertStatefulSet(ctx context.Context, ledger *ledgerv1alpha1.Cluster, desired appsv1.StatefulSetSpec, scaleDownFrom *int32, specHash string) (*appsv1.StatefulSet, error) {
-	sts := &appsv1.StatefulSet{ObjectMeta: metav1.ObjectMeta{Name: resourceName(ledger.Name), Namespace: ledger.Namespace}}
-	_, err := controllerutil.CreateOrUpdate(ctx, r.Client, sts, func() error {
-		sts.Labels = commonLabels(ledger)
-		if scaleDownFrom != nil {
-			if sts.Annotations == nil {
-				sts.Annotations = make(map[string]string)
-			}
-			sts.Annotations[annotationScaleDownPVCFrom] = strconv.FormatInt(int64(*scaleDownFrom), 10)
-		}
-		if sts.CreationTimestamp.IsZero() {
-			sts.Spec = desired
-		} else {
-			// ServiceName, Selector, PodManagementPolicy and claim templates
-			// are immutable after creation.
-			applyMutableStatefulSetSpec(sts, desired)
-		}
-		recordPodConfigHash(sts, specHash)
-
-		return setOwnedControllerReference(ledger, sts, r.Scheme, "StatefulSet")
-	})
-
-	return sts, err
-}
-
-func applyMutableStatefulSetSpec(sts *appsv1.StatefulSet, desired appsv1.StatefulSetSpec) {
-	sts.Spec.Replicas = desired.Replicas
-	sts.Spec.Template = withKubectlRestartedAt(sts.Spec.Template, desired.Template)
-	sts.Spec.UpdateStrategy = desired.UpdateStrategy
-	sts.Spec.PersistentVolumeClaimRetentionPolicy = desired.PersistentVolumeClaimRetentionPolicy
-	sts.Spec.MinReadySeconds = desired.MinReadySeconds
-}
-
-// reconcileStatefulSetRetentionPolicy applies the same policy used by ordinary
-// StatefulSet creation. During a stopped upgrade buildRetentionPolicy always
-// returns Retain; callers must requeue until the StatefulSet controller has
-// observed the updated generation before detaching or reusing claims.
-func (r *ClusterReconciler) reconcileStatefulSetRetentionPolicy(ctx context.Context, ledger *ledgerv1alpha1.Cluster, sts *appsv1.StatefulSet) (bool, error) {
-	desired := buildRetentionPolicy(ledger)
-	if sts.Spec.PersistentVolumeClaimRetentionPolicy != nil &&
-		*sts.Spec.PersistentVolumeClaimRetentionPolicy == *desired {
-		return false, nil
-	}
-	updated := sts.DeepCopy()
-	updated.Spec.PersistentVolumeClaimRetentionPolicy = desired
-	if err := r.Update(ctx, updated); err != nil {
-		return false, fmt.Errorf("updating StatefulSet claim retention policy: %w", err)
-	}
-
-	return true, nil
 }
 
 // claimTemplatePreparationUncommitted fences a failed preparation with direct
@@ -556,6 +466,147 @@ func (r *ClusterReconciler) normalizeStoragePodTemplate(ctx context.Context, exi
 	}
 
 	return preview.Spec.Template, nil
+}
+
+func (r *ClusterReconciler) cleanupPendingScaleDownPVCs(ctx context.Context, ledger *ledgerv1alpha1.Cluster, sts *appsv1.StatefulSet) error {
+	if sts == nil {
+		return nil
+	}
+	from, pending := sts.Annotations[annotationScaleDownPVCFrom]
+	if !pending {
+		if sts.Annotations[annotationScaleDownPVCPlan] != "" {
+			return errors.New("PVC cleanup inventory has no previous replica count")
+		}
+
+		return nil
+	}
+	if !metav1.IsControlledBy(sts, ledger) {
+		return fmt.Errorf("StatefulSet %q with pending PVC cleanup is not controlled by Cluster %q", sts.Name, ledger.Name)
+	}
+	// An opt-out prevents further operator deletes; accepted Kubernetes deletes
+	// cannot be reversed. Clear both fields with optimistic concurrency.
+	if buildRetentionPolicy(ledger).WhenScaled != appsv1.DeletePersistentVolumeClaimRetentionPolicyType {
+		before := sts.DeepCopy()
+		delete(sts.Annotations, annotationScaleDownPVCFrom)
+		delete(sts.Annotations, annotationScaleDownPVCPlan)
+
+		return r.Patch(ctx, sts, client.MergeFromWithOptions(before, client.MergeFromWithOptimisticLock{}))
+	}
+	if r.Clientset == nil {
+		return errors.New("pending StatefulSet scale-down PVC cleanup requires a Kubernetes clientset")
+	}
+	previous, err := strconv.ParseInt(from, 10, 32)
+	if err != nil || previous < 1 || sts.Spec.Replicas == nil {
+		return fmt.Errorf("invalid StatefulSet scale-down PVC cleanup state %q", from)
+	}
+	plan, err := readScaleDownPVCPlan(sts, ledger)
+	if err != nil {
+		return err
+	}
+	if plan.From != int32(previous) {
+		return errors.New("pending PVC cleanup inventory disagrees with the previous replica count")
+	}
+	if int32(previous) <= *sts.Spec.Replicas {
+		desired := int32(3)
+		if ledger.Spec.Replicas != nil {
+			desired = *ledger.Spec.Replicas
+		}
+		if *sts.Spec.Replicas != plan.From || desired != plan.To {
+			return errors.New("pending PVC cleanup replica range changed; finish the recorded scale-down or cancel remaining cleanup with Retain")
+		}
+
+		return nil // The original inventory still owns any resumed Raft work.
+	}
+	if err := deleteScaledDownPVCs(ctx, r.Clientset, r.storageAPIReader(), ledger, sts, plan); err != nil {
+		return fmt.Errorf("deleting PVCs after scale-down: %w", err)
+	}
+	before := sts.DeepCopy()
+	delete(sts.Annotations, annotationScaleDownPVCFrom)
+	delete(sts.Annotations, annotationScaleDownPVCPlan)
+	if err := r.Patch(ctx, sts, client.MergeFromWithOptions(before, client.MergeFromWithOptimisticLock{})); err != nil {
+		return fmt.Errorf("clearing StatefulSet scale-down PVC cleanup state: %w", err)
+	}
+
+	return nil
+}
+
+// statefulSetScaleDown pins the source and any deletion inventory before Raft work.
+type statefulSetScaleDown struct {
+	source          *appsv1.StatefulSet
+	cleanupPlanJSON string
+	effective       *ledgerv1alpha1.Cluster
+}
+
+// upsertStatefulSet is the single path that creates or updates the workload.
+// The stopped-upgrade gate calls the ordinary reconciler only after every old
+// Pod has disappeared; it never constructs a second StatefulSet spec.
+func (r *ClusterReconciler) upsertStatefulSet(ctx context.Context, ledger *ledgerv1alpha1.Cluster, desired appsv1.StatefulSetSpec, specHash string, scaleDown *statefulSetScaleDown) (*appsv1.StatefulSet, error) {
+	sts := &appsv1.StatefulSet{ObjectMeta: metav1.ObjectMeta{Name: resourceName(ledger.Name), Namespace: ledger.Namespace}}
+	_, err := controllerutil.CreateOrUpdate(ctx, r.Client, sts, func() error {
+		sts.Labels = commonLabels(ledger)
+		if scaleDown != nil && scaleDown.cleanupPlanJSON != "" {
+			if !sameScaleDownSource(scaleDown.source, sts, ledger) {
+				return errors.New("StatefulSet identity changed before persisting PVC cleanup inventory")
+			}
+			if sts.Annotations == nil {
+				sts.Annotations = make(map[string]string)
+			}
+			sts.Annotations[annotationScaleDownPVCFrom] = strconv.FormatInt(int64(*scaleDown.source.Spec.Replicas), 10)
+			sts.Annotations[annotationScaleDownPVCPlan] = scaleDown.cleanupPlanJSON
+		}
+		if sts.CreationTimestamp.IsZero() {
+			sts.Spec = desired
+		} else {
+			if scaleDown != nil {
+				var hashErr error
+				desired.Template, hashErr = r.resolveStorageSpecHash(ctx, scaleDown.effective, sts, desired.Template, specHash)
+				if hashErr != nil {
+					setStorageSpecHashFailure(ledger, hashErr)
+
+					return hashErr
+				}
+				if volumeClaimTemplatesChanged(sts.Spec.VolumeClaimTemplates, desired.VolumeClaimTemplates) {
+					desired.Template = preserveExistingStorageWiring(sts.Spec.Template, desired.Template)
+				}
+			}
+			// ServiceName, Selector, PodManagementPolicy and claim templates
+			// are immutable after creation.
+			applyMutableStatefulSetSpec(sts, desired)
+		}
+		// Bind the resolved template atomically before any Raft call.
+		recordPodConfigHash(sts, specHash)
+
+		return setOwnedControllerReference(ledger, sts, r.Scheme, "StatefulSet")
+	})
+
+	return sts, err
+}
+
+func applyMutableStatefulSetSpec(sts *appsv1.StatefulSet, desired appsv1.StatefulSetSpec) {
+	sts.Spec.Replicas = desired.Replicas
+	sts.Spec.Template = withKubectlRestartedAt(sts.Spec.Template, desired.Template)
+	sts.Spec.UpdateStrategy = desired.UpdateStrategy
+	sts.Spec.PersistentVolumeClaimRetentionPolicy = desired.PersistentVolumeClaimRetentionPolicy
+	sts.Spec.MinReadySeconds = desired.MinReadySeconds
+}
+
+// reconcileStatefulSetRetentionPolicy applies the same policy used by ordinary
+// StatefulSet creation. During a stopped upgrade buildRetentionPolicy always
+// returns Retain; callers must requeue until the StatefulSet controller has
+// observed the updated generation before detaching or reusing claims.
+func (r *ClusterReconciler) reconcileStatefulSetRetentionPolicy(ctx context.Context, ledger *ledgerv1alpha1.Cluster, sts *appsv1.StatefulSet) (bool, error) {
+	desired := buildRetentionPolicy(ledger)
+	if sts.Spec.PersistentVolumeClaimRetentionPolicy != nil &&
+		*sts.Spec.PersistentVolumeClaimRetentionPolicy == *desired {
+		return false, nil
+	}
+	updated := sts.DeepCopy()
+	updated.Spec.PersistentVolumeClaimRetentionPolicy = desired
+	if err := r.Update(ctx, updated); err != nil {
+		return false, fmt.Errorf("updating StatefulSet claim retention policy: %w", err)
+	}
+
+	return true, nil
 }
 
 // preserveExistingStorageWiring keeps the Pod template compatible with the

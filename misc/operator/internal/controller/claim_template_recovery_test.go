@@ -217,7 +217,8 @@ func newClaimRecoveryFixture(t *testing.T) *claimRecoveryFixture {
 }
 
 func (f *claimRecoveryFixture) reconciler(c client.Client) *ClusterReconciler {
-	return &ClusterReconciler{Client: c, Scheme: f.scheme, APIReader: c}
+	// The fixture runs rc.1; later desired RCs must not gate saved recovery.
+	return &ClusterReconciler{Client: c, Scheme: f.scheme, APIReader: c, OperatorVersion: "v3.0.0-rc.1"}
 }
 
 func (f *claimRecoveryFixture) latestLedger(t *testing.T) *ledgerv1alpha1.Cluster {
@@ -1851,4 +1852,44 @@ func TestClaimTemplateRecoveryRejectsForeignReplacement(t *testing.T) {
 			f.requireStorageUnchanged(t)
 		})
 	}
+}
+
+func TestClaimTemplateRecoveryRestoresSnapshotBeforeActiveDrain(t *testing.T) {
+	t.Parallel()
+	f := newClaimRecoveryFixture(t)
+	_, err := f.reconciler(f.client).startClaimTemplateRecovery(t.Context(), f.ledger, f.source, f.claims)
+	require.NoError(t, err)
+	_, snapshot := f.journal(t)
+	changed := f.latestLedger(t)
+	changed.Status.Drain = &ledgerv1alpha1.DrainStatus{Epoch: "pending-drain", Phase: drainPhasePreflighting}
+	require.NoError(t, f.client.Status().Update(t.Context(), changed))
+
+	r := f.reconciler(f.client)
+	result, err := r.Reconcile(t.Context(), ctrl.Request{NamespacedName: client.ObjectKeyFromObject(changed)})
+	require.NoError(t, err)
+	require.Positive(t, result.RequeueAfter)
+	require.Equal(t, snapshot.StatefulSet.Spec, f.replacement(t).Spec)
+	require.Equal(t, changed.Status.Drain, f.latestLedger(t).Status.Drain, "restore the pinned workload before advancing drain")
+	f.requireStorageUnchanged(t)
+}
+
+func TestClaimTemplateRecoveryDefersNewDrainIntent(t *testing.T) {
+	t.Parallel()
+	f := newClaimRecoveryFixture(t)
+	f.ledger.Spec.Persistence.DeletionProtection = new(false)
+	hash := computeSpecHash(&f.ledger.Spec)
+	f.source.Spec = buildStatefulSetSpec(f.ledger, hash, nil, tlsModeDisabled)
+	f.source.CreationTimestamp = metav1.Now()
+	recordPodConfigHash(f.source, hash)
+	require.NoError(t, f.client.Update(t.Context(), f.source))
+	f.ledger.Spec.Persistence.Data.Size = resource.MustParse("200Gi")
+	f.ledger.Annotations = map[string]string{ClusterDrainAnnotation: "true"}
+	require.NoError(t, f.client.Update(t.Context(), f.ledger))
+
+	r := f.reconciler(f.client)
+	_, err := r.Reconcile(t.Context(), ctrl.Request{NamespacedName: client.ObjectKeyFromObject(f.ledger)})
+	require.NoError(t, err)
+	stored := f.latestLedger(t)
+	require.NotNil(t, stored.Status.ClaimTemplateRecovery)
+	require.Nil(t, stored.Status.Drain, "a new drain must wait for the saved workload to be restored")
 }

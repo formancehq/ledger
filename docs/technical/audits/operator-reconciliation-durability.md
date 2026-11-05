@@ -186,16 +186,43 @@ rolling-update behavior or real peer/CLI connectivity; disclose those limits.
 
 ## Scale-down PVC cleanup boundary
 
-The StatefulSet annotation recording the previous replica count is written
-before Raft membership removal. A failed membership step leaves the old
-StatefulSet replica count intact. After the lower replica count is persisted,
-the annotation and the StatefulSet claim templates identify removed-ordinal
-PVCs on a fresh reconcile. Cleanup must run before a later scale-up can reuse
-them. A failed deletion or marker-clear write leaves retryable state; a
-successful deletion of an already-absent PVC is idempotent. Verify the marker
-survives a failed DELETE after the replica write and disappears only after all
-removed PVC deletions are accepted. Distinguish API acceptance from eventual
-Kubernetes garbage collection and check the actual PVC identities after retry.
+Effective `whenScaled: Delete` is the only manual cleanup authorization;
+omitted/default or explicit `Retain` must leave PVC/PV identity and binding
+unchanged, independently of `whenDeleted`. Before Raft membership removal or
+replica reduction, validate the owned source and each intended claim, then
+persist the previous count and a versioned exact inventory in the preparatory
+StatefulSet write. `ledger.formance.com/scale-down-pvc-plan` accompanies
+`ledger.formance.com/scale-down-pvc-from`; it records Cluster/StatefulSet UIDs,
+the replica range, each PVC UID/version, ordinal/volume, original ownership
+evidence and bound PV name/UID/full claimRef. The names and previous count alone
+must not grant cleanup authority.
+
+A failed membership step leaves the old replica count and inventory. After
+reduction persists, a fresh reconciler must use the saved identities before any
+later scale-up, not recapture whichever object now has the same name. At every
+DELETE attempt, directly revalidate the owned StatefulSet incarnation and actual
+removed range, the PVC UID/owners/volume name and the bound PV UID/claimRef.
+Send the recorded PVC UID and the freshly read resourceVersion as DELETE
+preconditions. A conflict retains the plan and requires a new validated read;
+it cannot adopt a replacement UID or binding. A missing original claim or that
+same claim already deleting is idempotent and needs no new DELETE.
+
+Retain lower replicas and the plan after partial failure. Clear both markers
+with an optimistic patch only once every authorized DELETE is accepted or its
+original claim is already absent/terminating. Switching the desired retention
+to `Retain` cancels further Operator cleanup, without reversing accepted native
+or manual deletion. A legacy count-only marker must fail closed for explicit
+Delete; neither current names nor a new read can reconstruct missing authority.
+Complete or safely cancel cleanup before downgrading to a binary that ignores
+the plan. Do not delete or fabricate recovery metadata to bypass identity checks.
+
+Verify same-name replacement across restart, same-UID ownership change,
+rebinding/PV replacement and a real UID/resourceVersion conflict after the last
+read. Preserve the first-failed-DELETE, fresh-reconciler, successful-retry test
+and assert actual API acceptance, exact target identity and attempt counts.
+Keep the plan until partial cleanup converges; retained/current ordinals must
+stay intact. PVC DELETE preconditions do not lock the StatefulSet/PV atomically, stop native
+StatefulSet garbage collection or prove mounted-data retention.
 
 ## Sequential RC and storage transition boundary
 
@@ -792,6 +819,19 @@ WhenScaled=Delete membership/removal failure-and-retry tests. The reduced
 replica write requests termination; it does not establish Pod termination or
 prove mounted-data retention in envtest.
 
+For explicit Delete, assert the exact inventory is durable while replicas are
+still unchanged and before the first Raft exec. Replace a target PVC under the
+same name after capture and after a replica-write failure/restart; the replacement
+must remain intact. Also change an owner at constant PVC UID, rebind the claim,
+replace its PV, or alter the PV claimRef. No rejected identity may be adopted into
+the plan. Interpose a same-name replacement or resourceVersion change after the
+final direct read: require actual API conflict, unchanged current object and a
+retained plan. Restore only a benign metadata case, then verify a fresh validated
+retry really deletes the original target and clears state. Cover partial success,
+missing/already-terminating original claims, legacy count-only metadata,
+Retain cancellation and current ordinals. Distinguish Operator deletion fences
+from native retention-controller garbage collection.
+
 For direct hostPath/PVC layout recreation, require owned observed identity,
 a direct API reread and UID/resourceVersion delete preconditions. Cover foreign
 cached/live ownership, changed UID/version and terminating sources without a
@@ -906,3 +946,10 @@ Keep the same exact HEAD for both passes. Raw and qualified artifacts stay under
 ignored `build/ai-audit/`; they are separate from the manifest PR. Inspect the
 qualified report before reporting confirmed counts. Jira publication requires
 separate explicit authorization and is not part of either pass.
+
+The scale-down inventory is also authoritative before replica reduction: after a
+partial Raft failure, reuse it without recapturing claims. An API regression
+replaces a claim at that boundary and requires rejection before another Raft
+command, with replicas, original inventory and replacement intact. A changed
+pending replica range requires completing the recorded operation or cancelling
+remaining Operator cleanup through `Retain`.

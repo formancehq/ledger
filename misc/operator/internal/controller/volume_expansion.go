@@ -166,12 +166,16 @@ func (r *VolumeExpansionReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 	storage := persistenceStorageReconciler{client: r.Client, reader: r.APIReader, ledger: &ledger}
 	statefulSet, err := storage.liveStatefulSet(ctx)
 	if err != nil {
+		reason := "StatefulSetUnavailable"
+		if errors.Is(err, errResourceNameConflict) {
+			reason = "ResourceNameConflict"
+		}
 		for _, definition := range persistenceVolumeDefinitions(&ledger) {
-			setStorageCondition(&ledger, definition.Name, metav1.ConditionFalse, "StatefulSetUnavailable", err.Error())
+			setStorageCondition(&ledger, definition.Name, metav1.ConditionFalse, reason, err.Error())
 		}
 		for _, definition := range definitions {
 			r.recordWarningf(&ledger, "VolumeExpansionPending", "%s auto-expansion is waiting for the live StatefulSet: %v", definition.Name, err)
-			setVolumeExpansionCondition(&ledger, definition.Name, metav1.ConditionFalse, "StatefulSetUnavailable", err.Error())
+			setVolumeExpansionCondition(&ledger, definition.Name, metav1.ConditionFalse, reason, err.Error())
 		}
 		if len(definitions) > 0 {
 			volumeExpansionErrorsMetric.WithLabelValues("statefulset", "cluster").Inc()

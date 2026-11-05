@@ -1367,6 +1367,10 @@ type TLSRolloutStatus struct {
 
 // ClusterStatus defines the observed state of Cluster.
 type ClusterStatus struct {
+	// ClaimTemplateRecovery identifies the durable journal for a claim-template
+	// replacement. The operator restores that workload before newer spec edits.
+	// +optional
+	ClaimTemplateRecovery *ClaimTemplateRecoveryStatus `json:"claimTemplateRecovery,omitempty"`
 	// Drain records the operator-owned epoch and transition across restarts.
 	// It is cleared after all members durably apply the release.
 	// +optional
@@ -1376,12 +1380,6 @@ type ClusterStatus struct {
 	// It is persisted before the old StatefulSet is deleted.
 	// +optional
 	Upgrade *ClusterUpgradeStatus `json:"upgrade,omitempty"`
-
-	// ClaimTemplateRecovery identifies the durable journal for a claim-template
-	// replacement. The operator restores that workload before newer spec edits.
-	// +optional
-	ClaimTemplateRecovery *ClaimTemplateRecoveryStatus `json:"claimTemplateRecovery,omitempty"`
-
 	// TLSRollout preserves certificate references and mode across operator restarts
 	// and StatefulSet recreation. Cleared after the disabled rollout converges.
 	// +optional
@@ -1416,6 +1414,23 @@ type ClusterStatus struct {
 	TLSMigrationPhase string `json:"tlsMigrationPhase,omitempty"`
 }
 
+// ClaimTemplateRecoveryStatus authorizes exact journal bytes before creation.
+// An empty ConfigMapUID is Preparing; a bound UID is Active. Completed retains
+// the binding until cleanup succeeds, including after a lost delete response.
+type ClaimTemplateRecoveryStatus struct {
+	// ConfigMapName includes a prefix of the complete authorized digest.
+	ConfigMapName string `json:"configMapName"`
+	// SourceUID identifies the original StatefulSet saved in the payload.
+	SourceUID string `json:"sourceUID"`
+	// PayloadSHA256 covers the complete JSON payload and its Cluster identity.
+	PayloadSHA256 string `json:"payloadSHA256"`
+	// ConfigMapUID is bound only after the immutable journal is authenticated.
+	// +optional
+	ConfigMapUID string `json:"configMapUID,omitempty"`
+	// +optional
+	Completed bool `json:"completed,omitempty"`
+}
+
 // DrainStatus tracks an annotation-triggered drain lifecycle.
 type DrainStatus struct {
 	Epoch string `json:"epoch"`
@@ -1436,23 +1451,6 @@ type ClusterUpgradeStatus struct {
 	// VolumeUIDs pins every bound PV reused by the original claims.
 	VolumeUIDs map[string]string `json:"volumeUIDs,omitempty"`
 	Phase      string            `json:"phase"`
-}
-
-// ClaimTemplateRecoveryStatus authorizes exact journal bytes before creation.
-// An empty ConfigMapUID is Preparing; a bound UID is Active. Completed retains
-// the binding until cleanup succeeds, including after a lost delete response.
-type ClaimTemplateRecoveryStatus struct {
-	// ConfigMapName includes a prefix of the complete authorized digest.
-	ConfigMapName string `json:"configMapName"`
-	// SourceUID identifies the original StatefulSet saved in the payload.
-	SourceUID string `json:"sourceUID"`
-	// PayloadSHA256 covers the complete JSON payload and its Cluster identity.
-	PayloadSHA256 string `json:"payloadSHA256"`
-	// ConfigMapUID is bound only after the immutable journal is authenticated.
-	// +optional
-	ConfigMapUID string `json:"configMapUID,omitempty"`
-	// +optional
-	Completed bool `json:"completed,omitempty"`
 }
 
 // EndpointsStatus contains the resolved endpoints for a Cluster.
