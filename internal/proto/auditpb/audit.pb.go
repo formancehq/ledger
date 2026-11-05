@@ -64,6 +64,7 @@ type AuditEntry struct {
 	//   - `previous_audit_hash` is `hash` of the predecessor entry, or empty for
 	//     the first entry
 	//
+	//
 	// Same formula for success and failure entries. The hash binds every field
 	// of AuditEntry and AuditItem except `hash` itself. Tampering with any
 	// other field is detected by checker.verifyAuditHashChain.
