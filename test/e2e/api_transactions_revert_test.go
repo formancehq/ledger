@@ -417,6 +417,81 @@ var _ = Context("Ledger revert transactions API tests", func() {
 			})
 		})
 	})
+	When("reverting a transaction that swaps different assets between the same accounts", func() {
+		var swap *operations.V2CreateTransactionResponse
+
+		BeforeEach(func(specContext SpecContext) {
+			client := Wait(specContext, DeferClient(testServer))
+			create := func(postings ...components.V2Posting) *operations.V2CreateTransactionResponse {
+				response, err := client.Ledger.V2.CreateTransaction(ctx, operations.V2CreateTransactionRequest{
+					Ledger: "default",
+					V2PostTransaction: components.V2PostTransaction{
+						Metadata: map[string]string{},
+						Postings: postings,
+					},
+				})
+				Expect(err).ToNot(HaveOccurred())
+				return response
+			}
+
+			create(components.V2Posting{
+				Amount:      big.NewInt(100),
+				Asset:       "USD/2",
+				Source:      "world",
+				Destination: "alice",
+			})
+			create(components.V2Posting{
+				Amount:      big.NewInt(100),
+				Asset:       "EUR/2",
+				Source:      "world",
+				Destination: "bob",
+			})
+			swap = create(
+				components.V2Posting{
+					Amount:      big.NewInt(10),
+					Asset:       "USD/2",
+					Source:      "alice",
+					Destination: "bob",
+				},
+				components.V2Posting{
+					Amount:      big.NewInt(5),
+					Asset:       "EUR/2",
+					Source:      "bob",
+					Destination: "alice",
+				},
+			)
+		})
+
+		It("should create the reverse transaction without force", func(specContext SpecContext) {
+			client := Wait(specContext, DeferClient(testServer))
+			reverted, err := client.Ledger.V2.RevertTransaction(ctx, operations.V2RevertTransactionRequest{
+				Ledger: "default",
+				ID:     swap.V2CreateTransactionResponse.Data.ID,
+			})
+			Expect(err).ToNot(HaveOccurred())
+			Expect(reverted.V2RevertTransactionResponse.Data.Postings).To(Equal([]components.V2Posting{
+				{
+					Amount:      big.NewInt(5),
+					Asset:       "EUR/2",
+					Source:      "alice",
+					Destination: "bob",
+				},
+				{
+					Amount:      big.NewInt(10),
+					Asset:       "USD/2",
+					Source:      "bob",
+					Destination: "alice",
+				},
+			}))
+
+			original, err := client.Ledger.V2.GetTransaction(ctx, operations.V2GetTransactionRequest{
+				Ledger: "default",
+				ID:     swap.V2CreateTransactionResponse.Data.ID,
+			})
+			Expect(err).ToNot(HaveOccurred())
+			Expect(original.V2GetTransactionResponse.Data.Reverted).To(BeTrue())
+		})
+	})
 	When("reverting two different transactions with the same idempotency key", func() {
 		// Regression: RevertTransaction carries an idempotency key, so reusing it
 		// with a different input must be a 400 VALIDATION, not a 500 — the endpoint
