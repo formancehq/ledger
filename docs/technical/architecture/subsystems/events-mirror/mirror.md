@@ -476,11 +476,15 @@ at recovery and advanced by committed technical updates; the cursor remains in
 retain their original replay behavior. The head is the latest **observed**
 count, not a live lease on the source; operators must stop source writes and
 verify the final source head before cutover. There is no force override.
+Cross-cluster restore clears the source-head observation, including after an
+incremental delta. The restored mirror worker must observe the source again
+before a new promotion can pass; the ingestion cursor, business history, and
+audit history remain intact.
 The `rc.3` to `rc.4` upgrade requires the operator's stopped restart. Promotion
 orders already committed by `rc.3` have no catch-up flag and keep their original
 FSM result, idempotency result, and audit record when replayed on `rc.4`.
 
-After promotion, the ledger accepts normal write requests. The boundary's `last_mirror_v2_log_id` and the source-head row are kept for forensic purposes but no longer advance.
+After promotion, the ledger accepts normal write requests. The boundary's `last_mirror_v2_log_id` and the source-head row are kept for forensic purposes but no longer advance on the live cluster. Cross-cluster restore clears the source-head observation for all ledgers.
 
 ## Configuration
 
