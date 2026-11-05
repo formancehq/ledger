@@ -127,6 +127,7 @@ func TestAuthStreamInterceptorGuardsInfrastructureMethodsOnPeerListener(t *testi
 	called := false
 	handler := func(any, ggrpc.ServerStream) error {
 		called = true
+
 		return nil
 	}
 
@@ -152,6 +153,7 @@ func TestPeerListenerDoesNotTrustSecretlessForwarding(t *testing.T) {
 		require.False(t, internalauth.IsClusterInternal(ctx))
 		_, authErr := internalauth.EvaluateGRPCCredentials(ctx, cfg)
 		require.NoError(t, authErr)
+
 		return nil, nil
 	})
 	require.NoError(t, err)
