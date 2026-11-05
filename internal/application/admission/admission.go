@@ -506,7 +506,6 @@ func (a *Admission) AdmitClusterPolicy(ctx context.Context, policy *commonpb.Clu
 type admissionPlan struct {
 	key                   string
 	sig                   *signaturepb.SignedApplyBatch
-	httpSig               *signaturepb.SignedHTTPRequest
 	allowInMaintenance    bool
 	businessBatch         bool
 	checkAfterMaintenance func() error
@@ -527,7 +526,6 @@ func (a *Admission) buildApplyAdmissionPlan(ctx context.Context, req *servicepb.
 	return &admissionPlan{
 		key:                batch.key,
 		sig:                batch.sig,
-		httpSig:            batch.httpSig,
 		allowInMaintenance: allRequestsAreMaintenanceMode(batch.requests),
 		businessBatch:      true,
 		checkAfterMaintenance: func() error {
@@ -734,7 +732,6 @@ func (a *Admission) buildAdmissionPreload(ctx context.Context, caller *commonpb.
 		cmd.Idempotency = &commonpb.Idempotency{Key: admPlan.key}
 	}
 	cmd.Signature = admPlan.sig
-	cmd.HttpSignature = admPlan.httpSig
 
 	ctx, preloadSpan := tracer.Start(ctx, "admission.preload",
 		trace.WithAttributes(
@@ -1079,7 +1076,6 @@ type verifiedBatch struct {
 	requests []*servicepb.Request
 	key      string
 	sig      *signaturepb.SignedApplyBatch
-	httpSig  *signaturepb.SignedHTTPRequest
 }
 
 // resolveBatch verifies the batch signature (if any), unwraps the trusted
@@ -1089,28 +1085,6 @@ type verifiedBatch struct {
 // admitted only when signatures are not required (or for signing bootstrap).
 func (a *Admission) resolveBatch(ctx context.Context, req *servicepb.ApplyRequest) (verifiedBatch, error) {
 	switch v := req.GetVariant().(type) {
-	case *servicepb.ApplyRequest_HttpSigned:
-		proof := v.HttpSigned
-		keyID, err := signing.HTTPKeyID(proof)
-		if err != nil {
-			return verifiedBatch{}, err
-		}
-		publicKey := a.keyStore.GetPublicKey(keyID)
-		if publicKey == nil {
-			return verifiedBatch{}, fmt.Errorf("%w: %s", signing.ErrUnknownKeyID, keyID)
-		}
-		if err := signing.VerifyHTTP(proof, publicKey); err != nil {
-			return verifiedBatch{}, err
-		}
-		batch, err := servicepb.DecodeHTTPRequest(proof)
-		if err != nil {
-			return verifiedBatch{}, fmt.Errorf("%w: %w", signing.ErrInvalidSignature, err)
-		}
-		if err := validateIdempotencyKey(batch.GetIdempotencyKey()); err != nil {
-			return verifiedBatch{}, err
-		}
-
-		return verifiedBatch{requests: batch.GetRequests(), key: batch.GetIdempotencyKey(), httpSig: proof}, nil
 	case *servicepb.ApplyRequest_Signed:
 		sb := v.Signed
 

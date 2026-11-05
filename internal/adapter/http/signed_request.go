@@ -7,23 +7,28 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"mime"
 	"net/http"
+
+	"google.golang.org/protobuf/encoding/protojson"
 
 	"github.com/formancehq/ledger/v3/internal/proto/signaturepb"
 )
 
+const signedRequestMediaType = "application/vnd.formance.signed-request+json"
+
 type signedRequestContextKey struct{}
 
 func isSignedRequest(r *http.Request) bool {
-	_, signature := r.Header["Signature"]
-	_, input := r.Header["Signature-Input"]
+	mediaType, _, _ := mime.ParseMediaType(r.Header.Get("Content-Type"))
 
-	return signature || input
+	return mediaType == signedRequestMediaType
 }
 
-// signedRequest captures the original HTTP proof before the ordinary handler
-// decodes its body. Admission verifies the proof; applyRequests binds its decoded
-// commands to the handler's commands so HTTP and forwarded gRPC agree.
+// signedRequest unwraps the opt-in representation on supported routes only.
+// Existing decoders remain responsible for converting the visible request to
+// business intent. applyRequests binds that intent to the signed batch before
+// forwarding the original envelope to admission's authoritative verifier.
 func signedRequest(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if !isSignedRequest(r) {
@@ -31,59 +36,79 @@ func signedRequest(next http.HandlerFunc) http.HandlerFunc {
 
 			return
 		}
-		proof, err := captureSignedRequest(r)
+
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			writeBadRequest(w, "INVALID_REQUEST", fmt.Errorf("invalid signed request body: %w", err))
+
+			return
+		}
+		request, envelope, err := decodeSignedRequest(body)
 		if err != nil {
 			writeBadRequest(w, "INVALID_REQUEST", err)
 
 			return
 		}
-		r = r.WithContext(context.WithValue(r.Context(), signedRequestContextKey{}, proof))
-		r.Body = io.NopCloser(bytes.NewReader(proof.GetBody()))
+		if r.Method == http.MethodDelete && !bytes.Equal(bytes.TrimSpace(request), []byte("null")) {
+			writeBadRequest(w, "INVALID_REQUEST", errors.New("signed metadata deletion requires request: null"))
+
+			return
+		}
+
+		r = r.WithContext(context.WithValue(r.Context(), signedRequestContextKey{}, envelope))
+		r.Body = io.NopCloser(bytes.NewReader(request))
 		next(w, r)
 	}
 }
 
-func captureSignedRequest(r *http.Request) (*signaturepb.SignedHTTPRequest, error) {
-	headers := make(map[string]string, 5)
-	for _, name := range []string{"Content-Type", "Content-Digest", "Idempotency-Key", "Signature-Input", "Signature"} {
-		values := r.Header.Values(name)
-		if len(values) != 1 || (name != "Idempotency-Key" && values[0] == "") {
-			return nil, fmt.Errorf("signed request requires exactly one %s header", name)
+// decodeSignedRequest rejects unknown and duplicate envelope fields. The
+// protobuf JSON decoder does the same for signedBatch; the inner request keeps
+// the existing route's JSON semantics. ReadAll above enforces the router's
+// whole-body limit, including any trailing data.
+func decodeSignedRequest(body []byte) (json.RawMessage, *signaturepb.SignedApplyBatch, error) {
+	decoder := json.NewDecoder(bytes.NewReader(body))
+	first, err := decoder.Token()
+	if err != nil || first != json.Delim('{') {
+		return nil, nil, errors.New("signed request must be a JSON object")
+	}
+	fields := make(map[string]json.RawMessage, 2)
+	for decoder.More() {
+		token, err := decoder.Token()
+		if err != nil {
+			return nil, nil, fmt.Errorf("invalid signed request: %w", err)
 		}
-		headers[name] = values[0]
-	}
-	if headers["Content-Type"] != "application/json" {
-		return nil, errors.New("signed request Content-Type must be application/json")
-	}
-	body, err := io.ReadAll(r.Body)
-	if err != nil {
-		return nil, fmt.Errorf("invalid signed request body: %w", err)
-	}
-	if r.Method == http.MethodDelete && len(body) != 0 {
-		return nil, errors.New("signed metadata deletion requires an empty body")
-	}
-	if len(body) != 0 && !json.Valid(body) {
-		return nil, errors.New("signed request body must contain exactly one JSON value")
-	}
-	scheme := r.URL.Scheme
-	if scheme == "" {
-		scheme = "http"
-		if r.TLS != nil {
-			scheme = "https"
+		key, ok := token.(string)
+		if !ok || (key != "request" && key != "signedBatch") {
+			return nil, nil, errors.New("unknown signed request field")
 		}
+		if _, exists := fields[key]; exists {
+			return nil, nil, fmt.Errorf("duplicate signed request field %q", key)
+		}
+		var value json.RawMessage
+		if err := decoder.Decode(&value); err != nil {
+			return nil, nil, fmt.Errorf("invalid signed request field: %w", err)
+		}
+		fields[key] = value
+	}
+	if _, err := decoder.Token(); err != nil {
+		return nil, nil, fmt.Errorf("invalid signed request: %w", err)
+	}
+	if _, err := decoder.Token(); !errors.Is(err, io.EOF) {
+		return nil, nil, errors.New("signed request must contain exactly one JSON value")
+	}
+	if len(fields["request"]) == 0 || len(fields["signedBatch"]) == 0 || bytes.Equal(fields["signedBatch"], []byte("null")) {
+		return nil, nil, errors.New("signed request requires request and signedBatch")
+	}
+	envelope := &signaturepb.SignedApplyBatch{}
+	if err := protojson.Unmarshal(fields["signedBatch"], envelope); err != nil {
+		return nil, nil, fmt.Errorf("invalid signedBatch: %w", err)
 	}
 
-	return &signaturepb.SignedHTTPRequest{
-		Scheme: scheme,
-		Method: r.Method, RequestTarget: r.URL.RequestURI(), Authority: r.Host,
-		ContentType: headers["Content-Type"], ContentDigest: headers["Content-Digest"],
-		IdempotencyKey: headers["Idempotency-Key"], SignatureInput: headers["Signature-Input"],
-		Signature: headers["Signature"], Body: body,
-	}, nil
+	return fields["request"], envelope, nil
 }
 
-func httpSignatureFromContext(ctx context.Context) *signaturepb.SignedHTTPRequest {
-	proof, _ := ctx.Value(signedRequestContextKey{}).(*signaturepb.SignedHTTPRequest)
+func signedBatchFromContext(ctx context.Context) *signaturepb.SignedApplyBatch {
+	envelope, _ := ctx.Value(signedRequestContextKey{}).(*signaturepb.SignedApplyBatch)
 
-	return proof
+	return envelope
 }

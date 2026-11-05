@@ -24,7 +24,6 @@ type AuditEntryReader interface {
 	GetCallerSnapshot() commonpb.CallerSnapshotReader
 	GetIdempotency() commonpb.IdempotencyReader
 	GetSignature() signaturepb.SignedApplyBatchReader
-	GetHttpSignature() signaturepb.SignedHTTPRequestReader
 	GetOutcome() isAuditEntry_Outcome
 	Mutate() *AuditEntry
 }
@@ -85,14 +84,6 @@ func (r *auditEntryReadonly) GetIdempotency() commonpb.IdempotencyReader {
 
 func (r *auditEntryReadonly) GetSignature() signaturepb.SignedApplyBatchReader {
 	v := (*AuditEntry)(r).GetSignature()
-	if v == nil {
-		return nil
-	}
-	return v.AsReader()
-}
-
-func (r *auditEntryReadonly) GetHttpSignature() signaturepb.SignedHTTPRequestReader {
-	v := (*AuditEntry)(r).GetHttpSignature()
 	if v == nil {
 		return nil
 	}

@@ -91,128 +91,6 @@ func (x *SignedApplyBatch) GetPayload() []byte {
 	return nil
 }
 
-// SignedHTTPRequest preserves the exact HTTP evidence authenticated with RFC
-// 9421 HTTP Message Signatures and RFC 9530 Content-Digest. Admission verifies
-// the signature before deriving its ApplyBatch from the body and target. HTTP
-// clients never construct a protobuf batch. Original headers and body bytes
-// remain available for independent audit verification.
-type SignedHTTPRequest struct {
-	state          protoimpl.MessageState `protogen:"open.v1"`
-	Method         string                 `protobuf:"bytes,1,opt,name=method,proto3" json:"method,omitempty"`
-	RequestTarget  string                 `protobuf:"bytes,2,opt,name=request_target,json=requestTarget,proto3" json:"request_target,omitempty"` // Origin-form escaped path and optional query.
-	Authority      string                 `protobuf:"bytes,3,opt,name=authority,proto3" json:"authority,omitempty"`
-	ContentType    string                 `protobuf:"bytes,4,opt,name=content_type,json=contentType,proto3" json:"content_type,omitempty"`
-	ContentDigest  string                 `protobuf:"bytes,5,opt,name=content_digest,json=contentDigest,proto3" json:"content_digest,omitempty"`
-	IdempotencyKey string                 `protobuf:"bytes,6,opt,name=idempotency_key,json=idempotencyKey,proto3" json:"idempotency_key,omitempty"`
-	SignatureInput string                 `protobuf:"bytes,7,opt,name=signature_input,json=signatureInput,proto3" json:"signature_input,omitempty"`
-	Signature      string                 `protobuf:"bytes,8,opt,name=signature,proto3" json:"signature,omitempty"`
-	Body           []byte                 `protobuf:"bytes,9,opt,name=body,proto3" json:"body,omitempty"`
-	// Scheme used to normalize the authority's default port under RFC 9421.
-	Scheme        string `protobuf:"bytes,10,opt,name=scheme,proto3" json:"scheme,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *SignedHTTPRequest) Reset() {
-	*x = SignedHTTPRequest{}
-	mi := &file_signature_proto_msgTypes[1]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *SignedHTTPRequest) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*SignedHTTPRequest) ProtoMessage() {}
-
-func (x *SignedHTTPRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_signature_proto_msgTypes[1]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use SignedHTTPRequest.ProtoReflect.Descriptor instead.
-func (*SignedHTTPRequest) Descriptor() ([]byte, []int) {
-	return file_signature_proto_rawDescGZIP(), []int{1}
-}
-
-func (x *SignedHTTPRequest) GetMethod() string {
-	if x != nil {
-		return x.Method
-	}
-	return ""
-}
-
-func (x *SignedHTTPRequest) GetRequestTarget() string {
-	if x != nil {
-		return x.RequestTarget
-	}
-	return ""
-}
-
-func (x *SignedHTTPRequest) GetAuthority() string {
-	if x != nil {
-		return x.Authority
-	}
-	return ""
-}
-
-func (x *SignedHTTPRequest) GetContentType() string {
-	if x != nil {
-		return x.ContentType
-	}
-	return ""
-}
-
-func (x *SignedHTTPRequest) GetContentDigest() string {
-	if x != nil {
-		return x.ContentDigest
-	}
-	return ""
-}
-
-func (x *SignedHTTPRequest) GetIdempotencyKey() string {
-	if x != nil {
-		return x.IdempotencyKey
-	}
-	return ""
-}
-
-func (x *SignedHTTPRequest) GetSignatureInput() string {
-	if x != nil {
-		return x.SignatureInput
-	}
-	return ""
-}
-
-func (x *SignedHTTPRequest) GetSignature() string {
-	if x != nil {
-		return x.Signature
-	}
-	return ""
-}
-
-func (x *SignedHTTPRequest) GetBody() []byte {
-	if x != nil {
-		return x.Body
-	}
-	return nil
-}
-
-func (x *SignedHTTPRequest) GetScheme() string {
-	if x != nil {
-		return x.Scheme
-	}
-	return ""
-}
-
 // SignedLog is the opaque envelope for a server-signed response Log.
 // The server clears any nested SignedLog field on a
 // candidate Log, serializes it, signs the bytes, and ships
@@ -229,7 +107,7 @@ type SignedLog struct {
 
 func (x *SignedLog) Reset() {
 	*x = SignedLog{}
-	mi := &file_signature_proto_msgTypes[2]
+	mi := &file_signature_proto_msgTypes[1]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -241,7 +119,7 @@ func (x *SignedLog) String() string {
 func (*SignedLog) ProtoMessage() {}
 
 func (x *SignedLog) ProtoReflect() protoreflect.Message {
-	mi := &file_signature_proto_msgTypes[2]
+	mi := &file_signature_proto_msgTypes[1]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -254,7 +132,7 @@ func (x *SignedLog) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SignedLog.ProtoReflect.Descriptor instead.
 func (*SignedLog) Descriptor() ([]byte, []int) {
-	return file_signature_proto_rawDescGZIP(), []int{2}
+	return file_signature_proto_rawDescGZIP(), []int{1}
 }
 
 func (x *SignedLog) GetKeyId() string {
@@ -286,19 +164,7 @@ const file_signature_proto_rawDesc = "" +
 	"\x10SignedApplyBatch\x12\x15\n" +
 	"\x06key_id\x18\x01 \x01(\tR\x05keyId\x12\x1c\n" +
 	"\tsignature\x18\x02 \x01(\fR\tsignature\x12\x18\n" +
-	"\apayload\x18\x03 \x01(\fR\apayload\"\xd6\x02\n" +
-	"\x11SignedHTTPRequest\x12\x16\n" +
-	"\x06method\x18\x01 \x01(\tR\x06method\x12%\n" +
-	"\x0erequest_target\x18\x02 \x01(\tR\rrequestTarget\x12\x1c\n" +
-	"\tauthority\x18\x03 \x01(\tR\tauthority\x12!\n" +
-	"\fcontent_type\x18\x04 \x01(\tR\vcontentType\x12%\n" +
-	"\x0econtent_digest\x18\x05 \x01(\tR\rcontentDigest\x12'\n" +
-	"\x0fidempotency_key\x18\x06 \x01(\tR\x0eidempotencyKey\x12'\n" +
-	"\x0fsignature_input\x18\a \x01(\tR\x0esignatureInput\x12\x1c\n" +
-	"\tsignature\x18\b \x01(\tR\tsignature\x12\x12\n" +
-	"\x04body\x18\t \x01(\fR\x04body\x12\x16\n" +
-	"\x06scheme\x18\n" +
-	" \x01(\tR\x06scheme\"Z\n" +
+	"\apayload\x18\x03 \x01(\fR\apayload\"Z\n" +
 	"\tSignedLog\x12\x15\n" +
 	"\x06key_id\x18\x01 \x01(\tR\x05keyId\x12\x1c\n" +
 	"\tsignature\x18\x02 \x01(\fR\tsignature\x12\x18\n" +
@@ -316,11 +182,10 @@ func file_signature_proto_rawDescGZIP() []byte {
 	return file_signature_proto_rawDescData
 }
 
-var file_signature_proto_msgTypes = make([]protoimpl.MessageInfo, 3)
+var file_signature_proto_msgTypes = make([]protoimpl.MessageInfo, 2)
 var file_signature_proto_goTypes = []any{
-	(*SignedApplyBatch)(nil),  // 0: signature.SignedApplyBatch
-	(*SignedHTTPRequest)(nil), // 1: signature.SignedHTTPRequest
-	(*SignedLog)(nil),         // 2: signature.SignedLog
+	(*SignedApplyBatch)(nil), // 0: signature.SignedApplyBatch
+	(*SignedLog)(nil),        // 1: signature.SignedLog
 }
 var file_signature_proto_depIdxs = []int32{
 	0, // [0:0] is the sub-list for method output_type
@@ -341,7 +206,7 @@ func file_signature_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_signature_proto_rawDesc), len(file_signature_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   3,
+			NumMessages:   2,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

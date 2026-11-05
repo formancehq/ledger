@@ -7,7 +7,7 @@ The admission pipeline (`internal/application/admission`) is the gateway every w
 | Document | Description |
 |----------|-------------|
 | [pipeline.md](pipeline.md) | End-to-end pipeline from gRPC request to Raft proposal: gate, signature, order conversion, numscript, preload, proposal guard, predicted-index trick. |
-| [signing.md](signing.md) | Ed25519 request and response signing — keys, lifecycle, HTTP Message Signatures and authenticated HTTP-to-batch derivation, cross-language byte preservation, audit-chain propagation, replay nuance. |
+| [signing.md](signing.md) | Ed25519 request and response signing — keys, lifecycle, HTTP transaction envelope binding, cross-language byte preservation, audit-chain propagation, replay nuance. |
 | [validation.md](validation.md) | Structural validation (including HTTP mirror URLs before creation) vs behavioural validation (FSM, audit-bound). Reserved ledger names and shared sentinels. |
 | [idempotency.md](idempotency.md) | Idempotency key mechanism, hash-based conflict detection, and TTL eviction. |
 | [metadata-limits.md](metadata-limits.md) | Metadata size contract — the ceilings, how they are measured, where they are enforced (admission and FSM), and the replicated configuration. |

@@ -45,15 +45,15 @@ func (s *Server) applyUnsigned(ctx context.Context, idempotencyKey string, reqs 
 	return result.Logs, nil
 }
 
-// applyRequests preserves the original HTTP proof. PeekBatch is unverified
-// inspection: matching the full batch prevents route/scope tunneling, and
-// backend.Apply verifies the original signature and policy.
+// applyRequests never signs or reserializes a client's payload. PeekBatch is
+// non-authoritative inspection: matching the full batch prevents route/scope
+// tunneling, and backend.Apply still verifies the original signature and policy.
 func (s *Server) applyRequests(ctx context.Context, key string, requests ...*servicepb.Request) ([]*commonpb.Log, error) {
-	proof := httpSignatureFromContext(ctx)
-	if proof == nil {
+	envelope := signedBatchFromContext(ctx)
+	if envelope == nil {
 		return s.applyUnsigned(ctx, key, requests...)
 	}
-	apply := &servicepb.ApplyRequest{Variant: &servicepb.ApplyRequest_HttpSigned{HttpSigned: proof}}
+	apply := servicepb.SignedApplyRequest(envelope)
 	batch, err := servicepb.PeekBatch(apply)
 	if err != nil || !proto.Equal(batch, &servicepb.ApplyBatch{IdempotencyKey: key, Requests: requests}) {
 		return nil, signing.ErrInvalidSignature

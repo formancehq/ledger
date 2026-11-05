@@ -80,12 +80,8 @@ type AuditEntry struct {
 	// This is the authoritative, chain-verified home for batch non-repudiation;
 	// the AppliedProposal projection carries a copy of the idempotency key for
 	// event consumers, which the checker verifies against this entry.
-	Idempotency *commonpb.Idempotency         `protobuf:"bytes,12,opt,name=idempotency,proto3" json:"idempotency,omitempty"`
-	Signature   *signaturepb.SignedApplyBatch `protobuf:"bytes,13,opt,name=signature,proto3" json:"signature,omitempty"`
-	// Exact client HTTP signature evidence, mutually exclusive with signature.
-	// Hash-bound with a conditional extension; earlier entries retain their
-	// original hash preimages. Requires the rc.4 stopped-upgrade boundary.
-	HttpSignature *signaturepb.SignedHTTPRequest `protobuf:"bytes,14,opt,name=http_signature,json=httpSignature,proto3" json:"http_signature,omitempty"`
+	Idempotency   *commonpb.Idempotency         `protobuf:"bytes,12,opt,name=idempotency,proto3" json:"idempotency,omitempty"`
+	Signature     *signaturepb.SignedApplyBatch `protobuf:"bytes,13,opt,name=signature,proto3" json:"signature,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -218,13 +214,6 @@ func (x *AuditEntry) GetIdempotency() *commonpb.Idempotency {
 func (x *AuditEntry) GetSignature() *signaturepb.SignedApplyBatch {
 	if x != nil {
 		return x.Signature
-	}
-	return nil
-}
-
-func (x *AuditEntry) GetHttpSignature() *signaturepb.SignedHTTPRequest {
-	if x != nil {
-		return x.HttpSignature
 	}
 	return nil
 }
@@ -427,7 +416,7 @@ var File_audit_proto protoreflect.FileDescriptor
 
 const file_audit_proto_rawDesc = "" +
 	"\n" +
-	"\vaudit.proto\x12\x05audit\x1a\fcommon.proto\x1a\x0fsignature.proto\"\xf9\x04\n" +
+	"\vaudit.proto\x12\x05audit\x1a\fcommon.proto\x1a\x0fsignature.proto\"\xb4\x04\n" +
 	"\n" +
 	"AuditEntry\x12\x1a\n" +
 	"\bsequence\x18\x01 \x01(\x06R\bsequence\x12/\n" +
@@ -445,8 +434,7 @@ const file_audit_proto_rawDesc = "" +
 	" \x01(\rR\vhashVersion\x12?\n" +
 	"\x0fcaller_snapshot\x18\v \x01(\v2\x16.common.CallerSnapshotR\x0ecallerSnapshot\x125\n" +
 	"\vidempotency\x18\f \x01(\v2\x13.common.IdempotencyR\vidempotency\x129\n" +
-	"\tsignature\x18\r \x01(\v2\x1b.signature.SignedApplyBatchR\tsignature\x12C\n" +
-	"\x0ehttp_signature\x18\x0e \x01(\v2\x1c.signature.SignedHTTPRequestR\rhttpSignatureB\t\n" +
+	"\tsignature\x18\r \x01(\v2\x1b.signature.SignedApplyBatchR\tsignatureB\t\n" +
 	"\aoutcome\"z\n" +
 	"\tAuditItem\x12\x1f\n" +
 	"\vorder_index\x18\x01 \x01(\rR\n" +
@@ -473,16 +461,15 @@ func file_audit_proto_rawDescGZIP() []byte {
 
 var file_audit_proto_msgTypes = make([]protoimpl.MessageInfo, 4)
 var file_audit_proto_goTypes = []any{
-	(*AuditEntry)(nil),                    // 0: audit.AuditEntry
-	(*AuditItem)(nil),                     // 1: audit.AuditItem
-	(*AuditSuccess)(nil),                  // 2: audit.AuditSuccess
-	(*AuditFailure)(nil),                  // 3: audit.AuditFailure
-	(*commonpb.Timestamp)(nil),            // 4: common.Timestamp
-	(*commonpb.CallerSnapshot)(nil),       // 5: common.CallerSnapshot
-	(*commonpb.Idempotency)(nil),          // 6: common.Idempotency
-	(*signaturepb.SignedApplyBatch)(nil),  // 7: signature.SignedApplyBatch
-	(*signaturepb.SignedHTTPRequest)(nil), // 8: signature.SignedHTTPRequest
-	(*commonpb.FailureDetails)(nil),       // 9: common.FailureDetails
+	(*AuditEntry)(nil),                   // 0: audit.AuditEntry
+	(*AuditItem)(nil),                    // 1: audit.AuditItem
+	(*AuditSuccess)(nil),                 // 2: audit.AuditSuccess
+	(*AuditFailure)(nil),                 // 3: audit.AuditFailure
+	(*commonpb.Timestamp)(nil),           // 4: common.Timestamp
+	(*commonpb.CallerSnapshot)(nil),      // 5: common.CallerSnapshot
+	(*commonpb.Idempotency)(nil),         // 6: common.Idempotency
+	(*signaturepb.SignedApplyBatch)(nil), // 7: signature.SignedApplyBatch
+	(*commonpb.FailureDetails)(nil),      // 8: common.FailureDetails
 }
 var file_audit_proto_depIdxs = []int32{
 	4, // 0: audit.AuditEntry.timestamp:type_name -> common.Timestamp
@@ -492,13 +479,12 @@ var file_audit_proto_depIdxs = []int32{
 	5, // 4: audit.AuditEntry.caller_snapshot:type_name -> common.CallerSnapshot
 	6, // 5: audit.AuditEntry.idempotency:type_name -> common.Idempotency
 	7, // 6: audit.AuditEntry.signature:type_name -> signature.SignedApplyBatch
-	8, // 7: audit.AuditEntry.http_signature:type_name -> signature.SignedHTTPRequest
-	9, // 8: audit.AuditFailure.details:type_name -> common.FailureDetails
-	9, // [9:9] is the sub-list for method output_type
-	9, // [9:9] is the sub-list for method input_type
-	9, // [9:9] is the sub-list for extension type_name
-	9, // [9:9] is the sub-list for extension extendee
-	0, // [0:9] is the sub-list for field type_name
+	8, // 7: audit.AuditFailure.details:type_name -> common.FailureDetails
+	8, // [8:8] is the sub-list for method output_type
+	8, // [8:8] is the sub-list for method input_type
+	8, // [8:8] is the sub-list for extension type_name
+	8, // [8:8] is the sub-list for extension extendee
+	0, // [0:8] is the sub-list for field type_name
 }
 
 func init() { file_audit_proto_init() }

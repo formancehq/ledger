@@ -3724,7 +3724,6 @@ type ProposalReader interface {
 	GetIdempotency() commonpb.IdempotencyReader
 	GetSignature() signaturepb.SignedApplyBatchReader
 	GetTechnicalUpdates() TechnicalUpdateListReader
-	GetHttpSignature() signaturepb.SignedHTTPRequestReader
 	Mutate() *Proposal
 }
 
@@ -3784,14 +3783,6 @@ func (r *proposalReadonly) GetSignature() signaturepb.SignedApplyBatchReader {
 
 func (r *proposalReadonly) GetTechnicalUpdates() TechnicalUpdateListReader {
 	return NewTechnicalUpdateListReader((*Proposal)(r).GetTechnicalUpdates())
-}
-
-func (r *proposalReadonly) GetHttpSignature() signaturepb.SignedHTTPRequestReader {
-	v := (*Proposal)(r).GetHttpSignature()
-	if v == nil {
-		return nil
-	}
-	return v.AsReader()
 }
 
 func (r *proposalReadonly) Mutate() *Proposal {

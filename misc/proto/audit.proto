@@ -65,10 +65,6 @@ message AuditEntry {
   // event consumers, which the checker verifies against this entry.
   common.Idempotency idempotency = 12;
   signature.SignedApplyBatch signature = 13;
-  // Exact client HTTP signature evidence, mutually exclusive with signature.
-  // Hash-bound with a conditional extension; earlier entries retain their
-  // original hash preimages. Requires the rc.4 stopped-upgrade boundary.
-  signature.SignedHTTPRequest http_signature = 14;
 }
 
 // AuditItem represents one order within a proposal, stored separately from the

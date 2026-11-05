@@ -1847,7 +1847,6 @@ func (fsm *Machine) writeProposalAuditEntry(batch *dal.WriteSession, proposal *r
 		entry.Idempotency = &commonpb.Idempotency{Key: idem.GetKey(), ExpiresAt: idempotencyExpiresAt}
 	}
 	entry.Signature = proposal.GetSignature()
-	entry.HttpSignature = proposal.GetHttpSignature()
 
 	items := buildAuditItems(serializedOrders, logs)
 

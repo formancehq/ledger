@@ -379,28 +379,6 @@ first be rejected by the protocol-version gate (lines 29-35 above) with
 `FailedPrecondition` before reaching identity validation. Clients and servers
 must implement the same revision; there is no compatibility fallback.
 
-## HTTP Message Signature evidence
-
-HTTP transaction signing adds `ApplyRequest.http_signed`,
-`signature.SignedHTTPRequest`, `Proposal.http_signature` and
-`AuditEntry.http_signature`. Existing fields, variants and gRPC signing retain
-their identity and representation. Existing clients can decode service
-responses, including audit entries whose new HTTP proof field they do not
-understand; they need regenerated bindings to inspect that proof. The new
-request variant is forwarding-only and requires a matching cluster-secret peer,
-even when public JWT authentication is disabled. Ordinary HTTP clients send
-headers, and existing public gRPC clients continue using their batch signature.
-Revision 40
-is unchanged. Older servers cannot admit the new request variant.
-
-The new audit header contribution is conditional: old entries have exactly the
-same hash preimage. New proof entries require the rc.4 stopped-upgrade boundary,
-because old and new voters would otherwise hash them differently. Upgrade all
-voters before enabling header-signing clients, preserve the existing data, and
-do not downgrade after writing the first HTTP proof. The existing protobuf batch
-signature remains supported. See [signing](../../../../ops/signing.md) and
-[upgrades](../../../../ops/upgrades.md).
-
 ## Maintaining the revision
 
 Ledger v3 is in its release-candidate phase. The revision is frozen at `"40"`:

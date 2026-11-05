@@ -212,33 +212,25 @@ See [the creation contract](../architecture/subsystems/api/atomic-ledger-creatio
 
 ## HTTP signed transactions and existing authorization
 
-Header-signed ordinary JSON on transaction create/revert/metadata and nonempty
-atomic bulk retains existing JWT/anonymous route and element-scope requirements.
-The Ed25519 key does not replace the JWT caller or grant peer/system trust.
-Trace installed guards and frozen caller capture using authorized and denied
-controls, including direct gRPC `ApplyRequest.http_signed` and actual forwarding.
-Valid cryptographic proof alone is not authority to bypass a required scope.
+Signed transaction create/revert/metadata and nonempty atomic bulk keep their
+existing JWT/anonymous route and element-scope requirements. The Ed25519 signing
+key does not replace the JWT caller or grant cluster/system trust. Both transports
+must reach the existing `resolveBatch` verifier with `ApplyRequest.signed` and
+the unchanged `SignedApplyBatch`; HTTP adds no independent signing authority.
+Trace the installed route guards and caller capture with authorized and denied controls,
+not merely a well-formed signed envelope. A mismatch between the complete signed
+batch and the HTTP-derived batch must prevent backend dispatch. Every atomic
+bulk element remains subject to its own scope, and continueOnFailure must not
+suppress 401/403 from signature verification or authorization.
 
-The shared pure HTTP decoder and ordinary handler must yield the same complete
-batch before dispatch. Admission authenticates retained RFC 9421 evidence before
-using that decoder to derive authoritative commands. Untrusted peeking selects
-scope policy only; failed decoding retains documented signature-error precedence.
-Every atomic bulk element keeps its required scope, including a denied later
-element. `continueOnFailure` must not suppress signature/authorization 401/403.
-
-The API boundary domain owns required-header/profile parsing, exact raw-body
-forwarding, semantic equality, proof-size bounds, default-port scheme
-normalization and schema/status fidelity. This domain follows dedicated
-`ledger.signing` ErrorInfo reconstruction only to establish unchanged
-trust/scopes/attribution: valid pairs are MISSING_SIGNATURE/Unauthenticated and
-INVALID_SIGNATURE or UNKNOWN_KEY_ID/PermissionDenied. Compare local and forwarded
-decisions against absent/foreign/wrong-status details. Public HTTP codes stay
-UNAUTHENTICATED/PERMISSION_DENIED; bare/foreign auth failures retain 500.
-
-Request proof is batch-level `AuditEntry.http_signature`, not a per-log client
-proof. Cryptographic primitives, key lifecycle, audit hashing, backup/restore,
-stopped-upgrade safety and replay protection remain with separate owners; the
-HTTP profile introduces no freshness window. See
+The API boundary domain owns wrapper decoding, proto.Equal coverage, exact-byte
+forwarding and response representation. This domain follows dedicated
+`ledger.signing` ErrorInfo reconstruction under `internal/adapter/grpcerr/**` only
+to establish that existing signing failures remain distinguishable from bare or
+foreign gRPC auth failures and cannot change trust/scopes/attribution. Correct
+pairs are MISSING_SIGNATURE/Unauthenticated and INVALID_SIGNATURE or
+UNKNOWN_KEY_ID/PermissionDenied. Compare exact local and forwarded decisions,
+including absent/foreign/wrong-status controls. Public HTTP codes remain generic
+UNAUTHENTICATED/PERMISSION_DENIED; bare/foreign auth errors retain 500. Key lifecycle
+and cryptographic primitive analysis remain excluded. See
 [HTTP signing](../architecture/subsystems/api/http-api.md#signed-transaction-requests).
-
-Header-signed HTTP proof uses a forwarding-only gRPC variant. Require a matching configured cluster secret even with public JWT auth disabled. Verify that the proof-forwarder marker neither grants general forwarded-caller trust nor changes auth-disabled attribution or public scopes; public gRPC clients cannot self-declare the observed HTTP authority.

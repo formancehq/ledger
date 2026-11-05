@@ -20,10 +20,10 @@ import (
 	ledgerv1alpha1 "github.com/formancehq/ledger/misc/operator/api/v1alpha1"
 )
 
-// HTTP signature proofs extend the audit hash preimage from rc.4. Old voters
-// cannot apply these proposals identically, so every voter must stop before
-// the target starts. RC adjacency is still checked by validateRCUpgrade.
-var mandatoryStopVersions = []string{"v3.0.0-rc.4"}
+// Add a target here only after its release has been proven incompatible with
+// a rolling upgrade. rc.3 has no mandatory stop; the mechanism ships dormant.
+// RC adjacency is still checked by validateRCUpgrade.
+var mandatoryStopVersions = []string{}
 
 const requiredUpgradePoll = 5 * time.Second
 
