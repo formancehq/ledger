@@ -190,10 +190,11 @@ func (o *Observer) comparePeerAtHead(ctx context.Context, id uint64, cursor *pee
 		if ctx.Err() != nil {
 			return
 		}
-		if status.Code(err) == codes.DataLoss && localHead == 0 {
+		switch {
+		case status.Code(err) == codes.DataLoss && localHead == 0:
 			// There is no local digest for an empty log; still query the peer
 			// so a non-empty peer suffix can be reported as a divergence.
-		} else if status.Code(err) == codes.DataLoss {
+		case status.Code(err) == codes.DataLoss:
 			key := fmt.Sprintf("%d:%d:local", first, last)
 			if cursor.lastMismatch != key {
 				cursor.lastMismatch = key
@@ -201,8 +202,9 @@ func (o *Observer) comparePeerAtHead(ctx context.Context, id uint64, cursor *pee
 				o.logger.Errorf("Cannot digest local logs [%d,%d]: %v", first, last, err)
 			}
 			advanceCursor(cursor, last)
-		} else {
+		default:
 			o.logger.Errorf("Cannot digest local logs [%d,%d]: %v", first, last, err)
+
 			return
 		}
 	}
