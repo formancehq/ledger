@@ -36,6 +36,7 @@ rules:
   - get
   - list
   - patch
+  - watch
 - apiGroups:
   - ""
   resources:
@@ -44,6 +45,7 @@ rules:
   - get
   - list
   - patch
+  - watch
 - apiGroups:
   - ""
   resources:
