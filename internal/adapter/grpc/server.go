@@ -269,7 +269,7 @@ func (s *baseServer) serveDual(lis net.Listener) error {
 	// expected shutdown errors is surfaced.
 	for range 3 {
 		err := <-errCh
-		if err != nil && !errors.Is(err, ggrpc.ErrServerStopped) && !errors.Is(err, net.ErrClosed) {
+		if err != nil && !errors.Is(err, ggrpc.ErrServerStopped) && !errors.Is(err, net.ErrClosed) && !errors.Is(err, cmux.ErrServerClosed) {
 			// cmux returns ErrServerClosed-like errors when the listener
 			// is closed; tolerate them.
 			if err.Error() == "mux: listener closed" {

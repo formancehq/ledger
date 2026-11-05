@@ -191,54 +191,74 @@ middleware on every `/v3` route and forbids it on ops routes.
 
 ### Signed transaction requests
 
-The transaction create, revert, metadata-save and metadata-delete routes and
-atomic bulk accept `application/vnd.formance.signed-request+json` alongside their
-ordinary unsigned bodies. The JSON envelope has required `request` (the ordinary
-body, or explicit null for transaction metadata DELETE) and `signedBatch`
-(`keyId`, standard-base64 `signature`, standard-base64 `payload`). Other business
-routes reject this media type with 415. The five supporting route registrations
-install wrapper decoding before their ordinary query-name validation; unsupported
-routes reject the media type in that validation boundary. No global content-type
-marker grants signing support to other operations.
+Transaction create/revert/metadata POST, metadata DELETE and nonempty atomic
+bulk accept RFC 9421 `Signature-Input` / `Signature` headers with ordinary
+`application/json`. RFC 9530 `Content-Digest` authenticates the exact original
+body through SHA-256. Clients send JSON once and need no protobuf bindings.
+DELETE requires a zero-byte body; revert accepts a zero-byte body or JSON null
+for default options. Other signed JSON bodies must contain one complete value.
 
-The adapter constructs the ordinary `ApplyBatch` from the URL, decoded request
-and `Idempotency-Key`, decodes the supplied payload as untrusted protobuf, and
-requires `proto.Equal` over the full batch. Count, order, nested oneofs, typed
-metadata, all command fields, skippable reasons and the batch key must match.
-It then passes the original signed envelope unchanged into backend Apply and
-admission, which verifies the registered Ed25519 key over the original bytes.
-Equivalent protobuf encodings are valid; the server does not regenerate the
-signed bytes. This preserves ordinary decoding/defaults and JWT scope checks.
-Ignored JSON, response presentation and JWT claims are outside the batch proof.
+The restricted profile has one signature `sig1`, one digest `sha-256`, and
+exactly these covered components, in any order: `@method`, `@authority`, `@path`,
+`@query`, `content-type`, `content-digest`, `idempotency-key`. Parameters are
+`keyid` and `alg="ed25519"`, exactly once in either order; no extra parameters,
+including `created`, `expires` or `nonce`, are accepted. Each of `Content-Type`,
+`Content-Digest`, `Idempotency-Key`, `Signature-Input`, and `Signature` must be
+explicitly present exactly once. An empty idempotency value is allowed;
+`Content-Type` must be exactly `application/json`. Authority is lowercased with default port 80/443 removed for the retained
+HTTP/HTTPS scheme; path remains escaped and query always includes `?`. Scheme
+comes from the URL or local TLS state, without trusting forwarded-host/proto
+headers. Proxies must preserve compatible signed components as seen by Ledger.
 
-Malformed envelopes are 400; semantic mismatch is 403 `PERMISSION_DENIED`.
-Missing mandatory signatures produce 401 `UNAUTHENTICATED`; invalid signatures
-and unknown/revoked keys produce 403 `PERMISSION_DENIED`. Local signature
-sentinels and reconstructed typed signing failures share this mapping. Forwarded
-signature errors retain their existing gRPC status/message and add
-`google.rpc.ErrorInfo` in domain `ledger.signing`, with reason
-`MISSING_SIGNATURE`, `INVALID_SIGNATURE` or `UNKNOWN_KEY_ID`. Only correctly
-paired signing domain/reason/status details reconstruct a classifiable signing
-failure; preserve the original `GRPCStatus` and do not expose those internal
-reasons as public HTTP error codes. Bare or foreign gRPC auth errors retain the
-existing 500 cluster-secret failure contract. Signing does not broaden generic
-Unauthenticated/PermissionDenied handling or weaken JWT/peer trust boundaries.
+The five supporting route registrations capture the complete original HTTP
+proof. The adapter compares a pure `servicepb.DecodeHTTPRequest` result with the
+ordinary handler's full `ApplyBatch` using `proto.Equal`. Count, order, targets,
+nested oneofs, typed metadata, command fields, skip policy and the header key
+must agree before dispatch. Admission verifies the original RFC signature base
+and body digest, then derives authoritative commands through the same pure
+decoder. A direct gRPC caller cannot pair a valid HTTP proof with an unrelated
+batch. Scope routing can peek at untrusted intent without authenticating it.
+Existing JWT guards, element scopes and caller attribution remain independent.
 
-Signed bulk requires a nonempty array and `atomic=true`; otherwise it returns
-400. Its batch identity is the header key, and per-element `ik` remains ignored.
-`continueOnFailure` never suppresses 401/403, including missing/invalid signing;
-processing responses preserve every element result. Legacy unsigned sequential
-and empty-bulk behavior remains available with ordinary JSON.
+Missing/duplicate required signing headers and malformed body/bulk shape return
+400. Adapter batch mismatch, invalid signature/profile/digest and unknown/revoked
+keys return 403 `PERMISSION_DENIED`; an absent mandatory signature returns 401
+`UNAUTHENTICATED`. Signature headers on unsupported business routes return 415.
+Local signature sentinels and reconstructed typed signing failures share the
+401/403 mapping. Forwarded failures retain their gRPC status/message and use
+validated `google.rpc.ErrorInfo` in domain `ledger.signing`: reason/status pairs
+are `MISSING_SIGNATURE` / Unauthenticated and `INVALID_SIGNATURE` or
+`UNKNOWN_KEY_ID` / PermissionDenied. Public HTTP error codes remain generic;
+bare/foreign or incorrectly paired gRPC auth failures keep the established 500
+cluster-secret contract. Signing grants no internal/system trust.
 
-The existing 4 MiB body budget includes all wrapper bytes, base64 expansion,
-duplicated command data and trailing whitespace. Decode/compare/copy costs are
-O(request bytes) transient work; no new store reads, proposal effects, persisted
-formats or migrations are introduced. Protocol revision stays 40. Upgrade
-receiving HTTP nodes before clients select the new media type. Retained, empty
-and expired idempotency keys keep their existing replay behavior. HTTP request
-signing does not authenticate responses. See the
-[operational client recipe](../../../../ops/signing.md#http-request-signing) and
-[admission signing contract](../admission/signing.md#http-transaction-signing-boundary).
+Signed bulk requires `atomic=true` and at least one element; the header key
+identifies the batch and per-element `ik` is ignored. `continueOnFailure` never
+suppresses 401/403, and processing responses preserve all outcomes. Ordinary
+unsigned sequential/empty-bulk behavior and response shapes remain unchanged.
+
+The body limit is 4 MiB, without protobuf duplication or base64 expansion.
+Signed capture returns `413 BODY_TOO_LARGE` when that limit is exceeded,
+including signed atomic bulk and oversized trailing whitespace. Ordinary
+unsigned bulk retains its existing decoder's `400 VALIDATION` byte-limit error.
+Capture/hash/decode/compare costs are O(request bytes), and admission enforces a
+4 MiB + 16 KiB retained-proof limit for peer forwarding. Public gRPC callers
+cannot submit `http_signed`: the interceptor requires the configured matching
+cluster secret, independently of whether public JWT authentication is enabled.
+An HTTP follower therefore needs the existing cluster-secret/TLS setup to
+forward signed requests. The proof-forwarder context marker grants neither
+public scopes nor general forwarded-caller attribution trust. Auth-disabled
+attribution remains auth-disabled. Ordinary protobuf gRPC signing is unchanged.
+The original proof is stored only at batch level on `AuditEntry.http_signature`,
+with every field hash-bound. Existing protobuf request proofs stay unchanged.
+New committed proof encoding requires the mandatory stopped upgrade to
+`v3.0.0-rc.4`, retaining historical data/hashes without rewriting them; downgrade
+is unsupported after the first new proof commits. Protocol revision remains 40.
+See [upgrades](../../../../ops/upgrades.md), the
+[operational client recipe](../../../../ops/signing.md#http-request-signing), and
+[admission contract](../admission/signing.md#http-transaction-signing-boundary).
+Retained/empty/expired idempotency keys keep their existing behavior; there is no
+new freshness or replay policy and HTTP responses are not signed by this feature.
 
 ### Optional transaction revert body
 

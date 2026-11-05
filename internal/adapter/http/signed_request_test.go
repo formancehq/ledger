@@ -4,7 +4,8 @@ import (
 	"bytes"
 	"context"
 	"crypto/ed25519"
-	"encoding/json"
+	"crypto/tls"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -14,7 +15,6 @@ import (
 	"go.uber.org/mock/gomock"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
-	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
@@ -26,73 +26,90 @@ import (
 	"github.com/formancehq/ledger/v3/internal/pkg/version"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	"github.com/formancehq/ledger/v3/internal/proto/signaturepb"
 )
 
-func TestSignedHTTPRoutes_ForwardOriginalEnvelope(t *testing.T) {
+func TestSignedHTTPRoutes_ForwardOriginalProof(t *testing.T) {
 	t.Parallel()
-	payload := &servicepb.CreateTransactionPayload{}
-	body := []byte(`{"postings":[{"source":"world","destination":"bank","amount":100,"asset":"USD"}]}`)
-	require.NoError(t, json.Unmarshal(body, payload))
-	request := &servicepb.Request{Type: &servicepb.Request_Apply{Apply: &servicepb.LedgerApplyRequest{Ledger: "ledger", Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{CreateTransaction: payload}}}}}
-	signed, err := signing.Sign(&servicepb.ApplyBatch{IdempotencyKey: "signed-key", Requests: []*servicepb.Request{request}}, "key", ed25519.NewKeyFromSeed(make([]byte, ed25519.SeedSize)))
-	require.NoError(t, err)
-	envelope, err := protojson.Marshal(signed)
-	require.NoError(t, err)
-	wrapper, err := json.Marshal(struct {
-		Request     json.RawMessage `json:"request"`
-		SignedBatch json.RawMessage `json:"signedBatch"`
-	}{body, envelope})
-	require.NoError(t, err)
+	body := []byte("\n " + `{"postings":[{"source":"world","destination":"bank","amount":100,"asset":"USD"}]}` + " \n")
+	proof := &signaturepb.SignedHTTPRequest{Method: "POST", Authority: "example.com", RequestTarget: "/v3/ledger/transactions", ContentType: "application/json", IdempotencyKey: "signed-key", Body: body}
+	require.NoError(t, signing.SignHTTP(proof, "key", ed25519.NewKeyFromSeed(make([]byte, ed25519.SeedSize))))
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(func(_ context.Context, actual *servicepb.ApplyRequest) (*domain.ApplyResult, error) {
-		require.True(t, proto.Equal(signed, actual.GetSigned()), "HTTP must forward original client envelope unchanged")
+		require.True(t, proto.Equal(proof, actual.GetHttpSigned()), "HTTP must forward original client HTTP proof unchanged")
 
 		return &domain.ApplyResult{Logs: []*commonpb.Log{{Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_Apply{Apply: &commonpb.ApplyLedgerLog{Log: &commonpb.LedgerLog{Data: &commonpb.LedgerLogPayload{Payload: &commonpb.LedgerLogPayload_CreatedTransaction{CreatedTransaction: &commonpb.CreatedTransaction{Transaction: &commonpb.Transaction{Id: 1}}}}}}}}}}}, nil
 	})
 	router := NewHandler(logging.Testing(), backend, internalauth.AuthConfig{}, version.Info{})
-	r := httptest.NewRequest(http.MethodPost, "/v3/ledger/transactions", bytes.NewReader(wrapper))
-	r.Header.Set("Content-Type", "application/vnd.formance.signed-request+json")
-	r.Header.Set("Idempotency-Key", "signed-key")
+	r := httptest.NewRequest(http.MethodPost, "/v3/ledger/transactions", bytes.NewReader(body))
+	setSignedHTTPHeaders(r, proof)
 	w := httptest.NewRecorder()
 	router.ServeHTTP(w, r)
 	require.Equal(t, http.StatusCreated, w.Code, w.Body.String())
 }
 
-// These cases exercise the public router and fail before the mocked controller
-// port. A successful Apply is forbidden: parsing or route binding must reject.
-func TestSignedHTTPRoutes_RejectMalformedEnvelope(t *testing.T) {
+func setSignedHTTPHeaders(r *http.Request, proof *signaturepb.SignedHTTPRequest) {
+	r.Header.Set("Content-Type", proof.GetContentType())
+	r.Header.Set("Content-Digest", proof.GetContentDigest())
+	r.Header.Set("Idempotency-Key", proof.GetIdempotencyKey())
+	r.Header.Set("Signature-Input", proof.GetSignatureInput())
+	r.Header.Set("Signature", proof.GetSignature())
+}
+
+func TestSignedHTTPRoutes_RejectMalformedHeaders(t *testing.T) {
 	t.Parallel()
-	cases := []struct {
+	for _, name := range []string{"Content-Type", "Content-Digest", "Idempotency-Key", "Signature-Input", "Signature"} {
+		for _, duplicate := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s duplicate=%t", name, duplicate), func(t *testing.T) {
+				t.Parallel()
+				backend := NewMockBackend(gomock.NewController(t))
+				router := NewHandler(logging.Testing(), backend, internalauth.AuthConfig{}, version.Info{})
+				r := httptest.NewRequest(http.MethodPost, "/v3/ledger/transactions", strings.NewReader(`{}`))
+				setSignedHTTPHeaders(r, &signaturepb.SignedHTTPRequest{ContentType: "application/json", ContentDigest: "digest", SignatureInput: "input", Signature: "sig"})
+				if duplicate {
+					r.Header.Add(name, "duplicate")
+				} else {
+					r.Header.Del(name)
+				}
+				w := httptest.NewRecorder()
+				router.ServeHTTP(w, r)
+				require.Equal(t, 400, w.Code, w.Body.String())
+			})
+		}
+	}
+}
+
+func TestSignedHTTPRoutes_RejectUnsupportedOrInvalidBodies(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
 		name, method, path, body string
 		status                   int
 	}{
-		{"missing request", "POST", "/v3/ledger/transactions", `{"signedBatch":{}}`, 400},
-		{"missing envelope", "POST", "/v3/ledger/transactions", `{"request":{}}`, 400},
-		{"null envelope", "POST", "/v3/ledger/transactions", `{"request":{},"signedBatch":null}`, 400},
-		{"outer array", "POST", "/v3/ledger/transactions", `[]`, 400},
-		{"unknown outer field", "POST", "/v3/ledger/transactions", `{"request":{},"signedBatch":{},"extra":1}`, 400},
-		{"duplicate request", "POST", "/v3/ledger/transactions", `{"request":{},"request":{},"signedBatch":{}}`, 400},
-		{"duplicate envelope", "POST", "/v3/ledger/transactions", `{"request":{},"signedBatch":{},"signedBatch":{}}`, 400},
-		{"unknown envelope field", "POST", "/v3/ledger/transactions", `{"request":{},"signedBatch":{"unknown":1}}`, 400},
-		{"duplicate envelope key", "POST", "/v3/ledger/transactions", `{"request":{},"signedBatch":{"keyId":"a","keyId":"b"}}`, 400},
-		{"invalid base64", "POST", "/v3/ledger/transactions", `{"request":{},"signedBatch":{"payload":"!"}}`, 400},
-		{"trailing JSON", "POST", "/v3/ledger/transactions", `{"request":{},"signedBatch":{}} {}`, 400},
-		{"truncated JSON", "POST", "/v3/ledger/transactions", `{"request":{},"signedBatch":{}`, 400},
-		{"delete body", "DELETE", "/v3/ledger/transactions/1/metadata/key", `{"request":{},"signedBatch":{}}`, 400},
-		{"sequential bulk", "POST", "/v3/ledger/bulk", `{"request":[{}],"signedBatch":{}}`, 400},
-		{"empty atomic bulk", "POST", "/v3/ledger/bulk?atomic=true", `{"request":[],"signedBatch":{}}`, 400},
-		{"unsupported ledger create", "POST", "/v3/ledger", `{"request":{},"signedBatch":{}}`, 415},
-		{"unsupported ledger delete", "DELETE", "/v3/ledger", `{"request":null,"signedBatch":{}}`, 415},
-		{"unsupported account metadata", "DELETE", "/v3/ledger/accounts/bank/metadata/key", `{"request":null,"signedBatch":{}}`, 415},
-		{"oversized suffix", "POST", "/v3/ledger/transactions", `{"request":{},"signedBatch":{}}` + strings.Repeat(" ", int(defaultMaxBodySize)), 413},
-	}
-	for _, tc := range cases {
+		{"delete body", "DELETE", "/v3/ledger/transactions/1/metadata/key", `{}`, 400},
+		{"trailing JSON", "POST", "/v3/ledger/transactions", `{} {}`, 400},
+		{"truncated JSON", "POST", "/v3/ledger/transactions", `{"postings":`, 400},
+		{"trailing non-whitespace", "POST", "/v3/ledger/transactions", `{} invalid`, 400},
+		{"sequential bulk", "POST", "/v3/ledger/bulk", `[{}]`, 400},
+		{"empty atomic bulk", "POST", "/v3/ledger/bulk?atomic=true", `[]`, 400},
+		{"unsupported ledger create", "POST", "/v3/ledger", `{}`, 415},
+		{"unsupported ledger delete", "DELETE", "/v3/ledger", ``, 415},
+		{"unsupported account metadata", "DELETE", "/v3/ledger/accounts/bank/metadata/key", ``, 415},
+		{"oversized suffix", "POST", "/v3/ledger/transactions", `{}` + strings.Repeat(" ", int(defaultMaxBodySize)), 413},
+	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			backend := NewMockBackend(gomock.NewController(t))
 			router := NewHandler(logging.Testing(), backend, internalauth.AuthConfig{}, version.Info{})
 			r := httptest.NewRequest(tc.method, tc.path, strings.NewReader(tc.body))
-			r.Header.Set("Content-Type", "application/vnd.formance.signed-request+json; charset=utf-8")
+			proof := &signaturepb.SignedHTTPRequest{Method: tc.method, RequestTarget: tc.path, Authority: r.Host, ContentType: "application/json", Body: []byte(tc.body)}
+			if tc.status == http.StatusRequestEntityTooLarge {
+				// Body capture must fail before cryptographic admission, even when
+				// the trailing bytes exceed the complete signed-body budget.
+				proof.ContentDigest, proof.SignatureInput, proof.Signature = "digest", "input", "signature"
+			} else {
+				require.NoError(t, signing.SignHTTP(proof, "key", ed25519.NewKeyFromSeed(make([]byte, ed25519.SeedSize))))
+			}
+			setSignedHTTPHeaders(r, proof)
 			w := httptest.NewRecorder()
 			router.ServeHTTP(w, r)
 			require.Equal(t, tc.status, w.Code, w.Body.String())
@@ -119,8 +136,8 @@ func TestSignedHTTPRoutes_KeepJWTScopes(t *testing.T) {
 			if tc.name == "transaction writer cannot write metadata" {
 				path += "/1/metadata"
 			}
-			r := httptest.NewRequest(http.MethodPost, path, strings.NewReader(`{"request":{},"signedBatch":{}}`))
-			r.Header.Set("Content-Type", "application/vnd.formance.signed-request+json")
+			r := httptest.NewRequest(http.MethodPost, path, strings.NewReader(`{}`))
+			r.Header.Set("Signature", "invalid")
 			if tc.token != "" {
 				r.Header.Set("Authorization", "Bearer "+tc.token)
 			}
@@ -146,5 +163,32 @@ func TestSigningRejectionsHTTP_ForwardingParity(t *testing.T) {
 		c := classifyError(grpcerr.FromStatusError(status.Error(code, "private cluster-secret failure")))
 		require.Equal(t, http.StatusInternalServerError, c.status)
 		require.True(t, c.sanitized)
+	}
+}
+
+func TestCaptureSignedRequest_Scheme(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name, target, scheme string
+		tls                  bool
+	}{
+		{"origin HTTP", "/v3/ledger/transactions", "http", false},
+		{"origin HTTPS", "/v3/ledger/transactions", "https", true},
+		{"absolute HTTPS", "https://example.com/v3/ledger/transactions", "https", false},
+		{"explicit URL scheme", "http://example.com/v3/ledger/transactions", "http", true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			r := httptest.NewRequest(http.MethodPost, tc.target, strings.NewReader(`{}`))
+			if tc.tls {
+				r.TLS = &tls.ConnectionState{}
+			}
+			// Untrusted forwarding headers must never select the signed scheme.
+			r.Header.Set("X-Forwarded-Proto", "unexpected")
+			setSignedHTTPHeaders(r, &signaturepb.SignedHTTPRequest{ContentType: "application/json", ContentDigest: "digest", SignatureInput: "input", Signature: "sig"})
+			proof, err := captureSignedRequest(r)
+			require.NoError(t, err)
+			require.Equal(t, tc.scheme, proof.GetScheme())
+		})
 	}
 }

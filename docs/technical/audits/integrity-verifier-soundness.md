@@ -336,3 +336,39 @@ exactly one "no matching CreateIndex" `INDEX_MISMATCH`, and an audited row
 stripped of its `Id` must produce exactly one `Id`-drift `INDEX_MISMATCH`.
 `collectIndexedFields` in the reverse-map pass still ignores rows without `Id`;
 that only widens its orphan verdicts, and `compareIndexes` reports the row.
+
+## HTTP message signature proof evidence
+
+REST audit reads must preserve the complete `httpSignature` through the
+handwritten `AuditEntry.MarshalJSON` codec. Check
+`internal/proto/auditpb/http_signature_json_test.go` and the signed atomic-bulk
+HTTP audit-read regression: omission of the evidence or swallowed serialization
+errors must never produce a valid-looking incomplete audit response.
+
+`HttpSignature` is opaque signed-request evidence in the audit entry. Inspect
+`internal/infra/state/audit_envelope.go`, `misc/proto/signature.proto` and the
+stored audit schema together: a present proof contributes a domain-separated
+extension with fixed field order, exact header strings, body bytes and unknown
+protobuf bytes. Absence contributes no extension tag or empty placeholder, so
+released historical hashes remain unchanged. A present empty proof is distinct
+from an absent proof.
+
+The checker recomputes that binding. It does not independently verify the
+request signature, freshness, historical signing authority or HTTP-to-command
+mapping. Admission owns those checks; a clean integrity verdict must not imply
+that the checker repeated them. Pair healthy proof-bearing state with isolated
+post-persistence alteration or removal of each proof field, body whitespace and
+unknown bytes. Require the intended `HASH_MISMATCH` callback and inspect the
+terminal status rather than accepting any unrelated finding.
+
+Use `internal/infra/state/http_signature_audit_test.go` for the historical
+preimage and hash-sensitivity oracle, and
+`internal/infra/backup/http_signature_restore_test.go` for a healthy restored
+store containing exact proof evidence. The latter preserves raw historical and
+proof-bearing audit bytes through a nonempty delta, checks the restored store,
+and extends its chain after recovery; it does not alone prove HTTP admission
+or controlled-tamper detection. Persistence owns loss introduced by restore;
+this domain owns a missing proof binding or unsound checker verdict. The
+[rc.4 stopped-upgrade requirement](../../ops/upgrades.md#http-message-signature-proofs-in-rc4)
+prevents mixed voters from computing different new-entry hashes; operator
+orchestration and binary upgrade proof remain separate responsibilities.

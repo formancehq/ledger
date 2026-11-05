@@ -110,7 +110,7 @@ func (s *Server) serveBulk(w http.ResponseWriter, r *http.Request) {
 		atomic:            queryParamBool(r, "atomic"),
 		idempotencyKey:    r.Header.Get("Idempotency-Key"),
 	}
-	if signedBatchFromContext(r.Context()) != nil && (!opts.atomic || len(elements) == 0) {
+	if httpSignatureFromContext(r.Context()) != nil && (!opts.atomic || len(elements) == 0) {
 		writeBulkErrorResponse(w, http.StatusBadRequest, "VALIDATION", errors.New("signed bulk requires atomic=true and at least one element"))
 
 		return

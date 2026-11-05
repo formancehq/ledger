@@ -193,6 +193,41 @@ The two layers exist because ledger-internal mutations have a fundamentally diff
 
 ## Hash primitive
 
+### HTTP client proof extension
+
+HTTP Message Signatures retain their exact evidence on
+`AuditEntry.http_signature`: method, origin-form request target, authority,
+content type, content digest, idempotency key, Signature-Input, Signature, body
+bytes and scheme. The proof is admission-authenticated before commands are
+derived; it is mutually exclusive with the existing `signature` batch proof.
+Request proofs belong to the batch audit entry, rather than individual logs.
+
+The released header preimage is unchanged when `http_signature` is absent.
+When it is present, `BuildHashedHeaderPayload` appends the length-prefixed tag
+`ledger:http-signature:v1` and a length-prefixed proof subpayload. The subpayload
+encodes the fields above in that order, each with a uint32 big-endian byte
+length, then length-prefixed raw unknown protobuf bytes. This binds the original
+request evidence without depending on protobuf reserialization. All historical
+hashes remain verifiable without rewriting entries. The rc.4 mandatory stopped
+upgrade prevents old voters from computing a different hash for a new proof.
+Downgrading after the first proof-bearing entry is unsupported.
+
+The proof is audit-bound business evidence. Checkpoints preserve it, and
+incremental segments copy its audit row verbatim; no new projection or rebuild
+rule is introduced. `TestBackup_HTTPMessageSignatureProofRestoreParity` verifies
+a nonempty post-checkpoint delta, unchanged historical audit bytes, checker
+integrity and recovered history extension. The checker verifies hash binding;
+it does not independently authenticate the HTTP signature or reproduce HTTP
+decoding against the serialized orders. External verification needs the
+retained request, the signer public key and the documented HTTP profile.
+
+The FSM copies the admitted proof onto the audit entry before building the
+header hash and staging its row in the same durable batch as the other business
+effects. The proof adds no separate durable write or in-memory key-store
+mutation. Existing apply failure/rollback ordering remains unchanged.
+
+### Algorithm
+
 Default: **BLAKE3 keyed** (`internal/domain/processing/hash_blake3.go`). The leader generates a 32-byte secret before the first audit entry and commits it in a one-time Raft technical update. Every node derives the algorithm key from those committed bytes:
 
 ```

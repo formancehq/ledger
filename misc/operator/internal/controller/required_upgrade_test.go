@@ -32,7 +32,10 @@ var testStopVersions = []string{"v3.0.0-rc.3"}
 func TestMandatoryStopVersionBoundary(t *testing.T) {
 	t.Parallel()
 	require.False(t, requiresStoppedUpgrade("v3.0.0-rc.2", "v3.0.0-rc.3", mandatoryStopVersions), "rc.3 must remain rolling")
-	require.False(t, requiresPinnedUpgradeTarget("v3.0.0-rc.2", "latest", mandatoryStopVersions))
+	require.True(t, requiresStoppedUpgrade("v3.0.0-rc.3", "v3.0.0-rc.4", mandatoryStopVersions), "HTTP proof entries require all voters on rc.4")
+	require.True(t, requiresPinnedUpgradeTarget("v3.0.0-rc.3", "latest", mandatoryStopVersions))
+	require.True(t, requiresPinnedUpgradeTarget("v3.0.0-rc.3", "3.0.0-rc.4", mandatoryStopVersions))
+	require.False(t, requiresPinnedUpgradeTarget("v3.0.0-rc.4", "latest", mandatoryStopVersions))
 	for _, tt := range []struct {
 		source, target string
 		stop           bool
@@ -50,6 +53,19 @@ func TestMandatoryStopVersionBoundary(t *testing.T) {
 	require.True(t, requiresPinnedUpgradeTarget("v3.0.0-rc.2", "latest", testStopVersions))
 	require.True(t, requiresPinnedUpgradeTarget("v3.0.0-rc.2", "3.0.0-rc.3", testStopVersions))
 	require.False(t, requiresPinnedUpgradeTarget("v3.0.0-rc.3", "latest", testStopVersions))
+}
+
+func TestHTTPSignatureUpgradeUsesProductionStopBoundary(t *testing.T) {
+	t.Parallel()
+	cluster := newMinimalCluster()
+	cluster.Spec.Image.Tag = "v3.0.0-rc.4"
+	cluster.Spec.HeadlessService.Enabled = new(bool)
+	sts := rcStatefulSet("ledger:v3.0.0-rc.3", true)
+	r := &ClusterReconciler{}
+	proceed, _, err := r.reconcileRequiredUpgrade(t.Context(), cluster, sts)
+	require.False(t, proceed)
+	require.ErrorContains(t, err, "stopped upgrade requires spec.headlessService.enabled to remain true")
+	require.Nil(t, cluster.Status.Upgrade)
 }
 
 func TestStoppedUpgradeRepairsDependenciesBeforeWorkloadGate(t *testing.T) {

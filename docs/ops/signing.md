@@ -2,7 +2,7 @@
 
 The ledger supports Ed25519 signing in two directions:
 
-- **Request signing** (client → server): the client signs the whole **batch** (an `ApplyBatch` — its ordered requests plus idempotency key), guaranteeing **authenticity** (who issued the batch), **integrity** (detect any modification in transit, including reordering, regrouping, or dropping requests), and **non-repudiation** (the batch signature is stored with every log the batch commits, for audit). Signing the batch — rather than each request — is what makes the *composition and ordering* of the atomic operation provable.
+- **Request signing** (client → server): gRPC clients sign the complete protobuf batch; HTTP clients sign their ordinary request with HTTP Message Signatures. Both authenticate the complete atomic operation, including ordering and idempotency identity. The original proof is retained on the batch audit entry for independent verification.
 - **Response signing** (server → client): guarantees that response logs truly come from the server and haven't been tampered with.
 
 ## Request Signing
@@ -37,8 +37,8 @@ Signing is **optional by default**. It can be made mandatory via the `signing re
                     ┌──────────────────────────────────────────────┐
                     │              FSM (all replicas)              │
                     │                                              │
-                    │  Proposal.Signature → every Log.Signature    │
-                    │  Log → AuditEntry (contains signature proof) │
+                    │  Proposal.Signature → AuditEntry.Signature    │
+                    │  HTTP proof → AuditEntry.HttpSignature │
                     └──────────────────────────────────────────────┘
 ```
 
@@ -53,7 +53,8 @@ The solution is the **opaque envelope**: a signed batch does not travel as a str
 message ApplyRequest {
   oneof variant {
     ApplyBatch unsigned = 1;          // raw batch (used when signing is not required)
-    signature.SignedApplyBatch signed = 2;  // opaque envelope for a signed batch
+    signature.SignedApplyBatch signed = 2;  // existing opaque protobuf envelope
+    signature.SignedHTTPRequest http_signed = 5; // original HTTP proof
   }
   // ... forwarded_caller_snapshot, skip_response (outside the signed payload)
 }
@@ -66,58 +67,78 @@ message SignedApplyBatch {
 }
 ```
 
-For gRPC, the discriminated `oneof` carries either the raw batch or the signed envelope. HTTP also carries the ordinary REST body and binds its decoded operation to the signed batch before admission, as described below.
+For gRPC, the discriminated `oneof` carries the raw batch, the existing signed protobuf envelope, or the additive `http_signed` HTTP proof variant. Ordinary HTTP clients send JSON with signature headers; the adapter captures that proof for admission, as described below.
 
 ## HTTP request signing
 
-Use `Content-Type: application/vnd.formance.signed-request+json` on these existing
-routes (paths are relative to `/v3/{ledgerName}`):
+Send the ordinary JSON body with `Content-Type: application/json` and
+[RFC 9421 HTTP Message Signatures](https://www.rfc-editor.org/rfc/rfc9421.html)
+headers. The client hashes the exact transmitted body bytes using SHA-256 and
+sends [RFC 9530 Content-Digest](https://www.rfc-editor.org/rfc/rfc9530.html).
+No protobuf construction, duplicate request body, or JSON canonicalization is
+required. The server verifies the digest and signature before admission derives
+the executable batch from the authenticated HTTP request.
 
-| Method and path | `request` value |
+Supported paths are relative to `/v3/{ledgerName}`:
+
+| Method and path | Body |
 | --- | --- |
-| POST `/transactions` | Ordinary create-transaction body |
-| POST `/transactions/{transactionId}/revert` | Revert options object; `{}` selects defaults |
-| POST `/transactions/{transactionId}/metadata` | Ordinary metadata object |
-| DELETE `/transactions/{transactionId}/metadata/{key}` | Explicit `null` |
-| POST `/bulk?atomic=true` | Nonempty ordinary bulk array |
+| POST `/transactions` | Ordinary create-transaction JSON |
+| POST `/transactions/{transactionId}/revert` | Revert options JSON, `null`, or zero bytes for defaults |
+| POST `/transactions/{transactionId}/metadata` | Ordinary metadata JSON |
+| DELETE `/transactions/{transactionId}/metadata/{key}` | Zero bytes |
+| POST `/bulk?atomic=true` | Nonempty ordinary bulk JSON array |
 
-The complete body is one JSON document:
+### Signature profile
 
-```json
-{
-  "request": {"reviewed": "yes"},
-  "signedBatch": {
-    "keyId": "ops",
-    "signature": "<standard-base64 Ed25519 signature>",
-    "payload": "<standard-base64 serialized ApplyBatch>"
-  }
-}
+The request must contain exactly one of each header: `Content-Type`,
+`Content-Digest`, `Idempotency-Key`, `Signature-Input`, and `Signature`.
+`Idempotency-Key` must be explicitly present even when its value is empty.
+`Content-Type` must be exactly `application/json`, without parameters.
+The digest dictionary contains only `sha-256`; the signature dictionaries
+contain only `sig1`.
+
+```http
+POST /v3/main/transactions/12/metadata HTTP/1.1
+Host: ledger.example.com
+Content-Type: application/json
+Content-Digest: sha-256=:<base64 SHA-256 of exact body bytes>:
+Idempotency-Key: metadata-12-reviewed
+Signature-Input: sig1=("@method" "@authority" "@path" "@query" "content-type" "content-digest" "idempotency-key");keyid="ops";alg="ed25519"
+Signature: sig1=:<base64 Ed25519 signature>:
+
+{"reviewed":"yes"}
 ```
 
-Sign the exact serialized protobuf `ApplyBatch`, not this wrapper or the REST
-JSON. Build the same operation as the route and ordinary body decoder: ledger,
-transaction ID or metadata key from the URL; command fields and typed metadata
-from `request`; and the batch idempotency key from `Idempotency-Key` (empty if
-omitted). Bulk includes every request in order and its `skippableReasons`;
-atomic bulk uses the header key and ignores each element's `ik`. Use exactly one
-request for each unitary route. The server compares the entire decoded batch,
-including oneofs, count and ordering, with the HTTP-derived batch, then forwards
-the original bytes to admission for cryptographic verification. Protobuf wire
-encodings need not be canonical or identical across languages.
+Every component above must be covered exactly once; component order can vary.
+The only signature parameters are `keyid` and `alg="ed25519"`, each exactly
+once, in either order. This restricted profile rejects additional components,
+parameters, signatures, and digest algorithms. In particular, `created`,
+`expires`, and `nonce` are not accepted and no freshness window is enforced.
 
-The signature covers executed command semantics, including scripts, references,
-metadata and skip policy. It does not authenticate ignored JSON fields,
-`continueOnFailure`, response formatting, JWT claims or response contents.
-Ordinary JWT authentication and scopes still apply. Keep private seeds local;
-register only the public key through the existing signing-management API.
+The signature base follows RFC 9421. `@authority` uses the lowercased HTTP
+Host/authority, removing port 80 for HTTP and 443 for HTTPS; `@path` retains
+its escaped spelling and `@query` includes its leading `?` even when absent.
+Scheme is captured from the request URL or inferred from TLS; forwarded-host
+and forwarded-proto headers are not trusted. The final
+`"@signature-params"` line includes the canonical Structured Fields serialization
+of the covered-component list and parameters, retaining their order. Sign that
+base with Ed25519; send the exact JSON bytes whose digest it covers. A proxy must
+preserve the signed authority, path, query and headers. Configure clients for the
+authority observed by Ledger rather than relying on forwarded-host headers.
+
+The signed request includes ignored JSON fields and response-affecting query
+options as bytes. JWT claims and responses are outside this proof. Existing JWT
+authentication, route scopes, bulk element scopes and caller attribution still
+apply independently of the signing key. Register the public key through the
+existing signing-management API and keep the private seed local.
 
 ### Go client recipe
 
-The following function saves transaction metadata using string values. It uses
-the repository's Go packages, whose protobuf types are under `internal/`, so run
-it from a package within the Ledger module. Other clients can use bindings for
-the published protobuf definitions and sign their own exact serialized bytes.
-The signing key must already be registered and the transaction must exist.
+This standalone standard-library example builds a metadata-save request; it
+requires no Ledger protobuf bindings. Supply the full supported endpoint URL,
+an already registered key, and a private key of the correct size. Send the
+returned request with an ordinary `http.Client`.
 
 ```go
 package example
@@ -126,103 +147,114 @@ import (
     "bytes"
     "context"
     "crypto/ed25519"
-    "encoding/json"
-    "fmt"
+    "crypto/sha256"
+    "encoding/base64"
+    "errors"
     "net/http"
-    "net/url"
-    "strconv"
     "strings"
-
-    "github.com/formancehq/ledger/v3/internal/proto/servicepb"
-    "github.com/formancehq/ledger/v3/pkg/actions"
-    "google.golang.org/protobuf/encoding/protojson"
 )
 
-func SaveSignedMetadata(ctx context.Context, client *http.Client, baseURL, ledger string,
-    transactionID uint64, token, keyID, idempotencyKey string,
-    privateKey ed25519.PrivateKey) error {
-    metadata := map[string]string{"reviewed": "yes"}
-    batch := &servicepb.ApplyBatch{
-        Requests: []*servicepb.Request{
-            actions.SaveTransactionMetadataAction(ledger, transactionID, metadata),
-        },
-        IdempotencyKey: idempotencyKey,
+func SignedMetadataRequest(ctx context.Context, endpoint, token, keyID, idempotencyKey string,
+    privateKey ed25519.PrivateKey) (*http.Request, error) {
+    if len(privateKey) != ed25519.PrivateKeySize || keyID == "" {
+        return nil, errors.New("a registered key ID and Ed25519 private key are required")
     }
-    signed, err := actions.SignBatch(batch, keyID, privateKey)
-    if err != nil {
-        return err
+    for i := range len(keyID) {
+        if keyID[i] < 0x20 || keyID[i] > 0x7e {
+            return nil, errors.New("key ID must be a Structured Fields string")
+        }
     }
-    // protojson emits camelCase keys and standard base64 byte strings.
-    signedJSON, err := protojson.Marshal(signed.GetSigned())
-    if err != nil {
-        return err
-    }
-    body, err := json.Marshal(struct {
-        Request map[string]string `json:"request"`
-        SignedBatch json.RawMessage `json:"signedBatch"`
-    }{metadata, signedJSON})
-    if err != nil {
-        return err
-    }
-    endpoint := strings.TrimRight(baseURL, "/") + "/v3/" + url.PathEscape(ledger) +
-        "/transactions/" + strconv.FormatUint(transactionID, 10) + "/metadata"
+    body := []byte(`{"reviewed":"yes"}`)
     req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(body))
     if err != nil {
-        return err
+        return nil, err
     }
-    req.Header.Set("Content-Type", "application/vnd.formance.signed-request+json")
+    digest := sha256.Sum256(body)
+    contentDigest := "sha-256=:" + base64.StdEncoding.EncodeToString(digest[:]) + ":"
+    quotedKey := `"` + strings.NewReplacer(`\`, `\\`, `"`, `\"`).Replace(keyID) + `"`
+    params := `("@method" "@authority" "@path" "@query" "content-type" "content-digest" "idempotency-key");keyid=` + quotedKey + `;alg="ed25519"`
+    authority := strings.ToLower(req.URL.Host)
+    if (req.URL.Scheme == "http" && req.URL.Port() == "80") ||
+        (req.URL.Scheme == "https" && req.URL.Port() == "443") {
+        authority = strings.ToLower(req.URL.Hostname())
+        if strings.Contains(authority, ":") {
+            authority = "[" + authority + "]"
+        }
+    }
+    base := strings.Join([]string{
+        `"@method": POST`,
+        `"@authority": ` + authority,
+        `"@path": ` + req.URL.EscapedPath(),
+        `"@query": ?` + req.URL.RawQuery,
+        `"content-type": application/json`,
+        `"content-digest": ` + contentDigest,
+        `"idempotency-key": ` + idempotencyKey,
+        `"@signature-params": ` + params,
+    }, "\n")
+    req.Header.Set("Content-Type", "application/json")
+    req.Header.Set("Content-Digest", contentDigest)
     req.Header.Set("Idempotency-Key", idempotencyKey)
+    req.Header.Set("Signature-Input", "sig1=" + params)
+    req.Header.Set("Signature", "sig1=:" + base64.StdEncoding.EncodeToString(ed25519.Sign(privateKey, []byte(base))) + ":")
     if token != "" {
         req.Header.Set("Authorization", "Bearer " + token)
     }
-    resp, err := client.Do(req)
-    if err != nil {
-        return err // An ambiguous transport failure does not prove noncommit.
-    }
-    defer func() {
-        // Closing the response releases transport resources; status is already available.
-        _ = resp.Body.Close()
-    }()
-    if resp.StatusCode != http.StatusNoContent {
-        return fmt.Errorf("signed metadata save: HTTP %d", resp.StatusCode)
-    }
-    return nil
+    return req, nil
 }
 ```
 
-For create or revert, use the matching `actions` helper and an equivalent legacy
-JSON body. For deletion, sign `actions.DeleteTransactionMetadataAction`, encode
-the raw metadata key as one URL segment and set `request` to null. For bulk, build
-one batch from the complete converted array, including its per-request skip
-reasons, and send `atomic=true`; signing each item independently is insufficient.
-A nonempty explicit timestamp must match both representations when supplied;
-omitted execution-time defaults remain omitted in the signed command.
+For another supported operation, change the method, body and endpoint together
+and rebuild the digest and signature base. Encode a metadata key as one URL
+segment. For DELETE, hash the empty body and still send all five headers. Atomic
+bulk signs the entire ordered array; `skippableReasons` remain per element,
+`Idempotency-Key` identifies the whole batch, and per-element `ik` is ignored.
+Unitary create does not acquire bulk-only skip semantics.
 
 ### Failures and rollout
 
 | Condition | HTTP result |
 | --- | --- |
-| Malformed wrapper, invalid base64/protobuf JSON, empty signed bulk or signed bulk without `atomic=true` | 400 |
-| Signed payload cannot be decoded or its batch differs from the HTTP-derived operation | 403 `PERMISSION_DENIED` |
-| Signature missing while cluster signing is mandatory | 401 `UNAUTHENTICATED` |
-| Invalid signature, unknown key or revoked key | 403 `PERMISSION_DENIED` |
-| Signed media type on an unsupported route | 415 |
+| Missing or duplicate required signing header, unsupported content type, malformed body, empty or non-atomic signed bulk | 400 |
+| HTTP-derived batch mismatch, invalid signature/profile/digest, unknown or revoked key | 403 `PERMISSION_DENIED` |
+| Signature absent while signing is mandatory | 401 `UNAUTHENTICATED` |
+| Signature headers on an unsupported route | 415 |
+| Signed body exceeds 4 MiB, including trailing whitespace and atomic bulk | 413 `BODY_TOO_LARGE` |
 
-Legacy `application/json` remains unsigned and works when signing is optional.
-Enabling mandatory signing rejects those unsigned mutations; there is no silent
-fallback. `continueOnFailure` never suppresses bulk 401/403, and a processing
-failure retains all per-element results. Inspect them before deciding to retry.
-The 4 MiB HTTP limit includes the entire wrapper, duplicated command data,
-base64 expansion and trailing whitespace, reducing the usable signed payload
-capacity. Existing endpoint-specific oversized-body status mapping still applies.
+Ordinary JSON requests without signature headers retain optional unsigned
+behavior; mandatory signing rejects them without fallback. `continueOnFailure`
+never suppresses bulk 401/403, and processing responses retain every element
+outcome. The body limit remains 4 MiB, now entirely available for the original
+body rather than a base64 wrapper. The retained proof has a separate maximum of
+4 MiB plus 16 KiB, enforced again at admission for gRPC forwarding. Signed bulk
+is read at signature capture, so exceeding its byte budget returns
+`413 BODY_TOO_LARGE`; the ordinary unsigned bulk decoder retains its existing
+`400 VALIDATION` oversized-body mapping.
 
-Upgrade HTTP nodes before enabling clients to send the new media type. No
-protobuf, protocol revision (40), persisted state or data migration changes are
-required. Signing adds no replay protection: retained idempotency keys replay
-the existing frozen outcome, an empty key permits re-execution, and an expired
-key follows the ordinary eviction contract. Preserve the same key and payload
-for retries while the key is retained. HTTP signing adds no response signature
-or independently authenticated transaction response.
+Send header-signed requests through HTTP. The gRPC `http_signed` variant is
+reserved for peer forwarding and requires the configured matching cluster
+secret, even when public JWT authentication is disabled. This ensures an HTTP
+node attested the observed authority and request target; public gRPC callers
+cannot submit self-declared HTTP evidence. Configure the existing cluster
+secret and its required TLS transport on every node before sending signed
+requests through followers. A standalone leader can admit HTTP requests without
+that forwarding setup. Existing protobuf-signed gRPC calls remain supported.
+Peer-proof authentication preserves the original auth-disabled attribution and
+does not grant public scopes or general forwarded-caller trust.
+
+This feature requires the mandatory stopped upgrade to `v3.0.0-rc.4`; see
+[server upgrades](upgrades.md#operator-required-stopped-restart). New HTTP proofs
+change committed proposal/audit encoding, so old and new voters must not apply
+them together. The upgrade preserves existing keys, business data and audit
+history without rewriting historical hashes. Protocol revision stays 40 and
+existing gRPC signing remains compatible. After the first HTTP proof commits,
+downgrading to a version without HTTP proof support is unsupported. Full and
+incremental backups retain the original proof bytes for independent verification.
+
+Signing adds no replay protection: a retained idempotency key returns its frozen
+outcome, an empty key permits repeated execution, and an expired key follows the
+ordinary eviction contract. Preserve the key and signed request bytes for
+retries. A transport failure does not establish whether an operation committed.
+HTTP request signing adds no HTTP response authenticity.
 
 ## Key Management
 
@@ -338,13 +370,22 @@ Signing keys and configuration are persisted in **Pebble** under the Global zone
 
 ## Signature Propagation
 
-The batch signature is carried through the entire pipeline for audit purposes:
+The original proof is carried to the batch audit entry:
 
-```
-ApplyRequest.signed (SignedApplyBatch) → Proposal.Signature → every Log.Signature → AuditEntry
+```text
+ApplyRequest.signed → Proposal.signature → AuditEntry.signature
+ApplyRequest.http_signed → Proposal.http_signature → AuditEntry.http_signature
 ```
 
-The same signature is shared by every log the batch commits. An auditor verifies a log entry by calling `Ed25519.Verify(pubkey, log.Signature.Payload, log.Signature.Signature)` — `payload` is the serialized `ApplyBatch`, so the proof covers the whole atomic operation (its requests and their order), and verifying one log pulls in its batch-mates. Non-repudiation is therefore **per batch**, not per individual request.
+`BuildHashedHeaderPayload` binds the proof into the audit hash chain. Request
+proofs are not stored on each committed `Log`; response signatures have their
+separate `Log.response_signature` field. Non-repudiation is per atomic batch.
+For protobuf signing, verify the retained payload bytes against the client's
+public key, then decode the authenticated `ApplyBatch`. For HTTP, verify the
+retained RFC signature base and body digest, then derive batch intent from the
+authenticated method/target/headers/body. Audit items bind the executed orders.
+The checker verifies audit hash binding and key/config projections; it does not
+rerun request cryptography for every entry.
 
 ## Design Decisions
 
@@ -352,7 +393,7 @@ The same signature is shared by every log the batch commits. An auditor verifies
 
 Signature verification is performed in the **Admission layer** (before Raft consensus), not in the FSM. This is deliberate:
 
-- **Valid signatures**: the cryptographic proof is propagated through Proposal → Log → AuditEntry. Auditors can verify signatures from the stored `SignedApplyBatch.payload` at any time.
+- **Valid signatures**: the original proof is propagated from Proposal to AuditEntry. Auditors can verify the retained protobuf or HTTP proof against the relevant client public key.
 - **Invalid/missing signatures**: rejected immediately in Admission. These failures do **not** appear in the replicated audit log because no Proposal is created.
 
 Moving verification into the FSM was considered but rejected for two reasons:
@@ -381,7 +422,7 @@ This is inherent to the Raft consensus model where all state changes are eventua
 | `internal/application/admission/` | Signature verification, bootstrap logic, Request → Order conversion |
 | `internal/infra/state/write_set.go` | Signing key changes accumulated during processing, applied in `Merge()` |
 | `internal/storage/dal/` | Pebble persistence for signing keys (compound keys `{0x06, 0x04}`/`{0x06, 0x05}` within the Global zone) |
-| `misc/proto/signature.proto` | `SignedApplyBatch` and `SignedLog` protobuf messages |
+| `misc/proto/signature.proto` | `SignedApplyBatch`, `SignedHTTPRequest` and `SignedLog` protobuf messages |
 
 ## CLI Reference
 

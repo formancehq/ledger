@@ -1344,6 +1344,7 @@ func (m *Proposal) CloneVT() *Proposal {
 	r.CallerSnapshot = m.CallerSnapshot.CloneVT()
 	r.Idempotency = m.Idempotency.CloneVT()
 	r.Signature = m.Signature.CloneVT()
+	r.HttpSignature = m.HttpSignature.CloneVT()
 	if rhs := m.Orders; rhs != nil {
 		tmpContainer := make([]*Order, len(rhs))
 		for k, v := range rhs {
@@ -4519,6 +4520,9 @@ func (this *Proposal) EqualVT(that *Proposal) bool {
 				return false
 			}
 		}
+	}
+	if !this.HttpSignature.EqualVT(that.HttpSignature) {
+		return false
 	}
 	return string(this.unknownFields) == string(that.unknownFields)
 }
@@ -9002,6 +9006,16 @@ func (m *Proposal) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
+	if m.HttpSignature != nil {
+		size, err := m.HttpSignature.MarshalToSizedBufferVT(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		i--
+		dAtA[i] = 0x52
+	}
 	if len(m.TechnicalUpdates) > 0 {
 		for iNdEx := len(m.TechnicalUpdates) - 1; iNdEx >= 0; iNdEx-- {
 			size, err := m.TechnicalUpdates[iNdEx].MarshalToSizedBufferVT(dAtA[:i])
@@ -12593,6 +12607,10 @@ func (m *Proposal) SizeVT() (n int) {
 			l = e.SizeVT()
 			n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 		}
+	}
+	if m.HttpSignature != nil {
+		l = m.HttpSignature.SizeVT()
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
 	n += len(m.unknownFields)
 	return n
@@ -21417,6 +21435,42 @@ func (m *Proposal) UnmarshalVT(dAtA []byte) error {
 				}
 			}
 			if err := m.TechnicalUpdates[len(m.TechnicalUpdates)-1].UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
+		case 10:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field HttpSignature", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if m.HttpSignature == nil {
+				m.HttpSignature = &signaturepb.SignedHTTPRequest{}
+			}
+			if err := m.HttpSignature.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
 				return err
 			}
 			iNdEx = postIndex

@@ -2,7 +2,7 @@
 
 ## Overview
 
-Request signing is what makes a Ledger v3 batch **tamper-evident end-to-end**: the client signs the exact bytes it submits, the server verifies them without re-serialising, and the resulting log entries carry the original signature into the audit trail. Response signing does the symmetric thing on the way back: the server signs the committed logs so clients can audit them after the fact.
+Request signing is what makes a Ledger v3 batch **tamper-evident end-to-end**: the client signs the exact bytes it submits, the server verifies them without re-serialising, and the batch audit entry retains the original proof. Response signing does the symmetric thing on the way back: the server signs the committed logs so clients can audit them after the fact.
 
 Signing is **optional by default** and can be made mandatory cluster-wide via `signing require`. When mandatory, unsigned batches are rejected at admission, except for the narrow cases below (bootstrap registration, maintenance mode, and leader-internal proposals). Operations documentation lives in [`docs/ops/signing.md`](../../../../ops/signing.md) and the maintenance-mode interaction is covered in [`docs/ops/maintenance-mode.md`](../../../../ops/maintenance-mode.md); this page covers the architecture.
 
@@ -12,9 +12,9 @@ Signing is **optional by default** and can be made mandatory cluster-wide via `s
 
 ## What is signed
 
-### Request signature: the whole batch, opaque
+### gRPC request signature: the whole batch, opaque
 
-The client builds an `ApplyBatch` (the ordered requests, their skippable reasons, and the batch idempotency key), serializes it once, and signs those exact bytes. Go clients can use `actions.SignBatch`. The resulting `SignedApplyBatch{key_id, signature, payload}` retains the original serialized payload; admission verifies those bytes before trusting their decoded contents. HTTP first decodes the payload for an untrusted semantic comparison, as described below; that comparison never authenticates it.
+The client builds an `ApplyBatch` (the ordered requests, their skippable reasons, and the batch idempotency key), serializes it once, and signs those exact bytes. Go clients can use `actions.SignBatch`. The resulting `SignedApplyBatch{key_id, signature, payload}` retains the original serialized payload; admission verifies those bytes before trusting their decoded contents. This existing format remains unchanged when HTTP signatures are introduced.
 
 Two consequences:
 
@@ -23,35 +23,68 @@ Two consequences:
 
 ### HTTP transaction signing boundary
 
-HTTP transaction mutations opt in with
-`Content-Type: application/vnd.formance.signed-request+json`. The wrapper contains
-`request` (the legacy JSON body, or null for transaction metadata DELETE) and
-`signedBatch` (camelCase protobuf JSON with standard-base64 `signature` and
-`payload`). The supported routes and client recipe are documented in
+HTTP transaction mutations carry ordinary `application/json` and RFC 9421
+`Signature-Input` / `Signature` headers with an RFC 9530 SHA-256
+`Content-Digest`. Clients sign their original body bytes and HTTP components;
+they do not construct protobuf batches. The supported routes and standalone
+standard-library client recipe are documented in
 [HTTP request signing](../../../../ops/signing.md#http-request-signing).
 
-The HTTP adapter builds the same `ApplyBatch` as its ordinary decoder from the
-URL, decoded body and `Idempotency-Key`. It decodes the supplied payload only as
-untrusted input and compares the complete messages with `proto.Equal`, including
-request count/order, oneofs, skippable reasons and the batch key. A mismatch is
-403 `PERMISSION_DENIED` before dispatch. A match forwards the original
-`SignedApplyBatch` unchanged into the existing backend/admission path; only
-admission's key lookup and Ed25519 verification authenticate it. No HTTP signing
-key cache or alternative verifier is introduced. JWT scopes and caller attribution
-remain separate requirements.
+The restricted `sig1` profile requires exactly one occurrence of each covered
+component: `@method`, `@authority`, `@path`, `@query`, `content-type`,
+`content-digest`, and `idempotency-key`. Component order may vary. Parameters
+are exactly one `keyid` and `alg="ed25519"`, in either order. No additional
+signature, digest algorithm, component or parameter is accepted; in particular
+there is no `created` / `expires` / `nonce` policy. Each actual signing header,
+including an explicitly empty `Idempotency-Key`, is present once; content type
+is exactly `application/json`. Authority is lowercased and default HTTP/HTTPS ports are removed using the
+retained scheme; path retains its escaped form and query always begins with `?`.
+The adapter uses the URL scheme or local TLS state, never forwarded-host/proto
+headers, so proxies must preserve compatible signed component derivation.
 
-Signed bulk requires a nonempty array and `atomic=true`. It uses the header key
-and ignores per-element `ik` exactly as unsigned atomic bulk does. Non-atomic
-signed bulk is rejected with 400. Bulk `continueOnFailure` cannot turn missing or
-invalid signature failures into success: 401/403 remain top-level failures and
-processing responses retain all element outcomes.
+The HTTP adapter captures a `SignedHTTPRequest` containing original method,
+origin-form target, scheme, authority, content type, digest, idempotency key,
+`Signature-Input`, `Signature`, and body. The adapter compares the complete
+`ApplyBatch` derived by `servicepb.DecodeHTTPRequest` with the ordinary handler's
+batch using `proto.Equal`. Count/order, nested oneofs, typed metadata,
+skippable reasons, targets and batch identity must all agree before dispatch.
+That comparison is untrusted parsing, not authentication.
 
-This adds O(request bytes) transient decoding, comparison and copying under the
-existing 4 MiB body budget, including base64 and duplicated HTTP/protobuf content.
-It changes no proposal, persisted format, signature propagation, FSM behavior or
-protocol revision (40), and requires no data migration. Upgrade receiving HTTP
-nodes before clients select the new media type. Existing retained-key replay,
-unkeyed execution and expired-key behavior remain unchanged.
+The proof crosses `ApplyRequest.http_signed` and peer forwarding unchanged.
+Admission selects the registered key from untrusted `keyid`, calls `VerifyHTTP`
+to authenticate the RFC signature base and body digest, and only then calls the
+same pure decoder to derive the authoritative batch. No externally supplied
+batch is accepted alongside the proof. gRPC scope routing may peek through the
+decoder, but only admission's verified result determines executed commands.
+JWT/scopes/caller attribution remain separate requirements and no HTTP key cache
+is introduced.
+
+Signed bulk is nonempty and `atomic=true`, with the header key and ignored
+per-element `ik` matching ordinary atomic bulk. Every element keeps its scope
+and skip policy. `continueOnFailure` never suppresses 401/403, and processing
+responses retain all element outcomes. Signed JSON is a complete single value;
+revert accepts zero bytes or null for defaults, while metadata DELETE requires
+zero bytes.
+
+Capture, hashing, decoding and comparison cost O(request bytes), bounded by the
+4 MiB body budget and a 4 MiB + 16 KiB retained-proof limit, repeated at admission
+for authenticated peer forwarding. Public gRPC cannot submit HTTP proofs: the
+RPC interceptor requires the matching configured cluster secret even when JWT
+authentication is disabled, without altering scopes or caller attribution.
+The unchanged unsigned and protobuf-signed paths do not perform
+HTTP proof verification. The original HTTP bytes add bounded proposal, WAL and
+audit storage overhead alongside the derived orders; clients no longer transmit
+a duplicate base64 protobuf body.
+
+`Proposal.http_signature` propagates to `AuditEntry.http_signature`; the
+canonical header hash conditionally binds every field of the new proof while
+preserving historical preimages for entries without it. This changes committed
+proof encoding, requiring the approved mandatory stopped upgrade to
+`v3.0.0-rc.4`. Existing keys, committed data and historical audit rows remain
+valid without a rewrite. Do not admit new proofs across mixed old/new voters or
+downgrade after one commits. Full checkpoints and incremental exports preserve
+the original proof. Protocol revision remains 40; old gRPC signing remains
+supported. See [upgrade policy](../../../../ops/upgrades.md).
 
 ### Response signature: per log
 
@@ -61,23 +94,33 @@ For every log that ends up in the response, the server signs a `Log` derived fro
 
 ### Server side
 
-```go
-func Verify(pubkey []byte, payload []byte, sig []byte) error
-```
+`signing.Verify(*signaturepb.SignedApplyBatch, ed25519.PublicKey)` verifies
+the exact existing protobuf payload. `signing.VerifyHTTP` reconstructs the
+restricted RFC 9421 signature base from the retained HTTP evidence, checks the
+body's SHA-256 digest, and verifies Ed25519. Neither verifier reconstructs JSON
+bytes from decoded values.
 
-Source: `internal/domain/crypto/signing/signing.go`. The function checks `len(payload) > 0`, `len(sig) == 64`, then calls `ed25519.Verify(pubkey, payload, sig)`. No re-serialisation, no field-by-field validation — only the raw payload signed by the client.
-
-Verification happens in the admission stage, **before** the proposal reaches Raft (`resolveBatch()` in `internal/application/admission/admission.go`). Doing it here is a deliberate DoS-rejection point: invalid signatures cost the cluster nothing more than a public-key lookup + an Ed25519 verify.
+Verification occurs in `Admission.resolveBatch` before proposing to Raft.
+Invalid proofs fail before consensus. Decoding authenticated HTTP evidence into
+commands is a separate required step: a valid signature alone does not establish
+the meaning of an independently supplied command batch.
 
 ### Audit-time
 
-The signature is propagated all the way into the audit chain:
+The two request-proof formats have separate authoritative homes:
 
-- `Proposal.Signature` carries the client's signature.
-- The header payload that gets hashed by `BuildHashedHeaderPayload` includes the signature (see [audit-chain.md](../checker/audit-chain.md)).
-- The signature ends up on each `Log` produced by the proposal as well, so an auditor reading a single log row can re-verify it independently against the client's public key.
+- `Proposal.signature` becomes `AuditEntry.signature` for protobuf signing.
+- `Proposal.http_signature` becomes `AuditEntry.http_signature` for HTTP signing.
+- `BuildHashedHeaderPayload` binds the retained evidence into the audit chain.
+  Tampering with a proof field changes that chain's hash.
 
-This means tampering with a stored `Log.Signature` is detectable by the checker — it would break the audit-chain hash, not just the signature.
+Client request proofs are batch-level audit evidence, not per-`Log` fields.
+An external verifier needs the original audit proof and the relevant client's
+public key. HTTP verification authenticates the original request bytes and the
+shared decoder establishes its batch intent; audit items bind the committed
+orders. The checker verifies the hash binding and signing-key/config projections;
+it does not independently rerun admission cryptography for every stored proof.
+See [audit-chain.md](../checker/audit-chain.md).
 
 ## Key management
 
@@ -141,11 +184,11 @@ Background work the leader schedules — query-checkpoint creation and other sch
 
 Signatures prove **non-repudiation**: the client cannot deny submitting a request whose signature verifies under their public key. They do not, by themselves, prevent a man-in-the-middle from re-submitting the same signed batch later.
 
-Replay protection is the job of the **idempotency key** + the FSM-side replay cache (see [pipeline.md § Idempotency](pipeline.md#idempotency)). A re-submitted signed batch with the same idempotency key returns the original outcome reference rather than executing again. A newly signed batch with a fresh idempotency key is, by design, treated as a new request; changing that key under an existing signature fails verification. An empty key permits repeated execution, and an expired key follows the existing eviction/replay contract.
+HTTP signatures retain the same replay contract and introduce no freshness window. Replay protection is the job of the **idempotency key** + the FSM-side replay cache (see [pipeline.md § Idempotency](pipeline.md#idempotency)). A re-submitted signed batch with the same idempotency key returns the original outcome reference rather than executing again. A newly signed batch with a fresh idempotency key is, by design, treated as a new request; changing that key under an existing signature fails verification. An empty key permits repeated execution, and an expired key follows the existing eviction/replay contract.
 
 ## Cross-language constraint
 
-The signed payload is the published protobuf `ApplyBatch` format, not a Go-specific canonical encoding. Preserve its wire contract and the original envelope bytes through forwarding and audit capture. A different valid protobuf encoding may decode to the same value and still authenticate, provided the client signs the bytes it actually sends. Never assume the Go SDK is the only consumer.
+For gRPC signing, the signed payload is the published protobuf `ApplyBatch` format, not a Go-specific canonical encoding. Preserve its wire contract and the original envelope bytes through forwarding and audit capture. A different valid protobuf encoding may decode to the same value and still authenticate, provided the client signs the bytes it actually sends. Never assume the Go SDK is the only consumer.
 
 ## Failure modes
 
@@ -154,4 +197,4 @@ The signed payload is the published protobuf `ApplyBatch` format, not a Go-speci
 | `ErrInvalidSignature` returned at admission | Wrong key ID, tampered payload, or wrong private key. |
 | Bootstrap registration rejected | `RequireSignatures()` is true and there is no parent key — solution is the maintenance-mode workaround above. |
 | Client cannot verify a stored log | Server's response key has rotated; client must refresh via the Discovery RPC or the `--response-verify-key` flag. |
-| Audit chain hash mismatch on entries with valid `Log.Signature` | Log entry tampered after the fact — caught by the checker, not by signature verification (the signature still verifies; the hash chain doesn't). |
+| Audit chain hash mismatch despite a valid request proof | Another chain-bound field changed after the fact; a valid request signature alone does not authenticate that field. |

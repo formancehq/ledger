@@ -26,7 +26,13 @@
     "tests/oracle/**",
     "tests/e2e/cluster/restore*_test.go",
     "internal/infra/node/drain.go",
-    "internal/infra/state/drain_test.go"
+    "internal/infra/state/drain_test.go",
+    "misc/proto/signature.proto",
+    "internal/proto/signaturepb/**",
+    "misc/proto/audit.proto",
+    "internal/proto/auditpb/**",
+    "misc/operator/internal/controller/required_upgrade.go",
+    "misc/operator/internal/controller/required_upgrade_test.go"
   ],
   "related_docs": [
     "AGENTS.md",
@@ -43,7 +49,9 @@
     "docs/technical/contributing/testing.md",
     "docs/technical/architecture/subsystems/api/atomic-ledger-creation.md",
     "docs/technical/architecture/subsystems/consensus/controlled-shutdown.md",
-    "docs/technical/architecture/subsystems/storage/follower-sync.md"
+    "docs/technical/architecture/subsystems/storage/follower-sync.md",
+    "docs/ops/upgrades.md",
+    "docs/technical/architecture/subsystems/admission/signing.md"
   ],
   "invariants": [
     "An UncommittedFailure after a checkpoint produces no audit/item/log or frozen idempotency delta and does not advance the last applied HLC; restore parity must preserve this absence and the next retry behavior without inventing an export segment.",
@@ -64,7 +72,8 @@
     "The once-committed audit key is preserved checkpoint state: a full checkpoint must contain it before any incremental audit delta, restore must keep it while discarding source cluster identity, and post-restore writes and backups must continue under the restored key.",
     "CreatedLedgerLog carries initial metadata so post-checkpoint creation reconstructs canonical metadata during ApplyExportsAndRebuild. Persisted LedgerInfo does not duplicate the canonical metadata projection.",
     "Raft-applied drain marker and release state advance with the applied index in the same Pebble batch, and qualifying member status fsyncs the WAL before certifying that index. Restart and in-cluster snapshot sync restore an active cutoff before admission; cross-cluster restore deliberately discards the cluster-transient drain state.",
-    "Follower-sync staging holds exactly one session's checkpoint when activated. Every session retry against the same donor, like every donor fallback, empties the staging directory and resets progress before the new session. A file left by an earlier session that the new manifest does not list must never reach Pebble open: tied marker.manifest iterations resolve by unsorted directory order and can open a stale MANIFEST over the new WAL."
+    "Follower-sync staging holds exactly one session's checkpoint when activated. Every session retry against the same donor, like every donor fallback, empties the staging directory and resets progress before the new session. A file left by an earlier session that the new manifest does not list must never reach Pebble open: tied marker.manifest iterations resolve by unsorted directory order and can open a stale MANIFEST over the new WAL.",
+    "HTTP signature proof is preserved opaque audit history: committed proposal evidence reaches the audit row, checkpoint plus nonempty incremental export retains its exact bytes and original hash, and recovery can extend the restored chain. Entries without HTTP proof keep their released preimage and bytes. The rc.4 mandatory stopped upgrade must retain rc.3 business history and audit key while preventing old and new voters from applying new proof-bearing proposals together; no audit rewrite or wipe is an upgrade."
   ],
   "adversarial_questions": [
     "Does a post-checkpoint technical interruption spuriously advance the exported audit bound or restored HLC, create a frozen result, or hide a later definitive outcome from the delta?",
@@ -85,7 +94,8 @@
     "Can a full checkpoint be published before key initialization and later receive a nonempty audit delta, or can restore preparation, follower sync, or destination config overwrite the source audit key?",
     "Does a restore with nonempty checkpoint files and a nonempty post-checkpoint creation delta reproduce typed initial metadata for normal and mirror ledgers, including explicit protobuf null and a schema type mismatch?",
     "Can a status reply certify an applied but unflushed cutoff or release? Does local restart or in-cluster snapshot sync lose an active gate? Can cross-cluster checkpoint plus non-empty delta inherit source drain state or released-epoch history, or can its deliberate discard mask missing business delta effects?",
-    "Can a follower-sync session retry, donor fallback, or abandoned attempt leave files the next manifest does not list (MANIFEST, WAL, marker, OPTIONS, SST) in the staging directory that is activated and opened? Which checkpoint does Pebble open when two sessions' marker files tie, and does the restored applied index then cover entries whose effects are absent?"
+    "Can a follower-sync session retry, donor fallback, or abandoned attempt leave files the next manifest does not list (MANIFEST, WAL, marker, OPTIONS, SST) in the staging directory that is activated and opened? Which checkpoint does Pebble open when two sessions' marker files tie, and does the restored applied index then cover entries whose effects are absent?",
+    "Can proposal-to-audit propagation, checkpoint/export application or recovery drop, normalize or reconstruct HTTP proof headers/body instead of preserving exact evidence? Can extending or restoring the new chain rewrite historical absent-proof hashes? Does the rc.3-to-rc.4 stopped transition preserve nonempty source WAL/history, and can an opaque target or premature replacement admit a mixed-version proof-bearing entry? Distinguish the lifecycle defect from checker blindness or operator orchestration owned elsewhere."
   ],
   "dynamic_checks_to_consider": [
     "After a full checkpoint, apply an UncommittedFailure and then a definitive proposal so the delta is nonempty. Restore it and compare audit bounds, HLC, absent technical rows, definitive rows and a subsequent keyed retry against live state.",
@@ -102,6 +112,7 @@
     "When practical, mutation-check a parity regression by temporarily disabling the relevant rebuild fold or cascade in an isolated permitted diagnostic and proving the test fails specifically on the post-checkpoint delta. Do not retain or commit the mutation, and do not treat a setup crash or unrelated checker finding as proof.",
     "Exercise a real full checkpoint plus nonempty audit delta A to B with different persisted cluster IDs; compare historical audit/item bytes, verify checker and new B writes, then back up B and restore again under B namespace.",
     "Persist an active marker and release across real Pebble/WAL reopen and in-cluster sync; compare each member status with durable indexes. Run TestDrainCheckpointIncrementalRestoreDiscardsSourceState for an active checkpoint marker, released-epoch history, a non-empty business delta, restore preparation, checker and subsequent admission; run TestFinalizeRestorePublishesRebuiltPostCheckpointDelta to verify finalization publishes no source drain state.",
-    "Fail a first follower-sync session after it staged a Pebble file set, retry against the same donor with a different manifest (as after a donor restart that flushed its WAL), and assert the staging directory holds exactly the second manifest's files and progress counters match it."
+    "Fail a first follower-sync session after it staged a Pebble file set, retry against the same donor with a different manifest (as after a donor restart that flushed its WAL), and assert the staging directory holds exactly the second manifest's files and progress counters match it.",
+    "Use TestBackup_HTTPMessageSignatureProofRestoreParity with a real historical unsigned prefix, full checkpoint, proof-bearing post-checkpoint proposal and nonempty audit/log exports. Require actual checkpoint download plus ApplyExportsAndRebuild, exact historical and proof-bearing raw audit bytes, original headers/body/proof/hash, live/restored projection parity, clean CheckStore, and recovered FSM extension without rewriting the proof row. Inspect TestMandatoryStopVersionBoundary and TestHTTPSignatureUpgradeUsesProductionStopBoundary for rc.2-to-rc.3 rolling and rc.3-to-rc.4 stopped selection; these unit fixtures do not establish binary upgrade validation, which separately requires retained nonempty WAL, restart, audit checking and backup restore."
   ]
 }

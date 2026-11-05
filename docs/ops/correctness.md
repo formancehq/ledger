@@ -8,6 +8,13 @@ Integrity verification uses a **batch-level hash chain on audit entries** rather
 
 For the full specification — hash formula, header and per-item binary spec, algorithm selection, state persistence, failure isolation, and the companion-stream cardinality (`AuditEntry` / `AuditItem` / `AppliedProposal` / `Log`) — see [`docs/technical/architecture/subsystems/checker/audit-chain.md`](../technical/architecture/subsystems/checker/audit-chain.md). The verification passes that keep every projection honest against the chain live in [`checker.md`](../technical/architecture/subsystems/checker/checker.md).
 
+HTTP client signature evidence is retained on the batch's audit entry and bound
+into its hash. The conditional HTTP proof extension preserves every historical
+preimage. Activating this proof format requires the rc.4 stopped upgrade; see
+[upgrades](upgrades.md) and [HTTP signing](signing.md#http-request-signing).
+Store checking verifies that retained evidence has not changed, but does not
+independently verify the client's HTTP signature against its public key.
+
 ## Double-Entry Invariant Check
 
 A defensive check is performed at `Merge()` time in the `WriteSet` layer to verify the fundamental accounting invariant: **the sum of all input deltas must equal the sum of all output deltas**.

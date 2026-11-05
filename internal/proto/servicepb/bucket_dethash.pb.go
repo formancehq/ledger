@@ -303,6 +303,14 @@ func (m *ApplyRequest) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int, er
 			i--
 			dAtA[i] = 0x12
 		}
+	case *ApplyRequest_HttpSigned:
+		if v.HttpSigned != nil {
+			size, _ := v.HttpSigned.MarshalToSizedBufferVT(dAtA[:i])
+			i -= size
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+			i--
+			dAtA[i] = 0x2a
+		}
 	}
 	return len(dAtA) - i, nil
 }

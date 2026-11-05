@@ -84,6 +84,118 @@ func NewSignedApplyBatchListReader(s []*SignedApplyBatch) SignedApplyBatchListRe
 	return signedApplyBatchListReadonly(s)
 }
 
+// SignedHTTPRequestReader provides read-only access to SignedHTTPRequest.
+// Call Mutate() to obtain a mutable clone.
+type SignedHTTPRequestReader interface {
+	GetMethod() string
+	GetRequestTarget() string
+	GetAuthority() string
+	GetContentType() string
+	GetContentDigest() string
+	GetIdempotencyKey() string
+	GetSignatureInput() string
+	GetSignature() string
+	GetBody() []byte
+	GetScheme() string
+	Mutate() *SignedHTTPRequest
+}
+
+type signedHTTPRequestReadonly SignedHTTPRequest
+
+func (r *signedHTTPRequestReadonly) GetMethod() string {
+	return (*SignedHTTPRequest)(r).GetMethod()
+}
+
+func (r *signedHTTPRequestReadonly) GetRequestTarget() string {
+	return (*SignedHTTPRequest)(r).GetRequestTarget()
+}
+
+func (r *signedHTTPRequestReadonly) GetAuthority() string {
+	return (*SignedHTTPRequest)(r).GetAuthority()
+}
+
+func (r *signedHTTPRequestReadonly) GetContentType() string {
+	return (*SignedHTTPRequest)(r).GetContentType()
+}
+
+func (r *signedHTTPRequestReadonly) GetContentDigest() string {
+	return (*SignedHTTPRequest)(r).GetContentDigest()
+}
+
+func (r *signedHTTPRequestReadonly) GetIdempotencyKey() string {
+	return (*SignedHTTPRequest)(r).GetIdempotencyKey()
+}
+
+func (r *signedHTTPRequestReadonly) GetSignatureInput() string {
+	return (*SignedHTTPRequest)(r).GetSignatureInput()
+}
+
+func (r *signedHTTPRequestReadonly) GetSignature() string {
+	return (*SignedHTTPRequest)(r).GetSignature()
+}
+
+func (r *signedHTTPRequestReadonly) GetBody() []byte {
+	return bytes.Clone((*SignedHTTPRequest)(r).GetBody())
+}
+
+func (r *signedHTTPRequestReadonly) GetScheme() string {
+	return (*SignedHTTPRequest)(r).GetScheme()
+}
+
+func (r *signedHTTPRequestReadonly) Mutate() *SignedHTTPRequest {
+	return (*SignedHTTPRequest)(r).CloneVT()
+}
+
+// AsReader returns a read-only view of this SignedHTTPRequest.
+func (m *SignedHTTPRequest) AsReader() SignedHTTPRequestReader {
+	if m == nil {
+		return nil
+	}
+	return (*signedHTTPRequestReadonly)(m)
+}
+
+// Mutate returns a mutable deep clone of this SignedHTTPRequest.
+func (m *SignedHTTPRequest) Mutate() *SignedHTTPRequest {
+	return m.CloneVT()
+}
+
+// SignedHTTPRequestListReader provides read-only iteration over []*SignedHTTPRequest.
+type SignedHTTPRequestListReader interface {
+	Len() int
+	Get(i int) SignedHTTPRequestReader
+	Range(yield func(int, SignedHTTPRequestReader) bool)
+}
+
+type signedHTTPRequestListReadonly []*SignedHTTPRequest
+
+func (l signedHTTPRequestListReadonly) Len() int { return len(l) }
+
+func (l signedHTTPRequestListReadonly) Get(i int) SignedHTTPRequestReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l signedHTTPRequestListReadonly) Range(yield func(int, SignedHTTPRequestReader) bool) {
+	for i, v := range l {
+		var r SignedHTTPRequestReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewSignedHTTPRequestListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewSignedHTTPRequestListReader(s []*SignedHTTPRequest) SignedHTTPRequestListReader {
+	return signedHTTPRequestListReadonly(s)
+}
+
 // SignedLogReader provides read-only access to SignedLog.
 // Call Mutate() to obtain a mutable clone.
 type SignedLogReader interface {

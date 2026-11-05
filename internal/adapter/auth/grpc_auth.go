@@ -81,9 +81,7 @@ func EvaluateGRPCCredentials(ctx context.Context, cfg AuthConfig) (context.Conte
 	// on the public input length), and short-circuits the comparison
 	// when lengths differ — a timing leak there is harmless because the
 	// expected length is a fixed configuration value (#339 / Review-2 M-25).
-	if cfg.ClusterSecret != "" &&
-		len(token) == len(cfg.ClusterSecret) &&
-		subtle.ConstantTimeCompare([]byte(token), []byte(cfg.ClusterSecret)) == 1 {
+	if clusterSecretMatches(token, cfg.ClusterSecret) {
 		span.SetAttributes(attribute.Bool("auth.cluster_internal", true))
 		effective := allScopes()
 		ctx = WithExpandedScopes(ctx, effective)
@@ -119,6 +117,39 @@ func EvaluateGRPCCredentials(ctx context.Context, cfg AuthConfig) (context.Conte
 	ctx = WithAuthPresented(ctx, true)
 
 	return withAuthenticationState(ctx, true, true, effective), nil
+}
+
+type httpProofForwarderKey struct{}
+
+// IsHTTPProofForwarder reports whether the HTTP proof ingress attestation was
+// authenticated by the RPC interceptor. It does not grant public scopes or
+// caller-attribution trust.
+func IsHTTPProofForwarder(ctx context.Context) bool {
+	verified, _ := ctx.Value(httpProofForwarderKey{}).(bool)
+
+	return verified
+}
+
+// RequireClusterPeer authenticates a forwarding-only operation without changing
+// the original public authentication state. In auth-disabled deployments the
+// ordinary evaluator deliberately skips credentials, but an HTTP proof still
+// needs a trusted peer to attest that its authority/path were observed at HTTP
+// ingress. A configured matching secret establishes only that peer marker;
+// auth-disabled attribution and ordinary public request behavior stay unchanged.
+func RequireClusterPeer(ctx context.Context, cfg AuthConfig) (context.Context, error) {
+	if IsClusterInternal(ctx) {
+		return context.WithValue(ctx, httpProofForwarderKey{}, true), nil
+	}
+	token, hasToken := bearerTokenFromContext(ctx)
+	if hasToken && clusterSecretMatches(token, cfg.ClusterSecret) {
+		return context.WithValue(ctx, httpProofForwarderKey{}, true), nil
+	}
+
+	return ctx, status.Error(codes.PermissionDenied, "HTTP signature proof requires authenticated cluster-peer forwarding")
+}
+
+func clusterSecretMatches(token, secret string) bool {
+	return secret != "" && len(token) == len(secret) && subtle.ConstantTimeCompare([]byte(token), []byte(secret)) == 1
 }
 
 // AuthorizeGRPC checks required scopes against the immutable state produced by

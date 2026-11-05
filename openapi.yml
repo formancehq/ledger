@@ -3,10 +3,13 @@ info:
   title: Ledger v3 API
   description: |
     API for Ledger v3, a distributed accounting ledger with Raft consensus.
-    Signed transaction mutations opt in with
-    application/vnd.formance.signed-request+json on the five operations declaring
-    that media type. Other /v3 operations reject it with HTTP 415 and an
-    ErrorResponse JSON body. Legacy application/json remains unsigned.
+    Signed transaction mutations use RFC 9421 Signature-Input and Signature
+    headers over ordinary application/json bodies on the five operations declaring
+    these headers. Other /v3 operations reject signature headers with HTTP 415.
+    The profile covers method, authority, path, query, Content-Type, Content-Digest
+    (RFC 9530 SHA-256 over exact body bytes), and Idempotency-Key. All covered
+    headers must appear exactly once, including an explicitly empty Idempotency-Key.
+    Label sig1 and Ed25519 are required. JWT authentication remains separate.
   version: 1.0.0
   contact:
     name: Formance
@@ -690,13 +693,20 @@ paths:
       summary: Create a new transaction
       description: |
         Creates a new transaction in the specified ledger with the specified postings. Requires `ledger:write` scope.
-        Signed requests use `application/vnd.formance.signed-request+json` with
-        `request` and `signedBatch`; the signed protobuf batch must equal the
-        route/body/Idempotency-Key-derived batch in full. Signature enforcement
-        returns 401 `UNAUTHENTICATED` when required but absent and 403
-        `PERMISSION_DENIED` for invalid, unknown/revoked-key or mismatched
-        signatures. Malformed signed envelopes return 400. The complete
-        wrapper counts toward the 4 MiB body limit. JWT scopes still apply.
+        Signed requests keep the ordinary JSON body and send RFC 9421
+        `Signature-Input` and `Signature` headers with label `sig1`, `keyid` and
+        `alg="ed25519"`. Required covered components are `@method`, `@authority`,
+        `@path`, `@query`, `content-type`, `content-digest`, `idempotency-key`.
+        Send exactly one of each covered header; `Content-Type` must be
+        `application/json` and `Idempotency-Key` must be present even when empty.
+        `Content-Digest` uses RFC 9530 `sha-256=:BASE64:` over the exact body bytes.
+        Metadata DELETE must have an empty body, whose digest is still required.
+        Signature enforcement returns 401 `UNAUTHENTICATED` when required but
+        absent and 403 `PERMISSION_DENIED` for invalid or unknown/revoked-key
+        signatures. Missing or duplicate headers, nonempty DELETE bodies and malformed JSON
+        (including trailing JSON values) return 400. The complete body
+        counts toward the 4 MiB limit. JWT scopes still apply. Signatures do not
+        add expiry or replay protection; existing idempotency rules apply.
       operationId: v3CreateTransaction
       x-speakeasy-name-override: CreateTransaction
       tags:
@@ -708,15 +718,15 @@ paths:
         - $ref: '#/components/parameters/BigIntAsString'
         - $ref: '#/components/parameters/LedgerName'
         - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/HTTPContentDigest'
+        - $ref: '#/components/parameters/HTTPSignatureInput'
+        - $ref: '#/components/parameters/HTTPSignature'
       requestBody:
         required: true
         content:
           application/json:
             schema:
               $ref: '#/components/schemas/CreateTransactionRequest'
-          application/vnd.formance.signed-request+json:
-            schema:
-              $ref: '#/components/schemas/SignedCreateTransactionRequest'
       responses:
         '201':
           description: Transaction created successfully
@@ -1239,13 +1249,20 @@ paths:
       summary: Save transaction metadata
       description: |
         Saves metadata for a specific transaction in the ledger. Requires `ledger:WriteMetadata` scope (included in the default `ledger:write` mapping).
-        Signed requests use `application/vnd.formance.signed-request+json` with
-        `request` and `signedBatch`; the signed protobuf batch must equal the
-        route/body/Idempotency-Key-derived batch in full. Signature enforcement
-        returns 401 `UNAUTHENTICATED` when required but absent and 403
-        `PERMISSION_DENIED` for invalid, unknown/revoked-key or mismatched
-        signatures. Malformed signed envelopes return 400. The complete
-        wrapper counts toward the 4 MiB body limit. JWT scopes still apply.
+        Signed requests keep the ordinary JSON body and send RFC 9421
+        `Signature-Input` and `Signature` headers with label `sig1`, `keyid` and
+        `alg="ed25519"`. Required covered components are `@method`, `@authority`,
+        `@path`, `@query`, `content-type`, `content-digest`, `idempotency-key`.
+        Send exactly one of each covered header; `Content-Type` must be
+        `application/json` and `Idempotency-Key` must be present even when empty.
+        `Content-Digest` uses RFC 9530 `sha-256=:BASE64:` over the exact body bytes.
+        Metadata DELETE must have an empty body, whose digest is still required.
+        Signature enforcement returns 401 `UNAUTHENTICATED` when required but
+        absent and 403 `PERMISSION_DENIED` for invalid or unknown/revoked-key
+        signatures. Missing or duplicate headers, nonempty DELETE bodies and malformed JSON
+        (including trailing JSON values) return 400. The complete body
+        counts toward the 4 MiB limit. JWT scopes still apply. Signatures do not
+        add expiry or replay protection; existing idempotency rules apply.
       operationId: v3SaveTransactionMetadata
       x-speakeasy-name-override: SaveTransactionMetadata
       tags:
@@ -1257,6 +1274,9 @@ paths:
         - $ref: '#/components/parameters/LedgerName'
         - $ref: '#/components/parameters/TransactionId'
         - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/HTTPContentDigest'
+        - $ref: '#/components/parameters/HTTPSignatureInput'
+        - $ref: '#/components/parameters/HTTPSignature'
       requestBody:
         required: true
         content:
@@ -1270,9 +1290,6 @@ paths:
                 reason: correction
                 source: support
                 priority: 1
-          application/vnd.formance.signed-request+json:
-            schema:
-              $ref: '#/components/schemas/SignedSaveTransactionMetadataRequest'
       responses:
         '204':
           description: Transaction metadata saved successfully
@@ -1340,13 +1357,20 @@ paths:
       summary: Delete transaction metadata
       description: |
         Deletes a metadata key for a specific transaction in the ledger. Requires `ledger:WriteMetadata` scope (included in the default `ledger:write` mapping).
-        Signed requests use `application/vnd.formance.signed-request+json` with
-        `request` and `signedBatch`; the signed protobuf batch must equal the
-        route/body/Idempotency-Key-derived batch in full. Signature enforcement
-        returns 401 `UNAUTHENTICATED` when required but absent and 403
-        `PERMISSION_DENIED` for invalid, unknown/revoked-key or mismatched
-        signatures. Malformed signed envelopes return 400. The complete
-        wrapper counts toward the 4 MiB body limit. JWT scopes still apply.
+        Signed requests keep the ordinary JSON body and send RFC 9421
+        `Signature-Input` and `Signature` headers with label `sig1`, `keyid` and
+        `alg="ed25519"`. Required covered components are `@method`, `@authority`,
+        `@path`, `@query`, `content-type`, `content-digest`, `idempotency-key`.
+        Send exactly one of each covered header; `Content-Type` must be
+        `application/json` and `Idempotency-Key` must be present even when empty.
+        `Content-Digest` uses RFC 9530 `sha-256=:BASE64:` over the exact body bytes.
+        Metadata DELETE must have an empty body, whose digest is still required.
+        Signature enforcement returns 401 `UNAUTHENTICATED` when required but
+        absent and 403 `PERMISSION_DENIED` for invalid or unknown/revoked-key
+        signatures. Missing or duplicate headers, nonempty DELETE bodies and malformed JSON
+        (including trailing JSON values) return 400. The complete body
+        counts toward the 4 MiB limit. JWT scopes still apply. Signatures do not
+        add expiry or replay protection; existing idempotency rules apply.
       operationId: v3DeleteTransactionMetadata
       x-speakeasy-name-override: DeleteTransactionMetadata
       tags:
@@ -1359,13 +1383,9 @@ paths:
         - $ref: '#/components/parameters/TransactionId'
         - $ref: '#/components/parameters/MetadataKey'
         - $ref: '#/components/parameters/IdempotencyKey'
-      requestBody:
-        required: false
-        description: Required when selecting the signed media type; request must be null.
-        content:
-          application/vnd.formance.signed-request+json:
-            schema:
-              $ref: '#/components/schemas/SignedDeleteTransactionMetadataRequest'
+        - $ref: '#/components/parameters/HTTPContentDigest'
+        - $ref: '#/components/parameters/HTTPSignatureInput'
+        - $ref: '#/components/parameters/HTTPSignature'
       responses:
         '204':
           description: Transaction metadata deleted successfully
@@ -1400,13 +1420,20 @@ paths:
         or a non-object `metadata`) return 400 before applying the revert. A JSON
         `null` option uses its default. The complete body, including trailing
         whitespace, counts towards the 4 MiB limit; exceeding it returns 413.
-        Signed requests use `application/vnd.formance.signed-request+json` with
-        `request` and `signedBatch`; the signed protobuf batch must equal the
-        route/body/Idempotency-Key-derived batch in full. Signature enforcement
-        returns 401 `UNAUTHENTICATED` when required but absent and 403
-        `PERMISSION_DENIED` for invalid, unknown/revoked-key or mismatched
-        signatures. Malformed signed envelopes return 400. The complete
-        wrapper counts toward the 4 MiB body limit. JWT scopes still apply.
+        Signed requests keep the ordinary JSON body and send RFC 9421
+        `Signature-Input` and `Signature` headers with label `sig1`, `keyid` and
+        `alg="ed25519"`. Required covered components are `@method`, `@authority`,
+        `@path`, `@query`, `content-type`, `content-digest`, `idempotency-key`.
+        Send exactly one of each covered header; `Content-Type` must be
+        `application/json` and `Idempotency-Key` must be present even when empty.
+        `Content-Digest` uses RFC 9530 `sha-256=:BASE64:` over the exact body bytes.
+        Metadata DELETE must have an empty body, whose digest is still required.
+        Signature enforcement returns 401 `UNAUTHENTICATED` when required but
+        absent and 403 `PERMISSION_DENIED` for invalid or unknown/revoked-key
+        signatures. Missing or duplicate headers, nonempty DELETE bodies and malformed JSON
+        (including trailing JSON values) return 400. The complete body
+        counts toward the 4 MiB limit. JWT scopes still apply. Signatures do not
+        add expiry or replay protection; existing idempotency rules apply.
       operationId: v3RevertTransaction
       x-speakeasy-name-override: RevertTransaction
       tags:
@@ -1419,15 +1446,15 @@ paths:
         - $ref: '#/components/parameters/LedgerName'
         - $ref: '#/components/parameters/TransactionId'
         - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/HTTPContentDigest'
+        - $ref: '#/components/parameters/HTTPSignatureInput'
+        - $ref: '#/components/parameters/HTTPSignature'
       requestBody:
         required: false
         content:
           application/json:
             schema:
               $ref: '#/components/schemas/RevertTransactionRequestBody'
-          application/vnd.formance.signed-request+json:
-            schema:
-              $ref: '#/components/schemas/SignedRevertTransactionRequest'
       responses:
         '201':
           description: Transaction reverted successfully
@@ -2122,7 +2149,9 @@ paths:
         1. **Request-level failures** (before per-element processing):
            malformed body → `400`, missing/insufficient scope → `401` or
            `403`, too many elements → `413`. Exceeding the byte limit while
-           decoding the body currently returns `400`.
+           decoding an unsigned body currently returns `400 VALIDATION`.
+           Signed capture instead returns `413 BODY_TOO_LARGE`, including
+           oversized trailing whitespace.
            Returned unconditionally, `continueOnFailure` does not apply.
         2. **Infrastructure failures during processing** (transport
            timeout, cache-horizon exceeded, storage error): the overall
@@ -2152,13 +2181,20 @@ paths:
            - Aborted elements (`context.Canceled` from the sequential
              runner after a prior failure): contribute nothing — the
              originating error drives the rollup.
-        Signed requests use `application/vnd.formance.signed-request+json` with
-        `request` and `signedBatch`; the signed protobuf batch must equal the
-        route/body/Idempotency-Key-derived batch in full. Signature enforcement
-        returns 401 `UNAUTHENTICATED` when required but absent and 403
-        `PERMISSION_DENIED` for invalid, unknown/revoked-key or mismatched
-        signatures. Malformed signed envelopes return 400. The complete
-        wrapper counts toward the 4 MiB body limit. JWT scopes still apply.
+        Signed requests keep the ordinary JSON body and send RFC 9421
+        `Signature-Input` and `Signature` headers with label `sig1`, `keyid` and
+        `alg="ed25519"`. Required covered components are `@method`, `@authority`,
+        `@path`, `@query`, `content-type`, `content-digest`, `idempotency-key`.
+        Send exactly one of each covered header; `Content-Type` must be
+        `application/json` and `Idempotency-Key` must be present even when empty.
+        `Content-Digest` uses RFC 9530 `sha-256=:BASE64:` over the exact body bytes.
+        Metadata DELETE must have an empty body, whose digest is still required.
+        Signature enforcement returns 401 `UNAUTHENTICATED` when required but
+        absent and 403 `PERMISSION_DENIED` for invalid or unknown/revoked-key
+        signatures. Missing or duplicate headers, nonempty DELETE bodies and malformed JSON
+        (including trailing JSON values) return 400. The complete body
+        counts toward the 4 MiB limit. JWT scopes still apply. Signatures do not
+        add expiry or replay protection; existing idempotency rules apply.
         Signing requires a nonempty array and `atomic=true` (otherwise 400).
         The header key applies; per-element `ik` is ignored. Authentication
         and permission failures remain 401/403 even with continueOnFailure;
@@ -2174,6 +2210,9 @@ paths:
         - $ref: '#/components/parameters/BigIntAsString'
         - $ref: '#/components/parameters/LedgerName'
         - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/HTTPContentDigest'
+        - $ref: '#/components/parameters/HTTPSignatureInput'
+        - $ref: '#/components/parameters/HTTPSignature'
         - name: continueOnFailure
           in: query
           schema:
@@ -2201,9 +2240,6 @@ paths:
               type: array
               items:
                 $ref: '#/components/schemas/BulkElement'
-          application/vnd.formance.signed-request+json:
-            schema:
-              $ref: '#/components/schemas/SignedBulkRequest'
       responses:
         '200':
           description: Bulk operations completed
@@ -3631,6 +3667,31 @@ components:
         type: string
       description: Account type name, URL-encoded as one path segment. Decoded exactly once.
 
+    HTTPContentDigest:
+      name: Content-Digest
+      in: header
+      required: false
+      description: Required for signed requests, including empty bodies. RFC 9530 SHA-256 digest over exact transmitted body bytes.
+      schema:
+        type: string
+      example: 'sha-256=:47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU=:'
+    HTTPSignatureInput:
+      name: Signature-Input
+      in: header
+      required: false
+      description: RFC 9421 signature parameters. Required with Signature; only label sig1 and the documented covered components are accepted.
+      schema:
+        type: string
+      example: 'sig1=("@method" "@authority" "@path" "@query" "content-type" "content-digest" "idempotency-key");keyid="ops";alg="ed25519"'
+    HTTPSignature:
+      name: Signature
+      in: header
+      required: false
+      description: RFC 9421 Ed25519 signature byte sequence for label sig1. Required with Signature-Input.
+      schema:
+        type: string
+      example: 'sig1=:BASE64:'
+
     IdempotencyKey:
       name: Idempotency-Key
       in: header
@@ -3776,7 +3837,7 @@ components:
 
   responses:
     UnsupportedMediaType:
-      description: The signed-request media type is unsupported on this route.
+      description: HTTP message signature headers are unsupported on this route.
       content:
         application/json:
           schema:
@@ -4487,103 +4548,6 @@ components:
           type: string
           format: date-time
           description: When the error occurred
-
-    SignedApplyBatch:
-      type: object
-      required:
-        - keyId
-        - signature
-        - payload
-      additionalProperties: false
-      description: |
-        Client-generated Ed25519 proof over the exact serialized protobuf
-        ApplyBatch in payload. Bytes use standard base64. The server compares
-        the complete decoded batch with the HTTP-derived batch and forwards
-        the original proof unchanged for admission verification. No canonical
-        protobuf byte encoding is required. This proof does not sign JWT claims,
-        ignored JSON fields, presentation options or the HTTP response.
-      properties:
-        keyId:
-          type: string
-          minLength: 1
-          description: Registered signing key ID.
-        signature:
-          type: string
-          format: byte
-          description: Standard-base64 Ed25519 signature (64 decoded bytes).
-        payload:
-          type: string
-          format: byte
-          description: Standard-base64 exact serialized ApplyBatch bytes signed by the client.
-
-    SignedCreateTransactionRequest:
-      type: object
-      additionalProperties: false
-      required:
-        - request
-        - signedBatch
-      properties:
-        request:
-          $ref: '#/components/schemas/CreateTransactionRequest'
-        signedBatch:
-          $ref: '#/components/schemas/SignedApplyBatch'
-
-    SignedRevertTransactionRequest:
-      type: object
-      additionalProperties: false
-      required:
-        - request
-        - signedBatch
-      properties:
-        request:
-          $ref: '#/components/schemas/RevertTransactionRequestBody'
-        signedBatch:
-          $ref: '#/components/schemas/SignedApplyBatch'
-
-    SignedSaveTransactionMetadataRequest:
-      type: object
-      additionalProperties: false
-      required:
-        - request
-        - signedBatch
-      properties:
-        request:
-          type: object
-          additionalProperties:
-            $ref: '#/components/schemas/MetadataValue'
-        signedBatch:
-          $ref: '#/components/schemas/SignedApplyBatch'
-
-    SignedDeleteTransactionMetadataRequest:
-      type: object
-      additionalProperties: false
-      required:
-        - request
-        - signedBatch
-      properties:
-        request:
-          type: object
-          nullable: true
-          enum: [null]
-          additionalProperties: false
-          description: Explicit null; the command is entirely determined by the route and header.
-        signedBatch:
-          $ref: '#/components/schemas/SignedApplyBatch'
-
-    SignedBulkRequest:
-      type: object
-      additionalProperties: false
-      required:
-        - request
-        - signedBatch
-      properties:
-        request:
-          type: array
-          minItems: 1
-          items:
-            $ref: '#/components/schemas/BulkElement'
-        signedBatch:
-          $ref: '#/components/schemas/SignedApplyBatch'
 
     CreateTransactionRequest:
       type: object
@@ -7182,6 +7146,42 @@ components:
           type: object
           additionalProperties: true
           description: Client signature over the ApplyBatch (protobuf JSON); absent for unsigned batches
+        httpSignature:
+          $ref: '#/components/schemas/SignedHTTPRequest'
+
+    SignedHTTPRequest:
+      type: object
+      description: |
+        Original RFC 9421 HTTP Message Signature evidence retained in the audit
+        entry. Every field is hash-bound. Empty proto3 strings/bytes may be
+        omitted and have their usual empty defaults when verifying the proof.
+      properties:
+        method:
+          type: string
+        requestTarget:
+          type: string
+          description: Origin-form escaped path and optional query, exactly as received
+        authority:
+          type: string
+          description: Original HTTP authority, before signature-base normalization
+        contentType:
+          type: string
+        contentDigest:
+          type: string
+        idempotencyKey:
+          type: string
+        signatureInput:
+          type: string
+        signature:
+          type: string
+        body:
+          type: string
+          format: byte
+          description: Standard-base64 original body bytes, including whitespace
+        scheme:
+          type: string
+          enum: [http, https]
+          description: Scheme used to omit the authority's default port
 
     AuditItem:
       type: object

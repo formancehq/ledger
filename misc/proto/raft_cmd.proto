@@ -424,8 +424,7 @@ message Proposal {
   // matching the atomic unit. Empty for system/technical proposals.
   common.Idempotency idempotency = 7;
   // signature is the client's signature over the whole ApplyBatch (composition
-  // + ordering). The FSM propagates it onto every Log this proposal commits, so
-  // each log records the batch-level authenticity/non-repudiation proof.
+  // + ordering). The FSM preserves the proof on the proposal's AuditEntry.
   signature.SignedApplyBatch signature = 8;
   // technical_updates carries every FSM-level update that bypasses the
   // Order/Log channel. Each entry wraps a single payload (sink update,
@@ -433,6 +432,9 @@ message Proposal {
   // coverage_bits so the FSM applies per-update isolation, exactly like
   // Order.coverage_bits.
   repeated TechnicalUpdate technical_updates = 9;
+  // http_signature is mutually exclusive with signature. New HTTP proof entries
+  // require the rc.4 stopped-upgrade boundary before any voter applies them.
+  signature.SignedHTTPRequest http_signature = 10;
 }
 
 // TechnicalUpdate is the per-update envelope that carries the coverage

@@ -448,33 +448,61 @@ snapshot guarantee.
 
 ## HTTP signed transaction boundary
 
-Trace the five signed operations through their actual route registrations,
-wrapper middleware, ordinary HTTP conversion and backend Apply. The media type
-is `application/vnd.formance.signed-request+json`; required fields are `request`
-and `signedBatch`. DELETE transaction metadata uses request:null. Unsupported
-business routes return 415. Compare the complete decoded protobuf batch with the
-URL/body/header-derived batch, including order/count, oneofs, typed values,
-skippable reasons and batch identity, before forwarding the original bytes.
-Noncanonical but equivalent protobuf encodings must not require reserialization.
-Signed bulk is nonempty and atomic-only; its header key wins over ignored `ik`.
+Audit entry JSON must expose the retained `httpSignature` evidence with
+camelCase protobuf fields and base64 body bytes. The hand-written audit codec
+must propagate serialization errors instead of dropping this chain-bound field.
 
-Require distinct routed controls for malformed envelopes 400, mismatch 403,
-missing mandatory signatures 401, invalid/unknown/revoked keys 403 and preserved
-legacy optional unsigned JSON. Check the 4 MiB limit over the entire wrapper,
-including base64 and duplicate command data. Processing 401/403 must survive
-continueOnFailure while retaining every element result. Dedicated forwarded
-signing ErrorInfo uses domain `ledger.signing` and reason/status pairs
-MISSING_SIGNATURE/Unauthenticated or INVALID_SIGNATURE and
-UNKNOWN_KEY_ID/PermissionDenied; preserve original gRPC status/message. Only
-validated pairs gain classifiable 401/403 handling, and the public codes remain
-UNAUTHENTICATED/PERMISSION_DENIED. Bare/foreign auth errors retain 500. Probe wrong
-domains, reasons and statuses separately from a real signature rejection.
+Trace all five supporting operations through registered middleware, ordinary
+HTTP conversion, shared `servicepb.DecodeHTTPRequest`, backend Apply and admission.
+The public request is ordinary `application/json` with exactly one each of
+`Content-Type`, `Content-Digest`, `Idempotency-Key`, `Signature-Input`, and
+`Signature`; the idempotency header is required even when empty. No client
+protobuf construction or duplicate JSON/protobuf wrapper is required.
 
-This domain owns conversion, exact-byte forwarding, media/schema/error
-presentation and wrapper budget. The authentication domain owns unchanged JWT
-scopes and caller attribution; admission owns Ed25519 verification and key
-lifecycle, and persistence/replay domains retain their existing boundaries.
-Request signing adds no HTTP response authenticity. See
+The restricted RFC 9421 `sig1` profile covers `@method`, `@authority`, `@path`,
+`@query`, `content-type`, `content-digest`, and `idempotency-key` exactly once,
+in any order. Parameters are only `keyid` and `alg="ed25519"`, once each in
+either order; RFC 9530 digest is only `sha-256`. Additional signatures,
+components, algorithms, `created`, `expires`, and `nonce` reject. Preserve raw
+body bytes, escaped path identity, `?` for an absent query and lowercased
+authority with default ports normalized using the captured scheme. URL/local TLS
+state determines scheme; forwarded-host/proto headers do not establish trust.
+
+Compare the full handler-derived batch with the pure-decoder batch, including
+order/count, oneofs, typed values, targets, skip reasons and header identity.
+Admission must authenticate HTTP evidence before deriving executable commands;
+public gRPC `http_signed` is rejected before peeking unless the configured
+cluster secret authenticates a forwarding peer. Auth-disabled public operation
+does not waive this proof-ingress requirement, and peer proof authentication
+does not grant caller-attribution trust or change the original public scopes.
+Peeking remains untrusted scope routing. Exercise empty/null revert defaults,
+zero-byte metadata DELETE, complete single JSON values, metadata numbers beyond
+2^53, and escaped/double-escaped keys. Signed bulk is nonempty atomic-only and
+the header key supersedes ignored per-element `ik`.
+
+Require independent known-base RFC fixtures rather than only signer/verifier
+round trips. Pair valid component/parameter reordering with duplicate/unknown
+rejections, absent/duplicate headers with explicit empty-idempotency controls,
+and default/nondefault port cases with actual observed scheme. Capture exact
+forwarded proof bytes. Test the 4 MiB body budget and separate 4 MiB + 16 KiB
+proof budget, including direct gRPC input. Unsigned paths retain their behavior.
+
+Distinguish header/body-shape failures 400, semantic mismatch/invalid proofs 403,
+missing mandatory proof 401 and unsupported routes 415. Processing 401/403 must
+survive `continueOnFailure` while retaining every result. Forwarded
+`ledger.signing` ErrorInfo pairs are MISSING_SIGNATURE/Unauthenticated and
+INVALID_SIGNATURE or UNKNOWN_KEY_ID/PermissionDenied; preserve original status
+and message. Only validated pairs gain classifiable handling; public codes stay
+UNAUTHENTICATED/PERMISSION_DENIED and bare/foreign auth failures retain 500.
+
+This domain owns profile/header decoding, exact-byte forwarding, shared-decoder
+conversion, schema/error presentation and request/proof boundary budgets.
+Authentication owns JWT scopes and attribution. Admission owns signature
+verification/key lifecycle; persistence owns batch-level AuditEntry proof hash
+binding, backup/restore retention and the mandatory stopped upgrade to
+`v3.0.0-rc.4`. Historical proof formats remain valid and no downgrade is supported
+after the first new proof commits. Replay identity has its existing owner; this
+profile adds no freshness window or HTTP response authenticity. See
 [the HTTP contract](../architecture/subsystems/api/http-api.md#signed-transaction-requests)
-and [client recipe](../../ops/signing.md#http-request-signing). No audit execution
-is authorized by this contract update.
+and [client recipe](../../ops/signing.md#http-request-signing). Updating this
+contract does not authorize an audit run.

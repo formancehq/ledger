@@ -149,8 +149,30 @@ func BuildHashedHeaderPayload(entry *auditpb.AuditEntry) ([]byte, error) {
 	buf = appendLenString(buf, entry.GetIdempotency().GetKey())
 	buf = appendU64(buf, entry.GetIdempotency().GetExpiresAt())
 	buf = appendLenBytes(buf, buildSignaturePayload(entry.GetSignature()))
+	// This extension is absent, including its tag and length, on historical
+	// entries. Never append an empty placeholder: that would change every
+	// released hash. rc.4's stopped upgrade prevents old voters from hashing a
+	// new HTTP proof entry without this contribution.
+	if proof := entry.GetHttpSignature(); proof != nil {
+		buf = appendLenString(buf, "ledger:http-signature:v1")
+		buf = appendLenBytes(buf, buildHTTPSignaturePayload(proof))
+	}
 
 	return buf, nil
+}
+
+// buildHTTPSignaturePayload has a fixed, language-independent field order.
+// Bind unknown bytes as well so a newer proof cannot silently lose evidence
+// when read by this version. The original header strings and body remain exact.
+func buildHTTPSignaturePayload(proof *signaturepb.SignedHTTPRequest) []byte {
+	buf := make([]byte, 0, proof.SizeVT()+40)
+	for _, field := range []string{proof.GetMethod(), proof.GetRequestTarget(), proof.GetAuthority(), proof.GetContentType(), proof.GetContentDigest(), proof.GetIdempotencyKey(), proof.GetSignatureInput(), proof.GetSignature()} {
+		buf = appendLenString(buf, field)
+	}
+	buf = appendLenBytes(buf, proof.GetBody())
+	buf = appendLenString(buf, proof.GetScheme())
+
+	return appendLenBytes(buf, proof.ProtoReflect().GetUnknown())
 }
 
 // buildSignaturePayload encodes a SignedApplyBatch as key_id || signature ||

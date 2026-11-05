@@ -22,7 +22,7 @@ import (
 // Timestamps reuse commonpb.Timestamp.MarshalJSON (RFC3339), keeping audit
 // timestamps identical to Log/Transaction timestamps on the wire. Sub-messages
 // that have no hand-written Go marshaler (CallerSnapshot, Idempotency,
-// SignedApplyBatch) and the ErrorReason enum are rendered via protojson, which
+// SignedApplyBatch, SignedHTTPRequest) and the ErrorReason enum are rendered via protojson, which
 // also emits camelCase field names and the enum's string form.
 
 // protoFieldJSON marshals a proto.Message field to json.RawValue using protojson,
@@ -34,7 +34,7 @@ import (
 // field is simply absent.
 //
 // A protojson failure is PROPAGATED, never swallowed. These fields
-// (callerSnapshot, idempotency, signature) are chain-bound audit evidence; a
+// (callerSnapshot, idempotency, signature, httpSignature) are chain-bound audit evidence; a
 // serialization defect must surface as a failed response, not a valid-looking
 // record with the field silently dropped (invariant #7: never silently skip a
 // "should not happen" branch).
@@ -79,6 +79,7 @@ func (x *AuditEntry) MarshalJSON() ([]byte, error) {
 		CallerSnapshot json.RawValue       `json:"callerSnapshot,omitempty"`
 		Idempotency    json.RawValue       `json:"idempotency,omitempty"`
 		Signature      json.RawValue       `json:"signature,omitempty"`
+		HttpSignature  json.RawValue       `json:"httpSignature,omitempty"`
 	}
 
 	aux := Aux{
@@ -105,6 +106,9 @@ func (x *AuditEntry) MarshalJSON() ([]byte, error) {
 
 	if aux.Signature, err = protoFieldJSON(x.GetSignature()); err != nil {
 		return nil, fmt.Errorf("audit entry %d: marshaling signature: %w", x.GetSequence(), err)
+	}
+	if aux.HttpSignature, err = protoFieldJSON(x.GetHttpSignature()); err != nil {
+		return nil, fmt.Errorf("audit entry %d: marshaling httpSignature: %w", x.GetSequence(), err)
 	}
 
 	if h := x.GetHash(); len(h) > 0 {

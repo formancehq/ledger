@@ -48,6 +48,8 @@ func PeekBatch(ar *ApplyRequest) (*ApplyBatch, error) {
 		}
 
 		return batch, nil
+	case *ApplyRequest_HttpSigned:
+		return DecodeHTTPRequest(v.HttpSigned)
 	default:
 		return nil, errors.New("apply request has no variant")
 	}

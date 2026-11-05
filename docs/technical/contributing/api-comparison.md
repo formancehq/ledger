@@ -46,36 +46,47 @@ matching signed negative and unsigned nonnegative metadata values. See
 
 ## HTTP transaction request signatures
 
-V3 adds an opt-in `application/vnd.formance.signed-request+json` body for the
-existing transaction create/revert/metadata POST, transaction metadata DELETE,
-and nonempty `atomic=true` bulk operations. The wrapper carries the ordinary
-REST body in `request` (null for DELETE) and an Ed25519 `signedBatch` over the
-complete protobuf batch derived from the URL, body and `Idempotency-Key`. The
-complete decoded protobuf values must match before the original signed bytes
-reach admission. Atomic bulk preserves its header key, ignored per-entry `ik`,
-request order and skippable reasons. Signed non-atomic bulk returns 400.
+V3 adds RFC 9421 HTTP Message Signatures to existing transaction create, revert,
+transaction metadata save/delete and nonempty `atomic=true` bulk. Clients send
+ordinary JSON once with `Content-Type: application/json`, RFC 9530 SHA-256
+`Content-Digest`, `Signature-Input`, `Signature`, and an explicitly present
+`Idempotency-Key`, including when empty. No protobuf construction or JSON
+canonicalization is required. Metadata DELETE has a zero-byte body; revert
+accepts zero bytes or null for defaults.
 
-V2's transaction and bulk methods/routes, ordinary JSON field names, envelopes,
-defaults and header identity remain the comparison baseline. Their ordinary v3
-JSON counterparts keep those established contracts; the new media type is an
-intentional additive divergence because v2 provides no equivalent opaque
-`ApplyBatch` signature proof. No route is renamed, so the endpoint map is
-unchanged. Response envelopes and bigint negotiation are unchanged. Request
-signing does not provide HTTP response authenticity.
+The single `sig1` profile covers `@method`, `@authority`, `@path`, `@query`,
+`content-type`, `content-digest`, and `idempotency-key`, exactly once each in any
+order, with exactly `keyid` and `alg="ed25519"` parameters. It rejects additional
+parameters/signatures/digest algorithms and introduces no freshness window.
+The adapter compares ordinary handler semantics against the shared pure HTTP
+decoder. Admission authenticates the retained HTTP bytes before using that
+decoder to derive commands; no separate client-supplied batch can override them.
+Atomic bulk preserves header identity, ignored per-entry `ik`, request order,
+skippable reasons and per-element scopes. Signed non-atomic/empty bulk is 400.
 
-Malformed signed wrappers return 400; HTTP-to-signed-batch mismatch and invalid,
-unknown or revoked signing keys return 403 `PERMISSION_DENIED`. Mandatory missing
-signatures return 401 `UNAUTHENTICATED`. Unsupported routes return 415 for this
-media type. Bulk 401/403 cannot be suppressed by `continueOnFailure`, and all
-processing outcomes remain available. JWT authentication/scopes remain separate.
-Forwarded signing failures use dedicated validated `ledger.signing` ErrorInfo
-details; bare/foreign gRPC auth failures retain the existing 500 contract.
+V2 remains the baseline for routes/methods, ordinary JSON field names, response
+envelopes, defaults, validation and header identity. V2 has no equivalent client
+HTTP signature proof; its log/idempotency hashes do not authenticate a signing
+key. The additive signature headers preserve existing routes, so the endpoint
+map is unchanged. Existing bigint negotiation and response shapes are unchanged;
+this feature does not authenticate HTTP responses. JWT/scopes remain separate.
 
-The 4 MiB body budget includes the whole wrapper and base64, reducing usable
-signed capacity. Upgrade receiving HTTP nodes before clients opt in. No protobuf,
-protocol revision (40), proposal or persisted format changes, or migration are
-needed. Existing retained-key replay, unkeyed re-execution and expired-key rules
-are unchanged. See [HTTP request signing](../../ops/signing.md#http-request-signing).
+Missing/duplicate required signing headers and malformed bodies return 400;
+invalid signature/profile/digest, unknown/revoked keys and adapter semantic
+mismatch return 403 `PERMISSION_DENIED`. Absent mandatory signatures return 401
+`UNAUTHENTICATED`; signature headers on unsupported routes return 415. Bulk
+`continueOnFailure` cannot suppress 401/403 and preserves processing outcomes.
+Validated `ledger.signing` forwarding details preserve local classification;
+bare/foreign gRPC auth errors retain the existing 500 contract.
+
+The body budget remains 4 MiB; retained proof is capped at 4 MiB + 16 KiB.
+`AuditEntry.http_signature` retains the original proof and changes committed
+encoding, requiring the mandatory stopped upgrade to `v3.0.0-rc.4`. Existing
+keys/data/audit history remain valid without rewriting historical hashes; a
+version lacking HTTP proof support cannot be used after the first new proof
+commits. Protocol revision remains 40 and existing protobuf signing is unchanged.
+Retained-key replay, empty-key re-execution and expired-key behavior remain
+unchanged. See [HTTP request signing](../../ops/signing.md#http-request-signing).
 
 ## Transaction metadata address validation
 
@@ -271,7 +282,7 @@ JWT/anonymous policy; no new endpoint or authorization requirement is introduced
 | **Error Handling** |
 | Structured gRPC error codes | ✅ | ✅ | BusinessError with ErrorInfo details |
 | **Security** |
-| Request signing (Ed25519) | ✅ | ❌ | Envelope pattern with signed_payload |
+| Request signing (Ed25519) | ✅ | ❌ | Existing signed protobuf batches over gRPC; HTTP Message Signatures over ordinary transaction JSON |
 | Dynamic key management | ✅ | ❌ | Register/revoke/list keys via gRPC API (bootstrap: first key unsigned) |
 | Require signatures | ✅ | ❌ | Optional enforcement via `signing require` API call |
 | **Maintenance** |

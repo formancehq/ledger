@@ -20,6 +20,25 @@ message SignedApplyBatch {
   bytes payload = 3;    // Exact serialized ApplyBatch bytes signed by the client
 }
 
+// SignedHTTPRequest preserves the exact HTTP evidence authenticated with RFC
+// 9421 HTTP Message Signatures and RFC 9530 Content-Digest. Admission verifies
+// the signature before deriving its ApplyBatch from the body and target. HTTP
+// clients never construct a protobuf batch. Original headers and body bytes
+// remain available for independent audit verification.
+message SignedHTTPRequest {
+  string method = 1;
+  string request_target = 2; // Origin-form escaped path and optional query.
+  string authority = 3;
+  string content_type = 4;
+  string content_digest = 5;
+  string idempotency_key = 6;
+  string signature_input = 7;
+  string signature = 8;
+  bytes body = 9;
+  // Scheme used to normalize the authority's default port under RFC 9421.
+  string scheme = 10;
+}
+
 // SignedLog is the opaque envelope for a server-signed response Log.
 // The server clears any nested SignedLog field on a
 // candidate Log, serializes it, signs the bytes, and ships

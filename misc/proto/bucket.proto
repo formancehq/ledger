@@ -259,6 +259,10 @@ message ApplyRequest {
   oneof variant {
     ApplyBatch unsigned = 1;
     signature.SignedApplyBatch signed = 2;
+    // Forwarding-only: HTTP clients sign ordinary JSON with headers. Service
+    // gRPC accepts this proof only from a matching cluster-secret peer that
+    // attests the original HTTP ingress. Admission derives the batch.
+    signature.SignedHTTPRequest http_signed = 5;
   }
 
   // forwarded_caller_snapshot carries the admission-time caller snapshot

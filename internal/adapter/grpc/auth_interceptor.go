@@ -76,6 +76,12 @@ func authUnaryInterceptor(cfg internalauth.AuthConfig) ggrpc.UnaryServerIntercep
 		if err != nil {
 			return nil, err
 		}
+		if apply, ok := req.(*servicepb.ApplyRequest); ok && apply.GetHttpSigned() != nil {
+			ctx, err = internalauth.RequireClusterPeer(ctx, cfg)
+			if err != nil {
+				return nil, err
+			}
+		}
 		ctx, err = authorizeUnaryRPC(ctx, req, policy)
 		if err != nil {
 			return nil, err
@@ -167,10 +173,13 @@ func authorizeDynamicUnaryRPC(ctx context.Context, req any, resolver commonpb.Dy
 		if !ok {
 			return ctx, unexpectedAuthRequest(resolver, req)
 		}
+		if applyReq.GetHttpSigned() != nil && !internalauth.IsHTTPProofForwarder(ctx) {
+			return ctx, status.Error(codes.PermissionDenied, "HTTP signature proof requires authenticated cluster-peer forwarding")
+		}
 
 		batch, err := servicepb.PeekBatch(applyReq)
 		if err != nil {
-			if applyReq.GetSigned() != nil {
+			if applyReq.GetSigned() != nil || applyReq.GetHttpSigned() != nil {
 				return ctx, nil
 			}
 

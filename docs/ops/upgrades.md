@@ -28,9 +28,10 @@ volume templates, the operator completes the RC rollout before recreating the
 StatefulSet for the volume change.
 Old and new voters must communicate and apply each committed entry identically
 while they coexist. The embedded operator can require a complete stop at a
-listed release boundary, but no boundary is active for `v3.0.0-rc.3`:
-`rc.2` to `rc.3` remains a rolling upgrade. `rc.2` already includes the drain
-barrier needed by a future stopped upgrade. RC adjacency remains mandatory.
+listed release boundary. `v3.0.0-rc.4` is a mandatory stopped boundary for
+HTTP signature proofs; `rc.3` to `rc.4` must stop every old voter before any
+target voter starts. `rc.2` to `rc.3` remains a rolling upgrade. `rc.2` already
+includes the required drain barrier. RC adjacency remains mandatory.
 The `rc.1` to `rc.2` transition uses the separately validated maintenance-based
 procedure below.
 When the running version precedes a mandatory boundary, pin the target to a
@@ -65,15 +66,14 @@ release notes. Delay the release if the target cannot read or migrate the source
 state.
 
 The upgrade classes below describe existing procedures. An explicitly listed
-operator boundary selects a stopped restart for the affected RC; no current
-boundary is listed, so `rc.2` to `rc.3` uses the rolling class. Rebuild or
-restore applies only to the cases
-listed below.
+operator boundary selects a stopped restart for `rc.3` to `rc.4`;
+`rc.2` to `rc.3` uses the rolling class. Rebuild or restore applies only to
+the cases listed below.
 
 | Class | When it applies | Procedure |
 |-------|-----------------|-----------|
 | Rolling | Default between adjacent RCs on the same release line. | Restart followers one at a time, wait for each to catch up, transfer leadership to an upgraded voter, then restart the old leader. |
-| Operator-required stopped restart | An adjacent RC crossing a listed operator boundary; none is active for `rc.3`. | Establish an operator-owned drain and verify its durable barrier on every member; retain the existing PVCs, delete the StatefulSet, wait until it and every old Pod are gone, then recreate it with the target image and the same claims. The cluster is unavailable throughout the stop. |
+| Operator-required stopped restart | An adjacent RC crossing a listed operator boundary, including `rc.3` to `rc.4`. | Establish an operator-owned drain and verify its durable barrier on every member; retain the existing PVCs, delete the StatefulSet, wait until it and every old Pod are gone, then recreate it with the target image and the same claims. The cluster is unavailable throughout the stop. |
 | Coordinated restart | A separate compatibility line that cannot safely mix binaries. | Enable maintenance mode, wait for every voter to apply the maintenance barrier durably, stop every node, replace all binaries, then restart without a mixed-version window. Preserve or migrate the released data. |
 | Migrate or restore | A separate line with a changed persisted or backup format, or development state before the first RC. | Follow a tested migration or restore a backup supported by the target release. A wipe or external rebuild is permitted only for unsupported pre-RC development state. Verify the complete state before serving writes. |
 
@@ -82,6 +82,32 @@ immediately preceding RC binary to the target binary in one cluster, including
 writes, replay, restart, audit verification and non-empty WAL. For a rolling
 release, include leadership transfer. Record source and target builds and the
 results in release validation. If the path fails, fix it before release.
+
+## HTTP message signature proofs in rc.4
+
+HTTP message signatures preserve the exact signed request as audit evidence.
+The new optional proof is stored in committed proposals and audit entries, and
+is included in the audit hash only when present. Historical entries without
+that proof retain their original hash preimage and bytes; no historical audit
+rewrite, data wipe, or projection reconstruction is needed to open rc.3 state.
+Full checkpoints and incremental exports retain the proof with the audit row;
+restoring a non-empty post-checkpoint delta preserves that evidence verbatim.
+
+An old voter ignores the new proof and computes a different hash for a new
+HTTP-signed proposal. Therefore rc.3 and rc.4 voters must never coexist while
+applying these proposals. Upgrade the Operator first, pin Ledger to
+`v3.0.0-rc.4`, and let the stopped-restart procedure below drain the rc.3
+cluster, stop every old Pod, and restart all voters on rc.4 with the retained
+PVCs. Manual deployments must establish the same durable drain barrier and
+complete stop. Keep protocol revision 40; a matching protocol revision does
+not make these audit hashes compatible.
+
+After an HTTP proof is committed, an older binary cannot verify or extend that
+history correctly. Do not downgrade or start an rc.3 member on that state.
+The stopped upgrade preserves the existing business history and audit key;
+release validation must additionally demonstrate the rc.3-to-rc.4 transition
+with non-empty WAL, replay, restart, audit checking and backup restore before
+publishing the release.
 
 ## Operator-required stopped restart
 
@@ -212,7 +238,7 @@ cannot protect an old leader or previously committed proposals.
 For `rc.1` to `rc.2`, use the maintenance-based coordinated procedure below;
 the published `rc.1` binary cannot participate in an operator-owned drain.
 The `rc.2` to `rc.3` upgrade is rolling; the drain-based stopped-upgrade path
-is available for a later release that explicitly lists a boundary.
+applies at the explicitly listed `rc.3` to `rc.4` boundary.
 
 1. With every voter still on the source binary, establish a healthy, consistent
    audit history and take a backup. Existing divergent history is an incident;

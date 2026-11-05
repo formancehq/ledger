@@ -244,3 +244,39 @@ CreatedLedgerLog carries initial metadata so post-checkpoint creation reconstruc
 Does a restore with nonempty checkpoint files and a nonempty post-checkpoint creation delta reproduce typed initial metadata for normal and mirror ledgers, including explicit protobuf null and a schema type mismatch?
 
 See [the creation contract](../architecture/subsystems/api/atomic-ledger-creation.md) for the authorized semantics and regression evidence. Treat HTTP response/forwarding, actual FSM readback, keyed replay, nonempty checkpoint-plus-delta restore, and primary-projection tampering as separate evidence oracles; a helper-only test does not prove every boundary.
+
+## HTTP message signature proof preservation
+
+Classify the HTTP proof as preserved opaque audit history, alongside the raw
+audit row carrying it. The proposal-to-audit handoff must retain the original
+method, request target, authority, content type, digest, idempotency key,
+signature-input and signature strings, body bytes and unknown protobuf bytes.
+Restore must copy the evidence rather than reconstruct it from parsed JSON or
+current routes, keys or policy. There is no new derived projection to rebuild;
+the post-checkpoint audit export itself carries the new proof.
+
+`TestBackup_HTTPMessageSignatureProofRestoreParity` creates a meaningful
+historical unsigned prefix, takes a full checkpoint, and commits a proof-bearing
+proposal afterward. It requires nonempty audit and log exports, downloads the
+actual checkpoint and invokes `ApplyExportsAndRebuild`. Compare the exact
+historical and proof-bearing raw audit rows, original proof and hash, and live
+versus restored business projection. Require clean `CheckStore`, recover the
+FSM and extend the restored chain while retaining the previous proof row.
+This oracle proves lifecycle preservation of opaque evidence; cryptographic
+admission and HTTP-to-command binding require their own tests. A hypothetical
+checker failure belongs to `integrity-verifier-soundness` unless the evidence
+was lost or changed by persistence or restore.
+
+Absent HTTP proof adds no audit-preimage extension and must leave released
+historical hashes and bytes unchanged. A present proof changes the preimage,
+which old voters cannot compute. The
+[rc.4 mandatory stopped boundary](../../ops/upgrades.md#http-message-signature-proofs-in-rc4)
+therefore preserves rc.3 state while stopping every old voter before new voters
+start. No audit rewrite, wipe or external reconstruction is permitted.
+`TestMandatoryStopVersionBoundary` preserves rc.2-to-rc.3 rolling selection;
+`TestHTTPSignatureUpgradeUsesProductionStopBoundary` reaches the production
+rc.3-to-rc.4 stop guard. These fixtures are not mixed-binary release evidence:
+release validation must separately preserve nonempty source WAL and history
+through the stopped transition, restart, audit verification and backup restore.
+Keep orchestration defects with `operator-reconciliation-durability`; inspect
+the handoff here only to establish lifecycle preservation and incompatibility.

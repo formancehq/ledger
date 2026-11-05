@@ -263,6 +263,15 @@ func (m *ApplyRequest_Signed) CloneVT() isApplyRequest_Variant {
 	return r
 }
 
+func (m *ApplyRequest_HttpSigned) CloneVT() isApplyRequest_Variant {
+	if m == nil {
+		return (*ApplyRequest_HttpSigned)(nil)
+	}
+	r := new(ApplyRequest_HttpSigned)
+	r.HttpSigned = m.HttpSigned.CloneVT()
+	return r
+}
+
 func (m *ApplyBatch) CloneVT() *ApplyBatch {
 	if m == nil {
 		return (*ApplyBatch)(nil)
@@ -3407,6 +3416,31 @@ func (this *ApplyRequest_Signed) EqualVT(thatIface isApplyRequest_Variant) bool 
 		}
 		if q == nil {
 			q = &signaturepb.SignedApplyBatch{}
+		}
+		if !p.EqualVT(q) {
+			return false
+		}
+	}
+	return true
+}
+
+func (this *ApplyRequest_HttpSigned) EqualVT(thatIface isApplyRequest_Variant) bool {
+	that, ok := thatIface.(*ApplyRequest_HttpSigned)
+	if !ok {
+		return false
+	}
+	if this == that {
+		return true
+	}
+	if this == nil && that != nil || this != nil && that == nil {
+		return false
+	}
+	if p, q := this.HttpSigned, that.HttpSigned; p != q {
+		if p == nil {
+			p = &signaturepb.SignedHTTPRequest{}
+		}
+		if q == nil {
+			q = &signaturepb.SignedHTTPRequest{}
 		}
 		if !p.EqualVT(q) {
 			return false
@@ -8521,6 +8555,25 @@ func (m *ApplyRequest_Signed) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 		i--
 		dAtA[i] = 0x12
+	}
+	return len(dAtA) - i, nil
+}
+func (m *ApplyRequest_HttpSigned) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *ApplyRequest_HttpSigned) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	if m.HttpSigned != nil {
+		size, err := m.HttpSigned.MarshalToSizedBufferVT(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		i--
+		dAtA[i] = 0x2a
 	}
 	return len(dAtA) - i, nil
 }
@@ -15970,6 +16023,18 @@ func (m *ApplyRequest_Signed) SizeVT() (n int) {
 	}
 	return n
 }
+func (m *ApplyRequest_HttpSigned) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.HttpSigned != nil {
+		l = m.HttpSigned.SizeVT()
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	return n
+}
 func (m *ApplyBatch) SizeVT() (n int) {
 	if m == nil {
 		return 0
@@ -20490,6 +20555,47 @@ func (m *ApplyRequest) UnmarshalVT(dAtA []byte) error {
 				}
 			}
 			m.SkipResponse = bool(v != 0)
+		case 5:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field HttpSigned", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if oneof, ok := m.Variant.(*ApplyRequest_HttpSigned); ok {
+				if err := oneof.HttpSigned.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+					return err
+				}
+			} else {
+				v := &signaturepb.SignedHTTPRequest{}
+				if err := v.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+					return err
+				}
+				m.Variant = &ApplyRequest_HttpSigned{HttpSigned: v}
+			}
+			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
