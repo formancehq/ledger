@@ -4134,7 +4134,7 @@ components:
       properties:
         url:
           type: string
-          description: Comma-separated server URLs, each with nats://, tls://, ws:// or wss://; empty/default hosts and port-only authorities are allowed
+          description: Comma-separated server URLs, each with nats://, tls://, ws:// or wss://; empty/default hosts and port-only authorities (ports 0-65535) are allowed
         topic:
           type: string
           description: NATS topic

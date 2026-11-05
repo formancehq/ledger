@@ -158,7 +158,7 @@ information; unsupported cross-format values and unregistered annotated fields
 are fully masked. New PostgreSQL mirror configurations require `postgres://` or
 `postgresql://`;
 new NATS sinks require an explicit scheme per server; PostgreSQL and NATS retain
-empty/default hosts and port-only authorities. ClickHouse sinks require
+empty/default hosts and port-only authorities with ports in the 0–65535 range. ClickHouse sinks require
 `clickhouse://`, `http://` or `https://`. Invalid forms fail before Raft with safe
 `VALIDATION` errors (HTTP 400 / gRPC InvalidArgument). Existing committed values
 remain usable and legacy keyword DSNs are fully masked on reads. Endpoints and

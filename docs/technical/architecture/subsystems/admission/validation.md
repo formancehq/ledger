@@ -128,7 +128,9 @@ legacy non-URL values preserves confidentiality without that parser.
 | `sink.clickhouse.dsn` | `clickhouse://`, `http://` or `https://` with a hostname; comma-separated hosts remain one URL authority |
 
 The shared lexical parser rejects missing schemes, opaque URLs, invalid escapes
-and invalid ports without returning parser errors that can echo credentials.
+and invalid port syntax without returning parser errors that can echo credentials.
+Port-only authorities additionally require the explicit port to fit in 16 bits
+(0–65535); driver-specific default-port behavior remains unchanged.
 PostgreSQL scheme spelling is lowercase, matching pgx URL recognition. Connector
 options, connectivity and credentials are still interpreted by the worker's
 driver. AWS IAM region and explicit TLS requirements remain in force.

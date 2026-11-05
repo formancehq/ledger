@@ -74,6 +74,8 @@ func TestRedactConnectionFormats(t *testing.T) {
 		{"postgres port only default host", "common.PostgresMirrorSourceConfig.dsn", "postgresql://alice:canary@:5433/db", "postgresql://alice:xxxxx@:5433/db"},
 		{"NATS default host and port", "common.NatsSinkConfig.url", "nats://", "nats://"},
 		{"NATS default host fragment", "common.NatsSinkConfig.url", "nats://#https://control", "nats://#https://control"},
+		{"NATS largest port", "common.NatsSinkConfig.url", "nats://:65535", "nats://:65535"},
+		{"NATS out of range port", "common.NatsSinkConfig.url", "nats://alice:canary@:65536", Marker},
 		{"NATS port only", "common.NatsSinkConfig.url", "nats://:4222", "nats://:4222"},
 		{"NATS port only password", "common.NatsSinkConfig.url", "nats://alice:canary@:4222", "nats://alice:xxxxx@:4222"},
 		{"NATS port only token", "common.NatsSinkConfig.url", "nats://canary@:4222", "nats://xxxxx@:4222"},

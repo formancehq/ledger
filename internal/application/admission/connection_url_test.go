@@ -65,6 +65,11 @@ func TestValidateOrderConnectionURLs(t *testing.T) {
 		{"NATS empty member", "nats://one,", nats, ErrSinkNATSURLInvalid},
 		{"NATS cross format", "http://canary@one", nats, ErrSinkNATSURLInvalid},
 		{"NATS default host and port", "nats://", nats, nil},
+		{"NATS largest port", "nats://:65535", nats, nil},
+		{"NATS port out of range", "nats://:65536", nats, ErrSinkNATSURLInvalid},
+		{"NATS credential port out of range", "nats://alice:canary@:65536", nats, ErrSinkNATSURLInvalid},
+		{"NATS list port out of range", "nats://one:4222,tls://:65536", nats, ErrSinkNATSURLInvalid},
+		{"PostgreSQL port out of range", "postgres://:65536/db", postgres, ErrMirrorPostgresURLInvalid},
 		{"NATS port only", "nats://:4222", nats, nil},
 		{"NATS port only credentials", "nats://alice:canary@:4222", nats, nil},
 		{"NATS malformed", "nats://alice:canary@one:bad", nats, ErrSinkNATSURLInvalid},
@@ -107,6 +112,9 @@ func TestAdmissionRejectsNonURLConnectionsBeforeProposal(t *testing.T) {
 		}}}, ErrMirrorPostgresURLInvalid},
 		{"NATS", &servicepb.Request{Type: &servicepb.Request_AddEventsSink{AddEventsSink: &servicepb.AddEventsSinkRequest{Config: &commonpb.SinkConfig{
 			Name: "events", Type: &commonpb.SinkConfig_Nats{Nats: &commonpb.NatsSinkConfig{Url: "nats://one,canary@two", Topic: "events"}},
+		}}}}, ErrSinkNATSURLInvalid},
+		{"NATS port out of range", &servicepb.Request{Type: &servicepb.Request_AddEventsSink{AddEventsSink: &servicepb.AddEventsSinkRequest{Config: &commonpb.SinkConfig{
+			Name: "events", Type: &commonpb.SinkConfig_Nats{Nats: &commonpb.NatsSinkConfig{Url: "nats://alice:canary@:65536", Topic: "events"}},
 		}}}}, ErrSinkNATSURLInvalid},
 		{"ClickHouse", &servicepb.Request{Type: &servicepb.Request_AddEventsSink{AddEventsSink: &servicepb.AddEventsSinkRequest{Config: &commonpb.SinkConfig{
 			Name: "events", Type: &commonpb.SinkConfig_Clickhouse{Clickhouse: &commonpb.ClickHouseSinkConfig{Dsn: "host=db password=canary"}},

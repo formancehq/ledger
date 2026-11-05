@@ -5,6 +5,7 @@ package connectionurl
 import (
 	"net/url"
 	"slices"
+	"strconv"
 	"strings"
 )
 
@@ -20,6 +21,14 @@ func Parse(raw string, allowEmptyHost bool, schemes ...string) (*url.URL, bool) 
 	parsed, err := url.Parse(raw)
 	if err != nil || parsed.Opaque != "" || (!allowEmptyHost && parsed.Hostname() == "") {
 		return nil, false
+	}
+
+	// net/url validates port syntax but not its numeric range. A port-only
+	// authority still needs a valid TCP port when the driver fills in its host.
+	if parsed.Hostname() == "" && parsed.Port() != "" {
+		if _, err := strconv.ParseUint(parsed.Port(), 10, 16); err != nil {
+			return nil, false
+		}
 	}
 
 	return parsed, true
