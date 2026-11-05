@@ -559,8 +559,10 @@ logs when the caller can read the ledger. With an explicit ledger name, a caller
 with `ledger:WriteLedger` but without `ledger:ReadLedger` can still confirm;
 the progress display is omitted. The server rejects promotion while the head is unknown, the cursor is
 behind it, or synchronization reports an error. `--yes` skips only the prompt;
-it does not bypass the server check. Stop source writes and verify the final
-source head before promoting.
+it does not bypass the server check. Stop source writes, read the final head
+directly from the source, verify the mirror's applied position with the
+checker, and confirm the sync worker is healthy before promoting. The checker
+does not verify the mirror's stored source-head or sync-status observations.
 
 ```bash
 ledgerctl ledgers promote [name] [flags]
