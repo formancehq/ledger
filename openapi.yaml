@@ -5154,9 +5154,8 @@ components:
       type: string
       description: The resource a query template targets
       enum: [transactions, accounts, logs, volumes]
-    V2QueryParams:
+    V2QueryParamsCommon:
       type: object
-      description: Parameters applied when running a query template
       properties:
         pageSize:
           type: integer
@@ -5193,8 +5192,9 @@ components:
             Sort results using a field name and order (ascending or descending).
             Format: `<field>:<order>`, where `<field>` is the field name and `<order>` is either `asc` or `desc`.
           example: id:desc
-      discriminator:
-        propertyName: resource
+    V2QueryParams:
+      type: object
+      description: Parameters applied when running a query template
       oneOf:
         - x-speakeasy-name-override: QueryTemplateAccountParams
           required: [resource]
@@ -5203,6 +5203,16 @@ components:
               type: string
               enum:
                 - accounts
+            pageSize:
+              $ref: "#/components/schemas/V2QueryParamsCommon/properties/pageSize"
+            cursor:
+              $ref: "#/components/schemas/V2QueryParamsCommon/properties/cursor"
+            expand:
+              $ref: "#/components/schemas/V2QueryParamsCommon/properties/expand"
+            pit:
+              $ref: "#/components/schemas/V2QueryParamsCommon/properties/pit"
+            sort:
+              $ref: "#/components/schemas/V2QueryParamsCommon/properties/sort"
         - x-speakeasy-name-override: QueryTemplateTransactionParams
           required: [resource]
           properties:
@@ -5210,6 +5220,16 @@ components:
               type: string
               enum:
                 - transactions
+            pageSize:
+              $ref: "#/components/schemas/V2QueryParamsCommon/properties/pageSize"
+            cursor:
+              $ref: "#/components/schemas/V2QueryParamsCommon/properties/cursor"
+            expand:
+              $ref: "#/components/schemas/V2QueryParamsCommon/properties/expand"
+            pit:
+              $ref: "#/components/schemas/V2QueryParamsCommon/properties/pit"
+            sort:
+              $ref: "#/components/schemas/V2QueryParamsCommon/properties/sort"
         - x-speakeasy-name-override: QueryTemplateLogParams
           required: [resource]
           properties:
@@ -5217,6 +5237,16 @@ components:
               type: string
               enum:
                 - logs
+            pageSize:
+              $ref: "#/components/schemas/V2QueryParamsCommon/properties/pageSize"
+            cursor:
+              $ref: "#/components/schemas/V2QueryParamsCommon/properties/cursor"
+            expand:
+              $ref: "#/components/schemas/V2QueryParamsCommon/properties/expand"
+            pit:
+              $ref: "#/components/schemas/V2QueryParamsCommon/properties/pit"
+            sort:
+              $ref: "#/components/schemas/V2QueryParamsCommon/properties/sort"
         - x-speakeasy-name-override: QueryTemplateVolumeParams
           required: [resource]
           properties:
@@ -5224,6 +5254,40 @@ components:
               type: string
               enum:
                 - volumes
+            insertionDate:
+              type: boolean
+            groupBy:
+              type: integer
+            pageSize:
+              $ref: "#/components/schemas/V2QueryParamsCommon/properties/pageSize"
+            cursor:
+              $ref: "#/components/schemas/V2QueryParamsCommon/properties/cursor"
+            expand:
+              $ref: "#/components/schemas/V2QueryParamsCommon/properties/expand"
+            pit:
+              $ref: "#/components/schemas/V2QueryParamsCommon/properties/pit"
+            sort:
+              $ref: "#/components/schemas/V2QueryParamsCommon/properties/sort"
+        - x-speakeasy-name-override: QueryTemplatePlainParams
+          type: object
+          description: Parameters without a nested resource; the parent query selects the resource. groupBy and insertionDate apply only to volumes.
+          additionalProperties: false
+          properties:
+            pageSize:
+              type: integer
+              format: int64
+            sort:
+              type: string
+            expand:
+              type: array
+              items:
+                type: string
+            startTime:
+              type: string
+              format: date-time
+            endTime:
+              type: string
+              format: date-time
             insertionDate:
               type: boolean
             groupBy:

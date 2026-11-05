@@ -29,6 +29,12 @@ v2QueryParams := components.CreateV2QueryParamsQueryTemplateLogParams(components
 v2QueryParams := components.CreateV2QueryParamsQueryTemplateVolumeParams(components.QueryTemplateVolumeParams{/* values here */})
 ```
 
+### QueryTemplatePlainParams
+
+```go
+v2QueryParams := components.CreateV2QueryParamsQueryTemplatePlainParams(components.QueryTemplatePlainParams{/* values here */})
+```
+
 ## Union Discrimination
 
 Use the `Type` field to determine which variant is active, then access the corresponding field:
@@ -43,5 +49,7 @@ switch v2QueryParams.Type {
 		// v2QueryParams.QueryTemplateLogParams is populated
 	case components.V2QueryParamsTypeQueryTemplateVolumeParams:
 		// v2QueryParams.QueryTemplateVolumeParams is populated
+	case components.V2QueryParamsTypeQueryTemplatePlainParams:
+		// v2QueryParams.QueryTemplatePlainParams is populated
 }
 ```
