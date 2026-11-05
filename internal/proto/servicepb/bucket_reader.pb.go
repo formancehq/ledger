@@ -6,6 +6,7 @@ package servicepb
 import (
 	bytes "bytes"
 	commonpb "github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	signaturepb "github.com/formancehq/ledger/v3/internal/proto/signaturepb"
 	slices "slices"
 )
 
@@ -833,13 +834,31 @@ func NewGetLedgerRequestListReader(s []*GetLedgerRequest) GetLedgerRequestListRe
 // ApplyRequestReader provides read-only access to ApplyRequest.
 // Call Mutate() to obtain a mutable clone.
 type ApplyRequestReader interface {
+	GetUnsigned() ApplyBatchReader
+	GetSigned() signaturepb.SignedApplyBatchReader
 	GetForwardedCallerSnapshot() commonpb.CallerSnapshotReader
 	GetSkipResponse() bool
-	GetVariant() isApplyRequest_Variant
+	WhichVariant() ApplyRequest_VariantReaderCase
 	Mutate() *ApplyRequest
 }
 
 type applyRequestReadonly ApplyRequest
+
+func (r *applyRequestReadonly) GetUnsigned() ApplyBatchReader {
+	v, ok := (*ApplyRequest)(r).GetVariant().(*ApplyRequest_Unsigned)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.Unsigned.AsReader()
+}
+
+func (r *applyRequestReadonly) GetSigned() signaturepb.SignedApplyBatchReader {
+	v, ok := (*ApplyRequest)(r).GetVariant().(*ApplyRequest_Signed)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.Signed.AsReader()
+}
 
 func (r *applyRequestReadonly) GetForwardedCallerSnapshot() commonpb.CallerSnapshotReader {
 	v := (*ApplyRequest)(r).GetForwardedCallerSnapshot()
@@ -853,8 +872,24 @@ func (r *applyRequestReadonly) GetSkipResponse() bool {
 	return (*ApplyRequest)(r).GetSkipResponse()
 }
 
-func (r *applyRequestReadonly) GetVariant() isApplyRequest_Variant {
-	return (*ApplyRequest)(r).GetVariant()
+// ApplyRequest_VariantReaderCase identifies a selected oneof arm by its protobuf field number.
+type ApplyRequest_VariantReaderCase int32
+
+const (
+	ApplyRequest_VariantReaderCase_Unset    ApplyRequest_VariantReaderCase = 0
+	ApplyRequest_VariantReaderCase_Unsigned ApplyRequest_VariantReaderCase = 1
+	ApplyRequest_VariantReaderCase_Signed   ApplyRequest_VariantReaderCase = 2
+)
+
+func (r *applyRequestReadonly) WhichVariant() ApplyRequest_VariantReaderCase {
+	switch (*ApplyRequest)(r).GetVariant().(type) {
+	case *ApplyRequest_Unsigned:
+		return ApplyRequest_VariantReaderCase_Unsigned
+	case *ApplyRequest_Signed:
+		return ApplyRequest_VariantReaderCase_Signed
+	default:
+		return ApplyRequest_VariantReaderCase_Unset
+	}
 }
 
 func (r *applyRequestReadonly) Mutate() *ApplyRequest {
@@ -1051,14 +1086,348 @@ func NewApplyResponseListReader(s []*ApplyResponse) ApplyResponseListReader {
 // RequestReader provides read-only access to Request.
 // Call Mutate() to obtain a mutable clone.
 type RequestReader interface {
-	GetType() isRequest_Type
+	GetApply() LedgerApplyRequestReader
+	GetCreateLedger() CreateLedgerRequestReader
+	GetDeleteLedger() DeleteLedgerRequestReader
+	GetRegisterSigningKey() RegisterSigningKeyRequestReader
+	GetRevokeSigningKey() RevokeSigningKeyRequestReader
+	GetSetSigningConfig() SetSigningConfigRequestReader
+	GetAddEventsSink() AddEventsSinkRequestReader
+	GetRemoveEventsSink() RemoveEventsSinkRequestReader
+	GetSetMaintenanceMode() SetMaintenanceModeRequestReader
+	GetSetMetadataFieldType() SetMetadataFieldTypeRequestReader
+	GetRemoveMetadataFieldType() RemoveMetadataFieldTypeRequestReader
+	GetPromoteLedger() PromoteLedgerRequestReader
+	GetCreatePreparedQuery() CreatePreparedQueryRequestReader
+	GetUpdatePreparedQuery() UpdatePreparedQueryRequestReader
+	GetDeletePreparedQuery() DeletePreparedQueryRequestReader
+	GetCreateIndex() CreateIndexRequestReader
+	GetDropIndex() DropIndexRequestReader
+	GetSaveNumscript() SaveNumscriptRequestReader
+	GetAddAccountType() AddAccountTypeLedgerRequestReader
+	GetRemoveAccountType() RemoveAccountTypeLedgerRequestReader
+	GetSetDefaultEnforcementMode() SetDefaultEnforcementModeLedgerRequestReader
+	GetCreateQueryCheckpoint() CreateQueryCheckpointRequestReader
+	GetDeleteQueryCheckpoint() DeleteQueryCheckpointRequestReader
+	GetSetQueryCheckpointSchedule() SetQueryCheckpointScheduleRequestReader
+	GetDeleteQueryCheckpointSchedule() DeleteQueryCheckpointScheduleRequestReader
+	GetSaveLedgerMetadata() SaveLedgerMetadataRequestReader
+	GetDeleteLedgerMetadata() DeleteLedgerMetadataRequestReader
+	WhichType() Request_TypeReaderCase
 	Mutate() *Request
 }
 
 type requestReadonly Request
 
-func (r *requestReadonly) GetType() isRequest_Type {
-	return (*Request)(r).GetType()
+func (r *requestReadonly) GetApply() LedgerApplyRequestReader {
+	v, ok := (*Request)(r).GetType().(*Request_Apply)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.Apply.AsReader()
+}
+
+func (r *requestReadonly) GetCreateLedger() CreateLedgerRequestReader {
+	v, ok := (*Request)(r).GetType().(*Request_CreateLedger)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.CreateLedger.AsReader()
+}
+
+func (r *requestReadonly) GetDeleteLedger() DeleteLedgerRequestReader {
+	v, ok := (*Request)(r).GetType().(*Request_DeleteLedger)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.DeleteLedger.AsReader()
+}
+
+func (r *requestReadonly) GetRegisterSigningKey() RegisterSigningKeyRequestReader {
+	v, ok := (*Request)(r).GetType().(*Request_RegisterSigningKey)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.RegisterSigningKey.AsReader()
+}
+
+func (r *requestReadonly) GetRevokeSigningKey() RevokeSigningKeyRequestReader {
+	v, ok := (*Request)(r).GetType().(*Request_RevokeSigningKey)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.RevokeSigningKey.AsReader()
+}
+
+func (r *requestReadonly) GetSetSigningConfig() SetSigningConfigRequestReader {
+	v, ok := (*Request)(r).GetType().(*Request_SetSigningConfig)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.SetSigningConfig.AsReader()
+}
+
+func (r *requestReadonly) GetAddEventsSink() AddEventsSinkRequestReader {
+	v, ok := (*Request)(r).GetType().(*Request_AddEventsSink)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.AddEventsSink.AsReader()
+}
+
+func (r *requestReadonly) GetRemoveEventsSink() RemoveEventsSinkRequestReader {
+	v, ok := (*Request)(r).GetType().(*Request_RemoveEventsSink)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.RemoveEventsSink.AsReader()
+}
+
+func (r *requestReadonly) GetSetMaintenanceMode() SetMaintenanceModeRequestReader {
+	v, ok := (*Request)(r).GetType().(*Request_SetMaintenanceMode)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.SetMaintenanceMode.AsReader()
+}
+
+func (r *requestReadonly) GetSetMetadataFieldType() SetMetadataFieldTypeRequestReader {
+	v, ok := (*Request)(r).GetType().(*Request_SetMetadataFieldType)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.SetMetadataFieldType.AsReader()
+}
+
+func (r *requestReadonly) GetRemoveMetadataFieldType() RemoveMetadataFieldTypeRequestReader {
+	v, ok := (*Request)(r).GetType().(*Request_RemoveMetadataFieldType)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.RemoveMetadataFieldType.AsReader()
+}
+
+func (r *requestReadonly) GetPromoteLedger() PromoteLedgerRequestReader {
+	v, ok := (*Request)(r).GetType().(*Request_PromoteLedger)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.PromoteLedger.AsReader()
+}
+
+func (r *requestReadonly) GetCreatePreparedQuery() CreatePreparedQueryRequestReader {
+	v, ok := (*Request)(r).GetType().(*Request_CreatePreparedQuery)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.CreatePreparedQuery.AsReader()
+}
+
+func (r *requestReadonly) GetUpdatePreparedQuery() UpdatePreparedQueryRequestReader {
+	v, ok := (*Request)(r).GetType().(*Request_UpdatePreparedQuery)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.UpdatePreparedQuery.AsReader()
+}
+
+func (r *requestReadonly) GetDeletePreparedQuery() DeletePreparedQueryRequestReader {
+	v, ok := (*Request)(r).GetType().(*Request_DeletePreparedQuery)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.DeletePreparedQuery.AsReader()
+}
+
+func (r *requestReadonly) GetCreateIndex() CreateIndexRequestReader {
+	v, ok := (*Request)(r).GetType().(*Request_CreateIndex)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.CreateIndex.AsReader()
+}
+
+func (r *requestReadonly) GetDropIndex() DropIndexRequestReader {
+	v, ok := (*Request)(r).GetType().(*Request_DropIndex)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.DropIndex.AsReader()
+}
+
+func (r *requestReadonly) GetSaveNumscript() SaveNumscriptRequestReader {
+	v, ok := (*Request)(r).GetType().(*Request_SaveNumscript)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.SaveNumscript.AsReader()
+}
+
+func (r *requestReadonly) GetAddAccountType() AddAccountTypeLedgerRequestReader {
+	v, ok := (*Request)(r).GetType().(*Request_AddAccountType)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.AddAccountType.AsReader()
+}
+
+func (r *requestReadonly) GetRemoveAccountType() RemoveAccountTypeLedgerRequestReader {
+	v, ok := (*Request)(r).GetType().(*Request_RemoveAccountType)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.RemoveAccountType.AsReader()
+}
+
+func (r *requestReadonly) GetSetDefaultEnforcementMode() SetDefaultEnforcementModeLedgerRequestReader {
+	v, ok := (*Request)(r).GetType().(*Request_SetDefaultEnforcementMode)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.SetDefaultEnforcementMode.AsReader()
+}
+
+func (r *requestReadonly) GetCreateQueryCheckpoint() CreateQueryCheckpointRequestReader {
+	v, ok := (*Request)(r).GetType().(*Request_CreateQueryCheckpoint)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.CreateQueryCheckpoint.AsReader()
+}
+
+func (r *requestReadonly) GetDeleteQueryCheckpoint() DeleteQueryCheckpointRequestReader {
+	v, ok := (*Request)(r).GetType().(*Request_DeleteQueryCheckpoint)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.DeleteQueryCheckpoint.AsReader()
+}
+
+func (r *requestReadonly) GetSetQueryCheckpointSchedule() SetQueryCheckpointScheduleRequestReader {
+	v, ok := (*Request)(r).GetType().(*Request_SetQueryCheckpointSchedule)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.SetQueryCheckpointSchedule.AsReader()
+}
+
+func (r *requestReadonly) GetDeleteQueryCheckpointSchedule() DeleteQueryCheckpointScheduleRequestReader {
+	v, ok := (*Request)(r).GetType().(*Request_DeleteQueryCheckpointSchedule)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.DeleteQueryCheckpointSchedule.AsReader()
+}
+
+func (r *requestReadonly) GetSaveLedgerMetadata() SaveLedgerMetadataRequestReader {
+	v, ok := (*Request)(r).GetType().(*Request_SaveLedgerMetadata)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.SaveLedgerMetadata.AsReader()
+}
+
+func (r *requestReadonly) GetDeleteLedgerMetadata() DeleteLedgerMetadataRequestReader {
+	v, ok := (*Request)(r).GetType().(*Request_DeleteLedgerMetadata)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.DeleteLedgerMetadata.AsReader()
+}
+
+// Request_TypeReaderCase identifies a selected oneof arm by its protobuf field number.
+type Request_TypeReaderCase int32
+
+const (
+	Request_TypeReaderCase_Unset                         Request_TypeReaderCase = 0
+	Request_TypeReaderCase_Apply                         Request_TypeReaderCase = 1
+	Request_TypeReaderCase_CreateLedger                  Request_TypeReaderCase = 2
+	Request_TypeReaderCase_DeleteLedger                  Request_TypeReaderCase = 3
+	Request_TypeReaderCase_RegisterSigningKey            Request_TypeReaderCase = 4
+	Request_TypeReaderCase_RevokeSigningKey              Request_TypeReaderCase = 5
+	Request_TypeReaderCase_SetSigningConfig              Request_TypeReaderCase = 6
+	Request_TypeReaderCase_AddEventsSink                 Request_TypeReaderCase = 7
+	Request_TypeReaderCase_RemoveEventsSink              Request_TypeReaderCase = 8
+	Request_TypeReaderCase_SetMaintenanceMode            Request_TypeReaderCase = 9
+	Request_TypeReaderCase_SetMetadataFieldType          Request_TypeReaderCase = 10
+	Request_TypeReaderCase_RemoveMetadataFieldType       Request_TypeReaderCase = 11
+	Request_TypeReaderCase_PromoteLedger                 Request_TypeReaderCase = 12
+	Request_TypeReaderCase_CreatePreparedQuery           Request_TypeReaderCase = 13
+	Request_TypeReaderCase_UpdatePreparedQuery           Request_TypeReaderCase = 14
+	Request_TypeReaderCase_DeletePreparedQuery           Request_TypeReaderCase = 15
+	Request_TypeReaderCase_CreateIndex                   Request_TypeReaderCase = 16
+	Request_TypeReaderCase_DropIndex                     Request_TypeReaderCase = 17
+	Request_TypeReaderCase_SaveNumscript                 Request_TypeReaderCase = 18
+	Request_TypeReaderCase_AddAccountType                Request_TypeReaderCase = 19
+	Request_TypeReaderCase_RemoveAccountType             Request_TypeReaderCase = 20
+	Request_TypeReaderCase_SetDefaultEnforcementMode     Request_TypeReaderCase = 21
+	Request_TypeReaderCase_CreateQueryCheckpoint         Request_TypeReaderCase = 22
+	Request_TypeReaderCase_DeleteQueryCheckpoint         Request_TypeReaderCase = 23
+	Request_TypeReaderCase_SetQueryCheckpointSchedule    Request_TypeReaderCase = 24
+	Request_TypeReaderCase_DeleteQueryCheckpointSchedule Request_TypeReaderCase = 25
+	Request_TypeReaderCase_SaveLedgerMetadata            Request_TypeReaderCase = 26
+	Request_TypeReaderCase_DeleteLedgerMetadata          Request_TypeReaderCase = 27
+)
+
+func (r *requestReadonly) WhichType() Request_TypeReaderCase {
+	switch (*Request)(r).GetType().(type) {
+	case *Request_Apply:
+		return Request_TypeReaderCase_Apply
+	case *Request_CreateLedger:
+		return Request_TypeReaderCase_CreateLedger
+	case *Request_DeleteLedger:
+		return Request_TypeReaderCase_DeleteLedger
+	case *Request_RegisterSigningKey:
+		return Request_TypeReaderCase_RegisterSigningKey
+	case *Request_RevokeSigningKey:
+		return Request_TypeReaderCase_RevokeSigningKey
+	case *Request_SetSigningConfig:
+		return Request_TypeReaderCase_SetSigningConfig
+	case *Request_AddEventsSink:
+		return Request_TypeReaderCase_AddEventsSink
+	case *Request_RemoveEventsSink:
+		return Request_TypeReaderCase_RemoveEventsSink
+	case *Request_SetMaintenanceMode:
+		return Request_TypeReaderCase_SetMaintenanceMode
+	case *Request_SetMetadataFieldType:
+		return Request_TypeReaderCase_SetMetadataFieldType
+	case *Request_RemoveMetadataFieldType:
+		return Request_TypeReaderCase_RemoveMetadataFieldType
+	case *Request_PromoteLedger:
+		return Request_TypeReaderCase_PromoteLedger
+	case *Request_CreatePreparedQuery:
+		return Request_TypeReaderCase_CreatePreparedQuery
+	case *Request_UpdatePreparedQuery:
+		return Request_TypeReaderCase_UpdatePreparedQuery
+	case *Request_DeletePreparedQuery:
+		return Request_TypeReaderCase_DeletePreparedQuery
+	case *Request_CreateIndex:
+		return Request_TypeReaderCase_CreateIndex
+	case *Request_DropIndex:
+		return Request_TypeReaderCase_DropIndex
+	case *Request_SaveNumscript:
+		return Request_TypeReaderCase_SaveNumscript
+	case *Request_AddAccountType:
+		return Request_TypeReaderCase_AddAccountType
+	case *Request_RemoveAccountType:
+		return Request_TypeReaderCase_RemoveAccountType
+	case *Request_SetDefaultEnforcementMode:
+		return Request_TypeReaderCase_SetDefaultEnforcementMode
+	case *Request_CreateQueryCheckpoint:
+		return Request_TypeReaderCase_CreateQueryCheckpoint
+	case *Request_DeleteQueryCheckpoint:
+		return Request_TypeReaderCase_DeleteQueryCheckpoint
+	case *Request_SetQueryCheckpointSchedule:
+		return Request_TypeReaderCase_SetQueryCheckpointSchedule
+	case *Request_DeleteQueryCheckpointSchedule:
+		return Request_TypeReaderCase_DeleteQueryCheckpointSchedule
+	case *Request_SaveLedgerMetadata:
+		return Request_TypeReaderCase_SaveLedgerMetadata
+	case *Request_DeleteLedgerMetadata:
+		return Request_TypeReaderCase_DeleteLedgerMetadata
+	default:
+		return Request_TypeReaderCase_Unset
+	}
 }
 
 func (r *requestReadonly) Mutate() *Request {
@@ -3899,14 +4268,108 @@ func (m revertTransactionPayload_metadataMapReadonly) Range(yield func(string, c
 // LedgerActionReader provides read-only access to LedgerAction.
 // Call Mutate() to obtain a mutable clone.
 type LedgerActionReader interface {
-	GetData() isLedgerAction_Data
+	GetCreateTransaction() CreateTransactionPayloadReader
+	GetAddMetadata() commonpb.SaveMetadataCommandReader
+	GetRevertTransaction() RevertTransactionPayloadReader
+	GetDeleteMetadata() commonpb.DeleteMetadataCommandReader
+	GetAddAccountType() AddAccountTypeRequestReader
+	GetRemoveAccountType() RemoveAccountTypeRequestReader
+	GetSetDefaultEnforcementMode() SetDefaultEnforcementModeRequestReader
+	WhichData() LedgerAction_DataReaderCase
 	Mutate() *LedgerAction
 }
 
 type ledgerActionReadonly LedgerAction
 
-func (r *ledgerActionReadonly) GetData() isLedgerAction_Data {
-	return (*LedgerAction)(r).GetData()
+func (r *ledgerActionReadonly) GetCreateTransaction() CreateTransactionPayloadReader {
+	v, ok := (*LedgerAction)(r).GetData().(*LedgerAction_CreateTransaction)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.CreateTransaction.AsReader()
+}
+
+func (r *ledgerActionReadonly) GetAddMetadata() commonpb.SaveMetadataCommandReader {
+	v, ok := (*LedgerAction)(r).GetData().(*LedgerAction_AddMetadata)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.AddMetadata.AsReader()
+}
+
+func (r *ledgerActionReadonly) GetRevertTransaction() RevertTransactionPayloadReader {
+	v, ok := (*LedgerAction)(r).GetData().(*LedgerAction_RevertTransaction)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.RevertTransaction.AsReader()
+}
+
+func (r *ledgerActionReadonly) GetDeleteMetadata() commonpb.DeleteMetadataCommandReader {
+	v, ok := (*LedgerAction)(r).GetData().(*LedgerAction_DeleteMetadata)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.DeleteMetadata.AsReader()
+}
+
+func (r *ledgerActionReadonly) GetAddAccountType() AddAccountTypeRequestReader {
+	v, ok := (*LedgerAction)(r).GetData().(*LedgerAction_AddAccountType)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.AddAccountType.AsReader()
+}
+
+func (r *ledgerActionReadonly) GetRemoveAccountType() RemoveAccountTypeRequestReader {
+	v, ok := (*LedgerAction)(r).GetData().(*LedgerAction_RemoveAccountType)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.RemoveAccountType.AsReader()
+}
+
+func (r *ledgerActionReadonly) GetSetDefaultEnforcementMode() SetDefaultEnforcementModeRequestReader {
+	v, ok := (*LedgerAction)(r).GetData().(*LedgerAction_SetDefaultEnforcementMode)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.SetDefaultEnforcementMode.AsReader()
+}
+
+// LedgerAction_DataReaderCase identifies a selected oneof arm by its protobuf field number.
+type LedgerAction_DataReaderCase int32
+
+const (
+	LedgerAction_DataReaderCase_Unset                     LedgerAction_DataReaderCase = 0
+	LedgerAction_DataReaderCase_CreateTransaction         LedgerAction_DataReaderCase = 1
+	LedgerAction_DataReaderCase_AddMetadata               LedgerAction_DataReaderCase = 2
+	LedgerAction_DataReaderCase_RevertTransaction         LedgerAction_DataReaderCase = 3
+	LedgerAction_DataReaderCase_DeleteMetadata            LedgerAction_DataReaderCase = 4
+	LedgerAction_DataReaderCase_AddAccountType            LedgerAction_DataReaderCase = 5
+	LedgerAction_DataReaderCase_RemoveAccountType         LedgerAction_DataReaderCase = 6
+	LedgerAction_DataReaderCase_SetDefaultEnforcementMode LedgerAction_DataReaderCase = 7
+)
+
+func (r *ledgerActionReadonly) WhichData() LedgerAction_DataReaderCase {
+	switch (*LedgerAction)(r).GetData().(type) {
+	case *LedgerAction_CreateTransaction:
+		return LedgerAction_DataReaderCase_CreateTransaction
+	case *LedgerAction_AddMetadata:
+		return LedgerAction_DataReaderCase_AddMetadata
+	case *LedgerAction_RevertTransaction:
+		return LedgerAction_DataReaderCase_RevertTransaction
+	case *LedgerAction_DeleteMetadata:
+		return LedgerAction_DataReaderCase_DeleteMetadata
+	case *LedgerAction_AddAccountType:
+		return LedgerAction_DataReaderCase_AddAccountType
+	case *LedgerAction_RemoveAccountType:
+		return LedgerAction_DataReaderCase_RemoveAccountType
+	case *LedgerAction_SetDefaultEnforcementMode:
+		return LedgerAction_DataReaderCase_SetDefaultEnforcementMode
+	default:
+		return LedgerAction_DataReaderCase_Unset
+	}
 }
 
 func (r *ledgerActionReadonly) Mutate() *LedgerAction {
@@ -5881,14 +6344,48 @@ func NewCheckStoreRequestListReader(s []*CheckStoreRequest) CheckStoreRequestLis
 // CheckStoreEventReader provides read-only access to CheckStoreEvent.
 // Call Mutate() to obtain a mutable clone.
 type CheckStoreEventReader interface {
-	GetType() isCheckStoreEvent_Type
+	GetError() CheckStoreErrorReader
+	GetProgress() CheckStoreProgressReader
+	WhichType() CheckStoreEvent_TypeReaderCase
 	Mutate() *CheckStoreEvent
 }
 
 type checkStoreEventReadonly CheckStoreEvent
 
-func (r *checkStoreEventReadonly) GetType() isCheckStoreEvent_Type {
-	return (*CheckStoreEvent)(r).GetType()
+func (r *checkStoreEventReadonly) GetError() CheckStoreErrorReader {
+	v, ok := (*CheckStoreEvent)(r).GetType().(*CheckStoreEvent_Error)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.Error.AsReader()
+}
+
+func (r *checkStoreEventReadonly) GetProgress() CheckStoreProgressReader {
+	v, ok := (*CheckStoreEvent)(r).GetType().(*CheckStoreEvent_Progress)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.Progress.AsReader()
+}
+
+// CheckStoreEvent_TypeReaderCase identifies a selected oneof arm by its protobuf field number.
+type CheckStoreEvent_TypeReaderCase int32
+
+const (
+	CheckStoreEvent_TypeReaderCase_Unset    CheckStoreEvent_TypeReaderCase = 0
+	CheckStoreEvent_TypeReaderCase_Error    CheckStoreEvent_TypeReaderCase = 1
+	CheckStoreEvent_TypeReaderCase_Progress CheckStoreEvent_TypeReaderCase = 2
+)
+
+func (r *checkStoreEventReadonly) WhichType() CheckStoreEvent_TypeReaderCase {
+	switch (*CheckStoreEvent)(r).GetType().(type) {
+	case *CheckStoreEvent_Error:
+		return CheckStoreEvent_TypeReaderCase_Error
+	case *CheckStoreEvent_Progress:
+		return CheckStoreEvent_TypeReaderCase_Progress
+	default:
+		return CheckStoreEvent_TypeReaderCase_Unset
+	}
 }
 
 func (r *checkStoreEventReadonly) Mutate() *CheckStoreEvent {
@@ -7062,14 +7559,48 @@ func NewAnalyzeProgressListReader(s []*AnalyzeProgress) AnalyzeProgressListReade
 // AnalyzeAccountsEventReader provides read-only access to AnalyzeAccountsEvent.
 // Call Mutate() to obtain a mutable clone.
 type AnalyzeAccountsEventReader interface {
-	GetType() isAnalyzeAccountsEvent_Type
+	GetProgress() AnalyzeProgressReader
+	GetResult() AnalyzeAccountsResponseReader
+	WhichType() AnalyzeAccountsEvent_TypeReaderCase
 	Mutate() *AnalyzeAccountsEvent
 }
 
 type analyzeAccountsEventReadonly AnalyzeAccountsEvent
 
-func (r *analyzeAccountsEventReadonly) GetType() isAnalyzeAccountsEvent_Type {
-	return (*AnalyzeAccountsEvent)(r).GetType()
+func (r *analyzeAccountsEventReadonly) GetProgress() AnalyzeProgressReader {
+	v, ok := (*AnalyzeAccountsEvent)(r).GetType().(*AnalyzeAccountsEvent_Progress)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.Progress.AsReader()
+}
+
+func (r *analyzeAccountsEventReadonly) GetResult() AnalyzeAccountsResponseReader {
+	v, ok := (*AnalyzeAccountsEvent)(r).GetType().(*AnalyzeAccountsEvent_Result)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.Result.AsReader()
+}
+
+// AnalyzeAccountsEvent_TypeReaderCase identifies a selected oneof arm by its protobuf field number.
+type AnalyzeAccountsEvent_TypeReaderCase int32
+
+const (
+	AnalyzeAccountsEvent_TypeReaderCase_Unset    AnalyzeAccountsEvent_TypeReaderCase = 0
+	AnalyzeAccountsEvent_TypeReaderCase_Progress AnalyzeAccountsEvent_TypeReaderCase = 1
+	AnalyzeAccountsEvent_TypeReaderCase_Result   AnalyzeAccountsEvent_TypeReaderCase = 2
+)
+
+func (r *analyzeAccountsEventReadonly) WhichType() AnalyzeAccountsEvent_TypeReaderCase {
+	switch (*AnalyzeAccountsEvent)(r).GetType().(type) {
+	case *AnalyzeAccountsEvent_Progress:
+		return AnalyzeAccountsEvent_TypeReaderCase_Progress
+	case *AnalyzeAccountsEvent_Result:
+		return AnalyzeAccountsEvent_TypeReaderCase_Result
+	default:
+		return AnalyzeAccountsEvent_TypeReaderCase_Unset
+	}
 }
 
 func (r *analyzeAccountsEventReadonly) Mutate() *AnalyzeAccountsEvent {
@@ -7129,14 +7660,48 @@ func NewAnalyzeAccountsEventListReader(s []*AnalyzeAccountsEvent) AnalyzeAccount
 // AnalyzeTransactionsEventReader provides read-only access to AnalyzeTransactionsEvent.
 // Call Mutate() to obtain a mutable clone.
 type AnalyzeTransactionsEventReader interface {
-	GetType() isAnalyzeTransactionsEvent_Type
+	GetProgress() AnalyzeProgressReader
+	GetResult() AnalyzeTransactionsResponseReader
+	WhichType() AnalyzeTransactionsEvent_TypeReaderCase
 	Mutate() *AnalyzeTransactionsEvent
 }
 
 type analyzeTransactionsEventReadonly AnalyzeTransactionsEvent
 
-func (r *analyzeTransactionsEventReadonly) GetType() isAnalyzeTransactionsEvent_Type {
-	return (*AnalyzeTransactionsEvent)(r).GetType()
+func (r *analyzeTransactionsEventReadonly) GetProgress() AnalyzeProgressReader {
+	v, ok := (*AnalyzeTransactionsEvent)(r).GetType().(*AnalyzeTransactionsEvent_Progress)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.Progress.AsReader()
+}
+
+func (r *analyzeTransactionsEventReadonly) GetResult() AnalyzeTransactionsResponseReader {
+	v, ok := (*AnalyzeTransactionsEvent)(r).GetType().(*AnalyzeTransactionsEvent_Result)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.Result.AsReader()
+}
+
+// AnalyzeTransactionsEvent_TypeReaderCase identifies a selected oneof arm by its protobuf field number.
+type AnalyzeTransactionsEvent_TypeReaderCase int32
+
+const (
+	AnalyzeTransactionsEvent_TypeReaderCase_Unset    AnalyzeTransactionsEvent_TypeReaderCase = 0
+	AnalyzeTransactionsEvent_TypeReaderCase_Progress AnalyzeTransactionsEvent_TypeReaderCase = 1
+	AnalyzeTransactionsEvent_TypeReaderCase_Result   AnalyzeTransactionsEvent_TypeReaderCase = 2
+)
+
+func (r *analyzeTransactionsEventReadonly) WhichType() AnalyzeTransactionsEvent_TypeReaderCase {
+	switch (*AnalyzeTransactionsEvent)(r).GetType().(type) {
+	case *AnalyzeTransactionsEvent_Progress:
+		return AnalyzeTransactionsEvent_TypeReaderCase_Progress
+	case *AnalyzeTransactionsEvent_Result:
+		return AnalyzeTransactionsEvent_TypeReaderCase_Result
+	default:
+		return AnalyzeTransactionsEvent_TypeReaderCase_Unset
+	}
 }
 
 func (r *analyzeTransactionsEventReadonly) Mutate() *AnalyzeTransactionsEvent {
@@ -8455,14 +9020,48 @@ func (m executePreparedQueryRequest_parametersMapReadonly) Range(yield func(stri
 // ExecutePreparedQueryResponseReader provides read-only access to ExecutePreparedQueryResponse.
 // Call Mutate() to obtain a mutable clone.
 type ExecutePreparedQueryResponseReader interface {
-	GetResult() isExecutePreparedQueryResponse_Result
+	GetCursor() commonpb.PreparedQueryCursorReader
+	GetAggregate() commonpb.AggregateResultReader
+	WhichResult() ExecutePreparedQueryResponse_ResultReaderCase
 	Mutate() *ExecutePreparedQueryResponse
 }
 
 type executePreparedQueryResponseReadonly ExecutePreparedQueryResponse
 
-func (r *executePreparedQueryResponseReadonly) GetResult() isExecutePreparedQueryResponse_Result {
-	return (*ExecutePreparedQueryResponse)(r).GetResult()
+func (r *executePreparedQueryResponseReadonly) GetCursor() commonpb.PreparedQueryCursorReader {
+	v, ok := (*ExecutePreparedQueryResponse)(r).GetResult().(*ExecutePreparedQueryResponse_Cursor)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.Cursor.AsReader()
+}
+
+func (r *executePreparedQueryResponseReadonly) GetAggregate() commonpb.AggregateResultReader {
+	v, ok := (*ExecutePreparedQueryResponse)(r).GetResult().(*ExecutePreparedQueryResponse_Aggregate)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.Aggregate.AsReader()
+}
+
+// ExecutePreparedQueryResponse_ResultReaderCase identifies a selected oneof arm by its protobuf field number.
+type ExecutePreparedQueryResponse_ResultReaderCase int32
+
+const (
+	ExecutePreparedQueryResponse_ResultReaderCase_Unset     ExecutePreparedQueryResponse_ResultReaderCase = 0
+	ExecutePreparedQueryResponse_ResultReaderCase_Cursor    ExecutePreparedQueryResponse_ResultReaderCase = 1
+	ExecutePreparedQueryResponse_ResultReaderCase_Aggregate ExecutePreparedQueryResponse_ResultReaderCase = 2
+)
+
+func (r *executePreparedQueryResponseReadonly) WhichResult() ExecutePreparedQueryResponse_ResultReaderCase {
+	switch (*ExecutePreparedQueryResponse)(r).GetResult().(type) {
+	case *ExecutePreparedQueryResponse_Cursor:
+		return ExecutePreparedQueryResponse_ResultReaderCase_Cursor
+	case *ExecutePreparedQueryResponse_Aggregate:
+		return ExecutePreparedQueryResponse_ResultReaderCase_Aggregate
+	default:
+		return ExecutePreparedQueryResponse_ResultReaderCase_Unset
+	}
 }
 
 func (r *executePreparedQueryResponseReadonly) Mutate() *ExecutePreparedQueryResponse {
@@ -9507,14 +10106,60 @@ func NewInspectIndexRequestListReader(s []*InspectIndexRequest) InspectIndexRequ
 // InspectIndexResponseReader provides read-only access to InspectIndexResponse.
 // Call Mutate() to obtain a mutable clone.
 type InspectIndexResponseReader interface {
-	GetResult() isInspectIndexResponse_Result
+	GetDistinctValues() InspectDistinctValuesReader
+	GetFacets() InspectFacetsReader
+	GetSummary() InspectSummaryReader
+	WhichResult() InspectIndexResponse_ResultReaderCase
 	Mutate() *InspectIndexResponse
 }
 
 type inspectIndexResponseReadonly InspectIndexResponse
 
-func (r *inspectIndexResponseReadonly) GetResult() isInspectIndexResponse_Result {
-	return (*InspectIndexResponse)(r).GetResult()
+func (r *inspectIndexResponseReadonly) GetDistinctValues() InspectDistinctValuesReader {
+	v, ok := (*InspectIndexResponse)(r).GetResult().(*InspectIndexResponse_DistinctValues)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.DistinctValues.AsReader()
+}
+
+func (r *inspectIndexResponseReadonly) GetFacets() InspectFacetsReader {
+	v, ok := (*InspectIndexResponse)(r).GetResult().(*InspectIndexResponse_Facets)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.Facets.AsReader()
+}
+
+func (r *inspectIndexResponseReadonly) GetSummary() InspectSummaryReader {
+	v, ok := (*InspectIndexResponse)(r).GetResult().(*InspectIndexResponse_Summary)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.Summary.AsReader()
+}
+
+// InspectIndexResponse_ResultReaderCase identifies a selected oneof arm by its protobuf field number.
+type InspectIndexResponse_ResultReaderCase int32
+
+const (
+	InspectIndexResponse_ResultReaderCase_Unset          InspectIndexResponse_ResultReaderCase = 0
+	InspectIndexResponse_ResultReaderCase_DistinctValues InspectIndexResponse_ResultReaderCase = 1
+	InspectIndexResponse_ResultReaderCase_Facets         InspectIndexResponse_ResultReaderCase = 2
+	InspectIndexResponse_ResultReaderCase_Summary        InspectIndexResponse_ResultReaderCase = 3
+)
+
+func (r *inspectIndexResponseReadonly) WhichResult() InspectIndexResponse_ResultReaderCase {
+	switch (*InspectIndexResponse)(r).GetResult().(type) {
+	case *InspectIndexResponse_DistinctValues:
+		return InspectIndexResponse_ResultReaderCase_DistinctValues
+	case *InspectIndexResponse_Facets:
+		return InspectIndexResponse_ResultReaderCase_Facets
+	case *InspectIndexResponse_Summary:
+		return InspectIndexResponse_ResultReaderCase_Summary
+	default:
+		return InspectIndexResponse_ResultReaderCase_Unset
+	}
 }
 
 func (r *inspectIndexResponseReadonly) Mutate() *InspectIndexResponse {

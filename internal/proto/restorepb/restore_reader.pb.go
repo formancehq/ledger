@@ -519,14 +519,48 @@ func NewValidateRestoreRequestListReader(s []*ValidateRestoreRequest) ValidateRe
 // ValidateRestoreEventReader provides read-only access to ValidateRestoreEvent.
 // Call Mutate() to obtain a mutable clone.
 type ValidateRestoreEventReader interface {
-	GetType() isValidateRestoreEvent_Type
+	GetError() ValidateRestoreErrorReader
+	GetProgress() ValidateRestoreProgressReader
+	WhichType() ValidateRestoreEvent_TypeReaderCase
 	Mutate() *ValidateRestoreEvent
 }
 
 type validateRestoreEventReadonly ValidateRestoreEvent
 
-func (r *validateRestoreEventReadonly) GetType() isValidateRestoreEvent_Type {
-	return (*ValidateRestoreEvent)(r).GetType()
+func (r *validateRestoreEventReadonly) GetError() ValidateRestoreErrorReader {
+	v, ok := (*ValidateRestoreEvent)(r).GetType().(*ValidateRestoreEvent_Error)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.Error.AsReader()
+}
+
+func (r *validateRestoreEventReadonly) GetProgress() ValidateRestoreProgressReader {
+	v, ok := (*ValidateRestoreEvent)(r).GetType().(*ValidateRestoreEvent_Progress)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.Progress.AsReader()
+}
+
+// ValidateRestoreEvent_TypeReaderCase identifies a selected oneof arm by its protobuf field number.
+type ValidateRestoreEvent_TypeReaderCase int32
+
+const (
+	ValidateRestoreEvent_TypeReaderCase_Unset    ValidateRestoreEvent_TypeReaderCase = 0
+	ValidateRestoreEvent_TypeReaderCase_Error    ValidateRestoreEvent_TypeReaderCase = 1
+	ValidateRestoreEvent_TypeReaderCase_Progress ValidateRestoreEvent_TypeReaderCase = 2
+)
+
+func (r *validateRestoreEventReadonly) WhichType() ValidateRestoreEvent_TypeReaderCase {
+	switch (*ValidateRestoreEvent)(r).GetType().(type) {
+	case *ValidateRestoreEvent_Error:
+		return ValidateRestoreEvent_TypeReaderCase_Error
+	case *ValidateRestoreEvent_Progress:
+		return ValidateRestoreEvent_TypeReaderCase_Progress
+	default:
+		return ValidateRestoreEvent_TypeReaderCase_Unset
+	}
 }
 
 func (r *validateRestoreEventReadonly) Mutate() *ValidateRestoreEvent {

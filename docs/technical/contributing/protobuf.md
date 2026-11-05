@@ -255,3 +255,52 @@ Examples of this pattern:
 - `common.ClusterConfig`
 
 These updates are processed by the FSM alongside orders but do not produce ledger `Log` entries and do not carry client idempotency keys.
+
+## Read-only protobuf views
+
+`AsReader()` returns a borrowed view, protecting cached configuration and accepted
+business payloads from mutation through read access. Singular messages and
+message collections expose reader interfaces; scalar slices and bytes are
+copied defensively. `Mutate()` returns an owned deep clone through `CloneVT()`.
+A borrowed view is live, not a snapshot or synchronization boundary: an owner
+that retains the raw message must not mutate it while readers use it.
+
+Oneof readers expose typed arm getters, never protoc's mutable group wrapper.
+For example, `ProposalReader.GetBatch()` returns `ExecutionBatchReader`, and
+`GetSetClusterPolicy()` returns `SetClusterPolicyProposalReader`. Nested getters
+retain the same reader and defensive-copy rules. Use `WhichPayload()` to
+compare with `Proposal_PayloadReaderCase_Batch`,
+`Proposal_PayloadReaderCase_SetClusterPolicy`, or
+`Proposal_PayloadReaderCase_Unset`. Each generated `<Message>_<Group>ReaderCase`
+uses the arm's protobuf field number; zero means unset. Selection is independent
+of the payload value: false, zero, empty, selected nil messages and typed-nil
+wrappers retain their selected case. Arm getters safely return nil or protoc's
+scalar default for an absent, inactive or typed-nil arm. A nil message's
+`AsReader()` returns a nil interface. Name collisions between generated case
+declarations and schema/reader declarations fail generation explicitly.
+
+The discriminator and message/scalar arm getters add constant-time type checks
+and pointer conversions without heap allocation. Existing defensive-copy
+exceptions still cost proportionally to the copied bytes or slice length;
+`Mutate()` intentionally copies the reachable graph. Collection-reader slice
+interface boxing can still allocate when the compiler cannot inline traversal;
+zero allocation is not a blanket guarantee for arbitrary collection chains.
+With the pinned Go 1.27.3 toolchain on darwin/arm64, the existing transaction
+`BenchmarkReader_GetChain` uses 24 B/one allocation both before and after this
+change. The new policy-arm benchmark uses zero allocations; full Proposal batch
+traversal across orders and postings uses 48 B/two allocations. The optimized
+traversal allocation assertion remains zero. Imported message arms
+require the corresponding generated reader API in their Go package, just like
+ordinary message fields.
+
+This changes the internal Go reader API only. Raw protobuf dispatch, descriptors,
+serialization, persisted state, the service protocol revision and the proposal
+payload upgrade boundary are unaffected. Update reader consumers from mutable
+group switches to the generated discriminator and typed getters, then regenerate
+with `just generate-proto`; never edit generated facades manually.
+
+Regression coverage lives in `tools/protoc-gen-reader/main_test.go` (descriptor
+generation and executable cross-package fixtures), the protobuf packages'
+`reader_oneof_test.go` files (actual Order/Proposal variants, clone isolation and
+allocation assertions), and account-type reader validation tests. The existing
+reader immutability and allocation tests remain applicable.

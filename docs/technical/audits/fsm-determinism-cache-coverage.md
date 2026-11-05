@@ -536,3 +536,25 @@ rollback. The concurrency domain owns helper races and resource lifetimes.
 Do not infer linearizable shard size or snapshot semantics while writers are
 active: compare entries and counters at a controlled quiescent boundary, and
 establish the real synchronization contract before reporting a defect.
+
+## Generated reader ownership through oneofs
+
+Reader capability checks include `tools/protoc-gen-reader`, generated facades,
+and account-type consumers of cached ledger configuration. A reader must never
+return protoc's mutable oneof group wrapper, even when nested within another
+reader, map or list. Typed arm getters retain message-reader and defensive-copy
+semantics; discriminators preserve selected zero/empty, nil-message and typed-nil
+wrapper identity. `Mutate()` is the explicit deep-clone boundary. Borrowed views
+remain live: this contract does not make mutation through a retained raw owner
+safe or provide a snapshot. See [the reader contract](../contributing/protobuf.md#read-only-protobuf-views).
+
+Use the generator's descriptor-to-executable fixtures and the commonpb/raftcmdpb
+`reader_oneof_test.go` tests alongside existing immutability regressions. Exercise
+actual Order and Proposal batch/policy variants; traverse nested postings,
+metadata and configuration, mutate deep clones and compare original bytes.
+Include byte-arm copy isolation and inactive/default/nil arm access. Preserve
+the borrowed traversal allocation assertion and allocation benchmarks.
+`accounttype/validate_reader_test.go` must retain raw/reader validation parity,
+selected nil constraints, empty regex versus unset, and sorted error selection.
+These facade changes must not alter wire encoding, persisted state, raw FSM
+dispatch, coverage, or the existing proposal cutover boundary.

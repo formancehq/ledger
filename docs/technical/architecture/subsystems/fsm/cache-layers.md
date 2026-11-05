@@ -147,7 +147,11 @@ deep clone through `Mutate()`. They modify and `Put` that same clone without
 an additional `CloneVT()`. The scoped overlay makes the update visible to
 later orders in the batch. Account-type changes also invalidate the compiled
 type cache: `CompiledType.Original` is a read-only view of the configuration,
-not an independently owned message.
+not an independently owned message. Generated oneof views preserve this ownership
+boundary through typed reader getters and `Which<Group>()` discriminators,
+including nested configuration constraints; they never return the mutable
+protobuf arm wrapper. See [read-only protobuf views](../../../contributing/protobuf.md#read-only-protobuf-views)
+for nil/presence semantics and allocation costs.
 
 Mirror bypasses application admission, but still declares `SubAttrLedger`
 for ingest and standalone `MirrorSync` and uses the shared `Builder.Build/Run`

@@ -13,12 +13,30 @@ import (
 // OrderReader provides read-only access to Order.
 // Call Mutate() to obtain a mutable clone.
 type OrderReader interface {
+	GetLedgerScoped() LedgerScopedOrderReader
+	GetSystemScoped() SystemScopedOrderReader
 	GetTechnical() OrderTechnicalReader
-	GetType() isOrder_Type
+	WhichType() Order_TypeReaderCase
 	Mutate() *Order
 }
 
 type orderReadonly Order
+
+func (r *orderReadonly) GetLedgerScoped() LedgerScopedOrderReader {
+	v, ok := (*Order)(r).GetType().(*Order_LedgerScoped)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.LedgerScoped.AsReader()
+}
+
+func (r *orderReadonly) GetSystemScoped() SystemScopedOrderReader {
+	v, ok := (*Order)(r).GetType().(*Order_SystemScoped)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.SystemScoped.AsReader()
+}
 
 func (r *orderReadonly) GetTechnical() OrderTechnicalReader {
 	v := (*Order)(r).GetTechnical()
@@ -28,8 +46,24 @@ func (r *orderReadonly) GetTechnical() OrderTechnicalReader {
 	return v.AsReader()
 }
 
-func (r *orderReadonly) GetType() isOrder_Type {
-	return (*Order)(r).GetType()
+// Order_TypeReaderCase identifies a selected oneof arm by its protobuf field number.
+type Order_TypeReaderCase int32
+
+const (
+	Order_TypeReaderCase_Unset        Order_TypeReaderCase = 0
+	Order_TypeReaderCase_LedgerScoped Order_TypeReaderCase = 1
+	Order_TypeReaderCase_SystemScoped Order_TypeReaderCase = 2
+)
+
+func (r *orderReadonly) WhichType() Order_TypeReaderCase {
+	switch (*Order)(r).GetType().(type) {
+	case *Order_LedgerScoped:
+		return Order_TypeReaderCase_LedgerScoped
+	case *Order_SystemScoped:
+		return Order_TypeReaderCase_SystemScoped
+	default:
+		return Order_TypeReaderCase_Unset
+	}
 }
 
 func (r *orderReadonly) Mutate() *Order {
@@ -170,7 +204,18 @@ func NewOrderTechnicalListReader(s []*OrderTechnical) OrderTechnicalListReader {
 // Call Mutate() to obtain a mutable clone.
 type LedgerScopedOrderReader interface {
 	GetLedger() string
-	GetPayload() isLedgerScopedOrder_Payload
+	GetApply() LedgerApplyOrderReader
+	GetCreateLedger() CreateLedgerOrderReader
+	GetDeleteLedger() DeleteLedgerOrderReader
+	GetMirrorIngest() MirrorIngestOrderReader
+	GetPromoteLedger() PromoteLedgerOrderReader
+	GetSaveLedgerMetadata() SaveLedgerMetadataOrderReader
+	GetDeleteLedgerMetadata() DeleteLedgerMetadataOrderReader
+	GetSaveNumscript() SaveNumscriptOrderReader
+	GetCreatePreparedQuery() CreatePreparedQueryOrderReader
+	GetUpdatePreparedQuery() UpdatePreparedQueryOrderReader
+	GetDeletePreparedQuery() DeletePreparedQueryOrderReader
+	WhichPayload() LedgerScopedOrder_PayloadReaderCase
 	Mutate() *LedgerScopedOrder
 }
 
@@ -180,8 +225,139 @@ func (r *ledgerScopedOrderReadonly) GetLedger() string {
 	return (*LedgerScopedOrder)(r).GetLedger()
 }
 
-func (r *ledgerScopedOrderReadonly) GetPayload() isLedgerScopedOrder_Payload {
-	return (*LedgerScopedOrder)(r).GetPayload()
+func (r *ledgerScopedOrderReadonly) GetApply() LedgerApplyOrderReader {
+	v, ok := (*LedgerScopedOrder)(r).GetPayload().(*LedgerScopedOrder_Apply)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.Apply.AsReader()
+}
+
+func (r *ledgerScopedOrderReadonly) GetCreateLedger() CreateLedgerOrderReader {
+	v, ok := (*LedgerScopedOrder)(r).GetPayload().(*LedgerScopedOrder_CreateLedger)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.CreateLedger.AsReader()
+}
+
+func (r *ledgerScopedOrderReadonly) GetDeleteLedger() DeleteLedgerOrderReader {
+	v, ok := (*LedgerScopedOrder)(r).GetPayload().(*LedgerScopedOrder_DeleteLedger)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.DeleteLedger.AsReader()
+}
+
+func (r *ledgerScopedOrderReadonly) GetMirrorIngest() MirrorIngestOrderReader {
+	v, ok := (*LedgerScopedOrder)(r).GetPayload().(*LedgerScopedOrder_MirrorIngest)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.MirrorIngest.AsReader()
+}
+
+func (r *ledgerScopedOrderReadonly) GetPromoteLedger() PromoteLedgerOrderReader {
+	v, ok := (*LedgerScopedOrder)(r).GetPayload().(*LedgerScopedOrder_PromoteLedger)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.PromoteLedger.AsReader()
+}
+
+func (r *ledgerScopedOrderReadonly) GetSaveLedgerMetadata() SaveLedgerMetadataOrderReader {
+	v, ok := (*LedgerScopedOrder)(r).GetPayload().(*LedgerScopedOrder_SaveLedgerMetadata)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.SaveLedgerMetadata.AsReader()
+}
+
+func (r *ledgerScopedOrderReadonly) GetDeleteLedgerMetadata() DeleteLedgerMetadataOrderReader {
+	v, ok := (*LedgerScopedOrder)(r).GetPayload().(*LedgerScopedOrder_DeleteLedgerMetadata)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.DeleteLedgerMetadata.AsReader()
+}
+
+func (r *ledgerScopedOrderReadonly) GetSaveNumscript() SaveNumscriptOrderReader {
+	v, ok := (*LedgerScopedOrder)(r).GetPayload().(*LedgerScopedOrder_SaveNumscript)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.SaveNumscript.AsReader()
+}
+
+func (r *ledgerScopedOrderReadonly) GetCreatePreparedQuery() CreatePreparedQueryOrderReader {
+	v, ok := (*LedgerScopedOrder)(r).GetPayload().(*LedgerScopedOrder_CreatePreparedQuery)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.CreatePreparedQuery.AsReader()
+}
+
+func (r *ledgerScopedOrderReadonly) GetUpdatePreparedQuery() UpdatePreparedQueryOrderReader {
+	v, ok := (*LedgerScopedOrder)(r).GetPayload().(*LedgerScopedOrder_UpdatePreparedQuery)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.UpdatePreparedQuery.AsReader()
+}
+
+func (r *ledgerScopedOrderReadonly) GetDeletePreparedQuery() DeletePreparedQueryOrderReader {
+	v, ok := (*LedgerScopedOrder)(r).GetPayload().(*LedgerScopedOrder_DeletePreparedQuery)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.DeletePreparedQuery.AsReader()
+}
+
+// LedgerScopedOrder_PayloadReaderCase identifies a selected oneof arm by its protobuf field number.
+type LedgerScopedOrder_PayloadReaderCase int32
+
+const (
+	LedgerScopedOrder_PayloadReaderCase_Unset                LedgerScopedOrder_PayloadReaderCase = 0
+	LedgerScopedOrder_PayloadReaderCase_Apply                LedgerScopedOrder_PayloadReaderCase = 2
+	LedgerScopedOrder_PayloadReaderCase_CreateLedger         LedgerScopedOrder_PayloadReaderCase = 3
+	LedgerScopedOrder_PayloadReaderCase_DeleteLedger         LedgerScopedOrder_PayloadReaderCase = 4
+	LedgerScopedOrder_PayloadReaderCase_MirrorIngest         LedgerScopedOrder_PayloadReaderCase = 5
+	LedgerScopedOrder_PayloadReaderCase_PromoteLedger        LedgerScopedOrder_PayloadReaderCase = 6
+	LedgerScopedOrder_PayloadReaderCase_SaveLedgerMetadata   LedgerScopedOrder_PayloadReaderCase = 7
+	LedgerScopedOrder_PayloadReaderCase_DeleteLedgerMetadata LedgerScopedOrder_PayloadReaderCase = 8
+	LedgerScopedOrder_PayloadReaderCase_SaveNumscript        LedgerScopedOrder_PayloadReaderCase = 9
+	LedgerScopedOrder_PayloadReaderCase_CreatePreparedQuery  LedgerScopedOrder_PayloadReaderCase = 10
+	LedgerScopedOrder_PayloadReaderCase_UpdatePreparedQuery  LedgerScopedOrder_PayloadReaderCase = 11
+	LedgerScopedOrder_PayloadReaderCase_DeletePreparedQuery  LedgerScopedOrder_PayloadReaderCase = 12
+)
+
+func (r *ledgerScopedOrderReadonly) WhichPayload() LedgerScopedOrder_PayloadReaderCase {
+	switch (*LedgerScopedOrder)(r).GetPayload().(type) {
+	case *LedgerScopedOrder_Apply:
+		return LedgerScopedOrder_PayloadReaderCase_Apply
+	case *LedgerScopedOrder_CreateLedger:
+		return LedgerScopedOrder_PayloadReaderCase_CreateLedger
+	case *LedgerScopedOrder_DeleteLedger:
+		return LedgerScopedOrder_PayloadReaderCase_DeleteLedger
+	case *LedgerScopedOrder_MirrorIngest:
+		return LedgerScopedOrder_PayloadReaderCase_MirrorIngest
+	case *LedgerScopedOrder_PromoteLedger:
+		return LedgerScopedOrder_PayloadReaderCase_PromoteLedger
+	case *LedgerScopedOrder_SaveLedgerMetadata:
+		return LedgerScopedOrder_PayloadReaderCase_SaveLedgerMetadata
+	case *LedgerScopedOrder_DeleteLedgerMetadata:
+		return LedgerScopedOrder_PayloadReaderCase_DeleteLedgerMetadata
+	case *LedgerScopedOrder_SaveNumscript:
+		return LedgerScopedOrder_PayloadReaderCase_SaveNumscript
+	case *LedgerScopedOrder_CreatePreparedQuery:
+		return LedgerScopedOrder_PayloadReaderCase_CreatePreparedQuery
+	case *LedgerScopedOrder_UpdatePreparedQuery:
+		return LedgerScopedOrder_PayloadReaderCase_UpdatePreparedQuery
+	case *LedgerScopedOrder_DeletePreparedQuery:
+		return LedgerScopedOrder_PayloadReaderCase_DeletePreparedQuery
+	default:
+		return LedgerScopedOrder_PayloadReaderCase_Unset
+	}
 }
 
 func (r *ledgerScopedOrderReadonly) Mutate() *LedgerScopedOrder {
@@ -241,14 +417,156 @@ func NewLedgerScopedOrderListReader(s []*LedgerScopedOrder) LedgerScopedOrderLis
 // SystemScopedOrderReader provides read-only access to SystemScopedOrder.
 // Call Mutate() to obtain a mutable clone.
 type SystemScopedOrderReader interface {
-	GetPayload() isSystemScopedOrder_Payload
+	GetRegisterSigningKey() RegisterSigningKeyOrderReader
+	GetRevokeSigningKey() RevokeSigningKeyOrderReader
+	GetSetSigningConfig() SetSigningConfigOrderReader
+	GetAddEventsSink() AddEventsSinkOrderReader
+	GetRemoveEventsSink() RemoveEventsSinkOrderReader
+	GetSetMaintenanceMode() SetMaintenanceModeOrderReader
+	GetCreateQueryCheckpoint() CreateQueryCheckpointOrderReader
+	GetDeleteQueryCheckpoint() DeleteQueryCheckpointOrderReader
+	GetSetQueryCheckpointSchedule() SetQueryCheckpointScheduleOrderReader
+	GetDeleteQueryCheckpointSchedule() DeleteQueryCheckpointScheduleOrderReader
+	GetSetClusterPolicy() SetClusterPolicyOrderReader
+	WhichPayload() SystemScopedOrder_PayloadReaderCase
 	Mutate() *SystemScopedOrder
 }
 
 type systemScopedOrderReadonly SystemScopedOrder
 
-func (r *systemScopedOrderReadonly) GetPayload() isSystemScopedOrder_Payload {
-	return (*SystemScopedOrder)(r).GetPayload()
+func (r *systemScopedOrderReadonly) GetRegisterSigningKey() RegisterSigningKeyOrderReader {
+	v, ok := (*SystemScopedOrder)(r).GetPayload().(*SystemScopedOrder_RegisterSigningKey)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.RegisterSigningKey.AsReader()
+}
+
+func (r *systemScopedOrderReadonly) GetRevokeSigningKey() RevokeSigningKeyOrderReader {
+	v, ok := (*SystemScopedOrder)(r).GetPayload().(*SystemScopedOrder_RevokeSigningKey)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.RevokeSigningKey.AsReader()
+}
+
+func (r *systemScopedOrderReadonly) GetSetSigningConfig() SetSigningConfigOrderReader {
+	v, ok := (*SystemScopedOrder)(r).GetPayload().(*SystemScopedOrder_SetSigningConfig)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.SetSigningConfig.AsReader()
+}
+
+func (r *systemScopedOrderReadonly) GetAddEventsSink() AddEventsSinkOrderReader {
+	v, ok := (*SystemScopedOrder)(r).GetPayload().(*SystemScopedOrder_AddEventsSink)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.AddEventsSink.AsReader()
+}
+
+func (r *systemScopedOrderReadonly) GetRemoveEventsSink() RemoveEventsSinkOrderReader {
+	v, ok := (*SystemScopedOrder)(r).GetPayload().(*SystemScopedOrder_RemoveEventsSink)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.RemoveEventsSink.AsReader()
+}
+
+func (r *systemScopedOrderReadonly) GetSetMaintenanceMode() SetMaintenanceModeOrderReader {
+	v, ok := (*SystemScopedOrder)(r).GetPayload().(*SystemScopedOrder_SetMaintenanceMode)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.SetMaintenanceMode.AsReader()
+}
+
+func (r *systemScopedOrderReadonly) GetCreateQueryCheckpoint() CreateQueryCheckpointOrderReader {
+	v, ok := (*SystemScopedOrder)(r).GetPayload().(*SystemScopedOrder_CreateQueryCheckpoint)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.CreateQueryCheckpoint.AsReader()
+}
+
+func (r *systemScopedOrderReadonly) GetDeleteQueryCheckpoint() DeleteQueryCheckpointOrderReader {
+	v, ok := (*SystemScopedOrder)(r).GetPayload().(*SystemScopedOrder_DeleteQueryCheckpoint)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.DeleteQueryCheckpoint.AsReader()
+}
+
+func (r *systemScopedOrderReadonly) GetSetQueryCheckpointSchedule() SetQueryCheckpointScheduleOrderReader {
+	v, ok := (*SystemScopedOrder)(r).GetPayload().(*SystemScopedOrder_SetQueryCheckpointSchedule)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.SetQueryCheckpointSchedule.AsReader()
+}
+
+func (r *systemScopedOrderReadonly) GetDeleteQueryCheckpointSchedule() DeleteQueryCheckpointScheduleOrderReader {
+	v, ok := (*SystemScopedOrder)(r).GetPayload().(*SystemScopedOrder_DeleteQueryCheckpointSchedule)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.DeleteQueryCheckpointSchedule.AsReader()
+}
+
+func (r *systemScopedOrderReadonly) GetSetClusterPolicy() SetClusterPolicyOrderReader {
+	v, ok := (*SystemScopedOrder)(r).GetPayload().(*SystemScopedOrder_SetClusterPolicy)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.SetClusterPolicy.AsReader()
+}
+
+// SystemScopedOrder_PayloadReaderCase identifies a selected oneof arm by its protobuf field number.
+type SystemScopedOrder_PayloadReaderCase int32
+
+const (
+	SystemScopedOrder_PayloadReaderCase_Unset                         SystemScopedOrder_PayloadReaderCase = 0
+	SystemScopedOrder_PayloadReaderCase_RegisterSigningKey            SystemScopedOrder_PayloadReaderCase = 1
+	SystemScopedOrder_PayloadReaderCase_RevokeSigningKey              SystemScopedOrder_PayloadReaderCase = 2
+	SystemScopedOrder_PayloadReaderCase_SetSigningConfig              SystemScopedOrder_PayloadReaderCase = 3
+	SystemScopedOrder_PayloadReaderCase_AddEventsSink                 SystemScopedOrder_PayloadReaderCase = 4
+	SystemScopedOrder_PayloadReaderCase_RemoveEventsSink              SystemScopedOrder_PayloadReaderCase = 5
+	SystemScopedOrder_PayloadReaderCase_SetMaintenanceMode            SystemScopedOrder_PayloadReaderCase = 6
+	SystemScopedOrder_PayloadReaderCase_CreateQueryCheckpoint         SystemScopedOrder_PayloadReaderCase = 7
+	SystemScopedOrder_PayloadReaderCase_DeleteQueryCheckpoint         SystemScopedOrder_PayloadReaderCase = 8
+	SystemScopedOrder_PayloadReaderCase_SetQueryCheckpointSchedule    SystemScopedOrder_PayloadReaderCase = 9
+	SystemScopedOrder_PayloadReaderCase_DeleteQueryCheckpointSchedule SystemScopedOrder_PayloadReaderCase = 10
+	SystemScopedOrder_PayloadReaderCase_SetClusterPolicy              SystemScopedOrder_PayloadReaderCase = 11
+)
+
+func (r *systemScopedOrderReadonly) WhichPayload() SystemScopedOrder_PayloadReaderCase {
+	switch (*SystemScopedOrder)(r).GetPayload().(type) {
+	case *SystemScopedOrder_RegisterSigningKey:
+		return SystemScopedOrder_PayloadReaderCase_RegisterSigningKey
+	case *SystemScopedOrder_RevokeSigningKey:
+		return SystemScopedOrder_PayloadReaderCase_RevokeSigningKey
+	case *SystemScopedOrder_SetSigningConfig:
+		return SystemScopedOrder_PayloadReaderCase_SetSigningConfig
+	case *SystemScopedOrder_AddEventsSink:
+		return SystemScopedOrder_PayloadReaderCase_AddEventsSink
+	case *SystemScopedOrder_RemoveEventsSink:
+		return SystemScopedOrder_PayloadReaderCase_RemoveEventsSink
+	case *SystemScopedOrder_SetMaintenanceMode:
+		return SystemScopedOrder_PayloadReaderCase_SetMaintenanceMode
+	case *SystemScopedOrder_CreateQueryCheckpoint:
+		return SystemScopedOrder_PayloadReaderCase_CreateQueryCheckpoint
+	case *SystemScopedOrder_DeleteQueryCheckpoint:
+		return SystemScopedOrder_PayloadReaderCase_DeleteQueryCheckpoint
+	case *SystemScopedOrder_SetQueryCheckpointSchedule:
+		return SystemScopedOrder_PayloadReaderCase_SetQueryCheckpointSchedule
+	case *SystemScopedOrder_DeleteQueryCheckpointSchedule:
+		return SystemScopedOrder_PayloadReaderCase_DeleteQueryCheckpointSchedule
+	case *SystemScopedOrder_SetClusterPolicy:
+		return SystemScopedOrder_PayloadReaderCase_SetClusterPolicy
+	default:
+		return SystemScopedOrder_PayloadReaderCase_Unset
+	}
 }
 
 func (r *systemScopedOrderReadonly) Mutate() *SystemScopedOrder {
@@ -1676,7 +1994,12 @@ func NewMirrorIngestOrderListReader(s []*MirrorIngestOrder) MirrorIngestOrderLis
 type MirrorLogEntryReader interface {
 	GetV2LogId() uint64
 	GetDate() commonpb.TimestampReader
-	GetData() isMirrorLogEntry_Data
+	GetCreatedTransaction() MirrorCreatedTransactionReader
+	GetSavedMetadata() MirrorSavedMetadataReader
+	GetRevertedTransaction() MirrorRevertedTransactionReader
+	GetDeletedMetadata() MirrorDeletedMetadataReader
+	GetFillGap() MirrorFillGapReader
+	WhichData() MirrorLogEntry_DataReaderCase
 	Mutate() *MirrorLogEntry
 }
 
@@ -1694,8 +2017,73 @@ func (r *mirrorLogEntryReadonly) GetDate() commonpb.TimestampReader {
 	return v.AsReader()
 }
 
-func (r *mirrorLogEntryReadonly) GetData() isMirrorLogEntry_Data {
-	return (*MirrorLogEntry)(r).GetData()
+func (r *mirrorLogEntryReadonly) GetCreatedTransaction() MirrorCreatedTransactionReader {
+	v, ok := (*MirrorLogEntry)(r).GetData().(*MirrorLogEntry_CreatedTransaction)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.CreatedTransaction.AsReader()
+}
+
+func (r *mirrorLogEntryReadonly) GetSavedMetadata() MirrorSavedMetadataReader {
+	v, ok := (*MirrorLogEntry)(r).GetData().(*MirrorLogEntry_SavedMetadata)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.SavedMetadata.AsReader()
+}
+
+func (r *mirrorLogEntryReadonly) GetRevertedTransaction() MirrorRevertedTransactionReader {
+	v, ok := (*MirrorLogEntry)(r).GetData().(*MirrorLogEntry_RevertedTransaction)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.RevertedTransaction.AsReader()
+}
+
+func (r *mirrorLogEntryReadonly) GetDeletedMetadata() MirrorDeletedMetadataReader {
+	v, ok := (*MirrorLogEntry)(r).GetData().(*MirrorLogEntry_DeletedMetadata)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.DeletedMetadata.AsReader()
+}
+
+func (r *mirrorLogEntryReadonly) GetFillGap() MirrorFillGapReader {
+	v, ok := (*MirrorLogEntry)(r).GetData().(*MirrorLogEntry_FillGap)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.FillGap.AsReader()
+}
+
+// MirrorLogEntry_DataReaderCase identifies a selected oneof arm by its protobuf field number.
+type MirrorLogEntry_DataReaderCase int32
+
+const (
+	MirrorLogEntry_DataReaderCase_Unset               MirrorLogEntry_DataReaderCase = 0
+	MirrorLogEntry_DataReaderCase_CreatedTransaction  MirrorLogEntry_DataReaderCase = 3
+	MirrorLogEntry_DataReaderCase_SavedMetadata       MirrorLogEntry_DataReaderCase = 4
+	MirrorLogEntry_DataReaderCase_RevertedTransaction MirrorLogEntry_DataReaderCase = 5
+	MirrorLogEntry_DataReaderCase_DeletedMetadata     MirrorLogEntry_DataReaderCase = 6
+	MirrorLogEntry_DataReaderCase_FillGap             MirrorLogEntry_DataReaderCase = 7
+)
+
+func (r *mirrorLogEntryReadonly) WhichData() MirrorLogEntry_DataReaderCase {
+	switch (*MirrorLogEntry)(r).GetData().(type) {
+	case *MirrorLogEntry_CreatedTransaction:
+		return MirrorLogEntry_DataReaderCase_CreatedTransaction
+	case *MirrorLogEntry_SavedMetadata:
+		return MirrorLogEntry_DataReaderCase_SavedMetadata
+	case *MirrorLogEntry_RevertedTransaction:
+		return MirrorLogEntry_DataReaderCase_RevertedTransaction
+	case *MirrorLogEntry_DeletedMetadata:
+		return MirrorLogEntry_DataReaderCase_DeletedMetadata
+	case *MirrorLogEntry_FillGap:
+		return MirrorLogEntry_DataReaderCase_FillGap
+	default:
+		return MirrorLogEntry_DataReaderCase_Unset
+	}
 }
 
 func (r *mirrorLogEntryReadonly) Mutate() *MirrorLogEntry {
@@ -2409,19 +2797,161 @@ func NewDeleteLedgerOrderListReader(s []*DeleteLedgerOrder) DeleteLedgerOrderLis
 // LedgerApplyOrderReader provides read-only access to LedgerApplyOrder.
 // Call Mutate() to obtain a mutable clone.
 type LedgerApplyOrderReader interface {
+	GetCreateTransaction() CreateTransactionOrderReader
+	GetAddMetadata() SaveMetadataOrderReader
+	GetRevertTransaction() RevertTransactionOrderReader
+	GetDeleteMetadata() DeleteMetadataOrderReader
+	GetSetMetadataFieldType() SetMetadataFieldTypeOrderReader
+	GetRemoveMetadataFieldType() RemoveMetadataFieldTypeOrderReader
+	GetCreateIndex() CreateIndexOrderReader
+	GetDropIndex() DropIndexOrderReader
+	GetAddAccountType() AddAccountTypeOrderReader
+	GetRemoveAccountType() RemoveAccountTypeOrderReader
+	GetUpdateDefaultEnforcementMode() UpdateDefaultEnforcementModeOrderReader
 	GetSkippableReasons() []commonpb.ErrorReason
-	GetData() isLedgerApplyOrder_Data
+	WhichData() LedgerApplyOrder_DataReaderCase
 	Mutate() *LedgerApplyOrder
 }
 
 type ledgerApplyOrderReadonly LedgerApplyOrder
 
+func (r *ledgerApplyOrderReadonly) GetCreateTransaction() CreateTransactionOrderReader {
+	v, ok := (*LedgerApplyOrder)(r).GetData().(*LedgerApplyOrder_CreateTransaction)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.CreateTransaction.AsReader()
+}
+
+func (r *ledgerApplyOrderReadonly) GetAddMetadata() SaveMetadataOrderReader {
+	v, ok := (*LedgerApplyOrder)(r).GetData().(*LedgerApplyOrder_AddMetadata)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.AddMetadata.AsReader()
+}
+
+func (r *ledgerApplyOrderReadonly) GetRevertTransaction() RevertTransactionOrderReader {
+	v, ok := (*LedgerApplyOrder)(r).GetData().(*LedgerApplyOrder_RevertTransaction)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.RevertTransaction.AsReader()
+}
+
+func (r *ledgerApplyOrderReadonly) GetDeleteMetadata() DeleteMetadataOrderReader {
+	v, ok := (*LedgerApplyOrder)(r).GetData().(*LedgerApplyOrder_DeleteMetadata)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.DeleteMetadata.AsReader()
+}
+
+func (r *ledgerApplyOrderReadonly) GetSetMetadataFieldType() SetMetadataFieldTypeOrderReader {
+	v, ok := (*LedgerApplyOrder)(r).GetData().(*LedgerApplyOrder_SetMetadataFieldType)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.SetMetadataFieldType.AsReader()
+}
+
+func (r *ledgerApplyOrderReadonly) GetRemoveMetadataFieldType() RemoveMetadataFieldTypeOrderReader {
+	v, ok := (*LedgerApplyOrder)(r).GetData().(*LedgerApplyOrder_RemoveMetadataFieldType)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.RemoveMetadataFieldType.AsReader()
+}
+
+func (r *ledgerApplyOrderReadonly) GetCreateIndex() CreateIndexOrderReader {
+	v, ok := (*LedgerApplyOrder)(r).GetData().(*LedgerApplyOrder_CreateIndex)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.CreateIndex.AsReader()
+}
+
+func (r *ledgerApplyOrderReadonly) GetDropIndex() DropIndexOrderReader {
+	v, ok := (*LedgerApplyOrder)(r).GetData().(*LedgerApplyOrder_DropIndex)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.DropIndex.AsReader()
+}
+
+func (r *ledgerApplyOrderReadonly) GetAddAccountType() AddAccountTypeOrderReader {
+	v, ok := (*LedgerApplyOrder)(r).GetData().(*LedgerApplyOrder_AddAccountType)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.AddAccountType.AsReader()
+}
+
+func (r *ledgerApplyOrderReadonly) GetRemoveAccountType() RemoveAccountTypeOrderReader {
+	v, ok := (*LedgerApplyOrder)(r).GetData().(*LedgerApplyOrder_RemoveAccountType)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.RemoveAccountType.AsReader()
+}
+
+func (r *ledgerApplyOrderReadonly) GetUpdateDefaultEnforcementMode() UpdateDefaultEnforcementModeOrderReader {
+	v, ok := (*LedgerApplyOrder)(r).GetData().(*LedgerApplyOrder_UpdateDefaultEnforcementMode)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.UpdateDefaultEnforcementMode.AsReader()
+}
+
 func (r *ledgerApplyOrderReadonly) GetSkippableReasons() []commonpb.ErrorReason {
 	return slices.Clone((*LedgerApplyOrder)(r).GetSkippableReasons())
 }
 
-func (r *ledgerApplyOrderReadonly) GetData() isLedgerApplyOrder_Data {
-	return (*LedgerApplyOrder)(r).GetData()
+// LedgerApplyOrder_DataReaderCase identifies a selected oneof arm by its protobuf field number.
+type LedgerApplyOrder_DataReaderCase int32
+
+const (
+	LedgerApplyOrder_DataReaderCase_Unset                        LedgerApplyOrder_DataReaderCase = 0
+	LedgerApplyOrder_DataReaderCase_CreateTransaction            LedgerApplyOrder_DataReaderCase = 1
+	LedgerApplyOrder_DataReaderCase_AddMetadata                  LedgerApplyOrder_DataReaderCase = 2
+	LedgerApplyOrder_DataReaderCase_RevertTransaction            LedgerApplyOrder_DataReaderCase = 3
+	LedgerApplyOrder_DataReaderCase_DeleteMetadata               LedgerApplyOrder_DataReaderCase = 4
+	LedgerApplyOrder_DataReaderCase_SetMetadataFieldType         LedgerApplyOrder_DataReaderCase = 5
+	LedgerApplyOrder_DataReaderCase_RemoveMetadataFieldType      LedgerApplyOrder_DataReaderCase = 6
+	LedgerApplyOrder_DataReaderCase_CreateIndex                  LedgerApplyOrder_DataReaderCase = 7
+	LedgerApplyOrder_DataReaderCase_DropIndex                    LedgerApplyOrder_DataReaderCase = 8
+	LedgerApplyOrder_DataReaderCase_AddAccountType               LedgerApplyOrder_DataReaderCase = 9
+	LedgerApplyOrder_DataReaderCase_RemoveAccountType            LedgerApplyOrder_DataReaderCase = 10
+	LedgerApplyOrder_DataReaderCase_UpdateDefaultEnforcementMode LedgerApplyOrder_DataReaderCase = 11
+)
+
+func (r *ledgerApplyOrderReadonly) WhichData() LedgerApplyOrder_DataReaderCase {
+	switch (*LedgerApplyOrder)(r).GetData().(type) {
+	case *LedgerApplyOrder_CreateTransaction:
+		return LedgerApplyOrder_DataReaderCase_CreateTransaction
+	case *LedgerApplyOrder_AddMetadata:
+		return LedgerApplyOrder_DataReaderCase_AddMetadata
+	case *LedgerApplyOrder_RevertTransaction:
+		return LedgerApplyOrder_DataReaderCase_RevertTransaction
+	case *LedgerApplyOrder_DeleteMetadata:
+		return LedgerApplyOrder_DataReaderCase_DeleteMetadata
+	case *LedgerApplyOrder_SetMetadataFieldType:
+		return LedgerApplyOrder_DataReaderCase_SetMetadataFieldType
+	case *LedgerApplyOrder_RemoveMetadataFieldType:
+		return LedgerApplyOrder_DataReaderCase_RemoveMetadataFieldType
+	case *LedgerApplyOrder_CreateIndex:
+		return LedgerApplyOrder_DataReaderCase_CreateIndex
+	case *LedgerApplyOrder_DropIndex:
+		return LedgerApplyOrder_DataReaderCase_DropIndex
+	case *LedgerApplyOrder_AddAccountType:
+		return LedgerApplyOrder_DataReaderCase_AddAccountType
+	case *LedgerApplyOrder_RemoveAccountType:
+		return LedgerApplyOrder_DataReaderCase_RemoveAccountType
+	case *LedgerApplyOrder_UpdateDefaultEnforcementMode:
+		return LedgerApplyOrder_DataReaderCase_UpdateDefaultEnforcementMode
+	default:
+		return LedgerApplyOrder_DataReaderCase_Unset
+	}
 }
 
 func (r *ledgerApplyOrderReadonly) Mutate() *LedgerApplyOrder {
@@ -3867,7 +4397,9 @@ type ProposalReader interface {
 	GetIdempotency() commonpb.IdempotencyReader
 	GetSignature() signaturepb.SignedApplyBatchReader
 	GetTechnicalUpdates() TechnicalUpdateListReader
-	GetPayload() isProposal_Payload
+	GetBatch() ExecutionBatchReader
+	GetSetClusterPolicy() SetClusterPolicyProposalReader
+	WhichPayload() Proposal_PayloadReaderCase
 	Mutate() *Proposal
 }
 
@@ -3929,8 +4461,40 @@ func (r *proposalReadonly) GetTechnicalUpdates() TechnicalUpdateListReader {
 	return NewTechnicalUpdateListReader((*Proposal)(r).GetTechnicalUpdates())
 }
 
-func (r *proposalReadonly) GetPayload() isProposal_Payload {
-	return (*Proposal)(r).GetPayload()
+func (r *proposalReadonly) GetBatch() ExecutionBatchReader {
+	v, ok := (*Proposal)(r).GetPayload().(*Proposal_Batch)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.Batch.AsReader()
+}
+
+func (r *proposalReadonly) GetSetClusterPolicy() SetClusterPolicyProposalReader {
+	v, ok := (*Proposal)(r).GetPayload().(*Proposal_SetClusterPolicy)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.SetClusterPolicy.AsReader()
+}
+
+// Proposal_PayloadReaderCase identifies a selected oneof arm by its protobuf field number.
+type Proposal_PayloadReaderCase int32
+
+const (
+	Proposal_PayloadReaderCase_Unset            Proposal_PayloadReaderCase = 0
+	Proposal_PayloadReaderCase_Batch            Proposal_PayloadReaderCase = 11
+	Proposal_PayloadReaderCase_SetClusterPolicy Proposal_PayloadReaderCase = 12
+)
+
+func (r *proposalReadonly) WhichPayload() Proposal_PayloadReaderCase {
+	switch (*Proposal)(r).GetPayload().(type) {
+	case *Proposal_Batch:
+		return Proposal_PayloadReaderCase_Batch
+	case *Proposal_SetClusterPolicy:
+		return Proposal_PayloadReaderCase_SetClusterPolicy
+	default:
+		return Proposal_PayloadReaderCase_Unset
+	}
 }
 
 func (r *proposalReadonly) Mutate() *Proposal {
@@ -3989,7 +4553,16 @@ func NewProposalListReader(s []*Proposal) ProposalListReader { return proposalLi
 // Call Mutate() to obtain a mutable clone.
 type TechnicalUpdateReader interface {
 	GetCoverageBits() []byte
-	GetKind() isTechnicalUpdate_Kind
+	GetMirrorSync() MirrorSyncUpdateReader
+	GetEventsSink() EventsSinkUpdateReader
+	GetIdempotencyEviction() IdempotencyEvictionReader
+	GetClusterConfig() commonpb.ClusterConfigReader
+	GetBackupOrder() BackupOrderReader
+	GetIncrementalBackupOrder() IncrementalBackupOrderReader
+	GetAuditKey() []byte
+	GetDrainMarker() DrainMarkerReader
+	GetDrainRelease() DrainReleaseReader
+	WhichKind() TechnicalUpdate_KindReaderCase
 	Mutate() *TechnicalUpdate
 }
 
@@ -3999,8 +4572,117 @@ func (r *technicalUpdateReadonly) GetCoverageBits() []byte {
 	return bytes.Clone((*TechnicalUpdate)(r).GetCoverageBits())
 }
 
-func (r *technicalUpdateReadonly) GetKind() isTechnicalUpdate_Kind {
-	return (*TechnicalUpdate)(r).GetKind()
+func (r *technicalUpdateReadonly) GetMirrorSync() MirrorSyncUpdateReader {
+	v, ok := (*TechnicalUpdate)(r).GetKind().(*TechnicalUpdate_MirrorSync)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.MirrorSync.AsReader()
+}
+
+func (r *technicalUpdateReadonly) GetEventsSink() EventsSinkUpdateReader {
+	v, ok := (*TechnicalUpdate)(r).GetKind().(*TechnicalUpdate_EventsSink)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.EventsSink.AsReader()
+}
+
+func (r *technicalUpdateReadonly) GetIdempotencyEviction() IdempotencyEvictionReader {
+	v, ok := (*TechnicalUpdate)(r).GetKind().(*TechnicalUpdate_IdempotencyEviction)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.IdempotencyEviction.AsReader()
+}
+
+func (r *technicalUpdateReadonly) GetClusterConfig() commonpb.ClusterConfigReader {
+	v, ok := (*TechnicalUpdate)(r).GetKind().(*TechnicalUpdate_ClusterConfig)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.ClusterConfig.AsReader()
+}
+
+func (r *technicalUpdateReadonly) GetBackupOrder() BackupOrderReader {
+	v, ok := (*TechnicalUpdate)(r).GetKind().(*TechnicalUpdate_BackupOrder)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.BackupOrder.AsReader()
+}
+
+func (r *technicalUpdateReadonly) GetIncrementalBackupOrder() IncrementalBackupOrderReader {
+	v, ok := (*TechnicalUpdate)(r).GetKind().(*TechnicalUpdate_IncrementalBackupOrder)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.IncrementalBackupOrder.AsReader()
+}
+
+func (r *technicalUpdateReadonly) GetAuditKey() []byte {
+	v, ok := (*TechnicalUpdate)(r).GetKind().(*TechnicalUpdate_AuditKey)
+	if !ok || v == nil {
+		return bytes.Clone((*TechnicalUpdate)(nil).GetAuditKey())
+	}
+	return bytes.Clone(v.AuditKey)
+}
+
+func (r *technicalUpdateReadonly) GetDrainMarker() DrainMarkerReader {
+	v, ok := (*TechnicalUpdate)(r).GetKind().(*TechnicalUpdate_DrainMarker)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.DrainMarker.AsReader()
+}
+
+func (r *technicalUpdateReadonly) GetDrainRelease() DrainReleaseReader {
+	v, ok := (*TechnicalUpdate)(r).GetKind().(*TechnicalUpdate_DrainRelease)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.DrainRelease.AsReader()
+}
+
+// TechnicalUpdate_KindReaderCase identifies a selected oneof arm by its protobuf field number.
+type TechnicalUpdate_KindReaderCase int32
+
+const (
+	TechnicalUpdate_KindReaderCase_Unset                  TechnicalUpdate_KindReaderCase = 0
+	TechnicalUpdate_KindReaderCase_MirrorSync             TechnicalUpdate_KindReaderCase = 2
+	TechnicalUpdate_KindReaderCase_EventsSink             TechnicalUpdate_KindReaderCase = 3
+	TechnicalUpdate_KindReaderCase_IdempotencyEviction    TechnicalUpdate_KindReaderCase = 4
+	TechnicalUpdate_KindReaderCase_ClusterConfig          TechnicalUpdate_KindReaderCase = 5
+	TechnicalUpdate_KindReaderCase_BackupOrder            TechnicalUpdate_KindReaderCase = 6
+	TechnicalUpdate_KindReaderCase_IncrementalBackupOrder TechnicalUpdate_KindReaderCase = 7
+	TechnicalUpdate_KindReaderCase_AuditKey               TechnicalUpdate_KindReaderCase = 8
+	TechnicalUpdate_KindReaderCase_DrainMarker            TechnicalUpdate_KindReaderCase = 9
+	TechnicalUpdate_KindReaderCase_DrainRelease           TechnicalUpdate_KindReaderCase = 10
+)
+
+func (r *technicalUpdateReadonly) WhichKind() TechnicalUpdate_KindReaderCase {
+	switch (*TechnicalUpdate)(r).GetKind().(type) {
+	case *TechnicalUpdate_MirrorSync:
+		return TechnicalUpdate_KindReaderCase_MirrorSync
+	case *TechnicalUpdate_EventsSink:
+		return TechnicalUpdate_KindReaderCase_EventsSink
+	case *TechnicalUpdate_IdempotencyEviction:
+		return TechnicalUpdate_KindReaderCase_IdempotencyEviction
+	case *TechnicalUpdate_ClusterConfig:
+		return TechnicalUpdate_KindReaderCase_ClusterConfig
+	case *TechnicalUpdate_BackupOrder:
+		return TechnicalUpdate_KindReaderCase_BackupOrder
+	case *TechnicalUpdate_IncrementalBackupOrder:
+		return TechnicalUpdate_KindReaderCase_IncrementalBackupOrder
+	case *TechnicalUpdate_AuditKey:
+		return TechnicalUpdate_KindReaderCase_AuditKey
+	case *TechnicalUpdate_DrainMarker:
+		return TechnicalUpdate_KindReaderCase_DrainMarker
+	case *TechnicalUpdate_DrainRelease:
+		return TechnicalUpdate_KindReaderCase_DrainRelease
+	default:
+		return TechnicalUpdate_KindReaderCase_Unset
+	}
 }
 
 func (r *technicalUpdateReadonly) Mutate() *TechnicalUpdate {
@@ -4286,7 +4968,9 @@ func NewDrainStateListReader(s []*DrainState) DrainStateListReader { return drai
 type BackupDestinationReader interface {
 	GetBasePath() string
 	GetBucketId() string
-	GetTarget() isBackupDestination_Target
+	GetS3() S3BackupTargetReader
+	GetAzure() AzureBackupTargetReader
+	WhichTarget() BackupDestination_TargetReaderCase
 	Mutate() *BackupDestination
 }
 
@@ -4300,8 +4984,40 @@ func (r *backupDestinationReadonly) GetBucketId() string {
 	return (*BackupDestination)(r).GetBucketId()
 }
 
-func (r *backupDestinationReadonly) GetTarget() isBackupDestination_Target {
-	return (*BackupDestination)(r).GetTarget()
+func (r *backupDestinationReadonly) GetS3() S3BackupTargetReader {
+	v, ok := (*BackupDestination)(r).GetTarget().(*BackupDestination_S3)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.S3.AsReader()
+}
+
+func (r *backupDestinationReadonly) GetAzure() AzureBackupTargetReader {
+	v, ok := (*BackupDestination)(r).GetTarget().(*BackupDestination_Azure)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.Azure.AsReader()
+}
+
+// BackupDestination_TargetReaderCase identifies a selected oneof arm by its protobuf field number.
+type BackupDestination_TargetReaderCase int32
+
+const (
+	BackupDestination_TargetReaderCase_Unset BackupDestination_TargetReaderCase = 0
+	BackupDestination_TargetReaderCase_S3    BackupDestination_TargetReaderCase = 3
+	BackupDestination_TargetReaderCase_Azure BackupDestination_TargetReaderCase = 4
+)
+
+func (r *backupDestinationReadonly) WhichTarget() BackupDestination_TargetReaderCase {
+	switch (*BackupDestination)(r).GetTarget().(type) {
+	case *BackupDestination_S3:
+		return BackupDestination_TargetReaderCase_S3
+	case *BackupDestination_Azure:
+		return BackupDestination_TargetReaderCase_Azure
+	default:
+		return BackupDestination_TargetReaderCase_Unset
+	}
 }
 
 func (r *backupDestinationReadonly) Mutate() *BackupDestination {
@@ -4649,14 +5365,60 @@ func NewBackupJobListReader(s []*BackupJob) BackupJobListReader { return backupJ
 // BackupOrderReader provides read-only access to BackupOrder.
 // Call Mutate() to obtain a mutable clone.
 type BackupOrderReader interface {
-	GetOp() isBackupOrder_Op
+	GetStart() BackupOrderStartReader
+	GetComplete() BackupOrderCompleteReader
+	GetFail() BackupOrderFailReader
+	WhichOp() BackupOrder_OpReaderCase
 	Mutate() *BackupOrder
 }
 
 type backupOrderReadonly BackupOrder
 
-func (r *backupOrderReadonly) GetOp() isBackupOrder_Op {
-	return (*BackupOrder)(r).GetOp()
+func (r *backupOrderReadonly) GetStart() BackupOrderStartReader {
+	v, ok := (*BackupOrder)(r).GetOp().(*BackupOrder_Start)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.Start.AsReader()
+}
+
+func (r *backupOrderReadonly) GetComplete() BackupOrderCompleteReader {
+	v, ok := (*BackupOrder)(r).GetOp().(*BackupOrder_Complete)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.Complete.AsReader()
+}
+
+func (r *backupOrderReadonly) GetFail() BackupOrderFailReader {
+	v, ok := (*BackupOrder)(r).GetOp().(*BackupOrder_Fail)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.Fail.AsReader()
+}
+
+// BackupOrder_OpReaderCase identifies a selected oneof arm by its protobuf field number.
+type BackupOrder_OpReaderCase int32
+
+const (
+	BackupOrder_OpReaderCase_Unset    BackupOrder_OpReaderCase = 0
+	BackupOrder_OpReaderCase_Start    BackupOrder_OpReaderCase = 1
+	BackupOrder_OpReaderCase_Complete BackupOrder_OpReaderCase = 2
+	BackupOrder_OpReaderCase_Fail     BackupOrder_OpReaderCase = 3
+)
+
+func (r *backupOrderReadonly) WhichOp() BackupOrder_OpReaderCase {
+	switch (*BackupOrder)(r).GetOp().(type) {
+	case *BackupOrder_Start:
+		return BackupOrder_OpReaderCase_Start
+	case *BackupOrder_Complete:
+		return BackupOrder_OpReaderCase_Complete
+	case *BackupOrder_Fail:
+		return BackupOrder_OpReaderCase_Fail
+	default:
+		return BackupOrder_OpReaderCase_Unset
+	}
 }
 
 func (r *backupOrderReadonly) Mutate() *BackupOrder {
@@ -4716,14 +5478,60 @@ func NewBackupOrderListReader(s []*BackupOrder) BackupOrderListReader {
 // IncrementalBackupOrderReader provides read-only access to IncrementalBackupOrder.
 // Call Mutate() to obtain a mutable clone.
 type IncrementalBackupOrderReader interface {
-	GetOp() isIncrementalBackupOrder_Op
+	GetStart() BackupOrderStartReader
+	GetComplete() BackupOrderCompleteReader
+	GetFail() BackupOrderFailReader
+	WhichOp() IncrementalBackupOrder_OpReaderCase
 	Mutate() *IncrementalBackupOrder
 }
 
 type incrementalBackupOrderReadonly IncrementalBackupOrder
 
-func (r *incrementalBackupOrderReadonly) GetOp() isIncrementalBackupOrder_Op {
-	return (*IncrementalBackupOrder)(r).GetOp()
+func (r *incrementalBackupOrderReadonly) GetStart() BackupOrderStartReader {
+	v, ok := (*IncrementalBackupOrder)(r).GetOp().(*IncrementalBackupOrder_Start)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.Start.AsReader()
+}
+
+func (r *incrementalBackupOrderReadonly) GetComplete() BackupOrderCompleteReader {
+	v, ok := (*IncrementalBackupOrder)(r).GetOp().(*IncrementalBackupOrder_Complete)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.Complete.AsReader()
+}
+
+func (r *incrementalBackupOrderReadonly) GetFail() BackupOrderFailReader {
+	v, ok := (*IncrementalBackupOrder)(r).GetOp().(*IncrementalBackupOrder_Fail)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.Fail.AsReader()
+}
+
+// IncrementalBackupOrder_OpReaderCase identifies a selected oneof arm by its protobuf field number.
+type IncrementalBackupOrder_OpReaderCase int32
+
+const (
+	IncrementalBackupOrder_OpReaderCase_Unset    IncrementalBackupOrder_OpReaderCase = 0
+	IncrementalBackupOrder_OpReaderCase_Start    IncrementalBackupOrder_OpReaderCase = 1
+	IncrementalBackupOrder_OpReaderCase_Complete IncrementalBackupOrder_OpReaderCase = 2
+	IncrementalBackupOrder_OpReaderCase_Fail     IncrementalBackupOrder_OpReaderCase = 3
+)
+
+func (r *incrementalBackupOrderReadonly) WhichOp() IncrementalBackupOrder_OpReaderCase {
+	switch (*IncrementalBackupOrder)(r).GetOp().(type) {
+	case *IncrementalBackupOrder_Start:
+		return IncrementalBackupOrder_OpReaderCase_Start
+	case *IncrementalBackupOrder_Complete:
+		return IncrementalBackupOrder_OpReaderCase_Complete
+	case *IncrementalBackupOrder_Fail:
+		return IncrementalBackupOrder_OpReaderCase_Fail
+	default:
+		return IncrementalBackupOrder_OpReaderCase_Unset
+	}
 }
 
 func (r *incrementalBackupOrderReadonly) Mutate() *IncrementalBackupOrder {
@@ -5285,14 +6093,48 @@ func NewEventsSinkUpdateListReader(s []*EventsSinkUpdate) EventsSinkUpdateListRe
 // CreatedLogOrReferenceReader provides read-only access to CreatedLogOrReference.
 // Call Mutate() to obtain a mutable clone.
 type CreatedLogOrReferenceReader interface {
-	GetType() isCreatedLogOrReference_Type
+	GetCreatedLog() commonpb.LogReader
+	GetReferenceSequence() uint64
+	WhichType() CreatedLogOrReference_TypeReaderCase
 	Mutate() *CreatedLogOrReference
 }
 
 type createdLogOrReferenceReadonly CreatedLogOrReference
 
-func (r *createdLogOrReferenceReadonly) GetType() isCreatedLogOrReference_Type {
-	return (*CreatedLogOrReference)(r).GetType()
+func (r *createdLogOrReferenceReadonly) GetCreatedLog() commonpb.LogReader {
+	v, ok := (*CreatedLogOrReference)(r).GetType().(*CreatedLogOrReference_CreatedLog)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.CreatedLog.AsReader()
+}
+
+func (r *createdLogOrReferenceReadonly) GetReferenceSequence() uint64 {
+	v, ok := (*CreatedLogOrReference)(r).GetType().(*CreatedLogOrReference_ReferenceSequence)
+	if !ok || v == nil {
+		return (*CreatedLogOrReference)(nil).GetReferenceSequence()
+	}
+	return v.ReferenceSequence
+}
+
+// CreatedLogOrReference_TypeReaderCase identifies a selected oneof arm by its protobuf field number.
+type CreatedLogOrReference_TypeReaderCase int32
+
+const (
+	CreatedLogOrReference_TypeReaderCase_Unset             CreatedLogOrReference_TypeReaderCase = 0
+	CreatedLogOrReference_TypeReaderCase_CreatedLog        CreatedLogOrReference_TypeReaderCase = 1
+	CreatedLogOrReference_TypeReaderCase_ReferenceSequence CreatedLogOrReference_TypeReaderCase = 2
+)
+
+func (r *createdLogOrReferenceReadonly) WhichType() CreatedLogOrReference_TypeReaderCase {
+	switch (*CreatedLogOrReference)(r).GetType().(type) {
+	case *CreatedLogOrReference_CreatedLog:
+		return CreatedLogOrReference_TypeReaderCase_CreatedLog
+	case *CreatedLogOrReference_ReferenceSequence:
+		return CreatedLogOrReference_TypeReaderCase_ReferenceSequence
+	default:
+		return CreatedLogOrReference_TypeReaderCase_Unset
+	}
 }
 
 func (r *createdLogOrReferenceReadonly) Mutate() *CreatedLogOrReference {

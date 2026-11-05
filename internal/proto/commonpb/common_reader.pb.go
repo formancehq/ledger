@@ -13,14 +13,60 @@ import (
 // MethodAuthPolicyReader provides read-only access to MethodAuthPolicy.
 // Call Mutate() to obtain a mutable clone.
 type MethodAuthPolicyReader interface {
-	GetPolicy() isMethodAuthPolicy_Policy
+	GetPublic() bool
+	GetFixedScope() AuthScope
+	GetDynamicResolver() DynamicAuthResolver
+	WhichPolicy() MethodAuthPolicy_PolicyReaderCase
 	Mutate() *MethodAuthPolicy
 }
 
 type methodAuthPolicyReadonly MethodAuthPolicy
 
-func (r *methodAuthPolicyReadonly) GetPolicy() isMethodAuthPolicy_Policy {
-	return (*MethodAuthPolicy)(r).GetPolicy()
+func (r *methodAuthPolicyReadonly) GetPublic() bool {
+	v, ok := (*MethodAuthPolicy)(r).GetPolicy().(*MethodAuthPolicy_Public)
+	if !ok || v == nil {
+		return (*MethodAuthPolicy)(nil).GetPublic()
+	}
+	return v.Public
+}
+
+func (r *methodAuthPolicyReadonly) GetFixedScope() AuthScope {
+	v, ok := (*MethodAuthPolicy)(r).GetPolicy().(*MethodAuthPolicy_FixedScope)
+	if !ok || v == nil {
+		return (*MethodAuthPolicy)(nil).GetFixedScope()
+	}
+	return v.FixedScope
+}
+
+func (r *methodAuthPolicyReadonly) GetDynamicResolver() DynamicAuthResolver {
+	v, ok := (*MethodAuthPolicy)(r).GetPolicy().(*MethodAuthPolicy_DynamicResolver)
+	if !ok || v == nil {
+		return (*MethodAuthPolicy)(nil).GetDynamicResolver()
+	}
+	return v.DynamicResolver
+}
+
+// MethodAuthPolicy_PolicyReaderCase identifies a selected oneof arm by its protobuf field number.
+type MethodAuthPolicy_PolicyReaderCase int32
+
+const (
+	MethodAuthPolicy_PolicyReaderCase_Unset           MethodAuthPolicy_PolicyReaderCase = 0
+	MethodAuthPolicy_PolicyReaderCase_Public          MethodAuthPolicy_PolicyReaderCase = 1
+	MethodAuthPolicy_PolicyReaderCase_FixedScope      MethodAuthPolicy_PolicyReaderCase = 2
+	MethodAuthPolicy_PolicyReaderCase_DynamicResolver MethodAuthPolicy_PolicyReaderCase = 3
+)
+
+func (r *methodAuthPolicyReadonly) WhichPolicy() MethodAuthPolicy_PolicyReaderCase {
+	switch (*MethodAuthPolicy)(r).GetPolicy().(type) {
+	case *MethodAuthPolicy_Public:
+		return MethodAuthPolicy_PolicyReaderCase_Public
+	case *MethodAuthPolicy_FixedScope:
+		return MethodAuthPolicy_PolicyReaderCase_FixedScope
+	case *MethodAuthPolicy_DynamicResolver:
+		return MethodAuthPolicy_PolicyReaderCase_DynamicResolver
+	default:
+		return MethodAuthPolicy_PolicyReaderCase_Unset
+	}
 }
 
 func (r *methodAuthPolicyReadonly) Mutate() *MethodAuthPolicy {
@@ -210,14 +256,96 @@ func NewNullValueListReader(s []*NullValue) NullValueListReader { return nullVal
 // MetadataValueReader provides read-only access to MetadataValue.
 // Call Mutate() to obtain a mutable clone.
 type MetadataValueReader interface {
-	GetType() isMetadataValue_Type
+	GetStringValue() string
+	GetIntValue() int64
+	GetBoolValue() bool
+	GetNullValue() NullValueReader
+	GetUintValue() uint64
+	GetDatetimeValue() int64
+	WhichType() MetadataValue_TypeReaderCase
 	Mutate() *MetadataValue
 }
 
 type metadataValueReadonly MetadataValue
 
-func (r *metadataValueReadonly) GetType() isMetadataValue_Type {
-	return (*MetadataValue)(r).GetType()
+func (r *metadataValueReadonly) GetStringValue() string {
+	v, ok := (*MetadataValue)(r).GetType().(*MetadataValue_StringValue)
+	if !ok || v == nil {
+		return (*MetadataValue)(nil).GetStringValue()
+	}
+	return v.StringValue
+}
+
+func (r *metadataValueReadonly) GetIntValue() int64 {
+	v, ok := (*MetadataValue)(r).GetType().(*MetadataValue_IntValue)
+	if !ok || v == nil {
+		return (*MetadataValue)(nil).GetIntValue()
+	}
+	return v.IntValue
+}
+
+func (r *metadataValueReadonly) GetBoolValue() bool {
+	v, ok := (*MetadataValue)(r).GetType().(*MetadataValue_BoolValue)
+	if !ok || v == nil {
+		return (*MetadataValue)(nil).GetBoolValue()
+	}
+	return v.BoolValue
+}
+
+func (r *metadataValueReadonly) GetNullValue() NullValueReader {
+	v, ok := (*MetadataValue)(r).GetType().(*MetadataValue_NullValue)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.NullValue.AsReader()
+}
+
+func (r *metadataValueReadonly) GetUintValue() uint64 {
+	v, ok := (*MetadataValue)(r).GetType().(*MetadataValue_UintValue)
+	if !ok || v == nil {
+		return (*MetadataValue)(nil).GetUintValue()
+	}
+	return v.UintValue
+}
+
+func (r *metadataValueReadonly) GetDatetimeValue() int64 {
+	v, ok := (*MetadataValue)(r).GetType().(*MetadataValue_DatetimeValue)
+	if !ok || v == nil {
+		return (*MetadataValue)(nil).GetDatetimeValue()
+	}
+	return v.DatetimeValue
+}
+
+// MetadataValue_TypeReaderCase identifies a selected oneof arm by its protobuf field number.
+type MetadataValue_TypeReaderCase int32
+
+const (
+	MetadataValue_TypeReaderCase_Unset         MetadataValue_TypeReaderCase = 0
+	MetadataValue_TypeReaderCase_StringValue   MetadataValue_TypeReaderCase = 1
+	MetadataValue_TypeReaderCase_IntValue      MetadataValue_TypeReaderCase = 2
+	MetadataValue_TypeReaderCase_BoolValue     MetadataValue_TypeReaderCase = 3
+	MetadataValue_TypeReaderCase_NullValue     MetadataValue_TypeReaderCase = 4
+	MetadataValue_TypeReaderCase_UintValue     MetadataValue_TypeReaderCase = 5
+	MetadataValue_TypeReaderCase_DatetimeValue MetadataValue_TypeReaderCase = 6
+)
+
+func (r *metadataValueReadonly) WhichType() MetadataValue_TypeReaderCase {
+	switch (*MetadataValue)(r).GetType().(type) {
+	case *MetadataValue_StringValue:
+		return MetadataValue_TypeReaderCase_StringValue
+	case *MetadataValue_IntValue:
+		return MetadataValue_TypeReaderCase_IntValue
+	case *MetadataValue_BoolValue:
+		return MetadataValue_TypeReaderCase_BoolValue
+	case *MetadataValue_NullValue:
+		return MetadataValue_TypeReaderCase_NullValue
+	case *MetadataValue_UintValue:
+		return MetadataValue_TypeReaderCase_UintValue
+	case *MetadataValue_DatetimeValue:
+		return MetadataValue_TypeReaderCase_DatetimeValue
+	default:
+		return MetadataValue_TypeReaderCase_Unset
+	}
 }
 
 func (r *metadataValueReadonly) Mutate() *MetadataValue {
@@ -375,14 +503,72 @@ func (m metadataMap_valuesMapReadonly) Range(yield func(string, MetadataValueRea
 // ParameterValueReader provides read-only access to ParameterValue.
 // Call Mutate() to obtain a mutable clone.
 type ParameterValueReader interface {
-	GetValue() isParameterValue_Value
+	GetStringValue() string
+	GetInt64Value() int64
+	GetUint64Value() uint64
+	GetBoolValue() bool
+	WhichValue() ParameterValue_ValueReaderCase
 	Mutate() *ParameterValue
 }
 
 type parameterValueReadonly ParameterValue
 
-func (r *parameterValueReadonly) GetValue() isParameterValue_Value {
-	return (*ParameterValue)(r).GetValue()
+func (r *parameterValueReadonly) GetStringValue() string {
+	v, ok := (*ParameterValue)(r).GetValue().(*ParameterValue_StringValue)
+	if !ok || v == nil {
+		return (*ParameterValue)(nil).GetStringValue()
+	}
+	return v.StringValue
+}
+
+func (r *parameterValueReadonly) GetInt64Value() int64 {
+	v, ok := (*ParameterValue)(r).GetValue().(*ParameterValue_Int64Value)
+	if !ok || v == nil {
+		return (*ParameterValue)(nil).GetInt64Value()
+	}
+	return v.Int64Value
+}
+
+func (r *parameterValueReadonly) GetUint64Value() uint64 {
+	v, ok := (*ParameterValue)(r).GetValue().(*ParameterValue_Uint64Value)
+	if !ok || v == nil {
+		return (*ParameterValue)(nil).GetUint64Value()
+	}
+	return v.Uint64Value
+}
+
+func (r *parameterValueReadonly) GetBoolValue() bool {
+	v, ok := (*ParameterValue)(r).GetValue().(*ParameterValue_BoolValue)
+	if !ok || v == nil {
+		return (*ParameterValue)(nil).GetBoolValue()
+	}
+	return v.BoolValue
+}
+
+// ParameterValue_ValueReaderCase identifies a selected oneof arm by its protobuf field number.
+type ParameterValue_ValueReaderCase int32
+
+const (
+	ParameterValue_ValueReaderCase_Unset       ParameterValue_ValueReaderCase = 0
+	ParameterValue_ValueReaderCase_StringValue ParameterValue_ValueReaderCase = 1
+	ParameterValue_ValueReaderCase_Int64Value  ParameterValue_ValueReaderCase = 2
+	ParameterValue_ValueReaderCase_Uint64Value ParameterValue_ValueReaderCase = 3
+	ParameterValue_ValueReaderCase_BoolValue   ParameterValue_ValueReaderCase = 4
+)
+
+func (r *parameterValueReadonly) WhichValue() ParameterValue_ValueReaderCase {
+	switch (*ParameterValue)(r).GetValue().(type) {
+	case *ParameterValue_StringValue:
+		return ParameterValue_ValueReaderCase_StringValue
+	case *ParameterValue_Int64Value:
+		return ParameterValue_ValueReaderCase_Int64Value
+	case *ParameterValue_Uint64Value:
+		return ParameterValue_ValueReaderCase_Uint64Value
+	case *ParameterValue_BoolValue:
+		return ParameterValue_ValueReaderCase_BoolValue
+	default:
+		return ParameterValue_ValueReaderCase_Unset
+	}
 }
 
 func (r *parameterValueReadonly) Mutate() *ParameterValue {
@@ -1728,14 +1914,48 @@ func NewTargetAccountListReader(s []*TargetAccount) TargetAccountListReader {
 // TargetReader provides read-only access to Target.
 // Call Mutate() to obtain a mutable clone.
 type TargetReader interface {
-	GetTarget() isTarget_Target
+	GetAccount() TargetAccountReader
+	GetTransactionId() uint64
+	WhichTarget() Target_TargetReaderCase
 	Mutate() *Target
 }
 
 type targetReadonly Target
 
-func (r *targetReadonly) GetTarget() isTarget_Target {
-	return (*Target)(r).GetTarget()
+func (r *targetReadonly) GetAccount() TargetAccountReader {
+	v, ok := (*Target)(r).GetTarget().(*Target_Account)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.Account.AsReader()
+}
+
+func (r *targetReadonly) GetTransactionId() uint64 {
+	v, ok := (*Target)(r).GetTarget().(*Target_TransactionId)
+	if !ok || v == nil {
+		return (*Target)(nil).GetTransactionId()
+	}
+	return v.TransactionId
+}
+
+// Target_TargetReaderCase identifies a selected oneof arm by its protobuf field number.
+type Target_TargetReaderCase int32
+
+const (
+	Target_TargetReaderCase_Unset         Target_TargetReaderCase = 0
+	Target_TargetReaderCase_Account       Target_TargetReaderCase = 1
+	Target_TargetReaderCase_TransactionId Target_TargetReaderCase = 2
+)
+
+func (r *targetReadonly) WhichTarget() Target_TargetReaderCase {
+	switch (*Target)(r).GetTarget().(type) {
+	case *Target_Account:
+		return Target_TargetReaderCase_Account
+	case *Target_TransactionId:
+		return Target_TargetReaderCase_TransactionId
+	default:
+		return Target_TargetReaderCase_Unset
+	}
 }
 
 func (r *targetReadonly) Mutate() *Target {
@@ -2179,14 +2399,72 @@ func NewMetadataIndexIDListReader(s []*MetadataIndexID) MetadataIndexIDListReade
 // IndexIDReader provides read-only access to IndexID.
 // Call Mutate() to obtain a mutable clone.
 type IndexIDReader interface {
-	GetKind() isIndexID_Kind
+	GetTxBuiltin() TransactionBuiltinIndex
+	GetLogBuiltin() LogBuiltinIndex
+	GetAccountBuiltin() AccountBuiltinIndex
+	GetMetadata() MetadataIndexIDReader
+	WhichKind() IndexID_KindReaderCase
 	Mutate() *IndexID
 }
 
 type indexIDReadonly IndexID
 
-func (r *indexIDReadonly) GetKind() isIndexID_Kind {
-	return (*IndexID)(r).GetKind()
+func (r *indexIDReadonly) GetTxBuiltin() TransactionBuiltinIndex {
+	v, ok := (*IndexID)(r).GetKind().(*IndexID_TxBuiltin)
+	if !ok || v == nil {
+		return (*IndexID)(nil).GetTxBuiltin()
+	}
+	return v.TxBuiltin
+}
+
+func (r *indexIDReadonly) GetLogBuiltin() LogBuiltinIndex {
+	v, ok := (*IndexID)(r).GetKind().(*IndexID_LogBuiltin)
+	if !ok || v == nil {
+		return (*IndexID)(nil).GetLogBuiltin()
+	}
+	return v.LogBuiltin
+}
+
+func (r *indexIDReadonly) GetAccountBuiltin() AccountBuiltinIndex {
+	v, ok := (*IndexID)(r).GetKind().(*IndexID_AccountBuiltin)
+	if !ok || v == nil {
+		return (*IndexID)(nil).GetAccountBuiltin()
+	}
+	return v.AccountBuiltin
+}
+
+func (r *indexIDReadonly) GetMetadata() MetadataIndexIDReader {
+	v, ok := (*IndexID)(r).GetKind().(*IndexID_Metadata)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.Metadata.AsReader()
+}
+
+// IndexID_KindReaderCase identifies a selected oneof arm by its protobuf field number.
+type IndexID_KindReaderCase int32
+
+const (
+	IndexID_KindReaderCase_Unset          IndexID_KindReaderCase = 0
+	IndexID_KindReaderCase_TxBuiltin      IndexID_KindReaderCase = 1
+	IndexID_KindReaderCase_LogBuiltin     IndexID_KindReaderCase = 2
+	IndexID_KindReaderCase_AccountBuiltin IndexID_KindReaderCase = 3
+	IndexID_KindReaderCase_Metadata       IndexID_KindReaderCase = 4
+)
+
+func (r *indexIDReadonly) WhichKind() IndexID_KindReaderCase {
+	switch (*IndexID)(r).GetKind().(type) {
+	case *IndexID_TxBuiltin:
+		return IndexID_KindReaderCase_TxBuiltin
+	case *IndexID_LogBuiltin:
+		return IndexID_KindReaderCase_LogBuiltin
+	case *IndexID_AccountBuiltin:
+		return IndexID_KindReaderCase_AccountBuiltin
+	case *IndexID_Metadata:
+		return IndexID_KindReaderCase_Metadata
+	default:
+		return IndexID_KindReaderCase_Unset
+	}
 }
 
 func (r *indexIDReadonly) Mutate() *IndexID {
@@ -2487,14 +2765,276 @@ func NewLogListReader(s []*Log) LogListReader { return logListReadonly(s) }
 // LogPayloadReader provides read-only access to LogPayload.
 // Call Mutate() to obtain a mutable clone.
 type LogPayloadReader interface {
-	GetType() isLogPayload_Type
+	GetCreateLedger() CreatedLedgerLogReader
+	GetDeleteLedger() DeletedLedgerLogReader
+	GetApply() ApplyLedgerLogReader
+	GetRegisterSigningKey() RegisteredSigningKeyLogReader
+	GetRevokeSigningKey() RevokedSigningKeyLogReader
+	GetSetSigningConfig() SetSigningConfigLogReader
+	GetAddedEventsSink() AddedEventsSinkLogReader
+	GetRemovedEventsSink() RemovedEventsSinkLogReader
+	GetSetMaintenanceMode() SetMaintenanceModeLogReader
+	GetPromoteLedger() PromotedLedgerLogReader
+	GetCreatedPreparedQuery() CreatedPreparedQueryLogReader
+	GetUpdatedPreparedQuery() UpdatedPreparedQueryLogReader
+	GetDeletedPreparedQuery() DeletedPreparedQueryLogReader
+	GetSavedNumscript() SavedNumscriptLogReader
+	GetCreatedQueryCheckpoint() CreatedQueryCheckpointLogReader
+	GetDeletedQueryCheckpoint() DeletedQueryCheckpointLogReader
+	GetSetQueryCheckpointSchedule() SetQueryCheckpointScheduleLogReader
+	GetDeleteQueryCheckpointSchedule() DeletedQueryCheckpointScheduleLogReader
+	GetSavedLedgerMetadata() SavedLedgerMetadataLogReader
+	GetDeletedLedgerMetadata() DeletedLedgerMetadataLogReader
+	GetSetClusterPolicy() SetClusterPolicyLogReader
+	WhichType() LogPayload_TypeReaderCase
 	Mutate() *LogPayload
 }
 
 type logPayloadReadonly LogPayload
 
-func (r *logPayloadReadonly) GetType() isLogPayload_Type {
-	return (*LogPayload)(r).GetType()
+func (r *logPayloadReadonly) GetCreateLedger() CreatedLedgerLogReader {
+	v, ok := (*LogPayload)(r).GetType().(*LogPayload_CreateLedger)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.CreateLedger.AsReader()
+}
+
+func (r *logPayloadReadonly) GetDeleteLedger() DeletedLedgerLogReader {
+	v, ok := (*LogPayload)(r).GetType().(*LogPayload_DeleteLedger)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.DeleteLedger.AsReader()
+}
+
+func (r *logPayloadReadonly) GetApply() ApplyLedgerLogReader {
+	v, ok := (*LogPayload)(r).GetType().(*LogPayload_Apply)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.Apply.AsReader()
+}
+
+func (r *logPayloadReadonly) GetRegisterSigningKey() RegisteredSigningKeyLogReader {
+	v, ok := (*LogPayload)(r).GetType().(*LogPayload_RegisterSigningKey)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.RegisterSigningKey.AsReader()
+}
+
+func (r *logPayloadReadonly) GetRevokeSigningKey() RevokedSigningKeyLogReader {
+	v, ok := (*LogPayload)(r).GetType().(*LogPayload_RevokeSigningKey)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.RevokeSigningKey.AsReader()
+}
+
+func (r *logPayloadReadonly) GetSetSigningConfig() SetSigningConfigLogReader {
+	v, ok := (*LogPayload)(r).GetType().(*LogPayload_SetSigningConfig)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.SetSigningConfig.AsReader()
+}
+
+func (r *logPayloadReadonly) GetAddedEventsSink() AddedEventsSinkLogReader {
+	v, ok := (*LogPayload)(r).GetType().(*LogPayload_AddedEventsSink)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.AddedEventsSink.AsReader()
+}
+
+func (r *logPayloadReadonly) GetRemovedEventsSink() RemovedEventsSinkLogReader {
+	v, ok := (*LogPayload)(r).GetType().(*LogPayload_RemovedEventsSink)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.RemovedEventsSink.AsReader()
+}
+
+func (r *logPayloadReadonly) GetSetMaintenanceMode() SetMaintenanceModeLogReader {
+	v, ok := (*LogPayload)(r).GetType().(*LogPayload_SetMaintenanceMode)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.SetMaintenanceMode.AsReader()
+}
+
+func (r *logPayloadReadonly) GetPromoteLedger() PromotedLedgerLogReader {
+	v, ok := (*LogPayload)(r).GetType().(*LogPayload_PromoteLedger)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.PromoteLedger.AsReader()
+}
+
+func (r *logPayloadReadonly) GetCreatedPreparedQuery() CreatedPreparedQueryLogReader {
+	v, ok := (*LogPayload)(r).GetType().(*LogPayload_CreatedPreparedQuery)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.CreatedPreparedQuery.AsReader()
+}
+
+func (r *logPayloadReadonly) GetUpdatedPreparedQuery() UpdatedPreparedQueryLogReader {
+	v, ok := (*LogPayload)(r).GetType().(*LogPayload_UpdatedPreparedQuery)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.UpdatedPreparedQuery.AsReader()
+}
+
+func (r *logPayloadReadonly) GetDeletedPreparedQuery() DeletedPreparedQueryLogReader {
+	v, ok := (*LogPayload)(r).GetType().(*LogPayload_DeletedPreparedQuery)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.DeletedPreparedQuery.AsReader()
+}
+
+func (r *logPayloadReadonly) GetSavedNumscript() SavedNumscriptLogReader {
+	v, ok := (*LogPayload)(r).GetType().(*LogPayload_SavedNumscript)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.SavedNumscript.AsReader()
+}
+
+func (r *logPayloadReadonly) GetCreatedQueryCheckpoint() CreatedQueryCheckpointLogReader {
+	v, ok := (*LogPayload)(r).GetType().(*LogPayload_CreatedQueryCheckpoint)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.CreatedQueryCheckpoint.AsReader()
+}
+
+func (r *logPayloadReadonly) GetDeletedQueryCheckpoint() DeletedQueryCheckpointLogReader {
+	v, ok := (*LogPayload)(r).GetType().(*LogPayload_DeletedQueryCheckpoint)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.DeletedQueryCheckpoint.AsReader()
+}
+
+func (r *logPayloadReadonly) GetSetQueryCheckpointSchedule() SetQueryCheckpointScheduleLogReader {
+	v, ok := (*LogPayload)(r).GetType().(*LogPayload_SetQueryCheckpointSchedule)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.SetQueryCheckpointSchedule.AsReader()
+}
+
+func (r *logPayloadReadonly) GetDeleteQueryCheckpointSchedule() DeletedQueryCheckpointScheduleLogReader {
+	v, ok := (*LogPayload)(r).GetType().(*LogPayload_DeleteQueryCheckpointSchedule)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.DeleteQueryCheckpointSchedule.AsReader()
+}
+
+func (r *logPayloadReadonly) GetSavedLedgerMetadata() SavedLedgerMetadataLogReader {
+	v, ok := (*LogPayload)(r).GetType().(*LogPayload_SavedLedgerMetadata)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.SavedLedgerMetadata.AsReader()
+}
+
+func (r *logPayloadReadonly) GetDeletedLedgerMetadata() DeletedLedgerMetadataLogReader {
+	v, ok := (*LogPayload)(r).GetType().(*LogPayload_DeletedLedgerMetadata)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.DeletedLedgerMetadata.AsReader()
+}
+
+func (r *logPayloadReadonly) GetSetClusterPolicy() SetClusterPolicyLogReader {
+	v, ok := (*LogPayload)(r).GetType().(*LogPayload_SetClusterPolicy)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.SetClusterPolicy.AsReader()
+}
+
+// LogPayload_TypeReaderCase identifies a selected oneof arm by its protobuf field number.
+type LogPayload_TypeReaderCase int32
+
+const (
+	LogPayload_TypeReaderCase_Unset                         LogPayload_TypeReaderCase = 0
+	LogPayload_TypeReaderCase_CreateLedger                  LogPayload_TypeReaderCase = 1
+	LogPayload_TypeReaderCase_DeleteLedger                  LogPayload_TypeReaderCase = 2
+	LogPayload_TypeReaderCase_Apply                         LogPayload_TypeReaderCase = 3
+	LogPayload_TypeReaderCase_RegisterSigningKey            LogPayload_TypeReaderCase = 4
+	LogPayload_TypeReaderCase_RevokeSigningKey              LogPayload_TypeReaderCase = 5
+	LogPayload_TypeReaderCase_SetSigningConfig              LogPayload_TypeReaderCase = 6
+	LogPayload_TypeReaderCase_AddedEventsSink               LogPayload_TypeReaderCase = 7
+	LogPayload_TypeReaderCase_RemovedEventsSink             LogPayload_TypeReaderCase = 8
+	LogPayload_TypeReaderCase_SetMaintenanceMode            LogPayload_TypeReaderCase = 9
+	LogPayload_TypeReaderCase_PromoteLedger                 LogPayload_TypeReaderCase = 10
+	LogPayload_TypeReaderCase_CreatedPreparedQuery          LogPayload_TypeReaderCase = 11
+	LogPayload_TypeReaderCase_UpdatedPreparedQuery          LogPayload_TypeReaderCase = 12
+	LogPayload_TypeReaderCase_DeletedPreparedQuery          LogPayload_TypeReaderCase = 13
+	LogPayload_TypeReaderCase_SavedNumscript                LogPayload_TypeReaderCase = 14
+	LogPayload_TypeReaderCase_CreatedQueryCheckpoint        LogPayload_TypeReaderCase = 15
+	LogPayload_TypeReaderCase_DeletedQueryCheckpoint        LogPayload_TypeReaderCase = 16
+	LogPayload_TypeReaderCase_SetQueryCheckpointSchedule    LogPayload_TypeReaderCase = 17
+	LogPayload_TypeReaderCase_DeleteQueryCheckpointSchedule LogPayload_TypeReaderCase = 18
+	LogPayload_TypeReaderCase_SavedLedgerMetadata           LogPayload_TypeReaderCase = 19
+	LogPayload_TypeReaderCase_DeletedLedgerMetadata         LogPayload_TypeReaderCase = 20
+	LogPayload_TypeReaderCase_SetClusterPolicy              LogPayload_TypeReaderCase = 21
+)
+
+func (r *logPayloadReadonly) WhichType() LogPayload_TypeReaderCase {
+	switch (*LogPayload)(r).GetType().(type) {
+	case *LogPayload_CreateLedger:
+		return LogPayload_TypeReaderCase_CreateLedger
+	case *LogPayload_DeleteLedger:
+		return LogPayload_TypeReaderCase_DeleteLedger
+	case *LogPayload_Apply:
+		return LogPayload_TypeReaderCase_Apply
+	case *LogPayload_RegisterSigningKey:
+		return LogPayload_TypeReaderCase_RegisterSigningKey
+	case *LogPayload_RevokeSigningKey:
+		return LogPayload_TypeReaderCase_RevokeSigningKey
+	case *LogPayload_SetSigningConfig:
+		return LogPayload_TypeReaderCase_SetSigningConfig
+	case *LogPayload_AddedEventsSink:
+		return LogPayload_TypeReaderCase_AddedEventsSink
+	case *LogPayload_RemovedEventsSink:
+		return LogPayload_TypeReaderCase_RemovedEventsSink
+	case *LogPayload_SetMaintenanceMode:
+		return LogPayload_TypeReaderCase_SetMaintenanceMode
+	case *LogPayload_PromoteLedger:
+		return LogPayload_TypeReaderCase_PromoteLedger
+	case *LogPayload_CreatedPreparedQuery:
+		return LogPayload_TypeReaderCase_CreatedPreparedQuery
+	case *LogPayload_UpdatedPreparedQuery:
+		return LogPayload_TypeReaderCase_UpdatedPreparedQuery
+	case *LogPayload_DeletedPreparedQuery:
+		return LogPayload_TypeReaderCase_DeletedPreparedQuery
+	case *LogPayload_SavedNumscript:
+		return LogPayload_TypeReaderCase_SavedNumscript
+	case *LogPayload_CreatedQueryCheckpoint:
+		return LogPayload_TypeReaderCase_CreatedQueryCheckpoint
+	case *LogPayload_DeletedQueryCheckpoint:
+		return LogPayload_TypeReaderCase_DeletedQueryCheckpoint
+	case *LogPayload_SetQueryCheckpointSchedule:
+		return LogPayload_TypeReaderCase_SetQueryCheckpointSchedule
+	case *LogPayload_DeleteQueryCheckpointSchedule:
+		return LogPayload_TypeReaderCase_DeleteQueryCheckpointSchedule
+	case *LogPayload_SavedLedgerMetadata:
+		return LogPayload_TypeReaderCase_SavedLedgerMetadata
+	case *LogPayload_DeletedLedgerMetadata:
+		return LogPayload_TypeReaderCase_DeletedLedgerMetadata
+	case *LogPayload_SetClusterPolicy:
+		return LogPayload_TypeReaderCase_SetClusterPolicy
+	default:
+		return LogPayload_TypeReaderCase_Unset
+	}
 }
 
 func (r *logPayloadReadonly) Mutate() *LogPayload {
@@ -4626,12 +5166,17 @@ func NewDeletedQueryCheckpointLogListReader(s []*DeletedQueryCheckpointLog) Dele
 // Call Mutate() to obtain a mutable clone.
 type SinkConfigReader interface {
 	GetName() string
+	GetNats() NatsSinkConfigReader
+	GetClickhouse() ClickHouseSinkConfigReader
+	GetKafka() KafkaSinkConfigReader
+	GetHttp() HttpSinkConfigReader
+	GetDatabricks() DatabricksSinkConfigReader
 	GetFormat() string
 	GetBatchSize() int32
 	GetBatchDelayMs() int64
 	GetEventTypes() []EventType
 	GetControllerId() string
-	GetType() isSinkConfig_Type
+	WhichType() SinkConfig_TypeReaderCase
 	Mutate() *SinkConfig
 }
 
@@ -4639,6 +5184,46 @@ type sinkConfigReadonly SinkConfig
 
 func (r *sinkConfigReadonly) GetName() string {
 	return (*SinkConfig)(r).GetName()
+}
+
+func (r *sinkConfigReadonly) GetNats() NatsSinkConfigReader {
+	v, ok := (*SinkConfig)(r).GetType().(*SinkConfig_Nats)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.Nats.AsReader()
+}
+
+func (r *sinkConfigReadonly) GetClickhouse() ClickHouseSinkConfigReader {
+	v, ok := (*SinkConfig)(r).GetType().(*SinkConfig_Clickhouse)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.Clickhouse.AsReader()
+}
+
+func (r *sinkConfigReadonly) GetKafka() KafkaSinkConfigReader {
+	v, ok := (*SinkConfig)(r).GetType().(*SinkConfig_Kafka)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.Kafka.AsReader()
+}
+
+func (r *sinkConfigReadonly) GetHttp() HttpSinkConfigReader {
+	v, ok := (*SinkConfig)(r).GetType().(*SinkConfig_Http)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.Http.AsReader()
+}
+
+func (r *sinkConfigReadonly) GetDatabricks() DatabricksSinkConfigReader {
+	v, ok := (*SinkConfig)(r).GetType().(*SinkConfig_Databricks)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.Databricks.AsReader()
 }
 
 func (r *sinkConfigReadonly) GetFormat() string {
@@ -4661,8 +5246,33 @@ func (r *sinkConfigReadonly) GetControllerId() string {
 	return (*SinkConfig)(r).GetControllerId()
 }
 
-func (r *sinkConfigReadonly) GetType() isSinkConfig_Type {
-	return (*SinkConfig)(r).GetType()
+// SinkConfig_TypeReaderCase identifies a selected oneof arm by its protobuf field number.
+type SinkConfig_TypeReaderCase int32
+
+const (
+	SinkConfig_TypeReaderCase_Unset      SinkConfig_TypeReaderCase = 0
+	SinkConfig_TypeReaderCase_Nats       SinkConfig_TypeReaderCase = 2
+	SinkConfig_TypeReaderCase_Clickhouse SinkConfig_TypeReaderCase = 3
+	SinkConfig_TypeReaderCase_Kafka      SinkConfig_TypeReaderCase = 4
+	SinkConfig_TypeReaderCase_Http       SinkConfig_TypeReaderCase = 5
+	SinkConfig_TypeReaderCase_Databricks SinkConfig_TypeReaderCase = 6
+)
+
+func (r *sinkConfigReadonly) WhichType() SinkConfig_TypeReaderCase {
+	switch (*SinkConfig)(r).GetType().(type) {
+	case *SinkConfig_Nats:
+		return SinkConfig_TypeReaderCase_Nats
+	case *SinkConfig_Clickhouse:
+		return SinkConfig_TypeReaderCase_Clickhouse
+	case *SinkConfig_Kafka:
+		return SinkConfig_TypeReaderCase_Kafka
+	case *SinkConfig_Http:
+		return SinkConfig_TypeReaderCase_Http
+	case *SinkConfig_Databricks:
+		return SinkConfig_TypeReaderCase_Databricks
+	default:
+		return SinkConfig_TypeReaderCase_Unset
+	}
 }
 
 func (r *sinkConfigReadonly) Mutate() *SinkConfig {
@@ -5187,7 +5797,9 @@ type DatabricksSinkConfigReader interface {
 	GetSchema() string
 	GetTable() string
 	GetPort() int32
-	GetAuth() isDatabricksSinkConfig_Auth
+	GetToken() string
+	GetOauthM2M() DatabricksOAuthM2MReader
+	WhichAuth() DatabricksSinkConfig_AuthReaderCase
 	Mutate() *DatabricksSinkConfig
 }
 
@@ -5217,8 +5829,40 @@ func (r *databricksSinkConfigReadonly) GetPort() int32 {
 	return (*DatabricksSinkConfig)(r).GetPort()
 }
 
-func (r *databricksSinkConfigReadonly) GetAuth() isDatabricksSinkConfig_Auth {
-	return (*DatabricksSinkConfig)(r).GetAuth()
+func (r *databricksSinkConfigReadonly) GetToken() string {
+	v, ok := (*DatabricksSinkConfig)(r).GetAuth().(*DatabricksSinkConfig_Token)
+	if !ok || v == nil {
+		return (*DatabricksSinkConfig)(nil).GetToken()
+	}
+	return v.Token
+}
+
+func (r *databricksSinkConfigReadonly) GetOauthM2M() DatabricksOAuthM2MReader {
+	v, ok := (*DatabricksSinkConfig)(r).GetAuth().(*DatabricksSinkConfig_OauthM2M)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.OauthM2M.AsReader()
+}
+
+// DatabricksSinkConfig_AuthReaderCase identifies a selected oneof arm by its protobuf field number.
+type DatabricksSinkConfig_AuthReaderCase int32
+
+const (
+	DatabricksSinkConfig_AuthReaderCase_Unset    DatabricksSinkConfig_AuthReaderCase = 0
+	DatabricksSinkConfig_AuthReaderCase_Token    DatabricksSinkConfig_AuthReaderCase = 7
+	DatabricksSinkConfig_AuthReaderCase_OauthM2M DatabricksSinkConfig_AuthReaderCase = 8
+)
+
+func (r *databricksSinkConfigReadonly) WhichAuth() DatabricksSinkConfig_AuthReaderCase {
+	switch (*DatabricksSinkConfig)(r).GetAuth().(type) {
+	case *DatabricksSinkConfig_Token:
+		return DatabricksSinkConfig_AuthReaderCase_Token
+	case *DatabricksSinkConfig_OauthM2M:
+		return DatabricksSinkConfig_AuthReaderCase_OauthM2M
+	default:
+		return DatabricksSinkConfig_AuthReaderCase_Unset
+	}
 }
 
 func (r *databricksSinkConfigReadonly) Mutate() *DatabricksSinkConfig {
@@ -5858,14 +6502,180 @@ func NewTouchedVolumeListReader(s []*TouchedVolume) TouchedVolumeListReader {
 // LedgerLogPayloadReader provides read-only access to LedgerLogPayload.
 // Call Mutate() to obtain a mutable clone.
 type LedgerLogPayloadReader interface {
-	GetPayload() isLedgerLogPayload_Payload
+	GetCreatedTransaction() CreatedTransactionReader
+	GetRevertedTransaction() RevertedTransactionReader
+	GetSavedMetadata() SavedMetadataReader
+	GetDeletedMetadata() DeletedMetadataReader
+	GetSetMetadataFieldType() SetMetadataFieldTypeLogReader
+	GetRemovedMetadataFieldType() RemovedMetadataFieldTypeLogReader
+	GetFillGap() FilledGapLogReader
+	GetCreateIndex() CreatedIndexLogReader
+	GetDropIndex() DroppedIndexLogReader
+	GetAddedAccountType() AddedAccountTypeLogReader
+	GetRemovedAccountType() RemovedAccountTypeLogReader
+	GetUpdatedDefaultEnforcementMode() UpdatedDefaultEnforcementModeLogReader
+	GetOrderSkipped() OrderSkippedLogReader
+	WhichPayload() LedgerLogPayload_PayloadReaderCase
 	Mutate() *LedgerLogPayload
 }
 
 type ledgerLogPayloadReadonly LedgerLogPayload
 
-func (r *ledgerLogPayloadReadonly) GetPayload() isLedgerLogPayload_Payload {
-	return (*LedgerLogPayload)(r).GetPayload()
+func (r *ledgerLogPayloadReadonly) GetCreatedTransaction() CreatedTransactionReader {
+	v, ok := (*LedgerLogPayload)(r).GetPayload().(*LedgerLogPayload_CreatedTransaction)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.CreatedTransaction.AsReader()
+}
+
+func (r *ledgerLogPayloadReadonly) GetRevertedTransaction() RevertedTransactionReader {
+	v, ok := (*LedgerLogPayload)(r).GetPayload().(*LedgerLogPayload_RevertedTransaction)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.RevertedTransaction.AsReader()
+}
+
+func (r *ledgerLogPayloadReadonly) GetSavedMetadata() SavedMetadataReader {
+	v, ok := (*LedgerLogPayload)(r).GetPayload().(*LedgerLogPayload_SavedMetadata)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.SavedMetadata.AsReader()
+}
+
+func (r *ledgerLogPayloadReadonly) GetDeletedMetadata() DeletedMetadataReader {
+	v, ok := (*LedgerLogPayload)(r).GetPayload().(*LedgerLogPayload_DeletedMetadata)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.DeletedMetadata.AsReader()
+}
+
+func (r *ledgerLogPayloadReadonly) GetSetMetadataFieldType() SetMetadataFieldTypeLogReader {
+	v, ok := (*LedgerLogPayload)(r).GetPayload().(*LedgerLogPayload_SetMetadataFieldType)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.SetMetadataFieldType.AsReader()
+}
+
+func (r *ledgerLogPayloadReadonly) GetRemovedMetadataFieldType() RemovedMetadataFieldTypeLogReader {
+	v, ok := (*LedgerLogPayload)(r).GetPayload().(*LedgerLogPayload_RemovedMetadataFieldType)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.RemovedMetadataFieldType.AsReader()
+}
+
+func (r *ledgerLogPayloadReadonly) GetFillGap() FilledGapLogReader {
+	v, ok := (*LedgerLogPayload)(r).GetPayload().(*LedgerLogPayload_FillGap)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.FillGap.AsReader()
+}
+
+func (r *ledgerLogPayloadReadonly) GetCreateIndex() CreatedIndexLogReader {
+	v, ok := (*LedgerLogPayload)(r).GetPayload().(*LedgerLogPayload_CreateIndex)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.CreateIndex.AsReader()
+}
+
+func (r *ledgerLogPayloadReadonly) GetDropIndex() DroppedIndexLogReader {
+	v, ok := (*LedgerLogPayload)(r).GetPayload().(*LedgerLogPayload_DropIndex)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.DropIndex.AsReader()
+}
+
+func (r *ledgerLogPayloadReadonly) GetAddedAccountType() AddedAccountTypeLogReader {
+	v, ok := (*LedgerLogPayload)(r).GetPayload().(*LedgerLogPayload_AddedAccountType)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.AddedAccountType.AsReader()
+}
+
+func (r *ledgerLogPayloadReadonly) GetRemovedAccountType() RemovedAccountTypeLogReader {
+	v, ok := (*LedgerLogPayload)(r).GetPayload().(*LedgerLogPayload_RemovedAccountType)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.RemovedAccountType.AsReader()
+}
+
+func (r *ledgerLogPayloadReadonly) GetUpdatedDefaultEnforcementMode() UpdatedDefaultEnforcementModeLogReader {
+	v, ok := (*LedgerLogPayload)(r).GetPayload().(*LedgerLogPayload_UpdatedDefaultEnforcementMode)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.UpdatedDefaultEnforcementMode.AsReader()
+}
+
+func (r *ledgerLogPayloadReadonly) GetOrderSkipped() OrderSkippedLogReader {
+	v, ok := (*LedgerLogPayload)(r).GetPayload().(*LedgerLogPayload_OrderSkipped)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.OrderSkipped.AsReader()
+}
+
+// LedgerLogPayload_PayloadReaderCase identifies a selected oneof arm by its protobuf field number.
+type LedgerLogPayload_PayloadReaderCase int32
+
+const (
+	LedgerLogPayload_PayloadReaderCase_Unset                         LedgerLogPayload_PayloadReaderCase = 0
+	LedgerLogPayload_PayloadReaderCase_CreatedTransaction            LedgerLogPayload_PayloadReaderCase = 1
+	LedgerLogPayload_PayloadReaderCase_RevertedTransaction           LedgerLogPayload_PayloadReaderCase = 2
+	LedgerLogPayload_PayloadReaderCase_SavedMetadata                 LedgerLogPayload_PayloadReaderCase = 3
+	LedgerLogPayload_PayloadReaderCase_DeletedMetadata               LedgerLogPayload_PayloadReaderCase = 4
+	LedgerLogPayload_PayloadReaderCase_SetMetadataFieldType          LedgerLogPayload_PayloadReaderCase = 5
+	LedgerLogPayload_PayloadReaderCase_RemovedMetadataFieldType      LedgerLogPayload_PayloadReaderCase = 6
+	LedgerLogPayload_PayloadReaderCase_FillGap                       LedgerLogPayload_PayloadReaderCase = 7
+	LedgerLogPayload_PayloadReaderCase_CreateIndex                   LedgerLogPayload_PayloadReaderCase = 8
+	LedgerLogPayload_PayloadReaderCase_DropIndex                     LedgerLogPayload_PayloadReaderCase = 9
+	LedgerLogPayload_PayloadReaderCase_AddedAccountType              LedgerLogPayload_PayloadReaderCase = 10
+	LedgerLogPayload_PayloadReaderCase_RemovedAccountType            LedgerLogPayload_PayloadReaderCase = 11
+	LedgerLogPayload_PayloadReaderCase_UpdatedDefaultEnforcementMode LedgerLogPayload_PayloadReaderCase = 12
+	LedgerLogPayload_PayloadReaderCase_OrderSkipped                  LedgerLogPayload_PayloadReaderCase = 13
+)
+
+func (r *ledgerLogPayloadReadonly) WhichPayload() LedgerLogPayload_PayloadReaderCase {
+	switch (*LedgerLogPayload)(r).GetPayload().(type) {
+	case *LedgerLogPayload_CreatedTransaction:
+		return LedgerLogPayload_PayloadReaderCase_CreatedTransaction
+	case *LedgerLogPayload_RevertedTransaction:
+		return LedgerLogPayload_PayloadReaderCase_RevertedTransaction
+	case *LedgerLogPayload_SavedMetadata:
+		return LedgerLogPayload_PayloadReaderCase_SavedMetadata
+	case *LedgerLogPayload_DeletedMetadata:
+		return LedgerLogPayload_PayloadReaderCase_DeletedMetadata
+	case *LedgerLogPayload_SetMetadataFieldType:
+		return LedgerLogPayload_PayloadReaderCase_SetMetadataFieldType
+	case *LedgerLogPayload_RemovedMetadataFieldType:
+		return LedgerLogPayload_PayloadReaderCase_RemovedMetadataFieldType
+	case *LedgerLogPayload_FillGap:
+		return LedgerLogPayload_PayloadReaderCase_FillGap
+	case *LedgerLogPayload_CreateIndex:
+		return LedgerLogPayload_PayloadReaderCase_CreateIndex
+	case *LedgerLogPayload_DropIndex:
+		return LedgerLogPayload_PayloadReaderCase_DropIndex
+	case *LedgerLogPayload_AddedAccountType:
+		return LedgerLogPayload_PayloadReaderCase_AddedAccountType
+	case *LedgerLogPayload_RemovedAccountType:
+		return LedgerLogPayload_PayloadReaderCase_RemovedAccountType
+	case *LedgerLogPayload_UpdatedDefaultEnforcementMode:
+		return LedgerLogPayload_PayloadReaderCase_UpdatedDefaultEnforcementMode
+	case *LedgerLogPayload_OrderSkipped:
+		return LedgerLogPayload_PayloadReaderCase_OrderSkipped
+	default:
+		return LedgerLogPayload_PayloadReaderCase_Unset
+	}
 }
 
 func (r *ledgerLogPayloadReadonly) Mutate() *LedgerLogPayload {
@@ -5925,14 +6735,1800 @@ func NewLedgerLogPayloadListReader(s []*LedgerLogPayload) LedgerLogPayloadListRe
 // FailureDetailsReader provides read-only access to FailureDetails.
 // Call Mutate() to obtain a mutable clone.
 type FailureDetailsReader interface {
-	GetKind() isFailureDetails_Kind
+	GetAccountAddressEmpty() AccountAddressEmptyDetailsReader
+	GetAccountAddressEmptySegment() AccountAddressEmptySegmentDetailsReader
+	GetAccountAddressInvalidChar() AccountAddressInvalidCharDetailsReader
+	GetAccountAddressTooLong() AccountAddressTooLongDetailsReader
+	GetAccountNotMatchingType() AccountNotMatchingTypeDetailsReader
+	GetAccountTypeAlreadyExists() AccountTypeAlreadyExistsDetailsReader
+	GetAccountTypeConflict() AccountTypeConflictDetailsReader
+	GetAccountTypeHasAccounts() AccountTypeHasAccountsDetailsReader
+	GetAccountTypeNameTooLong() AccountTypeNameTooLongDetailsReader
+	GetAccountTypeNotFound() AccountTypeNotFoundDetailsReader
+	GetAccountTypePatternTooLong() AccountTypePatternTooLongDetailsReader
+	GetAssetInvalid() AssetInvalidDetailsReader
+	GetBalanceNotFound() BalanceNotFoundDetailsReader
+	GetCheckpointIdRequired() CheckpointIdRequiredDetailsReader
+	GetCheckpointLimitReached() CheckpointLimitReachedDetailsReader
+	GetCheckpointNotFound() CheckpointNotFoundDetailsReader
+	GetColorInvalid() ColorInvalidDetailsReader
+	GetColorTooLong() ColorTooLongDetailsReader
+	GetEmptyTransaction() EmptyTransactionDetailsReader
+	GetIdempotencyKeyConflict() IdempotencyKeyConflictDetailsReader
+	GetIdRequired() IdRequiredDetailsReader
+	GetIndexAlreadyExists() IndexAlreadyExistsDetailsReader
+	GetIndexNotFound() IndexNotFoundDetailsReader
+	GetIndexTargetUnsupported() IndexTargetUnsupportedDetailsReader
+	GetInsufficientFunds() InsufficientFundsDetailsReader
+	GetInvalidCronExpression() InvalidCronExpressionDetailsReader
+	GetInvalidPattern() InvalidPatternDetailsReader
+	GetInvalidSkippableReason() InvalidSkippableReasonDetailsReader
+	GetLedgerAlreadyExists() LedgerAlreadyExistsDetailsReader
+	GetLedgerDeleted() LedgerDeletedDetailsReader
+	GetLedgerInMirrorMode() LedgerInMirrorModeDetailsReader
+	GetLedgerNameInvalidChar() LedgerNameInvalidCharDetailsReader
+	GetLedgerNameRequired() LedgerNameRequiredDetailsReader
+	GetLedgerNameReservedPrefix() LedgerNameReservedPrefixDetailsReader
+	GetLedgerNameTooLong() LedgerNameTooLongDetailsReader
+	GetLedgerNotFound() LedgerNotFoundDetailsReader
+	GetLedgerNotInMirrorMode() LedgerNotInMirrorModeDetailsReader
+	GetMetadataFieldNotInSchema() MetadataFieldNotInSchemaDetailsReader
+	GetMetadataKeyEmpty() MetadataKeyEmptyDetailsReader
+	GetMetadataKeyInvalidChar() MetadataKeyInvalidCharDetailsReader
+	GetMetadataKeyRequired() MetadataKeyRequiredDetailsReader
+	GetMetadataLimitExceeded() MetadataLimitExceededDetailsReader
+	GetMetadataNotFound() MetadataNotFoundDetailsReader
+	GetMetadataValueContainsNullByte() MetadataValueContainsNullByteDetailsReader
+	GetMirrorHttpUrlInvalid() MirrorHttpUrlInvalidDetailsReader
+	GetMirrorIamRegionRequired() MirrorIamRegionRequiredDetailsReader
+	GetMirrorIamRequiresTls() MirrorIamRequiresTlsDetailsReader
+	GetMirrorRewriteRuleInvalid() MirrorRewriteRuleInvalidDetailsReader
+	GetNumscriptAssetMismatch() NumscriptAssetMismatchDetailsReader
+	GetNumscriptBadArity() NumscriptBadArityDetailsReader
+	GetNumscriptBadMetaValue() NumscriptBadMetaValueDetailsReader
+	GetNumscriptBadPortion() NumscriptBadPortionDetailsReader
+	GetNumscriptCannotCastScopedAccount() NumscriptCannotCastScopedAccountDetailsReader
+	GetNumscriptCannotCastToString() NumscriptCannotCastToStringDetailsReader
+	GetNumscriptCannotStoreScopedAccount() NumscriptCannotStoreScopedAccountDetailsReader
+	GetNumscriptCompileBadArity() NumscriptCompileBadArityDetailsReader
+	GetNumscriptCompileCannotCastToString() NumscriptCompileCannotCastToStringDetailsReader
+	GetNumscriptCompileCannotStoreScopedAccount() NumscriptCompileCannotStoreScopedAccountDetailsReader
+	GetNumscriptCompileDuplicateRemaining() NumscriptCompileDuplicateRemainingDetailsReader
+	GetNumscriptCompileDuplicateVariable() NumscriptCompileDuplicateVariableDetailsReader
+	GetNumscriptCompileExperimentalFeature() NumscriptCompileExperimentalFeatureDetailsReader
+	GetNumscriptCompileInvalidFeature() NumscriptCompileInvalidFeatureDetailsReader
+	GetNumscriptCompileInvalidMetaPosition() NumscriptCompileInvalidMetaPositionDetailsReader
+	GetNumscriptCompileInvalidType() NumscriptCompileInvalidTypeDetailsReader
+	GetNumscriptCompileInvalidUncappedSource() NumscriptCompileInvalidUncappedSourceDetailsReader
+	GetNumscriptCompileInvalidVariableValue() NumscriptCompileInvalidVariableValueDetailsReader
+	GetNumscriptCompileMissingVariable() NumscriptCompileMissingVariableDetailsReader
+	GetNumscriptCompileTypeMismatch() NumscriptCompileTypeMismatchDetailsReader
+	GetNumscriptCompileUnboundVariable() NumscriptCompileUnboundVariableDetailsReader
+	GetNumscriptCompileUnknownFunction() NumscriptCompileUnknownFunctionDetailsReader
+	GetNumscriptContentRequired() NumscriptContentRequiredDetailsReader
+	GetNumscriptCurrencyMismatch() NumscriptCurrencyMismatchDetailsReader
+	GetNumscriptDivideByZero() NumscriptDivideByZeroDetailsReader
+	GetNumscriptExperimentalFeature() NumscriptExperimentalFeatureDetailsReader
+	GetNumscriptInvalidAccountName() NumscriptInvalidAccountNameDetailsReader
+	GetNumscriptInvalidAllotmentInSendAll() NumscriptInvalidAllotmentInSendAllDetailsReader
+	GetNumscriptInvalidAllotmentSum() NumscriptInvalidAllotmentSumDetailsReader
+	GetNumscriptInvalidAsset() NumscriptInvalidAssetDetailsReader
+	GetNumscriptInvalidColor() NumscriptInvalidColorDetailsReader
+	GetNumscriptInvalidFeature() NumscriptInvalidFeatureDetailsReader
+	GetNumscriptInvalidMonetaryLiteral() NumscriptInvalidMonetaryLiteralDetailsReader
+	GetNumscriptInvalidNestedMeta() NumscriptInvalidNestedMetaDetailsReader
+	GetNumscriptInvalidNumberLiteral() NumscriptInvalidNumberLiteralDetailsReader
+	GetNumscriptInvalidRemainingAllotment() NumscriptInvalidRemainingAllotmentDetailsReader
+	GetNumscriptInvalidScope() NumscriptInvalidScopeDetailsReader
+	GetNumscriptInvalidType() NumscriptInvalidTypeDetailsReader
+	GetNumscriptInvalidUnboundedScalingAddress() NumscriptInvalidUnboundedScalingAddressDetailsReader
+	GetNumscriptInvalidUnboundedSendAll() NumscriptInvalidUnboundedSendAllDetailsReader
+	GetNumscriptInvalidUncappedSource() NumscriptInvalidUncappedSourceDetailsReader
+	GetNumscriptInvalidVersion() NumscriptInvalidVersionDetailsReader
+	GetNumscriptMetadataNotFound() NumscriptMetadataNotFoundDetailsReader
+	GetNumscriptMissingFunds() NumscriptMissingFundsDetailsReader
+	GetNumscriptMissingVariable() NumscriptMissingVariableDetailsReader
+	GetNumscriptNameInvalidChar() NumscriptNameInvalidCharDetailsReader
+	GetNumscriptNameRequired() NumscriptNameRequiredDetailsReader
+	GetNumscriptNameTooLong() NumscriptNameTooLongDetailsReader
+	GetNumscriptNegativeAmount() NumscriptNegativeAmountDetailsReader
+	GetNumscriptNegativeBalance() NumscriptNegativeBalanceDetailsReader
+	GetNumscriptNegativePortion() NumscriptNegativePortionDetailsReader
+	GetNumscriptNotFound() NumscriptNotFoundDetailsReader
+	GetNumscriptParseError() NumscriptParseErrorDetailsReader
+	GetNumscriptPostingAmountOverflow() NumscriptPostingAmountOverflowDetailsReader
+	GetNumscriptPostingNegativeAmount() NumscriptPostingNegativeAmountDetailsReader
+	GetNumscriptScalingUnsupported() NumscriptScalingUnsupportedDetailsReader
+	GetNumscriptTypeError() NumscriptTypeErrorDetailsReader
+	GetNumscriptUnboundFunction() NumscriptUnboundFunctionDetailsReader
+	GetNumscriptUnboundVariable() NumscriptUnboundVariableDetailsReader
+	GetNumscriptVersionAlreadyExists() NumscriptVersionAlreadyExistsDetailsReader
+	GetPostingsAndScriptConflict() PostingsAndScriptConflictDetailsReader
+	GetPreparedQueryAlreadyExists() PreparedQueryAlreadyExistsDetailsReader
+	GetPreparedQueryNameInvalidChar() PreparedQueryNameInvalidCharDetailsReader
+	GetPreparedQueryNameRequired() PreparedQueryNameRequiredDetailsReader
+	GetPreparedQueryNameTooLong() PreparedQueryNameTooLongDetailsReader
+	GetPreparedQueryNotFound() PreparedQueryNotFoundDetailsReader
+	GetPreparedQueryRequired() PreparedQueryRequiredDetailsReader
+	GetPreparedQueryTargetUnsupported() PreparedQueryTargetUnsupportedDetailsReader
+	GetRevertTargetCreatedInBatch() RevertTargetCreatedInBatchDetailsReader
+	GetScopedBalanceUnsupported() ScopedBalanceUnsupportedDetailsReader
+	GetScriptAndReferenceConflict() ScriptAndReferenceConflictDetailsReader
+	GetScriptRequired() ScriptRequiredDetailsReader
+	GetSigningKeyIdInvalidChar() SigningKeyIdInvalidCharDetailsReader
+	GetSigningKeyIdRequired() SigningKeyIdRequiredDetailsReader
+	GetSigningKeyIdTooLong() SigningKeyIdTooLongDetailsReader
+	GetSigningKeyInvalidLength() SigningKeyInvalidLengthDetailsReader
+	GetSinkAlreadyExists() SinkAlreadyExistsDetailsReader
+	GetSinkBatchSizeTooLarge() SinkBatchSizeTooLargeDetailsReader
+	GetSinkControllerMismatch() SinkControllerMismatchDetailsReader
+	GetSinkNotFound() SinkNotFoundDetailsReader
+	GetTargetRequired() TargetRequiredDetailsReader
+	GetTransactionAlreadyReverted() TransactionAlreadyRevertedDetailsReader
+	GetTransactionNotFound() TransactionNotFoundDetailsReader
+	GetTransactionReferenceConflict() TransactionReferenceConflictDetailsReader
+	GetTransactionReferenceNotFound() TransactionReferenceNotFoundDetailsReader
+	GetTransactionReferenceTooLong() TransactionReferenceTooLongDetailsReader
+	GetTransactionTargetMissing() TransactionTargetMissingDetailsReader
+	GetTransientAccountNonZero() TransientAccountNonZeroDetailsReader
+	GetVolumeOverflow() VolumeOverflowDetailsReader
+	GetAccountMetadataKeyEmpty() AccountMetadataKeyEmptyDetailsReader
+	GetAccountMetadataKeyInvalidChar() AccountMetadataKeyInvalidCharDetailsReader
+	GetAccountMetadataValueContainsNullByte() AccountMetadataValueContainsNullByteDetailsReader
+	GetAccountMetadataLimitExceeded() AccountMetadataLimitExceededDetailsReader
+	GetMetadataKeyLimitExceeded() MetadataKeyLimitExceededDetailsReader
+	GetAccountMetadataKeyLimitExceeded() AccountMetadataKeyLimitExceededDetailsReader
+	GetNumscriptInsufficientFunds() NumscriptInsufficientFundsDetailsReader
+	GetNumscriptDivideByZeroWithNumerator() NumscriptDivideByZeroWithNumeratorDetailsReader
+	GetNumscriptScopedMetadataNotFound() NumscriptScopedMetadataNotFoundDetailsReader
+	GetNumscriptScopedNegativeBalance() NumscriptScopedNegativeBalanceDetailsReader
+	GetNumscriptVersionNotFound() NumscriptVersionNotFoundDetailsReader
+	WhichKind() FailureDetails_KindReaderCase
 	Mutate() *FailureDetails
 }
 
 type failureDetailsReadonly FailureDetails
 
-func (r *failureDetailsReadonly) GetKind() isFailureDetails_Kind {
-	return (*FailureDetails)(r).GetKind()
+func (r *failureDetailsReadonly) GetAccountAddressEmpty() AccountAddressEmptyDetailsReader {
+	v, ok := (*FailureDetails)(r).GetKind().(*FailureDetails_AccountAddressEmpty)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.AccountAddressEmpty.AsReader()
+}
+
+func (r *failureDetailsReadonly) GetAccountAddressEmptySegment() AccountAddressEmptySegmentDetailsReader {
+	v, ok := (*FailureDetails)(r).GetKind().(*FailureDetails_AccountAddressEmptySegment)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.AccountAddressEmptySegment.AsReader()
+}
+
+func (r *failureDetailsReadonly) GetAccountAddressInvalidChar() AccountAddressInvalidCharDetailsReader {
+	v, ok := (*FailureDetails)(r).GetKind().(*FailureDetails_AccountAddressInvalidChar)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.AccountAddressInvalidChar.AsReader()
+}
+
+func (r *failureDetailsReadonly) GetAccountAddressTooLong() AccountAddressTooLongDetailsReader {
+	v, ok := (*FailureDetails)(r).GetKind().(*FailureDetails_AccountAddressTooLong)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.AccountAddressTooLong.AsReader()
+}
+
+func (r *failureDetailsReadonly) GetAccountNotMatchingType() AccountNotMatchingTypeDetailsReader {
+	v, ok := (*FailureDetails)(r).GetKind().(*FailureDetails_AccountNotMatchingType)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.AccountNotMatchingType.AsReader()
+}
+
+func (r *failureDetailsReadonly) GetAccountTypeAlreadyExists() AccountTypeAlreadyExistsDetailsReader {
+	v, ok := (*FailureDetails)(r).GetKind().(*FailureDetails_AccountTypeAlreadyExists)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.AccountTypeAlreadyExists.AsReader()
+}
+
+func (r *failureDetailsReadonly) GetAccountTypeConflict() AccountTypeConflictDetailsReader {
+	v, ok := (*FailureDetails)(r).GetKind().(*FailureDetails_AccountTypeConflict)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.AccountTypeConflict.AsReader()
+}
+
+func (r *failureDetailsReadonly) GetAccountTypeHasAccounts() AccountTypeHasAccountsDetailsReader {
+	v, ok := (*FailureDetails)(r).GetKind().(*FailureDetails_AccountTypeHasAccounts)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.AccountTypeHasAccounts.AsReader()
+}
+
+func (r *failureDetailsReadonly) GetAccountTypeNameTooLong() AccountTypeNameTooLongDetailsReader {
+	v, ok := (*FailureDetails)(r).GetKind().(*FailureDetails_AccountTypeNameTooLong)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.AccountTypeNameTooLong.AsReader()
+}
+
+func (r *failureDetailsReadonly) GetAccountTypeNotFound() AccountTypeNotFoundDetailsReader {
+	v, ok := (*FailureDetails)(r).GetKind().(*FailureDetails_AccountTypeNotFound)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.AccountTypeNotFound.AsReader()
+}
+
+func (r *failureDetailsReadonly) GetAccountTypePatternTooLong() AccountTypePatternTooLongDetailsReader {
+	v, ok := (*FailureDetails)(r).GetKind().(*FailureDetails_AccountTypePatternTooLong)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.AccountTypePatternTooLong.AsReader()
+}
+
+func (r *failureDetailsReadonly) GetAssetInvalid() AssetInvalidDetailsReader {
+	v, ok := (*FailureDetails)(r).GetKind().(*FailureDetails_AssetInvalid)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.AssetInvalid.AsReader()
+}
+
+func (r *failureDetailsReadonly) GetBalanceNotFound() BalanceNotFoundDetailsReader {
+	v, ok := (*FailureDetails)(r).GetKind().(*FailureDetails_BalanceNotFound)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.BalanceNotFound.AsReader()
+}
+
+func (r *failureDetailsReadonly) GetCheckpointIdRequired() CheckpointIdRequiredDetailsReader {
+	v, ok := (*FailureDetails)(r).GetKind().(*FailureDetails_CheckpointIdRequired)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.CheckpointIdRequired.AsReader()
+}
+
+func (r *failureDetailsReadonly) GetCheckpointLimitReached() CheckpointLimitReachedDetailsReader {
+	v, ok := (*FailureDetails)(r).GetKind().(*FailureDetails_CheckpointLimitReached)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.CheckpointLimitReached.AsReader()
+}
+
+func (r *failureDetailsReadonly) GetCheckpointNotFound() CheckpointNotFoundDetailsReader {
+	v, ok := (*FailureDetails)(r).GetKind().(*FailureDetails_CheckpointNotFound)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.CheckpointNotFound.AsReader()
+}
+
+func (r *failureDetailsReadonly) GetColorInvalid() ColorInvalidDetailsReader {
+	v, ok := (*FailureDetails)(r).GetKind().(*FailureDetails_ColorInvalid)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.ColorInvalid.AsReader()
+}
+
+func (r *failureDetailsReadonly) GetColorTooLong() ColorTooLongDetailsReader {
+	v, ok := (*FailureDetails)(r).GetKind().(*FailureDetails_ColorTooLong)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.ColorTooLong.AsReader()
+}
+
+func (r *failureDetailsReadonly) GetEmptyTransaction() EmptyTransactionDetailsReader {
+	v, ok := (*FailureDetails)(r).GetKind().(*FailureDetails_EmptyTransaction)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.EmptyTransaction.AsReader()
+}
+
+func (r *failureDetailsReadonly) GetIdempotencyKeyConflict() IdempotencyKeyConflictDetailsReader {
+	v, ok := (*FailureDetails)(r).GetKind().(*FailureDetails_IdempotencyKeyConflict)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.IdempotencyKeyConflict.AsReader()
+}
+
+func (r *failureDetailsReadonly) GetIdRequired() IdRequiredDetailsReader {
+	v, ok := (*FailureDetails)(r).GetKind().(*FailureDetails_IdRequired)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.IdRequired.AsReader()
+}
+
+func (r *failureDetailsReadonly) GetIndexAlreadyExists() IndexAlreadyExistsDetailsReader {
+	v, ok := (*FailureDetails)(r).GetKind().(*FailureDetails_IndexAlreadyExists)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.IndexAlreadyExists.AsReader()
+}
+
+func (r *failureDetailsReadonly) GetIndexNotFound() IndexNotFoundDetailsReader {
+	v, ok := (*FailureDetails)(r).GetKind().(*FailureDetails_IndexNotFound)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.IndexNotFound.AsReader()
+}
+
+func (r *failureDetailsReadonly) GetIndexTargetUnsupported() IndexTargetUnsupportedDetailsReader {
+	v, ok := (*FailureDetails)(r).GetKind().(*FailureDetails_IndexTargetUnsupported)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.IndexTargetUnsupported.AsReader()
+}
+
+func (r *failureDetailsReadonly) GetInsufficientFunds() InsufficientFundsDetailsReader {
+	v, ok := (*FailureDetails)(r).GetKind().(*FailureDetails_InsufficientFunds)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.InsufficientFunds.AsReader()
+}
+
+func (r *failureDetailsReadonly) GetInvalidCronExpression() InvalidCronExpressionDetailsReader {
+	v, ok := (*FailureDetails)(r).GetKind().(*FailureDetails_InvalidCronExpression)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.InvalidCronExpression.AsReader()
+}
+
+func (r *failureDetailsReadonly) GetInvalidPattern() InvalidPatternDetailsReader {
+	v, ok := (*FailureDetails)(r).GetKind().(*FailureDetails_InvalidPattern)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.InvalidPattern.AsReader()
+}
+
+func (r *failureDetailsReadonly) GetInvalidSkippableReason() InvalidSkippableReasonDetailsReader {
+	v, ok := (*FailureDetails)(r).GetKind().(*FailureDetails_InvalidSkippableReason)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.InvalidSkippableReason.AsReader()
+}
+
+func (r *failureDetailsReadonly) GetLedgerAlreadyExists() LedgerAlreadyExistsDetailsReader {
+	v, ok := (*FailureDetails)(r).GetKind().(*FailureDetails_LedgerAlreadyExists)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.LedgerAlreadyExists.AsReader()
+}
+
+func (r *failureDetailsReadonly) GetLedgerDeleted() LedgerDeletedDetailsReader {
+	v, ok := (*FailureDetails)(r).GetKind().(*FailureDetails_LedgerDeleted)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.LedgerDeleted.AsReader()
+}
+
+func (r *failureDetailsReadonly) GetLedgerInMirrorMode() LedgerInMirrorModeDetailsReader {
+	v, ok := (*FailureDetails)(r).GetKind().(*FailureDetails_LedgerInMirrorMode)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.LedgerInMirrorMode.AsReader()
+}
+
+func (r *failureDetailsReadonly) GetLedgerNameInvalidChar() LedgerNameInvalidCharDetailsReader {
+	v, ok := (*FailureDetails)(r).GetKind().(*FailureDetails_LedgerNameInvalidChar)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.LedgerNameInvalidChar.AsReader()
+}
+
+func (r *failureDetailsReadonly) GetLedgerNameRequired() LedgerNameRequiredDetailsReader {
+	v, ok := (*FailureDetails)(r).GetKind().(*FailureDetails_LedgerNameRequired)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.LedgerNameRequired.AsReader()
+}
+
+func (r *failureDetailsReadonly) GetLedgerNameReservedPrefix() LedgerNameReservedPrefixDetailsReader {
+	v, ok := (*FailureDetails)(r).GetKind().(*FailureDetails_LedgerNameReservedPrefix)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.LedgerNameReservedPrefix.AsReader()
+}
+
+func (r *failureDetailsReadonly) GetLedgerNameTooLong() LedgerNameTooLongDetailsReader {
+	v, ok := (*FailureDetails)(r).GetKind().(*FailureDetails_LedgerNameTooLong)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.LedgerNameTooLong.AsReader()
+}
+
+func (r *failureDetailsReadonly) GetLedgerNotFound() LedgerNotFoundDetailsReader {
+	v, ok := (*FailureDetails)(r).GetKind().(*FailureDetails_LedgerNotFound)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.LedgerNotFound.AsReader()
+}
+
+func (r *failureDetailsReadonly) GetLedgerNotInMirrorMode() LedgerNotInMirrorModeDetailsReader {
+	v, ok := (*FailureDetails)(r).GetKind().(*FailureDetails_LedgerNotInMirrorMode)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.LedgerNotInMirrorMode.AsReader()
+}
+
+func (r *failureDetailsReadonly) GetMetadataFieldNotInSchema() MetadataFieldNotInSchemaDetailsReader {
+	v, ok := (*FailureDetails)(r).GetKind().(*FailureDetails_MetadataFieldNotInSchema)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.MetadataFieldNotInSchema.AsReader()
+}
+
+func (r *failureDetailsReadonly) GetMetadataKeyEmpty() MetadataKeyEmptyDetailsReader {
+	v, ok := (*FailureDetails)(r).GetKind().(*FailureDetails_MetadataKeyEmpty)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.MetadataKeyEmpty.AsReader()
+}
+
+func (r *failureDetailsReadonly) GetMetadataKeyInvalidChar() MetadataKeyInvalidCharDetailsReader {
+	v, ok := (*FailureDetails)(r).GetKind().(*FailureDetails_MetadataKeyInvalidChar)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.MetadataKeyInvalidChar.AsReader()
+}
+
+func (r *failureDetailsReadonly) GetMetadataKeyRequired() MetadataKeyRequiredDetailsReader {
+	v, ok := (*FailureDetails)(r).GetKind().(*FailureDetails_MetadataKeyRequired)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.MetadataKeyRequired.AsReader()
+}
+
+func (r *failureDetailsReadonly) GetMetadataLimitExceeded() MetadataLimitExceededDetailsReader {
+	v, ok := (*FailureDetails)(r).GetKind().(*FailureDetails_MetadataLimitExceeded)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.MetadataLimitExceeded.AsReader()
+}
+
+func (r *failureDetailsReadonly) GetMetadataNotFound() MetadataNotFoundDetailsReader {
+	v, ok := (*FailureDetails)(r).GetKind().(*FailureDetails_MetadataNotFound)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.MetadataNotFound.AsReader()
+}
+
+func (r *failureDetailsReadonly) GetMetadataValueContainsNullByte() MetadataValueContainsNullByteDetailsReader {
+	v, ok := (*FailureDetails)(r).GetKind().(*FailureDetails_MetadataValueContainsNullByte)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.MetadataValueContainsNullByte.AsReader()
+}
+
+func (r *failureDetailsReadonly) GetMirrorHttpUrlInvalid() MirrorHttpUrlInvalidDetailsReader {
+	v, ok := (*FailureDetails)(r).GetKind().(*FailureDetails_MirrorHttpUrlInvalid)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.MirrorHttpUrlInvalid.AsReader()
+}
+
+func (r *failureDetailsReadonly) GetMirrorIamRegionRequired() MirrorIamRegionRequiredDetailsReader {
+	v, ok := (*FailureDetails)(r).GetKind().(*FailureDetails_MirrorIamRegionRequired)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.MirrorIamRegionRequired.AsReader()
+}
+
+func (r *failureDetailsReadonly) GetMirrorIamRequiresTls() MirrorIamRequiresTlsDetailsReader {
+	v, ok := (*FailureDetails)(r).GetKind().(*FailureDetails_MirrorIamRequiresTls)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.MirrorIamRequiresTls.AsReader()
+}
+
+func (r *failureDetailsReadonly) GetMirrorRewriteRuleInvalid() MirrorRewriteRuleInvalidDetailsReader {
+	v, ok := (*FailureDetails)(r).GetKind().(*FailureDetails_MirrorRewriteRuleInvalid)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.MirrorRewriteRuleInvalid.AsReader()
+}
+
+func (r *failureDetailsReadonly) GetNumscriptAssetMismatch() NumscriptAssetMismatchDetailsReader {
+	v, ok := (*FailureDetails)(r).GetKind().(*FailureDetails_NumscriptAssetMismatch)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.NumscriptAssetMismatch.AsReader()
+}
+
+func (r *failureDetailsReadonly) GetNumscriptBadArity() NumscriptBadArityDetailsReader {
+	v, ok := (*FailureDetails)(r).GetKind().(*FailureDetails_NumscriptBadArity)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.NumscriptBadArity.AsReader()
+}
+
+func (r *failureDetailsReadonly) GetNumscriptBadMetaValue() NumscriptBadMetaValueDetailsReader {
+	v, ok := (*FailureDetails)(r).GetKind().(*FailureDetails_NumscriptBadMetaValue)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.NumscriptBadMetaValue.AsReader()
+}
+
+func (r *failureDetailsReadonly) GetNumscriptBadPortion() NumscriptBadPortionDetailsReader {
+	v, ok := (*FailureDetails)(r).GetKind().(*FailureDetails_NumscriptBadPortion)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.NumscriptBadPortion.AsReader()
+}
+
+func (r *failureDetailsReadonly) GetNumscriptCannotCastScopedAccount() NumscriptCannotCastScopedAccountDetailsReader {
+	v, ok := (*FailureDetails)(r).GetKind().(*FailureDetails_NumscriptCannotCastScopedAccount)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.NumscriptCannotCastScopedAccount.AsReader()
+}
+
+func (r *failureDetailsReadonly) GetNumscriptCannotCastToString() NumscriptCannotCastToStringDetailsReader {
+	v, ok := (*FailureDetails)(r).GetKind().(*FailureDetails_NumscriptCannotCastToString)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.NumscriptCannotCastToString.AsReader()
+}
+
+func (r *failureDetailsReadonly) GetNumscriptCannotStoreScopedAccount() NumscriptCannotStoreScopedAccountDetailsReader {
+	v, ok := (*FailureDetails)(r).GetKind().(*FailureDetails_NumscriptCannotStoreScopedAccount)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.NumscriptCannotStoreScopedAccount.AsReader()
+}
+
+func (r *failureDetailsReadonly) GetNumscriptCompileBadArity() NumscriptCompileBadArityDetailsReader {
+	v, ok := (*FailureDetails)(r).GetKind().(*FailureDetails_NumscriptCompileBadArity)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.NumscriptCompileBadArity.AsReader()
+}
+
+func (r *failureDetailsReadonly) GetNumscriptCompileCannotCastToString() NumscriptCompileCannotCastToStringDetailsReader {
+	v, ok := (*FailureDetails)(r).GetKind().(*FailureDetails_NumscriptCompileCannotCastToString)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.NumscriptCompileCannotCastToString.AsReader()
+}
+
+func (r *failureDetailsReadonly) GetNumscriptCompileCannotStoreScopedAccount() NumscriptCompileCannotStoreScopedAccountDetailsReader {
+	v, ok := (*FailureDetails)(r).GetKind().(*FailureDetails_NumscriptCompileCannotStoreScopedAccount)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.NumscriptCompileCannotStoreScopedAccount.AsReader()
+}
+
+func (r *failureDetailsReadonly) GetNumscriptCompileDuplicateRemaining() NumscriptCompileDuplicateRemainingDetailsReader {
+	v, ok := (*FailureDetails)(r).GetKind().(*FailureDetails_NumscriptCompileDuplicateRemaining)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.NumscriptCompileDuplicateRemaining.AsReader()
+}
+
+func (r *failureDetailsReadonly) GetNumscriptCompileDuplicateVariable() NumscriptCompileDuplicateVariableDetailsReader {
+	v, ok := (*FailureDetails)(r).GetKind().(*FailureDetails_NumscriptCompileDuplicateVariable)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.NumscriptCompileDuplicateVariable.AsReader()
+}
+
+func (r *failureDetailsReadonly) GetNumscriptCompileExperimentalFeature() NumscriptCompileExperimentalFeatureDetailsReader {
+	v, ok := (*FailureDetails)(r).GetKind().(*FailureDetails_NumscriptCompileExperimentalFeature)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.NumscriptCompileExperimentalFeature.AsReader()
+}
+
+func (r *failureDetailsReadonly) GetNumscriptCompileInvalidFeature() NumscriptCompileInvalidFeatureDetailsReader {
+	v, ok := (*FailureDetails)(r).GetKind().(*FailureDetails_NumscriptCompileInvalidFeature)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.NumscriptCompileInvalidFeature.AsReader()
+}
+
+func (r *failureDetailsReadonly) GetNumscriptCompileInvalidMetaPosition() NumscriptCompileInvalidMetaPositionDetailsReader {
+	v, ok := (*FailureDetails)(r).GetKind().(*FailureDetails_NumscriptCompileInvalidMetaPosition)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.NumscriptCompileInvalidMetaPosition.AsReader()
+}
+
+func (r *failureDetailsReadonly) GetNumscriptCompileInvalidType() NumscriptCompileInvalidTypeDetailsReader {
+	v, ok := (*FailureDetails)(r).GetKind().(*FailureDetails_NumscriptCompileInvalidType)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.NumscriptCompileInvalidType.AsReader()
+}
+
+func (r *failureDetailsReadonly) GetNumscriptCompileInvalidUncappedSource() NumscriptCompileInvalidUncappedSourceDetailsReader {
+	v, ok := (*FailureDetails)(r).GetKind().(*FailureDetails_NumscriptCompileInvalidUncappedSource)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.NumscriptCompileInvalidUncappedSource.AsReader()
+}
+
+func (r *failureDetailsReadonly) GetNumscriptCompileInvalidVariableValue() NumscriptCompileInvalidVariableValueDetailsReader {
+	v, ok := (*FailureDetails)(r).GetKind().(*FailureDetails_NumscriptCompileInvalidVariableValue)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.NumscriptCompileInvalidVariableValue.AsReader()
+}
+
+func (r *failureDetailsReadonly) GetNumscriptCompileMissingVariable() NumscriptCompileMissingVariableDetailsReader {
+	v, ok := (*FailureDetails)(r).GetKind().(*FailureDetails_NumscriptCompileMissingVariable)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.NumscriptCompileMissingVariable.AsReader()
+}
+
+func (r *failureDetailsReadonly) GetNumscriptCompileTypeMismatch() NumscriptCompileTypeMismatchDetailsReader {
+	v, ok := (*FailureDetails)(r).GetKind().(*FailureDetails_NumscriptCompileTypeMismatch)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.NumscriptCompileTypeMismatch.AsReader()
+}
+
+func (r *failureDetailsReadonly) GetNumscriptCompileUnboundVariable() NumscriptCompileUnboundVariableDetailsReader {
+	v, ok := (*FailureDetails)(r).GetKind().(*FailureDetails_NumscriptCompileUnboundVariable)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.NumscriptCompileUnboundVariable.AsReader()
+}
+
+func (r *failureDetailsReadonly) GetNumscriptCompileUnknownFunction() NumscriptCompileUnknownFunctionDetailsReader {
+	v, ok := (*FailureDetails)(r).GetKind().(*FailureDetails_NumscriptCompileUnknownFunction)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.NumscriptCompileUnknownFunction.AsReader()
+}
+
+func (r *failureDetailsReadonly) GetNumscriptContentRequired() NumscriptContentRequiredDetailsReader {
+	v, ok := (*FailureDetails)(r).GetKind().(*FailureDetails_NumscriptContentRequired)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.NumscriptContentRequired.AsReader()
+}
+
+func (r *failureDetailsReadonly) GetNumscriptCurrencyMismatch() NumscriptCurrencyMismatchDetailsReader {
+	v, ok := (*FailureDetails)(r).GetKind().(*FailureDetails_NumscriptCurrencyMismatch)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.NumscriptCurrencyMismatch.AsReader()
+}
+
+func (r *failureDetailsReadonly) GetNumscriptDivideByZero() NumscriptDivideByZeroDetailsReader {
+	v, ok := (*FailureDetails)(r).GetKind().(*FailureDetails_NumscriptDivideByZero)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.NumscriptDivideByZero.AsReader()
+}
+
+func (r *failureDetailsReadonly) GetNumscriptExperimentalFeature() NumscriptExperimentalFeatureDetailsReader {
+	v, ok := (*FailureDetails)(r).GetKind().(*FailureDetails_NumscriptExperimentalFeature)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.NumscriptExperimentalFeature.AsReader()
+}
+
+func (r *failureDetailsReadonly) GetNumscriptInvalidAccountName() NumscriptInvalidAccountNameDetailsReader {
+	v, ok := (*FailureDetails)(r).GetKind().(*FailureDetails_NumscriptInvalidAccountName)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.NumscriptInvalidAccountName.AsReader()
+}
+
+func (r *failureDetailsReadonly) GetNumscriptInvalidAllotmentInSendAll() NumscriptInvalidAllotmentInSendAllDetailsReader {
+	v, ok := (*FailureDetails)(r).GetKind().(*FailureDetails_NumscriptInvalidAllotmentInSendAll)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.NumscriptInvalidAllotmentInSendAll.AsReader()
+}
+
+func (r *failureDetailsReadonly) GetNumscriptInvalidAllotmentSum() NumscriptInvalidAllotmentSumDetailsReader {
+	v, ok := (*FailureDetails)(r).GetKind().(*FailureDetails_NumscriptInvalidAllotmentSum)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.NumscriptInvalidAllotmentSum.AsReader()
+}
+
+func (r *failureDetailsReadonly) GetNumscriptInvalidAsset() NumscriptInvalidAssetDetailsReader {
+	v, ok := (*FailureDetails)(r).GetKind().(*FailureDetails_NumscriptInvalidAsset)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.NumscriptInvalidAsset.AsReader()
+}
+
+func (r *failureDetailsReadonly) GetNumscriptInvalidColor() NumscriptInvalidColorDetailsReader {
+	v, ok := (*FailureDetails)(r).GetKind().(*FailureDetails_NumscriptInvalidColor)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.NumscriptInvalidColor.AsReader()
+}
+
+func (r *failureDetailsReadonly) GetNumscriptInvalidFeature() NumscriptInvalidFeatureDetailsReader {
+	v, ok := (*FailureDetails)(r).GetKind().(*FailureDetails_NumscriptInvalidFeature)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.NumscriptInvalidFeature.AsReader()
+}
+
+func (r *failureDetailsReadonly) GetNumscriptInvalidMonetaryLiteral() NumscriptInvalidMonetaryLiteralDetailsReader {
+	v, ok := (*FailureDetails)(r).GetKind().(*FailureDetails_NumscriptInvalidMonetaryLiteral)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.NumscriptInvalidMonetaryLiteral.AsReader()
+}
+
+func (r *failureDetailsReadonly) GetNumscriptInvalidNestedMeta() NumscriptInvalidNestedMetaDetailsReader {
+	v, ok := (*FailureDetails)(r).GetKind().(*FailureDetails_NumscriptInvalidNestedMeta)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.NumscriptInvalidNestedMeta.AsReader()
+}
+
+func (r *failureDetailsReadonly) GetNumscriptInvalidNumberLiteral() NumscriptInvalidNumberLiteralDetailsReader {
+	v, ok := (*FailureDetails)(r).GetKind().(*FailureDetails_NumscriptInvalidNumberLiteral)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.NumscriptInvalidNumberLiteral.AsReader()
+}
+
+func (r *failureDetailsReadonly) GetNumscriptInvalidRemainingAllotment() NumscriptInvalidRemainingAllotmentDetailsReader {
+	v, ok := (*FailureDetails)(r).GetKind().(*FailureDetails_NumscriptInvalidRemainingAllotment)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.NumscriptInvalidRemainingAllotment.AsReader()
+}
+
+func (r *failureDetailsReadonly) GetNumscriptInvalidScope() NumscriptInvalidScopeDetailsReader {
+	v, ok := (*FailureDetails)(r).GetKind().(*FailureDetails_NumscriptInvalidScope)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.NumscriptInvalidScope.AsReader()
+}
+
+func (r *failureDetailsReadonly) GetNumscriptInvalidType() NumscriptInvalidTypeDetailsReader {
+	v, ok := (*FailureDetails)(r).GetKind().(*FailureDetails_NumscriptInvalidType)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.NumscriptInvalidType.AsReader()
+}
+
+func (r *failureDetailsReadonly) GetNumscriptInvalidUnboundedScalingAddress() NumscriptInvalidUnboundedScalingAddressDetailsReader {
+	v, ok := (*FailureDetails)(r).GetKind().(*FailureDetails_NumscriptInvalidUnboundedScalingAddress)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.NumscriptInvalidUnboundedScalingAddress.AsReader()
+}
+
+func (r *failureDetailsReadonly) GetNumscriptInvalidUnboundedSendAll() NumscriptInvalidUnboundedSendAllDetailsReader {
+	v, ok := (*FailureDetails)(r).GetKind().(*FailureDetails_NumscriptInvalidUnboundedSendAll)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.NumscriptInvalidUnboundedSendAll.AsReader()
+}
+
+func (r *failureDetailsReadonly) GetNumscriptInvalidUncappedSource() NumscriptInvalidUncappedSourceDetailsReader {
+	v, ok := (*FailureDetails)(r).GetKind().(*FailureDetails_NumscriptInvalidUncappedSource)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.NumscriptInvalidUncappedSource.AsReader()
+}
+
+func (r *failureDetailsReadonly) GetNumscriptInvalidVersion() NumscriptInvalidVersionDetailsReader {
+	v, ok := (*FailureDetails)(r).GetKind().(*FailureDetails_NumscriptInvalidVersion)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.NumscriptInvalidVersion.AsReader()
+}
+
+func (r *failureDetailsReadonly) GetNumscriptMetadataNotFound() NumscriptMetadataNotFoundDetailsReader {
+	v, ok := (*FailureDetails)(r).GetKind().(*FailureDetails_NumscriptMetadataNotFound)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.NumscriptMetadataNotFound.AsReader()
+}
+
+func (r *failureDetailsReadonly) GetNumscriptMissingFunds() NumscriptMissingFundsDetailsReader {
+	v, ok := (*FailureDetails)(r).GetKind().(*FailureDetails_NumscriptMissingFunds)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.NumscriptMissingFunds.AsReader()
+}
+
+func (r *failureDetailsReadonly) GetNumscriptMissingVariable() NumscriptMissingVariableDetailsReader {
+	v, ok := (*FailureDetails)(r).GetKind().(*FailureDetails_NumscriptMissingVariable)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.NumscriptMissingVariable.AsReader()
+}
+
+func (r *failureDetailsReadonly) GetNumscriptNameInvalidChar() NumscriptNameInvalidCharDetailsReader {
+	v, ok := (*FailureDetails)(r).GetKind().(*FailureDetails_NumscriptNameInvalidChar)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.NumscriptNameInvalidChar.AsReader()
+}
+
+func (r *failureDetailsReadonly) GetNumscriptNameRequired() NumscriptNameRequiredDetailsReader {
+	v, ok := (*FailureDetails)(r).GetKind().(*FailureDetails_NumscriptNameRequired)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.NumscriptNameRequired.AsReader()
+}
+
+func (r *failureDetailsReadonly) GetNumscriptNameTooLong() NumscriptNameTooLongDetailsReader {
+	v, ok := (*FailureDetails)(r).GetKind().(*FailureDetails_NumscriptNameTooLong)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.NumscriptNameTooLong.AsReader()
+}
+
+func (r *failureDetailsReadonly) GetNumscriptNegativeAmount() NumscriptNegativeAmountDetailsReader {
+	v, ok := (*FailureDetails)(r).GetKind().(*FailureDetails_NumscriptNegativeAmount)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.NumscriptNegativeAmount.AsReader()
+}
+
+func (r *failureDetailsReadonly) GetNumscriptNegativeBalance() NumscriptNegativeBalanceDetailsReader {
+	v, ok := (*FailureDetails)(r).GetKind().(*FailureDetails_NumscriptNegativeBalance)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.NumscriptNegativeBalance.AsReader()
+}
+
+func (r *failureDetailsReadonly) GetNumscriptNegativePortion() NumscriptNegativePortionDetailsReader {
+	v, ok := (*FailureDetails)(r).GetKind().(*FailureDetails_NumscriptNegativePortion)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.NumscriptNegativePortion.AsReader()
+}
+
+func (r *failureDetailsReadonly) GetNumscriptNotFound() NumscriptNotFoundDetailsReader {
+	v, ok := (*FailureDetails)(r).GetKind().(*FailureDetails_NumscriptNotFound)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.NumscriptNotFound.AsReader()
+}
+
+func (r *failureDetailsReadonly) GetNumscriptParseError() NumscriptParseErrorDetailsReader {
+	v, ok := (*FailureDetails)(r).GetKind().(*FailureDetails_NumscriptParseError)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.NumscriptParseError.AsReader()
+}
+
+func (r *failureDetailsReadonly) GetNumscriptPostingAmountOverflow() NumscriptPostingAmountOverflowDetailsReader {
+	v, ok := (*FailureDetails)(r).GetKind().(*FailureDetails_NumscriptPostingAmountOverflow)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.NumscriptPostingAmountOverflow.AsReader()
+}
+
+func (r *failureDetailsReadonly) GetNumscriptPostingNegativeAmount() NumscriptPostingNegativeAmountDetailsReader {
+	v, ok := (*FailureDetails)(r).GetKind().(*FailureDetails_NumscriptPostingNegativeAmount)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.NumscriptPostingNegativeAmount.AsReader()
+}
+
+func (r *failureDetailsReadonly) GetNumscriptScalingUnsupported() NumscriptScalingUnsupportedDetailsReader {
+	v, ok := (*FailureDetails)(r).GetKind().(*FailureDetails_NumscriptScalingUnsupported)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.NumscriptScalingUnsupported.AsReader()
+}
+
+func (r *failureDetailsReadonly) GetNumscriptTypeError() NumscriptTypeErrorDetailsReader {
+	v, ok := (*FailureDetails)(r).GetKind().(*FailureDetails_NumscriptTypeError)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.NumscriptTypeError.AsReader()
+}
+
+func (r *failureDetailsReadonly) GetNumscriptUnboundFunction() NumscriptUnboundFunctionDetailsReader {
+	v, ok := (*FailureDetails)(r).GetKind().(*FailureDetails_NumscriptUnboundFunction)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.NumscriptUnboundFunction.AsReader()
+}
+
+func (r *failureDetailsReadonly) GetNumscriptUnboundVariable() NumscriptUnboundVariableDetailsReader {
+	v, ok := (*FailureDetails)(r).GetKind().(*FailureDetails_NumscriptUnboundVariable)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.NumscriptUnboundVariable.AsReader()
+}
+
+func (r *failureDetailsReadonly) GetNumscriptVersionAlreadyExists() NumscriptVersionAlreadyExistsDetailsReader {
+	v, ok := (*FailureDetails)(r).GetKind().(*FailureDetails_NumscriptVersionAlreadyExists)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.NumscriptVersionAlreadyExists.AsReader()
+}
+
+func (r *failureDetailsReadonly) GetPostingsAndScriptConflict() PostingsAndScriptConflictDetailsReader {
+	v, ok := (*FailureDetails)(r).GetKind().(*FailureDetails_PostingsAndScriptConflict)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.PostingsAndScriptConflict.AsReader()
+}
+
+func (r *failureDetailsReadonly) GetPreparedQueryAlreadyExists() PreparedQueryAlreadyExistsDetailsReader {
+	v, ok := (*FailureDetails)(r).GetKind().(*FailureDetails_PreparedQueryAlreadyExists)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.PreparedQueryAlreadyExists.AsReader()
+}
+
+func (r *failureDetailsReadonly) GetPreparedQueryNameInvalidChar() PreparedQueryNameInvalidCharDetailsReader {
+	v, ok := (*FailureDetails)(r).GetKind().(*FailureDetails_PreparedQueryNameInvalidChar)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.PreparedQueryNameInvalidChar.AsReader()
+}
+
+func (r *failureDetailsReadonly) GetPreparedQueryNameRequired() PreparedQueryNameRequiredDetailsReader {
+	v, ok := (*FailureDetails)(r).GetKind().(*FailureDetails_PreparedQueryNameRequired)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.PreparedQueryNameRequired.AsReader()
+}
+
+func (r *failureDetailsReadonly) GetPreparedQueryNameTooLong() PreparedQueryNameTooLongDetailsReader {
+	v, ok := (*FailureDetails)(r).GetKind().(*FailureDetails_PreparedQueryNameTooLong)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.PreparedQueryNameTooLong.AsReader()
+}
+
+func (r *failureDetailsReadonly) GetPreparedQueryNotFound() PreparedQueryNotFoundDetailsReader {
+	v, ok := (*FailureDetails)(r).GetKind().(*FailureDetails_PreparedQueryNotFound)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.PreparedQueryNotFound.AsReader()
+}
+
+func (r *failureDetailsReadonly) GetPreparedQueryRequired() PreparedQueryRequiredDetailsReader {
+	v, ok := (*FailureDetails)(r).GetKind().(*FailureDetails_PreparedQueryRequired)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.PreparedQueryRequired.AsReader()
+}
+
+func (r *failureDetailsReadonly) GetPreparedQueryTargetUnsupported() PreparedQueryTargetUnsupportedDetailsReader {
+	v, ok := (*FailureDetails)(r).GetKind().(*FailureDetails_PreparedQueryTargetUnsupported)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.PreparedQueryTargetUnsupported.AsReader()
+}
+
+func (r *failureDetailsReadonly) GetRevertTargetCreatedInBatch() RevertTargetCreatedInBatchDetailsReader {
+	v, ok := (*FailureDetails)(r).GetKind().(*FailureDetails_RevertTargetCreatedInBatch)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.RevertTargetCreatedInBatch.AsReader()
+}
+
+func (r *failureDetailsReadonly) GetScopedBalanceUnsupported() ScopedBalanceUnsupportedDetailsReader {
+	v, ok := (*FailureDetails)(r).GetKind().(*FailureDetails_ScopedBalanceUnsupported)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.ScopedBalanceUnsupported.AsReader()
+}
+
+func (r *failureDetailsReadonly) GetScriptAndReferenceConflict() ScriptAndReferenceConflictDetailsReader {
+	v, ok := (*FailureDetails)(r).GetKind().(*FailureDetails_ScriptAndReferenceConflict)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.ScriptAndReferenceConflict.AsReader()
+}
+
+func (r *failureDetailsReadonly) GetScriptRequired() ScriptRequiredDetailsReader {
+	v, ok := (*FailureDetails)(r).GetKind().(*FailureDetails_ScriptRequired)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.ScriptRequired.AsReader()
+}
+
+func (r *failureDetailsReadonly) GetSigningKeyIdInvalidChar() SigningKeyIdInvalidCharDetailsReader {
+	v, ok := (*FailureDetails)(r).GetKind().(*FailureDetails_SigningKeyIdInvalidChar)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.SigningKeyIdInvalidChar.AsReader()
+}
+
+func (r *failureDetailsReadonly) GetSigningKeyIdRequired() SigningKeyIdRequiredDetailsReader {
+	v, ok := (*FailureDetails)(r).GetKind().(*FailureDetails_SigningKeyIdRequired)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.SigningKeyIdRequired.AsReader()
+}
+
+func (r *failureDetailsReadonly) GetSigningKeyIdTooLong() SigningKeyIdTooLongDetailsReader {
+	v, ok := (*FailureDetails)(r).GetKind().(*FailureDetails_SigningKeyIdTooLong)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.SigningKeyIdTooLong.AsReader()
+}
+
+func (r *failureDetailsReadonly) GetSigningKeyInvalidLength() SigningKeyInvalidLengthDetailsReader {
+	v, ok := (*FailureDetails)(r).GetKind().(*FailureDetails_SigningKeyInvalidLength)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.SigningKeyInvalidLength.AsReader()
+}
+
+func (r *failureDetailsReadonly) GetSinkAlreadyExists() SinkAlreadyExistsDetailsReader {
+	v, ok := (*FailureDetails)(r).GetKind().(*FailureDetails_SinkAlreadyExists)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.SinkAlreadyExists.AsReader()
+}
+
+func (r *failureDetailsReadonly) GetSinkBatchSizeTooLarge() SinkBatchSizeTooLargeDetailsReader {
+	v, ok := (*FailureDetails)(r).GetKind().(*FailureDetails_SinkBatchSizeTooLarge)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.SinkBatchSizeTooLarge.AsReader()
+}
+
+func (r *failureDetailsReadonly) GetSinkControllerMismatch() SinkControllerMismatchDetailsReader {
+	v, ok := (*FailureDetails)(r).GetKind().(*FailureDetails_SinkControllerMismatch)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.SinkControllerMismatch.AsReader()
+}
+
+func (r *failureDetailsReadonly) GetSinkNotFound() SinkNotFoundDetailsReader {
+	v, ok := (*FailureDetails)(r).GetKind().(*FailureDetails_SinkNotFound)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.SinkNotFound.AsReader()
+}
+
+func (r *failureDetailsReadonly) GetTargetRequired() TargetRequiredDetailsReader {
+	v, ok := (*FailureDetails)(r).GetKind().(*FailureDetails_TargetRequired)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.TargetRequired.AsReader()
+}
+
+func (r *failureDetailsReadonly) GetTransactionAlreadyReverted() TransactionAlreadyRevertedDetailsReader {
+	v, ok := (*FailureDetails)(r).GetKind().(*FailureDetails_TransactionAlreadyReverted)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.TransactionAlreadyReverted.AsReader()
+}
+
+func (r *failureDetailsReadonly) GetTransactionNotFound() TransactionNotFoundDetailsReader {
+	v, ok := (*FailureDetails)(r).GetKind().(*FailureDetails_TransactionNotFound)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.TransactionNotFound.AsReader()
+}
+
+func (r *failureDetailsReadonly) GetTransactionReferenceConflict() TransactionReferenceConflictDetailsReader {
+	v, ok := (*FailureDetails)(r).GetKind().(*FailureDetails_TransactionReferenceConflict)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.TransactionReferenceConflict.AsReader()
+}
+
+func (r *failureDetailsReadonly) GetTransactionReferenceNotFound() TransactionReferenceNotFoundDetailsReader {
+	v, ok := (*FailureDetails)(r).GetKind().(*FailureDetails_TransactionReferenceNotFound)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.TransactionReferenceNotFound.AsReader()
+}
+
+func (r *failureDetailsReadonly) GetTransactionReferenceTooLong() TransactionReferenceTooLongDetailsReader {
+	v, ok := (*FailureDetails)(r).GetKind().(*FailureDetails_TransactionReferenceTooLong)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.TransactionReferenceTooLong.AsReader()
+}
+
+func (r *failureDetailsReadonly) GetTransactionTargetMissing() TransactionTargetMissingDetailsReader {
+	v, ok := (*FailureDetails)(r).GetKind().(*FailureDetails_TransactionTargetMissing)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.TransactionTargetMissing.AsReader()
+}
+
+func (r *failureDetailsReadonly) GetTransientAccountNonZero() TransientAccountNonZeroDetailsReader {
+	v, ok := (*FailureDetails)(r).GetKind().(*FailureDetails_TransientAccountNonZero)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.TransientAccountNonZero.AsReader()
+}
+
+func (r *failureDetailsReadonly) GetVolumeOverflow() VolumeOverflowDetailsReader {
+	v, ok := (*FailureDetails)(r).GetKind().(*FailureDetails_VolumeOverflow)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.VolumeOverflow.AsReader()
+}
+
+func (r *failureDetailsReadonly) GetAccountMetadataKeyEmpty() AccountMetadataKeyEmptyDetailsReader {
+	v, ok := (*FailureDetails)(r).GetKind().(*FailureDetails_AccountMetadataKeyEmpty)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.AccountMetadataKeyEmpty.AsReader()
+}
+
+func (r *failureDetailsReadonly) GetAccountMetadataKeyInvalidChar() AccountMetadataKeyInvalidCharDetailsReader {
+	v, ok := (*FailureDetails)(r).GetKind().(*FailureDetails_AccountMetadataKeyInvalidChar)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.AccountMetadataKeyInvalidChar.AsReader()
+}
+
+func (r *failureDetailsReadonly) GetAccountMetadataValueContainsNullByte() AccountMetadataValueContainsNullByteDetailsReader {
+	v, ok := (*FailureDetails)(r).GetKind().(*FailureDetails_AccountMetadataValueContainsNullByte)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.AccountMetadataValueContainsNullByte.AsReader()
+}
+
+func (r *failureDetailsReadonly) GetAccountMetadataLimitExceeded() AccountMetadataLimitExceededDetailsReader {
+	v, ok := (*FailureDetails)(r).GetKind().(*FailureDetails_AccountMetadataLimitExceeded)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.AccountMetadataLimitExceeded.AsReader()
+}
+
+func (r *failureDetailsReadonly) GetMetadataKeyLimitExceeded() MetadataKeyLimitExceededDetailsReader {
+	v, ok := (*FailureDetails)(r).GetKind().(*FailureDetails_MetadataKeyLimitExceeded)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.MetadataKeyLimitExceeded.AsReader()
+}
+
+func (r *failureDetailsReadonly) GetAccountMetadataKeyLimitExceeded() AccountMetadataKeyLimitExceededDetailsReader {
+	v, ok := (*FailureDetails)(r).GetKind().(*FailureDetails_AccountMetadataKeyLimitExceeded)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.AccountMetadataKeyLimitExceeded.AsReader()
+}
+
+func (r *failureDetailsReadonly) GetNumscriptInsufficientFunds() NumscriptInsufficientFundsDetailsReader {
+	v, ok := (*FailureDetails)(r).GetKind().(*FailureDetails_NumscriptInsufficientFunds)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.NumscriptInsufficientFunds.AsReader()
+}
+
+func (r *failureDetailsReadonly) GetNumscriptDivideByZeroWithNumerator() NumscriptDivideByZeroWithNumeratorDetailsReader {
+	v, ok := (*FailureDetails)(r).GetKind().(*FailureDetails_NumscriptDivideByZeroWithNumerator)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.NumscriptDivideByZeroWithNumerator.AsReader()
+}
+
+func (r *failureDetailsReadonly) GetNumscriptScopedMetadataNotFound() NumscriptScopedMetadataNotFoundDetailsReader {
+	v, ok := (*FailureDetails)(r).GetKind().(*FailureDetails_NumscriptScopedMetadataNotFound)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.NumscriptScopedMetadataNotFound.AsReader()
+}
+
+func (r *failureDetailsReadonly) GetNumscriptScopedNegativeBalance() NumscriptScopedNegativeBalanceDetailsReader {
+	v, ok := (*FailureDetails)(r).GetKind().(*FailureDetails_NumscriptScopedNegativeBalance)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.NumscriptScopedNegativeBalance.AsReader()
+}
+
+func (r *failureDetailsReadonly) GetNumscriptVersionNotFound() NumscriptVersionNotFoundDetailsReader {
+	v, ok := (*FailureDetails)(r).GetKind().(*FailureDetails_NumscriptVersionNotFound)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.NumscriptVersionNotFound.AsReader()
+}
+
+// FailureDetails_KindReaderCase identifies a selected oneof arm by its protobuf field number.
+type FailureDetails_KindReaderCase int32
+
+const (
+	FailureDetails_KindReaderCase_Unset                                    FailureDetails_KindReaderCase = 0
+	FailureDetails_KindReaderCase_AccountAddressEmpty                      FailureDetails_KindReaderCase = 1
+	FailureDetails_KindReaderCase_AccountAddressEmptySegment               FailureDetails_KindReaderCase = 2
+	FailureDetails_KindReaderCase_AccountAddressInvalidChar                FailureDetails_KindReaderCase = 3
+	FailureDetails_KindReaderCase_AccountAddressTooLong                    FailureDetails_KindReaderCase = 4
+	FailureDetails_KindReaderCase_AccountNotMatchingType                   FailureDetails_KindReaderCase = 5
+	FailureDetails_KindReaderCase_AccountTypeAlreadyExists                 FailureDetails_KindReaderCase = 6
+	FailureDetails_KindReaderCase_AccountTypeConflict                      FailureDetails_KindReaderCase = 7
+	FailureDetails_KindReaderCase_AccountTypeHasAccounts                   FailureDetails_KindReaderCase = 8
+	FailureDetails_KindReaderCase_AccountTypeNameTooLong                   FailureDetails_KindReaderCase = 9
+	FailureDetails_KindReaderCase_AccountTypeNotFound                      FailureDetails_KindReaderCase = 10
+	FailureDetails_KindReaderCase_AccountTypePatternTooLong                FailureDetails_KindReaderCase = 11
+	FailureDetails_KindReaderCase_AssetInvalid                             FailureDetails_KindReaderCase = 12
+	FailureDetails_KindReaderCase_BalanceNotFound                          FailureDetails_KindReaderCase = 13
+	FailureDetails_KindReaderCase_CheckpointIdRequired                     FailureDetails_KindReaderCase = 14
+	FailureDetails_KindReaderCase_CheckpointLimitReached                   FailureDetails_KindReaderCase = 15
+	FailureDetails_KindReaderCase_CheckpointNotFound                       FailureDetails_KindReaderCase = 16
+	FailureDetails_KindReaderCase_ColorInvalid                             FailureDetails_KindReaderCase = 17
+	FailureDetails_KindReaderCase_ColorTooLong                             FailureDetails_KindReaderCase = 18
+	FailureDetails_KindReaderCase_EmptyTransaction                         FailureDetails_KindReaderCase = 19
+	FailureDetails_KindReaderCase_IdempotencyKeyConflict                   FailureDetails_KindReaderCase = 20
+	FailureDetails_KindReaderCase_IdRequired                               FailureDetails_KindReaderCase = 21
+	FailureDetails_KindReaderCase_IndexAlreadyExists                       FailureDetails_KindReaderCase = 22
+	FailureDetails_KindReaderCase_IndexNotFound                            FailureDetails_KindReaderCase = 23
+	FailureDetails_KindReaderCase_IndexTargetUnsupported                   FailureDetails_KindReaderCase = 24
+	FailureDetails_KindReaderCase_InsufficientFunds                        FailureDetails_KindReaderCase = 25
+	FailureDetails_KindReaderCase_InvalidCronExpression                    FailureDetails_KindReaderCase = 26
+	FailureDetails_KindReaderCase_InvalidPattern                           FailureDetails_KindReaderCase = 27
+	FailureDetails_KindReaderCase_InvalidSkippableReason                   FailureDetails_KindReaderCase = 28
+	FailureDetails_KindReaderCase_LedgerAlreadyExists                      FailureDetails_KindReaderCase = 29
+	FailureDetails_KindReaderCase_LedgerDeleted                            FailureDetails_KindReaderCase = 30
+	FailureDetails_KindReaderCase_LedgerInMirrorMode                       FailureDetails_KindReaderCase = 31
+	FailureDetails_KindReaderCase_LedgerNameInvalidChar                    FailureDetails_KindReaderCase = 32
+	FailureDetails_KindReaderCase_LedgerNameRequired                       FailureDetails_KindReaderCase = 33
+	FailureDetails_KindReaderCase_LedgerNameReservedPrefix                 FailureDetails_KindReaderCase = 34
+	FailureDetails_KindReaderCase_LedgerNameTooLong                        FailureDetails_KindReaderCase = 35
+	FailureDetails_KindReaderCase_LedgerNotFound                           FailureDetails_KindReaderCase = 36
+	FailureDetails_KindReaderCase_LedgerNotInMirrorMode                    FailureDetails_KindReaderCase = 37
+	FailureDetails_KindReaderCase_MetadataFieldNotInSchema                 FailureDetails_KindReaderCase = 38
+	FailureDetails_KindReaderCase_MetadataKeyEmpty                         FailureDetails_KindReaderCase = 39
+	FailureDetails_KindReaderCase_MetadataKeyInvalidChar                   FailureDetails_KindReaderCase = 40
+	FailureDetails_KindReaderCase_MetadataKeyRequired                      FailureDetails_KindReaderCase = 41
+	FailureDetails_KindReaderCase_MetadataLimitExceeded                    FailureDetails_KindReaderCase = 42
+	FailureDetails_KindReaderCase_MetadataNotFound                         FailureDetails_KindReaderCase = 43
+	FailureDetails_KindReaderCase_MetadataValueContainsNullByte            FailureDetails_KindReaderCase = 44
+	FailureDetails_KindReaderCase_MirrorHttpUrlInvalid                     FailureDetails_KindReaderCase = 45
+	FailureDetails_KindReaderCase_MirrorIamRegionRequired                  FailureDetails_KindReaderCase = 46
+	FailureDetails_KindReaderCase_MirrorIamRequiresTls                     FailureDetails_KindReaderCase = 47
+	FailureDetails_KindReaderCase_MirrorRewriteRuleInvalid                 FailureDetails_KindReaderCase = 48
+	FailureDetails_KindReaderCase_NumscriptAssetMismatch                   FailureDetails_KindReaderCase = 49
+	FailureDetails_KindReaderCase_NumscriptBadArity                        FailureDetails_KindReaderCase = 50
+	FailureDetails_KindReaderCase_NumscriptBadMetaValue                    FailureDetails_KindReaderCase = 51
+	FailureDetails_KindReaderCase_NumscriptBadPortion                      FailureDetails_KindReaderCase = 52
+	FailureDetails_KindReaderCase_NumscriptCannotCastScopedAccount         FailureDetails_KindReaderCase = 53
+	FailureDetails_KindReaderCase_NumscriptCannotCastToString              FailureDetails_KindReaderCase = 54
+	FailureDetails_KindReaderCase_NumscriptCannotStoreScopedAccount        FailureDetails_KindReaderCase = 55
+	FailureDetails_KindReaderCase_NumscriptCompileBadArity                 FailureDetails_KindReaderCase = 56
+	FailureDetails_KindReaderCase_NumscriptCompileCannotCastToString       FailureDetails_KindReaderCase = 57
+	FailureDetails_KindReaderCase_NumscriptCompileCannotStoreScopedAccount FailureDetails_KindReaderCase = 58
+	FailureDetails_KindReaderCase_NumscriptCompileDuplicateRemaining       FailureDetails_KindReaderCase = 59
+	FailureDetails_KindReaderCase_NumscriptCompileDuplicateVariable        FailureDetails_KindReaderCase = 60
+	FailureDetails_KindReaderCase_NumscriptCompileExperimentalFeature      FailureDetails_KindReaderCase = 61
+	FailureDetails_KindReaderCase_NumscriptCompileInvalidFeature           FailureDetails_KindReaderCase = 62
+	FailureDetails_KindReaderCase_NumscriptCompileInvalidMetaPosition      FailureDetails_KindReaderCase = 63
+	FailureDetails_KindReaderCase_NumscriptCompileInvalidType              FailureDetails_KindReaderCase = 64
+	FailureDetails_KindReaderCase_NumscriptCompileInvalidUncappedSource    FailureDetails_KindReaderCase = 65
+	FailureDetails_KindReaderCase_NumscriptCompileInvalidVariableValue     FailureDetails_KindReaderCase = 66
+	FailureDetails_KindReaderCase_NumscriptCompileMissingVariable          FailureDetails_KindReaderCase = 67
+	FailureDetails_KindReaderCase_NumscriptCompileTypeMismatch             FailureDetails_KindReaderCase = 68
+	FailureDetails_KindReaderCase_NumscriptCompileUnboundVariable          FailureDetails_KindReaderCase = 69
+	FailureDetails_KindReaderCase_NumscriptCompileUnknownFunction          FailureDetails_KindReaderCase = 70
+	FailureDetails_KindReaderCase_NumscriptContentRequired                 FailureDetails_KindReaderCase = 71
+	FailureDetails_KindReaderCase_NumscriptCurrencyMismatch                FailureDetails_KindReaderCase = 72
+	FailureDetails_KindReaderCase_NumscriptDivideByZero                    FailureDetails_KindReaderCase = 73
+	FailureDetails_KindReaderCase_NumscriptExperimentalFeature             FailureDetails_KindReaderCase = 74
+	FailureDetails_KindReaderCase_NumscriptInvalidAccountName              FailureDetails_KindReaderCase = 75
+	FailureDetails_KindReaderCase_NumscriptInvalidAllotmentInSendAll       FailureDetails_KindReaderCase = 76
+	FailureDetails_KindReaderCase_NumscriptInvalidAllotmentSum             FailureDetails_KindReaderCase = 77
+	FailureDetails_KindReaderCase_NumscriptInvalidAsset                    FailureDetails_KindReaderCase = 78
+	FailureDetails_KindReaderCase_NumscriptInvalidColor                    FailureDetails_KindReaderCase = 79
+	FailureDetails_KindReaderCase_NumscriptInvalidFeature                  FailureDetails_KindReaderCase = 80
+	FailureDetails_KindReaderCase_NumscriptInvalidMonetaryLiteral          FailureDetails_KindReaderCase = 81
+	FailureDetails_KindReaderCase_NumscriptInvalidNestedMeta               FailureDetails_KindReaderCase = 82
+	FailureDetails_KindReaderCase_NumscriptInvalidNumberLiteral            FailureDetails_KindReaderCase = 83
+	FailureDetails_KindReaderCase_NumscriptInvalidRemainingAllotment       FailureDetails_KindReaderCase = 84
+	FailureDetails_KindReaderCase_NumscriptInvalidScope                    FailureDetails_KindReaderCase = 85
+	FailureDetails_KindReaderCase_NumscriptInvalidType                     FailureDetails_KindReaderCase = 86
+	FailureDetails_KindReaderCase_NumscriptInvalidUnboundedScalingAddress  FailureDetails_KindReaderCase = 87
+	FailureDetails_KindReaderCase_NumscriptInvalidUnboundedSendAll         FailureDetails_KindReaderCase = 88
+	FailureDetails_KindReaderCase_NumscriptInvalidUncappedSource           FailureDetails_KindReaderCase = 89
+	FailureDetails_KindReaderCase_NumscriptInvalidVersion                  FailureDetails_KindReaderCase = 90
+	FailureDetails_KindReaderCase_NumscriptMetadataNotFound                FailureDetails_KindReaderCase = 91
+	FailureDetails_KindReaderCase_NumscriptMissingFunds                    FailureDetails_KindReaderCase = 92
+	FailureDetails_KindReaderCase_NumscriptMissingVariable                 FailureDetails_KindReaderCase = 93
+	FailureDetails_KindReaderCase_NumscriptNameInvalidChar                 FailureDetails_KindReaderCase = 94
+	FailureDetails_KindReaderCase_NumscriptNameRequired                    FailureDetails_KindReaderCase = 95
+	FailureDetails_KindReaderCase_NumscriptNameTooLong                     FailureDetails_KindReaderCase = 96
+	FailureDetails_KindReaderCase_NumscriptNegativeAmount                  FailureDetails_KindReaderCase = 97
+	FailureDetails_KindReaderCase_NumscriptNegativeBalance                 FailureDetails_KindReaderCase = 98
+	FailureDetails_KindReaderCase_NumscriptNegativePortion                 FailureDetails_KindReaderCase = 99
+	FailureDetails_KindReaderCase_NumscriptNotFound                        FailureDetails_KindReaderCase = 100
+	FailureDetails_KindReaderCase_NumscriptParseError                      FailureDetails_KindReaderCase = 101
+	FailureDetails_KindReaderCase_NumscriptPostingAmountOverflow           FailureDetails_KindReaderCase = 102
+	FailureDetails_KindReaderCase_NumscriptPostingNegativeAmount           FailureDetails_KindReaderCase = 103
+	FailureDetails_KindReaderCase_NumscriptScalingUnsupported              FailureDetails_KindReaderCase = 104
+	FailureDetails_KindReaderCase_NumscriptTypeError                       FailureDetails_KindReaderCase = 105
+	FailureDetails_KindReaderCase_NumscriptUnboundFunction                 FailureDetails_KindReaderCase = 106
+	FailureDetails_KindReaderCase_NumscriptUnboundVariable                 FailureDetails_KindReaderCase = 107
+	FailureDetails_KindReaderCase_NumscriptVersionAlreadyExists            FailureDetails_KindReaderCase = 108
+	FailureDetails_KindReaderCase_PostingsAndScriptConflict                FailureDetails_KindReaderCase = 109
+	FailureDetails_KindReaderCase_PreparedQueryAlreadyExists               FailureDetails_KindReaderCase = 110
+	FailureDetails_KindReaderCase_PreparedQueryNameInvalidChar             FailureDetails_KindReaderCase = 111
+	FailureDetails_KindReaderCase_PreparedQueryNameRequired                FailureDetails_KindReaderCase = 112
+	FailureDetails_KindReaderCase_PreparedQueryNameTooLong                 FailureDetails_KindReaderCase = 113
+	FailureDetails_KindReaderCase_PreparedQueryNotFound                    FailureDetails_KindReaderCase = 114
+	FailureDetails_KindReaderCase_PreparedQueryRequired                    FailureDetails_KindReaderCase = 115
+	FailureDetails_KindReaderCase_PreparedQueryTargetUnsupported           FailureDetails_KindReaderCase = 116
+	FailureDetails_KindReaderCase_RevertTargetCreatedInBatch               FailureDetails_KindReaderCase = 117
+	FailureDetails_KindReaderCase_ScopedBalanceUnsupported                 FailureDetails_KindReaderCase = 118
+	FailureDetails_KindReaderCase_ScriptAndReferenceConflict               FailureDetails_KindReaderCase = 119
+	FailureDetails_KindReaderCase_ScriptRequired                           FailureDetails_KindReaderCase = 120
+	FailureDetails_KindReaderCase_SigningKeyIdInvalidChar                  FailureDetails_KindReaderCase = 121
+	FailureDetails_KindReaderCase_SigningKeyIdRequired                     FailureDetails_KindReaderCase = 122
+	FailureDetails_KindReaderCase_SigningKeyIdTooLong                      FailureDetails_KindReaderCase = 123
+	FailureDetails_KindReaderCase_SigningKeyInvalidLength                  FailureDetails_KindReaderCase = 124
+	FailureDetails_KindReaderCase_SinkAlreadyExists                        FailureDetails_KindReaderCase = 125
+	FailureDetails_KindReaderCase_SinkBatchSizeTooLarge                    FailureDetails_KindReaderCase = 126
+	FailureDetails_KindReaderCase_SinkControllerMismatch                   FailureDetails_KindReaderCase = 127
+	FailureDetails_KindReaderCase_SinkNotFound                             FailureDetails_KindReaderCase = 128
+	FailureDetails_KindReaderCase_TargetRequired                           FailureDetails_KindReaderCase = 129
+	FailureDetails_KindReaderCase_TransactionAlreadyReverted               FailureDetails_KindReaderCase = 130
+	FailureDetails_KindReaderCase_TransactionNotFound                      FailureDetails_KindReaderCase = 131
+	FailureDetails_KindReaderCase_TransactionReferenceConflict             FailureDetails_KindReaderCase = 132
+	FailureDetails_KindReaderCase_TransactionReferenceNotFound             FailureDetails_KindReaderCase = 133
+	FailureDetails_KindReaderCase_TransactionReferenceTooLong              FailureDetails_KindReaderCase = 134
+	FailureDetails_KindReaderCase_TransactionTargetMissing                 FailureDetails_KindReaderCase = 135
+	FailureDetails_KindReaderCase_TransientAccountNonZero                  FailureDetails_KindReaderCase = 136
+	FailureDetails_KindReaderCase_VolumeOverflow                           FailureDetails_KindReaderCase = 137
+	FailureDetails_KindReaderCase_AccountMetadataKeyEmpty                  FailureDetails_KindReaderCase = 138
+	FailureDetails_KindReaderCase_AccountMetadataKeyInvalidChar            FailureDetails_KindReaderCase = 139
+	FailureDetails_KindReaderCase_AccountMetadataValueContainsNullByte     FailureDetails_KindReaderCase = 140
+	FailureDetails_KindReaderCase_AccountMetadataLimitExceeded             FailureDetails_KindReaderCase = 141
+	FailureDetails_KindReaderCase_MetadataKeyLimitExceeded                 FailureDetails_KindReaderCase = 142
+	FailureDetails_KindReaderCase_AccountMetadataKeyLimitExceeded          FailureDetails_KindReaderCase = 143
+	FailureDetails_KindReaderCase_NumscriptInsufficientFunds               FailureDetails_KindReaderCase = 144
+	FailureDetails_KindReaderCase_NumscriptDivideByZeroWithNumerator       FailureDetails_KindReaderCase = 145
+	FailureDetails_KindReaderCase_NumscriptScopedMetadataNotFound          FailureDetails_KindReaderCase = 146
+	FailureDetails_KindReaderCase_NumscriptScopedNegativeBalance           FailureDetails_KindReaderCase = 147
+	FailureDetails_KindReaderCase_NumscriptVersionNotFound                 FailureDetails_KindReaderCase = 148
+)
+
+func (r *failureDetailsReadonly) WhichKind() FailureDetails_KindReaderCase {
+	switch (*FailureDetails)(r).GetKind().(type) {
+	case *FailureDetails_AccountAddressEmpty:
+		return FailureDetails_KindReaderCase_AccountAddressEmpty
+	case *FailureDetails_AccountAddressEmptySegment:
+		return FailureDetails_KindReaderCase_AccountAddressEmptySegment
+	case *FailureDetails_AccountAddressInvalidChar:
+		return FailureDetails_KindReaderCase_AccountAddressInvalidChar
+	case *FailureDetails_AccountAddressTooLong:
+		return FailureDetails_KindReaderCase_AccountAddressTooLong
+	case *FailureDetails_AccountNotMatchingType:
+		return FailureDetails_KindReaderCase_AccountNotMatchingType
+	case *FailureDetails_AccountTypeAlreadyExists:
+		return FailureDetails_KindReaderCase_AccountTypeAlreadyExists
+	case *FailureDetails_AccountTypeConflict:
+		return FailureDetails_KindReaderCase_AccountTypeConflict
+	case *FailureDetails_AccountTypeHasAccounts:
+		return FailureDetails_KindReaderCase_AccountTypeHasAccounts
+	case *FailureDetails_AccountTypeNameTooLong:
+		return FailureDetails_KindReaderCase_AccountTypeNameTooLong
+	case *FailureDetails_AccountTypeNotFound:
+		return FailureDetails_KindReaderCase_AccountTypeNotFound
+	case *FailureDetails_AccountTypePatternTooLong:
+		return FailureDetails_KindReaderCase_AccountTypePatternTooLong
+	case *FailureDetails_AssetInvalid:
+		return FailureDetails_KindReaderCase_AssetInvalid
+	case *FailureDetails_BalanceNotFound:
+		return FailureDetails_KindReaderCase_BalanceNotFound
+	case *FailureDetails_CheckpointIdRequired:
+		return FailureDetails_KindReaderCase_CheckpointIdRequired
+	case *FailureDetails_CheckpointLimitReached:
+		return FailureDetails_KindReaderCase_CheckpointLimitReached
+	case *FailureDetails_CheckpointNotFound:
+		return FailureDetails_KindReaderCase_CheckpointNotFound
+	case *FailureDetails_ColorInvalid:
+		return FailureDetails_KindReaderCase_ColorInvalid
+	case *FailureDetails_ColorTooLong:
+		return FailureDetails_KindReaderCase_ColorTooLong
+	case *FailureDetails_EmptyTransaction:
+		return FailureDetails_KindReaderCase_EmptyTransaction
+	case *FailureDetails_IdempotencyKeyConflict:
+		return FailureDetails_KindReaderCase_IdempotencyKeyConflict
+	case *FailureDetails_IdRequired:
+		return FailureDetails_KindReaderCase_IdRequired
+	case *FailureDetails_IndexAlreadyExists:
+		return FailureDetails_KindReaderCase_IndexAlreadyExists
+	case *FailureDetails_IndexNotFound:
+		return FailureDetails_KindReaderCase_IndexNotFound
+	case *FailureDetails_IndexTargetUnsupported:
+		return FailureDetails_KindReaderCase_IndexTargetUnsupported
+	case *FailureDetails_InsufficientFunds:
+		return FailureDetails_KindReaderCase_InsufficientFunds
+	case *FailureDetails_InvalidCronExpression:
+		return FailureDetails_KindReaderCase_InvalidCronExpression
+	case *FailureDetails_InvalidPattern:
+		return FailureDetails_KindReaderCase_InvalidPattern
+	case *FailureDetails_InvalidSkippableReason:
+		return FailureDetails_KindReaderCase_InvalidSkippableReason
+	case *FailureDetails_LedgerAlreadyExists:
+		return FailureDetails_KindReaderCase_LedgerAlreadyExists
+	case *FailureDetails_LedgerDeleted:
+		return FailureDetails_KindReaderCase_LedgerDeleted
+	case *FailureDetails_LedgerInMirrorMode:
+		return FailureDetails_KindReaderCase_LedgerInMirrorMode
+	case *FailureDetails_LedgerNameInvalidChar:
+		return FailureDetails_KindReaderCase_LedgerNameInvalidChar
+	case *FailureDetails_LedgerNameRequired:
+		return FailureDetails_KindReaderCase_LedgerNameRequired
+	case *FailureDetails_LedgerNameReservedPrefix:
+		return FailureDetails_KindReaderCase_LedgerNameReservedPrefix
+	case *FailureDetails_LedgerNameTooLong:
+		return FailureDetails_KindReaderCase_LedgerNameTooLong
+	case *FailureDetails_LedgerNotFound:
+		return FailureDetails_KindReaderCase_LedgerNotFound
+	case *FailureDetails_LedgerNotInMirrorMode:
+		return FailureDetails_KindReaderCase_LedgerNotInMirrorMode
+	case *FailureDetails_MetadataFieldNotInSchema:
+		return FailureDetails_KindReaderCase_MetadataFieldNotInSchema
+	case *FailureDetails_MetadataKeyEmpty:
+		return FailureDetails_KindReaderCase_MetadataKeyEmpty
+	case *FailureDetails_MetadataKeyInvalidChar:
+		return FailureDetails_KindReaderCase_MetadataKeyInvalidChar
+	case *FailureDetails_MetadataKeyRequired:
+		return FailureDetails_KindReaderCase_MetadataKeyRequired
+	case *FailureDetails_MetadataLimitExceeded:
+		return FailureDetails_KindReaderCase_MetadataLimitExceeded
+	case *FailureDetails_MetadataNotFound:
+		return FailureDetails_KindReaderCase_MetadataNotFound
+	case *FailureDetails_MetadataValueContainsNullByte:
+		return FailureDetails_KindReaderCase_MetadataValueContainsNullByte
+	case *FailureDetails_MirrorHttpUrlInvalid:
+		return FailureDetails_KindReaderCase_MirrorHttpUrlInvalid
+	case *FailureDetails_MirrorIamRegionRequired:
+		return FailureDetails_KindReaderCase_MirrorIamRegionRequired
+	case *FailureDetails_MirrorIamRequiresTls:
+		return FailureDetails_KindReaderCase_MirrorIamRequiresTls
+	case *FailureDetails_MirrorRewriteRuleInvalid:
+		return FailureDetails_KindReaderCase_MirrorRewriteRuleInvalid
+	case *FailureDetails_NumscriptAssetMismatch:
+		return FailureDetails_KindReaderCase_NumscriptAssetMismatch
+	case *FailureDetails_NumscriptBadArity:
+		return FailureDetails_KindReaderCase_NumscriptBadArity
+	case *FailureDetails_NumscriptBadMetaValue:
+		return FailureDetails_KindReaderCase_NumscriptBadMetaValue
+	case *FailureDetails_NumscriptBadPortion:
+		return FailureDetails_KindReaderCase_NumscriptBadPortion
+	case *FailureDetails_NumscriptCannotCastScopedAccount:
+		return FailureDetails_KindReaderCase_NumscriptCannotCastScopedAccount
+	case *FailureDetails_NumscriptCannotCastToString:
+		return FailureDetails_KindReaderCase_NumscriptCannotCastToString
+	case *FailureDetails_NumscriptCannotStoreScopedAccount:
+		return FailureDetails_KindReaderCase_NumscriptCannotStoreScopedAccount
+	case *FailureDetails_NumscriptCompileBadArity:
+		return FailureDetails_KindReaderCase_NumscriptCompileBadArity
+	case *FailureDetails_NumscriptCompileCannotCastToString:
+		return FailureDetails_KindReaderCase_NumscriptCompileCannotCastToString
+	case *FailureDetails_NumscriptCompileCannotStoreScopedAccount:
+		return FailureDetails_KindReaderCase_NumscriptCompileCannotStoreScopedAccount
+	case *FailureDetails_NumscriptCompileDuplicateRemaining:
+		return FailureDetails_KindReaderCase_NumscriptCompileDuplicateRemaining
+	case *FailureDetails_NumscriptCompileDuplicateVariable:
+		return FailureDetails_KindReaderCase_NumscriptCompileDuplicateVariable
+	case *FailureDetails_NumscriptCompileExperimentalFeature:
+		return FailureDetails_KindReaderCase_NumscriptCompileExperimentalFeature
+	case *FailureDetails_NumscriptCompileInvalidFeature:
+		return FailureDetails_KindReaderCase_NumscriptCompileInvalidFeature
+	case *FailureDetails_NumscriptCompileInvalidMetaPosition:
+		return FailureDetails_KindReaderCase_NumscriptCompileInvalidMetaPosition
+	case *FailureDetails_NumscriptCompileInvalidType:
+		return FailureDetails_KindReaderCase_NumscriptCompileInvalidType
+	case *FailureDetails_NumscriptCompileInvalidUncappedSource:
+		return FailureDetails_KindReaderCase_NumscriptCompileInvalidUncappedSource
+	case *FailureDetails_NumscriptCompileInvalidVariableValue:
+		return FailureDetails_KindReaderCase_NumscriptCompileInvalidVariableValue
+	case *FailureDetails_NumscriptCompileMissingVariable:
+		return FailureDetails_KindReaderCase_NumscriptCompileMissingVariable
+	case *FailureDetails_NumscriptCompileTypeMismatch:
+		return FailureDetails_KindReaderCase_NumscriptCompileTypeMismatch
+	case *FailureDetails_NumscriptCompileUnboundVariable:
+		return FailureDetails_KindReaderCase_NumscriptCompileUnboundVariable
+	case *FailureDetails_NumscriptCompileUnknownFunction:
+		return FailureDetails_KindReaderCase_NumscriptCompileUnknownFunction
+	case *FailureDetails_NumscriptContentRequired:
+		return FailureDetails_KindReaderCase_NumscriptContentRequired
+	case *FailureDetails_NumscriptCurrencyMismatch:
+		return FailureDetails_KindReaderCase_NumscriptCurrencyMismatch
+	case *FailureDetails_NumscriptDivideByZero:
+		return FailureDetails_KindReaderCase_NumscriptDivideByZero
+	case *FailureDetails_NumscriptExperimentalFeature:
+		return FailureDetails_KindReaderCase_NumscriptExperimentalFeature
+	case *FailureDetails_NumscriptInvalidAccountName:
+		return FailureDetails_KindReaderCase_NumscriptInvalidAccountName
+	case *FailureDetails_NumscriptInvalidAllotmentInSendAll:
+		return FailureDetails_KindReaderCase_NumscriptInvalidAllotmentInSendAll
+	case *FailureDetails_NumscriptInvalidAllotmentSum:
+		return FailureDetails_KindReaderCase_NumscriptInvalidAllotmentSum
+	case *FailureDetails_NumscriptInvalidAsset:
+		return FailureDetails_KindReaderCase_NumscriptInvalidAsset
+	case *FailureDetails_NumscriptInvalidColor:
+		return FailureDetails_KindReaderCase_NumscriptInvalidColor
+	case *FailureDetails_NumscriptInvalidFeature:
+		return FailureDetails_KindReaderCase_NumscriptInvalidFeature
+	case *FailureDetails_NumscriptInvalidMonetaryLiteral:
+		return FailureDetails_KindReaderCase_NumscriptInvalidMonetaryLiteral
+	case *FailureDetails_NumscriptInvalidNestedMeta:
+		return FailureDetails_KindReaderCase_NumscriptInvalidNestedMeta
+	case *FailureDetails_NumscriptInvalidNumberLiteral:
+		return FailureDetails_KindReaderCase_NumscriptInvalidNumberLiteral
+	case *FailureDetails_NumscriptInvalidRemainingAllotment:
+		return FailureDetails_KindReaderCase_NumscriptInvalidRemainingAllotment
+	case *FailureDetails_NumscriptInvalidScope:
+		return FailureDetails_KindReaderCase_NumscriptInvalidScope
+	case *FailureDetails_NumscriptInvalidType:
+		return FailureDetails_KindReaderCase_NumscriptInvalidType
+	case *FailureDetails_NumscriptInvalidUnboundedScalingAddress:
+		return FailureDetails_KindReaderCase_NumscriptInvalidUnboundedScalingAddress
+	case *FailureDetails_NumscriptInvalidUnboundedSendAll:
+		return FailureDetails_KindReaderCase_NumscriptInvalidUnboundedSendAll
+	case *FailureDetails_NumscriptInvalidUncappedSource:
+		return FailureDetails_KindReaderCase_NumscriptInvalidUncappedSource
+	case *FailureDetails_NumscriptInvalidVersion:
+		return FailureDetails_KindReaderCase_NumscriptInvalidVersion
+	case *FailureDetails_NumscriptMetadataNotFound:
+		return FailureDetails_KindReaderCase_NumscriptMetadataNotFound
+	case *FailureDetails_NumscriptMissingFunds:
+		return FailureDetails_KindReaderCase_NumscriptMissingFunds
+	case *FailureDetails_NumscriptMissingVariable:
+		return FailureDetails_KindReaderCase_NumscriptMissingVariable
+	case *FailureDetails_NumscriptNameInvalidChar:
+		return FailureDetails_KindReaderCase_NumscriptNameInvalidChar
+	case *FailureDetails_NumscriptNameRequired:
+		return FailureDetails_KindReaderCase_NumscriptNameRequired
+	case *FailureDetails_NumscriptNameTooLong:
+		return FailureDetails_KindReaderCase_NumscriptNameTooLong
+	case *FailureDetails_NumscriptNegativeAmount:
+		return FailureDetails_KindReaderCase_NumscriptNegativeAmount
+	case *FailureDetails_NumscriptNegativeBalance:
+		return FailureDetails_KindReaderCase_NumscriptNegativeBalance
+	case *FailureDetails_NumscriptNegativePortion:
+		return FailureDetails_KindReaderCase_NumscriptNegativePortion
+	case *FailureDetails_NumscriptNotFound:
+		return FailureDetails_KindReaderCase_NumscriptNotFound
+	case *FailureDetails_NumscriptParseError:
+		return FailureDetails_KindReaderCase_NumscriptParseError
+	case *FailureDetails_NumscriptPostingAmountOverflow:
+		return FailureDetails_KindReaderCase_NumscriptPostingAmountOverflow
+	case *FailureDetails_NumscriptPostingNegativeAmount:
+		return FailureDetails_KindReaderCase_NumscriptPostingNegativeAmount
+	case *FailureDetails_NumscriptScalingUnsupported:
+		return FailureDetails_KindReaderCase_NumscriptScalingUnsupported
+	case *FailureDetails_NumscriptTypeError:
+		return FailureDetails_KindReaderCase_NumscriptTypeError
+	case *FailureDetails_NumscriptUnboundFunction:
+		return FailureDetails_KindReaderCase_NumscriptUnboundFunction
+	case *FailureDetails_NumscriptUnboundVariable:
+		return FailureDetails_KindReaderCase_NumscriptUnboundVariable
+	case *FailureDetails_NumscriptVersionAlreadyExists:
+		return FailureDetails_KindReaderCase_NumscriptVersionAlreadyExists
+	case *FailureDetails_PostingsAndScriptConflict:
+		return FailureDetails_KindReaderCase_PostingsAndScriptConflict
+	case *FailureDetails_PreparedQueryAlreadyExists:
+		return FailureDetails_KindReaderCase_PreparedQueryAlreadyExists
+	case *FailureDetails_PreparedQueryNameInvalidChar:
+		return FailureDetails_KindReaderCase_PreparedQueryNameInvalidChar
+	case *FailureDetails_PreparedQueryNameRequired:
+		return FailureDetails_KindReaderCase_PreparedQueryNameRequired
+	case *FailureDetails_PreparedQueryNameTooLong:
+		return FailureDetails_KindReaderCase_PreparedQueryNameTooLong
+	case *FailureDetails_PreparedQueryNotFound:
+		return FailureDetails_KindReaderCase_PreparedQueryNotFound
+	case *FailureDetails_PreparedQueryRequired:
+		return FailureDetails_KindReaderCase_PreparedQueryRequired
+	case *FailureDetails_PreparedQueryTargetUnsupported:
+		return FailureDetails_KindReaderCase_PreparedQueryTargetUnsupported
+	case *FailureDetails_RevertTargetCreatedInBatch:
+		return FailureDetails_KindReaderCase_RevertTargetCreatedInBatch
+	case *FailureDetails_ScopedBalanceUnsupported:
+		return FailureDetails_KindReaderCase_ScopedBalanceUnsupported
+	case *FailureDetails_ScriptAndReferenceConflict:
+		return FailureDetails_KindReaderCase_ScriptAndReferenceConflict
+	case *FailureDetails_ScriptRequired:
+		return FailureDetails_KindReaderCase_ScriptRequired
+	case *FailureDetails_SigningKeyIdInvalidChar:
+		return FailureDetails_KindReaderCase_SigningKeyIdInvalidChar
+	case *FailureDetails_SigningKeyIdRequired:
+		return FailureDetails_KindReaderCase_SigningKeyIdRequired
+	case *FailureDetails_SigningKeyIdTooLong:
+		return FailureDetails_KindReaderCase_SigningKeyIdTooLong
+	case *FailureDetails_SigningKeyInvalidLength:
+		return FailureDetails_KindReaderCase_SigningKeyInvalidLength
+	case *FailureDetails_SinkAlreadyExists:
+		return FailureDetails_KindReaderCase_SinkAlreadyExists
+	case *FailureDetails_SinkBatchSizeTooLarge:
+		return FailureDetails_KindReaderCase_SinkBatchSizeTooLarge
+	case *FailureDetails_SinkControllerMismatch:
+		return FailureDetails_KindReaderCase_SinkControllerMismatch
+	case *FailureDetails_SinkNotFound:
+		return FailureDetails_KindReaderCase_SinkNotFound
+	case *FailureDetails_TargetRequired:
+		return FailureDetails_KindReaderCase_TargetRequired
+	case *FailureDetails_TransactionAlreadyReverted:
+		return FailureDetails_KindReaderCase_TransactionAlreadyReverted
+	case *FailureDetails_TransactionNotFound:
+		return FailureDetails_KindReaderCase_TransactionNotFound
+	case *FailureDetails_TransactionReferenceConflict:
+		return FailureDetails_KindReaderCase_TransactionReferenceConflict
+	case *FailureDetails_TransactionReferenceNotFound:
+		return FailureDetails_KindReaderCase_TransactionReferenceNotFound
+	case *FailureDetails_TransactionReferenceTooLong:
+		return FailureDetails_KindReaderCase_TransactionReferenceTooLong
+	case *FailureDetails_TransactionTargetMissing:
+		return FailureDetails_KindReaderCase_TransactionTargetMissing
+	case *FailureDetails_TransientAccountNonZero:
+		return FailureDetails_KindReaderCase_TransientAccountNonZero
+	case *FailureDetails_VolumeOverflow:
+		return FailureDetails_KindReaderCase_VolumeOverflow
+	case *FailureDetails_AccountMetadataKeyEmpty:
+		return FailureDetails_KindReaderCase_AccountMetadataKeyEmpty
+	case *FailureDetails_AccountMetadataKeyInvalidChar:
+		return FailureDetails_KindReaderCase_AccountMetadataKeyInvalidChar
+	case *FailureDetails_AccountMetadataValueContainsNullByte:
+		return FailureDetails_KindReaderCase_AccountMetadataValueContainsNullByte
+	case *FailureDetails_AccountMetadataLimitExceeded:
+		return FailureDetails_KindReaderCase_AccountMetadataLimitExceeded
+	case *FailureDetails_MetadataKeyLimitExceeded:
+		return FailureDetails_KindReaderCase_MetadataKeyLimitExceeded
+	case *FailureDetails_AccountMetadataKeyLimitExceeded:
+		return FailureDetails_KindReaderCase_AccountMetadataKeyLimitExceeded
+	case *FailureDetails_NumscriptInsufficientFunds:
+		return FailureDetails_KindReaderCase_NumscriptInsufficientFunds
+	case *FailureDetails_NumscriptDivideByZeroWithNumerator:
+		return FailureDetails_KindReaderCase_NumscriptDivideByZeroWithNumerator
+	case *FailureDetails_NumscriptScopedMetadataNotFound:
+		return FailureDetails_KindReaderCase_NumscriptScopedMetadataNotFound
+	case *FailureDetails_NumscriptScopedNegativeBalance:
+		return FailureDetails_KindReaderCase_NumscriptScopedNegativeBalance
+	case *FailureDetails_NumscriptVersionNotFound:
+		return FailureDetails_KindReaderCase_NumscriptVersionNotFound
+	default:
+		return FailureDetails_KindReaderCase_Unset
+	}
 }
 
 func (r *failureDetailsReadonly) Mutate() *FailureDetails {
@@ -16758,9 +19354,11 @@ func NewRemovedMetadataFieldTypeLogListReader(s []*RemovedMetadataFieldTypeLog) 
 // Call Mutate() to obtain a mutable clone.
 type MirrorSourceConfigReader interface {
 	GetLedgerName() string
+	GetHttp() HttpMirrorSourceConfigReader
+	GetPostgres() PostgresMirrorSourceConfigReader
 	GetBatchSize() uint32
 	GetRewriteRules() MirrorRewriteRuleListReader
-	GetType() isMirrorSourceConfig_Type
+	WhichType() MirrorSourceConfig_TypeReaderCase
 	Mutate() *MirrorSourceConfig
 }
 
@@ -16768,6 +19366,22 @@ type mirrorSourceConfigReadonly MirrorSourceConfig
 
 func (r *mirrorSourceConfigReadonly) GetLedgerName() string {
 	return (*MirrorSourceConfig)(r).GetLedgerName()
+}
+
+func (r *mirrorSourceConfigReadonly) GetHttp() HttpMirrorSourceConfigReader {
+	v, ok := (*MirrorSourceConfig)(r).GetType().(*MirrorSourceConfig_Http)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.Http.AsReader()
+}
+
+func (r *mirrorSourceConfigReadonly) GetPostgres() PostgresMirrorSourceConfigReader {
+	v, ok := (*MirrorSourceConfig)(r).GetType().(*MirrorSourceConfig_Postgres)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.Postgres.AsReader()
 }
 
 func (r *mirrorSourceConfigReadonly) GetBatchSize() uint32 {
@@ -16778,8 +19392,24 @@ func (r *mirrorSourceConfigReadonly) GetRewriteRules() MirrorRewriteRuleListRead
 	return NewMirrorRewriteRuleListReader((*MirrorSourceConfig)(r).GetRewriteRules())
 }
 
-func (r *mirrorSourceConfigReadonly) GetType() isMirrorSourceConfig_Type {
-	return (*MirrorSourceConfig)(r).GetType()
+// MirrorSourceConfig_TypeReaderCase identifies a selected oneof arm by its protobuf field number.
+type MirrorSourceConfig_TypeReaderCase int32
+
+const (
+	MirrorSourceConfig_TypeReaderCase_Unset    MirrorSourceConfig_TypeReaderCase = 0
+	MirrorSourceConfig_TypeReaderCase_Http     MirrorSourceConfig_TypeReaderCase = 2
+	MirrorSourceConfig_TypeReaderCase_Postgres MirrorSourceConfig_TypeReaderCase = 3
+)
+
+func (r *mirrorSourceConfigReadonly) WhichType() MirrorSourceConfig_TypeReaderCase {
+	switch (*MirrorSourceConfig)(r).GetType().(type) {
+	case *MirrorSourceConfig_Http:
+		return MirrorSourceConfig_TypeReaderCase_Http
+	case *MirrorSourceConfig_Postgres:
+		return MirrorSourceConfig_TypeReaderCase_Postgres
+	default:
+		return MirrorSourceConfig_TypeReaderCase_Unset
+	}
 }
 
 func (r *mirrorSourceConfigReadonly) Mutate() *MirrorSourceConfig {
@@ -16839,19 +19469,89 @@ func NewMirrorSourceConfigListReader(s []*MirrorSourceConfig) MirrorSourceConfig
 // MirrorRewriteRuleReader provides read-only access to MirrorRewriteRule.
 // Call Mutate() to obtain a mutable clone.
 type MirrorRewriteRuleReader interface {
+	GetCreatedTransaction() CreatedTransactionRuleReader
+	GetRevertedTransaction() RevertedTransactionRuleReader
+	GetSavedMetadata() SavedMetadataRuleReader
+	GetDeletedMetadata() DeletedMetadataRuleReader
+	GetAnyVariant() AnyVariantRuleReader
 	GetStop() bool
-	GetScope() isMirrorRewriteRule_Scope
+	WhichScope() MirrorRewriteRule_ScopeReaderCase
 	Mutate() *MirrorRewriteRule
 }
 
 type mirrorRewriteRuleReadonly MirrorRewriteRule
 
+func (r *mirrorRewriteRuleReadonly) GetCreatedTransaction() CreatedTransactionRuleReader {
+	v, ok := (*MirrorRewriteRule)(r).GetScope().(*MirrorRewriteRule_CreatedTransaction)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.CreatedTransaction.AsReader()
+}
+
+func (r *mirrorRewriteRuleReadonly) GetRevertedTransaction() RevertedTransactionRuleReader {
+	v, ok := (*MirrorRewriteRule)(r).GetScope().(*MirrorRewriteRule_RevertedTransaction)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.RevertedTransaction.AsReader()
+}
+
+func (r *mirrorRewriteRuleReadonly) GetSavedMetadata() SavedMetadataRuleReader {
+	v, ok := (*MirrorRewriteRule)(r).GetScope().(*MirrorRewriteRule_SavedMetadata)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.SavedMetadata.AsReader()
+}
+
+func (r *mirrorRewriteRuleReadonly) GetDeletedMetadata() DeletedMetadataRuleReader {
+	v, ok := (*MirrorRewriteRule)(r).GetScope().(*MirrorRewriteRule_DeletedMetadata)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.DeletedMetadata.AsReader()
+}
+
+func (r *mirrorRewriteRuleReadonly) GetAnyVariant() AnyVariantRuleReader {
+	v, ok := (*MirrorRewriteRule)(r).GetScope().(*MirrorRewriteRule_AnyVariant)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.AnyVariant.AsReader()
+}
+
 func (r *mirrorRewriteRuleReadonly) GetStop() bool {
 	return (*MirrorRewriteRule)(r).GetStop()
 }
 
-func (r *mirrorRewriteRuleReadonly) GetScope() isMirrorRewriteRule_Scope {
-	return (*MirrorRewriteRule)(r).GetScope()
+// MirrorRewriteRule_ScopeReaderCase identifies a selected oneof arm by its protobuf field number.
+type MirrorRewriteRule_ScopeReaderCase int32
+
+const (
+	MirrorRewriteRule_ScopeReaderCase_Unset               MirrorRewriteRule_ScopeReaderCase = 0
+	MirrorRewriteRule_ScopeReaderCase_CreatedTransaction  MirrorRewriteRule_ScopeReaderCase = 1
+	MirrorRewriteRule_ScopeReaderCase_RevertedTransaction MirrorRewriteRule_ScopeReaderCase = 2
+	MirrorRewriteRule_ScopeReaderCase_SavedMetadata       MirrorRewriteRule_ScopeReaderCase = 3
+	MirrorRewriteRule_ScopeReaderCase_DeletedMetadata     MirrorRewriteRule_ScopeReaderCase = 4
+	MirrorRewriteRule_ScopeReaderCase_AnyVariant          MirrorRewriteRule_ScopeReaderCase = 5
+)
+
+func (r *mirrorRewriteRuleReadonly) WhichScope() MirrorRewriteRule_ScopeReaderCase {
+	switch (*MirrorRewriteRule)(r).GetScope().(type) {
+	case *MirrorRewriteRule_CreatedTransaction:
+		return MirrorRewriteRule_ScopeReaderCase_CreatedTransaction
+	case *MirrorRewriteRule_RevertedTransaction:
+		return MirrorRewriteRule_ScopeReaderCase_RevertedTransaction
+	case *MirrorRewriteRule_SavedMetadata:
+		return MirrorRewriteRule_ScopeReaderCase_SavedMetadata
+	case *MirrorRewriteRule_DeletedMetadata:
+		return MirrorRewriteRule_ScopeReaderCase_DeletedMetadata
+	case *MirrorRewriteRule_AnyVariant:
+		return MirrorRewriteRule_ScopeReaderCase_AnyVariant
+	default:
+		return MirrorRewriteRule_ScopeReaderCase_Unset
+	}
 }
 
 func (r *mirrorRewriteRuleReadonly) Mutate() *MirrorRewriteRule {
@@ -17271,14 +19971,108 @@ func NewAnyVariantRuleListReader(s []*AnyVariantRule) AnyVariantRuleListReader {
 // CreatedTransactionActionReader provides read-only access to CreatedTransactionAction.
 // Call Mutate() to obtain a mutable clone.
 type CreatedTransactionActionReader interface {
-	GetAction() isCreatedTransactionAction_Action
+	GetRewriteAddress() RewriteAddressActionReader
+	GetSetMetadata() SetMetadataActionReader
+	GetDeleteMetadata() DeleteMetadataActionReader
+	GetSetAccountMetadata() SetAccountMetadataActionReader
+	GetDeleteAccountMetadata() DeleteAccountMetadataActionReader
+	GetSetAccountMetadataFromAddress() SetAccountMetadataFromAddressActionReader
+	GetDrop() DropActionReader
+	WhichAction() CreatedTransactionAction_ActionReaderCase
 	Mutate() *CreatedTransactionAction
 }
 
 type createdTransactionActionReadonly CreatedTransactionAction
 
-func (r *createdTransactionActionReadonly) GetAction() isCreatedTransactionAction_Action {
-	return (*CreatedTransactionAction)(r).GetAction()
+func (r *createdTransactionActionReadonly) GetRewriteAddress() RewriteAddressActionReader {
+	v, ok := (*CreatedTransactionAction)(r).GetAction().(*CreatedTransactionAction_RewriteAddress)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.RewriteAddress.AsReader()
+}
+
+func (r *createdTransactionActionReadonly) GetSetMetadata() SetMetadataActionReader {
+	v, ok := (*CreatedTransactionAction)(r).GetAction().(*CreatedTransactionAction_SetMetadata)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.SetMetadata.AsReader()
+}
+
+func (r *createdTransactionActionReadonly) GetDeleteMetadata() DeleteMetadataActionReader {
+	v, ok := (*CreatedTransactionAction)(r).GetAction().(*CreatedTransactionAction_DeleteMetadata)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.DeleteMetadata.AsReader()
+}
+
+func (r *createdTransactionActionReadonly) GetSetAccountMetadata() SetAccountMetadataActionReader {
+	v, ok := (*CreatedTransactionAction)(r).GetAction().(*CreatedTransactionAction_SetAccountMetadata)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.SetAccountMetadata.AsReader()
+}
+
+func (r *createdTransactionActionReadonly) GetDeleteAccountMetadata() DeleteAccountMetadataActionReader {
+	v, ok := (*CreatedTransactionAction)(r).GetAction().(*CreatedTransactionAction_DeleteAccountMetadata)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.DeleteAccountMetadata.AsReader()
+}
+
+func (r *createdTransactionActionReadonly) GetSetAccountMetadataFromAddress() SetAccountMetadataFromAddressActionReader {
+	v, ok := (*CreatedTransactionAction)(r).GetAction().(*CreatedTransactionAction_SetAccountMetadataFromAddress)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.SetAccountMetadataFromAddress.AsReader()
+}
+
+func (r *createdTransactionActionReadonly) GetDrop() DropActionReader {
+	v, ok := (*CreatedTransactionAction)(r).GetAction().(*CreatedTransactionAction_Drop)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.Drop.AsReader()
+}
+
+// CreatedTransactionAction_ActionReaderCase identifies a selected oneof arm by its protobuf field number.
+type CreatedTransactionAction_ActionReaderCase int32
+
+const (
+	CreatedTransactionAction_ActionReaderCase_Unset                         CreatedTransactionAction_ActionReaderCase = 0
+	CreatedTransactionAction_ActionReaderCase_RewriteAddress                CreatedTransactionAction_ActionReaderCase = 1
+	CreatedTransactionAction_ActionReaderCase_SetMetadata                   CreatedTransactionAction_ActionReaderCase = 2
+	CreatedTransactionAction_ActionReaderCase_DeleteMetadata                CreatedTransactionAction_ActionReaderCase = 3
+	CreatedTransactionAction_ActionReaderCase_SetAccountMetadata            CreatedTransactionAction_ActionReaderCase = 4
+	CreatedTransactionAction_ActionReaderCase_DeleteAccountMetadata         CreatedTransactionAction_ActionReaderCase = 5
+	CreatedTransactionAction_ActionReaderCase_SetAccountMetadataFromAddress CreatedTransactionAction_ActionReaderCase = 6
+	CreatedTransactionAction_ActionReaderCase_Drop                          CreatedTransactionAction_ActionReaderCase = 7
+)
+
+func (r *createdTransactionActionReadonly) WhichAction() CreatedTransactionAction_ActionReaderCase {
+	switch (*CreatedTransactionAction)(r).GetAction().(type) {
+	case *CreatedTransactionAction_RewriteAddress:
+		return CreatedTransactionAction_ActionReaderCase_RewriteAddress
+	case *CreatedTransactionAction_SetMetadata:
+		return CreatedTransactionAction_ActionReaderCase_SetMetadata
+	case *CreatedTransactionAction_DeleteMetadata:
+		return CreatedTransactionAction_ActionReaderCase_DeleteMetadata
+	case *CreatedTransactionAction_SetAccountMetadata:
+		return CreatedTransactionAction_ActionReaderCase_SetAccountMetadata
+	case *CreatedTransactionAction_DeleteAccountMetadata:
+		return CreatedTransactionAction_ActionReaderCase_DeleteAccountMetadata
+	case *CreatedTransactionAction_SetAccountMetadataFromAddress:
+		return CreatedTransactionAction_ActionReaderCase_SetAccountMetadataFromAddress
+	case *CreatedTransactionAction_Drop:
+		return CreatedTransactionAction_ActionReaderCase_Drop
+	default:
+		return CreatedTransactionAction_ActionReaderCase_Unset
+	}
 }
 
 func (r *createdTransactionActionReadonly) Mutate() *CreatedTransactionAction {
@@ -17338,14 +20132,72 @@ func NewCreatedTransactionActionListReader(s []*CreatedTransactionAction) Create
 // RevertedTransactionActionReader provides read-only access to RevertedTransactionAction.
 // Call Mutate() to obtain a mutable clone.
 type RevertedTransactionActionReader interface {
-	GetAction() isRevertedTransactionAction_Action
+	GetRewriteAddress() RewriteAddressActionReader
+	GetSetMetadata() SetMetadataActionReader
+	GetDeleteMetadata() DeleteMetadataActionReader
+	GetDrop() DropActionReader
+	WhichAction() RevertedTransactionAction_ActionReaderCase
 	Mutate() *RevertedTransactionAction
 }
 
 type revertedTransactionActionReadonly RevertedTransactionAction
 
-func (r *revertedTransactionActionReadonly) GetAction() isRevertedTransactionAction_Action {
-	return (*RevertedTransactionAction)(r).GetAction()
+func (r *revertedTransactionActionReadonly) GetRewriteAddress() RewriteAddressActionReader {
+	v, ok := (*RevertedTransactionAction)(r).GetAction().(*RevertedTransactionAction_RewriteAddress)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.RewriteAddress.AsReader()
+}
+
+func (r *revertedTransactionActionReadonly) GetSetMetadata() SetMetadataActionReader {
+	v, ok := (*RevertedTransactionAction)(r).GetAction().(*RevertedTransactionAction_SetMetadata)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.SetMetadata.AsReader()
+}
+
+func (r *revertedTransactionActionReadonly) GetDeleteMetadata() DeleteMetadataActionReader {
+	v, ok := (*RevertedTransactionAction)(r).GetAction().(*RevertedTransactionAction_DeleteMetadata)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.DeleteMetadata.AsReader()
+}
+
+func (r *revertedTransactionActionReadonly) GetDrop() DropActionReader {
+	v, ok := (*RevertedTransactionAction)(r).GetAction().(*RevertedTransactionAction_Drop)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.Drop.AsReader()
+}
+
+// RevertedTransactionAction_ActionReaderCase identifies a selected oneof arm by its protobuf field number.
+type RevertedTransactionAction_ActionReaderCase int32
+
+const (
+	RevertedTransactionAction_ActionReaderCase_Unset          RevertedTransactionAction_ActionReaderCase = 0
+	RevertedTransactionAction_ActionReaderCase_RewriteAddress RevertedTransactionAction_ActionReaderCase = 1
+	RevertedTransactionAction_ActionReaderCase_SetMetadata    RevertedTransactionAction_ActionReaderCase = 2
+	RevertedTransactionAction_ActionReaderCase_DeleteMetadata RevertedTransactionAction_ActionReaderCase = 3
+	RevertedTransactionAction_ActionReaderCase_Drop           RevertedTransactionAction_ActionReaderCase = 4
+)
+
+func (r *revertedTransactionActionReadonly) WhichAction() RevertedTransactionAction_ActionReaderCase {
+	switch (*RevertedTransactionAction)(r).GetAction().(type) {
+	case *RevertedTransactionAction_RewriteAddress:
+		return RevertedTransactionAction_ActionReaderCase_RewriteAddress
+	case *RevertedTransactionAction_SetMetadata:
+		return RevertedTransactionAction_ActionReaderCase_SetMetadata
+	case *RevertedTransactionAction_DeleteMetadata:
+		return RevertedTransactionAction_ActionReaderCase_DeleteMetadata
+	case *RevertedTransactionAction_Drop:
+		return RevertedTransactionAction_ActionReaderCase_Drop
+	default:
+		return RevertedTransactionAction_ActionReaderCase_Unset
+	}
 }
 
 func (r *revertedTransactionActionReadonly) Mutate() *RevertedTransactionAction {
@@ -17405,14 +20257,72 @@ func NewRevertedTransactionActionListReader(s []*RevertedTransactionAction) Reve
 // SavedMetadataActionReader provides read-only access to SavedMetadataAction.
 // Call Mutate() to obtain a mutable clone.
 type SavedMetadataActionReader interface {
-	GetAction() isSavedMetadataAction_Action
+	GetRewriteAddress() RewriteAddressActionReader
+	GetSetMetadata() SetMetadataActionReader
+	GetDeleteMetadata() DeleteMetadataActionReader
+	GetDrop() DropActionReader
+	WhichAction() SavedMetadataAction_ActionReaderCase
 	Mutate() *SavedMetadataAction
 }
 
 type savedMetadataActionReadonly SavedMetadataAction
 
-func (r *savedMetadataActionReadonly) GetAction() isSavedMetadataAction_Action {
-	return (*SavedMetadataAction)(r).GetAction()
+func (r *savedMetadataActionReadonly) GetRewriteAddress() RewriteAddressActionReader {
+	v, ok := (*SavedMetadataAction)(r).GetAction().(*SavedMetadataAction_RewriteAddress)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.RewriteAddress.AsReader()
+}
+
+func (r *savedMetadataActionReadonly) GetSetMetadata() SetMetadataActionReader {
+	v, ok := (*SavedMetadataAction)(r).GetAction().(*SavedMetadataAction_SetMetadata)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.SetMetadata.AsReader()
+}
+
+func (r *savedMetadataActionReadonly) GetDeleteMetadata() DeleteMetadataActionReader {
+	v, ok := (*SavedMetadataAction)(r).GetAction().(*SavedMetadataAction_DeleteMetadata)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.DeleteMetadata.AsReader()
+}
+
+func (r *savedMetadataActionReadonly) GetDrop() DropActionReader {
+	v, ok := (*SavedMetadataAction)(r).GetAction().(*SavedMetadataAction_Drop)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.Drop.AsReader()
+}
+
+// SavedMetadataAction_ActionReaderCase identifies a selected oneof arm by its protobuf field number.
+type SavedMetadataAction_ActionReaderCase int32
+
+const (
+	SavedMetadataAction_ActionReaderCase_Unset          SavedMetadataAction_ActionReaderCase = 0
+	SavedMetadataAction_ActionReaderCase_RewriteAddress SavedMetadataAction_ActionReaderCase = 1
+	SavedMetadataAction_ActionReaderCase_SetMetadata    SavedMetadataAction_ActionReaderCase = 2
+	SavedMetadataAction_ActionReaderCase_DeleteMetadata SavedMetadataAction_ActionReaderCase = 3
+	SavedMetadataAction_ActionReaderCase_Drop           SavedMetadataAction_ActionReaderCase = 4
+)
+
+func (r *savedMetadataActionReadonly) WhichAction() SavedMetadataAction_ActionReaderCase {
+	switch (*SavedMetadataAction)(r).GetAction().(type) {
+	case *SavedMetadataAction_RewriteAddress:
+		return SavedMetadataAction_ActionReaderCase_RewriteAddress
+	case *SavedMetadataAction_SetMetadata:
+		return SavedMetadataAction_ActionReaderCase_SetMetadata
+	case *SavedMetadataAction_DeleteMetadata:
+		return SavedMetadataAction_ActionReaderCase_DeleteMetadata
+	case *SavedMetadataAction_Drop:
+		return SavedMetadataAction_ActionReaderCase_Drop
+	default:
+		return SavedMetadataAction_ActionReaderCase_Unset
+	}
 }
 
 func (r *savedMetadataActionReadonly) Mutate() *SavedMetadataAction {
@@ -17472,14 +20382,48 @@ func NewSavedMetadataActionListReader(s []*SavedMetadataAction) SavedMetadataAct
 // DeletedMetadataActionReader provides read-only access to DeletedMetadataAction.
 // Call Mutate() to obtain a mutable clone.
 type DeletedMetadataActionReader interface {
-	GetAction() isDeletedMetadataAction_Action
+	GetRewriteAddress() RewriteAddressActionReader
+	GetDrop() DropActionReader
+	WhichAction() DeletedMetadataAction_ActionReaderCase
 	Mutate() *DeletedMetadataAction
 }
 
 type deletedMetadataActionReadonly DeletedMetadataAction
 
-func (r *deletedMetadataActionReadonly) GetAction() isDeletedMetadataAction_Action {
-	return (*DeletedMetadataAction)(r).GetAction()
+func (r *deletedMetadataActionReadonly) GetRewriteAddress() RewriteAddressActionReader {
+	v, ok := (*DeletedMetadataAction)(r).GetAction().(*DeletedMetadataAction_RewriteAddress)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.RewriteAddress.AsReader()
+}
+
+func (r *deletedMetadataActionReadonly) GetDrop() DropActionReader {
+	v, ok := (*DeletedMetadataAction)(r).GetAction().(*DeletedMetadataAction_Drop)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.Drop.AsReader()
+}
+
+// DeletedMetadataAction_ActionReaderCase identifies a selected oneof arm by its protobuf field number.
+type DeletedMetadataAction_ActionReaderCase int32
+
+const (
+	DeletedMetadataAction_ActionReaderCase_Unset          DeletedMetadataAction_ActionReaderCase = 0
+	DeletedMetadataAction_ActionReaderCase_RewriteAddress DeletedMetadataAction_ActionReaderCase = 1
+	DeletedMetadataAction_ActionReaderCase_Drop           DeletedMetadataAction_ActionReaderCase = 2
+)
+
+func (r *deletedMetadataActionReadonly) WhichAction() DeletedMetadataAction_ActionReaderCase {
+	switch (*DeletedMetadataAction)(r).GetAction().(type) {
+	case *DeletedMetadataAction_RewriteAddress:
+		return DeletedMetadataAction_ActionReaderCase_RewriteAddress
+	case *DeletedMetadataAction_Drop:
+		return DeletedMetadataAction_ActionReaderCase_Drop
+	default:
+		return DeletedMetadataAction_ActionReaderCase_Unset
+	}
 }
 
 func (r *deletedMetadataActionReadonly) Mutate() *DeletedMetadataAction {
@@ -17539,14 +20483,48 @@ func NewDeletedMetadataActionListReader(s []*DeletedMetadataAction) DeletedMetad
 // AnyVariantActionReader provides read-only access to AnyVariantAction.
 // Call Mutate() to obtain a mutable clone.
 type AnyVariantActionReader interface {
-	GetAction() isAnyVariantAction_Action
+	GetRewriteAddress() RewriteAddressActionReader
+	GetDrop() DropActionReader
+	WhichAction() AnyVariantAction_ActionReaderCase
 	Mutate() *AnyVariantAction
 }
 
 type anyVariantActionReadonly AnyVariantAction
 
-func (r *anyVariantActionReadonly) GetAction() isAnyVariantAction_Action {
-	return (*AnyVariantAction)(r).GetAction()
+func (r *anyVariantActionReadonly) GetRewriteAddress() RewriteAddressActionReader {
+	v, ok := (*AnyVariantAction)(r).GetAction().(*AnyVariantAction_RewriteAddress)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.RewriteAddress.AsReader()
+}
+
+func (r *anyVariantActionReadonly) GetDrop() DropActionReader {
+	v, ok := (*AnyVariantAction)(r).GetAction().(*AnyVariantAction_Drop)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.Drop.AsReader()
+}
+
+// AnyVariantAction_ActionReaderCase identifies a selected oneof arm by its protobuf field number.
+type AnyVariantAction_ActionReaderCase int32
+
+const (
+	AnyVariantAction_ActionReaderCase_Unset          AnyVariantAction_ActionReaderCase = 0
+	AnyVariantAction_ActionReaderCase_RewriteAddress AnyVariantAction_ActionReaderCase = 1
+	AnyVariantAction_ActionReaderCase_Drop           AnyVariantAction_ActionReaderCase = 2
+)
+
+func (r *anyVariantActionReadonly) WhichAction() AnyVariantAction_ActionReaderCase {
+	switch (*AnyVariantAction)(r).GetAction().(type) {
+	case *AnyVariantAction_RewriteAddress:
+		return AnyVariantAction_ActionReaderCase_RewriteAddress
+	case *AnyVariantAction_Drop:
+		return AnyVariantAction_ActionReaderCase_Drop
+	default:
+		return AnyVariantAction_ActionReaderCase_Unset
+	}
 }
 
 func (r *anyVariantActionReadonly) Mutate() *AnyVariantAction {
@@ -17679,8 +20657,10 @@ func NewRewriteAddressActionListReader(s []*RewriteAddressAction) RewriteAddress
 // Call Mutate() to obtain a mutable clone.
 type SetMetadataActionReader interface {
 	GetKey() string
+	GetValue() string
+	GetValueExpr() string
 	GetType() string
-	GetSource() isSetMetadataAction_Source
+	WhichSource() SetMetadataAction_SourceReaderCase
 	Mutate() *SetMetadataAction
 }
 
@@ -17690,12 +20670,44 @@ func (r *setMetadataActionReadonly) GetKey() string {
 	return (*SetMetadataAction)(r).GetKey()
 }
 
+func (r *setMetadataActionReadonly) GetValue() string {
+	v, ok := (*SetMetadataAction)(r).GetSource().(*SetMetadataAction_Value)
+	if !ok || v == nil {
+		return (*SetMetadataAction)(nil).GetValue()
+	}
+	return v.Value
+}
+
+func (r *setMetadataActionReadonly) GetValueExpr() string {
+	v, ok := (*SetMetadataAction)(r).GetSource().(*SetMetadataAction_ValueExpr)
+	if !ok || v == nil {
+		return (*SetMetadataAction)(nil).GetValueExpr()
+	}
+	return v.ValueExpr
+}
+
 func (r *setMetadataActionReadonly) GetType() string {
 	return (*SetMetadataAction)(r).GetType()
 }
 
-func (r *setMetadataActionReadonly) GetSource() isSetMetadataAction_Source {
-	return (*SetMetadataAction)(r).GetSource()
+// SetMetadataAction_SourceReaderCase identifies a selected oneof arm by its protobuf field number.
+type SetMetadataAction_SourceReaderCase int32
+
+const (
+	SetMetadataAction_SourceReaderCase_Unset     SetMetadataAction_SourceReaderCase = 0
+	SetMetadataAction_SourceReaderCase_Value     SetMetadataAction_SourceReaderCase = 2
+	SetMetadataAction_SourceReaderCase_ValueExpr SetMetadataAction_SourceReaderCase = 3
+)
+
+func (r *setMetadataActionReadonly) WhichSource() SetMetadataAction_SourceReaderCase {
+	switch (*SetMetadataAction)(r).GetSource().(type) {
+	case *SetMetadataAction_Value:
+		return SetMetadataAction_SourceReaderCase_Value
+	case *SetMetadataAction_ValueExpr:
+		return SetMetadataAction_SourceReaderCase_ValueExpr
+	default:
+		return SetMetadataAction_SourceReaderCase_Unset
+	}
 }
 
 func (r *setMetadataActionReadonly) Mutate() *SetMetadataAction {
@@ -17824,8 +20836,10 @@ func NewDeleteMetadataActionListReader(s []*DeleteMetadataAction) DeleteMetadata
 type SetAccountMetadataActionReader interface {
 	GetAccount() string
 	GetKey() string
+	GetValue() string
+	GetValueExpr() string
 	GetType() string
-	GetSource() isSetAccountMetadataAction_Source
+	WhichSource() SetAccountMetadataAction_SourceReaderCase
 	Mutate() *SetAccountMetadataAction
 }
 
@@ -17839,12 +20853,44 @@ func (r *setAccountMetadataActionReadonly) GetKey() string {
 	return (*SetAccountMetadataAction)(r).GetKey()
 }
 
+func (r *setAccountMetadataActionReadonly) GetValue() string {
+	v, ok := (*SetAccountMetadataAction)(r).GetSource().(*SetAccountMetadataAction_Value)
+	if !ok || v == nil {
+		return (*SetAccountMetadataAction)(nil).GetValue()
+	}
+	return v.Value
+}
+
+func (r *setAccountMetadataActionReadonly) GetValueExpr() string {
+	v, ok := (*SetAccountMetadataAction)(r).GetSource().(*SetAccountMetadataAction_ValueExpr)
+	if !ok || v == nil {
+		return (*SetAccountMetadataAction)(nil).GetValueExpr()
+	}
+	return v.ValueExpr
+}
+
 func (r *setAccountMetadataActionReadonly) GetType() string {
 	return (*SetAccountMetadataAction)(r).GetType()
 }
 
-func (r *setAccountMetadataActionReadonly) GetSource() isSetAccountMetadataAction_Source {
-	return (*SetAccountMetadataAction)(r).GetSource()
+// SetAccountMetadataAction_SourceReaderCase identifies a selected oneof arm by its protobuf field number.
+type SetAccountMetadataAction_SourceReaderCase int32
+
+const (
+	SetAccountMetadataAction_SourceReaderCase_Unset     SetAccountMetadataAction_SourceReaderCase = 0
+	SetAccountMetadataAction_SourceReaderCase_Value     SetAccountMetadataAction_SourceReaderCase = 3
+	SetAccountMetadataAction_SourceReaderCase_ValueExpr SetAccountMetadataAction_SourceReaderCase = 4
+)
+
+func (r *setAccountMetadataActionReadonly) WhichSource() SetAccountMetadataAction_SourceReaderCase {
+	switch (*SetAccountMetadataAction)(r).GetSource().(type) {
+	case *SetAccountMetadataAction_Value:
+		return SetAccountMetadataAction_SourceReaderCase_Value
+	case *SetAccountMetadataAction_ValueExpr:
+		return SetAccountMetadataAction_SourceReaderCase_ValueExpr
+	default:
+		return SetAccountMetadataAction_SourceReaderCase_Unset
+	}
 }
 
 func (r *setAccountMetadataActionReadonly) Mutate() *SetAccountMetadataAction {
@@ -19480,14 +22526,72 @@ func NewNumscriptVersionValueListReader(s []*NumscriptVersionValue) NumscriptVer
 // SegmentTypeReader provides read-only access to SegmentType.
 // Call Mutate() to obtain a mutable clone.
 type SegmentTypeReader interface {
-	GetConstraint() isSegmentType_Constraint
+	GetRegex() string
+	GetUuid() UUIDConstraintReader
+	GetUint64() Uint64ConstraintReader
+	GetBytes() BytesConstraintReader
+	WhichConstraint() SegmentType_ConstraintReaderCase
 	Mutate() *SegmentType
 }
 
 type segmentTypeReadonly SegmentType
 
-func (r *segmentTypeReadonly) GetConstraint() isSegmentType_Constraint {
-	return (*SegmentType)(r).GetConstraint()
+func (r *segmentTypeReadonly) GetRegex() string {
+	v, ok := (*SegmentType)(r).GetConstraint().(*SegmentType_Regex)
+	if !ok || v == nil {
+		return (*SegmentType)(nil).GetRegex()
+	}
+	return v.Regex
+}
+
+func (r *segmentTypeReadonly) GetUuid() UUIDConstraintReader {
+	v, ok := (*SegmentType)(r).GetConstraint().(*SegmentType_Uuid)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.Uuid.AsReader()
+}
+
+func (r *segmentTypeReadonly) GetUint64() Uint64ConstraintReader {
+	v, ok := (*SegmentType)(r).GetConstraint().(*SegmentType_Uint64)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.Uint64.AsReader()
+}
+
+func (r *segmentTypeReadonly) GetBytes() BytesConstraintReader {
+	v, ok := (*SegmentType)(r).GetConstraint().(*SegmentType_Bytes)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.Bytes.AsReader()
+}
+
+// SegmentType_ConstraintReaderCase identifies a selected oneof arm by its protobuf field number.
+type SegmentType_ConstraintReaderCase int32
+
+const (
+	SegmentType_ConstraintReaderCase_Unset  SegmentType_ConstraintReaderCase = 0
+	SegmentType_ConstraintReaderCase_Regex  SegmentType_ConstraintReaderCase = 1
+	SegmentType_ConstraintReaderCase_Uuid   SegmentType_ConstraintReaderCase = 2
+	SegmentType_ConstraintReaderCase_Uint64 SegmentType_ConstraintReaderCase = 3
+	SegmentType_ConstraintReaderCase_Bytes  SegmentType_ConstraintReaderCase = 4
+)
+
+func (r *segmentTypeReadonly) WhichConstraint() SegmentType_ConstraintReaderCase {
+	switch (*SegmentType)(r).GetConstraint().(type) {
+	case *SegmentType_Regex:
+		return SegmentType_ConstraintReaderCase_Regex
+	case *SegmentType_Uuid:
+		return SegmentType_ConstraintReaderCase_Uuid
+	case *SegmentType_Uint64:
+		return SegmentType_ConstraintReaderCase_Uint64
+	case *SegmentType_Bytes:
+		return SegmentType_ConstraintReaderCase_Bytes
+	default:
+		return SegmentType_ConstraintReaderCase_Unset
+	}
 }
 
 func (r *segmentTypeReadonly) Mutate() *SegmentType {
@@ -20051,14 +23155,180 @@ func NewUpdatedDefaultEnforcementModeLogListReader(s []*UpdatedDefaultEnforcemen
 // QueryFilterReader provides read-only access to QueryFilter.
 // Call Mutate() to obtain a mutable clone.
 type QueryFilterReader interface {
-	GetFilter() isQueryFilter_Filter
+	GetField() FieldConditionReader
+	GetAddress() AddressMatchReader
+	GetAnd() AndFilterReader
+	GetOr() OrFilterReader
+	GetNot() NotFilterReader
+	GetReference() ReferenceConditionReader
+	GetBuiltinUint() BuiltinUintConditionReader
+	GetLedger() LedgerConditionReader
+	GetLogId() LogIdConditionReader
+	GetLogBuiltinUint() LogBuiltinUintConditionReader
+	GetAccountHasAsset() AccountHasAssetConditionReader
+	GetReverted() RevertedConditionReader
+	GetAudit() AuditConditionReader
+	WhichFilter() QueryFilter_FilterReaderCase
 	Mutate() *QueryFilter
 }
 
 type queryFilterReadonly QueryFilter
 
-func (r *queryFilterReadonly) GetFilter() isQueryFilter_Filter {
-	return (*QueryFilter)(r).GetFilter()
+func (r *queryFilterReadonly) GetField() FieldConditionReader {
+	v, ok := (*QueryFilter)(r).GetFilter().(*QueryFilter_Field)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.Field.AsReader()
+}
+
+func (r *queryFilterReadonly) GetAddress() AddressMatchReader {
+	v, ok := (*QueryFilter)(r).GetFilter().(*QueryFilter_Address)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.Address.AsReader()
+}
+
+func (r *queryFilterReadonly) GetAnd() AndFilterReader {
+	v, ok := (*QueryFilter)(r).GetFilter().(*QueryFilter_And)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.And.AsReader()
+}
+
+func (r *queryFilterReadonly) GetOr() OrFilterReader {
+	v, ok := (*QueryFilter)(r).GetFilter().(*QueryFilter_Or)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.Or.AsReader()
+}
+
+func (r *queryFilterReadonly) GetNot() NotFilterReader {
+	v, ok := (*QueryFilter)(r).GetFilter().(*QueryFilter_Not)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.Not.AsReader()
+}
+
+func (r *queryFilterReadonly) GetReference() ReferenceConditionReader {
+	v, ok := (*QueryFilter)(r).GetFilter().(*QueryFilter_Reference)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.Reference.AsReader()
+}
+
+func (r *queryFilterReadonly) GetBuiltinUint() BuiltinUintConditionReader {
+	v, ok := (*QueryFilter)(r).GetFilter().(*QueryFilter_BuiltinUint)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.BuiltinUint.AsReader()
+}
+
+func (r *queryFilterReadonly) GetLedger() LedgerConditionReader {
+	v, ok := (*QueryFilter)(r).GetFilter().(*QueryFilter_Ledger)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.Ledger.AsReader()
+}
+
+func (r *queryFilterReadonly) GetLogId() LogIdConditionReader {
+	v, ok := (*QueryFilter)(r).GetFilter().(*QueryFilter_LogId)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.LogId.AsReader()
+}
+
+func (r *queryFilterReadonly) GetLogBuiltinUint() LogBuiltinUintConditionReader {
+	v, ok := (*QueryFilter)(r).GetFilter().(*QueryFilter_LogBuiltinUint)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.LogBuiltinUint.AsReader()
+}
+
+func (r *queryFilterReadonly) GetAccountHasAsset() AccountHasAssetConditionReader {
+	v, ok := (*QueryFilter)(r).GetFilter().(*QueryFilter_AccountHasAsset)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.AccountHasAsset.AsReader()
+}
+
+func (r *queryFilterReadonly) GetReverted() RevertedConditionReader {
+	v, ok := (*QueryFilter)(r).GetFilter().(*QueryFilter_Reverted)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.Reverted.AsReader()
+}
+
+func (r *queryFilterReadonly) GetAudit() AuditConditionReader {
+	v, ok := (*QueryFilter)(r).GetFilter().(*QueryFilter_Audit)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.Audit.AsReader()
+}
+
+// QueryFilter_FilterReaderCase identifies a selected oneof arm by its protobuf field number.
+type QueryFilter_FilterReaderCase int32
+
+const (
+	QueryFilter_FilterReaderCase_Unset           QueryFilter_FilterReaderCase = 0
+	QueryFilter_FilterReaderCase_Field           QueryFilter_FilterReaderCase = 1
+	QueryFilter_FilterReaderCase_Address         QueryFilter_FilterReaderCase = 2
+	QueryFilter_FilterReaderCase_And             QueryFilter_FilterReaderCase = 3
+	QueryFilter_FilterReaderCase_Or              QueryFilter_FilterReaderCase = 4
+	QueryFilter_FilterReaderCase_Not             QueryFilter_FilterReaderCase = 5
+	QueryFilter_FilterReaderCase_Reference       QueryFilter_FilterReaderCase = 6
+	QueryFilter_FilterReaderCase_BuiltinUint     QueryFilter_FilterReaderCase = 7
+	QueryFilter_FilterReaderCase_Ledger          QueryFilter_FilterReaderCase = 8
+	QueryFilter_FilterReaderCase_LogId           QueryFilter_FilterReaderCase = 9
+	QueryFilter_FilterReaderCase_LogBuiltinUint  QueryFilter_FilterReaderCase = 10
+	QueryFilter_FilterReaderCase_AccountHasAsset QueryFilter_FilterReaderCase = 11
+	QueryFilter_FilterReaderCase_Reverted        QueryFilter_FilterReaderCase = 12
+	QueryFilter_FilterReaderCase_Audit           QueryFilter_FilterReaderCase = 13
+)
+
+func (r *queryFilterReadonly) WhichFilter() QueryFilter_FilterReaderCase {
+	switch (*QueryFilter)(r).GetFilter().(type) {
+	case *QueryFilter_Field:
+		return QueryFilter_FilterReaderCase_Field
+	case *QueryFilter_Address:
+		return QueryFilter_FilterReaderCase_Address
+	case *QueryFilter_And:
+		return QueryFilter_FilterReaderCase_And
+	case *QueryFilter_Or:
+		return QueryFilter_FilterReaderCase_Or
+	case *QueryFilter_Not:
+		return QueryFilter_FilterReaderCase_Not
+	case *QueryFilter_Reference:
+		return QueryFilter_FilterReaderCase_Reference
+	case *QueryFilter_BuiltinUint:
+		return QueryFilter_FilterReaderCase_BuiltinUint
+	case *QueryFilter_Ledger:
+		return QueryFilter_FilterReaderCase_Ledger
+	case *QueryFilter_LogId:
+		return QueryFilter_FilterReaderCase_LogId
+	case *QueryFilter_LogBuiltinUint:
+		return QueryFilter_FilterReaderCase_LogBuiltinUint
+	case *QueryFilter_AccountHasAsset:
+		return QueryFilter_FilterReaderCase_AccountHasAsset
+	case *QueryFilter_Reverted:
+		return QueryFilter_FilterReaderCase_Reverted
+	case *QueryFilter_Audit:
+		return QueryFilter_FilterReaderCase_Audit
+	default:
+		return QueryFilter_FilterReaderCase_Unset
+	}
 }
 
 func (r *queryFilterReadonly) Mutate() *QueryFilter {
@@ -20257,7 +23527,10 @@ func NewRevertedConditionListReader(s []*RevertedCondition) RevertedConditionLis
 // Call Mutate() to obtain a mutable clone.
 type AuditConditionReader interface {
 	GetField() AuditField
-	GetCondition() isAuditCondition_Condition
+	GetStringCond() StringConditionReader
+	GetUintCond() UintConditionReader
+	GetStringPrefix() string
+	WhichCondition() AuditCondition_ConditionReaderCase
 	Mutate() *AuditCondition
 }
 
@@ -20267,8 +23540,51 @@ func (r *auditConditionReadonly) GetField() AuditField {
 	return (*AuditCondition)(r).GetField()
 }
 
-func (r *auditConditionReadonly) GetCondition() isAuditCondition_Condition {
-	return (*AuditCondition)(r).GetCondition()
+func (r *auditConditionReadonly) GetStringCond() StringConditionReader {
+	v, ok := (*AuditCondition)(r).GetCondition().(*AuditCondition_StringCond)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.StringCond.AsReader()
+}
+
+func (r *auditConditionReadonly) GetUintCond() UintConditionReader {
+	v, ok := (*AuditCondition)(r).GetCondition().(*AuditCondition_UintCond)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.UintCond.AsReader()
+}
+
+func (r *auditConditionReadonly) GetStringPrefix() string {
+	v, ok := (*AuditCondition)(r).GetCondition().(*AuditCondition_StringPrefix)
+	if !ok || v == nil {
+		return (*AuditCondition)(nil).GetStringPrefix()
+	}
+	return v.StringPrefix
+}
+
+// AuditCondition_ConditionReaderCase identifies a selected oneof arm by its protobuf field number.
+type AuditCondition_ConditionReaderCase int32
+
+const (
+	AuditCondition_ConditionReaderCase_Unset        AuditCondition_ConditionReaderCase = 0
+	AuditCondition_ConditionReaderCase_StringCond   AuditCondition_ConditionReaderCase = 2
+	AuditCondition_ConditionReaderCase_UintCond     AuditCondition_ConditionReaderCase = 3
+	AuditCondition_ConditionReaderCase_StringPrefix AuditCondition_ConditionReaderCase = 4
+)
+
+func (r *auditConditionReadonly) WhichCondition() AuditCondition_ConditionReaderCase {
+	switch (*AuditCondition)(r).GetCondition().(type) {
+	case *AuditCondition_StringCond:
+		return AuditCondition_ConditionReaderCase_StringCond
+	case *AuditCondition_UintCond:
+		return AuditCondition_ConditionReaderCase_UintCond
+	case *AuditCondition_StringPrefix:
+		return AuditCondition_ConditionReaderCase_StringPrefix
+	default:
+		return AuditCondition_ConditionReaderCase_Unset
+	}
 }
 
 func (r *auditConditionReadonly) Mutate() *AuditCondition {
@@ -20959,7 +24275,12 @@ func NewFieldRefListReader(s []*FieldRef) FieldRefListReader { return fieldRefLi
 // Call Mutate() to obtain a mutable clone.
 type FieldConditionReader interface {
 	GetField() FieldRefReader
-	GetCondition() isFieldCondition_Condition
+	GetStringCond() StringConditionReader
+	GetIntCond() IntConditionReader
+	GetUintCond() UintConditionReader
+	GetBoolCond() BoolConditionReader
+	GetExistsCond() ExistsConditionReader
+	WhichCondition() FieldCondition_ConditionReaderCase
 	Mutate() *FieldCondition
 }
 
@@ -20973,8 +24294,73 @@ func (r *fieldConditionReadonly) GetField() FieldRefReader {
 	return v.AsReader()
 }
 
-func (r *fieldConditionReadonly) GetCondition() isFieldCondition_Condition {
-	return (*FieldCondition)(r).GetCondition()
+func (r *fieldConditionReadonly) GetStringCond() StringConditionReader {
+	v, ok := (*FieldCondition)(r).GetCondition().(*FieldCondition_StringCond)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.StringCond.AsReader()
+}
+
+func (r *fieldConditionReadonly) GetIntCond() IntConditionReader {
+	v, ok := (*FieldCondition)(r).GetCondition().(*FieldCondition_IntCond)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.IntCond.AsReader()
+}
+
+func (r *fieldConditionReadonly) GetUintCond() UintConditionReader {
+	v, ok := (*FieldCondition)(r).GetCondition().(*FieldCondition_UintCond)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.UintCond.AsReader()
+}
+
+func (r *fieldConditionReadonly) GetBoolCond() BoolConditionReader {
+	v, ok := (*FieldCondition)(r).GetCondition().(*FieldCondition_BoolCond)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.BoolCond.AsReader()
+}
+
+func (r *fieldConditionReadonly) GetExistsCond() ExistsConditionReader {
+	v, ok := (*FieldCondition)(r).GetCondition().(*FieldCondition_ExistsCond)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.ExistsCond.AsReader()
+}
+
+// FieldCondition_ConditionReaderCase identifies a selected oneof arm by its protobuf field number.
+type FieldCondition_ConditionReaderCase int32
+
+const (
+	FieldCondition_ConditionReaderCase_Unset      FieldCondition_ConditionReaderCase = 0
+	FieldCondition_ConditionReaderCase_StringCond FieldCondition_ConditionReaderCase = 2
+	FieldCondition_ConditionReaderCase_IntCond    FieldCondition_ConditionReaderCase = 3
+	FieldCondition_ConditionReaderCase_UintCond   FieldCondition_ConditionReaderCase = 4
+	FieldCondition_ConditionReaderCase_BoolCond   FieldCondition_ConditionReaderCase = 5
+	FieldCondition_ConditionReaderCase_ExistsCond FieldCondition_ConditionReaderCase = 6
+)
+
+func (r *fieldConditionReadonly) WhichCondition() FieldCondition_ConditionReaderCase {
+	switch (*FieldCondition)(r).GetCondition().(type) {
+	case *FieldCondition_StringCond:
+		return FieldCondition_ConditionReaderCase_StringCond
+	case *FieldCondition_IntCond:
+		return FieldCondition_ConditionReaderCase_IntCond
+	case *FieldCondition_UintCond:
+		return FieldCondition_ConditionReaderCase_UintCond
+	case *FieldCondition_BoolCond:
+		return FieldCondition_ConditionReaderCase_BoolCond
+	case *FieldCondition_ExistsCond:
+		return FieldCondition_ConditionReaderCase_ExistsCond
+	default:
+		return FieldCondition_ConditionReaderCase_Unset
+	}
 }
 
 func (r *fieldConditionReadonly) Mutate() *FieldCondition {
@@ -21034,14 +24420,48 @@ func NewFieldConditionListReader(s []*FieldCondition) FieldConditionListReader {
 // StringConditionReader provides read-only access to StringCondition.
 // Call Mutate() to obtain a mutable clone.
 type StringConditionReader interface {
-	GetValue() isStringCondition_Value
+	GetHardcoded() string
+	GetParam() string
+	WhichValue() StringCondition_ValueReaderCase
 	Mutate() *StringCondition
 }
 
 type stringConditionReadonly StringCondition
 
-func (r *stringConditionReadonly) GetValue() isStringCondition_Value {
-	return (*StringCondition)(r).GetValue()
+func (r *stringConditionReadonly) GetHardcoded() string {
+	v, ok := (*StringCondition)(r).GetValue().(*StringCondition_Hardcoded)
+	if !ok || v == nil {
+		return (*StringCondition)(nil).GetHardcoded()
+	}
+	return v.Hardcoded
+}
+
+func (r *stringConditionReadonly) GetParam() string {
+	v, ok := (*StringCondition)(r).GetValue().(*StringCondition_Param)
+	if !ok || v == nil {
+		return (*StringCondition)(nil).GetParam()
+	}
+	return v.Param
+}
+
+// StringCondition_ValueReaderCase identifies a selected oneof arm by its protobuf field number.
+type StringCondition_ValueReaderCase int32
+
+const (
+	StringCondition_ValueReaderCase_Unset     StringCondition_ValueReaderCase = 0
+	StringCondition_ValueReaderCase_Hardcoded StringCondition_ValueReaderCase = 1
+	StringCondition_ValueReaderCase_Param     StringCondition_ValueReaderCase = 2
+)
+
+func (r *stringConditionReadonly) WhichValue() StringCondition_ValueReaderCase {
+	switch (*StringCondition)(r).GetValue().(type) {
+	case *StringCondition_Hardcoded:
+		return StringCondition_ValueReaderCase_Hardcoded
+	case *StringCondition_Param:
+		return StringCondition_ValueReaderCase_Param
+	default:
+		return StringCondition_ValueReaderCase_Unset
+	}
 }
 
 func (r *stringConditionReadonly) Mutate() *StringCondition {
@@ -21285,14 +24705,48 @@ func NewUintConditionListReader(s []*UintCondition) UintConditionListReader {
 // BoolConditionReader provides read-only access to BoolCondition.
 // Call Mutate() to obtain a mutable clone.
 type BoolConditionReader interface {
-	GetValue() isBoolCondition_Value
+	GetHardcoded() bool
+	GetParam() string
+	WhichValue() BoolCondition_ValueReaderCase
 	Mutate() *BoolCondition
 }
 
 type boolConditionReadonly BoolCondition
 
-func (r *boolConditionReadonly) GetValue() isBoolCondition_Value {
-	return (*BoolCondition)(r).GetValue()
+func (r *boolConditionReadonly) GetHardcoded() bool {
+	v, ok := (*BoolCondition)(r).GetValue().(*BoolCondition_Hardcoded)
+	if !ok || v == nil {
+		return (*BoolCondition)(nil).GetHardcoded()
+	}
+	return v.Hardcoded
+}
+
+func (r *boolConditionReadonly) GetParam() string {
+	v, ok := (*BoolCondition)(r).GetValue().(*BoolCondition_Param)
+	if !ok || v == nil {
+		return (*BoolCondition)(nil).GetParam()
+	}
+	return v.Param
+}
+
+// BoolCondition_ValueReaderCase identifies a selected oneof arm by its protobuf field number.
+type BoolCondition_ValueReaderCase int32
+
+const (
+	BoolCondition_ValueReaderCase_Unset     BoolCondition_ValueReaderCase = 0
+	BoolCondition_ValueReaderCase_Hardcoded BoolCondition_ValueReaderCase = 1
+	BoolCondition_ValueReaderCase_Param     BoolCondition_ValueReaderCase = 2
+)
+
+func (r *boolConditionReadonly) WhichValue() BoolCondition_ValueReaderCase {
+	switch (*BoolCondition)(r).GetValue().(type) {
+	case *BoolCondition_Hardcoded:
+		return BoolCondition_ValueReaderCase_Hardcoded
+	case *BoolCondition_Param:
+		return BoolCondition_ValueReaderCase_Param
+	default:
+		return BoolCondition_ValueReaderCase_Unset
+	}
 }
 
 func (r *boolConditionReadonly) Mutate() *BoolCondition {
@@ -21419,19 +24873,77 @@ func NewExistsConditionListReader(s []*ExistsCondition) ExistsConditionListReade
 // AddressMatchReader provides read-only access to AddressMatch.
 // Call Mutate() to obtain a mutable clone.
 type AddressMatchReader interface {
+	GetHardcodedPrefix() string
+	GetHardcodedExact() string
+	GetParamPrefix() string
+	GetParamExact() string
 	GetRole() AddressRole
-	GetMatch() isAddressMatch_Match
+	WhichMatch() AddressMatch_MatchReaderCase
 	Mutate() *AddressMatch
 }
 
 type addressMatchReadonly AddressMatch
 
+func (r *addressMatchReadonly) GetHardcodedPrefix() string {
+	v, ok := (*AddressMatch)(r).GetMatch().(*AddressMatch_HardcodedPrefix)
+	if !ok || v == nil {
+		return (*AddressMatch)(nil).GetHardcodedPrefix()
+	}
+	return v.HardcodedPrefix
+}
+
+func (r *addressMatchReadonly) GetHardcodedExact() string {
+	v, ok := (*AddressMatch)(r).GetMatch().(*AddressMatch_HardcodedExact)
+	if !ok || v == nil {
+		return (*AddressMatch)(nil).GetHardcodedExact()
+	}
+	return v.HardcodedExact
+}
+
+func (r *addressMatchReadonly) GetParamPrefix() string {
+	v, ok := (*AddressMatch)(r).GetMatch().(*AddressMatch_ParamPrefix)
+	if !ok || v == nil {
+		return (*AddressMatch)(nil).GetParamPrefix()
+	}
+	return v.ParamPrefix
+}
+
+func (r *addressMatchReadonly) GetParamExact() string {
+	v, ok := (*AddressMatch)(r).GetMatch().(*AddressMatch_ParamExact)
+	if !ok || v == nil {
+		return (*AddressMatch)(nil).GetParamExact()
+	}
+	return v.ParamExact
+}
+
 func (r *addressMatchReadonly) GetRole() AddressRole {
 	return (*AddressMatch)(r).GetRole()
 }
 
-func (r *addressMatchReadonly) GetMatch() isAddressMatch_Match {
-	return (*AddressMatch)(r).GetMatch()
+// AddressMatch_MatchReaderCase identifies a selected oneof arm by its protobuf field number.
+type AddressMatch_MatchReaderCase int32
+
+const (
+	AddressMatch_MatchReaderCase_Unset           AddressMatch_MatchReaderCase = 0
+	AddressMatch_MatchReaderCase_HardcodedPrefix AddressMatch_MatchReaderCase = 1
+	AddressMatch_MatchReaderCase_HardcodedExact  AddressMatch_MatchReaderCase = 2
+	AddressMatch_MatchReaderCase_ParamPrefix     AddressMatch_MatchReaderCase = 3
+	AddressMatch_MatchReaderCase_ParamExact      AddressMatch_MatchReaderCase = 4
+)
+
+func (r *addressMatchReadonly) WhichMatch() AddressMatch_MatchReaderCase {
+	switch (*AddressMatch)(r).GetMatch().(type) {
+	case *AddressMatch_HardcodedPrefix:
+		return AddressMatch_MatchReaderCase_HardcodedPrefix
+	case *AddressMatch_HardcodedExact:
+		return AddressMatch_MatchReaderCase_HardcodedExact
+	case *AddressMatch_ParamPrefix:
+		return AddressMatch_MatchReaderCase_ParamPrefix
+	case *AddressMatch_ParamExact:
+		return AddressMatch_MatchReaderCase_ParamExact
+	default:
+		return AddressMatch_MatchReaderCase_Unset
+	}
 }
 
 func (r *addressMatchReadonly) Mutate() *AddressMatch {
@@ -22088,7 +25600,9 @@ func NewPersistedConfigListReader(s []*PersistedConfig) PersistedConfigListReade
 // Call Mutate() to obtain a mutable clone.
 type CallerIdentityReader interface {
 	GetSubject() string
-	GetSource() isCallerIdentity_Source
+	GetIssuer() string
+	GetKeyId() string
+	WhichSource() CallerIdentity_SourceReaderCase
 	Mutate() *CallerIdentity
 }
 
@@ -22098,8 +25612,40 @@ func (r *callerIdentityReadonly) GetSubject() string {
 	return (*CallerIdentity)(r).GetSubject()
 }
 
-func (r *callerIdentityReadonly) GetSource() isCallerIdentity_Source {
-	return (*CallerIdentity)(r).GetSource()
+func (r *callerIdentityReadonly) GetIssuer() string {
+	v, ok := (*CallerIdentity)(r).GetSource().(*CallerIdentity_Issuer)
+	if !ok || v == nil {
+		return (*CallerIdentity)(nil).GetIssuer()
+	}
+	return v.Issuer
+}
+
+func (r *callerIdentityReadonly) GetKeyId() string {
+	v, ok := (*CallerIdentity)(r).GetSource().(*CallerIdentity_KeyId)
+	if !ok || v == nil {
+		return (*CallerIdentity)(nil).GetKeyId()
+	}
+	return v.KeyId
+}
+
+// CallerIdentity_SourceReaderCase identifies a selected oneof arm by its protobuf field number.
+type CallerIdentity_SourceReaderCase int32
+
+const (
+	CallerIdentity_SourceReaderCase_Unset  CallerIdentity_SourceReaderCase = 0
+	CallerIdentity_SourceReaderCase_Issuer CallerIdentity_SourceReaderCase = 2
+	CallerIdentity_SourceReaderCase_KeyId  CallerIdentity_SourceReaderCase = 3
+)
+
+func (r *callerIdentityReadonly) WhichSource() CallerIdentity_SourceReaderCase {
+	switch (*CallerIdentity)(r).GetSource().(type) {
+	case *CallerIdentity_Issuer:
+		return CallerIdentity_SourceReaderCase_Issuer
+	case *CallerIdentity_KeyId:
+		return CallerIdentity_SourceReaderCase_KeyId
+	default:
+		return CallerIdentity_SourceReaderCase_Unset
+	}
 }
 
 func (r *callerIdentityReadonly) Mutate() *CallerIdentity {
@@ -22436,14 +25982,72 @@ func NewAuthDisabledCallerListReader(s []*AuthDisabledCaller) AuthDisabledCaller
 // CallerSnapshotReader provides read-only access to CallerSnapshot.
 // Call Mutate() to obtain a mutable clone.
 type CallerSnapshotReader interface {
-	GetPrincipal() isCallerSnapshot_Principal
+	GetAuthenticated() AuthenticatedCallerReader
+	GetAnonymous() AnonymousCallerReader
+	GetSystem() SystemCallerReader
+	GetAuthDisabled() AuthDisabledCallerReader
+	WhichPrincipal() CallerSnapshot_PrincipalReaderCase
 	Mutate() *CallerSnapshot
 }
 
 type callerSnapshotReadonly CallerSnapshot
 
-func (r *callerSnapshotReadonly) GetPrincipal() isCallerSnapshot_Principal {
-	return (*CallerSnapshot)(r).GetPrincipal()
+func (r *callerSnapshotReadonly) GetAuthenticated() AuthenticatedCallerReader {
+	v, ok := (*CallerSnapshot)(r).GetPrincipal().(*CallerSnapshot_Authenticated)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.Authenticated.AsReader()
+}
+
+func (r *callerSnapshotReadonly) GetAnonymous() AnonymousCallerReader {
+	v, ok := (*CallerSnapshot)(r).GetPrincipal().(*CallerSnapshot_Anonymous)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.Anonymous.AsReader()
+}
+
+func (r *callerSnapshotReadonly) GetSystem() SystemCallerReader {
+	v, ok := (*CallerSnapshot)(r).GetPrincipal().(*CallerSnapshot_System)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.System.AsReader()
+}
+
+func (r *callerSnapshotReadonly) GetAuthDisabled() AuthDisabledCallerReader {
+	v, ok := (*CallerSnapshot)(r).GetPrincipal().(*CallerSnapshot_AuthDisabled)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.AuthDisabled.AsReader()
+}
+
+// CallerSnapshot_PrincipalReaderCase identifies a selected oneof arm by its protobuf field number.
+type CallerSnapshot_PrincipalReaderCase int32
+
+const (
+	CallerSnapshot_PrincipalReaderCase_Unset         CallerSnapshot_PrincipalReaderCase = 0
+	CallerSnapshot_PrincipalReaderCase_Authenticated CallerSnapshot_PrincipalReaderCase = 1
+	CallerSnapshot_PrincipalReaderCase_Anonymous     CallerSnapshot_PrincipalReaderCase = 2
+	CallerSnapshot_PrincipalReaderCase_System        CallerSnapshot_PrincipalReaderCase = 3
+	CallerSnapshot_PrincipalReaderCase_AuthDisabled  CallerSnapshot_PrincipalReaderCase = 4
+)
+
+func (r *callerSnapshotReadonly) WhichPrincipal() CallerSnapshot_PrincipalReaderCase {
+	switch (*CallerSnapshot)(r).GetPrincipal().(type) {
+	case *CallerSnapshot_Authenticated:
+		return CallerSnapshot_PrincipalReaderCase_Authenticated
+	case *CallerSnapshot_Anonymous:
+		return CallerSnapshot_PrincipalReaderCase_Anonymous
+	case *CallerSnapshot_System:
+		return CallerSnapshot_PrincipalReaderCase_System
+	case *CallerSnapshot_AuthDisabled:
+		return CallerSnapshot_PrincipalReaderCase_AuthDisabled
+	default:
+		return CallerSnapshot_PrincipalReaderCase_Unset
+	}
 }
 
 func (r *callerSnapshotReadonly) Mutate() *CallerSnapshot {
@@ -22672,14 +26276,48 @@ func NewAzureStorageConfigListReader(s []*AzureStorageConfig) AzureStorageConfig
 // BackupStorageReader provides read-only access to BackupStorage.
 // Call Mutate() to obtain a mutable clone.
 type BackupStorageReader interface {
-	GetProvider() isBackupStorage_Provider
+	GetS3() S3StorageConfigReader
+	GetAzure() AzureStorageConfigReader
+	WhichProvider() BackupStorage_ProviderReaderCase
 	Mutate() *BackupStorage
 }
 
 type backupStorageReadonly BackupStorage
 
-func (r *backupStorageReadonly) GetProvider() isBackupStorage_Provider {
-	return (*BackupStorage)(r).GetProvider()
+func (r *backupStorageReadonly) GetS3() S3StorageConfigReader {
+	v, ok := (*BackupStorage)(r).GetProvider().(*BackupStorage_S3)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.S3.AsReader()
+}
+
+func (r *backupStorageReadonly) GetAzure() AzureStorageConfigReader {
+	v, ok := (*BackupStorage)(r).GetProvider().(*BackupStorage_Azure)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.Azure.AsReader()
+}
+
+// BackupStorage_ProviderReaderCase identifies a selected oneof arm by its protobuf field number.
+type BackupStorage_ProviderReaderCase int32
+
+const (
+	BackupStorage_ProviderReaderCase_Unset BackupStorage_ProviderReaderCase = 0
+	BackupStorage_ProviderReaderCase_S3    BackupStorage_ProviderReaderCase = 1
+	BackupStorage_ProviderReaderCase_Azure BackupStorage_ProviderReaderCase = 2
+)
+
+func (r *backupStorageReadonly) WhichProvider() BackupStorage_ProviderReaderCase {
+	switch (*BackupStorage)(r).GetProvider().(type) {
+	case *BackupStorage_S3:
+		return BackupStorage_ProviderReaderCase_S3
+	case *BackupStorage_Azure:
+		return BackupStorage_ProviderReaderCase_Azure
+	default:
+		return BackupStorage_ProviderReaderCase_Unset
+	}
 }
 
 func (r *backupStorageReadonly) Mutate() *BackupStorage {
