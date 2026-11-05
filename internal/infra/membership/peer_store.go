@@ -87,12 +87,14 @@ func (p *PeerStore) migrateLegacyServiceAddresses(servicePort int) error {
 			InstanceId:     normalized.InstanceID,
 		}); err != nil {
 			_ = session.Cancel()
+
 			return fmt.Errorf("migrating peer %d: %w", nodeID, err)
 		}
 	}
 
 	if err := session.SetBytes(membershipFormatKey, membershipFormatRevisionBytes(membershipFormatRevisionPeerPort)); err != nil {
 		_ = session.Cancel()
+
 		return fmt.Errorf("writing membership format revision: %w", err)
 	}
 
@@ -191,6 +193,7 @@ func (p *PeerStore) Put(nodeID uint64, raftAddr, serviceAddr string, instanceID 
 
 		return fmt.Errorf("writing peer %d: %w", nodeID, err)
 	}
+
 	return session.Commit()
 }
 
@@ -203,6 +206,7 @@ func (p *PeerStore) Delete(nodeID uint64) error {
 
 		return fmt.Errorf("deleting peer %d: %w", nodeID, err)
 	}
+
 	return session.Commit()
 }
 
@@ -214,6 +218,7 @@ func (p *PeerStore) DeleteInSession(session *dal.WriteSession, nodeID uint64) er
 	if err := session.DeleteKey(peerKey(nodeID)); err != nil {
 		return fmt.Errorf("session delete peer %d: %w", nodeID, err)
 	}
+
 	return nil
 }
 
