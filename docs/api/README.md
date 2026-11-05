@@ -361,14 +361,15 @@ Idempotency-Key: string
   "queries": {
     "property1": {
       "description": "string",
-      "resource": "transactions",
+      "resource": "accounts",
       "params": {
-        "resource": "accounts",
         "pageSize": 100,
-        "cursor": "aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ==",
-        "expand": "string",
-        "pit": "2019-08-24T14:15:22Z",
-        "sort": "id:desc"
+        "sort": "id:desc",
+        "expand": [
+          "string"
+        ],
+        "startTime": "2019-08-24T14:15:22Z",
+        "endTime": "2019-08-24T14:15:22Z"
       },
       "vars": {
         "property1": {
@@ -384,14 +385,15 @@ Idempotency-Key: string
     },
     "property2": {
       "description": "string",
-      "resource": "transactions",
+      "resource": "accounts",
       "params": {
-        "resource": "accounts",
         "pageSize": 100,
-        "cursor": "aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ==",
-        "expand": "string",
-        "pit": "2019-08-24T14:15:22Z",
-        "sort": "id:desc"
+        "sort": "id:desc",
+        "expand": [
+          "string"
+        ],
+        "startTime": "2019-08-24T14:15:22Z",
+        "endTime": "2019-08-24T14:15:22Z"
       },
       "vars": {
         "property1": {
@@ -501,14 +503,15 @@ Accept: application/json
     "queries": {
       "property1": {
         "description": "string",
-        "resource": "transactions",
+        "resource": "accounts",
         "params": {
-          "resource": "accounts",
           "pageSize": 100,
-          "cursor": "aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ==",
-          "expand": "string",
-          "pit": "2019-08-24T14:15:22Z",
-          "sort": "id:desc"
+          "sort": "id:desc",
+          "expand": [
+            "string"
+          ],
+          "startTime": "2019-08-24T14:15:22Z",
+          "endTime": "2019-08-24T14:15:22Z"
         },
         "vars": {
           "property1": {
@@ -524,14 +527,15 @@ Accept: application/json
       },
       "property2": {
         "description": "string",
-        "resource": "transactions",
+        "resource": "accounts",
         "params": {
-          "resource": "accounts",
           "pageSize": 100,
-          "cursor": "aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ==",
-          "expand": "string",
-          "pit": "2019-08-24T14:15:22Z",
-          "sort": "id:desc"
+          "sort": "id:desc",
+          "expand": [
+            "string"
+          ],
+          "startTime": "2019-08-24T14:15:22Z",
+          "endTime": "2019-08-24T14:15:22Z"
         },
         "vars": {
           "property1": {
@@ -628,14 +632,15 @@ Accept: application/json
         "queries": {
           "property1": {
             "description": "string",
-            "resource": "transactions",
+            "resource": "accounts",
             "params": {
-              "resource": "accounts",
               "pageSize": 100,
-              "cursor": "aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ==",
-              "expand": "string",
-              "pit": "2019-08-24T14:15:22Z",
-              "sort": "id:desc"
+              "sort": "id:desc",
+              "expand": [
+                "string"
+              ],
+              "startTime": "2019-08-24T14:15:22Z",
+              "endTime": "2019-08-24T14:15:22Z"
             },
             "vars": {
               "property1": {
@@ -651,14 +656,15 @@ Accept: application/json
           },
           "property2": {
             "description": "string",
-            "resource": "transactions",
+            "resource": "accounts",
             "params": {
-              "resource": "accounts",
               "pageSize": 100,
-              "cursor": "aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ==",
-              "expand": "string",
-              "pit": "2019-08-24T14:15:22Z",
-              "sort": "id:desc"
+              "sort": "id:desc",
+              "expand": [
+                "string"
+              ],
+              "startTime": "2019-08-24T14:15:22Z",
+              "endTime": "2019-08-24T14:15:22Z"
             },
             "vars": {
               "property1": {
@@ -2673,12 +2679,15 @@ Run a query template on a ledger
 {
   "cursor": "string",
   "params": {
-    "resource": "accounts",
     "pageSize": 100,
-    "cursor": "aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ==",
-    "expand": "string",
-    "pit": "2019-08-24T14:15:22Z",
-    "sort": "id:desc"
+    "sort": "id:desc",
+    "expand": [
+      "string"
+    ],
+    "startTime": "2019-08-24T14:15:22Z",
+    "endTime": "2019-08-24T14:15:22Z",
+    "insertionDate": true,
+    "groupBy": 0
   },
   "vars": {
     "property1": "string",
@@ -2704,45 +2713,14 @@ Run a query template on a ledger
 |sort|query|string|false|Sort results using a field name and order (ascending or descending).|
 |body|body|object|true|none|
 |» cursor|body|string|false|none|
-|» params|body|[V2QueryParams](#schemav2queryparams)|false|Parameters applied when running a query template|
-|»» *anonymous*|body|object|false|none|
-|»»» resource|body|string|true|none|
-|»»» pageSize|body|[V2QueryParamsCommon/properties/pageSize](#schemav2queryparamscommon/properties/pagesize)(int64)|false|The maximum number of results to return per page.|
-|»»» cursor|body|[V2QueryParamsCommon/properties/cursor](#schemav2queryparamscommon/properties/cursor)|false|Parameter used in pagination requests. Maximum page size is set to 15.|
-|»»» expand|body|[V2QueryParamsCommon/properties/expand](#schemav2queryparamscommon/properties/expand)|false|Additional data to include in the response, such as volumes|
-|»»» pit|body|[V2QueryParamsCommon/properties/pit](#schemav2queryparamscommon/properties/pit)(date-time)|false|Point-in-time. Returns the state as it existed at this timestamp|
-|»»» sort|body|[V2QueryParamsCommon/properties/sort](#schemav2queryparamscommon/properties/sort)|false|Sort results using a field name and order (ascending or descending).|
-|»» *anonymous*|body|object|false|none|
-|»»» resource|body|string|true|none|
-|»»» pageSize|body|[V2QueryParamsCommon/properties/pageSize](#schemav2queryparamscommon/properties/pagesize)(int64)|false|The maximum number of results to return per page.|
-|»»» cursor|body|[V2QueryParamsCommon/properties/cursor](#schemav2queryparamscommon/properties/cursor)|false|Parameter used in pagination requests. Maximum page size is set to 15.|
-|»»» expand|body|[V2QueryParamsCommon/properties/expand](#schemav2queryparamscommon/properties/expand)|false|Additional data to include in the response, such as volumes|
-|»»» pit|body|[V2QueryParamsCommon/properties/pit](#schemav2queryparamscommon/properties/pit)(date-time)|false|Point-in-time. Returns the state as it existed at this timestamp|
-|»»» sort|body|[V2QueryParamsCommon/properties/sort](#schemav2queryparamscommon/properties/sort)|false|Sort results using a field name and order (ascending or descending).|
-|»» *anonymous*|body|object|false|none|
-|»»» resource|body|string|true|none|
-|»»» pageSize|body|[V2QueryParamsCommon/properties/pageSize](#schemav2queryparamscommon/properties/pagesize)(int64)|false|The maximum number of results to return per page.|
-|»»» cursor|body|[V2QueryParamsCommon/properties/cursor](#schemav2queryparamscommon/properties/cursor)|false|Parameter used in pagination requests. Maximum page size is set to 15.|
-|»»» expand|body|[V2QueryParamsCommon/properties/expand](#schemav2queryparamscommon/properties/expand)|false|Additional data to include in the response, such as volumes|
-|»»» pit|body|[V2QueryParamsCommon/properties/pit](#schemav2queryparamscommon/properties/pit)(date-time)|false|Point-in-time. Returns the state as it existed at this timestamp|
-|»»» sort|body|[V2QueryParamsCommon/properties/sort](#schemav2queryparamscommon/properties/sort)|false|Sort results using a field name and order (ascending or descending).|
-|»» *anonymous*|body|object|false|none|
-|»»» resource|body|string|true|none|
-|»»» insertionDate|body|boolean|false|none|
-|»»» groupBy|body|integer|false|none|
-|»»» pageSize|body|[V2QueryParamsCommon/properties/pageSize](#schemav2queryparamscommon/properties/pagesize)(int64)|false|The maximum number of results to return per page.|
-|»»» cursor|body|[V2QueryParamsCommon/properties/cursor](#schemav2queryparamscommon/properties/cursor)|false|Parameter used in pagination requests. Maximum page size is set to 15.|
-|»»» expand|body|[V2QueryParamsCommon/properties/expand](#schemav2queryparamscommon/properties/expand)|false|Additional data to include in the response, such as volumes|
-|»»» pit|body|[V2QueryParamsCommon/properties/pit](#schemav2queryparamscommon/properties/pit)(date-time)|false|Point-in-time. Returns the state as it existed at this timestamp|
-|»»» sort|body|[V2QueryParamsCommon/properties/sort](#schemav2queryparamscommon/properties/sort)|false|Sort results using a field name and order (ascending or descending).|
-|»» *anonymous*|body|object|false|Parameters without a nested resource; the parent query selects the resource. groupBy and insertionDate apply only to volumes.|
-|»»» pageSize|body|integer(int64)|false|none|
-|»»» sort|body|string|false|none|
-|»»» expand|body|[string]|false|none|
-|»»» startTime|body|string(date-time)|false|none|
-|»»» endTime|body|string(date-time)|false|none|
-|»»» insertionDate|body|boolean|false|none|
-|»»» groupBy|body|integer|false|none|
+|» params|body|[V2RunQueryParams](#schemav2runqueryparams)|false|Parameter overrides applied when running a query template. `insertionDate` and `groupBy` only apply to volume queries.|
+|»» pageSize|body|integer(int64)|false|The maximum number of results to return per page.|
+|»» sort|body|string|false|Sort results using a field name and order (ascending or descending).|
+|»» expand|body|[string]|false|Additional data to include in the response, such as volumes|
+|»» startTime|body|string(date-time)|false|Lower bound of the time window the query covers|
+|»» endTime|body|string(date-time)|false|Upper bound of the time window the query covers|
+|»» insertionDate|body|boolean|false|Use the insertion date instead of the effective date for the time window|
+|»» groupBy|body|integer|false|Number of address segments to group volumes by|
 |» vars|body|object|false|none|
 |»» **additionalProperties**|body|string|false|none|
 
@@ -2762,36 +2740,7 @@ No other parameters can be set when this parameter is set.
 **sort**: Sort results using a field name and order (ascending or descending).
 Format: `<field>:<order>`, where `<field>` is the field name and `<order>` is either `asc` or `desc`.
 
-**»»» cursor**: Parameter used in pagination requests. Maximum page size is set to 15.
-Set to the value of next for the next page of results.
-Set to the value of previous for the previous page of results.
-No other parameters can be set when this parameter is set.
-
-**»»» sort**: Sort results using a field name and order (ascending or descending).
-Format: `<field>:<order>`, where `<field>` is the field name and `<order>` is either `asc` or `desc`.
-
-**»»» cursor**: Parameter used in pagination requests. Maximum page size is set to 15.
-Set to the value of next for the next page of results.
-Set to the value of previous for the previous page of results.
-No other parameters can be set when this parameter is set.
-
-**»»» sort**: Sort results using a field name and order (ascending or descending).
-Format: `<field>:<order>`, where `<field>` is the field name and `<order>` is either `asc` or `desc`.
-
-**»»» cursor**: Parameter used in pagination requests. Maximum page size is set to 15.
-Set to the value of next for the next page of results.
-Set to the value of previous for the previous page of results.
-No other parameters can be set when this parameter is set.
-
-**»»» sort**: Sort results using a field name and order (ascending or descending).
-Format: `<field>:<order>`, where `<field>` is the field name and `<order>` is either `asc` or `desc`.
-
-**»»» cursor**: Parameter used in pagination requests. Maximum page size is set to 15.
-Set to the value of next for the next page of results.
-Set to the value of previous for the previous page of results.
-No other parameters can be set when this parameter is set.
-
-**»»» sort**: Sort results using a field name and order (ascending or descending).
+**»» sort**: Sort results using a field name and order (ascending or descending).
 Format: `<field>:<order>`, where `<field>` is the field name and `<order>` is either `asc` or `desc`.
 
 #### Enumerated Values
@@ -2799,10 +2748,6 @@ Format: `<field>:<order>`, where `<field>` is the field name and `<order>` is ei
 |Parameter|Value|
 |---|---|
 |order|effective|
-|»»» resource|accounts|
-|»»» resource|transactions|
-|»»» resource|logs|
-|»»» resource|volumes|
 
 > Example responses
 
@@ -2934,10 +2879,6 @@ Format: `<field>:<order>`, where `<field>` is the field name and `<order>` is ei
 |targetType|TRANSACTION|
 |runtime|experimental-interpreter|
 |runtime|machine|
-|resource|transactions|
-|resource|accounts|
-|resource|logs|
-|resource|volumes|
 |resource|accounts|
 |resource|transactions|
 |resource|logs|
@@ -5040,14 +4981,15 @@ continued
     "queries": {
       "property1": {
         "description": "string",
-        "resource": "transactions",
+        "resource": "accounts",
         "params": {
-          "resource": "accounts",
           "pageSize": 100,
-          "cursor": "aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ==",
-          "expand": "string",
-          "pit": "2019-08-24T14:15:22Z",
-          "sort": "id:desc"
+          "sort": "id:desc",
+          "expand": [
+            "string"
+          ],
+          "startTime": "2019-08-24T14:15:22Z",
+          "endTime": "2019-08-24T14:15:22Z"
         },
         "vars": {
           "property1": {
@@ -5063,14 +5005,15 @@ continued
       },
       "property2": {
         "description": "string",
-        "resource": "transactions",
+        "resource": "accounts",
         "params": {
-          "resource": "accounts",
           "pageSize": 100,
-          "cursor": "aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ==",
-          "expand": "string",
-          "pit": "2019-08-24T14:15:22Z",
-          "sort": "id:desc"
+          "sort": "id:desc",
+          "expand": [
+            "string"
+          ],
+          "startTime": "2019-08-24T14:15:22Z",
+          "endTime": "2019-08-24T14:15:22Z"
         },
         "vars": {
           "property1": {
@@ -6896,34 +6839,6 @@ The resource a query template targets
 |*anonymous*|logs|
 |*anonymous*|volumes|
 
-<h2 id="tocS_V2QueryParamsCommon">V2QueryParamsCommon</h2>
-<!-- backwards compatibility -->
-<a id="schemav2queryparamscommon"></a>
-<a id="schema_V2QueryParamsCommon"></a>
-<a id="tocSv2queryparamscommon"></a>
-<a id="tocsv2queryparamscommon"></a>
-
-```json
-{
-  "pageSize": 100,
-  "cursor": "aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ==",
-  "expand": "string",
-  "pit": "2019-08-24T14:15:22Z",
-  "sort": "id:desc"
-}
-
-```
-
-### Properties
-
-|Name|Type|Required|Restrictions|Description|
-|---|---|---|---|---|
-|pageSize|integer(int64)|false|none|The maximum number of results to return per page.|
-|cursor|string|false|none|Parameter used in pagination requests. Maximum page size is set to 15.<br>Set to the value of next for the next page of results.<br>Set to the value of previous for the previous page of results.<br>No other parameters can be set when this parameter is set.|
-|expand|string|false|none|Additional data to include in the response, such as volumes|
-|pit|string(date-time)|false|none|Point-in-time. Returns the state as it existed at this timestamp|
-|sort|string|false|none|Sort results using a field name and order (ascending or descending).<br>Format: `<field>:<order>`, where `<field>` is the field name and `<order>` is either `asc` or `desc`.|
-
 <h2 id="tocS_V2QueryParams">V2QueryParams</h2>
 <!-- backwards compatibility -->
 <a id="schemav2queryparams"></a>
@@ -6933,12 +6848,13 @@ The resource a query template targets
 
 ```json
 {
-  "resource": "accounts",
   "pageSize": 100,
-  "cursor": "aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ==",
-  "expand": "string",
-  "pit": "2019-08-24T14:15:22Z",
-  "sort": "id:desc"
+  "sort": "id:desc",
+  "expand": [
+    "string"
+  ],
+  "startTime": "2019-08-24T14:15:22Z",
+  "endTime": "2019-08-24T14:15:22Z"
 }
 
 ```
@@ -6947,96 +6863,129 @@ Parameters applied when running a query template
 
 ### Properties
 
-oneOf
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|pageSize|integer(int64)|false|none|The maximum number of results to return per page.|
+|sort|string|false|none|Sort results using a field name and order (ascending or descending).<br>Format: `<field>:<order>`, where `<field>` is the field name and `<order>` is either `asc` or `desc`.|
+|expand|[string]|false|none|Additional data to include in the response, such as volumes|
+|startTime|string(date-time)|false|none|Lower bound of the time window the query covers|
+|endTime|string(date-time)|false|none|Upper bound of the time window the query covers|
+
+<h2 id="tocS_V2VolumeQueryParams">V2VolumeQueryParams</h2>
+<!-- backwards compatibility -->
+<a id="schemav2volumequeryparams"></a>
+<a id="schema_V2VolumeQueryParams"></a>
+<a id="tocSv2volumequeryparams"></a>
+<a id="tocsv2volumequeryparams"></a>
+
+```json
+{
+  "pageSize": 100,
+  "sort": "id:desc",
+  "expand": [
+    "string"
+  ],
+  "startTime": "2019-08-24T14:15:22Z",
+  "endTime": "2019-08-24T14:15:22Z",
+  "insertionDate": true,
+  "groupBy": 0
+}
+
+```
+
+Parameters applied when running a query template targeting volumes
+
+### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|*anonymous*|object|false|none|none|
-|» resource|string|true|none|none|
-|» pageSize|[V2QueryParamsCommon/properties/pageSize](#schemav2queryparamscommon/properties/pagesize)|false|none|The maximum number of results to return per page.|
-|» cursor|[V2QueryParamsCommon/properties/cursor](#schemav2queryparamscommon/properties/cursor)|false|none|Parameter used in pagination requests. Maximum page size is set to 15.<br>Set to the value of next for the next page of results.<br>Set to the value of previous for the previous page of results.<br>No other parameters can be set when this parameter is set.|
-|» expand|[V2QueryParamsCommon/properties/expand](#schemav2queryparamscommon/properties/expand)|false|none|Additional data to include in the response, such as volumes|
-|» pit|[V2QueryParamsCommon/properties/pit](#schemav2queryparamscommon/properties/pit)|false|none|Point-in-time. Returns the state as it existed at this timestamp|
-|» sort|[V2QueryParamsCommon/properties/sort](#schemav2queryparamscommon/properties/sort)|false|none|Sort results using a field name and order (ascending or descending).<br>Format: `<field>:<order>`, where `<field>` is the field name and `<order>` is either `asc` or `desc`.|
+|pageSize|integer(int64)|false|none|The maximum number of results to return per page.|
+|sort|string|false|none|Sort results using a field name and order (ascending or descending).<br>Format: `<field>:<order>`, where `<field>` is the field name and `<order>` is either `asc` or `desc`.|
+|expand|[string]|false|none|Additional data to include in the response, such as volumes|
+|startTime|string(date-time)|false|none|Lower bound of the time window the query covers|
+|endTime|string(date-time)|false|none|Upper bound of the time window the query covers|
+|insertionDate|boolean|false|none|Use the insertion date instead of the effective date for the time window|
+|groupBy|integer|false|none|Number of address segments to group volumes by|
 
-xor
+<h2 id="tocS_V2RunQueryParams">V2RunQueryParams</h2>
+<!-- backwards compatibility -->
+<a id="schemav2runqueryparams"></a>
+<a id="schema_V2RunQueryParams"></a>
+<a id="tocSv2runqueryparams"></a>
+<a id="tocsv2runqueryparams"></a>
 
-|Name|Type|Required|Restrictions|Description|
-|---|---|---|---|---|
-|*anonymous*|object|false|none|none|
-|» resource|string|true|none|none|
-|» pageSize|[V2QueryParamsCommon/properties/pageSize](#schemav2queryparamscommon/properties/pagesize)|false|none|The maximum number of results to return per page.|
-|» cursor|[V2QueryParamsCommon/properties/cursor](#schemav2queryparamscommon/properties/cursor)|false|none|Parameter used in pagination requests. Maximum page size is set to 15.<br>Set to the value of next for the next page of results.<br>Set to the value of previous for the previous page of results.<br>No other parameters can be set when this parameter is set.|
-|» expand|[V2QueryParamsCommon/properties/expand](#schemav2queryparamscommon/properties/expand)|false|none|Additional data to include in the response, such as volumes|
-|» pit|[V2QueryParamsCommon/properties/pit](#schemav2queryparamscommon/properties/pit)|false|none|Point-in-time. Returns the state as it existed at this timestamp|
-|» sort|[V2QueryParamsCommon/properties/sort](#schemav2queryparamscommon/properties/sort)|false|none|Sort results using a field name and order (ascending or descending).<br>Format: `<field>:<order>`, where `<field>` is the field name and `<order>` is either `asc` or `desc`.|
+```json
+{
+  "pageSize": 100,
+  "sort": "id:desc",
+  "expand": [
+    "string"
+  ],
+  "startTime": "2019-08-24T14:15:22Z",
+  "endTime": "2019-08-24T14:15:22Z",
+  "insertionDate": true,
+  "groupBy": 0
+}
 
-xor
+```
 
-|Name|Type|Required|Restrictions|Description|
-|---|---|---|---|---|
-|*anonymous*|object|false|none|none|
-|» resource|string|true|none|none|
-|» pageSize|[V2QueryParamsCommon/properties/pageSize](#schemav2queryparamscommon/properties/pagesize)|false|none|The maximum number of results to return per page.|
-|» cursor|[V2QueryParamsCommon/properties/cursor](#schemav2queryparamscommon/properties/cursor)|false|none|Parameter used in pagination requests. Maximum page size is set to 15.<br>Set to the value of next for the next page of results.<br>Set to the value of previous for the previous page of results.<br>No other parameters can be set when this parameter is set.|
-|» expand|[V2QueryParamsCommon/properties/expand](#schemav2queryparamscommon/properties/expand)|false|none|Additional data to include in the response, such as volumes|
-|» pit|[V2QueryParamsCommon/properties/pit](#schemav2queryparamscommon/properties/pit)|false|none|Point-in-time. Returns the state as it existed at this timestamp|
-|» sort|[V2QueryParamsCommon/properties/sort](#schemav2queryparamscommon/properties/sort)|false|none|Sort results using a field name and order (ascending or descending).<br>Format: `<field>:<order>`, where `<field>` is the field name and `<order>` is either `asc` or `desc`.|
+Parameter overrides applied when running a query template. `insertionDate` and `groupBy` only apply to volume queries.
 
-xor
-
-|Name|Type|Required|Restrictions|Description|
-|---|---|---|---|---|
-|*anonymous*|object|false|none|none|
-|» resource|string|true|none|none|
-|» insertionDate|boolean|false|none|none|
-|» groupBy|integer|false|none|none|
-|» pageSize|[V2QueryParamsCommon/properties/pageSize](#schemav2queryparamscommon/properties/pagesize)|false|none|The maximum number of results to return per page.|
-|» cursor|[V2QueryParamsCommon/properties/cursor](#schemav2queryparamscommon/properties/cursor)|false|none|Parameter used in pagination requests. Maximum page size is set to 15.<br>Set to the value of next for the next page of results.<br>Set to the value of previous for the previous page of results.<br>No other parameters can be set when this parameter is set.|
-|» expand|[V2QueryParamsCommon/properties/expand](#schemav2queryparamscommon/properties/expand)|false|none|Additional data to include in the response, such as volumes|
-|» pit|[V2QueryParamsCommon/properties/pit](#schemav2queryparamscommon/properties/pit)|false|none|Point-in-time. Returns the state as it existed at this timestamp|
-|» sort|[V2QueryParamsCommon/properties/sort](#schemav2queryparamscommon/properties/sort)|false|none|Sort results using a field name and order (ascending or descending).<br>Format: `<field>:<order>`, where `<field>` is the field name and `<order>` is either `asc` or `desc`.|
-
-xor
+### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|*anonymous*|object|false|none|Parameters without a nested resource; the parent query selects the resource. groupBy and insertionDate apply only to volumes.|
-|» pageSize|integer(int64)|false|none|none|
-|» sort|string|false|none|none|
-|» expand|[string]|false|none|none|
-|» startTime|string(date-time)|false|none|none|
-|» endTime|string(date-time)|false|none|none|
-|» insertionDate|boolean|false|none|none|
-|» groupBy|integer|false|none|none|
+|pageSize|integer(int64)|false|none|The maximum number of results to return per page.|
+|sort|string|false|none|Sort results using a field name and order (ascending or descending).<br>Format: `<field>:<order>`, where `<field>` is the field name and `<order>` is either `asc` or `desc`.|
+|expand|[string]|false|none|Additional data to include in the response, such as volumes|
+|startTime|string(date-time)|false|none|Lower bound of the time window the query covers|
+|endTime|string(date-time)|false|none|Upper bound of the time window the query covers|
+|insertionDate|boolean|false|none|Use the insertion date instead of the effective date for the time window|
+|groupBy|integer|false|none|Number of address segments to group volumes by|
+
+<h2 id="tocS_V2AccountQueryTemplateResource">V2AccountQueryTemplateResource</h2>
+<!-- backwards compatibility -->
+<a id="schemav2accountquerytemplateresource"></a>
+<a id="schema_V2AccountQueryTemplateResource"></a>
+<a id="tocSv2accountquerytemplateresource"></a>
+<a id="tocsv2accountquerytemplateresource"></a>
+
+```json
+"accounts"
+
+```
+
+### Properties
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|*anonymous*|string|false|none|none|
 
 #### Enumerated Values
 
 |Property|Value|
 |---|---|
-|resource|accounts|
-|resource|transactions|
-|resource|logs|
-|resource|volumes|
+|*anonymous*|accounts|
 
-<h2 id="tocS_V2QueryTemplate">V2QueryTemplate</h2>
+<h2 id="tocS_V2AccountQueryTemplate">V2AccountQueryTemplate</h2>
 <!-- backwards compatibility -->
-<a id="schemav2querytemplate"></a>
-<a id="schema_V2QueryTemplate"></a>
-<a id="tocSv2querytemplate"></a>
-<a id="tocsv2querytemplate"></a>
+<a id="schemav2accountquerytemplate"></a>
+<a id="schema_V2AccountQueryTemplate"></a>
+<a id="tocSv2accountquerytemplate"></a>
+<a id="tocsv2accountquerytemplate"></a>
 
 ```json
 {
   "description": "string",
-  "resource": "transactions",
+  "resource": "accounts",
   "params": {
-    "resource": "accounts",
     "pageSize": 100,
-    "cursor": "aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ==",
-    "expand": "string",
-    "pit": "2019-08-24T14:15:22Z",
-    "sort": "id:desc"
+    "sort": "id:desc",
+    "expand": [
+      "string"
+    ],
+    "startTime": "2019-08-24T14:15:22Z",
+    "endTime": "2019-08-24T14:15:22Z"
   },
   "vars": {
     "property1": {
@@ -7058,11 +7007,286 @@ xor
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
 |description|string|false|none|Human-readable description of what the query returns|
-|resource|[V2QueryResource](#schemav2queryresource)|false|none|The resource a query template targets|
+|resource|[V2AccountQueryTemplateResource](#schemav2accountquerytemplateresource)|true|none|none|
 |params|[V2QueryParams](#schemav2queryparams)|false|none|Parameters applied when running a query template|
 |vars|object|false|none|Variables the query accepts, keyed by variable name|
 |» **additionalProperties**|[V2QueryTemplateVar](#schemav2querytemplatevar)|false|none|none|
 |body|object|false|none|The filter expression the query evaluates|
+
+<h2 id="tocS_V2TransactionQueryTemplateResource">V2TransactionQueryTemplateResource</h2>
+<!-- backwards compatibility -->
+<a id="schemav2transactionquerytemplateresource"></a>
+<a id="schema_V2TransactionQueryTemplateResource"></a>
+<a id="tocSv2transactionquerytemplateresource"></a>
+<a id="tocsv2transactionquerytemplateresource"></a>
+
+```json
+"transactions"
+
+```
+
+### Properties
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|*anonymous*|string|false|none|none|
+
+#### Enumerated Values
+
+|Property|Value|
+|---|---|
+|*anonymous*|transactions|
+
+<h2 id="tocS_V2TransactionQueryTemplate">V2TransactionQueryTemplate</h2>
+<!-- backwards compatibility -->
+<a id="schemav2transactionquerytemplate"></a>
+<a id="schema_V2TransactionQueryTemplate"></a>
+<a id="tocSv2transactionquerytemplate"></a>
+<a id="tocsv2transactionquerytemplate"></a>
+
+```json
+{
+  "description": "string",
+  "resource": "transactions",
+  "params": {
+    "pageSize": 100,
+    "sort": "id:desc",
+    "expand": [
+      "string"
+    ],
+    "startTime": "2019-08-24T14:15:22Z",
+    "endTime": "2019-08-24T14:15:22Z"
+  },
+  "vars": {
+    "property1": {
+      "type": "string",
+      "default": null
+    },
+    "property2": {
+      "type": "string",
+      "default": null
+    }
+  },
+  "body": {}
+}
+
+```
+
+### Properties
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|description|string|false|none|Human-readable description of what the query returns|
+|resource|[V2TransactionQueryTemplateResource](#schemav2transactionquerytemplateresource)|true|none|none|
+|params|[V2QueryParams](#schemav2queryparams)|false|none|Parameters applied when running a query template|
+|vars|object|false|none|Variables the query accepts, keyed by variable name|
+|» **additionalProperties**|[V2QueryTemplateVar](#schemav2querytemplatevar)|false|none|none|
+|body|object|false|none|The filter expression the query evaluates|
+
+<h2 id="tocS_V2LogQueryTemplateResource">V2LogQueryTemplateResource</h2>
+<!-- backwards compatibility -->
+<a id="schemav2logquerytemplateresource"></a>
+<a id="schema_V2LogQueryTemplateResource"></a>
+<a id="tocSv2logquerytemplateresource"></a>
+<a id="tocsv2logquerytemplateresource"></a>
+
+```json
+"logs"
+
+```
+
+### Properties
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|*anonymous*|string|false|none|none|
+
+#### Enumerated Values
+
+|Property|Value|
+|---|---|
+|*anonymous*|logs|
+
+<h2 id="tocS_V2LogQueryTemplate">V2LogQueryTemplate</h2>
+<!-- backwards compatibility -->
+<a id="schemav2logquerytemplate"></a>
+<a id="schema_V2LogQueryTemplate"></a>
+<a id="tocSv2logquerytemplate"></a>
+<a id="tocsv2logquerytemplate"></a>
+
+```json
+{
+  "description": "string",
+  "resource": "logs",
+  "params": {
+    "pageSize": 100,
+    "sort": "id:desc",
+    "expand": [
+      "string"
+    ],
+    "startTime": "2019-08-24T14:15:22Z",
+    "endTime": "2019-08-24T14:15:22Z"
+  },
+  "vars": {
+    "property1": {
+      "type": "string",
+      "default": null
+    },
+    "property2": {
+      "type": "string",
+      "default": null
+    }
+  },
+  "body": {}
+}
+
+```
+
+### Properties
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|description|string|false|none|Human-readable description of what the query returns|
+|resource|[V2LogQueryTemplateResource](#schemav2logquerytemplateresource)|true|none|none|
+|params|[V2QueryParams](#schemav2queryparams)|false|none|Parameters applied when running a query template|
+|vars|object|false|none|Variables the query accepts, keyed by variable name|
+|» **additionalProperties**|[V2QueryTemplateVar](#schemav2querytemplatevar)|false|none|none|
+|body|object|false|none|The filter expression the query evaluates|
+
+<h2 id="tocS_V2VolumeQueryTemplateResource">V2VolumeQueryTemplateResource</h2>
+<!-- backwards compatibility -->
+<a id="schemav2volumequerytemplateresource"></a>
+<a id="schema_V2VolumeQueryTemplateResource"></a>
+<a id="tocSv2volumequerytemplateresource"></a>
+<a id="tocsv2volumequerytemplateresource"></a>
+
+```json
+"volumes"
+
+```
+
+### Properties
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|*anonymous*|string|false|none|none|
+
+#### Enumerated Values
+
+|Property|Value|
+|---|---|
+|*anonymous*|volumes|
+
+<h2 id="tocS_V2VolumeQueryTemplate">V2VolumeQueryTemplate</h2>
+<!-- backwards compatibility -->
+<a id="schemav2volumequerytemplate"></a>
+<a id="schema_V2VolumeQueryTemplate"></a>
+<a id="tocSv2volumequerytemplate"></a>
+<a id="tocsv2volumequerytemplate"></a>
+
+```json
+{
+  "description": "string",
+  "resource": "volumes",
+  "params": {
+    "pageSize": 100,
+    "sort": "id:desc",
+    "expand": [
+      "string"
+    ],
+    "startTime": "2019-08-24T14:15:22Z",
+    "endTime": "2019-08-24T14:15:22Z",
+    "insertionDate": true,
+    "groupBy": 0
+  },
+  "vars": {
+    "property1": {
+      "type": "string",
+      "default": null
+    },
+    "property2": {
+      "type": "string",
+      "default": null
+    }
+  },
+  "body": {}
+}
+
+```
+
+### Properties
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|description|string|false|none|Human-readable description of what the query returns|
+|resource|[V2VolumeQueryTemplateResource](#schemav2volumequerytemplateresource)|true|none|none|
+|params|[V2VolumeQueryParams](#schemav2volumequeryparams)|false|none|Parameters applied when running a query template targeting volumes|
+|vars|object|false|none|Variables the query accepts, keyed by variable name|
+|» **additionalProperties**|[V2QueryTemplateVar](#schemav2querytemplatevar)|false|none|none|
+|body|object|false|none|The filter expression the query evaluates|
+
+<h2 id="tocS_V2QueryTemplate">V2QueryTemplate</h2>
+<!-- backwards compatibility -->
+<a id="schemav2querytemplate"></a>
+<a id="schema_V2QueryTemplate"></a>
+<a id="tocSv2querytemplate"></a>
+<a id="tocsv2querytemplate"></a>
+
+```json
+{
+  "description": "string",
+  "resource": "accounts",
+  "params": {
+    "pageSize": 100,
+    "sort": "id:desc",
+    "expand": [
+      "string"
+    ],
+    "startTime": "2019-08-24T14:15:22Z",
+    "endTime": "2019-08-24T14:15:22Z"
+  },
+  "vars": {
+    "property1": {
+      "type": "string",
+      "default": null
+    },
+    "property2": {
+      "type": "string",
+      "default": null
+    }
+  },
+  "body": {}
+}
+
+```
+
+A query template. `resource` selects which parameters apply.
+
+### Properties
+
+oneOf
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|*anonymous*|[V2AccountQueryTemplate](#schemav2accountquerytemplate)|false|none|none|
+
+xor
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|*anonymous*|[V2TransactionQueryTemplate](#schemav2transactionquerytemplate)|false|none|none|
+
+xor
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|*anonymous*|[V2LogQueryTemplate](#schemav2logquerytemplate)|false|none|none|
+
+xor
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|*anonymous*|[V2VolumeQueryTemplate](#schemav2volumequerytemplate)|false|none|none|
 
 <h2 id="tocS_V2QueryTemplates">V2QueryTemplates</h2>
 <!-- backwards compatibility -->
@@ -7075,14 +7299,15 @@ xor
 {
   "property1": {
     "description": "string",
-    "resource": "transactions",
+    "resource": "accounts",
     "params": {
-      "resource": "accounts",
       "pageSize": 100,
-      "cursor": "aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ==",
-      "expand": "string",
-      "pit": "2019-08-24T14:15:22Z",
-      "sort": "id:desc"
+      "sort": "id:desc",
+      "expand": [
+        "string"
+      ],
+      "startTime": "2019-08-24T14:15:22Z",
+      "endTime": "2019-08-24T14:15:22Z"
     },
     "vars": {
       "property1": {
@@ -7098,14 +7323,15 @@ xor
   },
   "property2": {
     "description": "string",
-    "resource": "transactions",
+    "resource": "accounts",
     "params": {
-      "resource": "accounts",
       "pageSize": 100,
-      "cursor": "aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ==",
-      "expand": "string",
-      "pit": "2019-08-24T14:15:22Z",
-      "sort": "id:desc"
+      "sort": "id:desc",
+      "expand": [
+        "string"
+      ],
+      "startTime": "2019-08-24T14:15:22Z",
+      "endTime": "2019-08-24T14:15:22Z"
     },
     "vars": {
       "property1": {
@@ -7129,7 +7355,7 @@ Query templates
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|**additionalProperties**|[V2QueryTemplate](#schemav2querytemplate)|false|none|none|
+|**additionalProperties**|[V2QueryTemplate](#schemav2querytemplate)|false|none|A query template. `resource` selects which parameters apply.|
 
 <h2 id="tocS_V2SchemaData">V2SchemaData</h2>
 <!-- backwards compatibility -->
@@ -7162,14 +7388,15 @@ Query templates
   "queries": {
     "property1": {
       "description": "string",
-      "resource": "transactions",
+      "resource": "accounts",
       "params": {
-        "resource": "accounts",
         "pageSize": 100,
-        "cursor": "aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ==",
-        "expand": "string",
-        "pit": "2019-08-24T14:15:22Z",
-        "sort": "id:desc"
+        "sort": "id:desc",
+        "expand": [
+          "string"
+        ],
+        "startTime": "2019-08-24T14:15:22Z",
+        "endTime": "2019-08-24T14:15:22Z"
       },
       "vars": {
         "property1": {
@@ -7185,14 +7412,15 @@ Query templates
     },
     "property2": {
       "description": "string",
-      "resource": "transactions",
+      "resource": "accounts",
       "params": {
-        "resource": "accounts",
         "pageSize": 100,
-        "cursor": "aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ==",
-        "expand": "string",
-        "pit": "2019-08-24T14:15:22Z",
-        "sort": "id:desc"
+        "sort": "id:desc",
+        "expand": [
+          "string"
+        ],
+        "startTime": "2019-08-24T14:15:22Z",
+        "endTime": "2019-08-24T14:15:22Z"
       },
       "vars": {
         "property1": {
@@ -7254,14 +7482,15 @@ Schema data structure for ledger schemas
   "queries": {
     "property1": {
       "description": "string",
-      "resource": "transactions",
+      "resource": "accounts",
       "params": {
-        "resource": "accounts",
         "pageSize": 100,
-        "cursor": "aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ==",
-        "expand": "string",
-        "pit": "2019-08-24T14:15:22Z",
-        "sort": "id:desc"
+        "sort": "id:desc",
+        "expand": [
+          "string"
+        ],
+        "startTime": "2019-08-24T14:15:22Z",
+        "endTime": "2019-08-24T14:15:22Z"
       },
       "vars": {
         "property1": {
@@ -7277,14 +7506,15 @@ Schema data structure for ledger schemas
     },
     "property2": {
       "description": "string",
-      "resource": "transactions",
+      "resource": "accounts",
       "params": {
-        "resource": "accounts",
         "pageSize": 100,
-        "cursor": "aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ==",
-        "expand": "string",
-        "pit": "2019-08-24T14:15:22Z",
-        "sort": "id:desc"
+        "sort": "id:desc",
+        "expand": [
+          "string"
+        ],
+        "startTime": "2019-08-24T14:15:22Z",
+        "endTime": "2019-08-24T14:15:22Z"
       },
       "vars": {
         "property1": {
@@ -7355,14 +7585,15 @@ and
     "queries": {
       "property1": {
         "description": "string",
-        "resource": "transactions",
+        "resource": "accounts",
         "params": {
-          "resource": "accounts",
           "pageSize": 100,
-          "cursor": "aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ==",
-          "expand": "string",
-          "pit": "2019-08-24T14:15:22Z",
-          "sort": "id:desc"
+          "sort": "id:desc",
+          "expand": [
+            "string"
+          ],
+          "startTime": "2019-08-24T14:15:22Z",
+          "endTime": "2019-08-24T14:15:22Z"
         },
         "vars": {
           "property1": {
@@ -7378,14 +7609,15 @@ and
       },
       "property2": {
         "description": "string",
-        "resource": "transactions",
+        "resource": "accounts",
         "params": {
-          "resource": "accounts",
           "pageSize": 100,
-          "cursor": "aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ==",
-          "expand": "string",
-          "pit": "2019-08-24T14:15:22Z",
-          "sort": "id:desc"
+          "sort": "id:desc",
+          "expand": [
+            "string"
+          ],
+          "startTime": "2019-08-24T14:15:22Z",
+          "endTime": "2019-08-24T14:15:22Z"
         },
         "vars": {
           "property1": {
@@ -7447,14 +7679,15 @@ and
         "queries": {
           "property1": {
             "description": "string",
-            "resource": "transactions",
+            "resource": "accounts",
             "params": {
-              "resource": "accounts",
               "pageSize": 100,
-              "cursor": "aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ==",
-              "expand": "string",
-              "pit": "2019-08-24T14:15:22Z",
-              "sort": "id:desc"
+              "sort": "id:desc",
+              "expand": [
+                "string"
+              ],
+              "startTime": "2019-08-24T14:15:22Z",
+              "endTime": "2019-08-24T14:15:22Z"
             },
             "vars": {
               "property1": {
@@ -7470,14 +7703,15 @@ and
           },
           "property2": {
             "description": "string",
-            "resource": "transactions",
+            "resource": "accounts",
             "params": {
-              "resource": "accounts",
               "pageSize": 100,
-              "cursor": "aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ==",
-              "expand": "string",
-              "pit": "2019-08-24T14:15:22Z",
-              "sort": "id:desc"
+              "sort": "id:desc",
+              "expand": [
+                "string"
+              ],
+              "startTime": "2019-08-24T14:15:22Z",
+              "endTime": "2019-08-24T14:15:22Z"
             },
             "vars": {
               "property1": {
@@ -7544,14 +7778,15 @@ and
       "queries": {
         "property1": {
           "description": "string",
-          "resource": "transactions",
+          "resource": "accounts",
           "params": {
-            "resource": "accounts",
             "pageSize": 100,
-            "cursor": "aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ==",
-            "expand": "string",
-            "pit": "2019-08-24T14:15:22Z",
-            "sort": "id:desc"
+            "sort": "id:desc",
+            "expand": [
+              "string"
+            ],
+            "startTime": "2019-08-24T14:15:22Z",
+            "endTime": "2019-08-24T14:15:22Z"
           },
           "vars": {
             "property1": {
@@ -7567,14 +7802,15 @@ and
         },
         "property2": {
           "description": "string",
-          "resource": "transactions",
+          "resource": "accounts",
           "params": {
-            "resource": "accounts",
             "pageSize": 100,
-            "cursor": "aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ==",
-            "expand": "string",
-            "pit": "2019-08-24T14:15:22Z",
-            "sort": "id:desc"
+            "sort": "id:desc",
+            "expand": [
+              "string"
+            ],
+            "startTime": "2019-08-24T14:15:22Z",
+            "endTime": "2019-08-24T14:15:22Z"
           },
           "vars": {
             "property1": {

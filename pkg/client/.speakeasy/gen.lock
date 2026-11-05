@@ -179,26 +179,6 @@ trackedFiles:
     id: 7d4af486d0b0
     last_write_checksum: sha1:72e033c8a8d7eda4f61592131948a6d43f8ab4a5
     pristine_git_object: 54d2086f891a74c59bfd8a00963a7d20347efdff
-  docs/models/components/querytemplateaccountparams.md:
-    id: 7e77b7c1fa51
-    last_write_checksum: sha1:23b9c01f090947290ff305f1b6314b2ed49bcb34
-    pristine_git_object: b6bcf851f1c26bc16a7d972aa11d7a9efbe2061a
-  docs/models/components/querytemplatelogparams.md:
-    id: 85cf272ed964
-    last_write_checksum: sha1:5c71f7c269b1d7a4ea83e36a308832bb25e17923
-    pristine_git_object: 5b6d0264d09a0f14fb8cbd8c30970d269f81361c
-  docs/models/components/querytemplateplainparams.md:
-    id: 085a5edd43e1
-    last_write_checksum: sha1:ffad5fd5b71cd23765b9cc108c9fa25ff5a02bda
-    pristine_git_object: efedadb07c141ef83563de33df1cbce3bea01033
-  docs/models/components/querytemplatetransactionparams.md:
-    id: e2bd0b54b385
-    last_write_checksum: sha1:3f661f10d5c10baedf2bb37c3000c9c468ed3975
-    pristine_git_object: 8e91d0f3fd0728190867f0aa460b141500a2e537
-  docs/models/components/querytemplatevolumeparams.md:
-    id: cf44b00421a2
-    last_write_checksum: sha1:2db25fba31e5e497f4aee897eb0f4838b43870d8
-    pristine_git_object: ca1909f982d0c366e89aaa8aee5d6403348b9e56
   docs/models/components/resource.md:
     id: 7b2ee3d291d2
     last_write_checksum: sha1:c38077e46332084e72f17c6b4b9ea553f3569451
@@ -279,6 +259,10 @@ trackedFiles:
     id: c90733acf200
     last_write_checksum: sha1:8bca2f72d46b02aa070837614cdec7949d4aff10
     pristine_git_object: 64d0d817cf8c4918841ac9f482c07d0c0174ff96
+  docs/models/components/v2accountquerytemplate.md:
+    last_write_checksum: sha1:5429df1170cd06f31d634ebdabbfff8f2fcff6aa
+  docs/models/components/v2accountquerytemplateresource.md:
+    last_write_checksum: sha1:530334401ca9a40ec20dd3aef718b30869461ddc
   docs/models/components/v2accountresponse.md:
     id: 8c1d7cc9eecc
     last_write_checksum: sha1:11e4e47e07083ee6f78fc1bc8c8919123f23ba73
@@ -487,6 +471,10 @@ trackedFiles:
     id: a4e887b46fbc
     last_write_checksum: sha1:e5e5d6d31bcfc7cc7711be34ed1f2eec981566fb
     pristine_git_object: 187c0e05f29917b5bfe460ac52c0b70e93aaa184
+  docs/models/components/v2logquerytemplate.md:
+    last_write_checksum: sha1:0064cfea7b35aca0e545a05313001197c60430c4
+  docs/models/components/v2logquerytemplateresource.md:
+    last_write_checksum: sha1:927342e8feab18b81c9877203480e6d5839e9163
   docs/models/components/v2logscursorresponse.md:
     id: 05dc55406f11
     last_write_checksum: sha1:7fe9c7acbef0d13c6833814ac509ea2effbface1
@@ -541,31 +529,11 @@ trackedFiles:
     pristine_git_object: 2a951423e3f419af38654aee8fa46c6ba35b80ad
   docs/models/components/v2queryparams.md:
     id: 720f4ec597f8
-    last_write_checksum: sha1:8ddfe92e41841437575c6555b55b04f720b0f5d8
+    last_write_checksum: sha1:f9e06e6dbe4b58a1de9120384000eb5e17856bc2
     pristine_git_object: 24be460b4203f7d551ca562e29c4a66762c4c262
-  docs/models/components/v2queryparams1resource.md:
-    id: c804e4c2aeb3
-    last_write_checksum: sha1:2eea7ad5ca867dbcdb1773c867bb4fb2adb5e5d3
-    pristine_git_object: df508e60a5ad61104bb3a226b75a434203df0f6b
-  docs/models/components/v2queryparams3resource.md:
-    id: 7ad814072730
-    last_write_checksum: sha1:2876584875f6b76a4ef1a2e1f3e9bd99eb4d29ca
-    pristine_git_object: 4426490921c397d4528e545b95e2de38b285e793
-  docs/models/components/v2queryparams4resource.md:
-    id: b897cbf92d93
-    last_write_checksum: sha1:994aaba21f0445187b2bfc4b471ffdc355f5248f
-    pristine_git_object: 0e1d3335c391cb0c3b2fa39232e5e8306fb14f94
-  docs/models/components/v2queryparamsresource.md:
-    id: 0bde55a2025d
-    last_write_checksum: sha1:6432f288d7104153f47d7888fbd2877364c1b450
-    pristine_git_object: a4fe3f18c4589146f62b004d6a020611922a51ff
-  docs/models/components/v2queryresource.md:
-    id: d38cdf4f3fd3
-    last_write_checksum: sha1:a1f8f2c2b1811b9f8e809b8d25e9f7d002e02f76
-    pristine_git_object: a83348da27cf9172e62a5287853efab3274a967d
   docs/models/components/v2querytemplate.md:
     id: ea86d690886c
-    last_write_checksum: sha1:0b990edec4f25fd2cd19595bc71396acd49f817b
+    last_write_checksum: sha1:4dbccf623cf5b4cbb135929a30a032b4d75b9761
     pristine_git_object: 736e910987acbd3c9f6ef11ecccb9778b0093774
   docs/models/components/v2querytemplatevar.md:
     id: 2d2e7e9b3f8e
@@ -579,6 +547,8 @@ trackedFiles:
     id: 5833cd37769d
     last_write_checksum: sha1:f63c46e9bd0bc632a8f3bfa7bfeae8e021468851
     pristine_git_object: f3d599630e648f25ee5d7c0bfa69d0cf8917896d
+  docs/models/components/v2runqueryparams.md:
+    last_write_checksum: sha1:2b21d34385bdd2ea3cbfd5b70be2fa8b1e62fd08
   docs/models/components/v2schema.md:
     id: cb8072e6add2
     last_write_checksum: sha1:1385b57292904df10f2044e915f27340a6ede143
@@ -619,6 +589,10 @@ trackedFiles:
     id: ce5bfbd350f0
     last_write_checksum: sha1:abec5a6ff200f37f5b6dbfc49dd6df7cce557127
     pristine_git_object: e320cceccafb27e70a57ae8b5b35a1e3e93e84c6
+  docs/models/components/v2transactionquerytemplate.md:
+    last_write_checksum: sha1:3de09de002b2c14cb5edf57cb68e0efaa4f14bbf
+  docs/models/components/v2transactionquerytemplateresource.md:
+    last_write_checksum: sha1:e1aaaae0f7b7f25060aeb190a86f575b03293917
   docs/models/components/v2transactionscursorresponse.md:
     id: 14d29a46c148
     last_write_checksum: sha1:e0008709ca31d01c7936a79e9bfc8a46823135ea
@@ -639,6 +613,12 @@ trackedFiles:
     id: 53ed28721daf
     last_write_checksum: sha1:b20accc308e5430031d48791520e34426e8e481c
     pristine_git_object: c233c3a5b1d24374100dcc8e603b623c2f122972
+  docs/models/components/v2volumequeryparams.md:
+    last_write_checksum: sha1:a333b7071be0ef0a1f97dc6139b7c67746d30569
+  docs/models/components/v2volumequerytemplate.md:
+    last_write_checksum: sha1:1688bd7c52e9ca316ab4c28656ea376a1a24f5ab
+  docs/models/components/v2volumequerytemplateresource.md:
+    last_write_checksum: sha1:65628dbc795642548d7b85cadf1d3c897a5dffb3
   docs/models/components/v2volumeswithbalance.md:
     id: 95f23c2a466c
     last_write_checksum: sha1:a60740b386b713e4622c364b1237607977ef2bf9
@@ -1149,7 +1129,7 @@ trackedFiles:
     pristine_git_object: 2ab1242b117faa84da2508597584e91e8be75105
   docs/models/operations/v2runqueryrequestbody.md:
     id: 164a1214f9ca
-    last_write_checksum: sha1:1556dc46224d3f01f9696dc7938bc58e3311221a
+    last_write_checksum: sha1:ada0f10eedd821b3463ea8b1559f3f65c06e0c04
     pristine_git_object: 3f4d6e13d86c80de417a6970c329fa96cbacbdb3
   docs/models/operations/v2runqueryresponse.md:
     id: 0fd7c94c3525
@@ -1209,7 +1189,7 @@ trackedFiles:
     pristine_git_object: 95bb7a8c46e4d169ade75346257f43c31b339c3d
   docs/sdks/v2/README.md:
     id: 1fff216d9073
-    last_write_checksum: sha1:9d1c4581ac9cb2d929414ed68d39a2b3ee02447a
+    last_write_checksum: sha1:2d2a652bb26f11605ffaa0cf4fc925617ebbedab
     pristine_git_object: f84fd72547b7e8092bdf345420ff5a941d0cfa0f
   formance.go:
     id: 6a39aafd73d7
@@ -1217,7 +1197,7 @@ trackedFiles:
     pristine_git_object: dd78ad70410e0573a1d35dcac2b87fe4fc7f5123
   go.mod:
     id: c47645c391ad
-    last_write_checksum: sha1:018ff18e5e42b6c8ee64204e402c02af8cd79c0a
+    last_write_checksum: sha1:23ff473f06abcd989e1fa00bad429f038dc217b7
     pristine_git_object: c2d088310ca32d668bd1eb0915a0bc06632446d3
   internal/config/sdkconfiguration.go:
     id: 33b8bfac5265
@@ -1439,6 +1419,10 @@ trackedFiles:
     id: 69d9769d6b78
     last_write_checksum: sha1:656d3d4a9563e5543a021333cb55336a03d1727d
     pristine_git_object: fa10df2b003a5d9a69ad501197766c8092a3e383
+  models/components/v2accountquerytemplate.go:
+    last_write_checksum: sha1:673a1dcf9ba08b51ac57bad6d494a9ebe7a3ef36
+  models/components/v2accountquerytemplateresource.go:
+    last_write_checksum: sha1:bfa4c38199373865dd2e8cad9b4b4ba51c833f3d
   models/components/v2accountresponse.go:
     id: 2a340e220c72
     last_write_checksum: sha1:7f6f2ee1dc6bcfb29a07969aa28fc9c13ddf3dfb
@@ -1591,6 +1575,10 @@ trackedFiles:
     id: d1458e11349b
     last_write_checksum: sha1:e76e828848a931f69c884ec219fe39292b4590f8
     pristine_git_object: 98eb7b0a276c86f2d8c5368d423e9bf06ea815f5
+  models/components/v2logquerytemplate.go:
+    last_write_checksum: sha1:ff060b69bb53ee0cf9bbe4672f82690e4ff961cb
+  models/components/v2logquerytemplateresource.go:
+    last_write_checksum: sha1:395790e03049793594135b70502527c8ad196633
   models/components/v2logscursorresponse.go:
     id: fbaec1355649
     last_write_checksum: sha1:188d113d6b8191e20ea64fb260e574764b5dce0e
@@ -1621,15 +1609,11 @@ trackedFiles:
     pristine_git_object: 7fb3c9d6db1cd925c9adf75156dc4d42bde17fa7
   models/components/v2queryparams.go:
     id: 8b42c448faf9
-    last_write_checksum: sha1:454c7d6bce6a6e404982b129d91ead787163d05b
+    last_write_checksum: sha1:6bd9553cf1e0398629023252759f4db6852d7915
     pristine_git_object: 700f0c3266699d5946302e1f5ee8a5a04fe64b79
-  models/components/v2queryresource.go:
-    id: 3a0cc8418aab
-    last_write_checksum: sha1:6f7d299f3424b72a181de753da90e469c76055de
-    pristine_git_object: fcdecc23f7db45e6b612f50b92b2a84716e0a042
   models/components/v2querytemplate.go:
     id: 47ac4be142eb
-    last_write_checksum: sha1:8d9ea8ddc8b723e6d8a1613cd6488be57b559c6f
+    last_write_checksum: sha1:2de30b8a90cbe3b1f4921a8102c4e87aeae61d23
     pristine_git_object: 4b027a91b7f70695fea3331b96ea29db1e8a936a
   models/components/v2querytemplatevar.go:
     id: 286b0c125871
@@ -1643,6 +1627,8 @@ trackedFiles:
     id: a6039db6b6ab
     last_write_checksum: sha1:cab5ab87978ba62fb2eac2ece30c0d945a4af9b9
     pristine_git_object: c2c54a6597611674f43221bb7797c5951f49e556
+  models/components/v2runqueryparams.go:
+    last_write_checksum: sha1:1fcac1c71b02837499e0a4b32ff85af661af0257
   models/components/v2schema.go:
     id: 7925fa5b1fc0
     last_write_checksum: sha1:d1275ee0e41f287000fd7fd25a359a0327cd76fc
@@ -1683,6 +1669,10 @@ trackedFiles:
     id: 1cc825e7057b
     last_write_checksum: sha1:69269db929e647fe15146132c81f505665b24db5
     pristine_git_object: 9da1562bf8f37795ba0ad6983fcd24ae64e8f2d2
+  models/components/v2transactionquerytemplate.go:
+    last_write_checksum: sha1:669e9c1da922ed23324e1e5631f106b5c957ec45
+  models/components/v2transactionquerytemplateresource.go:
+    last_write_checksum: sha1:52148bab8fac1677ad035e471712b25bd2458180
   models/components/v2transactionscursorresponse.go:
     id: 5a584f2c5bba
     last_write_checksum: sha1:cb641e2e990f2cbcfc70c5afcda8f30d6b7f06ac
@@ -1695,6 +1685,12 @@ trackedFiles:
     id: 00577fcebffd
     last_write_checksum: sha1:58f214b2746641b3e80e1855bb7a1d88c215f42d
     pristine_git_object: 029ed72068e58c1153756535c0f92949aa074310
+  models/components/v2volumequeryparams.go:
+    last_write_checksum: sha1:2cbdddfe6c9d07375f5f0f77ff2b26ca63a3a9a0
+  models/components/v2volumequerytemplate.go:
+    last_write_checksum: sha1:f16429f811788818d1edda1d1aea5343e3ae83ff
+  models/components/v2volumequerytemplateresource.go:
+    last_write_checksum: sha1:a259cc85c0145bab831ed42c304b0ef8d8e721f9
   models/components/v2volumeswithbalance.go:
     id: d3fd9900f63e
     last_write_checksum: sha1:26abf46b73de6097b75ed806e01a46bbdf419406
@@ -1953,7 +1949,7 @@ trackedFiles:
     pristine_git_object: 5ef96ec22ee33908403e28cc251ea649df1d0d43
   models/operations/v2runquery.go:
     id: 4e748ce875ba
-    last_write_checksum: sha1:454670eb4d9bc00fee34000f699d2a80c9475e32
+    last_write_checksum: sha1:f2203f2717b5b4dca3cf901e2557d4123248b5ed
     pristine_git_object: 87157e58622c3cb5f8d24e53a0be817bbe47fd9e
   models/operations/v2startpipeline.go:
     id: ac20901b294a
@@ -2784,7 +2780,7 @@ examples:
           ledger: "ledger001"
           version: "v1.0.0"
       requestBody:
-        application/json: {"chart": {"users": {"$userID": {".pattern": "^[0-9]{16}$"}}}, "queries": {"key": {"params": {"resource": "accounts", "pageSize": 100, "cursor": "aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ=="}}}}
+        application/json: {"chart": {"users": {"$userID": {".pattern": "^[0-9]{16}$"}}}, "queries": {"key": {"resource": "volumes"}}}
       responses:
         default:
           application/json: {"errorCode": "VALIDATION", "errorMessage": "[VALIDATION] invalid 'cursor' query param", "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"}
@@ -2796,7 +2792,7 @@ examples:
           version: "v1.0.0"
       responses:
         "200":
-          application/json: {"data": {"version": "v1.0.0", "createdAt": "2023-01-01T00:00:00Z", "chart": {"users": {"$userID": {".pattern": "^[0-9]{16}$"}}}, "queries": {"key": {"params": {"resource": "accounts", "pageSize": 100, "cursor": "aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ=="}}}}}
+          application/json: {"data": {"version": "v1.0.0", "createdAt": "2023-01-01T00:00:00Z", "chart": {"users": {"$userID": {".pattern": "^[0-9]{16}$"}}}, "queries": {"key": {"resource": "volumes"}}}}
         default:
           application/json: {"errorCode": "VALIDATION", "errorMessage": "[VALIDATION] invalid 'cursor' query param", "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"}
   v2ListSchemas:
@@ -2827,7 +2823,7 @@ examples:
         header:
           Formance-Bigint-As-String: false
       requestBody:
-        application/json: {"params": {"resource": "volumes", "pageSize": 100, "cursor": "aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ==", "sort": "id:desc"}}
+        application/json: {"params": {"pageSize": 100, "sort": "id:desc"}}
       responses:
         "200":
           application/json: {"resource": "transactions", "cursor": {"pageSize": 15, "hasMore": false, "previous": "YXVsdCBhbmQgYSBtYXhpbXVtIG1heF9yZXN1bHRzLol=", "next": "aW0gdmVuaWFtLCBxdWlzIG5vc3RydWQ=", "data": []}}
@@ -2840,175 +2836,6 @@ generatedFiles:
   - .devcontainer/devcontainer.json
   - .devcontainer/setup.sh
   - .gitattributes
-  - /models/components/account.go
-  - /models/components/accountresponse.go
-  - /models/components/accountscursorresponse.go
-  - /models/components/accountwithvolumesandbalances.go
-  - /models/components/aggregatebalancesresponse.go
-  - /models/components/balancescursorresponse.go
-  - /models/components/config.go
-  - /models/components/configinfo.go
-  - /models/components/configinforesponse.go
-  - /models/components/contract.go
-  - /models/components/errorresponse.go
-  - /models/components/errorsenum.go
-  - /models/components/httpmetadata.go
-  - /models/components/ledgerinfo.go
-  - /models/components/ledgerinforesponse.go
-  - /models/components/ledgerstorage.go
-  - /models/components/log.go
-  - /models/components/logscursorresponse.go
-  - /models/components/mapping.go
-  - /models/components/mappingresponse.go
-  - /models/components/migrationinfo.go
-  - /models/components/posting.go
-  - /models/components/posttransaction.go
-  - /models/components/runtime.go
-  - /models/components/script.go
-  - /models/components/scriptresponse.go
-  - /models/components/security.go
-  - /models/components/stats.go
-  - /models/components/statsresponse.go
-  - /models/components/transaction.go
-  - /models/components/transactiondata.go
-  - /models/components/transactionresponse.go
-  - /models/components/transactions.go
-  - /models/components/transactionscursorresponse.go
-  - /models/components/transactionsresponse.go
-  - /models/components/v2account.go
-  - /models/components/v2accountresponse.go
-  - /models/components/v2accountscursorresponse.go
-  - /models/components/v2aggregatebalancesresponse.go
-  - /models/components/v2bulkelement.go
-  - /models/components/v2bulkelementaddmetadata.go
-  - /models/components/v2bulkelementcreatetransaction.go
-  - /models/components/v2bulkelementdeletemetadata.go
-  - /models/components/v2bulkelementresult.go
-  - /models/components/v2bulkelementreverttransaction.go
-  - /models/components/v2bulkresponse.go
-  - /models/components/v2chartaccountmetadata.go
-  - /models/components/v2chartaccountrules.go
-  - /models/components/v2chartsegment.go
-  - /models/components/v2configinforesponse.go
-  - /models/components/v2createexporterresponse.go
-  - /models/components/v2createledgerrequest.go
-  - /models/components/v2createpipelinerequest.go
-  - /models/components/v2createpipelineresponse.go
-  - /models/components/v2createtransactionresponse.go
-  - /models/components/v2errorresponse.go
-  - /models/components/v2errorsenum.go
-  - /models/components/v2exporter.go
-  - /models/components/v2exporterconfiguration.go
-  - /models/components/v2getexporterstateresponse.go
-  - /models/components/v2getledgerresponse.go
-  - /models/components/v2getpipelinestateresponse.go
-  - /models/components/v2gettransactionresponse.go
-  - /models/components/v2ledger.go
-  - /models/components/v2ledgerinfo.go
-  - /models/components/v2ledgerinforesponse.go
-  - /models/components/v2ledgerlistresponse.go
-  - /models/components/v2listexportersresponse.go
-  - /models/components/v2listpipelinesresponse.go
-  - /models/components/v2log.go
-  - /models/components/v2logdatadeletemetadata.go
-  - /models/components/v2logdatainsertedschema.go
-  - /models/components/v2logdatanewtransaction.go
-  - /models/components/v2logdatarevertedtransaction.go
-  - /models/components/v2logdatasetmetadata.go
-  - /models/components/v2logscursorresponse.go
-  - /models/components/v2logtransaction.go
-  - /models/components/v2migrationinfo.go
-  - /models/components/v2pipeline.go
-  - /models/components/v2posting.go
-  - /models/components/v2posttransaction.go
-  - /models/components/v2queryparams.go
-  - /models/components/v2queryresource.go
-  - /models/components/v2querytemplate.go
-  - /models/components/v2querytemplatevar.go
-  - /models/components/v2reverttransactionrequest.go
-  - /models/components/v2schema.go
-  - /models/components/v2schemadata.go
-  - /models/components/v2schemaresponse.go
-  - /models/components/v2schemascursor.go
-  - /models/components/v2schemascursorresponse.go
-  - /models/components/v2stats.go
-  - /models/components/v2statsresponse.go
-  - /models/components/v2targetid.go
-  - /models/components/v2targettype.go
-  - /models/components/v2transaction.go
-  - /models/components/v2transactionscursorresponse.go
-  - /models/components/v2transactiontemplate.go
-  - /models/components/v2volume.go
-  - /models/components/v2volumeswithbalance.go
-  - /models/components/v2volumeswithbalancecursorresponse.go
-  - /models/components/volume.go
-  - /models/operations/addmetadataontransaction.go
-  - /models/operations/addmetadatatoaccount.go
-  - /models/operations/countaccounts.go
-  - /models/operations/counttransactions.go
-  - /models/operations/createtransaction.go
-  - /models/operations/createtransactions.go
-  - /models/operations/getaccount.go
-  - /models/operations/getbalances.go
-  - /models/operations/getbalancesaggregated.go
-  - /models/operations/getinfo.go
-  - /models/operations/getledgerinfo.go
-  - /models/operations/getmapping.go
-  - /models/operations/getmetrics.go
-  - /models/operations/gettransaction.go
-  - /models/operations/listaccounts.go
-  - /models/operations/listlogs.go
-  - /models/operations/listtransactions.go
-  - /models/operations/readstats.go
-  - /models/operations/reverttransaction.go
-  - /models/operations/runscript.go
-  - /models/operations/updatemapping.go
-  - /models/operations/v2addmetadataontransaction.go
-  - /models/operations/v2addmetadatatoaccount.go
-  - /models/operations/v2countaccounts.go
-  - /models/operations/v2counttransactions.go
-  - /models/operations/v2createbulk.go
-  - /models/operations/v2createexporter.go
-  - /models/operations/v2createledger.go
-  - /models/operations/v2createpipeline.go
-  - /models/operations/v2createtransaction.go
-  - /models/operations/v2deleteaccountmetadata.go
-  - /models/operations/v2deletebucket.go
-  - /models/operations/v2deleteexporter.go
-  - /models/operations/v2deleteledgermetadata.go
-  - /models/operations/v2deletepipeline.go
-  - /models/operations/v2deletetransactionmetadata.go
-  - /models/operations/v2exportlogs.go
-  - /models/operations/v2getaccount.go
-  - /models/operations/v2getbalancesaggregated.go
-  - /models/operations/v2getexporterstate.go
-  - /models/operations/v2getinfo.go
-  - /models/operations/v2getledger.go
-  - /models/operations/v2getledgerinfo.go
-  - /models/operations/v2getpipelinestate.go
-  - /models/operations/v2getschema.go
-  - /models/operations/v2gettransaction.go
-  - /models/operations/v2getvolumeswithbalances.go
-  - /models/operations/v2importlogs.go
-  - /models/operations/v2insertschema.go
-  - /models/operations/v2listaccounts.go
-  - /models/operations/v2listexporters.go
-  - /models/operations/v2listledgers.go
-  - /models/operations/v2listlogs.go
-  - /models/operations/v2listpipelines.go
-  - /models/operations/v2listschemas.go
-  - /models/operations/v2listtransactions.go
-  - /models/operations/v2readstats.go
-  - /models/operations/v2resetpipeline.go
-  - /models/operations/v2restorebucket.go
-  - /models/operations/v2reverttransaction.go
-  - /models/operations/v2runquery.go
-  - /models/operations/v2startpipeline.go
-  - /models/operations/v2stoppipeline.go
-  - /models/operations/v2updateexporter.go
-  - /models/operations/v2updateledgermetadata.go
-  - /models/sdkerrors/errorresponse.go
-  - /models/sdkerrors/v2errorresponse.go
   - USAGE.md
   - docs/models/components/account.md
   - docs/models/components/accountresponse.md
@@ -3040,10 +2867,6 @@ generatedFiles:
   - docs/models/components/posting.md
   - docs/models/components/posttransaction.md
   - docs/models/components/posttransactionscript.md
-  - docs/models/components/querytemplateaccountparams.md
-  - docs/models/components/querytemplatelogparams.md
-  - docs/models/components/querytemplatetransactionparams.md
-  - docs/models/components/querytemplatevolumeparams.md
   - docs/models/components/resource.md
   - docs/models/components/runtime.md
   - docs/models/components/script.md
@@ -3064,6 +2887,8 @@ generatedFiles:
   - docs/models/components/transactionsresponse.md
   - docs/models/components/type.md
   - docs/models/components/v2account.md
+  - docs/models/components/v2accountquerytemplate.md
+  - docs/models/components/v2accountquerytemplateresource.md
   - docs/models/components/v2accountresponse.md
   - docs/models/components/v2accountscursorresponse.md
   - docs/models/components/v2accountscursorresponsecursor.md
@@ -3086,6 +2911,7 @@ generatedFiles:
   - docs/models/components/v2chartaccountrules.md
   - docs/models/components/v2chartsegment.md
   - docs/models/components/v2configinforesponse.md
+  - docs/models/components/v2createexporterrequest.md
   - docs/models/components/v2createexporterresponse.md
   - docs/models/components/v2createledgerrequest.md
   - docs/models/components/v2createpipelinerequest.md
@@ -3094,7 +2920,8 @@ generatedFiles:
   - docs/models/components/v2errorresponse.md
   - docs/models/components/v2errorsenum.md
   - docs/models/components/v2exporter.md
-  - docs/models/components/v2exporterconfiguration.md
+  - docs/models/components/v2exporterscursorresponse.md
+  - docs/models/components/v2exporterscursorresponsecursor.md
   - docs/models/components/v2getexporterstateresponse.md
   - docs/models/components/v2getledgerresponse.md
   - docs/models/components/v2getpipelinestateresponse.md
@@ -3105,12 +2932,6 @@ generatedFiles:
   - docs/models/components/v2ledgerinfostorage.md
   - docs/models/components/v2ledgerlistresponse.md
   - docs/models/components/v2ledgerlistresponsecursor.md
-  - docs/models/components/v2listexportersresponse.md
-  - docs/models/components/v2listexportersresponsecursor.md
-  - docs/models/components/v2listexportersresponsecursorcursor.md
-  - docs/models/components/v2listpipelinesresponse.md
-  - docs/models/components/v2listpipelinesresponsecursor.md
-  - docs/models/components/v2listpipelinesresponsecursorcursor.md
   - docs/models/components/v2log.md
   - docs/models/components/v2logdata.md
   - docs/models/components/v2logdatadeletemetadata.md
@@ -3120,6 +2941,8 @@ generatedFiles:
   - docs/models/components/v2logdatanewtransaction.md
   - docs/models/components/v2logdatarevertedtransaction.md
   - docs/models/components/v2logdatasetmetadata.md
+  - docs/models/components/v2logquerytemplate.md
+  - docs/models/components/v2logquerytemplateresource.md
   - docs/models/components/v2logscursorresponse.md
   - docs/models/components/v2logscursorresponsecursor.md
   - docs/models/components/v2logscursorresponseresource.md
@@ -3128,18 +2951,17 @@ generatedFiles:
   - docs/models/components/v2migrationinfo.md
   - docs/models/components/v2migrationinfostate.md
   - docs/models/components/v2pipeline.md
+  - docs/models/components/v2pipelinescursorresponse.md
+  - docs/models/components/v2pipelinescursorresponsecursor.md
   - docs/models/components/v2posting.md
   - docs/models/components/v2posttransaction.md
   - docs/models/components/v2posttransactionscript.md
   - docs/models/components/v2queryparams.md
-  - docs/models/components/v2queryparams1resource.md
-  - docs/models/components/v2queryparams3resource.md
-  - docs/models/components/v2queryparams4resource.md
-  - docs/models/components/v2queryparamsresource.md
-  - docs/models/components/v2queryresource.md
   - docs/models/components/v2querytemplate.md
   - docs/models/components/v2querytemplatevar.md
   - docs/models/components/v2reverttransactionrequest.md
+  - docs/models/components/v2reverttransactionresponse.md
+  - docs/models/components/v2runqueryparams.md
   - docs/models/components/v2schema.md
   - docs/models/components/v2schemadata.md
   - docs/models/components/v2schemaresponse.md
@@ -3150,11 +2972,16 @@ generatedFiles:
   - docs/models/components/v2targetid.md
   - docs/models/components/v2targettype.md
   - docs/models/components/v2transaction.md
+  - docs/models/components/v2transactionquerytemplate.md
+  - docs/models/components/v2transactionquerytemplateresource.md
   - docs/models/components/v2transactionscursorresponse.md
   - docs/models/components/v2transactionscursorresponsecursor.md
   - docs/models/components/v2transactionscursorresponseresource.md
   - docs/models/components/v2transactiontemplate.md
   - docs/models/components/v2volume.md
+  - docs/models/components/v2volumequeryparams.md
+  - docs/models/components/v2volumequerytemplate.md
+  - docs/models/components/v2volumequerytemplateresource.md
   - docs/models/components/v2volumeswithbalance.md
   - docs/models/components/v2volumeswithbalancecursorresponse.md
   - docs/models/components/v2volumeswithbalancecursorresponsecursor.md
@@ -3295,7 +3122,6 @@ generatedFiles:
   - docs/models/operations/v2updateledgermetadataresponse.md
   - docs/models/sdkerrors/errorresponse.md
   - docs/models/sdkerrors/v2errorresponse.md
-  - docs/sdks/formance/README.md
   - docs/sdks/ledger/README.md
   - docs/sdks/v1/README.md
   - docs/sdks/v2/README.md
@@ -3316,15 +3142,197 @@ generatedFiles:
   - internal/utils/requestbody.go
   - internal/utils/retries.go
   - internal/utils/security.go
+  - internal/utils/union.go
+  - internal/utils/union_test.go
   - internal/utils/utils.go
   - ledger.go
+  - models/components/account.go
+  - models/components/accountresponse.go
+  - models/components/accountscursorresponse.go
+  - models/components/accountwithvolumesandbalances.go
+  - models/components/aggregatebalancesresponse.go
+  - models/components/balancescursorresponse.go
+  - models/components/config.go
+  - models/components/configinfo.go
+  - models/components/configinforesponse.go
+  - models/components/contract.go
+  - models/components/errorresponse.go
+  - models/components/errorsenum.go
+  - models/components/httpmetadata.go
+  - models/components/ledgerinfo.go
+  - models/components/ledgerinforesponse.go
+  - models/components/ledgerstorage.go
+  - models/components/log.go
+  - models/components/logscursorresponse.go
+  - models/components/mapping.go
+  - models/components/mappingresponse.go
+  - models/components/migrationinfo.go
+  - models/components/posting.go
+  - models/components/posttransaction.go
+  - models/components/runtime.go
+  - models/components/script.go
+  - models/components/scriptresponse.go
+  - models/components/security.go
+  - models/components/stats.go
+  - models/components/statsresponse.go
+  - models/components/transaction.go
+  - models/components/transactiondata.go
+  - models/components/transactionresponse.go
+  - models/components/transactions.go
+  - models/components/transactionscursorresponse.go
+  - models/components/transactionsresponse.go
+  - models/components/v2account.go
+  - models/components/v2accountquerytemplate.go
+  - models/components/v2accountquerytemplateresource.go
+  - models/components/v2accountresponse.go
+  - models/components/v2accountscursorresponse.go
+  - models/components/v2aggregatebalancesresponse.go
+  - models/components/v2bulkelement.go
+  - models/components/v2bulkelementaddmetadata.go
+  - models/components/v2bulkelementcreatetransaction.go
+  - models/components/v2bulkelementdeletemetadata.go
+  - models/components/v2bulkelementresult.go
+  - models/components/v2bulkelementreverttransaction.go
+  - models/components/v2bulkresponse.go
+  - models/components/v2chartaccountmetadata.go
+  - models/components/v2chartaccountrules.go
+  - models/components/v2chartsegment.go
+  - models/components/v2configinforesponse.go
+  - models/components/v2createexporterrequest.go
+  - models/components/v2createexporterresponse.go
+  - models/components/v2createledgerrequest.go
+  - models/components/v2createpipelinerequest.go
+  - models/components/v2createpipelineresponse.go
+  - models/components/v2createtransactionresponse.go
+  - models/components/v2errorresponse.go
+  - models/components/v2errorsenum.go
+  - models/components/v2exporter.go
+  - models/components/v2exporterscursorresponse.go
+  - models/components/v2getexporterstateresponse.go
+  - models/components/v2getledgerresponse.go
+  - models/components/v2getpipelinestateresponse.go
+  - models/components/v2gettransactionresponse.go
+  - models/components/v2ledger.go
+  - models/components/v2ledgerinfo.go
+  - models/components/v2ledgerinforesponse.go
+  - models/components/v2ledgerlistresponse.go
+  - models/components/v2log.go
+  - models/components/v2logdatadeletemetadata.go
+  - models/components/v2logdatainsertedschema.go
+  - models/components/v2logdatanewtransaction.go
+  - models/components/v2logdatarevertedtransaction.go
+  - models/components/v2logdatasetmetadata.go
+  - models/components/v2logquerytemplate.go
+  - models/components/v2logquerytemplateresource.go
+  - models/components/v2logscursorresponse.go
+  - models/components/v2logtransaction.go
+  - models/components/v2migrationinfo.go
+  - models/components/v2pipeline.go
+  - models/components/v2pipelinescursorresponse.go
+  - models/components/v2posting.go
+  - models/components/v2posttransaction.go
+  - models/components/v2queryparams.go
+  - models/components/v2querytemplate.go
+  - models/components/v2querytemplatevar.go
+  - models/components/v2reverttransactionrequest.go
+  - models/components/v2reverttransactionresponse.go
+  - models/components/v2runqueryparams.go
+  - models/components/v2schema.go
+  - models/components/v2schemadata.go
+  - models/components/v2schemaresponse.go
+  - models/components/v2schemascursor.go
+  - models/components/v2schemascursorresponse.go
+  - models/components/v2stats.go
+  - models/components/v2statsresponse.go
+  - models/components/v2targetid.go
+  - models/components/v2targettype.go
+  - models/components/v2transaction.go
+  - models/components/v2transactionquerytemplate.go
+  - models/components/v2transactionquerytemplateresource.go
+  - models/components/v2transactionscursorresponse.go
+  - models/components/v2transactiontemplate.go
+  - models/components/v2volume.go
+  - models/components/v2volumequeryparams.go
+  - models/components/v2volumequerytemplate.go
+  - models/components/v2volumequerytemplateresource.go
+  - models/components/v2volumeswithbalance.go
+  - models/components/v2volumeswithbalancecursorresponse.go
+  - models/components/volume.go
+  - models/operations/addmetadataontransaction.go
+  - models/operations/addmetadatatoaccount.go
+  - models/operations/countaccounts.go
+  - models/operations/counttransactions.go
+  - models/operations/createtransaction.go
+  - models/operations/createtransactions.go
+  - models/operations/getaccount.go
+  - models/operations/getbalances.go
+  - models/operations/getbalancesaggregated.go
+  - models/operations/getinfo.go
+  - models/operations/getledgerinfo.go
+  - models/operations/getmapping.go
+  - models/operations/getmetrics.go
+  - models/operations/gettransaction.go
+  - models/operations/listaccounts.go
+  - models/operations/listlogs.go
+  - models/operations/listtransactions.go
   - models/operations/options.go
+  - models/operations/readstats.go
+  - models/operations/reverttransaction.go
+  - models/operations/runscript.go
+  - models/operations/updatemapping.go
+  - models/operations/v2addmetadataontransaction.go
+  - models/operations/v2addmetadatatoaccount.go
+  - models/operations/v2countaccounts.go
+  - models/operations/v2counttransactions.go
+  - models/operations/v2createbulk.go
+  - models/operations/v2createexporter.go
+  - models/operations/v2createledger.go
+  - models/operations/v2createpipeline.go
+  - models/operations/v2createtransaction.go
+  - models/operations/v2deleteaccountmetadata.go
+  - models/operations/v2deletebucket.go
+  - models/operations/v2deleteexporter.go
+  - models/operations/v2deleteledgermetadata.go
+  - models/operations/v2deletepipeline.go
+  - models/operations/v2deletetransactionmetadata.go
+  - models/operations/v2exportlogs.go
+  - models/operations/v2getaccount.go
+  - models/operations/v2getbalancesaggregated.go
+  - models/operations/v2getexporterstate.go
+  - models/operations/v2getinfo.go
+  - models/operations/v2getledger.go
+  - models/operations/v2getledgerinfo.go
+  - models/operations/v2getpipelinestate.go
+  - models/operations/v2getschema.go
+  - models/operations/v2gettransaction.go
+  - models/operations/v2getvolumeswithbalances.go
+  - models/operations/v2importlogs.go
+  - models/operations/v2insertschema.go
+  - models/operations/v2listaccounts.go
+  - models/operations/v2listexporters.go
+  - models/operations/v2listledgers.go
+  - models/operations/v2listlogs.go
+  - models/operations/v2listpipelines.go
+  - models/operations/v2listschemas.go
+  - models/operations/v2listtransactions.go
+  - models/operations/v2readstats.go
+  - models/operations/v2resetpipeline.go
+  - models/operations/v2restorebucket.go
+  - models/operations/v2reverttransaction.go
+  - models/operations/v2runquery.go
+  - models/operations/v2startpipeline.go
+  - models/operations/v2stoppipeline.go
+  - models/operations/v2updateexporter.go
+  - models/operations/v2updateledgermetadata.go
+  - models/sdkerrors/errorresponse.go
   - models/sdkerrors/sdkerror.go
+  - models/sdkerrors/v2errorresponse.go
+  - optionalnullable/optionalnullable.go
+  - optionalnullable/optionalnullable_test.go
   - retry/config.go
   - types/bigint.go
   - types/date.go
   - types/datetime.go
-  - types/decimal.go
   - types/pointers.go
   - v1.go
   - v2.go

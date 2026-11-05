@@ -58,6 +58,44 @@ func TestQueryTemplateValidation(t *testing.T) {
 			},
 		},
 		{
+			name: "common params",
+			source: `{
+				"resource": "accounts",
+				"params": {
+					"pageSize": 15,
+					"sort": "address:asc",
+					"expand": ["volumes"],
+					"startTime": "2026-01-01T00:00:00Z",
+					"endTime": "2026-02-01T00:00:00Z"
+				}
+			}`,
+			expectedTemplate: QueryTemplate{
+				Resource: queries.ResourceKindAccount,
+				Params: json.RawMessage(`{
+					"pageSize": 15,
+					"sort": "address:asc",
+					"expand": ["volumes"],
+					"startTime": "2026-01-01T00:00:00Z",
+					"endTime": "2026-02-01T00:00:00Z"
+				}`),
+			},
+		},
+		{
+			name: "missing resource",
+			source: `{
+				"params": {"pageSize": 1}
+			}`,
+			expectedError: "unknown resource kind",
+		},
+		{
+			name: "volume-only params on another resource",
+			source: `{
+				"resource": "accounts",
+				"params": {"groupBy": 2}
+			}`,
+			expectedError: "invalid params: unknown field: `groupBy`",
+		},
+		{
 			source: `{
 				"description": "$in filter",
 				"resource": "accounts",

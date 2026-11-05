@@ -283,15 +283,11 @@ func main() {
                 },
             },
             Queries: map[string]components.V2QueryTemplate{
-                "key": components.V2QueryTemplate{
-                    Params: client.Pointer(components.CreateV2QueryParamsQueryTemplateAccountParams(
-                        components.QueryTemplateAccountParams{
-                            Resource: components.V2QueryParams1ResourceAccounts,
-                            PageSize: client.Pointer[int64](100),
-                            Cursor: client.Pointer("aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ=="),
-                        },
-                    )),
-                },
+                "key": components.CreateV2QueryTemplateVolumes(
+                    components.V2VolumeQueryTemplate{
+                        Resource: components.V2VolumeQueryTemplateResourceVolumes,
+                    },
+                ),
             },
         },
     })
@@ -1919,14 +1915,10 @@ func main() {
         Cursor: client.Pointer("aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ=="),
         Sort: client.Pointer("id:desc"),
         RequestBody: operations.V2RunQueryRequestBody{
-            Params: client.Pointer(components.CreateV2QueryParamsQueryTemplateVolumeParams(
-                components.QueryTemplateVolumeParams{
-                    Resource: components.V2QueryParams4ResourceVolumes,
-                    PageSize: client.Pointer[int64](100),
-                    Cursor: client.Pointer("aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ=="),
-                    Sort: client.Pointer("id:desc"),
-                },
-            )),
+            Params: &components.V2RunQueryParams{
+                PageSize: client.Pointer[int64](100),
+                Sort: client.Pointer("id:desc"),
+            },
         },
     })
     if err != nil {
