@@ -44,6 +44,7 @@ func (s *fixtureDigestServer) GetRangeDigest(_ context.Context, req *rafttranspo
 			if s.applied != 0 {
 				return s.applied
 			}
+
 			return req.GetMinAppliedIndex()
 		}(),
 		LastLogSequenceOnNode: func() uint64 {
