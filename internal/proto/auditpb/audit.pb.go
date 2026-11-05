@@ -49,6 +49,7 @@ type AuditEntry struct {
 	// Formula: H(key, header_payload || concat(per_item_payload) ||
 	//
 	//	previous_audit_hash)
+	//
 	// where:
 	//   - `key` is derived from the once-committed random audit secret via
 	//     domain-separated BLAKE3, independently of the operational cluster ID
@@ -63,7 +64,6 @@ type AuditEntry struct {
 	//     via state.BuildPerItemPayload
 	//   - `previous_audit_hash` is `hash` of the predecessor entry, or empty for
 	//     the first entry
-	//
 	//
 	// Same formula for success and failure entries. The hash binds every field
 	// of AuditEntry and AuditItem except `hash` itself. Tampering with any
