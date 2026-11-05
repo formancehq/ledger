@@ -5154,6 +5154,44 @@ components:
       type: string
       description: The resource a query template targets
       enum: [transactions, accounts, logs, volumes]
+    V2QueryParamsCommon:
+      type: object
+      properties:
+        pageSize:
+          type: integer
+          format: int64
+          minimum: 1
+          maximum: 1000
+          description: |
+            The maximum number of results to return per page.
+          example: 100
+        cursor:
+          description: >
+            Parameter used in pagination requests. Maximum page size is set to 15.
+
+            Set to the value of next for the next page of results.
+
+            Set to the value of previous for the previous page of results.
+
+            No other parameters can be set when this parameter is set.
+
+          type: string
+          example: aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ==
+        expand:
+          type: string
+          description: Additional data to include in the response, such as volumes
+          items:
+            type: string
+        pit:
+          type: string
+          format: date-time
+          description: Point-in-time. Returns the state as it existed at this timestamp
+        sort:
+          type: string
+          description: |
+            Sort results using a field name and order (ascending or descending).
+            Format: `<field>:<order>`, where `<field>` is the field name and `<order>` is either `asc` or `desc`.
+          example: id:desc
     V2QueryParams:
       type: object
       description: Parameters applied when running a query template
@@ -5166,40 +5204,15 @@ components:
               enum:
                 - accounts
             pageSize:
-              type: integer
-              format: int64
-              minimum: 1
-              maximum: 1000
-              description: |
-                The maximum number of results to return per page.
-              example: 100
+              $ref: "#/components/schemas/V2QueryParamsCommon/properties/pageSize"
             cursor:
-              description: >
-                Parameter used in pagination requests. Maximum page size is set to 15.
-
-                Set to the value of next for the next page of results.
-
-                Set to the value of previous for the previous page of results.
-
-                No other parameters can be set when this parameter is set.
-
-              type: string
-              example: aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ==
+              $ref: "#/components/schemas/V2QueryParamsCommon/properties/cursor"
             expand:
-              type: string
-              description: Additional data to include in the response, such as volumes
-              items:
-                type: string
+              $ref: "#/components/schemas/V2QueryParamsCommon/properties/expand"
             pit:
-              type: string
-              format: date-time
-              description: Point-in-time. Returns the state as it existed at this timestamp
+              $ref: "#/components/schemas/V2QueryParamsCommon/properties/pit"
             sort:
-              type: string
-              description: |
-                Sort results using a field name and order (ascending or descending).
-                Format: `<field>:<order>`, where `<field>` is the field name and `<order>` is either `asc` or `desc`.
-              example: id:desc
+              $ref: "#/components/schemas/V2QueryParamsCommon/properties/sort"
         - x-speakeasy-name-override: QueryTemplateTransactionParams
           required: [resource]
           properties:
@@ -5208,40 +5221,15 @@ components:
               enum:
                 - transactions
             pageSize:
-              type: integer
-              format: int64
-              minimum: 1
-              maximum: 1000
-              description: |
-                The maximum number of results to return per page.
-              example: 100
+              $ref: "#/components/schemas/V2QueryParamsCommon/properties/pageSize"
             cursor:
-              description: >
-                Parameter used in pagination requests. Maximum page size is set to 15.
-
-                Set to the value of next for the next page of results.
-
-                Set to the value of previous for the previous page of results.
-
-                No other parameters can be set when this parameter is set.
-
-              type: string
-              example: aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ==
+              $ref: "#/components/schemas/V2QueryParamsCommon/properties/cursor"
             expand:
-              type: string
-              description: Additional data to include in the response, such as volumes
-              items:
-                type: string
+              $ref: "#/components/schemas/V2QueryParamsCommon/properties/expand"
             pit:
-              type: string
-              format: date-time
-              description: Point-in-time. Returns the state as it existed at this timestamp
+              $ref: "#/components/schemas/V2QueryParamsCommon/properties/pit"
             sort:
-              type: string
-              description: |
-                Sort results using a field name and order (ascending or descending).
-                Format: `<field>:<order>`, where `<field>` is the field name and `<order>` is either `asc` or `desc`.
-              example: id:desc
+              $ref: "#/components/schemas/V2QueryParamsCommon/properties/sort"
         - x-speakeasy-name-override: QueryTemplateLogParams
           required: [resource]
           properties:
@@ -5250,40 +5238,15 @@ components:
               enum:
                 - logs
             pageSize:
-              type: integer
-              format: int64
-              minimum: 1
-              maximum: 1000
-              description: |
-                The maximum number of results to return per page.
-              example: 100
+              $ref: "#/components/schemas/V2QueryParamsCommon/properties/pageSize"
             cursor:
-              description: >
-                Parameter used in pagination requests. Maximum page size is set to 15.
-
-                Set to the value of next for the next page of results.
-
-                Set to the value of previous for the previous page of results.
-
-                No other parameters can be set when this parameter is set.
-
-              type: string
-              example: aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ==
+              $ref: "#/components/schemas/V2QueryParamsCommon/properties/cursor"
             expand:
-              type: string
-              description: Additional data to include in the response, such as volumes
-              items:
-                type: string
+              $ref: "#/components/schemas/V2QueryParamsCommon/properties/expand"
             pit:
-              type: string
-              format: date-time
-              description: Point-in-time. Returns the state as it existed at this timestamp
+              $ref: "#/components/schemas/V2QueryParamsCommon/properties/pit"
             sort:
-              type: string
-              description: |
-                Sort results using a field name and order (ascending or descending).
-                Format: `<field>:<order>`, where `<field>` is the field name and `<order>` is either `asc` or `desc`.
-              example: id:desc
+              $ref: "#/components/schemas/V2QueryParamsCommon/properties/sort"
         - x-speakeasy-name-override: QueryTemplateVolumeParams
           required: [resource]
           properties:
@@ -5296,40 +5259,15 @@ components:
             groupBy:
               type: integer
             pageSize:
-              type: integer
-              format: int64
-              minimum: 1
-              maximum: 1000
-              description: |
-                The maximum number of results to return per page.
-              example: 100
+              $ref: "#/components/schemas/V2QueryParamsCommon/properties/pageSize"
             cursor:
-              description: >
-                Parameter used in pagination requests. Maximum page size is set to 15.
-
-                Set to the value of next for the next page of results.
-
-                Set to the value of previous for the previous page of results.
-
-                No other parameters can be set when this parameter is set.
-
-              type: string
-              example: aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ==
+              $ref: "#/components/schemas/V2QueryParamsCommon/properties/cursor"
             expand:
-              type: string
-              description: Additional data to include in the response, such as volumes
-              items:
-                type: string
+              $ref: "#/components/schemas/V2QueryParamsCommon/properties/expand"
             pit:
-              type: string
-              format: date-time
-              description: Point-in-time. Returns the state as it existed at this timestamp
+              $ref: "#/components/schemas/V2QueryParamsCommon/properties/pit"
             sort:
-              type: string
-              description: |
-                Sort results using a field name and order (ascending or descending).
-                Format: `<field>:<order>`, where `<field>` is the field name and `<order>` is either `asc` or `desc`.
-              example: id:desc
+              $ref: "#/components/schemas/V2QueryParamsCommon/properties/sort"
         - x-speakeasy-name-override: QueryTemplatePlainParams
           type: object
           description: Parameters without a nested resource; the parent query selects the resource. groupBy and insertionDate apply only to volumes.

@@ -2707,34 +2707,34 @@ Run a query template on a ledger
 |» params|body|[V2QueryParams](#schemav2queryparams)|false|Parameters applied when running a query template|
 |»» *anonymous*|body|object|false|none|
 |»»» resource|body|string|true|none|
-|»»» pageSize|body|integer(int64)|false|The maximum number of results to return per page.|
-|»»» cursor|body|string|false|Parameter used in pagination requests. Maximum page size is set to 15.|
-|»»» expand|body|string|false|Additional data to include in the response, such as volumes|
-|»»» pit|body|string(date-time)|false|Point-in-time. Returns the state as it existed at this timestamp|
-|»»» sort|body|string|false|Sort results using a field name and order (ascending or descending).|
+|»»» pageSize|body|[V2QueryParamsCommon/properties/pageSize](#schemav2queryparamscommon/properties/pagesize)(int64)|false|The maximum number of results to return per page.|
+|»»» cursor|body|[V2QueryParamsCommon/properties/cursor](#schemav2queryparamscommon/properties/cursor)|false|Parameter used in pagination requests. Maximum page size is set to 15.|
+|»»» expand|body|[V2QueryParamsCommon/properties/expand](#schemav2queryparamscommon/properties/expand)|false|Additional data to include in the response, such as volumes|
+|»»» pit|body|[V2QueryParamsCommon/properties/pit](#schemav2queryparamscommon/properties/pit)(date-time)|false|Point-in-time. Returns the state as it existed at this timestamp|
+|»»» sort|body|[V2QueryParamsCommon/properties/sort](#schemav2queryparamscommon/properties/sort)|false|Sort results using a field name and order (ascending or descending).|
 |»» *anonymous*|body|object|false|none|
 |»»» resource|body|string|true|none|
-|»»» pageSize|body|integer(int64)|false|The maximum number of results to return per page.|
-|»»» cursor|body|string|false|Parameter used in pagination requests. Maximum page size is set to 15.|
-|»»» expand|body|string|false|Additional data to include in the response, such as volumes|
-|»»» pit|body|string(date-time)|false|Point-in-time. Returns the state as it existed at this timestamp|
-|»»» sort|body|string|false|Sort results using a field name and order (ascending or descending).|
+|»»» pageSize|body|[V2QueryParamsCommon/properties/pageSize](#schemav2queryparamscommon/properties/pagesize)(int64)|false|The maximum number of results to return per page.|
+|»»» cursor|body|[V2QueryParamsCommon/properties/cursor](#schemav2queryparamscommon/properties/cursor)|false|Parameter used in pagination requests. Maximum page size is set to 15.|
+|»»» expand|body|[V2QueryParamsCommon/properties/expand](#schemav2queryparamscommon/properties/expand)|false|Additional data to include in the response, such as volumes|
+|»»» pit|body|[V2QueryParamsCommon/properties/pit](#schemav2queryparamscommon/properties/pit)(date-time)|false|Point-in-time. Returns the state as it existed at this timestamp|
+|»»» sort|body|[V2QueryParamsCommon/properties/sort](#schemav2queryparamscommon/properties/sort)|false|Sort results using a field name and order (ascending or descending).|
 |»» *anonymous*|body|object|false|none|
 |»»» resource|body|string|true|none|
-|»»» pageSize|body|integer(int64)|false|The maximum number of results to return per page.|
-|»»» cursor|body|string|false|Parameter used in pagination requests. Maximum page size is set to 15.|
-|»»» expand|body|string|false|Additional data to include in the response, such as volumes|
-|»»» pit|body|string(date-time)|false|Point-in-time. Returns the state as it existed at this timestamp|
-|»»» sort|body|string|false|Sort results using a field name and order (ascending or descending).|
+|»»» pageSize|body|[V2QueryParamsCommon/properties/pageSize](#schemav2queryparamscommon/properties/pagesize)(int64)|false|The maximum number of results to return per page.|
+|»»» cursor|body|[V2QueryParamsCommon/properties/cursor](#schemav2queryparamscommon/properties/cursor)|false|Parameter used in pagination requests. Maximum page size is set to 15.|
+|»»» expand|body|[V2QueryParamsCommon/properties/expand](#schemav2queryparamscommon/properties/expand)|false|Additional data to include in the response, such as volumes|
+|»»» pit|body|[V2QueryParamsCommon/properties/pit](#schemav2queryparamscommon/properties/pit)(date-time)|false|Point-in-time. Returns the state as it existed at this timestamp|
+|»»» sort|body|[V2QueryParamsCommon/properties/sort](#schemav2queryparamscommon/properties/sort)|false|Sort results using a field name and order (ascending or descending).|
 |»» *anonymous*|body|object|false|none|
 |»»» resource|body|string|true|none|
 |»»» insertionDate|body|boolean|false|none|
 |»»» groupBy|body|integer|false|none|
-|»»» pageSize|body|integer(int64)|false|The maximum number of results to return per page.|
-|»»» cursor|body|string|false|Parameter used in pagination requests. Maximum page size is set to 15.|
-|»»» expand|body|string|false|Additional data to include in the response, such as volumes|
-|»»» pit|body|string(date-time)|false|Point-in-time. Returns the state as it existed at this timestamp|
-|»»» sort|body|string|false|Sort results using a field name and order (ascending or descending).|
+|»»» pageSize|body|[V2QueryParamsCommon/properties/pageSize](#schemav2queryparamscommon/properties/pagesize)(int64)|false|The maximum number of results to return per page.|
+|»»» cursor|body|[V2QueryParamsCommon/properties/cursor](#schemav2queryparamscommon/properties/cursor)|false|Parameter used in pagination requests. Maximum page size is set to 15.|
+|»»» expand|body|[V2QueryParamsCommon/properties/expand](#schemav2queryparamscommon/properties/expand)|false|Additional data to include in the response, such as volumes|
+|»»» pit|body|[V2QueryParamsCommon/properties/pit](#schemav2queryparamscommon/properties/pit)(date-time)|false|Point-in-time. Returns the state as it existed at this timestamp|
+|»»» sort|body|[V2QueryParamsCommon/properties/sort](#schemav2queryparamscommon/properties/sort)|false|Sort results using a field name and order (ascending or descending).|
 |»» *anonymous*|body|object|false|Parameters without a nested resource; the parent query selects the resource. groupBy and insertionDate apply only to volumes.|
 |»»» pageSize|body|integer(int64)|false|none|
 |»»» sort|body|string|false|none|
@@ -6896,6 +6896,34 @@ The resource a query template targets
 |*anonymous*|logs|
 |*anonymous*|volumes|
 
+<h2 id="tocS_V2QueryParamsCommon">V2QueryParamsCommon</h2>
+<!-- backwards compatibility -->
+<a id="schemav2queryparamscommon"></a>
+<a id="schema_V2QueryParamsCommon"></a>
+<a id="tocSv2queryparamscommon"></a>
+<a id="tocsv2queryparamscommon"></a>
+
+```json
+{
+  "pageSize": 100,
+  "cursor": "aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ==",
+  "expand": "string",
+  "pit": "2019-08-24T14:15:22Z",
+  "sort": "id:desc"
+}
+
+```
+
+### Properties
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|pageSize|integer(int64)|false|none|The maximum number of results to return per page.|
+|cursor|string|false|none|Parameter used in pagination requests. Maximum page size is set to 15.<br>Set to the value of next for the next page of results.<br>Set to the value of previous for the previous page of results.<br>No other parameters can be set when this parameter is set.|
+|expand|string|false|none|Additional data to include in the response, such as volumes|
+|pit|string(date-time)|false|none|Point-in-time. Returns the state as it existed at this timestamp|
+|sort|string|false|none|Sort results using a field name and order (ascending or descending).<br>Format: `<field>:<order>`, where `<field>` is the field name and `<order>` is either `asc` or `desc`.|
+
 <h2 id="tocS_V2QueryParams">V2QueryParams</h2>
 <!-- backwards compatibility -->
 <a id="schemav2queryparams"></a>
@@ -6925,11 +6953,11 @@ oneOf
 |---|---|---|---|---|
 |*anonymous*|object|false|none|none|
 |» resource|string|true|none|none|
-|» pageSize|integer(int64)|false|none|The maximum number of results to return per page.|
-|» cursor|string|false|none|Parameter used in pagination requests. Maximum page size is set to 15.<br>Set to the value of next for the next page of results.<br>Set to the value of previous for the previous page of results.<br>No other parameters can be set when this parameter is set.|
-|» expand|string|false|none|Additional data to include in the response, such as volumes|
-|» pit|string(date-time)|false|none|Point-in-time. Returns the state as it existed at this timestamp|
-|» sort|string|false|none|Sort results using a field name and order (ascending or descending).<br>Format: `<field>:<order>`, where `<field>` is the field name and `<order>` is either `asc` or `desc`.|
+|» pageSize|[V2QueryParamsCommon/properties/pageSize](#schemav2queryparamscommon/properties/pagesize)|false|none|The maximum number of results to return per page.|
+|» cursor|[V2QueryParamsCommon/properties/cursor](#schemav2queryparamscommon/properties/cursor)|false|none|Parameter used in pagination requests. Maximum page size is set to 15.<br>Set to the value of next for the next page of results.<br>Set to the value of previous for the previous page of results.<br>No other parameters can be set when this parameter is set.|
+|» expand|[V2QueryParamsCommon/properties/expand](#schemav2queryparamscommon/properties/expand)|false|none|Additional data to include in the response, such as volumes|
+|» pit|[V2QueryParamsCommon/properties/pit](#schemav2queryparamscommon/properties/pit)|false|none|Point-in-time. Returns the state as it existed at this timestamp|
+|» sort|[V2QueryParamsCommon/properties/sort](#schemav2queryparamscommon/properties/sort)|false|none|Sort results using a field name and order (ascending or descending).<br>Format: `<field>:<order>`, where `<field>` is the field name and `<order>` is either `asc` or `desc`.|
 
 xor
 
@@ -6937,11 +6965,11 @@ xor
 |---|---|---|---|---|
 |*anonymous*|object|false|none|none|
 |» resource|string|true|none|none|
-|» pageSize|integer(int64)|false|none|The maximum number of results to return per page.|
-|» cursor|string|false|none|Parameter used in pagination requests. Maximum page size is set to 15.<br>Set to the value of next for the next page of results.<br>Set to the value of previous for the previous page of results.<br>No other parameters can be set when this parameter is set.|
-|» expand|string|false|none|Additional data to include in the response, such as volumes|
-|» pit|string(date-time)|false|none|Point-in-time. Returns the state as it existed at this timestamp|
-|» sort|string|false|none|Sort results using a field name and order (ascending or descending).<br>Format: `<field>:<order>`, where `<field>` is the field name and `<order>` is either `asc` or `desc`.|
+|» pageSize|[V2QueryParamsCommon/properties/pageSize](#schemav2queryparamscommon/properties/pagesize)|false|none|The maximum number of results to return per page.|
+|» cursor|[V2QueryParamsCommon/properties/cursor](#schemav2queryparamscommon/properties/cursor)|false|none|Parameter used in pagination requests. Maximum page size is set to 15.<br>Set to the value of next for the next page of results.<br>Set to the value of previous for the previous page of results.<br>No other parameters can be set when this parameter is set.|
+|» expand|[V2QueryParamsCommon/properties/expand](#schemav2queryparamscommon/properties/expand)|false|none|Additional data to include in the response, such as volumes|
+|» pit|[V2QueryParamsCommon/properties/pit](#schemav2queryparamscommon/properties/pit)|false|none|Point-in-time. Returns the state as it existed at this timestamp|
+|» sort|[V2QueryParamsCommon/properties/sort](#schemav2queryparamscommon/properties/sort)|false|none|Sort results using a field name and order (ascending or descending).<br>Format: `<field>:<order>`, where `<field>` is the field name and `<order>` is either `asc` or `desc`.|
 
 xor
 
@@ -6949,11 +6977,11 @@ xor
 |---|---|---|---|---|
 |*anonymous*|object|false|none|none|
 |» resource|string|true|none|none|
-|» pageSize|integer(int64)|false|none|The maximum number of results to return per page.|
-|» cursor|string|false|none|Parameter used in pagination requests. Maximum page size is set to 15.<br>Set to the value of next for the next page of results.<br>Set to the value of previous for the previous page of results.<br>No other parameters can be set when this parameter is set.|
-|» expand|string|false|none|Additional data to include in the response, such as volumes|
-|» pit|string(date-time)|false|none|Point-in-time. Returns the state as it existed at this timestamp|
-|» sort|string|false|none|Sort results using a field name and order (ascending or descending).<br>Format: `<field>:<order>`, where `<field>` is the field name and `<order>` is either `asc` or `desc`.|
+|» pageSize|[V2QueryParamsCommon/properties/pageSize](#schemav2queryparamscommon/properties/pagesize)|false|none|The maximum number of results to return per page.|
+|» cursor|[V2QueryParamsCommon/properties/cursor](#schemav2queryparamscommon/properties/cursor)|false|none|Parameter used in pagination requests. Maximum page size is set to 15.<br>Set to the value of next for the next page of results.<br>Set to the value of previous for the previous page of results.<br>No other parameters can be set when this parameter is set.|
+|» expand|[V2QueryParamsCommon/properties/expand](#schemav2queryparamscommon/properties/expand)|false|none|Additional data to include in the response, such as volumes|
+|» pit|[V2QueryParamsCommon/properties/pit](#schemav2queryparamscommon/properties/pit)|false|none|Point-in-time. Returns the state as it existed at this timestamp|
+|» sort|[V2QueryParamsCommon/properties/sort](#schemav2queryparamscommon/properties/sort)|false|none|Sort results using a field name and order (ascending or descending).<br>Format: `<field>:<order>`, where `<field>` is the field name and `<order>` is either `asc` or `desc`.|
 
 xor
 
@@ -6963,11 +6991,11 @@ xor
 |» resource|string|true|none|none|
 |» insertionDate|boolean|false|none|none|
 |» groupBy|integer|false|none|none|
-|» pageSize|integer(int64)|false|none|The maximum number of results to return per page.|
-|» cursor|string|false|none|Parameter used in pagination requests. Maximum page size is set to 15.<br>Set to the value of next for the next page of results.<br>Set to the value of previous for the previous page of results.<br>No other parameters can be set when this parameter is set.|
-|» expand|string|false|none|Additional data to include in the response, such as volumes|
-|» pit|string(date-time)|false|none|Point-in-time. Returns the state as it existed at this timestamp|
-|» sort|string|false|none|Sort results using a field name and order (ascending or descending).<br>Format: `<field>:<order>`, where `<field>` is the field name and `<order>` is either `asc` or `desc`.|
+|» pageSize|[V2QueryParamsCommon/properties/pageSize](#schemav2queryparamscommon/properties/pagesize)|false|none|The maximum number of results to return per page.|
+|» cursor|[V2QueryParamsCommon/properties/cursor](#schemav2queryparamscommon/properties/cursor)|false|none|Parameter used in pagination requests. Maximum page size is set to 15.<br>Set to the value of next for the next page of results.<br>Set to the value of previous for the previous page of results.<br>No other parameters can be set when this parameter is set.|
+|» expand|[V2QueryParamsCommon/properties/expand](#schemav2queryparamscommon/properties/expand)|false|none|Additional data to include in the response, such as volumes|
+|» pit|[V2QueryParamsCommon/properties/pit](#schemav2queryparamscommon/properties/pit)|false|none|Point-in-time. Returns the state as it existed at this timestamp|
+|» sort|[V2QueryParamsCommon/properties/sort](#schemav2queryparamscommon/properties/sort)|false|none|Sort results using a field name and order (ascending or descending).<br>Format: `<field>:<order>`, where `<field>` is the field name and `<order>` is either `asc` or `desc`.|
 
 xor
 

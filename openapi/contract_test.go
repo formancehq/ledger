@@ -17,6 +17,10 @@ func TestQueryTemplateWireContract(t *testing.T) {
 			require.NoError(t, err)
 			template := document.Components.Schemas["V2QueryTemplate"].Value
 			for _, fixture := range []string{
+				`{"resource":"accounts","params":{"resource":"accounts","pageSize":15,"sort":"address:asc"}}`,
+				`{"resource":"transactions","params":{"resource":"transactions","pageSize":15}}`,
+				`{"resource":"logs","params":{"resource":"logs","pageSize":15}}`,
+				`{"resource":"volumes","params":{"resource":"volumes","groupBy":2,"insertionDate":true}}`,
 				`{"resource":"accounts","params":{"pageSize":15,"expand":["volumes"],"startTime":"2026-01-01T00:00:00Z","endTime":"2026-02-01T00:00:00Z"}}`,
 				`{"resource":"volumes","params":{"groupBy":2,"insertionDate":true}}`,
 			} {

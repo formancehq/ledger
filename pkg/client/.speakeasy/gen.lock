@@ -1,15 +1,15 @@
 lockVersion: 2.0.0
 id: a9ac79e1-e429-4ee3-96c4-ec973f19bec3
 management:
-  docChecksum: 75a60061027873027d7e6a93a7db41e4
+  docChecksum: 711dc57b9ca5303b9cf2789a21f14177
   docVersion: v2
   speakeasyVersion: 1.758.0
   generationVersion: 2.866.2
   releaseVersion: 0.10.2
   configChecksum: dd46b48d25fdb2a8e05e819ac208a15f
 persistentEdits:
-  generation_id: 372ecda5-b3e0-4fac-a73f-f76df93700b0
-  pristine_commit_hash: 15f3bd77fb2ba84c77e8e454e748c2ac39074480
+  generation_id: dea0f22e-d714-41f1-809c-a1b3a71a32ed
+  pristine_commit_hash: 89d71c513cfab1042c3248e79dcd96d464a1a5c0
   pristine_tree_hash: 99f36aabb6d63e513e21c517abb2b493615e3fa3
 features:
   go:
