@@ -705,6 +705,7 @@ func (ctrl *DefaultController) GetMetadataSchemaStatus(ctx context.Context, ledg
 // AnalyzeAccounts scans all accounts in a ledger and suggests a Chart of Accounts.
 // Uses a direct Pebble key scan to extract account addresses, asset names, and
 // metadata key names without reading values or going through the read index.
+// Cancellation is checked between accounts and releases the scan's read resources.
 func (ctrl *DefaultController) AnalyzeAccounts(ctx context.Context, ledgerName string, variableThreshold uint32, onProgress func(processed, total uint64)) (*servicepb.AnalyzeAccountsResponse, error) {
 	handle, err := ctrl.store.NewReadHandle()
 	if err != nil {
@@ -729,12 +730,21 @@ func (ctrl *DefaultController) AnalyzeAccounts(ctx context.Context, ledgerName s
 
 	defer func() { _ = it.Close() }()
 
-	return analysis.AnalyzeFromIterator(it.Next, variableThreshold, onProgress)
+	next := func() (analysis.CompactAccount, error) {
+		if err := ctx.Err(); err != nil {
+			return analysis.CompactAccount{}, err
+		}
+
+		return it.Next()
+	}
+
+	return analysis.AnalyzeFromIterator(next, variableThreshold, onProgress)
 }
 
 // AnalyzeTransactions scans all transactions in a ledger and discovers flow patterns.
 // Uses two sequential Pebble log scans with streaming processing to avoid loading
 // all transactions into memory (O(unique addresses + unique signatures) instead of O(N)).
+// Both scans check cancellation between logs, including logs filtered from analysis.
 func (ctrl *DefaultController) AnalyzeTransactions(ctx context.Context, ledgerName string, variableThreshold uint32, onProgress func(processed, total uint64)) (*servicepb.AnalyzeTransactionsResponse, error) {
 	handle, err := ctrl.store.NewReadHandle()
 	if err != nil {
@@ -765,6 +775,10 @@ func (ctrl *DefaultController) AnalyzeTransactions(ctx context.Context, ledgerNa
 		)
 
 		next := func() (analysis.CompactTransaction, error) {
+			if err := ctx.Err(); err != nil {
+				return analysis.CompactTransaction{}, err
+			}
+
 			if done {
 				return analysis.CompactTransaction{}, io.EOF
 			}
@@ -779,6 +793,10 @@ func (ctrl *DefaultController) AnalyzeTransactions(ctx context.Context, ledgerNa
 			}
 
 			for {
+				if err := ctx.Err(); err != nil {
+					return analysis.CompactTransaction{}, err
+				}
+
 				log, err := cursor.Next()
 				if errors.Is(err, io.EOF) {
 					done = true

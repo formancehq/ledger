@@ -62,6 +62,83 @@ This changes the response for requests that previously included ignored query
 parameters. Clients must remove unsupported parameters or use the documented
 replacement before upgrading to a server with this validation.
 
+### Account and transaction analysis progress
+
+`GET /v3/{ledgerName}/analyze-accounts` and
+`GET /v3/{ledgerName}/analyze-transactions` retain synchronous JSON by default.
+Both require the granular `ledger:ReadAccount` scope (included in the default
+`ledger:read` mapping), including transaction analysis because it also discovers
+account patterns. Configured anonymous scopes and disabled authentication retain
+their normal behavior. `variableThreshold` is unchanged: omission, empty or zero
+uses the default of 10; other values must fit uint32. `X-Consistency` follows the
+same request context and routing contract in either response mode.
+
+Large ledger scans previously left HTTP callers without progress until the
+complete result arrived. Clients can now observe the existing controller's
+progress callbacks by explicitly sending `Accept: text/event-stream`. This keeps
+one read request and one backend computation rather than introducing a job,
+polling API or durable progress state. A missing `Accept`, JSON preference,
+malformed stream range, `q=0`, or wildcard alone retains JSON. A valid explicit
+stream range with positive quality selects SSE when its quality is at least the
+effective JSON quality. For JSON, `application/json` takes precedence over
+`application/*`, then `*/*`; among equally specific ranges, the highest valid
+quality applies. For example, `text/event-stream;q=0.5, application/json;q=0.1,
+*/*;q=1` selects SSE, while `text/event-stream;q=0.5, application/json` selects
+JSON. Responses selected after parameter validation include `Vary: Accept`.
+
+A stream uses `Content-Type: text/event-stream`, `Cache-Control: no-cache` and
+`X-Accel-Buffering: no`. Every event is an `event: <name>` line and a
+`data: <JSON>` line, followed by a blank line. The event data contracts are:
+
+| Event | JSON data | Meaning |
+| --- | --- | --- |
+| `started` | `{}` | Stream established; does not prove that the ledger exists or the scan succeeded. |
+| `progress` | `{"processed":1000,"total":2500,"phase":"scanning"}` | Existing backend progress. Account analysis uses `scanning`; transaction analysis uses an empty phase, matching its gRPC progress. Counts do not promise a final result or a heartbeat interval. |
+| `result` | The existing JSON response, including its outer `{"data":...}` envelope | Successful completion; exactly the same DTO and values as synchronous JSON. |
+| `error` | `{"errorCode":"...","errorMessage":"...","status":503,"retryAfter":1}` | Terminal failure. `status` is the ordinary error's HTTP status, while the established stream stays HTTP 200. `retryAfter` is present with value 1 only for status 503. |
+
+`result` and `error` are terminal. Only receipt of a complete `result` event
+establishes successful completion. EOF, disconnect or cancellation without a
+terminal event is incomplete, even after `started` or progress at the reported
+total. Stream errors use the shared HTTP error classifier and sanitized public
+messages, preserving local/forwarded classification and correlation IDs without
+exposing raw internal errors. Errors before stream establishment, including
+middleware, authentication and threshold validation, retain their usual HTTP
+status and JSON or authentication plain-text body. HTTP 200 alone therefore
+cannot establish success. Result encoding uses the same request-scoped
+`Formance-Bigint-As-String` option as JSON; progress counts remain ordinary
+numbers. A result encoder failure becomes a terminal sanitized error when the
+transport remains usable.
+
+The request goroutine owns the scan and writes each callback directly to the
+response. There is no progress queue or additional scan goroutine: a slow reader
+backpressures the scan. Each write plus flush has a 10-second deadline, cleared
+between events; this is neither a total scan timeout nor a maximum interval
+between progress events. A failed write/flush cancels the child request context
+and suppresses further events. Account and transaction scan loops check context
+cancellation at each account/global log and retain their existing snapshot
+release lifecycle. The adapter marshals a whole event before starting its frame;
+a transport interruption can still truncate delivery and must be treated as
+incomplete. Existing analysis accumulation and final result memory remain;
+streaming adds framing and synchronous writes per existing progress callback,
+not another scan or an unbounded event buffer.
+
+There are no event IDs, replay, automatic resume, durable jobs or heartbeat
+messages. Clients should use a streaming HTTP request (for example `fetch` with
+manual SSE parsing), handle both terminal event types and deliberately decide
+whether to start a new scan after interruption. Browser `EventSource` reconnects
+automatically and can rerun the full analysis; it is unsuitable without explicit
+reconnection control. Intermediaries must allow streaming and sufficiently long
+silent scan phases; the server's buffering header is a hint, not a guarantee
+about every proxy.
+
+Upgrade all serving nodes before enabling SSE clients. During a rolling upgrade,
+an older server may ignore `Accept` and return ordinary JSON. Verify the response
+`Content-Type` before parsing; accept that JSON fallback or wait for rollout.
+Generated clients are not promised SSE support by the OpenAPI declaration.
+The HTTP addition changes no published gRPC message, service protocol revision
+(`40`), persisted data, Raft entry, snapshot, backup or audit format.
+
 ### Encoded metadata keys
 
 Metadata DELETE routes (account, transaction and ledger) and metadata-schema

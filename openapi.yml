@@ -1642,7 +1642,15 @@ paths:
       description: |
         Scans all accounts in a ledger, discovers address patterns, and returns a
         suggested Chart of Accounts. Useful after a mirror import to understand
-        account structure. Requires `ledger:read` scope.
+        account structure. Requires `ledger:ReadAccount` scope (included in the default `ledger:read` mapping).
+
+        Default response is synchronous JSON. Explicit Accept: text/event-stream
+        opts into started/progress and a terminal result or error event when its
+        positive quality is at least the effective JSON quality. Wildcards alone
+        retain JSON. Once established, the stream is HTTP 200, including terminal
+        errors; EOF without a terminal event is incomplete. Early middleware and
+        parameter errors retain their normal HTTP status/media type. Verify the
+        response Content-Type for old-server JSON fallback during rollout.
       operationId: v3AnalyzeAccounts
       x-speakeasy-name-override: AnalyzeAccounts
       tags:
@@ -1651,23 +1659,43 @@ paths:
         - BearerAuth: []
         - {}
       parameters:
-        - $ref: '#/components/parameters/Consistency'
-        - $ref: '#/components/parameters/LedgerName'
-        - name: variableThreshold
-          in: query
-          description: Max distinct children before classifying as variable (0 = default 10)
-          required: false
-          schema:
-            type: integer
-            format: int32
-            default: 0
+      - $ref: '#/components/parameters/AnalysisAccept'
+      - $ref: '#/components/parameters/Consistency'
+      - $ref: '#/components/parameters/LedgerName'
+      - name: variableThreshold
+        in: query
+        description: Max distinct children before classifying as variable (0 = default 10)
+        required: false
+        schema:
+          type: integer
+          format: int32
+          default: 0
       responses:
         '200':
-          description: Analysis completed successfully
+          description: Synchronous result or established analysis stream
+          headers:
+            Vary:
+              description: Response representation depends on Accept.
+              schema:
+                type: string
+              example: Accept
+            Cache-Control:
+              description: Present as no-cache on SSE responses.
+              schema:
+                type: string
+              example: no-cache
+            X-Accel-Buffering:
+              description: Present as no on SSE responses to discourage proxy buffering.
+              schema:
+                type: string
+              example: 'no'
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/AnalyzeAccountsResponse'
+            text/event-stream:
+              schema:
+                $ref: '#/components/schemas/AccountAnalysisEventStream'
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
@@ -1691,7 +1719,15 @@ paths:
       description: |
         Scans all transactions in a ledger, discovers flow patterns by normalizing
         account addresses, and returns statistics per flow type including temporal
-        distribution and volume metrics. Requires `ledger:read` scope.
+        distribution and volume metrics. Requires `ledger:ReadAccount` scope (included in the default `ledger:read` mapping).
+
+        Default response is synchronous JSON. Explicit Accept: text/event-stream
+        opts into started/progress and a terminal result or error event when its
+        positive quality is at least the effective JSON quality. Wildcards alone
+        retain JSON. Once established, the stream is HTTP 200, including terminal
+        errors; EOF without a terminal event is incomplete. Early middleware and
+        parameter errors retain their normal HTTP status/media type. Verify the
+        response Content-Type for old-server JSON fallback during rollout.
       operationId: v3AnalyzeTransactions
       x-speakeasy-name-override: AnalyzeTransactions
       tags:
@@ -1700,24 +1736,44 @@ paths:
         - BearerAuth: []
         - {}
       parameters:
-        - $ref: '#/components/parameters/Consistency'
-        - $ref: '#/components/parameters/BigIntAsString'
-        - $ref: '#/components/parameters/LedgerName'
-        - name: variableThreshold
-          in: query
-          description: Max distinct children before classifying as variable (0 = default 10)
-          required: false
-          schema:
-            type: integer
-            format: int32
-            default: 0
+      - $ref: '#/components/parameters/AnalysisAccept'
+      - $ref: '#/components/parameters/Consistency'
+      - $ref: '#/components/parameters/BigIntAsString'
+      - $ref: '#/components/parameters/LedgerName'
+      - name: variableThreshold
+        in: query
+        description: Max distinct children before classifying as variable (0 = default 10)
+        required: false
+        schema:
+          type: integer
+          format: int32
+          default: 0
       responses:
         '200':
-          description: Analysis completed successfully
+          description: Synchronous result or established analysis stream
+          headers:
+            Vary:
+              description: Response representation depends on Accept.
+              schema:
+                type: string
+              example: Accept
+            Cache-Control:
+              description: Present as no-cache on SSE responses.
+              schema:
+                type: string
+              example: no-cache
+            X-Accel-Buffering:
+              description: Present as no on SSE responses to discourage proxy buffering.
+              schema:
+                type: string
+              example: 'no'
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/AnalyzeTransactionsResponse'
+            text/event-stream:
+              schema:
+                $ref: '#/components/schemas/TransactionAnalysisEventStream'
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
@@ -3608,6 +3664,22 @@ components:
       schema:
         type: string
         format: byte
+
+    AnalysisAccept:
+      name: Accept
+      in: header
+      required: false
+      description: |
+        Explicit text/event-stream with a valid positive quality opts into SSE
+        when its quality is at least the effective JSON quality; ties select SSE.
+        For JSON, application/json overrides application/*, then */*. Equally
+        specific ranges use the highest valid quality. Missing Accept, wildcard
+        alone, malformed stream ranges or q=0 retain synchronous JSON. Result
+        events use the existing JSON envelope and request-scoped bigint option.
+        Verify response Content-Type and accept JSON fallback on older servers.
+      schema:
+        type: string
+      example: text/event-stream
 
     PageSize:
       name: pageSize
@@ -6534,6 +6606,98 @@ components:
               description:
                 type: string
                 description: Suggested description for this account group
+
+    AnalysisStartedEventData:
+      type: object
+      additionalProperties: false
+      description: Empty object in the started event. Establishment does not imply successful analysis.
+
+    AnalysisProgressEventData:
+      type: object
+      required:
+      - processed
+      - total
+      - phase
+      properties:
+        processed:
+          type: integer
+          format: int64
+          minimum: 0
+        total:
+          type: integer
+          format: int64
+          minimum: 0
+        phase:
+          type: string
+          enum: [scanning, '']
+          description: Account analysis uses scanning; transaction analysis uses an empty phase, matching gRPC progress.
+
+    AnalysisErrorEventData:
+      type: object
+      required:
+      - errorCode
+      - errorMessage
+      - status
+      properties:
+        errorCode:
+          type: string
+          description: Same machine-readable classification as the synchronous HTTP error.
+        errorMessage:
+          type: string
+          description: Same sanitized public message and correlation policy as synchronous HTTP errors.
+        status:
+          type: integer
+          description: Ordinary HTTP status for this error. The established stream remains HTTP 200.
+        retryAfter:
+          type: integer
+          enum: [1]
+          description: Present only when status is 503; delay in seconds. This is data, not an SSE retry directive.
+
+    AccountAnalysisEventStream:
+      type: string
+      description: |
+        SSE frames are event: <name> followed by data: <JSON> and a blank line.
+        started data uses AnalysisStartedEventData; progress data uses
+        AnalysisProgressEventData (phase scanning); terminal result data uses
+        AnalyzeAccountsResponse including its data envelope; terminal error data
+        uses AnalysisErrorEventData. Only a complete result proves successful
+        completion. EOF/disconnect/cancellation without a terminal event is
+        incomplete. There are no event IDs, replay, automatic resume or heartbeats.
+        Each synchronous write/flush has a 10-second deadline cleared between
+        events; this does not bound scan duration or silence between events.
+        Slow readers backpressure the scan; transport failure cancels the request.
+        Use streaming fetch/manual SSE parsing to avoid EventSource automatic
+        reconnection rerunning the scan. Generated SDK streaming support is not
+        implied. Responses carry Cache-Control: no-cache and X-Accel-Buffering: no.
+      x-sse-events:
+        started:
+          $ref: '#/components/schemas/AnalysisStartedEventData'
+        progress:
+          $ref: '#/components/schemas/AnalysisProgressEventData'
+        result:
+          $ref: '#/components/schemas/AnalyzeAccountsResponse'
+        error:
+          $ref: '#/components/schemas/AnalysisErrorEventData'
+
+    TransactionAnalysisEventStream:
+      type: string
+      description: |
+        Same framing, lifecycle and transport contract as AccountAnalysisEventStream.
+        started data uses AnalysisStartedEventData; progress data uses
+        AnalysisProgressEventData with an empty phase. Terminal result data uses
+        AnalyzeTransactionsResponse including its data envelope and negotiated
+        bigint representation; terminal error data uses AnalysisErrorEventData.
+        Only a complete result proves success; EOF without a terminal event is
+        incomplete. No event IDs, replay, automatic resume or heartbeats.
+      x-sse-events:
+        started:
+          $ref: '#/components/schemas/AnalysisStartedEventData'
+        progress:
+          $ref: '#/components/schemas/AnalysisProgressEventData'
+        result:
+          $ref: '#/components/schemas/AnalyzeTransactionsResponse'
+        error:
+          $ref: '#/components/schemas/AnalysisErrorEventData'
 
     AnalyzeAccountsResponse:
       type: object

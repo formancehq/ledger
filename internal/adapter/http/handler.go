@@ -296,6 +296,11 @@ type contentTypeResponseWriter struct {
 	wroteHeader bool
 }
 
+// Unwrap preserves ResponseController flushing and deadlines through middleware.
+func (rw *contentTypeResponseWriter) Unwrap() http.ResponseWriter {
+	return rw.ResponseWriter
+}
+
 func (rw *contentTypeResponseWriter) WriteHeader(code int) {
 	if !rw.wroteHeader {
 		rw.statusCode = code

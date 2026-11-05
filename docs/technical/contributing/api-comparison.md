@@ -869,7 +869,7 @@ ledgerctl indexes list --ledger my-ledger
 
 **Description:** Import logs from another ledger for migration or synchronization.
 
-**Current status:** 
+**Current status:**
 - Interface defined in `Ledger.Import(ctx, stream chan *commonpb.Log) error`
 - Implementation returns `ErrNotFound`
 
@@ -1308,8 +1308,8 @@ Read endpoints comparison with the original ledger:
 | `POST /v3/{ledgerName}/promote` | ✅ | ❌ | Promote mirror ledger to normal mode |
 | `GET /v3/` | ✅ | ✅ | List ledgers, paged by name ([pagination](#pagination)) |
 | `GET /v3/{ledgerName}/metadata-schema` | ✅ | ❌ | Get declared metadata field types |
-| `GET /v3/{ledgerName}/analyze-accounts` | ✅ | ❌ | Analyze accounts and suggest Chart of Accounts |
-| `GET /v3/{ledgerName}/analyze-transactions` | ✅ | ❌ | Analyze transaction flow patterns |
+| `GET /v3/{ledgerName}/analyze-accounts` | ✅ | ❌ | Analyze accounts and suggest Chart of Accounts; default JSON or explicit SSE progress, both guarded by `ledger:ReadAccount` |
+| `GET /v3/{ledgerName}/analyze-transactions` | ✅ | ❌ | Analyze transaction flow patterns; default JSON or explicit SSE progress, both guarded by `ledger:ReadAccount` |
 | `PUT /v3/{ledgerName}/metadata-schema/{targetType}/{key}` | ✅ | ❌ | Set metadata field type |
 | `DELETE /v3/{ledgerName}/metadata-schema/{targetType}/{key}` | ✅ | ❌ | Remove metadata field type |
 | `POST /v3/{ledgerName}/prepared-queries` | ✅ | ❌ | Create a prepared query |
@@ -1388,6 +1388,33 @@ existing v3 paged-list default/cap rather than introducing a rejection limit.
 
 A page token is relative to the requested order, so every page of a walk
 repeats the same `reverse` and filter.
+
+### Analysis response negotiation
+
+Both analysis GET routes retain their existing paths, `variableThreshold`,
+`X-Consistency`, granular `ledger:ReadAccount` authorization and synchronous
+`{data: ...}` JSON envelopes. An explicit acceptable `text/event-stream` range
+opts into `started`, `progress` and terminal `result` or `error` events; wildcard
+alone never opts in. JSON media-range specificity controls its effective
+quality, and a positive SSE quality wins ties. SSE result data is the existing
+response envelope, including request-scoped bigint representation. Once
+established, HTTP remains 200 and errors carry sanitized `errorCode`,
+`errorMessage`, ordinary HTTP `status`, and `retryAfter: 1` only for 503.
+Missing terminal events mean incomplete delivery; clients must not infer
+success from EOF or automatically restart scans. See the
+[analysis stream contract](../architecture/subsystems/api/http-api.md#account-and-transaction-analysis-progress)
+for framing, backpressure, cancellation and rollout behavior.
+
+There is no corresponding v2 operation in the historical reference
+`d47ba1746cec2173d84eab8ec575be196eae0837`: its
+`internal/api/v2/routes.go` account/transaction registrations,
+`openapi/v2.yaml` and `internal/api/v2` handlers/tests contain no analysis
+route or handler. Existing v3 JSON behavior supplies the compatibility baseline
+for these endpoints. This reference establishes the historical v2 comparison,
+not the contents of every later v2 release. The endpoint map has no analysis
+entry and requires no change. Upgrade serving nodes before enabling SSE clients;
+verify `Content-Type` and handle old-server JSON fallback. No gRPC protocol or
+persisted-state format changes are introduced.
 
 ---
 

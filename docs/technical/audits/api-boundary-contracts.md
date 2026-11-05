@@ -490,3 +490,40 @@ Request signing adds no HTTP response authenticity. See
 [the HTTP contract](../architecture/subsystems/api/http-api.md#signed-transaction-requests)
 and [client recipe](../../ops/signing.md#http-request-signing). No audit execution
 is authorized by this contract update.
+
+## HTTP analysis progress streams
+
+Trace both registered analysis GET routes through their granular
+`ledger:ReadAccount` guards, query/consistency middleware and threshold parsing.
+The [HTTP analysis contract](../architecture/subsystems/api/http-api.md#account-and-transaction-analysis-progress)
+owns optional SSE framing and negotiation, including JSON specificity, quality
+ties and wildcard-only fallback. Probe real registered routes; a helper-only
+negotiation test cannot establish authorization or middleware reachability.
+The synchronous JSON path and SSE result must preserve the same `data` envelope,
+DTO, exact numeric tokens and request-scoped bigint option. Compare explicit
+SSE and default JSON with identical inputs and fixture results.
+
+Observe `started`, zero or more existing progress callbacks and one terminal
+`result` or `error` when delivery succeeds. Account progress uses `scanning`;
+transaction progress uses an empty phase. A complete `result` is the only
+successful-completion signal. HTTP 200, progress reaching total, or EOF without
+a terminal event does not prove completion. Early validation/authentication
+errors retain ordinary status and media types; after establishment the HTTP
+status remains 200. Error data must share the sanitized HTTP classification,
+public message and correlation policy, plus ordinary status and `retryAfter: 1`
+only for 503. Challenge local/forwarded domain failures, internal errors,
+panics and result encoding failures without exposing raw diagnostics.
+
+Use deterministic writers and context-aware backend fixtures to distinguish
+write, flush and encoding failures. Every frame has a 10-second write-plus-flush
+deadline cleared between events; silent computation is not a timeout failure.
+Direct writes backpressure the scan without an event queue or worker goroutine.
+Transport failure cancels the child context and prevents subsequent events.
+The boundary owns that cancellation signal and observable terminal contract;
+controller scan cancellation/snapshot ownership remains with read-consistency
+and concurrency/lifecycle domains. This stream does not add event IDs, replay,
+automatic resume, durable jobs or heartbeats. Check `Vary: Accept`, SSE cache and
+buffering headers, old-server JSON Content-Type fallback, and documented
+streaming-fetch/manual-parsing guidance against accidental EventSource rescans.
+OpenAPI string media schemas and named event payloads describe framing; they do
+not prove generated SDK streaming support or proxy behavior.

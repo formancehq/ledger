@@ -1,6 +1,7 @@
 package http
 
 import (
+	"context"
 	"errors"
 	"net/http"
 	"strconv"
@@ -110,6 +111,20 @@ func (s *Server) handleAnalyzeAccounts(w http.ResponseWriter, r *http.Request) {
 		}
 
 		variableThreshold = uint32(parsed)
+	}
+
+	w.Header().Add("Vary", "Accept")
+	if wantsAnalysisStream(r) {
+		streamAnalysis(w, r, "scanning", func(ctx context.Context, progress func(uint64, uint64)) (any, error) {
+			resp, err := s.backend.AnalyzeAccounts(ctx, ledgerName, variableThreshold, progress)
+			if err != nil {
+				return nil, err
+			}
+
+			return toAnalyzeAccountsJSON(resp), nil
+		})
+
+		return
 	}
 
 	resp, err := s.backend.AnalyzeAccounts(r.Context(), ledgerName, variableThreshold, nil)

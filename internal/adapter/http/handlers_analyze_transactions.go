@@ -1,6 +1,7 @@
 package http
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"net/http"
@@ -172,6 +173,20 @@ func (s *Server) handleAnalyzeTransactions(w http.ResponseWriter, r *http.Reques
 		}
 
 		variableThreshold = uint32(parsed)
+	}
+
+	w.Header().Add("Vary", "Accept")
+	if wantsAnalysisStream(r) {
+		streamAnalysis(w, r, "", func(ctx context.Context, progress func(uint64, uint64)) (any, error) {
+			resp, err := s.backend.AnalyzeTransactions(ctx, ledgerName, variableThreshold, progress)
+			if err != nil {
+				return nil, err
+			}
+
+			return toAnalyzeTransactionsJSON(resp)
+		})
+
+		return
 	}
 
 	resp, err := s.backend.AnalyzeTransactions(r.Context(), ledgerName, variableThreshold, nil)
