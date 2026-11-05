@@ -165,6 +165,74 @@ func TestScaleDownPVCDeletionMetadataConflictRetriesOriginal(t *testing.T) {
 	require.Equal(t, 2, attempts)
 }
 
+func TestScaleDownPVCDeletionRevalidatesSourceAfterClaimRead(t *testing.T) {
+	t.Parallel()
+	for _, change := range []string{"replicas", "metadata"} {
+		t.Run(change, func(t *testing.T) {
+			t.Parallel()
+			f := newScaleDownIdentityFixture(t)
+			inventory := f.sts.Annotations[annotationScaleDownPVCPlan]
+			initialResourceVersion := f.sts.ResourceVersion
+			claimReads, attempts := 0, 0
+			f.cs.PrependReactor("get", "persistentvolumeclaims", func(ktesting.Action) (bool, runtime.Object, error) {
+				claimReads++
+				if claimReads == 1 {
+					live := &appsv1.StatefulSet{}
+					require.NoError(t, f.reader.Get(t.Context(), client.ObjectKeyFromObject(f.sts), live))
+					if change == "replicas" {
+						live.Spec.Replicas = new(int32(2))
+					} else {
+						live.Labels = map[string]string{"concurrent-update": "observed"}
+					}
+					require.NoError(t, f.reader.Update(t.Context(), live))
+				}
+
+				return false, nil, nil
+			})
+			f.cs.PrependReactor("delete", "persistentvolumeclaims", func(action ktesting.Action) (bool, runtime.Object, error) {
+				attempts++
+				options := action.(ktesting.DeleteAction).GetDeleteOptions()
+				require.NotNil(t, options.Preconditions)
+				require.Equal(t, f.pvc.UID, *options.Preconditions.UID)
+				require.Equal(t, f.pvc.ResourceVersion, *options.Preconditions.ResourceVersion)
+
+				return false, nil, nil
+			})
+
+			err := f.cleanup(t)
+			require.Equal(t, 1, claimReads, "mutate only after the first source validation reaches its claim read")
+			require.Zero(t, attempts, "a changed source must stop deletion even while the PVC UID and version still match")
+			require.ErrorContains(t, err, "StatefulSet")
+			remaining, err := f.cs.CoreV1().PersistentVolumeClaims(f.pvc.Namespace).Get(t.Context(), f.pvc.Name, metav1.GetOptions{})
+			require.NoError(t, err)
+			require.Equal(t, f.pvc.UID, remaining.UID)
+			require.Equal(t, f.pvc.ResourceVersion, remaining.ResourceVersion)
+			require.Equal(t, f.pvc.Spec.VolumeName, remaining.Spec.VolumeName)
+			live := &appsv1.StatefulSet{}
+			require.NoError(t, f.reader.Get(t.Context(), client.ObjectKeyFromObject(f.sts), live))
+			require.NotEqual(t, initialResourceVersion, live.ResourceVersion)
+			require.Equal(t, inventory, live.Annotations[annotationScaleDownPVCPlan])
+			require.Equal(t, "2", live.Annotations[annotationScaleDownPVCFrom])
+			if change == "replicas" {
+				require.EqualValues(t, 2, *live.Spec.Replicas, "the rejected delete must preserve the concurrent scale-up")
+				live.Spec.Replicas = new(int32(1))
+				require.NoError(t, f.reader.Update(t.Context(), live))
+			}
+			// A fresh cleanup reads the same durable inventory once the source is
+			// stable again; no failure may reauthorize a different PVC identity.
+			f.sts = live
+			f.plan, err = readScaleDownPVCPlan(live, f.ledger)
+			require.NoError(t, err)
+			require.NoError(t, f.cleanup(t))
+			require.Equal(t, 1, attempts)
+			_, err = f.cs.CoreV1().PersistentVolumeClaims(f.pvc.Namespace).Get(t.Context(), f.pvc.Name, metav1.GetOptions{})
+			require.True(t, kerrors.IsNotFound(err), "the stable retry must delete the original claim")
+			require.NoError(t, f.cleanup(t))
+			require.Equal(t, 1, attempts, "an absent original claim must not cause another delete")
+		})
+	}
+}
+
 func TestScaleDownPVCDeletionResponseLossRecovers(t *testing.T) {
 	t.Parallel()
 	f := newScaleDownIdentityFixture(t)

@@ -202,8 +202,12 @@ reduction persists, a fresh reconciler must use the saved identities before any
 later scale-up, not recapture whichever object now has the same name. At every
 DELETE attempt, directly revalidate the owned StatefulSet incarnation and actual
 removed range, the PVC UID/owners/volume name and the bound PV UID/claimRef.
-Send the recorded PVC UID and the freshly read resourceVersion as DELETE
-preconditions. A conflict retains the plan and requires a new validated read;
+After the claim/binding reads, directly reread the StatefulSet immediately before
+DELETE. Require its nonempty resourceVersion to equal the source version from
+before those reads, with the same owned UID, inventory, retention and removed
+ordinal. Source drift, including a metadata-only version update, retains the
+claim and plan for a fresh attempt. Send the recorded PVC UID and freshly read
+PVC resourceVersion as DELETE preconditions. A conflict retains the plan and requires a new validated read;
 it cannot adopt a replacement UID or binding. A missing original claim or that
 same claim already deleting is idempotent and needs no new DELETE.
 
@@ -831,6 +835,13 @@ retry really deletes the original target and clears state. Cover partial success
 missing/already-terminating original claims, legacy count-only metadata,
 Retain cancellation and current ordinals. Distinguish Operator deletion fences
 from native retention-controller garbage collection.
+Interpose a real StatefulSet scale-up during the PVC/PV read, after the first
+source check, and verify zero DELETE calls, unchanged original PVC identity and
+no deletion timestamp, plus retained inventory. Restore the reduced count and
+require a fresh reconciler to delete that original claim and clear both markers.
+Also cover a source resourceVersion-only update. The final source read cannot
+fence an independent update after that read; no cross-object transaction or
+native-GC guarantee may be claimed.
 
 For direct hostPath/PVC layout recreation, require owned observed identity,
 a direct API reread and UID/resourceVersion delete preconditions. Cover foreign

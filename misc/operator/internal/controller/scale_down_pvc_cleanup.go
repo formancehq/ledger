@@ -183,8 +183,19 @@ func deleteScaledDownPVCs(ctx context.Context, cs kubernetes.Interface, reader c
 		if pvc == nil || !pvc.DeletionTimestamp.IsZero() {
 			continue
 		}
-		// ResourceVersion is refreshed only after identity and binding checks.
-		// This bounds changes to this PVC, not an atomic PVC/PV transaction.
+		// Claim/binding reads may race a replica or ownership change. Recheck
+		// the source as the final read before DELETE, retaining the original
+		// observation's version rather than authorizing a changed workload.
+		current, err := p.validateSource(ctx, reader, ledger, sts)
+		if err != nil {
+			return err
+		}
+		if live.ResourceVersion == "" || current.ResourceVersion != live.ResourceVersion || expected.Ordinal < *current.Spec.Replicas {
+			return errors.New("StatefulSet changed while validating PVC deletion")
+		}
+		// PVC ResourceVersion is refreshed only after identity/binding checks.
+		// This cannot fence a StatefulSet update after the final source read:
+		// Kubernetes DELETE preconditions apply only to the PVC itself.
 		if err := cs.CoreV1().PersistentVolumeClaims(sts.Namespace).Delete(ctx, pvc.Name, metav1.DeleteOptions{Preconditions: &metav1.Preconditions{UID: &pvc.UID, ResourceVersion: &pvc.ResourceVersion}}); err != nil && !apierrors.IsNotFound(err) {
 			return fmt.Errorf("deleting PVC %s: %w", pvc.Name, err)
 		}

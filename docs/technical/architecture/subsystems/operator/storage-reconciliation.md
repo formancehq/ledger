@@ -172,13 +172,16 @@ After all required Raft removals succeed, the controller persists the reduced
 replica count. That write requests Pod termination; it does not wait for it.
 Cleanup reuses the frozen inventory after a failed write or Operator restart,
 before any later scale-up can reuse the old claims. Immediately before each
-DELETE it directly rereads the owned StatefulSet incarnation, verifies the
-actual reduced replica range and retention, then rereads the PVC and bound PV.
+DELETE it directly reads the owned StatefulSet incarnation and checks the
+actual reduced replica range and retention, then reads the PVC and bound PV.
 PVC UID, volume name, PV UID and claim reference must match the saved
 inventory. Any present PVC owner must refer to the recorded StatefulSet or
-original Pod identity. Ordinals observed as current or retained are not deletion
-targets. The DELETE
-carries the recorded PVC UID and the freshly validated resourceVersion.
+original Pod identity. After those claim/binding reads, it directly rereads the
+StatefulSet immediately before DELETE, repeats the source checks and rejects a
+changed source resourceVersion or a now-active ordinal. A source change during
+claim validation leaves the original inventory and claim intact for a fresh
+attempt. Even a status/metadata-only version change requires a retry. The DELETE
+carries the recorded PVC UID and the freshly validated PVC resourceVersion.
 A conflict requires another read and validation; refreshing a version must not
 refresh the authorized UID or binding.
 
@@ -191,8 +194,12 @@ after all authorized deletions are accepted or already complete. Switching the
 desired policy to `Retain` cancels further Operator cleanup without deleting
 claims. It does not reverse earlier accepted deletes or native garbage
 collection. PVC protection still controls eventual removal of in-use claims.
-The PVC preconditions do not make the source/PVC/PV reads or native garbage
-collection a multi-object transaction.
+The final StatefulSet read bounds changes observed during claim validation;
+the PVC DELETE cannot carry a precondition on another object's version. A
+StatefulSet update after that final read can still race the DELETE. Independent
+writers must coordinate replica changes with pending cleanup. These checks and
+PVC preconditions do not make source/PVC/PV reads or native garbage collection
+a multi-object transaction.
 
 A legacy previous-count marker without an inventory cannot authorize explicit
 Delete cleanup. Do not fill missing identity from the current same-name claim

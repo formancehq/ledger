@@ -112,6 +112,59 @@ func TestScaleDownPVCCleanupRejectsSameNameReplacementInAPI(t *testing.T) {
 	}
 }
 
+func TestScaleDownPVCCleanupRejectsReactivatedOrdinalDuringClaimReadInAPI(t *testing.T) {
+	t.Parallel()
+	f := newScaleDownPVCCleanupAPIFixture(t, true)
+	intercept := &scaleDownPVCAPIDeleteClient{Interface: f.cs}
+	original := f.readStatefulSet(t)
+	var scaledUp *appsv1.StatefulSet
+	claimReads := 0
+	intercept.beforeGet = func(ctx context.Context, name string) {
+		claimReads++
+		require.Equal(t, f.pvc.Name, name)
+		scaledUp = f.readStatefulSet(t)
+		require.EqualValues(t, 1, *scaledUp.Spec.Replicas)
+		scaledUp.Spec.Replicas = new(int32(2))
+		require.NoError(t, k8sClient.Update(ctx, scaledUp))
+		require.Equal(t, original.UID, scaledUp.UID)
+		require.NotEqual(t, original.ResourceVersion, scaledUp.ResourceVersion)
+	}
+
+	err := f.resume(t, intercept)
+	require.Error(t, err, "a source scale-up during the claim read must stop cleanup before DELETE")
+	require.Equal(t, 1, claimReads, "the race must occur after source validation, during the real claim lookup")
+	require.Empty(t, intercept.attempts, "the reactivated ordinal must never receive a PVC DELETE")
+	require.Empty(t, intercept.results)
+	pvc, err := f.cs.CoreV1().PersistentVolumeClaims(f.sts.Namespace).Get(t.Context(), f.pvc.Name, metav1.GetOptions{})
+	require.NoError(t, err)
+	require.Equal(t, f.pvc.UID, pvc.UID)
+	require.Equal(t, f.pvc.ResourceVersion, pvc.ResourceVersion, "the concurrent update changes the source only")
+	require.Nil(t, pvc.DeletionTimestamp)
+	require.Equal(t, f.pvc.Spec.VolumeName, pvc.Spec.VolumeName)
+	pv, err := f.cs.CoreV1().PersistentVolumes().Get(t.Context(), f.pv.Name, metav1.GetOptions{})
+	require.NoError(t, err)
+	require.Equal(t, f.pv.UID, pv.UID)
+	require.Equal(t, f.pv.Spec.ClaimRef, pv.Spec.ClaimRef)
+	f.requirePersistedInventory(t)
+	require.EqualValues(t, 2, *f.readStatefulSet(t).Spec.Replicas)
+
+	// The same frozen inventory remains usable after a fresh reconciler sees
+	// the original reduced replica range again. No identity is recaptured.
+	scaledUp.Spec.Replicas = new(int32(1))
+	require.NoError(t, k8sClient.Update(t.Context(), scaledUp))
+	require.NoError(t, f.resume(t, intercept))
+	require.Equal(t, 1, claimReads, "the injected scale-up runs only once")
+	require.Len(t, intercept.attempts, 1)
+	require.Len(t, intercept.results, 1)
+	require.NoError(t, intercept.results[0])
+	require.Equal(t, f.pvc.UID, *intercept.attempts[0].Preconditions.UID)
+	require.Equal(t, pvc.ResourceVersion, *intercept.attempts[0].Preconditions.ResourceVersion)
+	f.requireDeletionAccepted(t)
+	sts := f.readStatefulSet(t)
+	require.NotContains(t, sts.Annotations, annotationScaleDownPVCFrom)
+	require.NotContains(t, sts.Annotations, annotationScaleDownPVCPlan)
+}
+
 func TestScaleDownPVCCleanupRejectsPVBindingChangeInAPI(t *testing.T) {
 	t.Parallel()
 	f := newScaleDownPVCCleanupAPIFixture(t, true)
@@ -279,6 +332,7 @@ func (f *scaleDownPVCCleanupAPIFixture) replacePVC(t *testing.T) *corev1.Persist
 type scaleDownPVCAPIDeleteClient struct {
 	kubernetes.Interface
 	beforeDelete func(context.Context, string)
+	beforeGet    func(context.Context, string)
 	attempts     []metav1.DeleteOptions
 	results      []error
 }
@@ -299,6 +353,14 @@ func (c *scaleDownPVCAPICore) PersistentVolumeClaims(namespace string) coreclien
 type scaleDownPVCAPIDeletes struct {
 	coreclient.PersistentVolumeClaimInterface
 	parent *scaleDownPVCAPIDeleteClient
+}
+
+func (c *scaleDownPVCAPIDeletes) Get(ctx context.Context, name string, options metav1.GetOptions) (*corev1.PersistentVolumeClaim, error) {
+	if hook := c.parent.beforeGet; hook != nil {
+		c.parent.beforeGet = nil
+		hook(ctx, name)
+	}
+	return c.PersistentVolumeClaimInterface.Get(ctx, name, options)
 }
 
 func (c *scaleDownPVCAPIDeletes) Delete(ctx context.Context, name string, options metav1.DeleteOptions) error {
