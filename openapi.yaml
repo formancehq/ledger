@@ -5161,8 +5161,6 @@ components:
         pageSize:
           type: integer
           format: int64
-          minimum: 1
-          maximum: 1000
           description: |
             The maximum number of results to return per page.
           example: 100
@@ -5192,8 +5190,6 @@ components:
         pageSize:
           type: integer
           format: int64
-          minimum: 1
-          maximum: 1000
           description: |
             The maximum number of results to return per page.
           example: 100
@@ -5229,8 +5225,6 @@ components:
         pageSize:
           type: integer
           format: int64
-          minimum: 1
-          maximum: 1000
           description: |
             The maximum number of results to return per page.
           example: 100
