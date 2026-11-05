@@ -13,9 +13,8 @@ import (
 )
 
 const (
-	// DigestVersion identifies the checksum algorithm, canonical Log encoding and range framing.
-	// Version 2 switches the comparison checksum to XXH3-128.
-	DigestVersion = 2
+	// DigestVersion identifies the canonical Log encoding and range framing.
+	DigestVersion = 1
 	DigestSize    = 16
 	// MaxRangeEntries bounds the work and the lifetime of a pinned Pebble snapshot.
 	MaxRangeEntries = 4096
