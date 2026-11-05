@@ -1403,7 +1403,9 @@ established, HTTP remains 200 and errors carry sanitized `errorCode`,
 Missing terminal events mean incomplete delivery; clients must not infer
 success from EOF or automatically restart scans. See the
 [analysis stream contract](../architecture/subsystems/api/http-api.md#account-and-transaction-analysis-progress)
-for framing, backpressure, cancellation and rollout behavior.
+for framing, backpressure, cancellation and rollout behavior. OpenAPI describes
+each parsed SSE event as an object with a named `event` and JSON-encoded string
+`data`; the named payload schemas remain in `x-sse-events`.
 
 There is no corresponding v2 operation in the historical reference
 `d47ba1746cec2173d84eab8ec575be196eae0837`: its

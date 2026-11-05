@@ -525,5 +525,8 @@ and concurrency/lifecycle domains. This stream does not add event IDs, replay,
 automatic resume, durable jobs or heartbeats. Check `Vary: Accept`, SSE cache and
 buffering headers, old-server JSON Content-Type fallback, and documented
 streaming-fetch/manual-parsing guidance against accidental EventSource rescans.
-OpenAPI string media schemas and named event payloads describe framing; they do
+OpenAPI media schemas describe parsed event objects with an enumerated `event`
+and JSON-encoded string `data`; `x-sse-events` names the decoded payload schemas.
+Validate these envelopes through the pinned Schemathesis SSE validator, including
+unknown-event rejection, and validate named payloads separately. These checks do
 not prove generated SDK streaming support or proxy behavior.

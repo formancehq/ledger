@@ -135,6 +135,9 @@ about every proxy.
 Upgrade all serving nodes before enabling SSE clients. During a rolling upgrade,
 an older server may ignore `Accept` and return ordinary JSON. Verify the response
 `Content-Type` before parsing; accept that JSON fallback or wait for rollout.
+OpenAPI describes each parsed SSE event as an object with an `event` name and
+string `data` containing JSON; `x-sse-events` names the decoded payload schemas.
+The schema does not describe the complete wire response as one JSON object.
 Generated clients are not promised SSE support by the OpenAPI declaration.
 The HTTP addition changes no published gRPC message, service protocol revision
 (`40`), persisted data, Raft entry, snapshot, backup or audit format.

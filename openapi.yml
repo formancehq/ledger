@@ -6654,9 +6654,20 @@ components:
           description: Present only when status is 503; delay in seconds. This is data, not an SSE retry directive.
 
     AccountAnalysisEventStream:
-      type: string
+      type: object
+      required:
+      - event
+      - data
+      properties:
+        event:
+          type: string
+          enum: [started, progress, result, error]
+        data:
+          type: string
+          description: JSON-encoded payload selected by the event name; see x-sse-events.
       description: |
-        SSE frames are event: <name> followed by data: <JSON> and a blank line.
+        Describes one parsed SSE event, not the complete response body. Wire frames
+        are event: <name> followed by data: <JSON> and a blank line.
         started data uses AnalysisStartedEventData; progress data uses
         AnalysisProgressEventData (phase scanning); terminal result data uses
         AnalyzeAccountsResponse including its data envelope; terminal error data
@@ -6680,7 +6691,17 @@ components:
           $ref: '#/components/schemas/AnalysisErrorEventData'
 
     TransactionAnalysisEventStream:
-      type: string
+      type: object
+      required:
+      - event
+      - data
+      properties:
+        event:
+          type: string
+          enum: [started, progress, result, error]
+        data:
+          type: string
+          description: JSON-encoded payload selected by the event name; see x-sse-events.
       description: |
         Same framing, lifecycle and transport contract as AccountAnalysisEventStream.
         started data uses AnalysisStartedEventData; progress data uses
