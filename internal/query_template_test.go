@@ -175,3 +175,31 @@ func TestQueryTemplateValidation(t *testing.T) {
 		}
 	}
 }
+
+// The resource belongs to the template, not its parameter object. Keep these
+// accepted wire forms while the OpenAPI contract is corrected.
+func TestQueryTemplateParameterContract(t *testing.T) {
+	for _, source := range []string{
+		`{"resource":"accounts","params":{"pageSize":15,"expand":["volumes"],"startTime":"2026-01-01T00:00:00Z","endTime":"2026-02-01T00:00:00Z"}}`,
+		`{"resource":"volumes","params":{"groupBy":2,"insertionDate":true}}`,
+		`{"resource":"accounts","params":{"resource":"ignored"}}`,
+	} {
+		var template QueryTemplate
+		require.NoError(t, json.Unmarshal([]byte(source), &template))
+		require.NoError(t, template.Validate())
+	}
+	var missing QueryTemplate
+	require.NoError(t, json.Unmarshal([]byte(`{"params":{"resource":"accounts"}}`), &missing))
+	require.Error(t, missing.Validate())
+}
+
+func TestQueryTemplateRejectsVolumeParamsForOtherResources(t *testing.T) {
+	for _, resource := range []string{"accounts", "transactions", "logs"} {
+		for _, params := range []string{`{"groupBy":2}`, `{"insertionDate":true}`} {
+			source := `{"resource":"` + resource + `","params":` + params + `}`
+			var template QueryTemplate
+			require.NoError(t, json.Unmarshal([]byte(source), &template))
+			require.ErrorContains(t, template.Validate(), "unknown field")
+		}
+	}
+}

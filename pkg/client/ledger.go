@@ -56,7 +56,7 @@ func (s *Ledger) GetInfo(ctx context.Context, opts ...operations.Option) (*opera
 	} else {
 		baseURL = *o.ServerURL
 	}
-	opURL, err := url.JoinPath(baseURL, "/_/info")
+	opURL, err := url.JoinPath(baseURL, "/v2/_info")
 	if err != nil {
 		return nil, fmt.Errorf("error generating URL: %w", err)
 	}

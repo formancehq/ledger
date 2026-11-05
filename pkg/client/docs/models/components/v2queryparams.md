@@ -1,47 +1,20 @@
 # V2QueryParams
 
-Parameters applied when running a query template
+Parameters applied when running a query template. The query template's
+resource selects the target. groupBy and insertionDate are accepted only
+for volumes; other resources reject these fields.
 
 
-## Supported Types
 
-### QueryTemplateAccountParams
+## Fields
 
-```go
-v2QueryParams := components.CreateV2QueryParamsQueryTemplateAccountParams(components.QueryTemplateAccountParams{/* values here */})
-```
-
-### QueryTemplateTransactionParams
-
-```go
-v2QueryParams := components.CreateV2QueryParamsQueryTemplateTransactionParams(components.QueryTemplateTransactionParams{/* values here */})
-```
-
-### QueryTemplateLogParams
-
-```go
-v2QueryParams := components.CreateV2QueryParamsQueryTemplateLogParams(components.QueryTemplateLogParams{/* values here */})
-```
-
-### QueryTemplateVolumeParams
-
-```go
-v2QueryParams := components.CreateV2QueryParamsQueryTemplateVolumeParams(components.QueryTemplateVolumeParams{/* values here */})
-```
-
-## Union Discrimination
-
-Use the `Type` field to determine which variant is active, then access the corresponding field:
-
-```go
-switch v2QueryParams.Type {
-	case components.V2QueryParamsTypeQueryTemplateAccountParams:
-		// v2QueryParams.QueryTemplateAccountParams is populated
-	case components.V2QueryParamsTypeQueryTemplateTransactionParams:
-		// v2QueryParams.QueryTemplateTransactionParams is populated
-	case components.V2QueryParamsTypeQueryTemplateLogParams:
-		// v2QueryParams.QueryTemplateLogParams is populated
-	case components.V2QueryParamsTypeQueryTemplateVolumeParams:
-		// v2QueryParams.QueryTemplateVolumeParams is populated
-}
-```
+| Field                                                                                                                                                                       | Type                                                                                                                                                                        | Required                                                                                                                                                                    | Description                                                                                                                                                                 | Example                                                                                                                                                                     |
+| --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `PageSize`                                                                                                                                                                  | `*int64`                                                                                                                                                                    | :heavy_minus_sign:                                                                                                                                                          | The maximum number of results to return per page.<br/>                                                                                                                      | 100                                                                                                                                                                         |
+| `Expand`                                                                                                                                                                    | []`string`                                                                                                                                                                  | :heavy_minus_sign:                                                                                                                                                          | Additional data to include in the response, such as volumes                                                                                                                 |                                                                                                                                                                             |
+| `StartTime`                                                                                                                                                                 | [*time.Time](https://pkg.go.dev/time#Time)                                                                                                                                  | :heavy_minus_sign:                                                                                                                                                          | Start of the query time range                                                                                                                                               |                                                                                                                                                                             |
+| `EndTime`                                                                                                                                                                   | [*time.Time](https://pkg.go.dev/time#Time)                                                                                                                                  | :heavy_minus_sign:                                                                                                                                                          | End of the query time range                                                                                                                                                 |                                                                                                                                                                             |
+| `Sort`                                                                                                                                                                      | `*string`                                                                                                                                                                   | :heavy_minus_sign:                                                                                                                                                          | Sort results using a field name and order (ascending or descending).<br/>Format: `<field>:<order>`, where `<field>` is the field name and `<order>` is either `asc` or `desc`.<br/> | id:desc                                                                                                                                                                     |
+| `Resource`                                                                                                                                                                  | `*string`                                                                                                                                                                   | :heavy_minus_sign:                                                                                                                                                          | Optional legacy field. Ignored; the query template resource selects the resource.                                                                                           |                                                                                                                                                                             |
+| `InsertionDate`                                                                                                                                                             | `*bool`                                                                                                                                                                     | :heavy_minus_sign:                                                                                                                                                          | Volumes only. Use insertion dates instead of effective dates.                                                                                                               |                                                                                                                                                                             |
+| `GroupBy`                                                                                                                                                                   | `*int64`                                                                                                                                                                    | :heavy_minus_sign:                                                                                                                                                          | Volumes only. Account address grouping level.                                                                                                                               |                                                                                                                                                                             |
