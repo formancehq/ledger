@@ -9,6 +9,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
+	"github.com/formancehq/ledger/v3/internal/application/logintegrity"
 	"github.com/formancehq/ledger/v3/internal/infra/state"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/rafttransportpb"
@@ -46,7 +47,7 @@ func TestLogIntegrityServiceAppliedHorizonAndDataLoss(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, uint64(5), response.GetAppliedIndex())
 	require.Equal(t, uint64(1), response.GetLastLogSequenceOnNode())
-	require.Len(t, response.GetDigest(), 32)
+	require.Len(t, response.GetDigest(), logintegrity.DigestSize)
 
 	batch = store.OpenWriteSession()
 	require.NoError(t, batch.SetProto(key, &commonpb.Log{Sequence: 2}))
