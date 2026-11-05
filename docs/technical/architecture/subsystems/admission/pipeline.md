@@ -63,7 +63,7 @@ The gRPC interceptor, handler, and controller layers exist so the same admission
 `Admit` is structured as a sequence of stages, each of which can short-circuit the whole batch:
 
 The two payload forms share caller attribution, the write gate, leader
-readiness, maintenance checks, preload construction, guarded Raft submission,
+readiness, the drain fence, preload construction, guarded Raft submission,
 and result resolution. `Admit` alone verifies the client batch, waits for the
 audit key and committed policy, converts orders with `prepareBatchOrders`,
 checks metadata, and resolves order/script coverage. `AdmitClusterPolicy`
@@ -102,7 +102,7 @@ cluster-secret-authenticated connection.
 
 ### 2. Maintenance mode
 
-If the cluster is in maintenance mode, only `SetMaintenanceMode` requests are allowed through (`allRequestsAreMaintenanceMode()`). Any other request type in the batch fails the whole batch atomically — there is no partial admission.
+If the cluster is in maintenance mode, only `SetMaintenanceMode` client requests are allowed through (`allRequestsAreMaintenanceMode()`). Any other request type in the batch fails the whole batch atomically — there is no partial admission. Leader-internal `SetClusterPolicy` reconciliation uses its separate policy path and may proceed during maintenance; both paths remain blocked by an active drain.
 
 ### 3. Signature verification
 

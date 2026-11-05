@@ -978,10 +978,10 @@ resources:
 
 ### Maintenance Mode
 
-Use maintenance mode to block all write operations cluster-wide before performing planned maintenance (upgrades, migrations, etc.). Read operations continue to work normally.
+Use maintenance mode to block client business writes cluster-wide before performing planned maintenance (upgrades, migrations, etc.). Read operations and leader-internal cluster-policy reconciliation continue to work. An active drain blocks policy reconciliation too.
 
 ```bash
-# Enable maintenance mode (blocks all writes)
+# Enable maintenance mode (blocks client business writes)
 ledgerctl cluster maintenance enable
 
 # Verify maintenance mode is active

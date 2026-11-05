@@ -3015,7 +3015,7 @@ ledgerctl cluster du --json
 
 #### cluster maintenance
 
-Enable or disable cluster maintenance mode. When enabled, all write operations (Raft commands) are blocked at the admission layer. Only the maintenance mode command itself is allowed through (to disable maintenance mode). Read operations continue to work normally.
+Enable or disable cluster maintenance mode. When enabled, client business writes are blocked at admission. The maintenance mode command itself remains available to disable maintenance; leader-internal cluster-policy reconciliation also continues unless a drain is active. Read operations continue to work normally.
 
 ```bash
 ledgerctl cluster maintenance <true|false|enable|disable> [flags]

@@ -242,7 +242,7 @@ JWT/anonymous policy; no new endpoint or authorization requirement is introduced
 | Dynamic key management | ✅ | ❌ | Register/revoke/list keys via gRPC API (bootstrap: first key unsigned) |
 | Require signatures | ✅ | ❌ | Optional enforcement via `signing require` API call |
 | **Maintenance** |
-| Maintenance mode | ✅ | ❌ | Block all writes, Raft-replicated flag, dual check (admission + FSM) |
+| Maintenance mode | ✅ | ❌ | Block client business writes; leader-internal policy reconciliation remains available unless drained. Raft-replicated flag, dual check (admission + FSM) |
 | **Store Operations** |
 | Store metrics | ✅ | ❌ | Pebble storage metrics |
 | Store integrity check | ✅ | ❌ | Hash chain + derived data verification |

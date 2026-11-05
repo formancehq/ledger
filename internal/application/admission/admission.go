@@ -527,7 +527,9 @@ func (a *Admission) prepareExecutionBatch(ctx context.Context, caller *commonpb.
 }
 
 func (a *Admission) prepareClusterPolicy(ctx context.Context, caller *commonpb.CallerSnapshot, policy *commonpb.ClusterPolicy) (*preparedAdmission, error) {
-	if err := a.checkAdmissionMaintenance(false); err != nil {
+	// Policy reconciliation is operational configuration, so maintenance does
+	// not stop it. The drain fence in checkAdmissionMaintenance still does.
+	if err := a.checkAdmissionMaintenance(true); err != nil {
 		return nil, err
 	}
 
@@ -636,7 +638,8 @@ func (a *Admission) checkAdmissionMaintenance(allowInMaintenance bool) error {
 		return ErrMaintenanceMode
 	}
 
-	// Check maintenance mode: block all requests except SetMaintenanceMode.
+	// Maintenance blocks business requests; SetMaintenanceMode batches and
+	// internal policy reconciliation are allowed by their callers.
 	if a.sharedState.MaintenanceMode() && !allowInMaintenance {
 		return ErrMaintenanceMode
 	}

@@ -99,7 +99,7 @@ Because registrations and revocations go through Raft, key changes are subject t
 
 ### Maintenance mode interaction
 
-When signing is required and the operator needs to register a fresh key without an existing signer (e.g. all parents revoked), the cluster can be put into maintenance mode. In maintenance, admission rejects every request type *except* `SetMaintenanceMode` — and `authorizeUnsignedBatch()` is allowed to admit an unsigned registration on the way out. See `docs/ops/maintenance-mode.md`.
+When signing is required and the operator needs to register a fresh key without an existing signer (e.g. all parents revoked), the cluster can be put into maintenance mode. In maintenance, admission rejects every client request type *except* `SetMaintenanceMode`; the separate leader-internal cluster-policy reconciliation path remains allowed. `authorizeUnsignedBatch()` is allowed to admit an unsigned registration on the way out. See `docs/ops/maintenance-mode.md`.
 
 ### Leader-internal proposals
 

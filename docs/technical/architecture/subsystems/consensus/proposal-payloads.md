@@ -44,10 +44,11 @@ adapter, capability registry, or activation flag.
 
 Admission constructs policy controls with the `cluster-policy` system caller
 and no client idempotency or signature data. The policy processor decides
-revision, no-op, conflict, stale-policy and maintenance outcomes. Native
+revision, no-op, conflict and stale-policy outcomes. Native
 controls update the replicated policy without consuming a business log or audit
 sequence, freezing an idempotency outcome, or advancing business HLC. No new
-policy is converted into a historical order.
+policy is converted into a historical order. A native control may apply during
+user maintenance, but the drain fence rejects it until release.
 
 Historical policy orders keep their original execution and audit representation,
 including exact hashes and log slots. Audit readers, CLI and restore folds still

@@ -1383,11 +1383,6 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 	// Native policy controls are operational consensus state: no business log,
 	// audit sequence, idempotency outcome or HLC advancement.
 	if control, ok := proposal.GetPayload().(*raftcmdpb.Proposal_SetClusterPolicy); ok {
-		if fsm.sharedState.MaintenanceMode() {
-			result.Error = &domain.BusinessError{Err: domain.ErrMaintenanceMode}
-
-			return result, nil
-		}
 		if err := fsm.processor.ProcessClusterPolicy(control.SetClusterPolicy.GetPolicy(), scopeFactory); err != nil {
 			result.Error = &domain.BusinessError{Err: err}
 
@@ -1496,7 +1491,7 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 	// and here within the same sequential apply — this never fires on the
 	// legitimate carve-out (an all-SetMaintenanceMode batch, e.g. flipping
 	// the flag off while maintenance is active).
-	if fsm.sharedState.MaintenanceMode() && (proposal.GetSetClusterPolicy() != nil || !authorizedInMaintenanceMode(orders)) {
+	if fsm.sharedState.MaintenanceMode() && !authorizedInMaintenanceMode(orders) {
 		assert.Unreachable("non-maintenance order applied while maintenance mode active", map[string]any{
 			"proposalID": proposal.GetId(),
 			"orderCount": len(orders),
