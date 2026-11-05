@@ -387,3 +387,16 @@ in-memory snapshot/cache and durable WAL prefix on any failure. The focused
 regression is `process_ready_snapshot_test.go` under `internal/infra/node/`.
 Snapshot-only processing retains its existing append count; a combined Ready
 reappends only the suffix once, with no retained-log scan.
+
+## Sent snapshot liveness evidence
+
+etcd/raft pauses every append to a peer whose Progress is in `StateSnapshot`.
+It leaves that state only when the leader calls `ReportSnapshot` for the peer
+or when an acknowledgement leaves `Match+1 >= firstIndex` on the leader.
+Prove that every outbound `MsgSnap` is reported from the orchestrate goroutine
+(`snapshotRecipients` in `sendReadyMessages`, then `finishReady`), and that a
+lost snapshot or a late acknowledgement after leader compaction leads to
+renewed probing or a fresh snapshot rather than a stalled peer. The focused
+regression is `leader_snapshot_report_test.go` under `internal/infra/node/`;
+the cluster-level triggers are the out-of-sync election and lost-follower
+specs under `tests/e2e/cluster/`.

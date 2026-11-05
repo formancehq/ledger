@@ -732,19 +732,33 @@ sequenceDiagram
     Leader->>Leader: Check: follower.Next < compactIndex?
     Note over Leader: Yes → WAL entries no longer available
     
-    Leader->>Leader: Create snapshot at lastIndex
-    Leader->>Follower: MsgSnap (full snapshot data)
-    Note over Follower: Progress state → StateSnapshot
-    
+    Leader->>Follower: MsgSnap (latest WAL snapshot metadata, no payload)
+    Note over Leader: Progress[follower] → StateSnapshot (replication paused)
+    Leader->>Leader: finishReady: ReportSnapshot(follower, SnapshotFinish)
+    Note over Leader: Progress[follower] → StateProbe
+
     Follower->>Follower: Apply snapshot to WAL
-    Follower->>Follower: Restore FSM state
-    Follower->>Follower: Sync business logs via gRPC
-    
-    Follower->>Leader: MsgSnapStatus (success)
-    Note over Follower: Progress state → StateReplicate
-    
-    Leader->>Follower: Resume normal AppendEntries
+    Follower->>Follower: Enqueue checkpoint synchronization (async, out-of-band gRPC)
+    Follower->>Leader: MsgAppResp (index = snapshot index)
+    Note over Leader: Progress[follower] → StateReplicate
+
+    Leader->>Follower: MsgApp from Match+1, or a fresh MsgSnap if compacted
 ```
+
+Progress is leader-side state; the follower never sends `MsgSnapStatus`.
+etcd/raft keeps a peer in `StateSnapshot` (all appends paused) until the
+leader calls `ReportSnapshot` or receives an acknowledgement that leaves
+`Match+1 >= firstIndex`. The acknowledgement only certifies the Raft snapshot:
+checkpoint restoration may still be running. Two ordinary events defeat the second exit: the
+`MsgSnap` is lost (peer down, stream reset), or the leader's maintenance
+compacts past the sent snapshot before the acknowledgement arrives. Either
+way the peer would receive no entry until the next leader change. The leader
+therefore collects every outbound `MsgSnap` destination in `sendReadyMessages`
+and reports `SnapshotFinish` for each from `finishReady` (the orchestrate
+goroutine owns `rawNode`). Because `MsgSnap` carries no payload, handing it to
+the transport is the send. The peer moves to `StateProbe`, so heartbeat
+responses and acknowledgements resume probing, and a peer still behind the
+compacted boundary gets a fresh snapshot.
 
 #### Progress States
 
@@ -754,7 +768,7 @@ The leader tracks each follower's state:
 |-------|-------------|
 | `StateProbe` | Follower's `Match` is unknown, sending one entry at a time |
 | `StateReplicate` | Normal operation, pipeline enabled |
-| `StateSnapshot` | Snapshot is being sent, waiting for confirmation |
+| `StateSnapshot` | Snapshot sent; appends paused until the leader reports it or an acknowledgement leaves `Match+1 >= firstIndex` |
 
 #### Receiving a snapshot Ready
 
