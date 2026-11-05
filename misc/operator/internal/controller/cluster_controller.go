@@ -50,7 +50,7 @@ type ClusterReconciler struct {
 
 const operatorCredentialsFinalizer = "ledger.formance.com/operator-credentials"
 
-var errCredentialsAuthValidationUnavailable = errors.New("Credentials auth validation unavailable")
+var errCredentialsAuthValidationUnavailable = errors.New("credentials auth validation unavailable")
 
 // +kubebuilder:rbac:groups=ledger.formance.com,resources=clusters,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=ledger.formance.com,resources=clusters/status,verbs=get;update;patch
