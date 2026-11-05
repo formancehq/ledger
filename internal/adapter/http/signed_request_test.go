@@ -49,7 +49,7 @@ func TestSignedHTTPRoutes_ForwardOriginalEnvelope(t *testing.T) {
 	})
 	router := NewHandler(logging.Testing(), backend, internalauth.AuthConfig{}, version.Info{})
 	r := httptest.NewRequest(http.MethodPost, "/v3/ledger/transactions", bytes.NewReader(wrapper))
-	r.Header.Set("Content-Type", "application/vnd.formance.signed-request+json")
+	r.Header.Set("Content-Type", "application/json")
 	r.Header.Set("Idempotency-Key", "signed-key")
 	r.Header.Set("Formance-Signing-Key-Id", signed.GetKeyId())
 	r.Header.Set("Formance-Signature", base64.StdEncoding.EncodeToString(signed.GetSignature()))
@@ -95,7 +95,7 @@ func TestSignedHTTPRoutes_RejectMalformedEnvelope(t *testing.T) {
 			backend := NewMockBackend(gomock.NewController(t))
 			router := NewHandler(logging.Testing(), backend, internalauth.AuthConfig{}, version.Info{})
 			r := httptest.NewRequest(tc.method, tc.path, strings.NewReader(tc.body))
-			r.Header.Set("Content-Type", "application/vnd.formance.signed-request+json; charset=utf-8")
+			r.Header.Set("Content-Type", "application/json; charset=utf-8")
 			r.Header.Set("Formance-Signing-Key-Id", "key")
 			r.Header.Set("Formance-Signature", base64.StdEncoding.EncodeToString(make([]byte, ed25519.SignatureSize)))
 			w := httptest.NewRecorder()
@@ -125,7 +125,7 @@ func TestSignedHTTPRoutes_KeepJWTScopes(t *testing.T) {
 				path += "/1/metadata"
 			}
 			r := httptest.NewRequest(http.MethodPost, path, strings.NewReader(`{"request":{},"payload":"AQ=="}`))
-			r.Header.Set("Content-Type", "application/vnd.formance.signed-request+json")
+			r.Header.Set("Content-Type", "application/json")
 			if tc.token != "" {
 				r.Header.Set("Authorization", "Bearer "+tc.token)
 			}
@@ -173,10 +173,11 @@ func TestSignedHTTPRoutes_RejectMalformedSigningHeaders(t *testing.T) {
 		{"invalid signature base64", signedRequestMediaType, "Formance-Signature", []string{"key"}, []string{"!"}, 400},
 		{"short signature", signedRequestMediaType, "Formance-Signature", []string{"key"}, []string{"AQ=="}, 400},
 		{"oversized signature", signedRequestMediaType, "Formance-Signature", []string{"key"}, []string{base64.StdEncoding.EncodeToString(make([]byte, ed25519.SignatureSize+1))}, 400},
-		{"signature on ordinary JSON", "application/json", "", []string{"key"}, []string{validSignature}, 415},
-		{"only key ID on ordinary JSON", "application/json", "", []string{"key"}, nil, 415},
-		{"only signature on ordinary JSON", "application/json", "", nil, []string{validSignature}, 415},
+		{"signature on non-JSON", "text/plain", "", []string{"key"}, []string{validSignature}, 415},
+		{"only key ID on JSON", "application/json", "Formance-Signature", []string{"key"}, nil, 400},
+		{"only signature on JSON", "application/json", "Formance-Signing-Key-Id", nil, []string{validSignature}, 400},
 		{"signature without content type", "", "", nil, []string{validSignature}, 415},
+		{"former vendor media type", "application/vnd.formance.signed-request+json", "", []string{"key"}, []string{validSignature}, 415},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()

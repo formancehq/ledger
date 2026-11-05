@@ -36,26 +36,37 @@ func TestOpenAPI_SignedRequestRepresentations(t *testing.T) {
 				require.Equal(t, 1, count, "signing header must be documented exactly once: %s", name)
 			}
 			require.NotNil(t, operation.RequestBody)
-			media := operation.RequestBody.Value.Content["application/vnd.formance.signed-request+json"]
+			require.Len(t, operation.RequestBody.Value.Content, 1, "both representations use ordinary JSON")
+			media := operation.RequestBody.Value.Content["application/json"]
 			require.NotNil(t, media)
 			var request any
 			require.NoError(t, json.Unmarshal([]byte(tc.request), &request))
+			signedSchema := media.Schema.Value
+			if tc.method == "DELETE" {
+				require.False(t, operation.RequestBody.Value.Required, "unsigned metadata deletion needs no body")
+			} else {
+				require.Len(t, media.Schema.Value.AnyOf, 2)
+				require.NoError(t, media.Schema.Value.AnyOf[0].Value.VisitJSON(request), "ordinary REST body remains valid")
+				signedSchema = media.Schema.Value.AnyOf[1].Value
+			}
 			body := map[string]any{"request": request, "payload": "AQ=="}
 			require.NoError(t, media.Schema.Value.VisitJSON(body))
 			for _, name := range []string{"keyId", "signature", "signedBatch"} {
 				body[name] = "unexpected"
-				require.Error(t, media.Schema.Value.VisitJSON(body), "signature metadata belongs in headers")
+				require.Error(t, signedSchema.VisitJSON(body), "signature metadata belongs in headers")
 				delete(body, name)
 			}
 			// A deletion has no business body. The generated client must send the
 			// explicit null required by the server, rather than an empty object.
 			if tc.method == "DELETE" {
 				body["request"] = map[string]any{}
-				require.Error(t, media.Schema.Value.VisitJSON(body))
+				require.Error(t, signedSchema.VisitJSON(body))
 				body["request"] = nil
 			}
 			delete(body, "payload")
-			require.Error(t, media.Schema.Value.VisitJSON(body), "signed transport cannot omit its proof")
+			require.Error(t, signedSchema.VisitJSON(body), "signed transport cannot omit its proof")
+			body["payload"] = ""
+			require.Error(t, signedSchema.VisitJSON(body), "signed payload must be nonempty")
 		})
 	}
 }

@@ -32,8 +32,10 @@ serialize and sign protobuf `ApplyBatch` bytes; signing the REST JSON or HTTP
 headers cannot authenticate those bytes. Ordinary unsigned REST bodies remain
 available when signing is optional.
 
-HTTP transaction mutations opt in with
-`Content-Type: application/vnd.formance.signed-request+json`. The wrapper contains
+HTTP transaction mutations use `Content-Type: application/json`, including MIME
+parameters. Either signing header activates the signed representation, even
+with an empty value; without either header the ordinary unsigned REST body is
+used. The signed wrapper contains
 `request` (the legacy JSON body, or null for transaction metadata DELETE) and
 `payload` (standard-base64 exact protobuf batch bytes). The
 `Formance-Signing-Key-Id` and `Formance-Signature` headers carry the key ID and
@@ -55,8 +57,8 @@ remain separate requirements.
 
 Malformed, missing, empty or repeated signing headers, invalid base64 and invalid
 signature length reject with 400 before admission. Either signing header with
-another media type, or signing headers/media type on an unsupported route,
-rejects with 415; a signing attempt cannot silently become unsigned.
+a non-JSON or missing content type, or on an unsupported route, rejects with
+415; a signing attempt cannot silently become unsigned.
 
 Signed bulk requires a nonempty array and `atomic=true`. It uses the header key
 and ignores per-element `ik` exactly as unsigned atomic bulk does. Non-atomic
@@ -68,7 +70,7 @@ This adds O(request bytes) transient decoding, comparison and copying under the
 existing 4 MiB body budget, including base64 and duplicated HTTP/protobuf content.
 It changes no proposal, persisted format, signature propagation, FSM behavior or
 protocol revision (40), and requires no data migration. Upgrade receiving HTTP
-nodes before clients select the new media type. Existing retained-key replay,
+nodes before clients send signing headers. Existing retained-key replay,
 unkeyed execution and expired-key behavior remain unchanged.
 
 ### Response signature: per log

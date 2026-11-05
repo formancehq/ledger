@@ -17,7 +17,7 @@ import (
 )
 
 const (
-	signedRequestMediaType       = "application/vnd.formance.signed-request+json"
+	signedRequestMediaType       = "application/json"
 	signedRequestKeyIDHeader     = "Formance-Signing-Key-Id"
 	signedRequestSignatureHeader = "Formance-Signature"
 )
@@ -25,10 +25,7 @@ const (
 type signedRequestContextKey struct{}
 
 func isSignedRequest(r *http.Request) bool {
-	mediaType, _, _ := mime.ParseMediaType(r.Header.Get("Content-Type"))
-
-	return mediaType == signedRequestMediaType ||
-		len(r.Header.Values(signedRequestKeyIDHeader)) > 0 ||
+	return len(r.Header.Values(signedRequestKeyIDHeader)) > 0 ||
 		len(r.Header.Values(signedRequestSignatureHeader)) > 0
 }
 

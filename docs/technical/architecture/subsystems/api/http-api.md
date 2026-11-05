@@ -192,19 +192,26 @@ middleware on every `/v3` route and forbids it on ops routes.
 ### Signed transaction requests
 
 The transaction create, revert, metadata-save and metadata-delete routes and
-atomic bulk accept `application/vnd.formance.signed-request+json` alongside their
-ordinary unsigned bodies. The JSON envelope has required `request` (the ordinary
+atomic bulk use `application/json` for signed and ordinary unsigned bodies;
+MIME parameters are accepted. The presence of either `Formance-Signing-Key-Id`
+or `Formance-Signature`, even if empty, selects the signed wrapper. When
+neither header is present, the ordinary unsigned REST body is used.
+The JSON envelope has required `request` (the ordinary
 body, or explicit null for transaction metadata DELETE) and `payload`
 (standard-base64 exact serialized protobuf batch). The `Formance-Signing-Key-Id`
 and `Formance-Signature` headers supply the key ID and standard-base64 Ed25519
 signature; the adapter assembles the existing `SignedApplyBatch`. Both headers
 are required exactly once with nonempty values, and the decoded signature must
-be 64 bytes. Other business routes reject the signed media type or either
-signing header with 415; a signing header with another media type also returns
-415, preventing unsigned fallback. The five supporting route registrations
-install wrapper decoding before their ordinary query-name validation; unsupported
-routes reject the media type in that validation boundary. No global content-type
-marker grants signing support to other operations.
+be 64 bytes. Other business routes reject either signing header with 415;
+signing headers with a non-JSON or missing content type also return 415,
+preventing unsigned fallback. The five supporting route registrations install
+wrapper decoding before their ordinary query-name validation; unsupported routes
+reject signing headers in that validation boundary. Header presence cannot grant
+signing support to other operations. OpenAPI uses `anyOf` for the ordinary body
+and signed wrapper under `application/json`: generic object schemas can overlap,
+while runtime header presence determines which decoder applies. Unsigned metadata
+DELETE remains bodyless; the optional JSON body describes the wrapper required
+when either signing header is supplied.
 
 The adapter constructs the ordinary `ApplyBatch` from the URL, decoded request
 and `Idempotency-Key`, decodes the supplied payload as untrusted protobuf, and
@@ -244,7 +251,7 @@ The existing 4 MiB body budget includes all wrapper bytes, base64 expansion,
 duplicated command data and trailing whitespace. Decode/compare/copy costs are
 O(request bytes) transient work; no new store reads, proposal effects, persisted
 formats or migrations are introduced. Protocol revision stays 40. Upgrade
-receiving HTTP nodes before clients select the new media type. Retained, empty
+receiving HTTP nodes before clients send signing headers. Retained, empty
 and expired idempotency keys keep their existing replay behavior. HTTP request
 signing does not authenticate responses. See the
 [operational client recipe](../../../../ops/signing.md#http-request-signing) and

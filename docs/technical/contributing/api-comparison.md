@@ -46,7 +46,7 @@ matching signed negative and unsigned nonnegative metadata values. See
 
 ## HTTP transaction request signatures
 
-V3 adds an opt-in `application/vnd.formance.signed-request+json` body for the
+V3 adds opt-in signing headers with `application/json` for the
 existing transaction create/revert/metadata POST, transaction metadata DELETE,
 and nonempty `atomic=true` bulk operations. The wrapper carries the ordinary
 REST body in `request` (null for DELETE) and the standard-base64 `payload` of the
@@ -54,14 +54,16 @@ complete protobuf batch derived from the URL, body and `Idempotency-Key`.
 `Formance-Signing-Key-Id` and `Formance-Signature` headers carry its key ID and
 standard-base64 Ed25519 signature; the adapter assembles the existing
 `SignedApplyBatch`. Each header is required exactly once with a nonempty value;
-the signature must decode to 64 bytes. The complete decoded protobuf values must match before the original signed bytes
+the signature must decode to 64 bytes. Either header activates signed handling,
+even if empty; neither header preserves the ordinary unsigned REST body. JSON
+MIME parameters are accepted. The complete decoded protobuf values must match before the original signed bytes
 reach admission. Atomic bulk preserves its header key, ignored per-entry `ik`,
 request order and skippable reasons. Signed non-atomic bulk returns 400.
 
 V2's transaction and bulk methods/routes, ordinary JSON field names, envelopes,
 defaults and header identity remain the comparison baseline. Their ordinary v3
-JSON counterparts keep those established contracts; the new media type is an
-intentional additive divergence because v2 provides no equivalent opaque
+JSON counterparts keep those established contracts; the opt-in signing headers
+and wrapper are an intentional additive divergence because v2 provides no equivalent opaque
 `ApplyBatch` signature proof. No route is renamed, so the endpoint map is
 unchanged. Response envelopes and bigint negotiation are unchanged. Request
 signing does not provide HTTP response authenticity.
@@ -70,8 +72,8 @@ Malformed signed wrappers, missing/empty/repeated signing headers, invalid
 base64 and invalid signature length return 400; HTTP-to-signed-batch mismatch
 and invalid, unknown or revoked signing keys return 403 `PERMISSION_DENIED`. Mandatory missing
 signatures on ordinary unsigned requests return 401 `UNAUTHENTICATED`.
-Unsupported routes return 415 for this media type or either signing header;
-either signing header with another media type also returns 415. Bulk 401/403
+Unsupported routes return 415 for either signing header; either signing header
+with a non-JSON or missing content type also returns 415. Bulk 401/403
 cannot be suppressed by `continueOnFailure`, and all processing outcomes remain available. JWT authentication/scopes remain separate.
 Forwarded signing failures use dedicated validated `ledger.signing` ErrorInfo
 details; bare/foreign gRPC auth failures retain the existing 500 contract.

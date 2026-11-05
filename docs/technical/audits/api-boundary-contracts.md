@@ -450,13 +450,16 @@ snapshot guarantee.
 
 Trace the five signed operations through their actual route registrations,
 wrapper middleware, ordinary HTTP conversion and backend Apply. The media type
-is `application/vnd.formance.signed-request+json`; required fields are `request`
-and standard-base64 `payload`. DELETE transaction metadata uses request:null.
+is `application/json`, including MIME parameters; either signing header's
+presence (even empty) activates the wrapper with required fields `request` and
+standard-base64 `payload`. Without either header, retain ordinary unsigned REST
+decoding. OpenAPI uses anyOf for overlapping ordinary and signed schemas; runtime
+headers choose the representation. DELETE transaction metadata uses request:null.
 The adapter assembles the existing `SignedApplyBatch` from that payload and the
 `Formance-Signing-Key-Id` / `Formance-Signature` headers. Require both headers
 exactly once, nonempty, with a standard-base64 signature of 64 decoded bytes.
-Unsupported business routes reject either signing header or signed media type
-with 415; either header with another media type also rejects with 415. No signing
+Unsupported business routes reject either signing header with 415; either header
+with a non-JSON or missing content type also rejects with 415. No signing
 attempt may silently become unsigned. Compare the complete decoded protobuf batch with the
 URL/body/header-derived batch, including order/count, oneofs, typed values,
 skippable reasons and batch identity, before forwarding the original bytes.

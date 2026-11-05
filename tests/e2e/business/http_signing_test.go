@@ -51,16 +51,14 @@ var _ = Describe("HTTP request signing", func() {
 	}
 	send := func(method, path string, body any, signed *signaturepb.SignedApplyBatch, key string, mutate ...func(*http.Request)) (int, []byte) {
 		GinkgoHelper()
-		contentType := "application/json"
 		if signed != nil {
-			contentType = "application/vnd.formance.signed-request+json"
 			body = map[string]any{"request": body, "payload": signed.GetPayload()}
 		}
 		raw, err := json.Marshal(body)
 		Expect(err).To(Succeed())
 		request, err := http.NewRequestWithContext(GinkgoT().Context(), method, fmt.Sprintf("http://localhost:%d/v3/%s%s", node.HTTPPort, ledger, path), bytes.NewReader(raw))
 		Expect(err).To(Succeed())
-		request.Header.Set("Content-Type", contentType)
+		request.Header.Set("Content-Type", "application/json")
 		request.Header.Set("Idempotency-Key", key)
 		if signed != nil {
 			request.Header.Set("Formance-Signing-Key-Id", signed.GetKeyId())
@@ -118,7 +116,7 @@ var _ = Describe("HTTP request signing", func() {
 		Expect(err).To(Succeed())
 		Expect(transactions).To(HaveLen(3))
 	})
-	It("rejects malformed signing headers and headers on ordinary JSON without committing work", func() {
+	It("rejects malformed signing headers, unsigned bodies, and wrong media without committing work", func() {
 		// Signing is optional here: malformed proof must never fall back to an
 		// otherwise valid unsigned transaction.
 		before, err := actions.ListAuditEntries(GinkgoT().Context(), node.Client, false)
@@ -132,6 +130,8 @@ var _ = Describe("HTTP request signing", func() {
 		}{
 			{"missing key ID", valid, func(request *http.Request) { request.Header.Del("Formance-Signing-Key-Id") }, http.StatusBadRequest},
 			{"missing signature", valid, func(request *http.Request) { request.Header.Del("Formance-Signature") }, http.StatusBadRequest},
+			{"empty key ID", valid, func(request *http.Request) { request.Header.Set("Formance-Signing-Key-Id", "") }, http.StatusBadRequest},
+			{"empty signature", valid, func(request *http.Request) { request.Header.Set("Formance-Signature", "") }, http.StatusBadRequest},
 			{"duplicate key ID", valid, func(request *http.Request) { request.Header.Add("Formance-Signing-Key-Id", keyID) }, http.StatusBadRequest},
 			{"duplicate signature", valid, func(request *http.Request) {
 				request.Header.Add("Formance-Signature", request.Header.Get("Formance-Signature"))
@@ -140,10 +140,17 @@ var _ = Describe("HTTP request signing", func() {
 			{"wrong signature length", valid, func(request *http.Request) {
 				request.Header.Set("Formance-Signature", base64.StdEncoding.EncodeToString(make([]byte, ed25519.SignatureSize-1)))
 			}, http.StatusBadRequest},
-			{"key ID on ordinary JSON", nil, func(request *http.Request) { request.Header.Set("Formance-Signing-Key-Id", keyID) }, http.StatusUnsupportedMediaType},
+			{"key ID on ordinary JSON", nil, func(request *http.Request) { request.Header.Set("Formance-Signing-Key-Id", keyID) }, http.StatusBadRequest},
 			{"signature on ordinary JSON", nil, func(request *http.Request) {
 				request.Header.Set("Formance-Signature", base64.StdEncoding.EncodeToString(valid.GetSignature()))
-			}, http.StatusUnsupportedMediaType},
+			}, http.StatusBadRequest},
+			{"empty signing header on ordinary JSON", nil, func(request *http.Request) { request.Header.Set("Formance-Signature", "") }, http.StatusBadRequest},
+			{"both signing headers on ordinary JSON", nil, func(request *http.Request) {
+				request.Header.Set("Formance-Signing-Key-Id", keyID)
+				request.Header.Set("Formance-Signature", base64.StdEncoding.EncodeToString(valid.GetSignature()))
+			}, http.StatusBadRequest},
+			{"text media", valid, func(request *http.Request) { request.Header.Set("Content-Type", "text/plain") }, http.StatusUnsupportedMediaType},
+			{"missing media", valid, func(request *http.Request) { request.Header.Del("Content-Type") }, http.StatusUnsupportedMediaType},
 		}
 		for _, test := range cases {
 			By(test.name)

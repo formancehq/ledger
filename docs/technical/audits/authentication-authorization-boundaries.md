@@ -220,8 +220,10 @@ the unchanged `SignedApplyBatch`; HTTP adds no independent signing authority.
 HTTP assembles it from body `payload` and exactly one nonempty
 `Formance-Signing-Key-Id` / `Formance-Signature` header each. Missing, duplicate,
 malformed or wrong-length signature headers reject 400. Either signing header
-with another media type or on an unsupported route rejects 415, preventing a
-signed attempt from silently executing unsigned.
+with a non-JSON or missing content type or on an unsupported route rejects 415,
+preventing a signed attempt from silently executing unsigned. Signed requests use
+application/json (including MIME parameters); either header's presence, even if
+empty, selects the wrapper. With neither header present, ordinary unsigned decoding applies.
 Trace the installed route guards and caller capture with authorized and denied controls,
 not merely a well-formed signed envelope. A mismatch between the complete signed
 batch and the HTTP-derived batch must prevent backend dispatch. Every atomic

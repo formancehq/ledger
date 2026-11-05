@@ -76,7 +76,7 @@ existing envelope from the signing headers and body payload described below;
 it introduces no separate HTTP proof or audit field. HTTP signing clients must be able to encode `ApplyBatch`
 as protobuf before signing.
 
-Use `Content-Type: application/vnd.formance.signed-request+json` on these existing
+Use `Content-Type: application/json` on these existing
 routes (paths are relative to `/v3/{ledgerName}`):
 
 | Method and path | `request` value |
@@ -87,9 +87,13 @@ routes (paths are relative to `/v3/{ledgerName}`):
 | DELETE `/transactions/{transactionId}/metadata/{key}` | Explicit `null` |
 | POST `/bulk?atomic=true` | Nonempty ordinary bulk array |
 
-Send both headers exactly once with nonempty values:
+Either signing header activates the signed representation, even if its value is
+empty. Supply both headers exactly once with nonempty values. Without either
+header, the route uses its ordinary unsigned REST body. JSON MIME parameters
+such as `application/json; charset=utf-8` are accepted.
 
 ```http
+Content-Type: application/json
 Formance-Signing-Key-Id: ops
 Formance-Signature: <standard-base64 Ed25519 signature, 64 decoded bytes>
 ```
@@ -174,7 +178,7 @@ func SaveSignedMetadata(ctx context.Context, client *http.Client, baseURL, ledge
     if err != nil {
         return err
     }
-    req.Header.Set("Content-Type", "application/vnd.formance.signed-request+json")
+    req.Header.Set("Content-Type", "application/json")
     req.Header.Set("Formance-Signing-Key-Id", signed.GetSigned().GetKeyId())
     req.Header.Set("Formance-Signature", base64.StdEncoding.EncodeToString(signed.GetSigned().GetSignature()))
     req.Header.Set("Idempotency-Key", idempotencyKey)
@@ -212,10 +216,11 @@ omitted execution-time defaults remain omitted in the signed command.
 | Signed payload cannot be decoded or its batch differs from the HTTP-derived operation | 403 `PERMISSION_DENIED` |
 | Ordinary unsigned request while cluster signing is mandatory | 401 `UNAUTHENTICATED` |
 | Invalid signature, unknown key or revoked key | 403 `PERMISSION_DENIED` |
-| Signed media type or either signing header on an unsupported route; either signing header with another media type | 415 |
+| Either signing header on an unsupported route, or with a non-JSON/missing content type | 415 |
 
 Legacy `application/json` without signing headers remains unsigned and works
-when signing is optional. Signing headers with another media type are rejected
+when signing is optional. Signing headers with a non-JSON or missing content
+type are rejected
 with 415 rather than silently falling back to unsigned execution.
 Enabling mandatory signing rejects those unsigned mutations; there is no silent
 fallback. `continueOnFailure` never suppresses bulk 401/403, and a processing
@@ -224,7 +229,7 @@ The 4 MiB HTTP limit includes the entire wrapper, duplicated command data,
 base64 expansion and trailing whitespace, reducing the usable signed payload
 capacity. Existing endpoint-specific oversized-body status mapping still applies.
 
-Upgrade HTTP nodes before enabling clients to send the new media type. No
+Upgrade HTTP nodes before enabling clients to send signing headers. No
 protobuf, protocol revision (40), persisted state or data migration changes are
 required. Signing adds no replay protection: retained idempotency keys replay
 the existing frozen outcome, an empty key permits re-execution, and an expired
