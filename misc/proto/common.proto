@@ -86,6 +86,11 @@ message MetadataMap {
   map<string, MetadataValue> values = 1;
 }
 
+// MetadataKeys lists metadata keys, sorted ascending.
+message MetadataKeys {
+  repeated string keys = 1;
+}
+
 // ParameterValue represents a typed parameter value for prepared query execution.
 message ParameterValue {
   oneof value {
@@ -1615,6 +1620,9 @@ message FilledGapLog {
 message CreatedTransaction {
   Transaction transaction = 1;
   map<string, MetadataMap> account_metadata = 2;
+  // Account metadata keys a Numscript program deleted, by account address.
+  // Keys are sorted. A key also set by account_metadata is never listed here.
+  map<string, MetadataKeys> deleted_account_metadata = 3;
 }
 
 message RevertedTransaction {
