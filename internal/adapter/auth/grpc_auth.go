@@ -19,6 +19,7 @@ import (
 
 	"github.com/formancehq/go-libs/v5/pkg/authn/oidc"
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
+
 	"github.com/formancehq/ledger/v3/internal/infra/transport"
 )
 
