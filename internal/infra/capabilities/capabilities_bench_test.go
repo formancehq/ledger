@@ -33,7 +33,7 @@ func BenchmarkEvaluate(b *testing.B) {
 
 				b.ReportAllocs()
 				b.ResetTimer()
-				for i := 0; i < b.N; i++ {
+				for range b.N {
 					if !Evaluate(state, required, false, members).Allowed {
 						b.Fatal("representative capability state was rejected")
 					}

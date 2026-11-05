@@ -150,6 +150,7 @@ func TestService_LearnerRegistrationCommitsAndPreservesCallerIntent(t *testing.T
 				if bootJoin {
 					return s.JoinAsLearner(ctx, nodeID, raftAddr, serviceAddr, instanceID, capabilities)
 				}
+
 				return s.AddLearner(ctx, nodeID, raftAddr, serviceAddr, instanceID, capabilities)
 			}
 			require.NoError(t, register(ctx, 2, "peer:7777", "peer:8888", []byte("peer-instance-id"), nil))

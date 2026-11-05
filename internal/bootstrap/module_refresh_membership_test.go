@@ -50,6 +50,7 @@ type blockingRefreshServer struct {
 
 func (blockingRefreshServer) RefreshMembership(ctx context.Context, _ *clusterbootstrappb.RefreshMembershipRequest) (*clusterbootstrappb.RefreshMembershipResponse, error) {
 	<-ctx.Done()
+
 	return nil, ctx.Err()
 }
 

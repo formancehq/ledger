@@ -344,6 +344,7 @@ func Module() fx.Option {
 						if machine != nil {
 							policy = machine.ClusterPolicy()
 						}
+
 						return membership.WriteConfChangeWithPolicy(entry, session, policy)
 					},
 					func(policy *commonpb.ClusterPolicy) {
@@ -409,6 +410,7 @@ func Module() fx.Option {
 					// gate runs under the serialized proposal/index boundary; taking two
 					// snapshots here needlessly doubles lock, map-copy and allocation cost.
 					members := raftNode.CapabilityMembers()
+
 					return validateProposalCapabilityAdmission(policy, proposal, members)
 				}
 
@@ -1752,6 +1754,7 @@ func tryRefreshMembershipOnce(ctx context.Context, cfg Config, tlsCfg TLSConfig,
 	if lastTransient != nil {
 		return fmt.Errorf("%w: %w", errMembershipRefreshTransient, lastTransient)
 	}
+
 	return errMembershipRefreshTransient
 }
 
