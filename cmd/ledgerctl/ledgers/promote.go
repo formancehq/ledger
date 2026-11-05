@@ -1,15 +1,34 @@
 package ledgers
 
 import (
+	"context"
 	"errors"
 	"fmt"
 
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/cmdutil"
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
+
+// Explicit-name promotion requires write permission, but the optional
+// progress display requires read permission. Keep the confirmation available
+// to write-only callers; the FSM still checks catch-up before promotion.
+func optionalPromotionProgress(ctx context.Context, name string, getLedger func(context.Context, *servicepb.GetLedgerRequest) (*commonpb.LedgerInfo, error)) (*commonpb.MirrorSyncProgress, error) {
+	ledger, err := getLedger(ctx, &servicepb.GetLedgerRequest{Ledger: name})
+	if status.Code(err) == codes.PermissionDenied {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	return ledger.GetMirrorSyncProgress(), nil
+}
 
 // NewPromoteCommand creates the ledgers promote command.
 func NewPromoteCommand() *cobra.Command {
@@ -64,7 +83,9 @@ func runPromote(cmd *cobra.Command, args []string) error {
 			return err
 		}
 		ctx, cancel := cmdutil.GetContext(cmd)
-		ledger, getErr := client.GetLedger(ctx, &servicepb.GetLedgerRequest{Ledger: name})
+		progress, getErr := optionalPromotionProgress(ctx, name, func(ctx context.Context, request *servicepb.GetLedgerRequest) (*commonpb.LedgerInfo, error) {
+			return client.GetLedger(ctx, request)
+		})
 		cancel()
 		_ = conn.Close()
 		if getErr != nil {
@@ -72,7 +93,7 @@ func runPromote(cmd *cobra.Command, args []string) error {
 		}
 		pterm.Warning.Printfln("You are about to promote mirror ledger %s to normal mode", name)
 		pterm.Warning.Println("This will stop mirror replication permanently.")
-		if progress := ledger.GetMirrorSyncProgress(); progress != nil {
+		if progress != nil {
 			pterm.Warning.Printfln("Mirror cursor: %d, source head: %d, remaining: %d",
 				progress.GetCursor(), progress.GetSourceLogCount(), progress.GetRemainingLogs())
 			if progress.GetError() != nil {
