@@ -136,8 +136,10 @@ migration or round-trip delivery
 from the DDL assertion alone; Docker-backed execution remains a CI obligation.
 
 Live ClickHouse insertion additionally passes through `sink_clickhouse_data.go`:
-only transaction and revert posting amounts become quoted decimal strings,
-then UInt256 hints restore numeric storage. Preserve raw unrelated numbers,
+the shared typed projection is serialized once with a call-scoped `*big.Int`
+marshaler; only transaction and revert posting amounts have that type.
+`TestSinkProjectionBigIntsAreOnlyPostingAmounts` guards this scope, and UInt256
+hints restore numeric storage. Preserve raw unrelated numbers,
 metadata and the source protobuf. `TestClickHousePublishExactAmounts` captures
 the actual Publish/native-driver boundary without a server; the tagged
 `TestClickHouseSinkIntegration_ExactAmountsAndCursorRecovery` checks both

@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"math/big"
+	"reflect"
 	"testing"
 
 	"github.com/ClickHouse/clickhouse-go/v2/lib/driver"
@@ -150,4 +151,45 @@ func TestClickHousePublishWithoutPostings(t *testing.T) {
 		require.Len(t, batch.rows, 1)
 		require.JSONEq(t, string(shared), batch.rows[0][4].(string))
 	}
+}
+
+// The call-scoped marshaler applies to every *big.Int in the projection. Keep
+// that scope limited to posting amounts, including future projection fields.
+func TestSinkProjectionBigIntsAreOnlyPostingAmounts(t *testing.T) {
+	t.Parallel()
+	var paths []string
+	var visit func(reflect.Type, string)
+	visit = func(typ reflect.Type, path string) {
+		if typ == reflect.TypeFor[*big.Int]() || typ == reflect.TypeFor[big.Int]() {
+			require.Equal(t, reflect.TypeFor[*big.Int](), typ, path)
+			paths = append(paths, path)
+
+			return
+		}
+		switch typ.Kind() {
+		case reflect.Pointer:
+			visit(typ.Elem(), path)
+		case reflect.Slice, reflect.Array:
+			visit(typ.Elem(), path+"[]")
+		case reflect.Map:
+			visit(typ.Key(), path+"[key]")
+			visit(typ.Elem(), path+"[value]")
+		case reflect.Struct:
+			for field := range typ.Fields() {
+				if field.IsExported() {
+					visit(field.Type, path+"."+field.Name)
+				}
+			}
+		case reflect.Interface:
+			// TargetID is the only dynamic field; sinkConvertTarget produces
+			// only a string or uint64, checked independently below.
+			require.Equal(t, ".TargetID", path, "unexpected dynamic field")
+		}
+	}
+	visit(reflect.TypeFor[sinkEventData](), "")
+	require.Equal(t, []string{".Transaction.Postings[].Amount", ".RevertTransaction.Postings[].Amount"}, paths)
+	_, account := sinkConvertTarget(&commonpb.Target{Target: &commonpb.Target_Account{Account: &commonpb.TargetAccount{Addr: "users:001"}}})
+	require.IsType(t, "", account)
+	_, transaction := sinkConvertTarget(&commonpb.Target{Target: &commonpb.Target_TransactionId{TransactionId: 18446744073709551615}})
+	require.IsType(t, uint64(0), transaction)
 }

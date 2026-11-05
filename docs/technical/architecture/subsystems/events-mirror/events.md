@@ -856,9 +856,12 @@ Live native inserts quote only `transaction.postings[].amount` and
 while parsing the JSON document, before the UInt256 hint is applied. Quoting
 preserves the full supported amount range in numeric UInt256 subcolumns; the
 shared analytical projection and Databricks amounts remain JSON numbers.
-The conversion preserves other raw numeric tokens and metadata, and does not
-mutate the source event. It adds decoding, copying and encoding proportional
-to the event size, with no cross-event state or additional network calls.
+Both sinks build the same typed projection. ClickHouse serializes it once with
+a call-scoped `encoding/json/v2` marshaler for `*big.Int`, which occurs only in
+posting amounts; v1 compatibility options preserve the other JSON fields.
+Databricks keeps its ordinary numeric encoding. This preserves unrelated
+numeric values, metadata and the source event, with work proportional to event
+size and no cross-event state or additional network calls.
 
 A rejected `Send` returns before cursor advancement. After repairing delivery,
 keep the same sink name and retained cursor so pending events can resume;
