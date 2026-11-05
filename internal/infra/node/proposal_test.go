@@ -35,19 +35,16 @@ func TestProposalSetPredictedIndexPatchesSerializedPayload(t *testing.T) {
 	require.Equal(t, uint64(42), decoded.GetPredictedIndex())
 }
 
-func TestNewProposalReservesPredictedIndexSuffix(t *testing.T) {
+func TestNewProposalAppendsPredictedIndexWithoutMutatingPrefix(t *testing.T) {
 	command := &raftcmdpb.Proposal{Id: 1}
 	proposal, err := NewProposal(1, command)
 	require.NoError(t, err)
 
 	before := proposal.Data()
-	reserved := cap(proposal.data)
-	require.GreaterOrEqual(t, reserved-len(proposal.data), predictedIndexEncodedSize)
-
 	proposal.SetPredictedIndex(42)
 	after := proposal.Data()
+	require.Greater(t, len(after), len(before))
 	require.Equal(t, before, after[:len(before)])
-	require.Equal(t, reserved, cap(proposal.data), "predicted-index patch must not grow the backing buffer")
 }
 
 func TestNewProposalDerivesActivePolicyCapabilities(t *testing.T) {
