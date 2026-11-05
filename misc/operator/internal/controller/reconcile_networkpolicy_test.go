@@ -56,10 +56,11 @@ func TestReconcile_NetworkPolicyEnabled(t *testing.T) {
 	require.Len(t, interNode.To, 1)
 	require.NotNil(t, interNode.To[0].PodSelector)
 	assert.Equal(t, "np-basic", interNode.To[0].PodSelector.MatchLabels[labelInstance])
-	require.Len(t, interNode.Ports, 3)
+	require.Len(t, interNode.Ports, 4)
 	assert.Equal(t, int32(7777), interNode.Ports[0].Port.IntVal)
 	assert.Equal(t, int32(8888), interNode.Ports[1].Port.IntVal)
-	assert.Equal(t, int32(9000), interNode.Ports[2].Port.IntVal)
+	assert.Equal(t, int32(8889), interNode.Ports[2].Port.IntVal)
+	assert.Equal(t, int32(9000), interNode.Ports[3].Port.IntVal)
 	tcp := corev1.ProtocolTCP
 	assert.Equal(t, &tcp, interNode.Ports[0].Protocol)
 
@@ -169,10 +170,11 @@ func TestReconcile_NetworkPolicyCustomPorts(t *testing.T) {
 
 	require.Len(t, np.Spec.Egress, 3)
 	interNode := np.Spec.Egress[0]
-	require.Len(t, interNode.Ports, 3)
+	require.Len(t, interNode.Ports, 4)
 	assert.Equal(t, int32(27777), interNode.Ports[0].Port.IntVal)
 	assert.Equal(t, int32(28888), interNode.Ports[1].Port.IntVal)
-	assert.Equal(t, int32(29000), interNode.Ports[2].Port.IntVal)
+	assert.Equal(t, int32(28889), interNode.Ports[2].Port.IntVal)
+	assert.Equal(t, int32(29000), interNode.Ports[3].Port.IntVal)
 }
 
 func TestReconcile_NetworkPolicyUpdate(t *testing.T) {
