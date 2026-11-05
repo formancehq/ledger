@@ -451,8 +451,13 @@ snapshot guarantee.
 Trace the five signed operations through their actual route registrations,
 wrapper middleware, ordinary HTTP conversion and backend Apply. The media type
 is `application/vnd.formance.signed-request+json`; required fields are `request`
-and `signedBatch`. DELETE transaction metadata uses request:null. Unsupported
-business routes return 415. Compare the complete decoded protobuf batch with the
+and standard-base64 `payload`. DELETE transaction metadata uses request:null.
+The adapter assembles the existing `SignedApplyBatch` from that payload and the
+`Formance-Signing-Key-Id` / `Formance-Signature` headers. Require both headers
+exactly once, nonempty, with a standard-base64 signature of 64 decoded bytes.
+Unsupported business routes reject either signing header or signed media type
+with 415; either header with another media type also rejects with 415. No signing
+attempt may silently become unsigned. Compare the complete decoded protobuf batch with the
 URL/body/header-derived batch, including order/count, oneofs, typed values,
 skippable reasons and batch identity, before forwarding the original bytes.
 Noncanonical but equivalent protobuf encodings must not require reserialization.
@@ -461,7 +466,8 @@ Follow the same `SignedApplyBatch` through `ApplyRequest.signed`, admission's
 no alternate HTTP proof type, admission verifier or persisted field.
 Signed bulk is nonempty and atomic-only; its header key wins over ignored `ik`.
 
-Require distinct routed controls for malformed envelopes 400, mismatch 403,
+Require distinct routed controls for malformed envelopes, missing/empty/repeated
+signing headers, invalid base64 or signature length 400, mismatch 403,
 missing mandatory signatures 401, invalid/unknown/revoked keys 403 and preserved
 legacy optional unsigned JSON. Check the 4 MiB limit over the entire wrapper,
 including base64 and duplicate command data. Processing 401/403 must survive

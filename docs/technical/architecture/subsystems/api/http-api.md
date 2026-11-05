@@ -194,9 +194,14 @@ middleware on every `/v3` route and forbids it on ops routes.
 The transaction create, revert, metadata-save and metadata-delete routes and
 atomic bulk accept `application/vnd.formance.signed-request+json` alongside their
 ordinary unsigned bodies. The JSON envelope has required `request` (the ordinary
-body, or explicit null for transaction metadata DELETE) and `signedBatch`
-(`keyId`, standard-base64 `signature`, standard-base64 `payload`). Other business
-routes reject this media type with 415. The five supporting route registrations
+body, or explicit null for transaction metadata DELETE) and `payload`
+(standard-base64 exact serialized protobuf batch). The `Formance-Signing-Key-Id`
+and `Formance-Signature` headers supply the key ID and standard-base64 Ed25519
+signature; the adapter assembles the existing `SignedApplyBatch`. Both headers
+are required exactly once with nonempty values, and the decoded signature must
+be 64 bytes. Other business routes reject the signed media type or either
+signing header with 415; a signing header with another media type also returns
+415, preventing unsigned fallback. The five supporting route registrations
 install wrapper decoding before their ordinary query-name validation; unsupported
 routes reject the media type in that validation boundary. No global content-type
 marker grants signing support to other operations.
@@ -214,8 +219,10 @@ HTTP-specific persisted proof. This preserves ordinary decoding/defaults and JWT
 scope checks.
 Ignored JSON, response presentation and JWT claims are outside the batch proof.
 
-Malformed envelopes are 400; semantic mismatch is 403 `PERMISSION_DENIED`.
-Missing mandatory signatures produce 401 `UNAUTHENTICATED`; invalid signatures
+Malformed envelopes, missing/empty/repeated signing headers, invalid base64 and
+invalid signature length are 400; semantic mismatch is 403 `PERMISSION_DENIED`.
+Ordinary unsigned requests with mandatory signing produce 401
+`UNAUTHENTICATED`; invalid signatures
 and unknown/revoked keys produce 403 `PERMISSION_DENIED`. Local signature
 sentinels and reconstructed typed signing failures share this mapping. Forwarded
 signature errors retain their existing gRPC status/message and add

@@ -49,9 +49,12 @@ matching signed negative and unsigned nonnegative metadata values. See
 V3 adds an opt-in `application/vnd.formance.signed-request+json` body for the
 existing transaction create/revert/metadata POST, transaction metadata DELETE,
 and nonempty `atomic=true` bulk operations. The wrapper carries the ordinary
-REST body in `request` (null for DELETE) and an Ed25519 `signedBatch` over the
-complete protobuf batch derived from the URL, body and `Idempotency-Key`. The
-complete decoded protobuf values must match before the original signed bytes
+REST body in `request` (null for DELETE) and the standard-base64 `payload` of the
+complete protobuf batch derived from the URL, body and `Idempotency-Key`.
+`Formance-Signing-Key-Id` and `Formance-Signature` headers carry its key ID and
+standard-base64 Ed25519 signature; the adapter assembles the existing
+`SignedApplyBatch`. Each header is required exactly once with a nonempty value;
+the signature must decode to 64 bytes. The complete decoded protobuf values must match before the original signed bytes
 reach admission. Atomic bulk preserves its header key, ignored per-entry `ik`,
 request order and skippable reasons. Signed non-atomic bulk returns 400.
 
@@ -63,11 +66,13 @@ intentional additive divergence because v2 provides no equivalent opaque
 unchanged. Response envelopes and bigint negotiation are unchanged. Request
 signing does not provide HTTP response authenticity.
 
-Malformed signed wrappers return 400; HTTP-to-signed-batch mismatch and invalid,
-unknown or revoked signing keys return 403 `PERMISSION_DENIED`. Mandatory missing
-signatures return 401 `UNAUTHENTICATED`. Unsupported routes return 415 for this
-media type. Bulk 401/403 cannot be suppressed by `continueOnFailure`, and all
-processing outcomes remain available. JWT authentication/scopes remain separate.
+Malformed signed wrappers, missing/empty/repeated signing headers, invalid
+base64 and invalid signature length return 400; HTTP-to-signed-batch mismatch
+and invalid, unknown or revoked signing keys return 403 `PERMISSION_DENIED`. Mandatory missing
+signatures on ordinary unsigned requests return 401 `UNAUTHENTICATED`.
+Unsupported routes return 415 for this media type or either signing header;
+either signing header with another media type also returns 415. Bulk 401/403
+cannot be suppressed by `continueOnFailure`, and all processing outcomes remain available. JWT authentication/scopes remain separate.
 Forwarded signing failures use dedicated validated `ledger.signing` ErrorInfo
 details; bare/foreign gRPC auth failures retain the existing 500 contract.
 

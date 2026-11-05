@@ -5,8 +5,12 @@ info:
     API for Ledger v3, a distributed accounting ledger with Raft consensus.
     Signed transaction mutations opt in with
     application/vnd.formance.signed-request+json on the five operations declaring
-    that media type. Other /v3 operations reject it with HTTP 415 and an
-    ErrorResponse JSON body. Legacy application/json remains unsigned.
+    that media type. The body carries request and payload; Formance-Signing-Key-Id
+    and Formance-Signature headers carry the key ID and signature. Both headers
+    are required exactly once and nonempty with the signed media type. Signing
+    headers with another media type or on other /v3 operations reject with HTTP
+    415 and an ErrorResponse JSON body. Legacy application/json without signing
+    headers remains unsigned.
   version: 1.0.0
   contact:
     name: Formance
@@ -691,8 +695,13 @@ paths:
       description: |
         Creates a new transaction in the specified ledger with the specified postings. Requires `ledger:write` scope.
         Signed requests use `application/vnd.formance.signed-request+json` with
-        `request` and `signedBatch`; the signed protobuf batch must equal the
-        route/body/Idempotency-Key-derived batch in full. Signature enforcement
+        `request` and standard-base64 `payload`; the signed protobuf batch must
+        equal the route/body/Idempotency-Key-derived batch in full. Supply exactly
+        one nonempty Formance-Signing-Key-Id and Formance-Signature header; the
+        latter is a standard-base64 Ed25519 signature of 64 decoded bytes. Missing,
+        empty or repeated signing headers, invalid base64 and wrong signature
+        length return 400. Signing headers with another media type return 415.
+        Signature enforcement
         returns 401 `UNAUTHENTICATED` when required but absent and 403
         `PERMISSION_DENIED` for invalid, unknown/revoked-key or mismatched
         signatures. Malformed signed envelopes return 400. The complete
@@ -708,6 +717,8 @@ paths:
         - $ref: '#/components/parameters/BigIntAsString'
         - $ref: '#/components/parameters/LedgerName'
         - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/SigningKeyId'
+        - $ref: '#/components/parameters/RequestSignature'
       requestBody:
         required: true
         content:
@@ -1240,8 +1251,13 @@ paths:
       description: |
         Saves metadata for a specific transaction in the ledger. Requires `ledger:WriteMetadata` scope (included in the default `ledger:write` mapping).
         Signed requests use `application/vnd.formance.signed-request+json` with
-        `request` and `signedBatch`; the signed protobuf batch must equal the
-        route/body/Idempotency-Key-derived batch in full. Signature enforcement
+        `request` and standard-base64 `payload`; the signed protobuf batch must
+        equal the route/body/Idempotency-Key-derived batch in full. Supply exactly
+        one nonempty Formance-Signing-Key-Id and Formance-Signature header; the
+        latter is a standard-base64 Ed25519 signature of 64 decoded bytes. Missing,
+        empty or repeated signing headers, invalid base64 and wrong signature
+        length return 400. Signing headers with another media type return 415.
+        Signature enforcement
         returns 401 `UNAUTHENTICATED` when required but absent and 403
         `PERMISSION_DENIED` for invalid, unknown/revoked-key or mismatched
         signatures. Malformed signed envelopes return 400. The complete
@@ -1257,6 +1273,8 @@ paths:
         - $ref: '#/components/parameters/LedgerName'
         - $ref: '#/components/parameters/TransactionId'
         - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/SigningKeyId'
+        - $ref: '#/components/parameters/RequestSignature'
       requestBody:
         required: true
         content:
@@ -1341,8 +1359,13 @@ paths:
       description: |
         Deletes a metadata key for a specific transaction in the ledger. Requires `ledger:WriteMetadata` scope (included in the default `ledger:write` mapping).
         Signed requests use `application/vnd.formance.signed-request+json` with
-        `request` and `signedBatch`; the signed protobuf batch must equal the
-        route/body/Idempotency-Key-derived batch in full. Signature enforcement
+        `request` and standard-base64 `payload`; the signed protobuf batch must
+        equal the route/body/Idempotency-Key-derived batch in full. Supply exactly
+        one nonempty Formance-Signing-Key-Id and Formance-Signature header; the
+        latter is a standard-base64 Ed25519 signature of 64 decoded bytes. Missing,
+        empty or repeated signing headers, invalid base64 and wrong signature
+        length return 400. Signing headers with another media type return 415.
+        Signature enforcement
         returns 401 `UNAUTHENTICATED` when required but absent and 403
         `PERMISSION_DENIED` for invalid, unknown/revoked-key or mismatched
         signatures. Malformed signed envelopes return 400. The complete
@@ -1359,6 +1382,8 @@ paths:
         - $ref: '#/components/parameters/TransactionId'
         - $ref: '#/components/parameters/MetadataKey'
         - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/SigningKeyId'
+        - $ref: '#/components/parameters/RequestSignature'
       requestBody:
         required: false
         description: Required when selecting the signed media type; request must be null.
@@ -1401,8 +1426,13 @@ paths:
         `null` option uses its default. The complete body, including trailing
         whitespace, counts towards the 4 MiB limit; exceeding it returns 413.
         Signed requests use `application/vnd.formance.signed-request+json` with
-        `request` and `signedBatch`; the signed protobuf batch must equal the
-        route/body/Idempotency-Key-derived batch in full. Signature enforcement
+        `request` and standard-base64 `payload`; the signed protobuf batch must
+        equal the route/body/Idempotency-Key-derived batch in full. Supply exactly
+        one nonempty Formance-Signing-Key-Id and Formance-Signature header; the
+        latter is a standard-base64 Ed25519 signature of 64 decoded bytes. Missing,
+        empty or repeated signing headers, invalid base64 and wrong signature
+        length return 400. Signing headers with another media type return 415.
+        Signature enforcement
         returns 401 `UNAUTHENTICATED` when required but absent and 403
         `PERMISSION_DENIED` for invalid, unknown/revoked-key or mismatched
         signatures. Malformed signed envelopes return 400. The complete
@@ -1419,6 +1449,8 @@ paths:
         - $ref: '#/components/parameters/LedgerName'
         - $ref: '#/components/parameters/TransactionId'
         - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/SigningKeyId'
+        - $ref: '#/components/parameters/RequestSignature'
       requestBody:
         required: false
         content:
@@ -2153,8 +2185,13 @@ paths:
              runner after a prior failure): contribute nothing — the
              originating error drives the rollup.
         Signed requests use `application/vnd.formance.signed-request+json` with
-        `request` and `signedBatch`; the signed protobuf batch must equal the
-        route/body/Idempotency-Key-derived batch in full. Signature enforcement
+        `request` and standard-base64 `payload`; the signed protobuf batch must
+        equal the route/body/Idempotency-Key-derived batch in full. Supply exactly
+        one nonempty Formance-Signing-Key-Id and Formance-Signature header; the
+        latter is a standard-base64 Ed25519 signature of 64 decoded bytes. Missing,
+        empty or repeated signing headers, invalid base64 and wrong signature
+        length return 400. Signing headers with another media type return 415.
+        Signature enforcement
         returns 401 `UNAUTHENTICATED` when required but absent and 403
         `PERMISSION_DENIED` for invalid, unknown/revoked-key or mismatched
         signatures. Malformed signed envelopes return 400. The complete
@@ -2174,6 +2211,8 @@ paths:
         - $ref: '#/components/parameters/BigIntAsString'
         - $ref: '#/components/parameters/LedgerName'
         - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/SigningKeyId'
+        - $ref: '#/components/parameters/RequestSignature'
         - name: continueOnFailure
           in: query
           schema:
@@ -3519,6 +3558,35 @@ components:
         `ledger:write` (write operations), `ledger:admin` (cluster operations).
 
   parameters:
+    SigningKeyId:
+      name: Formance-Signing-Key-Id
+      in: header
+      required: false
+      description: |
+        Signing key ID. Required exactly once and nonempty when Content-Type is
+        application/vnd.formance.signed-request+json; absent for ordinary unsigned
+        requests. Either signing header with another media type returns 415.
+        Missing, empty or repeated signing headers with the signed media type
+        return 400. JWT authentication and scopes remain independent.
+      schema:
+        type: string
+        minLength: 1
+
+    RequestSignature:
+      name: Formance-Signature
+      in: header
+      required: false
+      description: |
+        Standard-base64 Ed25519 signature over the exact decoded body payload
+        (serialized protobuf ApplyBatch bytes). Required exactly once and nonempty
+        when Content-Type is application/vnd.formance.signed-request+json; absent
+        for ordinary unsigned requests. It must decode to 64 bytes. Missing,
+        empty, repeated, invalid-base64 or wrong-length signatures return 400.
+        Either signing header with another media type returns 415.
+      schema:
+        type: string
+        format: byte
+
     PageSize:
       name: pageSize
       in: query
@@ -3776,7 +3844,7 @@ components:
 
   responses:
     UnsupportedMediaType:
-      description: The signed-request media type is unsupported on this route.
+      description: The signed-request media type or signing headers are unsupported on this route or with this media type.
       content:
         application/json:
           schema:
@@ -4488,80 +4556,65 @@ components:
           format: date-time
           description: When the error occurred
 
-    SignedApplyBatch:
-      type: object
-      required:
-        - keyId
-        - signature
-        - payload
-      additionalProperties: false
+    SignedBatchPayload:
+      type: string
+      format: byte
+      minLength: 1
       description: |
-        The existing gRPC SignedApplyBatch envelope, represented as protobuf JSON.
-        Clients sign the exact serialized protobuf ApplyBatch in payload with
-        Ed25519. Both transports use ApplyRequest.signed and the existing proposal
-        and audit signature fields. Bytes use standard base64. The server compares
-        the complete decoded batch with the HTTP-derived batch and forwards
-        the original proof unchanged for admission verification. No canonical
-        protobuf byte encoding is required. This proof does not sign JWT claims,
-        ignored JSON fields, presentation options or the HTTP response.
-      properties:
-        keyId:
-          type: string
-          minLength: 1
-          description: Registered signing key ID.
-        signature:
-          type: string
-          format: byte
-          description: Standard-base64 Ed25519 signature (64 decoded bytes).
-        payload:
-          type: string
-          format: byte
-          description: Standard-base64 exact serialized ApplyBatch bytes signed by the client.
+        Standard-base64 exact serialized protobuf ApplyBatch bytes signed by the
+        client. Formance-Signing-Key-Id and Formance-Signature headers supply the
+        other fields of the existing gRPC SignedApplyBatch envelope. The adapter
+        assembles that envelope and uses ApplyRequest.signed and the existing
+        admission, proposal and audit signature path. The server compares the
+        complete decoded batch with the HTTP-derived batch before forwarding the
+        original payload and signature bytes. No canonical protobuf encoding is
+        required. The proof does not sign JWT claims, ignored JSON fields,
+        presentation options or the HTTP response.
 
     SignedCreateTransactionRequest:
       type: object
       additionalProperties: false
       required:
         - request
-        - signedBatch
+        - payload
       properties:
         request:
           $ref: '#/components/schemas/CreateTransactionRequest'
-        signedBatch:
-          $ref: '#/components/schemas/SignedApplyBatch'
+        payload:
+          $ref: '#/components/schemas/SignedBatchPayload'
 
     SignedRevertTransactionRequest:
       type: object
       additionalProperties: false
       required:
         - request
-        - signedBatch
+        - payload
       properties:
         request:
           $ref: '#/components/schemas/RevertTransactionRequestBody'
-        signedBatch:
-          $ref: '#/components/schemas/SignedApplyBatch'
+        payload:
+          $ref: '#/components/schemas/SignedBatchPayload'
 
     SignedSaveTransactionMetadataRequest:
       type: object
       additionalProperties: false
       required:
         - request
-        - signedBatch
+        - payload
       properties:
         request:
           type: object
           additionalProperties:
             $ref: '#/components/schemas/MetadataValue'
-        signedBatch:
-          $ref: '#/components/schemas/SignedApplyBatch'
+        payload:
+          $ref: '#/components/schemas/SignedBatchPayload'
 
     SignedDeleteTransactionMetadataRequest:
       type: object
       additionalProperties: false
       required:
         - request
-        - signedBatch
+        - payload
       properties:
         request:
           type: object
@@ -4569,23 +4622,23 @@ components:
           enum: [null]
           additionalProperties: false
           description: Explicit null; the command is entirely determined by the route and header.
-        signedBatch:
-          $ref: '#/components/schemas/SignedApplyBatch'
+        payload:
+          $ref: '#/components/schemas/SignedBatchPayload'
 
     SignedBulkRequest:
       type: object
       additionalProperties: false
       required:
         - request
-        - signedBatch
+        - payload
       properties:
         request:
           type: array
           minItems: 1
           items:
             $ref: '#/components/schemas/BulkElement'
-        signedBatch:
-          $ref: '#/components/schemas/SignedApplyBatch'
+        payload:
+          $ref: '#/components/schemas/SignedBatchPayload'
 
     CreateTransactionRequest:
       type: object

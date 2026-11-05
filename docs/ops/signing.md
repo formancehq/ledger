@@ -71,9 +71,9 @@ For gRPC, the discriminated `oneof` carries either the raw batch or the signed e
 ## HTTP request signing
 
 HTTP and gRPC use the same `SignedApplyBatch` envelope, admission verifier,
-`Proposal.signature` and `AuditEntry.signature`. HTTP's `signedBatch` below is
-that existing protobuf envelope in JSON form; it introduces no separate HTTP
-proof or audit field. HTTP signing clients must be able to encode `ApplyBatch`
+`Proposal.signature` and `AuditEntry.signature`. The HTTP adapter assembles that
+existing envelope from the signing headers and body payload described below;
+it introduces no separate HTTP proof or audit field. HTTP signing clients must be able to encode `ApplyBatch`
 as protobuf before signing.
 
 Use `Content-Type: application/vnd.formance.signed-request+json` on these existing
@@ -87,16 +87,19 @@ routes (paths are relative to `/v3/{ledgerName}`):
 | DELETE `/transactions/{transactionId}/metadata/{key}` | Explicit `null` |
 | POST `/bulk?atomic=true` | Nonempty ordinary bulk array |
 
+Send both headers exactly once with nonempty values:
+
+```http
+Formance-Signing-Key-Id: ops
+Formance-Signature: <standard-base64 Ed25519 signature, 64 decoded bytes>
+```
+
 The complete body is one JSON document:
 
 ```json
 {
   "request": {"reviewed": "yes"},
-  "signedBatch": {
-    "keyId": "ops",
-    "signature": "<standard-base64 Ed25519 signature>",
-    "payload": "<standard-base64 serialized ApplyBatch>"
-  }
+  "payload": "<standard-base64 serialized ApplyBatch>"
 }
 ```
 
@@ -132,6 +135,7 @@ import (
     "bytes"
     "context"
     "crypto/ed25519"
+    "encoding/base64"
     "encoding/json"
     "fmt"
     "net/http"
@@ -141,7 +145,6 @@ import (
 
     "github.com/formancehq/ledger/v3/internal/proto/servicepb"
     "github.com/formancehq/ledger/v3/pkg/actions"
-    "google.golang.org/protobuf/encoding/protojson"
 )
 
 func SaveSignedMetadata(ctx context.Context, client *http.Client, baseURL, ledger string,
@@ -158,15 +161,10 @@ func SaveSignedMetadata(ctx context.Context, client *http.Client, baseURL, ledge
     if err != nil {
         return err
     }
-    // protojson emits camelCase keys and standard base64 byte strings.
-    signedJSON, err := protojson.Marshal(signed.GetSigned())
-    if err != nil {
-        return err
-    }
     body, err := json.Marshal(struct {
         Request map[string]string `json:"request"`
-        SignedBatch json.RawMessage `json:"signedBatch"`
-    }{metadata, signedJSON})
+        Payload string `json:"payload"`
+    }{metadata, base64.StdEncoding.EncodeToString(signed.GetSigned().GetPayload())})
     if err != nil {
         return err
     }
@@ -177,6 +175,8 @@ func SaveSignedMetadata(ctx context.Context, client *http.Client, baseURL, ledge
         return err
     }
     req.Header.Set("Content-Type", "application/vnd.formance.signed-request+json")
+    req.Header.Set("Formance-Signing-Key-Id", signed.GetSigned().GetKeyId())
+    req.Header.Set("Formance-Signature", base64.StdEncoding.EncodeToString(signed.GetSigned().GetSignature()))
     req.Header.Set("Idempotency-Key", idempotencyKey)
     if token != "" {
         req.Header.Set("Authorization", "Bearer " + token)
@@ -208,13 +208,15 @@ omitted execution-time defaults remain omitted in the signed command.
 
 | Condition | HTTP result |
 | --- | --- |
-| Malformed wrapper, invalid base64/protobuf JSON, empty signed bulk or signed bulk without `atomic=true` | 400 |
+| Malformed wrapper; missing, empty or repeated signing headers; invalid payload/signature base64 or signature length; empty or non-atomic signed bulk | 400 |
 | Signed payload cannot be decoded or its batch differs from the HTTP-derived operation | 403 `PERMISSION_DENIED` |
-| Signature missing while cluster signing is mandatory | 401 `UNAUTHENTICATED` |
+| Ordinary unsigned request while cluster signing is mandatory | 401 `UNAUTHENTICATED` |
 | Invalid signature, unknown key or revoked key | 403 `PERMISSION_DENIED` |
-| Signed media type on an unsupported route | 415 |
+| Signed media type or either signing header on an unsupported route; either signing header with another media type | 415 |
 
-Legacy `application/json` remains unsigned and works when signing is optional.
+Legacy `application/json` without signing headers remains unsigned and works
+when signing is optional. Signing headers with another media type are rejected
+with 415 rather than silently falling back to unsigned execution.
 Enabling mandatory signing rejects those unsigned mutations; there is no silent
 fallback. `continueOnFailure` never suppresses bulk 401/403, and a processing
 failure retains all per-element results. Inspect them before deciding to retry.

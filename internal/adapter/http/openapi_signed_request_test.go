@@ -1,7 +1,6 @@
 package http
 
 import (
-	"encoding/base64"
 	"encoding/json"
 	"testing"
 
@@ -24,13 +23,30 @@ func TestOpenAPI_SignedRequestRepresentations(t *testing.T) {
 		t.Run(tc.method+" "+tc.path, func(t *testing.T) {
 			t.Parallel()
 			operation := doc.Paths.Value(tc.path).GetOperation(tc.method)
+			for _, name := range []string{"Formance-Signing-Key-Id", "Formance-Signature"} {
+				count := 0
+				for _, ref := range operation.Parameters {
+					parameter := ref.Value
+					if parameter.In == "header" && parameter.Name == name {
+						count++
+						require.False(t, parameter.Required, "unsigned JSON must remain supported")
+						require.Equal(t, "string", parameter.Schema.Value.Type.Slice()[0])
+					}
+				}
+				require.Equal(t, 1, count, "signing header must be documented exactly once: %s", name)
+			}
 			require.NotNil(t, operation.RequestBody)
 			media := operation.RequestBody.Value.Content["application/vnd.formance.signed-request+json"]
 			require.NotNil(t, media)
 			var request any
 			require.NoError(t, json.Unmarshal([]byte(tc.request), &request))
-			body := map[string]any{"request": request, "signedBatch": map[string]any{"keyId": "key", "signature": base64.StdEncoding.EncodeToString(make([]byte, 64)), "payload": "AQ=="}}
+			body := map[string]any{"request": request, "payload": "AQ=="}
 			require.NoError(t, media.Schema.Value.VisitJSON(body))
+			for _, name := range []string{"keyId", "signature", "signedBatch"} {
+				body[name] = "unexpected"
+				require.Error(t, media.Schema.Value.VisitJSON(body), "signature metadata belongs in headers")
+				delete(body, name)
+			}
 			// A deletion has no business body. The generated client must send the
 			// explicit null required by the server, rather than an empty object.
 			if tc.method == "DELETE" {
@@ -38,7 +54,7 @@ func TestOpenAPI_SignedRequestRepresentations(t *testing.T) {
 				require.Error(t, media.Schema.Value.VisitJSON(body))
 				body["request"] = nil
 			}
-			delete(body, "signedBatch")
+			delete(body, "payload")
 			require.Error(t, media.Schema.Value.VisitJSON(body), "signed transport cannot omit its proof")
 		})
 	}

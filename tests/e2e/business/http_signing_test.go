@@ -5,6 +5,7 @@ package business
 import (
 	"bytes"
 	"crypto/ed25519"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -48,12 +49,12 @@ var _ = Describe("HTTP request signing", func() {
 
 		return signed.GetSigned()
 	}
-	send := func(method, path string, body any, signed *signaturepb.SignedApplyBatch, key string) (int, []byte) {
+	send := func(method, path string, body any, signed *signaturepb.SignedApplyBatch, key string, mutate ...func(*http.Request)) (int, []byte) {
 		GinkgoHelper()
 		contentType := "application/json"
 		if signed != nil {
 			contentType = "application/vnd.formance.signed-request+json"
-			body = map[string]any{"request": body, "signedBatch": map[string]any{"keyId": signed.GetKeyId(), "signature": signed.GetSignature(), "payload": signed.GetPayload()}}
+			body = map[string]any{"request": body, "payload": signed.GetPayload()}
 		}
 		raw, err := json.Marshal(body)
 		Expect(err).To(Succeed())
@@ -61,6 +62,13 @@ var _ = Describe("HTTP request signing", func() {
 		Expect(err).To(Succeed())
 		request.Header.Set("Content-Type", contentType)
 		request.Header.Set("Idempotency-Key", key)
+		if signed != nil {
+			request.Header.Set("Formance-Signing-Key-Id", signed.GetKeyId())
+			request.Header.Set("Formance-Signature", base64.StdEncoding.EncodeToString(signed.GetSignature()))
+		}
+		for _, change := range mutate {
+			change(request)
+		}
 		response, err := client.Do(request)
 		Expect(err).To(Succeed())
 		defer func() { Expect(response.Body.Close()).To(Succeed()) }()
@@ -109,6 +117,45 @@ var _ = Describe("HTTP request signing", func() {
 		transactions, err := actions.ListAllTransactions(GinkgoT().Context(), node.Client, ledger)
 		Expect(err).To(Succeed())
 		Expect(transactions).To(HaveLen(3))
+	})
+	It("rejects malformed signing headers and headers on ordinary JSON without committing work", func() {
+		// Signing is optional here: malformed proof must never fall back to an
+		// otherwise valid unsigned transaction.
+		before, err := actions.ListAuditEntries(GinkgoT().Context(), node.Client, false)
+		Expect(err).To(Succeed())
+		valid := sign("", create("headers"))
+		cases := []struct {
+			name   string
+			signed *signaturepb.SignedApplyBatch
+			change func(*http.Request)
+			code   int
+		}{
+			{"missing key ID", valid, func(request *http.Request) { request.Header.Del("Formance-Signing-Key-Id") }, http.StatusBadRequest},
+			{"missing signature", valid, func(request *http.Request) { request.Header.Del("Formance-Signature") }, http.StatusBadRequest},
+			{"duplicate key ID", valid, func(request *http.Request) { request.Header.Add("Formance-Signing-Key-Id", keyID) }, http.StatusBadRequest},
+			{"duplicate signature", valid, func(request *http.Request) {
+				request.Header.Add("Formance-Signature", request.Header.Get("Formance-Signature"))
+			}, http.StatusBadRequest},
+			{"invalid base64 signature", valid, func(request *http.Request) { request.Header.Set("Formance-Signature", "!") }, http.StatusBadRequest},
+			{"wrong signature length", valid, func(request *http.Request) {
+				request.Header.Set("Formance-Signature", base64.StdEncoding.EncodeToString(make([]byte, ed25519.SignatureSize-1)))
+			}, http.StatusBadRequest},
+			{"key ID on ordinary JSON", nil, func(request *http.Request) { request.Header.Set("Formance-Signing-Key-Id", keyID) }, http.StatusUnsupportedMediaType},
+			{"signature on ordinary JSON", nil, func(request *http.Request) {
+				request.Header.Set("Formance-Signature", base64.StdEncoding.EncodeToString(valid.GetSignature()))
+			}, http.StatusUnsupportedMediaType},
+		}
+		for _, test := range cases {
+			By(test.name)
+			code, raw := send(http.MethodPost, "/transactions", body("headers"), test.signed, "", test.change)
+			Expect(code).To(Equal(test.code), test.name+": "+string(raw))
+		}
+		transactions, err := actions.ListAllTransactions(GinkgoT().Context(), node.Client, ledger)
+		Expect(err).To(Succeed())
+		Expect(transactions).To(BeEmpty())
+		after, err := actions.ListAuditEntries(GinkgoT().Context(), node.Client, false)
+		Expect(err).To(Succeed())
+		Expect(after).To(HaveLen(len(before)))
 	})
 	It("signs metadata set, metadata deletion, and revert using URL-derived targets", func() {
 		response := apply(create("metadata"))

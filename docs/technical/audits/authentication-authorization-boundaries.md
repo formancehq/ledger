@@ -217,6 +217,11 @@ existing JWT/anonymous route and element-scope requirements. The Ed25519 signing
 key does not replace the JWT caller or grant cluster/system trust. Both transports
 must reach the existing `resolveBatch` verifier with `ApplyRequest.signed` and
 the unchanged `SignedApplyBatch`; HTTP adds no independent signing authority.
+HTTP assembles it from body `payload` and exactly one nonempty
+`Formance-Signing-Key-Id` / `Formance-Signature` header each. Missing, duplicate,
+malformed or wrong-length signature headers reject 400. Either signing header
+with another media type or on an unsupported route rejects 415, preventing a
+signed attempt from silently executing unsigned.
 Trace the installed route guards and caller capture with authorized and denied controls,
 not merely a well-formed signed envelope. A mismatch between the complete signed
 batch and the HTTP-derived batch must prevent backend dispatch. Every atomic

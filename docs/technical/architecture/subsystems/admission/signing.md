@@ -35,8 +35,12 @@ available when signing is optional.
 HTTP transaction mutations opt in with
 `Content-Type: application/vnd.formance.signed-request+json`. The wrapper contains
 `request` (the legacy JSON body, or null for transaction metadata DELETE) and
-`signedBatch` (camelCase protobuf JSON with standard-base64 `signature` and
-`payload`). The supported routes and client recipe are documented in
+`payload` (standard-base64 exact protobuf batch bytes). The
+`Formance-Signing-Key-Id` and `Formance-Signature` headers carry the key ID and
+standard-base64 Ed25519 signature. Both headers are required exactly once and
+must be nonempty; the signature decodes to 64 bytes. The adapter assembles the
+existing `SignedApplyBatch{key_id, signature, payload}` from those inputs. The
+supported routes and client recipe are documented in
 [HTTP request signing](../../../../ops/signing.md#http-request-signing).
 
 The HTTP adapter builds the same `ApplyBatch` as its ordinary decoder from the
@@ -48,6 +52,11 @@ request count/order, oneofs, skippable reasons and the batch key. A mismatch is
 admission's key lookup and Ed25519 verification authenticate it. No HTTP signing
 key cache or alternative verifier is introduced. JWT scopes and caller attribution
 remain separate requirements.
+
+Malformed, missing, empty or repeated signing headers, invalid base64 and invalid
+signature length reject with 400 before admission. Either signing header with
+another media type, or signing headers/media type on an unsupported route,
+rejects with 415; a signing attempt cannot silently become unsigned.
 
 Signed bulk requires a nonempty array and `atomic=true`. It uses the header key
 and ignores per-element `ik` exactly as unsigned atomic bulk does. Non-atomic
