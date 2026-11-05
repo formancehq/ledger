@@ -140,14 +140,14 @@ func (x *GetLedgerRequest) MarshalJSON() ([]byte, error) {
 }
 
 func (x *ApplyRequest) MarshalJSON() ([]byte, error) {
-	switch oneofValue := x.Variant.(type) {
+	switch oneofValueVariant := x.Variant.(type) {
 	case *ApplyRequest_Unsigned:
 		return jsonv2.Marshal(struct {
 			Unsigned                any  `json:"unsigned"`
 			ForwardedCallerSnapshot any  `json:"forwardedCallerSnapshot,omitempty,omitzero"`
 			SkipResponse            bool `json:"skipResponse"`
 		}{
-			Unsigned:                oneofValue.Unsigned,
+			Unsigned:                oneofValueVariant.Unsigned,
 			ForwardedCallerSnapshot: x.ForwardedCallerSnapshot,
 			SkipResponse:            x.SkipResponse,
 		})
@@ -157,7 +157,7 @@ func (x *ApplyRequest) MarshalJSON() ([]byte, error) {
 			ForwardedCallerSnapshot any  `json:"forwardedCallerSnapshot,omitempty,omitzero"`
 			SkipResponse            bool `json:"skipResponse"`
 		}{
-			Signed:                  oneofValue.Signed,
+			Signed:                  oneofValueVariant.Signed,
 			ForwardedCallerSnapshot: x.ForwardedCallerSnapshot,
 			SkipResponse:            x.SkipResponse,
 		})
@@ -201,168 +201,168 @@ func (x *ApplyResponse) MarshalJSON() ([]byte, error) {
 }
 
 func (x *Request) MarshalJSON() ([]byte, error) {
-	switch oneofValue := x.Type.(type) {
+	switch oneofValueType := x.Type.(type) {
 	case *Request_Apply:
 		return jsonv2.Marshal(struct {
 			Apply any `json:"apply"`
 		}{
-			Apply: oneofValue.Apply,
+			Apply: oneofValueType.Apply,
 		})
 	case *Request_CreateLedger:
 		return jsonv2.Marshal(struct {
 			CreateLedger any `json:"createLedger"`
 		}{
-			CreateLedger: oneofValue.CreateLedger,
+			CreateLedger: oneofValueType.CreateLedger,
 		})
 	case *Request_DeleteLedger:
 		return jsonv2.Marshal(struct {
 			DeleteLedger any `json:"deleteLedger"`
 		}{
-			DeleteLedger: oneofValue.DeleteLedger,
+			DeleteLedger: oneofValueType.DeleteLedger,
 		})
 	case *Request_RegisterSigningKey:
 		return jsonv2.Marshal(struct {
 			RegisterSigningKey any `json:"registerSigningKey"`
 		}{
-			RegisterSigningKey: oneofValue.RegisterSigningKey,
+			RegisterSigningKey: oneofValueType.RegisterSigningKey,
 		})
 	case *Request_RevokeSigningKey:
 		return jsonv2.Marshal(struct {
 			RevokeSigningKey any `json:"revokeSigningKey"`
 		}{
-			RevokeSigningKey: oneofValue.RevokeSigningKey,
+			RevokeSigningKey: oneofValueType.RevokeSigningKey,
 		})
 	case *Request_SetSigningConfig:
 		return jsonv2.Marshal(struct {
 			SetSigningConfig any `json:"setSigningConfig"`
 		}{
-			SetSigningConfig: oneofValue.SetSigningConfig,
+			SetSigningConfig: oneofValueType.SetSigningConfig,
 		})
 	case *Request_AddEventsSink:
 		return jsonv2.Marshal(struct {
 			AddEventsSink any `json:"addEventsSink"`
 		}{
-			AddEventsSink: oneofValue.AddEventsSink,
+			AddEventsSink: oneofValueType.AddEventsSink,
 		})
 	case *Request_RemoveEventsSink:
 		return jsonv2.Marshal(struct {
 			RemoveEventsSink any `json:"removeEventsSink"`
 		}{
-			RemoveEventsSink: oneofValue.RemoveEventsSink,
+			RemoveEventsSink: oneofValueType.RemoveEventsSink,
 		})
 	case *Request_SetMaintenanceMode:
 		return jsonv2.Marshal(struct {
 			SetMaintenanceMode any `json:"setMaintenanceMode"`
 		}{
-			SetMaintenanceMode: oneofValue.SetMaintenanceMode,
+			SetMaintenanceMode: oneofValueType.SetMaintenanceMode,
 		})
 	case *Request_SetMetadataFieldType:
 		return jsonv2.Marshal(struct {
 			SetMetadataFieldType any `json:"setMetadataFieldType"`
 		}{
-			SetMetadataFieldType: oneofValue.SetMetadataFieldType,
+			SetMetadataFieldType: oneofValueType.SetMetadataFieldType,
 		})
 	case *Request_RemoveMetadataFieldType:
 		return jsonv2.Marshal(struct {
 			RemoveMetadataFieldType any `json:"removeMetadataFieldType"`
 		}{
-			RemoveMetadataFieldType: oneofValue.RemoveMetadataFieldType,
+			RemoveMetadataFieldType: oneofValueType.RemoveMetadataFieldType,
 		})
 	case *Request_PromoteLedger:
 		return jsonv2.Marshal(struct {
 			PromoteLedger any `json:"promoteLedger"`
 		}{
-			PromoteLedger: oneofValue.PromoteLedger,
+			PromoteLedger: oneofValueType.PromoteLedger,
 		})
 	case *Request_CreatePreparedQuery:
 		return jsonv2.Marshal(struct {
 			CreatePreparedQuery any `json:"createPreparedQuery"`
 		}{
-			CreatePreparedQuery: oneofValue.CreatePreparedQuery,
+			CreatePreparedQuery: oneofValueType.CreatePreparedQuery,
 		})
 	case *Request_UpdatePreparedQuery:
 		return jsonv2.Marshal(struct {
 			UpdatePreparedQuery any `json:"updatePreparedQuery"`
 		}{
-			UpdatePreparedQuery: oneofValue.UpdatePreparedQuery,
+			UpdatePreparedQuery: oneofValueType.UpdatePreparedQuery,
 		})
 	case *Request_DeletePreparedQuery:
 		return jsonv2.Marshal(struct {
 			DeletePreparedQuery any `json:"deletePreparedQuery"`
 		}{
-			DeletePreparedQuery: oneofValue.DeletePreparedQuery,
+			DeletePreparedQuery: oneofValueType.DeletePreparedQuery,
 		})
 	case *Request_CreateIndex:
 		return jsonv2.Marshal(struct {
 			CreateIndex any `json:"createIndex"`
 		}{
-			CreateIndex: oneofValue.CreateIndex,
+			CreateIndex: oneofValueType.CreateIndex,
 		})
 	case *Request_DropIndex:
 		return jsonv2.Marshal(struct {
 			DropIndex any `json:"dropIndex"`
 		}{
-			DropIndex: oneofValue.DropIndex,
+			DropIndex: oneofValueType.DropIndex,
 		})
 	case *Request_SaveNumscript:
 		return jsonv2.Marshal(struct {
 			SaveNumscript any `json:"saveNumscript"`
 		}{
-			SaveNumscript: oneofValue.SaveNumscript,
+			SaveNumscript: oneofValueType.SaveNumscript,
 		})
 	case *Request_AddAccountType:
 		return jsonv2.Marshal(struct {
 			AddAccountType any `json:"addAccountType"`
 		}{
-			AddAccountType: oneofValue.AddAccountType,
+			AddAccountType: oneofValueType.AddAccountType,
 		})
 	case *Request_RemoveAccountType:
 		return jsonv2.Marshal(struct {
 			RemoveAccountType any `json:"removeAccountType"`
 		}{
-			RemoveAccountType: oneofValue.RemoveAccountType,
+			RemoveAccountType: oneofValueType.RemoveAccountType,
 		})
 	case *Request_SetDefaultEnforcementMode:
 		return jsonv2.Marshal(struct {
 			SetDefaultEnforcementMode any `json:"setDefaultEnforcementMode"`
 		}{
-			SetDefaultEnforcementMode: oneofValue.SetDefaultEnforcementMode,
+			SetDefaultEnforcementMode: oneofValueType.SetDefaultEnforcementMode,
 		})
 	case *Request_CreateQueryCheckpoint:
 		return jsonv2.Marshal(struct {
 			CreateQueryCheckpoint any `json:"createQueryCheckpoint"`
 		}{
-			CreateQueryCheckpoint: oneofValue.CreateQueryCheckpoint,
+			CreateQueryCheckpoint: oneofValueType.CreateQueryCheckpoint,
 		})
 	case *Request_DeleteQueryCheckpoint:
 		return jsonv2.Marshal(struct {
 			DeleteQueryCheckpoint any `json:"deleteQueryCheckpoint"`
 		}{
-			DeleteQueryCheckpoint: oneofValue.DeleteQueryCheckpoint,
+			DeleteQueryCheckpoint: oneofValueType.DeleteQueryCheckpoint,
 		})
 	case *Request_SetQueryCheckpointSchedule:
 		return jsonv2.Marshal(struct {
 			SetQueryCheckpointSchedule any `json:"setQueryCheckpointSchedule"`
 		}{
-			SetQueryCheckpointSchedule: oneofValue.SetQueryCheckpointSchedule,
+			SetQueryCheckpointSchedule: oneofValueType.SetQueryCheckpointSchedule,
 		})
 	case *Request_DeleteQueryCheckpointSchedule:
 		return jsonv2.Marshal(struct {
 			DeleteQueryCheckpointSchedule any `json:"deleteQueryCheckpointSchedule"`
 		}{
-			DeleteQueryCheckpointSchedule: oneofValue.DeleteQueryCheckpointSchedule,
+			DeleteQueryCheckpointSchedule: oneofValueType.DeleteQueryCheckpointSchedule,
 		})
 	case *Request_SaveLedgerMetadata:
 		return jsonv2.Marshal(struct {
 			SaveLedgerMetadata any `json:"saveLedgerMetadata"`
 		}{
-			SaveLedgerMetadata: oneofValue.SaveLedgerMetadata,
+			SaveLedgerMetadata: oneofValueType.SaveLedgerMetadata,
 		})
 	case *Request_DeleteLedgerMetadata:
 		return jsonv2.Marshal(struct {
 			DeleteLedgerMetadata any `json:"deleteLedgerMetadata"`
 		}{
-			DeleteLedgerMetadata: oneofValue.DeleteLedgerMetadata,
+			DeleteLedgerMetadata: oneofValueType.DeleteLedgerMetadata,
 		})
 	default:
 		return jsonv2.Marshal(struct {
@@ -797,48 +797,48 @@ func (x *ResponseSigningInfo) MarshalJSON() ([]byte, error) {
 }
 
 func (x *LedgerAction) MarshalJSON() ([]byte, error) {
-	switch oneofValue := x.Data.(type) {
+	switch oneofValueData := x.Data.(type) {
 	case *LedgerAction_CreateTransaction:
 		return jsonv2.Marshal(struct {
 			CreateTransaction any `json:"createTransaction"`
 		}{
-			CreateTransaction: oneofValue.CreateTransaction,
+			CreateTransaction: oneofValueData.CreateTransaction,
 		})
 	case *LedgerAction_AddMetadata:
 		return jsonv2.Marshal(struct {
 			AddMetadata any `json:"addMetadata"`
 		}{
-			AddMetadata: oneofValue.AddMetadata,
+			AddMetadata: oneofValueData.AddMetadata,
 		})
 	case *LedgerAction_RevertTransaction:
 		return jsonv2.Marshal(struct {
 			RevertTransaction any `json:"revertTransaction"`
 		}{
-			RevertTransaction: oneofValue.RevertTransaction,
+			RevertTransaction: oneofValueData.RevertTransaction,
 		})
 	case *LedgerAction_DeleteMetadata:
 		return jsonv2.Marshal(struct {
 			DeleteMetadata any `json:"deleteMetadata"`
 		}{
-			DeleteMetadata: oneofValue.DeleteMetadata,
+			DeleteMetadata: oneofValueData.DeleteMetadata,
 		})
 	case *LedgerAction_AddAccountType:
 		return jsonv2.Marshal(struct {
 			AddAccountType any `json:"addAccountType"`
 		}{
-			AddAccountType: oneofValue.AddAccountType,
+			AddAccountType: oneofValueData.AddAccountType,
 		})
 	case *LedgerAction_RemoveAccountType:
 		return jsonv2.Marshal(struct {
 			RemoveAccountType any `json:"removeAccountType"`
 		}{
-			RemoveAccountType: oneofValue.RemoveAccountType,
+			RemoveAccountType: oneofValueData.RemoveAccountType,
 		})
 	case *LedgerAction_SetDefaultEnforcementMode:
 		return jsonv2.Marshal(struct {
 			SetDefaultEnforcementMode any `json:"setDefaultEnforcementMode"`
 		}{
-			SetDefaultEnforcementMode: oneofValue.SetDefaultEnforcementMode,
+			SetDefaultEnforcementMode: oneofValueData.SetDefaultEnforcementMode,
 		})
 	default:
 		return jsonv2.Marshal(struct {
@@ -1343,18 +1343,18 @@ func (x *CheckStoreRequest) MarshalJSON() ([]byte, error) {
 }
 
 func (x *CheckStoreEvent) MarshalJSON() ([]byte, error) {
-	switch oneofValue := x.Type.(type) {
+	switch oneofValueType := x.Type.(type) {
 	case *CheckStoreEvent_Error:
 		return jsonv2.Marshal(struct {
 			Error any `json:"error"`
 		}{
-			Error: oneofValue.Error,
+			Error: oneofValueType.Error,
 		})
 	case *CheckStoreEvent_Progress:
 		return jsonv2.Marshal(struct {
 			Progress any `json:"progress"`
 		}{
-			Progress: oneofValue.Progress,
+			Progress: oneofValueType.Progress,
 		})
 	default:
 		return jsonv2.Marshal(struct {
@@ -1632,18 +1632,18 @@ func (x *AnalyzeProgress) MarshalJSON() ([]byte, error) {
 }
 
 func (x *AnalyzeAccountsEvent) MarshalJSON() ([]byte, error) {
-	switch oneofValue := x.Type.(type) {
+	switch oneofValueType := x.Type.(type) {
 	case *AnalyzeAccountsEvent_Progress:
 		return jsonv2.Marshal(struct {
 			Progress any `json:"progress"`
 		}{
-			Progress: oneofValue.Progress,
+			Progress: oneofValueType.Progress,
 		})
 	case *AnalyzeAccountsEvent_Result:
 		return jsonv2.Marshal(struct {
 			Result any `json:"result"`
 		}{
-			Result: oneofValue.Result,
+			Result: oneofValueType.Result,
 		})
 	default:
 		return jsonv2.Marshal(struct {
@@ -1652,18 +1652,18 @@ func (x *AnalyzeAccountsEvent) MarshalJSON() ([]byte, error) {
 }
 
 func (x *AnalyzeTransactionsEvent) MarshalJSON() ([]byte, error) {
-	switch oneofValue := x.Type.(type) {
+	switch oneofValueType := x.Type.(type) {
 	case *AnalyzeTransactionsEvent_Progress:
 		return jsonv2.Marshal(struct {
 			Progress any `json:"progress"`
 		}{
-			Progress: oneofValue.Progress,
+			Progress: oneofValueType.Progress,
 		})
 	case *AnalyzeTransactionsEvent_Result:
 		return jsonv2.Marshal(struct {
 			Result any `json:"result"`
 		}{
-			Result: oneofValue.Result,
+			Result: oneofValueType.Result,
 		})
 	default:
 		return jsonv2.Marshal(struct {
@@ -1960,18 +1960,18 @@ func (x *ExecutePreparedQueryRequest) MarshalJSON() ([]byte, error) {
 }
 
 func (x *ExecutePreparedQueryResponse) MarshalJSON() ([]byte, error) {
-	switch oneofValue := x.Result.(type) {
+	switch oneofValueResult := x.Result.(type) {
 	case *ExecutePreparedQueryResponse_Cursor:
 		return jsonv2.Marshal(struct {
 			Cursor any `json:"cursor"`
 		}{
-			Cursor: oneofValue.Cursor,
+			Cursor: oneofValueResult.Cursor,
 		})
 	case *ExecutePreparedQueryResponse_Aggregate:
 		return jsonv2.Marshal(struct {
 			Aggregate any `json:"aggregate"`
 		}{
-			Aggregate: oneofValue.Aggregate,
+			Aggregate: oneofValueResult.Aggregate,
 		})
 	default:
 		return jsonv2.Marshal(struct {
@@ -2208,24 +2208,24 @@ func (x *InspectIndexRequest) MarshalJSON() ([]byte, error) {
 }
 
 func (x *InspectIndexResponse) MarshalJSON() ([]byte, error) {
-	switch oneofValue := x.Result.(type) {
+	switch oneofValueResult := x.Result.(type) {
 	case *InspectIndexResponse_DistinctValues:
 		return jsonv2.Marshal(struct {
 			DistinctValues any `json:"distinctValues"`
 		}{
-			DistinctValues: oneofValue.DistinctValues,
+			DistinctValues: oneofValueResult.DistinctValues,
 		})
 	case *InspectIndexResponse_Facets:
 		return jsonv2.Marshal(struct {
 			Facets any `json:"facets"`
 		}{
-			Facets: oneofValue.Facets,
+			Facets: oneofValueResult.Facets,
 		})
 	case *InspectIndexResponse_Summary:
 		return jsonv2.Marshal(struct {
 			Summary any `json:"summary"`
 		}{
-			Summary: oneofValue.Summary,
+			Summary: oneofValueResult.Summary,
 		})
 	default:
 		return jsonv2.Marshal(struct {

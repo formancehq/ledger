@@ -52,15 +52,19 @@ func (x *Log) MarshalJSONTo(enc *jsontext.Encoder) error {
 
 func (x *Log) jsonValue() (any, error) {
 	type Aux struct {
-		Sequence          uint64        `json:"sequence,omitempty"`
-		Payload           *LogPayload   `json:"payload,omitempty"`
-		ResponseSignature json.RawValue `json:"responseSignature,omitempty"`
+		Sequence          uint64         `json:"sequence,omitempty"`
+		Payload           *LogPayload    `json:"payload,omitempty"`
+		ResponseSignature *json.RawValue `json:"responseSignature,omitempty"`
+	}
+	var responseSignature *json.RawValue
+	if raw := protoFieldJSON(x.GetResponseSignature()); raw != nil {
+		responseSignature = &raw
 	}
 
 	aux := Aux{
 		Sequence:          x.GetSequence(),
 		Payload:           x.GetPayload(),
-		ResponseSignature: protoFieldJSON(x.GetResponseSignature()),
+		ResponseSignature: responseSignature,
 	}
 
 	return aux, nil
