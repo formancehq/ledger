@@ -4,7 +4,7 @@
 
 The admission pipeline (`internal/application/admission`) is what every write request goes through between the gRPC server and the Raft proposer. Its job is to convert a client batch into an in-memory `Proposal` that the FSM can apply deterministically on every replica.
 
-In one sentence: **admission turns external requests into preloaded, structurally-validated, signed Raft proposals — and rejects everything that can be rejected before consensus**.
+In one sentence: **admission turns external requests into preloaded, structurally-validated, signed Raft proposals; the FSM decides refusals governed by mutable, Raft-replicated policy**.
 
 ```mermaid
 sequenceDiagram
@@ -177,6 +177,13 @@ This split exists because the *uniqueness* check requires committed state — ad
 Admission validates **structural correctness** (UX-fast feedback before Raft): caller attribution, account address shape, asset code shape, metadata key shape, idempotency-key length, etc.
 
 The FSM validates **behavioural invariants** (audit-bound): balance sufficiency, account-type constraints, overflow, already-reverted transactions, etc.
+
+For authenticated, structurally valid client requests, a definitive refusal
+that depends on mutable, Raft-replicated policy is an FSM decision at the
+proposal's apply index, after idempotency replay is checked. See the
+[placement rule](validation.md#replicated-policy-refusals). The rule defines
+where such checks belong; moving existing admission checks requires a separate
+behavior change.
 
 Both layers share the same domain sentinels (`domain.BusinessError`, `domain.ErrXxx`) so that an end-state caught at both layers reports the same error. The caller-attribution guard is deliberately an internal `Classifiable` rather than a `BusinessError`: it is a trust-boundary violation, not a client-visible business outcome. See [validation.md](validation.md) for the per-rule split and the rationale.
 

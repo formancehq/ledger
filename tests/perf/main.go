@@ -7,6 +7,8 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
+	"slices"
 	"strings"
 
 	"github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes"
@@ -18,106 +20,141 @@ import (
 )
 
 func main() {
-	pulumi.Run(func(ctx *pulumi.Context) error {
-		cfg := config.New(ctx, "")
+	pulumi.Run(runBenchmark)
+}
 
-		kubeContext := cfg.Require("k8s-context")
+func runBenchmark(ctx *pulumi.Context) error {
+	cfg := config.New(ctx, "")
 
-		var benchmarkCfg map[string]any
-		cfg.RequireObject("benchmark", &benchmarkCfg)
+	kubeContext := cfg.Require("k8s-context")
 
-		scriptName, _ := benchmarkCfg["script"].(string)
-		if scriptName == "" {
-			return fmt.Errorf("benchmark.script is required")
-		}
-
-		metadata, _ := benchmarkCfg["metadata"].(map[string]any)
-		namespaceName, _ := metadata["namespace"].(string)
-		if namespaceName == "" {
-			namespaceName = ctx.Stack()
-		}
-
-		benchmarkName, _ := metadata["name"].(string)
-		benchmarkName = strings.ReplaceAll(benchmarkName, "_", "-")
-		if benchmarkName == "" {
-			benchmarkName = "k6-run-" + strings.ReplaceAll(scriptName, "_", "-")
-		}
-
-		// Create k6 archive
-		archivePath, err := createK6Archive(scriptName)
-		if err != nil {
-			return fmt.Errorf("creating k6 archive: %w", err)
-		}
-
-		archiveBytes, err := os.ReadFile(archivePath)
-		if err != nil {
-			return fmt.Errorf("reading archive %s: %w", archivePath, err)
-		}
-		archiveBase64 := base64.StdEncoding.EncodeToString(archiveBytes)
-
-		// K8s provider
-		k8sProvider, err := kubernetes.NewProvider(ctx, "k8s", &kubernetes.ProviderArgs{
-			Context: pulumi.StringPtr(kubeContext),
+	var benchmarkCfg map[string]any
+	if profile := cfg.Get("profile"); profile != "" {
+		var err error
+		benchmarkCfg, err = ciBenchmark(profile, runIdentity{
+			Commit: cfg.Require("commit"), Image: cfg.Require("image"),
+			RunID: cfg.Require("run-id"), Attempt: cfg.Require("run-attempt"),
+			PR:             cfg.Get("pr"),
+			WhenBusy:       cfg.Get("when-busy"),
+			WorkloadCommit: cfg.Get("workload-commit"),
 		})
 		if err != nil {
-			return fmt.Errorf("creating k8s provider: %w", err)
+			return err
 		}
+	} else {
+		cfg.RequireObject("benchmark", &benchmarkCfg)
+	}
 
-		// ConfigMap with archive binary data
-		configMapName := benchmarkName
-		cm, err := corev1.NewConfigMap(ctx, "k6-archive", &corev1.ConfigMapArgs{
-			Metadata: &metav1.ObjectMetaArgs{
-				Name:      pulumi.String(configMapName),
-				Namespace: pulumi.String(namespaceName),
-			},
-			BinaryData: pulumi.StringMap{
-				scriptName + ".tar": pulumi.String(archiveBase64),
-			},
-		}, pulumi.Provider(k8sProvider))
-		if err != nil {
-			return fmt.Errorf("creating ConfigMap: %w", err)
-		}
+	scriptName, _ := benchmarkCfg["script"].(string)
+	if scriptName == "" {
+		return fmt.Errorf("benchmark.script is required")
+	}
 
-		// Benchmark CR
-		_, err = apiextensions.NewCustomResource(ctx, "benchmark", &apiextensions.CustomResourceArgs{
-			ApiVersion: pulumi.String("benchmark.formance.com/v1alpha1"),
-			Kind:       pulumi.String("Benchmark"),
-			Metadata: &metav1.ObjectMetaArgs{
-				Name:      pulumi.String(benchmarkName),
-				Namespace: pulumi.String(namespaceName),
-			},
-			OtherFields: buildBenchmarkSpec(benchmarkCfg, configMapName, scriptName),
-		},
-			pulumi.Provider(k8sProvider),
-			pulumi.DependsOn([]pulumi.Resource{cm}),
-		)
-		if err != nil {
-			return fmt.Errorf("creating Benchmark: %w", err)
-		}
+	metadata, _ := benchmarkCfg["metadata"].(map[string]any)
+	namespaceName, _ := metadata["namespace"].(string)
+	if namespaceName == "" {
+		namespaceName = ctx.Stack()
+	}
 
-		ctx.Export("benchmarkName", pulumi.String(benchmarkName))
-		ctx.Export("namespace", pulumi.String(namespaceName))
-		ctx.Export("script", pulumi.String(scriptName))
+	benchmarkName, _ := metadata["name"].(string)
+	benchmarkName = strings.ReplaceAll(benchmarkName, "_", "-")
+	if benchmarkName == "" {
+		benchmarkName = "k6-run-" + strings.ReplaceAll(scriptName, "_", "-")
+	}
 
-		return nil
+	// Create k6 archive
+	archivePath, err := createK6Archive(scriptName)
+	if err != nil {
+		return fmt.Errorf("creating k6 archive: %w", err)
+	}
+	defer func() { _ = os.RemoveAll(filepath.Dir(archivePath)) }() // Temporary build artifact.
+
+	archiveBytes, err := os.ReadFile(archivePath)
+	if err != nil {
+		return fmt.Errorf("reading archive %s: %w", archivePath, err)
+	}
+	if len(archiveBytes) > 900*1024 {
+		return fmt.Errorf("k6 archive is %d bytes; maximum is 900 KiB for a ConfigMap", len(archiveBytes))
+	}
+	archiveBase64 := base64.StdEncoding.EncodeToString(archiveBytes)
+
+	// K8s provider
+	k8sProvider, err := kubernetes.NewProvider(ctx, "k8s", &kubernetes.ProviderArgs{
+		Context: pulumi.StringPtr(kubeContext),
 	})
+	if err != nil {
+		return fmt.Errorf("creating k8s provider: %w", err)
+	}
+
+	// ConfigMap with archive binary data
+	configMapName := benchmarkName
+	labels := pulumi.ToStringMap(benchmarkLabels(benchmarkCfg, benchmarkName))
+	cm, err := corev1.NewConfigMap(ctx, "k6-archive", &corev1.ConfigMapArgs{
+		Metadata: &metav1.ObjectMetaArgs{
+			Name:      pulumi.String(configMapName),
+			Namespace: pulumi.String(namespaceName),
+			Labels:    labels,
+		},
+		BinaryData: pulumi.StringMap{
+			scriptName + ".tar": pulumi.String(archiveBase64),
+		},
+	}, pulumi.Provider(k8sProvider))
+	if err != nil {
+		return fmt.Errorf("creating ConfigMap: %w", err)
+	}
+
+	benchmarkSpec := buildBenchmarkSpec(benchmarkCfg, configMapName, scriptName)
+	// The submission job ends at admission. Kubernetes owns the run lifecycle.
+	_, err = apiextensions.NewCustomResource(ctx, "benchmark", &apiextensions.CustomResourceArgs{
+		ApiVersion: pulumi.String("benchmark.formance.com/v1alpha1"),
+		Kind:       pulumi.String("Benchmark"),
+		Metadata: &metav1.ObjectMetaArgs{
+			Name:        pulumi.String(benchmarkName),
+			Namespace:   pulumi.String(namespaceName),
+			Labels:      labels,
+			Annotations: pulumi.ToStringMap(benchmarkAnnotations(benchmarkCfg)),
+		},
+		OtherFields: benchmarkSpec,
+	},
+		pulumi.Provider(k8sProvider),
+		pulumi.DependsOn([]pulumi.Resource{cm}),
+	)
+	if err != nil {
+		return fmt.Errorf("creating Benchmark: %w", err)
+	}
+
+	ctx.Export("benchmarkName", pulumi.String(benchmarkName))
+	ctx.Export("namespace", pulumi.String(namespaceName))
+	ctx.Export("script", pulumi.String(scriptName))
+
+	return nil
 }
 
 func createK6Archive(scriptName string) (string, error) {
+	if !regexp.MustCompile(`^[a-z][a-z0-9_]*$`).MatchString(scriptName) {
+		return "", fmt.Errorf("invalid script name %q", scriptName)
+	}
 	scriptFile := scriptName + ".js"
 	archiveFile := scriptName + ".tar"
-	archivePath := filepath.Join("archives", archiveFile)
-
-	_ = os.Remove(archivePath) // best-effort cleanup
-	if err := os.MkdirAll("archives", 0o755); err != nil {
+	archiveDir := filepath.Join("..", "..", "build", "perf", "archives")
+	if err := os.MkdirAll(archiveDir, 0o755); err != nil {
 		return "", fmt.Errorf("creating archives directory: %w", err)
 	}
+	tmp, err := os.MkdirTemp(archiveDir, "k6-")
+	if err != nil {
+		return "", fmt.Errorf("creating archive directory: %w", err)
+	}
+	archivePath, err := filepath.Abs(filepath.Join(tmp, archiveFile))
+	if err != nil {
+		return "", err
+	}
 
-	cmd := exec.Command("k6", "archive", scriptFile, "-O", filepath.Join("..", "archives", archiveFile))
+	cmd := exec.Command("k6", "archive", "--include-system-env-vars=false", scriptFile, "-O", archivePath)
 	cmd.Dir = "scripts"
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	if err := cmd.Run(); err != nil {
+		_ = os.RemoveAll(tmp) // Best-effort cleanup of a failed archive build.
 		return "", fmt.Errorf("k6 archive failed: %w", err)
 	}
 
@@ -135,21 +172,25 @@ func buildBenchmarkSpec(cfg map[string]any, configMapName, scriptName string) ma
 	runnerSpec := map[string]any{}
 
 	if runner != nil {
+		for key, value := range runner {
+			if key != "env" {
+				runnerSpec[key] = value
+			}
+		}
 		if envMap, ok := runner["env"].(map[string]any); ok {
 			envVars := make([]map[string]any, 0, len(envMap))
-			for k, v := range envMap {
+			keys := make([]string, 0, len(envMap))
+			for k := range envMap {
+				keys = append(keys, k)
+			}
+			slices.Sort(keys)
+			for _, k := range keys {
 				envVars = append(envVars, map[string]any{
 					"name":  k,
-					"value": fmt.Sprintf("%v", v),
+					"value": fmt.Sprintf("%v", envMap[k]),
 				})
 			}
 			runnerSpec["env"] = envVars
-		}
-		if v, ok := runner["nodeSelector"]; ok {
-			runnerSpec["nodeSelector"] = v
-		}
-		if v, ok := runner["tolerations"]; ok {
-			runnerSpec["tolerations"] = v
 		}
 	}
 
@@ -164,7 +205,7 @@ func buildBenchmarkSpec(cfg map[string]any, configMapName, scriptName string) ma
 		"runner": runnerSpec,
 	}
 
-	for _, key := range []string{"arguments", "separate", "cleanup"} {
+	for _, key := range []string{"arguments", "separate", "cleanup", "initializer", "starter"} {
 		if v, ok := spec[key]; ok {
 			testRun[key] = v
 		}
@@ -178,6 +219,11 @@ func buildBenchmarkSpec(cfg map[string]any, configMapName, scriptName string) ma
 
 	if resources, ok := cfg["resources"]; ok {
 		result["spec"].(map[string]any)["resources"] = resources
+	}
+	for _, key := range []string{"grafanaVariables", "executionGroup", "activeDeadlineSeconds", "whenBusy", "queueDeadlineSeconds", "cancel"} {
+		if value, ok := cfg[key]; ok {
+			result["spec"].(map[string]any)[key] = value
+		}
 	}
 
 	return result

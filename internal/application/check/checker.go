@@ -1070,6 +1070,9 @@ type compareIndexesScope struct {
 //   - identity drift: stored Ledger or Id field disagrees with the audit
 //     payload that produced the entry → "diverges from audit-derived"
 //
+// Membership is decided by the physical key alone. A stored value without an
+// Id is malformed identity, never a reason to skip the row.
+//
 // Bucket-scoped entries (LedgerName == "") are skipped after the key checks
 // because no audit-chain producer exists for them today (#436 reserved).
 // Drift on those is invisible to this pass until the bucket-scoped producer
@@ -1106,9 +1109,6 @@ func (c *Checker) compareIndexes(
 		entry := iter.Entry()
 
 		stored := entry.Value
-		if stored == nil || stored.GetId() == nil {
-			continue
-		}
 
 		var key domain.IndexKey
 		if err := key.Unmarshal(entry.CanonicalKey); err != nil {

@@ -4068,10 +4068,12 @@ Controls the time-to-live for idempotency keys. After the TTL expires, an idempo
 
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
-| `--idempotency-ttl` | duration | `24h` | Desired time-to-live for idempotency keys (0 = never expire) |
+| `--idempotency-ttl` | duration | `24h` | Desired time-to-live for idempotency keys (0 = never expire; otherwise at least `1µs`) |
 | `--idempotency-eviction-interval` | duration | `60s` | How often the leader proposes eviction of expired keys |
 
 `--idempotency-ttl` names the *desired* TTL that the leader reconciles into the Raft-replicated cluster policy; the FSM freezes each outcome's absolute expiry from the committed policy at write time, so the flag never affects how an already-committed outcome is applied. It is not a persisted-config parameter and is not gated by `--unsafe-skip-config-validation`; changing the effective TTL is a cluster-policy revision bump. Keep the desired value consistent across nodes so the reconciled policy is unambiguous.
+
+The cluster policy stores the TTL in whole microseconds. A value below `1µs` other than `0` would truncate to the never-expire sentinel, so the server refuses to start with it. Longer values are truncated to whole microseconds (`1500ns` becomes `1µs`).
 
 ```bash
 # Default: 24h TTL, eviction every 60s
@@ -4356,10 +4358,19 @@ Tune the Raft consensus layer. These flags control election timing, message size
 | `--raft-compaction-margin` | uint64 | `1000` | Minimum log entries between snapshots (0 = use default 1000) |
 | `--maintenance-interval` | duration | `30s` | Interval for background WAL snapshot + Pebble checkpoint (0 = use default 30s) |
 | `--raft-propose-queue-capacity` | int | `100` | Capacity of the propose queue (0 = use default 100) |
-| `--raft-processing-tick-interval` | duration | `tick-interval/10` | Interval for processing committed entries (0 = tick-interval/10) |
+| `--raft-tick-interval` | duration | `100ms` | Interval between Raft ticks (0 = 100ms); must be at least 10ns when processing uses its default |
+| `--raft-processing-tick-interval` | duration | `tick-interval/10` | Idle Ready polling interval, retained after Ready drains (0 = effective tick-interval/10) |
 | `--raft-replay-batch-size` | int | `1000` | Number of entries per batch during spool replay (0 = use default 1000) |
 | `--spool-segment-max-bytes` | ByteSize | `256Mi` | Maximum spool segment size before rotation/sealing (0 = use default 256Mi). Lower values seal (and thus prune) segments more often at the cost of more files |
 | `--backup-max-segment-bytes` | ByteSize | `4Gi` | Maximum incremental-backup export segment size before splitting into a new segment (0 = use default 4Gi). Lower values produce more, smaller segments (smaller retry blast radius) at the cost of more objects |
+
+Both intervals reject negative durations. With zero processing interval, positive
+Raft ticks from `1ns` through `9ns` are rejected because division by ten would
+produce a zero-duration ticker. An explicit positive processing interval permits
+these tick values and remains in effect when Ready work drains. Zero Raft tick
+retains the `100ms` default, so both zero values resolve to `100ms` / `10ms`.
+Message and local-storage responses can trigger Ready immediately; this polling
+interval does not pace every commit.
 
 ```bash
 # Increase compaction margin for workloads with large snapshots

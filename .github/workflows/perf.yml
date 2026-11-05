@@ -1,0 +1,204 @@
+name: Performance benchmarks
+
+on:
+  workflow_run:
+    workflows: [PR Images]
+    types: [completed]
+  schedule:
+    - cron: '0 2 * * 0'
+  workflow_dispatch:
+    inputs:
+      profile:
+        description: Load duration
+        type: choice
+        options: [smoke-5m, smoke-10m, soak-24h]
+        default: smoke-5m
+
+permissions:
+  contents: read
+
+env:
+  IMAGE_REPOSITORY: ${{ vars.IMAGE_REPOSITORY || 'ghcr.io/formancehq/ledger' }}
+
+jobs:
+  Build:
+    if: github.event_name != 'workflow_run' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+    runs-on: namespace-profile-linux-amd64-4vcpu
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      sha: ${{ steps.image.outputs.sha }}
+      tag: ${{ steps.image.outputs.tag }}
+    steps:
+      - uses: namespacelabs/nscloud-checkout-action@66f2dc6f6c42a8ac6c4e53473c4840006822831e # v9
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          fetch-depth: 0
+          dissociate: true
+      - uses: ./.github/actions/default
+      - uses: namespacelabs/nscloud-setup-buildx-action@d059ed7184f0bc7c8b27e8810cea153d02bcc6dd # v0.0.23
+      - uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
+        with:
+          registry: ghcr.io
+          username: NumaryBot
+          password: ${{ secrets.NUMARY_GITHUB_TOKEN }}
+      - name: Build and push the default-branch image
+        id: image
+        run: |
+          nix develop .#perf --command bash -euo pipefail <<'BUILD'
+            sha=$(git rev-parse HEAD)
+            tag="pr-0-${sha:0:7}-run-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+            image="${IMAGE_REPOSITORY}:$tag"
+            just docker-build-pr "$image"
+            echo "sha=$sha" >> "$GITHUB_OUTPUT"
+            echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          BUILD
+        env:
+          GORELEASER_KEY: ${{ secrets.GORELEASER_KEY }}
+
+  Submit:
+    needs: Build
+    if: >-
+      always() && !cancelled() &&
+      (needs.Build.result == 'success' ||
+       (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success'))
+    runs-on: namespace-profile-linux-amd64-4vcpu
+    timeout-minutes: 20
+    environment: acme-perf
+    permissions:
+      contents: read
+      packages: read
+      actions: read
+      pull-requests: read
+      id-token: write
+    steps:
+      # Cluster credentials are used only with default-branch code, never a PR checkout.
+      - name: Select the successfully built revision
+        id: run
+        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
+        env:
+          BASELINE_SHA: ${{ needs.Build.outputs.sha }}
+          BASELINE_TAG: ${{ needs.Build.outputs.tag }}
+          PROFILE: ${{ inputs.profile || 'soak-24h' }}
+        with:
+          script: |
+            let sha = process.env.BASELINE_SHA, tag = process.env.BASELINE_TAG, pr = 0, profile = process.env.PROFILE;
+            if (context.eventName === 'workflow_run') {
+              const {data: run} = await github.rest.actions.getWorkflowRun({
+                ...context.repo, run_id: context.payload.workflow_run.id
+              });
+              if (run.event !== 'pull_request' || run.path !== '.github/workflows/pr-images.yml' ||
+                  run.run_attempt !== context.payload.workflow_run.run_attempt ||
+                  run.head_repository.full_name !== `${context.repo.owner}/${context.repo.repo}`) return;
+              const {data: jobs} = await github.rest.actions.listJobsForWorkflowRunAttempt({
+                ...context.repo, run_id: run.id, attempt_number: run.run_attempt
+              });
+              if (!jobs.jobs.some(job => job.name === 'Build-PR-Image' && job.conclusion === 'success')) return;
+              const number = run.pull_requests[0]?.number;
+              if (!number) return;
+              const {data: pull} = await github.rest.pulls.get({...context.repo, pull_number: number});
+              const labels = pull.labels.filter(l => ['perf-5m', 'perf-10m'].includes(l.name));
+              if (pull.state !== 'open' || pull.head.sha !== run.head_sha || labels.length !== 1 ||
+                  pull.head.repo.full_name !== `${context.repo.owner}/${context.repo.repo}`) return;
+              sha = pull.head.sha; pr = pull.number;
+              tag = `pr-${pr}-${sha.slice(0, 7)}-run-${run.id}-${run.run_attempt}`;
+              profile = labels[0].name === 'perf-5m' ? 'smoke-5m' : 'smoke-10m';
+            }
+            for (const [key, value] of Object.entries({sha, tag, pr, profile, enabled: true})) core.setOutput(key, value);
+      - uses: namespacelabs/nscloud-checkout-action@66f2dc6f6c42a8ac6c4e53473c4840006822831e # v9
+        if: steps.run.outputs.enabled == 'true'
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+      - uses: ./.github/actions/default
+        if: steps.run.outputs.enabled == 'true'
+      - uses: namespacelabs/nscloud-setup-buildx-action@d059ed7184f0bc7c8b27e8810cea153d02bcc6dd # v0.0.23
+        if: steps.run.outputs.enabled == 'true'
+      - uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
+        if: steps.run.outputs.enabled == 'true'
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Connect to acme-dev
+        if: steps.run.outputs.enabled == 'true'
+        uses: tailscale/github-action@99a8333667fff04fdd6cffb46dfd409f8329a7bf # v4.3.0
+        with:
+          oauth-client-id: ${{ vars.PERF_TS_OAUTH_CLIENT_ID }}
+          oauth-secret: ${{ secrets.PERF_TS_OAUTH_SECRET }}
+          tags: ${{ vars.PERF_TS_TAGS || 'tag:github-actions-ledger-perf' }}
+      - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        if: steps.run.outputs.enabled == 'true'
+        with:
+          role-to-assume: ${{ vars.PERF_AWS_ROLE_ARN }}
+          aws-region: ${{ vars.PERF_AWS_REGION || 'eu-west-1' }}
+      - name: Resolve the image built by this run
+        id: image
+        if: steps.run.outputs.enabled == 'true'
+        env:
+          SHA: ${{ steps.run.outputs.sha }}
+          IMAGE_TAG: ${{ steps.run.outputs.tag }}
+        run: |
+          nix develop .#perf --command bash -euo pipefail <<'IMAGE'
+            image="${IMAGE_REPOSITORY}:$IMAGE_TAG"
+            digest=$(docker buildx imagetools inspect "$image" --format '{{json .Manifest}}' | jq -er '.digest')
+            [[ "$digest" =~ ^sha256:[0-9a-f]{64}$ ]]
+            image="$image@$digest"
+            docker buildx imagetools inspect "$image" --format "{{json .Image}}" |
+              jq -e --arg sha "$SHA" --arg source "https://github.com/$GITHUB_REPOSITORY" '
+                (if has("config") then [.] else [.[]] end) |
+                length > 0 and all(.[]; .config.Labels["org.opencontainers.image.revision"] == $sha and
+                  .config.Labels["org.opencontainers.image.source"] == $source)' > /dev/null
+            echo "image=$image" >> "$GITHUB_OUTPUT"
+          IMAGE
+      - name: Recheck the PR before submission
+        id: current
+        if: steps.run.outputs.enabled == 'true'
+        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
+        env:
+          PR: ${{ steps.run.outputs.pr }}
+          SHA: ${{ steps.run.outputs.sha }}
+          PROFILE: ${{ steps.run.outputs.profile }}
+        with:
+          script: |
+            if (process.env.PR === '0') { core.setOutput('enabled', true); return; }
+            const {data: pull} = await github.rest.pulls.get({...context.repo, pull_number: Number(process.env.PR)});
+            const labels = pull.labels.filter(l => ['perf-5m', 'perf-10m'].includes(l.name));
+            const label = process.env.PROFILE === 'smoke-5m' ? 'perf-5m' : 'perf-10m';
+            core.setOutput('enabled', pull.state === 'open' && pull.head.sha === process.env.SHA &&
+              pull.head.repo.full_name === `${context.repo.owner}/${context.repo.repo}` &&
+              labels.length === 1 && labels[0].name === label);
+      - name: Pulumi up with a local backend
+        if: steps.current.outputs.enabled == 'true'
+        env:
+          SHA: ${{ steps.run.outputs.sha }}
+          PR: ${{ steps.run.outputs.pr }}
+          PROFILE: ${{ steps.run.outputs.profile }}
+          IMAGE: ${{ steps.image.outputs.image }}
+          WHEN_BUSY: ${{ github.event_name == 'schedule' && 'Skip' || 'Queue' }}
+          AWS_REGION: ${{ vars.PERF_AWS_REGION || 'eu-west-1' }}
+          PULUMI_HOME: ${{ runner.temp }}/pulumi-home
+          PULUMI_BACKEND_URL: file://${{ runner.temp }}/pulumi-state
+          KUBECONFIG: ${{ runner.temp }}/perf-kubeconfig
+        run: |
+          nix develop .#perf --command bash -euo pipefail <<'PULUMI'
+            aws eks update-kubeconfig --name eks-acme-dev-euw1-01 --region "$AWS_REGION" --alias eks-acme-dev-euw1-01
+            kubectl --context eks-acme-dev-euw1-01 get crd benchmarks.benchmark.formance.com -o json |
+              jq -e '.spec.versions[] | select(.name == "v1alpha1") | .schema.openAPIV3Schema.properties.spec.properties |
+                has("executionGroup") and has("activeDeadlineSeconds") and has("queueDeadlineSeconds") and has("whenBusy")' > /dev/null
+            PULUMI_CONFIG_PASSPHRASE=$(head -c 32 /dev/urandom | base64)
+            export PULUMI_CONFIG_PASSPHRASE
+            mkdir -p "$RUNNER_TEMP/pulumi-state"
+            pulumi login "$PULUMI_BACKEND_URL" --non-interactive
+            workload=$(git rev-parse HEAD)
+            cd tests/perf
+            stack="ci-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+            pulumi stack init "$stack" --non-interactive
+            pulumi up --yes --skip-preview --non-interactive \
+              --config "perf:k8s-context=eks-acme-dev-euw1-01" \
+              --config "perf:profile=$PROFILE" --config "perf:commit=$SHA" --config "perf:image=$IMAGE" \
+              --config "perf:run-id=$GITHUB_RUN_ID" --config "perf:run-attempt=$GITHUB_RUN_ATTEMPT" \
+              --config "perf:pr=$PR" --config "perf:when-busy=$WHEN_BUSY" --config "perf:workload-commit=$workload"
+          PULUMI
