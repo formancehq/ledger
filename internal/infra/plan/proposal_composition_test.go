@@ -62,6 +62,32 @@ func TestRun_RejectsUnsupportedTechnicalComposition(t *testing.T) {
 	}
 }
 
+func TestRun_RejectsUnsupportedNativeTechnicalComposition(t *testing.T) {
+	t.Parallel()
+	for _, batch := range []*raftcmdpb.ExecutionBatch{
+		{Orders: []*raftcmdpb.Order{{}}, TechnicalUpdates: []*raftcmdpb.TechnicalUpdate{{Kind: &raftcmdpb.TechnicalUpdate_EventsSink{}}}},
+		{TechnicalUpdates: []*raftcmdpb.TechnicalUpdate{{Kind: &raftcmdpb.TechnicalUpdate_EventsSink{}}, {Kind: &raftcmdpb.TechnicalUpdate_MirrorSync{}}}},
+	} {
+		tracker := node.NewIndexTracker(1)
+		builder := newSubmitTestBuilder(t, tracker)
+		build, err := builder.Build(NewCoverage(), nil)
+		require.NoError(t, err)
+		cmd := &raftcmdpb.Proposal{Payload: &raftcmdpb.Proposal_Batch{Batch: batch}}
+		proposer := &recordingProposer{tracker: tracker}
+		marshalled := false
+		result, err := builder.Run(t.Context(), cmd, build, func(p *raftcmdpb.Proposal) ([]byte, error) {
+			marshalled = true
+
+			return p.MarshalVT()
+		}, proposer)
+		require.ErrorIs(t, err, ErrUnsupportedTechnicalComposition)
+		require.Nil(t, result)
+		require.False(t, marshalled)
+		require.Empty(t, proposer.capturedProposals(t))
+		require.Nil(t, build.token)
+	}
+}
+
 func TestRun_AllowsSupportedTechnicalComposition(t *testing.T) {
 	t.Parallel()
 	for _, withOrders := range []bool{false, true} {

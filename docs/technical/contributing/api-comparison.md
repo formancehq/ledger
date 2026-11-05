@@ -282,7 +282,7 @@ JWT/anonymous policy; no new endpoint or authorization requirement is introduced
 | Dynamic key management | ✅ | ❌ | Register/revoke/list keys via gRPC API (bootstrap: first key unsigned) |
 | Require signatures | ✅ | ❌ | Optional enforcement via `signing require` API call |
 | **Maintenance** |
-| Maintenance mode | ✅ | ❌ | Block all writes, Raft-replicated flag, dual check (admission + FSM) |
+| Maintenance mode | ✅ | ❌ | Block client business writes; leader-internal policy reconciliation remains available unless drained. Raft-replicated flag, dual check (admission + FSM) |
 | **Store Operations** |
 | Store metrics | ✅ | ❌ | Pebble storage metrics |
 | Store integrity check | ✅ | ❌ | Hash chain + derived data verification |
@@ -1743,3 +1743,10 @@ Admission rejects the exact names `_` (system API routes) and `_system`
 (system events) on every ledger-scoped write, before proposing to Raft.
 This applies equally to HTTP and gRPC. Other underscore-prefixed names,
 including `_systemx` and `_System`, remain valid.
+
+### RC.4 operational policy
+
+Native cluster-policy controls introduced at the RC.3 to RC.4 cutover no longer
+appear in business audit listings.
+Historical policy audit entries remain readable. Audit response fields and
+service revision 40 are unchanged. Discovery still returns the committed policy.

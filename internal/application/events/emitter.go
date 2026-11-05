@@ -462,15 +462,16 @@ func (e *Emitter) proposeSinkUpdate(ctx context.Context, update *raftcmdpb.Event
 	// PredictedIndex, ExecutionPlan) on each retry, so the caller owns
 	// stamping CallerSnapshot and the technical update here.
 	e.proposal.Reset()
+	e.proposal.Payload = &raftcmdpb.Proposal_Batch{Batch: &raftcmdpb.ExecutionBatch{}}
 	e.proposal.CallerSnapshot = commands.SystemCallerSnapshot(commands.ComponentEventsSink)
-	e.proposal.TechnicalUpdates = []*raftcmdpb.TechnicalUpdate{{
+	e.proposal.GetBatch().TechnicalUpdates = []*raftcmdpb.TechnicalUpdate{{
 		Kind: &raftcmdpb.TechnicalUpdate_EventsSink{EventsSink: update},
 	}}
 
 	// One WriteOperation per TU. applyEventsSinkUpdate reads no cache
 	// state, so Coverage stays nil and the runner takes the fast path.
 	operations := []plan.WriteOperation{{
-		Target: &e.proposal.GetTechnicalUpdates()[0].CoverageBits,
+		Target: &e.proposal.GetBatch().GetTechnicalUpdates()[0].CoverageBits,
 	}}
 
 	return plan.SubmitTechnical(ctx, e.builder, e.proposer, &e.proposal, operations, "proposeSinkUpdate")

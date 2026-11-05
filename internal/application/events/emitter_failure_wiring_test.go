@@ -175,8 +175,8 @@ func TestEmitterHTTPFailurePersistsUsefulSanitizedDiagnostic(t *testing.T) {
 	proposer.EXPECT().Propose(gomock.Any(), gomock.Any()).DoAndReturn(func(_ context.Context, p *node.Proposal) (*futures.Future[state.ApplyResult], error) {
 		var proposal raftcmdpb.Proposal
 		require.NoError(t, proposal.UnmarshalVT(p.Data()))
-		require.Len(t, proposal.GetTechnicalUpdates(), 1)
-		message := proposal.GetTechnicalUpdates()[0].GetEventsSink().GetError().GetMessage()
+		require.Len(t, proposal.GetBatch().GetTechnicalUpdates(), 1)
+		message := proposal.GetBatch().GetTechnicalUpdates()[0].GetEventsSink().GetError().GetMessage()
 		require.Contains(t, message, "posting event seq=1")
 		require.Contains(t, message, server.URL[len("http://"):])
 		require.Contains(t, message, "EOF")

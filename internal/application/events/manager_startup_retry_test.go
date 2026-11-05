@@ -84,7 +84,7 @@ func (p *startupStatusProposer) Propose(_ context.Context, proposal *node.Propos
 
 		return f, nil
 	}
-	for _, tu := range cmd.GetTechnicalUpdates() {
+	for _, tu := range cmd.GetBatch().GetTechnicalUpdates() {
 		update := tu.GetEventsSink()
 		if update == nil {
 			continue
@@ -125,7 +125,7 @@ func (p *delayedStartupStatusProposer) Propose(_ context.Context, proposal *node
 	if err := cmd.UnmarshalVT(proposal.Data()); err != nil {
 		return nil, err
 	}
-	update := cmd.GetTechnicalUpdates()[0].GetEventsSink()
+	update := cmd.GetBatch().GetTechnicalUpdates()[0].GetEventsSink()
 	proposal.Resolve(nil, nil)
 	f := futures.New[state.ApplyResult]()
 	if update.GetError() != nil && strings.HasPrefix(update.GetError().GetMessage(), sinkStartupErrorPrefix) {

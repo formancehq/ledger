@@ -183,7 +183,7 @@ func processCreateTransaction(ledger string, order *raftcmdpb.CreateTransactionO
 	// cluster policy through the Scope — never from node-local configuration,
 	// which would make this committed entry apply differently per node
 	// (invariant #2).
-	limits := domain.MetadataLimitsFromPolicy(s.GetClusterPolicy())
+	limits := ctx.metadataLimits()
 
 	if metaErr := limits.ValidateMap(finalMetadata); metaErr != nil {
 		return nil, metaErr

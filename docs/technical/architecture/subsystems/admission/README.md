@@ -1,6 +1,6 @@
 # Admission
 
-The admission pipeline (`internal/application/admission`) is the gateway every write request goes through before reaching the FSM. It authenticates the request, validates signatures, converts external requests into internal orders, preloads dependent state, and proposes the resulting command into Raft.
+Admission (`internal/application/admission`) prepares Raft proposals. Client `Apply` requests become audited execution batches after signature validation, order conversion, and preload. The internal cluster-policy reconciler creates a separate operational-control proposal with no orders. Both forms share caller attribution, write gates, guarded submission, and result handling.
 
 ## Documents
 

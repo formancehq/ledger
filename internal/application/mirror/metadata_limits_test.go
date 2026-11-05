@@ -98,5 +98,5 @@ func TestWorkerMetadataPolicyIncreaseRetriesSameSourceBatch(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, proposer.recorded(), 1)
 	require.Equal(t, uint64(1), w.lastAppliedV2LogID)
-	require.Equal(t, "123456789", proposer.recorded()[0].cmd.GetOrders()[0].GetLedgerScoped().GetMirrorIngest().GetEntry().GetSavedMetadata().GetMetadata()["k"].GetStringValue())
+	require.Equal(t, "123456789", proposer.recorded()[0].cmd.GetBatch().GetOrders()[0].GetLedgerScoped().GetMirrorIngest().GetEntry().GetSavedMetadata().GetMetadata()["k"].GetStringValue())
 }

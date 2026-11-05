@@ -2,9 +2,11 @@
 
 ## Overview
 
-The admission pipeline (`internal/application/admission`) is what every write request goes through between the gRPC server and the Raft proposer. Its job is to convert a client batch into an in-memory `Proposal` that the FSM can apply deterministically on every replica.
+Admission (`internal/application/admission`) prepares proposals for the Raft proposer. Client `Apply` requests become audited execution batches; the leader's cluster-policy reconciler emits a separate operational-control payload. Both forms must be applicable deterministically on every replica.
 
 In one sentence: **admission turns external requests into preloaded, structurally-validated, signed Raft proposals; the FSM decides refusals governed by mutable, Raft-replicated policy**.
+
+For client `Apply`, admission verifies signatures, validates structure, and resolves the state needed before consensus. Internal policy reconciliation carries no client signature or business orders.
 
 ```mermaid
 sequenceDiagram
@@ -60,13 +62,29 @@ The gRPC interceptor, handler, and controller layers exist so the same admission
 
 `Admit` is structured as a sequence of stages, each of which can short-circuit the whole batch:
 
-The implementation keeps those stages explicit in `admit`: `prepareAdmission`
-checks the resolved batch and write readiness, `prepareOrders` converts orders
-and completes their coverage, `buildAdmissionPreload` creates the execution
-plan, `proposeAdmission` submits and waits for Raft acceptance, and
-`resolveAdmissionResult` waits for FSM apply and resolves replayed logs. The
-command timer starts after the caller, write-gate, and leader-readiness checks;
-per-order action counters start only after command metadata validation.
+The two payload forms share caller attribution, the write gate, leader
+readiness, the drain fence, preload construction, guarded Raft submission,
+and result resolution. `Admit` alone verifies the client batch, waits for the
+audit key and committed policy, converts orders with `prepareBatchOrders`,
+checks metadata, and resolves order/script coverage. `AdmitClusterPolicy`
+constructs the native policy payload directly with empty coverage; it cannot
+wait for the first policy or audit key
+because the reconciler may be establishing them. The common `admit` tail calls
+`proposeAdmission` and `resolveAdmissionResult` for either form. The command
+timer starts after caller, write-gate, and leader-readiness checks; per-order
+action counters apply only to execution batches.
+
+This split follows the protobuf `Proposal.payload` alternatives. Future
+payload forms should declare their own admission requirements and coverage,
+then use the common guarded submitter only when those requirements match. A
+form with no orders must not manufacture an empty execution batch to enter
+the order-conversion path.
+
+The split removes order conversion, script resolution, and per-order coverage
+allocation from policy reconciliation. Its preload declaration is empty, so
+its work does not grow with the number of business orders or persisted keys;
+the guarded proposal and WAL entry remain one per policy update. Execution
+batches retain work proportional to their orders and declared coverage.
 
 ### 0. Caller attribution
 
@@ -84,7 +102,7 @@ cluster-secret-authenticated connection.
 
 ### 2. Maintenance mode
 
-If the cluster is in maintenance mode, only `SetMaintenanceMode` requests are allowed through (`allRequestsAreMaintenanceMode()`). Any other request type in the batch fails the whole batch atomically — there is no partial admission.
+If the cluster is in maintenance mode, only `SetMaintenanceMode` client requests are allowed through (`allRequestsAreMaintenanceMode()`). Any other request type in the batch fails the whole batch atomically — there is no partial admission. Leader-internal `SetClusterPolicy` reconciliation uses its separate policy path and may proceed during maintenance; both paths remain blocked by an active drain.
 
 ### 3. Signature verification
 

@@ -1,6 +1,6 @@
 # Maintenance Mode
 
-The ledger supports a **cluster-wide maintenance mode** that blocks all write operations while allowing reads to continue. This is useful for planned maintenance, upgrades, or emergency situations.
+The ledger supports a **cluster-wide maintenance mode** that blocks business writes while allowing reads and operational cluster-policy reconciliation to continue. This is useful for planned maintenance, upgrades, or emergency situations.
 
 ## Quick Start
 
@@ -19,9 +19,12 @@ ledgerctl cluster maintenance enable --signing-key /path/to/seed
 
 ### Allowed Operations in Maintenance Mode
 
-- **Blocked**: All write operations (create ledger, create transaction, save metadata, delete ledger, etc.)
+- **Blocked**: Business write operations (create ledger, create transaction, save metadata, delete ledger, etc.)
 - **Allowed**: `SetMaintenanceMode` requests (to disable maintenance mode)
+- **Allowed**: Leader-internal `SetClusterPolicy` reconciliation; this is not a client `Apply` request
 - **Allowed**: All read operations (get ledger, list accounts, get transaction, cluster status, etc.)
+
+An active drain marker still rejects policy proposals and other writes until its Raft-ordered release. Maintenance mode does not override the drain fence.
 
 ### Error Responses
 
@@ -41,9 +44,9 @@ When a write operation is attempted during maintenance mode:
 
 Write operations are rejected at **two levels** for safety:
 
-1. **Admission layer**: Rejects write requests before they enter the Raft pipeline. This is the primary gate and prevents unnecessary Raft round-trips.
+1. **Admission layer**: Rejects business write requests before they enter the Raft pipeline. The internal policy path may pass maintenance, but still checks the drain fence.
 
-2. **FSM level**: Rejects proposals containing non-maintenance orders during `applyProposal()`. This catches the Raft batching race condition where entries admitted before maintenance mode was enabled can be batched into a Raft entry applied after the maintenance mode flag is set by a preceding entry in the same batch.
+2. **FSM level**: Rejects execution batches containing non-maintenance orders during `applyProposal()`, while allowing native policy controls. This catches the Raft batching race condition where business entries admitted before maintenance mode was enabled can be batched into a Raft entry applied after the maintenance mode flag is set by a preceding entry in the same batch. The separate drain fence rejects policy controls too.
 
 ### Data Flow
 

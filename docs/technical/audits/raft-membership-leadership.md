@@ -400,3 +400,18 @@ renewed probing or a fresh snapshot rather than a stalled peer. The focused
 regression is `leader_snapshot_report_test.go` under `internal/infra/node/`;
 the cluster-level triggers are the out-of-sync election and lost-follower
 specs under `tests/e2e/cluster/`.
+
+## Proposal payload cutover
+
+The proposal codec is part of this contract. Production writers serialize the
+execution and policy oneof directly after a full-stop upgrade. All source nodes
+must stop before any target starts, and old binaries must never reopen a WAL
+containing new payloads, including technical entries written during startup.
+Historical replay must retain exact audit bytes and hashes. Native policy
+controls are operational and emit neither audit nor business logs; they are never
+lowered to orders. Compare final state across formats, verify each chain and its
+expected audit count, and preserve the historical prefix byte-for-byte. Preserve
+coverage, HLC semantics and checkpoint boundaries. Test policy-only incremental
+manifest publication and mixed historical/native delta restore. Current policy
+and operational quotas are explicitly outside business checker scope.
+See [proposal payloads](../architecture/subsystems/consensus/proposal-payloads.md).

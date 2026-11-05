@@ -3015,7 +3015,7 @@ ledgerctl cluster du --json
 
 #### cluster maintenance
 
-Enable or disable cluster maintenance mode. When enabled, all write operations (Raft commands) are blocked at the admission layer. Only the maintenance mode command itself is allowed through (to disable maintenance mode). Read operations continue to work normally.
+Enable or disable cluster maintenance mode. When enabled, client business writes are blocked at admission. The maintenance mode command itself remains available to disable maintenance; leader-internal cluster-policy reconciliation also continues unless a drain is active. Read operations continue to work normally.
 
 ```bash
 ledgerctl cluster maintenance <true|false|enable|disable> [flags]
@@ -5587,3 +5587,8 @@ repository root. It exits nonzero on invalid input or an output error; discard
 partial output after any failure. It does not connect to ClickHouse.
 Follow the complete [migration procedure](clickhouse-account-metadata.md),
 including preflights, backup, source preservation, import and verification.
+
+Incremental backup restoration also applies operational policy from the manifest,
+including a policy-only update with zero history segments. The offline
+`ledgerctl store bootstrap` and server restore paths use the same reconstruction
+routine; see the [restore contract](../technical/architecture/subsystems/backup/incremental-restore-contract.md#operational-cluster-policy).

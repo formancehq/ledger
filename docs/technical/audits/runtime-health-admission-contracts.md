@@ -113,10 +113,14 @@ owned by the Raft and persistence audits respectively.
 
 ## EN-2479 write-readiness gate
 
-`Admission.waitAuditKeyReady` applies to every audited request, including the
-policy reconciler's first order. It polls only until a committed key is seen,
+`Admission.waitAuditKeyReady` applies to every audited execution batch. It polls only until a committed key is seen,
 then latches. Cancellation and malformed-row errors must return to the caller.
-The periodic leader reconciler proposes initialization before policy and
-retries on transient failure, so an early request cannot wedge the FSM or wait
+The periodic leader reconciler proposes initialization and retries on transient
+failure, so an early audited request cannot wedge the FSM or wait
 forever after a one-shot failure. The FSM domain owns deterministic first-wins
 apply semantics; this domain owns gate reachability and liveness.
+
+Native policy reconciliation is operational and does not write business audit.
+It remains subject to its admission gates, while the business audit-key gate
+protects audited execution batches. Policy readiness and audit-key readiness
+remain distinct prerequisites.
