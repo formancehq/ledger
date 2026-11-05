@@ -209,3 +209,35 @@ Initial metadata on normal or mirror creation is authorized by ledger:WriteLedge
 Can a caller with LedgerWrite create a ledger with initial metadata without MetadataWrite, while the same caller cannot use the later metadata-save operation without its required scope?
 
 See [the creation contract](../architecture/subsystems/api/atomic-ledger-creation.md) for the authorized semantics and regression evidence. Treat HTTP response/forwarding, actual FSM readback, keyed replay, nonempty checkpoint-plus-delta restore, and primary-projection tampering as separate evidence oracles; a helper-only test does not prove every boundary.
+
+## HTTP signed transactions and existing authorization
+
+Signed transaction create/revert/metadata and nonempty atomic bulk keep their
+existing JWT/anonymous route and element-scope requirements. The Ed25519 signing
+key does not replace the JWT caller or grant cluster/system trust. Both transports
+must reach the existing `resolveBatch` verifier with `ApplyRequest.signed` and
+the unchanged `SignedApplyBatch`; HTTP adds no independent signing authority.
+HTTP assembles it from body `payload` and exactly one nonempty
+`Formance-Signing-Key-Id` / `Formance-Signature` header each. Missing, duplicate,
+malformed or wrong-length signature headers reject 400. Either signing header
+with a non-JSON or missing content type or on an unsupported route rejects 415,
+preventing a signed attempt from silently executing unsigned. Signed requests use
+application/json (including MIME parameters); either header's presence, even if
+empty, selects the wrapper. With neither header present, ordinary unsigned decoding applies.
+Trace the installed route guards and caller capture with authorized and denied controls,
+not merely a well-formed signed envelope. A mismatch between the complete signed
+batch and the HTTP-derived batch must prevent backend dispatch. Every atomic
+bulk element remains subject to its own scope, and continueOnFailure must not
+suppress 401/403 from signature verification or authorization.
+
+The API boundary domain owns wrapper decoding, proto.Equal coverage, exact-byte
+forwarding and response representation. This domain follows dedicated
+`ledger.signing` ErrorInfo reconstruction under `internal/adapter/grpcerr/**` only
+to establish that existing signing failures remain distinguishable from bare or
+foreign gRPC auth failures and cannot change trust/scopes/attribution. Correct
+pairs are MISSING_SIGNATURE/Unauthenticated and INVALID_SIGNATURE or
+UNKNOWN_KEY_ID/PermissionDenied. Compare exact local and forwarded decisions,
+including absent/foreign/wrong-status controls. Public HTTP codes remain generic
+UNAUTHENTICATED/PERMISSION_DENIED; bare/foreign auth errors retain 500. Key lifecycle
+and cryptographic primitive analysis remain excluded. See
+[HTTP signing](../architecture/subsystems/api/http-api.md#signed-transaction-requests).

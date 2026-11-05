@@ -79,7 +79,7 @@ func (s *Server) handleRevertTransaction(w http.ResponseWriter, r *http.Request)
 		payload.Metadata = ms
 	}
 
-	logs, err := s.applyUnsigned(r.Context(), r.Header.Get("Idempotency-Key"), &servicepb.Request{
+	logs, err := s.applyRequests(r.Context(), r.Header.Get("Idempotency-Key"), &servicepb.Request{
 		Type: &servicepb.Request_Apply{
 			Apply: &servicepb.LedgerApplyRequest{
 				Ledger: ledgerName,

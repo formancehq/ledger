@@ -26,7 +26,7 @@ import (
 // goroutine on a reused (HTTP/1 keep-alive) connection.
 //
 // The labeled callback context is threaded into serveBulk via r.WithContext so
-// downstream work reached through r.Context() (runBulk → applyUnsigned → the
+// downstream work reached through r.Context() (runBulk → applyRequests → the
 // admission/apply path, and any goroutines it spawns) inherits the same pprof
 // label rather than only the synchronous handler goroutine carrying it.
 func (s *Server) handleBulk(w http.ResponseWriter, r *http.Request) {
@@ -110,6 +110,11 @@ func (s *Server) serveBulk(w http.ResponseWriter, r *http.Request) {
 		atomic:            queryParamBool(r, "atomic"),
 		idempotencyKey:    r.Header.Get("Idempotency-Key"),
 	}
+	if signedBatchFromContext(r.Context()) != nil && (!opts.atomic || len(elements) == 0) {
+		writeBulkErrorResponse(w, http.StatusBadRequest, "VALIDATION", errors.New("signed bulk requires atomic=true and at least one element"))
+
+		return
+	}
 	results := s.runBulk(r.Context(), ledgerName, elements, opts)
 
 	// Write response
@@ -177,7 +182,7 @@ func (s *Server) runBulk(ctx context.Context, ledgerName string, elements []*ser
 func (s *Server) runBulkAtomic(ctx context.Context, idempotencyKey string, requests []*servicepb.Request) []bulkResult {
 	results := make([]bulkResult, len(requests))
 
-	logs, err := s.applyUnsigned(ctx, idempotencyKey, requests...)
+	logs, err := s.applyRequests(ctx, idempotencyKey, requests...)
 	if err != nil {
 		// In atomic mode, if any action fails, all fail with the same error
 		for i := range results {
@@ -207,7 +212,7 @@ func (s *Server) runBulkSequential(ctx context.Context, requests []*servicepb.Re
 			continue
 		}
 
-		logs, err := s.applyUnsigned(ctx, keys[i], request)
+		logs, err := s.applyRequests(ctx, keys[i], request)
 		if err != nil {
 			hasError = true
 			results[i] = bulkResult{err: err}
@@ -236,7 +241,8 @@ func (s *Server) runBulkSequential(ctx context.Context, requests []*servicepb.Re
 //   - **Aborted** (`context.Canceled` sentinel emitted by runBulkSequential
 //     when `continueOnFailure=false` and a prior element failed): bulkElementError
 //     returns 0 and the element contributes nothing to the rollup.
-//   - **Per-element business** (any other 4xx): rolled up per
+//   - **Authentication / authorization** (401/403): always surfaces.
+//   - **Per-element business** (remaining 4xx): rolled up per
 //     `continueOnFailure` — suppressed to 200 when opt-in, surfaced as its
 //     own status (typically 400/404/409) otherwise.
 //
@@ -254,6 +260,10 @@ func writeBulkResponse(w http.ResponseWriter, r *http.Request, elements []*servi
 
 		if result.err != nil {
 			st, code, description := bulkElementError(r, result.err)
+			// Keep every result but never suppress authentication failures.
+			if st == http.StatusUnauthorized || st == http.StatusForbidden {
+				continueOnFailure = false
+			}
 			switch {
 			case st == 0:
 				// Aborted sentinel — no top-level status contribution.

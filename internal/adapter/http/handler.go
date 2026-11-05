@@ -223,14 +223,14 @@ func NewHandler(logger logging.Logger, backend Backend, authCfg internalauth.Aut
 
 			// Transactions write scope
 			r.With(requireTransactionsWrite).Group(func(r chi.Router) {
-				r.Post("/{ledgerName}/transactions", knownQuery(server.handleCreateTransaction))
-				r.Post("/{ledgerName}/transactions/{transactionId}/revert", knownQuery(server.handleRevertTransaction))
+				r.Post("/{ledgerName}/transactions", signedRequest(knownQuery(server.handleCreateTransaction)))
+				r.Post("/{ledgerName}/transactions/{transactionId}/revert", signedRequest(knownQuery(server.handleRevertTransaction)))
 			})
 
 			// Metadata write scope
 			r.With(requireMetadataWrite).Group(func(r chi.Router) {
-				r.Post("/{ledgerName}/transactions/{transactionId}/metadata", knownQuery(server.handleSaveTransactionMetadata))
-				r.Delete("/{ledgerName}/transactions/{transactionId}/metadata/{key}", knownQuery(server.handleDeleteTransactionMetadata))
+				r.Post("/{ledgerName}/transactions/{transactionId}/metadata", signedRequest(knownQuery(server.handleSaveTransactionMetadata)))
+				r.Delete("/{ledgerName}/transactions/{transactionId}/metadata/{key}", signedRequest(knownQuery(server.handleDeleteTransactionMetadata)))
 				r.Post("/{ledgerName}/accounts/{address}/metadata", knownQuery(server.handleSaveAccountMetadata))
 				r.Delete("/{ledgerName}/accounts/{address}/metadata/{key}", knownQuery(server.handleDeleteAccountMetadata))
 				r.Post("/{ledgerName}/metadata", knownQuery(server.handleSaveLedgerMetadata))
@@ -243,7 +243,7 @@ func NewHandler(logger logging.Logger, backend Backend, authCfg internalauth.Aut
 			})
 
 			// Bulk endpoint: per-element scope check handled inside the handler
-			r.Post("/{ledgerName}/bulk", knownQuery(server.handleBulk, "continueOnFailure", "atomic"))
+			r.Post("/{ledgerName}/bulk", signedRequest(knownQuery(server.handleBulk, "continueOnFailure", "atomic")))
 
 			// Prepared queries (read)
 			r.With(requireQueriesRead).Group(func(r chi.Router) {
