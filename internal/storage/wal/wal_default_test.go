@@ -1264,19 +1264,37 @@ func TestReceivedSnapshotRestartDiscardsReplacedTail(t *testing.T) {
 	w := newTestWALAt(t, dir)
 	cs := &raftpb.ConfState{Voters: []uint64{1, 2, 3}}
 
-	// The old leader left an uncommitted suffix. A new leader replaced only
-	// its first two entries before sending a snapshot at the replacement end.
+	// A former leader left entries 3..5 uncommitted. The current leader has
+	// committed a different entry at index 4 and sends its snapshot at 4/2.
+	// Raft must accept it: the follower's entry at index 4 has term 3.
 	require.NoError(t, w.Append(hs(3, 2, 2), []*raftpb.Entry{
 		ent(1, 1, nil), ent(2, 1, nil), ent(3, 3, nil),
 		ent(4, 3, nil), ent(5, 3, nil),
 	}))
-	require.NoError(t, w.Append(hs(4, 1, 4), []*raftpb.Entry{
-		ent(3, 2, nil), ent(4, 2, nil),
-	}))
-	require.NoError(t, w.ApplySnapshot(&raftpb.Snapshot{
+	require.NoError(t, w.CreateSnapshot(2, cs, nil))
+	rawNode, err := raft.NewRawNode(&raft.Config{
+		ID: 1, ElectionTick: 10, HeartbeatTick: 1, Storage: w,
+		Applied: 2, MaxInflightMsgs: 256, AsyncStorageWrites: true,
+	})
+	require.NoError(t, err)
+	snap := &raftpb.Snapshot{
 		Metadata: snapshotMeta(4, 2, cs),
 		Data:     []byte("received"),
-	}, nil))
+	}
+	require.NoError(t, rawNode.Step(&raftpb.Message{
+		Type: new(raftpb.MsgSnap), From: new(uint64(2)), To: new(uint64(1)),
+		Term: new(uint64(4)), Snapshot: snap,
+	}))
+	require.True(t, rawNode.HasReady())
+	ready := rawNode.Ready()
+	require.Equal(t, uint64(4), ready.Snapshot.GetMetadata().GetIndex(), "Raft must accept the divergent snapshot")
+	require.Equal(t, uint64(2), ready.Snapshot.GetMetadata().GetTerm())
+	require.Equal(t, snap.GetData(), ready.Snapshot.GetData())
+	require.Equal(t, uint64(4), ready.GetTerm())
+	require.Equal(t, uint64(4), ready.GetCommit())
+	require.Empty(t, ready.Entries)
+	require.NoError(t, w.Append(ready.HardState, ready.Entries))
+	require.NoError(t, w.ApplySnapshot(ready.Snapshot, ready.Entries))
 	last, err := w.LastIndex()
 	require.NoError(t, err)
 	require.Equal(t, uint64(4), last)
@@ -1298,7 +1316,7 @@ func TestReceivedSnapshotRestartDiscardsReplacedTail(t *testing.T) {
 	state, _, err := restarted.InitialState()
 	require.NoError(t, err)
 	require.Equal(t, uint64(4), state.GetTerm())
-	require.Equal(t, uint64(1), state.GetVote())
+	require.Equal(t, uint64(0), state.GetVote(), "a higher Raft term clears the previous vote")
 	require.Equal(t, uint64(4), state.GetCommit())
 }
 
