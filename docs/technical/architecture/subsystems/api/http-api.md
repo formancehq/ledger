@@ -1050,7 +1050,11 @@ Typed internal failures keep their reason and use stable public facts. Numscript
 diagnostic text remains available only in server logs.
 The `continueOnFailure` rollup and retry semantics are unaffected.
 
-- `atomic=true`: Execute atomically (all or nothing) - not yet supported
+- `atomic=true`: Submit all operations as one atomic batch under the optional
+  `Idempotency-Key` header; per-element `ik` values are ignored. On failure,
+  every element reports the batch error, and `continueOnFailure` does not
+  permit partial application. Signed bulk requires `atomic=true` and at least
+  one element; see [Signed transaction requests](#signed-transaction-requests).
 
 ### Account Metadata
 
