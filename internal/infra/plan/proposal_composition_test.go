@@ -75,10 +75,10 @@ func TestRun_RejectsUnsupportedNativeTechnicalComposition(t *testing.T) {
 		cmd := &raftcmdpb.Proposal{Payload: &raftcmdpb.Proposal_Batch{Batch: batch}}
 		proposer := &recordingProposer{tracker: tracker}
 		marshalled := false
-		result, err := builder.Run(t.Context(), cmd, build, func(p *raftcmdpb.Proposal) ([]byte, error) {
+		result, err := builder.Run(t.Context(), cmd, build, func(p *raftcmdpb.Proposal) error {
 			marshalled = true
 
-			return p.MarshalVT()
+			return nil
 		}, proposer)
 		require.ErrorIs(t, err, ErrUnsupportedTechnicalComposition)
 		require.Nil(t, result)

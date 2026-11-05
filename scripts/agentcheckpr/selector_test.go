@@ -86,7 +86,7 @@ func TestSelectsLocalValidationGatesFromCompleteDiff(t *testing.T) {
 		{
 			name:     "Raft protocol change requires capability contract",
 			paths:    []string{"misc/proto/common.proto"},
-			expected: []string{"agent-check-full", "test-e2e", "protocol-revision", "capability-contract"},
+			expected: []string{"agent-check-full", "test-e2e", "protocol-revision", "proto-lint", "capability-contract"},
 		},
 		{
 			name:     "FSM behavior change requires capability contract",
