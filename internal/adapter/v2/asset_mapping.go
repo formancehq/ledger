@@ -94,9 +94,9 @@ type AssetMappingError struct {
 
 func (e *AssetMappingError) Error() string { return e.Reason }
 
-// apply rewrites mapped assets in place and validates every resulting
-// (asset, color). seen memoises pass-through assets already validated in
-// this batch; callers share one map per batch.
+// apply rewrites mapped assets in place and validates every pass-through
+// asset; v2 postings carry no color. seen memoises pass-through assets already
+// validated in this batch; callers share one map per batch.
 func (m *AssetMapper) apply(postings []*commonpb.Posting, seen map[string]struct{}) error {
 	for _, p := range postings {
 		asset := p.GetAsset()
@@ -126,10 +126,6 @@ func (m *AssetMapper) apply(postings []*commonpb.Posting, seen map[string]struct
 				Asset:  asset,
 				Reason: fmt.Sprintf("no mapping for v2 asset %q; recreate the mirror with an assetMappings entry or a drop rewrite rule for it", asset),
 			}
-		}
-
-		if err := domain.ValidateColor(p.GetColor()); err != nil {
-			return &AssetMappingError{Asset: asset, Reason: fmt.Sprintf("v2 asset %q: %s", asset, err.Error())}
 		}
 
 		seen[asset] = struct{}{}

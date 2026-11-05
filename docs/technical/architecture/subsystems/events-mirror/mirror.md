@@ -374,7 +374,7 @@ bucket:
   see v2 asset names, and a `drop` rule can discard a transaction whose assets
   have no v3 representation before mapping rejects it.
 - **Every proposed posting is validated** — an unmapped posting passes through
-  unchanged and must already be a valid v3 asset and color. Validation runs in
+  unchanged and must already be a valid v3 asset. Validation runs in
   the mirror worker before proposal, never in the FSM, so apply stays
   independent of the node's binary version.
 - **Pass-through collision** — an unmapped asset equal to the `asset` of a
