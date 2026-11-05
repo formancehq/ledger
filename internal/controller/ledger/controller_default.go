@@ -558,12 +558,9 @@ func (ctrl *DefaultController) revertTransaction(ctx context.Context, store Stor
 				balances[posting.Source][posting.Asset],
 				big.NewInt(0).Neg(posting.Amount),
 			)
-			if _, ok := balances[posting.Destination]; ok {
-				// if destination is also a source in some posting, since balances should only contain posting sources
-				balances[posting.Destination][posting.Asset] = balances[posting.Destination][posting.Asset].Add(
-					balances[posting.Destination][posting.Asset],
-					posting.Amount,
-				)
+			if balance, ok := balances[posting.Destination][posting.Asset]; ok {
+				// Include the credit when this destination and asset are also a source balance to validate.
+				balances[posting.Destination][posting.Asset] = balance.Add(balance, posting.Amount)
 			}
 		}
 
