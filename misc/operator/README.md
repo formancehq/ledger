@@ -15,6 +15,12 @@ for preflight, recovery and rollback limits. The rc.1-to-rc.2 transition
 uses a [maintenance-barrier rolling procedure](../../docs/ops/upgrades.md#account-metadata-address-validation):
 writes pause while voters are replaced one at a time. RC.2 to RC.3 remains rolling.
 
+The Kind/Chainsaw `rc-upgrade` scenario takes source and target image tags and
+an expected `rolling` or `stopped` mode. The operator E2E recipe runs it for
+the published rc.2→rc.3 rolling transition and the published rc.3→local rc.4
+stopped transition, verifying workload identity, PVC retention, and nonempty
+business history after each upgrade.
+
 Changes to immutable volume claim templates also require a canonical pinned
 Ledger image tag. The operator rejects moving tags such as `latest` before
 deleting the StatefulSet, so an interrupted recreation cannot pull a different
