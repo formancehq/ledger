@@ -358,7 +358,7 @@ no live user services or cleanup of another task's artifacts.
 
 ## Atomic creation metadata (EN-2686)
 
-Initial creation metadata is one CreateLedger operation, returned in the HTTP 201 ledger envelope; supported scalar values retain exact integer precision, HTTP null entries are omitted, and schema declarations govern query indexing rather than write acceptance.
+Initial creation metadata is one CreateLedger operation, returned by default in the HTTP 201 ledger envelope; supported scalar values retain exact integer precision, HTTP null entries are omitted, and schema declarations govern query indexing rather than write acceptance.
 
 Does initial metadata survive HTTP decoding, the service request and order unchanged, including integers beyond JSON float precision, omitted/null inputs and a schema type mismatch? Do malformed keys/scalars reject before any ledger is created?
 
@@ -370,7 +370,8 @@ Trace POST and DELETE under `/v3/_/events-sinks` through the registered
 `ledger:WriteOps` route guards and unsigned Apply requests. POST accepts a
 direct protobuf JSON configuration with a name and one sink variant; verify
 full-body limits, strict JSON decoding and field preservation for all five
-variants. Its acknowledgement includes only the committed name. GET retains
+variants. Its default acknowledgement includes only the committed name; compact mode
+returns only the global sequence. GET retains
 its existing envelope and config/status shape. DELETE decodes the path segment
 once and forwards optional `controllerId` exactly as a gRPC removal
 precondition. An omitted identity remains unconditional removal. Check
@@ -490,3 +491,38 @@ Request signing adds no HTTP response authenticity. See
 [the HTTP contract](../architecture/subsystems/api/http-api.md#signed-transaction-requests)
 and [client recipe](../../ops/signing.md#http-request-signing). No audit execution
 is authorized by this contract update.
+
+
+## Compact HTTP write acknowledgements
+
+Trace `skipResponse` through the eight registered routes listed in the
+[HTTP contract](../architecture/subsystems/api/http-api.md#compact-write-acknowledgements).
+Require a single exact lowercase `true` or `false`; empty, repeated or other
+values reject with 400 before Apply. Omission/false keeps existing bodies and
+all auth, no-content and error paths. Single compact success stays 201 with
+only `data.sequence`: the global uint64 JSON number, distinct from transaction
+and ledger-local IDs, unaffected by bigint negotiation and without a signature
+or signed-log receipt. Bulk compact success retains `responseType`/`logID`, adds
+sequence and omits ordinary data; skips retain complete diagnostics. Errors and
+aborts have no success sequence. Preserve sequential/atomic status rollup,
+processing-error envelopes, `Retry-After` and empty `{}`.
+
+Use actual NewHandler/ServeHTTP responses and operation schemas for all modes,
+invalid options and auth controls. Capture unchanged downstream Apply arguments
+and verify full source logs are unmodified, including missing/wrong-kind result
+guards and local/forwarded boundaries. Preserve signed gRPC controls. Compare
+global/local IDs and exact uint64-max wire tokens with an integer-aware oracle.
+Generated SDK operation probes must preserve the compact shape and every
+skip/error field, independently compare decoded sequence with the raw token,
+and detect and disclose any consumer numeric precision limit. The pinned
+TypeScript number decoder is not lossless above 2^53; full-range consumers
+require lossless JSON decoding or the raw token.
+Bind schema, generator and dependencies. Schema/helper-only success is not SDK
+evidence. Test retained-key mode toggles at a real replay seam where available;
+mocked responses establish presentation only, not durable identity or rollback.
+Retry correctness remains owned by `idempotency-retries-partial-failures`.
+
+Older nodes reject the new name; rollout must finish on HTTP-serving nodes
+before clients opt in. Savings are limited to final HTTP bytes/serialization;
+full internal logs, forwarded gRPC signing and Raft/audit work remain. No
+persisted migration or protocol revision change follows from this projection.

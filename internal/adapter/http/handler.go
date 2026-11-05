@@ -197,7 +197,7 @@ func NewHandler(logger logging.Logger, backend Backend, authCfg internalauth.Aut
 
 			// Ops mutations use the same scope as their gRPC Apply requests.
 			r.With(requireOpsWrite).Group(func(r chi.Router) {
-				r.Post("/_/events-sinks", knownQuery(server.handleAddEventsSink))
+				r.Post("/_/events-sinks", knownMutationQuery(server.handleAddEventsSink))
 				r.Delete("/_/events-sinks/{sinkName}", knownQuery(server.handleRemoveEventsSink, "controllerId"))
 			})
 
@@ -213,18 +213,18 @@ func NewHandler(logger logging.Logger, backend Backend, authCfg internalauth.Aut
 
 			// Ledgers write scope
 			r.With(requireLedgersWrite).Group(func(r chi.Router) {
-				r.Post("/{ledgerName}", knownQuery(server.handleCreateLedger))
+				r.Post("/{ledgerName}", knownMutationQuery(server.handleCreateLedger))
 				r.Delete("/{ledgerName}", knownQuery(server.handleDeleteLedger))
-				r.Post("/{ledgerName}/promote", knownQuery(server.handlePromoteLedger))
-				r.Put("/{ledgerName}/numscripts/{name}", knownQuery(server.handleSaveNumscript))
-				r.Post("/{ledgerName}/indexes", knownQuery(server.handleCreateIndex))
+				r.Post("/{ledgerName}/promote", knownMutationQuery(server.handlePromoteLedger))
+				r.Put("/{ledgerName}/numscripts/{name}", knownMutationQuery(server.handleSaveNumscript))
+				r.Post("/{ledgerName}/indexes", knownMutationQuery(server.handleCreateIndex))
 				r.Delete("/{ledgerName}/indexes/{canonicalId}", knownQuery(server.handleDropIndex))
 			})
 
 			// Transactions write scope
 			r.With(requireTransactionsWrite).Group(func(r chi.Router) {
-				r.Post("/{ledgerName}/transactions", signedRequest(knownQuery(server.handleCreateTransaction)))
-				r.Post("/{ledgerName}/transactions/{transactionId}/revert", signedRequest(knownQuery(server.handleRevertTransaction)))
+				r.Post("/{ledgerName}/transactions", signedRequest(knownMutationQuery(server.handleCreateTransaction)))
+				r.Post("/{ledgerName}/transactions/{transactionId}/revert", signedRequest(knownMutationQuery(server.handleRevertTransaction)))
 			})
 
 			// Metadata write scope
@@ -243,7 +243,7 @@ func NewHandler(logger logging.Logger, backend Backend, authCfg internalauth.Aut
 			})
 
 			// Bulk endpoint: per-element scope check handled inside the handler
-			r.Post("/{ledgerName}/bulk", signedRequest(knownQuery(server.handleBulk, "continueOnFailure", "atomic")))
+			r.Post("/{ledgerName}/bulk", signedRequest(knownMutationQuery(server.handleBulk, "continueOnFailure", "atomic")))
 
 			// Prepared queries (read)
 			r.With(requireQueriesRead).Group(func(r chi.Router) {

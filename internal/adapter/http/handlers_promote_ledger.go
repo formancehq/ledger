@@ -36,5 +36,5 @@ func (s *Server) handlePromoteLedger(w http.ResponseWriter, r *http.Request) {
 		panic(unexpectedLogPayload("promote-ledger", logEntry, details))
 	}
 
-	writeCreated(w, r, &commonpb.LedgerInfo{Name: promoteLedgerLog.GetName(), Mode: commonpb.LedgerMode_LEDGER_MODE_NORMAL})
+	writeMutationCreated(w, r, logEntry, &commonpb.LedgerInfo{Name: promoteLedgerLog.GetName(), Mode: commonpb.LedgerMode_LEDGER_MODE_NORMAL})
 }

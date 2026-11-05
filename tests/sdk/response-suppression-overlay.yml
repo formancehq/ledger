@@ -1,0 +1,18 @@
+overlay: 1.0.0
+info:
+  title: Ledger compact response TypeScript probe compatibility
+  version: 1.0.0
+actions:
+  - target: $["paths"]["/v3/{ledgerName}/bulk"]["post"]["responses"]["401"]["content"]["text/plain"]
+    description: |
+      Select JSON for typed bulk errors during generation, as in the existing
+      bulk-generation overlay. Canonical OpenAPI retains both media types.
+    remove: true
+  - target: $["components"]["schemas"]["DatabricksSinkConfig"]["not"]
+    description: |
+      Speakeasy CLI 1.762.0 / generator 2.882.0 otherwise skips AddEventsSink
+      entirely because not schemas are unsupported. Remove this constraint
+      only from generation input to exercise the response union and NATS
+      request fixture. This probe does not verify Databricks auth validation;
+      canonical OpenAPI and runtime retain the mutually exclusive auth rule.
+    remove: true
