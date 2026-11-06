@@ -1,4 +1,4 @@
-# V2QueryParams1Resource
+# V2LogQueryTemplateResource
 
 ## Example Usage
 
@@ -7,7 +7,7 @@ import (
 	"github.com/formancehq/ledger/pkg/client/models/components"
 )
 
-value := components.V2QueryParams1ResourceAccounts
+value := components.V2LogQueryTemplateResourceLogs
 ```
 
 
@@ -15,4 +15,4 @@ value := components.V2QueryParams1ResourceAccounts
 
 | Name                             | Value                            |
 | -------------------------------- | -------------------------------- |
-| `V2QueryParams1ResourceAccounts` | accounts                         |
+| `V2LogQueryTemplateResourceLogs` | logs                             |

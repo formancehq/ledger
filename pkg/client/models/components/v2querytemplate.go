@@ -3,67 +3,148 @@
 package components
 
 import (
+	"encoding/json"
+	"errors"
+	"fmt"
 	"github.com/formancehq/ledger/pkg/client/internal/utils"
 )
 
+type V2QueryTemplateType string
+
+const (
+	V2QueryTemplateTypeAccounts     V2QueryTemplateType = "accounts"
+	V2QueryTemplateTypeTransactions V2QueryTemplateType = "transactions"
+	V2QueryTemplateTypeLogs         V2QueryTemplateType = "logs"
+	V2QueryTemplateTypeVolumes      V2QueryTemplateType = "volumes"
+)
+
+// V2QueryTemplate - A query template. `resource` selects which parameters apply.
 type V2QueryTemplate struct {
-	// Human-readable description of what the query returns
-	Description *string `json:"description,omitempty"`
-	// The resource a query template targets
-	Resource *V2QueryResource `json:"resource,omitempty"`
-	// Parameters applied when running a query template
-	Params *V2QueryParams `json:"params,omitempty"`
-	// Variables the query accepts, keyed by variable name
-	Vars map[string]V2QueryTemplateVar `json:"vars,omitempty"`
-	// The filter expression the query evaluates
-	Body map[string]any `json:"body,omitempty"`
+	V2AccountQueryTemplate     *V2AccountQueryTemplate     `queryParam:"inline" union:"member"`
+	V2TransactionQueryTemplate *V2TransactionQueryTemplate `queryParam:"inline" union:"member"`
+	V2LogQueryTemplate         *V2LogQueryTemplate         `queryParam:"inline" union:"member"`
+	V2VolumeQueryTemplate      *V2VolumeQueryTemplate      `queryParam:"inline" union:"member"`
+
+	Type V2QueryTemplateType
 }
 
-func (v V2QueryTemplate) MarshalJSON() ([]byte, error) {
-	return utils.MarshalJSON(v, "", false)
-}
+func CreateV2QueryTemplateAccounts(accounts V2AccountQueryTemplate) V2QueryTemplate {
+	typ := V2QueryTemplateTypeAccounts
 
-func (v *V2QueryTemplate) UnmarshalJSON(data []byte) error {
-	if err := utils.UnmarshalJSON(data, &v, "", false, nil); err != nil {
-		return err
+	typStr := V2AccountQueryTemplateResource(typ)
+	accounts.Resource = typStr
+
+	return V2QueryTemplate{
+		V2AccountQueryTemplate: &accounts,
+		Type:                   typ,
 	}
-	return nil
 }
 
-func (v *V2QueryTemplate) GetDescription() *string {
-	if v == nil {
+func CreateV2QueryTemplateTransactions(transactions V2TransactionQueryTemplate) V2QueryTemplate {
+	typ := V2QueryTemplateTypeTransactions
+
+	typStr := V2TransactionQueryTemplateResource(typ)
+	transactions.Resource = typStr
+
+	return V2QueryTemplate{
+		V2TransactionQueryTemplate: &transactions,
+		Type:                       typ,
+	}
+}
+
+func CreateV2QueryTemplateLogs(logs V2LogQueryTemplate) V2QueryTemplate {
+	typ := V2QueryTemplateTypeLogs
+
+	typStr := V2LogQueryTemplateResource(typ)
+	logs.Resource = typStr
+
+	return V2QueryTemplate{
+		V2LogQueryTemplate: &logs,
+		Type:               typ,
+	}
+}
+
+func CreateV2QueryTemplateVolumes(volumes V2VolumeQueryTemplate) V2QueryTemplate {
+	typ := V2QueryTemplateTypeVolumes
+
+	typStr := V2VolumeQueryTemplateResource(typ)
+	volumes.Resource = typStr
+
+	return V2QueryTemplate{
+		V2VolumeQueryTemplate: &volumes,
+		Type:                  typ,
+	}
+}
+
+func (u *V2QueryTemplate) UnmarshalJSON(data []byte) error {
+
+	type discriminator struct {
+		Resource string `json:"resource"`
+	}
+
+	dis := new(discriminator)
+	if err := json.Unmarshal(data, &dis); err != nil {
+		return fmt.Errorf("could not unmarshal discriminator: %w", err)
+	}
+
+	switch dis.Resource {
+	case "accounts":
+		v2AccountQueryTemplate := new(V2AccountQueryTemplate)
+		if err := utils.UnmarshalJSON(data, &v2AccountQueryTemplate, "", true, nil); err != nil {
+			return fmt.Errorf("could not unmarshal `%s` into expected (Resource == accounts) type V2AccountQueryTemplate within V2QueryTemplate: %w", string(data), err)
+		}
+
+		u.V2AccountQueryTemplate = v2AccountQueryTemplate
+		u.Type = V2QueryTemplateTypeAccounts
+		return nil
+	case "transactions":
+		v2TransactionQueryTemplate := new(V2TransactionQueryTemplate)
+		if err := utils.UnmarshalJSON(data, &v2TransactionQueryTemplate, "", true, nil); err != nil {
+			return fmt.Errorf("could not unmarshal `%s` into expected (Resource == transactions) type V2TransactionQueryTemplate within V2QueryTemplate: %w", string(data), err)
+		}
+
+		u.V2TransactionQueryTemplate = v2TransactionQueryTemplate
+		u.Type = V2QueryTemplateTypeTransactions
+		return nil
+	case "logs":
+		v2LogQueryTemplate := new(V2LogQueryTemplate)
+		if err := utils.UnmarshalJSON(data, &v2LogQueryTemplate, "", true, nil); err != nil {
+			return fmt.Errorf("could not unmarshal `%s` into expected (Resource == logs) type V2LogQueryTemplate within V2QueryTemplate: %w", string(data), err)
+		}
+
+		u.V2LogQueryTemplate = v2LogQueryTemplate
+		u.Type = V2QueryTemplateTypeLogs
+		return nil
+	case "volumes":
+		v2VolumeQueryTemplate := new(V2VolumeQueryTemplate)
+		if err := utils.UnmarshalJSON(data, &v2VolumeQueryTemplate, "", true, nil); err != nil {
+			return fmt.Errorf("could not unmarshal `%s` into expected (Resource == volumes) type V2VolumeQueryTemplate within V2QueryTemplate: %w", string(data), err)
+		}
+
+		u.V2VolumeQueryTemplate = v2VolumeQueryTemplate
+		u.Type = V2QueryTemplateTypeVolumes
 		return nil
 	}
-	return v.Description
+
+	return fmt.Errorf("could not unmarshal `%s` into any supported union types for V2QueryTemplate", string(data))
 }
 
-func (v *V2QueryTemplate) GetResource() *V2QueryResource {
-	if v == nil {
-		return nil
+func (u V2QueryTemplate) MarshalJSON() ([]byte, error) {
+	if u.V2AccountQueryTemplate != nil {
+		return utils.MarshalJSON(u.V2AccountQueryTemplate, "", true)
 	}
-	return v.Resource
-}
 
-func (v *V2QueryTemplate) GetParams() *V2QueryParams {
-	if v == nil {
-		return nil
+	if u.V2TransactionQueryTemplate != nil {
+		return utils.MarshalJSON(u.V2TransactionQueryTemplate, "", true)
 	}
-	return v.Params
-}
 
-func (v *V2QueryTemplate) GetVars() map[string]V2QueryTemplateVar {
-	if v == nil {
-		return nil
+	if u.V2LogQueryTemplate != nil {
+		return utils.MarshalJSON(u.V2LogQueryTemplate, "", true)
 	}
-	return v.Vars
-}
 
-func (v *V2QueryTemplate) GetBody() map[string]any {
-	if v == nil {
-		return nil
+	if u.V2VolumeQueryTemplate != nil {
+		return utils.MarshalJSON(u.V2VolumeQueryTemplate, "", true)
 	}
-	return v.Body
-}
 
-// #region class-body-v2querytemplate
-// #endregion class-body-v2querytemplate
+	return nil, errors.New("could not marshal union type V2QueryTemplate: all fields are null")
+}

@@ -1667,7 +1667,7 @@ paths:
                 cursor:
                   type: string
                 params:
-                  $ref: "#/components/schemas/V2QueryParams"
+                  $ref: "#/components/schemas/V2RunQueryParams"
                 vars:
                   type: object
                   additionalProperties:
@@ -3306,152 +3306,117 @@ components:
       type: string
       description: The resource a query template targets
       enum: [transactions, accounts, logs, volumes]
-    V2QueryParamsCommon:
+    V2QueryParams:
       type: object
+      description: Parameters applied when running a query template
       properties:
         pageSize:
           type: integer
           format: int64
-          minimum: 1
-          maximum: 1000
           description: |
             The maximum number of results to return per page.
           example: 100
-        cursor:
-          description: >
-            Parameter used in pagination requests. Maximum page size is set to
-            15.
-
-            Set to the value of next for the next page of results.
-
-            Set to the value of previous for the previous page of results.
-
-            No other parameters can be set when this parameter is set.
-          type: string
-          example: aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ==
-        expand:
-          type: string
-          description: Additional data to include in the response, such as volumes
-          items:
-            type: string
-        pit:
-          type: string
-          format: date-time
-          description: Point-in-time. Returns the state as it existed at this timestamp
         sort:
           type: string
           description: |
             Sort results using a field name and order (ascending or descending).
             Format: `<field>:<order>`, where `<field>` is the field name and `<order>` is either `asc` or `desc`.
           example: id:desc
-    V2QueryParams:
+        expand:
+          type: array
+          items:
+            type: string
+          description: Additional data to include in the response, such as volumes
+        startTime:
+          type: string
+          format: date-time
+          description: Lower bound of the time window the query covers
+        endTime:
+          type: string
+          format: date-time
+          description: Upper bound of the time window the query covers
+    V2VolumeQueryParams:
       type: object
-      description: Parameters applied when running a query template
-      oneOf:
-        - x-speakeasy-name-override: QueryTemplateAccountParams
-          required: [resource]
-          properties:
-            resource:
-              type: string
-              enum:
-                - accounts
-            pageSize:
-              $ref: "#/components/schemas/V2QueryParamsCommon/properties/pageSize"
-            cursor:
-              $ref: "#/components/schemas/V2QueryParamsCommon/properties/cursor"
-            expand:
-              $ref: "#/components/schemas/V2QueryParamsCommon/properties/expand"
-            pit:
-              $ref: "#/components/schemas/V2QueryParamsCommon/properties/pit"
-            sort:
-              $ref: "#/components/schemas/V2QueryParamsCommon/properties/sort"
-        - x-speakeasy-name-override: QueryTemplateTransactionParams
-          required: [resource]
-          properties:
-            resource:
-              type: string
-              enum:
-                - transactions
-            pageSize:
-              $ref: "#/components/schemas/V2QueryParamsCommon/properties/pageSize"
-            cursor:
-              $ref: "#/components/schemas/V2QueryParamsCommon/properties/cursor"
-            expand:
-              $ref: "#/components/schemas/V2QueryParamsCommon/properties/expand"
-            pit:
-              $ref: "#/components/schemas/V2QueryParamsCommon/properties/pit"
-            sort:
-              $ref: "#/components/schemas/V2QueryParamsCommon/properties/sort"
-        - x-speakeasy-name-override: QueryTemplateLogParams
-          required: [resource]
-          properties:
-            resource:
-              type: string
-              enum:
-                - logs
-            pageSize:
-              $ref: "#/components/schemas/V2QueryParamsCommon/properties/pageSize"
-            cursor:
-              $ref: "#/components/schemas/V2QueryParamsCommon/properties/cursor"
-            expand:
-              $ref: "#/components/schemas/V2QueryParamsCommon/properties/expand"
-            pit:
-              $ref: "#/components/schemas/V2QueryParamsCommon/properties/pit"
-            sort:
-              $ref: "#/components/schemas/V2QueryParamsCommon/properties/sort"
-        - x-speakeasy-name-override: QueryTemplateVolumeParams
-          required: [resource]
-          properties:
-            resource:
-              type: string
-              enum:
-                - volumes
-            insertionDate:
-              type: boolean
-            groupBy:
-              type: integer
-            pageSize:
-              $ref: "#/components/schemas/V2QueryParamsCommon/properties/pageSize"
-            cursor:
-              $ref: "#/components/schemas/V2QueryParamsCommon/properties/cursor"
-            expand:
-              $ref: "#/components/schemas/V2QueryParamsCommon/properties/expand"
-            pit:
-              $ref: "#/components/schemas/V2QueryParamsCommon/properties/pit"
-            sort:
-              $ref: "#/components/schemas/V2QueryParamsCommon/properties/sort"
-        - x-speakeasy-name-override: QueryTemplatePlainParams
-          type: object
-          description: Parameters without a nested resource; the parent query selects the resource. groupBy and insertionDate apply only to volumes.
-          additionalProperties: false
-          properties:
-            pageSize:
-              type: integer
-              format: int64
-            sort:
-              type: string
-            expand:
-              type: array
-              items:
-                type: string
-            startTime:
-              type: string
-              format: date-time
-            endTime:
-              type: string
-              format: date-time
-            insertionDate:
-              type: boolean
-            groupBy:
-              type: integer
-    V2QueryTemplate:
+      description: Parameters applied when running a query template targeting volumes
+      properties:
+        pageSize:
+          type: integer
+          format: int64
+          description: |
+            The maximum number of results to return per page.
+          example: 100
+        sort:
+          type: string
+          description: |
+            Sort results using a field name and order (ascending or descending).
+            Format: `<field>:<order>`, where `<field>` is the field name and `<order>` is either `asc` or `desc`.
+          example: id:desc
+        expand:
+          type: array
+          items:
+            type: string
+          description: Additional data to include in the response, such as volumes
+        startTime:
+          type: string
+          format: date-time
+          description: Lower bound of the time window the query covers
+        endTime:
+          type: string
+          format: date-time
+          description: Upper bound of the time window the query covers
+        insertionDate:
+          type: boolean
+          description: Use the insertion date instead of the effective date for the time window
+        groupBy:
+          type: integer
+          description: Number of address segments to group volumes by
+    V2RunQueryParams:
       type: object
+      description: Parameter overrides applied when running a query template. `insertionDate` and `groupBy` only apply to volume queries.
+      properties:
+        pageSize:
+          type: integer
+          format: int64
+          description: |
+            The maximum number of results to return per page.
+          example: 100
+        sort:
+          type: string
+          description: |
+            Sort results using a field name and order (ascending or descending).
+            Format: `<field>:<order>`, where `<field>` is the field name and `<order>` is either `asc` or `desc`.
+          example: id:desc
+        expand:
+          type: array
+          items:
+            type: string
+          description: Additional data to include in the response, such as volumes
+        startTime:
+          type: string
+          format: date-time
+          description: Lower bound of the time window the query covers
+        endTime:
+          type: string
+          format: date-time
+          description: Upper bound of the time window the query covers
+        insertionDate:
+          type: boolean
+          description: Use the insertion date instead of the effective date for the time window
+        groupBy:
+          type: integer
+          description: Number of address segments to group volumes by
+    V2AccountQueryTemplateResource:
+      type: string
+      enum: [accounts]
+    V2AccountQueryTemplate:
+      type: object
+      required: [resource]
       properties:
         description:
           type: string
           description: Human-readable description of what the query returns
         resource:
-          $ref: "#/components/schemas/V2QueryResource"
+          $ref: "#/components/schemas/V2AccountQueryTemplateResource"
         params:
           $ref: "#/components/schemas/V2QueryParams"
         vars:
@@ -3463,6 +3428,89 @@ components:
           type: object
           additionalProperties: true
           description: The filter expression the query evaluates
+    V2TransactionQueryTemplateResource:
+      type: string
+      enum: [transactions]
+    V2TransactionQueryTemplate:
+      type: object
+      required: [resource]
+      properties:
+        description:
+          type: string
+          description: Human-readable description of what the query returns
+        resource:
+          $ref: "#/components/schemas/V2TransactionQueryTemplateResource"
+        params:
+          $ref: "#/components/schemas/V2QueryParams"
+        vars:
+          type: object
+          description: Variables the query accepts, keyed by variable name
+          additionalProperties:
+            $ref: "#/components/schemas/V2QueryTemplateVar"
+        body:
+          type: object
+          additionalProperties: true
+          description: The filter expression the query evaluates
+    V2LogQueryTemplateResource:
+      type: string
+      enum: [logs]
+    V2LogQueryTemplate:
+      type: object
+      required: [resource]
+      properties:
+        description:
+          type: string
+          description: Human-readable description of what the query returns
+        resource:
+          $ref: "#/components/schemas/V2LogQueryTemplateResource"
+        params:
+          $ref: "#/components/schemas/V2QueryParams"
+        vars:
+          type: object
+          description: Variables the query accepts, keyed by variable name
+          additionalProperties:
+            $ref: "#/components/schemas/V2QueryTemplateVar"
+        body:
+          type: object
+          additionalProperties: true
+          description: The filter expression the query evaluates
+    V2VolumeQueryTemplateResource:
+      type: string
+      enum: [volumes]
+    V2VolumeQueryTemplate:
+      type: object
+      required: [resource]
+      properties:
+        description:
+          type: string
+          description: Human-readable description of what the query returns
+        resource:
+          $ref: "#/components/schemas/V2VolumeQueryTemplateResource"
+        params:
+          $ref: "#/components/schemas/V2VolumeQueryParams"
+        vars:
+          type: object
+          description: Variables the query accepts, keyed by variable name
+          additionalProperties:
+            $ref: "#/components/schemas/V2QueryTemplateVar"
+        body:
+          type: object
+          additionalProperties: true
+          description: The filter expression the query evaluates
+    V2QueryTemplate:
+      description: A query template. `resource` selects which parameters apply.
+      discriminator:
+        propertyName: resource
+        mapping:
+          accounts: "#/components/schemas/V2AccountQueryTemplate"
+          transactions: "#/components/schemas/V2TransactionQueryTemplate"
+          logs: "#/components/schemas/V2LogQueryTemplate"
+          volumes: "#/components/schemas/V2VolumeQueryTemplate"
+      oneOf:
+        - $ref: "#/components/schemas/V2AccountQueryTemplate"
+        - $ref: "#/components/schemas/V2TransactionQueryTemplate"
+        - $ref: "#/components/schemas/V2LogQueryTemplate"
+        - $ref: "#/components/schemas/V2VolumeQueryTemplate"
     V2QueryTemplates:
       type: object
       description: Query templates

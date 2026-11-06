@@ -37,9 +37,9 @@ func (e *V2RunQueryQueryParamOrder) UnmarshalJSON(data []byte) error {
 
 type V2RunQueryRequestBody struct {
 	Cursor *string `json:"cursor,omitempty"`
-	// Parameters applied when running a query template
-	Params *components.V2QueryParams `json:"params,omitempty"`
-	Vars   map[string]string         `json:"vars,omitempty"`
+	// Parameter overrides applied when running a query template. `insertionDate` and `groupBy` only apply to volume queries.
+	Params *components.V2RunQueryParams `json:"params,omitempty"`
+	Vars   map[string]string            `json:"vars,omitempty"`
 }
 
 func (v *V2RunQueryRequestBody) GetCursor() *string {
@@ -49,7 +49,7 @@ func (v *V2RunQueryRequestBody) GetCursor() *string {
 	return v.Cursor
 }
 
-func (v *V2RunQueryRequestBody) GetParams() *components.V2QueryParams {
+func (v *V2RunQueryRequestBody) GetParams() *components.V2RunQueryParams {
 	if v == nil {
 		return nil
 	}

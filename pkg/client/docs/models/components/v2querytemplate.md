@@ -1,12 +1,47 @@
 # V2QueryTemplate
 
+A query template. `resource` selects which parameters apply.
 
-## Fields
 
-| Field                                                                                     | Type                                                                                      | Required                                                                                  | Description                                                                               |
-| ----------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
-| `Description`                                                                             | `*string`                                                                                 | :heavy_minus_sign:                                                                        | Human-readable description of what the query returns                                      |
-| `Resource`                                                                                | [*components.V2QueryResource](../../models/components/v2queryresource.md)                 | :heavy_minus_sign:                                                                        | The resource a query template targets                                                     |
-| `Params`                                                                                  | [*components.V2QueryParams](../../models/components/v2queryparams.md)                     | :heavy_minus_sign:                                                                        | Parameters applied when running a query template                                          |
-| `Vars`                                                                                    | map[string][components.V2QueryTemplateVar](../../models/components/v2querytemplatevar.md) | :heavy_minus_sign:                                                                        | Variables the query accepts, keyed by variable name                                       |
-| `Body`                                                                                    | map[string]`any`                                                                          | :heavy_minus_sign:                                                                        | The filter expression the query evaluates                                                 |
+## Supported Types
+
+### V2AccountQueryTemplate
+
+```go
+v2QueryTemplate := components.CreateV2QueryTemplateAccounts(components.V2AccountQueryTemplate{/* values here */})
+```
+
+### V2TransactionQueryTemplate
+
+```go
+v2QueryTemplate := components.CreateV2QueryTemplateTransactions(components.V2TransactionQueryTemplate{/* values here */})
+```
+
+### V2LogQueryTemplate
+
+```go
+v2QueryTemplate := components.CreateV2QueryTemplateLogs(components.V2LogQueryTemplate{/* values here */})
+```
+
+### V2VolumeQueryTemplate
+
+```go
+v2QueryTemplate := components.CreateV2QueryTemplateVolumes(components.V2VolumeQueryTemplate{/* values here */})
+```
+
+## Union Discrimination
+
+Use the `Type` field to determine which variant is active, then access the corresponding field:
+
+```go
+switch v2QueryTemplate.Type {
+	case components.V2QueryTemplateTypeAccounts:
+		// v2QueryTemplate.V2AccountQueryTemplate is populated
+	case components.V2QueryTemplateTypeTransactions:
+		// v2QueryTemplate.V2TransactionQueryTemplate is populated
+	case components.V2QueryTemplateTypeLogs:
+		// v2QueryTemplate.V2LogQueryTemplate is populated
+	case components.V2QueryTemplateTypeVolumes:
+		// v2QueryTemplate.V2VolumeQueryTemplate is populated
+}
+```
