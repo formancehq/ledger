@@ -80,6 +80,7 @@ var _ = Describe("Auth writes-only mode", Ordered, func() {
 		})
 		instruments = append(instruments,
 			testserver.WithBootstrap(),
+			testserver.WithClusterSecret("test-cluster-secret"),
 			testserver.WithAuthEnabled(),
 			testserver.WithAuthIssuer(oidcServer.URL),
 			testserver.WithAuthService("ledger"),
