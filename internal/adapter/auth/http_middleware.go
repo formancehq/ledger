@@ -61,9 +61,8 @@ func HTTPAuthMiddleware(cfg AuthConfig) func(http.Handler) http.Handler {
 
 			keyID := extractKeyID(token)
 
-			ctx := WithKeyID(r.Context(), keyID)
-
-			claims, err := validateToken(ctx, token, cfg)
+			ctx := r.Context()
+			validated, err := validateToken(ctx, token, cfg)
 			if err != nil {
 				logHTTPAuthFailure(r, keyID, "invalid_token", err)
 				http.Error(w, "invalid token: "+err.Error(), http.StatusUnauthorized)
@@ -71,7 +70,9 @@ func HTTPAuthMiddleware(cfg AuthConfig) func(http.Handler) http.Handler {
 				return
 			}
 
+			claims := validated.claims
 			ctx = WithClaims(ctx, claims)
+			ctx = WithKeyID(ctx, validated.staticKeyID)
 
 			// Expand scopes through the mapping and store in context.
 			// Superuser-mode tokens get all granular scopes.
