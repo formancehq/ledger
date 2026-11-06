@@ -120,6 +120,7 @@ whose failure facts match the client error. Hold a save proposed before the
 reference, apply it first, and prove the reference is a retryable stale
 rejection with no audit entry, frozen key or coverage miss, and that its retry
 commits. The `OrderTechnical.numscript_reference_absent` marker relies on the
-stopped RC.3 to RC.4 cutover; refused orders carry it in audit items without
-business effects, so restore reconstruction is unchanged.
+stopped RC.3 to RC.4 cutover. It is Raft-only execution metadata: audit items
+keep the business order and the audit entry records the definitive failure.
+Refused orders have no business effects, so restore reconstruction is unchanged.
 See [the admission contract](../architecture/subsystems/admission/idempotency.md#replay-after-a-referenced-script-is-removed).

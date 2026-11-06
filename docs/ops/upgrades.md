@@ -359,9 +359,10 @@ The forwarded order carries the new internal field
 script admission did not plan. RC.3 voters ignore the field and would execute
 it, so this change depends on the [stopped RC.3 to RC.4 cutover](#proposal-payload-cutover):
 no RC.3 voter may apply an entry proposed by an RC.4 leader. Historical entries
-never carry the field and replay unchanged. Refused orders keep the field in
-their audit items and have no business effects; snapshots, backups and restore
-need no migration. Service protocol revision 40 and the public wire are unchanged.
+never carry the field and replay unchanged. The field is execution metadata
+carried only in the Raft entry: audit items keep the business order, and the
+audit entry records the definitive failure. Refused orders have no business
+effects; snapshots, backups and restore need no migration. Service protocol revision 40 and the public wire are unchanged.
 See [the replay contract](../technical/architecture/subsystems/admission/idempotency.md#replay-after-a-referenced-script-is-removed).
 
 ## Account metadata address validation

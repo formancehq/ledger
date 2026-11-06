@@ -56,6 +56,7 @@ func (h *metadataReplayHarness) requireNumscriptNotFoundAudit(t *testing.T, err 
 	require.NoError(t, order.UnmarshalVT(items[0].GetSerializedOrder()))
 	require.NotNil(t, createTxOf(order).GetNumscriptReference())
 	require.Empty(t, createTxOf(order).GetScript().GetPlain())
+	require.Nil(t, order.GetTechnical(), "audit items keep business intent only; the marker stays in Raft")
 }
 
 // TestAdmitMissingNumscriptReferenceIsAuditedAtApply pins that a reference
