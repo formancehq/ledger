@@ -83,6 +83,12 @@ writes, replay, restart, audit verification and non-empty WAL. For a rolling
 release, include leadership transfer. Record source and target builds and the
 results in release validation. If the path fails, fix it before release.
 
+An accepted received snapshot may replace a node's Raft WAL directory while
+retaining the historical `raft/etcd/` path and WAL record format. If a process
+stops between the two directory renames, restart it with the version that
+started the replacement so startup can complete the directory recovery. Once
+`raft/etcd/` is present again, the preceding RC can read the completed WAL.
+
 ## Operator-required stopped restart
 
 At a listed boundary, the operator stores `status.upgrade` before any workload

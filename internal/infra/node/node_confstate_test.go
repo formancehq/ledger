@@ -134,7 +134,7 @@ func TestFinishReady_SnapshotInstall_PreservesWALConfState(t *testing.T) {
 			ConfState: &raftpb.ConfState{Voters: []uint64{1, 2, 3}},
 		},
 	}
-	require.NoError(t, node.wal.ApplySnapshot(snap))
+	require.NoError(t, node.wal.ApplySnapshot(snap, nil))
 
 	// Sanity: the WAL now holds the correct ConfState.
 	_, csBefore, err := node.wal.InitialState()
