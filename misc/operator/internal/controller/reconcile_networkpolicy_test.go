@@ -199,4 +199,3 @@ func TestReconcile_NetworkPolicyUpdate(t *testing.T) {
 
 	assert.Equal(t, []string{"10.0.0.0/8"}, np.Spec.Egress[2].To[0].IPBlock.Except)
 }
-
