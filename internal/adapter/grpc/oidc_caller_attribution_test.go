@@ -33,6 +33,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/infra/node"
 	"github.com/formancehq/ledger/v3/internal/infra/plan"
 	"github.com/formancehq/ledger/v3/internal/infra/state"
+	"github.com/formancehq/ledger/v3/internal/infra/transport"
 	"github.com/formancehq/ledger/v3/internal/pkg/futures"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
@@ -106,7 +107,7 @@ func TestOIDCCallerAttributionThroughPublicGRPC(t *testing.T) {
 		admission, proposals := newCallerAttributionAdmission(t, 1)
 		leaderConfig := cfg
 		leaderConfig.ClusterSecret = "trusted-cluster-secret"
-		leader, leaderClient := newAuthInterceptorServer(t, ServiceAuthPolicyPublic, leaderConfig)
+		leader, leaderClient := newAuthInterceptorServer(t, ServiceAuthPolicyPeer, leaderConfig)
 		leader.applyFn = func(ctx context.Context, req *servicepb.ApplyRequest) (*domain.ApplyResult, error) {
 			ctx, err := (&BucketServiceServerImpl{}).adoptForwardedSnapshotIfTrusted(ctx, req)
 			if err != nil {
@@ -125,7 +126,7 @@ func TestOIDCCallerAttributionThroughPublicGRPC(t *testing.T) {
 		follower, followerClient := newAuthInterceptorServer(t, ServiceAuthPolicyPublic, cfg)
 		forwarder := NewLedgerGrpcClient(leaderClient)
 		follower.applyFn = func(ctx context.Context, req *servicepb.ApplyRequest) (*domain.ApplyResult, error) {
-			return forwarder.Apply(metadata.AppendToOutgoingContext(ctx, "authorization", "Bearer "+leaderConfig.ClusterSecret), req)
+			return forwarder.Apply(metadata.AppendToOutgoingContext(ctx, transport.PeerAuthMetadataKey, "Bearer "+leaderConfig.ClusterSecret), req)
 		}
 		token := callerAttributionToken(t, jose.RS256, "oidc-first", rsaKey, issuer, "ledger:WriteLedger")
 		ctx, cancel := context.WithTimeout(metadata.AppendToOutgoingContext(context.Background(), "authorization", "Bearer "+token), 10*time.Second)

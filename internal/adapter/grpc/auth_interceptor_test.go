@@ -315,7 +315,7 @@ func newAuthInterceptorServer(t *testing.T, mode ServiceAuthPolicy, cfg internal
 	require.NoError(t, err)
 	implementation := &authInterceptorBucketServer{}
 	servicepb.RegisterBucketServiceServer(server.GetServer(), implementation)
-	if mode == ServiceAuthPolicyPublic {
+	if mode == ServiceAuthPolicyPublic || mode == ServiceAuthPolicyPeer {
 		clusterpb.RegisterClusterServiceServer(server.GetServer(), &clusterpb.UnimplementedClusterServiceServer{})
 	}
 	require.NoError(t, server.Listen())
