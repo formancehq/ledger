@@ -255,6 +255,37 @@ func TestMembership_PreservesCurrentPeerPortsOnStartup(t *testing.T) {
 	assert.Equal(t, "pod-1:8892", m.PeerAddresses()[2].ServiceAddress)
 }
 
+func TestMembership_MigratesOnlyConfiguredLegacyPort(t *testing.T) {
+	t.Parallel()
+
+	ps := newTestPeerStore(t)
+	putLegacyPeer(t, ps, 1, "pod-0:7777", "pod-0:8888", fixedInstanceID(1))
+	// This row already carries a peer port from a node with a distinct local
+	// listener; it must not be rewritten to this node's peer port.
+	putLegacyPeer(t, ps, 2, "pod-1:7777", "pod-1:8899", fixedInstanceID(2))
+
+	m, err := NewMembershipWithServicePorts(
+		ps,
+		noopTransport{},
+		noopPool{},
+		testSelfNodeID,
+		testSelfRaftAddr,
+		testSelfServiceAddr,
+		9999,
+		8888,
+		fixedInstanceID(0x42),
+		logging.Testing(),
+	)
+	require.NoError(t, err)
+	require.Equal(t, "pod-0:9999", m.PeerAddresses()[1].ServiceAddress)
+	require.Equal(t, "pod-1:8899", m.PeerAddresses()[2].ServiceAddress)
+
+	require.NoError(t, m.Rehydrate())
+	addresses := m.PeerAddresses()
+	require.Equal(t, "pod-0:9999", addresses[1].ServiceAddress)
+	require.Equal(t, "pod-1:8899", addresses[2].ServiceAddress)
+}
+
 func TestPeerStore_RejectsInvalidInstanceID(t *testing.T) {
 	t.Parallel()
 

@@ -282,7 +282,7 @@ func Module() fx.Option {
 					return query.ReadClusterPolicy(durableStore)
 				}
 
-				return raftmembership.NewMembershipWithServicePort(peerStore, defaultTransport, servicePool, cfg.NodeID, cfg.AdvertiseAddr, appCfg.PeerServiceAdvertiseAddr(), appCfg.PeerGRPCPort(), cfg.InstanceID, logger, policyProvider)
+				return raftmembership.NewMembershipWithServicePorts(peerStore, defaultTransport, servicePool, cfg.NodeID, cfg.AdvertiseAddr, appCfg.PeerServiceAdvertiseAddr(), appCfg.PeerGRPCPort(), appCfg.GRPCPort, cfg.InstanceID, logger, policyProvider)
 			}, fx.ParamTags(``, ``, `name:"service"`, ``, ``, ``, ``)),
 			// Provide events.Proposer from the Raft node (used by event emitter to replicate cursor).
 			// Events go through Builder.Run, which already holds the IndexTracker
