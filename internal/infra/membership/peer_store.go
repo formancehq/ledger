@@ -54,11 +54,11 @@ func NewPeerStore(store *dal.Store) *PeerStore {
 	return &PeerStore{store: store}
 }
 
-// migrateLegacyServiceAddresses upgrades the rc.3 membership representation
-// exactly once. Legacy rows carried the public service address, so their port
-// must be replaced with the configured peer port before the store is marked
-// current. The rows and the revision marker are committed atomically.
-func (p *PeerStore) migrateLegacyServiceAddresses(servicePort int) error {
+// migrateLegacyServiceAddressesFromPort upgrades legacy rows when their
+// service address still uses the configured public service port. A non-zero
+// legacyPort avoids rewriting already-migrated rows in environments where
+// nodes use distinct listener ports (notably local and test clusters).
+func (p *PeerStore) migrateLegacyServiceAddressesFromPort(servicePort, legacyPort int) error {
 	if servicePort == 0 {
 		return nil
 	}
@@ -76,7 +76,7 @@ func (p *PeerStore) migrateLegacyServiceAddresses(servicePort int) error {
 	}
 	session := p.store.OpenWriteSession()
 	for nodeID, address := range addresses {
-		normalized := normalizeServiceAddresses(map[uint64]ConfChangeContext{nodeID: address}, servicePort)[nodeID]
+		normalized := normalizeLegacyServiceAddresses(map[uint64]ConfChangeContext{nodeID: address}, servicePort, legacyPort)[nodeID]
 		if normalized.Equal(address) {
 			continue
 		}
