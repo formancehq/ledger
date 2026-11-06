@@ -24,6 +24,11 @@ All backup/restore commands accept the same provider flags; only the `--driver` 
 
 ### Scheduling with the Kubernetes Operator
 
+Operator backups require Kubernetes 1.32 or later and updated BackupRun CRDs
+with `.spec.backupRef` declared in `selectableFields`. Install both matching
+CRD/chart updates before starting the operator; parent lists bypass the cache
+and use API-server field selection.
+
 The operator's `Backup` resource can schedule full and incremental S3 backups:
 Each BackupRun Job uses the Ledger container image from the Cluster's owned
 StatefulSet. This also covers Clusters that inherit their image tag from the
@@ -124,6 +129,21 @@ Acquired malformed summaries and failed Jobs still mark the run Failed. A missin
 result that never becomes available requires operator intervention; no new timeout
 or automatic backup resubmission is introduced. Runs already marked Failed by an
 older operator remain terminal.
+
+To trigger a run directly, apply a `BackupRun` in the Backup's namespace with
+`metadata.name` and `spec.backupRef`; `spec.type` defaults to `Full`. No labels
+or owner references are required. `spec.backupRef` is immutable from creation,
+including Pending and completed runs; create a new run for a different parent.
+When upgrading existing CRDs, stop the operator and recover any previously
+retargeted runs, spec-less runs and affected parent accounting before installing
+the rules requiring `spec` and freezing its parent;
+see [the admission upgrade procedure](../technical/architecture/subsystems/backup/operator-scheduling.md#upgrading-parent-admission).
+The referenced Backup accounts for the run's
+result and completion cursor, applies its history limits, and includes it in
+sibling exclusion even if the association label is missing or incorrect.
+The operator watches unowned manual runs for parent updates without adopting
+them. Existing terminal manual runs also become visible to parent accounting
+and may be pruned by the configured history limits on reconciliation.
 
 The run history limits retain Kubernetes `BackupRun` resources only. They do
 not retain historical backup artifacts or restore points in object storage.

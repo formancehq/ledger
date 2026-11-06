@@ -68,7 +68,8 @@ func TestBackupRunCredentialsStayInSecrets(t *testing.T) {
 
 				secret := &corev1.Secret{ObjectMeta: metav1.ObjectMeta{Name: "s3-auth", Namespace: "test"},
 					Data: map[string][]byte{"access": []byte(accessKey), "secret": []byte(secretKey)}}
-				c := fake.NewClientBuilder().WithScheme(scheme).WithStatusSubresource(run).
+				c := fake.NewClientBuilder().WithScheme(scheme).
+					WithIndex(&ledgerv1alpha1.BackupRun{}, backupRunParentField, backupRunParentIndex).WithStatusSubresource(run).
 					WithObjects(cluster, backup, run, sts, backupClusterService(cluster), secret).Build()
 				r := &BackupRunReconciler{Client: c, APIReader: c, Scheme: scheme}
 				_, err := r.Reconcile(t.Context(), ctrl.Request{NamespacedName: client.ObjectKeyFromObject(run)})

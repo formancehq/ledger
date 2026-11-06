@@ -36,6 +36,14 @@ Only a parsed result persisted on the run enables successful parent accounting a
 incremental scheduling. See [the recovery ordering](operator-scheduling.md#completed-job-result-recovery)
 for observation failures, terminal payload failures and history pruning.
 
+## Operator manual runs
+
+`BackupRun.spec.backupRef` associates scheduled and manual runs with their
+same-namespace parent for accounting, scheduling, retention and execution
+exclusion. Labels and owner references are optional for manual runs. See
+[manual run association](operator-scheduling.md#manual-run-association) for
+parent admission and upgrade recovery, events, existing-run behavior and parent-selector cost.
+
 ## How a backup is taken
 
 A Pebble *checkpoint* is the engine primitive: hard-link every live SST file into a separate directory at a point in time. The checkpoint is **quasi-free** (no copy), and writes to the live database keep going untouched.

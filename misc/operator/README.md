@@ -232,6 +232,13 @@ selected interval at startup, including values supplied through that override.
 
 ## Backup scheduling
 
+Manual `BackupRun` resources use `spec.backupRef` to identify their parent in
+the same namespace. The reference is immutable from creation; create a new run
+to select another parent. Follow the [admission upgrade procedure](../../docs/technical/architecture/subsystems/backup/operator-scheduling.md#upgrading-parent-admission)
+for existing runs before updating CRDs. Association labels and owner references are not required
+for parent accounting, history retention or sibling exclusion. Events from
+unowned runs also reconcile their referenced parent.
+
 Backup schedules preserve their completion cursors in `Backup.status` before
 pruning run history. Zero retention therefore preserves scheduling across
 operator restarts. See the [scheduling contract](../../docs/technical/architecture/subsystems/backup/operator-scheduling.md)
@@ -256,8 +263,9 @@ for runtime delivery, missing-key behavior and ambient authentication.
 
 ### Prerequisites
 
-- Kubernetes cluster with `StatefulSetAutoDeletePVC` enabled (default since
-  1.27, stable since 1.32); a tested minimum version is not established.
+- Kubernetes 1.32 or later, with `StatefulSetAutoDeletePVC` enabled.
+  BackupRun parent queries require CRD `selectableFields`; install the updated
+  CRDs before starting the operator.
   PVC/PV deletion protection needs `ValidatingAdmissionPolicy` (stable since
   1.30); see [Volume Deletion Protection](#volume-deletion-protection).
 - Helm 3

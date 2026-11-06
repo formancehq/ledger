@@ -18,6 +18,7 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
+	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	ledgerv1alpha1 "github.com/formancehq/ledger/misc/operator/api/v1alpha1"
@@ -340,15 +341,7 @@ func (r *BackupReconciler) listChildRuns(
 	ctx context.Context,
 	backup *ledgerv1alpha1.Backup,
 ) ([]ledgerv1alpha1.BackupRun, error) {
-	var list ledgerv1alpha1.BackupRunList
-	if err := r.APIReader.List(ctx, &list,
-		client.InNamespace(backup.Namespace),
-		client.MatchingLabels{ledgerv1alpha1.LabelBackup: backup.Name},
-	); err != nil {
-		return nil, err
-	}
-
-	return list.Items, nil
+	return listBackupRuns(ctx, r.APIReader, client.ObjectKeyFromObject(backup))
 }
 
 func (r *BackupReconciler) setFailed(ctx context.Context, backup *ledgerv1alpha1.Backup, message string) (ctrl.Result, error) {
@@ -364,9 +357,20 @@ func (r *BackupReconciler) setFailed(ctx context.Context, backup *ledgerv1alpha1
 func (r *BackupReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&ledgerv1alpha1.Backup{}).
-		Owns(&ledgerv1alpha1.BackupRun{}).
+		Watches(&ledgerv1alpha1.BackupRun{}, handler.EnqueueRequestsFromMapFunc(r.runToBackup)).
 		Named("backup").
 		Complete(r)
+}
+
+// runToBackup also routes events from unowned manual runs. The map handler
+// enqueues both references on updates defensively; admission prevents parent edits.
+func (r *BackupReconciler) runToBackup(_ context.Context, obj client.Object) []ctrl.Request {
+	run, ok := obj.(*ledgerv1alpha1.BackupRun)
+	if !ok || run.Spec.BackupRef == "" {
+		return nil
+	}
+
+	return []ctrl.Request{{NamespacedName: client.ObjectKey{Namespace: run.Namespace, Name: run.Spec.BackupRef}}}
 }
 
 // nextRunTime returns the next scheduled time after lastRun, or zero time if lastRun is nil (run immediately).
