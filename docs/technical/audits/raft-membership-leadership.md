@@ -415,3 +415,21 @@ coverage, HLC semantics and checkpoint boundaries. Test policy-only incremental
 manifest publication and mixed historical/native delta restore. Current policy
 and operational quotas are explicitly outside business checker scope.
 See [proposal payloads](../architecture/subsystems/consensus/proposal-payloads.md).
+
+## Recovered log and truncated-tail evidence
+
+Prove that a restarted voter's recovered last `(index, term)` equals its live
+log before the crash. etcd `wal.ReadAll` truncates only for entry records above
+the replay snapshot. An overwrite at or below the snapshot therefore leaves
+older records above it in the result. Build the WAL history explicitly:
+uncommitted tail, overwrite, snapshot, then no newer record above the snapshot.
+Then show the recovered log and the vote decision on the reopened storage. The
+focused regressions are in `replay_tail_test.go` under `internal/storage/wal/`.
+
+The current replay check discards only a suffix that cannot belong to a Raft
+log: a term below the snapshot term or below its predecessor's term. Startup
+fails closed when that suffix starts at or below `HardState.Commit`. Report a
+resurrected tail that passes the check as a finding. Examples are a lower-term
+overwrite followed by a snapshot at that entry, and a received snapshot that
+discarded a conflicting suffix without writing entry records. Do not treat
+the check as proof of exact reconstruction.
