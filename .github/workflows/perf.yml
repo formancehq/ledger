@@ -77,7 +77,7 @@ jobs:
       # Cluster credentials are used only with default-branch code, never a PR checkout.
       - name: Select the successfully built revision
         id: run
-        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9
         env:
           BASELINE_SHA: ${{ needs.Build.outputs.sha }}
           BASELINE_TAG: ${{ needs.Build.outputs.tag }}
@@ -156,7 +156,7 @@ jobs:
       - name: Recheck the PR before submission
         id: current
         if: steps.run.outputs.enabled == 'true'
-        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9
         env:
           PR: ${{ steps.run.outputs.pr }}
           SHA: ${{ steps.run.outputs.sha }}
