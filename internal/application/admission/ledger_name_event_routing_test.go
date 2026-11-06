@@ -34,8 +34,8 @@ func TestAdmit_CreateLedgerNamesForEventRouting(t *testing.T) {
 				func(_ context.Context, proposal *node.Proposal) (*futures.Future[state.ApplyResult], error) {
 					var command raftcmdpb.Proposal
 					require.NoError(t, command.UnmarshalVT(proposal.Data()))
-					require.Len(t, command.GetOrders(), 1)
-					order := command.GetOrders()[0].GetLedgerScoped()
+					require.Len(t, command.GetBatch().GetOrders(), 1)
+					order := command.GetBatch().GetOrders()[0].GetLedgerScoped()
 					require.NotNil(t, order.GetCreateLedger())
 					require.Equal(t, name, order.GetLedger())
 

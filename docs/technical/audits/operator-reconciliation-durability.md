@@ -261,6 +261,46 @@ pruned only after terminal accounting is recorded. These fake-client and HTTP
 fixtures do not prove Kubernetes garbage collection, kubelet execution or live
 manager backoff. Historical terminal failures are not automatically reopened.
 
+## Manual backup parent association
+
+Use minimally admitted BackupRuns with only a name and same-namespace
+`spec.backupRef` (type defaults to Full), including missing and contradictory
+association labels and absent parent owner references. Trace parent discovery,
+event routing, scheduling, result summaries, completion cursors, pruning and
+directional sibling exclusion through the spec reference. A label naming a
+different Backup must neither transfer accounting nor block that parent's runs.
+Preserve namespace isolation and self exclusion. API-server CEL transition
+validation makes `spec.backupRef` immutable from creation. Reject updates and
+patches for new, Pending, Running and terminal runs while permitting same-parent
+metadata and status writes. Require the root `spec` on creation and update;
+reject whole-spec removal by update, JSON Patch or merge patch and a subsequent
+attempt to re-add a different parent. Verify stored spec/status remain intact.
+A rejected edit after Job creation must preserve the original sibling reservation, Job UID and result attribution. Fake clients do
+not establish admission. Old/new parent event mapping remains defensive only.
+Before installing the rule, stop the operator and recover already stored
+retargeting, spec-less runs and affected parent accounting; recover original
+parent identity from execution evidence before restoring a missing spec. Freezing
+the current reference is not retrospective identity recovery. Follow the
+[upgrade procedure](../architecture/subsystems/backup/operator-scheduling.md#upgrading-parent-admission).
+
+Exercise the API-server-backed manual execution path through a successful Job
+result and parent accounting before zero-retention pruning, then verify a labeled
+sibling waits behind an unlabeled Running run. Separately prove automatic parent
+updates through the registered manager watch for an unowned manual run. Envtest
+fixtures publish Job/Pod status themselves and do not prove kubelet execution or
+garbage collection. Direct parent lists must retain their stale-cache protection;
+parent-selector cost is documented in the scheduling contract.
+
+### BackupRun parent selection
+
+Both shipped CRDs declare `.spec.backupRef` selectable on Kubernetes 1.32+.
+Direct parent reads must retain the APIReader and use the same namespaced field
+selector as cached sibling queries; manager setup must register that field index.
+The API-server and real-cache regression must include unlabeled runs, misleading
+labels, different parents and namespaces, and no matches. Selection reduces
+response size; it does not establish O(1) API-server storage work.
+
+
 ## Severity
 
 Use the native P0–P3 scale with demonstrated impact and explicit preconditions:

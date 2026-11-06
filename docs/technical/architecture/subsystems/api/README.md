@@ -9,8 +9,8 @@ Client-facing transport layers (`internal/adapter/grpc`, `internal/adapter/http`
 | [grpc-api.md](grpc-api.md) | gRPC service, methods, request/response types, full-width cluster and store-metrics node identities, type-owned public error details, unary peer-close normalization and its attribution limit, client examples, and restore-mode service lifetime. |
 | [grpc-connections.md](grpc-connections.md) | gRPC connection mechanics, reconnection, and rolling deployment optimizations. |
 | [protocol-compatibility.md](protocol-compatibility.md) | Mandatory service protocol revision, client/server rejection behavior, diagnostics, and revision maintenance (EN-1851). |
-| [http-api.md](http-api.md) | HTTP endpoint lifecycle and failure shutdown, REST API endpoints, instance-wide event sink creation/removal, single-decoding metadata key and path identifier segments, response formats, type-based large-integer response negotiation, exact metadata number decoding, ledger-log JSON output and discriminators, error handling, and the `apierr`/`grpcerr` error boundary crossed by a forwarded write. |
-| [auth.md](auth.md) | Client JWT authentication (OIDC + Ed25519), scope-based authorization, and the Raft inter-node cluster-secret auth layer. |
+| [http-api.md](http-api.md) | HTTP endpoint lifecycle and failure shutdown, REST API endpoints, signed transaction request envelopes, instance-wide event sink creation/removal, single-decoding metadata key and path identifier segments, response formats, type-based large-integer response negotiation, exact metadata number decoding, ledger-log JSON output and discriminators, error handling, and the `apierr`/`grpcerr` error boundary crossed by a forwarded write. |
+| [auth.md](auth.md) | Client JWT authentication (OIDC + Ed25519), verified credential-source attribution across signing-key rotation, scope-based authorization, and the Raft inter-node cluster-secret auth layer. |
 | [sensitive-projection.md](sensitive-projection.md) | Detached, descriptor-driven secret projection and its ownership boundary. |
 
 The [HTTP index inspection contract](http-api.md#inspect-a-metadata-index)

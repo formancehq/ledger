@@ -538,19 +538,17 @@ func runChainVerifierWithFolds(
 
 // TestVerifyAuditHashChain_MarksSigningFoldTruncatedOnEveryBreak pins the wiring
 // between a chain break and the coverage state of every pass that folds inside
-// that walk: signing, cluster policy and stored log bounds.
+// that walk: signing and stored log bounds.
 //
 // verifyAuditHashChain returns early on a break so Check() can still report other
 // projections, which leaves each expectation a PREFIX of the real history.
 // Compared as-is the signing pass reports every registration past the break as
-// injected and every revocation past it as a lost row, the cluster-policy pass
-// compares a policy any later update may have replaced, and the log-bound pass
+// injected and every revocation past it as a lost row, and the log-bound pass
 // compares a partial expectedMax against the stored head and emits a false
 // LOG_UNAUDITED or SEQUENCE_GAP — false positives against a store whose only
 // real problem is the break already reported as HASH_MISMATCH. Each early exit
-// must therefore mark all three folds truncated; suppression itself is covered by
-// the compare cases in signing_test.go, clusterpolicy_test.go and
-// checker_log_bounds_test.go.
+// must therefore mark both folds truncated; suppression itself is covered by
+// the compare cases in signing_test.go and checker_log_bounds_test.go.
 //
 // One case per exit, because they sit at different points of the loop body: the
 // embedded-items check runs before the entry's items are even read, while the
@@ -596,8 +594,6 @@ func TestVerifyAuditHashChain_MarksSigningFoldTruncatedOnEveryBreak(t *testing.T
 			_, clean := runChainVerifierWithFolds(t, store, clusterID)
 			require.False(t, clean.signing.liveTruncated,
 				"a chain that verifies to the end leaves the signing fold complete")
-			require.False(t, clean.policy.liveTruncated,
-				"a chain that verifies to the end leaves the cluster-policy fold complete")
 			require.Empty(t, clean.bounds.incompleteReason,
 				"a chain that verifies to the end leaves the log-bound derivation complete")
 
@@ -608,8 +604,6 @@ func TestVerifyAuditHashChain_MarksSigningFoldTruncatedOnEveryBreak(t *testing.T
 			require.NotEmpty(t, mismatches, "the break itself must still be reported")
 			require.True(t, broken.signing.liveTruncated,
 				"an early exit on a chain break must mark the signing fold truncated, or the pass compares a prefix")
-			require.True(t, broken.policy.liveTruncated,
-				"an early exit on a chain break must mark the cluster-policy fold truncated, or the pass compares a policy a later update may have replaced")
 			// Matched on the chain-break wording, not merely on non-emptiness: the
 			// contiguity guard in observeSuccess sets the same field, and this case
 			// protects the markLiveTruncated exit specifically.

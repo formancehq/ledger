@@ -12,8 +12,8 @@ EN-1851 reject business RPCs with a missing or different protocol revision.
 Servers predating EN-1851 do not enforce this gate: the new CLI sends a protocol
 declaration without a preflight, so it cannot protect calls to an older, ungated
 server. Updates within the RC line keep the service wire contract at revision
-40 and normally support mixed-binary rolling upgrades. At a hardcoded operator
-boundary, follow the stopped procedure in [server upgrades](upgrades.md). The protocol match alone
+40 and normally support mixed-binary rolling upgrades. RC.3 to RC.4 crosses a
+hardcoded operator boundary; follow the stopped procedure in [server upgrades](upgrades.md). The protocol match alone
 does not prove that Raft apply and persisted data remain compatible. See the
 [service protocol contract](../technical/architecture/subsystems/api/protocol-compatibility.md)
 and [server upgrades](upgrades.md) for the required validation.
@@ -126,10 +126,11 @@ go run . run
 
 ### Prerequisites
 
-- Kubernetes with `StatefulSetAutoDeletePVC` enabled (default since 1.27,
-  stable since 1.32). PVC/PV deletion protection needs the
-  `ValidatingAdmissionPolicy` API (stable since 1.30). The operator has no
-  established, tested minimum Kubernetes version; see
+- Kubernetes 1.32 or later with `StatefulSetAutoDeletePVC` enabled.
+  PVC/PV deletion protection needs the `ValidatingAdmissionPolicy` API
+  (stable since 1.30). BackupRun queries require the updated CRDs with
+  `.spec.backupRef` in `selectableFields`; install them before starting the
+  operator. See
   [Deployment Profiles](./deployment-profiles.md#kubernetes-operator-specifics).
 - Helm 3.0+ (for deploying the operator)
 - PersistentVolume support
@@ -757,6 +758,23 @@ config:
 - **Development**: `electionTick: 10`, `heartbeatTick: 1`, `tickInterval: "100ms"`
 - **Production**: `electionTick: 20`, `heartbeatTick: 2`, `tickInterval: "50ms"`
 
+`--raft-tick-interval=0` (or `RAFT_TICK_INTERVAL=0`) retains the `100ms`
+default. Zero `--raft-processing-tick-interval` derives one tenth of that
+effective tick, so a positive tick below `10ns` requires an explicit positive
+processing interval. Negative intervals and invalid combinations fail server
+configuration validation after loading/printing and possible join discovery,
+before Fx bootstrap. Direct `NewNode` callers run the same interval guard
+before that constructor reads the WAL; their callers may already have opened
+stores or persisted identity.
+
+On upgrade, replace a `1ns`–`9ns` tick with at least `10ns` or supply a positive
+processing interval. Explicit processing intervals now remain in effect after
+Ready drains, rather than reverting to tick/10. This changes local idle polling
+cadence only; normal `100ms` / `10ms` defaults remain unchanged. There is no
+persisted-format migration or service protocol revision change. Operator
+duration strings and `extraEnv` values reach this final server validation;
+this does not add operator admission validation.
+
 #### Performance
 
 ```yaml
@@ -961,10 +979,10 @@ resources:
 
 ### Maintenance Mode
 
-Use maintenance mode to block all write operations cluster-wide before performing planned maintenance (upgrades, migrations, etc.). Read operations continue to work normally.
+Use maintenance mode to block client business writes cluster-wide before performing planned maintenance (upgrades, migrations, etc.). Read operations and leader-internal cluster-policy reconciliation continue to work. An active drain blocks policy reconciliation too.
 
 ```bash
-# Enable maintenance mode (blocks all writes)
+# Enable maintenance mode (blocks client business writes)
 ledgerctl cluster maintenance enable
 
 # Verify maintenance mode is active

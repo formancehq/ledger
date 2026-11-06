@@ -81,7 +81,7 @@ func TestWorkerAssetMappingProposesColoredPostingAndCoverage(t *testing.T) {
 	require.Len(t, proposer.recorded(), 1)
 
 	cmd := proposer.recorded()[0].cmd
-	posting := cmd.GetOrders()[0].GetLedgerScoped().GetMirrorIngest().GetEntry().GetCreatedTransaction().GetPostings()[0]
+	posting := cmd.GetBatch().GetOrders()[0].GetLedgerScoped().GetMirrorIngest().GetEntry().GetCreatedTransaction().GetPostings()[0]
 	require.Equal(t, "USDT/6", posting.GetAsset())
 	require.Equal(t, "ETHEREUM", posting.GetColor())
 

@@ -2416,16 +2416,16 @@ const file_cluster_proto_rawDesc = "" +
 	"\x16GetClusterStateRequest\x12\x17\n" +
 	"\anode_id\x18\x01 \x01(\x04R\x06nodeId\")\n" +
 	"\x11BeginDrainRequest\x12\x14\n" +
-	"\x05epoch\x18\x01 \x01(\tR\x05epoch\"Q\n" +
+	"\x05epoch\x18\x01 \x01(\tR\x05epoch\"W\n" +
 	"\x12BeginDrainResponse\x12!\n" +
 	"\fcutoff_index\x18\x01 \x01(\x06R\vcutoffIndex\x12\x18\n" +
-	"\amembers\x18\x02 \x03(\x04R\amembers\"'\n" +
+	"\amembers\x18\x02 \x03(\x04R\amembers:\x04\xd8\xd5\"\x01\"'\n" +
 	"\x0fEndDrainRequest\x12\x14\n" +
-	"\x05epoch\x18\x01 \x01(\tR\x05epoch\"Q\n" +
+	"\x05epoch\x18\x01 \x01(\tR\x05epoch\"W\n" +
 	"\x10EndDrainResponse\x12#\n" +
 	"\rrelease_index\x18\x01 \x01(\x06R\freleaseIndex\x12\x18\n" +
-	"\amembers\x18\x02 \x03(\x04R\amembers\"\x17\n" +
-	"\x15GetDrainStatusRequest\"\xb8\x02\n" +
+	"\amembers\x18\x02 \x03(\x04R\amembers:\x04\xd8\xd5\"\x01\"\x17\n" +
+	"\x15GetDrainStatusRequest\"\xbe\x02\n" +
 	"\vDrainStatus\x12\x1d\n" +
 	"\n" +
 	"local_node\x18\x01 \x01(\x04R\tlocalNode\x12%\n" +
@@ -2438,7 +2438,7 @@ const file_cluster_proto_rawDesc = "" +
 	"\vsync_status\x18\x06 \x01(\tR\n" +
 	"syncStatus\x12#\n" +
 	"\rrelease_index\x18\a \x01(\x06R\freleaseIndex\x12)\n" +
-	"\x10supports_release\x18\b \x01(\bR\x0fsupportsRelease\"\xca\x02\n" +
+	"\x10supports_release\x18\b \x01(\bR\x0fsupportsRelease:\x04\xd8\xd5\"\x01\"\xd0\x02\n" +
 	"\bNodeInfo\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\x04R\x02id\x12\x1a\n" +
 	"\bsuffrage\x18\x02 \x01(\tR\bsuffrage\x121\n" +
@@ -2447,7 +2447,7 @@ const file_cluster_proto_rawDesc = "" +
 	"\x0fservice_address\x18\x05 \x01(\tR\x0eserviceAddress\x12:\n" +
 	"\rsync_progress\x18\x06 \x01(\v2\x15.cluster.SyncProgressR\fsyncProgress\x12=\n" +
 	"\x0eindex_progress\x18\a \x01(\v2\x16.cluster.IndexProgressR\rindexProgress\x12\x18\n" +
-	"\aversion\x18\b \x01(\tR\aversion\"\x89\x02\n" +
+	"\aversion\x18\b \x01(\tR\aversion:\x04\xd8\xd5\"\x01\"\x8f\x02\n" +
 	"\fProgressInfo\x12\x14\n" +
 	"\x05match\x18\x01 \x01(\x06R\x05match\x12\x12\n" +
 	"\x04next\x18\x02 \x01(\x06R\x04next\x12\x14\n" +
@@ -2457,7 +2457,7 @@ const file_cluster_proto_rawDesc = "" +
 	"\x13msg_app_flow_paused\x18\x06 \x01(\bR\x10msgAppFlowPaused\x12\x1b\n" +
 	"\tis_paused\x18\a \x01(\bR\bisPaused\x12\x1d\n" +
 	"\n" +
-	"is_learner\x18\b \x01(\bR\tisLearner\"\xf8\x02\n" +
+	"is_learner\x18\b \x01(\bR\tisLearner:\x04\xd8\xd5\"\x01\"\xfe\x02\n" +
 	"\n" +
 	"RaftStatus\x12\x14\n" +
 	"\x05state\x18\x01 \x01(\tR\x05state\x12\x12\n" +
@@ -2472,7 +2472,7 @@ const file_cluster_proto_rawDesc = "" +
 	"\x14last_persisted_index\x18\t \x01(\x06R\x12lastPersistedIndex\x1aR\n" +
 	"\rProgressEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\x04R\x03key\x12+\n" +
-	"\x05value\x18\x02 \x01(\v2\x15.cluster.ProgressInfoR\x05value:\x028\x01\"\xaa\x04\n" +
+	"\x05value\x18\x02 \x01(\v2\x15.cluster.ProgressInfoR\x05value:\x028\x01:\x04\xd8\xd5\"\x01\"\xb0\x04\n" +
 	"\fClusterState\x12\x14\n" +
 	"\x05state\x18\x01 \x01(\tR\x05state\x12\x16\n" +
 	"\x06leader\x18\x02 \x01(\x04R\x06leader\x12'\n" +
@@ -2491,15 +2491,15 @@ const file_cluster_proto_rawDesc = "" +
 	"\vdrain_epoch\x18\f \x01(\tR\n" +
 	"drainEpoch\x12\x1f\n" +
 	"\vdrain_index\x18\r \x01(\x06R\n" +
-	"drainIndex\"u\n" +
+	"drainIndex:\x04\xd8\xd5\"\x01\"{\n" +
 	"\rIndexProgress\x122\n" +
 	"\x15last_indexed_sequence\x18\x01 \x01(\x06R\x13lastIndexedSequence\x120\n" +
-	"\x14pebble_last_sequence\x18\x02 \x01(\x06R\x12pebbleLastSequence\"n\n" +
+	"\x14pebble_last_sequence\x18\x02 \x01(\x06R\x12pebbleLastSequence:\x04\xd8\xd5\"\x01\"t\n" +
 	"\fSyncProgress\x12\x16\n" +
 	"\x06status\x18\x01 \x01(\tR\x06status\x12%\n" +
 	"\x0ebytes_received\x18\x02 \x01(\x06R\rbytesReceived\x12\x1f\n" +
 	"\vbytes_total\x18\x03 \x01(\x06R\n" +
-	"bytesTotal\";\n" +
+	"bytesTotal:\x04\xd8\xd5\"\x01\";\n" +
 	"\x19TransferLeadershipRequest\x12\x1e\n" +
 	"\n" +
 	"transferee\x18\x01 \x01(\x04R\n" +
@@ -2510,7 +2510,7 @@ const file_cluster_proto_rawDesc = "" +
 	"\x13GetDiskUsageRequest\"\x14\n" +
 	"\x12GetNodeTimeRequest\"-\n" +
 	"\bNodeTime\x12!\n" +
-	"\ftimestamp_us\x18\x01 \x01(\x06R\vtimestampUs\"\xc3\x01\n" +
+	"\ftimestamp_us\x18\x01 \x01(\x06R\vtimestampUs\"\xc9\x01\n" +
 	"\vVolumeUsage\x12\x1d\n" +
 	"\n" +
 	"used_bytes\x18\x01 \x01(\x06R\tusedBytes\x12\x1f\n" +
@@ -2519,12 +2519,12 @@ const file_cluster_proto_rawDesc = "" +
 	"\x0eobserved_at_us\x18\x03 \x01(\x06R\fobservedAtUs\x12\"\n" +
 	"\rsample_age_ms\x18\x04 \x01(\x06R\vsampleAgeMs\x12\x14\n" +
 	"\x05valid\x18\x05 \x01(\bR\x05valid\x12\x14\n" +
-	"\x05error\x18\x06 \x01(\tR\x05error\"w\n" +
+	"\x05error\x18\x06 \x01(\tR\x05error:\x04\xd8\xd5\"\x01\"}\n" +
 	"\tDiskUsage\x123\n" +
 	"\n" +
 	"wal_volume\x18\x01 \x01(\v2\x14.cluster.VolumeUsageR\twalVolume\x125\n" +
 	"\vdata_volume\x18\x02 \x01(\v2\x14.cluster.VolumeUsageR\n" +
-	"dataVolume\"\x99\x01\n" +
+	"dataVolume:\x04\xd8\xd5\"\x01\"\x99\x01\n" +
 	"\x11AddLearnerRequest\x12\x17\n" +
 	"\anode_id\x18\x01 \x01(\x04R\x06nodeId\x12!\n" +
 	"\fraft_address\x18\x02 \x01(\tR\vraftAddress\x12'\n" +
@@ -2614,7 +2614,7 @@ const file_cluster_proto_rawDesc = "" +
 	"\x11IncrementalBackup\x12!.cluster.IncrementalBackupRequest\x1a\".cluster.IncrementalBackupResponse\"\x06\xd2\xd5\"\x02\x10\x0e\x12k\n" +
 	"\x14ListQueryCheckpoints\x12$.cluster.ListQueryCheckpointsRequest\x1a%.cluster.ListQueryCheckpointsResponse\"\x06\xd2\xd5\"\x02\x10\r\x12f\n" +
 	"\x16GetQueryCheckpointInfo\x12&.cluster.GetQueryCheckpointInfoRequest\x1a\x1c.cluster.QueryCheckpointInfo\"\x06\xd2\xd5\"\x02\x10\r\x12}\n" +
-	"\x1aGetQueryCheckpointSchedule\x12*.cluster.GetQueryCheckpointScheduleRequest\x1a+.cluster.GetQueryCheckpointScheduleResponse\"\x06\xd2\xd5\"\x02\x10\rB:Z8github.com/formancehq/ledger/v3/internal/proto/clusterpbb\x06proto3"
+	"\x1aGetQueryCheckpointSchedule\x12*.cluster.GetQueryCheckpointScheduleRequest\x1a+.cluster.GetQueryCheckpointScheduleResponse\"\x06\xd2\xd5\"\x02\x10\rB>\xe0\xd5\"\x01Z8github.com/formancehq/ledger/v3/internal/proto/clusterpbb\x06proto3"
 
 var (
 	file_cluster_proto_rawDescOnce sync.Once

@@ -8,13 +8,17 @@ permissions:
 
 jobs:
   # Filter before joining concurrency: unrelated labels must not cancel a
-  # requested image build. On other PR events, a persistent build-images label remains
-  # an opt-in, as it was in Default.
+  # requested image build. Perf labels also request the exact PR image; the
+  # privileged benchmark submission runs separately from trusted default-branch code.
   Build-PR-Image:
     if: >-
       github.event.pull_request.head.repo.full_name == github.repository &&
-      ((github.event.action == 'labeled' && github.event.label.name == 'build-images') ||
-       (github.event.action != 'labeled' && contains(github.event.pull_request.labels.*.name, 'build-images')))
+      ((github.event.action == 'labeled' &&
+        contains(fromJSON('["build-images", "perf-5m", "perf-10m"]'), github.event.label.name)) ||
+       (github.event.action != 'labeled' &&
+        (contains(github.event.pull_request.labels.*.name, 'build-images') ||
+         contains(github.event.pull_request.labels.*.name, 'perf-5m') ||
+         contains(github.event.pull_request.labels.*.name, 'perf-10m'))))
     concurrency:
       group: pr-image-publish-${{ github.event.pull_request.number }}
       cancel-in-progress: true
@@ -59,13 +63,17 @@ jobs:
           short=$(echo "${{ github.event.pull_request.head.sha }}" | cut -c1-7)
           tag="pr-${{ github.event.pull_request.number }}-${short}"
           image="${IMAGE_REPOSITORY}:${tag}"
+          build_image="${image}-run-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
           operator_image="${OPERATOR_IMAGE_REPOSITORY}:${tag}"
-          echo "tag=${tag}"     >> "$GITHUB_OUTPUT"
-          echo "image=${image}" >> "$GITHUB_OUTPUT"
-          echo "operator_image=${operator_image}" >> "$GITHUB_OUTPUT"
+          {
+            echo "tag=${tag}"
+            echo "image=${image}"
+            echo "build_image=${build_image}"
+            echo "operator_image=${operator_image}"
+          } >> "$GITHUB_OUTPUT"
       - name: Build and push Ledger PR image with GoReleaser
         run: >
-          nix develop .#ci --command just docker-build-pr '${{ steps.tag.outputs.image }}'
+          nix develop .#ci --command just docker-build-pr '${{ steps.tag.outputs.build_image }}'
         env:
           GORELEASER_KEY: ${{ secrets.GORELEASER_KEY }}
       - name: Build and push Ledger Operator PR image with GoReleaser
@@ -74,18 +82,25 @@ jobs:
         env:
           GORELEASER_KEY: ${{ secrets.GORELEASER_KEY }}
       - name: Summarize image digests
+        env:
+          image: ${{ steps.tag.outputs.image }}
+          build_image: ${{ steps.tag.outputs.build_image }}
+          operator_image: ${{ steps.tag.outputs.operator_image }}
         run: |
-          image='${{ steps.tag.outputs.image }}'
-          operator_image='${{ steps.tag.outputs.operator_image }}'
-          digest=$(docker buildx imagetools inspect "$image" --format '{{ .Manifest.Digest }}')
-          operator_digest=$(docker buildx imagetools inspect "$operator_image" --format '{{ .Manifest.Digest }}')
-          test -n "$digest"
-          test -n "$operator_digest"
+          nix develop .#perf --command bash -euo pipefail <<'IMAGES'
+          digest=$(docker buildx imagetools inspect "$build_image" --format '{{json .Manifest}}' | jq -er '.digest')
+          operator_digest=$(docker buildx imagetools inspect "$operator_image" --format '{{json .Manifest}}' | jq -er '.digest')
+          [[ "$digest" =~ ^sha256:[0-9a-f]{64}$ ]] || { echo 'Invalid Ledger image digest' >&2; exit 1; }
+          [[ "$operator_digest" =~ ^sha256:[0-9a-f]{64}$ ]] || { echo 'Invalid Operator image digest' >&2; exit 1; }
+          # Keep the existing human-facing PR tag; perf uses build_image directly.
+          docker buildx imagetools create --tag "$image" "$build_image@$digest"
           {
             echo "## PR docker images"
             echo ""
             echo "| Image | Digest |"
             echo "|---|---|"
             echo "| \`${image}\` | \`${digest}\` |"
+            echo "| \`${build_image}\` | \`${digest}\` |"
             echo "| \`${operator_image}\` | \`${operator_digest}\` |"
           } >> "$GITHUB_STEP_SUMMARY"
+          IMAGES

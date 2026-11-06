@@ -81,7 +81,7 @@ func (p *directProposer) Propose(_ context.Context, proposal *node.Proposal) (*f
 	}
 
 	// Simulate FSM: apply per-sink updates
-	for _, tu := range cmd.GetTechnicalUpdates() {
+	for _, tu := range cmd.GetBatch().GetTechnicalUpdates() {
 		es, ok := tu.GetKind().(*raftcmdpb.TechnicalUpdate_EventsSink)
 		if !ok {
 			continue

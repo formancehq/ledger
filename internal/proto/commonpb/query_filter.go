@@ -506,7 +506,8 @@ func marshalUintRange(field string, cond *UintCondition) (map[string]any, error)
 	if cond.GetParamMin() != "" {
 		clauses = append(clauses, kv(lowerOp(cond.GetMinExclusive()), field, paramValue(cond.GetParamMin())))
 	} else if cond.Min != nil {
-		// uint64 emitted as a decimal string to stay lossless above 2^53.
+		// uint64 emitted as a decimal string to preserve the unsigned type tag
+		// for metadata ranges and stay lossless above 2^53.
 		v, err := literalValue(strconv.FormatUint(cond.GetMin(), 10))
 		if err != nil {
 			return nil, err

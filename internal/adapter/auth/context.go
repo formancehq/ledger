@@ -23,13 +23,14 @@ func ClaimsFromContext(ctx context.Context) *oidc.AccessTokenClaims {
 
 type keyIDKey struct{}
 
-// WithKeyID returns a new context with the given JWT key ID (kid header) attached.
+// WithKeyID attaches the signing key ID from validated static credentials.
+// OIDC credentials must set an empty value so a JWT kid cannot replace their issuer.
 func WithKeyID(ctx context.Context, keyID string) context.Context {
 	return context.WithValue(ctx, keyIDKey{}, keyID)
 }
 
-// KeyIDFromContext extracts the JWT key ID from the context.
-// Returns an empty string if no key ID is present.
+// KeyIDFromContext extracts the validated static credential's signing key ID.
+// Returns an empty string for OIDC or when no static key ID is present.
 func KeyIDFromContext(ctx context.Context) string {
 	keyID, _ := ctx.Value(keyIDKey{}).(string)
 

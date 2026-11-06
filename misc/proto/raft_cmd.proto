@@ -122,7 +122,7 @@ message SystemScopedOrder {
     DeleteQueryCheckpointOrder delete_query_checkpoint = 8;
     SetQueryCheckpointScheduleOrder set_query_checkpoint_schedule = 9;
     DeleteQueryCheckpointScheduleOrder delete_query_checkpoint_schedule = 10;
-    SetClusterPolicyOrder set_cluster_policy = 11;
+    SetClusterPolicyOrder set_cluster_policy = 11 [deprecated = true];
   }
 }
 
@@ -404,11 +404,25 @@ message DeleteLedgerMetadataOrder {
 // Raft Command Wrapper
 // ============================================================================
 
-// Proposal represents a batch of orders to be executed in the FSM (protobuf serialization format)
-// A proposal can contain multiple orders that will be executed atomically
+// ExecutionBatch groups atomic orders and their technical updates. Mixed
+// batches are restricted to mirror ingestion and its corresponding status.
+message ExecutionBatch {
+  repeated Order orders = 1;
+  repeated TechnicalUpdate technical_updates = 2;
+}
+
+// SetClusterPolicyProposal updates operational state without business audit or logs.
+// Historical SetClusterPolicyOrder remains readable.
+message SetClusterPolicyProposal {
+  common.ClusterPolicy policy = 1;
+}
+
+// Proposal separates execution batches from operational cluster-policy controls.
+// Producers write payloads directly after a full-stop upgrade. Legacy fields
+// remain readable for historical WAL replay; old binaries cannot read new writes.
 message Proposal {
   fixed64 id = 1;                    // Random proposal ID
-  repeated Order orders = 2;        // List of orders to execute atomically
+  repeated Order orders = 2 [deprecated = true]; // Legacy persisted encoding.
   common.Timestamp date = 3;        // Creation date in UTC
   ExecutionPlan execution_plan = 4;
   // predicted_index is the Raft log index predicted by the IndexTracker at
@@ -432,7 +446,14 @@ message Proposal {
   // mirror sync, cluster configuration, backup lifecycle, …) with its own
   // coverage_bits so the FSM applies per-update isolation, exactly like
   // Order.coverage_bits.
-  repeated TechnicalUpdate technical_updates = 9;
+  repeated TechnicalUpdate technical_updates = 9 [deprecated = true];
+
+  // Exclusive with legacy fields 2 and 9. Reading this envelope is supported;
+  // emitting it on Raft requires a separately validated cluster-wide cutover.
+  oneof payload {
+    ExecutionBatch batch = 11;
+    SetClusterPolicyProposal set_cluster_policy = 12;
+  }
 }
 
 // TechnicalUpdate is the per-update envelope that carries the coverage

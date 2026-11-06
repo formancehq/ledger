@@ -103,7 +103,7 @@ _e2e-run-tests:
     set -euo pipefail
     just _e2e-install-operator e2e
     chainsaw test --config e2e/chainsaw-test.yaml --test-dir e2e/tests/ \
-        --exclude-test-regex rolling-rc-upgrade --kube-context kind-ledger-e2e
+        --exclude-test-regex stopped-rc-upgrade --kube-context kind-ledger-e2e
     just _e2e-install-operator rc4-e2e
     chainsaw test --config e2e/chainsaw-test.yaml \
         --test-dir e2e/tests/rolling-rc-upgrade/ --kube-context kind-ledger-e2e

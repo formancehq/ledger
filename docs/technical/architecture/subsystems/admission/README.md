@@ -1,15 +1,15 @@
 # Admission
 
-The admission pipeline (`internal/application/admission`) is the gateway every write request goes through before reaching the FSM. It authenticates the request, validates signatures, converts external requests into internal orders, preloads dependent state, and proposes the resulting command into Raft.
+Admission (`internal/application/admission`) prepares Raft proposals. Client `Apply` requests become audited execution batches after signature validation, order conversion, and preload. The internal cluster-policy reconciler creates a separate operational-control proposal with no orders. Both forms share caller attribution, write gates, guarded submission, and result handling.
 
 ## Documents
 
 | Document | Description |
 |----------|-------------|
 | [pipeline.md](pipeline.md) | End-to-end pipeline from gRPC request to Raft proposal: gate, signature, order conversion, numscript, preload, proposal guard, predicted-index trick. |
-| [signing.md](signing.md) | Ed25519 request and response signing — keys, lifecycle, cross-language constraint, audit-chain propagation, replay nuance. |
+| [signing.md](signing.md) | Ed25519 request and response signing — keys, lifecycle, HTTP transaction envelope binding, cross-language byte preservation, audit-chain propagation, replay nuance. |
 | [validation.md](validation.md) | Structural validation (including HTTP mirror URLs before creation) vs behavioural validation (FSM, audit-bound). Reserved ledger names and shared sentinels. |
-| [idempotency.md](idempotency.md) | Idempotency key mechanism, hash-based conflict detection, and TTL eviction. |
+| [idempotency.md](idempotency.md) | Idempotency key mechanism, hash-based conflict detection, TTL eviction, and FSM replay and audited refusals after metadata policy tightening. |
 | [metadata-limits.md](metadata-limits.md) | Metadata size contract — the ceilings, how they are measured, where they are enforced (admission and FSM), and the replicated configuration. |
 | [admission-cache-horizon.md](admission-cache-horizon.md) | Rejecting proposals when the predicted apply-time generation is ≥ 2 ahead of the FSM's current generation. |
 

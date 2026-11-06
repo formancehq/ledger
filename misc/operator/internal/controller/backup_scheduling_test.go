@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
@@ -41,6 +42,7 @@ func newBackupSchedulingFixture(t *testing.T) *backupSchedulingFixture {
 		},
 	}
 	c := fake.NewClientBuilder().WithScheme(scheme).
+		WithIndex(&ledgerv1alpha1.BackupRun{}, backupRunParentField, backupRunParentIndex).
 		WithStatusSubresource(&ledgerv1alpha1.Backup{}, &ledgerv1alpha1.BackupRun{}).
 		WithObjects(backup, &ledgerv1alpha1.Cluster{ObjectMeta: metav1.ObjectMeta{Name: "ledger", Namespace: "test"}}).Build()
 
@@ -381,6 +383,72 @@ func TestBackupScheduling_ManualRunAdvancesCursor(t *testing.T) {
 	}
 }
 
+func TestBackupScheduling_ManualAssociationUsesSpec(t *testing.T) {
+	t.Parallel()
+	for _, label := range []string{"", "another-backup"} {
+		t.Run("label="+label, func(t *testing.T) {
+			t.Parallel()
+			f := newBackupSchedulingFixture(t)
+			now := time.Date(2026, 9, 10, 3, 0, 0, 0, time.UTC)
+			backup := f.backup(t)
+			backup.Spec.Schedule = ledgerv1alpha1.BackupSchedule{Incremental: "CRON_TZ=UTC 0 4 * * *"}
+			require.NoError(t, f.client.Update(t.Context(), backup))
+			manual := &ledgerv1alpha1.BackupRun{
+				ObjectMeta: metav1.ObjectMeta{Name: "manual", Namespace: f.key.Namespace},
+				Spec:       ledgerv1alpha1.BackupRunSpec{BackupRef: f.key.Name, Type: ledgerv1alpha1.BackupRunTypeFull},
+			}
+			if label != "" {
+				manual.Labels = map[string]string{ledgerv1alpha1.LabelBackup: label}
+			}
+			require.NoError(t, f.client.Create(t.Context(), manual))
+			f.complete(t, *manual, ledgerv1alpha1.BackupRunPhaseSucceeded, now)
+			f.reconcile(t, now)
+			backup = f.backup(t)
+			require.NotNil(t, backup.Status.LastFullBackup, "manual full result must enable incremental scheduling")
+			require.EqualValues(t, 7, backup.Status.LastFullBackup.FilesUploaded)
+			require.NotNil(t, backup.Status.LastFullRunCompletionTime)
+			require.True(t, now.Equal(backup.Status.LastFullRunCompletionTime.Time))
+			require.NotNil(t, backup.Status.NextIncrementalBackupTime)
+			var retained ledgerv1alpha1.BackupRun
+			err := f.client.Get(t.Context(), client.ObjectKeyFromObject(manual), &retained)
+			require.True(t, apierrors.IsNotFound(err), "zero retention must prune the accounted manual run: %v", err)
+		})
+	}
+}
+
+func TestBackupScheduling_AssociationIgnoresOtherParentsAndNamespaces(t *testing.T) {
+	t.Parallel()
+	for _, different := range []string{"parent", "namespace"} {
+		t.Run(different, func(t *testing.T) {
+			t.Parallel()
+			f := newBackupSchedulingFixture(t)
+			now := time.Date(2026, 9, 10, 3, 0, 0, 0, time.UTC)
+			unrelated := &ledgerv1alpha1.BackupRun{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "unrelated", Namespace: f.key.Namespace,
+					Labels: map[string]string{ledgerv1alpha1.LabelBackup: f.key.Name},
+				},
+				Spec: ledgerv1alpha1.BackupRunSpec{BackupRef: f.key.Name, Type: ledgerv1alpha1.BackupRunTypeFull},
+			}
+			if different == "parent" {
+				unrelated.Spec.BackupRef = "another-backup"
+			} else {
+				unrelated.Namespace = "another-namespace"
+			}
+			require.NoError(t, f.client.Create(t.Context(), unrelated))
+			f.complete(t, *unrelated, ledgerv1alpha1.BackupRunPhaseSucceeded, now)
+			f.reconcile(t, now)
+			backup := f.backup(t)
+			require.Nil(t, backup.Status.LastFullBackup, "unrelated result must not transfer through a label")
+			require.Nil(t, backup.Status.LastFullRunCompletionTime)
+			require.NoError(t, f.client.Get(t.Context(), client.ObjectKeyFromObject(unrelated), unrelated), "unrelated run must not be pruned")
+			var runs ledgerv1alpha1.BackupRunList
+			require.NoError(t, f.client.List(t.Context(), &runs))
+			require.Len(t, runs.Items, 2, "parent must schedule its own first run")
+		})
+	}
+}
+
 func TestBackupScheduling_StaleChildCacheDoesNotRewindSummaries(t *testing.T) {
 	t.Parallel()
 	for _, runType := range []ledgerv1alpha1.BackupRunType{ledgerv1alpha1.BackupRunTypeFull, ledgerv1alpha1.BackupRunTypeIncremental} {
@@ -398,7 +466,7 @@ func TestBackupScheduling_StaleChildCacheDoesNotRewindSummaries(t *testing.T) {
 			require.NoError(t, f.client.Status().Update(context.Background(), backup))
 			stale := ledgerv1alpha1.BackupRun{
 				ObjectMeta: metav1.ObjectMeta{Name: "already-pruned", Namespace: f.key.Namespace},
-				Spec:       ledgerv1alpha1.BackupRunSpec{Type: runType},
+				Spec:       ledgerv1alpha1.BackupRunSpec{BackupRef: f.key.Name, Type: runType},
 				Status: ledgerv1alpha1.BackupRunStatus{Phase: ledgerv1alpha1.BackupRunPhaseSucceeded, CompletionTime: &older,
 					Full:        &ledgerv1alpha1.FullBackupStatus{Time: &older, FilesUploaded: 1},
 					Incremental: &ledgerv1alpha1.IncrementalBackupStatus{Time: &older}},

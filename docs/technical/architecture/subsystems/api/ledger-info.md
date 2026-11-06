@@ -23,13 +23,9 @@ the same REST segment discriminators as account-type reads: `regex`, `uuid`,
 
 Mirror progress always contains `state` (`SYNCING` or `FOLLOWING`), `cursor`,
 `sourceLogCount` and `remainingLogs`, including zero values. Each counter is a
-canonical unsigned decimal JSON string, described by OpenAPI as `string` with
-`format: bigint`. This preserves all uint64 values while generated TypeScript
-clients expose native bigint values. The numeric alternative (`integer/bigint`)
-generated a TypeScript number and silently rounded 2^53+1 and uint64 maximum in
-an operation-level Speakeasy experiment. Ordinary JSON.parse consumers of the
-string representation also remain exact. Clients using JSON.stringify on a
-decoded native bigint must explicitly convert it to a decimal string first.
+JSON number containing the canonical unsigned decimal value. Clients must use
+lossless number handling when values can exceed 2^53; ordinary JavaScript
+`JSON.parse` is not sufficient for the full uint64 range.
 
 Read configuration uses `ledgerName` and exactly one nested `http` or `postgres`
 source, with optional `batchSize`, `rewriteRules` and `assetMappings`. HTTP sources include nested
@@ -44,7 +40,7 @@ as the empty string. This applies both to `rewriteAddress.replacement` and each
 `setAccountMetadataFromAddress.replacements` entry. Empty literal oneof values
 remain explicit `value: ""`; absent sources mean the default empty literal.
 Each `assetMappings` entry reads as `{sourceAsset, asset, color}` in creation
-order. protojson omits an empty `color`, which decodes as the uncolored bucket.
+order. An empty `color` is the uncolored bucket.
 
 Marshal failures propagate. Get buffers with `writeOKChecked`; list buffers with `writePageOK` before
 writing success headers so invalid values return a sanitized HTTP 500 instead
@@ -90,7 +86,8 @@ consumed mirror adds three point reads, including rows outside the returned page
 v2 has no mirror-progress counterpart. Its stats/log-ID JSON uses numbers with
 `integer/int64` or `integer/bigint` schemas; the Go SDK maps bigint to big.Int.
 That schema alone does not guarantee lossless TypeScript decoding. The v3
-mirror-specific counter strings deliberately differ for precision. Existing
+mirror-specific counters are JSON numbers; clients must use lossless integer
+parsing when values may exceed JavaScript's safe-integer range. Existing
 REST camelCase properties, timestamps, metadata and envelopes are preserved.
 
 Codec regressions cover defaults, timestamps, typed metadata/schema, segment

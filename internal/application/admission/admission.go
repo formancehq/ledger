@@ -486,8 +486,8 @@ func (a *Admission) recordPhaseOnExit(ctx context.Context, hist metric.Float64Hi
 // 4. For volumes not guaranteed in cache, load base values from store at B(nextIndex)
 // 5. Propose command with Preload containing base values.
 func (a *Admission) Admit(ctx context.Context, req *servicepb.ApplyRequest) (*domain.ApplyResult, error) {
-	return a.admit(ctx, func(ctx context.Context) (*admissionPlan, error) {
-		return a.buildApplyAdmissionPlan(ctx, req)
+	return a.admit(ctx, func(ctx context.Context, caller *commonpb.CallerSnapshot) (*preparedAdmission, error) {
+		return a.prepareExecutionBatch(ctx, caller, req)
 	})
 }
 
@@ -498,61 +498,58 @@ func (a *Admission) AdmitClusterPolicy(ctx context.Context, policy *commonpb.Clu
 		return nil, errors.New("cluster policy must not be nil")
 	}
 
-	return a.admit(ctx, func(ctx context.Context) (*admissionPlan, error) {
-		return a.buildClusterPolicyAdmissionPlan(policy), nil
+	return a.admit(ctx, func(ctx context.Context, caller *commonpb.CallerSnapshot) (*preparedAdmission, error) {
+		return a.prepareClusterPolicy(ctx, caller, policy)
 	})
 }
 
-type admissionPlan struct {
-	key                   string
-	sig                   *signaturepb.SignedApplyBatch
-	allowInMaintenance    bool
-	businessBatch         bool
-	checkAfterMaintenance func() error
-	buildOrders           func(context.Context) ([]*raftcmdpb.Order, *bulkOverlay, error)
+type preparedAdmission struct {
+	command *raftcmdpb.Proposal
+	build   *plan.BuildResult
+	orders  []*raftcmdpb.Order
 }
 
-func (a *Admission) buildApplyAdmissionPlan(ctx context.Context, req *servicepb.ApplyRequest) (*admissionPlan, error) {
-	ctx, sigSpan := tracer.Start(ctx, "admission.verify_signatures")
-	defer sigSpan.End()
-
-	resolveBatchStart := time.Now()
-	batch, err := a.resolveBatch(ctx, req)
-	a.resolveBatchDurationHistogram.Record(ctx, time.Since(resolveBatchStart).Seconds())
+func (a *Admission) prepareExecutionBatch(ctx context.Context, caller *commonpb.CallerSnapshot, req *servicepb.ApplyRequest) (*preparedAdmission, error) {
+	batch, err := a.prepareExecutionBatchAdmission(ctx, req)
 	if err != nil {
 		return nil, err
 	}
 
-	return &admissionPlan{
-		key:                batch.key,
-		sig:                batch.sig,
-		allowInMaintenance: allRequestsAreMaintenanceMode(batch.requests),
-		businessBatch:      true,
-		checkAfterMaintenance: func() error {
-			return a.checkQueryCheckpointProjectionReady(batch.requests)
-		},
-		buildOrders: func(ctx context.Context) ([]*raftcmdpb.Order, *bulkOverlay, error) {
-			return a.requestsToOrders(ctx, batch.requests, batch.sig)
-		},
-	}, nil
-}
-
-func (a *Admission) buildClusterPolicyAdmissionPlan(policy *commonpb.ClusterPolicy) *admissionPlan {
-	return &admissionPlan{
-		buildOrders: func(context.Context) ([]*raftcmdpb.Order, *bulkOverlay, error) {
-			order := &raftcmdpb.Order{}
-			wrapSystemScoped(order, &raftcmdpb.SystemScopedOrder{
-				Payload: &raftcmdpb.SystemScopedOrder_SetClusterPolicy{
-					SetClusterPolicy: &raftcmdpb.SetClusterPolicyOrder{Policy: policy},
-				},
-			})
-
-			return []*raftcmdpb.Order{order}, newBulkOverlay(), nil
-		},
+	orders, needs, perOrder, err := a.prepareBatchOrders(ctx, batch)
+	prepared := &preparedAdmission{orders: orders}
+	if err != nil {
+		return prepared, err
 	}
+
+	prepared.command, prepared.build, err = a.buildExecutionBatchPreload(ctx, caller, batch, orders, needs, perOrder)
+
+	return prepared, err
 }
 
-func (a *Admission) admit(ctx context.Context, buildPlan func(context.Context) (*admissionPlan, error)) (response *domain.ApplyResult, err error) {
+func (a *Admission) prepareClusterPolicy(ctx context.Context, caller *commonpb.CallerSnapshot, policy *commonpb.ClusterPolicy) (*preparedAdmission, error) {
+	// Policy reconciliation is operational configuration, so maintenance does
+	// not stop it. The drain fence in checkAdmissionMaintenance still does.
+	if err := a.checkAdmissionMaintenance(true); err != nil {
+		return nil, err
+	}
+
+	command := commands.NewCommand()
+	command.CallerSnapshot = caller
+	command.Payload = &raftcmdpb.Proposal_SetClusterPolicy{
+		SetClusterPolicy: &raftcmdpb.SetClusterPolicyProposal{Policy: policy},
+	}
+
+	// A policy control has no orders or FSM cache reads. It still receives an
+	// empty execution plan so the shared guarded proposer can stamp its index.
+	build, err := a.buildPreload(ctx, command, plan.NewCoverage(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return &preparedAdmission{command: command, build: build}, nil
+}
+
+func (a *Admission) admit(ctx context.Context, prepare func(context.Context, *commonpb.CallerSnapshot) (*preparedAdmission, error)) (response *domain.ApplyResult, err error) {
 	caller, err := auth.ResolveCallerAttribution(ctx)
 	if err != nil {
 		invalid, ok := errors.AsType[*domain.ErrInvalidCallerAttribution](err)
@@ -580,78 +577,77 @@ func (a *Admission) admit(ctx context.Context, buildPlan func(context.Context) (
 		a.commandDurationHistogram.Record(ctx, time.Since(start).Seconds())
 	}()
 
-	admPlan, err := a.prepareAdmission(ctx, buildPlan)
-	if err != nil {
-		return nil, err
-	}
-
-	orders, needs, perOrder, err := a.prepareOrders(ctx, admPlan)
-	if orders != nil {
+	prepared, err := prepare(ctx, caller.Snapshot())
+	if prepared != nil && prepared.orders != nil {
 		// Every built order shares the atomic batch outcome, including preparation failures.
-		defer a.recordActionOutcome(ctx, orders, &err)
+		defer a.recordActionOutcome(ctx, prepared.orders, &err)
 	}
 	if err != nil {
 		return nil, err
 	}
 
-	cmd, build, err := a.buildAdmissionPreload(ctx, caller.Snapshot(), admPlan, orders, needs, perOrder)
-	if err != nil {
-		return nil, err
-	}
-
-	fsmFuture, cleanup, err := a.proposeAdmission(ctx, cmd, build)
+	fsmFuture, cleanup, err := a.proposeAdmission(ctx, prepared.command, prepared.build)
 	if err != nil {
 		return nil, err
 	}
 	defer cleanup()
 
-	return a.resolveAdmissionResult(ctx, cmd, fsmFuture)
+	return a.resolveAdmissionResult(ctx, prepared.command, fsmFuture)
 }
 
-func (a *Admission) prepareAdmission(ctx context.Context, buildPlan func(context.Context) (*admissionPlan, error)) (*admissionPlan, error) {
-	admPlan, err := buildPlan(ctx)
+func (a *Admission) prepareExecutionBatchAdmission(ctx context.Context, req *servicepb.ApplyRequest) (verifiedBatch, error) {
+	batch, err := a.resolveExecutionBatch(ctx, req)
 	if err != nil {
-		return nil, err
+		return verifiedBatch{}, err
 	}
-	if _, index := a.sharedState.Drain(); index != 0 {
-		return nil, ErrMaintenanceMode
-	}
-
-	// Check maintenance mode: block all requests except SetMaintenanceMode.
-	if a.sharedState.MaintenanceMode() && !admPlan.allowInMaintenance {
-		return nil, ErrMaintenanceMode
+	if err := a.checkAdmissionMaintenance(allRequestsAreMaintenanceMode(batch.requests)); err != nil {
+		return verifiedBatch{}, err
 	}
 
-	if admPlan.checkAfterMaintenance != nil {
-		if err := admPlan.checkAfterMaintenance(); err != nil {
-			return nil, err
-		}
+	if err := a.checkQueryCheckpointProjectionReady(batch.requests); err != nil {
+		return verifiedBatch{}, err
 	}
 
-	// Every audited request, including an internal cluster-policy proposal, requires the one-time
-	// replicated key. Waiting here prevents an early client request from
-	// committing an unhashable order while the leader initializes the key.
+	// Only audited execution batches need the replicated audit key and policy.
 	if err := a.waitAuditKeyReady(ctx); err != nil {
-		return nil, err
+		return verifiedBatch{}, err
+	}
+	if err := a.waitClusterPolicyReady(ctx); err != nil {
+		return verifiedBatch{}, err
 	}
 
-	// Hold business writes until the replicated cluster policy is committed. The
-	// policy is the cluster-wide configuration a business write applies against —
-	// it carries the query-checkpoint limit and idempotency TTL — so a write
-	// admitted before the first revision would apply against an empty policy. A
-	// fresh leader's reconciler commits the policy within a reconcile interval, so
-	// this blocks only during the startup window. Internal cluster-policy
-	// proposals are exempt so the reconciler can establish the policy.
-	if admPlan.businessBatch {
-		if err := a.waitClusterPolicyReady(ctx); err != nil {
-			return nil, err
-		}
-	}
-
-	return admPlan, nil
+	return batch, nil
 }
 
-func (a *Admission) prepareOrders(ctx context.Context, admPlan *admissionPlan) ([]*raftcmdpb.Order, *plan.Coverage, []*plan.Coverage, error) {
+func (a *Admission) resolveExecutionBatch(ctx context.Context, req *servicepb.ApplyRequest) (verifiedBatch, error) {
+	ctx, sigSpan := tracer.Start(ctx, "admission.verify_signatures")
+	defer sigSpan.End()
+
+	resolveBatchStart := time.Now()
+	batch, err := a.resolveBatch(ctx, req)
+	a.resolveBatchDurationHistogram.Record(ctx, time.Since(resolveBatchStart).Seconds())
+	if err != nil {
+		return verifiedBatch{}, err
+	}
+
+	return batch, nil
+}
+
+func (a *Admission) checkAdmissionMaintenance(allowInMaintenance bool) error {
+	if _, index := a.sharedState.Drain(); index != 0 {
+		return ErrMaintenanceMode
+	}
+
+	// Maintenance blocks business requests; SetMaintenanceMode batches and
+	// internal policy reconciliation are allowed by their callers.
+	if a.sharedState.MaintenanceMode() && !allowInMaintenance {
+		return ErrMaintenanceMode
+	}
+
+	return nil
+}
+
+func (a *Admission) prepareBatchOrders(ctx context.Context, batch verifiedBatch) ([]*raftcmdpb.Order, *plan.Coverage, []*plan.Coverage, error) {
 	// Convert requests to orders. Idempotency and signature are batch-level now
 	// (carried on the Proposal), so orders no longer hold either.
 	//
@@ -662,30 +658,14 @@ func (a *Admission) prepareOrders(ctx context.Context, admPlan *admissionPlan) (
 	stopOrdersPrep := a.recordPhaseOnExit(ctx, a.ordersPreparationDurationHistogram)
 	defer stopOrdersPrep()
 
-	orders, overlay, err := admPlan.buildOrders(ctx)
+	orders, overlay, err := a.requestsToOrders(ctx, batch.requests, batch.sig)
 	if err != nil {
 		return nil, nil, nil, fmt.Errorf("converting requests to orders: %w", err)
 	}
 
-	// Enforce the metadata size contract over the whole command. It runs here,
-	// after the orders exist, because the per-command ceiling spans every order
-	// in the batch — the atomic, signed unit — not one request at a time.
-	//
-	// The ceilings live in the committed cluster policy, so this reads the same
-	// numbers the FSM will read for Numscript-produced metadata. A
-	// non-business internal cluster-policy proposal is exempt: it carries no
-	// business metadata and must be able to commit the very policy these
-	// ceilings come from.
-	if admPlan.businessBatch {
-		policy, policyErr := query.ReadClusterPolicy(a.store)
-		if policyErr != nil {
-			return nil, nil, nil, fmt.Errorf("reading cluster policy for metadata limits: %w", policyErr)
-		}
-
-		if err := validateCommandMetadata(orders, domain.MetadataLimitsFromPolicy(policy)); err != nil {
-			return nil, nil, nil, err
-		}
-	}
+	// Metadata shape was checked during conversion. Replicated metadata policy
+	// belongs to the FSM, after idempotency lookup: fresh refusals are audited,
+	// while retries retain their original outcome even after policy tightening.
 
 	// Step 1: Extract preload needs from orders (excludes script-dependent needs)
 	needs, perOrder, err := a.extractPreloadNeeds(ctx, orders, overlay)
@@ -697,9 +677,9 @@ func (a *Admission) prepareOrders(ctx context.Context, admPlan *admissionPlan) (
 	// rides on the first order's needs — idempotency keys are not coverage-gated
 	// (machine.Preload installs them unconditionally), so any order carries it
 	// and the FSM's per-proposal dedup check finds it. Empty key = no idempotency.
-	if admPlan.key != "" && len(orders) > 0 {
-		needs.AddIdempotencyKey(admPlan.key)
-		perOrder[0].AddIdempotencyKey(admPlan.key)
+	if batch.key != "" && len(orders) > 0 {
+		needs.AddIdempotencyKey(batch.key)
+		perOrder[0].AddIdempotencyKey(batch.key)
 	}
 
 	// Orders-preparation phase ends here on the success path; record now so the
@@ -716,7 +696,7 @@ func (a *Admission) prepareOrders(ctx context.Context, admPlan *admissionPlan) (
 	stopScripts := a.recordPhaseOnExit(ctx, a.scriptsDurationHistogram)
 	defer stopScripts()
 
-	if err := a.resolveScriptsAndEnrichNeeds(ctx, orders, overlay, needs, perOrder, admPlan.key != ""); err != nil {
+	if err := a.resolveScriptsAndEnrichNeeds(ctx, orders, overlay, needs, perOrder, batch.key != ""); err != nil {
 		return orders, nil, nil, err
 	}
 	stopScripts()
@@ -724,20 +704,14 @@ func (a *Admission) prepareOrders(ctx context.Context, admPlan *admissionPlan) (
 	return orders, needs, perOrder, nil
 }
 
-func (a *Admission) buildAdmissionPreload(ctx context.Context, caller *commonpb.CallerSnapshot, admPlan *admissionPlan, orders []*raftcmdpb.Order, needs *plan.Coverage, perOrder []*plan.Coverage) (*raftcmdpb.Proposal, *plan.BuildResult, error) {
+func (a *Admission) buildExecutionBatchPreload(ctx context.Context, caller *commonpb.CallerSnapshot, batch verifiedBatch, orders []*raftcmdpb.Order, needs *plan.Coverage, perOrder []*plan.Coverage) (*raftcmdpb.Proposal, *plan.BuildResult, error) {
 	// Step 3-5: Build preloads via shared Builder (no lock)
 	cmd := commands.NewCommand(orders...)
 	cmd.CallerSnapshot = caller
-	if admPlan.key != "" {
-		cmd.Idempotency = &commonpb.Idempotency{Key: admPlan.key}
+	if batch.key != "" {
+		cmd.Idempotency = &commonpb.Idempotency{Key: batch.key}
 	}
-	cmd.Signature = admPlan.sig
-
-	ctx, preloadSpan := tracer.Start(ctx, "admission.preload",
-		trace.WithAttributes(
-			attribute.Int("preload.attributes_total", needs.AttributeKeysCount()),
-			attribute.Int("preload.idempotency_keys", len(needs.IdempotencyKeys)),
-		))
+	cmd.Signature = batch.sig
 
 	// Build the per-order WriteOperation slice. Each operation carries
 	// its Coverage (for preload aggregation) and a Target pointer that
@@ -745,7 +719,7 @@ func (a *Admission) buildAdmissionPreload(ctx context.Context, caller *commonpb.
 	// pointer over closure avoids one heap alloc per order (the
 	// captured index).
 	operations := make([]plan.WriteOperation, len(orders))
-	cmdOrders := cmd.GetOrders()
+	cmdOrders := cmd.GetBatch().GetOrders()
 	for i := range orders {
 		// coverage_bits lives on OrderTechnical, which may already exist from the
 		// inputs-resolution-hash pass above; orderTechnical is nil-safe either
@@ -755,18 +729,28 @@ func (a *Admission) buildAdmissionPreload(ctx context.Context, caller *commonpb.
 			Target:   &orderTechnical(cmdOrders[i]).CoverageBits,
 		}
 	}
+	build, err := a.buildPreload(ctx, cmd, needs, operations)
+
+	return cmd, build, err
+}
+
+func (a *Admission) buildPreload(ctx context.Context, cmd *raftcmdpb.Proposal, needs *plan.Coverage, operations []plan.WriteOperation) (*plan.BuildResult, error) {
+	ctx, preloadSpan := tracer.Start(ctx, "admission.preload",
+		trace.WithAttributes(
+			attribute.Int("preload.attributes_total", needs.AttributeKeysCount()),
+			attribute.Int("preload.idempotency_keys", len(needs.IdempotencyKeys)),
+		))
 
 	preloadStart := time.Now()
-	// extractPreloadNeeds already built the aggregate while iterating
-	// orders; hand it to Build directly instead of paying a second
-	// Merge pass over per-order Coverages.
+	// The producer supplies the aggregate coverage and per-operation targets.
+	// A policy control supplies empty coverage and no operations.
 	build, err := a.builder.Build(needs, operations)
 	a.preloadDurationHistogram.Record(ctx, time.Since(preloadStart).Seconds())
 	if err != nil {
 		preloadSpan.End()
 		build.ReleaseLoaders()
 
-		return nil, nil, fmt.Errorf("building preloads: %w", err)
+		return nil, fmt.Errorf("building preloads: %w", err)
 	}
 
 	totalKeys := int64(needs.TotalKeys())
@@ -788,7 +772,7 @@ func (a *Admission) buildAdmissionPreload(ctx context.Context, caller *commonpb.
 
 	preloadSpan.End()
 
-	return cmd, build, nil
+	return build, nil
 }
 
 func (a *Admission) proposeAdmission(ctx context.Context, cmd *raftcmdpb.Proposal, build *plan.BuildResult) (*futures.Future[state.ApplyResult], func(), error) {
@@ -968,6 +952,10 @@ func (a *Admission) resolveAdmissionResult(ctx context.Context, cmd *raftcmdpb.P
 		log, fetchErr := query.ReadLogBySequence(ctx, handle, refSeq)
 		if fetchErr != nil {
 			return nil, fmt.Errorf("fetching referenced log %d for idempotent response: %w", refSeq, fetchErr)
+		}
+
+		if log == nil {
+			return nil, fmt.Errorf("invariant: idempotent response references missing log %d", refSeq)
 		}
 
 		logs[i] = log

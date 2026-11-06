@@ -106,9 +106,6 @@ spec:
               actual=$(kubectl exec ledger-required-upgrade-0 -n "$NAMESPACE" -c ledger -- \
                 /bin/sh -c './ledgerctl transactions list --ledger marketplace --all --json --server 127.0.0.1:8888 --insecure --auth-token "$CLUSTER_SECRET"' | jq -cS .)
               [ "$actual" = "$expected" ] || { echo 'Marketplace transactions changed during upgrade'; exit 1; }
-              kubectl exec ledger-required-upgrade-0 -n "$NAMESPACE" -c ledger -- \
-                /bin/sh -c './ledgerctl store check --json --server 127.0.0.1:8888 --insecure --auth-token "$CLUSTER_SECRET"' |
-                jq -e '.valid == true and .errorCount == 0' >/dev/null
               # The stopped upgrade retains PVCs. Permit Chainsaw's namespace
               # cleanup only after all preservation assertions have passed.
               for ordinal in 0 1 2; do

@@ -3,14 +3,16 @@
 Kubernetes operator for deploying and managing high-availability [Formance Ledger](https://github.com/formancehq/ledger) instances using Raft consensus.
 
 The embedded operator can require a complete StatefulSet stop when an image
-upgrade crosses a listed release boundary. rc.4 is listed, so rc.3-to-rc.4 is
-a stopped upgrade; rc.2-to-rc.3 remains rolling. It uses the drain
-barrier available from rc.2 to stop writes and wait for durable replication,
+upgrade crosses a listed release boundary. RC.3 to RC.4 crosses a mandatory
+boundary because RC.3 cannot execute native proposal payloads and encodes
+mirror asset mappings differently. The operator
+uses the drain barrier available from RC.3 to stop writes and wait for durable replication,
 retains the existing PVCs, waits for the old StatefulSet and Pods to disappear,
-then recreates the StatefulSet with the requested image. The rc.1-to-rc.2
-transition still requires the manual maintenance procedure. See the
-[server upgrade procedure](../../docs/ops/upgrades.md#operator-required-stopped-restart)
-for preflight, recovery and rollback limits.
+then recreates the StatefulSet with the requested image. See the
+[stopped restart procedure](../../docs/ops/upgrades.md#operator-required-stopped-restart)
+for preflight, recovery and rollback limits. The rc.1-to-rc.2 transition
+uses a [maintenance-barrier rolling procedure](../../docs/ops/upgrades.md#account-metadata-address-validation):
+writes pause while voters are replaced one at a time. RC.2 to RC.3 remains rolling.
 
 ## Overview
 
@@ -231,6 +233,13 @@ selected interval at startup, including values supplied through that override.
 
 ## Backup scheduling
 
+Manual `BackupRun` resources use `spec.backupRef` to identify their parent in
+the same namespace. The reference is immutable from creation; create a new run
+to select another parent. Follow the [admission upgrade procedure](../../docs/technical/architecture/subsystems/backup/operator-scheduling.md#upgrading-parent-admission)
+for existing runs before updating CRDs. Association labels and owner references are not required
+for parent accounting, history retention or sibling exclusion. Events from
+unowned runs also reconcile their referenced parent.
+
 Backup schedules preserve their completion cursors in `Backup.status` before
 pruning run history. Zero retention therefore preserves scheduling across
 operator restarts. See the [scheduling contract](../../docs/technical/architecture/subsystems/backup/operator-scheduling.md)
@@ -255,8 +264,9 @@ for runtime delivery, missing-key behavior and ambient authentication.
 
 ### Prerequisites
 
-- Kubernetes cluster with `StatefulSetAutoDeletePVC` enabled (default since
-  1.27, stable since 1.32); a tested minimum version is not established.
+- Kubernetes 1.32 or later, with `StatefulSetAutoDeletePVC` enabled.
+  BackupRun parent queries require CRD `selectableFields`; install the updated
+  CRDs before starting the operator.
   PVC/PV deletion protection needs `ValidatingAdmissionPolicy` (stable since
   1.30); see [Volume Deletion Protection](#volume-deletion-protection).
 - Helm 3

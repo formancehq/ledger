@@ -27,13 +27,13 @@ Outside a mandatory stopped boundary, when an RC image change also changes
 volume templates, the operator completes the RC rollout before recreating the
 StatefulSet for the volume change.
 Old and new voters must communicate and apply each committed entry identically
-while they coexist. The embedded operator requires a complete stop at a
-listed release boundary. `v3.0.0-rc.4` is listed: `rc.2` to `rc.3` remains a
-rolling upgrade, and `rc.3` to `rc.4` is an operator-required stopped restart,
-using the drain barrier available since `rc.2`. See
-[mirror asset mappings](#mirror-asset-mappings). RC adjacency remains mandatory.
-The `rc.1` to `rc.2` transition uses the separately validated maintenance-based
-procedure below.
+while they coexist. The embedded operator requires a complete stop at the
+`v3.0.0-rc.4` boundary because RC.3 cannot execute native proposal payloads
+and encodes [mirror asset mappings](#mirror-asset-mappings) differently.
+`rc.3` includes the drain barrier used for this upgrade. RC adjacency remains mandatory.
+The `rc.1` to `rc.2` transition rolls one voter at a time with a maintenance
+barrier that pauses writes; it does not stop the whole cluster.
+The `rc.2` to `rc.3` transition remains rolling.
 When the running version precedes a mandatory boundary, pin the target to a
 canonical version tag. Moving or non-canonical tags such as `latest` cannot
 prove whether the boundary is crossed, so the operator blocks the change.
@@ -67,17 +67,14 @@ projections. Document the upgrade procedure and rollback boundary in the
 release notes. Delay the release if the target cannot read or migrate the source
 state.
 
-The upgrade classes below describe existing procedures. An explicitly listed
-operator boundary selects a stopped restart for the affected RC; `rc.4` is
-listed, so `rc.2` to `rc.3` uses the rolling class and `rc.3` to `rc.4` the
-stopped class. Rebuild or
-restore applies only to the cases
-listed below.
+The upgrade classes below describe existing procedures. The operator boundary
+at `rc.4` selects a stopped restart from `rc.3`; rebuild or restore applies
+only to the cases listed below.
 
 | Class | When it applies | Procedure |
 |-------|-----------------|-----------|
-| Rolling | Default between adjacent RCs on the same release line that cross no listed operator boundary. | Restart followers one at a time, wait for each to catch up, transfer leadership to an upgraded voter, then restart the old leader. |
-| Operator-required stopped restart | An adjacent RC crossing a listed operator boundary, such as `rc.3` to `rc.4`. | Establish an operator-owned drain and verify its durable barrier on every member; retain the existing PVCs, delete the StatefulSet, wait until it and every old Pod are gone, then recreate it with the target image and the same claims. The cluster is unavailable throughout the stop. |
+| Rolling | Default between adjacent RCs on the same release line. | Restart followers one at a time, wait for each to catch up, transfer leadership to an upgraded voter, then restart the old leader. |
+| Operator-required stopped restart | An adjacent RC crossing a listed operator boundary; `rc.3` to `rc.4` crosses one. | Establish an operator-owned drain and verify its durable barrier on every member; retain the existing PVCs, delete the StatefulSet, wait until it and every old Pod are gone, then recreate it with the target image and the same claims. The cluster is unavailable throughout the stop. |
 | Coordinated restart | A separate compatibility line that cannot safely mix binaries. | Enable maintenance mode, wait for every voter to apply the maintenance barrier durably, stop every node, replace all binaries, then restart without a mixed-version window. Preserve or migrate the released data. |
 | Migrate or restore | A separate line with a changed persisted or backup format, or development state before the first RC. | Follow a tested migration or restore a backup supported by the target release. A wipe or external rebuild is permitted only for unsupported pre-RC development state. Verify the complete state before serving writes. |
 
@@ -185,7 +182,10 @@ is retained. Install a compatible Operator to resume reconciliation.
 
 ## Rolling Procedure
 
-Use this for RC updates after the mixed-version validation above passes:
+Use this only when the target release permits rolling upgrades and mixed-version
+validation passes. For RC.1 to RC.2, follow the
+[maintenance-barrier rolling procedure](#account-metadata-address-validation).
+For RC.3 to RC.4, use the [operator-required stopped restart](#operator-required-stopped-restart).
 
 1. Record the current leader and voter set with `ledgerctl cluster status`.
 2. Restart one follower on the target binary.
@@ -204,7 +204,36 @@ the separate
 [Cluster Configuration Updates](./cluster-operations.md#cluster-configuration-updates)
 procedure.
 
+## Metadata-limit replay recovery
+
+Upgraded leaders can recover a retained keyed outcome when a retry's original
+metadata exceeds a subsequently tightened committed policy. The retry must
+still pass authentication, signatures, structural validation and write-readiness
+gates. A matching live key returns the historical success or definitive
+failure; live different content returns conflict; absent or expired keys execute under the policy at apply and
+record any definitive metadata-limit refusal in the audit chain. Maintenance and drain still refuse writes.
+
+Public admission now forwards safely prepared requests to the existing FSM
+handlers instead of rejecting metadata policy locally. Fresh refusals, including
+unkeyed requests, are audited; a retained refusal still replays after policy is
+loosened. Replays replicate the ordinary business payload to the WAL without
+adding another audit entry. Transport caps remain the proposal-size backstop.
+This is an admission-only correction: old and new voters interpret committed
+entries identically. It changes no Raft, persisted, backup, audit or wire format,
+requires no data migration and keeps service protocol revision 40. During an
+otherwise supported rolling upgrade, a leader running the old binary may still
+return the limit rejection; transfer leadership to an upgraded voter to obtain
+the corrected recovery behavior. Clients should retain the original key and
+payload when recovering an ambiguous earlier attempt. The existing retention
+window and transport caps still apply; this adds no guarantee after expiry.
+See [the mechanism and cost boundary](../technical/architecture/subsystems/admission/idempotency.md#replay-after-metadata-limits-tighten).
+
 ## Account metadata address validation
+
+RC.1 to RC.2 uses the maintenance-barrier rolling procedure below: writes pause,
+but voters are replaced one at a time and quorum remains available. RC.2 to RC.3
+remains rolling. RC.3 to RC.4 uses the
+[operator-required stopped restart](#operator-required-stopped-restart).
 
 Upgrading from a binary with unordered transaction account-metadata address
 validation (including `v3.0.0-rc.1`) to deterministic smallest-address selection
@@ -213,10 +242,7 @@ with writes enabled is unsafe: an old voter may select a different typed
 failure, forking the authoritative audit hash. Admission on a new leader alone
 cannot protect an old leader or previously committed proposals.
 
-For `rc.1` to `rc.2`, use the maintenance-based coordinated procedure below;
-the published `rc.1` binary cannot participate in an operator-owned drain.
-The `rc.2` to `rc.3` upgrade is rolling; `rc.3` to `rc.4` uses the
-operator-required stopped restart.
+The published `rc.1` binary cannot participate in an operator-owned drain.
 
 1. With every voter still on the source binary, establish a healthy, consistent
    audit history and take a backup. Existing divergent history is an incident;
@@ -367,8 +393,8 @@ UPGRADE_TRANSITION=rc3-to-rc4 RELEASE_BRANCH=release/v3.0 just test-release-oper
 ```
 
 Run it against a release branch whose operator lists `v3.0.0-rc.4` as a
-mandatory stop boundary, which the mirror asset-mapping change requires. The target operator and Ledger are still built from one exact
-release-branch HEAD and tagged locally as rc.4; the harness publishes no tag
+mandatory stop boundary. The target operator and Ledger are still built from
+one exact release-branch HEAD and tagged locally as rc.4; the harness publishes no tag
 or image. This path requires the operator's drain barrier to advance past
 `Draining`, observes the StatefulSet and all old Pods absent before accepting
 any target Pod, and checks that the replacement StatefulSet has a new UID while
@@ -403,6 +429,22 @@ When persisted storage is compatible but mixed binaries are not:
 `ledgerctl upgrade` upgrades the `ledgerctl` client binary only. It does not
 upgrade Ledger servers or decide whether a server revision is storage- or
 wire-compatible.
+
+## Proposal payload cutover
+
+The RC.3 to RC.4 transition requires the operator-owned stopped restart above.
+Stop every old node before starting any target node, and keep the WAL and data
+volumes. The target reads historical entries and writes `ExecutionBatch` or
+`SetClusterPolicyProposal` directly. Existing snapshots, backups and audit
+history need no rewrite or backfill. Native policy controls persist operational
+state without business audit entries. Historical policy audits remain readable
+with unchanged hashes. Incremental backups preserve newer policy in a separate
+manifest snapshot, including policy-only changes. No capability flag enables
+this format.
+
+The first native payload appended to the WAL closes the rollback window for
+RC.3. Restarting RC.3 on that storage requires a separately validated recovery
+procedure. See the [proposal migration contract](../technical/architecture/subsystems/consensus/proposal-payloads.md).
 
 ## Change-specific notes
 

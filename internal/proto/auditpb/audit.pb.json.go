@@ -2,10 +2,10 @@ package auditpb
 
 import (
 	"encoding/hex"
+	jsonv2 "encoding/json/v2"
 	"fmt"
 	"reflect"
 
-	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
 
 	"github.com/formancehq/ledger/v3/internal/adapter/json"
@@ -22,10 +22,11 @@ import (
 // Timestamps reuse commonpb.Timestamp.MarshalJSON (RFC3339), keeping audit
 // timestamps identical to Log/Transaction timestamps on the wire. Sub-messages
 // that have no hand-written Go marshaler (CallerSnapshot, Idempotency,
-// SignedApplyBatch) and the ErrorReason enum are rendered via protojson, which
-// also emits camelCase field names and the enum's string form.
+// SignedApplyBatch) and the ErrorReason enum are rendered via the descriptor
+// JSON runtime, which emits camelCase field names and the enum's string form.
 
-// protoFieldJSON marshals a proto.Message field to json.RawValue using protojson,
+// protoFieldJSON marshals a proto.Message field to json.RawValue using the
+// descriptor JSON runtime,
 // preserving camelCase field names.
 //
 // A nil message — including a typed-nil pointer (e.g. a *CallerSnapshot that is
@@ -33,7 +34,7 @@ import (
 // marshal to "{}" and slip past the omitempty guard — yields (nil, nil): the
 // field is simply absent.
 //
-// A protojson failure is PROPAGATED, never swallowed. These fields
+// A JSON projection failure is PROPAGATED, never swallowed. These fields
 // (callerSnapshot, idempotency, signature) are chain-bound audit evidence; a
 // serialization defect must surface as a failed response, not a valid-looking
 // record with the field silently dropped (invariant #7: never silently skip a
@@ -47,7 +48,7 @@ func protoFieldJSON(msg proto.Message) (json.RawValue, error) {
 		return nil, nil
 	}
 
-	b, err := protojson.Marshal(msg)
+	b, err := jsonv2.Marshal(msg)
 	if err != nil {
 		return nil, err
 	}

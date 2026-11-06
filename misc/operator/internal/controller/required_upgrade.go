@@ -20,11 +20,10 @@ import (
 	ledgerv1alpha1 "github.com/formancehq/ledger/misc/operator/api/v1alpha1"
 )
 
-// Add a target here only after its release has been proven incompatible with
-// a rolling upgrade. RC adjacency is still checked by validateRCUpgrade.
-//
-// rc.4: voters before it encode mirror asset mappings differently in the
-// audited CreateLedger order.
+// rc.3 voters cannot apply proposal payloads, and voters before rc.4 encode
+// mirror asset mappings differently in the audited CreateLedger order. Stop
+// every rc.3 node before starting rc.4; RC adjacency is still checked by
+// validateRCUpgrade.
 var mandatoryStopVersions = []string{"v3.0.0-rc.4"}
 
 const requiredUpgradePoll = 5 * time.Second

@@ -41,7 +41,7 @@ lint:
     (cd tests/antithesis/workload && golangci-lint run --allow-parallel-runners --fix --build-tags enable_antithesis_sdk --timeout 5m)
 
 # Go modules kept tidy by `just tidy` (and checked by the Dirty CI job).
-tidy_modules := ". misc/operator tests/antithesis/workload"
+tidy_modules := ". misc/operator tests/antithesis/workload tests/perf"
 
 tidy:
     #!/usr/bin/env bash
@@ -55,8 +55,7 @@ tidy:
 # GOMODCACHE without modifying any file. CI runs this in Setup Env so every job
 # commits the full module set to the shared Namespace cache volume: the last
 # job to commit on a node decides what the next job forks, so modules only one
-# job needs would otherwise be lost. tests/perf is excluded because no CI job
-# builds it.
+# job needs would otherwise be lost.
 go-mod-download:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -112,6 +111,9 @@ image_repository := env_var_or_default("IMAGE_REPOSITORY", "ghcr.io/formancehq/l
 # to push to a different GHCR location. Default targets the canonical
 # `formancehq/ledger-operator` published image.
 operator_image_repository := env_var_or_default("OPERATOR_IMAGE_REPOSITORY", "ghcr.io/formancehq/ledger-operator")
+
+test-perf:
+    go -C tests/perf test -race ./...
 
 # Build the server application (light: no optional deps)
 build:
@@ -399,6 +401,7 @@ generate-proto:
     @cd tools/protoc-gen-skippable && go build -o ../../build/protoc-gen-skippable .
     @cd tools/protoc-gen-queryfilter-validity && go build -o ../../build/protoc-gen-queryfilter-validity .
     @cd tools/protoc-gen-ledger-log-category && go build -o ../../build/protoc-gen-ledger-log-category .
+    @cd tools/protoc-gen-ledger-json && go build -o ../../build/protoc-gen-ledger-json .
     @cd tools/protoc-gen-rpcauth && go build -o ../../build/protoc-gen-rpcauth .
     @protoc --go_out=. --go_opt=module=github.com/formancehq/ledger/v3 \
         --go-grpc_out=. \
@@ -407,6 +410,7 @@ generate-proto:
         --go-vtproto_opt=module=github.com/formancehq/ledger/v3 \
         --go-vtproto_opt=features=marshal+unmarshal+size+clone+equal+pool \
         --go-vtproto_opt=pool=github.com/formancehq/ledger/v3/internal/proto/raftcmdpb.Proposal \
+        --go-vtproto_opt=pool=github.com/formancehq/ledger/v3/internal/proto/raftcmdpb.ExecutionBatch \
         --go-vtproto_opt=pool=github.com/formancehq/ledger/v3/internal/proto/raftcmdpb.ExecutionPlan \
         --go-vtproto_opt=pool=github.com/formancehq/ledger/v3/internal/proto/raftcmdpb.AttributeValue \
         --go-vtproto_opt=pool=github.com/formancehq/ledger/v3/internal/proto/raftcmdpb.AttributePlan \
@@ -431,6 +435,9 @@ generate-proto:
         --plugin=protoc-gen-ledger-log-category=build/protoc-gen-ledger-log-category \
         --ledger-log-category_out=. \
         --ledger-log-category_opt=module=github.com/formancehq/ledger/v3 \
+        --plugin=protoc-gen-ledger-json=build/protoc-gen-ledger-json \
+        --ledger-json_out=. \
+        --ledger-json_opt=module=github.com/formancehq/ledger/v3 \
         --plugin=protoc-gen-rpcauth=build/protoc-gen-rpcauth \
         --rpcauth_out=. \
         --rpcauth_opt=module=github.com/formancehq/ledger/v3 \
@@ -493,7 +500,7 @@ operator-install-plugin:
 operator-test:
     cd misc/operator && go test ./...
 
-# Run Ledger target and trace-sampling admission regressions in the operator-tests Nix shell.
+# Run operator admission, trace-sampling, and backup recovery regressions in the operator-tests Nix shell.
 operator-test-admission:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -501,7 +508,7 @@ operator-test-admission:
     KUBEBUILDER_ASSETS=$(setup-envtest use 1.32.x -p path)
     export KUBEBUILDER_ASSETS
     cd misc/operator
-    go test -race -tags integration ./internal/controller -run '^(TestLedgerAdmission|TestTraceSampling)' -count=1 -timeout 3m
+    go test -race -tags integration ./internal/controller -run '^(TestLedgerAdmission|TestTraceSampling|TestBackupRunAdmission|TestBackupRunParentSelectorIntegration$|TestBackupRunCommittedCreateLostResponseIntegration$|TestBackupRunManualAssociationIntegration$)' -count=1 -timeout 3m
 
 # Run operator pre-commit checks (generate + tidy + build)
 operator-pre-commit: operator-generate
@@ -552,7 +559,7 @@ docker-build *ARGS:
     docker buildx build -t '{{ image_repository }}' --platform linux/amd64,linux/arm64 --push --build-arg BUILD_TAGS=kafka,nats,clickhouse,s3,azure,pyroscope {{ARGS}} .
 
 # Build and push the PR docker image with GoReleaser under a single explicit
-# `<repository>:pr-<num>-<sha7>` tag. It never touches `:latest`, `:nightly`, a
+# `<repository>:pr-<num>-<sha7>[-run-<id>-<attempt>]` tag. It never touches `:latest`, `:nightly`, a
 # GitHub release or the Helm charts. Needs GORELEASER_KEY and a Docker login to
 # the registry. Used by the `Build-PR-Image` workflow job.
 #
@@ -571,7 +578,7 @@ docker-build-pr image: (_assert-pr-image image)
     env -u GITHUB_TOKEN -u GH_TOKEN \
         goreleaser release --nightly --clean --config .goreleaser.pr.yml --skip=archive
 
-# Refuse any PR image reference that is not `<repository>:pr-<num>-<sha7>`, so a
+# Accept PR image tags with an optional build-attempt suffix, so a
 # PR build cannot move `latest`, `nightly` or a release tag.
 [private]
 _assert-pr-image image:
@@ -580,8 +587,8 @@ _assert-pr-image image:
     image='{{ image }}'
     last="${image##*/}"
     tag="${last#*:}"
-    if [[ "$last" != *:* ]] || ! [[ "$tag" =~ ^pr-[0-9]+-[0-9a-f]{7}$ ]]; then
-        echo "error: '$image' is not <repository>:pr-<num>-<sha7>" >&2
+    if [[ "$last" != *:* ]] || ! [[ "$tag" =~ ^pr-[0-9]+-[0-9a-f]{7}(-run-[1-9][0-9]*-[1-9][0-9]*)?$ ]]; then
+        echo "error: '$image' is not <repository>:pr-<num>-<sha7>[-run-<id>-<attempt>]" >&2
         exit 1
     fi
 

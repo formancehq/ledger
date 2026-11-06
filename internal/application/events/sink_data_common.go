@@ -89,15 +89,20 @@ type sinkPosting struct {
 // sinks (ClickHouse, Databricks). The output uses proper Go types so
 // encoding/json produces values that match the expected column types.
 func eventToSinkJSON(event *eventspb.Event) ([]byte, error) {
+	return json.Marshal(eventToSinkData(event))
+}
+
+// eventToSinkData builds the shared typed analytical projection without encoding it.
+func eventToSinkData(event *eventspb.Event) sinkEventData {
 	data := sinkEventData{}
 
 	log := event.GetLog()
 	if log == nil {
-		return json.Marshal(data)
+		return data
 	}
 
 	if log.GetPayload() == nil {
-		return json.Marshal(data)
+		return data
 	}
 
 	switch p := log.GetPayload().GetType().(type) {
@@ -130,7 +135,7 @@ func eventToSinkJSON(event *eventspb.Event) ([]byte, error) {
 		data.SinkName = &p.RemovedEventsSink.Name
 	}
 
-	return json.Marshal(data)
+	return data
 }
 
 // ---------- Helpers ----------

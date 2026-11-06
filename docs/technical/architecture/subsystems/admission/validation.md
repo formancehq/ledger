@@ -13,6 +13,29 @@ The rule is in [`feedback_validation_defense_in_depth`](../../../../../AGENTS.md
 
 The complementary rule is in [`feedback_admission_structural_fsm_invariant`](../../../../../AGENTS.md): **admission validates that the order is well-constructed (structural); FSM validates that execution respects invariants (behavioural, post-producer).** Where both layers could detect the same end-state, they share a single sentinel rather than minting two parallel error types.
 
+### Replicated-policy refusals
+
+For an authenticated, structurally valid client request, a definitive refusal
+whose outcome depends on mutable, Raft-replicated cluster policy belongs in the
+FSM. The FSM evaluates the policy committed before that proposal at its apply
+index, after checking whether the idempotency key already has a recorded
+outcome. A new policy-based refusal is an audited failure; a replay returns the
+recorded outcome. An admission decision based on the currently observed policy
+can become stale while the proposal is waiting for commit.
+
+Admission remains responsible for authentication, signatures, request shape,
+safe order construction and preload coverage, and operational readiness. A
+limit needed to keep a request or proposal safe to construct is a separate
+structural or operational constraint; it must not silently substitute for a
+business refusal governed by replicated policy. Node-local settings must never
+change the result of applying a committed entry. Internal producers need their
+own retry and failure analysis before moving a gate into the FSM.
+
+This is the placement rule for new validators and for changes to existing
+validators. The inventory below records current behavior, including existing
+checks that need a separate migration to satisfy the rule; this document does
+not move any validator or change client behavior.
+
 ## What each layer catches
 
 | Rule | Admission | FSM | Notes |
@@ -21,7 +44,7 @@ The complementary rule is in [`feedback_admission_structural_fsm_invariant`](../
 | Asset code shape and precision range | ✅ | — | `ValidateAsset`. Precision encoded as `uint8` in Pebble keys; admission ensures it fits. |
 | Metadata key shape (non-empty, charset `[a-zA-Z0-9._:/-]`) | ✅ | — | `ValidateMetadataKey`. Characters outside the set — a null byte above all — would break Pebble key boundaries. Shape only: the key's *size* is a separate rule, below. |
 | Metadata value shape (no null byte) | ✅ | — | `ValidateMetadataValue`. |
-| Metadata size: entry count, key bytes, value bytes, per-entity bytes, per-command bytes | ✅ | — | `validateCommandMetadata` against the ceilings in the committed cluster policy (`domain.MetadataLimits`). Covers HTTP, public gRPC and bulk. Mirror workers check translated batches separately before proposing, and mirror FSM apply rechecks the committed policy. See [metadata limits](metadata-limits.md). |
+| Metadata size: entry count, key bytes, value bytes, per-entity bytes, per-command bytes | — | ✅ | Existing handlers check the policy committed at apply after idempotency lookup. Fresh refusals are audited; retained outcomes replay. Public admission retains structural checks. Mirror workers keep their separate preflight and retry contract. See [metadata limits](metadata-limits.md). |
 | Metadata size of the map Numscript merges into the caller's | — | ✅ | `processCreateTransaction` re-checks the *merged* transaction and per-account maps. Admission cannot: the union of caller metadata and `set_tx_meta` / `set_account_meta` output only exists after the script runs. |
 | HTTP mirror base URL syntax, HTTP(S) scheme and nonempty hostname | ✅ | — | Rejected with a safe `VALIDATION` error before Raft or ledger creation. No connectivity probe or configuration rewrite; raw URL parser errors may contain credentials and must not be exposed. |
 | Ledger name shape (no null, printable ASCII, ≤ `dal.LedgerNameFixedSize`) | ✅ | — | `ValidateLedgerName`. The fixed size matters because ledger names pad into Pebble keys. |

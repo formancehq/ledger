@@ -113,10 +113,27 @@ owned by the Raft and persistence audits respectively.
 
 ## EN-2479 write-readiness gate
 
-`Admission.waitAuditKeyReady` applies to every audited request, including the
-policy reconciler's first order. It polls only until a committed key is seen,
+`Admission.waitAuditKeyReady` applies to every audited execution batch. It polls only until a committed key is seen,
 then latches. Cancellation and malformed-row errors must return to the caller.
-The periodic leader reconciler proposes initialization before policy and
-retries on transient failure, so an early request cannot wedge the FSM or wait
+The periodic leader reconciler proposes initialization and retries on transient
+failure, so an early audited request cannot wedge the FSM or wait
 forever after a one-shot failure. The FSM domain owns deterministic first-wins
 apply semantics; this domain owns gate reachability and liveness.
+
+Native policy reconciliation is operational and does not write business audit.
+It remains subject to its admission gates, while the business audit-key gate
+protects audited execution batches. Policy readiness and audit-key readiness
+remain distinct prerequisites.
+
+## Metadata-policy retry gate oracle
+
+Metadata-policy retries use ordinary admission and FSM replay. Earlier readiness,
+authentication, signatures and shape checks retain precedence. Safely prepared
+proposals retain existing maintenance, drain and audit-capacity apply guards.
+Exercise transitions before proposal and before apply with explicit
+synchronization, identifying the exact refusal and absence of new business
+effects. A replay writes no new audit entry; fresh policy refusals use the
+existing audited failure path. This domain owns gate consumption/precedence;
+`idempotency-retries-partial-failures` owns key expiry, content identity,
+historical outcomes and fresh policy-refusal evidence. No snapshot replay helper
+or general admission-error bypass is implied.

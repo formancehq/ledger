@@ -2807,7 +2807,7 @@ Manage and inspect the Raft cluster.
 
 `--node-id` accepts unsigned 64-bit IDs; zero routes to the leader. Node lists,
 leader/local IDs and peer details preserve the full identity. In JSON/YAML
-output, protobuf uint64 identity fields are decimal strings.
+output, protobuf uint64 identity fields are decimal JSON numbers.
 
 Display the current state of the Raft cluster, including node information and replication status.
 
@@ -3024,7 +3024,7 @@ ledgerctl cluster du --json
 
 #### cluster maintenance
 
-Enable or disable cluster maintenance mode. When enabled, all write operations (Raft commands) are blocked at the admission layer. Only the maintenance mode command itself is allowed through (to disable maintenance mode). Read operations continue to work normally.
+Enable or disable cluster maintenance mode. When enabled, client business writes are blocked at admission. The maintenance mode command itself remains available to disable maintenance; leader-internal cluster-policy reconciliation also continues unless a drain is active. Read operations continue to work normally.
 
 ```bash
 ledgerctl cluster maintenance <true|false|enable|disable> [flags]
@@ -4367,10 +4367,19 @@ Tune the Raft consensus layer. These flags control election timing, message size
 | `--raft-compaction-margin` | uint64 | `1000` | Minimum log entries between snapshots (0 = use default 1000) |
 | `--maintenance-interval` | duration | `30s` | Interval for background WAL snapshot + Pebble checkpoint (0 = use default 30s) |
 | `--raft-propose-queue-capacity` | int | `100` | Capacity of the propose queue (0 = use default 100) |
-| `--raft-processing-tick-interval` | duration | `tick-interval/10` | Interval for processing committed entries (0 = tick-interval/10) |
+| `--raft-tick-interval` | duration | `100ms` | Interval between Raft ticks (0 = 100ms); must be at least 10ns when processing uses its default |
+| `--raft-processing-tick-interval` | duration | `tick-interval/10` | Idle Ready polling interval, retained after Ready drains (0 = effective tick-interval/10) |
 | `--raft-replay-batch-size` | int | `1000` | Number of entries per batch during spool replay (0 = use default 1000) |
 | `--spool-segment-max-bytes` | ByteSize | `256Mi` | Maximum spool segment size before rotation/sealing (0 = use default 256Mi). Lower values seal (and thus prune) segments more often at the cost of more files |
 | `--backup-max-segment-bytes` | ByteSize | `4Gi` | Maximum incremental-backup export segment size before splitting into a new segment (0 = use default 4Gi). Lower values produce more, smaller segments (smaller retry blast radius) at the cost of more objects |
+
+Both intervals reject negative durations. With zero processing interval, positive
+Raft ticks from `1ns` through `9ns` are rejected because division by ten would
+produce a zero-duration ticker. An explicit positive processing interval permits
+these tick values and remains in effect when Ready work drains. Zero Raft tick
+retains the `100ms` default, so both zero values resolve to `100ms` / `10ms`.
+Message and local-storage responses can trigger Ready immediately; this polling
+interval does not pace every commit.
 
 ```bash
 # Increase compaction margin for workloads with large snapshots
@@ -5587,3 +5596,8 @@ repository root. It exits nonzero on invalid input or an output error; discard
 partial output after any failure. It does not connect to ClickHouse.
 Follow the complete [migration procedure](clickhouse-account-metadata.md),
 including preflights, backup, source preservation, import and verification.
+
+Incremental backup restoration also applies operational policy from the manifest,
+including a policy-only update with zero history segments. The offline
+`ledgerctl store bootstrap` and server restore paths use the same reconstruction
+routine; see the [restore contract](../technical/architecture/subsystems/backup/incremental-restore-contract.md#operational-cluster-policy).
