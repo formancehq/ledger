@@ -106,3 +106,21 @@ historical scan or consensus-spanning lifecycle lock. Preserve cost-shape tests
 and local benchmark evidence; do not claim network/saturation measurements.
 No persisted projection, format, FSM interpreter or restore reconstruction changes.
 See [the admission contract](../architecture/subsystems/admission/idempotency.md#replay-after-metadata-limits-tighten).
+
+## Numscript library removal and retained recovery
+
+A transaction referencing a library script by `latest` or exact semver must
+replay its retained outcome after the library changes, including a ledger
+deletion that purges it. Admission forwards an unresolved reference with the
+coverage of the FSM's selector resolution and no script planning; the FSM
+decides `NUMSCRIPT_NOT_FOUND` after idempotency lookup. Prove replay for both
+selectors after deletion, an audited fresh-key refusal with its apply-time
+reason, and audited keyed and unkeyed `NUMSCRIPT_NOT_FOUND` on a live ledger
+whose failure facts match the client error. Hold a save proposed before the
+reference, apply it first, and prove the reference is a retryable stale
+rejection with no audit entry, frozen key or coverage miss, and that its retry
+commits. The `OrderTechnical.numscript_reference_absent` marker relies on the
+stopped RC.3 to RC.4 cutover. It is Raft-only execution metadata: audit items
+keep the business order and the audit entry records the definitive failure.
+Refused orders have no business effects, so restore reconstruction is unchanged.
+See [the admission contract](../architecture/subsystems/admission/idempotency.md#replay-after-a-referenced-script-is-removed).

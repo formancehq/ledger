@@ -122,6 +122,19 @@ This correction changes neither contract. See
 [the replay contract](../architecture/subsystems/admission/idempotency.md#replay-after-metadata-limits-tighten)
 and [client upgrade behavior](../../ops/upgrades.md#metadata-limit-replay-recovery).
 
+## Idempotency after Numscript library removal
+
+A v3 transaction referencing a library script reaches the FSM even when admission
+cannot resolve the reference. A same-key retry replays its retained outcome
+after a ledger deletion purged the library. A fresh missing reference still
+returns HTTP 404 / gRPC `NotFound` with reason `NUMSCRIPT_NOT_FOUND` and the same
+`name` and `version` context, and is now audited. A fresh request on a deleted
+ledger returns `LEDGER_DELETED` instead. A reference racing a concurrent save of
+its script can return the retryable `STALE_INPUTS_RESOLUTION` or
+`STALE_PROPOSAL`. Routes, fields, envelopes and protocol
+revision 40 are unchanged; v2 has no Numscript library, so there is no v2 mapping.
+See [the replay contract](../architecture/subsystems/admission/idempotency.md#replay-after-a-referenced-script-is-removed).
+
 ## Ledger integrity checking
 
 The v3 gRPC `CheckStore` and `ValidateRestore` streams verify canonical and global

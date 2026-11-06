@@ -62,6 +62,11 @@ type Context struct {
 	// Empty for every non-revert order.
 	RevertTargetDigest []byte
 
+	// NumscriptReferenceAbsent reports that admission observed THIS order's
+	// library reference as absent and planned no script dependencies (from
+	// OrderTechnical).
+	NumscriptReferenceAbsent bool
+
 	// batchInitialNextTxID is the NextTransactionId each ledger carried before
 	// this batch mutated it, captured by processApply on the first *apply* order
 	// for that ledger. A revert whose target id is at or above this value targets
@@ -552,6 +557,7 @@ func (p *RequestProcessor) processOrder(order *raftcmdpb.Order, s Scope, ctx *Co
 	// CreateTransactionOrder.
 	ctx.InputsResolutionHash = order.GetTechnical().GetInputsResolutionHash()
 	ctx.RevertTargetDigest = order.GetTechnical().GetRevertTargetDigest()
+	ctx.NumscriptReferenceAbsent = order.GetTechnical().GetNumscriptReferenceAbsent()
 	// Reset per-apply fields — only processApply/processMirrorIngest set them.
 	ctx.Boundaries = nil
 	ctx.LedgerInfo = nil

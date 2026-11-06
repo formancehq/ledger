@@ -2,11 +2,13 @@ package admission
 
 import (
 	"context"
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
+	"github.com/formancehq/ledger/v3/internal/infra/plan"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
@@ -407,6 +409,7 @@ func TestResolveScripts_IntraBatchNumscriptExactReference(t *testing.T) {
 		"the exact content key must be covered")
 
 	require.Equal(t, "1.0.0", createTxOf(batch[0]).GetNumscriptReference().GetVersion())
+	require.False(t, batch[0].GetTechnical().GetNumscriptReferenceAbsent())
 
 	// Same reference, no same-bulk save: nothing to resolve from either source.
 	bare := []*raftcmdpb.Order{referenceOrder(testLedgerName, "pay", "1.0.0")}
@@ -414,8 +417,50 @@ func TestResolveScripts_IntraBatchNumscriptExactReference(t *testing.T) {
 	needs, perOrder, err = admission.extractPreloadNeeds(context.Background(), bare, bareOverlay)
 	require.NoError(t, err)
 
-	err = admission.resolveScriptsAndEnrichNeeds(context.Background(), bare, bareOverlay, needs, perOrder, false)
+	// The FSM owns that refusal: the order is forwarded with the content key
+	// covered so apply resolves it as absent.
+	require.NoError(t, admission.resolveScriptsAndEnrichNeeds(context.Background(), bare, bareOverlay, needs, perOrder, false))
+	require.True(t, needs.Has(dal.SubAttrNumscriptContent,
+		domain.NumscriptEntryKey{LedgerName: testLedgerName, Name: "pay", Version: "1.0.0"}.Bytes()))
+	require.False(t, needs.Has(dal.SubAttrVolume, destKey.Bytes()), "an unresolved script has no dependencies to plan")
+	require.Nil(t, bare[0].GetTechnical().GetInputsResolutionHash())
+	require.True(t, bare[0].GetTechnical().GetNumscriptReferenceAbsent())
+	require.Equal(t, "1.0.0", createTxOf(bare[0]).GetNumscriptReference().GetVersion())
+}
 
-	var notFound *domain.ErrNumscriptNotFound
-	require.ErrorAs(t, err, &notFound, "an exact reference with no persisted or in-bulk save must be NUMSCRIPT_NOT_FOUND")
+// TestResolveScripts_MissingNumscriptReferenceDeclaresFSMReads pins the exact
+// coverage a forwarded unresolved reference carries for each selector, keyed or
+// not, and that it reaches the FSM without inline content or a preload marker.
+func TestResolveScripts_MissingNumscriptReferenceDeclaresFSMReads(t *testing.T) {
+	t.Parallel()
+
+	for _, version := range []string{"1.0.0", "latest"} {
+		for _, keyed := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s/keyed=%t", version, keyed), func(t *testing.T) {
+				t.Parallel()
+
+				store := createTestStore(t)
+				admission, _ := createTestAdmission(t, store)
+				batch := []*raftcmdpb.Order{referenceOrder(testLedgerName, "missing", version)}
+				overlay := newBulkOverlay()
+				needs, perOrder, err := admission.extractPreloadNeeds(context.Background(), batch, overlay)
+				require.NoError(t, err)
+				require.NoError(t, admission.resolveScriptsAndEnrichNeeds(context.Background(), batch, overlay, needs, perOrder, keyed))
+
+				pointerKey := domain.NumscriptVersionKey{LedgerName: testLedgerName, Name: "missing"}.Bytes()
+				contentKey := domain.NumscriptEntryKey{LedgerName: testLedgerName, Name: "missing", Version: version}.Bytes()
+				for _, coverage := range []*plan.Coverage{needs, perOrder[0]} {
+					require.Equal(t, version == "latest", coverage.Has(dal.SubAttrNumscriptVersion, pointerKey))
+					require.Equal(t, version != "latest", coverage.Has(dal.SubAttrNumscriptContent, contentKey))
+				}
+
+				createTx := createTxOf(batch[0])
+				require.Equal(t, version, createTx.GetNumscriptReference().GetVersion())
+				require.Nil(t, createTx.GetScript())
+				require.True(t, batch[0].GetTechnical().GetNumscriptReferenceAbsent())
+				require.False(t, batch[0].GetTechnical().GetPreloadUnavailable())
+				require.Nil(t, batch[0].GetTechnical().GetInputsResolutionHash())
+			})
+		}
+	}
 }

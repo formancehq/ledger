@@ -63,8 +63,9 @@ func processCreateTransaction(ledger string, order *raftcmdpb.CreateTransactionO
 			// Admission preloaded the content for the version it observed as the
 			// greatest. If the greatest advanced since planning (a concurrent
 			// save committed first), that content key is not covered — reject as
-			// stale so the retry re-plans against the new greatest.
-			if s.CheckCoverage(dal.SubAttrNumscriptContent, domain.NumscriptEntryKey{LedgerName: ledger, Name: name, Version: greatest}) != nil {
+			// stale so the retry re-plans against the new greatest. An expected
+			// race, so it is probed without recording a coverage miss.
+			if !s.IsCovered(dal.SubAttrNumscriptContent, domain.NumscriptEntryKey{LedgerName: ledger, Name: name, Version: greatest}) {
 				return nil, domain.ErrStaleProposal
 			}
 
@@ -78,6 +79,13 @@ func processCreateTransaction(ledger string, order *raftcmdpb.CreateTransactionO
 
 		if info == nil {
 			return nil, &domain.ErrNumscriptNotFound{Name: name, Version: version}
+		}
+
+		// Admission observed this entry as absent and planned none of the
+		// script's reads; a save committed since. Executing would read
+		// undeclared keys, so the retry must re-plan against the saved script.
+		if ctx.NumscriptReferenceAbsent {
+			return nil, domain.ErrStaleInputsResolution
 		}
 
 		script = &commonpb.Script{

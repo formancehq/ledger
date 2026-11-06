@@ -518,6 +518,8 @@ func (s *scopeImpl) GetRaftIndex() uint64 { return 0 }
 // to enforce, every read is admitted.
 func (s *scopeImpl) CheckCoverage(_ byte, _ processing.CoverageKey) error { return nil }
 
+func (s *scopeImpl) IsCovered(_ byte, _ processing.CoverageKey) bool { return true }
+
 // scopeFuncAccessor is the generic test-side Accessor: each operation is
 // a function closure wired against the scope's in-memory maps. The Put /
 // Delete functions tolerate being nil for kinds that the checker tests

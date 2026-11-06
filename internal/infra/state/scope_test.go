@@ -6,6 +6,8 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
+	"go.opentelemetry.io/otel/sdk/metric/metricdata"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
@@ -297,4 +299,50 @@ func TestScope_OrderDelete_RequiresCoverage(t *testing.T) {
 	var miss *ErrCoverageMiss
 	require.ErrorAs(t, err, &miss, "Scope.AccountMetadata().Delete on an undeclared key must surface ErrCoverageMiss")
 	require.Equal(t, "account_metadata", miss.Attribute)
+}
+
+// TestScope_IsCoveredRecordsNoMiss pins that the probe answers like the gate
+// but leaves no coverage-miss trace, unlike CheckCoverage.
+func TestScope_IsCoveredRecordsNoMiss(t *testing.T) {
+	t.Parallel()
+
+	fsm, _, _ := newTestMachine(t)
+	reader := sdkmetric.NewManualReader()
+	misses, err := sdkmetric.NewMeterProvider(sdkmetric.WithReader(reader)).Meter("scope").Int64Counter("misses")
+	require.NoError(t, err)
+	key := domain.NumscriptEntryKey{LedgerName: "l", Name: "ns", Version: "1.0.0"}
+	id, _ := attributes.MakeKey(key.Bytes())
+	fsm.writeSet.Reset(&commonpb.Timestamp{Data: 1})
+	factory := NewScopeFactory(fsm.writeSet, &raftcmdpb.ExecutionPlan{
+		Attributes: []*raftcmdpb.AttributeCoverage{declareTestPlan(id, dal.SubAttrNumscriptContent)},
+	}, fsm.logger, misses, 1)
+	// NewScope reconfigures one scope in place, so check each configuration
+	// before requesting the next.
+	declared, err := factory.NewScope([]byte{1})
+	require.NoError(t, err)
+	require.True(t, declared.IsCovered(dal.SubAttrNumscriptContent, key))
+	undeclared, err := factory.NewScope(nil)
+	require.NoError(t, err)
+	require.False(t, undeclared.IsCovered(dal.SubAttrNumscriptContent, key))
+	require.False(t, undeclared.IsCovered(dal.SubAttrNumscriptVersion, domain.NumscriptVersionKey{LedgerName: "l", Name: "ns"}))
+
+	missCount := func() int64 {
+		var rm metricdata.ResourceMetrics
+		require.NoError(t, reader.Collect(context.Background(), &rm))
+		var total int64
+		for _, sm := range rm.ScopeMetrics {
+			for _, m := range sm.Metrics {
+				if sum, ok := m.Data.(metricdata.Sum[int64]); ok {
+					for _, dp := range sum.DataPoints {
+						total += dp.Value
+					}
+				}
+			}
+		}
+
+		return total
+	}
+	require.Zero(t, missCount())
+	require.Error(t, undeclared.CheckCoverage(dal.SubAttrNumscriptContent, key))
+	require.Equal(t, int64(1), missCount(), "the gate itself still records the miss")
 }
