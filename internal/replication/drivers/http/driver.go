@@ -46,6 +46,11 @@ func (c *Driver) Accept(ctx context.Context, logs ...drivers.LogWithLedger) ([]e
 	if err != nil {
 		return nil, err
 	}
+	// Only the status code is used. Close the body unread so the transport releases
+	// the connection; reading it would make Accept wait on the exporter.
+	defer func() {
+		_ = rsp.Body.Close()
+	}()
 
 	if rsp.StatusCode < 200 || rsp.StatusCode > 299 {
 		return nil, fmt.Errorf("invalid status code, expect something between 200 and 299, got %d", rsp.StatusCode)
