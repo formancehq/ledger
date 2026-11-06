@@ -292,8 +292,16 @@ type OrderTechnical struct {
 	// checks, so a target that is unknown or already reverted keeps returning
 	// those reasons. Empty for every non-revert order.
 	RevertTargetDigest []byte `protobuf:"bytes,4,opt,name=revert_target_digest,json=revertTargetDigest,proto3" json:"revert_target_digest,omitempty"`
-	unknownFields      protoimpl.UnknownFields
-	sizeCache          protoimpl.SizeCache
+	// numscript_reference_absent marks a CreateTransaction whose library
+	// reference admission observed as absent. Admission declares only the
+	// selector-resolution reads and plans no script dependencies. If the entry
+	// still resolves as absent at apply, the FSM refuses it definitively
+	// (ERROR_REASON_NUMSCRIPT_NOT_FOUND); if a save committed in between, the FSM
+	// rejects it with ERROR_REASON_STALE_INPUTS_RESOLUTION (retryable) before
+	// executing the unplanned script. False for every other order.
+	NumscriptReferenceAbsent bool `protobuf:"varint,5,opt,name=numscript_reference_absent,json=numscriptReferenceAbsent,proto3" json:"numscript_reference_absent,omitempty"`
+	unknownFields            protoimpl.UnknownFields
+	sizeCache                protoimpl.SizeCache
 }
 
 func (x *OrderTechnical) Reset() {
@@ -352,6 +360,13 @@ func (x *OrderTechnical) GetRevertTargetDigest() []byte {
 		return x.RevertTargetDigest
 	}
 	return nil
+}
+
+func (x *OrderTechnical) GetNumscriptReferenceAbsent() bool {
+	if x != nil {
+		return x.NumscriptReferenceAbsent
+	}
+	return false
 }
 
 // LedgerScopedOrder is the wrapper for every Order variant that targets a
@@ -5757,12 +5772,13 @@ const file_raft_cmd_proto_rawDesc = "" +
 	"\rledger_scoped\x18\x01 \x01(\v2\x17.raft.LedgerScopedOrderH\x00R\fledgerScoped\x12>\n" +
 	"\rsystem_scoped\x18\x02 \x01(\v2\x17.raft.SystemScopedOrderH\x00R\fsystemScoped\x122\n" +
 	"\ttechnical\x18\x03 \x01(\v2\x14.raft.OrderTechnicalR\ttechnicalB\x06\n" +
-	"\x04type\"\xce\x01\n" +
+	"\x04type\"\x8c\x02\n" +
 	"\x0eOrderTechnical\x12#\n" +
 	"\rcoverage_bits\x18\x01 \x01(\fR\fcoverageBits\x124\n" +
 	"\x16inputs_resolution_hash\x18\x02 \x01(\fR\x14inputsResolutionHash\x12/\n" +
 	"\x13preload_unavailable\x18\x03 \x01(\bR\x12preloadUnavailable\x120\n" +
-	"\x14revert_target_digest\x18\x04 \x01(\fR\x12revertTargetDigest\"\xda\x06\n" +
+	"\x14revert_target_digest\x18\x04 \x01(\fR\x12revertTargetDigest\x12<\n" +
+	"\x1anumscript_reference_absent\x18\x05 \x01(\bR\x18numscriptReferenceAbsent\"\xda\x06\n" +
 	"\x11LedgerScopedOrder\x12\x16\n" +
 	"\x06ledger\x18\x01 \x01(\tR\x06ledger\x12.\n" +
 	"\x05apply\x18\x02 \x01(\v2\x16.raft.LedgerApplyOrderH\x00R\x05apply\x12>\n" +

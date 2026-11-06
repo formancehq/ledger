@@ -137,7 +137,8 @@ A reference admission cannot resolve is not refused here. The library is
 mutable replicated state: deleting a ledger purges it. Admission forwards the
 order with the reads the FSM resolution makes: the exact content key, or the
 latest pointer and the content key of any greatest version it observed. It
-plans no dependencies. `processCreateTransaction` then returns
+plans no dependencies and sets `OrderTechnical.numscript_reference_absent`, so
+a script saved before apply is rejected as stale rather than executed. `processCreateTransaction` then returns
 `NUMSCRIPT_NOT_FOUND` after idempotency lookup, so a fresh refusal is audited
 and a retained outcome replays. See
 [the replay contract](idempotency.md#replay-after-a-referenced-script-is-removed).

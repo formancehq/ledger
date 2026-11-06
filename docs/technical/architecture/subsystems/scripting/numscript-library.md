@@ -189,14 +189,14 @@ Numscript content is a Pebble-backed projection, and the FSM apply path must nev
 
    ```go
    greatest, _ := s.GetNumscriptLatestVersion(ledger, name)
-   if s.CheckCoverage(dal.SubAttrNumscriptContent,
-       domain.NumscriptEntryKey{LedgerName: ledger, Name: name, Version: greatest}) != nil {
+   if !s.IsCovered(dal.SubAttrNumscriptContent,
+       domain.NumscriptEntryKey{LedgerName: ledger, Name: name, Version: greatest}) {
        return domain.ErrStaleProposal   // retryable
    }
    info, _ := s.ResolveNumscriptContent(ledger, name, greatest)
    ```
 
-4. **Skew is handled by stale-retry.** If another proposal advanced the latest pointer between admission's read and this apply, the content the FSM now needs was never preloaded, the coverage check misses, and the order is rejected with `ErrStaleProposal` (`KindUnavailable`, retryable). Re-admission observes the new greatest and declares the right content key. This is the same class of backstop as `PredictedIndex`: a no-op on the happy path, a bounded retry on genuine cross-proposal races.
+4. **Skew is handled by stale-retry.** If another proposal advanced the latest pointer between admission's read and this apply, the content the FSM now needs was never preloaded. `Scope.IsCovered` reports it without recording a coverage miss, since this is an expected race rather than an admission bug, and the order is rejected with `ErrStaleProposal` (`KindUnavailable`, retryable). Re-admission observes the new greatest and declares the right content key. This is the same class of backstop as `PredictedIndex`: a no-op on the happy path, a bounded retry on genuine cross-proposal races.
 
 ```
 POST /{ledger}/transactions  { scriptReference: { name: "payment", version: "latest" } }
@@ -213,7 +213,7 @@ Raft replication (all nodes)
     ▼
 FSM Apply: processCreateTransaction
     ├── GetNumscriptLatestVersion → greatest
-    ├── CheckCoverage(SubAttrNumscriptContent, {name, greatest})
+    ├── IsCovered(SubAttrNumscriptContent, {name, greatest})
     │        └── miss → ErrStaleProposal (retry)
     └── ResolveNumscriptContent(name, greatest) → content
     │
@@ -313,13 +313,13 @@ Numscript data uses the same preloading pattern as other system attributes (see 
 | `NumscriptVersions` | `NumscriptVersionKey{LedgerName, Name}` | `NumscriptVersionValue` | Latest pointer per name |
 | `NumscriptContents` | `NumscriptEntryKey{LedgerName, Name, Version}` | `NumscriptInfo` | Per-version content |
 
-The FSM reads both only through the gated `Scope` (`GetNumscriptLatestVersion`, `ResolveNumscriptContent`, `CheckCoverage`), so every read is admitted by the per-order coverage bits (invariant #9).
+The FSM reads both only through the gated `Scope` (`GetNumscriptLatestVersion`, `ResolveNumscriptContent`, `IsCovered`), so every read is admitted by the per-order coverage bits (invariant #9).
 
 ### Admission Preloading
 
 - **Save.** Admission declares both the latest pointer (`SubAttrNumscriptVersion`) and the target content key (`SubAttrNumscriptContent`) for the `(name, version)` being written, so the FSM can enforce immutability (duplicate → `NUMSCRIPT_VERSION_ALREADY_EXISTS`) and advance the pointer to the greatest semver.
 - **Reference.** For a `"latest"` reference, admission declares the latest pointer plus the content key for the discovered greatest semver (see [Resolution Flow](#resolution-flow--admission-plans-the-fsm-resolves)). For an exact reference, it declares just that content key. Absent keys are declared with a `Declare` plan so a never-recorded script surfaces as `ErrNotFound` (→ `NUMSCRIPT_NOT_FOUND`) rather than a coverage fault.
-- **Unresolved reference.** Admission does not refuse a reference it cannot resolve. It declares the same keys, omitting the content key when a `"latest"` selector found no version, and plans no script dependencies. The FSM returns `NUMSCRIPT_NOT_FOUND` after idempotency lookup: a fresh refusal is audited, and a keyed retry replays its retained outcome after a ledger deletion purges the library. See [the replay contract](../admission/idempotency.md#replay-after-a-referenced-script-is-removed).
+- **Unresolved reference.** Admission does not refuse a reference it cannot resolve. It declares the same keys, omitting the content key when a `"latest"` selector found no version, plans no script dependencies and sets `OrderTechnical.numscript_reference_absent`. If a save commits before apply, the FSM rejects the order as stale instead of executing the unplanned script. The FSM returns `NUMSCRIPT_NOT_FOUND` after idempotency lookup: a fresh refusal is audited, and a keyed retry replays its retained outcome after a ledger deletion purges the library. See [the replay contract](../admission/idempotency.md#replay-after-a-referenced-script-is-removed).
 
 ### Intra-Batch Propagation
 

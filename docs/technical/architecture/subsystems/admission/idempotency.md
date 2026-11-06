@@ -144,11 +144,12 @@ A transaction can reference a Numscript library entry by name and selector
 a ledger purges it. A keyed retry of a committed reference must still return its
 retained outcome, so admission does not refuse a reference it cannot resolve.
 
-Admission forwards the order unchanged, with the coverage the FSM resolution
-reads: the exact content key, or the latest pointer plus the content key of any
-greatest version admission observed. It plans no script dependencies and binds no
-`inputs_resolution_hash`. This is not `preload_unavailable`: the refusal is
-definitive, not a retryable preparation gap.
+Admission forwards the business order unchanged, with the coverage the FSM
+resolution reads: the exact content key, or the latest pointer plus the content
+key of any greatest version admission observed. It plans no script dependencies,
+binds no `inputs_resolution_hash` and sets `OrderTechnical.numscript_reference_absent`.
+This is not `preload_unavailable`: a refusal is definitive, not a retryable
+preparation gap.
 
 At apply, the idempotency lookup runs first. A matching live key replays its
 outcome without an audit entry. Otherwise `processCreateTransaction` resolves the
@@ -159,9 +160,24 @@ definitive failure. Earlier apply checks keep their precedence: a retry with a
 new key on a deleted ledger is refused `LEDGER_DELETED`. Keyed and unkeyed
 requests take the same path; the cost is one ordinary proposal and failure audit.
 
+A save can commit between admission's read and apply, for example when it was
+proposed but not yet applied locally. The FSM then resolves the script, but
+admission planned none of its reads:
+
+- for an exact selector, the marker makes the FSM return
+  `STALE_INPUTS_RESOLUTION` before executing the script;
+- for `latest`, the pointer names a content key the order never declared, and
+  the FSM returns `STALE_PROPOSAL`. It probes coverage with `Scope.IsCovered`,
+  which records no coverage miss.
+
+Both rejections are retryable and leave no audit entry or frozen outcome. A
+retry re-admits, resolves the saved script and plans it. No unplanned script
+reaches the coverage gate.
+
 The placement follows the [replicated-state rule](validation.md#replicated-policy-refusals).
-The FSM resolution and its covered-absent reads are unchanged, so old and new
-voters apply the forwarded entry identically.
+The marker is an internal Raft field that RC.3 voters ignore, so the change
+relies on the RC.3 to RC.4 stopped upgrade; see
+[the upgrade note](../../../../ops/upgrades.md#numscript-reference-replay-recovery).
 
 ## Numscript Dependency-Resolution Failures
 

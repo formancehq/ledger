@@ -52,10 +52,10 @@ func TestProcessCreateTransaction_NumscriptReference_ResolvesContent(t *testing.
 
 			if tt.resolveLatest {
 				mockStore.EXPECT().GetNumscriptLatestVersion(ledger, name).Return(tt.resolvedVersion, nil)
-				mockStore.EXPECT().CheckCoverage(
+				mockStore.EXPECT().IsCovered(
 					dal.SubAttrNumscriptContent,
 					domain.NumscriptEntryKey{LedgerName: ledger, Name: name, Version: tt.resolvedVersion},
-				).Return(nil)
+				).Return(true)
 			}
 
 			mockStore.EXPECT().ResolveNumscriptContent(ledger, name, tt.resolvedVersion).Return(
@@ -103,14 +103,15 @@ func TestProcessCreateTransaction_NumscriptReference_RejectsResolutionFailures(t
 	)
 
 	latestLookupErr := errors.New("latest lookup failed")
-	coverageErr := errors.New("content key is outside proposal coverage")
 	contentLookupErr := errors.New("content lookup failed")
 
 	tests := []struct {
 		name     string
 		selector string
-		setup    func(*MockScope)
-		assert   func(*testing.T, domain.SerializableError)
+		// absent marks an order whose reference admission observed as absent.
+		absent bool
+		setup  func(*MockScope)
+		assert func(*testing.T, domain.SerializableError)
 	}{
 		{
 			name:     "latest lookup failure",
@@ -144,10 +145,10 @@ func TestProcessCreateTransaction_NumscriptReference_RejectsResolutionFailures(t
 			selector: "latest",
 			setup: func(mockStore *MockScope) {
 				mockStore.EXPECT().GetNumscriptLatestVersion(ledger, name).Return("2.0.0", nil)
-				mockStore.EXPECT().CheckCoverage(
+				mockStore.EXPECT().IsCovered(
 					dal.SubAttrNumscriptContent,
 					domain.NumscriptEntryKey{LedgerName: ledger, Name: name, Version: "2.0.0"},
-				).Return(coverageErr)
+				).Return(false)
 			},
 			assert: func(t *testing.T, err domain.SerializableError) {
 				t.Helper()
@@ -182,6 +183,35 @@ func TestProcessCreateTransaction_NumscriptReference_RejectsResolutionFailures(t
 			},
 		},
 		{
+			name:     "observed absent and still absent",
+			selector: "1.2.3",
+			absent:   true,
+			setup: func(mockStore *MockScope) {
+				mockStore.EXPECT().ResolveNumscriptContent(ledger, name, "1.2.3").Return(nil, nil)
+			},
+			assert: func(t *testing.T, err domain.SerializableError) {
+				t.Helper()
+				var notFound *domain.ErrNumscriptNotFound
+				require.ErrorAs(t, err, &notFound)
+				require.Equal(t, "1.2.3", notFound.Version)
+			},
+		},
+		{
+			// No volume expectation is set: executing the unplanned script
+			// would fail the mock instead of returning stale.
+			name:     "observed absent but saved since",
+			selector: "1.2.3",
+			absent:   true,
+			setup: func(mockStore *MockScope) {
+				mockStore.EXPECT().ResolveNumscriptContent(ledger, name, "1.2.3").Return(
+					(&commonpb.NumscriptInfo{Content: `send [USD 100] (source = @world destination = @a)`}).AsReader(), nil)
+			},
+			assert: func(t *testing.T, err domain.SerializableError) {
+				t.Helper()
+				require.ErrorIs(t, err, domain.ErrStaleInputsResolution)
+			},
+		},
+		{
 			// Only the literal "latest" resolves through the latest pointer.
 			// Admission rejects an empty selector (NUMSCRIPT_INVALID_VERSION), so
 			// it cannot reach apply; setting no GetNumscriptLatestVersion
@@ -212,7 +242,7 @@ func TestProcessCreateTransaction_NumscriptReference_RejectsResolutionFailures(t
 
 			payload, err := processCreateTransaction(ledger, &raftcmdpb.CreateTransactionOrder{
 				NumscriptReference: &raftcmdpb.NumscriptReference{Name: name, Version: tt.selector},
-			}, &Context{Scope: mockStore})
+			}, &Context{Scope: mockStore, NumscriptReferenceAbsent: tt.absent})
 			require.Nil(t, payload)
 			require.Error(t, err)
 			tt.assert(t, err)

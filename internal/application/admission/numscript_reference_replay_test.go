@@ -7,6 +7,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
+	"github.com/formancehq/ledger/v3/internal/infra/state"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/internal/query"
@@ -142,6 +143,60 @@ func TestAdmitNumscriptReferenceReplaysAfterLedgerDelete(t *testing.T) {
 			require.Equal(t, domain.ErrReasonLedgerDeleted, failure.Reason(), "the deleted ledger is refused before its library is read")
 			require.Equal(t, audit+1, h.machine.State.NextAuditSequenceID)
 			require.Equal(t, sequence, h.machine.State.NextSequenceID)
+		})
+	}
+}
+
+// TestAdmitNumscriptReferenceSavedBeforeApply covers a save proposed before a
+// reference whose admission still read the library as absent. Apply sees the
+// script but none of its reads were planned, so the reference is rejected as
+// retryable without executing or auditing, and the retry re-plans it.
+func TestAdmitNumscriptReferenceSavedBeforeApply(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		version string
+		want    error
+	}{
+		{version: "1.0.0", want: domain.ErrStaleInputsResolution},
+		{version: "latest", want: domain.ErrStaleProposal},
+	} {
+		t.Run(tc.version, func(t *testing.T) {
+			t.Parallel()
+			h := newMetadataReplayHarness(t)
+			ctx := attributedTestContext(context.Background())
+			h.pendingApplies = make(chan func(), 2)
+			saveDone := make(chan error, 1)
+			go func() {
+				_, err := h.admission.Admit(ctx, numscriptReplayBatch("", numscriptReplaySave("ns", "1.0.0")))
+				saveDone <- err
+			}()
+			applySave := <-h.pendingApplies
+			request := numscriptReplayBatch("key", numscriptReplayReference("ns", tc.version))
+			referenceDone := make(chan error, 1)
+			go func() {
+				_, err := h.admission.Admit(ctx, request)
+				referenceDone <- err
+			}()
+			applyReference := <-h.pendingApplies
+			require.True(t, h.proposals[1].GetBatch().GetOrders()[0].GetTechnical().GetNumscriptReferenceAbsent())
+
+			applySave()
+			require.NoError(t, <-saveDone)
+			audit, sequence := h.machine.State.NextAuditSequenceID, h.machine.State.NextSequenceID
+			applyReference()
+			err := <-referenceDone
+			require.ErrorIs(t, err, tc.want)
+			var miss *state.ErrCoverageMiss
+			require.NotErrorAs(t, err, &miss)
+			require.Equal(t, audit, h.machine.State.NextAuditSequenceID, "the stale rejection is not audited")
+			require.Equal(t, sequence, h.machine.State.NextSequenceID)
+
+			h.pendingApplies = nil
+			result, err := h.admission.Admit(ctx, request)
+			require.NoError(t, err, "the key was not frozen and the retry plans the saved script")
+			require.False(t, result.Replayed)
+			require.Len(t, result.Logs, 1)
+			require.False(t, h.proposals[2].GetBatch().GetOrders()[0].GetTechnical().GetNumscriptReferenceAbsent())
 		})
 	}
 }

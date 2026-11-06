@@ -345,17 +345,23 @@ See [the mechanism and cost boundary](../technical/architecture/subsystems/admis
 
 ## Numscript-reference replay recovery
 
-Upgraded leaders forward a transaction whose Numscript library reference they
+RC.4 leaders forward a transaction whose Numscript library reference they
 cannot resolve, instead of refusing it. A keyed retry of a committed reference
 then replays its retained outcome after a ledger deletion purged the library.
 A fresh refusal, keyed or not, is an audited `NUMSCRIPT_NOT_FOUND` decided at
 apply; on a deleted ledger the earlier apply check returns `LEDGER_DELETED`.
-This is an admission-only correction: the FSM resolution already handled
-covered absent entries, so old and new voters apply the forwarded entry
-identically. It changes no Raft, persisted, backup, audit or wire format,
-requires no data migration and keeps service protocol revision 40. During a
-rolling upgrade, a leader running the old binary still refuses at admission;
-transfer leadership to an upgraded voter for the corrected behavior.
+If a save commits between admission and apply, the request is rejected with a
+retryable `STALE_INPUTS_RESOLUTION` (exact selector) or `STALE_PROPOSAL`
+(`latest`), without an audit entry.
+
+The forwarded order carries the new internal field
+`OrderTechnical.numscript_reference_absent`, which tells the FSM not to execute a
+script admission did not plan. RC.3 voters ignore the field and would execute
+it, so this change depends on the [stopped RC.3 to RC.4 cutover](#proposal-payload-cutover):
+no RC.3 voter may apply an entry proposed by an RC.4 leader. Historical entries
+never carry the field and replay unchanged. Refused orders keep the field in
+their audit items and have no business effects; snapshots, backups and restore
+need no migration. Service protocol revision 40 and the public wire are unchanged.
 See [the replay contract](../technical/architecture/subsystems/admission/idempotency.md#replay-after-a-referenced-script-is-removed).
 
 ## Account metadata address validation

@@ -2040,9 +2040,11 @@ func (a *Admission) resolveScriptsAndEnrichNeeds(ctx context.Context, orders []*
 				// The library is mutable replicated state (a ledger delete purges
 				// it), so the definitive refusal belongs to the FSM after
 				// idempotency lookup: a fresh refusal is audited, a retry replays.
-				// Declare exactly what its resolution reads; the batch fails at
-				// that order, so the script needs no dependency planning.
+				// Declare exactly what its resolution reads and plan nothing else;
+				// the marker makes the FSM refuse as stale, rather than execute,
+				// if a save commits before apply.
 				declareNumscriptReferenceCoverage(p, orderNeeds, ledgerName, ref.GetName(), notFound.Version, ref.GetVersion() == "latest")
+				orderTechnical(order).NumscriptReferenceAbsent = true
 
 				continue
 			}

@@ -409,6 +409,7 @@ func TestResolveScripts_IntraBatchNumscriptExactReference(t *testing.T) {
 		"the exact content key must be covered")
 
 	require.Equal(t, "1.0.0", createTxOf(batch[0]).GetNumscriptReference().GetVersion())
+	require.False(t, batch[0].GetTechnical().GetNumscriptReferenceAbsent())
 
 	// Same reference, no same-bulk save: nothing to resolve from either source.
 	bare := []*raftcmdpb.Order{referenceOrder(testLedgerName, "pay", "1.0.0")}
@@ -423,6 +424,7 @@ func TestResolveScripts_IntraBatchNumscriptExactReference(t *testing.T) {
 		domain.NumscriptEntryKey{LedgerName: testLedgerName, Name: "pay", Version: "1.0.0"}.Bytes()))
 	require.False(t, needs.Has(dal.SubAttrVolume, destKey.Bytes()), "an unresolved script has no dependencies to plan")
 	require.Nil(t, bare[0].GetTechnical().GetInputsResolutionHash())
+	require.True(t, bare[0].GetTechnical().GetNumscriptReferenceAbsent())
 	require.Equal(t, "1.0.0", createTxOf(bare[0]).GetNumscriptReference().GetVersion())
 }
 
@@ -455,6 +457,7 @@ func TestResolveScripts_MissingNumscriptReferenceDeclaresFSMReads(t *testing.T) 
 				createTx := createTxOf(batch[0])
 				require.Equal(t, version, createTx.GetNumscriptReference().GetVersion())
 				require.Nil(t, createTx.GetScript())
+				require.True(t, batch[0].GetTechnical().GetNumscriptReferenceAbsent())
 				require.False(t, batch[0].GetTechnical().GetPreloadUnavailable())
 				require.Nil(t, batch[0].GetTechnical().GetInputsResolutionHash())
 			})

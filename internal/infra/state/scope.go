@@ -356,19 +356,30 @@ func (g *gatedScope) NewProposalScope() (processing.Scope, error) {
 // retains a reference past the return, so overwriting the scratch on
 // the next call is safe.
 func (g *gatedScope) CheckCoverage(kind byte, key processing.CoverageKey) error {
+	if covered, id := g.covers(kind, key); !covered {
+		return g.coverageMiss(kind, g.scratch, id)
+	}
+
+	return nil
+}
+
+func (g *gatedScope) IsCovered(kind byte, key processing.CoverageKey) bool {
+	covered, _ := g.covers(kind, key)
+
+	return covered
+}
+
+// covers leaves the key's canonical bytes in g.scratch for miss reporting.
+func (g *gatedScope) covers(kind byte, key processing.CoverageKey) (bool, attributes.U128) {
 	g.scratch = key.AppendBytes(g.scratch[:0])
 
 	id, _ := attributes.MakeKey(g.scratch)
 	slot := coverageSlotIndex[kind]
 	if slot < 0 {
-		return g.coverageMiss(kind, g.scratch, id)
+		return false, id
 	}
 
-	if slices.Contains(g.coverage[slot], id) {
-		return nil
-	}
-
-	return g.coverageMiss(kind, g.scratch, id)
+	return slices.Contains(g.coverage[slot], id), id
 }
 
 func (g *gatedScope) coverageMiss(kind byte, canonical []byte, id attributes.U128) *ErrCoverageMiss {

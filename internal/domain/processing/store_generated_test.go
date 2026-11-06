@@ -898,6 +898,44 @@ func (c *MockScopeIndexesCall) DoAndReturn(f func() Accessor[domain.IndexKey, *c
 	return c
 }
 
+// IsCovered mocks base method.
+func (m *MockScope) IsCovered(kind byte, key CoverageKey) bool {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "IsCovered", kind, key)
+	ret0, _ := ret[0].(bool)
+	return ret0
+}
+
+// IsCovered indicates an expected call of IsCovered.
+func (mr *MockScopeMockRecorder) IsCovered(kind, key any) *MockScopeIsCoveredCall {
+	mr.mock.ctrl.T.Helper()
+	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "IsCovered", reflect.TypeOf((*MockScope)(nil).IsCovered), kind, key)
+	return &MockScopeIsCoveredCall{Call: call}
+}
+
+// MockScopeIsCoveredCall wrap *gomock.Call
+type MockScopeIsCoveredCall struct {
+	*gomock.Call
+}
+
+// Return rewrite *gomock.Call.Return
+func (c *MockScopeIsCoveredCall) Return(arg0 bool) *MockScopeIsCoveredCall {
+	c.Call = c.Call.Return(arg0)
+	return c
+}
+
+// Do rewrite *gomock.Call.Do
+func (c *MockScopeIsCoveredCall) Do(f func(byte, CoverageKey) bool) *MockScopeIsCoveredCall {
+	c.Call = c.Call.Do(f)
+	return c
+}
+
+// DoAndReturn rewrite *gomock.Call.DoAndReturn
+func (c *MockScopeIsCoveredCall) DoAndReturn(f func(byte, CoverageKey) bool) *MockScopeIsCoveredCall {
+	c.Call = c.Call.DoAndReturn(f)
+	return c
+}
+
 // LedgerMetadata mocks base method.
 func (m *MockScope) LedgerMetadata() Accessor[domain.LedgerMetadataKey, *commonpb.MetadataValue, commonpb.MetadataValueReader] {
 	m.ctrl.T.Helper()
