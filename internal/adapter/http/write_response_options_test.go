@@ -5,8 +5,6 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 
@@ -60,11 +58,6 @@ func TestWriteResponse_SingleTransaction(t *testing.T) {
 				require.NotContains(t, w.Body.String(), `"sequence"`)
 			}
 			require.True(t, proto.Equal(original, entry), "presentation must not mutate source logs")
-			if dir := os.Getenv("LEDGER_WRITE_SDK_FIXTURE_DIR"); dir != "" {
-				require.NoError(t, os.MkdirAll(dir, 0o755))
-				name := strings.NewReplacer("/", "_", "?", "_", "=", "_").Replace("/v3/l1/transactions" + query)
-				require.NoError(t, os.WriteFile(filepath.Join(dir, name+".json"), w.Body.Bytes(), 0o600))
-			}
 		})
 	}
 }
@@ -122,11 +115,6 @@ func TestWriteResponse_OtherMutations(t *testing.T) {
 				response := doc.Paths.Value(tc.specPath).GetOperation(tc.method).Responses.Status(w.Code)
 				require.NoError(t, response.Value.Content["application/json"].Schema.Value.VisitJSON(body))
 				require.True(t, proto.Equal(original, entry))
-				if dir := os.Getenv("LEDGER_WRITE_SDK_FIXTURE_DIR"); dir != "" {
-					require.NoError(t, os.MkdirAll(dir, 0o755))
-					name := strings.NewReplacer("/", "_", "?", "_", "=", "_").Replace(tc.path + query)
-					require.NoError(t, os.WriteFile(filepath.Join(dir, name+".json"), w.Body.Bytes(), 0o600))
-				}
 			}
 		})
 	}
