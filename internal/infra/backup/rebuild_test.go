@@ -588,6 +588,28 @@ func TestRebuildDelta_ReplaysLedgerMetadata(t *testing.T) {
 	require.Nil(t, tier, "ledger metadata deleted after the checkpoint must not resurrect")
 }
 
+func TestRebuildDelta_ReplaysLedgerKV(t *testing.T) {
+	t.Parallel()
+	store := newRebuildTestStore(t)
+	batch := store.OpenWriteSession()
+	// The first row represents a value retained in the full checkpoint.
+	require.NoError(t, batch.SetBytes(dal.LedgerKVKey("ledger", "delete"), []byte("old")))
+	require.NoError(t, batch.SetProto(coldLogKey(1), createLedgerLog(1, "ledger", 1)))
+	require.NoError(t, batch.SetProto(coldLogKey(2), &commonpb.Log{Sequence: 2, Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_PutKv{PutKv: &commonpb.PutKVLog{Ledger: "ledger", Key: "keep", Value: []byte{0, 255}}}}}))
+	require.NoError(t, batch.SetProto(coldLogKey(3), &commonpb.Log{Sequence: 3, Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_DeleteKv{DeleteKv: &commonpb.DeleteKVLog{Ledger: "ledger", Key: "delete"}}}}))
+	require.NoError(t, batch.Commit())
+	require.NoError(t, RebuildDelta(t.Context(), testLogger(), store, 0, 0))
+	handle, err := store.NewReadHandle()
+	require.NoError(t, err)
+	defer func() { require.NoError(t, handle.Close()) }()
+	value, closer, err := handle.Get(dal.LedgerKVKey("ledger", "keep"))
+	require.NoError(t, err)
+	require.Equal(t, []byte{0, 255}, value)
+	require.NoError(t, closer.Close())
+	_, _, err = handle.Get(dal.LedgerKVKey("ledger", "delete"))
+	require.Error(t, err)
+}
+
 // A SetClusterPolicy log replayed after the checkpoint must rebuild the
 // persisted cluster policy row.
 func TestRebuildDelta_ReplaysClusterPolicy(t *testing.T) {

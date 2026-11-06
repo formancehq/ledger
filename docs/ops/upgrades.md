@@ -2,6 +2,25 @@
 
 ## Release requirement from v3.0.0-rc.1
 
+### Ledger KV rollout
+
+The first release containing ledger KV is `v3.0.0-rc.4` and requires a
+full-cluster stop. For operator-managed PVC-backed clusters, deploy the rc.4
+operator first, then request the adjacent rc.4 Ledger image. The operator's
+mandatory `v3.0.0-rc.4` boundary drains writes, waits for a durable cutoff on
+every voter, removes the source StatefulSet and all old Pods, then creates the
+target StatefulSet against the retained PVCs. Do not allow KV writes until
+every target voter is ready and the drain has been released. For deployments
+without this operator, stop writes, wait for the committed index to persist on
+every voter, stop all voters, replace every binary, then restart the cluster
+before permitting KV requests. Do not perform a rolling rollout: an earlier
+binary cannot apply the new PutKV/DeleteKV Raft orders. Once the first KV order
+is committed, do not restart an earlier binary against that WAL or snapshot;
+use the new binary and forward recovery. Existing primary-store data needs no
+backfill, and the new KV keyspace starts empty. Record the source/target build,
+the stopped-voter evidence, and a replay plus CheckStore result in release
+validation.
+
 `v3.0.0-rc.1` is the first supported v3 persisted-state baseline. Every later
 v3 release, including another RC and the stable release, must provide a tested
 forward upgrade from the preceding released version. Preserve committed
@@ -28,11 +47,11 @@ volume templates, the operator completes the RC rollout before recreating the
 StatefulSet for the volume change.
 Old and new voters must communicate and apply each committed entry identically
 while they coexist. The embedded operator requires a complete stop at the
-`v3.0.0-rc.4` boundary because RC.3 cannot execute native proposal payloads.
-`rc.3` includes the drain barrier used for this upgrade. RC adjacency remains mandatory.
-The `rc.1` to `rc.2` transition rolls one voter at a time with a maintenance
-barrier that pauses writes; it does not stop the whole cluster.
-The `rc.2` to `rc.3` transition remains rolling.
+`v3.0.0-rc.4` boundary because RC.3 cannot execute native proposal payloads
+or Ledger KV orders. RC.3 includes the drain barrier used for this upgrade.
+RC adjacency remains mandatory. The `rc.1` to `rc.2` transition uses the
+separately validated maintenance-based procedure below; `rc.2` to `rc.3`
+remains rolling.
 When the running version precedes a mandatory boundary, pin the target to a
 canonical version tag. Moving or non-canonical tags such as `latest` cannot
 prove whether the boundary is crossed, so the operator blocks the change.
@@ -383,15 +402,14 @@ installation, backup/restore, rollback, or the dormant stopped-upgrade path.
 The pinned binary-level rc.1 test and relevant model, restore and migration
 suites remain separate gates.
 
-The same harness has a separate, future `rc3-to-rc4` transition:
+The same harness has a separate `rc3-to-rc4` transition:
 
 ```bash
 UPGRADE_TRANSITION=rc3-to-rc4 RELEASE_BRANCH=release/v3.0 just test-release-operator-upgrade
 ```
 
-Run it only after `v3.0.0-rc.3` has been published and the PR changing the
-persisted format has added `v3.0.0-rc.4` to the operator's mandatory stop
-boundaries. The target operator and Ledger are still built from one exact
+Run it after `v3.0.0-rc.3` has been published and with this KV boundary in the
+target commit. The target operator and Ledger are built from one exact
 release-branch HEAD and tagged locally as rc.4; the harness publishes no tag
 or image. This path requires the operator's drain barrier to advance past
 `Draining`, observes the StatefulSet and all old Pods absent before accepting
@@ -399,8 +417,8 @@ any target Pod, and checks that the replacement StatefulSet has a new UID while
 PVC UIDs persist. It restarts a target voter to exercise replay, verifies the
 pre-upgrade account, commits another transaction, checks Raft progress and
 runs each voter's audit/derived-state checker after drain release. It fails
-against the current empty mandatory-stop list, so it is a release gate for the
-format-change PR, not evidence that rc.3 itself needs a stop. A future rc.4
+against an empty mandatory-stop list, so it is a release gate for this PR,
+not evidence that rc.3 itself needs a stop. The rc.4
 release still needs format-specific migration, snapshot, backup/restore and
 rollback validation outside this scenario.
 

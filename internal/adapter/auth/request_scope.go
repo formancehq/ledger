@@ -73,6 +73,8 @@ func requiredScopeForRequest(req *servicepb.Request) (Scope, bool) {
 	case *servicepb.Request_DeleteLedgerMetadata:
 		// DELETE /v3/{ledgerName}/metadata/{key} — requireMetadataWrite (handler.go:194).
 		return ScopeMetadataWrite, true
+	case *servicepb.Request_PutKv, *servicepb.Request_DeleteKv:
+		return ScopeKVWrite, true
 	case *servicepb.Request_AddAccountType:
 		// POST /v3/{ledgerName}/account-types — requireMetadataWrite (handler.go:197).
 		return ScopeMetadataWrite, true

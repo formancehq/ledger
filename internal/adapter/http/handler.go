@@ -41,6 +41,8 @@ func NewHandler(logger logging.Logger, backend Backend, authCfg internalauth.Aut
 	requireOpsRead := internalauth.RequireScope(authCfg, internalauth.ScopeOpsRead)
 	requireQueriesRead := internalauth.RequireScope(authCfg, internalauth.ScopeQueriesRead)
 	requireQueriesWrite := internalauth.RequireScope(authCfg, internalauth.ScopeQueriesWrite)
+	requireKVRead := internalauth.RequireScope(authCfg, internalauth.ScopeKVRead)
+	requireKVWrite := internalauth.RequireScope(authCfg, internalauth.ScopeKVWrite)
 
 	// Return JSON for 405 Method Not Allowed (Chi default returns text/plain)
 	r.MethodNotAllowed(func(w http.ResponseWriter, r *http.Request) {
@@ -158,6 +160,11 @@ func NewHandler(logger logging.Logger, backend Backend, authCfg internalauth.Aut
 				r.Get("/{ledgerName}/indexes/{canonicalId}/inspect", knownQuery(server.handleInspectIndex, "mode", "pageSize", "cursor"))
 			})
 
+			// Ledger KV has dedicated read and write scopes.
+			r.With(requireKVRead).Group(func(r chi.Router) {
+				r.Get("/{ledgerName}/kv/{key}", knownQuery(server.handleGetKV))
+			})
+
 			// Transactions read scope
 			r.With(requireTransactionsRead).Group(func(r chi.Router) {
 				r.Get("/{ledgerName}/transactions/{transactionId}", knownQuery(server.handleGetTransaction))
@@ -219,6 +226,11 @@ func NewHandler(logger logging.Logger, backend Backend, authCfg internalauth.Aut
 				r.Put("/{ledgerName}/numscripts/{name}", knownQuery(server.handleSaveNumscript))
 				r.Post("/{ledgerName}/indexes", knownQuery(server.handleCreateIndex))
 				r.Delete("/{ledgerName}/indexes/{canonicalId}", knownQuery(server.handleDropIndex))
+			})
+
+			r.With(requireKVWrite).Group(func(r chi.Router) {
+				r.Put("/{ledgerName}/kv/{key}", knownQuery(server.handlePutKV))
+				r.Delete("/{ledgerName}/kv/{key}", knownQuery(server.handleDeleteKV))
 			})
 
 			// Transactions write scope

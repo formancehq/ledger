@@ -4,6 +4,7 @@ import (
 	"cmp"
 	"errors"
 	"fmt"
+	"maps"
 	"slices"
 	"sort"
 
@@ -44,6 +45,7 @@ type clusterPolicyUpdate struct {
 }
 
 type WriteSet struct {
+	pendingKV           map[string]kvMutation
 	fsm                 *Machine
 	attrs               *attributes.Attributes
 	Date                *commonpb.Timestamp
@@ -175,6 +177,25 @@ type WriteSet struct {
 	indexes               *rawAccessor[domain.IndexKey, *commonpb.Index, commonpb.IndexReader]
 }
 
+type kvMutation struct {
+	value  []byte
+	delete bool
+}
+
+func (b *WriteSet) PutKV(ledger, key string, value []byte) {
+	if b.pendingKV == nil {
+		b.pendingKV = make(map[string]kvMutation)
+	}
+	b.pendingKV[string(dal.LedgerKVKey(ledger, key))] = kvMutation{value: append([]byte(nil), value...)}
+}
+
+func (b *WriteSet) DeleteKV(ledger, key string) {
+	if b.pendingKV == nil {
+		b.pendingKV = make(map[string]kvMutation)
+	}
+	b.pendingKV[string(dal.LedgerKVKey(ledger, key))] = kvMutation{delete: true}
+}
+
 // MirrorSyncWrite captures one queued mirror-sync update. applyMirrorSyncUpdate
 // builds it from a TechnicalUpdate_MirrorSync; Merge drains the queue into
 // the Pebble batch via SetMirrorSourceHead / SetMirrorStatus /
@@ -291,6 +312,16 @@ func (b *WriteSet) Merge(batch *dal.WriteSession, logsOrRefs []*raftcmdpb.Create
 	}
 	if err := b.flushPerLedger(batch, dirtyWords); err != nil {
 		return err
+	}
+	for _, key := range slices.Sorted(maps.Keys(b.pendingKV)) {
+		mutation := b.pendingKV[key]
+		if mutation.delete {
+			if err := batch.DeleteKey([]byte(key)); err != nil {
+				return fmt.Errorf("deleting ledger KV: %w", err)
+			}
+		} else if err := batch.SetBytes([]byte(key), mutation.value); err != nil {
+			return fmt.Errorf("putting ledger KV: %w", err)
+		}
 	}
 	// History logs precede the later history rows written by applyProposal.
 	if err := AppendLogs(batch, createdLogs); err != nil {
@@ -896,6 +927,7 @@ func NewWriteSet(fsm *Machine) *WriteSet {
 // coverage gate lives one layer up on gatedScope; WriteSet itself is the
 // raw engine (Derived → KeyStore → cache).
 func (b *WriteSet) Reset(at *commonpb.Timestamp) {
+	clear(b.pendingKV)
 	b.Date = at
 	b.NextSequenceID = b.fsm.State.NextSequenceID
 	b.NextAuditSequenceID = b.fsm.State.NextAuditSequenceID

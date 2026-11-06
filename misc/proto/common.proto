@@ -27,6 +27,8 @@ enum AuthScope {
   AUTH_SCOPE_QUERY_WRITE = 12;
   AUTH_SCOPE_CLUSTER_READ = 13;
   AUTH_SCOPE_CLUSTER_WRITE = 14;
+  AUTH_SCOPE_KV_READ = 15;
+  AUTH_SCOPE_KV_WRITE = 16;
 }
 
 // DynamicAuthResolver names request-dependent policies that cannot be reduced
@@ -423,6 +425,8 @@ message LogPayload {
     SavedLedgerMetadataLog saved_ledger_metadata = 19;
     DeletedLedgerMetadataLog deleted_ledger_metadata = 20;
     SetClusterPolicyLog set_cluster_policy = 21;
+    PutKVLog put_kv = 22;
+    DeleteKVLog delete_kv = 23;
   }
 }
 
@@ -2835,4 +2839,15 @@ message ListOptions {
   // valid conditions depends on the endpoint's QueryTarget; the server
   // rejects unsupported variants with InvalidArgument.
   QueryFilter filter = 5;
+}
+
+message PutKVLog {
+  string ledger = 1;
+  string key = 2;
+  bytes value = 3;
+}
+
+message DeleteKVLog {
+  string ledger = 1;
+  string key = 2;
 }

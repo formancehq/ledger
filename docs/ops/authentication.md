@@ -60,7 +60,10 @@ ledger:ReadAudit        ledger:WriteAudit
 ledger:ReadOps          ledger:WriteOps
 ledger:ReadQuery        ledger:WriteQuery
 ledger:ReadCluster      ledger:WriteCluster
+ledger:ReadKV           ledger:WriteKV
 ```
+
+Ledger KV Get requires `ledger:ReadKV`; Put and Delete require `ledger:WriteKV`. The default `ledger:read` and `ledger:write` virtual scopes include them. Custom mapping files replace that default and must add the KV scopes where needed. Ed25519 key allowlists limited to individual granular scopes must also include them. A token limited to `ledger:ReadLedger` or `ledger:WriteLedger` no longer authorizes the KV endpoints; previously accepted granular-only clients must add `ReadKV` or `WriteKV`. Put values remain visible through ledger logs and audit records to callers authorized for those APIs. Existing audit entries retain their captured scope strings and are not rewritten.
 
 ### Migration from RC.1 granular labels
 

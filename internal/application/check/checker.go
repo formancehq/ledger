@@ -935,6 +935,9 @@ func (c *Checker) compareProjections(ctx context.Context, snap dal.PebbleReader,
 	if err := folds.ledgerMetadata.compare(snap, c.attrs, callback); err != nil {
 		return fmt.Errorf("comparing ledger metadata: %w", err)
 	}
+	if err := folds.ledgerKV.compare(snap, callback); err != nil {
+		return fmt.Errorf("comparing ledger KV: %w", err)
+	}
 
 	if err := c.compareReversions(snap, ledgerRevertedTxIDs, knownLedgers, callback); err != nil {
 		return err
@@ -2114,6 +2117,7 @@ type chainVerifierFolds struct {
 	// signing orders (invariant #8). Never seeded from the live projection.
 	signing        *signingVerifier
 	ledgerMetadata *ledgerMetadataVerifier
+	ledgerKV       *ledgerKVVerifier
 	ledgerPolicy   *ledgerPolicyVerifier
 	// bounds re-derives the highest log sequence the chain accounts for, from
 	// the chain-verified AuditSuccess ranges. Compared against the stored Log
@@ -2126,6 +2130,7 @@ func newChainVerifierFolds() chainVerifierFolds {
 	return chainVerifierFolds{
 		signing:        newSigningVerifier(),
 		ledgerMetadata: newLedgerMetadataVerifier(),
+		ledgerKV:       newLedgerKVVerifier(),
 		ledgerPolicy:   &ledgerPolicyVerifier{},
 		bounds:         newLogBoundsVerifier(),
 	}
@@ -2137,6 +2142,7 @@ func newChainVerifierFolds() chainVerifierFolds {
 func (f chainVerifierFolds) markLiveTruncated() {
 	f.signing.markLiveTruncated()
 	f.ledgerMetadata.liveTruncated = true
+	f.ledgerKV.liveTruncated = true
 	f.ledgerPolicy.liveTruncated = true
 	f.bounds.markLiveTruncated()
 }
@@ -2464,6 +2470,7 @@ func (c *Checker) verifyAuditHashChain(
 
 				folds.signing.applyOrder(order)
 				folds.ledgerMetadata.applyOrder(order)
+				folds.ledgerKV.applyOrder(order)
 			}
 		}
 	}

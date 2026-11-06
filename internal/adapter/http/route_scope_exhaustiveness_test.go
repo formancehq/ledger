@@ -134,6 +134,7 @@ func expectedRouteScopes() []routeScope {
 		// --- Ledgers read, requireLedgersRead (handler.go:104-117) ---
 		{http.MethodGet, "/v3/", kindGuarded, internalauth.ScopeLedgersRead, false},
 		{http.MethodGet, "/v3/{ledgerName}", kindGuarded, internalauth.ScopeLedgersRead, false},
+		{http.MethodGet, "/v3/{ledgerName}/kv/{key}", kindGuarded, internalauth.ScopeKVRead, false},
 		{http.MethodGet, "/v3/{ledgerName}/stats", kindGuarded, internalauth.ScopeLedgersRead, false},
 		{http.MethodGet, "/v3/{ledgerName}/logs", kindGuarded, internalauth.ScopeLedgersRead, false},
 		{http.MethodGet, "/v3/{ledgerName}/numscripts", kindGuarded, internalauth.ScopeLedgersRead, false},
@@ -180,6 +181,8 @@ func expectedRouteScopes() []routeScope {
 		{http.MethodDelete, "/v3/{ledgerName}", kindGuarded, internalauth.ScopeLedgersWrite, false},
 		{http.MethodPost, "/v3/{ledgerName}/promote", kindGuarded, internalauth.ScopeLedgersWrite, false},
 		{http.MethodPut, "/v3/{ledgerName}/numscripts/{name}", kindGuarded, internalauth.ScopeLedgersWrite, false},
+		{http.MethodPut, "/v3/{ledgerName}/kv/{key}", kindGuarded, internalauth.ScopeKVWrite, false},
+		{http.MethodDelete, "/v3/{ledgerName}/kv/{key}", kindGuarded, internalauth.ScopeKVWrite, false},
 		{http.MethodPost, "/v3/{ledgerName}/indexes", kindGuarded, internalauth.ScopeLedgersWrite, false},
 		{http.MethodDelete, "/v3/{ledgerName}/indexes/{canonicalId}", kindGuarded, internalauth.ScopeLedgersWrite, false},
 

@@ -10034,3 +10034,300 @@ func (l barrierResponseListReadonly) Range(yield func(int, BarrierResponseReader
 func NewBarrierResponseListReader(s []*BarrierResponse) BarrierResponseListReader {
 	return barrierResponseListReadonly(s)
 }
+
+// GetKVRequestReader provides read-only access to GetKVRequest.
+// Call Mutate() to obtain a mutable clone.
+type GetKVRequestReader interface {
+	GetLedger() string
+	GetKey() string
+	GetRead() commonpb.ReadOptionsReader
+	Mutate() *GetKVRequest
+}
+
+type getKVRequestReadonly GetKVRequest
+
+func (r *getKVRequestReadonly) GetLedger() string {
+	return (*GetKVRequest)(r).GetLedger()
+}
+
+func (r *getKVRequestReadonly) GetKey() string {
+	return (*GetKVRequest)(r).GetKey()
+}
+
+func (r *getKVRequestReadonly) GetRead() commonpb.ReadOptionsReader {
+	v := (*GetKVRequest)(r).GetRead()
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (r *getKVRequestReadonly) Mutate() *GetKVRequest {
+	return (*GetKVRequest)(r).CloneVT()
+}
+
+// AsReader returns a read-only view of this GetKVRequest.
+func (m *GetKVRequest) AsReader() GetKVRequestReader {
+	if m == nil {
+		return nil
+	}
+	return (*getKVRequestReadonly)(m)
+}
+
+// Mutate returns a mutable deep clone of this GetKVRequest.
+func (m *GetKVRequest) Mutate() *GetKVRequest {
+	return m.CloneVT()
+}
+
+// GetKVRequestListReader provides read-only iteration over []*GetKVRequest.
+type GetKVRequestListReader interface {
+	Len() int
+	Get(i int) GetKVRequestReader
+	Range(yield func(int, GetKVRequestReader) bool)
+}
+
+type getKVRequestListReadonly []*GetKVRequest
+
+func (l getKVRequestListReadonly) Len() int { return len(l) }
+
+func (l getKVRequestListReadonly) Get(i int) GetKVRequestReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l getKVRequestListReadonly) Range(yield func(int, GetKVRequestReader) bool) {
+	for i, v := range l {
+		var r GetKVRequestReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewGetKVRequestListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewGetKVRequestListReader(s []*GetKVRequest) GetKVRequestListReader {
+	return getKVRequestListReadonly(s)
+}
+
+// GetKVResponseReader provides read-only access to GetKVResponse.
+// Call Mutate() to obtain a mutable clone.
+type GetKVResponseReader interface {
+	GetValue() []byte
+	Mutate() *GetKVResponse
+}
+
+type getKVResponseReadonly GetKVResponse
+
+func (r *getKVResponseReadonly) GetValue() []byte {
+	return bytes.Clone((*GetKVResponse)(r).GetValue())
+}
+
+func (r *getKVResponseReadonly) Mutate() *GetKVResponse {
+	return (*GetKVResponse)(r).CloneVT()
+}
+
+// AsReader returns a read-only view of this GetKVResponse.
+func (m *GetKVResponse) AsReader() GetKVResponseReader {
+	if m == nil {
+		return nil
+	}
+	return (*getKVResponseReadonly)(m)
+}
+
+// Mutate returns a mutable deep clone of this GetKVResponse.
+func (m *GetKVResponse) Mutate() *GetKVResponse {
+	return m.CloneVT()
+}
+
+// GetKVResponseListReader provides read-only iteration over []*GetKVResponse.
+type GetKVResponseListReader interface {
+	Len() int
+	Get(i int) GetKVResponseReader
+	Range(yield func(int, GetKVResponseReader) bool)
+}
+
+type getKVResponseListReadonly []*GetKVResponse
+
+func (l getKVResponseListReadonly) Len() int { return len(l) }
+
+func (l getKVResponseListReadonly) Get(i int) GetKVResponseReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l getKVResponseListReadonly) Range(yield func(int, GetKVResponseReader) bool) {
+	for i, v := range l {
+		var r GetKVResponseReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewGetKVResponseListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewGetKVResponseListReader(s []*GetKVResponse) GetKVResponseListReader {
+	return getKVResponseListReadonly(s)
+}
+
+// PutKVRequestReader provides read-only access to PutKVRequest.
+// Call Mutate() to obtain a mutable clone.
+type PutKVRequestReader interface {
+	GetLedger() string
+	GetKey() string
+	GetValue() []byte
+	Mutate() *PutKVRequest
+}
+
+type putKVRequestReadonly PutKVRequest
+
+func (r *putKVRequestReadonly) GetLedger() string {
+	return (*PutKVRequest)(r).GetLedger()
+}
+
+func (r *putKVRequestReadonly) GetKey() string {
+	return (*PutKVRequest)(r).GetKey()
+}
+
+func (r *putKVRequestReadonly) GetValue() []byte {
+	return bytes.Clone((*PutKVRequest)(r).GetValue())
+}
+
+func (r *putKVRequestReadonly) Mutate() *PutKVRequest {
+	return (*PutKVRequest)(r).CloneVT()
+}
+
+// AsReader returns a read-only view of this PutKVRequest.
+func (m *PutKVRequest) AsReader() PutKVRequestReader {
+	if m == nil {
+		return nil
+	}
+	return (*putKVRequestReadonly)(m)
+}
+
+// Mutate returns a mutable deep clone of this PutKVRequest.
+func (m *PutKVRequest) Mutate() *PutKVRequest {
+	return m.CloneVT()
+}
+
+// PutKVRequestListReader provides read-only iteration over []*PutKVRequest.
+type PutKVRequestListReader interface {
+	Len() int
+	Get(i int) PutKVRequestReader
+	Range(yield func(int, PutKVRequestReader) bool)
+}
+
+type putKVRequestListReadonly []*PutKVRequest
+
+func (l putKVRequestListReadonly) Len() int { return len(l) }
+
+func (l putKVRequestListReadonly) Get(i int) PutKVRequestReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l putKVRequestListReadonly) Range(yield func(int, PutKVRequestReader) bool) {
+	for i, v := range l {
+		var r PutKVRequestReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewPutKVRequestListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewPutKVRequestListReader(s []*PutKVRequest) PutKVRequestListReader {
+	return putKVRequestListReadonly(s)
+}
+
+// DeleteKVRequestReader provides read-only access to DeleteKVRequest.
+// Call Mutate() to obtain a mutable clone.
+type DeleteKVRequestReader interface {
+	GetLedger() string
+	GetKey() string
+	Mutate() *DeleteKVRequest
+}
+
+type deleteKVRequestReadonly DeleteKVRequest
+
+func (r *deleteKVRequestReadonly) GetLedger() string {
+	return (*DeleteKVRequest)(r).GetLedger()
+}
+
+func (r *deleteKVRequestReadonly) GetKey() string {
+	return (*DeleteKVRequest)(r).GetKey()
+}
+
+func (r *deleteKVRequestReadonly) Mutate() *DeleteKVRequest {
+	return (*DeleteKVRequest)(r).CloneVT()
+}
+
+// AsReader returns a read-only view of this DeleteKVRequest.
+func (m *DeleteKVRequest) AsReader() DeleteKVRequestReader {
+	if m == nil {
+		return nil
+	}
+	return (*deleteKVRequestReadonly)(m)
+}
+
+// Mutate returns a mutable deep clone of this DeleteKVRequest.
+func (m *DeleteKVRequest) Mutate() *DeleteKVRequest {
+	return m.CloneVT()
+}
+
+// DeleteKVRequestListReader provides read-only iteration over []*DeleteKVRequest.
+type DeleteKVRequestListReader interface {
+	Len() int
+	Get(i int) DeleteKVRequestReader
+	Range(yield func(int, DeleteKVRequestReader) bool)
+}
+
+type deleteKVRequestListReadonly []*DeleteKVRequest
+
+func (l deleteKVRequestListReadonly) Len() int { return len(l) }
+
+func (l deleteKVRequestListReadonly) Get(i int) DeleteKVRequestReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l deleteKVRequestListReadonly) Range(yield func(int, DeleteKVRequestReader) bool) {
+	for i, v := range l {
+		var r DeleteKVRequestReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewDeleteKVRequestListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewDeleteKVRequestListReader(s []*DeleteKVRequest) DeleteKVRequestListReader {
+	return deleteKVRequestListReadonly(s)
+}
