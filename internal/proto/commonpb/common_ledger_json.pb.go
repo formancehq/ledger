@@ -323,6 +323,7 @@ func (x *ClusterPolicy) MarshalJSON() ([]byte, error) {
 		MetadataMaxValueBytes       uint64 `json:"metadataMaxValueBytes"`
 		MetadataMaxEntityBytes      uint64 `json:"metadataMaxEntityBytes"`
 		MetadataMaxCommandBytes     uint64 `json:"metadataMaxCommandBytes"`
+		CapabilityActivations       any    `json:"capabilityActivations"`
 	}{
 		Revision:                    x.Revision,
 		IdempotencyTtlMicros:        x.IdempotencyTtlMicros,
@@ -332,6 +333,12 @@ func (x *ClusterPolicy) MarshalJSON() ([]byte, error) {
 		MetadataMaxValueBytes:       x.MetadataMaxValueBytes,
 		MetadataMaxEntityBytes:      x.MetadataMaxEntityBytes,
 		MetadataMaxCommandBytes:     x.MetadataMaxCommandBytes,
+		CapabilityActivations: func() any {
+			if x.CapabilityActivations == nil {
+				return []any{}
+			}
+			return x.CapabilityActivations
+		}(),
 	})
 }
 
