@@ -219,6 +219,12 @@ func listEnumJSONAssignment(g *protogen.GeneratedFile, access string, field *pro
 }
 
 func enumJSONAssignment(g *protogen.GeneratedFile, access string, field *protogen.Field) string {
+	// Proto3 optional scalar fields are generated as pointers. Use the
+	// generated getter so the enum switch operates on the enum value rather
+	// than on *Enum, while preserving the zero value for an unset field.
+	if field.Desc.HasOptionalKeyword() {
+		access = "x.Get" + field.GoName + "()"
+	}
 	values := field.Desc.Enum().Values()
 	expression := "func() any {"
 	expression += " switch " + access + " {"
