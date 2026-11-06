@@ -3,7 +3,6 @@ package bootstrap
 import (
 	"context"
 	"sync"
-	"sync/atomic"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -12,7 +11,6 @@ import (
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
-	"github.com/formancehq/ledger/v3/internal/infra/capabilities"
 	"github.com/formancehq/ledger/v3/internal/infra/state"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
@@ -153,36 +151,6 @@ func TestReconcileClusterPolicy(t *testing.T) {
 		require.Zero(t, admission.callCount(), "a newer applied revision must not be overwritten")
 	})
 
-	t.Run("does not manufacture a revision when a member reader is present", func(t *testing.T) {
-		t.Parallel()
-
-		store := newReconcilerTestStore(t)
-		cfg := validBaseConfig()
-		batch := store.OpenWriteSession()
-		require.NoError(t, state.SaveClusterPolicy(batch, &commonpb.ClusterPolicy{
-			Revision:                    cfg.ClusterPolicyRevision + 1,
-			IdempotencyTtlMicros:        uint64(cfg.IdempotencyTTL.Microseconds()),
-			QueryCheckpointLimit:        cfg.QueryCheckpointLimit,
-			MetadataMaxEntriesPerEntity: cfg.MetadataMaxEntriesPerEntity,
-			MetadataMaxKeyBytes:         cfg.MetadataMaxKeyBytes,
-			MetadataMaxValueBytes:       cfg.MetadataMaxValueBytes,
-			MetadataMaxEntityBytes:      cfg.MetadataMaxEntityBytes,
-			MetadataMaxCommandBytes:     cfg.MetadataMaxCommandBytes,
-		}))
-		require.NoError(t, batch.Commit())
-
-		admission := &fakeAdmission{}
-		var memberReads atomic.Int32
-		reconcileClusterPolicy(context.Background(), admission, store, cfg, func() bool { return true }, logging.Testing(), func() []capabilities.Member {
-			memberReads.Add(1)
-
-			return []capabilities.Member{{NodeID: 1, Role: capabilities.Voter}}
-		})
-
-		require.Zero(t, admission.callCount(), "member evidence must not bypass the stale revision guard")
-		require.EqualValues(t, 1, memberReads.Load(), "matching operator configuration must still allow capability reconciliation")
-	})
-
 	t.Run("rejects a newer revision with a configuration conflict", func(t *testing.T) {
 		t.Parallel()
 
@@ -196,15 +164,9 @@ func TestReconcileClusterPolicy(t *testing.T) {
 		require.NoError(t, batch.Commit())
 
 		admission := &fakeAdmission{}
-		var memberReads atomic.Int32
-		reconcileClusterPolicy(context.Background(), admission, store, cfg, func() bool { return true }, logging.Testing(), func() []capabilities.Member {
-			memberReads.Add(1)
-
-			return []capabilities.Member{{NodeID: 1, Role: capabilities.Voter}}
-		})
+		reconcileClusterPolicy(context.Background(), admission, store, cfg, func() bool { return true }, logging.Testing())
 
 		require.Zero(t, admission.callCount(), "a newer conflicting configuration must not be re-proposed")
-		require.Zero(t, memberReads.Load(), "configuration conflicts must stop before capability reconciliation")
 	})
 
 	t.Run("does not replace a same-revision configuration conflict with a capability bump", func(t *testing.T) {
@@ -220,9 +182,7 @@ func TestReconcileClusterPolicy(t *testing.T) {
 		require.NoError(t, batch.Commit())
 
 		admission := &fakeAdmission{}
-		reconcileClusterPolicy(context.Background(), admission, store, cfg, func() bool { return true }, logging.Testing(), func() []capabilities.Member {
-			return []capabilities.Member{{NodeID: 1, Role: capabilities.Voter}}
-		})
+		reconcileClusterPolicy(context.Background(), admission, store, cfg, func() bool { return true }, logging.Testing())
 
 		require.Zero(t, admission.callCount(), "same-revision configuration conflicts must remain rejected")
 	})
