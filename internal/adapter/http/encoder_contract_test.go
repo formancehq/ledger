@@ -77,7 +77,7 @@ var jsonWriterFiles = map[string]bool{
 	"handlers_list_numscripts.go": true, "handlers_list_prepared_queries.go": true,
 	"handlers_list_signing_keys.go": true, "handlers_list_transactions.go": true,
 	"handlers_promote_ledger.go": true, "handlers_revert_transaction.go": true,
-	"handlers_save_numscript.go": true,
+	"handlers_save_numscript.go": true, "write_response_options.go": true,
 }
 
 func TestProtojsonRoutes_PayloadUsesThePublicProjectionWhenPresent(t *testing.T) {
@@ -253,7 +253,7 @@ func TestProtojsonRoutes_TableIsComplete(t *testing.T) {
 				return true
 			}
 			switch calleeName(call.Fun) {
-			case "writeOK", "writeCreated", "writeOKChecked", "writePageOK", "writePageOKChecked":
+			case "writeOK", "writeCreated", "writeMutationCreated", "writeOKChecked", "writePageOK", "writePageOKChecked":
 				actual[entry.Name()] = true
 			}
 
