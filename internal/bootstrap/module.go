@@ -1958,22 +1958,6 @@ func sameClusterPolicyConfiguration(a, b *commonpb.ClusterPolicy) bool {
 	return left.EqualVT(right)
 }
 
-// sameClusterPolicyPayload compares the complete policy while deliberately
-// ignoring only the revision. A revision-only difference is not a reason to
-// manufacture another revision during capability reconciliation.
-func sameClusterPolicyPayload(a, b *commonpb.ClusterPolicy) bool {
-	if a == nil || b == nil {
-		return a == b
-	}
-
-	left := a.CloneVT()
-	right := b.CloneVT()
-	left.Revision = 0
-	right.Revision = 0
-
-	return left.EqualVT(right)
-}
-
 // buildResponseSigner returns the Ed25519 response signer for the gRPC
 // service plane.
 //
