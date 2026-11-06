@@ -324,6 +324,7 @@ const (
 	ErrReasonInvalidCronExpression         = "INVALID_CRON_EXPRESSION"
 	ErrReasonLedgerInMirrorMode            = "LEDGER_IN_MIRROR_MODE"
 	ErrReasonLedgerNotInMirrorMode         = "LEDGER_NOT_IN_MIRROR_MODE"
+	ErrReasonMirrorNotCaughtUp             = "MIRROR_NOT_CAUGHT_UP"
 	ErrReasonPreparedQueryAlreadyExists    = "PREPARED_QUERY_ALREADY_EXISTS"
 	ErrReasonPreparedQueryNotFound         = "PREPARED_QUERY_NOT_FOUND"
 	ErrReasonIndexAlreadyExists            = "INDEX_ALREADY_EXISTS"
@@ -980,6 +981,23 @@ func (e *ErrLedgerNotInMirrorMode) Error() string {
 }
 func (*ErrLedgerNotInMirrorMode) Kind() ErrorKind { return KindPrecondition }
 func (*ErrLedgerNotInMirrorMode) Reason() string  { return ErrReasonLedgerNotInMirrorMode }
+
+// ErrMirrorNotCaughtUp is the authoritative FSM rejection of a promotion whose
+// durable ingestion cursor trails the replicated source observation, whose
+// source head is unknown, or whose last sync attempt reported an error.
+type ErrMirrorNotCaughtUp struct {
+	Name      string
+	Cursor    uint64
+	Head      uint64
+	SyncError bool
+}
+
+func (e *ErrMirrorNotCaughtUp) Error() string {
+	return fmt.Sprintf("mirror %s is not caught up: cursor=%d head=%d sync_error=%t",
+		e.Name, e.Cursor, e.Head, e.SyncError)
+}
+func (*ErrMirrorNotCaughtUp) Kind() ErrorKind { return KindPrecondition }
+func (*ErrMirrorNotCaughtUp) Reason() string  { return ErrReasonMirrorNotCaughtUp }
 
 // ErrMirrorV2LogIDGap — a mirror ingest arrived with a v2LogId beyond the next
 // contiguous slot (Expected) after the applied prefix (LastMirrorV2LogId is

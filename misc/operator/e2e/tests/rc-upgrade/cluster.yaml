@@ -5,6 +5,6 @@ metadata:
 spec:
   replicas: 3
   image:
-    repository: ledger
-    tag: v3.0.0-rc.4
-    pullPolicy: Never
+    repository: ($values.sourceRepository)
+    tag: ($values.sourceTag)
+    pullPolicy: ($values.sourcePullPolicy)

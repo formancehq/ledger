@@ -769,6 +769,14 @@ Converts the mirror ledger to normal mode. After promotion:
 - The `mirrorSource` configuration is cleared
 
 Promoting a non-mirror ledger returns HTTP 400 (`LEDGER_NOT_IN_MIRROR_MODE`) or gRPC `FailedPrecondition`.
+For a new checked promotion, the committed FSM proposal first replays a matching,
+unexpired keyed outcome when one exists. Otherwise it rejects a mirror with no
+observed source head, a cursor behind that head, or an active sync error with
+the audited `MIRROR_NOT_CAUGHT_UP` reason and structured progress facts. A keyed
+retry of that rejection replays its frozen result inside the FSM, without a new
+audit entry or another catch-up check. Historical unmarked promotion orders
+keep their original apply behavior. The service request remains unchanged; the
+protobuf reason enum adds `MIRROR_NOT_CAUGHT_UP`.
 
 **gRPC:** Both create-mirror and promote operations go through the `Apply` method using `CreateLedgerRequest` (with `mode` and `mirror_source` fields) and `PromoteLedgerRequest`.
 
@@ -1687,7 +1695,7 @@ The REST adapter uses the same `Describable.Reason()` as the JSON `errorCode` fi
 
 Every response the table maps to 503 also carries `Retry-After: 1` — the kind is by definition retry-now, so the header covers the whole class, not just the no-leader sentinel.
 
-**Classified failures with no reason (EN-2081).** A `domain.Classifiable` declares a `Kind` and nothing else, so it has no `Reason()` to publish. The status code comes from the same table, but the response carries a coarse kind-level `errorCode` — `INVALID_REQUEST`, `UNAVAILABLE`, `CONFLICT`, … — and the gRPC surface sends no `ErrorInfo` at all. A bulk element answers the same status and message with the generic element `errorCode` `ERROR`.
+**Classified failures with no reason (EN-2081).** A `domain.Classifiable` declares a `Kind` and nothing else, so it has no `Reason()` to publish. The status code comes from the same table, but the response carries a coarse kind-level `errorCode` such as `INVALID_REQUEST`, `UNAVAILABLE`, or `CONFLICT`. The gRPC surface sends no `ErrorInfo` for this tier. Mirror promotion now produces a typed `MIRROR_NOT_CAUGHT_UP` reason in the FSM and belongs to the `Describable` tier. A bulk element answers the same status and message with the generic element `errorCode` `ERROR`.
 
 This is the tier for failures that name no business outcome a client could branch on:
 

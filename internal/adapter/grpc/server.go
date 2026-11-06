@@ -668,7 +668,8 @@ func convertToGRPCErrorWithContext(ctx context.Context, err error, logger loggin
 	// a transport guard, a read-path argument check — flows through one
 	// exhaustive Kind switch in classifiableToGRPCStatus. Kind is all the
 	// status code needs; the Reason and its metadata are read there only from
-	// the errors that own a public wire contract.
+	// the errors that own a public wire contract. The mirror catch-up guard
+	// above adds a generic ErrorInfo solely to preserve forwarding semantics.
 	if c, ok := errors.AsType[domain.Classifiable](err); ok {
 		if c.Kind() == domain.KindInternal {
 			recordGRPCInternalError(ctx, logger, err)

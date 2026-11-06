@@ -44,6 +44,11 @@ type Context struct {
 	// auditReplay executes recorded business intent without operational quotas.
 	auditReplay bool
 
+	RequireMirrorCatchUp bool
+	// MirrorPromotionProgress reads the FSM's committed source observation plus
+	// technical updates staged earlier in this proposal. Nil for legacy orders
+	// and audit replay, which do not re-run the eligibility decision.
+	MirrorPromotionProgress func(string) (uint64, bool)
 	// Metadata budget is shared by all orders in one atomic proposal.
 	metadataBudget *commandMetadataBudget
 
@@ -230,8 +235,8 @@ func (r *OrdersResult) recordCreatedLog(log *commonpb.Log) bool {
 // Successive calls return independent scopes — the previous scope's
 // coverage map is never mutated. Per-order isolation is therefore
 // structural: order N's scope cannot read keys declared by order M.
-func (p *RequestProcessor) ProcessOrders(orders []*raftcmdpb.Order, scopeFactory ScopeFactory, sink SignalSink) (*OrdersResult, domain.SerializableError) {
-	return p.processOrders(orders, scopeFactory, sink, false)
+func (p *RequestProcessor) ProcessOrders(orders []*raftcmdpb.Order, scopeFactory ScopeFactory, sink SignalSink, mirrorProgress ...func(string) (uint64, bool)) (*OrdersResult, domain.SerializableError) {
+	return p.processOrders(orders, scopeFactory, sink, false, mirrorProgress...)
 }
 
 // ProcessAuditedOrders verifies recorded business effects. Operational quotas
@@ -240,7 +245,7 @@ func (p *RequestProcessor) ProcessAuditedOrders(orders []*raftcmdpb.Order, scope
 	return p.processOrders(orders, scopeFactory, sink, true)
 }
 
-func (p *RequestProcessor) processOrders(orders []*raftcmdpb.Order, scopeFactory ScopeFactory, sink SignalSink, auditReplay bool) (*OrdersResult, domain.SerializableError) {
+func (p *RequestProcessor) processOrders(orders []*raftcmdpb.Order, scopeFactory ScopeFactory, sink SignalSink, auditReplay bool, mirrorProgress ...func(string) (uint64, bool)) (*OrdersResult, domain.SerializableError) {
 	clear(p.compiledTypesCache)
 	clear(p.assetCache)
 
@@ -254,6 +259,9 @@ func (p *RequestProcessor) processOrders(orders []*raftcmdpb.Order, scopeFactory
 		CompiledTypes:        p.compiledTypesCache,
 		AssetCache:           p.assetCache,
 		batchInitialNextTxID: make(map[string]uint64),
+	}
+	if len(mirrorProgress) != 0 {
+		ctx.MirrorPromotionProgress = mirrorProgress[0]
 	}
 
 	ctx.metadataBudget = &commandMetadataBudget{}
@@ -552,6 +560,7 @@ func (p *RequestProcessor) processOrder(order *raftcmdpb.Order, s Scope, ctx *Co
 	// CreateTransactionOrder.
 	ctx.InputsResolutionHash = order.GetTechnical().GetInputsResolutionHash()
 	ctx.RevertTargetDigest = order.GetTechnical().GetRevertTargetDigest()
+	ctx.RequireMirrorCatchUp = order.GetTechnical().GetRequireMirrorCatchUp()
 	// Reset per-apply fields — only processApply/processMirrorIngest set them.
 	ctx.Boundaries = nil
 	ctx.LedgerInfo = nil

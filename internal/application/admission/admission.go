@@ -1380,6 +1380,7 @@ func extractLedgerScopedNeeds(p *plan.Coverage, ls *raftcmdpb.LedgerScopedOrder,
 		p.Add(dal.SubAttrBoundary, ledgerBytes)
 	case *raftcmdpb.LedgerScopedOrder_PromoteLedger:
 		p.Add(dal.SubAttrLedger, ledgerBytes)
+		p.Add(dal.SubAttrBoundary, ledgerBytes)
 	case *raftcmdpb.LedgerScopedOrder_MirrorIngest:
 		p.Add(dal.SubAttrLedger, ledgerBytes)
 		p.Add(dal.SubAttrBoundary, ledgerBytes)
@@ -2300,6 +2301,7 @@ func (a *Admission) ledgerRequestToOrder(order *raftcmdpb.Order, req *servicepb.
 				PromoteLedger: &raftcmdpb.PromoteLedgerOrder{},
 			},
 		})
+		orderTechnical(order).RequireMirrorCatchUp = true
 	case *servicepb.Request_CreatePreparedQuery:
 		wrapLedgerScoped(order, &raftcmdpb.LedgerScopedOrder{
 			Ledger: reqType.CreatePreparedQuery.GetLedger(),

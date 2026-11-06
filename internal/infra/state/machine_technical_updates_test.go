@@ -1,6 +1,7 @@
 package state
 
 import (
+	"context"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -11,6 +12,32 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
+
+func TestMirrorPromotionProgressSurvivesRecovery(t *testing.T) {
+	t.Parallel()
+	machine, store, _ := newTestMachine(t)
+	create := createLedgerOrder("mirror")
+	create.GetLedgerScoped().GetCreateLedger().Mode = commonpb.LedgerMode_LEDGER_MODE_MIRROR
+	create.GetLedgerScoped().GetCreateLedger().MirrorSource = &commonpb.MirrorSourceConfig{
+		LedgerName: "source",
+		Type:       &commonpb.MirrorSourceConfig_Http{Http: &commonpb.HttpMirrorSourceConfig{BaseUrl: "http://source:3068"}},
+	}
+	result, err := machine.ApplyEntries(context.Background(), store, makeEntry(t, 1, makeProposal(1, create)))
+	require.NoError(t, err)
+	require.NoError(t, result.Results[0].Error)
+	ledgerID, _ := attributes.MakeKey(domain.LedgerKey{Name: "mirror"}.Bytes())
+	update := makeProposal(2)
+	update.ExecutionPlan.Attributes = []*raftcmdpb.AttributeCoverage{declareTestPlan(ledgerID, dal.SubAttrLedger)}
+	update.TechnicalUpdates = []*raftcmdpb.TechnicalUpdate{{Kind: &raftcmdpb.TechnicalUpdate_MirrorSync{
+		MirrorSync: &raftcmdpb.MirrorSyncUpdate{LedgerName: "mirror", SourceLogCount: 7},
+	}}}
+	result, err = machine.ApplyEntries(context.Background(), store, makeEntry(t, 2, update))
+	require.NoError(t, err)
+	require.NoError(t, result.Results[0].Error)
+	require.Equal(t, mirrorPromotionState{Head: 7}, machine.State.MirrorPromotion["mirror"])
+	require.NoError(t, NewRecovery(machine, store).RecoverState())
+	require.Equal(t, mirrorPromotionState{Head: 7}, machine.State.MirrorPromotion["mirror"])
+}
 
 // TestApplyMirrorSyncUpdate_KeysOffEnvelopeNotProjection covers EN-1522 gap
 // A2: applyMirrorSyncUpdate must derive MirrorSyncWrite.LedgerName from the

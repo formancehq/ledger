@@ -389,7 +389,25 @@ The ingestion position is not stored here. It lives on the per-ledger `LedgerBou
 
 A mirror ledger can be promoted to a normal ledger via `PromoteLedgerOrder` (`raft_cmd.proto:246`). The FSM emits a `PromotedLedgerLog` (`common.proto:315`), the WriteSet flags `mirrorConfigChanged = true`, and `Manager.reconcile()` stops the worker on the next reconciliation tick.
 
-After promotion, the ledger accepts normal write requests. The boundary's `last_mirror_v2_log_id` and the source-head row are kept for forensic purposes but no longer advance.
+New promotion orders carry `OrderTechnical.require_mirror_catch_up`. After the FSM checks any
+idempotency replay, it requires an observed source head greater than zero, a
+durable ingestion cursor at or beyond that head, and no recorded synchronization
+error. The head and error are reconstructed from existing durable mirror rows
+at recovery and advanced by committed technical updates; the cursor remains in
+`LedgerBoundaries`. A rejected order produces an audited, frozen
+`MIRROR_NOT_CAUGHT_UP` precondition failure. Historical orders without the flag
+retain their original replay behavior. The head is the latest **observed**
+count, not a live lease on the source; operators must stop source writes and
+verify the final source head before cutover. There is no force override.
+Cross-cluster restore clears the source-head observation, including after an
+incremental delta. The restored mirror worker must observe the source again
+before a new promotion can pass; the ingestion cursor, business history, and
+audit history remain intact.
+The `rc.3` to `rc.4` upgrade requires the operator's stopped restart. Promotion
+orders already committed by `rc.3` have no catch-up flag and keep their original
+FSM result, idempotency result, and audit record when replayed on `rc.4`.
+
+After promotion, the ledger accepts normal write requests. The boundary's `last_mirror_v2_log_id` and the source-head row are kept for forensic purposes but no longer advance on the live cluster. Cross-cluster restore clears the source-head observation for all ledgers.
 
 ## Configuration
 

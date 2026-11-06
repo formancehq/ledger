@@ -860,6 +860,21 @@ func (b *WriteSet) finalizeMerge(batch *dal.WriteSession) error {
 			return fmt.Errorf("deleting reversions for %q: %w", ledgerName, err)
 		}
 	}
+	for _, w := range b.pendingMirrorSyncs {
+		progress := b.fsm.State.MirrorPromotion[w.LedgerName]
+		if w.SourceLogCount > 0 {
+			progress.Head = w.SourceLogCount
+		}
+		if w.ClearError {
+			progress.SyncError = false
+		} else if w.Error != nil {
+			progress.SyncError = true
+		}
+		b.fsm.State.MirrorPromotion[w.LedgerName] = progress
+	}
+	for _, ledgerName := range b.deletedLedgers {
+		delete(b.fsm.State.MirrorPromotion, ledgerName)
+	}
 
 	// In-memory FSM state finalisation.
 	b.fsm.State.NextSequenceID = b.NextSequenceID
@@ -867,6 +882,27 @@ func (b *WriteSet) finalizeMerge(batch *dal.WriteSession) error {
 	b.fsm.State.NextQueryCheckpointID = b.NextQueryCheckpointID
 
 	return nil
+}
+
+// mirrorPromotionProgress includes technical updates staged earlier in this
+// proposal, matching the values that Merge will persist if the batch succeeds.
+func (b *WriteSet) mirrorPromotionProgress(ledger string) (uint64, bool) {
+	progress := b.fsm.State.MirrorPromotion[ledger]
+	for _, w := range b.pendingMirrorSyncs {
+		if w.LedgerName != ledger {
+			continue
+		}
+		if w.SourceLogCount > 0 {
+			progress.Head = w.SourceLogCount
+		}
+		if w.ClearError {
+			progress.SyncError = false
+		} else if w.Error != nil {
+			progress.SyncError = true
+		}
+	}
+
+	return progress.Head, progress.SyncError
 }
 
 func NewWriteSet(fsm *Machine) *WriteSet {

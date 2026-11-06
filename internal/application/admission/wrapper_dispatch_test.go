@@ -66,6 +66,7 @@ func TestExtractLedgerScopedNeeds_CoversEveryPayloadVariant(t *testing.T) {
 			},
 			assert: func(t *testing.T, n *plan.Coverage) {
 				require.True(t, n.Has(dal.SubAttrLedger, ledgerKey.Bytes()))
+				require.True(t, n.Has(dal.SubAttrBoundary, ledgerKey.Bytes()))
 			},
 		},
 		{

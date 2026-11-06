@@ -292,8 +292,12 @@ type OrderTechnical struct {
 	// checks, so a target that is unknown or already reverted keeps returning
 	// those reasons. Empty for every non-revert order.
 	RevertTargetDigest []byte `protobuf:"bytes,4,opt,name=revert_target_digest,json=revertTargetDigest,proto3" json:"revert_target_digest,omitempty"`
-	unknownFields      protoimpl.UnknownFields
-	sizeCache          protoimpl.SizeCache
+	// New mirror promotions require the FSM catch-up check. This is excluded
+	// from business intent so a retry of a pre-upgrade order keeps its hash.
+	// Historical persisted orders lack it and retain their apply behavior.
+	RequireMirrorCatchUp bool `protobuf:"varint,5,opt,name=require_mirror_catch_up,json=requireMirrorCatchUp,proto3" json:"require_mirror_catch_up,omitempty"`
+	unknownFields        protoimpl.UnknownFields
+	sizeCache            protoimpl.SizeCache
 }
 
 func (x *OrderTechnical) Reset() {
@@ -352,6 +356,13 @@ func (x *OrderTechnical) GetRevertTargetDigest() []byte {
 		return x.RevertTargetDigest
 	}
 	return nil
+}
+
+func (x *OrderTechnical) GetRequireMirrorCatchUp() bool {
+	if x != nil {
+		return x.RequireMirrorCatchUp
+	}
+	return false
 }
 
 // LedgerScopedOrder is the wrapper for every Order variant that targets a
@@ -5757,12 +5768,13 @@ const file_raft_cmd_proto_rawDesc = "" +
 	"\rledger_scoped\x18\x01 \x01(\v2\x17.raft.LedgerScopedOrderH\x00R\fledgerScoped\x12>\n" +
 	"\rsystem_scoped\x18\x02 \x01(\v2\x17.raft.SystemScopedOrderH\x00R\fsystemScoped\x122\n" +
 	"\ttechnical\x18\x03 \x01(\v2\x14.raft.OrderTechnicalR\ttechnicalB\x06\n" +
-	"\x04type\"\xce\x01\n" +
+	"\x04type\"\x85\x02\n" +
 	"\x0eOrderTechnical\x12#\n" +
 	"\rcoverage_bits\x18\x01 \x01(\fR\fcoverageBits\x124\n" +
 	"\x16inputs_resolution_hash\x18\x02 \x01(\fR\x14inputsResolutionHash\x12/\n" +
 	"\x13preload_unavailable\x18\x03 \x01(\bR\x12preloadUnavailable\x120\n" +
-	"\x14revert_target_digest\x18\x04 \x01(\fR\x12revertTargetDigest\"\xda\x06\n" +
+	"\x14revert_target_digest\x18\x04 \x01(\fR\x12revertTargetDigest\x125\n" +
+	"\x17require_mirror_catch_up\x18\x05 \x01(\bR\x14requireMirrorCatchUp\"\xda\x06\n" +
 	"\x11LedgerScopedOrder\x12\x16\n" +
 	"\x06ledger\x18\x01 \x01(\tR\x06ledger\x12.\n" +
 	"\x05apply\x18\x02 \x01(\v2\x16.raft.LedgerApplyOrderH\x00R\x05apply\x12>\n" +

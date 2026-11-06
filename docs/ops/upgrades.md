@@ -29,10 +29,13 @@ StatefulSet for the volume change.
 Old and new voters must communicate and apply each committed entry identically
 while they coexist. The embedded operator requires a complete stop at the
 `v3.0.0-rc.4` boundary because RC.3 cannot execute native proposal payloads.
+The mirror promotion FSM result also changes at this boundary.
 `rc.3` includes the drain barrier used for this upgrade. RC adjacency remains mandatory.
 The `rc.1` to `rc.2` transition rolls one voter at a time with a maintenance
 barrier that pauses writes; it does not stop the whole cluster.
 The `rc.2` to `rc.3` transition remains rolling.
+Promotion orders committed by `rc.3` retain their original result,
+idempotency outcome, and audit history when `rc.4` recovers and replays them.
 When the running version precedes a mandatory boundary, pin the target to a
 canonical version tag. Moving or non-canonical tags such as `latest` cannot
 prove whether the boundary is crossed, so the operator blocks the change.
@@ -240,6 +243,10 @@ failure, forking the authoritative audit hash. Admission on a new leader alone
 cannot protect an old leader or previously committed proposals.
 
 The published `rc.1` binary cannot participate in an operator-owned drain.
+The `rc.3` to `rc.4` transition uses the operator-required stopped restart.
+The operator drains every voter, stops all old Pods, and retains their PVCs
+before starting the target image. This prevents old and new FSMs from applying
+the same promotion with different outcomes.
 
 1. With every voter still on the source binary, establish a healthy, consistent
    audit history and take a backup. Existing divergent history is an incident;

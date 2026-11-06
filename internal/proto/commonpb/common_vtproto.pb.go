@@ -3401,6 +3401,15 @@ func (m *FailureDetails_NumscriptVersionNotFound) CloneVT() isFailureDetails_Kin
 	return r
 }
 
+func (m *FailureDetails_MirrorNotCaughtUp) CloneVT() isFailureDetails_Kind {
+	if m == nil {
+		return (*FailureDetails_MirrorNotCaughtUp)(nil)
+	}
+	r := new(FailureDetails_MirrorNotCaughtUp)
+	r.MirrorNotCaughtUp = m.MirrorNotCaughtUp.CloneVT()
+	return r
+}
+
 func (m *AccountAddressEmptyDetails) CloneVT() *AccountAddressEmptyDetails {
 	if m == nil {
 		return (*AccountAddressEmptyDetails)(nil)
@@ -4458,6 +4467,38 @@ func (m *MirrorHttpUrlInvalidDetails) CloneVT() *MirrorHttpUrlInvalidDetails {
 }
 
 func (m *MirrorHttpUrlInvalidDetails) CloneMessageVT() proto.Message {
+	return m.CloneVT()
+}
+
+func (m *MirrorNotCaughtUpDetails) CloneVT() *MirrorNotCaughtUpDetails {
+	if m == nil {
+		return (*MirrorNotCaughtUpDetails)(nil)
+	}
+	r := new(MirrorNotCaughtUpDetails)
+	if rhs := m.Name; rhs != nil {
+		tmpVal := *rhs
+		r.Name = &tmpVal
+	}
+	if rhs := m.Cursor; rhs != nil {
+		tmpVal := *rhs
+		r.Cursor = &tmpVal
+	}
+	if rhs := m.SourceLogCount; rhs != nil {
+		tmpVal := *rhs
+		r.SourceLogCount = &tmpVal
+	}
+	if rhs := m.SyncError; rhs != nil {
+		tmpVal := *rhs
+		r.SyncError = &tmpVal
+	}
+	if len(m.unknownFields) > 0 {
+		r.unknownFields = make([]byte, len(m.unknownFields))
+		copy(r.unknownFields, m.unknownFields)
+	}
+	return r
+}
+
+func (m *MirrorNotCaughtUpDetails) CloneMessageVT() proto.Message {
 	return m.CloneVT()
 }
 
@@ -16085,6 +16126,31 @@ func (this *FailureDetails_NumscriptVersionNotFound) EqualVT(thatIface isFailure
 	return true
 }
 
+func (this *FailureDetails_MirrorNotCaughtUp) EqualVT(thatIface isFailureDetails_Kind) bool {
+	that, ok := thatIface.(*FailureDetails_MirrorNotCaughtUp)
+	if !ok {
+		return false
+	}
+	if this == that {
+		return true
+	}
+	if this == nil && that != nil || this != nil && that == nil {
+		return false
+	}
+	if p, q := this.MirrorNotCaughtUp, that.MirrorNotCaughtUp; p != q {
+		if p == nil {
+			p = &MirrorNotCaughtUpDetails{}
+		}
+		if q == nil {
+			q = &MirrorNotCaughtUpDetails{}
+		}
+		if !p.EqualVT(q) {
+			return false
+		}
+	}
+	return true
+}
+
 func (this *AccountAddressEmptyDetails) EqualVT(that *AccountAddressEmptyDetails) bool {
 	if this == that {
 		return true
@@ -17083,6 +17149,34 @@ func (this *MirrorHttpUrlInvalidDetails) EqualVT(that *MirrorHttpUrlInvalidDetai
 
 func (this *MirrorHttpUrlInvalidDetails) EqualMessageVT(thatMsg proto.Message) bool {
 	that, ok := thatMsg.(*MirrorHttpUrlInvalidDetails)
+	if !ok {
+		return false
+	}
+	return this.EqualVT(that)
+}
+func (this *MirrorNotCaughtUpDetails) EqualVT(that *MirrorNotCaughtUpDetails) bool {
+	if this == that {
+		return true
+	} else if this == nil || that == nil {
+		return false
+	}
+	if p, q := this.Name, that.Name; (p == nil && q != nil) || (p != nil && (q == nil || *p != *q)) {
+		return false
+	}
+	if p, q := this.Cursor, that.Cursor; (p == nil && q != nil) || (p != nil && (q == nil || *p != *q)) {
+		return false
+	}
+	if p, q := this.SourceLogCount, that.SourceLogCount; (p == nil && q != nil) || (p != nil && (q == nil || *p != *q)) {
+		return false
+	}
+	if p, q := this.SyncError, that.SyncError; (p == nil && q != nil) || (p != nil && (q == nil || *p != *q)) {
+		return false
+	}
+	return string(this.unknownFields) == string(that.unknownFields)
+}
+
+func (this *MirrorNotCaughtUpDetails) EqualMessageVT(thatMsg proto.Message) bool {
+	that, ok := thatMsg.(*MirrorNotCaughtUpDetails)
 	if !ok {
 		return false
 	}
@@ -31403,6 +31497,27 @@ func (m *FailureDetails_NumscriptVersionNotFound) MarshalToSizedBufferVT(dAtA []
 	}
 	return len(dAtA) - i, nil
 }
+func (m *FailureDetails_MirrorNotCaughtUp) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *FailureDetails_MirrorNotCaughtUp) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	if m.MirrorNotCaughtUp != nil {
+		size, err := m.MirrorNotCaughtUp.MarshalToSizedBufferVT(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		i--
+		dAtA[i] = 0x9
+		i--
+		dAtA[i] = 0xaa
+	}
+	return len(dAtA) - i, nil
+}
 func (m *AccountAddressEmptyDetails) MarshalVT() (dAtA []byte, err error) {
 	if m == nil {
 		return nil, nil
@@ -33494,6 +33609,66 @@ func (m *MirrorHttpUrlInvalidDetails) MarshalToSizedBufferVT(dAtA []byte) (int, 
 	if m.unknownFields != nil {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
+	}
+	return len(dAtA) - i, nil
+}
+
+func (m *MirrorNotCaughtUpDetails) MarshalVT() (dAtA []byte, err error) {
+	if m == nil {
+		return nil, nil
+	}
+	size := m.SizeVT()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBufferVT(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *MirrorNotCaughtUpDetails) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *MirrorNotCaughtUpDetails) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	if m == nil {
+		return 0, nil
+	}
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if m.unknownFields != nil {
+		i -= len(m.unknownFields)
+		copy(dAtA[i:], m.unknownFields)
+	}
+	if m.SyncError != nil {
+		i--
+		if *m.SyncError {
+			dAtA[i] = 1
+		} else {
+			dAtA[i] = 0
+		}
+		i--
+		dAtA[i] = 0x20
+	}
+	if m.SourceLogCount != nil {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(*m.SourceLogCount))
+		i--
+		dAtA[i] = 0x18
+	}
+	if m.Cursor != nil {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(*m.Cursor))
+		i--
+		dAtA[i] = 0x10
+	}
+	if m.Name != nil {
+		i -= len(*m.Name)
+		copy(dAtA[i:], *m.Name)
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(*m.Name)))
+		i--
+		dAtA[i] = 0xa
 	}
 	return len(dAtA) - i, nil
 }
@@ -47329,6 +47504,18 @@ func (m *FailureDetails_NumscriptVersionNotFound) SizeVT() (n int) {
 	}
 	return n
 }
+func (m *FailureDetails_MirrorNotCaughtUp) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.MirrorNotCaughtUp != nil {
+		l = m.MirrorNotCaughtUp.SizeVT()
+		n += 2 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	return n
+}
 func (m *AccountAddressEmptyDetails) SizeVT() (n int) {
 	if m == nil {
 		return 0
@@ -48063,6 +48250,29 @@ func (m *MirrorHttpUrlInvalidDetails) SizeVT() (n int) {
 	}
 	var l int
 	_ = l
+	n += len(m.unknownFields)
+	return n
+}
+
+func (m *MirrorNotCaughtUpDetails) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.Name != nil {
+		l = len(*m.Name)
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	if m.Cursor != nil {
+		n += 1 + protohelpers.SizeOfVarint(uint64(*m.Cursor))
+	}
+	if m.SourceLogCount != nil {
+		n += 1 + protohelpers.SizeOfVarint(uint64(*m.SourceLogCount))
+	}
+	if m.SyncError != nil {
+		n += 2
+	}
 	n += len(m.unknownFields)
 	return n
 }
@@ -70368,6 +70578,47 @@ func (m *FailureDetails) UnmarshalVT(dAtA []byte) error {
 				m.Kind = &FailureDetails_NumscriptVersionNotFound{NumscriptVersionNotFound: v}
 			}
 			iNdEx = postIndex
+		case 149:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field MirrorNotCaughtUp", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if oneof, ok := m.Kind.(*FailureDetails_MirrorNotCaughtUp); ok {
+				if err := oneof.MirrorNotCaughtUp.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+					return err
+				}
+			} else {
+				v := &MirrorNotCaughtUpDetails{}
+				if err := v.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+					return err
+				}
+				m.Kind = &FailureDetails_MirrorNotCaughtUp{MirrorNotCaughtUp: v}
+			}
+			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
@@ -74771,6 +75022,151 @@ func (m *MirrorHttpUrlInvalidDetails) UnmarshalVT(dAtA []byte) error {
 			return fmt.Errorf("proto: MirrorHttpUrlInvalidDetails: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
+		default:
+			iNdEx = preIndex
+			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if (skippy < 0) || (iNdEx+skippy) < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.unknownFields = append(m.unknownFields, dAtA[iNdEx:iNdEx+skippy]...)
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *MirrorNotCaughtUpDetails) UnmarshalVT(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return protohelpers.ErrIntOverflow
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: MirrorNotCaughtUpDetails: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: MirrorNotCaughtUpDetails: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Name", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			s := string(dAtA[iNdEx:postIndex])
+			m.Name = &s
+			iNdEx = postIndex
+		case 2:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Cursor", wireType)
+			}
+			var v uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				v |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			m.Cursor = &v
+		case 3:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field SourceLogCount", wireType)
+			}
+			var v uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				v |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			m.SourceLogCount = &v
+		case 4:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field SyncError", wireType)
+			}
+			var v int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				v |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			b := bool(v != 0)
+			m.SyncError = &b
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])

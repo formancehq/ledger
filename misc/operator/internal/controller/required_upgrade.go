@@ -20,8 +20,9 @@ import (
 	ledgerv1alpha1 "github.com/formancehq/ledger/misc/operator/api/v1alpha1"
 )
 
-// Proposal payloads cannot be applied by rc.3 voters. Stop every rc.3 node
-// before starting rc.4; RC adjacency is still checked by validateRCUpgrade.
+// Proposal payloads cannot be applied by rc.3 voters, and mirror promotion
+// gains a different FSM result in rc.4. Stop every rc.3 node before starting
+// rc.4; RC adjacency is still checked by validateRCUpgrade.
 var mandatoryStopVersions = []string{"v3.0.0-rc.4"}
 
 const requiredUpgradePoll = 5 * time.Second
@@ -91,6 +92,10 @@ func (r *ClusterReconciler) reconcileRequiredUpgrade(ctx context.Context, ledger
 func (r *ClusterReconciler) reconcileRequiredUpgradeWithExec(ctx context.Context, ledger *ledgerv1alpha1.Cluster, sts *appsv1.StatefulSet, exec ledgerctlExec) (proceed bool, result ctrl.Result, err error) {
 	state := ledger.Status.Upgrade
 	if state == nil && sts == nil {
+		if err := r.validateRCUpgradeWithoutStatefulSet(ctx, ledger); err != nil {
+			return false, ctrl.Result{}, err
+		}
+
 		return true, ctrl.Result{}, nil
 	}
 	if state == nil {

@@ -5,6 +5,7 @@ Kubernetes operator for deploying and managing high-availability [Formance Ledge
 The embedded operator can require a complete StatefulSet stop when an image
 upgrade crosses a listed release boundary. RC.3 to RC.4 crosses a mandatory
 boundary because RC.3 cannot execute native proposal payloads. The operator
+must be upgraded before changing the Ledger image from RC.3 to RC.4. It
 uses the drain barrier available from RC.3 to stop writes and wait for durable replication,
 retains the existing PVCs, waits for the old StatefulSet and Pods to disappear,
 then recreates the StatefulSet with the requested image. See the
@@ -12,6 +13,17 @@ then recreates the StatefulSet with the requested image. See the
 for preflight, recovery and rollback limits. The rc.1-to-rc.2 transition
 uses a [maintenance-barrier rolling procedure](../../docs/ops/upgrades.md#account-metadata-address-validation):
 writes pause while voters are replaced one at a time. RC.2 to RC.3 remains rolling.
+
+The Kind/Chainsaw `rc-upgrade` scenario takes source and target image tags and
+an expected `rolling` or `stopped` mode. The operator E2E recipe runs it for
+the published rc.2→rc.3 rolling transition and the published rc.3→local rc.4
+stopped transition, verifying workload identity, PVC retention, and nonempty
+business history after each upgrade.
+
+Changes to immutable volume claim templates also require a canonical pinned
+Ledger image tag. The operator rejects moving tags such as `latest` before
+deleting the StatefulSet, so an interrupted recreation cannot pull a different
+Ledger version onto retained volumes.
 
 ## Overview
 

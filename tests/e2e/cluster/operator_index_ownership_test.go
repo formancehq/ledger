@@ -59,6 +59,9 @@ func TestOperatorIndexOwnership(t *testing.T) {
 		require.NoError(t, server.Stop(stopCtx))
 	})
 	endpoint := fmt.Sprintf("localhost:%d", ports.GRPC())
+	source := newMockV2Server()
+	t.Cleanup(source.Close)
+	source.addLog(newV2TransactionLogWithMetadata(1, 0, "world", "alice", "100", "USD", nil))
 	conn, err := grpc.NewClient(endpoint, grpcprotocol.ClientOption(), grpc.WithTransportCredentials(insecure.NewCredentials()))
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, conn.Close()) })
@@ -70,7 +73,7 @@ func TestOperatorIndexOwnership(t *testing.T) {
 
 	tests := exec.CommandContext(ctx, goTool, "test", "-race", "./internal/controller", "-run", "^TestLedger(IndexOwnershipReal|PromotionReal)", "-count=1", "-v")
 	tests.Dir = filepath.Join(root, "misc/operator")
-	tests.Env = append(os.Environ(), "LEDGER_INDEX_TEST_SERVER="+endpoint, "LEDGERCTL_BINARY="+cli)
+	tests.Env = append(os.Environ(), "LEDGER_INDEX_TEST_SERVER="+endpoint, "LEDGERCTL_BINARY="+cli, "LEDGER_PROMOTION_TEST_SOURCE="+source.URL())
 	output, err = tests.CombinedOutput()
 	t.Logf("%s", output)
 	require.NoError(t, err)
