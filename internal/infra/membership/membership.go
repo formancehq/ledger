@@ -67,6 +67,7 @@ type Membership struct {
 	selfRaftAddr    string
 	selfServiceAddr string
 	servicePort     int
+	legacyPort      int
 	selfInstanceID  []byte
 	logger          logging.Logger
 
@@ -98,7 +99,7 @@ type Membership struct {
 // boot with an empty cache while the WAL ConfState still claims the
 // cluster has voters.
 func NewMembership(store *PeerStore, transport Transport, pool Pool, selfNodeID uint64, selfRaftAddr, selfServiceAddr string, selfInstanceID []byte, logger logging.Logger) (*Membership, error) {
-	return newMembership(store, transport, pool, selfNodeID, selfRaftAddr, selfServiceAddr, 0, selfInstanceID, logger)
+	return newMembership(store, transport, pool, selfNodeID, selfRaftAddr, selfServiceAddr, 0, 0, selfInstanceID, logger)
 }
 
 // NewMembershipWithServicePort is the production constructor for clusters
@@ -106,10 +107,17 @@ func NewMembership(store *PeerStore, transport Transport, pool Pool, selfNodeID 
 // by Rehydrate after WAL replay or snapshot installation, then explicit peer
 // service ports are preserved on every reload.
 func NewMembershipWithServicePort(store *PeerStore, transport Transport, pool Pool, selfNodeID uint64, selfRaftAddr, selfServiceAddr string, servicePort int, selfInstanceID []byte, logger logging.Logger) (*Membership, error) {
-	return newMembership(store, transport, pool, selfNodeID, selfRaftAddr, selfServiceAddr, servicePort, selfInstanceID, logger)
+	return newMembership(store, transport, pool, selfNodeID, selfRaftAddr, selfServiceAddr, servicePort, 0, selfInstanceID, logger)
 }
 
-func newMembership(store *PeerStore, transport Transport, pool Pool, selfNodeID uint64, selfRaftAddr, selfServiceAddr string, servicePort int, selfInstanceID []byte, logger logging.Logger) (*Membership, error) {
+// NewMembershipWithServicePorts is the production constructor. legacyPort is
+// the pre-peer public service port used by rc.3 membership rows; only rows
+// still carrying that port are migrated to servicePort.
+func NewMembershipWithServicePorts(store *PeerStore, transport Transport, pool Pool, selfNodeID uint64, selfRaftAddr, selfServiceAddr string, servicePort, legacyPort int, selfInstanceID []byte, logger logging.Logger) (*Membership, error) {
+	return newMembership(store, transport, pool, selfNodeID, selfRaftAddr, selfServiceAddr, servicePort, legacyPort, selfInstanceID, logger)
+}
+
+func newMembership(store *PeerStore, transport Transport, pool Pool, selfNodeID uint64, selfRaftAddr, selfServiceAddr string, servicePort, legacyPort int, selfInstanceID []byte, logger logging.Logger) (*Membership, error) {
 	if err := ValidateInstanceID(selfInstanceID); err != nil {
 		return nil, fmt.Errorf("invalid self identity: %w", err)
 	}
@@ -128,7 +136,7 @@ func newMembership(store *PeerStore, transport Transport, pool Pool, selfNodeID 
 			return nil, fmt.Errorf("reading membership format: %w", err)
 		}
 		if revision < membershipFormatRevisionPeerPort {
-			addresses = normalizeServiceAddresses(addresses, servicePort)
+			addresses = normalizeLegacyServiceAddresses(addresses, servicePort, legacyPort)
 		}
 	}
 	logger.WithFields(map[string]any{
@@ -143,20 +151,24 @@ func newMembership(store *PeerStore, transport Transport, pool Pool, selfNodeID 
 		selfRaftAddr:    selfRaftAddr,
 		selfServiceAddr: selfServiceAddr,
 		servicePort:     servicePort,
+		legacyPort:      legacyPort,
 		selfInstanceID:  bytes.Clone(selfInstanceID),
 		logger:          logger,
 		addresses:       addresses,
 	}, nil
 }
 
-func normalizeServiceAddresses(addresses map[uint64]ConfChangeContext, servicePort int) map[uint64]ConfChangeContext {
+func normalizeLegacyServiceAddresses(addresses map[uint64]ConfChangeContext, servicePort, legacyPort int) map[uint64]ConfChangeContext {
 	if servicePort == 0 {
 		return addresses
 	}
 
 	for nodeID, addr := range addresses {
-		host, _, err := net.SplitHostPort(addr.ServiceAddress)
+		host, port, err := net.SplitHostPort(addr.ServiceAddress)
 		if err != nil {
+			continue
+		}
+		if legacyPort != 0 && port != strconv.Itoa(legacyPort) {
 			continue
 		}
 
@@ -517,7 +529,7 @@ func confStateContains(cs *raftpb.ConfState, nodeID uint64) bool {
 // atomic is more important than allowing concurrent membership reads during
 // that lifecycle reconciliation.
 func (m *Membership) Rehydrate() error {
-	if err := m.store.migrateLegacyServiceAddresses(m.servicePort); err != nil {
+	if err := m.store.migrateLegacyServiceAddressesFromPort(m.servicePort, m.legacyPort); err != nil {
 		return fmt.Errorf("migrating membership format: %w", err)
 	}
 
