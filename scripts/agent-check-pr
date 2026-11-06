@@ -80,12 +80,15 @@ needs_operator=false
 needs_protocol=false
 needs_proto_lint=false
 has_change=false
+# Gate selection runs under the host bash, before the Nix re-exec below; macOS
+# ships bash 3.2, where "${arr[@]}" on an empty array is an unbound-variable
+# error under set -u. Expand changed_packages with the ${arr[@]+...} guard.
 changed_packages=()
 
 append_package() {
     local package=$1
     local existing
-    for existing in "${changed_packages[@]}"; do
+    for existing in ${changed_packages[@]+"${changed_packages[@]}"}; do
         [[ "$existing" == "$package" ]] && return
     done
     changed_packages+=("$package")
@@ -217,7 +220,7 @@ else
     if [[ "$needs_tooling" == true ]]; then
         gates+=(test-tooling)
     else
-        for package in "${changed_packages[@]}"; do
+        for package in ${changed_packages[@]+"${changed_packages[@]}"}; do
             gates+=("test-race:$package")
         done
     fi
