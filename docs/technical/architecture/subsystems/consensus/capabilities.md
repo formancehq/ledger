@@ -1,7 +1,9 @@
-# Rolling-upgrade capabilities
+# Coordinated-upgrade capabilities
 
-Ledger's capability barrier is the protocol foundation for a future mixed-version
-rolling upgrade. It is separate from the client-facing gRPC protocol revision.
+Ledger's capability metadata is the protocol foundation for future incompatible
+features deployed with a coordinated stop-and-restart. It is separate from the
+client-facing gRPC protocol revision. This release does not implement a
+mixed-version rolling activation path.
 
 ## Wire contract
 
@@ -103,11 +105,11 @@ their old behavior while new orders use a different rule.
 
 ## Rollout and recovery
 
-Deploy barrier-aware binaries to every eligible member before arming an
-incompatible feature. An old leader that does not understand the barrier cannot
-be made safe by upgrading only the other nodes. Restart, snapshot install,
-restore, and downgrade code must preserve the policy. Membership changes racing activation are
-serialized at the proposal boundary. `Node.Propose` evaluates the authoritative
+Deploy the barrier-aware binary to every member, stop the cluster, and restart
+the complete cluster before enabling an incompatible feature. An old leader
+cannot be made safe by upgrading only the other nodes. Restart, snapshot
+install, restore, and downgrade code must preserve the policy. Membership
+changes are not used as a rolling activation mechanism. `Node.Propose` evaluates the authoritative
 policy while holding the proposal and index-tracker guards, before reserving a
 predicted index or queueing work; this prevents a rejected proposal from
 leaving a hole for queued successors. Removing a member remains allowed;
@@ -171,11 +173,7 @@ Raft and applied to every member's peer store; a local restart-time upsert is
 not sufficient to activate a capability for admission. A fresh WAL instead
 uses `JoinAsLearner` and `ConfChangeAddLearnerNode`.
 
-The cluster-policy reconciler maintains the replicated policy and automatically
-arms newly advertised capabilities only when the candidate is present in the
-intersection of the local binary registry and every current voter and learner.
-An empty or incomplete membership set activates nothing. Membership commits
-trigger reconciliation immediately, and the periodic retry remains as a
-self-healing fallback for leadership or proposal failures. Once an activation
-is committed, it is monotonic and a new member that does not advertise it is
-rejected.
+The cluster-policy reconciler preserves committed capability activations while
+reconciling ordinary policy configuration; it does not arm capabilities from
+membership advertisements. A future feature must define its activation policy
+explicitly and enable it only after the coordinated restart has completed.

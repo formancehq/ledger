@@ -126,7 +126,7 @@ func newClusterPolicyReconciler(admission ctrl.Admission, store *dal.Store, buil
 
 			return
 		}
-		reconcileClusterPolicy(ctx, admission, store, cfg, raftNode.IsLeader, logger, raftNode.CapabilityMembers)
+		reconcileClusterPolicy(ctx, admission, store, cfg, raftNode.IsLeader, logger)
 	}, clusterPolicyReconcileInterval)
 }
 
@@ -926,9 +926,8 @@ func Module() fx.Option {
 					RequestShutdown: shutdownRequester(shutdowner),
 				}))
 			},
-			// Wire Observer: handle LeadershipChange, LeaderReady and capability
-			// membership events. Membership owns transport / service-pool wiring;
-			// the capability event wakes policy reconciliation immediately.
+			// Wire Observer: handle LeadershipChange and LeaderReady events.
+			// Membership owns transport / service-pool wiring.
 			func(
 				n *node.Node,
 				store *dal.Store,
@@ -971,8 +970,6 @@ func Module() fx.Option {
 						// can block on its own commit.
 						handleLeaderReadyEvent(eventsManager, mirrorManager, logger)
 						proposeClusterConfigIfNeeded(e.Context, n, builder, store, cfg, logger)
-					case node.CapabilityMembershipChangedEvent:
-						reconciler.Trigger()
 					default:
 						logger.Errorf("Unknown observer event type: %T", event)
 					}
@@ -1867,7 +1864,7 @@ const clusterPolicyReconcileInterval = time.Second
 // through AdmitClusterPolicy as an internal audited SetClusterPolicy order so
 // the checker can re-derive it; the write-readiness gate exempts this
 // non-business proposal so it is never blocked by its own cluster-policy gate.
-func reconcileClusterPolicy(ctx context.Context, admission ctrl.Admission, store *dal.Store, cfg Config, isLeader func() bool, logger logging.Logger, memberReaders ...func() []capabilities.Member) {
+func reconcileClusterPolicy(ctx context.Context, admission ctrl.Admission, store *dal.Store, cfg Config, isLeader func() bool, logger logging.Logger) {
 	if !isLeader() {
 		return
 	}
@@ -1913,40 +1910,6 @@ func reconcileClusterPolicy(ctx context.Context, admission ctrl.Admission, store
 		logger.Errorf("cluster policy revision %d conflicts with the configured policy; refusing to overwrite it", appliedRev)
 
 		return
-	}
-
-	if len(memberReaders) > 0 {
-		ready, readyErr := capabilities.Ready(capabilities.SupportedIDs(), memberReaders[0]())
-		if readyErr != nil {
-			logger.WithFields(map[string]any{"error": readyErr}).Errorf("Capability evidence is invalid; delaying policy reconciliation")
-
-			return
-		}
-		active := make(map[uint32]bool, len(desired.GetCapabilityActivations()))
-		for _, activation := range desired.GetCapabilityActivations() {
-			if activation != nil {
-				active[activation.GetId()] = activation.GetActive()
-			}
-		}
-		for _, id := range ready {
-			if enabled, exists := active[uint32(id)]; exists {
-				if !enabled {
-					for _, activation := range desired.GetCapabilityActivations() {
-						if activation != nil && activation.GetId() == uint32(id) {
-							activation.Active = true
-
-							break
-						}
-					}
-				}
-
-				continue
-			}
-			desired.CapabilityActivations = append(desired.CapabilityActivations, &commonpb.CapabilityActivation{Id: uint32(id), Active: true})
-		}
-		if applied != nil && !sameClusterPolicyPayload(applied, desired) && desired.GetRevision() <= applied.GetRevision() {
-			desired.Revision = applied.GetRevision() + 1
-		}
 	}
 
 	switch {

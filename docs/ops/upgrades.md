@@ -198,14 +198,13 @@ validation passes. For RC.1 to RC.2, follow the
 [maintenance-barrier rolling procedure](#account-metadata-address-validation).
 For RC.3 to RC.4, use the [operator-required stopped restart](#operator-required-stopped-restart).
 
-Capability barriers are the prerequisite for any future incompatible Raft
-entry, execution-plan, replay, or snapshot format. Deploy barrier-aware Ledger
-servers to every voter and learner first. This release only deploys the
-capability-evidence mechanism; it does not provide an operator-facing arming
-procedure or activate a new capability automatically. An old leader that
-predates the barrier is not made safe by upgrading other nodes. See the
-[capability contract](../technical/architecture/subsystems/consensus/capabilities.md)
-for membership evidence and the downgrade boundary.
+Capability metadata is the prerequisite for any future incompatible Raft entry,
+execution-plan, replay, or snapshot format. This release does not support
+mixed-version activation: stop every Ledger node, deploy the barrier-aware
+binary everywhere, restart the complete cluster, and only then enable the new
+feature. The capability reconciler does not arm features from membership
+advertisements. See the [capability contract](../technical/architecture/subsystems/consensus/capabilities.md)
+for the persisted replay boundary and coordinated rollout.
 
 Use this for RC updates after the mixed-version validation above passes:
 
