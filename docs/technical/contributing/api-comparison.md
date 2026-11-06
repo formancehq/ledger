@@ -123,10 +123,11 @@ The v2 API has no equivalent Raft cluster-command lifecycle.
 
 Get/list use camelCase LedgerInfo properties and typed metadata; mode, enforcement
 and account persistence use explicit short enum defaults. Mirror progress includes
-zero values and decimal-string counters (`string/bigint` in OpenAPI), preserving
-uint64 precision in TypeScript SDKs. v2 stats/log IDs use numeric JSON with
-`integer/int64` or `integer/bigint`; v2 has no equivalent mirror progress. The
-v3-specific counter representation intentionally differs for lossless decoding.
+zero values and unsigned numeric counters (`integer/uint64` in OpenAPI), covering
+the full `0..18446744073709551615` range; clients must use lossless integer
+parsing above JavaScript's safe-integer range. v2 stats/log IDs
+use numeric JSON with `integer/int64` or `integer/bigint`; v2 has no equivalent
+mirror progress.
 Nested read mirror configuration masks passwordless HTTP(S) URL userinfo as
 well as passwords and uses a distinct schema
 from unchanged flat creation input. Read rewrite actions model protojson
@@ -337,7 +338,7 @@ arbitrary-precision bounds and signedness. V3 selects response encoding by
 nested and future nonmonetary fields, rather than by endpoint or monetary field
 name. This generalization preserves v2 monetary behavior; v2 has no equivalent
 contract for these v3 message types. Ordinary integer IDs/counts, typed metadata
-and explicitly string-encoded counters retain their existing contract. Shared
+and other explicit string projections retain their existing contract. Shared
 HTTP writers negotiate the response, while custom nested projections forward
 options. Request decoding is unchanged.
 

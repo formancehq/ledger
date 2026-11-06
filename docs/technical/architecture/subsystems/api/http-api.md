@@ -97,7 +97,7 @@ selects the literal `users%3Aa`, which is not a valid account address.
 ### Ledger information
 
 See [LedgerInfo read contract](ledger-info.md) for camelCase properties, explicit
-defaults, decimal-string mirror counters, separate creation/read configuration
+defaults, numeric mirror counters, separate creation/read configuration
 schemas and credential-safe responses.
 
 ### Authentication
@@ -294,8 +294,9 @@ account/transaction/log cursors and aggregate results. Nested post-commit volume
 follow the same choice. The contract is type-based: future nonmonetary fields
 using these three types inherit it, including inside structs, maps, slices and
 custom public projections. Ordinary integer IDs/counts, typed metadata and
-timestamps retain their existing representation. Explicit string projections,
-such as mirror counters, also keep their existing representation.
+timestamps retain their existing representation. Mirror counters are JSON
+numbers and require lossless integer parsing above JavaScript's safe-integer
+range.
 
 Posting request amounts accept integer tokens and canonical unsigned decimal
 strings independently of the response header. Both forms are bounded by
@@ -1487,13 +1488,13 @@ The response writer selects the encoder from its payload contract:
 | Writer | Encoder | Use for |
 |---|---|---|
 | `writeOK` / `writeCreated` / `writeOKChecked` / `writePageOK` | request-scoped `encoding/json/v2` (`internal/adapter/json`) | Public custom JSON projections and hand-written DTOs, including nested large integers |
-| `writeProtoOK` / `writeProtoListOK` | `protojson` | Proto messages with **no** custom JSON projection or nested Uint256, BigUint or SignedBigInt |
+| `writeOK` / `writeCreated` / `writeOKChecked` / `writePageOK` | `encoding/json/v2` | Public DTOs and protobuf messages with generated or hand-written JSON projections |
 
 **The rule: custom JSON projections define the public shape.** Shared writers
 receive the request and apply large-integer negotiation automatically. Use
-`writeOKChecked` for fallible custom projections. `protojson` ignores both
-`MarshalJSON` and `MarshalJSONTo`, so it must not bypass a type's custom
-representation or render the internal structure of a nested large integer.
+`writeOKChecked` for fallible custom projections. Generated protobuf projections
+and hand-written DTOs are both encoded through the same `encoding/json/v2`
+path.
 
 The camelCase convention cannot arbitrate between the two — both encoders
 satisfy it. Custom projections and nested negotiated types determine which
@@ -1550,7 +1551,7 @@ component schemas; `DropAction` is the sole intentionally empty object.
 | `SET_METADATA_FIELD_TYPE` | Metadata field type assignment |
 | `REMOVED_METADATA_FIELD_TYPE` | Metadata field type removal |
 | `ORDER_SKIPPED` | Reason and optional context |
-| `FILL_GAP` | `originalId`: uint64 encoded as a decimal JSON string |
+| `FILL_GAP` | `originalId`: uint64 encoded as a JSON number |
 | `CREATE_INDEX` | Index creation payload |
 | `DROP_INDEX` | Index removal payload |
 | `ADDED_ACCOUNT_TYPE` | Account type addition payload |
@@ -1568,11 +1569,11 @@ shape. V3 retains typed metadata, colored volumes, and
 events retain their enclosing global-log structure. These JSON changes do not
 change protobuf messages, persisted data, or audit hashes.
 
-Integer rendering depends on the payload codec: `FILL_GAP.originalId` uses
-protobuf JSON and is a decimal string (for example, `"18446744073709551615"`).
-Custom transaction IDs, `revertedTransactionId`, metadata transaction
-`targetId`, and metadata integer values are JSON numbers. Clients must preserve
-full integer precision when reading these numbers.
+All protobuf signed and unsigned 64-bit scalar fields are emitted as decimal
+JSON numbers (for example, `18446744073709551615`), including
+`FILL_GAP.originalId`, transaction IDs and metadata integer values. Clients
+must preserve full integer precision when reading these numbers; JavaScript
+clients should use a lossless JSON-number parser when values can exceed 2^53.
 
 This contract defines an output projection. The internal ledger-log type has
 no custom JSON decoder. Metadata integers are emitted as JSON numbers,

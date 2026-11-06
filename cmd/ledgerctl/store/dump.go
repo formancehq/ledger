@@ -3,12 +3,12 @@ package store
 import (
 	"encoding/binary"
 	"encoding/hex"
+	jsonv2 "encoding/json/v2"
 	"fmt"
 	"strings"
 
 	"github.com/cockroachdb/pebble/v2"
 	"github.com/spf13/cobra"
-	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
 
 	"github.com/formancehq/ledger/v3/internal/proto/auditpb"
@@ -314,9 +314,7 @@ func tryProtoJSON(val []byte, msg proto.Message) string {
 		return fmt.Sprintf("(proto decode error: %v) hex=%s", err, hex.EncodeToString(val))
 	}
 
-	opts := protojson.MarshalOptions{Multiline: false, EmitUnpopulated: false}
-
-	jsonBytes, err := opts.Marshal(msg)
+	jsonBytes, err := jsonv2.Marshal(msg)
 	if err != nil {
 		return fmt.Sprintf("(json encode error: %v) hex=%s", err, hex.EncodeToString(val))
 	}

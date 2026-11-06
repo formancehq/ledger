@@ -4,11 +4,12 @@ syntax = "proto3";
 package ledger;
 
 option go_package = "github.com/formancehq/ledger/v3/internal/proto/servicepb";
-
 import "common.proto";
 import "audit.proto";
 import "signature.proto";
 import "google/protobuf/descriptor.proto";
+
+option (common.ledger_json_default) = true;
 
 // allowed_skippable_reasons annotates a oneof case inside LedgerAction.data
 // with the business ErrorReasons a caller may list in
@@ -208,6 +209,7 @@ message GetTransactionRequest {
 }
 
 message GetTransactionResponse {
+	option (common.ledger_json_manual) = true;
   common.Transaction transaction = 1;
 }
 
@@ -563,6 +565,7 @@ message ResponseSigningInfo {
 
 // CreateTransactionPayload contains the data for creating a transaction
 message CreateTransactionPayload {
+	option (common.ledger_json_manual) = true;
   repeated common.Posting postings = 1;
   common.Script script = 2;
   common.Timestamp timestamp = 3;
@@ -575,6 +578,7 @@ message CreateTransactionPayload {
 
 // RevertTransactionPayload contains the data for reverting a transaction.
 message RevertTransactionPayload {
+	option (common.ledger_json_manual) = true;
   fixed64 transaction_id = 1;
   bool force = 2;
   bool at_effective_date = 3;
@@ -1075,6 +1079,7 @@ message GetLogRequest {
 message GetEventsSinksRequest {}
 
 message GetEventsSinksResponse {
+	option (common.ledger_json) = true;
   repeated common.SinkConfig sinks = 1;
   repeated common.SinkStatus sink_statuses = 2;
 }
@@ -1088,12 +1093,14 @@ message GetMetadataSchemaStatusRequest {
 }
 
 message GetMetadataSchemaStatusResponse {
+	option (common.ledger_json) = true;
   map<string, MetadataFieldStatus> account_fields = 1;
   map<string, MetadataFieldStatus> transaction_fields = 2;
   map<string, MetadataFieldStatus> ledger_fields = 3;
 }
 
 message MetadataFieldStatus {
+	option (common.ledger_json) = true;
   common.MetadataType declared_type = 1;
 }
 
@@ -1298,6 +1305,7 @@ message GetIndexStatusRequest {
 }
 
 message GetIndexStatusResponse {
+	option (common.ledger_json) = true;
   fixed64 last_indexed_sequence = 1;
   fixed64 last_log_sequence = 2;
   fixed64 lag = 3;
@@ -1342,6 +1350,7 @@ message GetIndexEntryStatusRequest {
 // pending_version == 0 — the pre-retype keyspace stays live during
 // the rewrite.
 message IndexEntry {
+	option (common.ledger_json) = true;
   string ledger = 1;
   common.Index index = 2;     // identifier + created_at + forward_encoding_version
   fixed64 cursor = 3;         // backfill cursor (0 when not in backfill or done)

@@ -4311,9 +4311,9 @@ components:
             contains metadata; DELETE_METADATA contains key. ORDER_SKIPPED
             contains reason and optional context. Other types carry the fields
             of their corresponding operation directly. FILL_GAP contains originalId,
-            a uint64 encoded as a decimal JSON string by protobuf JSON.
-            Transaction IDs, revertedTransactionId and transaction targetId
-            are JSON numbers; consumers must preserve full integer precision.
+            a uint64 encoded as a decimal JSON number. Transaction IDs,
+            revertedTransactionId and transaction targetId are JSON numbers;
+            consumers must preserve full integer precision.
             Metadata integers are
             JSON numbers and null-valued keys are preserved.
         date:
@@ -4549,19 +4549,16 @@ components:
             - FOLLOWING
           description: Current sync state (SYNCING = catching up, FOLLOWING = up to date)
         cursor:
-          type: string
-          format: bigint
-          pattern: '^(0|[1-9][0-9]*)$'
+          type: integer
+          format: uint64
           description: Last ingested v2 log ID
         sourceLogCount:
-          type: string
-          format: bigint
-          pattern: '^(0|[1-9][0-9]*)$'
+          type: integer
+          format: uint64
           description: Latest known log ID in the v2 source
         remainingLogs:
-          type: string
-          format: bigint
-          pattern: '^(0|[1-9][0-9]*)$'
+          type: integer
+          format: uint64
           description: Number of remaining logs to sync (sourceLogCount - cursor)
         error:
           $ref: '#/components/schemas/MirrorSyncError'
@@ -5803,8 +5800,8 @@ components:
           type: string
         clientSecret:
           type: string
-          enum: ['[redacted]']
-          description: Presence marker only; reusable secret material is never returned
+          enum: ['', '[redacted]']
+          description: Empty when unset; otherwise a presence marker only. Reusable secret material is never returned
         tokenEndpoint:
           type: string
           description: OAuth endpoint URL with userinfo (including passwordless tokens) and query credentials masked
@@ -5885,9 +5882,10 @@ components:
       type: object
       description: >
         Read representation of a mirror rewrite rule, using protojson camelCase
-        names. Default scalar values (including empty regex replacements) are
-        omitted; missing replacements mean the empty string. Creation uses the
-        separate MirrorRewriteRule schema.
+        names. Default scalar values and empty collections follow the generated
+        protobuf JSON projection and are emitted for non-presence fields,
+        including empty regex replacements. Creation uses the separate
+        MirrorRewriteRule schema.
       properties:
         createdTransaction:
           $ref: '#/components/schemas/CreatedTransactionRuleRead'

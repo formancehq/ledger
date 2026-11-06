@@ -694,9 +694,9 @@ Older generated readers truncate larger values to 32 bits: IDs `1` and
 `4294967297` can appear identical, and an old server can route a high-ID
 request to the wrong member. Old CLI builds also reject high transfer and
 store-metrics targets.
-ProtoJSON renders these widened fields as decimal strings rather than the
-previous uint32 JSON numbers, including structured CLI status output; JSON/YAML
-consumers must accept that representation. Regenerate clients from the updated
+Structured CLI JSON/YAML output renders these widened fields as JSON numbers,
+not decimal strings. Consumers must use lossless integer parsing above 2^53.
+Regenerate clients from the updated
 schema and update the CLI and every server
 participating in status forwarding, leadership transfer or store-metrics routing
 before using these operations with IDs above `4294967295`. During rolling
