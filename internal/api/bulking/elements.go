@@ -124,8 +124,12 @@ func (req TransactionRequest) ToCore() (*ledgercontroller.CreateTransaction, err
 
 		runScript = ledgercontroller.TxToScriptData(txData, req.Force)
 	} else {
+		script, err := req.Script.ToCore()
+		if err != nil {
+			return nil, err
+		}
 		runScript = ledgercontroller.RunScript{
-			Script:    req.Script.ToCore(),
+			Script:    script,
 			Timestamp: req.Timestamp,
 			Reference: req.Reference,
 			Metadata:  req.Metadata,

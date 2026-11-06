@@ -48,6 +48,19 @@ func TestWithSyncPeriodMinimum(t *testing.T) {
 	require.Equal(t, time.Duration(2), m.syncPeriod)
 }
 
+func TestManagerStopReturnsSignaledError(t *testing.T) {
+	t.Parallel()
+	manager := &Manager{logger: logging.Testing(), stopChannel: make(chan chan error)}
+	stopErr := errors.New("stop failed")
+	go func() {
+		signal := <-manager.stopChannel
+		signal <- stopErr
+	}()
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	require.ErrorIs(t, manager.Stop(ctx), stopErr)
+}
+
 func TestNewDriverFacadeMinimumRetryInterval(t *testing.T) {
 	t.Parallel()
 
