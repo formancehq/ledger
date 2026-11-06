@@ -180,3 +180,52 @@ func TestParseMirrorFlags_PostgresNoIAMFlagLeavesAwsIamAuthNil(t *testing.T) {
 	require.NoError(t, err)
 	require.Nil(t, cfg.GetPostgres().GetAwsIamAuth())
 }
+
+func TestParseMirrorFlags_AssetMappings(t *testing.T) {
+	t.Parallel()
+
+	path := filepath.Join(t.TempDir(), "assets.yaml")
+	require.NoError(t, os.WriteFile(path, []byte(`
+- {sourceAsset: "AAA_BBB", asset: "AAABBB"}
+`), 0o600))
+
+	cmd := NewCreateCommand()
+	require.NoError(t, cmd.ParseFlags([]string{
+		"--mirror-base-url=http://v2:3068",
+		"--mirror-asset-mapping-file=" + path,
+		"--mirror-asset-mapping", "USDT_ETHEREUM/6=USDT/6:ETHEREUM",
+		"--mirror-asset-mapping", "USD/0=USD",
+	}))
+
+	mode, cfg, err := parseMirrorFlags(cmd, "ledger-x")
+	require.NoError(t, err)
+	require.Equal(t, commonpb.LedgerMode_LEDGER_MODE_MIRROR, mode, "asset mapping flags infer mirror mode")
+	got := make([][3]string, 0, len(cfg.GetAssetMappings()))
+	for _, m := range cfg.GetAssetMappings() {
+		got = append(got, [3]string{m.GetSourceAsset(), m.GetAsset(), m.GetColor()})
+	}
+	require.Equal(t, [][3]string{
+		{"AAA_BBB", "AAABBB", ""},
+		{"USDT_ETHEREUM/6", "USDT/6", "ETHEREUM"},
+		{"USD/0", "USD", ""},
+	}, got)
+}
+
+func TestParseMirrorFlags_AssetMappingMalformed(t *testing.T) {
+	t.Parallel()
+
+	for _, value := range []string{"USDT_ETHEREUM/6", "=USDT/6", "USDT_ETHEREUM/6="} {
+		t.Run(value, func(t *testing.T) {
+			t.Parallel()
+
+			cmd := NewCreateCommand()
+			require.NoError(t, cmd.ParseFlags([]string{
+				"--mirror-base-url=http://v2:3068",
+				"--mirror-asset-mapping", value,
+			}))
+
+			_, _, err := parseMirrorFlags(cmd, "ledger-x")
+			require.ErrorContains(t, err, "expected SOURCE=ASSET[:COLOR]")
+		})
+	}
+}

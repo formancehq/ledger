@@ -715,6 +715,112 @@ var _ = Describe("Mirror", Ordered, func() {
 		})
 	})
 
+	Context("When mirroring v2 colored assets", Ordered, func() {
+		createMirror := func(name, baseURL string, mappings ...*commonpb.MirrorAssetMapping) error {
+			_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
+				Type: &servicepb.Request_CreateLedger{
+					CreateLedger: &servicepb.CreateLedgerRequest{
+						Name: name,
+						Mode: commonpb.LedgerMode_LEDGER_MODE_MIRROR,
+						MirrorSource: &commonpb.MirrorSourceConfig{
+							LedgerName:    "default",
+							Type:          &commonpb.MirrorSourceConfig_Http{Http: &commonpb.HttpMirrorSourceConfig{BaseUrl: baseURL}},
+							AssetMappings: mappings,
+						},
+					},
+				},
+			}))
+
+			return err
+		}
+		// Reads redact MirrorSyncError.message (EN-1632); the exact diagnostic
+		// is pinned by the translator and worker unit tests.
+		syncError := func(g Gomega, name string) *commonpb.MirrorSyncError {
+			info, err := client.GetLedger(ctx, &servicepb.GetLedgerRequest{Ledger: name})
+			g.Expect(err).To(Succeed())
+
+			return info.GetMirrorSyncProgress().GetError()
+		}
+
+		It("Should map a colored v2 asset into a v3 colored bucket spendable after promotion", func() {
+			mockV2 := newMockV2Server()
+			DeferCleanup(mockV2.Close)
+			mockV2.addLog(newV2TransactionLog(1, 0, "world", "users:001", "100", "USDT_ETHEREUM/6"))
+
+			Expect(createMirror("mirror-colored", mockV2.URL(),
+				&commonpb.MirrorAssetMapping{SourceAsset: "USDT_ETHEREUM/6", Asset: "USDT/6", Color: "ETHEREUM"},
+			)).To(Succeed())
+
+			Eventually(func(g Gomega) {
+				account, err := client.GetAccount(ctx, &servicepb.GetAccountRequest{Ledger: "mirror-colored", Address: "users:001"})
+				g.Expect(err).To(Succeed())
+				balances := map[string]string{}
+				for _, entry := range account.GetVolumes() {
+					balances[entry.GetAsset()+`\`+entry.GetColor()] = entry.GetVolumes().GetBalance().DecimalString()
+				}
+				g.Expect(balances).To(Equal(map[string]string{`USDT/6\ETHEREUM`: "100"}))
+			}).Within(15 * time.Second).ProbeEvery(500 * time.Millisecond).Should(Succeed())
+
+			_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
+				Type: &servicepb.Request_PromoteLedger{PromoteLedger: &servicepb.PromoteLedgerRequest{Ledger: "mirror-colored"}},
+			}))
+			Expect(err).To(Succeed())
+
+			_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction("mirror-colored", []*commonpb.Posting{
+				commonpb.NewColoredPosting("users:001", "users:002", "USDT/6", "ETHEREUM", big.NewInt(100)),
+			}, nil, nil)))
+			Expect(err).To(Succeed(), "the mirrored colored balance must be spendable from its v3 bucket")
+		})
+
+		for _, tc := range []struct {
+			name, ledger, asset string
+			mappings            []*commonpb.MirrorAssetMapping
+		}{
+			{
+				name: "unmapped underscore asset", ledger: "mirror-unmapped", asset: "USDT_ETHEREUM/6",
+			},
+			{
+				name: "zero precision", ledger: "mirror-zero-precision", asset: "USD/0",
+			},
+			{
+				name: "collision with an uncolored target", ledger: "mirror-collision", asset: "USD",
+				mappings: []*commonpb.MirrorAssetMapping{{SourceAsset: "USD/0", Asset: "USD"}},
+			},
+		} {
+			It("Should stall on "+tc.name, func() {
+				mockV2 := newMockV2Server()
+				DeferCleanup(mockV2.Close)
+				mockV2.addLog(newV2TransactionLog(1, 0, "world", "users:001", "100", tc.asset))
+
+				Expect(createMirror(tc.ledger, mockV2.URL(), tc.mappings...)).To(Succeed())
+
+				Eventually(func(g Gomega) {
+					g.Expect(syncError(g, tc.ledger).GetOccurredAt().GetData()).NotTo(BeZero())
+				}).Within(15 * time.Second).ProbeEvery(500 * time.Millisecond).Should(Succeed())
+				Consistently(func(g Gomega) {
+					g.Expect(syncError(g, tc.ledger)).NotTo(BeNil())
+				}).Within(2 * time.Second).ProbeEvery(500 * time.Millisecond).Should(Succeed())
+
+				txs, err := listAllTransactions(ctx, client, tc.ledger, 10, 0)
+				Expect(err).To(Succeed())
+				Expect(txs).To(BeEmpty())
+			})
+		}
+
+		It("Should reject duplicate asset mapping sources at creation", func() {
+			err := createMirror("mirror-mapping-invalid", "http://127.0.0.1:1",
+				&commonpb.MirrorAssetMapping{SourceAsset: "USD/0", Asset: "USD"},
+				&commonpb.MirrorAssetMapping{SourceAsset: "USD/0", Asset: "USDZERO"},
+			)
+			Expect(err).To(HaveOccurred())
+
+			st, ok := status.FromError(err)
+			Expect(ok).To(BeTrue())
+			Expect(st.Code()).To(Equal(codes.InvalidArgument))
+			Expect(st.Message()).To(ContainSubstring("mirror asset mapping invalid"))
+		})
+	})
+
 	// Deleting a mirror ledger must tear its worker down. The teardown itself
 	// lives in Manager.reconcile (unit-tested), but reconcile only runs on a
 	// leadership change or a ConfigChanged notification — and that notification

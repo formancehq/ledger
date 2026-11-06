@@ -51,7 +51,7 @@ func TestTranslateBatchRejectsExhaustedSourceCounters(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			orders, nextLog, nextTx, err := TranslateBatch("default", []V2Log{tt.log}, tt.nextLog, tt.nextTx, nil)
+			orders, nextLog, nextTx, err := TranslateBatch("default", []V2Log{tt.log}, tt.nextLog, tt.nextTx, TranslateOptions{})
 			require.Error(t, err)
 			require.Nil(t, orders)
 			require.Zero(t, nextLog)
@@ -75,7 +75,7 @@ func TestTranslateBatchAllowsLastRepresentableNextValues(t *testing.T) {
 		}),
 	}
 
-	orders, nextLog, nextTx, err := TranslateBatch("default", []V2Log{log}, math.MaxUint64-1, 1, nil)
+	orders, nextLog, nextTx, err := TranslateBatch("default", []V2Log{log}, math.MaxUint64-1, 1, TranslateOptions{})
 	require.NoError(t, err)
 	require.Len(t, orders, 1)
 	require.Equal(t, uint64(math.MaxUint64), nextLog)
@@ -104,7 +104,7 @@ func TestTranslateBatch_NewTransaction(t *testing.T) {
 		}),
 	}}
 
-	orders, nextLogID, nextTxID, err := TranslateBatch("default", v2Logs, 1, 0, nil)
+	orders, nextLogID, nextTxID, err := TranslateBatch("default", v2Logs, 1, 0, TranslateOptions{})
 	require.NoError(t, err)
 	require.Len(t, orders, 1)
 	require.Equal(t, uint64(2), nextLogID)
@@ -141,7 +141,7 @@ func TestTranslateBatch_SetMetadata_Account(t *testing.T) {
 		}),
 	}}
 
-	orders, _, _, err := TranslateBatch("default", v2Logs, 1, 1, nil)
+	orders, _, _, err := TranslateBatch("default", v2Logs, 1, 1, TranslateOptions{})
 	require.NoError(t, err)
 	require.Len(t, orders, 1)
 
@@ -169,7 +169,7 @@ func TestTranslateBatch_SetMetadata_Transaction(t *testing.T) {
 		}),
 	}}
 
-	orders, _, _, err := TranslateBatch("default", v2Logs, 1, 1, nil)
+	orders, _, _, err := TranslateBatch("default", v2Logs, 1, 1, TranslateOptions{})
 	require.NoError(t, err)
 	require.Len(t, orders, 1)
 
@@ -194,7 +194,7 @@ func TestTranslateBatch_SetMetadata_StringMetadataPreserved(t *testing.T) {
 		}`),
 	}}
 
-	orders, _, _, err := TranslateBatch("default", v2Logs, 1, 1, nil)
+	orders, _, _, err := TranslateBatch("default", v2Logs, 1, 1, TranslateOptions{})
 	require.NoError(t, err)
 	require.Len(t, orders, 1)
 
@@ -218,7 +218,7 @@ func TestTranslateBatch_SetMetadata_RejectsNonStringMetadata(t *testing.T) {
 			}`),
 	}}
 
-	orders, _, _, err := TranslateBatch("default", v2Logs, 1, 1, nil)
+	orders, _, _, err := TranslateBatch("default", v2Logs, 1, 1, TranslateOptions{})
 	require.Error(t, err)
 	require.Nil(t, orders)
 	require.Contains(t, err.Error(), "unmarshaling SET_METADATA data")
@@ -246,7 +246,7 @@ func TestTranslateBatch_RevertedTransaction(t *testing.T) {
 		}),
 	}}
 
-	orders, _, nextTxID, err := TranslateBatch("default", v2Logs, 3, 1, nil)
+	orders, _, nextTxID, err := TranslateBatch("default", v2Logs, 3, 1, TranslateOptions{})
 	require.NoError(t, err)
 	require.Len(t, orders, 1)
 	require.Equal(t, uint64(6), nextTxID)
@@ -271,7 +271,7 @@ func TestTranslateBatch_InvalidLogDate(t *testing.T) {
 		}),
 	}}
 
-	orders, _, _, err := TranslateBatch("default", v2Logs, 1, 1, nil)
+	orders, _, _, err := TranslateBatch("default", v2Logs, 1, 1, TranslateOptions{})
 	require.Error(t, err)
 	require.Nil(t, orders)
 	require.Contains(t, err.Error(), "parsing v2 log date")
@@ -299,7 +299,7 @@ func TestTranslateBatch_DeleteMetadata(t *testing.T) {
 		}),
 	}}
 
-	orders, _, _, err := TranslateBatch("default", v2Logs, 1, 1, nil)
+	orders, _, _, err := TranslateBatch("default", v2Logs, 1, 1, TranslateOptions{})
 	require.NoError(t, err)
 	require.Len(t, orders, 1)
 
@@ -318,7 +318,7 @@ func TestTranslateBatch_UnknownLogType_FillGap(t *testing.T) {
 		Data: json.RawMessage(`{}`),
 	}}
 
-	orders, _, _, err := TranslateBatch("default", v2Logs, 1, 1, nil)
+	orders, _, _, err := TranslateBatch("default", v2Logs, 1, 1, TranslateOptions{})
 	require.NoError(t, err)
 	require.Len(t, orders, 1)
 
@@ -340,7 +340,7 @@ func TestTranslateBatch_LogIDGapDetection(t *testing.T) {
 		}),
 	}}
 
-	orders, nextLogID, _, err := TranslateBatch("default", v2Logs, 1, 1, nil)
+	orders, nextLogID, _, err := TranslateBatch("default", v2Logs, 1, 1, TranslateOptions{})
 	require.NoError(t, err)
 	// 2 fill-gap orders (for IDs 1, 2) + 1 real order (for ID 3)
 	require.Len(t, orders, 3)
@@ -359,7 +359,7 @@ func TestTranslateBatch_LogIDGapDetection(t *testing.T) {
 func TestTranslateBatch_EmptyInput(t *testing.T) {
 	t.Parallel()
 
-	orders, nextLogID, nextTxID, err := TranslateBatch("default", nil, 1, 1, nil)
+	orders, nextLogID, nextTxID, err := TranslateBatch("default", nil, 1, 1, TranslateOptions{})
 	require.NoError(t, err)
 	require.Empty(t, orders)
 	require.Equal(t, uint64(1), nextLogID)
@@ -391,7 +391,7 @@ func TestTranslateBatch_MultipleLogs(t *testing.T) {
 		},
 	}
 
-	orders, nextLogID, nextTxID, err := TranslateBatch("ledger1", v2Logs, 1, 0, nil)
+	orders, nextLogID, nextTxID, err := TranslateBatch("ledger1", v2Logs, 1, 0, TranslateOptions{})
 	require.NoError(t, err)
 	require.Len(t, orders, 2)
 	require.Equal(t, uint64(3), nextLogID)
@@ -418,7 +418,7 @@ func TestTranslateBatch_AccountMetadata(t *testing.T) {
 		}),
 	}}
 
-	orders, _, _, err := TranslateBatch("default", v2Logs, 1, 0, nil)
+	orders, _, _, err := TranslateBatch("default", v2Logs, 1, 0, TranslateOptions{})
 	require.NoError(t, err)
 	require.Len(t, orders, 1)
 
@@ -547,7 +547,7 @@ func TestTranslateBatch_TxIDSkippedWhenGap(t *testing.T) {
 		}),
 	}}
 
-	orders, _, nextTxID, err := TranslateBatch("default", v2Logs, 1, 2, nil)
+	orders, _, nextTxID, err := TranslateBatch("default", v2Logs, 1, 2, TranslateOptions{})
 	require.NoError(t, err)
 	require.Len(t, orders, 1)
 	require.Equal(t, uint64(6), nextTxID)
@@ -562,7 +562,7 @@ func TestTranslateBatch_InvalidJSON(t *testing.T) {
 		Data: json.RawMessage(`{invalid json`),
 	}}
 
-	_, _, _, err := TranslateBatch("default", v2Logs, 1, 1, nil)
+	_, _, _, err := TranslateBatch("default", v2Logs, 1, 1, TranslateOptions{})
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "translating v2 log 1")
 }
@@ -580,7 +580,7 @@ func TestTranslateBatch_TrailingJSONRejected(t *testing.T) {
 		}{}`),
 	}}
 
-	_, _, _, err := TranslateBatch("default", v2Logs, 1, 1, nil)
+	_, _, _, err := TranslateBatch("default", v2Logs, 1, 1, TranslateOptions{})
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "translating v2 log 1")
 }
@@ -640,7 +640,7 @@ func BenchmarkTranslateBatch(b *testing.B) {
 	b.ReportAllocs()
 
 	for range b.N {
-		orders, _, _, err := TranslateBatch("default", v2Logs, 1, 0, nil)
+		orders, _, _, err := TranslateBatch("default", v2Logs, 1, 0, TranslateOptions{})
 		if err != nil {
 			b.Fatal(err)
 		}

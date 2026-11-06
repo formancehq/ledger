@@ -63,6 +63,8 @@ Examples:
 	cmd.Flags().Uint32("mirror-batch-size", 0, "Max logs per batch (0 = default 100)")
 	cmd.Flags().String("mirror-rewrite-file", "", "Path to a YAML/JSON list of MirrorRewriteRule objects applied to every mirror log entry during translation. Each rule sets exactly one scope (createdTransaction | revertedTransaction | savedMetadata | deletedMetadata | anyVariant), an optional CEL `match` predicate, and typed `actions` (rewriteAddress, setMetadata, drop, ...). See docs/technical/architecture/subsystems/events-mirror/cel-rewrite.md")
 	cmd.Flags().StringArray("mirror-rewrite-rule", nil, "A single MirrorRewriteRule as a YAML/JSON object, e.g. {\"anyVariant\":{\"actions\":[{\"rewriteAddress\":{\"pattern\":\":worker:\\\\d+\",\"replacement\":\"\"}}]}} (repeatable; appended after any --mirror-rewrite-file rules)")
+	cmd.Flags().String("mirror-asset-mapping-file", "", "Path to a YAML/JSON list of {sourceAsset, asset, color} objects translating v2 posting assets that v3 cannot represent (e.g. USDT_ETHEREUM/6) into a v3 asset and color. Applied after rewrite rules")
+	cmd.Flags().StringArray("mirror-asset-mapping", nil, "A single asset mapping as SOURCE=ASSET[:COLOR], e.g. USDT_ETHEREUM/6=USDT/6:ETHEREUM (repeatable; appended after any --mirror-asset-mapping-file entries)")
 
 	return cmd
 }

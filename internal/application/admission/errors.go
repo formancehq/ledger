@@ -1,6 +1,9 @@
 package admission
 
-import "github.com/formancehq/ledger/v3/internal/domain"
+import (
+	"github.com/formancehq/ledger/v3/internal/domain"
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+)
 
 // Sentinel errors for admission-layer validation that does not belong to the
 // domain (e.g. integration-config invariants like AWS RDS IAM auth fields).
@@ -34,6 +37,12 @@ var (
 	// instead of stalling — or corrupting — the mirror on every batch.
 	ErrMirrorRewriteRuleInvalid = domain.NewValidationSentinel("MIRROR_REWRITE_RULE_INVALID", "mirrorSource.rewriteRules: each rule must have a boolean match and a cel expression returning a transaction")
 
+	// ErrMirrorAssetMappingInvalid rejects a mirror config whose assetMappings
+	// cannot be compiled by v2.NewAssetMapper. Rejected at admission for the
+	// same reason as rewrite rules: the mirror worker must never stall on a
+	// configuration the ledger already persisted.
+	ErrMirrorAssetMappingInvalid = domain.NewValidationSentinel("MIRROR_ASSET_MAPPING_INVALID", "mirrorSource.assetMappings: each entry needs a unique non-empty sourceAsset (max 64 bytes), a valid v3 asset, a color matching ^[A-Z]{0,32}$, and a unique (asset, color) target; at most 256 entries")
+
 	// ErrLedgerNameReservedPrefix rejects the exact names "_" (system API
 	// routes) and "_system" (system events) on every ledger-scoped order.
 	// Other underscore-prefixed names remain valid.
@@ -58,3 +67,23 @@ var (
 	// pre-Raft and cannot diverge state across a mixed-binary rolling upgrade.
 	ErrSigningKeyInvalidLength = domain.NewValidationSentinel("SIGNING_KEY_INVALID_LENGTH", "signing key public_key must be exactly 32 bytes (Ed25519)")
 )
+
+// mirrorAssetMappingError is ErrMirrorAssetMappingInvalid with the offending
+// entry named in its message.
+type mirrorAssetMappingError struct {
+	cause error
+}
+
+func (e *mirrorAssetMappingError) Error() string {
+	return "mirrorSource." + e.cause.Error()
+}
+
+func (e *mirrorAssetMappingError) Is(target error) bool {
+	return target == ErrMirrorAssetMappingInvalid
+}
+
+func (*mirrorAssetMappingError) Kind() domain.ErrorKind { return ErrMirrorAssetMappingInvalid.Kind() }
+func (*mirrorAssetMappingError) Reason() string         { return ErrMirrorAssetMappingInvalid.Reason() }
+func (*mirrorAssetMappingError) FailureDetails() *commonpb.FailureDetails {
+	return ErrMirrorAssetMappingInvalid.FailureDetails()
+}

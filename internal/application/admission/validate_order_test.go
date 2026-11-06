@@ -1105,6 +1105,7 @@ func TestValidateOrder_MirrorIAMRegion(t *testing.T) {
 		name    string
 		src     *commonpb.MirrorSourceConfig
 		wantErr error
+		wantMsg string
 	}{
 		{
 			name: "no mirror source",
@@ -1251,6 +1252,57 @@ func TestValidateOrder_MirrorIAMRegion(t *testing.T) {
 			},
 			wantErr: ErrMirrorRewriteRuleInvalid,
 		},
+		{
+			name: "valid asset mappings accepted",
+			src: &commonpb.MirrorSourceConfig{
+				Type: &commonpb.MirrorSourceConfig_Http{
+					Http: &commonpb.HttpMirrorSourceConfig{BaseUrl: "http://v2:3068"},
+				},
+				AssetMappings: []*commonpb.MirrorAssetMapping{
+					{SourceAsset: "USDT_ETHEREUM/6", Asset: "USDT/6", Color: "ETHEREUM"},
+					{SourceAsset: "USD/0", Asset: "USD"},
+				},
+			},
+		},
+		{
+			name: "duplicate asset mapping source rejected at admission",
+			src: &commonpb.MirrorSourceConfig{
+				Type: &commonpb.MirrorSourceConfig_Http{
+					Http: &commonpb.HttpMirrorSourceConfig{BaseUrl: "http://v2:3068"},
+				},
+				AssetMappings: []*commonpb.MirrorAssetMapping{
+					{SourceAsset: "USD/0", Asset: "USD"},
+					{SourceAsset: "USD/0", Asset: "USDZERO"},
+				},
+			},
+			wantErr: ErrMirrorAssetMappingInvalid,
+			wantMsg: `mirrorSource.assetMappings[1]: duplicate sourceAsset "USD/0"`,
+		},
+		{
+			name: "asset mapping to an invalid v3 asset rejected at admission",
+			src: &commonpb.MirrorSourceConfig{
+				Type: &commonpb.MirrorSourceConfig_Http{
+					Http: &commonpb.HttpMirrorSourceConfig{BaseUrl: "http://v2:3068"},
+				},
+				AssetMappings: []*commonpb.MirrorAssetMapping{
+					{SourceAsset: "USDT_ETHEREUM/6", Asset: "USDT_ETHEREUM/6"},
+				},
+			},
+			wantErr: ErrMirrorAssetMappingInvalid,
+		},
+		{
+			name: "asset mappings sharing a target rejected at admission",
+			src: &commonpb.MirrorSourceConfig{
+				Type: &commonpb.MirrorSourceConfig_Http{
+					Http: &commonpb.HttpMirrorSourceConfig{BaseUrl: "http://v2:3068"},
+				},
+				AssetMappings: []*commonpb.MirrorAssetMapping{
+					{SourceAsset: "USD/0", Asset: "USD"},
+					{SourceAsset: "USD/00", Asset: "USD"},
+				},
+			},
+			wantErr: ErrMirrorAssetMappingInvalid,
+		},
 	}
 
 	for _, tt := range tests {
@@ -1274,6 +1326,9 @@ func TestValidateOrder_MirrorIAMRegion(t *testing.T) {
 			err := validateOrder(order)
 			if tt.wantErr != nil {
 				require.ErrorIs(t, err, tt.wantErr)
+				if tt.wantMsg != "" {
+					require.EqualError(t, err, tt.wantMsg)
+				}
 			} else {
 				require.NoError(t, err)
 			}
