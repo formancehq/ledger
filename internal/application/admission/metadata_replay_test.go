@@ -72,7 +72,7 @@ func newMetadataReplayHarness(t testing.TB) *metadataReplayHarness {
 	registry := state.NewStateRegistry(c, attrs)
 	ks := keystore.NewKeyStore()
 	shared := state.NewSharedState()
-	machine, err := state.NewMachine(logger, registry, state.NewCacheSnapshotter(logger, registry, nil), store, dal.NewSentinelFactory(store, false), meter, ks, shared, signal.NewNotifications(), nil, "test-cluster", 0, func(*raftpb.Entry, *dal.WriteSession) error { return nil })
+	machine, err := state.NewMachine(logger, registry, state.NewCacheSnapshotter(logger, registry, nil), store, dal.NewSentinelFactory(store, false), meter, ks, shared, signal.NewNotifications(), nil, "test-cluster", 0, func(*raftpb.Entry, *dal.WriteSession) error { return nil }, state.NoopCapabilityPolicyCommitHandler)
 	require.NoError(t, err)
 	require.NoError(t, state.NewRecovery(machine, store).RecoverState())
 	tracker := node.NewIndexTracker(1)
