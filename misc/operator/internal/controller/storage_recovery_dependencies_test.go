@@ -186,12 +186,27 @@ func TestStorageRecoveryAuthKeysRolloutDeferredClearsAfterSuccessfulNormalWorklo
 	// survive until the normal StatefulSet pass can apply the refreshed keys.
 	ledger.Status.Conditions = []metav1.Condition{deferred}
 	cred := matchingCredentials("normal-credential", ledger.Labels, false, "", "")
+	operatorCredentials := &ledgerv1alpha1.Credentials{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: operatorCredentialsName(ledger),
+			Labels: map[string]string{
+				labelOperatorCredential: operatorCredentialsSelectorValue(ledger),
+			},
+		},
+		Status: ledgerv1alpha1.CredentialsStatus{
+			Phase: "Ready",
+			DistributedSecretRefs: []ledgerv1alpha1.SecretReference{{
+				Namespace: ledger.Namespace,
+				Name:      "operator-key",
+			}},
+		},
+	}
 	cm := authKeysConfigMapWithEntries(ledger.Name, ledger.Namespace, map[string]struct{ keyID, pubKey string }{
 		"previous-credential": {keyID: "previous-key", pubKey: "synthetic-previous-public-key"},
 	})
 	cm.OwnerReferences = nil // The shared fixture uses a different synthetic Cluster UID.
 	controlledByCluster(cm, ledger)
-	c := fake.NewClientBuilder().WithScheme(scheme).WithStatusSubresource(ledger, sts).WithObjects(ledger, sts, cred, cm).Build()
+	c := fake.NewClientBuilder().WithScheme(scheme).WithStatusSubresource(ledger, sts).WithObjects(ledger, sts, cred, operatorCredentials, cm).Build()
 	require.NoError(t, c.Get(t.Context(), client.ObjectKeyFromObject(ledger), ledger))
 	deferred = *meta.FindStatusCondition(ledger.Status.Conditions, "AuthKeysRolloutDeferred")
 	workloadFailure := errors.New("normal StatefulSet update unavailable once")
