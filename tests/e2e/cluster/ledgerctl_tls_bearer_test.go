@@ -75,6 +75,7 @@ var _ = Describe("ledgerctl TLS bearer against tls-mode=required", Ordered, func
 		})
 		instruments = append(instruments,
 			testserver.WithBootstrap(),
+			testserver.WithClusterSecret("test-cluster-secret"),
 			testserver.WithTLSMode("required"),
 			testserver.WithTLSCertFile(certs.ServerCertFile),
 			testserver.WithTLSKeyFile(certs.ServerKeyFile),
