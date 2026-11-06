@@ -1887,10 +1887,25 @@ func (x *UpdatePreparedQueryRequest) MarshalJSON() ([]byte, error) {
 		Ledger string `json:"ledger"`
 		Name   string `json:"name"`
 		Filter any    `json:"filter,omitempty,omitzero"`
+		Target any    `json:"target,omitempty,omitzero"`
 	}{
 		Ledger: x.Ledger,
 		Name:   x.Name,
 		Filter: x.Filter,
+		Target: func() any {
+			switch x.GetTarget() {
+			case commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS:
+				return "QUERY_TARGET_ACCOUNTS"
+			case commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS:
+				return "QUERY_TARGET_TRANSACTIONS"
+			case commonpb.QueryTarget_QUERY_TARGET_LOGS:
+				return "QUERY_TARGET_LOGS"
+			case commonpb.QueryTarget_QUERY_TARGET_AUDIT:
+				return "QUERY_TARGET_AUDIT"
+			default:
+				return int32(x.GetTarget())
+			}
+		}(),
 	})
 }
 
