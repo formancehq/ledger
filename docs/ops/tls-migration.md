@@ -127,17 +127,22 @@ finished rolling. An already persisted backup Job keeps its original template.
 The cluster secret is a static bearer token used for inter-node
 authentication. It is independent of `--auth-enabled`: when set, it protects
 the Raft port on every node. When `--auth-enabled` is also set, followers use
-it to forward writes to the leader. The operator creates it only when TLS is
-at least partially active (`mode != disabled`). Sending a
-static token over plaintext is an anti-pattern, so the secret only exists
-when the wire is encrypted.
+it to forward writes to the leader. The operator may retain the secret during
+the TLS transition, but peer credentials are used only after TLS has converged
+to `required`. Sending a static token over plaintext is an anti-pattern, so
+the optional phase runs without peer credentials.
 
-This means **authentication requires TLS**. Note the two guards differ in
-strictness:
+Operator maintenance commands use an Ed25519 credential from the `Credentials`
+CRD. The private seed remains in the Credentials Secret and the public key is
+mounted into Ledger through `AUTH_ED25519_KEYS`; the operator signs short-lived
+JWTs for `ledgerctl` and backup Jobs. The Raft `cluster-secret` is never exposed
+as a direct client token.
 
-- `--cluster-secret` (inter-node static bearer token) requires `mode != disabled`,
-  i.e. `optional` or `required` — it must tolerate `optional` because the
-  operator drives the migration *through* that transitional mode.
+This means **authentication requires strict TLS**:
+
+- `--cluster-secret` (inter-node static bearer token) requires
+  `--tls-mode=required`. During `optional`, the pool refuses to send the
+  secret and peers communicate without a credential while TLS converges.
 - `--auth-enabled` (external service API JWT/Ed25519) requires `--tls-mode=required`.
   `optional` is rejected because its dual listener still accepts plaintext client
   connections, so bearer tokens could travel in the clear. Bring the cluster to
@@ -146,7 +151,7 @@ strictness:
 The server enforces these invariants at startup:
 
 ```
---cluster-secret requires TLS (set --tls-mode to optional or required
+--cluster-secret requires strict TLS (set --tls-mode to required
 and provide --tls-cert-file / --tls-key-file)
 
 --auth-enabled requires --tls-mode=required (with --tls-cert-file /
@@ -186,15 +191,18 @@ To migrate a hand-managed cluster:
 3. Once all nodes are running `optional`, restart them with
    `--tls-mode=required`.
 
-The dialer probes each peer the first time it connects in `optional` mode
-and re-probes on persistent connection failures, so a peer flipping
-between modes during the migration is followed automatically.
+The unauthenticated dialer probes each peer the first time it connects in
+`optional` mode and re-probes on persistent connection failures, so a peer
+flipping between modes during the migration is followed automatically. A pool
+configured with a cluster secret refuses optional/plaintext transport: the
+secret is sent only after strict TLS has converged. Authenticated deployments
+must therefore complete the transition before enabling peer credentials.
 
 ## Troubleshooting
 
 - `--cluster-secret requires TLS` at server startup: the cluster secret
-  must not be set when TLS is disabled. Either enable TLS or remove the
-  flag.
+  must not be used before TLS is strict. Complete the transition to
+  `--tls-mode=required`, or remove the flag during the optional phase.
 - A migration that appears stuck on `transitioning-to-*` usually means the
   rolling update itself is stuck on a pod readiness probe. Check
   `kubectl rollout status statefulset/<name>`.

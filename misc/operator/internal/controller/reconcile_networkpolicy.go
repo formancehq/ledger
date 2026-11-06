@@ -57,9 +57,13 @@ func buildNetworkPolicySpec(ledger *ledgerv1alpha1.Cluster) networkingv1.Network
 		except = ledger.Spec.NetworkPolicy.ExternalCIDRExcept
 	}
 
-	raftPort := intstr.FromInt32(serviceRaftPort(ledger))
-	grpcPort := intstr.FromInt32(serviceGrpcPort(ledger))
-	httpPort := intstr.FromInt32(serviceHttpPort(ledger))
+	// NetworkPolicy ports are evaluated on the destination Pod, not on the
+	// frontend Service. Use the effective container listener ports so custom
+	// Service port mappings do not block otherwise allowed traffic.
+	raftPort := intstr.FromInt32(effectiveRaftListenerPort(ledger))
+	grpcPort := intstr.FromInt32(effectiveGrpcListenerPort(ledger))
+	grpcPeerPort := intstr.FromInt32(grpcPeerPort(ledger))
+	httpPort := intstr.FromInt32(effectiveHttpListenerPort(ledger))
 	dnsPort := intstr.FromInt32(53)
 	tcp := corev1.ProtocolTCP
 	udp := corev1.ProtocolUDP
@@ -77,6 +81,7 @@ func buildNetworkPolicySpec(ledger *ledgerv1alpha1.Cluster) networkingv1.Network
 			Ports: []networkingv1.NetworkPolicyPort{
 				{Port: &raftPort, Protocol: &tcp},
 				{Port: &grpcPort, Protocol: &tcp},
+				{Port: &grpcPeerPort, Protocol: &tcp},
 				{Port: &httpPort, Protocol: &tcp},
 			},
 		},
@@ -114,11 +119,32 @@ func buildNetworkPolicySpec(ledger *ledgerv1alpha1.Cluster) networkingv1.Network
 
 	egress = append(egress, ledger.Spec.NetworkPolicy.AdditionalEgress...)
 
+	// Preserve public service exposure while restricting the private peer
+	// endpoint to Pods belonging to this Ledger cluster.
+	ingress := []networkingv1.NetworkPolicyIngressRule{
+		{
+			Ports: []networkingv1.NetworkPolicyPort{
+				{Port: &grpcPort, Protocol: &tcp},
+				{Port: &httpPort, Protocol: &tcp},
+			},
+		},
+		{
+			From: []networkingv1.NetworkPolicyPeer{{
+				PodSelector: &metav1.LabelSelector{MatchLabels: selectorLabels(ledger)},
+			}},
+			Ports: []networkingv1.NetworkPolicyPort{
+				{Port: &raftPort, Protocol: &tcp},
+				{Port: &grpcPeerPort, Protocol: &tcp},
+			},
+		},
+	}
+
 	return networkingv1.NetworkPolicySpec{
 		PodSelector: metav1.LabelSelector{
 			MatchLabels: selectorLabels(ledger),
 		},
-		PolicyTypes: []networkingv1.PolicyType{networkingv1.PolicyTypeEgress},
+		PolicyTypes: []networkingv1.PolicyType{networkingv1.PolicyTypeIngress, networkingv1.PolicyTypeEgress},
+		Ingress:     ingress,
 		Egress:      egress,
 	}
 }

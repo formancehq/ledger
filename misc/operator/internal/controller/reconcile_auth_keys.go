@@ -597,6 +597,9 @@ func (r *ClusterReconciler) readExistingAuthKeys(ctx context.Context, reader cli
 // identity needed to carry each pending key forward from the existing ConfigMap.
 func (r *ClusterReconciler) collectClusterCredentialsKeys(ctx context.Context, reader client.Reader, ledger *ledgerv1alpha1.Cluster) ([]credentialsKeyInfo, int, []unresolvedCredential, error) {
 	logger := log.FromContext(ctx)
+	if ledger.Spec.Auth == nil || ledger.Spec.Auth.Enabled == nil || !*ledger.Spec.Auth.Enabled {
+		return nil, 0, nil, nil
+	}
 
 	const configMapPrefix = "credentials"
 

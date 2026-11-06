@@ -43,6 +43,7 @@ func TestReconcile_MinimalCluster(t *testing.T) {
 	// Check headless service ports
 	requirePort(t, hlsSvc.Spec.Ports, "raft", 7777)
 	requirePort(t, hlsSvc.Spec.Ports, "grpc", 8888)
+	requirePort(t, hlsSvc.Spec.Ports, "grpc-peer", 8889)
 	requirePort(t, hlsSvc.Spec.Ports, "http", 9000)
 
 	// ClusterIP Service
@@ -80,11 +81,13 @@ func TestReconcile_MinimalCluster(t *testing.T) {
 	// Container ports
 	requireContainerPort(t, container.Ports, "http", 9000)
 	requireContainerPort(t, container.Ports, "grpc", 8888)
+	requireContainerPort(t, container.Ports, "grpc-peer", 8889)
 	requireContainerPort(t, container.Ports, "raft", 7777)
 
 	// Env vars
 	requireEnvVar(t, container.Env, "BIND_ADDR", "0.0.0.0:7777")
 	requireEnvVar(t, container.Env, "GRPC_PORT", "8888")
+	requireEnvVar(t, container.Env, "GRPC_PEER_PORT", "8889")
 	requireEnvVar(t, container.Env, "HTTP_PORT", "9000")
 	committed := &ledgerv1alpha1.Cluster{}
 	require.NoError(t, k8sClient.Get(ctx, types.NamespacedName{Name: "basic", Namespace: ns}, committed))

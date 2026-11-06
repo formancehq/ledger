@@ -57,8 +57,16 @@ ledger run \
   --cluster-id prod-ledger \
   --join 127.0.0.1:7777 \
   --bind-addr 127.0.0.1:7778 \
-  --grpc-port 8889
+  --http-port 9001 \
+  --grpc-port 8890 \
+  --grpc-peer-port 8891
 ```
+
+When multiple nodes run on the same host, every listener must use a distinct
+port. The bootstrap node uses the default HTTP, public gRPC, and peer ports
+(`9000`, `8888`, and `8889`); the joining node therefore uses `9001`, `8890`,
+and `8891`. The public gRPC port and the peer gRPC port must also be distinct
+within each node.
 
 ### Join Sequence
 

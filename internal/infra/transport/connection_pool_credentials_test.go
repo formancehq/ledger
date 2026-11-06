@@ -2,6 +2,7 @@ package transport
 
 import (
 	"context"
+	"crypto/tls"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -31,13 +32,43 @@ func TestStaticTokenCredentials_GetRequestMetadata_WithURI(t *testing.T) {
 	require.Equal(t, "Bearer token123", md["authorization"])
 }
 
+func TestStaticTokenCredentials_SeparatesPeerAndCallerCredentials(t *testing.T) {
+	t.Parallel()
+
+	creds := staticTokenCredentials{token: "cluster-secret", header: PeerAuthMetadataKey}
+	ctx := WithForwardedBearerToken(context.Background(), "user-jwt")
+
+	md, err := creds.GetRequestMetadata(ctx)
+	require.NoError(t, err)
+	require.Equal(t, "Bearer cluster-secret", md[PeerAuthMetadataKey])
+	require.Equal(t, "Bearer user-jwt", md["authorization"])
+}
+
 func TestStaticTokenCredentials_RequireTransportSecurity(t *testing.T) {
 	t.Parallel()
 
 	creds := staticTokenCredentials{token: "any-token"}
 
-	// Should not require transport security
-	require.False(t, creds.RequireTransportSecurity())
+	require.True(t, creds.RequireTransportSecurity())
+}
+
+func TestConnectionPool_AuthTokenRejectsNonStrictTLS(t *testing.T) {
+	t.Parallel()
+
+	for _, tt := range []struct {
+		name   string
+		policy TLSPolicy
+	}{
+		{name: "plaintext", policy: TLSPolicy{}},
+		{name: "optional TLS", policy: TLSPolicy{TLSConfig: &tls.Config{}}},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			pool := NewConnectionPool(tt.policy, PoolConfig{AuthToken: "cluster-secret"})
+			_, err := pool.decideTLS("peer.example:8889")
+			require.EqualError(t, err, "peer authentication requires strict TLS for peer.example:8889")
+		})
+	}
 }
 
 func TestBearerTokenDialOption(t *testing.T) {
