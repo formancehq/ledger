@@ -433,7 +433,7 @@ The ledger name is a positional argument for `ledgers create`, `ledgers delete`,
 | `--mirror-oauth2-client-secret` | | OAuth2 client secret for the v2 API (for `http` source) |
 | `--mirror-oauth2-token-endpoint` | | OAuth2 token endpoint URL (for `http` source) |
 | `--mirror-oauth2-scopes` | | OAuth2 scopes (for `http` source, repeatable) |
-| `--mirror-dsn` | | `postgres://` or `postgresql://` URL (required for `postgres` source; keyword DSNs are rejected for new requests) |
+| `--mirror-dsn` | | Source URL (required for `postgres` source; admission checks generic URL shape and rejects keyword DSNs; the worker supports `postgres://` or `postgresql://` and validates driver options/IAM TLS) |
 | `--mirror-aws-iam-region` | | When set, enables AWS RDS IAM authentication for the `postgres` source. Credentials are taken from the ambient AWS chain (IRSA, instance profile, env vars, profile). |
 | `--mirror-aws-iam-assume-role-arn` | | Optional STS role ARN to assume before minting the RDS IAM token (cross-account / multi-tenant mirrors). Requires `--mirror-aws-iam-region`. |
 | `--mirror-batch-size` | `0` | Max logs per batch (0 = server default, capped by `--mirror-max-batch-size`) |

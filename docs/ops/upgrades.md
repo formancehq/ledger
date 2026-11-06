@@ -621,7 +621,12 @@ Before creating PostgreSQL mirrors or NATS/ClickHouse sinks on upgraded servers,
 convert PostgreSQL keyword DSNs to `postgres://` or `postgresql://` URLs and add
 an explicit `nats://`, `tls://`, `ws://` or `wss://` scheme to every NATS server.
 ClickHouse inputs must use `clickhouse://`, `http://` or `https://` URL form.
-New malformed or unsupported inputs return safe validation failures before Raft.
+Malformed URL shapes return safe validation failures before Raft. PostgreSQL
+mirror admission accepts any explicit scheme and does not parse driver options;
+the PostgreSQL worker validates supported schemes/options and requires explicit
+TLS before installing IAM credentials. Invalid driver settings can now be
+persisted and fail during source construction rather than creation. The required
+IAM region remains an admission check.
 Existing persisted configurations, audit history and backups remain valid;
 workers continue to consume their original bytes. Public reads fully mask legacy
 PostgreSQL keyword DSNs. During a rolling upgrade an older leader can still

@@ -5873,7 +5873,7 @@ components:
           description: OAuth2 scopes (HTTP source only)
         dsn:
           type: string
-          description: PostgreSQL URL with postgres:// or postgresql:// (required for PostgreSQL source); keyword DSNs are rejected for new requests
+          description: Hierarchical URL with an explicit scheme (required for PostgreSQL source); admission checks generic URL shape and rejects keyword DSNs. The worker validates PostgreSQL schemes/options and IAM TLS before connecting; use postgres:// or postgresql://
         batchSize:
           type: integer
           minimum: 0

@@ -14,12 +14,24 @@ import (
 // authorities. The boolean keeps parser errors, which can contain credentials,
 // out of public diagnostics.
 func Parse(raw string, allowEmptyHost bool, schemes ...string) (*url.URL, bool) {
+	parsed, ok := ParseShape(raw, allowEmptyHost)
+	if !ok || !slices.Contains(schemes, strings.ToLower(parsed.Scheme)) {
+		return nil, false
+	}
+
+	return parsed, true
+}
+
+// ParseShape accepts a hierarchical URL with any explicit scheme. It checks
+// syntax only; callers that need connector-specific schemes use Parse instead.
+// It never loads driver options or ambient configuration.
+func ParseShape(raw string, allowEmptyHost bool) (*url.URL, bool) {
 	scheme, _, explicit := strings.Cut(raw, "://")
-	if !explicit || !slices.Contains(schemes, strings.ToLower(scheme)) {
+	if !explicit {
 		return nil, false
 	}
 	parsed, err := url.Parse(raw)
-	if err != nil || parsed.Opaque != "" || (!allowEmptyHost && parsed.Hostname() == "") {
+	if err != nil || parsed.Scheme == "" || parsed.Scheme != strings.ToLower(scheme) || parsed.Opaque != "" || (!allowEmptyHost && parsed.Hostname() == "") {
 		return nil, false
 	}
 

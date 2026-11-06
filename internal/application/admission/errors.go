@@ -8,7 +8,7 @@ import "github.com/formancehq/ledger/v3/internal/domain"
 // live here so the domain package keeps its narrow ledger-semantics scope.
 var (
 	// Connection syntax errors never echo credential-bearing input or parser errors.
-	ErrMirrorPostgresURLInvalid = &invalidConnectionURL{message: "mirrorSource.postgres.dsn must be a postgres:// or postgresql:// URL"}
+	ErrMirrorPostgresURLInvalid = &invalidConnectionURL{message: "mirrorSource.postgres.dsn must be a hierarchical URL with an explicit scheme"}
 	ErrSinkNATSURLInvalid       = &invalidConnectionURL{message: "sink.nats.url must contain explicit nats://, tls://, ws:// or wss:// server URLs"}
 	ErrSinkClickHouseURLInvalid = &invalidConnectionURL{message: "sink.clickhouse.dsn must be a clickhouse://, http:// or https:// URL with a host"}
 
@@ -23,13 +23,6 @@ var (
 	// at admission (rather than only at mirror-worker startup) avoids
 	// persisting a malformed mirror config in the audit chain.
 	ErrMirrorIAMRegionRequired = domain.NewValidationSentinel("MIRROR_IAM_REGION_REQUIRED", "mirrorSource.postgres.awsIamAuth.region is required when awsIamAuth is set")
-
-	// ErrMirrorIAMRequiresTLS rejects mirror configs that pair AWS RDS IAM
-	// authentication with an sslmode that allows cleartext (disable, allow,
-	// prefer, or unset -- libpq's default "prefer" falls back to non-TLS).
-	// The SigV4 token in cc.Password is a short-lived bearer credential and
-	// must not transit cleartext.
-	ErrMirrorIAMRequiresTLS = domain.NewValidationSentinel("MIRROR_IAM_REQUIRES_TLS", "mirrorSource.postgres: awsIamAuth requires sslmode in {require, verify-ca, verify-full}")
 
 	// ErrMirrorRewriteRuleInvalid rejects a mirror config whose rewriteRules
 	// contain a rule that fails to compile: invalid CEL syntax, a match that is

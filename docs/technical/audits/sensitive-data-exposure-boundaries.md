@@ -119,8 +119,12 @@ HTTP(S) policy by full protobuf field identity. Enumerate all `sensitive_url`
 declarations independently and require a safe representative output for each;
 an unregistered annotated field must be fully masked. PostgreSQL keyword syntax
 is unsupported by projection and must be fully masked for every field. New
-PostgreSQL mirror and NATS/ClickHouse sink configurations must fail admission
-before proposal unless they use the declared URL forms. Errors must never echo
+PostgreSQL mirror configurations must fail admission before proposal unless they
+have a generic hierarchical URL shape with an explicit scheme. Unknown and
+uppercase schemes must pass this shape gate, without invoking the PostgreSQL
+driver or reading ambient libpq settings. The worker owns driver-option and IAM
+TLS enforcement before credentials are installed. NATS/ClickHouse sink
+configurations must use their declared connector URL forms. Errors must never echo
 raw input or credential-bearing URL parser errors; exercise the real admission
 path and require the original configuration to remain unchanged. Exercise real
 `Redact` descriptors and registered public boundaries, not a replacement parser.

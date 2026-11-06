@@ -59,8 +59,9 @@ become `[redacted]` presence markers. PostgreSQL passwords in supported
 while non-secret connection metadata remains visible. Legacy keyword/value
 DSNs, malformed connection strings and unsupported formats are fully replaced
 with `[redacted]`; their connection metadata is not preserved. New PostgreSQL
-mirror configurations require URL form at admission; existing committed
-configuration remains unchanged. See [sensitive projection](sensitive-projection.md)
+mirror configurations require a generic hierarchical URL shape at admission;
+PostgreSQL scheme and option validation occurs during source construction.
+Existing committed configuration remains unchanged. See [sensitive projection](sensitive-projection.md)
 for the supported formats. Empty secrets remain empty/omitted. Detached protobuf
 views discard unknown wire fields, whose confidentiality cannot be established
 by the schema.

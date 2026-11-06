@@ -155,8 +155,11 @@ mirror progress.
 Connection redaction selects formats by declared protobuf field identity.
 Supported PostgreSQL, NATS, ClickHouse and HTTP(S) values retain safe connection
 information; unsupported cross-format values and unregistered annotated fields
-are fully masked. New PostgreSQL mirror configurations require `postgres://` or
-`postgresql://`;
+are fully masked. New PostgreSQL mirror configurations require a generic
+hierarchical URL with an explicit scheme; the worker validates PostgreSQL
+schemes/options and IAM TLS before installing credentials. Admission only checks
+shape and required IAM region; invalid driver settings can be committed and
+then fail source construction. There is no equivalent mirror-creation API in v2;
 new NATS sinks require an explicit scheme per server; PostgreSQL and NATS retain
 empty/default hosts and port-only authorities with ports in the 0–65535 range. ClickHouse sinks require
 `clickhouse://`, `http://` or `https://`. Invalid forms fail before Raft with safe

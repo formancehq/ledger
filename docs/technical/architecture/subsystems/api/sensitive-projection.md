@@ -45,8 +45,11 @@ A protobuf format option is unnecessary for the current six fields.
 PostgreSQL uses URL form, including empty-host/socket connections and port-only
 authorities. Legacy keyword DSNs are fully masked rather than scanned. No driver parser loads
 ambient credentials, service files or TLS keys. Admission and projection share
-the lexical parser in `internal/pkg/connectionurl`; connector policies choose
-the supported schemes and whether an empty host is permitted.
+the lexical parser in `internal/pkg/connectionurl`. PostgreSQL mirror admission
+uses its generic shape gate without a scheme allowlist; projection and sink
+policies select supported schemes and whether an empty host is permitted.
+A URL accepted by the generic admission gate can still be fully masked on read
+and rejected by the worker's PostgreSQL driver.
 NATS splits server lists before parsing and masks passwordless token userinfo
 on every server. Default-host and port-only URLs such as `nats://:4222`
 retain their safe authority so operator reconciliation does not mistake an

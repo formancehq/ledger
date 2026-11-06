@@ -123,7 +123,7 @@ legacy non-URL values preserves confidentiality without that parser.
 
 | Field | Accepted form |
 | --- | --- |
-| `mirrorSource.postgres.dsn` | `postgres://` or `postgresql://`; socket/default-host URLs such as `postgresql:///ledger?host=%2Ftmp` and port-only authorities such as `postgres://:5433/db?host=/var/run/postgresql` remain valid |
+| `mirrorSource.postgres.dsn` | Any hierarchical URL with an explicit scheme; no connector scheme allowlist. Socket/default-host URLs such as `postgresql:///ledger?host=%2Ftmp` and port-only authorities such as `postgres://:5433/db?host=/var/run/postgresql` remain valid |
 | `sink.nats.url` | Comma-separated server URLs, each with `nats://`, `tls://`, `ws://` or `wss://`; empty/default hosts, including `nats://:4222`, and surrounding entry whitespace are allowed |
 | `sink.clickhouse.dsn` | `clickhouse://`, `http://` or `https://` with a hostname; comma-separated hosts remain one URL authority |
 
@@ -131,9 +131,16 @@ The shared lexical parser rejects missing schemes, opaque URLs, invalid escapes
 and invalid port syntax without returning parser errors that can echo credentials.
 Port-only authorities additionally require the explicit port to fit in 16 bits
 (0–65535); driver-specific default-port behavior remains unchanged.
-PostgreSQL scheme spelling is lowercase, matching pgx URL recognition. Connector
-options, connectivity and credentials are still interpreted by the worker's
-driver. AWS IAM region and explicit TLS requirements remain in force.
+For PostgreSQL mirrors this gate is deliberately generic: uppercase and unknown
+schemes pass URL-shape validation. The PostgreSQL worker alone interprets supported
+schemes (`postgres://` and `postgresql://`), options, connectivity and credentials.
+Admission still requires an IAM region when IAM auth is configured. The worker
+requires explicit TLS on every connection attempt before installing IAM
+credentials; admission does not parse driver configuration or read libpq environment
+variables. Invalid driver options or unsafe IAM TLS settings may therefore be
+committed and then diagnosed during source construction, which starts no worker.
+This keeps driver parsing and ambient settings out of the admission critical path
+without weakening the runtime credential boundary.
 
 Validation runs through `validateOrder` for HTTP, gRPC and bulk requests before
 proposal, without rewriting the configuration. Rejections use admission-only
