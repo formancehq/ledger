@@ -143,6 +143,10 @@ func (x *LogPayload) jsonValue() (any, error) {
 		return map[string]any{"deletedLedgerMetadata": p.DeletedLedgerMetadata}, nil
 	case *LogPayload_SetClusterPolicy:
 		return map[string]any{"setClusterPolicy": p.SetClusterPolicy}, nil
+	case *LogPayload_PutKv:
+		return map[string]any{"putKv": p.PutKv}, nil
+	case *LogPayload_DeleteKv:
+		return map[string]any{"deleteKv": p.DeleteKv}, nil
 	default:
 		return nil, errors.New("missing log payload")
 	}
