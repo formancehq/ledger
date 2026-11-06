@@ -2056,7 +2056,16 @@ func preparedQueryAdmissionReason(req *servicepb.Request) string {
 			return err.Reason()
 		}
 	case *servicepb.Request_UpdatePreparedQuery:
+		if r.UpdatePreparedQuery == nil || r.UpdatePreparedQuery.Target == nil {
+			return domain.ErrPreparedQueryTargetRequired.Reason()
+		}
 		if err := domain.ValidatePreparedQueryName(r.UpdatePreparedQuery.GetName()); err != nil {
+			return err.Reason()
+		}
+		if !domain.IsPreparedQueryExecutableTarget(r.UpdatePreparedQuery.GetTarget()) {
+			return domain.ErrPreparedQueryTargetUnsupported.Reason()
+		}
+		if err := domain.ValidateFilterForTarget(r.UpdatePreparedQuery.GetFilter(), r.UpdatePreparedQuery.GetTarget()); err != nil {
 			return err.Reason()
 		}
 
@@ -2105,11 +2114,8 @@ func (s *LedgerState) applyCreatePreparedQuery(req *servicepb.CreatePreparedQuer
 	}}
 }
 
-// applyUpdatePreparedQuery replaces a stored query's filter, mirroring
-// processUpdatePreparedQuery's order: name validation, existence, then the
-// filter gates. The target is fixed at creation — an update carries no target
-// field and the FSM validates the new filter against the STORED target — so the
-// model keeps it and swaps only the filter.
+// applyUpdatePreparedQuery replaces a stored query's target and filter,
+// mirroring processUpdatePreparedQuery's name, existence, and filter gates.
 func (s *LedgerState) applyUpdatePreparedQuery(req *servicepb.UpdatePreparedQueryRequest) OrderResult {
 	if err := domain.ValidatePreparedQueryName(req.GetName()); err != nil {
 		return OrderResult{Reason: err.Reason()}
@@ -2120,16 +2126,17 @@ func (s *LedgerState) applyUpdatePreparedQuery(req *servicepb.UpdatePreparedQuer
 		return OrderResult{Reason: domain.ErrReasonPreparedQueryNotFound}
 	}
 
-	if !domain.IsPreparedQueryExecutableTarget(existing.GetTarget()) {
+	if !domain.IsPreparedQueryExecutableTarget(req.GetTarget()) {
 		return OrderResult{Reason: domain.ErrPreparedQueryTargetUnsupported.Reason()}
 	}
 
-	if err := domain.ValidateFilterForTarget(req.GetFilter(), existing.GetTarget()); err != nil {
+	if err := domain.ValidateFilterForTarget(req.GetFilter(), req.GetTarget()); err != nil {
 		return OrderResult{Reason: err.Reason()}
 	}
 
 	updated := existing.CloneVT()
 	updated.Filter = req.GetFilter().CloneVT()
+	updated.Target = req.GetTarget()
 	s.preparedQueries = s.preparedQueries.Set(req.GetName(), updated)
 
 	return OrderResult{OK: true, PreparedQueryLog: &commonpb.LogPayload{
@@ -2138,6 +2145,8 @@ func (s *LedgerState) applyUpdatePreparedQuery(req *servicepb.UpdatePreparedQuer
 			Name:           req.GetName(),
 			PreviousFilter: existing.GetFilter().CloneVT(),
 			NewFilter:      req.GetFilter().CloneVT(),
+			PreviousTarget: existing.GetTarget().Enum(),
+			NewTarget:      req.GetTarget().Enum(),
 		}},
 	}}
 }

@@ -33,6 +33,14 @@ while they coexist. The embedded operator requires a complete stop at the
 The `rc.1` to `rc.2` transition rolls one voter at a time with a maintenance
 barrier that pauses writes; it does not stop the whole cluster.
 The `rc.2` to `rc.3` transition remains rolling.
+An `UpdatePreparedQuery` order that changes the target cannot be committed
+while old and new voters coexist: the old processor retains the stored target,
+whereas the new processor replaces it and records the change in the audit log.
+The release containing target-changing updates must list and validate the
+mandatory stopped boundary before clients submit them. The operator drain path
+is in place; [PR #2404](https://github.com/formancehq/ledger/pull/2404) coordinates
+that boundary. Do not release target-changing updates before `rc.4` is active;
+until then, clients must use delete plus create for target changes.
 When the running version precedes a mandatory boundary, pin the target to a
 canonical version tag. Moving or non-canonical tags such as `latest` cannot
 prove whether the boundary is crossed, so the operator blocks the change.
@@ -399,8 +407,8 @@ any target Pod, and checks that the replacement StatefulSet has a new UID while
 PVC UIDs persist. It restarts a target voter to exercise replay, verifies the
 pre-upgrade account, commits another transaction, checks Raft progress and
 runs each voter's audit/derived-state checker after drain release. It fails
-against the current empty mandatory-stop list, so it is a release gate for the
-format-change PR, not evidence that rc.3 itself needs a stop. A future rc.4
+unless the mandatory-stop list contains rc.4, so it is a release gate for the
+format-change PR, not evidence that rc.3 itself needs a stop. An rc.4
 release still needs format-specific migration, snapshot, backup/restore and
 rollback validation outside this scenario.
 

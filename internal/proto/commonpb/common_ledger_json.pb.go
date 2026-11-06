@@ -351,11 +351,41 @@ func (x *UpdatedPreparedQueryLog) MarshalJSON() ([]byte, error) {
 		Name           string `json:"name"`
 		PreviousFilter any    `json:"previousFilter,omitempty,omitzero"`
 		NewFilter      any    `json:"newFilter,omitempty,omitzero"`
+		PreviousTarget any    `json:"previousTarget,omitempty,omitzero"`
+		NewTarget      any    `json:"newTarget,omitempty,omitzero"`
 	}{
 		Ledger:         x.Ledger,
 		Name:           x.Name,
 		PreviousFilter: x.PreviousFilter,
 		NewFilter:      x.NewFilter,
+		PreviousTarget: func() any {
+			switch x.GetPreviousTarget() {
+			case QueryTarget_QUERY_TARGET_ACCOUNTS:
+				return "QUERY_TARGET_ACCOUNTS"
+			case QueryTarget_QUERY_TARGET_TRANSACTIONS:
+				return "QUERY_TARGET_TRANSACTIONS"
+			case QueryTarget_QUERY_TARGET_LOGS:
+				return "QUERY_TARGET_LOGS"
+			case QueryTarget_QUERY_TARGET_AUDIT:
+				return "QUERY_TARGET_AUDIT"
+			default:
+				return int32(x.GetPreviousTarget())
+			}
+		}(),
+		NewTarget: func() any {
+			switch x.GetNewTarget() {
+			case QueryTarget_QUERY_TARGET_ACCOUNTS:
+				return "QUERY_TARGET_ACCOUNTS"
+			case QueryTarget_QUERY_TARGET_TRANSACTIONS:
+				return "QUERY_TARGET_TRANSACTIONS"
+			case QueryTarget_QUERY_TARGET_LOGS:
+				return "QUERY_TARGET_LOGS"
+			case QueryTarget_QUERY_TARGET_AUDIT:
+				return "QUERY_TARGET_AUDIT"
+			default:
+				return int32(x.GetNewTarget())
+			}
+		}(),
 	})
 }
 

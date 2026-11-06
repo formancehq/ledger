@@ -53,7 +53,7 @@ func TestOpenAPI_WriteResourceExhaustion(t *testing.T) {
 		{http.MethodDelete, "/v3/{ledgerName}/account-types/{typeName}", ""},
 		{http.MethodPut, "/v3/{ledgerName}/account-types/default-enforcement-mode", `{"enforcementMode":"AUDIT"}`},
 		{http.MethodPost, "/v3/{ledgerName}/prepared-queries", `{"name":"query","target":"ACCOUNTS"}`},
-		{http.MethodPut, "/v3/{ledgerName}/prepared-queries/{queryName}", `{"filter":{"$exists":{"metadata":"approved"}}}`},
+		{http.MethodPut, "/v3/{ledgerName}/prepared-queries/{queryName}", `{"target":"ACCOUNTS","filter":{"$exists":{"metadata":"approved"}}}`},
 		{http.MethodDelete, "/v3/{ledgerName}/prepared-queries/{queryName}", ""},
 	}
 	failures := []struct {

@@ -6,9 +6,36 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/protobuf/proto"
 
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
+
+func TestFormatIDRoundTrip(t *testing.T) {
+	t.Parallel()
+	for _, target := range []commonpb.QueryTarget{
+		commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS,
+		commonpb.QueryTarget_QUERY_TARGET_LOGS,
+	} {
+		for _, input := range []string{
+			"id == 0",
+			"id == 18446744073709551615",
+			"id == $wanted",
+			"id >= 7",
+			"id between 1 and 9",
+			"id > $min and id < $max",
+			"not (id > 1 and id < 9)",
+			"id == 7 or id == 8",
+		} {
+			original, err := Parse(input, target)
+			require.NoError(t, err, input)
+			formatted := Format(original)
+			reparsed, err := Parse(formatted, target)
+			require.NoError(t, err, formatted)
+			require.True(t, proto.Equal(original, reparsed), "%s: %q", target, formatted)
+		}
+	}
+}
 
 func TestFormatAccountHasAsset(t *testing.T) {
 	t.Parallel()
@@ -677,7 +704,7 @@ func TestFormatNilUintConditionDoesNotPanic(t *testing.T) {
 		"logId": {
 			filter: &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_LogId{LogId: &commonpb.LogIdCondition{}}},
 			target: commonpb.QueryTarget_QUERY_TARGET_LOGS,
-			want:   "logId <uint?>",
+			want:   "id <uint?>",
 		},
 		"timestamp": {
 			filter: &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_BuiltinUint{BuiltinUint: &commonpb.BuiltinUintCondition{

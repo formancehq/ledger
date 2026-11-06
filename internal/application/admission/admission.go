@@ -663,10 +663,6 @@ func (a *Admission) prepareBatchOrders(ctx context.Context, batch verifiedBatch)
 		return nil, nil, nil, fmt.Errorf("converting requests to orders: %w", err)
 	}
 
-	// Metadata shape was checked during conversion. Replicated metadata policy
-	// belongs to the FSM, after idempotency lookup: fresh refusals are audited,
-	// while retries retain their original outcome even after policy tightening.
-
 	// Step 1: Extract preload needs from orders (excludes script-dependent needs)
 	needs, perOrder, err := a.extractPreloadNeeds(ctx, orders, overlay)
 	if err != nil {
@@ -953,9 +949,8 @@ func (a *Admission) resolveAdmissionResult(ctx context.Context, cmd *raftcmdpb.P
 		if fetchErr != nil {
 			return nil, fmt.Errorf("fetching referenced log %d for idempotent response: %w", refSeq, fetchErr)
 		}
-
 		if log == nil {
-			return nil, fmt.Errorf("invariant: idempotent response references missing log %d", refSeq)
+			return nil, fmt.Errorf("fetching referenced log %d for idempotent response: references missing log", refSeq)
 		}
 
 		logs[i] = log
@@ -2213,6 +2208,11 @@ func (a *Admission) resolveScriptsAndEnrichNeeds(ctx context.Context, orders []*
 // Validation remains after conversion so every family uses the same storage rules.
 func (a *Admission) requestToOrder(ctx context.Context, req *servicepb.Request, batchSig *signaturepb.SignedApplyBatch, overlay *bulkOverlay) (*raftcmdpb.Order, error) {
 	order := &raftcmdpb.Order{}
+	if update, ok := req.GetType().(*servicepb.Request_UpdatePreparedQuery); ok {
+		if update.UpdatePreparedQuery == nil || update.UpdatePreparedQuery.Target == nil {
+			return nil, domain.ErrPreparedQueryTargetRequired
+		}
+	}
 
 	if apply, ok := req.GetType().(*servicepb.Request_Apply); ok {
 		if err := a.applyRequestToOrder(ctx, order, apply.Apply, overlay); err != nil {
@@ -2221,7 +2221,6 @@ func (a *Admission) requestToOrder(ctx context.Context, req *servicepb.Request, 
 	} else if !a.ledgerRequestToOrder(order, req, overlay) && !a.systemRequestToOrder(order, req, batchSig, overlay) {
 		return nil, fmt.Errorf("unsupported request type: %T", req.GetType())
 	}
-
 	// Validate storage-safety invariants (null bytes in ledger names, metadata keys, etc.)
 	if err := validateOrder(order); err != nil {
 		return nil, err
@@ -2316,6 +2315,7 @@ func (a *Admission) ledgerRequestToOrder(order *raftcmdpb.Order, req *servicepb.
 				UpdatePreparedQuery: &raftcmdpb.UpdatePreparedQueryOrder{
 					Name:   reqType.UpdatePreparedQuery.GetName(),
 					Filter: reqType.UpdatePreparedQuery.GetFilter(),
+					Target: reqType.UpdatePreparedQuery.GetTarget().Enum(),
 				},
 			},
 		})
