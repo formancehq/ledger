@@ -7,6 +7,175 @@ import (
 	bytes "bytes"
 )
 
+// GetRangeDigestRequestReader provides read-only access to GetRangeDigestRequest.
+// Call Mutate() to obtain a mutable clone.
+type GetRangeDigestRequestReader interface {
+	GetFirstLogSequence() uint64
+	GetLastLogSequence() uint64
+	GetMinAppliedIndex() uint64
+	Mutate() *GetRangeDigestRequest
+}
+
+type getRangeDigestRequestReadonly GetRangeDigestRequest
+
+func (r *getRangeDigestRequestReadonly) GetFirstLogSequence() uint64 {
+	return (*GetRangeDigestRequest)(r).GetFirstLogSequence()
+}
+
+func (r *getRangeDigestRequestReadonly) GetLastLogSequence() uint64 {
+	return (*GetRangeDigestRequest)(r).GetLastLogSequence()
+}
+
+func (r *getRangeDigestRequestReadonly) GetMinAppliedIndex() uint64 {
+	return (*GetRangeDigestRequest)(r).GetMinAppliedIndex()
+}
+
+func (r *getRangeDigestRequestReadonly) Mutate() *GetRangeDigestRequest {
+	return (*GetRangeDigestRequest)(r).CloneVT()
+}
+
+// AsReader returns a read-only view of this GetRangeDigestRequest.
+func (m *GetRangeDigestRequest) AsReader() GetRangeDigestRequestReader {
+	if m == nil {
+		return nil
+	}
+	return (*getRangeDigestRequestReadonly)(m)
+}
+
+// Mutate returns a mutable deep clone of this GetRangeDigestRequest.
+func (m *GetRangeDigestRequest) Mutate() *GetRangeDigestRequest {
+	return m.CloneVT()
+}
+
+// GetRangeDigestRequestListReader provides read-only iteration over []*GetRangeDigestRequest.
+type GetRangeDigestRequestListReader interface {
+	Len() int
+	Get(i int) GetRangeDigestRequestReader
+	Range(yield func(int, GetRangeDigestRequestReader) bool)
+}
+
+type getRangeDigestRequestListReadonly []*GetRangeDigestRequest
+
+func (l getRangeDigestRequestListReadonly) Len() int { return len(l) }
+
+func (l getRangeDigestRequestListReadonly) Get(i int) GetRangeDigestRequestReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l getRangeDigestRequestListReadonly) Range(yield func(int, GetRangeDigestRequestReader) bool) {
+	for i, v := range l {
+		var r GetRangeDigestRequestReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewGetRangeDigestRequestListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewGetRangeDigestRequestListReader(s []*GetRangeDigestRequest) GetRangeDigestRequestListReader {
+	return getRangeDigestRequestListReadonly(s)
+}
+
+// GetRangeDigestResponseReader provides read-only access to GetRangeDigestResponse.
+// Call Mutate() to obtain a mutable clone.
+type GetRangeDigestResponseReader interface {
+	GetFirstLogSequence() uint64
+	GetLastLogSequence() uint64
+	GetDigest() []byte
+	GetDigestVersion() uint32
+	GetAppliedIndex() uint64
+	GetLastLogSequenceOnNode() uint64
+	Mutate() *GetRangeDigestResponse
+}
+
+type getRangeDigestResponseReadonly GetRangeDigestResponse
+
+func (r *getRangeDigestResponseReadonly) GetFirstLogSequence() uint64 {
+	return (*GetRangeDigestResponse)(r).GetFirstLogSequence()
+}
+
+func (r *getRangeDigestResponseReadonly) GetLastLogSequence() uint64 {
+	return (*GetRangeDigestResponse)(r).GetLastLogSequence()
+}
+
+func (r *getRangeDigestResponseReadonly) GetDigest() []byte {
+	return bytes.Clone((*GetRangeDigestResponse)(r).GetDigest())
+}
+
+func (r *getRangeDigestResponseReadonly) GetDigestVersion() uint32 {
+	return (*GetRangeDigestResponse)(r).GetDigestVersion()
+}
+
+func (r *getRangeDigestResponseReadonly) GetAppliedIndex() uint64 {
+	return (*GetRangeDigestResponse)(r).GetAppliedIndex()
+}
+
+func (r *getRangeDigestResponseReadonly) GetLastLogSequenceOnNode() uint64 {
+	return (*GetRangeDigestResponse)(r).GetLastLogSequenceOnNode()
+}
+
+func (r *getRangeDigestResponseReadonly) Mutate() *GetRangeDigestResponse {
+	return (*GetRangeDigestResponse)(r).CloneVT()
+}
+
+// AsReader returns a read-only view of this GetRangeDigestResponse.
+func (m *GetRangeDigestResponse) AsReader() GetRangeDigestResponseReader {
+	if m == nil {
+		return nil
+	}
+	return (*getRangeDigestResponseReadonly)(m)
+}
+
+// Mutate returns a mutable deep clone of this GetRangeDigestResponse.
+func (m *GetRangeDigestResponse) Mutate() *GetRangeDigestResponse {
+	return m.CloneVT()
+}
+
+// GetRangeDigestResponseListReader provides read-only iteration over []*GetRangeDigestResponse.
+type GetRangeDigestResponseListReader interface {
+	Len() int
+	Get(i int) GetRangeDigestResponseReader
+	Range(yield func(int, GetRangeDigestResponseReader) bool)
+}
+
+type getRangeDigestResponseListReadonly []*GetRangeDigestResponse
+
+func (l getRangeDigestResponseListReadonly) Len() int { return len(l) }
+
+func (l getRangeDigestResponseListReadonly) Get(i int) GetRangeDigestResponseReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l getRangeDigestResponseListReadonly) Range(yield func(int, GetRangeDigestResponseReader) bool) {
+	for i, v := range l {
+		var r GetRangeDigestResponseReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewGetRangeDigestResponseListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewGetRangeDigestResponseListReader(s []*GetRangeDigestResponse) GetRangeDigestResponseListReader {
+	return getRangeDigestResponseListReadonly(s)
+}
+
 // RaftRequestMessageReader provides read-only access to RaftRequestMessage.
 // Call Mutate() to obtain a mutable clone.
 type RaftRequestMessageReader interface {

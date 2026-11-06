@@ -20,6 +20,51 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
+func (m *GetRangeDigestRequest) CloneVT() *GetRangeDigestRequest {
+	if m == nil {
+		return (*GetRangeDigestRequest)(nil)
+	}
+	r := new(GetRangeDigestRequest)
+	r.FirstLogSequence = m.FirstLogSequence
+	r.LastLogSequence = m.LastLogSequence
+	r.MinAppliedIndex = m.MinAppliedIndex
+	if len(m.unknownFields) > 0 {
+		r.unknownFields = make([]byte, len(m.unknownFields))
+		copy(r.unknownFields, m.unknownFields)
+	}
+	return r
+}
+
+func (m *GetRangeDigestRequest) CloneMessageVT() proto.Message {
+	return m.CloneVT()
+}
+
+func (m *GetRangeDigestResponse) CloneVT() *GetRangeDigestResponse {
+	if m == nil {
+		return (*GetRangeDigestResponse)(nil)
+	}
+	r := new(GetRangeDigestResponse)
+	r.FirstLogSequence = m.FirstLogSequence
+	r.LastLogSequence = m.LastLogSequence
+	r.DigestVersion = m.DigestVersion
+	r.AppliedIndex = m.AppliedIndex
+	r.LastLogSequenceOnNode = m.LastLogSequenceOnNode
+	if rhs := m.Digest; rhs != nil {
+		tmpBytes := make([]byte, len(rhs))
+		copy(tmpBytes, rhs)
+		r.Digest = tmpBytes
+	}
+	if len(m.unknownFields) > 0 {
+		r.unknownFields = make([]byte, len(m.unknownFields))
+		copy(r.unknownFields, m.unknownFields)
+	}
+	return r
+}
+
+func (m *GetRangeDigestResponse) CloneMessageVT() proto.Message {
+	return m.CloneVT()
+}
+
 func (m *RaftRequestMessage) CloneVT() *RaftRequestMessage {
 	if m == nil {
 		return (*RaftRequestMessage)(nil)
@@ -219,6 +264,65 @@ func (m *SendMessageResponse_Pong) CloneVT() isSendMessageResponse_Message {
 	return r
 }
 
+func (this *GetRangeDigestRequest) EqualVT(that *GetRangeDigestRequest) bool {
+	if this == that {
+		return true
+	} else if this == nil || that == nil {
+		return false
+	}
+	if this.FirstLogSequence != that.FirstLogSequence {
+		return false
+	}
+	if this.LastLogSequence != that.LastLogSequence {
+		return false
+	}
+	if this.MinAppliedIndex != that.MinAppliedIndex {
+		return false
+	}
+	return string(this.unknownFields) == string(that.unknownFields)
+}
+
+func (this *GetRangeDigestRequest) EqualMessageVT(thatMsg proto.Message) bool {
+	that, ok := thatMsg.(*GetRangeDigestRequest)
+	if !ok {
+		return false
+	}
+	return this.EqualVT(that)
+}
+func (this *GetRangeDigestResponse) EqualVT(that *GetRangeDigestResponse) bool {
+	if this == that {
+		return true
+	} else if this == nil || that == nil {
+		return false
+	}
+	if this.FirstLogSequence != that.FirstLogSequence {
+		return false
+	}
+	if this.LastLogSequence != that.LastLogSequence {
+		return false
+	}
+	if string(this.Digest) != string(that.Digest) {
+		return false
+	}
+	if this.DigestVersion != that.DigestVersion {
+		return false
+	}
+	if this.AppliedIndex != that.AppliedIndex {
+		return false
+	}
+	if this.LastLogSequenceOnNode != that.LastLogSequenceOnNode {
+		return false
+	}
+	return string(this.unknownFields) == string(that.unknownFields)
+}
+
+func (this *GetRangeDigestResponse) EqualMessageVT(thatMsg proto.Message) bool {
+	that, ok := thatMsg.(*GetRangeDigestResponse)
+	if !ok {
+		return false
+	}
+	return this.EqualVT(that)
+}
 func (this *RaftRequestMessage) EqualVT(that *RaftRequestMessage) bool {
 	if this == that {
 		return true
@@ -524,6 +628,126 @@ func (this *SendMessageResponse_Pong) EqualVT(thatIface isSendMessageResponse_Me
 		}
 	}
 	return true
+}
+
+func (m *GetRangeDigestRequest) MarshalVT() (dAtA []byte, err error) {
+	if m == nil {
+		return nil, nil
+	}
+	size := m.SizeVT()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBufferVT(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *GetRangeDigestRequest) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *GetRangeDigestRequest) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	if m == nil {
+		return 0, nil
+	}
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if m.unknownFields != nil {
+		i -= len(m.unknownFields)
+		copy(dAtA[i:], m.unknownFields)
+	}
+	if m.MinAppliedIndex != 0 {
+		i -= 8
+		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.MinAppliedIndex))
+		i--
+		dAtA[i] = 0x19
+	}
+	if m.LastLogSequence != 0 {
+		i -= 8
+		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.LastLogSequence))
+		i--
+		dAtA[i] = 0x11
+	}
+	if m.FirstLogSequence != 0 {
+		i -= 8
+		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.FirstLogSequence))
+		i--
+		dAtA[i] = 0x9
+	}
+	return len(dAtA) - i, nil
+}
+
+func (m *GetRangeDigestResponse) MarshalVT() (dAtA []byte, err error) {
+	if m == nil {
+		return nil, nil
+	}
+	size := m.SizeVT()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBufferVT(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *GetRangeDigestResponse) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *GetRangeDigestResponse) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	if m == nil {
+		return 0, nil
+	}
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if m.unknownFields != nil {
+		i -= len(m.unknownFields)
+		copy(dAtA[i:], m.unknownFields)
+	}
+	if m.LastLogSequenceOnNode != 0 {
+		i -= 8
+		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.LastLogSequenceOnNode))
+		i--
+		dAtA[i] = 0x31
+	}
+	if m.AppliedIndex != 0 {
+		i -= 8
+		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.AppliedIndex))
+		i--
+		dAtA[i] = 0x29
+	}
+	if m.DigestVersion != 0 {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.DigestVersion))
+		i--
+		dAtA[i] = 0x20
+	}
+	if len(m.Digest) > 0 {
+		i -= len(m.Digest)
+		copy(dAtA[i:], m.Digest)
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.Digest)))
+		i--
+		dAtA[i] = 0x1a
+	}
+	if m.LastLogSequence != 0 {
+		i -= 8
+		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.LastLogSequence))
+		i--
+		dAtA[i] = 0x11
+	}
+	if m.FirstLogSequence != 0 {
+		i -= 8
+		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.FirstLogSequence))
+		i--
+		dAtA[i] = 0x9
+	}
+	return len(dAtA) - i, nil
 }
 
 func (m *RaftRequestMessage) MarshalVT() (dAtA []byte, err error) {
@@ -956,6 +1180,54 @@ func (m *SendMessageResponse_Pong) MarshalToSizedBufferVT(dAtA []byte) (int, err
 	}
 	return len(dAtA) - i, nil
 }
+func (m *GetRangeDigestRequest) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.FirstLogSequence != 0 {
+		n += 9
+	}
+	if m.LastLogSequence != 0 {
+		n += 9
+	}
+	if m.MinAppliedIndex != 0 {
+		n += 9
+	}
+	n += len(m.unknownFields)
+	return n
+}
+
+func (m *GetRangeDigestResponse) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.FirstLogSequence != 0 {
+		n += 9
+	}
+	if m.LastLogSequence != 0 {
+		n += 9
+	}
+	l = len(m.Digest)
+	if l > 0 {
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	if m.DigestVersion != 0 {
+		n += 1 + protohelpers.SizeOfVarint(uint64(m.DigestVersion))
+	}
+	if m.AppliedIndex != 0 {
+		n += 9
+	}
+	if m.LastLogSequenceOnNode != 0 {
+		n += 9
+	}
+	n += len(m.unknownFields)
+	return n
+}
+
 func (m *RaftRequestMessage) SizeVT() (n int) {
 	if m == nil {
 		return 0
@@ -1124,6 +1396,231 @@ func (m *SendMessageResponse_Pong) SizeVT() (n int) {
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
 	return n
+}
+func (m *GetRangeDigestRequest) UnmarshalVT(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return protohelpers.ErrIntOverflow
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: GetRangeDigestRequest: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: GetRangeDigestRequest: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 1 {
+				return fmt.Errorf("proto: wrong wireType = %d for field FirstLogSequence", wireType)
+			}
+			m.FirstLogSequence = 0
+			if (iNdEx + 8) > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.FirstLogSequence = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
+			iNdEx += 8
+		case 2:
+			if wireType != 1 {
+				return fmt.Errorf("proto: wrong wireType = %d for field LastLogSequence", wireType)
+			}
+			m.LastLogSequence = 0
+			if (iNdEx + 8) > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.LastLogSequence = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
+			iNdEx += 8
+		case 3:
+			if wireType != 1 {
+				return fmt.Errorf("proto: wrong wireType = %d for field MinAppliedIndex", wireType)
+			}
+			m.MinAppliedIndex = 0
+			if (iNdEx + 8) > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.MinAppliedIndex = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
+			iNdEx += 8
+		default:
+			iNdEx = preIndex
+			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if (skippy < 0) || (iNdEx+skippy) < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.unknownFields = append(m.unknownFields, dAtA[iNdEx:iNdEx+skippy]...)
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *GetRangeDigestResponse) UnmarshalVT(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return protohelpers.ErrIntOverflow
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: GetRangeDigestResponse: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: GetRangeDigestResponse: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 1 {
+				return fmt.Errorf("proto: wrong wireType = %d for field FirstLogSequence", wireType)
+			}
+			m.FirstLogSequence = 0
+			if (iNdEx + 8) > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.FirstLogSequence = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
+			iNdEx += 8
+		case 2:
+			if wireType != 1 {
+				return fmt.Errorf("proto: wrong wireType = %d for field LastLogSequence", wireType)
+			}
+			m.LastLogSequence = 0
+			if (iNdEx + 8) > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.LastLogSequence = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
+			iNdEx += 8
+		case 3:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Digest", wireType)
+			}
+			var byteLen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				byteLen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if byteLen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + byteLen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.Digest = append(m.Digest[:0], dAtA[iNdEx:postIndex]...)
+			if m.Digest == nil {
+				m.Digest = []byte{}
+			}
+			iNdEx = postIndex
+		case 4:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field DigestVersion", wireType)
+			}
+			m.DigestVersion = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.DigestVersion |= uint32(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 5:
+			if wireType != 1 {
+				return fmt.Errorf("proto: wrong wireType = %d for field AppliedIndex", wireType)
+			}
+			m.AppliedIndex = 0
+			if (iNdEx + 8) > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.AppliedIndex = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
+			iNdEx += 8
+		case 6:
+			if wireType != 1 {
+				return fmt.Errorf("proto: wrong wireType = %d for field LastLogSequenceOnNode", wireType)
+			}
+			m.LastLogSequenceOnNode = 0
+			if (iNdEx + 8) > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.LastLogSequenceOnNode = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
+			iNdEx += 8
+		default:
+			iNdEx = preIndex
+			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if (skippy < 0) || (iNdEx+skippy) < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.unknownFields = append(m.unknownFields, dAtA[iNdEx:iNdEx+skippy]...)
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
 }
 func (m *RaftRequestMessage) UnmarshalVT(dAtA []byte) error {
 	l := len(dAtA)

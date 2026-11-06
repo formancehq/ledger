@@ -105,6 +105,7 @@ together while preserving the existing checker phases and diagnostics.
 ## Related
 
 - [Consensus → global-log.md](../consensus/global-log.md) — what produces the audit entries the chain links.
+- [Consensus → log-integrity.md](../consensus/log-integrity.md) — continuous cross-replica observation of persisted global log results; it complements the audit-based checker.
 - [Indexer → indexes.md](../indexer/indexes.md) — the index registry is a projection the checker verifies via `compareIndexes`.
 - [Attributes](../attributes/) — volumes / metadata / reversion / idempotency projections the checker also verifies.
 
