@@ -1001,8 +1001,8 @@ func (node *Node) doMaintenance() error {
 		}
 	}
 	// Post-condition: every FSM batch with Raft index <= capturedIndex is
-	// durable on disk. It is now safe to advance the Raft WAL snapshot and
-	// to advance the Raft WAL snapshot. Compaction below additionally waits for
+	// durable on disk. It is now safe to advance the Raft WAL snapshot.
+	// Compaction below additionally waits for
 	// the Raft-layer acknowledgement of the same entries.
 
 	// 1. WAL snapshot + compact.
