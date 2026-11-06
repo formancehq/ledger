@@ -35,11 +35,20 @@ func ParseShape(raw string, allowEmptyHost bool) (*url.URL, bool) {
 		return nil, false
 	}
 
-	// net/url validates port syntax but not its numeric range. Check explicit
-	// ports for both named hosts and default-host/port-only authorities.
-	if parsed.Port() != "" {
-		if _, err := strconv.ParseUint(parsed.Port(), 10, 16); err != nil {
+	// net/url checks only the final port of a comma-separated authority.
+	// Validate each host independently while retaining the original authority.
+	for authority := range strings.SplitSeq(parsed.Host, ",") {
+		hostURL := &url.URL{Host: authority}
+		host, err := url.Parse(hostURL.String())
+		if err != nil {
 			return nil, false
+		}
+		// URL.String re-escapes decoded IPv6 zone identifiers before parsing.
+		// net/url validates port syntax, but not its numeric range.
+		if host.Port() != "" {
+			if _, err := strconv.ParseUint(host.Port(), 10, 16); err != nil {
+				return nil, false
+			}
 		}
 	}
 

@@ -4146,7 +4146,7 @@ components:
       properties:
         dsn:
           type: string
-          description: ClickHouse URL with clickhouse://, http:// or https:// and a hostname; may include credentials and comma-separated hosts; explicit URL port must be in 0-65535
+          description: ClickHouse URL with clickhouse://, http:// or https:// and a hostname; may include credentials and comma-separated hosts; each explicit host port must be in 0-65535
           example: clickhouse://user:pass@host:9000/db
         table:
           type: string

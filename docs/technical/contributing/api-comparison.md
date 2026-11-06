@@ -162,7 +162,8 @@ shape and required IAM region; invalid driver settings can be committed and
 then fail source construction. There is no equivalent mirror-creation API in v2;
 new NATS sinks require an explicit scheme per server; PostgreSQL and NATS retain
 empty/default hosts and port-only authorities. Explicit ports on named hosts,
-IPv6 hosts and port-only authorities must be in the 0–65535 range. ClickHouse
+IPv6 hosts and port-only authorities must be in the 0–65535 range, including
+each host in a comma-separated ClickHouse authority. ClickHouse
 sinks require `clickhouse://`, `http://` or `https://`. Invalid forms fail before Raft with safe
 `VALIDATION` errors (HTTP 400 / gRPC InvalidArgument). Existing committed values
 remain usable and legacy keyword DSNs are fully masked on reads. Endpoints and

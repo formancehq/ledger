@@ -82,6 +82,9 @@ func TestValidateOrderConnectionURLs(t *testing.T) {
 		{"ClickHouse native multi host", "clickhouse://alice:canary@one:9000,two:9000/ledger?compress=true", clickhouse, nil},
 		{"ClickHouse HTTP proxy", "https://alice:canary@db/ledger?http_proxy=https%3A%2F%2Fcanary%40proxy", clickhouse, nil},
 		{"ClickHouse HTTP", "http://db/ledger", clickhouse, nil},
+		{"ClickHouse multi host boundary ports", "clickhouse://one:0,two:65535/ledger", clickhouse, nil},
+		{"ClickHouse multi host first port out of range", "clickhouse://one:65536,two:9000/ledger", clickhouse, ErrSinkClickHouseURLInvalid},
+		{"ClickHouse multi host last port out of range", "clickhouse://one:9000,two:65536/ledger", clickhouse, ErrSinkClickHouseURLInvalid},
 		{"ClickHouse host largest port", "clickhouse://db:65535/ledger", clickhouse, nil},
 		{"ClickHouse host port out of range", "clickhouse://db:65536/ledger", clickhouse, ErrSinkClickHouseURLInvalid},
 		{"ClickHouse IPv6 port out of range", "clickhouse://[::1]:65536/ledger", clickhouse, ErrSinkClickHouseURLInvalid},
@@ -128,6 +131,9 @@ func TestAdmissionRejectsNonURLConnectionsBeforeProposal(t *testing.T) {
 		{"NATS host port out of range", &servicepb.Request{Type: &servicepb.Request_AddEventsSink{AddEventsSink: &servicepb.AddEventsSinkRequest{Config: &commonpb.SinkConfig{
 			Name: "events", Type: &commonpb.SinkConfig_Nats{Nats: &commonpb.NatsSinkConfig{Url: "nats://alice:canary@one:65536", Topic: "events"}},
 		}}}}, ErrSinkNATSURLInvalid},
+		{"ClickHouse multi host port out of range", &servicepb.Request{Type: &servicepb.Request_AddEventsSink{AddEventsSink: &servicepb.AddEventsSinkRequest{Config: &commonpb.SinkConfig{
+			Name: "events", Type: &commonpb.SinkConfig_Clickhouse{Clickhouse: &commonpb.ClickHouseSinkConfig{Dsn: "clickhouse://alice:canary@one:65536,two:9000/ledger"}},
+		}}}}, ErrSinkClickHouseURLInvalid},
 		{"ClickHouse host port out of range", &servicepb.Request{Type: &servicepb.Request_AddEventsSink{AddEventsSink: &servicepb.AddEventsSinkRequest{Config: &commonpb.SinkConfig{
 			Name: "events", Type: &commonpb.SinkConfig_Clickhouse{Clickhouse: &commonpb.ClickHouseSinkConfig{Dsn: "clickhouse://alice:canary@db:65536/ledger"}},
 		}}}}, ErrSinkClickHouseURLInvalid},

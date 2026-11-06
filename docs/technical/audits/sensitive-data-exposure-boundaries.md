@@ -136,7 +136,9 @@ remove unchanged persisted sinks; retain token/password masking independently.
 Pathless empty authorities must retain the explicit URL form. Cover the
 upper boundary for named hosts, IPv6 hosts and port-only authorities: 65535
 remains accepted and safely projected, while 65536 is rejected before proposal
-with a credential-free error and fully masked on read.
+with a credential-free error and fully masked on read. Repeat the boundary
+for each position in a comma-separated ClickHouse authority and reject malformed
+non-final ports while preserving valid multi-host configuration.
 Preserve full masking of legacy keyword
 DSNs, including duplicate/escaped passwords and sslpassword; NATS mixed-scheme lists and bare tokens; ClickHouse
 multi-host authorities, HTTP transport and encoded HTTP proxy credentials;

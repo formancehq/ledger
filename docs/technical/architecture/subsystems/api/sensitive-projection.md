@@ -67,7 +67,8 @@ with dash normalization, including duplicate values. Known `http_proxy` and
 once; proxy recursion beyond eight nested edges is replaced with `xxxxx`.
 Malformed queries are replaced wholesale with `xxxxx`; unparseable or unsupported
 connection formats become `[redacted]`. Explicit ports outside 0–65535 are
-rejected for named hosts, IPv6 hosts and port-only authorities alike. A malformed
+rejected for named hosts, IPv6 hosts and port-only authorities alike, including
+each host in a comma-separated ClickHouse authority. A malformed
 NATS server entry becomes `[redacted]` while valid sibling entries retain their
 safe connection details.
 The classifier is not an arbitrary secret detector for unknown option names,
