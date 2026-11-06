@@ -527,13 +527,3 @@ func validateOrderSigningKey(order *raftcmdpb.Order) domain.Describable {
 
 	return nil
 }
-
-// validateCommandMetadata applies the shared admission and mirror metadata
-// contract using the committed policy, preserving the application error wrapper.
-func validateCommandMetadata(orders []*raftcmdpb.Order, limits domain.MetadataLimits) error {
-	if err := domain.ValidateCommandMetadata(orders, limits); err != nil {
-		return &domain.BusinessError{Err: err}
-	}
-
-	return nil
-}

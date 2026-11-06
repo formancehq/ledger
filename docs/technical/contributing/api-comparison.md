@@ -98,6 +98,30 @@ stricter v3 address constraint already existed in its processor; this change
 makes the rejection earlier and deterministic to protect replicated audit
 history. See the [rollout restriction](../../ops/upgrades.md#account-metadata-address-validation).
 
+## Idempotency after metadata policy tightening
+
+A v3 write whose original metadata no longer fits the committed policy can
+recover its retained keyed success or definitive failure. After normal
+conversion, readiness and preload checks, the ordinary proposal reaches the
+FSM. Same key/content replays; live different content creates an audited
+conflict; missing/expired keys execute under the policy at apply and a definitive
+`METADATA_LIMIT_EXCEEDED` is audited with no committed business effects. A keyed
+refusal remains frozen even if policy is later loosened. This covers unitary
+and bulk writes converging on admission; transport caps and earlier structural
+or preparation failures still apply.
+Routes, fields, envelopes, failure types and protocol revision 40 are unchanged.
+This is a v3 replicated-policy recovery correction; it does not introduce a v2
+metadata ceiling or change the existing v2-to-v3 endpoint mapping. In the v2
+reference at revision `d47ba1746cec2173d84eab8ec575be196eae0837`, `internal/controller/ledger/log_process.go`
+checks idempotency in `forgeLog` (line 148) before `runLog`, and
+`fetchLogWithIK` (line 221) verifies the retained content hash. The v3 recovery
+preserves that lookup-before-execution behavior while keeping its replicated
+metadata ceilings. Existing conflict presentation intentionally differs: v3
+returns HTTP 409 `IDEMPOTENCY_KEY_CONFLICT`; v2 returns HTTP 400 `VALIDATION`.
+This correction changes neither contract. See
+[the replay contract](../architecture/subsystems/admission/idempotency.md#replay-after-metadata-limits-tighten)
+and [client upgrade behavior](../../ops/upgrades.md#metadata-limit-replay-recovery).
+
 ## Ledger integrity checking
 
 The v3 gRPC `CheckStore` and `ValidateRestore` streams verify canonical and global

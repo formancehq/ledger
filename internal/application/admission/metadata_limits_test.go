@@ -242,7 +242,7 @@ func TestValidateCommandMetadata_EveryOrderShape(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			err := validateCommandMetadata([]*raftcmdpb.Order{tc.order}, metadataTestLimits())
+			err := domain.ValidateCommandMetadata([]*raftcmdpb.Order{tc.order}, metadataTestLimits())
 
 			if tc.wantDimension == "" {
 				require.NoError(t, err, "the boundary itself must be accepted")
@@ -277,7 +277,7 @@ func TestValidateCommandMetadata_NamesOffendingAccount(t *testing.T) {
 		},
 	})
 
-	err := validateCommandMetadata([]*raftcmdpb.Order{order}, metadataTestLimits())
+	err := domain.ValidateCommandMetadata([]*raftcmdpb.Order{order}, metadataTestLimits())
 	require.Error(t, err)
 
 	var d domain.SerializableError
@@ -302,11 +302,11 @@ func TestValidateCommandMetadata_PerCommandTotalAcrossOrders(t *testing.T) {
 	}
 
 	two := []*raftcmdpb.Order{orderWith("aaaaaaaa"), orderWith("bbbbbbbb")}
-	require.NoError(t, validateCommandMetadata(two, limits))
+	require.NoError(t, domain.ValidateCommandMetadata(two, limits))
 
 	three := []*raftcmdpb.Order{two[0], two[1], orderWith("cccccccc")}
 
-	err := validateCommandMetadata(three, limits)
+	err := domain.ValidateCommandMetadata(three, limits)
 	require.Error(t, err)
 
 	var d domain.SerializableError
@@ -344,12 +344,12 @@ func TestValidateCommandMetadata_UnconfiguredLimitsReject(t *testing.T) {
 	order := metadataAddOrder(map[string]*commonpb.MetadataValue{"k": metadataStringValue("v")})
 
 	require.ErrorIs(t,
-		validateCommandMetadata([]*raftcmdpb.Order{order}, domain.MetadataLimits{}),
+		domain.ValidateCommandMetadata([]*raftcmdpb.Order{order}, domain.MetadataLimits{}),
 		domain.ErrMetadataLimitsUnconfigured,
 	)
 
 	require.ErrorIs(t,
-		validateCommandMetadata(nil, domain.MetadataLimits{}),
+		domain.ValidateCommandMetadata(nil, domain.MetadataLimits{}),
 		domain.ErrMetadataLimitsUnconfigured,
 	)
 }
@@ -403,7 +403,7 @@ func TestValidateCommandMetadata_NilAccountMapIsSkipped(t *testing.T) {
 		},
 	})
 
-	require.NoError(t, validateCommandMetadata([]*raftcmdpb.Order{order}, metadataTestLimits()))
+	require.NoError(t, domain.ValidateCommandMetadata([]*raftcmdpb.Order{order}, metadataTestLimits()))
 	require.Zero(t, domain.OrderMetadataSize(order))
 }
 
@@ -429,10 +429,10 @@ func TestMirrorDeletedMetadataValidation(t *testing.T) {
 	limits := metadataTestLimits()
 	atLimit := orderWithKey(strings.Repeat("k", int(limits.MaxKeyBytes)))
 	require.NoError(t, validateOrder(atLimit))
-	require.NoError(t, validateCommandMetadata([]*raftcmdpb.Order{atLimit}, limits))
+	require.NoError(t, domain.ValidateCommandMetadata([]*raftcmdpb.Order{atLimit}, limits))
 	require.Equal(t, limits.MaxKeyBytes, domain.OrderMetadataSize(atLimit))
 
-	err := validateCommandMetadata([]*raftcmdpb.Order{
+	err := domain.ValidateCommandMetadata([]*raftcmdpb.Order{
 		orderWithKey(strings.Repeat("k", int(limits.MaxKeyBytes)+1)),
 	}, limits)
 	var failure domain.SerializableError
@@ -445,8 +445,8 @@ func TestMirrorDeletedMetadataValidation(t *testing.T) {
 	for i := range orders {
 		orders[i] = atLimit
 	}
-	require.NoError(t, validateCommandMetadata(orders[:7], limits))
-	err = validateCommandMetadata(orders, limits)
+	require.NoError(t, domain.ValidateCommandMetadata(orders[:7], limits))
+	err = domain.ValidateCommandMetadata(orders, limits)
 	require.ErrorAs(t, err, &failure)
 	require.Equal(t, domain.ErrReasonMetadataLimitExceeded, failure.Reason())
 	require.Equal(t, domain.MetadataLimitDimensionCommand, domain.FailureFactsOf(failure).Facts["dimension"])

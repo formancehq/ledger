@@ -66,7 +66,7 @@ The two payload forms share caller attribution, the write gate, leader
 readiness, the drain fence, preload construction, guarded Raft submission,
 and result resolution. `Admit` alone verifies the client batch, waits for the
 audit key and committed policy, converts orders with `prepareBatchOrders`,
-checks metadata, and resolves order/script coverage. `AdmitClusterPolicy`
+checks metadata shape, and resolves order/script coverage. `AdmitClusterPolicy`
 constructs the native policy payload directly with empty coverage; it cannot
 wait for the first policy or audit key
 because the reconciler may be establishing them. The common `admit` tail calls
@@ -85,6 +85,9 @@ allocation from policy reconciliation. Its preload declaration is empty, so
 its work does not grow with the number of business orders or persisted keys;
 the guarded proposal and WAL entry remain one per policy update. Execution
 batches retain work proportional to their orders and declared coverage.
+
+Metadata policy refusals and retained retries use the same proposal/FSM path
+as other business outcomes.
 
 ### 0. Caller attribution
 
@@ -113,6 +116,12 @@ If `RequireSignatures()` is true cluster-wide, an unsigned batch is rejected her
 ### 4. Order conversion
 
 `requestsToOrders()` walks every `Request` in the batch. `requestToOrder()` routes Apply through its admission checks and action converter, ledger-scoped requests through `ledgerRequestToOrder()`, and cluster-wide requests through `systemRequestToOrder()`. Each family retains an explicit protobuf request-to-order mapping. The common final `validateOrder()` checks storage safety for every converted order. SaveNumscript and events-sink requests also update the intra-batch overlay; signing-key registration takes its parent key ID from the batch signature. Orders are the FSM's input language; requests are the wire language. Revert conversion observes the target transaction locally so admission can declare coverage and bind an observation digest; the FSM still makes the authoritative business decision.
+
+Metadata shape is checked during conversion. The mutable replicated metadata
+ceilings are decided by the existing FSM handlers after idempotency lookup,
+using the policy at apply. A safely prepared fresh refusal creates a failure
+audit with no committed business effects; retained retries replay without a new
+audit. See [the replay contract](idempotency.md#replay-after-metadata-limits-tighten).
 
 ### 5. Preload coverage extraction
 
@@ -183,12 +192,12 @@ PR.
 
 ## Idempotency
 
-Two-stage check:
+Ordinary requests use a two-stage check:
 
 - **Admission**: the idempotency key's *shape* is validated (UTF-8, length ≤ 256). The key becomes part of the proposal's `plan.Coverage` — on its separate `IdempotencyKeys` channel, not as a cache attribute — so the FSM can look it up.
 - **FSM**: `processProposal` consults the replay cache (`SubIdempKeys` in Pebble). A hit returns the stored outcome reference (sequence + outcome) without re-executing the orders. A miss falls through to normal processing, and the outcome gets recorded under the same key on the way out.
 
-This split exists because the *uniqueness* check requires committed state — admission can only validate that the key is well-formed.
+This split exists because the *uniqueness* check requires committed state. Metadata policy checks run in the existing handlers after that uniqueness check.
 
 ## Validation: structural vs behavioural
 
@@ -216,6 +225,7 @@ Node-local operational policy is a separate category. Flags, environment variabl
 | Where rejected | What happens | Visible to | Audit entry produced? |
 |----------------|-------------|------------|------------------------|
 | Write gate / maintenance / signature / structural validation | gRPC returns error, no Raft proposal | Client only | **No** — admission did not propose. |
+| Metadata policy | Existing FSM handlers, after idempotency lookup | Client | **Yes** for fresh refusals and conflicts; **no** new audit for a retained replay. |
 | FSM apply (validation, overflow, balance, etc.) | Proposal returned with `Failure` outcome | Client + Raft log | **Yes** — `AuditEntry` with `outcome = Failure`, bound by the hash chain. |
 
-This distinction matters: anything that lands in the audit chain is replayable and verifiable by the checker. Anything rejected at admission is invisible to history — which is correct, because there is nothing to replay (the order never reached the cluster).
+This distinction matters: anything that lands in the audit chain is replayable and verifiable by the checker. A new rejection at admission is invisible to history because its orders never reached the cluster. A retained FSM replay returns an earlier historical outcome without adding to history.
