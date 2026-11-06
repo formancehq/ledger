@@ -4134,7 +4134,7 @@ components:
       properties:
         url:
           type: string
-          description: Comma-separated server URLs, each with nats://, tls://, ws:// or wss://; empty/default hosts and port-only authorities (ports 0-65535) are allowed
+          description: Comma-separated server URLs, each with nats://, tls://, ws:// or wss://; empty/default hosts and port-only authorities are allowed; explicit ports must be in 0-65535
         topic:
           type: string
           description: NATS topic
@@ -4146,7 +4146,7 @@ components:
       properties:
         dsn:
           type: string
-          description: ClickHouse URL with clickhouse://, http:// or https:// and a hostname; may include credentials and comma-separated hosts
+          description: ClickHouse URL with clickhouse://, http:// or https:// and a hostname; may include credentials and comma-separated hosts; explicit URL port must be in 0-65535
           example: clickhouse://user:pass@host:9000/db
         table:
           type: string
@@ -5873,7 +5873,7 @@ components:
           description: OAuth2 scopes (HTTP source only)
         dsn:
           type: string
-          description: Hierarchical URL with an explicit scheme (required for PostgreSQL source); admission checks generic URL shape and rejects keyword DSNs. The worker validates PostgreSQL schemes/options and IAM TLS before connecting; use postgres:// or postgresql://
+          description: Hierarchical URL with an explicit scheme (required for PostgreSQL source); admission checks generic URL shape, requires explicit ports in 0-65535 and rejects keyword DSNs. The worker validates PostgreSQL schemes/options and IAM TLS before connecting; use postgres:// or postgresql://
         batchSize:
           type: integer
           minimum: 0

@@ -133,9 +133,10 @@ Preserve PostgreSQL URL/socket controls, including a port-only authority with a
 query-selected socket host, and NATS default-host/port-only URLs. Require safe
 port-only NATS values to survive byte-for-byte so operator equality does not
 remove unchanged persisted sinks; retain token/password masking independently.
-Pathless empty authorities must retain the explicit URL form. Cover the port-only
-upper boundary: 65535 remains accepted and safely projected, while 65536 is
-rejected before proposal with a credential-free error and fully masked on read.
+Pathless empty authorities must retain the explicit URL form. Cover the
+upper boundary for named hosts, IPv6 hosts and port-only authorities: 65535
+remains accepted and safely projected, while 65536 is rejected before proposal
+with a credential-free error and fully masked on read.
 Preserve full masking of legacy keyword
 DSNs, including duplicate/escaped passwords and sslpassword; NATS mixed-scheme lists and bare tokens; ClickHouse
 multi-host authorities, HTTP transport and encoded HTTP proxy credentials;

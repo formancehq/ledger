@@ -129,8 +129,8 @@ legacy non-URL values preserves confidentiality without that parser.
 
 The shared lexical parser rejects missing schemes, opaque URLs, invalid escapes
 and invalid port syntax without returning parser errors that can echo credentials.
-Port-only authorities additionally require the explicit port to fit in 16 bits
-(0–65535); driver-specific default-port behavior remains unchanged.
+Explicit ports on named hosts, IPv6 hosts and port-only authorities must fit
+in 16 bits (0–65535); driver-specific default-port behavior remains unchanged.
 For PostgreSQL mirrors this gate is deliberately generic: uppercase and unknown
 schemes pass URL-shape validation. The PostgreSQL worker alone interprets supported
 schemes (`postgres://` and `postgresql://`), options, connectivity and credentials.

@@ -35,9 +35,9 @@ func ParseShape(raw string, allowEmptyHost bool) (*url.URL, bool) {
 		return nil, false
 	}
 
-	// net/url validates port syntax but not its numeric range. A port-only
-	// authority still needs a valid TCP port when the driver fills in its host.
-	if parsed.Hostname() == "" && parsed.Port() != "" {
+	// net/url validates port syntax but not its numeric range. Check explicit
+	// ports for both named hosts and default-host/port-only authorities.
+	if parsed.Port() != "" {
 		if _, err := strconv.ParseUint(parsed.Port(), 10, 16); err != nil {
 			return nil, false
 		}

@@ -66,8 +66,10 @@ with dash normalization, including duplicate values. Known `http_proxy` and
 `https_proxy` values are projected as HTTP(S) URLs. Each query layer is decoded
 once; proxy recursion beyond eight nested edges is replaced with `xxxxx`.
 Malformed queries are replaced wholesale with `xxxxx`; unparseable or unsupported
-connection formats become `[redacted]`. A malformed NATS server entry becomes
-`[redacted]` while valid sibling entries retain their safe connection details.
+connection formats become `[redacted]`. Explicit ports outside 0–65535 are
+rejected for named hosts, IPv6 hosts and port-only authorities alike. A malformed
+NATS server entry becomes `[redacted]` while valid sibling entries retain their
+safe connection details.
 The classifier is not an arbitrary secret detector for unknown option names,
 path contents or fragments.
 
