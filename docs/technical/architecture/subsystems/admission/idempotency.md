@@ -87,64 +87,55 @@ becomes stricter than the original accepted payload. Otherwise a client whose
 response was lost could see `METADATA_LIMIT_EXCEEDED` instead of its committed
 success or definitive failure, despite retaining the original key and content.
 
-After successful request-to-order conversion, a typed metadata-limit rejection
-on a nonempty keyed batch takes a bounded replay lookup before returning the
-rejection. Earlier authentication, signature, key-shape, structural validation,
-write-readiness and maintenance checks retain their precedence. Unkeyed batches,
-empty orders and other preparation failures do not enter this lookup.
+Admission preserves authentication, signature, key-shape, structural validation,
+write-readiness and safe preload construction. Metadata ceilings are mutable
+replicated policy, so admission does not return a definitive limit verdict.
+A safely prepared request follows the ordinary business-proposal path, including
+its original orders and declared coverage. Internal mirror producers retain
+their own pre-proposal checks and retry contract.
 
-1. Admission runs its ordinary orderless `Barrier`, including the write gate,
-   and waits for durable apply. The rejected business orders are never proposed.
-2. It opens one main-store snapshot whose persisted applied index is at least
-   the barrier index. This snapshot supplies the maintenance/drain and audit
-   sequence-capacity checks, last applied HLC timestamp, retained key, and any
-   historical response logs. It must not mix values from different horizons.
-3. Admission initializes a temporary `FSMState.LastAppliedTimestamp` from the
-   snapshot and calls `AdvanceHLC` with the captured request date, matching
-   apply's effective-clock calculation. It compares the frozen `expires_at`
-   with that effective HLC; it does not rewrite the stored expiry, TTL or
-   durable HLC. A missing or expired key returns the original typed
-   metadata-limit rejection without creating an outcome.
-4. A live key compares the canonical accepted business-content hash. Matching
-   content reconstructs the frozen success or definitive failure and marks it
-   `Replayed`. Different content returns the existing idempotency conflict.
-   Neither result executes orders, freezes a new outcome or appends audit rows.
+At apply, the existing FSM idempotency lookup runs before business handlers:
 
-Barrier, snapshot and historical-log read failures surface as errors; a missing
-historical log must not become an empty successful response. Maintenance, drain
-and exhausted audit sequence capacity observed at the snapshot keep their
-established refusal precedence. No lifecycle lock spans the barrier wait, and
-the snapshot closes when response reconstruction finishes.
+- A matching live key returns its frozen success or definitive failure with
+  `Replayed`, without executing business orders or adding an audit entry.
+- Live different content is an audited conflict and cannot replace the retained
+  outcome.
+- A missing, expired or evicted key is a new attempt. The handlers evaluate the
+  policy committed before that proposal at its apply index. A definitive limit
+  refusal discards the business WriteSet and commits a failure audit containing
+  the attempted orders. A keyed failure is frozen under the existing TTL rules.
 
-The barrier orders proposals already submitted before it, including an original
-request still awaiting durable apply. For example, an original prepared under
-the old policy can follow a queued policy tightening and freeze a metadata-limit
-failure; a concurrent retry waits for its barrier and replays that failure.
-An original still preparing when the barrier is submitted is outside this
-ordering guarantee. A missing key at the snapshot keeps the local rejection;
-the lookup does not wait for future proposals or reserve the key.
+A fresh refusal has no durable business effects or business logs. Handlers can
+stage speculative mutations before later validation fails; those mutations are
+discarded, while the failure audit and keyed outcome survive durable commit.
+Loosening policy later does not change a retained refusal. Maintenance, drain,
+audit capacity and other existing readiness/apply gates retain their precedence.
+Earlier structural or preparation errors still need not reach the FSM; this
+change does not provide a general replay bypass for admission failures.
 
-The extra work is triggered only by the keyed typed limit rejection. It costs
-one orderless Raft/WAL entry, one snapshot, fixed state/key point reads,
-at most 64 forward seeks over the uint64 audit-sequence key space without
-cloning or decoding signed audit payloads (reverse Pebble iteration copies
-them even without a value read),
-canonical content hashing that includes deterministic map-key sorting (up to
-`O(K log K)` comparisons for `K` keys) and processing submitted bytes, and
-historical-log reads proportional to the retained response. It performs no namespace scan, business preload or business
-proposal serialization, and adds no business payload to the WAL, audit or FSM
-cache. Requests that fit the policy retain the existing proposal/FSM replay
-path. Cost-shape tests bound the replicated barrier independently of rejected
-request size; the local benchmark compares ordinary and tightened-policy replay
-with real FSM/Pebble state and an in-process proposer. It measures neither
-network consensus latency nor concurrent retry saturation; production capacity
-qualification must include large retained responses and concurrent retries.
+Raft orders an original and retry by proposal submission, even if the original
+is still awaiting apply. The retry waits for its own durable apply before
+returning the earlier frozen outcome. If it is proposed first, it is the first
+attempt and evaluates the policy at that index. There is no snapshot-only
+missing-key decision or reservation outside the FSM.
 
-Doing nothing loses committed-outcome recovery after policy tightening.
-Forwarding oversized orders to the FSM would preserve its replay check but
-replicate the very payload the admission ceiling is intended to exclude. The
-barrier and pinned snapshot preserve recovery without changing committed-entry
-interpretation or introducing a new replicated format.
+The cost is the ordinary request-sized conversion, dependency discovery,
+preload, hashing, proposal serialization and one Raft/WAL entry. A retry now
+replicates its original business payload; a fresh policy refusal also stores it
+in the failure audit. Transport caps bound submitted bytes; replicated metadata
+ceilings govern business effects rather than limiting the bytes of a refused
+proposal. Coverage can grow with request keys and script dependencies, as on
+the existing path. No new history scan or lifecycle lock spans consensus.
+Requests fitting policy keep their existing path. Cost-shape tests compare
+ordinary proposal sizes before and after tightening; local benchmarks use real
+FSM/Pebble state with an in-process proposer and do not measure network latency
+or concurrent saturation.
+
+This placement follows the [replicated-policy rule](validation.md#replicated-policy-refusals).
+An admission-only barrier and snapshot lookup was rejected because a new policy
+refusal would leave no audit evidence and its observed policy could be stale.
+Using the existing handlers changes no committed-entry interpreter, persisted
+format, failure encoding or restore reconstruction.
 
 ## Numscript Dependency-Resolution Failures
 

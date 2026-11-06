@@ -102,11 +102,13 @@ history. See the [rollout restriction](../../ops/upgrades.md#account-metadata-ad
 
 A v3 write whose original metadata no longer fits the committed policy can
 recover its retained keyed success or definitive failure. After normal
-conversion and readiness checks, a typed limit rejection uses an orderless
-barrier and one durable snapshot. Same key/content replays; live different
-content conflicts; missing/expired keys return the original
-`METADATA_LIMIT_EXCEEDED`. This covers unitary and bulk writes converging on
-admission without sending rejected business payloads through Raft or audit.
+conversion, readiness and preload checks, the ordinary proposal reaches the
+FSM. Same key/content replays; live different content creates an audited
+conflict; missing/expired keys execute under the policy at apply and a definitive
+`METADATA_LIMIT_EXCEEDED` is audited with no committed business effects. A keyed
+refusal remains frozen even if policy is later loosened. This covers unitary
+and bulk writes converging on admission; transport caps and earlier structural
+or preparation failures still apply.
 Routes, fields, envelopes, failure types and protocol revision 40 are unchanged.
 This is a v3 replicated-policy recovery correction; it does not introduce a v2
 metadata ceiling or change the existing v2-to-v3 endpoint mapping. In the v2

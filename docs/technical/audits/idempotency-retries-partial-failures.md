@@ -75,35 +75,34 @@ See [the composition contract](../architecture/subsystems/fsm/technical-update-a
 
 ## Metadata policy tightening and retained recovery
 
-A metadata-limit rejection after successful order conversion must not hide a
-retained same-content outcome. Trace the admission-only fallback through its
-orderless barrier, then one durable snapshot at or beyond that index. The
-snapshot owns gate precedence, the persisted HLC input, key/hash comparison
-and historical response reconstruction. Expiry uses the same `AdvanceHLC`
-calculation as apply, starting from the snapshot timestamp and the captured
-request date in a temporary `FSMState`; stored TTL/expiry and durable HLC remain
-unchanged. An unadvanced snapshot timestamp, independent clock calculation,
-point reads at mixed horizons, or a missing log softened into success violates
-the contract. Earlier structural/conversion failures do not enter the fallback.
+Public admission preserves authentication, shape and safe preload construction,
+then submits ordinary business proposals. Existing FSM handlers evaluate mutable
+metadata policy after idempotency lookup. A matching retained success or failure
+replays without new audit or business effects. A fresh definitive refusal and a
+live content conflict are audited; missing, expired or evicted keys are new
+attempts under the policy at apply. A retained refusal must survive later policy
+loosening. Earlier preparation and readiness failures retain their precedence;
+there is no general admission-error replay bypass.
 
-Prove frozen success and definitive failure recovery after policy tightening,
-live content conflict, exact expiry, missing/evicted key, read/cancellation
-failure, and maintenance/drain/audit-capacity refusal. Assert the replay marker
-and original failure/logs, no new business proposal or audit/outcome rows, and no
-duplicate effect. A barrier-only fixture does not prove response reconstruction;
-helper-only tests do not prove actual HTTP/gRPC bulk forwarding. Functional
-results need separate deterministic cost-shape and representative throughput and
-latency evidence for the new bounded admission path. Runtime gate ordering is
-shared with `runtime-health-admission-contracts`; deduplicate by root cause.
+Prove the original success/failure replay triggers, each metadata dimension,
+fresh keyed and unkeyed failure audit items, no durable business effects,
+conflict preservation of the original outcome, expiry/eviction, cancellation,
+log-read failures, and maintenance/drain/audit-capacity refusal. A failure can
+follow speculative handler writes, but the discarded WriteSet must leave no
+business projection or log. Runtime gates remain shared with
+`runtime-health-admission-contracts`; deduplicate by root cause.
 
-Queue policy tightening, then an original prepared against the old policy,
-and apply only the policy before starting the retry. Hold the original and
-retry barrier unapplied: proposal acceptance must not complete either request.
-Apply the original and then the barrier, and require the retry to reconstruct
-the original's complete frozen failure, including metadata-key facts, without
-another audit or business effect. The barrier covers earlier proposals, not
-requests still preparing; a missing key at its snapshot remains a rejection.
+Queue policy tightening and an original prepared under the older policy. Apply
+only the policy, submit the retry, then hold both applies separately. Neither
+proposal acceptance nor the original's apply completes the retry; after ordered
+durable apply it returns the original frozen outcome without another audit.
+Also consider a retry submitted before the original: it is then the first
+attempt and must evaluate policy at that apply index.
 
-This adds no persisted projection, audit format, FSM interpreter or restore
-contract. The original frozen outcome remains the audit authority. See
-[the admission contract](../architecture/subsystems/admission/idempotency.md#replay-after-metadata-limits-tighten).
+The ordinary proposal replicates request bytes and preloads declared keys. Fresh
+policy failures persist attempted orders in audit, while replay adds no audit
+rows. Cost scales with request bytes/keys and script dependencies, without a new
+historical scan or consensus-spanning lifecycle lock. Preserve cost-shape tests
+and local benchmark evidence; do not claim network/saturation measurements.
+No persisted projection, format, FSM interpreter or restore reconstruction changes.
+See [the admission contract](../architecture/subsystems/admission/idempotency.md#replay-after-metadata-limits-tighten).

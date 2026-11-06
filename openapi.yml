@@ -4343,7 +4343,9 @@ components:
         Exceeding it returns 400 with reason `METADATA_LIMIT_EXCEEDED` for a
         new or expired idempotency key. A live retained key with matching content
         returns its historical outcome; different content returns 409 with reason
-        `IDEMPOTENCY_KEY_CONFLICT`. Requests without a key retain the limit error.
+        `IDEMPOTENCY_KEY_CONFLICT`. Requests without a key retain the limit error. Fresh policy refusals are
+        audited without business effects; keyed refusals replay while retained,
+        even if the policy is later loosened.
       nullable: true
       oneOf:
         - type: string

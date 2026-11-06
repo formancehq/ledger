@@ -663,16 +663,9 @@ func (a *Admission) prepareBatchOrders(ctx context.Context, batch verifiedBatch)
 		return nil, nil, nil, fmt.Errorf("converting requests to orders: %w", err)
 	}
 
-	// Enforce the metadata size contract over the whole execution batch. The
-	// ceiling spans every order in the atomic, signed unit. Policy controls do
-	// not enter this order path and can establish the policy independently.
-	policy, policyErr := query.ReadClusterPolicy(a.store)
-	if policyErr != nil {
-		return nil, nil, nil, fmt.Errorf("reading cluster policy for metadata limits: %w", policyErr)
-	}
-	if err := validateCommandMetadata(orders, domain.MetadataLimitsFromPolicy(policy)); err != nil {
-		return nil, nil, nil, err
-	}
+	// Metadata shape was checked during conversion. Replicated metadata policy
+	// belongs to the FSM, after idempotency lookup: fresh refusals are audited,
+	// while retries retain their original outcome even after policy tightening.
 
 	// Step 1: Extract preload needs from orders (excludes script-dependent needs)
 	needs, perOrder, err := a.extractPreloadNeeds(ctx, orders, overlay)
@@ -959,6 +952,10 @@ func (a *Admission) resolveAdmissionResult(ctx context.Context, cmd *raftcmdpb.P
 		log, fetchErr := query.ReadLogBySequence(ctx, handle, refSeq)
 		if fetchErr != nil {
 			return nil, fmt.Errorf("fetching referenced log %d for idempotent response: %w", refSeq, fetchErr)
+		}
+
+		if log == nil {
+			return nil, fmt.Errorf("invariant: idempotent response references missing log %d", refSeq)
 		}
 
 		logs[i] = log

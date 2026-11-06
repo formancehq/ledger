@@ -46,21 +46,21 @@ func TestAdmitMetadataReplayWaitsForPreviouslyProposedOutcome(t *testing.T) {
 		applyPolicy()
 		require.NoError(t, <-policyDone)
 
-		// The retry now fails the local limit check while its original is
-		// proposed but still unapplied. The barrier must queue behind it.
+		// The retry prepares under the tighter policy while its original is
+		// proposed but still unapplied. Its proposal must queue behind it.
 		retryDone := make(chan outcome, 1)
 		go func() {
 			result, err := h.admission.Admit(ctx, request)
 			retryDone <- outcome{result, err}
 		}()
-		applyBarrier := <-h.pendingApplies
+		applyRetry := <-h.pendingApplies
 		synctest.Wait()
 		require.Empty(t, originalDone)
 		require.Empty(t, retryDone, "retry must wait for durable apply, not just proposal acceptance")
 		require.Len(t, h.proposals, 3)
-		require.NotEmpty(t, h.proposals[1].GetOrders())
-		require.Empty(t, h.proposals[2].GetOrders())
-		require.Nil(t, h.proposals[2].GetIdempotency())
+		require.NotEmpty(t, h.proposals[1].GetBatch().GetOrders())
+		require.NotEmpty(t, h.proposals[2].GetBatch().GetOrders())
+		require.Equal(t, "in-flight", h.proposals[2].GetIdempotency().GetKey())
 
 		applyOriginal()
 		original := <-originalDone
@@ -73,9 +73,9 @@ func TestAdmitMetadataReplayWaitsForPreviouslyProposedOutcome(t *testing.T) {
 		require.NotErrorAs(t, original.err, &replayed)
 		audit, sequence := h.machine.State.NextAuditSequenceID, h.machine.State.NextSequenceID
 		synctest.Wait()
-		require.Empty(t, retryDone, "the original's commit does not complete the retry's barrier")
+		require.Empty(t, retryDone, "the original's commit does not complete the retry's apply")
 
-		applyBarrier()
+		applyRetry()
 		retry := <-retryDone
 		require.Nil(t, retry.result)
 		require.ErrorAs(t, retry.err, &replayed, "retry must return the retained FSM failure, not a fresh admission rejection")

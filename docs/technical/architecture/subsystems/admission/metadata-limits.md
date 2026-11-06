@@ -1,9 +1,9 @@
 # Metadata size limits
 
-Ledger bounds the metadata a single command may carry. Without those bounds a
-transport-sized payload (HTTP 4 MiB, gRPC 64 MiB) replicates through Raft into
-the audit chain, the FSM cache, the primary-store projections and every
-downstream event — none of which can drop it afterwards.
+Ledger bounds the metadata a single command may commit as business effects.
+A transport-sized request (HTTP 4 MiB, gRPC 64 MiB) can reach Raft and a failure
+audit, but metadata above the committed policy cannot reach successful business
+projections or downstream business events.
 
 The contract is `domain.MetadataLimits` (`internal/domain/metadata_limits.go`).
 It is one contract for every entry path: direct HTTP, public gRPC, bulk, mirror
@@ -21,8 +21,8 @@ ingest, and the metadata a Numscript program produces.
 
 An *entity* is one transaction, one account, or one ledger. A *command* is one
 atomic, signed Raft proposal (an `ApplyBatch` or mirror batch), so
-the per-command ceiling is what stops a caller from defeating the per-entity
-bound by spreading a payload across many entities in one request.
+the per-command ceiling prevents business effects from bypassing per-entity
+bounds by spreading metadata across many entities in one request.
 
 ## Scope: per command, not per stored entity
 
@@ -40,7 +40,7 @@ This is deliberate. Bounding the accumulated total would require one of:
   classification (invariant #11).
 
 Either is a larger change than the risk this contract addresses, which is what a
-*single accepted write* can replicate. Treat the accumulation gap as known and
+*single successful write* can commit to business projections. Treat the accumulation gap as known and
 intentional; closing it is separate work.
 
 ## Measurement
@@ -60,31 +60,24 @@ These are accounting weights, not wire sizes. A fixed weight per variant keeps
 the measurement a pure function of the value, which is what makes the FSM-side
 check identical on every node and stable across protobuf encoding changes.
 
-Admission and FSM apply both call this function, so the two layers can never
-disagree about whether the same payload fits.
+Mirror preflight and FSM apply both call this function, using the same byte
+accounting rule. Only the policy committed at apply determines the outcome.
 
 ## Where the limits are enforced
 
-**Admission** — `validateCommandMetadata`
-(`internal/application/admission/validate_order.go`), called from `Admit` once
-the orders exist. It walks every metadata-bearing order shape through
-`domain.WalkOrderMetadata` (`internal/domain/order_metadata.go`), the single source of truth for *where* metadata lives in an
-order; the shape validation, the size validation and the byte accounting all
-traverse it, so they cannot drift apart. HTTP, public gRPC and bulk converge on
-`requestsToOrders`. Mirror workers use a separate proposal path.
-
-A keyed batch rejected with the typed metadata-limit error may still replay a
-retained original outcome after a policy tightening. Admission uses an orderless
-barrier and a single durable snapshot; it never submits the oversized business
-orders. Missing/expired keys retain the rejection, and live different content
-returns the existing conflict. See [the replay contract](idempotency.md#replay-after-metadata-limits-tighten).
+**Public admission** validates metadata shape, including key characters and
+NUL restrictions, during order conversion. It prepares coverage and submits the
+ordinary business proposal without deciding mutable cluster-policy ceilings.
+The existing FSM handlers evaluate them after idempotency lookup. This covers
+HTTP, public gRPC and bulk, which converge on `requestsToOrders`. Fresh policy
+refusals are audited; retained outcomes replay even after tightening. See
+[the replay contract](idempotency.md#replay-after-metadata-limits-tighten).
 
 **Mirror ingestion** — `Worker.processBatch`
 (`internal/application/mirror/worker.go`) checks the translated and rewritten
 orders against the committed cluster policy before building or proposing the
 batch. `domain.ValidateCommandMetadata` checks metadata shape, per-entity ceilings
-and the total across all orders through the shared walker. Admission uses the
-same helper, including deterministic account and key error selection. This includes external HTTP and PostgreSQL
+and the total across all orders through the shared walker. The helper retains deterministic account and key error selection. This includes external HTTP and PostgreSQL
 sources, which need not have enforced the destination's limits.
 
 `processMirrorIngest` rechecks the order and proposal-wide byte budget against
@@ -128,7 +121,7 @@ bypass the command ceiling. Caller values win collisions and are counted once.
 The budget is local to one proposal; a rejected proposal discards its staged
 writes through the existing FSM rollback path.
 
-Both layers reject deterministically. `ValidateMap` checks the entry count and
+The shared validators reject deterministically. `ValidateMap` checks the entry count and
 the entity total before the per-entry rules, and reports the lexicographically
 smallest offending key rather than whichever one Go's randomised map iteration
 reaches first; `validateMergedAccountMetadata` does the same across accounts.

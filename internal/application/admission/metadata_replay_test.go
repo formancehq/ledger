@@ -38,11 +38,12 @@ import (
 // metadataReplayHarness drives real admission preloading and committed FSM/Pebble
 // state. Only the Raft transport is replaced, by the generated proposer mock.
 type metadataReplayHarness struct {
-	admission  *Admission
-	machine    *state.Machine
-	apply      func(*raftcmdpb.Proposal) state.ApplyResult
-	proposals  []*raftcmdpb.Proposal
-	afterApply func(*raftcmdpb.Proposal)
+	admission   *Admission
+	machine     *state.Machine
+	apply       func(*raftcmdpb.Proposal) state.ApplyResult
+	proposals   []*raftcmdpb.Proposal
+	afterApply  func(*raftcmdpb.Proposal)
+	beforeApply func(*raftcmdpb.Proposal)
 	// When set, the test drives durable apply separately from proposal acceptance.
 	pendingApplies chan func()
 }
@@ -79,7 +80,9 @@ func newMetadataReplayHarness(t testing.TB) *metadataReplayHarness {
 	applyBytes := func(data []byte) state.ApplyResult {
 		index++
 		result, err := machine.ApplyEntries(context.Background(), store, &raftpb.Entry{Index: new(index), Term: proto.Uint64(1), Type: new(raftpb.EntryNormal), Data: data})
-		require.NoError(t, err)
+		if err != nil {
+			return state.ApplyResult{Error: err}
+		}
 		require.Len(t, result.Results, 1)
 
 		return result.Results[0]
@@ -94,6 +97,9 @@ func newMetadataReplayHarness(t testing.TB) *metadataReplayHarness {
 		h.proposals = append(h.proposals, decoded)
 		future := futures.New[state.ApplyResult]()
 		apply := func() {
+			if h.beforeApply != nil {
+				h.beforeApply(decoded)
+			}
 			result := applyBytes(p.Data())
 			if h.afterApply != nil {
 				h.afterApply(decoded)
@@ -140,6 +146,57 @@ func metadataReplayRequest(key, value string) *servicepb.ApplyRequest {
 	return &servicepb.ApplyRequest{Variant: &servicepb.ApplyRequest_Unsigned{Unsigned: &servicepb.ApplyBatch{IdempotencyKey: key, Requests: []*servicepb.Request{request}}}}
 }
 
+func TestAdmitMetadataPolicyRefusalIsAudited(t *testing.T) {
+	t.Parallel()
+	for _, key := range []string{"", "new-key"} {
+		t.Run("key="+key, func(t *testing.T) {
+			t.Parallel()
+			h := newMetadataReplayHarness(t)
+			h.changePolicy(t, func(p *commonpb.ClusterPolicy) { p.MetadataMaxValueBytes = 512 })
+			ctx := attributedTestContext(context.Background())
+			request := metadataReplayRequest(key, strings.Repeat("v", 1024))
+			audit, sequence := h.machine.State.NextAuditSequenceID, h.machine.State.NextSequenceID
+			result, err := h.admission.Admit(ctx, request)
+			require.Nil(t, result)
+			var limit *domain.ErrMetadataLimitExceeded
+			require.ErrorAs(t, err, &limit)
+			var failure domain.SerializableError
+			require.ErrorAs(t, err, &failure)
+			require.Equal(t, audit+1, h.machine.State.NextAuditSequenceID, "policy refusal must commit a failure audit")
+			require.Equal(t, sequence, h.machine.State.NextSequenceID, "refusal must not create business logs")
+			func() {
+				reader, err := h.admission.store.NewReadHandle()
+				require.NoError(t, err)
+				defer func() { require.NoError(t, reader.Close()) }()
+				entry, err := query.ReadLastAuditEntry(reader)
+				require.NoError(t, err)
+				require.NotNil(t, entry.GetFailure())
+				facts, err := domain.FailureFactsFromDetails(entry.GetFailure().GetDetails())
+				require.NoError(t, err)
+				require.Equal(t, domain.FailureFactsOf(failure), facts)
+				items, err := query.ReadAuditItems(ctx, reader, entry.GetSequence())
+				require.NoError(t, err)
+				require.Len(t, items, 1)
+				require.NotEmpty(t, items[0].GetSerializedOrder())
+				volume, err := h.admission.attrs.Volume.Get(reader, domain.NewVolumeKey("metadata-replay", "alice", "USD/2", "").Bytes())
+				require.NoError(t, err)
+				require.Nil(t, volume)
+			}()
+			if key != "" {
+				// Loosening policy must not turn a frozen refusal into a success.
+				h.changePolicy(t, func(p *commonpb.ClusterPolicy) { p.MetadataMaxValueBytes = domain.DefaultMetadataMaxValueBytes })
+				audit, sequence = h.machine.State.NextAuditSequenceID, h.machine.State.NextSequenceID
+				_, err = h.admission.Admit(ctx, request)
+				var replay *domain.ReplayedFailure
+				require.ErrorAs(t, err, &replay)
+				require.Equal(t, domain.ErrReasonMetadataLimitExceeded, replay.Reason())
+				require.Equal(t, audit, h.machine.State.NextAuditSequenceID)
+				require.Equal(t, sequence, h.machine.State.NextSequenceID)
+			}
+		})
+	}
+}
+
 func TestAdmitMetadataPolicyTighteningReplaysCommittedOutcome(t *testing.T) {
 	t.Parallel()
 	h := newMetadataReplayHarness(t)
@@ -164,7 +221,7 @@ func TestAdmitMetadataPolicyTighteningReplaysCommittedOutcome(t *testing.T) {
 	_, err = h.admission.Admit(ctx, metadataReplayRequest("original", strings.Repeat("w", 1024)))
 	var conflict *domain.ErrIdempotencyKeyConflict
 	require.ErrorAs(t, err, &conflict)
-	require.Equal(t, beforeAudit, h.machine.State.NextAuditSequenceID)
+	require.Equal(t, beforeAudit+2, h.machine.State.NextAuditSequenceID)
 	require.Equal(t, beforeSequence, h.machine.State.NextSequenceID)
 }
 
@@ -173,7 +230,7 @@ func (h *metadataReplayHarness) changePolicy(t testing.TB, change func(*commonpb
 	policy := proto.Clone(h.machine.State.ClusterPolicy).(*commonpb.ClusterPolicy)
 	policy.Revision++
 	change(policy)
-	result := h.apply(&raftcmdpb.Proposal{Id: 999, Date: &commonpb.Timestamp{Data: h.machine.State.LastAppliedTimestamp + 1}, Orders: []*raftcmdpb.Order{{Type: &raftcmdpb.Order_SystemScoped{SystemScoped: &raftcmdpb.SystemScopedOrder{Payload: &raftcmdpb.SystemScopedOrder_SetClusterPolicy{SetClusterPolicy: &raftcmdpb.SetClusterPolicyOrder{Policy: policy}}}}}}})
+	result := h.apply(&raftcmdpb.Proposal{Id: 999, Date: &commonpb.Timestamp{Data: h.machine.State.LastAppliedTimestamp + 1}, Payload: &raftcmdpb.Proposal_SetClusterPolicy{SetClusterPolicy: &raftcmdpb.SetClusterPolicyProposal{Policy: policy}}})
 	require.NoError(t, result.Error)
 }
 
@@ -211,11 +268,11 @@ func TestAdmitMetadataPolicyTighteningDoesNotReplayExpiredOutcome(t *testing.T) 
 	_, err = h.admission.Admit(ctx, request)
 	var limit *domain.ErrMetadataLimitExceeded
 	require.ErrorAs(t, err, &limit)
-	require.Equal(t, beforeAudit, h.machine.State.NextAuditSequenceID)
+	require.Equal(t, beforeAudit+1, h.machine.State.NextAuditSequenceID)
 	require.Equal(t, beforeSequence, h.machine.State.NextSequenceID)
 }
 
-func TestAdmitMetadataReplayProposesOnlyBoundedBarrier(t *testing.T) {
+func TestAdmitMetadataReplayUsesOrdinaryProposal(t *testing.T) {
 	t.Parallel()
 	for _, size := range []int{1024, 16 << 10} {
 		t.Run(strconv.Itoa(size), func(t *testing.T) {
@@ -231,13 +288,13 @@ func TestAdmitMetadataReplayProposesOnlyBoundedBarrier(t *testing.T) {
 			require.NoError(t, err)
 			require.Equal(t, original.Logs, replay.Logs)
 			require.Len(t, h.proposals, 2)
-			barrier := h.proposals[1]
-			require.Empty(t, barrier.GetOrders())
-			require.Nil(t, barrier.GetIdempotency())
-			require.Empty(t, barrier.GetExecutionPlan().GetAttributes())
-			require.Empty(t, barrier.GetExecutionPlan().GetIdempotencyKeys())
-			require.Less(t, proto.Size(barrier), 256)
-			t.Logf("original=%d bytes, replay barrier=%d bytes, historical logs=%d", originalBytes, proto.Size(barrier), len(replay.Logs))
+			retry := h.proposals[1]
+			require.Len(t, retry.GetBatch().GetOrders(), 1)
+			require.Equal(t, "bounded", retry.GetIdempotency().GetKey())
+			require.True(t, proto.Equal(h.proposals[0].GetBatch().GetOrders()[0], retry.GetBatch().GetOrders()[0]))
+			// Policy tightening adds no special envelope or historical scan.
+			require.LessOrEqual(t, proto.Size(retry), originalBytes+256)
+			t.Logf("original=%d bytes, retry=%d bytes, historical logs=%d", originalBytes, proto.Size(retry), len(replay.Logs))
 		})
 	}
 }
@@ -287,7 +344,7 @@ func TestAdmitMetadataPolicyTighteningDimensions(t *testing.T) {
 			var limit *domain.ErrMetadataLimitExceeded
 			require.ErrorAs(t, err, &limit)
 			require.Equal(t, dimension, limit.Dimension)
-			require.Equal(t, beforeAudit, h.machine.State.NextAuditSequenceID)
+			require.Equal(t, beforeAudit+1, h.machine.State.NextAuditSequenceID)
 			require.Equal(t, beforeSequence, h.machine.State.NextSequenceID)
 		})
 	}

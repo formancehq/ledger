@@ -125,14 +125,15 @@ It remains subject to its admission gates, while the business audit-key gate
 protects audited execution batches. Policy readiness and audit-key readiness
 remain distinct prerequisites.
 
-## Metadata-limit replay gate oracle
+## Metadata-policy retry gate oracle
 
-The metadata-limit replay fallback is still write admission: earlier readiness
-checks retain precedence, its orderless barrier consumes the write gate, and its
-single durable response snapshot checks maintenance, drain and audit capacity
-before returning history. Exercise transitions between initial validation,
-barrier and snapshot with explicit synchronization. Prove the selected refusal
-and absence of rejected business proposals; a generic non-nil error is
-insufficient. This domain owns gate consumption/precedence, while
-`idempotency-retries-partial-failures` owns key expiry, content identity and
-historical outcome reconstruction. No new general Barrier gate is implied.
+Metadata-policy retries use ordinary admission and FSM replay. Earlier readiness,
+authentication, signatures and shape checks retain precedence. Safely prepared
+proposals retain existing maintenance, drain and audit-capacity apply guards.
+Exercise transitions before proposal and before apply with explicit
+synchronization, identifying the exact refusal and absence of new business
+effects. A replay writes no new audit entry; fresh policy refusals use the
+existing audited failure path. This domain owns gate consumption/precedence;
+`idempotency-retries-partial-failures` owns key expiry, content identity,
+historical outcomes and fresh policy-refusal evidence. No snapshot replay helper
+or general admission-error bypass is implied.

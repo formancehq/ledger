@@ -207,9 +207,14 @@ Upgraded leaders can recover a retained keyed outcome when a retry's original
 metadata exceeds a subsequently tightened committed policy. The retry must
 still pass authentication, signatures, structural validation and write-readiness
 gates. A matching live key returns the historical success or definitive
-failure; live different content returns conflict; absent or expired keys retain
-the metadata-limit rejection. Maintenance and drain still refuse writes.
+failure; live different content returns conflict; absent or expired keys execute under the policy at apply and
+record any definitive metadata-limit refusal in the audit chain. Maintenance and drain still refuse writes.
 
+Public admission now forwards safely prepared requests to the existing FSM
+handlers instead of rejecting metadata policy locally. Fresh refusals, including
+unkeyed requests, are audited; a retained refusal still replays after policy is
+loosened. Replays replicate the ordinary business payload to the WAL without
+adding another audit entry. Transport caps remain the proposal-size backstop.
 This is an admission-only correction: old and new voters interpret committed
 entries identically. It changes no Raft, persisted, backup, audit or wire format,
 requires no data migration and keeps service protocol revision 40. During an
