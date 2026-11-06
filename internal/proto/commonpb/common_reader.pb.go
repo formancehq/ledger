@@ -3522,6 +3522,7 @@ type ClusterPolicyReader interface {
 	GetMetadataMaxValueBytes() uint64
 	GetMetadataMaxEntityBytes() uint64
 	GetMetadataMaxCommandBytes() uint64
+	GetCapabilityActivations() CapabilityActivationListReader
 	Mutate() *ClusterPolicy
 }
 
@@ -3557,6 +3558,10 @@ func (r *clusterPolicyReadonly) GetMetadataMaxEntityBytes() uint64 {
 
 func (r *clusterPolicyReadonly) GetMetadataMaxCommandBytes() uint64 {
 	return (*ClusterPolicy)(r).GetMetadataMaxCommandBytes()
+}
+
+func (r *clusterPolicyReadonly) GetCapabilityActivations() CapabilityActivationListReader {
+	return NewCapabilityActivationListReader((*ClusterPolicy)(r).GetCapabilityActivations())
 }
 
 func (r *clusterPolicyReadonly) Mutate() *ClusterPolicy {
@@ -22896,4 +22901,76 @@ func (l listOptionsListReadonly) Range(yield func(int, ListOptionsReader) bool) 
 // view aliases the underlying slice; do not mutate s afterwards.
 func NewListOptionsListReader(s []*ListOptions) ListOptionsListReader {
 	return listOptionsListReadonly(s)
+}
+
+// CapabilityActivationReader provides read-only access to CapabilityActivation.
+// Call Mutate() to obtain a mutable clone.
+type CapabilityActivationReader interface {
+	GetId() uint32
+	GetActive() bool
+	Mutate() *CapabilityActivation
+}
+
+type capabilityActivationReadonly CapabilityActivation
+
+func (r *capabilityActivationReadonly) GetId() uint32 {
+	return (*CapabilityActivation)(r).GetId()
+}
+
+func (r *capabilityActivationReadonly) GetActive() bool {
+	return (*CapabilityActivation)(r).GetActive()
+}
+
+func (r *capabilityActivationReadonly) Mutate() *CapabilityActivation {
+	return (*CapabilityActivation)(r).CloneVT()
+}
+
+// AsReader returns a read-only view of this CapabilityActivation.
+func (m *CapabilityActivation) AsReader() CapabilityActivationReader {
+	if m == nil {
+		return nil
+	}
+	return (*capabilityActivationReadonly)(m)
+}
+
+// Mutate returns a mutable deep clone of this CapabilityActivation.
+func (m *CapabilityActivation) Mutate() *CapabilityActivation {
+	return m.CloneVT()
+}
+
+// CapabilityActivationListReader provides read-only iteration over []*CapabilityActivation.
+type CapabilityActivationListReader interface {
+	Len() int
+	Get(i int) CapabilityActivationReader
+	Range(yield func(int, CapabilityActivationReader) bool)
+}
+
+type capabilityActivationListReadonly []*CapabilityActivation
+
+func (l capabilityActivationListReadonly) Len() int { return len(l) }
+
+func (l capabilityActivationListReadonly) Get(i int) CapabilityActivationReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l capabilityActivationListReadonly) Range(yield func(int, CapabilityActivationReader) bool) {
+	for i, v := range l {
+		var r CapabilityActivationReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewCapabilityActivationListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewCapabilityActivationListReader(s []*CapabilityActivation) CapabilityActivationListReader {
+	return capabilityActivationListReadonly(s)
 }

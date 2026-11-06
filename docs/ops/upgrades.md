@@ -56,6 +56,20 @@ through each adjacent RC in order; do not jump to the newest RC. If the source
 cannot be identified or the current Operator already rejects the pinning step,
 stop and plan a separately validated migration. Do not delete the StatefulSet
 or PVCs to bypass the source check.
+### Maintainer-declared CLI break
+
+The `ledgerctl cluster add-learner` command is intentionally removed from the
+capability-evidence release. Existing scripts or runbooks invoking that command
+must be updated; the command is not kept as a compatibility alias and no
+protocol-version bump is required because the service gRPC contract is
+unchanged.
+
+To add a new node, configure its peer seed and start the Ledger binary. The
+bootstrap sequence calls `JoinAsLearner` and advertises the capabilities
+compiled into that binary. A node restarting with an existing WAL uses
+`RefreshMembership` to publish updated endpoints and capability evidence.
+The administrative `AddLearner` RPC remains an internal recovery API, but it is
+not a supported replacement for the removed CLI workflow.
 
 Before tagging a new release, verify the upgrade with state created by the
 supported source releases. Cover affected Pebble records, Raft log and snapshot
@@ -183,6 +197,16 @@ Use this only when the target release permits rolling upgrades and mixed-version
 validation passes. For RC.1 to RC.2, follow the
 [maintenance-barrier rolling procedure](#account-metadata-address-validation).
 For RC.3 to RC.4, use the [operator-required stopped restart](#operator-required-stopped-restart).
+
+Capability metadata is the prerequisite for any future incompatible Raft entry,
+execution-plan, replay, or snapshot format. This release does not support
+mixed-version activation: stop every Ledger node, deploy the barrier-aware
+binary everywhere, restart the complete cluster, and only then enable the new
+feature. The capability reconciler does not arm features from membership
+advertisements. See the [capability contract](../technical/architecture/subsystems/consensus/capabilities.md)
+for the persisted replay boundary and coordinated rollout.
+
+Use this for RC updates after the mixed-version validation above passes:
 
 1. Record the current leader and voter set with `ledgerctl cluster status`.
 2. Restart one follower on the target binary.

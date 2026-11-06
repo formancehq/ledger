@@ -99,9 +99,9 @@ func TestNodeHookStopCancellationRetainsRealCommitDrain(t *testing.T) {
 	command.ExecutionPlan = &raftcmdpb.ExecutionPlan{Attributes: []*raftcmdpb.AttributeCoverage{{
 		Id: &raftcmdpb.AttributeID{Id: ledgerKey[:]}, AttrCode: uint32(dal.SubAttrLedger),
 	}}}
-	data, err := command.MarshalVT()
+	proposal, err := node.NewProposal(command.GetId(), command)
 	require.NoError(t, err)
-	future, err := n.Propose(ctx, node.NewProposal(command.GetId(), data))
+	future, err := n.Propose(ctx, proposal)
 	require.NoError(t, err)
 	select {
 	case <-commitEntered:
@@ -185,7 +185,7 @@ func newHookCommitDrainNode(t *testing.T, notifier state.Notifier) (*observedDra
 	registry := state.NewStateRegistry(cacheStore, attributes.New())
 	machine, err := state.NewMachine(logger, registry, state.NewCacheSnapshotter(logger, registry, nil), store,
 		dal.NewSentinelFactory(store, false), meters, nil, state.NewSharedState(), notifier, nil, "hook-drain", 0,
-		func(*raftpb.Entry, *dal.WriteSession) error { return nil })
+		func(*raftpb.Entry, *dal.WriteSession) error { return nil }, state.NoopCapabilityPolicyCommitHandler)
 	require.NoError(t, err)
 	t.Cleanup(machine.Close)
 	recovery := state.NewRecovery(machine, store)
@@ -205,7 +205,7 @@ func newHookCommitDrainNode(t *testing.T, notifier state.Notifier) (*observedDra
 	})
 	instanceID := []byte("0000000000000001")
 	member, err := membership.NewMembership(membership.NewPeerStore(store), raftTransport, servicePool,
-		1, "node-1:7000", "node-1:8000", instanceID, logger)
+		1, "node-1:7000", "node-1:8000", instanceID, logger, membership.NoopClusterPolicyProvider)
 	require.NoError(t, err)
 	responses := node.NewLocalResponses()
 	applier, err := node.NewApplier(machine, recovery, synchronizer, sp, store, w, logger, meter, 1000, 1000, nil, member, responses)

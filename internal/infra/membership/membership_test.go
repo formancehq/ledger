@@ -122,7 +122,7 @@ const (
 func newTestMembership(t *testing.T) *Membership {
 	t.Helper()
 
-	m, err := NewMembership(newTestPeerStore(t), noopTransport{}, noopPool{}, testSelfNodeID, testSelfRaftAddr, testSelfServiceAddr, fixedInstanceID(0x42), logging.Testing())
+	m, err := NewMembership(newTestPeerStore(t), noopTransport{}, noopPool{}, testSelfNodeID, testSelfRaftAddr, testSelfServiceAddr, fixedInstanceID(0x42), logging.Testing(), NoopClusterPolicyProvider)
 	require.NoError(t, err)
 
 	m.Start()
@@ -188,6 +188,7 @@ func TestNewMembershipRejectsInvalidSelfInstanceID(t *testing.T) {
 		testSelfServiceAddr,
 		nil,
 		logging.Testing(),
+		NoopClusterPolicyProvider,
 	)
 	require.ErrorContains(t, err, "invalid self identity")
 }
@@ -408,8 +409,9 @@ func TestMembership_OnSnapshotInstalled(t *testing.T) {
 
 	// Pre-swap state: cluster A had peer 7.
 	require.NoError(t, ps.Put(7, "old:1", "old:2", fixedInstanceID(7)))
+	require.NoError(t, ps.PutWithEvidence(testSelfNodeID, testSelfRaftAddr, testSelfServiceAddr, fixedInstanceID(0x42), []uint32{7}))
 
-	m, err := NewMembership(ps, noopTransport{}, noopPool{}, testSelfNodeID, testSelfRaftAddr, testSelfServiceAddr, fixedInstanceID(0x42), logging.Testing())
+	m, err := NewMembership(ps, noopTransport{}, noopPool{}, testSelfNodeID, testSelfRaftAddr, testSelfServiceAddr, fixedInstanceID(0x42), logging.Testing(), NoopClusterPolicyProvider)
 	require.NoError(t, err)
 	m.Start()
 	require.Equal(t, "old:1", m.PeerAddresses()[7].RaftAddress)
@@ -430,6 +432,7 @@ func TestMembership_OnSnapshotInstalled(t *testing.T) {
 	require.Equal(t, "new:1", got[1].RaftAddress)
 	require.Equal(t, "new:3", got[3].RaftAddress)
 	require.Equal(t, testSelfRaftAddr, got[testSelfNodeID].RaftAddress, "self must be re-upserted with local truth")
+	require.Equal(t, []uint32{7}, got[testSelfNodeID].Capabilities, "self capabilities must survive snapshot restore")
 	require.NotContains(t, got, uint64(7))
 }
 
@@ -441,7 +444,7 @@ func TestMembership_SnapshotDonorCandidates(t *testing.T) {
 	require.NoError(t, ps.Put(2, "peer-2:7000", "peer-2:8000", fixedInstanceID(2)))
 	require.NoError(t, ps.Put(testSelfNodeID, testSelfRaftAddr, testSelfServiceAddr, fixedInstanceID(0x42)))
 
-	m, err := NewMembership(ps, noopTransport{}, noopPool{}, testSelfNodeID, testSelfRaftAddr, testSelfServiceAddr, fixedInstanceID(0x42), logging.Testing())
+	m, err := NewMembership(ps, noopTransport{}, noopPool{}, testSelfNodeID, testSelfRaftAddr, testSelfServiceAddr, fixedInstanceID(0x42), logging.Testing(), NoopClusterPolicyProvider)
 	require.NoError(t, err)
 
 	require.Equal(t, []uint64{2, 9}, m.SnapshotDonorCandidates())
@@ -451,7 +454,7 @@ func TestMembership_OnSnapshotInstalledPanicsOnInvalidPeerIdentity(t *testing.T)
 	t.Parallel()
 
 	ps := newTestPeerStore(t)
-	m, err := NewMembership(ps, noopTransport{}, noopPool{}, testSelfNodeID, testSelfRaftAddr, testSelfServiceAddr, fixedInstanceID(0x42), logging.Testing())
+	m, err := NewMembership(ps, noopTransport{}, noopPool{}, testSelfNodeID, testSelfRaftAddr, testSelfServiceAddr, fixedInstanceID(0x42), logging.Testing(), NoopClusterPolicyProvider)
 	require.NoError(t, err)
 
 	// Simulate a leader checkpoint that replaced Pebble with an invalid peer
@@ -491,7 +494,7 @@ func TestMembership_RehydrateAfterReplay(t *testing.T) {
 
 	raftTransport := &recordingTransport{peers: map[uint64]string{}}
 	servicePool := &recordingPool{peers: map[uint64]string{}}
-	m, err := NewMembership(ps, raftTransport, servicePool, testSelfNodeID, testSelfRaftAddr, testSelfServiceAddr, fixedInstanceID(0x42), logging.Testing())
+	m, err := NewMembership(ps, raftTransport, servicePool, testSelfNodeID, testSelfRaftAddr, testSelfServiceAddr, fixedInstanceID(0x42), logging.Testing(), NoopClusterPolicyProvider)
 	require.NoError(t, err)
 	m.Start()
 	require.Equal(t, "before:1", m.PeerAddresses()[7].RaftAddress)
@@ -543,7 +546,7 @@ func TestMembership_StartGate(t *testing.T) {
 
 	require.NoError(t, ps.Put(1, "pod-0:7777", "pod-0:8888", fixedInstanceID(1)))
 
-	m, err := NewMembership(ps, transport, pool, testSelfNodeID, testSelfRaftAddr, testSelfServiceAddr, fixedInstanceID(0x42), logging.Testing())
+	m, err := NewMembership(ps, transport, pool, testSelfNodeID, testSelfRaftAddr, testSelfServiceAddr, fixedInstanceID(0x42), logging.Testing(), NoopClusterPolicyProvider)
 	require.NoError(t, err)
 
 	require.Equal(t, 0, transport.adds, "no wire before Start (cache-only construction)")
@@ -589,6 +592,7 @@ func TestMembership_SetRewiresChangedAddresses(t *testing.T) {
 		testSelfServiceAddr,
 		fixedInstanceID(0x42),
 		logging.Testing(),
+		NoopClusterPolicyProvider,
 	)
 	require.NoError(t, err)
 	m.Start()
@@ -620,7 +624,7 @@ func TestMembership_SetKeepsRaftPeerOnServiceAddressChange(t *testing.T) {
 	transport := &countingTransport{}
 	pool := &countingPool{}
 	m, err := NewMembership(newTestPeerStore(t), transport, pool,
-		testSelfNodeID, testSelfRaftAddr, testSelfServiceAddr, fixedInstanceID(0x42), logging.Testing())
+		testSelfNodeID, testSelfRaftAddr, testSelfServiceAddr, fixedInstanceID(0x42), logging.Testing(), NoopClusterPolicyProvider)
 	require.NoError(t, err)
 	m.Start()
 
@@ -660,6 +664,20 @@ func TestMembership_ClonesInstanceIDs(t *testing.T) {
 	require.Equal(t, byte(1), again[0], "PeerAddresses must deep-clone instance IDs")
 }
 
+func TestPeerStore_PersistsCapabilityEvidenceWithIdentity(t *testing.T) {
+	ps := newTestPeerStore(t)
+	caps := []uint32{1, 2}
+	identity := fixedInstanceID(0x7a)
+	require.NoError(t, ps.PutWithEvidence(9, "raft:9", "service:9", identity, caps))
+
+	rows, err := ps.LoadAll()
+	require.NoError(t, err)
+	row, ok := rows[9]
+	require.True(t, ok)
+	require.Equal(t, identity, row.InstanceID)
+	require.Equal(t, caps, row.Capabilities)
+}
+
 // TestMembership_ReconcileAgainstConfState pins the boot-time cleanup
 // pass that drops peers whose NodeID is no longer in the durable
 // ConfState. This covers two crash windows: interrupted ForceRemoveNode
@@ -678,7 +696,7 @@ func TestMembership_ReconcileAgainstConfState(t *testing.T) {
 		require.NoError(t, ps.Put(3, "learner:1", "learner:2", fixedInstanceID(3)))
 		require.NoError(t, ps.Put(99, "stale:1", "stale:2", fixedInstanceID(99)))
 
-		m, err := NewMembership(ps, noopTransport{}, noopPool{}, 7, "self:1", "self:2", fixedInstanceID(7), logging.Testing())
+		m, err := NewMembership(ps, noopTransport{}, noopPool{}, 7, "self:1", "self:2", fixedInstanceID(7), logging.Testing(), NoopClusterPolicyProvider)
 		require.NoError(t, err)
 		m.Start()
 

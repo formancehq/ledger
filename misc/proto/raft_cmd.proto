@@ -448,6 +448,10 @@ message Proposal {
   // Order.coverage_bits.
   repeated TechnicalUpdate technical_updates = 9 [deprecated = true];
 
+  // Stable capability IDs required by the final serialized proposal. This is
+  // checked after any plan rebuild and before the bytes enter Raft.
+  repeated fixed32 required_capabilities = 10;
+
   // Exclusive with legacy fields 2 and 9. Reading this envelope is supported;
   // emitting it on Raft requires a separately validated cluster-wide cutover.
   oneof payload {
@@ -832,6 +836,10 @@ message PeerAddress {
   string raft_address = 2;
   string service_address = 3;
   bytes instance_id = 4;
+  // Capability evidence is bound to this concrete (node_id, instance_id)
+  // incarnation. It is persisted with the peer row so a restart cannot
+  // accidentally reuse evidence from an older WAL/PVC incarnation.
+  repeated fixed32 capabilities = 5;
 }
 
 // RemovedMemberEntry is the persisted blacklist row keyed by

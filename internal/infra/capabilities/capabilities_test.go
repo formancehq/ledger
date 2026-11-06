@@ -1,0 +1,138 @@
+package capabilities
+
+import (
+	"testing"
+
+	"github.com/stretchr/testify/require"
+
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
+)
+
+func capabilityState() State {
+	return State{Activations: map[CapabilityID]bool{}}
+}
+
+func TestEvaluateIncludesVotersAndLearners(t *testing.T) {
+	state := capabilityState()
+	state.Activations[99] = true
+	decision := Evaluate(state, []CapabilityID{99}, true, []Member{
+		{NodeID: 1, Role: Voter, Reachable: true, Capabilities: []CapabilityID{99}},
+		{NodeID: 2, Role: Learner, Reachable: true},
+	})
+	require.False(t, decision.Allowed)
+	require.Equal(t, uint64(2), decision.Blockers[0].NodeID)
+}
+
+func TestEvaluateAllowsUnrelatedWriteWhenNoFeatureIsDeclared(t *testing.T) {
+	decision := Evaluate(capabilityState(), nil, true, []Member{{NodeID: 1, Role: Voter, Reachable: true}})
+	require.True(t, decision.Allowed)
+}
+
+func TestEvaluateRejectsInactiveCapabilityBeforeInspectingMembers(t *testing.T) {
+	decision := Evaluate(capabilityState(), []CapabilityID{7}, true, []Member{{
+		NodeID:       1,
+		Role:         Voter,
+		Reachable:    true,
+		Capabilities: []CapabilityID{7},
+	}})
+
+	require.False(t, decision.Allowed)
+	require.Contains(t, decision.Reason, "unsupported")
+	require.Empty(t, decision.Blockers[0].NodeID, "policy blockers do not identify a member")
+}
+
+func TestEvaluateRejectsUnreachableMemberEvenWhenCapabilityIsAdvertised(t *testing.T) {
+	state := capabilityState()
+	state.Activations[7] = true
+	decision := Evaluate(state, []CapabilityID{7}, true, []Member{{
+		NodeID:       1,
+		Role:         Voter,
+		Reachable:    false,
+		Capabilities: []CapabilityID{7},
+	}})
+
+	require.False(t, decision.Allowed)
+	require.Len(t, decision.Blockers, 1)
+	require.Equal(t, uint64(1), decision.Blockers[0].NodeID)
+}
+
+func TestEvaluateAllowsActiveCapabilityWhenAllMembersAdvertiseAndReachIt(t *testing.T) {
+	state := capabilityState()
+	state.Activations[7] = true
+	decision := Evaluate(state, []CapabilityID{7}, true, []Member{
+		{NodeID: 1, Role: Voter, Reachable: true, Capabilities: []CapabilityID{7}},
+		{NodeID: 2, Role: Learner, Reachable: true, Capabilities: []CapabilityID{7}},
+	})
+
+	require.True(t, decision.Allowed)
+	require.Empty(t, decision.Blockers)
+}
+
+func TestPrepareProposalClearsFutureDeclarations(t *testing.T) {
+	proposal := &raftcmdpb.Proposal{RequiredCapabilities: []uint32{99}}
+	prepared, err := PrepareProposal(proposal)
+	require.NoError(t, err)
+	require.Empty(t, prepared.RequiredCapabilities())
+	require.Empty(t, proposal.GetRequiredCapabilities())
+}
+
+func TestFromPolicyRoundTrip(t *testing.T) {
+	state := FromPolicy(&commonpb.ClusterPolicy{
+		CapabilityActivations: []*commonpb.CapabilityActivation{{Id: 99, Active: true}},
+	})
+	require.True(t, state.Activations[99])
+	require.NoError(t, state.Validate())
+}
+
+func TestActiveIDsReturnsSortedActiveIDs(t *testing.T) {
+	t.Parallel()
+
+	policy := &commonpb.ClusterPolicy{
+		CapabilityActivations: []*commonpb.CapabilityActivation{
+			{Id: 9, Active: true},
+			nil,
+			{Id: 3, Active: false},
+			{Id: 4, Active: true},
+		},
+	}
+
+	require.Equal(t, []uint32{4, 9}, ActiveIDs(policy))
+	require.Nil(t, ActiveIDs(nil))
+}
+
+func TestReadyReturnsIntersectionAcrossMembers(t *testing.T) {
+	members := []Member{
+		{NodeID: 1, Role: Voter, Capabilities: []CapabilityID{1, 2}},
+		{NodeID: 2, Role: Learner, Capabilities: []CapabilityID{1}},
+	}
+
+	ready, err := Ready([]CapabilityID{2, 1}, members)
+	require.NoError(t, err)
+	require.Equal(t, []CapabilityID{1}, ready)
+}
+
+func TestReadyDoesNotActivateAnEmptyCluster(t *testing.T) {
+	ready, err := Ready([]CapabilityID{1}, nil)
+	require.NoError(t, err)
+	require.Empty(t, ready)
+}
+
+func TestReadyRejectsMalformedMemberEvidence(t *testing.T) {
+	_, err := Ready([]CapabilityID{1}, []Member{{
+		NodeID:       1,
+		Role:         Voter,
+		Capabilities: []CapabilityID{1, 1},
+	}})
+	require.ErrorContains(t, err, "invalid capability evidence")
+}
+
+func TestReadyIgnoresUnsupportedAdvertisedIDs(t *testing.T) {
+	ready, err := Ready([]CapabilityID{1}, []Member{{
+		NodeID:       1,
+		Role:         Voter,
+		Capabilities: []CapabilityID{1, 99},
+	}})
+	require.NoError(t, err)
+	require.Equal(t, []CapabilityID{1}, ready)
+}

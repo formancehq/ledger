@@ -96,7 +96,7 @@ func submitTechnicalOnce(ctx context.Context, builder *Builder, proposer Propose
 
 	result, err := builder.Run(
 		ctx, cmd, build,
-		func(c *raftcmdpb.Proposal) ([]byte, error) { return c.MarshalVT() },
+		func(*raftcmdpb.Proposal) error { return nil },
 		proposer,
 	)
 	if err != nil {

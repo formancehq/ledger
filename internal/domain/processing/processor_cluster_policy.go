@@ -1,6 +1,8 @@
 package processing
 
 import (
+	"fmt"
+
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
@@ -40,10 +42,39 @@ func applyClusterPolicy(newPolicy *commonpb.ClusterPolicy, scope Scope) (*common
 	if err := validateClusterPolicyMetadataLimits(newPolicy); err != nil {
 		return nil, err
 	}
+	seenCapabilities := make(map[uint32]struct{}, len(newPolicy.GetCapabilityActivations()))
+	for _, activation := range newPolicy.GetCapabilityActivations() {
+		if activation == nil || activation.GetId() == 0 {
+			return nil, &domain.ErrClusterPolicyInvalid{Detail: "capability activation id must be non-zero"}
+		}
+		if _, exists := seenCapabilities[activation.GetId()]; exists {
+			return nil, &domain.ErrClusterPolicyInvalid{Detail: fmt.Sprintf("duplicate capability activation %d", activation.GetId())}
+		}
+		seenCapabilities[activation.GetId()] = struct{}{}
+	}
 
 	current := scope.GetClusterPolicy()
 	appliedRev := current.GetRevision()
 	newRev := newPolicy.GetRevision()
+	active := make(map[uint32]struct{})
+	for _, activation := range current.GetCapabilityActivations() {
+		if activation != nil && activation.GetActive() {
+			active[activation.GetId()] = struct{}{}
+		}
+	}
+	for id := range active {
+		found := false
+		for _, activation := range newPolicy.GetCapabilityActivations() {
+			if activation != nil && activation.GetId() == id && activation.GetActive() {
+				found = true
+
+				break
+			}
+		}
+		if !found {
+			return nil, &domain.ErrClusterPolicyInvalid{Detail: fmt.Sprintf("capability %d cannot be deactivated", id)}
+		}
+	}
 
 	switch {
 	case newRev > appliedRev:

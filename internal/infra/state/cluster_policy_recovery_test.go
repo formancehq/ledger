@@ -32,6 +32,29 @@ func TestRecoverState_ClusterPolicyRoundtrip(t *testing.T) {
 		"the persisted policy must be recovered verbatim into FSMState")
 }
 
+func TestRecoverStatePublishesRecoveredState(t *testing.T) {
+	t.Parallel()
+
+	machine, store, _ := newTestMachineWithThreshold(t, 1000)
+	policy := &commonpb.ClusterPolicy{
+		Revision:              4,
+		CapabilityActivations: []*commonpb.CapabilityActivation{{Id: 17, Active: true}},
+	}
+	batch := store.OpenWriteSession()
+	require.NoError(t, SaveClusterPolicy(batch, policy))
+	require.NoError(t, batch.Commit())
+
+	var recovered *FSMState
+	recovery := NewRecovery(machine, store, WithStateRecovered(func(state *FSMState) error {
+		recovered = state
+
+		return nil
+	}))
+	require.NoError(t, recovery.RecoverState())
+	require.NotNil(t, recovered)
+	require.True(t, policy.EqualVT(recovered.ClusterPolicy))
+}
+
 // NewFSMState seeds a non-nil revision-0 default so the apply path and the
 // readiness gate can read the policy before any is committed.
 func TestNewFSMState_ClusterPolicyDefault(t *testing.T) {
