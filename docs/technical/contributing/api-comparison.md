@@ -1785,3 +1785,32 @@ Native cluster-policy controls introduced at the RC.3 to RC.4 cutover no longer
 appear in business audit listings.
 Historical policy audit entries remain readable. Audit response fields and
 service revision 40 are unchanged. Discovery still returns the committed policy.
+
+### Optional compact HTTP write acknowledgements
+
+V3 offers `skipResponse=true` on transaction create/revert, bulk, ledger
+create/promote, numscript save, event-sink creation and index creation. It changes
+only successful HTTP presentation; omitted/false retains the current v3
+contract. Values must be exactly one lowercase `true` or `false`, otherwise the
+adapter returns `400 INVALID_REQUEST` before execution. Single writes retain
+201 with `{"data":{"sequence":123}}`; this global uint64 JSON number is distinct
+from ledger-local `logID` and carries no signed receipt. Bulk preserves
+`responseType`, `logID`, complete skip/error detail, statuses and processing-error
+envelopes; compact successful entries add `sequence` and omit ordinary data.
+Empty bulk stays `{}`. Large-integer response negotiation does not stringify
+sequence; SDK decoders must preserve the full uint64 range. The pinned
+TypeScript generator emits a number and rounds values above 2^53: those clients
+need a lossless JSON decoder or the raw sequence token for full-range use.
+
+This opt-in v3 capability has no v2 equivalent. The comparison baseline
+`d47ba1746cec2173d84eab8ec575be196eae0837` implements unconditional transaction
+responses in `internal/api/v2/controllers_transactions_create.go` and
+`controllers_transactions_revert.go`, and no suppression option in
+`controllers_bulk.go`, `internal/api/bulking/handler_json.go` or
+`openapi/v2.yaml`. Existing v3 route and status differences remain unchanged
+(including create's 201 and `/bulk`). Existing no-content mutations stay empty.
+No pagination, filtering, authorization or request envelope changes accompany
+this addition. Upgrade every HTTP-serving node before clients opt in: older
+nodes reject the new query name. The service protocol stays unchanged. See the
+[HTTP contract](../architecture/subsystems/api/http-api.md#compact-write-acknowledgements)
+for retained internal work and rollout limits.

@@ -9,6 +9,10 @@ projection before returning current or checkpoint ledger values.
 ## HTTP representation
 
 `GET /v3/` and `GET /v3/{ledgerName}` retain their existing `data` envelopes.
+Creation uses its existing LedgerInfo envelope by default; `skipResponse=true`
+selects only a global sequence acknowledgement, as described in
+[compact write acknowledgements](http-api.md#compact-write-acknowledgements).
+The read representation below is unchanged by that write response option.
 LedgerInfo uses `createdAt`, `deletedAt`, `metadataSchema`, `mirrorSource`,
 `mirrorSyncProgress`, `accountTypes`, `defaultEnforcementMode` and `metadata`.
 Optional fields are omitted when absent. Creation/deletion/error timestamps use
