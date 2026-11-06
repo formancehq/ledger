@@ -89,39 +89,9 @@ func (r *ClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (re
 	// Use a Cluster finalizer to remove it explicitly.
 	if !ledger.DeletionTimestamp.IsZero() {
 		r.claimTemplateRetries.forget(req.NamespacedName)
-		credentialsPending := false
-		for _, target := range []struct {
-			name, annotation string
-		}{
-			{operatorCredentialsName(ledger), annotationOperatorCluster},
-			{debugBoxCredentialsName(ledger), annotationDebugBoxCluster},
-		} {
-			credentials, managed, err := r.managedCredentials(ctx, ledger, target.name, target.annotation)
-			if err != nil {
-				// Never mutate or delete a foreign object with a colliding name.
-				if credentials != nil {
-					continue
-				}
-				return ctrl.Result{}, fmt.Errorf("checking generated Credentials %s: %w", target.name, err)
-			}
-			if !managed {
-				continue
-			}
-			if err := r.Delete(ctx, credentials); err != nil && !apierrors.IsNotFound(err) {
-				return ctrl.Result{}, fmt.Errorf("deleting generated Credentials %s: %w", target.name, err)
-			}
-
-			remaining := &ledgerv1alpha1.Credentials{}
-			err = r.Get(ctx, types.NamespacedName{Name: target.name}, remaining)
-			switch {
-			case err == nil:
-				credentialsPending = true
-			case !apierrors.IsNotFound(err):
-				return ctrl.Result{}, fmt.Errorf("checking generated Credentials %s deletion: %w", target.name, err)
-			}
-		}
-		if credentialsPending {
-			return ctrl.Result{RequeueAfter: authKeysPendingRequeueInterval}, nil
+		credentials := &ledgerv1alpha1.Credentials{ObjectMeta: metav1.ObjectMeta{Name: operatorCredentialsName(ledger)}}
+		if err := r.Delete(ctx, credentials); err != nil && !apierrors.IsNotFound(err) {
+			return ctrl.Result{}, fmt.Errorf("deleting operator Credentials: %w", err)
 		}
 		if controllerutil.ContainsFinalizer(ledger, operatorCredentialsFinalizer) {
 			controllerutil.RemoveFinalizer(ledger, operatorCredentialsFinalizer)
