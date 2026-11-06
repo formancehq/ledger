@@ -227,7 +227,9 @@ The order-less paths also bypass audit: a technical-only proposal drains its ove
 use the ordinary FSM failure path after idempotency lookup. A fresh refusal
 records the attempted orders and definitive failure, with no committed business
 writes. A retained same-content success or failure replays without another
-audit entry. No persisted format or checker rule changes.
+audit entry. No persisted format or checker rule changes. A
+[missing Numscript library reference](../admission/idempotency.md#replay-after-a-referenced-script-is-removed)
+follows the same path.
 
 An FSM-side same-key-different-hash conflict, by contrast, is **not** a replay — it's a fresh rejection, so it takes the Failure column (1 audit entry, N items each with `LogSequence = 0`, no applied proposal, no log).
 

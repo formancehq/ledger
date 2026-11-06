@@ -133,6 +133,15 @@ For every `CreateTransaction` order backed by a script, `resolveScriptsAndEnrich
 
 This stage is the reason numscript is admission-time work, not FSM work: the FSM's apply path is forbidden from reading Pebble (see [FSM cache layers](../fsm/cache-layers.md)), so the program's dependencies must be turned into declared `plan.Coverage` entries before consensus.
 
+A reference admission cannot resolve is not refused here. The library is
+mutable replicated state: deleting a ledger purges it. Admission forwards the
+order with the reads the FSM resolution makes: the exact content key, or the
+latest pointer and the content key of any greatest version it observed. It
+plans no dependencies. `processCreateTransaction` then returns
+`NUMSCRIPT_NOT_FOUND` after idempotency lookup, so a fresh refusal is audited
+and a retained outcome replays. See
+[the replay contract](idempotency.md#replay-after-a-referenced-script-is-removed).
+
 ### 7. Build the execution plan
 
 `builder.Build(aggregate, operations)` (`internal/infra/plan/builder.go`) dispatches each `plan.Coverage` entry to its `attrCode` resolver, hits the gen0/gen1 attribute cache first, and falls back to Pebble for misses. The result is an `ExecutionPlan` — the read-only view the FSM apply path will see when it runs.
@@ -226,6 +235,7 @@ Node-local operational policy is a separate category. Flags, environment variabl
 |----------------|-------------|------------|------------------------|
 | Write gate / maintenance / signature / structural validation | gRPC returns error, no Raft proposal | Client only | **No** — admission did not propose. |
 | Metadata policy | Existing FSM handlers, after idempotency lookup | Client | **Yes** for fresh refusals and conflicts; **no** new audit for a retained replay. |
+| Missing Numscript library reference | `processCreateTransaction`, after idempotency lookup | Client | **Yes** for fresh refusals; **no** new audit for a retained replay. |
 | FSM apply (validation, overflow, balance, etc.) | Proposal returned with `Failure` outcome | Client + Raft log | **Yes** — `AuditEntry` with `outcome = Failure`, bound by the hash chain. |
 
 This distinction matters: anything that lands in the audit chain is replayable and verifiable by the checker. A new rejection at admission is invisible to history because its orders never reached the cluster. A retained FSM replay returns an earlier historical outcome without adding to history.

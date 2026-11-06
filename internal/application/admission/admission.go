@@ -2036,6 +2036,17 @@ func (a *Admission) resolveScriptsAndEnrichNeeds(ctx context.Context, orders []*
 			// The selector is already gated structurally (validateOrderContent),
 			// so it is either "latest" or a full semver here.
 			content, rv, err := a.resolveNumscriptReference(overlay, ledgerName, ref.GetName(), ref.GetVersion())
+			if notFound, missing := errors.AsType[*domain.ErrNumscriptNotFound](err); missing {
+				// The library is mutable replicated state (a ledger delete purges
+				// it), so the definitive refusal belongs to the FSM after
+				// idempotency lookup: a fresh refusal is audited, a retry replays.
+				// Declare exactly what its resolution reads; the batch fails at
+				// that order, so the script needs no dependency planning.
+				declareNumscriptReferenceCoverage(p, orderNeeds, ledgerName, ref.GetName(), notFound.Version, ref.GetVersion() == "latest")
+
+				continue
+			}
+
 			if err != nil {
 				return err
 			}
@@ -2187,25 +2198,29 @@ func (a *Admission) resolveScriptsAndEnrichNeeds(ctx context.Context, orders []*
 		// greatest advanced since planning, the FSM's read of the newer version's
 		// content is not covered and surfaces as a retryable stale proposal.
 		if isReference {
-			contentKey := domain.NumscriptEntryKey{
-				LedgerName: ledgerName,
-				Name:       refName,
-				Version:    resolvedVersion,
-			}.Bytes()
-			p.Add(dal.SubAttrNumscriptContent, contentKey)
-			orderNeeds.Add(dal.SubAttrNumscriptContent, contentKey)
-
-			// A "latest" selector makes the FSM read the per-name pointer to
-			// resolve the greatest semver; declare it so that read is covered.
-			if refIsLatest {
-				pointerKey := domain.NumscriptVersionKey{LedgerName: ledgerName, Name: refName}.Bytes()
-				p.Add(dal.SubAttrNumscriptVersion, pointerKey)
-				orderNeeds.Add(dal.SubAttrNumscriptVersion, pointerKey)
-			}
+			declareNumscriptReferenceCoverage(p, orderNeeds, ledgerName, refName, resolvedVersion, refIsLatest)
 		}
 	}
 
 	return nil
+}
+
+// declareNumscriptReferenceCoverage declares the library reads the FSM makes to
+// resolve a reference: the content of the version admission observed and, for a
+// "latest" selector, the per-name pointer. An empty version means admission
+// observed no version at all, so the FSM stops at the pointer.
+func declareNumscriptReferenceCoverage(p, orderNeeds *plan.Coverage, ledgerName, name, version string, isLatest bool) {
+	if version != "" {
+		contentKey := domain.NumscriptEntryKey{LedgerName: ledgerName, Name: name, Version: version}.Bytes()
+		p.Add(dal.SubAttrNumscriptContent, contentKey)
+		orderNeeds.Add(dal.SubAttrNumscriptContent, contentKey)
+	}
+
+	if isLatest {
+		pointerKey := domain.NumscriptVersionKey{LedgerName: ledgerName, Name: name}.Bytes()
+		p.Add(dal.SubAttrNumscriptVersion, pointerKey)
+		orderNeeds.Add(dal.SubAttrNumscriptVersion, pointerKey)
+	}
 }
 
 // requestToOrder converts one wire request into the corresponding Raft order.
@@ -2687,6 +2702,8 @@ func (a *Admission) convertApplyRequest(ctx context.Context, apply *servicepb.Le
 // dependency discovery, preload). It resolves against both the intra-bulk
 // overlay and Pebble, always preferring the greater persisted version so an
 // overlay save at a lower version can never hide a greater committed one.
+// ErrNumscriptNotFound carries the version observed as missing, empty when a
+// "latest" selector found no version.
 func (a *Admission) resolveNumscriptReference(overlay *bulkOverlay, ledgerName string, name, version string) (string, string, error) {
 	nsHandle, handleErr := a.store.NewDirectReadHandle()
 	if handleErr != nil {

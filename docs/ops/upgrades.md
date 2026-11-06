@@ -343,6 +343,21 @@ payload when recovering an ambiguous earlier attempt. The existing retention
 window and transport caps still apply; this adds no guarantee after expiry.
 See [the mechanism and cost boundary](../technical/architecture/subsystems/admission/idempotency.md#replay-after-metadata-limits-tighten).
 
+## Numscript-reference replay recovery
+
+Upgraded leaders forward a transaction whose Numscript library reference they
+cannot resolve, instead of refusing it. A keyed retry of a committed reference
+then replays its retained outcome after a ledger deletion purged the library.
+A fresh refusal, keyed or not, is an audited `NUMSCRIPT_NOT_FOUND` decided at
+apply; on a deleted ledger the earlier apply check returns `LEDGER_DELETED`.
+This is an admission-only correction: the FSM resolution already handled
+covered absent entries, so old and new voters apply the forwarded entry
+identically. It changes no Raft, persisted, backup, audit or wire format,
+requires no data migration and keeps service protocol revision 40. During a
+rolling upgrade, a leader running the old binary still refuses at admission;
+transfer leadership to an upgraded voter for the corrected behavior.
+See [the replay contract](../technical/architecture/subsystems/admission/idempotency.md#replay-after-a-referenced-script-is-removed).
+
 ## Account metadata address validation
 
 RC.1 to RC.2 uses the maintenance-barrier rolling procedure below: writes pause,

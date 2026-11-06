@@ -210,8 +210,8 @@ func TestAdmitActionCounters(t *testing.T) {
 		store := createTestStore(t)
 		a, reader := createTestAdmissionWithReader(t, store, nil)
 
-		// A CreateTransaction referencing a missing numscript fails in the scripts
-		// phase — after orders are built and the recorder defer is registered.
+		// An unparsable inline script fails in the scripts phase — after orders
+		// are built and the recorder defer is registered.
 		_, err := a.Admit(attributedTestContext(context.Background()), servicepb.UnsignedApplyRequest("", &servicepb.Request{
 			Type: &servicepb.Request_Apply{
 				Apply: &servicepb.LedgerApplyRequest{
@@ -219,7 +219,7 @@ func TestAdmitActionCounters(t *testing.T) {
 					Action: &servicepb.LedgerAction{
 						Data: &servicepb.LedgerAction_CreateTransaction{
 							CreateTransaction: &servicepb.CreateTransactionPayload{
-								ScriptReference: &servicepb.ScriptReference{Name: "does-not-exist", Version: "latest"},
+								Script: &commonpb.Script{Plain: "send [USD/2"},
 							},
 						},
 					},
