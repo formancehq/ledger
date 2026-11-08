@@ -89,8 +89,7 @@ func (r *ClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (re
 	// Use a Cluster finalizer to remove it explicitly.
 	if !ledger.DeletionTimestamp.IsZero() {
 		r.claimTemplateRetries.forget(req.NamespacedName)
-		credentials := &ledgerv1alpha1.Credentials{ObjectMeta: metav1.ObjectMeta{Name: operatorCredentialsName(ledger)}}
-		if err := r.Delete(ctx, credentials); err != nil && !apierrors.IsNotFound(err) {
+		if err := r.deleteOperatorCredentials(ctx, ledger); err != nil {
 			return ctrl.Result{}, fmt.Errorf("deleting operator Credentials: %w", err)
 		}
 		if controllerutil.ContainsFinalizer(ledger, operatorCredentialsFinalizer) {
@@ -561,7 +560,7 @@ func (r *ClusterReconciler) validateCredentialsAuthCompatibility(ctx context.Con
 	operatorSelector := operatorCredentialsSelectorValue(ledger)
 	for i := range list.Items {
 		credentials := &list.Items[i]
-		if credentials.Labels[labelOperatorCredential] == operatorSelector {
+		if credentials.Labels[labelOperatorCredential] == operatorSelector && ownedOperatorCredentials(credentials, ledger) {
 			continue
 		}
 		selector, err := metav1.LabelSelectorAsSelector(&credentials.Spec.Selector)
