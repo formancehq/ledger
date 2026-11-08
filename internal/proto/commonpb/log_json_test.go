@@ -127,6 +127,11 @@ func TestLedgerLogJSONOutput(t *testing.T) {
 					}
 					require.NoError(t, err)
 					require.JSONEq(t, string(expected), string(envelope.Data))
+					if tc.kind == commonpb.AccountMetadataUpdatedLogType {
+						require.JSONEq(t, `{"users:alice":{"tier":"gold"}}`, string(envelope.Data))
+						require.NotContains(t, wireData, "accountMetadata")
+						require.NotContains(t, wireData, "account_metadata")
+					}
 					if tc.name == "created" || tc.name == "reverted" {
 						transactionField := "transaction"
 						wantID := "9007199254740993"
