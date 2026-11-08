@@ -3,6 +3,7 @@ package controller
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -54,7 +55,8 @@ func TestValidateCredentialsAuthCompatibilityAllowsOperatorCredentialCleanup(t *
 	cluster := authEnabledCluster("ledger", "tenant-a", map[string]string{"tier": "gold"})
 	*cluster.Spec.Auth.Enabled = false
 	credentials := matchingCredentials(operatorCredentialsName(cluster), map[string]string{"tier": "gold"}, false, "", "")
-	credentials.Labels = map[string]string{labelOperatorCredential: operatorCredentialsSelectorValue(cluster)}
+	credentials.Labels = map[string]string{labelOperatorCredential: operatorCredentialsSelectorValue(cluster), labelManagedBy: "ledger-operator"}
+	credentials.Annotations = map[string]string{annotationOperatorCluster: cluster.Namespace + "/" + cluster.Name}
 	r := &ClusterReconciler{
 		Client: fake.NewClientBuilder().WithScheme(scheme).WithObjects(cluster, credentials).Build(),
 		Scheme: scheme,
@@ -90,7 +92,11 @@ func TestValidateCredentialsAuthCompatibilityReturnsRetryableListError(t *testin
 func TestReconcileOperatorCredentialsDeletesWhenAuthDisabled(t *testing.T) {
 	scheme := authKeysScheme(t)
 	cluster := authEnabledCluster("ledger", "tenant-a", nil)
-	credentials := &ledgerv1alpha1.Credentials{ObjectMeta: metav1.ObjectMeta{Name: operatorCredentialsName(cluster)}}
+	credentials := &ledgerv1alpha1.Credentials{ObjectMeta: metav1.ObjectMeta{
+		Name:        operatorCredentialsName(cluster),
+		Labels:      map[string]string{labelManagedBy: "ledger-operator"},
+		Annotations: map[string]string{annotationOperatorCluster: cluster.Namespace + "/" + cluster.Name},
+	}}
 	r := &ClusterReconciler{
 		Client: fake.NewClientBuilder().WithScheme(scheme).WithObjects(cluster, credentials).Build(),
 		Scheme: scheme,
@@ -101,4 +107,27 @@ func TestReconcileOperatorCredentialsDeletesWhenAuthDisabled(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, ready)
 	require.Error(t, r.Get(context.Background(), types.NamespacedName{Name: operatorCredentialsName(cluster)}, &ledgerv1alpha1.Credentials{}))
+}
+
+func TestReconcileOperatorCredentialsRejectsForeignCredential(t *testing.T) {
+	for _, enabled := range []bool{true, false} {
+		t.Run(fmt.Sprint(enabled), func(t *testing.T) {
+			cluster := authEnabledCluster("ledger", "tenant-a", nil)
+			*cluster.Spec.Auth.Enabled = enabled
+			foreign := &ledgerv1alpha1.Credentials{ObjectMeta: metav1.ObjectMeta{Name: operatorCredentialsName(cluster)}}
+			foreign.Spec.Scopes = []string{"ledger:ReadLedger"}
+			r := &ClusterReconciler{Client: fake.NewClientBuilder().WithScheme(authKeysScheme(t)).WithObjects(cluster, foreign).Build()}
+
+			_, err := r.reconcileOperatorCredentials(context.Background(), cluster)
+			if enabled {
+				require.ErrorContains(t, err, "not owned by Cluster")
+			} else {
+				require.NoError(t, err)
+			}
+			actual := &ledgerv1alpha1.Credentials{}
+			require.NoError(t, r.Get(context.Background(), types.NamespacedName{Name: foreign.Name}, actual))
+			require.Equal(t, foreign.Spec.Scopes, actual.Spec.Scopes)
+			require.Empty(t, actual.Annotations)
+		})
+	}
 }
