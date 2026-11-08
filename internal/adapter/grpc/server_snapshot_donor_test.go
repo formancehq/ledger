@@ -329,6 +329,7 @@ func TestPrepareSnapshotLiveWaiterSurvivesOwnerCancellationDuringCheckpoint(t *t
 	require.Eventually(t, func() bool {
 		server.prepareMu.Lock()
 		defer server.prepareMu.Unlock()
+
 		return server.preparations["7"].waiters.Load() > 0
 	}, time.Second, time.Millisecond)
 	cancelOwner()
