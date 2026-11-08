@@ -308,3 +308,38 @@ func TestPrepareSnapshotLiveWaiterReplacesCanceledQueuedPreparation(t *testing.T
 	require.NoError(t, <-secondDone)
 	require.Equal(t, int32(1), store.calls.Load())
 }
+
+func TestPrepareSnapshotLiveWaiterSurvivesOwnerCancellationDuringCheckpoint(t *testing.T) {
+	store := &blockingCheckpointStore{root: t.TempDir(), firstStarted: make(chan struct{}), secondStarted: make(chan struct{}), releaseFirst: make(chan struct{})}
+	server := newBlockingSnapshotServer(t, store)
+	ownerCtx, cancelOwner := context.WithCancel(t.Context())
+	ownerDone := make(chan error, 1)
+	go func() {
+		_, err := server.PrepareSnapshot(ownerCtx, &snapshotpb.PrepareSnapshotRequest{NodeId: "7"})
+		ownerDone <- err
+	}()
+	<-store.firstStarted
+	waiterDone := make(chan *snapshotpb.PrepareSnapshotResponse, 1)
+	waiterErr := make(chan error, 1)
+	go func() {
+		resp, err := server.PrepareSnapshot(t.Context(), &snapshotpb.PrepareSnapshotRequest{NodeId: "7"})
+		waiterDone <- resp
+		waiterErr <- err
+	}()
+	require.Eventually(t, func() bool {
+		server.prepareMu.Lock()
+		defer server.prepareMu.Unlock()
+		return server.preparations["7"].waiters.Load() > 0
+	}, time.Second, time.Millisecond)
+	cancelOwner()
+	close(store.releaseFirst)
+	require.NoError(t, <-ownerDone)
+	resp := <-waiterDone
+	require.NoError(t, <-waiterErr)
+	require.NotEmpty(t, resp.GetSessionId())
+	require.NotEmpty(t, resp.GetManifest().GetFiles())
+	require.Equal(t, int32(1), store.calls.Load())
+	_, err := server.CloseSession(t.Context(), &snapshotpb.CloseSessionRequest{SessionId: resp.GetSessionId()})
+	require.NoError(t, err)
+	require.NoDirExists(t, filepath.Join(store.root, "follower-sync-1"))
+}
