@@ -192,6 +192,7 @@ services:
     init: true
     environment:
       LEDGER_GRPC_ADDR: "ledger-0:8888,ledger-1:8888,ledger-2:8888"
+      LEDGER_PER_NODE_PEER_ADDR: "ledger-0:8889,ledger-1:8889,ledger-2:8889"
       EXPECTED_VOTERS: "3"
       ETCD_ENDPOINTS: "http://etcd-0:2379,http://etcd-1:2379,http://etcd-2:2379"
     annotations:

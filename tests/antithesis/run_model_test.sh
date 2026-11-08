@@ -123,11 +123,12 @@ MODEL_HARNESS_REPO="${MODEL_HARNESS_REPO:-$REPO}"
 # Randomized port bands per run: a leaked node/driver from a killed shell can
 # never reach a new run's cluster (fixed ports would let an orphan corrupt a
 # later run with concurrent traffic). grpc = base+i, raft = base+100+i,
-# http = base+200+i.
+# http = base+200+i, peer gRPC = base+400+i.
 GRPC_BASE="${GRPC_BASE:-$(( 20000 + RANDOM % 10000 ))}"
 RAFT_BASE=$(( GRPC_BASE + 100 ))
 HTTP_BASE=$(( GRPC_BASE + 200 ))
 MINIO_PORT=$(( GRPC_BASE + 300 ))
+PEER_BASE=$(( GRPC_BASE + 400 ))
 # Formance's digest-pinned MinIO mirror; it ships both minio and mc.
 MINIO_IMAGE="ghcr.io/formancehq/minio:RELEASE.2025-10-15T17-29-55Z@sha256:69b55a1c1c5dc285ce04db96689f5b2102317fc77a50680a1874ca6efd1c87f9"
 
@@ -160,11 +161,12 @@ S3_FLAGS=(
 	--bucket-id "$CLUSTER_ID"
 )
 
-GRPC_PORTS=() RAFT_PORTS=() HTTP_PORTS=() NODE_DIRS=() SERVER_LOGS=() SERVER_PIDS=()
+GRPC_PORTS=() RAFT_PORTS=() HTTP_PORTS=() PEER_PORTS=() NODE_DIRS=() SERVER_LOGS=() SERVER_PIDS=()
 for i in $(seq 0 $(( NODES - 1 ))); do
 	GRPC_PORTS+=( $(( GRPC_BASE + i )) )
 	RAFT_PORTS+=( $(( RAFT_BASE + i )) )
 	HTTP_PORTS+=( $(( HTTP_BASE + i )) )
+	PEER_PORTS+=( $(( PEER_BASE + i )) )
 	NODE_DIRS+=( "$WORKDIR/n$i" )
 	SERVER_LOGS+=( "$WORKDIR/server-$i.log" )
 	SERVER_PIDS+=( "" )
@@ -297,6 +299,7 @@ start_node() {
 		--bind-addr "127.0.0.1:${RAFT_PORTS[$i]}" \
 		--advertise-addr "127.0.0.1:${RAFT_PORTS[$i]}" \
 		--grpc-port "${GRPC_PORTS[$i]}" \
+		--grpc-peer-port "${PEER_PORTS[$i]}" \
 		--http-port "${HTTP_PORTS[$i]}" \
 		--wal-dir "${NODE_DIRS[$i]}/wal" \
 		--data-dir "${NODE_DIRS[$i]}/data" \
@@ -526,9 +529,13 @@ fi
 # Run the driver against all node(s).
 # ---------------------------------------------------------------------------
 ADDR_LIST="127.0.0.1:${GRPC_PORTS[0]}"
+PEER_ADDR_LIST="127.0.0.1:${PEER_PORTS[0]}"
 # A C-style loop, not `seq 1 $((NODES-1))`: BSD seq counts DOWN on an inverted
 # range, so a single-node run would index a port that does not exist.
-for (( i = 1; i < NODES; i++ )); do ADDR_LIST="$ADDR_LIST,127.0.0.1:${GRPC_PORTS[$i]}"; done
+for (( i = 1; i < NODES; i++ )); do
+	ADDR_LIST="$ADDR_LIST,127.0.0.1:${GRPC_PORTS[$i]}"
+	PEER_ADDR_LIST="$PEER_ADDR_LIST,127.0.0.1:${PEER_PORTS[$i]}"
+done
 
 log "running driver for ${DURATION}s against $ADDR_LIST ..."
 # MODEL_MAX_SECONDS makes the driver self-terminate even if this script never
@@ -551,6 +558,7 @@ exec 5<> "$driver_pid_pipe" || exit 2
 	child=""
 	trap '[ -n "$child" ] && kill "$child" 2>/dev/null; [ -n "$child" ] && kill -9 "$child" 2>/dev/null; wait 2>/dev/null; exit 130' INT TERM
 	LEDGER_GRPC_ADDR="$ADDR_LIST" \
+	LEDGER_PER_NODE_PEER_ADDR="$PEER_ADDR_LIST" \
 	ANTITHESIS_SDK_LOCAL_OUTPUT="$ASSERTIONS" \
 	MODEL_DEBUG="${MODEL_DEBUG:-}" \
 	MODEL_DUMP_BATCHES="${MODEL_DUMP_BATCHES:-}" \
