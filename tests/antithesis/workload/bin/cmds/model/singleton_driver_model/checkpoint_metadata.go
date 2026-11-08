@@ -110,35 +110,48 @@ func checkpointMetadataNodeID(ctx context.Context, node *internal.PerNodeConn) (
 	if node.Addr == "" {
 		return 0, errors.New("checkpoint metadata node has no pinned address")
 	}
-	topology, err := node.Cluster.GetClusterState(ctx, &clusterpb.GetClusterStateRequest{})
-	if err != nil {
-		return 0, err
-	}
-	// Leadership can change between the RPC's routing decision and the
-	// orchestrator sampling status. A demoted node legitimately omits Nodes.
-	switch topology.GetState() {
-	case "Leader":
-	case "Follower", "Candidate", "PreCandidate", "Shutdown":
-		return 0, status.Error(codes.Unavailable, "checkpoint metadata leader changed during identity discovery")
-	default:
-		return 0, fmt.Errorf("checkpoint metadata discovery returned invalid node state %q", topology.GetState())
-	}
 	advertisedAddr := node.PeerAddr
 	if advertisedAddr == "" {
 		advertisedAddr = node.Addr
 	}
-	for _, peer := range topology.GetNodes() {
-		if peer.GetServiceAddress() != advertisedAddr || peer.GetId() == 0 {
-			continue
-		}
-		if node.NodeID != 0 && node.NodeID != peer.GetId() {
-			return 0, fmt.Errorf("checkpoint metadata node %q is not advertised as node %d (got %d)", node.Addr, node.NodeID, peer.GetId())
-		}
+	ticker := time.NewTicker(20 * time.Millisecond)
+	defer ticker.Stop()
+	for {
+		topology, err := node.Cluster.GetClusterState(ctx, &clusterpb.GetClusterStateRequest{})
+		if err != nil && status.Code(err) != codes.Unavailable {
+			if ctx.Err() != nil {
+				return 0, fmt.Errorf("checkpoint metadata node %q has unresolved identity in leader topology (peer address %q): %w", node.Addr, advertisedAddr, ctx.Err())
+			}
 
-		return peer.GetId(), nil
+			return 0, err
+		}
+		if err == nil {
+			// Membership may report voters before their service addresses are
+			// available. Wait for the address that identifies this pinned node.
+			switch topology.GetState() {
+			case "Leader":
+				for _, peer := range topology.GetNodes() {
+					if peer.GetServiceAddress() != advertisedAddr || peer.GetId() == 0 {
+						continue
+					}
+					if node.NodeID != 0 && node.NodeID != peer.GetId() {
+						return 0, fmt.Errorf("checkpoint metadata node %q is not advertised as node %d (got %d)", node.Addr, node.NodeID, peer.GetId())
+					}
+
+					return peer.GetId(), nil
+				}
+			case "Follower", "Candidate", "PreCandidate", "Shutdown":
+				return 0, status.Error(codes.Unavailable, "checkpoint metadata leader changed during identity discovery")
+			default:
+				return 0, fmt.Errorf("checkpoint metadata discovery returned invalid node state %q", topology.GetState())
+			}
+		}
+		select {
+		case <-ctx.Done():
+			return 0, fmt.Errorf("checkpoint metadata node %q has unresolved identity in leader topology (peer address %q): %w", node.Addr, advertisedAddr, ctx.Err())
+		case <-ticker.C:
+		}
 	}
-
-	return 0, fmt.Errorf("checkpoint metadata node %q has unresolved identity in leader topology", node.Addr)
 }
 
 // Probe before changing the checkpoint baseline: an unavailable first address must not consume
