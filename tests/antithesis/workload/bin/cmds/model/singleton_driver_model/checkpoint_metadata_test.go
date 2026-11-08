@@ -126,6 +126,17 @@ func TestCheckpointMetadataWaitsForPeerAddress(t *testing.T) {
 	require.Zero(t, server.remainingMissingAddress.Load())
 }
 
+func TestCheckpointMetadataMissingPeerAddressIsTransient(t *testing.T) {
+	t.Parallel()
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+	_, bucket, cluster := checkpointMetadataClients(t)
+	node := &internal.PerNodeConn{Addr: "public:8888", PeerAddr: "peer:8889", Bucket: bucket, Cluster: cluster}
+	_, err := checkpointMetadataNodeID(ctx, node)
+	require.Equal(t, codes.DeadlineExceeded, status.Code(err))
+	require.True(t, internal.IsTransient(err))
+}
+
 func checkpointTestNode(bucket servicepb.BucketServiceClient, cluster clusterpb.ClusterServiceClient) *internal.PerNodeConn {
 	return &internal.PerNodeConn{Addr: "node", NodeID: 2, Bucket: bucket, Cluster: cluster}
 }

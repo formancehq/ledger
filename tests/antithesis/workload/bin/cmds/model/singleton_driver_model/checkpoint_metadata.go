@@ -120,7 +120,7 @@ func checkpointMetadataNodeID(ctx context.Context, node *internal.PerNodeConn) (
 		topology, err := node.Cluster.GetClusterState(ctx, &clusterpb.GetClusterStateRequest{})
 		if err != nil && status.Code(err) != codes.Unavailable {
 			if ctx.Err() != nil {
-				return 0, fmt.Errorf("checkpoint metadata node %q has unresolved identity in leader topology (peer address %q): %w", node.Addr, advertisedAddr, ctx.Err())
+				return 0, status.Errorf(codes.DeadlineExceeded, "checkpoint metadata node %q has unresolved identity in leader topology (peer address %q): %v", node.Addr, advertisedAddr, ctx.Err())
 			}
 
 			return 0, err
@@ -148,7 +148,7 @@ func checkpointMetadataNodeID(ctx context.Context, node *internal.PerNodeConn) (
 		}
 		select {
 		case <-ctx.Done():
-			return 0, fmt.Errorf("checkpoint metadata node %q has unresolved identity in leader topology (peer address %q): %w", node.Addr, advertisedAddr, ctx.Err())
+			return 0, status.Errorf(codes.DeadlineExceeded, "checkpoint metadata node %q has unresolved identity in leader topology (peer address %q): %v", node.Addr, advertisedAddr, ctx.Err())
 		case <-ticker.C:
 		}
 	}
