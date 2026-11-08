@@ -69,8 +69,8 @@ type routeScope struct {
 }
 
 // probeMethod is the method to send for a row: anyMethod rows share one handler
-// and one middleware chain across all 9 methods, so one representative method
-// asserts everything the other 8 would.
+// and one middleware chain across all methods, so one representative method
+// asserts everything the others would.
 func (row routeScope) probeMethod() string {
 	if row.anyMethod {
 		return http.MethodGet
@@ -85,6 +85,7 @@ var anyMethodMethods = []string{
 	http.MethodConnect, http.MethodDelete, http.MethodGet, http.MethodHead,
 	http.MethodOptions, http.MethodPatch, http.MethodPost, http.MethodPut,
 	http.MethodTrace,
+	"QUERY", // Supported by chi since v5.4.0.
 }
 
 // expectedRouteScopes is the declared route-to-scope contract for the REST
@@ -121,8 +122,8 @@ func expectedRouteScopes() []routeScope {
 		{http.MethodGet, "/debug/pprof/profile", kindGuarded, internalauth.ScopeOpsRead, false},
 		{http.MethodGet, "/debug/pprof/symbol", kindGuarded, internalauth.ScopeOpsRead, false},
 		{http.MethodGet, "/debug/pprof/trace", kindGuarded, internalauth.ScopeOpsRead, false},
-		// These six use r.Handle, so they answer all 9 methods. anyMethod
-		// declares that fan-out instead of hiding it behind 54 rows. If they
+		// These six use r.Handle, so they answer all methods. anyMethod
+		// declares that fan-out instead of repeating each method's rows. If they
 		// ever become r.Get, drop the flag and the table diff records it.
 		{"*", "/debug/pprof/allocs", kindGuarded, internalauth.ScopeOpsRead, true},
 		{"*", "/debug/pprof/block", kindGuarded, internalauth.ScopeOpsRead, true},
