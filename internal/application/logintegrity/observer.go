@@ -191,7 +191,7 @@ func (o *Observer) comparePeerAtHead(ctx context.Context, id uint64, cursor *pee
 			return
 		}
 		switch {
-		case status.Code(err) == codes.DataLoss && localHead == 0:
+		case status.Code(err) == codes.NotFound && localHead == 0:
 			// There is no local digest for an empty log; still query the peer
 			// so a non-empty peer suffix can be reported as a divergence.
 		case status.Code(err) == codes.DataLoss:

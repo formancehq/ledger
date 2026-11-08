@@ -74,7 +74,7 @@ func TestObserverKeepsEmptyProbeUntilFirstLog(t *testing.T) {
 	}), grpc.WithTransportCredentials(insecure.NewCredentials()))
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, conn.Close()) })
-	local := &fixtureDigestServer{dataLoss: true}
+	local := &fixtureDigestServer{empty: true}
 	observer := NewObserver(nil, nil, fixturePeerConnection{conn}, local,
 		logging.FromContext(logging.TestingContext()), noop.NewMeterProvider().Meter("test"))
 	cursor := &peerCursor{next: 1}
@@ -84,7 +84,7 @@ func TestObserverKeepsEmptyProbeUntilFirstLog(t *testing.T) {
 		require.Empty(t, cursor.lastMismatch)
 	}
 	remote.empty = false
-	local.dataLoss = false
+	local.empty = false
 	local.hash = make([]byte, DigestSize)
 	remote.hash = make([]byte, DigestSize)
 	observer.comparePeerAtHead(t.Context(), 2, cursor, 1, 1, 5, 1)
@@ -104,7 +104,7 @@ func TestObserverReportsPeerDataLossWithEmptyLocalLog(t *testing.T) {
 	}), grpc.WithTransportCredentials(insecure.NewCredentials()))
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, conn.Close()) })
-	local := &fixtureDigestServer{dataLoss: true}
+	local := &fixtureDigestServer{empty: true}
 	observer := NewObserver(nil, nil, fixturePeerConnection{conn}, local,
 		logging.FromContext(logging.TestingContext()), noop.NewMeterProvider().Meter("test"))
 	cursor := &peerCursor{next: 1}
@@ -126,7 +126,7 @@ func TestObserverReportsPeerSuffixWithEmptyLocalLog(t *testing.T) {
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, conn.Close()) })
 
-	local := &fixtureDigestServer{dataLoss: true}
+	local := &fixtureDigestServer{empty: true}
 	observer := NewObserver(nil, nil, fixturePeerConnection{conn}, local,
 		logging.FromContext(logging.TestingContext()), noop.NewMeterProvider().Meter("test"))
 	cursor := &peerCursor{next: 1}
