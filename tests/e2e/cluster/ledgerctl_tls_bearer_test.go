@@ -22,6 +22,8 @@ import (
 
 	cmdserver "github.com/formancehq/ledger/v3/cmd/server"
 	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
+	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	"github.com/formancehq/ledger/v3/pkg/actions"
 	"github.com/formancehq/ledger/v3/pkg/grpcprotocol"
 	"github.com/formancehq/ledger/v3/pkg/testserver"
 	"github.com/formancehq/ledger/v3/tests/e2e/testutil"
@@ -48,7 +50,7 @@ var _ = Describe("ledgerctl TLS bearer against tls-mode=required", Ordered, func
 		var authKeysPath string
 		var err error
 		operatorPriv, authKeysPath, err = writeEd25519KeysConfig(certDir, operatorKeyID, []string{
-			"ledger:ReadOps", "ledger:WriteOps", "ledger:ReadCluster", "ledger:WriteCluster",
+			"ledger:ReadLedger", "ledger:WriteLedger", "ledger:WriteMetadata", "ledger:ReadOps", "ledger:WriteOps", "ledger:ReadCluster", "ledger:WriteCluster",
 		})
 		Expect(err).To(Succeed())
 		certs, err = testserver.GenerateTestCerts(certDir)
@@ -116,7 +118,7 @@ var _ = Describe("ledgerctl TLS bearer against tls-mode=required", Ordered, func
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 		token, err := signEdDSAJWT(operatorPriv, operatorKeyID, makeEdDSAClaims(
-			"ledger:ReadOps", "ledger:WriteOps", "ledger:ReadCluster", "ledger:WriteCluster",
+			"ledger:ReadLedger", "ledger:WriteLedger", "ledger:WriteMetadata", "ledger:ReadOps", "ledger:WriteOps", "ledger:ReadCluster", "ledger:WriteCluster",
 		))
 		Expect(err).To(Succeed())
 		ctx = metadata.AppendToOutgoingContext(ctx, "authorization", "Bearer "+token)
@@ -128,5 +130,27 @@ var _ = Describe("ledgerctl TLS bearer against tls-mode=required", Ordered, func
 				"RPC must succeed; if you see 'error reading server preface' here, the production bug is reproduced")
 			g.Expect(state.Leader).NotTo(BeZero())
 		}).Within(10 * time.Second).Should(Succeed())
+	})
+
+	It("creates and deletes a Ledger with the operator credential scopes", func() {
+		caPEM, err := os.ReadFile(certs.CACertFile)
+		Expect(err).To(Succeed())
+		pool := x509.NewCertPool()
+		Expect(pool.AppendCertsFromPEM(caPEM)).To(BeTrue())
+		conn, err := grpc.NewClient(fmt.Sprintf("localhost:%d", ports.GRPC()),
+			grpcprotocol.ClientOption(), grpc.WithTransportCredentials(credentials.NewTLS(&tls.Config{RootCAs: pool, MinVersion: tls.VersionTLS12})))
+		Expect(err).To(Succeed())
+		DeferCleanup(func() { _ = conn.Close() })
+		token, err := signEdDSAJWT(operatorPriv, operatorKeyID, makeEdDSAClaims(
+			"ledger:ReadLedger", "ledger:WriteLedger", "ledger:WriteMetadata", "ledger:ReadOps", "ledger:WriteOps", "ledger:ReadCluster", "ledger:WriteCluster"))
+		Expect(err).To(Succeed())
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		ctx = metadata.AppendToOutgoingContext(ctx, "authorization", "Bearer "+token)
+		client := servicepb.NewBucketServiceClient(conn)
+		_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction("operator-scopes-test", nil)))
+		Expect(err).To(Succeed())
+		_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.DeleteLedgerAction("operator-scopes-test")))
+		Expect(err).To(Succeed())
 	})
 })

@@ -98,6 +98,11 @@ func TestLedgerctlCommand_TLSModes(t *testing.T) {
 	}
 }
 
+func TestLedgerctlCommandUsesManagedCredentialScopes(t *testing.T) {
+	cmd := ledgerctlCommand("addr:8888", tlsModeDisabled, "ledgers", "create", "example")
+	require.Contains(t, cmd[2], "--scopes "+strings.Join(operatorCredentialScopes, ",")+" --expiration")
+}
+
 // TestLedgerctlCommand_TerminatorKeepsConnectionFlagsParsed runs the generated
 // shell against a stub ledgerctl that echoes its argv. A ledger name such as
 // "--help" is valid, so callers pass it after "--"; the connection flags must
