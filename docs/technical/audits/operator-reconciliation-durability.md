@@ -286,6 +286,12 @@ layout. Test both hostPath-to-PVC and PVC-to-hostPath against a Kubernetes API
 server: a fake client does not validate the interim Pod template. Reconstruct
 an interrupted rollout with a fresh reconciler, and inspect retained Pods or
 PVCs when the StatefulSet is absent so source verification cannot be skipped.
+Before deleting a StatefulSet to recreate immutable claim templates, require a
+canonical pinned image tag. A moving tag must fail before deletion, leaving the
+StatefulSet, Pods and PVCs intact. If deletion already happened before a lost
+response or operator restart, retained Pods/PVCs must not let a moving tag
+bypass source verification; pin the tag and resume safely with the same claims
+and data.
 
 ## Completed backup result observation
 
