@@ -35,6 +35,7 @@ func (r *ClusterReconciler) deleteOperatorCredentials(ctx context.Context, ledge
 	if err := r.Delete(ctx, credentials, client.Preconditions{UID: &credentials.UID}); err != nil {
 		return client.IgnoreNotFound(err)
 	}
+
 	return nil
 }
 
@@ -66,7 +67,7 @@ func (r *ClusterReconciler) reconcileOperatorCredentials(ctx context.Context, le
 	credentials := &ledgerv1alpha1.Credentials{ObjectMeta: metav1.ObjectMeta{Name: credentialsName}}
 	_, err := controllerutil.CreateOrUpdate(ctx, r.Client, credentials, func() error {
 		if credentials.ResourceVersion != "" && !ownedOperatorCredentials(credentials, ledger) {
-			return fmt.Errorf("Credentials %q already exists and is not owned by Cluster %s/%s", credentials.Name, ledger.Namespace, ledger.Name)
+			return fmt.Errorf("credentials %q already exists and is not owned by Cluster %s/%s", credentials.Name, ledger.Namespace, ledger.Name)
 		}
 		if credentials.Labels == nil {
 			credentials.Labels = make(map[string]string)

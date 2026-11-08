@@ -191,6 +191,10 @@ func TestStorageRecoveryAuthKeysRolloutDeferredClearsAfterSuccessfulNormalWorklo
 			Name: operatorCredentialsName(ledger),
 			Labels: map[string]string{
 				labelOperatorCredential: operatorCredentialsSelectorValue(ledger),
+				labelManagedBy:          "ledger-operator",
+			},
+			Annotations: map[string]string{
+				annotationOperatorCluster: ledger.Namespace + "/" + ledger.Name,
 			},
 		},
 		Status: ledgerv1alpha1.CredentialsStatus{

@@ -3,7 +3,7 @@ package controller
 import (
 	"context"
 	"errors"
-	"fmt"
+	"strconv"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -111,7 +111,7 @@ func TestReconcileOperatorCredentialsDeletesWhenAuthDisabled(t *testing.T) {
 
 func TestReconcileOperatorCredentialsRejectsForeignCredential(t *testing.T) {
 	for _, enabled := range []bool{true, false} {
-		t.Run(fmt.Sprint(enabled), func(t *testing.T) {
+		t.Run(strconv.FormatBool(enabled), func(t *testing.T) {
 			cluster := authEnabledCluster("ledger", "tenant-a", nil)
 			*cluster.Spec.Auth.Enabled = enabled
 			foreign := &ledgerv1alpha1.Credentials{ObjectMeta: metav1.ObjectMeta{Name: operatorCredentialsName(cluster)}}

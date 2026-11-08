@@ -123,8 +123,12 @@ func checkpointMetadataNodeID(ctx context.Context, node *internal.PerNodeConn) (
 	default:
 		return 0, fmt.Errorf("checkpoint metadata discovery returned invalid node state %q", topology.GetState())
 	}
+	advertisedAddr := node.PeerAddr
+	if advertisedAddr == "" {
+		advertisedAddr = node.Addr
+	}
 	for _, peer := range topology.GetNodes() {
-		if peer.GetServiceAddress() != node.Addr || peer.GetId() == 0 {
+		if peer.GetServiceAddress() != advertisedAddr || peer.GetId() == 0 {
 			continue
 		}
 		if node.NodeID != 0 && node.NodeID != peer.GetId() {
