@@ -7,8 +7,34 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	"go.etcd.io/etcd/server/v3/storage/wal"
 	"go.etcd.io/raft/v3/raftpb"
 )
+
+func TestReceivedSnapshotReplacementSurvivesSegmentRollover(t *testing.T) {
+	dir := t.TempDir()
+	w := newTestWALAt(t, dir)
+	cs := &raftpb.ConfState{Voters: []uint64{1, 2, 3}}
+	require.NoError(t, w.Append(hs(3, 1, 1), []*raftpb.Entry{ent(1, 3, nil)}))
+	require.NoError(t, w.ApplySnapshot(&raftpb.Snapshot{Metadata: snapshotMeta(1, 3, cs)}, nil))
+
+	// A full-segment entry forces etcd WAL to consume its preallocated .tmp file.
+	data := make([]byte, wal.SegmentSizeBytes)
+	require.NoError(t, w.Append(hs(4, 1, 2), []*raftpb.Entry{ent(2, 4, data)}))
+	require.GreaterOrEqual(t, countWALFiles(t, w.etcdWalDir), 2)
+	require.NoError(t, w.Close())
+
+	restarted := newTestWALAt(t, dir)
+	state, _, err := restarted.InitialState()
+	require.NoError(t, err)
+	require.Equal(t, uint64(2), state.GetCommit())
+	last, err := restarted.LastIndex()
+	require.NoError(t, err)
+	require.Equal(t, uint64(2), last)
+	entries, err := restarted.Entries(2, 3, 0)
+	require.NoError(t, err)
+	require.Equal(t, data, entries[0].GetData())
+}
 
 func TestReceivedSnapshotWALReplacementCrashStates(t *testing.T) {
 	t.Parallel()

@@ -1015,6 +1015,12 @@ func (s *DefaultWAL) ApplySnapshot(snap *raftpb.Snapshot, suffix []*raftpb.Entry
 	}
 	close(s.stopPurge)
 	<-s.purgeDone
+	oldWAL := s.wal
+	// Close the old file pipeline while its original path still names the old
+	// directory. Its shutdown removes a preallocated .tmp file by pathname.
+	if err := oldWAL.Close(); err != nil {
+		return fmt.Errorf("closing old WAL before replacement: %w", err)
+	}
 	if err := switchWALDirectory(s.dataDir); err != nil {
 		return fmt.Errorf("switching WAL directory: %w", err)
 	}
@@ -1041,7 +1047,6 @@ func (s *DefaultWAL) ApplySnapshot(snap *raftpb.Snapshot, suffix []*raftpb.Entry
 			return fmt.Errorf("replacement WAL changed Ready suffix entry %d", suffix[i].GetIndex())
 		}
 	}
-	oldWAL := s.wal
 	s.wal = newWAL
 	s.stopPurge = make(chan struct{})
 	s.purgeDone, _ = fileutil.PurgeFileWithDoneNotify(zap.NewNop(), s.etcdWalDir, ".wal", 1, s.purgeInterval, s.stopPurge)
@@ -1050,9 +1055,6 @@ func (s *DefaultWAL) ApplySnapshot(snap *raftpb.Snapshot, suffix []*raftpb.Entry
 	s.entries = append([]*raftpb.Entry(nil), suffix...)
 	s.compactedIndex, s.compactedTerm = snapIndex, snapTerm
 	s.snapshotter.CleanupOlderThan(snapIndex)
-	if err := oldWAL.Close(); err != nil {
-		s.logger.WithFields(map[string]any{"error": err}).Errorf("Failed to close inactive WAL")
-	}
 	if err := cleanupReplacementWALs(s.dataDir); err != nil {
 		s.logger.WithFields(map[string]any{"error": err}).Errorf("Failed to clean inactive WAL directories")
 	}
