@@ -28,6 +28,17 @@ workflow without adding a runner or changing product guarantees.
 
 ## Evidence contract
 
+For a Numscript execution containing account metadata changes but no postings,
+trace the create-transaction HTTP route, service Apply response and `ledgerctl
+numscripts execute` separately. The HTTP route returns 204 with no transaction
+body; a transaction-producing execution still returns 201 with its transaction.
+The CLI must present either result from the same execute command. In public
+LedgerLog JSON, the `ACCOUNT_METADATA_UPDATED` data object is directly an
+account-address-to-metadata map, without an `accountMetadata` wrapper. A
+metadata-only execution cannot claim a transaction ID or accept a transaction reference.
+Check the response discriminator rather than inferring a transaction from the
+request's CreateTransaction payload name.
+
 For each hypothesis, identify a registered entry point, its middleware or
 interceptors, the original input, the exact conversion chain, the downstream
 request and the observable response. Cite the specific authoritative contract

@@ -4,67 +4,16 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
-	"os"
-	"path/filepath"
-	"sort"
 	"strconv"
 	"strings"
 
-	"github.com/AlecAivazis/survey/v2"
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
-
-	"github.com/formancehq/numscript"
 
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/cmdutil"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
-
-// suggestFilePaths provides file path suggestions for autocompletion.
-func suggestFilePaths(toComplete string) []string {
-	if toComplete == "" {
-		toComplete = "."
-	}
-
-	// Get the directory to search in
-	dir := filepath.Dir(toComplete)
-	base := filepath.Base(toComplete)
-
-	// If the path ends with a separator, search in that directory
-	if strings.HasSuffix(toComplete, string(filepath.Separator)) || toComplete == "." {
-		dir = toComplete
-		base = ""
-	}
-
-	// Read the directory
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		return nil
-	}
-
-	var suggestions []string
-
-	for _, entry := range entries {
-		name := entry.Name()
-		// Skip hidden files unless explicitly searching for them
-		if strings.HasPrefix(name, ".") && !strings.HasPrefix(base, ".") {
-			continue
-		}
-
-		// Check if the entry matches the partial input
-		if base == "" || strings.HasPrefix(strings.ToLower(name), strings.ToLower(base)) {
-			fullPath := filepath.Join(dir, name)
-			if entry.IsDir() {
-				fullPath += string(filepath.Separator)
-			}
-
-			suggestions = append(suggestions, fullPath)
-		}
-	}
-
-	return suggestions
-}
 
 // NewCreateCommand creates the transactions create command.
 func NewCreateCommand() *cobra.Command {
@@ -74,13 +23,12 @@ func NewCreateCommand() *cobra.Command {
 		Short:   "Create a new transaction",
 		Long: `Create a new transaction via gRPC.
 
-Postings can be provided via flag, or use a Numscript file.
+Postings can be provided via flags or interactively.
 Flag format: --posting "source,destination,amount,asset[,color]"
 
 Examples:
   ledgerctl transactions create --ledger my-ledger --posting "world,bank,1000,USD"
   ledgerctl transactions create --ledger my-ledger --posting "world,bank,1000,USD" --posting "bank,user,500,USD"
-  ledgerctl transactions create --ledger my-ledger --script transfer.num --var "amount=1000" --var "asset=USD"
   ledgerctl transactions create --ledger my-ledger  # Interactive mode`,
 		Args:              cobra.NoArgs,
 		ValidArgsFunction: cobra.NoFileCompletions,
@@ -89,8 +37,6 @@ Examples:
 
 	cmdutil.AddLedgerFlag(cmd)
 	cmd.Flags().StringArray("posting", nil, "Posting in format: source,destination,amount,asset[,color] (can be repeated)")
-	cmd.Flags().String("script", "", "Path to a Numscript file (mutually exclusive with --posting)")
-	cmd.Flags().StringArray("var", nil, "Script variable in format: name=value (can be repeated, only with --script)")
 	cmd.Flags().String("reference", "", "Transaction reference")
 	cmd.Flags().StringToString("metadata", nil, "Metadata key=value pairs")
 	cmd.Flags().Bool("force", false, "Bypass balance checks (allow accounts to go negative)")
@@ -110,234 +56,34 @@ func runCreate(cmd *cobra.Command, _ []string) error {
 
 	ledgerName, _ := cmd.Flags().GetString(cmdutil.LedgerFlagName)
 
-	// Get flags
+	// Get postings from flags or prompt for them interactively.
 	postingStrs, _ := cmd.Flags().GetStringArray("posting")
-	scriptFile, _ := cmd.Flags().GetString("script")
-	varStrs, _ := cmd.Flags().GetStringArray("var")
-
-	// Validate mutual exclusivity
-	if scriptFile != "" && len(postingStrs) > 0 {
-		pterm.Error.Println("--script and --posting are mutually exclusive")
-
-		return cmdutil.Displayed(errors.New("--script and --posting are mutually exclusive"))
-	}
-
-	if scriptFile == "" && len(varStrs) > 0 {
-		pterm.Error.Println("--var can only be used with --script")
-
-		return cmdutil.Displayed(errors.New("--var can only be used with --script"))
-	}
-
-	var (
-		postings []*commonpb.Posting
-		script   *commonpb.Script
-	)
-
-	switch {
-	case scriptFile != "":
-		// Read Numscript file
-		scriptContent, err := os.ReadFile(scriptFile)
-		if err != nil {
-			pterm.Error.Printfln("Failed to read script file %q", scriptFile)
-
-			return cmdutil.Displayed(fmt.Errorf("failed to read script file %q: %w", scriptFile, err))
-		}
-
-		pterm.Info.Printfln("Using Numscript from %s", pterm.Cyan(scriptFile))
-
-		// Parse variables from flags
-		vars := make(map[string]string)
-
-		for _, v := range varStrs {
-			parts := strings.SplitN(v, "=", 2)
-			if len(parts) != 2 {
-				pterm.Error.Printfln("Invalid variable format %q: expected name=value", v)
-
-				return cmdutil.Displayed(fmt.Errorf("invalid variable format %q: expected name=value", v))
-			}
-
-			vars[strings.TrimSpace(parts[0])] = strings.TrimSpace(parts[1])
-		}
-
-		// Parse the script to get required variables
-		parsed := numscript.Parse(string(scriptContent))
-
-		// Check for parsing errors
-		if errs := parsed.GetParsingErrors(); len(errs) > 0 {
-			pterm.Error.Println("Script parsing errors:")
-
-			for _, e := range errs {
-				pterm.Error.Printfln("  - %s", e.Msg)
-			}
-
-			return cmdutil.Displayed(fmt.Errorf("numscript parse error: %s", numscript.ParseErrorsToString(errs, parsed.GetSource())))
-		}
-
-		// Get required variables and prompt for missing ones
-		neededVars := parsed.GetNeededVariables()
-		if len(neededVars) > 0 {
-			// Sort variable names for consistent ordering
-			varNames := make([]string, 0, len(neededVars))
-			for name := range neededVars {
-				varNames = append(varNames, name)
-			}
-
-			sort.Strings(varNames)
-
-			// Check for missing variables and prompt for them
-			missingVars := make([]string, 0)
-
-			for _, name := range varNames {
-				if _, exists := vars[name]; !exists {
-					missingVars = append(missingVars, name)
-				}
-			}
-
-			if len(missingVars) > 0 {
-				pterm.Println()
-				pterm.DefaultSection.Println("Script Variables")
-				pterm.Info.Printfln("The script requires %d variable(s)", len(neededVars))
-				pterm.Println()
-
-				for _, name := range missingVars {
-					varType := neededVars[name]
-
-					value, err := promptVariable(name, varType)
-					if err != nil {
-						return err
-					}
-
-					vars[name] = value
-				}
-			}
-		}
-
-		script = &commonpb.Script{
-			Plain: string(scriptContent),
-			Vars:  vars,
-		}
-	case len(postingStrs) > 0:
-		// Parse postings from flags
+	var postings []*commonpb.Posting
+	if len(postingStrs) > 0 {
 		for _, ps := range postingStrs {
 			posting, err := parsePosting(ps)
 			if err != nil {
-				pterm.Error.Printfln("Invalid posting %q: %v", ps, err)
-
-				return cmdutil.Displayed(fmt.Errorf("invalid posting %q: %w", ps, err))
+				return fmt.Errorf("invalid posting %q: %w", ps, err)
 			}
-
 			postings = append(postings, posting)
 		}
-	default:
-		// Interactive mode: ask user to choose between Numscript and simple postings
-		options := []string{"Simple postings", "Numscript file"}
-
-		selectedOption, err := cmdutil.PromptSelect(pterm.DefaultInteractiveSelect.
-			WithDefaultText("How do you want to create this transaction?").
-			WithOptions(options))
-		if err != nil {
-			return fmt.Errorf("failed to read input: %w", err)
-		}
-
-		if selectedOption == "Numscript file" {
-			// Prompt for script file path with autocompletion
-			var scriptPath string
-
-			prompt := &survey.Input{
-				Message: "Path to Numscript file:",
-				Suggest: suggestFilePaths,
+	} else {
+		for {
+			posting, err := promptPosting(len(postings) + 1)
+			if err != nil {
+				return err
 			}
-			if err := survey.AskOne(prompt, &scriptPath); err != nil {
+			postings = append(postings, posting)
+			addAnother, err := cmdutil.PromptConfirm(pterm.DefaultInteractiveConfirm.
+				WithDefaultText("Add another posting?").
+				WithDefaultValue(false))
+			if err != nil {
 				return fmt.Errorf("failed to read input: %w", err)
 			}
-
-			scriptContent, err := os.ReadFile(scriptPath)
-			if err != nil {
-				pterm.Error.Printfln("Failed to read script file %q", scriptPath)
-
-				return cmdutil.Displayed(fmt.Errorf("failed to read script file %q: %w", scriptPath, err))
-			}
-
-			// Parse the script to get required variables
-			parsed := numscript.Parse(string(scriptContent))
-
-			// Check for parsing errors
-			if errs := parsed.GetParsingErrors(); len(errs) > 0 {
-				pterm.Error.Println("Script parsing errors:")
-
-				for _, e := range errs {
-					pterm.Error.Printfln("  - %s", e.Msg)
-				}
-
-				return cmdutil.Displayed(fmt.Errorf("numscript parse error: %s", numscript.ParseErrorsToString(errs, parsed.GetSource())))
-			}
-
-			// Get required variables and prompt for all of them
-			vars := make(map[string]string)
-
-			neededVars := parsed.GetNeededVariables()
-			if len(neededVars) > 0 {
-				varNames := make([]string, 0, len(neededVars))
-				for name := range neededVars {
-					varNames = append(varNames, name)
-				}
-
-				sort.Strings(varNames)
-
-				pterm.Println()
-				pterm.Println("Script variables:")
-
-				for _, name := range varNames {
-					varType := neededVars[name]
-
-					value, err := promptVariable(name, varType)
-					if err != nil {
-						return err
-					}
-
-					vars[name] = value
-				}
-			}
-
-			script = &commonpb.Script{
-				Plain: string(scriptContent),
-				Vars:  vars,
-			}
-		} else {
-			// Interactive posting creation
-			pterm.Println()
-			pterm.Println("Create postings (at least one required):")
-			pterm.Println()
-
-			for {
-				posting, err := promptPosting(len(postings) + 1)
-				if err != nil {
-					return err
-				}
-
-				postings = append(postings, posting)
-
-				addAnother, err := cmdutil.PromptConfirm(pterm.DefaultInteractiveConfirm.
-					WithDefaultText("Add another posting?").
-					WithDefaultValue(false))
-				if err != nil {
-					return fmt.Errorf("failed to read input: %w", err)
-				}
-
-				if !addAnother {
-					break
-				}
-
-				pterm.Println()
+			if !addAnother {
+				break
 			}
 		}
-	}
-
-	// Validate that we have either postings or script
-	if len(postings) == 0 && script == nil {
-		pterm.Error.Println("Either postings or a script is required")
-
-		return cmdutil.Displayed(errors.New("either postings or a script is required"))
 	}
 
 	// Get reference (optional)
@@ -364,7 +110,6 @@ func runCreate(cmd *cobra.Command, _ []string) error {
 						Data: &servicepb.LedgerAction_CreateTransaction{
 							CreateTransaction: &servicepb.CreateTransactionPayload{
 								Postings:  postings,
-								Script:    script,
 								Reference: reference,
 								Metadata:  commonpb.MetadataFromGoMap(metadata),
 								Force:     force,
@@ -552,59 +297,6 @@ func parsePosting(s string) (*commonpb.Posting, error) {
 	}
 
 	return commonpb.NewColoredPosting(source, destination, asset, color, amount), nil
-}
-
-// promptVariable prompts the user for a Numscript variable value based on its type.
-func promptVariable(name, varType string) (string, error) {
-	// Build prompt text with type hint
-	var (
-		promptText string
-		hint       string
-	)
-
-	switch varType {
-	case "account":
-		promptText = fmt.Sprintf("Variable %s (%s)", pterm.Cyan("$"+name), pterm.Yellow("account"))
-		hint = "e.g., users:alice, merchants:shop"
-	case "monetary":
-		promptText = fmt.Sprintf("Variable %s (%s)", pterm.Cyan("$"+name), pterm.Yellow("monetary"))
-		hint = "e.g., USD/2 1000, EUR/2 50"
-	case "string":
-		promptText = fmt.Sprintf("Variable %s (%s)", pterm.Cyan("$"+name), pterm.Yellow("string"))
-		hint = "e.g., order-123, ref-abc"
-	case "number":
-		promptText = fmt.Sprintf("Variable %s (%s)", pterm.Cyan("$"+name), pterm.Yellow("number"))
-		hint = "e.g., 42, 100"
-	case "portion":
-		promptText = fmt.Sprintf("Variable %s (%s)", pterm.Cyan("$"+name), pterm.Yellow("portion"))
-		hint = "e.g., 1/4, 25%, 0.25"
-	default:
-		promptText = fmt.Sprintf("Variable %s (%s)", pterm.Cyan("$"+name), pterm.Yellow(varType))
-		hint = ""
-	}
-
-	if hint != "" {
-		pterm.FgGray.Printfln("  %s", hint)
-	}
-
-	value, err := cmdutil.PromptText(pterm.DefaultInteractiveTextInput.
-		WithDefaultText(promptText))
-	if err != nil {
-		if errors.Is(err, cmdutil.ErrNonInteractiveInput) {
-			return "", fmt.Errorf("missing --var for $%s: %w", name, err)
-		}
-
-		return "", fmt.Errorf("failed to read variable %s: %w", name, err)
-	}
-
-	value = strings.TrimSpace(value)
-	if value == "" {
-		pterm.Error.Printfln("Variable $%s is required", name)
-
-		return "", cmdutil.Displayed(fmt.Errorf("variable $%s is required", name))
-	}
-
-	return value, nil
 }
 
 // promptPosting prompts the user to enter a posting interactively using pterm.

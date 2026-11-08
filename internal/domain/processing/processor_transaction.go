@@ -360,7 +360,7 @@ func processMetadataOnly(ledger string, order *raftcmdpb.CreateTransactionOrder,
 		return nil, domain.ErrMetadataOnlyReference
 	}
 
-	limits := domain.MetadataLimitsFromPolicy(ctx.Scope.GetClusterPolicy())
+	limits := ctx.metadataLimits()
 	if metaErr := validateMergedAccountMetadata(accountMetadata, limits); metaErr != nil {
 		return nil, metaErr
 	}

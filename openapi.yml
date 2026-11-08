@@ -4319,7 +4319,8 @@ components:
             64-bit transaction integer, including zero. SET_METADATA also
             contains metadata; DELETE_METADATA contains key. ORDER_SKIPPED
             contains reason and optional context. ACCOUNT_METADATA_UPDATED
-            contains accountMetadata written by a metadata-only script. Other types carry the fields
+            is an account-address-to-metadata map written by a metadata-only script;
+            its data object has account addresses as direct keys. Other types carry the fields
             of their corresponding operation directly. FILL_GAP contains originalId,
             a uint64 encoded as a decimal JSON number. Transaction IDs,
             revertedTransactionId and transaction targetId are JSON numbers;

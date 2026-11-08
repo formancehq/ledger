@@ -9,6 +9,15 @@ It adds scope to the native workflow, not a runner, schema or product guarantee.
 
 ## Evidence contract
 
+A committed `AccountMetadataUpdated` ledger log maps to `SAVED_METADATA` and
+retains its ledger, date and global log sequence. Trace it through `LogToEvent`,
+the sink allow-list and each selected output projection. It represents account
+metadata without a committed transaction or transaction ID. Public LedgerLog
+JSON places account addresses directly under `data`; the analytical projection
+must retain the account-address-to-key/value mapping. A sink that
+filters out `SAVED_METADATA` may still advance past this log according to the
+filtered-log cursor contract.
+
 For each hypothesis identify the exact audited SHA, compiled sink implementation,
 reachable sink configuration, committed source log, selection decision, output
 representation, external effect and acknowledgement, returned error/success,
