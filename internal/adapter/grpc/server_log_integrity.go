@@ -74,6 +74,10 @@ func (s *LogIntegrityServiceServer) GetRangeDigest(ctx context.Context, req *raf
 		return nil, status.Errorf(codes.DataLoss, "reading log head: %v", err)
 	}
 	if head < last {
+		if head == 0 {
+			return nil, status.Error(codes.NotFound, "log is empty")
+		}
+
 		return nil, status.Errorf(codes.DataLoss, "log head %d is below requested sequence %d at applied index %d", head, last, applied)
 	}
 

@@ -27,11 +27,15 @@ type fixtureDigestServer struct {
 	head         uint64
 	applied      uint64
 	dataLoss     bool
+	empty        bool
 }
 
 func (s *fixtureDigestServer) GetRangeDigest(_ context.Context, req *rafttransportpb.GetRangeDigestRequest) (*rafttransportpb.GetRangeDigestResponse, error) {
 	if s.dataLoss {
 		return nil, status.Error(codes.DataLoss, "empty log")
+	}
+	if s.empty {
+		return nil, status.Error(codes.NotFound, "log is empty")
 	}
 	hash := s.hash
 	if s.hashForRange != nil {
@@ -55,6 +59,57 @@ func (s *fixtureDigestServer) GetRangeDigest(_ context.Context, req *rafttranspo
 			return req.GetLastLogSequence()
 		}(),
 	}, nil
+}
+
+func TestObserverKeepsEmptyProbeUntilFirstLog(t *testing.T) {
+	t.Parallel()
+	listener := bufconn.Listen(1024 * 1024)
+	remote := &fixtureDigestServer{empty: true}
+	server := grpc.NewServer()
+	rafttransportpb.RegisterLogIntegrityServiceServer(server, remote)
+	go func() { _ = server.Serve(listener) }()
+	t.Cleanup(server.Stop)
+	conn, err := grpc.NewClient("passthrough:///peer-empty-probe", grpc.WithContextDialer(func(context.Context, string) (net.Conn, error) {
+		return listener.Dial()
+	}), grpc.WithTransportCredentials(insecure.NewCredentials()))
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, conn.Close()) })
+	local := &fixtureDigestServer{dataLoss: true}
+	observer := NewObserver(nil, nil, fixturePeerConnection{conn}, local,
+		logging.FromContext(logging.TestingContext()), noop.NewMeterProvider().Meter("test"))
+	cursor := &peerCursor{next: 1}
+	for range 2 {
+		observer.comparePeerAtHead(t.Context(), 2, cursor, 1, 1, 5, 0)
+		require.Equal(t, uint64(1), cursor.next)
+		require.Empty(t, cursor.lastMismatch)
+	}
+	remote.empty = false
+	local.dataLoss = false
+	local.hash = make([]byte, DigestSize)
+	remote.hash = make([]byte, DigestSize)
+	observer.comparePeerAtHead(t.Context(), 2, cursor, 1, 1, 5, 1)
+	require.Equal(t, uint64(2), cursor.next)
+}
+
+func TestObserverReportsPeerDataLossWithEmptyLocalLog(t *testing.T) {
+	t.Parallel()
+	listener := bufconn.Listen(1024 * 1024)
+	remote := &fixtureDigestServer{dataLoss: true}
+	server := grpc.NewServer()
+	rafttransportpb.RegisterLogIntegrityServiceServer(server, remote)
+	go func() { _ = server.Serve(listener) }()
+	t.Cleanup(server.Stop)
+	conn, err := grpc.NewClient("passthrough:///peer-corrupt-empty-local", grpc.WithContextDialer(func(context.Context, string) (net.Conn, error) {
+		return listener.Dial()
+	}), grpc.WithTransportCredentials(insecure.NewCredentials()))
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, conn.Close()) })
+	local := &fixtureDigestServer{dataLoss: true}
+	observer := NewObserver(nil, nil, fixturePeerConnection{conn}, local,
+		logging.FromContext(logging.TestingContext()), noop.NewMeterProvider().Meter("test"))
+	cursor := &peerCursor{next: 1}
+	observer.comparePeerAtHead(t.Context(), 2, cursor, 1, 1, 5, 0)
+	require.NotEmpty(t, cursor.lastMismatch)
 }
 
 func TestObserverReportsPeerSuffixWithEmptyLocalLog(t *testing.T) {

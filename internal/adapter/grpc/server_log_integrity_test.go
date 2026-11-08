@@ -37,7 +37,7 @@ func TestLogIntegrityServiceAppliedHorizonAndDataLoss(t *testing.T) {
 	require.NoError(t, state.SetAppliedIndex(batch, 5))
 	require.NoError(t, batch.Commit())
 	_, err = service.GetRangeDigest(t.Context(), req)
-	require.Equal(t, codes.DataLoss, status.Code(err), "an absent log at the same apply horizon is a discrepancy")
+	require.Equal(t, codes.NotFound, status.Code(err), "an empty log has a distinct status")
 
 	batch = store.OpenWriteSession()
 	key := dal.NewKeyBuilder().PutZonePrefix(dal.ZoneHistory, dal.SubHistoryLog).PutUint64(1).Build()

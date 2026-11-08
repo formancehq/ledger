@@ -223,12 +223,10 @@ func (o *Observer) comparePeerAtHead(ctx context.Context, id uint64, cursor *pee
 	defer cancel()
 	remote, err := rafttransportpb.NewLogIntegrityServiceClient(conn).GetRangeDigest(callCtx, req)
 	if err != nil {
-		if localHead == 0 && status.Code(err) == codes.DataLoss {
-			advanceCursor(cursor, last)
-
+		if localHead == 0 && status.Code(err) == codes.NotFound {
 			return
 		}
-		if status.Code(err) == codes.DataLoss {
+		if status.Code(err) == codes.DataLoss || status.Code(err) == codes.NotFound {
 			o.reportMismatch(ctx, id, cursor, first, last, applied, fmt.Sprintf("peer data loss: %v", err))
 			advanceCursor(cursor, last)
 		} else {
@@ -248,8 +246,6 @@ func (o *Observer) comparePeerAtHead(ctx context.Context, id uint64, cursor *pee
 		return
 	}
 	if localHead == 0 {
-		advanceCursor(cursor, last)
-
 		return
 	}
 	if remote.GetDigestVersion() != local.GetDigestVersion() ||
