@@ -151,17 +151,23 @@ and staging-path collisions. See `docs/technical/contributing/testing.md`.
 
 ## WAL reclamation after restore
 
-Installing a received Raft snapshot first replaces the in-memory snapshot
-pointer, discards the entire cached entry slice, and raises the in-memory
-HardState commit when necessary. It then writes the full snapshot file and a
-durable guard snapshot record before buffering the HardState WAL record. A
-second identical snapshot record supplies the sync barrier for the HardState.
-This ordering makes every durable prefix recoverable: the old HardState ignores
-an ahead-of-commit guard record, while any durable new HardState already has a
-matching durable snapshot record. After cleaning old snapshot files, the node
-drops the in-memory WAL mutex and releases etcd WAL segment locks through the
-installed index. A durable-write failure is returned but does not roll back the
-earlier in-memory replacement and cache clear.
+After Raft accepts a received snapshot, `ApplySnapshot` writes the full
+snapshot file. It prepares and syncs `etcd.next/` with the snapshot record,
+HardState, and only the Ready entries after the snapshot index. The old WAL
+remains the recovery source until the directory switch begins. Before the
+switch, the node stops the old WAL purger and closes the old WAL while its
+original path still names it. The node then renames the old directory to
+`etcd.previous/` and the candidate to `etcd/`, syncing the parent directory
+after each rename.
+
+The node opens the selected WAL and reads back its HardState and entry suffix.
+Only after validating both does it replace the in-memory snapshot, HardState,
+and cached entries. It then removes older snapshot files and inactive WAL
+directories. A failure before the first rename leaves the in-memory state
+unchanged, although the old WAL may already be closed. A failure during or
+after the switch stops Ready processing. Restart selects a complete WAL from
+the durable directories. No received-snapshot path calls `ReleaseLockTo` on
+the replaced WAL.
 
 Every runtime path that creates, updates, or installs a snapshot serializes the
 complete snapshot-file and WAL-record persistence sequence. The persistence
@@ -175,6 +181,6 @@ snapshot and calls `Compact`, which releases locks through the compaction index.
 Regression coverage must retain both the steady-state `Compact` trigger and the
 received-snapshot trigger.
 
-Lock release is best effort: failure is logged but cannot roll back an already
-persisted snapshot or completed in-memory compaction. The background WAL purger
-removes unlocked segment files.
+Lock release during normal `Compact` is best effort: failure is logged but
+cannot roll back an already persisted snapshot or completed in-memory
+compaction. The background WAL purger removes unlocked segment files.

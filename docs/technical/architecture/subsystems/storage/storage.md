@@ -136,16 +136,18 @@ Raft accepts the received snapshot, `ApplySnapshot` writes its full snapshot
 file, then prepares a new WAL containing a snapshot record, the current
 HardState (term, vote and commit), and only the same Ready entries after the
 snapshot index. It syncs that WAL before retiring the old one. The in-memory
-log is replaced only after the new WAL is active; the node then installs the
-FSM snapshot and releases peer and storage acknowledgements.
+log is replaced only after the new WAL is active and its HardState and entry
+suffix have been read back and validated. The node then installs the FSM
+snapshot and releases peer and storage acknowledgements.
 
 The active path remains `raft/etcd/`, readable by older RC binaries. The
 replacement is prepared at `raft/etcd.next/`. After the new WAL is durable,
-the node renames `etcd/` to `etcd.previous/`, syncs the
-parent directory, renames `etcd.next/` to `etcd/`, and syncs again. Startup
-resolves either interrupted rename before opening the WAL. Only after replay
-of the selected WAL succeeds are the old WAL closed and inactive directories
-deleted. No existing
+the node stops the old WAL purger and closes the old WAL while `etcd/` still
+names it. This stops the old file pipeline before the path is reused. The
+node then renames `etcd/` to `etcd.previous/`, syncs the parent directory,
+renames `etcd.next/` to `etcd/`, and syncs again. Startup resolves either
+interrupted rename before opening the WAL. Only after replay
+of the selected WAL succeeds are inactive directories deleted. No existing
 WAL is migrated on upgrade; replacement happens only on an accepted received
 snapshot. Ordinary Ready persistence does not create a new WAL.
 
@@ -156,11 +158,12 @@ snapshot. Ordinary Ready persistence does not create a new WAL.
 | After the second rename | New `etcd/`; the previous directory is removed after successful replay |
 
 If an error occurs before the first rename, the in-memory WAL state remains
-unchanged and Ready processing stops. An error during or after either rename
-is terminal for the running node; restart completes recovery from the durable
-directories. A stopped node must restart on a version with this recovery logic
-if it stopped between renames. Tests verify the suffix, term, vote, commit,
-ConfState, and each interrupted directory state. Snapshot receipt and sender
+unchanged and Ready processing stops. The old WAL may already be closed.
+An error during or after either rename is terminal for the running node.
+Restart completes recovery from the durable directories. A node stopped
+between renames must restart on a version with this recovery logic. Tests
+verify the suffix, term, vote, commit, ConfState, and each interrupted
+directory state. Snapshot receipt and sender
 delivery feedback are separate lifecycle boundaries; see the
 [consensus snapshot contract](../consensus/raft-consensus.md#receiving-a-snapshot-ready).
 
