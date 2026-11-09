@@ -24,7 +24,7 @@ Enter
 Sleep 1500ms
 
 # Fund the main account for later use
-Type "ledgerctl numscripts execute --ledger demo-numscript --posting 'world,bank:main,100000,USD/2'"
+Type "ledgerctl transactions create --ledger demo-numscript --posting 'world,bank:main,100000,USD/2'"
 Enter
 Sleep 1500ms
 
@@ -74,7 +74,7 @@ Enter
 Sleep 2s
 
 # Fund buyer account
-Type "ledgerctl numscripts execute --ledger demo-numscript --posting 'world,users:alice,25000,USD/2'"
+Type "ledgerctl transactions create --ledger demo-numscript --posting 'world,users:alice,25000,USD/2'"
 Enter
 Sleep 1500ms
 
