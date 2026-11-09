@@ -112,6 +112,48 @@ occur before worker startup; do not claim worker-status replication coverage.
 The adapter and manager diagnostic tests own this oracle; admission's mirror
 configuration test preserves the accepted non-IAM trigger.
 
+## Explicit connection-format projection oracle
+
+`internal/pkg/sensitive/strategies.go` selects PostgreSQL, NATS, ClickHouse or
+HTTP(S) policy by full protobuf field identity. Enumerate all `sensitive_url`
+declarations independently and require a safe representative output for each;
+an unregistered annotated field must be fully masked. PostgreSQL keyword syntax
+is unsupported by projection and must be fully masked for every field. New
+PostgreSQL mirror configurations must fail admission before proposal unless they
+have a generic hierarchical URL shape with an explicit scheme. Unknown and
+uppercase schemes must pass this shape gate, without invoking the PostgreSQL
+driver or reading ambient libpq settings. The worker owns driver-option and IAM
+TLS enforcement before credentials are installed. NATS/ClickHouse sink
+configurations must use their declared connector URL forms. Errors must never echo
+raw input or credential-bearing URL parser errors; exercise the real admission
+path and require the original configuration to remain unchanged. Exercise real
+`Redact` descriptors and registered public boundaries, not a replacement parser.
+
+Preserve PostgreSQL URL/socket controls, including a port-only authority with a
+query-selected socket host, and NATS default-host/port-only URLs. Require safe
+port-only NATS values to survive byte-for-byte so operator equality does not
+remove unchanged persisted sinks; retain token/password masking independently.
+Pathless empty authorities must retain the explicit URL form. Cover the
+upper boundary for named hosts, IPv6 hosts and port-only authorities: 65535
+remains accepted and safely projected, while 65536 is rejected before proposal
+with a credential-free error and fully masked on read. Repeat the boundary
+for each position in a comma-separated ClickHouse authority and reject malformed
+non-final ports while preserving valid multi-host configuration.
+Preserve full masking of legacy keyword
+DSNs, including duplicate/escaped passwords and sslpassword; NATS mixed-scheme lists and bare tokens; ClickHouse
+multi-host authorities, HTTP transport and encoded HTTP proxy credentials;
+HTTP(S) passwordless userinfo; malformed URLs/queries; unsupported cross-format
+values; and depth-exhausted proxies. Each query layer is decoded once and proxy
+nesting is bounded at eight edges. Decode the projected chain to prove the leaf
+at exactly eight edges remains a sanitized URL, while the ninth edge is replaced
+wholesale with `xxxxx`, including for deeper chains. Canary absence alone does
+not prove the traversal bound. Keep safe hosts/paths/options when supported;
+fixed markers are expected for unsupported formats and malformed components.
+Retain current/checkpoint gRPC, routed HTTP and CLI output regressions. Compare
+original protobufs and detached nested slices before/after projection. No worker,
+sink, persistence or signed/audit bytes may be mutated. Strategy regressions live
+in `internal/pkg/sensitive/strategies_test.go` and `projection_test.go`.
+
 ## Surface inventory required at execution
 
 Before testing, build a matrix with one row per sensitive field and columns for
@@ -246,10 +288,14 @@ external secret storage are outside this revision.
 ## LedgerInfo read oracle (EN-1635 / EN-2780)
 
 Seed OAuth secrets, HTTP source/OAuth endpoint URL passwords and passwordless
-HTTP(S) userinfo tokens, and PostgreSQL URL/query/keyword passwords, including escaped
-quotes, duplicate passwords, sslpassword, empty and malformed inputs. Exercise
-routed HTTP get/list and actual service current/checkpoint get/list controllers
-and streams. Serialized canaries must be absent, non-secret connection/OAuth/IAM
+HTTP(S) userinfo tokens, and PostgreSQL URL/query passwords and legacy keyword
+DSNs, including escaped quotes, duplicate passwords, sslpassword, empty and
+malformed inputs. Exercise routed HTTP get/list and actual service
+current/checkpoint get/list controllers
+and streams. Serialized canaries must be absent. Non-secret connection fields
+must survive for supported URL forms; legacy PostgreSQL keyword DSNs and other
+unsupported or malformed formats must be fully replaced with `[redacted]`,
+without requiring their connection metadata to survive. Non-secret OAuth/IAM
 fields must survive, and original nested scopes/configuration must remain intact
 for internal consumers. The shared projection uses the EN-1632/#1977 annotation
 contract; check deep clones and unknown-field removal. Configuration projection
