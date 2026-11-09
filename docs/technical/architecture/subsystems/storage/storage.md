@@ -498,6 +498,40 @@ snapshot becomes the new compacted-prefix boundary, so the previous process's
 margin is deliberately discarded. No separate compaction marker or storage
 format is persisted for this optimization.
 
+#### Replay of truncated tails
+
+etcd's `wal.ReadAll` truncates its result only for entry records above the
+replay snapshot index. A conflict overwrite at index `t` does not drop older
+records above a later snapshot `S >= t`. Suppose a later leader truncated an
+uncommitted tail above `S` and no newer record above `S` was written. Replay
+then returns that stale tail as if it were still in the log. A voter
+restarting with such a tail can report a stale last term and grant its vote to
+a candidate missing committed entries.
+
+`DefaultWAL` validates the replayed entries before Raft reads them. The order
+is:
+
+1. `ReadAll` (including torn-tail repair) loads the HardState and the entries
+   above the snapshot.
+2. The first entry whose term is lower than the snapshot term, or lower than
+   the previous entry's term, is located. A live Raft log never has such an
+   entry.
+3. If that entry's index is above `HardState.Commit`, it and every later entry
+   are dropped from the in-memory log, and an error is logged with the first
+   dropped index and term.
+4. If that entry's index is at or below `HardState.Commit`, startup fails
+   closed. Lowering the commit index to make startup succeed would discard a
+   committed position.
+
+Dropped entries remain on disk as WAL records. They are dropped again on every
+restart until a newer record above the snapshot supersedes them. The WAL file
+format is unchanged.
+
+This check is a safety net. It does not detect a resurrected tail whose terms
+are neither lower than the snapshot term nor decreasing. An example is a later
+leader overwriting a conflicting entry with an older-term entry, after which
+the follower snapshots at that entry.
+
 For detailed explanation, see [WAL Compaction in Data Flows](../../data-flows.md#wal-compaction).
 
 #### Spool Compaction
