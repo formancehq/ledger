@@ -197,8 +197,34 @@ func (p *parsedScript) compiles(vars map[string]string) bool {
 // RecordingStore.MutableReadAttempted.
 type scriptStore struct {
 	s             *LedgerState
+	deltas        admissionDeltas
 	force         bool
 	readAttempted bool
+}
+
+// admissionDeltas is the net balance change the batch's earlier orders leave on
+// each volume, as admission tracks it (batchEffects.balanceDeltas): exact
+// signed arithmetic, no floor and no overflow guard, so a balance read through
+// it can be negative or exceed 2^256.
+type admissionDeltas map[VolumeKey]*big.Int
+
+func (d admissionDeltas) add(key VolumeKey, amount *big.Int) {
+	if cur, ok := d[key]; ok {
+		cur.Add(cur, amount)
+
+		return
+	}
+
+	d[key] = new(big.Int).Set(amount)
+}
+
+// fold moves balances by postings: source down, destination up.
+func (d admissionDeltas) fold(postings []*commonpb.Posting) {
+	for _, p := range postings {
+		amount := p.GetAmount().ToBigInt()
+		d.add(VolumeKey{Address: p.GetSource(), Asset: p.GetAsset(), Color: p.GetColor()}, new(big.Int).Neg(amount))
+		d.add(VolumeKey{Address: p.GetDestination(), Asset: p.GetAsset(), Color: p.GetColor()}, amount)
+	}
 }
 
 func (st *scriptStore) GetBalances(_ context.Context, q numscript.BalanceQuery) (numscript.Balances, error) {
@@ -214,8 +240,12 @@ func (st *scriptStore) GetBalances(_ context.Context, q numscript.BalanceQuery) 
 
 		balance := new(big.Int).Set(maxForceBalance)
 		if !st.force {
-			vp := st.s.vol(VolumeKey{Address: item.Account, Asset: item.Asset, Color: item.Color})
+			key := VolumeKey{Address: item.Account, Asset: item.Asset, Color: item.Color}
+			vp := st.s.vol(key)
 			balance = new(big.Int).Sub(vp.Input.ToBig(), vp.Output.ToBig())
+			if delta, ok := st.deltas[key]; ok {
+				balance.Add(balance, delta)
+			}
 		}
 
 		out = append(out, numscript.BalanceRow{
@@ -346,7 +376,7 @@ func IsScripted(ct *servicepb.CreateTransactionPayload) bool {
 // through, forwarded marks it preload_unavailable, anything else rejects the
 // batch. The workload always sends an idempotency key, so the keyed branches of
 // the classification are the only ones modelled.
-func (s *LedgerState) scriptAdmission(ct *servicepb.CreateTransactionPayload, ov *saveOverlay) (reason string, forwarded bool) {
+func (s *LedgerState) scriptAdmission(ct *servicepb.CreateTransactionPayload, ov *saveOverlay, deltas admissionDeltas) (reason string, forwarded bool) {
 	text, vars, selector, reason, _ := s.scriptOf(ct, ov)
 	if reason != "" {
 		return reason, false
@@ -369,7 +399,7 @@ func (s *LedgerState) scriptAdmission(ct *servicepb.CreateTransactionPayload, ov
 		return freezable(domain.ErrReasonNumscriptParseError)
 	}
 
-	store := &scriptStore{s: s, force: ct.GetForce()}
+	store := &scriptStore{s: s, deltas: deltas, force: ct.GetForce()}
 	if _, err := parsed.result.ResolveDependencies(context.Background(), vars, store); err != nil {
 		var described domain.SerializableError
 		switch {
@@ -407,17 +437,20 @@ type scriptProduct struct {
 // the scope, sign and width checks and the overflow-checked volume update, then
 // the script's metadata validation.
 func (s *LedgerState) produceScript(ct *servicepb.CreateTransactionPayload, touched map[VolumeKey]bool) (scriptProduct, map[VolumeKey]VolumePair, string) {
-	return s.produceScriptWith(ct, nil, touched)
+	return s.produceScriptWith(ct, nil, nil, touched)
 }
 
-// produceScriptWith is produceScript resolving a reference through ov too.
-func (s *LedgerState) produceScriptWith(ct *servicepb.CreateTransactionPayload, ov *saveOverlay, touched map[VolumeKey]bool) (scriptProduct, map[VolumeKey]VolumePair, string) {
+// produceScriptWith is produceScript resolving a reference through ov too. With
+// deltas set it is admission's run: balances read through the batch's exact
+// effects and the FSM's volume guards do not apply, since admission folds a
+// script's postings whether or not the FSM would accept them.
+func (s *LedgerState) produceScriptWith(ct *servicepb.CreateTransactionPayload, ov *saveOverlay, deltas admissionDeltas, touched map[VolumeKey]bool) (scriptProduct, map[VolumeKey]VolumePair, string) {
 	text, vars, _, reason, _ := s.scriptOf(ct, ov)
 	if reason != "" {
 		return scriptProduct{}, nil, reason
 	}
 
-	store := &scriptStore{s: s, force: ct.GetForce()}
+	store := &scriptStore{s: s, deltas: deltas, force: ct.GetForce()}
 
 	result, runErr := parseScript(text).result.Run(context.Background(), vars, store)
 	if runErr != nil {
@@ -463,6 +496,10 @@ func (s *LedgerState) produceScriptWith(ct *servicepb.CreateTransactionPayload, 
 		postings[i] = posting
 
 		// The interpreter decided funding; the FSM only guards the counters.
+		if deltas != nil {
+			continue
+		}
+
 		if _, reason := s.applyPostingsInto(pcv, []*commonpb.Posting{posting}, true, touched); reason != "" {
 			return scriptProduct{}, nil, reason
 		}
@@ -644,6 +681,7 @@ func (g GlobalState) admitScripts(bulk Bulk) (forwarded map[int]bool, reason str
 
 	scratch := g.clone()
 	overlays := map[string]*saveOverlay{}
+	deltas := map[string]admissionDeltas{}
 	for i, req := range bulk.Requests {
 		name := LedgerOf(req)
 
@@ -667,6 +705,10 @@ func (g GlobalState) admitScripts(bulk Bulk) (forwarded map[int]bool, reason str
 			ls = NewLedgerState()
 		}
 
+		if deltas[name] == nil {
+			deltas[name] = admissionDeltas{}
+		}
+
 		skippable := func(reason string) bool {
 			return slices.Contains(apply.GetSkippableReasons(), domain.ReasonCode(reason))
 		}
@@ -679,7 +721,7 @@ func (g GlobalState) admitScripts(bulk Bulk) (forwarded map[int]bool, reason str
 			}
 
 			if IsScripted(ct) {
-				reason, fwd := ls.scriptAdmission(ct, overlays[name])
+				reason, fwd := ls.scriptAdmission(ct, overlays[name], deltas[name])
 				if reason != "" {
 					return nil, reason
 				}
@@ -694,9 +736,9 @@ func (g GlobalState) admitScripts(bulk Bulk) (forwarded map[int]bool, reason str
 					continue
 				}
 
-				ls.foldScriptEffects(ct, overlays[name])
+				ls.foldScriptEffects(ct, overlays[name], deltas[name])
 			} else {
-				ls.foldPostings(ct.GetPostings())
+				deltas[name].fold(ct.GetPostings())
 			}
 
 			for account, mm := range ct.GetAccountMetadata() {
@@ -726,7 +768,7 @@ func (g GlobalState) admitScripts(bulk Bulk) (forwarded map[int]bool, reason str
 				reversed[j] = &commonpb.Posting{Source: p.GetDestination(), Destination: p.GetSource(), Amount: p.GetAmount(), Asset: p.GetAsset(), Color: p.GetColor()}
 			}
 
-			ls.foldPostings(reversed)
+			deltas[name].fold(reversed)
 
 			marked := *orig
 			marked.reverted = true
@@ -756,37 +798,16 @@ func (g GlobalState) admitScripts(bulk Bulk) (forwarded map[int]bool, reason str
 	return forwarded, ""
 }
 
-// foldPostings moves the volumes by postings with no balance, overflow or
-// chart check: admission's batch effects are bare balance deltas.
-func (s *LedgerState) foldPostings(postings []*commonpb.Posting) {
-	for _, p := range postings {
-		var amt uint256.Int
-		p.GetAmount().IntoUint256(&amt)
-
-		src := VolumeKey{Address: p.GetSource(), Asset: p.GetAsset(), Color: p.GetColor()}
-		sv := s.vol(src)
-		sv.Output.Add(&sv.Output, &amt)
-		s.volumes = s.volumes.Set(src, sv)
-
-		dst := VolumeKey{Address: p.GetDestination(), Asset: p.GetAsset(), Color: p.GetColor()}
-		dv := s.vol(dst)
-		dv.Input.Add(&dv.Input, &amt)
-		s.volumes = s.volumes.Set(dst, dv)
-	}
-}
-
 // foldScriptEffects folds what a script's admission-time run produces: its
-// postings and the account metadata it sets. A run that fails folds nothing.
-func (s *LedgerState) foldScriptEffects(ct *servicepb.CreateTransactionPayload, ov *saveOverlay) {
-	before := *s
-
-	product, _, reason := s.produceScriptWith(ct, ov, map[VolumeKey]bool{})
-	*s = before
+// postings into deltas and the account metadata it sets into s. A run that
+// fails folds nothing.
+func (s *LedgerState) foldScriptEffects(ct *servicepb.CreateTransactionPayload, ov *saveOverlay, deltas admissionDeltas) {
+	product, _, reason := s.produceScriptWith(ct, ov, deltas, map[VolumeKey]bool{})
 	if reason != "" {
 		return
 	}
 
-	s.foldPostings(product.postings)
+	deltas.fold(product.postings)
 	for account, values := range product.accountMeta {
 		for key, val := range values {
 			s.metadata = s.metadata.Set(MetaKey{Address: account, Key: key}, val)
