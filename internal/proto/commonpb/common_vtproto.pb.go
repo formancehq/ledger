@@ -3425,6 +3425,24 @@ func (m *FailureDetails_MirrorAssetMappingInvalid) CloneVT() isFailureDetails_Ki
 	return r
 }
 
+func (m *FailureDetails_MetadataOnlyTransactionMetadata) CloneVT() isFailureDetails_Kind {
+	if m == nil {
+		return (*FailureDetails_MetadataOnlyTransactionMetadata)(nil)
+	}
+	r := new(FailureDetails_MetadataOnlyTransactionMetadata)
+	r.MetadataOnlyTransactionMetadata = m.MetadataOnlyTransactionMetadata.CloneVT()
+	return r
+}
+
+func (m *FailureDetails_MetadataOnlyReference) CloneVT() isFailureDetails_Kind {
+	if m == nil {
+		return (*FailureDetails_MetadataOnlyReference)(nil)
+	}
+	r := new(FailureDetails_MetadataOnlyReference)
+	r.MetadataOnlyReference = m.MetadataOnlyReference.CloneVT()
+	return r
+}
+
 func (m *AccountAddressEmptyDetails) CloneVT() *AccountAddressEmptyDetails {
 	if m == nil {
 		return (*AccountAddressEmptyDetails)(nil)
@@ -3770,6 +3788,38 @@ func (m *EmptyTransactionDetails) CloneVT() *EmptyTransactionDetails {
 }
 
 func (m *EmptyTransactionDetails) CloneMessageVT() proto.Message {
+	return m.CloneVT()
+}
+
+func (m *MetadataOnlyTransactionMetadataDetails) CloneVT() *MetadataOnlyTransactionMetadataDetails {
+	if m == nil {
+		return (*MetadataOnlyTransactionMetadataDetails)(nil)
+	}
+	r := new(MetadataOnlyTransactionMetadataDetails)
+	if len(m.unknownFields) > 0 {
+		r.unknownFields = make([]byte, len(m.unknownFields))
+		copy(r.unknownFields, m.unknownFields)
+	}
+	return r
+}
+
+func (m *MetadataOnlyTransactionMetadataDetails) CloneMessageVT() proto.Message {
+	return m.CloneVT()
+}
+
+func (m *MetadataOnlyReferenceDetails) CloneVT() *MetadataOnlyReferenceDetails {
+	if m == nil {
+		return (*MetadataOnlyReferenceDetails)(nil)
+	}
+	r := new(MetadataOnlyReferenceDetails)
+	if len(m.unknownFields) > 0 {
+		r.unknownFields = make([]byte, len(m.unknownFields))
+		copy(r.unknownFields, m.unknownFields)
+	}
+	return r
+}
+
+func (m *MetadataOnlyReferenceDetails) CloneMessageVT() proto.Message {
 	return m.CloneVT()
 }
 
@@ -16217,6 +16267,56 @@ func (this *FailureDetails_MirrorAssetMappingInvalid) EqualVT(thatIface isFailur
 	return true
 }
 
+func (this *FailureDetails_MetadataOnlyTransactionMetadata) EqualVT(thatIface isFailureDetails_Kind) bool {
+	that, ok := thatIface.(*FailureDetails_MetadataOnlyTransactionMetadata)
+	if !ok {
+		return false
+	}
+	if this == that {
+		return true
+	}
+	if this == nil && that != nil || this != nil && that == nil {
+		return false
+	}
+	if p, q := this.MetadataOnlyTransactionMetadata, that.MetadataOnlyTransactionMetadata; p != q {
+		if p == nil {
+			p = &MetadataOnlyTransactionMetadataDetails{}
+		}
+		if q == nil {
+			q = &MetadataOnlyTransactionMetadataDetails{}
+		}
+		if !p.EqualVT(q) {
+			return false
+		}
+	}
+	return true
+}
+
+func (this *FailureDetails_MetadataOnlyReference) EqualVT(thatIface isFailureDetails_Kind) bool {
+	that, ok := thatIface.(*FailureDetails_MetadataOnlyReference)
+	if !ok {
+		return false
+	}
+	if this == that {
+		return true
+	}
+	if this == nil && that != nil || this != nil && that == nil {
+		return false
+	}
+	if p, q := this.MetadataOnlyReference, that.MetadataOnlyReference; p != q {
+		if p == nil {
+			p = &MetadataOnlyReferenceDetails{}
+		}
+		if q == nil {
+			q = &MetadataOnlyReferenceDetails{}
+		}
+		if !p.EqualVT(q) {
+			return false
+		}
+	}
+	return true
+}
+
 func (this *AccountAddressEmptyDetails) EqualVT(that *AccountAddressEmptyDetails) bool {
 	if this == that {
 		return true
@@ -16549,6 +16649,38 @@ func (this *EmptyTransactionDetails) EqualVT(that *EmptyTransactionDetails) bool
 
 func (this *EmptyTransactionDetails) EqualMessageVT(thatMsg proto.Message) bool {
 	that, ok := thatMsg.(*EmptyTransactionDetails)
+	if !ok {
+		return false
+	}
+	return this.EqualVT(that)
+}
+func (this *MetadataOnlyTransactionMetadataDetails) EqualVT(that *MetadataOnlyTransactionMetadataDetails) bool {
+	if this == that {
+		return true
+	} else if this == nil || that == nil {
+		return false
+	}
+	return string(this.unknownFields) == string(that.unknownFields)
+}
+
+func (this *MetadataOnlyTransactionMetadataDetails) EqualMessageVT(thatMsg proto.Message) bool {
+	that, ok := thatMsg.(*MetadataOnlyTransactionMetadataDetails)
+	if !ok {
+		return false
+	}
+	return this.EqualVT(that)
+}
+func (this *MetadataOnlyReferenceDetails) EqualVT(that *MetadataOnlyReferenceDetails) bool {
+	if this == that {
+		return true
+	} else if this == nil || that == nil {
+		return false
+	}
+	return string(this.unknownFields) == string(that.unknownFields)
+}
+
+func (this *MetadataOnlyReferenceDetails) EqualMessageVT(thatMsg proto.Message) bool {
+	that, ok := thatMsg.(*MetadataOnlyReferenceDetails)
 	if !ok {
 		return false
 	}
@@ -31658,6 +31790,48 @@ func (m *FailureDetails_MirrorAssetMappingInvalid) MarshalToSizedBufferVT(dAtA [
 	}
 	return len(dAtA) - i, nil
 }
+func (m *FailureDetails_MetadataOnlyTransactionMetadata) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *FailureDetails_MetadataOnlyTransactionMetadata) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	if m.MetadataOnlyTransactionMetadata != nil {
+		size, err := m.MetadataOnlyTransactionMetadata.MarshalToSizedBufferVT(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		i--
+		dAtA[i] = 0x9
+		i--
+		dAtA[i] = 0xb2
+	}
+	return len(dAtA) - i, nil
+}
+func (m *FailureDetails_MetadataOnlyReference) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *FailureDetails_MetadataOnlyReference) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	if m.MetadataOnlyReference != nil {
+		size, err := m.MetadataOnlyReference.MarshalToSizedBufferVT(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		i--
+		dAtA[i] = 0x9
+		i--
+		dAtA[i] = 0xba
+	}
+	return len(dAtA) - i, nil
+}
 func (m *AccountAddressEmptyDetails) MarshalVT() (dAtA []byte, err error) {
 	if m == nil {
 		return nil, nil
@@ -32344,6 +32518,72 @@ func (m *EmptyTransactionDetails) MarshalToVT(dAtA []byte) (int, error) {
 }
 
 func (m *EmptyTransactionDetails) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	if m == nil {
+		return 0, nil
+	}
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if m.unknownFields != nil {
+		i -= len(m.unknownFields)
+		copy(dAtA[i:], m.unknownFields)
+	}
+	return len(dAtA) - i, nil
+}
+
+func (m *MetadataOnlyTransactionMetadataDetails) MarshalVT() (dAtA []byte, err error) {
+	if m == nil {
+		return nil, nil
+	}
+	size := m.SizeVT()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBufferVT(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *MetadataOnlyTransactionMetadataDetails) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *MetadataOnlyTransactionMetadataDetails) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	if m == nil {
+		return 0, nil
+	}
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if m.unknownFields != nil {
+		i -= len(m.unknownFields)
+		copy(dAtA[i:], m.unknownFields)
+	}
+	return len(dAtA) - i, nil
+}
+
+func (m *MetadataOnlyReferenceDetails) MarshalVT() (dAtA []byte, err error) {
+	if m == nil {
+		return nil, nil
+	}
+	size := m.SizeVT()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBufferVT(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *MetadataOnlyReferenceDetails) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *MetadataOnlyReferenceDetails) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	if m == nil {
 		return 0, nil
 	}
@@ -47756,6 +47996,30 @@ func (m *FailureDetails_MirrorAssetMappingInvalid) SizeVT() (n int) {
 	}
 	return n
 }
+func (m *FailureDetails_MetadataOnlyTransactionMetadata) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.MetadataOnlyTransactionMetadata != nil {
+		l = m.MetadataOnlyTransactionMetadata.SizeVT()
+		n += 2 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	return n
+}
+func (m *FailureDetails_MetadataOnlyReference) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.MetadataOnlyReference != nil {
+		l = m.MetadataOnlyReference.SizeVT()
+		n += 2 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	return n
+}
 func (m *AccountAddressEmptyDetails) SizeVT() (n int) {
 	if m == nil {
 		return 0
@@ -47979,6 +48243,26 @@ func (m *ColorTooLongDetails) SizeVT() (n int) {
 }
 
 func (m *EmptyTransactionDetails) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	n += len(m.unknownFields)
+	return n
+}
+
+func (m *MetadataOnlyTransactionMetadataDetails) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	n += len(m.unknownFields)
+	return n
+}
+
+func (m *MetadataOnlyReferenceDetails) SizeVT() (n int) {
 	if m == nil {
 		return 0
 	}
@@ -70964,6 +71248,88 @@ func (m *FailureDetails) UnmarshalVT(dAtA []byte) error {
 				m.Kind = &FailureDetails_MirrorAssetMappingInvalid{MirrorAssetMappingInvalid: v}
 			}
 			iNdEx = postIndex
+		case 150:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field MetadataOnlyTransactionMetadata", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if oneof, ok := m.Kind.(*FailureDetails_MetadataOnlyTransactionMetadata); ok {
+				if err := oneof.MetadataOnlyTransactionMetadata.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+					return err
+				}
+			} else {
+				v := &MetadataOnlyTransactionMetadataDetails{}
+				if err := v.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+					return err
+				}
+				m.Kind = &FailureDetails_MetadataOnlyTransactionMetadata{MetadataOnlyTransactionMetadata: v}
+			}
+			iNdEx = postIndex
+		case 151:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field MetadataOnlyReference", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if oneof, ok := m.Kind.(*FailureDetails_MetadataOnlyReference); ok {
+				if err := oneof.MetadataOnlyReference.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+					return err
+				}
+			} else {
+				v := &MetadataOnlyReferenceDetails{}
+				if err := v.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+					return err
+				}
+				m.Kind = &FailureDetails_MetadataOnlyReference{MetadataOnlyReference: v}
+			}
+			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
@@ -72268,6 +72634,108 @@ func (m *EmptyTransactionDetails) UnmarshalVT(dAtA []byte) error {
 		}
 		if fieldNum <= 0 {
 			return fmt.Errorf("proto: EmptyTransactionDetails: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		default:
+			iNdEx = preIndex
+			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if (skippy < 0) || (iNdEx+skippy) < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.unknownFields = append(m.unknownFields, dAtA[iNdEx:iNdEx+skippy]...)
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *MetadataOnlyTransactionMetadataDetails) UnmarshalVT(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return protohelpers.ErrIntOverflow
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: MetadataOnlyTransactionMetadataDetails: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: MetadataOnlyTransactionMetadataDetails: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		default:
+			iNdEx = preIndex
+			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if (skippy < 0) || (iNdEx+skippy) < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.unknownFields = append(m.unknownFields, dAtA[iNdEx:iNdEx+skippy]...)
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *MetadataOnlyReferenceDetails) UnmarshalVT(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return protohelpers.ErrIntOverflow
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: MetadataOnlyReferenceDetails: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: MetadataOnlyReferenceDetails: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
 		default:

@@ -7237,6 +7237,130 @@ func NewEmptyTransactionDetailsListReader(s []*EmptyTransactionDetails) EmptyTra
 	return emptyTransactionDetailsListReadonly(s)
 }
 
+// MetadataOnlyTransactionMetadataDetailsReader provides read-only access to MetadataOnlyTransactionMetadataDetails.
+// Call Mutate() to obtain a mutable clone.
+type MetadataOnlyTransactionMetadataDetailsReader interface {
+	Mutate() *MetadataOnlyTransactionMetadataDetails
+}
+
+type metadataOnlyTransactionMetadataDetailsReadonly MetadataOnlyTransactionMetadataDetails
+
+func (r *metadataOnlyTransactionMetadataDetailsReadonly) Mutate() *MetadataOnlyTransactionMetadataDetails {
+	return (*MetadataOnlyTransactionMetadataDetails)(r).CloneVT()
+}
+
+// AsReader returns a read-only view of this MetadataOnlyTransactionMetadataDetails.
+func (m *MetadataOnlyTransactionMetadataDetails) AsReader() MetadataOnlyTransactionMetadataDetailsReader {
+	if m == nil {
+		return nil
+	}
+	return (*metadataOnlyTransactionMetadataDetailsReadonly)(m)
+}
+
+// Mutate returns a mutable deep clone of this MetadataOnlyTransactionMetadataDetails.
+func (m *MetadataOnlyTransactionMetadataDetails) Mutate() *MetadataOnlyTransactionMetadataDetails {
+	return m.CloneVT()
+}
+
+// MetadataOnlyTransactionMetadataDetailsListReader provides read-only iteration over []*MetadataOnlyTransactionMetadataDetails.
+type MetadataOnlyTransactionMetadataDetailsListReader interface {
+	Len() int
+	Get(i int) MetadataOnlyTransactionMetadataDetailsReader
+	Range(yield func(int, MetadataOnlyTransactionMetadataDetailsReader) bool)
+}
+
+type metadataOnlyTransactionMetadataDetailsListReadonly []*MetadataOnlyTransactionMetadataDetails
+
+func (l metadataOnlyTransactionMetadataDetailsListReadonly) Len() int { return len(l) }
+
+func (l metadataOnlyTransactionMetadataDetailsListReadonly) Get(i int) MetadataOnlyTransactionMetadataDetailsReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l metadataOnlyTransactionMetadataDetailsListReadonly) Range(yield func(int, MetadataOnlyTransactionMetadataDetailsReader) bool) {
+	for i, v := range l {
+		var r MetadataOnlyTransactionMetadataDetailsReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewMetadataOnlyTransactionMetadataDetailsListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewMetadataOnlyTransactionMetadataDetailsListReader(s []*MetadataOnlyTransactionMetadataDetails) MetadataOnlyTransactionMetadataDetailsListReader {
+	return metadataOnlyTransactionMetadataDetailsListReadonly(s)
+}
+
+// MetadataOnlyReferenceDetailsReader provides read-only access to MetadataOnlyReferenceDetails.
+// Call Mutate() to obtain a mutable clone.
+type MetadataOnlyReferenceDetailsReader interface {
+	Mutate() *MetadataOnlyReferenceDetails
+}
+
+type metadataOnlyReferenceDetailsReadonly MetadataOnlyReferenceDetails
+
+func (r *metadataOnlyReferenceDetailsReadonly) Mutate() *MetadataOnlyReferenceDetails {
+	return (*MetadataOnlyReferenceDetails)(r).CloneVT()
+}
+
+// AsReader returns a read-only view of this MetadataOnlyReferenceDetails.
+func (m *MetadataOnlyReferenceDetails) AsReader() MetadataOnlyReferenceDetailsReader {
+	if m == nil {
+		return nil
+	}
+	return (*metadataOnlyReferenceDetailsReadonly)(m)
+}
+
+// Mutate returns a mutable deep clone of this MetadataOnlyReferenceDetails.
+func (m *MetadataOnlyReferenceDetails) Mutate() *MetadataOnlyReferenceDetails {
+	return m.CloneVT()
+}
+
+// MetadataOnlyReferenceDetailsListReader provides read-only iteration over []*MetadataOnlyReferenceDetails.
+type MetadataOnlyReferenceDetailsListReader interface {
+	Len() int
+	Get(i int) MetadataOnlyReferenceDetailsReader
+	Range(yield func(int, MetadataOnlyReferenceDetailsReader) bool)
+}
+
+type metadataOnlyReferenceDetailsListReadonly []*MetadataOnlyReferenceDetails
+
+func (l metadataOnlyReferenceDetailsListReadonly) Len() int { return len(l) }
+
+func (l metadataOnlyReferenceDetailsListReadonly) Get(i int) MetadataOnlyReferenceDetailsReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l metadataOnlyReferenceDetailsListReadonly) Range(yield func(int, MetadataOnlyReferenceDetailsReader) bool) {
+	for i, v := range l {
+		var r MetadataOnlyReferenceDetailsReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewMetadataOnlyReferenceDetailsListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewMetadataOnlyReferenceDetailsListReader(s []*MetadataOnlyReferenceDetails) MetadataOnlyReferenceDetailsListReader {
+	return metadataOnlyReferenceDetailsListReadonly(s)
+}
+
 // IdempotencyKeyConflictDetailsReader provides read-only access to IdempotencyKeyConflictDetails.
 // Call Mutate() to obtain a mutable clone.
 type IdempotencyKeyConflictDetailsReader interface {
