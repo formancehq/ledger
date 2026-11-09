@@ -3623,7 +3623,7 @@ ledgerctl kv get <key> --ledger <ledger-name> [--file <path>] [--checkpoint-id <
 ledgerctl kv delete <key> --ledger <ledger-name> [--idempotency-key <key>]
 ```
 
-`put` reads bytes from stdin unless `--file` is set. `get` writes only raw value bytes to stdout unless `--file` is set; it does not append a newline. A missing key returns an error. `--file` on `get` writes a file with owner-only permissions when creating it. Each command also accepts `--timeout` (default `10s`). The standard connection, authentication, signing, response verification and read consistency flags apply.
+`put` reads bytes from stdin unless `--file` is set. `get` writes only raw value bytes to stdout unless `--file` is set; it does not append a newline. A missing key returns an error. `--file` on `get` writes a file with owner-only permissions when creating it. Each command also accepts `--timeout` (default `10s`). Standard connection and authentication flags apply to all three commands. Read consistency flags apply to `get`; request signing and response signature verification apply to `put` and `delete` only. `get` does not verify the returned bytes with `--response-verify-key`.
 
 ```bash
 ledgerctl kv put logo --ledger my-ledger --file logo.png
