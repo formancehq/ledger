@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"sync/atomic"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/stretchr/testify/require"
@@ -221,32 +222,35 @@ func TestPrepareSnapshotHigherFloorCreatesFreshPreparation(t *testing.T) {
 }
 
 func TestPrepareSnapshotSerializesDifferentFollowers(t *testing.T) {
-	store := &blockingCheckpointStore{root: t.TempDir(), firstStarted: make(chan struct{}), secondStarted: make(chan struct{}), releaseFirst: make(chan struct{})}
-	server := newBlockingSnapshotServer(t, store)
-	firstDone := make(chan error, 1)
-	go func() {
-		_, err := server.PrepareSnapshot(t.Context(), &snapshotpb.PrepareSnapshotRequest{NodeId: "7"})
-		firstDone <- err
-	}()
-	<-store.firstStarted
-	secondDone := make(chan error, 1)
-	go func() {
-		_, err := server.PrepareSnapshot(t.Context(), &snapshotpb.PrepareSnapshotRequest{NodeId: "8"})
-		secondDone <- err
-	}()
-	require.Eventually(t, func() bool {
-		server.prepareMu.Lock()
-		defer server.prepareMu.Unlock()
-		_, ok := server.preparations["8"]
+	synctest.Test(t, func(t *testing.T) {
+		store := &blockingCheckpointStore{root: t.TempDir(), firstStarted: make(chan struct{}), secondStarted: make(chan struct{}), releaseFirst: make(chan struct{})}
+		server := newBlockingSnapshotServer(t, store)
+		firstDone := make(chan error, 1)
+		go func() {
+			_, err := server.PrepareSnapshot(t.Context(), &snapshotpb.PrepareSnapshotRequest{NodeId: "7"})
+			firstDone <- err
+		}()
+		<-store.firstStarted
+		secondDone := make(chan error, 1)
+		go func() {
+			_, err := server.PrepareSnapshot(t.Context(), &snapshotpb.PrepareSnapshotRequest{NodeId: "8"})
+			secondDone <- err
+		}()
+		require.Eventually(t, func() bool {
+			server.prepareMu.Lock()
+			defer server.prepareMu.Unlock()
+			_, ok := server.preparations["8"]
 
-		return ok
-	}, time.Second, time.Millisecond)
-	require.Equal(t, int32(1), store.calls.Load())
-	close(store.releaseFirst)
-	<-store.secondStarted
-	require.NoError(t, <-firstDone)
-	require.NoError(t, <-secondDone)
-	require.Equal(t, int32(1), store.maxActive.Load())
+			return ok
+		}, time.Second, time.Millisecond)
+		synctest.Wait() // Both requests must be blocked before the first checkpoint is released.
+		require.Equal(t, int32(1), store.calls.Load())
+		close(store.releaseFirst)
+		<-store.secondStarted
+		require.NoError(t, <-firstDone)
+		require.NoError(t, <-secondDone)
+		require.Equal(t, int32(1), store.maxActive.Load())
+	})
 }
 
 func TestPrepareSnapshotDoesNotShareUnidentifiedRequests(t *testing.T) {

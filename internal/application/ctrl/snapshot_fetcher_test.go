@@ -10,6 +10,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strconv"
 	"sync/atomic"
 	"testing"
 
@@ -195,6 +196,26 @@ func TestGRPCSnapshotFetcher_HappyPath(t *testing.T) {
 	}
 
 	require.Equal(t, int32(1), csState.closeCalled.Load())
+}
+
+func TestGRPCSnapshotFetcher_PrepareSnapshotSendsLocalNodeID(t *testing.T) {
+	t.Parallel()
+
+	const localNodeID, donorNodeID = uint64(7), uint64(11)
+	client := NewMockSnapshotServiceClient(gomock.NewController(t))
+	client.EXPECT().PrepareSnapshot(gomock.Any(), gomock.Any()).
+		DoAndReturn(func(_ context.Context, req *snapshotpb.PrepareSnapshotRequest, _ ...grpc.CallOption) (*snapshotpb.PrepareSnapshotResponse, error) {
+			require.Equal(t, "7", req.GetNodeId())
+			require.NotEqual(t, strconv.FormatUint(donorNodeID, 10), req.GetNodeId())
+			require.Equal(t, uint64(42), req.GetMinAppliedIndex())
+
+			return &snapshotpb.PrepareSnapshotResponse{SessionId: "session", Manifest: &snapshotpb.SnapshotManifest{}}, nil
+		})
+	client.EXPECT().CloseSession(gomock.Any(), gomock.Any()).Return(&snapshotpb.CloseSessionResponse{}, nil)
+	fetcher := &grpcSnapshotFetcher{clientSource: fixedSnapshotClient(client), logger: logging.Testing(), nodeID: localNodeID, parallelism: 1, retryCount: 1, fileRetryCount: 1}
+
+	_, err := fetcher.FetchSnapshot(t.Context(), t.TempDir(), nil, 42)
+	require.NoError(t, err)
 }
 
 func TestGRPCSnapshotFetcher_RetriesTransientReadinessFailure(t *testing.T) {
