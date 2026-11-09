@@ -450,7 +450,7 @@ func (r *ClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (re
 			ObservedGeneration: ledger.Generation,
 		})
 
-		return ctrl.Result{RequeueAfter: authKeysPendingRequeueInterval}, nil
+		return r.reconcilePendingOperatorCredentials(ctx, ledger)
 	}
 	meta.RemoveStatusCondition(&ledger.Status.Conditions, "OperatorCredentialsPending")
 
@@ -540,6 +540,19 @@ func (r *ClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (re
 	}
 
 	return stsResult, nil
+}
+
+// Keep volume deletion protection current while operator credentials are pending.
+func (r *ClusterReconciler) reconcilePendingOperatorCredentials(ctx context.Context, ledger *ledgerv1alpha1.Cluster) (ctrl.Result, error) {
+	result, err := r.reconcileVolumeProtectionPass(ctx, ledger)
+	if err != nil {
+		return ctrl.Result{}, fmt.Errorf("reconciling volume protection while operator credentials pending: %w", err)
+	}
+	if !result.IsZero() {
+		return result, nil
+	}
+
+	return ctrl.Result{RequeueAfter: authKeysPendingRequeueInterval}, nil
 }
 
 // validateCredentialsAuthCompatibility rejects an explicit auth opt-out when
