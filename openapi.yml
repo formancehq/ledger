@@ -782,6 +782,12 @@ paths:
         `filter={"$match":{"reference":"..."}}`, URL-encoded). Requires
         `ledger:ReadTransaction` scope.
 
+        Exact address filters search retained transaction history for any,
+        source and destination roles even when the current account is absent.
+        Address prefixes enumerate current accounts. Purging an EPHEMERAL
+        volume does not remove exact historical address matches. Previously
+        omitted index mappings require an explicit address-index repair.
+
         This is a live read, linearizable by default. `X-Consistency: stale`
         reads the receiving node's local state, which may lag the leader. Every
         projection used by the filter is automatically aligned. Unlike the
@@ -4128,7 +4134,7 @@ components:
       properties:
         url:
           type: string
-          description: NATS server URL
+          description: Comma-separated server URLs, each with nats://, tls://, ws:// or wss://; empty/default hosts and port-only authorities are allowed; explicit ports must be in 0-65535
         topic:
           type: string
           description: NATS topic
@@ -4140,7 +4146,7 @@ components:
       properties:
         dsn:
           type: string
-          description: ClickHouse connection DSN, which may include credentials
+          description: ClickHouse URL with clickhouse://, http:// or https:// and a hostname; may include credentials and comma-separated hosts; each explicit host port must be in 0-65535
           example: clickhouse://user:pass@host:9000/db
         table:
           type: string
@@ -5823,7 +5829,7 @@ components:
       properties:
         dsn:
           type: string
-          description: Connection string with password material masked; malformed values are fully redacted
+          description: PostgreSQL URL with password material masked; legacy keyword DSNs and malformed values are fully redacted
         awsIamAuth:
           $ref: '#/components/schemas/MirrorAwsIamAuthRead'
 
@@ -5870,7 +5876,7 @@ components:
           description: OAuth2 scopes (HTTP source only)
         dsn:
           type: string
-          description: PostgreSQL connection string (required for PostgreSQL source)
+          description: Hierarchical URL with an explicit scheme (required for PostgreSQL source); admission checks generic URL shape, requires explicit ports in 0-65535 and rejects keyword DSNs. The worker validates PostgreSQL schemes/options and IAM TLS before connecting; use postgres:// or postgresql://
         batchSize:
           type: integer
           minimum: 0

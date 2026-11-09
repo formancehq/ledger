@@ -165,6 +165,24 @@ the full `0..18446744073709551615` range; clients must use lossless integer
 parsing above JavaScript's safe-integer range. v2 stats/log IDs
 use numeric JSON with `integer/int64` or `integer/bigint`; v2 has no equivalent
 mirror progress.
+Connection redaction selects formats by declared protobuf field identity.
+Supported PostgreSQL, NATS, ClickHouse and HTTP(S) values retain safe connection
+information; unsupported cross-format values and unregistered annotated fields
+are fully masked. New PostgreSQL mirror configurations require a generic
+hierarchical URL with an explicit scheme; the worker validates PostgreSQL
+schemes/options and IAM TLS before installing credentials. Admission only checks
+shape and required IAM region; invalid driver settings can be committed and
+then fail source construction. There is no equivalent mirror-creation API in v2;
+new NATS sinks require an explicit scheme per server; PostgreSQL and NATS retain
+empty/default hosts and port-only authorities. Explicit ports on named hosts,
+IPv6 hosts and port-only authorities must be in the 0–65535 range, including
+each host in a comma-separated ClickHouse authority. ClickHouse
+sinks require `clickhouse://`, `http://` or `https://`. Invalid forms fail before Raft with safe
+`VALIDATION` errors (HTTP 400 / gRPC InvalidArgument). Existing committed values
+remain usable and legacy keyword DSNs are fully masked on reads. Endpoints and
+envelopes are unchanged. The v2 API has no equivalent typed mirror/sink
+configuration endpoints, so this v3-specific input policy has no v2 request to
+preserve; see [sensitive projection](../architecture/subsystems/api/sensitive-projection.md).
 Nested read mirror configuration masks passwordless HTTP(S) URL userinfo as
 well as passwords and uses a distinct schema
 from unchanged flat creation input. Read rewrite actions model protojson
@@ -716,6 +734,23 @@ The v2 schemaVersion/parallel options are not added to v3 by this correction.
 - ✅ Persistence modes: `NORMAL` (default), `EPHEMERAL` (purged when zero balance), `TRANSIENT` (never persisted, must be zero at end of batch)
 
 ### 6. Transaction Read
+
+Exact transaction address filters use retained historical mappings for any,
+source and destination roles, independently of current account existence. An
+EPHEMERAL volume purge must therefore preserve funding and draining transaction
+matches. Address prefixes continue enumerating current accounts; historical
+prefix expansion is not supported. Indexed transaction metadata and reference
+searches retain their existing behavior. Account-target exact lookup still
+requires current account existence.
+
+This restores the historical-search principle of v2: `release/v2.4` at
+`21d1e51378b4dbb6b9858313cafc2d8bab62f329`,
+`internal/storage/ledger/transactions.go`, records posting sources/destinations
+on transactions and filters those arrays without probing current accounts.
+V3 retains its existing routes, envelopes, filter syntax, index requirements,
+errors and pagination. No v2 EPHEMERAL lifecycle equivalence is implied. Existing
+omitted v3 mappings need the explicit repair described in
+[Upgrades](../../ops/upgrades.md); restarting alone does not reconstruct them.
 
 **Endpoint:** `GET /v3/{ledgerName}/transactions/{transactionId}`
 
