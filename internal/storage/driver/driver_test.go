@@ -15,7 +15,6 @@ import (
 	systemstore "github.com/formancehq/ledger/internal/storage/system"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
-	"math/rand"
 	"sync"
 	"testing"
 )
@@ -31,18 +30,20 @@ func TestLedgersCreate(t *testing.T) {
 		systemstore.NewStoreFactory(),
 	)
 
-	buckets := []string{"bucket1", "bucket2"}
+	// Fresh names keep every run on the first-creation path, including -count runs.
+	prefix := uuid.NewString()[:8]
+	buckets := []string{prefix + "_1", prefix + "_2"}
 	const countLedgers = 30
 
 	wg := sync.WaitGroup{}
-	wg.Add(countLedgers)
+	start := make(chan struct{})
 	errors := make(chan error, countLedgers)
 	for i := range countLedgers {
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
+			<-start
 
-			l, err := ledger.New(fmt.Sprintf("ledger%d", i), ledger.Configuration{
-				Bucket: buckets[rand.Int31n(int32(len(buckets)))],
+			l, err := ledger.New(fmt.Sprintf("%s_ledger%d", prefix, i), ledger.Configuration{
+				Bucket: buckets[i%len(buckets)],
 			})
 			if err != nil {
 				errors <- err
@@ -54,8 +55,9 @@ func TestLedgersCreate(t *testing.T) {
 				errors <- err
 				return
 			}
-		}()
+		})
 	}
+	close(start)
 	wg.Wait()
 
 	close(errors)

@@ -10,3 +10,6 @@ dumps
 !.envrc
 Pulumi.*.yaml
 coverage.txt
+
+# Locally built protobuf compiler plugins.
+/build/protoc-gen-*
