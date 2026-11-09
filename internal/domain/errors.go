@@ -200,6 +200,31 @@ type UncommittedFailure interface {
 	UncommittedFailure()
 }
 
+// ProcessingFailureOf returns the first error in err's tree that order
+// processing propagates as its outcome: an audited SerializableError or an
+// UncommittedFailure. The tree is walked in the same depth-first pre-order as
+// errors.As.
+func ProcessingFailureOf(err error) (Describable, bool) {
+	switch e := err.(type) { //nolint:errorlint // deliberate per-node check; the walk unwraps the tree itself
+	case nil:
+		return nil, false
+	case SerializableError:
+		return e, true
+	case UncommittedFailure:
+		return e, true
+	case interface{ Unwrap() error }:
+		return ProcessingFailureOf(e.Unwrap())
+	case interface{ Unwrap() []error }:
+		for _, member := range e.Unwrap() {
+			if failure, ok := ProcessingFailureOf(member); ok {
+				return failure, true
+			}
+		}
+	}
+
+	return nil, false
+}
+
 // These failures describe preparation, infrastructure, or invariant failures.
 // Retrying or repairing the producer can change their outcome, so the FSM must
 // not persist them as a rejected business command or freeze an idempotency key.
@@ -520,7 +545,7 @@ func (errStaleProposal) Error() string {
 func (errStaleProposal) Kind() ErrorKind { return KindUnavailable }
 func (errStaleProposal) Reason() string  { return ErrReasonStaleProposal }
 
-var ErrStaleProposal SerializableError = errStaleProposal{}
+var ErrStaleProposal Describable = errStaleProposal{}
 
 // ErrStaleInputsResolution — the state admission read to compute an order's
 // preload set changed before the FSM applied it. The preloaded key set may
@@ -543,7 +568,7 @@ func (errStaleInputsResolution) Error() string {
 func (errStaleInputsResolution) Kind() ErrorKind { return KindUnavailable }
 func (errStaleInputsResolution) Reason() string  { return ErrReasonStaleInputsResolution }
 
-var ErrStaleInputsResolution SerializableError = errStaleInputsResolution{}
+var ErrStaleInputsResolution Describable = errStaleInputsResolution{}
 
 // ErrPreloadUnavailable — admission could not build the preload set for an order
 // (e.g. Numscript dependency discovery failed against current state). When the
@@ -1276,7 +1301,7 @@ func (*ErrNumscriptCompile) Reason() string  { return ErrReasonNumscriptCompileE
 // compile reason but cannot be committed as a deterministic script rejection.
 type unclassifiedNumscriptCompile struct{ detail string }
 
-func NewUnclassifiedNumscriptCompile(detail string) SerializableError {
+func NewUnclassifiedNumscriptCompile(detail string) Describable {
 	return &unclassifiedNumscriptCompile{detail: detail}
 }
 
@@ -1612,7 +1637,7 @@ func (errMetadataLimitsUnconfigured) Error() string {
 func (errMetadataLimitsUnconfigured) Kind() ErrorKind { return KindValidation }
 func (errMetadataLimitsUnconfigured) Reason() string  { return ErrReasonClusterPolicyInvalid }
 
-var ErrMetadataLimitsUnconfigured SerializableError = errMetadataLimitsUnconfigured{}
+var ErrMetadataLimitsUnconfigured Describable = errMetadataLimitsUnconfigured{}
 
 // ErrCheckpointNotFound — a DeleteQueryCheckpoint targeted a checkpoint ID that
 // is not live (never created, or already deleted). KindNotFound.

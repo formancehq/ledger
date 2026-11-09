@@ -6,7 +6,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
 
-func processAddEventsSink(order *raftcmdpb.AddEventsSinkOrder, ctx *Context) (*commonpb.LogPayload, domain.SerializableError) {
+func processAddEventsSink(order *raftcmdpb.AddEventsSinkOrder, ctx *Context) (*commonpb.LogPayload, domain.Describable) {
 	cfg := order.GetConfig()
 
 	if cfg.GetBatchSize() > domain.MaxSinkBatchSize {
@@ -35,7 +35,7 @@ func processAddEventsSink(order *raftcmdpb.AddEventsSinkOrder, ctx *Context) (*c
 	}, nil
 }
 
-func processRemoveEventsSink(order *raftcmdpb.RemoveEventsSinkOrder, ctx *Context) (*commonpb.LogPayload, domain.SerializableError) {
+func processRemoveEventsSink(order *raftcmdpb.RemoveEventsSinkOrder, ctx *Context) (*commonpb.LogPayload, domain.Describable) {
 	existing, err := ctx.Scope.GetSinkConfig(order.GetName())
 	if err != nil {
 		return nil, domain.StoreFailure("checking existing sink "+order.GetName(), err)

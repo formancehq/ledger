@@ -40,7 +40,7 @@ func vmTestScope(t *testing.T) *MockScope {
 	return mockStore
 }
 
-func produceTextScript(t *testing.T, cache *numscript.NumscriptCache, vars map[string]string) (*produceResult, domain.SerializableError) {
+func produceTextScript(t *testing.T, cache *numscript.NumscriptCache, vars map[string]string) (*produceResult, domain.Describable) {
 	t.Helper()
 	producer := &numscriptPostingProducer{
 		cache:      cache,

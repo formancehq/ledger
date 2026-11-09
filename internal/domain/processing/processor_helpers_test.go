@@ -15,6 +15,16 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
+// auditedFacts returns the audited failure facts of d, failing the test when d
+// is not an audited domain.SerializableError.
+func auditedFacts(t *testing.T, d domain.Describable) domain.FailureFacts {
+	t.Helper()
+	audited, ok := d.(domain.SerializableError)
+	require.Truef(t, ok, "%T is not an audited failure", d)
+
+	return domain.FailureFactsOf(audited)
+}
+
 // noopSink drops every absorbed (order, log) pair. Used by
 // ProcessOrders tests that don't care about the cross-order signal side
 // of the contract — the per-log dispatch is tested separately in

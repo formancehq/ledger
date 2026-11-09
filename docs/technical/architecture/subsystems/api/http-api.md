@@ -573,12 +573,15 @@ so a layer commits only to what it can actually honour (EN-2081):
 |---|---|---|---|
 | `Classifiable` | `Kind() ErrorKind` | anything that names no business outcome — the gRPC envelope guard, the admission idempotency-key and checkpoint-order guards, the read path's prepared-query argument checks | selects the status code; sends no `ErrorInfo` and no `errorCode` beyond the coarse kind-level one (a bulk element answers the generic `ERROR`) |
 | `Describable` | `Reason() string` | every domain business error | adds the `ErrorInfo` / `errorCode` clients pattern-match on |
-| `SerializableError` | `FailureDetails()` | FSM-returned errors, including uncommitted technical failures | supplies typed details for audited outcomes; uncommitted failures have no audited details |
+| `SerializableError` | `FailureDetails()` | audited FSM rejections | supplies the typed details persisted in the audit chain and the idempotency registry |
 
-The tiers are enforced by the type system rather than by convention. The FSM
-audited order path (`internal/domain/processing`, `internal/infra/state`) types
-its error returns as `SerializableError`. `UncommittedFailure` returns before
-`buildAuditFailure` and before the idempotency outcome is frozen. A separate
+The tiers are enforced by the type system rather than by convention. Order
+processing (`internal/domain/processing`) types its error returns as
+`Describable`. A technical failure implements `UncommittedFailure` instead of
+`SerializableError`: the FSM (`internal/infra/state`) returns it before
+`buildAuditFailure` and before the idempotency outcome is frozen, and narrows
+every other failure to `SerializableError`, which `buildAuditFailure` requires.
+A failure that is neither fails the apply loudly. A separate
 `PublicFailureFacts()` implementation may provide a
 public code and facts without admitting the error to the audit chain. This is
 used for admission and read failures such as plan-size and aggregate overflow.
