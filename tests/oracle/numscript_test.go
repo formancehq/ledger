@@ -6,6 +6,7 @@ import (
 	"math/rand"
 	"testing"
 
+	"github.com/holiman/uint256"
 	"github.com/stretchr/testify/require"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
@@ -330,6 +331,46 @@ send [USD 1] (
 	fwd, reason = strict.State.admitScripts(bulkOf(oracletest.AddAccountMetaReq("cfg:1", "dst", commonpb.NewStringValue("b:1")), readsMeta))
 	require.Empty(t, reason)
 	require.False(t, fwd[1])
+}
+
+// Admission's batch effects are exact: a debit the FSM would refuse as a
+// volume overflow still leaves the account negative for a later balance(), so
+// the script is forwarded and the batch fails PRELOAD_UNAVAILABLE in the FSM,
+// not VOLUME_OVERFLOW.
+func TestScript_AdmissionEffectsDoNotWrap(t *testing.T) {
+	t.Parallel()
+
+	var maxAmount uint256.Int
+	maxAmount.SetAllOne()
+	huge := &commonpb.Posting{Source: "a:1", Destination: "b:1", Amount: commonpb.NewUint256(&maxAmount), Asset: "USD"}
+	two := &commonpb.Posting{Source: "a:1", Destination: "b:1", Amount: commonpb.NewUint256FromUint64(2), Asset: "USD"}
+
+	// a:1 holds 10 and has already sent 2^256-1 under force: its output is
+	// one short of the counter's ceiling.
+	seeded := NewGlobalState().Apply(bulkOf(oracletest.TxReqL("L", "world", "a:1", "USD", 10)))
+	require.True(t, seeded.OK)
+	seeded = seeded.State.Apply(bulkOf(oracletest.TxReqMulti(true, huge)))
+	require.True(t, seeded.OK)
+
+	readsBalance := scriptReq("L", `vars {
+	monetary $m = balance(@a:1, USD)
+}
+send $m (
+	source = @world
+	destination = @c:1
+)`, nil, false)
+	bulk := bulkOf(oracletest.TxReqMulti(true, two), readsBalance)
+
+	// The FSM alone refuses the debit: a:1's output cannot take two more.
+	require.Equal(t, domain.ErrReasonVolumeOverflow, seeded.State.ApplyAdmitted(bulk, Admission{}).Reason)
+
+	// Admission folds the debit exactly, reads a:1 at 10-(2^256-1)-2 and
+	// forwards the script; wrapped at 2^256 the output would read 1 and the
+	// balance 9.
+	fwd, reason := seeded.State.admitScripts(bulk)
+	require.Empty(t, reason)
+	require.True(t, fwd[1])
+	require.Equal(t, domain.ErrReasonPreloadUnavailable, seeded.State.Apply(bulk).Reason)
 }
 
 // scriptFixtures is a ledger holding a transaction under reference R and the
