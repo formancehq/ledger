@@ -34,7 +34,7 @@ Examples:
 	}
 
 	cmdutil.AddLedgerFlag(cmd)
-	cmd.Flags().String("creation-key-prefix", "", "Filter by audited singleton creation key prefix (attribution only, not authorization; uses the idempotency-key audit index)")
+	cmd.Flags().String("creation-key-prefix", "", "Filter by audited creation key prefix: indexes created exactly once by a successful entry with this key prefix, standalone or in a batch (attribution only, not authorization; uses the idempotency-key audit index)")
 	cmdutil.AddOutputFlags(cmd)
 	cmd.Flags().Duration("timeout", cmdutil.DefaultTimeout, "Request timeout")
 

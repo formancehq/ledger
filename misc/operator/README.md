@@ -172,10 +172,17 @@ does not perform this read.
 
 ## Declarative ledger indexes
 
-For a Ledger with `spec.indexes`, reconciliation creates missing indexes in
-separate batches tagged with the Ledger CR UID through the existing idempotency
-key. It reconstructs `status.appliedIndexes` from successful audit creation
-records matching the current index creation dates. A crash, lost CLI response,
+For a Ledger with `spec.indexes`, the indexes declared at creation are created
+atomically with the ledger, under its creation key
+(`operator-ledger-create:<Ledger CR UID>:<generation>`); reconciliation creates
+later ones in separate batches tagged with the Ledger CR UID through the
+existing idempotency key. It reconstructs `status.appliedIndexes` from
+successful audit creation records under either key matching the current index
+creation dates, so an index declared at creation is dropped once removed from
+the spec. Attribution runs through the `ledgerctl` of the Ledger image: with an
+older image, whose attribution only recognizes standalone creations, indexes
+declared at creation stay in place when removed from the spec; nothing else
+is dropped. A crash, lost CLI response,
 or failed status update therefore does not permanently lose attribution.
 Strict creation conflicts are surfaced and retried without adopting the index.
 
