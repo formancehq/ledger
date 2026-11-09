@@ -198,12 +198,10 @@ migrates legacy Membership service addresses to the dedicated peer port after
 WAL replay and snapshot recovery. Do not run rc.3 and rc.4 voters together
 during this migration.
 
-The automatic address migration requires every persisted RC.3 service address
-to use the public gRPC port configured on the starting node. RC.3 records do
-not contain the per-member peer port, so a cluster with distinct public ports
-cannot be converted safely from those records alone. In that case startup
-fails before writing the membership format revision or changing any address;
-resolve the per-member address mapping before retrying the upgrade.
+Before the membership format revision is written, RC.3 service addresses are
+converted to the configured common peer port. The local row may already have
+that peer address because startup refreshes it before migration. Its address
+is preserved, and the revision is committed with the remaining conversions.
 
 Before publishing an RC update, demonstrate the applicable upgrade class from
 the immediately preceding RC binary to the target binary in one cluster. For a

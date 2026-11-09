@@ -255,35 +255,42 @@ func TestMembership_PreservesCurrentPeerPortsOnStartup(t *testing.T) {
 	assert.Equal(t, "pod-1:8892", m.PeerAddresses()[2].ServiceAddress)
 }
 
-func TestMembership_RejectsAmbiguousLegacyPortWithoutAdvancingRevision(t *testing.T) {
+func TestMembership_MigratesLegacyPortsWithRefreshedSelf(t *testing.T) {
 	t.Parallel()
 
 	ps := newTestPeerStore(t)
 	putLegacyPeer(t, ps, 1, "localhost:7777", "localhost:8888", fixedInstanceID(1))
-	// The second member's port cannot be classified from this node's settings.
+	// The members may have had different public ports before RC.4.
 	putLegacyPeer(t, ps, 2, "localhost:7778", "localhost:8899", fixedInstanceID(2))
+	putLegacyPeer(t, ps, testSelfNodeID, testSelfRaftAddr, "localhost:9999", fixedInstanceID(0x42))
 
-	_, err := NewMembershipWithServicePorts(
+	m, err := NewMembershipWithServicePort(
 		ps,
 		noopTransport{},
 		noopPool{},
 		testSelfNodeID,
 		testSelfRaftAddr,
-		testSelfServiceAddr,
+		"localhost:9999",
 		9999,
-		8888,
 		fixedInstanceID(0x42),
 		logging.Testing(),
 	)
-	require.ErrorContains(t, err, "cannot classify legacy service address")
-	require.ErrorContains(t, ps.migrateLegacyServiceAddressesFromPort(9999, 8888), "cannot classify legacy service address")
+	require.NoError(t, err)
+	require.Equal(t, "localhost:9999", m.PeerAddresses()[1].ServiceAddress)
+	require.Equal(t, "localhost:9999", m.PeerAddresses()[2].ServiceAddress)
+	require.NoError(t, m.Rehydrate())
 	revision, err := ps.membershipFormatRevision()
 	require.NoError(t, err)
-	require.Equal(t, membershipFormatRevisionLegacy, revision)
+	require.Equal(t, membershipFormatRevisionPeerPort, revision)
 	addresses, err := ps.LoadAll()
 	require.NoError(t, err)
-	require.Equal(t, "localhost:8888", addresses[1].ServiceAddress)
-	require.Equal(t, "localhost:8899", addresses[2].ServiceAddress)
+	require.Equal(t, "localhost:9999", addresses[1].ServiceAddress)
+	require.Equal(t, "localhost:9999", addresses[2].ServiceAddress)
+	require.Equal(t, "localhost:9999", addresses[testSelfNodeID].ServiceAddress)
+	restarted, err := NewMembershipWithServicePort(ps, noopTransport{}, noopPool{}, testSelfNodeID,
+		testSelfRaftAddr, "localhost:9999", 9999, fixedInstanceID(0x42), logging.Testing())
+	require.NoError(t, err)
+	require.Equal(t, "localhost:9999", restarted.PeerAddresses()[2].ServiceAddress)
 }
 
 func TestPeerStore_RejectsInvalidInstanceID(t *testing.T) {
