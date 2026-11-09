@@ -127,8 +127,8 @@ func PrepareProposal(proposal *raftcmdpb.Proposal) (PreparedProposal, error) {
 
 // ValidateFinalProposal verifies that the declaration carried by the
 // serialized proposal matches both its semantic payload and the metadata
-// captured by the proposal factory. It is a defensive check at the Raft
-// boundary; normal admission performs the same gate before reserving an index.
+// captured by the proposal factory. The factory runs this before queueing the
+// proposal, keeping full decoding off the Raft orchestrator.
 func ValidateFinalProposal(data []byte, declared []CapabilityID) error {
 	proposal := new(raftcmdpb.Proposal)
 	if err := proposal.UnmarshalVT(data); err != nil {

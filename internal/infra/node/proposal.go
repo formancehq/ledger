@@ -60,6 +60,12 @@ func NewProposal(commandID uint64, command *raftcmdpb.Proposal) (*Proposal, erro
 	}
 
 	proposal := newProposal(commandID, data, prepared.RequiredCapabilities())
+	// Validate the complete serialized command before it enters the Raft queue.
+	// SetPredictedIndex only appends a fixed-width index field afterward; it
+	// cannot change the payload or its capability declaration.
+	if err := capabilities.ValidateFinalProposal(data, proposal.requiredCapabilities); err != nil {
+		return nil, err
+	}
 	if policy := command.GetSetClusterPolicy().GetPolicy(); policy != nil {
 		for _, activation := range policy.GetCapabilityActivations() {
 			if activation != nil && activation.GetActive() {

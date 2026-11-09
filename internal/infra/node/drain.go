@@ -49,11 +49,10 @@ func (node *Node) waitForPriorMembership(ctx context.Context) error {
 	}
 	cmd := commands.NewCommand()
 	cmd.CallerSnapshot = commands.SystemCallerSnapshot(commands.ComponentClusterPeer)
-	data, err := cmd.MarshalVT()
+	proposal, err := NewProposal(cmd.GetId(), cmd)
 	if err != nil {
-		return fmt.Errorf("marshaling membership barrier: %w", err)
+		return fmt.Errorf("preparing membership barrier: %w", err)
 	}
-	proposal := newProposal(cmd.GetId(), data, nil)
 	proposal.membershipBarrier = true
 	node.indexTracker.Lock()
 	future, err := node.Propose(ctx, proposal)
@@ -114,11 +113,10 @@ func (node *Node) BeginDrain(ctx context.Context, epoch string, members []uint64
 		Kind: &raftcmdpb.TechnicalUpdate_DrainMarker{DrainMarker: &raftcmdpb.DrainMarker{Epoch: epoch, Members: append([]uint64(nil), members...)}},
 	})
 	cmd.CallerSnapshot = commands.SystemCallerSnapshot(commands.ComponentClusterPeer)
-	data, err := cmd.MarshalVT()
+	proposal, err := NewProposal(cmd.GetId(), cmd)
 	if err != nil {
-		return nil, fmt.Errorf("marshaling drain marker: %w", err)
+		return nil, fmt.Errorf("preparing drain marker: %w", err)
 	}
-	proposal := newProposal(cmd.GetId(), data, nil)
 	proposal.drainMarker = true
 	proposal.expectedTerm = expectedTerm
 
@@ -178,11 +176,10 @@ func (node *Node) EndDrain(ctx context.Context, epoch string, expectedTerm uint6
 		Kind: &raftcmdpb.TechnicalUpdate_DrainRelease{DrainRelease: &raftcmdpb.DrainRelease{Epoch: epoch}},
 	})
 	cmd.CallerSnapshot = commands.SystemCallerSnapshot(commands.ComponentClusterPeer)
-	data, err := cmd.MarshalVT()
+	proposal, err := NewProposal(cmd.GetId(), cmd)
 	if err != nil {
-		return nil, fmt.Errorf("marshaling drain release: %w", err)
+		return nil, fmt.Errorf("preparing drain release: %w", err)
 	}
-	proposal := newProposal(cmd.GetId(), data, nil)
 	proposal.releaseMarker = true
 	proposal.expectedTerm = expectedTerm
 	node.indexTracker.Lock()
