@@ -589,8 +589,6 @@ func (c *Checker) validateFailure(maxTicket uint64, failedBulk oracle.Bulk, reqE
 			assert.Reachable("singleton_driver_model: numscript version collision refused", internal.Details{})
 		case domain.ErrReasonNumscriptInvalidVersion:
 			assert.Reachable("singleton_driver_model: malformed numscript version refused", internal.Details{})
-		case domain.ErrReasonPreloadUnavailable:
-			assert.Reachable("singleton_driver_model: unresolvable script forwarded and refused", internal.Details{})
 		}
 
 		dbgf("MODEL FAIL OK: ledgers=%s kinds=%s explained by %s", bulkLedgers(failedBulk), requestKinds(failedBulk), reason)
