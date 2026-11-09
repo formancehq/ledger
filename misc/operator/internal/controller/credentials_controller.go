@@ -269,8 +269,18 @@ func (r *CredentialsReconciler) resolveMatchedClusters(ctx context.Context, cred
 	}
 
 	matched := make([]ledgerv1alpha1.MatchedCluster, 0, len(clusters.Items))
+	owner := ""
+	if credentials.Labels[labelManagedBy] == "ledger-operator" {
+		owner = credentials.Annotations[annotationOperatorCluster]
+		if owner == "" {
+			return nil, fmt.Errorf("operator-managed Credentials %q has no Cluster owner annotation", credentials.Name)
+		}
+	}
 	for i := range clusters.Items {
 		if !selector.Matches(labels.Set(clusters.Items[i].Labels)) {
+			continue
+		}
+		if owner != "" && owner != clusters.Items[i].Namespace+"/"+clusters.Items[i].Name {
 			continue
 		}
 		matched = append(matched, ledgerv1alpha1.MatchedCluster{

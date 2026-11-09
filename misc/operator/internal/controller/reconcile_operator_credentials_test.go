@@ -36,6 +36,29 @@ func TestReconcileOperatorCredentialsCreatesScopedCredential(t *testing.T) {
 	require.Equal(t, map[string]string{labelOperatorCredential: operatorCredentialsSelectorValue(cluster)}, credentials.Spec.Selector.MatchLabels)
 }
 
+func TestResolveMatchedClustersRestrictsOperatorCredentialsToOwner(t *testing.T) {
+	scheme := authKeysScheme(t)
+	owner := authEnabledCluster("ledger", "tenant-a", map[string]string{"shared": "yes"})
+	other := authEnabledCluster("other", "tenant-b", map[string]string{"shared": "yes"})
+	credentials := matchingCredentials("operator", map[string]string{"shared": "yes"}, false, "", "")
+	credentials.Labels = map[string]string{labelManagedBy: "ledger-operator"}
+	credentials.Annotations = map[string]string{annotationOperatorCluster: "tenant-a/ledger"}
+	r := &CredentialsReconciler{Client: fake.NewClientBuilder().WithScheme(scheme).WithObjects(owner, other).Build()}
+
+	matched, err := r.resolveMatchedClusters(context.Background(), credentials)
+	require.NoError(t, err)
+	require.Equal(t, []ledgerv1alpha1.MatchedCluster{{Namespace: "tenant-a", Name: "ledger"}}, matched)
+
+	delete(credentials.Annotations, annotationOperatorCluster)
+	_, err = r.resolveMatchedClusters(context.Background(), credentials)
+	require.ErrorContains(t, err, "has no Cluster owner annotation")
+
+	delete(credentials.Labels, labelManagedBy)
+	matched, err = r.resolveMatchedClusters(context.Background(), credentials)
+	require.NoError(t, err)
+	require.Len(t, matched, 2)
+}
+
 func TestValidateCredentialsAuthCompatibilityRejectsExplicitDisable(t *testing.T) {
 	scheme := authKeysScheme(t)
 	cluster := authEnabledCluster("ledger", "tenant-a", map[string]string{"tier": "gold"})
