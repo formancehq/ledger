@@ -16,8 +16,17 @@ import (
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
+	"github.com/formancehq/ledger/v3/internal/infra/state"
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/rafttransportpb"
+	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
+
+type fixtureCluster struct{}
+
+func (fixtureCluster) IsLeader() bool      { return true }
+func (fixtureCluster) GetNodeID() uint64   { return 1 }
+func (fixtureCluster) MemberIDs() []uint64 { return []uint64{1, 2} }
 
 type fixtureDigestServer struct {
 	rafttransportpb.UnimplementedLogIntegrityServiceServer
@@ -179,6 +188,49 @@ func TestObserverDefersPeerSuffixAtNewerAppliedHorizon(t *testing.T) {
 	observer.comparePeerAtHead(t.Context(), 2, cursor, 1, 50, 5, 50)
 	require.Equal(t, uint64(51), cursor.next)
 	require.Empty(t, cursor.lastMismatch)
+	require.True(t, cursor.deferredHead)
+	local.applied = 6
+	observer.comparePeerAtHead(t.Context(), 2, cursor, 50, 50, 6, 50)
+	require.NotEmpty(t, cursor.lastMismatch)
+}
+
+func TestObserverRechecksDeferredSuffixAfterAppliedCatchUp(t *testing.T) {
+	t.Parallel()
+	logger := logging.FromContext(logging.TestingContext())
+	meter := noop.NewMeterProvider().Meter("test")
+	store, err := dal.NewStore(t.TempDir(), logger, meter, dal.DefaultConfig())
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, store.Close()) })
+	batch := store.OpenWriteSession()
+	for seq := uint64(1); seq <= 50; seq++ {
+		key := dal.NewKeyBuilder().PutZonePrefix(dal.ZoneHistory, dal.SubHistoryLog).PutUint64(seq).Build()
+		require.NoError(t, batch.SetProto(key, &commonpb.Log{Sequence: seq}))
+	}
+	require.NoError(t, state.SetAppliedIndex(batch, 5))
+	require.NoError(t, batch.Commit())
+	listener := bufconn.Listen(1024 * 1024)
+	remote := &fixtureDigestServer{hash: make([]byte, DigestSize), head: 100, applied: 6}
+	server := grpc.NewServer()
+	rafttransportpb.RegisterLogIntegrityServiceServer(server, remote)
+	go func() { _ = server.Serve(listener) }()
+	t.Cleanup(server.Stop)
+	conn, err := grpc.NewClient("passthrough:///deferred-suffix", grpc.WithContextDialer(func(context.Context, string) (net.Conn, error) {
+		return listener.Dial()
+	}), grpc.WithTransportCredentials(insecure.NewCredentials()))
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, conn.Close()) })
+	local := &fixtureDigestServer{hash: make([]byte, DigestSize), head: 50, applied: 5}
+	observer := NewObserver(store, fixtureCluster{}, fixturePeerConnection{conn}, local, logger, meter)
+	observer.observe(t.Context())
+	require.Equal(t, uint64(51), observer.cursors[2].next)
+	require.True(t, observer.cursors[2].deferredHead)
+	require.Empty(t, observer.cursors[2].lastMismatch)
+	batch = store.OpenWriteSession()
+	require.NoError(t, state.SetAppliedIndex(batch, 6))
+	require.NoError(t, batch.Commit())
+	local.applied = 6
+	observer.observe(t.Context())
+	require.NotEmpty(t, observer.cursors[2].lastMismatch)
 }
 
 func TestObserverDoesNotReportSuffixWhenBothSnapshotsAdvance(t *testing.T) {

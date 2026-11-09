@@ -44,6 +44,7 @@ type peerCursor struct {
 	next         uint64
 	done         bool
 	lastMismatch string
+	deferredHead bool
 }
 
 // Observer compares the immutable log stream against each cluster member.
@@ -152,18 +153,22 @@ func (o *Observer) observe(ctx context.Context) {
 			o.cursors[id] = cursor
 		}
 		// Probe once even with an empty local log so a peer suffix is visible.
-		if cursor.done || (head != 0 && cursor.next > head) {
+		if cursor.done || (head != 0 && cursor.next > head && !cursor.deferredHead) {
 			continue
+		}
+		first := cursor.next
+		if head != 0 && first > head {
+			first = head
 		}
 		last := head
 		if head == 0 {
 			last = 1
 		}
-		if head != 0 && head-cursor.next >= MaxRangeEntries {
-			last = cursor.next + MaxRangeEntries - 1
+		if head != 0 && head-first >= MaxRangeEntries {
+			last = first + MaxRangeEntries - 1
 		}
 		checks.Go(func() {
-			o.comparePeerAtHead(ctx, id, cursor, cursor.next, last, applied, head)
+			o.comparePeerAtHead(ctx, id, cursor, first, last, applied, head)
 		})
 	}
 	checks.Wait()
@@ -242,11 +247,13 @@ func (o *Observer) comparePeerAtHead(ctx context.Context, id uint64, cursor *pee
 		comparisonHead = local.GetLastLogSequenceOnNode()
 	}
 	if remote.GetLastLogSequenceOnNode() > comparisonHead && remote.GetAppliedIndex() == localApplied {
+		cursor.deferredHead = false
 		o.reportMismatch(ctx, id, cursor, first, last, applied, fmt.Sprintf("peer log head %d exceeds local head %d", remote.GetLastLogSequenceOnNode(), comparisonHead))
 		advanceCursor(cursor, last)
 
 		return
 	}
+	cursor.deferredHead = remote.GetLastLogSequenceOnNode() > comparisonHead
 	if localHead == 0 {
 		return
 	}
