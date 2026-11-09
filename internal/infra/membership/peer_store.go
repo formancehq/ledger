@@ -4,6 +4,8 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"net"
+	"strconv"
 
 	"github.com/cockroachdb/pebble/v2"
 
@@ -73,6 +75,14 @@ func (p *PeerStore) migrateLegacyServiceAddressesFromPort(servicePort, legacyPor
 	addresses, err := p.LoadAll()
 	if err != nil {
 		return fmt.Errorf("loading legacy membership: %w", err)
+	}
+	// A legacy row contains no peer port. Only the configured public port can
+	// be classified reliably; do not mark an ambiguous migration complete.
+	for nodeID, address := range addresses {
+		_, port, err := net.SplitHostPort(address.ServiceAddress)
+		if err != nil || (legacyPort != 0 && port != strconv.Itoa(legacyPort)) {
+			return fmt.Errorf("cannot classify legacy service address %q for peer %d; membership format revision unchanged", address.ServiceAddress, nodeID)
+		}
 	}
 	session := p.store.OpenWriteSession()
 	for nodeID, address := range addresses {

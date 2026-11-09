@@ -255,16 +255,15 @@ func TestMembership_PreservesCurrentPeerPortsOnStartup(t *testing.T) {
 	assert.Equal(t, "pod-1:8892", m.PeerAddresses()[2].ServiceAddress)
 }
 
-func TestMembership_MigratesOnlyConfiguredLegacyPort(t *testing.T) {
+func TestMembership_RejectsAmbiguousLegacyPortWithoutAdvancingRevision(t *testing.T) {
 	t.Parallel()
 
 	ps := newTestPeerStore(t)
-	putLegacyPeer(t, ps, 1, "pod-0:7777", "pod-0:8888", fixedInstanceID(1))
-	// This row already carries a peer port from a node with a distinct local
-	// listener; it must not be rewritten to this node's peer port.
-	putLegacyPeer(t, ps, 2, "pod-1:7777", "pod-1:8899", fixedInstanceID(2))
+	putLegacyPeer(t, ps, 1, "localhost:7777", "localhost:8888", fixedInstanceID(1))
+	// The second member's port cannot be classified from this node's settings.
+	putLegacyPeer(t, ps, 2, "localhost:7778", "localhost:8899", fixedInstanceID(2))
 
-	m, err := NewMembershipWithServicePorts(
+	_, err := NewMembershipWithServicePorts(
 		ps,
 		noopTransport{},
 		noopPool{},
@@ -276,14 +275,15 @@ func TestMembership_MigratesOnlyConfiguredLegacyPort(t *testing.T) {
 		fixedInstanceID(0x42),
 		logging.Testing(),
 	)
+	require.ErrorContains(t, err, "cannot classify legacy service address")
+	require.ErrorContains(t, ps.migrateLegacyServiceAddressesFromPort(9999, 8888), "cannot classify legacy service address")
+	revision, err := ps.membershipFormatRevision()
 	require.NoError(t, err)
-	require.Equal(t, "pod-0:9999", m.PeerAddresses()[1].ServiceAddress)
-	require.Equal(t, "pod-1:8899", m.PeerAddresses()[2].ServiceAddress)
-
-	require.NoError(t, m.Rehydrate())
-	addresses := m.PeerAddresses()
-	require.Equal(t, "pod-0:9999", addresses[1].ServiceAddress)
-	require.Equal(t, "pod-1:8899", addresses[2].ServiceAddress)
+	require.Equal(t, membershipFormatRevisionLegacy, revision)
+	addresses, err := ps.LoadAll()
+	require.NoError(t, err)
+	require.Equal(t, "localhost:8888", addresses[1].ServiceAddress)
+	require.Equal(t, "localhost:8899", addresses[2].ServiceAddress)
 }
 
 func TestPeerStore_RejectsInvalidInstanceID(t *testing.T) {
