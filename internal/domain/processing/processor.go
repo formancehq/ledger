@@ -541,7 +541,7 @@ func hashOrder(order *raftcmdpb.Order, buf []byte) (hash []byte, grownBuf []byte
 // This entry point is kept for callers that don't already hold a Context
 // (tests, recovery flows). It allocates a transient Context wrapping the
 // processor's per-batch caches and forwards to processOrder.
-func (p *RequestProcessor) ProcessOrder(order *raftcmdpb.Order, s Scope) (*commonpb.LogPayload, domain.SerializableError) {
+func (p *RequestProcessor) ProcessOrder(order *raftcmdpb.Order, s Scope) (*commonpb.LogPayload, domain.Describable) {
 	ctx := &Context{
 		metadataBudget:       &commandMetadataBudget{bytes: domain.OrderMetadataSize(order)},
 		NumscriptCache:       p.numscriptCache,
@@ -557,7 +557,7 @@ func (p *RequestProcessor) ProcessOrder(order *raftcmdpb.Order, s Scope) (*commo
 // (and clears per-apply fields) before delegating to a wrapper-level
 // dispatcher. The ledger name is passed explicitly to ledger-scoped
 // handlers; system-scoped handlers don't receive it.
-func (p *RequestProcessor) processOrder(order *raftcmdpb.Order, s Scope, ctx *Context) (*commonpb.LogPayload, domain.SerializableError) {
+func (p *RequestProcessor) processOrder(order *raftcmdpb.Order, s Scope, ctx *Context) (*commonpb.LogPayload, domain.Describable) {
 	ctx.Scope = s
 	// Stage this order's admission-derived inputs hash (from OrderTechnical) for
 	// the stale-inputs check in the numscript producer, which only sees the
@@ -582,7 +582,7 @@ func (p *RequestProcessor) processOrder(order *raftcmdpb.Order, s Scope, ctx *Co
 // extracts the wrapper-level ledger name once and passes it explicitly
 // to each handler — keeping ctx free of an "always present for half the
 // dispatch table" field.
-func processLedgerScoped(ls *raftcmdpb.LedgerScopedOrder, ctx *Context) (*commonpb.LogPayload, domain.SerializableError) {
+func processLedgerScoped(ls *raftcmdpb.LedgerScopedOrder, ctx *Context) (*commonpb.LogPayload, domain.Describable) {
 	ledger := ls.GetLedger()
 	switch payload := ls.GetPayload().(type) {
 	case *raftcmdpb.LedgerScopedOrder_Apply:
@@ -614,7 +614,7 @@ func processLedgerScoped(ls *raftcmdpb.LedgerScopedOrder, ctx *Context) (*common
 
 // processSystemScoped dispatches a system-scoped order payload. These commands
 // affect cluster or global state and are never attributed to a single ledger.
-func processSystemScoped(ss *raftcmdpb.SystemScopedOrder, ctx *Context) (*commonpb.LogPayload, domain.SerializableError) {
+func processSystemScoped(ss *raftcmdpb.SystemScopedOrder, ctx *Context) (*commonpb.LogPayload, domain.Describable) {
 	switch payload := ss.GetPayload().(type) {
 	case *raftcmdpb.SystemScopedOrder_RegisterSigningKey:
 		return processRegisterSigningKey(payload.RegisterSigningKey, ctx)

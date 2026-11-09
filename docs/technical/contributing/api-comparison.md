@@ -1638,7 +1638,7 @@ Each error response includes a `google.rpc.ErrorInfo` detail with:
 - **`domain`**: Always `"ledger"`
 - **`metadata`**: Error-specific key-value pairs with context
 
-**Adding a new error**: define a typed error implementing `domain.Describable` (`Kind`, `Reason`). If the FSM can emit it, also implement `domain.SerializableError`. A definitive business rejection supplies typed `FailureDetails()` for audit and idempotency; a technical failure implements `UncommittedFailure`, returns no audited details, and exits before both writers. Keep diagnostic text in `Error()`; public presentation must not expose it. The exhaustive `kindToGRPCCode` switch + reflection test enforce that no new error reaches the API without a mapping. Keep this table in sync as a reference.
+**Adding a new error**: define a typed error implementing `domain.Describable` (`Kind`, `Reason`). If the FSM can emit it, it is one of two kinds. A definitive business rejection implements `domain.SerializableError` and supplies typed `FailureDetails()` for audit and idempotency. A technical failure implements `domain.UncommittedFailure`, has no `FailureDetails()`, and exits before both writers. Keep diagnostic text in `Error()`; public presentation must not expose it. The exhaustive `kindToGRPCCode` switch + reflection test enforce that no new error reaches the API without a mapping. Keep this table in sync as a reference.
 
 | Error | gRPC Code | Reason | Metadata |
 |-------|-----------|--------|----------|

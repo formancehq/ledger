@@ -1205,7 +1205,7 @@ func containsDrainRelease(proposal *raftcmdpb.Proposal) bool {
 // checkStaleProposal rejects proposals whose predicted index or cache epoch
 // doesn't match the current state. This detects stale proposals admitted with
 // an inflated IndexTracker or before a cache reset.
-func (fsm *Machine) checkStaleProposal(raftIndex uint64, proposal *raftcmdpb.Proposal) domain.SerializableError {
+func (fsm *Machine) checkStaleProposal(raftIndex uint64, proposal *raftcmdpb.Proposal) domain.Describable {
 	if predicted := proposal.GetPredictedIndex(); predicted != 0 && predicted != raftIndex {
 		if fsm.logger.Enabled(logging.TraceLevel) {
 			fsm.logger.WithFields(map[string]any{
@@ -1269,11 +1269,11 @@ func (fsm *Machine) checkStaleProposal(raftIndex uint64, proposal *raftcmdpb.Pro
 //
 // Admission ships bits that don't match the AttributeCoverage slice →
 // *ErrCoverageMiss or *domain.ErrInvalidExecutionPlan. Both are
-// SerializableErrors with KindInternal. Surfacing
+// UncommittedFailures with KindInternal. Surfacing
 // them via ApplyResult.Error rejects the proposal as a business error instead
 // of wedging the FSM apply loop; the proposal is malformed, but the FSM state
 // is not (no cache mutation lands before Merge).
-func planInvariantFailure(err error) domain.SerializableError {
+func planInvariantFailure(err error) domain.Describable {
 	if miss, ok := errors.AsType[*ErrCoverageMiss](err); ok {
 		return miss
 	}
@@ -1677,15 +1677,27 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 
 			return result, nil
 		}
+		audited, ok := errors.AsType[domain.SerializableError](err)
+		if !ok {
+			assert.Unreachable("non-auditable transient validation failure reached the audit path", map[string]any{
+				"raftIndex":  raftIndex,
+				"proposalID": proposal.GetId(),
+				"reason":     err.Reason(),
+			})
+
+			return nil, fmt.Errorf("invariant: transient validation failure %q is neither uncommitted nor auditable (raft index %d, proposal %d): %w",
+				err.Reason(), raftIndex, proposal.GetId(), err)
+		}
+
 		transientFailureEntry := auditpb.AuditEntryFromVTPool()
-		transientFailureEntry.Outcome = &auditpb.AuditEntry_Failure{Failure: buildAuditFailure(err)}
+		transientFailureEntry.Outcome = &auditpb.AuditEntry_Failure{Failure: buildAuditFailure(audited)}
 		appendErr := writeAuditEntry(transientFailureEntry, nil, "transient validation failure")
 		transientFailureEntry.ReturnToVTPool()
 		if appendErr != nil {
 			return nil, appendErr
 		}
 
-		if recErr := fsm.recordIdempotencyFailure(batch, idempotencyKey, proposalHash, err, effectiveDate.GetData(), idempotencyExpiresAt); recErr != nil {
+		if recErr := fsm.recordIdempotencyFailure(batch, idempotencyKey, proposalHash, audited, effectiveDate.GetData(), idempotencyExpiresAt); recErr != nil {
 			return nil, recErr
 		}
 

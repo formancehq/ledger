@@ -21,10 +21,6 @@ func (e *validationSentinel) FailureDetails() *commonpb.FailureDetails {
 	return mustFailureDetails(e.code, nil)
 }
 
-func (errMetadataLimitsUnconfigured) FailureDetails() *commonpb.FailureDetails {
-	return nil // Technical failures are never persisted as audited outcomes.
-}
-
 func (e *ErrTransactionReferenceConflict) FailureDetails() *commonpb.FailureDetails {
 	details := &commonpb.TransactionReferenceConflictDetails{
 		Ledger: new(e.Ledger), Reference: new(e.Reference), ExistingTransactionId: new(e.ExistingTransactionID),
@@ -141,36 +137,12 @@ func (e *ErrNumscriptCompile) FailureDetails() *commonpb.FailureDetails {
 	return nil // The unclassified fallback has no auditable business code.
 }
 
-func (*unclassifiedNumscriptCompile) FailureDetails() *commonpb.FailureDetails {
-	return nil
-}
-
 func (e *ErrNumscriptExecution) FailureDetails() *commonpb.FailureDetails {
 	if e.Details != nil {
 		return proto.Clone(e.Details).(*commonpb.FailureDetails)
 	}
 
 	return nil // The unclassified fallback has no auditable business code.
-}
-
-func (e *ErrNumscriptRuntime) FailureDetails() *commonpb.FailureDetails {
-	return nil // Technical failures are never persisted as audited outcomes.
-}
-
-func (*ErrStorageOperation) FailureDetails() *commonpb.FailureDetails {
-	return nil // Technical failures are never persisted as audited outcomes.
-}
-
-func (e *ErrSequenceExhausted) FailureDetails() *commonpb.FailureDetails {
-	return nil // Technical failures are never persisted as audited outcomes.
-}
-
-func (errStaleProposal) FailureDetails() *commonpb.FailureDetails {
-	return nil // Technical failures are never persisted as audited outcomes.
-}
-
-func (errStaleInputsResolution) FailureDetails() *commonpb.FailureDetails {
-	return nil // Technical failures are never persisted as audited outcomes.
 }
 
 func (e *ErrLedgerAlreadyExists) FailureDetails() *commonpb.FailureDetails {
@@ -297,14 +269,6 @@ func (e *ErrLedgerNotInMirrorMode) FailureDetails() *commonpb.FailureDetails {
 	}}}
 }
 
-func (e *ErrMirrorV2LogIDGap) FailureDetails() *commonpb.FailureDetails {
-	return nil // Technical failures are never persisted as audited outcomes.
-}
-
-func (e *ErrMirrorV2LogIDInvalid) FailureDetails() *commonpb.FailureDetails {
-	return nil // Technical failures are never persisted as audited outcomes.
-}
-
 func (e *ErrPreparedQueryAlreadyExists) FailureDetails() *commonpb.FailureDetails {
 	return &commonpb.FailureDetails{Kind: &commonpb.FailureDetails_PreparedQueryAlreadyExists{PreparedQueryAlreadyExists: &commonpb.PreparedQueryAlreadyExistsDetails{
 		Ledger: new(e.Ledger),
@@ -393,42 +357,10 @@ func (e *ErrNumscriptParse) FailureDetails() *commonpb.FailureDetails {
 	return &commonpb.FailureDetails{Kind: &commonpb.FailureDetails_NumscriptParseError{NumscriptParseError: &commonpb.NumscriptParseErrorDetails{}}}
 }
 
-func (*ErrFilterCompilation) FailureDetails() *commonpb.FailureDetails {
-	return nil // Filter validation is outside the audited order outcome.
-}
-
-func (e *ErrBalanceNotPreloaded) FailureDetails() *commonpb.FailureDetails {
-	return nil // Technical failures are never persisted as audited outcomes.
-}
-
 func (e *ErrTransientAccountNonZero) FailureDetails() *commonpb.FailureDetails {
 	return &commonpb.FailureDetails{Kind: &commonpb.FailureDetails_TransientAccountNonZero{TransientAccountNonZero: &commonpb.TransientAccountNonZeroDetails{
 		Accounts: new(e.joinedAccounts()),
 	}}}
-}
-
-func (e *ErrInvalidOrderType) FailureDetails() *commonpb.FailureDetails {
-	return nil // Technical failures are never persisted as audited outcomes.
-}
-
-func (e *ErrStaleClusterPolicy) FailureDetails() *commonpb.FailureDetails {
-	return nil // Technical failures are never persisted as audited outcomes.
-}
-
-func (e *ErrClusterPolicyRevisionConflict) FailureDetails() *commonpb.FailureDetails {
-	return nil // This internal proposal rejection is never an audited outcome.
-}
-
-func (e *ErrClusterPolicyInvalid) FailureDetails() *commonpb.FailureDetails {
-	return nil // This internal proposal rejection is never an audited outcome.
-}
-
-func (e *ErrInvalidApplyType) FailureDetails() *commonpb.FailureDetails {
-	return nil // Technical failures are never persisted as audited outcomes.
-}
-
-func (e *ErrTransactionStateInconsistent) FailureDetails() *commonpb.FailureDetails {
-	return nil // Technical failures are never persisted as audited outcomes.
 }
 
 func (errCheckpointIDRequired) FailureDetails() *commonpb.FailureDetails {
@@ -453,12 +385,4 @@ func (e *ErrCheckpointNotFound) FailureDetails() *commonpb.FailureDetails {
 	return &commonpb.FailureDetails{Kind: &commonpb.FailureDetails_CheckpointNotFound{CheckpointNotFound: &commonpb.CheckpointNotFoundDetails{
 		CheckpointId: new(e.CheckpointID),
 	}}}
-}
-
-func (e *ErrVolumeNotMaterialized) FailureDetails() *commonpb.FailureDetails {
-	return nil // Technical failures are never persisted as audited outcomes.
-}
-
-func (e *ErrInvalidExecutionPlan) FailureDetails() *commonpb.FailureDetails {
-	return nil // Technical failures are never persisted as audited outcomes.
 }
