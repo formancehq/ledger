@@ -346,3 +346,66 @@ func TestScope_IsCoveredRecordsNoMiss(t *testing.T) {
 	require.Error(t, undeclared.CheckCoverage(dal.SubAttrNumscriptContent, key))
 	require.Equal(t, int64(1), missCount(), "the gate itself still records the miss")
 }
+
+// TestScope_AbsenceExpectationsBindToTheirOrder pins that an expectation is
+// reported only for the order it names, and only through a key that order
+// declared.
+func TestScope_AbsenceExpectationsBindToTheirOrder(t *testing.T) {
+	t.Parallel()
+
+	fsm, _, _ := newTestMachine(t)
+	key := domain.NumscriptEntryKey{LedgerName: "l", Name: "ns", Version: "1.0.0"}
+	id, tag := attributes.MakeKey(key.Bytes())
+	executionPlan := &raftcmdpb.ExecutionPlan{
+		Attributes: []*raftcmdpb.AttributeCoverage{declareTestPlan(id, dal.SubAttrNumscriptContent)},
+		AbsenceExpectations: []*raftcmdpb.AbsenceExpectation{{
+			OrderIndex: 1,
+			AttrCode:   uint32(dal.SubAttrNumscriptContent),
+			Id:         &raftcmdpb.AttributeID{Id: id.Bytes(), Tag: tag},
+		}},
+	}
+	fsm.writeSet.Reset(&commonpb.Timestamp{Data: 1})
+	factory := NewScopeFactory(fsm.writeSet, executionPlan, fsm.logger, nil, 1)
+
+	// Each call reconfigures one scope in place, so check before the next.
+	other, err := factory.NewOrderScope(0, []byte{1})
+	require.NoError(t, err)
+	require.False(t, other.ExpectedAbsent(dal.SubAttrNumscriptContent, key))
+	bound, err := factory.NewOrderScope(1, []byte{1})
+	require.NoError(t, err)
+	require.True(t, bound.ExpectedAbsent(dal.SubAttrNumscriptContent, key))
+	require.False(t, bound.ExpectedAbsent(dal.SubAttrNumscriptVersion, domain.NumscriptVersionKey{LedgerName: "l", Name: "ns"}))
+	technical, err := factory.NewScope([]byte{1})
+	require.NoError(t, err)
+	require.False(t, technical.ExpectedAbsent(dal.SubAttrNumscriptContent, key))
+
+	_, err = factory.NewOrderScope(1, nil)
+	var invalid *domain.ErrInvalidExecutionPlan
+	require.ErrorAs(t, err, &invalid, "an expectation outside the order's coverage is a plan bug")
+}
+
+func TestValidateAbsenceExpectations(t *testing.T) {
+	t.Parallel()
+
+	id, tag := attributes.MakeKey(domain.NumscriptVersionKey{LedgerName: "l", Name: "ns"}.Bytes())
+	expectation := func(order uint32, code byte, raw []byte) *raftcmdpb.AbsenceExpectation {
+		return &raftcmdpb.AbsenceExpectation{OrderIndex: order, AttrCode: uint32(code), Id: &raftcmdpb.AttributeID{Id: raw, Tag: tag}}
+	}
+	valid := expectation(1, dal.SubAttrNumscriptVersion, id.Bytes())
+	require.Nil(t, validateAbsenceExpectations(nil, 0))
+	require.Nil(t, validateAbsenceExpectations(&raftcmdpb.ExecutionPlan{
+		AbsenceExpectations: []*raftcmdpb.AbsenceExpectation{valid, expectation(0, dal.SubAttrNumscriptVersion, id.Bytes())},
+	}, 2))
+
+	for name, expectations := range map[string][]*raftcmdpb.AbsenceExpectation{
+		"order outside the batch": {expectation(2, dal.SubAttrNumscriptVersion, id.Bytes())},
+		"short id":                {expectation(0, dal.SubAttrNumscriptVersion, id.Bytes()[:8])},
+		"ungated attr code":       {expectation(0, 0xff, id.Bytes())},
+		"duplicate":               {valid, valid},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			require.NotNil(t, validateAbsenceExpectations(&raftcmdpb.ExecutionPlan{AbsenceExpectations: expectations}, 2))
+		})
+	}
+}

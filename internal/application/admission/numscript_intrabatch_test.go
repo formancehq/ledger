@@ -8,6 +8,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
+	"github.com/formancehq/ledger/v3/internal/infra/attributes"
 	"github.com/formancehq/ledger/v3/internal/infra/plan"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
@@ -409,7 +410,7 @@ func TestResolveScripts_IntraBatchNumscriptExactReference(t *testing.T) {
 		"the exact content key must be covered")
 
 	require.Equal(t, "1.0.0", createTxOf(batch[0]).GetNumscriptReference().GetVersion())
-	require.False(t, batch[0].GetTechnical().GetNumscriptReferenceAbsent())
+	require.Empty(t, perOrder[0].Absent)
 
 	// Same reference, no same-bulk save: nothing to resolve from either source.
 	bare := []*raftcmdpb.Order{referenceOrder(testLedgerName, "pay", "1.0.0")}
@@ -424,13 +425,15 @@ func TestResolveScripts_IntraBatchNumscriptExactReference(t *testing.T) {
 		domain.NumscriptEntryKey{LedgerName: testLedgerName, Name: "pay", Version: "1.0.0"}.Bytes()))
 	require.False(t, needs.Has(dal.SubAttrVolume, destKey.Bytes()), "an unresolved script has no dependencies to plan")
 	require.Nil(t, bare[0].GetTechnical().GetInputsResolutionHash())
-	require.True(t, bare[0].GetTechnical().GetNumscriptReferenceAbsent())
+	require.Equal(t, []plan.AbsentKey{absentKey(dal.SubAttrNumscriptContent,
+		domain.NumscriptEntryKey{LedgerName: testLedgerName, Name: "pay", Version: "1.0.0"}.Bytes())}, perOrder[0].Absent)
 	require.Equal(t, "1.0.0", createTxOf(bare[0]).GetNumscriptReference().GetVersion())
 }
 
 // TestResolveScripts_MissingNumscriptReferenceDeclaresFSMReads pins the exact
 // coverage a forwarded unresolved reference carries for each selector, keyed or
-// not, and that it reaches the FSM without inline content or a preload marker.
+// not, the key it expects absent, and that it reaches the FSM without inline
+// content or a preload marker.
 func TestResolveScripts_MissingNumscriptReferenceDeclaresFSMReads(t *testing.T) {
 	t.Parallel()
 
@@ -457,10 +460,21 @@ func TestResolveScripts_MissingNumscriptReferenceDeclaresFSMReads(t *testing.T) 
 				createTx := createTxOf(batch[0])
 				require.Equal(t, version, createTx.GetNumscriptReference().GetVersion())
 				require.Nil(t, createTx.GetScript())
-				require.True(t, batch[0].GetTechnical().GetNumscriptReferenceAbsent())
+				want := absentKey(dal.SubAttrNumscriptContent, contentKey)
+				if version == "latest" {
+					want = absentKey(dal.SubAttrNumscriptVersion, pointerKey)
+				}
+				require.Equal(t, []plan.AbsentKey{want}, perOrder[0].Absent)
+				require.Empty(t, needs.Absent, "absences are bound to the order, not the aggregate")
 				require.False(t, batch[0].GetTechnical().GetPreloadUnavailable())
 				require.Nil(t, batch[0].GetTechnical().GetInputsResolutionHash())
 			})
 		}
 	}
+}
+
+func absentKey(attrCode byte, canonical []byte) plan.AbsentKey {
+	id, tag := attributes.MakeKey(canonical)
+
+	return plan.AbsentKey{AttrCode: attrCode, ID: id, Tag: tag}
 }

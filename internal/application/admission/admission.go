@@ -730,6 +730,9 @@ func (a *Admission) buildExecutionBatchPreload(ctx context.Context, caller *comm
 		}
 	}
 	build, err := a.buildPreload(ctx, cmd, needs, operations)
+	if err == nil {
+		build.SetAbsenceExpectations(plan.AbsenceExpectations(perOrder))
+	}
 
 	return cmd, build, err
 }
@@ -2040,11 +2043,10 @@ func (a *Admission) resolveScriptsAndEnrichNeeds(ctx context.Context, orders []*
 				// The library is mutable replicated state (a ledger delete purges
 				// it), so the definitive refusal belongs to the FSM after
 				// idempotency lookup: a fresh refusal is audited, a retry replays.
-				// Declare exactly what its resolution reads and plan nothing else;
-				// the marker makes the FSM refuse as stale, rather than execute,
-				// if a save commits before apply.
-				declareNumscriptReferenceCoverage(p, orderNeeds, ledgerName, ref.GetName(), notFound.Version, ref.GetVersion() == "latest")
-				orderTechnical(order).NumscriptReferenceAbsent = true
+				// Declare exactly what its resolution reads, bind the missing key
+				// to the order and plan nothing else: the FSM refuses as stale,
+				// rather than execute, if a save commits before apply.
+				declareMissingNumscriptReference(p, orderNeeds, ledgerName, ref.GetName(), notFound.Version, ref.GetVersion() == "latest")
 
 				continue
 			}
@@ -2223,6 +2225,19 @@ func declareNumscriptReferenceCoverage(p, orderNeeds *plan.Coverage, ledgerName,
 		p.Add(dal.SubAttrNumscriptVersion, pointerKey)
 		orderNeeds.Add(dal.SubAttrNumscriptVersion, pointerKey)
 	}
+}
+
+// declareMissingNumscriptReference declares the reads that resolve a reference
+// admission observed as missing and binds the missing key to the order: the
+// observed version's content or, when "latest" found no version, the pointer.
+func declareMissingNumscriptReference(p, orderNeeds *plan.Coverage, ledgerName, name, version string, isLatest bool) {
+	declareNumscriptReferenceCoverage(p, orderNeeds, ledgerName, name, version, isLatest)
+	if version == "" {
+		orderNeeds.ExpectAbsent(dal.SubAttrNumscriptVersion, domain.NumscriptVersionKey{LedgerName: ledgerName, Name: name}.Bytes())
+
+		return
+	}
+	orderNeeds.ExpectAbsent(dal.SubAttrNumscriptContent, domain.NumscriptEntryKey{LedgerName: ledgerName, Name: name, Version: version}.Bytes())
 }
 
 // requestToOrder converts one wire request into the corresponding Raft order.

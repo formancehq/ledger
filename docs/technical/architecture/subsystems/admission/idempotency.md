@@ -147,7 +147,9 @@ retained outcome, so admission does not refuse a reference it cannot resolve.
 Admission forwards the business order unchanged, with the coverage the FSM
 resolution reads: the exact content key, or the latest pointer plus the content
 key of any greatest version admission observed. It plans no script dependencies,
-binds no `inputs_resolution_hash` and sets `OrderTechnical.numscript_reference_absent`.
+binds no `inputs_resolution_hash` and records the missing key, the exact
+content key or the `latest` pointer, as an absence expectation of the order
+(`ExecutionPlan.absence_expectations`).
 This is not `preload_unavailable`: a refusal is definitive, not a retryable
 preparation gap.
 
@@ -164,18 +166,15 @@ A save can commit between admission's read and apply, for example when it was
 proposed but not yet applied locally. The FSM then resolves the script, but
 admission planned none of its reads:
 
-- for an exact selector, the marker makes the FSM return
-  `STALE_INPUTS_RESOLUTION` before executing the script;
-- for `latest`, the pointer names a content key the order never declared, and
-  the FSM returns `STALE_PROPOSAL`. It probes coverage with `Scope.IsCovered`,
-  which records no coverage miss.
-
-Both rejections are retryable and leave no audit entry or frozen outcome. A
+`Scope.ExpectedAbsent` reports the key the order expected absent, and the FSM
+returns `STALE_INPUTS_RESOLUTION` before executing the script: for an exact
+selector on the content key, for `latest` on the pointer, before any content
+read. The rejection is retryable and leave no audit entry or frozen outcome. A
 retry re-admits, resolves the saved script and plans it. No unplanned script
 reaches the coverage gate.
 
 The placement follows the [replicated-state rule](validation.md#replicated-policy-refusals).
-The marker is an internal Raft field that RC.3 voters ignore, so the change
+The expectation is an internal Raft field that RC.3 voters ignore, so the change
 relies on the RC.3 to RC.4 stopped upgrade; see
 [the upgrade note](../../../../ops/upgrades.md#numscript-reference-replay-recovery).
 

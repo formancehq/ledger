@@ -180,6 +180,7 @@ The discriminator between them: **only the `CacheSnapshotter` method takes `attr
 | `fixed64 cache_epoch = 4` | cache epoch at admission time; the FSM rejects on mismatch |
 | `repeated AttributeCoverage attributes = 6` | the resolved coverage entries |
 | `repeated ReloadIdempotencyKey idempotency_keys = 7` | the separate idempotency channel |
+| `repeated AbsenceExpectation absence_expectations = 5` | keys an order's planning observed as absent, see [absence expectations](#absence-expectations) |
 | `reserved 2, 3, 5, 8` | former `preloads`, `touches`, `declared`, `productions` |
 
 ### `AttributeCoverage` — seed vs coverage-only
@@ -198,6 +199,24 @@ The discriminator between them: **only the `CacheSnapshotter` method takes `attr
 `Builder.Run` assigns the result onto each operation's `Target` **immediately before every marshal** — the happy path and the rare rebuild under the proposal guard alike. Bit positions must be re-resolved at marshal time because the `ExecutionPlan` is only finalised after `Build` and may be swapped out on a rebuild; a bitset computed once and reused would index into the wrong plan.
 
 The bitset lives on `OrderTechnical` (`misc/proto/raft_cmd.proto:64`) and `TechnicalUpdate` (`misc/proto/raft_cmd.proto:486`) — **not** on the order body. That move was EN-1558: technical execution data is kept out of the audit hashes, so stamping `coverage_bits` does not disturb the business-intent bytes the audit chain binds.
+
+### Absence expectations
+
+An `AbsenceExpectation` names a batch order by position (`order_index`) and a
+key (`attr_code`, `id`) that order's planning observed as absent. A producer
+records one with `Coverage.ExpectAbsent`, which also declares the key, and
+binds them with `BuildResult.SetAbsenceExpectations(AbsenceExpectations(perOrder))`.
+`Builder.Run` attaches them to every plan it assigns, including a rebuild under
+the guard. The binding is per order, not per plan: a later order in the same
+batch can observe the key present, for example after a same-batch save.
+
+The FSM validates them before preload: the order exists, the key is well formed,
+and no expectation repeats. `ScopeFactory.NewOrderScope` binds an order's
+expectations and rejects one outside that order's coverage as
+`INVALID_EXECUTION_PLAN`. A handler that finds the key present asks
+`Scope.ExpectedAbsent` and rejects the order as `STALE_INPUTS_RESOLUTION`: the
+plan did not account for that value. The Numscript reference resolution is the
+only producer.
 
 ### `PredictedIndex` and the proposal guard
 

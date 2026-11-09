@@ -286,6 +286,44 @@ func (c *MockScopeDeleteQueryCheckpointCall) DoAndReturn(f func(uint64)) *MockSc
 	return c
 }
 
+// ExpectedAbsent mocks base method.
+func (m *MockScope) ExpectedAbsent(kind byte, key CoverageKey) bool {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ExpectedAbsent", kind, key)
+	ret0, _ := ret[0].(bool)
+	return ret0
+}
+
+// ExpectedAbsent indicates an expected call of ExpectedAbsent.
+func (mr *MockScopeMockRecorder) ExpectedAbsent(kind, key any) *MockScopeExpectedAbsentCall {
+	mr.mock.ctrl.T.Helper()
+	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ExpectedAbsent", reflect.TypeOf((*MockScope)(nil).ExpectedAbsent), kind, key)
+	return &MockScopeExpectedAbsentCall{Call: call}
+}
+
+// MockScopeExpectedAbsentCall wrap *gomock.Call
+type MockScopeExpectedAbsentCall struct {
+	*gomock.Call
+}
+
+// Return rewrite *gomock.Call.Return
+func (c *MockScopeExpectedAbsentCall) Return(arg0 bool) *MockScopeExpectedAbsentCall {
+	c.Call = c.Call.Return(arg0)
+	return c
+}
+
+// Do rewrite *gomock.Call.Do
+func (c *MockScopeExpectedAbsentCall) Do(f func(byte, CoverageKey) bool) *MockScopeExpectedAbsentCall {
+	c.Call = c.Call.Do(f)
+	return c
+}
+
+// DoAndReturn rewrite *gomock.Call.DoAndReturn
+func (c *MockScopeExpectedAbsentCall) DoAndReturn(f func(byte, CoverageKey) bool) *MockScopeExpectedAbsentCall {
+	c.Call = c.Call.DoAndReturn(f)
+	return c
+}
+
 // GetClusterPolicy mocks base method.
 func (m *MockScope) GetClusterPolicy() *commonpb.ClusterPolicy {
 	m.ctrl.T.Helper()
@@ -1690,6 +1728,45 @@ func NewMockScopeFactory(ctrl *gomock.Controller) *MockScopeFactory {
 // EXPECT returns an object that allows the caller to indicate expected use.
 func (m *MockScopeFactory) EXPECT() *MockScopeFactoryMockRecorder {
 	return m.recorder
+}
+
+// NewOrderScope mocks base method.
+func (m *MockScopeFactory) NewOrderScope(orderIndex int, coverageBits []byte) (Scope, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "NewOrderScope", orderIndex, coverageBits)
+	ret0, _ := ret[0].(Scope)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// NewOrderScope indicates an expected call of NewOrderScope.
+func (mr *MockScopeFactoryMockRecorder) NewOrderScope(orderIndex, coverageBits any) *MockScopeFactoryNewOrderScopeCall {
+	mr.mock.ctrl.T.Helper()
+	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "NewOrderScope", reflect.TypeOf((*MockScopeFactory)(nil).NewOrderScope), orderIndex, coverageBits)
+	return &MockScopeFactoryNewOrderScopeCall{Call: call}
+}
+
+// MockScopeFactoryNewOrderScopeCall wrap *gomock.Call
+type MockScopeFactoryNewOrderScopeCall struct {
+	*gomock.Call
+}
+
+// Return rewrite *gomock.Call.Return
+func (c *MockScopeFactoryNewOrderScopeCall) Return(arg0 Scope, arg1 error) *MockScopeFactoryNewOrderScopeCall {
+	c.Call = c.Call.Return(arg0, arg1)
+	return c
+}
+
+// Do rewrite *gomock.Call.Do
+func (c *MockScopeFactoryNewOrderScopeCall) Do(f func(int, []byte) (Scope, error)) *MockScopeFactoryNewOrderScopeCall {
+	c.Call = c.Call.Do(f)
+	return c
+}
+
+// DoAndReturn rewrite *gomock.Call.DoAndReturn
+func (c *MockScopeFactoryNewOrderScopeCall) DoAndReturn(f func(int, []byte) (Scope, error)) *MockScopeFactoryNewOrderScopeCall {
+	c.Call = c.Call.DoAndReturn(f)
+	return c
 }
 
 // NewProposalScope mocks base method.

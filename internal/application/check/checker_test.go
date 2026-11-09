@@ -499,6 +499,10 @@ func (f constantCheckScopeFactory) NewScope(_ []byte) (processing.Scope, error) 
 	return f.scope, nil
 }
 
+func (f constantCheckScopeFactory) NewOrderScope(int, []byte) (processing.Scope, error) {
+	return f.scope, nil
+}
+
 func (f constantCheckScopeFactory) NewProposalScope() (processing.Scope, error) {
 	return f.scope, nil
 }
@@ -519,6 +523,8 @@ func (s *scopeImpl) GetRaftIndex() uint64 { return 0 }
 func (s *scopeImpl) CheckCoverage(_ byte, _ processing.CoverageKey) error { return nil }
 
 func (s *scopeImpl) IsCovered(_ byte, _ processing.CoverageKey) bool { return true }
+
+func (s *scopeImpl) ExpectedAbsent(_ byte, _ processing.CoverageKey) bool { return false }
 
 // scopeFuncAccessor is the generic test-side Accessor: each operation is
 // a function closure wired against the scope's in-memory maps. The Put /

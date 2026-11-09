@@ -84,14 +84,6 @@ message OrderTechnical {
   // checks, so a target that is unknown or already reverted keeps returning
   // those reasons. Empty for every non-revert order.
   bytes revert_target_digest = 4;
-  // numscript_reference_absent marks a CreateTransaction whose library
-  // reference admission observed as absent. Admission declares only the
-  // selector-resolution reads and plans no script dependencies. If the entry
-  // still resolves as absent at apply, the FSM refuses it definitively
-  // (ERROR_REASON_NUMSCRIPT_NOT_FOUND); if a save committed in between, the FSM
-  // rejects it with ERROR_REASON_STALE_INPUTS_RESOLUTION (retryable) before
-  // executing the unplanned script. False for every other order.
-  bool numscript_reference_absent = 5;
 }
 
 // LedgerScopedOrder is the wrapper for every Order variant that targets a
@@ -781,6 +773,20 @@ message ExecutionPlan {
   // wire level.
   repeated ReloadIdempotencyKey idempotency_keys = 4;
 
+  // Keys admission observed as absent while resolving one order's inputs.
+  // Each key is also in that order's coverage. The FSM rejects the order with
+  // ERROR_REASON_STALE_INPUTS_RESOLUTION (retryable) if the key is present
+  // when the order reads it, since admission planned nothing that depends on
+  // its value.
+  repeated AbsenceExpectation absence_expectations = 5;
+}
+
+// AbsenceExpectation binds a key admission observed as absent to the order,
+// by its position in the batch, whose planning depended on that absence.
+message AbsenceExpectation {
+  uint32 order_index = 1;
+  uint32 attr_code = 2;
+  AttributeID id = 3;
 }
 
 // AttributeCoverage declares the FSM apply path may access `id` under

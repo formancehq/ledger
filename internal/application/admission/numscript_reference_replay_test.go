@@ -56,7 +56,7 @@ func (h *metadataReplayHarness) requireNumscriptNotFoundAudit(t *testing.T, err 
 	require.NoError(t, order.UnmarshalVT(items[0].GetSerializedOrder()))
 	require.NotNil(t, createTxOf(order).GetNumscriptReference())
 	require.Empty(t, createTxOf(order).GetScript().GetPlain())
-	require.Nil(t, order.GetTechnical(), "audit items keep business intent only; the marker stays in Raft")
+	require.Nil(t, order.GetTechnical(), "audit items keep business intent only")
 }
 
 // TestAdmitMissingNumscriptReferenceIsAuditedAtApply pins that a reference
@@ -154,14 +154,8 @@ func TestAdmitNumscriptReferenceReplaysAfterLedgerDelete(t *testing.T) {
 // retryable without executing or auditing, and the retry re-plans it.
 func TestAdmitNumscriptReferenceSavedBeforeApply(t *testing.T) {
 	t.Parallel()
-	for _, tc := range []struct {
-		version string
-		want    error
-	}{
-		{version: "1.0.0", want: domain.ErrStaleInputsResolution},
-		{version: "latest", want: domain.ErrStaleProposal},
-	} {
-		t.Run(tc.version, func(t *testing.T) {
+	for _, version := range []string{"1.0.0", "latest"} {
+		t.Run(version, func(t *testing.T) {
 			t.Parallel()
 			h := newMetadataReplayHarness(t)
 			ctx := attributedTestContext(context.Background())
@@ -172,21 +166,23 @@ func TestAdmitNumscriptReferenceSavedBeforeApply(t *testing.T) {
 				saveDone <- err
 			}()
 			applySave := <-h.pendingApplies
-			request := numscriptReplayBatch("key", numscriptReplayReference("ns", tc.version))
+			request := numscriptReplayBatch("key", numscriptReplayReference("ns", version))
 			referenceDone := make(chan error, 1)
 			go func() {
 				_, err := h.admission.Admit(ctx, request)
 				referenceDone <- err
 			}()
 			applyReference := <-h.pendingApplies
-			require.True(t, h.proposals[1].GetBatch().GetOrders()[0].GetTechnical().GetNumscriptReferenceAbsent())
+			absences := h.proposals[1].GetExecutionPlan().GetAbsenceExpectations()
+			require.Len(t, absences, 1)
+			require.Zero(t, absences[0].GetOrderIndex())
 
 			applySave()
 			require.NoError(t, <-saveDone)
 			audit, sequence := h.machine.State.NextAuditSequenceID, h.machine.State.NextSequenceID
 			applyReference()
 			err := <-referenceDone
-			require.ErrorIs(t, err, tc.want)
+			require.ErrorIs(t, err, domain.ErrStaleInputsResolution)
 			var miss *state.ErrCoverageMiss
 			require.NotErrorAs(t, err, &miss)
 			require.Equal(t, audit, h.machine.State.NextAuditSequenceID, "the stale rejection is not audited")
@@ -197,7 +193,7 @@ func TestAdmitNumscriptReferenceSavedBeforeApply(t *testing.T) {
 			require.NoError(t, err, "the key was not frozen and the retry plans the saved script")
 			require.False(t, result.Replayed)
 			require.Len(t, result.Logs, 1)
-			require.False(t, h.proposals[2].GetBatch().GetOrders()[0].GetTechnical().GetNumscriptReferenceAbsent())
+			require.Empty(t, h.proposals[2].GetExecutionPlan().GetAbsenceExpectations())
 		})
 	}
 }

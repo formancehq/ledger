@@ -97,7 +97,11 @@ type gatedScope struct {
 	// scans it linearly. The dense [N] layout (instead of [256])
 	// keeps the struct under ~300 B (vs ~2 KB) so the per-NewScope
 	// truncate/append cycle stays cache-resident.
-	coverage  coverageSlots
+	coverage coverageSlots
+	absences []*raftcmdpb.AbsenceExpectation
+	// absent holds the current order's expected-absent ids; empty outside
+	// NewOrderScope.
+	absent    []absentID
 	logger    logging.Logger
 	miss      metric.Int64Counter
 	raftIndex uint64
@@ -149,6 +153,35 @@ func validatePlan(plan *raftcmdpb.AttributeCoverage, idx int) *domain.ErrInvalid
 		return &domain.ErrInvalidExecutionPlan{
 			Reason_: fmt.Sprintf("plans[%d]: AttributeCoverage declares attr_code 0x%x which the FSM does not handle", idx, code),
 		}
+	}
+
+	return nil
+}
+
+// validateAbsenceExpectations checks that every expectation names a batch
+// order and a well-formed key, once per order and key.
+func validateAbsenceExpectations(plan *raftcmdpb.ExecutionPlan, orderCount int) *domain.ErrInvalidExecutionPlan {
+	seen := make(map[absentID]map[uint32]struct{}, len(plan.GetAbsenceExpectations()))
+	for i, absence := range plan.GetAbsenceExpectations() {
+		code := absence.GetAttrCode()
+		switch {
+		case int(absence.GetOrderIndex()) >= orderCount:
+			return &domain.ErrInvalidExecutionPlan{Reason_: fmt.Sprintf("absence_expectations[%d]: order %d is outside a batch of %d", i, absence.GetOrderIndex(), orderCount)}
+		case len(absence.GetId().GetId()) != 16:
+			return &domain.ErrInvalidExecutionPlan{Reason_: fmt.Sprintf("absence_expectations[%d]: must carry a 16-byte AttributeID", i)}
+		case code > 0xff || coverageSlotIndex[byte(code)] < 0:
+			return &domain.ErrInvalidExecutionPlan{Reason_: fmt.Sprintf("absence_expectations[%d]: attr_code 0x%x is not gated", i, code)}
+		}
+		key := absentID{code: byte(code), id: attributes.U128FromBytes(absence.GetId().GetId())}
+		orders := seen[key]
+		if orders == nil {
+			orders = make(map[uint32]struct{}, 1)
+			seen[key] = orders
+		}
+		if _, duplicate := orders[absence.GetOrderIndex()]; duplicate {
+			return &domain.ErrInvalidExecutionPlan{Reason_: fmt.Sprintf("absence_expectations[%d]: duplicate expectation", i)}
+		}
+		orders[absence.GetOrderIndex()] = struct{}{}
 	}
 
 	return nil
@@ -290,6 +323,7 @@ func NewScopeFactory(
 	g := &gatedScope{
 		WriteSet:  inner,
 		plans:     plans,
+		absences:  plan.GetAbsenceExpectations(),
 		logger:    logger,
 		miss:      missCounter,
 		raftIndex: raftIndex,
@@ -325,8 +359,34 @@ func (g *gatedScope) GetRaftIndex() uint64 { return g.raftIndex }
 // is structurally inconsistent — the FSM rejects the proposal before any
 // cache mutation lands so state stays coherent for the next attempt.
 func (g *gatedScope) NewScope(coverageBits []byte) (processing.Scope, error) {
+	g.absent = g.absent[:0]
 	if err := applyPlans(&g.coverage, g.plans, coverageBits); err != nil {
 		return nil, err
+	}
+
+	return g, nil
+}
+
+// NewOrderScope is NewScope for batch order orderIndex, which also binds
+// the absences admission observed for that order. Each one must be in the
+// order's coverage.
+func (g *gatedScope) NewOrderScope(orderIndex int, coverageBits []byte) (processing.Scope, error) {
+	if _, err := g.NewScope(coverageBits); err != nil {
+		return nil, err
+	}
+
+	for i, absence := range g.absences {
+		if int(absence.GetOrderIndex()) != orderIndex {
+			continue
+		}
+		code := byte(absence.GetAttrCode())
+		id := attributes.U128FromBytes(absence.GetId().GetId())
+		if slot := coverageSlotIndex[code]; slot < 0 || !slices.Contains(g.coverage[slot], id) {
+			return nil, &domain.ErrInvalidExecutionPlan{
+				Reason_: fmt.Sprintf("absence_expectations[%d]: key is not in order %d's coverage", i, orderIndex),
+			}
+		}
+		g.absent = append(g.absent, absentID{code: code, id: id})
 	}
 
 	return g, nil
@@ -337,6 +397,7 @@ func (g *gatedScope) NewScope(coverageBits []byte) (processing.Scope, error) {
 // cross-order checks that must reach into any ledger the proposal may
 // have touched.
 func (g *gatedScope) NewProposalScope() (processing.Scope, error) {
+	g.absent = g.absent[:0]
 	if err := applyAllPlans(&g.coverage, g.plans); err != nil {
 		return nil, err
 	}
@@ -367,6 +428,21 @@ func (g *gatedScope) IsCovered(kind byte, key processing.CoverageKey) bool {
 	covered, _ := g.covers(kind, key)
 
 	return covered
+}
+
+func (g *gatedScope) ExpectedAbsent(kind byte, key processing.CoverageKey) bool {
+	if len(g.absent) == 0 {
+		return false
+	}
+	g.scratch = key.AppendBytes(g.scratch[:0])
+	id, _ := attributes.MakeKey(g.scratch)
+
+	return slices.Contains(g.absent, absentID{code: kind, id: id})
+}
+
+type absentID struct {
+	code byte
+	id   attributes.U128
 }
 
 // covers leaves the key's canonical bytes in g.scratch for miss reporting.

@@ -62,11 +62,6 @@ type Context struct {
 	// Empty for every non-revert order.
 	RevertTargetDigest []byte
 
-	// NumscriptReferenceAbsent reports that admission observed THIS order's
-	// library reference as absent and planned no script dependencies (from
-	// OrderTechnical).
-	NumscriptReferenceAbsent bool
-
 	// batchInitialNextTxID is the NextTransactionId each ledger carried before
 	// this batch mutated it, captured by processApply on the first *apply* order
 	// for that ledger. A revert whose target id is at or above this value targets
@@ -273,7 +268,7 @@ func (p *RequestProcessor) processOrders(orders []*raftcmdpb.Order, scopeFactory
 	stagedTransactions := 0
 
 	for i, order := range orders {
-		orderScope, scopeErr := scopeFactory.NewScope(order.GetTechnical().GetCoverageBits())
+		orderScope, scopeErr := scopeFactory.NewOrderScope(i, order.GetTechnical().GetCoverageBits())
 		if scopeErr != nil {
 			// Invariant violation surfaced by the FSM: the execution plan
 			// shipped by admission is structurally inconsistent. Detected
@@ -557,7 +552,6 @@ func (p *RequestProcessor) processOrder(order *raftcmdpb.Order, s Scope, ctx *Co
 	// CreateTransactionOrder.
 	ctx.InputsResolutionHash = order.GetTechnical().GetInputsResolutionHash()
 	ctx.RevertTargetDigest = order.GetTechnical().GetRevertTargetDigest()
-	ctx.NumscriptReferenceAbsent = order.GetTechnical().GetNumscriptReferenceAbsent()
 	// Reset per-apply fields — only processApply/processMirrorIngest set them.
 	ctx.Boundaries = nil
 	ctx.LedgerInfo = nil
