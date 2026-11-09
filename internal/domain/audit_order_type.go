@@ -40,6 +40,10 @@ func ledgerScopedOrderType(o *raftcmdpb.LedgerScopedOrder) string {
 		return "update_prepared_query"
 	case *raftcmdpb.LedgerScopedOrder_DeletePreparedQuery:
 		return "delete_prepared_query"
+	case *raftcmdpb.LedgerScopedOrder_PutKv:
+		return "put_kv"
+	case *raftcmdpb.LedgerScopedOrder_DeleteKv:
+		return "delete_kv"
 	default:
 		return "unknown"
 	}
