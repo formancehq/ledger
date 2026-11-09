@@ -3591,7 +3591,7 @@ new transaction or an account metadata update without a transaction. JSON and
 YAML output contain the corresponding result object.
 
 ```bash
-ledgerctl numscripts execute --ledger my-ledger --file transfer.num --var "amount=USD/2 1000"
+ledgerctl numscripts execute --ledger my-ledger --file transfer.num --var "amount=USD/2 1000" --idempotency-key transfer-42
 ledgerctl numscripts execute --ledger my-ledger --name transfer --version 1.0.0 --var "amount=USD/2 1000" --metadata receipt=invoice-42
 ```
 
@@ -3603,6 +3603,7 @@ ledgerctl numscripts execute --ledger my-ledger --name transfer --version 1.0.0 
 | `--var` | | Variable in `name=value` format; repeat for multiple variables |
 | `--reference` | | Transaction reference; requires a transaction-producing script |
 | `--metadata` | | Transaction metadata in `key=value` format; requires a transaction-producing script |
+| `--idempotency-key` | | Reuse the same batch key when retrying an execution |
 | `--force` | `false` | Bypass balance checks |
 | `--json`, `--yaml` | `false` | Structured result output |
 | `--timeout` | `10s` | Request timeout |

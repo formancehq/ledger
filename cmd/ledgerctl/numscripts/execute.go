@@ -37,6 +37,7 @@ Examples:
 	cmd.Flags().StringArray("var", nil, "Script variable in name=value format (repeatable)")
 	cmd.Flags().String("reference", "", "Transaction reference (requires a transaction-producing script)")
 	cmd.Flags().StringToString("metadata", nil, "Transaction metadata key=value pairs")
+	cmd.Flags().String("idempotency-key", "", "Batch idempotency key for safe retries")
 	cmd.Flags().Bool("force", false, "Bypass balance checks")
 	cmdutil.AddOutputFlags(cmd)
 	cmd.Flags().Duration("timeout", cmdutil.DefaultTimeout, "Request timeout")
