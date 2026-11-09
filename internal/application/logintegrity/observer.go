@@ -236,11 +236,13 @@ func (o *Observer) comparePeerAtHead(ctx context.Context, id uint64, cursor *pee
 		return
 	}
 	localApplied := applied
+	comparisonHead := localHead
 	if local != nil {
 		localApplied = local.GetAppliedIndex()
+		comparisonHead = local.GetLastLogSequenceOnNode()
 	}
-	if remote.GetLastLogSequenceOnNode() > localHead && remote.GetAppliedIndex() == localApplied {
-		o.reportMismatch(ctx, id, cursor, first, last, applied, fmt.Sprintf("peer log head %d exceeds local head %d", remote.GetLastLogSequenceOnNode(), localHead))
+	if remote.GetLastLogSequenceOnNode() > comparisonHead && remote.GetAppliedIndex() == localApplied {
+		o.reportMismatch(ctx, id, cursor, first, last, applied, fmt.Sprintf("peer log head %d exceeds local head %d", remote.GetLastLogSequenceOnNode(), comparisonHead))
 		advanceCursor(cursor, last)
 
 		return
