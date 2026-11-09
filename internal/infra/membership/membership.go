@@ -178,6 +178,7 @@ func normalizeLegacyServiceAddresses(addresses map[uint64]ConfChangeContext, ser
 	for nodeID, addr := range addresses {
 		if nodeID == selfNodeID && addr.ServiceAddress == selfServiceAddr {
 			normalized[nodeID] = addr
+
 			continue
 		}
 		host, _, err := net.SplitHostPort(addr.ServiceAddress)
