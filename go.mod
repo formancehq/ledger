@@ -26,7 +26,7 @@ require (
 	github.com/bytedance/sonic v1.15.3
 	github.com/cockroachdb/pebble/v2 v2.1.7
 	github.com/creack/pty v1.1.18
-	github.com/databricks/databricks-sql-go v1.10.0
+	github.com/databricks/databricks-sql-go v1.12.0
 	github.com/dustin/go-humanize v1.0.1
 	github.com/formancehq/go-libs/v5 v5.10.0
 	github.com/formancehq/invariants v0.11.0
@@ -153,7 +153,7 @@ require (
 	github.com/containerd/errdefs/pkg v0.3.0 // indirect
 	github.com/containerd/log v0.1.0 // indirect
 	github.com/containerd/platforms v0.2.1 // indirect
-	github.com/coreos/go-oidc/v3 v3.5.0 // indirect
+	github.com/coreos/go-oidc/v3 v3.10.0 // indirect
 	github.com/coreos/go-semver v0.3.1 // indirect
 	github.com/cpuguy83/dockercfg v0.3.2 // indirect
 	github.com/danieljoos/wincred v1.2.2 // indirect
@@ -175,7 +175,6 @@ require (
 	github.com/go-chi/render v1.0.3 // indirect
 	github.com/go-faster/city v1.0.1 // indirect
 	github.com/go-faster/errors v0.7.1 // indirect
-	github.com/go-jose/go-jose/v3 v3.0.5 // indirect
 	github.com/go-logr/logr v1.4.4 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
 	github.com/go-logr/zapr v1.3.0 // indirect

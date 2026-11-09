@@ -95,7 +95,7 @@ func runModelTestFixture(t *testing.T, scenario string) (string, string, error, 
 	// Only the fixture clock is substituted: liveness checks and reporting run
 	// unchanged. File descriptors 3/4 carry events/clock replies, respectively.
 	writeExecutable(t, filepath.Join(binDir, "date"), `#!/bin/sh
-case "$FAKE_MODEL_SCENARIO" in restart-*) exec /bin/date "$@" ;; esac
+case "$FAKE_MODEL_SCENARIO" in restart-*) exec "$FAKE_REAL_DATE" "$@" ;; esac
 if [ "$#" -ne 1 ] || [ "$1" != '+%s' ]; then
 	printf 'invalid-date\n' >&3
 	exit 1
@@ -117,7 +117,7 @@ if [ "$1" = "8" ]; then
 	read -r _ < "$FAKE_RESTART_RELEASE"
 	exit 0
 fi
-exec /bin/sleep "$@"
+exec "$FAKE_REAL_SLEEP" "$@"
 `)
 	fakeServer := filepath.Join(tempDir, "fake-server")
 	fakeDriver := filepath.Join(tempDir, "fake-driver")
@@ -142,7 +142,7 @@ chmod +x "$out"
 `)
 	writeExecutable(t, fakeSeq, `#!/bin/sh
 if [ "$#" -eq 2 ] && [ "$1" = "1" ] && [ "$2" = "0" ]; then exit 0; fi
-exec /usr/bin/seq "$@"
+exec "$FAKE_REAL_SEQ" "$@"
 `)
 	writeExecutable(t, fakeServer, `#!/bin/sh
 echo "Leader ready"
@@ -247,6 +247,13 @@ esac
 		"FAKE_RESTART_RELEASE="+restartRelease,
 		"FAKE_MODEL_SCENARIO="+scenario,
 	)
+	// Resolve the underlying commands before the fixture prepends its wrappers.
+	// Nix provides these tools through PATH, without /bin or /usr/bin aliases.
+	for _, tool := range []string{"date", "sleep", "seq"} {
+		path, err := exec.LookPath(tool)
+		require.NoError(t, err)
+		cmd.Env = append(cmd.Env, "FAKE_REAL_"+strings.ToUpper(tool)+"="+path)
+	}
 	combined, err, fixtureErr := runModelFixtureCommand(ctx, cmd, scenario)
 
 	workDirs, globErr := filepath.Glob(filepath.Join(tempDir, "model-test.*"))
