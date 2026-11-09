@@ -1893,7 +1893,10 @@ func (x *UpdatePreparedQueryRequest) MarshalJSON() ([]byte, error) {
 		Name:   x.Name,
 		Filter: x.Filter,
 		Target: func() any {
-			switch x.GetTarget() {
+			if x.Target == nil {
+				return nil
+			}
+			switch *x.Target {
 			case commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS:
 				return "QUERY_TARGET_ACCOUNTS"
 			case commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS:
@@ -1903,7 +1906,7 @@ func (x *UpdatePreparedQueryRequest) MarshalJSON() ([]byte, error) {
 			case commonpb.QueryTarget_QUERY_TARGET_AUDIT:
 				return "QUERY_TARGET_AUDIT"
 			default:
-				return int32(x.GetTarget())
+				return int32(*x.Target)
 			}
 		}(),
 	})

@@ -359,7 +359,10 @@ func (x *UpdatedPreparedQueryLog) MarshalJSON() ([]byte, error) {
 		PreviousFilter: x.PreviousFilter,
 		NewFilter:      x.NewFilter,
 		PreviousTarget: func() any {
-			switch x.GetPreviousTarget() {
+			if x.PreviousTarget == nil {
+				return nil
+			}
+			switch *x.PreviousTarget {
 			case QueryTarget_QUERY_TARGET_ACCOUNTS:
 				return "QUERY_TARGET_ACCOUNTS"
 			case QueryTarget_QUERY_TARGET_TRANSACTIONS:
@@ -369,11 +372,14 @@ func (x *UpdatedPreparedQueryLog) MarshalJSON() ([]byte, error) {
 			case QueryTarget_QUERY_TARGET_AUDIT:
 				return "QUERY_TARGET_AUDIT"
 			default:
-				return int32(x.GetPreviousTarget())
+				return int32(*x.PreviousTarget)
 			}
 		}(),
 		NewTarget: func() any {
-			switch x.GetNewTarget() {
+			if x.NewTarget == nil {
+				return nil
+			}
+			switch *x.NewTarget {
 			case QueryTarget_QUERY_TARGET_ACCOUNTS:
 				return "QUERY_TARGET_ACCOUNTS"
 			case QueryTarget_QUERY_TARGET_TRANSACTIONS:
@@ -383,7 +389,7 @@ func (x *UpdatedPreparedQueryLog) MarshalJSON() ([]byte, error) {
 			case QueryTarget_QUERY_TARGET_AUDIT:
 				return "QUERY_TARGET_AUDIT"
 			default:
-				return int32(x.GetNewTarget())
+				return int32(*x.NewTarget)
 			}
 		}(),
 	})
