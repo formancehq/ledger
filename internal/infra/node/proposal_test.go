@@ -70,3 +70,21 @@ func TestNewProposalDerivesActivePolicyCapabilities(t *testing.T) {
 	active[0] = 99
 	require.Equal(t, []capabilities.CapabilityID{7}, proposal.ActivePolicyCapabilities(), "candidate metadata must be defensive")
 }
+
+func TestNewProposalDerivesActivePolicyCapabilitiesFromNativePolicy(t *testing.T) {
+	command := &raftcmdpb.Proposal{
+		Id: 1,
+		Payload: &raftcmdpb.Proposal_SetClusterPolicy{
+			SetClusterPolicy: &raftcmdpb.SetClusterPolicyProposal{
+				Policy: &commonpb.ClusterPolicy{CapabilityActivations: []*commonpb.CapabilityActivation{
+					{Id: 7, Active: true},
+					{Id: 8, Active: false},
+				}},
+			},
+		},
+	}
+
+	proposal, err := NewProposal(1, command)
+	require.NoError(t, err)
+	require.Equal(t, []capabilities.CapabilityID{7}, proposal.ActivePolicyCapabilities())
+}

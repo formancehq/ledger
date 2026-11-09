@@ -30,7 +30,7 @@ type Proposal struct {
 	expectedTerm         uint64
 	requiredCapabilities []capabilities.CapabilityID
 	// activePolicyCapabilities is populated by the proposal factory for
-	// SetClusterPolicy orders.  Keeping the typed candidate alongside the
+	// SetClusterPolicy proposals and orders. Keeping the typed candidate alongside the
 	// serialized command lets the leader validate activation evidence before
 	// handing the bytes to Raft without decoding the command a second time.
 	activePolicyCapabilities []capabilities.CapabilityID
@@ -60,6 +60,13 @@ func NewProposal(commandID uint64, command *raftcmdpb.Proposal) (*Proposal, erro
 	}
 
 	proposal := newProposal(commandID, data, prepared.RequiredCapabilities())
+	if policy := command.GetSetClusterPolicy().GetPolicy(); policy != nil {
+		for _, activation := range policy.GetCapabilityActivations() {
+			if activation != nil && activation.GetActive() {
+				proposal.activePolicyCapabilities = append(proposal.activePolicyCapabilities, capabilities.CapabilityID(activation.GetId()))
+			}
+		}
+	}
 	for _, order := range command.GetOrders() {
 		policy := order.GetSystemScoped().GetSetClusterPolicy().GetPolicy()
 		if policy == nil {
@@ -100,7 +107,7 @@ func (p *Proposal) RequiredCapabilities() []capabilities.CapabilityID {
 }
 
 // ActivePolicyCapabilities returns the active capabilities requested by a
-// SetClusterPolicy order, if any. The values are derived by NewProposal from
+// SetClusterPolicy proposal or order, if any. The values are derived by NewProposal from
 // the typed command and are not read from the serialized payload.
 func (p *Proposal) ActivePolicyCapabilities() []capabilities.CapabilityID {
 	return append([]capabilities.CapabilityID(nil), p.activePolicyCapabilities...)
