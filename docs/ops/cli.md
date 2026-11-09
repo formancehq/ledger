@@ -5065,14 +5065,14 @@ For complete documentation, see:
 ledgerctl ledgers create demo
 
 # 2. Fund the bank from world
-ledgerctl transactions create --ledger demo \
-  --script numscript/examples/world_funding.num \
+ledgerctl numscripts execute --ledger demo \
+  --file numscript/examples/world_funding.num \
   --var "destination=bank" \
   --var "amount=USD/2 100000"
 
 # 3. Transfer to a user
-ledgerctl transactions create --ledger demo \
-  --script numscript/examples/simple_transfer.num \
+ledgerctl numscripts execute --ledger demo \
+  --file numscript/examples/simple_transfer.num \
   --var "source=bank" \
   --var "destination=users:alice" \
   --var "amount=USD/2 1000"
