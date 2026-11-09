@@ -293,6 +293,22 @@ func TestMembership_MigratesLegacyPortsWithRefreshedSelf(t *testing.T) {
 	require.Equal(t, "localhost:9999", restarted.PeerAddresses()[2].ServiceAddress)
 }
 
+func TestMembership_FreshNodePreservesDistinctPeerPorts(t *testing.T) {
+	t.Parallel()
+	ps := newTestPeerStore(t)
+	m, err := NewMembershipWithServicePort(ps, noopTransport{}, noopPool{}, testSelfNodeID,
+		testSelfRaftAddr, "localhost:9999", 9999, fixedInstanceID(0x42), logging.Testing())
+	require.NoError(t, err)
+	require.NoError(t, m.MarkNativeFormat())
+	require.NoError(t, ps.Put(1, "localhost:7777", "localhost:9999", fixedInstanceID(1)))
+	require.NoError(t, ps.Put(2, "localhost:7778", "localhost:9998", fixedInstanceID(2)))
+	require.NoError(t, m.Rehydrate())
+	require.Equal(t, "localhost:9998", m.PeerAddresses()[2].ServiceAddress)
+	revision, err := ps.membershipFormatRevision()
+	require.NoError(t, err)
+	require.Equal(t, membershipFormatRevisionPeerPort, revision)
+}
+
 func TestPeerStore_RejectsInvalidInstanceID(t *testing.T) {
 	t.Parallel()
 

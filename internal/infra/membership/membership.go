@@ -658,6 +658,12 @@ func (m *Membership) Rehydrate() error {
 	return nil
 }
 
+// MarkNativeFormat records that a fresh RC.4 node writes peer addresses from
+// its first registration. It runs before the initial peer rows are persisted.
+func (m *Membership) MarkNativeFormat() error {
+	return m.store.markNativeMembershipFormat()
+}
+
 // OnSnapshotInstalled refreshes the cache from Pebble after a leader
 // checkpoint restore overwrites it AND reconciles the transport +
 // service pool to match. The leader's checkpoint may carry a stale
