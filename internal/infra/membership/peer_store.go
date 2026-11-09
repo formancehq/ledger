@@ -4,8 +4,6 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
-	"net"
-	"strconv"
 
 	"github.com/cockroachdb/pebble/v2"
 
@@ -56,11 +54,9 @@ func NewPeerStore(store *dal.Store) *PeerStore {
 	return &PeerStore{store: store}
 }
 
-// migrateLegacyServiceAddressesFromPort upgrades legacy rows when their
-// service address still uses the configured public service port. A non-zero
-// legacyPort avoids rewriting already-migrated rows in environments where
-// nodes use distinct listener ports (notably local and test clusters).
-func (p *PeerStore) migrateLegacyServiceAddressesFromPort(servicePort, legacyPort int) error {
+// migrateLegacyServiceAddressesFromPort upgrades RC.3 rows. The local row may
+// already have been refreshed with its peer address before WAL replay.
+func (p *PeerStore) migrateLegacyServiceAddressesFromPort(servicePort int, selfNodeID uint64, selfServiceAddr string) error {
 	if servicePort == 0 {
 		return nil
 	}
@@ -76,25 +72,20 @@ func (p *PeerStore) migrateLegacyServiceAddressesFromPort(servicePort, legacyPor
 	if err != nil {
 		return fmt.Errorf("loading legacy membership: %w", err)
 	}
-	// A legacy row contains no peer port. Only the configured public port can
-	// be classified reliably; do not mark an ambiguous migration complete.
-	for nodeID, address := range addresses {
-		_, port, err := net.SplitHostPort(address.ServiceAddress)
-		if err != nil || (legacyPort != 0 && port != strconv.Itoa(legacyPort)) {
-			return fmt.Errorf("cannot classify legacy service address %q for peer %d; membership format revision unchanged", address.ServiceAddress, nodeID)
-		}
+	normalized, err := normalizeLegacyServiceAddresses(addresses, servicePort, selfNodeID, selfServiceAddr)
+	if err != nil {
+		return err
 	}
 	session := p.store.OpenWriteSession()
 	for nodeID, address := range addresses {
-		normalized := normalizeLegacyServiceAddresses(map[uint64]ConfChangeContext{nodeID: address}, servicePort, legacyPort)[nodeID]
-		if normalized.Equal(address) {
+		if normalized[nodeID].Equal(address) {
 			continue
 		}
 		if err := session.SetProto(peerKey(nodeID), &raftcmdpb.PeerAddress{
 			NodeId:         nodeID,
-			RaftAddress:    normalized.RaftAddress,
-			ServiceAddress: normalized.ServiceAddress,
-			InstanceId:     normalized.InstanceID,
+			RaftAddress:    normalized[nodeID].RaftAddress,
+			ServiceAddress: normalized[nodeID].ServiceAddress,
+			InstanceId:     normalized[nodeID].InstanceID,
 		}); err != nil {
 			_ = session.Cancel()
 

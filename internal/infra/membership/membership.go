@@ -69,7 +69,6 @@ type Membership struct {
 	selfRaftAddr    string
 	selfServiceAddr string
 	servicePort     int
-	legacyPort      int
 	selfInstanceID  []byte
 	logger          logging.Logger
 
@@ -112,7 +111,7 @@ type Membership struct {
 func NoopClusterPolicyProvider() (*commonpb.ClusterPolicy, error) { return nil, nil }
 
 func NewMembership(store *PeerStore, transport Transport, pool Pool, selfNodeID uint64, selfRaftAddr, selfServiceAddr string, selfInstanceID []byte, logger logging.Logger, policyProvider func() (*commonpb.ClusterPolicy, error)) (*Membership, error) {
-	return newMembership(store, transport, pool, selfNodeID, selfRaftAddr, selfServiceAddr, 0, 0, selfInstanceID, logger, policyProvider)
+	return newMembership(store, transport, pool, selfNodeID, selfRaftAddr, selfServiceAddr, 0, selfInstanceID, logger, policyProvider)
 }
 
 // NewMembershipWithServicePort is the production constructor for clusters
@@ -120,17 +119,10 @@ func NewMembership(store *PeerStore, transport Transport, pool Pool, selfNodeID 
 // by Rehydrate after WAL replay or snapshot installation, then explicit peer
 // service ports are preserved on every reload.
 func NewMembershipWithServicePort(store *PeerStore, transport Transport, pool Pool, selfNodeID uint64, selfRaftAddr, selfServiceAddr string, servicePort int, selfInstanceID []byte, logger logging.Logger, policyProvider func() (*commonpb.ClusterPolicy, error)) (*Membership, error) {
-	return newMembership(store, transport, pool, selfNodeID, selfRaftAddr, selfServiceAddr, servicePort, 0, selfInstanceID, logger, policyProvider)
+	return newMembership(store, transport, pool, selfNodeID, selfRaftAddr, selfServiceAddr, servicePort, selfInstanceID, logger, policyProvider)
 }
 
-// NewMembershipWithServicePorts is the production constructor. legacyPort is
-// the pre-peer public service port used by rc.3 membership rows; only rows
-// still carrying that port are migrated to servicePort.
-func NewMembershipWithServicePorts(store *PeerStore, transport Transport, pool Pool, selfNodeID uint64, selfRaftAddr, selfServiceAddr string, servicePort, legacyPort int, selfInstanceID []byte, logger logging.Logger, policyProvider func() (*commonpb.ClusterPolicy, error)) (*Membership, error) {
-	return newMembership(store, transport, pool, selfNodeID, selfRaftAddr, selfServiceAddr, servicePort, legacyPort, selfInstanceID, logger, policyProvider)
-}
-
-func newMembership(store *PeerStore, transport Transport, pool Pool, selfNodeID uint64, selfRaftAddr, selfServiceAddr string, servicePort, legacyPort int, selfInstanceID []byte, logger logging.Logger, policyProvider func() (*commonpb.ClusterPolicy, error)) (*Membership, error) {
+func newMembership(store *PeerStore, transport Transport, pool Pool, selfNodeID uint64, selfRaftAddr, selfServiceAddr string, servicePort int, selfInstanceID []byte, logger logging.Logger, policyProvider func() (*commonpb.ClusterPolicy, error)) (*Membership, error) {
 	if policyProvider == nil {
 		return nil, errors.New("cluster policy provider is required")
 	}
@@ -152,13 +144,10 @@ func newMembership(store *PeerStore, transport Transport, pool Pool, selfNodeID 
 			return nil, fmt.Errorf("reading membership format: %w", err)
 		}
 		if revision < membershipFormatRevisionPeerPort {
-			for nodeID, addr := range addresses {
-				_, port, err := net.SplitHostPort(addr.ServiceAddress)
-				if err != nil || (legacyPort != 0 && port != strconv.Itoa(legacyPort)) {
-					return nil, fmt.Errorf("cannot classify legacy service address %q for peer %d; membership format revision unchanged", addr.ServiceAddress, nodeID)
-				}
+			addresses, err = normalizeLegacyServiceAddresses(addresses, servicePort, selfNodeID, selfServiceAddr)
+			if err != nil {
+				return nil, err
 			}
-			addresses = normalizeLegacyServiceAddresses(addresses, servicePort, legacyPort)
 		}
 	}
 	logger.WithFields(map[string]any{
@@ -173,7 +162,6 @@ func newMembership(store *PeerStore, transport Transport, pool Pool, selfNodeID 
 		selfRaftAddr:             selfRaftAddr,
 		selfServiceAddr:          selfServiceAddr,
 		servicePort:              servicePort,
-		legacyPort:               legacyPort,
 		selfInstanceID:           bytes.Clone(selfInstanceID),
 		logger:                   logger,
 		capabilityPolicyProvider: policyProvider,
@@ -181,25 +169,27 @@ func newMembership(store *PeerStore, transport Transport, pool Pool, selfNodeID 
 	}, nil
 }
 
-func normalizeLegacyServiceAddresses(addresses map[uint64]ConfChangeContext, servicePort, legacyPort int) map[uint64]ConfChangeContext {
+func normalizeLegacyServiceAddresses(addresses map[uint64]ConfChangeContext, servicePort int, selfNodeID uint64, selfServiceAddr string) (map[uint64]ConfChangeContext, error) {
 	if servicePort == 0 {
-		return addresses
+		return addresses, nil
 	}
+	normalized := make(map[uint64]ConfChangeContext, len(addresses))
 
 	for nodeID, addr := range addresses {
-		host, port, err := net.SplitHostPort(addr.ServiceAddress)
-		if err != nil {
+		if nodeID == selfNodeID && addr.ServiceAddress == selfServiceAddr {
+			normalized[nodeID] = addr
 			continue
 		}
-		if legacyPort != 0 && port != strconv.Itoa(legacyPort) {
-			continue
+		host, _, err := net.SplitHostPort(addr.ServiceAddress)
+		if err != nil {
+			return nil, fmt.Errorf("invalid legacy service address for peer %d: %w", nodeID, err)
 		}
 
 		addr.ServiceAddress = net.JoinHostPort(host, strconv.Itoa(servicePort))
-		addresses[nodeID] = addr
+		normalized[nodeID] = addr
 	}
 
-	return addresses
+	return normalized, nil
 }
 
 // Start wires every peer currently in the cache into the transport +
@@ -624,7 +614,7 @@ func confStateContains(cs *raftpb.ConfState, nodeID uint64) bool {
 // atomic is more important than allowing concurrent membership reads during
 // that lifecycle reconciliation.
 func (m *Membership) Rehydrate() error {
-	if err := m.store.migrateLegacyServiceAddressesFromPort(m.servicePort, m.legacyPort); err != nil {
+	if err := m.store.migrateLegacyServiceAddressesFromPort(m.servicePort, m.selfNodeID, m.selfServiceAddr); err != nil {
 		return fmt.Errorf("migrating membership format: %w", err)
 	}
 
