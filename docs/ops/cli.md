@@ -3592,7 +3592,7 @@ YAML output contain the corresponding result object.
 
 ```bash
 ledgerctl numscripts execute --ledger my-ledger --file transfer.num --var "amount=USD/2 1000"
-ledgerctl numscripts execute --ledger my-ledger --name transfer --version 1.0.0 --var "amount=USD/2 1000"
+ledgerctl numscripts execute --ledger my-ledger --name transfer --version 1.0.0 --var "amount=USD/2 1000" --metadata receipt=invoice-42
 ```
 
 | Flag | Default | Description |
@@ -3602,6 +3602,7 @@ ledgerctl numscripts execute --ledger my-ledger --name transfer --version 1.0.0 
 | `--version` | `latest` | Saved script version; only with `--name` |
 | `--var` | | Variable in `name=value` format; repeat for multiple variables |
 | `--reference` | | Transaction reference; requires a transaction-producing script |
+| `--metadata` | | Transaction metadata in `key=value` format; requires a transaction-producing script |
 | `--force` | `false` | Bypass balance checks |
 | `--json`, `--yaml` | `false` | Structured result output |
 | `--timeout` | `10s` | Request timeout |

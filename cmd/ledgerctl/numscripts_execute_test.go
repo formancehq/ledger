@@ -48,6 +48,7 @@ func TestNumscriptExecuteBothResults(t *testing.T) {
 		saved  bool
 	}{
 		{name: "transaction", result: &commonpb.LedgerLogPayload{Payload: &commonpb.LedgerLogPayload_CreatedTransaction{CreatedTransaction: created}}},
+		{name: "saved-transaction", result: &commonpb.LedgerLogPayload{Payload: &commonpb.LedgerLogPayload_CreatedTransaction{CreatedTransaction: created}}, saved: true},
 		{name: "metadata", result: &commonpb.LedgerLogPayload{Payload: &commonpb.LedgerLogPayload_AccountMetadataUpdated{AccountMetadataUpdated: updated}}},
 		{name: "saved-metadata", result: &commonpb.LedgerLogPayload{Payload: &commonpb.LedgerLogPayload_AccountMetadataUpdated{AccountMetadataUpdated: updated}}, saved: true},
 	} {
@@ -65,11 +66,17 @@ func TestNumscriptExecuteBothResults(t *testing.T) {
 			if tc.saved {
 				args[4], args[5] = "--name", "transfer"
 			}
+			if tc.name == "transaction" || tc.name == "saved-transaction" {
+				args = append(args, "--metadata", "receipt=invoice-42")
+			}
 			root.SetArgs(args)
 			require.NoError(t, root.ExecuteContext(t.Context()))
 			request := <-fixture.requests
 			require.Equal(t, "fresh", request.GetUnsigned().GetRequests()[0].GetApply().GetLedger())
 			payload := request.GetUnsigned().GetRequests()[0].GetApply().GetAction().GetCreateTransaction()
+			if tc.name == "transaction" || tc.name == "saved-transaction" {
+				require.Equal(t, "invoice-42", payload.GetMetadata()["receipt"].GetStringValue())
+			}
 			if tc.saved {
 				require.Equal(t, "transfer", payload.GetScriptReference().GetName())
 				require.Equal(t, "latest", payload.GetScriptReference().GetVersion())

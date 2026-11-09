@@ -36,6 +36,7 @@ Examples:
 	cmd.Flags().String("version", "latest", "Version of a saved Numscript")
 	cmd.Flags().StringArray("var", nil, "Script variable in name=value format (repeatable)")
 	cmd.Flags().String("reference", "", "Transaction reference (requires a transaction-producing script)")
+	cmd.Flags().StringToString("metadata", nil, "Transaction metadata key=value pairs")
 	cmd.Flags().Bool("force", false, "Bypass balance checks")
 	cmdutil.AddOutputFlags(cmd)
 	cmd.Flags().Duration("timeout", cmdutil.DefaultTimeout, "Request timeout")
@@ -78,6 +79,8 @@ func runExecute(cmd *cobra.Command, _ []string) error {
 		payload.ScriptReference = &servicepb.ScriptReference{Name: name, Version: version, Vars: vars}
 	}
 	payload.Reference, _ = cmd.Flags().GetString("reference")
+	metadata, _ := cmd.Flags().GetStringToString("metadata")
+	payload.Metadata = commonpb.MetadataFromGoMap(metadata)
 	payload.Force, _ = cmd.Flags().GetBool("force")
 	ledger, _ := cmd.Flags().GetString(cmdutil.LedgerFlagName)
 	client, conn, err := cmdutil.GetClient(cmd)
