@@ -1506,7 +1506,7 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 	var (
 		proposalHash []byte
 		logs         []*raftcmdpb.CreatedLogOrReference
-		err          domain.SerializableError
+		err          domain.Describable
 		replayed     bool
 	)
 
@@ -1607,18 +1607,30 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 	}
 
 	if err != nil {
-		// FAILURE: write audit entry and return business error. `err` is
-		// produced by processor.ProcessOrders which now returns Describable
-		// directly — no boundary cast, no fallback path.
+		// FAILURE: write audit entry and return business error. Uncommitted
+		// failures returned above; every remaining failure is an audited
+		// business rejection by contract.
+		audited, ok := errors.AsType[domain.SerializableError](err)
+		if !ok {
+			assert.Unreachable("non-auditable order failure reached the audit path", map[string]any{
+				"raftIndex":  raftIndex,
+				"proposalID": proposal.GetId(),
+				"reason":     err.Reason(),
+			})
+
+			return nil, fmt.Errorf("invariant: order failure %q is neither uncommitted nor auditable (raft index %d, proposal %d): %w",
+				err.Reason(), raftIndex, proposal.GetId(), err)
+		}
+
 		failureEntry := auditpb.AuditEntryFromVTPool()
-		failureEntry.Outcome = &auditpb.AuditEntry_Failure{Failure: buildAuditFailure(err)}
+		failureEntry.Outcome = &auditpb.AuditEntry_Failure{Failure: buildAuditFailure(audited)}
 		appendErr := writeAuditEntry(failureEntry, nil, "failure")
 		failureEntry.ReturnToVTPool()
 		if appendErr != nil {
 			return nil, appendErr
 		}
 
-		if recErr := fsm.recordIdempotencyFailure(batch, idempotencyKey, proposalHash, err, effectiveDate.GetData(), idempotencyExpiresAt); recErr != nil {
+		if recErr := fsm.recordIdempotencyFailure(batch, idempotencyKey, proposalHash, audited, effectiveDate.GetData(), idempotencyExpiresAt); recErr != nil {
 			return nil, recErr
 		}
 

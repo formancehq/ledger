@@ -230,17 +230,17 @@ func (r *OrdersResult) recordCreatedLog(log *commonpb.Log) bool {
 // Successive calls return independent scopes — the previous scope's
 // coverage map is never mutated. Per-order isolation is therefore
 // structural: order N's scope cannot read keys declared by order M.
-func (p *RequestProcessor) ProcessOrders(orders []*raftcmdpb.Order, scopeFactory ScopeFactory, sink SignalSink) (*OrdersResult, domain.SerializableError) {
+func (p *RequestProcessor) ProcessOrders(orders []*raftcmdpb.Order, scopeFactory ScopeFactory, sink SignalSink) (*OrdersResult, domain.Describable) {
 	return p.processOrders(orders, scopeFactory, sink, false)
 }
 
 // ProcessAuditedOrders verifies recorded business effects. Operational quotas
 // are live admission/apply concerns, not historical business invariants.
-func (p *RequestProcessor) ProcessAuditedOrders(orders []*raftcmdpb.Order, scopeFactory ScopeFactory, sink SignalSink) (*OrdersResult, domain.SerializableError) {
+func (p *RequestProcessor) ProcessAuditedOrders(orders []*raftcmdpb.Order, scopeFactory ScopeFactory, sink SignalSink) (*OrdersResult, domain.Describable) {
 	return p.processOrders(orders, scopeFactory, sink, true)
 }
 
-func (p *RequestProcessor) processOrders(orders []*raftcmdpb.Order, scopeFactory ScopeFactory, sink SignalSink, auditReplay bool) (*OrdersResult, domain.SerializableError) {
+func (p *RequestProcessor) processOrders(orders []*raftcmdpb.Order, scopeFactory ScopeFactory, sink SignalSink, auditReplay bool) (*OrdersResult, domain.Describable) {
 	clear(p.compiledTypesCache)
 	clear(p.assetCache)
 

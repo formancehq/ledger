@@ -174,15 +174,13 @@ type Describable interface {
 	Reason() string
 }
 
-// SerializableError is the return contract for FSM order processing. Audited
-// business rejections supply typed details; UncommittedFailure returns nil
-// because it exits before the audit and idempotency writers. Error() retains
-// diagnostic text for logs.
+// SerializableError is the contract of an audited FSM rejection: it supplies the
+// typed details persisted in the audit chain and the idempotency registry.
+// Error() retains diagnostic text for logs.
 //
-// Every error the FSM can emit must satisfy it, which is why the apply path
-// types its returns as SerializableError. The apply path tests the producer's
-// UncommittedFailure marker before asking for FailureDetails, so technical
-// failures cannot reach the audit chain.
+// Order processing returns Describable. The apply path tests the producer's
+// UncommittedFailure marker first, so technical failures exit before the audit
+// and idempotency writers; every other failure must satisfy SerializableError.
 //
 // API adapters read the presentation through PublicErrorDetails, so a type with
 // sensitive diagnostic context can publish a separate view. Audited failures
@@ -567,7 +565,7 @@ func (errPreloadUnavailable) Error() string {
 func (errPreloadUnavailable) Kind() ErrorKind { return KindUnavailable }
 func (errPreloadUnavailable) Reason() string  { return ErrReasonPreloadUnavailable }
 
-var ErrPreloadUnavailable SerializableError = errPreloadUnavailable{}
+var ErrPreloadUnavailable Describable = errPreloadUnavailable{}
 
 // ErrWritesBlockedDiskFull is returned by the write gate when disk usage is at
 // or above the configured block threshold. Maps to gRPC ResourceExhausted / HTTP 429.
