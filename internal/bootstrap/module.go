@@ -987,7 +987,7 @@ func Module() fx.Option {
 					}
 				}))
 			},
-			func(lc fx.Lifecycle, node *node.Node, defaultTransport *node.DefaultTransport, cfg Config, logger logging.Logger) (*node.Node, error) {
+			func(lc fx.Lifecycle, node *node.Node, defaultTransport *node.DefaultTransport, membership *raftmembership.Membership, cfg Config, logger logging.Logger) (*node.Node, error) {
 				lc.Append(nodeHook(node, logger))
 
 				// A WAL that already joined the cluster must not take the learner
@@ -997,7 +997,7 @@ func Module() fx.Option {
 				// an UpdateNode for an existing voter may need that node to contribute
 				// to the commit quorum.
 				if shouldRunMembershipRefresh(cfg, logger) {
-					lc.Append(membershipRefreshHook(cfg, logger))
+					lc.Append(membershipRefreshHook(cfg, membership, logger))
 				}
 
 				return node, nil
@@ -1298,14 +1298,9 @@ func shouldRunJoinPreflight(cfg Config, logger logging.Logger) bool {
 }
 
 // shouldRunMembershipRefresh selects the normal-restart path. A fresh WAL is
-// handled by joinPreflightHook; a bootstrap node has no remote leader to
-// notify. The CLUSTER_JOINED marker is the durable boundary between those two
-// startup protocols.
+// handled by joinPreflightHook. Restart peers come from recovered membership,
+// so neither --join nor --bootstrap is required on subsequent boots.
 func shouldRunMembershipRefresh(cfg Config, logger logging.Logger) bool {
-	if cfg.RaftConfig.Bootstrap || len(cfg.RaftConfig.Peers) == 0 {
-		return false
-	}
-
 	if !wal.IsClusterJoined(cfg.RaftConfig.WalDir) {
 		return false
 	}
@@ -1416,11 +1411,15 @@ func newMembershipPeerDialer(cfg Config, tlsCfg TLSConfig) (func(string) (*ggrpc
 	}, nil
 }
 
-func membershipRefreshHook(cfg Config, logger logging.Logger) fx.Hook {
+func membershipRefreshHook(cfg Config, membership *raftmembership.Membership, logger logging.Logger) fx.Hook {
 	var cancel context.CancelFunc
 
 	return fx.Hook{
 		OnStart: func(ctx context.Context) error {
+			cfg.RaftConfig.Peers = recoveredRefreshPeers(cfg.RaftConfig.NodeID, membership.PeerAddresses())
+			if len(cfg.RaftConfig.Peers) == 0 {
+				return nil // A single-member cluster has no remote membership to refresh.
+			}
 			logger.WithFields(map[string]any{
 				"nodeID":         cfg.RaftConfig.NodeID,
 				"raftAddress":    cfg.RaftConfig.AdvertiseAddr,
@@ -1463,6 +1462,16 @@ func membershipRefreshHook(cfg Config, logger logging.Logger) fx.Hook {
 			return nil
 		},
 	}
+}
+
+func recoveredRefreshPeers(selfID uint64, addresses map[uint64]raftmembership.ConfChangeContext) []node.Peer {
+	peers := make([]node.Peer, 0, len(addresses))
+	for id, address := range addresses {
+		if id != selfID && address.RaftAddress != "" {
+			peers = append(peers, node.Peer{ID: id, Address: address.RaftAddress})
+		}
+	}
+	return peers
 }
 
 const membershipRefreshStartupTimeout = 5 * time.Second
