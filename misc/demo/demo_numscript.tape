@@ -24,7 +24,7 @@ Enter
 Sleep 1500ms
 
 # Fund the main account for later use
-Type "ledgerctl transactions create --ledger demo-numscript --posting 'world,bank:main,100000,USD/2'"
+Type "ledgerctl numscripts execute --ledger demo-numscript --posting 'world,bank:main,100000,USD/2'"
 Enter
 Sleep 1500ms
 
@@ -42,7 +42,7 @@ Enter
 Sleep 2s
 
 # Execute with interactive variable input
-Type "ledgerctl transactions create --ledger demo-numscript --script misc/numscript/examples/payment_with_fees.num"
+Type "ledgerctl numscripts execute --ledger demo-numscript --file misc/numscript/examples/payment_with_fees.num"
 Enter
 Sleep 1500ms
 
@@ -74,12 +74,12 @@ Enter
 Sleep 2s
 
 # Fund buyer account
-Type "ledgerctl transactions create --ledger demo-numscript --posting 'world,users:alice,25000,USD/2'"
+Type "ledgerctl numscripts execute --ledger demo-numscript --posting 'world,users:alice,25000,USD/2'"
 Enter
 Sleep 1500ms
 
 # Create escrow with dynamic account @escrow:$order_id
-Type "ledgerctl transactions create --ledger demo-numscript --script misc/numscript/examples/escrow_funding.num --var 'buyer=users:alice' --var 'order_id=ORD-2024-001' --var 'amount=USD/2 15000'"
+Type "ledgerctl numscripts execute --ledger demo-numscript --file misc/numscript/examples/escrow_funding.num --var 'buyer=users:alice' --var 'order_id=ORD-2024-001' --var 'amount=USD/2 15000'"
 Enter
 Sleep 2s
 
