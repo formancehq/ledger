@@ -214,6 +214,7 @@ func (*ErrInvalidOrderType) UncommittedFailure()             {}
 func (*ErrMirrorV2LogIDGap) UncommittedFailure()             {}
 func (*ErrMirrorV2LogIDInvalid) UncommittedFailure()         {}
 func (*ErrNumscriptRuntime) UncommittedFailure()             {}
+func (errPreloadUnavailable) UncommittedFailure()            {}
 func (*ErrSequenceExhausted) UncommittedFailure()            {}
 func (*ErrStaleClusterPolicy) UncommittedFailure()           {}
 func (errStaleInputsResolution) UncommittedFailure()         {}
@@ -549,14 +550,15 @@ var ErrStaleInputsResolution SerializableError = errStaleInputsResolution{}
 // ErrPreloadUnavailable — admission could not build the preload set for an order
 // (e.g. Numscript dependency discovery failed against current state). When the
 // batch carries an idempotency key, admission forwards the order to the FSM
-// (marked OrderTechnical.preload_unavailable) rather than failing fast, so the
-// FSM can replay a frozen outcome. If none exists it returns this technical
-// interruption without an audit entry. Retryable (Kind=Unavailable) and
-// deliberately NOT freezable: it is a preparation gap, not an authoritative
-// business verdict — freezing it could let
-// a preload-unavailable retry shadow the real outcome of a concurrent same-key
-// proposal. A retry re-admits (and re-resolves) or replays the now-frozen
-// outcome. See EN-1406.
+// (marked OrderTechnical.preload_unavailable) so the dedup gate can replay a
+// frozen outcome. Without one, ProcessOrders executes the batch in sequence and
+// fails the forwarded order when it reaches it, so a definitive failure of an
+// earlier order wins and is frozen as usual. This technical interruption is
+// retryable (Kind=Unavailable) and deliberately NOT freezable or audited: it is
+// a preparation gap, not an authoritative business verdict — freezing it could
+// let a preload-unavailable retry shadow the real outcome of a concurrent
+// same-key proposal. A retry re-admits (and re-resolves) or replays the
+// now-frozen outcome. See EN-1406.
 type errPreloadUnavailable struct{}
 
 func (errPreloadUnavailable) Error() string {
@@ -565,7 +567,7 @@ func (errPreloadUnavailable) Error() string {
 func (errPreloadUnavailable) Kind() ErrorKind { return KindUnavailable }
 func (errPreloadUnavailable) Reason() string  { return ErrReasonPreloadUnavailable }
 
-var ErrPreloadUnavailable Describable = errPreloadUnavailable{}
+var ErrPreloadUnavailable SerializableError = errPreloadUnavailable{}
 
 // ErrWritesBlockedDiskFull is returned by the write gate when disk usage is at
 // or above the configured block threshold. Maps to gRPC ResourceExhausted / HTTP 429.

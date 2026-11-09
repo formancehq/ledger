@@ -173,6 +173,10 @@ func (errStaleInputsResolution) FailureDetails() *commonpb.FailureDetails {
 	return nil // Technical failures are never persisted as audited outcomes.
 }
 
+func (errPreloadUnavailable) FailureDetails() *commonpb.FailureDetails {
+	return nil // Technical failures are never persisted as audited outcomes.
+}
+
 func (e *ErrLedgerAlreadyExists) FailureDetails() *commonpb.FailureDetails {
 	return &commonpb.FailureDetails{Kind: &commonpb.FailureDetails_LedgerAlreadyExists{LedgerAlreadyExists: &commonpb.LedgerAlreadyExistsDetails{
 		Name: new(e.Name),

@@ -779,3 +779,91 @@ func TestApplyProposal_StalePreloadCannotResurrectSupersededOutcome(t *testing.T
 	require.NoError(t, r.Results[0].Error)
 	require.Nil(t, r.Results[0].Logs[0].GetCreatedLog(), "after restart, a stale-plan duplicate still replays")
 }
+
+// TestApplyProposal_ForwardedOrderFailsInSequence pins where a forwarded
+// (preload_unavailable) order fails inside a keyed batch: at its own position.
+// An earlier order that fails definitively yields that audited, frozen
+// outcome; PRELOAD_UNAVAILABLE surfaces only when every earlier order applied,
+// and then commits nothing.
+func TestApplyProposal_ForwardedOrderFailsInSequence(t *testing.T) {
+	t.Parallel()
+
+	machine, dataStore, attrs := newTestMachine(t)
+	ctx := context.Background()
+
+	const ledgerName = "forwarded-sequence"
+
+	r, err := machine.ApplyEntries(ctx, dataStore, makeEntry(t, 1, makeProposal(1,
+		createLedgerOrder(ledgerName),
+		createTransactionOrder(ledgerName, true, newPosting("world", "alice", "USD", 10)))))
+	require.NoError(t, err)
+	require.NoError(t, r.Results[0].Error)
+
+	forwarded := func() *raftcmdpb.Order {
+		order := createTransactionOrder(ledgerName, false, newPosting("alice", "bob", "USD", 1))
+		order.Technical = &raftcmdpb.OrderTechnical{PreloadUnavailable: true}
+
+		return order
+	}
+	keyed := func(id uint64, key string, orders ...*raftcmdpb.Order) *raftcmdpb.Proposal {
+		p := makeProposal(id, orders...)
+		p.Idempotency = &commonpb.Idempotency{Key: key}
+
+		return p
+	}
+	reasonOf := func(t *testing.T, err error) string {
+		t.Helper()
+		described, ok := errors.AsType[domain.Describable](err)
+		require.True(t, ok)
+
+		return described.Reason()
+	}
+
+	funded := readBusinessProjections(t, dataStore, attrs)
+
+	// An overdraw ahead of the forwarded order is the batch's verdict.
+	overdraw := func() *raftcmdpb.Order {
+		return createTransactionOrder(ledgerName, false, newPosting("alice", "bob", "USD", 15))
+	}
+	r, err = machine.ApplyEntries(ctx, dataStore, makeEntry(t, 2, keyed(2, "k-overdraw", overdraw(), forwarded())))
+	require.NoError(t, err)
+	require.Equal(t, domain.ErrReasonInsufficientFunds, reasonOf(t, r.Results[0].Error))
+	require.False(t, r.Results[0].Replayed)
+	require.True(t, r.Results[0].AuditEntryWritten)
+	_, frozen := machine.Registry.Idempotency.Get("k-overdraw")
+	require.True(t, frozen, "a definitive failure ahead of the forwarded order is frozen")
+	require.Equal(t, funded, readBusinessProjections(t, dataStore, attrs))
+
+	r, err = machine.ApplyEntries(ctx, dataStore, makeEntry(t, 3, keyed(3, "k-overdraw", overdraw(), forwarded())))
+	require.NoError(t, err)
+	require.True(t, r.Results[0].Replayed)
+	var replayed *domain.ReplayedFailure
+	require.ErrorAs(t, r.Results[0].Error, &replayed)
+	require.Equal(t, domain.ErrReasonInsufficientFunds, replayed.Reason())
+
+	// Every earlier order applies: the forwarded order fails the batch with an
+	// uncommitted PRELOAD_UNAVAILABLE and the earlier effects are discarded.
+	spend := func() *raftcmdpb.Order {
+		return createTransactionOrder(ledgerName, false, newPosting("alice", "bob", "USD", 5))
+	}
+	auditSequence := machine.State.NextAuditSequenceID
+	auditedTimestamp := machine.State.LastAppliedTimestamp
+	r, err = machine.ApplyEntries(ctx, dataStore, makeEntry(t, 4, keyed(4, "k-funded", spend(), forwarded())))
+	require.NoError(t, err)
+	require.ErrorIs(t, r.Results[0].Error, domain.ErrPreloadUnavailable)
+	require.False(t, r.Results[0].Replayed)
+	require.False(t, r.Results[0].AuditEntryWritten)
+	require.Equal(t, auditSequence, machine.State.NextAuditSequenceID)
+	require.Equal(t, auditedTimestamp, machine.State.LastAppliedTimestamp)
+	_, frozen = machine.Registry.Idempotency.Get("k-funded")
+	require.False(t, frozen, "a preparation gap is never frozen")
+	require.Equal(t, funded, readBusinessProjections(t, dataStore, attrs), "the funded spend ahead of the forwarded order must not land")
+
+	// A re-admitted retry under the same key executes the prepared batch.
+	prepared := createTransactionOrder(ledgerName, false, newPosting("alice", "bob", "USD", 1))
+	r, err = machine.ApplyEntries(ctx, dataStore, makeEntry(t, 5, keyed(5, "k-funded", spend(), prepared)))
+	require.NoError(t, err)
+	require.NoError(t, r.Results[0].Error)
+	require.False(t, r.Results[0].Replayed)
+	require.Len(t, r.Results[0].Logs, 2)
+}

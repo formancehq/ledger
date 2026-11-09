@@ -268,6 +268,18 @@ func (p *RequestProcessor) processOrders(orders []*raftcmdpb.Order, scopeFactory
 	stagedTransactions := 0
 
 	for i, order := range orders {
+		// Admission forwarded this order without a preload only so the FSM
+		// dedup gate could replay an earlier outcome under the batch's key.
+		// Reaching it means every earlier order applied and there is nothing
+		// to replay: fail here, in sequence, so an earlier order's definitive
+		// rejection wins over this preparation gap. The marker sits before the
+		// skip matcher on purpose: a skippable_reasons whitelist cannot turn a
+		// never-prepared order into a skip. The flag is part of the committed
+		// order bytes, so every voter reaches the same verdict.
+		if order.GetTechnical().GetPreloadUnavailable() {
+			return nil, domain.ErrPreloadUnavailable
+		}
+
 		orderScope, scopeErr := scopeFactory.NewScope(order.GetTechnical().GetCoverageBits())
 		if scopeErr != nil {
 			// Invariant violation surfaced by the FSM: the execution plan
