@@ -149,9 +149,17 @@ and backup compatibility. The operator does not delete Raft members or volumes.
 
 The drain blocks business writes before the stop; in-flight proposals after
 the cutoff reject at apply. Cluster-internal technical entries may continue
-and must remain replay-compatible with the target. Clients must retry an
-unacknowledged request with the same idempotency key. A release that changes
-replay or apply semantics must prove this
+and must remain replay-compatible with the target. Clients normally retry an
+unacknowledged request with the same idempotency key. An RC.3 batch containing
+a targetless `UpdatePreparedQuery` is an exception after the RC.4 upgrade: an
+identical retry fails `PREPARED_QUERY_TARGET_REQUIRED` before the retained
+outcome lookup. Adding `target` changes the request hash and conflicts with a
+retained key. Before submitting any replacement work, use `ledgerctl audit list`
+with an exact `idempotency_key` filter and inspect the prepared query and any
+other affected business state. Reconcile whether the original batch committed
+and its outcome; if the evidence is incomplete, keep the outcome unresolved
+and do not issue a replacement batch that could duplicate its effects. A release
+that changes replay or apply semantics must prove this
 with a non-empty source cluster before publishing. Rollback to an older binary
 is allowed only before the target has written incompatible persisted data, and
 only with a separately validated downgrade procedure. After that point, keep
