@@ -38,13 +38,15 @@ Raft index**, sampled with its log head from one Pebble snapshot. The receiver
 waits for that index, opens its own pinned snapshot, verifies the snapshot's
 applied marker, and hashes the requested range. A follower that has not caught
 up returns a timeout or unavailable result, not a divergence. At the required
-horizon, an absent log or malformed row is reported as data loss.
+horizon, an entirely empty log returns `NotFound`. A missing row beneath a
+nonzero log head, or malformed persisted data, returns `DataLoss`.
 
 Only the current leader coordinates comparisons. It samples a coherent local
 head and checks each member in parallel every 250 ms. Each peer has its own
 cursor; an unavailable range stays queued for a later attempt, while a
 confirmed discrepancy is reported and the cursor advances so later results
-remain observable. The
+remain observable. When both logs are empty, the probe stays queued without
+a data-loss alarm until a log can be compared. The
 first observation after leadership starts covers the newest 256 logs, then
 new logs are checked in bounded ranges. This favors prompt detection for new
 results; it does **not** retrospectively verify older history. A future
