@@ -887,3 +887,13 @@ implicit-scheme handling. ClickHouse diagnostics also register decoded
 `http_proxy` URLs, including malformed proxies whose parse errors are embedded
 as plain text by the driver. These adaptations happen before constructor errors
 can reach the manager.
+
+## Sink connection URL admission
+
+New NATS configurations require a scheme on every comma-separated server:
+`nats://`, `tls://`, `ws://` or `wss://`. New ClickHouse configurations require
+`clickhouse://`, `http://` or `https://`; multi-host authorities and HTTP proxy
+query options retain their driver interpretation. Invalid syntax fails before
+Raft, regardless of connector build tags. Existing persisted configurations are
+not revalidated by workers or replay. See the
+[connector admission contract](../admission/validation.md#connector-url-admission).

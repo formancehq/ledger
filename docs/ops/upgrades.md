@@ -614,3 +614,21 @@ copies. Create fresh query checkpoints after repair when complete historical
 address search is required. A main-store backup restore into a fresh read store
 instead replays retained history with the installed builder; address mappings are
 rebuildable local projections, not additional audit-bound business state.
+
+## Connector URL input policy
+
+Before creating PostgreSQL mirrors or NATS/ClickHouse sinks on upgraded servers,
+convert PostgreSQL keyword DSNs to `postgres://` or `postgresql://` URLs and add
+an explicit `nats://`, `tls://`, `ws://` or `wss://` scheme to every NATS server.
+ClickHouse inputs must use `clickhouse://`, `http://` or `https://` URL form.
+Malformed URL shapes return safe validation failures before Raft. PostgreSQL
+mirror admission accepts any explicit scheme and does not parse driver options;
+the PostgreSQL worker validates supported schemes/options and requires explicit
+TLS before installing IAM credentials. Invalid driver settings can now be
+persisted and fail during source construction rather than creation. The required
+IAM region remains an admission check.
+Existing persisted configurations, audit history and backups remain valid;
+workers continue to consume their original bytes. Public reads fully mask legacy
+PostgreSQL keyword DSNs. During a rolling upgrade an older leader can still
+admit a non-URL input; FSM application is unchanged on all voters. Service
+protocol revision 40 remains unchanged and no state migration is required.
