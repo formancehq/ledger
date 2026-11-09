@@ -152,6 +152,12 @@ func newMembership(store *PeerStore, transport Transport, pool Pool, selfNodeID 
 			return nil, fmt.Errorf("reading membership format: %w", err)
 		}
 		if revision < membershipFormatRevisionPeerPort {
+			for nodeID, addr := range addresses {
+				_, port, err := net.SplitHostPort(addr.ServiceAddress)
+				if err != nil || (legacyPort != 0 && port != strconv.Itoa(legacyPort)) {
+					return nil, fmt.Errorf("cannot classify legacy service address %q for peer %d; membership format revision unchanged", addr.ServiceAddress, nodeID)
+				}
+			}
 			addresses = normalizeLegacyServiceAddresses(addresses, servicePort, legacyPort)
 		}
 	}
