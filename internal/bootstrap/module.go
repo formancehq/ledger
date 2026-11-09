@@ -1471,6 +1471,7 @@ func recoveredRefreshPeers(selfID uint64, addresses map[uint64]raftmembership.Co
 			peers = append(peers, node.Peer{ID: id, Address: address.RaftAddress})
 		}
 	}
+
 	return peers
 }
 
