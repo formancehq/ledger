@@ -9,7 +9,7 @@ import (
 //   - name:"service" — connections to peers' service ports (request forwarding)
 func Module() fx.Option {
 	return fx.Options(
-		fx.Provide(fx.Annotate(NewConnectionPool, fx.ResultTags(`name:"raft"`))),
+		fx.Provide(fx.Annotate(NewRaftConnectionPool, fx.ResultTags(`name:"raft"`))),
 		fx.Provide(fx.Annotate(NewConnectionPool, fx.ResultTags(`name:"service"`))),
 	)
 }

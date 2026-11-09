@@ -47,6 +47,7 @@ type PoolConfig struct {
 	BackoffJitter     float64       // Default: 0.2
 	Compression       bool          // Enable gzip compression on calls
 	AuthToken         string        // Bearer token injected into every outgoing call (for inter-node auth)
+	authHeader        string        // Transport credential header; defaults to the peer-service header
 }
 
 func (c *PoolConfig) SetDefaults() {
@@ -157,7 +158,11 @@ func dialOptions(creds credentials.TransportCredentials, cfg PoolConfig) []grpc.
 		))
 	}
 	if cfg.AuthToken != "" {
-		opts = append(opts, grpc.WithPerRPCCredentials(staticTokenCredentials{token: cfg.AuthToken, header: PeerAuthMetadataKey}))
+		header := cfg.authHeader
+		if header == "" {
+			header = PeerAuthMetadataKey
+		}
+		opts = append(opts, grpc.WithPerRPCCredentials(staticTokenCredentials{token: cfg.AuthToken, header: header}))
 	}
 
 	return opts
@@ -206,6 +211,13 @@ func NewConnectionPool(policy TLSPolicy, cfg PoolConfig) *ConnectionPool {
 		probeTimeout: defaultProbeTimeout,
 		failureGrace: defaultFailureGrace,
 	}
+}
+
+// NewRaftConnectionPool uses the Raft server's authorization metadata contract.
+func NewRaftConnectionPool(policy TLSPolicy, cfg PoolConfig) *ConnectionPool {
+	cfg.authHeader = "authorization"
+
+	return NewConnectionPool(policy, cfg)
 }
 
 // AddPeer adds a peer to the pool and creates a raw gRPC connection.
