@@ -610,6 +610,9 @@ func NewNode(
 				Voters:   voters,
 				Learners: learners,
 			}
+			if err := membership.MarkNativeFormat(); err != nil {
+				return nil, fmt.Errorf("initializing membership format: %w", err)
+			}
 
 			// EN-1413: persist self (Bootstrap only — Join's self lands
 			// later via the AddLearner ConfChange) + every cfg.Peers

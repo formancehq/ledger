@@ -106,6 +106,20 @@ func (p *PeerStore) migrateLegacyServiceAddressesFromPort(servicePort int, selfN
 	return nil
 }
 
+func (p *PeerStore) markNativeMembershipFormat() error {
+	session := p.store.OpenWriteSession()
+	if err := session.SetBytes(membershipFormatKey, membershipFormatRevisionBytes(membershipFormatRevisionPeerPort)); err != nil {
+		_ = session.Cancel()
+
+		return fmt.Errorf("marking native membership format: %w", err)
+	}
+	if err := session.Commit(); err != nil {
+		return fmt.Errorf("committing native membership format: %w", err)
+	}
+
+	return nil
+}
+
 func membershipFormatRevisionBytes(revision uint32) []byte {
 	var revisionBytes [4]byte
 	binary.BigEndian.PutUint32(revisionBytes[:], revision)
