@@ -81,7 +81,7 @@ func authUnaryInterceptor(cfg internalauth.AuthConfig, peerOnly bool) ggrpc.Unar
 			// isolated by the network boundary, but it must not be treated as an
 			// authenticated forwarding hop: otherwise a reachable client could
 			// forge forwarded caller attribution.
-			if cfg.ClusterSecret != "" {
+			if cfg.ClusterSecret != "" && peerUsesTLS(ctx) {
 				ctx = internalauth.WithClusterInternal(ctx, true)
 			}
 		}
@@ -113,7 +113,7 @@ func authStreamInterceptor(cfg internalauth.AuthConfig, peerOnly bool) ggrpc.Str
 			if err := requirePeerCredential(ctx, cfg); err != nil {
 				return err
 			}
-			if cfg.ClusterSecret != "" {
+			if cfg.ClusterSecret != "" && peerUsesTLS(ctx) {
 				ctx = internalauth.WithClusterInternal(ctx, true)
 			}
 		} else if err := rejectDirectClusterSecret(ctx, cfg); err != nil {
@@ -173,6 +173,11 @@ func rejectDirectClusterSecret(ctx context.Context, cfg internalauth.AuthConfig)
 }
 
 func requirePeerCredential(ctx context.Context, cfg internalauth.AuthConfig) error {
+	if !peerUsesTLS(ctx) && !cfg.Enabled {
+		// Plaintext exists only in disabled/optional modes. A rolling
+		// migration must accept older peers without exposing the secret.
+		return nil
+	}
 	// Auth-disabled clusters historically had no shared secret. They still get
 	// a dedicated peer listener, but there is no credential to validate in that
 	// mode. Authenticated clusters must present the cluster-secret here; a JWT

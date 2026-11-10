@@ -12,5 +12,5 @@ func TestConnectionPoolRejectsBearerTokenOnPlaintext(t *testing.T) {
 	pool := NewConnectionPool(TLSPolicy{}, PoolConfig{AuthToken: "test-cluster-secret"})
 	t.Cleanup(func() { require.NoError(t, pool.Close()) })
 	err := pool.AddPeer(1, "127.0.0.1:1")
-	require.EqualError(t, err, "peer authentication requires strict TLS for 127.0.0.1:1")
+	require.EqualError(t, err, "peer authentication requires TLS for 127.0.0.1:1")
 }

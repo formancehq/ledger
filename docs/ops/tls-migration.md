@@ -125,12 +125,12 @@ finished rolling. An already persisted backup Job keeps its original template.
 ### Cluster secret coupling
 
 The cluster secret is a static bearer token used for inter-node
-authentication. It is independent of `--auth-enabled`: when set, it protects
-the Raft port on every node. When `--auth-enabled` is also set, followers use
-it to forward writes to the leader. The operator may retain the secret during
-the TLS transition, but peer credentials are used only after TLS has converged
-to `required`. Sending a static token over plaintext is an anti-pattern, so
-the optional phase runs without peer credentials.
+authentication over TLS. It is independent of `--auth-enabled`: when set,
+it protects TLS connections to the Raft and peer-service ports. During the
+`optional` rollout, TLS connections carry the credential while plaintext
+connections to legacy peers do not. A node in `optional` mode accepts those
+legacy plaintext connections without treating them as authenticated peers.
+The `required` listener accepts only TLS connections with the credential.
 
 Operator maintenance commands use an Ed25519 credential from the `Credentials`
 CRD. The private seed remains in the Credentials Secret and the public key is
@@ -138,11 +138,11 @@ mounted into Ledger through `AUTH_ED25519_KEYS`; the operator signs short-lived
 JWTs for `ledgerctl` and backup Jobs. The Raft `cluster-secret` is never exposed
 as a direct client token.
 
-This means **authentication requires strict TLS**:
+This means **external authentication requires strict TLS**:
 
-- `--cluster-secret` (inter-node static bearer token) requires
-  `--tls-mode=required`. During `optional`, the pool refuses to send the
-  secret and peers communicate without a credential while TLS converges.
+- `--cluster-secret` (inter-node static bearer token) requires TLS to be
+  available. During `optional`, the pool sends it only over TLS and falls
+  back to plaintext without it when a peer does not yet speak TLS.
 - `--auth-enabled` (external service API JWT/Ed25519) requires `--tls-mode=required`.
   `optional` is rejected because its dual listener still accepts plaintext client
   connections, so bearer tokens could travel in the clear. Bring the cluster to
@@ -151,7 +151,7 @@ This means **authentication requires strict TLS**:
 The server enforces these invariants at startup:
 
 ```
---cluster-secret requires strict TLS (set --tls-mode to required
+--cluster-secret requires TLS (set --tls-mode to optional or required
 and provide --tls-cert-file / --tls-key-file)
 
 --auth-enabled requires --tls-mode=required (with --tls-cert-file /
@@ -191,21 +191,23 @@ To migrate a hand-managed cluster:
 3. Once all nodes are running `optional`, restart them with
    `--tls-mode=required`.
 
-The unauthenticated dialer probes each peer the first time it connects in
+The dialer probes each peer the first time it connects in
 `optional` mode and re-probes on persistent connection failures, so a peer
 flipping between modes during the migration is followed automatically. A pool
-configured with a cluster secret refuses optional/plaintext transport: the
-secret is sent only after strict TLS has converged. Authenticated deployments
-must therefore complete the transition before enabling peer credentials.
+configured with a cluster secret attaches it only to TLS connections. A
+plaintext fallback is unauthenticated and is accepted only as part of the
+`optional` transition; disable that fallback by completing the rollout to
+`required`.
 
 ## Troubleshooting
 
-- `--cluster-secret requires TLS` at server startup: the cluster secret
-  must not be used before TLS is strict. Complete the transition to
-  `--tls-mode=required`, or remove the flag during the optional phase.
+- `--cluster-secret requires TLS` at server startup: enable `optional` or
+  `required` TLS, or remove the flag while TLS is disabled.
 - A migration that appears stuck on `transitioning-to-*` usually means the
   rolling update itself is stuck on a pod readiness probe. Check
   `kubectl rollout status statefulset/<name>`.
-- The dialer logs `grpc_connection_created` events with `tls=true|false`
-  per peer (via the Antithesis lifecycle SDK) — useful for confirming
-  which security level each connection settled on in the optional phase.
+- The operator logs each selected TLS mode change with the observed, target,
+  and desired modes. The dialer emits `grpc_tls_migration_transport` events
+  with `tls` and `peerCredentialAttached` fields per optional-mode connection
+  (via the Antithesis lifecycle SDK). These fields indicate whether the secret
+  is attached; the secret value is never logged.

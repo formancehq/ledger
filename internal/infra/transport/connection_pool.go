@@ -157,7 +157,7 @@ func dialOptions(creds credentials.TransportCredentials, cfg PoolConfig) []grpc.
 			grpc.UseCompressor(gzip.Name),
 		))
 	}
-	if cfg.AuthToken != "" {
+	if cfg.AuthToken != "" && creds.Info().SecurityProtocol != "insecure" {
 		header := cfg.authHeader
 		if header == "" {
 			header = PeerAuthMetadataKey
@@ -301,8 +301,8 @@ func (p *ConnectionPool) dialPeer(id uint64, addr string) (*peerEntry, error) {
 // falls back to plaintext, whereas a network-level failure is returned to
 // the caller (which will retry later).
 func (p *ConnectionPool) decideTLS(addr string) (bool, error) {
-	if p.config.AuthToken != "" && (!p.policy.AllowsTLS() || !p.policy.Strict) {
-		return false, fmt.Errorf("peer authentication requires strict TLS for %s", addr)
+	if p.config.AuthToken != "" && !p.policy.AllowsTLS() {
+		return false, fmt.Errorf("peer authentication requires TLS for %s", addr)
 	}
 
 	switch {
@@ -318,6 +318,7 @@ func (p *ConnectionPool) decideTLS(addr string) (bool, error) {
 	}
 
 	if isTLSHandshakeError(err) {
+		lifecycle.SendEvent("grpc_tls_migration_fallback", map[string]any{"address": addr, "tls": false, "peerCredentialAttached": false})
 		return false, nil
 	}
 
@@ -328,6 +329,9 @@ func (p *ConnectionPool) decideTLS(addr string) (bool, error) {
 // transport credentials.
 func (p *ConnectionPool) connect(addr string, useTLS bool) (*grpc.ClientConn, error) {
 	creds := p.transportCredentials(useTLS)
+	if p.policy.IsOptional() {
+		lifecycle.SendEvent("grpc_tls_migration_transport", map[string]any{"address": addr, "tls": useTLS, "peerCredentialAttached": useTLS && p.config.AuthToken != ""})
+	}
 
 	return grpc.NewClient("dns:///"+addr, dialOptions(creds, p.config)...)
 }
