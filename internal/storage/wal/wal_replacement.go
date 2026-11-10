@@ -124,10 +124,6 @@ func (s *DefaultWAL) prepareReplacementWAL(snap *raftpb.Snapshot, state *raftpb.
 	if err := w.Save(state, suffix); err != nil {
 		return cleanup(fmt.Errorf("saving replacement WAL state and suffix: %w", err))
 	}
-	// SaveSnapshot is an fsync barrier even for a commit-only HardState update.
-	if err := w.SaveSnapshot(walsnap); err != nil {
-		return cleanup(fmt.Errorf("syncing replacement WAL: %w", err))
-	}
 	if err := w.Close(); err != nil {
 		return fmt.Errorf("closing replacement WAL: %w", err)
 	}
