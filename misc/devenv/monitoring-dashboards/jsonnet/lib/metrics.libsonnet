@@ -69,6 +69,15 @@
     logs_indexed: 'index.builder.logs_indexed',
   },
 
+  // log_integrity — internal/application/logintegrity/observer.go
+  log_integrity:: {
+    divergences: 'log_integrity.divergences',
+    unavailable_attempts: 'log_integrity.unavailable_attempts',
+    local_data_loss: 'log_integrity.local_data_loss',
+    checked_logs: 'log_integrity.checked_logs',
+    comparison_duration: 'log_integrity.comparison.duration',
+  },
+
   // audit.indexer — internal/application/auditindexer/indexer.go
   audit_indexer:: {
     last_indexed_sequence: 'audit.indexer.last_indexed_sequence',
