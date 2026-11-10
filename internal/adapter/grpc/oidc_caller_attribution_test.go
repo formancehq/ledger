@@ -167,6 +167,7 @@ func newTLSAuthInterceptorServer(t *testing.T, mode ServiceAuthPolicy, cfg inter
 		grpcprotocol.ClientOption())
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, conn.Close()) })
+
 	return implementation, servicepb.NewBucketServiceClient(conn)
 }
 
