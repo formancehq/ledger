@@ -86,9 +86,16 @@ jobs:
         with:
           subject-path: ./dist/*/**
 
+      # Attest the two multi-arch images (standard and -scratch). The Docker v2
+      # preset reports them as "Docker Image" rather than "Docker Manifest", next
+      # to single-platform -amd64/-arm64 images that are not attested. Their
+      # full-SHA alias shares the digest, so keep one entry per digest.
       - run: |
-          jq -r '[ .[]|select(.type=="Docker Manifest") | .extra.Digest         ] | to_entries | .[] | ( "digest"+ (.key | tostring) + "=" + .value )' < dist/artifacts.json >> "$GITHUB_OUTPUT"
-          jq -r '[ .[]|select(.type=="Docker Manifest") | .name | split(":")[0] ] | to_entries | .[] | ( "name"+ (.key | tostring) + "=" + .value )'   < dist/artifacts.json >> "$GITHUB_OUTPUT"
+          jq -r '[ .[] | select(.type == "Docker Manifest" or .type == "Docker Image")
+                 | select(.name | test("-(amd64|arm64)(-scratch)?$") | not)
+                 | {name: (.name | split(":")[0]), digest: .extra.Digest} ]
+                 | unique_by(.digest) | to_entries[]
+                 | "digest\(.key)=\(.value.digest)", "name\(.key)=\(.value.name)"' < dist/artifacts.json >> "$GITHUB_OUTPUT"
         id: image_metadata
 
       - uses: actions/attest-build-provenance@v4
