@@ -45,6 +45,9 @@ func TestWorkflowImageSummary(t *testing.T) {
 				t.Fatalf("incorrect %s output wiring", name)
 			}
 		}
+		if step.Env["dev_image"] != "${{ env.IMAGE_REPOSITORY }}:${{ steps.dev-version.outputs.version }}" {
+			t.Fatal("incorrect dev_image output wiring")
+		}
 		const prefix = "nix develop .#perf --command bash -euo pipefail <<'IMAGES'\n"
 		if !strings.HasPrefix(step.Run, prefix) || !strings.HasSuffix(step.Run, "IMAGES\n") {
 			t.Fatal("summary must use the pinned Nix client and strict Bash")
@@ -78,19 +81,25 @@ case "$1 $2 $3" in
       *) printf '{"digest":"%s"}\n' "$value" ;;
     esac ;;
   'buildx imagetools create')
-    test "$#" -eq 6 && test "$4" = --tag && test "$5" = "$image" && test "$6" = "$build_image@$LEDGER_DIGEST" || exit 4
-    touch "$ALIAS_CREATED" ;;
+    test "$#" -eq 6 && test "$4" = --tag && test "$6" = "$build_image@$LEDGER_DIGEST" || exit 4
+    case "$5" in
+      "$image") touch "$ALIAS_CREATED" ;;
+      "$dev_image") touch "$DEV_TAG_CREATED" ;;
+      *) exit 4 ;;
+    esac ;;
   *) exit 2 ;;
 esac
 `
 			if err := os.WriteFile(filepath.Join(dir, "docker"), []byte(fake), 0o700); err != nil {
 				t.Fatal(err)
 			}
-			summary, alias := filepath.Join(dir, "summary"), filepath.Join(dir, "alias")
+			summary, alias, devTag := filepath.Join(dir, "summary"), filepath.Join(dir, "alias"), filepath.Join(dir, "dev-tag")
+			devImage := "ghcr.io/formancehq/ledger:v3.0.0-rc.3.dev.39.gaaaaaaa"
 			cmd := exec.CommandContext(t.Context(), "bash", "-euo", "pipefail", "-c", script)
 			cmd.Env = append(os.Environ(), "PATH="+dir+string(os.PathListSeparator)+os.Getenv("PATH"),
 				"image=ghcr.io/formancehq/ledger:pr-42-aaaaaaa", "build_image=ghcr.io/formancehq/ledger:pr-42-aaaaaaa-run-123-2",
 				"operator_image=ghcr.io/formancehq/ledger-operator:pr-42-aaaaaaa", "GITHUB_STEP_SUMMARY="+summary,
+				"dev_image="+devImage, "DEV_TAG_CREATED="+devTag,
 				"ALIAS_CREATED="+alias, "LEDGER_DIGEST="+tt.ledger, "OPERATOR_DIGEST="+tt.operator)
 			logs, err := cmd.CombinedOutput()
 			if tt.name == "valid" {
@@ -100,8 +109,15 @@ esac
 				if _, err := os.Stat(alias); err != nil {
 					t.Fatal("PR alias not created", err)
 				}
-				if data, err := os.ReadFile(summary); err != nil || !strings.Contains(string(data), digest) {
+				if _, err := os.Stat(devTag); err != nil {
+					t.Fatal("RFC-0013 development version tag not created", err)
+				}
+				data, err := os.ReadFile(summary)
+				if err != nil || !strings.Contains(string(data), digest) {
 					t.Fatal("missing digest summary", err)
+				}
+				if !strings.Contains(string(data), devImage) {
+					t.Fatal("summary does not list the development version tag")
 				}
 			} else {
 				if err == nil || (!strings.Contains(string(logs), "Invalid ") && !strings.Contains(string(logs), "parse error")) {
@@ -109,6 +125,9 @@ esac
 				}
 				if _, err := os.Stat(alias); !os.IsNotExist(err) {
 					t.Fatal("invalid digest reached alias creation", err)
+				}
+				if _, err := os.Stat(devTag); !os.IsNotExist(err) {
+					t.Fatal("invalid digest reached development version tag creation", err)
 				}
 			}
 		})

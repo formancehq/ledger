@@ -71,6 +71,13 @@ jobs:
             echo "build_image=${build_image}"
             echo "operator_image=${operator_image}"
           } >> "$GITHUB_OUTPUT"
+      # RFC-0013: also tag the PR image with the SemVer development version of
+      # the PR head (vX.Y.Z-dev.N.gSHA, line of the base branch). The commit and
+      # its short SHA are the same as in the pr-<num>-<sha7> tag; the squash
+      # commit built after merge gets its own version.
+      - name: Compute development version
+        id: dev-version
+        uses: formancehq/ci/actions/dev-version@e4b5ab22a0714d35a1731b73191162463b781131 # v1.0.4
       - name: Build and push Ledger PR image with GoReleaser
         run: >
           nix develop .#ci --command just docker-build-pr '${{ steps.tag.outputs.build_image }}'
@@ -86,6 +93,7 @@ jobs:
           image: ${{ steps.tag.outputs.image }}
           build_image: ${{ steps.tag.outputs.build_image }}
           operator_image: ${{ steps.tag.outputs.operator_image }}
+          dev_image: ${{ env.IMAGE_REPOSITORY }}:${{ steps.dev-version.outputs.version }}
         run: |
           nix develop .#perf --command bash -euo pipefail <<'IMAGES'
           digest=$(docker buildx imagetools inspect "$build_image" --format '{{json .Manifest}}' | jq -er '.digest')
@@ -94,12 +102,15 @@ jobs:
           [[ "$operator_digest" =~ ^sha256:[0-9a-f]{64}$ ]] || { echo 'Invalid Operator image digest' >&2; exit 1; }
           # Keep the existing human-facing PR tag; perf uses build_image directly.
           docker buildx imagetools create --tag "$image" "$build_image@$digest"
+          # RFC-0013 development version of the same image.
+          docker buildx imagetools create --tag "$dev_image" "$build_image@$digest"
           {
             echo "## PR docker images"
             echo ""
             echo "| Image | Digest |"
             echo "|---|---|"
             echo "| \`${image}\` | \`${digest}\` |"
+            echo "| \`${dev_image}\` | \`${digest}\` |"
             echo "| \`${build_image}\` | \`${digest}\` |"
             echo "| \`${operator_image}\` | \`${operator_digest}\` |"
           } >> "$GITHUB_STEP_SUMMARY"

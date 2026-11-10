@@ -19,8 +19,14 @@ archives on `main` are versioned from it:
 | prerelease `vX.Y.Z-P`, including a marker `vX.Y.0-0` | `vX.Y.Z-P.dev.N.g<sha>` |
 
 `N` is the number of commits since that tag. Images also keep a
-`nightly-<short-commit>` alias tag. Release and PR images (`pr-<num>-<sha7>`)
-are not affected.
+`nightly-<short-commit>` alias tag. Release images are not affected.
+
+PR images (`Build-PR-Image` in `.github/workflows/pr-images.yml`) keep their
+`pr-<num>-<sha7>` and `pr-<num>-<sha7>-run-<id>-<attempt>` tags. The same image
+is also tagged with the development version of the PR head commit, computed on
+the line of the PR's base branch, for example `v3.0.0-rc.3.dev.39.g3a0ae49`.
+The `g<sha>` part is the same commit as `<sha7>`. The squash commit built on
+`main` after merge is a different commit, so it gets its own version.
 
 Only tags in the commit's history count. A release tagged on a release branch is
 not visible from `main`, so `main` needs a marker once it starts the next
