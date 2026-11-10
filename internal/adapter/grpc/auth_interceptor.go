@@ -180,8 +180,8 @@ func requirePeerCredential(ctx context.Context, cfg internalauth.AuthConfig) err
 	}
 	// Auth-disabled clusters historically had no shared secret. They still get
 	// a dedicated peer listener, but there is no credential to validate in that
-	// mode. Authenticated clusters must present the cluster-secret here; a JWT
-	// is never accepted as a peer credential.
+	// mode. TLS peers with a configured secret must present it; a JWT is never
+	// accepted as a peer credential.
 	if cfg.ClusterSecret == "" && !cfg.Enabled {
 		return nil
 	}

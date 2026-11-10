@@ -46,7 +46,7 @@ type PoolConfig struct {
 	BackoffMultiplier float64       // Default: 1.6
 	BackoffJitter     float64       // Default: 0.2
 	Compression       bool          // Enable gzip compression on calls
-	AuthToken         string        // Bearer token injected into every outgoing call (for inter-node auth)
+	AuthToken         string        // Inter-node bearer attached to TLS calls only
 	authHeader        string        // Transport credential header; defaults to the peer-service header
 }
 

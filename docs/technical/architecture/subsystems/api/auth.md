@@ -7,7 +7,7 @@ Authentication on the API surface is **JWT bearer tokens** in the standard `Auth
 Two distinct auth layers coexist:
 
 1. **Client auth** — JWT, validated on every request, gates the public gRPC/HTTP API.
-2. **Inter-node auth (Raft)** — shared cluster secret, not JWT, gates the Raft transport between nodes.
+2. **Inter-node auth (Raft)** — shared cluster secret, not JWT, gates TLS Raft transport between nodes. Optional-mode plaintext is accepted only during migration.
 
 This page covers both. The cryptographic request-signing layer (Ed25519, used to sign batch bodies for tamper-evidence and audit) is a separate concern, documented in [admission / signing.md](../admission/signing.md).
 
@@ -126,13 +126,15 @@ This is the right setting to relax for embedded / dev deployments without disabl
 
 Raft transport uses a **shared cluster secret**, not JWT. `internal/adapter/grpc/raft_auth.go:27-75`:
 
-- Each Raft RPC carries `authorization: Bearer <clusterSecret>` in metadata.
+- Each TLS Raft RPC carries `authorization: Bearer <clusterSecret>` in metadata.
+- During an `optional` rollout, legacy plaintext Raft RPCs carry no secret
+  and are admitted until the listener becomes TLS-only.
 - Comparison uses `crypto/subtle.ConstantTimeCompare` to avoid timing attacks.
 - If `--cluster-secret` is empty, the legacy "no auth" mode is used. This mode
   is incompatible with `--auth-enabled`, which requires a peer transport
   secret for forwarding.
 
-The cluster secret is reserved for the Raft plane and the dedicated peer service listener used for follower-to-leader forwarding. On the peer listener it is carried in `x-ledger-peer-auth`, separate from the user's `authorization` metadata. The public service listener rejects it; it is never a direct `ledgerctl` credential. Forwarded user tokens are evaluated at the terminal node, while calls without a user token are treated as node-system actions. Auth-disabled snapshots are derived locally. Forwarding trust is derived from the authenticated listener, not from client-controlled request fields.
+The cluster secret is reserved for the Raft plane and the dedicated peer service listener used for follower-to-leader forwarding. On TLS connections to the peer listener it is carried in `x-ledger-peer-auth`, separate from the user's `authorization` metadata. Optional-mode plaintext connections carry no peer credential and are not trusted forwarding hops. The public service listener rejects the cluster secret; it is never a direct `ledgerctl` credential. Forwarded user tokens are evaluated at the terminal node, while calls without a user token are treated as node-system actions. Auth-disabled snapshots are derived locally. Forwarding trust is derived from an authenticated TLS peer connection, not from client-controlled request fields.
 
 ## Caller identity in the audit chain
 
