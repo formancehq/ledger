@@ -110,8 +110,10 @@ original parser error is retained in the returned error chain: pgx errors can
 contain query passwords, TLS key passwords, and invalid option values even when
 userinfo is redacted.
 
-Non-IAM admission continues to accept these options; construction diagnoses
-invalid configurations loaded from authoritative storage. Manager reconciliation
+Admission checks generic URL shape and required IAM region, without parsing
+PostgreSQL options or loading driver defaults. Construction diagnoses invalid
+configurations loaded from authoritative storage, including unsafe IAM TLS
+settings, before installing credentials or accessing the database. Manager reconciliation
 logs the safe diagnostic with the destination ledger identity and starts no
 worker. This constructor failure does not propose a worker error status or
 advance ingestion. Stored configuration and audit evidence remain unchanged.
@@ -204,7 +206,7 @@ from them. Previously consumed gaps are not repaired automatically. If a mirror 
 already skipped committed source history, rebuild it from the source into a
 fresh destination ledger rather than rewinding its immutable audit history.
 
-### HTTP URL parsing diagnostics
+### HTTP URL diagnostics
 
 At creation, admission parses `mirrorSource.http.baseUrl` and requires an
 absolute HTTP(S) URL with a nonempty hostname. Invalid configuration returns
@@ -237,6 +239,43 @@ HTTP source calls, worker logs, serialized proposals, real FSM application and
 ledger progress reads with a synthetic password and a transport that rejects
 any attempted network request. Adapter tests also cover invalid ports,
 userinfo escapes and control characters, including wrapped error chains.
+
+Valid HTTP(S) source URLs may carry passwordless userinfo tokens or a
+username/password pair. A transport failure is a separate diagnostic boundary:
+`net/http` can include passwordless userinfo in its URL wrapper, and a transport
+cause can repeat the credential-bearing URL. Before returning that failure,
+HTTPSource observes the original and redirected request credentials through a
+per-call copy of the HTTP client, preserving the configured redirect policy
+and the default ten-request limit. It removes userinfo and its raw and
+URL-encoded credential forms from the rendered diagnostic and detaches it from the original error chain. Safe
+transport markers remain available; cancellation and deadline identity are
+preserved using their credential-free context sentinels. The original source
+configuration and request authentication remain unchanged. Replacement text
+must not reintroduce a credential equal to the redaction marker; such values
+are removed instead.
+
+A redirect with an invalid `Location` fails parsing before `CheckRedirect`
+can observe its credentials. A per-call transport observer detects this parse
+failure without changing the response or redirect policy. When the client
+returns that failure, the adapter discards its unsafe error chain and emits
+`invalid mirror redirect URL`. The diagnostic retains the fetch operation and
+ledger identity, while omitting the unparseable target and its parser cause.
+
+`TestHTTPSource_TransportDiagnostics` exercises both head and batch calls with
+a deterministic failing transport, raw/escaped tokens and password controls,
+including causes that echo the request URL, redirects introducing different
+credentials, and credentials equal to the replacement marker. It checks
+returned errors and alternate formatting through the safe chain.
+`TestHTTPSource_MalformedRedirectDiagnostics` independently covers redirect
+parsing failures for both source calls, including distinct redirect credentials;
+the worker transport regression also retains this trigger alongside direct
+transport failures and parseable redirects. The worker transport regression
+captures both log paths and serialized accepted technical proposals, applies
+the status through the real FSM and checks the stored status and progress.
+Failure retains ledger identity and the harmless marker without advancing the
+ingestion boundary. These tests supplement the malformed-URL regressions.
+This changes newly emitted diagnostics only; persisted formats, accepted orders,
+audit evidence and historical status records are unchanged.
 
 Ingestion must return the oldest available logs strictly after the supplied
 boundary, so replaying history cannot replace available transactions with
@@ -437,3 +476,14 @@ There is no automatic "skip the broken log" mode. Operators investigate, fix the
 - **It does not reconcile against v2 hashes.** The worker trusts the source's log content; it does not cross-check that the resulting v3 state has the same balances as v2. That kind of comparison is a future work item (and would require v2 exposing canonical state hashes).
 - **It does not run on followers.** Leadership change suspends the worker until the new leader's manager picks it up.
 - **It does not act as a generic CDC sink.** The only sources are Ledger v2 instances; arbitrary event streams are the [events](events.md) subsystem's concern.
+
+## PostgreSQL connection URL admission
+
+New mirror configurations require a hierarchical URL with an explicit scheme;
+keyword/value DSNs are rejected before Raft. Admission does not restrict the
+scheme or interpret PostgreSQL options. Use `postgres://` or `postgresql://` for
+the worker's PostgreSQL driver; socket URLs remain supported. Admission requires
+an IAM region; source construction enforces explicit TLS before installing IAM
+credentials. Invalid driver settings can be committed but start no worker. Existing stored keyword DSNs
+remain usable by workers but are fully masked in public projections. See the
+[connector admission contract](../admission/validation.md#connector-url-admission).

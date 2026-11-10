@@ -95,16 +95,17 @@ func EvaluateGRPCCredentials(ctx context.Context, cfg AuthConfig) (context.Conte
 	}
 
 	keyID := extractKeyID(token)
-	ctx = WithKeyID(ctx, keyID)
 
-	claims, err := validateToken(ctx, token, cfg)
+	validated, err := validateToken(ctx, token, cfg)
 	if err != nil {
 		logAuthFailure(ctx, keyID, "invalid_token", err)
 
 		return ctx, status.Errorf(codes.Unauthenticated, "invalid token: %v", err)
 	}
 
+	claims := validated.claims
 	ctx = WithClaims(ctx, claims)
+	ctx = WithKeyID(ctx, validated.staticKeyID)
 
 	superuser := isSuperuserMode(claims)
 	span.SetAttributes(attribute.Bool("auth.superuser_mode", superuser))
@@ -199,10 +200,17 @@ func bearerTokenFromContext(ctx context.Context) (string, bool) {
 	return strings.TrimSpace(authHeader[7:]), true
 }
 
+type validatedToken struct {
+	claims      *oidc.AccessTokenClaims
+	staticKeyID string
+}
+
 // validateToken validates a JWT token. It supports both OIDC (RS256/ES256/PS256) and
 // EdDSA tokens. For EdDSA tokens, the issuer check is skipped (self-signed) and
 // key-level scope enforcement is applied when Ed25519AllowedScopes is configured.
-func validateToken(ctx context.Context, token string, cfg AuthConfig) (*oidc.AccessTokenClaims, error) {
+// Only the validated static credential path supplies an attribution key ID;
+// an OIDC kid identifies a verification key, not the caller's credential source.
+func validateToken(ctx context.Context, token string, cfg AuthConfig) (*validatedToken, error) {
 	claims := &oidc.AccessTokenClaims{}
 
 	decrypted, err := oidc.DecryptToken(token)
@@ -226,20 +234,20 @@ func validateToken(ctx context.Context, token string, cfg AuthConfig) (*oidc.Acc
 		return nil, err
 	}
 
+	var staticKeyID string
 	if sigAlg == jose.EdDSA {
+		staticKeyID = extractKeyID(decrypted)
 		// EdDSA tokens are self-signed: skip OIDC issuer check.
 		// Enforce key-level scope restrictions if configured.
 		if cfg.Ed25519AllowedScopes != nil {
-			keyID := extractKeyID(decrypted)
-
-			err := enforceAllowedScopes(claims.Scopes, keyID, cfg.Ed25519AllowedScopes, cfg.Ed25519SuperuserKeys, cfg.ScopeMapping)
+			err := enforceAllowedScopes(claims.Scopes, staticKeyID, cfg.Ed25519AllowedScopes, cfg.Ed25519SuperuserKeys, cfg.ScopeMapping)
 			if err != nil {
 				return nil, err
 			}
 
 			// If the token claims superuser mode, verify the signing key is allowed.
 			if isSuperuserMode(claims) {
-				if err := enforceSuperuserClaim(keyID, cfg.Ed25519SuperuserKeys); err != nil {
+				if err := enforceSuperuserClaim(staticKeyID, cfg.Ed25519SuperuserKeys); err != nil {
 					return nil, err
 				}
 			}
@@ -254,7 +262,7 @@ func validateToken(ctx context.Context, token string, cfg AuthConfig) (*oidc.Acc
 		return nil, err
 	}
 
-	return claims, nil
+	return &validatedToken{claims: claims, staticKeyID: staticKeyID}, nil
 }
 
 // extractKeyID extracts the kid from a compact JWS token header.

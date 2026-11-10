@@ -295,8 +295,12 @@ func NewLocalResponses() LocalResponses {
 type readyResult struct {
 	rd raft.Ready
 	// snapshotApplied is true when a leader snapshot was installed; orchestrate
-	// must call rawNode.ReportSnapshot.
+	// must refresh the ConfState shadow from it.
 	snapshotApplied bool
+	// snapshotRecipients are the peers this node (as leader) handed a MsgSnap
+	// to the transport for; orchestrate must call rawNode.ReportSnapshot for
+	// each of them. See finishReady.
+	snapshotRecipients []uint64
 	// confChanges are committed ConfChangeV2 entries extracted from rd.CommittedEntries;
 	// orchestrate must call rawNode.ApplyConfChange for each. The entry index is
 	// retained so callers can wait for the matching FSM batch to become durable.
@@ -360,8 +364,12 @@ type Node struct {
 	// pending FSM future, so a later term advance can fail futures whose
 	// entries were truncated by the new leader (issue #172).
 	lastObservedTerm atomic.Uint64
-	observer         *Observer
-	applier          *Applier
+	// lastRaftApplied is advanced only after the orchestrate goroutine steps
+	// MsgStorageApplyResp into RawNode. Maintenance must not compact entries
+	// that RawNode can still scan while this cursor lags the FSM.
+	lastRaftApplied atomic.Uint64
+	observer        *Observer
+	applier         *Applier
 
 	readies         chan raft.Ready
 	readyTerminated chan readyResult
@@ -474,6 +482,10 @@ func NewNode(
 	membership *membership.Membership,
 	localResponses LocalResponses,
 ) (*Node, error) {
+	if err := cfg.validateTickIntervals(); err != nil {
+		return nil, err
+	}
+
 	cfg.SetDefaults()
 
 	snapshot, err := wal.Snapshot()
@@ -958,10 +970,20 @@ func (node *Node) doMaintenance() error {
 		return nil
 	}
 
-	// Early skip: nothing new since the previous tick. Avoids paying for an
-	// fsync on idle clusters.
-	if node.fsm.LastPersistedIndex() <= lastSnap.GetMetadata().GetIndex() {
-		return nil
+	capturedIndex := node.fsm.LastPersistedIndex()
+	acknowledgedApplied := node.lastRaftApplied.Load()
+	// A previous tick may have published a WAL snapshot while RawNode was
+	// still waiting for its apply response. Keep ticking so compaction can
+	// advance once that response is stepped by the orchestrator.
+	if capturedIndex <= lastSnap.GetMetadata().GetIndex() && acknowledgedApplied <= lastSnap.GetMetadata().GetIndex() {
+		compactTarget := min(capturedIndex, acknowledgedApplied)
+		if compactTarget <= node.applier.CompactionMargin() {
+			return nil
+		}
+		firstIndex, firstErr := node.wal.FirstIndex()
+		if firstErr != nil || firstIndex > compactTarget-node.applier.CompactionMargin() {
+			return nil
+		}
 	}
 
 	// Capture lastPersistedIndex BEFORE calling SyncWAL. Reading first then
@@ -971,18 +993,20 @@ func (node *Node) doMaintenance() error {
 	// batch.Commit returns, see machine.go), so the subsequent SyncWAL makes
 	// it durable. The reverse order (sync, then read) could capture an index
 	// from a concurrent apply whose WAL record was written after our fsync.
-	capturedIndex := node.fsm.LastPersistedIndex()
-	if err := store.SyncWAL(); err != nil {
-		node.logger.WithFields(map[string]any{"error": err}).Errorf("Background maintenance: failed to sync Pebble WAL, skipping snapshot and checkpoint")
+	if capturedIndex > lastSnap.GetMetadata().GetIndex() {
+		if err := store.SyncWAL(); err != nil {
+			node.logger.WithFields(map[string]any{"error": err}).Errorf("Background maintenance: failed to sync Pebble WAL, skipping snapshot and checkpoint")
 
-		return nil
+			return nil
+		}
 	}
 	// Post-condition: every FSM batch with Raft index <= capturedIndex is
-	// durable on disk. It is now safe to advance the Raft WAL snapshot and
-	// to compact the Raft WAL up to capturedIndex - margin — even on power
-	// loss right after this point, Pebble can recover to >= capturedIndex.
+	// durable on disk. It is now safe to advance the Raft WAL snapshot.
+	// Compaction below additionally waits for
+	// the Raft-layer acknowledgement of the same entries.
 
 	// 1. WAL snapshot + compact.
+	snapshotUsable := capturedIndex <= lastSnap.GetMetadata().GetIndex()
 	if err := node.wal.CreateSnapshot(capturedIndex, node.confState.Load(), nil); err != nil {
 		// The WAL directory is gone: every later acknowledgement is unrecoverable,
 		// so the next tick has nothing to retry.
@@ -992,9 +1016,20 @@ func (node *Node) doMaintenance() error {
 
 		if !errors.Is(err, raft.ErrSnapOutOfDate) {
 			node.logger.WithFields(map[string]any{"error": err}).Errorf("Background maintenance: failed to create WAL snapshot")
+		} else {
+			snapshotUsable = true
 		}
-	} else if capturedIndex > node.applier.CompactionMargin() {
-		compactIdx := capturedIndex - node.applier.CompactionMargin()
+	} else {
+		snapshotUsable = true
+	}
+
+	// The FSM can publish an applied batch before the orchestrator steps its
+	// MsgStorageApplyResp. Compact only behind the acknowledged Raft cursor,
+	// preserving every entry RawNode may still request while scanning
+	// unapplied configuration changes during an election.
+	acknowledgedApplied = min(node.lastRaftApplied.Load(), capturedIndex)
+	if snapshotUsable && acknowledgedApplied > node.applier.CompactionMargin() {
+		compactIdx := acknowledgedApplied - node.applier.CompactionMargin()
 		if err := node.wal.Compact(compactIdx); err != nil && !errors.Is(err, raft.ErrCompacted) {
 			node.logger.WithFields(map[string]any{"error": err}).Errorf("Background maintenance: failed to compact WAL")
 		}
@@ -1174,6 +1209,11 @@ func (node *Node) run(ctx context.Context, ready func()) error {
 	if err != nil {
 		return fmt.Errorf("creating raw rawNode: %w", err)
 	}
+	// Seed from the effective cursor passed to RawNode. This includes the
+	// durable HardState.Commit cap applied above when Pebble is ahead after a
+	// crash; seeding from the uncapped FSM cursor would make maintenance believe
+	// Raft had acknowledged entries it will replay first.
+	node.lastRaftApplied.Store(applied)
 
 	status := node.rawNode.Status()
 
@@ -1587,7 +1627,7 @@ func (node *Node) installReadySnapshot(ctx context.Context, stop chan struct{}, 
 			return fmt.Errorf("installing snapshot: %w", err)
 		}
 
-		// Defer ReportSnapshot to orchestrate goroutine (rawNode is not thread-safe).
+		// Defer the ConfState refresh to the orchestrate goroutine.
 		result.snapshotApplied = true
 
 		node.logger.WithFields(map[string]any{
@@ -1629,6 +1669,7 @@ func (node *Node) installReadySnapshot(ctx context.Context, stop chan struct{}, 
 func (node *Node) sendReadyMessages(stop chan struct{}, rd raft.Ready, result *readyResult) {
 	appendResponses, applyResponses, outbound := splitReadyMessages(node.config.NodeID, rd.Messages)
 	result.applyResponses = applyResponses
+	result.snapshotRecipients = snapshotRecipients(outbound)
 
 	node.transport.Send(outbound)
 
@@ -1665,9 +1706,23 @@ func (node *Node) collectReadyConfChanges(rd raft.Ready, result *readyResult) er
 func (node *Node) finishReady(result readyResult, stop chan struct{}) error {
 	rd := result.rd
 
-	if result.snapshotApplied {
-		node.rawNode.ReportSnapshot(rd.Snapshot.GetMetadata().GetIndex(), raft.SnapshotFinish)
+	// etcd/raft pauses replication to a peer while its Progress is in
+	// StateSnapshot. It leaves that state only on MsgSnapStatus (raised by
+	// the leader's ReportSnapshot) or on an acknowledgement at or past the
+	// leader's first retained index. If the snapshot is lost (peer down,
+	// stream reset) or acknowledged after the leader compacted beyond it,
+	// neither happens and the peer never receives another entry while this
+	// leader lasts. Report every sent snapshot as finished: the peer moves to
+	// StateProbe, and ordinary probing either resumes appends or sends a
+	// fresh snapshot. The MsgSnap carries no payload here (the checkpoint is
+	// fetched out-of-band), so handing it to the transport is the send.
+	// Non-leaders and peers no longer in StateSnapshot ignore the report.
+	for _, peerID := range result.snapshotRecipients {
+		node.rawNode.ReportSnapshot(peerID, raft.SnapshotFinish)
+	}
 
+	if result.snapshotApplied {
+		node.recordRaftApplied(rd.Snapshot.GetMetadata().GetIndex())
 		// Re-sync the in-memory ConfState shadow from the just-installed
 		// snapshot. wal.ApplySnapshot already persisted the correct ConfState;
 		// without this, the reconcile block below loads the stale shadow and
@@ -1915,6 +1970,18 @@ func splitReadyMessages(nodeID uint64, msgs []*raftpb.Message) (appendResponses,
 	return appendResponses, applyResponses, outbound
 }
 
+// snapshotRecipients returns the destination of every outbound MsgSnap.
+func snapshotRecipients(outbound []*raftpb.Message) []uint64 {
+	var recipients []uint64
+	for _, m := range outbound {
+		if m.GetType() == raftpb.MsgSnap {
+			recipients = append(recipients, m.GetTo())
+		}
+	}
+
+	return recipients
+}
+
 // isStopping returns true if the stop channel has been closed or a signal is pending.
 func isStopping(stop chan struct{}) bool {
 	select {
@@ -2037,6 +2104,9 @@ func (node *Node) orchestrate(ctx context.Context, stop chan struct{}) error {
 		if err := stepMessages(msgs); err != nil {
 			return err
 		}
+		for _, msg := range msgs {
+			node.recordRaftApplyResponse(msg)
+		}
 
 		maybeCreateReady()
 
@@ -2131,7 +2201,7 @@ func (node *Node) orchestrate(ctx context.Context, stop chan struct{}) error {
 					if node.rawNode.HasReady() {
 						node.readies <- node.rawNode.Ready()
 					} else {
-						processingTick.Reset(tickInterval / 10)
+						processingTick.Reset(processingTickInterval)
 
 						node.readyTerminated = nil
 					}
@@ -2188,6 +2258,31 @@ func (node *Node) orchestrate(ctx context.Context, stop chan struct{}) error {
 				}
 			}
 		}
+	}
+}
+
+// recordRaftApplied publishes the highest apply cursor acknowledged by
+// RawNode. It is intentionally monotonic because response batches can be
+// observed together after the FSM has already advanced further.
+func (node *Node) recordRaftApplied(index uint64) {
+	for {
+		current := node.lastRaftApplied.Load()
+		if current >= index || node.lastRaftApplied.CompareAndSwap(current, index) {
+			return
+		}
+	}
+}
+
+func (node *Node) recordRaftApplyResponse(msg *raftpb.Message) {
+	if msg.GetType() != raftpb.MsgStorageApplyResp {
+		return
+	}
+	index := msg.GetIndex()
+	if index == 0 && len(msg.GetEntries()) > 0 {
+		index = msg.GetEntries()[len(msg.GetEntries())-1].GetIndex()
+	}
+	if index > 0 {
+		node.recordRaftApplied(index)
 	}
 }
 

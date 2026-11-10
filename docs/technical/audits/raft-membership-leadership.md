@@ -108,6 +108,16 @@ Missing tombstones/read failures must retain protection. Check the lookup cost
 partition and benchmark growing per-ordinal history separately from unrelated
 nodes; no set lock may span apply, store reads or proposal waits.
 
+For maintenance snapshots, keep the durable authorities ordered: fsync the
+snapshot file, append and persist its matching WAL snapshot record, then publish
+the new snapshot in memory and allow compaction. If the WAL-record append fails,
+the file is only an orphan and the previous snapshot remains authoritative; an
+idle retry must recreate the same snapshot and must not compact on an
+`ErrSnapOutOfDate` produced by a prematurely published in-memory snapshot.
+Separately, compaction must remain behind the minimum of the durable FSM cursor
+and the Raft apply-ack cursor, preserving the unapplied interval for election
+scans until `MsgStorageApplyResp` advances that frontier.
+
 ### Leadership and quorum transitions
 
 Use committed/applied indexes, not callback order or the locally reported Raft
@@ -387,3 +397,31 @@ in-memory snapshot/cache and durable WAL prefix on any failure. The focused
 regression is `process_ready_snapshot_test.go` under `internal/infra/node/`.
 Snapshot-only processing retains its existing append count; a combined Ready
 reappends only the suffix once, with no retained-log scan.
+
+## Sent snapshot liveness evidence
+
+etcd/raft pauses every append to a peer whose Progress is in `StateSnapshot`.
+It leaves that state only when the leader calls `ReportSnapshot` for the peer
+or when an acknowledgement leaves `Match+1 >= firstIndex` on the leader.
+Prove that every outbound `MsgSnap` is reported from the orchestrate goroutine
+(`snapshotRecipients` in `sendReadyMessages`, then `finishReady`), and that a
+lost snapshot or a late acknowledgement after leader compaction leads to
+renewed probing or a fresh snapshot rather than a stalled peer. The focused
+regression is `leader_snapshot_report_test.go` under `internal/infra/node/`;
+the cluster-level triggers are the out-of-sync election and lost-follower
+specs under `tests/e2e/cluster/`.
+
+## Proposal payload cutover
+
+The proposal codec is part of this contract. Production writers serialize the
+execution and policy oneof directly after a full-stop upgrade. All source nodes
+must stop before any target starts, and old binaries must never reopen a WAL
+containing new payloads, including technical entries written during startup.
+Historical replay must retain exact audit bytes and hashes. Native policy
+controls are operational and emit neither audit nor business logs; they are never
+lowered to orders. Compare final state across formats, verify each chain and its
+expected audit count, and preserve the historical prefix byte-for-byte. Preserve
+coverage, HLC semantics and checkpoint boundaries. Test policy-only incremental
+manifest publication and mixed historical/native delta restore. Current policy
+and operational quotas are explicitly outside business checker scope.
+See [proposal payloads](../architecture/subsystems/consensus/proposal-payloads.md).

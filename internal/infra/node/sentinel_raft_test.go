@@ -120,6 +120,9 @@ func makeSentinelRaftBootstrap(t *testing.T, ledger string) *raftpb.Entry {
 	entry, _ := makeCreateLedgerEntry(t, 1, ledger)
 	var proposal raftcmdpb.Proposal
 	require.NoError(t, proposal.UnmarshalVT(entry.GetData()))
+	// This fixture models historical mixed policy/business entries.
+	proposal.Orders = proposal.GetBatch().GetOrders()
+	proposal.Payload = nil
 	proposal.Orders = append([]*raftcmdpb.Order{{Type: &raftcmdpb.Order_SystemScoped{
 		SystemScoped: &raftcmdpb.SystemScopedOrder{Payload: &raftcmdpb.SystemScopedOrder_SetClusterPolicy{
 			SetClusterPolicy: &raftcmdpb.SetClusterPolicyOrder{Policy: &commonpb.ClusterPolicy{

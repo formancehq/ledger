@@ -2,6 +2,6 @@
   "name": "ledger-sdk-contract-test",
   "private": true,
   "type": "module",
-  "dependencies": { "zod": "4.4.3" },
+  "dependencies": { "zod": "4.6.6" },
   "devDependencies": { "typescript": "5.8.3" }
 }

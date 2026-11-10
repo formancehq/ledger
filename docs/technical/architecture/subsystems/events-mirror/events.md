@@ -850,6 +850,26 @@ This matches the shared analytical projection; encoding each account's map as
 a JSON string would lose its queryable structure. Ordinary transaction metadata
 and metadata-update events retain their separate `Map(String, String)` fields.
 
+Live native inserts quote only `transaction.postings[].amount` and
+`revertTransaction.postings[].amount` as decimal strings. On ClickHouse
+24.10.2.80 with simdjson enabled, unquoted amounts above UInt64 are rejected
+while parsing the JSON document, before the UInt256 hint is applied. Quoting
+preserves the full supported amount range in numeric UInt256 subcolumns; the
+shared analytical projection and Databricks amounts remain JSON numbers.
+Both sinks build the same typed projection. ClickHouse serializes it once with
+a call-scoped `encoding/json/v2` marshaler for `*big.Int`, which occurs only in
+posting amounts; v1 compatibility options preserve the other JSON fields.
+Databricks keeps its ordinary numeric encoding. This preserves unrelated
+numeric values, metadata and the source event, with work proportional to event
+size and no cross-event state or additional network calls.
+
+A rejected `Send` returns before cursor advancement. After repairing delivery,
+keep the same sink name and retained cursor so pending events can resume;
+successful publication clears the error with the cursor update. No Ledger data
+migration, protocol revision change or customer table alteration is required
+for this transport fix. The destination must already declare UInt256 amount
+hints. This does not repair previously stored external rows.
+
 Existing tables are unchanged by `CREATE TABLE IF NOT EXISTS`. Tables created
 with the former flat account-metadata hint require the explicit, non-destructive
 [ClickHouse table migration](../../../../ops/clickhouse-account-metadata.md)
@@ -867,3 +887,13 @@ implicit-scheme handling. ClickHouse diagnostics also register decoded
 `http_proxy` URLs, including malformed proxies whose parse errors are embedded
 as plain text by the driver. These adaptations happen before constructor errors
 can reach the manager.
+
+## Sink connection URL admission
+
+New NATS configurations require a scheme on every comma-separated server:
+`nats://`, `tls://`, `ws://` or `wss://`. New ClickHouse configurations require
+`clickhouse://`, `http://` or `https://`; multi-host authorities and HTTP proxy
+query options retain their driver interpretation. Invalid syntax fails before
+Raft, regardless of connector build tags. Existing persisted configurations are
+not revalidated by workers or replay. See the
+[connector admission contract](../admission/validation.md#connector-url-admission).

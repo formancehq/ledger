@@ -1,6 +1,7 @@
 package state
 
 import (
+	"cmp"
 	"encoding/hex"
 	"fmt"
 	"maps"
@@ -17,7 +18,6 @@ import (
 	"github.com/formancehq/ledger/v3/internal/infra/cache"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
-	"github.com/formancehq/ledger/v3/internal/query"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
 
@@ -544,9 +544,76 @@ func collectSentinelLedgerNames(results []ApplyResult) ([]string, map[string]str
 	return names, deleted
 }
 
+// sentinelVolumeKey identifies one conserved quantity. Every posting credits
+// and debits the same (asset, color), so input and output must match per key.
+type sentinelVolumeKey struct {
+	asset string
+	color string
+}
+
+type sentinelVolumeSum struct {
+	input  *big.Int
+	output *big.Int
+}
+
+// sumLedgerVolumes walks a ledger's volume rows and sums input and output per
+// (asset, color) in arbitrary precision. The FSM bounds each account volume
+// to uint256, but a ledger-wide total may exceed it. It also returns the row
+// count so a deleted ledger can be checked for leftover rows.
+func sumLedgerVolumes(
+	store dal.PebbleReader,
+	volumeAttr *attributes.Attribute[*raftcmdpb.VolumePair],
+	ledgerName string,
+) (map[sentinelVolumeKey]*sentinelVolumeSum, int, error) {
+	ledgerPrefix := make([]byte, dal.LedgerNameFixedSize)
+	copy(ledgerPrefix, ledgerName)
+
+	iter, err := volumeAttr.NewStreamingIter(store, ledgerPrefix)
+	if err != nil {
+		return nil, 0, fmt.Errorf("creating volume iterator: %w", err)
+	}
+
+	sums := make(map[sentinelVolumeKey]*sentinelVolumeSum)
+	rows := 0
+
+	for iter.Next() {
+		entry := iter.Entry()
+
+		var vk domain.VolumeKey
+		if err := vk.Unmarshal(entry.CanonicalKey); err != nil {
+			_ = iter.Close()
+
+			return nil, 0, fmt.Errorf("unmarshaling volume key %s: %w", hex.EncodeToString(entry.CanonicalKey), err)
+		}
+
+		key := sentinelVolumeKey{asset: vk.Asset, color: vk.Color}
+
+		sum, ok := sums[key]
+		if !ok {
+			sum = &sentinelVolumeSum{input: new(big.Int), output: new(big.Int)}
+			sums[key] = sum
+		}
+
+		sum.input.Add(sum.input, entry.Value.GetInput().ToBigInt())
+		sum.output.Add(sum.output, entry.Value.GetOutput().ToBigInt())
+		rows++
+	}
+
+	if err := iter.Close(); err != nil {
+		return nil, 0, fmt.Errorf("closing volume iterator: %w", err)
+	}
+
+	if err := iter.Err(); err != nil {
+		return nil, 0, fmt.Errorf("scanning volumes: %w", err)
+	}
+
+	return sums, rows, nil
+}
+
 // verifyAggregatedVolumesBalanced checks that touched surviving ledgers balance
-// and deleted ledgers have no remaining volume rows. The latter catches a
-// partial deletion cascade even when the leftover rows are balanced.
+// per (asset, color) and deleted ledgers have no remaining volume rows. The
+// latter catches a partial deletion cascade even when the leftover rows are
+// balanced.
 func verifyAggregatedVolumesBalanced(
 	store dal.PebbleReader,
 	volumeAttr *attributes.Attribute[*raftcmdpb.VolumePair],
@@ -556,40 +623,49 @@ func verifyAggregatedVolumesBalanced(
 	logger logging.Logger,
 ) error {
 	for _, ledgerName := range ledgerNames {
-		result, err := query.AggregateAllVolumes(store, volumeAttr, ledgerName, query.AggregateOptions{})
+		sums, rows, err := sumLedgerVolumes(store, volumeAttr, ledgerName)
 		if err != nil {
 			return fmt.Errorf("aggregating volumes for ledger %q at raft index %d: %w", ledgerName, raftIndex, err)
 		}
-		if _, deleted := deletedLedgerNames[ledgerName]; deleted && len(result.GetVolumes()) > 0 {
+		if _, deleted := deletedLedgerNames[ledgerName]; deleted && rows > 0 {
 			assert.Unreachable("deleted ledger has no volumes after commit", map[string]any{
-				"ledger":              ledgerName,
-				"raftIndex":           raftIndex,
-				"remainingAssetCount": len(result.GetVolumes()),
+				"ledger":            ledgerName,
+				"raftIndex":         raftIndex,
+				"remainingRowCount": rows,
 			})
 
 			return fmt.Errorf("deleted ledger %q still has volumes after commit at raft index %d", ledgerName, raftIndex)
 		}
 
-		for _, vol := range result.GetVolumes() {
-			inputVal := vol.GetInput().ToBigInt()
-			outputVal := vol.GetOutput().ToBigInt()
+		// Sorted so the reported offender is deterministic across runs.
+		keys := slices.SortedFunc(maps.Keys(sums), func(a, b sentinelVolumeKey) int {
+			if c := cmp.Compare(a.asset, b.asset); c != 0 {
+				return c
+			}
 
-			if inputVal.Cmp(outputVal) != 0 {
+			return cmp.Compare(a.color, b.color)
+		})
+
+		for _, key := range keys {
+			sum := sums[key]
+
+			if sum.input.Cmp(sum.output) != 0 {
 				// Dump per-account volumes for the imbalanced asset to help
 				// identify which account(s) are responsible.
-				dumpPerAccountVolumes(store, volumeAttr, ledgerName, vol.GetAsset(), raftIndex, logger)
+				dumpPerAccountVolumes(store, volumeAttr, ledgerName, key.asset, raftIndex, logger)
 
 				assert.Unreachable("aggregated volume imbalance", map[string]any{
 					"ledger":    ledgerName,
-					"asset":     vol.GetAsset(),
+					"asset":     key.asset,
+					"color":     key.color,
 					"raftIndex": raftIndex,
-					"input":     inputVal.String(),
-					"output":    outputVal.String(),
+					"input":     sum.input.String(),
+					"output":    sum.output.String(),
 				})
 
 				return fmt.Errorf(
-					"aggregated volume imbalance for ledger %q asset %s at raft index %d: input=%s output=%s",
-					ledgerName, vol.GetAsset(), raftIndex, inputVal.String(), outputVal.String(),
+					"aggregated volume imbalance for ledger %q asset %s color %q at raft index %d: input=%s output=%s",
+					ledgerName, key.asset, key.color, raftIndex, sum.input.String(), sum.output.String(),
 				)
 			}
 
@@ -597,10 +673,11 @@ func verifyAggregatedVolumesBalanced(
 			// This traces the exact entry where cumulative volumes diverge.
 			logger.WithFields(map[string]any{
 				"ledger":    ledgerName,
-				"asset":     vol.GetAsset(),
+				"asset":     key.asset,
+				"color":     key.color,
 				"raftIndex": raftIndex,
-				"input":     inputVal.String(),
-				"output":    outputVal.String(),
+				"input":     sum.input.String(),
+				"output":    sum.output.String(),
 			}).Tracef("SENTINEL: aggregated volume OK")
 		}
 	}

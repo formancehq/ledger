@@ -282,31 +282,31 @@ func TestIndexPostingAddressMappingsSkipsExcludedAccounts(t *testing.T) {
 	// the address mappings under test.
 	cfg := newLedgerIndexConfig()
 
-	// Multi-asset case: account "shared:account" has USD purged but EUR
-	// kept. transient:source / purged:dest are excluded on USD only;
+	// Multi-asset TRANSIENT case: shared:account has USD excluded but EUR
+	// kept. transient:source / transient:dest are excluded on USD only;
 	// shared:account on USD is excluded but shared:account on EUR must be
 	// indexed normally.
 	excludedVolumes := map[domain.AccountAssetKey]struct{}{
 		{Account: "transient:source", Asset: "USD"}: {},
-		{Account: "purged:dest", Asset: "USD"}:      {},
+		{Account: "transient:dest", Asset: "USD"}:   {},
 		{Account: "shared:account", Asset: "USD"}:   {},
 	}
 
 	require.NoError(t, b.indexPostingAddressMappings(
 		b.kb, cfg, "test", 42, "transient:source", "kept:dest", "USD", "",
-		true, true, true, excludedVolumes,
+		true, true, true, &postingExclusions{current: excludedVolumes, historical: excludedVolumes},
 	))
 	require.NoError(t, b.indexPostingAddressMappings(
-		b.kb, cfg, "test", 43, "kept:source", "purged:dest", "USD", "",
-		true, true, true, excludedVolumes,
+		b.kb, cfg, "test", 43, "kept:source", "transient:dest", "USD", "",
+		true, true, true, &postingExclusions{current: excludedVolumes, historical: excludedVolumes},
 	))
 	require.NoError(t, b.indexPostingAddressMappings(
 		b.kb, cfg, "test", 44, "shared:account", "kept:dest", "USD", "",
-		true, true, true, excludedVolumes,
+		true, true, true, &postingExclusions{current: excludedVolumes, historical: excludedVolumes},
 	))
 	require.NoError(t, b.indexPostingAddressMappings(
 		b.kb, cfg, "test", 45, "shared:account", "kept:dest", "EUR", "",
-		true, true, true, excludedVolumes,
+		true, true, true, &postingExclusions{current: excludedVolumes, historical: excludedVolumes},
 	))
 	require.NoError(t, b.wb.Flush())
 
@@ -329,10 +329,10 @@ func TestIndexPostingAddressMappingsSkipsExcludedAccounts(t *testing.T) {
 		dal.NewKeyBuilder(), readstore.PrefixSourceAccountTx, "test", "kept:source", 43,
 	)))
 	assert.False(t, readStoreKeyExists(t, store, readstore.AccountTxKey(
-		dal.NewKeyBuilder(), readstore.PrefixAccountTx, "test", "purged:dest", 43,
+		dal.NewKeyBuilder(), readstore.PrefixAccountTx, "test", "transient:dest", 43,
 	)))
 	assert.False(t, readStoreKeyExists(t, store, readstore.AccountTxKey(
-		dal.NewKeyBuilder(), readstore.PrefixDestinationAccountTx, "test", "purged:dest", 43,
+		dal.NewKeyBuilder(), readstore.PrefixDestinationAccountTx, "test", "transient:dest", 43,
 	)))
 
 	// Multi-asset: shared:account USD (tx 44) is excluded, EUR (tx 45) is not.
@@ -591,7 +591,7 @@ func TestIndexPostingAddressMappingsAccountByAssetExcludesTransient(t *testing.T
 
 	require.NoError(t, b.indexPostingAddressMappings(
 		b.kb, cfg, "test", 1, "accounts:alice", "accounts:bob", "USD/2", "",
-		false, false, false, excludedVolumes,
+		false, false, false, &postingExclusions{current: excludedVolumes},
 	))
 	require.NoError(t, b.wb.Flush())
 

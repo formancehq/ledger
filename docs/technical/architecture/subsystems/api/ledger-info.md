@@ -23,13 +23,9 @@ the same REST segment discriminators as account-type reads: `regex`, `uuid`,
 
 Mirror progress always contains `state` (`SYNCING` or `FOLLOWING`), `cursor`,
 `sourceLogCount` and `remainingLogs`, including zero values. Each counter is a
-canonical unsigned decimal JSON string, described by OpenAPI as `string` with
-`format: bigint`. This preserves all uint64 values while generated TypeScript
-clients expose native bigint values. The numeric alternative (`integer/bigint`)
-generated a TypeScript number and silently rounded 2^53+1 and uint64 maximum in
-an operation-level Speakeasy experiment. Ordinary JSON.parse consumers of the
-string representation also remain exact. Clients using JSON.stringify on a
-decoded native bigint must explicitly convert it to a decimal string first.
+JSON number containing the canonical unsigned decimal value. Clients must use
+lossless number handling when values can exceed 2^53; ordinary JavaScript
+`JSON.parse` is not sufficient for the full uint64 range.
 
 Read configuration uses `ledgerName` and exactly one nested `http` or `postgres`
 source, with optional `batchSize` and `rewriteRules`. HTTP sources include nested
@@ -58,11 +54,17 @@ selection and pagination, and preserves stream headers/trailers and errors.
 HTTP source and OAuth token-endpoint URL userinfo/query credentials are masked,
 including passwordless HTTP(S) userinfo, which may hold reusable tokens,
 while host/path and non-secret settings are preserved. OAuth client secrets
-become `[redacted]` presence markers. PostgreSQL passwords
-in URL userinfo/query settings or keyword/value DSNs become `xxxxx`. Non-secret
-connection metadata remains visible; malformed connection strings are fully
-redacted. Empty secrets remain empty/omitted. Detached protobuf views discard
-unknown wire fields, whose confidentiality cannot be established by the schema.
+become `[redacted]` presence markers. PostgreSQL passwords in supported
+`postgres://` and `postgresql://` URL userinfo/query settings become `xxxxx`,
+while non-secret connection metadata remains visible. Legacy keyword/value
+DSNs, malformed connection strings and unsupported formats are fully replaced
+with `[redacted]`; their connection metadata is not preserved. New PostgreSQL
+mirror configurations require a generic hierarchical URL shape at admission;
+PostgreSQL scheme and option validation occurs during source construction.
+Existing committed configuration remains unchanged. See [sensitive projection](sensitive-projection.md)
+for the supported formats. Empty secrets remain empty/omitted. Detached protobuf
+views discard unknown wire fields, whose confidentiality cannot be established
+by the schema.
 The original object, nested maps/slices and stored bytes remain unchanged.
 
 Do not apply this projection to controller/worker configuration, persistence,
@@ -88,7 +90,8 @@ consumed mirror adds three point reads, including rows outside the returned page
 v2 has no mirror-progress counterpart. Its stats/log-ID JSON uses numbers with
 `integer/int64` or `integer/bigint` schemas; the Go SDK maps bigint to big.Int.
 That schema alone does not guarantee lossless TypeScript decoding. The v3
-mirror-specific counter strings deliberately differ for precision. Existing
+mirror-specific counters are JSON numbers; clients must use lossless integer
+parsing when values may exceed JavaScript's safe-integer range. Existing
 REST camelCase properties, timestamps, metadata and envelopes are preserved.
 
 Codec regressions cover defaults, timestamps, typed metadata/schema, segment
@@ -96,7 +99,8 @@ constraints, zero/large counters and invalid values. Routed HTTP tests check
 get/list, credential canaries, non-mutation, OpenAPI conformance and clean marshal
 failures. gRPC tests exercise actual current/checkpoint controller reads and
 streaming list output, and verify that unprojected internal queries retain the
-credentials. Shared projection tests cover URL/keyword DSNs and detached slices.
+credentials. Shared projection tests cover metadata preservation for supported
+URLs, full masking of legacy keyword DSNs and detached slices.
 Temporary generated SDK list/get calls verify operation-level decoding from
 these HTTP representations. Downstream platform-ui regeneration/delivery is
 separately owned and is not changed by this Ledger PR.

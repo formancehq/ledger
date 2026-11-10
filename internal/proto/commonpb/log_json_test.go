@@ -2,6 +2,7 @@ package commonpb_test
 
 import (
 	"encoding/json"
+	jsonv2 "encoding/json/v2"
 	"math"
 	"math/big"
 	"testing"
@@ -121,7 +122,7 @@ func TestLedgerLogJSONOutput(t *testing.T) {
 					if custom, ok := message.(json.Marshaler); ok {
 						expected, err = custom.MarshalJSON()
 					} else {
-						expected, err = protojson.Marshal(message)
+						expected, err = jsonv2.Marshal(message)
 					}
 					require.NoError(t, err)
 					require.JSONEq(t, string(expected), string(envelope.Data))

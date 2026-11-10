@@ -6204,8 +6204,9 @@ type LedgerLog struct {
 	// pre-existing non-zero balance in Pebble and this log brought it back to
 	// zero, causing the volume to be evicted from the attribute store at
 	// commit. Purged is DISJOINT from ephemeral_volumes and new_kept_volumes.
-	// The index builder skips account->transaction mappings for
-	// purged ∪ ephemeral (both are evicted from Pebble). The usagebuilder
+	// The index builder excludes purged and ephemeral cells from current
+	// has-asset memberships, but preserves their historical transaction
+	// address mappings. Only TRANSIENT cells are excluded from history. The usagebuilder
 	// subtracts len(purged_volumes) from VolumeCount — a draining eviction
 	// decreases the live cardinality by one.
 	PurgedVolumes []*TouchedVolume `protobuf:"bytes,4,rep,name=purged_volumes,json=purgedVolumes,proto3" json:"purged_volumes,omitempty"`
@@ -6219,8 +6220,8 @@ type LedgerLog struct {
 	// THIS log — pure ephemeral. Written to Pebble briefly then evicted at
 	// commit. Contributes +0 to VolumeCount (was zero, is zero after commit)
 	// and is tracked separately so:
-	//   - the index builder can skip acct->tx mappings for them (via
-	//     purged_volumes ∪ ephemeral_volumes);
+	//   - the index builder can skip current has-asset memberships for them
+	//     (via purged_volumes ∪ ephemeral_volumes), while retaining history;
 	//   - the log payload does not duplicate ephemeral tuples in two lists
 	//     (previous encoding carried them in both purged_volumes AND
 	//     new_volumes, doubling bytes on ephemeral-heavy workloads).
@@ -22027,6 +22028,30 @@ var file_common_proto_extTypes = []protoimpl.ExtensionInfo{
 		Filename:      "common.proto",
 	},
 	{
+		ExtendedType:  (*descriptorpb.MessageOptions)(nil),
+		ExtensionType: (*bool)(nil),
+		Field:         71003,
+		Name:          "common.ledger_json",
+		Tag:           "varint,71003,opt,name=ledger_json",
+		Filename:      "common.proto",
+	},
+	{
+		ExtendedType:  (*descriptorpb.FileOptions)(nil),
+		ExtensionType: (*bool)(nil),
+		Field:         71004,
+		Name:          "common.ledger_json_default",
+		Tag:           "varint,71004,opt,name=ledger_json_default",
+		Filename:      "common.proto",
+	},
+	{
+		ExtendedType:  (*descriptorpb.MessageOptions)(nil),
+		ExtensionType: (*bool)(nil),
+		Field:         71005,
+		Name:          "common.ledger_json_manual",
+		Tag:           "varint,71005,opt,name=ledger_json_manual",
+		Filename:      "common.proto",
+	},
+	{
 		ExtendedType:  (*descriptorpb.FieldOptions)(nil),
 		ExtensionType: ([]QueryTarget)(nil),
 		Field:         50123,
@@ -22082,36 +22107,50 @@ var (
 	E_AuthPolicy = &file_common_proto_extTypes[0]
 )
 
+// Extension fields to descriptorpb.MessageOptions.
+var (
+	// optional bool ledger_json = 71003;
+	E_LedgerJson = &file_common_proto_extTypes[1]
+	// optional bool ledger_json_manual = 71005;
+	E_LedgerJsonManual = &file_common_proto_extTypes[3]
+)
+
+// Extension fields to descriptorpb.FileOptions.
+var (
+	// optional bool ledger_json_default = 71004;
+	E_LedgerJsonDefault = &file_common_proto_extTypes[2]
+)
+
 // Extension fields to descriptorpb.FieldOptions.
 var (
 	// repeated common.QueryTarget allowed_query_targets = 50123;
-	E_AllowedQueryTargets = &file_common_proto_extTypes[1]
+	E_AllowedQueryTargets = &file_common_proto_extTypes[4]
 	// valid_on_no_query_target declares that an arm is intentionally valid on no
 	// QueryTarget (rejected everywhere). It is the EXPLICIT opt-in the generator
 	// requires instead of inferring "valid nowhere" from a missing annotation.
 	//
 	// optional bool valid_on_no_query_target = 50124;
-	E_ValidOnNoQueryTarget = &file_common_proto_extTypes[2]
+	E_ValidOnNoQueryTarget = &file_common_proto_extTypes[5]
 	// ledger_log_is_history is mandatory on every LedgerLogPayload.payload arm.
 	// Explicit false classifies CONTROL; true classifies HISTORY. The generator
 	// rejects a missing annotation, so proto's false default cannot classify by
 	// accident.
 	//
 	// optional bool ledger_log_is_history = 50125;
-	E_LedgerLogIsHistory = &file_common_proto_extTypes[3]
+	E_LedgerLogIsHistory = &file_common_proto_extTypes[6]
 	// Sensitive projections reuse the detached public-view contract from EN-1632.
 	// Strings are masked; other field kinds are cleared. Never use for persistence.
 	//
 	// optional bool sensitive = 50126;
-	E_Sensitive = &file_common_proto_extTypes[4]
+	E_Sensitive = &file_common_proto_extTypes[7]
 	// Mask credentials in URL or PostgreSQL keyword/value connection strings.
 	//
 	// optional bool sensitive_url = 50127;
-	E_SensitiveUrl = &file_common_proto_extTypes[5]
+	E_SensitiveUrl = &file_common_proto_extTypes[8]
 	// Allowed coarse reasons for each typed audited failure variant.
 	//
 	// optional common.ErrorReason failure_reason = 50128;
-	E_FailureReason = &file_common_proto_extTypes[6]
+	E_FailureReason = &file_common_proto_extTypes[9]
 )
 
 var File_common_proto protoreflect.FileDescriptor
@@ -22126,9 +22165,9 @@ const file_common_proto_rawDesc = "" +
 	"\x10dynamic_resolver\x18\x03 \x01(\x0e2\x1b.common.DynamicAuthResolverH\x00R\x0fdynamicResolverB\b\n" +
 	"\x06policy\"\x1f\n" +
 	"\tTimestamp\x12\x12\n" +
-	"\x04data\x18\x01 \x01(\x06R\x04data\"'\n" +
+	"\x04data\x18\x01 \x01(\x06R\x04data\"-\n" +
 	"\tNullValue\x12\x1a\n" +
-	"\boriginal\x18\x01 \x01(\tR\boriginal\"\xfa\x01\n" +
+	"\boriginal\x18\x01 \x01(\tR\boriginal:\x04\xd8\xd5\"\x01\"\x80\x02\n" +
 	"\rMetadataValue\x12#\n" +
 	"\fstring_value\x18\x01 \x01(\tH\x00R\vstringValue\x12\x1d\n" +
 	"\tint_value\x18\x02 \x01(\x03H\x00R\bintValue\x12\x1f\n" +
@@ -22138,7 +22177,7 @@ const file_common_proto_rawDesc = "" +
 	"null_value\x18\x04 \x01(\v2\x11.common.NullValueH\x00R\tnullValue\x12\x1f\n" +
 	"\n" +
 	"uint_value\x18\x05 \x01(\x04H\x00R\tuintValue\x12'\n" +
-	"\x0edatetime_value\x18\x06 \x01(\x03H\x00R\rdatetimeValueB\x06\n" +
+	"\x0edatetime_value\x18\x06 \x01(\x03H\x00R\rdatetimeValue:\x04\xd8\xd5\"\x01B\x06\n" +
 	"\x04type\"\x98\x01\n" +
 	"\vMetadataMap\x127\n" +
 	"\x06values\x18\x01 \x03(\v2\x1f.common.MetadataMap.ValuesEntryR\x06values\x1aP\n" +
@@ -22255,28 +22294,28 @@ const file_common_proto_rawDesc = "" +
 	"\vtarget_type\x18\x01 \x01(\x0e2\x12.common.TargetTypeR\n" +
 	"targetType\x12\x10\n" +
 	"\x03key\x18\x02 \x01(\tR\x03key\x12(\n" +
-	"\x04type\x18\x03 \x01(\x0e2\x14.common.MetadataTypeR\x04type\"O\n" +
+	"\x04type\x18\x03 \x01(\x0e2\x14.common.MetadataTypeR\x04type\"U\n" +
 	"\x0fMetadataIndexID\x12*\n" +
 	"\x06target\x18\x01 \x01(\x0e2\x12.common.TargetTypeR\x06target\x12\x10\n" +
-	"\x03key\x18\x02 \x01(\tR\x03key\"\x8e\x02\n" +
+	"\x03key\x18\x02 \x01(\tR\x03key:\x04\xd8\xd5\"\x01\"\x94\x02\n" +
 	"\aIndexID\x12@\n" +
 	"\n" +
 	"tx_builtin\x18\x01 \x01(\x0e2\x1f.common.TransactionBuiltinIndexH\x00R\ttxBuiltin\x12:\n" +
 	"\vlog_builtin\x18\x02 \x01(\x0e2\x17.common.LogBuiltinIndexH\x00R\n" +
 	"logBuiltin\x12F\n" +
 	"\x0faccount_builtin\x18\x03 \x01(\x0e2\x1b.common.AccountBuiltinIndexH\x00R\x0eaccountBuiltin\x125\n" +
-	"\bmetadata\x18\x04 \x01(\v2\x17.common.MetadataIndexIDH\x00R\bmetadataB\x06\n" +
-	"\x04kind\"\xac\x01\n" +
+	"\bmetadata\x18\x04 \x01(\v2\x17.common.MetadataIndexIDH\x00R\bmetadata:\x04\xd8\xd5\"\x01B\x06\n" +
+	"\x04kind\"\xb2\x01\n" +
 	"\x05Index\x12\x1f\n" +
 	"\x02id\x18\x01 \x01(\v2\x0f.common.IndexIDR\x02id\x120\n" +
 	"\n" +
 	"created_at\x18\x02 \x01(\v2\x11.common.TimestampR\tcreatedAt\x12\x16\n" +
 	"\x06ledger\x18\x03 \x01(\tR\x06ledger\x128\n" +
-	"\x18forward_encoding_version\x18\x04 \x01(\rR\x16forwardEncodingVersion\">\n" +
+	"\x18forward_encoding_version\x18\x04 \x01(\rR\x16forwardEncodingVersion:\x04\xd8\xd5\"\x01\"D\n" +
 	"\vIdempotency\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x1d\n" +
 	"\n" +
-	"expires_at\x18\x02 \x01(\x06R\texpiresAt\"\x94\x01\n" +
+	"expires_at\x18\x02 \x01(\x06R\texpiresAt:\x04\xd8\xd5\"\x01\"\x94\x01\n" +
 	"\x03Log\x12\x1a\n" +
 	"\bsequence\x18\x01 \x01(\x06R\bsequence\x12,\n" +
 	"\apayload\x18\x02 \x01(\v2\x12.common.LogPayloadR\apayload\x12C\n" +
@@ -22305,36 +22344,36 @@ const file_common_proto_rawDesc = "" +
 	"\x15saved_ledger_metadata\x18\x13 \x01(\v2\x1e.common.SavedLedgerMetadataLogH\x00R\x13savedLedgerMetadata\x12Z\n" +
 	"\x17deleted_ledger_metadata\x18\x14 \x01(\v2 .common.DeletedLedgerMetadataLogH\x00R\x15deletedLedgerMetadata\x12K\n" +
 	"\x12set_cluster_policy\x18\x15 \x01(\v2\x1b.common.SetClusterPolicyLogH\x00R\x10setClusterPolicyB\x06\n" +
-	"\x04type\"'\n" +
+	"\x04type\"-\n" +
 	"\x11PromotedLedgerLog\x12\x12\n" +
-	"\x04name\x18\x01 \x01(\tR\x04name\"s\n" +
+	"\x04name\x18\x01 \x01(\tR\x04name:\x04\xd8\xd5\"\x01\"y\n" +
 	"\x17RegisteredSigningKeyLog\x12\x15\n" +
 	"\x06key_id\x18\x01 \x01(\tR\x05keyId\x12\x1d\n" +
 	"\n" +
 	"public_key\x18\x02 \x01(\fR\tpublicKey\x12\"\n" +
-	"\rparent_key_id\x18\x03 \x01(\tR\vparentKeyId\"W\n" +
+	"\rparent_key_id\x18\x03 \x01(\tR\vparentKeyId:\x04\xd8\xd5\"\x01\"]\n" +
 	"\x14RevokedSigningKeyLog\x12\x15\n" +
 	"\x06key_id\x18\x01 \x01(\tR\x05keyId\x12(\n" +
-	"\x10cascaded_key_ids\x18\x02 \x03(\tR\x0ecascadedKeyIds\"f\n" +
+	"\x10cascaded_key_ids\x18\x02 \x03(\tR\x0ecascadedKeyIds:\x04\xd8\xd5\"\x01\"l\n" +
 	"\n" +
 	"SigningKey\x12\x15\n" +
 	"\x06key_id\x18\x01 \x01(\tR\x05keyId\x12\x1d\n" +
 	"\n" +
 	"public_key\x18\x02 \x01(\fR\tpublicKey\x12\"\n" +
-	"\rparent_key_id\x18\x03 \x01(\tR\vparentKeyId\"D\n" +
+	"\rparent_key_id\x18\x03 \x01(\tR\vparentKeyId:\x04\xd8\xd5\"\x01\"J\n" +
 	"\x13SetSigningConfigLog\x12-\n" +
-	"\x12require_signatures\x18\x01 \x01(\bR\x11requireSignatures\"@\n" +
+	"\x12require_signatures\x18\x01 \x01(\bR\x11requireSignatures:\x04\xd8\xd5\"\x01\"F\n" +
 	"\x12AddedEventsSinkLog\x12*\n" +
-	"\x06config\x18\x01 \x01(\v2\x12.common.SinkConfigR\x06config\"*\n" +
+	"\x06config\x18\x01 \x01(\v2\x12.common.SinkConfigR\x06config:\x04\xd8\xd5\"\x01\"0\n" +
 	"\x14RemovedEventsSinkLog\x12\x12\n" +
-	"\x04name\x18\x01 \x01(\tR\x04name\"1\n" +
+	"\x04name\x18\x01 \x01(\tR\x04name:\x04\xd8\xd5\"\x01\"7\n" +
 	"\x15SetMaintenanceModeLog\x12\x18\n" +
-	"\aenabled\x18\x01 \x01(\bR\aenabled\"D\n" +
+	"\aenabled\x18\x01 \x01(\bR\aenabled:\x04\xd8\xd5\"\x01\"J\n" +
 	"\x13SetClusterPolicyLog\x12-\n" +
-	"\x06policy\x18\x01 \x01(\v2\x15.common.ClusterPolicyR\x06policy\"O\n" +
+	"\x06policy\x18\x01 \x01(\v2\x15.common.ClusterPolicyR\x06policy:\x04\xd8\xd5\"\x01\"U\n" +
 	"\x0fBloomTypeConfig\x12#\n" +
 	"\rexpected_keys\x18\x01 \x01(\x04R\fexpectedKeys\x12\x17\n" +
-	"\afp_rate\x18\x02 \x01(\x01R\x06fpRate\"\xcf\a\n" +
+	"\afp_rate\x18\x02 \x01(\x01R\x06fpRate:\x04\xd8\xd5\"\x01\"\xd5\a\n" +
 	"\rClusterConfig\x12-\n" +
 	"\x12rotation_threshold\x18\x01 \x01(\x04R\x11rotationThreshold\x12<\n" +
 	"\rbloom_volumes\x18\x02 \x01(\v2\x17.common.BloomTypeConfigR\fbloomVolumes\x12>\n" +
@@ -22350,11 +22389,11 @@ const file_common_proto_rawDesc = "" +
 	"\x0ehash_algorithm\x18\v \x01(\x0e2\x15.common.HashAlgorithmR\rhashAlgorithm\x12K\n" +
 	"\x15bloom_ledger_metadata\x18\f \x01(\v2\x17.common.BloomTypeConfigR\x13bloomLedgerMetadata\x12M\n" +
 	"\x16bloom_prepared_queries\x18\r \x01(\v2\x17.common.BloomTypeConfigR\x14bloomPreparedQueries\x12<\n" +
-	"\rbloom_indexes\x18\x0e \x01(\v2\x17.common.BloomTypeConfigR\fbloomIndexes\"g\n" +
+	"\rbloom_indexes\x18\x0e \x01(\v2\x17.common.BloomTypeConfigR\fbloomIndexes:\x04\xd8\xd5\"\x01\"g\n" +
 	"\x15PersistedClusterState\x12-\n" +
 	"\x06config\x18\x01 \x01(\v2\x15.common.ClusterConfigR\x06config\x12\x1f\n" +
 	"\vcache_epoch\x18\x02 \x01(\x06R\n" +
-	"cacheEpoch\"\xc3\x03\n" +
+	"cacheEpoch\"\xc9\x03\n" +
 	"\rClusterPolicy\x12\x1a\n" +
 	"\brevision\x18\x01 \x01(\x06R\brevision\x124\n" +
 	"\x16idempotency_ttl_micros\x18\x02 \x01(\x06R\x14idempotencyTtlMicros\x124\n" +
@@ -22363,55 +22402,55 @@ const file_common_proto_rawDesc = "" +
 	"\x16metadata_max_key_bytes\x18\x05 \x01(\x06R\x13metadataMaxKeyBytes\x127\n" +
 	"\x18metadata_max_value_bytes\x18\x06 \x01(\x06R\x15metadataMaxValueBytes\x129\n" +
 	"\x19metadata_max_entity_bytes\x18\a \x01(\x06R\x16metadataMaxEntityBytes\x12;\n" +
-	"\x1ametadata_max_command_bytes\x18\b \x01(\x06R\x17metadataMaxCommandBytes\"^\n" +
+	"\x1ametadata_max_command_bytes\x18\b \x01(\x06R\x17metadataMaxCommandBytes:\x04\xd8\xd5\"\x01\"d\n" +
 	"\x17CreatedPreparedQueryLog\x12\x16\n" +
 	"\x06ledger\x18\x01 \x01(\tR\x06ledger\x12+\n" +
-	"\x05query\x18\x02 \x01(\v2\x15.common.PreparedQueryR\x05query\"\xb7\x01\n" +
+	"\x05query\x18\x02 \x01(\v2\x15.common.PreparedQueryR\x05query:\x04\xd8\xd5\"\x01\"\xbd\x01\n" +
 	"\x17UpdatedPreparedQueryLog\x12\x16\n" +
 	"\x06ledger\x18\x01 \x01(\tR\x06ledger\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12<\n" +
 	"\x0fprevious_filter\x18\x03 \x01(\v2\x13.common.QueryFilterR\x0epreviousFilter\x122\n" +
 	"\n" +
-	"new_filter\x18\x04 \x01(\v2\x13.common.QueryFilterR\tnewFilter\"E\n" +
+	"new_filter\x18\x04 \x01(\v2\x13.common.QueryFilterR\tnewFilter:\x04\xd8\xd5\"\x01\"K\n" +
 	"\x17DeletedPreparedQueryLog\x12\x16\n" +
 	"\x06ledger\x18\x01 \x01(\tR\x06ledger\x12\x12\n" +
-	"\x04name\x18\x02 \x01(\tR\x04name\"\xce\x01\n" +
+	"\x04name\x18\x02 \x01(\tR\x04name:\x04\xd8\xd5\"\x01\"\xd4\x01\n" +
 	"\x16SavedLedgerMetadataLog\x12\x16\n" +
 	"\x06ledger\x18\x01 \x01(\tR\x06ledger\x12H\n" +
 	"\bmetadata\x18\x02 \x03(\v2,.common.SavedLedgerMetadataLog.MetadataEntryR\bmetadata\x1aR\n" +
 	"\rMetadataEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12+\n" +
-	"\x05value\x18\x02 \x01(\v2\x15.common.MetadataValueR\x05value:\x028\x01\"D\n" +
+	"\x05value\x18\x02 \x01(\v2\x15.common.MetadataValueR\x05value:\x028\x01:\x04\xd8\xd5\"\x01\"J\n" +
 	"\x18DeletedLedgerMetadataLog\x12\x16\n" +
 	"\x06ledger\x18\x01 \x01(\tR\x06ledger\x12\x10\n" +
-	"\x03key\x18\x02 \x01(\tR\x03key\"\xa1\x01\n" +
+	"\x03key\x18\x02 \x01(\tR\x03key:\x04\xd8\xd5\"\x01\"\xa1\x01\n" +
 	"\rNumscriptInfo\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x18\n" +
 	"\acontent\x18\x02 \x01(\tR\acontent\x12\x18\n" +
 	"\aversion\x18\x03 \x01(\tR\aversion\x120\n" +
 	"\n" +
 	"created_at\x18\x04 \x01(\v2\x11.common.TimestampR\tcreatedAt\x12\x16\n" +
-	"\x06ledger\x18\x05 \x01(\tR\x06ledger\">\n" +
+	"\x06ledger\x18\x05 \x01(\tR\x06ledger\"D\n" +
 	"\x11SavedNumscriptLog\x12)\n" +
-	"\x04info\x18\x01 \x01(\v2\x15.common.NumscriptInfoR\x04info\"c\n" +
+	"\x04info\x18\x01 \x01(\v2\x15.common.NumscriptInfoR\x04info:\x04\xd8\xd5\"\x01\"i\n" +
 	"\x15NumscriptVersionEntry\x12\x18\n" +
 	"\aversion\x18\x01 \x01(\tR\aversion\x120\n" +
 	"\n" +
-	"created_at\x18\x02 \x01(\v2\x11.common.TimestampR\tcreatedAt\"U\n" +
+	"created_at\x18\x02 \x01(\v2\x11.common.TimestampR\tcreatedAt:\x04\xd8\xd5\"\x01\"U\n" +
 	"\rTemplateUsage\x12\x14\n" +
 	"\x05count\x18\x01 \x01(\x06R\x05count\x12.\n" +
-	"\tlast_used\x18\x02 \x01(\v2\x11.common.TimestampR\blastUsed\"3\n" +
+	"\tlast_used\x18\x02 \x01(\v2\x11.common.TimestampR\blastUsed\"9\n" +
 	"\x1dSetQueryCheckpointScheduleLog\x12\x12\n" +
-	"\x04cron\x18\x01 \x01(\tR\x04cron\"#\n" +
-	"!DeletedQueryCheckpointScheduleLog\"\xba\x01\n" +
+	"\x04cron\x18\x01 \x01(\tR\x04cron:\x04\xd8\xd5\"\x01\")\n" +
+	"!DeletedQueryCheckpointScheduleLog:\x04\xd8\xd5\"\x01\"\xc0\x01\n" +
 	"\x19CreatedQueryCheckpointLog\x12#\n" +
 	"\rcheckpoint_id\x18\x01 \x01(\x06R\fcheckpointId\x12!\n" +
 	"\fmax_sequence\x18\x02 \x01(\x06R\vmaxSequence\x120\n" +
 	"\n" +
 	"created_at\x18\x03 \x01(\v2\x11.common.TimestampR\tcreatedAt\x12#\n" +
-	"\rapplied_index\x18\x04 \x01(\x06R\fappliedIndex\"@\n" +
+	"\rapplied_index\x18\x04 \x01(\x06R\fappliedIndex:\x04\xd8\xd5\"\x01\"F\n" +
 	"\x19DeletedQueryCheckpointLog\x12#\n" +
-	"\rcheckpoint_id\x18\x01 \x01(\x06R\fcheckpointId\"\xeb\x03\n" +
+	"\rcheckpoint_id\x18\x01 \x01(\x06R\fcheckpointId:\x04\xd8\xd5\"\x01\"\xf1\x03\n" +
 	"\n" +
 	"SinkConfig\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12,\n" +
@@ -22431,33 +22470,33 @@ const file_common_proto_rawDesc = "" +
 	"\vevent_types\x18\n" +
 	" \x03(\x0e2\x11.common.EventTypeR\n" +
 	"eventTypes\x12#\n" +
-	"\rcontroller_id\x18\v \x01(\tR\fcontrollerIdB\x06\n" +
-	"\x04type\"j\n" +
+	"\rcontroller_id\x18\v \x01(\tR\fcontrollerId:\x04\xd8\xd5\"\x01B\x06\n" +
+	"\x04type\"p\n" +
 	"\n" +
 	"SinkStatus\x12\x1b\n" +
 	"\tsink_name\x18\x01 \x01(\tR\bsinkName\x12\x16\n" +
 	"\x06cursor\x18\x02 \x01(\x06R\x06cursor\x12'\n" +
-	"\x05error\x18\x03 \x01(\v2\x11.common.SinkErrorR\x05error\"Y\n" +
+	"\x05error\x18\x03 \x01(\v2\x11.common.SinkErrorR\x05error:\x04\xd8\xd5\"\x01\"_\n" +
 	"\tSinkError\x12\x18\n" +
 	"\amessage\x18\x01 \x01(\tR\amessage\x122\n" +
 	"\voccurred_at\x18\x02 \x01(\v2\x11.common.TimestampR\n" +
-	"occurredAt\">\n" +
+	"occurredAt:\x04\xd8\xd5\"\x01\"D\n" +
 	"\x0eNatsSinkConfig\x12\x16\n" +
 	"\x03url\x18\x01 \x01(\tB\x04\xf8\xbc\x18\x01R\x03url\x12\x14\n" +
-	"\x05topic\x18\x02 \x01(\tR\x05topic\"D\n" +
+	"\x05topic\x18\x02 \x01(\tR\x05topic:\x04\xd8\xd5\"\x01\"J\n" +
 	"\x14ClickHouseSinkConfig\x12\x16\n" +
 	"\x03dsn\x18\x01 \x01(\tB\x04\xf8\xbc\x18\x01R\x03dsn\x12\x14\n" +
-	"\x05table\x18\x02 \x01(\tR\x05table\"\xca\x01\n" +
+	"\x05table\x18\x02 \x01(\tR\x05table:\x04\xd8\xd5\"\x01\"\xd0\x01\n" +
 	"\x0fKafkaSinkConfig\x12\x18\n" +
 	"\abrokers\x18\x01 \x03(\tR\abrokers\x12\x14\n" +
 	"\x05topic\x18\x02 \x01(\tR\x05topic\x12\x10\n" +
 	"\x03tls\x18\x03 \x01(\bR\x03tls\x12%\n" +
 	"\x0esasl_mechanism\x18\x04 \x01(\tR\rsaslMechanism\x12#\n" +
 	"\rsasl_username\x18\x05 \x01(\tR\fsaslUsername\x12)\n" +
-	"\rsasl_password\x18\x06 \x01(\tB\x04\xf0\xbc\x18\x01R\fsaslPassword\"P\n" +
+	"\rsasl_password\x18\x06 \x01(\tB\x04\xf0\xbc\x18\x01R\fsaslPassword:\x04\xd8\xd5\"\x01\"V\n" +
 	"\x0eHttpSinkConfig\x12 \n" +
 	"\bendpoint\x18\x01 \x01(\tB\x04\xf8\xbc\x18\x01R\bendpoint\x12\x1c\n" +
-	"\x06secret\x18\x02 \x01(\tB\x04\xf0\xbc\x18\x01R\x06secret\"\x99\x02\n" +
+	"\x06secret\x18\x02 \x01(\tB\x04\xf0\xbc\x18\x01R\x06secret:\x04\xd8\xd5\"\x01\"\x9f\x02\n" +
 	"\x14DatabricksSinkConfig\x12'\n" +
 	"\x0fserver_hostname\x18\x01 \x01(\tR\x0eserverHostname\x12\x1b\n" +
 	"\thttp_path\x18\x02 \x01(\tR\bhttpPath\x12\x18\n" +
@@ -22466,11 +22505,11 @@ const file_common_proto_rawDesc = "" +
 	"\x05table\x18\x05 \x01(\tR\x05table\x12\x12\n" +
 	"\x04port\x18\x06 \x01(\x05R\x04port\x12\x1c\n" +
 	"\x05token\x18\a \x01(\tB\x04\xf0\xbc\x18\x01H\x00R\x05token\x129\n" +
-	"\toauth_m2m\x18\b \x01(\v2\x1a.common.DatabricksOAuthM2MH\x00R\boauthM2mB\x06\n" +
-	"\x04auth\"\\\n" +
+	"\toauth_m2m\x18\b \x01(\v2\x1a.common.DatabricksOAuthM2MH\x00R\boauthM2m:\x04\xd8\xd5\"\x01B\x06\n" +
+	"\x04auth\"b\n" +
 	"\x12DatabricksOAuthM2M\x12\x1b\n" +
 	"\tclient_id\x18\x01 \x01(\tR\bclientId\x12)\n" +
-	"\rclient_secret\x18\x02 \x01(\tB\x04\xf0\xbc\x18\x01R\fclientSecret\"\xa9\x05\n" +
+	"\rclient_secret\x18\x02 \x01(\tB\x04\xf0\xbc\x18\x01R\fclientSecret:\x04\xd8\xd5\"\x01\"\xa9\x05\n" +
 	"\x10CreatedLedgerLog\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x120\n" +
 	"\n" +
@@ -23178,17 +23217,17 @@ const file_common_proto_rawDesc = "" +
 	"\n" +
 	"\b_current\"C\n" +
 	"\x0fOrderSkippedLog\x120\n" +
-	"\adetails\x18\x01 \x01(\v2\x16.common.FailureDetailsR\adetails\"\x97\x01\n" +
+	"\adetails\x18\x01 \x01(\v2\x16.common.FailureDetailsR\adetails\"\x9d\x01\n" +
 	"\x0fCreatedIndexLog\x12\x1f\n" +
 	"\x02id\x18\x01 \x01(\v2\x0f.common.IndexIDR\x02id\x123\n" +
 	"\n" +
 	"bound_type\x18\x02 \x01(\x0e2\x14.common.MetadataTypeR\tboundType\x12.\n" +
-	"\x13bound_type_declared\x18\x03 \x01(\bR\x11boundTypeDeclared\"2\n" +
+	"\x13bound_type_declared\x18\x03 \x01(\bR\x11boundTypeDeclared:\x04\xd8\xd5\"\x01\"8\n" +
 	"\x0fDroppedIndexLog\x12\x1f\n" +
-	"\x02id\x18\x01 \x01(\v2\x0f.common.IndexIDR\x02id\"/\n" +
+	"\x02id\x18\x01 \x01(\v2\x0f.common.IndexIDR\x02id:\x04\xd8\xd5\"\x01\"5\n" +
 	"\fFilledGapLog\x12\x1f\n" +
 	"\voriginal_id\x18\x01 \x01(\x06R\n" +
-	"originalId\"\x80\x02\n" +
+	"originalId:\x04\xd8\xd5\"\x01\"\x80\x02\n" +
 	"\x12CreatedTransaction\x125\n" +
 	"\vtransaction\x18\x01 \x01(\v2\x13.common.TransactionR\vtransaction\x12Z\n" +
 	"\x10account_metadata\x18\x02 \x03(\v2/.common.CreatedTransaction.AccountMetadataEntryR\x0faccountMetadata\x1aW\n" +
@@ -23206,17 +23245,17 @@ const file_common_proto_rawDesc = "" +
 	"\x05value\x18\x02 \x01(\v2\x15.common.MetadataValueR\x05value:\x028\x01\"K\n" +
 	"\x0fDeletedMetadata\x12&\n" +
 	"\x06target\x18\x01 \x01(\v2\x0e.common.TargetR\x06target\x12\x10\n" +
-	"\x03key\x18\x02 \x01(\tR\x03key\"\x8a\x01\n" +
+	"\x03key\x18\x02 \x01(\tR\x03key\"\x90\x01\n" +
 	"\x17SetMetadataFieldTypeLog\x123\n" +
 	"\vtarget_type\x18\x01 \x01(\x0e2\x12.common.TargetTypeR\n" +
 	"targetType\x12\x10\n" +
 	"\x03key\x18\x02 \x01(\tR\x03key\x12(\n" +
-	"\x04type\x18\x03 \x01(\x0e2\x14.common.MetadataTypeR\x04type\"\x9a\x01\n" +
+	"\x04type\x18\x03 \x01(\x0e2\x14.common.MetadataTypeR\x04type:\x04\xd8\xd5\"\x01\"\xa0\x01\n" +
 	"\x1bRemovedMetadataFieldTypeLog\x123\n" +
 	"\vtarget_type\x18\x01 \x01(\x0e2\x12.common.TargetTypeR\n" +
 	"targetType\x12\x10\n" +
 	"\x03key\x18\x02 \x01(\tR\x03key\x124\n" +
-	"\rdropped_index\x18\x03 \x01(\v2\x0f.common.IndexIDR\fdroppedIndex\"\x94\x02\n" +
+	"\rdropped_index\x18\x03 \x01(\v2\x0f.common.IndexIDR\fdroppedIndex:\x04\xd8\xd5\"\x01\"\x9a\x02\n" +
 	"\x12MirrorSourceConfig\x12\x1f\n" +
 	"\vledger_name\x18\x01 \x01(\tR\n" +
 	"ledgerName\x124\n" +
@@ -23224,8 +23263,8 @@ const file_common_proto_rawDesc = "" +
 	"\bpostgres\x18\x03 \x01(\v2\".common.PostgresMirrorSourceConfigH\x00R\bpostgres\x12\x1d\n" +
 	"\n" +
 	"batch_size\x18\x04 \x01(\rR\tbatchSize\x12>\n" +
-	"\rrewrite_rules\x18\x05 \x03(\v2\x19.common.MirrorRewriteRuleR\frewriteRulesB\x06\n" +
-	"\x04type\"\xa2\x03\n" +
+	"\rrewrite_rules\x18\x05 \x03(\v2\x19.common.MirrorRewriteRuleR\frewriteRules:\x04\xd8\xd5\"\x01B\x06\n" +
+	"\x04type\"\xa8\x03\n" +
 	"\x11MirrorRewriteRule\x12Q\n" +
 	"\x13created_transaction\x18\x01 \x01(\v2\x1e.common.CreatedTransactionRuleH\x00R\x12createdTransaction\x12T\n" +
 	"\x14reverted_transaction\x18\x02 \x01(\v2\x1f.common.RevertedTransactionRuleH\x00R\x13revertedTransaction\x12B\n" +
@@ -23233,23 +23272,23 @@ const file_common_proto_rawDesc = "" +
 	"\x10deleted_metadata\x18\x04 \x01(\v2\x1b.common.DeletedMetadataRuleH\x00R\x0fdeletedMetadata\x129\n" +
 	"\vany_variant\x18\x05 \x01(\v2\x16.common.AnyVariantRuleH\x00R\n" +
 	"anyVariant\x12\x12\n" +
-	"\x04stop\x18\x06 \x01(\bR\x04stopB\a\n" +
-	"\x05scope\"j\n" +
+	"\x04stop\x18\x06 \x01(\bR\x04stop:\x04\xd8\xd5\"\x01B\a\n" +
+	"\x05scope\"p\n" +
 	"\x16CreatedTransactionRule\x12\x14\n" +
 	"\x05match\x18\x01 \x01(\tR\x05match\x12:\n" +
-	"\aactions\x18\x02 \x03(\v2 .common.CreatedTransactionActionR\aactions\"l\n" +
+	"\aactions\x18\x02 \x03(\v2 .common.CreatedTransactionActionR\aactions:\x04\xd8\xd5\"\x01\"r\n" +
 	"\x17RevertedTransactionRule\x12\x14\n" +
 	"\x05match\x18\x01 \x01(\tR\x05match\x12;\n" +
-	"\aactions\x18\x02 \x03(\v2!.common.RevertedTransactionActionR\aactions\"`\n" +
+	"\aactions\x18\x02 \x03(\v2!.common.RevertedTransactionActionR\aactions:\x04\xd8\xd5\"\x01\"f\n" +
 	"\x11SavedMetadataRule\x12\x14\n" +
 	"\x05match\x18\x01 \x01(\tR\x05match\x125\n" +
-	"\aactions\x18\x02 \x03(\v2\x1b.common.SavedMetadataActionR\aactions\"d\n" +
+	"\aactions\x18\x02 \x03(\v2\x1b.common.SavedMetadataActionR\aactions:\x04\xd8\xd5\"\x01\"j\n" +
 	"\x13DeletedMetadataRule\x12\x14\n" +
 	"\x05match\x18\x01 \x01(\tR\x05match\x127\n" +
-	"\aactions\x18\x02 \x03(\v2\x1d.common.DeletedMetadataActionR\aactions\"Z\n" +
+	"\aactions\x18\x02 \x03(\v2\x1d.common.DeletedMetadataActionR\aactions:\x04\xd8\xd5\"\x01\"`\n" +
 	"\x0eAnyVariantRule\x12\x14\n" +
 	"\x05match\x18\x01 \x01(\tR\x05match\x122\n" +
-	"\aactions\x18\x02 \x03(\v2\x18.common.AnyVariantActionR\aactions\"\xce\x04\n" +
+	"\aactions\x18\x02 \x03(\v2\x18.common.AnyVariantActionR\aactions:\x04\xd8\xd5\"\x01\"\xd4\x04\n" +
 	"\x18CreatedTransactionAction\x12G\n" +
 	"\x0frewrite_address\x18\x01 \x01(\v2\x1c.common.RewriteAddressActionH\x00R\x0erewriteAddress\x12>\n" +
 	"\fset_metadata\x18\x02 \x01(\v2\x19.common.SetMetadataActionH\x00R\vsetMetadata\x12G\n" +
@@ -23257,75 +23296,75 @@ const file_common_proto_rawDesc = "" +
 	"\x14set_account_metadata\x18\x04 \x01(\v2 .common.SetAccountMetadataActionH\x00R\x12setAccountMetadata\x12]\n" +
 	"\x17delete_account_metadata\x18\x05 \x01(\v2#.common.DeleteAccountMetadataActionH\x00R\x15deleteAccountMetadata\x12w\n" +
 	"!set_account_metadata_from_address\x18\x06 \x01(\v2+.common.SetAccountMetadataFromAddressActionH\x00R\x1dsetAccountMetadataFromAddress\x12(\n" +
-	"\x04drop\x18\a \x01(\v2\x12.common.DropActionH\x00R\x04dropB\b\n" +
-	"\x06action\"\xa1\x02\n" +
+	"\x04drop\x18\a \x01(\v2\x12.common.DropActionH\x00R\x04drop:\x04\xd8\xd5\"\x01B\b\n" +
+	"\x06action\"\xa7\x02\n" +
 	"\x19RevertedTransactionAction\x12G\n" +
 	"\x0frewrite_address\x18\x01 \x01(\v2\x1c.common.RewriteAddressActionH\x00R\x0erewriteAddress\x12>\n" +
 	"\fset_metadata\x18\x02 \x01(\v2\x19.common.SetMetadataActionH\x00R\vsetMetadata\x12G\n" +
 	"\x0fdelete_metadata\x18\x03 \x01(\v2\x1c.common.DeleteMetadataActionH\x00R\x0edeleteMetadata\x12(\n" +
-	"\x04drop\x18\x04 \x01(\v2\x12.common.DropActionH\x00R\x04dropB\b\n" +
-	"\x06action\"\x9b\x02\n" +
+	"\x04drop\x18\x04 \x01(\v2\x12.common.DropActionH\x00R\x04drop:\x04\xd8\xd5\"\x01B\b\n" +
+	"\x06action\"\xa1\x02\n" +
 	"\x13SavedMetadataAction\x12G\n" +
 	"\x0frewrite_address\x18\x01 \x01(\v2\x1c.common.RewriteAddressActionH\x00R\x0erewriteAddress\x12>\n" +
 	"\fset_metadata\x18\x02 \x01(\v2\x19.common.SetMetadataActionH\x00R\vsetMetadata\x12G\n" +
 	"\x0fdelete_metadata\x18\x03 \x01(\v2\x1c.common.DeleteMetadataActionH\x00R\x0edeleteMetadata\x12(\n" +
-	"\x04drop\x18\x04 \x01(\v2\x12.common.DropActionH\x00R\x04dropB\b\n" +
-	"\x06action\"\x94\x01\n" +
+	"\x04drop\x18\x04 \x01(\v2\x12.common.DropActionH\x00R\x04drop:\x04\xd8\xd5\"\x01B\b\n" +
+	"\x06action\"\x9a\x01\n" +
 	"\x15DeletedMetadataAction\x12G\n" +
 	"\x0frewrite_address\x18\x01 \x01(\v2\x1c.common.RewriteAddressActionH\x00R\x0erewriteAddress\x12(\n" +
-	"\x04drop\x18\x02 \x01(\v2\x12.common.DropActionH\x00R\x04dropB\b\n" +
-	"\x06action\"\x8f\x01\n" +
+	"\x04drop\x18\x02 \x01(\v2\x12.common.DropActionH\x00R\x04drop:\x04\xd8\xd5\"\x01B\b\n" +
+	"\x06action\"\x95\x01\n" +
 	"\x10AnyVariantAction\x12G\n" +
 	"\x0frewrite_address\x18\x01 \x01(\v2\x1c.common.RewriteAddressActionH\x00R\x0erewriteAddress\x12(\n" +
-	"\x04drop\x18\x02 \x01(\v2\x12.common.DropActionH\x00R\x04dropB\b\n" +
-	"\x06action\"R\n" +
+	"\x04drop\x18\x02 \x01(\v2\x12.common.DropActionH\x00R\x04drop:\x04\xd8\xd5\"\x01B\b\n" +
+	"\x06action\"X\n" +
 	"\x14RewriteAddressAction\x12\x18\n" +
 	"\apattern\x18\x01 \x01(\tR\apattern\x12 \n" +
-	"\vreplacement\x18\x02 \x01(\tR\vreplacement\"|\n" +
+	"\vreplacement\x18\x02 \x01(\tR\vreplacement:\x04\xd8\xd5\"\x01\"\x82\x01\n" +
 	"\x11SetMetadataAction\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x16\n" +
 	"\x05value\x18\x02 \x01(\tH\x00R\x05value\x12\x1f\n" +
 	"\n" +
 	"value_expr\x18\x03 \x01(\tH\x00R\tvalueExpr\x12\x12\n" +
-	"\x04type\x18\x04 \x01(\tR\x04typeB\b\n" +
-	"\x06source\"(\n" +
+	"\x04type\x18\x04 \x01(\tR\x04type:\x04\xd8\xd5\"\x01B\b\n" +
+	"\x06source\".\n" +
 	"\x14DeleteMetadataAction\x12\x10\n" +
-	"\x03key\x18\x01 \x01(\tR\x03key\"\x9d\x01\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key:\x04\xd8\xd5\"\x01\"\xa3\x01\n" +
 	"\x18SetAccountMetadataAction\x12\x18\n" +
 	"\aaccount\x18\x01 \x01(\tR\aaccount\x12\x10\n" +
 	"\x03key\x18\x02 \x01(\tR\x03key\x12\x16\n" +
 	"\x05value\x18\x03 \x01(\tH\x00R\x05value\x12\x1f\n" +
 	"\n" +
 	"value_expr\x18\x04 \x01(\tH\x00R\tvalueExpr\x12\x12\n" +
-	"\x04type\x18\x05 \x01(\tR\x04typeB\b\n" +
-	"\x06source\"I\n" +
+	"\x04type\x18\x05 \x01(\tR\x04type:\x04\xd8\xd5\"\x01B\b\n" +
+	"\x06source\"O\n" +
 	"\x1bDeleteAccountMetadataAction\x12\x18\n" +
 	"\aaccount\x18\x01 \x01(\tR\aaccount\x12\x10\n" +
-	"\x03key\x18\x02 \x01(\tR\x03key\"\x95\x01\n" +
+	"\x03key\x18\x02 \x01(\tR\x03key:\x04\xd8\xd5\"\x01\"\x9b\x01\n" +
 	"#SetAccountMetadataFromAddressAction\x12\x18\n" +
 	"\apattern\x18\x01 \x01(\tR\apattern\x12T\n" +
-	"\freplacements\x18\x02 \x03(\v20.common.SetAccountMetadataFromAddressReplacementR\freplacements\"r\n" +
+	"\freplacements\x18\x02 \x03(\v20.common.SetAccountMetadataFromAddressReplacementR\freplacements:\x04\xd8\xd5\"\x01\"x\n" +
 	"(SetAccountMetadataFromAddressReplacement\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12 \n" +
 	"\vreplacement\x18\x02 \x01(\tR\vreplacement\x12\x12\n" +
-	"\x04type\x18\x03 \x01(\tR\x04type\"\f\n" +
+	"\x04type\x18\x03 \x01(\tR\x04type:\x04\xd8\xd5\"\x01\"\x12\n" +
 	"\n" +
-	"DropAction\"\x96\x01\n" +
+	"DropAction:\x04\xd8\xd5\"\x01\"\x9c\x01\n" +
 	"\x16HttpMirrorSourceConfig\x12\x1f\n" +
 	"\bbase_url\x18\x01 \x01(\tB\x04\xf8\xbc\x18\x01R\abaseUrl\x12[\n" +
-	"\x19oauth2_client_credentials\x18\x02 \x01(\v2\x1f.common.OAuth2ClientCredentialsR\x17oauth2ClientCredentials\"\xa6\x01\n" +
+	"\x19oauth2_client_credentials\x18\x02 \x01(\v2\x1f.common.OAuth2ClientCredentialsR\x17oauth2ClientCredentials:\x04\xd8\xd5\"\x01\"\xac\x01\n" +
 	"\x17OAuth2ClientCredentials\x12\x1b\n" +
 	"\tclient_id\x18\x01 \x01(\tR\bclientId\x12)\n" +
 	"\rclient_secret\x18\x02 \x01(\tB\x04\xf0\xbc\x18\x01R\fclientSecret\x12+\n" +
 	"\x0etoken_endpoint\x18\x03 \x01(\tB\x04\xf8\xbc\x18\x01R\rtokenEndpoint\x12\x16\n" +
-	"\x06scopes\x18\x04 \x03(\tR\x06scopes\"r\n" +
+	"\x06scopes\x18\x04 \x03(\tR\x06scopes:\x04\xd8\xd5\"\x01\"x\n" +
 	"\x1aPostgresMirrorSourceConfig\x12\x16\n" +
 	"\x03dsn\x18\x01 \x01(\tB\x04\xf8\xbc\x18\x01R\x03dsn\x12<\n" +
 	"\faws_iam_auth\x18\x02 \x01(\v2\x1a.common.PostgresAwsIamAuthR\n" +
-	"awsIamAuth\"T\n" +
+	"awsIamAuth:\x04\xd8\xd5\"\x01\"Z\n" +
 	"\x12PostgresAwsIamAuth\x12\x16\n" +
 	"\x06region\x18\x01 \x01(\tR\x06region\x12&\n" +
-	"\x0fassume_role_arn\x18\x02 \x01(\tR\rassumeRoleArn\"e\n" +
+	"\x0fassume_role_arn\x18\x02 \x01(\tR\rassumeRoleArn:\x04\xd8\xd5\"\x01\"e\n" +
 	"\x0fMirrorSyncError\x12\x1e\n" +
 	"\amessage\x18\x01 \x01(\tB\x04\xf0\xbc\x18\x01R\amessage\x122\n" +
 	"\voccurred_at\x18\x02 \x01(\v2\x11.common.TimestampR\n" +
@@ -23394,17 +23433,17 @@ const file_common_proto_rawDesc = "" +
 	"\x19TransactionReferenceValue\x12%\n" +
 	"\x0etransaction_id\x18\x01 \x01(\x06R\rtransactionId\"1\n" +
 	"\x15NumscriptVersionValue\x12\x18\n" +
-	"\aversion\x18\x01 \x01(\tR\aversion\"\xc6\x01\n" +
+	"\aversion\x18\x01 \x01(\tR\aversion\"\xcc\x01\n" +
 	"\vSegmentType\x12\x16\n" +
 	"\x05regex\x18\x01 \x01(\tH\x00R\x05regex\x12,\n" +
 	"\x04uuid\x18\x02 \x01(\v2\x16.common.UUIDConstraintH\x00R\x04uuid\x122\n" +
 	"\x06uint64\x18\x03 \x01(\v2\x18.common.Uint64ConstraintH\x00R\x06uint64\x12/\n" +
-	"\x05bytes\x18\x04 \x01(\v2\x17.common.BytesConstraintH\x00R\x05bytesB\f\n" +
+	"\x05bytes\x18\x04 \x01(\v2\x17.common.BytesConstraintH\x00R\x05bytes:\x04\xd8\xd5\"\x01B\f\n" +
 	"\n" +
-	"constraint\"\x10\n" +
-	"\x0eUUIDConstraint\"\x12\n" +
-	"\x10Uint64Constraint\"\x11\n" +
-	"\x0fBytesConstraint\"\x9f\x02\n" +
+	"constraint\"\x16\n" +
+	"\x0eUUIDConstraint:\x04\xd8\xd5\"\x01\"\x18\n" +
+	"\x10Uint64Constraint:\x04\xd8\xd5\"\x01\"\x17\n" +
+	"\x0fBytesConstraint:\x04\xd8\xd5\"\x01\"\xa5\x02\n" +
 	"\vAccountType\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x18\n" +
 	"\apattern\x18\x02 \x01(\tR\apattern\x12@\n" +
@@ -23412,13 +23451,13 @@ const file_common_proto_rawDesc = "" +
 	"\rsegment_types\x18\x04 \x03(\v2%.common.AccountType.SegmentTypesEntryR\fsegmentTypes\x1aT\n" +
 	"\x11SegmentTypesEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12)\n" +
-	"\x05value\x18\x02 \x01(\v2\x13.common.SegmentTypeR\x05value:\x028\x01\"M\n" +
+	"\x05value\x18\x02 \x01(\v2\x13.common.SegmentTypeR\x05value:\x028\x01:\x04\xd8\xd5\"\x01\"S\n" +
 	"\x13AddedAccountTypeLog\x126\n" +
-	"\faccount_type\x18\x01 \x01(\v2\x13.common.AccountTypeR\vaccountType\"+\n" +
+	"\faccount_type\x18\x01 \x01(\v2\x13.common.AccountTypeR\vaccountType:\x04\xd8\xd5\"\x01\"1\n" +
 	"\x15RemovedAccountTypeLog\x12\x12\n" +
-	"\x04name\x18\x01 \x01(\tR\x04name\"k\n" +
+	"\x04name\x18\x01 \x01(\tR\x04name:\x04\xd8\xd5\"\x01\"q\n" +
 	" UpdatedDefaultEnforcementModeLog\x12G\n" +
-	"\x10enforcement_mode\x18\x01 \x01(\x0e2\x1c.common.ChartEnforcementModeR\x0fenforcementMode\"\xb9\x06\n" +
+	"\x10enforcement_mode\x18\x01 \x01(\x0e2\x1c.common.ChartEnforcementModeR\x0fenforcementMode:\x04\xd8\xd5\"\x01\"\xb9\x06\n" +
 	"\vQueryFilter\x126\n" +
 	"\x05field\x18\x01 \x01(\v2\x16.common.FieldConditionB\x06ڼ\x18\x02\x00\x01H\x00R\x05field\x128\n" +
 	"\aaddress\x18\x02 \x01(\v2\x14.common.AddressMatchB\x06ڼ\x18\x02\x00\x01H\x00R\aaddress\x12/\n" +
@@ -23536,7 +23575,7 @@ const file_common_proto_rawDesc = "" +
 	"\bprevious\x18\x04 \x01(\tR\bprevious\x122\n" +
 	"\faccount_data\x18\x05 \x03(\v2\x0f.common.AccountR\vaccountData\x12>\n" +
 	"\x10transaction_data\x18\x06 \x03(\v2\x13.common.TransactionR\x0ftransactionData\x12&\n" +
-	"\blog_data\x18\a \x03(\v2\v.common.LogR\alogData\"\x91\x03\n" +
+	"\blog_data\x18\a \x03(\v2\v.common.LogR\alogData\"\x97\x03\n" +
 	"\vLedgerStats\x12+\n" +
 	"\x11transaction_count\x18\x01 \x01(\x06R\x10transactionCount\x12!\n" +
 	"\fvolume_count\x18\x02 \x01(\x06R\vvolumeCount\x12'\n" +
@@ -23546,31 +23585,31 @@ const file_common_proto_rawDesc = "" +
 	"\x14transient_used_count\x18\x06 \x01(\x06R\x12transientUsedCount\x12!\n" +
 	"\frevert_count\x18\a \x01(\x06R\vrevertCount\x12:\n" +
 	"\x19numscript_execution_count\x18\b \x01(\x06R\x17numscriptExecutionCount\x12\x1b\n" +
-	"\tlog_count\x18\t \x01(\x06R\blogCount\"\x7f\n" +
+	"\tlog_count\x18\t \x01(\x06R\blogCount:\x04\xd8\xd5\"\x01\"\x7f\n" +
 	"\x0fPersistedConfig\x12\x17\n" +
 	"\anode_id\x18\x01 \x01(\x04R\x06nodeId\x12\x1d\n" +
 	"\n" +
 	"cluster_id\x18\x02 \x01(\tR\tclusterId\x124\n" +
-	"\x16storage_schema_version\x18\x03 \x01(\rR\x14storageSchemaVersion\"g\n" +
+	"\x16storage_schema_version\x18\x03 \x01(\rR\x14storageSchemaVersion\"m\n" +
 	"\x0eCallerIdentity\x12\x18\n" +
 	"\asubject\x18\x01 \x01(\tR\asubject\x12\x18\n" +
 	"\x06issuer\x18\x02 \x01(\tH\x00R\x06issuer\x12\x17\n" +
-	"\x06key_id\x18\x03 \x01(\tH\x00R\x05keyIdB\b\n" +
-	"\x06source\"\x7f\n" +
+	"\x06key_id\x18\x03 \x01(\tH\x00R\x05keyId:\x04\xd8\xd5\"\x01B\b\n" +
+	"\x06source\"\x85\x01\n" +
 	"\x13AuthenticatedCaller\x122\n" +
 	"\bidentity\x18\x01 \x01(\v2\x16.common.CallerIdentityR\bidentity\x12\x16\n" +
 	"\x06scopes\x18\x02 \x03(\tR\x06scopes\x12\x1c\n" +
-	"\tsuperuser\x18\x03 \x01(\bR\tsuperuser\")\n" +
+	"\tsuperuser\x18\x03 \x01(\bR\tsuperuser:\x04\xd8\xd5\"\x01\"/\n" +
 	"\x0fAnonymousCaller\x12\x16\n" +
-	"\x06scopes\x18\x01 \x03(\tR\x06scopes\",\n" +
+	"\x06scopes\x18\x01 \x03(\tR\x06scopes:\x04\xd8\xd5\"\x01\"2\n" +
 	"\fSystemCaller\x12\x1c\n" +
-	"\tcomponent\x18\x01 \x01(\tR\tcomponent\"\x14\n" +
-	"\x12AuthDisabledCaller\"\x8e\x02\n" +
+	"\tcomponent\x18\x01 \x01(\tR\tcomponent:\x04\xd8\xd5\"\x01\"\x1a\n" +
+	"\x12AuthDisabledCaller:\x04\xd8\xd5\"\x01\"\x94\x02\n" +
 	"\x0eCallerSnapshot\x12C\n" +
 	"\rauthenticated\x18\x01 \x01(\v2\x1b.common.AuthenticatedCallerH\x00R\rauthenticated\x127\n" +
 	"\tanonymous\x18\x02 \x01(\v2\x17.common.AnonymousCallerH\x00R\tanonymous\x12.\n" +
 	"\x06system\x18\x03 \x01(\v2\x14.common.SystemCallerH\x00R\x06system\x12A\n" +
-	"\rauth_disabled\x18\x04 \x01(\v2\x1a.common.AuthDisabledCallerH\x00R\fauthDisabledB\v\n" +
+	"\rauth_disabled\x18\x04 \x01(\v2\x1a.common.AuthDisabledCallerH\x00R\fauthDisabled:\x04\xd8\xd5\"\x01B\v\n" +
 	"\tprincipal\"\xad\x01\n" +
 	"\x0fS3StorageConfig\x12\x16\n" +
 	"\x06bucket\x18\x01 \x01(\tR\x06bucket\x12\x16\n" +
@@ -23780,7 +23819,11 @@ const file_common_proto_rawDesc = "" +
 	"\x0fQUERY_MODE_LIST\x10\x00\x12 \n" +
 	"\x1cQUERY_MODE_AGGREGATE_VOLUMES\x10\x01:[\n" +
 	"\vauth_policy\x12\x1e.google.protobuf.MethodOptions\x18ڪ\x04 \x01(\v2\x18.common.MethodAuthPolicyR\n" +
-	"authPolicy:h\n" +
+	"authPolicy:B\n" +
+	"\vledger_json\x12\x1f.google.protobuf.MessageOptions\x18۪\x04 \x01(\bR\n" +
+	"ledgerJson:N\n" +
+	"\x13ledger_json_default\x12\x1c.google.protobuf.FileOptions\x18ܪ\x04 \x01(\bR\x11ledgerJsonDefault:O\n" +
+	"\x12ledger_json_manual\x12\x1f.google.protobuf.MessageOptions\x18ݪ\x04 \x01(\bR\x10ledgerJsonManual:h\n" +
 	"\x15allowed_query_targets\x12\x1d.google.protobuf.FieldOptions\x18ˇ\x03 \x03(\x0e2\x13.common.QueryTargetR\x13allowedQueryTargets:W\n" +
 	"\x18valid_on_no_query_target\x12\x1d.google.protobuf.FieldOptions\x18̇\x03 \x01(\bR\x14validOnNoQueryTarget:R\n" +
 	"\x15ledger_log_is_history\x12\x1d.google.protobuf.FieldOptions\x18͇\x03 \x01(\bR\x12ledgerLogIsHistory:=\n" +
@@ -24151,7 +24194,9 @@ var file_common_proto_goTypes = []any{
 	nil,                                                     // 345: common.AccountType.SegmentTypesEntry
 	(*signaturepb.SignedLog)(nil),                           // 346: signature.SignedLog
 	(*descriptorpb.MethodOptions)(nil),                      // 347: google.protobuf.MethodOptions
-	(*descriptorpb.FieldOptions)(nil),                       // 348: google.protobuf.FieldOptions
+	(*descriptorpb.MessageOptions)(nil),                     // 348: google.protobuf.MessageOptions
+	(*descriptorpb.FileOptions)(nil),                        // 349: google.protobuf.FileOptions
+	(*descriptorpb.FieldOptions)(nil),                       // 350: google.protobuf.FieldOptions
 }
 var file_common_proto_depIdxs = []int32{
 	0,   // 0: common.MethodAuthPolicy.fixed_scope:type_name -> common.AuthScope
@@ -24575,19 +24620,22 @@ var file_common_proto_depIdxs = []int32{
 	21,  // 418: common.TransactionState.MetadataEntry.value:type_name -> common.MetadataValue
 	282, // 419: common.AccountType.SegmentTypesEntry.value:type_name -> common.SegmentType
 	347, // 420: common.auth_policy:extendee -> google.protobuf.MethodOptions
-	348, // 421: common.allowed_query_targets:extendee -> google.protobuf.FieldOptions
-	348, // 422: common.valid_on_no_query_target:extendee -> google.protobuf.FieldOptions
-	348, // 423: common.ledger_log_is_history:extendee -> google.protobuf.FieldOptions
-	348, // 424: common.sensitive:extendee -> google.protobuf.FieldOptions
-	348, // 425: common.sensitive_url:extendee -> google.protobuf.FieldOptions
-	348, // 426: common.failure_reason:extendee -> google.protobuf.FieldOptions
-	18,  // 427: common.auth_policy:type_name -> common.MethodAuthPolicy
-	16,  // 428: common.allowed_query_targets:type_name -> common.QueryTarget
-	11,  // 429: common.failure_reason:type_name -> common.ErrorReason
-	430, // [430:430] is the sub-list for method output_type
-	430, // [430:430] is the sub-list for method input_type
-	427, // [427:430] is the sub-list for extension type_name
-	420, // [420:427] is the sub-list for extension extendee
+	348, // 421: common.ledger_json:extendee -> google.protobuf.MessageOptions
+	349, // 422: common.ledger_json_default:extendee -> google.protobuf.FileOptions
+	348, // 423: common.ledger_json_manual:extendee -> google.protobuf.MessageOptions
+	350, // 424: common.allowed_query_targets:extendee -> google.protobuf.FieldOptions
+	350, // 425: common.valid_on_no_query_target:extendee -> google.protobuf.FieldOptions
+	350, // 426: common.ledger_log_is_history:extendee -> google.protobuf.FieldOptions
+	350, // 427: common.sensitive:extendee -> google.protobuf.FieldOptions
+	350, // 428: common.sensitive_url:extendee -> google.protobuf.FieldOptions
+	350, // 429: common.failure_reason:extendee -> google.protobuf.FieldOptions
+	18,  // 430: common.auth_policy:type_name -> common.MethodAuthPolicy
+	16,  // 431: common.allowed_query_targets:type_name -> common.QueryTarget
+	11,  // 432: common.failure_reason:type_name -> common.ErrorReason
+	433, // [433:433] is the sub-list for method output_type
+	433, // [433:433] is the sub-list for method input_type
+	430, // [430:433] is the sub-list for extension type_name
+	420, // [420:430] is the sub-list for extension extendee
 	0,   // [0:420] is the sub-list for field type_name
 }
 
@@ -25035,7 +25083,7 @@ func file_common_proto_init() {
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_common_proto_rawDesc), len(file_common_proto_rawDesc)),
 			NumEnums:      18,
 			NumMessages:   328,
-			NumExtensions: 7,
+			NumExtensions: 10,
 			NumServices:   0,
 		},
 		GoTypes:           file_common_proto_goTypes,

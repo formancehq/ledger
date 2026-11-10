@@ -57,13 +57,16 @@ spec:
           metadata:
             type: object
           spec:
-            description: BackupRunSpec defines the desired state of a BackupRun.
+            description: Spec is required so removing it cannot bypass parent immutability.
             properties:
               backupRef:
                 description: |-
-                  BackupRef is the name of the parent Backup in the same namespace.
+                  BackupRef is the name of the parent Backup in the same namespace, immutable from creation.
                   Destination and clusterRef are inherited from the parent.
                 type: string
+                x-kubernetes-validations:
+                - message: backupRef is immutable
+                  rule: self == oldSelf
               type:
                 default: Full
                 description: Type is the backup type. Defaults to Full.
@@ -251,7 +254,11 @@ spec:
                 format: date-time
                 type: string
             type: object
+        required:
+        - spec
         type: object
+    selectableFields:
+    - jsonPath: .spec.backupRef
     served: true
     storage: true
     subresources:

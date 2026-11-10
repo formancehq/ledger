@@ -20,10 +20,9 @@ import (
 	ledgerv1alpha1 "github.com/formancehq/ledger/misc/operator/api/v1alpha1"
 )
 
-// Add a target here only after its release has been proven incompatible with
-// a rolling upgrade. rc.3 has no mandatory stop; the mechanism ships dormant.
-// RC adjacency is still checked by validateRCUpgrade.
-var mandatoryStopVersions = []string{}
+// Proposal payloads cannot be applied by rc.3 voters. Stop every rc.3 node
+// before starting rc.4; RC adjacency is still checked by validateRCUpgrade.
+var mandatoryStopVersions = []string{"v3.0.0-rc.4"}
 
 const requiredUpgradePoll = 5 * time.Second
 
@@ -138,7 +137,7 @@ func (r *ClusterReconciler) reconcileRequiredUpgradeWithExec(ctx context.Context
 		if ledger.Spec.Replicas == nil || *ledger.Spec.Replicas != *sts.Spec.Replicas {
 			return false, ctrl.Result{}, errors.New("finish replica changes before starting a stopped upgrade")
 		}
-		state = &ledgerv1alpha1.ClusterUpgradeStatus{Source: source, Target: ledger.Spec.Image.Tag, StatefulSetUID: string(sts.UID), TargetSpecHash: computeSpecHash(&ledger.Spec), ExpectedReplicas: *sts.Spec.Replicas, ClaimUIDs: claims, VolumeUIDs: volumes, DrainEpoch: uuid.NewString(), Phase: "Preflighting"}
+		state = &ledgerv1alpha1.ClusterUpgradeStatus{Source: source, Target: ledger.Spec.Image.Tag, StatefulSetUID: string(sts.UID), TargetSpecHash: computePodSpecHash(&ledger.Spec, false), ExpectedReplicas: *sts.Spec.Replicas, ClaimUIDs: claims, VolumeUIDs: volumes, DrainEpoch: uuid.NewString(), Phase: "Preflighting"}
 		if err := r.persistUpgrade(ctx, ledger, state); err != nil {
 			return false, ctrl.Result{}, err
 		}
@@ -146,7 +145,9 @@ func (r *ClusterReconciler) reconcileRequiredUpgradeWithExec(ctx context.Context
 	if ledger.Spec.Image.Tag != state.Target {
 		return false, ctrl.Result{}, fmt.Errorf("upgrade from %s to %s is in progress; restore spec.image.tag to %s before changing target", state.Source, state.Target, state.Target)
 	}
-	if computeSpecHash(&ledger.Spec) != state.TargetSpecHash || ledger.Spec.Replicas == nil || *ledger.Spec.Replicas != state.ExpectedReplicas {
+	// Keep the released intent hash, including claim declarations. The Pod hash
+	// excludes those fields, but storage edits must not alter a pinned upgrade.
+	if computePodSpecHash(&ledger.Spec, false) != state.TargetSpecHash || ledger.Spec.Replicas == nil || *ledger.Spec.Replicas != state.ExpectedReplicas {
 		return false, ctrl.Result{}, errors.New("cluster workload spec changed during stopped upgrade; restore the original target spec before retrying")
 	}
 	if sts != nil && !metav1.IsControlledBy(sts, ledger) {

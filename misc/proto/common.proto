@@ -54,6 +54,23 @@ extend google.protobuf.MethodOptions {
   MethodAuthPolicy auth_policy = 71002;
 }
 
+// ledger_json marks a public protobuf message for generation of a standard
+// library MarshalJSON projection by protoc-gen-ledger-json.
+extend google.protobuf.MessageOptions {
+  bool ledger_json = 71003;
+}
+
+// ledger_json_default enables projections for every message in a proto file.
+// Individual messages can opt out with ledger_json_manual when they have a
+// handwritten MarshalJSON implementation or intentionally use another shape.
+extend google.protobuf.FileOptions {
+  bool ledger_json_default = 71004;
+}
+
+extend google.protobuf.MessageOptions {
+  bool ledger_json_manual = 71005;
+}
+
 // ============================================================================
 // Core Data Types
 // ============================================================================
@@ -66,10 +83,12 @@ message Timestamp {
 // declared type. It preserves the original raw value for debugging, but
 // signals to consumers that the value is unusable in its expected type.
 message NullValue {
+	option (ledger_json) = true;
   string original = 1;
 }
 
 message MetadataValue {
+	option (ledger_json) = true;
   oneof type {
     string string_value = 1;
     int64 int_value = 2;
@@ -310,6 +329,7 @@ enum LogBuiltinIndex {
 
 // MetadataIndexID identifies a metadata-key index by its target entity and key.
 message MetadataIndexID {
+	option (ledger_json) = true;
   TargetType target = 1;
   string key = 2;
 }
@@ -318,6 +338,7 @@ message MetadataIndexID {
 // (transaction builtins, log builtins, account builtins, metadata keys, ...).
 // Future kinds (e.g. account_type) extend the oneof without touching other code.
 message IndexID {
+	option (ledger_json) = true;
   oneof kind {
     TransactionBuiltinIndex tx_builtin = 1;
     LogBuiltinIndex log_builtin = 2;
@@ -337,6 +358,7 @@ message IndexID {
 //
 // Entries live in the SubAttrIndex attribute zone, not in LedgerInfo.
 message Index {
+	option (ledger_json) = true;
   IndexID id = 1;
   Timestamp created_at = 2;
   string ledger = 3;  // empty for bucket-scoped indexes
@@ -358,6 +380,7 @@ message Index {
 // ============================================================================
 
 message Idempotency {
+	option (ledger_json) = true;
   string key = 1;
   // HLC microseconds when this frozen outcome expires; 0 = never. Server-derived
   // (created_at + the policy TTL committed for that apply) and chain-bound in the
@@ -404,6 +427,7 @@ message LogPayload {
 }
 
 message PromotedLedgerLog {
+	option (ledger_json) = true;
   string name = 1;
 }
 
@@ -413,6 +437,7 @@ message PromotedLedgerLog {
 
 // RegisteredSigningKeyLog records a signing key registration.
 message RegisteredSigningKeyLog {
+	option (ledger_json) = true;
   string key_id = 1;
   bytes public_key = 2;
   string parent_key_id = 3;
@@ -420,12 +445,14 @@ message RegisteredSigningKeyLog {
 
 // RevokedSigningKeyLog records a signing key revocation.
 message RevokedSigningKeyLog {
+	option (ledger_json) = true;
   string key_id = 1;
   repeated string cascaded_key_ids = 2;
 }
 
 // SigningKey represents a registered signing key with its parent relationship.
 message SigningKey {
+	option (ledger_json) = true;
   string key_id = 1;
   bytes public_key = 2;
   string parent_key_id = 3;
@@ -433,31 +460,37 @@ message SigningKey {
 
 // SetSigningConfigLog records a signing configuration change.
 message SetSigningConfigLog {
+	option (ledger_json) = true;
   bool require_signatures = 1;
 }
 
 // AddedEventsSinkLog records the addition of a named sink config.
 message AddedEventsSinkLog {
+	option (ledger_json) = true;
   SinkConfig config = 1;
 }
 
 // RemovedEventsSinkLog records the removal of a named sink config.
 message RemovedEventsSinkLog {
+	option (ledger_json) = true;
   string name = 1;
 }
 
 // SetMaintenanceModeLog records a maintenance mode change.
 message SetMaintenanceModeLog {
+	option (ledger_json) = true;
   bool enabled = 1;
 }
 
 // SetClusterPolicyLog records a cluster policy change.
 message SetClusterPolicyLog {
+	option (ledger_json) = true;
   ClusterPolicy policy = 1;
 }
 
 // BloomTypeConfig holds the configuration for a single bloom filter type.
 message BloomTypeConfig {
+	option (ledger_json) = true;
   uint64 expected_keys = 1;
   double fp_rate = 2;
 }
@@ -471,6 +504,7 @@ enum HashAlgorithm {
 // ClusterConfig holds mutable cluster-wide configuration parameters.
 // These are updated via Raft to ensure deterministic application across all nodes.
 message ClusterConfig {
+	option (ledger_json) = true;
   uint64 rotation_threshold = 1;
   BloomTypeConfig bloom_volumes = 2;
   BloomTypeConfig bloom_metadata = 3;
@@ -505,6 +539,7 @@ message PersistedClusterState {
 // Numscript program produces against them: a node-local limit would make one
 // committed entry apply differently per node.
 message ClusterPolicy {
+	option (ledger_json) = true;
   fixed64 revision = 1;
   fixed64 idempotency_ttl_micros = 2;  // 0 means never expires
   fixed64 query_checkpoint_limit = 3;  // must be >= 1
@@ -521,12 +556,14 @@ message ClusterPolicy {
 
 // CreatedPreparedQueryLog records the creation of a prepared query.
 message CreatedPreparedQueryLog {
+	option (ledger_json) = true;
   string ledger = 1;
   PreparedQuery query = 2;
 }
 
 // UpdatedPreparedQueryLog records the update of a prepared query filter.
 message UpdatedPreparedQueryLog {
+	option (ledger_json) = true;
   string ledger = 1;
   string name = 2;
   QueryFilter previous_filter = 3;
@@ -535,6 +572,7 @@ message UpdatedPreparedQueryLog {
 
 // DeletedPreparedQueryLog records the deletion of a prepared query.
 message DeletedPreparedQueryLog {
+	option (ledger_json) = true;
   string ledger = 1;
   string name = 2;
 }
@@ -545,12 +583,14 @@ message DeletedPreparedQueryLog {
 
 // SavedLedgerMetadataLog records metadata being set on a ledger.
 message SavedLedgerMetadataLog {
+	option (ledger_json) = true;
   string ledger = 1;
   map<string, MetadataValue> metadata = 2;
 }
 
 // DeletedLedgerMetadataLog records a metadata key being removed from a ledger.
 message DeletedLedgerMetadataLog {
+	option (ledger_json) = true;
   string ledger = 1;
   string key = 2;
 }
@@ -588,11 +628,13 @@ message NumscriptInfo {
 
 // SavedNumscriptLog records a numscript version being saved to the library.
 message SavedNumscriptLog {
+	option (ledger_json) = true;
   NumscriptInfo info = 1;
 }
 
 // NumscriptVersionEntry describes one stored, immutable version of a numscript.
 message NumscriptVersionEntry {
+	option (ledger_json) = true;
   string version = 1;
   Timestamp created_at = 2;
 }
@@ -607,14 +649,18 @@ message TemplateUsage {
 
 // SetQueryCheckpointScheduleLog records a query checkpoint schedule change.
 message SetQueryCheckpointScheduleLog {
+	option (ledger_json) = true;
   string cron = 1;
 }
 
 // DeletedQueryCheckpointScheduleLog records the removal of the query checkpoint schedule.
-message DeletedQueryCheckpointScheduleLog {}
+message DeletedQueryCheckpointScheduleLog {
+	option (ledger_json) = true;
+}
 
 // CreatedQueryCheckpointLog records a query checkpoint being created.
 message CreatedQueryCheckpointLog {
+	option (ledger_json) = true;
   fixed64 checkpoint_id = 1;
   fixed64 max_sequence = 2;
   Timestamp created_at = 3;
@@ -623,11 +669,13 @@ message CreatedQueryCheckpointLog {
 
 // DeletedQueryCheckpointLog records a query checkpoint being deleted.
 message DeletedQueryCheckpointLog {
+	option (ledger_json) = true;
   fixed64 checkpoint_id = 1;
 }
 
 // SinkConfig wraps a single sink configuration with per-sink settings.
 message SinkConfig {
+	option (ledger_json) = true;
   string name = 1;  // Stable identifier for per-sink cursor and status keys
   oneof type {
     NatsSinkConfig nats = 2;
@@ -645,6 +693,7 @@ message SinkConfig {
 
 // SinkStatus tracks per-sink operational state (replicated via Raft).
 message SinkStatus {
+	option (ledger_json) = true;
   string sink_name = 1;
   fixed64 cursor = 2;         // Last published sequence
   SinkError error = 3;       // Most recent error (nil = healthy)
@@ -652,24 +701,28 @@ message SinkStatus {
 
 // SinkError records a sink failure. Drivers must remove credentials before returning errors.
 message SinkError {
+	option (ledger_json) = true;
   string message = 1;
   Timestamp occurred_at = 2;
 }
 
 // NatsSinkConfig holds NATS JetStream sink configuration.
 message NatsSinkConfig {
+	option (ledger_json) = true;
   string url = 1 [(sensitive_url) = true];  // may embed a token in the userinfo position
   string topic = 2;
 }
 
 // ClickHouseSinkConfig holds ClickHouse sink configuration.
 message ClickHouseSinkConfig {
+	option (ledger_json) = true;
   string dsn = 1 [(sensitive_url) = true];    // e.g. "clickhouse://user:pass@host:9000/db"
   string table = 2;  // Table name (default: "ledger_events")
 }
 
 // KafkaSinkConfig holds Apache Kafka sink configuration.
 message KafkaSinkConfig {
+	option (ledger_json) = true;
   repeated string brokers = 1;  // e.g. ["localhost:9092"]
   string topic = 2;             // Kafka topic name
   bool tls = 3;                 // Enable TLS
@@ -680,6 +733,7 @@ message KafkaSinkConfig {
 
 // HttpSinkConfig holds HTTP webhook sink configuration.
 message HttpSinkConfig {
+	option (ledger_json) = true;
   string endpoint = 1 [(sensitive_url) = true];  // Target URL (e.g. "https://example.com/webhooks/ledger")
   string secret = 2 [(sensitive) = true];            // Optional HMAC-SHA256 secret for X-Webhook-Signature header
 }
@@ -687,6 +741,7 @@ message HttpSinkConfig {
 // DatabricksSinkConfig holds Databricks SQL Warehouse sink configuration.
 // Exactly one of the auth oneof fields must be set.
 message DatabricksSinkConfig {
+	option (ledger_json) = true;
   string server_hostname = 1;  // e.g. "adb-123456.azuredatabricks.net"
   string http_path = 2;        // SQL Warehouse HTTP path (e.g. "/sql/1.0/warehouses/abc123")
   string catalog = 3;          // Unity Catalog name (e.g. "main")
@@ -701,6 +756,7 @@ message DatabricksSinkConfig {
 
 // DatabricksOAuthM2M holds OAuth M2M (client credentials) for a Databricks service principal.
 message DatabricksOAuthM2M {
+	option (ledger_json) = true;
   string client_id = 1;
   string client_secret = 2 [(sensitive) = true];
 }
@@ -738,8 +794,9 @@ message LedgerLog {
   // pre-existing non-zero balance in Pebble and this log brought it back to
   // zero, causing the volume to be evicted from the attribute store at
   // commit. Purged is DISJOINT from ephemeral_volumes and new_kept_volumes.
-  // The index builder skips account->transaction mappings for
-  // purged ∪ ephemeral (both are evicted from Pebble). The usagebuilder
+  // The index builder excludes purged and ephemeral cells from current
+  // has-asset memberships, but preserves their historical transaction
+  // address mappings. Only TRANSIENT cells are excluded from history. The usagebuilder
   // subtracts len(purged_volumes) from VolumeCount — a draining eviction
   // decreases the live cardinality by one.
   repeated TouchedVolume purged_volumes = 4;
@@ -753,8 +810,8 @@ message LedgerLog {
   // THIS log — pure ephemeral. Written to Pebble briefly then evicted at
   // commit. Contributes +0 to VolumeCount (was zero, is zero after commit)
   // and is tracked separately so:
-  //   - the index builder can skip acct->tx mappings for them (via
-  //     purged_volumes ∪ ephemeral_volumes);
+  //   - the index builder can skip current has-asset memberships for them
+  //     (via purged_volumes ∪ ephemeral_volumes), while retaining history;
   //   - the log payload does not duplicate ephemeral tuples in two lists
   //     (previous encoding carried them in both purged_volumes AND
   //     new_volumes, doubling bytes on ephemeral-heavy workloads).
@@ -1586,6 +1643,7 @@ message OrderSkippedLog {
 
 // CreatedIndexLog records the creation of an index.
 message CreatedIndexLog {
+	option (ledger_json) = true;
   IndexID id = 1;
   // bound_type is the declared type of the indexed metadata field at this
   // log's sequence, stamped by the FSM when the log is minted. The index's
@@ -1604,10 +1662,12 @@ message CreatedIndexLog {
 
 // DroppedIndexLog records the removal of an index.
 message DroppedIndexLog {
+	option (ledger_json) = true;
   IndexID id = 1;
 }
 
 message FilledGapLog {
+	option (ledger_json) = true;
   fixed64 original_id = 1;  // v2 log ID that this gap fills
 }
 
@@ -1634,6 +1694,7 @@ message DeletedMetadata {
 
 // SetMetadataFieldTypeLog records a metadata field type declaration.
 message SetMetadataFieldTypeLog {
+	option (ledger_json) = true;
   TargetType target_type = 1;
   string key = 2;
   MetadataType type = 3;
@@ -1643,6 +1704,7 @@ message SetMetadataFieldTypeLog {
 // When the removed field had an index, dropped_index identifies it so the
 // indexbuilder can purge the read-store entries in the same handler pass.
 message RemovedMetadataFieldTypeLog {
+	option (ledger_json) = true;
   TargetType target_type = 1;
   string key = 2;
   IndexID dropped_index = 3;  // nil when no index was attached to the field
@@ -1658,6 +1720,7 @@ enum LedgerMode {
 }
 
 message MirrorSourceConfig {
+	option (ledger_json) = true;
   string ledger_name = 1;  // Source ledger name (common to all source types)
   oneof type {
     HttpMirrorSourceConfig http = 2;
@@ -1685,6 +1748,7 @@ message MirrorSourceConfig {
 // evaluated. Rewriting is a pure, deterministic translation-time projection
 // performed on the mirror leader; the source v2 ledger is never modified.
 message MirrorRewriteRule {
+	option (ledger_json) = true;
   // Exactly one must be set.
   oneof scope {
     CreatedTransactionRule created_transaction = 1;
@@ -1703,21 +1767,25 @@ message MirrorRewriteRule {
 // forbids reading fields of other variants by construction.
 
 message CreatedTransactionRule {
+	option (ledger_json) = true;
   string match = 1;
   repeated CreatedTransactionAction actions = 2;
 }
 
 message RevertedTransactionRule {
+	option (ledger_json) = true;
   string match = 1;
   repeated RevertedTransactionAction actions = 2;
 }
 
 message SavedMetadataRule {
+	option (ledger_json) = true;
   string match = 1;
   repeated SavedMetadataAction actions = 2;
 }
 
 message DeletedMetadataRule {
+	option (ledger_json) = true;
   string match = 1;
   repeated DeletedMetadataAction actions = 2;
 }
@@ -1727,6 +1795,7 @@ message DeletedMetadataRule {
 // fields. Its action set is restricted to operations that are meaningful on
 // every variant.
 message AnyVariantRule {
+	option (ledger_json) = true;
   string match = 1;
   repeated AnyVariantAction actions = 2;
 }
@@ -1736,6 +1805,7 @@ message AnyVariantRule {
 // because MirrorDeletedMetadata carries only a key, not a metadata map.
 
 message CreatedTransactionAction {
+	option (ledger_json) = true;
   oneof action {
     RewriteAddressAction rewrite_address = 1;
     SetMetadataAction set_metadata = 2;
@@ -1748,6 +1818,7 @@ message CreatedTransactionAction {
 }
 
 message RevertedTransactionAction {
+	option (ledger_json) = true;
   oneof action {
     RewriteAddressAction rewrite_address = 1;
     SetMetadataAction set_metadata = 2;
@@ -1757,6 +1828,7 @@ message RevertedTransactionAction {
 }
 
 message SavedMetadataAction {
+	option (ledger_json) = true;
   oneof action {
     RewriteAddressAction rewrite_address = 1;  // acts on Target only
     SetMetadataAction set_metadata = 2;
@@ -1766,6 +1838,7 @@ message SavedMetadataAction {
 }
 
 message DeletedMetadataAction {
+	option (ledger_json) = true;
   oneof action {
     RewriteAddressAction rewrite_address = 1;  // acts on Target only
     DropAction drop = 2;
@@ -1773,6 +1846,7 @@ message DeletedMetadataAction {
 }
 
 message AnyVariantAction {
+	option (ledger_json) = true;
   oneof action {
     RewriteAddressAction rewrite_address = 1;
     DropAction drop = 2;
@@ -1784,11 +1858,13 @@ message AnyVariantAction {
 // consumed by a typed Go executor.
 
 message RewriteAddressAction {
+	option (ledger_json) = true;
   string pattern = 1;      // RE2 pattern, validated at admission
   string replacement = 2;  // may reference groups from `pattern`
 }
 
 message SetMetadataAction {
+	option (ledger_json) = true;
   string key = 1;
   // Source of the metadata value. `value` is a literal string; `value_expr` is
   // a CEL expression evaluated at commit time against the current variant
@@ -1808,10 +1884,12 @@ message SetMetadataAction {
 }
 
 message DeleteMetadataAction {
+	option (ledger_json) = true;
   string key = 1;
 }
 
 message SetAccountMetadataAction {
+	option (ledger_json) = true;
   string account = 1;
   string key = 2;
   // See SetMetadataAction.source for the literal-vs-CEL semantics.
@@ -1824,6 +1902,7 @@ message SetAccountMetadataAction {
 }
 
 message DeleteAccountMetadataAction {
+	option (ledger_json) = true;
   string account = 1;
   string key = 2;
 }
@@ -1835,24 +1914,30 @@ message DeleteAccountMetadataAction {
 // so an operator can extract several fields from a single address in one pass
 // (e.g. worker id + acquirer name from `acquirer:acme:worker:001:bank`).
 message SetAccountMetadataFromAddressAction {
+	option (ledger_json) = true;
   string pattern = 1;  // RE2 pattern, should anchor with ^…$ for exact match
   repeated SetAccountMetadataFromAddressReplacement replacements = 2;
 }
 
 message SetAccountMetadataFromAddressReplacement {
+	option (ledger_json) = true;
   string key = 1;
   string replacement = 2;  // RE2 replacement (uses groups from the parent pattern)
   string type = 3;         // optional metadata type token — see SetMetadataAction.type
 }
 
-message DropAction {}
+message DropAction {
+	option (ledger_json) = true;
+}
 
 message HttpMirrorSourceConfig {
+	option (ledger_json) = true;
   string base_url = 1 [(sensitive_url) = true];
   OAuth2ClientCredentials oauth2_client_credentials = 2;
 }
 
 message OAuth2ClientCredentials {
+	option (ledger_json) = true;
   string client_id = 1;
   string client_secret = 2 [(sensitive) = true];
   string token_endpoint = 3 [(sensitive_url) = true];
@@ -1860,6 +1945,7 @@ message OAuth2ClientCredentials {
 }
 
 message PostgresMirrorSourceConfig {
+	option (ledger_json) = true;
   string dsn = 1 [(sensitive_url) = true];  // e.g. "postgres://user:pass@host:5432/ledger?sslmode=disable"
   // When set, the DSN password is overridden by a freshly minted AWS RDS IAM
   // authentication token on every new pool connection. Ambient AWS credentials
@@ -1870,6 +1956,7 @@ message PostgresMirrorSourceConfig {
 }
 
 message PostgresAwsIamAuth {
+	option (ledger_json) = true;
   string region = 1;  // AWS region of the RDS instance (e.g. "eu-west-1"); required for SigV4 signing
   // Optional STS role ARN to assume before minting the RDS IAM token. When
   // set, the mirror calls sts:AssumeRole on this ARN and signs the RDS token
@@ -2170,6 +2257,7 @@ enum AccountTypePersistence {
 // SegmentType defines the constraint for a variable segment in an account type pattern.
 // When no constraint is set, the segment accepts any non-empty string.
 message SegmentType {
+	option (ledger_json) = true;
   oneof constraint {
     string regex = 1;         // Custom regex pattern (e.g. "[a-z]+")
     UUIDConstraint uuid = 2;  // RFC 4122 UUID format
@@ -2178,12 +2266,19 @@ message SegmentType {
   }
 }
 
-message UUIDConstraint {}
-message Uint64Constraint {}
-message BytesConstraint {}
+message UUIDConstraint {
+	option (ledger_json) = true;
+}
+message Uint64Constraint {
+	option (ledger_json) = true;
+}
+message BytesConstraint {
+	option (ledger_json) = true;
+}
 
 // AccountType defines a single account address pattern for a ledger.
 message AccountType {
+	option (ledger_json) = true;
   string name = 1;                           // Unique identifier: "user-checking"
   string pattern = 2;                        // Address pattern: "users:{id}:checking"
   AccountTypePersistence persistence = 3;    // How volumes are stored (replaces bool ephemeral)
@@ -2192,16 +2287,19 @@ message AccountType {
 
 // AddedAccountTypeLog records the addition of an account type.
 message AddedAccountTypeLog {
+	option (ledger_json) = true;
   AccountType account_type = 1;
 }
 
 // RemovedAccountTypeLog records the removal of an account type.
 message RemovedAccountTypeLog {
+	option (ledger_json) = true;
   string name = 1;
 }
 
 // UpdatedDefaultEnforcementModeLog records a change to the ledger's default enforcement mode.
 message UpdatedDefaultEnforcementModeLog {
+	option (ledger_json) = true;
   ChartEnforcementMode enforcement_mode = 1;
 }
 
@@ -2583,6 +2681,7 @@ message PreparedQueryCursor {
 
 // LedgerStats contains aggregate statistics for a ledger.
 message LedgerStats {
+	option (ledger_json) = true;
   fixed64 transaction_count = 1;
   fixed64 volume_count = 2;
   fixed64 reference_count = 3;
@@ -2616,6 +2715,7 @@ message PersistedConfig {
 // source records the credential mechanism. An absent source means the
 // authenticated identity is a bare subject with no known origin.
 message CallerIdentity {
+	option (ledger_json) = true;
   string subject = 1;
   // scopes and superuser live on AuthenticatedCaller, not here: CallerIdentity is
   // identification only and carries no authorization decision.
@@ -2626,20 +2726,25 @@ message CallerIdentity {
 }
 
 message AuthenticatedCaller {
+	option (ledger_json) = true;
   CallerIdentity identity = 1;
   repeated string scopes = 2;
   bool superuser = 3;
 }
 
 message AnonymousCaller {
+	option (ledger_json) = true;
   repeated string scopes = 1;
 }
 
 message SystemCaller {
+	option (ledger_json) = true;
   string component = 1;
 }
 
-message AuthDisabledCaller {}
+message AuthDisabledCaller {
+	option (ledger_json) = true;
+}
 
 // CallerSnapshot is the *admission-time* record of who initiated an action.
 // Its required principal union keeps authenticated users, authorized anonymous
@@ -2650,6 +2755,7 @@ message AuthDisabledCaller {}
 // Carried on Proposals through Raft, then copied to AuditEntry by the FSM.
 // Application code must always set exactly one principal variant.
 message CallerSnapshot {
+	option (ledger_json) = true;
   oneof principal {
     AuthenticatedCaller authenticated = 1;
     AnonymousCaller anonymous = 2;

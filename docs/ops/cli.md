@@ -433,7 +433,7 @@ The ledger name is a positional argument for `ledgers create`, `ledgers delete`,
 | `--mirror-oauth2-client-secret` | | OAuth2 client secret for the v2 API (for `http` source) |
 | `--mirror-oauth2-token-endpoint` | | OAuth2 token endpoint URL (for `http` source) |
 | `--mirror-oauth2-scopes` | | OAuth2 scopes (for `http` source, repeatable) |
-| `--mirror-dsn` | | PostgreSQL DSN (required for `postgres` source) |
+| `--mirror-dsn` | | Source URL (required for `postgres` source; admission checks generic URL shape and rejects keyword DSNs; the worker supports `postgres://` or `postgresql://` and validates driver options/IAM TLS) |
 | `--mirror-aws-iam-region` | | When set, enables AWS RDS IAM authentication for the `postgres` source. Credentials are taken from the ambient AWS chain (IRSA, instance profile, env vars, profile). |
 | `--mirror-aws-iam-assume-role-arn` | | Optional STS role ARN to assume before minting the RDS IAM token (cross-account / multi-tenant mirrors). Requires `--mirror-aws-iam-region`. |
 | `--mirror-batch-size` | `0` | Max logs per batch (0 = server default, capped by `--mirror-max-batch-size`) |
@@ -2798,7 +2798,7 @@ Manage and inspect the Raft cluster.
 
 `--node-id` accepts unsigned 64-bit IDs; zero routes to the leader. Node lists,
 leader/local IDs and peer details preserve the full identity. In JSON/YAML
-output, protobuf uint64 identity fields are decimal strings.
+output, protobuf uint64 identity fields are decimal JSON numbers.
 
 Display the current state of the Raft cluster, including node information and replication status.
 
@@ -3015,7 +3015,7 @@ ledgerctl cluster du --json
 
 #### cluster maintenance
 
-Enable or disable cluster maintenance mode. When enabled, all write operations (Raft commands) are blocked at the admission layer. Only the maintenance mode command itself is allowed through (to disable maintenance mode). Read operations continue to work normally.
+Enable or disable cluster maintenance mode. When enabled, client business writes are blocked at admission. The maintenance mode command itself remains available to disable maintenance; leader-internal cluster-policy reconciliation also continues unless a drain is active. Read operations continue to work normally.
 
 ```bash
 ledgerctl cluster maintenance <true|false|enable|disable> [flags]
@@ -4068,10 +4068,12 @@ Controls the time-to-live for idempotency keys. After the TTL expires, an idempo
 
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
-| `--idempotency-ttl` | duration | `24h` | Desired time-to-live for idempotency keys (0 = never expire) |
+| `--idempotency-ttl` | duration | `24h` | Desired time-to-live for idempotency keys (0 = never expire; otherwise at least `1µs`) |
 | `--idempotency-eviction-interval` | duration | `60s` | How often the leader proposes eviction of expired keys |
 
 `--idempotency-ttl` names the *desired* TTL that the leader reconciles into the Raft-replicated cluster policy; the FSM freezes each outcome's absolute expiry from the committed policy at write time, so the flag never affects how an already-committed outcome is applied. It is not a persisted-config parameter and is not gated by `--unsafe-skip-config-validation`; changing the effective TTL is a cluster-policy revision bump. Keep the desired value consistent across nodes so the reconciled policy is unambiguous.
+
+The cluster policy stores the TTL in whole microseconds. A value below `1µs` other than `0` would truncate to the never-expire sentinel, so the server refuses to start with it. Longer values are truncated to whole microseconds (`1500ns` becomes `1µs`).
 
 ```bash
 # Default: 24h TTL, eviction every 60s
@@ -4356,10 +4358,19 @@ Tune the Raft consensus layer. These flags control election timing, message size
 | `--raft-compaction-margin` | uint64 | `1000` | Minimum log entries between snapshots (0 = use default 1000) |
 | `--maintenance-interval` | duration | `30s` | Interval for background WAL snapshot + Pebble checkpoint (0 = use default 30s) |
 | `--raft-propose-queue-capacity` | int | `100` | Capacity of the propose queue (0 = use default 100) |
-| `--raft-processing-tick-interval` | duration | `tick-interval/10` | Interval for processing committed entries (0 = tick-interval/10) |
+| `--raft-tick-interval` | duration | `100ms` | Interval between Raft ticks (0 = 100ms); must be at least 10ns when processing uses its default |
+| `--raft-processing-tick-interval` | duration | `tick-interval/10` | Idle Ready polling interval, retained after Ready drains (0 = effective tick-interval/10) |
 | `--raft-replay-batch-size` | int | `1000` | Number of entries per batch during spool replay (0 = use default 1000) |
 | `--spool-segment-max-bytes` | ByteSize | `256Mi` | Maximum spool segment size before rotation/sealing (0 = use default 256Mi). Lower values seal (and thus prune) segments more often at the cost of more files |
 | `--backup-max-segment-bytes` | ByteSize | `4Gi` | Maximum incremental-backup export segment size before splitting into a new segment (0 = use default 4Gi). Lower values produce more, smaller segments (smaller retry blast radius) at the cost of more objects |
+
+Both intervals reject negative durations. With zero processing interval, positive
+Raft ticks from `1ns` through `9ns` are rejected because division by ten would
+produce a zero-duration ticker. An explicit positive processing interval permits
+these tick values and remains in effect when Ready work drains. Zero Raft tick
+retains the `100ms` default, so both zero values resolve to `100ms` / `10ms`.
+Message and local-storage responses can trigger Ready immediately; this polling
+interval does not pace every commit.
 
 ```bash
 # Increase compaction margin for workloads with large snapshots
@@ -5240,9 +5251,9 @@ ledgerctl events add-sink --name webhook --http-endpoint https://example.com/web
 |------|---------|-------------|
 | `--name` | *(required)* | Unique name for this sink |
 | `--controller-id` | | Opaque EventSink controller identity (CR UID); omit for a manually managed sink |
-| `--nats-url` | | NATS server URL (required for NATS sinks) |
+| `--nats-url` | | Comma-separated NATS server URLs, each with `nats://`, `tls://`, `ws://` or `wss://` (required for NATS sinks) |
 | `--nats-topic` | | NATS topic/subject for events (required for NATS sinks) |
-| `--clickhouse-dsn` | | ClickHouse DSN (required for ClickHouse sinks, e.g. `clickhouse://user:pass@host:9000/db`) |
+| `--clickhouse-dsn` | | ClickHouse URL with `clickhouse://`, `http://` or `https://` (required for ClickHouse sinks, e.g. `clickhouse://user:pass@host:9000/db`) |
 | `--clickhouse-table` | `ledger_events` | ClickHouse table name |
 | `--kafka-brokers` | | Kafka broker addresses (comma-separated, required for Kafka sinks) |
 | `--kafka-topic` | | Kafka topic name (required for Kafka sinks) |
@@ -5577,3 +5588,8 @@ repository root. It exits nonzero on invalid input or an output error; discard
 partial output after any failure. It does not connect to ClickHouse.
 Follow the complete [migration procedure](clickhouse-account-metadata.md),
 including preflights, backup, source preservation, import and verification.
+
+Incremental backup restoration also applies operational policy from the manifest,
+including a policy-only update with zero history segments. The offline
+`ledgerctl store bootstrap` and server restore paths use the same reconstruction
+routine; see the [restore contract](../technical/architecture/subsystems/backup/incremental-restore-contract.md#operational-cluster-policy).

@@ -67,6 +67,11 @@ Each `AuditItem` (one per order in the proposal) is encoded by `state.BuildPerIt
 | `LogSequence` | `uint64` BE |
 | `SerializedOrder` | length-prefixed (the order's canonical vtprotobuf bytes) |
 
+Native policy controls produce no audit items. Historical policy orders retain
+`serialized_order` and their exact hash preimages. The current policy row and
+operational quota checks are outside checker scope; actual business effects
+remain verified.
+
 Items are concatenated in `OrderIndex` order before being fed into the hash. A single byte changed in any order, or any reordering, invalidates the hash.
 
 ### Chain link
@@ -218,12 +223,18 @@ The FSM writes up to four datasets per proposal, all in `ZoneHistory`, but they 
 
 The order-less paths also bypass audit: a technical-only proposal drains its overlay through `Merge` and returns before the audit-entry path (`if len(proposal.GetOrders()) == 0`, `internal/infra/state/machine.go`); a TU-phase plan-invariant rejection returns before the orders phase; and a proposal with neither orders nor technical updates is skipped in the apply loop before `applyProposal` is called. An order-bearing proposal may also return `UncommittedFailure` before audit, with its staged effects discarded and prior HLC restored. Every persisted `AuditEntry` therefore has `OrderCount >= 1`, but not every order-bearing proposal has an entry.
 
-A same-key-different-hash conflict, by contrast, is **not** a replay — it's a fresh rejection, so it takes the Failure column (1 audit entry, N items each with `LogSequence = 0`, no applied proposal, no log).
+[Metadata policy refusals](../admission/idempotency.md#replay-after-metadata-limits-tighten)
+use the ordinary FSM failure path after idempotency lookup. A fresh refusal
+records the attempted orders and definitive failure, with no committed business
+writes. A retained same-content success or failure replays without another
+audit entry. No persisted format or checker rule changes.
+
+An FSM-side same-key-different-hash conflict, by contrast, is **not** a replay — it's a fresh rejection, so it takes the Failure column (1 audit entry, N items each with `LogSequence = 0`, no applied proposal, no log).
 
 Two independent monotone counters, bridged per successful non-replayed proposal:
 
 - **`audit_sequence`** advances by 1 for each audited success or definitive failure (`AppendAuditEntry` in `internal/infra/state/fsmstate.go`). Replay, order-less paths and `UncommittedFailure` do not advance it. The allocated values themselves are **dense** (no gaps in the numbering), although multiple unaudited proposals can occur between consecutive entries.
-- **`log_sequence`** advances only when a log is produced. The mapping `audit_seq → [MinLog, MaxLog]` is sparse: failures contribute zero logs; a success in which every order took the no-log outcome in `ProcessOrders` — today an idempotent mirror replay, or a `SetClusterPolicy` re-proposal at the applied revision — contributes `[0, 0]`. (The in-batch idempotent *reference* that used to produce this shape no longer exists: per-batch idempotency moved out of `ProcessOrders` into the FSM apply path, which short-circuits replays before the processor runs, so `ReferenceSequence` items are no longer produced — `internal/domain/processing/processor.go`.)
+- **`log_sequence`** advances only when a log is produced. The mapping `audit_seq → [MinLog, MaxLog]` is sparse: failures contribute zero logs; a success in which every order took the no-log outcome in `ProcessOrders` — today an idempotent mirror replay, or a historical `SetClusterPolicy` order re-proposal at the applied revision — contributes `[0, 0]`. (The in-batch idempotent *reference* that used to produce this shape no longer exists: per-batch idempotency moved out of `ProcessOrders` into the FSM apply path, which short-circuits replays before the processor runs, so `ReferenceSequence` items are no longer produced — `internal/domain/processing/processor.go`.)
 
 Gaps live on the **companion streams**, not on `audit_sequence` itself:
 

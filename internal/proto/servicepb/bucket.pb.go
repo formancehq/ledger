@@ -225,16 +225,14 @@ const (
 	// expectations are never seeded from the live projection -- that would
 	// verify old, never-touched keys against a copy of themselves.
 	CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_SIGNING_VERIFICATION_INCOMPLETE CheckStoreErrorType = 23
-	// Emitted when the persisted cluster policy (SubGlobClusterPolicy) differs
-	// from the policy re-derived from chain-bound SetClusterPolicy orders. The
-	// policy gates idempotency expiration and query-checkpoint admission
-	// cluster-wide, so a tampered row silently changes replay/expiry and
-	// checkpoint behavior. The audit chain is the source of truth.
+	// Historical result retained for wire compatibility. Operational cluster
+	// policy is no longer compared against business audit history.
+	//
+	// Deprecated: Marked as deprecated in bucket.proto.
 	CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_CLUSTER_POLICY_MISMATCH CheckStoreErrorType = 24
-	// Emitted when the cluster policy could not be verified over the whole audit
-	// history: the live audit range was cut short by a hash chain break, so any
-	// policy update recorded after the break is unread. The pass reports this
-	// rather than presenting a partial replay as clean.
+	// Historical result retained for wire compatibility; no longer emitted.
+	//
+	// Deprecated: Marked as deprecated in bucket.proto.
 	CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_CLUSTER_POLICY_VERIFICATION_INCOMPLETE CheckStoreErrorType = 25
 	// Emitted when the persisted query-checkpoint rows (SubGlobQueryCheckpoint)
 	// diverge from the set the checker re-derived from chain-bound
@@ -9103,9 +9101,9 @@ const file_bucket_proto_rawDesc = "" +
 	"\x15GetTransactionRequest\x12\x16\n" +
 	"\x06ledger\x18\x01 \x01(\tR\x06ledger\x12%\n" +
 	"\x0etransaction_id\x18\x02 \x01(\x06R\rtransactionId\x12#\n" +
-	"\rcheckpoint_id\x18\x03 \x01(\x06R\fcheckpointId\"O\n" +
+	"\rcheckpoint_id\x18\x03 \x01(\x06R\fcheckpointId\"U\n" +
 	"\x16GetTransactionResponse\x125\n" +
-	"\vtransaction\x18\x01 \x01(\v2\x13.common.TransactionR\vtransaction\"`\n" +
+	"\vtransaction\x18\x01 \x01(\v2\x13.common.TransactionR\vtransaction:\x04\xe8\xd5\"\x01\"`\n" +
 	"\x17ListTransactionsRequest\x12\x16\n" +
 	"\x06ledger\x18\x01 \x01(\tR\x06ledger\x12-\n" +
 	"\aoptions\x18\x02 \x01(\v2\x13.common.ListOptionsR\aoptions\"\\\n" +
@@ -9300,7 +9298,7 @@ const file_bucket_proto_rawDesc = "" +
 	"\x13ResponseSigningInfo\x12\x1d\n" +
 	"\n" +
 	"public_key\x18\x01 \x01(\fR\tpublicKey\x12\x15\n" +
-	"\x06key_id\x18\x02 \x01(\tR\x05keyId\"\xf3\x04\n" +
+	"\x06key_id\x18\x02 \x01(\tR\x05keyId\"\xf9\x04\n" +
 	"\x18CreateTransactionPayload\x12+\n" +
 	"\bpostings\x18\x01 \x03(\v2\x0f.common.PostingR\bpostings\x12&\n" +
 	"\x06script\x18\x02 \x01(\v2\x0e.common.ScriptR\x06script\x12/\n" +
@@ -9315,7 +9313,7 @@ const file_bucket_proto_rawDesc = "" +
 	"\x05value\x18\x02 \x01(\v2\x15.common.MetadataValueR\x05value:\x028\x01\x1aW\n" +
 	"\x14AccountMetadataEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12)\n" +
-	"\x05value\x18\x02 \x01(\v2\x13.common.MetadataMapR\x05value:\x028\x01\"\xa3\x02\n" +
+	"\x05value\x18\x02 \x01(\v2\x13.common.MetadataMapR\x05value:\x028\x01:\x04\xe8\xd5\"\x01\"\xa9\x02\n" +
 	"\x18RevertTransactionPayload\x12%\n" +
 	"\x0etransaction_id\x18\x01 \x01(\x06R\rtransactionId\x12\x14\n" +
 	"\x05force\x18\x02 \x01(\bR\x05force\x12*\n" +
@@ -9323,7 +9321,7 @@ const file_bucket_proto_rawDesc = "" +
 	"\bmetadata\x18\x04 \x03(\v2..ledger.RevertTransactionPayload.MetadataEntryR\bmetadata\x1aR\n" +
 	"\rMetadataEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12+\n" +
-	"\x05value\x18\x02 \x01(\v2\x15.common.MetadataValueR\x05value:\x028\x01\"\xf7\x04\n" +
+	"\x05value\x18\x02 \x01(\v2\x15.common.MetadataValueR\x05value:\x028\x01:\x04\xe8\xd5\"\x01\"\xf7\x04\n" +
 	"\fLedgerAction\x12X\n" +
 	"\x12create_transaction\x18\x01 \x01(\v2 .ledger.CreateTransactionPayloadB\x05\xca\xd5\"\x01\x05H\x00R\x11createTransaction\x12@\n" +
 	"\fadd_metadata\x18\x02 \x01(\v2\x1b.common.SaveMetadataCommandH\x00R\vaddMetadata\x12X\n" +
@@ -9484,12 +9482,12 @@ const file_bucket_proto_rawDesc = "" +
 	"\rGetLogRequest\x12\x1a\n" +
 	"\bsequence\x18\x01 \x01(\x06R\bsequence\x12#\n" +
 	"\rcheckpoint_id\x18\x02 \x01(\x06R\fcheckpointId\"\x17\n" +
-	"\x15GetEventsSinksRequest\"{\n" +
+	"\x15GetEventsSinksRequest\"\x81\x01\n" +
 	"\x16GetEventsSinksResponse\x12(\n" +
 	"\x05sinks\x18\x01 \x03(\v2\x12.common.SinkConfigR\x05sinks\x127\n" +
-	"\rsink_statuses\x18\x02 \x03(\v2\x12.common.SinkStatusR\fsinkStatuses\"8\n" +
+	"\rsink_statuses\x18\x02 \x03(\v2\x12.common.SinkStatusR\fsinkStatuses:\x04\xd8\xd5\"\x01\"8\n" +
 	"\x1eGetMetadataSchemaStatusRequest\x12\x16\n" +
-	"\x06ledger\x18\x01 \x01(\tR\x06ledger\"\xf3\x04\n" +
+	"\x06ledger\x18\x01 \x01(\tR\x06ledger\"\xf9\x04\n" +
 	"\x1fGetMetadataSchemaStatusResponse\x12a\n" +
 	"\x0eaccount_fields\x18\x01 \x03(\v2:.ledger.GetMetadataSchemaStatusResponse.AccountFieldsEntryR\raccountFields\x12m\n" +
 	"\x12transaction_fields\x18\x02 \x03(\v2>.ledger.GetMetadataSchemaStatusResponse.TransactionFieldsEntryR\x11transactionFields\x12^\n" +
@@ -9502,9 +9500,9 @@ const file_bucket_proto_rawDesc = "" +
 	"\x05value\x18\x02 \x01(\v2\x1b.ledger.MetadataFieldStatusR\x05value:\x028\x01\x1a\\\n" +
 	"\x11LedgerFieldsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x121\n" +
-	"\x05value\x18\x02 \x01(\v2\x1b.ledger.MetadataFieldStatusR\x05value:\x028\x01\"P\n" +
+	"\x05value\x18\x02 \x01(\v2\x1b.ledger.MetadataFieldStatusR\x05value:\x028\x01:\x04\xd8\xd5\"\x01\"V\n" +
 	"\x13MetadataFieldStatus\x129\n" +
-	"\rdeclared_type\x18\x01 \x01(\x0e2\x14.common.MetadataTypeR\fdeclaredType\"_\n" +
+	"\rdeclared_type\x18\x01 \x01(\x0e2\x14.common.MetadataTypeR\fdeclaredType:\x04\xd8\xd5\"\x01\"_\n" +
 	"\x16AnalyzeAccountsRequest\x12\x16\n" +
 	"\x06ledger\x18\x01 \x01(\tR\x06ledger\x12-\n" +
 	"\x12variable_threshold\x18\x02 \x01(\rR\x11variableThreshold\"t\n" +
@@ -9611,26 +9609,26 @@ const file_bucket_proto_rawDesc = "" +
 	"\taggregate\x18\x02 \x01(\v2\x17.common.AggregateResultH\x00R\taggregateB\b\n" +
 	"\x06result\"/\n" +
 	"\x15GetIndexStatusRequest\x12\x16\n" +
-	"\x06ledger\x18\x01 \x01(\tR\x06ledger\"\xe0\x01\n" +
+	"\x06ledger\x18\x01 \x01(\tR\x06ledger\"\xe6\x01\n" +
 	"\x16GetIndexStatusResponse\x122\n" +
 	"\x15last_indexed_sequence\x18\x01 \x01(\x06R\x13lastIndexedSequence\x12*\n" +
 	"\x11last_log_sequence\x18\x02 \x01(\x06R\x0flastLogSequence\x12\x10\n" +
 	"\x03lag\x18\x03 \x01(\x06R\x03lag\x12&\n" +
 	"\x0findex_file_size\x18\x04 \x01(\x06R\rindexFileSize\x12,\n" +
-	"\aindexes\x18\x05 \x03(\v2\x12.ledger.IndexEntryR\aindexes\"J\n" +
+	"\aindexes\x18\x05 \x03(\v2\x12.ledger.IndexEntryR\aindexes:\x04\xd8\xd5\"\x01\"J\n" +
 	"\x0fGetIndexRequest\x12\x16\n" +
 	"\x06ledger\x18\x01 \x01(\tR\x06ledger\x12\x1f\n" +
 	"\x02id\x18\x02 \x01(\v2\x0f.common.IndexIDR\x02id\"U\n" +
 	"\x1aGetIndexEntryStatusRequest\x12\x16\n" +
 	"\x06ledger\x18\x01 \x01(\tR\x06ledger\x12\x1f\n" +
-	"\x02id\x18\x02 \x01(\v2\x0f.common.IndexIDR\x02id\"\xb3\x01\n" +
+	"\x02id\x18\x02 \x01(\v2\x0f.common.IndexIDR\x02id\"\xb9\x01\n" +
 	"\n" +
 	"IndexEntry\x12\x16\n" +
 	"\x06ledger\x18\x01 \x01(\tR\x06ledger\x12#\n" +
 	"\x05index\x18\x02 \x01(\v2\r.common.IndexR\x05index\x12\x16\n" +
 	"\x06cursor\x18\x03 \x01(\x06R\x06cursor\x12'\n" +
 	"\x0fcurrent_version\x18\x04 \x01(\rR\x0ecurrentVersion\x12'\n" +
-	"\x0fpending_version\x18\x05 \x01(\rR\x0ependingVersion\"\xa0\x01\n" +
+	"\x0fpending_version\x18\x05 \x01(\rR\x0ependingVersion:\x04\xd8\xd5\"\x01\"\xa0\x01\n" +
 	"\x12ListIndexesRequest\x126\n" +
 	"\x05scope\x18\x01 \x01(\x0e2 .ledger.ListIndexesRequest.ScopeR\x05scope\x12\x16\n" +
 	"\x06ledger\x18\x02 \x01(\tR\x06ledger\":\n" +
@@ -9723,7 +9721,7 @@ const file_bucket_proto_rawDesc = "" +
 	"!NUMSCRIPT_DIAGNOSTIC_KIND_VERSION\x10\x01\x12$\n" +
 	" NUMSCRIPT_DIAGNOSTIC_KIND_SYNTAX\x10\x02\x12%\n" +
 	"!NUMSCRIPT_DIAGNOSTIC_KIND_FEATURE\x10\x03\x12%\n" +
-	"!NUMSCRIPT_DIAGNOSTIC_KIND_COMPILE\x10\x04*\xdd\f\n" +
+	"!NUMSCRIPT_DIAGNOSTIC_KIND_COMPILE\x10\x04*\xe5\f\n" +
 	"\x13CheckStoreErrorType\x12&\n" +
 	"\"CHECK_STORE_ERROR_TYPE_UNSPECIFIED\x10\x00\x12(\n" +
 	"$CHECK_STORE_ERROR_TYPE_HASH_MISMATCH\x10\x01\x12'\n" +
@@ -9749,9 +9747,9 @@ const file_bucket_proto_rawDesc = "" +
 	")CHECK_STORE_ERROR_TYPE_REVERSE_MAP_ORPHAN\x10\x14\x12/\n" +
 	"+CHECK_STORE_ERROR_TYPE_SIGNING_KEY_MISMATCH\x10\x15\x122\n" +
 	".CHECK_STORE_ERROR_TYPE_SIGNING_CONFIG_MISMATCH\x10\x16\x12:\n" +
-	"6CHECK_STORE_ERROR_TYPE_SIGNING_VERIFICATION_INCOMPLETE\x10\x17\x122\n" +
-	".CHECK_STORE_ERROR_TYPE_CLUSTER_POLICY_MISMATCH\x10\x18\x12A\n" +
-	"=CHECK_STORE_ERROR_TYPE_CLUSTER_POLICY_VERIFICATION_INCOMPLETE\x10\x19\x124\n" +
+	"6CHECK_STORE_ERROR_TYPE_SIGNING_VERIFICATION_INCOMPLETE\x10\x17\x126\n" +
+	".CHECK_STORE_ERROR_TYPE_CLUSTER_POLICY_MISMATCH\x10\x18\x1a\x02\b\x01\x12E\n" +
+	"=CHECK_STORE_ERROR_TYPE_CLUSTER_POLICY_VERIFICATION_INCOMPLETE\x10\x19\x1a\x02\b\x01\x124\n" +
 	"0CHECK_STORE_ERROR_TYPE_QUERY_CHECKPOINT_MISMATCH\x10\x1a\x12<\n" +
 	"8CHECK_STORE_ERROR_TYPE_DEFAULT_ENFORCEMENT_MODE_MISMATCH\x10\x1b\x120\n" +
 	",CHECK_STORE_ERROR_TYPE_LOG_SEQUENCE_MISMATCH\x10\x1c\x126\n" +
@@ -9809,7 +9807,7 @@ const file_bucket_proto_rawDesc = "" +
 	"\x15ListNumscriptVersions\x12$.ledger.ListNumscriptVersionsRequest\x1a%.ledger.ListNumscriptVersionsResponse\"\x06\xd2\xd5\"\x02\x10\v\x12Q\n" +
 	"\fInspectIndex\x12\x1b.ledger.InspectIndexRequest\x1a\x1c.ledger.InspectIndexResponse\"\x06\xd2\xd5\"\x02\x10\x01\x12B\n" +
 	"\aBarrier\x12\x16.ledger.BarrierRequest\x1a\x17.ledger.BarrierResponse\"\x06\xd2\xd5\"\x02\x10\t:p\n" +
-	"\x19allowed_skippable_reasons\x12\x1d.google.protobuf.FieldOptions\x18٪\x04 \x03(\x0e2\x13.common.ErrorReasonR\x17allowedSkippableReasonsB:Z8github.com/formancehq/ledger/v3/internal/proto/servicepbb\x06proto3"
+	"\x19allowed_skippable_reasons\x12\x1d.google.protobuf.FieldOptions\x18٪\x04 \x03(\x0e2\x13.common.ErrorReasonR\x17allowedSkippableReasonsB>\xe0\xd5\"\x01Z8github.com/formancehq/ledger/v3/internal/proto/servicepbb\x06proto3"
 
 var (
 	file_bucket_proto_rawDescOnce sync.Once

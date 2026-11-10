@@ -13,6 +13,29 @@ The rule is in [`feedback_validation_defense_in_depth`](../../../../../AGENTS.md
 
 The complementary rule is in [`feedback_admission_structural_fsm_invariant`](../../../../../AGENTS.md): **admission validates that the order is well-constructed (structural); FSM validates that execution respects invariants (behavioural, post-producer).** Where both layers could detect the same end-state, they share a single sentinel rather than minting two parallel error types.
 
+### Replicated-policy refusals
+
+For an authenticated, structurally valid client request, a definitive refusal
+whose outcome depends on mutable, Raft-replicated cluster policy belongs in the
+FSM. The FSM evaluates the policy committed before that proposal at its apply
+index, after checking whether the idempotency key already has a recorded
+outcome. A new policy-based refusal is an audited failure; a replay returns the
+recorded outcome. An admission decision based on the currently observed policy
+can become stale while the proposal is waiting for commit.
+
+Admission remains responsible for authentication, signatures, request shape,
+safe order construction and preload coverage, and operational readiness. A
+limit needed to keep a request or proposal safe to construct is a separate
+structural or operational constraint; it must not silently substitute for a
+business refusal governed by replicated policy. Node-local settings must never
+change the result of applying a committed entry. Internal producers need their
+own retry and failure analysis before moving a gate into the FSM.
+
+This is the placement rule for new validators and for changes to existing
+validators. The inventory below records current behavior, including existing
+checks that need a separate migration to satisfy the rule; this document does
+not move any validator or change client behavior.
+
 ## What each layer catches
 
 | Rule | Admission | FSM | Notes |
@@ -21,7 +44,7 @@ The complementary rule is in [`feedback_admission_structural_fsm_invariant`](../
 | Asset code shape and precision range | ✅ | — | `ValidateAsset`. Precision encoded as `uint8` in Pebble keys; admission ensures it fits. |
 | Metadata key shape (non-empty, charset `[a-zA-Z0-9._:/-]`) | ✅ | — | `ValidateMetadataKey`. Characters outside the set — a null byte above all — would break Pebble key boundaries. Shape only: the key's *size* is a separate rule, below. |
 | Metadata value shape (no null byte) | ✅ | — | `ValidateMetadataValue`. |
-| Metadata size: entry count, key bytes, value bytes, per-entity bytes, per-command bytes | ✅ | — | `validateCommandMetadata` against the ceilings in the committed cluster policy (`domain.MetadataLimits`). Covers HTTP, public gRPC and bulk. Mirror workers check translated batches separately before proposing, and mirror FSM apply rechecks the committed policy. See [metadata limits](metadata-limits.md). |
+| Metadata size: entry count, key bytes, value bytes, per-entity bytes, per-command bytes | — | ✅ | Existing handlers check the policy committed at apply after idempotency lookup. Fresh refusals are audited; retained outcomes replay. Public admission retains structural checks. Mirror workers keep their separate preflight and retry contract. See [metadata limits](metadata-limits.md). |
 | Metadata size of the map Numscript merges into the caller's | — | ✅ | `processCreateTransaction` re-checks the *merged* transaction and per-account maps. Admission cannot: the union of caller metadata and `set_tx_meta` / `set_account_meta` output only exists after the script runs. |
 | HTTP mirror base URL syntax, HTTP(S) scheme and nonempty hostname | ✅ | — | Rejected with a safe `VALIDATION` error before Raft or ledger creation. No connectivity probe or configuration rewrite; raw URL parser errors may contain credentials and must not be exposed. |
 | Ledger name shape (no null, printable ASCII, ≤ `dal.LedgerNameFixedSize`) | ✅ | — | `ValidateLedgerName`. The fixed size matters because ledger names pad into Pebble keys. |
@@ -89,3 +112,59 @@ Admission rejects the exact names `_` (system API routes) and `_system`
 (system events) on every ledger-scoped write, before proposing to Raft.
 This applies equally to HTTP and gRPC. Other underscore-prefixed names,
 including `_systemx` and `_System`, remain valid.
+
+## Connector URL admission
+
+New PostgreSQL mirror and NATS/ClickHouse sink requests must use explicit URL
+forms. Restricting the accepted syntax keeps public credential projection
+explainable without a second PostgreSQL keyword parser. The alternative of
+retaining keyword DSNs requires maintaining two lexical grammars; fully masking
+legacy non-URL values preserves confidentiality without that parser.
+
+| Field | Accepted form |
+| --- | --- |
+| `mirrorSource.postgres.dsn` | Any hierarchical URL with an explicit scheme; no connector scheme allowlist. Socket/default-host URLs such as `postgresql:///ledger?host=%2Ftmp` and port-only authorities such as `postgres://:5433/db?host=/var/run/postgresql` remain valid |
+| `sink.nats.url` | Comma-separated server URLs, each with `nats://`, `tls://`, `ws://` or `wss://`; empty/default hosts, including `nats://:4222`, and surrounding entry whitespace are allowed |
+| `sink.clickhouse.dsn` | `clickhouse://`, `http://` or `https://` with a hostname; comma-separated hosts remain one URL authority |
+
+The shared lexical parser rejects missing schemes, opaque URLs, invalid escapes
+and invalid port syntax without returning parser errors that can echo credentials.
+Explicit ports on named hosts, IPv6 hosts and port-only authorities must fit
+in 16 bits (0–65535), including every host in a ClickHouse authority;
+driver-specific default-port behavior remains unchanged.
+For PostgreSQL mirrors this gate is deliberately generic: uppercase and unknown
+schemes pass URL-shape validation. The PostgreSQL worker alone interprets supported
+schemes (`postgres://` and `postgresql://`), options, connectivity and credentials.
+Admission still requires an IAM region when IAM auth is configured. The worker
+requires explicit TLS on every connection attempt before installing IAM
+credentials; admission does not parse driver configuration or read libpq environment
+variables. Invalid driver options or unsafe IAM TLS settings may therefore be
+committed and then diagnosed during source construction, which starts no worker.
+This keeps driver parsing and ambient settings out of the admission critical path
+without weakening the runtime credential boundary.
+
+Validation runs through `validateOrder` for HTTP, gRPC and bulk requests before
+proposal, without rewriting the configuration. Rejections use admission-only
+`VALIDATION` errors with safe messages; the internal sentinels are
+`ErrMirrorPostgresURLInvalid`, `ErrSinkNATSURLInvalid` and
+`ErrSinkClickHouseURLInvalid`. Their admission-only type owns safe public
+details rather than an audited failure-detail code. They produce no audited
+failure fact. The three connector checks run regardless of optional build tags.
+
+This is a request policy, not an FSM invariant. Existing committed configurations,
+Raft entries, audit history, checkpoints and restores retain their prior runtime
+semantics. Older and newer voters apply the same committed entries identically;
+an older admitting leader may still accept non-URL input during a rolling
+upgrade. No data migration or protocol revision change is needed. Before
+submitting new configurations to upgraded servers, convert keyword DSNs to URL
+form and add a scheme to every NATS server. Existing legacy values can appear
+fully masked in public reads while workers continue using their original bytes.
+
+Work is proportional to submitted connection-string bytes and NATS entry count.
+It introduces no storage scans, network probes, locks, preload keys, proposal/WAL
+amplification or FSM work. `connection_url_test.go` covers accepted and rejected
+forms, immutable input, safe errors and rejection through `Admission.Admit` with
+a proposer mock that permits no calls. The public error renderer is exercised
+for each connector to pin safe validation messages and avoid audited-detail
+serialization. Projection tests retain independent URL,
+legacy keyword, malformed, list, proxy and detached-message observations.

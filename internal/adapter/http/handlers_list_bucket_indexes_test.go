@@ -41,7 +41,7 @@ func TestHandleListBucketIndexes_DefaultScopeAll(t *testing.T) {
 	// Each list element must serialize in protobuf-JSON camelCase
 	// (forwardEncodingVersion) inside the {data:[...]} envelope, not the
 	// snake_case Go struct tag (forward_encoding_version). See
-	// writeProtoListOK.
+	// the shared JSON adapter.
 	body := w.Body.String()
 	require.Contains(t, body, `"forwardEncodingVersion":`)
 	require.NotContains(t, body, "forward_encoding_version")

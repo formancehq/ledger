@@ -36,6 +36,14 @@ Only a parsed result persisted on the run enables successful parent accounting a
 incremental scheduling. See [the recovery ordering](operator-scheduling.md#completed-job-result-recovery)
 for observation failures, terminal payload failures and history pruning.
 
+## Operator manual runs
+
+`BackupRun.spec.backupRef` associates scheduled and manual runs with their
+same-namespace parent for accounting, scheduling, retention and execution
+exclusion. Labels and owner references are optional for manual runs. See
+[manual run association](operator-scheduling.md#manual-run-association) for
+parent admission and upgrade recovery, events, existing-run behavior and parent-selector cost.
+
 ## How a backup is taken
 
 A Pebble *checkpoint* is the engine primitive: hard-link every live SST file into a separate directory at a point in time. The checkpoint is **quasi-free** (no copy), and writes to the live database keep going untouched.
@@ -153,7 +161,7 @@ silently carried into a different cluster:
 
 | Pebble keys | Cross-cluster restore | Reason |
 |---|---|---|
-| `ZoneGlobal` / ledger info, next ledger ID, signing key/config, maintenance mode, event sink cursors/status/config, query checkpoint rows/allocator/schedule, cluster policy | Retained in the full checkpoint; mutable audited projections are rebuilt from the non-empty post-checkpoint delta | Business, governance, and delivery state follows the restored history. Query checkpoint rows are marked as restored because their physical directories are absent. |
+| `ZoneGlobal` / ledger info, next ledger ID, signing key/config, maintenance mode, event sink cursors/status/config, query checkpoint rows/allocator/schedule | Retained in the full checkpoint; mutable audited projections are rebuilt from the non-empty post-checkpoint delta | Business, governance, and delivery state follows the restored history. Query checkpoint rows are marked as restored because their physical directories are absent. |
 | `ZoneGlobal` / `SubGlobClusterConfig` | Retained | Replicated config includes the hash algorithm used to verify the audit chain and the cache epoch; dropping it could change FSM behavior after restore. It is not a node identity. |
 | `ZoneGlobal` / last applied HLC timestamp | Checkpoint value folded with the maximum timestamp of post-checkpoint audit entries | Every business proposal that advances the HLC records its effective timestamp in the audit header, including failed proposals. The next destination write must advance past the full restored history. |
 | `ZoneGlobal` / idempotency eviction cutoff | Retained as a technical scan horizon | The cutoff guards cache reinjection against already committed evictions; the in-memory map is rebuilt from Pebble. |
@@ -342,3 +350,8 @@ The Operator's `Backup` CRD (`misc/operator/api/v1alpha1/`) wraps backups behind
 | Restore orchestration | `internal/infra/backup/restore.go` |
 | Delta projection rebuild | `internal/infra/backup/rebuild.go`, `internal/domain/replay/` |
 | `Backup` / `BackupRun` CRDs | `misc/operator/api/v1alpha1/` |
+
+Operational cluster policy is retained in full checkpoints. Incremental manifests
+carry a separate policy snapshot even if no business history changed; restore
+applies it after legacy log rebuilding. See the
+[policy restore contract](incremental-restore-contract.md#operational-cluster-policy).

@@ -117,7 +117,7 @@ func TestHandleBulk_ProcessingResponseContract(t *testing.T) {
 				w := httptest.NewRecorder()
 				handler.ServeHTTP(w, r)
 				wantStatus := tc.status
-				if continuation && tc.status < 429 {
+				if continuation && tc.status < 429 && tc.status != http.StatusUnauthorized && tc.status != http.StatusForbidden {
 					wantStatus = 200
 				}
 				require.Equal(t, wantStatus, w.Code)

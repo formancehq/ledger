@@ -3,14 +3,18 @@ package health
 import (
 	"context"
 	"net"
+	"slices"
 	"sync/atomic"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/stretchr/testify/require"
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 	"go.uber.org/mock/gomock"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/test/bufconn"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
@@ -177,14 +181,15 @@ func TestHealthChecker_NewLeaderRequiresFreshLocalSample(t *testing.T) {
 	t.Parallel()
 
 	collector := &diskusage.Collector{}
-	ns := NewMocknodeState(gomock.NewController(t))
+	ctrl := gomock.NewController(t)
+	ns := NewMocknodeState(ctrl)
 	ns.EXPECT().IsLeader().Return(true)
 	ns.EXPECT().GetNodeID().Return(uint64(7))
 	ns.EXPECT().MemberIDs().Return([]uint64{7})
 	hc := &HealthChecker{
 		node:        ns,
 		collector:   collector,
-		servicePool: transport.NewConnectionPool(transport.TLSPolicy{}, transport.PoolConfig{}),
+		servicePool: NewMockpeerConnections(ctrl),
 		logger:      logging.Testing(),
 		thresholds: Thresholds{
 			WALBlock:   0.8,
@@ -193,7 +198,6 @@ func TestHealthChecker_NewLeaderRequiresFreshLocalSample(t *testing.T) {
 			DataResume: 0.75,
 		},
 	}
-	t.Cleanup(func() { require.NoError(t, hc.servicePool.Close()) })
 
 	hc.OnLeadershipChange(true)
 	hc.check(make(chan struct{}))
@@ -253,6 +257,143 @@ func TestHealthChecker_MissingCommittedPeerCannotClearDiskGate(t *testing.T) {
 
 	require.ErrorIs(t, hc.CheckWritesAllowed(), domain.ErrWritesBlockedDiskFull)
 	require.True(t, hc.gate.Load().diskBlocked)
+}
+
+// pollTestServer answers below-resume disk usage after delay, reporting
+// sampleAge as the server-computed age. It serves synctest bubbles only.
+type pollTestServer struct {
+	clusterpb.UnimplementedClusterServiceServer
+
+	delay     time.Duration
+	sampleAge atomic.Int64
+}
+
+func (s *pollTestServer) GetDiskUsage(ctx context.Context, _ *clusterpb.GetDiskUsageRequest) (*clusterpb.DiskUsage, error) {
+	timer := time.NewTimer(s.delay)
+	defer timer.Stop()
+	select {
+	case <-timer.C:
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
+	volume := &clusterpb.VolumeUsage{
+		UsedBytes:    10,
+		TotalBytes:   100,
+		ObservedAtUs: 1,
+		SampleAgeMs:  uint64(time.Duration(s.sampleAge.Load()).Milliseconds()),
+		Valid:        true,
+	}
+
+	return &clusterpb.DiskUsage{WalVolume: volume, DataVolume: volume}, nil
+}
+
+func pollTestConn(t *testing.T, impl clusterpb.ClusterServiceServer) *grpc.ClientConn {
+	t.Helper()
+
+	listener := bufconn.Listen(1 << 20)
+	server := grpc.NewServer()
+	clusterpb.RegisterClusterServiceServer(server, impl)
+	served := make(chan struct{})
+	go func() {
+		defer close(served)
+		_ = server.Serve(listener) // Stop closes the listener during cleanup.
+	}()
+	t.Cleanup(func() {
+		server.Stop()
+		<-served
+	})
+
+	conn, err := grpc.NewClient("passthrough:///health-poll",
+		grpc.WithContextDialer(func(ctx context.Context, _ string) (net.Conn, error) {
+			return listener.DialContext(ctx)
+		}),
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+	)
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, conn.Close()) })
+
+	return conn
+}
+
+// A sample that is fresh when read but expires while later peers are polled
+// must not clear an established disk block.
+func TestHealthChecker_SampleExpiringDuringPollCannotClearDiskGate(t *testing.T) {
+	t.Parallel()
+
+	const slowPoll = 3 * time.Second // below healthCheckCallTimeout
+	nearlyStale := diskusage.MaximumSampleAge - 2*time.Second
+
+	newChecker := func(t *testing.T, peers map[uint64]*grpc.ClientConn) *HealthChecker {
+		t.Helper()
+
+		ctrl := gomock.NewController(t)
+		members := []uint64{7}
+		pool := NewMockpeerConnections(ctrl)
+		for peerID, conn := range peers {
+			members = append(members, peerID)
+			pool.EXPECT().GetConnection(peerID).Return(conn).AnyTimes()
+		}
+		slices.Sort(members)
+		ns := NewMocknodeState(ctrl)
+		ns.EXPECT().IsLeader().Return(true).AnyTimes()
+		ns.EXPECT().GetNodeID().Return(uint64(7)).AnyTimes()
+		ns.EXPECT().MemberIDs().Return(members).AnyTimes()
+		pollFailures, err := sdkmetric.NewMeterProvider().Meter("health-check-test").Int64Counter("test.expiry.poll.failures")
+		require.NoError(t, err)
+
+		hc := &HealthChecker{
+			node:         ns,
+			collector:    newFreshCollector(t),
+			servicePool:  pool,
+			logger:       logging.Testing(),
+			pollFailures: pollFailures,
+			thresholds: Thresholds{
+				WALBlock:   1.1,
+				WALResume:  1,
+				DataBlock:  1.1,
+				DataResume: 1,
+			},
+		}
+		hc.gate.Store(&gateState{diskBlocked: true, leadershipEpoch: hc.leadershipEpoch.Load()})
+
+		return hc
+	}
+
+	t.Run("local", func(t *testing.T) {
+		t.Parallel()
+		synctest.Test(t, func(t *testing.T) {
+			hc := newChecker(t, map[uint64]*grpc.ClientConn{
+				8: pollTestConn(t, &pollTestServer{delay: slowPoll}),
+			})
+
+			time.Sleep(nearlyStale)
+			hc.check(make(chan struct{}))
+			require.ErrorIs(t, hc.CheckWritesAllowed(), domain.ErrWritesBlockedDiskFull)
+
+			hc.collector = newFreshCollector(t)
+			hc.check(make(chan struct{}))
+			require.NoError(t, hc.CheckWritesAllowed())
+		})
+	})
+
+	t.Run("remote", func(t *testing.T) {
+		t.Parallel()
+		synctest.Test(t, func(t *testing.T) {
+			agingPeer := &pollTestServer{}
+			agingPeer.sampleAge.Store(int64(nearlyStale))
+			hc := newChecker(t, map[uint64]*grpc.ClientConn{
+				8: pollTestConn(t, agingPeer),
+				9: pollTestConn(t, &pollTestServer{delay: slowPoll}),
+			})
+
+			hc.check(make(chan struct{}))
+			require.ErrorIs(t, hc.CheckWritesAllowed(), domain.ErrWritesBlockedDiskFull)
+
+			agingPeer.sampleAge.Store(0)
+			hc.check(make(chan struct{}))
+			require.NoError(t, hc.CheckWritesAllowed())
+		})
+	})
 }
 
 func TestSampleAge(t *testing.T) {

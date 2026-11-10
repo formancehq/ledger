@@ -97,7 +97,7 @@ selects the literal `users%3Aa`, which is not a valid account address.
 ### Ledger information
 
 See [LedgerInfo read contract](ledger-info.md) for camelCase properties, explicit
-defaults, decimal-string mirror counters, separate creation/read configuration
+defaults, numeric mirror counters, separate creation/read configuration
 schemas and credential-safe responses.
 
 ### Authentication
@@ -189,6 +189,74 @@ value. Ops routes (`/health`, `/readyz`, `/clusterz`, …) do not parse the
 header. `TestReadConsistency_InstalledOnEveryBusinessRoute` requires the
 middleware on every `/v3` route and forbids it on ops routes.
 
+### Signed transaction requests
+
+The transaction create, revert, metadata-save and metadata-delete routes and
+atomic bulk use `application/json` for signed and ordinary unsigned bodies;
+MIME parameters are accepted. The presence of either `Formance-Signing-Key-Id`
+or `Formance-Signature`, even if empty, selects the signed wrapper. When
+neither header is present, the ordinary unsigned REST body is used.
+The JSON envelope has required `request` (the ordinary
+body, or explicit null for transaction metadata DELETE) and `payload`
+(standard-base64 exact serialized protobuf batch). The `Formance-Signing-Key-Id`
+and `Formance-Signature` headers supply the key ID and standard-base64 Ed25519
+signature; the adapter assembles the existing `SignedApplyBatch`. Both headers
+are required exactly once with nonempty values, and the decoded signature must
+be 64 bytes. Other business routes reject either signing header with 415;
+signing headers with a non-JSON or missing content type also return 415,
+preventing unsigned fallback. The five supporting route registrations install
+wrapper decoding before their ordinary query-name validation; unsupported routes
+reject signing headers in that validation boundary. Header presence cannot grant
+signing support to other operations. OpenAPI uses `anyOf` for the ordinary body
+and signed wrapper under `application/json`: generic object schemas can overlap,
+while runtime header presence determines which decoder applies. Unsigned metadata
+DELETE remains bodyless; the optional JSON body describes the wrapper required
+when either signing header is supplied.
+
+The adapter constructs the ordinary `ApplyBatch` from the URL, decoded request
+and `Idempotency-Key`, decodes the supplied payload as untrusted protobuf, and
+requires `proto.Equal` over the full batch. Count, order, nested oneofs, typed
+metadata, all command fields, skippable reasons and the batch key must match.
+It then passes the original signed envelope unchanged into backend Apply and
+admission, which verifies the registered Ed25519 key over the original bytes.
+Equivalent protobuf encodings are valid; the server does not regenerate the
+signed bytes. Both transports use `SignedApplyBatch` through `ApplyRequest.signed`,
+`resolveBatch`, `Proposal.signature` and `AuditEntry.signature`; there is no
+HTTP-specific persisted proof. This preserves ordinary decoding/defaults and JWT
+scope checks.
+Ignored JSON, response presentation and JWT claims are outside the batch proof.
+
+Malformed envelopes, missing/empty/repeated signing headers, invalid base64 and
+invalid signature length are 400; semantic mismatch is 403 `PERMISSION_DENIED`.
+Ordinary unsigned requests with mandatory signing produce 401
+`UNAUTHENTICATED`; invalid signatures
+and unknown/revoked keys produce 403 `PERMISSION_DENIED`. Local signature
+sentinels and reconstructed typed signing failures share this mapping. Forwarded
+signature errors retain their existing gRPC status/message and add
+`google.rpc.ErrorInfo` in domain `ledger.signing`, with reason
+`MISSING_SIGNATURE`, `INVALID_SIGNATURE` or `UNKNOWN_KEY_ID`. Only correctly
+paired signing domain/reason/status details reconstruct a classifiable signing
+failure; preserve the original `GRPCStatus` and do not expose those internal
+reasons as public HTTP error codes. Bare or foreign gRPC auth errors retain the
+existing 500 cluster-secret failure contract. Signing does not broaden generic
+Unauthenticated/PermissionDenied handling or weaken JWT/peer trust boundaries.
+
+Signed bulk requires a nonempty array and `atomic=true`; otherwise it returns
+400. Its batch identity is the header key, and per-element `ik` remains ignored.
+`continueOnFailure` never suppresses 401/403, including missing/invalid signing;
+processing responses preserve every element result. Legacy unsigned sequential
+and empty-bulk behavior remains available with ordinary JSON.
+
+The existing 4 MiB body budget includes all wrapper bytes, base64 expansion,
+duplicated command data and trailing whitespace. Decode/compare/copy costs are
+O(request bytes) transient work; no new store reads, proposal effects, persisted
+formats or migrations are introduced. Protocol revision stays 40. Upgrade
+receiving HTTP nodes before clients send signing headers. Retained, empty
+and expired idempotency keys keep their existing replay behavior. HTTP request
+signing does not authenticate responses. See the
+[operational client recipe](../../../../ops/signing.md#http-request-signing) and
+[admission signing contract](../admission/signing.md#http-transaction-signing-boundary).
+
 ### Optional transaction revert body
 
 `POST /v3/{ledgerName}/transactions/{transactionId}/revert` accepts an absent
@@ -226,8 +294,9 @@ account/transaction/log cursors and aggregate results. Nested post-commit volume
 follow the same choice. The contract is type-based: future nonmonetary fields
 using these three types inherit it, including inside structs, maps, slices and
 custom public projections. Ordinary integer IDs/counts, typed metadata and
-timestamps retain their existing representation. Explicit string projections,
-such as mirror counters, also keep their existing representation.
+timestamps retain their existing representation. Mirror counters are JSON
+numbers and require lossless integer parsing above JavaScript's safe-integer
+range.
 
 Posting request amounts accept integer tokens and canonical unsigned decimal
 strings independently of the response header. Both forms are bounded by
@@ -334,7 +403,7 @@ uses `SEQUENCE_EXHAUSTED` (`sequence exhausted: counter="<counter>"`).
 Disk blocking can clear; allocator exhaustion is permanent for that allocator.
 Neither branch supplies `Retry-After`, and clients must not retry unconditionally.
 
-The following routes, relative to `/v3`, all enter `applyUnsigned` and
+The following routes, relative to `/v3`, all enter the Apply admission path and
 `RoutedController.Apply`, reaching admission's disk gate and the business-log
 sequence allocator. The registered HTTP handler fixtures in
 `openapi_resource_exhaustion_test.go` prove the 429 status/body/media-type contract
@@ -420,9 +489,13 @@ what is a plain 4xx, and the stable `errorCode` and the human-readable message
 are both lost (EN-1636).
 
 `grpcerr.NewConn` (`internal/adapter/grpcerr`) decorates the leader connection
-so that decoding happens once, at the transport seam. It reconstructs exactly
-two shapes:
+so that decoding happens once, at the transport seam. It reconstructs three
+shapes:
 
+- a signing rejection carrying a validated `ledger.signing` `ErrorInfo`:
+  `MISSING_SIGNATURE` with `Unauthenticated`, or `INVALID_SIGNATURE` /
+  `UNKNOWN_KEY_ID` with `PermissionDenied`. It retains the coarse authentication
+  class and original `GRPCStatus`, without exposing a business reason;
 - a status carrying a ledger-domain `ErrorInfo` — **whatever its code** —
   becomes an `*apierr.Remote`;
 - a **bare** `codes.NotFound` — one carrying no `ErrorInfo` at all — becomes a
@@ -432,11 +505,11 @@ two shapes:
   `NotFoundError` would answer a foreign contract as this one.
 
 For error reconstruction, read the rest of the rule as the complement of those
-two rather than as a list of excluded codes: **everything else passes through
+three rather than as a list of excluded codes: **everything else passes through
 unchanged**. Before reconstruction, unary `Conn.Invoke` also applies the narrow
 [peer-close normalization](grpc-api.md#grpc-status-codes), with its raw-connection
-requirement and post-invocation attribution limit. Reconstruction covers three
-groups.
+requirement and post-invocation attribution limit. Pass-through behavior covers
+three groups.
 
 - A **bare** `codes.Canceled`, because the cursor layer keys end-of-stream
   detection off it: caller cancellation becomes `io.EOF`, while a live caller
@@ -456,8 +529,9 @@ groups.
   `codes.PermissionDenied` from the leader denotes a cluster-secret failure
   *between nodes*, not a caller credential problem, so it correctly stays a
   `500` rather than telling the caller to fix something it does not control.
-- An `ErrorInfo` stamped with another service's domain, left for that
-  service's client.
+- An `ErrorInfo` outside the Ledger business and validated signing contracts,
+  left for its originating service's client. Unknown or mismatched
+  `ledger.signing` pairs are not reconstructed.
 
 Note the qualifier on the second group. `codes.Unavailable` and
 `codes.Internal` are exactly the codes a `KindUnavailable` or `KindInternal`
@@ -735,7 +809,8 @@ ordinary error that requires top-level errorCode/errorMessage.
 | Invalid JWT rejected by middleware | 401 | `text/plain`, starting with `invalid token:` |
 | Valid credentials missing an element's scope | 403 | JSON top-level errorCode/errorMessage |
 | More than the configured maximum element count | 413 | JSON top-level errorCode/errorMessage |
-| Processing-time business failure | 400/401/403/404/409 | BulkResponse with every element outcome; 200 instead when continueOnFailure=true |
+| Processing-time authentication/permission failure | 401/403 | BulkResponse with every element outcome, regardless of continueOnFailure |
+| Other processing-time business failure | 400/404/409 | BulkResponse with every element outcome; 200 instead when continueOnFailure=true |
 | Processing-time resource exhaustion | 429 | BulkResponse, regardless of continueOnFailure |
 | Leader loss, cache horizon exceeded, or a classified unavailable error | 503 | BulkResponse and `Retry-After: 1`, regardless of continueOnFailure |
 | Processing-time internal/unclassified failure | 500 | BulkResponse, regardless of continueOnFailure |
@@ -746,7 +821,7 @@ error to `400 VALIDATION`; the separate element-count guard maps to
 `413 BULK_SIZE_EXCEEDED`. These are distinct current paths. Request-level
 rejections always surface, independently of continueOnFailure. During processing,
 the highest infrastructure status wins; otherwise the highest business status
-wins unless continueOnFailure suppresses it. Aborted elements contribute no
+wins unless continueOnFailure suppresses it; 401/403 cannot be suppressed. Aborted elements contribute no
 status. Returned statuses do not prove that preceding or ambiguous work did not
 commit: non-atomic batches can contain committed successes before a failure.
 Callers must inspect all outcomes and preserve the original batch/element
@@ -963,7 +1038,7 @@ Content-Type: application/json
 ```
 
 **Query Parameters**:
-- `continueOnFailure=true`: When the request is accepted, keep processing subsequent elements after a per-element **business** failure (validation / not-found / conflict / precondition / permission) instead of aborting. Business failures surface as `errorCode` on each element and the overall status stays `200`. Request-level failures (malformed body, missing scope, oversized) and processing-time infra/retryable failures (`ErrNoLeader`, cache-horizon exceeded, `KindInternal`, `KindResourceExhausted`, `KindUnavailable`) still surface as non-2xx (`4xx`, `429`, `503`, `500`) regardless of this flag — see the `POST /v3/{ledgerName}/bulk` operation in `openapi.yml` for the full status matrix.
+- `continueOnFailure=true`: When the request is accepted, keep processing subsequent elements after a per-element **business** failure (validation / not-found / conflict / precondition) instead of aborting. Business failures surface as `errorCode` on each element and the overall status stays `200`. Request-level failures (malformed body, missing scope, oversized), processing-time authentication/permission failures (`401`/`403`), and processing-time infra/retryable failures (`ErrNoLeader`, cache-horizon exceeded, `KindInternal`, `KindResourceExhausted`, `KindUnavailable`) still surface as non-2xx (`4xx`, `429`, `503`, `500`) regardless of this flag — see the `POST /v3/{ledgerName}/bulk` operation in `openapi.yml` for the full status matrix.
 
 Bulk internal failures are logged and stamped on the recording request span
 with a validated correlation ID, including sequential and atomic apply failures.
@@ -973,7 +1048,7 @@ Typed internal failures keep their reason and use stable public facts. Numscript
 diagnostic text remains available only in server logs.
 The `continueOnFailure` rollup and retry semantics are unaffected.
 
-- `atomic=true`: Execute atomically (all or nothing) - not yet supported
+- `atomic=true`: Execute the batch atomically (all or nothing). Signed bulk requires this mode and a nonempty array; see [Signed transaction requests](#signed-transaction-requests).
 
 ### Account Metadata
 
@@ -1413,13 +1488,13 @@ The response writer selects the encoder from its payload contract:
 | Writer | Encoder | Use for |
 |---|---|---|
 | `writeOK` / `writeCreated` / `writeOKChecked` / `writePageOK` | request-scoped `encoding/json/v2` (`internal/adapter/json`) | Public custom JSON projections and hand-written DTOs, including nested large integers |
-| `writeProtoOK` / `writeProtoListOK` | `protojson` | Proto messages with **no** custom JSON projection or nested Uint256, BigUint or SignedBigInt |
+| `writeOK` / `writeCreated` / `writeOKChecked` / `writePageOK` | `encoding/json/v2` | Public DTOs and protobuf messages with generated or hand-written JSON projections |
 
 **The rule: custom JSON projections define the public shape.** Shared writers
 receive the request and apply large-integer negotiation automatically. Use
-`writeOKChecked` for fallible custom projections. `protojson` ignores both
-`MarshalJSON` and `MarshalJSONTo`, so it must not bypass a type's custom
-representation or render the internal structure of a nested large integer.
+`writeOKChecked` for fallible custom projections. Generated protobuf projections
+and hand-written DTOs are both encoded through the same `encoding/json/v2`
+path.
 
 The camelCase convention cannot arbitrate between the two — both encoders
 satisfy it. Custom projections and nested negotiated types determine which
@@ -1476,7 +1551,7 @@ component schemas; `DropAction` is the sole intentionally empty object.
 | `SET_METADATA_FIELD_TYPE` | Metadata field type assignment |
 | `REMOVED_METADATA_FIELD_TYPE` | Metadata field type removal |
 | `ORDER_SKIPPED` | Reason and optional context |
-| `FILL_GAP` | `originalId`: uint64 encoded as a decimal JSON string |
+| `FILL_GAP` | `originalId`: uint64 encoded as a JSON number |
 | `CREATE_INDEX` | Index creation payload |
 | `DROP_INDEX` | Index removal payload |
 | `ADDED_ACCOUNT_TYPE` | Account type addition payload |
@@ -1494,11 +1569,11 @@ shape. V3 retains typed metadata, colored volumes, and
 events retain their enclosing global-log structure. These JSON changes do not
 change protobuf messages, persisted data, or audit hashes.
 
-Integer rendering depends on the payload codec: `FILL_GAP.originalId` uses
-protobuf JSON and is a decimal string (for example, `"18446744073709551615"`).
-Custom transaction IDs, `revertedTransactionId`, metadata transaction
-`targetId`, and metadata integer values are JSON numbers. Clients must preserve
-full integer precision when reading these numbers.
+All protobuf signed and unsigned 64-bit scalar fields are emitted as decimal
+JSON numbers (for example, `18446744073709551615`), including
+`FILL_GAP.originalId`, transaction IDs and metadata integer values. Clients
+must preserve full integer precision when reading these numbers; JavaScript
+clients should use a lossless JSON-number parser when values can exceed 2^53.
 
 This contract defines an output projection. The internal ledger-log type has
 no custom JSON decoder. Metadata integers are emitted as JSON numbers,

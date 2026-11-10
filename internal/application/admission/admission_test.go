@@ -1741,3 +1741,23 @@ func TestResolveBatch(t *testing.T) {
 			"the cascaded child's replacement key is rejected on the same step")
 	})
 }
+
+func TestPolicyAdmissionDoesNotWaitForBusinessAuditKey(t *testing.T) {
+	t.Parallel()
+	store := createTestStoreWithoutPolicy(t)
+	batch := store.OpenWriteSession()
+	require.NoError(t, batch.DeleteKey([]byte{dal.ZoneGlobal, dal.SubGlobAuditKey}))
+	require.NoError(t, batch.Commit())
+	admission, _ := createTestAdmission(t, store)
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel() // A wait must return rather than hang this regression.
+	policy := &commonpb.ClusterPolicy{Revision: 1}
+	got, err := admission.prepareClusterPolicy(ctx, &commonpb.CallerSnapshot{}, policy)
+	require.NoError(t, err, "operational policy does not enter audit-key or policy readiness waits")
+	require.Same(t, policy, got.command.GetSetClusterPolicy().GetPolicy())
+	require.Nil(t, got.command.GetBatch())
+	require.Empty(t, got.orders)
+	require.Empty(t, got.build.ExecutionPlan.GetAttributes(), "policy admission must not preload business state")
+	_, err = admission.prepareExecutionBatchAdmission(ctx, businessWrite("new-ledger"))
+	require.ErrorIs(t, err, context.Canceled, "business batches must still wait for their audit key")
+}

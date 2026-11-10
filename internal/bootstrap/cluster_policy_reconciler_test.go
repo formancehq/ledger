@@ -48,9 +48,10 @@ func TestClusterPolicyReconciler_TicksUntilStopped(t *testing.T) {
 }
 
 type fakeAdmission struct {
-	mu    sync.Mutex
-	calls int
-	err   error
+	mu       sync.Mutex
+	calls    int
+	err      error
+	proposed *commonpb.ClusterPolicy
 }
 
 func (f *fakeAdmission) Admit(_ context.Context, _ *servicepb.ApplyRequest) (*domain.ApplyResult, error) {
@@ -61,10 +62,11 @@ func (f *fakeAdmission) Admit(_ context.Context, _ *servicepb.ApplyRequest) (*do
 	return nil, f.err
 }
 
-func (f *fakeAdmission) AdmitClusterPolicy(_ context.Context, _ *commonpb.ClusterPolicy) (*domain.ApplyResult, error) {
+func (f *fakeAdmission) AdmitClusterPolicy(_ context.Context, policy *commonpb.ClusterPolicy) (*domain.ApplyResult, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.calls++
+	f.proposed = policy
 
 	return nil, f.err
 }
@@ -172,4 +174,35 @@ func TestReconcileClusterPolicy(t *testing.T) {
 
 		require.Zero(t, admission.callCount(), "a newer applied revision must not be overwritten")
 	})
+}
+
+// Only an explicit zero TTL may reach the committed policy as 0, the
+// never-expire sentinel.
+func TestReconcileClusterPolicy_ProposedIdempotencyTTL(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		ttl        time.Duration
+		wantMicros uint64
+	}{
+		{ttl: 0, wantMicros: 0},
+		{ttl: time.Microsecond, wantMicros: 1},
+		{ttl: 1500 * time.Nanosecond, wantMicros: 1},
+		{ttl: 24 * time.Hour, wantMicros: uint64((24 * time.Hour).Microseconds())},
+	} {
+		t.Run(tc.ttl.String(), func(t *testing.T) {
+			t.Parallel()
+
+			cfg := validBaseConfig()
+			cfg.IdempotencyTTL = tc.ttl
+			require.NoError(t, cfg.Validate())
+
+			admission := &fakeAdmission{}
+			reconcileClusterPolicy(context.Background(), admission, newReconcilerTestStore(t), cfg,
+				func() bool { return true }, logging.Testing())
+
+			require.Equal(t, 1, admission.callCount())
+			require.Equal(t, tc.wantMicros, admission.proposed.GetIdempotencyTtlMicros())
+		})
+	}
 }

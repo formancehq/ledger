@@ -173,32 +173,6 @@ func (r *AuditReplayer) LedgerBoundaries() (map[string]*raftcmdpb.LedgerBoundari
 // Replay applies one successful audited proposal and returns the exact logs
 // produced by the canonical request processor. Call proposals in audit order.
 func (r *AuditReplayer) Replay(at *commonpb.Timestamp, orders []*raftcmdpb.Order) ([]*commonpb.Log, error) {
-	// Historical/unit-test stores may start their retained audit range before
-	// the first replicated policy entry. Give revision 0 the legacy defaults
-	// only when this proposal is not itself installing the real policy; a
-	// revision-1 SetClusterPolicy must compare against the pristine revision 0.
-	if r.machine.State.ClusterPolicy.GetMetadataMaxKeyBytes() == 0 {
-		installsPolicy := false
-		for _, order := range orders {
-			if order.GetSystemScoped().GetSetClusterPolicy() != nil {
-				installsPolicy = true
-
-				break
-			}
-		}
-		if !installsPolicy {
-			r.machine.State.UpdateClusterPolicy(&commonpb.ClusterPolicy{
-				Revision:                    0,
-				QueryCheckpointLimit:        10,
-				MetadataMaxEntriesPerEntity: domain.DefaultMetadataMaxEntriesPerEntity,
-				MetadataMaxKeyBytes:         domain.DefaultMetadataMaxKeyBytes,
-				MetadataMaxValueBytes:       domain.DefaultMetadataMaxValueBytes,
-				MetadataMaxEntityBytes:      domain.DefaultMetadataMaxEntityBytes,
-				MetadataMaxCommandBytes:     domain.DefaultMetadataMaxCommandBytes,
-			})
-		}
-	}
-
 	buffer := r.machine.writeSet
 	buffer.Reset(at)
 
@@ -230,7 +204,7 @@ func (r *AuditReplayer) Replay(at *commonpb.Timestamp, orders []*raftcmdpb.Order
 	}
 
 	scope := &auditReplayScope{WriteSet: buffer}
-	result, processErr := r.machine.processor.ProcessOrders(
+	result, processErr := r.machine.processor.ProcessAuditedOrders(
 		orders,
 		auditReplayScopeFactory{scope: scope},
 		buffer,

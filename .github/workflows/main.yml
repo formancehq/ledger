@@ -323,7 +323,7 @@ jobs:
           nix develop .#ci --command just test-model-cluster 180
 
   Coverage:
-    if: always()
+    if: always() && github.event_name != 'merge_group'
     needs: [Tests, Tests-E2E-Business, Tests-E2E-Cluster, Tests-Scenarios]
     runs-on: namespace-profile-linux-amd64-4vcpu
     env:
@@ -455,7 +455,7 @@ jobs:
       - name: Set up Docker Buildx
         uses: namespacelabs/nscloud-setup-buildx-action@d059ed7184f0bc7c8b27e8810cea153d02bcc6dd # v0.0.23
       - name: Login to GitHub Container Registry
-        uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
+        uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
         with:
           registry: ghcr.io
           username: NumaryBot

@@ -216,6 +216,16 @@ func TestValidateClusterPolicyFields(t *testing.T) {
 		cfg.IdempotencyTTL = -time.Second
 		require.ErrorContains(t, cfg.Validate(), "--idempotency-ttl must not be negative")
 	})
+
+	for _, ttl := range []time.Duration{time.Nanosecond, 999 * time.Nanosecond} {
+		t.Run("submicrosecond idempotency TTL "+ttl.String()+" rejected", func(t *testing.T) {
+			t.Parallel()
+
+			cfg := validBaseConfig()
+			cfg.IdempotencyTTL = ttl
+			require.ErrorContains(t, cfg.Validate(), "--idempotency-ttl must be 0 or at least 1µs")
+		})
+	}
 }
 
 func TestValidateTLSConfig(t *testing.T) {

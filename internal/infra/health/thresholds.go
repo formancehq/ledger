@@ -1,6 +1,11 @@
 package health
 
-import "github.com/formancehq/ledger/v3/internal/domain"
+import (
+	"time"
+
+	"github.com/formancehq/ledger/v3/internal/domain"
+	"github.com/formancehq/ledger/v3/internal/infra/monitoring/diskusage"
+)
 
 // VolumeSample is one node's WAL and data usage fractions (0..1) for a single
 // health-check cycle.
@@ -9,6 +14,23 @@ type VolumeSample struct {
 	WALValid     bool
 	DataFraction float64
 	DataValid    bool
+
+	// Observation times on the local clock, used by expire.
+	walObservedAt  time.Time
+	dataObservedAt time.Time
+}
+
+// expire invalidates every volume whose observation is older than
+// diskusage.MaximumSampleAge at now.
+func (s *VolumeSample) expire(now time.Time) {
+	s.WALValid = s.WALValid && observationUsable(now, s.walObservedAt)
+	s.DataValid = s.DataValid && observationUsable(now, s.dataObservedAt)
+}
+
+func observationUsable(now, observedAt time.Time) bool {
+	age := max(now.Sub(observedAt), 0)
+
+	return diskusage.SampleUsable(true, true, !observedAt.IsZero(), uint64(age.Milliseconds()))
 }
 
 // Thresholds holds the block (high-water) and resume (low-water) marks for the

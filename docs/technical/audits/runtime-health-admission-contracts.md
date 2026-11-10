@@ -31,7 +31,7 @@ Follow extra callees only to complete this chain and load their owning contract.
 | --- | --- |
 | WAL/data pressure | `diskusage.Collector.collect`, `VolumeSample.Usable`, `HealthChecker.check`, `Thresholds.NextDiskBlocked`; CLI Server Health Check Flags. Fractions measure filesystem usage including reserved space, not just Ledger directory bytes. Hysteresis uses fresh, valid samples, with block equality and strict below-resume release. |
 | Clock skew | `HealthChecker.exceedsClockSkew`: midpoint estimate, excessive-RTT discard, disabled check and failed call are distinct from an observed skew violation. Do not impose disk hysteresis on clock skew. |
-| Missing or stale observations | `diskusage.SampleUsable` requires successful, nonzero-capacity, timestamped WAL/data samples no older than one minute. A failed Statfs retains cached bytes but invalidates the sample. Committed members missing from the service pool or failing disk RPC contribute invalid samples: they cannot clear an existing disk block. A nil or previous-epoch gate rejects writes until the new leader polls fresh local WAL and data. An unavailable remote member alone does not impose a permanent initial block on a healthy quorum. Nonleaders do not publish a fresh verdict. |
+| Missing or stale observations | `diskusage.SampleUsable` requires successful, nonzero-capacity, timestamped WAL/data samples no older than one minute when the verdict is decided; a sample that expires while peers are polled cannot clear a block. A failed Statfs retains cached bytes but invalidates the sample. Committed members missing from the service pool or failing disk RPC contribute invalid samples: they cannot clear an existing disk block. A nil or previous-epoch gate rejects writes until the new leader polls fresh local WAL and data. An unavailable remote member alone does not impose a permanent initial block on a healthy quorum. Nonleaders do not publish a fresh verdict. |
 | Combined reasons | `gateState` is atomically published and loaded once; disk error wins over skew, while either blocks. `TestHealthChecker_LeadershipChangeInvalidatesWriteGate` and `TestCheckWritesAllowed_NoTornStateBetweenReasons` are current protections to challenge against, not new findings. |
 | Admission routes | `Admission.Admit` and `Barrier` call `CheckWritesAllowed` before proposing. Resolve actual HTTP/gRPC/controller forwarding and internal callers. A technical proposal outside these methods is not automatically a bypass defect; establish the promise for that operation. No global revocation of in-flight work is implied. |
 | Controlled drain | `ledger.formance.com/drain` requests a Raft-ordered cutoff. The leader's local proposal gate closes at marker enqueue; every member's applied gate and FSM reject later ordered writes. A request started earlier but not yet proposed may be rejected; one ordered before the marker retains its ordinary outcome. `Drained=True` certifies durable application by all captured members, not the annotation alone. Release reopens admission only when its entry applies. |
@@ -113,10 +113,27 @@ owned by the Raft and persistence audits respectively.
 
 ## EN-2479 write-readiness gate
 
-`Admission.waitAuditKeyReady` applies to every audited request, including the
-policy reconciler's first order. It polls only until a committed key is seen,
+`Admission.waitAuditKeyReady` applies to every audited execution batch. It polls only until a committed key is seen,
 then latches. Cancellation and malformed-row errors must return to the caller.
-The periodic leader reconciler proposes initialization before policy and
-retries on transient failure, so an early request cannot wedge the FSM or wait
+The periodic leader reconciler proposes initialization and retries on transient
+failure, so an early audited request cannot wedge the FSM or wait
 forever after a one-shot failure. The FSM domain owns deterministic first-wins
 apply semantics; this domain owns gate reachability and liveness.
+
+Native policy reconciliation is operational and does not write business audit.
+It remains subject to its admission gates, while the business audit-key gate
+protects audited execution batches. Policy readiness and audit-key readiness
+remain distinct prerequisites.
+
+## Metadata-policy retry gate oracle
+
+Metadata-policy retries use ordinary admission and FSM replay. Earlier readiness,
+authentication, signatures and shape checks retain precedence. Safely prepared
+proposals retain existing maintenance, drain and audit-capacity apply guards.
+Exercise transitions before proposal and before apply with explicit
+synchronization, identifying the exact refusal and absence of new business
+effects. A replay writes no new audit entry; fresh policy refusals use the
+existing audited failure path. This domain owns gate consumption/precedence;
+`idempotency-retries-partial-failures` owns key expiry, content identity,
+historical outcomes and fresh policy-refusal evidence. No snapshot replay helper
+or general admission-error bypass is implied.

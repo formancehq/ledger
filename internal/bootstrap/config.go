@@ -356,6 +356,12 @@ func (c Config) Validate() error {
 		return errors.New("--idempotency-ttl must not be negative")
 	}
 
+	// The policy stores whole microseconds, and 0 means never expire: a
+	// positive sub-microsecond TTL would truncate to that sentinel.
+	if c.IdempotencyTTL > 0 && c.IdempotencyTTL < time.Microsecond {
+		return errors.New("--idempotency-ttl must be 0 or at least 1µs")
+	}
+
 	// The health worker requires a positive ticker interval; zero does not
 	// disable polling. Reject invalid input before starting its goroutine.
 	if c.HealthConfig.Interval <= 0 {

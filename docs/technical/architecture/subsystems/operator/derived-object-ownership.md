@@ -29,7 +29,7 @@ The helpers live in `misc/operator/internal/controller/derived_object_ownership.
 | Name-based prunes of disabled objects (`deleteIfExists`, DNSEndpoint prune) | Ownership on the read, then a UID-preconditioned delete (`deleteInspected`) | Object left in place; logged |
 | Auth-keys ConfigMap and cluster Secret cleanup | Same as above | Object left in place; logged |
 | Reading the previous auth-keys ConfigMap for key carry-forward | Ownership on the read | `errResourceNameConflict`; foreign keys are never carried into the trust set |
-| VolumeClaimTemplate orphan-and-recreate delete of the StatefulSet | Ownership on the read, then `deleteInspected` with orphan propagation | `errResourceNameConflict`; nothing deleted |
+| VolumeClaimTemplate orphan-and-recreate delete of the StatefulSet | Ownership on the read, then direct identity/version revalidation and an orphan DELETE with UID/resourceVersion preconditions | `errResourceNameConflict`; nothing deleted |
 | Status readiness (`updateStatus`) | Ownership of the StatefulSet | Treated as absent; readiness of another runtime is never reported |
 | Ledger, ledger-index and EventSink `ledgerctl` execs | `fetchClusterStatefulSet` (StatefulSet controlled by the Cluster UID), then `ownedPodExec` (pod-0 controlled by that StatefulSet UID) | `errClusterRuntimeAbsent`, `errResourceNameConflict` or `errPodNotOwned`; nothing executed |
 | Annotated drain (`ledger.formance.com/drain`) preflight, barrier and release | `fetchClusterStatefulSet` for the live replica count, gRPC port and TLS mode, then `ownedPodExec` per member pod | `errClusterRuntimeAbsent` requeues and `errResourceNameConflict` fails the step, both before any exec. `errPodNotOwned` fails the step without running that command. The preflight is read-only, and refusing pod-0 means `BeginDrain`/`EndDrain` is never sent. But the barrier and release send that marker before they read every member: a member pod refused after it may follow a committed marker. The phase then stays `Draining`/`Releasing` and retries, and Pods keep running; `Drained=True` or the release completes only once every member is owned and confirmed |
@@ -85,7 +85,9 @@ way.
   `resourceVersion`, so an ownerReference change on the same object between
   the read and the delete is not detected. A `resourceVersion` precondition
   would turn every status write by another controller into a spurious
-  conflict.
+  conflict. This applies to prunes through `deleteInspected`; the scale-down
+  PVC and claim-template replacement paths use the stricter identity/version
+  fences described in [storage reconciliation](storage-reconciliation.md#deletion-boundaries).
 - **Exec target.** The exec API has no UID precondition. A pod replaced between
   `ownedPodExec`'s uncached read and the exec stream is not detected; the window
   is one API round trip.
