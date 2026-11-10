@@ -169,10 +169,10 @@ admission planned none of its reads:
 the coverage gate finds the key the order expected absent present, and the
 FSM returns `STALE_INPUTS_RESOLUTION` before executing the script: for an exact
 selector on the content read, for `latest` on the pointer read, before any
-content read. The rejection is retryable and leaves no audit entry or frozen
-outcome. A
-retry re-admits, resolves the saved script and plans it. No unplanned script
-reaches the coverage gate.
+content read. The gate rejects the read without recording a coverage miss, so
+the unplanned script never executes. The rejection is retryable and leaves no
+audit entry or frozen outcome. A retry re-admits, resolves the saved script and
+plans it.
 
 The placement follows the [replicated-state rule](validation.md#replicated-policy-refusals).
 The expectation is an internal Raft field that RC.3 voters ignore, so the change

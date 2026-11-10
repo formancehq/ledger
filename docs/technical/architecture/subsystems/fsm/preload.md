@@ -172,16 +172,15 @@ The discriminator between them: **only the `CacheSnapshotter` method takes `attr
 
 `Builder.Build(aggregate *Coverage, operations []WriteOperation) (*BuildResult, error)` (`internal/infra/plan/builder.go`) resolves the aggregate and produces the `ExecutionPlan` the proposal carries. `Builder.Run(...)` (`internal/infra/plan/runner.go`) drives the whole propose sequence around it.
 
-`ExecutionPlan` (`misc/proto/raft_cmd.proto:761`):
+`ExecutionPlan` (`misc/proto/raft_cmd.proto:756`):
 
 | Field | Meaning |
 |-------|---------|
 | `fixed64 lastPersistedIndex = 1` | cache-generation boundary index computed at propose time from the *predicted* next Raft index (`cache.BoundaryIndex(nextIndex, GenerationThreshold)`, `internal/infra/plan/builder.go`); `Machine.Preload` requires it to equal the base index of Gen0 or Gen1, else the seeds would target a generation that no longer exists (hard error + `assert.Unreachable`). Despite the name it is **not** a persistence cursor — that is `Machine.LastPersistedIndex()`, an unrelated value. |
-| `fixed64 cache_epoch = 4` | cache epoch at admission time; the FSM rejects on mismatch |
-| `repeated AttributeCoverage attributes = 6` | the resolved coverage entries |
-| `repeated ReloadIdempotencyKey idempotency_keys = 7` | the separate idempotency channel |
+| `fixed64 cache_epoch = 2` | cache epoch at admission time; the FSM rejects on mismatch |
+| `repeated AttributeCoverage attributes = 3` | the resolved coverage entries |
+| `repeated ReloadIdempotencyKey idempotency_keys = 4` | the separate idempotency channel |
 | `repeated AbsenceExpectation absence_expectations = 5` | keys an order's planning observed as absent, see [absence expectations](#absence-expectations) |
-| `reserved 2, 3, 5, 8` | former `preloads`, `touches`, `declared`, `productions` |
 
 ### `AttributeCoverage` — seed vs coverage-only
 
