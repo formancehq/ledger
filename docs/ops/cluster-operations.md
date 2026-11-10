@@ -70,7 +70,7 @@ within each node.
 
 ### Join Sequence
 
-The join process has four phases: peer discovery, node initialization, learner registration preflight, and startup of inbound Raft traffic. Both discovery and registration go through the inter-node `ClusterBootstrapService` exposed on the RaftServer — gated by cluster-id metadata (and cluster-secret bearer when configured), without the user-JWT auth pipeline.
+The join process has four phases: peer discovery, node initialization, learner registration preflight, and startup of inbound Raft traffic. Both discovery and registration go through the inter-node `ClusterBootstrapService` exposed on the RaftServer — gated by cluster-id metadata (and cluster-secret bearer on TLS connections when configured), without the user-JWT auth pipeline. During an `optional` rollout, legacy plaintext peers connect without the secret.
 
 #### Phase 1: Peer Discovery
 
@@ -99,7 +99,7 @@ treats transient conditions (peer not yet up, no leader) as retryable, but two
 statuses from the target are hard configuration errors that would otherwise be
 retried forever:
 
-- `codes.Unauthenticated` — the joining node's `--cluster-secret` is missing or
+- `codes.Unauthenticated` on TLS — the joining node's `--cluster-secret` is missing or
   wrong. Discovery aborts immediately with a `JoinAuthError` that names the
   `--join` address and tells the operator whether to add or fix the secret.
 - `codes.PermissionDenied` — the joining node's `--cluster-id` does not match

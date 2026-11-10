@@ -112,12 +112,12 @@ The server enforces the following rules at startup:
   intercepted and replayed by an on-path attacker, so both
   `--tls-mode=disabled` and `--tls-mode=optional` are rejected at startup —
   `optional` runs a dual listener that still accepts plaintext client
-  connections, so it is not sufficient. This also applies to peer transport:
-  a cluster secret is accepted only over strict TLS. The transitional
-  `optional` mode is therefore limited to unauthenticated transport during a
-  controlled TLS transition; authenticated clusters must converge to
-  `required` before peer credentials are used. There is no
-  opt-out; terminate TLS on the ledger process itself even when an ingress or
+  connections, so it is not sufficient. The inter-node cluster secret has a
+  separate rule: it requires TLS to be available, so `disabled` is rejected.
+  During `optional`, peers send the secret only over TLS; connections to
+  legacy plaintext peers carry no secret and do not gain forwarding trust.
+  External API authentication has no opt-out from strict TLS; terminate TLS
+  on the ledger process itself even when an ingress or
   service mesh also terminates TLS upstream. Note this guard covers the
   **gRPC service transport** only — `--tls-mode` does not govern the HTTP
   REST-compat listener, which remains plaintext and must be protected by

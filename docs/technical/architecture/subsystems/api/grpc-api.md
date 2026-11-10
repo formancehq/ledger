@@ -66,15 +66,17 @@ default (configurable via `--grpc-peer-port`).
 
 > **Note**: There are three separate gRPC servers:
 > - **Service server** (port 8888): External client-facing API (BucketService, ClusterService, Health)
-> - **Peer service server** (port 8889): Follower-to-leader service forwarding; validates the cluster secret when configured
+> - **Peer service server** (port 8889): Follower-to-leader service forwarding; validates the cluster secret on TLS connections when configured
 > - **Raft server** (port 7777): Internal inter-node communication (RaftTransport, SnapshotService)
 
 The peer service server is an intra-cluster trust boundary, not a second public
 API. It is reachable through the internal/headless service only; it is not
 published by the public gRPC Ingress. Deployments should also use a
 `NetworkPolicy` to allow the peer port only between Ledger pods. When a
-`cluster-secret` is configured, callers on that network path must present it;
-the secret is reserved for this internal listener. When authentication is
+`cluster-secret` is configured, callers over TLS on that network path must
+present it; the secret is reserved for this internal listener. During an
+`optional` TLS rollout, legacy plaintext peers are admitted without it but
+are not trusted forwarding hops. When authentication is
 disabled and no cluster secret is configured, the peer listener performs no
 application-level credential check, so network isolation is the only boundary.
 
