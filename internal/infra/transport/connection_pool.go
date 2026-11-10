@@ -319,6 +319,7 @@ func (p *ConnectionPool) decideTLS(addr string) (bool, error) {
 
 	if isTLSHandshakeError(err) {
 		lifecycle.SendEvent("grpc_tls_migration_fallback", map[string]any{"address": addr, "tls": false, "peerCredentialAttached": false})
+
 		return false, nil
 	}
 

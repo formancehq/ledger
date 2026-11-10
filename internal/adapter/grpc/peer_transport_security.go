@@ -15,5 +15,6 @@ func peerUsesTLS(ctx context.Context) bool {
 		return false
 	}
 	_, ok = p.AuthInfo.(credentials.TLSInfo)
+
 	return ok
 }

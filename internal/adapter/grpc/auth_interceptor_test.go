@@ -138,6 +138,7 @@ func TestPeerInterceptorTrustRequiresTLS(t *testing.T) {
 			_, err := interceptor(ctx, &servicepb.BarrierRequest{}, info, func(ctx context.Context, _ any) (any, error) {
 				called = true
 				require.True(t, internalauth.IsClusterInternal(ctx))
+
 				return nil, nil
 			})
 			if tc.wantTrusted {
@@ -158,6 +159,7 @@ func TestOptionalPlaintextPeerDoesNotGainForwardingTrust(t *testing.T) {
 	_, err := interceptor(ctx, &servicepb.BarrierRequest{}, &ggrpc.UnaryServerInfo{FullMethod: "/ledger.BucketService/Barrier"},
 		func(ctx context.Context, _ any) (any, error) {
 			require.False(t, internalauth.IsClusterInternal(ctx))
+
 			return nil, nil
 		})
 	require.NoError(t, err)
@@ -181,6 +183,7 @@ func TestPeerStreamTrustRequiresTLS(t *testing.T) {
 			err := interceptor(nil, &authTestServerStream{ctx: ctx}, info, func(_ any, stream ggrpc.ServerStream) error {
 				called = true
 				require.Equal(t, tc.trusted, internalauth.IsClusterInternal(stream.Context()))
+
 				return nil
 			})
 			require.NoError(t, err)
