@@ -117,7 +117,7 @@ func TestWorker_MalformedURLDoesNotDisclosePassword(t *testing.T) {
 	require.Nil(t, ledger.GetMirrorSyncProgress().GetError())
 	source := v2.NewHTTPSource(ledger.GetMirrorSource().GetHttp().GetBaseUrl(), config.GetLedgerName(), &http.Client{Transport: rejectingHTTPMirrorTransport{t: t}})
 	t.Cleanup(func() { require.NoError(t, source.Close()) })
-	w := NewWorker(ledgerName, 100, source, nil, store, proposer, builder, logger, meters)
+	w := NewWorker(ledgerName, 100, source, v2.TranslateOptions{}, store, proposer, builder, logger, meters)
 	proposed := 0
 	proposer.beforeApply = func(cmd *raftcmdpb.Proposal) {
 		proposed++
@@ -274,7 +274,7 @@ func TestWorker_TransportErrorsDoNotDiscloseCredentials(t *testing.T) {
 					}
 					source := v2.NewHTTPSource(baseURL, config.GetLedgerName(), &http.Client{Transport: transport})
 					t.Cleanup(func() { require.NoError(t, source.Close()) })
-					w := NewWorker(ledgerName, 100, source, nil, store, proposer, builder, logger, meters)
+					w := NewWorker(ledgerName, 100, source, v2.TranslateOptions{}, store, proposer, builder, logger, meters)
 					assertSafe := func(diagnosticText string) {
 						t.Helper()
 						password, hasPassword := tc.user.Password()

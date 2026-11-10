@@ -15,7 +15,9 @@ import (
 	"github.com/formancehq/ledger/v3/internal/infra/node"
 	"github.com/formancehq/ledger/v3/internal/infra/preload"
 	"github.com/formancehq/ledger/v3/internal/infra/state"
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
+	"github.com/formancehq/ledger/v3/internal/query"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
 
@@ -150,6 +152,18 @@ func (p *Builder) ReadBoundaries(ledgerName string) (*raftcmdpb.LedgerBoundaries
 	defer func() { _ = reader.Close() }()
 
 	return p.attrs.Boundary.Get(reader, []byte(ledgerName))
+}
+
+// AggregateVolumes scans every volume of the given ledger directly from
+// Pebble and returns one row per (asset, color).
+func (p *Builder) AggregateVolumes(ledgerName string) (*commonpb.AggregateResult, error) {
+	reader, err := p.store.NewReadHandle()
+	if err != nil {
+		return nil, fmt.Errorf("creating read handle: %w", err)
+	}
+	defer func() { _ = reader.Close() }()
+
+	return query.AggregateAllVolumes(reader, p.attrs.Volume, ledgerName, query.AggregateOptions{})
 }
 
 // TrackerNext returns the predicted next Raft index from the IndexTracker.

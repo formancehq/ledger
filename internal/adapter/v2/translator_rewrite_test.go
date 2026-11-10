@@ -72,7 +72,7 @@ func TestTranslateBatch_Rewrite_CreatedTransaction(t *testing.T) {
 		}),
 	}}
 
-	orders, _, _, err := TranslateBatch("default", v2Logs, 1, 0, dropWorkerRewriter(t))
+	orders, _, _, err := TranslateBatch("default", v2Logs, 1, 0, TranslateOptions{Rewriter: dropWorkerRewriter(t)})
 	require.NoError(t, err)
 	require.Len(t, orders, 1)
 
@@ -110,7 +110,7 @@ func TestTranslateBatch_Rewrite_RevertedTransaction(t *testing.T) {
 		}),
 	}}
 
-	orders, _, _, err := TranslateBatch("default", v2Logs, 1, 1, dropWorkerRewriter(t))
+	orders, _, _, err := TranslateBatch("default", v2Logs, 1, 1, TranslateOptions{Rewriter: dropWorkerRewriter(t)})
 	require.NoError(t, err)
 	require.Len(t, orders, 1)
 
@@ -153,7 +153,7 @@ func TestTranslateBatch_Rewrite_MetadataTargets(t *testing.T) {
 		},
 	}
 
-	orders, _, _, err := TranslateBatch("default", v2Logs, 1, 1, dropWorkerRewriter(t))
+	orders, _, _, err := TranslateBatch("default", v2Logs, 1, 1, TranslateOptions{Rewriter: dropWorkerRewriter(t)})
 	require.NoError(t, err)
 	require.Len(t, orders, 3)
 
@@ -184,7 +184,7 @@ func TestTranslateBatch_Rewrite_AccountMetadataCollisionMerges(t *testing.T) {
 		}),
 	}}
 
-	orders, _, _, err := TranslateBatch("default", v2Logs, 1, 0, dropWorkerRewriter(t))
+	orders, _, _, err := TranslateBatch("default", v2Logs, 1, 0, TranslateOptions{Rewriter: dropWorkerRewriter(t)})
 	require.NoError(t, err)
 
 	ct := orders[0].GetLedgerScoped().GetMirrorIngest().GetEntry().GetCreatedTransaction()
@@ -219,7 +219,7 @@ func TestTranslateBatch_Rewrite_InvalidResultErrors(t *testing.T) {
 		}),
 	}}
 
-	_, _, _, err = TranslateBatch("default", v2Logs, 1, 0, r)
+	_, _, _, err = TranslateBatch("default", v2Logs, 1, 0, TranslateOptions{Rewriter: r})
 	require.Error(t, err)
 }
 
@@ -248,7 +248,7 @@ func TestTranslateBatch_Rewrite_DropBecomesFillGap(t *testing.T) {
 		}),
 	}}
 
-	orders, _, nextTxID, err := TranslateBatch("default", v2Logs, 1, 5, r)
+	orders, _, nextTxID, err := TranslateBatch("default", v2Logs, 1, 5, TranslateOptions{Rewriter: r})
 	require.NoError(t, err)
 	require.Len(t, orders, 1)
 

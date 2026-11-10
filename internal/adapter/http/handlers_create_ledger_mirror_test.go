@@ -294,6 +294,49 @@ func TestHandleCreateLedger_MirrorRewriteRules(t *testing.T) {
 	require.Equal(t, ":worker:\\d+", anyRule.GetActions()[0].GetRewriteAddress().GetPattern())
 }
 
+func TestHandleCreateLedger_MirrorAssetMappings(t *testing.T) {
+	t.Parallel()
+
+	var capturedReq *servicepb.Request
+
+	backend := NewMockBackend(gomock.NewController(t))
+	backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(
+		func(_ context.Context, req *servicepb.ApplyRequest) (*domain.ApplyResult, error) {
+			capturedReq = req.GetUnsigned().GetRequests()[0]
+
+			return &domain.ApplyResult{Logs: []*commonpb.Log{{
+				Payload: &commonpb.LogPayload{
+					Type: &commonpb.LogPayload_CreateLedger{
+						CreateLedger: &commonpb.CreatedLedgerLog{
+							Name: "mirror-am",
+							Mode: commonpb.LedgerMode_LEDGER_MODE_MIRROR,
+						},
+					},
+				},
+			}}}, nil
+		}).AnyTimes()
+	srv := newTestServer(t, backend)
+
+	body := `{"mode":"MIRROR","mirrorSource":{"ledgerName":"default","type":"http","baseUrl":"http://v2:3068","assetMappings":[{"sourceAsset":"USDT_ETHEREUM/6","asset":"USDT/6","color":"ETHEREUM"},{"sourceAsset":"USD/0","asset":"USD"}]}}`
+	w := httptest.NewRecorder()
+	r := newRequest(t, http.MethodPost, "/mirror-am", strings.NewReader(body), map[string]string{
+		"ledgerName": "mirror-am",
+	})
+	r.Header.Set("Content-Type", "application/json")
+
+	srv.handleCreateLedger(w, r)
+
+	require.Equal(t, http.StatusCreated, w.Code)
+	mappings := capturedReq.GetCreateLedger().GetMirrorSource().GetAssetMappings()
+	require.Len(t, mappings, 2)
+	require.Equal(t, "USDT_ETHEREUM/6", mappings[0].GetSourceAsset())
+	require.Equal(t, "USDT/6", mappings[0].GetAsset())
+	require.Equal(t, "ETHEREUM", mappings[0].GetColor())
+	require.Equal(t, "USD/0", mappings[1].GetSourceAsset())
+	require.Equal(t, "USD", mappings[1].GetAsset())
+	require.Empty(t, mappings[1].GetColor())
+}
+
 func TestMirrorSourceToProto_Unsupported(t *testing.T) {
 	t.Parallel()
 

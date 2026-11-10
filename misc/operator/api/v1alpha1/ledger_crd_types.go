@@ -133,6 +133,31 @@ type MirrorSourceSpec struct {
 	// MirrorRewriteRule). Applies to both HTTP and Postgres sources.
 	// +optional
 	RewriteRules []MirrorRewriteRule `json:"rewriteRules,omitempty"`
+
+	// AssetMappings map v2 source assets onto a v3 asset and optional color
+	// (see MirrorAssetMapping). Applies to both HTTP and Postgres sources.
+	// +optional
+	// +kubebuilder:validation:MaxItems=256
+	AssetMappings []MirrorAssetMapping `json:"assetMappings,omitempty"`
+}
+
+// MirrorAssetMapping maps one v2 source asset (for example `USDT_ETHEREUM/6`)
+// onto a v3 asset (`USDT/6`) and an optional color (`ETHEREUM`).
+type MirrorAssetMapping struct {
+	// SourceAsset is the asset as it appears in the v2 source ledger.
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=64
+	SourceAsset string `json:"sourceAsset"`
+
+	// Asset is the v3 asset the source asset is mirrored into.
+	// +kubebuilder:validation:Pattern=`^[A-Z][A-Z0-9]{0,16}(/([1-9][0-9]?|1[0-9]{2}|2[0-4][0-9]|25[0-5]))?$`
+	Asset string `json:"asset"`
+
+	// Color is the v3 color attached to the mirrored asset.
+	// +optional
+	// +kubebuilder:validation:Pattern=`^[A-Z]{0,32}$`
+	// +kubebuilder:validation:MaxLength=32
+	Color string `json:"color,omitempty"`
 }
 
 // MirrorRewriteRule transforms a mirror log entry during v2→v3 translation.

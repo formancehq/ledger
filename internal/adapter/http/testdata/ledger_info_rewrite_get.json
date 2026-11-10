@@ -5,6 +5,17 @@
     "defaultEnforcementMode": "STRICT",
     "mirrorSource": {
       "ledgerName": "source",
+      "assetMappings": [
+        {
+          "sourceAsset": "USDT_ETHEREUM/6",
+          "asset": "USDT/6",
+          "color": "ETHEREUM"
+        },
+        {
+          "sourceAsset": "USD/0",
+          "asset": "USD"
+        }
+      ],
       "http": {
         "baseUrl": "https://source.example"
       },

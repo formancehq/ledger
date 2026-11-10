@@ -89,7 +89,7 @@ func TestWorker_PostgresGapCommitAndRollback(t *testing.T) {
 					require.NoError(t, err)
 					t.Cleanup(func() { require.NoError(t, source.Close()) })
 
-					return NewWorker(key.Name, pageSize, source, nil, store, proposer, builder, logger, meters), source
+					return NewWorker(key.Name, pageSize, source, v2.TranslateOptions{}, store, proposer, builder, logger, meters), source
 				}
 				worker, source := newWorker()
 				more, err := worker.processBatch(ctx)
