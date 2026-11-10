@@ -21,12 +21,16 @@ archives on `main` are versioned from it:
 `N` is the number of commits since that tag. Images also keep a
 `nightly-<short-commit>` alias tag. Release images are not affected.
 
-PR images (`Build-PR-Image` in `.github/workflows/pr-images.yml`) keep their
-`pr-<num>-<sha7>` and `pr-<num>-<sha7>-run-<id>-<attempt>` tags. The same image
-is also tagged with the development version of the PR head commit, computed on
-the line of the PR's base branch, for example `v3.0.0-rc.3.dev.39.g3a0ae49`.
-The `g<sha>` part is the same commit as `<sha7>`. The squash commit built on
-`main` after merge is a different commit, so it gets its own version.
+PR images (`Build-PR-Image` in `.github/workflows/pr-images.yml`) are built as
+the development version of the PR head commit, computed on the line of the PR's
+base branch, for example `v3.0.0-rc.3.dev.39.g3a0ae49`. The `ledger-server` and
+`ledgerctl` binaries and the `org.opencontainers.image.version` label report it,
+and the image is tagged with it. The `pr-<num>-<sha7>` and
+`pr-<num>-<sha7>-run-<id>-<attempt>` tags stay on the same digest.
+`just docker-build-pr` rejects a `DEV_VERSION` that is not a development version
+of the PR tag's commit, so a PR build cannot push a release tag. The `g<sha>`
+part is the same commit as `<sha7>`. The squash commit built on `main` after
+merge is a different commit, so it gets its own version.
 
 Only tags in the commit's history count. A release tagged on a release branch is
 not visible from `main`, so `main` needs a marker once it starts the next

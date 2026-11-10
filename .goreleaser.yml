@@ -135,13 +135,15 @@ dockers_v2:
   - "{{ .Env.IMAGE_REPOSITORY }}"
   tags:
   # Releases and SemVer development builds (DEV_VERSION) get a leading v, like
-  # Git tags. PR images (.goreleaser.pr.yml) set no DEV_VERSION and keep their
-  # pr-<num>-<sha7> tag unchanged.
+  # Git tags. This covers main nightlies and PR images (.goreleaser.pr.yml).
   - '{{ if or (not .IsNightly) (index .Env "DEV_VERSION") }}v{{ end }}{{ .Version }}'
   - "{{ if not .IsNightly }}{{ if not .Prerelease }}latest{{ end }}{{ end }}"
   # Compatibility alias for consumers of the former nightly-<short-commit>
-  # image tag; empty (skipped) for releases and PR images.
-  - '{{ if and .IsNightly (index .Env "DEV_VERSION") }}nightly-{{ .ShortCommit }}{{ end }}'
+  # image tag, on main nightlies only; empty (skipped) for releases and PR images.
+  - '{{ if and .IsNightly (index .Env "DEV_VERSION") (not (index .Env "PR_IMAGE_TAG")) }}nightly-{{ .ShortCommit }}{{ end }}'
+  # PR images keep their pr-<num>-<sha7>[-run-<id>-<attempt>] tag next to the
+  # development version. Without DEV_VERSION that tag is already {{ .Version }}.
+  - '{{ if and (index .Env "PR_IMAGE_TAG") (index .Env "DEV_VERSION") }}{{ .Env.PR_IMAGE_TAG }}{{ end }}'
   platforms:
   - linux/amd64
   - linux/arm64

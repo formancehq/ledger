@@ -71,8 +71,8 @@ jobs:
             echo "build_image=${build_image}"
             echo "operator_image=${operator_image}"
           } >> "$GITHUB_OUTPUT"
-      # RFC-0013: also tag the PR image with the SemVer development version of
-      # the PR head (vX.Y.Z-dev.N.gSHA, line of the base branch). The commit and
+      # RFC-0013: build the PR image as the SemVer development version of the
+      # PR head (vX.Y.Z-dev.N.gSHA, line of the base branch). The commit and
       # its short SHA are the same as in the pr-<num>-<sha7> tag; the squash
       # commit built after merge gets its own version.
       - name: Compute development version
@@ -83,6 +83,7 @@ jobs:
           nix develop .#ci --command just docker-build-pr '${{ steps.tag.outputs.build_image }}'
         env:
           GORELEASER_KEY: ${{ secrets.GORELEASER_KEY }}
+          DEV_VERSION: ${{ steps.dev-version.outputs.version-number }}
       - name: Build and push Ledger Operator PR image with GoReleaser
         run: >
           nix develop .#ci --command just operator-docker-build-pr '${{ steps.tag.outputs.operator_image }}'
@@ -100,10 +101,12 @@ jobs:
           operator_digest=$(docker buildx imagetools inspect "$operator_image" --format '{{json .Manifest}}' | jq -er '.digest')
           [[ "$digest" =~ ^sha256:[0-9a-f]{64}$ ]] || { echo 'Invalid Ledger image digest' >&2; exit 1; }
           [[ "$operator_digest" =~ ^sha256:[0-9a-f]{64}$ ]] || { echo 'Invalid Operator image digest' >&2; exit 1; }
+          # GoReleaser pushed the RFC-0013 development version tag next to
+          # build_image; check that both name the same image.
+          dev_digest=$(docker buildx imagetools inspect "$dev_image" --format '{{json .Manifest}}' | jq -er '.digest')
+          [[ "$dev_digest" == "$digest" ]] || { echo "Invalid development version image digest: $dev_image is $dev_digest, not $digest" >&2; exit 1; }
           # Keep the existing human-facing PR tag; perf uses build_image directly.
           docker buildx imagetools create --tag "$image" "$build_image@$digest"
-          # RFC-0013 development version of the same image.
-          docker buildx imagetools create --tag "$dev_image" "$build_image@$digest"
           {
             echo "## PR docker images"
             echo ""

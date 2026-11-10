@@ -58,11 +58,14 @@ func TestWorkflowImageSummary(t *testing.T) {
 		t.Fatal("missing image summary script")
 	}
 	digest := "sha256:" + strings.Repeat("b", 64)
-	for _, tt := range []struct{ name, ledger, operator string }{
-		{"valid", digest, digest},
-		{"ledger-report", "Name: ledger\nDigest: " + digest, digest},
-		{"operator-report", digest, "Name: operator\nDigest: " + digest},
-		{"empty", "", digest},
+	otherDigest := "sha256:" + strings.Repeat("c", 64)
+	for _, tt := range []struct{ name, ledger, operator, dev string }{
+		{"valid", digest, digest, digest},
+		{"ledger-report", "Name: ledger\nDigest: " + digest, digest, digest},
+		{"operator-report", digest, "Name: operator\nDigest: " + digest, digest},
+		{"empty", "", digest, digest},
+		{"dev-version-mismatch", digest, digest, otherDigest},
+		{"dev-version-missing", digest, digest, ""},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
@@ -74,6 +77,7 @@ case "$1 $2 $3" in
     case "$4" in
       "$build_image") value=$LEDGER_DIGEST ;;
       "$operator_image") value=$OPERATOR_DIGEST ;;
+      "$dev_image") value=$DEV_DIGEST ;;
       *) exit 3 ;;
     esac
     case "$value" in
@@ -81,25 +85,21 @@ case "$1 $2 $3" in
       *) printf '{"digest":"%s"}\n' "$value" ;;
     esac ;;
   'buildx imagetools create')
-    test "$#" -eq 6 && test "$4" = --tag && test "$6" = "$build_image@$LEDGER_DIGEST" || exit 4
-    case "$5" in
-      "$image") touch "$ALIAS_CREATED" ;;
-      "$dev_image") touch "$DEV_TAG_CREATED" ;;
-      *) exit 4 ;;
-    esac ;;
+    test "$#" -eq 6 && test "$4" = --tag && test "$5" = "$image" && test "$6" = "$build_image@$LEDGER_DIGEST" || exit 4
+    touch "$ALIAS_CREATED" ;;
   *) exit 2 ;;
 esac
 `
 			if err := os.WriteFile(filepath.Join(dir, "docker"), []byte(fake), 0o700); err != nil {
 				t.Fatal(err)
 			}
-			summary, alias, devTag := filepath.Join(dir, "summary"), filepath.Join(dir, "alias"), filepath.Join(dir, "dev-tag")
+			summary, alias := filepath.Join(dir, "summary"), filepath.Join(dir, "alias")
 			devImage := "ghcr.io/formancehq/ledger:v3.0.0-rc.3.dev.39.gaaaaaaa"
 			cmd := exec.CommandContext(t.Context(), "bash", "-euo", "pipefail", "-c", script)
 			cmd.Env = append(os.Environ(), "PATH="+dir+string(os.PathListSeparator)+os.Getenv("PATH"),
 				"image=ghcr.io/formancehq/ledger:pr-42-aaaaaaa", "build_image=ghcr.io/formancehq/ledger:pr-42-aaaaaaa-run-123-2",
 				"operator_image=ghcr.io/formancehq/ledger-operator:pr-42-aaaaaaa", "GITHUB_STEP_SUMMARY="+summary,
-				"dev_image="+devImage, "DEV_TAG_CREATED="+devTag,
+				"dev_image="+devImage, "DEV_DIGEST="+tt.dev,
 				"ALIAS_CREATED="+alias, "LEDGER_DIGEST="+tt.ledger, "OPERATOR_DIGEST="+tt.operator)
 			logs, err := cmd.CombinedOutput()
 			if tt.name == "valid" {
@@ -108,9 +108,6 @@ esac
 				}
 				if _, err := os.Stat(alias); err != nil {
 					t.Fatal("PR alias not created", err)
-				}
-				if _, err := os.Stat(devTag); err != nil {
-					t.Fatal("RFC-0013 development version tag not created", err)
 				}
 				data, err := os.ReadFile(summary)
 				if err != nil || !strings.Contains(string(data), digest) {
@@ -125,9 +122,6 @@ esac
 				}
 				if _, err := os.Stat(alias); !os.IsNotExist(err) {
 					t.Fatal("invalid digest reached alias creation", err)
-				}
-				if _, err := os.Stat(devTag); !os.IsNotExist(err) {
-					t.Fatal("invalid digest reached development version tag creation", err)
 				}
 			}
 		})
