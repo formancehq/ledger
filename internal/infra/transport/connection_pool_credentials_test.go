@@ -3,9 +3,12 @@ package transport
 import (
 	"context"
 	"crypto/tls"
+	"errors"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
+	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
 )
 
@@ -52,23 +55,27 @@ func TestStaticTokenCredentials_RequireTransportSecurity(t *testing.T) {
 	require.True(t, creds.RequireTransportSecurity())
 }
 
-func TestConnectionPool_AuthTokenRejectsNonStrictTLS(t *testing.T) {
+func TestConnectionPool_AuthTokenRejectsDisabledTLS(t *testing.T) {
 	t.Parallel()
+	pool := NewConnectionPool(TLSPolicy{}, PoolConfig{AuthToken: "cluster-secret"})
+	_, err := pool.decideTLS("peer.example:8889")
+	require.EqualError(t, err, "peer authentication requires TLS for peer.example:8889")
+}
 
-	for _, tt := range []struct {
-		name   string
-		policy TLSPolicy
-	}{
-		{name: "plaintext", policy: TLSPolicy{}},
-		{name: "optional TLS", policy: TLSPolicy{TLSConfig: &tls.Config{}}},
-	} {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			pool := NewConnectionPool(tt.policy, PoolConfig{AuthToken: "cluster-secret"})
-			_, err := pool.decideTLS("peer.example:8889")
-			require.EqualError(t, err, "peer authentication requires strict TLS for peer.example:8889")
-		})
+func TestConnectionPool_OptionalTLSWithSecretSelectsTransport(t *testing.T) {
+	t.Parallel()
+	pool := NewConnectionPool(TLSPolicy{TLSConfig: &tls.Config{}}, PoolConfig{AuthToken: "cluster-secret"})
+	pool.probeTLS = func(string, *tls.Config, time.Duration) error { return nil }
+	useTLS, err := pool.decideTLS("peer.example:8889")
+	require.NoError(t, err)
+	require.True(t, useTLS)
+
+	pool.probeTLS = func(string, *tls.Config, time.Duration) error {
+		return &tlsHandshakeError{err: errors.New("legacy plaintext peer")}
 	}
+	useTLS, err = pool.decideTLS("peer.example:8889")
+	require.NoError(t, err)
+	require.False(t, useTLS)
 }
 
 func TestBearerTokenDialOption(t *testing.T) {
@@ -92,8 +99,10 @@ func TestDialOptions_WithAuthToken(t *testing.T) {
 	cfgNoAuth.SetDefaults()
 	optsNoAuth := dialOptions(insecure.NewCredentials(), cfgNoAuth)
 
-	// Auth token adds one more option
-	require.Greater(t, len(opts), len(optsNoAuth))
+	// A plaintext connection must never attach the static token.
+	require.Equal(t, len(optsNoAuth), len(opts))
+	tlsOpts := dialOptions(credentials.NewTLS(&tls.Config{}), cfg)
+	require.Len(t, tlsOpts, len(optsNoAuth)+1)
 }
 
 func TestConnectionPool_RestartConnection_UnknownPeer(t *testing.T) {

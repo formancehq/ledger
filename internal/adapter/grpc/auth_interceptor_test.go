@@ -19,8 +19,10 @@ import (
 	"go.opentelemetry.io/otel/metric/noop"
 	ggrpc "google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/metadata"
+	"google.golang.org/grpc/peer"
 	"google.golang.org/grpc/status"
 
 	"github.com/formancehq/go-libs/v5/pkg/authn/oidc"
@@ -100,6 +102,22 @@ func TestPeerCredentialUsesDedicatedTransportMetadata(t *testing.T) {
 		))
 		require.Equal(t, codes.Unauthenticated, status.Code(requirePeerCredential(malformed, cfg)), value)
 	}
+}
+
+func TestPeerCredentialDuringOptionalTLSMigration(t *testing.T) {
+	t.Parallel()
+	cfg := internalauth.AuthConfig{ClusterSecret: "cluster-secret"}
+	plaintext := context.Background()
+	require.NoError(t, requirePeerCredential(plaintext, cfg))
+	require.False(t, peerUsesTLS(plaintext))
+
+	tlsContext := peer.NewContext(context.Background(), &peer.Peer{AuthInfo: credentials.TLSInfo{}})
+	require.Equal(t, codes.Unauthenticated, status.Code(requirePeerCredential(tlsContext, cfg)))
+	authenticated := metadata.NewIncomingContext(tlsContext, metadata.Pairs(
+		transport.PeerAuthMetadataKey, "Bearer cluster-secret",
+	))
+	require.NoError(t, requirePeerCredential(authenticated, cfg))
+	require.True(t, peerUsesTLS(authenticated))
 }
 
 func TestBearerTokenFromGRPCContextRejectsAmbiguousAuthorization(t *testing.T) {

@@ -73,11 +73,18 @@ func (r *ClusterReconciler) reconcileStatefulSetWithExec(ctx context.Context, le
 		return ctrl.Result{}, err
 	}
 
-	targetTLSMode := computeTargetTLSMode(
-		desiredTLSMode(ledger),
-		observedTLSMode(ledger, existingForTLS),
-		rolloutConverged(existingForTLS),
-	)
+	desiredMode := desiredTLSMode(ledger)
+	observedMode := observedTLSMode(ledger, existingForTLS)
+	converged := rolloutConverged(existingForTLS)
+	targetTLSMode := computeTargetTLSMode(desiredMode, observedMode, converged)
+	if observedMode != "" && observedMode != targetTLSMode {
+		logger.Info("Advancing ledger TLS rollout",
+			"observedMode", observedMode,
+			"targetMode", targetTLSMode,
+			"desiredMode", desiredMode,
+			"previousRolloutConverged", converged,
+			"clusterSecretInjected", shouldInjectClusterSecret(targetTLSMode))
+	}
 	ledger.Status.TLSMigrationPhase = tlsMigrationPhase(desiredTLSMode(ledger), targetTLSMode)
 	effective, err := prepareTLSRollout(ctx, r.Client, ledger, existingForTLS, targetTLSMode)
 	if err != nil {
