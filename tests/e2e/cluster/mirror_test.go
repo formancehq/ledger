@@ -817,7 +817,7 @@ var _ = Describe("Mirror", Ordered, func() {
 			st, ok := status.FromError(err)
 			Expect(ok).To(BeTrue())
 			Expect(st.Code()).To(Equal(codes.InvalidArgument))
-			Expect(st.Message()).To(ContainSubstring("mirror asset mapping invalid"))
+			Expect(st.Message()).To(Equal(`mirrorSource.assetMappings[1]: duplicate sourceAsset "USD/0"`))
 		})
 	})
 
