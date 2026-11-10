@@ -441,7 +441,7 @@ func TestAuthenticate_EdDSA_NoIssuerCheck(t *testing.T) {
 	}
 
 	claims := newTestClaims("ledger:read")
-	claims.Issuer = "some-other-issuer" // Different from cfg.Issuer — should still pass
+	claims.Issuer = "some-other-issuer" // Not in cfg.Issuers — should still pass
 	token := signEdDSA(t, edPriv, "ed-key", claims)
 	ctx := ctxWithBearer(token)
 
