@@ -229,6 +229,9 @@ func evaluatePeerOrUserCredentials(ctx context.Context, cfg internalauth.AuthCon
 		return internalauth.EvaluateGRPCCredentials(ctx, cfg)
 	}
 
+	if !internalauth.IsClusterInternal(ctx) {
+		return ctx, status.Error(codes.Unauthenticated, "authenticated peer transport is required")
+	}
 	return internalauth.WithPeerSystemAuthentication(ctx), nil
 }
 
