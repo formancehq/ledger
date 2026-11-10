@@ -286,44 +286,6 @@ func (c *MockScopeDeleteQueryCheckpointCall) DoAndReturn(f func(uint64)) *MockSc
 	return c
 }
 
-// ExpectedAbsent mocks base method.
-func (m *MockScope) ExpectedAbsent(kind byte, key CoverageKey) bool {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ExpectedAbsent", kind, key)
-	ret0, _ := ret[0].(bool)
-	return ret0
-}
-
-// ExpectedAbsent indicates an expected call of ExpectedAbsent.
-func (mr *MockScopeMockRecorder) ExpectedAbsent(kind, key any) *MockScopeExpectedAbsentCall {
-	mr.mock.ctrl.T.Helper()
-	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ExpectedAbsent", reflect.TypeOf((*MockScope)(nil).ExpectedAbsent), kind, key)
-	return &MockScopeExpectedAbsentCall{Call: call}
-}
-
-// MockScopeExpectedAbsentCall wrap *gomock.Call
-type MockScopeExpectedAbsentCall struct {
-	*gomock.Call
-}
-
-// Return rewrite *gomock.Call.Return
-func (c *MockScopeExpectedAbsentCall) Return(arg0 bool) *MockScopeExpectedAbsentCall {
-	c.Call = c.Call.Return(arg0)
-	return c
-}
-
-// Do rewrite *gomock.Call.Do
-func (c *MockScopeExpectedAbsentCall) Do(f func(byte, CoverageKey) bool) *MockScopeExpectedAbsentCall {
-	c.Call = c.Call.Do(f)
-	return c
-}
-
-// DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockScopeExpectedAbsentCall) DoAndReturn(f func(byte, CoverageKey) bool) *MockScopeExpectedAbsentCall {
-	c.Call = c.Call.DoAndReturn(f)
-	return c
-}
-
 // GetClusterPolicy mocks base method.
 func (m *MockScope) GetClusterPolicy() *commonpb.ClusterPolicy {
 	m.ctrl.T.Helper()

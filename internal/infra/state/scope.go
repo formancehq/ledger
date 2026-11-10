@@ -368,8 +368,9 @@ func (g *gatedScope) NewScope(coverageBits []byte) (processing.Scope, error) {
 }
 
 // NewOrderScope is NewScope for batch order orderIndex, which also binds
-// the absences admission observed for that order. Each one must be in the
-// order's coverage.
+// the absences admission observed for that order: a gated read that finds
+// one of those keys present fails with domain.ErrStaleInputsResolution.
+// Each one must be in the order's coverage.
 func (g *gatedScope) NewOrderScope(orderIndex int, coverageBits []byte) (processing.Scope, error) {
 	if _, err := g.NewScope(coverageBits); err != nil {
 		return nil, err
@@ -430,14 +431,17 @@ func (g *gatedScope) IsCovered(kind byte, key processing.CoverageKey) bool {
 	return covered
 }
 
-func (g *gatedScope) ExpectedAbsent(kind byte, key processing.CoverageKey) bool {
-	if len(g.absent) == 0 {
-		return false
+// gate checks coverage like CheckCoverage and reports whether the current
+// order expects the key absent. A read that finds such a key present must
+// fail with domain.ErrStaleInputsResolution: the order's plan did not account
+// for its value.
+func (g *gatedScope) gate(kind byte, key processing.CoverageKey) (bool, error) {
+	covered, id := g.covers(kind, key)
+	if !covered {
+		return false, g.coverageMiss(kind, g.scratch, id)
 	}
-	g.scratch = key.AppendBytes(g.scratch[:0])
-	id, _ := attributes.MakeKey(g.scratch)
 
-	return slices.Contains(g.absent, absentID{code: kind, id: id})
+	return len(g.absent) > 0 && slices.Contains(g.absent, absentID{code: kind, id: id}), nil
 }
 
 type absentID struct {
@@ -626,33 +630,57 @@ func (g *gatedScope) Indexes() processing.Accessor[domain.IndexKey, *commonpb.In
 // --- Gated discrete reads (signatures that do not fit the Accessor trio) ---
 
 func (g *gatedScope) GetSinkConfig(name string) (commonpb.SinkConfigReader, error) {
-	if err := g.CheckCoverage(dal.SubAttrSinkConfig, domain.SinkConfigKey{Name: name}); err != nil {
+	expectAbsent, err := g.gate(dal.SubAttrSinkConfig, domain.SinkConfigKey{Name: name})
+	if err != nil {
 		return nil, err
 	}
 
-	return g.WriteSet.GetSinkConfig(name)
+	config, err := g.WriteSet.GetSinkConfig(name)
+	if expectAbsent && err == nil && config != nil {
+		return nil, domain.ErrStaleInputsResolution
+	}
+
+	return config, err
 }
 
 func (g *gatedScope) GetNumscriptLatestVersion(ledgerName string, name string) (string, error) {
-	if err := g.CheckCoverage(dal.SubAttrNumscriptVersion, domain.NumscriptVersionKey{LedgerName: ledgerName, Name: name}); err != nil {
+	expectAbsent, err := g.gate(dal.SubAttrNumscriptVersion, domain.NumscriptVersionKey{LedgerName: ledgerName, Name: name})
+	if err != nil {
 		return "", err
 	}
 
-	return g.WriteSet.GetNumscriptLatestVersion(ledgerName, name)
+	version, err := g.WriteSet.GetNumscriptLatestVersion(ledgerName, name)
+	if expectAbsent && err == nil && version != "" {
+		return "", domain.ErrStaleInputsResolution
+	}
+
+	return version, err
 }
 
 func (g *gatedScope) ResolveNumscriptContent(ledgerName string, name string, version string) (commonpb.NumscriptInfoReader, error) {
-	if err := g.CheckCoverage(dal.SubAttrNumscriptContent, domain.NumscriptEntryKey{LedgerName: ledgerName, Name: name, Version: version}); err != nil {
+	expectAbsent, err := g.gate(dal.SubAttrNumscriptContent, domain.NumscriptEntryKey{LedgerName: ledgerName, Name: name, Version: version})
+	if err != nil {
 		return nil, err
 	}
 
-	return g.WriteSet.ResolveNumscriptContent(ledgerName, name, version)
+	info, err := g.WriteSet.ResolveNumscriptContent(ledgerName, name, version)
+	if expectAbsent && err == nil && info != nil {
+		return nil, domain.ErrStaleInputsResolution
+	}
+
+	return info, err
 }
 
 func (g *gatedScope) NumscriptVersionExists(ledgerName string, name, version string) (bool, error) {
-	if err := g.CheckCoverage(dal.SubAttrNumscriptContent, domain.NumscriptEntryKey{LedgerName: ledgerName, Name: name, Version: version}); err != nil {
+	expectAbsent, err := g.gate(dal.SubAttrNumscriptContent, domain.NumscriptEntryKey{LedgerName: ledgerName, Name: name, Version: version})
+	if err != nil {
 		return false, err
 	}
 
-	return g.WriteSet.NumscriptVersionExists(ledgerName, name, version)
+	exists, err := g.WriteSet.NumscriptVersionExists(ledgerName, name, version)
+	if expectAbsent && err == nil && exists {
+		return false, domain.ErrStaleInputsResolution
+	}
+
+	return exists, err
 }

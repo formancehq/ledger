@@ -524,8 +524,6 @@ func (s *scopeImpl) CheckCoverage(_ byte, _ processing.CoverageKey) error { retu
 
 func (s *scopeImpl) IsCovered(_ byte, _ processing.CoverageKey) bool { return true }
 
-func (s *scopeImpl) ExpectedAbsent(_ byte, _ processing.CoverageKey) bool { return false }
-
 // scopeFuncAccessor is the generic test-side Accessor: each operation is
 // a function closure wired against the scope's in-memory maps. The Put /
 // Delete functions tolerate being nil for kinds that the checker tests

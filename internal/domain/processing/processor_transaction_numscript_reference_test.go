@@ -52,7 +52,6 @@ func TestProcessCreateTransaction_NumscriptReference_ResolvesContent(t *testing.
 
 			if tt.resolveLatest {
 				mockStore.EXPECT().GetNumscriptLatestVersion(ledger, name).Return(tt.resolvedVersion, nil)
-				mockStore.EXPECT().ExpectedAbsent(dal.SubAttrNumscriptVersion, domain.NumscriptVersionKey{LedgerName: ledger, Name: name}).Return(false)
 				mockStore.EXPECT().IsCovered(
 					dal.SubAttrNumscriptContent,
 					domain.NumscriptEntryKey{LedgerName: ledger, Name: name, Version: tt.resolvedVersion},
@@ -63,10 +62,6 @@ func TestProcessCreateTransaction_NumscriptReference_ResolvesContent(t *testing.
 				(&commonpb.NumscriptInfo{Content: content}).AsReader(),
 				nil,
 			)
-			mockStore.EXPECT().ExpectedAbsent(
-				dal.SubAttrNumscriptContent,
-				domain.NumscriptEntryKey{LedgerName: ledger, Name: name, Version: tt.resolvedVersion},
-			).Return(false)
 			setupNumscriptVolumeMocks(mockStore)
 			mockStore.EXPECT().GetNextSequenceID().Return(uint64(1))
 			mockStore.EXPECT().GetDate().Return((&commonpb.Timestamp{Data: 1234567890}).AsReader()).AnyTimes()
@@ -148,7 +143,6 @@ func TestProcessCreateTransaction_NumscriptReference_RejectsResolutionFailures(t
 			selector: "latest",
 			setup: func(mockStore *MockScope) {
 				mockStore.EXPECT().GetNumscriptLatestVersion(ledger, name).Return("2.0.0", nil)
-				mockStore.EXPECT().ExpectedAbsent(dal.SubAttrNumscriptVersion, domain.NumscriptVersionKey{LedgerName: ledger, Name: name}).Return(false)
 				mockStore.EXPECT().IsCovered(
 					dal.SubAttrNumscriptContent,
 					domain.NumscriptEntryKey{LedgerName: ledger, Name: name, Version: "2.0.0"},
@@ -187,34 +181,27 @@ func TestProcessCreateTransaction_NumscriptReference_RejectsResolutionFailures(t
 			},
 		},
 		{
-			// No volume expectation is set: executing the unplanned script
-			// would fail the mock instead of returning stale.
+			// The gate rejects content the order expected absent; the stale
+			// reason must survive the store-failure wrapping.
 			name:     "content expected absent but saved since",
 			selector: "1.2.3",
 			setup: func(mockStore *MockScope) {
-				mockStore.EXPECT().ResolveNumscriptContent(ledger, name, "1.2.3").Return(
-					(&commonpb.NumscriptInfo{Content: `send [USD 100] (source = @world destination = @a)`}).AsReader(), nil)
-				mockStore.EXPECT().ExpectedAbsent(
-					dal.SubAttrNumscriptContent,
-					domain.NumscriptEntryKey{LedgerName: ledger, Name: name, Version: "1.2.3"},
-				).Return(true)
+				mockStore.EXPECT().ResolveNumscriptContent(ledger, name, "1.2.3").Return(nil, domain.ErrStaleInputsResolution)
 			},
 			assert: func(t *testing.T, err domain.SerializableError) {
 				t.Helper()
-				require.ErrorIs(t, err, domain.ErrStaleInputsResolution)
+				require.Equal(t, domain.ErrReasonStaleInputsResolution, err.Reason(), "not relabelled as a storage failure")
 			},
 		},
 		{
-			// The pointer appeared since admission: no content read is attempted.
 			name:     "latest pointer expected absent but saved since",
 			selector: "latest",
 			setup: func(mockStore *MockScope) {
-				mockStore.EXPECT().GetNumscriptLatestVersion(ledger, name).Return("1.0.0", nil)
-				mockStore.EXPECT().ExpectedAbsent(dal.SubAttrNumscriptVersion, domain.NumscriptVersionKey{LedgerName: ledger, Name: name}).Return(true)
+				mockStore.EXPECT().GetNumscriptLatestVersion(ledger, name).Return("", domain.ErrStaleInputsResolution)
 			},
 			assert: func(t *testing.T, err domain.SerializableError) {
 				t.Helper()
-				require.ErrorIs(t, err, domain.ErrStaleInputsResolution)
+				require.Equal(t, domain.ErrReasonStaleInputsResolution, err.Reason(), "not relabelled as a storage failure")
 			},
 		},
 		{

@@ -213,10 +213,11 @@ batch can observe the key present, for example after a same-batch save.
 The FSM validates them before preload: the order exists, the key is well formed,
 and no expectation repeats. `ScopeFactory.NewOrderScope` binds an order's
 expectations and rejects one outside that order's coverage as
-`INVALID_EXECUTION_PLAN`. A handler that finds the key present asks
-`Scope.ExpectedAbsent` and rejects the order as `STALE_INPUTS_RESOLUTION`: the
-plan did not account for that value. The Numscript reference resolution is the
-only producer.
+`INVALID_EXECUTION_PLAN`. The coverage gate enforces them on every gated read
+of that order: a read that finds an expected-absent key present fails with
+`STALE_INPUTS_RESOLUTION`, since the plan did not account for its value, and
+`domain.StoreFailure` keeps that reason. Handlers do not check expectations
+themselves. The Numscript reference resolution is the only producer.
 
 ### `PredictedIndex` and the proposal guard
 

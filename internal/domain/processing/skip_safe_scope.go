@@ -248,10 +248,6 @@ func (s *skipSafeScope) IsCovered(kind byte, key CoverageKey) bool {
 	return s.inner.IsCovered(kind, key)
 }
 
-func (s *skipSafeScope) ExpectedAbsent(kind byte, key CoverageKey) bool {
-	return s.inner.ExpectedAbsent(kind, key)
-}
-
 // Compile-time assertion: skipSafeScope satisfies Scope. If Scope gains a
 // new method, this line fails to build until the method is explicitly
 // classified above — no silent delegation via embedding.

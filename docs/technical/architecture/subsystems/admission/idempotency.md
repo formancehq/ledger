@@ -166,10 +166,11 @@ A save can commit between admission's read and apply, for example when it was
 proposed but not yet applied locally. The FSM then resolves the script, but
 admission planned none of its reads:
 
-`Scope.ExpectedAbsent` reports the key the order expected absent, and the FSM
-returns `STALE_INPUTS_RESOLUTION` before executing the script: for an exact
-selector on the content key, for `latest` on the pointer, before any content
-read. The rejection is retryable and leave no audit entry or frozen outcome. A
+the coverage gate finds the key the order expected absent present, and the
+FSM returns `STALE_INPUTS_RESOLUTION` before executing the script: for an exact
+selector on the content read, for `latest` on the pointer read, before any
+content read. The rejection is retryable and leaves no audit entry or frozen
+outcome. A
 retry re-admits, resolves the saved script and plans it. No unplanned script
 reaches the coverage gate.
 

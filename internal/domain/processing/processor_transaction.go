@@ -60,10 +60,6 @@ func processCreateTransaction(ledger string, order *raftcmdpb.CreateTransactionO
 				return nil, &domain.ErrNumscriptNotFound{Name: name}
 			}
 
-			if s.ExpectedAbsent(dal.SubAttrNumscriptVersion, domain.NumscriptVersionKey{LedgerName: ledger, Name: name}) {
-				return nil, domain.ErrStaleInputsResolution
-			}
-
 			// Admission preloaded the content for the version it observed as the
 			// greatest. If the greatest advanced since planning (a concurrent
 			// save committed first), that content key is not covered — reject as
@@ -83,12 +79,6 @@ func processCreateTransaction(ledger string, order *raftcmdpb.CreateTransactionO
 
 		if info == nil {
 			return nil, &domain.ErrNumscriptNotFound{Name: name, Version: version}
-		}
-
-		// A save committed since admission observed the script as absent and
-		// planned none of its reads; the retry re-plans against it.
-		if s.ExpectedAbsent(dal.SubAttrNumscriptContent, domain.NumscriptEntryKey{LedgerName: ledger, Name: name, Version: version}) {
-			return nil, domain.ErrStaleInputsResolution
 		}
 
 		script = &commonpb.Script{

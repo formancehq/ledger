@@ -131,11 +131,6 @@ type Scope interface {
 	// without recording a coverage miss. Only for reads whose absence from
 	// the plan is an expected cross-proposal race the caller rejects itself.
 	IsCovered(kind byte, key CoverageKey) bool
-
-	// ExpectedAbsent reports whether admission observed the key as absent
-	// while planning this order (ExecutionPlan.absence_expectations). A
-	// present key it reports is one the order's plan did not account for.
-	ExpectedAbsent(kind byte, key CoverageKey) bool
 }
 
 // CoverageKey is the minimal shape a canonical key type must expose to
@@ -172,8 +167,9 @@ type ScopeFactory interface {
 	// for ValidateTransientVolumes) must use NewProposalScope.
 	NewScope(coverageBits []byte) (Scope, error)
 
-	// NewOrderScope is NewScope for batch order orderIndex: the scope also
-	// reports that order's absence expectations through ExpectedAbsent.
+	// NewOrderScope is NewScope for batch order orderIndex: a read that
+	// finds a key the order expected absent (ExecutionPlan.absence_expectations)
+	// fails with domain.ErrStaleInputsResolution.
 	NewOrderScope(orderIndex int, coverageBits []byte) (Scope, error)
 
 	// NewProposalScope returns a scope that admits every AttributeCoverage
