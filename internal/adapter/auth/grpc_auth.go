@@ -252,10 +252,8 @@ func validateToken(ctx context.Context, token string, cfg AuthConfig) (*validate
 				}
 			}
 		}
-	} else {
-		if !slices.Contains(cfg.Issuers, claims.Issuer) {
-			return nil, fmt.Errorf("%w: got: %s, trusted: %v", oidc.ErrIssuerInvalid, claims.Issuer, cfg.Issuers)
-		}
+	} else if !slices.Contains(cfg.Issuers, claims.Issuer) {
+		return nil, fmt.Errorf("%w: got: %s, trusted: %v", oidc.ErrIssuerInvalid, claims.Issuer, cfg.Issuers)
 	}
 
 	if err := oidc.CheckExpiration(claims, 0); err != nil {
