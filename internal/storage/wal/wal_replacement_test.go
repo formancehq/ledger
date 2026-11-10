@@ -16,7 +16,7 @@ func TestReceivedSnapshotReplacementSurvivesSegmentRollover(t *testing.T) {
 	w := newTestWALAt(t, dir)
 	cs := &raftpb.ConfState{Voters: []uint64{1, 2, 3}}
 	require.NoError(t, w.Append(hs(3, 1, 1), []*raftpb.Entry{ent(1, 3, nil)}))
-	require.NoError(t, w.ApplySnapshot(&raftpb.Snapshot{Metadata: snapshotMeta(1, 3, cs)}, nil))
+	require.NoError(t, w.ApplySnapshot(&raftpb.Snapshot{Metadata: snapshotMeta(1, 3, cs)}, nil, nil))
 
 	// A full-segment entry forces etcd WAL to consume its preallocated .tmp file.
 	data := make([]byte, wal.SegmentSizeBytes)
@@ -138,9 +138,9 @@ func TestConsecutiveReceivedSnapshotsReplaceSameWALPath(t *testing.T) {
 	require.NoError(t, w.Append(hs(3, 1, 3), []*raftpb.Entry{
 		ent(1, 1, nil), ent(2, 2, nil), ent(3, 3, nil),
 	}))
-	require.NoError(t, w.ApplySnapshot(&raftpb.Snapshot{Metadata: snapshotMeta(3, 3, cs)}, nil))
+	require.NoError(t, w.ApplySnapshot(&raftpb.Snapshot{Metadata: snapshotMeta(3, 3, cs)}, nil, nil))
 	require.NoError(t, w.Append(hs(4, 2, 4), []*raftpb.Entry{ent(4, 4, nil)}))
-	require.NoError(t, w.ApplySnapshot(&raftpb.Snapshot{Metadata: snapshotMeta(4, 4, cs)}, nil))
+	require.NoError(t, w.ApplySnapshot(&raftpb.Snapshot{Metadata: snapshotMeta(4, 4, cs)}, nil, nil))
 	require.NoError(t, w.Close())
 
 	restarted := newTestWALAt(t, dir)

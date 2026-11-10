@@ -968,7 +968,7 @@ func (s *DefaultWAL) termLocked(i uint64) (uint64, error) {
 
 // ApplySnapshot durably replaces the Raft log with an accepted received
 // snapshot and the entries from the same Ready that follow it.
-func (s *DefaultWAL) ApplySnapshot(snap *raftpb.Snapshot, suffix []*raftpb.Entry) error {
+func (s *DefaultWAL) ApplySnapshot(snap *raftpb.Snapshot, readyState *raftpb.HardState, suffix []*raftpb.Entry) error {
 	s.snapshotPersistenceMu.Lock()
 	defer s.snapshotPersistenceMu.Unlock()
 	s.walWriteMu.Lock()
@@ -999,6 +999,14 @@ func (s *DefaultWAL) ApplySnapshot(snap *raftpb.Snapshot, suffix []*raftpb.Entry
 	}
 	if state.GetTerm() > s.hardState.GetTerm() {
 		state.Vote = new(uint64(0))
+	}
+	if !raft.IsEmptyHardState(readyState) {
+		state = &raftpb.HardState{
+			Term: new(readyState.GetTerm()), Vote: new(readyState.GetVote()), Commit: new(readyState.GetCommit()),
+		}
+	}
+	if state.GetTerm() < max(s.hardState.GetTerm(), snapTerm) || state.GetCommit() < max(s.hardState.GetCommit(), snapIndex) {
+		return fmt.Errorf("received snapshot %d has regressive HardState", snapIndex)
 	}
 	lastIndex := snapIndex + uint64(len(suffix))
 	if state.GetCommit() > lastIndex {

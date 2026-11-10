@@ -151,7 +151,8 @@ and staging-path collisions. See `docs/technical/contributing/testing.md`.
 
 ## WAL reclamation after restore
 
-After Raft accepts a received snapshot, `ApplySnapshot` writes the full
+After Raft accepts a received snapshot, the node skips the ordinary Ready
+append to the old WAL. `ApplySnapshot` writes the full
 snapshot file. It prepares and syncs `etcd.next/` with the snapshot record,
 HardState, and only the Ready entries after the snapshot index. The old WAL
 remains the recovery source until the directory switch begins. Before the

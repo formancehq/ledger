@@ -130,7 +130,7 @@ func TestPurgeOldWALSegments(t *testing.T) {
 		assertOldWALSegmentsPurged(t, func(w *DefaultWAL, snapshotIndex uint64) {
 			require.NoError(t, w.ApplySnapshot(&raftpb.Snapshot{
 				Metadata: snapshotMeta(snapshotIndex, 1, &raftpb.ConfState{Voters: []uint64{1}}),
-			}, nil))
+			}, nil, nil))
 		})
 	})
 }
@@ -1085,7 +1085,7 @@ func TestLastIndex_WithSnapshotOnly(t *testing.T) {
 		Metadata: snapshotMeta(10, 2, cs),
 		Data:     []byte("snapshot data"),
 	}
-	require.NoError(t, w.ApplySnapshot(snap, nil))
+	require.NoError(t, w.ApplySnapshot(snap, nil, nil))
 
 	idx, err := w.LastIndex()
 	require.NoError(t, err)
@@ -1293,8 +1293,7 @@ func TestReceivedSnapshotRestartDiscardsReplacedTail(t *testing.T) {
 	require.Equal(t, uint64(4), ready.GetTerm())
 	require.Equal(t, uint64(4), ready.GetCommit())
 	require.Empty(t, ready.Entries)
-	require.NoError(t, w.Append(ready.HardState, ready.Entries))
-	require.NoError(t, w.ApplySnapshot(ready.Snapshot, ready.Entries))
+	require.NoError(t, w.ApplySnapshot(ready.Snapshot, ready.HardState, ready.Entries))
 	last, err := w.LastIndex()
 	require.NoError(t, err)
 	require.Equal(t, uint64(4), last)
@@ -1335,7 +1334,7 @@ func TestApplySnapshot(t *testing.T) {
 		Metadata: snapshotMeta(10, 5, &raftpb.ConfState{Voters: []uint64{1, 2, 3}}),
 		Data:     []byte("full-snapshot"),
 	}
-	require.NoError(t, w.ApplySnapshot(snap, nil))
+	require.NoError(t, w.ApplySnapshot(snap, nil, nil))
 
 	// Verify snapshot is applied
 	gotSnap, err := w.Snapshot()
@@ -1362,7 +1361,7 @@ func TestApplySnapshotUnlocksOnSnapshotSaveFailure(t *testing.T) {
 
 	err := w.ApplySnapshot(&raftpb.Snapshot{
 		Metadata: snapshotMeta(10, 2, &raftpb.ConfState{Voters: []uint64{1}}),
-	}, nil)
+	}, nil, nil)
 	require.ErrorContains(t, err, "saving snapshot file")
 	require.True(t, w.mu.TryLock(), "ApplySnapshot must unlock after a persistence failure")
 	w.mu.Unlock()
@@ -1552,7 +1551,7 @@ func TestCompact_EmptyEntriesAfterApplySnapshot(t *testing.T) {
 	snap := &raftpb.Snapshot{
 		Metadata: snapshotMeta(10, 2, &raftpb.ConfState{Voters: []uint64{1}}),
 	}
-	require.NoError(t, w.ApplySnapshot(snap, nil))
+	require.NoError(t, w.ApplySnapshot(snap, nil, nil))
 
 	// Compact at snapshot index with no entries should succeed (no-op via empty entries path)
 	// firstIndex = snapshot.Metadata.Index + 1 = 11

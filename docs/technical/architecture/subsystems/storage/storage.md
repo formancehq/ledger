@@ -131,9 +131,9 @@ the etcd storage model.
 ### Received snapshots with an entry suffix
 
 A Raft Ready may carry a snapshot and subsequent entries together. The node
-first appends the Ready entries and HardState durably to the active WAL. When
-Raft accepts the received snapshot, `ApplySnapshot` writes its full snapshot
-file, then prepares a new WAL containing a snapshot record, the current
+does not append the Ready entries or HardState to the old WAL. When Raft
+accepts the received snapshot, `ApplySnapshot` writes its full snapshot
+file, then prepares a new WAL containing a snapshot record, the Ready
 HardState (term, vote and commit), and only the same Ready entries after the
 snapshot index. It syncs that WAL before retiring the old one. The in-memory
 log is replaced only after the new WAL is active and its HardState and entry

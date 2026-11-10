@@ -1558,14 +1558,15 @@ func (node *Node) resolveReadyReadStates(rd raft.Ready) {
 }
 
 func (node *Node) persistReady(ctx context.Context, rd raft.Ready) error {
-	now := time.Now()
-
-	err := node.wal.Append(rd.HardState, rd.Entries)
-	if err != nil {
-		return fmt.Errorf("appending entries to storage: %w", err)
+	// A snapshot Ready must not advance the old WAL's commit past its log.
+	// ApplySnapshot persists its HardState and suffix with the replacement WAL.
+	if raft.IsEmptySnap(rd.Snapshot) {
+		now := time.Now()
+		if err := node.wal.Append(rd.HardState, rd.Entries); err != nil {
+			return fmt.Errorf("appending entries to storage: %w", err)
+		}
+		node.appendEntriesHistogram.Record(ctx, time.Since(now).Seconds())
 	}
-
-	node.appendEntriesHistogram.Record(ctx, time.Since(now).Seconds())
 
 	// Track the highest term observed via HardState so Propose can tag each
 	// future with the proposer's view of the current term (issue #172). Use a
@@ -1609,7 +1610,7 @@ func (node *Node) installReadySnapshot(ctx context.Context, stop chan struct{}, 
 		// status is statusInstallingSnapshot — safe to write FSM fields.
 		node.applier.PrepareForSnapshotInstall(stop)
 
-		if err := node.wal.ApplySnapshot(rd.Snapshot, rd.Entries); err != nil {
+		if err := node.wal.ApplySnapshot(rd.Snapshot, rd.HardState, rd.Entries); err != nil {
 			return fmt.Errorf("applying snapshot to storage: %w", err)
 		}
 
