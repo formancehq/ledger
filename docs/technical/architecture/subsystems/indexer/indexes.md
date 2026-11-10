@@ -339,3 +339,20 @@ So an ahead cursor means the deployment is already broken — an offline restore
 | Reverse-map row presence | `0x03` keyspace in the peer read store | Yes (peer store) | No — projection of the metadata logs. Row *presence* is re-verified by `compareReverseMapOrphans` against the registry; the replayed schema supplies diagnostics only. Row values are not verified. |
 | Cardinality / Min / Max / null counts | Computed by `inspectSummary` on demand | **No** | N/A — derived from the live keyspace. |
 | Bloom counters | OTel | No | N/A — monitoring only. |
+
+## Historical address projection repair
+
+Transaction ANY, SOURCE and DESTINATION mappings describe retained transaction
+postings, so purged EPHEMERAL volume cells remain discoverable after their current
+account state disappears. TRANSIENT volume cells remain excluded. These buckets
+are additive peer secondary state; the builder reconstructs them from permanent
+transaction logs and the applied-proposal exclusion history.
+
+An upgrade does not automatically revisit a READY index's historical rows.
+Explicit drop/recreate schedules normal backfill on each replica. Unlike a
+metadata-index drop, an address-index drop retains its role bucket, while
+removing readiness and preserving the local version high-water. Backfill adds
+omitted mappings and promotion gates availability until catch-up. This repairs
+missing rows, not extra rows. Old frozen query checkpoints retain their original
+copies. The operational sequence, ownership coordination and availability limits
+are documented in [server upgrades](../../../../ops/upgrades.md#repairing-historical-transaction-address-indexes).

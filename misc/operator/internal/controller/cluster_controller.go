@@ -32,6 +32,8 @@ import (
 type ClusterReconciler struct {
 	client.Client
 
+	APIReader client.Reader
+
 	Scheme    *runtime.Scheme
 	Config    *rest.Config
 	Clientset kubernetes.Interface
@@ -40,6 +42,8 @@ type ClusterReconciler struct {
 	stopVersions []string
 	// OperatorVersion is the release version embedded in the running binary.
 	OperatorVersion string
+
+	claimTemplateRetries claimTemplateRetries
 }
 
 // +kubebuilder:rbac:groups=ledger.formance.com,resources=clusters,verbs=get;list;watch;create;update;patch;delete
@@ -67,11 +71,17 @@ func (r *ClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (re
 	// Fetch the Cluster CR
 	ledger := &ledgerv1alpha1.Cluster{}
 	if err := r.Get(ctx, req.NamespacedName, ledger); err != nil {
+		if apierrors.IsNotFound(err) {
+			r.claimTemplateRetries.forget(req.NamespacedName)
+		}
+
 		return ctrl.Result{}, ignoreNotFound(err)
 	}
 
 	// Handle deletion — owned resources are garbage-collected via owner references.
 	if !ledger.DeletionTimestamp.IsZero() {
+		r.claimTemplateRetries.forget(req.NamespacedName)
+
 		return ctrl.Result{}, nil
 	}
 	// Commit the identity before any resource can start a Ledger process. An
@@ -113,6 +123,12 @@ func (r *ClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (re
 	defer func() {
 		result, retErr = r.reportResourceNameConflict(ctx, ledger, result, retErr)
 	}()
+
+	// Restore an interrupted claim-template replacement before applying any new
+	// desired changes, including an invalid spec or a changed RC target.
+	if handled, result, err := r.resumeClaimTemplateRecovery(ctx, ledger); handled || err != nil {
+		return result, err
+	}
 
 	// An in-flight drain owns the workload until its release completes. This
 	// also lets annotation removal reopen admission even if a later spec edit
@@ -411,6 +427,13 @@ func (r *ClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (re
 
 		return ctrl.Result{}, fmt.Errorf("reconciling StatefulSet: %w", err)
 	}
+	if ledger.Status.ClaimTemplateRecovery != nil {
+		// The saved workload owns recovery. Do not start a drain or remove
+		// dependencies while its StatefulSet may be absent.
+		return stsResult, nil
+	}
+	// The normal workload pass can now apply the refreshed key projection.
+	meta.RemoveStatusCondition(&ledger.Status.Conditions, "AuthKeysRolloutDeferred")
 
 	// Now that reconcileStatefulSet has run (not pending), the pod template has
 	// dropped the CLUSTER_SECRET SecretKeyRef if TLS is disabled — so it is finally

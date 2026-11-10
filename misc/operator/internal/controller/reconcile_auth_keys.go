@@ -187,13 +187,30 @@ func (r *ClusterReconciler) reconcileAuthKeys(ctx context.Context, ledger *ledge
 // Keep it when Credentials temporarily stop matching; the ordinary pass may
 // delete it after the workload is free to reconcile again.
 func (r *ClusterReconciler) reconcileAuthKeysWithDeletion(ctx context.Context, ledger *ledgerv1alpha1.Cluster, mayDelete bool) ([]credentialsKeyInfo, authKeysPendingReason, error) {
+	return r.reconcileAuthKeysProjectionWithDeletion(ctx, ledger, false, mayDelete)
+}
+
+// reconcileAuthKeysProjection retains a mounted ConfigMap during storage
+// recovery. Explicit removals publish an empty key set instead of deleting the
+// mount or retaining revoked entries. Transiently unresolved matching keys keep
+// the usual carry-forward and pending guarantees. The caller supplies the saved
+// workload's auth configuration; newer desired auth settings are deferred.
+func (r *ClusterReconciler) reconcileAuthKeysProjection(ctx context.Context, ledger *ledgerv1alpha1.Cluster, retainMountedConfigMap bool) ([]credentialsKeyInfo, authKeysPendingReason, error) {
+	return r.reconcileAuthKeysProjectionWithDeletion(ctx, ledger, retainMountedConfigMap, true)
+}
+
+func (r *ClusterReconciler) reconcileAuthKeysProjectionWithDeletion(ctx context.Context, ledger *ledgerv1alpha1.Cluster, retainMountedConfigMap, mayDelete bool) ([]credentialsKeyInfo, authKeysPendingReason, error) {
 	logger := log.FromContext(ctx)
+	var reader client.Reader = r.Client
+	if retainMountedConfigMap {
+		reader = r.storageAPIReader()
+	}
 
 	// Collect keys from cluster-scoped Credentials. matched counts Credentials
 	// whose selector matches this Cluster, regardless of distribution state;
 	// credentials holds only those already distributed and readable; unresolved
 	// identifies the matched-but-not-distributed ones for carry-forward.
-	credentials, matched, unresolved, err := r.collectClusterCredentialsKeys(ctx, ledger)
+	credentials, matched, unresolved, err := r.collectClusterCredentialsKeys(ctx, reader, ledger)
 	if err != nil {
 		return nil, authKeysNotPending, err
 	}
@@ -205,6 +222,9 @@ func (r *ClusterReconciler) reconcileAuthKeysWithDeletion(ctx context.Context, l
 	// Case 1: no Credentials match (matched == 0) — legitimate removal. Delete
 	// the ConfigMap if it exists.
 	if matched == 0 {
+		if retainMountedConfigMap {
+			return nil, authKeysNotPending, r.writeAuthKeysConfigMap(ctx, ledger, nil)
+		}
 		if !mayDelete {
 			return nil, authKeysNotPending, nil
 		}
@@ -289,7 +309,7 @@ func (r *ClusterReconciler) reconcileAuthKeysWithDeletion(ctx context.Context, l
 	existingEntries := map[string]authKeyEntry{}
 	existingPubKeys := map[string]string{}
 	if len(unresolved) > 0 && !authExplicitlyDisabled {
-		entries, pubKeys, err := r.readExistingAuthKeys(ctx, ledger, cmName)
+		entries, pubKeys, err := r.readExistingAuthKeys(ctx, reader, ledger, cmName)
 		switch {
 		case errors.Is(err, errMalformedAuthKeys):
 			// The ConfigMap read SUCCEEDED but its auth-keys.json is corrupt. This is
@@ -437,6 +457,9 @@ func (r *ClusterReconciler) reconcileAuthKeysWithDeletion(ctx context.Context, l
 	// preserve (the server needs no key set here), so delete the ConfigMap like any
 	// other no-effective-keys removal rather than ship an empty one.
 	if len(merged) == 0 {
+		if retainMountedConfigMap {
+			return nil, authKeysNotPending, r.writeAuthKeysConfigMap(ctx, ledger, nil)
+		}
 		if !mayDelete {
 			return nil, authKeysNotPending, nil
 		}
@@ -457,13 +480,25 @@ func (r *ClusterReconciler) reconcileAuthKeysWithDeletion(ctx context.Context, l
 		return nil, authKeysNotPending, nil
 	}
 
-	// Build the auth-keys.json content from the merged set.
-	authKeys := authKeysJSON{
-		Keys: make([]authKeyEntry, 0, len(merged)),
+	if err := r.writeAuthKeysConfigMap(ctx, ledger, merged); err != nil {
+		return nil, authKeysNotPending, err
 	}
-	pubKeyData := make(map[string]string, len(merged))
 
-	for _, a := range merged {
+	// A complete carried set must roll after recovery: Pods load keys and
+	// authorization metadata once at boot. The recovery caller only refreshes
+	// the projection and preserves its saved PodTemplate.
+	return merged, authKeysNotPending, nil
+}
+
+func (r *ClusterReconciler) writeAuthKeysConfigMap(ctx context.Context, ledger *ledgerv1alpha1.Cluster, keys []credentialsKeyInfo) error {
+	// Keep an explicit empty array for removal while a frozen template still
+	// mounts this ConfigMap. Never preserve revoked entries as a fallback.
+	authKeys := authKeysJSON{
+		Keys: make([]authKeyEntry, 0, len(keys)),
+	}
+	pubKeyData := make(map[string]string, len(keys))
+
+	for _, a := range keys {
 		fileName := pubKeyFileName(a.ConfigMapPrefix, a.CredentialsName)
 		authKeys.Keys = append(authKeys.Keys, authKeyEntry{
 			KeyID:         a.KeyID,
@@ -476,13 +511,13 @@ func (r *ClusterReconciler) reconcileAuthKeysWithDeletion(ctx context.Context, l
 
 	authKeysBytes, err := json.MarshalIndent(authKeys, "", "  ")
 	if err != nil {
-		return nil, authKeysNotPending, fmt.Errorf("marshaling auth-keys.json: %w", err)
+		return fmt.Errorf("marshaling auth-keys.json: %w", err)
 	}
 
 	// Create or update the ConfigMap.
 	cm := &corev1.ConfigMap{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      cmName,
+			Name:      authKeysConfigMapName(ledger.Name),
 			Namespace: ledger.Namespace,
 		},
 	}
@@ -497,29 +532,10 @@ func (r *ClusterReconciler) reconcileAuthKeysWithDeletion(ctx context.Context, l
 		return setOwnedControllerReference(ledger, cm, r.Scheme, "ConfigMap")
 	})
 	if err != nil {
-		return nil, authKeysNotPending, fmt.Errorf("reconciling auth-keys ConfigMap: %w", err)
+		return fmt.Errorf("reconciling auth-keys ConfigMap: %w", err)
 	}
 
-	// Reaching this point means the merged set is non-empty and, for an
-	// Ed25519-dependent cluster, COMPLETE — the regression guard above already
-	// returned pending=true for the empty and incomplete cases. So every remaining
-	// path can safely roll the StatefulSet:
-	//
-	//   - Partial resolution (>=1 resolved) — always rolled, as before.
-	//   - All-unresolved but with a complete carried key set (EN-1487, QHX5a
-	//     rollout half): the ConfigMap was rebuilt with the live spec's
-	//     authorization metadata over the carried key material, and rolling is
-	//     crash-loop-safe because the referenced key set is non-empty and complete.
-	//     Rolling is in fact REQUIRED here: pods load AUTH_ED25519_KEYS once at
-	//     boot, so a narrowed-scopes / cleared-superuser change only takes effect on
-	//     restart. Freezing would strand that authorization change indefinitely.
-	//   - Issuer-backed / auth-disabled clusters (requiresEd25519Keys == false) —
-	//     never crash-loop on a missing key set, so they reconcile normally too.
-	//
-	// pending is therefore not raised: the only cases that must hold the
-	// StatefulSet pass (empty or incomplete Ed25519 key set) have already returned
-	// above.
-	return merged, authKeysNotPending, nil
+	return nil
 }
 
 // readExistingAuthKeys reads the current auth-keys ConfigMap and indexes it by
@@ -531,9 +547,9 @@ func (r *ClusterReconciler) reconcileAuthKeysWithDeletion(ctx context.Context, l
 // A ConfigMap under the name that this Cluster does not control is refused
 // with errResourceNameConflict: its keys must never be carried into this
 // Cluster's trust set.
-func (r *ClusterReconciler) readExistingAuthKeys(ctx context.Context, ledger *ledgerv1alpha1.Cluster, cmName string) (map[string]authKeyEntry, map[string]string, error) {
+func (r *ClusterReconciler) readExistingAuthKeys(ctx context.Context, reader client.Reader, ledger *ledgerv1alpha1.Cluster, cmName string) (map[string]authKeyEntry, map[string]string, error) {
 	cm := &corev1.ConfigMap{}
-	if err := r.Get(ctx, types.NamespacedName{Namespace: ledger.Namespace, Name: cmName}, cm); err != nil {
+	if err := reader.Get(ctx, types.NamespacedName{Namespace: ledger.Namespace, Name: cmName}, cm); err != nil {
 		if apierrors.IsNotFound(err) {
 			return map[string]authKeyEntry{}, map[string]string{}, nil
 		}
@@ -579,13 +595,13 @@ func (r *ClusterReconciler) readExistingAuthKeys(ctx context.Context, ledger *le
 // non-distribution (len(keys) == 0, unresolved non-empty) and a partial one
 // (both non-empty) — see reconcileAuthKeys. unresolved carries the per-credential
 // identity needed to carry each pending key forward from the existing ConfigMap.
-func (r *ClusterReconciler) collectClusterCredentialsKeys(ctx context.Context, ledger *ledgerv1alpha1.Cluster) ([]credentialsKeyInfo, int, []unresolvedCredential, error) {
+func (r *ClusterReconciler) collectClusterCredentialsKeys(ctx context.Context, reader client.Reader, ledger *ledgerv1alpha1.Cluster) ([]credentialsKeyInfo, int, []unresolvedCredential, error) {
 	logger := log.FromContext(ctx)
 
 	const configMapPrefix = "credentials"
 
 	var list ledgerv1alpha1.CredentialsList
-	if err := r.List(ctx, &list); err != nil {
+	if err := reader.List(ctx, &list); err != nil {
 		return nil, 0, nil, fmt.Errorf("listing Credentials: %w", err)
 	}
 
@@ -614,7 +630,7 @@ func (r *ClusterReconciler) collectClusterCredentialsKeys(ctx context.Context, l
 			continue
 		}
 
-		info, ok, err := r.readCredentialsKeyFromSecret(ctx, cred.Name, cred.Status.DistributedSecretRefs[0], cred.Spec.Scopes, cred.Spec.Superuser, configMapPrefix)
+		info, ok, err := r.readCredentialsKeyFromSecret(ctx, reader, cred.Name, cred.Status.DistributedSecretRefs[0], cred.Spec.Scopes, cred.Spec.Superuser, configMapPrefix)
 		if err != nil {
 			return nil, 0, nil, err
 		}
@@ -636,6 +652,7 @@ func (r *ClusterReconciler) collectClusterCredentialsKeys(ctx context.Context, l
 // an credentialsKeyInfo. Returns (info, false, nil) if the secret is not yet ready.
 func (r *ClusterReconciler) readCredentialsKeyFromSecret(
 	ctx context.Context,
+	reader client.Reader,
 	credentialsName string,
 	secretRef ledgerv1alpha1.SecretReference,
 	scopes []string,
@@ -655,7 +672,7 @@ func (r *ClusterReconciler) readCredentialsKeyFromSecret(
 		Namespace: secretRef.Namespace,
 		Name:      secretRef.Name,
 	}
-	if err := r.Get(ctx, secretKey, secret); err != nil {
+	if err := reader.Get(ctx, secretKey, secret); err != nil {
 		if apierrors.IsNotFound(err) {
 			logger.Info("credentials secret not found, skipping", "credentials", credentialsName)
 

@@ -239,6 +239,11 @@ func TestTLSDisableResumesAfterWorkloadWriteFailure(t *testing.T) {
 			attempts := 0
 			wrapped := interceptor.NewClient(c, interceptor.Funcs{
 				Update: func(ctx context.Context, inner client.WithWatch, obj client.Object, opts ...client.UpdateOption) error {
+					if len((&client.UpdateOptions{}).ApplyOptions(opts).DryRun) > 0 {
+						// Hash migration checks admission without changing the
+						// workload. Keep response loss on the first real write.
+						return inner.Update(ctx, obj, opts...)
+					}
 					if _, ok := obj.(*appsv1.StatefulSet); ok {
 						attempts++
 						if attempts == 1 {

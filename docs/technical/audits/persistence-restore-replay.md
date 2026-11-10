@@ -259,3 +259,17 @@ coverage, HLC semantics and checkpoint boundaries. Test policy-only incremental
 manifest publication and mixed historical/native delta restore. Current policy
 and operational quotas are explicitly outside business checker scope.
 See [proposal payloads](../architecture/subsystems/consensus/proposal-payloads.md).
+
+## Historical address search after a purge delta
+
+Checkpoint a funded EPHEMERAL account, then commit its final drain and require
+nonempty log/audit exports. Restore through the production checkpoint-plus-delta
+composition, run CheckStore, and verify that the checkpoint-era volume is absent
+while both funding and draining history remain searchable after rebuilding the
+peer read store. Compare independent ANY/SOURCE/DESTINATION IDs in both directions
+on source and restored stores. The real-admission fixture in
+`internal/infra/backup/historical_address_restore_test.go` is an evidence lead.
+Fresh read-store reconstruction uses retained transaction and AppliedProposal
+history; it does not repair pre-existing frozen query-checkpoint read copies.
+Read-consistency-projections owns index population/readiness, and
+query-semantic-equivalence owns exact-versus-prefix selection at a fixed horizon.

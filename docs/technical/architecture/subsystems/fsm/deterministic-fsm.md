@@ -720,7 +720,10 @@ one deterministic representative is identifiable among offenders that differ
 only by color, and appends how many keys offended. The unexplained-delta check
 is new, so a balanced but unrelated debit/credit pair fails where it previously
 passed. Anything matching sentinel output on exact text has to be updated with
-it. Pebble read errors remain I/O failures and do not assert missing data. The `nonempty sentinel
+it. Pebble read errors remain I/O failures and do not assert missing data. The
+aggregate check sums input and output per `(asset, color)` in arbitrary
+precision: each account volume is bounded to 2^256 by the FSM, but a
+ledger-wide total is not. The `nonempty sentinel
 verification completed` coverage property is emitted only inside an executed,
 nonempty sentinel callback after all checks succeed; disabled sentinels cannot
 satisfy it.

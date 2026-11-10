@@ -108,6 +108,16 @@ Missing tombstones/read failures must retain protection. Check the lookup cost
 partition and benchmark growing per-ordinal history separately from unrelated
 nodes; no set lock may span apply, store reads or proposal waits.
 
+For maintenance snapshots, keep the durable authorities ordered: fsync the
+snapshot file, append and persist its matching WAL snapshot record, then publish
+the new snapshot in memory and allow compaction. If the WAL-record append fails,
+the file is only an orphan and the previous snapshot remains authoritative; an
+idle retry must recreate the same snapshot and must not compact on an
+`ErrSnapOutOfDate` produced by a prematurely published in-memory snapshot.
+Separately, compaction must remain behind the minimum of the durable FSM cursor
+and the Raft apply-ack cursor, preserving the unapplied interval for election
+scans until `MsgStorageApplyResp` advances that frontier.
+
 ### Leadership and quorum transitions
 
 Use committed/applied indexes, not callback order or the locally reported Raft

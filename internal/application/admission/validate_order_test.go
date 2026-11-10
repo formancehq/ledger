@@ -1145,24 +1145,22 @@ func TestValidateOrder_MirrorIAMRegion(t *testing.T) {
 			wantErr: ErrMirrorIAMRegionRequired,
 		},
 		{
-			name: "postgres mirror with IAM auth on non-TLS sslmode rejected at admission",
+			name: "postgres mirror IAM TLS policy belongs to source construction",
 			src: &commonpb.MirrorSourceConfig{Type: &commonpb.MirrorSourceConfig_Postgres{
 				Postgres: &commonpb.PostgresMirrorSourceConfig{
 					Dsn:        "postgres://iam-user@host:5432/db?sslmode=disable",
 					AwsIamAuth: &commonpb.PostgresAwsIamAuth{Region: "eu-west-1"},
 				},
 			}},
-			wantErr: ErrMirrorIAMRequiresTLS,
 		},
 		{
-			name: "postgres mirror with IAM auth on unset sslmode rejected at admission",
+			name: "postgres mirror IAM missing sslmode reaches source construction",
 			src: &commonpb.MirrorSourceConfig{Type: &commonpb.MirrorSourceConfig_Postgres{
 				Postgres: &commonpb.PostgresMirrorSourceConfig{
 					Dsn:        "postgres://iam-user@host:5432/db",
 					AwsIamAuth: &commonpb.PostgresAwsIamAuth{Region: "eu-west-1"},
 				},
 			}},
-			wantErr: ErrMirrorIAMRequiresTLS,
 		},
 		{
 			name: "postgres mirror with IAM auth on libpq keyword=value DSN rejected at admission",
@@ -1172,7 +1170,7 @@ func TestValidateOrder_MirrorIAMRegion(t *testing.T) {
 					AwsIamAuth: &commonpb.PostgresAwsIamAuth{Region: "eu-west-1"},
 				},
 			}},
-			wantErr: ErrMirrorIAMRequiresTLS,
+			wantErr: ErrMirrorPostgresURLInvalid,
 		},
 		{
 			name: "http mirror source unaffected",
@@ -1388,39 +1386,18 @@ func TestValidateOrder_RejectsInvalidPostingColor(t *testing.T) {
 	}
 }
 
-// TestValidateOrder_MirrorIAMRejectsPGSSLMODEBypass reproduces the exact
-// bypass NumaryBot reported: pgxpool.ParseConfig folds PGSSLMODE from the
-// process env, so a DSN without sslmode= would inherit that env var and
-// pass a naive TLSConfig check. The admission gate must anchor the TLS
-// requirement in the raw DSN, independent of pod env.
-//
-// This test cannot share a t.Parallel outer with the table above because
-// t.Setenv forbids parallel siblings mutating the process env.
-func TestValidateOrder_MirrorIAMRejectsPGSSLMODEBypass(t *testing.T) {
-	t.Setenv("PGSSLMODE", "require")
-
-	order := &raftcmdpb.Order{
-		Type: &raftcmdpb.Order_LedgerScoped{
-			LedgerScoped: &raftcmdpb.LedgerScopedOrder{
-				Ledger: "default",
-				Payload: &raftcmdpb.LedgerScopedOrder_CreateLedger{
-					CreateLedger: &raftcmdpb.CreateLedgerOrder{
-						Mode: commonpb.LedgerMode_LEDGER_MODE_MIRROR,
-						MirrorSource: &commonpb.MirrorSourceConfig{Type: &commonpb.MirrorSourceConfig_Postgres{
-							Postgres: &commonpb.PostgresMirrorSourceConfig{
-								Dsn:        "postgres://iam-user@host:5432/db",
-								AwsIamAuth: &commonpb.PostgresAwsIamAuth{Region: "eu-west-1"},
-							},
-						}},
-					},
-				},
-			},
-		},
+// Admission never resolves driver defaults from the local environment; the
+// runtime regression TestBuildPgxPoolConfig_IAMRejectsDSNWithoutExplicitSSLMode
+// independently guards the IAM TLS boundary before credentials are installed.
+func TestValidateOrder_MirrorIAMDoesNotReadPGSSLMODE(t *testing.T) {
+	for _, mode := range []string{"require", "disable", "invalid"} {
+		t.Run(mode, func(t *testing.T) {
+			t.Setenv("PGSSLMODE", mode)
+			order := postgresURLOrder("postgres://iam-user@host:5432/db")
+			order.GetLedgerScoped().GetCreateLedger().GetMirrorSource().GetPostgres().AwsIamAuth = &commonpb.PostgresAwsIamAuth{Region: "eu-west-1"}
+			require.NoError(t, validateOrder(order))
+		})
 	}
-
-	err := validateOrder(order)
-	require.ErrorIs(t, err, ErrMirrorIAMRequiresTLS,
-		"PGSSLMODE=require in the pod env must not satisfy the admission TLS gate — the persisted DSN must carry sslmode= itself")
 }
 
 // TestValidateOrderSigningKey pins EN-1515: the stored SubGlobSigningKey value

@@ -110,8 +110,10 @@ original parser error is retained in the returned error chain: pgx errors can
 contain query passwords, TLS key passwords, and invalid option values even when
 userinfo is redacted.
 
-Non-IAM admission continues to accept these options; construction diagnoses
-invalid configurations loaded from authoritative storage. Manager reconciliation
+Admission checks generic URL shape and required IAM region, without parsing
+PostgreSQL options or loading driver defaults. Construction diagnoses invalid
+configurations loaded from authoritative storage, including unsafe IAM TLS
+settings, before installing credentials or accessing the database. Manager reconciliation
 logs the safe diagnostic with the destination ledger identity and starts no
 worker. This constructor failure does not propose a worker error status or
 advance ingestion. Stored configuration and audit evidence remain unchanged.
@@ -558,3 +560,14 @@ There is no automatic "skip the broken log" mode. Operators investigate, fix the
 - **It does not reconcile against v2 hashes.** The worker trusts the source's log content; it does not cross-check that the resulting v3 state has the same balances as v2. That kind of comparison is a future work item (and would require v2 exposing canonical state hashes).
 - **It does not run on followers.** Leadership change suspends the worker until the new leader's manager picks it up.
 - **It does not act as a generic CDC sink.** The only sources are Ledger v2 instances; arbitrary event streams are the [events](events.md) subsystem's concern.
+
+## PostgreSQL connection URL admission
+
+New mirror configurations require a hierarchical URL with an explicit scheme;
+keyword/value DSNs are rejected before Raft. Admission does not restrict the
+scheme or interpret PostgreSQL options. Use `postgres://` or `postgresql://` for
+the worker's PostgreSQL driver; socket URLs remain supported. Admission requires
+an IAM region; source construction enforces explicit TLS before installing IAM
+credentials. Invalid driver settings can be committed but start no worker. Existing stored keyword DSNs
+remain usable by workers but are fully masked in public projections. See the
+[connector admission contract](../admission/validation.md#connector-url-admission).

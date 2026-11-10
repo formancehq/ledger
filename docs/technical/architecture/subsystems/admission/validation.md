@@ -112,3 +112,59 @@ Admission rejects the exact names `_` (system API routes) and `_system`
 (system events) on every ledger-scoped write, before proposing to Raft.
 This applies equally to HTTP and gRPC. Other underscore-prefixed names,
 including `_systemx` and `_System`, remain valid.
+
+## Connector URL admission
+
+New PostgreSQL mirror and NATS/ClickHouse sink requests must use explicit URL
+forms. Restricting the accepted syntax keeps public credential projection
+explainable without a second PostgreSQL keyword parser. The alternative of
+retaining keyword DSNs requires maintaining two lexical grammars; fully masking
+legacy non-URL values preserves confidentiality without that parser.
+
+| Field | Accepted form |
+| --- | --- |
+| `mirrorSource.postgres.dsn` | Any hierarchical URL with an explicit scheme; no connector scheme allowlist. Socket/default-host URLs such as `postgresql:///ledger?host=%2Ftmp` and port-only authorities such as `postgres://:5433/db?host=/var/run/postgresql` remain valid |
+| `sink.nats.url` | Comma-separated server URLs, each with `nats://`, `tls://`, `ws://` or `wss://`; empty/default hosts, including `nats://:4222`, and surrounding entry whitespace are allowed |
+| `sink.clickhouse.dsn` | `clickhouse://`, `http://` or `https://` with a hostname; comma-separated hosts remain one URL authority |
+
+The shared lexical parser rejects missing schemes, opaque URLs, invalid escapes
+and invalid port syntax without returning parser errors that can echo credentials.
+Explicit ports on named hosts, IPv6 hosts and port-only authorities must fit
+in 16 bits (0–65535), including every host in a ClickHouse authority;
+driver-specific default-port behavior remains unchanged.
+For PostgreSQL mirrors this gate is deliberately generic: uppercase and unknown
+schemes pass URL-shape validation. The PostgreSQL worker alone interprets supported
+schemes (`postgres://` and `postgresql://`), options, connectivity and credentials.
+Admission still requires an IAM region when IAM auth is configured. The worker
+requires explicit TLS on every connection attempt before installing IAM
+credentials; admission does not parse driver configuration or read libpq environment
+variables. Invalid driver options or unsafe IAM TLS settings may therefore be
+committed and then diagnosed during source construction, which starts no worker.
+This keeps driver parsing and ambient settings out of the admission critical path
+without weakening the runtime credential boundary.
+
+Validation runs through `validateOrder` for HTTP, gRPC and bulk requests before
+proposal, without rewriting the configuration. Rejections use admission-only
+`VALIDATION` errors with safe messages; the internal sentinels are
+`ErrMirrorPostgresURLInvalid`, `ErrSinkNATSURLInvalid` and
+`ErrSinkClickHouseURLInvalid`. Their admission-only type owns safe public
+details rather than an audited failure-detail code. They produce no audited
+failure fact. The three connector checks run regardless of optional build tags.
+
+This is a request policy, not an FSM invariant. Existing committed configurations,
+Raft entries, audit history, checkpoints and restores retain their prior runtime
+semantics. Older and newer voters apply the same committed entries identically;
+an older admitting leader may still accept non-URL input during a rolling
+upgrade. No data migration or protocol revision change is needed. Before
+submitting new configurations to upgraded servers, convert keyword DSNs to URL
+form and add a scheme to every NATS server. Existing legacy values can appear
+fully masked in public reads while workers continue using their original bytes.
+
+Work is proportional to submitted connection-string bytes and NATS entry count.
+It introduces no storage scans, network probes, locks, preload keys, proposal/WAL
+amplification or FSM work. `connection_url_test.go` covers accepted and rejected
+forms, immutable input, safe errors and rejection through `Admission.Admit` with
+a proposer mock that permits no calls. The public error renderer is exercised
+for each connector to pin safe validation messages and avoid audited-detail
+serialization. Projection tests retain independent URL,
+legacy keyword, malformed, list, proxy and detached-message observations.
