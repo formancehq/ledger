@@ -23,7 +23,8 @@ Releases publish platform archives on
 - Windows: `ledger_<version>_windows-amd64.zip` and `ledger_<version>_windows-arm64.zip`. These archives contain `ledgerctl.exe` only.
 
 `<version>` is the release tag, for example `ledger_v3.0.0-beta.0_darwin-arm64.tar.gz`,
-or `nightly-<short-commit>` for nightly builds. Each archive extracts into a
+or, for nightly builds, the SemVer development version of the commit, for example
+`ledger_v3.1.0-0.dev.12.g1a2b3c4_darwin-arm64.tar.gz` (see RFC-0013). Each archive extracts into a
 directory with the same name, so several versions can sit side by side.
 
 Extract the archive and put `ledgerctl` or `ledgerctl.exe` on your `PATH`. Prefer
@@ -5370,7 +5371,7 @@ ledgerctl upgrade [flags]
 - If the current version is `dev` (built without ldflags), warns and requires `--force`
 
 **Channels:**
-- **`nightly`** (default): The rolling nightly build, tagged `nightly` on GitHub. Version format: `nightly-<shortcommit>`.
+- **`nightly`** (default): The rolling nightly build, tagged `nightly` on GitHub. Version format: the SemVer development version of the `main` commit, `X.Y.Z-dev.N.gSHA` or `X.Y.Z-P.dev.N.gSHA` (RFC-0013); builds made before RFC-0013 report `nightly-<shortcommit>`.
 - **`stable`**: The latest final release matching the running binary's major version. Drafts and prereleases are excluded. Until the first final release for that major exists, the command returns an error and `nightly` must be used.
 
 **Example:**
