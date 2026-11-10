@@ -40,12 +40,12 @@ Follow extra callees only to complete this chain and load their owning contract.
 | gRPC probes | `GRPCHealthUpdater.update` combines node health, elected leader and committed policy readiness for the service endpoint. Bootstrap registers a separate Raft-server health service. These are not interchangeable with HTTP readiness. |
 | Error propagation | CLI health error table, `grpc/errors.go`, `grpcerr` and HTTP error handling: disk ResourceExhausted/429, skew Unavailable/503. Cache horizon is operational Unavailable. Trace the actual reason and wire status, not just a non-nil error. |
 
-The deployment probe table currently describes `/clusterz` as including disk and
-clock checks. That conflicts with `DefaultBackend.IsClusterReady` and the more
-specific CLI health contract. Record this source conflict; do not infer a new
-requirement to block readiness or present the old description as a new runtime
-bug. Similarly, historical incident references, tests and old threshold examples
-are context, not current findings or authority to tune thresholds.
+`/clusterz` reports local Raft health and elected-leader availability. It does
+not evaluate the disk/clock write-admission gate; that gate is checked separately
+by admission. Keep this probe contract distinct from `/livez`, `/readyz`, `/health`
+and both gRPC health services. Historical incident references, tests and old
+threshold examples are context, not current findings or authority to tune
+thresholds.
 
 ## Ownership and exclusions
 

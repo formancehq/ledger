@@ -30,7 +30,8 @@ volume templates, the operator completes the RC rollout before recreating the
 StatefulSet for the volume change.
 Old and new voters must communicate and apply each committed entry identically
 while they coexist. The embedded operator requires a complete stop at the
-`v3.0.0-rc.4` boundary because RC.3 cannot execute native proposal payloads.
+`v3.0.0-rc.4` boundary because RC.3 cannot execute native proposal payloads
+and encodes [mirror asset mappings](#mirror-asset-mappings) differently.
 `rc.3` includes the drain barrier used for this upgrade. RC adjacency remains mandatory.
 The `rc.1` to `rc.2` transition rolls one voter at a time with a maintenance
 barrier that pauses writes; it does not stop the whole cluster.
@@ -38,6 +39,8 @@ The `rc.2` to `rc.3` transition remains rolling.
 When the running version precedes a mandatory boundary, pin the target to a
 canonical version tag. Moving or non-canonical tags such as `latest` cannot
 prove whether the boundary is crossed, so the operator blocks the change.
+Likewise, the operator blocks a canonical target at or past a boundary when the
+running image has no canonical version tag, such as `latest` or a digest.
 
 ### Preflight for Clusters using `latest`
 
@@ -507,20 +510,18 @@ The same harness has a separate, future `rc3-to-rc4` transition:
 UPGRADE_TRANSITION=rc3-to-rc4 RELEASE_BRANCH=release/v3.0 just test-release-operator-upgrade
 ```
 
-Run it only after `v3.0.0-rc.3` has been published and the PR changing the
-persisted format has added `v3.0.0-rc.4` to the operator's mandatory stop
-boundaries. The target operator and Ledger are still built from one exact
-release-branch HEAD and tagged locally as rc.4; the harness publishes no tag
+Run it against a release branch whose operator lists `v3.0.0-rc.4` as a
+mandatory stop boundary. The target operator and Ledger are still built from
+one exact release-branch HEAD and tagged locally as rc.4; the harness publishes no tag
 or image. This path requires the operator's drain barrier to advance past
 `Draining`, observes the StatefulSet and all old Pods absent before accepting
 any target Pod, and checks that the replacement StatefulSet has a new UID while
 PVC UIDs persist. It restarts a target voter to exercise replay, verifies the
 pre-upgrade account, commits another transaction, checks Raft progress and
 runs each voter's audit/derived-state checker after drain release. It fails
-against the current empty mandatory-stop list, so it is a release gate for the
-format-change PR, not evidence that rc.3 itself needs a stop. A future rc.4
-release still needs format-specific migration, snapshot, backup/restore and
-rollback validation outside this scenario.
+against an operator without the rc.4 boundary. The rc.4 release still needs
+format-specific migration, snapshot, backup/restore and rollback validation
+outside this scenario.
 
 ## Coordinated Restart
 
@@ -562,6 +563,32 @@ this format.
 The first native payload appended to the WAL closes the rollback window for
 RC.3. Restarting RC.3 on that storage requires a separately validated recovery
 procedure. See the [proposal migration contract](../technical/architecture/subsystems/consensus/proposal-payloads.md).
+
+## Change-specific notes
+
+### Mirror asset mappings
+
+`MirrorSourceConfig.asset_mappings` (field 6) is an additive optional field on
+a message stored in `LedgerInfo` and in the audited `CreatedLedgerLog`. Existing
+mirrors have an empty list, and their persisted state and audit hashes remain
+valid. No migration is required.
+
+Creating a mirror with `assetMappings` is not mixed-version safe. A voter
+without the field keeps it as an unknown field, and the deterministic order
+encoding appends unknown fields after the `http`/`postgres` source, while a
+voter that declares field 6 writes it before the source. The two voters
+therefore derive different `serialized_order` bytes, audit hash-chain entries
+and proposal hashes for the same committed `CreateLedger` entry, and their
+audit chains diverge from it. A leader running a release without asset-mapping
+support also ignores the field and ingests assets verbatim. The operator
+therefore lists `v3.0.0-rc.4` as a mandatory stop boundary, so no pre-`rc.4`
+member runs alongside an `rc.4` member. A cluster not managed by the operator
+must drain and stop every member before starting any `rc.4` member. See
+[asset mappings](../technical/architecture/subsystems/events-mirror/mirror.md#asset-mappings).
+
+A worker that finds assets v3 cannot represent among a mirror's stored volumes
+stops ingesting that mirror after the upgrade. Delete the mirror ledger and
+recreate it with the needed mappings.
 
 ## Repairing historical transaction address indexes
 

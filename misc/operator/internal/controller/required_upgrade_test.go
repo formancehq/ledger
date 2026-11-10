@@ -55,6 +55,20 @@ func TestMandatoryStopVersionBoundary(t *testing.T) {
 	require.True(t, requiresPinnedUpgradeTarget("v3.0.0-rc.3", "latest", testStopVersions))
 	require.True(t, requiresPinnedUpgradeTarget("v3.0.0-rc.3", "3.0.0-rc.4", testStopVersions))
 	require.False(t, requiresPinnedUpgradeTarget("v3.0.0-rc.4", "latest", testStopVersions))
+	for _, tt := range []struct {
+		source, target string
+		block          bool
+	}{
+		{"latest", "v3.0.0", true},
+		{"", "v3.0.0", true}, // Digest or unreadable source image.
+		{"latest", "v3.0.0-rc.4", true},
+		{"latest", "v3.0.0-rc.3", false},
+		{"latest", "latest", false},
+		{"latest", "main", false},
+		{"v3.0.0-rc.3", "v3.0.0", false},
+	} {
+		require.Equal(t, tt.block, requiresIdentifiedUpgradeSource(tt.source, tt.target, testStopVersions), "%q -> %q", tt.source, tt.target)
+	}
 }
 
 func TestStoppedUpgradeRepairsDependenciesBeforeWorkloadGate(t *testing.T) {
@@ -140,6 +154,23 @@ func TestStoppedUpgradeRequiresHeadlessService(t *testing.T) {
 	require.False(t, proceed)
 	require.ErrorContains(t, err, "spec.headlessService.enabled to remain true")
 	require.Nil(t, cluster.Status.Upgrade)
+}
+
+func TestStoppedUpgradeRejectsUnidentifiedSource(t *testing.T) {
+	t.Parallel()
+	for _, image := range []string{
+		"ghcr.io/formancehq/ledger:latest",
+		"ghcr.io/formancehq/ledger@sha256:abc",
+	} {
+		cluster := newMinimalCluster()
+		cluster.Spec.Image.Tag = "v3.0.0"
+		sts := rcStatefulSet(image, true)
+		r := &ClusterReconciler{stopVersions: testStopVersions}
+		proceed, _, err := r.reconcileRequiredUpgrade(t.Context(), cluster, sts)
+		require.False(t, proceed, image)
+		require.ErrorContains(t, err, "run a canonical version tag first", image)
+		require.Nil(t, cluster.Status.Upgrade, image)
+	}
 }
 
 func TestStoppedUpgradeWaitsForAnnotatedDrain(t *testing.T) {

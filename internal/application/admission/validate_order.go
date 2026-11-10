@@ -9,6 +9,7 @@ import (
 
 	"google.golang.org/protobuf/reflect/protoreflect"
 
+	v2 "github.com/formancehq/ledger/v3/internal/adapter/v2"
 	"github.com/formancehq/ledger/v3/internal/adapter/v2/celrewrite"
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/domain/indexes"
@@ -441,6 +442,12 @@ func validateOrderMirrorSource(order *raftcmdpb.Order) domain.Describable {
 	// guarantees the worker can build the rewriter.
 	if _, err := celrewrite.NewRewriter(src.GetRewriteRules()); err != nil {
 		return ErrMirrorRewriteRuleInvalid
+	}
+
+	// Same contract for asset mappings: NewAssetMapper is what the worker
+	// builds, so a nil error here guarantees the mapper compiles there.
+	if _, err := v2.NewAssetMapper(src.GetAssetMappings()); err != nil {
+		return &mirrorAssetMappingError{cause: err}
 	}
 
 	if http := src.GetHttp(); http != nil {

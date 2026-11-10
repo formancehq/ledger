@@ -11,6 +11,29 @@ service RaftTransportService {
   rpc StreamMessages(stream SendMessageRequest) returns (stream SendMessageResponse);
 }
 
+// LogIntegrityService exposes a bounded digest of the durable log stream to
+// other members of the Raft cluster. It is served only on the internal port.
+service LogIntegrityService {
+  rpc GetRangeDigest(GetRangeDigestRequest) returns (GetRangeDigestResponse);
+}
+
+message GetRangeDigestRequest {
+  fixed64 first_log_sequence = 1;
+  fixed64 last_log_sequence = 2;
+  // The requester sampled this durable Raft index with its log range. The
+  // receiver waits for it before reading a pinned Pebble snapshot.
+  fixed64 min_applied_index = 3;
+}
+
+message GetRangeDigestResponse {
+  fixed64 first_log_sequence = 1;
+  fixed64 last_log_sequence = 2;
+  bytes digest = 3;
+  uint32 digest_version = 4;
+  fixed64 applied_index = 5;
+  fixed64 last_log_sequence_on_node = 6;
+}
+
 message RaftRequestMessage {
   fixed64 id = 1;
   bytes message = 2;

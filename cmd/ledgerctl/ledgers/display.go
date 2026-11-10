@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
@@ -73,6 +74,18 @@ func renderMirrorSource(src *commonpb.MirrorSourceConfig) {
 
 		for i, rule := range rules {
 			pterm.Printf("    [%d] %s stop=%t\n", i, describeRewriteRule(rule), rule.GetStop())
+		}
+	}
+
+	if mappings := src.GetAssetMappings(); len(mappings) > 0 {
+		pterm.Printf("  Assets:\n")
+
+		for _, m := range mappings {
+			if m.GetColor() == "" {
+				pterm.Printf("    %s -> %s\n", m.GetSourceAsset(), m.GetAsset())
+			} else {
+				pterm.Printf("    %s -> %s \\ %q\n", m.GetSourceAsset(), m.GetAsset(), m.GetColor())
+			}
 		}
 	}
 }
@@ -155,7 +168,9 @@ func parseMirrorFlags(cmd *cobra.Command, ledgerName string) (commonpb.LedgerMod
 		cmd.Flags().Changed("mirror-aws-iam-assume-role-arn") ||
 		cmd.Flags().Changed("mirror-batch-size") ||
 		cmd.Flags().Changed("mirror-rewrite-file") ||
-		cmd.Flags().Changed("mirror-rewrite-rule")
+		cmd.Flags().Changed("mirror-rewrite-rule") ||
+		cmd.Flags().Changed("mirror-asset-mapping-file") ||
+		cmd.Flags().Changed("mirror-asset-mapping")
 
 	if hasMirrorFlags && !cmd.Flags().Changed("mode") {
 		modeStr = "mirror"
@@ -188,10 +203,16 @@ func parseMirrorFlags(cmd *cobra.Command, ledgerName string) (commonpb.LedgerMod
 		return 0, nil, err
 	}
 
+	assetMappings, err := parseAssetMappings(cmd)
+	if err != nil {
+		return 0, nil, err
+	}
+
 	cfg := &commonpb.MirrorSourceConfig{
-		LedgerName:   sourceLedgerName,
-		BatchSize:    batchSize,
-		RewriteRules: rewriteRules,
+		LedgerName:    sourceLedgerName,
+		BatchSize:     batchSize,
+		RewriteRules:  rewriteRules,
+		AssetMappings: assetMappings,
 	}
 
 	switch sourceType {
@@ -296,6 +317,56 @@ func parseRewriteRules(cmd *cobra.Command) ([]*commonpb.MirrorRewriteRule, error
 	}
 
 	return rules, nil
+}
+
+// parseAssetMappings collects --mirror-asset-mapping-file entries followed by
+// inline --mirror-asset-mapping values. Mappings are validated server-side at
+// admission — here we only decode.
+func parseAssetMappings(cmd *cobra.Command) ([]*commonpb.MirrorAssetMapping, error) {
+	var mappings []*commonpb.MirrorAssetMapping
+
+	if path, _ := cmd.Flags().GetString("mirror-asset-mapping-file"); path != "" {
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return nil, fmt.Errorf("reading --mirror-asset-mapping-file %q: %w", path, err)
+		}
+
+		var raw []any
+		if err := yaml.Unmarshal(data, &raw); err != nil {
+			return nil, fmt.Errorf("parsing --mirror-asset-mapping-file %q: %w", path, err)
+		}
+
+		for i, item := range raw {
+			jsonBytes, err := yamlToJSON(item)
+			if err != nil {
+				return nil, fmt.Errorf("parsing --mirror-asset-mapping-file %q: mapping %d: %w", path, i, err)
+			}
+
+			mapping := &commonpb.MirrorAssetMapping{}
+			if err := protojson.Unmarshal(jsonBytes, mapping); err != nil {
+				return nil, fmt.Errorf("parsing --mirror-asset-mapping-file %q: mapping %d: %w", path, i, err)
+			}
+
+			mappings = append(mappings, mapping)
+		}
+	}
+
+	inline, _ := cmd.Flags().GetStringArray("mirror-asset-mapping")
+	for _, entry := range inline {
+		source, target, ok := strings.Cut(entry, "=")
+		if !ok || source == "" || target == "" {
+			return nil, fmt.Errorf("--mirror-asset-mapping %q: expected SOURCE=ASSET[:COLOR]", entry)
+		}
+
+		asset, color, _ := strings.Cut(target, ":")
+		mappings = append(mappings, &commonpb.MirrorAssetMapping{
+			SourceAsset: source,
+			Asset:       asset,
+			Color:       color,
+		})
+	}
+
+	return mappings, nil
 }
 
 // decodeRewriteRuleList decodes a YAML/JSON list into MirrorRewriteRule

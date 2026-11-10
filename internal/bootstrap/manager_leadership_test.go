@@ -64,3 +64,22 @@ func TestManagerLeadership(t *testing.T) {
 		})
 	}
 }
+
+// A new raw leadership gain must not reactivate workers after a loss until
+// that generation's FSM catch-up has published LeaderReadyEvent.
+func TestManagerLeadershipLossAndRegainRequiresNewReadiness(t *testing.T) {
+	t.Parallel()
+
+	events, mirrors := &recordingLeadershipManager{}, &recordingLeadershipManager{}
+	handleLeadershipChangeEvent(node.LeadershipChangeEvent{IsLeader: true}, events, mirrors, logging.Testing())
+	handleLeaderReadyEvent(events, mirrors, logging.Testing())
+	for _, isLeader := range []bool{false, true} {
+		handleLeadershipChangeEvent(node.LeadershipChangeEvent{IsLeader: isLeader}, events, mirrors, logging.Testing())
+	}
+	require.Equal(t, []bool{true, false}, events.calls)
+	require.Equal(t, []bool{true, false}, mirrors.calls)
+
+	handleLeaderReadyEvent(events, mirrors, logging.Testing())
+	require.Equal(t, []bool{true, false, true}, events.calls)
+	require.Equal(t, []bool{true, false, true}, mirrors.calls)
+}

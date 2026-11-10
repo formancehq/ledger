@@ -28,7 +28,7 @@ lossless number handling when values can exceed 2^53; ordinary JavaScript
 `JSON.parse` is not sufficient for the full uint64 range.
 
 Read configuration uses `ledgerName` and exactly one nested `http` or `postgres`
-source, with optional `batchSize` and `rewriteRules`. HTTP sources include nested
+source, with optional `batchSize`, `rewriteRules` and `assetMappings`. HTTP sources include nested
 `oauth2ClientCredentials`. PostgreSQL sources retain `dsn` and supported
 `awsIamAuth` fields (`region`, `assumeRoleArn`). `MirrorSourceRead` is a separate
 schema from the flat `MirrorSourceConfig` accepted at ledger creation: correcting
@@ -39,6 +39,8 @@ spelling), and empty address replacements are omitted by protojson and decode
 as the empty string. This applies both to `rewriteAddress.replacement` and each
 `setAccountMetadataFromAddress.replacements` entry. Empty literal oneof values
 remain explicit `value: ""`; absent sources mean the default empty literal.
+Each `assetMappings` entry reads as `{sourceAsset, asset, color}` in creation
+order. An empty `color` is the uncolored bucket.
 
 Marshal failures propagate. Get buffers with `writeOKChecked`; list buffers with `writePageOK` before
 writing success headers so invalid values return a sanitized HTTP 500 instead

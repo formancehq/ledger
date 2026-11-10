@@ -1012,10 +1012,11 @@ func (x *MirrorSourceConfig) MarshalJSON() ([]byte, error) {
 	switch oneofValueType := x.Type.(type) {
 	case *MirrorSourceConfig_Http:
 		return jsonv2.Marshal(struct {
-			LedgerName   string `json:"ledgerName"`
-			Http         any    `json:"http"`
-			BatchSize    uint32 `json:"batchSize"`
-			RewriteRules any    `json:"rewriteRules"`
+			LedgerName    string `json:"ledgerName"`
+			Http          any    `json:"http"`
+			BatchSize     uint32 `json:"batchSize"`
+			RewriteRules  any    `json:"rewriteRules"`
+			AssetMappings any    `json:"assetMappings"`
 		}{
 			LedgerName: x.LedgerName,
 			Http:       oneofValueType.Http,
@@ -1026,13 +1027,20 @@ func (x *MirrorSourceConfig) MarshalJSON() ([]byte, error) {
 				}
 				return x.RewriteRules
 			}(),
+			AssetMappings: func() any {
+				if x.AssetMappings == nil {
+					return []any{}
+				}
+				return x.AssetMappings
+			}(),
 		})
 	case *MirrorSourceConfig_Postgres:
 		return jsonv2.Marshal(struct {
-			LedgerName   string `json:"ledgerName"`
-			Postgres     any    `json:"postgres"`
-			BatchSize    uint32 `json:"batchSize"`
-			RewriteRules any    `json:"rewriteRules"`
+			LedgerName    string `json:"ledgerName"`
+			Postgres      any    `json:"postgres"`
+			BatchSize     uint32 `json:"batchSize"`
+			RewriteRules  any    `json:"rewriteRules"`
+			AssetMappings any    `json:"assetMappings"`
 		}{
 			LedgerName: x.LedgerName,
 			Postgres:   oneofValueType.Postgres,
@@ -1043,12 +1051,19 @@ func (x *MirrorSourceConfig) MarshalJSON() ([]byte, error) {
 				}
 				return x.RewriteRules
 			}(),
+			AssetMappings: func() any {
+				if x.AssetMappings == nil {
+					return []any{}
+				}
+				return x.AssetMappings
+			}(),
 		})
 	default:
 		return jsonv2.Marshal(struct {
-			LedgerName   string `json:"ledgerName"`
-			BatchSize    uint32 `json:"batchSize"`
-			RewriteRules any    `json:"rewriteRules"`
+			LedgerName    string `json:"ledgerName"`
+			BatchSize     uint32 `json:"batchSize"`
+			RewriteRules  any    `json:"rewriteRules"`
+			AssetMappings any    `json:"assetMappings"`
 		}{
 			LedgerName: x.LedgerName,
 			BatchSize:  x.BatchSize,
@@ -1058,8 +1073,26 @@ func (x *MirrorSourceConfig) MarshalJSON() ([]byte, error) {
 				}
 				return x.RewriteRules
 			}(),
+			AssetMappings: func() any {
+				if x.AssetMappings == nil {
+					return []any{}
+				}
+				return x.AssetMappings
+			}(),
 		})
 	}
+}
+
+func (x *MirrorAssetMapping) MarshalJSON() ([]byte, error) {
+	return jsonv2.Marshal(struct {
+		SourceAsset string `json:"sourceAsset"`
+		Asset       string `json:"asset"`
+		Color       string `json:"color"`
+	}{
+		SourceAsset: x.SourceAsset,
+		Asset:       x.Asset,
+		Color:       x.Color,
+	})
 }
 
 func (x *MirrorRewriteRule) MarshalJSON() ([]byte, error) {
