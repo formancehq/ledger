@@ -120,6 +120,75 @@ func TestPeerCredentialDuringOptionalTLSMigration(t *testing.T) {
 	require.True(t, peerUsesTLS(authenticated))
 }
 
+func TestPeerInterceptorTrustRequiresTLS(t *testing.T) {
+	cfg := internalauth.AuthConfig{Enabled: true, ClusterSecret: "cluster-secret"}
+	interceptor := authUnaryInterceptor(cfg, true)
+	info := &ggrpc.UnaryServerInfo{FullMethod: "/ledger.BucketService/Barrier"}
+	for _, tc := range []struct {
+		name        string
+		ctx         context.Context
+		wantTrusted bool
+	}{
+		{name: "plaintext", ctx: context.Background()},
+		{name: "tls", ctx: peer.NewContext(context.Background(), &peer.Peer{AuthInfo: credentials.TLSInfo{}}), wantTrusted: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx := metadata.NewIncomingContext(tc.ctx, metadata.Pairs(transport.PeerAuthMetadataKey, "Bearer cluster-secret"))
+			called := false
+			_, err := interceptor(ctx, &servicepb.BarrierRequest{}, info, func(ctx context.Context, _ any) (any, error) {
+				called = true
+				require.True(t, internalauth.IsClusterInternal(ctx))
+				return nil, nil
+			})
+			if tc.wantTrusted {
+				require.NoError(t, err)
+				require.True(t, called)
+			} else {
+				require.Equal(t, codes.Unauthenticated, status.Code(err))
+				require.False(t, called)
+			}
+		})
+	}
+}
+
+func TestOptionalPlaintextPeerDoesNotGainForwardingTrust(t *testing.T) {
+	cfg := internalauth.AuthConfig{ClusterSecret: "cluster-secret"}
+	ctx := metadata.NewIncomingContext(context.Background(), metadata.Pairs(transport.PeerAuthMetadataKey, "Bearer cluster-secret"))
+	interceptor := authUnaryInterceptor(cfg, true)
+	_, err := interceptor(ctx, &servicepb.BarrierRequest{}, &ggrpc.UnaryServerInfo{FullMethod: "/ledger.BucketService/Barrier"},
+		func(ctx context.Context, _ any) (any, error) {
+			require.False(t, internalauth.IsClusterInternal(ctx))
+			return nil, nil
+		})
+	require.NoError(t, err)
+}
+
+func TestPeerStreamTrustRequiresTLS(t *testing.T) {
+	cfg := internalauth.AuthConfig{Enabled: true, ClusterSecret: "cluster-secret"}
+	interceptor := authStreamInterceptor(cfg, true)
+	info := &ggrpc.StreamServerInfo{FullMethod: "/grpc.reflection.v1.ServerReflection/ServerReflectionInfo"}
+	for _, tc := range []struct {
+		name    string
+		ctx     context.Context
+		trusted bool
+	}{
+		{name: "plaintext", ctx: context.Background()},
+		{name: "tls", ctx: peer.NewContext(context.Background(), &peer.Peer{AuthInfo: credentials.TLSInfo{}}), trusted: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx := metadata.NewIncomingContext(tc.ctx, metadata.Pairs(transport.PeerAuthMetadataKey, "Bearer cluster-secret"))
+			called := false
+			err := interceptor(nil, &authTestServerStream{ctx: ctx}, info, func(_ any, stream ggrpc.ServerStream) error {
+				called = true
+				require.Equal(t, tc.trusted, internalauth.IsClusterInternal(stream.Context()))
+				return nil
+			})
+			require.NoError(t, err)
+			require.True(t, called)
+		})
+	}
+}
+
 func TestBearerTokenFromGRPCContextRejectsAmbiguousAuthorization(t *testing.T) {
 	ctx := metadata.NewIncomingContext(context.Background(), metadata.Pairs(
 		"authorization", "Bearer first",
