@@ -69,6 +69,13 @@ type ServeCommandConfig struct {
 	DisableLedgerScopeOptimization bool `mapstructure:"disable-ledger-scope-optimization"`
 }
 
+func (cfg ServeCommandConfig) Validate() error {
+	if err := cfg.WorkerConfiguration.Validate(); err != nil {
+		return err
+	}
+	return cfg.SchemaEnforcementMode.Validate()
+}
+
 const (
 	BindFlag                   = "bind"
 	BallastSizeInBytesFlag     = "ballast-size"
