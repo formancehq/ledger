@@ -49,6 +49,14 @@ release:
     - Read the [documentation](https://docs.formance.com/)
     - Join our [GitHub Discussions](https://github.com/orgs/formancehq/discussions)
 
+# Nightly builds publish no GitHub release (nightly.publish_release: false in
+# the earthly preset), so their changelog is never used. Generating it calls the
+# GitHub compare API against the repository default branch (`main`, now the v3
+# line), which shares no history with release/v2.4 and fails the build.
+# Tagged releases still get their changelog (v2.4.N...v2.4.N+1).
+changelog:
+  disable: '{{ .IsNightly }}'
+
 archives:
   - id: "{{.ProjectName}}"
     ids:
