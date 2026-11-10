@@ -99,11 +99,12 @@ The system uses `go.etcd.io/raft/v3`, the standalone Raft implementation extract
 - Delegates FSM application to the **Applier**
 
 `processReady` handles each Raft Ready in a fixed sequence: observe leadership
-and resolve ReadIndex state, append HardState and entries to the WAL, install a
-received snapshot if present, send peer and local storage responses, then
-collect committed configuration changes for the orchestrate goroutine.
+and resolve ReadIndex state, persist ordinary Readies through `WAL.Append` or
+snapshot Readies through `WAL.ApplySnapshot`, send peer and local storage
+responses, then collect committed configuration changes for the orchestrate
+goroutine.
 Leadership acquisition drains earlier apply work before opening its readiness
-gate. Peer messages must not leave before the corresponding WAL append; the
+gate. Peer messages must not leave before the corresponding WAL persistence; the
 orchestrate goroutine alone applies configuration changes to `rawNode`.
 
 ```go
@@ -774,13 +775,12 @@ The leader tracks each follower's state:
 
 `Node.processReady` keeps these durability and mutation boundaries:
 
-1. Persist the Ready's entries and HardState together through `WAL.Append`.
-   Persisting HardState without its entries would expose a committed-log gap
-   on a crash before snapshot installation.
+1. Skip `WAL.Append` for a Ready containing a snapshot. Writing its HardState
+   to the old WAL could advance commit beyond the old log before replacement.
 2. Ask the Applier to drain pending commits, interrupt conflicting maintenance,
    and enter `statusInstallingSnapshot` before changing snapshot/FSM state.
 3. `WAL.ApplySnapshot` saves the full snapshot file and prepares a new WAL with
-   the snapshot, current HardState and any entries from this Ready after the
+   the snapshot, this Ready's HardState and any entries after the
    snapshot. It syncs the new WAL before replacing the active `etcd/` directory.
    Startup resolves an interrupted directory replacement before WAL replay.
 4. After the replacement is durable, `ApplySnapshot` replaces its in-memory
