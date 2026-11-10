@@ -8,6 +8,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/formancehq/ledger/v3/internal/adapter/apierr"
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/domain/indexes"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
@@ -1326,6 +1327,9 @@ func TestValidateOrder_MirrorIAMRegion(t *testing.T) {
 				require.ErrorIs(t, err, tt.wantErr)
 				if tt.wantMsg != "" {
 					require.EqualError(t, err, tt.wantMsg)
+					public, ok := apierr.Describe(err)
+					require.True(t, ok)
+					require.Equal(t, tt.wantMsg, public.Message)
 				}
 			} else {
 				require.NoError(t, err)

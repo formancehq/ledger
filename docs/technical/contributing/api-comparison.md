@@ -784,7 +784,7 @@ worker startup, and does not probe the remote source.
 exactly, to a v3 asset and color, so v2 assets that v3 cannot represent
 (`USDT_ETHEREUM/6`, `USD/0`) can be mirrored. Mappings apply after
 `rewriteRules`. Creation rejects an invalid list with HTTP 400 / gRPC
-`InvalidArgument` (`MIRROR_ASSET_MAPPING_INVALID`), whose message names the
+`InvalidArgument` (reason `VALIDATION`), whose message names the
 first offending entry. A valid list has at most 256 entries, each
 with a unique non-empty `sourceAsset` of at most 64 bytes, a valid v3 `asset`,
 a `color` matching `^[A-Z]{0,32}$`, and a unique `(asset, color)` target. The

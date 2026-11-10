@@ -85,3 +85,6 @@ func (*mirrorAssetMappingError) Reason() string         { return ErrMirrorAssetM
 func (*mirrorAssetMappingError) FailureDetails() *commonpb.FailureDetails {
 	return ErrMirrorAssetMappingInvalid.FailureDetails()
 }
+func (e *mirrorAssetMappingError) PublicDetails() (string, map[string]string, bool) {
+	return e.Error(), nil, true
+}

@@ -395,7 +395,7 @@ mapping assets of v2 log N (type=NEW_TRANSACTION): pass-through asset "X" collid
 ```
 
 Admission compiles the list with `v2.NewAssetMapper`, the same function the
-worker uses, and rejects an invalid list with `MIRROR_ASSET_MAPPING_INVALID`;
+worker uses, and rejects an invalid list with the `VALIDATION` reason;
 the message names the first offending entry, such as
 `mirrorSource.assetMappings[1]: duplicate sourceAsset "USD/0"`. A valid list has at most 256 entries. Each entry has a unique non-empty
 `source_asset` of at most 64 bytes, a valid v3 `asset`, and a `color` matching
