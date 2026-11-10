@@ -4,8 +4,7 @@ project_name: ledger
 
 includes:
   - from_url:
-      # TODO(RFC-0013): back to refs/heads/main once formancehq/earthly ci/semver-dev-versions is merged
-      url: https://raw.githubusercontent.com/formancehq/earthly/refs/heads/ci/semver-dev-versions/.goreleaser.default-v2.yaml
+      url: https://raw.githubusercontent.com/formancehq/earthly/refs/heads/main/.goreleaser.default-v2.yaml
 
 builds:
   - binary: ledger
