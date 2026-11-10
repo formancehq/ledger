@@ -74,8 +74,8 @@ nightly:
   keep_single_release: true
   # RFC-0013: the main-branch nightly takes the SemVer development version
   # computed by formancehq/ci/actions/dev-version (e.g. 3.1.0-0.dev.12.g1a2b3c4).
-  # Without DEV_VERSION, such as a local `just release-local`, it keeps the
-  # historical nightly-<short-commit> form.
+  # Without DEV_VERSION, for example `just release-ci` run outside the
+  # Release-Latest job, it keeps the historical nightly-<short-commit> form.
   version_template: '{{ if index .Env "DEV_VERSION" }}{{ .Env.DEV_VERSION }}{{ else }}nightly-{{ .ShortCommit }}{{ end }}'
 
 release:
