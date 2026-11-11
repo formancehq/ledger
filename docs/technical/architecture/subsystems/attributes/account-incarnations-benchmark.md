@@ -6,6 +6,8 @@ This branch measures the cost of a cache-backed `AccountIncarnation` attribute b
 
 Admission declares an `AccountIncarnation` key for every account whose volume a posting or whose metadata an account operation can touch, including `world`. The key is `(ledger, address)`. After the orders and transient-volume validation, the FSM collects accounts with volume or metadata writes, including metadata deletions, and checks their declared keys through the proposal-wide coverage gate. For a normal account without an incarnation, it writes `{opened_at_raft_index, persistence, inserted_at, updated_at}` in the same batch. Later accepted writes update `updated_at` once per account and proposal while preserving the opening index and `inserted_at`. Both timestamps use the FSM's effective proposal HLC date; they describe writes in this ledger rather than a caller-supplied transaction date. Query reads do not update them.
 
+Account reads hydrate the existing `Account.insertion_date` and `Account.updated_at` fields from the incarnation in the same Pebble snapshot as volumes and metadata. Get, list, and prepared account-query enrichment share this path. Accounts without an incarnation return neither date. Each returned account incurs one additional point read; this cost is part of the next cluster benchmark.
+
 The attribute uses the standard two-generation cache. Rotation can evict the in-memory entry; a subsequent admission loads it from the primary attribute zone. There is no always-resident map of accounts in the FSM.
 
 This prototype has no dedicated Bloom filter for incarnation keys. A cache miss checks Pebble, including when the account has no incarnation yet.
