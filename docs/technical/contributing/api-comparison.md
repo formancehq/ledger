@@ -828,13 +828,12 @@ Converts the mirror ledger to normal mode. After promotion:
 - The `mirrorSource` configuration is cleared
 
 Promoting a non-mirror ledger returns HTTP 400 (`LEDGER_NOT_IN_MIRROR_MODE`) or gRPC `FailedPrecondition`.
-For a new checked promotion, the committed FSM proposal first replays a matching,
+For a live promotion, the committed FSM proposal first replays a matching,
 unexpired keyed outcome when one exists. Otherwise it rejects a mirror with no
 observed source head, a cursor behind that head, or an active sync error with
 the audited `MIRROR_NOT_CAUGHT_UP` reason and structured progress facts. A keyed
 retry of that rejection replays its frozen result inside the FSM, without a new
-audit entry or another catch-up check. Historical unmarked promotion orders
-keep their original apply behavior. The service request remains unchanged; the
+audit entry or another catch-up check. The RC.3-to-RC.4 upgrade requires a stopped, drained restart on the same volumes: every old business entry must be durably applied before RC.4 starts. Audit replay bypasses the progress check. The service request remains unchanged; the
 protobuf reason enum adds `MIRROR_NOT_CAUGHT_UP`.
 
 **gRPC:** Both create-mirror and promote operations go through the `Apply` method using `CreateLedgerRequest` (with `mode` and `mirror_source` fields) and `PromoteLedgerRequest`.
