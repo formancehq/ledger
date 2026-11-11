@@ -41,6 +41,45 @@ func (m *MockProposer) EXPECT() *MockProposerMockRecorder {
 	return m.recorder
 }
 
+// AcquireCapabilityMembership mocks base method.
+func (m *MockProposer) AcquireCapabilityMembership(arg0 context.Context) (func(*futures.Future[state.ApplyResult]), error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "AcquireCapabilityMembership", arg0)
+	ret0, _ := ret[0].(func(*futures.Future[state.ApplyResult]))
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// AcquireCapabilityMembership indicates an expected call of AcquireCapabilityMembership.
+func (mr *MockProposerMockRecorder) AcquireCapabilityMembership(arg0 any) *MockProposerAcquireCapabilityMembershipCall {
+	mr.mock.ctrl.T.Helper()
+	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AcquireCapabilityMembership", reflect.TypeOf((*MockProposer)(nil).AcquireCapabilityMembership), arg0)
+	return &MockProposerAcquireCapabilityMembershipCall{Call: call}
+}
+
+// MockProposerAcquireCapabilityMembershipCall wrap *gomock.Call
+type MockProposerAcquireCapabilityMembershipCall struct {
+	*gomock.Call
+}
+
+// Return rewrite *gomock.Call.Return
+func (c *MockProposerAcquireCapabilityMembershipCall) Return(arg0 func(*futures.Future[state.ApplyResult]), arg1 error) *MockProposerAcquireCapabilityMembershipCall {
+	c.Call = c.Call.Return(arg0, arg1)
+	return c
+}
+
+// Do rewrite *gomock.Call.Do
+func (c *MockProposerAcquireCapabilityMembershipCall) Do(f func(context.Context) (func(*futures.Future[state.ApplyResult]), error)) *MockProposerAcquireCapabilityMembershipCall {
+	c.Call = c.Call.Do(f)
+	return c
+}
+
+// DoAndReturn rewrite *gomock.Call.DoAndReturn
+func (c *MockProposerAcquireCapabilityMembershipCall) DoAndReturn(f func(context.Context) (func(*futures.Future[state.ApplyResult]), error)) *MockProposerAcquireCapabilityMembershipCall {
+	c.Call = c.Call.DoAndReturn(f)
+	return c
+}
+
 // InitialIndex mocks base method.
 func (m *MockProposer) InitialIndex() uint64 {
 	m.ctrl.T.Helper()

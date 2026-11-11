@@ -44,6 +44,7 @@ var tracer = otel.Tracer("admission")
 //go:generate mockgen -write_source_comment=false -write_package_comment=false -source admission.go -destination proposer_generated_test.go -typed -package admission . Proposer
 type Proposer interface {
 	Propose(context.Context, *node.Proposal) (*futures.Future[state.ApplyResult], error)
+	AcquireCapabilityMembership(context.Context) (func(*futures.Future[state.ApplyResult]), error)
 	InitialIndex() uint64
 }
 
@@ -487,7 +488,7 @@ func (a *Admission) recordPhaseOnExit(ctx context.Context, hist metric.Float64Hi
 func (a *Admission) Admit(ctx context.Context, req *servicepb.ApplyRequest) (*domain.ApplyResult, error) {
 	return a.admit(ctx, func(ctx context.Context, caller *commonpb.CallerSnapshot) (*preparedAdmission, error) {
 		return a.prepareExecutionBatch(ctx, caller, req)
-	})
+	}, a.proposeAdmission)
 }
 
 // AdmitClusterPolicy admits the leader's internal cluster-policy reconciliation
@@ -497,9 +498,16 @@ func (a *Admission) AdmitClusterPolicy(ctx context.Context, policy *commonpb.Clu
 		return nil, errors.New("cluster policy must not be nil")
 	}
 
+	propose := a.proposeAdmission
+	for _, activation := range policy.GetCapabilityActivations() {
+		if activation != nil && activation.GetActive() {
+			propose = a.proposeActivatingPolicy
+			break
+		}
+	}
 	return a.admit(ctx, func(ctx context.Context, caller *commonpb.CallerSnapshot) (*preparedAdmission, error) {
 		return a.prepareClusterPolicy(ctx, caller, policy)
-	})
+	}, propose)
 }
 
 type preparedAdmission struct {
@@ -548,7 +556,9 @@ func (a *Admission) prepareClusterPolicy(ctx context.Context, caller *commonpb.C
 	return &preparedAdmission{command: command, build: build}, nil
 }
 
-func (a *Admission) admit(ctx context.Context, prepare func(context.Context, *commonpb.CallerSnapshot) (*preparedAdmission, error)) (response *domain.ApplyResult, err error) {
+type admissionPropose func(context.Context, *raftcmdpb.Proposal, *plan.BuildResult) (*futures.Future[state.ApplyResult], func(), error)
+
+func (a *Admission) admit(ctx context.Context, prepare func(context.Context, *commonpb.CallerSnapshot) (*preparedAdmission, error), propose admissionPropose) (response *domain.ApplyResult, err error) {
 	caller, err := auth.ResolveCallerAttribution(ctx)
 	if err != nil {
 		invalid, ok := errors.AsType[*domain.ErrInvalidCallerAttribution](err)
@@ -585,27 +595,7 @@ func (a *Admission) admit(ctx context.Context, prepare func(context.Context, *co
 		return nil, err
 	}
 
-	// An activating policy must not overtake an admitted ConfChange, nor may a
-	// later ConfChange pass it before the policy is durably applied. Acquire the
-	// membership fence before the proposal guard locks the index tracker.
-	var releaseMembership func(*futures.Future[state.ApplyResult])
-	if proposalActivatesCapabilities(prepared.command) {
-		barrier, ok := a.proposer.(interface {
-			AcquireCapabilityMembership(context.Context) (func(*futures.Future[state.ApplyResult]), error)
-		})
-		if !ok {
-			return nil, errors.New("activating policy proposer has no membership fence")
-		}
-		releaseMembership, err = barrier.AcquireCapabilityMembership(ctx)
-		if err != nil {
-			return nil, fmt.Errorf("fencing membership for capability activation: %w", err)
-		}
-	}
-
-	fsmFuture, cleanup, err := a.proposeAdmission(ctx, prepared.command, prepared.build)
-	if releaseMembership != nil {
-		releaseMembership(fsmFuture)
-	}
+	fsmFuture, cleanup, err := propose(ctx, prepared.command, prepared.build)
 	if err != nil {
 		return nil, err
 	}
@@ -614,14 +604,15 @@ func (a *Admission) admit(ctx context.Context, prepare func(context.Context, *co
 	return a.resolveAdmissionResult(ctx, prepared.command, fsmFuture)
 }
 
-func proposalActivatesCapabilities(command *raftcmdpb.Proposal) bool {
-	for _, activation := range command.GetSetClusterPolicy().GetPolicy().GetCapabilityActivations() {
-		if activation != nil && activation.GetActive() {
-			return true
-		}
+func (a *Admission) proposeActivatingPolicy(ctx context.Context, command *raftcmdpb.Proposal, build *plan.BuildResult) (*futures.Future[state.ApplyResult], func(), error) {
+	// Fence membership before the proposal guard locks the index tracker.
+	release, err := a.proposer.AcquireCapabilityMembership(ctx)
+	if err != nil {
+		return nil, nil, fmt.Errorf("fencing membership for capability activation: %w", err)
 	}
-
-	return false
+	future, cleanup, err := a.proposeAdmission(ctx, command, build)
+	release(future)
+	return future, cleanup, err
 }
 
 func (a *Admission) prepareExecutionBatchAdmission(ctx context.Context, req *servicepb.ApplyRequest) (verifiedBatch, error) {

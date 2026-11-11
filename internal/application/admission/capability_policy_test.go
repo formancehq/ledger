@@ -14,6 +14,10 @@ import (
 
 type barrierTestProposer struct{}
 
+func (barrierTestProposer) AcquireCapabilityMembership(context.Context) (func(*futures.Future[state.ApplyResult]), error) {
+	return func(*futures.Future[state.ApplyResult]) {}, nil
+}
+
 func (barrierTestProposer) InitialIndex() uint64 { return 1 }
 
 func (barrierTestProposer) Propose(_ context.Context, proposal *node.Proposal) (*futures.Future[state.ApplyResult], error) {
