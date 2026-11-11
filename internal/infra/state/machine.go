@@ -1610,6 +1610,14 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 			}
 		}
 	}
+	if err == nil {
+		if assertionErr := fsm.assertAccountIncarnations(proposal.GetExecutionPlan()); assertionErr != nil {
+			fsm.State.LastAppliedTimestamp = previousTimestamp
+			result.Error = &domain.BusinessError{Err: assertionErr}
+
+			return result, nil
+		}
+	}
 
 	// Process the proposal unless the dedup gate rejected it as a conflict
 	// (err set). Handlers see the gated Scope facade for state reads/writes;
@@ -1704,6 +1712,7 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 		for _, attr := range proposal.GetExecutionPlan().GetAttributes() {
 			if attr.GetAttrCode() == uint32(dal.SubAttrAccountIncarnation) {
 				transientErr = buffer.ensureAccountIncarnations(validateScope)
+
 				break
 			}
 		}
