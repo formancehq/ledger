@@ -1486,6 +1486,14 @@ func extractLedgerScopedNeeds(p *plan.Coverage, ls *raftcmdpb.LedgerScopedOrder,
 		p.Add(dal.SubAttrLedger, ledgerBytes)
 
 		switch applyData := payload.Apply.GetData().(type) {
+		case *raftcmdpb.LedgerApplyOrder_ExecuteNumscript:
+			for account, mm := range applyData.ExecuteNumscript.GetAccountMetadata() {
+				for key := range mm.GetValues() {
+					p.Add(dal.SubAttrMetadata, domain.MetadataKey{
+						AccountKey: domain.AccountKey{LedgerName: ledgerName, Account: account}, Key: key,
+					}.Bytes())
+				}
+			}
 		case *raftcmdpb.LedgerApplyOrder_CreateTransaction:
 			if applyData.CreateTransaction.GetReference() != "" {
 				p.Add(dal.SubAttrReference, domain.TransactionReferenceKey{
@@ -1926,6 +1934,10 @@ func (a *Admission) resolveScriptsAndEnrichNeeds(ctx context.Context, orders []*
 		// resolve — fold their effects and move on. A predecessor that would be
 		// skipped folds nothing (skip parity above).
 		switch applyData := applyPayload.Apply.GetData().(type) {
+		case *raftcmdpb.LedgerApplyOrder_ExecuteNumscript:
+			if skip {
+				continue
+			}
 		case *raftcmdpb.LedgerApplyOrder_CreateTransaction:
 			// Handled below (script resolution + effect folding). A predicted
 			// skip short-circuits the whole resolution: the FSM will drop this
@@ -2014,7 +2026,18 @@ func (a *Admission) resolveScriptsAndEnrichNeeds(ctx context.Context, orders []*
 			continue
 		}
 
-		createTx := applyPayload.Apply.GetData().(*raftcmdpb.LedgerApplyOrder_CreateTransaction)
+		var createTx *raftcmdpb.LedgerApplyOrder_CreateTransaction
+		switch data := applyPayload.Apply.GetData().(type) {
+		case *raftcmdpb.LedgerApplyOrder_CreateTransaction:
+			createTx = data
+		case *raftcmdpb.LedgerApplyOrder_ExecuteNumscript:
+			execution := data.ExecuteNumscript
+			createTx = &raftcmdpb.LedgerApplyOrder_CreateTransaction{CreateTransaction: &raftcmdpb.CreateTransactionOrder{
+				Script: execution.GetScript(), NumscriptReference: execution.GetNumscriptReference(),
+				Timestamp: execution.GetTimestamp(), Metadata: execution.GetMetadata(),
+				AccountMetadata: execution.GetAccountMetadata(), Force: execution.GetForce(),
+			}}
+		}
 
 		// Script-discovered keys belong to this order's coverage. perOrder
 		// is initialized by extractPreloadNeeds with one entry per input
@@ -2621,6 +2644,19 @@ func (a *Admission) convertApplyRequest(ctx context.Context, apply *servicepb.Le
 				NumscriptReference: numscriptRef,
 			},
 		}
+	case *servicepb.LedgerAction_ExecuteNumscript:
+		execution := data.ExecuteNumscript
+		if execution.GetScript() != nil && execution.GetScriptReference() != nil {
+			return nil, &domain.BusinessError{Err: domain.ErrScriptAndReferenceConflict}
+		}
+		var ref *raftcmdpb.NumscriptReference
+		if source := execution.GetScriptReference(); source != nil {
+			ref = &raftcmdpb.NumscriptReference{Name: source.GetName(), Version: source.GetVersion(), Vars: source.GetVars()}
+		}
+		order.Data = &raftcmdpb.LedgerApplyOrder_ExecuteNumscript{ExecuteNumscript: &raftcmdpb.ExecuteNumscriptOrder{
+			Script: execution.GetScript(), NumscriptReference: ref, Timestamp: execution.GetTimestamp(),
+			Metadata: execution.GetMetadata(), AccountMetadata: execution.GetAccountMetadata(), Force: execution.GetForce(),
+		}}
 	case *servicepb.LedgerAction_AddMetadata:
 		order.Data = &raftcmdpb.LedgerApplyOrder_AddMetadata{
 			AddMetadata: &raftcmdpb.SaveMetadataOrder{

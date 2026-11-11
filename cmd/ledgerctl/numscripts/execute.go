@@ -35,7 +35,6 @@ Examples:
 	cmd.Flags().String("name", "", "Name of a saved Numscript")
 	cmd.Flags().String("version", "latest", "Version of a saved Numscript")
 	cmd.Flags().StringArray("var", nil, "Script variable in name=value format (repeatable)")
-	cmd.Flags().String("reference", "", "Transaction reference (requires a transaction-producing script)")
 	cmd.Flags().StringToString("metadata", nil, "Transaction metadata key=value pairs")
 	cmd.Flags().String("idempotency-key", "", "Batch idempotency key for safe retries")
 	cmd.Flags().Bool("force", false, "Bypass balance checks")
@@ -65,7 +64,7 @@ func runExecute(cmd *cobra.Command, _ []string) error {
 		vars[key] = strings.TrimSpace(val)
 	}
 
-	payload := &servicepb.CreateTransactionPayload{}
+	payload := &servicepb.ExecuteNumscriptPayload{}
 	if file != "" {
 		content, err := os.ReadFile(file)
 		if err != nil {
@@ -79,7 +78,6 @@ func runExecute(cmd *cobra.Command, _ []string) error {
 		version, _ := cmd.Flags().GetString("version")
 		payload.ScriptReference = &servicepb.ScriptReference{Name: name, Version: version, Vars: vars}
 	}
-	payload.Reference, _ = cmd.Flags().GetString("reference")
 	metadata, _ := cmd.Flags().GetStringToString("metadata")
 	payload.Metadata = commonpb.MetadataFromGoMap(metadata)
 	payload.Force, _ = cmd.Flags().GetBool("force")
@@ -93,7 +91,7 @@ func runExecute(cmd *cobra.Command, _ []string) error {
 	defer cancel()
 	request, err := cmdutil.BuildApplyRequest(cmd, &servicepb.Request{Type: &servicepb.Request_Apply{Apply: &servicepb.LedgerApplyRequest{
 		Ledger: ledger,
-		Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{CreateTransaction: payload}},
+		Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_ExecuteNumscript{ExecuteNumscript: payload}},
 	}}})
 	if err != nil {
 		return err

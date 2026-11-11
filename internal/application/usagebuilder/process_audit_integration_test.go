@@ -201,6 +201,15 @@ func createTxOrder(ledger string, order *raftcmdpb.CreateTransactionOrder) *raft
 	}
 }
 
+func executeNumscriptOrder(ledger string, execution *raftcmdpb.ExecuteNumscriptOrder) *raftcmdpb.Order {
+	return &raftcmdpb.Order{Type: &raftcmdpb.Order_LedgerScoped{LedgerScoped: &raftcmdpb.LedgerScopedOrder{
+		Ledger: ledger,
+		Payload: &raftcmdpb.LedgerScopedOrder_Apply{Apply: &raftcmdpb.LedgerApplyOrder{
+			Data: &raftcmdpb.LedgerApplyOrder_ExecuteNumscript{ExecuteNumscript: execution},
+		}},
+	}}}
+}
+
 // revertTxOrder wraps a RevertTransactionOrder in an Order.
 func revertTxOrder(ledger string, order *raftcmdpb.RevertTransactionOrder) *raftcmdpb.Order {
 	return &raftcmdpb.Order{
@@ -1087,7 +1096,7 @@ func TestProcessAuditEntries_MetadataOnlyNumscriptCounts(t *testing.T) {
 			}}}
 			seedAuditData(t, primary, []seedAuditEntry{{
 				seq: 1, success: true, items: []seedAuditItem{{
-					order: createTxOrder(ledger, &raftcmdpb.CreateTransactionOrder{
+					order: executeNumscriptOrder(ledger, &raftcmdpb.ExecuteNumscriptOrder{
 						Script: &commonpb.Script{Plain: "set_account_meta(...)"}, NumscriptReference: tc.reference,
 					}),
 					logSeq: 10,

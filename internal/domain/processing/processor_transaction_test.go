@@ -1331,7 +1331,7 @@ func TestProcessCreateTransaction_Numscript_SetAccountMeta_WritesOnce(t *testing
 	require.Equal(t, "viewer", commonpb.MetadataMapToGoMap(aliceMeta)["role"])
 }
 
-func TestProcessCreateTransaction_MetadataOnly_PersistsWithoutTransaction(t *testing.T) {
+func TestExecuteNumscript_MetadataOnly_PersistsWithoutTransaction(t *testing.T) {
 	t.Parallel()
 
 	ctrl := gomock.NewController(t)
@@ -1353,7 +1353,7 @@ func TestProcessCreateTransaction_MetadataOnly_PersistsWithoutTransaction(t *tes
 
 	request := &servicepb.Request{Type: &servicepb.Request_Apply{Apply: &servicepb.LedgerApplyRequest{
 		Ledger: "test-ledger",
-		Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{CreateTransaction: &servicepb.CreateTransactionPayload{
+		Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_ExecuteNumscript{ExecuteNumscript: &servicepb.ExecuteNumscriptPayload{
 			Script: &commonpb.Script{Plain: `set_account_meta(@users:alice, "tier", "gold")`},
 		}}},
 	}}}
@@ -1367,7 +1367,34 @@ func TestProcessCreateTransaction_MetadataOnly_PersistsWithoutTransaction(t *tes
 	require.Equal(t, "gold", commonpb.MetadataMapToGoMap(log.GetData().GetAccountMetadataUpdated().GetAccountMetadata()["users:alice"])["tier"])
 }
 
-func TestProcessCreateTransaction_MetadataOnly_RejectsCallerTransactionMetadata(t *testing.T) {
+func TestCreateTransaction_MetadataOnlyScriptIsRejected(t *testing.T) {
+	t.Parallel()
+
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+	mockStore := NewMockScope(ctrl)
+	expectDefaultMetadataLimits(mockStore)
+	processor, err := NewRequestProcessor(nil, 0)
+	require.NoError(t, err)
+
+	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 7, NextLogId: 3}
+	expectGetBoundaries(mockStore, domain.LedgerKey{Name: "test-ledger"}, boundaries.AsReader(), nil)
+	expectGetLedger(mockStore, domain.LedgerKey{Name: "test-ledger"}, (&commonpb.LedgerInfo{Name: "test-ledger", Id: 1}).AsReader(), nil).AnyTimes()
+
+	request := &servicepb.Request{Type: &servicepb.Request_Apply{Apply: &servicepb.LedgerApplyRequest{
+		Ledger: "test-ledger",
+		Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{CreateTransaction: &servicepb.CreateTransactionPayload{
+			Script: &commonpb.Script{Plain: `set_account_meta(@users:alice, "tier", "gold")`},
+		}}},
+	}}}
+
+	result, err := processor.ProcessOrder(requestToOrder(t, request), mockStore)
+	require.Nil(t, result)
+	require.ErrorIs(t, err, domain.ErrEmptyTransaction)
+	require.Equal(t, uint64(7), boundaries.GetNextTransactionId())
+}
+
+func TestExecuteNumscript_MetadataOnly_RejectsCallerTransactionMetadata(t *testing.T) {
 	t.Parallel()
 
 	ctrl := gomock.NewController(t)
@@ -1385,7 +1412,7 @@ func TestProcessCreateTransaction_MetadataOnly_RejectsCallerTransactionMetadata(
 
 	request := &servicepb.Request{Type: &servicepb.Request_Apply{Apply: &servicepb.LedgerApplyRequest{
 		Ledger: "test-ledger",
-		Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{CreateTransaction: &servicepb.CreateTransactionPayload{
+		Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_ExecuteNumscript{ExecuteNumscript: &servicepb.ExecuteNumscriptPayload{
 			Script:   &commonpb.Script{Plain: `set_account_meta(@users:alice, "tier", "gold")`},
 			Metadata: map[string]*commonpb.MetadataValue{"receipt": commonpb.NewStringValue("x")},
 		}}},

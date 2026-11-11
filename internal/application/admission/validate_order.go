@@ -257,6 +257,8 @@ func validateOrderAccountAddresses(order *raftcmdpb.Order) domain.Describable {
 	}
 
 	switch d := apply.Apply.GetData().(type) {
+	case *raftcmdpb.LedgerApplyOrder_ExecuteNumscript:
+		return domain.ValidateAccountMetadataAddresses(d.ExecuteNumscript.GetAccountMetadata())
 	case *raftcmdpb.LedgerApplyOrder_CreateTransaction:
 		return domain.ValidateAccountMetadataAddresses(d.CreateTransaction.GetAccountMetadata())
 	case *raftcmdpb.LedgerApplyOrder_AddMetadata:
@@ -291,12 +293,17 @@ func validateOrderContent(order *raftcmdpb.Order) domain.Describable {
 		return nil
 	}
 
-	ct, ok := apply.Apply.GetData().(*raftcmdpb.LedgerApplyOrder_CreateTransaction)
-	if !ok {
+	var o *raftcmdpb.CreateTransactionOrder
+	var execute bool
+	switch data := apply.Apply.GetData().(type) {
+	case *raftcmdpb.LedgerApplyOrder_CreateTransaction:
+		o = data.CreateTransaction
+	case *raftcmdpb.LedgerApplyOrder_ExecuteNumscript:
+		execute = true
+		o = &raftcmdpb.CreateTransactionOrder{Script: data.ExecuteNumscript.GetScript(), NumscriptReference: data.ExecuteNumscript.GetNumscriptReference()}
+	default:
 		return nil
 	}
-
-	o := ct.CreateTransaction
 	if len(o.GetReference()) > domain.MaxTransactionReferenceLength {
 		return domain.ErrTransactionReferenceTooLong
 	}
@@ -311,6 +318,9 @@ func validateOrderContent(order *raftcmdpb.Order) domain.Describable {
 	//     so an order with only `scriptReference: {}` is empty.
 	refPresent := o.GetNumscriptReference() != nil
 	refValid := refPresent && o.GetNumscriptReference().GetName() != ""
+	if execute && !hasInlineScript && !refValid {
+		return domain.ErrScriptRequired
+	}
 
 	switch {
 	case hasPostings && (hasInlineScript || refPresent):

@@ -12,6 +12,18 @@ import (
 )
 
 func processCreateTransaction(ledger string, order *raftcmdpb.CreateTransactionOrder, ctx *Context) (*commonpb.LedgerLogPayload, domain.SerializableError) {
+	return processTransactionOrNumscript(ledger, order, ctx, false)
+}
+
+func processExecuteNumscript(ledger string, execution *raftcmdpb.ExecuteNumscriptOrder, ctx *Context) (*commonpb.LedgerLogPayload, domain.SerializableError) {
+	return processTransactionOrNumscript(ledger, &raftcmdpb.CreateTransactionOrder{
+		Script: execution.GetScript(), NumscriptReference: execution.GetNumscriptReference(),
+		Timestamp: execution.GetTimestamp(), Metadata: execution.GetMetadata(),
+		AccountMetadata: execution.GetAccountMetadata(), Force: execution.GetForce(),
+	}, ctx, true)
+}
+
+func processTransactionOrNumscript(ledger string, order *raftcmdpb.CreateTransactionOrder, ctx *Context, allowMetadataOnly bool) (*commonpb.LedgerLogPayload, domain.SerializableError) {
 	if len(order.GetReference()) > domain.MaxTransactionReferenceLength {
 		return nil, domain.ErrTransactionReferenceTooLong
 	}
@@ -134,6 +146,9 @@ func processCreateTransaction(ledger string, order *raftcmdpb.CreateTransactionO
 	// here. Without this guard the FSM commits a zero-posting log entry
 	// (#452).
 	if len(result.Postings) == 0 {
+		if !allowMetadataOnly {
+			return nil, domain.ErrEmptyTransaction
+		}
 		if (len(result.TransactionMetadata) > 0 || len(order.GetMetadata()) > 0) && (hasScriptAccountMetadataUpdates(result.AccountsMetadata) || hasAccountMetadataUpdates(order.GetAccountMetadata())) {
 			return nil, domain.ErrMetadataOnlyTransactionMetadata
 		}
