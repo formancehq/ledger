@@ -59,6 +59,7 @@ func createTestAdmissionWithReader(t *testing.T, store *dal.Store, proposer Prop
 		store,
 		logger,
 		proposer,
+		nil,
 		testPreloader,
 		provider,
 		writeGate,

@@ -44,8 +44,11 @@ var tracer = otel.Tracer("admission")
 //go:generate mockgen -write_source_comment=false -write_package_comment=false -source admission.go -destination proposer_generated_test.go -typed -package admission . Proposer
 type Proposer interface {
 	Propose(context.Context, *node.Proposal) (*futures.Future[state.ApplyResult], error)
-	AcquireCapabilityMembership(context.Context) (func(*futures.Future[state.ApplyResult]), error)
 	InitialIndex() uint64
+}
+
+type CapabilityMembershipFence interface {
+	AcquireCapabilityMembership(context.Context) (func(*futures.Future[state.ApplyResult]), error)
 }
 
 // Admission handles the admission of orders into the Raft cluster.
@@ -54,6 +57,7 @@ type Admission struct {
 	store           *dal.Store
 	logger          logging.Logger
 	proposer        Proposer
+	membershipFence CapabilityMembershipFence
 	writeGate       health.WriteGate
 	keyStore        *keystore.KeyStore
 	sharedState     *state.SharedState
@@ -139,6 +143,7 @@ func NewAdmission(
 	store *dal.Store,
 	logger logging.Logger,
 	proposer Proposer,
+	membershipFence CapabilityMembershipFence,
 	builder *plan.Builder,
 	meterProvider metric.MeterProvider,
 	writeGate health.WriteGate,
@@ -153,6 +158,7 @@ func NewAdmission(
 		store:           store,
 		logger:          logger,
 		proposer:        proposer,
+		membershipFence: membershipFence,
 		builder:         builder,
 		writeGate:       writeGate,
 		keyStore:        keyStore,
@@ -606,7 +612,10 @@ func (a *Admission) admit(ctx context.Context, prepare func(context.Context, *co
 
 func (a *Admission) proposeActivatingPolicy(ctx context.Context, command *raftcmdpb.Proposal, build *plan.BuildResult) (*futures.Future[state.ApplyResult], func(), error) {
 	// Fence membership before the proposal guard locks the index tracker.
-	release, err := a.proposer.AcquireCapabilityMembership(ctx)
+	if a.membershipFence == nil {
+		return nil, nil, errors.New("activating policy admission has no membership fence")
+	}
+	release, err := a.membershipFence.AcquireCapabilityMembership(ctx)
 	if err != nil {
 		return nil, nil, fmt.Errorf("fencing membership for capability activation: %w", err)
 	}

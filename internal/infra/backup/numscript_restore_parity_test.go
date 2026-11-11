@@ -111,7 +111,7 @@ func newScriptedNode(t *testing.T, store *dal.Store) *scriptedNode {
 	return &scriptedNode{
 		t: t,
 		admission: admission.NewAdmission(store, logger,
-			&applyingProposer{t: t, machine: machine, store: store, tracker: tracker},
+			&applyingProposer{t: t, machine: machine, store: store, tracker: tracker}, nil,
 			builder, meters, writeGate, keyStore, sharedState, attrs,
 			numscript.NewNumscriptCache(0), func(context.Context) error { return nil }),
 	}

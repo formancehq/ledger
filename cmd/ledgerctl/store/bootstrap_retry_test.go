@@ -90,7 +90,7 @@ func newBootstrapRetryAdmission(t *testing.T, store *dal.Store) *admission.Admis
 		return future, nil
 	}).AnyTimes()
 
-	return admission.NewAdmission(store, logger, proposer,
+	return admission.NewAdmission(store, logger, proposer, nil,
 		builder, meters, gate, keys, shared, attrs, numscript.NewNumscriptCache(0), func(context.Context) error { return nil })
 }
 
