@@ -4,9 +4,8 @@ import (
 	"fmt"
 	"testing"
 
-	"google.golang.org/protobuf/encoding/protowire"
-
 	"github.com/stretchr/testify/require"
+	"google.golang.org/protobuf/encoding/protowire"
 
 	"github.com/formancehq/ledger/v3/internal/infra/capabilities"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"

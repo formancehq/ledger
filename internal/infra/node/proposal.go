@@ -41,6 +41,7 @@ func newProposal(commandID uint64, data []byte, required []capabilities.Capabili
 	// SetPredictedIndex must only append into this buffer in its critical section.
 	buffer := make([]byte, len(data), len(data)+protowire.SizeTag(predictedIndexField)+8)
 	copy(buffer, data)
+
 	return &Proposal{
 		commandID:            commandID,
 		data:                 buffer,
