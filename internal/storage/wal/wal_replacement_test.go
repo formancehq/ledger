@@ -83,6 +83,21 @@ func TestReceivedSnapshotWALReplacementCrashStates(t *testing.T) {
 	}
 }
 
+func TestApplySnapshotSwitchFailureClosesWALOnce(t *testing.T) {
+	dir := t.TempDir()
+	w := newTestWALAt(t, dir)
+	// A nonempty destination prevents the first directory rename after the
+	// old WAL has been closed.
+	previous := filepath.Join(dir, previousWALDir)
+	require.NoError(t, os.Mkdir(previous, 0700))
+	require.NoError(t, os.WriteFile(filepath.Join(previous, "occupied"), nil, 0600))
+	err := w.ApplySnapshot(&raftpb.Snapshot{Metadata: snapshotMeta(1, 1,
+		&raftpb.ConfState{Voters: []uint64{1}})}, nil, nil)
+	require.ErrorContains(t, err, "switching WAL directory")
+	require.NoError(t, w.Close())
+	require.NoError(t, w.Close())
+}
+
 func TestWALReplacementCrashChild(t *testing.T) {
 	stage := os.Getenv("LEDGER_WAL_CRASH_STAGE")
 	if stage == "" {

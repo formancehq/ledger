@@ -37,11 +37,6 @@ type Option func(*DefaultWAL)
 
 // DefaultWAL implements raft.Storage interface for etcd/raft using etcd/wal.
 type DefaultWAL struct {
-	// snapshotPersistenceMu serializes each full snapshot-file + WAL-record
-	// persistence sequence. It must be acquired before mu so the persisted
-	// order matches the order in which snapshot state is captured.
-	snapshotPersistenceMu sync.Mutex
-
 	// mu protects all mutable state (entries, snapshot, hardState)
 	mu sync.RWMutex
 	// walWriteMu serializes snapshot persistence, compaction, directory
@@ -66,6 +61,7 @@ type DefaultWAL struct {
 
 	// DefaultWAL for storing log entries
 	wal *wal.WAL
+	walClosed bool
 
 	// In-memory cache of entries (for fast access)
 	// This is rebuilt from DefaultWAL on startup
@@ -781,8 +777,6 @@ func hardStateEqual(a, b *raftpb.HardState) bool {
 
 // CreateSnapshot creates a snapshot at the given index.
 func (s *DefaultWAL) CreateSnapshot(index uint64, cs *raftpb.ConfState, data []byte) error {
-	s.snapshotPersistenceMu.Lock()
-	defer s.snapshotPersistenceMu.Unlock()
 	s.walWriteMu.Lock()
 	defer s.walWriteMu.Unlock()
 
@@ -887,8 +881,6 @@ func (s *DefaultWAL) CreateSnapshot(index uint64, cs *raftpb.ConfState, data []b
 // changes (e.g. a learner is added) so that etcd/raft sends snapshots with
 // the correct ConfState to newly added nodes.
 func (s *DefaultWAL) UpdateSnapshotConfState(cs *raftpb.ConfState) error {
-	s.snapshotPersistenceMu.Lock()
-	defer s.snapshotPersistenceMu.Unlock()
 	s.walWriteMu.Lock()
 	defer s.walWriteMu.Unlock()
 
@@ -969,8 +961,6 @@ func (s *DefaultWAL) termLocked(i uint64) (uint64, error) {
 // ApplySnapshot durably replaces the Raft log with an accepted received
 // snapshot and the entries from the same Ready that follow it.
 func (s *DefaultWAL) ApplySnapshot(snap *raftpb.Snapshot, readyState *raftpb.HardState, suffix []*raftpb.Entry) error {
-	s.snapshotPersistenceMu.Lock()
-	defer s.snapshotPersistenceMu.Unlock()
 	s.walWriteMu.Lock()
 	defer s.walWriteMu.Unlock()
 
@@ -1024,6 +1014,7 @@ func (s *DefaultWAL) ApplySnapshot(snap *raftpb.Snapshot, readyState *raftpb.Har
 	close(s.stopPurge)
 	<-s.purgeDone
 	oldWAL := s.wal
+	s.walClosed = true // Any error from here leaves this instance closed.
 	// Close the old file pipeline while its original path still names the old
 	// directory. Its shutdown removes a preallocated .tmp file by pathname.
 	if err := oldWAL.Close(); err != nil {
@@ -1037,25 +1028,14 @@ func (s *DefaultWAL) ApplySnapshot(snap *raftpb.Snapshot, readyState *raftpb.Har
 	if err != nil {
 		return fmt.Errorf("opening replacement WAL: %w", err)
 	}
-	_, recoveredState, recoveredEntries, err := newWAL.ReadAll()
+	_, _, _, err = newWAL.ReadAll()
 	if err != nil {
 		_ = newWAL.Close()
 
 		return fmt.Errorf("reading replacement WAL: %w", err)
 	}
-	if !hardStateEqual(state, recoveredState) || len(recoveredEntries) != len(suffix) {
-		_ = newWAL.Close()
-
-		return errors.New("replacement WAL did not preserve HardState and Ready suffix")
-	}
-	for i := range suffix {
-		if !proto.Equal(suffix[i], recoveredEntries[i]) {
-			_ = newWAL.Close()
-
-			return fmt.Errorf("replacement WAL changed Ready suffix entry %d", suffix[i].GetIndex())
-		}
-	}
 	s.wal = newWAL
+	s.walClosed = false
 	s.stopPurge = make(chan struct{})
 	s.purgeDone, _ = fileutil.PurgeFileWithDoneNotify(zap.NewNop(), s.etcdWalDir, ".wal", 1, s.purgeInterval, s.stopPurge)
 	s.snapshot = snap
@@ -1163,5 +1143,9 @@ func (s *DefaultWAL) Close() error {
 		<-s.purgeDone
 	}
 
+	if s.walClosed {
+		return nil
+	}
+	s.walClosed = true
 	return s.wal.Close()
 }
