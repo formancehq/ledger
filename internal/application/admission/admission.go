@@ -512,6 +512,7 @@ func (a *Admission) AdmitClusterPolicy(ctx context.Context, policy *commonpb.Clu
 			break
 		}
 	}
+
 	return a.admit(ctx, func(ctx context.Context, caller *commonpb.CallerSnapshot) (*preparedAdmission, error) {
 		return a.prepareClusterPolicy(ctx, caller, policy)
 	}, propose)
