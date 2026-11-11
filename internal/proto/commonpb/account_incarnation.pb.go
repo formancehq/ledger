@@ -25,13 +25,12 @@ const (
 // account-state write and records the latest accepted account-state write.
 // Closure is left to a later change.
 type AccountIncarnation struct {
-	state             protoimpl.MessageState `protogen:"open.v1"`
-	OpenedAtRaftIndex uint64                 `protobuf:"fixed64,1,opt,name=opened_at_raft_index,json=openedAtRaftIndex,proto3" json:"opened_at_raft_index,omitempty"`
-	Persistence       AccountTypePersistence `protobuf:"varint,2,opt,name=persistence,proto3,enum=common.AccountTypePersistence" json:"persistence,omitempty"`
-	InsertedAt        *Timestamp             `protobuf:"bytes,3,opt,name=inserted_at,json=insertedAt,proto3" json:"inserted_at,omitempty"`
-	UpdatedAt         *Timestamp             `protobuf:"bytes,4,opt,name=updated_at,json=updatedAt,proto3" json:"updated_at,omitempty"`
-	unknownFields     protoimpl.UnknownFields
-	sizeCache         protoimpl.SizeCache
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Persistence   AccountTypePersistence `protobuf:"varint,1,opt,name=persistence,proto3,enum=common.AccountTypePersistence" json:"persistence,omitempty"`
+	InsertedAt    *Timestamp             `protobuf:"bytes,2,opt,name=inserted_at,json=insertedAt,proto3" json:"inserted_at,omitempty"`
+	UpdatedAt     *Timestamp             `protobuf:"bytes,3,opt,name=updated_at,json=updatedAt,proto3" json:"updated_at,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *AccountIncarnation) Reset() {
@@ -64,13 +63,6 @@ func (*AccountIncarnation) Descriptor() ([]byte, []int) {
 	return file_account_incarnation_proto_rawDescGZIP(), []int{0}
 }
 
-func (x *AccountIncarnation) GetOpenedAtRaftIndex() uint64 {
-	if x != nil {
-		return x.OpenedAtRaftIndex
-	}
-	return 0
-}
-
 func (x *AccountIncarnation) GetPersistence() AccountTypePersistence {
 	if x != nil {
 		return x.Persistence
@@ -96,14 +88,13 @@ var File_account_incarnation_proto protoreflect.FileDescriptor
 
 const file_account_incarnation_proto_rawDesc = "" +
 	"\n" +
-	"\x19account_incarnation.proto\x12\x06common\x1a\fcommon.proto\"\xed\x01\n" +
-	"\x12AccountIncarnation\x12/\n" +
-	"\x14opened_at_raft_index\x18\x01 \x01(\x06R\x11openedAtRaftIndex\x12@\n" +
-	"\vpersistence\x18\x02 \x01(\x0e2\x1e.common.AccountTypePersistenceR\vpersistence\x122\n" +
-	"\vinserted_at\x18\x03 \x01(\v2\x11.common.TimestampR\n" +
+	"\x19account_incarnation.proto\x12\x06common\x1a\fcommon.proto\"\xbc\x01\n" +
+	"\x12AccountIncarnation\x12@\n" +
+	"\vpersistence\x18\x01 \x01(\x0e2\x1e.common.AccountTypePersistenceR\vpersistence\x122\n" +
+	"\vinserted_at\x18\x02 \x01(\v2\x11.common.TimestampR\n" +
 	"insertedAt\x120\n" +
 	"\n" +
-	"updated_at\x18\x04 \x01(\v2\x11.common.TimestampR\tupdatedAtB9Z7github.com/formancehq/ledger/v3/internal/proto/commonpbb\x06proto3"
+	"updated_at\x18\x03 \x01(\v2\x11.common.TimestampR\tupdatedAtB9Z7github.com/formancehq/ledger/v3/internal/proto/commonpbb\x06proto3"
 
 var (
 	file_account_incarnation_proto_rawDescOnce sync.Once
