@@ -551,7 +551,7 @@ func processPromoteLedger(ledger string, ctx *Context) (*commonpb.LogPayload, do
 	if info.GetMode() != commonpb.LedgerMode_LEDGER_MODE_MIRROR {
 		return nil, &domain.ErrLedgerNotInMirrorMode{Name: ledger}
 	}
-	if ctx.RequireMirrorCatchUp {
+	if !ctx.auditReplay {
 		boundaries, loadErr := loadBoundaries(s, ledger)
 		if loadErr != nil {
 			return nil, loadErr

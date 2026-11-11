@@ -37,11 +37,11 @@ before calling the new RPC. The operation has no persisted, Raft, snapshot,
 backup, or audit format effect.
 
 EN-3037 retains revision 40 and the existing `PromoteLedgerRequest` message.
-New promotion orders carry `OrderTechnical.require_mirror_catch_up`; the FSM checks the replicated
+The FSM checks the replicated
 source-head observation, ingestion cursor, and synchronization error after
 idempotency replay. A failed check has the dedicated
 `ERROR_REASON_MIRROR_NOT_CAUGHT_UP` reason and `FailedPrecondition` status.
-Historical orders without the flag retain their committed behavior. The
+Historical audited orders retain their committed behavior during replay. The
 `rc.3` to `rc.4` upgrade is stopped because mixed voters could otherwise
 apply a new promotion differently. Clients that classify errors by reason
 must recognize the new value; clients can still decode the status and request.

@@ -44,7 +44,6 @@ type Context struct {
 	// auditReplay executes recorded business intent without operational quotas.
 	auditReplay bool
 
-	RequireMirrorCatchUp bool
 	// MirrorPromotionProgress reads the FSM's committed source observation plus
 	// technical updates staged earlier in this proposal. Nil for legacy orders
 	// and audit replay, which do not re-run the eligibility decision.
@@ -560,7 +559,6 @@ func (p *RequestProcessor) processOrder(order *raftcmdpb.Order, s Scope, ctx *Co
 	// CreateTransactionOrder.
 	ctx.InputsResolutionHash = order.GetTechnical().GetInputsResolutionHash()
 	ctx.RevertTargetDigest = order.GetTechnical().GetRevertTargetDigest()
-	ctx.RequireMirrorCatchUp = order.GetTechnical().GetRequireMirrorCatchUp()
 	// Reset per-apply fields — only processApply/processMirrorIngest set them.
 	ctx.Boundaries = nil
 	ctx.LedgerInfo = nil
