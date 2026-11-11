@@ -322,6 +322,12 @@ func (s *DerivedKeyStore[K, T]) DirtyValues() map[K]T {
 	return s.values
 }
 
+// DirtyDeletions returns keys deleted during the current batch. A key written
+// and then deleted appears here only, so callers observe the final write set.
+func (s *DerivedKeyStore[K, T]) DirtyDeletions() map[K]struct{} {
+	return s.deletions
+}
+
 // Parent returns the read-side parent of this overlay. May be a *KeyStore
 // (recovery/sync) or a preload.View sub-reader (FSM hot path).
 func (s *DerivedKeyStore[K, T]) Parent() ParentReader[K, T] {

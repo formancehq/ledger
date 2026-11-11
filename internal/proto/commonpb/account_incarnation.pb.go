@@ -21,12 +21,15 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
-// Current lifetime of a normal account address. The projection opens on the
-// first posting or account-metadata write; closure is left to a later change.
+// Current lifetime of a normal account address. It opens on the first
+// account-state write and records the latest accepted account-state write.
+// Closure is left to a later change.
 type AccountIncarnation struct {
 	state             protoimpl.MessageState `protogen:"open.v1"`
 	OpenedAtRaftIndex uint64                 `protobuf:"fixed64,1,opt,name=opened_at_raft_index,json=openedAtRaftIndex,proto3" json:"opened_at_raft_index,omitempty"`
 	Persistence       AccountTypePersistence `protobuf:"varint,2,opt,name=persistence,proto3,enum=common.AccountTypePersistence" json:"persistence,omitempty"`
+	InsertedAt        *Timestamp             `protobuf:"bytes,3,opt,name=inserted_at,json=insertedAt,proto3" json:"inserted_at,omitempty"`
+	UpdatedAt         *Timestamp             `protobuf:"bytes,4,opt,name=updated_at,json=updatedAt,proto3" json:"updated_at,omitempty"`
 	unknownFields     protoimpl.UnknownFields
 	sizeCache         protoimpl.SizeCache
 }
@@ -75,14 +78,32 @@ func (x *AccountIncarnation) GetPersistence() AccountTypePersistence {
 	return AccountTypePersistence_ACCOUNT_TYPE_NORMAL
 }
 
+func (x *AccountIncarnation) GetInsertedAt() *Timestamp {
+	if x != nil {
+		return x.InsertedAt
+	}
+	return nil
+}
+
+func (x *AccountIncarnation) GetUpdatedAt() *Timestamp {
+	if x != nil {
+		return x.UpdatedAt
+	}
+	return nil
+}
+
 var File_account_incarnation_proto protoreflect.FileDescriptor
 
 const file_account_incarnation_proto_rawDesc = "" +
 	"\n" +
-	"\x19account_incarnation.proto\x12\x06common\x1a\fcommon.proto\"\x87\x01\n" +
+	"\x19account_incarnation.proto\x12\x06common\x1a\fcommon.proto\"\xed\x01\n" +
 	"\x12AccountIncarnation\x12/\n" +
 	"\x14opened_at_raft_index\x18\x01 \x01(\x06R\x11openedAtRaftIndex\x12@\n" +
-	"\vpersistence\x18\x02 \x01(\x0e2\x1e.common.AccountTypePersistenceR\vpersistenceB9Z7github.com/formancehq/ledger/v3/internal/proto/commonpbb\x06proto3"
+	"\vpersistence\x18\x02 \x01(\x0e2\x1e.common.AccountTypePersistenceR\vpersistence\x122\n" +
+	"\vinserted_at\x18\x03 \x01(\v2\x11.common.TimestampR\n" +
+	"insertedAt\x120\n" +
+	"\n" +
+	"updated_at\x18\x04 \x01(\v2\x11.common.TimestampR\tupdatedAtB9Z7github.com/formancehq/ledger/v3/internal/proto/commonpbb\x06proto3"
 
 var (
 	file_account_incarnation_proto_rawDescOnce sync.Once
@@ -100,14 +121,17 @@ var file_account_incarnation_proto_msgTypes = make([]protoimpl.MessageInfo, 1)
 var file_account_incarnation_proto_goTypes = []any{
 	(*AccountIncarnation)(nil),  // 0: common.AccountIncarnation
 	(AccountTypePersistence)(0), // 1: common.AccountTypePersistence
+	(*Timestamp)(nil),           // 2: common.Timestamp
 }
 var file_account_incarnation_proto_depIdxs = []int32{
 	1, // 0: common.AccountIncarnation.persistence:type_name -> common.AccountTypePersistence
-	1, // [1:1] is the sub-list for method output_type
-	1, // [1:1] is the sub-list for method input_type
-	1, // [1:1] is the sub-list for extension type_name
-	1, // [1:1] is the sub-list for extension extendee
-	0, // [0:1] is the sub-list for field type_name
+	2, // 1: common.AccountIncarnation.inserted_at:type_name -> common.Timestamp
+	2, // 2: common.AccountIncarnation.updated_at:type_name -> common.Timestamp
+	3, // [3:3] is the sub-list for method output_type
+	3, // [3:3] is the sub-list for method input_type
+	3, // [3:3] is the sub-list for extension type_name
+	3, // [3:3] is the sub-list for extension extendee
+	0, // [0:3] is the sub-list for field type_name
 }
 
 func init() { file_account_incarnation_proto_init() }
