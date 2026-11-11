@@ -585,13 +585,58 @@ func (a *Admission) admit(ctx context.Context, prepare func(context.Context, *co
 		return nil, err
 	}
 
+	// An activating policy must not overtake an admitted ConfChange, nor may a
+	// later ConfChange pass it before the policy is durably applied. Acquire the
+	// membership fence before the proposal guard locks the index tracker.
+	var releaseMembership func(*futures.Future[state.ApplyResult])
+	if proposalActivatesCapabilities(prepared.command) {
+		barrier, ok := a.proposer.(interface {
+			AcquireCapabilityMembership(context.Context) (func(*futures.Future[state.ApplyResult]), error)
+		})
+		if !ok {
+			return nil, errors.New("activating policy proposer has no membership fence")
+		}
+		releaseMembership, err = barrier.AcquireCapabilityMembership(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("fencing membership for capability activation: %w", err)
+		}
+	}
+
 	fsmFuture, cleanup, err := a.proposeAdmission(ctx, prepared.command, prepared.build)
+	if releaseMembership != nil {
+		releaseMembership(fsmFuture)
+	}
 	if err != nil {
 		return nil, err
 	}
 	defer cleanup()
 
 	return a.resolveAdmissionResult(ctx, prepared.command, fsmFuture)
+}
+
+func proposalActivatesCapabilities(command *raftcmdpb.Proposal) bool {
+	if command == nil {
+		return false
+	}
+	hasActive := func(policy *commonpb.ClusterPolicy) bool {
+		for _, activation := range policy.GetCapabilityActivations() {
+			if activation != nil && activation.GetActive() {
+				return true
+			}
+		}
+
+		return false
+	}
+	if hasActive(command.GetSetClusterPolicy().GetPolicy()) {
+		return true
+	}
+	for _, order := range command.GetOrders() {
+		if hasActive(order.GetSystemScoped().GetSetClusterPolicy().GetPolicy()) {
+			return true
+		}
+	}
+
+	return false
 }
 
 func (a *Admission) prepareExecutionBatchAdmission(ctx context.Context, req *servicepb.ApplyRequest) (verifiedBatch, error) {

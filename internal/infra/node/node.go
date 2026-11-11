@@ -3242,6 +3242,51 @@ func (node *Node) WithStableDrainMembership(ctx context.Context, fn func() error
 	return fn()
 }
 
+// AcquireCapabilityMembership fences an activating policy proposal against
+// membership changes. The caller must acquire this before the proposal/index
+// guard, then hand the returned release function the FSM future immediately
+// after enqueue. The lock remains held through apply even if the request is
+// canceled. A nil future releases it when no proposal was enqueued.
+func (node *Node) AcquireCapabilityMembership(ctx context.Context) (func(*futures.Future[state.ApplyResult]), error) {
+	for !node.confChangeMu.TryLock() {
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-time.After(10 * time.Millisecond):
+		}
+	}
+	if err := node.waitForPriorMembership(ctx); err != nil {
+		node.confChangeMu.Unlock()
+
+		return nil, err
+	}
+
+	return node.releaseCapabilityMembershipAfter, nil
+}
+
+func (node *Node) releaseCapabilityMembershipAfter(future *futures.Future[state.ApplyResult]) {
+	if future == nil {
+		node.confChangeMu.Unlock()
+
+		return
+	}
+	go func() {
+		defer node.confChangeMu.Unlock()
+		waitCtx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+		go func() {
+			select {
+			case <-node.stopChannel:
+				cancel()
+			case <-node.terminalCh:
+				cancel()
+			case <-waitCtx.Done():
+			}
+		}()
+		_, _ = future.Wait(waitCtx)
+	}()
+}
+
 // JoinAsLearner is the bootstrap admission path for a process with an empty
 // WAL. It deliberately keeps EN-1436's stricter stale-progress handling
 // separate from administrative AddLearner retries and carries the joining
