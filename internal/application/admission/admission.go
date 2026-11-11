@@ -907,7 +907,9 @@ func (a *Admission) proposeAdmission(ctx context.Context, cmd *raftcmdpb.Proposa
 		guard.ReleaseLoaders()
 		a.proposeQueueInflight.Add(-1)
 
-		return nil, nil, err
+		// The proposal was already enqueued. Keep its completion handle so
+		// capability activation retains the membership fence after cancellation.
+		return fsmFuture, nil, err
 	}
 
 	recordProposeDuration()
