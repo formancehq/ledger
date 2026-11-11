@@ -161,19 +161,19 @@ original path still names it. The node then renames the old directory to
 `etcd.previous/` and the candidate to `etcd/`, syncing the parent directory
 after each rename.
 
-The node opens the selected WAL and reads back its HardState and entry suffix.
-Only after validating both does it replace the in-memory snapshot, HardState,
-and cached entries. It then removes older snapshot files and inactive WAL
-directories. A failure before the first rename leaves the in-memory state
+The node opens the selected WAL and uses `ReadAll` to check that it is readable.
+It does not compare the recovered HardState or entry suffix with the Ready.
+Only then does it replace the in-memory snapshot, HardState, and cached entries.
+It then removes older snapshot files and inactive WAL directories. A failure
+before the first rename leaves the in-memory state
 unchanged, although the old WAL may already be closed. A failure during or
 after the switch stops Ready processing. Restart selects a complete WAL from
 the durable directories. No received-snapshot path calls `ReleaseLockTo` on
 the replaced WAL.
 
-Every runtime path that creates, updates, or installs a snapshot serializes the
-complete snapshot-file and WAL-record persistence sequence. The persistence
-lock is acquired before the in-memory WAL lock so snapshots are captured and
-made durable in the same order. This prevents concurrent membership updates
+Every runtime path that creates, updates, or installs a snapshot holds
+`walWriteMu` before the in-memory WAL lock for the complete snapshot-file and
+WAL-record persistence sequence. This prevents concurrent membership updates
 from racing on the deterministic `.snap.tmp` name and keeps the final snapshot
 file aligned with the latest WAL snapshot record.
 
