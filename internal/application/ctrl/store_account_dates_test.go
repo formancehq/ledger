@@ -33,9 +33,8 @@ func TestAccountDatesComeFromIncarnation(t *testing.T) {
 	batch := store.OpenWriteSession()
 	require.NoError(t, state.SaveLedger(batch, ledger, &commonpb.LedgerInfo{Name: ledger}))
 	_, err = attrs.AccountIncarnation.Set(batch, accountKey.Bytes(), &commonpb.AccountIncarnation{
-		OpenedAtRaftIndex: 2,
-		InsertedAt:        &commonpb.Timestamp{Data: 100},
-		UpdatedAt:         &commonpb.Timestamp{Data: 200},
+		InsertedAt: &commonpb.Timestamp{Data: 100},
+		UpdatedAt:  &commonpb.Timestamp{Data: 200},
 	})
 	require.NoError(t, err)
 	require.NoError(t, batch.Commit())
@@ -63,9 +62,8 @@ func TestAccountDatesComeFromIncarnation(t *testing.T) {
 
 	batch = store.OpenWriteSession()
 	_, err = attrs.AccountIncarnation.Set(batch, accountKey.Bytes(), &commonpb.AccountIncarnation{
-		OpenedAtRaftIndex: 2,
-		InsertedAt:        &commonpb.Timestamp{Data: 100},
-		UpdatedAt:         &commonpb.Timestamp{Data: 300},
+		InsertedAt: &commonpb.Timestamp{Data: 100},
+		UpdatedAt:  &commonpb.Timestamp{Data: 300},
 	})
 	require.NoError(t, err)
 	require.NoError(t, batch.Commit())

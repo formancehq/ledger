@@ -5,7 +5,6 @@
 package commonpb
 
 import (
-	binary "encoding/binary"
 	fmt "fmt"
 	protohelpers "github.com/planetscale/vtprotobuf/protohelpers"
 	proto "google.golang.org/protobuf/proto"
@@ -25,7 +24,6 @@ func (m *AccountIncarnation) CloneVT() *AccountIncarnation {
 		return (*AccountIncarnation)(nil)
 	}
 	r := new(AccountIncarnation)
-	r.OpenedAtRaftIndex = m.OpenedAtRaftIndex
 	r.Persistence = m.Persistence
 	r.InsertedAt = m.InsertedAt.CloneVT()
 	r.UpdatedAt = m.UpdatedAt.CloneVT()
@@ -44,9 +42,6 @@ func (this *AccountIncarnation) EqualVT(that *AccountIncarnation) bool {
 	if this == that {
 		return true
 	} else if this == nil || that == nil {
-		return false
-	}
-	if this.OpenedAtRaftIndex != that.OpenedAtRaftIndex {
 		return false
 	}
 	if this.Persistence != that.Persistence {
@@ -106,7 +101,7 @@ func (m *AccountIncarnation) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		i -= size
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 		i--
-		dAtA[i] = 0x22
+		dAtA[i] = 0x1a
 	}
 	if m.InsertedAt != nil {
 		size, err := m.InsertedAt.MarshalToSizedBufferVT(dAtA[:i])
@@ -116,18 +111,12 @@ func (m *AccountIncarnation) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		i -= size
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 		i--
-		dAtA[i] = 0x1a
+		dAtA[i] = 0x12
 	}
 	if m.Persistence != 0 {
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.Persistence))
 		i--
-		dAtA[i] = 0x10
-	}
-	if m.OpenedAtRaftIndex != 0 {
-		i -= 8
-		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.OpenedAtRaftIndex))
-		i--
-		dAtA[i] = 0x9
+		dAtA[i] = 0x8
 	}
 	return len(dAtA) - i, nil
 }
@@ -138,9 +127,6 @@ func (m *AccountIncarnation) SizeVT() (n int) {
 	}
 	var l int
 	_ = l
-	if m.OpenedAtRaftIndex != 0 {
-		n += 9
-	}
 	if m.Persistence != 0 {
 		n += 1 + protohelpers.SizeOfVarint(uint64(m.Persistence))
 	}
@@ -186,16 +172,6 @@ func (m *AccountIncarnation) UnmarshalVT(dAtA []byte) error {
 		}
 		switch fieldNum {
 		case 1:
-			if wireType != 1 {
-				return fmt.Errorf("proto: wrong wireType = %d for field OpenedAtRaftIndex", wireType)
-			}
-			m.OpenedAtRaftIndex = 0
-			if (iNdEx + 8) > l {
-				return io.ErrUnexpectedEOF
-			}
-			m.OpenedAtRaftIndex = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
-			iNdEx += 8
-		case 2:
 			if wireType != 0 {
 				return fmt.Errorf("proto: wrong wireType = %d for field Persistence", wireType)
 			}
@@ -214,7 +190,7 @@ func (m *AccountIncarnation) UnmarshalVT(dAtA []byte) error {
 					break
 				}
 			}
-		case 3:
+		case 2:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field InsertedAt", wireType)
 			}
@@ -250,7 +226,7 @@ func (m *AccountIncarnation) UnmarshalVT(dAtA []byte) error {
 				return err
 			}
 			iNdEx = postIndex
-		case 4:
+		case 3:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field UpdatedAt", wireType)
 			}

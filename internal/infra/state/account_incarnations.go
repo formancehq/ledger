@@ -82,10 +82,9 @@ func (b *WriteSet) ensureAccountIncarnations(scope processing.Scope) domain.Seri
 			return domain.StoreFailure("reading account incarnation", err)
 		}
 		b.Derived.AccountIncarnations.Put(key, &commonpb.AccountIncarnation{
-			OpenedAtRaftIndex: scope.GetRaftIndex(),
-			Persistence:       commonpb.AccountTypePersistence_ACCOUNT_TYPE_NORMAL,
-			InsertedAt:        date.CloneVT(),
-			UpdatedAt:         date.CloneVT(),
+			Persistence: commonpb.AccountTypePersistence_ACCOUNT_TYPE_NORMAL,
+			InsertedAt:  date.CloneVT(),
+			UpdatedAt:   date.CloneVT(),
 		})
 	}
 
