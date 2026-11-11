@@ -28,6 +28,7 @@ func TestIsRetryableMembershipRefreshError(t *testing.T) {
 		want bool
 	}{
 		{name: "unavailable", code: codes.Unavailable, want: true},
+		{name: "remote deadline", code: codes.DeadlineExceeded, want: true},
 		{name: "old peer missing rpc", code: codes.Unimplemented, want: true},
 		{name: "invalid request", code: codes.InvalidArgument, want: false},
 	} {
@@ -43,6 +44,7 @@ type retryingRefreshServer struct {
 
 	attempts atomic.Int32
 	firstErr error
+	failures int32
 }
 
 type blockingRefreshServer struct {
@@ -56,7 +58,7 @@ func (blockingRefreshServer) RefreshMembership(ctx context.Context, _ *clusterbo
 }
 
 func (s *retryingRefreshServer) RefreshMembership(context.Context, *clusterbootstrappb.RefreshMembershipRequest) (*clusterbootstrappb.RefreshMembershipResponse, error) {
-	if s.attempts.Add(1) == 1 {
+	if s.attempts.Add(1) <= max(1, s.failures) {
 		return nil, s.firstErr
 	}
 
@@ -101,6 +103,18 @@ func TestTryRefreshMembershipRetriesUnimplementedUntilPeerSupportsRPC(t *testing
 	t.Cleanup(cancel)
 	require.NoError(t, tryRefreshMembership(ctx, cfg, cfg.TLSConfig, logging.Testing()))
 	require.Equal(t, int32(2), peer.attempts.Load())
+}
+
+func TestTryRefreshMembershipRetriesRemoteDeadlinesUntilSuccess(t *testing.T) {
+	t.Parallel()
+
+	peer := &retryingRefreshServer{firstErr: status.Error(codes.DeadlineExceeded, "leader proposal timed out"), failures: 2}
+	cfg := refreshTestConfig(t, serveRefreshMembership(t, peer))
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	t.Cleanup(cancel)
+	require.NoError(t, tryRefreshMembership(ctx, cfg, cfg.TLSConfig, logging.Testing()))
+	require.Equal(t, int32(3), peer.attempts.Load())
 }
 
 func TestTryRefreshMembershipStopsRetryingWhenContextIsCanceled(t *testing.T) {

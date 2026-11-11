@@ -1775,7 +1775,7 @@ func isRetryableMembershipRefreshError(err error) bool {
 		return false
 	}
 
-	if st.Code() == codes.Unavailable {
+	if st.Code() == codes.Unavailable || st.Code() == codes.DeadlineExceeded {
 		return true
 	}
 
