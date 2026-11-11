@@ -127,6 +127,16 @@ func CreateScriptTransactionAction(ledgerName string, script string, vars map[st
 	}
 }
 
+// ExecuteScriptAction executes Numscript without a transaction reference.
+func ExecuteScriptAction(ledgerName, script string, vars map[string]string) *servicepb.Request {
+	return &servicepb.Request{Type: &servicepb.Request_Apply{Apply: &servicepb.LedgerApplyRequest{
+		Ledger: ledgerName,
+		Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_ExecuteNumscript{ExecuteNumscript: &servicepb.ExecuteNumscriptPayload{
+			Script: &commonpb.Script{Plain: script, Vars: vars},
+		}}},
+	}}}
+}
+
 // AddAccountTypeAction creates an action for adding an account type to a ledger.
 func AddAccountTypeAction(ledgerName, name, pattern string) *servicepb.Request {
 	return &servicepb.Request{

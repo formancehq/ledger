@@ -688,11 +688,71 @@ paths:
         '405':
           $ref: '#/components/responses/MethodNotAllowed'
 
+  /v3/{ledgerName}/numscripts/execute:
+    post:
+      summary: Execute a Numscript
+      description: |
+        Executes an inline or saved Numscript. Returns a transaction when the
+        script produces postings, or updates account metadata without a
+        transaction when it produces no postings. No transaction reference can
+        be supplied. Requires `ledger:write` scope. Signed requests use the
+        same signing headers and batch verification as transaction creation.
+      operationId: v3ExecuteNumscript
+      x-speakeasy-name-override: ExecuteNumscript
+      tags:
+        - Transactions
+      security:
+        - BearerAuth: []
+        - {}
+      parameters:
+        - $ref: '#/components/parameters/BigIntAsString'
+        - $ref: '#/components/parameters/LedgerName'
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/SigningKeyId'
+        - $ref: '#/components/parameters/RequestSignature'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              anyOf:
+                - $ref: '#/components/schemas/ExecuteNumscriptRequest'
+                - $ref: '#/components/schemas/SignedExecuteNumscriptRequest'
+      responses:
+        '201':
+          description: Transaction created by the script
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreateTransactionResponse'
+        '204':
+          description: Account metadata updated without creating a transaction
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '429':
+          $ref: '#/components/responses/ResourceExhausted'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
+        '405':
+          $ref: '#/components/responses/MethodNotAllowed'
+
   /v3/{ledgerName}/transactions:
     post:
       summary: Create a new transaction
       description: |
-        Creates a new transaction in the specified ledger with the specified postings. A Numscript that updates account metadata without postings is applied without creating a transaction and returns 204. Requires `ledger:write` scope.
+        Creates a new transaction in the specified ledger. A Numscript supplied here must produce postings. Requires `ledger:write` scope.
         Signed requests use `application/json` (including MIME parameters) with
         `request` and standard-base64 `payload`. Either signing header, even if
         empty, selects this wrapper; with neither header present, the ordinary REST body applies.
@@ -747,8 +807,6 @@ paths:
               parameters:
                 ledgerName: '$request.path.ledgerName'
                 transactionId: '$response.body#/data/transaction/id'
-        '204':
-          description: Account metadata updated without creating a transaction
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
@@ -4618,6 +4676,18 @@ components:
         payload:
           $ref: '#/components/schemas/SignedBatchPayload'
 
+    SignedExecuteNumscriptRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - request
+        - payload
+      properties:
+        request:
+          $ref: '#/components/schemas/ExecuteNumscriptRequest'
+        payload:
+          $ref: '#/components/schemas/SignedBatchPayload'
+
     SignedRevertTransactionRequest:
       type: object
       additionalProperties: false
@@ -4681,8 +4751,7 @@ components:
         A transaction must declare exactly one content source: explicit
         `postings`, an inline `script`, or a `scriptReference`. The
         `postings` array cannot be combined with `script` or
-        `scriptReference`. A script that emits account metadata but no postings
-        is applied without creating a transaction. Idempotency is controlled exclusively via the
+        `scriptReference`. A script must produce postings. Idempotency is controlled exclusively via the
         `Idempotency-Key` HTTP header — there is no body-level key.
       properties:
         accountMetadata:
@@ -4726,6 +4795,35 @@ components:
           type: boolean
           default: false
           description: Skip the balance check, so the transaction commits even when a source account has insufficient funds.
+
+    ExecuteNumscriptRequest:
+      type: object
+      description: |
+        Execute a Numscript independently of transaction creation. Specify
+        exactly one of `script` and `scriptReference`. The request cannot
+        contain `postings` or a transaction `reference`.
+      properties:
+        accountMetadata:
+          type: object
+          additionalProperties:
+            type: object
+            additionalProperties:
+              $ref: '#/components/schemas/MetadataValue'
+        timestamp:
+          type: string
+          format: date-time
+        metadata:
+          type: object
+          additionalProperties:
+            $ref: '#/components/schemas/MetadataValue'
+          description: Transaction metadata, accepted only when the script produces postings.
+        script:
+          $ref: '#/components/schemas/Script'
+        scriptReference:
+          $ref: '#/components/schemas/ScriptReference'
+        force:
+          type: boolean
+          default: false
 
     PostingRequest:
       type: object
@@ -4802,12 +4900,13 @@ components:
           type: string
           enum:
             - CREATE_TRANSACTION
+            - EXECUTE_NUMSCRIPT
             - ADD_METADATA
             - REVERT_TRANSACTION
             - DELETE_METADATA
           description: |
             The type of operation to perform. The REST bulk endpoint accepts
-            these four actions only; account-type actions
+            these five actions only; account-type actions
             (`ADD_ACCOUNT_TYPE` / `REMOVE_ACCOUNT_TYPE`) are gRPC-only and
             are rejected here.
         ik:
@@ -4815,8 +4914,9 @@ components:
           maxLength: 256
           description: Idempotency key for this operation
         data:
-          oneOf:
+          anyOf:
             - $ref: '#/components/schemas/CreateTransactionRequest'
+            - $ref: '#/components/schemas/ExecuteNumscriptRequest'
             - $ref: '#/components/schemas/AddMetadataRequest'
             - $ref: '#/components/schemas/RevertTransactionRequest'
             - $ref: '#/components/schemas/DeleteMetadataRequest'

@@ -63,11 +63,6 @@ func (s *Server) handleCreateTransaction(w http.ResponseWriter, r *http.Request)
 			panic(emptyLogPayload("create-transaction", logEntry, details))
 		}
 		writeCreated(w, r, payload.CreatedTransaction)
-	case *commonpb.LedgerLogPayload_AccountMetadataUpdated:
-		if payload.AccountMetadataUpdated == nil {
-			panic(emptyLogPayload("create-transaction", logEntry, details))
-		}
-		w.WriteHeader(http.StatusNoContent)
 	default:
 		panic(unexpectedLogPayload("create-transaction", logEntry, details))
 	}

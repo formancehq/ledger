@@ -60,7 +60,7 @@ var jsonWriterFiles = map[string]bool{
 	"handlers_add_events_sink.go": true, "handlers_aggregate_volumes.go": true,
 	"handlers_analyze_accounts.go": true, "handlers_analyze_numscript.go": true,
 	"handlers_analyze_transactions.go": true, "handlers_create_index.go": true,
-	"handlers_create_ledger.go": true, "handlers_create_transaction.go": true,
+	"handlers_create_ledger.go": true, "handlers_create_transaction.go": true, "handlers_execute_numscript.go": true,
 	"handlers_get_account.go": true, "handlers_get_account_type.go": true,
 	"handlers_get_audit_entry.go": true, "handlers_get_bucket_index.go": true,
 	"handlers_get_bucket_index_entry_status.go": true, "handlers_get_events_sinks.go": true,

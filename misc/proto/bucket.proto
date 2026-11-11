@@ -576,6 +576,18 @@ message CreateTransactionPayload {
   ScriptReference script_reference = 8;
 }
 
+// ExecuteNumscriptPayload runs a script that may create a transaction or only
+// update account metadata. Transaction references belong to CreateTransaction.
+message ExecuteNumscriptPayload {
+  option (common.ledger_json_manual) = true;
+  common.Script script = 1;
+  ScriptReference script_reference = 2;
+  common.Timestamp timestamp = 3;
+  map<string, common.MetadataValue> metadata = 4;
+  map<string, common.MetadataMap> account_metadata = 5;
+  bool force = 6;
+}
+
 // RevertTransactionPayload contains the data for reverting a transaction.
 message RevertTransactionPayload {
 	option (common.ledger_json_manual) = true;
@@ -611,6 +623,7 @@ message LedgerAction {
       (allowed_skippable_reasons) = ERROR_REASON_ACCOUNT_TYPE_NOT_FOUND
     ];
     SetDefaultEnforcementModeRequest set_default_enforcement_mode = 7;
+    ExecuteNumscriptPayload execute_numscript = 8;
   }
 }
 

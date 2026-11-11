@@ -56,7 +56,7 @@ func TestHandleCreateTransaction_Success(t *testing.T) {
 	require.Equal(t, http.StatusCreated, w.Code)
 }
 
-func TestHandleCreateTransaction_MetadataOnlyReturnsNoContent(t *testing.T) {
+func TestHandleExecuteNumscript_MetadataOnlyReturnsNoContent(t *testing.T) {
 	t.Parallel()
 
 	log := &commonpb.Log{Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_Apply{
@@ -71,13 +71,48 @@ func TestHandleCreateTransaction_MetadataOnlyReturnsNoContent(t *testing.T) {
 	srv := newTestServer(t, backendReturningLogs(t, []*commonpb.Log{log}))
 
 	w := httptest.NewRecorder()
-	r := newRequest(t, http.MethodPost, "/ledger1/transactions", strings.NewReader(`{"script":{"plain":"set_account_meta(@users:alice, \"tier\", \"gold\")"}}`), map[string]string{
+	r := newRequest(t, http.MethodPost, "/ledger1/numscripts/execute", strings.NewReader(`{"script":{"plain":"set_account_meta(@users:alice, \"tier\", \"gold\")"}}`), map[string]string{
 		"ledgerName": "ledger1",
 	})
 
-	srv.handleCreateTransaction(w, r)
+	srv.handleExecuteNumscript(w, r)
 
 	require.Equal(t, http.StatusNoContent, w.Code)
+}
+
+func TestHandleExecuteNumscript_TransactionReturnsCreated(t *testing.T) {
+	t.Parallel()
+
+	log := &commonpb.Log{Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_Apply{
+		Apply: &commonpb.ApplyLedgerLog{Log: &commonpb.LedgerLog{Data: &commonpb.LedgerLogPayload{
+			Payload: &commonpb.LedgerLogPayload_CreatedTransaction{
+				CreatedTransaction: &commonpb.CreatedTransaction{Transaction: &commonpb.Transaction{Id: 1}},
+			},
+		}}},
+	}}}
+	srv := newTestServer(t, backendReturningLogs(t, []*commonpb.Log{log}))
+	w := httptest.NewRecorder()
+	r := newRequest(t, http.MethodPost, "/ledger1/numscripts/execute", strings.NewReader(`{"script":{"plain":"send [USD 1] (source = @world destination = @alice)"}}`), map[string]string{
+		"ledgerName": "ledger1",
+	})
+
+	srv.handleExecuteNumscript(w, r)
+
+	require.Equal(t, http.StatusCreated, w.Code)
+}
+
+func TestHandleExecuteNumscript_RejectsTransactionReference(t *testing.T) {
+	t.Parallel()
+
+	srv := newTestServer(t, NewMockBackend(gomock.NewController(t)))
+	w := httptest.NewRecorder()
+	r := newRequest(t, http.MethodPost, "/ledger1/numscripts/execute", strings.NewReader(`{"script":{"plain":"set_account_meta(@users:alice, \"tier\", \"gold\")"},"reference":"tx-1"}`), map[string]string{
+		"ledgerName": "ledger1",
+	})
+
+	srv.handleExecuteNumscript(w, r)
+
+	require.Equal(t, http.StatusBadRequest, w.Code)
 }
 
 // TestHandleCreateTransaction_LogContractViolations locks in the exact-one

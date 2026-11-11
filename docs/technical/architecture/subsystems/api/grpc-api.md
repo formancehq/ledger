@@ -246,6 +246,13 @@ for _, p := range tx.Postings {
 ## Write Operations
 
 All write operations go through the unified `Apply` method, which accepts a batch of requests.
+To execute a Numscript independently of transaction creation, send a
+`LedgerApplyRequest` with `LedgerAction.execute_numscript`. Its payload accepts
+an inline script or a saved script selector, but has no transaction reference.
+The Apply result contains a `CreatedTransaction` log when the script produces
+postings, or an `AccountMetadataUpdated` log when it only updates account
+metadata. `LedgerAction.create_transaction` still accepts Numscript, but the
+script must produce postings.
 
 ### Request Structure
 

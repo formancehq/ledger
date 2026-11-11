@@ -318,6 +318,14 @@ func (b *Builder) dispatchOrder(
 	switch data := apply.GetData().(type) {
 	case *raftcmdpb.LedgerApplyOrder_CreateTransaction:
 		return b.dispatchCreateTransaction(ctx, handle, ledger, data.CreateTransaction, logSeq, state, entry)
+	case *raftcmdpb.LedgerApplyOrder_ExecuteNumscript:
+		execution := data.ExecuteNumscript
+
+		return b.dispatchCreateTransaction(ctx, handle, ledger, &raftcmdpb.CreateTransactionOrder{
+			Script: execution.GetScript(), NumscriptReference: execution.GetNumscriptReference(),
+			Timestamp: execution.GetTimestamp(), Metadata: execution.GetMetadata(),
+			AccountMetadata: execution.GetAccountMetadata(), Force: execution.GetForce(),
+		}, logSeq, state, entry)
 	case *raftcmdpb.LedgerApplyOrder_RevertTransaction:
 		return b.dispatchRevertTransaction(ctx, handle, ledger, logSeq, state, entry)
 	}
@@ -448,8 +456,9 @@ func applyVolumeAnnotations(ledger string, ann logVolumeAnnotations, state *batc
 	}
 }
 
-// dispatchCreateTransaction projects the effects of a create-tx order. A
-// metadata-only Numscript counts as an execution without creating a transaction.
+// dispatchCreateTransaction projects the effects of a transaction creation or
+// standalone Numscript execution. A metadata-only script counts as an execution
+// without creating a transaction.
 func (b *Builder) dispatchCreateTransaction(
 	ctx context.Context,
 	handle dal.PebbleGetter,

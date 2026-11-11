@@ -85,6 +85,8 @@ func processApply(ledger string, apply *raftcmdpb.LedgerApplyOrder, ctx *Context
 		logPayload, err = processDeleteMetadata(ledger, applyData.DeleteMetadata, ctx)
 	case *raftcmdpb.LedgerApplyOrder_CreateTransaction:
 		logPayload, err = processCreateTransaction(ledger, applyData.CreateTransaction, ctx)
+	case *raftcmdpb.LedgerApplyOrder_ExecuteNumscript:
+		logPayload, err = processExecuteNumscript(ledger, applyData.ExecuteNumscript, ctx)
 	case *raftcmdpb.LedgerApplyOrder_RevertTransaction:
 		logPayload, err = processRevertTransaction(ledger, applyData.RevertTransaction, ctx)
 	case *raftcmdpb.LedgerApplyOrder_SetMetadataFieldType:

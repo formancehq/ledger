@@ -542,6 +542,12 @@ func requestToOrderUnchecked(req *servicepb.Request) *raftcmdpb.Order {
 					Force:           data.CreateTransaction.GetForce(),
 				},
 			}
+		case *servicepb.LedgerAction_ExecuteNumscript:
+			applyOrder.Data = &raftcmdpb.LedgerApplyOrder_ExecuteNumscript{ExecuteNumscript: &raftcmdpb.ExecuteNumscriptOrder{
+				Script: data.ExecuteNumscript.GetScript(), Timestamp: data.ExecuteNumscript.GetTimestamp(),
+				Metadata: data.ExecuteNumscript.GetMetadata(), AccountMetadata: data.ExecuteNumscript.GetAccountMetadata(),
+				Force: data.ExecuteNumscript.GetForce(),
+			}}
 		case *servicepb.LedgerAction_AddMetadata:
 			applyOrder.Data = &raftcmdpb.LedgerApplyOrder_AddMetadata{
 				AddMetadata: &raftcmdpb.SaveMetadataOrder{

@@ -186,6 +186,7 @@ func expectedRouteScopes() []routeScope {
 
 		// --- Transactions write, requireTransactionsWrite (handler.go:182-185) ---
 		{http.MethodPost, "/v3/{ledgerName}/transactions", kindGuarded, internalauth.ScopeTransactionsWrite, false},
+		{http.MethodPost, "/v3/{ledgerName}/numscripts/execute", kindGuarded, internalauth.ScopeTransactionsWrite, false},
 		{http.MethodPost, "/v3/{ledgerName}/transactions/{transactionId}/revert", kindGuarded, internalauth.ScopeTransactionsWrite, false},
 
 		// --- Metadata write, requireMetadataWrite (handler.go:188-200) ---

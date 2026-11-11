@@ -3140,6 +3140,21 @@ func recordChainBoundMutations(
 		}
 	}
 
+	if execution := apply.GetExecuteNumscript(); execution != nil {
+		// Execution has no reference to skip against. Its account metadata is
+		// a successful write regardless of whether it creates a transaction.
+		for account, mm := range execution.GetAccountMetadata() {
+			for key := range mm.GetValues() {
+				appendMetadataMutation(chainBound.metadata, ledger, metadataTimelineTarget(false, account), key, logSeq, true)
+			}
+		}
+		// The order does not reveal whether the script emitted postings. The
+		// replayed log reconciles the speculative slot for metadata-only output.
+		if _, err := allocateChainBoundTxID(ledger, chainBound); err != nil {
+			return err
+		}
+	}
+
 	if rt := apply.GetRevertTransaction(); rt != nil {
 		if !chainBoundRevertSkipped(ledger, rt, chainBound) {
 			// The revert creates a NEW tx (with the inverse
