@@ -1353,6 +1353,18 @@ func addVolumeNeed(p *plan.Coverage, ledgerName, account, asset, color string) {
 	}
 }
 
+// addAccountMetadataNeed covers the metadata row and the account lifetime.
+// A metadata-only write can open a normal account without touching a volume.
+func addAccountMetadataNeed(p *plan.Coverage, ledgerName, account, key string) {
+	p.Add(dal.SubAttrMetadata, domain.MetadataKey{
+		AccountKey: domain.AccountKey{LedgerName: ledgerName, Account: account},
+		Key:        key,
+	}.Bytes())
+	if account != "world" {
+		p.Add(dal.SubAttrAccountIncarnation, (domain.AccountKey{LedgerName: ledgerName, Account: account}).Bytes())
+	}
+}
+
 // addTransactionTargetNeeds preloads the TransactionState entry for a
 // TargetTransaction so the FSM can read it from cache.
 func addTransactionTargetNeeds(p *plan.Coverage, ledgerName string, txID uint64) {
@@ -1408,10 +1420,7 @@ func extractLedgerScopedNeeds(p *plan.Coverage, ls *raftcmdpb.LedgerScopedOrder,
 		if ct := mi.GetEntry().GetCreatedTransaction(); ct != nil {
 			for account, mm := range ct.GetAccountMetadata() {
 				for key := range mm.GetValues() {
-					p.Add(dal.SubAttrMetadata, domain.MetadataKey{
-						AccountKey: domain.AccountKey{LedgerName: ledgerName, Account: account},
-						Key:        key,
-					}.Bytes())
+					addAccountMetadataNeed(p, ledgerName, account, key)
 				}
 			}
 		}
@@ -1420,10 +1429,7 @@ func extractLedgerScopedNeeds(p *plan.Coverage, ls *raftcmdpb.LedgerScopedOrder,
 			switch target := sm.GetTarget().GetTarget().(type) {
 			case *commonpb.Target_Account:
 				for key := range sm.GetMetadata() {
-					p.Add(dal.SubAttrMetadata, domain.MetadataKey{
-						AccountKey: domain.AccountKey{LedgerName: ledgerName, Account: target.Account.GetAddr()},
-						Key:        key,
-					}.Bytes())
+					addAccountMetadataNeed(p, ledgerName, target.Account.GetAddr(), key)
 				}
 			case *commonpb.Target_TransactionId:
 				addTransactionTargetNeeds(p, ledgerName, target.TransactionId)
@@ -1438,10 +1444,7 @@ func extractLedgerScopedNeeds(p *plan.Coverage, ls *raftcmdpb.LedgerScopedOrder,
 				// → KeyStore.Tombstone. Declare coverage; Tombstone
 				// lazy-fabricates a Gen0 tombstone from Gen1's tag when
 				// only Gen1 has the entry.
-				p.Add(dal.SubAttrMetadata, domain.MetadataKey{
-					AccountKey: domain.AccountKey{LedgerName: ledgerName, Account: target.Account.GetAddr()},
-					Key:        dm.GetKey(),
-				}.Bytes())
+				addAccountMetadataNeed(p, ledgerName, target.Account.GetAddr(), dm.GetKey())
 			case *commonpb.Target_TransactionId:
 				// Transaction metadata lives inside the TransactionState
 				// map — no strict-tombstone path, no extra coverage needed.
@@ -1505,10 +1508,7 @@ func extractLedgerScopedNeeds(p *plan.Coverage, ls *raftcmdpb.LedgerScopedOrder,
 			// themselves are discovered later by the script pass.
 			for account, mm := range applyData.CreateTransaction.GetAccountMetadata() {
 				for key := range mm.GetValues() {
-					p.Add(dal.SubAttrMetadata, domain.MetadataKey{
-						AccountKey: domain.AccountKey{LedgerName: ledgerName, Account: account},
-						Key:        key,
-					}.Bytes())
+					addAccountMetadataNeed(p, ledgerName, account, key)
 				}
 			}
 
@@ -1552,10 +1552,7 @@ func extractLedgerScopedNeeds(p *plan.Coverage, ls *raftcmdpb.LedgerScopedOrder,
 		case *raftcmdpb.LedgerApplyOrder_AddMetadata:
 			if target, ok := applyData.AddMetadata.GetTarget().GetTarget().(*commonpb.Target_Account); ok {
 				for key := range applyData.AddMetadata.GetMetadata() {
-					p.Add(dal.SubAttrMetadata, domain.MetadataKey{
-						AccountKey: domain.AccountKey{LedgerName: ledgerName, Account: target.Account.GetAddr()},
-						Key:        key,
-					}.Bytes())
+					addAccountMetadataNeed(p, ledgerName, target.Account.GetAddr(), key)
 				}
 			}
 
@@ -1570,10 +1567,7 @@ func extractLedgerScopedNeeds(p *plan.Coverage, ls *raftcmdpb.LedgerScopedOrder,
 				// coverage (invariant #6 / #9); Tombstone lazy-
 				// fabricates a Gen0 tombstone from Gen1's tag if a
 				// concurrent Save + rotation raced with admission.
-				p.Add(dal.SubAttrMetadata, domain.MetadataKey{
-					AccountKey: domain.AccountKey{LedgerName: ledgerName, Account: target.Account.GetAddr()},
-					Key:        applyData.DeleteMetadata.GetKey(),
-				}.Bytes())
+				addAccountMetadataNeed(p, ledgerName, target.Account.GetAddr(), applyData.DeleteMetadata.GetKey())
 			}
 
 			if tx, ok := applyData.DeleteMetadata.GetTarget().GetTarget().(*commonpb.Target_TransactionId); ok {

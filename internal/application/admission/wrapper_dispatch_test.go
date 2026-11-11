@@ -375,6 +375,9 @@ func TestExtractLedgerScopedNeeds_CoversEveryPayloadVariant(t *testing.T) {
 					AccountKey: domain.AccountKey{LedgerName: wrapperTestLedger, Account: "user:fran"},
 					Key:        "badge",
 				}.Bytes()))
+				require.True(t, n.Has(dal.SubAttrAccountIncarnation, domain.AccountKey{
+					LedgerName: wrapperTestLedger, Account: "user:fran",
+				}.Bytes()))
 			},
 		},
 		{
@@ -393,6 +396,7 @@ func TestExtractLedgerScopedNeeds_CoversEveryPayloadVariant(t *testing.T) {
 			},
 			assert: func(t *testing.T, n *plan.Coverage) {
 				require.True(t, n.Has(dal.SubAttrTransaction, domain.TransactionKey{LedgerName: wrapperTestLedger, ID: 17}.Bytes()))
+				require.Empty(t, n.Attributes[dal.SubAttrAccountIncarnation])
 			},
 		},
 		{
@@ -416,6 +420,9 @@ func TestExtractLedgerScopedNeeds_CoversEveryPayloadVariant(t *testing.T) {
 				require.True(t, n.Has(dal.SubAttrMetadata, domain.MetadataKey{
 					AccountKey: domain.AccountKey{LedgerName: wrapperTestLedger, Account: "user:gina"},
 					Key:        "badge",
+				}.Bytes()))
+				require.True(t, n.Has(dal.SubAttrAccountIncarnation, domain.AccountKey{
+					LedgerName: wrapperTestLedger, Account: "user:gina",
 				}.Bytes()))
 			},
 		},

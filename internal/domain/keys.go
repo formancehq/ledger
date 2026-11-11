@@ -53,6 +53,7 @@ type AccountKey struct {
 // AppendBytes identifies an account independently of its volumes and metadata.
 func (k AccountKey) AppendBytes(dst []byte) []byte {
 	dst = appendLedgerName(dst, k.LedgerName)
+
 	return append(dst, k.Account...)
 }
 
