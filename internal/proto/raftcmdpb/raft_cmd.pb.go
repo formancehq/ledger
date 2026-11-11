@@ -5315,16 +5315,9 @@ type AttributeCoverage struct {
 	Id       *AttributeID           `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
 	AttrCode uint32                 `protobuf:"varint,2,opt,name=attr_code,json=attrCode,proto3" json:"attr_code,omitempty"`
 	// Optional seed: nil = coverage-only; non-nil = seed into the FSM cache.
-	Value *AttributeValue `protobuf:"bytes,3,opt,name=value,proto3" json:"value,omitempty"`
-	// Only for SubAttrAccountIncarnation. Admission observes the current
-	// lifetime while building the preload. Zero means the address was absent;
-	// a nonzero value is the Raft index that opened the lifetime. The FSM
-	// compares this with its state before executing any order. The separate
-	// presence bit lets older proposals omit the assertion entirely.
-	ExpectedIncarnationOpenedAtRaftIndex uint64 `protobuf:"fixed64,4,opt,name=expected_incarnation_opened_at_raft_index,json=expectedIncarnationOpenedAtRaftIndex,proto3" json:"expected_incarnation_opened_at_raft_index,omitempty"`
-	AssertAccountIncarnation             bool   `protobuf:"varint,5,opt,name=assert_account_incarnation,json=assertAccountIncarnation,proto3" json:"assert_account_incarnation,omitempty"`
-	unknownFields                        protoimpl.UnknownFields
-	sizeCache                            protoimpl.SizeCache
+	Value         *AttributeValue `protobuf:"bytes,3,opt,name=value,proto3" json:"value,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *AttributeCoverage) Reset() {
@@ -5376,20 +5369,6 @@ func (x *AttributeCoverage) GetValue() *AttributeValue {
 		return x.Value
 	}
 	return nil
-}
-
-func (x *AttributeCoverage) GetExpectedIncarnationOpenedAtRaftIndex() uint64 {
-	if x != nil {
-		return x.ExpectedIncarnationOpenedAtRaftIndex
-	}
-	return 0
-}
-
-func (x *AttributeCoverage) GetAssertAccountIncarnation() bool {
-	if x != nil {
-		return x.AssertAccountIncarnation
-	}
-	return false
 }
 
 // AttributeValue carries the typed value to seed the FSM-side cache for
@@ -6167,13 +6146,11 @@ const file_raft_cmd_proto_rawDesc = "" +
 	"\n" +
 	"attributes\x18\x03 \x03(\v2\x17.raft.AttributeCoverageR\n" +
 	"attributes\x12E\n" +
-	"\x10idempotency_keys\x18\x04 \x03(\v2\x1a.raft.ReloadIdempotencyKeyR\x0fidempotencyKeys\"\x96\x02\n" +
+	"\x10idempotency_keys\x18\x04 \x03(\v2\x1a.raft.ReloadIdempotencyKeyR\x0fidempotencyKeys\"\x7f\n" +
 	"\x11AttributeCoverage\x12!\n" +
 	"\x02id\x18\x01 \x01(\v2\x11.raft.AttributeIDR\x02id\x12\x1b\n" +
 	"\tattr_code\x18\x02 \x01(\rR\battrCode\x12*\n" +
-	"\x05value\x18\x03 \x01(\v2\x14.raft.AttributeValueR\x05value\x12W\n" +
-	")expected_incarnation_opened_at_raft_index\x18\x04 \x01(\x06R$expectedIncarnationOpenedAtRaftIndex\x12<\n" +
-	"\x1aassert_account_incarnation\x18\x05 \x01(\bR\x18assertAccountIncarnation\"-\n" +
+	"\x05value\x18\x03 \x01(\v2\x14.raft.AttributeValueR\x05value\"-\n" +
 	"\x0eAttributeValue\x12\x1b\n" +
 	"\traw_value\x18\x01 \x01(\fR\brawValue\"[\n" +
 	"\x14ReloadIdempotencyKey\x12\x10\n" +

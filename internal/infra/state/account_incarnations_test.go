@@ -176,17 +176,14 @@ func TestApplyProposalWorldIncarnationTracksMetadataWrites(t *testing.T) {
 	account := domain.AccountKey{LedgerName: ledger, Account: "world"}
 	id, _ := attributes.MakeKey(account.Bytes())
 	target := &commonpb.Target{Target: &commonpb.Target_Account{Account: &commonpb.TargetAccount{Addr: "world"}}}
-	apply := func(index uint64, action *raftcmdpb.LedgerApplyOrder, expected uint64) {
+	apply := func(index uint64, action *raftcmdpb.LedgerApplyOrder) {
 		t.Helper()
 		order := &raftcmdpb.Order{Type: &raftcmdpb.Order_LedgerScoped{LedgerScoped: &raftcmdpb.LedgerScopedOrder{
 			Ledger:  ledger,
 			Payload: &raftcmdpb.LedgerScopedOrder_Apply{Apply: action},
 		}}}
 		proposal := makeProposal(index, order)
-		coverage := declareTestPlan(id, dal.SubAttrAccountIncarnation)
-		coverage.AssertAccountIncarnation = true
-		coverage.ExpectedIncarnationOpenedAtRaftIndex = expected
-		proposal.ExecutionPlan.Attributes = append(proposal.ExecutionPlan.Attributes, coverage)
+		proposal.ExecutionPlan.Attributes = append(proposal.ExecutionPlan.Attributes, declareTestPlan(id, dal.SubAttrAccountIncarnation))
 		result, err := machine.ApplyEntries(t.Context(), store, makeEntry(t, index, proposal))
 		require.NoError(t, err)
 		require.NoError(t, result.Results[0].Error)
@@ -194,7 +191,7 @@ func TestApplyProposalWorldIncarnationTracksMetadataWrites(t *testing.T) {
 
 	apply(2, &raftcmdpb.LedgerApplyOrder{Data: &raftcmdpb.LedgerApplyOrder_AddMetadata{AddMetadata: &raftcmdpb.SaveMetadataOrder{
 		Target: target, Metadata: map[string]*commonpb.MetadataValue{"owner": commonpb.NewStringValue("alice")},
-	}}}, 0)
+	}}})
 	opened, err := attrs.AccountIncarnation.Get(store, account.Bytes())
 	require.NoError(t, err)
 	require.NotNil(t, opened)
@@ -203,62 +200,11 @@ func TestApplyProposalWorldIncarnationTracksMetadataWrites(t *testing.T) {
 
 	apply(3, &raftcmdpb.LedgerApplyOrder{Data: &raftcmdpb.LedgerApplyOrder_DeleteMetadata{DeleteMetadata: &raftcmdpb.DeleteMetadataOrder{
 		Target: target, Key: "owner",
-	}}}, 2)
+	}}})
 	updated, err := attrs.AccountIncarnation.Get(store, account.Bytes())
 	require.NoError(t, err)
 	require.NotNil(t, updated)
 	require.Equal(t, uint64(2), updated.GetOpenedAtRaftIndex())
 	require.Equal(t, opened.GetInsertedAt().GetData(), updated.GetInsertedAt().GetData())
 	require.Greater(t, updated.GetUpdatedAt().GetData(), opened.GetUpdatedAt().GetData())
-}
-
-func TestAssertAccountIncarnationsRejectsConcurrentOpening(t *testing.T) {
-	t.Parallel()
-	machine, _, _ := newTestMachine(t)
-	account := domain.AccountKey{LedgerName: "ledger", Account: "normal:one"}
-	id, tag := attributes.MakeKey(account.Bytes())
-	coverage := declareTestPlan(id, dal.SubAttrAccountIncarnation)
-	coverage.AssertAccountIncarnation = true
-	plan := &raftcmdpb.ExecutionPlan{Attributes: []*raftcmdpb.AttributeCoverage{coverage}}
-
-	// Admission observed no lifetime. Another proposal opens the account
-	// before this one applies, so the old observation must be retried.
-	require.NoError(t, machine.assertAccountIncarnations(plan))
-	machine.Registry.Cache.AccountIncarnations.Put(id, attributes.Entry[*commonpb.AccountIncarnation]{
-		Tag:  tag,
-		Data: &commonpb.AccountIncarnation{OpenedAtRaftIndex: 41, Persistence: commonpb.AccountTypePersistence_ACCOUNT_TYPE_NORMAL},
-	})
-	require.ErrorIs(t, machine.assertAccountIncarnations(plan), domain.ErrStaleInputsResolution)
-
-	coverage.ExpectedIncarnationOpenedAtRaftIndex = 41
-	require.NoError(t, machine.assertAccountIncarnations(plan))
-	coverage.ExpectedIncarnationOpenedAtRaftIndex = 42
-	require.ErrorIs(t, machine.assertAccountIncarnations(plan), domain.ErrStaleInputsResolution)
-}
-
-func TestApplyProposal_StaleAccountIncarnationIsNotAuditedOrFrozen(t *testing.T) {
-	t.Parallel()
-	machine, store, _ := newTestMachine(t)
-	account := domain.AccountKey{LedgerName: "ledger", Account: "normal:one"}
-	id, tag := attributes.MakeKey(account.Bytes())
-	machine.Registry.Cache.AccountIncarnations.Put(id, attributes.Entry[*commonpb.AccountIncarnation]{
-		Tag:  tag,
-		Data: &commonpb.AccountIncarnation{OpenedAtRaftIndex: 41, Persistence: commonpb.AccountTypePersistence_ACCOUNT_TYPE_NORMAL},
-	})
-	proposal := makeProposal(1, createLedgerOrder("candidate"))
-	proposal.Idempotency = &commonpb.Idempotency{Key: "stale-incarnation"}
-	coverage := declareTestPlan(id, dal.SubAttrAccountIncarnation)
-	coverage.AssertAccountIncarnation = true // Admission observed no lifetime.
-	proposal.ExecutionPlan.Attributes = append(proposal.ExecutionPlan.Attributes, coverage)
-	beforeAudit := machine.State.NextAuditSequenceID
-	beforeTimestamp := machine.State.LastAppliedTimestamp
-
-	result, err := machine.ApplyEntries(t.Context(), store, makeEntry(t, 1, proposal))
-	require.NoError(t, err)
-	require.ErrorIs(t, result.Results[0].Error, domain.ErrStaleInputsResolution)
-	require.False(t, result.Results[0].AuditEntryWritten)
-	require.Equal(t, beforeAudit, machine.State.NextAuditSequenceID)
-	require.Equal(t, beforeTimestamp, machine.State.LastAppliedTimestamp)
-	_, frozen := machine.Registry.Idempotency.Get("stale-incarnation")
-	require.False(t, frozen)
 }

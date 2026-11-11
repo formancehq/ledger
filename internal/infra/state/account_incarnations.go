@@ -8,33 +8,9 @@ import (
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/domain/accounttype"
 	"github.com/formancehq/ledger/v3/internal/domain/processing"
-	"github.com/formancehq/ledger/v3/internal/infra/attributes"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
-
-// assertAccountIncarnations compares admission's observed account lifetimes
-// with the FSM cache after Preload and before any order can mutate the write
-// set. A concurrent opening makes an absent observation stale; future close
-// and reopen operations will use the same assertion to reject an old lifetime.
-func (fsm *Machine) assertAccountIncarnations(plan *raftcmdpb.ExecutionPlan) domain.SerializableError {
-	for _, coverage := range plan.GetAttributes() {
-		if !coverage.GetAssertAccountIncarnation() {
-			continue
-		}
-		id := attributes.U128FromBytes(coverage.GetId().GetId())
-		current := uint64(0)
-		if entry, ok := fsm.Registry.Cache.AccountIncarnations.Get(id); ok && !entry.Deleted && entry.Data != nil {
-			current = entry.Data.GetOpenedAtRaftIndex()
-		}
-		if current != coverage.GetExpectedIncarnationOpenedAtRaftIndex() {
-			return domain.ErrStaleInputsResolution
-		}
-	}
-
-	return nil
-}
 
 // ensureAccountIncarnations observes the final account write set for this
 // proposal. It opens or updates one incarnation per touched normal account,

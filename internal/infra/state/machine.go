@@ -1610,15 +1610,6 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 			}
 		}
 	}
-	if err == nil {
-		if assertionErr := fsm.assertAccountIncarnations(proposal.GetExecutionPlan()); assertionErr != nil {
-			fsm.State.LastAppliedTimestamp = previousTimestamp
-			result.Error = &domain.BusinessError{Err: assertionErr}
-
-			return result, nil
-		}
-	}
-
 	// Process the proposal unless the dedup gate rejected it as a conflict
 	// (err set). Handlers see the gated Scope facade for state reads/writes;
 	// cross-order signals (schedule, sink config, cleanup, ...) are derived
