@@ -1500,8 +1500,8 @@ func tryRefreshMembershipForStartupWithTimeout(ctx context.Context, cfg Config, 
 		return nil
 	}
 
-	// Preserve cancellation of the lifecycle itself as a hard error. Only the
-	// timeout introduced for this bounded attempt is transient.
+	// Preserve lifecycle cancellation as a hard error. The bounded attempt's
+	// expiry and a remote RPC deadline are transient while the lifecycle is live.
 	if ctx.Err() == nil && (errors.Is(attemptCtx.Err(), context.DeadlineExceeded) || errors.Is(err, context.DeadlineExceeded) || status.Code(err) == codes.DeadlineExceeded) {
 		return fmt.Errorf("%w: synchronous refresh attempt exceeded %s: %w", errMembershipRefreshTransient, timeout, err)
 	}
