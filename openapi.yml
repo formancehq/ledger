@@ -4798,6 +4798,10 @@ components:
 
     ExecuteNumscriptRequest:
       type: object
+      additionalProperties: false
+      oneOf:
+        - required: [script]
+        - required: [scriptReference]
       description: |
         Execute a Numscript independently of transaction creation. Specify
         exactly one of `script` and `scriptReference`. The request cannot
