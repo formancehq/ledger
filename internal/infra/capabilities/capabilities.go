@@ -197,6 +197,18 @@ func ActiveIDs(policy *commonpb.ClusterPolicy) []uint32 {
 	return active
 }
 
+// ValidateSupportedActive refuses a persisted policy that this binary cannot
+// apply. It is used at boot and after installing a leader checkpoint.
+func ValidateSupportedActive(policy *commonpb.ClusterPolicy, supported []CapabilityID) error {
+	for _, id := range ActiveIDs(policy) {
+		if !slices.Contains(supported, CapabilityID(id)) {
+			return fmt.Errorf("active capability %d is not supported by this binary", id)
+		}
+	}
+
+	return nil
+}
+
 // IDsAsUint32 converts the typed capability identifiers to their protobuf wire
 // representation at an API boundary.
 func IDsAsUint32(ids []CapabilityID) []uint32 {

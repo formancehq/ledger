@@ -13,6 +13,15 @@ func capabilityState() State {
 	return State{Activations: map[CapabilityID]bool{}}
 }
 
+func TestValidateSupportedActiveRefusesDowngrade(t *testing.T) {
+	policy := &commonpb.ClusterPolicy{CapabilityActivations: []*commonpb.CapabilityActivation{
+		{Id: 7, Active: true},
+		{Id: 8, Active: false},
+	}}
+	require.NoError(t, ValidateSupportedActive(policy, []CapabilityID{7}))
+	require.ErrorContains(t, ValidateSupportedActive(policy, nil), "active capability 7")
+}
+
 func TestEvaluateIncludesVotersAndLearners(t *testing.T) {
 	state := capabilityState()
 	state.Activations[99] = true

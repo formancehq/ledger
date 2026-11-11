@@ -246,6 +246,10 @@ func Module() fx.Option {
 			// not perform any Pebble read itself.
 			func(machine *state.Machine, store *dal.Store, membership *raftmembership.Membership) (*state.Recovery, error) {
 				recovery := state.NewRecovery(machine, store, state.WithStateRecovered(func(recovered *state.FSMState) error {
+					if err := capabilities.ValidateSupportedActive(recovered.ClusterPolicy, capabilities.SupportedIDs()); err != nil {
+						return err
+					}
+
 					return publishCapabilityGate(membership, recovered.ClusterPolicy)
 				}))
 				if err := recovery.RecoverState(); err != nil {

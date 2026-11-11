@@ -12,6 +12,7 @@ import (
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
+	"github.com/formancehq/ledger/v3/internal/infra/capabilities"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
@@ -393,10 +394,10 @@ func (m *Membership) Remove(nodeID uint64) {
 // identity. Identity-less membership rows are rejected rather than persisted
 // as a partial member. capabilityIDs carries the peer's capability evidence.
 func (m *Membership) Register(nodeID uint64, raftAddr, serviceAddr string, instanceID []byte, capabilityIDs []uint32) error {
-	// A restart refreshes the local addresses. Preserve evidence for the same
-	// concrete instance when the caller has no new proof; a changed instance
-	// must never inherit the previous pod's capabilities.
-	if len(capabilityIDs) == 0 {
+	// A restart refreshes the local addresses. Preserve evidence for another
+	// peer when no new proof is available, but never preserve self evidence:
+	// an empty self list is the binary's real list after a downgrade.
+	if len(capabilityIDs) == 0 && nodeID != m.selfNodeID {
 		if existing, ok := m.PeerAddresses()[nodeID]; ok && bytes.Equal(existing.InstanceID, instanceID) {
 			capabilityIDs = existing.Capabilities
 		}
@@ -619,6 +620,19 @@ func (m *Membership) Rehydrate() error {
 // checkpoint introduced an identity-less configured member would violate the
 // cluster's removal/admission contract.
 func (m *Membership) OnSnapshotInstalled() {
+	// The checkpoint and spool replay may have introduced a policy that this
+	// binary cannot execute. Stop before accepting any further Raft entries.
+	m.mu.RLock()
+	provider := m.capabilityPolicyProvider
+	m.mu.RUnlock()
+	policy, err := provider()
+	if err != nil {
+		panic(fmt.Errorf("reading cluster policy after snapshot install: %w", err))
+	}
+	if err := capabilities.ValidateSupportedActive(policy, capabilities.SupportedIDs()); err != nil {
+		panic(fmt.Errorf("snapshot requires unsupported capability: %w", err))
+	}
+
 	// Force-write the locally-authoritative self row to Pebble BEFORE
 	// the reload, so LoadAll pulls our address rather than the leader's
 	// potentially-stale view and the next checkpoint we serve is
@@ -633,9 +647,7 @@ func (m *Membership) OnSnapshotInstalled() {
 	// Better to fall through and let Rehydrate reload from Pebble
 	// (with the leader's possibly-stale self); the next OnSnapshot
 	// or restart will re-attempt the self-Put.
-	m.mu.RLock()
-	selfCapabilities := append([]uint32(nil), m.addresses[m.selfNodeID].Capabilities...)
-	m.mu.RUnlock()
+	selfCapabilities := capabilities.IDsAsUint32(capabilities.SupportedIDs())
 	if err := m.store.PutWithEvidence(m.selfNodeID, m.selfRaftAddr, m.selfServiceAddr, m.selfInstanceID, selfCapabilities); err != nil {
 		m.logger.WithFields(map[string]any{
 			"error": err,

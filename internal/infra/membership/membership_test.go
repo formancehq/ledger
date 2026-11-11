@@ -11,6 +11,7 @@ import (
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
@@ -432,8 +433,31 @@ func TestMembership_OnSnapshotInstalled(t *testing.T) {
 	require.Equal(t, "new:1", got[1].RaftAddress)
 	require.Equal(t, "new:3", got[3].RaftAddress)
 	require.Equal(t, testSelfRaftAddr, got[testSelfNodeID].RaftAddress, "self must be re-upserted with local truth")
-	require.Equal(t, []uint32{7}, got[testSelfNodeID].Capabilities, "self capabilities must survive snapshot restore")
+	require.Empty(t, got[testSelfNodeID].Capabilities, "self evidence must reflect the running binary after snapshot restore")
 	require.NotContains(t, got, uint64(7))
+}
+
+func TestMembershipRegisterSelfClearsStaleCapabilityEvidence(t *testing.T) {
+	ps := newTestPeerStore(t)
+	require.NoError(t, ps.PutWithEvidence(testSelfNodeID, testSelfRaftAddr, testSelfServiceAddr, fixedInstanceID(0x42), []uint32{7}))
+	m, err := NewMembership(ps, noopTransport{}, noopPool{}, testSelfNodeID, testSelfRaftAddr, testSelfServiceAddr, fixedInstanceID(0x42), logging.Testing(), NoopClusterPolicyProvider)
+	require.NoError(t, err)
+
+	require.NoError(t, m.Register(testSelfNodeID, testSelfRaftAddr, testSelfServiceAddr, fixedInstanceID(0x42), nil))
+	peers, err := ps.LoadAll()
+	require.NoError(t, err)
+	require.Empty(t, peers[testSelfNodeID].Capabilities)
+	require.Empty(t, m.PeerAddresses()[testSelfNodeID].Capabilities)
+}
+
+func TestMembershipOnSnapshotInstalledRejectsUnsupportedActiveCapability(t *testing.T) {
+	ps := newTestPeerStore(t)
+	provider := func() (*commonpb.ClusterPolicy, error) {
+		return &commonpb.ClusterPolicy{CapabilityActivations: []*commonpb.CapabilityActivation{{Id: 7, Active: true}}}, nil
+	}
+	m, err := NewMembership(ps, noopTransport{}, noopPool{}, testSelfNodeID, testSelfRaftAddr, testSelfServiceAddr, fixedInstanceID(0x42), logging.Testing(), provider)
+	require.NoError(t, err)
+	require.PanicsWithError(t, "snapshot requires unsupported capability: active capability 7 is not supported by this binary", m.OnSnapshotInstalled)
 }
 
 func TestMembership_SnapshotDonorCandidates(t *testing.T) {
