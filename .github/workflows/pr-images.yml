@@ -104,3 +104,16 @@ jobs:
             echo "| \`${operator_image}\` | \`${operator_digest}\` |"
           } >> "$GITHUB_STEP_SUMMARY"
           IMAGES
+      - name: Publish temporary benchmark image aliases
+        env:
+          build_image: ${{ steps.tag.outputs.build_image }}
+          pr_sha: ${{ github.event.pull_request.head.sha }}
+        run: |
+          nix develop .#perf --command bash -euo pipefail <<'ALIASES'
+          digest=$(docker buildx imagetools inspect "$build_image" --format '{{json .Manifest}}' | jq -er '.digest')
+          branch_alias="${IMAGE_REPOSITORY}:v3.0.0-0.bench.${pr_sha:0:12}"
+          main_alias="${IMAGE_REPOSITORY}:v3.0.0-0.bench.010eb6354a14"
+          main_image="${IMAGE_REPOSITORY}:pr-0-010eb63-run-43005102522-1@sha256:05284fc0f6b224119200c7b9b2b63c392a94ba303c03f3843cea0d5db9e3a21d"
+          docker buildx imagetools create --tag "$branch_alias" "$build_image@$digest"
+          docker buildx imagetools create --tag "$main_alias" "$main_image"
+          ALIASES
