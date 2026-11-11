@@ -4991,6 +4991,7 @@ Enable JWT/OIDC authentication with scope-based authorization. See [Authenticati
 |------|------|---------|-------------|
 | `--auth-enabled` | bool | `false` | Enable JWT authentication and scope-based authorization. Requires `--tls-mode=required` — rejected with `--tls-mode=disabled` or `--tls-mode=optional` (`optional` still accepts plaintext client connections) |
 | `--auth-issuer` | string | `""` | OIDC issuer URL (used for discovery and token validation) |
+| `--auth-issuers` | string slice | `[]` | Additional trusted OIDC issuer URLs, comma-separated (env `AUTH_ISSUERS`). Merged with `--auth-issuer` |
 | `--auth-service` | string | `""` | Service name prefix for scopes (e.g., `ledger` for `ledger:read`) |
 | `--auth-read-key-set-max-retries` | int | `10` | Maximum retries when fetching the JWKS key set |
 | `--auth-ed25519-keys` | string | `""` | Path to JSON file with Ed25519 public keys and scopes (auto-enables auth unless `--auth-enabled=false` is explicit) |

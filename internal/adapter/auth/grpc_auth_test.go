@@ -93,7 +93,7 @@ func testAuthConfig(t *testing.T, keySet oidc.KeySet) AuthConfig {
 	return AuthConfig{
 		Enabled:      true,
 		KeySet:       keySet,
-		Issuer:       testIssuer,
+		Issuers:      []string{testIssuer},
 		Service:      "ledger",
 		ScopeMapping: DefaultMapping("ledger"),
 	}
@@ -436,12 +436,12 @@ func TestAuthenticate_EdDSA_NoIssuerCheck(t *testing.T) {
 	cfg := AuthConfig{
 		Enabled: true,
 		KeySet:  edKeySet,
-		Issuer:  "https://oidc-issuer.example.com", // OIDC issuer configured but should be ignored for EdDSA
+		Issuers: []string{"https://oidc-issuer.example.com"}, // OIDC issuer configured but should be ignored for EdDSA
 		Service: "ledger",
 	}
 
 	claims := newTestClaims("ledger:read")
-	claims.Issuer = "some-other-issuer" // Different from cfg.Issuer — should still pass
+	claims.Issuer = "some-other-issuer" // Not in cfg.Issuers — should still pass
 	token := signEdDSA(t, edPriv, "ed-key", claims)
 	ctx := ctxWithBearer(token)
 
@@ -565,7 +565,7 @@ func writesOnlyGRPCConfig(t *testing.T) (AuthConfig, *rsa.PrivateKey) {
 	return AuthConfig{
 		Enabled:      true,
 		KeySet:       keySet,
-		Issuer:       testIssuer,
+		Issuers:      []string{testIssuer},
 		Service:      "ledger",
 		ScopeMapping: mapping,
 	}, privKey
@@ -735,7 +735,7 @@ func TestAuthenticate_UserToken_NotClusterInternal(t *testing.T) {
 	cfg := AuthConfig{
 		Enabled:       true,
 		KeySet:        keySet,
-		Issuer:        testIssuer,
+		Issuers:       []string{testIssuer},
 		ScopeMapping:  DefaultMapping("ledger"),
 		ClusterSecret: "shared-cluster-secret",
 	}

@@ -5,6 +5,7 @@ import (
 	"crypto/subtle"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 
 	jose "github.com/go-jose/go-jose/v4"
@@ -27,7 +28,7 @@ var authTracer = otel.Tracer("auth")
 type AuthConfig struct {
 	Enabled              bool
 	KeySet               oidc.KeySet
-	Issuer               string
+	Issuers              []string // trusted OIDC issuers
 	Service              string
 	ScopeMapping         ScopeMapping
 	Ed25519AllowedScopes map[string][]string // keyID -> allowed scopes (nil = no Ed25519 auth)
@@ -251,12 +252,8 @@ func validateToken(ctx context.Context, token string, cfg AuthConfig) (*validate
 				}
 			}
 		}
-	} else {
-		// OIDC token: verify issuer as before.
-		err := oidc.CheckIssuer(claims, cfg.Issuer)
-		if err != nil {
-			return nil, err
-		}
+	} else if !slices.Contains(cfg.Issuers, claims.Issuer) {
+		return nil, fmt.Errorf("%w: got: %s, trusted: %v", oidc.ErrIssuerInvalid, claims.Issuer, cfg.Issuers)
 	}
 
 	if err := oidc.CheckExpiration(claims, 0); err != nil {

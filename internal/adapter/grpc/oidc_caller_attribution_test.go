@@ -50,7 +50,7 @@ func TestOIDCCallerAttributionThroughPublicGRPC(t *testing.T) {
 	staticPublic, staticPrivate, err := ed25519.GenerateKey(rand.Reader)
 	require.NoError(t, err)
 	cfg := internalauth.AuthConfig{
-		Enabled: true, Issuer: issuer, Service: "ledger", ScopeMapping: internalauth.DefaultMapping("ledger"),
+		Enabled: true, Issuers: []string{issuer}, Service: "ledger", ScopeMapping: internalauth.DefaultMapping("ledger"),
 		KeySet: oidc.NewStaticKeySet(
 			jose.JSONWebKey{Key: &rsaKey.PublicKey, KeyID: "oidc-first", Algorithm: string(jose.RS256), Use: "sig"},
 			jose.JSONWebKey{Key: &rotatedKey.PublicKey, KeyID: "oidc-rotated", Algorithm: string(jose.RS256), Use: "sig"},
