@@ -492,6 +492,7 @@ var ledgerScopedAttrTypes = []byte{
 	dal.SubAttrNumscriptContent,
 	dal.SubAttrPreparedQuery,
 	dal.SubAttrIndex,
+	dal.SubAttrAccountIncarnation,
 }
 
 // DeleteLedgerData removes all per-ledger data from Pebble for the given ledger.

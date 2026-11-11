@@ -1,0 +1,14 @@
+syntax = "proto3";
+
+package common;
+
+option go_package = "github.com/formancehq/ledger/v3/internal/proto/commonpb";
+
+import "common.proto";
+
+// Current lifetime of an account address. This benchmark projection is
+// populated by posting activity; lifecycle rules are left to a later change.
+message AccountIncarnation {
+  fixed64 opened_at_raft_index = 1;
+  AccountTypePersistence persistence = 2;
+}
