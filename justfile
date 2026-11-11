@@ -444,6 +444,7 @@ generate-proto:
         -I misc/proto \
         misc/proto/raft_transport.proto \
         misc/proto/common.proto \
+        misc/proto/account_incarnation.proto \
         misc/proto/cluster.proto \
         misc/proto/cluster_bootstrap.proto \
         misc/proto/bucket.proto \

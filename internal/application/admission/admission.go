@@ -1348,6 +1348,9 @@ func addVolumeNeed(p *plan.Coverage, ledgerName, account, asset, color string) {
 		Asset:      asset,
 		Color:      color,
 	}.Bytes())
+	if account != "world" {
+		p.Add(dal.SubAttrAccountIncarnation, (domain.AccountKey{LedgerName: ledgerName, Account: account}).Bytes())
+	}
 }
 
 // addTransactionTargetNeeds preloads the TransactionState entry for a

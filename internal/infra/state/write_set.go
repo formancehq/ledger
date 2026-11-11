@@ -228,6 +228,7 @@ type mergeDrained struct {
 	preparedQueryUpdates      []attributes.Update[domain.PreparedQueryKey, *commonpb.PreparedQuery]
 	preparedQueryDeletions    []attributes.Deletion[domain.PreparedQueryKey]
 	indexUpdates              []attributes.Update[domain.IndexKey, *commonpb.Index]
+	incarnationUpdates        []attributes.Update[domain.AccountKey, *commonpb.AccountIncarnation]
 	indexDeletions            []attributes.Deletion[domain.IndexKey]
 }
 
@@ -316,6 +317,10 @@ func (b *WriteSet) drainDerived() (d mergeDrained, err error) {
 	d.volumeUpdates, _, err = b.Derived.Volumes.Merge()
 	if err != nil {
 		return d, fmt.Errorf("failed to merge volumes: %w", err)
+	}
+	d.incarnationUpdates, _, err = b.Derived.AccountIncarnations.Merge()
+	if err != nil {
+		return d, fmt.Errorf("failed to merge account incarnations: %w", err)
 	}
 
 	// Partition volumes by persistence mode: normal (kept), ephemeral (purged), transient (skipped).
@@ -624,6 +629,9 @@ func (b *WriteSet) flushAttributes(batch *dal.WriteSession, genByte byte, d merg
 
 	// SubAttrIndex (0x0C) — bucket-scoped index registry (per-ledger or bucket).
 	if err := flushAttributeAndCache(b.attrs.Index, batch, genByte, dal.SubAttrIndex, d.indexUpdates, d.indexDeletions, &b.bloomUpdates.Indexes, "indexes"); err != nil {
+		return err
+	}
+	if err := flushAttributeAndCache(b.attrs.AccountIncarnation, batch, genByte, dal.SubAttrAccountIncarnation, d.incarnationUpdates, nil, &b.bloomUpdates.AccountIncarnations, "account incarnations"); err != nil {
 		return err
 	}
 
