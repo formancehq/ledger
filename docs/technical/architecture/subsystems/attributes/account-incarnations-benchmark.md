@@ -61,3 +61,22 @@ Grafana snapshots: [`main` world-to-bank](https://grafana.internal.frmnc.net/das
 The corresponding Benchmark CR names are `ledger-010eb6354a14-43008000001-1`, `ledger-378de9b21500-43008000003-1`, `ledger-010eb6354a14-43008000002-1`, and `ledger-378de9b21500-43008000004-1`, in the same order as the snapshots above. The operator marked all four `Completed` and retained their reports.
 
 The GitHub benchmark submission job could not reach ACME because its Tailscale OAuth secret was unavailable. The runs were submitted with the same Pulumi program from an authenticated local session. This is one run per cell, with `main` workloads executed before prototype workloads; repeat and interleave runs before treating small differences as conclusive. The high-cardinality regression is large enough to justify optimizing incarnation lookup and write behavior before advancing the account lifecycle design.
+
+## ACME timestamp and account-read benchmark (2026-11-11)
+
+The current timestamp and account-read revision was tested against `main@5534f9e6cef7a0818914726593e006aad4e52969` on the same ACME pool and three-replica hardware as above. The branch image was built from `b1bbce79b5631033e317d0ea62bdd2e21730298c`. The tested OCI digests were `sha256:f894547adb843f6f2f849092f7d1373c92c141c89bc5a6d0d3a106d0ec9e4bae` (`main`) and `sha256:c975d85a34be565122f8817e8c2a2e6a605b775b410f83e4e699ba71db01a101` (branch). Both alias tags were checked against these digests before submission. All six Benchmark resources reached `Completed`.
+
+The write workloads retained the five-minute 400-to-800 VU profile and atomic bulks of 50 transactions. The new `account_reads` script seeded 200 accounts, waited for the first page to appear in the index, then issued one `GetAccount` and one 50-account `ListAccounts` request per iteration. Its five-minute profile ramped from 50 to 100 VUs. Each main/branch pair used the same script and configuration.
+
+| Workload | `main` throughput | Branch throughput | Change | `main` p95 | Branch p95 | Failed requests |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| `world_to_bank` | 162,647 tx/s | 160,155 tx/s | -1.5% | 375 ms | 378 ms | 2/975,884 vs 1/960,932 |
+| `any_unbounded_to_any` | 50,645 tx/s | 40,518 tx/s | -20.0% | 961 ms | 1,677 ms | 0/303,868 vs 0/243,107 |
+| `GetAccount` | 10,334 reads/s | 9,907 reads/s | -4.1% | 8.87 ms | 9.03 ms | 0/3,100,289 vs 0/2,972,195 |
+| `ListAccounts` (50 accounts) | 10,334 reads/s | 9,907 reads/s | -4.1% | 8.17 ms | 8.43 ms | 0/3,100,289 vs 0/2,972,195 |
+
+Throughput divides each successful k6 counter by the 300-second load profile. The read workload issues both endpoints in each iteration, so its two rows share the iteration rate. The p95 values are estimates from the exported OpenTelemetry histogram buckets over each run, not the exact in-process k6 Trend quantiles. Failed requests use the `errors_total` counter. Each row has one run per image; the `world_to_bank` difference is small enough to require repetitions before drawing a firm conclusion. The unbounded workload still shows a substantial throughput and latency regression. The read workload shows a smaller cost for hydrating incarnation timestamps, including a 50-account page.
+
+Grafana snapshots: [`main` world-to-bank](https://grafana.internal.frmnc.net/dashboard/snapshot/eIjHtv12pIbCAkLG4XSig21vuj5ABt7y), [branch world-to-bank](https://grafana.internal.frmnc.net/dashboard/snapshot/59VHwZar46VfvV2YhJogS2LflRyPosJF), [`main` unbounded-to-any](https://grafana.internal.frmnc.net/dashboard/snapshot/NkA2MlJxDVKakSI8EgUKiPoDjrUHYAjS), [branch unbounded-to-any](https://grafana.internal.frmnc.net/dashboard/snapshot/AQFRNevHo2eeoQ9Eiv1pBoOeJGUUdsNC), [`main` account reads](https://grafana.internal.frmnc.net/dashboard/snapshot/ae9lGQV7d7E7u0Dy4cMtjsgNczNpRh9E), [branch account reads](https://grafana.internal.frmnc.net/dashboard/snapshot/RtaISZiMQAirqTjZaQ0OD59512KpNRYP).
+
+The Benchmark resource names are `ledger-5534f9e6cef7-w2b-1111`, `ledger-b1bbce79b563-w2b-1111`, `ledger-5534f9e6cef7-any-1111`, `ledger-b1bbce79b563-any-1111`, `ledger-5534f9e6cef7-read-1111`, and `ledger-b1bbce79b563-read-1111`, in the same order as the snapshots. The operator serialized the runs, but admitted them in a different order from submission. Current `main` has two commits beyond this branch's merge base, for OIDC issuer handling and exact ID filters. Neither changes these benchmark scripts, but this comparison does not isolate the branch diff as strictly as the earlier paired run.
