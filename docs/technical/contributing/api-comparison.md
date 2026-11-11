@@ -461,12 +461,16 @@ for the full discriminator list and the information retained in the projection.
 - ✅ Numscript variables support
 - ✅ Balance verification (insufficient funds)
 - ✅ `force` option (bypass balance checks)
-- ✅ Automatic metadata-only execution when a Numscript emits account metadata but no postings
+- ✅ Numscript transaction creation when the script emits postings; otherwise `EMPTY_TRANSACTION`
 - ✅ Transaction metadata
 - ✅ Account metadata in the same request
 - ✅ Transaction reference
 - ✅ Custom timestamp
 - ✅ Idempotency key
+
+`POST /v3/{ledgerName}/numscripts/execute` runs a Numscript independently of
+transaction creation. It returns a transaction when the script emits postings,
+or HTTP 204 when it updates account metadata without postings.
 
 **Numscript Experimental Features (available, require `#![feature(...)]` opt-in):**
 - ✅ Account interpolation (dynamic addresses like `@escrow:$order_id`)

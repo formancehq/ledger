@@ -181,7 +181,7 @@ message CreateTransactionPayload {
 
 ### Metadata-only execution
 
-When a script-backed create action emits no postings but the merged result
+When an `ExecuteNumscript` action emits no postings but the merged result
 contains account metadata (from the script or from the caller's
 `accountMetadata` field), Ledger automatically treats it as a metadata-only
 execution. A successful execution writes all account metadata atomically,
@@ -190,9 +190,10 @@ emits an auditable
 create `TransactionState`, or emit a `created_transaction` log. Replaying the
 audit log applies the same account metadata writes.
 
-The existing transaction invariant remains unchanged: every created
-transaction has at least one posting. A script-backed create that emits neither
-postings nor real account metadata still fails with `EMPTY_TRANSACTION`.
+The transaction-creation action requires postings from its Numscript and
+returns `EMPTY_TRANSACTION` without them. An `ExecuteNumscript` action that
+emits neither postings nor real account metadata also fails with
+`EMPTY_TRANSACTION`.
 Transaction metadata and transaction references are not valid in this mode.
 
 ### Resolution Flow — admission plans, the FSM resolves
