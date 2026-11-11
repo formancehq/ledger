@@ -150,12 +150,6 @@ func validatePlan(plan *raftcmdpb.AttributeCoverage, idx int) *domain.ErrInvalid
 			Reason_: fmt.Sprintf("plans[%d]: AttributeCoverage declares attr_code 0x%x which the FSM does not handle", idx, code),
 		}
 	}
-	if plan.GetAssertAccountIncarnation() && byte(code) != dal.SubAttrAccountIncarnation {
-		return &domain.ErrInvalidExecutionPlan{Reason_: fmt.Sprintf("plans[%d]: account incarnation assertion on attr_code 0x%x", idx, code)}
-	}
-	if !plan.GetAssertAccountIncarnation() && plan.GetExpectedIncarnationOpenedAtRaftIndex() != 0 {
-		return &domain.ErrInvalidExecutionPlan{Reason_: fmt.Sprintf("plans[%d]: expected incarnation index without assertion", idx)}
-	}
 
 	return nil
 }

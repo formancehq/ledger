@@ -311,17 +311,17 @@ func TestBuildPreloads_EmitsDeclareOnCacheHit(t *testing.T) {
 	require.Equal(t, id[:], plan.GetId().GetId())
 }
 
-func TestBuildPreloads_BindsAccountIncarnationObservation(t *testing.T) {
+func TestBuildPreloads_AccountIncarnationSeed(t *testing.T) {
 	t.Parallel()
 	for _, scenario := range []struct {
 		name     string
 		persist  bool
 		cacheHit bool
-		expected uint64
+		seed     bool
 	}{
 		{name: "absent"},
-		{name: "hot", cacheHit: true, expected: 41},
-		{name: "cold", persist: true, expected: 41},
+		{name: "hot", cacheHit: true},
+		{name: "cold", persist: true, seed: true},
 	} {
 		t.Run(scenario.name, func(t *testing.T) {
 			ctx := logging.TestingContext()
@@ -353,8 +353,8 @@ func TestBuildPreloads_BindsAccountIncarnationObservation(t *testing.T) {
 			defer build.ReleaseLoaders()
 			require.Len(t, build.ExecutionPlan.GetAttributes(), 1)
 			coverage := build.ExecutionPlan.GetAttributes()[0]
-			require.True(t, coverage.GetAssertAccountIncarnation())
-			require.Equal(t, scenario.expected, coverage.GetExpectedIncarnationOpenedAtRaftIndex())
+			require.Equal(t, uint32(dal.SubAttrAccountIncarnation), coverage.GetAttrCode())
+			require.Equal(t, scenario.seed, coverage.GetValue() != nil)
 		})
 	}
 }
