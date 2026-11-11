@@ -1711,6 +1711,7 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 		for _, attr := range proposal.GetExecutionPlan().GetAttributes() {
 			if attr.GetAttrCode() == uint32(dal.SubAttrAccountIncarnation) {
 				transientErr = buffer.ensureAccountIncarnations(validateScope)
+
 				break
 			}
 		}
