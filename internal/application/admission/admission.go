@@ -615,23 +615,8 @@ func (a *Admission) admit(ctx context.Context, prepare func(context.Context, *co
 }
 
 func proposalActivatesCapabilities(command *raftcmdpb.Proposal) bool {
-	if command == nil {
-		return false
-	}
-	hasActive := func(policy *commonpb.ClusterPolicy) bool {
-		for _, activation := range policy.GetCapabilityActivations() {
-			if activation != nil && activation.GetActive() {
-				return true
-			}
-		}
-
-		return false
-	}
-	if hasActive(command.GetSetClusterPolicy().GetPolicy()) {
-		return true
-	}
-	for _, order := range command.GetOrders() {
-		if hasActive(order.GetSystemScoped().GetSetClusterPolicy().GetPolicy()) {
+	for _, activation := range command.GetSetClusterPolicy().GetPolicy().GetCapabilityActivations() {
+		if activation != nil && activation.GetActive() {
 			return true
 		}
 	}
