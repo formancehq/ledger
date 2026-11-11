@@ -80,7 +80,8 @@ func newMembershipServiceNodeWithPool(t *testing.T) (*Service, *transport.Connec
 	registry := state.NewStateRegistry(c, attributes.New())
 	fsm, err := state.NewMachine(logger, registry, state.NewCacheSnapshotter(logger, registry, nil),
 		store, dal.NewSentinelFactory(store, false), meters, nil, state.NewSharedState(),
-		signal.NewNotifications(), nil, "membership-service-test", 0, m.WriteConfChange,
+		signal.NewNotifications(), nil, "membership-service-test", 0,
+		func(entry *raftpb.Entry, session *dal.WriteSession) error { return m.WriteConfChange(entry, session) },
 		state.NoopCapabilityPolicyCommitHandler)
 	require.NoError(t, err)
 	recovery := state.NewRecovery(fsm, store)
@@ -185,7 +186,7 @@ func TestService_ListPeersReturnsCompleteIndependentSnapshot(t *testing.T) {
 		defer cancel()
 		require.NoError(t, s.AddLearner(ctx, 2, "peer:7777", "peer:8888", []byte("peer-instance-id"), nil))
 		// A cached row alone must not leak into the configured member response.
-		require.NoError(t, s.infraMembership.Set(3, "extra:7777", "extra:8888", []byte("extra-instanceid")))
+		require.NoError(t, s.infraMembership.Set(3, "extra:7777", "extra:8888", []byte("extra-instanceid"), nil))
 		want := []Peer{
 			{ID: 1, RaftAddress: "public-self:7777", ServiceAddress: "public-self:8888", InstanceID: []byte("self-instance-id")},
 			{ID: 2, RaftAddress: "peer:7777", ServiceAddress: "peer:8888", InstanceID: []byte("peer-instance-id")},
