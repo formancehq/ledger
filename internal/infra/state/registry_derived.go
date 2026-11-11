@@ -14,19 +14,20 @@ import (
 // writes go to the derived stores and are merged back into the parent
 // StateRegistry on commit.
 type DerivedRegistry struct {
-	Volumes           *attributes.DerivedKeyStore[domain.VolumeKey, *raftcmdpb.VolumePair]
-	AccountMetadata   *attributes.DerivedKeyStore[domain.MetadataKey, *commonpb.MetadataValue]
-	Idempotency       *DerivedIdempotencyStore
-	References        *attributes.DerivedKeyStore[domain.TransactionReferenceKey, *commonpb.TransactionReferenceValue]
-	Ledgers           *attributes.DerivedKeyStore[domain.LedgerKey, *commonpb.LedgerInfo]
-	Boundaries        *attributes.DerivedKeyStore[domain.LedgerKey, *raftcmdpb.LedgerBoundaries]
-	SinkConfigs       *attributes.DerivedKeyStore[domain.SinkConfigKey, *commonpb.SinkConfig]
-	NumscriptVersions *attributes.DerivedKeyStore[domain.NumscriptVersionKey, *commonpb.NumscriptVersionValue]
-	Transactions      *attributes.DerivedKeyStore[domain.TransactionKey, *commonpb.TransactionState]
-	NumscriptContents *attributes.DerivedKeyStore[domain.NumscriptEntryKey, *commonpb.NumscriptInfo]
-	PreparedQueries   *attributes.DerivedKeyStore[domain.PreparedQueryKey, *commonpb.PreparedQuery]
-	LedgerMetadata    *attributes.DerivedKeyStore[domain.LedgerMetadataKey, *commonpb.MetadataValue]
-	Indexes           *attributes.DerivedKeyStore[domain.IndexKey, *commonpb.Index]
+	Volumes             *attributes.DerivedKeyStore[domain.VolumeKey, *raftcmdpb.VolumePair]
+	AccountMetadata     *attributes.DerivedKeyStore[domain.MetadataKey, *commonpb.MetadataValue]
+	Idempotency         *DerivedIdempotencyStore
+	References          *attributes.DerivedKeyStore[domain.TransactionReferenceKey, *commonpb.TransactionReferenceValue]
+	Ledgers             *attributes.DerivedKeyStore[domain.LedgerKey, *commonpb.LedgerInfo]
+	Boundaries          *attributes.DerivedKeyStore[domain.LedgerKey, *raftcmdpb.LedgerBoundaries]
+	SinkConfigs         *attributes.DerivedKeyStore[domain.SinkConfigKey, *commonpb.SinkConfig]
+	NumscriptVersions   *attributes.DerivedKeyStore[domain.NumscriptVersionKey, *commonpb.NumscriptVersionValue]
+	Transactions        *attributes.DerivedKeyStore[domain.TransactionKey, *commonpb.TransactionState]
+	NumscriptContents   *attributes.DerivedKeyStore[domain.NumscriptEntryKey, *commonpb.NumscriptInfo]
+	PreparedQueries     *attributes.DerivedKeyStore[domain.PreparedQueryKey, *commonpb.PreparedQuery]
+	LedgerMetadata      *attributes.DerivedKeyStore[domain.LedgerMetadataKey, *commonpb.MetadataValue]
+	Indexes             *attributes.DerivedKeyStore[domain.IndexKey, *commonpb.Index]
+	AccountIncarnations *attributes.DerivedKeyStore[domain.AccountKey, *commonpb.AccountIncarnation]
 
 	// PendingReversions holds transaction keys marked as reverted in the
 	// current proposal. These are flushed to the parent bitset on Merge.
@@ -44,20 +45,21 @@ type DerivedRegistry struct {
 // and buffers writes locally.
 func NewDerivedRegistry(reg *StateRegistry) *DerivedRegistry {
 	return &DerivedRegistry{
-		Volumes:           attributes.NewDerivedKeyStore(reg.Volumes.KeyStore()),
-		Boundaries:        attributes.NewDerivedKeyStore(reg.Boundaries.KeyStore()),
-		AccountMetadata:   attributes.NewDerivedKeyStore(reg.AccountMetadata.KeyStore()),
-		Idempotency:       NewDerivedIdempotencyStore(reg.Idempotency),
-		References:        attributes.NewDerivedKeyStore(reg.References.KeyStore()),
-		Ledgers:           attributes.NewDerivedKeyStore(reg.Ledgers.KeyStore()),
-		SinkConfigs:       attributes.NewDerivedKeyStore(reg.SinkConfigs.KeyStore()),
-		NumscriptVersions: attributes.NewDerivedKeyStore(reg.NumscriptVersions.KeyStore()),
-		Transactions:      attributes.NewDerivedKeyStore(reg.Transactions.KeyStore()),
-		NumscriptContents: attributes.NewDerivedKeyStore(reg.NumscriptContents.KeyStore()),
-		PreparedQueries:   attributes.NewDerivedKeyStore(reg.PreparedQueries.KeyStore()),
-		LedgerMetadata:    attributes.NewDerivedKeyStore(reg.LedgerMetadata.KeyStore()),
-		Indexes:           attributes.NewDerivedKeyStore(reg.Indexes.KeyStore()),
-		parent:            reg,
+		Volumes:             attributes.NewDerivedKeyStore(reg.Volumes.KeyStore()),
+		Boundaries:          attributes.NewDerivedKeyStore(reg.Boundaries.KeyStore()),
+		AccountMetadata:     attributes.NewDerivedKeyStore(reg.AccountMetadata.KeyStore()),
+		Idempotency:         NewDerivedIdempotencyStore(reg.Idempotency),
+		References:          attributes.NewDerivedKeyStore(reg.References.KeyStore()),
+		Ledgers:             attributes.NewDerivedKeyStore(reg.Ledgers.KeyStore()),
+		SinkConfigs:         attributes.NewDerivedKeyStore(reg.SinkConfigs.KeyStore()),
+		NumscriptVersions:   attributes.NewDerivedKeyStore(reg.NumscriptVersions.KeyStore()),
+		Transactions:        attributes.NewDerivedKeyStore(reg.Transactions.KeyStore()),
+		NumscriptContents:   attributes.NewDerivedKeyStore(reg.NumscriptContents.KeyStore()),
+		PreparedQueries:     attributes.NewDerivedKeyStore(reg.PreparedQueries.KeyStore()),
+		LedgerMetadata:      attributes.NewDerivedKeyStore(reg.LedgerMetadata.KeyStore()),
+		Indexes:             attributes.NewDerivedKeyStore(reg.Indexes.KeyStore()),
+		AccountIncarnations: attributes.NewDerivedKeyStore(reg.AccountIncarnations.KeyStore()),
+		parent:              reg,
 	}
 }
 
@@ -76,6 +78,7 @@ func (d *DerivedRegistry) Reset() {
 	d.PreparedQueries.Reset()
 	d.LedgerMetadata.Reset()
 	d.Indexes.Reset()
+	d.AccountIncarnations.Reset()
 	d.PendingReversions = d.PendingReversions[:0]
 }
 
