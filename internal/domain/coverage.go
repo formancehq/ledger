@@ -70,5 +70,10 @@ func StoreFailure(operation string, err error) SerializableError {
 		return violation
 	}
 
+	// The gate's rejection of a key the order expected absent.
+	if errors.Is(err, ErrStaleInputsResolution) {
+		return ErrStaleInputsResolution
+	}
+
 	return &ErrStorageOperation{Operation: operation, Cause: err}
 }

@@ -261,16 +261,23 @@ func (p *Builder) Run(
 }
 
 // applyBits is the per-marshal hook that flows the proposal's final
-// AttributeCoverage slice into every WriteOperation's coverage bitset. Run
-// calls this once on the happy path and again on the rare rebuild
-// under guard.
+// AttributeCoverage slice into every WriteOperation's coverage bitset and
+// attaches the absence expectations to the assigned plan. Run calls this
+// once on the happy path and again on the rare rebuild under guard.
 //
 // The planLookupKey→position index is built ONCE per call and reused
 // across every operation: a proposal's plans slice is identical for
 // all operations in the batch, so rebuilding the map per operation
 // costs O(N·P) runtime.mapassign for N orders × P plans where O(P)
 // suffices.
-func (b *BuildResult) applyBits(_ *raftcmdpb.Proposal, plans []*raftcmdpb.AttributeCoverage) error {
+func (b *BuildResult) applyBits(cmd *raftcmdpb.Proposal, plans []*raftcmdpb.AttributeCoverage) error {
+	if len(b.absences) > 0 {
+		if cmd.GetExecutionPlan() == nil {
+			cmd.ExecutionPlan = &raftcmdpb.ExecutionPlan{}
+		}
+		cmd.ExecutionPlan.AbsenceExpectations = b.absences
+	}
+
 	var (
 		index     map[planLookupKey]uint32
 		planCount = len(plans)

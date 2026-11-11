@@ -85,7 +85,9 @@ func (a *rawAccessor[K, V, R]) Delete(key K) error {
 // gatedAccessor decorates an inner processing.Accessor with the per-scope
 // coverage gate. Get and Delete both check CheckCoverage(sub, key.Bytes())
 // before delegating — every FSM hot-path read AND deletion is bound to
-// admission's declared preload set (invariants #6, #9). Put is not gated
+// admission's declared preload set (invariants #6, #9). Get also fails with
+// domain.ErrStaleInputsResolution when it finds a key the order expected
+// absent. Put is not gated
 // because in-batch writes to keys admission did not preload are still
 // covered by the batch's own mutation overlay (Derived) and never race
 // with the cache-mem/disk equality invariant that strict tombstoning guards.
@@ -101,13 +103,18 @@ func newGatedAccessor[K accessorKey, V any, R any](inner processing.Accessor[K, 
 }
 
 func (a *gatedAccessor[K, V, R]) Get(key K) (R, error) {
-	if err := a.g.CheckCoverage(a.sub, key); err != nil {
-		var zero R
-
+	var zero R
+	expectAbsent, err := a.g.gate(a.sub, key)
+	if err != nil {
 		return zero, err
 	}
 
-	return a.Accessor.Get(key)
+	value, err := a.Accessor.Get(key)
+	if expectAbsent && err == nil {
+		return zero, domain.ErrStaleInputsResolution
+	}
+
+	return value, err
 }
 
 func (a *gatedAccessor[K, V, R]) Delete(key K) error {

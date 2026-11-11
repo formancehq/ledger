@@ -583,8 +583,9 @@ func requestToOrderUnchecked(req *servicepb.Request) *raftcmdpb.Order {
 // tests where the scope is a gomock — the bits are not exercised.
 type constantScopeFactory struct{ scope Scope }
 
-func (f constantScopeFactory) NewScope(_ []byte) (Scope, error) { return f.scope, nil }
-func (f constantScopeFactory) NewProposalScope() (Scope, error) { return f.scope, nil }
+func (f constantScopeFactory) NewScope(_ []byte) (Scope, error)         { return f.scope, nil }
+func (f constantScopeFactory) NewOrderScope(int, []byte) (Scope, error) { return f.scope, nil }
+func (f constantScopeFactory) NewProposalScope() (Scope, error)         { return f.scope, nil }
 
 // mockFactory returns a ScopeFactory that always yields the given scope.
 func mockFactory(s Scope) ScopeFactory {

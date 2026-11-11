@@ -108,6 +108,14 @@ order. The same handling applies to `gatedAccessor.Delete` when an overlay
 flushes a staged tombstone. Keeping the concrete miss intact lets the FSM
 recognise the uncommitted failure and lets operators retain its diagnostics.
 
+A handler that expects a key to be undeclared because of a cross-proposal race
+asks `Scope.IsCovered` first and rejects the order itself, so no miss is
+recorded. The `latest` Numscript selector uses it when a concurrent save advanced
+the pointer. It answers like the gate but must never authorize a read.
+A gated read that finds a key its order's planning observed as absent fails
+with `STALE_INPUTS_RESOLUTION`, which `domain.StoreFailure` preserves; see
+[absence expectations](preload.md#absence-expectations).
+
 `INVALID_EXECUTION_PLAN` is a separate plan error. It is also uncommitted:
 an admission/FSM coverage contract violation is not a business rejection.
 Technical-update and preload failures already return before the audit path.

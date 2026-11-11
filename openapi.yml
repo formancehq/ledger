@@ -4779,7 +4779,10 @@ components:
           description: |
             Version selector: the literal `latest` or an exact full semver
             (`1.2.3`). Partial selectors such as `1` or `1.2` are read-only and
-            rejected here.
+            rejected here. A reference to a missing script returns 404 with
+            reason `NUMSCRIPT_NOT_FOUND`; the refusal is audited, and a live
+            retained idempotency key replays its historical outcome even after
+            the library changes.
         vars:
           type: object
           additionalProperties:
