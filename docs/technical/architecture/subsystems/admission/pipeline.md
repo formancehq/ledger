@@ -192,11 +192,11 @@ PR.
 
 ### Mirror promotion apply check
 
-Admission marks new `PromoteLedger` orders with `OrderTechnical.require_mirror_catch_up` and does not
-read mirror progress. The FSM checks progress after idempotency replay, using
+Admission does not read mirror progress. For new proposals the FSM checks progress
+after idempotency replay, using
 in-memory state reconstructed from existing durable rows and advanced by
 committed technical updates. This adds one bounded ledger-boundary lookup in
-apply for each fresh checked promotion. It adds no Pebble read to apply and no
+apply for each fresh promotion. It adds no Pebble read to apply and no
 per-promotion admission snapshot. Batches without promotion are unaffected.
 
 ## Idempotency

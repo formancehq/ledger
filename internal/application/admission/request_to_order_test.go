@@ -100,7 +100,6 @@ func TestRequestToOrder_WrapsEveryRequestVariant(t *testing.T) {
 				ledger: ledger,
 				payloadAssert: func(t *testing.T, o *raftcmdpb.Order) {
 					require.NotNil(t, mustLedgerScoped(t, o).GetPromoteLedger())
-					require.True(t, o.GetTechnical().GetRequireMirrorCatchUp())
 				},
 			},
 		},
