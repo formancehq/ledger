@@ -4,7 +4,7 @@ This branch measures the cost of a cache-backed `AccountIncarnation` attribute b
 
 ## Write path
 
-Admission declares an `AccountIncarnation` key for each non-`world` account whose volume a posting or whose metadata an account operation can touch. The key is `(ledger, address)`. The FSM checks the declared key through the proposal-wide coverage gate after processing the orders. If a normal account has no incarnation, the FSM writes `{opened_at_raft_index, persistence}` to the attribute and cache zones in the same batch as the volume or metadata update. Later writes read the attribute without rewriting it. Adding or deleting metadata does not change the incarnation index.
+Admission declares an `AccountIncarnation` key for every account whose volume a posting or whose metadata an account operation can touch, including `world`. The key is `(ledger, address)`. After the orders and transient-volume validation, the FSM collects accounts with volume or metadata writes, including metadata deletions, and checks their declared keys through the proposal-wide coverage gate. For a normal account without an incarnation, it writes `{opened_at_raft_index, persistence, inserted_at, updated_at}` in the same batch. Later accepted writes update `updated_at` once per account and proposal while preserving the opening index and `inserted_at`. Both timestamps use the FSM's effective proposal HLC date; they describe writes in this ledger rather than a caller-supplied transaction date. Query reads do not update them.
 
 The `AttributeCoverage` entry for an incarnation also carries admission's observation of `opened_at_raft_index` and an explicit assertion bit. Zero means that admission observed no incarnation. After preloading the declared keys and after the idempotency replay gate, the FSM compares those observations with its current cache before executing any order. A mismatch rejects the whole proposal with retryable `STALE_INPUTS_RESOLUTION`; it writes no audit failure and does not freeze an idempotency result. Two concurrent proposals that both observe an absent account cannot silently share the newly opened lifetime: the first can open it, while the second must be admitted again against that lifetime. The check uses the cache and the existing Raft order, without a global account lock or a Pebble read in the FSM.
 
@@ -12,11 +12,11 @@ The attribute uses the standard two-generation cache. Rotation can evict the in-
 
 This prototype has no dedicated Bloom filter for incarnation keys. A cache miss checks Pebble, including when the account has no incarnation yet.
 
-The probe runs only when the execution plan contains an incarnation key. This lets older hand-built test plans retain their existing shape. Production admission adds the key through `addVolumeNeed` and account-metadata coverage. An assertion bit omitted by an older proposal skips the version check.
+The probe runs only when the execution plan contains an incarnation key. This lets older hand-built test plans retain their existing shape. Production admission adds the key through `addVolumeNeed` and account-metadata coverage. An assertion bit omitted by an older proposal skips the version check. `updated_at` is not an optimistic-concurrency version: the assertion remains bound to the stable opening index.
 
 ## Deliberate limits
 
-This is a benchmark prototype, not a release-ready account model. It creates incarnations for normal accounts touched by postings or metadata writes. It does not close or reopen an incarnation, enforce a pinned type, or change ephemeral and transient volume behavior. The checker deliberately exempts this experimental projection: the audit chain binds accepted orders and log sequences, but not the Raft index stored as `opened_at_raft_index`, so it cannot independently verify that field. Choose an audit-derived lifetime identifier and implement two-way checker verification before release. An upgrade from existing persisted state is also undefined. Do not ship this branch as a behavior change.
+This is a benchmark prototype, not a release-ready account model. It creates incarnations for normal accounts touched by postings or metadata writes, including `world`. It does not close or reopen an incarnation, enforce a pinned type, or change ephemeral and transient volume behavior. The checker deliberately exempts this experimental projection: the audit chain binds accepted orders and log sequences, but not the Raft index stored as `opened_at_raft_index`, so it cannot independently verify that field. Choose an audit-derived lifetime identifier and implement two-way checker verification before release. An upgrade from existing persisted state is also undefined. Do not ship this branch as a behavior change.
 
 ## Local benchmark
 
@@ -42,6 +42,8 @@ The hot 50-order case rises from 1,226 to 1,755 allocations per operation. These
 The isolated FSM step with hot incarnation entries measured 0.5 µs for 2 accounts, 5.8 µs for 20 accounts, and 31.3 µs for 100 accounts (medians of three runs). It includes volume-key collection, account deduplication, coverage checks, and cache reads. It excludes posting arithmetic and persistence.
 
 ## ACME cluster benchmark (2026-11-11)
+
+These results belong to the earlier posting-only prototype image. They do not measure the later assertion, `world` coverage, or timestamp updates. Repeat both workloads with the current branch before using the numbers to assess this revision.
 
 The ACME `eks-acme-dev-euw1-01` benchmark pool ran one five-minute k6 test per image and workload. Each run created a fresh three-replica Ledger cluster in `ledger-v3`. Every replica had 8 CPUs, 16 GiB of memory, and separate io2 data and WAL volumes. The k6 profile ramped to 400 VUs in 30 seconds, to 800 VUs over four minutes, then to zero in 30 seconds. Requests used atomic bulk writes of 50 transactions. The same script and configuration were used for both images within each workload. The benchmark operator serialized the four runs in the `acme-ledger-m8a` execution group.
 

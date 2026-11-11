@@ -26,6 +26,7 @@ func BenchmarkEnsureAccountIncarnationsHot(b *testing.B) {
 			}
 			registry := NewStateRegistry(c, attributes.New())
 			ws := NewWriteSet(&Machine{Registry: registry, State: &FSMState{}})
+			ws.Reset(&commonpb.Timestamp{Data: 1})
 			ws.gatedLedgerTypes = map[string]gatedLedgerType{"ledger": {found: true}}
 			plan := &raftcmdpb.ExecutionPlan{}
 			keys := make([]domain.VolumeKey, accounts)

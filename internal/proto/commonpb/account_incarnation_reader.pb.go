@@ -8,6 +8,8 @@ package commonpb
 type AccountIncarnationReader interface {
 	GetOpenedAtRaftIndex() uint64
 	GetPersistence() AccountTypePersistence
+	GetInsertedAt() TimestampReader
+	GetUpdatedAt() TimestampReader
 	Mutate() *AccountIncarnation
 }
 
@@ -19,6 +21,22 @@ func (r *accountIncarnationReadonly) GetOpenedAtRaftIndex() uint64 {
 
 func (r *accountIncarnationReadonly) GetPersistence() AccountTypePersistence {
 	return (*AccountIncarnation)(r).GetPersistence()
+}
+
+func (r *accountIncarnationReadonly) GetInsertedAt() TimestampReader {
+	v := (*AccountIncarnation)(r).GetInsertedAt()
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (r *accountIncarnationReadonly) GetUpdatedAt() TimestampReader {
+	v := (*AccountIncarnation)(r).GetUpdatedAt()
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
 }
 
 func (r *accountIncarnationReadonly) Mutate() *AccountIncarnation {

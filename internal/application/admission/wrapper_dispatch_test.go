@@ -96,6 +96,9 @@ func TestExtractLedgerScopedNeeds_CoversEveryPayloadVariant(t *testing.T) {
 					AccountKey: domain.AccountKey{LedgerName: wrapperTestLedger, Account: "world"},
 					Asset:      "USD",
 				}.Bytes()))
+				require.True(t, n.Has(dal.SubAttrAccountIncarnation, domain.AccountKey{
+					LedgerName: wrapperTestLedger, Account: "world",
+				}.Bytes()))
 				require.True(t, n.Has(dal.SubAttrVolume, domain.VolumeKey{
 					AccountKey: domain.AccountKey{LedgerName: wrapperTestLedger, Account: "user:alice"},
 					Asset:      "USD",
@@ -115,7 +118,7 @@ func TestExtractLedgerScopedNeeds_CoversEveryPayloadVariant(t *testing.T) {
 						Data: &raftcmdpb.MirrorLogEntry_SavedMetadata{
 							SavedMetadata: &raftcmdpb.MirrorSavedMetadata{
 								Target: &commonpb.Target{Target: &commonpb.Target_Account{
-									Account: &commonpb.TargetAccount{Addr: "user:bob"},
+									Account: &commonpb.TargetAccount{Addr: "world"},
 								}},
 								Metadata: map[string]*commonpb.MetadataValue{
 									"score": {Type: &commonpb.MetadataValue_IntValue{IntValue: 42}},
@@ -127,8 +130,11 @@ func TestExtractLedgerScopedNeeds_CoversEveryPayloadVariant(t *testing.T) {
 			},
 			assert: func(t *testing.T, n *plan.Coverage) {
 				require.True(t, n.Has(dal.SubAttrMetadata, domain.MetadataKey{
-					AccountKey: domain.AccountKey{LedgerName: wrapperTestLedger, Account: "user:bob"},
+					AccountKey: domain.AccountKey{LedgerName: wrapperTestLedger, Account: "world"},
 					Key:        "score",
+				}.Bytes()))
+				require.True(t, n.Has(dal.SubAttrAccountIncarnation, domain.AccountKey{
+					LedgerName: wrapperTestLedger, Account: "world",
 				}.Bytes()))
 			},
 		},
