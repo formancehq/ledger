@@ -6,7 +6,6 @@ package commonpb
 // AccountIncarnationReader provides read-only access to AccountIncarnation.
 // Call Mutate() to obtain a mutable clone.
 type AccountIncarnationReader interface {
-	GetOpenedAtRaftIndex() uint64
 	GetPersistence() AccountTypePersistence
 	GetInsertedAt() TimestampReader
 	GetUpdatedAt() TimestampReader
@@ -14,10 +13,6 @@ type AccountIncarnationReader interface {
 }
 
 type accountIncarnationReadonly AccountIncarnation
-
-func (r *accountIncarnationReadonly) GetOpenedAtRaftIndex() uint64 {
-	return (*AccountIncarnation)(r).GetOpenedAtRaftIndex()
-}
 
 func (r *accountIncarnationReadonly) GetPersistence() AccountTypePersistence {
 	return (*AccountIncarnation)(r).GetPersistence()
