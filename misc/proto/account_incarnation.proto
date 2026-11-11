@@ -6,9 +6,12 @@ option go_package = "github.com/formancehq/ledger/v3/internal/proto/commonpb";
 
 import "common.proto";
 
-// Current lifetime of a normal account address. The projection opens on the
-// first posting or account-metadata write; closure is left to a later change.
+// Current lifetime of a normal account address. It opens on the first
+// account-state write and records the latest accepted account-state write.
+// Closure is left to a later change.
 message AccountIncarnation {
   fixed64 opened_at_raft_index = 1;
   AccountTypePersistence persistence = 2;
+  Timestamp inserted_at = 3;
+  Timestamp updated_at = 4;
 }

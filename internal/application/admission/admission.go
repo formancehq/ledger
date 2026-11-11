@@ -1396,9 +1396,7 @@ func addVolumeNeed(p *plan.Coverage, ledgerName, account, asset, color string) {
 		Asset:      asset,
 		Color:      color,
 	}.Bytes())
-	if account != "world" {
-		p.Add(dal.SubAttrAccountIncarnation, (domain.AccountKey{LedgerName: ledgerName, Account: account}).Bytes())
-	}
+	p.Add(dal.SubAttrAccountIncarnation, (domain.AccountKey{LedgerName: ledgerName, Account: account}).Bytes())
 }
 
 // addAccountMetadataNeed covers the metadata row and the account lifetime.
@@ -1408,9 +1406,7 @@ func addAccountMetadataNeed(p *plan.Coverage, ledgerName, account, key string) {
 		AccountKey: domain.AccountKey{LedgerName: ledgerName, Account: account},
 		Key:        key,
 	}.Bytes())
-	if account != "world" {
-		p.Add(dal.SubAttrAccountIncarnation, (domain.AccountKey{LedgerName: ledgerName, Account: account}).Bytes())
-	}
+	p.Add(dal.SubAttrAccountIncarnation, (domain.AccountKey{LedgerName: ledgerName, Account: account}).Bytes())
 }
 
 // addTransactionTargetNeeds preloads the TransactionState entry for a
