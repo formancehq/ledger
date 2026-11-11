@@ -13,6 +13,7 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
+
 	"github.com/formancehq/ledger/v3/internal/storage/wal"
 )
 
@@ -77,7 +78,7 @@ func TestSnapshotReadyCrashChild(t *testing.T) {
 	}
 	if os.Getenv("LEDGER_SNAPSHOT_READY_CRASH_TAIL") == "1" {
 		for index := uint64(3); index <= 5; index++ {
-			entries = append(entries, &raftpb.Entry{Index: proto.Uint64(index), Term: proto.Uint64(3)})
+			entries = append(entries, &raftpb.Entry{Index: new(index), Term: proto.Uint64(3)})
 		}
 	}
 	cs := &raftpb.ConfState{Voters: []uint64{1, 2, 3}}
