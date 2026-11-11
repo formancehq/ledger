@@ -58,7 +58,7 @@ func TestPromotionContextCarriesCompleteRegisteredIdentity(t *testing.T) {
 	n := &Node{membership: m}
 	_, err := n.promotionContext(9, "promotion")
 	require.ErrorContains(t, err, "learner 9 has no membership row")
-	require.NoError(t, m.Set(9, "peer:7777", "peer:8888", []byte("peer-instance-id")))
+	require.NoError(t, m.Set(9, "peer:7777", "peer:8888", []byte("peer-instance-id"), nil))
 	for _, proposalID := range []string{"", "promotion"} {
 		payload, err := n.promotionContext(9, proposalID)
 		require.NoError(t, err)
@@ -81,7 +81,7 @@ func TestPromotionContextRejectsIncompleteAddresses(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 			m := newTestMembership(t)
-			require.NoError(t, m.Set(9, addresses[0], addresses[1], []byte("peer-instance-id")))
+			require.NoError(t, m.Set(9, addresses[0], addresses[1], []byte("peer-instance-id"), nil))
 			n := &Node{membership: m}
 			payload, err := n.promotionContext(9, "promotion")
 			require.Nil(t, payload)

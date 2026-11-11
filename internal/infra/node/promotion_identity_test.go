@@ -14,6 +14,7 @@ import (
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
 	"github.com/formancehq/ledger/v3/internal/infra/membership"
+	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
 
 // requireCompletePromotion inspects the actual entry emitted by RawNode, so
@@ -48,7 +49,9 @@ func TestPromoteLearner_ProposesCompleteRegisteredIdentity(t *testing.T) {
 	t.Parallel()
 	n := newConfiguredPeersTestNode(t)
 	n.logger = logging.Testing()
-	setup := newTestApplierSetupWithConfChangeHandler(t, make(LocalResponses, 1024), n.membership.WriteConfChange)
+	setup := newTestApplierSetupWithConfChangeHandler(t, make(LocalResponses, 1024), func(entry *raftpb.Entry, session *dal.WriteSession) error {
+		return n.membership.WriteConfChange(entry, session)
+	})
 	n.fsm = setup.fsm
 	results := make(chan error, 1)
 	go func() {

@@ -341,15 +341,11 @@ func (m *Membership) GetInstanceID(nodeID uint64) ([]byte, bool) {
 // Cache mutation and transport wiring both happen inside the lock so
 // they stay in lockstep with a concurrent Rehydrate. See Rehydrate's
 // locking note.
-func (m *Membership) Set(nodeID uint64, raftAddr, serviceAddr string, instanceID []byte) error {
-	return m.SetWithEvidence(nodeID, raftAddr, serviceAddr, instanceID, nil)
-}
-
-// SetWithEvidence upserts a peer and persists its capability evidence in the
+// Set upserts a peer and persists its capability evidence in the
 // in-memory registration. The FSM write path stores the same fields in the
 // durable PeerAddress row, while finishReady uses this method to keep the
 // transport cache and evidence synchronized before resolving the proposal.
-func (m *Membership) SetWithEvidence(nodeID uint64, raftAddr, serviceAddr string, instanceID []byte, capabilityIDs []uint32) error {
+func (m *Membership) Set(nodeID uint64, raftAddr, serviceAddr string, instanceID []byte, capabilityIDs []uint32) error {
 	if err := ValidateInstanceID(instanceID); err != nil {
 		return fmt.Errorf("setting peer %d: %w", nodeID, err)
 	}
@@ -402,11 +398,11 @@ func (m *Membership) Register(nodeID uint64, raftAddr, serviceAddr string, insta
 			capabilityIDs = existing.Capabilities
 		}
 	}
-	if err := m.store.PutWithEvidence(nodeID, raftAddr, serviceAddr, instanceID, capabilityIDs); err != nil {
+	if err := m.store.Put(nodeID, raftAddr, serviceAddr, instanceID, capabilityIDs); err != nil {
 		return fmt.Errorf("persisting peer %d: %w", nodeID, err)
 	}
 
-	if err := m.SetWithEvidence(nodeID, raftAddr, serviceAddr, instanceID, capabilityIDs); err != nil {
+	if err := m.Set(nodeID, raftAddr, serviceAddr, instanceID, capabilityIDs); err != nil {
 		return err
 	}
 
@@ -648,7 +644,7 @@ func (m *Membership) OnSnapshotInstalled() {
 	// (with the leader's possibly-stale self); the next OnSnapshot
 	// or restart will re-attempt the self-Put.
 	selfCapabilities := capabilities.IDsAsUint32(capabilities.SupportedIDs())
-	if err := m.store.PutWithEvidence(m.selfNodeID, m.selfRaftAddr, m.selfServiceAddr, m.selfInstanceID, selfCapabilities); err != nil {
+	if err := m.store.Put(m.selfNodeID, m.selfRaftAddr, m.selfServiceAddr, m.selfInstanceID, selfCapabilities); err != nil {
 		m.logger.WithFields(map[string]any{
 			"error": err,
 		}).Errorf("Refreshing self in Pebble before snapshot reload failed; next checkpoint we serve may carry a stale self address")
@@ -677,16 +673,17 @@ func (m *Membership) OnSnapshotInstalled() {
 //
 // Promotions repeat the existing peer registration, making replay independent
 // of the node-local membership cache.
-func (m *Membership) WriteConfChange(entry *raftpb.Entry, session *dal.WriteSession) error {
+// WriteConfChange uses the committed policy when no effective policy is given.
+// An explicit policy, including nil, is the state at this entry's position in
+// the FSM batch and avoids validating against an older committed policy.
+func (m *Membership) WriteConfChange(entry *raftpb.Entry, session *dal.WriteSession, effectivePolicy ...*commonpb.ClusterPolicy) error {
+	if len(effectivePolicy) > 1 {
+		return errors.New("at most one effective policy may be supplied")
+	}
+	if len(effectivePolicy) == 1 {
+		return m.writeConfChange(entry, session, effectivePolicy[0], true)
+	}
 	return m.writeConfChange(entry, session, nil, false)
-}
-
-// WriteConfChangeWithPolicy applies a ConfChange using the policy state at the
-// entry's position in the current FSM batch. This avoids validating a
-// membership change against the policy that was durable before an earlier
-// SetClusterPolicy order in the same batch.
-func (m *Membership) WriteConfChangeWithPolicy(entry *raftpb.Entry, session *dal.WriteSession, policy *commonpb.ClusterPolicy) error {
-	return m.writeConfChange(entry, session, policy, true)
 }
 
 func (m *Membership) writeConfChange(entry *raftpb.Entry, session *dal.WriteSession, effectivePolicy *commonpb.ClusterPolicy, hasEffectivePolicy bool) error {

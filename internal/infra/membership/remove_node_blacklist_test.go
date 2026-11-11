@@ -52,7 +52,7 @@ func TestWriteConfChange_RemoveNodeBlacklistsPeer(t *testing.T) {
 	ps, store := storesForBlacklistTest(t)
 	instanceID := fixedInstanceID(0xAA)
 
-	require.NoError(t, ps.Put(3, "pod-2:7777", "pod-2:8888", instanceID))
+	require.NoError(t, ps.Put(3, "pod-2:7777", "pod-2:8888", instanceID, nil))
 
 	m, err := NewMembership(ps, noopTransport{}, noopPool{}, testSelfNodeID, testSelfRaftAddr, testSelfServiceAddr, fixedInstanceID(0x42), logging.Testing(), NoopClusterPolicyProvider)
 	require.NoError(t, err)
@@ -93,7 +93,7 @@ func TestWriteConfChange_RemoveNodeWithoutIdentityFailsLoudly(t *testing.T) {
 
 	ps, store := storesForBlacklistTest(t)
 	instanceID := fixedInstanceID(0xAA)
-	require.NoError(t, ps.Put(3, "pod-2:7777", "pod-2:8888", instanceID))
+	require.NoError(t, ps.Put(3, "pod-2:7777", "pod-2:8888", instanceID, nil))
 
 	m, err := NewMembership(ps, noopTransport{}, noopPool{}, testSelfNodeID, testSelfRaftAddr, testSelfServiceAddr, fixedInstanceID(0x42), logging.Testing(), NoopClusterPolicyProvider)
 	require.NoError(t, err)
@@ -164,7 +164,7 @@ func TestUnregisterAndBlacklist_AtomicBatch(t *testing.T) {
 	ps, _ := storesForBlacklistTest(t)
 	instanceID := fixedInstanceID(0xBB)
 
-	require.NoError(t, ps.Put(7, "pod-6:7777", "pod-6:8888", instanceID))
+	require.NoError(t, ps.Put(7, "pod-6:7777", "pod-6:8888", instanceID, nil))
 
 	m, err := NewMembership(ps, noopTransport{}, noopPool{}, testSelfNodeID, testSelfRaftAddr, testSelfServiceAddr, fixedInstanceID(0x42), logging.Testing(), NoopClusterPolicyProvider)
 	require.NoError(t, err)

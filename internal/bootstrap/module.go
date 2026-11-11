@@ -349,7 +349,7 @@ func Module() fx.Option {
 							policy = machine.ClusterPolicy()
 						}
 
-						return membership.WriteConfChangeWithPolicy(entry, session, policy)
+						return membership.WriteConfChange(entry, session, policy)
 					},
 					func(policy *commonpb.ClusterPolicy) {
 						if err := publishCapabilityGate(membership, policy); err != nil {

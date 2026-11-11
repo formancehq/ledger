@@ -12,6 +12,7 @@ import (
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
 	"github.com/formancehq/ledger/v3/internal/infra/membership"
+	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
 
 func TestAddLearnerRejectsRemovedAndActiveIncarnations(t *testing.T) {
@@ -81,7 +82,9 @@ func TestAddLearnerZeroProgressRefreshProposesCompleteReplacement(t *testing.T) 
 	synctest.Test(t, func(t *testing.T) {
 		n := newConfiguredPeersTestNode(t)
 		n.logger = logging.Testing()
-		setup := newTestApplierSetupWithConfChangeHandler(t, make(LocalResponses, 1024), n.membership.WriteConfChange)
+		setup := newTestApplierSetupWithConfChangeHandler(t, make(LocalResponses, 1024), func(entry *raftpb.Entry, session *dal.WriteSession) error {
+			return n.membership.WriteConfChange(entry, session)
+		})
 		n.fsm = setup.fsm
 		require.Zero(t, n.rawNode.Status().Progress[2].Match)
 		ctx, cancel := context.WithTimeout(t.Context(), time.Second)
@@ -136,7 +139,9 @@ func TestRefreshMembershipProposesUpdateForExistingIdentity(t *testing.T) {
 
 	n := newConfiguredPeersTestNode(t)
 	n.logger = logging.Testing()
-	setup := newTestApplierSetupWithConfChangeHandler(t, make(LocalResponses, 1024), n.membership.WriteConfChange)
+	setup := newTestApplierSetupWithConfChangeHandler(t, make(LocalResponses, 1024), func(entry *raftpb.Entry, session *dal.WriteSession) error {
+		return n.membership.WriteConfChange(entry, session)
+	})
 	n.fsm = setup.fsm
 
 	ctx, cancel := context.WithTimeout(t.Context(), time.Second)

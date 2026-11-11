@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
+	"go.etcd.io/raft/v3/raftpb"
 	"go.opentelemetry.io/otel/metric/noop"
 	"google.golang.org/grpc"
 
@@ -141,7 +142,9 @@ func newJoinRecoveryNode(t *testing.T, id uint64, addr string, peers []node.Peer
 	cacheStore, err := cache.New(1000, meter)
 	require.NoError(t, err)
 	registry := state.NewStateRegistry(cacheStore, attributes.New())
-	machine, err := state.NewMachine(logger, registry, state.NewCacheSnapshotter(logger, registry, nil), store, dal.NewSentinelFactory(store, false), meters, nil, state.NewSharedState(), signal.NewNotifications(), nil, "join-recovery", 0, member.WriteConfChange, state.NoopCapabilityPolicyCommitHandler)
+	machine, err := state.NewMachine(logger, registry, state.NewCacheSnapshotter(logger, registry, nil), store, dal.NewSentinelFactory(store, false), meters, nil, state.NewSharedState(), signal.NewNotifications(), nil, "join-recovery", 0, func(entry *raftpb.Entry, session *dal.WriteSession) error {
+		return member.WriteConfChange(entry, session)
+	}, state.NoopCapabilityPolicyCommitHandler)
 	require.NoError(t, err)
 	t.Cleanup(machine.Close)
 	recovery := state.NewRecovery(machine, store)

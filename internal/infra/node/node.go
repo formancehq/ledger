@@ -1774,7 +1774,7 @@ func (node *Node) finishReady(result readyResult, stop chan struct{}) error {
 				if ctx == nil {
 					return fmt.Errorf("invariant: committed registration for node %d has no identity context", nodeID)
 				}
-				if err := node.membership.SetWithEvidence(nodeID, ctx.RaftAddress, ctx.ServiceAddress, ctx.InstanceID, ctx.Capabilities); err != nil {
+				if err := node.membership.Set(nodeID, ctx.RaftAddress, ctx.ServiceAddress, ctx.InstanceID, ctx.Capabilities); err != nil {
 					return fmt.Errorf("invariant: applying membership cache update: %w", err)
 				}
 			case raftpb.ConfChangeRemoveNode:
