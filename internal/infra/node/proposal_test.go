@@ -1,7 +1,10 @@
 package node
 
 import (
+	"fmt"
 	"testing"
+
+	"google.golang.org/protobuf/encoding/protowire"
 
 	"github.com/stretchr/testify/require"
 
@@ -45,6 +48,21 @@ func TestNewProposalAppendsPredictedIndexWithoutMutatingPrefix(t *testing.T) {
 	after := proposal.Data()
 	require.Greater(t, len(after), len(before))
 	require.Equal(t, before, after[:len(before)])
+}
+
+func TestNewProposalReservesPredictedIndexCapacity(t *testing.T) {
+	for _, size := range []int{77, 8192, 1048576} {
+		t.Run(fmt.Sprintf("size-%d", size), func(t *testing.T) {
+			command := &raftcmdpb.Proposal{Id: 1}
+			command.ProtoReflect().SetUnknown(protowire.AppendBytes(protowire.AppendTag(nil, 2047, protowire.BytesType), make([]byte, size)))
+			proposal, err := NewProposal(1, command)
+			require.NoError(t, err)
+			before := &proposal.data[0]
+			require.GreaterOrEqual(t, cap(proposal.data)-len(proposal.data), protowire.SizeTag(predictedIndexField)+8)
+			proposal.SetPredictedIndex(42)
+			require.Same(t, before, &proposal.data[0])
+		})
+	}
 }
 
 func TestNewProposalDerivesActivePolicyCapabilities(t *testing.T) {

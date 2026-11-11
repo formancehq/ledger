@@ -37,9 +37,13 @@ type Proposal struct {
 }
 
 func newProposal(commandID uint64, data []byte, required []capabilities.CapabilityID) *Proposal {
+	// Reserve the wire tag and fixed64 value before the index tracker is held.
+	// SetPredictedIndex must only append into this buffer in its critical section.
+	buffer := make([]byte, len(data), len(data)+protowire.SizeTag(predictedIndexField)+8)
+	copy(buffer, data)
 	return &Proposal{
 		commandID:            commandID,
-		data:                 append([]byte(nil), data...),
+		data:                 buffer,
 		requiredCapabilities: append([]capabilities.CapabilityID(nil), required...),
 		Future:               futures.New[any](),
 	}
