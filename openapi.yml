@@ -5145,6 +5145,14 @@ components:
           additionalProperties:
             $ref: '#/components/schemas/MetadataValue'
           description: Account metadata (typed values)
+        insertionDate:
+          type: string
+          format: date-time
+          description: First accepted write to this normal account in this ledger. Omitted when no account incarnation is stored.
+        updatedAt:
+          type: string
+          format: date-time
+          description: Latest accepted write to a volume or metadata of this normal account in this ledger. Omitted when no account incarnation is stored.
         volumes:
           type: array
           items:

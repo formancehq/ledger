@@ -150,8 +150,8 @@ func buildAccountVolumes(volEntries []attributes.ComputedEntry[*raftcmdpb.Volume
 }
 
 // scanAccount performs two forward scans — one for Volume and one for Metadata —
-// and returns an assembled Account. With the type-prefixed key layout, V and M
-// entries are in separate Pebble ranges.
+// and reads the account incarnation from the same Pebble snapshot. With the
+// type-prefixed key layout, V and M entries are in separate Pebble ranges.
 //
 // When diagLogger is non-nil, each Pebble entry is logged with its raft index
 // and attribute type to help diagnose snapshot divergence issues.
@@ -191,6 +191,10 @@ func scanAccount(
 	if err != nil {
 		return nil, fmt.Errorf("scanning metadata: %w", err)
 	}
+	incarnation, err := attrs.AccountIncarnation.Get(reader, canonicalBase)
+	if err != nil {
+		return nil, fmt.Errorf("reading account incarnation: %w", err)
+	}
 
 	if logger != nil {
 		logger.WithFields(map[string]any{
@@ -200,5 +204,14 @@ func scanAccount(
 		}).Tracef("scanAccount complete")
 	}
 
-	return assembleAccount(address, volEntries, metaEntries, collapseColors)
+	account, err := assembleAccount(address, volEntries, metaEntries, collapseColors)
+	if err != nil {
+		return nil, err
+	}
+	if incarnation != nil {
+		account.InsertionDate = incarnation.GetInsertedAt()
+		account.UpdatedAt = incarnation.GetUpdatedAt()
+	}
+
+	return account, nil
 }

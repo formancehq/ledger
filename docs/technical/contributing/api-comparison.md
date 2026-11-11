@@ -307,7 +307,7 @@ JWT/anonymous policy; no new endpoint or authorization requirement is introduced
 | Get account volumes | ✅ | ✅ | Returns input/output/balance per asset |
 | Analyze accounts | ✅ | ❌ | Suggest Chart of Accounts from address patterns |
 | Aggregate volumes | ✅ | ✅ | Per-asset aggregated volumes for filtered accounts (direct RPC, no prepared query needed) |
-| Account date fields (`firstUsage`/`insertionDate`/`updatedAt`) | ❌ | ✅ | Intentionally removed — not returned, not filterable, not paginatable. Replacement: typed `datetime` account metadata + index ([details](#6--account-date-fields-first_usage-insertion_date-updated_at)) |
+| Account date fields (`firstUsage`/`insertionDate`/`updatedAt`) | ⚠️ | ✅ | `insertionDate` and `updatedAt` are returned for normal accounts with an incarnation. `firstUsage`, date filters, and date ordering remain absent ([details](#6--account-date-fields-first_usage-insertion_date-updated_at)) |
 | **Logs** |
 | List logs | ✅ | ✅ | HTTP `GET /v3/{ledgerName}/logs` accepts text or structured JSON `id` filters (exact/range); the gRPC stream accepts the equivalent `QueryFilter` protobuf. `ledger == "foo"` selects one ledger when its opt-in index is ready. |
 | **Import/Export** |
@@ -1023,7 +1023,7 @@ clients perform that encoding themselves; the server decodes exactly once.
 **To implement:**
 - `PATCH /v3/{ledgerName}` or `PUT /v3/{ledgerName}/config`
 
-### 6. ❌ Account date fields (`first_usage`, `insertion_date`, `updated_at`)
+### 6. ⚠️ Account date fields (`first_usage`, `insertion_date`, `updated_at`)
 
 **Description:** the original ledger carries three date fields on every account —
 `firstUsage`, `insertionDate`, `updatedAt` (`internal/account.go:21-23` on
@@ -1032,14 +1032,15 @@ clients perform that encoding themselves; the server decodes exactly once.
 cohort queries ("accounts created this month"), dormancy sweeps, and
 date-ordered account pagination.
 
-**Current status:** absent on every axis, and intentionally so (closed as a
-decision in [ledger#2025](https://github.com/formancehq/ledger/issues/2025)).
+**Current status:** the account incarnation prototype supplies two response
+fields. The original decision to omit date filtering and ordering is tracked
+in [ledger#2025](https://github.com/formancehq/ledger/issues/2025).
 
-- **Not in the response.** The `Account` schema is `address` / `metadata` /
-  `volumes` only (`openapi.yml`). The fields survive on the internal proto
-  (`misc/proto/common.proto`, `Account.first_usage` / `insertion_date` /
-  `updated_at`) but nothing in the write path stamps them, so the JSON
-  marshaller always omits them.
+- **Partial response.** The existing `Account.insertion_date` and `updated_at`
+  proto fields are hydrated from the account incarnation on get and list reads.
+  They are omitted for accounts without an incarnation, including ephemeral and
+  transient accounts. `first_usage` is still unset. The dates describe accepted
+  account writes in this ledger, not the original ledger's account-row dates.
 - **Not filterable.** The generated per-target validity table sets
   `ConditionKindBuiltinUint: false` for `QUERY_TARGET_ACCOUNTS`
   (`internal/proto/commonpb/common_queryfilter_validity.pb.go`), so no
@@ -1050,7 +1051,7 @@ decision in [ledger#2025](https://github.com/formancehq/ledger/issues/2025)).
   `parseMetadataKey` and 400s as `$match: unsupported field "first_usage"`.
 - **Not paginatable.** Account cursor pagination is by address.
 
-**Why it is removed rather than pending:** the original ledger maintains
+**Why `first_usage` and date queries remain absent:** the original ledger maintains
 `first_usage` with a read-modify-write upsert — its `UpsertAccounts` statement
 reads the stored row and lowers the value whenever the incoming write carries an
 earlier one (`internal/storage/ledger/accounts.go:170` on `release/v2.4`; the
@@ -1063,12 +1064,11 @@ stamp would not strictly need that upsert (the FSM already distinguishes new
 from pre-existing cells via `isNewVolumeUpdate`, off the preloaded prior value),
 but it is still not a flag flip: accounts are addressed only as `VolumeKey` or
 `MetadataKey`, both *embedding* `AccountKey` rather than being keyed by it, so
-an account-level date is a new attribute key shape — pulling in the FSM write
-path, checker prediction on a replay from genesis, backup/restore coverage, the
-antithesis oracle, and an index if it is to be filterable. Typed `datetime`
-account metadata covers the *filtering* use cases on machinery that already
-exists, so the fields stay out. Date *ordering* is not replaced — see the read
-side below.
+an account-level date needs a distinct attribute key. The incarnation prototype
+provides that key for response dates, but checker verification and migration
+remain undefined. An index would still be needed for date filtering or ordering.
+Typed `datetime` account metadata covers the *filtering* use cases on machinery
+that already exists. Date *ordering* is not replaced — see the read side below.
 
 **Supported replacement — read side:** declare an account metadata key as
 `datetime` (`SetMetadataFieldTypeCommand.type` on the proto,
@@ -1161,21 +1161,21 @@ implicitly.
 
 **Migration from the original ledger — scope.** Everything below is about
 `first_usage`, which is the only one of the three with a reconstruction story
-worth writing down. The other two are straight cut-over copies into typed
-`datetime` keys of their own, and neither is recoverable afterwards in a way
-worth relying on:
+worth writing down. To preserve the original semantics of the other two fields,
+copy them into typed `datetime` keys at cut-over; the incarnation dates describe
+v3 writes instead:
 
 - `insertion_date` is stamped once, on insert, and never lowered — on
   `release/v2.4` only the insert arm sets it, to the incoming value or to
-  `transaction_date()` when none is supplied. Copy it at cut-over or lose it;
-  the v3 side has no first-insert concept to derive it from.
+  `transaction_date()` when none is supplied. Copy it at cut-over or lose the
+  original value; v3's first accepted write may occur at a different time.
 - `updated_at` moves only when the account row is actually rewritten. The
   update arm runs only when the incoming row carries an earlier `first_usage`
   than the stored one, or brings metadata the stored row does not already
   contain — so a later posting that changes no metadata and supplies no earlier
   date leaves the row, and the timestamp, untouched. It
-  is *not* a last-touched marker. An application key stamped on every write is
-  the closest v3 equivalent, but it is a different semantic: it moves where v2
+  is *not* a last-touched marker. The incarnation's `updated_at`, stamped on
+  every accepted account write, is a different semantic: it moves where v2
   would have stood still.
 
 **Nothing in the mirror path carries `first_usage` across.** Copying the v2
