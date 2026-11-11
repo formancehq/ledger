@@ -335,7 +335,7 @@ func TestBuildPreloads_AccountIncarnationSeed(t *testing.T) {
 			require.NoError(t, err)
 			account := domain.AccountKey{LedgerName: "ledger", Account: "normal:one"}
 			id, tag := attributes.MakeKey(account.Bytes())
-			incarnation := &commonpb.AccountIncarnation{OpenedAtRaftIndex: 41, Persistence: commonpb.AccountTypePersistence_ACCOUNT_TYPE_NORMAL}
+			incarnation := &commonpb.AccountIncarnation{Persistence: commonpb.AccountTypePersistence_ACCOUNT_TYPE_NORMAL}
 			if scenario.cacheHit {
 				c.AccountIncarnations.Put(id, attributes.Entry[*commonpb.AccountIncarnation]{Tag: tag, Data: incarnation})
 			}

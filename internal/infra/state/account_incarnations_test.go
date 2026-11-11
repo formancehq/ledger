@@ -43,7 +43,6 @@ func TestEnsureAccountIncarnationsCreatesOnePerNormalAccount(t *testing.T) {
 	require.ErrorIs(t, err, domain.ErrNotFound)
 	incarnation, err := b.Derived.AccountIncarnations.Get(account)
 	require.NoError(t, err)
-	require.Equal(t, uint64(42), incarnation.GetOpenedAtRaftIndex())
 	require.Equal(t, uint64(100), incarnation.GetInsertedAt().GetData())
 	require.Equal(t, uint64(100), incarnation.GetUpdatedAt().GetData())
 	require.NoError(t, b.ensureAccountIncarnations(scope))
@@ -67,7 +66,6 @@ func TestEnsureAccountIncarnationsCreatesOnePerNormalAccount(t *testing.T) {
 	require.NoError(t, b.ensureAccountIncarnations(scope))
 	updated, err := b.Derived.AccountIncarnations.Get(account)
 	require.NoError(t, err)
-	require.Equal(t, uint64(42), updated.GetOpenedAtRaftIndex())
 	require.Equal(t, uint64(100), updated.GetInsertedAt().GetData())
 	require.Equal(t, uint64(200), updated.GetUpdatedAt().GetData())
 	updates, deletions, err = b.Derived.AccountIncarnations.Merge()
@@ -83,7 +81,6 @@ func TestEnsureAccountIncarnationsCreatesOnePerNormalAccount(t *testing.T) {
 	require.False(t, inCache)
 	persisted, err := attrs.AccountIncarnation.Get(store, account.Bytes())
 	require.NoError(t, err)
-	require.Equal(t, uint64(42), persisted.GetOpenedAtRaftIndex())
 	require.Equal(t, uint64(100), persisted.GetInsertedAt().GetData())
 	require.Equal(t, uint64(200), persisted.GetUpdatedAt().GetData())
 }
@@ -105,7 +102,6 @@ func TestEnsureAccountIncarnationsOpensMetadataOnlyNormalAccount(t *testing.T) {
 	require.NoError(t, b.ensureAccountIncarnations(scope))
 	incarnation, err := b.Derived.AccountIncarnations.Get(account)
 	require.NoError(t, err)
-	require.Equal(t, uint64(42), incarnation.GetOpenedAtRaftIndex())
 	require.Equal(t, commonpb.AccountTypePersistence_ACCOUNT_TYPE_NORMAL, incarnation.GetPersistence())
 	require.Equal(t, uint64(100), incarnation.GetInsertedAt().GetData())
 	require.Equal(t, uint64(100), incarnation.GetUpdatedAt().GetData())
@@ -128,7 +124,6 @@ func TestEnsureAccountIncarnationsIncludesWorld(t *testing.T) {
 	require.NoError(t, b.ensureAccountIncarnations(scope))
 	incarnation, err := b.Derived.AccountIncarnations.Get(account)
 	require.NoError(t, err)
-	require.Equal(t, uint64(42), incarnation.GetOpenedAtRaftIndex())
 	require.Equal(t, uint64(100), incarnation.GetInsertedAt().GetData())
 	require.Equal(t, uint64(100), incarnation.GetUpdatedAt().GetData())
 }
@@ -146,10 +141,9 @@ func TestEnsureAccountIncarnationsUpdatesOnMetadataDeletion(t *testing.T) {
 	machine.Registry.Cache.AccountIncarnations.Put(id, attributes.Entry[*commonpb.AccountIncarnation]{
 		Tag: tag,
 		Data: &commonpb.AccountIncarnation{
-			OpenedAtRaftIndex: 42,
-			Persistence:       commonpb.AccountTypePersistence_ACCOUNT_TYPE_NORMAL,
-			InsertedAt:        &commonpb.Timestamp{Data: 100},
-			UpdatedAt:         &commonpb.Timestamp{Data: 100},
+			Persistence: commonpb.AccountTypePersistence_ACCOUNT_TYPE_NORMAL,
+			InsertedAt:  &commonpb.Timestamp{Data: 100},
+			UpdatedAt:   &commonpb.Timestamp{Data: 100},
 		},
 	})
 	factory := NewScopeFactory(b, &raftcmdpb.ExecutionPlan{Attributes: []*raftcmdpb.AttributeCoverage{
@@ -160,7 +154,6 @@ func TestEnsureAccountIncarnationsUpdatesOnMetadataDeletion(t *testing.T) {
 	require.NoError(t, b.ensureAccountIncarnations(scope))
 	updated, err := b.Derived.AccountIncarnations.Get(account)
 	require.NoError(t, err)
-	require.Equal(t, uint64(42), updated.GetOpenedAtRaftIndex())
 	require.Equal(t, uint64(100), updated.GetInsertedAt().GetData())
 	require.Equal(t, uint64(200), updated.GetUpdatedAt().GetData())
 }
@@ -195,7 +188,6 @@ func TestApplyProposalWorldIncarnationTracksMetadataWrites(t *testing.T) {
 	opened, err := attrs.AccountIncarnation.Get(store, account.Bytes())
 	require.NoError(t, err)
 	require.NotNil(t, opened)
-	require.Equal(t, uint64(2), opened.GetOpenedAtRaftIndex())
 	require.Equal(t, opened.GetInsertedAt().GetData(), opened.GetUpdatedAt().GetData())
 
 	apply(3, &raftcmdpb.LedgerApplyOrder{Data: &raftcmdpb.LedgerApplyOrder_DeleteMetadata{DeleteMetadata: &raftcmdpb.DeleteMetadataOrder{
@@ -204,7 +196,6 @@ func TestApplyProposalWorldIncarnationTracksMetadataWrites(t *testing.T) {
 	updated, err := attrs.AccountIncarnation.Get(store, account.Bytes())
 	require.NoError(t, err)
 	require.NotNil(t, updated)
-	require.Equal(t, uint64(2), updated.GetOpenedAtRaftIndex())
 	require.Equal(t, opened.GetInsertedAt().GetData(), updated.GetInsertedAt().GetData())
 	require.Greater(t, updated.GetUpdatedAt().GetData(), opened.GetUpdatedAt().GetData())
 }
