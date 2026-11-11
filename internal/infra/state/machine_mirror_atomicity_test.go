@@ -30,18 +30,29 @@ func TestMirrorSync_AtomicWithIngestAfterPromotion(t *testing.T) {
 			prior := makeProposal(2)
 			id, _ := attributes.MakeKey((domain.LedgerKey{Name: "mirror"}).Bytes())
 			prior.ExecutionPlan.Attributes = []*raftcmdpb.AttributeCoverage{declareTestPlan(id, dal.SubAttrLedger)}
-			prior.TechnicalUpdates = []*raftcmdpb.TechnicalUpdate{{Kind: &raftcmdpb.TechnicalUpdate_MirrorSync{
-				MirrorSync: &raftcmdpb.MirrorSyncUpdate{LedgerName: "mirror", SourceLogCount: 7, Error: &commonpb.MirrorSyncError{Message: "previous error"}},
-			}}}
+			priorUpdate := &raftcmdpb.MirrorSyncUpdate{LedgerName: "mirror", SourceLogCount: 7, Error: &commonpb.MirrorSyncError{Message: "previous error"}}
+			if promoted {
+				priorUpdate = &raftcmdpb.MirrorSyncUpdate{LedgerName: "mirror", SourceLogCount: 1}
+			}
+			prior.TechnicalUpdates = []*raftcmdpb.TechnicalUpdate{{Kind: &raftcmdpb.TechnicalUpdate_MirrorSync{MirrorSync: priorUpdate}}}
 			result, err = machine.ApplyEntries(t.Context(), store, makeEntry(t, 2, prior))
 			require.NoError(t, err)
 			require.NoError(t, result.Results[0].Error)
 
 			if promoted {
+				caughtUp := makeProposal(3, &raftcmdpb.Order{Type: &raftcmdpb.Order_LedgerScoped{LedgerScoped: &raftcmdpb.LedgerScopedOrder{
+					Ledger: "mirror", Payload: &raftcmdpb.LedgerScopedOrder_MirrorIngest{MirrorIngest: &raftcmdpb.MirrorIngestOrder{
+						Entry: &raftcmdpb.MirrorLogEntry{V2LogId: 1, Data: &raftcmdpb.MirrorLogEntry_FillGap{FillGap: &raftcmdpb.MirrorFillGap{}}},
+					}},
+				}}})
+				caughtUp.ExecutionPlan.Attributes = []*raftcmdpb.AttributeCoverage{declareTestPlan(id, dal.SubAttrLedger), declareTestPlan(id, dal.SubAttrBoundary)}
+				result, err = machine.ApplyEntries(t.Context(), store, makeEntry(t, 3, caughtUp))
+				require.NoError(t, err)
+				require.NoError(t, result.Results[0].Error)
 				promotion := &raftcmdpb.Order{Type: &raftcmdpb.Order_LedgerScoped{LedgerScoped: &raftcmdpb.LedgerScopedOrder{
 					Ledger: "mirror", Payload: &raftcmdpb.LedgerScopedOrder_PromoteLedger{PromoteLedger: &raftcmdpb.PromoteLedgerOrder{}},
 				}}}
-				result, err = machine.ApplyEntries(t.Context(), store, makeEntry(t, 3, makeProposal(3, promotion)))
+				result, err = machine.ApplyEntries(t.Context(), store, makeEntry(t, 4, makeProposal(4, promotion)))
 				require.NoError(t, err)
 				require.NoError(t, result.Results[0].Error)
 			}
@@ -51,13 +62,13 @@ func TestMirrorSync_AtomicWithIngestAfterPromotion(t *testing.T) {
 					Entry: &raftcmdpb.MirrorLogEntry{V2LogId: 1, Data: &raftcmdpb.MirrorLogEntry_FillGap{FillGap: &raftcmdpb.MirrorFillGap{}}},
 				}},
 			}}}
-			proposal := makeProposal(4, ingest)
+			proposal := makeProposal(5, ingest)
 			proposal.TechnicalUpdates = []*raftcmdpb.TechnicalUpdate{{Kind: &raftcmdpb.TechnicalUpdate_MirrorSync{
 				MirrorSync: &raftcmdpb.MirrorSyncUpdate{LedgerName: "mirror", SourceLogCount: 99, ClearError: true},
 			}}}
 			index := uint64(3)
 			if promoted {
-				index = 4
+				index = 5
 			}
 			result, err = machine.ApplyEntries(t.Context(), store, makeEntry(t, index, proposal))
 			require.NoError(t, err)
@@ -65,7 +76,7 @@ func TestMirrorSync_AtomicWithIngestAfterPromotion(t *testing.T) {
 			if promoted {
 				var rejection *domain.ErrLedgerNotInMirrorMode
 				require.ErrorAs(t, result.Results[0].Error, &rejection)
-				wantHead, wantPosition = 7, 0
+				wantHead, wantPosition = 1, 1
 			} else {
 				require.NoError(t, result.Results[0].Error)
 			}
@@ -82,11 +93,7 @@ func TestMirrorSync_AtomicWithIngestAfterPromotion(t *testing.T) {
 				require.Equal(t, wantHead, head)
 				status, err := query.ReadMirrorStatus(store, "mirror")
 				require.NoError(t, err)
-				if promoted {
-					require.Equal(t, "previous error", status.GetMessage())
-				} else {
-					require.Nil(t, status)
-				}
+				require.Nil(t, status)
 			}
 		})
 	}

@@ -2388,7 +2388,6 @@ func (a *Admission) ledgerRequestToOrder(order *raftcmdpb.Order, req *servicepb.
 				PromoteLedger: &raftcmdpb.PromoteLedgerOrder{},
 			},
 		})
-		orderTechnical(order).RequireMirrorCatchUp = true
 	case *servicepb.Request_CreatePreparedQuery:
 		wrapLedgerScoped(order, &raftcmdpb.LedgerScopedOrder{
 			Ledger: reqType.CreatePreparedQuery.GetLedger(),

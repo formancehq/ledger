@@ -832,8 +832,6 @@ func TestPromoteLedger_Success(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockStore := NewMockScope(ctrl)
-	processor, err := NewRequestProcessor(nil, 0)
-	require.NoError(t, err)
 
 	ledgerInfo := &commonpb.LedgerInfo{
 		Name: "mirror-ledger",
@@ -854,18 +852,7 @@ func TestPromoteLedger_Success(t *testing.T) {
 		require.Nil(t, info.GetMirrorSource())
 	})
 
-	order := &raftcmdpb.Order{
-		Type: &raftcmdpb.Order_LedgerScoped{
-			LedgerScoped: &raftcmdpb.LedgerScopedOrder{
-				Ledger: "mirror-ledger",
-				Payload: &raftcmdpb.LedgerScopedOrder_PromoteLedger{
-					PromoteLedger: &raftcmdpb.PromoteLedgerOrder{},
-				},
-			},
-		},
-	}
-
-	result, err := processor.ProcessOrder(order, mockStore)
+	result, err := processPromoteLedger("mirror-ledger", &Context{Scope: mockStore, auditReplay: true})
 	require.NoError(t, err)
 	require.NotNil(t, result)
 
@@ -898,7 +885,7 @@ func TestPromoteLedger_CheckedCatchUp(t *testing.T) {
 			boundaries := setupBoundariesStub(scope)
 			boundaries.expectGet(domain.LedgerKey{Name: "mirror"}, (&raftcmdpb.LedgerBoundaries{LastMirrorV2LogId: tc.cursor}).AsReader(), nil)
 			_, err := processPromoteLedger("mirror", &Context{
-				Scope: scope, RequireMirrorCatchUp: true, MirrorPromotionProgress: func(string) (uint64, bool) { return tc.head, tc.syncError },
+				Scope: scope, MirrorPromotionProgress: func(string) (uint64, bool) { return tc.head, tc.syncError },
 			})
 			if tc.reject {
 				var lag *domain.ErrMirrorNotCaughtUp
