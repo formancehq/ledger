@@ -165,6 +165,7 @@ func requestScopeCases() map[string]scopeCase {
 func ledgerActionScopeCases() map[string]Scope {
 	return map[string]Scope{
 		"create_transaction": ScopeTransactionsWrite,
+		"execute_numscript":  ScopeTransactionsWrite,
 		"revert_transaction": ScopeTransactionsWrite,
 		"add_metadata":       ScopeMetadataWrite,
 		"delete_metadata":    ScopeMetadataWrite,
@@ -181,6 +182,8 @@ func actionForField(name string) *servicepb.LedgerAction {
 	switch name {
 	case "create_transaction":
 		return &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{}}
+	case "execute_numscript":
+		return &servicepb.LedgerAction{Data: &servicepb.LedgerAction_ExecuteNumscript{}}
 	case "revert_transaction":
 		return &servicepb.LedgerAction{Data: &servicepb.LedgerAction_RevertTransaction{}}
 	case "add_metadata":

@@ -35,6 +35,13 @@ inputs; invalid source or version returns typed diagnostics in a 200 response.
 The operation is independent of ledger state. See the
 [scripting contract](../scripting/numscript-library.md#read-only-source-analysis).
 
+`POST /v3/{ledgerName}/transactions` accepts explicit postings or a Numscript
+that produces postings. `POST /v3/{ledgerName}/numscripts/execute` accepts an
+inline or saved Numscript without a transaction reference. It returns 201 with
+the created transaction when the script produces postings, or 204 when it only
+updates account metadata. Both routes use the same Apply admission and audit
+path; the Numscript execution is a distinct `LedgerAction` on the gRPC Apply RPC.
+
 ### Base URL
 
 By default: `http://localhost:9000`
@@ -194,10 +201,11 @@ value. Ops routes (`/health`, `/readyz`, `/clusterz`, …) do not parse the
 header. `TestReadConsistency_InstalledOnEveryBusinessRoute` requires the
 middleware on every `/v3` route and forbids it on ops routes.
 
-### Signed transaction requests
+### Signed mutation requests
 
-The transaction create, revert, metadata-save and metadata-delete routes,
-atomic bulk and atomic Apply use `application/json` for signed and ordinary unsigned bodies;
+The transaction create, Numscript execute, revert, metadata-save,
+metadata-delete, atomic bulk and atomic Apply routes use `application/json`
+for signed and ordinary unsigned bodies;
 MIME parameters are accepted. The presence of either `Formance-Signing-Key-Id`
 or `Formance-Signature`, even if empty, selects the signed wrapper. When
 neither header is present, the ordinary unsigned REST body is used.
@@ -498,6 +506,7 @@ and `internal/domain/processing/processor.go` (`IncrementNextSequenceID`).
 | POST, DELETE | `/{ledgerName}` | `ErrorResponse` |
 | POST | `/{ledgerName}/promote` | `ErrorResponse` |
 | PUT | `/{ledgerName}/numscripts/{name}` | `ErrorResponse` |
+| POST | `/{ledgerName}/numscripts/execute` | `ErrorResponse` |
 | POST | `/{ledgerName}/indexes` | `ErrorResponse` |
 | DELETE | `/{ledgerName}/indexes/{canonicalId}` | `ErrorResponse` |
 | POST | `/{ledgerName}/transactions` | `ErrorResponse` |

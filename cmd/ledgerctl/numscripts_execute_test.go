@@ -75,7 +75,7 @@ func TestNumscriptExecuteBothResults(t *testing.T) {
 			request := <-fixture.requests
 			require.Equal(t, "execute-script-42", request.GetUnsigned().GetIdempotencyKey())
 			require.Equal(t, "fresh", request.GetUnsigned().GetRequests()[0].GetApply().GetLedger())
-			payload := request.GetUnsigned().GetRequests()[0].GetApply().GetAction().GetCreateTransaction()
+			payload := request.GetUnsigned().GetRequests()[0].GetApply().GetAction().GetExecuteNumscript()
 			if tc.name == "transaction" || tc.name == "saved-transaction" {
 				require.Equal(t, "invoice-42", payload.GetMetadata()["receipt"].GetStringValue())
 			}

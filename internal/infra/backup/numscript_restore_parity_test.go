@@ -354,8 +354,8 @@ set_tx_meta("route", "inline")`, map[string]string{"amt": "USD/2 300"}, nil))
 		map[string]string{"amt": "USD/2 350", "dest": "erin"}, nil))
 	// This execution changes only account metadata. It must be exported in the
 	// delta and rebuilt without allocating another transaction.
-	src.apply(actions.CreateScriptTransactionAction(numscriptRestoreLedger,
-		`set_account_meta(@alice, "tier", "premium")`, nil, nil))
+	src.apply(actions.ExecuteScriptAction(numscriptRestoreLedger,
+		`set_account_meta(@alice, "tier", "premium")`, nil))
 	require.NoError(t, srcStore.Flush())
 
 	live := readNumscriptRestoreView(t, srcStore)

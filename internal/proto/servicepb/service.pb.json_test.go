@@ -81,3 +81,19 @@ func TestCreateTransactionPayload_IgnoresSkippableReasons(t *testing.T) {
 	require.NoError(t, json.Unmarshal(body, &p))
 	require.Equal(t, "r", p.GetReference())
 }
+
+func TestExecuteNumscriptPayload_JSONContract(t *testing.T) {
+	t.Parallel()
+
+	var payload servicepb.ExecuteNumscriptPayload
+	require.NoError(t, json.Unmarshal([]byte(`{"scriptReference":{"name":"transfer","version":"1.0.0"},"accountMetadata":{"users:alice":{"tier":"gold"}}}`), &payload))
+	require.Equal(t, "transfer", payload.GetScriptReference().GetName())
+	require.Equal(t, "gold", commonpb.MetadataMapToGoMap(payload.GetAccountMetadata()["users:alice"])["tier"])
+
+	for _, body := range []string{
+		`{"script":{"plain":"send [USD 1] (source = @world destination = @alice)"},"reference":"tx-1"}`,
+		`{"postings":[]}`,
+	} {
+		require.Error(t, json.Unmarshal([]byte(body), &payload))
+	}
+}

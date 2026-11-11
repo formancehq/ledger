@@ -47,6 +47,35 @@ func (x *CreateTransactionPayload) MarshalJSON() ([]byte, error) {
 	})
 }
 
+func (x *ExecuteNumscriptPayload) MarshalJSON() ([]byte, error) {
+	return (&CreateTransactionPayload{
+		Script: x.GetScript(), ScriptReference: x.GetScriptReference(),
+		Timestamp: x.GetTimestamp(), Metadata: x.GetMetadata(),
+		AccountMetadata: x.GetAccountMetadata(), Force: x.GetForce(),
+	}).MarshalJSON()
+}
+
+func (x *ExecuteNumscriptPayload) UnmarshalJSON(data []byte) error {
+	var fields map[string]json.RawValue
+	if err := json.Unmarshal(data, &fields); err != nil {
+		return err
+	}
+	if _, ok := fields["reference"]; ok {
+		return errors.New("numscript execution does not accept a transaction reference")
+	}
+	if _, ok := fields["postings"]; ok {
+		return errors.New("numscript execution does not accept direct postings")
+	}
+	var create CreateTransactionPayload
+	if err := create.UnmarshalJSON(data); err != nil {
+		return err
+	}
+	x.Script, x.ScriptReference, x.Timestamp = create.GetScript(), create.GetScriptReference(), create.GetTimestamp()
+	x.Metadata, x.AccountMetadata, x.Force = create.GetMetadata(), create.GetAccountMetadata(), create.GetForce()
+
+	return nil
+}
+
 // UnmarshalJSON implements json.Unmarshaler for CreateTransactionPayload.
 //
 // The default protoc-gen-go struct tags are snake_case, so a plain
@@ -146,6 +175,7 @@ func (x *RevertTransactionPayload) MarshalJSON() ([]byte, error) {
 // Ledger action type constants.
 const (
 	LedgerActionTypeCreateTransaction = "CREATE_TRANSACTION"
+	LedgerActionTypeExecuteNumscript  = "EXECUTE_NUMSCRIPT"
 	LedgerActionTypeAddMetadata       = "ADD_METADATA"
 	LedgerActionTypeRevertTransaction = "REVERT_TRANSACTION"
 	LedgerActionTypeDeleteMetadata    = "DELETE_METADATA"
@@ -186,6 +216,12 @@ func (x *BulkElement) UnmarshalJSON(data []byte) error {
 
 	// Parse data based on action
 	switch raw.Action {
+	case LedgerActionTypeExecuteNumscript:
+		req := &ExecuteNumscriptPayload{}
+		if err := json.Unmarshal(raw.Data, req); err != nil {
+			return fmt.Errorf("error parsing execute numscript data: %w", err)
+		}
+		x.Action.Data = &LedgerAction_ExecuteNumscript{ExecuteNumscript: req}
 	case LedgerActionTypeCreateTransaction:
 		req := &CreateTransactionPayload{}
 
@@ -244,6 +280,12 @@ func (x *LedgerAction) UnmarshalJSON(data []byte) error {
 
 	// Parse data based on action
 	switch raw.Action {
+	case LedgerActionTypeExecuteNumscript:
+		req := &ExecuteNumscriptPayload{}
+		if err := json.Unmarshal(raw.Data, req); err != nil {
+			return fmt.Errorf("error parsing execute numscript data: %w", err)
+		}
+		x.Data = &LedgerAction_ExecuteNumscript{ExecuteNumscript: req}
 	case LedgerActionTypeCreateTransaction:
 		req := &CreateTransactionPayload{}
 
@@ -288,6 +330,8 @@ func (x *LedgerAction) UnmarshalJSON(data []byte) error {
 // GetLedgerActionType returns the action type string based on the oneof data.
 func GetLedgerActionType(action *LedgerAction) string {
 	switch action.GetData().(type) {
+	case *LedgerAction_ExecuteNumscript:
+		return LedgerActionTypeExecuteNumscript
 	case *LedgerAction_CreateTransaction:
 		return LedgerActionTypeCreateTransaction
 	case *LedgerAction_AddMetadata:
