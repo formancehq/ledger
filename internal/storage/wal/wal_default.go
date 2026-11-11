@@ -60,7 +60,7 @@ type DefaultWAL struct {
 	compactedTerm  uint64
 
 	// DefaultWAL for storing log entries
-	wal *wal.WAL
+	wal       *wal.WAL
 	walClosed bool
 
 	// In-memory cache of entries (for fast access)
@@ -1147,5 +1147,6 @@ func (s *DefaultWAL) Close() error {
 		return nil
 	}
 	s.walClosed = true
+
 	return s.wal.Close()
 }
