@@ -783,7 +783,7 @@ The leader tracks each follower's state:
    the snapshot, this Ready's HardState and any entries after the
    snapshot. It syncs the new WAL before replacing the active `etcd/` directory.
    Startup resolves an interrupted directory replacement before WAL replay.
-4. After the replacement is durable, `ApplySnapshot` replaces its in-memory
+4. After the replacement is durable and the new WAL is readable, `ApplySnapshot` replaces its in-memory
    snapshot and cached entry window with the same suffix. An error before the
    directory switch leaves the old in-memory state; an error during the switch
    stops the node for restart recovery. Neither path acknowledges the Ready.

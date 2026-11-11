@@ -136,8 +136,9 @@ accepts the received snapshot, `ApplySnapshot` writes its full snapshot
 file, then prepares a new WAL containing a snapshot record, the Ready
 HardState (term, vote and commit), and only the same Ready entries after the
 snapshot index. It syncs that WAL before retiring the old one. The in-memory
-log is replaced only after the new WAL is active and its HardState and entry
-suffix have been read back and validated. The node then installs the FSM
+log is replaced only after the new WAL is active and `ReadAll` confirms it is
+readable. This read does not compare the recovered HardState or entry suffix
+with the Ready. The node then installs the FSM
 snapshot and releases peer and storage acknowledgements.
 
 The active path remains `raft/etcd/`, readable by older RC binaries. The
