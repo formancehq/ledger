@@ -479,7 +479,7 @@ Cross-cluster restore clears the source-head observation, including after an
 incremental delta. The restored mirror worker must observe the source again
 before a new promotion can pass; the ingestion cursor, business history, and
 audit history remain intact.
-The `rc.3` to `rc.4` upgrade requires the operator's stopped restart. The drain applies all RC.3 business entries durably on every member before RC.4 starts on the same volumes. Audit replay reconstructs historical results without a new progress check; matching frozen idempotency outcomes return before order evaluation.
+The `rc.3` to `rc.4` upgrade requires the operator's stopped restart. The drain applies all RC.3 business entries durably on every member before RC.4 starts on the same volumes. Audit replay reconstructs historical results without a new progress check; matching, unexpired frozen idempotency outcomes return before order evaluation.
 
 After promotion, the ledger accepts normal write requests. The boundary's `last_mirror_v2_log_id` and the source-head row are kept for forensic purposes but no longer advance on the live cluster. Cross-cluster restore clears the source-head observation for all ledgers.
 
