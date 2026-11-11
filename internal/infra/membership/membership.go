@@ -683,6 +683,7 @@ func (m *Membership) WriteConfChange(entry *raftpb.Entry, session *dal.WriteSess
 	if len(effectivePolicy) == 1 {
 		return m.writeConfChange(entry, session, effectivePolicy[0], true)
 	}
+
 	return m.writeConfChange(entry, session, nil, false)
 }
 

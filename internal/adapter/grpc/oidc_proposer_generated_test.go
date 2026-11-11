@@ -117,3 +117,66 @@ func (c *MockProposerProposeCall) DoAndReturn(f func(context.Context, *node.Prop
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }
+
+// MockCapabilityMembershipFence is a mock of CapabilityMembershipFence interface.
+type MockCapabilityMembershipFence struct {
+	ctrl     *gomock.Controller
+	recorder *MockCapabilityMembershipFenceMockRecorder
+	isgomock struct{}
+}
+
+// MockCapabilityMembershipFenceMockRecorder is the mock recorder for MockCapabilityMembershipFence.
+type MockCapabilityMembershipFenceMockRecorder struct {
+	mock *MockCapabilityMembershipFence
+}
+
+// NewMockCapabilityMembershipFence creates a new mock instance.
+func NewMockCapabilityMembershipFence(ctrl *gomock.Controller) *MockCapabilityMembershipFence {
+	mock := &MockCapabilityMembershipFence{ctrl: ctrl}
+	mock.recorder = &MockCapabilityMembershipFenceMockRecorder{mock}
+	return mock
+}
+
+// EXPECT returns an object that allows the caller to indicate expected use.
+func (m *MockCapabilityMembershipFence) EXPECT() *MockCapabilityMembershipFenceMockRecorder {
+	return m.recorder
+}
+
+// AcquireCapabilityMembership mocks base method.
+func (m *MockCapabilityMembershipFence) AcquireCapabilityMembership(arg0 context.Context) (func(*futures.Future[state.ApplyResult]), error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "AcquireCapabilityMembership", arg0)
+	ret0, _ := ret[0].(func(*futures.Future[state.ApplyResult]))
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// AcquireCapabilityMembership indicates an expected call of AcquireCapabilityMembership.
+func (mr *MockCapabilityMembershipFenceMockRecorder) AcquireCapabilityMembership(arg0 any) *MockCapabilityMembershipFenceAcquireCapabilityMembershipCall {
+	mr.mock.ctrl.T.Helper()
+	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AcquireCapabilityMembership", reflect.TypeOf((*MockCapabilityMembershipFence)(nil).AcquireCapabilityMembership), arg0)
+	return &MockCapabilityMembershipFenceAcquireCapabilityMembershipCall{Call: call}
+}
+
+// MockCapabilityMembershipFenceAcquireCapabilityMembershipCall wrap *gomock.Call
+type MockCapabilityMembershipFenceAcquireCapabilityMembershipCall struct {
+	*gomock.Call
+}
+
+// Return rewrite *gomock.Call.Return
+func (c *MockCapabilityMembershipFenceAcquireCapabilityMembershipCall) Return(arg0 func(*futures.Future[state.ApplyResult]), arg1 error) *MockCapabilityMembershipFenceAcquireCapabilityMembershipCall {
+	c.Call = c.Call.Return(arg0, arg1)
+	return c
+}
+
+// Do rewrite *gomock.Call.Do
+func (c *MockCapabilityMembershipFenceAcquireCapabilityMembershipCall) Do(f func(context.Context) (func(*futures.Future[state.ApplyResult]), error)) *MockCapabilityMembershipFenceAcquireCapabilityMembershipCall {
+	c.Call = c.Call.Do(f)
+	return c
+}
+
+// DoAndReturn rewrite *gomock.Call.DoAndReturn
+func (c *MockCapabilityMembershipFenceAcquireCapabilityMembershipCall) DoAndReturn(f func(context.Context) (func(*futures.Future[state.ApplyResult]), error)) *MockCapabilityMembershipFenceAcquireCapabilityMembershipCall {
+	c.Call = c.Call.DoAndReturn(f)
+	return c
+}

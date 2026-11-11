@@ -508,6 +508,7 @@ func (a *Admission) AdmitClusterPolicy(ctx context.Context, policy *commonpb.Clu
 	for _, activation := range policy.GetCapabilityActivations() {
 		if activation != nil && activation.GetActive() {
 			propose = a.proposeActivatingPolicy
+
 			break
 		}
 	}
@@ -621,6 +622,7 @@ func (a *Admission) proposeActivatingPolicy(ctx context.Context, command *raftcm
 	}
 	future, cleanup, err := a.proposeAdmission(ctx, command, build)
 	release(future)
+
 	return future, cleanup, err
 }
 
