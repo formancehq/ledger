@@ -150,7 +150,6 @@ func resolveCoverage[T interface {
 	bloomFilter *bloom.Filter,
 	logger logging.Logger,
 	typeName string,
-	incarnationIndex func(T) uint64,
 ) (*resolveResult, error) {
 	var (
 		mu       sync.Mutex
@@ -206,12 +205,6 @@ func resolveCoverage[T interface {
 			// on delete. No Pebble read required.
 			mu.Lock()
 			coverage := slab.appendCoverage(id, tag, attrCode)
-			if incarnationIndex != nil {
-				coverage.AssertAccountIncarnation = true
-				if cached, ok := attrCache.Get(id); ok && !cached.Deleted {
-					coverage.ExpectedIncarnationOpenedAtRaftIndex = incarnationIndex(cached.Data)
-				}
-			}
 			plans = append(plans, coverage)
 			mu.Unlock()
 
@@ -224,7 +217,6 @@ func resolveCoverage[T interface {
 			if bloomFilter != nil && !bloomFilter.MayContain(id) {
 				mu.Lock()
 				coverage := slab.appendCoverage(id, tag, attrCode)
-				coverage.AssertAccountIncarnation = incarnationIndex != nil
 				plans = append(plans, coverage)
 				mu.Unlock()
 
@@ -288,10 +280,6 @@ func resolveCoverage[T interface {
 					}
 
 					coverage := slab.appendSeed(id, tag, attrCode, attrValue)
-					if incarnationIndex != nil {
-						coverage.AssertAccountIncarnation = true
-						coverage.ExpectedIncarnationOpenedAtRaftIndex = incarnationIndex(result.Value)
-					}
 					plans = append(plans, coverage)
 
 					return
@@ -302,7 +290,6 @@ func resolveCoverage[T interface {
 				// and apply, Get's gen0→gen1 fallback will surface it at
 				// apply time (bounded by CacheUnreachable at ≥2 rotations).
 				coverage := slab.appendCoverage(id, tag, attrCode)
-				coverage.AssertAccountIncarnation = incarnationIndex != nil
 				plans = append(plans, coverage)
 			})
 		}

@@ -6639,8 +6639,6 @@ type AttributeCoverageReader interface {
 	GetId() AttributeIDReader
 	GetAttrCode() uint32
 	GetValue() AttributeValueReader
-	GetExpectedIncarnationOpenedAtRaftIndex() uint64
-	GetAssertAccountIncarnation() bool
 	Mutate() *AttributeCoverage
 }
 
@@ -6664,14 +6662,6 @@ func (r *attributeCoverageReadonly) GetValue() AttributeValueReader {
 		return nil
 	}
 	return v.AsReader()
-}
-
-func (r *attributeCoverageReadonly) GetExpectedIncarnationOpenedAtRaftIndex() uint64 {
-	return (*AttributeCoverage)(r).GetExpectedIncarnationOpenedAtRaftIndex()
-}
-
-func (r *attributeCoverageReadonly) GetAssertAccountIncarnation() bool {
-	return (*AttributeCoverage)(r).GetAssertAccountIncarnation()
 }
 
 func (r *attributeCoverageReadonly) Mutate() *AttributeCoverage {

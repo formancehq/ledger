@@ -55,9 +55,6 @@ type protoAttrResolver[T interface {
 	loader   *preload.AttributeLoader[T]
 	getValue func(reader dal.PebbleGetter, canonicalKey []byte) (T, error)
 	bloom    func() *bloom.Filter
-	// incarnationIndex is populated only for the account incarnation cache.
-	// A zero index represents an absent account lifetime.
-	incarnationIndex func(T) uint64
 }
 
 func (r *protoAttrResolver[T]) Resolve(
@@ -69,7 +66,7 @@ func (r *protoAttrResolver[T]) Resolve(
 	return resolveCoverage[T](
 		keys, nextIndex, boundary, cacheEpoch,
 		r.cache, r.loader, r.getValue, store,
-		r.attrCode, nil, r.bloom(), logger, r.typeName, r.incarnationIndex,
+		r.attrCode, nil, r.bloom(), logger, r.typeName,
 	)
 }
 
@@ -196,13 +193,6 @@ func buildAttrResolvers(
 			loader:   loaders.AccountIncarnations,
 			getValue: attrs.AccountIncarnation.Get,
 			bloom:    filter(dal.SubAttrAccountIncarnation),
-			incarnationIndex: func(value *commonpb.AccountIncarnation) uint64 {
-				if value == nil {
-					return 0
-				}
-
-				return value.GetOpenedAtRaftIndex()
-			},
 		},
 	}
 }
