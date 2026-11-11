@@ -130,7 +130,7 @@ func TestPurgeOldWALSegments(t *testing.T) {
 		assertOldWALSegmentsPurged(t, func(w *DefaultWAL, snapshotIndex uint64) {
 			require.NoError(t, w.ApplySnapshot(&raftpb.Snapshot{
 				Metadata: snapshotMeta(snapshotIndex, 1, &raftpb.ConfState{Voters: []uint64{1}}),
-			}))
+			}, nil, nil))
 		})
 	})
 }
@@ -1085,7 +1085,7 @@ func TestLastIndex_WithSnapshotOnly(t *testing.T) {
 		Metadata: snapshotMeta(10, 2, cs),
 		Data:     []byte("snapshot data"),
 	}
-	require.NoError(t, w.ApplySnapshot(snap))
+	require.NoError(t, w.ApplySnapshot(snap, nil, nil))
 
 	idx, err := w.LastIndex()
 	require.NoError(t, err)
@@ -1257,6 +1257,68 @@ func TestUpdateSnapshotConfStateSerializesSnapshotPersistence(t *testing.T) {
 
 // --- ApplySnapshot tests ---
 
+func TestReceivedSnapshotRestartDiscardsReplacedTail(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	w := newTestWALAt(t, dir)
+	cs := &raftpb.ConfState{Voters: []uint64{1, 2, 3}}
+
+	// A former leader left entries 3..5 uncommitted. The current leader has
+	// committed a different entry at index 4 and sends its snapshot at 4/2.
+	// Raft must accept it: the follower's entry at index 4 has term 3.
+	require.NoError(t, w.Append(hs(3, 2, 2), []*raftpb.Entry{
+		ent(1, 1, nil), ent(2, 1, nil), ent(3, 3, nil),
+		ent(4, 3, nil), ent(5, 3, nil),
+	}))
+	require.NoError(t, w.CreateSnapshot(2, cs, nil))
+	rawNode, err := raft.NewRawNode(&raft.Config{
+		ID: 1, ElectionTick: 10, HeartbeatTick: 1, Storage: w,
+		Applied: 2, MaxInflightMsgs: 256, AsyncStorageWrites: true,
+	})
+	require.NoError(t, err)
+	snap := &raftpb.Snapshot{
+		Metadata: snapshotMeta(4, 2, cs),
+		Data:     []byte("received"),
+	}
+	require.NoError(t, rawNode.Step(&raftpb.Message{
+		Type: new(raftpb.MsgSnap), From: new(uint64(2)), To: new(uint64(1)),
+		Term: new(uint64(4)), Snapshot: snap,
+	}))
+	require.True(t, rawNode.HasReady())
+	ready := rawNode.Ready()
+	require.Equal(t, uint64(4), ready.Snapshot.GetMetadata().GetIndex(), "Raft must accept the divergent snapshot")
+	require.Equal(t, uint64(2), ready.Snapshot.GetMetadata().GetTerm())
+	require.Equal(t, snap.GetData(), ready.Snapshot.GetData())
+	require.Equal(t, uint64(4), ready.GetTerm())
+	require.Equal(t, uint64(4), ready.GetCommit())
+	require.Empty(t, ready.Entries)
+	require.NoError(t, w.ApplySnapshot(ready.Snapshot, ready.HardState, ready.Entries))
+	last, err := w.LastIndex()
+	require.NoError(t, err)
+	require.Equal(t, uint64(4), last)
+	require.NoError(t, w.Close())
+	legacyReader, err := etcdwal.Open(w.zapLogger, filepath.Join(dir, etcdWalDir), &walpb.Snapshot{
+		Index: new(uint64(4)), Term: new(uint64(2)),
+	})
+	require.NoError(t, err)
+	_, legacyState, legacyEntries, err := legacyReader.ReadAll()
+	require.NoError(t, err)
+	require.Empty(t, legacyEntries, "the unchanged etcd WAL reader must not find the old tail")
+	require.Equal(t, uint64(4), legacyState.GetTerm())
+	require.NoError(t, legacyReader.Close())
+
+	restarted := newTestWALAt(t, dir)
+	last, err = restarted.LastIndex()
+	require.NoError(t, err)
+	require.Equal(t, uint64(4), last, "replay must not resurrect the replaced entry 5/3")
+	state, _, err := restarted.InitialState()
+	require.NoError(t, err)
+	require.Equal(t, uint64(4), state.GetTerm())
+	require.Equal(t, uint64(0), state.GetVote(), "a higher Raft term clears the previous vote")
+	require.Equal(t, uint64(4), state.GetCommit())
+}
+
 func TestApplySnapshot(t *testing.T) {
 	t.Parallel()
 
@@ -1272,7 +1334,7 @@ func TestApplySnapshot(t *testing.T) {
 		Metadata: snapshotMeta(10, 5, &raftpb.ConfState{Voters: []uint64{1, 2, 3}}),
 		Data:     []byte("full-snapshot"),
 	}
-	require.NoError(t, w.ApplySnapshot(snap))
+	require.NoError(t, w.ApplySnapshot(snap, nil, nil))
 
 	// Verify snapshot is applied
 	gotSnap, err := w.Snapshot()
@@ -1299,10 +1361,13 @@ func TestApplySnapshotUnlocksOnSnapshotSaveFailure(t *testing.T) {
 
 	err := w.ApplySnapshot(&raftpb.Snapshot{
 		Metadata: snapshotMeta(10, 2, &raftpb.ConfState{Voters: []uint64{1}}),
-	})
+	}, nil, nil)
 	require.ErrorContains(t, err, "saving snapshot file")
 	require.True(t, w.mu.TryLock(), "ApplySnapshot must unlock after a persistence failure")
 	w.mu.Unlock()
+	last, lastErr := w.LastIndex()
+	require.NoError(t, lastErr)
+	require.Equal(t, uint64(0), last, "a pre-switch failure must leave the old in-memory log active")
 }
 
 // --- Append edge cases ---
@@ -1486,7 +1551,7 @@ func TestCompact_EmptyEntriesAfterApplySnapshot(t *testing.T) {
 	snap := &raftpb.Snapshot{
 		Metadata: snapshotMeta(10, 2, &raftpb.ConfState{Voters: []uint64{1}}),
 	}
-	require.NoError(t, w.ApplySnapshot(snap))
+	require.NoError(t, w.ApplySnapshot(snap, nil, nil))
 
 	// Compact at snapshot index with no entries should succeed (no-op via empty entries path)
 	// firstIndex = snapshot.Metadata.Index + 1 = 11

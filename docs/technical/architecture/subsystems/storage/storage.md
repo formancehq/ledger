@@ -131,17 +131,41 @@ the etcd storage model.
 ### Received snapshots with an entry suffix
 
 A Raft Ready may carry a snapshot and subsequent entries together. The node
-first appends the Ready entries and HardState durably, then installs the
-snapshot. `ApplySnapshot` clears the cached log window, so the node reappends
-the same Ready suffix before releasing storage or peer acknowledgements.
-Reordering the initial append after snapshot installation would change the
-crash prefix in which HardState and snapshot metadata become durable.
+does not append the Ready entries or HardState to the old WAL. When Raft
+accepts the received snapshot, `ApplySnapshot` writes its full snapshot
+file, then prepares a new WAL containing a snapshot record, the Ready
+HardState (term, vote and commit), and only the same Ready entries after the
+snapshot index. It syncs that WAL before retiring the old one. The in-memory
+log is replaced only after the new WAL is active and `ReadAll` confirms it is
+readable. This read does not compare the recovered HardState or entry suffix
+with the Ready. The node then installs the FSM
+snapshot and releases peer and storage acknowledgements.
 
-The reappend adds one write proportional to the suffix bytes only for combined
-snapshot/entry Ready values. It adds no storage scan and no write to ordinary
-snapshot-free Ready processing. Tests verify the live Storage interface and a
-reopened WAL retain the suffix, term, HardState and ConfState. Snapshot receipt
-and sender delivery feedback are separate lifecycle boundaries; see the
+The active path remains `raft/etcd/`, readable by older RC binaries. The
+replacement is prepared at `raft/etcd.next/`. After the new WAL is durable,
+the node stops the old WAL purger and closes the old WAL while `etcd/` still
+names it. This stops the old file pipeline before the path is reused. The
+node then renames `etcd/` to `etcd.previous/`, syncs the parent directory,
+renames `etcd.next/` to `etcd/`, and syncs again. Startup resolves either
+interrupted rename before opening the WAL. Only after replay
+of the selected WAL succeeds are inactive directories deleted. No existing
+WAL is migrated on upgrade; replacement happens only on an accepted received
+snapshot. Ordinary Ready persistence does not create a new WAL.
+
+| Interruption point | Restart source |
+| --- | --- |
+| Before the first rename | Existing `etcd/`; an orphan snapshot file or `etcd.next/` is ignored |
+| Between renames | Complete `etcd.next/` is promoted to `etcd/`; `etcd.previous/` remains as fallback |
+| After the second rename | New `etcd/`; the previous directory is removed after successful replay |
+
+If an error occurs before the first rename, the in-memory WAL state remains
+unchanged and Ready processing stops. The old WAL may already be closed.
+An error during or after either rename is terminal for the running node.
+Restart completes recovery from the durable directories. A node stopped
+between renames must restart on a version with this recovery logic. Tests
+verify the suffix, term, vote, commit, ConfState, and each interrupted
+directory state. Snapshot receipt and sender
+delivery feedback are separate lifecycle boundaries; see the
 [consensus snapshot contract](../consensus/raft-consensus.md#receiving-a-snapshot-ready).
 
 ### WAL Management
@@ -165,14 +189,17 @@ When a new WAL is created, the system uses a marker file (`WAL_CREATION_COMPLETE
 1. Check if `WAL_CREATION_COMPLETED` marker exists
 2. **If marker exists**: Open the existing WAL normally
 3. **If marker does not exist**:
-   - Delete any existing WAL directory (incomplete previous creation)
+   - Inspect any existing WAL directory; delete it only if it is a verified
+     empty bootstrap remnant. Fail closed if it contains consensus state or
+     cannot be read.
    - Create a new WAL using `wal.Create()`
    - Close and reopen the WAL (required by etcd/server WAL)
    - Create the marker file
    - Sync and close the marker file
    - Open the WAL for use
 
-This mechanism ensures that if the process crashes during WAL creation, the incomplete WAL will be detected and recreated on the next startup, preventing corruption.
+This mechanism ensures that an incomplete, state-free first creation can be
+retried without deleting a WAL that contains votes or entries.
 
 #### 2. Atomic Snapshot File Writes
 

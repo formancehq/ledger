@@ -77,17 +77,17 @@ func (c *MockWALAppendCall) DoAndReturn(f func(*raftpb.HardState, []*raftpb.Entr
 }
 
 // ApplySnapshot mocks base method.
-func (m *MockWAL) ApplySnapshot(snapshot *raftpb.Snapshot) error {
+func (m *MockWAL) ApplySnapshot(snapshot *raftpb.Snapshot, hardState *raftpb.HardState, suffix []*raftpb.Entry) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ApplySnapshot", snapshot)
+	ret := m.ctrl.Call(m, "ApplySnapshot", snapshot, hardState, suffix)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // ApplySnapshot indicates an expected call of ApplySnapshot.
-func (mr *MockWALMockRecorder) ApplySnapshot(snapshot any) *MockWALApplySnapshotCall {
+func (mr *MockWALMockRecorder) ApplySnapshot(snapshot, hardState, suffix any) *MockWALApplySnapshotCall {
 	mr.mock.ctrl.T.Helper()
-	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ApplySnapshot", reflect.TypeOf((*MockWAL)(nil).ApplySnapshot), snapshot)
+	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ApplySnapshot", reflect.TypeOf((*MockWAL)(nil).ApplySnapshot), snapshot, hardState, suffix)
 	return &MockWALApplySnapshotCall{Call: call}
 }
 
@@ -103,13 +103,13 @@ func (c *MockWALApplySnapshotCall) Return(arg0 error) *MockWALApplySnapshotCall 
 }
 
 // Do rewrite *gomock.Call.Do
-func (c *MockWALApplySnapshotCall) Do(f func(*raftpb.Snapshot) error) *MockWALApplySnapshotCall {
+func (c *MockWALApplySnapshotCall) Do(f func(*raftpb.Snapshot, *raftpb.HardState, []*raftpb.Entry) error) *MockWALApplySnapshotCall {
 	c.Call = c.Call.Do(f)
 	return c
 }
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockWALApplySnapshotCall) DoAndReturn(f func(*raftpb.Snapshot) error) *MockWALApplySnapshotCall {
+func (c *MockWALApplySnapshotCall) DoAndReturn(f func(*raftpb.Snapshot, *raftpb.HardState, []*raftpb.Entry) error) *MockWALApplySnapshotCall {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }

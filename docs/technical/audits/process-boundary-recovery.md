@@ -15,6 +15,13 @@ death case, use process death that cannot invoke shutdown hooks. Verify the
 sentinel directly on the replacement node with forwarding or peer repair
 excluded where the test claims local recovery.
 
+For a received snapshot that replaces `raft/etcd/`, capture the snapshot file,
+complete candidate WAL, retired directory and published directory boundaries.
+After each interruption, a new process must select the old complete WAL or the
+new complete WAL at the same configured path. Verify term, vote, committed
+suffix and snapshot before peer repair; an in-process reopen does not establish
+the OS process and lock-reuse claim.
+
 Distinguish process exit status and readiness from a wrapper's or operator's
 status. For startup rejection, observe whether any endpoint became ready and
 whether partially written local state affects the next execution. Capture
