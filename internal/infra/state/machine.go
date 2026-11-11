@@ -1700,6 +1700,14 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 	}
 
 	transientErr := buffer.ValidateTransientVolumes(validateScope)
+	if transientErr == nil {
+		for _, attr := range proposal.GetExecutionPlan().GetAttributes() {
+			if attr.GetAttrCode() == uint32(dal.SubAttrAccountIncarnation) {
+				transientErr = buffer.ensureAccountIncarnations(validateScope)
+				break
+			}
+		}
+	}
 
 	if err := transientErr; err != nil {
 		if _, uncommitted := errors.AsType[domain.UncommittedFailure](err); uncommitted {
