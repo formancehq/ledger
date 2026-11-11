@@ -45,8 +45,8 @@ type Context struct {
 	auditReplay bool
 
 	// MirrorPromotionProgress reads the FSM's committed source observation plus
-	// technical updates staged earlier in this proposal. Nil for legacy orders
-	// and audit replay, which do not re-run the eligibility decision.
+	// technical updates staged earlier in this proposal. Audit replay bypasses
+	// the eligibility decision; live apply requires this callback.
 	MirrorPromotionProgress func(string) (uint64, bool)
 	// Metadata budget is shared by all orders in one atomic proposal.
 	metadataBudget *commandMetadataBudget
