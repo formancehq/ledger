@@ -49,6 +49,8 @@ func ledgerApplyOrderType(o *raftcmdpb.LedgerApplyOrder) string {
 	switch o.GetData().(type) {
 	case *raftcmdpb.LedgerApplyOrder_CreateTransaction:
 		return "create_transaction"
+	case *raftcmdpb.LedgerApplyOrder_ExecuteNumscript:
+		return "execute_numscript"
 	case *raftcmdpb.LedgerApplyOrder_RevertTransaction:
 		return "revert_transaction"
 	case *raftcmdpb.LedgerApplyOrder_AddMetadata:
