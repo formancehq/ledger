@@ -266,12 +266,15 @@ func TestOpenAPISpec_PreparedQueryFilterInputs(t *testing.T) {
 			for _, value := range []any{map[string]any{}, []any{}, float64(7), true} {
 				require.Error(t, filter.VisitJSON(value), "%s filter %#v", name, value)
 			}
-			// Optional update filters must distinguish omission from explicit null.
-			withoutFilter := map[string]any{}
+			// Create permits omission; update requires target and filter, including null.
+			var withoutFilter map[string]any
 			if name == "CreatePreparedQueryRequest" {
 				withoutFilter = map[string]any{"name": "by-reference", "target": "TRANSACTIONS"}
+				require.NoError(t, request.VisitJSON(withoutFilter))
+			} else {
+				withoutFilter = map[string]any{"target": "TRANSACTIONS"}
+				require.Error(t, request.VisitJSON(withoutFilter))
 			}
-			require.NoError(t, request.VisitJSON(withoutFilter))
 			withoutFilter["filter"] = nil
 			require.NoError(t, request.VisitJSON(withoutFilter))
 		})

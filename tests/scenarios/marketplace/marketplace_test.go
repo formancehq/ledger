@@ -498,7 +498,7 @@ send $amount (
 			"parameterized query with prefix=platform: should return at least 1 account")
 
 		// 3. Update the hardcoded query, then delete both
-		err = actions.UpdatePreparedQuery(ctx, client, ledger, "customer-query",
+		err = actions.UpdatePreparedQuery(ctx, client, ledger, "customer-query", commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
 			actions.AddressPrefixFilter("merchant:"),
 		)
 		require.NoError(t, err, "UpdatePreparedQuery failed")

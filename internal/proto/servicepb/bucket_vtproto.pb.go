@@ -2496,6 +2496,10 @@ func (m *UpdatePreparedQueryRequest) CloneVT() *UpdatePreparedQueryRequest {
 	r.Ledger = m.Ledger
 	r.Name = m.Name
 	r.Filter = m.Filter.CloneVT()
+	if rhs := m.Target; rhs != nil {
+		tmpVal := *rhs
+		r.Target = &tmpVal
+	}
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
 		copy(r.unknownFields, m.unknownFields)
@@ -7010,6 +7014,9 @@ func (this *UpdatePreparedQueryRequest) EqualVT(that *UpdatePreparedQueryRequest
 		return false
 	}
 	if !this.Filter.EqualVT(that.Filter) {
+		return false
+	}
+	if p, q := this.Target, that.Target; (p == nil && q != nil) || (p != nil && (q == nil || *p != *q)) {
 		return false
 	}
 	return string(this.unknownFields) == string(that.unknownFields)
@@ -14216,6 +14223,11 @@ func (m *UpdatePreparedQueryRequest) MarshalToSizedBufferVT(dAtA []byte) (int, e
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
+	if m.Target != nil {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(*m.Target))
+		i--
+		dAtA[i] = 0x20
+	}
 	if m.Filter != nil {
 		size, err := m.Filter.MarshalToSizedBufferVT(dAtA[:i])
 		if err != nil {
@@ -18349,6 +18361,9 @@ func (m *UpdatePreparedQueryRequest) SizeVT() (n int) {
 	if m.Filter != nil {
 		l = m.Filter.SizeVT()
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	if m.Target != nil {
+		n += 1 + protohelpers.SizeOfVarint(uint64(*m.Target))
 	}
 	n += len(m.unknownFields)
 	return n
@@ -33787,6 +33802,26 @@ func (m *UpdatePreparedQueryRequest) UnmarshalVT(dAtA []byte) error {
 				return err
 			}
 			iNdEx = postIndex
+		case 4:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Target", wireType)
+			}
+			var v commonpb.QueryTarget
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				v |= commonpb.QueryTarget(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			m.Target = &v
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])

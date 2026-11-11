@@ -219,8 +219,15 @@ func listEnumJSONAssignment(g *protogen.GeneratedFile, access string, field *pro
 }
 
 func enumJSONAssignment(g *protogen.GeneratedFile, access string, field *protogen.Field) string {
+	// Proto3 optional enum fields are pointers. Preserve absence as nil so
+	// omitempty omits it, while a present zero value still emits its enum name.
+	prefix := ""
+	if field.Desc.HasOptionalKeyword() {
+		prefix = " if " + access + " == nil { return nil };"
+		access = "*" + access
+	}
 	values := field.Desc.Enum().Values()
-	expression := "func() any {"
+	expression := "func() any {" + prefix
 	expression += " switch " + access + " {"
 	for i := 0; i < values.Len(); i++ {
 		value := values.Get(i)

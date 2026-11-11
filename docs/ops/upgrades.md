@@ -36,6 +36,15 @@ and encodes [mirror asset mappings](#mirror-asset-mappings) differently.
 The `rc.1` to `rc.2` transition rolls one voter at a time with a maintenance
 barrier that pauses writes; it does not stop the whole cluster.
 The `rc.2` to `rc.3` transition remains rolling.
+Every explicit-target `UpdatePreparedQuery` order must wait until the stopped
+`rc.3` to `rc.4` upgrade completes. Even when the target value is unchanged,
+the new processor records target fields in the audit log, so old and new voters
+would produce different audit bytes for the same order. A changed target also
+changes replicated query state. The release containing these updates must list
+and validate the mandatory stopped boundary before clients submit them. The
+operator drain path is in place; [PR #2404](https://github.com/formancehq/ledger/pull/2404)
+coordinates that boundary. Until `rc.4` is active, clients must not submit
+explicit-target updates; use delete plus create for target changes.
 When the running version precedes a mandatory boundary, pin the target to a
 canonical version tag. Moving or non-canonical tags such as `latest` cannot
 prove whether the boundary is crossed, so the operator blocks the change.
@@ -146,9 +155,17 @@ and backup compatibility. The operator does not delete Raft members or volumes.
 
 The drain blocks business writes before the stop; in-flight proposals after
 the cutoff reject at apply. Cluster-internal technical entries may continue
-and must remain replay-compatible with the target. Clients must retry an
-unacknowledged request with the same idempotency key. A release that changes
-replay or apply semantics must prove this
+and must remain replay-compatible with the target. Clients normally retry an
+unacknowledged request with the same idempotency key. An RC.3 batch containing
+a targetless `UpdatePreparedQuery` is an exception after the RC.4 upgrade: an
+identical retry fails `PREPARED_QUERY_TARGET_REQUIRED` before the retained
+outcome lookup. Adding `target` changes the request hash and conflicts with a
+retained key. Before submitting any replacement work, use `ledgerctl audit list`
+with an exact `idempotency_key` filter and inspect the prepared query and any
+other affected business state. Reconcile whether the original batch committed
+and its outcome; if the evidence is incomplete, keep the outcome unresolved
+and do not issue a replacement batch that could duplicate its effects. A release
+that changes replay or apply semantics must prove this
 with a non-empty source cluster before publishing. Rollback to an older binary
 is allowed only before the target has written incompatible persisted data, and
 only with a separately validated downgrade procedure. After that point, keep
@@ -525,9 +542,10 @@ any target Pod, and checks that the replacement StatefulSet has a new UID while
 PVC UIDs persist. It restarts a target voter to exercise replay, verifies the
 pre-upgrade account, commits another transaction, checks Raft progress and
 runs each voter's audit/derived-state checker after drain release. It fails
-against an operator without the rc.4 boundary. The rc.4 release still needs
-format-specific migration, snapshot, backup/restore and rollback validation
-outside this scenario.
+against an operator without the rc.4 boundary, so it is a release gate for the
+format-change PR, not evidence that rc.3 itself needs a stop. The rc.4 release
+still needs format-specific migration, snapshot, backup/restore and rollback
+validation outside this scenario.
 
 ## Coordinated Restart
 

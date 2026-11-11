@@ -128,7 +128,7 @@ func TestQueryFilterRoundTrip(t *testing.T) {
 		{
 			name:     "logId single upper bound (lt)",
 			filter:   &QueryFilter{Filter: &QueryFilter_LogId{LogId: &LogIdCondition{Cond: &UintCondition{Max: u64(100), MaxExclusive: true}}}},
-			wantJSON: `{"$lt":{"logId":"100"}}`,
+			wantJSON: `{"$lt":{"id":"100"}}`,
 		},
 		{
 			name:   "builtinUint timestamp closed range",
@@ -183,8 +183,12 @@ func TestQueryFilterRoundTrip(t *testing.T) {
 				require.NotContains(t, string(data), leak, "protobuf-internal name leaked: %s", leak)
 			}
 
-			got := &QueryFilter{}
-			require.NoError(t, json.Unmarshal(data, got))
+			target := QueryTarget_QUERY_TARGET_TRANSACTIONS
+			if tc.filter.GetLogId() != nil {
+				target = QueryTarget_QUERY_TARGET_LOGS
+			}
+			got, err := DecodeQueryFilterJSON(data, target)
+			require.NoError(t, err)
 			require.True(t, proto.Equal(tc.filter, got), "round-trip mismatch\n json: %s\n want: %v\n got:  %v", data, tc.filter, got)
 		})
 	}

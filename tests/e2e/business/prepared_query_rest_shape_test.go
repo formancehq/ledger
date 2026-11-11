@@ -261,12 +261,12 @@ var _ = Describe("PreparedQuery REST shape (EN-1465)", Ordered, func() {
 				"unexpected update status; body=%s", string(updateRaw))
 		}
 
-		update(`{"filter":{"$match":{"address":"does-not-exist:"}}}`)
+		update(`{"target":"ACCOUNTS","filter":{"$match":{"address":"does-not-exist:"}}}`)
 		Eventually(func(g Gomega) {
 			g.Expect(execute(g)).To(BeEmpty())
 		}).Within(5 * time.Second).ProbeEvery(200 * time.Millisecond).Should(Succeed())
 
-		update(`{"filter":null}`)
+		update(`{"target":"ACCOUNTS","filter":null}`)
 		Eventually(func(g Gomega) {
 			preparedAccounts := execute(g)
 			g.Expect(preparedAccounts).To(ConsistOf(directAccounts(g)))

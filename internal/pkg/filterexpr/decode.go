@@ -21,7 +21,9 @@ import (
 // The two representations are:
 //
 //   - structured — the v2 QueryFilter JSON DSL ($and/$or/$not + $match/$gt/…),
-//     decoded by commonpb.DecodeQueryFilterJSON (query_filter.go);
+//     decoded by commonpb.DecodeQueryFilterJSON (query_filter.go). The target
+//     distinguishes log `id` from transaction `id`; context-free
+//     QueryFilter.UnmarshalJSON uses transaction semantics;
 //   - textual    — the human-readable filterexpr grammar (metadata[k] == v,
 //     outcome == failure, …), parsed by Parse.
 //
@@ -70,19 +72,14 @@ func DecodeDualFormat(raw []byte, target commonpb.QueryTarget) (*commonpb.QueryF
 // validity gate: it resolves bare fields against target (EN-1549) but leaves the
 // validity check to the server. Two kinds of caller use it:
 //
-//   - the prepared-query UPDATE path, which does not see the target (the target
-//     is immutable and lives on the stored query, so the FSM applies the gate
-//     against it — see handlers_update_prepared_query.go). It passes a non-audit
-//     target for resolution, which is sound because prepared queries are only
-//     ever ACCOUNTS/TRANSACTIONS/LOGS (audit is never a prepared-query
-//     target — see http.preparedQueryTargets) and every non-audit target resolves
-//     the bare intrinsic fields identically (`timestamp` → transaction range,
-//     `date` → log range, `ledger` → LedgerCondition, …; locked by
-//     TestDecodeDualFormatStructuralOnly_NonAuditResolutionIsTargetIndependent);
-//   - the ledgerctl list and `queries create` commands, which DO know their
-//     target and pass it (audit list passes QUERY_TARGET_AUDIT so bare audit
-//     fields resolve to the audit arm) but let the server run the authoritative
-//     validity gate.
+//   - the prepared-query UPDATE path, which resolves bare fields against the
+//     explicit target when supplied. Targetless legacy requests use a
+//     non-audit target for structural decoding; the FSM validates against the
+//     stored target. Prepared queries only target ACCOUNTS/TRANSACTIONS/LOGS
+//     (see http.preparedQueryTargets). The FSM remains the validity gate;
+//   - the ledgerctl list and `queries create` commands, which know their target
+//     and pass it (audit list passes QUERY_TARGET_AUDIT so bare audit fields
+//     resolve to the audit arm) but let the server run the validity gate.
 //
 // Every server-side list handler MUST use DecodeDualFormat instead, so form and
 // validity are checked in one place.

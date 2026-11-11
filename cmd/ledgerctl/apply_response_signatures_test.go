@@ -34,7 +34,7 @@ func TestQueryMutationResponseSignatures(t *testing.T) {
 	}{
 		{"create query", []string{"queries", "create", "active", "--ledger", "test"}},
 		{"delete query", []string{"queries", "delete", "active", "--ledger", "test"}},
-		{"update query", []string{"queries", "update", "active", "--ledger", "test", "--filter", "metadata[active] == true"}},
+		{"update query", []string{"queries", "update", "active", "--ledger", "test", "--target", "accounts", "--filter", "metadata[active] == true"}},
 		{"create checkpoint", []string{"query-checkpoint", "create", "--json"}},
 		{"delete checkpoint", []string{"query-checkpoint", "delete", "42", "--json"}},
 	}
@@ -136,7 +136,7 @@ func TestQueryUpdateWithoutFilterClearsIt(t *testing.T) {
 	cmd.PersistentFlags().String("auth-token", "test-token", "")
 	cmd.PersistentFlags().String("response-verify-key", "", "")
 	cmd.AddCommand(queries.NewCommand())
-	cmd.SetArgs([]string{"queries", "update", "all-accounts", "--ledger", "test"})
+	cmd.SetArgs([]string{"queries", "update", "all-accounts", "--ledger", "test", "--target", "accounts"})
 
 	require.NoError(t, cmd.Execute())
 	require.EqualValues(t, 1, fixture.calls.Load())
@@ -147,6 +147,8 @@ func TestQueryUpdateWithoutFilterClearsIt(t *testing.T) {
 	require.NotNil(t, update)
 	require.Equal(t, "test", update.GetLedger())
 	require.Equal(t, "all-accounts", update.GetName())
+	require.Equal(t, commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS, update.GetTarget())
+	require.NotNil(t, update.Target)
 	require.Nil(t, update.GetFilter(), "omitting --filter must send nil to clear the stored filter")
 }
 
