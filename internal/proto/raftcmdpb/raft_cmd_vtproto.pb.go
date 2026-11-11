@@ -2076,8 +2076,6 @@ func (m *AttributeCoverage) CloneVT() *AttributeCoverage {
 	r.Id = m.Id.CloneVT()
 	r.AttrCode = m.AttrCode
 	r.Value = m.Value.CloneVT()
-	r.ExpectedIncarnationOpenedAtRaftIndex = m.ExpectedIncarnationOpenedAtRaftIndex
-	r.AssertAccountIncarnation = m.AssertAccountIncarnation
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
 		copy(r.unknownFields, m.unknownFields)
@@ -5843,12 +5841,6 @@ func (this *AttributeCoverage) EqualVT(that *AttributeCoverage) bool {
 		return false
 	}
 	if !this.Value.EqualVT(that.Value) {
-		return false
-	}
-	if this.ExpectedIncarnationOpenedAtRaftIndex != that.ExpectedIncarnationOpenedAtRaftIndex {
-		return false
-	}
-	if this.AssertAccountIncarnation != that.AssertAccountIncarnation {
 		return false
 	}
 	return string(this.unknownFields) == string(that.unknownFields)
@@ -11029,22 +11021,6 @@ func (m *AttributeCoverage) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
-	if m.AssertAccountIncarnation {
-		i--
-		if m.AssertAccountIncarnation {
-			dAtA[i] = 1
-		} else {
-			dAtA[i] = 0
-		}
-		i--
-		dAtA[i] = 0x28
-	}
-	if m.ExpectedIncarnationOpenedAtRaftIndex != 0 {
-		i -= 8
-		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.ExpectedIncarnationOpenedAtRaftIndex))
-		i--
-		dAtA[i] = 0x21
-	}
 	if m.Value != nil {
 		size, err := m.Value.MarshalToSizedBufferVT(dAtA[:i])
 		if err != nil {
@@ -13813,12 +13789,6 @@ func (m *AttributeCoverage) SizeVT() (n int) {
 	if m.Value != nil {
 		l = m.Value.SizeVT()
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
-	}
-	if m.ExpectedIncarnationOpenedAtRaftIndex != 0 {
-		n += 9
-	}
-	if m.AssertAccountIncarnation {
-		n += 2
 	}
 	n += len(m.unknownFields)
 	return n
@@ -25817,36 +25787,6 @@ func (m *AttributeCoverage) UnmarshalVT(dAtA []byte) error {
 				return err
 			}
 			iNdEx = postIndex
-		case 4:
-			if wireType != 1 {
-				return fmt.Errorf("proto: wrong wireType = %d for field ExpectedIncarnationOpenedAtRaftIndex", wireType)
-			}
-			m.ExpectedIncarnationOpenedAtRaftIndex = 0
-			if (iNdEx + 8) > l {
-				return io.ErrUnexpectedEOF
-			}
-			m.ExpectedIncarnationOpenedAtRaftIndex = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
-			iNdEx += 8
-		case 5:
-			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field AssertAccountIncarnation", wireType)
-			}
-			var v int
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				v |= int(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			m.AssertAccountIncarnation = bool(v != 0)
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
