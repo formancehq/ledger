@@ -184,6 +184,8 @@ func TestExtractNeededVolumes(t *testing.T) {
 
 		require.True(t, needs.Has(dal.SubAttrVolume, worldKey.Bytes()), "should have world volume key")
 		require.True(t, needs.Has(dal.SubAttrVolume, aliceKey.Bytes()), "should have alice volume key")
+		require.True(t, needs.Has(dal.SubAttrAccountIncarnation, domain.AccountKey{LedgerName: "test-ledger", Account: "world"}.Bytes()))
+		require.True(t, needs.Has(dal.SubAttrAccountIncarnation, domain.AccountKey{LedgerName: "test-ledger", Account: "user:alice"}.Bytes()))
 	})
 
 	t.Run("extracts volumes for revert transaction", func(t *testing.T) {
