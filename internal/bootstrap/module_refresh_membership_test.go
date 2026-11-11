@@ -2,6 +2,7 @@ package bootstrap
 
 import (
 	"context"
+	"errors"
 	"net"
 	"sync/atomic"
 	"testing"
@@ -142,5 +143,18 @@ func TestTryRefreshMembershipForStartupTreatsBoundedAttemptAsTransient(t *testin
 	)
 
 	require.ErrorIs(t, err, errMembershipRefreshTransient)
-	require.ErrorIs(t, err, context.DeadlineExceeded)
+	require.True(t, errors.Is(err, context.DeadlineExceeded) || status.Code(err) == codes.DeadlineExceeded)
+}
+
+func TestTryRefreshMembershipForStartupTreatsEarlyRPCDeadlineAsTransient(t *testing.T) {
+	t.Parallel()
+
+	peer := &retryingRefreshServer{firstErr: status.Error(codes.DeadlineExceeded, "leader proposal timed out")}
+	cfg := refreshTestConfig(t, serveRefreshMembership(t, peer))
+	err := tryRefreshMembershipForStartupWithTimeout(
+		context.Background(), cfg, cfg.TLSConfig, logging.Testing(), time.Second,
+	)
+
+	require.ErrorIs(t, err, errMembershipRefreshTransient)
+	require.Equal(t, int32(1), peer.attempts.Load())
 }
