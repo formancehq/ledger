@@ -217,6 +217,27 @@ func (b *Builder) indexCreatedTransaction(
 		}
 	}
 
+	// Keys a Numscript program deleted are removed like a DeletedMetadata log.
+	for account, keys := range ct.GetDeletedAccountMetadata() {
+		for _, key := range keys.GetKeys() {
+			if !cfg.isMetadataIndexed(commonpb.TargetType_TARGET_TYPE_ACCOUNT, key) {
+				continue
+			}
+
+			if err := b.dualDeleteMetadataEntry(
+				kb,
+				ledger, readstore.NamespaceAccount, key,
+				commonpb.TargetType_TARGET_TYPE_ACCOUNT,
+				[]byte(account),
+				func(version uint32) []byte {
+					return readstore.AccountReverseMapKeyV(kb, ledger, account, key, version)
+				},
+			); err != nil {
+				return err
+			}
+		}
+	}
+
 	// Transaction metadata is the first index write for this transaction ID.
 	// Insert directly instead of reading the reverse map: live folding sees a
 	// freshly-minted ID, and a creation backfill always targets a single-use

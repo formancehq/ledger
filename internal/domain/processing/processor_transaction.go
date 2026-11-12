@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"maps"
+	"slices"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
@@ -255,6 +256,11 @@ func processCreateTransaction(ledger string, order *raftcmdpb.CreateTransactionO
 		return nil, err
 	}
 
+	deletedAccountMetadata := scriptAccountMetadataDeletions(result.AccountsMetadataDeleted, accountMetadata)
+	if err := domain.ValidateAccountMetadataAddresses(deletedAccountMetadata); err != nil {
+		return nil, err
+	}
+
 	// Stored values are immutable; the FSM does not coerce on write and no
 	// longer captures previous values into the log. The indexer resolves
 	// the old encoded value via the reverse map on overwrite.
@@ -266,6 +272,21 @@ func processCreateTransaction(ledger string, order *raftcmdpb.CreateTransactionO
 			}
 
 			s.AccountMetadata().Put(metaKey, value)
+		}
+	}
+
+	// Deleting an absent key is a no-op. Accounts are visited in sorted order
+	// so a failure is the same on every node.
+	for _, account := range slices.Sorted(maps.Keys(deletedAccountMetadata)) {
+		for _, key := range deletedAccountMetadata[account].GetKeys() {
+			metaKey := domain.MetadataKey{
+				AccountKey: domain.AccountKey{LedgerName: ledger, Account: account},
+				Key:        key,
+			}
+
+			if err := s.AccountMetadata().Delete(metaKey); err != nil {
+				return nil, domain.StoreFailure("deleting account metadata", err)
+			}
 		}
 	}
 
@@ -300,10 +321,44 @@ func processCreateTransaction(ledger string, order *raftcmdpb.CreateTransactionO
 					UpdatedAt:         s.GetDate().Mutate(),
 					PostCommitVolumes: postCommitVolumes,
 				},
-				AccountMetadata: accountMetadata,
+				AccountMetadata:        accountMetadata,
+				DeletedAccountMetadata: deletedAccountMetadata,
 			},
 		},
 	}, nil
+}
+
+// scriptAccountMetadataDeletions returns the account-metadata keys a script
+// deleted, minus every key this transaction also sets: caller metadata wins
+// over a script deletion, as it wins over a script write. Keys are sorted so
+// the logged list is identical on every node.
+func scriptAccountMetadataDeletions(
+	deleted map[string]map[string]struct{},
+	accountMetadata map[string]*commonpb.MetadataMap,
+) map[string]*commonpb.MetadataKeys {
+	var result map[string]*commonpb.MetadataKeys
+	for account, keys := range deleted {
+		var kept []string
+		for key := range keys {
+			if _, set := accountMetadata[account].GetValues()[key]; !set {
+				kept = append(kept, key)
+			}
+		}
+
+		if len(kept) == 0 {
+			continue
+		}
+
+		slices.Sort(kept)
+
+		if result == nil {
+			result = make(map[string]*commonpb.MetadataKeys)
+		}
+
+		result[account] = &commonpb.MetadataKeys{Keys: kept}
+	}
+
+	return result
 }
 
 // validateMergedAccountMetadata checks every account's merged metadata map
@@ -368,9 +423,10 @@ func validatePostings(postings []*commonpb.Posting) domain.SerializableError {
 // produceResult holds the result of producing postings from an order.
 // It includes the postings and any metadata set by the script.
 type produceResult struct {
-	Postings            []*commonpb.Posting
-	TransactionMetadata map[string]*commonpb.MetadataValue            // Metadata from set_tx_meta in Numscript
-	AccountsMetadata    map[string]map[string]*commonpb.MetadataValue // Metadata from set_account_meta in Numscript
+	Postings                []*commonpb.Posting
+	TransactionMetadata     map[string]*commonpb.MetadataValue            // Metadata from set_tx_meta in Numscript
+	AccountsMetadata        map[string]map[string]*commonpb.MetadataValue // Metadata from set_account_meta in Numscript
+	AccountsMetadataDeleted map[string]map[string]struct{}                // Keys from delete_account_metadata in Numscript
 }
 
 type postingProducer interface {
