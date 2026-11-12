@@ -259,6 +259,40 @@ func TestRebuildDelta_ReconcilesIncarnationsBeyondCheckpoint(t *testing.T) {
 	require.Equal(t, uint64(300), row.GetUpdatedAt().GetData())
 }
 
+func TestRestorePolicySnapshotActivatesIncarnationBackfill(t *testing.T) {
+	t.Parallel()
+	store := newRebuildTestStore(t)
+	batch := store.OpenWriteSession()
+	require.NoError(t, batch.SetProto(coldLogKey(1), createLedgerLog(1, "ledger", 1)))
+	require.NoError(t, batch.SetProto(coldLogKey(2), applyLedgerLog(2, "ledger", createdTransactionPayload(1, rebuildTestPosting("world", "alice", "USD", 1)))))
+	for seq, timestamp := range []uint64{100, 200} {
+		entry := auditSuccess(uint64(seq+1), uint64(seq+1), uint64(seq+1))
+		entry.Timestamp = &commonpb.Timestamp{Data: timestamp}
+		entry.OrderCount = 1
+		require.NoError(t, batch.SetProto(coldAuditKey(uint64(seq+1)), entry))
+		key := dal.NewKeyBuilder().PutZonePrefix(dal.ZoneHistory, dal.SubHistoryAuditItem).PutUint64(uint64(seq + 1)).PutUint32(0).Build()
+		require.NoError(t, batch.SetProto(key, auditItem(t, uint64(seq+1), &raftcmdpb.Order{})))
+	}
+	require.NoError(t, batch.Commit())
+	policy := &commonpb.ClusterPolicy{
+		Revision: 2, QueryCheckpointLimit: 10,
+		MetadataMaxEntriesPerEntity: domain.DefaultMetadataMaxEntriesPerEntity,
+		MetadataMaxKeyBytes:         domain.DefaultMetadataMaxKeyBytes,
+		MetadataMaxValueBytes:       domain.DefaultMetadataMaxValueBytes,
+		MetadataMaxEntityBytes:      domain.DefaultMetadataMaxEntityBytes,
+		MetadataMaxCommandBytes:     domain.DefaultMetadataMaxCommandBytes,
+		CapabilityActivations:       []*commonpb.CapabilityActivation{{Id: uint32(capabilities.AccountIncarnationWritesV1), Active: true}},
+	}
+	manifest := &Manifest{ClusterPolicy: &ClusterPolicySnapshot{Data: policy.MarshalDeterministicVT(nil)}}
+	require.NoError(t, ApplyExportsAndRebuild(t.Context(), testLogger(), newInMemoryBackupStorage(), store, manifest))
+	marker, err := incarnationmigration.ReadMarker(store)
+	require.NoError(t, err)
+	require.True(t, marker.Complete)
+	row, err := attributes.New().AccountIncarnation.Get(store, (domain.AccountKey{LedgerName: "ledger", Account: "alice"}).Bytes())
+	require.NoError(t, err)
+	require.Equal(t, uint64(200), row.GetInsertedAt().GetData())
+}
+
 func TestRebuildDelta_TruncatedStreamReturnsErrorAndDoesNotCommit(t *testing.T) {
 	t.Parallel()
 

@@ -13,6 +13,7 @@ import (
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
+	"github.com/formancehq/ledger/v3/internal/infra/incarnationmigration"
 	"github.com/formancehq/ledger/v3/internal/infra/state"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
@@ -347,6 +348,12 @@ func ApplyExportsAndRebuild(ctx context.Context, logger logging.Logger, storage 
 		}
 		if err := batch.Commit(); err != nil {
 			return fmt.Errorf("committing operational policy: %w", err)
+		}
+		// The manifest policy is newer than the checkpoint and exported logs.
+		// An activation carried only by that snapshot was invisible to
+		// RebuildDelta's incarnation reconciliation above.
+		if err := incarnationmigration.Run(ctx, store); err != nil {
+			return fmt.Errorf("migrating account incarnations after policy restore: %w", err)
 		}
 	}
 
