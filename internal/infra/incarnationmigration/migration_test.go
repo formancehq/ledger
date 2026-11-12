@@ -23,6 +23,7 @@ func migrationStore(t *testing.T) *dal.Store {
 	store, err := dal.NewStore(t.TempDir(), logging.Testing(), noop.NewMeterProvider().Meter("test"), dal.DefaultConfig())
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, store.Close()) })
+
 	return store
 }
 
@@ -142,6 +143,7 @@ func TestVerifyComparesIncarnationsInBothDirections(t *testing.T) {
 			return err
 		}
 		defer func() { _ = reader.Close() }()
+
 		return Verify(t.Context(), reader, logging.Testing())
 	}
 	require.NoError(t, check())
@@ -223,7 +225,7 @@ func TestRequireReadyRejectsUnmigratedActiveStore(t *testing.T) {
 	require.NoError(t, RequireReady(store))
 	appendFixture(t, store, 1, 100, &commonpb.LogPayload{Type: &commonpb.LogPayload_CreateLedger{CreateLedger: &commonpb.CreatedLedgerLog{Name: "ledger"}}})
 	activateWrites(t, store)
-	require.ErrorContains(t, RequireReady(store), "ledger migrate-incarnations")
+	require.ErrorContains(t, RequireReady(store), "ledger-server migrate-incarnations")
 	require.NoError(t, Run(t.Context(), store))
 	require.NoError(t, RequireReady(store))
 }

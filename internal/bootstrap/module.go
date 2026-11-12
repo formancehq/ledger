@@ -109,6 +109,7 @@ func advertisedCapabilities(cfg Config) []uint32 {
 	if cfg.RaftConfig.AdvertisedCapabilities != nil {
 		return append([]uint32(nil), cfg.RaftConfig.AdvertisedCapabilities...)
 	}
+
 	return []uint32{uint32(capabilities.AccountIncarnationWritesV1)}
 }
 
@@ -193,6 +194,7 @@ func Module() fx.Option {
 				if !cfg.Restore {
 					if err := incarnationmigration.RequireReady(store); err != nil {
 						_ = store.Close()
+
 						return nil, fmt.Errorf("checking local account incarnation readiness before Raft startup: %w", err)
 					}
 				}
@@ -1217,7 +1219,7 @@ func validateProposalCapabilityAdmission(policy *commonpb.ClusterPolicy, proposa
 
 	state := capabilities.FromPolicy(policy)
 	if capabilities.IsActive(policy, capabilities.AccountIncarnationWritesV1) && proposal.NeedsIncarnationMarker() {
-		return fmt.Errorf("account proposal is missing incarnation coverage after capability activation")
+		return errors.New("account proposal is missing incarnation coverage after capability activation")
 	}
 	if err := state.Validate(); err != nil {
 		return err
@@ -1514,6 +1516,7 @@ func membershipRefreshHook(cfg Config, membership *raftmembership.Membership, lo
 func joinIncarnationReadinessHook(cfg Config, membership *raftmembership.Membership, store *dal.Store, logger logging.Logger) fx.Hook {
 	var cancel context.CancelFunc
 	var done chan struct{}
+
 	return fx.Hook{
 		OnStart: func(context.Context) error {
 			peers := recoveredRefreshPeers(cfg.RaftConfig.NodeID, membership.PeerAddresses())
@@ -1543,6 +1546,7 @@ func joinIncarnationReadinessHook(cfg Config, membership *raftmembership.Members
 							if err := tryRefreshMembership(ctx, cfg, cfg.TLSConfig, logger); err != nil && ctx.Err() == nil {
 								logger.WithFields(map[string]any{"error": err}).Errorf("Publishing converted learner capability evidence failed")
 							}
+
 							return
 						}
 					}
@@ -1553,6 +1557,7 @@ func joinIncarnationReadinessHook(cfg Config, membership *raftmembership.Members
 					}
 				}
 			}()
+
 			return nil
 		},
 		OnStop: func(ctx context.Context) error {
@@ -1566,6 +1571,7 @@ func joinIncarnationReadinessHook(cfg Config, membership *raftmembership.Members
 					return ctx.Err()
 				}
 			}
+
 			return nil
 		},
 	}

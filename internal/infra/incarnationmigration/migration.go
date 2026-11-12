@@ -12,8 +12,9 @@ import (
 	"time"
 
 	"github.com/cockroachdb/pebble/v2"
-	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 	"go.opentelemetry.io/otel/metric/noop"
+
+	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/domain/accounttype"
@@ -45,12 +46,14 @@ func ReadMarker(reader dal.PebbleGetter) (Marker, error) {
 		if errors.Is(err, pebble.ErrNotFound) {
 			return Marker{}, nil
 		}
+
 		return Marker{}, fmt.Errorf("reading account incarnation migration marker: %w", err)
 	}
 	defer func() { _ = closer.Close() }()
 	if len(raw) != 18 || raw[0] != definitionVersion || raw[1] > 1 {
-		return Marker{}, fmt.Errorf("invalid account incarnation migration marker")
+		return Marker{}, errors.New("invalid account incarnation migration marker")
 	}
+
 	return Marker{
 		Complete:     raw[1] == 1,
 		Cursor:       binary.BigEndian.Uint64(raw[2:10]),
@@ -69,6 +72,7 @@ func AdvertisedIDs(reader dal.PebbleGetter) ([]uint32, error) {
 	if marker.Complete {
 		ids = append(ids, uint32(capabilities.AccountIncarnationHistoryCompleteV1))
 	}
+
 	return ids, nil
 }
 
@@ -87,8 +91,9 @@ func RequireReady(reader dal.PebbleGetter) error {
 		return err
 	}
 	if !marker.Complete {
-		return errors.New("account incarnation history is not migrated; stop this node and run ledger migrate-incarnations --data-dir <path>")
+		return errors.New("account incarnation history is not migrated; stop this node and run ledger-server migrate-incarnations --data-dir <path>")
 	}
+
 	return nil
 }
 
@@ -100,6 +105,7 @@ func putMarker(batch *dal.WriteSession, marker Marker) error {
 	}
 	binary.BigEndian.PutUint64(raw[2:10], marker.Cursor)
 	binary.BigEndian.PutUint64(raw[10:18], marker.AppliedIndex)
+
 	return batch.SetBytes(markerKey, raw[:])
 }
 
@@ -116,6 +122,7 @@ func RunWithPause(ctx context.Context, store *dal.Store, pause time.Duration) er
 	if pause < 0 {
 		return errors.New("migration batch pause must be non-negative")
 	}
+
 	return run(ctx, store, false, pause)
 }
 
@@ -136,6 +143,7 @@ func run(ctx context.Context, store *dal.Store, force bool, pause time.Duration)
 		if capabilities.IsActive(policy, capabilities.AccountIncarnationHistoryCompleteV1) {
 			return errors.New("account history capability active without incarnation writes")
 		}
+
 		return nil
 	}
 
@@ -167,7 +175,7 @@ func run(ctx context.Context, store *dal.Store, force bool, pause time.Duration)
 		marker.Complete = false
 	}
 	if marker.Cursor > lastAudit || marker.AppliedIndex != 0 && marker.AppliedIndex != applied {
-		return fmt.Errorf("incarnation migration cursor does not match frozen store")
+		return errors.New("incarnation migration cursor does not match frozen store")
 	}
 	logger := logging.FromContext(ctx)
 	logger.WithFields(map[string]any{
@@ -244,6 +252,7 @@ func run(ctx context.Context, store *dal.Store, force bool, pause time.Duration)
 		return err
 	}
 	logger.WithField("lastAudit", lastAudit).Infof("Local account incarnation migration complete")
+
 	return nil
 }
 
@@ -264,6 +273,7 @@ func Verify(ctx context.Context, source dal.PebbleReader, logger logging.Logger)
 		if capabilities.IsActive(policy, capabilities.AccountIncarnationHistoryCompleteV1) {
 			return errors.New("account history is active without a complete local migration")
 		}
+
 		return nil
 	}
 	dir, err := os.MkdirTemp("", "checker-incarnations-*")
@@ -345,13 +355,14 @@ func Verify(ctx context.Context, source dal.PebbleReader, logger logging.Logger)
 			}
 		}
 		if !hasWant || !hasGot || !bytes.Equal(want.Key(), got.Key()) || !bytes.Equal(want.Value(), got.Value()) {
-			return fmt.Errorf("account incarnation projection differs from audited history")
+			return errors.New("account incarnation projection differs from audited history")
 		}
 		compared++
 	}
 	if err := want.Error(); err != nil {
 		return err
 	}
+
 	return got.Error()
 }
 
@@ -374,7 +385,7 @@ func (f *folder) process(ctx context.Context, entry *auditpb.AuditEntry, write b
 		return err
 	}
 	if len(items) != int(entry.GetOrderCount()) {
-		return fmt.Errorf("audit item count mismatch")
+		return errors.New("audit item count mismatch")
 	}
 	touched := make(map[domain.AccountKey]struct{})
 	deletedHere := make(map[string]struct{})
@@ -409,6 +420,7 @@ func (f *folder) process(ctx context.Context, entry *auditpb.AuditEntry, write b
 			return err
 		}
 	}
+
 	return nil
 }
 
@@ -420,6 +432,7 @@ func (f *folder) processLog(log *commonpb.Log, touched map[domain.AccountKey]str
 			accountTypes = make(map[string]*commonpb.AccountType)
 		}
 		f.types[create.GetName()] = accountTypes
+
 		return nil
 	}
 	if deleted := payload.GetDeleteLedger(); deleted != nil {
@@ -434,6 +447,7 @@ func (f *folder) processLog(log *commonpb.Log, touched map[domain.AccountKey]str
 				}
 			}
 		}
+
 		return nil
 	}
 	apply := payload.GetApply()
@@ -480,6 +494,7 @@ func (f *folder) processLog(log *commonpb.Log, touched map[domain.AccountKey]str
 			add(account.GetAddr())
 		}
 	}
+
 	return nil
 }
 
@@ -507,6 +522,7 @@ func (f *folder) touch(key domain.AccountKey, date *commonpb.Timestamp) error {
 	if row.GetUpdatedAt() == nil || date.GetData() > row.GetUpdatedAt().GetData() {
 		row.UpdatedAt = date.CloneVT()
 	}
+
 	return nil
 }
 
@@ -534,6 +550,7 @@ func (f *folder) commit(store *dal.Store, marker Marker) error {
 	}
 	clear(f.rows)
 	clear(f.deletes)
+
 	return nil
 }
 
@@ -549,5 +566,6 @@ func clearIncarnationCacheAndSeal(store *dal.Store, marker Marker) error {
 	if err := putMarker(batch, marker); err != nil {
 		return err
 	}
+
 	return batch.Commit()
 }

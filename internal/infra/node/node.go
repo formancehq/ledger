@@ -2412,7 +2412,7 @@ func (node *Node) Propose(ctx context.Context, proposal *Proposal) (*futures.Fut
 	// same canonical runner, so this is also their serialization point.
 	if node.proposalAdmission != nil {
 		if node.pendingIncarnationActivations > 0 && proposal.NeedsIncarnationMarker() {
-			return nil, fmt.Errorf("account proposal predates pending incarnation capability activation")
+			return nil, errors.New("account proposal predates pending incarnation capability activation")
 		}
 		if err := node.proposalAdmission(ctx, proposal); err != nil {
 			return nil, err
@@ -4074,6 +4074,7 @@ func nodeAdvertisedCapabilities(cfg NodeConfig) []uint32 {
 	if cfg.AdvertisedCapabilities != nil {
 		return slices.Clone(cfg.AdvertisedCapabilities)
 	}
+
 	return []uint32{uint32(capabilities.AccountIncarnationWritesV1)}
 }
 

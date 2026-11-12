@@ -533,6 +533,7 @@ func (ctrl *DefaultController) GetAccount(ctx context.Context, ledgerName string
 	if err != nil {
 		return nil, err
 	}
+
 	return scanAccount(handle, ctrl.attrs, ledgerInfo.GetName(), address, opts.CollapseColors, includeDates, ctrl.logger)
 }
 
@@ -2007,6 +2008,7 @@ func (ctrl *DefaultController) entityEnricher() *query.EntityEnricher {
 	var datesOnce sync.Once
 	var includeDates bool
 	var datesErr error
+
 	return &query.EntityEnricher{
 		EnrichAccount: func(reader dal.PebbleReader, ledgerName string, address string) (*commonpb.Account, error) {
 			datesOnce.Do(func() { includeDates, datesErr = accountDatesActive(reader) })

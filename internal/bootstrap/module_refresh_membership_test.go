@@ -59,11 +59,13 @@ type blockingRefreshServer struct {
 
 type captureRefreshServer struct {
 	clusterbootstrappb.UnimplementedClusterBootstrapServiceServer
+
 	requests chan []uint32
 }
 
 func (s *captureRefreshServer) RefreshMembership(_ context.Context, request *clusterbootstrappb.RefreshMembershipRequest) (*clusterbootstrappb.RefreshMembershipResponse, error) {
 	s.requests <- append([]uint32(nil), request.GetCapabilities()...)
+
 	return &clusterbootstrappb.RefreshMembershipResponse{}, nil
 }
 

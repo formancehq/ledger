@@ -31,6 +31,7 @@ func TestProposeRejectsLegacyAccountWriteWhileActivationIsPending(t *testing.T) 
 		pendingIncarnationActivations: 1,
 		proposalAdmission: func(context.Context, *Proposal) error {
 			called = true
+
 			return nil
 		},
 	}
