@@ -125,12 +125,15 @@ Numeric wire tags provide an oracle independent of the candidate codec. It
 compares historical audit entries, items and hashes byte-for-byte between the
 released and current binaries. Native policies are unaudited: the probe asserts
 exact audit counts, verifies every remaining chain link and compares final
-policy, ledgers, applied index and HLC. It also closes an RC.3 Pebble store
-and WAL, opens them with the candidate, replays a committed legacy entry, writes
-new policy and business payloads, then reopens the result in another candidate
-process. The historical prefix, including retained legacy WAL replay, must equal the
-uninterrupted RC.3 reference byte-for-byte. Final business and operational state must match its
-semantics, and the post-restart report must match the upgraded report exactly.
+policy, ledgers, applied index and HLC. The probe normalizes only the policy
+field names in its JSON report across the two binaries; it still compares
+policy values and preserves any unexpected fields. It also closes an RC.3
+Pebble store and WAL, opens them with the candidate, replays a committed legacy
+entry, writes new policy and business payloads, then reopens the result in
+another candidate process. The historical prefix, including retained legacy WAL
+replay, must equal the uninterrupted RC.3 reference byte-for-byte. Final
+business and operational state must match its semantics, and the post-restart
+report must match the upgraded report exactly.
 
 This probe validates persisted-format migration, not Kubernetes sequencing or
 snapshot catch-up. Release validation must also exercise the full-stop operator
