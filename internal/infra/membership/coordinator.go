@@ -1,4 +1,4 @@
-package node
+package membership
 
 import (
 	"context"
@@ -9,9 +9,9 @@ import (
 	"github.com/formancehq/ledger/v3/internal/pkg/futures"
 )
 
-// MembershipCoordinator serializes Raft membership changes with policy activation.
+// Coordinator serializes Raft membership changes with policy activation.
 // Its lock is held until an activating policy has applied.
-type MembershipCoordinator struct {
+type Coordinator struct {
 	sync.Mutex
 
 	waitForPriorMembership func(context.Context) error
@@ -19,7 +19,14 @@ type MembershipCoordinator struct {
 	terminal               <-chan struct{}
 }
 
-func (c *MembershipCoordinator) AcquireCapabilityMembership(ctx context.Context) (func(*futures.Future[state.ApplyResult]), error) {
+// Configure connects the Raft barrier and lifecycle signals before the coordinator is used.
+func (c *Coordinator) Configure(waitForPriorMembership func(context.Context) error, stop, terminal <-chan struct{}) {
+	c.waitForPriorMembership = waitForPriorMembership
+	c.stop = stop
+	c.terminal = terminal
+}
+
+func (c *Coordinator) AcquireCapabilityMembership(ctx context.Context) (func(*futures.Future[state.ApplyResult]), error) {
 	for !c.TryLock() {
 		select {
 		case <-ctx.Done():
@@ -38,7 +45,7 @@ func (c *MembershipCoordinator) AcquireCapabilityMembership(ctx context.Context)
 	return c.releaseAfter, nil
 }
 
-func (c *MembershipCoordinator) releaseAfter(future *futures.Future[state.ApplyResult]) {
+func (c *Coordinator) releaseAfter(future *futures.Future[state.ApplyResult]) {
 	if future == nil {
 		c.Unlock()
 

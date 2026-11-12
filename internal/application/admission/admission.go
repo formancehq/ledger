@@ -26,6 +26,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/domain/processing/numscript"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
 	"github.com/formancehq/ledger/v3/internal/infra/health"
+	"github.com/formancehq/ledger/v3/internal/infra/membership"
 	"github.com/formancehq/ledger/v3/internal/infra/node"
 	"github.com/formancehq/ledger/v3/internal/infra/plan"
 	"github.com/formancehq/ledger/v3/internal/infra/state"
@@ -53,7 +54,7 @@ type Admission struct {
 	store           *dal.Store
 	logger          logging.Logger
 	proposer        Proposer
-	membershipFence *node.MembershipCoordinator
+	membershipFence *membership.Coordinator
 	writeGate       health.WriteGate
 	keyStore        *keystore.KeyStore
 	sharedState     *state.SharedState
@@ -139,7 +140,7 @@ func NewAdmission(
 	store *dal.Store,
 	logger logging.Logger,
 	proposer Proposer,
-	membershipFence *node.MembershipCoordinator,
+	membershipFence *membership.Coordinator,
 	builder *plan.Builder,
 	meterProvider metric.MeterProvider,
 	writeGate health.WriteGate,

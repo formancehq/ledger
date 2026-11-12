@@ -424,7 +424,7 @@ type Node struct {
 	// RemoveNode, PromoteLearner) so that only one proposal is in-flight at a
 	// time. This avoids unnecessary retries caused by etcd/raft silently
 	// dropping concurrent ConfChange proposals.
-	confChangeMu MembershipCoordinator
+	confChangeMu membership.Coordinator
 
 	// lastAutoPromote tracks the last time an auto-promotion was proposed for
 	// each learner node. Used to rate-limit proposals and avoid spamming raft
@@ -737,9 +737,7 @@ func NewNode(
 	for _, opt := range opts {
 		opt(node)
 	}
-	node.confChangeMu.waitForPriorMembership = node.waitForPriorMembership
-	node.confChangeMu.stop = node.stopChannel
-	node.confChangeMu.terminal = node.terminalCh
+	node.confChangeMu.Configure(node.waitForPriorMembership, node.stopChannel, node.terminalCh)
 
 	// Start ready: no leadership transition is in progress yet.
 	node.leaderReady.Store(newCompletedLeaderReadyGeneration())
@@ -3247,7 +3245,7 @@ func (node *Node) WithStableDrainMembership(ctx context.Context, fn func() error
 
 // MembershipCoordinator returns the shared guard for membership changes and
 // capability policy activation.
-func (node *Node) MembershipCoordinator() *MembershipCoordinator {
+func (node *Node) MembershipCoordinator() *membership.Coordinator {
 	return &node.confChangeMu
 }
 

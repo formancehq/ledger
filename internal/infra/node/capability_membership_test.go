@@ -1,6 +1,7 @@
 package node
 
 import (
+	"context"
 	"testing"
 	"time"
 
@@ -12,11 +13,11 @@ import (
 
 func TestCapabilityMembershipFenceHeldUntilPolicyApply(t *testing.T) {
 	n := &Node{stopChannel: make(chan struct{}), terminalCh: make(chan struct{})}
-	n.confChangeMu.Lock() // acquired before the policy proposal is enqueued
+	n.confChangeMu.Configure(nil, n.stopChannel, n.terminalCh)
+	release, err := n.confChangeMu.AcquireCapabilityMembership(context.Background())
+	require.NoError(t, err)
 	future := futures.New[state.ApplyResult]()
-	n.confChangeMu.stop = n.stopChannel
-	n.confChangeMu.terminal = n.terminalCh
-	n.confChangeMu.releaseAfter(future)
+	release(future)
 	require.False(t, n.confChangeMu.TryLock(), "a learner must not pass a pending activation")
 
 	future.Resolve(state.ApplyResult{}, nil)
@@ -32,8 +33,9 @@ func TestCapabilityMembershipFenceHeldUntilPolicyApply(t *testing.T) {
 
 func TestCapabilityMembershipFenceReleasedWithoutProposal(t *testing.T) {
 	n := &Node{}
-	n.confChangeMu.Lock()
-	n.confChangeMu.releaseAfter(nil)
+	release, err := n.confChangeMu.AcquireCapabilityMembership(context.Background())
+	require.NoError(t, err)
+	release(nil)
 	require.True(t, n.confChangeMu.TryLock())
 	n.confChangeMu.Unlock()
 }
