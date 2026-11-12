@@ -154,6 +154,8 @@ func TestOpenAPISpec_ExecuteNumscriptRequestSources(t *testing.T) {
 		{"script": map[string]any{"plain": "send [USD 1] (source = @world destination = @bank)"}},
 		{"scriptReference": map[string]any{"name": "transfer", "version": "1.0.0"}},
 		{"script": map[string]any{"plain": "x"}, "unknown": true},
+		{"script": map[string]any{"plain": "x"}, "postings": []any{}},
+		{"script": map[string]any{"plain": "x"}, "reference": "R"},
 	} {
 		require.NoError(t, schema.VisitJSON(request))
 	}
@@ -161,8 +163,6 @@ func TestOpenAPISpec_ExecuteNumscriptRequestSources(t *testing.T) {
 	for _, request := range []map[string]any{
 		{},
 		{"script": map[string]any{"plain": "x"}, "scriptReference": map[string]any{"name": "transfer", "version": "1.0.0"}},
-		{"script": map[string]any{"plain": "x"}, "postings": []any{}},
-		{"script": map[string]any{"plain": "x"}, "reference": "R"},
 	} {
 		require.Error(t, schema.VisitJSON(request))
 	}
