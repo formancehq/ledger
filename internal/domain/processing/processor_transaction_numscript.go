@@ -354,7 +354,7 @@ func replanFailedScript(
 		return domain.ErrStaleInputsResolution
 	}
 
-	failure, ok := errors.AsType[domain.SerializableError](err)
+	failure, ok := errors.AsType[domain.Describable](err)
 	if !ok {
 		return &domain.ErrNumscriptRuntime{Detail: err.Error()}
 	}
