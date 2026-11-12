@@ -78,11 +78,17 @@ func (h transactionsResourceHandler) ResolveFilter(_ common.ResourceQuery[any], 
 	case property == "id":
 		return fmt.Sprintf("id %s ?", common.ConvertOperatorToSQL(operator)), []any{value}, nil
 	case property == "reference":
+		// The only index on reference is the composite transactions_reference
+		// (ledger, reference). The dataset omits `ledger = ?` when the ledger is
+		// alone in its bucket (see newScopedSelect), which prevents PostgreSQL
+		// from seeking that index and can cause a full index scan. The ledger
+		// predicate is therefore always emitted here. It always holds for rows
+		// of the dataset, so it does not change results under $not or $or.
 		switch operator {
 		case queries.OperatorIn:
-			return "reference IN (?)", []any{bun.In(value)}, nil
+			return "(ledger = ? AND reference IN (?))", []any{h.store.ledger.Name, bun.In(value)}, nil
 		default:
-			return fmt.Sprintf("reference %s ?", common.ConvertOperatorToSQL(operator)), []any{value}, nil
+			return fmt.Sprintf("(ledger = ? AND reference %s ?)", common.ConvertOperatorToSQL(operator)), []any{h.store.ledger.Name, value}, nil
 		}
 	case property == "timestamp" || property == "inserted_at" || property == "updated_at":
 		value, err := common.NormalizeDateFilterValue(value)
