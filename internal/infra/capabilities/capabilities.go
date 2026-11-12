@@ -51,6 +51,7 @@ func IsActive(policy *commonpb.ClusterPolicy, id CapabilityID) bool {
 			return activation.GetActive()
 		}
 	}
+
 	return false
 }
 
@@ -139,6 +140,7 @@ func RequiredCapabilities(proposal *raftcmdpb.Proposal) ([]CapabilityID, error) 
 			return []CapabilityID{AccountIncarnationWritesV1}, nil
 		}
 	}
+
 	return nil, nil
 }
 
@@ -151,6 +153,7 @@ func TouchesAccounts(proposal *raftcmdpb.Proposal) bool {
 			return true
 		}
 	}
+
 	return false
 }
 
