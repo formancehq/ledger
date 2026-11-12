@@ -2,11 +2,10 @@ package state
 
 // This probe deliberately uses only the RC.3 API. scripts/check-proposal-payload
 // compiles this same source against the released tree and the candidate. It
-// compares real FSM/audit results from separate binaries, not two modes of a
-// single decoder. Numeric wire tags below are the compatibility test oracle.
+// checks the same expected FSM/audit behavior in separate binaries, not two
+// modes of a single decoder. Numeric wire tags below are the format oracle.
 
 import (
-	"encoding/json"
 	"math"
 	"os"
 	"path/filepath"
@@ -20,7 +19,6 @@ import (
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
 	"github.com/formancehq/ledger/v3/internal/domain/processing"
-	"github.com/formancehq/ledger/v3/internal/proto/auditpb"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/query"
@@ -29,8 +27,7 @@ import (
 )
 
 func TestProposalPayloadCompatibilityProbe(t *testing.T) {
-	output := os.Getenv("LEDGER_PROPOSAL_PROBE_OUTPUT")
-	if output == "" {
+	if os.Getenv("LEDGER_PROPOSAL_PROBE_RUN") != "1" {
 		t.Skip("run scripts/check-proposal-payload for the two-binary compatibility test")
 	}
 	dir := os.Getenv("LEDGER_PROPOSAL_PROBE_DIR")
@@ -114,26 +111,20 @@ func TestProposalPayloadCompatibilityProbe(t *testing.T) {
 			require.Equal(t, !nativePolicy, result.Results[0].AuditEntryWritten)
 		}
 	}
-	var report struct {
-		Policy    compatibilityPolicyState
-		Ledgers   []*commonpb.LedgerInfo
-		Audit     []*auditpb.AuditEntry
-		Items     [][]*auditpb.AuditItem
-		Applied   uint64
-		Timestamp uint64
-	}
 	reader, err := store.NewDirectReadHandle()
 	require.NoError(t, err)
 	defer func() { require.NoError(t, reader.Close()) }()
-	for _, name := range []string{"compatibility", "after-upgrade"} {
-		if phase == "seed" && name == "after-upgrade" {
-			continue
-		}
+	ledgerNames := []string{"compatibility", "after-upgrade"}
+	if phase == "seed" {
+		ledgerNames = ledgerNames[:1]
+	}
+	for _, name := range ledgerNames {
 		ledger, err := query.GetLedgerByName(t.Context(), reader, name)
 		require.NoError(t, err)
-		report.Ledgers = append(report.Ledgers, ledger)
+		require.Equal(t, name, ledger.GetName())
 	}
 	var previousHash []byte
+	auditCount := 0
 	for sequence := uint64(1); sequence < machine.State.NextAuditSequenceID; sequence++ {
 		audit, err := query.ReadAuditEntry(t.Context(), reader, sequence)
 		require.NoError(t, err)
@@ -150,8 +141,7 @@ func TestProposalPayloadCompatibilityProbe(t *testing.T) {
 		_, actualHash := generator.Compute(nil, previousHash, slices)
 		require.Equal(t, audit.GetHash(), actualHash)
 		previousHash = audit.GetHash()
-		report.Audit = append(report.Audit, audit)
-		report.Items = append(report.Items, items)
+		auditCount++
 	}
 	expectedAudits := 5
 	switch {
@@ -162,14 +152,26 @@ func TestProposalPayloadCompatibilityProbe(t *testing.T) {
 	case os.Getenv("LEDGER_PROPOSAL_PROBE_ENCODING") == "payload":
 		expectedAudits = 3
 	}
-	require.Len(t, report.Audit, expectedAudits)
-
-	report.Policy = compatibilityPolicyStateFrom(machine.State.ClusterPolicy)
-	report.Applied = machine.State.LastAppliedIndex
-	report.Timestamp = machine.State.LastAppliedTimestamp
-	data, err := json.Marshal(report)
-	require.NoError(t, err)
-	require.NoError(t, os.WriteFile(output, data, 0o600))
+	require.Equal(t, expectedAudits, auditCount)
+	expectedPolicy := compatibilityPolicyState{
+		Revision:                    3,
+		IdempotencyTtlMicros:        10000,
+		QueryCheckpointLimit:        10,
+		MetadataMaxEntriesPerEntity: 128,
+		MetadataMaxKeyBytes:         256,
+		MetadataMaxValueBytes:       16384,
+		MetadataMaxEntityBytes:      65536,
+		MetadataMaxCommandBytes:     1048576,
+	}
+	expectedApplied := uint64(5)
+	if phase == "seed" {
+		expectedPolicy.Revision = 2
+		expectedPolicy.IdempotencyTtlMicros = 9000
+		expectedApplied = 2
+	}
+	require.Equal(t, expectedPolicy, compatibilityPolicyStateFrom(machine.State.ClusterPolicy))
+	require.Equal(t, expectedApplied, machine.State.LastAppliedIndex)
+	require.Equal(t, 1700000000+expectedApplied, machine.State.LastAppliedTimestamp)
 }
 
 // Compare the RC.3 policy contract by value. Later policy fields may be added

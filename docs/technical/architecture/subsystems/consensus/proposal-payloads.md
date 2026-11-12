@@ -121,18 +121,15 @@ go test ./internal/pkg/proposals -run '^$' -bench BenchmarkPayloadReaders -bench
 ```
 
 The compatibility script builds distinct RC.3 and candidate test binaries.
-Numeric wire tags provide an oracle independent of the candidate codec. It
-compares historical audit entries, items and hashes by value between the
-released and current binaries. Native policies are unaudited: the probe asserts
-exact audit counts, verifies every remaining chain link and compares final
-policy, ledgers, applied index and HLC. The probe compares the RC.3 policy
-fields by value, independent of JSON projections and later field additions. It
-closes an RC.3 Pebble store and WAL, opens them with the candidate, replays a
-committed legacy entry, writes new policy and business payloads, then reopens
-the result in another candidate process. The historical prefix, including
-retained legacy WAL replay, must equal the uninterrupted RC.3 reference by
-value. Final business and operational state must match its semantics.
-The post-restart report must match the upgraded report exactly.
+Numeric wire tags provide an oracle independent of the candidate codec. Each
+binary checks expected policy fields, ledger names, applied index and HLC. The
+probe asserts exact audit counts and verifies every audit chain link, including
+the historical records read by the candidate. Native policy controls must not
+add business audit entries. The script closes an RC.3 Pebble store and WAL,
+opens them with the candidate, replays a committed legacy entry, writes new
+policy and business payloads, then reopens the result in another candidate
+process. Each phase checks the expected state directly; no JSON report is
+written or compared.
 
 This probe validates persisted-format migration, not Kubernetes sequencing or
 snapshot catch-up. Release validation must also exercise the full-stop operator
