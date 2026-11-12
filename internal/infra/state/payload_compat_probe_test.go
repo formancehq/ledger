@@ -115,7 +115,7 @@ func TestProposalPayloadCompatibilityProbe(t *testing.T) {
 		}
 	}
 	var report struct {
-		Policy    json.RawMessage
+		Policy    []byte
 		Ledgers   []*commonpb.LedgerInfo
 		Audit     []*auditpb.AuditEntry
 		Items     [][]*auditpb.AuditItem
@@ -164,47 +164,13 @@ func TestProposalPayloadCompatibilityProbe(t *testing.T) {
 	}
 	require.Len(t, report.Audit, expectedAudits)
 
-	report.Policy = compatibilityPolicyReport(t, machine.State.ClusterPolicy)
+	report.Policy, err = machine.State.ClusterPolicy.MarshalVT()
+	require.NoError(t, err)
 	report.Applied = machine.State.LastAppliedIndex
 	report.Timestamp = machine.State.LastAppliedTimestamp
 	data, err := json.Marshal(report)
 	require.NoError(t, err)
 	require.NoError(t, os.WriteFile(output, data, 0o600))
-}
-
-// Keep the probe's JSON report stable across the RC.3 struct tags and the
-// candidate's generated JSON projection. Preserve unknown fields so a new
-// policy value still makes the cross-version comparison fail.
-func compatibilityPolicyReport(t *testing.T, policy *commonpb.ClusterPolicy) json.RawMessage {
-	t.Helper()
-	data, err := json.Marshal(policy)
-	require.NoError(t, err)
-	var fields map[string]json.RawMessage
-	require.NoError(t, json.Unmarshal(data, &fields))
-	for legacy, current := range map[string]string{
-		"idempotency_ttl_micros":          "idempotencyTtlMicros",
-		"query_checkpoint_limit":          "queryCheckpointLimit",
-		"metadata_max_entries_per_entity": "metadataMaxEntriesPerEntity",
-		"metadata_max_key_bytes":          "metadataMaxKeyBytes",
-		"metadata_max_value_bytes":        "metadataMaxValueBytes",
-		"metadata_max_entity_bytes":       "metadataMaxEntityBytes",
-		"metadata_max_command_bytes":      "metadataMaxCommandBytes",
-		"capability_activations":          "capabilityActivations",
-	} {
-		if value, ok := fields[legacy]; ok {
-			_, hasCurrent := fields[current]
-			require.False(t, hasCurrent, "policy report contains both %s and %s", legacy, current)
-			fields[current] = value
-			delete(fields, legacy)
-		}
-	}
-	if _, ok := fields["capabilityActivations"]; !ok {
-		fields["capabilityActivations"] = json.RawMessage("[]")
-	}
-	data, err = json.Marshal(fields)
-	require.NoError(t, err)
-
-	return data
 }
 
 func compatibilityProposalBytes(t *testing.T, index uint64, order *raftcmdpb.Order, payload bool) []byte {
