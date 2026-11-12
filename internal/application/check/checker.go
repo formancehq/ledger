@@ -184,6 +184,7 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 	if err := c.compareProjections(ctx, snap, storedMaxLogSeq, chainBound, folds, state, callback); err != nil {
 		return err
 	}
+
 	return incarnationmigration.Verify(ctx, snap, c.logger)
 }
 
