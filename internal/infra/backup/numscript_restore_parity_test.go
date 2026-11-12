@@ -20,6 +20,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
 	"github.com/formancehq/ledger/v3/internal/infra/cache"
 	"github.com/formancehq/ledger/v3/internal/infra/health"
+	"github.com/formancehq/ledger/v3/internal/infra/membership"
 	"github.com/formancehq/ledger/v3/internal/infra/node"
 	"github.com/formancehq/ledger/v3/internal/infra/plan"
 	"github.com/formancehq/ledger/v3/internal/infra/state"
@@ -111,7 +112,7 @@ func newScriptedNode(t *testing.T, store *dal.Store) *scriptedNode {
 	return &scriptedNode{
 		t: t,
 		admission: admission.NewAdmission(store, logger,
-			&applyingProposer{t: t, machine: machine, store: store, tracker: tracker}, nil,
+			&applyingProposer{t: t, machine: machine, store: store, tracker: tracker}, &membership.Coordinator{},
 			builder, meters, writeGate, keyStore, sharedState, attrs,
 			numscript.NewNumscriptCache(0), func(context.Context) error { return nil }),
 	}

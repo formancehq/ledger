@@ -34,6 +34,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/infra/backup"
 	"github.com/formancehq/ledger/v3/internal/infra/cache"
 	"github.com/formancehq/ledger/v3/internal/infra/health"
+	"github.com/formancehq/ledger/v3/internal/infra/membership"
 	"github.com/formancehq/ledger/v3/internal/infra/node"
 	"github.com/formancehq/ledger/v3/internal/infra/plan"
 	"github.com/formancehq/ledger/v3/internal/infra/state"
@@ -90,7 +91,7 @@ func newBootstrapRetryAdmission(t *testing.T, store *dal.Store) *admission.Admis
 		return future, nil
 	}).AnyTimes()
 
-	return admission.NewAdmission(store, logger, proposer, nil,
+	return admission.NewAdmission(store, logger, proposer, &membership.Coordinator{},
 		builder, meters, gate, keys, shared, attrs, numscript.NewNumscriptCache(0), func(context.Context) error { return nil })
 }
 
