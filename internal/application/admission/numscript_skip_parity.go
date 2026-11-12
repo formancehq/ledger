@@ -48,16 +48,11 @@ func (a *Admission) predictOrderSkip(order *raftcmdpb.Order, ledgerName string, 
 
 	switch data := order.GetLedgerScoped().GetApply().GetData().(type) {
 	case *raftcmdpb.LedgerApplyOrder_CreateTransaction:
-		ref := data.CreateTransaction.GetReference()
-		if ref == "" {
+		if !skipsOnReferenceConflict(order.GetLedgerScoped().GetApply()) {
 			return false, nil
 		}
 
-		if !slices.Contains(allowed, commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT) {
-			return false, nil
-		}
-
-		return a.referenceExists(ledgerName, ref, effects)
+		return a.referenceExists(ledgerName, data.CreateTransaction.GetReference(), effects)
 
 	case *raftcmdpb.LedgerApplyOrder_RevertTransaction:
 		if !slices.Contains(allowed, commonpb.ErrorReason_ERROR_REASON_TRANSACTION_ALREADY_REVERTED) {
@@ -83,6 +78,15 @@ func (a *Admission) predictOrderSkip(order *raftcmdpb.Order, ledgerName string, 
 	default:
 		return false, nil
 	}
+}
+
+// skipsOnReferenceConflict reports whether the FSM can skip this order on its
+// transaction reference, which it checks before it looks at the script: a
+// CreateTransaction that carries a reference and whitelists
+// TRANSACTION_REFERENCE_CONFLICT.
+func skipsOnReferenceConflict(apply *raftcmdpb.LedgerApplyOrder) bool {
+	return apply.GetCreateTransaction().GetReference() != "" &&
+		slices.Contains(apply.GetSkippableReasons(), commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT)
 }
 
 // referenceExists reports whether a transaction reference is already registered,

@@ -185,6 +185,58 @@ The expectation is an internal Raft field that RC.3 voters ignore, so the change
 relies on the RC.3 to RC.4 stopped upgrade; see
 [the upgrade note](../../../../ops/upgrades.md#numscript-reference-replay-recovery).
 
+## Replay after a skipped scripted transaction
+
+A `CreateTransaction` that carries a `reference` and lists
+`TRANSACTION_REFERENCE_CONFLICT` in `skippable_reasons` is skipped by the FSM
+when the reference exists. The FSM checks the reference before it looks at the
+script, so a skipped order commits whatever its script is. The reference
+registry is mutable replicated state: deleting a ledger purges it. A keyed
+retry of a batch that committed through such a skip must still return its
+retained outcome, so admission never refuses the script of an order the FSM
+can skip. The FSM decides between the skip and the script's failure.
+
+Admission plans the script of every such order, whether or not it predicts the
+skip. An order predicted to skip adds nothing to the batch effects that later
+orders resolve against, but it carries its script coverage and
+`inputs_resolution_hash` like any other planned order.
+
+When planning fails, admission forwards the order instead of refusing it:
+
+- for an order it predicts to skip, on any planning failure, keyed or not;
+- for a keyed order it does not predict to skip, on a failure it would
+  otherwise refuse. A state-dependent failure keeps the
+  [`preload_unavailable` path](#numscript-dependency-resolution-failures).
+
+The forwarded order carries `OrderTechnical.numscript_planning_failed`. Its
+coverage holds the keys planning read before it failed, and
+`inputs_resolution_hash` binds their values. An unkeyed order that admission
+does not predict to skip keeps the fail-fast refusal: no outcome is retained
+for it.
+
+At apply, the idempotency lookup runs first. A matching live key replays its
+outcome without an audit entry. Otherwise `processCreateTransaction` runs its
+usual checks: ledger deletion, then the reference. An existing reference skips
+the order. Past the reference check, the marked order is not executed.
+`replanFailedScript` re-runs admission's planning (`DiscoverNumscriptDependencies`)
+over the order's coverage:
+
+| Apply-time planning | Outcome |
+|---|---|
+| Fails, and the values read hash to `inputs_resolution_hash` | That failure. It is audited and frozen under the key like any definitive failure. A recovered library panic stays uncommitted, as at admission. |
+| Fails over different values, or reads a key the order did not declare | `STALE_INPUTS_RESOLUTION`: retryable, no audit entry, nothing frozen |
+| Succeeds | `STALE_INPUTS_RESOLUTION`: admission's failure no longer holds |
+
+Planning is a function of the script, its variables and the values it reads,
+so the same values give the failure admission observed, with the same reason
+and details. A read outside the declared keys can only follow a value that
+changed. It is probed with `Scope.IsCovered`, not fetched, so it records no
+coverage miss. A retry after a stale rejection re-admits against current state.
+
+The marker is an internal Raft field that RC.4 voters ignore, so the change
+relies on the RC.4 to RC.5 stopped upgrade; see
+[the upgrade note](../../../../ops/upgrades.md#skipped-script-replay-recovery).
+
 ## Numscript Dependency-Resolution Failures
 
 Idempotency keys also govern a narrower, forward-vs-terminate decision admission has to make while *preparing* a `CreateTransaction` order that references a Numscript script. Before a script's order can be proposed, admission statically discovers the accounts, assets, and metadata it depends on (`DiscoverNumscriptDependencies`, `internal/domain/processing/numscript/discover.go` — see [Numscript Library](../scripting/numscript-library.md)) so the FSM never has to touch Pebble to resolve them. When that discovery fails, admission must decide whether the failure is **deterministic** — the script could never have succeeded, no matter how many times it is retried — or **state-dependent** — current state caused it, and a different (or later) state might not. `Admission.classifyResolutionFailure` (`internal/application/admission/admission.go`) makes this call from two signals Ledger already owns; it never inspects error strings or Numscript internals. The error's kind refines one case: `convertNumscriptError` maps the library's public resolver error types to `ErrNumscriptExecution` (`NUMSCRIPT_EXECUTION_ERROR`, `KindPrecondition`) when the script, its vars, or the state it read caused the failure.
