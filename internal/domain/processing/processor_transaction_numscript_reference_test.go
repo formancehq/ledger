@@ -188,7 +188,7 @@ func TestProcessCreateTransaction_NumscriptReference_RejectsResolutionFailures(t
 			setup: func(mockStore *MockScope) {
 				mockStore.EXPECT().ResolveNumscriptContent(ledger, name, "1.2.3").Return(nil, domain.ErrStaleInputsResolution)
 			},
-			assert: func(t *testing.T, err domain.SerializableError) {
+			assert: func(t *testing.T, err domain.Describable) {
 				t.Helper()
 				require.Equal(t, domain.ErrReasonStaleInputsResolution, err.Reason(), "not relabelled as a storage failure")
 			},
@@ -199,7 +199,7 @@ func TestProcessCreateTransaction_NumscriptReference_RejectsResolutionFailures(t
 			setup: func(mockStore *MockScope) {
 				mockStore.EXPECT().GetNumscriptLatestVersion(ledger, name).Return("", domain.ErrStaleInputsResolution)
 			},
-			assert: func(t *testing.T, err domain.SerializableError) {
+			assert: func(t *testing.T, err domain.Describable) {
 				t.Helper()
 				require.Equal(t, domain.ErrReasonStaleInputsResolution, err.Reason(), "not relabelled as a storage failure")
 			},
