@@ -79,22 +79,36 @@ docker build -q --build-arg "OPERATOR_VERSION=$target_tag" -t "$operator_image" 
 docker pull "$source_image" | tee "$workdir/source-pull.txt"
 docker pull "$source_operator_image" | tee "$workdir/source-operator-pull.txt"
 # Docker may retain a multi-platform index for a published tag. Resolve the
-# platform Kind will run before recording IDs, so they match Pod imageID values.
+# platform Kind will run before creating the image archive.
 case "$(docker info --format '{{.Architecture}}')" in
 	aarch64|arm64) image_platform=linux/arm64 ;;
 	x86_64|amd64) image_platform=linux/amd64 ;;
 	*) echo "unsupported Docker architecture for Kind image import" >&2; exit 2 ;;
 esac
 printf 'imageArchivePlatform=%s\n' "$image_platform" | tee -a "$workdir/revisions.txt"
-source_id="$(docker image inspect --platform "$image_platform" "$source_image" --format '{{.Id}}')"
-source_operator_id="$(docker image inspect --platform "$image_platform" "$source_operator_image" --format '{{.Id}}')"
-target_operator_id="$(docker image inspect --platform "$image_platform" "$operator_image" --format '{{.Id}}')"
 build_tag="ledger-upgrade:build-${target_sha:0:12}"
 docker build -q -t "$build_tag" "$target_tree" | tee "$workdir/target-build.txt"
-target_id="$(docker image inspect --platform "$image_platform" "$build_tag" --format '{{.Id}}')"
 target_repository=ledger-upgrade
 target_image="$target_repository:$target_tag"
 docker tag "$build_tag" "$target_image"
+# Pod imageID is the digest of the image configuration. Depending on the Docker
+# image store, inspect --platform may instead return the platform manifest ID.
+# Read the exact configurations from the archive Kind will import.
+image_archive="$workdir/kind-images.tar"
+docker image save --platform "$image_platform" -o "$image_archive" \
+	"$source_image" "$target_image" "$source_operator_image" "$operator_image"
+archive_image_id() {
+	local image="$1" config_path digest
+	config_path="$(tar -xOf "$image_archive" manifest.json | jq -er --arg image "$image" \
+		'[.[] | select(.RepoTags | index($image)) | .Config] |
+		 if length == 1 then .[0] else error("expected one archive configuration for " + $image) end')" || return 1
+	digest="$(tar -xOf "$image_archive" "$config_path" | sha256sum | cut -d' ' -f1)" || return 1
+	printf 'sha256:%s\n' "$digest"
+}
+source_id="$(archive_image_id "$source_image")"
+source_operator_id="$(archive_image_id "$source_operator_image")"
+target_operator_id="$(archive_image_id "$operator_image")"
+target_id="$(archive_image_id "$target_image")"
 printf 'sourceImage=%s\nsourceImageID=%s\ntargetImage=%s\ntargetImageID=%s\nsourceOperatorImage=%s\nsourceOperatorImageID=%s\ntargetOperatorImage=%s\ntargetOperatorImageID=%s\n' \
 	"$source_image" "$source_id" "$target_image" "$target_id" "$source_operator_image" "$source_operator_id" "$operator_image" "$target_operator_id" | tee -a "$workdir/revisions.txt"
 
@@ -103,9 +117,6 @@ kind get kubeconfig --name "$cluster" > "$workdir/kubeconfig"
 # Docker may save a multi-platform index while only the host platform's blobs
 # are present after pull. Kind imports with --all-platforms, so make the archive
 # self-contained for the architecture of its Docker-backed node.
-image_archive="$workdir/kind-images.tar"
-docker image save --platform "$image_platform" -o "$image_archive" \
-	"$source_image" "$target_image" "$source_operator_image" "$operator_image"
 kind load image-archive "$image_archive" --name "$cluster"
 rm -f "$image_archive"
 source_chart="$source_tree/misc/operator/helm/operator"
