@@ -153,6 +153,7 @@ func TestOpenAPISpec_ExecuteNumscriptRequestSources(t *testing.T) {
 	for _, request := range []map[string]any{
 		{"script": map[string]any{"plain": "send [USD 1] (source = @world destination = @bank)"}},
 		{"scriptReference": map[string]any{"name": "transfer", "version": "1.0.0"}},
+		{"script": map[string]any{"plain": "x"}, "unknown": true},
 	} {
 		require.NoError(t, schema.VisitJSON(request))
 	}
