@@ -1064,9 +1064,9 @@ stamp would not strictly need that upsert (the FSM already distinguishes new
 from pre-existing cells via `isNewVolumeUpdate`, off the preloaded prior value),
 but it is still not a flag flip: accounts are addressed only as `VolumeKey` or
 `MetadataKey`, both *embedding* `AccountKey` rather than being keyed by it, so
-an account-level date needs a distinct attribute key. The incarnation prototype
-provides that key for response dates, but checker verification and migration
-remain undefined. An index would still be needed for date filtering or ordering.
+an account-level date needs a distinct attribute key. The incarnation attribute
+provides that key for response dates. Its audit-based local migration and store
+checker are implemented; an index would still be needed for date filtering or ordering.
 Typed `datetime` account metadata covers the *filtering* use cases on machinery
 that already exists. Date *ordering* is not replaced — see the read side below.
 

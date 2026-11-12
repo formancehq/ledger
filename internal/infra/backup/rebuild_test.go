@@ -20,6 +20,8 @@ import (
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/domain/indexes"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
+	"github.com/formancehq/ledger/v3/internal/infra/capabilities"
+	"github.com/formancehq/ledger/v3/internal/infra/incarnationmigration"
 	"github.com/formancehq/ledger/v3/internal/infra/state"
 	"github.com/formancehq/ledger/v3/internal/pkg/bitset"
 	"github.com/formancehq/ledger/v3/internal/pkg/signal"
@@ -218,6 +220,43 @@ func TestRebuildDelta_CleanEOFSucceeds(t *testing.T) {
 	info, err := query.GetLedgerByName(context.Background(), handle, "ledger")
 	require.NoError(t, err)
 	require.NotNil(t, info, "ledger should have been rebuilt on a clean stream")
+}
+
+func TestRebuildDelta_ReconcilesIncarnationsBeyondCheckpoint(t *testing.T) {
+	t.Parallel()
+	store := newRebuildTestStore(t)
+	appendAudit := func(batch *dal.WriteSession, seq, timestamp uint64) {
+		entry := auditSuccess(seq, seq, seq)
+		entry.Timestamp = &commonpb.Timestamp{Data: timestamp}
+		entry.OrderCount = 1
+		require.NoError(t, batch.SetProto(coldAuditKey(seq), entry))
+		key := dal.NewKeyBuilder().PutZonePrefix(dal.ZoneHistory, dal.SubHistoryAuditItem).PutUint64(seq).PutUint32(0).Build()
+		require.NoError(t, batch.SetProto(key, auditItem(t, seq, &raftcmdpb.Order{})))
+	}
+	batch := store.OpenWriteSession()
+	require.NoError(t, batch.SetProto(coldLogKey(1), createLedgerLog(1, "ledger", 1)))
+	require.NoError(t, batch.SetProto(coldLogKey(2), applyLedgerLog(2, "ledger", createdTransactionPayload(1, rebuildTestPosting("world", "alice", "USD", 1)))))
+	appendAudit(batch, 1, 100)
+	appendAudit(batch, 2, 200)
+	require.NoError(t, batch.Commit())
+	require.NoError(t, RebuildDelta(t.Context(), testLogger(), store, 0, 0))
+	batch = store.OpenWriteSession()
+	require.NoError(t, state.SaveClusterPolicy(batch, &commonpb.ClusterPolicy{Revision: 1, CapabilityActivations: []*commonpb.CapabilityActivation{{Id: uint32(capabilities.AccountIncarnationWritesV1), Active: true}}}))
+	require.NoError(t, batch.Commit())
+	require.NoError(t, incarnationmigration.Run(t.Context(), store))
+
+	batch = store.OpenWriteSession()
+	require.NoError(t, batch.SetProto(coldLogKey(3), applyLedgerLog(3, "ledger", createdTransactionPayload(2, rebuildTestPosting("alice", "bob", "USD", 1)))))
+	appendAudit(batch, 3, 300)
+	require.NoError(t, batch.Commit())
+	require.NoError(t, RebuildDelta(t.Context(), testLogger(), store, 2, 2))
+	marker, err := incarnationmigration.ReadMarker(store)
+	require.NoError(t, err)
+	require.Equal(t, uint64(3), marker.Cursor)
+	row, err := attributes.New().AccountIncarnation.Get(store, (domain.AccountKey{LedgerName: "ledger", Account: "alice"}).Bytes())
+	require.NoError(t, err)
+	require.Equal(t, uint64(200), row.GetInsertedAt().GetData())
+	require.Equal(t, uint64(300), row.GetUpdatedAt().GetData())
 }
 
 func TestRebuildDelta_TruncatedStreamReturnsErrorAndDoesNotCommit(t *testing.T) {

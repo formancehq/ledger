@@ -2153,9 +2153,8 @@ func (a *Admission) resolveScriptsAndEnrichNeeds(ctx context.Context, orders []*
 			}
 
 			for key := range discovered.WriteMetadata {
-				canonical := key.Bytes()
-				p.Add(dal.SubAttrMetadata, canonical)
-				orderNeeds.Add(dal.SubAttrMetadata, canonical)
+				addAccountMetadataNeed(p, key.LedgerName, key.Account, key.Key)
+				addAccountMetadataNeed(orderNeeds, key.LedgerName, key.Account, key.Key)
 			}
 
 			// Bind the resolved inputs to the order's technical sub-message. The
