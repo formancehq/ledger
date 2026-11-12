@@ -1,9 +1,14 @@
 package bulking
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"math/big"
+	"net/http"
+	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -11,6 +16,7 @@ import (
 	"go.uber.org/mock/gomock"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
+	"github.com/formancehq/go-libs/v5/pkg/transport/api"
 	"github.com/formancehq/go-libs/v5/pkg/types/metadata"
 	"github.com/formancehq/go-libs/v5/pkg/types/pointer"
 	"github.com/formancehq/go-libs/v5/pkg/types/time"
@@ -433,4 +439,70 @@ func TestBulk(t *testing.T) {
 			require.NoError(t, bulker.Run(ctx, bulk, results, testCase.options))
 		})
 	}
+}
+
+// With parallel=true the elements run at the same time, so their results
+// arrive in the order they finish. The response must still follow the
+// request: item i is the result of element i.
+func TestBulkParallelKeepsRequestOrder(t *testing.T) {
+	t.Parallel()
+
+	ctx := logging.TestingContext()
+	ledgerController := NewLedgerController(gomock.NewController(t))
+
+	// Element i writes log i+1. Element 0 is slow: it finishes only once the
+	// test closes release.
+	release := make(chan struct{})
+	for i := range 3 {
+		logID := uint64(i + 1)
+		call := ledgerController.EXPECT().
+			SaveAccountMetadata(gomock.Any(), ledgercontroller.Parameters[ledgercontroller.SaveAccountMetadata]{
+				Input: ledgercontroller.SaveAccountMetadata{
+					Address:  fmt.Sprintf("account:%d", i),
+					Metadata: metadata.Metadata{"foo": "bar"},
+				},
+			})
+		if i == 0 {
+			call.DoAndReturn(func(context.Context, ledgercontroller.Parameters[ledgercontroller.SaveAccountMetadata]) (*ledger.Log, bool, error) {
+				<-release
+				return &ledger.Log{ID: pointer.For(logID)}, false, nil
+			})
+		} else {
+			call.Return(&ledger.Log{ID: pointer.For(logID)}, false, nil)
+		}
+	}
+
+	body := `[
+		{"action": "ADD_METADATA", "data": {"targetType": "ACCOUNT", "targetId": "account:0", "metadata": {"foo": "bar"}}},
+		{"action": "ADD_METADATA", "data": {"targetType": "ACCOUNT", "targetId": "account:1", "metadata": {"foo": "bar"}}},
+		{"action": "ADD_METADATA", "data": {"targetType": "ACCOUNT", "targetId": "account:2", "metadata": {"foo": "bar"}}}
+	]`
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest(http.MethodPost, "/", strings.NewReader(body))
+
+	h := NewJSONBulkHandler(0)
+	bulk, results, ok := h.GetChannels(w, r)
+	require.True(t, ok)
+
+	done := make(chan error, 1)
+	go func() {
+		done <- NewBulker(ledgerController).Run(ctx, bulk, results, BulkingOptions{Parallel: true})
+	}()
+
+	// Elements 1 and 2 finish first. Only then does element 0.
+	require.Eventually(t, func() bool { return len(results) == 2 }, 5*time.Second, time.Millisecond)
+	close(release)
+	require.NoError(t, <-done)
+
+	h.Terminate(w, r)
+	require.Equal(t, http.StatusOK, w.Result().StatusCode)
+
+	response, ok := api.DecodeSingleResponse[[]APIResult](t, w.Result().Body)
+	require.True(t, ok)
+
+	logIDs := make([]uint64, 0, len(response))
+	for _, item := range response {
+		logIDs = append(logIDs, item.LogID)
+	}
+	require.Equal(t, []uint64{1, 2, 3}, logIDs)
 }

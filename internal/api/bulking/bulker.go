@@ -52,12 +52,14 @@ func (b *Bulker) run(ctx context.Context, ctrl ledgercontroller.Controller, sche
 			select {
 			case <-ctx.Done():
 				result <- BulkElementResult{
-					Error: ctx.Err(),
+					Error:     ctx.Err(),
+					ElementID: itemIndex,
 				}
 			default:
 				if hasError.Load() && !continueOnFailure {
 					result <- BulkElementResult{
-						Error: context.Canceled,
+						Error:     context.Canceled,
+						ElementID: itemIndex,
 					}
 					return
 				}
@@ -67,15 +69,17 @@ func (b *Bulker) run(ctx context.Context, ctrl ledgercontroller.Controller, sche
 					observe.RecordError(ctx, err)
 
 					result <- BulkElementResult{
-						Error: err,
+						Error:     err,
+						ElementID: itemIndex,
 					}
 
 					return
 				}
 
 				result <- BulkElementResult{
-					Data:  ret,
-					LogID: logID,
+					Data:      ret,
+					LogID:     logID,
+					ElementID: itemIndex,
 				}
 			}
 
