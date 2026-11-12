@@ -15,6 +15,7 @@ import (
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
+	raftmembership "github.com/formancehq/ledger/v3/internal/infra/membership"
 	"github.com/formancehq/ledger/v3/internal/infra/node"
 	"github.com/formancehq/ledger/v3/internal/storage/wal"
 )
@@ -65,6 +66,56 @@ func TestShouldRunJoinPreflight(t *testing.T) {
 			WalDir: t.TempDir(),
 		}}
 		assert.True(t, shouldRunJoinPreflight(cfg, logger))
+	})
+}
+
+func TestRecoveredRefreshPeers(t *testing.T) {
+	peers := recoveredRefreshPeers(1, map[uint64]raftmembership.ConfChangeContext{
+		1: {RaftAddress: "self:7777"},
+		2: {RaftAddress: "peer:7777"},
+		3: {},
+	})
+	require.Equal(t, []node.Peer{{ID: 2, Address: "peer:7777"}}, peers)
+}
+
+func TestShouldRunMembershipRefresh(t *testing.T) {
+	t.Parallel()
+	logger := logging.Testing()
+
+	t.Run("fresh WAL skips refresh", func(t *testing.T) {
+		t.Parallel()
+		cfg := Config{RaftConfig: node.NodeConfig{
+			Peers:  []node.Peer{{ID: 1, Address: "leader:7777"}},
+			WalDir: t.TempDir(),
+		}}
+		assert.False(t, shouldRunMembershipRefresh(cfg, logger))
+	})
+
+	t.Run("joined WAL refreshes", func(t *testing.T) {
+		t.Parallel()
+		walDir := t.TempDir()
+		require.NoError(t, wal.MarkClusterJoined(walDir))
+		cfg := Config{RaftConfig: node.NodeConfig{
+			Peers:  []node.Peer{{ID: 1, Address: "leader:7777"}},
+			WalDir: walDir,
+		}}
+		assert.True(t, shouldRunMembershipRefresh(cfg, logger))
+	})
+
+	t.Run("joined WAL without startup flags refreshes", func(t *testing.T) {
+		t.Parallel()
+		walDir := t.TempDir()
+		require.NoError(t, wal.MarkClusterJoined(walDir))
+		cfg := Config{RaftConfig: node.NodeConfig{WalDir: walDir}}
+		assert.True(t, shouldRunMembershipRefresh(cfg, logger))
+	})
+
+	t.Run("former bootstrap node refreshes", func(t *testing.T) {
+		t.Parallel()
+		walDir := t.TempDir()
+		require.NoError(t, wal.MarkClusterJoined(walDir))
+		cfg := Config{RaftConfig: node.NodeConfig{Bootstrap: true, WalDir: walDir}}
+		assert.True(t, shouldRunMembershipRefresh(cfg, logger))
 	})
 }
 

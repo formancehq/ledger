@@ -94,5 +94,5 @@ func TestSetClusterPolicyLogJSONProjectsNestedPolicy(t *testing.T) {
 		MetadataMaxCommandBytes: 16_384,
 	}})
 	require.NoError(t, err)
-	require.JSONEq(t, `{"policy":{"revision":7,"idempotencyTtlMicros":86400000000,"queryCheckpointLimit":0,"metadataMaxEntriesPerEntity":0,"metadataMaxKeyBytes":256,"metadataMaxValueBytes":0,"metadataMaxEntityBytes":0,"metadataMaxCommandBytes":16384}}`, string(data))
+	require.JSONEq(t, `{"policy":{"revision":7,"idempotencyTtlMicros":86400000000,"queryCheckpointLimit":0,"metadataMaxEntriesPerEntity":0,"metadataMaxKeyBytes":256,"metadataMaxValueBytes":0,"metadataMaxEntityBytes":0,"metadataMaxCommandBytes":16384,"capabilityActivations":[]}}`, string(data))
 }

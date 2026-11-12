@@ -75,6 +75,23 @@ question rather than inventing a membership guarantee.
 
 ## Transition-specific evidence
 
+### Capability evidence and policy activation
+
+For bootstrap join, restart refresh, promotion, and membership changes, record
+the member's `(node_id, instance_id)`, advertised capability IDs, committed
+membership row, and the policy revision and active capabilities on every
+replica. A restarted member must refresh its committed evidence using peers
+recovered from membership even when no `--join` flag is present. Distinguish a
+transient old-peer `Unimplemented` refresh response from permanent identity or
+policy rejection, and prove eventual convergence through a compatible peer.
+Before activating a capability, require support by the local binary and
+committed evidence from every member; after activation, reject announcements
+and proposals that lack the required evidence. Exercise policy activation and
+membership `ConfChange` in adjacent FSM batches and compare the final policy,
+membership, `ConfState`, and admission decision on every replica. This records
+the foundation for future activations; the current protocol cutover uses a
+coordinated stop and restart.
+
 ### Normal membership changes
 
 Prove which `ConfChangeV2` was admitted and which configuration commits it.

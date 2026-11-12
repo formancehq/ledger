@@ -1409,6 +1409,11 @@ func (m *Proposal) CloneVT() *Proposal {
 		}
 		r.TechnicalUpdates = tmpContainer
 	}
+	if rhs := m.RequiredCapabilities; rhs != nil {
+		tmpContainer := make([]uint32, len(rhs))
+		copy(tmpContainer, rhs)
+		r.RequiredCapabilities = tmpContainer
+	}
 	if m.Payload != nil {
 		r.Payload = m.Payload.(interface{ CloneVT() isProposal_Payload }).CloneVT()
 	}
@@ -2167,6 +2172,11 @@ func (m *PeerAddress) CloneVT() *PeerAddress {
 		tmpBytes := make([]byte, len(rhs))
 		copy(tmpBytes, rhs)
 		r.InstanceId = tmpBytes
+	}
+	if rhs := m.Capabilities; rhs != nil {
+		tmpContainer := make([]uint32, len(rhs))
+		copy(tmpContainer, rhs)
+		r.Capabilities = tmpContainer
 	}
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
@@ -4674,6 +4684,15 @@ func (this *Proposal) EqualVT(that *Proposal) bool {
 			}
 		}
 	}
+	if len(this.RequiredCapabilities) != len(that.RequiredCapabilities) {
+		return false
+	}
+	for i, vx := range this.RequiredCapabilities {
+		vy := that.RequiredCapabilities[i]
+		if vx != vy {
+			return false
+		}
+	}
 	return string(this.unknownFields) == string(that.unknownFields)
 }
 
@@ -5930,6 +5949,15 @@ func (this *PeerAddress) EqualVT(that *PeerAddress) bool {
 	}
 	if string(this.InstanceId) != string(that.InstanceId) {
 		return false
+	}
+	if len(this.Capabilities) != len(that.Capabilities) {
+		return false
+	}
+	for i, vx := range this.Capabilities {
+		vy := that.Capabilities[i]
+		if vx != vy {
+			return false
+		}
 	}
 	return string(this.unknownFields) == string(that.unknownFields)
 }
@@ -9320,6 +9348,15 @@ func (m *Proposal) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		}
 		i -= size
 	}
+	if len(m.RequiredCapabilities) > 0 {
+		for iNdEx := len(m.RequiredCapabilities) - 1; iNdEx >= 0; iNdEx-- {
+			i -= 4
+			binary.LittleEndian.PutUint32(dAtA[i:], uint32(m.RequiredCapabilities[iNdEx]))
+		}
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.RequiredCapabilities)*4))
+		i--
+		dAtA[i] = 0x52
+	}
 	if len(m.TechnicalUpdates) > 0 {
 		for iNdEx := len(m.TechnicalUpdates) - 1; iNdEx >= 0; iNdEx-- {
 			size, err := m.TechnicalUpdates[iNdEx].MarshalToSizedBufferVT(dAtA[:i])
@@ -11210,6 +11247,15 @@ func (m *PeerAddress) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
+	if len(m.Capabilities) > 0 {
+		for iNdEx := len(m.Capabilities) - 1; iNdEx >= 0; iNdEx-- {
+			i -= 4
+			binary.LittleEndian.PutUint32(dAtA[i:], uint32(m.Capabilities[iNdEx]))
+		}
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.Capabilities)*4))
+		i--
+		dAtA[i] = 0x2a
+	}
 	if len(m.InstanceId) > 0 {
 		i -= len(m.InstanceId)
 		copy(dAtA[i:], m.InstanceId)
@@ -11411,12 +11457,14 @@ func (m *Proposal) ResetVT() {
 			mm.ResetVT()
 		}
 		f1 := m.TechnicalUpdates[:0]
+		f2 := m.RequiredCapabilities[:0]
 		if oneof, ok := m.Payload.(*Proposal_Batch); ok {
 			oneof.Batch.ReturnToVTPool()
 		}
 		m.Reset()
 		m.Orders = f0
 		m.TechnicalUpdates = f1
+		m.RequiredCapabilities = f2
 	}
 }
 func (m *Proposal) ReturnToVTPool() {
@@ -13023,6 +13071,9 @@ func (m *Proposal) SizeVT() (n int) {
 			n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 		}
 	}
+	if len(m.RequiredCapabilities) > 0 {
+		n += 1 + protohelpers.SizeOfVarint(uint64(len(m.RequiredCapabilities)*4)) + len(m.RequiredCapabilities)*4
+	}
 	if vtmsg, ok := m.Payload.(interface{ SizeVT() int }); ok {
 		n += vtmsg.SizeVT()
 	}
@@ -13821,6 +13872,9 @@ func (m *PeerAddress) SizeVT() (n int) {
 	l = len(m.InstanceId)
 	if l > 0 {
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	if len(m.Capabilities) > 0 {
+		n += 1 + protohelpers.SizeOfVarint(uint64(len(m.Capabilities)*4)) + len(m.Capabilities)*4
 	}
 	n += len(m.unknownFields)
 	return n
@@ -22116,6 +22170,58 @@ func (m *Proposal) UnmarshalVT(dAtA []byte) error {
 				return err
 			}
 			iNdEx = postIndex
+		case 10:
+			if wireType == 5 {
+				var v uint32
+				if (iNdEx + 4) > l {
+					return io.ErrUnexpectedEOF
+				}
+				v = uint32(binary.LittleEndian.Uint32(dAtA[iNdEx:]))
+				iNdEx += 4
+				m.RequiredCapabilities = append(m.RequiredCapabilities, v)
+			} else if wireType == 2 {
+				var packedLen int
+				for shift := uint(0); ; shift += 7 {
+					if shift >= 64 {
+						return protohelpers.ErrIntOverflow
+					}
+					if iNdEx >= l {
+						return io.ErrUnexpectedEOF
+					}
+					b := dAtA[iNdEx]
+					iNdEx++
+					packedLen |= int(b&0x7F) << shift
+					if b < 0x80 {
+						break
+					}
+				}
+				if packedLen < 0 {
+					return protohelpers.ErrInvalidLength
+				}
+				postIndex := iNdEx + packedLen
+				if postIndex < 0 {
+					return protohelpers.ErrInvalidLength
+				}
+				if postIndex > l {
+					return io.ErrUnexpectedEOF
+				}
+				var elementCount int
+				elementCount = packedLen / 4
+				if elementCount != 0 && len(m.RequiredCapabilities) == 0 && cap(m.RequiredCapabilities) < elementCount {
+					m.RequiredCapabilities = make([]uint32, 0, elementCount)
+				}
+				for iNdEx < postIndex {
+					var v uint32
+					if (iNdEx + 4) > l {
+						return io.ErrUnexpectedEOF
+					}
+					v = uint32(binary.LittleEndian.Uint32(dAtA[iNdEx:]))
+					iNdEx += 4
+					m.RequiredCapabilities = append(m.RequiredCapabilities, v)
+				}
+			} else {
+				return fmt.Errorf("proto: wrong wireType = %d for field RequiredCapabilities", wireType)
+			}
 		case 11:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field Batch", wireType)
@@ -26175,6 +26281,58 @@ func (m *PeerAddress) UnmarshalVT(dAtA []byte) error {
 				m.InstanceId = []byte{}
 			}
 			iNdEx = postIndex
+		case 5:
+			if wireType == 5 {
+				var v uint32
+				if (iNdEx + 4) > l {
+					return io.ErrUnexpectedEOF
+				}
+				v = uint32(binary.LittleEndian.Uint32(dAtA[iNdEx:]))
+				iNdEx += 4
+				m.Capabilities = append(m.Capabilities, v)
+			} else if wireType == 2 {
+				var packedLen int
+				for shift := uint(0); ; shift += 7 {
+					if shift >= 64 {
+						return protohelpers.ErrIntOverflow
+					}
+					if iNdEx >= l {
+						return io.ErrUnexpectedEOF
+					}
+					b := dAtA[iNdEx]
+					iNdEx++
+					packedLen |= int(b&0x7F) << shift
+					if b < 0x80 {
+						break
+					}
+				}
+				if packedLen < 0 {
+					return protohelpers.ErrInvalidLength
+				}
+				postIndex := iNdEx + packedLen
+				if postIndex < 0 {
+					return protohelpers.ErrInvalidLength
+				}
+				if postIndex > l {
+					return io.ErrUnexpectedEOF
+				}
+				var elementCount int
+				elementCount = packedLen / 4
+				if elementCount != 0 && len(m.Capabilities) == 0 {
+					m.Capabilities = make([]uint32, 0, elementCount)
+				}
+				for iNdEx < postIndex {
+					var v uint32
+					if (iNdEx + 4) > l {
+						return io.ErrUnexpectedEOF
+					}
+					v = uint32(binary.LittleEndian.Uint32(dAtA[iNdEx:]))
+					iNdEx += 4
+					m.Capabilities = append(m.Capabilities, v)
+				}
+			} else {
+				return fmt.Errorf("proto: wrong wireType = %d for field Capabilities", wireType)
+			}
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])

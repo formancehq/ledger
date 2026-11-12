@@ -96,7 +96,7 @@ func NewAuditReplayer(logger logging.Logger, auditKey string) (*AuditReplayer, e
 		nil,
 		auditKey,
 		0,
-		func(_ *raftpb.Entry, _ *dal.WriteSession) error { return nil },
+		func(_ *raftpb.Entry, _ *dal.WriteSession) error { return nil }, NoopCapabilityPolicyCommitHandler,
 	)
 	if err != nil {
 		_ = store.Close()

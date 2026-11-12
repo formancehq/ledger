@@ -203,7 +203,7 @@ The bitset lives on `OrderTechnical` (`misc/proto/raft_cmd.proto:64`) and `Techn
 
 Between the moment a producer resolves `(key=K, value=V)` and the moment the FSM applies the proposal at Raft index `I`, another proposal may mutate `K`. The preloaded `V` would then be stale at apply.
 
-`AppendProposalPredictedIndex(data []byte, index uint64) []byte` (`internal/infra/plan/predicted_index.go`) stamps the expected index onto the already-marshalled proposal by appending the raw wire encoding of `Proposal.predicted_index` (a `fixed64`, under the field number read from the descriptor at init rather than a hardcoded literal); it is a no-op when the index is 0. Appending raw bytes avoids re-marshalling a possibly-megabyte `Proposal` while holding the proposal lock. That is the common path only: when the guard finds the boundary shifted it must re-marshal the rebuilt proposal anyway, and the fresh marshal serializes `PredictedIndex` inline, so the append is skipped (`internal/infra/plan/runner.go` — the index is assigned to `cmd` before the branch, then either re-marshalled or appended, never both).
+`Proposal.SetPredictedIndex(index)` (`internal/infra/node/proposal.go`) stamps the expected index onto the already-marshalled proposal by appending the raw wire encoding of `Proposal.predicted_index` (a `fixed64`, under the field number read from the descriptor at init rather than a hardcoded literal); it is a no-op when the index is 0. Appending raw bytes avoids re-marshalling a possibly-megabyte `Proposal` while holding the proposal lock. The full proposal is first marshalled with `PredictedIndex = 0` outside the lock on both the common and no-preload paths. After the guard is acquired, `SetPredictedIndex` appends the bounded field. If the guard detects a boundary shift, the rebuilt command is re-marshalled under the guard and the same `SetPredictedIndex` patch is then applied to the rebuilt bytes.
 
 At apply, the FSM compares the predicted index against the actual one. A mismatch means the observed cache state may no longer hold, so the proposal is rejected with `ErrStaleProposal` and the producer rebuilds and retries.
 
@@ -252,12 +252,12 @@ sequenceDiagram
     P->>P: marshal — outside the critical section
     P->>B: AcquireProposalGuard: lock IndexTracker, re-check Gen(nextIndex)
     B-->>P: ProposalGuard
-    P->>P: cmd.PredictedIndex = TrackerNext() (index known under the lock)
+    P->>P: Proposal.SetPredictedIndex(TrackerNext()) (bounded patch under the lock)
     alt boundary shifted between Build and guard (rare)
-        B-->>P: rebuilt ExecutionPlan → re-apply bits, re-marshal under the guard
-        Note over P: the re-marshal serializes PredictedIndex inline — no append
+        B-->>P: rebuilt ExecutionPlan → re-apply bits, re-marshal with index zero
+        P->>P: Proposal.SetPredictedIndex(TrackerNext())
     else common path
-        P->>P: AppendProposalPredictedIndex onto the pre-marshalled buffer
+        P->>P: Proposal.SetPredictedIndex(TrackerNext()) onto the pre-marshalled buffer
     end
     P->>P: Propose under the guard
     Note over P,FSM: Raft commit (no Pebble reads on the hot path)

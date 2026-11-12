@@ -216,6 +216,7 @@ func newForceRemoveHarness(
 			fmt.Sprintf("node-%d:7000", id),
 			fmt.Sprintf("node-%d:8000", id),
 			fmt.Appendf(nil, "%016d", id),
+			nil,
 		))
 	}
 
@@ -438,7 +439,7 @@ func TestForceRemoveNodeDurabilityFailureContract(t *testing.T) {
 			require.ErrorIs(t, runErr, injected)
 			_, err = h.n.GetClusterState(context.Background())
 			require.ErrorIs(t, err, injected)
-			_, err = h.n.Propose(context.Background(), NewProposal(100, []byte("must not be admitted")))
+			_, err = h.n.Propose(context.Background(), newProposal(100, []byte("must not be admitted"), nil))
 			require.ErrorIs(t, err, injected)
 
 			_, restartedVoters := h.restartedState(t)
@@ -497,7 +498,7 @@ func TestForceRemoveNodeDurabilityFailureContract(t *testing.T) {
 			synctest.Wait()
 			require.Len(t, h.n.clusterCommandCh, 1)
 
-			proposal := NewProposal(101, []byte("queued before terminal publication"))
+			proposal := newProposal(101, []byte("queued before terminal publication"), nil)
 			trackerBefore := h.n.indexTracker.Next()
 			h.n.indexTracker.Lock()
 			fsmFuture, err := h.n.Propose(context.Background(), proposal)

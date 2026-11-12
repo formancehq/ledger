@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
+	"go.etcd.io/raft/v3/raftpb"
 	"go.opentelemetry.io/otel/metric/noop"
 	"google.golang.org/grpc"
 
@@ -136,12 +137,14 @@ func newJoinRecoveryNode(t *testing.T, id uint64, addr string, peers []node.Peer
 	t.Cleanup(func() { require.NoError(t, pool.Close()) })
 	t.Cleanup(func() { require.NoError(t, servicePool.Close()) })
 	tr := node.NewTransport(logger, pool, meters, id, node.TransportConfig{Reception: []int{32, 32, 32}, Send: []int{32, 32, 32}}, "join-recovery", 1024, addr, addr)
-	member, err := membership.NewMembership(membership.NewPeerStore(store), tr, servicePool, id, addr, addr, instanceID, logger)
+	member, err := membership.NewMembership(membership.NewPeerStore(store), tr, servicePool, id, addr, addr, instanceID, logger, membership.NoopClusterPolicyProvider)
 	require.NoError(t, err)
 	cacheStore, err := cache.New(1000, meter)
 	require.NoError(t, err)
 	registry := state.NewStateRegistry(cacheStore, attributes.New())
-	machine, err := state.NewMachine(logger, registry, state.NewCacheSnapshotter(logger, registry, nil), store, dal.NewSentinelFactory(store, false), meters, nil, state.NewSharedState(), signal.NewNotifications(), nil, "join-recovery", 0, member.WriteConfChange)
+	machine, err := state.NewMachine(logger, registry, state.NewCacheSnapshotter(logger, registry, nil), store, dal.NewSentinelFactory(store, false), meters, nil, state.NewSharedState(), signal.NewNotifications(), nil, "join-recovery", 0, func(entry *raftpb.Entry, session *dal.WriteSession) error {
+		return member.WriteConfChange(entry, session)
+	}, state.NoopCapabilityPolicyCommitHandler)
 	require.NoError(t, err)
 	t.Cleanup(machine.Close)
 	recovery := state.NewRecovery(machine, store)

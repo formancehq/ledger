@@ -118,6 +118,7 @@ func createTestAdmission(t *testing.T, store *dal.Store) (*Admission, *attribute
 		store,
 		logger,
 		nil, // no proposer needed for unit tests
+		nil, // no membership fence needed for unit tests
 		testPreloader,
 		noop.NewMeterProvider(),
 		nil, // no health checker needed for unit tests

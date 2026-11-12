@@ -26,12 +26,12 @@ import (
 	"github.com/formancehq/ledger/v3/internal/domain/processing/numscript"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
 	"github.com/formancehq/ledger/v3/internal/infra/health"
+	"github.com/formancehq/ledger/v3/internal/infra/membership"
 	"github.com/formancehq/ledger/v3/internal/infra/node"
 	"github.com/formancehq/ledger/v3/internal/infra/plan"
 	"github.com/formancehq/ledger/v3/internal/infra/state"
 	"github.com/formancehq/ledger/v3/internal/pkg/commands"
 	"github.com/formancehq/ledger/v3/internal/pkg/futures"
-	"github.com/formancehq/ledger/v3/internal/pkg/vtmarshal"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
@@ -51,16 +51,17 @@ type Proposer interface {
 // Admission handles the admission of orders into the Raft cluster.
 // It is responsible for preloading volumes and proposing commands.
 type Admission struct {
-	store           *dal.Store
-	logger          logging.Logger
-	proposer        Proposer
-	writeGate       health.WriteGate
-	keyStore        *keystore.KeyStore
-	sharedState     *state.SharedState
-	builder         *plan.Builder
-	attrs           *attributes.Attributes
-	numscriptCache  *numscript.NumscriptCache
-	waitLeaderReady func(context.Context) error
+	store                 *dal.Store
+	logger                logging.Logger
+	proposer              Proposer
+	membershipCoordinator *membership.Coordinator
+	writeGate             health.WriteGate
+	keyStore              *keystore.KeyStore
+	sharedState           *state.SharedState
+	builder               *plan.Builder
+	attrs                 *attributes.Attributes
+	numscriptCache        *numscript.NumscriptCache
+	waitLeaderReady       func(context.Context) error
 	// auditProjectionState is node-local admission state. It may reject a
 	// checkpoint proposal before Raft, but never affects deterministic apply.
 	auditProjectionState func() (disabled, rebuilding bool)
@@ -139,6 +140,7 @@ func NewAdmission(
 	store *dal.Store,
 	logger logging.Logger,
 	proposer Proposer,
+	membershipCoordinator *membership.Coordinator,
 	builder *plan.Builder,
 	meterProvider metric.MeterProvider,
 	writeGate health.WriteGate,
@@ -150,16 +152,17 @@ func NewAdmission(
 	opts ...func(*Admission),
 ) *Admission {
 	a := &Admission{
-		store:           store,
-		logger:          logger,
-		proposer:        proposer,
-		builder:         builder,
-		writeGate:       writeGate,
-		keyStore:        keyStore,
-		sharedState:     sharedState,
-		attrs:           attrs,
-		numscriptCache:  numscriptCache,
-		waitLeaderReady: waitLeaderReady,
+		store:                 store,
+		logger:                logger,
+		proposer:              proposer,
+		membershipCoordinator: membershipCoordinator,
+		builder:               builder,
+		writeGate:             writeGate,
+		keyStore:              keyStore,
+		sharedState:           sharedState,
+		attrs:                 attrs,
+		numscriptCache:        numscriptCache,
+		waitLeaderReady:       waitLeaderReady,
 	}
 	for _, opt := range opts {
 		opt(a)
@@ -488,7 +491,7 @@ func (a *Admission) recordPhaseOnExit(ctx context.Context, hist metric.Float64Hi
 func (a *Admission) Admit(ctx context.Context, req *servicepb.ApplyRequest) (*domain.ApplyResult, error) {
 	return a.admit(ctx, func(ctx context.Context, caller *commonpb.CallerSnapshot) (*preparedAdmission, error) {
 		return a.prepareExecutionBatch(ctx, caller, req)
-	})
+	}, a.proposeAdmission)
 }
 
 // AdmitClusterPolicy admits the leader's internal cluster-policy reconciliation
@@ -500,7 +503,7 @@ func (a *Admission) AdmitClusterPolicy(ctx context.Context, policy *commonpb.Clu
 
 	return a.admit(ctx, func(ctx context.Context, caller *commonpb.CallerSnapshot) (*preparedAdmission, error) {
 		return a.prepareClusterPolicy(ctx, caller, policy)
-	})
+	}, a.proposeClusterPolicy)
 }
 
 type preparedAdmission struct {
@@ -549,7 +552,9 @@ func (a *Admission) prepareClusterPolicy(ctx context.Context, caller *commonpb.C
 	return &preparedAdmission{command: command, build: build}, nil
 }
 
-func (a *Admission) admit(ctx context.Context, prepare func(context.Context, *commonpb.CallerSnapshot) (*preparedAdmission, error)) (response *domain.ApplyResult, err error) {
+type admissionPropose func(context.Context, *raftcmdpb.Proposal, *plan.BuildResult) (*futures.Future[state.ApplyResult], func(), error)
+
+func (a *Admission) admit(ctx context.Context, prepare func(context.Context, *commonpb.CallerSnapshot) (*preparedAdmission, error), propose admissionPropose) (response *domain.ApplyResult, err error) {
 	caller, err := auth.ResolveCallerAttribution(ctx)
 	if err != nil {
 		invalid, ok := errors.AsType[*domain.ErrInvalidCallerAttribution](err)
@@ -586,13 +591,28 @@ func (a *Admission) admit(ctx context.Context, prepare func(context.Context, *co
 		return nil, err
 	}
 
-	fsmFuture, cleanup, err := a.proposeAdmission(ctx, prepared.command, prepared.build)
+	fsmFuture, cleanup, err := propose(ctx, prepared.command, prepared.build)
 	if err != nil {
 		return nil, err
 	}
 	defer cleanup()
 
 	return a.resolveAdmissionResult(ctx, prepared.command, fsmFuture)
+}
+
+func (a *Admission) proposeClusterPolicy(ctx context.Context, command *raftcmdpb.Proposal, build *plan.BuildResult) (*futures.Future[state.ApplyResult], func(), error) {
+	// Fence membership before the proposal guard locks the index tracker.
+	if a.membershipCoordinator == nil {
+		return nil, nil, errors.New("cluster policy admission has no membership coordinator")
+	}
+	release, err := a.membershipCoordinator.AcquireClusterPolicy(ctx)
+	if err != nil {
+		return nil, nil, fmt.Errorf("fencing membership for cluster policy: %w", err)
+	}
+	future, cleanup, err := a.proposeAdmission(ctx, command, build)
+	release(future)
+
+	return future, cleanup, err
 }
 
 func (a *Admission) prepareExecutionBatchAdmission(ctx context.Context, req *servicepb.ApplyRequest) (verifiedBatch, error) {
@@ -780,18 +800,21 @@ func (a *Admission) proposeAdmission(ctx context.Context, cmd *raftcmdpb.Proposa
 	// Per-order coverage bits depend on the final AttributeCoverage slice
 	// (positions in cmd.ExecutionPlan.Attributes), and AcquireProposalGuard may
 	// swap cmd.ExecutionPlan for a rebuilt ExecutionPlan on a generation shift.
-	// Compute the bits inside marshalFn so every (re-)marshal sees the
-	// current Preload — the runner calls marshalFn again after the
+	// Compute the bits before final proposal construction so every rebuild sees the
+	// current Preload — the runner calls finalizeFn again after the
 	// rebuild, keeping bits and plans in sync.
 	ctx, proposeSpan := tracer.Start(ctx, "admission.propose")
 
 	runResult, err := a.builder.Run(
 		ctx, cmd, build,
-		func(c *raftcmdpb.Proposal) ([]byte, error) {
+		func(c *raftcmdpb.Proposal) error {
 			// Coverage and productions are already assigned by the
-			// runner before this callback runs. We just marshal + emit
-			// admission metrics.
-			return a.marshalCommand(ctx, c)
+			// runner before this callback runs. The node proposal factory
+			// performs the canonical serialization; this callback only
+			// records the final command size.
+			a.commandSizeHistogram.Record(ctx, int64(c.SizeVT()))
+
+			return nil
 		},
 		a.proposer,
 	)
@@ -860,7 +883,9 @@ func (a *Admission) proposeAdmission(ctx context.Context, cmd *raftcmdpb.Proposa
 		guard.ReleaseLoaders()
 		a.proposeQueueInflight.Add(-1)
 
-		return nil, nil, err
+		// The proposal was already enqueued. Keep its completion handle so
+		// capability activation retains the membership fence after cancellation.
+		return fsmFuture, nil, err
 	}
 
 	recordProposeDuration()
@@ -996,12 +1021,13 @@ func (a *Admission) Barrier(ctx context.Context) (uint64, error) {
 	}
 
 	cmd := commands.NewCommand() // no orders = no-op
-	proposalData, err := a.marshalCommand(ctx, cmd)
+	// The proposal factory stamps the semantic capability declaration and
+	// serializes this final command atomically.
+	a.commandSizeHistogram.Record(ctx, int64(cmd.SizeVT()))
+	proposal, err := node.NewProposal(cmd.GetId(), cmd)
 	if err != nil {
 		return 0, fmt.Errorf("marshaling barrier command: %w", err)
 	}
-
-	proposal := node.NewProposal(cmd.GetId(), proposalData)
 
 	// Lock the tracker to serialize the Increment with guarded proposals,
 	// preventing preload boundary mismatches in the FSM.
@@ -1033,23 +1059,6 @@ func (a *Admission) Barrier(ctx context.Context) (uint64, error) {
 	}
 
 	return result.AppliedIndex, nil
-}
-
-// marshalCommand marshals a proposal command into a newly allocated byte slice
-// using a pooled buffer. The returned slice is safe for Raft retention.
-func (a *Admission) marshalCommand(ctx context.Context, cmd *raftcmdpb.Proposal) ([]byte, error) {
-	_, marshalSpan := tracer.Start(ctx, "admission.marshal")
-	defer marshalSpan.End()
-
-	proposalData, err := vtmarshal.MarshalCopy(cmd)
-	if err != nil {
-		return nil, fmt.Errorf("marshaling command: %w", err)
-	}
-
-	a.commandSizeHistogram.Record(ctx, int64(len(proposalData)))
-	marshalSpan.SetAttributes(attribute.Int("command.size_bytes", len(proposalData)))
-
-	return proposalData, nil
 }
 
 // verifiedBatch is the trusted content of an ApplyRequest after signature

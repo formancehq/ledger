@@ -197,7 +197,7 @@ func newCallerAttributionAdmission(t *testing.T, expectedProposals int) (*admiss
 
 		return result, nil
 	}).Times(expectedProposals)
-	admission := admissionapp.NewAdmission(store, logger, proposer,
+	admission := admissionapp.NewAdmission(store, logger, proposer, nil,
 		plan.NewBuilder(node.NewIndexTracker(1), testCache, attrs, store, nil, logger, 0),
 		provider, allowWriteGate{}, keystore.NewKeyStore(), state.NewSharedState(), attrs,
 		numscript.NewNumscriptCache(0), func(context.Context) error { return nil })

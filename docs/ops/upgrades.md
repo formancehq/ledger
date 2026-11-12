@@ -70,6 +70,20 @@ through each adjacent RC in order; do not jump to the newest RC. If the source
 cannot be identified or the current Operator already rejects the pinning step,
 stop and plan a separately validated migration. Do not delete the StatefulSet
 or PVCs to bypass the source check.
+### Maintainer-declared CLI break
+
+The `ledgerctl cluster add-learner` command is intentionally removed from the
+capability-evidence release. Existing scripts or runbooks invoking that command
+must be updated; the command is not kept as a compatibility alias and no
+protocol-version bump is required because the service gRPC contract is
+unchanged.
+
+To add a new node, configure its peer seed and start the Ledger binary. The
+bootstrap sequence calls `JoinAsLearner` and advertises the capabilities
+compiled into that binary. A node restarting with an existing WAL uses
+`RefreshMembership` to publish updated endpoints and capability evidence.
+The administrative `AddLearner` RPC remains an internal recovery API, but it is
+not a supported replacement for the removed CLI workflow.
 
 Before tagging a new release, verify the upgrade with state created by the
 supported source releases. Cover affected Pebble records, Raft log and snapshot
@@ -328,6 +342,16 @@ validation passes. For RC.1 to RC.2, follow the
 [maintenance-barrier rolling procedure](#account-metadata-address-validation).
 For RC.3 to RC.4, use the [operator-required stopped restart](#operator-required-stopped-restart).
 
+Capability metadata is the prerequisite for any future incompatible Raft entry,
+execution-plan, replay, or snapshot format. This release does not support
+mixed-version activation: stop every Ledger node, deploy the barrier-aware
+binary everywhere, restart the complete cluster, and only then enable the new
+feature. The capability reconciler does not arm features from membership
+advertisements. See the [capability contract](../technical/architecture/subsystems/consensus/capabilities.md)
+for the persisted replay boundary and coordinated rollout.
+
+Use this for RC updates after the mixed-version validation above passes:
+
 1. Record the current leader and voter set with `ledgerctl cluster status`.
 2. Restart one follower on the target binary.
 3. Wait until it reports normal, has caught up to the leader's commit index,
@@ -527,25 +551,27 @@ installation, backup/restore, rollback, or the dormant stopped-upgrade path.
 The pinned binary-level rc.1 test and relevant model, restore and migration
 suites remain separate gates.
 
-The same harness has a separate, future `rc3-to-rc4` transition:
+The same harness has a separate `rc3-to-rc4` transition for the mandatory
+operator-required stopped restart:
 
 ```bash
 UPGRADE_TRANSITION=rc3-to-rc4 RELEASE_BRANCH=release/v3.0 just test-release-operator-upgrade
 ```
 
-Run it against a release branch whose operator lists `v3.0.0-rc.4` as a
-mandatory stop boundary. The target operator and Ledger are still built from
-one exact release-branch HEAD and tagged locally as rc.4; the harness publishes no tag
+Run it after `v3.0.0-rc.3` has been published, against a release branch whose
+operator lists `v3.0.0-rc.4` as a mandatory stop boundary. The target operator
+and Ledger are built from one exact release-branch HEAD and tagged locally as
+rc.4; the harness publishes no tag
 or image. This path requires the operator's drain barrier to advance past
 `Draining`, observes the StatefulSet and all old Pods absent before accepting
 any target Pod, and checks that the replacement StatefulSet has a new UID while
 PVC UIDs persist. It restarts a target voter to exercise replay, verifies the
 pre-upgrade account, commits another transaction, checks Raft progress and
 runs each voter's audit/derived-state checker after drain release. It fails
-against an operator without the rc.4 boundary, so it is a release gate for the
-format-change PR, not evidence that rc.3 itself needs a stop. The rc.4 release
-still needs format-specific migration, snapshot, backup/restore and rollback
-validation outside this scenario.
+against an operator without the rc.4 boundary or if the mandatory stop is
+skipped, so it is a release gate for the format-change PR, not evidence that
+rc.3 itself needs a stop. The rc.4 release still needs format-specific migration,
+snapshot, backup/restore and rollback validation outside this scenario.
 
 ## Coordinated Restart
 

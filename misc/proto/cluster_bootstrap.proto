@@ -8,7 +8,7 @@ option go_package = "github.com/formancehq/ledger/v3/internal/proto/clusterboots
 //
 // Unlike ClusterService (exposed on the external ServiceServer behind the
 // user JWT/scope pipeline), this service lives on the internal RaftServer
-// alongside the Raft transport. It carries the two RPCs required by a node
+// alongside the Raft transport. It carries the RPCs required by a node
 // that is joining an existing cluster:
 //
 //   1. GetPeers       — discover the current set of voter nodes and their
@@ -16,6 +16,8 @@ option go_package = "github.com/formancehq/ledger/v3/internal/proto/clusterboots
 //                       snapshot before starting Raft.
 //   2. JoinAsLearner  — register with the leader as a new learner, which
 //                       proposes the corresponding ConfChange.
+//   3. RefreshMembership — refresh the committed endpoints and capability
+//                          evidence of an existing member after restart.
 //
 // Authentication is the RaftServer's own: cluster-id metadata (always) and
 // the cluster-secret bearer when configured. No user JWT or scope check
@@ -23,6 +25,7 @@ option go_package = "github.com/formancehq/ledger/v3/internal/proto/clusterboots
 service ClusterBootstrapService {
   rpc GetPeers(GetPeersRequest) returns (GetPeersResponse);
   rpc JoinAsLearner(JoinAsLearnerRequest) returns (JoinAsLearnerResponse);
+  rpc RefreshMembership(RefreshMembershipRequest) returns (RefreshMembershipResponse);
 }
 
 message GetPeersRequest {}
@@ -38,6 +41,7 @@ message PeerInfo {
   string raft_address = 2;
   string service_address = 3;
   bytes instance_id = 4;  // 16-byte UUID identifying this peer's WAL/PVC incarnation; required
+  repeated fixed32 capabilities = 5; // capabilities supported by this binary
 }
 
 message JoinAsLearnerRequest {
@@ -45,6 +49,21 @@ message JoinAsLearnerRequest {
   string raft_address = 2;     // Raft transport address of the learner
   string service_address = 3;  // Service API address of the learner
   bytes instance_id = 4;       // 16-byte UUID identifying this peer's WAL/PVC incarnation (EN-1045); required
+  repeated fixed32 capabilities = 5; // capabilities supported by this binary
 }
 
 message JoinAsLearnerResponse {}
+
+// RefreshMembership carries the current identity, endpoints and capability
+// evidence of a member that already exists in the committed Raft membership.
+// It is used after a normal restart, where the node must not re-run the
+// learner-join path.
+message RefreshMembershipRequest {
+  uint64 node_id = 1;
+  string raft_address = 2;
+  string service_address = 3;
+  bytes instance_id = 4;
+  repeated fixed32 capabilities = 5;
+}
+
+message RefreshMembershipResponse {}

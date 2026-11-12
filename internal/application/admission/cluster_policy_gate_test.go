@@ -185,3 +185,19 @@ func TestAdmit_ClusterPolicyWriteReadinessGate(t *testing.T) {
 		require.ErrorIs(t, err, ErrMaintenanceMode)
 	})
 }
+
+func TestAdmitClusterPolicyFencesMembershipWithoutActivations(t *testing.T) {
+	t.Parallel()
+
+	store := createTestStoreWithoutPolicy(t)
+	proposer := NewMockProposer(gomock.NewController(t))
+	a, _ := createTestAdmissionWithReader(t, store, proposer)
+	a.membershipCoordinator.Lock()
+	defer a.membershipCoordinator.Unlock()
+
+	ctx, cancel := context.WithTimeout(attributedTestContext(context.Background()), 100*stdtime.Millisecond)
+	defer cancel()
+
+	_, err := a.AdmitClusterPolicy(ctx, &commonpb.ClusterPolicy{Revision: 1, QueryCheckpointLimit: 10})
+	require.ErrorIs(t, err, context.DeadlineExceeded)
+}

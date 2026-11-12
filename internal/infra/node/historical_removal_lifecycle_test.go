@@ -25,7 +25,7 @@ func newHistoricalRemovalLifecycleSetup(t *testing.T) (*Node, *testApplierSetup)
 	})
 	var err error
 	m, err = membership.NewMembership(membership.NewPeerStore(setup.store), noopMemTransport{}, noopMemPool{},
-		1, "self:7777", "self:8888", []byte("self-instance-id"), logging.Testing())
+		1, "self:7777", "self:8888", []byte("self-instance-id"), logging.Testing(), membership.NoopClusterPolicyProvider)
 	require.NoError(t, err)
 	n := &Node{fsm: setup.fsm, membership: m, logger: logging.Testing(), runDone: make(chan struct{})}
 	t.Cleanup(func() { close(n.runDone) })
@@ -119,7 +119,7 @@ func TestHistoricalRemovalLifecycleDurableCleanupCannotClearLaterEvent(t *testin
 		n, setup := newHistoricalRemovalLifecycleSetup(t)
 		oldIdentity := []byte("old-instance-id-")
 		newIdentity := []byte("new-instance-id-")
-		require.NoError(t, n.membership.Register(2, "peer:7777", "peer:8888", oldIdentity))
+		require.NoError(t, n.membership.Register(2, "peer:7777", "peer:8888", oldIdentity, nil))
 		oldPending, err := n.trackCommittedRemoval(2, oldIdentity, 1)
 		require.NoError(t, err)
 		newPending, err := n.trackCommittedRemoval(2, newIdentity, 3)
@@ -179,7 +179,7 @@ func TestNewNodeReplaysHistoricalRemovalCycles(t *testing.T) {
 	fixture, setup := newHistoricalRemovalLifecycleSetup(t)
 	oldIdentity := []byte("old-instance-id-")
 	newIdentity := []byte("new-instance-id-")
-	require.NoError(t, fixture.membership.Register(2, "peer:7777", "peer:8888", oldIdentity))
+	require.NoError(t, fixture.membership.Register(2, "peer:7777", "peer:8888", oldIdentity, nil))
 	// Retain the pre-crash ConfState: all committed changes exist only in the
 	// WAL, so NewNode must recover their durable membership effects by replay.
 	require.NoError(t, setup.wal.UpdateSnapshotConfState(&raftpb.ConfState{Voters: []uint64{1}, Learners: []uint64{2}}))

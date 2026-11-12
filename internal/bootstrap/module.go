@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"go.etcd.io/raft/v3/raftpb"
 	"go.opentelemetry.io/otel/metric"
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 	"go.uber.org/fx"
@@ -47,6 +48,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
 	"github.com/formancehq/ledger/v3/internal/infra/bloom"
 	"github.com/formancehq/ledger/v3/internal/infra/cache"
+	"github.com/formancehq/ledger/v3/internal/infra/capabilities"
 	clusterhealth "github.com/formancehq/ledger/v3/internal/infra/health"
 	raftmembership "github.com/formancehq/ledger/v3/internal/infra/membership"
 	"github.com/formancehq/ledger/v3/internal/infra/monitoring/diskusage"
@@ -58,6 +60,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/infra/transport"
 	"github.com/formancehq/ledger/v3/internal/pkg/commands"
 	"github.com/formancehq/ledger/v3/internal/pkg/network"
+	"github.com/formancehq/ledger/v3/internal/pkg/reconciler"
 	"github.com/formancehq/ledger/v3/internal/pkg/signal"
 	"github.com/formancehq/ledger/v3/internal/pkg/version"
 	"github.com/formancehq/ledger/v3/internal/pkg/worker"
@@ -80,6 +83,10 @@ import (
 // It is used to decide whether a joining node needs to register as a learner.
 type walFreshStart bool
 
+func publishCapabilityGate(membership *raftmembership.Membership, policy *commonpb.ClusterPolicy) error {
+	return membership.SetCapabilityGate(capabilities.ActiveIDs(policy))
+}
+
 // nodeProvideResult groups the outputs of the Node provider so we can also
 // expose the WAL-fresh-start indicator through the fx dependency graph.
 type nodeProvideResult struct {
@@ -99,6 +106,30 @@ func provideNodeConfig(cfg Config) (node.NodeConfig, error) {
 
 func provideWAL(cfg node.NodeConfig, logger logging.Logger, meterProvider metric.MeterProvider) (*wal.DefaultWAL, error) {
 	return wal.New(cfg.WalDir, logger, meterProvider.Meter("wal"))
+}
+
+// newClusterPolicyReconciler wires the leader-only policy maintenance into the
+// generic periodic reconciler. Keeping this assembly in a named provider keeps
+// the Fx graph readable while leaving the policy logic in dedicated helpers.
+func newClusterPolicyReconciler(admission ctrl.Admission, store *dal.Store, builder *plan.Builder, cfg Config, raftNode *node.Node, logger logging.Logger) *reconciler.Reconciler {
+	return reconciler.New(func(ctx context.Context) {
+		if !raftNode.IsLeader() {
+			return
+		}
+		if policy, err := query.ReadClusterPolicy(store); err == nil {
+			if err := raftNode.SetCapabilityGate(capabilities.ActiveIDs(policy)); err != nil {
+				logger.WithFields(map[string]any{"error": err}).Errorf("Invalid capability gate in committed cluster policy")
+
+				return
+			}
+		}
+		if err := proposeAuditKeyIfNeeded(ctx, raftNode, builder, store); err != nil {
+			logger.WithFields(map[string]any{"error": err}).Errorf("Audit key initialization failed; will retry")
+
+			return
+		}
+		reconcileClusterPolicy(ctx, admission, store, cfg, raftNode.IsLeader, logger)
+	}, clusterPolicyReconcileInterval)
 }
 
 func Module() fx.Option {
@@ -213,8 +244,14 @@ func Module() fx.Option {
 			// — applier, node, background workers — observes the FSM at its
 			// recovered state. NewMachine deliberately skips this step so it does
 			// not perform any Pebble read itself.
-			func(machine *state.Machine, store *dal.Store) (*state.Recovery, error) {
-				recovery := state.NewRecovery(machine, store)
+			func(machine *state.Machine, store *dal.Store, membership *raftmembership.Membership) (*state.Recovery, error) {
+				recovery := state.NewRecovery(machine, store, state.WithStateRecovered(func(recovered *state.FSMState) error {
+					if err := capabilities.ValidateSupportedActive(recovered.ClusterPolicy, capabilities.SupportedIDs()); err != nil {
+						return err
+					}
+
+					return publishCapabilityGate(membership, recovered.ClusterPolicy)
+				}))
 				if err := recovery.RecoverState(); err != nil {
 					return nil, fmt.Errorf("recovering FSM state at boot: %w", err)
 				}
@@ -233,14 +270,19 @@ func Module() fx.Option {
 			// constructors.
 			raftmembership.NewPeerStore,
 			fx.Annotate(func(
-				store *raftmembership.PeerStore,
+				peerStore *raftmembership.PeerStore,
 				defaultTransport *node.DefaultTransport,
 				servicePool *transport.ConnectionPool,
 				cfg node.NodeConfig,
+				durableStore *dal.Store,
 				logger logging.Logger,
 			) (*raftmembership.Membership, error) {
-				return raftmembership.NewMembership(store, defaultTransport, servicePool, cfg.NodeID, cfg.AdvertiseAddr, cfg.ServiceAdvertiseAddr, cfg.InstanceID, logger)
-			}, fx.ParamTags(``, ``, `name:"service"`, ``, ``)),
+				policyProvider := func() (*commonpb.ClusterPolicy, error) {
+					return query.ReadClusterPolicy(durableStore)
+				}
+
+				return raftmembership.NewMembership(peerStore, defaultTransport, servicePool, cfg.NodeID, cfg.AdvertiseAddr, cfg.ServiceAdvertiseAddr, cfg.InstanceID, logger, policyProvider)
+			}, fx.ParamTags(``, ``, `name:"service"`, ``, ``, ``)),
 			// Provide events.Proposer from the Raft node (used by event emitter to replicate cursor).
 			// Events go through Builder.Run, which already holds the IndexTracker
 			// mutex around its proposer.Propose call. Wrapping the node in a
@@ -287,6 +329,7 @@ func Module() fx.Option {
 				registry := state.NewStateRegistry(c, attrs)
 				snapshotter := state.NewCacheSnapshotter(logger, registry, bloomFilters)
 
+				var machine *state.Machine
 				m, err := state.NewMachine(
 					logger,
 					registry,
@@ -300,11 +343,24 @@ func Module() fx.Option {
 					bloomFilters,
 					"", // Audit key is loaded from replicated state during recovery.
 					cfg.NumscriptCacheSize,
-					membership.WriteConfChange,
+					func(entry *raftpb.Entry, session *dal.WriteSession) error {
+						var policy *commonpb.ClusterPolicy
+						if machine != nil {
+							policy = machine.ClusterPolicy()
+						}
+
+						return membership.WriteConfChange(entry, session, policy)
+					},
+					func(policy *commonpb.ClusterPolicy) {
+						if err := publishCapabilityGate(membership, policy); err != nil {
+							logger.WithFields(map[string]any{"error": err}).Errorf("Publishing committed capability policy failed")
+						}
+					},
 				)
 				if err != nil {
 					return nil, err
 				}
+				machine = m
 
 				logger.WithFields(map[string]any{
 					"duration": time.Since(machineStart).String(),
@@ -326,6 +382,7 @@ func Module() fx.Option {
 					Recovery       *state.Recovery
 					Synchronizer   *state.Synchronizer
 					Membership     *raftmembership.Membership
+					Store          *dal.Store
 					LocalResponses node.LocalResponses
 				},
 			) (nodeProvideResult, error) {
@@ -344,6 +401,23 @@ func Module() fx.Option {
 					"snapshotTerm":  snapshot.GetMetadata().GetTerm(),
 				}).Infof("WAL fresh start detection")
 
+				var raftNode *node.Node
+				proposalAdmission := func(_ context.Context, proposal *node.Proposal) error {
+					policy, err := query.ReadClusterPolicy(params.Store)
+					if err != nil {
+						return fmt.Errorf("reading cluster capability policy before Raft proposal: %w", err)
+					}
+					if raftNode == nil {
+						return errors.New("raft proposal gate is not initialized")
+					}
+					// Take one immutable membership snapshot for both policy checks.  The
+					// gate runs under the serialized proposal/index boundary; taking two
+					// snapshots here needlessly doubles lock, map-copy and allocation cost.
+					members := raftNode.CapabilityMembers()
+
+					return validateProposalCapabilityAdmission(policy, proposal, members)
+				}
+
 				n, err := node.NewNode(
 					params.NodeConfig,
 					params.Transport,
@@ -356,10 +430,12 @@ func Module() fx.Option {
 					params.Synchronizer,
 					params.Membership,
 					params.LocalResponses,
+					node.WithProposalAdmission(proposalAdmission),
 				)
 				if err != nil {
 					return nodeProvideResult{}, err
 				}
+				raftNode = n
 
 				return nodeProvideResult{Node: n, FreshStart: freshStart}, nil
 			},
@@ -574,6 +650,7 @@ func Module() fx.Option {
 					store,
 					logger,
 					node,
+					node.MembershipCoordinator(),
 					builder,
 					meterProvider,
 					hc,
@@ -639,19 +716,7 @@ func Module() fx.Option {
 
 				return clusterhealth.NewGRPCHealthUpdater(n, hs, clusterPolicyReady, rs.ReadProjectionHealthy)
 			},
-			func(admission ctrl.Admission, store *dal.Store, builder *plan.Builder, cfg Config, raftNode *node.Node, logger logging.Logger) *ClusterPolicyReconciler {
-				return NewClusterPolicyReconciler(func(ctx context.Context) {
-					if !raftNode.IsLeader() {
-						return
-					}
-					if err := proposeAuditKeyIfNeeded(ctx, raftNode, builder, store); err != nil {
-						logger.WithFields(map[string]any{"error": err}).Errorf("Audit key initialization failed; will retry")
-
-						return
-					}
-					reconcileClusterPolicy(ctx, admission, store, cfg, raftNode.IsLeader, logger)
-				})
-			},
+			newClusterPolicyReconciler,
 		),
 		fx.Decorate(func(
 			params struct {
@@ -879,9 +944,7 @@ func Module() fx.Option {
 				}))
 			},
 			// Wire Observer: handle LeadershipChange and LeaderReady events.
-			// ConfChange events are no longer dispatched here — Membership
-			// owns the transport / service-pool wiring and reacts directly
-			// to peer mutations (EN-1413).
+			// Membership owns transport / service-pool wiring.
 			func(
 				n *node.Node,
 				store *dal.Store,
@@ -892,6 +955,7 @@ func Module() fx.Option {
 				mirrorManager *mirror.Manager,
 				backupOrchestrator *backupapp.Orchestrator,
 				healthChecker *clusterhealth.HealthChecker,
+				reconciler *reconciler.Reconciler,
 			) {
 				n.SetObserver(node.NewObserver(func(event any) {
 					switch e := event.(type) {
@@ -928,8 +992,18 @@ func Module() fx.Option {
 					}
 				}))
 			},
-			func(lc fx.Lifecycle, node *node.Node, defaultTransport *node.DefaultTransport, logger logging.Logger) (*node.Node, error) {
+			func(lc fx.Lifecycle, node *node.Node, defaultTransport *node.DefaultTransport, membership *raftmembership.Membership, cfg Config, logger logging.Logger) (*node.Node, error) {
 				lc.Append(nodeHook(node, logger))
+
+				// A WAL that already joined the cluster must not take the learner
+				// bootstrap path again. It does, however, need to publish the
+				// capabilities of the restarted binary and any changed endpoints.
+				// This hook runs after the Raft server, transport and node are live;
+				// an UpdateNode for an existing voter may need that node to contribute
+				// to the commit quorum.
+				if shouldRunMembershipRefresh(cfg, logger) {
+					lc.Append(membershipRefreshHook(cfg, membership, logger))
+				}
 
 				return node, nil
 			},
@@ -997,7 +1071,7 @@ func Module() fx.Option {
 			func(lc fx.Lifecycle, manager *mirror.Manager) {
 				lc.Append(worker.FxHook(manager))
 			},
-			func(lc fx.Lifecycle, reconciler *ClusterPolicyReconciler) {
+			func(lc fx.Lifecycle, reconciler *reconciler.Reconciler) {
 				lc.Append(worker.FxHook(reconciler))
 			},
 			func(lc fx.Lifecycle, cfg Config, logger logging.Logger, raftNode *node.Node, store *dal.Store, machine *state.Machine, builder *plan.Builder) {
@@ -1102,6 +1176,35 @@ func Module() fx.Option {
 	)
 }
 
+// validateProposalCapabilityAdmission is the production proposal gate shared
+// by every Node.Propose caller. The proposal carries typed declarations derived
+// from the final command, while policy and membership are the committed
+// snapshots captured at the serialized admission boundary.
+func validateProposalCapabilityAdmission(policy *commonpb.ClusterPolicy, proposal *node.Proposal, members []capabilities.Member) error {
+	if proposal == nil {
+		return errors.New("raft proposal gate received a nil proposal")
+	}
+
+	if err := capabilities.ValidateActive(
+		capabilities.SupportedIDs(),
+		proposal.ActivePolicyCapabilities(),
+		members,
+	); err != nil {
+		return err
+	}
+
+	state := capabilities.FromPolicy(policy)
+	if err := state.Validate(); err != nil {
+		return err
+	}
+	decision := capabilities.Evaluate(state, proposal.RequiredCapabilities(), false, members)
+	if !decision.Allowed {
+		return fmt.Errorf("%w: %s", capabilities.ErrCapabilityUnsupported, decision.Reason)
+	}
+
+	return nil
+}
+
 // JoinAuthError is returned when a joining node is rejected by the target
 // cluster's inter-node RaftServer with codes.Unauthenticated. This is always
 // a cluster-secret misconfiguration (EN-1080): the join flow carries no user
@@ -1199,6 +1302,19 @@ func shouldRunJoinPreflight(cfg Config, logger logging.Logger) bool {
 	return true
 }
 
+// shouldRunMembershipRefresh selects the normal-restart path. A fresh WAL is
+// handled by joinPreflightHook. Restart peers come from recovered membership,
+// so neither --join nor --bootstrap is required on subsequent boots.
+func shouldRunMembershipRefresh(cfg Config, logger logging.Logger) bool {
+	if !wal.IsClusterJoined(cfg.RaftConfig.WalDir) {
+		return false
+	}
+
+	logger.Infof("CLUSTER_JOINED marker present, refreshing membership evidence")
+
+	return true
+}
+
 func registerSnapshotServiceLifecycle(lc fx.Lifecycle, server snapshotpb.SnapshotServiceServer) {
 	lc.Append(fx.Hook{
 		OnStart: func(_ context.Context) error {
@@ -1280,6 +1396,120 @@ func joinPreflightHook(cfg Config, logger logging.Logger) fx.Hook {
 	}
 }
 
+// newMembershipPeerDialer builds the common outbound gRPC dialer used by the
+// learner bootstrap and membership-refresh paths. Keeping credential and
+// option construction in one place prevents those two startup paths from
+// drifting while still allowing each call site to control connection lifetime.
+func newMembershipPeerDialer(cfg Config, tlsCfg TLSConfig) (func(string) (*ggrpc.ClientConn, error), error) {
+	creds, _, err := ClientTransportCredentials(tlsCfg)
+	if err != nil {
+		return nil, err
+	}
+
+	dialOpts := []ggrpc.DialOption{ggrpc.WithTransportCredentials(creds)}
+	if cfg.ClusterSecret != "" {
+		dialOpts = append(dialOpts, transport.BearerTokenDialOption(cfg.ClusterSecret))
+	}
+
+	return func(address string) (*ggrpc.ClientConn, error) {
+		return ggrpc.NewClient(address, dialOpts...)
+	}, nil
+}
+
+func membershipRefreshHook(cfg Config, membership *raftmembership.Membership, logger logging.Logger) fx.Hook {
+	var cancel context.CancelFunc
+
+	return fx.Hook{
+		OnStart: func(ctx context.Context) error {
+			cfg.RaftConfig.Peers = recoveredRefreshPeers(cfg.RaftConfig.NodeID, membership.PeerAddresses())
+			if len(cfg.RaftConfig.Peers) == 0 {
+				return nil // A single-member cluster has no remote membership to refresh.
+			}
+			logger.WithFields(map[string]any{
+				"nodeID":         cfg.RaftConfig.NodeID,
+				"raftAddress":    cfg.RaftConfig.AdvertiseAddr,
+				"serviceAddress": cfg.ServiceAdvertiseAddr(),
+			}).Infof("Restart mode: refreshing membership capabilities")
+
+			// Perform one bounded synchronous attempt before the node starts serving. A
+			// permanent rejection (for example a removed incarnation or invalid
+			// identity) must abort startup rather than letting stale WAL membership
+			// evidence escape into the cluster. Transient connectivity failures
+			// (including Unavailable) and rolling-upgrade compatibility responses
+			// are handed to the background retry loop; permanent rejections remain
+			// startup failures.
+			err := tryRefreshMembershipForStartup(ctx, cfg, cfg.TLSConfig, logger)
+			if err == nil {
+				return nil
+			}
+			if !errors.Is(err, errMembershipRefreshTransient) {
+				return err
+			}
+
+			refreshCtx, refreshCancel := context.WithCancel(context.Background())
+			cancel = refreshCancel
+			go func() {
+				if err := tryRefreshMembership(refreshCtx, cfg, cfg.TLSConfig, logger); err != nil {
+					// TODO(rc.3): remove this compatibility fallback once every
+					// supported peer implements RefreshMembership. The leader-side
+					// reconciler keeps retrying transient evidence until convergence.
+					logger.WithFields(map[string]any{"error": err}).Errorf("Membership capability refresh failed; continuing with conservative evidence")
+				}
+			}()
+
+			return nil
+		},
+		OnStop: func(context.Context) error {
+			if cancel != nil {
+				cancel()
+			}
+
+			return nil
+		},
+	}
+}
+
+func recoveredRefreshPeers(selfID uint64, addresses map[uint64]raftmembership.ConfChangeContext) []node.Peer {
+	peers := make([]node.Peer, 0, len(addresses))
+	for id, address := range addresses {
+		if id != selfID && address.RaftAddress != "" {
+			peers = append(peers, node.Peer{ID: id, Address: address.RaftAddress})
+		}
+	}
+
+	return peers
+}
+
+const membershipRefreshStartupTimeout = 5 * time.Second
+
+// tryRefreshMembershipForStartup gives the synchronous startup attempt a
+// bounded context. A leader can accept a RefreshMembership RPC while a Raft
+// proposal is waiting for a quorum; that proposal must not hold the lifecycle
+// start hook until the process-wide startup deadline. Once this attempt times
+// out, the caller can continue with conservative evidence and the lifecycle-
+// owned retry loop can converge when quorum returns.
+func tryRefreshMembershipForStartup(ctx context.Context, cfg Config, tlsCfg TLSConfig, logger logging.Logger) error {
+	return tryRefreshMembershipForStartupWithTimeout(ctx, cfg, tlsCfg, logger, membershipRefreshStartupTimeout)
+}
+
+func tryRefreshMembershipForStartupWithTimeout(ctx context.Context, cfg Config, tlsCfg TLSConfig, logger logging.Logger, timeout time.Duration) error {
+	attemptCtx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+
+	err := tryRefreshMembershipOnce(attemptCtx, cfg, tlsCfg, logger)
+	if err == nil {
+		return nil
+	}
+
+	// Preserve lifecycle cancellation as a hard error. The bounded attempt's
+	// expiry and a remote RPC deadline are transient while the lifecycle is live.
+	if ctx.Err() == nil && (errors.Is(attemptCtx.Err(), context.DeadlineExceeded) || errors.Is(err, context.DeadlineExceeded) || status.Code(err) == codes.DeadlineExceeded) {
+		return fmt.Errorf("%w: synchronous refresh attempt exceeded %s: %w", errMembershipRefreshTransient, timeout, err)
+	}
+
+	return err
+}
+
 // tryAddLearner attempts to register this node as a learner on an existing
 // cluster, using the inter-node ClusterBootstrapService exposed on the
 // RaftServer. It retries on transient errors (Unavailable, no leader)
@@ -1307,16 +1537,12 @@ func tryAddLearner(ctx context.Context, cfg Config, tlsCfg TLSConfig, logger log
 		RaftAddress:    cfg.RaftConfig.AdvertiseAddr,
 		ServiceAddress: cfg.ServiceAdvertiseAddr(),
 		InstanceId:     instanceID,
+		Capabilities:   capabilities.IDsAsUint32(capabilities.SupportedIDs()),
 	}
 
-	creds, _, err := ClientTransportCredentials(tlsCfg)
+	dialPeer, err := newMembershipPeerDialer(cfg, tlsCfg)
 	if err != nil {
 		return fmt.Errorf("loading TLS credentials for learner registration: %w", err)
-	}
-
-	dialOpts := []ggrpc.DialOption{ggrpc.WithTransportCredentials(creds)}
-	if cfg.ClusterSecret != "" {
-		dialOpts = append(dialOpts, transport.BearerTokenDialOption(cfg.ClusterSecret))
 	}
 
 	backoff := 500 * time.Millisecond
@@ -1329,7 +1555,7 @@ func tryAddLearner(ctx context.Context, cfg Config, tlsCfg TLSConfig, logger log
 	for {
 		// Try each peer in order until one succeeds.
 		for _, peer := range peers {
-			conn, err := ggrpc.NewClient(peer.Address, dialOpts...)
+			conn, err := dialPeer(peer.Address)
 			if err != nil {
 				logger.WithFields(map[string]any{
 					"peer":    peer.ID,
@@ -1462,6 +1688,106 @@ func tryAddLearner(ctx context.Context, cfg Config, tlsCfg TLSConfig, logger log
 	}
 }
 
+// tryRefreshMembership publishes this incarnation's current endpoints and
+// capabilities through the leader. It is deliberately separate from
+// tryAddLearner: a node with a populated WAL already owns Raft progress and
+// must never be admitted through the empty-WAL learner path.
+func tryRefreshMembership(ctx context.Context, cfg Config, tlsCfg TLSConfig, logger logging.Logger) error {
+	backoff := 500 * time.Millisecond
+	for {
+		err := tryRefreshMembershipOnce(ctx, cfg, tlsCfg, logger)
+		if err == nil || !errors.Is(err, errMembershipRefreshTransient) {
+			return err
+		}
+
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(backoff):
+		}
+		backoff = min(backoff*2, 5*time.Second)
+	}
+}
+
+var errMembershipRefreshTransient = errors.New("membership refresh temporarily unavailable")
+
+func tryRefreshMembershipOnce(ctx context.Context, cfg Config, tlsCfg TLSConfig, logger logging.Logger) error {
+	instanceID, err := wal.EnsureInstanceID(cfg.RaftConfig.WalDir)
+	if err != nil {
+		return fmt.Errorf("ensuring instance id for membership refresh: %w", err)
+	}
+
+	req := &clusterbootstrappb.RefreshMembershipRequest{
+		NodeId:         cfg.RaftConfig.NodeID,
+		RaftAddress:    cfg.RaftConfig.AdvertiseAddr,
+		ServiceAddress: cfg.ServiceAdvertiseAddr(),
+		InstanceId:     instanceID,
+		Capabilities:   capabilities.IDsAsUint32(capabilities.SupportedIDs()),
+	}
+
+	dialPeer, err := newMembershipPeerDialer(cfg, tlsCfg)
+	if err != nil {
+		return fmt.Errorf("loading TLS credentials for membership refresh: %w", err)
+	}
+	if cfg.ClusterID != "" {
+		ctx = metadata.AppendToOutgoingContext(ctx, node.MetadataKeyClusterID, cfg.ClusterID)
+	}
+
+	var lastTransient error
+	for _, peer := range cfg.RaftConfig.Peers {
+		conn, dialErr := dialPeer(peer.Address)
+		if dialErr != nil {
+			logger.WithFields(map[string]any{"peer": peer.ID, "address": peer.Address, "error": dialErr}).Infof("Failed to dial peer for membership refresh")
+			lastTransient = dialErr
+
+			continue
+		}
+
+		_, callErr := clusterbootstrappb.NewClusterBootstrapServiceClient(conn).RefreshMembership(ctx, req)
+		_ = conn.Close()
+		if callErr == nil {
+			logger.WithFields(map[string]any{"peer": peer.ID}).Infof("Successfully refreshed membership capabilities")
+
+			return nil
+		}
+
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+
+		if !isRetryableMembershipRefreshError(callErr) {
+			return fmt.Errorf("failed to refresh membership via peer %d (%s): %w", peer.ID, peer.Address, callErr)
+		}
+		lastTransient = callErr
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if lastTransient != nil {
+		return fmt.Errorf("%w: %w", errMembershipRefreshTransient, lastTransient)
+	}
+
+	return errMembershipRefreshTransient
+}
+
+func isRetryableMembershipRefreshError(err error) bool {
+	st, ok := status.FromError(err)
+	if !ok {
+		return false
+	}
+
+	if st.Code() == codes.Unavailable || st.Code() == codes.DeadlineExceeded {
+		return true
+	}
+
+	// TODO(rc.3): remove this compatibility retry once every supported peer
+	// implements RefreshMembership. During the rc.1/rc.2 rolling upgrade, an
+	// older peer returns Unimplemented rather than Unavailable for this newly
+	// introduced RPC; treating it as transient lets the node keep trying newer
+	// peers without making the startup hook fail immediately.
+	return st.Code() == codes.Unimplemented
+}
+
 // isStaleRaftProgress reports whether a FailedPrecondition status carries the
 // EN-1436 STALE_RAFT_PROGRESS ErrorInfo reason, distinguishing a stale-raft-
 // progress join rejection (remediation: `remove-node --force`) from the
@@ -1576,13 +1902,18 @@ func proposeClusterConfigIfNeeded(parent context.Context, n plan.Proposer, build
 	}
 }
 
+// clusterPolicyReconcileInterval is how often the leader re-checks the applied
+// cluster policy against the desired one. Short so a fresh leader commits the
+// policy — and thereby opens write readiness — promptly.
+const clusterPolicyReconcileInterval = time.Second
+
 // reconcileClusterPolicy drives the replicated cluster policy toward the desired
 // revision. It gates on leadership itself and is safe to call repeatedly: the
-// ClusterPolicyReconciler invokes it on a ticker so a transient proposal failure
+// generic reconciler invokes it on a ticker so a transient proposal failure
 // self-heals on the next tick. Unlike the cluster config, the policy flows
-// through AdmitClusterPolicy as an operational SetClusterPolicyProposal.
-// The write-readiness gate exempts this non-business proposal so it is never
-// blocked by its own cluster-policy gate.
+// through AdmitClusterPolicy as an internal audited SetClusterPolicy order so
+// the checker can re-derive it; the write-readiness gate exempts this
+// non-business proposal so it is never blocked by its own cluster-policy gate.
 func reconcileClusterPolicy(ctx context.Context, admission ctrl.Admission, store *dal.Store, cfg Config, isLeader func() bool, logger logging.Logger) {
 	if !isLeader() {
 		return
@@ -1605,8 +1936,31 @@ func reconcileClusterPolicy(ctx context.Context, admission ctrl.Admission, store
 		MetadataMaxEntityBytes:      cfg.MetadataMaxEntityBytes,
 		MetadataMaxCommandBytes:     cfg.MetadataMaxCommandBytes,
 	}
+	if applied != nil {
+		desired.CapabilityActivations = make([]*commonpb.CapabilityActivation, 0, len(applied.GetCapabilityActivations()))
+		for _, activation := range applied.GetCapabilityActivations() {
+			if activation != nil {
+				desired.CapabilityActivations = append(desired.CapabilityActivations, activation.CloneVT())
+			}
+		}
+	}
 
+	// The operator-controlled revision is an independent monotonic guard. A
+	// capability-only reconciliation may advance a policy revision, but it must
+	// never make a stale leader's ordinary configuration look newer than the
+	// revision it was configured to own. A higher applied revision is therefore
+	// acceptable only when the operator-controlled fields still match; this lets
+	// later capability-only reconciliations continue without requiring another
+	// flag bump.
 	appliedRev := applied.GetRevision()
+	if applied != nil && appliedRev > cfg.ClusterPolicyRevision && !sameClusterPolicyConfiguration(applied, desired) {
+		return
+	}
+	if applied != nil && appliedRev == cfg.ClusterPolicyRevision && !sameClusterPolicyConfiguration(applied, desired) {
+		logger.Errorf("cluster policy revision %d conflicts with the configured policy; refusing to overwrite it", appliedRev)
+
+		return
+	}
 
 	switch {
 	case appliedRev > desired.GetRevision():
@@ -1633,6 +1987,25 @@ func reconcileClusterPolicy(ctx context.Context, admission ctrl.Admission, store
 		// the next tick retries while this node stays leader.
 		logger.WithFields(map[string]any{"error": err}).Errorf("Cluster policy proposal failed; will retry")
 	}
+}
+
+// sameClusterPolicyConfiguration compares the operator-controlled fields while
+// deliberately ignoring capability activations. Capabilities are reconciled
+// from membership evidence and may legitimately require a revision bump; all
+// other fields must remain protected by the configured revision.
+func sameClusterPolicyConfiguration(a, b *commonpb.ClusterPolicy) bool {
+	if a == nil || b == nil {
+		return a == b
+	}
+
+	left := a.CloneVT()
+	right := b.CloneVT()
+	left.Revision = 0
+	right.Revision = 0
+	left.CapabilityActivations = nil
+	right.CapabilityActivations = nil
+
+	return left.EqualVT(right)
 }
 
 // buildResponseSigner returns the Ed25519 response signer for the gRPC
