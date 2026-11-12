@@ -194,7 +194,7 @@ func MetadataMapSize(m map[string]*commonpb.MetadataValue) uint64 {
 // Per-entry failures are wrapped in ErrMetadataKeyValidation so the offending
 // key reaches operator logs and the gRPC ErrorInfo, matching the shape
 // validators.
-func (l MetadataLimits) ValidateMap(m map[string]*commonpb.MetadataValue) SerializableError {
+func (l MetadataLimits) ValidateMap(m map[string]*commonpb.MetadataValue) Describable {
 	if !l.Configured() {
 		return ErrMetadataLimitsUnconfigured
 	}
@@ -247,11 +247,15 @@ func (l MetadataLimits) ValidateMap(m map[string]*commonpb.MetadataValue) Serial
 // set/remove-metadata-field-type): they must be bounded by the same rule as a
 // key inside a map, or an oversized key could enter the canonical Pebble key
 // layout through the delete path.
-func (l MetadataLimits) ValidateKey(key string) SerializableError {
+func (l MetadataLimits) ValidateKey(key string) Describable {
 	if !l.Configured() {
 		return ErrMetadataLimitsUnconfigured
 	}
 
+	return l.validateKeyBytes(key)
+}
+
+func (l MetadataLimits) validateKeyBytes(key string) SerializableError {
 	if keyBytes := uint64(len(key)); keyBytes > l.MaxKeyBytes {
 		return &ErrMetadataKeyValidation{Key: key, Cause: &ErrMetadataLimitExceeded{
 			Dimension: MetadataLimitDimensionKey,
@@ -266,7 +270,7 @@ func (l MetadataLimits) ValidateKey(key string) SerializableError {
 // validateEntry checks one entry's key and value sizes. The key is checked
 // before the value so an entry violating both reports the key deterministically.
 func (l MetadataLimits) validateEntry(key string, value *commonpb.MetadataValue) SerializableError {
-	if err := l.ValidateKey(key); err != nil {
+	if err := l.validateKeyBytes(key); err != nil {
 		return err
 	}
 
@@ -286,7 +290,7 @@ func (l MetadataLimits) validateEntry(key string, value *commonpb.MetadataValue)
 // atomic, signed unit that becomes one Raft proposal — so a caller cannot
 // defeat the per-entity ceiling by spreading a large payload over many entities
 // in one command.
-func (l MetadataLimits) ValidateCommandBytes(total uint64) SerializableError {
+func (l MetadataLimits) ValidateCommandBytes(total uint64) Describable {
 	if !l.Configured() {
 		return ErrMetadataLimitsUnconfigured
 	}

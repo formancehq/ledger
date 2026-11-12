@@ -273,7 +273,7 @@ JWT/anonymous policy; no new endpoint or authorization requirement is introduced
 | Create transaction with `force` | ✅ | ✅ | Bypasses balance checks |
 | **Transactions (Read)** |
 | Get transaction by ID | ✅ | ✅ | |
-| List transactions | ✅ | ✅ | HTTP `GET /v3/{ledgerName}/transactions` and gRPC stream: cursor pagination, `startDate`/`endDate` range, and the generic `filter` (`source`/`destination`/`address`, `reference`, exact/range `id`, metadata) |
+| List transactions | ✅ | ✅ | HTTP `GET /v3/{ledgerName}/transactions` and gRPC stream: cursor pagination, `startDate`/`endDate` range, and the generic `filter` (`source`/`destination`/`address`, `reference`, `id`, metadata) |
 | **Metadata** |
 | Save account metadata | ✅ | ✅ | |
 | Delete account metadata | ✅ | ✅ | |
@@ -309,7 +309,7 @@ JWT/anonymous policy; no new endpoint or authorization requirement is introduced
 | Aggregate volumes | ✅ | ✅ | Per-asset aggregated volumes for filtered accounts (direct RPC, no prepared query needed) |
 | Account date fields (`firstUsage`/`insertionDate`/`updatedAt`) | ❌ | ✅ | Intentionally removed — not returned, not filterable, not paginatable. Replacement: typed `datetime` account metadata + index ([details](#6--account-date-fields-first_usage-insertion_date-updated_at)) |
 | **Logs** |
-| List logs | ✅ | ✅ | HTTP `GET /v3/{ledgerName}/logs` accepts text or structured JSON `id` filters (exact/range); the gRPC stream accepts the equivalent `QueryFilter` protobuf. `ledger == "foo"` selects one ledger when its opt-in index is ready. |
+| List logs | ✅ | ✅ | gRPC stream, supports `--filter 'ledger == "foo"'` for per-ledger listing (opt-in index) |
 | **Import/Export** |
 | Import logs | ⚠️ | ✅ | Interface defined but not implemented |
 | Export logs | ⚠️ | ✅ | Interface defined but not implemented |
@@ -779,19 +779,6 @@ HTTP(S) URL with a nonempty hostname. Invalid input returns HTTP 400 / gRPC
 echoing credentials. Rejection occurs before Raft, audit/ledger persistence and
 worker startup, and does not probe the remote source.
 
-**Asset mappings:** `mirrorSource.assetMappings` is an optional list of
-`{sourceAsset, asset, color}` entries. Each entry maps one v2 asset, matched
-exactly, to a v3 asset and color, so v2 assets that v3 cannot represent
-(`USDT_ETHEREUM/6`, `USD/0`) can be mirrored. Mappings apply after
-`rewriteRules`. Creation rejects an invalid list with HTTP 400 / gRPC
-`InvalidArgument` (reason `VALIDATION`), whose message names the
-first offending entry. A valid list has at most 256 entries, each
-with a unique non-empty `sourceAsset` of at most 64 bytes, a valid v3 `asset`,
-a `color` matching `^[A-Z]{0,32}$`, and a unique `(asset, color)` target. The
-list is fixed at creation and is returned in `mirrorSource.assetMappings` by
-`GET /v3/{ledgerName}`. See
-[asset mappings](../architecture/subsystems/events-mirror/mirror.md#asset-mappings).
-
 **Write guard:** All direct write operations (create transaction, save metadata, delete metadata, revert transaction) are rejected on mirror-mode ledgers with HTTP 409 (`LEDGER_IN_MIRROR_MODE`) or gRPC `FailedPrecondition`.
 
 **Sync progress:** `GET /v3/{ledgerName}` returns a `mirrorSyncProgress` object for mirror ledgers with:
@@ -807,17 +794,6 @@ list is fixed at creation and is returned in `mirrorSource.assetMappings` by
 - `REVERTED_TRANSACTION` — Replays a revert
 - `DELETE_METADATA` — Deletes a metadata key
 - Unknown log types are recorded as fill-gap entries (no-op for data, preserves log ID sequence)
-
-**Sync errors stall the mirror:** a v2 log that cannot be translated stops
-ingestion at that log. The cursor does not advance, the worker retries with
-backoff, and `mirrorSyncProgress.error` is set. Its `message` is returned as
-`[redacted]`; the reason is in the server's `Mirror sync error` log line. A
-posting asset that is not a valid v3 asset and has no `assetMappings` entry is
-such an error, as is an unmapped asset equal to an uncolored mapping target. A
-mirror that already stores invalid assets refuses to ingest and logs
-`ledger contains assets ingested before asset-mapping support`. Mirror source
-configuration cannot be changed, so recovery is to delete the mirror ledger and
-recreate it with the needed `assetMappings` or `drop` rewrite rules.
 
 **Promote a mirror ledger:** `POST /v3/{ledgerName}/promote`
 
@@ -885,11 +861,8 @@ classification, the field parity table and operator asymmetries, date coercion
 
 Prepared queries are reusable, named queries stored per-ledger. A nil filter is
 a match-all definition for the selected target. HTTP create accepts omitted or
-null `filter`; HTTP update requires a filter and uses null for filter
-removal. `Apply(UpdatePreparedQuery)` uses a nil protobuf filter for removal
-and requires an explicit target. HTTP update requires `target` and `filter`
-together and changes both atomically; use `null` to clear the filter.
-The new CLI requires `--target` and decodes public `id` against it before Apply.
+null `filter`; HTTP update treats omission as no change and null as filter
+removal. `Apply(UpdatePreparedQuery)` uses a nil protobuf filter for removal.
 Empty objects and empty textual expressions are invalid. Queries can be
 executed in two modes: `LIST` (returns matching entity IDs with cursor
 pagination, ascending by default and descending with `reverse`) and `AGGREGATE_VOLUMES` (returns aggregated volumes per asset for
@@ -1665,7 +1638,7 @@ Each error response includes a `google.rpc.ErrorInfo` detail with:
 - **`domain`**: Always `"ledger"`
 - **`metadata`**: Error-specific key-value pairs with context
 
-**Adding a new error**: define a typed error implementing `domain.Describable` (`Kind`, `Reason`). If the FSM can emit it, classify it: a definitive business rejection also implements `domain.SerializableError` and supplies typed `FailureDetails()` for audit and idempotency; a technical failure implements `UncommittedFailure` instead, which the apply path tests first so it exits before both writers without implementing `SerializableError`. Keep diagnostic text in `Error()`; public presentation must not expose it. The exhaustive `kindToGRPCCode` switch + reflection test enforce that no new error reaches the API without a mapping. Keep this table in sync as a reference.
+**Adding a new error**: define a typed error implementing `domain.Describable` (`Kind`, `Reason`). If the FSM can emit it, it is one of two kinds. A definitive business rejection implements `domain.SerializableError` and supplies typed `FailureDetails()` for audit and idempotency. A technical failure implements `domain.UncommittedFailure`, has no `FailureDetails()`, and exits before both writers. Keep diagnostic text in `Error()`; public presentation must not expose it. The exhaustive `kindToGRPCCode` switch + reflection test enforce that no new error reaches the API without a mapping. Keep this table in sync as a reference.
 
 | Error | gRPC Code | Reason | Metadata |
 |-------|-----------|--------|----------|

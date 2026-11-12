@@ -1131,7 +1131,7 @@ func (b *WriteSet) BeginOrder(orderIndex int) {
 // surface even though DirtyValues() ranges in Go's randomized map order.
 type storageFault struct {
 	key domain.VolumeKey
-	err domain.SerializableError
+	err domain.Describable
 }
 
 // compareVolumeKeys orders volume keys by (Account, Asset, Color, LedgerName).
@@ -1174,7 +1174,7 @@ type gatedLedgerType struct {
 // used — coverage checks on ledger reads here go through the same gate as
 // every handler-level read so a missing ledger declaration surfaces as
 // *ErrCoverageMiss instead of an opaque "ledger not found" skip.
-func (b *WriteSet) ValidateTransientVolumes(scope processing.Scope) domain.SerializableError {
+func (b *WriteSet) ValidateTransientVolumes(scope processing.Scope) domain.Describable {
 	// Published on the WriteSet rather than kept local: partitionVolumes
 	// consumes it at Merge time so the same gated resolution drives both the
 	// zero-balance assertion here and the persistence classification there,
@@ -1487,7 +1487,7 @@ func (b *WriteSet) GetLastAuditHash() []byte {
 	return b.LastAuditHash
 }
 
-func (b *WriteSet) IncrementNextSequenceID() (uint64, domain.SerializableError) {
+func (b *WriteSet) IncrementNextSequenceID() (uint64, domain.Describable) {
 	id := b.NextSequenceID
 	next, exhausted := domain.CheckedNextSequence(id, domain.SequenceCounterLog)
 	if exhausted != nil {

@@ -34,13 +34,20 @@ func orderSkippableReasons(order *raftcmdpb.Order) []commonpb.ErrorReason {
 // skip-tolerant order and discards it (no Commit) on skip. Sub-processors do
 // not need to perform their reads "dry" anymore; the overlay buffers their
 // reads-after-writes and drops the buffer on rollback.
-func matchOrderSkip(order *raftcmdpb.Order, err domain.SerializableError) (*commonpb.LogPayload, bool) {
+func matchOrderSkip(order *raftcmdpb.Order, err domain.Describable) (*commonpb.LogPayload, bool) {
 	allowed := orderSkippableReasons(order)
 	if len(allowed) == 0 {
 		return nil, false
 	}
 
-	target := domain.ReasonCode(err.Reason())
+	// A skip log records the audited failure it replaces; an uncommitted
+	// failure has no audited outcome to record.
+	audited, ok := err.(domain.SerializableError)
+	if !ok {
+		return nil, false
+	}
+
+	target := domain.ReasonCode(audited.Reason())
 	if target == commonpb.ErrorReason_ERROR_REASON_UNSPECIFIED {
 		return nil, false
 	}
@@ -55,7 +62,7 @@ func matchOrderSkip(order *raftcmdpb.Order, err domain.SerializableError) (*comm
 		return nil, false
 	}
 
-	details := domain.TypedFailureOf(err)
+	details := domain.TypedFailureOf(audited)
 
 	skipPayload := &commonpb.OrderSkippedLog{
 		Details: details,
@@ -111,7 +118,7 @@ func wrapSkippedPayloadForOrder(order *raftcmdpb.Order, skipped *commonpb.OrderS
 // expects a LedgerScoped order with a non-empty ledger name. Anything else
 // is a structural invariant violation: surface it loudly instead of
 // silently shipping a log with Id=0.
-func assignSkipLogIDAndDate(parent Scope, order *raftcmdpb.Order, payload *commonpb.LogPayload) domain.SerializableError {
+func assignSkipLogIDAndDate(parent Scope, order *raftcmdpb.Order, payload *commonpb.LogPayload) domain.Describable {
 	lso, ok := order.GetType().(*raftcmdpb.Order_LedgerScoped)
 	if !ok || lso.LedgerScoped == nil || lso.LedgerScoped.GetLedger() == "" {
 		return &domain.ErrInvalidExecutionPlan{Reason_: fmt.Sprintf("skip allocated for non-LedgerScoped order %T", order.GetType())}

@@ -49,7 +49,7 @@ type lruEntry struct {
 
 	compileOnce sync.Once
 	compiled    *compiledProgram
-	compileErr  domain.SerializableError
+	compileErr  domain.Describable
 }
 
 // compiledProgram is the script-dependent half of a local compile: the VM
@@ -89,7 +89,7 @@ type compiledLruEntry struct {
 // the verification record when the shape is one it reports sufficient,
 // otherwise the full static pass against the actual vars, so a failure carries
 // the verifier's own error (a "should not happen", see getOrCreateVM).
-func (e *compiledLruEntry) verifyVars(vars *numscriptlib.Vars) domain.SerializableError {
+func (e *compiledLruEntry) verifyVars(vars *numscriptlib.Vars) domain.Describable {
 	if e.verified.CheckVars(vars) {
 		return nil
 	}
@@ -224,7 +224,7 @@ func (c *NumscriptCache) getOrParseEntryHashed(hash [16]byte, script string) *lr
 // computed here; binding an order's vars (VarsEncoder.Encode) is per-order and
 // stays with the caller. The compile runs outside the cache locks; concurrent
 // callers for the same script block on the Once and share the single result.
-func (e *lruEntry) compileParsed() (program *compiledProgram, err domain.SerializableError) {
+func (e *lruEntry) compileParsed() (program *compiledProgram, err domain.Describable) {
 	e.compileOnce.Do(func() {
 		defer func() {
 			if panicErr := numscriptPanicToDescribable(recover()); panicErr != nil {
@@ -265,7 +265,7 @@ func (e *lruEntry) compileParsed() (program *compiledProgram, err domain.Seriali
 // sufficient means the program and vars were produced by different
 // compilations (a "should not happen") and is re-verified against the actual
 // vars so it fails with the verifier's own error, loudly.
-func (c *NumscriptCache) getOrCreateVM(hash [16]byte, program *compiledProgram, vars *numscriptlib.Vars) (*compiledLruEntry, domain.SerializableError) {
+func (c *NumscriptCache) getOrCreateVM(hash [16]byte, program *compiledProgram, vars *numscriptlib.Vars) (*compiledLruEntry, domain.Describable) {
 	if entry, ok := c.lookupCompiled(hash); ok && entry.program == program {
 		if verifyErr := entry.verifyVars(vars); verifyErr != nil {
 			return nil, verifyErr

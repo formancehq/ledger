@@ -47,13 +47,6 @@ func (*ErrCoverageMiss) Kind() domain.ErrorKind { return domain.KindInternal }
 func (*ErrCoverageMiss) Reason() string         { return domain.ErrReasonCoverageMiss }
 func (*ErrCoverageMiss) UncommittedFailure()    {}
 
-// Processing still requires SerializableError for errors propagated through
-// its handlers. This method exists for that interface only: the FSM observes
-// UncommittedFailure before attempting to build an AuditFailure.
-func (e *ErrCoverageMiss) FailureDetails() *commonpb.FailureDetails {
-	return nil // Admission contract violations are never audited outcomes.
-}
-
 // PublicDetails hides cache keys and Raft position from API error responses.
 // Error() retains diagnostic values for operator logs.
 func (*ErrCoverageMiss) PublicDetails() (string, map[string]string, bool) {
