@@ -202,3 +202,53 @@ func TestBackfillResetsAccountDatesAcrossLedgerDeletion(t *testing.T) {
 	defer func() { require.NoError(t, reader.Close()) }()
 	require.NoError(t, Verify(t.Context(), reader, logging.Testing()))
 }
+
+func TestBackfillAcceptsAccountTypeAddedToInitiallyUntypedLedger(t *testing.T) {
+	store := migrationStore(t)
+	appendFixture(t, store, 1, 100, &commonpb.LogPayload{Type: &commonpb.LogPayload_CreateLedger{CreateLedger: &commonpb.CreatedLedgerLog{Name: "ledger"}}})
+	appendFixture(t, store, 2, 200, &commonpb.LogPayload{Type: &commonpb.LogPayload_Apply{Apply: &commonpb.ApplyLedgerLog{
+		LedgerName: "ledger", Log: &commonpb.LedgerLog{Data: &commonpb.LedgerLogPayload{Payload: &commonpb.LedgerLogPayload_AddedAccountType{
+			AddedAccountType: &commonpb.AddedAccountTypeLog{AccountType: &commonpb.AccountType{Name: "normal", Pattern: "alice", Persistence: commonpb.AccountTypePersistence_ACCOUNT_TYPE_NORMAL}},
+		}}},
+	}}})
+	activateWrites(t, store)
+	require.NoError(t, Run(t.Context(), store))
+	marker, err := ReadMarker(store)
+	require.NoError(t, err)
+	require.True(t, marker.Complete)
+}
+
+func TestReconcileAfterDeltaIncludesPostCheckpointAccountUsage(t *testing.T) {
+	store := migrationStore(t)
+	appendFixture(t, store, 1, 100, &commonpb.LogPayload{Type: &commonpb.LogPayload_CreateLedger{CreateLedger: &commonpb.CreatedLedgerLog{Name: "ledger"}}})
+	transaction := func(source, destination string) *commonpb.LogPayload {
+		return &commonpb.LogPayload{Type: &commonpb.LogPayload_Apply{Apply: &commonpb.ApplyLedgerLog{
+			LedgerName: "ledger", Log: &commonpb.LedgerLog{Data: &commonpb.LedgerLogPayload{Payload: &commonpb.LedgerLogPayload_CreatedTransaction{
+				CreatedTransaction: &commonpb.CreatedTransaction{Transaction: &commonpb.Transaction{Postings: []*commonpb.Posting{{Source: source, Destination: destination}}}},
+			}}},
+		}}}
+	}
+	appendFixture(t, store, 2, 200, transaction("world", "alice"))
+	activateWrites(t, store)
+	require.NoError(t, Run(t.Context(), store))
+	key := (domain.AccountKey{LedgerName: "ledger", Account: "alice"}).Bytes()
+	row, err := attributes.New().AccountIncarnation.Get(store, key)
+	require.NoError(t, err)
+	require.Equal(t, uint64(200), row.GetUpdatedAt().GetData())
+
+	appendFixture(t, store, 3, 300, transaction("alice", "bob"))
+	// A checkpoint carries the complete marker for audit 2; importing audit 3
+	// must refresh the projection even though ordinary Run would skip it.
+	require.NoError(t, ReconcileAfterDelta(t.Context(), store))
+	marker, err := ReadMarker(store)
+	require.NoError(t, err)
+	require.True(t, marker.Complete)
+	require.Equal(t, uint64(3), marker.Cursor)
+	row, err = attributes.New().AccountIncarnation.Get(store, key)
+	require.NoError(t, err)
+	require.Equal(t, uint64(200), row.GetInsertedAt().GetData())
+	require.Equal(t, uint64(300), row.GetUpdatedAt().GetData())
+	row, err = attributes.New().AccountIncarnation.Get(store, (domain.AccountKey{LedgerName: "ledger", Account: "bob"}).Bytes())
+	require.NoError(t, err)
+	require.Equal(t, uint64(300), row.GetInsertedAt().GetData())
+}

@@ -7,9 +7,12 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"os"
+	ossignal "os/signal"
 	"path/filepath"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
 	"go.etcd.io/raft/v3/raftpb"
@@ -191,7 +194,11 @@ func Module() fx.Option {
 					}).Infof("Configuration validation done")
 				}
 				if !cfg.Restore {
-					if err := incarnationmigration.Run(context.Background(), store); err != nil {
+					migrationCtx, stopMigration := ossignal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+					migrationCtx = logging.ContextWithLogger(migrationCtx, logger)
+					err := incarnationmigration.Run(migrationCtx, store)
+					stopMigration()
+					if err != nil {
 						_ = store.Close()
 						return nil, fmt.Errorf("migrating local account incarnations before Raft startup: %w", err)
 					}
