@@ -25,6 +25,6 @@ func TestScanAccountLogsCompletionAtTrace(t *testing.T) {
 	}).Return(logger)
 	logger.EXPECT().Tracef("scanAccount complete")
 
-	_, err = scanAccount(db, attributes.New(), "test", "users:alice", false, logger)
+	_, err = scanAccount(db, attributes.New(), "test", "users:alice", false, false, logger)
 	require.NoError(t, err)
 }

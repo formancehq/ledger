@@ -28,11 +28,14 @@ const (
 )
 
 type NodeConfig struct {
-	NodeID              uint64 // Numeric rawNode ID
-	Peers               []Peer // Format: "<id>/<raftAddress>/<serviceAddress>" (e.g., "1/node-1:7777/node-1:8888")
-	WalDir              string
-	DataDir             string        // Data directory (for detecting RESTORED marker)
-	MaintenanceInterval time.Duration // Interval for background WAL snapshot + Pebble checkpoint (default: 30s)
+	// AdvertisedCapabilities is the local evidence already validated against
+	// the opened store. A nil value conservatively advertises write support only.
+	AdvertisedCapabilities []uint32
+	NodeID                 uint64 // Numeric rawNode ID
+	Peers                  []Peer // Format: "<id>/<raftAddress>/<serviceAddress>" (e.g., "1/node-1:7777/node-1:8888")
+	WalDir                 string
+	DataDir                string        // Data directory (for detecting RESTORED marker)
+	MaintenanceInterval    time.Duration // Interval for background WAL snapshot + Pebble checkpoint (default: 30s)
 
 	RotationThreshold    uint64        // Number of entries before rotating generations (default: 1000)
 	ElectionTick         int           // Election timeout in ticks (default: 10)

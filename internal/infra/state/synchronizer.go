@@ -7,6 +7,7 @@ import (
 	"github.com/antithesishq/antithesis-sdk-go/lifecycle"
 	"go.etcd.io/raft/v3/raftpb"
 
+	"github.com/formancehq/ledger/v3/internal/infra/incarnationmigration"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
 
@@ -101,6 +102,18 @@ func (s *Synchronizer) restoreCheckpoint(ctx context.Context, snapshotFetcher Sn
 		s.apply.logger.WithFields(map[string]any{
 			"size": size,
 		}).Infof("Checkpoint fetched from leader")
+		incoming, openErr := dal.OpenDirect(stagingDir, s.apply.logger)
+		if openErr != nil {
+			return fmt.Errorf("opening incoming checkpoint for account migration: %w", openErr)
+		}
+		migrationErr := incarnationmigration.Run(ctx, incoming)
+		closeErr := incoming.Close()
+		if migrationErr != nil {
+			return fmt.Errorf("migrating incoming checkpoint: %w", migrationErr)
+		}
+		if closeErr != nil {
+			return fmt.Errorf("closing migrated checkpoint: %w", closeErr)
+		}
 
 		return nil
 	})

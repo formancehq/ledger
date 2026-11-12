@@ -9,6 +9,8 @@ import (
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
+	"github.com/formancehq/ledger/v3/internal/infra/capabilities"
+	"github.com/formancehq/ledger/v3/internal/infra/incarnationmigration"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
@@ -176,6 +178,7 @@ func TestApplyProposalWorldIncarnationTracksMetadataWrites(t *testing.T) {
 			Payload: &raftcmdpb.LedgerScopedOrder_Apply{Apply: action},
 		}}}
 		proposal := makeProposal(index, order)
+		proposal.RequiredCapabilities = []uint32{uint32(capabilities.AccountIncarnationWritesV1)}
 		proposal.ExecutionPlan.Attributes = append(proposal.ExecutionPlan.Attributes, declareTestPlan(id, dal.SubAttrAccountIncarnation))
 		result, err := machine.ApplyEntries(t.Context(), store, makeEntry(t, index, proposal))
 		require.NoError(t, err)
@@ -198,4 +201,50 @@ func TestApplyProposalWorldIncarnationTracksMetadataWrites(t *testing.T) {
 	require.NotNil(t, updated)
 	require.Equal(t, opened.GetInsertedAt().GetData(), updated.GetInsertedAt().GetData())
 	require.Greater(t, updated.GetUpdatedAt().GetData(), opened.GetUpdatedAt().GetData())
+}
+
+func TestLegacyAccountDatesBackfillFromAcceptedFSMHistory(t *testing.T) {
+	machine, store, attrs := newTestMachine(t)
+	const ledger = "legacy-dates"
+	created, err := machine.ApplyEntries(t.Context(), store, makeEntry(t, 1, makeProposal(1, createLedgerOrder(ledger))))
+	require.NoError(t, err)
+	require.NoError(t, created.Results[0].Error)
+	account := domain.AccountKey{LedgerName: ledger, Account: "world"}
+	target := &commonpb.Target{Target: &commonpb.Target_Account{Account: &commonpb.TargetAccount{Addr: account.Account}}}
+	order := &raftcmdpb.Order{Type: &raftcmdpb.Order_LedgerScoped{LedgerScoped: &raftcmdpb.LedgerScopedOrder{
+		Ledger: ledger,
+		Payload: &raftcmdpb.LedgerScopedOrder_Apply{Apply: &raftcmdpb.LedgerApplyOrder{Data: &raftcmdpb.LedgerApplyOrder_AddMetadata{
+			AddMetadata: &raftcmdpb.SaveMetadataOrder{Target: target, Metadata: map[string]*commonpb.MetadataValue{"owner": commonpb.NewStringValue("alice")}},
+		}}},
+	}}}
+	result, err := machine.ApplyEntries(t.Context(), store, makeEntry(t, 2, makeProposal(2, order)))
+	require.NoError(t, err)
+	require.NoError(t, result.Results[0].Error)
+	before, err := attrs.AccountIncarnation.Get(store, account.Bytes())
+	require.NoError(t, err)
+	require.Nil(t, before)
+
+	policy := machine.State.ClusterPolicy.CloneVT()
+	policy.Revision++
+	policy.CapabilityActivations = []*commonpb.CapabilityActivation{{Id: uint32(capabilities.AccountIncarnationWritesV1), Active: true}}
+	batch := store.OpenWriteSession()
+	require.NoError(t, SaveClusterPolicy(batch, policy))
+	require.NoError(t, batch.Commit())
+	require.NoError(t, incarnationmigration.Run(t.Context(), store))
+	after, err := attrs.AccountIncarnation.Get(store, account.Bytes())
+	require.NoError(t, err)
+	require.NotNil(t, after)
+	require.Equal(t, after.GetInsertedAt().GetData(), after.GetUpdatedAt().GetData())
+	marker, err := incarnationmigration.ReadMarker(store)
+	require.NoError(t, err)
+	require.True(t, marker.Complete)
+	require.Equal(t, uint64(2), marker.AppliedIndex)
+	policy.CapabilityActivations = append(policy.CapabilityActivations, &commonpb.CapabilityActivation{Id: uint32(capabilities.AccountIncarnationHistoryCompleteV1), Active: true})
+	batch = store.OpenWriteSession()
+	require.NoError(t, SaveClusterPolicy(batch, policy))
+	require.NoError(t, batch.Commit())
+	reader, err := store.NewReadHandle()
+	require.NoError(t, err)
+	defer func() { require.NoError(t, reader.Close()) }()
+	require.NoError(t, incarnationmigration.Verify(t.Context(), reader, logging.Testing()))
 }

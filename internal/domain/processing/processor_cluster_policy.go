@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
+	"github.com/formancehq/ledger/v3/internal/infra/capabilities"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
@@ -43,6 +44,7 @@ func applyClusterPolicy(newPolicy *commonpb.ClusterPolicy, scope Scope) (*common
 		return nil, err
 	}
 	seenCapabilities := make(map[uint32]struct{}, len(newPolicy.GetCapabilityActivations()))
+	activeCapabilities := make(map[uint32]struct{}, len(newPolicy.GetCapabilityActivations()))
 	for _, activation := range newPolicy.GetCapabilityActivations() {
 		if activation == nil || activation.GetId() == 0 {
 			return nil, &domain.ErrClusterPolicyInvalid{Detail: "capability activation id must be non-zero"}
@@ -51,6 +53,14 @@ func applyClusterPolicy(newPolicy *commonpb.ClusterPolicy, scope Scope) (*common
 			return nil, &domain.ErrClusterPolicyInvalid{Detail: fmt.Sprintf("duplicate capability activation %d", activation.GetId())}
 		}
 		seenCapabilities[activation.GetId()] = struct{}{}
+		if activation.GetActive() {
+			activeCapabilities[activation.GetId()] = struct{}{}
+		}
+	}
+	if _, history := activeCapabilities[uint32(capabilities.AccountIncarnationHistoryCompleteV1)]; history {
+		if _, writes := activeCapabilities[uint32(capabilities.AccountIncarnationWritesV1)]; !writes {
+			return nil, &domain.ErrClusterPolicyInvalid{Detail: "account history requires incarnation writes"}
+		}
 	}
 
 	current := scope.GetClusterPolicy()
