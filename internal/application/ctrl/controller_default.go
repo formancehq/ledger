@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"slices"
+	"sync"
 	"time"
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
@@ -528,7 +529,11 @@ func (ctrl *DefaultController) GetAccount(ctx context.Context, ledgerName string
 		return nil, err
 	}
 
-	return scanAccount(handle, ctrl.attrs, ledgerInfo.GetName(), address, opts.CollapseColors, ctrl.logger)
+	includeDates, err := accountDatesActive(handle)
+	if err != nil {
+		return nil, err
+	}
+	return scanAccount(handle, ctrl.attrs, ledgerInfo.GetName(), address, opts.CollapseColors, includeDates, ctrl.logger)
 }
 
 // GetLedgerStats returns aggregate statistics for a ledger.
@@ -1999,13 +2004,20 @@ func (ctrl *DefaultController) ListPreparedQueries(ctx context.Context, ledger s
 // entityEnricher returns an EntityEnricher that uses the controller's attributes
 // and transaction assembly logic to hydrate raw entity IDs into full objects.
 func (ctrl *DefaultController) entityEnricher() *query.EntityEnricher {
+	var datesOnce sync.Once
+	var includeDates bool
+	var datesErr error
 	return &query.EntityEnricher{
 		EnrichAccount: func(reader dal.PebbleReader, ledgerName string, address string) (*commonpb.Account, error) {
+			datesOnce.Do(func() { includeDates, datesErr = accountDatesActive(reader) })
+			if datesErr != nil {
+				return nil, datesErr
+			}
 			// List-style enrichment paths do not surface a per-call collapse
 			// flag; entries are returned color-segregated and the caller can
 			// collapse client-side if needed. Per-account GetAccount honors
 			// the flag through the GetAccountOptions path.
-			return scanAccount(reader, ctrl.attrs, ledgerName, address, false, ctrl.logger)
+			return scanAccount(reader, ctrl.attrs, ledgerName, address, false, includeDates, ctrl.logger)
 		},
 		EnrichTransaction: func(ctx context.Context, reader dal.PebbleReader, ledgerName string, txID uint64) (*commonpb.Transaction, error) {
 			return ctrl.buildTransaction(ctx, reader, ledgerName, txID)

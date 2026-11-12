@@ -11,6 +11,8 @@ import (
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
+	"github.com/formancehq/ledger/v3/internal/infra/capabilities"
+	"github.com/formancehq/ledger/v3/internal/infra/incarnationmigration"
 	"github.com/formancehq/ledger/v3/internal/infra/state"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/query"
@@ -37,6 +39,15 @@ func TestAccountDatesComeFromIncarnation(t *testing.T) {
 		UpdatedAt:  &commonpb.Timestamp{Data: 200},
 	})
 	require.NoError(t, err)
+	require.NoError(t, batch.Commit())
+	policy := &commonpb.ClusterPolicy{CapabilityActivations: []*commonpb.CapabilityActivation{{Id: uint32(capabilities.AccountIncarnationWritesV1), Active: true}}}
+	batch = store.OpenWriteSession()
+	require.NoError(t, batch.SetProto([]byte{dal.ZoneGlobal, dal.SubGlobClusterPolicy}, policy))
+	require.NoError(t, batch.Commit())
+	require.NoError(t, incarnationmigration.Run(t.Context(), store))
+	policy.CapabilityActivations = append(policy.CapabilityActivations, &commonpb.CapabilityActivation{Id: uint32(capabilities.AccountIncarnationHistoryCompleteV1), Active: true})
+	batch = store.OpenWriteSession()
+	require.NoError(t, batch.SetProto([]byte{dal.ZoneGlobal, dal.SubGlobClusterPolicy}, policy))
 	require.NoError(t, batch.Commit())
 
 	controller := NewDefaultController(nil, store, logger, attrs, nil, nil, meter)
@@ -90,8 +101,22 @@ func TestAccountDatesAbsentWithoutIncarnation(t *testing.T) {
 	handle, err := store.NewReadHandle()
 	require.NoError(t, err)
 	defer func() { require.NoError(t, handle.Close()) }()
-	got, err := scanAccount(handle, attributes.New(), "ledger", "users:alice", false)
+	got, err := scanAccount(handle, attributes.New(), "ledger", "users:alice", false, true)
 	require.NoError(t, err)
 	require.Nil(t, got.GetInsertionDate())
 	require.Nil(t, got.GetUpdatedAt())
+}
+
+func TestAccountDatesRequireLocalMigrationMarker(t *testing.T) {
+	store, err := dal.NewStore(t.TempDir(), logging.Testing(), noop.NewMeterProvider().Meter("test"), dal.DefaultConfig())
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, store.Close()) })
+	batch := store.OpenWriteSession()
+	require.NoError(t, batch.SetProto([]byte{dal.ZoneGlobal, dal.SubGlobClusterPolicy}, &commonpb.ClusterPolicy{
+		CapabilityActivations: []*commonpb.CapabilityActivation{{Id: uint32(capabilities.AccountIncarnationWritesV1), Active: true}, {Id: uint32(capabilities.AccountIncarnationHistoryCompleteV1), Active: true}},
+	}))
+	require.NoError(t, batch.Commit())
+	active, err := accountDatesActive(store)
+	require.False(t, active)
+	require.ErrorContains(t, err, "without a completed local migration")
 }
