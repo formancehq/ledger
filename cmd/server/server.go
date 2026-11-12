@@ -57,6 +57,7 @@ func NewRootCommand() *cobra.Command {
 	}
 
 	rootCmd.AddCommand(NewRunCommand())
+	rootCmd.AddCommand(NewMigrateIncarnationsCommand())
 
 	return rootCmd
 }
