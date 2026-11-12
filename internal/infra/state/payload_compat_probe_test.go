@@ -115,7 +115,7 @@ func TestProposalPayloadCompatibilityProbe(t *testing.T) {
 		}
 	}
 	var report struct {
-		Policy    []byte
+		Policy    compatibilityPolicyState
 		Ledgers   []*commonpb.LedgerInfo
 		Audit     []*auditpb.AuditEntry
 		Items     [][]*auditpb.AuditItem
@@ -164,13 +164,38 @@ func TestProposalPayloadCompatibilityProbe(t *testing.T) {
 	}
 	require.Len(t, report.Audit, expectedAudits)
 
-	report.Policy, err = machine.State.ClusterPolicy.MarshalVT()
-	require.NoError(t, err)
+	report.Policy = compatibilityPolicyStateFrom(machine.State.ClusterPolicy)
 	report.Applied = machine.State.LastAppliedIndex
 	report.Timestamp = machine.State.LastAppliedTimestamp
 	data, err := json.Marshal(report)
 	require.NoError(t, err)
 	require.NoError(t, os.WriteFile(output, data, 0o600))
+}
+
+// Compare the RC.3 policy contract by value. Later policy fields may be added
+// without changing the meaning of the fields already persisted by RC.3.
+type compatibilityPolicyState struct {
+	Revision                    uint64
+	IdempotencyTtlMicros        uint64
+	QueryCheckpointLimit        uint64
+	MetadataMaxEntriesPerEntity uint64
+	MetadataMaxKeyBytes         uint64
+	MetadataMaxValueBytes       uint64
+	MetadataMaxEntityBytes      uint64
+	MetadataMaxCommandBytes     uint64
+}
+
+func compatibilityPolicyStateFrom(policy *commonpb.ClusterPolicy) compatibilityPolicyState {
+	return compatibilityPolicyState{
+		Revision:                    policy.GetRevision(),
+		IdempotencyTtlMicros:        policy.GetIdempotencyTtlMicros(),
+		QueryCheckpointLimit:        policy.GetQueryCheckpointLimit(),
+		MetadataMaxEntriesPerEntity: policy.GetMetadataMaxEntriesPerEntity(),
+		MetadataMaxKeyBytes:         policy.GetMetadataMaxKeyBytes(),
+		MetadataMaxValueBytes:       policy.GetMetadataMaxValueBytes(),
+		MetadataMaxEntityBytes:      policy.GetMetadataMaxEntityBytes(),
+		MetadataMaxCommandBytes:     policy.GetMetadataMaxCommandBytes(),
+	}
 }
 
 func compatibilityProposalBytes(t *testing.T, index uint64, order *raftcmdpb.Order, payload bool) []byte {

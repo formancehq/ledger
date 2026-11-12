@@ -125,8 +125,8 @@ Numeric wire tags provide an oracle independent of the candidate codec. It
 compares historical audit entries, items and hashes byte-for-byte between the
 released and current binaries. Native policies are unaudited: the probe asserts
 exact audit counts, verifies every remaining chain link and compares final
-policy, ledgers, applied index and HLC. The probe compares policy protobuf
-bytes across the two binaries, independent of their JSON projections. It
+policy, ledgers, applied index and HLC. The probe compares the RC.3 policy
+fields by value, independent of JSON projections and later field additions. It
 closes an RC.3 Pebble store and WAL, opens them with the candidate, replays a
 committed legacy entry, writes new policy and business payloads, then reopens
 the result in another candidate process. The historical prefix, including
