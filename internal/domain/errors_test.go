@@ -557,3 +557,15 @@ func TestWriteGateErrorsDescribable(t *testing.T) {
 	wrapped := fmt.Errorf("admission: %w", ErrWritesBlockedDiskFull)
 	require.ErrorIs(t, wrapped, ErrWritesBlockedDiskFull)
 }
+
+// TestPreloadUnavailableIsUncommittedNotAudited pins that the preload gap is an
+// uncommitted interruption and offers no audited outcome to persist.
+func TestPreloadUnavailableIsUncommittedNotAudited(t *testing.T) {
+	t.Parallel()
+
+	_, uncommitted := ErrPreloadUnavailable.(UncommittedFailure)
+	require.True(t, uncommitted)
+
+	_, auditable := ErrPreloadUnavailable.(SerializableError)
+	require.False(t, auditable, "PRELOAD_UNAVAILABLE must not expose FailureDetails")
+}

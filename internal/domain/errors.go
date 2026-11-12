@@ -174,15 +174,13 @@ type Describable interface {
 	Reason() string
 }
 
-// SerializableError is the return contract for FSM order processing. Audited
-// business rejections supply typed details; UncommittedFailure returns nil
-// because it exits before the audit and idempotency writers. Error() retains
-// diagnostic text for logs.
+// SerializableError is the contract of an audited FSM rejection: it supplies the
+// typed details persisted in the audit chain and the idempotency registry.
+// Error() retains diagnostic text for logs.
 //
-// Every error the FSM can emit must satisfy it, which is why the apply path
-// types its returns as SerializableError. The apply path tests the producer's
-// UncommittedFailure marker before asking for FailureDetails, so technical
-// failures cannot reach the audit chain.
+// Order processing returns Describable. The apply path tests the producer's
+// UncommittedFailure marker first, so technical failures exit before the audit
+// and idempotency writers; every other failure must satisfy SerializableError.
 //
 // API adapters read the presentation through PublicErrorDetails, so a type with
 // sensitive diagnostic context can publish a separate view. Audited failures
@@ -214,6 +212,7 @@ func (*ErrInvalidOrderType) UncommittedFailure()             {}
 func (*ErrMirrorV2LogIDGap) UncommittedFailure()             {}
 func (*ErrMirrorV2LogIDInvalid) UncommittedFailure()         {}
 func (*ErrNumscriptRuntime) UncommittedFailure()             {}
+func (errPreloadUnavailable) UncommittedFailure()            {}
 func (*ErrSequenceExhausted) UncommittedFailure()            {}
 func (*ErrStaleClusterPolicy) UncommittedFailure()           {}
 func (errStaleInputsResolution) UncommittedFailure()         {}
@@ -549,14 +548,15 @@ var ErrStaleInputsResolution SerializableError = errStaleInputsResolution{}
 // ErrPreloadUnavailable — admission could not build the preload set for an order
 // (e.g. Numscript dependency discovery failed against current state). When the
 // batch carries an idempotency key, admission forwards the order to the FSM
-// (marked OrderTechnical.preload_unavailable) rather than failing fast, so the
-// FSM can replay a frozen outcome. If none exists it returns this technical
-// interruption without an audit entry. Retryable (Kind=Unavailable) and
-// deliberately NOT freezable: it is a preparation gap, not an authoritative
-// business verdict — freezing it could let
-// a preload-unavailable retry shadow the real outcome of a concurrent same-key
-// proposal. A retry re-admits (and re-resolves) or replays the now-frozen
-// outcome. See EN-1406.
+// (marked OrderTechnical.preload_unavailable) so the dedup gate can replay a
+// frozen outcome. Without one, ProcessOrders executes the batch in sequence and
+// fails the forwarded order when it reaches it, so a definitive failure of an
+// earlier order wins and is frozen as usual. This technical interruption is
+// retryable (Kind=Unavailable) and deliberately NOT freezable or audited: it is
+// a preparation gap, not an authoritative business verdict — freezing it could
+// let a preload-unavailable retry shadow the real outcome of a concurrent
+// same-key proposal. A retry re-admits (and re-resolves) or replays the
+// now-frozen outcome. See EN-1406.
 type errPreloadUnavailable struct{}
 
 func (errPreloadUnavailable) Error() string {
