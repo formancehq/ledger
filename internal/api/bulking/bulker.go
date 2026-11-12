@@ -136,7 +136,7 @@ func (b *Bulker) processElement(ctx context.Context, ctrl ledgercontroller.Contr
 	case ActionCreateTransaction:
 		rs, err := data.Data.(TransactionRequest).ToCore()
 		if err != nil {
-			return nil, 0, fmt.Errorf("error parsing element: %s", err)
+			return nil, 0, fmt.Errorf("error parsing element: %w", err)
 		}
 
 		log, createTransactionResult, _, err := ctrl.CreateTransaction(ctx, ledgercontroller.Parameters[ledgercontroller.CreateTransaction]{
