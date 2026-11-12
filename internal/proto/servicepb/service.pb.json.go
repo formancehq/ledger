@@ -56,16 +56,6 @@ func (x *ExecuteNumscriptPayload) MarshalJSON() ([]byte, error) {
 }
 
 func (x *ExecuteNumscriptPayload) UnmarshalJSON(data []byte) error {
-	var fields map[string]json.RawValue
-	if err := json.Unmarshal(data, &fields); err != nil {
-		return err
-	}
-	if _, ok := fields["reference"]; ok {
-		return errors.New("numscript execution does not accept a transaction reference")
-	}
-	if _, ok := fields["postings"]; ok {
-		return errors.New("numscript execution does not accept direct postings")
-	}
 	var create CreateTransactionPayload
 	if err := create.UnmarshalJSON(data); err != nil {
 		return err

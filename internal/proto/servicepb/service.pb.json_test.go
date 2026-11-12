@@ -92,8 +92,9 @@ func TestExecuteNumscriptPayload_JSONContract(t *testing.T) {
 
 	for _, body := range []string{
 		`{"script":{"plain":"send [USD 1] (source = @world destination = @alice)"},"reference":"tx-1"}`,
-		`{"postings":[]}`,
+		`{"script":{"plain":"send [USD 1] (source = @world destination = @alice)"},"postings":[],"Reference":"ignored"}`,
 	} {
-		require.Error(t, json.Unmarshal([]byte(body), &payload))
+		require.NoError(t, json.Unmarshal([]byte(body), &payload))
+		require.NotNil(t, payload.GetScript())
 	}
 }

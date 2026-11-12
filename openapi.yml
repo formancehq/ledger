@@ -4801,14 +4801,11 @@ components:
       oneOf:
         - required: [script]
         - required: [scriptReference]
-      not:
-        anyOf:
-          - required: [postings]
-          - required: [reference]
       description: |
         Execute a Numscript independently of transaction creation. Specify
-        exactly one of `script` and `scriptReference`. The request cannot
-        contain `postings` or a transaction `reference`.
+        exactly one of `script` and `scriptReference`. As with transaction
+        creation, unrecognized properties are ignored; `postings` and
+        `reference` have no effect on this action.
       properties:
         accountMetadata:
           type: object
