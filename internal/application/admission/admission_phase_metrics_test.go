@@ -171,9 +171,9 @@ func TestAdmitRecordsEnteredPhasesOnFailure(t *testing.T) {
 		store := createTestStore(t)
 		a, reader := createTestAdmissionWithReader(t, store, nil)
 
-		// A CreateTransaction referencing a numscript that does not exist fails in
-		// resolveScriptsAndEnrichNeeds (resolveNumscriptReference) — i.e. during
-		// the scripts phase, after orders_preparation has completed.
+		// An unparsable inline script fails dependency discovery in
+		// resolveScriptsAndEnrichNeeds — i.e. during the scripts phase, after
+		// orders_preparation has completed.
 		_, err := a.Admit(attributedTestContext(context.Background()), servicepb.UnsignedApplyRequest("", &servicepb.Request{
 			Type: &servicepb.Request_Apply{
 				Apply: &servicepb.LedgerApplyRequest{
@@ -181,17 +181,15 @@ func TestAdmitRecordsEnteredPhasesOnFailure(t *testing.T) {
 					Action: &servicepb.LedgerAction{
 						Data: &servicepb.LedgerAction_CreateTransaction{
 							CreateTransaction: &servicepb.CreateTransactionPayload{
-								ScriptReference: &servicepb.ScriptReference{
-									Name:    "does-not-exist",
-									Version: "latest",
-								},
+								Script: &commonpb.Script{Plain: "send [USD/2"},
 							},
 						},
 					},
 				},
 			},
 		}))
-		require.Error(t, err)
+		var parseErr *domain.ErrNumscriptParse
+		require.ErrorAs(t, err, &parseErr)
 
 		counts := recordedPhaseCounts(t, reader)
 

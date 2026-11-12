@@ -1347,6 +1347,13 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 		return result, nil
 	}
 
+	if invalid := validateAbsenceExpectations(proposal.GetExecutionPlan(), len(proposals.BatchOrders(proposal))); invalid != nil {
+		return &ApplyResult{
+			ProposalID: proposal.GetId(),
+			Error:      &domain.BusinessError{Err: invalid},
+		}, nil
+	}
+
 	// Preload is a no-op when the proposal carries no ExecutionPlan.
 	genByte := byte(fsm.Registry.Cache.CurrentGeneration() % 2)
 	if err := fsm.Preload(proposal.GetExecutionPlan(), batch, genByte); err != nil {

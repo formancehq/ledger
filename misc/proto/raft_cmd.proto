@@ -776,6 +776,20 @@ message ExecutionPlan {
   // wire level.
   repeated ReloadIdempotencyKey idempotency_keys = 4;
 
+  // Keys admission observed as absent while resolving one order's inputs.
+  // Each key is also in that order's coverage. The FSM rejects the order with
+  // ERROR_REASON_STALE_INPUTS_RESOLUTION (retryable) if the key is present
+  // when the order reads it, since admission planned nothing that depends on
+  // its value.
+  repeated AbsenceExpectation absence_expectations = 5;
+}
+
+// AbsenceExpectation binds a key admission observed as absent to the order,
+// by its position in the batch, whose planning depended on that absence.
+message AbsenceExpectation {
+  uint32 order_index = 1;
+  uint32 attr_code = 2;
+  AttributeID id = 3;
 }
 
 // AttributeCoverage declares the FSM apply path may access `id` under

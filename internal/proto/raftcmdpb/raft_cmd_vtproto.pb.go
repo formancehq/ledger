@@ -2052,6 +2052,13 @@ func (m *ExecutionPlan) CloneVT() *ExecutionPlan {
 		}
 		r.IdempotencyKeys = tmpContainer
 	}
+	if rhs := m.AbsenceExpectations; rhs != nil {
+		tmpContainer := make([]*AbsenceExpectation, len(rhs))
+		for k, v := range rhs {
+			tmpContainer[k] = v.CloneVT()
+		}
+		r.AbsenceExpectations = tmpContainer
+	}
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
 		copy(r.unknownFields, m.unknownFields)
@@ -2060,6 +2067,25 @@ func (m *ExecutionPlan) CloneVT() *ExecutionPlan {
 }
 
 func (m *ExecutionPlan) CloneMessageVT() proto.Message {
+	return m.CloneVT()
+}
+
+func (m *AbsenceExpectation) CloneVT() *AbsenceExpectation {
+	if m == nil {
+		return (*AbsenceExpectation)(nil)
+	}
+	r := new(AbsenceExpectation)
+	r.OrderIndex = m.OrderIndex
+	r.AttrCode = m.AttrCode
+	r.Id = m.Id.CloneVT()
+	if len(m.unknownFields) > 0 {
+		r.unknownFields = make([]byte, len(m.unknownFields))
+		copy(r.unknownFields, m.unknownFields)
+	}
+	return r
+}
+
+func (m *AbsenceExpectation) CloneMessageVT() proto.Message {
 	return m.CloneVT()
 }
 
@@ -5799,11 +5825,53 @@ func (this *ExecutionPlan) EqualVT(that *ExecutionPlan) bool {
 			}
 		}
 	}
+	if len(this.AbsenceExpectations) != len(that.AbsenceExpectations) {
+		return false
+	}
+	for i, vx := range this.AbsenceExpectations {
+		vy := that.AbsenceExpectations[i]
+		if p, q := vx, vy; p != q {
+			if p == nil {
+				p = &AbsenceExpectation{}
+			}
+			if q == nil {
+				q = &AbsenceExpectation{}
+			}
+			if !p.EqualVT(q) {
+				return false
+			}
+		}
+	}
 	return string(this.unknownFields) == string(that.unknownFields)
 }
 
 func (this *ExecutionPlan) EqualMessageVT(thatMsg proto.Message) bool {
 	that, ok := thatMsg.(*ExecutionPlan)
+	if !ok {
+		return false
+	}
+	return this.EqualVT(that)
+}
+func (this *AbsenceExpectation) EqualVT(that *AbsenceExpectation) bool {
+	if this == that {
+		return true
+	} else if this == nil || that == nil {
+		return false
+	}
+	if this.OrderIndex != that.OrderIndex {
+		return false
+	}
+	if this.AttrCode != that.AttrCode {
+		return false
+	}
+	if !this.Id.EqualVT(that.Id) {
+		return false
+	}
+	return string(this.unknownFields) == string(that.unknownFields)
+}
+
+func (this *AbsenceExpectation) EqualMessageVT(thatMsg proto.Message) bool {
+	that, ok := thatMsg.(*AbsenceExpectation)
 	if !ok {
 		return false
 	}
@@ -10915,6 +10983,18 @@ func (m *ExecutionPlan) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
+	if len(m.AbsenceExpectations) > 0 {
+		for iNdEx := len(m.AbsenceExpectations) - 1; iNdEx >= 0; iNdEx-- {
+			size, err := m.AbsenceExpectations[iNdEx].MarshalToSizedBufferVT(dAtA[:i])
+			if err != nil {
+				return 0, err
+			}
+			i -= size
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+			i--
+			dAtA[i] = 0x2a
+		}
+	}
 	if len(m.IdempotencyKeys) > 0 {
 		for iNdEx := len(m.IdempotencyKeys) - 1; iNdEx >= 0; iNdEx-- {
 			size, err := m.IdempotencyKeys[iNdEx].MarshalToSizedBufferVT(dAtA[:i])
@@ -10950,6 +11030,59 @@ func (m *ExecutionPlan) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.LastPersistedIndex))
 		i--
 		dAtA[i] = 0x9
+	}
+	return len(dAtA) - i, nil
+}
+
+func (m *AbsenceExpectation) MarshalVT() (dAtA []byte, err error) {
+	if m == nil {
+		return nil, nil
+	}
+	size := m.SizeVT()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBufferVT(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *AbsenceExpectation) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *AbsenceExpectation) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	if m == nil {
+		return 0, nil
+	}
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if m.unknownFields != nil {
+		i -= len(m.unknownFields)
+		copy(dAtA[i:], m.unknownFields)
+	}
+	if m.Id != nil {
+		size, err := m.Id.MarshalToSizedBufferVT(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		i--
+		dAtA[i] = 0x1a
+	}
+	if m.AttrCode != 0 {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.AttrCode))
+		i--
+		dAtA[i] = 0x10
+	}
+	if m.OrderIndex != 0 {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.OrderIndex))
+		i--
+		dAtA[i] = 0x8
 	}
 	return len(dAtA) - i, nil
 }
@@ -11516,9 +11649,14 @@ func (m *ExecutionPlan) ResetVT() {
 			mm.Reset()
 		}
 		f1 := m.IdempotencyKeys[:0]
+		for _, mm := range m.AbsenceExpectations {
+			mm.Reset()
+		}
+		f2 := m.AbsenceExpectations[:0]
 		m.Reset()
 		m.Attributes = f0
 		m.IdempotencyKeys = f1
+		m.AbsenceExpectations = f2
 	}
 }
 func (m *ExecutionPlan) ReturnToVTPool() {
@@ -13717,6 +13855,32 @@ func (m *ExecutionPlan) SizeVT() (n int) {
 			l = e.SizeVT()
 			n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 		}
+	}
+	if len(m.AbsenceExpectations) > 0 {
+		for _, e := range m.AbsenceExpectations {
+			l = e.SizeVT()
+			n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+		}
+	}
+	n += len(m.unknownFields)
+	return n
+}
+
+func (m *AbsenceExpectation) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.OrderIndex != 0 {
+		n += 1 + protohelpers.SizeOfVarint(uint64(m.OrderIndex))
+	}
+	if m.AttrCode != 0 {
+		n += 1 + protohelpers.SizeOfVarint(uint64(m.AttrCode))
+	}
+	if m.Id != nil {
+		l = m.Id.SizeVT()
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
 	n += len(m.unknownFields)
 	return n
@@ -25536,6 +25700,172 @@ func (m *ExecutionPlan) UnmarshalVT(dAtA []byte) error {
 				}
 			}
 			if err := m.IdempotencyKeys[len(m.IdempotencyKeys)-1].UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
+		case 5:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field AbsenceExpectations", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if len(m.AbsenceExpectations) == cap(m.AbsenceExpectations) {
+				m.AbsenceExpectations = append(m.AbsenceExpectations, &AbsenceExpectation{})
+			} else {
+				m.AbsenceExpectations = m.AbsenceExpectations[:len(m.AbsenceExpectations)+1]
+				if m.AbsenceExpectations[len(m.AbsenceExpectations)-1] == nil {
+					m.AbsenceExpectations[len(m.AbsenceExpectations)-1] = &AbsenceExpectation{}
+				}
+			}
+			if err := m.AbsenceExpectations[len(m.AbsenceExpectations)-1].UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
+		default:
+			iNdEx = preIndex
+			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if (skippy < 0) || (iNdEx+skippy) < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.unknownFields = append(m.unknownFields, dAtA[iNdEx:iNdEx+skippy]...)
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *AbsenceExpectation) UnmarshalVT(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return protohelpers.ErrIntOverflow
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: AbsenceExpectation: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: AbsenceExpectation: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field OrderIndex", wireType)
+			}
+			m.OrderIndex = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.OrderIndex |= uint32(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 2:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field AttrCode", wireType)
+			}
+			m.AttrCode = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.AttrCode |= uint32(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 3:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Id", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if m.Id == nil {
+				m.Id = &AttributeID{}
+			}
+			if err := m.Id.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
 				return err
 			}
 			iNdEx = postIndex
