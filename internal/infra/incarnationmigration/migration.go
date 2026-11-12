@@ -274,10 +274,17 @@ func Verify(ctx context.Context, source dal.PebbleReader, logger logging.Logger)
 		return err
 	}
 	defer func() { _ = got.Close() }()
+	var compared uint64
 	for hasWant, hasGot := want.First(), got.First(); hasWant || hasGot; hasWant, hasGot = want.Next(), got.Next() {
+		if compared%1024 == 0 {
+			if err := ctx.Err(); err != nil {
+				return err
+			}
+		}
 		if !hasWant || !hasGot || !bytes.Equal(want.Key(), got.Key()) || !bytes.Equal(want.Value(), got.Value()) {
 			return fmt.Errorf("account incarnation projection differs from audited history")
 		}
+		compared++
 	}
 	if err := want.Error(); err != nil {
 		return err
