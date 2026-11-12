@@ -23,3 +23,21 @@ func TestProposeAppliesAdmissionBeforeIndexReservation(t *testing.T) {
 	require.ErrorIs(t, err, rejected)
 	require.Equal(t, uint64(10), n.indexTracker.Next())
 }
+
+func TestProposeRejectsLegacyAccountWriteWhileActivationIsPending(t *testing.T) {
+	called := false
+	n := &Node{
+		indexTracker:                  NewIndexTracker(10),
+		pendingIncarnationActivations: 1,
+		proposalAdmission: func(context.Context, *Proposal) error {
+			called = true
+			return nil
+		},
+	}
+	proposal := newProposal(42, []byte("proposal"), nil)
+	proposal.touchesAccounts = true
+	_, err := n.Propose(context.Background(), proposal)
+	require.ErrorContains(t, err, "pending incarnation capability activation")
+	require.False(t, called)
+	require.Equal(t, uint64(10), n.indexTracker.Next())
+}
