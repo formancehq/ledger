@@ -193,15 +193,15 @@ func Verify(ctx context.Context, source dal.PebbleReader, logger logging.Logger)
 	if err != nil {
 		return err
 	}
-	if !capabilities.IsActive(policy, capabilities.AccountIncarnationHistoryCompleteV1) {
-		return nil
-	}
 	marker, err := ReadMarker(source)
 	if err != nil {
 		return err
 	}
 	if !marker.Complete {
-		return errors.New("account history is active without a complete local migration")
+		if capabilities.IsActive(policy, capabilities.AccountIncarnationHistoryCompleteV1) {
+			return errors.New("account history is active without a complete local migration")
+		}
+		return nil
 	}
 	dir, err := os.MkdirTemp("", "checker-incarnations-*")
 	if err != nil {
