@@ -45,6 +45,8 @@ Backfill only the durable attribute zone; do not load every historical incarnati
 
 An empty new learner cannot currently join after the history capability is active: join admission requires capability evidence before the learner receives a checkpoint. Seed it from a converted backup before joining, or add a pending-learner protocol in a follow-up. This restriction does not affect rolling restarts of existing members.
 
+`TestAccountIncarnationRolloutAcrossOfflineMigration` exercises the data path across these milestones with real admission and FSM proposals: legacy account writes, write activation, live incarnation updates, stopped-store backfill, restart, history activation, account-date reads, and a later write. It also checks the startup guard, marker evidence, idempotent backfill, metadata-only accounts, and audited-history verification. Its in-process proposer replaces Raft transport and the membership activation gate, which have separate tests. A three-node rolling migration and capability activation remains an end-to-end deployment test to run before enabling this rollout in production.
+
 The current `main` binary rejects unknown cache-slot types during restore and does not update incarnation state. The preparatory rollout must prove old/new checkpoint and proposal compatibility; after the first incarnation cache row or semantic proposal is committed, downgrade requires a separately tested recovery path. Removing `opened_at_raft_index` avoids inventing an unprovable historical opening index; future lifetime identity needs its own explicit design.
 
 ## Local benchmark
