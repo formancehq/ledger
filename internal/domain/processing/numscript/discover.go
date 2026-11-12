@@ -64,6 +64,11 @@ type DiscoveryResult struct {
 // force mirrors the transaction's force flag: with force the resolver sees
 // unlimited balances, so bounded sources still resolve but no real balance is
 // consulted.
+//
+// A failure still returns a result: the dependency sets and InputsHash
+// established before the failure, with no effects. Re-running the script over
+// the same values for those keys fails the same way, which is what lets the
+// FSM reproduce an admission-time failure from declared coverage alone.
 func DiscoverNumscriptDependencies(
 	cache *NumscriptCache,
 	script string,
@@ -74,7 +79,7 @@ func DiscoverNumscriptDependencies(
 ) (*DiscoveryResult, error) {
 	entry := cache.getOrParseEntry(script)
 	if entry.script.err != nil {
-		return nil, entry.script.err
+		return &DiscoveryResult{}, entry.script.err
 	}
 
 	parsed := entry.script.program
@@ -86,20 +91,16 @@ func DiscoverNumscriptDependencies(
 
 	resolved, err := SafeResolveDependencies(parsed, context.Background(), variablesMap, recording)
 	if err != nil {
-		return nil, &DependencyResolutionError{
+		readVolumes, readMetadata := recording.ReadKeys(ledgerName)
+
+		return &DiscoveryResult{
+			ReadVolumes:  readVolumes,
+			ReadMetadata: readMetadata,
+			InputsHash:   recording.Hash(),
+		}, &DependencyResolutionError{
 			Cause:                err,
 			MutableReadAttempted: recording.MutableReadAttempted(),
 		}
-	}
-
-	// Compile after resolution, so a script resolution rejects (e.g. asset
-	// scaling, a scope-qualified read) keeps its specific error. A compile
-	// failure is returned bare, not as a DependencyResolutionError: it depends
-	// only on the script and vars, never on state, so admission terminates it
-	// as a freezable validation failure (or surfaces a panic loudly).
-	compiled, compileErr := compileScript(entry, vars)
-	if compileErr != nil {
-		return nil, compileErr
 	}
 
 	result := &DiscoveryResult{
@@ -119,14 +120,19 @@ func DiscoverNumscriptDependencies(
 		result.ReadVolumes[domain.NewVolumeKey(ledgerName, dep.Account, dep.Asset, dep.Color)] = struct{}{}
 	}
 
+	// Scope-qualified WRITE dependencies are rejected. Writes are recorded
+	// without touching the Store, so a scoped destination would otherwise be
+	// silently collapsed onto the unscoped (account, asset) volume — a silent
+	// semantic loss, since Ledger account volumes and metadata have no scope
+	// dimension. Color is modelled, so a colored write preloads its own
+	// segregated bucket.
+	scopedWrite := false
+
 	for dep := range resolved.AccountsWrites {
-		// Reject scope-qualified WRITE dependencies. Writes are recorded without
-		// touching the Store, so a scoped destination would otherwise be silently
-		// collapsed onto the unscoped (account, asset) volume — a silent semantic
-		// loss, since Ledger account volumes have no scope dimension. Color is
-		// modelled, so a colored write preloads its own segregated bucket.
 		if dep.Scope != "" {
-			return nil, domain.ErrScopedBalanceUnsupported
+			scopedWrite = true
+
+			continue
 		}
 		result.WriteVolumes[domain.NewVolumeKey(ledgerName, dep.Account, dep.Asset, dep.Color)] = struct{}{}
 	}
@@ -139,16 +145,29 @@ func DiscoverNumscriptDependencies(
 	}
 
 	for dep := range resolved.MetaWrites {
-		// Reject scope-qualified metadata WRITE dependencies, same rationale as
-		// scoped balance writes above — Ledger account metadata has no scope
-		// dimension, so a scoped write would silently collapse onto the unscoped key.
 		if dep.Scope != "" {
-			return nil, domain.ErrScopedBalanceUnsupported
+			scopedWrite = true
+
+			continue
 		}
 		result.WriteMetadata[domain.MetadataKey{
 			AccountKey: domain.AccountKey{LedgerName: ledgerName, Account: dep.Account},
 			Key:        dep.Key,
 		}] = struct{}{}
+	}
+
+	// Compile after resolution, so a script resolution rejects (e.g. asset
+	// scaling, a scope-qualified read) keeps its specific error. A compile
+	// failure is returned bare, not as a DependencyResolutionError: it depends
+	// only on the script and vars, never on state, so admission terminates it
+	// as a freezable validation failure (or surfaces a panic loudly).
+	compiled, compileErr := compileScript(entry, vars)
+	if compileErr != nil {
+		return result, compileErr
+	}
+
+	if scopedWrite {
+		return result, domain.ErrScopedBalanceUnsupported
 	}
 
 	// Compute this script's effects (net balance deltas + metadata writes) by
@@ -178,7 +197,7 @@ func DiscoverNumscriptDependencies(
 		// best-effort here: admission's contract is preload + resolution hash,
 		// and the FSM produces the authoritative outcome.
 		if IsPanic(execErr) {
-			return nil, execErr
+			return result, execErr
 		}
 
 		return result, nil

@@ -17,6 +17,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/domain/processing/numscript"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
+	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
 
 type numscriptPostingProducer struct {
@@ -321,6 +322,71 @@ func (p *numscriptPostingProducer) produce(s Scope, ledgerName string, order *ra
 		TransactionMetadata: txMeta,
 		AccountsMetadata:    accountsMeta,
 	}, nil
+}
+
+// replanFailedScript stands in for execution on an order admission forwarded
+// after its own planning failed. It re-runs that planning over the keys the
+// order declared. The same failure over the same input values is the order's
+// outcome. Any other result means an input changed since admission, so the
+// order is rejected as stale and the client re-admits it.
+func replanFailedScript(
+	s Scope,
+	cache *numscript.NumscriptCache,
+	ledgerName string,
+	order *raftcmdpb.CreateTransactionOrder,
+	script *commonpb.Script,
+	expectedInputsHash []byte,
+) domain.SerializableError {
+	if script == nil || script.GetPlain() == "" {
+		return &domain.ErrInvalidExecutionPlan{
+			Reason_: "order marked numscript_planning_failed carries no script",
+		}
+	}
+
+	source := &declaredValueSource{scopeValueSource{store: s, ledgerName: ledgerName}}
+
+	observed, err := numscript.DiscoverNumscriptDependencies(cache, script.GetPlain(), script.GetVars(), ledgerName, source, order.GetForce())
+	if err == nil || errors.Is(err, domain.ErrStaleInputsResolution) {
+		return domain.ErrStaleInputsResolution
+	}
+
+	if !bytes.Equal(expectedInputsHash, observed.InputsHash) {
+		return domain.ErrStaleInputsResolution
+	}
+
+	failure, ok := errors.AsType[domain.SerializableError](err)
+	if !ok {
+		return &domain.ErrNumscriptRuntime{Detail: err.Error()}
+	}
+
+	return failure
+}
+
+// declaredValueSource reads only the keys the order declared. A read outside
+// them means an earlier value steered the script away from the path admission
+// observed, which is a stale input.
+type declaredValueSource struct {
+	scopeValueSource
+}
+
+func (s *declaredValueSource) Balance(account, asset, color string) (*big.Int, error) {
+	if !s.store.IsCovered(dal.SubAttrVolume, domain.NewVolumeKey(s.ledgerName, account, asset, color)) {
+		return nil, domain.ErrStaleInputsResolution
+	}
+
+	return s.scopeValueSource.Balance(account, asset, color)
+}
+
+func (s *declaredValueSource) Metadata(account, key string) (string, bool, error) {
+	metadataKey := domain.MetadataKey{
+		AccountKey: domain.AccountKey{LedgerName: s.ledgerName, Account: account},
+		Key:        key,
+	}
+	if !s.store.IsCovered(dal.SubAttrMetadata, metadataKey) {
+		return "", false, domain.ErrStaleInputsResolution
+	}
+
+	return s.scopeValueSource.Metadata(account, key)
 }
 
 // scopeValueSource reads balances and metadata through the FSM apply Scope.

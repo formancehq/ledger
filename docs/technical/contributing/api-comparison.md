@@ -167,6 +167,21 @@ its script can return the retryable `STALE_INPUTS_RESOLUTION` or
 revision 40 are unchanged; v2 has no Numscript library, so there is no v2 mapping.
 See [the replay contract](../architecture/subsystems/admission/idempotency.md#replay-after-a-referenced-script-is-removed).
 
+## Idempotency after a skipped scripted transaction
+
+A v3 bulk entry can list `TRANSACTION_REFERENCE_CONFLICT` in
+`skippableReasons`, so a create whose `reference` exists is skipped. The
+reference decides before the script does: such an entry is skipped even when
+its Numscript cannot be planned, and a same-key retry replays that outcome
+after a ledger deletion purged the references. When the reference is absent,
+the script's failure keeps its HTTP status, gRPC code, reason and context. For
+a keyed request it is now decided at apply, audited and frozen under the key;
+an unkeyed request is still refused before consensus. A request whose script
+inputs change between admission and apply can return the retryable
+`STALE_INPUTS_RESOLUTION`. Routes, fields, envelopes and protocol revision 40
+are unchanged; v2 has no `skippableReasons`, so there is no v2 mapping.
+See [the replay contract](../architecture/subsystems/admission/idempotency.md#replay-after-a-skipped-scripted-transaction).
+
 ## Ledger integrity checking
 
 The v3 gRPC `CheckStore` and `ValidateRestore` streams verify canonical and global
