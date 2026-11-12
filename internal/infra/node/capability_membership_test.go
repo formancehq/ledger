@@ -14,7 +14,9 @@ func TestCapabilityMembershipFenceHeldUntilPolicyApply(t *testing.T) {
 	n := &Node{stopChannel: make(chan struct{}), terminalCh: make(chan struct{})}
 	n.confChangeMu.Lock() // acquired before the policy proposal is enqueued
 	future := futures.New[state.ApplyResult]()
-	n.releaseCapabilityMembershipAfter(future)
+	n.confChangeMu.stop = n.stopChannel
+	n.confChangeMu.terminal = n.terminalCh
+	n.confChangeMu.releaseAfter(future)
 	require.False(t, n.confChangeMu.TryLock(), "a learner must not pass a pending activation")
 
 	future.Resolve(state.ApplyResult{}, nil)
@@ -31,7 +33,7 @@ func TestCapabilityMembershipFenceHeldUntilPolicyApply(t *testing.T) {
 func TestCapabilityMembershipFenceReleasedWithoutProposal(t *testing.T) {
 	n := &Node{}
 	n.confChangeMu.Lock()
-	n.releaseCapabilityMembershipAfter(nil)
+	n.confChangeMu.releaseAfter(nil)
 	require.True(t, n.confChangeMu.TryLock())
 	n.confChangeMu.Unlock()
 }

@@ -650,7 +650,7 @@ func Module() fx.Option {
 					store,
 					logger,
 					node,
-					node,
+					node.MembershipCoordinator(),
 					builder,
 					meterProvider,
 					hc,

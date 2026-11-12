@@ -47,17 +47,13 @@ type Proposer interface {
 	InitialIndex() uint64
 }
 
-type CapabilityMembershipFence interface {
-	AcquireCapabilityMembership(context.Context) (func(*futures.Future[state.ApplyResult]), error)
-}
-
 // Admission handles the admission of orders into the Raft cluster.
 // It is responsible for preloading volumes and proposing commands.
 type Admission struct {
 	store           *dal.Store
 	logger          logging.Logger
 	proposer        Proposer
-	membershipFence CapabilityMembershipFence
+	membershipFence *node.MembershipCoordinator
 	writeGate       health.WriteGate
 	keyStore        *keystore.KeyStore
 	sharedState     *state.SharedState
@@ -143,7 +139,7 @@ func NewAdmission(
 	store *dal.Store,
 	logger logging.Logger,
 	proposer Proposer,
-	membershipFence CapabilityMembershipFence,
+	membershipFence *node.MembershipCoordinator,
 	builder *plan.Builder,
 	meterProvider metric.MeterProvider,
 	writeGate health.WriteGate,
