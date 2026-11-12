@@ -101,8 +101,8 @@ archive_image_id() {
 	local image="$1" config_path digest
 	config_path="$(tar -xOf "$image_archive" manifest.json | jq -er --arg image "$image" \
 		'[.[] | select(.RepoTags | index($image)) | .Config] |
-		 if length == 1 then .[0] else error("expected one archive configuration for " + $image) end')"
-	digest="$(tar -xOf "$image_archive" "$config_path" | sha256sum | cut -d' ' -f1)"
+		 if length == 1 then .[0] else error("expected one archive configuration for " + $image) end')" || return 1
+	digest="$(tar -xOf "$image_archive" "$config_path" | sha256sum | cut -d' ' -f1)" || return 1
 	printf 'sha256:%s\n' "$digest"
 }
 source_id="$(archive_image_id "$source_image")"
