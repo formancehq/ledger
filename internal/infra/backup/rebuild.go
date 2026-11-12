@@ -19,6 +19,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/domain/indexes"
 	"github.com/formancehq/ledger/v3/internal/domain/replay"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
+	"github.com/formancehq/ledger/v3/internal/infra/incarnationmigration"
 	"github.com/formancehq/ledger/v3/internal/infra/state"
 	"github.com/formancehq/ledger/v3/internal/pkg/bitset"
 	"github.com/formancehq/ledger/v3/internal/pkg/cursor"
@@ -688,6 +689,11 @@ func rebuildDelta(
 
 	if err := writer.batch.Commit(); err != nil {
 		return fmt.Errorf("committing boundaries batch: %w", err)
+	}
+	if count > 0 {
+		if err := incarnationmigration.ReconcileAfterDelta(ctx, store); err != nil {
+			return fmt.Errorf("reconciling account incarnations after delta rebuild: %w", err)
+		}
 	}
 
 	logger.WithFields(map[string]any{

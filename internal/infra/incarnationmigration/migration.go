@@ -86,6 +86,18 @@ func putMarker(batch *dal.WriteSession, marker Marker) error {
 // The caller must hold exclusive ownership of this Pebble store and must not
 // start Raft, admission, or account reads until Run returns successfully.
 func Run(ctx context.Context, store *dal.Store) error {
+	return run(ctx, store, false)
+}
+
+// ReconcileAfterDelta refreshes a checkpoint-carried incarnation projection
+// after backup restore has reconstructed post-checkpoint logs and audit rows.
+// It scans the historical fold to recover account types, then writes only the
+// audit suffix beyond the checkpoint's completion marker.
+func ReconcileAfterDelta(ctx context.Context, store *dal.Store) error {
+	return run(ctx, store, true)
+}
+
+func run(ctx context.Context, store *dal.Store, force bool) error {
 	policy, err := query.ReadClusterPolicy(store)
 	if err != nil {
 		return err
@@ -101,7 +113,7 @@ func Run(ctx context.Context, store *dal.Store) error {
 	if err != nil {
 		return err
 	}
-	if marker.Complete {
+	if marker.Complete && !force {
 		return nil
 	}
 
@@ -118,9 +130,19 @@ func Run(ctx context.Context, store *dal.Store) error {
 	if err != nil {
 		return err
 	}
+	if force {
+		// The restore may have advanced its applied index independently of the
+		// checkpoint. Its audit cursor remains the projection's durable boundary.
+		marker.AppliedIndex = applied
+		marker.Complete = false
+	}
 	if marker.Cursor > lastAudit || marker.AppliedIndex != 0 && marker.AppliedIndex != applied {
 		return fmt.Errorf("incarnation migration cursor does not match frozen store")
 	}
+	logger := logging.FromContext(ctx)
+	logger.WithFields(map[string]any{
+		"cursor": marker.Cursor, "lastAudit": lastAudit,
+	}).Infof("Starting local account incarnation migration")
 
 	cursor, err := query.ReadAuditEntries(ctx, reader, nil)
 	if err != nil {
@@ -168,6 +190,9 @@ func Run(ctx context.Context, store *dal.Store) error {
 				return err
 			}
 			pending = 0
+			if previous%16384 == 0 {
+				logger.WithFields(map[string]any{"cursor": previous, "lastAudit": lastAudit}).Infof("Account incarnation migration progress")
+			}
 		}
 	}
 	if previous != lastAudit {
@@ -181,6 +206,7 @@ func Run(ctx context.Context, store *dal.Store) error {
 	if err := clearIncarnationCacheAndSeal(store, Marker{Cursor: lastAudit, AppliedIndex: applied, Complete: true}); err != nil {
 		return err
 	}
+	logger.WithField("lastAudit", lastAudit).Infof("Local account incarnation migration complete")
 	return nil
 }
 
@@ -352,7 +378,11 @@ func (f *folder) process(ctx context.Context, entry *auditpb.AuditEntry, write b
 func (f *folder) processLog(log *commonpb.Log, touched map[domain.AccountKey]struct{}, deletedHere map[string]struct{}, write bool) error {
 	payload := log.GetPayload()
 	if create := payload.GetCreateLedger(); create != nil {
-		f.types[create.GetName()] = maps.Clone(create.GetAccountTypes())
+		accountTypes := maps.Clone(create.GetAccountTypes())
+		if accountTypes == nil {
+			accountTypes = make(map[string]*commonpb.AccountType)
+		}
+		f.types[create.GetName()] = accountTypes
 		return nil
 	}
 	if deleted := payload.GetDeleteLedger(); deleted != nil {

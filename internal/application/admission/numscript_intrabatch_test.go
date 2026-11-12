@@ -224,6 +224,24 @@ send [USD/2 5] (source = @world destination = $dst)
 		"meta()-resolved destination from an earlier batch order must be discovered")
 }
 
+func TestResolveScripts_CoversMetadataTargetOutsidePostings(t *testing.T) {
+	t.Parallel()
+	order := scriptOrder(testLedgerName, `
+set_account_meta(@meta:only, "owner", "alice")
+send [USD/2 1] (source = @world destination = @posting:only)
+`)
+	store := createTestStore(t)
+	admission, _ := createTestAdmission(t, store)
+	orders := []*raftcmdpb.Order{order}
+	overlay := newBulkOverlay()
+	needs, perOrder, err := admission.extractPreloadNeeds(context.Background(), orders, overlay)
+	require.NoError(t, err)
+	require.NoError(t, admission.resolveScriptsAndEnrichNeeds(context.Background(), orders, overlay, needs, perOrder, false))
+	key := domain.AccountKey{LedgerName: testLedgerName, Account: "meta:only"}.Bytes()
+	require.True(t, needs.Has(dal.SubAttrAccountIncarnation, key))
+	require.True(t, perOrder[0].Has(dal.SubAttrAccountIncarnation, key))
+}
+
 // TestResolveScripts_IntraBatchRevertBalanceDependency pins that a preceding
 // RevertTransaction's balance effect is folded into the overlay (flemzord P1
 // follow-up). A revert applies the original postings reversed, so a later

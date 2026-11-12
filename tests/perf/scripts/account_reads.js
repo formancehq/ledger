@@ -34,6 +34,12 @@ export const options = {
 };
 
 export function setup() {
+  if (!Number.isInteger(PAGE_SIZE) || PAGE_SIZE > 1000) {
+    throw new Error('READ_PAGE_SIZE must be an integer no greater than the API limit of 1000');
+  }
+  if (!Number.isInteger(ACCOUNT_COUNT)) {
+    throw new Error('READ_ACCOUNT_COUNT must be an integer');
+  }
   if (ACCOUNT_COUNT < PAGE_SIZE || PAGE_SIZE < 1) {
     throw new Error('READ_ACCOUNT_COUNT must be at least READ_PAGE_SIZE, and READ_PAGE_SIZE must be positive');
   }
