@@ -72,7 +72,11 @@ nightly:
   # Archive names embed the nightly version, so replace the previous nightly
   # release instead of accumulating one archive set per commit on it.
   keep_single_release: true
-  version_template: nightly-{{ .ShortCommit }}
+  # RFC-0013: the main-branch nightly takes the SemVer development version
+  # computed by formancehq/ci/actions/dev-version (e.g. 3.1.0-0.dev.12.g1a2b3c4).
+  # Without DEV_VERSION, for example `just release-ci` run outside the
+  # Release-Latest job, it keeps the historical nightly-<short-commit> form.
+  version_template: '{{ if index .Env "DEV_VERSION" }}{{ .Env.DEV_VERSION }}{{ else }}nightly-{{ .ShortCommit }}{{ end }}'
 
 release:
   prerelease: auto
@@ -90,14 +94,14 @@ archives:
   - ledgerctl
   formats:
   - tar.gz
-  name_template: "{{ .ProjectName }}_{{ if not .IsNightly }}v{{ end }}{{ .Version }}_{{ .Os }}-{{ .Arch }}"
+  name_template: '{{ .ProjectName }}_{{ if or (not .IsNightly) (index .Env "DEV_VERSION") }}v{{ end }}{{ .Version }}_{{ .Os }}-{{ .Arch }}'
   wrap_in_directory: true
 - id: ledger-windows
   ids:
   - ledgerctl-windows
   formats:
   - zip
-  name_template: "{{ .ProjectName }}_{{ if not .IsNightly }}v{{ end }}{{ .Version }}_{{ .Os }}-{{ .Arch }}"
+  name_template: '{{ .ProjectName }}_{{ if or (not .IsNightly) (index .Env "DEV_VERSION") }}v{{ end }}{{ .Version }}_{{ .Os }}-{{ .Arch }}'
   wrap_in_directory: true
 
 checksum:
@@ -130,8 +134,16 @@ dockers_v2:
   images:
   - "{{ .Env.IMAGE_REPOSITORY }}"
   tags:
-  - "{{ if not .IsNightly }}v{{ end }}{{ .Version }}"
+  # Releases and SemVer development builds (DEV_VERSION) get a leading v, like
+  # Git tags. This covers main nightlies and PR images (.goreleaser.pr.yml).
+  - '{{ if or (not .IsNightly) (index .Env "DEV_VERSION") }}v{{ end }}{{ .Version }}'
   - "{{ if not .IsNightly }}{{ if not .Prerelease }}latest{{ end }}{{ end }}"
+  # Compatibility alias for consumers of the former nightly-<short-commit>
+  # image tag, on main nightlies only; empty (skipped) for releases and PR images.
+  - '{{ if and .IsNightly (index .Env "DEV_VERSION") (not (index .Env "PR_IMAGE_TAG")) }}nightly-{{ .ShortCommit }}{{ end }}'
+  # PR images keep their pr-<num>-<sha7>[-run-<id>-<attempt>] tag next to the
+  # development version. Without DEV_VERSION that tag is already {{ .Version }}.
+  - '{{ if and (index .Env "PR_IMAGE_TAG") (index .Env "DEV_VERSION") }}{{ .Env.PR_IMAGE_TAG }}{{ end }}'
   platforms:
   - linux/amd64
   - linux/arm64

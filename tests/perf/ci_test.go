@@ -45,6 +45,9 @@ func TestWorkflowImageSummary(t *testing.T) {
 				t.Fatalf("incorrect %s output wiring", name)
 			}
 		}
+		if step.Env["dev_image"] != "${{ env.IMAGE_REPOSITORY }}:${{ steps.dev-version.outputs.version }}" {
+			t.Fatal("incorrect dev_image output wiring")
+		}
 		const prefix = "nix develop .#perf --command bash -euo pipefail <<'IMAGES'\n"
 		if !strings.HasPrefix(step.Run, prefix) || !strings.HasSuffix(step.Run, "IMAGES\n") {
 			t.Fatal("summary must use the pinned Nix client and strict Bash")
@@ -55,11 +58,14 @@ func TestWorkflowImageSummary(t *testing.T) {
 		t.Fatal("missing image summary script")
 	}
 	digest := "sha256:" + strings.Repeat("b", 64)
-	for _, tt := range []struct{ name, ledger, operator string }{
-		{"valid", digest, digest},
-		{"ledger-report", "Name: ledger\nDigest: " + digest, digest},
-		{"operator-report", digest, "Name: operator\nDigest: " + digest},
-		{"empty", "", digest},
+	otherDigest := "sha256:" + strings.Repeat("c", 64)
+	for _, tt := range []struct{ name, ledger, operator, dev string }{
+		{"valid", digest, digest, digest},
+		{"ledger-report", "Name: ledger\nDigest: " + digest, digest, digest},
+		{"operator-report", digest, "Name: operator\nDigest: " + digest, digest},
+		{"empty", "", digest, digest},
+		{"dev-version-mismatch", digest, digest, otherDigest},
+		{"dev-version-missing", digest, digest, ""},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
@@ -71,6 +77,7 @@ case "$1 $2 $3" in
     case "$4" in
       "$build_image") value=$LEDGER_DIGEST ;;
       "$operator_image") value=$OPERATOR_DIGEST ;;
+      "$dev_image") value=$DEV_DIGEST ;;
       *) exit 3 ;;
     esac
     case "$value" in
@@ -87,10 +94,12 @@ esac
 				t.Fatal(err)
 			}
 			summary, alias := filepath.Join(dir, "summary"), filepath.Join(dir, "alias")
+			devImage := "ghcr.io/formancehq/ledger:v3.0.0-rc.3.dev.39.gaaaaaaa"
 			cmd := exec.CommandContext(t.Context(), "bash", "-euo", "pipefail", "-c", script)
 			cmd.Env = append(os.Environ(), "PATH="+dir+string(os.PathListSeparator)+os.Getenv("PATH"),
 				"image=ghcr.io/formancehq/ledger:pr-42-aaaaaaa", "build_image=ghcr.io/formancehq/ledger:pr-42-aaaaaaa-run-123-2",
 				"operator_image=ghcr.io/formancehq/ledger-operator:pr-42-aaaaaaa", "GITHUB_STEP_SUMMARY="+summary,
+				"dev_image="+devImage, "DEV_DIGEST="+tt.dev,
 				"ALIAS_CREATED="+alias, "LEDGER_DIGEST="+tt.ledger, "OPERATOR_DIGEST="+tt.operator)
 			logs, err := cmd.CombinedOutput()
 			if tt.name == "valid" {
@@ -100,8 +109,12 @@ esac
 				if _, err := os.Stat(alias); err != nil {
 					t.Fatal("PR alias not created", err)
 				}
-				if data, err := os.ReadFile(summary); err != nil || !strings.Contains(string(data), digest) {
+				data, err := os.ReadFile(summary)
+				if err != nil || !strings.Contains(string(data), digest) {
 					t.Fatal("missing digest summary", err)
+				}
+				if !strings.Contains(string(data), devImage) {
+					t.Fatal("summary does not list the development version tag")
 				}
 			} else {
 				if err == nil || (!strings.Contains(string(logs), "Invalid ") && !strings.Contains(string(logs), "parse error")) {
