@@ -248,3 +248,47 @@ func TestLegacyAccountDatesBackfillFromAcceptedFSMHistory(t *testing.T) {
 	defer func() { require.NoError(t, reader.Close()) }()
 	require.NoError(t, incarnationmigration.Verify(t.Context(), reader, logging.Testing()))
 }
+
+func TestBackfillMergesLegacyAndLivePostingDates(t *testing.T) {
+	machine, store, attrs := newTestMachine(t)
+	const ledger = "posting-dates"
+	for index, order := range []*raftcmdpb.Order{
+		createLedgerOrder(ledger),
+		createTransactionOrder(ledger, true, newPosting("world", "alice", "USD", 100)),
+	} {
+		id := uint64(index + 1)
+		applied, err := machine.ApplyEntries(t.Context(), store, makeEntry(t, id, makeProposal(id, order)))
+		require.NoError(t, err)
+		require.NoError(t, applied.Results[0].Error)
+	}
+	policy := machine.State.ClusterPolicy.CloneVT()
+	policy.Revision++
+	policy.CapabilityActivations = []*commonpb.CapabilityActivation{{Id: uint32(capabilities.AccountIncarnationWritesV1), Active: true}}
+	batch := store.OpenWriteSession()
+	require.NoError(t, SaveClusterPolicy(batch, policy))
+	require.NoError(t, batch.Commit())
+	machine.State.UpdateClusterPolicy(policy)
+	proposal := makeProposal(3, createTransactionOrder(ledger, true, newPosting("world", "alice", "USD", 10)))
+	proposal.RequiredCapabilities = []uint32{uint32(capabilities.AccountIncarnationWritesV1)}
+	for _, address := range []string{"world", "alice"} {
+		key := domain.AccountKey{LedgerName: ledger, Account: address}
+		id, _ := attributes.MakeKey(key.Bytes())
+		proposal.ExecutionPlan.Attributes = append(proposal.ExecutionPlan.Attributes, declareTestPlan(id, dal.SubAttrAccountIncarnation))
+	}
+	applied, err := machine.ApplyEntries(t.Context(), store, makeEntry(t, 3, proposal))
+	require.NoError(t, err)
+	require.NoError(t, applied.Results[0].Error)
+	account := domain.AccountKey{LedgerName: ledger, Account: "alice"}
+	live, err := attrs.AccountIncarnation.Get(store, account.Bytes())
+	require.NoError(t, err)
+	require.Equal(t, uint64(1700000003), live.GetInsertedAt().GetData())
+	require.NoError(t, incarnationmigration.Run(t.Context(), store))
+	merged, err := attrs.AccountIncarnation.Get(store, account.Bytes())
+	require.NoError(t, err)
+	require.Equal(t, uint64(1700000002), merged.GetInsertedAt().GetData())
+	require.Equal(t, uint64(1700000003), merged.GetUpdatedAt().GetData())
+	reader, err := store.NewReadHandle()
+	require.NoError(t, err)
+	defer func() { require.NoError(t, reader.Close()) }()
+	require.NoError(t, incarnationmigration.Verify(t.Context(), reader, logging.Testing()))
+}

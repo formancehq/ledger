@@ -15,8 +15,14 @@ import (
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
+	"github.com/formancehq/ledger/v3/internal/infra/capabilities"
+	"github.com/formancehq/ledger/v3/internal/infra/incarnationmigration"
+	raftmembership "github.com/formancehq/ledger/v3/internal/infra/membership"
 	"github.com/formancehq/ledger/v3/internal/infra/node"
+	"github.com/formancehq/ledger/v3/internal/infra/transport"
 	"github.com/formancehq/ledger/v3/internal/proto/clusterbootstrappb"
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
 
 func TestIsRetryableMembershipRefreshError(t *testing.T) {
@@ -49,6 +55,46 @@ type retryingRefreshServer struct {
 
 type blockingRefreshServer struct {
 	clusterbootstrappb.UnimplementedClusterBootstrapServiceServer
+}
+
+type captureRefreshServer struct {
+	clusterbootstrappb.UnimplementedClusterBootstrapServiceServer
+	requests chan []uint32
+}
+
+func (s *captureRefreshServer) RefreshMembership(_ context.Context, request *clusterbootstrappb.RefreshMembershipRequest) (*clusterbootstrappb.RefreshMembershipResponse, error) {
+	s.requests <- append([]uint32(nil), request.GetCapabilities()...)
+	return &clusterbootstrappb.RefreshMembershipResponse{}, nil
+}
+
+func TestJoinedLearnerPublishesConvertedCheckpointEvidence(t *testing.T) {
+	server := &captureRefreshServer{requests: make(chan []uint32, 1)}
+	peerAddress := serveRefreshMembership(t, server)
+	store := newTestStore(t)
+	batch := store.OpenWriteSession()
+	require.NoError(t, batch.SetProto([]byte{dal.ZoneGlobal, dal.SubGlobClusterPolicy}, &commonpb.ClusterPolicy{CapabilityActivations: []*commonpb.CapabilityActivation{{Id: uint32(capabilities.AccountIncarnationWritesV1), Active: true}}}))
+	require.NoError(t, batch.Commit())
+	pool := transport.NewConnectionPool(transport.TLSPolicy{}, transport.PoolConfig{})
+	t.Cleanup(func() { require.NoError(t, pool.Close()) })
+	member, err := raftmembership.NewMembership(raftmembership.NewPeerStore(store), serviceAddressRaftTransport{}, pool, 2, "self:7777", "self:8888", []byte("self-instance-id"), logging.Testing(), raftmembership.NoopClusterPolicyProvider)
+	require.NoError(t, err)
+	require.NoError(t, member.Register(1, peerAddress, peerAddress, []byte("peer-instance-id"), nil))
+	cfg := refreshTestConfig(t, peerAddress)
+	hook := joinIncarnationReadinessHook(cfg, member, store, logging.Testing())
+	require.NoError(t, hook.OnStart(t.Context()))
+	t.Cleanup(func() { require.NoError(t, hook.OnStop(context.Background())) })
+	select {
+	case <-server.requests:
+		t.Fatal("learner advertised history before checkpoint conversion")
+	case <-time.After(100 * time.Millisecond):
+	}
+	require.NoError(t, incarnationmigration.Run(t.Context(), store))
+	select {
+	case ids := <-server.requests:
+		require.Equal(t, []uint32{uint32(capabilities.AccountIncarnationWritesV1), uint32(capabilities.AccountIncarnationHistoryCompleteV1)}, ids)
+	case <-time.After(4 * time.Second):
+		t.Fatal("converted learner did not refresh membership evidence")
+	}
 }
 
 func (blockingRefreshServer) RefreshMembership(ctx context.Context, _ *clusterbootstrappb.RefreshMembershipRequest) (*clusterbootstrappb.RefreshMembershipResponse, error) {

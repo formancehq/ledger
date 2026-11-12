@@ -2,6 +2,7 @@ package incarnationmigration
 
 import (
 	"encoding/binary"
+	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -149,4 +150,55 @@ func TestVerifyComparesIncarnationsInBothDirections(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, batch.Commit())
 	require.ErrorContains(t, check(), "differs from audited history")
+}
+
+func TestIncomingCheckpointMigratesBeforeInstallation(t *testing.T) {
+	store := migrationStore(t)
+	appendFixture(t, store, 1, 100, &commonpb.LogPayload{Type: &commonpb.LogPayload_CreateLedger{CreateLedger: &commonpb.CreatedLedgerLog{Name: "ledger"}}})
+	appendFixture(t, store, 2, 200, &commonpb.LogPayload{Type: &commonpb.LogPayload_Apply{Apply: &commonpb.ApplyLedgerLog{
+		LedgerName: "ledger", Log: &commonpb.LedgerLog{Data: &commonpb.LedgerLogPayload{Payload: &commonpb.LedgerLogPayload_CreatedTransaction{
+			CreatedTransaction: &commonpb.CreatedTransaction{Transaction: &commonpb.Transaction{Postings: []*commonpb.Posting{{Source: "world", Destination: "alice"}}}},
+		}}},
+	}}})
+	activateWrites(t, store)
+	checkpointDir := filepath.Join(t.TempDir(), "incoming")
+	require.NoError(t, store.Checkpoint(checkpointDir))
+	incoming, err := dal.OpenDirect(checkpointDir, logging.Testing())
+	require.NoError(t, err)
+	require.NoError(t, Run(t.Context(), incoming))
+	marker, err := ReadMarker(incoming)
+	require.NoError(t, err)
+	require.True(t, marker.Complete)
+	row, err := attributes.New().AccountIncarnation.Get(incoming, (domain.AccountKey{LedgerName: "ledger", Account: "alice"}).Bytes())
+	require.NoError(t, err)
+	require.Equal(t, uint64(200), row.GetInsertedAt().GetData())
+	require.NoError(t, incoming.Close())
+	sourceMarker, err := ReadMarker(store)
+	require.NoError(t, err)
+	require.False(t, sourceMarker.Complete)
+}
+
+func TestBackfillResetsAccountDatesAcrossLedgerDeletion(t *testing.T) {
+	store := migrationStore(t)
+	create := &commonpb.LogPayload{Type: &commonpb.LogPayload_CreateLedger{CreateLedger: &commonpb.CreatedLedgerLog{Name: "ledger"}}}
+	transaction := &commonpb.LogPayload{Type: &commonpb.LogPayload_Apply{Apply: &commonpb.ApplyLedgerLog{
+		LedgerName: "ledger", Log: &commonpb.LedgerLog{Data: &commonpb.LedgerLogPayload{Payload: &commonpb.LedgerLogPayload_CreatedTransaction{
+			CreatedTransaction: &commonpb.CreatedTransaction{Transaction: &commonpb.Transaction{Postings: []*commonpb.Posting{{Source: "world", Destination: "alice"}}}},
+		}}},
+	}}}
+	appendFixture(t, store, 1, 100, create)
+	appendFixture(t, store, 2, 200, transaction)
+	appendFixture(t, store, 3, 300, &commonpb.LogPayload{Type: &commonpb.LogPayload_DeleteLedger{DeleteLedger: &commonpb.DeletedLedgerLog{Name: "ledger"}}})
+	appendFixture(t, store, 4, 400, create)
+	appendFixture(t, store, 5, 500, transaction)
+	activateWrites(t, store)
+	require.NoError(t, Run(t.Context(), store))
+	row, err := attributes.New().AccountIncarnation.Get(store, (domain.AccountKey{LedgerName: "ledger", Account: "alice"}).Bytes())
+	require.NoError(t, err)
+	require.Equal(t, uint64(500), row.GetInsertedAt().GetData())
+	require.Equal(t, uint64(500), row.GetUpdatedAt().GetData())
+	reader, err := store.NewReadHandle()
+	require.NoError(t, err)
+	defer func() { require.NoError(t, reader.Close()) }()
+	require.NoError(t, Verify(t.Context(), reader, logging.Testing()))
 }

@@ -1023,6 +1023,8 @@ func Module() fx.Option {
 				// to the commit quorum.
 				if shouldRunMembershipRefresh(cfg, logger) {
 					lc.Append(membershipRefreshHook(cfg, membership, logger, store))
+				} else if !cfg.RaftConfig.Bootstrap {
+					lc.Append(joinIncarnationReadinessHook(cfg, membership, store, logger))
 				}
 
 				return node, nil
@@ -1501,6 +1503,69 @@ func membershipRefreshHook(cfg Config, membership *raftmembership.Membership, lo
 				cancel()
 			}
 
+			return nil
+		},
+	}
+}
+
+// A fresh learner joins before it has received a checkpoint. Its initial
+// membership evidence therefore contains software support only. Publish data
+// readiness after the incoming checkpoint has been converted and installed.
+func joinIncarnationReadinessHook(cfg Config, membership *raftmembership.Membership, store *dal.Store, logger logging.Logger) fx.Hook {
+	var cancel context.CancelFunc
+	var done chan struct{}
+	return fx.Hook{
+		OnStart: func(context.Context) error {
+			peers := recoveredRefreshPeers(cfg.RaftConfig.NodeID, membership.PeerAddresses())
+			if len(peers) == 0 {
+				return nil
+			}
+			ctx, stop := context.WithCancel(context.Background())
+			cancel = stop
+			done = make(chan struct{})
+			go func() {
+				defer close(done)
+				ticker := time.NewTicker(time.Second)
+				defer ticker.Stop()
+				for {
+					marker, err := incarnationmigration.ReadMarker(store)
+					if err != nil {
+						logger.WithFields(map[string]any{"error": err}).Errorf("Reading local account migration marker after join failed")
+					} else if marker.Complete {
+						if latest := recoveredRefreshPeers(cfg.RaftConfig.NodeID, membership.PeerAddresses()); len(latest) > 0 {
+							cfg.RaftConfig.Peers = latest
+						}
+						ids, err := incarnationmigration.AdvertisedIDs(store)
+						if err != nil {
+							logger.WithFields(map[string]any{"error": err}).Errorf("Reading account capability evidence after join failed")
+						} else {
+							cfg.RaftConfig.AdvertisedCapabilities = ids
+							if err := tryRefreshMembership(ctx, cfg, cfg.TLSConfig, logger); err != nil && ctx.Err() == nil {
+								logger.WithFields(map[string]any{"error": err}).Errorf("Publishing converted learner capability evidence failed")
+							}
+							return
+						}
+					}
+					select {
+					case <-ctx.Done():
+						return
+					case <-ticker.C:
+					}
+				}
+			}()
+			return nil
+		},
+		OnStop: func(ctx context.Context) error {
+			if cancel != nil {
+				cancel()
+			}
+			if done != nil {
+				select {
+				case <-done:
+				case <-ctx.Done():
+					return ctx.Err()
+				}
+			}
 			return nil
 		},
 	}
