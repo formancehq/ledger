@@ -239,5 +239,6 @@ func accountDatesActive(reader dal.PebbleGetter) (bool, error) {
 	if !marker.Complete {
 		return false, errors.New("account history capability is active without a completed local migration")
 	}
+
 	return true, nil
 }
