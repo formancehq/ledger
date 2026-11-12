@@ -28,8 +28,7 @@ tests/perf/
 │   ├── any_bounded_to_any.js            # Bounded overdraft transactions
 │   ├── any_unbounded_to_any.js          # Unbounded overdraft transactions
 │   ├── any_force_to_any.js              # Force mode transactions
-│   ├── single_hot_account.js            # Extreme single account contention
-│   └── account_reads.js                 # GetAccount and ListAccounts latency
+│   └── single_hot_account.js            # Extreme single account contention
 └── archives/                            # Generated k6 archives (gitignored)
 ```
 
@@ -133,12 +132,6 @@ Tests are configured via environment variables (see `scripts/shared/config.js`):
 7. **single_hot_account.js**: Extreme contention on a single account
 
 **Modes** (`CONTENTION_MODE` env var): `deposit`, `withdraw`, `transfer`, `mixed` (default)
-
-### Account Read Scenario
-
-8. **account_reads.js**: Seeds 200 accounts, waits for the account index, then
-   records separate GetAccount and 50-account ListAccounts latency and throughput.
-   `READ_ACCOUNT_COUNT` and `READ_PAGE_SIZE` override the seed and page sizes.
 
 ## Thresholds
 
