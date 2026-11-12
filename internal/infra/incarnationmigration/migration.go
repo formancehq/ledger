@@ -9,6 +9,7 @@ import (
 	"io"
 	"maps"
 	"os"
+	"time"
 
 	"github.com/cockroachdb/pebble/v2"
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
@@ -71,6 +72,26 @@ func AdvertisedIDs(reader dal.PebbleGetter) ([]uint32, error) {
 	return ids, nil
 }
 
+// RequireReady prevents a node from starting Raft on an unmigrated store.
+// Operators run the local migration explicitly while the node is stopped.
+func RequireReady(reader dal.PebbleGetter) error {
+	policy, err := query.ReadClusterPolicy(reader)
+	if err != nil {
+		return err
+	}
+	if !capabilities.IsActive(policy, capabilities.AccountIncarnationWritesV1) {
+		return nil
+	}
+	marker, err := ReadMarker(reader)
+	if err != nil {
+		return err
+	}
+	if !marker.Complete {
+		return errors.New("account incarnation history is not migrated; stop this node and run ledger migrate-incarnations --data-dir <path>")
+	}
+	return nil
+}
+
 func putMarker(batch *dal.WriteSession, marker Marker) error {
 	var raw [18]byte
 	raw[0] = definitionVersion
@@ -86,7 +107,16 @@ func putMarker(batch *dal.WriteSession, marker Marker) error {
 // The caller must hold exclusive ownership of this Pebble store and must not
 // start Raft, admission, or account reads until Run returns successfully.
 func Run(ctx context.Context, store *dal.Store) error {
-	return run(ctx, store, false)
+	return run(ctx, store, false, 0)
+}
+
+// RunWithPause lets the explicit migration command limit sustained Pebble load.
+// The pause is applied after each committed batch of 256 audit entries.
+func RunWithPause(ctx context.Context, store *dal.Store, pause time.Duration) error {
+	if pause < 0 {
+		return errors.New("migration batch pause must be non-negative")
+	}
+	return run(ctx, store, false, pause)
 }
 
 // ReconcileAfterDelta refreshes a checkpoint-carried incarnation projection
@@ -94,10 +124,10 @@ func Run(ctx context.Context, store *dal.Store) error {
 // It scans the historical fold to recover account types, then writes only the
 // audit suffix beyond the checkpoint's completion marker.
 func ReconcileAfterDelta(ctx context.Context, store *dal.Store) error {
-	return run(ctx, store, true)
+	return run(ctx, store, true, 0)
 }
 
-func run(ctx context.Context, store *dal.Store, force bool) error {
+func run(ctx context.Context, store *dal.Store, force bool, pause time.Duration) error {
 	policy, err := query.ReadClusterPolicy(store)
 	if err != nil {
 		return err
@@ -192,6 +222,13 @@ func run(ctx context.Context, store *dal.Store, force bool) error {
 			pending = 0
 			if previous%16384 == 0 {
 				logger.WithFields(map[string]any{"cursor": previous, "lastAudit": lastAudit}).Infof("Account incarnation migration progress")
+			}
+			if pause > 0 {
+				select {
+				case <-ctx.Done():
+					return ctx.Err()
+				case <-time.After(pause):
+				}
 			}
 		}
 	}

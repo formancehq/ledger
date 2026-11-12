@@ -218,6 +218,16 @@ func TestBackfillAcceptsAccountTypeAddedToInitiallyUntypedLedger(t *testing.T) {
 	require.True(t, marker.Complete)
 }
 
+func TestRequireReadyRejectsUnmigratedActiveStore(t *testing.T) {
+	store := migrationStore(t)
+	require.NoError(t, RequireReady(store))
+	appendFixture(t, store, 1, 100, &commonpb.LogPayload{Type: &commonpb.LogPayload_CreateLedger{CreateLedger: &commonpb.CreatedLedgerLog{Name: "ledger"}}})
+	activateWrites(t, store)
+	require.ErrorContains(t, RequireReady(store), "ledger migrate-incarnations")
+	require.NoError(t, Run(t.Context(), store))
+	require.NoError(t, RequireReady(store))
+}
+
 func TestReconcileAfterDeltaIncludesPostCheckpointAccountUsage(t *testing.T) {
 	store := migrationStore(t)
 	appendFixture(t, store, 1, 100, &commonpb.LogPayload{Type: &commonpb.LogPayload_CreateLedger{CreateLedger: &commonpb.CreatedLedgerLog{Name: "ledger"}}})
