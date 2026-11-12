@@ -31,5 +31,6 @@ func TestWalkMigrationsKeepsReleasedOrder(t *testing.T) {
 		"52-add-transactions-destinations-array-index",
 		"53-ensure-logs-blocks-composite-pkey",
 		"54-fix-log-hash-lookup",
+		"55-add-moves-effective-volumes-index",
 	}, names[start:])
 }
