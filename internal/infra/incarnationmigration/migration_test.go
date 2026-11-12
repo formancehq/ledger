@@ -124,6 +124,10 @@ func TestVerifyComparesIncarnationsInBothDirections(t *testing.T) {
 	}}})
 	activateWrites(t, store)
 	require.NoError(t, Run(t.Context(), store))
+	preActivationReader, err := store.NewReadHandle()
+	require.NoError(t, err)
+	require.NoError(t, Verify(t.Context(), preActivationReader, logging.Testing()))
+	require.NoError(t, preActivationReader.Close())
 	policy := &commonpb.ClusterPolicy{Revision: 2, CapabilityActivations: []*commonpb.CapabilityActivation{
 		{Id: uint32(capabilities.AccountIncarnationWritesV1), Active: true},
 		{Id: uint32(capabilities.AccountIncarnationHistoryCompleteV1), Active: true},
@@ -141,7 +145,7 @@ func TestVerifyComparesIncarnationsInBothDirections(t *testing.T) {
 	}
 	require.NoError(t, check())
 	batch = store.OpenWriteSession()
-	_, err := attributes.New().AccountIncarnation.Set(batch, (domain.AccountKey{LedgerName: "ledger", Account: "orphan"}).Bytes(), &commonpb.AccountIncarnation{InsertedAt: &commonpb.Timestamp{Data: 200}, UpdatedAt: &commonpb.Timestamp{Data: 200}})
+	_, err = attributes.New().AccountIncarnation.Set(batch, (domain.AccountKey{LedgerName: "ledger", Account: "orphan"}).Bytes(), &commonpb.AccountIncarnation{InsertedAt: &commonpb.Timestamp{Data: 200}, UpdatedAt: &commonpb.Timestamp{Data: 200}})
 	require.NoError(t, err)
 	require.NoError(t, batch.Commit())
 	require.ErrorContains(t, check(), "differs from audited history")
