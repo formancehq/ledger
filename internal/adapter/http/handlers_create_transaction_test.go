@@ -101,18 +101,25 @@ func TestHandleExecuteNumscript_TransactionReturnsCreated(t *testing.T) {
 	require.Equal(t, http.StatusCreated, w.Code)
 }
 
-func TestHandleExecuteNumscript_RejectsTransactionReference(t *testing.T) {
+func TestHandleExecuteNumscript_IgnoresTransactionOnlyFields(t *testing.T) {
 	t.Parallel()
 
-	srv := newTestServer(t, NewMockBackend(gomock.NewController(t)))
+	log := &commonpb.Log{Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_Apply{
+		Apply: &commonpb.ApplyLedgerLog{Log: &commonpb.LedgerLog{Data: &commonpb.LedgerLogPayload{
+			Payload: &commonpb.LedgerLogPayload_AccountMetadataUpdated{
+				AccountMetadataUpdated: &commonpb.AccountMetadataUpdated{},
+			},
+		}}},
+	}}}
+	srv := newTestServer(t, backendReturningLogs(t, []*commonpb.Log{log}))
 	w := httptest.NewRecorder()
-	r := newRequest(t, http.MethodPost, "/ledger1/numscripts/execute", strings.NewReader(`{"script":{"plain":"set_account_meta(@users:alice, \"tier\", \"gold\")"},"reference":"tx-1"}`), map[string]string{
+	r := newRequest(t, http.MethodPost, "/ledger1/numscripts/execute", strings.NewReader(`{"script":{"plain":"set_account_meta(@users:alice, \"tier\", \"gold\")"},"reference":"tx-1","postings":[]}`), map[string]string{
 		"ledgerName": "ledger1",
 	})
 
 	srv.handleExecuteNumscript(w, r)
 
-	require.Equal(t, http.StatusBadRequest, w.Code)
+	require.Equal(t, http.StatusNoContent, w.Code)
 }
 
 // TestHandleCreateTransaction_LogContractViolations locks in the exact-one
