@@ -129,7 +129,10 @@ add business audit entries. The script closes an RC.3 Pebble store and WAL,
 opens them with the candidate, replays a committed legacy entry, writes new
 policy and business payloads, then reopens the result in another candidate
 process. Each phase checks the expected state directly; no JSON report is
-written or compared.
+written or compared. RC.3 writes the first three audit hashes to a temporary
+binary oracle. The candidate checks those hashes after replaying the committed
+legacy rejection. A negative control changes that rejection's observed audit
+content and recomputes its hash; the oracle must reject the changed history.
 
 This probe validates persisted-format migration, not Kubernetes sequencing or
 snapshot catch-up. Release validation must also exercise the full-stop operator

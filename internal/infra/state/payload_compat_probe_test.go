@@ -124,6 +124,7 @@ func TestProposalPayloadCompatibilityProbe(t *testing.T) {
 		require.Equal(t, name, ledger.GetName())
 	}
 	var previousHash []byte
+	var historicalAuditHashes []byte
 	auditCount := 0
 	for sequence := uint64(1); sequence < machine.State.NextAuditSequenceID; sequence++ {
 		audit, err := query.ReadAuditEntry(t.Context(), reader, sequence)
@@ -140,6 +141,25 @@ func TestProposalPayloadCompatibilityProbe(t *testing.T) {
 		generator := processing.NewHashGenerator(commonpb.HashAlgorithm(audit.GetHashVersion()), machine.State.AuditKey)
 		_, actualHash := generator.Compute(nil, previousHash, slices)
 		require.Equal(t, audit.GetHash(), actualHash)
+		if sequence <= 3 {
+			observedHash := audit.GetHash()
+			if os.Getenv("LEDGER_PROPOSAL_PROBE_MUTATE_REJECTION") == "1" && sequence == 3 {
+				// Negative control: model a changed rejection audit entry with a
+				// valid recomputed hash. The independent RC.3 oracle must reject it.
+				changed := audit.CloneVT()
+				failure := changed.GetFailure()
+				require.NotNil(t, failure)
+				details := failure.GetDetails().GetLedgerAlreadyExists()
+				require.NotNil(t, details)
+				details.Name = new("changed-ledger")
+				changedHeader, err := BuildHashedHeaderPayload(changed)
+				require.NoError(t, err)
+				changedSlices := append([][]byte{changedHeader}, slices[1:]...)
+				_, observedHash = generator.Compute(nil, previousHash, changedSlices)
+			}
+			historicalAuditHashes = protowire.AppendVarint(historicalAuditHashes, sequence)
+			historicalAuditHashes = protowire.AppendBytes(historicalAuditHashes, observedHash)
+		}
 		previousHash = audit.GetHash()
 		auditCount++
 	}
@@ -172,6 +192,18 @@ func TestProposalPayloadCompatibilityProbe(t *testing.T) {
 	require.Equal(t, expectedPolicy, compatibilityPolicyStateFrom(machine.State.ClusterPolicy))
 	require.Equal(t, expectedApplied, machine.State.LastAppliedIndex)
 	require.Equal(t, 1700000000+expectedApplied, machine.State.LastAppliedTimestamp)
+	if oraclePath := os.Getenv("LEDGER_PROPOSAL_PROBE_AUDIT_ORACLE"); oraclePath != "" {
+		switch os.Getenv("LEDGER_PROPOSAL_PROBE_AUDIT_ORACLE_MODE") {
+		case "write":
+			require.NoError(t, os.WriteFile(oraclePath, historicalAuditHashes, 0o600))
+		case "check":
+			expectedHashes, err := os.ReadFile(oraclePath)
+			require.NoError(t, err)
+			require.Equal(t, expectedHashes, historicalAuditHashes, "historical RC.3 audit hashes diverged")
+		default:
+			t.Fatal("invalid audit oracle mode")
+		}
+	}
 }
 
 // Compare the RC.3 policy contract by value. Later policy fields may be added

@@ -20,8 +20,11 @@ cp "$repo/internal/infra/state/payload_compat_probe_test.go" "$probe_dir/baselin
     go test -c -o "$probe_dir/old.test" ./internal/infra/state
 )
 go test -c -o "$probe_dir/new.test" ./internal/infra/state
-LEDGER_PROPOSAL_PROBE_RUN=1 "$probe_dir/old.test" -test.run '^TestProposalPayloadCompatibilityProbe$'
-LEDGER_PROPOSAL_PROBE_RUN=1 "$probe_dir/new.test" -test.run '^TestProposalPayloadCompatibilityProbe$'
+audit_oracle="$probe_dir/rc3-audit-hashes.bin"
+LEDGER_PROPOSAL_PROBE_RUN=1 LEDGER_PROPOSAL_PROBE_AUDIT_ORACLE="$audit_oracle" LEDGER_PROPOSAL_PROBE_AUDIT_ORACLE_MODE=write \
+    "$probe_dir/old.test" -test.run '^TestProposalPayloadCompatibilityProbe$'
+LEDGER_PROPOSAL_PROBE_RUN=1 LEDGER_PROPOSAL_PROBE_AUDIT_ORACLE="$audit_oracle" LEDGER_PROPOSAL_PROBE_AUDIT_ORACLE_MODE=check \
+    "$probe_dir/new.test" -test.run '^TestProposalPayloadCompatibilityProbe$'
 LEDGER_PROPOSAL_PROBE_RUN=1 LEDGER_PROPOSAL_PROBE_ENCODING=payload \
     "$probe_dir/new.test" -test.run '^TestProposalPayloadCompatibilityProbe$'
 # The source process exits and closes the real store/WAL before the candidate
@@ -30,7 +33,25 @@ LEDGER_PROPOSAL_PROBE_RUN=1 LEDGER_PROPOSAL_PROBE_ENCODING=payload \
 LEDGER_PROPOSAL_PROBE_RUN=1 LEDGER_PROPOSAL_PROBE_DIR="$probe_dir/upgrade" LEDGER_PROPOSAL_PROBE_PHASE=seed \
     "$probe_dir/old.test" -test.run '^TestProposalPayloadCompatibilityProbe$'
 LEDGER_PROPOSAL_PROBE_RUN=1 LEDGER_PROPOSAL_PROBE_DIR="$probe_dir/upgrade" LEDGER_PROPOSAL_PROBE_PHASE=resume LEDGER_PROPOSAL_PROBE_ENCODING=payload \
+    LEDGER_PROPOSAL_PROBE_AUDIT_ORACLE="$audit_oracle" LEDGER_PROPOSAL_PROBE_AUDIT_ORACLE_MODE=check \
     "$probe_dir/new.test" -test.run '^TestProposalPayloadCompatibilityProbe$'
 LEDGER_PROPOSAL_PROBE_RUN=1 LEDGER_PROPOSAL_PROBE_DIR="$probe_dir/upgrade" LEDGER_PROPOSAL_PROBE_PHASE=verify \
+    LEDGER_PROPOSAL_PROBE_AUDIT_ORACLE="$audit_oracle" LEDGER_PROPOSAL_PROBE_AUDIT_ORACLE_MODE=check \
     "$probe_dir/new.test" -test.run '^TestProposalPayloadCompatibilityProbe$'
-echo "PROPOSAL_PAYLOAD_COMPAT=PASS baseline=$baseline (RC.3 and candidate state assertions, policy audit omission, old WAL replay, stopped store/WAL upgrade and restart)"
+
+# Negative control: change the observed content of the replayed rejection
+# while recomputing its hash. Only the independent RC.3 oracle should fail.
+LEDGER_PROPOSAL_PROBE_RUN=1 LEDGER_PROPOSAL_PROBE_DIR="$probe_dir/negative-upgrade" LEDGER_PROPOSAL_PROBE_PHASE=seed \
+    "$probe_dir/old.test" -test.run '^TestProposalPayloadCompatibilityProbe$'
+if negative_output="$(LEDGER_PROPOSAL_PROBE_RUN=1 LEDGER_PROPOSAL_PROBE_DIR="$probe_dir/negative-upgrade" LEDGER_PROPOSAL_PROBE_PHASE=resume \
+    LEDGER_PROPOSAL_PROBE_ENCODING=payload LEDGER_PROPOSAL_PROBE_MUTATE_REJECTION=1 \
+    LEDGER_PROPOSAL_PROBE_AUDIT_ORACLE="$audit_oracle" LEDGER_PROPOSAL_PROBE_AUDIT_ORACLE_MODE=check \
+    "$probe_dir/new.test" -test.run '^TestProposalPayloadCompatibilityProbe$' 2>&1)"; then
+    echo "mutated replayed rejection unexpectedly matched the RC.3 audit oracle" >&2
+    exit 1
+fi
+[[ "$negative_output" == *"historical RC.3 audit hashes diverged"* ]] || {
+    echo "$negative_output" >&2
+    exit 1
+}
+echo "PROPOSAL_PAYLOAD_COMPAT=PASS baseline=$baseline (RC.3 audit oracle, rejection mutation detected, old WAL replay, stopped store/WAL upgrade and restart)"
