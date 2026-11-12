@@ -377,11 +377,7 @@ func IsScripted(ct *servicepb.CreateTransactionPayload) bool {
 // batch. The workload always sends an idempotency key, so the keyed branches of
 // the classification are the only ones modelled.
 func (s *LedgerState) scriptAdmission(ct *servicepb.CreateTransactionPayload, ov *saveOverlay, deltas admissionDeltas) (reason string, forwarded bool) {
-	text, vars, selector, reason, _ := s.scriptOf(ct, ov)
-	if reason != "" {
-		return reason, false
-	}
-
+	text, vars, selector, _, _ := s.scriptOf(ct, ov)
 	latest := selector == "latest"
 
 	// A freezable failure terminates, except under a "latest" selector, whose
@@ -642,7 +638,7 @@ func createContentReason(ct *servicepb.CreateTransactionPayload) string {
 // order, is resolved against the pre-batch state plus the effects of the
 // orders before it, and either rejects the batch or is forwarded to fail in
 // the FSM with PRELOAD_UNAVAILABLE. An order admission predicts the FSM will
-// skip is not resolved and contributes nothing.
+// skip, or whose reference is missing, is not resolved and contributes nothing.
 //
 // The effects are admission's, not the FSM's: a create's postings, the account
 // metadata it carries and its reference fold in whether or not the FSM would
@@ -721,6 +717,12 @@ func (g GlobalState) admitScripts(bulk Bulk) (forwarded map[int]bool, reason str
 			}
 
 			if IsScripted(ct) {
+				// A missing reference is the FSM's to refuse; admission plans
+				// nothing else for the order.
+				if _, _, _, missing, _ := ls.scriptOf(ct, overlays[name]); missing != "" {
+					continue
+				}
+
 				reason, fwd := ls.scriptAdmission(ct, overlays[name], deltas[name])
 				if reason != "" {
 					return nil, reason

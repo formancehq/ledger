@@ -964,13 +964,6 @@ func (g GlobalState) ApplyAdmitted(bulk Bulk, admission Admission) ApplyResult {
 		}
 	}
 
-	// A forwarded order means the batch was never fully prepared: the FSM
-	// rejects the whole proposal before executing any order, so no earlier
-	// order's business outcome is ever reached.
-	if len(admission.forwarded) > 0 {
-		return ApplyResult{Reason: domain.ErrReasonPreloadUnavailable, State: g, Orders: []OrderResult{{Reason: domain.ErrReasonPreloadUnavailable}}}
-	}
-
 	next := g.clone()
 	orders := make([]OrderResult, 0, len(bulk.Requests))
 	touched := map[string]map[VolumeKey]bool{}
@@ -994,7 +987,13 @@ func (g GlobalState) ApplyAdmitted(bulk Bulk, admission Admission) ApplyResult {
 	// not declare volume coverage for — from one that already existed.
 	batchInitialTxCount := map[string]uint64{}
 
-	for _, req := range bulk.Requests {
+	for i, req := range bulk.Requests {
+		// A forwarded order was never prepared: reaching it fails the batch,
+		// after any earlier order's rejection and before its own skip matching.
+		if admission.forwarded[i] {
+			return ApplyResult{Reason: domain.ErrReasonPreloadUnavailable, State: g, Orders: append(orders, OrderResult{Reason: domain.ErrReasonPreloadUnavailable})}
+		}
+
 		if oc, handled := next.applyCheckpoint(req); handled {
 			orders = append(orders, oc)
 			if !oc.OK {

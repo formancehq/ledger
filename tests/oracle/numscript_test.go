@@ -219,16 +219,20 @@ func TestScript_FingerprintDistinguishesLibraries(t *testing.T) {
 // Admission resolves a reference against every save ahead of it in the batch,
 // even one the FSM will refuse: a garbled save shadows the library, so the
 // reference resolves to text that does not parse instead of to nothing. Under
-// "latest" that parse failure is forwarded, and the forwarded order rejects the
-// batch before the FSM reaches the save; under an exact version it rejects.
+// "latest" that parse failure is forwarded, and the FSM refuses the save before
+// it reaches the forwarded order; under an exact version admission rejects.
 func TestScript_ReferenceSeesRefusedSameBulkSave(t *testing.T) {
 	t.Parallel()
 
-	res := NewGlobalState().Apply(bulkOf(
+	latest := bulkOf(
 		saveReq("L", "ns", "1.0.0", "send ("),
 		referenceReq("L", "ns", "latest", nil),
-	))
-	require.Equal(t, domain.ErrReasonPreloadUnavailable, res.Reason)
+	)
+	require.True(t, NewGlobalState().Admit(latest).forwarded[1])
+
+	res := NewGlobalState().Apply(latest)
+	require.Equal(t, domain.ErrReasonNumscriptParseError, res.Reason)
+	require.Len(t, res.Orders, 1)
 
 	res = NewGlobalState().Apply(bulkOf(
 		saveReq("L", "ns", "1.0.0", "send ("),
@@ -236,11 +240,17 @@ func TestScript_ReferenceSeesRefusedSameBulkSave(t *testing.T) {
 	))
 	require.Equal(t, domain.ErrReasonNumscriptParseError, res.Reason)
 
-	exact := NewGlobalState().Apply(bulkOf(
+	// A missing reference is left to the FSM, which refuses the save first.
+	exact := bulkOf(
 		saveReq("L", "ns", "1.0", sendTen),
 		referenceReq("L", "ns", "1.0.0", nil),
-	))
-	require.Equal(t, domain.ErrReasonNumscriptNotFound, exact.Reason)
+	)
+	require.Equal(t, Admission{}, NewGlobalState().Admit(exact))
+	require.Equal(t, domain.ErrReasonNumscriptInvalidVersion, NewGlobalState().Apply(exact).Reason)
+
+	missing := bulkOf(referenceReq("L", "ns", "1.0.0", nil))
+	require.Equal(t, Admission{}, NewGlobalState().Admit(missing))
+	require.Equal(t, domain.ErrReasonNumscriptNotFound, NewGlobalState().Apply(missing).Reason)
 }
 
 // Every generated script, seeded the way the driver seeds it, gets a verdict
@@ -335,8 +345,7 @@ send [USD 1] (
 
 // Admission's batch effects are exact: a debit the FSM would refuse as a
 // volume overflow still leaves the account negative for a later balance(), so
-// the script is forwarded and the batch fails PRELOAD_UNAVAILABLE in the FSM,
-// not VOLUME_OVERFLOW.
+// the script is forwarded; the FSM refuses the debit before it reaches it.
 func TestScript_AdmissionEffectsDoNotWrap(t *testing.T) {
 	t.Parallel()
 
@@ -370,7 +379,7 @@ send $m (
 	fwd, reason := seeded.State.admitScripts(bulk)
 	require.Empty(t, reason)
 	require.True(t, fwd[1])
-	require.Equal(t, domain.ErrReasonPreloadUnavailable, seeded.State.Apply(bulk).Reason)
+	require.Equal(t, domain.ErrReasonVolumeOverflow, seeded.State.Apply(bulk).Reason)
 }
 
 // scriptFixtures is a ledger holding a transaction under reference R and the
@@ -432,9 +441,9 @@ func TestScript_AdmissionOlderThanApply(t *testing.T) {
 	require.Equal(t, domain.ErrReasonPreloadUnavailable, deleted.ApplyAdmitted(forwarded, live.Admit(forwarded)).Reason)
 }
 
-// A forwarded order rejects the whole batch before any order executes, even
-// when an earlier order would fail on its own.
-func TestScript_ForwardedOrderRejectsWholeBatch(t *testing.T) {
+// A forwarded order fails the batch when the FSM reaches it: an earlier
+// order's rejection wins, and a later order is never executed.
+func TestScript_ForwardedOrderFailsInSequence(t *testing.T) {
 	t.Parallel()
 
 	live, _ := scriptFixtures(t)
@@ -445,13 +454,18 @@ func TestScript_ForwardedOrderRejectsWholeBatch(t *testing.T) {
 	require.NotEqual(t, domain.ErrReasonPreloadUnavailable, alone.Reason)
 
 	res := live.Apply(bulkOf(missingRevert, scriptReq("L", metaReadScript, nil, false)))
+	require.Equal(t, alone.Reason, res.Reason)
+	require.Len(t, res.Orders, 1)
+
+	res = live.Apply(bulkOf(scriptReq("L", metaReadScript, nil, false), missingRevert))
 	require.Equal(t, domain.ErrReasonPreloadUnavailable, res.Reason)
 	require.Len(t, res.Orders, 1)
 }
 
 // Admission on an already deleted ledger reads its purged data: the reference
 // skip no longer applies, the library is empty and a mutable read forwards.
-// Only a script that resolves cleanly reaches the deleted-ledger check.
+// A missing reference and a script that resolves cleanly both reach the
+// deleted-ledger check.
 func TestScript_AdmissionOnDeletedLedger(t *testing.T) {
 	t.Parallel()
 
@@ -459,7 +473,7 @@ func TestScript_AdmissionOnDeletedLedger(t *testing.T) {
 
 	require.Equal(t, domain.ErrReasonPreloadUnavailable,
 		deleted.Apply(bulkOf(withReference(scriptReq("L", metaReadScript, nil, false), "R", true))).Reason)
-	require.Equal(t, domain.ErrReasonNumscriptNotFound, deleted.Apply(bulkOf(referenceReq("L", "ns0", "1.0.0", nil))).Reason)
+	require.Equal(t, domain.ErrReasonLedgerDeleted, deleted.Apply(bulkOf(referenceReq("L", "ns0", "1.0.0", nil))).Reason)
 	require.Equal(t, domain.ErrReasonNumscriptParseError, deleted.Apply(bulkOf(scriptReq("L", "send [USD", nil, false))).Reason)
 	require.Equal(t, domain.ErrReasonLedgerDeleted,
 		deleted.Apply(bulkOf(scriptReq("L", "send [USD 1] (source = @world destination = @a)", nil, false))).Reason)
