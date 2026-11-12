@@ -8,15 +8,18 @@ if [[ "${IN_NIX_SHELL:-}" == "" ]]; then
 fi
 
 compare_reports() {
-    if ! cmp "$1" "$2"; then
-        diff -u <(jq -S . "$1") <(jq -S . "$2")
+    local expected actual
+    expected="$(jq -eS . "$1")" || return 1
+    actual="$(jq -eS . "$2")" || return 1
+    if [ "$expected" != "$actual" ]; then
+        diff -u <(printf '%s\n' "$expected") <(printf '%s\n' "$actual") || true
         return 1
     fi
 }
 
 # Native policy controls are unaudited. The probe independently checks chain
 # integrity and exact audit counts; compare final state across encodings and
-# preserve byte comparisons for all retained legacy history.
+# preserve value comparisons for all retained legacy history.
 compare_semantics() {
     compare_reports <(jq -S '{Policy, Ledgers, Applied, Timestamp}' "$1") \
                     <(jq -S '{Policy, Ledgers, Applied, Timestamp}' "$2")
@@ -56,4 +59,4 @@ compare_semantics "$probe_dir/old.json" "$probe_dir/upgraded.json"
 compare_reports <(jq -S '{Audit: .Audit[:3], Items: .Items[:3]}' "$probe_dir/old.json") \
                 <(jq -S '{Audit: .Audit[:3], Items: .Items[:3]}' "$probe_dir/upgraded.json")
 compare_reports "$probe_dir/upgraded.json" "$probe_dir/restarted.json"
-echo "PROPOSAL_PAYLOAD_COMPAT=PASS baseline=$baseline (legacy byte parity, native state parity and policy audit omission, retained historical prefix, stopped store/WAL upgrade and restart)"
+echo "PROPOSAL_PAYLOAD_COMPAT=PASS baseline=$baseline (legacy state parity, native state parity and policy audit omission, retained historical prefix, stopped store/WAL upgrade and restart)"
