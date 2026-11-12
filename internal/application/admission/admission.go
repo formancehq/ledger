@@ -25,6 +25,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/domain/indexes"
 	"github.com/formancehq/ledger/v3/internal/domain/processing/numscript"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
+	"github.com/formancehq/ledger/v3/internal/infra/capabilities"
 	"github.com/formancehq/ledger/v3/internal/infra/health"
 	"github.com/formancehq/ledger/v3/internal/infra/membership"
 	"github.com/formancehq/ledger/v3/internal/infra/node"
@@ -721,6 +722,16 @@ func (a *Admission) prepareBatchOrders(ctx context.Context, batch verifiedBatch)
 }
 
 func (a *Admission) buildExecutionBatchPreload(ctx context.Context, caller *commonpb.CallerSnapshot, batch verifiedBatch, orders []*raftcmdpb.Order, needs *plan.Coverage, perOrder []*plan.Coverage) (*raftcmdpb.Proposal, *plan.BuildResult, error) {
+	policy, err := query.ReadClusterPolicy(a.store)
+	if err != nil {
+		return nil, nil, fmt.Errorf("reading incarnation capability policy: %w", err)
+	}
+	if !capabilities.IsActive(policy, capabilities.AccountIncarnationWritesV1) {
+		delete(needs.Attributes, dal.SubAttrAccountIncarnation)
+		for _, coverage := range perOrder {
+			delete(coverage.Attributes, dal.SubAttrAccountIncarnation)
+		}
+	}
 	// Step 3-5: Build preloads via shared Builder (no lock)
 	cmd := commands.NewCommand(orders...)
 	cmd.CallerSnapshot = caller

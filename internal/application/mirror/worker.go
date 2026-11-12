@@ -15,6 +15,7 @@ import (
 
 	v2 "github.com/formancehq/ledger/v3/internal/adapter/v2"
 	"github.com/formancehq/ledger/v3/internal/domain"
+	"github.com/formancehq/ledger/v3/internal/infra/capabilities"
 	"github.com/formancehq/ledger/v3/internal/infra/plan"
 	"github.com/formancehq/ledger/v3/internal/pkg/commands"
 	"github.com/formancehq/ledger/v3/internal/pkg/signal"
@@ -497,7 +498,7 @@ func (w *Worker) processBatch(ctx context.Context) (bool, error) {
 
 	preloadStart := time.Now()
 
-	aggregate, perOrder := w.extractMirrorNeeds(cmd)
+	aggregate, perOrder := w.extractMirrorNeeds(cmd, capabilities.IsActive(policy, capabilities.AccountIncarnationWritesV1))
 
 	// Merge the source-head/status update into the data proposal to avoid a
 	// second Raft round-trip. The FSM processes TechnicalUpdates on any
@@ -813,13 +814,19 @@ func (w *Worker) proposeMirrorSync(ctx context.Context, update *raftcmdpb.Mirror
 // one Coverage per order, used to compute Order.coverage_bits after
 // Build. Mirror only touches ledger info, boundaries, volumes and
 // account metadata.
-func (w *Worker) extractMirrorNeeds(cmd *raftcmdpb.Proposal) (*plan.Coverage, []*plan.Coverage) {
+func (w *Worker) extractMirrorNeeds(cmd *raftcmdpb.Proposal, includeIncarnations bool) (*plan.Coverage, []*plan.Coverage) {
 	aggregate := plan.NewCoverage()
 	perOrder := make([]*plan.Coverage, len(cmd.GetBatch().GetOrders()))
+	addIncarnation := func(p *plan.Coverage, account string) {
+		if includeIncarnations {
+			p.Add(dal.SubAttrAccountIncarnation, (domain.AccountKey{LedgerName: w.ledgerName, Account: account}).Bytes())
+		}
+	}
 
 	ledgerBytes := domain.LedgerKey{Name: w.ledgerName}.Bytes()
 
 	addAccountMetadata := func(p *plan.Coverage, account, key string) {
+		addIncarnation(p, account)
 		p.Add(dal.SubAttrMetadata, domain.MetadataKey{
 			AccountKey: domain.AccountKey{LedgerName: w.ledgerName, Account: account},
 			Key:        key,
@@ -855,6 +862,7 @@ func (w *Worker) extractMirrorNeeds(cmd *raftcmdpb.Proposal) (*plan.Coverage, []
 				{AccountKey: domain.AccountKey{LedgerName: w.ledgerName, Account: posting.GetDestination()}, Asset: posting.GetAsset(), Color: posting.GetColor()},
 			} {
 				p.Add(dal.SubAttrVolume, volKey.Bytes())
+				addIncarnation(p, volKey.Account)
 			}
 		}
 
@@ -889,6 +897,7 @@ func (w *Worker) extractMirrorNeeds(cmd *raftcmdpb.Proposal) (*plan.Coverage, []
 					AccountKey: domain.AccountKey{LedgerName: w.ledgerName, Account: target.Account.GetAddr()},
 					Key:        dm.GetKey(),
 				}.Bytes())
+				addIncarnation(p, target.Account.GetAddr())
 			case *commonpb.Target_TransactionId:
 				addTx(p, target.TransactionId)
 			}

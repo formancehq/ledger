@@ -13,6 +13,7 @@ import (
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
 	"github.com/formancehq/ledger/v3/internal/infra/capabilities"
+	"github.com/formancehq/ledger/v3/internal/infra/incarnationmigration"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
@@ -643,7 +644,10 @@ func (m *Membership) OnSnapshotInstalled() {
 	// Better to fall through and let Rehydrate reload from Pebble
 	// (with the leader's possibly-stale self); the next OnSnapshot
 	// or restart will re-attempt the self-Put.
-	selfCapabilities := capabilities.IDsAsUint32(capabilities.SupportedIDs())
+	selfCapabilities, err := incarnationmigration.AdvertisedIDs(m.store.store)
+	if err != nil {
+		panic(fmt.Errorf("reading local account migration evidence after snapshot install: %w", err))
+	}
 	if err := m.store.Put(m.selfNodeID, m.selfRaftAddr, m.selfServiceAddr, m.selfInstanceID, selfCapabilities); err != nil {
 		m.logger.WithFields(map[string]any{
 			"error": err,

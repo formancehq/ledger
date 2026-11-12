@@ -50,6 +50,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/infra/cache"
 	"github.com/formancehq/ledger/v3/internal/infra/capabilities"
 	clusterhealth "github.com/formancehq/ledger/v3/internal/infra/health"
+	"github.com/formancehq/ledger/v3/internal/infra/incarnationmigration"
 	raftmembership "github.com/formancehq/ledger/v3/internal/infra/membership"
 	"github.com/formancehq/ledger/v3/internal/infra/monitoring/diskusage"
 	"github.com/formancehq/ledger/v3/internal/infra/monitoring/flightrecorder"
@@ -102,6 +103,13 @@ type nodeProvideResult struct {
 // artifacts before INSTANCE_ID has been read or persisted.
 func provideNodeConfig(cfg Config) (node.NodeConfig, error) {
 	return buildNodeConfig(cfg)
+}
+
+func advertisedCapabilities(cfg Config) []uint32 {
+	if cfg.RaftConfig.AdvertisedCapabilities != nil {
+		return append([]uint32(nil), cfg.RaftConfig.AdvertisedCapabilities...)
+	}
+	return []uint32{uint32(capabilities.AccountIncarnationWritesV1)}
 }
 
 func provideWAL(cfg node.NodeConfig, logger logging.Logger, meterProvider metric.MeterProvider) (*wal.DefaultWAL, error) {
@@ -181,6 +189,12 @@ func Module() fx.Option {
 					logger.WithFields(map[string]any{
 						"duration": time.Since(configStart).String(),
 					}).Infof("Configuration validation done")
+				}
+				if !cfg.Restore {
+					if err := incarnationmigration.Run(context.Background(), store); err != nil {
+						_ = store.Close()
+						return nil, fmt.Errorf("migrating local account incarnations before Raft startup: %w", err)
+					}
 				}
 
 				return store, nil
@@ -386,6 +400,11 @@ func Module() fx.Option {
 					LocalResponses node.LocalResponses
 				},
 			) (nodeProvideResult, error) {
+				advertised, err := incarnationmigration.AdvertisedIDs(params.Store)
+				if err != nil {
+					return nodeProvideResult{}, err
+				}
+				params.NodeConfig.AdvertisedCapabilities = advertised
 				// Check WAL emptiness before NewNode writes the initial snapshot.
 				snapshot, err := params.WAL.Snapshot()
 				if err != nil {
@@ -814,13 +833,14 @@ func Module() fx.Option {
 				lc fx.Lifecycle,
 				cfg Config,
 				logger logging.Logger,
+				store *dal.Store,
 				termination startupTerminationParams,
 			) {
 				if !shouldRunJoinPreflight(cfg, logger) {
 					return
 				}
 
-				hook := joinPreflightHook(cfg, logger)
+				hook := joinPreflightHook(cfg, logger, store)
 				if termination.Termination != nil {
 					hook = termination.Termination.hook(hook)
 				}
@@ -992,7 +1012,7 @@ func Module() fx.Option {
 					}
 				}))
 			},
-			func(lc fx.Lifecycle, node *node.Node, defaultTransport *node.DefaultTransport, membership *raftmembership.Membership, cfg Config, logger logging.Logger) (*node.Node, error) {
+			func(lc fx.Lifecycle, node *node.Node, defaultTransport *node.DefaultTransport, membership *raftmembership.Membership, cfg Config, logger logging.Logger, store *dal.Store) (*node.Node, error) {
 				lc.Append(nodeHook(node, logger))
 
 				// A WAL that already joined the cluster must not take the learner
@@ -1002,7 +1022,7 @@ func Module() fx.Option {
 				// an UpdateNode for an existing voter may need that node to contribute
 				// to the commit quorum.
 				if shouldRunMembershipRefresh(cfg, logger) {
-					lc.Append(membershipRefreshHook(cfg, membership, logger))
+					lc.Append(membershipRefreshHook(cfg, membership, logger, store))
 				}
 
 				return node, nil
@@ -1194,6 +1214,9 @@ func validateProposalCapabilityAdmission(policy *commonpb.ClusterPolicy, proposa
 	}
 
 	state := capabilities.FromPolicy(policy)
+	if capabilities.IsActive(policy, capabilities.AccountIncarnationWritesV1) && proposal.NeedsIncarnationMarker() {
+		return fmt.Errorf("account proposal is missing incarnation coverage after capability activation")
+	}
 	if err := state.Validate(); err != nil {
 		return err
 	}
@@ -1382,9 +1405,16 @@ func registerMetricsLifecycle(lc fx.Lifecycle, name string, register func() (met
 // gated behind the preflight; OUTBOUND dialing is always available because it
 // is self-contained. Gating inbound-serving on an outbound-only preflight is
 // therefore safe.
-func joinPreflightHook(cfg Config, logger logging.Logger) fx.Hook {
+func joinPreflightHook(cfg Config, logger logging.Logger, stores ...*dal.Store) fx.Hook {
 	return fx.Hook{
 		OnStart: func(ctx context.Context) error {
+			if len(stores) > 0 {
+				ids, err := incarnationmigration.AdvertisedIDs(stores[0])
+				if err != nil {
+					return err
+				}
+				cfg.RaftConfig.AdvertisedCapabilities = ids
+			}
 			logger.WithFields(map[string]any{
 				"nodeID":         cfg.RaftConfig.NodeID,
 				"raftAddress":    cfg.RaftConfig.AdvertiseAddr,
@@ -1416,11 +1446,18 @@ func newMembershipPeerDialer(cfg Config, tlsCfg TLSConfig) (func(string) (*ggrpc
 	}, nil
 }
 
-func membershipRefreshHook(cfg Config, membership *raftmembership.Membership, logger logging.Logger) fx.Hook {
+func membershipRefreshHook(cfg Config, membership *raftmembership.Membership, logger logging.Logger, stores ...*dal.Store) fx.Hook {
 	var cancel context.CancelFunc
 
 	return fx.Hook{
 		OnStart: func(ctx context.Context) error {
+			if len(stores) > 0 {
+				ids, err := incarnationmigration.AdvertisedIDs(stores[0])
+				if err != nil {
+					return err
+				}
+				cfg.RaftConfig.AdvertisedCapabilities = ids
+			}
 			cfg.RaftConfig.Peers = recoveredRefreshPeers(cfg.RaftConfig.NodeID, membership.PeerAddresses())
 			if len(cfg.RaftConfig.Peers) == 0 {
 				return nil // A single-member cluster has no remote membership to refresh.
@@ -1537,7 +1574,7 @@ func tryAddLearner(ctx context.Context, cfg Config, tlsCfg TLSConfig, logger log
 		RaftAddress:    cfg.RaftConfig.AdvertiseAddr,
 		ServiceAddress: cfg.ServiceAdvertiseAddr(),
 		InstanceId:     instanceID,
-		Capabilities:   capabilities.IDsAsUint32(capabilities.SupportedIDs()),
+		Capabilities:   advertisedCapabilities(cfg),
 	}
 
 	dialPeer, err := newMembershipPeerDialer(cfg, tlsCfg)
@@ -1722,7 +1759,7 @@ func tryRefreshMembershipOnce(ctx context.Context, cfg Config, tlsCfg TLSConfig,
 		RaftAddress:    cfg.RaftConfig.AdvertiseAddr,
 		ServiceAddress: cfg.ServiceAdvertiseAddr(),
 		InstanceId:     instanceID,
-		Capabilities:   capabilities.IDsAsUint32(capabilities.SupportedIDs()),
+		Capabilities:   advertisedCapabilities(cfg),
 	}
 
 	dialPeer, err := newMembershipPeerDialer(cfg, tlsCfg)

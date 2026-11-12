@@ -1,6 +1,8 @@
 package node
 
 import (
+	"slices"
+
 	"google.golang.org/protobuf/encoding/protowire"
 
 	"github.com/formancehq/ledger/v3/internal/infra/capabilities"
@@ -34,6 +36,7 @@ type Proposal struct {
 	// serialized command lets the leader validate activation evidence before
 	// handing the bytes to Raft without decoding the command a second time.
 	activePolicyCapabilities []capabilities.CapabilityID
+	touchesAccounts          bool
 }
 
 func newProposal(commandID uint64, data []byte, required []capabilities.CapabilityID) *Proposal {
@@ -65,6 +68,7 @@ func NewProposal(commandID uint64, command *raftcmdpb.Proposal) (*Proposal, erro
 	}
 
 	proposal := newProposal(commandID, data, prepared.RequiredCapabilities())
+	proposal.touchesAccounts = capabilities.TouchesAccounts(command)
 	// Validate the complete serialized command before it enters the Raft queue.
 	// SetPredictedIndex only appends a fixed-width index field afterward; it
 	// cannot change the payload or its capability declaration.
@@ -115,6 +119,14 @@ func (p *Proposal) SetPredictedIndex(index uint64) {
 // value instead of decoding the serialized proposal a second time.
 func (p *Proposal) RequiredCapabilities() []capabilities.CapabilityID {
 	return append([]capabilities.CapabilityID(nil), p.requiredCapabilities...)
+}
+
+func (p *Proposal) NeedsIncarnationMarker() bool {
+	return p.touchesAccounts && !slices.Contains(p.requiredCapabilities, capabilities.AccountIncarnationWritesV1)
+}
+
+func (p *Proposal) ActivatesIncarnationWrites() bool {
+	return slices.Contains(p.activePolicyCapabilities, capabilities.AccountIncarnationWritesV1)
 }
 
 // ActivePolicyCapabilities returns the active capabilities requested by a

@@ -334,6 +334,10 @@ const (
 	// from a complete scan. It lives outside SubGlobBloom so the prior binary's
 	// block reader ignores it during rollback.
 	SubGlobBloomProjectionSeal byte = 0x16
+	// SubGlobAccountIncarnationMigration is a node-local, checkpoint-carried
+	// backfill cursor and completion marker. It is written only while the node
+	// is suspended from Raft and never advances the applied index.
+	SubGlobAccountIncarnationMigration byte = 0x17
 )
 
 // ClusterTransient sub-prefixes (zone 0x07).

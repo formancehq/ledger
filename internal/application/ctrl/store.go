@@ -1,6 +1,7 @@
 package ctrl
 
 import (
+	"errors"
 	"fmt"
 	"math/big"
 	"sort"
@@ -9,8 +10,11 @@ import (
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
+	"github.com/formancehq/ledger/v3/internal/infra/capabilities"
+	"github.com/formancehq/ledger/v3/internal/infra/incarnationmigration"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
+	"github.com/formancehq/ledger/v3/internal/query"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
 
@@ -161,6 +165,7 @@ func scanAccount(
 	ledgerName string,
 	address string,
 	collapseColors bool,
+	includeDates bool,
 	diagLogger ...logging.Logger,
 ) (*commonpb.Account, error) {
 	var logger logging.Logger
@@ -191,9 +196,12 @@ func scanAccount(
 	if err != nil {
 		return nil, fmt.Errorf("scanning metadata: %w", err)
 	}
-	incarnation, err := attrs.AccountIncarnation.Get(reader, canonicalBase)
-	if err != nil {
-		return nil, fmt.Errorf("reading account incarnation: %w", err)
+	var incarnation *commonpb.AccountIncarnation
+	if includeDates {
+		incarnation, err = attrs.AccountIncarnation.Get(reader, canonicalBase)
+		if err != nil {
+			return nil, fmt.Errorf("reading account incarnation: %w", err)
+		}
 	}
 
 	if logger != nil {
@@ -214,4 +222,22 @@ func scanAccount(
 	}
 
 	return account, nil
+}
+
+func accountDatesActive(reader dal.PebbleGetter) (bool, error) {
+	policy, err := query.ReadClusterPolicy(reader)
+	if err != nil {
+		return false, fmt.Errorf("reading account-date capability policy: %w", err)
+	}
+	if !capabilities.IsActive(policy, capabilities.AccountIncarnationHistoryCompleteV1) {
+		return false, nil
+	}
+	marker, err := incarnationmigration.ReadMarker(reader)
+	if err != nil {
+		return false, err
+	}
+	if !marker.Complete {
+		return false, errors.New("account history capability is active without a completed local migration")
+	}
+	return true, nil
 }
