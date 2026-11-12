@@ -78,12 +78,20 @@ operator_image="ledger-operator:$target_tag"
 docker build -q --build-arg "OPERATOR_VERSION=$target_tag" -t "$operator_image" "$target_tree/misc/operator" | tee "$workdir/operator-build.txt"
 docker pull "$source_image" | tee "$workdir/source-pull.txt"
 docker pull "$source_operator_image" | tee "$workdir/source-operator-pull.txt"
-source_id="$(docker image inspect "$source_image" --format '{{.Id}}')"
-source_operator_id="$(docker image inspect "$source_operator_image" --format '{{.Id}}')"
-target_operator_id="$(docker image inspect "$operator_image" --format '{{.Id}}')"
+# Docker may retain a multi-platform index for a published tag. Resolve the
+# platform Kind will run before recording IDs, so they match Pod imageID values.
+case "$(docker info --format '{{.Architecture}}')" in
+	aarch64|arm64) image_platform=linux/arm64 ;;
+	x86_64|amd64) image_platform=linux/amd64 ;;
+	*) echo "unsupported Docker architecture for Kind image import" >&2; exit 2 ;;
+esac
+printf 'imageArchivePlatform=%s\n' "$image_platform" | tee -a "$workdir/revisions.txt"
+source_id="$(docker image inspect --platform "$image_platform" "$source_image" --format '{{.Id}}')"
+source_operator_id="$(docker image inspect --platform "$image_platform" "$source_operator_image" --format '{{.Id}}')"
+target_operator_id="$(docker image inspect --platform "$image_platform" "$operator_image" --format '{{.Id}}')"
 build_tag="ledger-upgrade:build-${target_sha:0:12}"
 docker build -q -t "$build_tag" "$target_tree" | tee "$workdir/target-build.txt"
-target_id="$(docker image inspect "$build_tag" --format '{{.Id}}')"
+target_id="$(docker image inspect --platform "$image_platform" "$build_tag" --format '{{.Id}}')"
 target_repository=ledger-upgrade
 target_image="$target_repository:$target_tag"
 docker tag "$build_tag" "$target_image"
@@ -95,12 +103,6 @@ kind get kubeconfig --name "$cluster" > "$workdir/kubeconfig"
 # Docker may save a multi-platform index while only the host platform's blobs
 # are present after pull. Kind imports with --all-platforms, so make the archive
 # self-contained for the architecture of its Docker-backed node.
-case "$(docker info --format '{{.Architecture}}')" in
-	aarch64|arm64) image_platform=linux/arm64 ;;
-	x86_64|amd64) image_platform=linux/amd64 ;;
-	*) echo "unsupported Docker architecture for Kind image import" >&2; exit 2 ;;
-esac
-printf 'imageArchivePlatform=%s\n' "$image_platform" | tee -a "$workdir/revisions.txt"
 image_archive="$workdir/kind-images.tar"
 docker image save --platform "$image_platform" -o "$image_archive" \
 	"$source_image" "$target_image" "$source_operator_image" "$operator_image"
