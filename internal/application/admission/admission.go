@@ -51,17 +51,17 @@ type Proposer interface {
 // Admission handles the admission of orders into the Raft cluster.
 // It is responsible for preloading volumes and proposing commands.
 type Admission struct {
-	store           *dal.Store
-	logger          logging.Logger
-	proposer        Proposer
-	membershipFence *membership.Coordinator
-	writeGate       health.WriteGate
-	keyStore        *keystore.KeyStore
-	sharedState     *state.SharedState
-	builder         *plan.Builder
-	attrs           *attributes.Attributes
-	numscriptCache  *numscript.NumscriptCache
-	waitLeaderReady func(context.Context) error
+	store                 *dal.Store
+	logger                logging.Logger
+	proposer              Proposer
+	membershipCoordinator *membership.Coordinator
+	writeGate             health.WriteGate
+	keyStore              *keystore.KeyStore
+	sharedState           *state.SharedState
+	builder               *plan.Builder
+	attrs                 *attributes.Attributes
+	numscriptCache        *numscript.NumscriptCache
+	waitLeaderReady       func(context.Context) error
 	// auditProjectionState is node-local admission state. It may reject a
 	// checkpoint proposal before Raft, but never affects deterministic apply.
 	auditProjectionState func() (disabled, rebuilding bool)
@@ -140,7 +140,7 @@ func NewAdmission(
 	store *dal.Store,
 	logger logging.Logger,
 	proposer Proposer,
-	membershipFence *membership.Coordinator,
+	membershipCoordinator *membership.Coordinator,
 	builder *plan.Builder,
 	meterProvider metric.MeterProvider,
 	writeGate health.WriteGate,
@@ -152,17 +152,17 @@ func NewAdmission(
 	opts ...func(*Admission),
 ) *Admission {
 	a := &Admission{
-		store:           store,
-		logger:          logger,
-		proposer:        proposer,
-		membershipFence: membershipFence,
-		builder:         builder,
-		writeGate:       writeGate,
-		keyStore:        keyStore,
-		sharedState:     sharedState,
-		attrs:           attrs,
-		numscriptCache:  numscriptCache,
-		waitLeaderReady: waitLeaderReady,
+		store:                 store,
+		logger:                logger,
+		proposer:              proposer,
+		membershipCoordinator: membershipCoordinator,
+		builder:               builder,
+		writeGate:             writeGate,
+		keyStore:              keyStore,
+		sharedState:           sharedState,
+		attrs:                 attrs,
+		numscriptCache:        numscriptCache,
+		waitLeaderReady:       waitLeaderReady,
 	}
 	for _, opt := range opts {
 		opt(a)
@@ -501,18 +501,9 @@ func (a *Admission) AdmitClusterPolicy(ctx context.Context, policy *commonpb.Clu
 		return nil, errors.New("cluster policy must not be nil")
 	}
 
-	propose := a.proposeAdmission
-	for _, activation := range policy.GetCapabilityActivations() {
-		if activation != nil && activation.GetActive() {
-			propose = a.proposeActivatingPolicy
-
-			break
-		}
-	}
-
 	return a.admit(ctx, func(ctx context.Context, caller *commonpb.CallerSnapshot) (*preparedAdmission, error) {
 		return a.prepareClusterPolicy(ctx, caller, policy)
-	}, propose)
+	}, a.proposeClusterPolicy)
 }
 
 type preparedAdmission struct {
@@ -609,14 +600,14 @@ func (a *Admission) admit(ctx context.Context, prepare func(context.Context, *co
 	return a.resolveAdmissionResult(ctx, prepared.command, fsmFuture)
 }
 
-func (a *Admission) proposeActivatingPolicy(ctx context.Context, command *raftcmdpb.Proposal, build *plan.BuildResult) (*futures.Future[state.ApplyResult], func(), error) {
+func (a *Admission) proposeClusterPolicy(ctx context.Context, command *raftcmdpb.Proposal, build *plan.BuildResult) (*futures.Future[state.ApplyResult], func(), error) {
 	// Fence membership before the proposal guard locks the index tracker.
-	if a.membershipFence == nil {
-		return nil, nil, errors.New("activating policy admission has no membership fence")
+	if a.membershipCoordinator == nil {
+		return nil, nil, errors.New("cluster policy admission has no membership coordinator")
 	}
-	release, err := a.membershipFence.AcquireCapabilityMembership(ctx)
+	release, err := a.membershipCoordinator.AcquireClusterPolicy(ctx)
 	if err != nil {
-		return nil, nil, fmt.Errorf("fencing membership for capability activation: %w", err)
+		return nil, nil, fmt.Errorf("fencing membership for cluster policy: %w", err)
 	}
 	future, cleanup, err := a.proposeAdmission(ctx, command, build)
 	release(future)

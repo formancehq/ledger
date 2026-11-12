@@ -17,6 +17,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
 	"github.com/formancehq/ledger/v3/internal/infra/cache"
 	"github.com/formancehq/ledger/v3/internal/infra/health"
+	"github.com/formancehq/ledger/v3/internal/infra/membership"
 	"github.com/formancehq/ledger/v3/internal/infra/node"
 	"github.com/formancehq/ledger/v3/internal/infra/plan"
 	"github.com/formancehq/ledger/v3/internal/infra/state"
@@ -59,7 +60,7 @@ func createTestAdmissionWithReader(t *testing.T, store *dal.Store, proposer Prop
 		store,
 		logger,
 		proposer,
-		nil,
+		&membership.Coordinator{},
 		testPreloader,
 		provider,
 		writeGate,

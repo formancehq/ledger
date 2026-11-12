@@ -9,8 +9,8 @@ import (
 	"github.com/formancehq/ledger/v3/internal/pkg/futures"
 )
 
-// Coordinator serializes Raft membership changes with policy activation.
-// Its lock is held until an activating policy has applied.
+// Coordinator serializes Raft membership changes with cluster policy updates.
+// Its lock is held until a proposed policy has applied.
 type Coordinator struct {
 	sync.Mutex
 
@@ -26,7 +26,7 @@ func (c *Coordinator) Configure(waitForPriorMembership func(context.Context) err
 	c.terminal = terminal
 }
 
-func (c *Coordinator) AcquireCapabilityMembership(ctx context.Context) (func(*futures.Future[state.ApplyResult]), error) {
+func (c *Coordinator) AcquireClusterPolicy(ctx context.Context) (func(*futures.Future[state.ApplyResult]), error) {
 	for !c.TryLock() {
 		select {
 		case <-ctx.Done():

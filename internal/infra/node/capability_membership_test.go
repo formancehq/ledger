@@ -14,7 +14,7 @@ import (
 func TestCapabilityMembershipFenceHeldUntilPolicyApply(t *testing.T) {
 	n := &Node{stopChannel: make(chan struct{}), terminalCh: make(chan struct{})}
 	n.confChangeMu.Configure(nil, n.stopChannel, n.terminalCh)
-	release, err := n.confChangeMu.AcquireCapabilityMembership(context.Background())
+	release, err := n.confChangeMu.AcquireClusterPolicy(context.Background())
 	require.NoError(t, err)
 	future := futures.New[state.ApplyResult]()
 	release(future)
@@ -33,7 +33,7 @@ func TestCapabilityMembershipFenceHeldUntilPolicyApply(t *testing.T) {
 
 func TestCapabilityMembershipFenceReleasedWithoutProposal(t *testing.T) {
 	n := &Node{}
-	release, err := n.confChangeMu.AcquireCapabilityMembership(context.Background())
+	release, err := n.confChangeMu.AcquireClusterPolicy(context.Background())
 	require.NoError(t, err)
 	release(nil)
 	require.True(t, n.confChangeMu.TryLock())
