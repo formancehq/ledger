@@ -307,6 +307,8 @@ func writeBulkResponse(w http.ResponseWriter, r *http.Request, elements []*servi
 				switch p := payload.GetPayload().(type) {
 				case *commonpb.LedgerLogPayload_CreatedTransaction:
 					data = p.CreatedTransaction.GetTransaction()
+				case *commonpb.LedgerLogPayload_AccountMetadataUpdated:
+					data = commonpb.AccountMetadataToAnyMap(p.AccountMetadataUpdated.GetAccountMetadata())
 				case *commonpb.LedgerLogPayload_OrderSkipped:
 					data = OrderSkippedResponse{
 						Skipped: true,

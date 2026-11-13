@@ -840,6 +840,12 @@ func (x *LedgerAction) MarshalJSON() ([]byte, error) {
 		}{
 			SetDefaultEnforcementMode: oneofValueData.SetDefaultEnforcementMode,
 		})
+	case *LedgerAction_ExecuteNumscript:
+		return jsonv2.Marshal(struct {
+			ExecuteNumscript any `json:"executeNumscript"`
+		}{
+			ExecuteNumscript: oneofValueData.ExecuteNumscript,
+		})
 	default:
 		return jsonv2.Marshal(struct {
 		}{})

@@ -57,14 +57,13 @@ func (s *Server) handleCreateTransaction(w http.ResponseWriter, r *http.Request)
 	logEntry := exactlyOneLog("create-transaction", logs, details)
 
 	ledgerLog := logEntry.GetPayload().GetApply().GetLog()
-	created, ok := ledgerLog.GetData().GetPayload().(*commonpb.LedgerLogPayload_CreatedTransaction)
-	if !ok {
+	switch payload := ledgerLog.GetData().GetPayload().(type) {
+	case *commonpb.LedgerLogPayload_CreatedTransaction:
+		if payload.CreatedTransaction == nil {
+			panic(emptyLogPayload("create-transaction", logEntry, details))
+		}
+		writeCreated(w, r, payload.CreatedTransaction)
+	default:
 		panic(unexpectedLogPayload("create-transaction", logEntry, details))
 	}
-
-	if created.CreatedTransaction == nil {
-		panic(emptyLogPayload("create-transaction", logEntry, details))
-	}
-
-	writeCreated(w, r, created.CreatedTransaction)
 }

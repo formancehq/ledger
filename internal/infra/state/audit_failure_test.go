@@ -17,6 +17,25 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
 
+func TestMetadataOnlyRejectionsBuildAuditFailure(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name string
+		err  domain.SerializableError
+		code string
+	}{
+		{"transaction metadata", domain.ErrMetadataOnlyTransactionMetadata, "METADATA_ONLY_TRANSACTION_METADATA"},
+		{"reference", domain.ErrMetadataOnlyReference, "METADATA_ONLY_REFERENCE"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			failure := buildAuditFailure(tc.err)
+			require.Equal(t, tc.code, commonpb.FailureDetailsCode(failure.GetDetails()))
+			require.Equal(t, commonpb.ErrorReason_ERROR_REASON_VALIDATION, commonpb.FailureDetailsReason(failure.GetDetails()))
+		})
+	}
+}
+
 // TestIdempotencyFailureFactsMatchAudit pins the equality the checker's
 // idempotencyMismatch depends on: the reason, code, and facts frozen into the
 // SubIdempKeys projection by recordIdempotencyFailure must equal the ones

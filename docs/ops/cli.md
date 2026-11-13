@@ -1633,8 +1633,6 @@ ledgerctl transactions create [flags]
 |------|---------|-------------|
 | `--ledger` | *(required)* | Name of the ledger |
 | `--posting` | | Posting in format: `source,destination,amount,asset[,color]` (can be repeated) |
-| `--script` | | Path to a Numscript file (mutually exclusive with `--posting`) |
-| `--var` | | Script variable in format: `name=value` (can be repeated, only with `--script`) |
 | `--reference` | | Transaction reference |
 | `--metadata` | | Metadata key=value pairs |
 | `--force` | `false` | Bypass balance checks (allow accounts to go negative) |
@@ -1687,50 +1685,12 @@ every colored bucket of the same asset into a single uncolored entry, pass
 `?collapseColors=true` on the HTTP endpoint (the CLI surfaces the raw,
 segregated view by design).
 
-**Creating transactions with Numscript:**
-
-```bash
-# Simple script
-ledgerctl transactions create --ledger my-ledger \
-  --script transfer.num \
-  --var "source=users:alice" \
-  --var "destination=users:bob" \
-  --var "amount=USD/2 100"
-
-# Using example scripts
-ledgerctl transactions create --ledger my-ledger \
-  --script numscript/examples/world_funding.num \
-  --var "destination=bank" \
-  --var "amount=USD/2 10000"
-```
-
 **Interactive mode:**
 
-```bash
-# Will prompt for postings
-ledgerctl transactions create --ledger my-ledger
+Run `ledgerctl transactions create --ledger my-ledger` without postings to enter them interactively.
 
-# With script - will prompt for missing variables
-ledgerctl transactions create --ledger my-ledger \
-  --script numscript/examples/simple_transfer.num
-# -> Prompts for: $source (account), $destination (account), $amount (monetary)
-
-# Partial variables - will prompt only for missing ones
-ledgerctl transactions create --ledger my-ledger \
-  --script numscript/examples/simple_transfer.num \
-  --var "source=users:alice"
-# -> Prompts for: $destination (account), $amount (monetary)
-```
-
-**Interactive variable prompting:**
-
-When using `--script`, the CLI parses the Numscript file and detects required variables. For any variable not provided via `--var`, it will interactively prompt you with the expected type and format hints:
-
-- **account**: e.g., `users:alice`, `merchants:shop`
-- **monetary**: e.g., `USD/2 1000`, `EUR/2 50`
-- **string**: e.g., `order-123`, `ref-abc`
-- **number**: e.g., `42`, `100`
-- **portion**: e.g., `1/4`, `25%`, `0.25`
+**Migration:** `transactions create --script` and `--var` were removed. Use
+`numscripts execute --file` to run a Numscript (see below).
 
 #### transactions revert
 
@@ -3615,7 +3575,7 @@ ledgerctl signing require false --signing-key /path/to/seed
 
 ### numscripts
 
-Manage the numscript library (per-ledger reusable scripts with semver versioning).
+Execute Numscript files or manage the per-ledger library of reusable scripts.
 
 **Aliases:** `numscript`, `ns`
 
@@ -3624,6 +3584,30 @@ Manage the numscript library (per-ledger reusable scripts with semver versioning
 | Flag | Default | Description |
 |------|---------|-------------|
 | `--ledger` | *(required)* | Name of the ledger |
+
+#### numscripts execute
+
+Execute a Numscript from a file or a saved library version. The result may be a
+new transaction or an account metadata update without a transaction. JSON and
+YAML output contain the corresponding result object.
+
+```bash
+ledgerctl numscripts execute --ledger my-ledger --file transfer.num --var "amount=USD/2 1000" --idempotency-key transfer-42
+ledgerctl numscripts execute --ledger my-ledger --name transfer --version 1.0.0 --var "amount=USD/2 1000" --metadata receipt=invoice-42
+```
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--file` | | Path to a Numscript file; exclusive with `--name` |
+| `--name` | | Saved Numscript name; exclusive with `--file` |
+| `--version` | `latest` | Saved script version; only with `--name` |
+| `--var` | | Variable in `name=value` format; repeat for multiple variables |
+| `--metadata` | | Transaction metadata in `key=value` format; requires a transaction-producing script |
+| `--reference` | | Transaction reference; requires postings (metadata-only results return `METADATA_ONLY_REFERENCE`) |
+| `--idempotency-key` | | Reuse the same batch key when retrying an execution |
+| `--force` | `false` | Bypass balance checks |
+| `--json`, `--yaml` | `false` | Structured result output |
+| `--timeout` | `10s` | Request timeout |
 
 #### numscripts list
 
@@ -5084,14 +5068,14 @@ For complete documentation, see:
 ledgerctl ledgers create demo
 
 # 2. Fund the bank from world
-ledgerctl transactions create --ledger demo \
-  --script numscript/examples/world_funding.num \
+ledgerctl numscripts execute --ledger demo \
+  --file numscript/examples/world_funding.num \
   --var "destination=bank" \
   --var "amount=USD/2 100000"
 
 # 3. Transfer to a user
-ledgerctl transactions create --ledger demo \
-  --script numscript/examples/simple_transfer.num \
+ledgerctl numscripts execute --ledger demo \
+  --file numscript/examples/simple_transfer.num \
   --var "source=bank" \
   --var "destination=users:alice" \
   --var "amount=USD/2 1000"

@@ -318,6 +318,14 @@ func (b *Builder) dispatchOrder(
 	switch data := apply.GetData().(type) {
 	case *raftcmdpb.LedgerApplyOrder_CreateTransaction:
 		return b.dispatchCreateTransaction(ctx, handle, ledger, data.CreateTransaction, logSeq, state, entry)
+	case *raftcmdpb.LedgerApplyOrder_ExecuteNumscript:
+		execution := data.ExecuteNumscript
+
+		return b.dispatchCreateTransaction(ctx, handle, ledger, &raftcmdpb.CreateTransactionOrder{
+			Script: execution.GetScript(), NumscriptReference: execution.GetNumscriptReference(),
+			Timestamp: execution.GetTimestamp(), Metadata: execution.GetMetadata(),
+			AccountMetadata: execution.GetAccountMetadata(), Force: execution.GetForce(), Reference: execution.GetReference(),
+		}, logSeq, state, entry)
 	case *raftcmdpb.LedgerApplyOrder_RevertTransaction:
 		return b.dispatchRevertTransaction(ctx, handle, ledger, logSeq, state, entry)
 	}
@@ -448,9 +456,9 @@ func applyVolumeAnnotations(ledger string, ann logVolumeAnnotations, state *batc
 	}
 }
 
-// dispatchCreateTransaction increments posting, reference, numscript-exec,
-// ephemeral-evicted, volume and template usage counters for a create-tx
-// order.
+// dispatchCreateTransaction projects the effects of a transaction creation or
+// standalone Numscript execution. A metadata-only script counts as an execution
+// without creating a transaction.
 func (b *Builder) dispatchCreateTransaction(
 	ctx context.Context,
 	handle dal.PebbleGetter,
@@ -474,17 +482,13 @@ func (b *Builder) dispatchCreateTransaction(
 
 	applyVolumeAnnotations(ledger, ann, state, entry)
 
-	// A skipped CreateTransaction produces an OrderSkipped log, not a
-	// CreatedTransaction, so readLog reports no real transaction. Such an order
-	// committed nothing: it must contribute no reference / numscript-execution /
-	// template-usage counters (all derived from the raw order below). Posting and
-	// volume counters above come from the produced log and are already naturally
-	// zero for a skip.
-	if !ann.isCreatedTx {
+	// Skipped orders contribute no success-scoped usage. A metadata-only
+	// result has no transaction, but is still a successful script execution.
+	if !ann.isCreatedTx && !ann.isMetadataOnly {
 		return nil
 	}
 
-	if order.GetReference() != "" {
+	if ann.isCreatedTx && order.GetReference() != "" {
 		state.addCounter(ledger, usagestore.CounterReference, 1)
 	}
 
@@ -498,9 +502,8 @@ func (b *Builder) dispatchCreateTransaction(
 	if ref := order.GetNumscriptReference(); ref != nil {
 		// Prefer the order's client-supplied timestamp so template usage
 		// tracks the wall clock the client cares about; when omitted, fall
-		// back to the effective timestamp the FSM stamped on the produced
-		// log (either the client value or the proposal date resolved by
-		// processor_transaction.go). Either way we end up with a
+		// back to the effective timestamp the FSM stamped on the transaction
+		// or on the metadata-only ledger log. Either way we end up with a
 		// deterministic non-nil timestamp on every replay.
 		ts := order.GetTimestamp()
 		if ts == nil {
@@ -559,11 +562,10 @@ type logVolumeAnnotations struct {
 	ephemeral   []*commonpb.TouchedVolume // new + purged (pure ephemeral)
 	txTimestamp *commonpb.Timestamp       // Transaction.Timestamp on Created/Reverted logs
 
-	// Kind of the produced log. Both false when the order was skipped
-	// (OrderSkipped) or produced no transaction — the order committed nothing,
-	// so it must not contribute success-scoped usage counters.
-	isCreatedTx  bool
-	isRevertedTx bool
+	// Kind of the produced log. All false when the order was skipped.
+	isCreatedTx    bool
+	isRevertedTx   bool
+	isMetadataOnly bool
 }
 
 // readLog fetches the log at logSeq and returns its posting count plus the
@@ -616,6 +618,9 @@ func (b *Builder) readLog(ctx context.Context, handle dal.PebbleGetter, logSeq u
 		result.postings = len(tx.GetPostings())
 		result.txTimestamp = tx.GetTimestamp()
 		result.isRevertedTx = true
+	case *commonpb.LedgerLogPayload_AccountMetadataUpdated:
+		result.txTimestamp = ledgerLog.GetDate()
+		result.isMetadataOnly = true
 	}
 
 	return result, nil

@@ -850,6 +850,7 @@ message LedgerLogPayload {
     RemovedAccountTypeLog removed_account_type = 11 [(ledger_log_is_history) = false];
     UpdatedDefaultEnforcementModeLog updated_default_enforcement_mode = 12 [(ledger_log_is_history) = false];
     OrderSkippedLog order_skipped = 13 [(ledger_log_is_history) = true];
+    AccountMetadataUpdated account_metadata_updated = 14 [(ledger_log_is_history) = true];
   }
 }
 
@@ -1010,6 +1011,8 @@ message FailureDetails {
     NumscriptScopedNegativeBalanceDetails numscript_scoped_negative_balance = 147 [(failure_reason) = ERROR_REASON_NUMSCRIPT_EXECUTION_ERROR];
     NumscriptVersionNotFoundDetails numscript_version_not_found = 148 [(failure_reason) = ERROR_REASON_NUMSCRIPT_NOT_FOUND];
     MirrorAssetMappingInvalidDetails mirror_asset_mapping_invalid = 149 [(failure_reason) = ERROR_REASON_VALIDATION];
+    MetadataOnlyTransactionMetadataDetails metadata_only_transaction_metadata = 150 [(failure_reason) = ERROR_REASON_VALIDATION];
+    MetadataOnlyReferenceDetails metadata_only_reference = 151 [(failure_reason) = ERROR_REASON_VALIDATION];
   }
 }
 
@@ -1081,6 +1084,12 @@ message ColorTooLongDetails {
 }
 
 message EmptyTransactionDetails {
+}
+
+message MetadataOnlyTransactionMetadataDetails {
+}
+
+message MetadataOnlyReferenceDetails {
 }
 
 
@@ -2874,4 +2883,11 @@ message ListOptions {
 message CapabilityActivation {
   fixed32 id = 1;
   bool active = 2;
+}
+
+// AccountMetadataUpdated records account metadata written by a metadata-only
+// Numscript execution. It is a history log entry, but it is not a transaction:
+// no transaction ID, postings, or TransactionState are created.
+message AccountMetadataUpdated {
+  map<string, MetadataMap> account_metadata = 1;
 }

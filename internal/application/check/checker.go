@@ -11,6 +11,7 @@ import (
 	"math/big"
 	"math/bits"
 	"slices"
+	"sort"
 	"strconv"
 
 	"github.com/cockroachdb/pebble/v2"
@@ -2406,6 +2407,7 @@ func (c *Checker) verifyAuditHashChain(
 				if replayErr != nil {
 					return nil, fmt.Errorf("replaying chain-verified audit entry %d: %w", entry.GetSequence(), replayErr)
 				}
+				reconcileMetadataOnlyChainBound(items, orders, logs, chainBound)
 				for _, log := range logs {
 					if _, duplicate := expectedLogs[log.GetSequence()]; duplicate {
 						return nil, fmt.Errorf("invariant: audit replay produced duplicate log sequence %d", log.GetSequence())
@@ -2492,6 +2494,77 @@ func (c *Checker) verifyAuditHashChain(
 	return result, nil
 }
 
+// reconcileMetadataOnlyChainBound corrects checker-only projections that are
+// derived from the serialized order before the FSM resolves a Numscript. A
+// metadata-only script has no transaction ID, while collectExpectedSkippable
+// must conservatively derive IDs from orders alone for older log formats.
+// Replay gives us the authoritative payload shape, so remove the speculative
+// transaction slot and fold script-emitted account metadata into the skip
+// timeline.
+func reconcileMetadataOnlyChainBound(items []*auditpb.AuditItem, orders []*raftcmdpb.Order, logs []*commonpb.Log, chainBound *chainBoundState) {
+	bySequence := make(map[uint64]*commonpb.Log, len(logs))
+	for _, log := range logs {
+		if log != nil {
+			bySequence[log.GetSequence()] = log
+		}
+	}
+	for i, order := range orders {
+		if i >= len(items) || order == nil {
+			continue
+		}
+		log := bySequence[items[i].GetLogSequence()]
+		if log == nil {
+			continue
+		}
+
+		ledger := order.GetLedgerScoped().GetLedger()
+
+		// Seed transaction-scoped predicates from the replayed transaction, not
+		// from the order-derived counter: a metadata-only order earlier in the
+		// same entry consumes no FSM transaction id, so the speculative
+		// allocation is one too high for every later create.
+		if tx := log.GetPayload().GetApply().GetLog().GetData().GetCreatedTransaction().GetTransaction(); tx != nil {
+			if execution := order.GetLedgerScoped().GetApply().GetExecuteNumscript(); execution != nil && execution.GetReference() != "" {
+				rememberReferenceClaim(chainBound.references, ledger, execution.GetReference(), items[i].GetLogSequence())
+			}
+			if _, anchored := chainBound.ledgerCreationSeen[ledger]; anchored {
+				rememberReferenceTxID(chainBound.referenceTxIDs, ledger, tx.GetReference(), tx.GetId())
+
+				target := metadataTimelineTarget(true, strconv.FormatUint(tx.GetId(), 10))
+				for key := range tx.GetMetadata() {
+					appendMetadataMutation(chainBound.metadata, ledger, target, key, items[i].GetLogSequence(), true)
+				}
+			}
+
+			continue
+		}
+
+		if tx := log.GetPayload().GetApply().GetLog().GetData().GetRevertedTransaction().GetRevertTransaction(); tx != nil {
+			if _, anchored := chainBound.ledgerCreationSeen[ledger]; anchored {
+				target := metadataTimelineTarget(true, strconv.FormatUint(tx.GetId(), 10))
+				for key := range tx.GetMetadata() {
+					appendMetadataMutation(chainBound.metadata, ledger, target, key, items[i].GetLogSequence(), true)
+				}
+			}
+
+			continue
+		}
+
+		payload := log.GetPayload().GetApply().GetLog().GetData().GetAccountMetadataUpdated()
+		if payload == nil {
+			continue
+		}
+		if next, ok := chainBound.nextTxID[ledger]; ok && next > 1 {
+			chainBound.nextTxID[ledger] = next - 1
+		}
+		for account, metadata := range payload.GetAccountMetadata() {
+			for key := range metadata.GetValues() {
+				appendMetadataMutation(chainBound.metadata, ledger, metadataTimelineTarget(false, account), key, items[i].GetLogSequence(), true)
+			}
+		}
+	}
+}
+
 // chainBoundState aggregates the audit-derived state the verifier consults
 // to prove each per-reason skip is legitimate. Every entry is populated by
 // collectExpectedSkippable during the audit chain scan — projections
@@ -2528,11 +2601,10 @@ type chainBoundState struct {
 	// transaction id) with the SAME first-claim-wins semantic, so the
 	// verifier can re-derive and pin OrderSkipped.context["existingTransactionId"]
 	// against audit-bound data. Every reference-claim source carries the
-	// owning tx id: a CreateTransaction gets it from the chain-bound
-	// counter (allocateChainBoundTxID), a mirror ingest from
-	// MirrorCreatedTransaction.transaction_id. An id of 0 means "claim seen
-	// but owning tx id not derivable" (an unanchored counter) — the verifier
-	// stays permissive in that case. See finding EN-1356
+	// owning tx id: a replayed CreatedTransaction supplies it for a regular
+	// create, while a mirror ingest supplies MirrorCreatedTransaction.transaction_id.
+	// An id of 0 means "claim seen but owning tx id not derivable" — the
+	// verifier stays permissive in that case. See finding EN-1356
 	// existingTransactionId (invariant #8).
 	referenceTxIDs map[string]map[string]uint64
 	reverted       map[string]map[uint64]uint64
@@ -2949,12 +3021,10 @@ func collectExpectedSkippable(
 //
 //   - RemoveAccountType → chainBound.accountTypes (exists=false).
 //
-//   - CreateTransaction.metadata → chainBound.metadata (exists=true)
-//     at target=<allocated tx id>. The tx id is derived from the
-//     per-ledger nextTxID counter which mirrors the FSM's
-//     LedgerBoundaries.NextTransactionId. Skipped CreateTransactions
-//     (identified via the chain-bound reference already claimed) do
-//     NOT consume a slot — see chainBoundCreateTxSkipped.
+//   - CreateTransaction.metadata is seeded into chainBound.metadata by
+//     reconcileMetadataOnlyChainBound from the replayed CreatedTransaction's
+//     authoritative ID. It is intentionally not recorded from this order
+//     fold, whose nextTxID allocation cannot identify metadata-only creates.
 //
 //   - RevertTransaction.metadata → chainBound.metadata (exists=true)
 //     at target=<newly-allocated revert tx id>. The revert produces a
@@ -3066,33 +3136,25 @@ func recordChainBoundMutations(
 				}
 			}
 
-			txID, err := allocateChainBoundTxID(ledger, chainBound)
+			_, err := allocateChainBoundTxID(ledger, chainBound)
 			if err != nil {
 				return err
 			}
+		}
+	}
 
-			// The successful CreateTransaction owns its reference — record
-			// the (ref → txID) binding so a later conflicting order's skip
-			// can have its context["existingTransactionId"] pinned. Only
-			// anchored ledgers get a reliable counter; on an unanchored
-			// ledger allocateChainBoundTxID defaults the counter and the id
-			// would be mis-attributed, so leave the binding absent and let
-			// the verifier stay permissive.
-			if _, anchored := chainBound.ledgerCreationSeen[ledger]; anchored {
-				if ref := ct.GetReference(); ref != "" {
-					rememberReferenceTxID(chainBound.referenceTxIDs, ledger, ref, txID)
-				}
-
-				// Seed under the SAME "tx:<id>" namespace verifySkippedOrder
-				// looks up via metadataTimelineTarget(isTx=true, id). A bare
-				// decimal target here would never match the verifier's keyed
-				// lookup, letting a forged METADATA_NOT_FOUND on tx metadata
-				// written by this successful transaction pass undetected.
-				target := metadataTimelineTarget(true, strconv.FormatUint(txID, 10))
-				for key := range ct.GetMetadata() {
-					appendMetadataMutation(chainBound.metadata, ledger, target, key, logSeq, true)
-				}
+	if execution := apply.GetExecuteNumscript(); execution != nil {
+		// Execution has no reference to skip against. Its account metadata is
+		// a successful write regardless of whether it creates a transaction.
+		for account, mm := range execution.GetAccountMetadata() {
+			for key := range mm.GetValues() {
+				appendMetadataMutation(chainBound.metadata, ledger, metadataTimelineTarget(false, account), key, logSeq, true)
 			}
+		}
+		// The order does not reveal whether the script emitted postings. The
+		// replayed log reconciles the speculative slot for metadata-only output.
+		if _, err := allocateChainBoundTxID(ledger, chainBound); err != nil {
+			return err
 		}
 	}
 
@@ -3105,20 +3167,9 @@ func recordChainBoundMutations(
 			// counter allocation.
 			rememberFirstRevert(chainBound.reverted, ledger, rt.GetTransactionId(), logSeq)
 
-			newTxID, err := allocateChainBoundTxID(ledger, chainBound)
+			_, err := allocateChainBoundTxID(ledger, chainBound)
 			if err != nil {
 				return err
-			}
-
-			if _, anchored := chainBound.ledgerCreationSeen[ledger]; anchored {
-				// Same "tx:<id>" namespacing as the CreateTransaction path
-				// above — the revert's metadata targets the newly-allocated
-				// revert tx, and verifySkippedOrder keys tx targets through
-				// metadataTimelineTarget(isTx=true, id).
-				target := metadataTimelineTarget(true, strconv.FormatUint(newTxID, 10))
-				for key := range rt.GetMetadata() {
-					appendMetadataMutation(chainBound.metadata, ledger, target, key, logSeq, true)
-				}
 			}
 		}
 	}
@@ -3390,10 +3441,10 @@ func rememberFirstRevert(
 }
 
 // appendMetadataMutation appends a presence-flip to the per-(ledger,
-// target, key) chronological list. collectExpectedSkippable iterates in
-// seq order, so the append order matches seq order — the verifier's
-// backward scan finds the latest transition strictly before the skip
-// sequence.
+// target, key) chronological list. Replay-derived mutations can be inserted
+// after order-fold mutations from the same proposal, so keep the slice sorted
+// at insertion time; the verifier's backward scan then finds the latest
+// transition strictly before the skip sequence without rescanning history.
 func appendMetadataMutation(
 	metadata map[string]map[string]map[string][]chainBoundMutation,
 	ledger, target, key string,
@@ -3412,7 +3463,21 @@ func appendMetadataMutation(
 		perLedger[target] = perTarget
 	}
 
-	perTarget[key] = append(perTarget[key], chainBoundMutation{seq: logSeq, exists: exists})
+	mutations := perTarget[key]
+	mutation := chainBoundMutation{seq: logSeq, exists: exists}
+	if len(mutations) == 0 || mutations[len(mutations)-1].seq <= logSeq {
+		perTarget[key] = append(mutations, mutation)
+
+		return
+	}
+
+	index := sort.Search(len(mutations), func(i int) bool {
+		return mutations[i].seq > logSeq
+	})
+	mutations = append(mutations, chainBoundMutation{})
+	copy(mutations[index+1:], mutations[index:])
+	mutations[index] = mutation
+	perTarget[key] = mutations
 }
 
 // appendAccountTypeMutation is appendMetadataMutation's account-type
@@ -3725,8 +3790,8 @@ func verifySkippedOrder(
 
 		// Pin context["existingTransactionId"] against the owning tx id the
 		// checker recorded for the first successful claim of this reference
-		// (chainBound.referenceTxIDs, populated from the CreateTransaction
-		// counter or mirror ingestion). A tamperer who rewrites this field to
+		// (chainBound.referenceTxIDs, populated from replayed CreatedTransaction
+		// data or mirror ingestion). A tamperer who rewrites this field to
 		// misattribute the conflicting transaction is caught here. Stays
 		// permissive only when the owning id is not derivable (ownerTxID==0).
 		if ownerTxID := chainBound.referenceTxIDs[ledger][expected.reference]; ownerTxID != 0 {

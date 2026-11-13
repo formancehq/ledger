@@ -11,7 +11,7 @@ Set PlaybackSpeed 0.8
 Set Shell zsh
 
 # Numscript Demo
-# Shows: payment with fees (interactive variables), escrow with dynamic account
+# Shows: payment with fees, escrow with dynamic account
 
 Sleep 300ms
 
@@ -29,7 +29,7 @@ Enter
 Sleep 1500ms
 
 # ============================================================================
-# Numscript with Interactive Variables
+# Numscript with Variables
 # ============================================================================
 
 Type "clear"
@@ -41,22 +41,8 @@ Type "cat misc/numscript/examples/payment_with_fees.num"
 Enter
 Sleep 2s
 
-# Execute with interactive variable input
-Type "ledgerctl transactions create --ledger demo-numscript --script misc/numscript/examples/payment_with_fees.num"
-Enter
-Sleep 1500ms
-
-# Enter variables (amount, buyer, platform, seller)
-Type "USD/2 5000"
-Enter
-Sleep 600ms
-Type "bank:main"
-Enter
-Sleep 600ms
-Type "platform:fees"
-Enter
-Sleep 600ms
-Type "merchants:coffee-shop"
+# Execute with the required variables
+Type "ledgerctl numscripts execute --ledger demo-numscript --file misc/numscript/examples/payment_with_fees.num --var 'buyer=bank:main' --var 'seller=merchants:coffee-shop' --var 'platform=platform:fees' --var 'amount=USD/2 5000'"
 Enter
 Sleep 1500ms
 
@@ -79,7 +65,7 @@ Enter
 Sleep 1500ms
 
 # Create escrow with dynamic account @escrow:$order_id
-Type "ledgerctl transactions create --ledger demo-numscript --script misc/numscript/examples/escrow_funding.num --var 'buyer=users:alice' --var 'order_id=ORD-2024-001' --var 'amount=USD/2 15000'"
+Type "ledgerctl numscripts execute --ledger demo-numscript --file misc/numscript/examples/escrow_funding.num --var 'buyer=users:alice' --var 'order_id=ORD-2024-001' --var 'amount=USD/2 15000'"
 Enter
 Sleep 2s
 

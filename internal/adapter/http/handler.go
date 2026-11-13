@@ -224,6 +224,7 @@ func NewHandler(logger logging.Logger, backend Backend, authCfg internalauth.Aut
 			// Transactions write scope
 			r.With(requireTransactionsWrite).Group(func(r chi.Router) {
 				r.Post("/{ledgerName}/transactions", signedRequest(knownQuery(server.handleCreateTransaction)))
+				r.Post("/{ledgerName}/numscripts/execute", signedRequest(knownQuery(server.handleExecuteNumscript)))
 				r.Post("/{ledgerName}/transactions/{transactionId}/revert", signedRequest(knownQuery(server.handleRevertTransaction)))
 			})
 
