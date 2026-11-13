@@ -27,15 +27,18 @@ validation_tmpdir_valid() {
     esac
 }
 
-# EPERM means the process exists but this caller may not signal it: another
-# user's process, or a sandboxed validator probing a run started outside its
-# sandbox. Only ESRCH proves the process is gone; treating EPERM as dead would
-# let a sandboxed run reap a live lock owner or retire a Go cache generation
-# that a live run still uses.
+# Only ESRCH proves the process is gone. EPERM means it exists but this caller
+# may not signal it: another user's process, or a sandboxed validator probing a
+# run started outside its sandbox. A probe that fails without a verdict proves
+# nothing either. Treating those as dead would let a run reap a live lock owner
+# or retire a Go cache generation that a live run still uses.
+#
+# env requests the C locale so that this shell never switches its own: Nix bash
+# on macOS can crash in setlocale inside a forked subshell.
 process_exists() {
     local error
-    error=$(LC_ALL=C kill -0 "$1" 2>&1) && return 0
-    [[ "$error" == *"ot permitted"* ]]
+    error=$(env LC_ALL=C kill -0 "$1" 2>&1) && return 0
+    [[ "$error" != *"o such process"* ]]
 }
 
 process_identity() {
@@ -51,7 +54,7 @@ process_identity() {
         return
     fi
 
-    identity=$(LC_ALL=C ps -o lstart= -p "$pid" 2>/dev/null || true)
+    identity=$(env LC_ALL=C ps -o lstart= -p "$pid" 2>/dev/null || true)
     [[ -n "$identity" ]] || return 1
     printf 'ps:%s\n' "$identity"
 }
