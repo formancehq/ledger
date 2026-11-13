@@ -19,6 +19,7 @@ import (
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
 	"github.com/formancehq/ledger/v3/internal/adapter/auth"
+	"github.com/formancehq/ledger/v3/internal/application/coverage"
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/domain/crypto/keystore"
 	"github.com/formancehq/ledger/v3/internal/domain/crypto/signing"
@@ -1360,35 +1361,19 @@ func wrapSystemScoped(order *raftcmdpb.Order, ss *raftcmdpb.SystemScopedOrder) {
 // `domain.StoreFailure`, so the audit chain records `COVERAGE_MISS`
 // rather than a storage fault (EN-1379).
 func addVolumeNeed(p *plan.Coverage, incarnationWrites bool, ledgerName, account, asset, color string) {
-	p.Add(dal.SubAttrVolume, domain.VolumeKey{
-		AccountKey: domain.AccountKey{LedgerName: ledgerName, Account: account},
-		Asset:      asset,
-		Color:      color,
-	}.Bytes())
-	if incarnationWrites {
-		p.Add(dal.SubAttrAccountIncarnation, (domain.AccountKey{LedgerName: ledgerName, Account: account}).Bytes())
-	}
+	coverage.AddVolumeNeed(p, incarnationWrites, ledgerName, account, asset, color)
 }
 
 // addAccountMetadataNeed covers the metadata row and the account lifetime.
 // A metadata-only write can open a normal account without touching a volume.
 func addAccountMetadataNeed(p *plan.Coverage, incarnationWrites bool, ledgerName, account, key string) {
-	p.Add(dal.SubAttrMetadata, domain.MetadataKey{
-		AccountKey: domain.AccountKey{LedgerName: ledgerName, Account: account},
-		Key:        key,
-	}.Bytes())
-	if incarnationWrites {
-		p.Add(dal.SubAttrAccountIncarnation, (domain.AccountKey{LedgerName: ledgerName, Account: account}).Bytes())
-	}
+	coverage.AddAccountMetadataNeed(p, incarnationWrites, ledgerName, account, key)
 }
 
 // addTransactionTargetNeeds preloads the TransactionState entry for a
 // TargetTransaction so the FSM can read it from cache.
 func addTransactionTargetNeeds(p *plan.Coverage, ledgerName string, txID uint64) {
-	p.Add(dal.SubAttrTransaction, domain.TransactionKey{
-		LedgerName: ledgerName,
-		ID:         txID,
-	}.Bytes())
+	coverage.AddTransactionTargetNeed(p, ledgerName, txID)
 }
 
 // extractLedgerScopedNeeds populates the preload Coverage for a ledger-scoped
@@ -1419,59 +1404,7 @@ func extractLedgerScopedNeeds(p *plan.Coverage, ls *raftcmdpb.LedgerScopedOrder,
 	case *raftcmdpb.LedgerScopedOrder_MirrorIngest:
 		p.Add(dal.SubAttrLedger, ledgerBytes)
 		p.Add(dal.SubAttrBoundary, ledgerBytes)
-
-		mi := payload.MirrorIngest
-
-		var postings []*commonpb.Posting
-		if ct := mi.GetEntry().GetCreatedTransaction(); ct != nil {
-			postings = ct.GetPostings()
-		} else if rt := mi.GetEntry().GetRevertedTransaction(); rt != nil {
-			postings = rt.GetReversePostings()
-		}
-
-		for _, posting := range postings {
-			addVolumeNeed(p, incarnationWrites, ledgerName, posting.GetSource(), posting.GetAsset(), posting.GetColor())
-			addVolumeNeed(p, incarnationWrites, ledgerName, posting.GetDestination(), posting.GetAsset(), posting.GetColor())
-		}
-
-		if ct := mi.GetEntry().GetCreatedTransaction(); ct != nil {
-			for account, mm := range ct.GetAccountMetadata() {
-				for key := range mm.GetValues() {
-					addAccountMetadataNeed(p, incarnationWrites, ledgerName, account, key)
-				}
-			}
-		}
-
-		if sm := mi.GetEntry().GetSavedMetadata(); sm != nil {
-			switch target := sm.GetTarget().GetTarget().(type) {
-			case *commonpb.Target_Account:
-				for key := range sm.GetMetadata() {
-					addAccountMetadataNeed(p, incarnationWrites, ledgerName, target.Account.GetAddr(), key)
-				}
-			case *commonpb.Target_TransactionId:
-				addTransactionTargetNeeds(p, ledgerName, target.TransactionId)
-			}
-		}
-
-		if dm := mi.GetEntry().GetDeletedMetadata(); dm != nil {
-			switch target := dm.GetTarget().GetTarget().(type) {
-			case *commonpb.Target_Account:
-				// Mirror-ingested v2 DELETE_METADATA log applies via
-				// processMirrorDeletedMetadata → AccountMetadata.Delete
-				// → KeyStore.Tombstone. Declare coverage; Tombstone
-				// lazy-fabricates a Gen0 tombstone from Gen1's tag when
-				// only Gen1 has the entry.
-				addAccountMetadataNeed(p, incarnationWrites, ledgerName, target.Account.GetAddr(), dm.GetKey())
-			case *commonpb.Target_TransactionId:
-				// Transaction metadata lives inside the TransactionState
-				// map — no strict-tombstone path, no extra coverage needed.
-				addTransactionTargetNeeds(p, ledgerName, target.TransactionId)
-			}
-		}
-
-		if rt := mi.GetEntry().GetRevertedTransaction(); rt != nil {
-			addTransactionTargetNeeds(p, ledgerName, rt.GetRevertedTransactionId())
-		}
+		coverage.AddMirrorIngestNeeds(p, ledgerName, payload.MirrorIngest, incarnationWrites)
 	case *raftcmdpb.LedgerScopedOrder_CreatePreparedQuery:
 		p.Add(dal.SubAttrLedger, ledgerBytes)
 		p.Add(dal.SubAttrPreparedQuery, domain.PreparedQueryKey{LedgerName: ledgerName, Name: payload.CreatePreparedQuery.GetQuery().GetName()}.Bytes())
