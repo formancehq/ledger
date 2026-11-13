@@ -51,7 +51,7 @@ func (x *ExecuteNumscriptPayload) MarshalJSON() ([]byte, error) {
 	return (&CreateTransactionPayload{
 		Script: x.GetScript(), ScriptReference: x.GetScriptReference(),
 		Timestamp: x.GetTimestamp(), Metadata: x.GetMetadata(),
-		AccountMetadata: x.GetAccountMetadata(), Force: x.GetForce(),
+		AccountMetadata: x.GetAccountMetadata(), Force: x.GetForce(), Reference: x.GetReference(),
 	}).MarshalJSON()
 }
 
@@ -62,6 +62,7 @@ func (x *ExecuteNumscriptPayload) UnmarshalJSON(data []byte) error {
 	}
 	x.Script, x.ScriptReference, x.Timestamp = create.GetScript(), create.GetScriptReference(), create.GetTimestamp()
 	x.Metadata, x.AccountMetadata, x.Force = create.GetMetadata(), create.GetAccountMetadata(), create.GetForce()
+	x.Reference = create.GetReference()
 
 	return nil
 }

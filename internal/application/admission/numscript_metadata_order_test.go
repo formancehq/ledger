@@ -36,6 +36,29 @@ func TestExecuteNumscriptOrderIsPlannedAndValidated(t *testing.T) {
 	require.NoError(t, admission.resolveScriptsAndEnrichNeeds(t.Context(), orders, overlay, needs, perOrder, false))
 }
 
+func TestExecuteNumscriptReferenceIsPlanned(t *testing.T) {
+	t.Parallel()
+	store := createTestStore(t)
+	admission, _ := createTestAdmission(t, store)
+	request := &servicepb.LedgerApplyRequest{
+		Ledger: testLedgerName,
+		Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_ExecuteNumscript{ExecuteNumscript: &servicepb.ExecuteNumscriptPayload{
+			Script:    &commonpb.Script{Plain: `send [USD/2 100] (source = @world destination = @users:alice)`},
+			Reference: "ref-1",
+		}}},
+	}
+	apply, err := admission.convertApplyRequest(t.Context(), request, newBulkOverlay())
+	require.NoError(t, err)
+	require.Equal(t, "ref-1", apply.GetExecuteNumscript().GetReference())
+	order := &raftcmdpb.Order{Type: &raftcmdpb.Order_LedgerScoped{LedgerScoped: &raftcmdpb.LedgerScopedOrder{
+		Ledger:  testLedgerName,
+		Payload: &raftcmdpb.LedgerScopedOrder_Apply{Apply: apply},
+	}}}
+	needs, _, err := admission.extractPreloadNeeds(t.Context(), []*raftcmdpb.Order{order}, newBulkOverlay())
+	require.NoError(t, err)
+	require.NotNil(t, needs)
+}
+
 func TestNumscriptCompetingMetadataErrorsReachProposalPreparation(t *testing.T) {
 	t.Parallel()
 	store := createTestStore(t)

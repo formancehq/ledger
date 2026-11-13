@@ -3792,6 +3792,7 @@ type ExecuteNumscriptPayloadReader interface {
 	GetMetadata() ExecuteNumscriptPayload_MetadataMapReader
 	GetAccountMetadata() ExecuteNumscriptPayload_AccountMetadataMapReader
 	GetForce() bool
+	GetReference() string
 	Mutate() *ExecuteNumscriptPayload
 }
 
@@ -3831,6 +3832,10 @@ func (r *executeNumscriptPayloadReadonly) GetAccountMetadata() ExecuteNumscriptP
 
 func (r *executeNumscriptPayloadReadonly) GetForce() bool {
 	return (*ExecuteNumscriptPayload)(r).GetForce()
+}
+
+func (r *executeNumscriptPayloadReadonly) GetReference() string {
+	return (*ExecuteNumscriptPayload)(r).GetReference()
 }
 
 func (r *executeNumscriptPayloadReadonly) Mutate() *ExecuteNumscriptPayload {

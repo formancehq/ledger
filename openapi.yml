@@ -4804,8 +4804,9 @@ components:
       description: |
         Execute a Numscript independently of transaction creation. Specify
         exactly one of `script` and `scriptReference`. As with transaction
-        creation, unrecognized properties are ignored; `postings` and
-        `reference` have no effect on this action.
+        creation, unrecognized properties are ignored. `postings` has no effect
+        on this action. A transaction `reference` applies when the script emits
+        postings; a metadata-only result rejects it.
       properties:
         accountMetadata:
           type: object
@@ -4821,6 +4822,9 @@ components:
           additionalProperties:
             $ref: '#/components/schemas/MetadataValue'
           description: Transaction metadata, accepted only when the script produces postings.
+        reference:
+          type: string
+          description: Transaction reference, accepted only when the script produces postings.
         script:
           $ref: '#/components/schemas/Script'
         scriptReference:

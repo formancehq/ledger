@@ -546,7 +546,7 @@ func requestToOrderUnchecked(req *servicepb.Request) *raftcmdpb.Order {
 			applyOrder.Data = &raftcmdpb.LedgerApplyOrder_ExecuteNumscript{ExecuteNumscript: &raftcmdpb.ExecuteNumscriptOrder{
 				Script: data.ExecuteNumscript.GetScript(), Timestamp: data.ExecuteNumscript.GetTimestamp(),
 				Metadata: data.ExecuteNumscript.GetMetadata(), AccountMetadata: data.ExecuteNumscript.GetAccountMetadata(),
-				Force: data.ExecuteNumscript.GetForce(),
+				Force: data.ExecuteNumscript.GetForce(), Reference: data.ExecuteNumscript.GetReference(),
 			}}
 		case *servicepb.LedgerAction_AddMetadata:
 			applyOrder.Data = &raftcmdpb.LedgerApplyOrder_AddMetadata{

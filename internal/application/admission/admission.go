@@ -1487,6 +1487,9 @@ func extractLedgerScopedNeeds(p *plan.Coverage, ls *raftcmdpb.LedgerScopedOrder,
 
 		switch applyData := payload.Apply.GetData().(type) {
 		case *raftcmdpb.LedgerApplyOrder_ExecuteNumscript:
+			if ref := applyData.ExecuteNumscript.GetReference(); ref != "" {
+				p.Add(dal.SubAttrReference, domain.TransactionReferenceKey{LedgerName: ledgerName, Reference: ref}.Bytes())
+			}
 			for account, mm := range applyData.ExecuteNumscript.GetAccountMetadata() {
 				for key := range mm.GetValues() {
 					p.Add(dal.SubAttrMetadata, domain.MetadataKey{
@@ -2035,7 +2038,7 @@ func (a *Admission) resolveScriptsAndEnrichNeeds(ctx context.Context, orders []*
 			createTx = &raftcmdpb.LedgerApplyOrder_CreateTransaction{CreateTransaction: &raftcmdpb.CreateTransactionOrder{
 				Script: execution.GetScript(), NumscriptReference: execution.GetNumscriptReference(),
 				Timestamp: execution.GetTimestamp(), Metadata: execution.GetMetadata(),
-				AccountMetadata: execution.GetAccountMetadata(), Force: execution.GetForce(),
+				AccountMetadata: execution.GetAccountMetadata(), Force: execution.GetForce(), Reference: execution.GetReference(),
 			}}
 		}
 
@@ -2656,6 +2659,7 @@ func (a *Admission) convertApplyRequest(ctx context.Context, apply *servicepb.Le
 		order.Data = &raftcmdpb.LedgerApplyOrder_ExecuteNumscript{ExecuteNumscript: &raftcmdpb.ExecuteNumscriptOrder{
 			Script: execution.GetScript(), NumscriptReference: ref, Timestamp: execution.GetTimestamp(),
 			Metadata: execution.GetMetadata(), AccountMetadata: execution.GetAccountMetadata(), Force: execution.GetForce(),
+			Reference: execution.GetReference(),
 		}}
 	case *servicepb.LedgerAction_AddMetadata:
 		order.Data = &raftcmdpb.LedgerApplyOrder_AddMetadata{
