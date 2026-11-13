@@ -42,6 +42,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/pkg/futures"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	"github.com/formancehq/ledger/v3/internal/query"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 	"github.com/formancehq/ledger/v3/pkg/actions"
 )
@@ -92,7 +93,11 @@ func newBootstrapRetryAdmission(t *testing.T, store *dal.Store) *admission.Admis
 	}).AnyTimes()
 
 	return admission.NewAdmission(store, logger, proposer, &membership.Coordinator{},
-		builder, meters, gate, keys, shared, attrs, numscript.NewNumscriptCache(0), func(context.Context) error { return nil })
+		builder, meters, gate, keys, shared, attrs, numscript.NewNumscriptCache(0), func(context.Context) error { return nil },
+		func() (commonpb.ClusterPolicyReader, error) {
+			policy, err := query.ReadClusterPolicy(store)
+			return policy.AsReader(), err
+		})
 }
 
 // TestBootstrapRetryRebuild starts each attempt through the command, including
