@@ -63,14 +63,15 @@ type checkpointMetadataServer struct {
 	servicepb.UnimplementedBucketServiceServer
 	clusterpb.UnimplementedClusterServiceServer
 
-	addr                   string
-	denied                 bool
-	failDiscovery          bool
-	fenced                 atomic.Bool
-	failFence              atomic.Bool
-	remainingFenceFailures atomic.Int32
-	remainingDemotions     atomic.Int32
-	metadataReads          atomic.Int32
+	addr                    string
+	denied                  bool
+	failDiscovery           bool
+	fenced                  atomic.Bool
+	failFence               atomic.Bool
+	remainingFenceFailures  atomic.Int32
+	remainingDemotions      atomic.Int32
+	remainingMissingAddress atomic.Int32
+	metadataReads           atomic.Int32
 }
 
 func (s *checkpointMetadataServer) Barrier(context.Context, *servicepb.BarrierRequest) (*servicepb.BarrierResponse, error) {
@@ -97,6 +98,9 @@ func (s *checkpointMetadataServer) GetClusterState(_ context.Context, req *clust
 		if s.failDiscovery {
 			return nil, status.Error(codes.Unavailable, "node unavailable during identity discovery")
 		}
+		if s.remainingMissingAddress.CompareAndSwap(1, 0) {
+			return &clusterpb.ClusterState{State: "Leader", LocalNode: 1, Nodes: []*clusterpb.NodeInfo{{Id: 2}}}, nil
+		}
 
 		return &clusterpb.ClusterState{State: "Leader", LocalNode: 1, Nodes: []*clusterpb.NodeInfo{{Id: 2, ServiceAddress: s.addr}}}, nil
 	}
@@ -106,6 +110,31 @@ func (s *checkpointMetadataServer) GetClusterState(_ context.Context, req *clust
 	s.fenced.Store(true)
 
 	return &clusterpb.ClusterState{LocalNode: 2, RaftStatus: &clusterpb.RaftStatus{LastPersistedIndex: 42}}, nil
+}
+
+func TestCheckpointMetadataWaitsForPeerAddress(t *testing.T) {
+	t.Parallel()
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	server, bucket, cluster := checkpointMetadataClients(t)
+	server.addr = "peer:8889"
+	server.remainingMissingAddress.Store(1)
+	node := &internal.PerNodeConn{Addr: "public:8888", PeerAddr: "peer:8889", Bucket: bucket, Cluster: cluster}
+	id, err := checkpointMetadataNodeID(ctx, node)
+	require.NoError(t, err)
+	require.Equal(t, uint64(2), id)
+	require.Zero(t, server.remainingMissingAddress.Load())
+}
+
+func TestCheckpointMetadataMissingPeerAddressIsTransient(t *testing.T) {
+	t.Parallel()
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+	_, bucket, cluster := checkpointMetadataClients(t)
+	node := &internal.PerNodeConn{Addr: "public:8888", PeerAddr: "peer:8889", Bucket: bucket, Cluster: cluster}
+	_, err := checkpointMetadataNodeID(ctx, node)
+	require.Equal(t, codes.DeadlineExceeded, status.Code(err))
+	require.True(t, internal.IsTransient(err))
 }
 
 func checkpointTestNode(bucket servicepb.BucketServiceClient, cluster clusterpb.ClusterServiceClient) *internal.PerNodeConn {

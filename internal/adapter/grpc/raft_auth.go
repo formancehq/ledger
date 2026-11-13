@@ -12,14 +12,15 @@ import (
 )
 
 // raftAuthInterceptors returns the unary and stream interceptors that guard
-// the Raft gRPC plane. Every RPC must carry an `authorization: Bearer
+// the Raft gRPC plane. TLS RPCs must carry an `authorization: Bearer
 // <clusterSecret>` metadata pair; mismatches are rejected with
-// codes.Unauthenticated.
+// codes.Unauthenticated. Optional-mode plaintext RPCs are admitted only as
+// legacy traffic during a rolling TLS migration.
 //
 // When clusterSecret is empty, the interceptors are nil — the server is
 // unauthenticated, which matches the historical behavior for clusters that
 // never opted into a shared secret. Operators wanting to lock the plane down
-// MUST set --cluster-secret (and --tls-mode, already enforced by
+// MUST set --cluster-secret (and TLS, already enforced by
 // bootstrap.Config.Validate).
 //
 // The token comparison uses crypto/subtle.ConstantTimeCompare so a network
@@ -32,6 +33,11 @@ func raftAuthInterceptors(clusterSecret string) (ggrpc.UnaryServerInterceptor, g
 	expected := []byte(clusterSecret)
 
 	checkToken := func(ctx context.Context) error {
+		if !peerUsesTLS(ctx) {
+			// Optional TLS accepts legacy plaintext peers during a rolling
+			// migration. Required mode has no plaintext listener.
+			return nil
+		}
 		md, ok := metadata.FromIncomingContext(ctx)
 		if !ok {
 			return status.Error(codes.Unauthenticated, "missing metadata on Raft RPC")

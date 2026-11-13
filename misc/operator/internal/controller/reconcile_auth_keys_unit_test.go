@@ -1081,6 +1081,28 @@ func TestReconcileVolumeProtectionPass_RunsIndependentlyOfAuthKeys(t *testing.T)
 		"deletion-protection label must be stamped on the bound PV by the pass")
 }
 
+func TestReconcilePendingOperatorCredentialsProtectsBoundVolumes(t *testing.T) {
+	t.Parallel()
+	cluster := authEnabledCluster("pending", "tenant-a", nil)
+	replicas := int32(1)
+	cluster.Spec.Replicas = &replicas
+	cluster.Spec.Persistence.WAL = ledgerv1alpha1.VolumeSpec{HostPath: &ledgerv1alpha1.HostPathVolumeSpec{Path: "/mnt/wal"}}
+	pvcName := "data-" + resourceName(cluster.Name) + "-0"
+	pvc, pv := boundPVCAndPV(pvcName, "pv-pending", cluster.Namespace)
+	cs := k8sfake.NewClientset(pvc, pv)
+	r := &ClusterReconciler{Clientset: cs}
+
+	result, err := r.reconcilePendingOperatorCredentials(t.Context(), cluster)
+	require.NoError(t, err)
+	require.Equal(t, authKeysPendingRequeueInterval, result.RequeueAfter)
+	gotPVC, err := cs.CoreV1().PersistentVolumeClaims(cluster.Namespace).Get(t.Context(), pvcName, metav1.GetOptions{})
+	require.NoError(t, err)
+	require.Equal(t, labelDeletionProtectionValue, gotPVC.Labels[labelDeletionProtection])
+	gotPV, err := cs.CoreV1().PersistentVolumes().Get(t.Context(), pv.Name, metav1.GetOptions{})
+	require.NoError(t, err)
+	require.Equal(t, labelDeletionProtectionValue, gotPV.Labels[labelDeletionProtection])
+}
+
 // TestReconcileVolumeProtectionPass_RequeuesWhilePreservingStatefulSet proves
 // the two halves of Option A live side by side: while AuthKeysPending, running
 // volume protection (a) requeues when a desired PVC does not exist yet — the

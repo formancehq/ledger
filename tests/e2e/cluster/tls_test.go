@@ -132,7 +132,7 @@ type tlsServiceWithClient struct {
 // setupTLSMultiNodeCluster creates a multi-node Raft cluster with TLS enabled on all nodes.
 // All nodes share the same TLS certificate (valid for localhost/127.0.0.1).
 // Returns the context, the list of TLS services with clients, and the generated certs.
-func setupTLSMultiNodeCluster(countInstances int) (context.Context, []*tlsServiceWithClient, *testserver.TestCerts) {
+func setupTLSMultiNodeCluster(countInstances int, clusterSecret ...string) (context.Context, []*tlsServiceWithClient, *testserver.TestCerts) {
 	ctx := logging.TestingContext()
 
 	// Every node's ports are leased before the first node starts: the joiners'
@@ -162,7 +162,7 @@ func setupTLSMultiNodeCluster(countInstances int) (context.Context, []*tlsServic
 			Debug:     testutil.Debug,
 			Output:    GinkgoWriter,
 		})
-		return append(instruments,
+		instruments = append(instruments,
 			testserver.WithRaftCompactionMargin(1),
 			testserver.WithAutoPromoteThreshold(10),
 			testserver.WithTLSMode("required"),
@@ -170,6 +170,10 @@ func setupTLSMultiNodeCluster(countInstances int) (context.Context, []*tlsServic
 			testserver.WithTLSKeyFile(certs.ServerKeyFile),
 			testserver.WithTLSCACertFile(certs.CACertFile),
 		)
+		if len(clusterSecret) > 0 {
+			instruments = append(instruments, testserver.WithClusterSecret(clusterSecret[0]))
+		}
+		return instruments
 	}
 
 	servers := make([]*tlsServiceWithClient, 0, countInstances)
@@ -342,6 +346,28 @@ var _ = Describe("TLS", Ordered, func() {
 			Expect(err).To(Succeed())
 			Expect(resp).NotTo(BeNil())
 		})
+	})
+})
+
+var _ = Describe("TLS Multi-Node with cluster secret", func() {
+	It("replicates and forwards through authenticated Raft and peer pools", func() {
+		ctx, servers, _ := setupTLSMultiNodeCluster(2, "shared-cluster-secret")
+		state, err := servers[0].clusterClient.GetClusterState(ctx, &clusterpb.GetClusterStateRequest{})
+		Expect(err).To(Succeed())
+		Expect(state.Leader).NotTo(BeZero())
+		follower := servers[0]
+		if state.Leader == servers[0].nodeID {
+			follower = servers[1]
+		}
+		_, err = follower.client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction("tls-secret-ledger", nil)))
+		Expect(err).To(Succeed())
+		for _, srv := range servers {
+			Eventually(func(g Gomega) {
+				ledgers, err := actions.ListLedgers(ctx, srv.client)
+				g.Expect(err).To(Succeed())
+				g.Expect(ledgers).To(HaveKey("tls-secret-ledger"))
+			}).Within(15 * time.Second).ProbeEvery(200 * time.Millisecond).Should(Succeed())
+		}
 	})
 })
 

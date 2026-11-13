@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.etcd.io/raft/v3/raftpb"
 	"go.opentelemetry.io/otel/metric/noop"
@@ -105,6 +106,18 @@ func newTestPeerStore(t *testing.T) *PeerStore {
 	return NewPeerStore(store)
 }
 
+func putLegacyPeer(t *testing.T, ps *PeerStore, nodeID uint64, raftAddr, serviceAddr string, instanceID []byte) {
+	t.Helper()
+	session := ps.store.OpenWriteSession()
+	require.NoError(t, session.SetProto(peerKey(nodeID), &raftcmdpb.PeerAddress{
+		NodeId:         nodeID,
+		RaftAddress:    raftAddr,
+		ServiceAddress: serviceAddr,
+		InstanceId:     instanceID,
+	}))
+	require.NoError(t, session.Commit())
+}
+
 // testSelfNodeID / testSelfRaftAddr / testSelfServiceAddr identify the
 // synthetic "self" used by Membership tests. Kept far away from the
 // peer IDs the tests exercise (1, 2, 3, 7, ...) so a `self.NodeID`
@@ -146,6 +159,160 @@ func TestPeerStore_PutLoadAll(t *testing.T) {
 	require.Equal(t, ConfChangeContext{RaftAddress: "pod-0:7777", ServiceAddress: "pod-0:8888", InstanceID: fixedInstanceID(1)}, peers[1])
 	require.Equal(t, ConfChangeContext{RaftAddress: "pod-1:7777", ServiceAddress: "pod-1:8888", InstanceID: fixedInstanceID(2)}, peers[2])
 	require.Equal(t, ConfChangeContext{RaftAddress: "pod-2:7777", ServiceAddress: "pod-2:8888", InstanceID: fixedInstanceID(3)}, peers[3])
+}
+
+func TestMembership_MigratesLegacyServicePortsOnce(t *testing.T) {
+	t.Parallel()
+
+	ps := newTestPeerStore(t)
+	require.NoError(t, ps.Put(1, "pod-0:7777", "pod-0:1111", fixedInstanceID(1), []uint32{7}))
+	putLegacyPeer(t, ps, 2, "pod-1:7777", "pod-1:2222", fixedInstanceID(2))
+
+	m, err := NewMembershipWithServicePort(
+		ps,
+		noopTransport{},
+		noopPool{},
+		testSelfNodeID,
+		testSelfRaftAddr,
+		testSelfServiceAddr,
+		9999,
+		fixedInstanceID(0x42),
+		logging.Testing(),
+		NoopClusterPolicyProvider,
+	)
+	require.NoError(t, err)
+	require.Equal(t, "pod-0:9999", m.PeerAddresses()[1].ServiceAddress)
+	require.Equal(t, []uint32{7}, m.PeerAddresses()[1].Capabilities)
+	require.Equal(t, "pod-1:9999", m.PeerAddresses()[2].ServiceAddress)
+
+	legacy, err := ps.LoadAll()
+	require.NoError(t, err)
+	require.Equal(t, "pod-0:1111", legacy[1].ServiceAddress)
+	require.Equal(t, "pod-1:2222", legacy[2].ServiceAddress)
+	require.NoError(t, m.Rehydrate())
+
+	legacy, err = ps.LoadAll()
+	require.NoError(t, err)
+	require.Equal(t, "pod-0:9999", legacy[1].ServiceAddress)
+	require.Equal(t, []uint32{7}, legacy[1].Capabilities)
+	require.Equal(t, "pod-1:9999", legacy[2].ServiceAddress)
+
+	// New rows written after the one-shot migration are already in the peer
+	// format and are not touched by a later rehydrate.
+	require.NoError(t, ps.Put(3, "pod-2:7777", "pod-2:3333", fixedInstanceID(3), nil))
+	require.NoError(t, m.Rehydrate())
+	legacy, err = ps.LoadAll()
+	require.NoError(t, err)
+	require.Equal(t, "pod-2:3333", legacy[3].ServiceAddress)
+
+	// Once the store-level format is current, later writes are not migrated.
+	require.NoError(t, ps.Put(1, "pod-0:7777", "pod-0:1111", fixedInstanceID(1), nil))
+	require.NoError(t, ps.Put(2, "pod-1:7777", "pod-1:2222", fixedInstanceID(2), nil))
+	require.NoError(t, m.Rehydrate())
+	require.Equal(t, "pod-0:1111", m.PeerAddresses()[1].ServiceAddress)
+	require.Equal(t, "pod-1:2222", m.PeerAddresses()[2].ServiceAddress)
+
+	_, err = NewMembershipWithServicePort(
+		ps,
+		noopTransport{},
+		noopPool{},
+		testSelfNodeID,
+		testSelfRaftAddr,
+		testSelfServiceAddr,
+		9999,
+		fixedInstanceID(0x42),
+		logging.Testing(),
+		NoopClusterPolicyProvider,
+	)
+	require.NoError(t, err)
+
+	current, err := ps.LoadAll()
+	require.NoError(t, err)
+	require.Equal(t, "pod-0:1111", current[1].ServiceAddress)
+	require.Equal(t, "pod-1:2222", current[2].ServiceAddress)
+}
+
+func TestMembership_PreservesCurrentPeerPortsOnStartup(t *testing.T) {
+	t.Parallel()
+
+	ps := newTestPeerStore(t)
+	require.NoError(t, ps.Put(1, "pod-0:7777", "pod-0:8891", fixedInstanceID(1), nil))
+	require.NoError(t, ps.Put(2, "pod-1:7777", "pod-1:8892", fixedInstanceID(2), nil))
+	session := ps.store.OpenWriteSession()
+	require.NoError(t, session.SetBytes(membershipFormatKey, membershipFormatRevisionBytes(membershipFormatRevisionPeerPort)))
+	require.NoError(t, session.Commit())
+
+	m, err := NewMembershipWithServicePort(
+		ps,
+		noopTransport{},
+		noopPool{},
+		testSelfNodeID,
+		testSelfRaftAddr,
+		testSelfServiceAddr,
+		9999,
+		fixedInstanceID(0x42),
+		logging.Testing(),
+		NoopClusterPolicyProvider,
+	)
+	require.NoError(t, err)
+
+	assert.Equal(t, "pod-0:8891", m.PeerAddresses()[1].ServiceAddress)
+	assert.Equal(t, "pod-1:8892", m.PeerAddresses()[2].ServiceAddress)
+}
+
+func TestMembership_MigratesLegacyPortsWithRefreshedSelf(t *testing.T) {
+	t.Parallel()
+
+	ps := newTestPeerStore(t)
+	putLegacyPeer(t, ps, 1, "localhost:7777", "localhost:8888", fixedInstanceID(1))
+	// The members may have had different public ports before RC.4.
+	putLegacyPeer(t, ps, 2, "localhost:7778", "localhost:8899", fixedInstanceID(2))
+	putLegacyPeer(t, ps, testSelfNodeID, testSelfRaftAddr, "localhost:9999", fixedInstanceID(0x42))
+
+	m, err := NewMembershipWithServicePort(
+		ps,
+		noopTransport{},
+		noopPool{},
+		testSelfNodeID,
+		testSelfRaftAddr,
+		"localhost:9999",
+		9999,
+		fixedInstanceID(0x42),
+		logging.Testing(),
+		NoopClusterPolicyProvider,
+	)
+	require.NoError(t, err)
+	require.Equal(t, "localhost:9999", m.PeerAddresses()[1].ServiceAddress)
+	require.Equal(t, "localhost:9999", m.PeerAddresses()[2].ServiceAddress)
+	require.NoError(t, m.Rehydrate())
+	revision, err := ps.membershipFormatRevision()
+	require.NoError(t, err)
+	require.Equal(t, membershipFormatRevisionPeerPort, revision)
+	addresses, err := ps.LoadAll()
+	require.NoError(t, err)
+	require.Equal(t, "localhost:9999", addresses[1].ServiceAddress)
+	require.Equal(t, "localhost:9999", addresses[2].ServiceAddress)
+	require.Equal(t, "localhost:9999", addresses[testSelfNodeID].ServiceAddress)
+	restarted, err := NewMembershipWithServicePort(ps, noopTransport{}, noopPool{}, testSelfNodeID,
+		testSelfRaftAddr, "localhost:9999", 9999, fixedInstanceID(0x42), logging.Testing(), NoopClusterPolicyProvider)
+	require.NoError(t, err)
+	require.Equal(t, "localhost:9999", restarted.PeerAddresses()[2].ServiceAddress)
+}
+
+func TestMembership_FreshNodePreservesDistinctPeerPorts(t *testing.T) {
+	t.Parallel()
+	ps := newTestPeerStore(t)
+	m, err := NewMembershipWithServicePort(ps, noopTransport{}, noopPool{}, testSelfNodeID,
+		testSelfRaftAddr, "localhost:9999", 9999, fixedInstanceID(0x42), logging.Testing(), NoopClusterPolicyProvider)
+	require.NoError(t, err)
+	require.NoError(t, m.MarkNativeFormat())
+	require.NoError(t, ps.Put(1, "localhost:7777", "localhost:9999", fixedInstanceID(1), nil))
+	require.NoError(t, ps.Put(2, "localhost:7778", "localhost:9998", fixedInstanceID(2), nil))
+	require.NoError(t, m.Rehydrate())
+	require.Equal(t, "localhost:9998", m.PeerAddresses()[2].ServiceAddress)
+	revision, err := ps.membershipFormatRevision()
+	require.NoError(t, err)
+	require.Equal(t, membershipFormatRevisionPeerPort, revision)
 }
 
 func TestPeerStore_RejectsInvalidInstanceID(t *testing.T) {

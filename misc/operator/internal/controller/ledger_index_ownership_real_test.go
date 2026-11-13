@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -318,12 +319,10 @@ func (h *realIndexHarness) podExec(ctx context.Context, _ *rest.Config, _ kubern
 	// Execute the production shell command with its exact subcommand/flags,
 	// substituting only the transport address and binary outside Kubernetes.
 	require.Len(h.t, command, 3)
-	end := strings.LastIndex(command[2], " --server ")
-	require.Positive(h.t, end)
-	// Positional args after a "--" terminator follow the connection flags.
-	const authFlag = ` --auth-token "$CLUSTER_SECRET"`
-	tail := command[2][strings.LastIndex(command[2], authFlag)+len(authFlag):]
-	script := strings.Replace(command[2][:end], "./ledgerctl ", shellSingleQuote(h.cli)+" ", 1) + " --server " + shellSingleQuote(h.endpoint) + " --insecure" + tail
+	script := strings.ReplaceAll(command[2], "./ledgerctl ", shellSingleQuote(h.cli)+" ")
+	serverArg := regexp.MustCompile(`--server "[^"]+"`)
+	require.True(h.t, serverArg.MatchString(script))
+	script = serverArg.ReplaceAllString(script, "--server "+shellSingleQuote(h.endpoint))
 	cmd := exec.CommandContext(ctx, "/bin/sh", "-c", script)
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr

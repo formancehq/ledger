@@ -152,6 +152,12 @@ pass an immutable admission snapshot instead of widening the lock.
 
 ## Restart refresh
 
+The rc.4 peer service port migration changes the endpoint stored in membership,
+not the capability evidence carried by a member or the Raft `ConfChange`
+schema. The membership format revision limits address normalization to legacy
+rows; committed member capabilities and the active `ClusterPolicy` remain
+unchanged. This transport change therefore requires no new capability ID.
+
 A normal restart does not run `JoinAsLearner`: the node restores its existing
 WAL `ConfState` and keeps the same `(node_id, instance_id)` incarnation. After
 the node and its Raft gRPC server are started, a node whose WAL carries

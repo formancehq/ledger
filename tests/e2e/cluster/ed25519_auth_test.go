@@ -157,6 +157,7 @@ var _ = Describe("Ed25519 Auth", Ordered, func() {
 		})
 		instruments = append(instruments,
 			testserver.WithBootstrap(),
+			testserver.WithClusterSecret("test-cluster-secret"),
 			testserver.WithAuthEnabled(),
 			testserver.WithAuthEd25519Keys(configPath),
 			testserver.WithAuthService("ledger"),
@@ -359,6 +360,7 @@ var _ = Describe("Ed25519 Auth Scope Restrictions", Ordered, func() {
 		})
 		instruments = append(instruments,
 			testserver.WithBootstrap(),
+			testserver.WithClusterSecret("test-cluster-secret"),
 			testserver.WithAuthEnabled(),
 			testserver.WithAuthEd25519Keys(configPath),
 			testserver.WithAuthService("ledger"),
@@ -546,6 +548,7 @@ var _ = Describe("Ed25519 Auth Superuser Mode", Ordered, func() {
 		})
 		instruments = append(instruments,
 			testserver.WithBootstrap(),
+			testserver.WithClusterSecret("test-cluster-secret"),
 			testserver.WithAuthEnabled(),
 			testserver.WithAuthEd25519Keys(configPath),
 			testserver.WithAuthService("ledger"),

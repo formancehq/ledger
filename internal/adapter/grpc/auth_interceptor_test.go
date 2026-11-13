@@ -19,8 +19,10 @@ import (
 	"go.opentelemetry.io/otel/metric/noop"
 	ggrpc "google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/metadata"
+	"google.golang.org/grpc/peer"
 	"google.golang.org/grpc/status"
 
 	"github.com/formancehq/go-libs/v5/pkg/authn/oidc"
@@ -36,6 +38,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/infra/node"
 	"github.com/formancehq/ledger/v3/internal/infra/plan"
 	"github.com/formancehq/ledger/v3/internal/infra/state"
+	"github.com/formancehq/ledger/v3/internal/infra/transport"
 	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
@@ -56,6 +59,195 @@ type authInterceptorBucketServer struct {
 	listLogsCalls    atomic.Int32
 	applyCalls       atomic.Int32
 	applyFn          func(context.Context, *servicepb.ApplyRequest) (*domain.ApplyResult, error)
+}
+
+func TestRejectDirectClusterSecret(t *testing.T) {
+	ctx := metadata.NewIncomingContext(context.Background(), metadata.Pairs(
+		"authorization", "Bearer peer",
+		"x-ledger-peer-forward", "apply",
+	))
+	err := rejectDirectClusterSecret(ctx, internalauth.AuthConfig{ClusterSecret: "peer"})
+	require.Equal(t, codes.Unauthenticated, status.Code(err))
+
+	duplicate := metadata.NewIncomingContext(context.Background(), metadata.Pairs(
+		"authorization", "Bearer cluster-secret",
+		"authorization", "Bearer unrelated",
+	))
+	require.Equal(t, codes.Unauthenticated, status.Code(rejectDirectClusterSecret(duplicate, internalauth.AuthConfig{ClusterSecret: "cluster-secret"})))
+}
+
+func TestPeerCredentialUsesDedicatedTransportMetadata(t *testing.T) {
+	t.Parallel()
+
+	cfg := internalauth.AuthConfig{Enabled: true, ClusterSecret: "cluster-secret"}
+
+	legacy := metadata.NewIncomingContext(context.Background(), metadata.Pairs(
+		"authorization", "Bearer cluster-secret",
+	))
+	require.Equal(t, codes.Unauthenticated, status.Code(requirePeerCredential(legacy, cfg)))
+
+	peer := metadata.NewIncomingContext(context.Background(), metadata.Pairs(
+		transport.PeerAuthMetadataKey, "Bearer cluster-secret",
+	))
+	require.NoError(t, requirePeerCredential(peer, cfg))
+
+	for _, value := range []string{
+		"INVALID cluster-secret",
+		"Bearer",
+		"Bearer ",
+		"Bearer cluster-secret extra",
+	} {
+		malformed := metadata.NewIncomingContext(context.Background(), metadata.Pairs(
+			transport.PeerAuthMetadataKey, value,
+		))
+		require.Equal(t, codes.Unauthenticated, status.Code(requirePeerCredential(malformed, cfg)), value)
+	}
+}
+
+func TestPeerCredentialDuringOptionalTLSMigration(t *testing.T) {
+	t.Parallel()
+	cfg := internalauth.AuthConfig{ClusterSecret: "cluster-secret"}
+	plaintext := context.Background()
+	require.NoError(t, requirePeerCredential(plaintext, cfg))
+	require.False(t, peerUsesTLS(plaintext))
+
+	tlsContext := peer.NewContext(context.Background(), &peer.Peer{AuthInfo: credentials.TLSInfo{}})
+	require.Equal(t, codes.Unauthenticated, status.Code(requirePeerCredential(tlsContext, cfg)))
+	authenticated := metadata.NewIncomingContext(tlsContext, metadata.Pairs(
+		transport.PeerAuthMetadataKey, "Bearer cluster-secret",
+	))
+	require.NoError(t, requirePeerCredential(authenticated, cfg))
+	require.True(t, peerUsesTLS(authenticated))
+}
+
+func TestPeerInterceptorTrustRequiresTLS(t *testing.T) {
+	cfg := internalauth.AuthConfig{Enabled: true, ClusterSecret: "cluster-secret"}
+	interceptor := authUnaryInterceptor(cfg, true)
+	info := &ggrpc.UnaryServerInfo{FullMethod: "/ledger.BucketService/Barrier"}
+	for _, tc := range []struct {
+		name        string
+		ctx         context.Context
+		wantTrusted bool
+	}{
+		{name: "plaintext", ctx: context.Background()},
+		{name: "tls", ctx: peer.NewContext(context.Background(), &peer.Peer{AuthInfo: credentials.TLSInfo{}}), wantTrusted: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx := metadata.NewIncomingContext(tc.ctx, metadata.Pairs(transport.PeerAuthMetadataKey, "Bearer cluster-secret"))
+			called := false
+			_, err := interceptor(ctx, &servicepb.BarrierRequest{}, info, func(ctx context.Context, _ any) (any, error) {
+				called = true
+				require.True(t, internalauth.IsClusterInternal(ctx))
+
+				return nil, nil
+			})
+			if tc.wantTrusted {
+				require.NoError(t, err)
+				require.True(t, called)
+			} else {
+				require.Equal(t, codes.Unauthenticated, status.Code(err))
+				require.False(t, called)
+			}
+		})
+	}
+}
+
+func TestOptionalPlaintextPeerDoesNotGainForwardingTrust(t *testing.T) {
+	cfg := internalauth.AuthConfig{ClusterSecret: "cluster-secret"}
+	ctx := metadata.NewIncomingContext(context.Background(), metadata.Pairs(transport.PeerAuthMetadataKey, "Bearer cluster-secret"))
+	interceptor := authUnaryInterceptor(cfg, true)
+	_, err := interceptor(ctx, &servicepb.BarrierRequest{}, &ggrpc.UnaryServerInfo{FullMethod: "/ledger.BucketService/Barrier"},
+		func(ctx context.Context, _ any) (any, error) {
+			require.False(t, internalauth.IsClusterInternal(ctx))
+
+			return nil, nil
+		})
+	require.NoError(t, err)
+}
+
+func TestPeerStreamTrustRequiresTLS(t *testing.T) {
+	cfg := internalauth.AuthConfig{Enabled: true, ClusterSecret: "cluster-secret"}
+	interceptor := authStreamInterceptor(cfg, true)
+	info := &ggrpc.StreamServerInfo{FullMethod: "/grpc.reflection.v1.ServerReflection/ServerReflectionInfo"}
+	for _, tc := range []struct {
+		name    string
+		ctx     context.Context
+		trusted bool
+	}{
+		{name: "plaintext", ctx: context.Background()},
+		{name: "tls", ctx: peer.NewContext(context.Background(), &peer.Peer{AuthInfo: credentials.TLSInfo{}}), trusted: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx := metadata.NewIncomingContext(tc.ctx, metadata.Pairs(transport.PeerAuthMetadataKey, "Bearer cluster-secret"))
+			called := false
+			err := interceptor(nil, &authTestServerStream{ctx: ctx}, info, func(_ any, stream ggrpc.ServerStream) error {
+				called = true
+				require.Equal(t, tc.trusted, internalauth.IsClusterInternal(stream.Context()))
+
+				return nil
+			})
+			require.NoError(t, err)
+			require.True(t, called)
+		})
+	}
+}
+
+func TestBearerTokenFromGRPCContextRejectsAmbiguousAuthorization(t *testing.T) {
+	ctx := metadata.NewIncomingContext(context.Background(), metadata.Pairs(
+		"authorization", "Bearer first",
+		"authorization", "Bearer second",
+	))
+
+	_, _, err := internalauth.BearerTokenFromGRPCContext(ctx)
+	require.Equal(t, codes.Unauthenticated, status.Code(err))
+}
+
+type authTestServerStream struct{ ctx context.Context }
+
+func (s *authTestServerStream) SetHeader(metadata.MD) error  { return nil }
+func (s *authTestServerStream) SendHeader(metadata.MD) error { return nil }
+func (s *authTestServerStream) SetTrailer(metadata.MD)       {}
+func (s *authTestServerStream) Context() context.Context     { return s.ctx }
+func (s *authTestServerStream) SendMsg(any) error            { return nil }
+func (s *authTestServerStream) RecvMsg(any) error            { return nil }
+
+func TestAuthStreamInterceptorGuardsInfrastructureMethodsOnPeerListener(t *testing.T) {
+	interceptor := authStreamInterceptor(internalauth.AuthConfig{Enabled: true, ClusterSecret: "cluster-secret"}, true)
+	info := &ggrpc.StreamServerInfo{FullMethod: "/grpc.reflection.v1.ServerReflection/ServerReflectionInfo"}
+	called := false
+	handler := func(any, ggrpc.ServerStream) error {
+		called = true
+
+		return nil
+	}
+
+	err := interceptor(nil, &authTestServerStream{ctx: context.Background()}, info, handler)
+	require.Equal(t, codes.Unauthenticated, status.Code(err))
+	require.False(t, called)
+
+	ctx := metadata.NewIncomingContext(context.Background(), metadata.Pairs(transport.PeerAuthMetadataKey, "Bearer cluster-secret"))
+	err = interceptor(nil, &authTestServerStream{ctx: ctx}, info, handler)
+	require.NoError(t, err)
+	require.True(t, called)
+}
+
+func TestPeerListenerDoesNotTrustSecretlessForwarding(t *testing.T) {
+	cfg := internalauth.AuthConfig{Enabled: false, ScopeMapping: internalauth.ScopeMapping{
+		internalauth.ScopeMappingAnonymousKey: {internalauth.ScopeOpsRead},
+	}}
+	interceptor := authUnaryInterceptor(cfg, true)
+	info := &ggrpc.UnaryServerInfo{FullMethod: "/ledger.BucketService/Barrier"}
+	called := false
+	_, err := interceptor(context.Background(), &servicepb.BarrierRequest{}, info, func(ctx context.Context, _ any) (any, error) {
+		called = true
+		require.False(t, internalauth.IsClusterInternal(ctx))
+		_, authErr := internalauth.EvaluateGRPCCredentials(ctx, cfg)
+		require.NoError(t, authErr)
+
+		return nil, nil
+	})
+	require.NoError(t, err)
+	require.True(t, called)
 }
 
 func (s *authInterceptorBucketServer) Barrier(ctx context.Context, _ *servicepb.BarrierRequest) (*servicepb.BarrierResponse, error) {
@@ -213,7 +405,7 @@ func newAuthInterceptorServer(t *testing.T, mode ServiceAuthPolicy, cfg internal
 	require.NoError(t, err)
 	implementation := &authInterceptorBucketServer{}
 	servicepb.RegisterBucketServiceServer(server.GetServer(), implementation)
-	if mode == ServiceAuthPolicyPublic {
+	if mode == ServiceAuthPolicyPublic || mode == ServiceAuthPolicyPeer {
 		clusterpb.RegisterClusterServiceServer(server.GetServer(), &clusterpb.UnimplementedClusterServiceServer{})
 	}
 	require.NoError(t, server.Listen())
@@ -273,12 +465,12 @@ func TestFixedPolicyCredentialModes(t *testing.T) {
 			wantCode: codes.OK,
 		},
 		{
-			name: "cluster internal secret",
+			name: "cluster secret is rejected on direct service API",
 			cfg:  internalauth.AuthConfig{Enabled: true, ClusterSecret: "cluster-secret"},
 			ctx: metadata.AppendToOutgoingContext(
 				context.Background(), "authorization", "Bearer cluster-secret",
 			),
-			wantCode: codes.OK,
+			wantCode: codes.Unauthenticated,
 		},
 	}
 

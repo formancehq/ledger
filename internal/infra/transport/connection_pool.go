@@ -46,7 +46,8 @@ type PoolConfig struct {
 	BackoffMultiplier float64       // Default: 1.6
 	BackoffJitter     float64       // Default: 0.2
 	Compression       bool          // Enable gzip compression on calls
-	AuthToken         string        // Bearer token injected into every outgoing call (for inter-node auth)
+	AuthToken         string        // Inter-node bearer attached to TLS calls only
+	authHeader        string        // Transport credential header; defaults to the peer-service header
 }
 
 func (c *PoolConfig) SetDefaults() {
@@ -89,25 +90,37 @@ func (p TLSPolicy) AllowsTLS() bool { return p.TLSConfig != nil }
 // per peer.
 func (p TLSPolicy) IsOptional() bool { return p.TLSConfig != nil && !p.Strict }
 
-// staticTokenCredentials implements grpc.PerRPCCredentials by injecting a static bearer token.
+// staticTokenCredentials implements grpc.PerRPCCredentials by injecting a
+// static transport credential and, when present in the context, the original
+// caller's bearer token.
 type staticTokenCredentials struct {
-	token string
+	token  string
+	header string
 }
 
-func (c staticTokenCredentials) GetRequestMetadata(_ context.Context, _ ...string) (map[string]string, error) {
-	return map[string]string{
-		"authorization": "Bearer " + c.token,
-	}, nil
+func (c staticTokenCredentials) GetRequestMetadata(ctx context.Context, _ ...string) (map[string]string, error) {
+	header := c.header
+	if header == "" {
+		header = "authorization"
+	}
+	metadata := map[string]string{header: "Bearer " + c.token}
+	if header == PeerAuthMetadataKey {
+		if forwarded := ForwardedBearerToken(ctx); forwarded != "" {
+			metadata["authorization"] = "Bearer " + forwarded
+		}
+	}
+
+	return metadata, nil
 }
 
 func (c staticTokenCredentials) RequireTransportSecurity() bool {
-	return false
+	return true
 }
 
 // BearerTokenDialOption returns a gRPC DialOption that injects a static bearer token
 // into every outgoing call. Returns nil if token is empty.
 func BearerTokenDialOption(token string) grpc.DialOption {
-	return grpc.WithPerRPCCredentials(staticTokenCredentials{token: token})
+	return grpc.WithPerRPCCredentials(staticTokenCredentials{token: token, header: "authorization"})
 }
 
 // dialOptions returns the common gRPC dial options derived from PoolConfig.
@@ -144,8 +157,12 @@ func dialOptions(creds credentials.TransportCredentials, cfg PoolConfig) []grpc.
 			grpc.UseCompressor(gzip.Name),
 		))
 	}
-	if cfg.AuthToken != "" {
-		opts = append(opts, grpc.WithPerRPCCredentials(staticTokenCredentials{token: cfg.AuthToken}))
+	if cfg.AuthToken != "" && creds.Info().SecurityProtocol != "insecure" {
+		header := cfg.authHeader
+		if header == "" {
+			header = PeerAuthMetadataKey
+		}
+		opts = append(opts, grpc.WithPerRPCCredentials(staticTokenCredentials{token: cfg.AuthToken, header: header}))
 	}
 
 	return opts
@@ -194,6 +211,13 @@ func NewConnectionPool(policy TLSPolicy, cfg PoolConfig) *ConnectionPool {
 		probeTimeout: defaultProbeTimeout,
 		failureGrace: defaultFailureGrace,
 	}
+}
+
+// NewRaftConnectionPool uses the Raft server's authorization metadata contract.
+func NewRaftConnectionPool(policy TLSPolicy, cfg PoolConfig) *ConnectionPool {
+	cfg.authHeader = "authorization"
+
+	return NewConnectionPool(policy, cfg)
 }
 
 // AddPeer adds a peer to the pool and creates a raw gRPC connection.
@@ -277,6 +301,10 @@ func (p *ConnectionPool) dialPeer(id uint64, addr string) (*peerEntry, error) {
 // falls back to plaintext, whereas a network-level failure is returned to
 // the caller (which will retry later).
 func (p *ConnectionPool) decideTLS(addr string) (bool, error) {
+	if p.config.AuthToken != "" && !p.policy.AllowsTLS() {
+		return false, fmt.Errorf("peer authentication requires TLS for %s", addr)
+	}
+
 	switch {
 	case !p.policy.AllowsTLS():
 		return false, nil
@@ -290,6 +318,8 @@ func (p *ConnectionPool) decideTLS(addr string) (bool, error) {
 	}
 
 	if isTLSHandshakeError(err) {
+		lifecycle.SendEvent("grpc_tls_migration_fallback", map[string]any{"address": addr, "tls": false, "peerCredentialAttached": false})
+
 		return false, nil
 	}
 
@@ -300,6 +330,9 @@ func (p *ConnectionPool) decideTLS(addr string) (bool, error) {
 // transport credentials.
 func (p *ConnectionPool) connect(addr string, useTLS bool) (*grpc.ClientConn, error) {
 	creds := p.transportCredentials(useTLS)
+	if p.policy.IsOptional() {
+		lifecycle.SendEvent("grpc_tls_migration_transport", map[string]any{"address": addr, "tls": useTLS, "peerCredentialAttached": useTLS && p.config.AuthToken != ""})
+	}
 
 	return grpc.NewClient("dns:///"+addr, dialOptions(creds, p.config)...)
 }

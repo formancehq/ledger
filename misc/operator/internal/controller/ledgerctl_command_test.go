@@ -57,19 +57,19 @@ func TestLedgerctlCommand_TLSModes(t *testing.T) {
 		{
 			name:           "disabled emits --insecure",
 			tlsMode:        tlsModeDisabled,
-			wantContains:   []string{"--insecure", `--auth-token "$CLUSTER_SECRET"`, `--server "` + serverAddr + `"`},
+			wantContains:   []string{"--insecure", `--auth-token "${OPERATOR_AUTH_TOKEN:-}"`, `--server "` + serverAddr + `"`},
 			wantNotContain: []string{"--tls-ca-cert"},
 		},
 		{
 			name:           "required emits --tls-ca-cert and no --insecure",
 			tlsMode:        tlsModeRequired,
-			wantContains:   []string{`--tls-ca-cert "$TLS_CA_CERT_FILE"`, `--auth-token "$CLUSTER_SECRET"`, `--server "` + serverAddr + `"`},
+			wantContains:   []string{`--tls-ca-cert "$TLS_CA_CERT_FILE"`, `--auth-token "${OPERATOR_AUTH_TOKEN:-}"`, `--server "` + serverAddr + `"`},
 			wantNotContain: []string{"--insecure"},
 		},
 		{
 			name:           "optional emits --tls-ca-cert and no --insecure",
 			tlsMode:        tlsModeOptional,
-			wantContains:   []string{`--tls-ca-cert "$TLS_CA_CERT_FILE"`, `--auth-token "$CLUSTER_SECRET"`},
+			wantContains:   []string{`--tls-ca-cert "$TLS_CA_CERT_FILE"`, `--auth-token "${OPERATOR_AUTH_TOKEN:-}"`},
 			wantNotContain: []string{"--insecure"},
 		},
 	}
@@ -98,6 +98,11 @@ func TestLedgerctlCommand_TLSModes(t *testing.T) {
 	}
 }
 
+func TestLedgerctlCommandUsesManagedCredentialScopes(t *testing.T) {
+	cmd := ledgerctlCommand("addr:8888", tlsModeDisabled, "ledgers", "create", "example")
+	require.Contains(t, cmd[2], "--scopes "+strings.Join(operatorCredentialScopes, ",")+" --expiration")
+}
+
 // TestLedgerctlCommand_TerminatorKeepsConnectionFlagsParsed runs the generated
 // shell against a stub ledgerctl that echoes its argv. A ledger name such as
 // "--help" is valid, so callers pass it after "--"; the connection flags must
@@ -111,13 +116,13 @@ func TestLedgerctlCommand_TerminatorKeepsConnectionFlagsParsed(t *testing.T) {
 	cmd := ledgerctlCommand("addr:8888", tlsModeDisabled, "ledgers", "create", "--index", "reference", "--", "--help")
 	run := exec.Command(cmd[0], cmd[1:]...)
 	run.Dir = dir
-	run.Env = []string{"CLUSTER_SECRET=token"}
+	run.Env = []string{}
 	out, err := run.CombinedOutput()
 	require.NoError(t, err, "command failed: %s", out)
 
 	require.Equal(t, []string{
 		"ledgers", "create", "--index", "reference",
-		"--server", "addr:8888", "--insecure", "--auth-token", "token",
+		"--server", "addr:8888", "--insecure", "--auth-token", "",
 		"--", "--help",
 	}, strings.Split(strings.TrimSuffix(string(out), "\n"), "\n"))
 }

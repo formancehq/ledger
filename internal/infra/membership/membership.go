@@ -5,7 +5,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net"
 	"slices"
+	"strconv"
 	"sync"
 
 	"go.etcd.io/raft/v3/raftpb"
@@ -66,6 +68,7 @@ type Membership struct {
 	selfNodeID      uint64
 	selfRaftAddr    string
 	selfServiceAddr string
+	servicePort     int
 	selfInstanceID  []byte
 	logger          logging.Logger
 
@@ -108,18 +111,45 @@ type Membership struct {
 func NoopClusterPolicyProvider() (*commonpb.ClusterPolicy, error) { return nil, nil }
 
 func NewMembership(store *PeerStore, transport Transport, pool Pool, selfNodeID uint64, selfRaftAddr, selfServiceAddr string, selfInstanceID []byte, logger logging.Logger, policyProvider func() (*commonpb.ClusterPolicy, error)) (*Membership, error) {
+	return newMembership(store, transport, pool, selfNodeID, selfRaftAddr, selfServiceAddr, 0, selfInstanceID, logger, policyProvider)
+}
+
+// NewMembershipWithServicePort is the production constructor for clusters
+// that use a dedicated peer service port. Legacy membership rows are migrated
+// by Rehydrate after WAL replay or snapshot installation, then explicit peer
+// service ports are preserved on every reload.
+func NewMembershipWithServicePort(store *PeerStore, transport Transport, pool Pool, selfNodeID uint64, selfRaftAddr, selfServiceAddr string, servicePort int, selfInstanceID []byte, logger logging.Logger, policyProvider func() (*commonpb.ClusterPolicy, error)) (*Membership, error) {
+	return newMembership(store, transport, pool, selfNodeID, selfRaftAddr, selfServiceAddr, servicePort, selfInstanceID, logger, policyProvider)
+}
+
+func newMembership(store *PeerStore, transport Transport, pool Pool, selfNodeID uint64, selfRaftAddr, selfServiceAddr string, servicePort int, selfInstanceID []byte, logger logging.Logger, policyProvider func() (*commonpb.ClusterPolicy, error)) (*Membership, error) {
 	if policyProvider == nil {
 		return nil, errors.New("cluster policy provider is required")
 	}
 	if err := ValidateInstanceID(selfInstanceID); err != nil {
 		return nil, fmt.Errorf("invalid self identity: %w", err)
 	}
-
 	addresses, err := store.LoadAll()
 	if err != nil {
 		return nil, fmt.Errorf("loading peers from pebble: %w", err)
 	}
-
+	// TODO(next RC): remove this in-memory legacy normalization once every
+	// supported rc.4 store has completed the persisted membership migration.
+	// NewNode can start from this cache without calling Rehydrate when its
+	// store is out of sync, so the peer pool must never be wired to a legacy
+	// public service port during that window.
+	if servicePort != 0 {
+		revision, err := store.membershipFormatRevision()
+		if err != nil {
+			return nil, fmt.Errorf("reading membership format: %w", err)
+		}
+		if revision < membershipFormatRevisionPeerPort {
+			addresses, err = normalizeLegacyServiceAddresses(addresses, servicePort, selfNodeID, selfServiceAddr)
+			if err != nil {
+				return nil, err
+			}
+		}
+	}
 	logger.WithFields(map[string]any{
 		"peerCount": len(addresses),
 	}).Infof("Loaded cluster membership from Pebble")
@@ -131,11 +161,36 @@ func NewMembership(store *PeerStore, transport Transport, pool Pool, selfNodeID 
 		selfNodeID:               selfNodeID,
 		selfRaftAddr:             selfRaftAddr,
 		selfServiceAddr:          selfServiceAddr,
+		servicePort:              servicePort,
 		selfInstanceID:           bytes.Clone(selfInstanceID),
 		logger:                   logger,
 		capabilityPolicyProvider: policyProvider,
 		addresses:                addresses,
 	}, nil
+}
+
+func normalizeLegacyServiceAddresses(addresses map[uint64]ConfChangeContext, servicePort int, selfNodeID uint64, selfServiceAddr string) (map[uint64]ConfChangeContext, error) {
+	if servicePort == 0 {
+		return addresses, nil
+	}
+	normalized := make(map[uint64]ConfChangeContext, len(addresses))
+
+	for nodeID, addr := range addresses {
+		if nodeID == selfNodeID && addr.ServiceAddress == selfServiceAddr {
+			normalized[nodeID] = addr
+
+			continue
+		}
+		host, _, err := net.SplitHostPort(addr.ServiceAddress)
+		if err != nil {
+			return nil, fmt.Errorf("invalid legacy service address for peer %d: %w", nodeID, err)
+		}
+
+		addr.ServiceAddress = net.JoinHostPort(host, strconv.Itoa(servicePort))
+		normalized[nodeID] = addr
+	}
+
+	return normalized, nil
 }
 
 // Start wires every peer currently in the cache into the transport +
@@ -560,6 +615,10 @@ func confStateContains(cs *raftpb.ConfState, nodeID uint64) bool {
 // atomic is more important than allowing concurrent membership reads during
 // that lifecycle reconciliation.
 func (m *Membership) Rehydrate() error {
+	if err := m.store.migrateLegacyServiceAddressesFromPort(m.servicePort, m.selfNodeID, m.selfServiceAddr); err != nil {
+		return fmt.Errorf("migrating membership format: %w", err)
+	}
+
 	fresh, err := m.store.LoadAll()
 	if err != nil {
 		return fmt.Errorf("loading peers from pebble: %w", err)
@@ -597,6 +656,12 @@ func (m *Membership) Rehydrate() error {
 	}).Infof("Rehydrated cluster membership from Pebble")
 
 	return nil
+}
+
+// MarkNativeFormat records that a fresh RC.4 node writes peer addresses from
+// its first registration. It runs before the initial peer rows are persisted.
+func (m *Membership) MarkNativeFormat() error {
+	return m.store.markNativeMembershipFormat()
 }
 
 // OnSnapshotInstalled refreshes the cache from Pebble after a leader
@@ -753,7 +818,6 @@ func (m *Membership) writeConfChange(entry *raftpb.Entry, session *dal.WriteSess
 			if err := session.DeleteKey(peerKey(nodeID)); err != nil {
 				return fmt.Errorf("session delete peer %d: %w", nodeID, err)
 			}
-
 			if err := m.store.MarkRemoved(session, &raftcmdpb.RemovedMemberEntry{
 				NodeId:     nodeID,
 				InstanceId: ctx.InstanceID,

@@ -39,15 +39,15 @@ func (r *ClusterReconciler) reconcileClusterSecret(ctx context.Context, ledger *
 		secret.Labels = commonLabels(ledger)
 
 		// Only generate the secret value on creation; preserve it on updates.
-		if secret.Data == nil || len(secret.Data[clusterSecretKey]) == 0 {
+		if secret.Data == nil {
+			secret.Data = make(map[string][]byte)
+		}
+		if len(secret.Data[clusterSecretKey]) == 0 {
 			token, err := generateRandomToken(32)
 			if err != nil {
 				return fmt.Errorf("generating cluster secret: %w", err)
 			}
-
-			secret.Data = map[string][]byte{
-				clusterSecretKey: []byte(token),
-			}
+			secret.Data[clusterSecretKey] = []byte(token)
 		}
 
 		return setOwnedControllerReference(ledger, secret, r.Scheme, "Secret")
