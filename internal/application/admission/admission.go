@@ -63,6 +63,7 @@ type Admission struct {
 	attrs                 *attributes.Attributes
 	numscriptCache        *numscript.NumscriptCache
 	waitLeaderReady       func(context.Context) error
+	committedPolicy       func() (*commonpb.ClusterPolicy, error)
 	// auditProjectionState is node-local admission state. It may reject a
 	// checkpoint proposal before Raft, but never affects deterministic apply.
 	auditProjectionState func() (disabled, rebuilding bool)
@@ -137,6 +138,12 @@ func WithAuditProjectionState(state func() (disabled, rebuilding bool)) func(*Ad
 	}
 }
 
+// WithCommittedPolicy supplies the FSM's post-commit policy snapshot. Production
+// admission uses it so coverage extraction never reads Pebble on each batch.
+func WithCommittedPolicy(policy func() (*commonpb.ClusterPolicy, error)) func(*Admission) {
+	return func(a *Admission) { a.committedPolicy = policy }
+}
+
 func NewAdmission(
 	store *dal.Store,
 	logger logging.Logger,
@@ -167,6 +174,10 @@ func NewAdmission(
 	}
 	for _, opt := range opts {
 		opt(a)
+	}
+	if a.committedPolicy == nil {
+		// Isolated admission tests can use a store without a running FSM.
+		a.committedPolicy = func() (*commonpb.ClusterPolicy, error) { return query.ReadClusterPolicy(store) }
 	}
 
 	// Use noop meter when metrics are disabled to eliminate contention
@@ -669,6 +680,11 @@ func (a *Admission) checkAdmissionMaintenance(allowInMaintenance bool) error {
 }
 
 func (a *Admission) prepareBatchOrders(ctx context.Context, batch verifiedBatch) ([]*raftcmdpb.Order, *plan.Coverage, []*plan.Coverage, error) {
+	policy, err := a.committedPolicy()
+	if err != nil {
+		return nil, nil, nil, fmt.Errorf("reading committed incarnation policy: %w", err)
+	}
+	incarnationWrites := capabilities.IsActive(policy, capabilities.AccountIncarnationWritesV1)
 	// Convert requests to orders. Idempotency and signature are batch-level now
 	// (carried on the Proposal), so orders no longer hold either.
 	//
@@ -685,7 +701,7 @@ func (a *Admission) prepareBatchOrders(ctx context.Context, batch verifiedBatch)
 	}
 
 	// Step 1: Extract preload needs from orders (excludes script-dependent needs)
-	needs, perOrder, err := a.extractPreloadNeeds(ctx, orders, overlay)
+	needs, perOrder, err := a.extractPreloadNeeds(ctx, orders, overlay, incarnationWrites)
 	if err != nil {
 		return orders, nil, nil, err
 	}
@@ -713,7 +729,7 @@ func (a *Admission) prepareBatchOrders(ctx context.Context, batch verifiedBatch)
 	stopScripts := a.recordPhaseOnExit(ctx, a.scriptsDurationHistogram)
 	defer stopScripts()
 
-	if err := a.resolveScriptsAndEnrichNeeds(ctx, orders, overlay, needs, perOrder, batch.key != ""); err != nil {
+	if err := a.resolveScriptsAndEnrichNeeds(ctx, orders, overlay, needs, perOrder, batch.key != "", incarnationWrites); err != nil {
 		return orders, nil, nil, err
 	}
 	stopScripts()
@@ -722,16 +738,6 @@ func (a *Admission) prepareBatchOrders(ctx context.Context, batch verifiedBatch)
 }
 
 func (a *Admission) buildExecutionBatchPreload(ctx context.Context, caller *commonpb.CallerSnapshot, batch verifiedBatch, orders []*raftcmdpb.Order, needs *plan.Coverage, perOrder []*plan.Coverage) (*raftcmdpb.Proposal, *plan.BuildResult, error) {
-	policy, err := query.ReadClusterPolicy(a.store)
-	if err != nil {
-		return nil, nil, fmt.Errorf("reading incarnation capability policy: %w", err)
-	}
-	if !capabilities.IsActive(policy, capabilities.AccountIncarnationWritesV1) {
-		delete(needs.Attributes, dal.SubAttrAccountIncarnation)
-		for _, coverage := range perOrder {
-			delete(coverage.Attributes, dal.SubAttrAccountIncarnation)
-		}
-	}
 	// Step 3-5: Build preloads via shared Builder (no lock)
 	cmd := commands.NewCommand(orders...)
 	cmd.CallerSnapshot = caller
@@ -1353,23 +1359,27 @@ func wrapSystemScoped(order *raftcmdpb.Order, ss *raftcmdpb.SystemScopedOrder) {
 // declared) stays distinct and propagates verbatim through
 // `domain.StoreFailure`, so the audit chain records `COVERAGE_MISS`
 // rather than a storage fault (EN-1379).
-func addVolumeNeed(p *plan.Coverage, ledgerName, account, asset, color string) {
+func addVolumeNeed(p *plan.Coverage, incarnationWrites bool, ledgerName, account, asset, color string) {
 	p.Add(dal.SubAttrVolume, domain.VolumeKey{
 		AccountKey: domain.AccountKey{LedgerName: ledgerName, Account: account},
 		Asset:      asset,
 		Color:      color,
 	}.Bytes())
-	p.Add(dal.SubAttrAccountIncarnation, (domain.AccountKey{LedgerName: ledgerName, Account: account}).Bytes())
+	if incarnationWrites {
+		p.Add(dal.SubAttrAccountIncarnation, (domain.AccountKey{LedgerName: ledgerName, Account: account}).Bytes())
+	}
 }
 
 // addAccountMetadataNeed covers the metadata row and the account lifetime.
 // A metadata-only write can open a normal account without touching a volume.
-func addAccountMetadataNeed(p *plan.Coverage, ledgerName, account, key string) {
+func addAccountMetadataNeed(p *plan.Coverage, incarnationWrites bool, ledgerName, account, key string) {
 	p.Add(dal.SubAttrMetadata, domain.MetadataKey{
 		AccountKey: domain.AccountKey{LedgerName: ledgerName, Account: account},
 		Key:        key,
 	}.Bytes())
-	p.Add(dal.SubAttrAccountIncarnation, (domain.AccountKey{LedgerName: ledgerName, Account: account}).Bytes())
+	if incarnationWrites {
+		p.Add(dal.SubAttrAccountIncarnation, (domain.AccountKey{LedgerName: ledgerName, Account: account}).Bytes())
+	}
 }
 
 // addTransactionTargetNeeds preloads the TransactionState entry for a
@@ -1384,7 +1394,7 @@ func addTransactionTargetNeeds(p *plan.Coverage, ledgerName string, txID uint64)
 // extractLedgerScopedNeeds populates the preload Coverage for a ledger-scoped
 // order. The ledger lives once on the wrapper; every payload variant reads it
 // from there instead of carrying its own field.
-func extractLedgerScopedNeeds(p *plan.Coverage, ls *raftcmdpb.LedgerScopedOrder, overlay *bulkOverlay) {
+func extractLedgerScopedNeeds(p *plan.Coverage, ls *raftcmdpb.LedgerScopedOrder, overlay *bulkOverlay, incarnationWrites bool) {
 	ledgerName := ls.GetLedger()
 	ledgerKey := domain.LedgerKey{Name: ledgerName}
 
@@ -1420,14 +1430,14 @@ func extractLedgerScopedNeeds(p *plan.Coverage, ls *raftcmdpb.LedgerScopedOrder,
 		}
 
 		for _, posting := range postings {
-			addVolumeNeed(p, ledgerName, posting.GetSource(), posting.GetAsset(), posting.GetColor())
-			addVolumeNeed(p, ledgerName, posting.GetDestination(), posting.GetAsset(), posting.GetColor())
+			addVolumeNeed(p, incarnationWrites, ledgerName, posting.GetSource(), posting.GetAsset(), posting.GetColor())
+			addVolumeNeed(p, incarnationWrites, ledgerName, posting.GetDestination(), posting.GetAsset(), posting.GetColor())
 		}
 
 		if ct := mi.GetEntry().GetCreatedTransaction(); ct != nil {
 			for account, mm := range ct.GetAccountMetadata() {
 				for key := range mm.GetValues() {
-					addAccountMetadataNeed(p, ledgerName, account, key)
+					addAccountMetadataNeed(p, incarnationWrites, ledgerName, account, key)
 				}
 			}
 		}
@@ -1436,7 +1446,7 @@ func extractLedgerScopedNeeds(p *plan.Coverage, ls *raftcmdpb.LedgerScopedOrder,
 			switch target := sm.GetTarget().GetTarget().(type) {
 			case *commonpb.Target_Account:
 				for key := range sm.GetMetadata() {
-					addAccountMetadataNeed(p, ledgerName, target.Account.GetAddr(), key)
+					addAccountMetadataNeed(p, incarnationWrites, ledgerName, target.Account.GetAddr(), key)
 				}
 			case *commonpb.Target_TransactionId:
 				addTransactionTargetNeeds(p, ledgerName, target.TransactionId)
@@ -1451,7 +1461,7 @@ func extractLedgerScopedNeeds(p *plan.Coverage, ls *raftcmdpb.LedgerScopedOrder,
 				// → KeyStore.Tombstone. Declare coverage; Tombstone
 				// lazy-fabricates a Gen0 tombstone from Gen1's tag when
 				// only Gen1 has the entry.
-				addAccountMetadataNeed(p, ledgerName, target.Account.GetAddr(), dm.GetKey())
+				addAccountMetadataNeed(p, incarnationWrites, ledgerName, target.Account.GetAddr(), dm.GetKey())
 			case *commonpb.Target_TransactionId:
 				// Transaction metadata lives inside the TransactionState
 				// map — no strict-tombstone path, no extra coverage needed.
@@ -1515,7 +1525,7 @@ func extractLedgerScopedNeeds(p *plan.Coverage, ls *raftcmdpb.LedgerScopedOrder,
 			// themselves are discovered later by the script pass.
 			for account, mm := range applyData.CreateTransaction.GetAccountMetadata() {
 				for key := range mm.GetValues() {
-					addAccountMetadataNeed(p, ledgerName, account, key)
+					addAccountMetadataNeed(p, incarnationWrites, ledgerName, account, key)
 				}
 			}
 
@@ -1529,8 +1539,8 @@ func extractLedgerScopedNeeds(p *plan.Coverage, ls *raftcmdpb.LedgerScopedOrder,
 
 			if !scriptBacked {
 				for _, posting := range applyData.CreateTransaction.GetPostings() {
-					addVolumeNeed(p, ledgerName, posting.GetSource(), posting.GetAsset(), posting.GetColor())
-					addVolumeNeed(p, ledgerName, posting.GetDestination(), posting.GetAsset(), posting.GetColor())
+					addVolumeNeed(p, incarnationWrites, ledgerName, posting.GetSource(), posting.GetAsset(), posting.GetColor())
+					addVolumeNeed(p, incarnationWrites, ledgerName, posting.GetDestination(), posting.GetAsset(), posting.GetColor())
 				}
 			}
 
@@ -1552,14 +1562,14 @@ func extractLedgerScopedNeeds(p *plan.Coverage, ls *raftcmdpb.LedgerScopedOrder,
 			// refuses the unobserved case before the order can reach Raft.
 			observation := overlay.revertTarget(ledgerName, applyData.RevertTransaction)
 			for _, posting := range observation.postings {
-				addVolumeNeed(p, ledgerName, posting.GetDestination(), posting.GetAsset(), posting.GetColor())
-				addVolumeNeed(p, ledgerName, posting.GetSource(), posting.GetAsset(), posting.GetColor())
+				addVolumeNeed(p, incarnationWrites, ledgerName, posting.GetDestination(), posting.GetAsset(), posting.GetColor())
+				addVolumeNeed(p, incarnationWrites, ledgerName, posting.GetSource(), posting.GetAsset(), posting.GetColor())
 			}
 
 		case *raftcmdpb.LedgerApplyOrder_AddMetadata:
 			if target, ok := applyData.AddMetadata.GetTarget().GetTarget().(*commonpb.Target_Account); ok {
 				for key := range applyData.AddMetadata.GetMetadata() {
-					addAccountMetadataNeed(p, ledgerName, target.Account.GetAddr(), key)
+					addAccountMetadataNeed(p, incarnationWrites, ledgerName, target.Account.GetAddr(), key)
 				}
 			}
 
@@ -1574,7 +1584,7 @@ func extractLedgerScopedNeeds(p *plan.Coverage, ls *raftcmdpb.LedgerScopedOrder,
 				// coverage (invariant #6 / #9); Tombstone lazy-
 				// fabricates a Gen0 tombstone from Gen1's tag if a
 				// concurrent Save + rotation raced with admission.
-				addAccountMetadataNeed(p, ledgerName, target.Account.GetAddr(), applyData.DeleteMetadata.GetKey())
+				addAccountMetadataNeed(p, incarnationWrites, ledgerName, target.Account.GetAddr(), applyData.DeleteMetadata.GetKey())
 			}
 
 			if tx, ok := applyData.DeleteMetadata.GetTarget().GetTarget().(*commonpb.Target_TransactionId); ok {
@@ -1688,7 +1698,7 @@ func extractSystemScopedNeeds(p *plan.Coverage, ss *raftcmdpb.SystemScopedOrder)
 // extractPreloadNeeds extracts all preload keys from orders in a single pass.
 // Returns the proposal-wide aggregate Coverage and a parallel slice with one
 // Coverage per order (used to compute Order.coverage_bits after Build).
-func (a *Admission) extractPreloadNeeds(ctx context.Context, orders []*raftcmdpb.Order, overlay *bulkOverlay) (*plan.Coverage, []*plan.Coverage, error) {
+func (a *Admission) extractPreloadNeeds(ctx context.Context, orders []*raftcmdpb.Order, overlay *bulkOverlay, incarnationWrites bool) (*plan.Coverage, []*plan.Coverage, error) {
 	aggregate := plan.NewCoverage()
 	perOrder := make([]*plan.Coverage, len(orders))
 
@@ -1697,7 +1707,7 @@ func (a *Admission) extractPreloadNeeds(ctx context.Context, orders []*raftcmdpb
 
 		switch orderType := order.GetType().(type) {
 		case *raftcmdpb.Order_LedgerScoped:
-			extractLedgerScopedNeeds(p, orderType.LedgerScoped, overlay)
+			extractLedgerScopedNeeds(p, orderType.LedgerScoped, overlay, incarnationWrites)
 		case *raftcmdpb.Order_SystemScoped:
 			extractSystemScopedNeeds(p, orderType.SystemScoped)
 		}
@@ -1881,7 +1891,7 @@ func (a *Admission) classifyResolutionFailure(order *raftcmdpb.Order, cause erro
 //
 // This runs after extractPreloadNeeds (which preloads caller-supplied accountMetadata
 // keys but skips posting-driven volumes for script-based orders) and before Build.
-func (a *Admission) resolveScriptsAndEnrichNeeds(ctx context.Context, orders []*raftcmdpb.Order, overlay *bulkOverlay, p *plan.Coverage, perOrder []*plan.Coverage, hasIdempotencyKey bool) error {
+func (a *Admission) resolveScriptsAndEnrichNeeds(ctx context.Context, orders []*raftcmdpb.Order, overlay *bulkOverlay, p *plan.Coverage, perOrder []*plan.Coverage, hasIdempotencyKey bool, incarnationWrites bool) error {
 	// effects accumulates the state changes of orders already processed in this
 	// atomic batch so each subsequent order resolves against the state the FSM
 	// will see when it reaches that order — pre-batch storage plus predecessors'
@@ -2131,13 +2141,13 @@ func (a *Admission) resolveScriptsAndEnrichNeeds(ctx context.Context, orders []*
 			// the segregated (account, asset, color) bucket. Scope-qualified
 			// balances are still rejected upstream.
 			for key := range discovered.ReadVolumes {
-				addVolumeNeed(p, key.LedgerName, key.Account, key.Asset, key.Color)
-				addVolumeNeed(orderNeeds, key.LedgerName, key.Account, key.Asset, key.Color)
+				addVolumeNeed(p, incarnationWrites, key.LedgerName, key.Account, key.Asset, key.Color)
+				addVolumeNeed(orderNeeds, incarnationWrites, key.LedgerName, key.Account, key.Asset, key.Color)
 			}
 
 			for key := range discovered.WriteVolumes {
-				addVolumeNeed(p, key.LedgerName, key.Account, key.Asset, key.Color)
-				addVolumeNeed(orderNeeds, key.LedgerName, key.Account, key.Asset, key.Color)
+				addVolumeNeed(p, incarnationWrites, key.LedgerName, key.Account, key.Asset, key.Color)
+				addVolumeNeed(orderNeeds, incarnationWrites, key.LedgerName, key.Account, key.Asset, key.Color)
 			}
 
 			// Metadata reads must be preloaded so the FSM's stale-inputs
@@ -2153,8 +2163,8 @@ func (a *Admission) resolveScriptsAndEnrichNeeds(ctx context.Context, orders []*
 			}
 
 			for key := range discovered.WriteMetadata {
-				addAccountMetadataNeed(p, key.LedgerName, key.Account, key.Key)
-				addAccountMetadataNeed(orderNeeds, key.LedgerName, key.Account, key.Key)
+				addAccountMetadataNeed(p, incarnationWrites, key.LedgerName, key.Account, key.Key)
+				addAccountMetadataNeed(orderNeeds, incarnationWrites, key.LedgerName, key.Account, key.Key)
 			}
 
 			// Bind the resolved inputs to the order's technical sub-message. The
