@@ -1481,6 +1481,8 @@ func extractLedgerScopedNeeds(p *plan.Coverage, ls *raftcmdpb.LedgerScopedOrder,
 		// fabricates a Gen0 tombstone from Gen1's tag if a concurrent
 		// Save + rotation raced with admission.
 		p.Add(dal.SubAttrLedgerMetadata, domain.LedgerMetadataKey{LedgerName: ledgerName, Key: payload.DeleteLedgerMetadata.GetKey()}.Bytes())
+	case *raftcmdpb.LedgerScopedOrder_PutKv, *raftcmdpb.LedgerScopedOrder_DeleteKv:
+		p.Add(dal.SubAttrLedger, ledgerBytes)
 	case *raftcmdpb.LedgerScopedOrder_Apply:
 		p.Add(dal.SubAttrBoundary, ledgerBytes)
 		p.Add(dal.SubAttrLedger, ledgerBytes)
@@ -2460,6 +2462,20 @@ func (a *Admission) ledgerRequestToOrder(order *raftcmdpb.Order, req *servicepb.
 					Key: reqType.DeleteLedgerMetadata.GetKey(),
 				},
 			},
+		})
+	case *servicepb.Request_PutKv:
+		wrapLedgerScoped(order, &raftcmdpb.LedgerScopedOrder{
+			Ledger: reqType.PutKv.GetLedger(),
+			Payload: &raftcmdpb.LedgerScopedOrder_PutKv{PutKv: &raftcmdpb.PutKVOrder{
+				Key: reqType.PutKv.GetKey(), Value: reqType.PutKv.GetValue(),
+			}},
+		})
+	case *servicepb.Request_DeleteKv:
+		wrapLedgerScoped(order, &raftcmdpb.LedgerScopedOrder{
+			Ledger: reqType.DeleteKv.GetLedger(),
+			Payload: &raftcmdpb.LedgerScopedOrder_DeleteKv{DeleteKv: &raftcmdpb.DeleteKVOrder{
+				Key: reqType.DeleteKv.GetKey(),
+			}},
 		})
 	default:
 		return false

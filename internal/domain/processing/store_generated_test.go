@@ -250,6 +250,42 @@ func (c *MockScopeCheckCoverageCall) DoAndReturn(f func(byte, CoverageKey) error
 	return c
 }
 
+// DeleteKV mocks base method.
+func (m *MockScope) DeleteKV(ledger, key string) {
+	m.ctrl.T.Helper()
+	m.ctrl.Call(m, "DeleteKV", ledger, key)
+}
+
+// DeleteKV indicates an expected call of DeleteKV.
+func (mr *MockScopeMockRecorder) DeleteKV(ledger, key any) *MockScopeDeleteKVCall {
+	mr.mock.ctrl.T.Helper()
+	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteKV", reflect.TypeOf((*MockScope)(nil).DeleteKV), ledger, key)
+	return &MockScopeDeleteKVCall{Call: call}
+}
+
+// MockScopeDeleteKVCall wrap *gomock.Call
+type MockScopeDeleteKVCall struct {
+	*gomock.Call
+}
+
+// Return rewrite *gomock.Call.Return
+func (c *MockScopeDeleteKVCall) Return() *MockScopeDeleteKVCall {
+	c.Call = c.Call.Return()
+	return c
+}
+
+// Do rewrite *gomock.Call.Do
+func (c *MockScopeDeleteKVCall) Do(f func(string, string)) *MockScopeDeleteKVCall {
+	c.Call = c.Call.Do(f)
+	return c
+}
+
+// DoAndReturn rewrite *gomock.Call.DoAndReturn
+func (c *MockScopeDeleteKVCall) DoAndReturn(f func(string, string)) *MockScopeDeleteKVCall {
+	c.Call = c.Call.DoAndReturn(f)
+	return c
+}
+
 // DeleteQueryCheckpoint mocks base method.
 func (m *MockScope) DeleteQueryCheckpoint(checkpointID uint64) {
 	m.ctrl.T.Helper()
@@ -1085,6 +1121,42 @@ func (c *MockScopePreparedQueriesCall) Do(f func() Accessor[domain.PreparedQuery
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
 func (c *MockScopePreparedQueriesCall) DoAndReturn(f func() Accessor[domain.PreparedQueryKey, *commonpb.PreparedQuery, commonpb.PreparedQueryReader]) *MockScopePreparedQueriesCall {
+	c.Call = c.Call.DoAndReturn(f)
+	return c
+}
+
+// PutKV mocks base method.
+func (m *MockScope) PutKV(ledger, key string, value []byte) {
+	m.ctrl.T.Helper()
+	m.ctrl.Call(m, "PutKV", ledger, key, value)
+}
+
+// PutKV indicates an expected call of PutKV.
+func (mr *MockScopeMockRecorder) PutKV(ledger, key, value any) *MockScopePutKVCall {
+	mr.mock.ctrl.T.Helper()
+	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "PutKV", reflect.TypeOf((*MockScope)(nil).PutKV), ledger, key, value)
+	return &MockScopePutKVCall{Call: call}
+}
+
+// MockScopePutKVCall wrap *gomock.Call
+type MockScopePutKVCall struct {
+	*gomock.Call
+}
+
+// Return rewrite *gomock.Call.Return
+func (c *MockScopePutKVCall) Return() *MockScopePutKVCall {
+	c.Call = c.Call.Return()
+	return c
+}
+
+// Do rewrite *gomock.Call.Do
+func (c *MockScopePutKVCall) Do(f func(string, string, []byte)) *MockScopePutKVCall {
+	c.Call = c.Call.Do(f)
+	return c
+}
+
+// DoAndReturn rewrite *gomock.Call.DoAndReturn
+func (c *MockScopePutKVCall) DoAndReturn(f func(string, string, []byte)) *MockScopePutKVCall {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }

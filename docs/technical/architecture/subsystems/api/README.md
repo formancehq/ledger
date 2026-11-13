@@ -29,6 +29,9 @@ for the distinction between a decoded rejection and raw transport cancellation.
 
 ## Ledger information
 
+[Ledger KV](../kv/) defines the Get/Put/Delete byte-value contract and the
+coordinated-stop rollout for its new audited orders.
+
 [LedgerInfo read contract](ledger-info.md) defines HTTP projection, exact counters,
 secret-safe current/checkpoint reads and downstream SDK ownership.
 

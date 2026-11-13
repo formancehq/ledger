@@ -17,9 +17,11 @@ func TestDefaultMapping_DefaultService(t *testing.T) {
 	assert.Contains(t, m["ledger:read"], ScopeLedgersRead)
 	assert.Contains(t, m["ledger:read"], ScopeTransactionsRead)
 	assert.Contains(t, m["ledger:read"], ScopeAccountsRead)
+	assert.Contains(t, m["ledger:read"], ScopeKVRead)
 	assert.Contains(t, m["ledger:write"], ScopeLedgersWrite)
 	assert.Contains(t, m["ledger:write"], ScopeTransactionsWrite)
 	assert.Contains(t, m["ledger:write"], ScopeMetadataWrite)
+	assert.Contains(t, m["ledger:write"], ScopeKVWrite)
 	assert.Contains(t, m["ledger:admin"], ScopeClusterRead)
 	assert.Contains(t, m["ledger:admin"], ScopeClusterWrite)
 }
@@ -47,6 +49,7 @@ func TestExpandScopes_VirtualToGranular(t *testing.T) {
 	assert.Contains(t, effective, ScopeAuditRead)
 	assert.Contains(t, effective, ScopeOpsRead)
 	assert.Contains(t, effective, ScopeQueriesRead)
+	assert.Contains(t, effective, ScopeKVRead)
 
 	// Should contain all write granular scopes
 	assert.Contains(t, effective, ScopeLedgersWrite)
@@ -55,6 +58,7 @@ func TestExpandScopes_VirtualToGranular(t *testing.T) {
 	assert.Contains(t, effective, ScopeAuditWrite)
 	assert.Contains(t, effective, ScopeOpsWrite)
 	assert.Contains(t, effective, ScopeQueriesWrite)
+	assert.Contains(t, effective, ScopeKVWrite)
 
 	// Should NOT contain cluster scopes (that's admin)
 	assert.NotContains(t, effective, ScopeClusterRead)

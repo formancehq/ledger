@@ -973,9 +973,9 @@ quorum during the mixed-version window. The test does not write during mixed
 Ledger versions or test maintenance-mode rejection.
 The workflow saves the evidence under `build/upgrade-operator/` and uploads it
 even on failure. A Docker daemon and access to the published GHCR image are
-required. The separate `rc3-to-rc4` transition is prepared for a future
-mandatory stopped boundary; run it only after rc.3 is published and the
-format-change PR adds rc.4 to the operator's stop list. It checks drain,
+required. The separate `rc3-to-rc4` transition exercises the mandatory
+stopped boundary activated for Ledger KV. Run it after rc.3 is published,
+against a target commit containing the rc.4 boundary. It checks drain,
 absence of all old Pods before target Pod creation, retained PVCs, target-voter
 replay and post-upgrade audit. See [Server Binary Upgrades](../../ops/upgrades.md#operator-managed-rc2-to-rc3-rolling-validation)
 for the detailed coverage and limits.

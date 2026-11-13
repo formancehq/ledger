@@ -364,6 +364,18 @@ func (x *Request) MarshalJSON() ([]byte, error) {
 		}{
 			DeleteLedgerMetadata: oneofValueType.DeleteLedgerMetadata,
 		})
+	case *Request_PutKv:
+		return jsonv2.Marshal(struct {
+			PutKv any `json:"putKv"`
+		}{
+			PutKv: oneofValueType.PutKv,
+		})
+	case *Request_DeleteKv:
+		return jsonv2.Marshal(struct {
+			DeleteKv any `json:"deleteKv"`
+		}{
+			DeleteKv: oneofValueType.DeleteKv,
+		})
 	default:
 		return jsonv2.Marshal(struct {
 		}{})
@@ -1440,6 +1452,8 @@ func (x *CheckStoreError) MarshalJSON() ([]byte, error) {
 				return "CHECK_STORE_ERROR_TYPE_LOG_PAYLOAD_MISMATCH"
 			case CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_LEDGER_INFO_MISMATCH:
 				return "CHECK_STORE_ERROR_TYPE_LEDGER_INFO_MISMATCH"
+			case CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_KV_MISMATCH:
+				return "CHECK_STORE_ERROR_TYPE_KV_MISMATCH"
 			default:
 				return int32(x.ErrorType)
 			}
@@ -2325,5 +2339,47 @@ func (x *BarrierResponse) MarshalJSON() ([]byte, error) {
 		CommitIndex uint64 `json:"commitIndex"`
 	}{
 		CommitIndex: x.CommitIndex,
+	})
+}
+
+func (x *GetKVRequest) MarshalJSON() ([]byte, error) {
+	return jsonv2.Marshal(struct {
+		Ledger string `json:"ledger"`
+		Key    string `json:"key"`
+		Read   any    `json:"read,omitempty,omitzero"`
+	}{
+		Ledger: x.Ledger,
+		Key:    x.Key,
+		Read:   x.Read,
+	})
+}
+
+func (x *GetKVResponse) MarshalJSON() ([]byte, error) {
+	return jsonv2.Marshal(struct {
+		Value []byte `json:"value"`
+	}{
+		Value: x.Value,
+	})
+}
+
+func (x *PutKVRequest) MarshalJSON() ([]byte, error) {
+	return jsonv2.Marshal(struct {
+		Ledger string `json:"ledger"`
+		Key    string `json:"key"`
+		Value  []byte `json:"value"`
+	}{
+		Ledger: x.Ledger,
+		Key:    x.Key,
+		Value:  x.Value,
+	})
+}
+
+func (x *DeleteKVRequest) MarshalJSON() ([]byte, error) {
+	return jsonv2.Marshal(struct {
+		Ledger string `json:"ledger"`
+		Key    string `json:"key"`
+	}{
+		Ledger: x.Ledger,
+		Key:    x.Key,
 	})
 }

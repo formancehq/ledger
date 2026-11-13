@@ -41,6 +41,14 @@ type skipSafeScope struct {
 	inner Scope
 }
 
+func (s *skipSafeScope) PutKV(ledger, key string, value []byte) {
+	trapUnbuffered("PutKV", map[string]any{"ledger": ledger, "key": key})
+}
+
+func (s *skipSafeScope) DeleteKV(ledger, key string) {
+	trapUnbuffered("DeleteKV", map[string]any{"ledger": ledger, "key": key})
+}
+
 func newSkipSafeScope(inner Scope) *skipSafeScope {
 	return &skipSafeScope{inner: inner}
 }
