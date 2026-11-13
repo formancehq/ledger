@@ -22,6 +22,14 @@ enforcement boundary for producers.
 
 ## Admission and membership
 
+Membership peer-directory writes made outside FSM apply are now synced to
+Pebble before a separate WAL ConfState snapshot can make their node IDs durable.
+This restores the existing restart invariant: a recovered member has the peer
+addresses needed to contact the voters in its ConfState. It changes neither
+the membership payload nor Raft/FSM semantics, so it requires no new capability
+ID or coordinated activation. Writes in FSM apply remain replayable from the
+committed WAL and continue to use NoSync.
+
 The pure decision contract in `internal/infra/capabilities` evaluates every
 current voter and learner. A member is represented by `(node_id, instance_id)`;
 an identity refresh is a new incarnation and cannot silently inherit evidence

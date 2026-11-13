@@ -28,6 +28,18 @@ intent remains explicit: administrative `AddLearner` and fresh-WAL
 `JoinAsLearner` are separate paths even though both carry the same identity
 payload. See [Removed-Member Registry](removed-member-registry.md).
 
+Fresh bootstrap and join persist the discovered peer directory in Pebble with
+a synchronous commit before writing the initial WAL ConfState snapshot. An
+early startup failure, including failed OIDC discovery, can terminate the
+process without closing Pebble: a NoSync peer batch would then disappear while
+the WAL snapshot survives, leaving the restarted node with voter IDs but no
+outbound peer addresses. Other membership lifecycle writes that bypass Raft
+apply (self refresh, explicit deletion, force-remove and its tombstone) also
+commit synchronously. ConfChange writes in FSM apply continue to use NoSync;
+their committed WAL entries can be replayed before membership is rehydrated.
+This changes write durability, not the stored layout or wire protocol; no
+upgrade migration is required.
+
 ```mermaid
 stateDiagram-v2
     [*] --> Follower
