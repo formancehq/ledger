@@ -14,6 +14,7 @@ import (
 	libtime "github.com/formancehq/go-libs/v5/pkg/types/time"
 
 	v2 "github.com/formancehq/ledger/v3/internal/adapter/v2"
+	"github.com/formancehq/ledger/v3/internal/application/coverage"
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/infra/capabilities"
 	"github.com/formancehq/ledger/v3/internal/infra/plan"
@@ -817,96 +818,13 @@ func (w *Worker) proposeMirrorSync(ctx context.Context, update *raftcmdpb.Mirror
 func (w *Worker) extractMirrorNeeds(cmd *raftcmdpb.Proposal, includeIncarnations bool) (*plan.Coverage, []*plan.Coverage) {
 	aggregate := plan.NewCoverage()
 	perOrder := make([]*plan.Coverage, len(cmd.GetBatch().GetOrders()))
-	addIncarnation := func(p *plan.Coverage, account string) {
-		if includeIncarnations {
-			p.Add(dal.SubAttrAccountIncarnation, (domain.AccountKey{LedgerName: w.ledgerName, Account: account}).Bytes())
-		}
-	}
-
 	ledgerBytes := domain.LedgerKey{Name: w.ledgerName}.Bytes()
-
-	addAccountMetadata := func(p *plan.Coverage, account, key string) {
-		addIncarnation(p, account)
-		p.Add(dal.SubAttrMetadata, domain.MetadataKey{
-			AccountKey: domain.AccountKey{LedgerName: w.ledgerName, Account: account},
-			Key:        key,
-		}.Bytes())
-	}
-	addTx := func(p *plan.Coverage, txID uint64) {
-		p.Add(dal.SubAttrTransaction, domain.TransactionKey{LedgerName: w.ledgerName, ID: txID}.Bytes())
-	}
 
 	for orderIdx, order := range cmd.GetBatch().GetOrders() {
 		p := plan.NewCoverage()
 		p.Add(dal.SubAttrLedger, ledgerBytes)
 		p.Add(dal.SubAttrBoundary, ledgerBytes)
-
-		mi := order.GetLedgerScoped().GetMirrorIngest()
-		if mi == nil {
-			perOrder[orderIdx] = p
-			aggregate.Merge(p)
-
-			continue
-		}
-
-		var postings []*commonpb.Posting
-		if ct := mi.GetEntry().GetCreatedTransaction(); ct != nil {
-			postings = ct.GetPostings()
-		} else if rt := mi.GetEntry().GetRevertedTransaction(); rt != nil {
-			postings = rt.GetReversePostings()
-		}
-
-		for _, posting := range postings {
-			for _, volKey := range []domain.VolumeKey{
-				{AccountKey: domain.AccountKey{LedgerName: w.ledgerName, Account: posting.GetSource()}, Asset: posting.GetAsset(), Color: posting.GetColor()},
-				{AccountKey: domain.AccountKey{LedgerName: w.ledgerName, Account: posting.GetDestination()}, Asset: posting.GetAsset(), Color: posting.GetColor()},
-			} {
-				p.Add(dal.SubAttrVolume, volKey.Bytes())
-				addIncarnation(p, volKey.Account)
-			}
-		}
-
-		// Preload account metadata for previous value capture in logs.
-		if ct := mi.GetEntry().GetCreatedTransaction(); ct != nil {
-			for account, mm := range ct.GetAccountMetadata() {
-				for key := range mm.GetValues() {
-					addAccountMetadata(p, account, key)
-				}
-			}
-		}
-
-		if sm := mi.GetEntry().GetSavedMetadata(); sm != nil {
-			switch target := sm.GetTarget().GetTarget().(type) {
-			case *commonpb.Target_Account:
-				for key := range sm.GetMetadata() {
-					addAccountMetadata(p, target.Account.GetAddr(), key)
-				}
-			case *commonpb.Target_TransactionId:
-				addTx(p, target.TransactionId)
-			}
-		}
-
-		if dm := mi.GetEntry().GetDeletedMetadata(); dm != nil {
-			switch target := dm.GetTarget().GetTarget().(type) {
-			case *commonpb.Target_Account:
-				// Same tombstone coverage as the admission-side
-				// MirrorIngest.DeletedMetadata path (see admission.go) —
-				// KeyStore.Tombstone lazy-fabricates the Gen0 tombstone
-				// from Gen1's tag if a race occurred.
-				p.Add(dal.SubAttrMetadata, domain.MetadataKey{
-					AccountKey: domain.AccountKey{LedgerName: w.ledgerName, Account: target.Account.GetAddr()},
-					Key:        dm.GetKey(),
-				}.Bytes())
-				addIncarnation(p, target.Account.GetAddr())
-			case *commonpb.Target_TransactionId:
-				addTx(p, target.TransactionId)
-			}
-		}
-
-		if rt := mi.GetEntry().GetRevertedTransaction(); rt != nil {
-			addTx(p, rt.GetRevertedTransactionId())
-		}
-
+		coverage.AddMirrorIngestNeeds(p, w.ledgerName, order.GetLedgerScoped().GetMirrorIngest(), includeIncarnations)
 		perOrder[orderIdx] = p
 		aggregate.Merge(p)
 	}
