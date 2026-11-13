@@ -178,6 +178,7 @@ func TestMembership_MigratesLegacyServicePortsOnce(t *testing.T) {
 		9999,
 		fixedInstanceID(0x42),
 		logging.Testing(),
+		NoopClusterPolicyProvider,
 	)
 	require.NoError(t, err)
 	require.Equal(t, "pod-0:9999", m.PeerAddresses()[1].ServiceAddress)
@@ -196,15 +197,15 @@ func TestMembership_MigratesLegacyServicePortsOnce(t *testing.T) {
 
 	// New rows written after the one-shot migration are already in the peer
 	// format and are not touched by a later rehydrate.
-	require.NoError(t, ps.Put(3, "pod-2:7777", "pod-2:3333", fixedInstanceID(3)))
+	require.NoError(t, ps.Put(3, "pod-2:7777", "pod-2:3333", fixedInstanceID(3), nil))
 	require.NoError(t, m.Rehydrate())
 	legacy, err = ps.LoadAll()
 	require.NoError(t, err)
 	require.Equal(t, "pod-2:3333", legacy[3].ServiceAddress)
 
 	// Once the store-level format is current, later writes are not migrated.
-	require.NoError(t, ps.Put(1, "pod-0:7777", "pod-0:1111", fixedInstanceID(1)))
-	require.NoError(t, ps.Put(2, "pod-1:7777", "pod-1:2222", fixedInstanceID(2)))
+	require.NoError(t, ps.Put(1, "pod-0:7777", "pod-0:1111", fixedInstanceID(1), nil))
+	require.NoError(t, ps.Put(2, "pod-1:7777", "pod-1:2222", fixedInstanceID(2), nil))
 	require.NoError(t, m.Rehydrate())
 	require.Equal(t, "pod-0:1111", m.PeerAddresses()[1].ServiceAddress)
 	require.Equal(t, "pod-1:2222", m.PeerAddresses()[2].ServiceAddress)
@@ -219,6 +220,7 @@ func TestMembership_MigratesLegacyServicePortsOnce(t *testing.T) {
 		9999,
 		fixedInstanceID(0x42),
 		logging.Testing(),
+		NoopClusterPolicyProvider,
 	)
 	require.NoError(t, err)
 
@@ -232,8 +234,8 @@ func TestMembership_PreservesCurrentPeerPortsOnStartup(t *testing.T) {
 	t.Parallel()
 
 	ps := newTestPeerStore(t)
-	require.NoError(t, ps.Put(1, "pod-0:7777", "pod-0:8891", fixedInstanceID(1)))
-	require.NoError(t, ps.Put(2, "pod-1:7777", "pod-1:8892", fixedInstanceID(2)))
+	require.NoError(t, ps.Put(1, "pod-0:7777", "pod-0:8891", fixedInstanceID(1), nil))
+	require.NoError(t, ps.Put(2, "pod-1:7777", "pod-1:8892", fixedInstanceID(2), nil))
 	session := ps.store.OpenWriteSession()
 	require.NoError(t, session.SetBytes(membershipFormatKey, membershipFormatRevisionBytes(membershipFormatRevisionPeerPort)))
 	require.NoError(t, session.Commit())
@@ -248,6 +250,7 @@ func TestMembership_PreservesCurrentPeerPortsOnStartup(t *testing.T) {
 		9999,
 		fixedInstanceID(0x42),
 		logging.Testing(),
+		NoopClusterPolicyProvider,
 	)
 	require.NoError(t, err)
 
@@ -274,6 +277,7 @@ func TestMembership_MigratesLegacyPortsWithRefreshedSelf(t *testing.T) {
 		9999,
 		fixedInstanceID(0x42),
 		logging.Testing(),
+		NoopClusterPolicyProvider,
 	)
 	require.NoError(t, err)
 	require.Equal(t, "localhost:9999", m.PeerAddresses()[1].ServiceAddress)
@@ -288,7 +292,7 @@ func TestMembership_MigratesLegacyPortsWithRefreshedSelf(t *testing.T) {
 	require.Equal(t, "localhost:9999", addresses[2].ServiceAddress)
 	require.Equal(t, "localhost:9999", addresses[testSelfNodeID].ServiceAddress)
 	restarted, err := NewMembershipWithServicePort(ps, noopTransport{}, noopPool{}, testSelfNodeID,
-		testSelfRaftAddr, "localhost:9999", 9999, fixedInstanceID(0x42), logging.Testing())
+		testSelfRaftAddr, "localhost:9999", 9999, fixedInstanceID(0x42), logging.Testing(), NoopClusterPolicyProvider)
 	require.NoError(t, err)
 	require.Equal(t, "localhost:9999", restarted.PeerAddresses()[2].ServiceAddress)
 }
@@ -297,11 +301,11 @@ func TestMembership_FreshNodePreservesDistinctPeerPorts(t *testing.T) {
 	t.Parallel()
 	ps := newTestPeerStore(t)
 	m, err := NewMembershipWithServicePort(ps, noopTransport{}, noopPool{}, testSelfNodeID,
-		testSelfRaftAddr, "localhost:9999", 9999, fixedInstanceID(0x42), logging.Testing())
+		testSelfRaftAddr, "localhost:9999", 9999, fixedInstanceID(0x42), logging.Testing(), NoopClusterPolicyProvider)
 	require.NoError(t, err)
 	require.NoError(t, m.MarkNativeFormat())
-	require.NoError(t, ps.Put(1, "localhost:7777", "localhost:9999", fixedInstanceID(1)))
-	require.NoError(t, ps.Put(2, "localhost:7778", "localhost:9998", fixedInstanceID(2)))
+	require.NoError(t, ps.Put(1, "localhost:7777", "localhost:9999", fixedInstanceID(1), nil))
+	require.NoError(t, ps.Put(2, "localhost:7778", "localhost:9998", fixedInstanceID(2), nil))
 	require.NoError(t, m.Rehydrate())
 	require.Equal(t, "localhost:9998", m.PeerAddresses()[2].ServiceAddress)
 	revision, err := ps.membershipFormatRevision()

@@ -341,6 +341,7 @@ func TestLoadConfig_AuthIssuersEnvironment(t *testing.T) {
 			require.NoError(t, cmd.ParseFlags([]string{
 				"--node-id=1", "--cluster-id=auth-test",
 				"--tls-mode=required", "--tls-cert-file=server.crt", "--tls-key-file=server.key",
+				"--cluster-secret=cluster-secret",
 			}))
 			require.NoError(t, service.BindEnvToCommandWithError(cmd))
 			cfg, err := LoadConfig(context.Background(), cmd)
