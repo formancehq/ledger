@@ -90,11 +90,12 @@ func TestExecuteNumscriptPayload_JSONContract(t *testing.T) {
 	require.Equal(t, "transfer", payload.GetScriptReference().GetName())
 	require.Equal(t, "gold", commonpb.MetadataMapToGoMap(payload.GetAccountMetadata()["users:alice"])["tier"])
 
-	for _, body := range []string{
-		`{"script":{"plain":"send [USD 1] (source = @world destination = @alice)"},"reference":"tx-1"}`,
-		`{"script":{"plain":"send [USD 1] (source = @world destination = @alice)"},"postings":[],"Reference":"ignored"}`,
+	for _, tc := range []struct{ body, reference string }{
+		{`{"script":{"plain":"send [USD 1] (source = @world destination = @alice)"},"reference":"tx-1"}`, "tx-1"},
+		{`{"script":{"plain":"send [USD 1] (source = @world destination = @alice)"},"postings":[],"Reference":"tx-2"}`, "tx-2"},
 	} {
-		require.NoError(t, json.Unmarshal([]byte(body), &payload))
+		require.NoError(t, json.Unmarshal([]byte(tc.body), &payload))
 		require.NotNil(t, payload.GetScript())
+		require.Equal(t, tc.reference, payload.GetReference())
 	}
 }

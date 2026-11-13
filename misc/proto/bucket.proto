@@ -577,7 +577,7 @@ message CreateTransactionPayload {
 }
 
 // ExecuteNumscriptPayload runs a script that may create a transaction or only
-// update account metadata. Transaction references belong to CreateTransaction.
+// update account metadata. A reference requires a posting-producing result.
 message ExecuteNumscriptPayload {
   option (common.ledger_json_manual) = true;
   common.Script script = 1;
@@ -586,6 +586,7 @@ message ExecuteNumscriptPayload {
   map<string, common.MetadataValue> metadata = 4;
   map<string, common.MetadataMap> account_metadata = 5;
   bool force = 6;
+  string reference = 7;
 }
 
 // RevertTransactionPayload contains the data for reverting a transaction.

@@ -3164,6 +3164,7 @@ type ExecuteNumscriptOrderReader interface {
 	GetMetadata() ExecuteNumscriptOrder_MetadataMapReader
 	GetAccountMetadata() ExecuteNumscriptOrder_AccountMetadataMapReader
 	GetForce() bool
+	GetReference() string
 	Mutate() *ExecuteNumscriptOrder
 }
 
@@ -3203,6 +3204,10 @@ func (r *executeNumscriptOrderReadonly) GetAccountMetadata() ExecuteNumscriptOrd
 
 func (r *executeNumscriptOrderReadonly) GetForce() bool {
 	return (*ExecuteNumscriptOrder)(r).GetForce()
+}
+
+func (r *executeNumscriptOrderReadonly) GetReference() string {
+	return (*ExecuteNumscriptOrder)(r).GetReference()
 }
 
 func (r *executeNumscriptOrderReadonly) Mutate() *ExecuteNumscriptOrder {
