@@ -37,7 +37,8 @@ The operation is independent of ledger state. See the
 
 `POST /v3/{ledgerName}/transactions` accepts explicit postings or a Numscript
 that produces postings. `POST /v3/{ledgerName}/numscripts/execute` accepts an
-inline or saved Numscript without a transaction reference. It returns 201 with
+inline or saved Numscript with an optional transaction reference. A reference
+requires postings; metadata-only results reject it with `METADATA_ONLY_REFERENCE`. It returns 201 with
 the created transaction when the script produces postings, or 204 when it only
 updates account metadata. Both routes use the same Apply admission and audit
 path; the Numscript execution is a distinct `LedgerAction` on the gRPC Apply RPC.

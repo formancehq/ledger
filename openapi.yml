@@ -694,8 +694,9 @@ paths:
       description: |
         Executes an inline or saved Numscript. Returns a transaction when the
         script produces postings, or updates account metadata without a
-        transaction when it produces no postings. No transaction reference can
-        be supplied. Requires `ledger:write` scope. Signed requests use the
+        transaction when it produces no postings. An optional transaction
+        reference applies only when postings are produced; metadata-only results
+        reject it. Requires `ledger:write` scope. Signed requests use the
         same signing headers and batch verification as transaction creation.
       operationId: v3ExecuteNumscript
       x-speakeasy-name-override: ExecuteNumscript

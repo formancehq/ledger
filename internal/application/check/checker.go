@@ -2524,6 +2524,9 @@ func reconcileMetadataOnlyChainBound(items []*auditpb.AuditItem, orders []*raftc
 		// same entry consumes no FSM transaction id, so the speculative
 		// allocation is one too high for every later create.
 		if tx := log.GetPayload().GetApply().GetLog().GetData().GetCreatedTransaction().GetTransaction(); tx != nil {
+			if execution := order.GetLedgerScoped().GetApply().GetExecuteNumscript(); execution != nil && execution.GetReference() != "" {
+				rememberReferenceClaim(chainBound.references, ledger, execution.GetReference(), items[i].GetLogSequence())
+			}
 			if _, anchored := chainBound.ledgerCreationSeen[ledger]; anchored {
 				rememberReferenceTxID(chainBound.referenceTxIDs, ledger, tx.GetReference(), tx.GetId())
 

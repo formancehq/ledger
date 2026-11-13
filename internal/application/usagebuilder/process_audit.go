@@ -324,7 +324,7 @@ func (b *Builder) dispatchOrder(
 		return b.dispatchCreateTransaction(ctx, handle, ledger, &raftcmdpb.CreateTransactionOrder{
 			Script: execution.GetScript(), NumscriptReference: execution.GetNumscriptReference(),
 			Timestamp: execution.GetTimestamp(), Metadata: execution.GetMetadata(),
-			AccountMetadata: execution.GetAccountMetadata(), Force: execution.GetForce(),
+			AccountMetadata: execution.GetAccountMetadata(), Force: execution.GetForce(), Reference: execution.GetReference(),
 		}, logSeq, state, entry)
 	case *raftcmdpb.LedgerApplyOrder_RevertTransaction:
 		return b.dispatchRevertTransaction(ctx, handle, ledger, logSeq, state, entry)

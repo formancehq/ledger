@@ -3602,6 +3602,7 @@ ledgerctl numscripts execute --ledger my-ledger --name transfer --version 1.0.0 
 | `--version` | `latest` | Saved script version; only with `--name` |
 | `--var` | | Variable in `name=value` format; repeat for multiple variables |
 | `--metadata` | | Transaction metadata in `key=value` format; requires a transaction-producing script |
+| `--reference` | | Transaction reference; requires postings (metadata-only results return `METADATA_ONLY_REFERENCE`) |
 | `--idempotency-key` | | Reuse the same batch key when retrying an execution |
 | `--force` | `false` | Bypass balance checks |
 | `--json`, `--yaml` | `false` | Structured result output |

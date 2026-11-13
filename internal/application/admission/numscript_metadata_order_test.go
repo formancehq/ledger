@@ -6,9 +6,11 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
 
 func TestExecuteNumscriptOrderIsPlannedAndValidated(t *testing.T) {
@@ -56,7 +58,7 @@ func TestExecuteNumscriptReferenceIsPlanned(t *testing.T) {
 	}}}
 	needs, _, err := admission.extractPreloadNeeds(t.Context(), []*raftcmdpb.Order{order}, newBulkOverlay())
 	require.NoError(t, err)
-	require.NotNil(t, needs)
+	require.True(t, needs.Has(dal.SubAttrReference, domain.TransactionReferenceKey{LedgerName: testLedgerName, Reference: "ref-1"}.Bytes()))
 }
 
 func TestNumscriptCompetingMetadataErrorsReachProposalPreparation(t *testing.T) {

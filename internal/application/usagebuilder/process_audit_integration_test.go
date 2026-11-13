@@ -1125,6 +1125,28 @@ func TestProcessAuditEntries_MetadataOnlyNumscriptCounts(t *testing.T) {
 	}
 }
 
+func TestProcessAuditEntries_ExecuteNumscriptReferenceCount(t *testing.T) {
+	t.Parallel()
+	const ledger = "l1"
+	primary, usage := newUsageTestStores(t)
+	seedAuditData(t, primary, []seedAuditEntry{{
+		seq: 1, success: true, items: []seedAuditItem{{
+			order: executeNumscriptOrder(ledger, &raftcmdpb.ExecuteNumscriptOrder{
+				Script: &commonpb.Script{Plain: "send ..."}, Reference: "ref-1",
+			}),
+			logSeq: 10,
+			log: createdTxLog(10, ledger, nil,
+				[]*commonpb.Posting{usagePosting("world", "alice", "USD", 100)}, nil, nil, nil),
+		}},
+	}})
+	b := newTestBuilder(primary, usage, 200)
+	_, err := b.processAuditEntries(t.Context(), 0, time.Time{})
+	require.NoError(t, err)
+	count, err := usage.GetCounter(ledger, usagestore.CounterReference)
+	require.NoError(t, err)
+	require.Equal(t, uint64(1), count)
+}
+
 // TestProcessAuditEntries_SkippedCreateDoesNotCount guards the success gate:
 // a CreateTransaction that produced an OrderSkipped log (no CreatedTransaction /
 // RevertedTransaction payload) must contribute no reference / numscript /
