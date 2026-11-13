@@ -69,6 +69,7 @@ func createTestAdmissionWithReader(t *testing.T, store *dal.Store, proposer Prop
 		attrs,
 		numscript.NewNumscriptCache(0),
 		func(context.Context) error { return nil },
+		testCommittedPolicyFromStore(store),
 		WithMetrics(),
 	)
 
