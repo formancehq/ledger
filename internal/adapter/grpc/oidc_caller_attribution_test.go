@@ -330,6 +330,7 @@ func newCallerAttributionAdmission(t *testing.T, expectedProposals int) (*admiss
 		numscript.NewNumscriptCache(0), func(context.Context) error { return nil },
 		func() (commonpb.ClusterPolicyReader, error) {
 			policy, err := query.ReadClusterPolicy(store)
+
 			return policy.AsReader(), err
 		})
 
