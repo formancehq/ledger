@@ -165,7 +165,7 @@ func TestMembership_MigratesLegacyServicePortsOnce(t *testing.T) {
 	t.Parallel()
 
 	ps := newTestPeerStore(t)
-	putLegacyPeer(t, ps, 1, "pod-0:7777", "pod-0:1111", fixedInstanceID(1))
+	require.NoError(t, ps.Put(1, "pod-0:7777", "pod-0:1111", fixedInstanceID(1), []uint32{7}))
 	putLegacyPeer(t, ps, 2, "pod-1:7777", "pod-1:2222", fixedInstanceID(2))
 
 	m, err := NewMembershipWithServicePort(
@@ -182,6 +182,7 @@ func TestMembership_MigratesLegacyServicePortsOnce(t *testing.T) {
 	)
 	require.NoError(t, err)
 	require.Equal(t, "pod-0:9999", m.PeerAddresses()[1].ServiceAddress)
+	require.Equal(t, []uint32{7}, m.PeerAddresses()[1].Capabilities)
 	require.Equal(t, "pod-1:9999", m.PeerAddresses()[2].ServiceAddress)
 
 	legacy, err := ps.LoadAll()
@@ -193,6 +194,7 @@ func TestMembership_MigratesLegacyServicePortsOnce(t *testing.T) {
 	legacy, err = ps.LoadAll()
 	require.NoError(t, err)
 	require.Equal(t, "pod-0:9999", legacy[1].ServiceAddress)
+	require.Equal(t, []uint32{7}, legacy[1].Capabilities)
 	require.Equal(t, "pod-1:9999", legacy[2].ServiceAddress)
 
 	// New rows written after the one-shot migration are already in the peer

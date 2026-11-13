@@ -86,6 +86,7 @@ func (p *PeerStore) migrateLegacyServiceAddressesFromPort(servicePort int, selfN
 			RaftAddress:    normalized[nodeID].RaftAddress,
 			ServiceAddress: normalized[nodeID].ServiceAddress,
 			InstanceId:     normalized[nodeID].InstanceID,
+			Capabilities:   normalized[nodeID].Capabilities,
 		}); err != nil {
 			_ = session.Cancel()
 
