@@ -33,7 +33,7 @@ import (
 )
 
 func bulkContractSuccess() *commonpb.Log {
-	return &commonpb.Log{Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_Apply{
+	return &commonpb.Log{Sequence: 101, Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_Apply{
 		Apply: &commonpb.ApplyLedgerLog{Log: &commonpb.LedgerLog{
 			Id: 17,
 			Data: &commonpb.LedgerLogPayload{Payload: &commonpb.LedgerLogPayload_CreatedTransaction{
@@ -95,48 +95,61 @@ func TestHandleBulk_ProcessingResponseContract(t *testing.T) {
 		{"internal", domain.KindInternal, 500},
 		{"resource-exhausted", domain.KindResourceExhausted, 429},
 	} {
-		for _, continuation := range []bool{false, true} {
-			t.Run(fmt.Sprintf("%s/continue=%t", tc.name, continuation), func(t *testing.T) {
-				t.Parallel()
-				backend := NewMockBackend(gomock.NewController(t))
-				calls := 0
-				backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(
-					func(_ context.Context, _ *servicepb.ApplyRequest) (*domain.ApplyResult, error) {
-						calls++
-						if calls == 2 {
-							// Decoded peer errors retain the sender's classification,
-							// including reasons this build does not yet know.
-							return nil, &apierr.Remote{KindValue: tc.kind, ReasonValue: "PEER_FAILURE", Msg: "peer failure"}
-						}
+		for _, compact := range []bool{false, true} {
+			for _, continuation := range []bool{false, true} {
+				t.Run(fmt.Sprintf("%s/continue=%t/compact=%t", tc.name, continuation, compact), func(t *testing.T) {
+					t.Parallel()
+					backend := NewMockBackend(gomock.NewController(t))
+					calls := 0
+					backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(
+						func(_ context.Context, _ *servicepb.ApplyRequest) (*domain.ApplyResult, error) {
+							calls++
+							if calls == 2 {
+								// Decoded peer errors retain the sender's classification,
+								// including reasons this build does not yet know.
+								return nil, &apierr.Remote{KindValue: tc.kind, ReasonValue: "PEER_FAILURE", Msg: "peer failure"}
+							}
 
-						return &domain.ApplyResult{Logs: []*commonpb.Log{bulkContractSuccess()}}, nil
-					}).Times(map[bool]int{false: 2, true: 3}[continuation])
-				handler := NewHandler(logging.Testing(), backend, internalauth.AuthConfig{}, version.Info{})
-				body := "[" + strings.Trim(bulkWriteBody, "[]") + "," + strings.Trim(bulkWriteBody, "[]") + "," + strings.Trim(bulkWriteBody, "[]") + "]"
-				r := httptest.NewRequest(http.MethodPost, fmt.Sprintf("/v3/ledger1/bulk?continueOnFailure=%t", continuation), strings.NewReader(body))
-				w := httptest.NewRecorder()
-				handler.ServeHTTP(w, r)
-				wantStatus := tc.status
-				if continuation && tc.status < 429 && tc.status != http.StatusUnauthorized && tc.status != http.StatusForbidden {
-					wantStatus = 200
-				}
-				require.Equal(t, wantStatus, w.Code)
-				response := decodeResponse[bulkResponse](t, w)
-				require.Len(t, response.Data, 3)
-				require.Equal(t, "CREATE_TRANSACTION", response.Data[0].ResponseType)
-				require.Equal(t, uint64(17), response.Data[0].LogID)
-				require.NotNil(t, response.Data[0].Data)
-				require.Equal(t, "ERROR", response.Data[1].ResponseType)
-				require.Equal(t, "PEER_FAILURE", response.Data[1].ErrorCode)
-				require.Equal(t, "peer failure", response.Data[1].ErrorDescription)
-				if continuation {
-					require.Equal(t, "CREATE_TRANSACTION", response.Data[2].ResponseType)
-				} else {
-					require.Equal(t, "ERROR", response.Data[2].ResponseType)
-					require.Equal(t, "context canceled", response.Data[2].ErrorDescription)
-				}
-				requireBulkContract(t, fmt.Sprintf("%s-continue-%t", tc.name, continuation), w)
-			})
+							return &domain.ApplyResult{Logs: []*commonpb.Log{bulkContractSuccess()}}, nil
+						}).Times(map[bool]int{false: 2, true: 3}[continuation])
+					handler := NewHandler(logging.Testing(), backend, internalauth.AuthConfig{}, version.Info{})
+					body := "[" + strings.Trim(bulkWriteBody, "[]") + "," + strings.Trim(bulkWriteBody, "[]") + "," + strings.Trim(bulkWriteBody, "[]") + "]"
+					r := httptest.NewRequest(http.MethodPost, fmt.Sprintf("/v3/ledger1/bulk?continueOnFailure=%t&skipResponse=%t", continuation, compact), strings.NewReader(body))
+					w := httptest.NewRecorder()
+					handler.ServeHTTP(w, r)
+					wantStatus := tc.status
+					if continuation && tc.status < 429 && tc.status != http.StatusUnauthorized && tc.status != http.StatusForbidden {
+						wantStatus = 200
+					}
+					require.Equal(t, wantStatus, w.Code)
+					response := decodeResponse[bulkResponse](t, w)
+					require.Len(t, response.Data, 3)
+					require.Equal(t, "CREATE_TRANSACTION", response.Data[0].ResponseType)
+					require.Equal(t, uint64(17), response.Data[0].LogID)
+					if compact {
+						require.Nil(t, response.Data[0].Data)
+						require.Equal(t, uint64(101), response.Data[0].Sequence)
+					} else {
+						require.NotNil(t, response.Data[0].Data)
+						require.Zero(t, response.Data[0].Sequence)
+					}
+					require.Zero(t, response.Data[1].Sequence)
+					require.Equal(t, "ERROR", response.Data[1].ResponseType)
+					require.Equal(t, "PEER_FAILURE", response.Data[1].ErrorCode)
+					require.Equal(t, "peer failure", response.Data[1].ErrorDescription)
+					if continuation {
+						require.Equal(t, "CREATE_TRANSACTION", response.Data[2].ResponseType)
+					} else {
+						require.Equal(t, "ERROR", response.Data[2].ResponseType)
+						require.Equal(t, "context canceled", response.Data[2].ErrorDescription)
+					}
+					name := fmt.Sprintf("%s-continue-%t", tc.name, continuation)
+					if compact {
+						name += "-compact"
+					}
+					requireBulkContract(t, name, w)
+				})
+			}
 		}
 	}
 }
@@ -288,31 +301,38 @@ func TestHandleBulk_InfrastructureResponseContract(t *testing.T) {
 
 func TestHandleBulk_AtomicErrorContract(t *testing.T) {
 	t.Parallel()
-	for _, continuation := range []bool{false, true} {
-		t.Run(fmt.Sprintf("continue=%t", continuation), func(t *testing.T) {
-			t.Parallel()
-			backend := NewMockBackend(gomock.NewController(t))
-			backend.EXPECT().Apply(gomock.Any(), gomock.Any()).Return(nil, &domain.ErrTransactionNotFound{TransactionID: 42}).Times(1)
-			handler := NewHandler(logging.Testing(), backend, internalauth.AuthConfig{}, version.Info{})
-			body := `[{"action":"CREATE_TRANSACTION","data":{}},{"action":"REVERT_TRANSACTION","data":{"id":42}}]`
-			r := httptest.NewRequest(http.MethodPost, fmt.Sprintf("/v3/ledger1/bulk?atomic=true&continueOnFailure=%t", continuation), strings.NewReader(body))
-			w := httptest.NewRecorder()
-			handler.ServeHTTP(w, r)
-			wantStatus := http.StatusNotFound
-			if continuation {
-				wantStatus = http.StatusOK
-			}
-			require.Equal(t, wantStatus, w.Code)
-			response := decodeResponse[bulkResponse](t, w)
-			require.Len(t, response.Data, 2)
-			for _, result := range response.Data {
-				require.Equal(t, "ERROR", result.ResponseType)
-				require.Equal(t, "TRANSACTION_NOT_FOUND", result.ErrorCode)
-				require.Zero(t, result.LogID)
-				require.Nil(t, result.Data)
-			}
-			requireBulkContract(t, fmt.Sprintf("atomic-continue-%t", continuation), w)
-		})
+	for _, compact := range []bool{false, true} {
+		for _, continuation := range []bool{false, true} {
+			t.Run(fmt.Sprintf("continue=%t/compact=%t", continuation, compact), func(t *testing.T) {
+				t.Parallel()
+				backend := NewMockBackend(gomock.NewController(t))
+				backend.EXPECT().Apply(gomock.Any(), gomock.Any()).Return(nil, &domain.ErrTransactionNotFound{TransactionID: 42}).Times(1)
+				handler := NewHandler(logging.Testing(), backend, internalauth.AuthConfig{}, version.Info{})
+				body := `[{"action":"CREATE_TRANSACTION","data":{}},{"action":"REVERT_TRANSACTION","data":{"id":42}}]`
+				r := httptest.NewRequest(http.MethodPost, fmt.Sprintf("/v3/ledger1/bulk?atomic=true&continueOnFailure=%t&skipResponse=%t", continuation, compact), strings.NewReader(body))
+				w := httptest.NewRecorder()
+				handler.ServeHTTP(w, r)
+				wantStatus := http.StatusNotFound
+				if continuation {
+					wantStatus = http.StatusOK
+				}
+				require.Equal(t, wantStatus, w.Code)
+				response := decodeResponse[bulkResponse](t, w)
+				require.Len(t, response.Data, 2)
+				for _, result := range response.Data {
+					require.Equal(t, "ERROR", result.ResponseType)
+					require.Equal(t, "TRANSACTION_NOT_FOUND", result.ErrorCode)
+					require.Zero(t, result.LogID)
+					require.Zero(t, result.Sequence)
+					require.Nil(t, result.Data)
+				}
+				name := fmt.Sprintf("atomic-continue-%t", continuation)
+				if compact {
+					name += "-compact"
+				}
+				requireBulkContract(t, name, w)
+			})
+		}
 	}
 }
 

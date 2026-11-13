@@ -48,5 +48,5 @@ func (s *Server) handleAddEventsSink(w http.ResponseWriter, r *http.Request) {
 		panic(unexpectedLogPayload("add-events-sink", entry, details))
 	}
 	// Acknowledge the committed identity without reflecting sink credentials.
-	writeCreated(w, r, map[string]string{"name": added.GetConfig().GetName()})
+	writeMutationCreated(w, r, entry, map[string]string{"name": added.GetConfig().GetName()})
 }

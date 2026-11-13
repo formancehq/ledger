@@ -343,6 +343,67 @@ router; see `tests/sdk/README.md`. Generation requires Speakeasy authentication.
 }
 ```
 
+#### Compact write acknowledgements
+
+HTTP ingestion clients can select `skipResponse=true` on these operations:
+
+| Method | Path |
+| --- | --- |
+| POST | `/v3/{ledgerName}/transactions` |
+| POST | `/v3/{ledgerName}/transactions/{transactionId}/revert` |
+| POST | `/v3/{ledgerName}/bulk` |
+| POST | `/v3/{ledgerName}` |
+| POST | `/v3/{ledgerName}/promote` |
+| PUT | `/v3/{ledgerName}/numscripts/{name}` |
+| POST | `/v3/_/events-sinks` |
+| POST | `/v3/{ledgerName}/indexes` |
+
+Supply exactly one lowercase `true` or `false`. Omission and `false` preserve
+existing bodies. Empty, repeated, uppercase, whitespace-padded and other values
+return `400 INVALID_REQUEST` before backend execution. Other routes retain
+their query-name contract and existing no-content success responses.
+
+Each single operation retains HTTP 201 and returns only:
+
+```json
+{"data":{"sequence":123}}
+```
+
+`sequence` is the outer global committed log sequence, not a transaction ID or
+ledger-local log ID. It is a JSON uint64 number and is unaffected by
+`Formance-Bigint-As-String`. Decoders must preserve its full range, including
+values above 2^53. Speakeasy CLI 1.762.0 / generator 2.882.0 maps this
+`integer/uint64` schema to a TypeScript `number`; its ordinary JSON decoding
+rounds 2^53+1 and uint64 maximum. Clients requiring that range must use a
+lossless JSON decoder or retain the raw sequence token, rather than converting
+an already rounded number to bigint. The acknowledgement is unsigned and contains no signed-log
+receipt. Full internal logs remain available until outcome validation and
+response projection complete; the projection does not modify those logs.
+
+gRPC requests, signatures, accepted business payloads, audit, persistence and
+idempotency identity are unchanged. A retained keyed retry can change the HTTP
+response mode and still receives the original outcome and sequence.
+
+For bulk, compact successful elements retain `responseType` and ledger-local
+`logID`, add global `sequence`, and omit ordinary successful operation `data`.
+Skipped elements retain complete `data.skipped`, reason, code and facts
+alongside their sequence. Errors and aborted elements retain their existing
+fields without a success sequence. Atomicity, `continueOnFailure`, status
+rollup, `Retry-After` and both batch and element identity rules are unchanged.
+Processing-error responses retain their per-element outcomes. Empty bulk still
+returns `{}`. Default/false retains existing data, including existing nulls.
+
+Savings cover final HTTP business bytes and JSON serialization. Controller
+result construction, Raft/WAL/audit work and forwarded gRPC signing and
+serialization still use full logs. Bulk projection remains linear in the
+number of outcomes plus retained skip/error detail; no throughput improvement
+is guaranteed by this contract.
+
+Older HTTP nodes reject the query name. Upgrade every HTTP-serving node before
+clients enable the option, or route opted-in clients exclusively to upgraded
+nodes. Existing callers need no change. This HTTP presentation addition does
+not change the service protocol revision or persisted formats.
+
 #### Paged list
 
 The paged lists (`GET /v3/` for ledgers, `/v3/{ledgerName}/accounts`,
@@ -1268,8 +1329,9 @@ Content-Type: application/json
 {"data":{"name":"primary"}}
 ```
 
-The acknowledgement contains the committed sink name and does not echo
-credentials. This means the configuration was committed, not that the external
+By default the acknowledgement contains the committed sink name and does not
+echo credentials. With `skipResponse=true`, it contains only the global
+sequence described in [compact write acknowledgements](#compact-write-acknowledgements). This means the configuration was committed, not that the external
 sink has connected or delivered events. Use GET to inspect delivery status.
 The GET envelope and protobuf JSON representation follow the current read
 contract: annotated sensitive fields and credentials in annotated URL/DSN

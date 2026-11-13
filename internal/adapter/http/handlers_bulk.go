@@ -133,8 +133,9 @@ type bulkOptions struct {
 
 // bulkResult represents the result of a single bulk element.
 type bulkResult struct {
-	log *commonpb.LedgerLog
-	err error
+	log      *commonpb.LedgerLog
+	sequence uint64 // Global log sequence, distinct from the ledger-local log ID.
+	err      error
 }
 
 // convertBulkElementToRequest converts a servicepb.BulkElement to a servicepb.Request.
@@ -193,7 +194,7 @@ func (s *Server) runBulkAtomic(ctx context.Context, idempotencyKey string, reque
 	}
 
 	for i, log := range logs {
-		results[i] = bulkResult{log: log.GetPayload().GetApply().GetLog()}
+		results[i] = bulkResult{log: log.GetPayload().GetApply().GetLog(), sequence: log.GetSequence()}
 	}
 
 	return results
@@ -227,7 +228,7 @@ func (s *Server) runBulkSequential(ctx context.Context, requests []*servicepb.Re
 			continue
 		}
 
-		results[i] = bulkResult{log: logs[0].GetPayload().GetApply().GetLog()}
+		results[i] = bulkResult{log: logs[0].GetPayload().GetApply().GetLog(), sequence: logs[0].GetSequence()}
 	}
 
 	return results
@@ -252,6 +253,7 @@ func writeBulkResponse(w http.ResponseWriter, r *http.Request, elements []*servi
 	worstBusiness := 0 // highest 4xx from a per-element business failure
 	worstInfra := 0    // highest ≥429 from a retryable/infra/rate-limit error
 	apiResults := make([]bulkAPIResult, len(results))
+	skipResponse := queryParamBool(r, "skipResponse")
 
 	for i, result := range results {
 		responseType := servicepb.GetLedgerActionType(elements[i].Action)
@@ -293,6 +295,14 @@ func writeBulkResponse(w http.ResponseWriter, r *http.Request, elements []*servi
 			continue
 		}
 
+		if skipResponse {
+			requireAcknowledgementSequence(result.sequence)
+			if result.log.GetData() == nil || result.log.GetData().GetPayload() == nil {
+				panic(emptyLogPayload("bulk", &commonpb.Log{Sequence: result.sequence}, nil))
+			}
+			apiResults[i].Sequence = result.sequence
+		}
+
 		// Extract data from log. Bulk entries that opted into
 		// `skippableReasons` (per-entry, not on the payload) may surface as
 		// an OrderSkipped payload here when the FSM matched a whitelisted
@@ -306,7 +316,9 @@ func writeBulkResponse(w http.ResponseWriter, r *http.Request, elements []*servi
 			if payload := log.GetData(); payload != nil {
 				switch p := payload.GetPayload().(type) {
 				case *commonpb.LedgerLogPayload_CreatedTransaction:
-					data = p.CreatedTransaction.GetTransaction()
+					if !skipResponse {
+						data = p.CreatedTransaction.GetTransaction()
+					}
 				case *commonpb.LedgerLogPayload_OrderSkipped:
 					data = OrderSkippedResponse{
 						Skipped: true,
@@ -322,6 +334,7 @@ func writeBulkResponse(w http.ResponseWriter, r *http.Request, elements []*servi
 			ResponseType: responseType,
 			Data:         data,
 			LogID:        apiResults[i].LogID,
+			Sequence:     apiResults[i].Sequence,
 		}
 	}
 
@@ -385,6 +398,7 @@ type bulkAPIResult struct {
 	Data             any    `json:"data,omitempty"`
 	ResponseType     string `json:"responseType"`
 	LogID            uint64 `json:"logID"`
+	Sequence         uint64 `json:"sequence,omitempty"`
 }
 
 // OrderSkippedResponse is the bulk-entry response body returned when an entry
