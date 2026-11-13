@@ -598,9 +598,10 @@ Malformed caller attribution and a maintenance gate can also reject a committed
 proposal in the FSM, but both return before the order-audit path; they are not
 `AuditFailure` records. Maintenance mode remains a public operational error;
 malformed caller attribution is an internal trust-boundary failure with no
-public `ErrorReason`. `PRELOAD_UNAVAILABLE` also returns before order
-processing when no earlier idempotency outcome exists: it is a retryable
-preparation interruption with no audit entry or frozen result.
+public `ErrorReason`. `PRELOAD_UNAVAILABLE` is raised by order processing at
+the forwarded order's position when no earlier idempotency outcome exists and
+every earlier order applied: it is a retryable preparation interruption with no
+audit entry or frozen result.
 `STALE_PROPOSAL` and `INVALID_EXECUTION_PLAN` remain typed audited outcomes.
 
 The `FailureDetails` oneof now contains only variants eligible for the audited
