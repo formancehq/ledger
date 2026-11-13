@@ -798,6 +798,7 @@ func newSignatureAdmission(t *testing.T, keyID string, publicKey ed25519.PublicK
 		func(context.Context) error { return nil },
 		func() (commonpb.ClusterPolicyReader, error) {
 			policy, err := query.ReadClusterPolicy(store)
+
 			return policy.AsReader(), err
 		},
 	)
