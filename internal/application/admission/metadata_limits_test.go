@@ -477,7 +477,7 @@ func TestCreateLedgerMetadataPreloadCost(t *testing.T) {
 		}
 		order := metadataLedgerScopedOrder(&raftcmdpb.LedgerScopedOrder{Payload: &raftcmdpb.LedgerScopedOrder_CreateLedger{CreateLedger: &raftcmdpb.CreateLedgerOrder{Metadata: metadata}}})
 		needs := &plan.Coverage{}
-		extractLedgerScopedNeeds(needs, order.GetLedgerScoped(), nil)
+		extractLedgerScopedNeeds(needs, order.GetLedgerScoped(), nil, true)
 		require.Equal(t, 1, needs.AttributeKeysCount(), "creation only preloads its ledger row regardless of metadata size")
 	}
 }

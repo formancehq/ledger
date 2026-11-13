@@ -649,6 +649,7 @@ func Module() fx.Option {
 			func(
 				cfg Config,
 				node *node.Node,
+				machine *state.Machine,
 				store *dal.Store,
 				logger logging.Logger,
 				builder *plan.Builder,
@@ -666,6 +667,9 @@ func Module() fx.Option {
 				}
 
 				opts = append(opts, admission.WithAuditProjectionState(rs.AuditProjectionState))
+				opts = append(opts, admission.WithCommittedPolicy(func() (*commonpb.ClusterPolicy, error) {
+					return machine.CommittedClusterPolicy(), nil
+				}))
 
 				return admission.NewAdmission(
 					store,

@@ -1,6 +1,7 @@
 package state
 
 import (
+	"context"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -30,6 +31,27 @@ func TestRecoverState_ClusterPolicyRoundtrip(t *testing.T) {
 
 	require.True(t, policy.EqualVT(machine.State.ClusterPolicy),
 		"the persisted policy must be recovered verbatim into FSMState")
+	require.True(t, policy.EqualVT(machine.CommittedClusterPolicy()),
+		"recovery must publish the committed policy for admission")
+}
+
+func TestCommittedClusterPolicyPublishedAfterBatchCommit(t *testing.T) {
+	t.Parallel()
+	machine, store, _ := newTestMachineWithThreshold(t, 1000)
+	require.NoError(t, NewRecovery(machine, store).RecoverState())
+	before := machine.CommittedClusterPolicy()
+	require.Equal(t, uint64(0), before.GetRevision())
+
+	policy := idempotencyTestPolicy(1, 1000)
+	prepared, err := machine.PrepareEntries(t.Context(), store, makeEntry(t, 1, makeProposal(1, clusterPolicyOrder(policy))))
+	require.NoError(t, err)
+	defer prepared.Close()
+	require.Equal(t, uint64(1), machine.State.ClusterPolicy.GetRevision())
+	require.Equal(t, uint64(0), machine.CommittedClusterPolicy().GetRevision(),
+		"admission must not see a policy staged by PrepareEntries")
+
+	require.NoError(t, machine.CommitPreparedBatch(context.Background(), prepared))
+	require.True(t, policy.EqualVT(machine.CommittedClusterPolicy()))
 }
 
 func TestRecoverStatePublishesRecoveredState(t *testing.T) {

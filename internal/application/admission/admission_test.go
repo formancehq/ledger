@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/ed25519"
 	"crypto/rand"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -134,6 +135,22 @@ func attributedTestContext(ctx context.Context) context.Context {
 	return internalauth.WithSystemActor(ctx, commands.ComponentClusterPolicy)
 }
 
+func TestAccountNeedsFollowCommittedIncarnationCapability(t *testing.T) {
+	t.Parallel()
+	account := domain.AccountKey{LedgerName: testLedgerName, Account: "user:alice"}.Bytes()
+	for _, enabled := range []bool{false, true} {
+		t.Run(strconv.FormatBool(enabled), func(t *testing.T) {
+			t.Parallel()
+			needs := plan.NewCoverage()
+			addVolumeNeed(needs, enabled, testLedgerName, "user:alice", "USD", "")
+			addAccountMetadataNeed(needs, enabled, testLedgerName, "user:alice", "status")
+			require.Equal(t, enabled, needs.Has(dal.SubAttrAccountIncarnation, account))
+			require.Equal(t, 1, needs.Count(dal.SubAttrVolume))
+			require.Equal(t, 1, needs.Count(dal.SubAttrMetadata))
+		})
+	}
+}
+
 func TestExtractNeededVolumes(t *testing.T) {
 	t.Parallel()
 
@@ -167,7 +184,7 @@ func TestExtractNeededVolumes(t *testing.T) {
 			},
 		}
 
-		needs, _, err := admission.extractPreloadNeeds(context.Background(), orders, newBulkOverlay())
+		needs, _, err := admission.extractPreloadNeeds(context.Background(), orders, newBulkOverlay(), true)
 		require.NoError(t, err)
 
 		// Should have 2 volume keys: both source (world) and destination (user:alice) are preloaded
@@ -229,7 +246,7 @@ func TestExtractNeededVolumes(t *testing.T) {
 			},
 		}
 
-		needs, _, err := admission.extractPreloadNeeds(context.Background(), orders, overlay)
+		needs, _, err := admission.extractPreloadNeeds(context.Background(), orders, overlay, true)
 		require.NoError(t, err)
 
 		// Should have 2 volume keys: both the new source (alice) and new destination (world) are preloaded
@@ -290,7 +307,7 @@ func TestExtractNeededVolumes(t *testing.T) {
 			},
 		}
 
-		needs, _, err := admission.extractPreloadNeeds(context.Background(), orders, overlay)
+		needs, _, err := admission.extractPreloadNeeds(context.Background(), orders, overlay, true)
 		require.NoError(t, err)
 
 		// Should have 3 volume keys: alice, bob (original destinations become sources in revert)
@@ -343,7 +360,7 @@ func TestExtractNeededVolumes(t *testing.T) {
 			},
 		}
 
-		needs, _, err := admission.extractPreloadNeeds(context.Background(), orders, newBulkOverlay())
+		needs, _, err := admission.extractPreloadNeeds(context.Background(), orders, newBulkOverlay(), true)
 		require.NoError(t, err)
 
 		require.True(t, needs.Has(dal.SubAttrTransaction, domain.TransactionKey{LedgerName: "test-ledger", ID: 7}.Bytes()), "transaction key should be preloaded when id is used")
@@ -505,7 +522,7 @@ func TestExtractNeededVolumes_Force(t *testing.T) {
 			},
 		}
 
-		needs, _, err := admission.extractPreloadNeeds(context.Background(), orders, newBulkOverlay())
+		needs, _, err := admission.extractPreloadNeeds(context.Background(), orders, newBulkOverlay(), true)
 		require.NoError(t, err)
 
 		// Should have 2 volume keys: both source and destination are always preloaded
@@ -555,7 +572,7 @@ func TestExtractNeededVolumes_Force(t *testing.T) {
 			},
 		}
 
-		needs, _, err := admission.extractPreloadNeeds(context.Background(), orders, newBulkOverlay())
+		needs, _, err := admission.extractPreloadNeeds(context.Background(), orders, newBulkOverlay(), true)
 		require.NoError(t, err)
 
 		// Should have 2 volume keys: both source and destination are always preloaded
@@ -630,7 +647,7 @@ func TestExtractNeededVolumes_Force(t *testing.T) {
 			},
 		}
 
-		needs, _, err := admission.extractPreloadNeeds(context.Background(), orders, newBulkOverlay())
+		needs, _, err := admission.extractPreloadNeeds(context.Background(), orders, newBulkOverlay(), true)
 		require.NoError(t, err)
 
 		// Should have 4 volume keys: source+dest from both orders
@@ -699,7 +716,7 @@ func TestExtractNeededVolumes_Force(t *testing.T) {
 			},
 		}
 
-		needs, _, err := admission.extractPreloadNeeds(context.Background(), orders, overlay)
+		needs, _, err := admission.extractPreloadNeeds(context.Background(), orders, overlay, true)
 		require.NoError(t, err)
 
 		// Revert reverses postings: alice->world. Both source (alice) and destination (world) preloaded.
@@ -794,7 +811,7 @@ func TestExtractPreloadNeeds_AccountMetadata_ScriptBacked(t *testing.T) {
 				},
 			}
 
-			needs, _, err := admission.extractPreloadNeeds(context.Background(), orders, newBulkOverlay())
+			needs, _, err := admission.extractPreloadNeeds(context.Background(), orders, newBulkOverlay(), true)
 			require.NoError(t, err)
 
 			key := domain.MetadataKey{
@@ -1004,9 +1021,9 @@ func TestExtractNeededVolumes_Numscript(t *testing.T) {
 		}
 
 		overlay := newBulkOverlay()
-		needs, perOrderNeeds, err := admission.extractPreloadNeeds(context.Background(), orders, newBulkOverlay())
+		needs, perOrderNeeds, err := admission.extractPreloadNeeds(context.Background(), orders, newBulkOverlay(), true)
 		require.NoError(t, err)
-		require.NoError(t, admission.resolveScriptsAndEnrichNeeds(context.Background(), orders, overlay, needs, perOrderNeeds, false))
+		require.NoError(t, admission.resolveScriptsAndEnrichNeeds(context.Background(), orders, overlay, needs, perOrderNeeds, false, true))
 
 		// Both source and destination volumes are preloaded from numscript
 		require.Equal(t, 2, needs.Count(dal.SubAttrVolume), "numscript emulation should discover all volumes")
@@ -1056,9 +1073,9 @@ func TestExtractNeededVolumes_Numscript(t *testing.T) {
 		}
 
 		overlay := newBulkOverlay()
-		needs, perOrderNeeds, err := admission.extractPreloadNeeds(context.Background(), orders, newBulkOverlay())
+		needs, perOrderNeeds, err := admission.extractPreloadNeeds(context.Background(), orders, newBulkOverlay(), true)
 		require.NoError(t, err)
-		require.NoError(t, admission.resolveScriptsAndEnrichNeeds(context.Background(), orders, overlay, needs, perOrderNeeds, false))
+		require.NoError(t, admission.resolveScriptsAndEnrichNeeds(context.Background(), orders, overlay, needs, perOrderNeeds, false, true))
 
 		// Force=true no longer skips volume extraction - all volumes are preloaded
 		require.Equal(t, 2, needs.Count(dal.SubAttrVolume), "force=true should still extract numscript volumes")
@@ -1119,9 +1136,9 @@ func TestExtractNeededVolumes_Numscript(t *testing.T) {
 				)
 			`)
 
-		needs, perOrderNeeds, err := admission.extractPreloadNeeds(context.Background(), orders, newBulkOverlay())
+		needs, perOrderNeeds, err := admission.extractPreloadNeeds(context.Background(), orders, newBulkOverlay(), true)
 		require.NoError(t, err)
-		require.NoError(t, admission.resolveScriptsAndEnrichNeeds(context.Background(), orders, overlay, needs, perOrderNeeds, false))
+		require.NoError(t, admission.resolveScriptsAndEnrichNeeds(context.Background(), orders, overlay, needs, perOrderNeeds, false, true))
 
 		require.True(t, needs.Has(dal.SubAttrVolume, domain.VolumeKey{
 			AccountKey: domain.AccountKey{LedgerName: "test-ledger", Account: "users:alice"},
@@ -1161,10 +1178,10 @@ func TestExtractNeededVolumes_Numscript(t *testing.T) {
 		}
 
 		overlay := newBulkOverlay()
-		needs, perOrderNeeds, err := admission.extractPreloadNeeds(context.Background(), orders, newBulkOverlay())
+		needs, perOrderNeeds, err := admission.extractPreloadNeeds(context.Background(), orders, newBulkOverlay(), true)
 		require.NoError(t, err)
 
-		err = admission.resolveScriptsAndEnrichNeeds(context.Background(), orders, overlay, needs, perOrderNeeds, false)
+		err = admission.resolveScriptsAndEnrichNeeds(context.Background(), orders, overlay, needs, perOrderNeeds, false, true)
 		require.Error(t, err)
 
 		var businessErr *domain.BusinessError
@@ -1216,10 +1233,10 @@ func TestExtractNeededVolumes_Numscript(t *testing.T) {
 		}
 
 		overlay := newBulkOverlay()
-		needs, perOrderNeeds, err := admission.extractPreloadNeeds(context.Background(), orders, newBulkOverlay())
+		needs, perOrderNeeds, err := admission.extractPreloadNeeds(context.Background(), orders, newBulkOverlay(), true)
 		require.NoError(t, err)
 
-		err = admission.resolveScriptsAndEnrichNeeds(context.Background(), orders, overlay, needs, perOrderNeeds, false)
+		err = admission.resolveScriptsAndEnrichNeeds(context.Background(), orders, overlay, needs, perOrderNeeds, false, true)
 		require.Error(t, err)
 
 		var businessErr *domain.BusinessError
@@ -1280,11 +1297,11 @@ func TestExtractNeededVolumes_Numscript(t *testing.T) {
 		}
 
 		overlay := newBulkOverlay()
-		needs, perOrderNeeds, err := admission.extractPreloadNeeds(context.Background(), orders, newBulkOverlay())
+		needs, perOrderNeeds, err := admission.extractPreloadNeeds(context.Background(), orders, newBulkOverlay(), true)
 		require.NoError(t, err)
 
 		// hasIdempotencyKey = true → forward instead of fail-fast.
-		err = admission.resolveScriptsAndEnrichNeeds(context.Background(), orders, overlay, needs, perOrderNeeds, true)
+		err = admission.resolveScriptsAndEnrichNeeds(context.Background(), orders, overlay, needs, perOrderNeeds, true, true)
 		require.NoError(t, err)
 		require.True(t, orders[0].GetTechnical().GetPreloadUnavailable(),
 			"a forwarded order must be marked preload_unavailable for the FSM guard")
@@ -1321,11 +1338,11 @@ func TestExtractNeededVolumes_Numscript(t *testing.T) {
 		}
 
 		overlay := newBulkOverlay()
-		needs, perOrderNeeds, err := admission.extractPreloadNeeds(context.Background(), orders, newBulkOverlay())
+		needs, perOrderNeeds, err := admission.extractPreloadNeeds(context.Background(), orders, newBulkOverlay(), true)
 		require.NoError(t, err)
 
 		// hasIdempotencyKey = true, but the cause is definitive → terminal.
-		err = admission.resolveScriptsAndEnrichNeeds(context.Background(), orders, overlay, needs, perOrderNeeds, true)
+		err = admission.resolveScriptsAndEnrichNeeds(context.Background(), orders, overlay, needs, perOrderNeeds, true, true)
 		require.Error(t, err)
 
 		var parseErr *domain.ErrNumscriptParse
@@ -1368,7 +1385,7 @@ func TestExtractNeededVolumes_Numscript(t *testing.T) {
 			},
 		}
 
-		needs, _, err := admission.extractPreloadNeeds(context.Background(), orders, newBulkOverlay())
+		needs, _, err := admission.extractPreloadNeeds(context.Background(), orders, newBulkOverlay(), true)
 		require.NoError(t, err)
 
 		// Should use explicit postings, not numscript emulation; both source and destination preloaded

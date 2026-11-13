@@ -118,6 +118,10 @@ type Machine struct {
 	// applied index — it may be less than lastPersistedIndex captured before
 	// the crash, and Raft is expected to redeliver the missing entries.
 	lastPersistedIndex atomic.Uint64
+	// committedClusterPolicy is published only after the matching Pebble batch
+	// commits. Admission may read it without observing PrepareEntries' ahead-of-
+	// commit FSMState or taking fsm.mu.
+	committedClusterPolicy atomic.Pointer[commonpb.ClusterPolicy]
 
 	// writeSet is a reusable WriteSet for applyProposal. Since the FSM is
 	// single-goroutine, we can avoid per-proposal allocations by resetting
@@ -338,6 +342,12 @@ func (fsm *Machine) ClusterPolicy() *commonpb.ClusterPolicy {
 	return fsm.State.ClusterPolicy.CloneVT()
 }
 
+// CommittedClusterPolicy returns an immutable snapshot of the last policy
+// committed to the main store. Callers must not modify the returned message.
+func (fsm *Machine) CommittedClusterPolicy() *commonpb.ClusterPolicy {
+	return fsm.committedClusterPolicy.Load()
+}
+
 // RestoreState atomically replaces the FSM-level state. The intended callers
 // are Recovery (at boot) and Synchronizer (after install-snapshot), which
 // build a fresh FSMState from Pebble via LoadFSMStateFromStore and swap it
@@ -355,6 +365,7 @@ func (fsm *Machine) ClusterPolicy() *commonpb.ClusterPolicy {
 // internal/infra/node/applier.go.
 func (fsm *Machine) RestoreState(s *FSMState) {
 	fsm.State = s
+	fsm.committedClusterPolicy.Store(s.ClusterPolicy.CloneVT())
 }
 
 // publishApplied advances lastPersistedIndex and wakes WaitForApplied
@@ -859,6 +870,9 @@ func (fsm *Machine) CommitPreparedBatch(ctx context.Context, pb *PreparedBatch) 
 	}
 
 	pb.batch = nil // committed, prevent double-close
+	if pb.capabilityPolicy != nil {
+		fsm.committedClusterPolicy.Store(pb.capabilityPolicy)
+	}
 	if pb.bloomReplacement {
 		fsm.BloomFilters.ConfirmPersistedReplacement(pb.bloomReplacementEpoch)
 	}

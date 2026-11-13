@@ -463,7 +463,7 @@ func TestExtractLedgerScopedNeeds_CoversEveryPayloadVariant(t *testing.T) {
 			}
 
 			needs := plan.NewCoverage()
-			extractLedgerScopedNeeds(needs, tc.payload, overlay)
+			extractLedgerScopedNeeds(needs, tc.payload, overlay, true)
 			tc.assert(t, needs)
 		})
 	}
