@@ -114,14 +114,26 @@ func TestProposalPayloadCompatibilityProbe(t *testing.T) {
 	reader, err := store.NewDirectReadHandle()
 	require.NoError(t, err)
 	defer func() { require.NoError(t, reader.Close()) }()
-	ledgerNames := []string{"compatibility", "after-upgrade"}
-	if phase == "seed" {
-		ledgerNames = ledgerNames[:1]
+	// Pin the released ledger identity and creation time across every run,
+	// including the RC.3 seed and the recovered upgrade/restart processes.
+	expectedLedgers := []struct {
+		name      string
+		id        uint32
+		createdAt uint64
+	}{
+		{name: "compatibility", id: 1, createdAt: 1700000002},
+		{name: "after-upgrade", id: 2, createdAt: 1700000005},
 	}
-	for _, name := range ledgerNames {
-		ledger, err := query.GetLedgerByName(t.Context(), reader, name)
+	if phase == "seed" {
+		expectedLedgers = expectedLedgers[:1]
+	}
+	for _, expected := range expectedLedgers {
+		ledger, err := query.GetLedgerByName(t.Context(), reader, expected.name)
 		require.NoError(t, err)
-		require.Equal(t, name, ledger.GetName())
+		require.Equal(t, expected.name, ledger.GetName())
+		require.Equal(t, expected.id, ledger.GetId())
+		require.NotNil(t, ledger.GetCreatedAt())
+		require.Equal(t, expected.createdAt, ledger.GetCreatedAt().GetData())
 	}
 	var previousHash []byte
 	var historicalAuditHashes []byte
