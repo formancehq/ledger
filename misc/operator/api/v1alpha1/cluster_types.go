@@ -502,10 +502,6 @@ type PebbleConfig struct {
 	// +optional
 	WalMinSyncInterval string `json:"walMinSyncInterval,omitempty"`
 
-	// DisableWAL disables WAL entirely.
-	// +optional
-	DisableWAL *bool `json:"disableWAL,omitempty"`
-
 	// IncrementalCompactThreshold is the number of new log entries before
 	// triggering an incremental compaction of the new range.
 	// Default: 100000.

@@ -2414,10 +2414,6 @@
               "description": "Compression is the per-level compression algorithm (L0-L6, comma-separated).\nOptions: none, snappy, zstd, fastest, fast, balanced, good, default.",
               "type": "string"
             },
-            "disableWAL": {
-              "description": "DisableWAL disables WAL entirely.",
-              "type": "boolean"
-            },
             "incrementalCompactThreshold": {
               "description": "IncrementalCompactThreshold is the number of new log entries before\ntriggering an incremental compaction of the new range.\nDefault: 100000.",
               "format": "int64",
@@ -3168,10 +3164,6 @@
                 "compression": {
                   "description": "Compression is the per-level compression algorithm (L0-L6, comma-separated).\nOptions: none, snappy, zstd, fastest, fast, balanced, good, default.",
                   "type": "string"
-                },
-                "disableWAL": {
-                  "description": "DisableWAL disables WAL entirely.",
-                  "type": "boolean"
                 },
                 "incrementalCompactThreshold": {
                   "description": "IncrementalCompactThreshold is the number of new log entries before\ntriggering an incremental compaction of the new range.\nDefault: 100000.",

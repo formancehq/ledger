@@ -3860,7 +3860,9 @@ func (node *Node) ForceRemoveNode(ctx context.Context, nodeID uint64) error {
 		// EN-1045: land the blacklist entry atomically with the peer
 		// row delete in a single Pebble batch.
 		if err := node.membership.UnregisterAndBlacklist(nodeID, instanceID, uint64(time.Now().UnixMicro())); err != nil {
-			return fmt.Errorf("force-remove atomic batch: %w", err)
+			// ConfState is already changed in memory and durable in the WAL.
+			// A failed Pebble commit cannot be safely retried in this process.
+			return &terminalNodeError{cause: fmt.Errorf("force-remove atomic batch: %w", err)}
 		}
 
 		node.logger.WithFields(map[string]any{

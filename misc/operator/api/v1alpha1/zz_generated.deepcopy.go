@@ -2212,11 +2212,6 @@ func (in *PebbleConfig) DeepCopyInto(out *PebbleConfig) {
 		*out = new(int32)
 		**out = **in
 	}
-	if in.DisableWAL != nil {
-		in, out := &in.DisableWAL, &out.DisableWAL
-		*out = new(bool)
-		**out = **in
-	}
 	if in.IncrementalCompactThreshold != nil {
 		in, out := &in.IncrementalCompactThreshold, &out.IncrementalCompactThreshold
 		*out = new(int64)

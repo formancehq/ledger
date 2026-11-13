@@ -245,9 +245,10 @@ Pebble can be configured using command-line flags:
   --pebble-bytes-per-sync=1Mi \
   --pebble-wal-bytes-per-sync=1Mi \
   --pebble-max-concurrent-compactions=2 \
-  --pebble-wal-min-sync-interval=0 \
-  --pebble-disable-wal=false
+  --pebble-wal-min-sync-interval=0
 ```
+
+The main Pebble store always keeps its WAL enabled so membership writes can be made durable before Raft records their ConfState.
 
 Or via environment variables:
 
