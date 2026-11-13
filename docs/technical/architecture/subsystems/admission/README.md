@@ -2,6 +2,11 @@
 
 Admission (`internal/application/admission`) prepares Raft proposals. Client `Apply` requests become audited execution batches after signature validation, order conversion, and preload. The internal cluster-policy reconciler creates a separate operational-control proposal with no orders. Both forms share caller attribution, write gates, guarded submission, and result handling.
 
+For `PromoteLedger`, admission declares ledger and boundary coverage. During
+live apply, the FSM checks the durable mirror cursor, replicated source-head observation, and sync
+error after idempotency replay. An unknown source head is rejected. The
+observed head does not prove the external source has stopped advancing.
+
 ## Documents
 
 | Document | Description |

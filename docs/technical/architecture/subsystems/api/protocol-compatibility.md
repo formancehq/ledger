@@ -36,6 +36,18 @@ client during a rolling upgrade; clients must wait for the server rollout
 before calling the new RPC. The operation has no persisted, Raft, snapshot,
 backup, or audit format effect.
 
+EN-3037 retains revision 40 and the existing `PromoteLedgerRequest` message.
+The FSM checks the replicated
+source-head observation, ingestion cursor, and synchronization error after
+idempotency replay. A failed check has the dedicated
+`ERROR_REASON_MIRROR_NOT_CAUGHT_UP` reason and `FailedPrecondition` status.
+Historical audited orders retain their committed behavior during replay. The
+`rc.3` to `rc.4` upgrade is stopped because mixed voters could otherwise
+apply a new promotion differently. Clients that classify errors by reason
+must recognize the new value; clients can still decode the status and request.
+The `rc.2` to `rc.3` upgrade remains rolling; historical `rc.3` orders retain
+their existing idempotency and audit results after the stopped upgrade.
+
 ## Wire contract and failure behavior
 
 `pkg/grpcprotocol.Version` is the compiled service protocol revision, currently

@@ -56,7 +56,7 @@ audited SHA; historical line numbers in subsystem docs are not stable evidence.
 | Asset mapping | `internal/adapter/v2/asset_mapping.go`, `translator.go`, `internal/application/admission/validate_order.go`, `misc/proto/common.proto` | Exact-match mapping after rewriting, v3 validation of every proposed posting asset/color, uncolored-target collision rejection and admission compilation. |
 | CEL | `internal/adapter/v2/celrewrite/`, `internal/application/admission/validate_order.go`, `misc/proto/common.proto` | Rule compilation, scope/action oneofs, order/stop, address and metadata actions, drop, expression failure policy and typed coercion. |
 | Worker | `internal/application/mirror/worker.go`, `worker_test.go`, `worker_rotation_test.go`, `manager.go` | Applied-boundary resume, speculative translation/prefetch, confirmation and error invalidation, and the startup stored-asset inventory block; manager is context for the mode transition and mapper construction only. |
-| Apply and promotion | `internal/domain/processing/processor_mirror.go`, `processor_mirror_test.go`, `processor_apply.go`, `misc/proto/raft_cmd.proto` | Mirror mode gate, source prefix, skipped transaction IDs, imported fields, promotion and the maintenance whitelist in `isMirrorSafeApply`. |
+| Apply and promotion | `internal/application/admission/mirror_promotion*.go`, `internal/infra/state/write_set.go`, `internal/infra/state/fsmstate.go`, `internal/domain/processing/processor_mirror.go`, `processor_mirror_test.go`, `processor_apply.go`, `misc/proto/raft_cmd.proto` | Admission and FSM eligibility after idempotency replay, mirror mode gate, source prefix, skipped transaction IDs, imported fields, promotion and the maintenance whitelist in `isMirrorSafeApply`. |
 | Progress | `internal/query/mirror.go`, `mirror_test.go`, `internal/infra/state/machine_technical_updates.go` | Applied cursor versus observed head and error reporting; reporting does not authorize consumption. |
 | Destination integration | `tests/e2e/cluster/mirror_test.go` | Existing HTTP fixture, import, rewrite/drop, source insertion dates and promotion followed by normal writes. |
 
@@ -193,12 +193,16 @@ validation, such as `USD/0` stored as `USD`; treat such a case as a documented
 limit unless the audited SHA promises detection. Mirror source configuration is
 immutable, so recovery is delete-and-recreate.
 
-Promotion sets the ledger to `NORMAL`, clears its source and emits the named
+The FSM checks live promotion orders after idempotency replay. It requires
+an existing mirror with an observed nonzero source head, an applied boundary at
+or beyond it, and no recorded sync error. This also rejects a create-then-promote
+batch before the new mirror is visible. A keyed retry replays the frozen result;
+audit replay reconstructs historical promotion outcomes without rechecking progress.
+Apply sets the ledger to `NORMAL`, clears its source and emits the named
 promotion log. Subsequent mirror ingest rejects at the mode gate; normal writes
 continue from retained boundaries. The manager reconciles the committed change.
-No source-freeze, zero-lag admission check or atomic v2/v3 handoff is established
-by `processPromoteLedger`. Manual cutover coordination is not an automatic
-product guarantee. Likewise, "mirror read-only" does not exclude the explicit
+The observed head is not a source-freeze or atomic v2/v3 handoff certificate;
+manual cutover coordination remains necessary. Likewise, "mirror read-only" does not exclude the explicit
 schema/index/account-type maintenance operations allowed by `isMirrorSafeApply`.
 
 ## Ownership and deduplication

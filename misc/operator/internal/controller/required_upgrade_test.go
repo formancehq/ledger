@@ -31,6 +31,42 @@ import (
 
 var testStopVersions = []string{"v3.0.0-rc.4"}
 
+func TestMissingStatefulSetCannotBypassStoppedUpgradeWithMovingTag(t *testing.T) {
+	t.Parallel()
+	cluster := newMinimalCluster()
+	cluster.Spec.Image.Tag = "latest"
+	name := resourceName(cluster.Name)
+	pod := &corev1.Pod{ObjectMeta: metav1.ObjectMeta{Name: name + "-0", Namespace: cluster.Namespace},
+		Spec: corev1.PodSpec{Containers: []corev1.Container{{Name: "ledger", Image: "ghcr.io/formancehq/ledger:v3.0.0-rc.3"}}}}
+	scheme := runtime.NewScheme()
+	require.NoError(t, clientgoscheme.AddToScheme(scheme))
+	require.NoError(t, ledgerv1alpha1.AddToScheme(scheme))
+	c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(pod).Build()
+	r := &ClusterReconciler{Client: c, Scheme: scheme}
+
+	proceed, _, err := r.reconcileRequiredUpgrade(t.Context(), cluster, nil)
+	require.False(t, proceed)
+	require.ErrorContains(t, err, "restore the source image tag first")
+}
+
+func TestMissingStatefulSetWithRetainedPVCRejectsMovingTag(t *testing.T) {
+	t.Parallel()
+	cluster := newMinimalCluster()
+	cluster.Spec.Image.Tag = "latest"
+	claim := &corev1.PersistentVolumeClaim{ObjectMeta: metav1.ObjectMeta{
+		Name: "wal-" + resourceName(cluster.Name) + "-0", Namespace: cluster.Namespace,
+	}}
+	scheme := runtime.NewScheme()
+	require.NoError(t, clientgoscheme.AddToScheme(scheme))
+	require.NoError(t, ledgerv1alpha1.AddToScheme(scheme))
+	c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(claim).Build()
+	r := &ClusterReconciler{Client: c, Scheme: scheme}
+
+	proceed, _, err := r.reconcileRequiredUpgrade(t.Context(), cluster, nil)
+	require.False(t, proceed)
+	require.ErrorContains(t, err, "cannot verify RC source")
+}
+
 func TestMandatoryStopVersionBoundary(t *testing.T) {
 	t.Parallel()
 	require.False(t, requiresStoppedUpgrade("v3.0.0-rc.2", "v3.0.0-rc.3", mandatoryStopVersions), "rc.3 must remain rolling")

@@ -190,14 +190,23 @@ If a proposal needs a lifecycle lock while it is pending, raise an architecture
 decision before implementation. Do not introduce that lock through an ordinary
 PR.
 
+### Mirror promotion apply check
+
+Admission does not read mirror progress. For new proposals the FSM checks progress
+after idempotency replay, using
+in-memory state reconstructed from existing durable rows and advanced by
+committed technical updates. This adds one bounded ledger-boundary lookup in
+apply for each fresh promotion. It adds no Pebble read to apply and no
+per-promotion admission snapshot. Batches without promotion are unaffected.
+
 ## Idempotency
 
 Ordinary requests use a two-stage check:
 
-- **Admission**: the idempotency key's *shape* is validated (UTF-8, length ≤ 256). The key becomes part of the proposal's `plan.Coverage` — on its separate `IdempotencyKeys` channel, not as a cache attribute — so the FSM can look it up.
+- **Admission**: the idempotency key's *shape* is validated (UTF-8, length ≤ 256). The key becomes part of the proposal's `plan.Coverage` — on its separate `IdempotencyKeys` channel, not as a cache attribute — so the FSM can look it up. Mirror promotion uses this same FSM replay path, so a frozen failure is returned before any new catch-up check.
 - **FSM**: `processProposal` consults the replay cache (`SubIdempKeys` in Pebble). A hit returns the stored outcome reference (sequence + outcome) without re-executing the orders. A miss falls through to normal processing, and the outcome gets recorded under the same key on the way out.
 
-This split exists because the *uniqueness* check requires committed state. Metadata policy checks run in the existing handlers after that uniqueness check.
+The usual uniqueness check requires committed state and remains in the FSM. Metadata policy checks run in the existing handlers after that uniqueness check.
 
 ## Validation: structural vs behavioural
 

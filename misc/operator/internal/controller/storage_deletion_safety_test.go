@@ -25,6 +25,7 @@ func TestStorageLayoutDeletionRequiresCurrentOwnedIdentity(t *testing.T) {
 			cluster := newMinimalCluster()
 			cluster.UID = "cluster"
 			applyDefaults(cluster)
+			cluster.Spec.Image.Tag = "v3.0.0"
 			old := cluster.DeepCopy()
 			old.Spec.Persistence.Data.HostPath = &ledgerv1alpha1.HostPathVolumeSpec{Path: "/data"}
 			hash := computeSpecHash(&old.Spec)

@@ -373,6 +373,7 @@ func TestEveryDomainErrorImplementsDescribable(t *testing.T) {
 		"ErrInvalidCronExpression":         &ErrInvalidCronExpression{},
 		"ErrLedgerInMirrorMode":            &ErrLedgerInMirrorMode{},
 		"ErrLedgerNotInMirrorMode":         &ErrLedgerNotInMirrorMode{},
+		"ErrMirrorNotCaughtUp":             &ErrMirrorNotCaughtUp{},
 		"ErrMirrorV2LogIDGap":              &ErrMirrorV2LogIDGap{},
 		"ErrMirrorV2LogIDInvalid":          &ErrMirrorV2LogIDInvalid{},
 		"ErrPreparedQueryAlreadyExists":    &ErrPreparedQueryAlreadyExists{},

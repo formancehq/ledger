@@ -832,8 +832,6 @@ func TestPromoteLedger_Success(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockStore := NewMockScope(ctrl)
-	processor, err := NewRequestProcessor(nil, 0)
-	require.NoError(t, err)
 
 	ledgerInfo := &commonpb.LedgerInfo{
 		Name: "mirror-ledger",
@@ -854,24 +852,52 @@ func TestPromoteLedger_Success(t *testing.T) {
 		require.Nil(t, info.GetMirrorSource())
 	})
 
-	order := &raftcmdpb.Order{
-		Type: &raftcmdpb.Order_LedgerScoped{
-			LedgerScoped: &raftcmdpb.LedgerScopedOrder{
-				Ledger: "mirror-ledger",
-				Payload: &raftcmdpb.LedgerScopedOrder_PromoteLedger{
-					PromoteLedger: &raftcmdpb.PromoteLedgerOrder{},
-				},
-			},
-		},
-	}
-
-	result, err := processor.ProcessOrder(order, mockStore)
+	result, err := processPromoteLedger("mirror-ledger", &Context{Scope: mockStore, auditReplay: true})
 	require.NoError(t, err)
 	require.NotNil(t, result)
 
 	promoteLog := result.GetPromoteLedger()
 	require.NotNil(t, promoteLog)
 	require.Equal(t, "mirror-ledger", promoteLog.GetName())
+}
+
+func TestPromoteLedger_CheckedCatchUp(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name              string
+		cursor, head      uint64
+		syncError, reject bool
+	}{
+		{name: "unknown head", cursor: 0, head: 0, reject: true},
+		{name: "behind", cursor: 4, head: 5, reject: true},
+		{name: "sync error", cursor: 5, head: 5, syncError: true, reject: true},
+		{name: "caught up", cursor: 5, head: 5},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			scope := NewMockScope(ctrl)
+			ledger := &commonpb.LedgerInfo{Name: "mirror", Mode: commonpb.LedgerMode_LEDGER_MODE_MIRROR}
+			ledgers := setupLedgersStub(scope)
+			ledgers.expectGet(domain.LedgerKey{Name: "mirror"}, ledger.AsReader(), nil)
+			if !tc.reject {
+				ledgers.onPut(func(domain.LedgerKey, *commonpb.LedgerInfo) {})
+			}
+			boundaries := setupBoundariesStub(scope)
+			boundaries.expectGet(domain.LedgerKey{Name: "mirror"}, (&raftcmdpb.LedgerBoundaries{LastMirrorV2LogId: tc.cursor}).AsReader(), nil)
+			_, err := processPromoteLedger("mirror", &Context{
+				Scope: scope, MirrorPromotionProgress: func(string) (uint64, bool) { return tc.head, tc.syncError },
+			})
+			if tc.reject {
+				var lag *domain.ErrMirrorNotCaughtUp
+				require.ErrorAs(t, err, &lag)
+				require.Equal(t, tc.cursor, lag.Cursor)
+				require.Equal(t, tc.head, lag.Head)
+				require.Equal(t, tc.syncError, lag.SyncError)
+			} else {
+				require.NoError(t, err)
+			}
+		})
+	}
 }
 
 func TestPromoteLedger_NotMirrorMode(t *testing.T) {

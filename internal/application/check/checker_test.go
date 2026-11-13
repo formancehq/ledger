@@ -181,7 +181,7 @@ func (e *testEngine) processAndCommit(orders ...*raftcmdpb.Order) []*commonpb.Lo
 		modifiedTxStates: modifiedTxStates,
 		reverted:         make(map[string]bool),
 	}
-	resp, procErr := e.processor.ProcessOrders(proposal.GetOrders(), constantCheckScopeFactory{scope: store}, &emitterImpl{engine: e})
+	resp, procErr := e.processor.ProcessAuditedOrders(proposal.GetOrders(), constantCheckScopeFactory{scope: store}, &emitterImpl{engine: e})
 	require.NoError(e.t, procErr)
 
 	// CreatedLogs is pre-filtered by ProcessOrders.

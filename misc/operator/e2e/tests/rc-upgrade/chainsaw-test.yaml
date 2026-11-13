@@ -1,7 +1,7 @@
 apiVersion: chainsaw.kyverno.io/v1alpha1
 kind: Test
 metadata:
-  name: stopped-rc-upgrade
+  name: rc-upgrade
 spec:
   timeouts:
     assert: 10m
@@ -40,11 +40,57 @@ spec:
                 done
               done
             timeout: 180s
-    - name: Request the stopped rc.3 to rc.4 upgrade
+    - name: Request the configured adjacent RC upgrade
       try:
-        - apply:
-            file: cluster-updated.yaml
-    - name: Wait for the stopped upgrade
+        - script:
+            env:
+              - name: UPGRADE_MODE
+                value: ($values.upgradeMode)
+              - name: TARGET_REPOSITORY
+                value: ($values.targetRepository)
+              - name: TARGET_TAG
+                value: ($values.targetTag)
+              - name: TARGET_PULL_POLICY
+                value: ($values.targetPullPolicy)
+            content: |
+              set -eu
+              kubectl patch cluster required-upgrade -n "$NAMESPACE" --type merge \
+                -p "{\"spec\":{\"image\":{\"repository\":\"$TARGET_REPOSITORY\",\"tag\":\"$TARGET_TAG\",\"pullPolicy\":\"$TARGET_PULL_POLICY\"}}}"
+              if [ "$UPGRADE_MODE" = stopped ]; then
+                # Observe the transition while it runs. A new Pod must never
+                # coexist with any Pod from the source workload.
+                for attempt in $(seq 1 600); do
+                  pods=$(kubectl get pods -n "$NAMESPACE" -o json)
+                  old_present=false
+                  new_present=false
+                  for ordinal in 0 1 2; do
+                    old_uid=$(cat /tmp/required-upgrade-pod-"$NAMESPACE"-"$ordinal")
+                    if printf '%s' "$pods" | jq -e --arg uid "$old_uid" '.items[] | select(.metadata.uid == $uid)' >/dev/null; then
+                      old_present=true
+                    fi
+                  done
+                  for pod_uid in $(printf '%s' "$pods" | jq -r '.items[] | select(.metadata.name | startswith("ledger-required-upgrade-")) | .metadata.uid'); do
+                    known=false
+                    for ordinal in 0 1 2; do
+                      [ "$pod_uid" = "$(cat /tmp/required-upgrade-pod-"$NAMESPACE"-"$ordinal")" ] && known=true
+                    done
+                    [ "$known" = true ] || new_present=true
+                  done
+                  if [ "$old_present" = true ] && [ "$new_present" = true ]; then
+                    echo 'Old and new voter Pods overlapped during stopped upgrade'
+                    exit 1
+                  fi
+                  new_sts=$(kubectl get statefulset ledger-required-upgrade -n "$NAMESPACE" -o jsonpath='{.metadata.uid}' 2>/dev/null || true)
+                  old_sts=$(cat /tmp/required-upgrade-sts-"$NAMESPACE")
+                  if [ -n "$new_sts" ] && [ "$new_sts" != "$old_sts" ] && [ "$old_present" = false ]; then
+                    break
+                  fi
+                  sleep 1
+                done
+                [ "$attempt" -lt 600 ] || { echo 'Stopped upgrade did not replace the StatefulSet'; exit 1; }
+              fi
+            timeout: 650s
+    - name: Wait for the configured update
       try:
         - assert:
             resource:
@@ -57,7 +103,7 @@ spec:
                   spec:
                     containers:
                       - name: ledger
-                        image: ledger:v3.0.0-rc.4
+                        image: (join(':', [$values.targetRepository, $values.targetTag]))
         - script:
             content: |
               set -eu
@@ -82,14 +128,25 @@ spec:
                 name: required-upgrade
               status:
                 (upgrade == null): true
-    - name: Verify the StatefulSet, claims and business data
+    - name: Verify the workload, claims and business data
       try:
         - script:
+            env:
+              - name: UPGRADE_MODE
+                value: ($values.upgradeMode)
             content: |
               set -eu
               old_sts=$(cat /tmp/required-upgrade-sts-"$NAMESPACE")
               new_sts=$(kubectl get statefulset ledger-required-upgrade -n "$NAMESPACE" -o jsonpath='{.metadata.uid}')
-              [ "$old_sts" != "$new_sts" ] || { echo 'StatefulSet was not recreated'; exit 1; }
+              case "$UPGRADE_MODE" in
+                rolling)
+                  [ "$old_sts" = "$new_sts" ] || { echo 'Rolling upgrade recreated StatefulSet'; exit 1; }
+                  ;;
+                stopped)
+                  [ "$old_sts" != "$new_sts" ] || { echo 'Stopped upgrade did not recreate StatefulSet'; exit 1; }
+                  ;;
+                *) echo "Unknown upgrade mode: $UPGRADE_MODE"; exit 1 ;;
+              esac
               for ordinal in 0 1 2; do
                 old_pod=$(cat /tmp/required-upgrade-pod-"$NAMESPACE"-"$ordinal")
                 new_pod=$(kubectl get pod ledger-required-upgrade-"$ordinal" -n "$NAMESPACE" -o jsonpath='{.metadata.uid}')
@@ -109,7 +166,7 @@ spec:
               kubectl exec ledger-required-upgrade-0 -n "$NAMESPACE" -c ledger -- \
                 /bin/sh -c './ledgerctl store check --json --server 127.0.0.1:8888 --insecure --auth-token "$CLUSTER_SECRET"' |
                 jq -e '.valid == true and .errorCount == 0' >/dev/null
-              # The stopped upgrade retains PVCs. Permit Chainsaw's namespace
+              # Both upgrade paths retain PVCs. Permit Chainsaw's namespace
               # cleanup only after all preservation assertions have passed.
               for ordinal in 0 1 2; do
                 for volume in wal data; do

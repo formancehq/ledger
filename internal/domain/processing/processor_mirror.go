@@ -551,6 +551,22 @@ func processPromoteLedger(ledger string, ctx *Context) (*commonpb.LogPayload, do
 	if info.GetMode() != commonpb.LedgerMode_LEDGER_MODE_MIRROR {
 		return nil, &domain.ErrLedgerNotInMirrorMode{Name: ledger}
 	}
+	if !ctx.auditReplay {
+		boundaries, loadErr := loadBoundaries(s, ledger)
+		if loadErr != nil {
+			return nil, loadErr
+		}
+		if ctx.MirrorPromotionProgress == nil {
+			return nil, &domain.ErrInvalidExecutionPlan{Reason_: "mirror promotion progress unavailable"}
+		}
+		head, syncError := ctx.MirrorPromotionProgress(ledger)
+		cursor := boundaries.GetLastMirrorV2LogId()
+		if head == 0 || cursor < head || syncError {
+			return nil, &domain.ErrMirrorNotCaughtUp{
+				Name: ledger, Cursor: cursor, Head: head, SyncError: syncError,
+			}
+		}
+	}
 
 	info.Mode = commonpb.LedgerMode_LEDGER_MODE_NORMAL
 	info.MirrorSource = nil

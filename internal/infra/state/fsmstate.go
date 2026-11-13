@@ -25,6 +25,10 @@ import (
 // KeyStore, SharedState, BloomFilters) remain on Machine — they are not
 // recovered from Pebble at boot and have their own lifecycles.
 type FSMState struct {
+	// MirrorPromotion records the replicated source observation for each live
+	// mirror. It is rebuilt from the existing per-ledger rows on recovery and
+	// advanced only by committed MirrorSyncUpdate entries.
+	MirrorPromotion map[string]mirrorPromotionState
 	// Raft / apply progress.
 	LastAppliedIndex     uint64
 	LastAppliedTimestamp uint64
@@ -94,6 +98,7 @@ func NewFSMState(auditKey string) *FSMState {
 		AuditKey:               auditKey,
 		ClusterPolicy:          &commonpb.ClusterPolicy{},
 		LiveQueryCheckpointIDs: map[uint64]struct{}{},
+		MirrorPromotion:        map[string]mirrorPromotionState{},
 	}
 	if auditKey != "" {
 		s.HashGenerator = processing.NewHashGenerator(commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3, auditKey)
@@ -301,8 +306,29 @@ func LoadFSMStateFromStore(reader dal.RecoveryReader, handle *dal.ReadHandle) (*
 	if clusterPolicy != nil {
 		s.ClusterPolicy = clusterPolicy
 	}
+	mirrors, err := query.ReadMirrorLedgers(context.Background(), handle)
+	if err != nil {
+		return nil, fmt.Errorf("reading mirror ledgers for FSM state: %w", err)
+	}
+	for _, mirror := range mirrors {
+		name := mirror.GetName()
+		head, err := query.ReadMirrorSourceHead(handle, name)
+		if err != nil {
+			return nil, fmt.Errorf("reading mirror source head for %q: %w", name, err)
+		}
+		status, err := query.ReadMirrorStatus(handle, name)
+		if err != nil {
+			return nil, fmt.Errorf("reading mirror sync status for %q: %w", name, err)
+		}
+		s.MirrorPromotion[name] = mirrorPromotionState{Head: head, SyncError: status != nil}
+	}
 
 	return s, nil
+}
+
+type mirrorPromotionState struct {
+	Head      uint64
+	SyncError bool
 }
 
 // verifyAuditKeyAgainstGenesis checks the committed root of the chain at

@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"testing"
 	"time"
 
@@ -25,6 +26,34 @@ import (
 
 type immediateApplyClient struct {
 	servicepb.BucketServiceClient
+}
+
+func TestIsUnobservedMirrorPromotion(t *testing.T) {
+	t.Parallel()
+	bulk := oracle.Bulk{Requests: []*servicepb.Request{{Type: &servicepb.Request_PromoteLedger{
+		PromoteLedger: &servicepb.PromoteLedgerRequest{Ledger: "sample"},
+	}}}}
+	for _, syncError := range []bool{false, true} {
+		st, err := status.New(codes.FailedPrecondition, "mirror not caught up").WithDetails(&errdetails.ErrorInfo{
+			Reason:   domain.ErrReasonMirrorNotCaughtUp,
+			Metadata: map[string]string{"name": "sample", "cursor": "0", "sourceLogCount": "0", "syncError": strconv.FormatBool(syncError)},
+		})
+		require.NoError(t, err)
+		require.True(t, isUnobservedMirrorPromotion(bulk, st.Err()))
+	}
+	st, err := status.New(codes.FailedPrecondition, "mirror not caught up").WithDetails(&errdetails.ErrorInfo{
+		Reason:   domain.ErrReasonMirrorNotCaughtUp,
+		Metadata: map[string]string{"name": "other", "cursor": "0", "sourceLogCount": "0"},
+	})
+	require.NoError(t, err)
+	require.False(t, isUnobservedMirrorPromotion(bulk, st.Err()))
+	st, err = status.New(codes.FailedPrecondition, "mirror not caught up").WithDetails(&errdetails.ErrorInfo{
+		Reason:   domain.ErrReasonMirrorNotCaughtUp,
+		Metadata: map[string]string{"name": "sample", "cursor": "1", "sourceLogCount": "2"},
+	})
+	require.NoError(t, err)
+	require.False(t, isUnobservedMirrorPromotion(bulk, st.Err()))
+	require.False(t, isUnobservedMirrorPromotion(bulk, status.Error(codes.Internal, "mirror not caught up")))
 }
 
 func (immediateApplyClient) Apply(context.Context, *servicepb.ApplyRequest, ...grpc.CallOption) (*servicepb.ApplyResponse, error) {
