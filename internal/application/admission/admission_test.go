@@ -28,6 +28,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	"github.com/formancehq/ledger/v3/internal/query"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
 
@@ -99,6 +100,16 @@ func createTestStoreWithoutPolicy(t *testing.T) *dal.Store {
 	return s
 }
 
+func testCommittedPolicyFromStore(store *dal.Store) func() (commonpb.ClusterPolicyReader, error) {
+	return func() (commonpb.ClusterPolicyReader, error) {
+		policy, err := query.ReadClusterPolicy(store)
+		if err != nil {
+			return nil, err
+		}
+		return policy.AsReader(), nil
+	}
+}
+
 // createTestAdmission creates an Admission instance for testing.
 // It returns both the Admission and the Attributes so tests can set up
 // transaction state directly in Pebble.
@@ -128,6 +139,7 @@ func createTestAdmission(t *testing.T, store *dal.Store) (*Admission, *attribute
 		attrs,
 		numscript.NewNumscriptCache(0),
 		func(context.Context) error { return nil },
+		testCommittedPolicyFromStore(store),
 	), attrs
 }
 
