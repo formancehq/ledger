@@ -16,6 +16,7 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
@@ -465,7 +466,7 @@ func (r *LedgerReconciler) buildCreateArgs(ctx context.Context, ledger *ledgerv1
 		// A replay after an exec timeout or a failed status write returns the
 		// original creation result. Generation scopes the key to the same spec;
 		// a recreated Kubernetes object has a new UID and cannot reuse the key.
-		args = append(args, "--idempotency-key", fmt.Sprintf("operator-ledger-create:%s:%d", ledger.UID, ledger.Generation))
+		args = append(args, "--idempotency-key", ledgerCreationKey(ledger))
 	}
 
 	mode := ledger.Spec.Mode
@@ -761,19 +762,28 @@ func nestedFieldNoCopy(obj map[string]any, fields ...string) (any, bool, error) 
 	return val, true, nil
 }
 
+// ledgerCreationKeyPrefix scopes the creation batch keys of one Ledger
+// resource. Index reconciliation attributes the initial indexes committed in
+// that batch through it.
+func ledgerCreationKeyPrefix(uid types.UID) string {
+	return "operator-ledger-create:" + string(uid) + ":"
+}
+
+// ledgerCreationKey is the idempotency key of the creation batch for the
+// Ledger's current generation.
+func ledgerCreationKey(ledger *ledgerv1alpha1.Ledger) string {
+	return ledgerCreationKeyPrefix(ledger.UID) + strconv.FormatInt(ledger.Generation, 10)
+}
+
 // createLedgerWithExec records ownership only after the atomic batch reports
 // success, including an idempotent replay of that success. AlreadyExists alone
 // is not proof of ownership: that ledger and its indexes may be external.
 //
-// Narrow orphan window: if the exec response is lost and the operator retries
-// under a new generation (spec edit before recovery), indexes committed by the
-// first batch are not registered in status.appliedIndexes and will not be
-// dropped by a subsequent diffIndexes pass. This requires both a lost response
-// AND a spec edit before recovery — the same ownership class the README
-// already names as a concern for standalone index creates. Closing it would
-// require querying the ledger's actual index set before every creation, or a
-// cross-generation status migration with its own races; document here and keep
-// the operator README acknowledgement in sync.
+// The status recorded here is an observation only: index reconciliation
+// rebuilds ownership from the audit, where the initial indexes are attributed
+// to the creation batch through ledgerCreationKeyPrefix, for every generation.
+// A lost response or a spec edit before recovery therefore does not orphan
+// them.
 func createLedgerWithExec(ledger *ledgerv1alpha1.Ledger, args []string, exec func(...string) error) error {
 	if err := exec(args...); err != nil {
 		return err

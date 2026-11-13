@@ -931,7 +931,7 @@ ledgerctl indexes list [flags]
 | Flag | Default | Description |
 |------|---------|-------------|
 | `--ledger` | *(required)* | Name of the ledger |
-| `--creation-key-prefix` | | Select current indexes supported by a successful singleton audit creation with this key prefix and matching creation date |
+| `--creation-key-prefix` | | Select current indexes created by a successful audit entry with this key prefix and matching creation date: a standalone creation, or a batch that creates the index exactly once and does not drop it (such as `ledgers create --index`) |
 | `--timeout` | `10s` | Request timeout |
 
 **Behavior:**
