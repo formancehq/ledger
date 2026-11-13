@@ -81,10 +81,10 @@ func runResolveProvenance(t *testing.T, admission *Admission, orders []*raftcmdp
 	// reads it back).
 	overlay := newBulkOverlay()
 
-	needs, perOrder, err := admission.extractPreloadNeeds(context.Background(), orders, overlay)
+	needs, perOrder, err := admission.extractPreloadNeeds(context.Background(), orders, overlay, true)
 	require.NoError(t, err)
 
-	return admission.resolveScriptsAndEnrichNeeds(context.Background(), orders, overlay, needs, perOrder, hasIdempotencyKey)
+	return admission.resolveScriptsAndEnrichNeeds(context.Background(), orders, overlay, needs, perOrder, hasIdempotencyKey, true)
 }
 
 // TestForwardOrFail_ProvenanceClassification covers the EN-1557 decision table:

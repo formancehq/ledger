@@ -120,9 +120,9 @@ func writeVolume(t *testing.T, admission *Admission, ledger, account, asset stri
 func resolveHashFor(t *testing.T, admission *Admission, overlay *bulkOverlay, orders []*raftcmdpb.Order, idx int) []byte {
 	t.Helper()
 
-	needs, perOrder, err := admission.extractPreloadNeeds(context.Background(), orders, overlay)
+	needs, perOrder, err := admission.extractPreloadNeeds(context.Background(), orders, overlay, true)
 	require.NoError(t, err)
-	require.NoError(t, admission.resolveScriptsAndEnrichNeeds(context.Background(), orders, overlay, needs, perOrder, false))
+	require.NoError(t, admission.resolveScriptsAndEnrichNeeds(context.Background(), orders, overlay, needs, perOrder, false, true))
 
 	return orders[idx].GetTechnical().GetInputsResolutionHash()
 }
@@ -213,9 +213,9 @@ send [USD/2 5] (source = @world destination = $dst)
 	admission, _ := createTestAdmission(t, store)
 
 	overlay := newBulkOverlay()
-	needs, perOrder, err := admission.extractPreloadNeeds(context.Background(), batch, overlay)
+	needs, perOrder, err := admission.extractPreloadNeeds(context.Background(), batch, overlay, true)
 	require.NoError(t, err)
-	require.NoError(t, admission.resolveScriptsAndEnrichNeeds(context.Background(), batch, overlay, needs, perOrder, false))
+	require.NoError(t, admission.resolveScriptsAndEnrichNeeds(context.Background(), batch, overlay, needs, perOrder, false, true))
 
 	// The dependent order's meta() resolved to ib:resolved, so that destination
 	// volume must have been preloaded — proving admission saw order 0's write.
@@ -234,9 +234,9 @@ send [USD/2 1] (source = @world destination = @posting:only)
 	admission, _ := createTestAdmission(t, store)
 	orders := []*raftcmdpb.Order{order}
 	overlay := newBulkOverlay()
-	needs, perOrder, err := admission.extractPreloadNeeds(context.Background(), orders, overlay)
+	needs, perOrder, err := admission.extractPreloadNeeds(context.Background(), orders, overlay, true)
 	require.NoError(t, err)
-	require.NoError(t, admission.resolveScriptsAndEnrichNeeds(context.Background(), orders, overlay, needs, perOrder, false))
+	require.NoError(t, admission.resolveScriptsAndEnrichNeeds(context.Background(), orders, overlay, needs, perOrder, false, true))
 	key := domain.AccountKey{LedgerName: testLedgerName, Account: "meta:only"}.Bytes()
 	require.True(t, needs.Has(dal.SubAttrAccountIncarnation, key))
 	require.True(t, perOrder[0].Has(dal.SubAttrAccountIncarnation, key))
@@ -326,9 +326,9 @@ send [USD/2 5] (source = @world destination = $dst)
 	admission, _ := createTestAdmission(t, store)
 
 	overlay := newBulkOverlay()
-	needs, perOrder, err := admission.extractPreloadNeeds(context.Background(), batch, overlay)
+	needs, perOrder, err := admission.extractPreloadNeeds(context.Background(), batch, overlay, true)
 	require.NoError(t, err)
-	require.NoError(t, admission.resolveScriptsAndEnrichNeeds(context.Background(), batch, overlay, needs, perOrder, false))
+	require.NoError(t, admission.resolveScriptsAndEnrichNeeds(context.Background(), batch, overlay, needs, perOrder, false, true))
 
 	// meta() resolved to am:resolved, so that destination volume must have been
 	// discovered — proving admission saw the preceding AddMetadata write.
@@ -364,9 +364,9 @@ send [USD/2 1] (source = @world destination = $dst)
 `),
 	}
 	okOverlay := newBulkOverlay()
-	needs, perOrder, err := admission.extractPreloadNeeds(context.Background(), okBatch, okOverlay)
+	needs, perOrder, err := admission.extractPreloadNeeds(context.Background(), okBatch, okOverlay, true)
 	require.NoError(t, err)
-	require.NoError(t, admission.resolveScriptsAndEnrichNeeds(context.Background(), okBatch, okOverlay, needs, perOrder, false))
+	require.NoError(t, admission.resolveScriptsAndEnrichNeeds(context.Background(), okBatch, okOverlay, needs, perOrder, false, true))
 
 	// A preceding DeleteMetadata tombstones the key: the dependent meta() now
 	// resolves absent and discovery fails.
@@ -380,10 +380,10 @@ send [USD/2 1] (source = @world destination = $dst)
 `),
 	}
 	delOverlay := newBulkOverlay()
-	needs, perOrder, err = admission.extractPreloadNeeds(context.Background(), delBatch, delOverlay)
+	needs, perOrder, err = admission.extractPreloadNeeds(context.Background(), delBatch, delOverlay, true)
 	require.NoError(t, err)
 
-	err = admission.resolveScriptsAndEnrichNeeds(context.Background(), delBatch, delOverlay, needs, perOrder, false)
+	err = admission.resolveScriptsAndEnrichNeeds(context.Background(), delBatch, delOverlay, needs, perOrder, false, true)
 	require.Error(t, err, "a preceding same-batch delete must make the dependent meta() resolve absent and fail discovery")
 
 	var businessErr *domain.BusinessError
@@ -408,9 +408,9 @@ func TestResolveScripts_IntraBatchNumscriptExactReference(t *testing.T) {
 	overlay.recordNumscriptSave(testLedgerName, "pay", "1.0.0", refScript)
 
 	batch := []*raftcmdpb.Order{referenceOrder(testLedgerName, "pay", "1.0.0")}
-	needs, perOrder, err := admission.extractPreloadNeeds(context.Background(), batch, overlay)
+	needs, perOrder, err := admission.extractPreloadNeeds(context.Background(), batch, overlay, true)
 	require.NoError(t, err)
-	require.NoError(t, admission.resolveScriptsAndEnrichNeeds(context.Background(), batch, overlay, needs, perOrder, false))
+	require.NoError(t, admission.resolveScriptsAndEnrichNeeds(context.Background(), batch, overlay, needs, perOrder, false, true))
 
 	// The referenced script's destination was discovered, so its content resolved
 	// from the overlay.
@@ -429,10 +429,10 @@ func TestResolveScripts_IntraBatchNumscriptExactReference(t *testing.T) {
 	// Same reference, no same-bulk save: nothing to resolve from either source.
 	bare := []*raftcmdpb.Order{referenceOrder(testLedgerName, "pay", "1.0.0")}
 	bareOverlay := newBulkOverlay()
-	needs, perOrder, err = admission.extractPreloadNeeds(context.Background(), bare, bareOverlay)
+	needs, perOrder, err = admission.extractPreloadNeeds(context.Background(), bare, bareOverlay, true)
 	require.NoError(t, err)
 
-	err = admission.resolveScriptsAndEnrichNeeds(context.Background(), bare, bareOverlay, needs, perOrder, false)
+	err = admission.resolveScriptsAndEnrichNeeds(context.Background(), bare, bareOverlay, needs, perOrder, false, true)
 
 	var notFound *domain.ErrNumscriptNotFound
 	require.ErrorAs(t, err, &notFound, "an exact reference with no persisted or in-bulk save must be NUMSCRIPT_NOT_FOUND")
