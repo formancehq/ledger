@@ -37,6 +37,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	"github.com/formancehq/ledger/v3/internal/query"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
 
@@ -200,7 +201,11 @@ func newCallerAttributionAdmission(t *testing.T, expectedProposals int) (*admiss
 	admission := admissionapp.NewAdmission(store, logger, proposer, nil,
 		plan.NewBuilder(node.NewIndexTracker(1), testCache, attrs, store, nil, logger, 0),
 		provider, allowWriteGate{}, keystore.NewKeyStore(), state.NewSharedState(), attrs,
-		numscript.NewNumscriptCache(0), func(context.Context) error { return nil })
+		numscript.NewNumscriptCache(0), func(context.Context) error { return nil },
+		func() (commonpb.ClusterPolicyReader, error) {
+			policy, err := query.ReadClusterPolicy(store)
+			return policy.AsReader(), err
+		})
 
 	return admission, proposals
 }

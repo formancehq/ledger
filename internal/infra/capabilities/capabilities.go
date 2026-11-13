@@ -46,7 +46,15 @@ func SupportedIDs() []CapabilityID {
 
 // IsActive reports the committed activation at the reader's apply position.
 func IsActive(policy *commonpb.ClusterPolicy, id CapabilityID) bool {
-	for _, activation := range policy.GetCapabilityActivations() {
+	return IsActiveReader(policy.AsReader(), id)
+}
+
+// IsActiveReader checks a published read-only policy without cloning it.
+func IsActiveReader(policy commonpb.ClusterPolicyReader, id CapabilityID) bool {
+	if policy == nil {
+		return false
+	}
+	for _, activation := range policy.GetCapabilityActivations().Range {
 		if activation != nil && activation.GetId() == uint32(id) {
 			return activation.GetActive()
 		}
@@ -218,12 +226,18 @@ func FromPolicy(policy *commonpb.ClusterPolicy) State {
 // deterministic order. Nil activations and inactive entries are ignored so
 // callers can pass the result directly to membership admission gates.
 func ActiveIDs(policy *commonpb.ClusterPolicy) []uint32 {
+	return ActiveIDsReader(policy.AsReader())
+}
+
+// ActiveIDsReader derives a canonical capability list from a read-only policy.
+func ActiveIDsReader(policy commonpb.ClusterPolicyReader) []uint32 {
 	if policy == nil {
 		return nil
 	}
 
-	active := make([]uint32, 0, len(policy.GetCapabilityActivations()))
-	for _, activation := range policy.GetCapabilityActivations() {
+	activations := policy.GetCapabilityActivations()
+	active := make([]uint32, 0, activations.Len())
+	for _, activation := range activations.Range {
 		if activation != nil && activation.GetActive() {
 			active = append(active, activation.GetId())
 		}

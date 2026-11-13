@@ -89,7 +89,7 @@ func TestWorker_MalformedURLDoesNotDisclosePassword(t *testing.T) {
 	proposer := &applyingMirrorProposer{t: t, machine: machine, store: store, tracker: tracker}
 	writeGate := health.NewMockWriteGate(gomock.NewController(t))
 	writeGate.EXPECT().CheckWritesAllowed().Return(nil)
-	adm := admission.NewAdmission(store, logger, proposer, nil, builder, meters, writeGate, keys, shared, attrs, numscript.NewNumscriptCache(0), func(context.Context) error { return nil })
+	adm := admission.NewAdmission(store, logger, proposer, nil, builder, meters, writeGate, keys, shared, attrs, numscript.NewNumscriptCache(0), func(context.Context) error { return nil }, func() (commonpb.ClusterPolicyReader, error) { return machine.CommittedClusterPolicy(), nil })
 	config := &commonpb.MirrorSourceConfig{
 		LedgerName: "source-ledger",
 		Type: &commonpb.MirrorSourceConfig_Http{Http: &commonpb.HttpMirrorSourceConfig{
@@ -247,7 +247,7 @@ func TestWorker_TransportErrorsDoNotDiscloseCredentials(t *testing.T) {
 					proposer := &applyingMirrorProposer{t: t, machine: machine, store: store, tracker: tracker}
 					writeGate := health.NewMockWriteGate(gomock.NewController(t))
 					writeGate.EXPECT().CheckWritesAllowed().Return(nil)
-					adm := admission.NewAdmission(store, logger, proposer, nil, builder, meters, writeGate, keys, shared, attrs, numscript.NewNumscriptCache(0), func(context.Context) error { return nil })
+					adm := admission.NewAdmission(store, logger, proposer, nil, builder, meters, writeGate, keys, shared, attrs, numscript.NewNumscriptCache(0), func(context.Context) error { return nil }, func() (commonpb.ClusterPolicyReader, error) { return machine.CommittedClusterPolicy(), nil })
 
 					sourceUser := tc.user
 					if mode != "direct" {

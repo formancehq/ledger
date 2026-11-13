@@ -166,13 +166,13 @@ type Machine struct {
 	// replay path naturally idempotent — every replay of the entry
 	// re-asserts the membership row. EN-1413.
 	confChangeHandler             func(entry *raftpb.Entry, session *dal.WriteSession) error
-	capabilityPolicyCommitHandler func(*commonpb.ClusterPolicy)
+	capabilityPolicyCommitHandler func(commonpb.ClusterPolicyReader)
 }
 
 // NoopCapabilityPolicyCommitHandler is an explicit dependency for callers
 // that do not maintain an in-memory membership gate (for example replay and
 // isolated FSM tests). Production bootstrap injects the membership publisher.
-func NoopCapabilityPolicyCommitHandler(*commonpb.ClusterPolicy) {}
+func NoopCapabilityPolicyCommitHandler(commonpb.ClusterPolicyReader) {}
 
 // NewMachine constructs the hot-path FSM. It composes pre-built sub-objects
 // (Registry, CacheSnapshotter) so the constructor reads no Pebble and keeps
@@ -184,7 +184,7 @@ func NoopCapabilityPolicyCommitHandler(*commonpb.ClusterPolicy) {}
 // confChangeHandler is invoked from PrepareEntries for every
 // EntryConfChange* in the in-flight batch (see the field comment on
 // Machine). Must be non-nil.
-func NewMachine(logger logging.Logger, registry *StateRegistry, cacheSnapshotter *CacheSnapshotter, fileArtifacts dal.QueryCheckpoints, sentinel dal.SentinelFactory, meterProvider metric.MeterProvider, ks *keystore.KeyStore, sharedState *SharedState, notifier Notifier, bloomFilters *bloom.FilterSet, auditKey string, numscriptCacheSize int, confChangeHandler func(entry *raftpb.Entry, session *dal.WriteSession) error, capabilityPolicyCommitHandler func(*commonpb.ClusterPolicy)) (*Machine, error) {
+func NewMachine(logger logging.Logger, registry *StateRegistry, cacheSnapshotter *CacheSnapshotter, fileArtifacts dal.QueryCheckpoints, sentinel dal.SentinelFactory, meterProvider metric.MeterProvider, ks *keystore.KeyStore, sharedState *SharedState, notifier Notifier, bloomFilters *bloom.FilterSet, auditKey string, numscriptCacheSize int, confChangeHandler func(entry *raftpb.Entry, session *dal.WriteSession) error, capabilityPolicyCommitHandler func(commonpb.ClusterPolicyReader)) (*Machine, error) {
 	if capabilityPolicyCommitHandler == nil {
 		return nil, errors.New("capability policy commit handler is required")
 	}
@@ -342,10 +342,10 @@ func (fsm *Machine) ClusterPolicy() *commonpb.ClusterPolicy {
 	return fsm.State.ClusterPolicy.CloneVT()
 }
 
-// CommittedClusterPolicy returns an immutable snapshot of the last policy
-// committed to the main store. Callers must not modify the returned message.
-func (fsm *Machine) CommittedClusterPolicy() *commonpb.ClusterPolicy {
-	return fsm.committedClusterPolicy.Load()
+// CommittedClusterPolicy returns a read-only snapshot of the last policy
+// committed to the main store. The published protobuf is never mutated.
+func (fsm *Machine) CommittedClusterPolicy() commonpb.ClusterPolicyReader {
+	return fsm.committedClusterPolicy.Load().AsReader()
 }
 
 // RestoreState atomically replaces the FSM-level state. The intended callers
@@ -877,7 +877,7 @@ func (fsm *Machine) CommitPreparedBatch(ctx context.Context, pb *PreparedBatch) 
 		fsm.BloomFilters.ConfirmPersistedReplacement(pb.bloomReplacementEpoch)
 	}
 	if fsm.capabilityPolicyCommitHandler != nil && pb.capabilityPolicy != nil {
-		fsm.capabilityPolicyCommitHandler(pb.capabilityPolicy)
+		fsm.capabilityPolicyCommitHandler(pb.capabilityPolicy.AsReader())
 	}
 
 	fsm.batchCommitHistogram.Record(ctx, time.Since(commitStart).Seconds())

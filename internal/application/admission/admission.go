@@ -64,7 +64,7 @@ type Admission struct {
 	attrs                 *attributes.Attributes
 	numscriptCache        *numscript.NumscriptCache
 	waitLeaderReady       func(context.Context) error
-	committedPolicy       func() (*commonpb.ClusterPolicy, error)
+	committedPolicy       func() (commonpb.ClusterPolicyReader, error)
 	// auditProjectionState is node-local admission state. It may reject a
 	// checkpoint proposal before Raft, but never affects deterministic apply.
 	auditProjectionState func() (disabled, rebuilding bool)
@@ -139,12 +139,6 @@ func WithAuditProjectionState(state func() (disabled, rebuilding bool)) func(*Ad
 	}
 }
 
-// WithCommittedPolicy supplies the FSM's post-commit policy snapshot. Production
-// admission uses it so coverage extraction never reads Pebble on each batch.
-func WithCommittedPolicy(policy func() (*commonpb.ClusterPolicy, error)) func(*Admission) {
-	return func(a *Admission) { a.committedPolicy = policy }
-}
-
 func NewAdmission(
 	store *dal.Store,
 	logger logging.Logger,
@@ -158,8 +152,12 @@ func NewAdmission(
 	attrs *attributes.Attributes,
 	numscriptCache *numscript.NumscriptCache,
 	waitLeaderReady func(context.Context) error,
+	committedPolicy func() (commonpb.ClusterPolicyReader, error),
 	opts ...func(*Admission),
 ) *Admission {
+	if committedPolicy == nil {
+		panic("admission requires a committed policy source")
+	}
 	a := &Admission{
 		store:                 store,
 		logger:                logger,
@@ -172,13 +170,10 @@ func NewAdmission(
 		attrs:                 attrs,
 		numscriptCache:        numscriptCache,
 		waitLeaderReady:       waitLeaderReady,
+		committedPolicy:       committedPolicy,
 	}
 	for _, opt := range opts {
 		opt(a)
-	}
-	if a.committedPolicy == nil {
-		// Isolated admission tests can use a store without a running FSM.
-		a.committedPolicy = func() (*commonpb.ClusterPolicy, error) { return query.ReadClusterPolicy(store) }
 	}
 
 	// Use noop meter when metrics are disabled to eliminate contention
@@ -685,7 +680,7 @@ func (a *Admission) prepareBatchOrders(ctx context.Context, batch verifiedBatch)
 	if err != nil {
 		return nil, nil, nil, fmt.Errorf("reading committed incarnation policy: %w", err)
 	}
-	incarnationWrites := capabilities.IsActive(policy, capabilities.AccountIncarnationWritesV1)
+	incarnationWrites := capabilities.IsActiveReader(policy, capabilities.AccountIncarnationWritesV1)
 	// Convert requests to orders. Idempotency and signature are batch-level now
 	// (carried on the Proposal), so orders no longer hold either.
 	//

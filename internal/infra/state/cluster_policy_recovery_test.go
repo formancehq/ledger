@@ -31,7 +31,7 @@ func TestRecoverState_ClusterPolicyRoundtrip(t *testing.T) {
 
 	require.True(t, policy.EqualVT(machine.State.ClusterPolicy),
 		"the persisted policy must be recovered verbatim into FSMState")
-	require.True(t, policy.EqualVT(machine.CommittedClusterPolicy()),
+	require.True(t, policy.EqualVT(machine.CommittedClusterPolicy().Mutate()),
 		"recovery must publish the committed policy for admission")
 }
 
@@ -51,7 +51,11 @@ func TestCommittedClusterPolicyPublishedAfterBatchCommit(t *testing.T) {
 		"admission must not see a policy staged by PrepareEntries")
 
 	require.NoError(t, machine.CommitPreparedBatch(context.Background(), prepared))
-	require.True(t, policy.EqualVT(machine.CommittedClusterPolicy()))
+	require.True(t, policy.EqualVT(machine.CommittedClusterPolicy().Mutate()))
+	clone := machine.CommittedClusterPolicy().Mutate()
+	clone.Revision = 99
+	require.Equal(t, uint64(1), machine.CommittedClusterPolicy().GetRevision(),
+		"mutating a copy must not change the published policy")
 }
 
 func TestRecoverStatePublishesRecoveredState(t *testing.T) {

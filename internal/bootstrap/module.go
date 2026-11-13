@@ -84,8 +84,8 @@ import (
 // It is used to decide whether a joining node needs to register as a learner.
 type walFreshStart bool
 
-func publishCapabilityGate(membership *raftmembership.Membership, policy *commonpb.ClusterPolicy) error {
-	return membership.SetCapabilityGate(capabilities.ActiveIDs(policy))
+func publishCapabilityGate(membership *raftmembership.Membership, policy commonpb.ClusterPolicyReader) error {
+	return membership.SetCapabilityGate(capabilities.ActiveIDsReader(policy))
 }
 
 // nodeProvideResult groups the outputs of the Node provider so we can also
@@ -266,7 +266,7 @@ func Module() fx.Option {
 						return err
 					}
 
-					return publishCapabilityGate(membership, recovered.ClusterPolicy)
+					return publishCapabilityGate(membership, recovered.ClusterPolicy.AsReader())
 				}))
 				if err := recovery.RecoverState(); err != nil {
 					return nil, fmt.Errorf("recovering FSM state at boot: %w", err)
@@ -367,7 +367,7 @@ func Module() fx.Option {
 
 						return membership.WriteConfChange(entry, session, policy)
 					},
-					func(policy *commonpb.ClusterPolicy) {
+					func(policy commonpb.ClusterPolicyReader) {
 						if err := publishCapabilityGate(membership, policy); err != nil {
 							logger.WithFields(map[string]any{"error": err}).Errorf("Publishing committed capability policy failed")
 						}
@@ -667,10 +667,6 @@ func Module() fx.Option {
 				}
 
 				opts = append(opts, admission.WithAuditProjectionState(rs.AuditProjectionState))
-				opts = append(opts, admission.WithCommittedPolicy(func() (*commonpb.ClusterPolicy, error) {
-					return machine.CommittedClusterPolicy(), nil
-				}))
-
 				return admission.NewAdmission(
 					store,
 					logger,
@@ -684,6 +680,7 @@ func Module() fx.Option {
 					attrs,
 					numscript.NewNumscriptCache(cfg.NumscriptCacheSize),
 					node.WaitLeaderReady,
+					func() (commonpb.ClusterPolicyReader, error) { return machine.CommittedClusterPolicy(), nil },
 					opts...,
 				)
 			},
