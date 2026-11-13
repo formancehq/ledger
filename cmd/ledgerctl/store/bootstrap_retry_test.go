@@ -96,6 +96,7 @@ func newBootstrapRetryAdmission(t *testing.T, store *dal.Store) *admission.Admis
 		builder, meters, gate, keys, shared, attrs, numscript.NewNumscriptCache(0), func(context.Context) error { return nil },
 		func() (commonpb.ClusterPolicyReader, error) {
 			policy, err := query.ReadClusterPolicy(store)
+
 			return policy.AsReader(), err
 		})
 }

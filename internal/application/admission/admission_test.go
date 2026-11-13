@@ -106,6 +106,7 @@ func testCommittedPolicyFromStore(store *dal.Store) func() (commonpb.ClusterPoli
 		if err != nil {
 			return nil, err
 		}
+
 		return policy.AsReader(), nil
 	}
 }

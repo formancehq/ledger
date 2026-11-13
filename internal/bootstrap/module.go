@@ -667,6 +667,7 @@ func Module() fx.Option {
 				}
 
 				opts = append(opts, admission.WithAuditProjectionState(rs.AuditProjectionState))
+
 				return admission.NewAdmission(
 					store,
 					logger,
