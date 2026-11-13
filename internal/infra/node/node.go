@@ -392,7 +392,8 @@ type Node struct {
 	terminalFailure atomic.Pointer[terminalNodeError]
 	// proposalAdmissionMu makes the terminal check plus proposeCh enqueue
 	// atomic with terminal publication and its queued-proposal drain.
-	proposalAdmissionMu sync.Mutex
+	proposalAdmissionMu           sync.Mutex
+	pendingIncarnationActivations int // guarded by proposalAdmissionMu
 	// Every queued marker closes admission. A marker that Raft definitively
 	// rejects releases its slot; an accepted marker keeps the gate closed while
 	// consensus and FSM application are still pending.
@@ -707,7 +708,7 @@ func NewNode(
 	// writes self for Bootstrap/Restore, but the restart branch never
 	// did — that's the gap the previous bootstrap hook used to cover
 	// before transport wiring moved into Membership.
-	if err := membership.Register(cfg.NodeID, cfg.AdvertiseAddr, cfg.ServiceAdvertiseAddr, cfg.InstanceID, capabilities.IDsAsUint32(capabilities.SupportedIDs())); err != nil {
+	if err := membership.Register(cfg.NodeID, cfg.AdvertiseAddr, cfg.ServiceAdvertiseAddr, cfg.InstanceID, nodeAdvertisedCapabilities(cfg)); err != nil {
 		return nil, fmt.Errorf("refreshing self in peer store: %w", err)
 	}
 
@@ -2410,6 +2411,9 @@ func (node *Node) Propose(ctx context.Context, proposal *Proposal) (*futures.Fut
 	// proposals already queued behind it. Policy-changing proposals use the
 	// same canonical runner, so this is also their serialization point.
 	if node.proposalAdmission != nil {
+		if node.pendingIncarnationActivations > 0 && proposal.NeedsIncarnationMarker() {
+			return nil, errors.New("account proposal predates pending incarnation capability activation")
+		}
 		if err := node.proposalAdmission(ctx, proposal); err != nil {
 			return nil, err
 		}
@@ -2440,6 +2444,15 @@ func (node *Node) Propose(ctx context.Context, proposal *Proposal) (*futures.Fut
 
 	select {
 	case node.proposeCh <- proposal:
+		if proposal.ActivatesIncarnationWrites() {
+			node.pendingIncarnationActivations++
+			go func() {
+				_, _ = fsmFuture.Wait(context.Background())
+				node.proposalAdmissionMu.Lock()
+				node.pendingIncarnationActivations--
+				node.proposalAdmissionMu.Unlock()
+			}()
+		}
 		if proposal.drainMarker {
 			node.drainOutstanding++
 		}
@@ -4057,9 +4070,17 @@ func initialJoinVoters(peers []Peer, selfID uint64) []uint64 {
 // includeSelf is true for Bootstrap and Restore; false for Join
 // (self's address lands later via the AddLearner ConfChange applied
 // through WriteConfChange).
+func nodeAdvertisedCapabilities(cfg NodeConfig) []uint32 {
+	if cfg.AdvertisedCapabilities != nil {
+		return slices.Clone(cfg.AdvertisedCapabilities)
+	}
+
+	return []uint32{uint32(capabilities.AccountIncarnationWritesV1)}
+}
+
 func registerInitialPeers(m *membership.Membership, cfg NodeConfig, includeSelf bool) error {
 	if includeSelf {
-		if err := m.Register(cfg.NodeID, cfg.AdvertiseAddr, cfg.ServiceAdvertiseAddr, cfg.InstanceID, capabilities.IDsAsUint32(capabilities.SupportedIDs())); err != nil {
+		if err := m.Register(cfg.NodeID, cfg.AdvertiseAddr, cfg.ServiceAdvertiseAddr, cfg.InstanceID, nodeAdvertisedCapabilities(cfg)); err != nil {
 			return fmt.Errorf("persisting self in peer store: %w", err)
 		}
 	}

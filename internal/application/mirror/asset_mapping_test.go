@@ -85,10 +85,14 @@ func TestWorkerAssetMappingProposesColoredPostingAndCoverage(t *testing.T) {
 	require.Equal(t, "USDT/6", posting.GetAsset())
 	require.Equal(t, "ETHEREUM", posting.GetColor())
 
-	aggregate, _ := w.extractMirrorNeeds(cmd)
+	aggregate, _ := w.extractMirrorNeeds(cmd, false)
 	for _, account := range []string{"world", "users:001"} {
 		require.True(t, aggregate.Has(dal.SubAttrVolume, domain.NewVolumeKey("mirrored", account, "USDT/6", "ETHEREUM").Bytes()), account)
 		require.False(t, aggregate.Has(dal.SubAttrVolume, domain.NewVolumeKey("mirrored", account, "USDT/6", "").Bytes()), account)
+	}
+	withIncarnations, _ := w.extractMirrorNeeds(cmd, true)
+	for _, account := range []string{"world", "users:001"} {
+		require.True(t, withIncarnations.Has(dal.SubAttrAccountIncarnation, (domain.AccountKey{LedgerName: "mirrored", Account: account}).Bytes()))
 	}
 }
 

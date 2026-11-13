@@ -311,6 +311,54 @@ func TestBuildPreloads_EmitsDeclareOnCacheHit(t *testing.T) {
 	require.Equal(t, id[:], plan.GetId().GetId())
 }
 
+func TestBuildPreloads_AccountIncarnationSeed(t *testing.T) {
+	t.Parallel()
+	for _, scenario := range []struct {
+		name     string
+		persist  bool
+		cacheHit bool
+		seed     bool
+	}{
+		{name: "absent"},
+		{name: "hot", cacheHit: true},
+		{name: "cold", persist: true, seed: true},
+	} {
+		t.Run(scenario.name, func(t *testing.T) {
+			ctx := logging.TestingContext()
+			logger := logging.FromContext(ctx)
+			meter := noop.NewMeterProvider().Meter("test")
+			store, err := dal.NewStore(t.TempDir(), logger, meter, dal.DefaultConfig())
+			require.NoError(t, err)
+			t.Cleanup(func() { _ = store.Close() })
+			attrs := attributes.New()
+			c, err := cache.New(1000, meter)
+			require.NoError(t, err)
+			account := domain.AccountKey{LedgerName: "ledger", Account: "normal:one"}
+			id, tag := attributes.MakeKey(account.Bytes())
+			incarnation := &commonpb.AccountIncarnation{Persistence: commonpb.AccountTypePersistence_ACCOUNT_TYPE_NORMAL}
+			if scenario.cacheHit {
+				c.AccountIncarnations.Put(id, attributes.Entry[*commonpb.AccountIncarnation]{Tag: tag, Data: incarnation})
+			}
+			if scenario.persist {
+				batch := store.OpenWriteSession()
+				_, err := attrs.AccountIncarnation.Set(batch, account.Bytes(), incarnation)
+				require.NoError(t, err)
+				require.NoError(t, batch.Commit())
+			}
+			builder := NewBuilder(node.NewIndexTracker(1), c, attrs, store, nil, logger, 0)
+			needs := NewCoverage()
+			needs.Add(dal.SubAttrAccountIncarnation, account.Bytes())
+			build, err := builder.Build(needs, []WriteOperation{{Coverage: needs}})
+			require.NoError(t, err)
+			defer build.ReleaseLoaders()
+			require.Len(t, build.ExecutionPlan.GetAttributes(), 1)
+			coverage := build.ExecutionPlan.GetAttributes()[0]
+			require.Equal(t, uint32(dal.SubAttrAccountIncarnation), coverage.GetAttrCode())
+			require.Equal(t, scenario.seed, coverage.GetValue() != nil)
+		})
+	}
+}
+
 // TestBuildPreloads_EmitsDeclareOnMissingKey confirms the CacheMiss
 // path under the unified coverage model: when admission's CheckCache
 // verdict is CacheMiss AND Pebble has nothing, the resolver emits a

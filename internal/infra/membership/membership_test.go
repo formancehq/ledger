@@ -11,6 +11,7 @@ import (
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
+	"github.com/formancehq/ledger/v3/internal/infra/capabilities"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
@@ -433,7 +434,7 @@ func TestMembership_OnSnapshotInstalled(t *testing.T) {
 	require.Equal(t, "new:1", got[1].RaftAddress)
 	require.Equal(t, "new:3", got[3].RaftAddress)
 	require.Equal(t, testSelfRaftAddr, got[testSelfNodeID].RaftAddress, "self must be re-upserted with local truth")
-	require.Empty(t, got[testSelfNodeID].Capabilities, "self evidence must reflect the running binary after snapshot restore")
+	require.Equal(t, []uint32{uint32(capabilities.AccountIncarnationWritesV1)}, got[testSelfNodeID].Capabilities, "self evidence must reflect local migration state after snapshot restore")
 	require.NotContains(t, got, uint64(7))
 }
 

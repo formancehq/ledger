@@ -338,6 +338,7 @@ func NewCacheSnapshotter(logger logging.Logger, registry *StateRegistry, bloomFi
 	preparedQueries := newProtoSnapshotSlot(dal.SubAttrPreparedQuery, c.PreparedQueries, func() *commonpb.PreparedQuery { return &commonpb.PreparedQuery{} })
 	ledgerMetadata := newProtoSnapshotSlot(dal.SubAttrLedgerMetadata, c.LedgerMetadata, func() *commonpb.MetadataValue { return &commonpb.MetadataValue{} })
 	indexEntries := newProtoSnapshotSlot(dal.SubAttrIndex, c.Indexes, func() *commonpb.Index { return &commonpb.Index{} })
+	accountIncarnations := newProtoSnapshotSlot(dal.SubAttrAccountIncarnation, c.AccountIncarnations, func() *commonpb.AccountIncarnation { return &commonpb.AccountIncarnation{} })
 
 	return &CacheSnapshotter{
 		logger:       logger,
@@ -346,21 +347,22 @@ func NewCacheSnapshotter(logger logging.Logger, registry *StateRegistry, bloomFi
 		slots: []cacheSnapshotSlot{
 			volumes, metadata, ledgers, boundaries, references,
 			transactions, sinks, numscriptVersions, numscriptContents,
-			preparedQueries, ledgerMetadata, indexEntries,
+			preparedQueries, ledgerMetadata, indexEntries, accountIncarnations,
 		},
 		slotByAttrCode: map[byte]cacheSnapshotSlot{
-			dal.SubAttrVolume:           volumes,
-			dal.SubAttrMetadata:         metadata,
-			dal.SubAttrLedger:           ledgers,
-			dal.SubAttrBoundary:         boundaries,
-			dal.SubAttrReference:        references,
-			dal.SubAttrTransaction:      transactions,
-			dal.SubAttrSinkConfig:       sinks,
-			dal.SubAttrNumscriptVersion: numscriptVersions,
-			dal.SubAttrNumscriptContent: numscriptContents,
-			dal.SubAttrPreparedQuery:    preparedQueries,
-			dal.SubAttrLedgerMetadata:   ledgerMetadata,
-			dal.SubAttrIndex:            indexEntries,
+			dal.SubAttrVolume:             volumes,
+			dal.SubAttrMetadata:           metadata,
+			dal.SubAttrLedger:             ledgers,
+			dal.SubAttrBoundary:           boundaries,
+			dal.SubAttrReference:          references,
+			dal.SubAttrTransaction:        transactions,
+			dal.SubAttrSinkConfig:         sinks,
+			dal.SubAttrNumscriptVersion:   numscriptVersions,
+			dal.SubAttrNumscriptContent:   numscriptContents,
+			dal.SubAttrPreparedQuery:      preparedQueries,
+			dal.SubAttrLedgerMetadata:     ledgerMetadata,
+			dal.SubAttrIndex:              indexEntries,
+			dal.SubAttrAccountIncarnation: accountIncarnations,
 		},
 		bloomExecutor: worker.NewSingleTaskExecutor(logger),
 	}

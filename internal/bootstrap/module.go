@@ -50,6 +50,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/infra/cache"
 	"github.com/formancehq/ledger/v3/internal/infra/capabilities"
 	clusterhealth "github.com/formancehq/ledger/v3/internal/infra/health"
+	"github.com/formancehq/ledger/v3/internal/infra/incarnationmigration"
 	raftmembership "github.com/formancehq/ledger/v3/internal/infra/membership"
 	"github.com/formancehq/ledger/v3/internal/infra/monitoring/diskusage"
 	"github.com/formancehq/ledger/v3/internal/infra/monitoring/flightrecorder"
@@ -83,8 +84,8 @@ import (
 // It is used to decide whether a joining node needs to register as a learner.
 type walFreshStart bool
 
-func publishCapabilityGate(membership *raftmembership.Membership, policy *commonpb.ClusterPolicy) error {
-	return membership.SetCapabilityGate(capabilities.ActiveIDs(policy))
+func publishCapabilityGate(membership *raftmembership.Membership, policy commonpb.ClusterPolicyReader) error {
+	return membership.SetCapabilityGate(capabilities.ActiveIDsReader(policy))
 }
 
 // nodeProvideResult groups the outputs of the Node provider so we can also
@@ -102,6 +103,14 @@ type nodeProvideResult struct {
 // artifacts before INSTANCE_ID has been read or persisted.
 func provideNodeConfig(cfg Config) (node.NodeConfig, error) {
 	return buildNodeConfig(cfg)
+}
+
+func advertisedCapabilities(cfg Config) []uint32 {
+	if cfg.RaftConfig.AdvertisedCapabilities != nil {
+		return append([]uint32(nil), cfg.RaftConfig.AdvertisedCapabilities...)
+	}
+
+	return []uint32{uint32(capabilities.AccountIncarnationWritesV1)}
 }
 
 func provideWAL(cfg node.NodeConfig, logger logging.Logger, meterProvider metric.MeterProvider) (*wal.DefaultWAL, error) {
@@ -182,6 +191,13 @@ func Module() fx.Option {
 						"duration": time.Since(configStart).String(),
 					}).Infof("Configuration validation done")
 				}
+				if !cfg.Restore {
+					if err := incarnationmigration.RequireReady(store); err != nil {
+						_ = store.Close()
+
+						return nil, fmt.Errorf("checking local account incarnation readiness before Raft startup: %w", err)
+					}
+				}
 
 				return store, nil
 			},
@@ -250,7 +266,7 @@ func Module() fx.Option {
 						return err
 					}
 
-					return publishCapabilityGate(membership, recovered.ClusterPolicy)
+					return publishCapabilityGate(membership, recovered.ClusterPolicy.AsReader())
 				}))
 				if err := recovery.RecoverState(); err != nil {
 					return nil, fmt.Errorf("recovering FSM state at boot: %w", err)
@@ -351,7 +367,7 @@ func Module() fx.Option {
 
 						return membership.WriteConfChange(entry, session, policy)
 					},
-					func(policy *commonpb.ClusterPolicy) {
+					func(policy commonpb.ClusterPolicyReader) {
 						if err := publishCapabilityGate(membership, policy); err != nil {
 							logger.WithFields(map[string]any{"error": err}).Errorf("Publishing committed capability policy failed")
 						}
@@ -386,6 +402,11 @@ func Module() fx.Option {
 					LocalResponses node.LocalResponses
 				},
 			) (nodeProvideResult, error) {
+				advertised, err := incarnationmigration.AdvertisedIDs(params.Store)
+				if err != nil {
+					return nodeProvideResult{}, err
+				}
+				params.NodeConfig.AdvertisedCapabilities = advertised
 				// Check WAL emptiness before NewNode writes the initial snapshot.
 				snapshot, err := params.WAL.Snapshot()
 				if err != nil {
@@ -628,6 +649,7 @@ func Module() fx.Option {
 			func(
 				cfg Config,
 				node *node.Node,
+				machine *state.Machine,
 				store *dal.Store,
 				logger logging.Logger,
 				builder *plan.Builder,
@@ -659,6 +681,7 @@ func Module() fx.Option {
 					attrs,
 					numscript.NewNumscriptCache(cfg.NumscriptCacheSize),
 					node.WaitLeaderReady,
+					func() (commonpb.ClusterPolicyReader, error) { return machine.CommittedClusterPolicy(), nil },
 					opts...,
 				)
 			},
@@ -814,13 +837,14 @@ func Module() fx.Option {
 				lc fx.Lifecycle,
 				cfg Config,
 				logger logging.Logger,
+				store *dal.Store,
 				termination startupTerminationParams,
 			) {
 				if !shouldRunJoinPreflight(cfg, logger) {
 					return
 				}
 
-				hook := joinPreflightHook(cfg, logger)
+				hook := joinPreflightHook(cfg, logger, store)
 				if termination.Termination != nil {
 					hook = termination.Termination.hook(hook)
 				}
@@ -992,7 +1016,7 @@ func Module() fx.Option {
 					}
 				}))
 			},
-			func(lc fx.Lifecycle, node *node.Node, defaultTransport *node.DefaultTransport, membership *raftmembership.Membership, cfg Config, logger logging.Logger) (*node.Node, error) {
+			func(lc fx.Lifecycle, node *node.Node, defaultTransport *node.DefaultTransport, membership *raftmembership.Membership, cfg Config, logger logging.Logger, store *dal.Store) (*node.Node, error) {
 				lc.Append(nodeHook(node, logger))
 
 				// A WAL that already joined the cluster must not take the learner
@@ -1002,7 +1026,9 @@ func Module() fx.Option {
 				// an UpdateNode for an existing voter may need that node to contribute
 				// to the commit quorum.
 				if shouldRunMembershipRefresh(cfg, logger) {
-					lc.Append(membershipRefreshHook(cfg, membership, logger))
+					lc.Append(membershipRefreshHook(cfg, membership, logger, store))
+				} else if !cfg.RaftConfig.Bootstrap {
+					lc.Append(joinIncarnationReadinessHook(cfg, membership, store, logger))
 				}
 
 				return node, nil
@@ -1194,6 +1220,9 @@ func validateProposalCapabilityAdmission(policy *commonpb.ClusterPolicy, proposa
 	}
 
 	state := capabilities.FromPolicy(policy)
+	if capabilities.IsActive(policy, capabilities.AccountIncarnationWritesV1) && proposal.NeedsIncarnationMarker() {
+		return errors.New("account proposal is missing incarnation coverage after capability activation")
+	}
 	if err := state.Validate(); err != nil {
 		return err
 	}
@@ -1382,9 +1411,16 @@ func registerMetricsLifecycle(lc fx.Lifecycle, name string, register func() (met
 // gated behind the preflight; OUTBOUND dialing is always available because it
 // is self-contained. Gating inbound-serving on an outbound-only preflight is
 // therefore safe.
-func joinPreflightHook(cfg Config, logger logging.Logger) fx.Hook {
+func joinPreflightHook(cfg Config, logger logging.Logger, stores ...*dal.Store) fx.Hook {
 	return fx.Hook{
 		OnStart: func(ctx context.Context) error {
+			if len(stores) > 0 {
+				ids, err := incarnationmigration.AdvertisedIDs(stores[0])
+				if err != nil {
+					return err
+				}
+				cfg.RaftConfig.AdvertisedCapabilities = ids
+			}
 			logger.WithFields(map[string]any{
 				"nodeID":         cfg.RaftConfig.NodeID,
 				"raftAddress":    cfg.RaftConfig.AdvertiseAddr,
@@ -1416,11 +1452,18 @@ func newMembershipPeerDialer(cfg Config, tlsCfg TLSConfig) (func(string) (*ggrpc
 	}, nil
 }
 
-func membershipRefreshHook(cfg Config, membership *raftmembership.Membership, logger logging.Logger) fx.Hook {
+func membershipRefreshHook(cfg Config, membership *raftmembership.Membership, logger logging.Logger, stores ...*dal.Store) fx.Hook {
 	var cancel context.CancelFunc
 
 	return fx.Hook{
 		OnStart: func(ctx context.Context) error {
+			if len(stores) > 0 {
+				ids, err := incarnationmigration.AdvertisedIDs(stores[0])
+				if err != nil {
+					return err
+				}
+				cfg.RaftConfig.AdvertisedCapabilities = ids
+			}
 			cfg.RaftConfig.Peers = recoveredRefreshPeers(cfg.RaftConfig.NodeID, membership.PeerAddresses())
 			if len(cfg.RaftConfig.Peers) == 0 {
 				return nil // A single-member cluster has no remote membership to refresh.
@@ -1462,6 +1505,73 @@ func membershipRefreshHook(cfg Config, membership *raftmembership.Membership, lo
 		OnStop: func(context.Context) error {
 			if cancel != nil {
 				cancel()
+			}
+
+			return nil
+		},
+	}
+}
+
+// A fresh learner joins before it has received a checkpoint. Its initial
+// membership evidence therefore contains software support only. Publish data
+// readiness after the incoming checkpoint has been converted and installed.
+func joinIncarnationReadinessHook(cfg Config, membership *raftmembership.Membership, store *dal.Store, logger logging.Logger) fx.Hook {
+	var cancel context.CancelFunc
+	var done chan struct{}
+
+	return fx.Hook{
+		OnStart: func(context.Context) error {
+			peers := recoveredRefreshPeers(cfg.RaftConfig.NodeID, membership.PeerAddresses())
+			if len(peers) == 0 {
+				return nil
+			}
+			ctx, stop := context.WithCancel(context.Background())
+			cancel = stop
+			done = make(chan struct{})
+			go func() {
+				defer close(done)
+				ticker := time.NewTicker(time.Second)
+				defer ticker.Stop()
+				for {
+					marker, err := incarnationmigration.ReadMarker(store)
+					if err != nil {
+						logger.WithFields(map[string]any{"error": err}).Errorf("Reading local account migration marker after join failed")
+					} else if marker.Complete {
+						if latest := recoveredRefreshPeers(cfg.RaftConfig.NodeID, membership.PeerAddresses()); len(latest) > 0 {
+							cfg.RaftConfig.Peers = latest
+						}
+						ids, err := incarnationmigration.AdvertisedIDs(store)
+						if err != nil {
+							logger.WithFields(map[string]any{"error": err}).Errorf("Reading account capability evidence after join failed")
+						} else {
+							cfg.RaftConfig.AdvertisedCapabilities = ids
+							if err := tryRefreshMembership(ctx, cfg, cfg.TLSConfig, logger); err != nil && ctx.Err() == nil {
+								logger.WithFields(map[string]any{"error": err}).Errorf("Publishing converted learner capability evidence failed")
+							}
+
+							return
+						}
+					}
+					select {
+					case <-ctx.Done():
+						return
+					case <-ticker.C:
+					}
+				}
+			}()
+
+			return nil
+		},
+		OnStop: func(ctx context.Context) error {
+			if cancel != nil {
+				cancel()
+			}
+			if done != nil {
+				select {
+				case <-done:
+				case <-ctx.Done():
+					return ctx.Err()
+				}
 			}
 
 			return nil
@@ -1537,7 +1647,7 @@ func tryAddLearner(ctx context.Context, cfg Config, tlsCfg TLSConfig, logger log
 		RaftAddress:    cfg.RaftConfig.AdvertiseAddr,
 		ServiceAddress: cfg.ServiceAdvertiseAddr(),
 		InstanceId:     instanceID,
-		Capabilities:   capabilities.IDsAsUint32(capabilities.SupportedIDs()),
+		Capabilities:   advertisedCapabilities(cfg),
 	}
 
 	dialPeer, err := newMembershipPeerDialer(cfg, tlsCfg)
@@ -1722,7 +1832,7 @@ func tryRefreshMembershipOnce(ctx context.Context, cfg Config, tlsCfg TLSConfig,
 		RaftAddress:    cfg.RaftConfig.AdvertiseAddr,
 		ServiceAddress: cfg.ServiceAdvertiseAddr(),
 		InstanceId:     instanceID,
-		Capabilities:   capabilities.IDsAsUint32(capabilities.SupportedIDs()),
+		Capabilities:   advertisedCapabilities(cfg),
 	}
 
 	dialPeer, err := newMembershipPeerDialer(cfg, tlsCfg)

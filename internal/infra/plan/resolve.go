@@ -204,7 +204,8 @@ func resolveCoverage[T interface {
 			// read and KeyStore.Tombstone writes a gen0 tombstone
 			// on delete. No Pebble read required.
 			mu.Lock()
-			plans = append(plans, slab.appendCoverage(id, tag, attrCode))
+			coverage := slab.appendCoverage(id, tag, attrCode)
+			plans = append(plans, coverage)
 			mu.Unlock()
 
 			continue
@@ -215,7 +216,8 @@ func resolveCoverage[T interface {
 			// (coverage-only, no value to seed).
 			if bloomFilter != nil && !bloomFilter.MayContain(id) {
 				mu.Lock()
-				plans = append(plans, slab.appendCoverage(id, tag, attrCode))
+				coverage := slab.appendCoverage(id, tag, attrCode)
+				plans = append(plans, coverage)
 				mu.Unlock()
 
 				continue
@@ -277,7 +279,8 @@ func resolveCoverage[T interface {
 						return
 					}
 
-					plans = append(plans, slab.appendSeed(id, tag, attrCode, attrValue))
+					coverage := slab.appendSeed(id, tag, attrCode, attrValue)
+					plans = append(plans, coverage)
 
 					return
 				}
@@ -286,7 +289,8 @@ func resolveCoverage[T interface {
 				// concurrent write populated the cache between admission
 				// and apply, Get's gen0→gen1 fallback will surface it at
 				// apply time (bounded by CacheUnreachable at ≥2 rotations).
-				plans = append(plans, slab.appendCoverage(id, tag, attrCode))
+				coverage := slab.appendCoverage(id, tag, attrCode)
+				plans = append(plans, coverage)
 			})
 		}
 	}

@@ -118,7 +118,9 @@ func newMetadataReplayHarness(t testing.TB) *metadataReplayHarness {
 	}).AnyTimes()
 	gate := health.NewMockWriteGate(gomock.NewController(t))
 	gate.EXPECT().CheckWritesAllowed().Return(nil).AnyTimes()
-	admission := NewAdmission(store, logger, proposer, &membership.Coordinator{}, plan.NewBuilder(tracker, c, attrs, store, nil, logger, 0), meter, gate, ks, shared, attrs, numscript.NewNumscriptCache(0), func(context.Context) error { return nil })
+	admission := NewAdmission(store, logger, proposer, &membership.Coordinator{}, plan.NewBuilder(tracker, c, attrs, store, nil, logger, 0), meter, gate, ks, shared, attrs, numscript.NewNumscriptCache(0), func(context.Context) error { return nil }, func() (commonpb.ClusterPolicyReader, error) {
+		return machine.CommittedClusterPolicy(), nil
+	})
 	h.admission = admission
 	h.apply = func(p *raftcmdpb.Proposal) state.ApplyResult {
 		p.CallerSnapshot = commands.SystemCallerSnapshot(commands.ComponentClusterPolicy)

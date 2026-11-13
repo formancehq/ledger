@@ -502,18 +502,19 @@ func (fs *FilterSet) SetReadyIfEpoch(expected uint64) bool {
 // Keys are hashed at collection time (in mergeAndTrackBloom) to avoid redundant hashing
 // in AddCanonicalKeys on the FSM hot path.
 type BloomUpdates struct {
-	Volumes           []attributes.U128
-	Metadata          []attributes.U128
-	References        []attributes.U128
-	Ledgers           []attributes.U128
-	Boundaries        []attributes.U128
-	Transactions      []attributes.U128
-	SinkConfigs       []attributes.U128
-	NumscriptVersions []attributes.U128
-	NumscriptContents []attributes.U128
-	PreparedQueries   []attributes.U128
-	LedgerMetadata    []attributes.U128
-	Indexes           []attributes.U128
+	Volumes             []attributes.U128
+	Metadata            []attributes.U128
+	References          []attributes.U128
+	Ledgers             []attributes.U128
+	Boundaries          []attributes.U128
+	Transactions        []attributes.U128
+	SinkConfigs         []attributes.U128
+	NumscriptVersions   []attributes.U128
+	NumscriptContents   []attributes.U128
+	PreparedQueries     []attributes.U128
+	LedgerMetadata      []attributes.U128
+	Indexes             []attributes.U128
+	AccountIncarnations []attributes.U128
 }
 
 // Reset clears all slices while preserving their backing arrays.
@@ -530,6 +531,7 @@ func (u *BloomUpdates) Reset() {
 	u.PreparedQueries = u.PreparedQueries[:0]
 	u.LedgerMetadata = u.LedgerMetadata[:0]
 	u.Indexes = u.Indexes[:0]
+	u.AccountIncarnations = u.AccountIncarnations[:0]
 }
 
 // AddCanonicalKeys inserts pre-hashed U128 IDs into the corresponding bloom filters.

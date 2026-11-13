@@ -29,7 +29,7 @@ type benchOrder struct {
 // buildPerOrderCoverage mirrors what extractLedgerScopedNeeds does for a
 // CreateTransaction: add the ledger + boundary + N*(source volume,
 // destination volume) keys onto an order-scoped Coverage.
-func buildPerOrderCoverage(o benchOrder, orderIdx int) *Coverage {
+func buildPerOrderCoverage(o benchOrder, orderIdx int, incarnations bool) *Coverage {
 	c := NewCoverage()
 
 	ledgerBytes := domain.LedgerKey{Name: o.ledger}.Bytes()
@@ -44,6 +44,10 @@ func buildPerOrderCoverage(o benchOrder, orderIdx int) *Coverage {
 			AccountKey: domain.AccountKey{LedgerName: o.ledger, Account: src},
 			Asset:      "USD/2",
 		}.Bytes())
+		if incarnations {
+			c.Add(dal.SubAttrAccountIncarnation, (domain.AccountKey{LedgerName: o.ledger, Account: src}).Bytes())
+			c.Add(dal.SubAttrAccountIncarnation, (domain.AccountKey{LedgerName: o.ledger, Account: dst}).Bytes())
+		}
 		c.Add(dal.SubAttrVolume, domain.VolumeKey{
 			AccountKey: domain.AccountKey{LedgerName: o.ledger, Account: dst},
 			Asset:      "USD/2",
@@ -59,7 +63,7 @@ func buildPerOrderCoverage(o benchOrder, orderIdx int) *Coverage {
 //
 // It avoids proto marshalling and Raft altogether; the point is to measure
 // the allocation cost of the coverage construction path in isolation.
-func benchmarkPipeline(b *testing.B, orders int, postingsPerOrder int) {
+func benchmarkPipeline(b *testing.B, orders int, postingsPerOrder int, incarnations, coldIncarnations bool) {
 	b.Helper()
 
 	logger := logging.FromContext(logging.TestingContext())
@@ -110,6 +114,20 @@ func benchmarkPipeline(b *testing.B, orders int, postingsPerOrder int) {
 					Asset:      "USD/2",
 				}.Bytes())
 				c.Volumes.Put(id, attributes.Entry[*raftcmdpb.VolumePair]{Data: &raftcmdpb.VolumePair{}})
+				if incarnations {
+					accountID, _ := attributes.MakeKey((domain.AccountKey{LedgerName: spec.ledger, Account: acct}).Bytes())
+					if !coldIncarnations {
+						c.AccountIncarnations.Put(accountID, attributes.Entry[*commonpb.AccountIncarnation]{Data: &commonpb.AccountIncarnation{}})
+					} else {
+						batch := store.OpenWriteSession()
+						if _, err := attrs.AccountIncarnation.Set(batch, (domain.AccountKey{LedgerName: spec.ledger, Account: acct}).Bytes(), &commonpb.AccountIncarnation{}); err != nil {
+							b.Fatal(err)
+						}
+						if err := batch.Commit(); err != nil {
+							b.Fatal(err)
+						}
+					}
+				}
 			}
 		}
 	}
@@ -117,12 +135,12 @@ func benchmarkPipeline(b *testing.B, orders int, postingsPerOrder int) {
 	b.ResetTimer()
 	b.ReportAllocs()
 
-	for range b.N {
+	for b.Loop() {
 		// Step 1: extractPreloadNeeds-equivalent — per-order Coverage +
 		// aggregate.
 		aggregate := NewCoverage()
 		for orderIdx, spec := range specs {
-			c := buildPerOrderCoverage(spec, orderIdx)
+			c := buildPerOrderCoverage(spec, orderIdx, incarnations)
 
 			ops[orderIdx] = WriteOperation{
 				Coverage: c,
@@ -148,13 +166,33 @@ func benchmarkPipeline(b *testing.B, orders int, postingsPerOrder int) {
 }
 
 func BenchmarkAdmissionCoverage_10Orders_1Posting(b *testing.B) {
-	benchmarkPipeline(b, 10, 1)
+	benchmarkPipeline(b, 10, 1, false, false)
 }
 
 func BenchmarkAdmissionCoverage_50Orders_2Postings(b *testing.B) {
-	benchmarkPipeline(b, 50, 2)
+	benchmarkPipeline(b, 50, 2, false, false)
 }
 
 func BenchmarkAdmissionCoverage_100Orders_5Postings(b *testing.B) {
-	benchmarkPipeline(b, 100, 5)
+	benchmarkPipeline(b, 100, 5, false, false)
+}
+
+func BenchmarkAdmissionCoverageWithIncarnations_10Orders_1Posting(b *testing.B) {
+	benchmarkPipeline(b, 10, 1, true, false)
+}
+
+func BenchmarkAdmissionCoverageWithIncarnations_50Orders_2Postings(b *testing.B) {
+	benchmarkPipeline(b, 50, 2, true, false)
+}
+
+func BenchmarkAdmissionCoverageWithIncarnations_100Orders_5Postings(b *testing.B) {
+	benchmarkPipeline(b, 100, 5, true, false)
+}
+
+func BenchmarkAdmissionCoverageWithColdIncarnations_10Orders_1Posting(b *testing.B) {
+	benchmarkPipeline(b, 10, 1, true, true)
+}
+
+func BenchmarkAdmissionCoverageWithColdIncarnations_50Orders_2Postings(b *testing.B) {
+	benchmarkPipeline(b, 50, 2, true, true)
 }

@@ -186,5 +186,13 @@ func buildAttrResolvers(
 			getValue: attrs.Index.Get,
 			bloom:    filter(dal.SubAttrIndex),
 		},
+		dal.SubAttrAccountIncarnation: &protoAttrResolver[*commonpb.AccountIncarnation]{
+			attrCode: dal.SubAttrAccountIncarnation,
+			typeName: "account_incarnations",
+			cache:    c.AccountIncarnations,
+			loader:   loaders.AccountIncarnations,
+			getValue: attrs.AccountIncarnation.Get,
+			bloom:    filter(dal.SubAttrAccountIncarnation),
+		},
 	}
 }

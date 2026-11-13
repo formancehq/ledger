@@ -1,0 +1,16 @@
+syntax = "proto3";
+
+package common;
+
+option go_package = "github.com/formancehq/ledger/v3/internal/proto/commonpb";
+
+import "common.proto";
+
+// Current lifetime of a normal account address. It opens on the first
+// account-state write and records the latest accepted account-state write.
+// Closure is left to a later change.
+message AccountIncarnation {
+  AccountTypePersistence persistence = 1;
+  Timestamp inserted_at = 2;
+  Timestamp updated_at = 3;
+}
