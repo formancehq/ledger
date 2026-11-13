@@ -2336,6 +2336,36 @@ func buildAuditItem(t *testing.T, logSeq uint64, order *raftcmdpb.Order) *auditp
 // chain-bound order MUST be flagged. Log sequences are proposal-global,
 // so exactly one chain-bound order sits at each seq — a projection at
 // a different ledger identifies the tampering directly.
+func TestExecuteNumscriptReferenceClaimRequiresCreatedTransaction(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name    string
+		created bool
+	}{{"created", true}, {"metadata_only", false}} {
+		t.Run(tc.name, func(t *testing.T) {
+			cb := newChainBoundState()
+			order := &raftcmdpb.Order{Type: &raftcmdpb.Order_LedgerScoped{LedgerScoped: &raftcmdpb.LedgerScopedOrder{
+				Ledger: "L", Payload: &raftcmdpb.LedgerScopedOrder_Apply{Apply: &raftcmdpb.LedgerApplyOrder{
+					Data: &raftcmdpb.LedgerApplyOrder_ExecuteNumscript{ExecuteNumscript: &raftcmdpb.ExecuteNumscriptOrder{Reference: "r"}},
+				}},
+			}}}
+			item := buildAuditItem(t, 10, order)
+			var payload *commonpb.LedgerLogPayload
+			if tc.created {
+				payload = &commonpb.LedgerLogPayload{Payload: &commonpb.LedgerLogPayload_CreatedTransaction{CreatedTransaction: &commonpb.CreatedTransaction{Transaction: &commonpb.Transaction{Id: 1, Reference: "r"}}}}
+			} else {
+				payload = &commonpb.LedgerLogPayload{Payload: &commonpb.LedgerLogPayload_AccountMetadataUpdated{AccountMetadataUpdated: &commonpb.AccountMetadataUpdated{}}}
+			}
+			reconcileMetadataOnlyChainBound([]*auditpb.AuditItem{item}, []*raftcmdpb.Order{order}, []*commonpb.Log{applyLog(10, payload)}, cb)
+			if tc.created {
+				require.Equal(t, uint64(10), cb.references["L"]["r"])
+			} else {
+				require.Empty(t, cb.references["L"])
+			}
+		})
+	}
+}
+
 func TestVerifySkippedOrder_LedgerMismatchAcrossReasons(t *testing.T) {
 	t.Parallel()
 
