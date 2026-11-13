@@ -1471,7 +1471,7 @@ func membershipRefreshHook(cfg Config, membership *raftmembership.Membership, lo
 			logger.WithFields(map[string]any{
 				"nodeID":         cfg.RaftConfig.NodeID,
 				"raftAddress":    cfg.RaftConfig.AdvertiseAddr,
-				"serviceAddress": cfg.ServiceAdvertiseAddr(),
+				"serviceAddress": cfg.PeerServiceAdvertiseAddr(),
 			}).Infof("Restart mode: refreshing membership capabilities")
 
 			// Perform one bounded synchronous attempt before the node starts serving. A
@@ -1762,7 +1762,7 @@ func tryRefreshMembershipOnce(ctx context.Context, cfg Config, tlsCfg TLSConfig,
 	req := &clusterbootstrappb.RefreshMembershipRequest{
 		NodeId:         cfg.RaftConfig.NodeID,
 		RaftAddress:    cfg.RaftConfig.AdvertiseAddr,
-		ServiceAddress: cfg.ServiceAdvertiseAddr(),
+		ServiceAddress: cfg.PeerServiceAdvertiseAddr(),
 		InstanceId:     instanceID,
 		Capabilities:   capabilities.IDsAsUint32(capabilities.SupportedIDs()),
 	}
