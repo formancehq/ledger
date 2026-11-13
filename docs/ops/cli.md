@@ -4327,7 +4327,6 @@ Tune the Pebble (LSM-tree) storage engine. Size flags accept Kubernetes-style qu
 | `--pebble-wal-bytes-per-sync` | ByteSize | `1Mi` | WAL bytes written before sync |
 | `--pebble-max-concurrent-compactions` | int | `2` | Maximum concurrent compactions |
 | `--pebble-wal-min-sync-interval` | duration | `0` | Minimum interval between WAL syncs (0 = immediate) |
-| `--pebble-disable-wal` | bool | `false` | Disable WAL entirely (WARNING: risks data loss) |
 | `--pebble-max-checkpoints` | int | `10` | Maximum number of Pebble checkpoints to keep |
 | `--pebble-wal-failover-dir` | string | _(empty)_ | Secondary WAL directory for automatic failover on primary disk latency spikes. Set to a path on a different volume for best results. |
 | `--pebble-compression` | string | `fastest,...,fast,fast,balanced` | Per-level compression L0-L6, comma-separated (`none\|snappy\|zstd\|fastest\|fast\|balanced\|good\|default`) |

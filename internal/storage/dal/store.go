@@ -431,6 +431,16 @@ func NewStore(
 	meter metric.Meter,
 	cfg Config,
 ) (*Store, error) {
+	return newStore(dataDir, logger, meter, cfg, false)
+}
+
+// NewEphemeralStore opens a disposable store without a WAL. It must not be
+// used for Raft-backed state, where peer membership needs durable writes.
+func NewEphemeralStore(dataDir string, logger logging.Logger, meter metric.Meter, cfg Config) (*Store, error) {
+	return newStore(dataDir, logger, meter, cfg, true)
+}
+
+func newStore(dataDir string, logger logging.Logger, meter metric.Meter, cfg Config, disableWAL bool) (*Store, error) {
 	stallState := NewWriteStallState()
 	pebbleLogger := NewPebbleLogger(logger)
 
@@ -465,7 +475,7 @@ func NewStore(
 
 		// 6) WAL configuration
 		WALMinSyncInterval: func() time.Duration { return cfg.WALMinSyncInterval },
-		DisableWAL:         cfg.DisableWAL,
+		DisableWAL:         disableWAL,
 	}
 
 	// 7) WAL failover: automatically switch WAL writes to a secondary directory

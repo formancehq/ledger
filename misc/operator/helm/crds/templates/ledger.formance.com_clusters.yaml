@@ -2364,9 +2364,6 @@ spec:
                       Compression is the per-level compression algorithm (L0-L6, comma-separated).
                       Options: none, snappy, zstd, fastest, fast, balanced, good, default.
                     type: string
-                  disableWAL:
-                    description: DisableWAL disables WAL entirely.
-                    type: boolean
                   incrementalCompactThreshold:
                     description: |-
                       IncrementalCompactThreshold is the number of new log entries before
@@ -3129,9 +3126,6 @@ spec:
                           Compression is the per-level compression algorithm (L0-L6, comma-separated).
                           Options: none, snappy, zstd, fastest, fast, balanced, good, default.
                         type: string
-                      disableWAL:
-                        description: DisableWAL disables WAL entirely.
-                        type: boolean
                       incrementalCompactThreshold:
                         description: |-
                           IncrementalCompactThreshold is the number of new log entries before

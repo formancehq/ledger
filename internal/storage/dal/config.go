@@ -57,11 +57,6 @@ type Config struct {
 	// Default: 0 (immediate sync)
 	WALMinSyncInterval time.Duration `yaml:"walMinSyncInterval"`
 
-	// DisableWAL disables the write-ahead log entirely.
-	// WARNING: This risks data loss on crash. Only use for testing or ephemeral data.
-	// Default: false
-	DisableWAL bool `yaml:"disableWAL"`
-
 	// MaxCheckpoints is the maximum number of checkpoints to keep.
 	// Older checkpoints beyond this limit are deleted during snapshot creation.
 	// Default: 10
@@ -102,7 +97,6 @@ func DefaultConfig() Config {
 		},
 		WALBytesPerSync:    1 << 20, // 1MB
 		WALMinSyncInterval: 0,       // immediate sync
-		DisableWAL:         false,
 		MaxCheckpoints:     10,
 		ValueSeparation: ValueSeparationConfig{
 			Enabled:               false,

@@ -116,11 +116,15 @@ func (p *PeerStore) Put(nodeID uint64, raftAddr, serviceAddr string, instanceID 
 		return fmt.Errorf("writing peer %d: %w", nodeID, err)
 	}
 
-	return session.Commit()
+	// Initial peers must reach stable storage before NewNode makes their
+	// ConfState durable in the WAL. A failed later startup hook can terminate
+	// the process without closing Pebble.
+	return session.CommitSync()
 }
 
-// Delete removes the entry for the given NodeID. Called from the ConfChange
-// apply path on RemoveNode.
+// Delete removes the entry for the given NodeID. Called during startup
+// reconciliation against the durable ConfState; ConfChange apply uses its
+// caller-owned WriteSession instead.
 func (p *PeerStore) Delete(nodeID uint64) error {
 	session := p.store.OpenWriteSession()
 	if err := session.DeleteKey(peerKey(nodeID)); err != nil {
@@ -129,7 +133,8 @@ func (p *PeerStore) Delete(nodeID uint64) error {
 		return fmt.Errorf("deleting peer %d: %w", nodeID, err)
 	}
 
-	return session.Commit()
+	// An explicit lifecycle removal has no committed Raft entry to replay.
+	return session.CommitSync()
 }
 
 // DeleteInSession removes the entry for the given NodeID using the caller's
