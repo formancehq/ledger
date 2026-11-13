@@ -81,8 +81,8 @@ Every component that emits a proposal declares its own `Coverage`, next to the c
 
 | Producer | Where it builds `Coverage` |
 |----------|----------------------------|
-| Admission | `extractPreloadNeeds`, `extractLedgerScopedNeeds`, `extractSystemScopedNeeds`, `addTransactionTargetNeeds`, `resolveScriptsAndEnrichNeeds` — `internal/application/admission/admission.go` |
-| Mirror worker | `extractMirrorNeeds` — `internal/application/mirror/worker.go` |
+| Admission | `extractPreloadNeeds`, `extractLedgerScopedNeeds`, `extractSystemScopedNeeds`, `addTransactionTargetNeeds`, `resolveScriptsAndEnrichNeeds` — `internal/application/admission/admission.go`; `MirrorIngest` payload needs use `internal/application/coverage/mirror_ingest.go` |
+| Mirror worker | `extractMirrorNeeds` — `internal/application/mirror/worker.go`; the same `MirrorIngest` payload helper is used, while the worker declares its own `MirrorSync` technical-update needs |
 | Events emitter | `internal/application/events/emitter.go` — empty `Coverage` |
 | Backup proposer | `internal/bootstrap/backup_proposer.go` |
 | Cluster-config reconciler | `proposeClusterConfigIfNeeded` — `internal/bootstrap/module.go` — empty `Coverage` |
