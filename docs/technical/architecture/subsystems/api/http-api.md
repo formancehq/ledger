@@ -587,7 +587,7 @@ its error returns as `SerializableError`. `UncommittedFailure` returns before
 `buildAuditFailure` and before the idempotency outcome is frozen. A separate
 `PublicFailureFacts()` implementation may provide a
 public code and facts without admitting the error to the audit chain. This is
-used for admission and read failures such as plan-size and aggregate overflow.
+used for admission and read failures such as plan size.
 The FSM can also reject a committed proposal before audit capture for
 maintenance mode or malformed caller attribution. Maintenance mode remains a
 public operational error; malformed caller attribution is internal-only and

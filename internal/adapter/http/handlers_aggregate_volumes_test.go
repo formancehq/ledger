@@ -4,6 +4,7 @@ import (
 	"context"
 	stdjson "encoding/json"
 	"errors"
+	"math/big"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -54,8 +55,8 @@ func TestHandleAggregateVolumes_Success(t *testing.T) {
 				Volumes: []*commonpb.AggregatedVolume{
 					{
 						Asset:  "USD/2",
-						Input:  commonpb.NewUint256FromUint64(1000),
-						Output: commonpb.NewUint256FromUint64(400),
+						Input:  commonpb.NewBigUintFromUint64(1000),
+						Output: commonpb.NewBigUintFromUint64(400),
 					},
 				},
 			}, nil
@@ -127,8 +128,8 @@ func TestHandleAggregateVolumes_WithGroups(t *testing.T) {
 						Volumes: []*commonpb.AggregatedVolume{
 							{
 								Asset:  "EUR/2",
-								Input:  commonpb.NewUint256FromUint64(500),
-								Output: commonpb.NewUint256FromUint64(200),
+								Input:  commonpb.NewBigUintFromUint64(500),
+								Output: commonpb.NewBigUintFromUint64(200),
 							},
 						},
 					},
@@ -242,8 +243,8 @@ func TestHandleAggregateVolumes_FullRouteIntegration(t *testing.T) {
 				Volumes: []*commonpb.AggregatedVolume{
 					{
 						Asset:  "USD/2",
-						Input:  commonpb.NewUint256FromUint64(100),
-						Output: commonpb.NewUint256FromUint64(50),
+						Input:  commonpb.NewBigUintFromUint64(100),
+						Output: commonpb.NewBigUintFromUint64(50),
 					},
 				},
 			}, nil
@@ -277,8 +278,8 @@ func TestHandleAggregateVolumes_EmitsColorAlways(t *testing.T) {
 					{
 						Asset:  "USD/2",
 						Color:  "", // uncolored / collapsed bucket
-						Input:  commonpb.NewUint256FromUint64(100),
-						Output: commonpb.NewUint256FromUint64(30),
+						Input:  commonpb.NewBigUintFromUint64(100),
+						Output: commonpb.NewBigUintFromUint64(30),
 					},
 				},
 			}, nil
@@ -409,9 +410,10 @@ func TestHandleAggregateVolumes_FilterInvalidForTarget(t *testing.T) {
 
 func TestAggregateVolumesMonetaryOptions(t *testing.T) {
 	t.Parallel()
-	value := &commonpb.AggregatedVolume{Asset: "USD", Color: "red", Input: commonpb.NewUint256FromUint64(9007199254740993), Output: commonpb.NewUint256FromUint64(9007199254740994)}
+	value := &commonpb.AggregatedVolume{Asset: "USD", Color: "red", Input: commonpb.NewBigUintFromUint64(9007199254740993), Output: commonpb.NewBigUintFromUint64(9007199254740994)}
 	result := &commonpb.AggregateResult{Volumes: []*commonpb.AggregatedVolume{value}, Groups: []*commonpb.GroupedAggregateResult{{Prefix: "users:", Volumes: []*commonpb.AggregatedVolume{value}}}}
-	dto := toAggregateVolumesJSON(result)
+	dto, err := toAggregateVolumesJSON(result)
+	require.NoError(t, err)
 	numeric, err := json.MarshalWithOptions(dto, commonpb.BigIntegersAsNumbers())
 	require.NoError(t, err)
 	require.Equal(t, `{"volumes":[{"asset":"USD","color":"red","input":9007199254740993,"output":9007199254740994,"balance":-1}],"groups":[{"prefix":"users:","volumes":[{"asset":"USD","color":"red","input":9007199254740993,"output":9007199254740994,"balance":-1}]}]}`, string(numeric))
@@ -429,7 +431,7 @@ func TestHandleAggregateVolumesMonetaryHeader(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			backend := NewMockBackend(gomock.NewController(t))
-			volume := &commonpb.AggregatedVolume{Asset: "USD", Input: commonpb.NewUint256FromUint64(9007199254740993), Output: commonpb.NewUint256FromUint64(9007199254740994)}
+			volume := &commonpb.AggregatedVolume{Asset: "USD", Input: commonpb.NewBigUintFromUint64(9007199254740993), Output: commonpb.NewBigUintFromUint64(9007199254740994)}
 			backend.EXPECT().AggregateVolumes(gomock.Any(), "ledger", gomock.Any(), gomock.Any()).Return(&commonpb.AggregateResult{Groups: []*commonpb.GroupedAggregateResult{{Prefix: "world", Volumes: []*commonpb.AggregatedVolume{volume}}}}, nil)
 			srv := newTestServer(t, backend)
 			request := newRequest(t, http.MethodGet, "/ledger/volumes", nil, map[string]string{"ledgerName": "ledger"})
@@ -442,4 +444,34 @@ func TestHandleAggregateVolumesMonetaryHeader(t *testing.T) {
 			require.Equal(t, `{"data":{"volumes":[],"groups":[{"prefix":"world","volumes":[{"asset":"USD","color":"",`+tc.amounts+`}]}]}}`+"\n", response.Body.String())
 		})
 	}
+}
+
+func TestHandleAggregateVolumes_TotalsAbove2Pow256(t *testing.T) {
+	t.Parallel()
+
+	above := new(big.Int).Lsh(big.NewInt(1), 257)
+	input, err := commonpb.NewBigUint(above)
+	require.NoError(t, err)
+
+	backend := NewMockBackend(gomock.NewController(t))
+	backend.EXPECT().AggregateVolumes(gomock.Any(), "my-ledger", gomock.Any(), gomock.Any()).DoAndReturn(
+		func(_ context.Context, _ string, _ *commonpb.QueryFilter, opts query.AggregateOptions) (*commonpb.AggregateResult, error) {
+			return &commonpb.AggregateResult{Volumes: []*commonpb.AggregatedVolume{{
+				Asset:  "USD/2",
+				Input:  input,
+				Output: commonpb.NewBigUintFromUint64(3),
+			}}}, nil
+		})
+	srv := newTestServer(t, backend)
+
+	w := httptest.NewRecorder()
+	r := newRequest(t, http.MethodGet, "/my-ledger/volumes", nil, map[string]string{"ledgerName": "my-ledger"})
+	srv.handleAggregateVolumes(w, r)
+
+	require.Equal(t, http.StatusOK, w.Code)
+	resp := decodeResponse[BaseResponse[aggregateVolumesWireJSON]](t, w).Data
+	require.Len(t, resp.Volumes, 1)
+	require.Equal(t, above.String(), string(resp.Volumes[0].Input))
+	require.Equal(t, "3", string(resp.Volumes[0].Output))
+	require.Equal(t, new(big.Int).Sub(above, big.NewInt(3)).String(), string(resp.Volumes[0].Balance))
 }

@@ -7,38 +7,6 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
 
-// ErrAggregateOverflow signals that summing colored or precision-rescaled
-// buckets in the read-side aggregator exceeded the 2^256 uint256 ceiling.
-// The FSM already rejects per-bucket overflow on write (#321); this guards
-// the aggregator with the same discipline since collapseColors and
-// use_max_precision can sum many buckets together.
-//
-// This is a query-only outcome — it is produced by the read-side aggregator
-// (aggregate.go), never emitted by the FSM apply path — so it lives in the
-// query layer, not in internal/domain (which is reserved for FSM-generated
-// business outcomes). The reason is a shipped wire identifier clients match
-// on, and stage/side are client-facing context in gRPC ErrorInfo. They have no
-// audited FailureDetails representation.
-type ErrAggregateOverflow struct {
-	Stage string // "accumulate", "collapse-colors", "max-precision-merge" or "max-precision-rescale"
-	Side  string // "input" or "output"
-}
-
-func (e *ErrAggregateOverflow) Error() string {
-	return fmt.Sprintf("aggregate volume %s overflowed 2^256 during %s", e.Side, e.Stage)
-}
-func (*ErrAggregateOverflow) Kind() domain.ErrorKind { return domain.KindPrecondition }
-func (*ErrAggregateOverflow) Reason() string         { return domain.ErrReasonAggregateOverflow }
-func (e *ErrAggregateOverflow) PublicFailureFacts() domain.FailureFacts {
-	return domain.NewFailureFacts(domain.ErrReasonAggregateOverflow, domain.ErrReasonAggregateOverflow,
-		map[string]string{"stage": e.Stage, "side": e.Side})
-}
-
-// Compile-time assertion that ErrAggregateOverflow keeps the full contract, so
-// it goes on flowing through the shared error edge (gRPC/HTTP mapping) with its
-// reason and structured context intact.
-var _ domain.Describable = (*ErrAggregateOverflow)(nil)
-
 // The two errors below reject a malformed ExecutePreparedQuery request. They
 // implement domain.Classifiable and nothing more, which is the whole point:
 // the adapters need a kind to pick a status code, and neither failure needs a

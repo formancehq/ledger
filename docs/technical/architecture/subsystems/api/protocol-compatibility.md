@@ -142,7 +142,7 @@ server-specific compatibility repair.
 HTTP consumers do not send this gRPC metadata. Internal forwarding from HTTP
 uses the server's service client and is subject to the same gate at the peer.
 Nodes with different service revisions can therefore fail forwarded requests;
-the revision-40 wire contract alone does not prove a rolling upgrade safe.
+a matching revision alone does not prove a rolling upgrade safe.
 Releases that permit rolling must preserve peer communication, Raft apply and
 persisted-state compatibility while old and new servers coexist. RC.3 to RC.4
 requires a full stop, with no mixed-binary window and preserved data.
@@ -749,6 +749,27 @@ policy retry the request. A measured disk block still returns
 block retains its existing response. Admission checks the gate before proposing
 an order, so a retry after `Unavailable` cannot duplicate a committed write.
 This status change requires revision 40 clients and servers together.
+
+## Exact aggregate totals (wire exception at revision 40)
+
+EN-3332 changes `AggregatedVolume.input` (2) and `output` (3) from `Uint256` to
+`BigUint`, so `AggregateVolumes` and prepared-query `AGGREGATE_VOLUMES` serve
+exact totals. A total of buckets that each fit in 256 bits, across accounts,
+colors, prefixes or rescaled precisions, may exceed 2^256. The
+`AGGREGATE_OVERFLOW` reason (60) is removed and reserved.
+
+This is a [wire exception](#wire-exceptions): the revision stays at 40.
+
+- A client built before RC.5 passes the revision check and misdecodes the two
+  fields: it fails to decode the response or reads the totals as zero. Clients
+  that read aggregate volumes must upgrade with the servers. Every other RPC
+  keeps working, which a revision bump would not allow.
+- A node misdecodes an aggregate forwarded by a peer on the other side of the
+  change in the same way, so RC.5 is a mandatory stopped upgrade from RC.4
+  (see [server upgrades](../../../../ops/upgrades.md#exact-aggregate-totals)).
+
+HTTP responses keep their JSON shape and no longer fail with
+`AGGREGATE_OVERFLOW`. No persisted, Raft, snapshot or audit format changes.
 
 ## Capped index inspection page size
 

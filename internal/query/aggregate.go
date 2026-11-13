@@ -2,6 +2,7 @@ package query
 
 import (
 	"fmt"
+	"math/big"
 	"sort"
 	"strings"
 
@@ -24,10 +25,44 @@ type assetKey struct {
 	color     string
 }
 
+// wideSum is an exact running total: wraps counts how many times low
+// overflowed 2^256, so the value is wraps·2^256 + low.
+type wideSum struct {
+	low   uint256.Int
+	wraps uint64
+}
+
+func (s *wideSum) add(v *uint256.Int) {
+	if _, overflow := s.low.AddOverflow(&s.low, v); overflow {
+		s.wraps++
+	}
+}
+
+func (s *wideSum) toBig() *big.Int {
+	total := new(big.Int).SetUint64(s.wraps)
+	total.Lsh(total, 256)
+
+	return total.Add(total, s.low.ToBig())
+}
+
 // aggregatedVol accumulates input/output volumes for a single bucket.
 type aggregatedVol struct {
-	input  *uint256.Int
-	output *uint256.Int
+	input  wideSum
+	output wideSum
+}
+
+type exactVol struct {
+	input  *big.Int
+	output *big.Int
+}
+
+func newExactVol() *exactVol {
+	return &exactVol{input: new(big.Int), output: new(big.Int)}
+}
+
+func (v *exactVol) add(other *exactVol) {
+	v.input.Add(v.input, other.input)
+	v.output.Add(v.output, other.output)
 }
 
 // volumeAggregator collects volume entries and builds the final result.
@@ -37,11 +72,11 @@ type volumeAggregator struct {
 	collapseColors  bool
 }
 
-func newVolumeAggregator(useMaxPrecision, collapseColors bool) *volumeAggregator {
+func newVolumeAggregator(opts AggregateOptions) *volumeAggregator {
 	return &volumeAggregator{
 		byAsset:         make(map[assetKey]*aggregatedVol),
-		useMaxPrecision: useMaxPrecision,
-		collapseColors:  collapseColors,
+		useMaxPrecision: opts.UseMaxPrecision,
+		collapseColors:  opts.CollapseColors,
 	}
 }
 
@@ -53,207 +88,130 @@ func (va *volumeAggregator) accumulate(entry attributes.ComputedEntry[*raftcmdpb
 		return fmt.Errorf("unmarshaling volume key: %w", err)
 	}
 
-	return va.accumulateAsset(vk.AssetBase, vk.AssetPrecision, vk.Color, entry.Value)
-}
-
-func (va *volumeAggregator) accumulateAsset(base string, precision uint8, color string, value *raftcmdpb.VolumePair) error {
-	key := assetKey{base: base, precision: precision, color: color}
-
-	agg, ok := va.byAsset[key]
-	if !ok {
-		agg = &aggregatedVol{
-			input:  new(uint256.Int),
-			output: new(uint256.Int),
-		}
-		va.byAsset[key] = agg
-	}
-
-	if value != nil {
-		var tmp uint256.Int
-		if value.GetInput() != nil {
-			value.GetInput().IntoUint256(&tmp)
-			if _, overflow := agg.input.AddOverflow(agg.input, &tmp); overflow {
-				return &ErrAggregateOverflow{Stage: "accumulate", Side: "input"}
-			}
-		}
-
-		if value.GetOutput() != nil {
-			value.GetOutput().IntoUint256(&tmp)
-			if _, overflow := agg.output.AddOverflow(agg.output, &tmp); overflow {
-				return &ErrAggregateOverflow{Stage: "accumulate", Side: "output"}
-			}
-		}
-	}
+	va.accumulateAsset(vk.AssetBase, vk.AssetPrecision, vk.Color, entry.Value)
 
 	return nil
 }
 
-// pow10 returns 10^exp as a uint256.Int and reports whether the exact result
-// exceeds uint256.
-func pow10(exp uint8) (*uint256.Int, bool) {
-	result := uint256.NewInt(1)
-	ten := uint256.NewInt(10)
+func (va *volumeAggregator) accumulateAsset(base string, precision uint8, color string, value *raftcmdpb.VolumePair) {
+	key := assetKey{base: base, precision: precision, color: color}
 
-	for range exp {
-		if _, overflow := result.MulOverflow(result, ten); overflow {
-			return nil, true
-		}
+	agg, ok := va.byAsset[key]
+	if !ok {
+		agg = &aggregatedVol{}
+		va.byAsset[key] = agg
 	}
 
-	return result, false
+	if value == nil {
+		return
+	}
+
+	var tmp uint256.Int
+	if value.GetInput() != nil {
+		value.GetInput().IntoUint256(&tmp)
+		agg.input.add(&tmp)
+	}
+
+	if value.GetOutput() != nil {
+		value.GetOutput().IntoUint256(&tmp)
+		agg.output.add(&tmp)
+	}
 }
 
 func (va *volumeAggregator) result() (*commonpb.AggregateResult, error) {
-	if va.useMaxPrecision {
-		return va.resultWithMaxPrecision()
+	buckets := make(map[assetKey]*exactVol, len(va.byAsset))
+	for key, agg := range va.byAsset {
+		buckets[key] = &exactVol{input: agg.input.toBig(), output: agg.output.toBig()}
 	}
 
-	buckets := va.byAsset
+	if va.useMaxPrecision {
+		buckets = mergeAtMaxPrecision(buckets)
+	}
+
 	if va.collapseColors {
-		var err error
-		buckets, err = collapseColorBuckets(buckets)
-		if err != nil {
-			return nil, err
-		}
+		buckets = collapseColorBuckets(buckets)
 	}
 
 	volumes := make([]*commonpb.AggregatedVolume, 0, len(buckets))
-	for key, agg := range buckets {
+	for key, vol := range buckets {
+		input, err := commonpb.NewBigUint(vol.input)
+		if err != nil {
+			return nil, fmt.Errorf("encoding aggregate input: %w", err)
+		}
+		output, err := commonpb.NewBigUint(vol.output)
+		if err != nil {
+			return nil, fmt.Errorf("encoding aggregate output: %w", err)
+		}
+
 		volumes = append(volumes, &commonpb.AggregatedVolume{
 			Asset:  domain.FormatAsset(key.base, key.precision),
 			Color:  key.color,
-			Input:  commonpb.NewUint256(agg.input),
-			Output: commonpb.NewUint256(agg.output),
+			Input:  input,
+			Output: output,
 		})
 	}
 
-	sortAggregatedVolumes(volumes)
+	sort.Slice(volumes, func(i, j int) bool {
+		return commonpb.LessByAssetColor(volumes[i], volumes[j])
+	})
 
 	return &commonpb.AggregateResult{Volumes: volumes}, nil
 }
 
 // collapseColorBuckets sums all color buckets of the same (base, precision)
 // into the empty-color bucket, returning a new map. Used when the caller
-// explicitly requests collapse_colors. Overflow on the cross-color sum
-// surfaces ErrAggregateOverflow rather than silently wrapping (the FSM
-// already rejects per-bucket overflow on write, #321).
-func collapseColorBuckets(in map[assetKey]*aggregatedVol) (map[assetKey]*aggregatedVol, error) {
-	out := make(map[assetKey]*aggregatedVol, len(in))
-	for key, agg := range in {
+// explicitly requests collapse_colors.
+func collapseColorBuckets(in map[assetKey]*exactVol) map[assetKey]*exactVol {
+	out := make(map[assetKey]*exactVol, len(in))
+	for key, vol := range in {
 		k := assetKey{base: key.base, precision: key.precision}
 		merged, ok := out[k]
 		if !ok {
-			merged = &aggregatedVol{
-				input:  new(uint256.Int),
-				output: new(uint256.Int),
-			}
+			merged = newExactVol()
 			out[k] = merged
 		}
-		if _, overflow := merged.input.AddOverflow(merged.input, agg.input); overflow {
-			return nil, &ErrAggregateOverflow{Stage: "collapse-colors", Side: "input"}
-		}
-		if _, overflow := merged.output.AddOverflow(merged.output, agg.output); overflow {
-			return nil, &ErrAggregateOverflow{Stage: "collapse-colors", Side: "output"}
-		}
+		merged.add(vol)
 	}
 
-	return out, nil
+	return out
 }
 
-func sortAggregatedVolumes(volumes []*commonpb.AggregatedVolume) {
-	sort.Slice(volumes, func(i, j int) bool {
-		return commonpb.LessByAssetColor(volumes[i], volumes[j])
-	})
-}
-
-// resultWithMaxPrecision merges assets sharing the same base under the highest
+// mergeAtMaxPrecision merges buckets sharing the same base under the highest
 // precision observed, rescaling lower-precision amounts. Color is preserved as
-// part of the bucket key (and optionally collapsed afterwards).
-func (va *volumeAggregator) resultWithMaxPrecision() (*commonpb.AggregateResult, error) {
-	// First pass: find max precision per asset base.
+// part of the bucket key.
+func mergeAtMaxPrecision(in map[assetKey]*exactVol) map[assetKey]*exactVol {
 	maxPrec := make(map[string]uint8)
-	for key := range va.byAsset {
+	for key := range in {
 		if key.precision > maxPrec[key.base] {
 			maxPrec[key.base] = key.precision
 		}
 	}
 
-	// Second pass: rescale and merge under target precision, keeping color.
-	merged := make(map[assetKey]*aggregatedVol)
-
-	for key, agg := range va.byAsset {
+	out := make(map[assetKey]*exactVol, len(in))
+	for key, vol := range in {
 		target := maxPrec[key.base]
 		mergedKey := assetKey{base: key.base, precision: target, color: key.color}
 
-		m, ok := merged[mergedKey]
+		merged, ok := out[mergedKey]
 		if !ok {
-			m = &aggregatedVol{
-				input:  new(uint256.Int),
-				output: new(uint256.Int),
-			}
-			merged[mergedKey] = m
+			merged = newExactVol()
+			out[mergedKey] = merged
 		}
 
 		if key.precision == target {
-			if _, overflow := m.input.AddOverflow(m.input, agg.input); overflow {
-				return nil, &ErrAggregateOverflow{Stage: "max-precision-merge", Side: "input"}
-			}
-			if _, overflow := m.output.AddOverflow(m.output, agg.output); overflow {
-				return nil, &ErrAggregateOverflow{Stage: "max-precision-merge", Side: "output"}
-			}
-		} else {
-			if agg.input.IsZero() && agg.output.IsZero() {
-				continue
-			}
+			merged.add(vol)
 
-			factor, overflow := pow10(target - key.precision)
-			if overflow {
-				side := "input"
-				if agg.input.IsZero() {
-					side = "output"
-				}
-
-				return nil, &ErrAggregateOverflow{Stage: "max-precision-rescale", Side: side}
-			}
-
-			var scaled uint256.Int
-			if _, overflow := scaled.MulOverflow(agg.input, factor); overflow {
-				return nil, &ErrAggregateOverflow{Stage: "max-precision-rescale", Side: "input"}
-			}
-			if _, overflow := m.input.AddOverflow(m.input, &scaled); overflow {
-				return nil, &ErrAggregateOverflow{Stage: "max-precision-rescale", Side: "input"}
-			}
-
-			if _, overflow := scaled.MulOverflow(agg.output, factor); overflow {
-				return nil, &ErrAggregateOverflow{Stage: "max-precision-rescale", Side: "output"}
-			}
-			if _, overflow := m.output.AddOverflow(m.output, &scaled); overflow {
-				return nil, &ErrAggregateOverflow{Stage: "max-precision-rescale", Side: "output"}
-			}
+			continue
 		}
-	}
 
-	if va.collapseColors {
-		var err error
-		merged, err = collapseColorBuckets(merged)
-		if err != nil {
-			return nil, err
-		}
-	}
-
-	volumes := make([]*commonpb.AggregatedVolume, 0, len(merged))
-	for key, agg := range merged {
-		volumes = append(volumes, &commonpb.AggregatedVolume{
-			Asset:  domain.FormatAsset(key.base, key.precision),
-			Color:  key.color,
-			Input:  commonpb.NewUint256(agg.input),
-			Output: commonpb.NewUint256(agg.output),
+		factor := new(big.Int).Exp(big.NewInt(10), big.NewInt(int64(target-key.precision)), nil)
+		merged.add(&exactVol{
+			input:  new(big.Int).Mul(vol.input, factor),
+			output: new(big.Int).Mul(vol.output, factor),
 		})
 	}
 
-	sortAggregatedVolumes(volumes)
-
-	return &commonpb.AggregateResult{Volumes: volumes}, nil
+	return out
 }
 
 // AggregateOptions configures volume aggregation behavior.
@@ -276,7 +234,7 @@ type groupedAggregator struct {
 func newGroupedAggregator(opts AggregateOptions) *groupedAggregator {
 	aggs := make(map[string]*volumeAggregator, len(opts.GroupByPrefixes))
 	for _, p := range opts.GroupByPrefixes {
-		aggs[p] = newVolumeAggregator(opts.UseMaxPrecision, opts.CollapseColors)
+		aggs[p] = newVolumeAggregator(opts)
 	}
 
 	return &groupedAggregator{
@@ -306,7 +264,9 @@ func (ga *groupedAggregator) accumulate(entry attributes.ComputedEntry[*raftcmdp
 		return nil // account doesn't match any prefix, skip
 	}
 
-	return ga.aggregators[prefix].accumulateAsset(vk.AssetBase, vk.AssetPrecision, vk.Color, entry.Value)
+	ga.aggregators[prefix].accumulateAsset(vk.AssetBase, vk.AssetPrecision, vk.Color, entry.Value)
+
+	return nil
 }
 
 func (ga *groupedAggregator) result() (*commonpb.AggregateResult, error) {
@@ -440,5 +400,5 @@ func newAccumulator(opts AggregateOptions) accumulator {
 		return newGroupedAggregator(opts)
 	}
 
-	return newVolumeAggregator(opts.UseMaxPrecision, opts.CollapseColors)
+	return newVolumeAggregator(opts)
 }
