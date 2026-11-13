@@ -36,6 +36,7 @@ Examples:
 	cmd.Flags().String("version", "latest", "Version of a saved Numscript")
 	cmd.Flags().StringArray("var", nil, "Script variable in name=value format (repeatable)")
 	cmd.Flags().StringToString("metadata", nil, "Transaction metadata key=value pairs")
+	cmd.Flags().String("reference", "", "Transaction reference (requires a script that creates postings)")
 	cmd.Flags().String("idempotency-key", "", "Batch idempotency key for safe retries")
 	cmd.Flags().Bool("force", false, "Bypass balance checks")
 	cmdutil.AddOutputFlags(cmd)
@@ -80,6 +81,7 @@ func runExecute(cmd *cobra.Command, _ []string) error {
 	}
 	metadata, _ := cmd.Flags().GetStringToString("metadata")
 	payload.Metadata = commonpb.MetadataFromGoMap(metadata)
+	payload.Reference, _ = cmd.Flags().GetString("reference")
 	payload.Force, _ = cmd.Flags().GetBool("force")
 	ledger, _ := cmd.Flags().GetString(cmdutil.LedgerFlagName)
 	client, conn, err := cmdutil.GetClient(cmd)

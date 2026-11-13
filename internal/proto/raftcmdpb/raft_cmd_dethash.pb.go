@@ -1253,6 +1253,13 @@ func (m *ExecuteNumscriptOrder) MarshalToSizedBufferDeterministicVT(dAtA []byte)
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
+	if len(m.Reference) > 0 {
+		i -= len(m.Reference)
+		copy(dAtA[i:], m.Reference)
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.Reference)))
+		i--
+		dAtA[i] = 0x3a
+	}
 	if m.Force {
 		i--
 		if m.Force {
