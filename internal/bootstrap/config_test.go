@@ -340,10 +340,11 @@ func TestValidateAuthConfig(t *testing.T) {
 			wantErr:       "",
 		},
 		{
-			name:    "auth enabled with plural issuers only over TLS required",
-			auth:    AuthFlagConfig{Enabled: true, Issuers: []string{"https://a.example.com", "https://b.example.com"}},
-			tlsMode: TLSModeRequired,
-			wantErr: "",
+			name:          "auth enabled with plural issuers only over TLS required",
+			auth:          AuthFlagConfig{Enabled: true, Issuers: []string{"https://a.example.com", "https://b.example.com"}},
+			tlsMode:       TLSModeRequired,
+			clusterSecret: "cluster-secret",
+			wantErr:       "",
 		},
 		{
 			name:    "auth enabled with issuer over TLS optional is rejected",

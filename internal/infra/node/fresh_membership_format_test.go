@@ -18,7 +18,7 @@ func TestNewNodeMarksFreshMembershipFormatBeforeRegisteringPeers(t *testing.T) {
 	require.NoError(t, setup.wal.UpdateSnapshotConfState(&raftpb.ConfState{}))
 	store := membership.NewPeerStore(setup.store)
 	m, err := membership.NewMembershipWithServicePort(store, noopMemTransport{}, noopMemPool{},
-		1, "self:7777", "self:8889", 8889, []byte("self-instance-id"), logging.Testing())
+		1, "self:7777", "self:8889", 8889, []byte("self-instance-id"), logging.Testing(), membership.NoopClusterPolicyProvider)
 	require.NoError(t, err)
 
 	n, err := NewNode(NodeConfig{
@@ -37,7 +37,7 @@ func TestNewNodeMarksFreshMembershipFormatBeforeRegisteringPeers(t *testing.T) {
 	// A fresh node must have written the format marker; a subsequent
 	// constructor must preserve the distinct peer endpoint too.
 	restarted, err := membership.NewMembershipWithServicePort(store, noopMemTransport{}, noopMemPool{},
-		1, "self:7777", "self:8889", 8889, []byte("self-instance-id"), logging.Testing())
+		1, "self:7777", "self:8889", 8889, []byte("self-instance-id"), logging.Testing(), membership.NoopClusterPolicyProvider)
 	require.NoError(t, err)
 	require.Equal(t, "peer:8891", restarted.PeerAddresses()[2].ServiceAddress)
 }
