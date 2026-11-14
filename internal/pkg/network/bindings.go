@@ -28,8 +28,8 @@ import "net"
 //
 // Listeners are therefore one-shot: a node that restarts needs a freshly bound
 // generation on the same ports, which is what testserver.NodeLease hands out. An
-// application that failed to build never reached its lifecycle and never
-// released anything, so its listeners stay with whoever created them.
+// application that fails validation or construction releases its bindings
+// through the run command, even though Fx never reaches OnStop.
 type Bindings struct {
 	// HTTP serves the REST API.
 	HTTP net.Listener

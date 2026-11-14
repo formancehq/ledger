@@ -41,20 +41,22 @@ func listenerOptions(listener net.Listener) []grpcadp.Option {
 // so registering first means closing last, once the servers have stopped.
 func releaseBindingsHook(bindings network.Bindings) fx.Hook {
 	return fx.Hook{
-		OnStop: func(_ context.Context) error {
-			var errs []error
-
-			for _, listener := range []net.Listener{bindings.HTTP, bindings.Service, bindings.Raft} {
-				if listener == nil {
-					continue
-				}
-
-				if err := listener.Close(); err != nil && !errors.Is(err, net.ErrClosed) {
-					errs = append(errs, err)
-				}
-			}
-
-			return errors.Join(errs...)
-		},
+		OnStop: func(_ context.Context) error { return CloseBindings(bindings) },
 	}
+}
+
+// CloseBindings also handles construction failures, when Fx never reaches the
+// release hook. A server may already have closed an adopted listener.
+func CloseBindings(bindings network.Bindings) error {
+	var errs []error
+	for _, listener := range []net.Listener{bindings.HTTP, bindings.Service, bindings.Raft} {
+		if listener == nil {
+			continue
+		}
+		if err := listener.Close(); err != nil && !errors.Is(err, net.ErrClosed) {
+			errs = append(errs, err)
+		}
+	}
+
+	return errors.Join(errs...)
 }

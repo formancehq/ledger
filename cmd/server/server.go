@@ -258,7 +258,12 @@ func NewRunCommandWithBindings(bindings network.Bindings) *cobra.Command {
 	return runCmd
 }
 
-func runServer(cmd *cobra.Command, bindings network.Bindings) error {
+func runServer(cmd *cobra.Command, bindings network.Bindings) (runErr error) {
+	defer func() {
+		if runErr != nil {
+			runErr = errors.Join(runErr, bootstrap.CloseBindings(bindings))
+		}
+	}()
 	tracesModule, err := tracesModuleFromFlags(cmd)
 	if err != nil {
 		return fmt.Errorf("configuring trace sampler: %w", err)
@@ -341,12 +346,14 @@ func runServer(cmd *cobra.Command, bindings network.Bindings) error {
 	// bootstrap.buildAuthConfig; there is no auth fx module. The go-libs authnfx JWT
 	// module is intentionally not wired in: nothing in this service consumes its
 	// map[string]oidc.KeySet or Authenticator, so its providers would never run.
+	startupResources := bootstrap.NewStartupResources()
 	opts := []fx.Option{
 		// Provide configuration
 		fx.Supply(*cfg),
 		// Provide the network bindings: pre-bound listeners in tests, the zero
 		// value (bind from the configured ports) in production.
 		fx.Supply(bindings),
+		fx.Supply(startupResources),
 		// Provide build metadata for version reporting
 		fx.Supply(info),
 		// Add OpenTelemetry modules from go-libs (using flags)
@@ -388,6 +395,9 @@ func runServer(cmd *cobra.Command, bindings network.Bindings) error {
 	cmd.SetContext(termination.startup)
 	defer cmd.SetContext(originalContext)
 	err = service.NewWithLogger(logger, opts...).Run(cmd)
+	if errors.Is(err, service.ErrStartFailed) {
+		err = errors.Join(err, startupResources.CloseAll())
+	}
 
 	return termination.finish(err, func(ctx context.Context) error {
 		switch loggerProvider := otel.GetLoggerProvider().(type) {
