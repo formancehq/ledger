@@ -6,10 +6,11 @@
 //   - a change that is wire-incompatible for a type reachable from a gated
 //     service, as classified by `buf breaking` with misc/proto/buf.yaml,
 //     requires a higher Version;
-//   - a higher Version requires a pending stopped upgrade: an operator
-//     mandatoryStopVersions entry with no release tag yet. Peers forward
-//     requests through the gated services, so nodes on different revisions
-//     cannot coexist in a rolling upgrade.
+//   - a higher Version requires the next release to be a stopped upgrade: an
+//     operator mandatoryStopVersions entry that directly follows the latest
+//     release tag on its version line. Peers forward requests through the
+//     gated services, so nodes on different revisions cannot coexist in a
+//     rolling upgrade.
 //
 // Semantic changes that keep the `.proto` text unchanged remain a reviewer
 // classification.
@@ -30,6 +31,8 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -82,9 +85,9 @@ type result struct {
 	headVersion    int
 	clientFindings []bufFinding
 	otherFindings  int
-	// pendingStops lists the mandatory stop versions without a release tag.
-	// It is only resolved when the revision increases.
-	pendingStops []string
+	// nextStops lists the mandatory stop versions that are the next release
+	// on their line. It is only resolved when the revision increases.
+	nextStops []string
 }
 
 func main() {
@@ -136,7 +139,7 @@ func main() {
 		return
 	}
 	fmt.Printf("check-protocol-version: PASS (revision %d to %d with stopped upgrade to %s, %d gated break(s), %d internal-only)\n",
-		res.baseVersion, res.headVersion, strings.Join(res.pendingStops, ", "), len(res.clientFindings), res.otherFindings)
+		res.baseVersion, res.headVersion, strings.Join(res.nextStops, ", "), len(res.clientFindings), res.otherFindings)
 }
 
 func fail(err error) {
@@ -156,9 +159,9 @@ func (r result) verdict() error {
 		return fmt.Errorf(
 			"%d wire-incompatible change(s) reach a gated service at revision %d: add fields instead of deleting, renumbering or retyping them, or increase the revision in a release listed in %s (%s)",
 			len(r.clientFindings), r.baseVersion, stopVar, stopFile)
-	case r.headVersion > r.baseVersion && len(r.pendingStops) == 0:
+	case r.headVersion > r.baseVersion && len(r.nextStops) == 0:
 		return fmt.Errorf(
-			"protocol revision changed from %d to %d without a pending stopped upgrade: peers on different revisions reject each other's forwarded requests, so add the next release to %s (%s) or restore %q",
+			"protocol revision changed from %d to %d without a stopped upgrade at the next release: peers on different revisions reject each other's forwarded requests, so add the next release to %s (%s) or restore %q",
 			r.baseVersion, r.headVersion, stopVar, stopFile, strconv.Itoa(r.baseVersion))
 	}
 
@@ -185,7 +188,7 @@ func (c checker) run() (result, error) {
 	}
 
 	if res.headVersion > res.baseVersion {
-		if res.pendingStops, err = c.pendingStops(); err != nil {
+		if res.nextStops, err = c.nextStops(); err != nil {
 			return res, err
 		}
 	}
@@ -277,9 +280,9 @@ func parseVersion(source []byte) (int, error) {
 	return 0, errors.New("the Version constant was not found")
 }
 
-// pendingStops returns the operator's mandatory stop versions that have no
-// release tag yet.
-func (c checker) pendingStops() ([]string, error) {
+// nextStops returns the operator's mandatory stop versions that are the next
+// release on their version line.
+func (c checker) nextStops() ([]string, error) {
 	source, err := os.ReadFile(filepath.Join(c.repoRoot, stopFile))
 	if err != nil {
 		return nil, fmt.Errorf("reading %s: %w", stopFile, err)
@@ -293,22 +296,92 @@ func (c checker) pendingStops() ([]string, error) {
 	if err != nil {
 		return nil, fmt.Errorf("listing release tags: %w", err)
 	}
-	released := map[string]bool{}
-	for tag := range strings.FieldsSeq(string(tags)) {
-		released[tag] = true
+
+	return nextReleaseStops(stops, strings.Fields(string(tags)))
+}
+
+// release is a version of the form vX.Y.Z or vX.Y.Z-rc.N.
+type release struct {
+	major, minor, patch int
+	rc                  int // 0 for a final release
+}
+
+var releasePattern = regexp.MustCompile(`^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(?:-rc\.([1-9][0-9]*))?$`)
+
+func parseRelease(text string) (release, bool) {
+	m := releasePattern.FindStringSubmatch(text)
+	if m == nil {
+		return release{}, false
 	}
-	if len(released) == 0 {
-		return nil, errors.New("no release tags found; fetch tags to tell released stop versions from pending ones")
+	var r release
+	r.major, _ = strconv.Atoi(m[1]) // the pattern admits only decimal digits
+	r.minor, _ = strconv.Atoi(m[2])
+	r.patch, _ = strconv.Atoi(m[3])
+	if m[4] != "" {
+		r.rc, _ = strconv.Atoi(m[4])
 	}
 
-	var pending []string
+	return r, true
+}
+
+// less orders releases of one version line; an RC precedes its final release.
+func (r release) less(o release) bool {
+	if r.patch != o.patch {
+		return r.patch < o.patch
+	}
+	if (r.rc == 0) != (o.rc == 0) {
+		return r.rc != 0
+	}
+
+	return r.rc < o.rc
+}
+
+// successors lists the releases that can directly follow r on its line.
+func (r release) successors() []release {
+	if r.rc != 0 {
+		return []release{{r.major, r.minor, r.patch, r.rc + 1}, {r.major, r.minor, r.patch, 0}}
+	}
+
+	return []release{{r.major, r.minor, r.patch + 1, 1}, {r.major, r.minor, r.patch + 1, 0}}
+}
+
+// nextReleaseStops keeps the stops that the next release on their line would
+// cross: a stop listed only for a later release leaves the release in between
+// rolling. A line without a release starts at vX.Y.0-rc.1 or vX.Y.0. Tags that
+// are not vX.Y.Z or vX.Y.Z-rc.N, such as version-line markers, are ignored.
+func nextReleaseStops(stops, tags []string) ([]string, error) {
+	if len(tags) == 0 {
+		return nil, errors.New("no release tags found; fetch tags to tell the next release from released ones")
+	}
+
+	var next []string
 	for _, stop := range stops {
-		if !released[stop] {
-			pending = append(pending, stop)
+		target, ok := parseRelease(stop)
+		if !ok {
+			return nil, fmt.Errorf("%s entry %q is not vX.Y.Z or vX.Y.Z-rc.N", stopVar, stop)
+		}
+
+		var latest *release
+		for _, tag := range tags {
+			r, ok := parseRelease(tag)
+			if !ok || r.major != target.major || r.minor != target.minor {
+				continue
+			}
+			if latest == nil || latest.less(r) {
+				latest = &r
+			}
+		}
+
+		candidates := []release{{target.major, target.minor, 0, 1}, {target.major, target.minor, 0, 0}}
+		if latest != nil {
+			candidates = latest.successors()
+		}
+		if slices.Contains(candidates, target) {
+			next = append(next, stop)
 		}
 	}
 
-	return pending, nil
+	return next, nil
 }
 
 // parseStopVersions reads the mandatory stop versions without compiling the

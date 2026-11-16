@@ -37,8 +37,8 @@ the operator must stop every RC.3 voter before starting an RC.4 voter.
 ### Service protocol revision — changes only in a stopped upgrade
 
 Prefer additive service changes that keep `pkg/grpcprotocol.Version`. A wire
-change that cannot preserve client decoding must increase the revision, and a
-revision increase must ship in a release listed in the operator's
+change that cannot preserve client decoding must increase the revision. A
+revision increase requires the next release to be listed in the operator's
 `mandatoryStopVersions`: nodes forward requests through the same gated service,
 so peers on different revisions cannot coexist in a rolling upgrade. Assess and
 document the effect of every service change on existing clients. Read the

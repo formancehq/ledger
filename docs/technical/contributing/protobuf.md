@@ -66,7 +66,7 @@ For every exposed wire or behavior change, assess its effect on published client
 Prefer changes that keep `pkg/grpcprotocol.Version`: preserve published gRPC
 service and method names, request and response types, field numbers, wire
 types, field identity, and enum numbers. A change that breaks client decoding
-must increase the revision, and only in a release that is a pending mandatory
+must increase the revision, and only when the next release is a mandatory
 stopped upgrade. Behavior and configuration changes can ship when their client
 impact and upgrade steps are documented. Internal persisted/Raft-only
 changes require an impact assessment of existing data and shared service types
@@ -80,8 +80,8 @@ CI enforces these rules with
 `PROTOCOL_BASE_SHA=<target-sha> just check-protocol-version`. It fails if the
 revision decreases, if `buf breaking` finds a wire-incompatible change in a type
 reachable from a gated service without a revision increase, or if the revision
-increases while the operator's `mandatoryStopVersions` lists no unreleased
-version. Run it locally before pushing a `.proto`
+increases while the operator's `mandatoryStopVersions` does not list the next
+release. Run it locally before pushing a `.proto`
 change; review behavior changes separately for client impact.
 
 1. Edit the `.proto` file in `misc/proto/`.
@@ -153,7 +153,7 @@ removal requiring gaps or reservations needs an explicit, reviewed baseline
 update with release evidence before lint can accept it. Never renumber a
 published type to satisfy lint.
 
-The service wire freeze remains enforced independently by
+The service protocol revision rules remain enforced independently by
 `just check-protocol-version`; lint does not prove persisted-format or rolling
 upgrade compatibility. Those still require the review and tests described above.
 `just test-buf-plugin` runs the separate module's tests with the race detector,
