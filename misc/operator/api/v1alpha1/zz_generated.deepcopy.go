@@ -696,6 +696,11 @@ func (in *ClusterSpec) DeepCopyInto(out *ClusterSpec) {
 		*out = new(int64)
 		**out = **in
 	}
+	if in.ActivateMirrorPromotionCatchUp != nil {
+		in, out := &in.ActivateMirrorPromotionCatchUp, &out.ActivateMirrorPromotionCatchUp
+		*out = new(bool)
+		**out = **in
+	}
 	if in.MetadataMaxEntries != nil {
 		in, out := &in.MetadataMaxEntries, &out.MetadataMaxEntries
 		*out = new(int64)

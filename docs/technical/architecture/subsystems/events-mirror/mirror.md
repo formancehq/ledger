@@ -466,7 +466,7 @@ The ingestion position is not stored here. It lives on the per-ledger `LedgerBou
 
 A mirror ledger can be promoted to a normal ledger via `PromoteLedgerOrder` (`raft_cmd.proto:246`). The FSM emits a `PromotedLedgerLog` (`common.proto:315`), the WriteSet flags `mirrorConfigChanged = true`, and `Manager.reconcile()` stops the worker on the next reconciliation tick.
 
-For live promotions, after the FSM checks any idempotency replay, it requires an observed source head greater than zero, a
+For new promotions marked with capability ID `1`, after the FSM checks any idempotency replay, it requires an observed source head greater than zero, a
 durable ingestion cursor at or beyond that head, and no recorded synchronization
 error. The head and error are reconstructed from existing durable mirror rows
 at recovery and advanced by committed technical updates; the cursor remains in
@@ -479,7 +479,7 @@ Cross-cluster restore clears the source-head observation, including after an
 incremental delta. The restored mirror worker must observe the source again
 before a new promotion can pass; the ingestion cursor, business history, and
 audit history remain intact.
-The `rc.3` to `rc.4` upgrade requires the operator's stopped restart. The drain applies all RC.3 business entries durably on every member before RC.4 starts on the same volumes. Audit replay reconstructs historical results without a new progress check; matching, unexpired frozen idempotency outcomes return before order evaluation.
+The `rc.3` to `rc.4` upgrade requires the operator's stopped restart. The drain applies all RC.3 business entries durably on every member before RC.4 starts on the same volumes. RC.4 promotions without the capability marker keep their historical FSM behavior if replayed later. Audit replay reconstructs historical results without a new progress check; matching, unexpired frozen idempotency outcomes return before order evaluation. New promotions require the replicated capability to be active; see the [activation procedure](../../../../ops/upgrades.md#mirror-promotion-capability-activation).
 
 After promotion, the ledger accepts normal write requests. The boundary's `last_mirror_v2_log_id` and the source-head row are kept for forensic purposes but no longer advance on the live cluster. Cross-cluster restore clears the source-head observation for all ledgers.
 

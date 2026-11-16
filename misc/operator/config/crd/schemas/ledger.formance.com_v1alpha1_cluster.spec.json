@@ -3,6 +3,10 @@
   "additionalProperties": false,
   "description": "ClusterSpec defines the desired state of Cluster.\n\nThe leader proposes the replicated cluster policy (idempotencyTTL and the\nmetadata limits) only when clusterPolicyRevision exceeds the applied\nrevision. Without these rules an edit that forgets the bump is accepted,\nrolled out, and then never applied, which only shows up as a leader log\nline. Presence counts as a change: setting a field to its default value\nstill needs a bump.",
   "properties": {
+    "activateMirrorPromotionCatchUp": {
+      "description": "ActivateMirrorPromotionCatchUp activates the replicated promotion capability.\nSet only after every member runs a supporting binary, and bump clusterPolicyRevision.",
+      "type": "boolean"
+    },
     "additionalLabels": {
       "additionalProperties": {
         "type": "string"

@@ -214,6 +214,9 @@ type Config struct {
 	// applied revision. Node-local for now; PR4 derives it from the operator
 	// resource generation.
 	ClusterPolicyRevision uint64
+	// ActivateMirrorPromotionCatchUp enables the replicated capability after a
+	// coordinated rollout. Changing it requires a policy revision bump.
+	ActivateMirrorPromotionCatchUp bool
 	// QueryCheckpointLimit is the desired cap on live query checkpoints, carried
 	// in the replicated cluster policy.
 	QueryCheckpointLimit uint64

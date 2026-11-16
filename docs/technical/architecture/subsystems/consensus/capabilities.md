@@ -55,10 +55,11 @@ The capability has two roles in this case:
    apply.
 
 The serialized proposal currently carries `required_capabilities` at proposal
-scope. That is sufficient only when every order in the proposal has the same
-semantic contract. A proposal can batch multiple orders, so a future change
-that mixes old and new semantics must either add a persisted marker to each
-order (and dispatch apply from that marker) or reject mixed-semantic batches.
+scope. A proposal can batch multiple orders. A proposal-level marker works for
+mirror promotion because all promotions in the same proposal use the same new
+rule; unrelated orders ignore it. A future change that needs different rules
+for orders of the same type in one batch must add a persisted marker to each
+order or reject mixed-semantic batches.
 The conceptual marker for a homogeneous proposal is:
 
 ```text
@@ -69,6 +70,12 @@ new proposal:  required_capabilities = [MirrorIngestRejectInvalidAssetV2]
 The FSM must use the persisted declaration to select the behavior. It must not
 infer the behavior from the current policy alone. An old order can be replayed
 after the capability becomes active, and it must keep its old semantics.
+
+Capability ID `1`, `MirrorPromotionCatchUp`, marks every newly produced mirror
+promotion proposal. The FSM applies the source-head, cursor, and sync-error
+precondition only to marked proposals. Unmarked promotions committed by RC.4
+retain their original apply result during Raft replay. Audit replay uses its
+recorded result and does not perform the live progress check.
 
 If a producer cannot mark the new orders, the change must remain backward
 compatible or add an explicit semantic version to the order. A capability by
@@ -189,5 +196,11 @@ uses `JoinAsLearner` and `ConfChangeAddLearnerNode`.
 
 The cluster-policy reconciler preserves committed capability activations while
 reconciling ordinary policy configuration; it does not arm capabilities from
-membership advertisements. A future feature must define its activation policy
-explicitly and enable it only after the coordinated restart has completed.
+membership advertisements. After all members run the new binary and have
+refreshed their evidence, set `--activate-mirror-promotion-catch-up=true` on
+every member (or `spec.activateMirrorPromotionCatchUp: true` in the Operator)
+and increment `clusterPolicyRevision`. The reconciler proposes the activation;
+admission verifies every member's evidence before committing it. Until then,
+new promotions are refused at admission because their proposals require ID `1`.
+Other writes remain available. Keep the activation flag set on later revisions;
+committed activations cannot be removed.
