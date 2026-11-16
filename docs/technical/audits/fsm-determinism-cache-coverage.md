@@ -432,6 +432,18 @@ and must not enter audit hashing. A retrying leader may generate a different
 candidate; only the first committed value is authoritative. The adjacent
 persistence audit owns checkpoint and cross-cluster restore parity.
 
+## Account-type capability selector (EN-2915)
+
+Capability 1 is an input in the committed proposal bytes, not a lookup of the
+current policy at apply. Compare otherwise identical marked and unmarked
+CreateLedger proposals containing an unknown segment constraint or
+equal-specificity overlap. The unmarked historical order must retain its
+syntax-only result even after activation; the marked order must reject before
+ledger-ID allocation and leave an audit failure. Check successful marked
+creations against the checker replay path, which reconstructs the same
+business effect without a proposal-level marker. `AddAccountType` validation
+is unchanged.
+
 ## Atomic creation metadata (EN-2686)
 
 CreateLedger stages initial metadata in the canonical ledger-metadata keyspace in the same proposal as ledger identity, boundaries and initial schema. Committed metadata limits apply before staging; creation metadata requires no additional preload read and cannot mutate the audited order.

@@ -837,6 +837,16 @@ func (a *Admission) buildPreload(ctx context.Context, cmd *raftcmdpb.Proposal, n
 }
 
 func (a *Admission) proposeAdmission(ctx context.Context, cmd *raftcmdpb.Proposal, build *plan.BuildResult) (*futures.Future[state.ApplyResult], func(), error) {
+	if capabilities.HasCreateLedger(cmd) {
+		policy, err := query.ReadClusterPolicy(a.store)
+		if err != nil {
+			build.ReleaseLoaders()
+
+			return nil, nil, fmt.Errorf("reading cluster policy for CreateLedger: %w", err)
+		}
+		capabilities.SelectCreateLedgerValidation(cmd, policy)
+	}
+
 	// Step 5: Marshal + acquire proposal guard + set PredictedIndex
 	// + propose, all via the shared preload runner. The runner also
 	// patches PredictedIndex onto the pre-marshaled buffer (or

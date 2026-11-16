@@ -1234,6 +1234,9 @@ func validateProposalCapabilityAdmissionWithSupported(policy *commonpb.ClusterPo
 			}
 		}
 	}
+	if err := capabilities.ValidateCreateLedgerDeclaration(policy, proposal.HasCreateLedger(), proposal.RequiredCapabilities()); err != nil {
+		return err
+	}
 	decision := capabilities.Evaluate(state, proposal.RequiredCapabilities(), false, members)
 	if !decision.Allowed {
 		return fmt.Errorf("%w: %s", capabilities.ErrCapabilityUnsupported, decision.Reason)

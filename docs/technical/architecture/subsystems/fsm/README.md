@@ -24,6 +24,12 @@ and script output. The scan uses linear time and constant auxiliary space.
 Posting and transaction mutations staged earlier are discarded on rejection;
 the failure audit entry and a keyed definitive failure still commit.
 
+CreateLedger's strengthened initial account-type validation is selected by
+capability ID 1 in the committed proposal. Unmarked historical proposals keep
+their released validation when replayed after activation. The FSM does not
+consult the current capability policy for this choice; see the
+[capability contract](../consensus/capabilities.md#createledger-account-type-validation-capability-1).
+
 Changing this selection from unordered traversal requires the
 [maintenance-gated rolling upgrade](../../../../ops/upgrades.md#account-metadata-address-validation)
 when upgrading affected releases. Existing stored audit failures are preserved.
