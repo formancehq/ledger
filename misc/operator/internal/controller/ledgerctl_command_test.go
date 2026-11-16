@@ -128,7 +128,7 @@ fi
 			cmd := ledgerctlCommand("addr:8888", tlsModeDisabled, "cluster", "status")
 			run := exec.Command(cmd[0], cmd[1:]...)
 			run.Dir = dir
-			run.Env = tc.env
+			run.Env = append([]string{}, tc.env...)
 			out, err := run.CombinedOutput()
 			require.NoError(t, err, "command failed: %s", out)
 			args := strings.Split(strings.TrimSuffix(string(out), "\n"), "\n")
