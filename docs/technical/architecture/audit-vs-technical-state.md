@@ -441,7 +441,9 @@ hashes in the proposal, and the FSM applies that proposal deterministically.
 Eviction writes no audit record, so the checker verifies the outcomes that are
 present and never treats an absent (evicted) one as a defect. A legitimately
 empty audit history has an empty expected outcome set; any persisted
-`SubIdempKeys` row in that state is therefore reported as fabricated.
+`SubIdempKeys` row in that state is therefore reported as fabricated. The
+checker also reports rows whose storage key has a non-canonical length rather
+than silently excluding them from the comparison.
 
 If product semantics ever change to "idempotency forever", eviction stops being
 purely technical and must be redesigned as business-impacting state.

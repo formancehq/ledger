@@ -4217,6 +4217,11 @@ func (c *Checker) compareIdempotencyOutcomes(
 	for iter.First(); iter.Valid(); iter.Next() {
 		key := iter.Key()
 		if len(key) != 2+16 {
+			callback(errorEvent(
+				servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_IDEMPOTENCY_MISMATCH,
+				fmt.Sprintf("malformed frozen idempotency key %x: expected %d bytes, got %d", key, 2+16, len(key)),
+				0, "", "", "",
+			))
 			continue
 		}
 
