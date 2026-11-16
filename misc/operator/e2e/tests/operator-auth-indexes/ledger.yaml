@@ -9,3 +9,7 @@ spec:
     transaction:
       - reference
       - address
+    metadata:
+      - target: account
+        key: category
+        type: string

@@ -6,6 +6,7 @@ spec:
   name: auth-indexed-ledger
   clusterRef: auth-indexes
   indexes:
+    metadata: []
     transaction:
       - reference
       - timestamp

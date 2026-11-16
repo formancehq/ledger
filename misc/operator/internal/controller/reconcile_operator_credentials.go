@@ -15,6 +15,7 @@ import (
 var operatorCredentialScopes = []string{
 	"ledger:ReadLedger",
 	"ledger:ReadAudit",
+	"ledger:ReadAccount",
 	"ledger:WriteLedger",
 	"ledger:WriteMetadata",
 	"ledger:ReadOps",

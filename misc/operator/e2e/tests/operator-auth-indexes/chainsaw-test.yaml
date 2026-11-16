@@ -56,7 +56,7 @@ spec:
               status:
                 phase: Ready
 
-    - name: Create indexes and confirm audit-based ownership lookup
+    - name: Create transaction and metadata indexes under operator credentials
       try:
         - apply:
             file: ledger.yaml
@@ -68,7 +68,7 @@ spec:
                   .metadata.generation as $generation |
                   .status.observedGeneration == $generation and
                   any(.status.conditions[]?; .type == "IndexesSynced" and .status == "True" and .observedGeneration == $generation) and
-                  ((.status.appliedIndexes // []) | contains(["reference", "address"]))
+                  ((.status.appliedIndexes // []) | contains(["reference", "address", "metadata:account:category"]))
                 ' >/dev/null; then
                   exit 0
                 fi
@@ -91,7 +91,8 @@ spec:
                   .status.observedGeneration == $generation and
                   any(.status.conditions[]?; .type == "IndexesSynced" and .status == "True" and .observedGeneration == $generation) and
                   ((.status.appliedIndexes // []) | contains(["reference", "timestamp"])) and
-                  ((.status.appliedIndexes // []) | index("address") == null)
+                  ((.status.appliedIndexes // []) | index("address") == null) and
+                  ((.status.appliedIndexes // []) | index("metadata:account:category") == null)
                 ' >/dev/null; then
                   exit 0
                 fi
