@@ -13,12 +13,14 @@ IDs. The fields are optional and therefore backward-readable by binaries that
 predate this foundation. IDs are never reused; semantic dependencies must be
 declared even when they do not add bytes to a proposal.
 
-The producer must rebuild its plan first, derive the capabilities from that
-final plan, stamp `required_capabilities`, and pass the typed result alongside
+The producer must rebuild its plan first, select the semantics from the
+committed activation policy where applicable, validate the final proposal
+shape, stamp `required_capabilities`, and pass the typed result alongside
 the serialized proposal. Admission reuses that result without decoding the
-proposal a second time. A payload that depends on a capability but omits its
-declaration is invalid; the shared builder and stamping helper are the
-enforcement boundary for producers.
+proposal a second time. A payload that depends on an active capability but
+omits its declaration is rejected by the final `Node.Propose` policy gate.
+An activation racing the producer's policy read rejects the unmarked
+proposal before Raft rather than applying it under old semantics.
 
 ## Admission and membership
 
@@ -43,12 +45,52 @@ not the pre-snapshot cache, before rehydration.
 
 A proposal that declares a capability is admitted only when that capability is
 active and every member advertises it. Proposals with no declared capability
-remain unaffected. FSM apply never consults node-local capability flags.
+remain unaffected unless their order requires an active semantic capability.
+FSM apply never consults node-local capability flags.
 Membership evidence is an authenticated cluster fact, not a proof of code
 inspection: a node can only cause activation for IDs in the leader's local
 registry, and malformed (zero, duplicate, or unsorted) declarations are
 rejected. Operators must therefore treat a compromised binary as outside the
 trust model of this barrier.
+
+## CreateLedger account-type validation (capability 1)
+
+`CreateLedgerAccountTypesV2 = 1` selects the EN-2915 rule for every
+`CreateLedger` order in the proposal. An unmarked proposal retains the released
+behavior: validate each initial pattern's syntax and bounds, then persist its
+declared constraints and any overlapping patterns. A marked proposal also
+validates segment constraints and rejects equal-specificity overlapping
+patterns, before allocating the ledger ID. `AddAccountType` retains its
+existing validation regardless of this capability. Existing ledgers and audit
+records are not rewritten; an already persisted invalid or conflicting type
+remains until repaired through ordinary ledger configuration.
+
+The marker is proposal-wide. Admission marks the whole atomic batch whenever
+it contains `CreateLedger`; all such orders in that batch use the same rule.
+Other order kinds have identical behavior under either marker. Successful
+marked creations have the same audit log and derived state as the old processor
+because their definitions satisfy both rules. The checker can replay successful
+audited orders without the proposal marker; rejected marked creations have a
+failure audit entry and no business effect to reconstruct.
+
+The capability is advertised by this binary but is **not automatically
+activated**. Activation requires a coordinated stop and restart of every
+member on a binary that supports ID 1, followed by a replicated ClusterPolicy
+activation after every member has refreshed its evidence. The current policy
+reconciler preserves an activation but does not create it; deployments without
+an activation retain the historical creation behavior. Do not activate during
+a mixed-version rollout: an old voter could still apply a marked order using
+the old rule. Hold new business admission until activation is committed so a
+proposal prepared while the policy was inactive cannot be queued behind the
+activation and retain old semantics. Once active, keep it active for all later
+releases and restores.
+
+Only CreateLedger admission adds a ClusterPolicy point read before proposal
+construction. The final proposal gate already reads the authoritative policy;
+its additional marker check is constant time, while capability membership
+evaluation remains O(m) for m voters and learners. A marked proposal adds one
+uint32 capability ID to the Raft payload; it adds no storage or preload reads
+to FSM apply.
 
 ## Capabilities that change FSM semantics
 
@@ -88,8 +130,8 @@ not introduce the account-type validation feature from PR #2552.
 
 1. The replicated `ClusterPolicy` controls whether the cluster may accept the
    behavior.
-2. The order declares the capability that selects the behavior during FSM
-   apply.
+2. The committed proposal declares the capability that selects the behavior
+   for its orders during FSM apply.
 
 The serialized proposal currently carries `required_capabilities` at proposal
 scope. That is sufficient only when every order in the proposal has the same
@@ -119,8 +161,10 @@ binary versions.
 1. Name the semantic contract. Describe the old behavior, the new behavior,
    and the orders that use each behavior.
 2. Allocate a new capability ID. Never reuse an ID for a different contract.
-3. Add the capability to the binary registry and derive it from the final
-   proposal in `RequiredCapabilities`.
+3. Add the capability to the binary registry and validate its declaration
+   against the final proposal in `RequiredCapabilities`. If inactive and active
+   orders share a payload shape, select the declaration from committed policy
+   during admission and enforce its presence at the final proposal gate.
 4. Stamp the capability on every new order that needs the new behavior. Do not
    infer it from the current policy during FSM apply.
 5. Keep the old behavior for orders that do not carry the capability. Add

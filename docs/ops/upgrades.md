@@ -435,6 +435,16 @@ learner has committed support evidence, the leader automatically requests and
 activates each supported capability. There is no activation flag or extra
 operator setting. See the [capability contract](../technical/architecture/subsystems/consensus/capabilities.md).
 
+`CreateLedgerAccountTypesV2` (capability 1) is advertised by the binary but
+remains inactive until an explicit replicated ClusterPolicy activation after
+that stopped restart. Keep business admission paused until that activation is
+committed, then reopen it. Before activation, initial account types retain the
+released syntax-only validation; after activation, new creations reject invalid
+segment constraints and conflicting patterns. Existing ledgers are not
+rewritten. The current reconciler preserves but does not initiate activation,
+so operators must not assume that installing this binary alone enforces the
+stronger creation rule.
+
 Use this for RC updates after the mixed-version validation above passes:
 
 1. Record the current leader and voter set with `ledgerctl cluster status`.

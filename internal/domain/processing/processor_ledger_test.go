@@ -52,7 +52,7 @@ func TestProcessCreateLedger_RejectsInvalidInitialAccountTypeConstraints(t *test
 				},
 			},
 		},
-	}, &Context{Scope: mockStore})
+	}, &Context{Scope: mockStore, createLedgerAccountTypesV2: true})
 
 	var invalid *domain.ErrInvalidPattern
 	require.ErrorAs(t, derr, &invalid)
@@ -72,11 +72,48 @@ func TestProcessCreateLedger_RejectsConflictingInitialAccountTypes(t *testing.T)
 			"users-by-id":   {Pattern: "users:{id}"},
 			"users-by-name": {Pattern: "users:{name}"},
 		},
-	}, &Context{Scope: mockStore})
+	}, &Context{Scope: mockStore, createLedgerAccountTypesV2: true})
 
 	var conflict *domain.ErrAccountTypeConflict
 	require.ErrorAs(t, derr, &conflict)
 	require.Equal(t, "users-by-id", conflict.ExistingName)
+}
+
+func TestProcessCreateLedger_UnmarkedHistoricalOrdersKeepLegacySemantics(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name  string
+		types map[string]*commonpb.AccountType
+	}{
+		{"invalid constraint", map[string]*commonpb.AccountType{"users": {
+			Pattern: "users:{id}", SegmentTypes: map[string]*commonpb.SegmentType{
+				"unknown": {Constraint: &commonpb.SegmentType_Uuid{Uuid: &commonpb.UUIDConstraint{}}},
+			},
+		}}},
+		{"conflicting patterns", map[string]*commonpb.AccountType{
+			"users-by-id": {Pattern: "users:{id}"}, "users-by-name": {Pattern: "users:{name}"},
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			mockStore := NewMockScope(gomock.NewController(t))
+			expectGetLedger(mockStore, domain.LedgerKey{Name: "l"}, nil, domain.ErrNotFound)
+			mockStore.EXPECT().GetNextLedgerID().Return(uint32(1))
+			mockStore.EXPECT().GetDate().Return((&commonpb.Timestamp{Data: 1}).AsReader())
+			mockStore.EXPECT().IncrementNextLedgerID().Return(uint32(1))
+			expectPutLedger(t, mockStore, domain.LedgerKey{Name: "l"}, nil, func(_ string, info *commonpb.LedgerInfo) {
+				require.Len(t, info.GetAccountTypes(), len(tc.types))
+			})
+			expectPutBoundaries(t, mockStore, domain.LedgerKey{Name: "l"}, nil, func(_ string, _ *raftcmdpb.LedgerBoundaries) {})
+
+			log, err := processCreateLedger("l", &raftcmdpb.CreateLedgerOrder{
+				AccountTypes: tc.types, DefaultEnforcementMode: commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT,
+			}, &Context{Scope: mockStore})
+			require.NoError(t, err)
+			require.Len(t, log.GetCreateLedger().GetAccountTypes(), len(tc.types))
+		})
+	}
 }
 
 func TestProcessCreateLedger(t *testing.T) {

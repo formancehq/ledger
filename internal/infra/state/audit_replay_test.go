@@ -53,6 +53,41 @@ func TestAuditReplayerDisablesWAL(t *testing.T) {
 	require.NoError(t, err)
 }
 
+// Successful pre-activation creations remain valid business history after
+// capability 1 is introduced, even when their initial types are now rejected
+// for new marked proposals.
+func TestAuditReplayerPreservesLegacyCreateLedgerAccountTypes(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name  string
+		types map[string]*commonpb.AccountType
+	}{
+		{"unknown constraint", map[string]*commonpb.AccountType{"users": {
+			Pattern: "users:{id}", SegmentTypes: map[string]*commonpb.SegmentType{
+				"unknown": {Constraint: &commonpb.SegmentType_Uuid{Uuid: &commonpb.UUIDConstraint{}}},
+			},
+		}}},
+		{"conflicting types", map[string]*commonpb.AccountType{
+			"users-by-id": {Pattern: "users:{id}"}, "users-by-name": {Pattern: "users:{name}"},
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			replayer, err := NewAuditReplayer(logging.Testing(), "test-cluster")
+			require.NoError(t, err)
+			t.Cleanup(func() { require.NoError(t, replayer.Close()) })
+
+			logs, err := replayer.Replay(&commonpb.Timestamp{Data: 1}, []*raftcmdpb.Order{
+				createLedgerOrderWithAccountTypes("historical", tc.types),
+			})
+			require.NoError(t, err)
+			require.Len(t, logs, 1)
+			require.Len(t, logs[0].GetPayload().GetCreateLedger().GetAccountTypes(), len(tc.types))
+		})
+	}
+}
+
 func TestAuditReplayerUsesRecoveredQueryCheckpointCounter(t *testing.T) {
 	t.Parallel()
 

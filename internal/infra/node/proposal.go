@@ -31,6 +31,7 @@ type Proposal struct {
 	expectedTerm         uint64
 	requiredCapabilities []capabilities.CapabilityID
 	hasBusinessOrders    bool
+	hasCreateLedger      bool
 	// activePolicyCapabilities is populated by the proposal factory for
 	// SetClusterPolicy proposals/orders and capability activation transitions.
 	// Keeping the typed candidate alongside the
@@ -53,9 +54,9 @@ func newProposal(commandID uint64, data []byte, required []capabilities.Capabili
 	}
 }
 
-// NewProposal is the only public proposal factory. It derives the capability
-// declaration and serializes the same final command, making it impossible for
-// the typed admission metadata to diverge from the wire payload.
+// NewProposal is the only public proposal factory. It validates the selected
+// capability declaration against the final command and serializes that same
+// command, keeping typed admission metadata aligned with the wire payload.
 func NewProposal(commandID uint64, command *raftcmdpb.Proposal) (*Proposal, error) {
 	prepared, err := capabilities.PrepareProposal(command)
 	if err != nil {
@@ -68,6 +69,7 @@ func NewProposal(commandID uint64, command *raftcmdpb.Proposal) (*Proposal, erro
 	}
 
 	proposal := newProposal(commandID, data, prepared.RequiredCapabilities())
+	proposal.hasCreateLedger = capabilities.HasCreateLedger(command)
 	// Validate the complete serialized command before it enters the Raft queue.
 	// SetPredictedIndex only appends a fixed-width index field afterward; it
 	// cannot change the payload or its capability declaration.
@@ -126,6 +128,10 @@ func (p *Proposal) SetPredictedIndex(index uint64) {
 // value instead of decoding the serialized proposal a second time.
 func (p *Proposal) RequiredCapabilities() []capabilities.CapabilityID {
 	return append([]capabilities.CapabilityID(nil), p.requiredCapabilities...)
+}
+
+func (p *Proposal) HasCreateLedger() bool {
+	return p.hasCreateLedger
 }
 
 // ActivePolicyCapabilities returns the active capabilities requested by a

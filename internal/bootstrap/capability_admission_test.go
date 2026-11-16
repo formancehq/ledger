@@ -109,3 +109,28 @@ func TestCapabilityActivationBarrierUntilCommitAfterDrain(t *testing.T) {
 		require.NoError(t, validateProposalCapabilityAdmissionWithSupported(inactive, proposal, members, supported))
 	}
 }
+
+func TestProposalCapabilityAdmissionSelectsCreateLedgerValidation(t *testing.T) {
+	t.Parallel()
+	const id = capabilities.CreateLedgerAccountTypesV2
+	active := &commonpb.ClusterPolicy{CapabilityActivations: []*commonpb.CapabilityActivation{{Id: uint32(id), Active: true}}}
+	members := []capabilities.Member{{NodeID: 1, Role: capabilities.Voter, Reachable: true, Capabilities: []capabilities.CapabilityID{id}}}
+	command := &raftcmdpb.Proposal{Payload: &raftcmdpb.Proposal_Batch{Batch: &raftcmdpb.ExecutionBatch{
+		Orders: []*raftcmdpb.Order{{Type: &raftcmdpb.Order_LedgerScoped{LedgerScoped: &raftcmdpb.LedgerScopedOrder{
+			Ledger: "l", Payload: &raftcmdpb.LedgerScopedOrder_CreateLedger{CreateLedger: &raftcmdpb.CreateLedgerOrder{}},
+		}}}},
+	}}}
+
+	unmarked, err := node.NewProposal(1, command)
+	require.NoError(t, err)
+	require.NoError(t, validateProposalCapabilityAdmission(&commonpb.ClusterPolicy{}, unmarked, members))
+	require.ErrorIs(t, validateProposalCapabilityAdmission(active, unmarked, members), capabilities.ErrMissingCapability)
+
+	capabilities.SelectCreateLedgerValidation(command, active)
+	marked, err := node.NewProposal(2, command)
+	require.NoError(t, err)
+	require.Equal(t, []capabilities.CapabilityID{id}, marked.RequiredCapabilities())
+	require.NoError(t, validateProposalCapabilityAdmission(active, marked, members))
+	require.ErrorIs(t, validateProposalCapabilityAdmission(&commonpb.ClusterPolicy{}, marked, members), capabilities.ErrCapabilityUnsupported)
+	require.ErrorIs(t, validateProposalCapabilityAdmission(active, marked, []capabilities.Member{{NodeID: 1, Role: capabilities.Voter, Reachable: true}}), capabilities.ErrCapabilityUnsupported)
+}
