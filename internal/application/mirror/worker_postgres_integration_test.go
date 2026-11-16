@@ -65,7 +65,7 @@ func TestWorker_PostgresGapCommitAndRollback(t *testing.T) {
 				c, err := cache.New(100, meters.Meter("test"))
 				require.NoError(t, err)
 				registry := state.NewStateRegistry(c, attrs)
-				machine, err := state.NewMachine(logger, registry, state.NewCacheSnapshotter(logger, registry, nil), store, dal.NewSentinelFactory(store, false), meters, keystore.NewKeyStore(), state.NewSharedState(), signal.NewNotifications(), nil, "test-cluster", 0, func(*raftpb.Entry, *dal.WriteSession) error { return nil })
+				machine, err := state.NewMachine(logger, registry, state.NewCacheSnapshotter(logger, registry, nil), store, dal.NewSentinelFactory(store, false), meters, keystore.NewKeyStore(), state.NewSharedState(), signal.NewNotifications(), nil, "test-cluster", 0, func(*raftpb.Entry, *dal.WriteSession) error { return nil }, state.NoopCapabilityPolicyCommitHandler)
 				require.NoError(t, err)
 				writeMirrorMetadataPolicy(t, store, mirrorMetadataPolicy())
 				require.NoError(t, state.NewRecovery(machine, store).RecoverState())
@@ -89,7 +89,7 @@ func TestWorker_PostgresGapCommitAndRollback(t *testing.T) {
 					require.NoError(t, err)
 					t.Cleanup(func() { require.NoError(t, source.Close()) })
 
-					return NewWorker(key.Name, pageSize, source, nil, store, proposer, builder, logger, meters), source
+					return NewWorker(key.Name, pageSize, source, v2.TranslateOptions{}, store, proposer, builder, logger, meters), source
 				}
 				worker, source := newWorker()
 				more, err := worker.processBatch(ctx)

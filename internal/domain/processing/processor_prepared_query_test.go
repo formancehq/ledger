@@ -74,12 +74,9 @@ func TestProcessUpdatePreparedQuery_NotFoundReturnsTypedError(t *testing.T) {
 }
 
 // TestProcessUpdatePreparedQuery_RejectsFilterInvalidForStoredTarget pins the
-// EN-1504 guarantee that an update validates its new filter against the
-// *stored* target (read from the cache, not the request — an update carries no
-// target). Admission cannot catch this because it never loads the existing
-// query; the FSM is the only layer that sees the stored target. Here the query
-// was created on ACCOUNTS, and the update tries to smuggle in a
-// transaction-only `reference` condition, which must be rejected.
+// EN-1504 guarantee that a targetless legacy update validates its new filter
+// against the stored target. Here the query was created on ACCOUNTS, and the
+// update tries to submit a transaction-only `reference` condition.
 func TestProcessUpdatePreparedQuery_RejectsFilterInvalidForStoredTarget(t *testing.T) {
 	t.Parallel()
 
@@ -144,6 +141,35 @@ func TestProcessUpdatePreparedQuery_NilFilterClears(t *testing.T) {
 	require.Nil(t, derr)
 	require.Equal(t, previousFilter, payload.GetUpdatedPreparedQuery().GetPreviousFilter())
 	require.Nil(t, payload.GetUpdatedPreparedQuery().GetNewFilter())
+}
+
+func TestProcessUpdatePreparedQuery_ChangesTargetAtomically(t *testing.T) {
+	t.Parallel()
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+	mockStore := NewMockScope(ctrl)
+	expectGetLedger(mockStore, domain.LedgerKey{Name: "test-ledger"}, (&commonpb.LedgerInfo{Name: "test-ledger"}).AsReader(), nil)
+	previous := &commonpb.PreparedQuery{Name: "q1", Target: commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS}
+	pq := setupPreparedQueriesStub(mockStore)
+	pq.onGet(func(_ domain.PreparedQueryKey) (commonpb.PreparedQueryReader, error) {
+		return previous.AsReader(), nil
+	})
+	filter, err := commonpb.DecodeQueryFilterJSON([]byte(`{"$match":{"id":7}}`), commonpb.QueryTarget_QUERY_TARGET_LOGS)
+	require.NoError(t, err)
+	pq.onPut(func(_ domain.PreparedQueryKey, updated *commonpb.PreparedQuery) {
+		require.Equal(t, commonpb.QueryTarget_QUERY_TARGET_LOGS, updated.GetTarget())
+		require.True(t, filter.EqualVT(updated.GetFilter()))
+	})
+	target := commonpb.QueryTarget_QUERY_TARGET_LOGS
+	order := &raftcmdpb.UpdatePreparedQueryOrder{Name: "q1", Target: target.Enum(), Filter: filter}
+	payload, derr := processUpdatePreparedQuery("test-ledger", order, &Context{Scope: mockStore})
+	require.Nil(t, derr)
+	log := payload.GetUpdatedPreparedQuery()
+	require.NotNil(t, log.PreviousTarget)
+	require.NotNil(t, log.NewTarget)
+	require.Equal(t, commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS, log.GetPreviousTarget())
+	require.Equal(t, commonpb.QueryTarget_QUERY_TARGET_LOGS, log.GetNewTarget())
+	require.Equal(t, commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS, previous.GetTarget(), "stored reader must remain immutable")
 }
 
 // TestProcessUpdatePreparedQuery_RejectsNonExecutableStoredTarget covers a

@@ -3,7 +3,9 @@ package membership
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"slices"
 
 	"go.etcd.io/raft/v3/raftpb"
 	"google.golang.org/protobuf/proto"
@@ -23,6 +25,41 @@ func ValidateInstanceID(instanceID []byte) error {
 	return nil
 }
 
+// ValidateCapabilities enforces the canonical representation used in
+// membership evidence. IDs are non-zero, sorted, and unique so the same
+// concrete member cannot present two byte-level representations of support.
+func ValidateCapabilities(ids []uint32) error {
+	for i, id := range ids {
+		if id == 0 {
+			return errors.New("capability id must be non-zero")
+		}
+		if i > 0 && ids[i-1] >= id {
+			return errors.New("capabilities must be sorted and unique")
+		}
+	}
+
+	return nil
+}
+
+// ValidateCapabilityEvidence validates the proof attached to a membership
+// transition against all capabilities currently active in the committed
+// policy. An empty policy keeps membership admission backwards-compatible.
+func ValidateCapabilityEvidence(ctx *ConfChangeContext, required []uint32) error {
+	if ctx == nil {
+		return errors.New("missing capability membership evidence")
+	}
+	if err := ValidateCapabilities(ctx.Capabilities); err != nil {
+		return fmt.Errorf("invalid capability evidence: %w", err)
+	}
+	for _, id := range required {
+		if !slices.Contains(ctx.Capabilities, id) {
+			return fmt.Errorf("capability %d is required by the active policy", id)
+		}
+	}
+
+	return nil
+}
+
 // ConfChangeContext carries peer addresses alongside a Raft ConfChange so that
 // all nodes (not just the leader) can learn the new peer's addresses when the
 // ConfChange is committed.
@@ -35,6 +72,11 @@ type ConfChangeContext struct {
 	RaftAddress    string `json:"raftAddress"`
 	ServiceAddress string `json:"serviceAddress"`
 	InstanceID     []byte `json:"instanceId,omitempty"`
+	// Capabilities are the signed-by-consensus membership evidence for this
+	// concrete peer incarnation. They travel in every registration context and
+	// are persisted in PeerAddress so activation cannot accidentally inherit
+	// support from a replaced pod.
+	Capabilities []uint32 `json:"capabilities,omitempty"`
 	// ProposalID is a leader-local correlation token. It is committed with the
 	// ConfChange so the proposing leader can resolve only the matching waiter;
 	// FSM apply deliberately ignores it.
@@ -48,7 +90,8 @@ type ConfChangeContext struct {
 func (c ConfChangeContext) Equal(other ConfChangeContext) bool {
 	return c.RaftAddress == other.RaftAddress &&
 		c.ServiceAddress == other.ServiceAddress &&
-		bytes.Equal(c.InstanceID, other.InstanceID)
+		bytes.Equal(c.InstanceID, other.InstanceID) &&
+		slices.Equal(c.Capabilities, other.Capabilities)
 }
 
 // MarshalConfChangeContext serialises a ConfChangeContext to JSON bytes

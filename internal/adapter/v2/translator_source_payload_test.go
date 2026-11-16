@@ -16,7 +16,7 @@ func TestTranslateBatch_RevertedTransactionSourcePayload(t *testing.T) {
 	require.NoError(t, err)
 	orders, nextLog, nextTx, err := TranslateBatch("default", []V2Log{{
 		ID: 3, Type: "REVERTED_TRANSACTION", Date: "2024-01-01T01:00:00Z", Data: data,
-	}}, 3, 2, nil)
+	}}, 3, 2, TranslateOptions{})
 	require.NoError(t, err)
 	require.Len(t, orders, 1)
 	rt := orders[0].GetLedgerScoped().GetMirrorIngest().GetEntry().GetRevertedTransaction()
@@ -46,7 +46,7 @@ func TestTranslateBatch_RevertedTransactionRequiresOriginalIdentity(t *testing.T
 			t.Parallel()
 			orders, nextLog, nextTx, err := TranslateBatch("default", []V2Log{{
 				ID: 3, Type: "REVERTED_TRANSACTION", Data: []byte(data),
-			}}, 3, 2, nil)
+			}}, 3, 2, TranslateOptions{})
 			require.ErrorContains(t, err, "REVERTED_TRANSACTION data is missing revertedTransaction.id")
 			require.Nil(t, orders)
 			require.Zero(t, nextLog)
@@ -57,7 +57,7 @@ func TestTranslateBatch_RevertedTransactionRequiresOriginalIdentity(t *testing.T
 			orders, nextLog, nextTx, err = TranslateBatch("default", []V2Log{{
 				ID: 3, Type: "REVERTED_TRANSACTION", Date: "2024-01-01T01:00:00Z",
 				Data: []byte(`{"revertedTransaction":{"id":0},"revertedTransactionID":99,"transaction":{"id":2}}`),
-			}}, 3, 2, nil)
+			}}, 3, 2, TranslateOptions{})
 			require.NoError(t, err)
 			require.Len(t, orders, 1)
 			rt := orders[0].GetLedgerScoped().GetMirrorIngest().GetEntry().GetRevertedTransaction()

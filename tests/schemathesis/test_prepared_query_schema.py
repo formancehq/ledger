@@ -44,7 +44,7 @@ class PreparedQuerySchemaTest(unittest.TestCase):
         schemas = self.schema["components"]["schemas"]
         for request_name, required_fields in (
             ("CreatePreparedQueryRequest", {"name": "all-accounts", "target": "ACCOUNTS"}),
-            ("UpdatePreparedQueryRequest", {}),
+            ("UpdatePreparedQueryRequest", {"target": "ACCOUNTS"}),
         ):
             validator = OAS30Validator(
                 schemas[request_name],
@@ -54,7 +54,11 @@ class PreparedQuerySchemaTest(unittest.TestCase):
                 with self.subTest(request=request_name, filter=filter_value):
                     validator.validate({**required_fields, "filter": filter_value})
             with self.subTest(request=request_name, filter="omitted"):
-                validator.validate(required_fields)
+                if request_name == "CreatePreparedQueryRequest":
+                    validator.validate(required_fields)
+                else:
+                    self.assertTrue(list(validator.iter_errors(required_fields)))
+                    self.assertTrue(list(validator.iter_errors({"filter": None})))
             for filter_value in ({}, 42, True, []):
                 with self.subTest(request=request_name, invalid_filter=filter_value):
                     self.assertTrue(list(validator.iter_errors({**required_fields, "filter": filter_value})))

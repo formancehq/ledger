@@ -17,6 +17,7 @@ import (
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
 	internalauth "github.com/formancehq/ledger/v3/internal/adapter/auth"
+	v2 "github.com/formancehq/ledger/v3/internal/adapter/v2"
 	"github.com/formancehq/ledger/v3/internal/adapter/v2/celrewrite"
 	"github.com/formancehq/ledger/v3/internal/pkg/cursor"
 	"github.com/formancehq/ledger/v3/internal/pkg/version"
@@ -130,6 +131,9 @@ func TestLedgerInfoReadRewriteRules(t *testing.T) {
 			require.NoError(t, protojson.Unmarshal(input.MirrorSource, source))
 			_, rewriteErr := celrewrite.NewRewriter(source.GetRewriteRules())
 			require.NoError(t, rewriteErr, "read fixture must contain admission-valid rules")
+			require.NotEmpty(t, source.GetAssetMappings(), "read fixture must cover assetMappings")
+			_, mappingErr := v2.NewAssetMapper(source.GetAssetMappings())
+			require.NoError(t, mappingErr, "read fixture must contain admission-valid asset mappings")
 			ledger := &commonpb.LedgerInfo{Name: "mirror", Mode: commonpb.LedgerMode_LEDGER_MODE_MIRROR, MirrorSource: source}
 			backend := NewMockBackend(gomock.NewController(t))
 			if tc.path == "/v3/" {

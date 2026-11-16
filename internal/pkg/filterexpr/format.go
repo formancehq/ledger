@@ -55,7 +55,7 @@ func formatFilter(f *commonpb.QueryFilter) (string, int) {
 	case *commonpb.QueryFilter_LogBuiltinUint:
 		return formatLogBuiltinUintCondition(v.LogBuiltinUint)
 	case *commonpb.QueryFilter_LogId:
-		return formatUintRange("logId", v.LogId.GetCond(), renderRawUint)
+		return formatUintRange("id", v.LogId.GetCond(), renderRawUint)
 	case *commonpb.QueryFilter_Reference:
 		return "reference == " + formatStringCondValue(v.Reference.GetCond()), precLeaf
 	case *commonpb.QueryFilter_Reverted:

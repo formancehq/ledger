@@ -16,7 +16,7 @@ func TestWriteConfChangeRejectsRemovalWithoutContext(t *testing.T) {
 
 	m := newTestMembership(t)
 	identity := fixedInstanceID(9)
-	require.NoError(t, m.Register(9, "peer:7777", "peer:8888", identity))
+	require.NoError(t, m.Register(9, "peer:7777", "peer:8888", identity, nil))
 	original := m.PeerAddresses()
 	data, err := proto.Marshal(&raftpb.ConfChangeV2{Changes: []*raftpb.ConfChangeSingle{{
 		Type: new(raftpb.ConfChangeRemoveNode), NodeId: new(uint64(9)),

@@ -99,11 +99,12 @@ The system uses `go.etcd.io/raft/v3`, the standalone Raft implementation extract
 - Delegates FSM application to the **Applier**
 
 `processReady` handles each Raft Ready in a fixed sequence: observe leadership
-and resolve ReadIndex state, append HardState and entries to the WAL, install a
-received snapshot if present, send peer and local storage responses, then
-collect committed configuration changes for the orchestrate goroutine.
+and resolve ReadIndex state, persist ordinary Readies through `WAL.Append` or
+snapshot Readies through `WAL.ApplySnapshot`, send peer and local storage
+responses, then collect committed configuration changes for the orchestrate
+goroutine.
 Leadership acquisition drains earlier apply work before opening its readiness
-gate. Peer messages must not leave before the corresponding WAL append; the
+gate. Peer messages must not leave before the corresponding WAL persistence; the
 orchestrate goroutine alone applies configuration changes to `rawNode`.
 
 ```go
@@ -207,6 +208,30 @@ leave membership without `CLUSTER_JOINED`; restart still follows the existing
 and [server termination](../../../../ops/cli.md#server-termination).
 
 #### Leader readiness generations
+
+Raft leadership, FSM leader readiness, and readiness to perform a particular
+leader-only operation are different signals. A Raft `LeadershipChangeEvent(true)`
+establishes protocol authority but is emitted before the new leader's FSM has
+caught up. `LeaderReadyEvent` follows application of the current-term no-op and
+means the local FSM and store include all preceding committed entries. It does
+not certify external sinks, mirror sources, backup storage, or the disk and clock
+write gate. Consumers must use the barrier required by the state they read.
+
+| Capability | Minimum activation condition | Loss, cancellation, and stale-signal protection |
+| --- | --- | --- |
+| Admission and membership changes | `WaitLeaderReady` before admission pre-reads or membership proposals; admission also requires a current-epoch disk/clock write-gate verdict before waiting. | The readiness generation wakes pending waiters with `ErrNotLeader` on loss. Admission's later Raft proposal remains subject to normal leadership checks. |
+| Event emitters and mirror workers | Bootstrap records a gain only on `LeaderReadyEvent`; their managers then reconcile persisted configuration on their own loops. Each sink/source must also initialize successfully before its worker runs. | Bootstrap records loss inline. Manager generations fence obsolete scans and startup; generation contexts cancel initialization, and manager shutdown prevents late worker creation. See [events and mirror](../events-mirror/). |
+| Cluster configuration reconciliation | `LeaderReadyEvent` before reading persisted cluster state and proposing the desired technical update. | The proposal timeout derives from the readiness generation context; loss or shutdown cancels the blocking proposal wait. |
+| Backup execution | Raw Raft leadership installs the orchestrator's leader context. The backup request still needs its Raft `Start` order and a live executor registration; `LeaderReadyEvent` is not its activation signal. | Loss cancels the leader context and in-flight upload context. The new leader's cleanup loop handles inherited jobs without a local executor. See [backup](../backup/). |
+| Backup orphan cleanup | A periodic tick checks `IsLeader`, then compares FSM `RUNNING` jobs with the leader-local executor registry. There is no `WaitLeaderReady` gate on this loop. | Follower ticks do nothing. The tick's proposal is still checked by Raft; the loop stops with its lifecycle context. Do not infer FSM readiness from its `IsLeader` check. |
+| Disk/clock write gate | Raw leadership starts a new evidence epoch; `LeaderReadyEvent` requests the first prompt poll. A write requires a verdict from fresh local evidence in the current epoch. | Every leadership transition invalidates the old verdict synchronously. A late poll from an older epoch cannot authorize writes in the new epoch. |
+
+The HTTP probes report different, narrower conditions: `/readyz` means the
+local Raft loop has started; `/health` means the local Raft state is connected;
+`/clusterz` additionally requires an elected leader. None waits for
+`LeaderReadyEvent` or reports that every leader-bound capability is usable.
+Disk and clock evidence gates writes through admission, not `/clusterz`.
+See [deployment health checks](../../../../ops/deployment.md#health-checks).
 
 Leadership acquisition does not admit writes immediately. The node first
 drains previously submitted apply work and waits until the FSM has applied the
@@ -641,7 +666,7 @@ Raft logs grow indefinitely. Snapshots allow:
 
 ### Snapshot Creation
 
-Snapshots are created automatically by a periodic background maintenance timer (`--maintenance-interval`, default 30s). On each tick, if `lastPersistedIndex` has advanced since the last snapshot, a new snapshot is created, followed by WAL compaction and Pebble checkpoint creation.
+Snapshots are created automatically by a periodic background maintenance timer (`--maintenance-interval`, default 30s). On each tick, if `lastPersistedIndex` has advanced since the last snapshot, a new snapshot is created. The snapshot file is written and fsynced before its matching snapshot record is appended to the consensus WAL; only after both durable writes succeed is the new snapshot published in memory and eligible for compaction. If the WAL-record write fails, the file remains an orphan and the previous snapshot authority remains active so a later tick can retry without compacting against an unrecorded snapshot. WAL compaction is bounded by the minimum of the durable FSM cursor and the Raft `Applied` cursor (minus `CompactionMargin`), so an apply response still queued in the orchestrator cannot expose an election scan to `ErrCompacted`; a later tick compacts once RawNode acknowledges the batch. Pebble checkpoint creation is an independent maintenance step and may already have completed on the earlier tick.
 
 #### Missing directories
 
@@ -774,36 +799,33 @@ The leader tracks each follower's state:
 
 `Node.processReady` keeps these durability and mutation boundaries:
 
-1. Persist the Ready's entries and HardState together through `WAL.Append`.
-   Persisting HardState without its entries would expose a committed-log gap
-   on a crash before snapshot installation.
+1. Skip `WAL.Append` for a Ready containing a snapshot. Writing its HardState
+   to the old WAL could advance commit beyond the old log before replacement.
 2. Ask the Applier to drain pending commits, interrupt conflicting maintenance,
    and enter `statusInstallingSnapshot` before changing snapshot/FSM state.
-3. `WAL.ApplySnapshot` replaces its in-memory snapshot and cached entry window.
-   It saves the full snapshot file, writes a durable guard snapshot record,
-   saves HardState, then writes the snapshot record again as the sync barrier.
-   Persistence failure leaves the preceding in-memory mutations visible and
-   returns an error; the node stops instead of acknowledging the Ready.
-4. If this same Ready carries entries after the snapshot, append that suffix
-   again to restore the cached Storage window before any peer or local storage
-   acknowledgement. This repeats at most the Ready suffix's bytes once, only
-   on a snapshot Ready; ordinary Ready persistence has no additional append.
+3. `WAL.ApplySnapshot` saves the full snapshot file and prepares a new WAL with
+   the snapshot, this Ready's HardState and any entries after the
+   snapshot. It syncs the new WAL before replacing the active `etcd/` directory.
+   Startup resolves an interrupted directory replacement before WAL replay.
+4. After the replacement is durable and the new WAL is readable, `ApplySnapshot` replaces its in-memory
+   snapshot and cached entry window with the same suffix. An error before the
+   directory switch leaves the old in-memory state; an error during the switch
+   stops the node for restart recovery. Neither path acknowledges the Ready.
 5. `Synchronizer.InstallSnapshot` records the expected snapshot index and resets
    caches. It does not install business data from the Raft message. Enqueue
    checkpoint synchronization, then release the Ready's messages and local
    storage responses.
 
-The suffix restoration uses the existing WAL format and append path. Live
-`LastIndex`, `Term` and `Entries` must expose the same suffix that a reopened
-WAL recovers. The repeated `Append` updates cached entries before its durable
-write. If that write fails, the installed snapshot and suffix stay
-visible in memory while disk retains the last successfully written WAL prefix.
-Ready processing stops before storage acknowledgement; these in-memory changes
-are not rolled back.
+The replacement uses the existing WAL record format and active directory path.
+Live `LastIndex`, `Term` and `Entries` expose the same suffix that a reopened
+WAL recovers. The old WAL is retained until the replacement has been synced;
+the new WAL carries the persisted term and vote rather than deriving them from
+the snapshot's log term. Ready processing stops before acknowledgement on any
+persistence failure.
 
-The suffix restoration changes no wire or persisted fields and requires no
-migration of released RC state. Old and new voters remain interoperable during
-a rolling upgrade. The WAL suffix is cluster-local Raft state; cross-cluster
+The replacement changes no wire or WAL record fields and requires no migration
+of released RC state. Old and new voters remain interoperable during a rolling
+upgrade. The WAL suffix is cluster-local Raft state; cross-cluster
 restore continues to rebuild its independent Raft domain from the restored
 business checkpoint and exported delta.
 

@@ -42,6 +42,14 @@ preserve client decoding instead of bumping the revision. Read the
 [protocol maintenance rules](docs/technical/architecture/subsystems/api/protocol-compatibility.md#maintaining-the-revision)
 before modifying this contract.
 
+### Cutting a release branch — version-line marker
+
+When cutting a `release/vX.Y` branch, or when `main` starts v3.1 work, follow
+[release versioning](docs/technical/contributing/release-versioning.md#cutting-a-release-branch).
+`main` may need the RFC-0013 marker tag `vX.(Y+1).0-0`; `v3.1.0-0` is still
+pending. Create it only through the mark-version-line CI workflow, never by
+pushing the tag by hand: a hand-pushed marker is published as a release.
+
 ## Configuration safety checks
 
 Critical persisted configuration such as node/cluster identity and storage schema is validated on boot. Do not weaken or bypass those checks without an explicit task requiring it. Read `docs/ops/deployment.md` and the relevant `internal/bootstrap/**` code before changing persisted/config-validation behavior.

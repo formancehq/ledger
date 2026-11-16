@@ -532,6 +532,7 @@ func newSignatureAdmission(t *testing.T, keyID string, publicKey ed25519.PublicK
 		store,
 		logger,
 		nil,
+		nil,
 		plan.NewBuilder(node.NewIndexTracker(1), cache, attrs, store, nil, logger, 0),
 		meterProvider,
 		allowWriteGate{},

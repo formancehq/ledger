@@ -76,7 +76,7 @@ func newWorkerForTest(t *testing.T, ledgerName string, source v2.Source, store *
 	ctx := logging.TestingContext()
 
 	return NewWorker(
-		ledgerName, 100, source, nil, store, nil, builder,
+		ledgerName, 100, source, v2.TranslateOptions{}, store, nil, builder,
 		logging.FromContext(ctx), noop.NewMeterProvider(),
 	)
 }
@@ -196,7 +196,7 @@ func newWorkerWithProposer(
 	ctx := logging.TestingContext()
 
 	return NewWorker(
-		ledgerName, 100, source, nil, store, proposer, builder,
+		ledgerName, 100, source, v2.TranslateOptions{}, store, proposer, builder,
 		logging.FromContext(ctx), noop.NewMeterProvider(),
 	)
 }

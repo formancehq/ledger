@@ -323,6 +323,7 @@ func (x *ClusterPolicy) MarshalJSON() ([]byte, error) {
 		MetadataMaxValueBytes       uint64 `json:"metadataMaxValueBytes"`
 		MetadataMaxEntityBytes      uint64 `json:"metadataMaxEntityBytes"`
 		MetadataMaxCommandBytes     uint64 `json:"metadataMaxCommandBytes"`
+		CapabilityActivations       any    `json:"capabilityActivations"`
 	}{
 		Revision:                    x.Revision,
 		IdempotencyTtlMicros:        x.IdempotencyTtlMicros,
@@ -332,6 +333,12 @@ func (x *ClusterPolicy) MarshalJSON() ([]byte, error) {
 		MetadataMaxValueBytes:       x.MetadataMaxValueBytes,
 		MetadataMaxEntityBytes:      x.MetadataMaxEntityBytes,
 		MetadataMaxCommandBytes:     x.MetadataMaxCommandBytes,
+		CapabilityActivations: func() any {
+			if x.CapabilityActivations == nil {
+				return []any{}
+			}
+			return x.CapabilityActivations
+		}(),
 	})
 }
 
@@ -351,11 +358,47 @@ func (x *UpdatedPreparedQueryLog) MarshalJSON() ([]byte, error) {
 		Name           string `json:"name"`
 		PreviousFilter any    `json:"previousFilter,omitempty,omitzero"`
 		NewFilter      any    `json:"newFilter,omitempty,omitzero"`
+		PreviousTarget any    `json:"previousTarget,omitempty,omitzero"`
+		NewTarget      any    `json:"newTarget,omitempty,omitzero"`
 	}{
 		Ledger:         x.Ledger,
 		Name:           x.Name,
 		PreviousFilter: x.PreviousFilter,
 		NewFilter:      x.NewFilter,
+		PreviousTarget: func() any {
+			if x.PreviousTarget == nil {
+				return nil
+			}
+			switch *x.PreviousTarget {
+			case QueryTarget_QUERY_TARGET_ACCOUNTS:
+				return "QUERY_TARGET_ACCOUNTS"
+			case QueryTarget_QUERY_TARGET_TRANSACTIONS:
+				return "QUERY_TARGET_TRANSACTIONS"
+			case QueryTarget_QUERY_TARGET_LOGS:
+				return "QUERY_TARGET_LOGS"
+			case QueryTarget_QUERY_TARGET_AUDIT:
+				return "QUERY_TARGET_AUDIT"
+			default:
+				return int32(*x.PreviousTarget)
+			}
+		}(),
+		NewTarget: func() any {
+			if x.NewTarget == nil {
+				return nil
+			}
+			switch *x.NewTarget {
+			case QueryTarget_QUERY_TARGET_ACCOUNTS:
+				return "QUERY_TARGET_ACCOUNTS"
+			case QueryTarget_QUERY_TARGET_TRANSACTIONS:
+				return "QUERY_TARGET_TRANSACTIONS"
+			case QueryTarget_QUERY_TARGET_LOGS:
+				return "QUERY_TARGET_LOGS"
+			case QueryTarget_QUERY_TARGET_AUDIT:
+				return "QUERY_TARGET_AUDIT"
+			default:
+				return int32(*x.NewTarget)
+			}
+		}(),
 	})
 }
 
@@ -1012,10 +1055,11 @@ func (x *MirrorSourceConfig) MarshalJSON() ([]byte, error) {
 	switch oneofValueType := x.Type.(type) {
 	case *MirrorSourceConfig_Http:
 		return jsonv2.Marshal(struct {
-			LedgerName   string `json:"ledgerName"`
-			Http         any    `json:"http"`
-			BatchSize    uint32 `json:"batchSize"`
-			RewriteRules any    `json:"rewriteRules"`
+			LedgerName    string `json:"ledgerName"`
+			Http          any    `json:"http"`
+			BatchSize     uint32 `json:"batchSize"`
+			RewriteRules  any    `json:"rewriteRules"`
+			AssetMappings any    `json:"assetMappings"`
 		}{
 			LedgerName: x.LedgerName,
 			Http:       oneofValueType.Http,
@@ -1026,13 +1070,20 @@ func (x *MirrorSourceConfig) MarshalJSON() ([]byte, error) {
 				}
 				return x.RewriteRules
 			}(),
+			AssetMappings: func() any {
+				if x.AssetMappings == nil {
+					return []any{}
+				}
+				return x.AssetMappings
+			}(),
 		})
 	case *MirrorSourceConfig_Postgres:
 		return jsonv2.Marshal(struct {
-			LedgerName   string `json:"ledgerName"`
-			Postgres     any    `json:"postgres"`
-			BatchSize    uint32 `json:"batchSize"`
-			RewriteRules any    `json:"rewriteRules"`
+			LedgerName    string `json:"ledgerName"`
+			Postgres      any    `json:"postgres"`
+			BatchSize     uint32 `json:"batchSize"`
+			RewriteRules  any    `json:"rewriteRules"`
+			AssetMappings any    `json:"assetMappings"`
 		}{
 			LedgerName: x.LedgerName,
 			Postgres:   oneofValueType.Postgres,
@@ -1043,12 +1094,19 @@ func (x *MirrorSourceConfig) MarshalJSON() ([]byte, error) {
 				}
 				return x.RewriteRules
 			}(),
+			AssetMappings: func() any {
+				if x.AssetMappings == nil {
+					return []any{}
+				}
+				return x.AssetMappings
+			}(),
 		})
 	default:
 		return jsonv2.Marshal(struct {
-			LedgerName   string `json:"ledgerName"`
-			BatchSize    uint32 `json:"batchSize"`
-			RewriteRules any    `json:"rewriteRules"`
+			LedgerName    string `json:"ledgerName"`
+			BatchSize     uint32 `json:"batchSize"`
+			RewriteRules  any    `json:"rewriteRules"`
+			AssetMappings any    `json:"assetMappings"`
 		}{
 			LedgerName: x.LedgerName,
 			BatchSize:  x.BatchSize,
@@ -1058,8 +1116,26 @@ func (x *MirrorSourceConfig) MarshalJSON() ([]byte, error) {
 				}
 				return x.RewriteRules
 			}(),
+			AssetMappings: func() any {
+				if x.AssetMappings == nil {
+					return []any{}
+				}
+				return x.AssetMappings
+			}(),
 		})
 	}
+}
+
+func (x *MirrorAssetMapping) MarshalJSON() ([]byte, error) {
+	return jsonv2.Marshal(struct {
+		SourceAsset string `json:"sourceAsset"`
+		Asset       string `json:"asset"`
+		Color       string `json:"color"`
+	}{
+		SourceAsset: x.SourceAsset,
+		Asset:       x.Asset,
+		Color:       x.Color,
+	})
 }
 
 func (x *MirrorRewriteRule) MarshalJSON() ([]byte, error) {

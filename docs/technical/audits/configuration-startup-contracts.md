@@ -134,6 +134,14 @@ results. This is constructor evidence, not production binding, TLS validation,
 process exit or listener/readiness proof. Per-request signature-to-policy
 binding remains owned by `authentication-authorization-boundaries`.
 
+For OIDC issuers, follow `--auth-issuer` and `--auth-issuers` (env
+`AUTH_ISSUERS`) through `LoadConfig` into `AuthFlagConfig.TrustedIssuers`. Both
+`validateAuthConfig` and `buildAuthConfig` consume that merged set, and startup
+fails if discovery fails for any trusted issuer. `--auth-issuers` is ignored
+while authentication is disabled; only the singular flag is rejected in that
+state. Use `TestLoadConfig_AuthIssuersEnvironment` for binder evidence and
+`TestBuildAuthConfig_DiscoversEveryTrustedIssuer` for discovery (EN-3232).
+
 | Domain | Ownership |
 | --- | --- |
 | `configuration-startup-contracts` | Static parameter resolution/translation, validation predicate, consumer wiring and desired-versus-applied authority. |

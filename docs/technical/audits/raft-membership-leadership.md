@@ -75,6 +75,23 @@ question rather than inventing a membership guarantee.
 
 ## Transition-specific evidence
 
+### Capability evidence and policy activation
+
+For bootstrap join, restart refresh, promotion, and membership changes, record
+the member's `(node_id, instance_id)`, advertised capability IDs, committed
+membership row, and the policy revision and active capabilities on every
+replica. A restarted member must refresh its committed evidence using peers
+recovered from membership even when no `--join` flag is present. Distinguish a
+transient old-peer `Unimplemented` refresh response from permanent identity or
+policy rejection, and prove eventual convergence through a compatible peer.
+Before activating a capability, require support by the local binary and
+committed evidence from every member; after activation, reject announcements
+and proposals that lack the required evidence. Exercise policy activation and
+membership `ConfChange` in adjacent FSM batches and compare the final policy,
+membership, `ConfState`, and admission decision on every replica. This records
+the foundation for future activations; the current protocol cutover uses a
+coordinated stop and restart.
+
 ### Normal membership changes
 
 Prove which `ConfChangeV2` was admitted and which configuration commits it.
@@ -107,6 +124,16 @@ history through WAL replay. Require both tombstones and final ConfState parity.
 Missing tombstones/read failures must retain protection. Check the lookup cost
 partition and benchmark growing per-ordinal history separately from unrelated
 nodes; no set lock may span apply, store reads or proposal waits.
+
+For maintenance snapshots, keep the durable authorities ordered: fsync the
+snapshot file, append and persist its matching WAL snapshot record, then publish
+the new snapshot in memory and allow compaction. If the WAL-record append fails,
+the file is only an orphan and the previous snapshot remains authoritative; an
+idle retry must recreate the same snapshot and must not compact on an
+`ErrSnapOutOfDate` produced by a prematurely published in-memory snapshot.
+Separately, compaction must remain behind the minimum of the durable FSM cursor
+and the Raft apply-ack cursor, preserving the unapplied interval for election
+scans until `MsgStorageApplyResp` advances that frontier.
 
 ### Leadership and quorum transitions
 
@@ -379,14 +406,19 @@ publication is a separate explicitly authorized action.
 
 ## Received snapshot Ready suffix evidence
 
-For a Ready containing both a snapshot and subsequent entries, retain the
-original entries/HardState durability order, then verify that snapshot
-installation cannot erase the suffix from `LastIndex`, `Term`, `Entries` or
-a reopened WAL before storage acknowledgement. Identify the residual
-in-memory snapshot/cache and durable WAL prefix on any failure. The focused
+For a Ready containing both a snapshot and subsequent entries, skip the
+ordinary append to the old WAL. Verify that installation writes the full
+snapshot file, prepares and syncs a
+candidate WAL with the snapshot record, current HardState, and only the same
+Ready suffix, and publishes that WAL before storage acknowledgement. The
+suffix must remain visible through `LastIndex`, `Term`, and `Entries` and after
+reopening the WAL. Identify the residual in-memory snapshot/cache and durable
+WAL prefix at each preparation or directory-switch failure. The focused
 regression is `process_ready_snapshot_test.go` under `internal/infra/node/`.
-Snapshot-only processing retains its existing append count; a combined Ready
-reappends only the suffix once, with no retained-log scan.
+Ready persistence does not call `Append`; installation writes the suffix
+only to the candidate WAL. Even a snapshot-only Ready builds and syncs a
+candidate WAL. Replacement work depends on the snapshot and Ready suffix,
+not on the retained log length.
 
 ## Sent snapshot liveness evidence
 

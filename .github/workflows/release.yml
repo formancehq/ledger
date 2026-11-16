@@ -3,6 +3,8 @@ on:
   push:
     tags:
       - 'v*.*.*'
+      # RFC-0013 version-line markers (vX.Y.0-0) are not releases.
+      - '!v*.*.*-0'
 
 permissions:
   contents: write

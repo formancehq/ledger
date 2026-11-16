@@ -41,6 +41,10 @@ example that reaches nearby code.
   bypassing the guarded production call and confirming that the focused test
   fails. Never keep the mutation in the worktree.
 
+Shell fixtures that wrap commands must resolve the underlying executable through
+`exec.LookPath` before adding wrappers to `PATH`. Pass that path to the wrapper
+explicitly. NixOS does not provide `/bin` or `/usr/bin` aliases for these tools.
+
 #### Nested AI-tooling fixtures
 
 Tests that launch AI workflow scripts or operate on synthetic Git repositories

@@ -76,16 +76,9 @@ func TestProcessReadySnapshotPreservesWALSuffix(t *testing.T) {
 			// fixture's local membership and omit SoftState so no remote checkpoint
 			// donor is scheduled; the real applier still drains for installation.
 			rd.SoftState = nil
-			// Exercise the real WAL while enforcing the write budget: ordinary
-			// snapshot receipt appends once, and only a nonempty suffix adds
-			// one repeated append. No work scales with the retained log size.
+			// The snapshot Ready is persisted only in the replacement WAL.
 			measuredWAL := wal.NewMockWAL(gomock.NewController(t))
-			appendCount := 1
-			if withSuffix {
-				appendCount = 2
-			}
-			measuredWAL.EXPECT().Append(rd.HardState, rd.Entries).DoAndReturn(setup.wal.Append).Times(appendCount)
-			measuredWAL.EXPECT().ApplySnapshot(snapshot).DoAndReturn(setup.wal.ApplySnapshot)
+			measuredWAL.EXPECT().ApplySnapshot(snapshot, rd.HardState, rd.Entries).DoAndReturn(setup.wal.ApplySnapshot)
 			n.wal = measuredWAL
 			runDone := make(chan error, 1)
 			go func() { runDone <- setup.applier.Run(context.Background(), setup.stop) }()

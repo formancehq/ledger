@@ -6,9 +6,14 @@
 # exact same builds (binaries, build tags, ldflags) and the same dockers_v2
 # entry (build.Dockerfile, platforms, labels) as a nightly or tagged release.
 #
-# Always run with `--nightly` (see the recipe). In nightly mode the canonical
-# docker tags resolve to "{{ .Version }}" with no `v` prefix and no `latest`,
-# so the only tag pushed is the one set below through nightly.version_template.
+# Always run with `--nightly` (see the recipe). The docker tags inherited from
+# the canonical file skip `latest` (nightly mode) and the
+# `nightly-<short-commit>` alias (because PR_IMAGE_TAG is set), so only
+# nightlies built from main keep that alias. With
+# DEV_VERSION (RFC-0013, set by the Build-PR-Image workflow), the version is the
+# PR head's development version: binaries and the image.version label report it,
+# and the image is tagged `v<DEV_VERSION>` and `<PR_IMAGE_TAG>`. Without it, the
+# version and the only tag are PR_IMAGE_TAG.
 #
 # The includes merge appends lists and never overrides a non-zero value with a
 # zero value. Consequences for this file:
@@ -32,6 +37,7 @@ changelog:
   disable: true
 
 nightly:
-  # The image tag, e.g. pr-2229-1a2b3c4. The build fails when the variable is
-  # unset instead of falling back to another tag.
-  version_template: "{{ .Env.PR_IMAGE_TAG }}"
+  # DEV_VERSION, e.g. 3.0.0-rc.3.dev.39.g1a2b3c4, else the image tag, e.g.
+  # pr-2229-1a2b3c4. The build fails when PR_IMAGE_TAG is unset instead of
+  # falling back to another tag.
+  version_template: '{{ $pr := .Env.PR_IMAGE_TAG }}{{ if index .Env "DEV_VERSION" }}{{ .Env.DEV_VERSION }}{{ else }}{{ $pr }}{{ end }}'

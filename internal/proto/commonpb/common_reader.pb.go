@@ -3522,6 +3522,7 @@ type ClusterPolicyReader interface {
 	GetMetadataMaxValueBytes() uint64
 	GetMetadataMaxEntityBytes() uint64
 	GetMetadataMaxCommandBytes() uint64
+	GetCapabilityActivations() CapabilityActivationListReader
 	Mutate() *ClusterPolicy
 }
 
@@ -3557,6 +3558,10 @@ func (r *clusterPolicyReadonly) GetMetadataMaxEntityBytes() uint64 {
 
 func (r *clusterPolicyReadonly) GetMetadataMaxCommandBytes() uint64 {
 	return (*ClusterPolicy)(r).GetMetadataMaxCommandBytes()
+}
+
+func (r *clusterPolicyReadonly) GetCapabilityActivations() CapabilityActivationListReader {
+	return NewCapabilityActivationListReader((*ClusterPolicy)(r).GetCapabilityActivations())
 }
 
 func (r *clusterPolicyReadonly) Mutate() *ClusterPolicy {
@@ -3696,6 +3701,8 @@ type UpdatedPreparedQueryLogReader interface {
 	GetName() string
 	GetPreviousFilter() QueryFilterReader
 	GetNewFilter() QueryFilterReader
+	GetPreviousTarget() QueryTarget
+	GetNewTarget() QueryTarget
 	Mutate() *UpdatedPreparedQueryLog
 }
 
@@ -3723,6 +3730,14 @@ func (r *updatedPreparedQueryLogReadonly) GetNewFilter() QueryFilterReader {
 		return nil
 	}
 	return v.AsReader()
+}
+
+func (r *updatedPreparedQueryLogReadonly) GetPreviousTarget() QueryTarget {
+	return (*UpdatedPreparedQueryLog)(r).GetPreviousTarget()
+}
+
+func (r *updatedPreparedQueryLogReadonly) GetNewTarget() QueryTarget {
+	return (*UpdatedPreparedQueryLog)(r).GetNewTarget()
 }
 
 func (r *updatedPreparedQueryLogReadonly) Mutate() *UpdatedPreparedQueryLog {
@@ -9682,6 +9697,68 @@ func (l mirrorRewriteRuleInvalidDetailsListReadonly) Range(yield func(int, Mirro
 // view aliases the underlying slice; do not mutate s afterwards.
 func NewMirrorRewriteRuleInvalidDetailsListReader(s []*MirrorRewriteRuleInvalidDetails) MirrorRewriteRuleInvalidDetailsListReader {
 	return mirrorRewriteRuleInvalidDetailsListReadonly(s)
+}
+
+// MirrorAssetMappingInvalidDetailsReader provides read-only access to MirrorAssetMappingInvalidDetails.
+// Call Mutate() to obtain a mutable clone.
+type MirrorAssetMappingInvalidDetailsReader interface {
+	Mutate() *MirrorAssetMappingInvalidDetails
+}
+
+type mirrorAssetMappingInvalidDetailsReadonly MirrorAssetMappingInvalidDetails
+
+func (r *mirrorAssetMappingInvalidDetailsReadonly) Mutate() *MirrorAssetMappingInvalidDetails {
+	return (*MirrorAssetMappingInvalidDetails)(r).CloneVT()
+}
+
+// AsReader returns a read-only view of this MirrorAssetMappingInvalidDetails.
+func (m *MirrorAssetMappingInvalidDetails) AsReader() MirrorAssetMappingInvalidDetailsReader {
+	if m == nil {
+		return nil
+	}
+	return (*mirrorAssetMappingInvalidDetailsReadonly)(m)
+}
+
+// Mutate returns a mutable deep clone of this MirrorAssetMappingInvalidDetails.
+func (m *MirrorAssetMappingInvalidDetails) Mutate() *MirrorAssetMappingInvalidDetails {
+	return m.CloneVT()
+}
+
+// MirrorAssetMappingInvalidDetailsListReader provides read-only iteration over []*MirrorAssetMappingInvalidDetails.
+type MirrorAssetMappingInvalidDetailsListReader interface {
+	Len() int
+	Get(i int) MirrorAssetMappingInvalidDetailsReader
+	Range(yield func(int, MirrorAssetMappingInvalidDetailsReader) bool)
+}
+
+type mirrorAssetMappingInvalidDetailsListReadonly []*MirrorAssetMappingInvalidDetails
+
+func (l mirrorAssetMappingInvalidDetailsListReadonly) Len() int { return len(l) }
+
+func (l mirrorAssetMappingInvalidDetailsListReadonly) Get(i int) MirrorAssetMappingInvalidDetailsReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l mirrorAssetMappingInvalidDetailsListReadonly) Range(yield func(int, MirrorAssetMappingInvalidDetailsReader) bool) {
+	for i, v := range l {
+		var r MirrorAssetMappingInvalidDetailsReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewMirrorAssetMappingInvalidDetailsListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewMirrorAssetMappingInvalidDetailsListReader(s []*MirrorAssetMappingInvalidDetails) MirrorAssetMappingInvalidDetailsListReader {
+	return mirrorAssetMappingInvalidDetailsListReadonly(s)
 }
 
 // NumscriptAssetMismatchDetailsReader provides read-only access to NumscriptAssetMismatchDetails.
@@ -16760,6 +16837,7 @@ type MirrorSourceConfigReader interface {
 	GetLedgerName() string
 	GetBatchSize() uint32
 	GetRewriteRules() MirrorRewriteRuleListReader
+	GetAssetMappings() MirrorAssetMappingListReader
 	GetType() isMirrorSourceConfig_Type
 	Mutate() *MirrorSourceConfig
 }
@@ -16776,6 +16854,10 @@ func (r *mirrorSourceConfigReadonly) GetBatchSize() uint32 {
 
 func (r *mirrorSourceConfigReadonly) GetRewriteRules() MirrorRewriteRuleListReader {
 	return NewMirrorRewriteRuleListReader((*MirrorSourceConfig)(r).GetRewriteRules())
+}
+
+func (r *mirrorSourceConfigReadonly) GetAssetMappings() MirrorAssetMappingListReader {
+	return NewMirrorAssetMappingListReader((*MirrorSourceConfig)(r).GetAssetMappings())
 }
 
 func (r *mirrorSourceConfigReadonly) GetType() isMirrorSourceConfig_Type {
@@ -16834,6 +16916,83 @@ func (l mirrorSourceConfigListReadonly) Range(yield func(int, MirrorSourceConfig
 // view aliases the underlying slice; do not mutate s afterwards.
 func NewMirrorSourceConfigListReader(s []*MirrorSourceConfig) MirrorSourceConfigListReader {
 	return mirrorSourceConfigListReadonly(s)
+}
+
+// MirrorAssetMappingReader provides read-only access to MirrorAssetMapping.
+// Call Mutate() to obtain a mutable clone.
+type MirrorAssetMappingReader interface {
+	GetSourceAsset() string
+	GetAsset() string
+	GetColor() string
+	Mutate() *MirrorAssetMapping
+}
+
+type mirrorAssetMappingReadonly MirrorAssetMapping
+
+func (r *mirrorAssetMappingReadonly) GetSourceAsset() string {
+	return (*MirrorAssetMapping)(r).GetSourceAsset()
+}
+
+func (r *mirrorAssetMappingReadonly) GetAsset() string {
+	return (*MirrorAssetMapping)(r).GetAsset()
+}
+
+func (r *mirrorAssetMappingReadonly) GetColor() string {
+	return (*MirrorAssetMapping)(r).GetColor()
+}
+
+func (r *mirrorAssetMappingReadonly) Mutate() *MirrorAssetMapping {
+	return (*MirrorAssetMapping)(r).CloneVT()
+}
+
+// AsReader returns a read-only view of this MirrorAssetMapping.
+func (m *MirrorAssetMapping) AsReader() MirrorAssetMappingReader {
+	if m == nil {
+		return nil
+	}
+	return (*mirrorAssetMappingReadonly)(m)
+}
+
+// Mutate returns a mutable deep clone of this MirrorAssetMapping.
+func (m *MirrorAssetMapping) Mutate() *MirrorAssetMapping {
+	return m.CloneVT()
+}
+
+// MirrorAssetMappingListReader provides read-only iteration over []*MirrorAssetMapping.
+type MirrorAssetMappingListReader interface {
+	Len() int
+	Get(i int) MirrorAssetMappingReader
+	Range(yield func(int, MirrorAssetMappingReader) bool)
+}
+
+type mirrorAssetMappingListReadonly []*MirrorAssetMapping
+
+func (l mirrorAssetMappingListReadonly) Len() int { return len(l) }
+
+func (l mirrorAssetMappingListReadonly) Get(i int) MirrorAssetMappingReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l mirrorAssetMappingListReadonly) Range(yield func(int, MirrorAssetMappingReader) bool) {
+	for i, v := range l {
+		var r MirrorAssetMappingReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewMirrorAssetMappingListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewMirrorAssetMappingListReader(s []*MirrorAssetMapping) MirrorAssetMappingListReader {
+	return mirrorAssetMappingListReadonly(s)
 }
 
 // MirrorRewriteRuleReader provides read-only access to MirrorRewriteRule.
@@ -22896,4 +23055,76 @@ func (l listOptionsListReadonly) Range(yield func(int, ListOptionsReader) bool) 
 // view aliases the underlying slice; do not mutate s afterwards.
 func NewListOptionsListReader(s []*ListOptions) ListOptionsListReader {
 	return listOptionsListReadonly(s)
+}
+
+// CapabilityActivationReader provides read-only access to CapabilityActivation.
+// Call Mutate() to obtain a mutable clone.
+type CapabilityActivationReader interface {
+	GetId() uint32
+	GetActive() bool
+	Mutate() *CapabilityActivation
+}
+
+type capabilityActivationReadonly CapabilityActivation
+
+func (r *capabilityActivationReadonly) GetId() uint32 {
+	return (*CapabilityActivation)(r).GetId()
+}
+
+func (r *capabilityActivationReadonly) GetActive() bool {
+	return (*CapabilityActivation)(r).GetActive()
+}
+
+func (r *capabilityActivationReadonly) Mutate() *CapabilityActivation {
+	return (*CapabilityActivation)(r).CloneVT()
+}
+
+// AsReader returns a read-only view of this CapabilityActivation.
+func (m *CapabilityActivation) AsReader() CapabilityActivationReader {
+	if m == nil {
+		return nil
+	}
+	return (*capabilityActivationReadonly)(m)
+}
+
+// Mutate returns a mutable deep clone of this CapabilityActivation.
+func (m *CapabilityActivation) Mutate() *CapabilityActivation {
+	return m.CloneVT()
+}
+
+// CapabilityActivationListReader provides read-only iteration over []*CapabilityActivation.
+type CapabilityActivationListReader interface {
+	Len() int
+	Get(i int) CapabilityActivationReader
+	Range(yield func(int, CapabilityActivationReader) bool)
+}
+
+type capabilityActivationListReadonly []*CapabilityActivation
+
+func (l capabilityActivationListReadonly) Len() int { return len(l) }
+
+func (l capabilityActivationListReadonly) Get(i int) CapabilityActivationReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l capabilityActivationListReadonly) Range(yield func(int, CapabilityActivationReader) bool) {
+	for i, v := range l {
+		var r CapabilityActivationReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewCapabilityActivationListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewCapabilityActivationListReader(s []*CapabilityActivation) CapabilityActivationListReader {
+	return capabilityActivationListReadonly(s)
 }

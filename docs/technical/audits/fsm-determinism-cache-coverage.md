@@ -457,6 +457,15 @@ indexes and business/audit effects, then repeat across the supported rolling
 upgrade boundary. Preflight must reject an old member that cannot decode or
 apply these entries; the Raft audit owns that cluster admission gate.
 
+## Prepared-query target updates (EN-2601)
+
+An explicit `UpdatePreparedQueryOrder.target` changes the stored target and
+filter in one covered FSM mutation. The audit log carries both target values.
+An old order without the optional field retains its stored target and produces
+the historical filter-only log, including during audit replay. Compare the
+same committed order across voters at a supported upgrade boundary; target
+changes must not be admitted while old and new processors can coexist.
+
 ## Transaction account metadata address failures
 
 Caller metadata and merged script metadata must use the same deterministic

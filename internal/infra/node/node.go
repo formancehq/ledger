@@ -26,6 +26,7 @@ import (
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
+	"github.com/formancehq/ledger/v3/internal/infra/capabilities"
 	"github.com/formancehq/ledger/v3/internal/infra/membership"
 	"github.com/formancehq/ledger/v3/internal/infra/state"
 	"github.com/formancehq/ledger/v3/internal/pkg/futures"
@@ -364,8 +365,12 @@ type Node struct {
 	// pending FSM future, so a later term advance can fail futures whose
 	// entries were truncated by the new leader (issue #172).
 	lastObservedTerm atomic.Uint64
-	observer         *Observer
-	applier          *Applier
+	// lastRaftApplied is advanced only after the orchestrate goroutine steps
+	// MsgStorageApplyResp into RawNode. Maintenance must not compact entries
+	// that RawNode can still scan while this cursor lags the FSM.
+	lastRaftApplied atomic.Uint64
+	observer        *Observer
+	applier         *Applier
 
 	readies         chan raft.Ready
 	readyTerminated chan readyResult
@@ -394,6 +399,10 @@ type Node struct {
 	drainOutstanding uint64 // guarded by proposalAdmissionMu
 	drainReleaseSeen uint64 // guarded by proposalAdmissionMu
 	drainGeneration  uint64 // guarded by proposalAdmissionMu
+	// proposalAdmission is the authoritative policy gate immediately before a
+	// proposal enters the Raft queue. It is injected at construction so every
+	// proposal producer shares the same serialized-boundary check.
+	proposalAdmission ProposalAdmission
 	// membership owns the Raft peer-address state (Pebble + in-memory
 	// cache) and the OnSnapshotInstalled / WriteConfChange callbacks
 	// wired into Applier and Machine. EN-1413.
@@ -415,7 +424,7 @@ type Node struct {
 	// RemoveNode, PromoteLearner) so that only one proposal is in-flight at a
 	// time. This avoids unnecessary retries caused by etcd/raft silently
 	// dropping concurrent ConfChange proposals.
-	confChangeMu sync.Mutex
+	confChangeMu membership.Coordinator
 
 	// lastAutoPromote tracks the last time an auto-promotion was proposed for
 	// each learner node. Used to rate-limit proposals and avoid spamming raft
@@ -464,6 +473,18 @@ type Node struct {
 	readIndexDurationHistogram        metric.Float64Histogram
 }
 
+// ProposalAdmission is the authoritative admission check applied immediately
+// before a proposal is queued for Raft.
+type ProposalAdmission func(context.Context, *Proposal) error
+
+// NodeOption configures a Node dependency at construction time.
+type NodeOption func(*Node)
+
+// WithProposalAdmission installs the serialized-boundary proposal gate.
+func WithProposalAdmission(admission ProposalAdmission) NodeOption {
+	return func(node *Node) { node.proposalAdmission = admission }
+}
+
 // NewNode creates a new wrapper around a RawNode.
 func NewNode(
 	cfg NodeConfig,
@@ -477,6 +498,7 @@ func NewNode(
 	synchronizer *state.Synchronizer,
 	membership *membership.Membership,
 	localResponses LocalResponses,
+	opts ...NodeOption,
 ) (*Node, error) {
 	if err := cfg.validateTickIntervals(); err != nil {
 		return nil, err
@@ -685,7 +707,7 @@ func NewNode(
 	// writes self for Bootstrap/Restore, but the restart branch never
 	// did — that's the gap the previous bootstrap hook used to cover
 	// before transport wiring moved into Membership.
-	if err := membership.Register(cfg.NodeID, cfg.AdvertiseAddr, cfg.ServiceAdvertiseAddr, cfg.InstanceID); err != nil {
+	if err := membership.Register(cfg.NodeID, cfg.AdvertiseAddr, cfg.ServiceAdvertiseAddr, cfg.InstanceID, capabilities.IDsAsUint32(capabilities.SupportedIDs())); err != nil {
 		return nil, fmt.Errorf("refreshing self in peer store: %w", err)
 	}
 
@@ -712,6 +734,10 @@ func NewNode(
 		indexTracker:     NewIndexTracker(initialIndex(wal)),
 		observer:         NewNoOpObserver(),
 	}
+	for _, opt := range opts {
+		opt(node)
+	}
+	node.confChangeMu.Configure(node.waitForPriorMembership, node.stopChannel, node.terminalCh)
 
 	// Start ready: no leadership transition is in progress yet.
 	node.leaderReady.Store(newCompletedLeaderReadyGeneration())
@@ -966,10 +992,20 @@ func (node *Node) doMaintenance() error {
 		return nil
 	}
 
-	// Early skip: nothing new since the previous tick. Avoids paying for an
-	// fsync on idle clusters.
-	if node.fsm.LastPersistedIndex() <= lastSnap.GetMetadata().GetIndex() {
-		return nil
+	capturedIndex := node.fsm.LastPersistedIndex()
+	acknowledgedApplied := node.lastRaftApplied.Load()
+	// A previous tick may have published a WAL snapshot while RawNode was
+	// still waiting for its apply response. Keep ticking so compaction can
+	// advance once that response is stepped by the orchestrator.
+	if capturedIndex <= lastSnap.GetMetadata().GetIndex() && acknowledgedApplied <= lastSnap.GetMetadata().GetIndex() {
+		compactTarget := min(capturedIndex, acknowledgedApplied)
+		if compactTarget <= node.applier.CompactionMargin() {
+			return nil
+		}
+		firstIndex, firstErr := node.wal.FirstIndex()
+		if firstErr != nil || firstIndex > compactTarget-node.applier.CompactionMargin() {
+			return nil
+		}
 	}
 
 	// Capture lastPersistedIndex BEFORE calling SyncWAL. Reading first then
@@ -979,18 +1015,20 @@ func (node *Node) doMaintenance() error {
 	// batch.Commit returns, see machine.go), so the subsequent SyncWAL makes
 	// it durable. The reverse order (sync, then read) could capture an index
 	// from a concurrent apply whose WAL record was written after our fsync.
-	capturedIndex := node.fsm.LastPersistedIndex()
-	if err := store.SyncWAL(); err != nil {
-		node.logger.WithFields(map[string]any{"error": err}).Errorf("Background maintenance: failed to sync Pebble WAL, skipping snapshot and checkpoint")
+	if capturedIndex > lastSnap.GetMetadata().GetIndex() {
+		if err := store.SyncWAL(); err != nil {
+			node.logger.WithFields(map[string]any{"error": err}).Errorf("Background maintenance: failed to sync Pebble WAL, skipping snapshot and checkpoint")
 
-		return nil
+			return nil
+		}
 	}
 	// Post-condition: every FSM batch with Raft index <= capturedIndex is
-	// durable on disk. It is now safe to advance the Raft WAL snapshot and
-	// to compact the Raft WAL up to capturedIndex - margin — even on power
-	// loss right after this point, Pebble can recover to >= capturedIndex.
+	// durable on disk. It is now safe to advance the Raft WAL snapshot.
+	// Compaction below additionally waits for
+	// the Raft-layer acknowledgement of the same entries.
 
 	// 1. WAL snapshot + compact.
+	snapshotUsable := capturedIndex <= lastSnap.GetMetadata().GetIndex()
 	if err := node.wal.CreateSnapshot(capturedIndex, node.confState.Load(), nil); err != nil {
 		// The WAL directory is gone: every later acknowledgement is unrecoverable,
 		// so the next tick has nothing to retry.
@@ -1000,9 +1038,20 @@ func (node *Node) doMaintenance() error {
 
 		if !errors.Is(err, raft.ErrSnapOutOfDate) {
 			node.logger.WithFields(map[string]any{"error": err}).Errorf("Background maintenance: failed to create WAL snapshot")
+		} else {
+			snapshotUsable = true
 		}
-	} else if capturedIndex > node.applier.CompactionMargin() {
-		compactIdx := capturedIndex - node.applier.CompactionMargin()
+	} else {
+		snapshotUsable = true
+	}
+
+	// The FSM can publish an applied batch before the orchestrator steps its
+	// MsgStorageApplyResp. Compact only behind the acknowledged Raft cursor,
+	// preserving every entry RawNode may still request while scanning
+	// unapplied configuration changes during an election.
+	acknowledgedApplied = min(node.lastRaftApplied.Load(), capturedIndex)
+	if snapshotUsable && acknowledgedApplied > node.applier.CompactionMargin() {
+		compactIdx := acknowledgedApplied - node.applier.CompactionMargin()
 		if err := node.wal.Compact(compactIdx); err != nil && !errors.Is(err, raft.ErrCompacted) {
 			node.logger.WithFields(map[string]any{"error": err}).Errorf("Background maintenance: failed to compact WAL")
 		}
@@ -1182,6 +1231,11 @@ func (node *Node) run(ctx context.Context, ready func()) error {
 	if err != nil {
 		return fmt.Errorf("creating raw rawNode: %w", err)
 	}
+	// Seed from the effective cursor passed to RawNode. This includes the
+	// durable HardState.Commit cap applied above when Pebble is ahead after a
+	// crash; seeding from the uncapped FSM cursor would make maintenance believe
+	// Raft had acknowledged entries it will replay first.
+	node.lastRaftApplied.Store(applied)
 
 	status := node.rawNode.Status()
 
@@ -1526,14 +1580,15 @@ func (node *Node) resolveReadyReadStates(rd raft.Ready) {
 }
 
 func (node *Node) persistReady(ctx context.Context, rd raft.Ready) error {
-	now := time.Now()
-
-	err := node.wal.Append(rd.HardState, rd.Entries)
-	if err != nil {
-		return fmt.Errorf("appending entries to storage: %w", err)
+	// A snapshot Ready must not advance the old WAL's commit past its log.
+	// ApplySnapshot persists its HardState and suffix with the replacement WAL.
+	if raft.IsEmptySnap(rd.Snapshot) {
+		now := time.Now()
+		if err := node.wal.Append(rd.HardState, rd.Entries); err != nil {
+			return fmt.Errorf("appending entries to storage: %w", err)
+		}
+		node.appendEntriesHistogram.Record(ctx, time.Since(now).Seconds())
 	}
-
-	node.appendEntriesHistogram.Record(ctx, time.Since(now).Seconds())
 
 	// Track the highest term observed via HardState so Propose can tag each
 	// future with the proposer's view of the current term (issue #172). Use a
@@ -1577,18 +1632,8 @@ func (node *Node) installReadySnapshot(ctx context.Context, stop chan struct{}, 
 		// status is statusInstallingSnapshot — safe to write FSM fields.
 		node.applier.PrepareForSnapshotInstall(stop)
 
-		if err := node.wal.ApplySnapshot(rd.Snapshot); err != nil {
+		if err := node.wal.ApplySnapshot(rd.Snapshot, rd.HardState, rd.Entries); err != nil {
 			return fmt.Errorf("applying snapshot to storage: %w", err)
-		}
-
-		// ApplySnapshot replaces the WAL's cached log. A Ready may also carry
-		// entries after the snapshot: restore that suffix before acknowledging
-		// storage. Keep the initial append in persistReady so HardState never
-		// becomes durable without its entries, including across a crash here.
-		if len(rd.Entries) > 0 {
-			if err := node.wal.Append(rd.HardState, rd.Entries); err != nil {
-				return fmt.Errorf("restoring entries after snapshot installation: %w", err)
-			}
 		}
 
 		if err := node.synchronizer.InstallSnapshot(ctx, rd.Snapshot); err != nil {
@@ -1690,6 +1735,7 @@ func (node *Node) finishReady(result readyResult, stop chan struct{}) error {
 	}
 
 	if result.snapshotApplied {
+		node.recordRaftApplied(rd.Snapshot.GetMetadata().GetIndex())
 		// Re-sync the in-memory ConfState shadow from the just-installed
 		// snapshot. wal.ApplySnapshot already persisted the correct ConfState;
 		// without this, the reconcile block below loads the stale shadow and
@@ -1726,7 +1772,10 @@ func (node *Node) finishReady(result readyResult, stop chan struct{}) error {
 		err := membership.WalkConfChangeContexts(cc, func(t raftpb.ConfChangeType, nodeID uint64, ctx *membership.ConfChangeContext) error {
 			switch t {
 			case raftpb.ConfChangeAddNode, raftpb.ConfChangeAddLearnerNode, raftpb.ConfChangeUpdateNode:
-				if err := node.membership.Set(nodeID, ctx.RaftAddress, ctx.ServiceAddress, ctx.InstanceID); err != nil {
+				if ctx == nil {
+					return fmt.Errorf("invariant: committed registration for node %d has no identity context", nodeID)
+				}
+				if err := node.membership.Set(nodeID, ctx.RaftAddress, ctx.ServiceAddress, ctx.InstanceID, ctx.Capabilities); err != nil {
 					return fmt.Errorf("invariant: applying membership cache update: %w", err)
 				}
 			case raftpb.ConfChangeRemoveNode:
@@ -1752,7 +1801,6 @@ func (node *Node) finishReady(result readyResult, stop chan struct{}) error {
 		if err != nil {
 			return err
 		}
-
 		pending, err := node.takePendingConfChange(cc, committed.index)
 		if err != nil {
 			return err
@@ -1770,7 +1818,6 @@ func (node *Node) finishReady(result readyResult, stop chan struct{}) error {
 			})
 		}
 	}
-
 	// If the ConfState changed (e.g. a learner was added), update the WAL
 	// snapshot's ConfState immediately. Without this, etcd/raft would send
 	// the stale snapshot (which lacks the new node) before the applier's
@@ -2071,6 +2118,9 @@ func (node *Node) orchestrate(ctx context.Context, stop chan struct{}) error {
 		if err := stepMessages(msgs); err != nil {
 			return err
 		}
+		for _, msg := range msgs {
+			node.recordRaftApplyResponse(msg)
+		}
 
 		maybeCreateReady()
 
@@ -2225,6 +2275,31 @@ func (node *Node) orchestrate(ctx context.Context, stop chan struct{}) error {
 	}
 }
 
+// recordRaftApplied publishes the highest apply cursor acknowledged by
+// RawNode. It is intentionally monotonic because response batches can be
+// observed together after the FSM has already advanced further.
+func (node *Node) recordRaftApplied(index uint64) {
+	for {
+		current := node.lastRaftApplied.Load()
+		if current >= index || node.lastRaftApplied.CompareAndSwap(current, index) {
+			return
+		}
+	}
+}
+
+func (node *Node) recordRaftApplyResponse(msg *raftpb.Message) {
+	if msg.GetType() != raftpb.MsgStorageApplyResp {
+		return
+	}
+	index := msg.GetIndex()
+	if index == 0 && len(msg.GetEntries()) > 0 {
+		index = msg.GetEntries()[len(msg.GetEntries())-1].GetIndex()
+	}
+	if index > 0 {
+		node.recordRaftApplied(index)
+	}
+}
+
 // handleTransferLeader validates preconditions and calls rawNode.TransferLeader.
 // Must be called from the orchestrate loop (rawNode is not thread-safe).
 func (node *Node) handleTransferLeader(transferee uint64) error {
@@ -2312,14 +2387,31 @@ func (node *Node) Propose(ctx context.Context, proposal *Proposal) (*futures.Fut
 	if err := node.terminalError(); err != nil {
 		return nil, err
 	}
-	if released := node.fsm.DrainReleaseIndex(); released > node.drainReleaseSeen {
-		node.drainReleaseSeen = released
-		node.drainGeneration++
-		node.drainOutstanding = 0
+	if node.fsm != nil {
+		if released := node.fsm.DrainReleaseIndex(); released > node.drainReleaseSeen {
+			node.drainReleaseSeen = released
+			node.drainGeneration++
+			node.drainOutstanding = 0
+		}
 	}
 	if !proposal.drainMarker && !proposal.releaseMarker && !proposal.membershipBarrier {
-		if _, index := node.fsm.Drain(); index != 0 || node.drainOutstanding != 0 {
+		var drainIndex uint64
+		if node.fsm != nil {
+			_, drainIndex = node.fsm.Drain()
+		}
+		if drainIndex != 0 || node.drainOutstanding != 0 {
 			return nil, domain.ErrMaintenanceMode
+		}
+	}
+
+	// Evaluate the authoritative policy gate while proposalAdmissionMu and the
+	// IndexTracker guard are held by the caller. A rejected proposal therefore
+	// never consumes a predicted Raft index and can never leave a hole for the
+	// proposals already queued behind it. Policy-changing proposals use the
+	// same canonical runner, so this is also their serialization point.
+	if node.proposalAdmission != nil {
+		if err := node.proposalAdmission(ctx, proposal); err != nil {
+			return nil, err
 		}
 	}
 
@@ -2363,10 +2455,9 @@ func (node *Node) Propose(ctx context.Context, proposal *Proposal) (*futures.Fut
 	}
 }
 
-// rejectQueuedProposal resolves a proposal that was admitted before a terminal
-// command failure but can no longer be handed to rawNode. The admission caller
-// has released the tracker guard before this runs, so Decrement takes the
-// regular synchronized rollback path.
+// rejectQueuedProposal resolves a proposal drained during terminal shutdown.
+// Normal capability rejection happens before index reservation in Propose and
+// never reaches the queue.
 func (node *Node) rejectQueuedProposal(proposal *Proposal, err error) {
 	node.indexTracker.Decrement(1)
 	node.applier.ResolveDroppedFuture(proposal.commandID, err)
@@ -2494,6 +2585,65 @@ func (node *Node) MemberIDs() []uint64 {
 	return ids
 }
 
+// CapabilityMembers returns a lock-consistent membership evidence snapshot for
+// admission. Missing durable rows are represented as unreachable members so
+// activation cannot proceed on an incomplete directory.
+func (node *Node) CapabilityMembers() []capabilities.Member {
+	confState := node.confState.Load()
+	if confState == nil {
+		return nil
+	}
+	addresses := node.membership.PeerAddresses()
+	roles := capabilityMemberRoles(confState)
+	result := make([]capabilities.Member, 0, len(roles))
+	for id, role := range roles {
+		peer, ok := addresses[id]
+		member := capabilities.Member{NodeID: id, Role: role, Reachable: ok && peer.RaftAddress != "" && peer.ServiceAddress != ""}
+		if ok {
+			member.InstanceID = peer.InstanceID
+			member.Capabilities = make([]capabilities.CapabilityID, len(peer.Capabilities))
+			for i, capabilityID := range peer.Capabilities {
+				member.Capabilities[i] = capabilities.CapabilityID(capabilityID)
+			}
+		}
+		result = append(result, member)
+	}
+	slices.SortFunc(result, func(a, b capabilities.Member) int {
+		if a.NodeID < b.NodeID {
+			return -1
+		}
+		if a.NodeID > b.NodeID {
+			return 1
+		}
+
+		return 0
+	})
+
+	return result
+}
+
+func capabilityMemberRoles(confState *raftpb.ConfState) map[uint64]capabilities.MemberRole {
+	roles := make(map[uint64]capabilities.MemberRole)
+	for _, ids := range [][]uint64{
+		confState.GetVoters(),
+		confState.GetVotersOutgoing(),
+	} {
+		for _, id := range ids {
+			roles[id] = capabilities.Voter
+		}
+	}
+	for _, ids := range [][]uint64{
+		confState.GetLearners(),
+		confState.GetLearnersNext(),
+	} {
+		for _, id := range ids {
+			roles[id] = capabilities.Learner
+		}
+	}
+
+	return roles
+}
+
 // Logger returns the node's logger.
 func (node *Node) Logger() logging.Logger {
 	return node.logger
@@ -2572,6 +2722,7 @@ func (node *Node) GetConfiguredPeers(ctx context.Context) ([]Peer, error) {
 					Address:        address.RaftAddress,
 					ServiceAddress: address.ServiceAddress,
 					InstanceID:     bytes.Clone(address.InstanceID),
+					Capabilities:   append([]uint32(nil), address.Capabilities...),
 				})
 			}
 
@@ -3060,8 +3211,11 @@ func classifyExistingLearner(match uint64, existingInstanceID, incomingInstanceI
 // the explicit call path selects the admission semantics.
 //
 // Must be called on the leader.
-func (node *Node) AddLearner(ctx context.Context, nodeID uint64, raftAddr, serviceAddr string, instanceID []byte) error {
-	return node.addLearner(ctx, nodeID, raftAddr, serviceAddr, instanceID, false)
+// AddLearner proposes a learner registration carrying the caller's capability
+// proof. The proof is persisted with the peer identity and is required by the
+// active capability policy.
+func (node *Node) AddLearner(ctx context.Context, nodeID uint64, raftAddr, serviceAddr string, instanceID []byte, capabilityIDs []uint32) error {
+	return node.addLearnerWithCapabilities(ctx, nodeID, raftAddr, serviceAddr, instanceID, capabilityIDs, false)
 }
 
 // WithStableDrainMembership serializes a drain capability preflight and its
@@ -3089,23 +3243,116 @@ func (node *Node) WithStableDrainMembership(ctx context.Context, fn func() error
 	return fn()
 }
 
-// JoinAsLearner is the bootstrap admission path for a process with an empty
-// WAL. It deliberately keeps EN-1436's stricter stale-progress handling
-// separate from administrative AddLearner retries.
-func (node *Node) JoinAsLearner(ctx context.Context, nodeID uint64, raftAddr, serviceAddr string, instanceID []byte) error {
-	return node.addLearner(ctx, nodeID, raftAddr, serviceAddr, instanceID, true)
+// MembershipCoordinator returns the shared guard for membership changes and
+// capability policy activation.
+func (node *Node) MembershipCoordinator() *membership.Coordinator {
+	return &node.confChangeMu
 }
 
-func (node *Node) addLearner(ctx context.Context, nodeID uint64, raftAddr, serviceAddr string, instanceID []byte, bootJoin bool) error {
-	if err := membership.ValidateInstanceID(instanceID); err != nil {
-		return fmt.Errorf("invalid learner identity: %w", err)
-	}
+// JoinAsLearner is the bootstrap admission path for a process with an empty
+// WAL. It deliberately keeps EN-1436's stricter stale-progress handling
+// separate from administrative AddLearner retries and carries the joining
+// node's capability evidence.
+func (node *Node) JoinAsLearner(ctx context.Context, nodeID uint64, raftAddr, serviceAddr string, instanceID []byte, capabilityIDs []uint32) error {
+	return node.addLearnerWithCapabilities(ctx, nodeID, raftAddr, serviceAddr, instanceID, capabilityIDs, true)
+}
 
+// RefreshMembership proposes a committed UpdateNode for an existing member.
+// Unlike JoinAsLearner, this path is used by a node with an already populated
+// WAL after a normal restart. It requires the same persisted instance identity
+// and replaces the committed endpoint/capability evidence through Raft.
+// Must be called on the leader.
+func (node *Node) RefreshMembership(ctx context.Context, nodeID uint64, raftAddr, serviceAddr string, instanceID []byte, capabilityIDs []uint32) error {
+	if err := membership.ValidateInstanceID(instanceID); err != nil {
+		return fmt.Errorf("invalid member identity: %w", err)
+	}
 	proposalID := uuid.NewString()
 	ccCtx, err := membership.MarshalConfChangeContext(membership.ConfChangeContext{
 		RaftAddress:    raftAddr,
 		ServiceAddress: serviceAddr,
 		InstanceID:     instanceID,
+		Capabilities:   append([]uint32(nil), capabilityIDs...),
+		ProposalID:     proposalID,
+	})
+	if err != nil {
+		return fmt.Errorf("marshaling membership refresh context: %w", err)
+	}
+
+	return node.retryConfChange(ctx, proposalID, nodeID, "RefreshMembership", []raftpb.ConfChangeType{
+		raftpb.ConfChangeUpdateNode,
+	}, func() error {
+		status := node.rawNode.Status()
+		if status.RaftState != raft.StateLeader {
+			return ErrNotLeader
+		}
+
+		if _, ok := status.Progress[nodeID]; !ok {
+			return ErrNodeNotInCluster
+		}
+
+		existing, ok := node.membership.GetInstanceID(nodeID)
+		if !ok {
+			return fmt.Errorf("member %d has no persisted identity", nodeID)
+		}
+		if err := membership.ValidateInstanceID(existing); err != nil {
+			return fmt.Errorf("member %d has invalid persisted identity: %w", nodeID, err)
+		}
+		if !bytes.Equal(existing, instanceID) {
+			return fmt.Errorf("member %d identity does not match the active incarnation", nodeID)
+		}
+
+		if err := node.membership.ValidateTransitionEvidence(&membership.ConfChangeContext{
+			RaftAddress:    raftAddr,
+			ServiceAddress: serviceAddr,
+			InstanceID:     instanceID,
+			Capabilities:   capabilityIDs,
+		}); err != nil {
+			return err
+		}
+
+		if node.isRemovalPending(nodeID, instanceID) {
+			return ErrNodeRemoved
+		}
+		removed, checkErr := node.membership.IsRemoved(nodeID, instanceID)
+		if checkErr != nil {
+			return fmt.Errorf("checking removed-member registry for %d: %w", nodeID, checkErr)
+		}
+		if removed {
+			return ErrNodeRemoved
+		}
+
+		return node.rawNode.ProposeConfChange(&raftpb.ConfChangeV2{
+			Changes: []*raftpb.ConfChangeSingle{{
+				Type:   new(raftpb.ConfChangeUpdateNode),
+				NodeId: new(nodeID),
+			}},
+			Context: ccCtx,
+		})
+	}, nil)
+}
+
+// SetCapabilityGate updates the leader-side membership admission gate from a
+// committed ClusterPolicy projection.
+func (node *Node) SetCapabilityGate(required []uint32) error {
+	return node.membership.SetCapabilityGate(required)
+}
+
+// addLearner is kept as a compatibility shim for package-local tests and
+// callers that exercise the pre-evidence admission path directly.
+func (node *Node) addLearner(ctx context.Context, nodeID uint64, raftAddr, serviceAddr string, instanceID []byte, bootJoin bool) error {
+	return node.addLearnerWithCapabilities(ctx, nodeID, raftAddr, serviceAddr, instanceID, nil, bootJoin)
+}
+
+func (node *Node) addLearnerWithCapabilities(ctx context.Context, nodeID uint64, raftAddr, serviceAddr string, instanceID []byte, capabilityIDs []uint32, bootJoin bool) error {
+	if err := membership.ValidateInstanceID(instanceID); err != nil {
+		return fmt.Errorf("invalid learner identity: %w", err)
+	}
+	proposalID := uuid.NewString()
+	ccCtx, err := membership.MarshalConfChangeContext(membership.ConfChangeContext{
+		RaftAddress:    raftAddr,
+		ServiceAddress: serviceAddr,
+		InstanceID:     instanceID,
+		Capabilities:   append([]uint32(nil), capabilityIDs...),
 		ProposalID:     proposalID,
 	})
 	if err != nil {
@@ -3119,6 +3366,17 @@ func (node *Node) addLearner(ctx context.Context, nodeID uint64, raftAddr, servi
 		status := node.rawNode.Status()
 		if status.RaftState != raft.StateLeader {
 			return ErrNotLeader
+		}
+		// Revalidate immediately before RawNode.Propose: policy activation may
+		// have changed while the request waited for the serialized ConfChange
+		// boundary.
+		if err := node.membership.ValidateTransitionEvidence(&membership.ConfChangeContext{
+			RaftAddress:    raftAddr,
+			ServiceAddress: serviceAddr,
+			InstanceID:     instanceID,
+			Capabilities:   capabilityIDs,
+		}); err != nil {
+			return err
 		}
 
 		// EN-1045 defense against a race between JoinAsLearner admission
@@ -3212,6 +3470,13 @@ func (node *Node) PromoteLearner(ctx context.Context, nodeID uint64) error {
 
 		ccCtx, err := node.promotionContext(nodeID, proposalID)
 		if err != nil {
+			return err
+		}
+		promotionCtx, decodeErr := membership.UnmarshalConfChangeContext(ccCtx)
+		if decodeErr != nil {
+			return fmt.Errorf("decoding learner membership evidence: %w", decodeErr)
+		}
+		if err := node.membership.ValidateTransitionEvidence(&promotionCtx); err != nil {
 			return err
 		}
 
@@ -3794,7 +4059,7 @@ func initialJoinVoters(peers []Peer, selfID uint64) []uint64 {
 // through WriteConfChange).
 func registerInitialPeers(m *membership.Membership, cfg NodeConfig, includeSelf bool) error {
 	if includeSelf {
-		if err := m.Register(cfg.NodeID, cfg.AdvertiseAddr, cfg.ServiceAdvertiseAddr, cfg.InstanceID); err != nil {
+		if err := m.Register(cfg.NodeID, cfg.AdvertiseAddr, cfg.ServiceAdvertiseAddr, cfg.InstanceID, capabilities.IDsAsUint32(capabilities.SupportedIDs())); err != nil {
 			return fmt.Errorf("persisting self in peer store: %w", err)
 		}
 	}
@@ -3802,7 +4067,7 @@ func registerInitialPeers(m *membership.Membership, cfg NodeConfig, includeSelf 
 	// Peer discovery carries the durable identity of every configured member;
 	// never create an address-only membership row.
 	for _, p := range cfg.Peers {
-		if err := m.Register(p.ID, p.Address, p.ServiceAddress, p.InstanceID); err != nil {
+		if err := m.Register(p.ID, p.Address, p.ServiceAddress, p.InstanceID, p.Capabilities); err != nil {
 			return fmt.Errorf("persisting initial peer %d: %w", p.ID, err)
 		}
 	}

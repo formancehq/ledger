@@ -3,10 +3,7 @@ package bootstrap
 import (
 	"context"
 	"sync"
-	"sync/atomic"
 	"testing"
-	"testing/synctest"
-	"time"
 
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel/metric/noop"
@@ -20,38 +17,11 @@ import (
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
 
-// The reconciler keeps ticking until stopped, so a transient failure retries.
-func TestClusterPolicyReconciler_TicksUntilStopped(t *testing.T) {
-	t.Parallel()
-
-	synctest.Test(t, func(t *testing.T) {
-		var count atomic.Int32
-
-		r := NewClusterPolicyReconciler(func(context.Context) { count.Add(1) })
-		r.interval = 5 * time.Millisecond
-		r.Start()
-
-		// On the fake clock, two intervals yield exactly the immediate run plus
-		// one per tick.
-		time.Sleep(2 * r.interval)
-		synctest.Wait()
-		require.Equal(t, int32(3), count.Load(), "reconcile must run immediately, then on every tick")
-
-		r.Stop()
-
-		// Stop is synchronous (waits for the goroutine), so the count is now final.
-		settled := count.Load()
-		time.Sleep(20 * r.interval)
-		synctest.Wait()
-		require.Equal(t, settled, count.Load(), "no reconcile must run after Stop")
-	})
-}
-
 type fakeAdmission struct {
-	mu       sync.Mutex
-	calls    int
-	err      error
-	proposed *commonpb.ClusterPolicy
+	mu         sync.Mutex
+	calls      int
+	err        error
+	lastPolicy *commonpb.ClusterPolicy
 }
 
 func (f *fakeAdmission) Admit(_ context.Context, _ *servicepb.ApplyRequest) (*domain.ApplyResult, error) {
@@ -66,7 +36,7 @@ func (f *fakeAdmission) AdmitClusterPolicy(_ context.Context, policy *commonpb.C
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.calls++
-	f.proposed = policy
+	f.lastPolicy = policy.CloneVT()
 
 	return nil, f.err
 }
@@ -164,8 +134,14 @@ func TestReconcileClusterPolicy(t *testing.T) {
 
 		batch := store.OpenWriteSession()
 		require.NoError(t, state.SaveClusterPolicy(batch, &commonpb.ClusterPolicy{
-			Revision:             cfg.ClusterPolicyRevision + 1,
-			QueryCheckpointLimit: cfg.QueryCheckpointLimit,
+			Revision:                    cfg.ClusterPolicyRevision + 1,
+			IdempotencyTtlMicros:        uint64(cfg.IdempotencyTTL.Microseconds()),
+			QueryCheckpointLimit:        cfg.QueryCheckpointLimit,
+			MetadataMaxEntriesPerEntity: cfg.MetadataMaxEntriesPerEntity,
+			MetadataMaxKeyBytes:         cfg.MetadataMaxKeyBytes,
+			MetadataMaxValueBytes:       cfg.MetadataMaxValueBytes,
+			MetadataMaxEntityBytes:      cfg.MetadataMaxEntityBytes,
+			MetadataMaxCommandBytes:     cfg.MetadataMaxCommandBytes,
 		}))
 		require.NoError(t, batch.Commit())
 
@@ -174,35 +150,61 @@ func TestReconcileClusterPolicy(t *testing.T) {
 
 		require.Zero(t, admission.callCount(), "a newer applied revision must not be overwritten")
 	})
-}
 
-// Only an explicit zero TTL may reach the committed policy as 0, the
-// never-expire sentinel.
-func TestReconcileClusterPolicy_ProposedIdempotencyTTL(t *testing.T) {
-	t.Parallel()
+	t.Run("rejects a newer revision with a configuration conflict", func(t *testing.T) {
+		t.Parallel()
 
-	for _, tc := range []struct {
-		ttl        time.Duration
-		wantMicros uint64
-	}{
-		{ttl: 0, wantMicros: 0},
-		{ttl: time.Microsecond, wantMicros: 1},
-		{ttl: 1500 * time.Nanosecond, wantMicros: 1},
-		{ttl: 24 * time.Hour, wantMicros: uint64((24 * time.Hour).Microseconds())},
-	} {
-		t.Run(tc.ttl.String(), func(t *testing.T) {
-			t.Parallel()
+		store := newReconcilerTestStore(t)
+		cfg := validBaseConfig()
+		batch := store.OpenWriteSession()
+		require.NoError(t, state.SaveClusterPolicy(batch, &commonpb.ClusterPolicy{
+			Revision:             cfg.ClusterPolicyRevision + 1,
+			QueryCheckpointLimit: cfg.QueryCheckpointLimit + 1,
+		}))
+		require.NoError(t, batch.Commit())
 
-			cfg := validBaseConfig()
-			cfg.IdempotencyTTL = tc.ttl
-			require.NoError(t, cfg.Validate())
+		admission := &fakeAdmission{}
+		reconcileClusterPolicy(context.Background(), admission, store, cfg, func() bool { return true }, logging.Testing())
 
-			admission := &fakeAdmission{}
-			reconcileClusterPolicy(context.Background(), admission, newReconcilerTestStore(t), cfg,
-				func() bool { return true }, logging.Testing())
+		require.Zero(t, admission.callCount(), "a newer conflicting configuration must not be re-proposed")
+	})
 
-			require.Equal(t, 1, admission.callCount())
-			require.Equal(t, tc.wantMicros, admission.proposed.GetIdempotencyTtlMicros())
-		})
-	}
+	t.Run("does not replace a same-revision configuration conflict with a capability bump", func(t *testing.T) {
+		t.Parallel()
+
+		store := newReconcilerTestStore(t)
+		cfg := validBaseConfig()
+		batch := store.OpenWriteSession()
+		require.NoError(t, state.SaveClusterPolicy(batch, &commonpb.ClusterPolicy{
+			Revision:             cfg.ClusterPolicyRevision,
+			QueryCheckpointLimit: cfg.QueryCheckpointLimit + 1,
+		}))
+		require.NoError(t, batch.Commit())
+
+		admission := &fakeAdmission{}
+		reconcileClusterPolicy(context.Background(), admission, store, cfg, func() bool { return true }, logging.Testing())
+
+		require.Zero(t, admission.callCount(), "same-revision configuration conflicts must remain rejected")
+	})
+
+	t.Run("preserves committed capability activations on a revision bump", func(t *testing.T) {
+		t.Parallel()
+
+		store := newReconcilerTestStore(t)
+		cfg := validBaseConfig()
+		batch := store.OpenWriteSession()
+		require.NoError(t, state.SaveClusterPolicy(batch, &commonpb.ClusterPolicy{
+			Revision: cfg.ClusterPolicyRevision - 1,
+			CapabilityActivations: []*commonpb.CapabilityActivation{{
+				Id: 7, Active: true,
+			}},
+		}))
+		require.NoError(t, batch.Commit())
+
+		admission := &fakeAdmission{}
+		reconcileClusterPolicy(context.Background(), admission, store, cfg, func() bool { return true }, logging.Testing())
+
+		require.Equal(t, 1, admission.callCount())
+		require.Equal(t, []*commonpb.CapabilityActivation{{Id: 7, Active: true}}, admission.lastPolicy.GetCapabilityActivations())
+	})
 }

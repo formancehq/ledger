@@ -45,6 +45,7 @@ When current code and authoritative documentation disagree, stop treating the do
 | `internal/bootstrap/**` | `docs/technical/architecture/overview.md`, relevant subsystem docs, and `docs/ops/deployment.md` for persisted/config behavior |
 | tests only | `docs/technical/contributing/testing.md` plus the subsystem documentation for the behavior under test |
 | contributor/build tooling | `docs/technical/contributing/getting-started.md`, `docs/technical/contributing/development.md`, `docs/technical/contributing/conventions.md`, `docs/technical/contributing/local-validation.md` as relevant |
+| `.goreleaser*.yml`, release/nightly workflows, cutting a `release/*` branch, version tags | `docs/technical/contributing/release-versioning.md` |
 | `misc/operator/**` | `misc/operator/README.md`, `docs/ops/deployment.md`; `docs/ops/tls-migration.md` for TLS/auth transitions; `docs/ops/backup-restore.md` for backup/restore orchestration |
 
 If a touched production area has no matching row, do not assume that no subsystem rules apply. Identify its callers/callees or owning subsystem first, then load that subsystem's documentation before editing.

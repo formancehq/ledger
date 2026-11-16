@@ -165,6 +165,7 @@ func TestApplierNewApplierRejectsNilSink(t *testing.T) {
 		logger, nodeRegistry, nodeSnapshotter, pebbleStore, dal.NewSentinelFactory(pebbleStore, false), meterProvider,
 		nil, state.NewSharedState(), newNoopNotifier(t), nil, "test-cluster", 0,
 		func(*raftpb.Entry, *dal.WriteSession) error { return nil },
+		state.NoopCapabilityPolicyCommitHandler,
 	)
 	require.NoError(t, err)
 

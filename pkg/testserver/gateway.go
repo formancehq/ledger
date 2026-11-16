@@ -485,6 +485,10 @@ func (g *clusterBootstrapServiceGateway) JoinAsLearner(ctx context.Context, req 
 	return g.client.JoinAsLearner(forwardIncomingMetadata(ctx), req)
 }
 
+func (g *clusterBootstrapServiceGateway) RefreshMembership(ctx context.Context, req *clusterbootstrappb.RefreshMembershipRequest) (*clusterbootstrappb.RefreshMembershipResponse, error) {
+	return g.client.RefreshMembership(forwardIncomingMetadata(ctx), req)
+}
+
 func forwardIncomingMetadata(ctx context.Context) context.Context {
 	md, _ := metadata.FromIncomingContext(ctx)
 
