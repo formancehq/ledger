@@ -6,12 +6,12 @@
 //   - a change that is wire-incompatible for a type reachable from a gated
 //     service, as classified by `buf breaking` with misc/proto/buf.yaml,
 //     requires a higher Version;
-//   - a higher Version requires the operator's mandatoryStopVersions to list
-//     the earliest release that can follow the latest tag reachable from
-//     HEAD. The operator stops every upgrade that crosses a listed version,
-//     so whichever release ships next is a stopped upgrade. Peers forward
-//     requests through the gated services, so nodes on different revisions
-//     cannot coexist in a rolling upgrade.
+//   - two neighbouring versions on different revisions are separated by an
+//     operator mandatoryStopVersions entry. The versions are the release tags
+//     since the baseline, followed by the worktree at the lowest version a
+//     build of it can be deployed as. Peers forward requests through the
+//     gated services, so nodes on different revisions cannot coexist in a
+//     rolling upgrade.
 //
 // Semantic changes that keep the `.proto` text unchanged remain a reviewer
 // classification.
@@ -37,6 +37,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/Masterminds/semver/v3"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/descriptorpb"
 
@@ -86,11 +87,7 @@ type result struct {
 	headVersion    int
 	clientFindings []bufFinding
 	otherFindings  int
-	// nextRelease is the earliest release that can follow the latest
-	// reachable tag, and nextStopped whether the operator stops at it. Both
-	// are only resolved when the revision increases.
-	nextRelease string
-	nextStopped bool
+	unstopped      []unstoppedChange
 }
 
 func main() {
@@ -141,8 +138,8 @@ func main() {
 
 		return
 	}
-	fmt.Printf("check-protocol-version: PASS (revision %d to %d with stopped upgrade to %s, %d gated break(s), %d internal-only)\n",
-		res.baseVersion, res.headVersion, res.nextRelease, len(res.clientFindings), res.otherFindings)
+	fmt.Printf("check-protocol-version: PASS (revision %d to %d in a stopped upgrade, %d gated break(s), %d internal-only)\n",
+		res.baseVersion, res.headVersion, len(res.clientFindings), res.otherFindings)
 }
 
 func fail(err error) {
@@ -162,13 +159,16 @@ func (r result) verdict() error {
 		return fmt.Errorf(
 			"%d wire-incompatible change(s) reach a gated service at revision %d: add fields instead of deleting, renumbering or retyping them, or increase the revision in a release listed in %s (%s)",
 			len(r.clientFindings), r.baseVersion, stopVar, stopFile)
-	case r.headVersion > r.baseVersion && !r.nextStopped:
-		return fmt.Errorf(
-			"protocol revision changed from %d to %d without a stopped upgrade at the next release: peers on different revisions reject each other's forwarded requests, so add %s to %s (%s) or restore %q",
-			r.baseVersion, r.headVersion, r.nextRelease, stopVar, stopFile, strconv.Itoa(r.baseVersion))
 	}
 
-	return nil
+	var errs []error
+	for _, change := range r.unstopped {
+		errs = append(errs, fmt.Errorf(
+			"protocol revision %s and %s are not separated by a stopped upgrade: peers on different revisions reject each other's forwarded requests, so add v%s to %s (%s)",
+			change.from, change.to, change.to.version, stopVar, stopFile))
+	}
+
+	return errors.Join(errs...)
 }
 
 func (c checker) run() (result, error) {
@@ -190,10 +190,8 @@ func (c checker) run() (result, error) {
 		return res, fmt.Errorf("%s: %w", protocolFile, err)
 	}
 
-	if res.headVersion > res.baseVersion {
-		if res.nextRelease, res.nextStopped, err = c.nextStop(); err != nil {
-			return res, err
-		}
+	if res.unstopped, err = c.unstoppedChanges(res.headVersion); err != nil {
+		return res, err
 	}
 
 	tmp, err := os.MkdirTemp("", "checkprotocolversion-")
@@ -283,124 +281,180 @@ func parseVersion(source []byte) (int, error) {
 	return 0, errors.New("the Version constant was not found")
 }
 
-// nextStop returns the earliest release that can follow the latest tag
-// reachable from HEAD, and whether the operator lists it as a stop.
-func (c checker) nextStop() (string, bool, error) {
+// revisionPoint is a deployable version and the revision it serves.
+type revisionPoint struct {
+	version  *semver.Version
+	revision int
+	// worktree marks the checked tree, placed at its deploy floor.
+	worktree bool
+}
+
+func (p revisionPoint) String() string {
+	if p.worktree {
+		return fmt.Sprintf("%d in this tree (deployable from v%s)", p.revision, p.version)
+	}
+
+	return fmt.Sprintf("%d at v%s", p.revision, p.version)
+}
+
+// unstoppedChange is a pair of neighbouring versions on different revisions
+// that no mandatory stop separates.
+type unstoppedChange struct {
+	from, to revisionPoint
+}
+
+// unstoppedChanges checks the release tags since the baseline, followed by
+// the worktree, against the operator's mandatory stops.
+func (c checker) unstoppedChanges(headRevision int) ([]unstoppedChange, error) {
 	source, err := os.ReadFile(filepath.Join(c.repoRoot, stopFile))
 	if err != nil {
-		return "", false, fmt.Errorf("reading %s: %w", stopFile, err)
+		return nil, fmt.Errorf("reading %s: %w", stopFile, err)
 	}
-	stops, err := parseStopVersions(source)
+	entries, err := parseStopVersions(source)
 	if err != nil {
-		return "", false, fmt.Errorf("%s: %w", stopFile, err)
+		return nil, fmt.Errorf("%s: %w", stopFile, err)
+	}
+	stops := make([]*semver.Version, len(entries))
+	for i, entry := range entries {
+		var ok bool
+		if stops[i], ok = parseTag(entry); !ok {
+			return nil, fmt.Errorf("%s entry %q is not a canonical version", stopVar, entry)
+		}
 	}
 
-	tags, err := gitOutput(c.repoRoot, "tag", "--merged", "HEAD", "--list", "v*")
+	reachable, err := c.versionTags("--merged", "HEAD")
 	if err != nil {
-		return "", false, fmt.Errorf("listing release tags: %w", err)
+		return nil, err
+	}
+	if len(reachable) == 0 {
+		return nil, errors.New("no version tag is reachable from HEAD; fetch tags to place this branch among the releases")
+	}
+	floor, err := deployFloor(slices.MaxFunc(reachable, (*semver.Version).Compare))
+	if err != nil {
+		return nil, err
 	}
 
-	return nextReleaseStop(stops, strings.Fields(string(tags)))
-}
-
-type stage int
-
-const (
-	stageMarker stage = iota // vX.Y.Z-0, the RFC-0013 version-line marker
-	stageRC
-	stageFinal
-)
-
-// release is a version of the form vX.Y.Z, vX.Y.Z-rc.N or vX.Y.Z-0.
-type release struct {
-	major, minor, patch int
-	stage               stage
-	rc                  int
-}
-
-var releasePattern = regexp.MustCompile(`^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(?:-rc\.([1-9][0-9]*)|(-0))?$`)
-
-func parseRelease(text string) (release, bool) {
-	m := releasePattern.FindStringSubmatch(text)
-	if m == nil {
-		return release{}, false
+	tags, err := c.versionTags()
+	if err != nil {
+		return nil, err
 	}
-	r := release{stage: stageFinal}
-	r.major, _ = strconv.Atoi(m[1]) // the pattern admits only decimal digits
-	r.minor, _ = strconv.Atoi(m[2])
-	r.patch, _ = strconv.Atoi(m[3])
-	switch {
-	case m[4] != "":
-		r.stage = stageRC
-		r.rc, _ = strconv.Atoi(m[4])
-	case m[5] != "":
-		r.stage = stageMarker
-	}
-
-	return r, true
-}
-
-func (r release) String() string {
-	switch r.stage {
-	case stageMarker:
-		return fmt.Sprintf("v%d.%d.%d-0", r.major, r.minor, r.patch)
-	case stageRC:
-		return fmt.Sprintf("v%d.%d.%d-rc.%d", r.major, r.minor, r.patch, r.rc)
-	default:
-		return fmt.Sprintf("v%d.%d.%d", r.major, r.minor, r.patch)
-	}
-}
-
-// less orders releases by semantic version precedence.
-func (r release) less(o release) bool {
-	return slices.Compare(
-		[]int{r.major, r.minor, r.patch, int(r.stage), r.rc},
-		[]int{o.major, o.minor, o.patch, int(o.stage), o.rc},
-	) < 0
-}
-
-// earliestSuccessor is the lowest version a release after r can carry. The
-// operator stops every upgrade from r that crosses it, whatever ships next.
-func (r release) earliestSuccessor() release {
-	switch r.stage {
-	case stageMarker:
-		return release{r.major, r.minor, r.patch, stageRC, 1}
-	case stageRC:
-		return release{r.major, r.minor, r.patch, stageRC, r.rc + 1}
-	default:
-		return release{r.major, r.minor, r.patch + 1, stageRC, 1}
-	}
-}
-
-// nextReleaseStop returns the earliest release that can follow the latest
-// tag, and whether stops lists it. Tags that are not releases or markers,
-// such as nightly, are ignored.
-func nextReleaseStop(stops, tags []string) (string, bool, error) {
-	var latest *release
+	points := []revisionPoint{{version: floor, revision: headRevision, worktree: true}}
 	for _, tag := range tags {
-		r, ok := parseRelease(tag)
-		if !ok {
+		// A marker is never deployed, and a tag at or above the floor is not
+		// an upgrade source for this branch.
+		if tag.Prerelease() == markerPrerelease || tag.LessThan(baseline) || !tag.LessThan(floor) {
 			continue
 		}
-		if latest == nil || latest.less(r) {
-			latest = &r
+		name := "v" + tag.String()
+		source, err := gitOutput(c.repoRoot, "show", name+":"+protocolFile)
+		if err != nil {
+			return nil, fmt.Errorf("reading %s at %s: %w", protocolFile, name, err)
 		}
-	}
-	if latest == nil {
-		return "", false, errors.New("no release tags reachable from HEAD; fetch tags to tell the next release from released ones")
-	}
-	next := latest.earliestSuccessor()
-
-	stopped := false
-	for _, stop := range stops {
-		r, ok := parseRelease(stop)
-		if !ok || r.stage == stageMarker {
-			return "", false, fmt.Errorf("%s entry %q is not vX.Y.Z or vX.Y.Z-rc.N", stopVar, stop)
+		revision, err := parseVersion(source)
+		if err != nil {
+			return nil, fmt.Errorf("%s at %s: %w", protocolFile, name, err)
 		}
-		stopped = stopped || r == next
+		points = append(points, revisionPoint{version: tag, revision: revision})
 	}
 
-	return next.String(), stopped, nil
+	return unstoppedChanges(points, stops), nil
+}
+
+// versionTags lists the canonical version tags selected by the extra
+// `git tag` arguments.
+func (c checker) versionTags(args ...string) ([]*semver.Version, error) {
+	output, err := gitOutput(c.repoRoot, append([]string{"tag", "--list", "v*"}, args...)...)
+	if err != nil {
+		return nil, fmt.Errorf("listing version tags: %w", err)
+	}
+
+	var tags []*semver.Version
+	for name := range strings.FieldsSeq(string(output)) {
+		if tag, ok := parseTag(name); ok {
+			tags = append(tags, tag)
+		}
+	}
+
+	return tags, nil
+}
+
+// baseline is the first release whose upgrades are supported.
+var baseline = semver.MustParse("v3.0.0-rc.1")
+
+// markerPrerelease is the prerelease of an RFC-0013 version-line marker.
+const markerPrerelease = "0"
+
+var rcPrerelease = regexp.MustCompile(`^rc\.([1-9][0-9]*)$`)
+
+// parseTag accepts the canonical vX.Y.Z[-prerelease] form the operator
+// requires of image tags.
+func parseTag(name string) (*semver.Version, bool) {
+	text, ok := strings.CutPrefix(name, "v")
+	if !ok {
+		return nil, false
+	}
+	version, err := semver.StrictNewVersion(text)
+	if err != nil || version.Metadata() != "" || version.String() != text {
+		return nil, false
+	}
+
+	return version, true
+}
+
+// deployFloor returns the lowest version the operator can deploy from a
+// build that follows the latest tag. See
+// docs/technical/contributing/release-versioning.md for the build versions.
+func deployFloor(latest *semver.Version) (*semver.Version, error) {
+	core := fmt.Sprintf("%d.%d.%d", latest.Major(), latest.Minor(), latest.Patch())
+	prerelease := latest.Prerelease()
+
+	var floor string
+	switch {
+	case prerelease == "":
+		floor = fmt.Sprintf("%d.%d.%d-%s", latest.Major(), latest.Minor(), latest.Patch()+1, markerPrerelease)
+	case prerelease == markerPrerelease:
+		return latest, nil
+	case rcPrerelease.MatchString(prerelease):
+		// From an RC, the operator rejects every -rc target except the next RC.
+		ordinal, err := strconv.ParseUint(rcPrerelease.FindStringSubmatch(prerelease)[1], 10, 64)
+		if err != nil {
+			return nil, fmt.Errorf("tag v%s: %w", latest, err)
+		}
+		floor = fmt.Sprintf("%s-rc.%d", core, ordinal+1)
+	default:
+		floor = core + "-" + prerelease + ".0"
+	}
+
+	version, err := semver.StrictNewVersion(floor)
+	if err != nil {
+		return nil, fmt.Errorf("deriving the version after v%s: %w", latest, err)
+	}
+
+	return version, nil
+}
+
+// unstoppedChanges returns the neighbouring points on different revisions
+// that no stop separates, with the operator's rule: a stop S separates an
+// upgrade when from < S <= to.
+func unstoppedChanges(points []revisionPoint, stops []*semver.Version) []unstoppedChange {
+	points = slices.Clone(points)
+	slices.SortFunc(points, func(a, b revisionPoint) int { return a.version.Compare(b.version) })
+
+	var changes []unstoppedChange
+	for i := 1; i < len(points); i++ {
+		from, to := points[i-1], points[i]
+		if from.revision == to.revision {
+			continue
+		}
+		separated := slices.ContainsFunc(stops, func(stop *semver.Version) bool {
+			return from.version.LessThan(stop) && !to.version.LessThan(stop)
+		})
+		if !separated {
+			changes = append(changes, unstoppedChange{from: from, to: to})
+		}
+	}
+
+	return changes
 }
 
 // parseStopVersions reads the mandatory stop versions without compiling the

@@ -406,14 +406,29 @@ or removing, renumbering, or repurposing a published field or enum value
 requires a higher revision. Clients built for the old revision are then
 rejected on every gated RPC until they upgrade. Nodes forward requests to each
 other through the same gated services, so a node rejects a peer on another
-revision just as it rejects an old client. A revision increase therefore ships
-only in a release that is a mandatory stopped upgrade: the earliest release
-that can follow the latest tag must be listed in `mandatoryStopVersions`
-(`misc/operator/internal/controller/required_upgrade.go`). The operator stops
-every upgrade that crosses a listed version, so that stop covers whichever
-release ships next. A stop listed only for a later release, including the
-final release after an RC, leaves the next one rolling. Several increases may
-share one such release.
+revision just as it rejects an old client. Two versions on different revisions
+must therefore be separated by a mandatory stopped upgrade: an entry `S` of
+`mandatoryStopVersions`
+(`misc/operator/internal/controller/required_upgrade.go`) with
+`older < S <= newer`, which is the operator's condition for stopping an
+upgrade. Several increases may share one stop.
+
+Place the stop at the lowest version a build carrying the increase can be
+deployed as, so that it covers whichever build ships next:
+
+| Latest tag on the branch | Stop to list | Why |
+|--------------------------|--------------|-----|
+| `vX.Y.Z-rc.N` | `vX.Y.Z-rc.(N+1)` | The operator accepts only the next RC as a target on an RC line, and the final release sorts above it. |
+| `vX.Y.Z` | `vX.Y.(Z+1)-0` | Development, beta and RC builds of the next patch all sort above `-0`. A stop at `-rc.1` would let a development build roll. |
+| version-line marker `vX.Y.0-0` | `vX.Y.0-0` | Every build of the new line sorts at or above its marker. |
+
+A stop above that version, such as the final release after an RC, leaves the
+builds below it rolling. A stop stays required after its release is tagged:
+removing it would let an older cluster roll across the change.
+
+The stop list orders versions, not commits. Two development builds cut from
+the same tag on either side of the commit that raises the revision cannot be
+separated by any entry, so an upgrade between them rolls.
 
 The author of a service change must identify its effect on published clients.
 Behavior and configuration changes can ship at the same revision when their
@@ -437,8 +452,8 @@ persisted and audited data must remain readable, or have a safe migration. See
 of these rules.
 The required `Dirty` check and the `invariants` check run it on pull requests
 and merge-queue entries against the target tip, including after a PR changes
-base. `agent-check-pr` runs it when `misc/proto/**` or
-`pkg/grpcprotocol/**` changes.
+base. `agent-check-pr` runs it when `misc/proto/**`, `pkg/grpcprotocol/**` or
+the operator's `required_upgrade.go` changes.
 
 1. The check reads `Version` at the base and in the worktree. A decrease fails.
 2. The check runs `buf breaking` between the base and the worktree with the
@@ -455,14 +470,23 @@ base. `agent-check-pr` runs it when `misc/proto/**` or
    gated type. Raft-only and persisted-only messages are not counted.
 4. A kept finding fails the check unless the worktree `Version` is higher than
    the base.
-5. A higher `Version` fails unless `mandatoryStopVersions` lists the earliest
-   release that can follow the highest `v*` tag reachable from `HEAD`: after
-   `vX.Y.Z-rc.N`, `vX.Y.Z-rc.(N+1)`; after `vX.Y.Z`, `vX.Y.(Z+1)-rc.1`; after
-   the version-line marker `vX.Y.0-0`, `vX.Y.0-rc.1`. Other tags are ignored.
+5. On every run, whether or not the change touches `Version`, the check
+   verifies the stops against the released revisions:
+   - It places the worktree at the lowest version it can be deployed as, from
+     the highest version tag reachable from `HEAD` and the table above.
+   - It reads `Version` at every release tag in the repository from
+     `v3.0.0-rc.1` up to that version, on any branch. Version-line markers are
+     not releases and are skipped. Tags at or above the worktree's version are
+     not upgrade sources for it and are skipped.
+   - It orders these versions with the operator's semantic-version library.
+     Wherever two neighbours have different revisions, it fails unless an
+     entry `S` satisfies `lower < S <= upper`.
+
    The check reads the slice from the operator source without compiling it,
-   and fails if the slice is not a `[]string` literal, if an entry is not
-   `vX.Y.Z` or `vX.Y.Z-rc.N`, or if no release tag is reachable from `HEAD`.
-   CI checks out the full history with tags.
+   and fails if the slice is not a `[]string` literal, if an entry is not a
+   canonical `vX.Y.Z[-prerelease]` version, if `Version` cannot be read at a
+   counted tag, or if no version tag is reachable from `HEAD`. CI checks out
+   the full history with tags.
 
 The check does not detect semantic changes that keep the `.proto` text
 unchanged; those remain the author's and reviewer's classification. When a

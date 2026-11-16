@@ -115,6 +115,11 @@ func TestSelectsLocalValidationGatesFromCompleteDiff(t *testing.T) {
 			expected: []string{"pre-commit", "agent-check", "test-operator"},
 		},
 		{
+			name:     "operator mandatory stop list",
+			paths:    []string{"misc/operator/internal/controller/required_upgrade.go"},
+			expected: []string{"pre-commit", "agent-check", "test-operator", "protocol-revision"},
+		},
+		{
 			// Top-level Antithesis files are harness configuration, not a Go
 			// package. Selecting their directory for go test fails with "no Go
 			// files" before the actual workload validation can run.

@@ -231,8 +231,8 @@ membership with its documented source revision; never expand that baseline to
 silence a diagnostic. Layout lint must not force renumbering a published type.
 Verify its registration independently through the scripts and buf configuration.
 A passing lint result establishes initial layout only: the service protocol
-revision gate (a gated wire break needs a revision increase, and an increase
-needs the next release to be a mandatory stopped upgrade) and persisted/mixed-version
+revision gate (a gated wire break needs a revision increase, and versions on
+different revisions need a mandatory stopped upgrade between them) and persisted/mixed-version
 compatibility have independent evidence and owners. No source proto, baseline or generated production file is changed by
 this contract preparation.
 

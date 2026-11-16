@@ -10,7 +10,7 @@ import (
 
 const (
 	// Version increases only for a wire change that breaks client decoding,
-	// and only in a release listed as a mandatory stopped upgrade. Behavior
+	// and only behind a mandatory stopped upgrade. Behavior
 	// changes require a documented client impact assessment.
 	// See docs/technical/architecture/subsystems/api/protocol-compatibility.md.
 	// A compiled constant also identifies local builds without release ldflags.

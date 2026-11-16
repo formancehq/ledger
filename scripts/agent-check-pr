@@ -107,7 +107,7 @@ classify_path() {
             needs_protocol=true
             needs_capability_contract=true
             ;;
-        misc/proto/*|pkg/grpcprotocol/*) needs_protocol=true ;;
+        misc/proto/*|pkg/grpcprotocol/*|misc/operator/internal/controller/required_upgrade.go) needs_protocol=true ;;
     esac
     case "$path" in
         misc/proto/*|tools/buf-plugin-ledger/*) needs_proto_lint=true ;;

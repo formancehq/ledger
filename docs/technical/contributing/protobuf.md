@@ -66,8 +66,8 @@ For every exposed wire or behavior change, assess its effect on published client
 Prefer changes that keep `pkg/grpcprotocol.Version`: preserve published gRPC
 service and method names, request and response types, field numbers, wire
 types, field identity, and enum numbers. A change that breaks client decoding
-must increase the revision, and only when the next release is a mandatory
-stopped upgrade. Behavior and configuration changes can ship when their client
+must increase the revision, and only with a mandatory stopped upgrade that
+separates it from the releases on the previous revision. Behavior and configuration changes can ship when their client
 impact and upgrade steps are documented. Internal persisted/Raft-only
 changes require an impact assessment of existing data and shared service types
 rather than an automatic service revision bump. See the

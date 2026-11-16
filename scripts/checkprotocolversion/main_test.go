@@ -4,11 +4,11 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"slices"
 	"strconv"
 	"strings"
 	"testing"
 
+	"github.com/Masterminds/semver/v3"
 	"github.com/stretchr/testify/require"
 )
 
@@ -16,6 +16,10 @@ func TestVerdict(t *testing.T) {
 	t.Parallel()
 
 	breaks := []bufFinding{{Path: "misc/proto/api.proto", Type: "FIELD_WIRE_COMPATIBLE_TYPE"}}
+	unstopped := []unstoppedChange{{
+		from: revisionPoint{version: semver.MustParse("v3.0.0-rc.4"), revision: 3},
+		to:   revisionPoint{version: semver.MustParse("v3.0.0-rc.5"), revision: 4, worktree: true},
+	}}
 
 	for _, tc := range []struct {
 		name     string
@@ -23,12 +27,13 @@ func TestVerdict(t *testing.T) {
 		errorSub string
 	}{
 		{name: "unchanged without break", res: result{baseVersion: 3, headVersion: 3}},
-		{name: "break without bump", res: result{baseVersion: 3, headVersion: 3, clientFindings: breaks, nextRelease: "v3.0.0-rc.5", nextStopped: true}, errorSub: "1 wire-incompatible change(s) reach a gated service at revision 3"},
-		{name: "bump without next-release stop", res: result{baseVersion: 3, headVersion: 4, nextRelease: "v3.0.0-rc.5"}, errorSub: "changed from 3 to 4 without a stopped upgrade at the next release: peers on different revisions reject each other's forwarded requests, so add v3.0.0-rc.5"},
-		{name: "break with bump without next-release stop", res: result{baseVersion: 3, headVersion: 4, clientFindings: breaks}, errorSub: "without a stopped upgrade at the next release"},
-		{name: "bump with next-release stop", res: result{baseVersion: 3, headVersion: 4, nextRelease: "v3.0.0-rc.5", nextStopped: true}},
-		{name: "break with bump and next-release stop", res: result{baseVersion: 3, headVersion: 4, clientFindings: breaks, nextRelease: "v3.0.0-rc.5", nextStopped: true}},
-		{name: "decrease", res: result{baseVersion: 3, headVersion: 2, nextRelease: "v3.0.0-rc.5", nextStopped: true}, errorSub: `decreased from 3 to 2; restore "3"`},
+		{name: "break without bump", res: result{baseVersion: 3, headVersion: 3, clientFindings: breaks}, errorSub: "1 wire-incompatible change(s) reach a gated service at revision 3"},
+		{name: "bump without stop", res: result{baseVersion: 3, headVersion: 4, unstopped: unstopped}, errorSub: "protocol revision 3 at v3.0.0-rc.4 and 4 in this tree (deployable from v3.0.0-rc.5) are not separated by a stopped upgrade"},
+		{name: "break with bump without stop", res: result{baseVersion: 3, headVersion: 4, clientFindings: breaks, unstopped: unstopped}, errorSub: "add v3.0.0-rc.5 to mandatoryStopVersions"},
+		{name: "unchanged with a stop missing", res: result{baseVersion: 4, headVersion: 4, unstopped: unstopped}, errorSub: "add v3.0.0-rc.5 to mandatoryStopVersions"},
+		{name: "bump with stop", res: result{baseVersion: 3, headVersion: 4}},
+		{name: "break with bump and stop", res: result{baseVersion: 3, headVersion: 4, clientFindings: breaks}},
+		{name: "decrease", res: result{baseVersion: 3, headVersion: 2}, errorSub: `decreased from 3 to 2; restore "3"`},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
@@ -106,48 +111,122 @@ func TestParseStopVersions(t *testing.T) {
 	}
 }
 
-func TestNextReleaseStop(t *testing.T) {
+func TestDeployFloor(t *testing.T) {
 	t.Parallel()
 
-	rcTags := []string{"v2.2.0", "v3.0.0-rc.1", "v3.0.0-rc.2", "v3.0.0-rc.3", "v3.0.0-rc.4", "nightly"}
-	finalTags := []string{"v3.0.0-rc.4", "v3.0.0"}
-	markerTags := append(slices.Clone(rcTags), "v3.1.0-0")
+	for latest, want := range map[string]string{
+		"v3.0.0-rc.4":   "v3.0.0-rc.5",
+		"v3.0.0-rc.9":   "v3.0.0-rc.10",
+		"v3.0.0":        "v3.0.1-0",
+		"v3.0.7":        "v3.0.8-0",
+		"v3.1.0-0":      "v3.1.0-0",
+		"v3.1.0-beta.2": "v3.1.0-beta.2.0",
+	} {
+		t.Run(latest, func(t *testing.T) {
+			t.Parallel()
+
+			floor, err := deployFloor(semver.MustParse(latest))
+			require.NoError(t, err)
+			require.Equal(t, want, "v"+floor.String())
+		})
+	}
+}
+
+// Every build that can follow a tag is at or above its floor, and the tag is
+// below it, so a stop at the floor separates the tag from all of them.
+func TestDeployFloorBoundsFollowingBuilds(t *testing.T) {
+	t.Parallel()
+
+	for latest, builds := range map[string][]string{
+		"v3.0.0-rc.4": {"v3.0.0-rc.5", "v3.0.0", "v3.0.1-dev.1.gabc1234"},
+		"v3.0.0":      {"v3.0.1-dev.1.gabc1234", "v3.0.1-beta.1", "v3.0.1-rc.1", "v3.0.1", "v3.1.0-0.dev.1.gabc1234"},
+		"v3.1.0-0":    {"v3.1.0-0.dev.1.gabc1234", "v3.1.0-beta.1", "v3.1.0-rc.1", "v3.1.0"},
+	} {
+		tag := semver.MustParse(latest)
+		floor, err := deployFloor(tag)
+		require.NoError(t, err)
+		require.False(t, floor.LessThan(tag), "%s floor", latest)
+		for _, build := range builds {
+			require.False(t, semver.MustParse(build).LessThan(floor), "%s after %s", build, latest)
+		}
+	}
+}
+
+func TestUnstoppedChanges(t *testing.T) {
+	t.Parallel()
+
+	type point struct {
+		version  string
+		revision int
+	}
+	// Listed out of order: git prints rc.10 before rc.9, and tags of several
+	// version lines interleave.
+	rcLine := []point{{"v3.0.0-rc.10", 41}, {"v3.0.0-rc.9", 40}, {"v3.0.0-rc.1", 40}, {"v3.0.0-rc.11", 41}}
+	finalLine := []point{{"v3.0.1-0", 41}, {"v3.0.0", 40}, {"v3.0.0-rc.4", 40}}
+	newLine := []point{{"v3.1.0-0", 41}, {"v3.0.2", 40}, {"v3.0.0", 40}, {"v3.0.1", 40}}
 
 	for _, tc := range []struct {
-		name     string
-		stops    []string
-		tags     []string
-		next     string
-		stopped  bool
-		errorSub string
+		name   string
+		points []point
+		stops  []string
+		want   []string // "from to" pairs
 	}{
-		{name: "next rc", stops: []string{"v3.0.0-rc.4", "v3.0.0-rc.5"}, tags: rcTags, next: "v3.0.0-rc.5", stopped: true},
-		// rc.5 can still ship first and would roll without a stop.
-		{name: "final only after rc", stops: []string{"v3.0.0"}, tags: rcTags, next: "v3.0.0-rc.5"},
-		{name: "later rc only", stops: []string{"v3.0.0-rc.4", "v3.0.0-rc.6"}, tags: rcTags, next: "v3.0.0-rc.5"},
-		{name: "released stop only", stops: []string{"v3.0.0-rc.4"}, tags: rcTags, next: "v3.0.0-rc.5"},
-		{name: "new line without marker", stops: []string{"v3.1.0-rc.1"}, tags: rcTags, next: "v3.0.0-rc.5"},
-		{name: "patch rc after final", stops: []string{"v3.0.1-rc.1"}, tags: finalTags, next: "v3.0.1-rc.1", stopped: true},
-		{name: "patch only after final", stops: []string{"v3.0.1"}, tags: finalTags, next: "v3.0.1-rc.1"},
-		{name: "first rc after marker", stops: []string{"v3.1.0-rc.1"}, tags: markerTags, next: "v3.1.0-rc.1", stopped: true},
-		{name: "old line after marker", stops: []string{"v3.0.0-rc.5"}, tags: markerTags, next: "v3.1.0-rc.1"},
-		{name: "non-canonical stop", stops: []string{"v3.0.0-beta.1"}, tags: rcTags, errorSub: "not vX.Y.Z or vX.Y.Z-rc.N"},
-		{name: "marker stop", stops: []string{"v3.1.0-0"}, tags: rcTags, errorSub: "not vX.Y.Z or vX.Y.Z-rc.N"},
-		{name: "no tags", stops: []string{"v3.0.0-rc.5"}, tags: []string{"nightly"}, errorSub: "no release tags reachable from HEAD"},
+		{name: "same revision needs no stop", points: []point{{"v3.0.0-rc.5", 40}, {"v3.0.0-rc.4", 40}}},
+		{name: "stop at the first release on the new revision", points: rcLine, stops: []string{"v3.0.0-rc.10"}},
+		{name: "released stop below the change", points: rcLine, stops: []string{"v3.0.0-rc.9"}, want: []string{"v3.0.0-rc.9 v3.0.0-rc.10"}},
+		{name: "stop only at a later rc", points: rcLine, stops: []string{"v3.0.0-rc.11"}, want: []string{"v3.0.0-rc.9 v3.0.0-rc.10"}},
+		// rc.10 can ship before the final release and would roll.
+		{name: "stop only at the final release", points: rcLine, stops: []string{"v3.0.0"}, want: []string{"v3.0.0-rc.9 v3.0.0-rc.10"}},
+		{name: "no stop", points: rcLine, want: []string{"v3.0.0-rc.9 v3.0.0-rc.10"}},
+		{name: "stop at the floor after a final release", points: finalLine, stops: []string{"v3.0.1-0"}},
+		// A dev or beta build of v3.0.1 sorts below rc.1 and would roll.
+		{name: "stop only at the patch rc", points: finalLine, stops: []string{"v3.0.1-rc.1"}, want: []string{"v3.0.0 v3.0.1-0"}},
+		{name: "stop at the marker of a new line", points: newLine, stops: []string{"v3.1.0-0"}},
+		{name: "stop only on the old line", points: newLine, stops: []string{"v3.0.1"}, want: []string{"v3.0.2 v3.1.0-0"}},
+		{
+			name:   "every change needs its own stop",
+			points: []point{{"v3.0.0-rc.4", 40}, {"v3.0.0-rc.5", 41}, {"v3.0.0", 42}, {"v3.0.1-0", 41}},
+			stops:  []string{"v3.0.0-rc.5"},
+			want:   []string{"v3.0.0-rc.5 v3.0.0", "v3.0.0 v3.0.1-0"},
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			next, stopped, err := nextReleaseStop(tc.stops, tc.tags)
-			if tc.errorSub != "" {
-				require.ErrorContains(t, err, tc.errorSub)
-
-				return
+			points := make([]revisionPoint, len(tc.points))
+			for i, p := range tc.points {
+				points[i] = revisionPoint{version: semver.MustParse(p.version), revision: p.revision}
 			}
-			require.NoError(t, err)
-			require.Equal(t, tc.next, next)
-			require.Equal(t, tc.stopped, stopped)
+			stops := make([]*semver.Version, len(tc.stops))
+			for i, stop := range tc.stops {
+				stops[i] = semver.MustParse(stop)
+			}
+
+			var got []string
+			for _, change := range unstoppedChanges(points, stops) {
+				got = append(got, "v"+change.from.version.String()+" v"+change.to.version.String())
+			}
+			require.Equal(t, tc.want, got)
 		})
+	}
+}
+
+func TestParseTag(t *testing.T) {
+	t.Parallel()
+
+	for name, want := range map[string]bool{
+		"v3.0.0":        true,
+		"v3.0.0-rc.4":   true,
+		"v3.1.0-0":      true,
+		"v3.0.0-beta.1": true,
+		"3.0.0":         false,
+		"v3.0":          false,
+		"v3.0.0+build":  false,
+		"v03.0.0":       false,
+		"nightly":       false,
+	} {
+		_, ok := parseTag(name)
+		require.Equal(t, want, ok, name)
 	}
 }
 
@@ -230,7 +309,7 @@ func TestCheckerClassifiesAgainstBase(t *testing.T) {
 			version:   "4",
 			stops:     []string{"v3.0.0-rc.4"},
 			wantGated: 1,
-			errorSub:  "changed from 3 to 4 without a stopped upgrade at the next release",
+			errorSub:  "protocol revision 3 at v3.0.0-rc.4 and 4 in this tree (deployable from v3.0.0-rc.5) are not separated by a stopped upgrade",
 		},
 		{
 			name:      "gated retype with bump and final stop only",
@@ -246,7 +325,7 @@ func TestCheckerClassifiesAgainstBase(t *testing.T) {
 			version:   "4",
 			stops:     []string{"v3.0.0-rc.4", "v3.0.0-rc.6"},
 			wantGated: 1,
-			errorSub:  "without a stopped upgrade at the next release",
+			errorSub:  "add v3.0.0-rc.5 to mandatoryStopVersions",
 		},
 		{
 			name:      "gated field deletion",
@@ -284,7 +363,6 @@ func TestCheckerClassifiesAgainstBase(t *testing.T) {
 			t.Parallel()
 
 			repo := newFixtureRepo(t)
-			runGit(t, repo, "tag", "v3.0.0-rc.4")
 			writeFixture(t, repo, "misc/proto/api.proto", tc.proto)
 			writeFixture(t, repo, protocolFile, protocolSource(tc.version))
 			writeFixture(t, repo, stopFile, stopSource(tc.stops))
@@ -306,15 +384,140 @@ func TestCheckerClassifiesAgainstBase(t *testing.T) {
 	}
 }
 
-func TestCheckerRequiresReleaseTagsForBump(t *testing.T) {
+func TestCheckerRequiresReachableVersionTag(t *testing.T) {
 	t.Parallel()
 
 	repo := newFixtureRepo(t)
-	writeFixture(t, repo, protocolFile, protocolSource("4"))
-	writeFixture(t, repo, stopFile, stopSource([]string{"v3.0.0-rc.5"}))
+	runGit(t, repo, "tag", "--delete", "v3.0.0-rc.4")
 
 	_, err := checker{repoRoot: repo, base: "HEAD", buf: "buf", services: []string{"api.Api"}, pluginRoot: repoRoot(t)}.run()
-	require.ErrorContains(t, err, "no release tags reachable from HEAD")
+	require.ErrorContains(t, err, "no version tag is reachable from HEAD")
+}
+
+func TestCheckerRejectsNonCanonicalStop(t *testing.T) {
+	t.Parallel()
+
+	repo := newFixtureRepo(t)
+	writeFixture(t, repo, stopFile, stopSource([]string{"3.0.0-rc.5"}))
+
+	_, err := checker{repoRoot: repo, base: "HEAD", buf: "buf", services: []string{"api.Api"}, pluginRoot: repoRoot(t)}.run()
+	require.ErrorContains(t, err, `mandatoryStopVersions entry "3.0.0-rc.5" is not a canonical version`)
+}
+
+// The stop is checked against the released revisions on every run, whether
+// or not the checked change touches the revision.
+func TestCheckerChecksReleasedRevisions(t *testing.T) {
+	t.Parallel()
+
+	// bumped returns a repository whose base commit raised the revision to 4
+	// after v3.0.0-rc.4 with a stop at v3.0.0-rc.5.
+	bumped := func(t *testing.T) string {
+		t.Helper()
+
+		repo := newFixtureRepo(t)
+		writeFixture(t, repo, protocolFile, protocolSource("4"))
+		writeFixture(t, repo, stopFile, stopSource([]string{"v3.0.0-rc.5"}))
+		commitFixture(t, repo, "bump")
+
+		return repo
+	}
+
+	for _, tc := range []struct {
+		name     string
+		arrange  func(t *testing.T, repo string)
+		errorSub string
+	}{
+		{name: "stop kept", arrange: func(*testing.T, string) {}},
+		{
+			name: "stop removed without touching the revision",
+			arrange: func(t *testing.T, repo string) {
+				t.Helper()
+				writeFixture(t, repo, stopFile, stopSource(nil))
+			},
+			errorSub: "protocol revision 3 at v3.0.0-rc.4 and 4 in this tree (deployable from v3.0.0-rc.5) are not separated by a stopped upgrade",
+		},
+		{
+			name: "stop still required once its release is tagged",
+			arrange: func(t *testing.T, repo string) {
+				t.Helper()
+				runGit(t, repo, "tag", "v3.0.0-rc.5")
+				writeFixture(t, repo, stopFile, stopSource(nil))
+			},
+			errorSub: "protocol revision 3 at v3.0.0-rc.4 and 4 at v3.0.0-rc.5 are not separated by a stopped upgrade",
+		},
+		{
+			name: "release tagged before the bump moves the stop",
+			arrange: func(t *testing.T, repo string) {
+				t.Helper()
+				runGit(t, repo, "tag", "v3.0.0-rc.5", "HEAD~1")
+			},
+			errorSub: "protocol revision 3 at v3.0.0-rc.5 and 4 in this tree (deployable from v3.0.0-rc.6) are not separated by a stopped upgrade",
+		},
+		{
+			name: "release tagged on another branch",
+			arrange: func(t *testing.T, repo string) {
+				t.Helper()
+				runGit(t, repo, "tag", "v3.1.0-0")
+				runGit(t, repo, "checkout", "--quiet", "-b", "release", "HEAD~1")
+				writeFixture(t, repo, "RELEASE", "v3.0.0\n")
+				commitFixture(t, repo, "release")
+				runGit(t, repo, "tag", "v3.0.0")
+				runGit(t, repo, "checkout", "--quiet", "-")
+			},
+			errorSub: "protocol revision 3 at v3.0.0 and 4 in this tree (deployable from v3.1.0-0) are not separated by a stopped upgrade",
+		},
+		{
+			name: "release before the baseline is ignored",
+			arrange: func(t *testing.T, repo string) {
+				t.Helper()
+				runGit(t, repo, "checkout", "--quiet", "-b", "beta", "HEAD~1")
+				writeFixture(t, repo, protocolFile, protocolSource("2"))
+				commitFixture(t, repo, "beta")
+				runGit(t, repo, "tag", "v3.0.0-beta.9")
+				runGit(t, repo, "checkout", "--quiet", "-")
+			},
+		},
+		{
+			// The marker sits on the branch point, before the bump.
+			name: "marker is not a release",
+			arrange: func(t *testing.T, repo string) {
+				t.Helper()
+				runGit(t, repo, "tag", "v3.1.0-0", "HEAD~1")
+				runGit(t, repo, "tag", "v3.1.0-rc.1")
+				writeFixture(t, repo, stopFile, stopSource([]string{"v3.1.0-0"}))
+			},
+		},
+		{
+			name: "release above this branch is ignored",
+			arrange: func(t *testing.T, repo string) {
+				t.Helper()
+				runGit(t, repo, "checkout", "--quiet", "-b", "next")
+				writeFixture(t, repo, protocolFile, protocolSource("5"))
+				commitFixture(t, repo, "next")
+				runGit(t, repo, "tag", "v3.1.0-rc.1")
+				runGit(t, repo, "checkout", "--quiet", "-")
+			},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			repo := bumped(t)
+			tc.arrange(t, repo)
+
+			res, err := checker{repoRoot: repo, base: "HEAD", buf: "buf", services: []string{"api.Api"}, pluginRoot: repoRoot(t)}.run()
+			require.NoError(t, err)
+			require.Equal(t, res.baseVersion, res.headVersion)
+
+			err = res.verdict()
+			if tc.errorSub == "" {
+				require.NoError(t, err)
+
+				return
+			}
+			require.ErrorContains(t, err, tc.errorSub)
+		})
+	}
 }
 
 func TestCheckerRejectsUnknownGatedService(t *testing.T) {
@@ -349,8 +552,7 @@ message Outer { message Inner { string value = 1; } }
 message GetResponse { string result = 1; }
 `
 			writeFixture(t, repo, "misc/proto/api.proto", baseProto)
-			runGit(t, repo, "add", ".")
-			runGit(t, repo, "-c", "user.name=test", "-c", "user.email=test@example.invalid", "commit", "--quiet", "-m", "compact base")
+			commitFixture(t, repo, "compact base")
 			writeFixture(t, repo, "misc/proto/api.proto", strings.Replace(baseProto, "string value = 1;", "int64 value = 1;", 1))
 
 			res, err := checker{repoRoot: repo, base: "HEAD", buf: "buf", services: []string{"api.Api"}, pluginRoot: repoRoot(t)}.run()
@@ -376,11 +578,19 @@ func newFixtureRepo(t *testing.T) string {
 	writeFixture(t, repo, bufConfig, string(config))
 	writeFixture(t, repo, "misc/proto/api.proto", fixtureProto)
 	writeFixture(t, repo, protocolFile, protocolSource("3"))
+	writeFixture(t, repo, stopFile, stopSource(nil))
 	runGit(t, repo, "init", "--quiet")
-	runGit(t, repo, "add", ".")
-	runGit(t, repo, "-c", "user.name=test", "-c", "user.email=test@example.invalid", "commit", "--quiet", "-m", "base")
+	commitFixture(t, repo, "base")
+	runGit(t, repo, "tag", "v3.0.0-rc.4")
 
 	return repo
+}
+
+func commitFixture(t *testing.T, repo, message string) {
+	t.Helper()
+
+	runGit(t, repo, "add", ".")
+	runGit(t, repo, "-c", "user.name=test", "-c", "user.email=test@example.invalid", "commit", "--quiet", "-m", message)
 }
 
 func stopSource(stops []string) string {
