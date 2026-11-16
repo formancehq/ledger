@@ -136,6 +136,7 @@ fi
 				if arg == "--auth-token" {
 					require.Less(t, i+1, len(args))
 					require.Equal(t, tc.want, args[i+1])
+
 					return
 				}
 			}
