@@ -75,6 +75,7 @@ func processCreateLedger(ledger string, order *raftcmdpb.CreateLedgerOrder, ctx 
 		for _, existingName := range slices.Sorted(maps.Keys(parsedAccountTypes)) {
 			if accounttype.PatternsConflict(segments, parsedAccountTypes[existingName]) {
 				existing := canonicalAccountTypes[existingName]
+
 				return nil, &domain.ErrAccountTypeConflict{
 					NewPattern:      at.GetPattern(),
 					ExistingName:    existingName,
