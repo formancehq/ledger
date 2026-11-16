@@ -32,6 +32,7 @@ func TestReconcileOperatorCredentialsCreatesScopedCredential(t *testing.T) {
 	credentials := &ledgerv1alpha1.Credentials{}
 	require.NoError(t, r.Get(context.Background(), types.NamespacedName{Name: operatorCredentialsName(cluster)}, credentials))
 	require.Equal(t, operatorCredentialScopes, credentials.Spec.Scopes)
+	require.Contains(t, credentials.Spec.Scopes, "ledger:ReadAudit")
 	require.False(t, credentials.Spec.Superuser)
 	require.Equal(t, map[string]string{labelOperatorCredential: operatorCredentialsSelectorValue(cluster)}, credentials.Spec.Selector.MatchLabels)
 }
