@@ -92,10 +92,11 @@ not introduce the account-type validation feature from PR #2552.
    apply.
 
 The serialized proposal currently carries `required_capabilities` at proposal
-scope. That is sufficient only when every order in the proposal has the same
-semantic contract. A proposal can batch multiple orders, so a future change
-that mixes old and new semantics must either add a persisted marker to each
-order (and dispatch apply from that marker) or reject mixed-semantic batches.
+scope. A proposal can batch multiple orders. A proposal-level marker works for
+mirror promotion because all promotions in the same proposal use the same new
+rule; unrelated orders ignore it. A future change that needs different rules
+for orders of the same type in one batch must add a persisted marker to each
+order or reject mixed-semantic batches.
 The conceptual marker for a homogeneous proposal is:
 
 ```text
@@ -106,6 +107,12 @@ new proposal:  required_capabilities = [MirrorIngestRejectInvalidAssetV2]
 The FSM must use the persisted declaration to select the behavior. It must not
 infer the behavior from the current policy alone. An old order can be replayed
 after the capability becomes active, and it must keep its old semantics.
+
+Capability ID `1`, `MirrorPromotionCatchUp`, marks every newly produced mirror
+promotion proposal. The FSM applies the source-head, cursor, and sync-error
+precondition only to marked proposals. Unmarked promotions committed by RC.4
+retain their original apply result during Raft replay. Audit replay uses its
+recorded result and does not perform the live progress check.
 
 If a producer cannot mark the new orders, the change must remain backward
 compatible or add an explicit semantic version to the order. A capability by
@@ -285,3 +292,9 @@ the coordinated restart. A future feature must register a stable activation ID,
 stamp its final persisted proposals, and provide deterministic replay semantics.
 The generic pending-admission fence already covers all audited order batches;
 features must not add a separate activation switch.
+
+`MirrorPromotionCatchUp` is the first registered ID. It activates automatically
+after all members advertise support. New promotions require ID `1`; admission
+holds audited batches while activation is pending, then applies the catch-up
+rule only to marked proposals. Historical unmarked promotions retain their
+original FSM behavior.

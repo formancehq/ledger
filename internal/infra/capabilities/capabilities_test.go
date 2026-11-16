@@ -102,6 +102,34 @@ func TestPrepareProposalClearsFutureDeclarations(t *testing.T) {
 	require.Empty(t, proposal.GetRequiredCapabilities())
 }
 
+func TestPrepareProposalMarksMirrorPromotion(t *testing.T) {
+	order := &raftcmdpb.Order{Type: &raftcmdpb.Order_LedgerScoped{LedgerScoped: &raftcmdpb.LedgerScopedOrder{
+		Ledger: "mirror", Payload: &raftcmdpb.LedgerScopedOrder_PromoteLedger{PromoteLedger: &raftcmdpb.PromoteLedgerOrder{}},
+	}}}
+	proposal := &raftcmdpb.Proposal{Orders: []*raftcmdpb.Order{order}}
+	prepared, err := PrepareProposal(proposal)
+	require.NoError(t, err)
+	require.Equal(t, []CapabilityID{MirrorPromotionCatchUp}, prepared.RequiredCapabilities())
+	require.Equal(t, []uint32{uint32(MirrorPromotionCatchUp)}, proposal.GetRequiredCapabilities())
+	require.Contains(t, SupportedIDs(), MirrorPromotionCatchUp)
+}
+
+func TestMirrorPromotionRequiresActivationAndEveryMember(t *testing.T) {
+	members := []Member{
+		{NodeID: 1, Role: Voter, Reachable: true, Capabilities: []CapabilityID{MirrorPromotionCatchUp}},
+		{NodeID: 2, Role: Learner, Reachable: true, Capabilities: []CapabilityID{MirrorPromotionCatchUp}},
+	}
+	required := []CapabilityID{MirrorPromotionCatchUp}
+	require.False(t, Evaluate(capabilityState(), required, true, members).Allowed)
+
+	active := State{Activations: map[CapabilityID]bool{MirrorPromotionCatchUp: true}}
+	require.True(t, Evaluate(active, required, true, members).Allowed)
+	members[1].Capabilities = nil
+	decision := Evaluate(active, required, true, members)
+	require.False(t, decision.Allowed)
+	require.Equal(t, uint64(2), decision.Blockers[0].NodeID)
+}
+
 func TestFromPolicyRoundTrip(t *testing.T) {
 	state := FromPolicy(&commonpb.ClusterPolicy{
 		CapabilityActivations: []*commonpb.CapabilityActivation{{Id: 99, Active: true}},

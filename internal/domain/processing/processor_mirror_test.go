@@ -885,7 +885,7 @@ func TestPromoteLedger_CheckedCatchUp(t *testing.T) {
 			boundaries := setupBoundariesStub(scope)
 			boundaries.expectGet(domain.LedgerKey{Name: "mirror"}, (&raftcmdpb.LedgerBoundaries{LastMirrorV2LogId: tc.cursor}).AsReader(), nil)
 			_, err := processPromoteLedger("mirror", &Context{
-				Scope: scope, MirrorPromotionProgress: func(string) (uint64, bool) { return tc.head, tc.syncError },
+				Scope: scope, checkMirrorPromotionCatchUp: true, MirrorPromotionProgress: func(string) (uint64, bool) { return tc.head, tc.syncError },
 			})
 			if tc.reject {
 				var lag *domain.ErrMirrorNotCaughtUp
