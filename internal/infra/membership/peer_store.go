@@ -164,7 +164,7 @@ const (
 	// membershipFormatRevisionLegacy identifies stores written before the
 	// dedicated peer service port was persisted.
 	membershipFormatRevisionLegacy uint32 = 0
-	// membershipFormatRevisionPeerPort marks the one-shot rc.3 → rc.4
+	// membershipFormatRevisionPeerPort marks the one-shot rc.4 → rc.5
 	// migration complete. Subsequent writes already use the peer port.
 	membershipFormatRevisionPeerPort uint32 = 1
 )

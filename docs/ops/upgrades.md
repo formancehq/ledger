@@ -35,7 +35,9 @@ and encodes [mirror asset mappings](#mirror-asset-mappings) differently.
 `rc.3` includes the drain barrier used for this upgrade. RC adjacency remains mandatory.
 The `rc.1` to `rc.2` transition rolls one voter at a time with a maintenance
 barrier that pauses writes; it does not stop the whole cluster.
-The `rc.2` to `rc.3` transition remains rolling.
+The `rc.2` to `rc.3` transition remains rolling. The dedicated peer-service
+port and Membership address migration first ship after the published `rc.4`,
+so the operator also requires a stopped `rc.4` to `rc.5` upgrade.
 Every explicit-target `UpdatePreparedQuery` order must wait until the stopped
 `rc.3` to `rc.4` upgrade completes. Even when the target value is unchanged,
 the new processor records target fields in the audit log, so old and new voters
@@ -92,9 +94,12 @@ projections. Document the upgrade procedure and rollback boundary in the
 release notes. Delay the release if the target cannot read or migrate the source
 state.
 
-The upgrade classes below describe existing procedures. The operator
-boundaries at `rc.4` and `rc.5` select a stopped restart from `rc.3` and `rc.4`
-respectively; rebuild or restore applies only to the cases listed below.
+The upgrade classes below describe existing procedures. RC changes use the
+rolling class when the two binaries can safely coexist. The `rc.3` → `rc.4`
+proposal-payload cutover and `rc.4` → `rc.5` peer-service migration and
+aggregate-totals wire change are explicit operator-required stopped restarts.
+Each requires a durable drain, a full stop, and a complete restart without a
+mixed-version window. Rebuild or restore applies only to the cases listed below.
 
 | Class | When it applies | Procedure |
 |-------|-----------------|-----------|
@@ -190,12 +195,20 @@ the target or restore through a supported forward recovery path.
 The rc.3 → rc.4 upgrade is not a rolling upgrade. The operator first performs
 the durable drain described above; once every voter has applied the maintenance
 barrier, it stops all Ledger Pods, updates the operator and Ledger image, and
-restarts the complete cluster with the existing PVCs. The first rc.4 startup
-migrates legacy Membership service addresses to the dedicated peer port after
-WAL replay and snapshot recovery. Do not run rc.3 and rc.4 voters together
-during this migration.
+restarts the complete cluster with the existing PVCs. RC.3 and RC.4 voters
+must not coexist because they apply some proposal payloads differently.
 
-Before the membership format revision is written, RC.3 service addresses are
+### rc.4 → rc.5 peer-service migration
+
+The peer-service port split first ships after the published RC.4. The operator
+drains and stops every RC.4 Pod before starting any RC.5 Pod. The first RC.5
+startup migrates legacy Membership service addresses to the dedicated peer
+port after WAL replay and snapshot recovery. Do not run RC.4 and RC.5 voters
+together during this migration. During the preflight, the new operator uses
+the `LEDGERCTL_AUTH_TOKEN` already present in RC.4 Pods; replacement Pods use
+the operator-managed Credentials to generate short-lived tokens.
+
+Before the membership format revision is written, RC.4 service addresses are
 converted to the configured common peer port. The local row may already have
 that peer address because startup refreshes it before migration. Its address
 is preserved, and the revision is committed with the remaining conversions.
@@ -204,8 +217,9 @@ Before publishing an RC update, demonstrate the applicable upgrade class from
 the immediately preceding RC binary to the target binary in one cluster. For a
 rolling update, include leadership transfer, writes, replay, and restart. For
 the rc.3 → rc.4 stopped restart, include the durable maintenance barrier,
-full stop, Membership migration, restart, and post-upgrade writes. Record the
-source and target builds and the results in release validation. Do not infer
+full stop, restart, and post-upgrade writes. For rc.4 → rc.5, also include the
+Membership migration. Record the source and target builds and the results in
+release validation. Do not infer
 support from a successful single-node restart.
 
 For upgrades from builds before `v3.0.0-rc.1`, the change-specific constraints
@@ -579,9 +593,6 @@ the mandatory operator-required stopped restarts:
 
 ```bash
 UPGRADE_TRANSITION=rc3-to-rc4 RELEASE_BRANCH=release/v3.0 just test-release-operator-upgrade
-```
-
-```bash
 UPGRADE_TRANSITION=rc4-to-rc5 RELEASE_BRANCH=release/v3.0 just test-release-operator-upgrade
 ```
 
@@ -593,21 +604,21 @@ target:
 | `rc3-to-rc4` | `v3.0.0-rc.3` | `v3.0.0-rc.4` | rc.4 |
 | `rc4-to-rc5` | `v3.0.0-rc.4` | `v3.0.0-rc.5` | rc.5 |
 
-Run a transition after its source has been published, against a release branch
-whose operator lists its boundary. The target operator and Ledger are built
-from one exact release-branch HEAD and tagged locally with the target tag; the
-harness publishes no tag
+Run each transition after its source RC has been published, against a release
+branch whose operator lists the target RC as a mandatory stop boundary. The
+target operator and Ledger are built from one exact release-branch HEAD and
+tagged locally as the target RC; the harness publishes no tag
 or image. This path requires the operator's drain barrier to advance past
 `Draining`, observes the StatefulSet and all old Pods absent before accepting
 any target Pod, and checks that the replacement StatefulSet has a new UID while
 PVC UIDs persist. It restarts a target voter to exercise replay, verifies the
 pre-upgrade account, commits another transaction, checks Raft progress and
 runs each voter's audit/derived-state checker after drain release. It fails
-against an operator without the transition's boundary or if the mandatory stop
-is skipped, so it is a release gate for the PR that adds the boundary, not
-evidence that the source release itself needs a stop. The rc.4 release still
-needs format-specific migration, snapshot, backup/restore and rollback
-validation outside this scenario.
+against an operator without the target boundary or if the mandatory stop is
+skipped, so it is a release gate for the target change, not evidence that
+the source RC itself needs a stop. Each target release still needs
+format-specific migration, snapshot, backup/restore and rollback validation
+outside this scenario.
 
 ## Coordinated Restart
 
