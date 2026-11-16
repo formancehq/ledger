@@ -4,6 +4,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -15,7 +16,6 @@ func TestVerdict(t *testing.T) {
 	t.Parallel()
 
 	breaks := []bufFinding{{Path: "misc/proto/api.proto", Type: "FIELD_WIRE_COMPATIBLE_TYPE"}}
-	next := []string{"v3.0.0-rc.5"}
 
 	for _, tc := range []struct {
 		name     string
@@ -23,12 +23,12 @@ func TestVerdict(t *testing.T) {
 		errorSub string
 	}{
 		{name: "unchanged without break", res: result{baseVersion: 3, headVersion: 3}},
-		{name: "break without bump", res: result{baseVersion: 3, headVersion: 3, clientFindings: breaks, nextStops: next}, errorSub: "1 wire-incompatible change(s) reach a gated service at revision 3"},
-		{name: "bump without next-release stop", res: result{baseVersion: 3, headVersion: 4}, errorSub: "changed from 3 to 4 without a stopped upgrade at the next release"},
+		{name: "break without bump", res: result{baseVersion: 3, headVersion: 3, clientFindings: breaks, nextRelease: "v3.0.0-rc.5", nextStopped: true}, errorSub: "1 wire-incompatible change(s) reach a gated service at revision 3"},
+		{name: "bump without next-release stop", res: result{baseVersion: 3, headVersion: 4, nextRelease: "v3.0.0-rc.5"}, errorSub: "changed from 3 to 4 without a stopped upgrade at the next release: peers on different revisions reject each other's forwarded requests, so add v3.0.0-rc.5"},
 		{name: "break with bump without next-release stop", res: result{baseVersion: 3, headVersion: 4, clientFindings: breaks}, errorSub: "without a stopped upgrade at the next release"},
-		{name: "bump with next-release stop", res: result{baseVersion: 3, headVersion: 4, nextStops: next}},
-		{name: "break with bump and next-release stop", res: result{baseVersion: 3, headVersion: 4, clientFindings: breaks, nextStops: next}},
-		{name: "decrease", res: result{baseVersion: 3, headVersion: 2, nextStops: next}, errorSub: `decreased from 3 to 2; restore "3"`},
+		{name: "bump with next-release stop", res: result{baseVersion: 3, headVersion: 4, nextRelease: "v3.0.0-rc.5", nextStopped: true}},
+		{name: "break with bump and next-release stop", res: result{baseVersion: 3, headVersion: 4, clientFindings: breaks, nextRelease: "v3.0.0-rc.5", nextStopped: true}},
+		{name: "decrease", res: result{baseVersion: 3, headVersion: 2, nextRelease: "v3.0.0-rc.5", nextStopped: true}, errorSub: `decreased from 3 to 2; restore "3"`},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
@@ -106,42 +106,47 @@ func TestParseStopVersions(t *testing.T) {
 	}
 }
 
-func TestNextReleaseStops(t *testing.T) {
+func TestNextReleaseStop(t *testing.T) {
 	t.Parallel()
 
-	rcTags := []string{"v2.2.0", "v3.0.0-rc.1", "v3.0.0-rc.2", "v3.0.0-rc.3", "v3.0.0-rc.4", "v3.1.0-0", "nightly"}
+	rcTags := []string{"v2.2.0", "v3.0.0-rc.1", "v3.0.0-rc.2", "v3.0.0-rc.3", "v3.0.0-rc.4", "nightly"}
 	finalTags := []string{"v3.0.0-rc.4", "v3.0.0"}
+	markerTags := append(slices.Clone(rcTags), "v3.1.0-0")
 
 	for _, tc := range []struct {
 		name     string
 		stops    []string
 		tags     []string
-		want     []string
+		next     string
+		stopped  bool
 		errorSub string
 	}{
-		{name: "next rc", stops: []string{"v3.0.0-rc.4", "v3.0.0-rc.5"}, tags: rcTags, want: []string{"v3.0.0-rc.5"}},
-		{name: "final after rc", stops: []string{"v3.0.0"}, tags: rcTags, want: []string{"v3.0.0"}},
-		{name: "later rc only", stops: []string{"v3.0.0-rc.4", "v3.0.0-rc.6"}, tags: rcTags},
-		{name: "released stop only", stops: []string{"v3.0.0-rc.4"}, tags: rcTags},
-		{name: "patch after final", stops: []string{"v3.0.1"}, tags: finalTags, want: []string{"v3.0.1"}},
-		{name: "patch rc after final", stops: []string{"v3.0.1-rc.1"}, tags: finalTags, want: []string{"v3.0.1-rc.1"}},
-		{name: "skipped patch", stops: []string{"v3.0.2"}, tags: finalTags},
-		{name: "first release on a new line ignores the marker", stops: []string{"v3.1.0-rc.1"}, tags: rcTags, want: []string{"v3.1.0-rc.1"}},
-		{name: "second rc on a new line", stops: []string{"v3.1.0-rc.2"}, tags: rcTags},
+		{name: "next rc", stops: []string{"v3.0.0-rc.4", "v3.0.0-rc.5"}, tags: rcTags, next: "v3.0.0-rc.5", stopped: true},
+		// rc.5 can still ship first and would roll without a stop.
+		{name: "final only after rc", stops: []string{"v3.0.0"}, tags: rcTags, next: "v3.0.0-rc.5"},
+		{name: "later rc only", stops: []string{"v3.0.0-rc.4", "v3.0.0-rc.6"}, tags: rcTags, next: "v3.0.0-rc.5"},
+		{name: "released stop only", stops: []string{"v3.0.0-rc.4"}, tags: rcTags, next: "v3.0.0-rc.5"},
+		{name: "new line without marker", stops: []string{"v3.1.0-rc.1"}, tags: rcTags, next: "v3.0.0-rc.5"},
+		{name: "patch rc after final", stops: []string{"v3.0.1-rc.1"}, tags: finalTags, next: "v3.0.1-rc.1", stopped: true},
+		{name: "patch only after final", stops: []string{"v3.0.1"}, tags: finalTags, next: "v3.0.1-rc.1"},
+		{name: "first rc after marker", stops: []string{"v3.1.0-rc.1"}, tags: markerTags, next: "v3.1.0-rc.1", stopped: true},
+		{name: "old line after marker", stops: []string{"v3.0.0-rc.5"}, tags: markerTags, next: "v3.1.0-rc.1"},
 		{name: "non-canonical stop", stops: []string{"v3.0.0-beta.1"}, tags: rcTags, errorSub: "not vX.Y.Z or vX.Y.Z-rc.N"},
-		{name: "no tags", stops: []string{"v3.0.0-rc.5"}, errorSub: "no release tags found"},
+		{name: "marker stop", stops: []string{"v3.1.0-0"}, tags: rcTags, errorSub: "not vX.Y.Z or vX.Y.Z-rc.N"},
+		{name: "no tags", stops: []string{"v3.0.0-rc.5"}, tags: []string{"nightly"}, errorSub: "no release tags reachable from HEAD"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			got, err := nextReleaseStops(tc.stops, tc.tags)
+			next, stopped, err := nextReleaseStop(tc.stops, tc.tags)
 			if tc.errorSub != "" {
 				require.ErrorContains(t, err, tc.errorSub)
 
 				return
 			}
 			require.NoError(t, err)
-			require.Equal(t, tc.want, got)
+			require.Equal(t, tc.next, next)
+			require.Equal(t, tc.stopped, stopped)
 		})
 	}
 }
@@ -228,6 +233,14 @@ func TestCheckerClassifiesAgainstBase(t *testing.T) {
 			errorSub:  "changed from 3 to 4 without a stopped upgrade at the next release",
 		},
 		{
+			name:      "gated retype with bump and final stop only",
+			proto:     strings.Replace(fixtureProto, "int64 amount = 2;", "string amount = 2;", 1),
+			version:   "4",
+			stops:     []string{"v3.0.0"},
+			wantGated: 1,
+			errorSub:  "add v3.0.0-rc.5 to mandatoryStopVersions",
+		},
+		{
 			name:      "gated retype with bump and later stop only",
 			proto:     strings.Replace(fixtureProto, "int64 amount = 2;", "string amount = 2;", 1),
 			version:   "4",
@@ -301,7 +314,7 @@ func TestCheckerRequiresReleaseTagsForBump(t *testing.T) {
 	writeFixture(t, repo, stopFile, stopSource([]string{"v3.0.0-rc.5"}))
 
 	_, err := checker{repoRoot: repo, base: "HEAD", buf: "buf", services: []string{"api.Api"}, pluginRoot: repoRoot(t)}.run()
-	require.ErrorContains(t, err, "no release tags found")
+	require.ErrorContains(t, err, "no release tags reachable from HEAD")
 }
 
 func TestCheckerRejectsUnknownGatedService(t *testing.T) {

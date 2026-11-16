@@ -407,11 +407,13 @@ requires a higher revision. Clients built for the old revision are then
 rejected on every gated RPC until they upgrade. Nodes forward requests to each
 other through the same gated services, so a node rejects a peer on another
 revision just as it rejects an old client. A revision increase therefore ships
-only in a release that is a mandatory stopped upgrade: the next release on its
-version line must be listed in `mandatoryStopVersions`
-(`misc/operator/internal/controller/required_upgrade.go`). A stop listed only
-for a later release leaves the next one rolling. Several increases may share
-one such release.
+only in a release that is a mandatory stopped upgrade: the earliest release
+that can follow the latest tag must be listed in `mandatoryStopVersions`
+(`misc/operator/internal/controller/required_upgrade.go`). The operator stops
+every upgrade that crosses a listed version, so that stop covers whichever
+release ships next. A stop listed only for a later release, including the
+final release after an RC, leaves the next one rolling. Several increases may
+share one such release.
 
 The author of a service change must identify its effect on published clients.
 Behavior and configuration changes can ship at the same revision when their
@@ -453,14 +455,14 @@ base. `agent-check-pr` runs it when `misc/proto/**` or
    gated type. Raft-only and persisted-only messages are not counted.
 4. A kept finding fails the check unless the worktree `Version` is higher than
    the base.
-5. A higher `Version` fails unless `mandatoryStopVersions` lists the next
-   release on its line: after the latest `vX.Y.Z-rc.N` tag, `rc.N+1` or
-   `vX.Y.Z`; after `vX.Y.Z`, `vX.Y.(Z+1)-rc.1` or `vX.Y.(Z+1)`; on a line with
-   no release, `vX.Y.0-rc.1` or `vX.Y.0`. Other tags, such as version-line
-   markers, are ignored. The check reads the slice from the operator source
-   without compiling it, and fails if the slice is not a `[]string` literal, if
-   an entry is not `vX.Y.Z` or `vX.Y.Z-rc.N`, or if the repository has no `v*`
-   tags. CI checks out the full history with tags.
+5. A higher `Version` fails unless `mandatoryStopVersions` lists the earliest
+   release that can follow the highest `v*` tag reachable from `HEAD`: after
+   `vX.Y.Z-rc.N`, `vX.Y.Z-rc.(N+1)`; after `vX.Y.Z`, `vX.Y.(Z+1)-rc.1`; after
+   the version-line marker `vX.Y.0-0`, `vX.Y.0-rc.1`. Other tags are ignored.
+   The check reads the slice from the operator source without compiling it,
+   and fails if the slice is not a `[]string` literal, if an entry is not
+   `vX.Y.Z` or `vX.Y.Z-rc.N`, or if no release tag is reachable from `HEAD`.
+   CI checks out the full history with tags.
 
 The check does not detect semantic changes that keep the `.proto` text
 unchanged; those remain the author's and reviewer's classification. When a
