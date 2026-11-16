@@ -2366,6 +2366,41 @@ func TestExecuteNumscriptReferenceClaimRequiresCreatedTransaction(t *testing.T) 
 	}
 }
 
+func TestExecuteNumscriptReferenceClaimPrecedesSameBatchConflict(t *testing.T) {
+	t.Parallel()
+	const ledger, reference = "L", "ref-1"
+	execution := &raftcmdpb.Order{Type: &raftcmdpb.Order_LedgerScoped{LedgerScoped: &raftcmdpb.LedgerScopedOrder{
+		Ledger: ledger, Payload: &raftcmdpb.LedgerScopedOrder_Apply{Apply: &raftcmdpb.LedgerApplyOrder{
+			Data: &raftcmdpb.LedgerApplyOrder_ExecuteNumscript{ExecuteNumscript: &raftcmdpb.ExecuteNumscriptOrder{Reference: reference}},
+		}},
+	}}}
+	create := &raftcmdpb.Order{Type: &raftcmdpb.Order_LedgerScoped{LedgerScoped: &raftcmdpb.LedgerScopedOrder{
+		Ledger: ledger, Payload: &raftcmdpb.LedgerScopedOrder_Apply{Apply: &raftcmdpb.LedgerApplyOrder{
+			Data:             &raftcmdpb.LedgerApplyOrder_CreateTransaction{CreateTransaction: &raftcmdpb.CreateTransactionOrder{Reference: reference}},
+			SkippableReasons: []commonpb.ErrorReason{commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT},
+		}},
+	}}}
+	items := []*auditpb.AuditItem{buildAuditItem(t, 10, execution), buildAuditItem(t, 11, create)}
+	cb := newChainBoundState()
+	cb.ledgerCreationSeen[ledger] = struct{}{}
+	expected := make(map[uint64]*expectedSkippableOrder)
+	orders := requireCollectExpectedSkippable(t, items, 10, 11, expected, cb)
+	require.Equal(t, uint64(11), cb.references[ledger][reference], "order fold records the later create first")
+	skip := &commonpb.LedgerLogPayload{Payload: &commonpb.LedgerLogPayload_OrderSkipped{OrderSkipped: &commonpb.OrderSkippedLog{
+		Details: commonpb.MustFailureDetails("TRANSACTION_REFERENCE_CONFLICT", map[string]string{
+			"ledger": ledger, "reference": reference, "existingTransactionId": "1",
+		}),
+	}}}
+	reconcileMetadataOnlyChainBound(items, orders, []*commonpb.Log{
+		applyLog(10, &commonpb.LedgerLogPayload{Payload: &commonpb.LedgerLogPayload_CreatedTransaction{CreatedTransaction: &commonpb.CreatedTransaction{Transaction: &commonpb.Transaction{Id: 1, Reference: reference}}}}),
+		applyLog(11, skip),
+	}, cb)
+	require.Equal(t, uint64(10), cb.references[ledger][reference])
+	require.Equal(t, uint64(1), cb.referenceTxIDs[ledger][reference])
+	result := captureEventsState(t, ledger, 11, skip, expected, cb)
+	require.Empty(t, result)
+}
+
 func TestVerifySkippedOrder_LedgerMismatchAcrossReasons(t *testing.T) {
 	t.Parallel()
 

@@ -2959,9 +2959,11 @@ func collectExpectedSkippable(
 			}
 		}
 
-		// Track every chain-bound reference claim on this ledger, not just
-		// the ones from orders that opted into skip. Two order shapes can
-		// originate a reference write:
+		// Track chain-bound reference claims on this ledger, not just
+		// the ones from orders that opted into skip. CreateTransaction
+		// and MirrorIngest reveal their claims in the order; ExecuteNumscript
+		// claims are confirmed from replayed CreatedTransaction logs later.
+		// The order-derived claimants are:
 		//   - LedgerApplyOrder_CreateTransaction (regular path)
 		//   - LedgerScopedOrder_MirrorIngest carrying a
 		//     MirrorCreatedTransaction (mirror ingestion after a mirror
@@ -3589,11 +3591,9 @@ func metadataTimelineTargetFromProto(target *commonpb.Target) string {
 	}
 }
 
-// rememberReferenceClaim records the first chain-bound claim of a
-// (ledger, reference) pair. Used by collectExpectedSkippable across the
-// two order shapes that produce references (CreateTransactionOrder and
-// MirrorIngestOrder.MirrorCreatedTransaction) to keep the
-// first-claim-wins semantic the verifier relies on (`firstSeenSeq < seq`).
+// rememberReferenceClaim retains the earliest chain-bound log sequence for a
+// (ledger, reference) pair. Replay-confirmed ExecuteNumscript claims are folded
+// after all orders in their batch, so insertion order need not be log order.
 func rememberReferenceClaim(
 	chainBoundReferences map[string]map[string]uint64,
 	ledger, reference string,
@@ -3609,7 +3609,7 @@ func rememberReferenceClaim(
 		chainBoundReferences[ledger] = perLedger
 	}
 
-	if _, claimed := perLedger[reference]; claimed {
+	if first, claimed := perLedger[reference]; claimed && first <= logSeq {
 		return
 	}
 
