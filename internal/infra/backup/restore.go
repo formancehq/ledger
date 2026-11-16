@@ -15,6 +15,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/infra/state"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/v3/internal/query"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
 
@@ -98,6 +99,81 @@ func validateExportCoverage(manifest *Manifest) error {
 	}
 
 	return nil
+}
+
+// validateAppliedProposalCoverage checks the sparse applied-proposal stream
+// against the dense audit stream. Failed proposals legitimately leave gaps,
+// but every successful audit entry emits exactly one AppliedProposal at the
+// same sequence. This catches a whole applied-proposal export segment removed
+// from a manifest while preserving the normal failure gaps.
+func validateAppliedProposalCoverage(ctx context.Context, store dal.PebbleReader, afterAuditSeq uint64) error {
+	var after *uint64
+	if afterAuditSeq > 0 {
+		after = &afterAuditSeq
+	}
+
+	audits, err := query.ReadAuditEntries(ctx, store, after)
+	if err != nil {
+		return fmt.Errorf("reading audit entries for applied-proposal validation: %w", err)
+	}
+	defer func() { _ = audits.Close() }()
+
+	proposals, err := query.ReadAppliedProposals(ctx, store, after)
+	if err != nil {
+		return fmt.Errorf("reading applied proposals for coverage validation: %w", err)
+	}
+	defer func() { _ = proposals.Close() }()
+
+	proposal, proposalErr := proposals.Next()
+	if errors.Is(proposalErr, io.EOF) {
+		proposal = nil
+		proposalErr = nil
+	}
+	if proposalErr != nil {
+		return fmt.Errorf("reading first applied proposal for coverage validation: %w", proposalErr)
+	}
+
+	for {
+		entry, err := audits.Next()
+		if errors.Is(err, io.EOF) {
+			if proposal != nil {
+				return fmt.Errorf("applied proposal sequence %d has no audit entry", proposal.GetSequence())
+			}
+			return nil
+		}
+		if err != nil {
+			return fmt.Errorf("reading audit entry for applied-proposal validation: %w", err)
+		}
+
+		seq := entry.GetSequence()
+		for proposal != nil && proposal.GetSequence() < seq {
+			return fmt.Errorf("applied proposal sequence %d has no successful audit entry", proposal.GetSequence())
+		}
+
+		success := entry.GetSuccess()
+		// A successful proposal that produced no log has no replay delta for
+		// AppliedProposal to describe. Keep validation focused on successful
+		// operations that carry replayable effects; this also preserves
+		// compatibility with historical synthetic audit-only entries.
+		requiresProposal := success != nil && success.GetMaxLogSequence() > 0
+		if requiresProposal && (proposal == nil || proposal.GetSequence() != seq) {
+			return fmt.Errorf("successful audit sequence %d is missing its applied proposal", seq)
+		}
+		if success == nil && proposal != nil && proposal.GetSequence() == seq {
+			return fmt.Errorf("failed audit sequence %d has an applied proposal", seq)
+		}
+
+		if proposal != nil && proposal.GetSequence() == seq {
+			proposal, proposalErr = proposals.Next()
+			if errors.Is(proposalErr, io.EOF) {
+				proposal = nil
+				proposalErr = nil
+			}
+			if proposalErr != nil {
+				return fmt.Errorf("reading applied proposal after sequence %d: %w", seq, proposalErr)
+			}
+		}
+	}
 }
 
 type exportCountingReader struct {
@@ -322,13 +398,39 @@ func ApplyExportsAndRebuild(ctx context.Context, logger logging.Logger, storage 
 		return fmt.Errorf("applying exports: %w", err)
 	}
 
+	var fromAuditSeq uint64
+	if manifest.Checkpoint != nil {
+		fromAuditSeq = manifest.Checkpoint.LastAuditSequence
+	}
+	readHandle, err := store.NewDirectReadHandle()
+	if err != nil {
+		return fmt.Errorf("opening store for applied-proposal validation: %w", err)
+	}
+	hasAppliedProposalExport := false
+	for _, segment := range manifest.Exports {
+		if segment.Type == "appliedProposal" {
+			hasAppliedProposalExport = true
+			break
+		}
+	}
+	// Some legacy/offline fixtures contain audit rows without the optional
+	// AppliedProposal projection. Once a manifest carries that stream, however,
+	// its sparse rows are authoritative and must align with successful audits.
+	if hasAppliedProposalExport {
+		if err := validateAppliedProposalCoverage(ctx, readHandle, fromAuditSeq); err != nil {
+			_ = readHandle.Close()
+			return fmt.Errorf("validating applied-proposal coverage: %w", err)
+		}
+	}
+	if err := readHandle.Close(); err != nil {
+		return fmt.Errorf("closing store after applied-proposal validation: %w", err)
+	}
+
 	// Derived state is rebuilt from the first log sequence not covered by the
 	// checkpoint (0 when restoring from exports alone).
 	var fromLogSeq uint64
-	var fromAuditSeq uint64
 	if manifest.Checkpoint != nil {
 		fromLogSeq = manifest.Checkpoint.LastLogSequence
-		fromAuditSeq = manifest.Checkpoint.LastAuditSequence
 	}
 
 	if len(manifest.Exports) > 0 {

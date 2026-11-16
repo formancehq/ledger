@@ -15,7 +15,9 @@ import (
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
 	"github.com/formancehq/ledger/v3/internal/infra/state"
 	"github.com/formancehq/ledger/v3/internal/pkg/commands"
+	"github.com/formancehq/ledger/v3/internal/proto/auditpb"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/v3/internal/proto/proposalpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/query"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
@@ -65,6 +67,82 @@ func applyCoverageTransfer(t *testing.T, machine *state.Machine, store *dal.Stor
 	for _, r := range result.Results {
 		require.NoError(t, r.Error)
 	}
+}
+
+func writeAppliedProposalCoverageRow(t *testing.T, store *dal.Store, seq uint64, success bool) {
+	t.Helper()
+
+	batch := store.OpenWriteSession()
+	audit := &auditpb.AuditEntry{Sequence: seq}
+	if success {
+		audit.Outcome = &auditpb.AuditEntry_Success{Success: &auditpb.AuditSuccess{}}
+	} else {
+		audit.Outcome = &auditpb.AuditEntry_Failure{Failure: &auditpb.AuditFailure{}}
+	}
+	auditKey := dal.NewKeyBuilder().PutZonePrefix(dal.ZoneHistory, dal.SubHistoryAudit).PutUint64(seq).Build()
+	if err := batch.SetProto(auditKey, audit); err != nil {
+		t.Fatal(err)
+	}
+	if success {
+		proposalKey := dal.NewKeyBuilder().PutZonePrefix(dal.ZoneHistory, dal.SubHistoryAppliedProposal).PutUint64(seq).Build()
+		if err := batch.SetProto(proposalKey, &proposalpb.AppliedProposal{Sequence: seq}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := batch.Commit(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestValidateAppliedProposalCoverage_AllowsFailureGaps(t *testing.T) {
+	t.Parallel()
+
+	store := newBackupTestStore(t)
+	writeAppliedProposalCoverageRow(t, store, 1, true)
+	writeAppliedProposalCoverageRow(t, store, 2, false)
+	writeAppliedProposalCoverageRow(t, store, 3, true)
+
+	handle, err := store.NewDirectReadHandle()
+	require.NoError(t, err)
+	defer func() { require.NoError(t, handle.Close()) }()
+	require.NoError(t, validateAppliedProposalCoverage(t.Context(), handle, 0))
+}
+
+func TestValidateAppliedProposalCoverageRejectsMissingSuccessCompanion(t *testing.T) {
+	t.Parallel()
+
+	store := newBackupTestStore(t)
+	writeAppliedProposalCoverageRow(t, store, 1, true)
+	writeAppliedProposalCoverageRow(t, store, 2, false)
+	// Sequence 3 is a successful audit with its AppliedProposal segment/row
+	// omitted, which is the EN-3308 restore shape.
+	batch := store.OpenWriteSession()
+	key := dal.NewKeyBuilder().PutZonePrefix(dal.ZoneHistory, dal.SubHistoryAudit).PutUint64(3).Build()
+	require.NoError(t, batch.SetProto(key, &auditpb.AuditEntry{Sequence: 3, Outcome: &auditpb.AuditEntry_Success{Success: &auditpb.AuditSuccess{MinLogSequence: 3, MaxLogSequence: 3}}}))
+	require.NoError(t, batch.Commit())
+
+	handle, err := store.NewDirectReadHandle()
+	require.NoError(t, err)
+	defer func() { require.NoError(t, handle.Close()) }()
+	err = validateAppliedProposalCoverage(t.Context(), handle, 0)
+	require.ErrorContains(t, err, "successful audit sequence 3 is missing its applied proposal")
+}
+
+func TestValidateAppliedProposalCoverageRejectsOrphan(t *testing.T) {
+	t.Parallel()
+
+	store := newBackupTestStore(t)
+	writeAppliedProposalCoverageRow(t, store, 1, false)
+	batch := store.OpenWriteSession()
+	key := dal.NewKeyBuilder().PutZonePrefix(dal.ZoneHistory, dal.SubHistoryAppliedProposal).PutUint64(2).Build()
+	require.NoError(t, batch.SetProto(key, &proposalpb.AppliedProposal{Sequence: 2}))
+	require.NoError(t, batch.Commit())
+
+	handle, err := store.NewDirectReadHandle()
+	require.NoError(t, err)
+	defer func() { require.NoError(t, handle.Close()) }()
+	err = validateAppliedProposalCoverage(t.Context(), handle, 0)
+	require.ErrorContains(t, err, "applied proposal sequence 2 has no audit entry")
 }
 
 func coverageVolume(t *testing.T, store *dal.Store, attrs *attributes.Attributes, ledger, account string) *raftcmdpb.VolumePair {
