@@ -35,6 +35,50 @@ func TestProcessCreateLedger_AccountTypeFactBounds(t *testing.T) {
 	}
 }
 
+func TestProcessCreateLedger_RejectsInvalidInitialAccountTypeConstraints(t *testing.T) {
+	t.Parallel()
+
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+	mockStore := NewMockScope(ctrl)
+	expectGetLedger(mockStore, domain.LedgerKey{Name: "l"}, nil, domain.ErrNotFound)
+
+	_, derr := processCreateLedger("l", &raftcmdpb.CreateLedgerOrder{
+		AccountTypes: map[string]*commonpb.AccountType{
+			"users": {
+				Pattern: "users:{id}",
+				SegmentTypes: map[string]*commonpb.SegmentType{
+					"unknown": {Constraint: &commonpb.SegmentType_Uuid{Uuid: &commonpb.UUIDConstraint{}}},
+				},
+			},
+		},
+	}, &Context{Scope: mockStore})
+
+	var invalid *domain.ErrInvalidPattern
+	require.ErrorAs(t, derr, &invalid)
+}
+
+func TestProcessCreateLedger_RejectsConflictingInitialAccountTypes(t *testing.T) {
+	t.Parallel()
+
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+	mockStore := NewMockScope(ctrl)
+	expectGetLedger(mockStore, domain.LedgerKey{Name: "l"}, nil, domain.ErrNotFound)
+
+	_, derr := processCreateLedger("l", &raftcmdpb.CreateLedgerOrder{
+		DefaultEnforcementMode: commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT,
+		AccountTypes: map[string]*commonpb.AccountType{
+			"users-by-id":   {Pattern: "users:{id}"},
+			"users-by-name": {Pattern: "users:{name}"},
+		},
+	}, &Context{Scope: mockStore})
+
+	var conflict *domain.ErrAccountTypeConflict
+	require.ErrorAs(t, derr, &conflict)
+	require.Equal(t, "users-by-id", conflict.ExistingName)
+}
+
 func TestProcessCreateLedger(t *testing.T) {
 	t.Parallel()
 
