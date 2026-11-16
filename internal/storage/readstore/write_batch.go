@@ -73,6 +73,13 @@ func (wb *WriteBatch) SetEventSequence(seq uint64) {
 	wb.eventSeq = seq
 }
 
+// EventSequence returns the sequence declared for the current fold batch.
+// Callers that compare an existing single-stamp row against a candidate must
+// use the same declaration that WriteAccountByAssetIndex will validate.
+func (wb *WriteBatch) EventSequence() uint64 {
+	return wb.eventSeq
+}
+
 // NewWriteBatch creates a new WriteBatch.
 func NewWriteBatch() *WriteBatch {
 	return &WriteBatch{}
