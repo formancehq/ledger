@@ -63,11 +63,12 @@ go install github.com/planetscale/vtprotobuf/cmd/protoc-gen-go-vtproto@v0.6.1-0.
 
 The service API has a compiled protocol revision independent of release versions.
 For every exposed wire or behavior change, assess its effect on published clients.
-During the v3 release-candidate phase the revision is frozen: do not bump
-`pkg/grpcprotocol.Version`. Preserve published gRPC service and method names,
-request and response types, field numbers, wire types, field identity, and enum
-numbers. Behavior and configuration changes can ship when their client impact
-and upgrade steps are documented. Internal persisted/Raft-only
+Prefer changes that keep `pkg/grpcprotocol.Version`: preserve published gRPC
+service and method names, request and response types, field numbers, wire
+types, field identity, and enum numbers. A change that breaks client decoding
+must increase the revision, and only in a release that is a pending mandatory
+stopped upgrade. Behavior and configuration changes can ship when their client
+impact and upgrade steps are documented. Internal persisted/Raft-only
 changes require an impact assessment of existing data and shared service types
 rather than an automatic service revision bump. See the
 [service protocol contract](../architecture/subsystems/api/protocol-compatibility.md)
@@ -75,15 +76,18 @@ for the gate, client obligations, and review criteria. Starting with
 `v3.0.0-rc.1`, existing persisted data must remain readable or have a safe
 migration. Follow the [upgrade policy](../../ops/upgrades.md#release-requirement-from-v300-rc1).
 
-CI enforces the service wire freeze with
+CI enforces these rules with
 `PROTOCOL_BASE_SHA=<target-sha> just check-protocol-version`. It fails if the
-revision changes or `buf breaking` finds a wire-incompatible change in a type
-reachable from a gated service. Run it locally before pushing a `.proto`
+revision decreases, if `buf breaking` finds a wire-incompatible change in a type
+reachable from a gated service without a revision increase, or if the revision
+increases while the operator's `mandatoryStopVersions` lists no unreleased
+version. Run it locally before pushing a `.proto`
 change; review behavior changes separately for client impact.
 
 1. Edit the `.proto` file in `misc/proto/`.
 2. Preserve published service and method names, request and response types,
-   field numbers, wire types, field identity, and enum numbers. Internal-only
+   field numbers, wire types, field identity, and enum numbers, or increase the
+   service revision as described above. Internal-only
    fields may change only when existing persisted data remains readable or has
    a safe migration, and the release upgrade contract remains satisfied. The
    RC.3 to RC.4 payload cutover requires a full stop and the corresponding

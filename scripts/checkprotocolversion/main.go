@@ -1,10 +1,15 @@
-// Command checkprotocolversion enforces the frozen service protocol revision
+// Command checkprotocolversion enforces the service protocol revision rules
 // from docs/technical/architecture/subsystems/api/protocol-compatibility.md
 // against a base commit:
 //
-//   - pkg/grpcprotocol.Version must not change;
-//   - no change may be wire-incompatible for a type reachable from a gated
-//     service, as classified by `buf breaking` with misc/proto/buf.yaml.
+//   - pkg/grpcprotocol.Version never decreases;
+//   - a change that is wire-incompatible for a type reachable from a gated
+//     service, as classified by `buf breaking` with misc/proto/buf.yaml,
+//     requires a higher Version;
+//   - a higher Version requires a pending stopped upgrade: an operator
+//     mandatoryStopVersions entry with no release tag yet. Peers forward
+//     requests through the gated services, so nodes on different revisions
+//     cannot coexist in a rolling upgrade.
 //
 // Semantic changes that keep the `.proto` text unchanged remain a reviewer
 // classification.
@@ -38,6 +43,8 @@ const (
 	protocolFile = "pkg/grpcprotocol/protocol.go"
 	protoDir     = "misc/proto"
 	bufConfig    = "misc/proto/buf.yaml"
+	stopFile     = "misc/operator/internal/controller/required_upgrade.go"
+	stopVar      = "mandatoryStopVersions"
 
 	// bufFindingsExitCode is the exit status `buf breaking` uses when it
 	// reports findings; any other non-zero status is a tool failure.
@@ -75,6 +82,9 @@ type result struct {
 	headVersion    int
 	clientFindings []bufFinding
 	otherFindings  int
+	// pendingStops lists the mandatory stop versions without a release tag.
+	// It is only resolved when the revision increases.
+	pendingStops []string
 }
 
 func main() {
@@ -119,8 +129,14 @@ func main() {
 		os.Exit(1)
 	}
 
-	fmt.Printf("check-protocol-version: PASS (revision %d unchanged, no gated wire break, %d internal-only)\n",
-		res.headVersion, res.otherFindings)
+	if res.headVersion == res.baseVersion {
+		fmt.Printf("check-protocol-version: PASS (revision %d unchanged, no gated wire break, %d internal-only)\n",
+			res.headVersion, res.otherFindings)
+
+		return
+	}
+	fmt.Printf("check-protocol-version: PASS (revision %d to %d with stopped upgrade to %s, %d gated break(s), %d internal-only)\n",
+		res.baseVersion, res.headVersion, strings.Join(res.pendingStops, ", "), len(res.clientFindings), res.otherFindings)
 }
 
 func fail(err error) {
@@ -132,19 +148,21 @@ func fail(err error) {
 // verdict applies the revision rule. It is pure so the policy is unit-tested
 // independently of git and buf.
 func (r result) verdict() error {
-	var errs []error
-	if r.headVersion != r.baseVersion {
-		errs = append(errs, fmt.Errorf(
-			"protocol revision changed from %d to %d; it is frozen during the v3 release-candidate phase: restore %q and keep the contract compatible, or escalate",
-			r.baseVersion, r.headVersion, strconv.Itoa(r.baseVersion)))
-	}
-	if len(r.clientFindings) > 0 {
-		errs = append(errs, fmt.Errorf(
-			"%d wire-incompatible change(s) reach a gated service; the revision is frozen: add fields instead of deleting, renumbering or retyping them, or escalate",
-			len(r.clientFindings)))
+	switch {
+	case r.headVersion < r.baseVersion:
+		return fmt.Errorf("protocol revision decreased from %d to %d; restore %q",
+			r.baseVersion, r.headVersion, strconv.Itoa(r.baseVersion))
+	case r.headVersion == r.baseVersion && len(r.clientFindings) > 0:
+		return fmt.Errorf(
+			"%d wire-incompatible change(s) reach a gated service at revision %d: add fields instead of deleting, renumbering or retyping them, or increase the revision in a release listed in %s (%s)",
+			len(r.clientFindings), r.baseVersion, stopVar, stopFile)
+	case r.headVersion > r.baseVersion && len(r.pendingStops) == 0:
+		return fmt.Errorf(
+			"protocol revision changed from %d to %d without a pending stopped upgrade: peers on different revisions reject each other's forwarded requests, so add the next release to %s (%s) or restore %q",
+			r.baseVersion, r.headVersion, stopVar, stopFile, strconv.Itoa(r.baseVersion))
 	}
 
-	return errors.Join(errs...)
+	return nil
 }
 
 func (c checker) run() (result, error) {
@@ -164,6 +182,12 @@ func (c checker) run() (result, error) {
 	}
 	if res.headVersion, err = parseVersion(headSource); err != nil {
 		return res, fmt.Errorf("%s: %w", protocolFile, err)
+	}
+
+	if res.headVersion > res.baseVersion {
+		if res.pendingStops, err = c.pendingStops(); err != nil {
+			return res, err
+		}
 	}
 
 	tmp, err := os.MkdirTemp("", "checkprotocolversion-")
@@ -251,6 +275,95 @@ func parseVersion(source []byte) (int, error) {
 	}
 
 	return 0, errors.New("the Version constant was not found")
+}
+
+// pendingStops returns the operator's mandatory stop versions that have no
+// release tag yet.
+func (c checker) pendingStops() ([]string, error) {
+	source, err := os.ReadFile(filepath.Join(c.repoRoot, stopFile))
+	if err != nil {
+		return nil, fmt.Errorf("reading %s: %w", stopFile, err)
+	}
+	stops, err := parseStopVersions(source)
+	if err != nil {
+		return nil, fmt.Errorf("%s: %w", stopFile, err)
+	}
+
+	tags, err := gitOutput(c.repoRoot, "tag", "--list", "v*")
+	if err != nil {
+		return nil, fmt.Errorf("listing release tags: %w", err)
+	}
+	released := map[string]bool{}
+	for tag := range strings.FieldsSeq(string(tags)) {
+		released[tag] = true
+	}
+	if len(released) == 0 {
+		return nil, errors.New("no release tags found; fetch tags to tell released stop versions from pending ones")
+	}
+
+	var pending []string
+	for _, stop := range stops {
+		if !released[stop] {
+			pending = append(pending, stop)
+		}
+	}
+
+	return pending, nil
+}
+
+// parseStopVersions reads the mandatory stop versions without compiling the
+// operator module.
+func parseStopVersions(source []byte) ([]string, error) {
+	file, err := parser.ParseFile(token.NewFileSet(), stopFile, source, 0)
+	if err != nil {
+		return nil, fmt.Errorf("parsing: %w", err)
+	}
+
+	for _, decl := range file.Decls {
+		gen, ok := decl.(*ast.GenDecl)
+		if !ok || gen.Tok != token.VAR {
+			continue
+		}
+		for _, spec := range gen.Specs {
+			value := spec.(*ast.ValueSpec)
+			for i, name := range value.Names {
+				if name.Name != stopVar || i >= len(value.Values) {
+					continue
+				}
+
+				return stringSliceLiteral(value.Values[i])
+			}
+		}
+	}
+
+	return nil, fmt.Errorf("the %s variable was not found", stopVar)
+}
+
+func stringSliceLiteral(expr ast.Expr) ([]string, error) {
+	composite, ok := expr.(*ast.CompositeLit)
+	if !ok {
+		return nil, fmt.Errorf("%s must be a []string literal", stopVar)
+	}
+	if array, ok := composite.Type.(*ast.ArrayType); !ok || array.Len != nil {
+		return nil, fmt.Errorf("%s must be a []string literal", stopVar)
+	} else if elem, ok := array.Elt.(*ast.Ident); !ok || elem.Name != "string" {
+		return nil, fmt.Errorf("%s must be a []string literal", stopVar)
+	}
+
+	out := make([]string, 0, len(composite.Elts))
+	for _, elt := range composite.Elts {
+		lit, ok := elt.(*ast.BasicLit)
+		if !ok || lit.Kind != token.STRING {
+			return nil, fmt.Errorf("%s entries must be string literals", stopVar)
+		}
+		text, err := strconv.Unquote(lit.Value)
+		if err != nil {
+			return nil, fmt.Errorf("unquoting a %s entry: %w", stopVar, err)
+		}
+		out = append(out, text)
+	}
+
+	return out, nil
 }
 
 // extractBaseProtos materializes misc/proto at the base commit. Archive entry

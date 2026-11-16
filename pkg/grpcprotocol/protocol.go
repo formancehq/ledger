@@ -9,9 +9,9 @@ import (
 )
 
 const (
-	// Version is frozen during the v3 release-candidate phase: published
-	// service methods, message types, fields, and enum numbers stay stable.
-	// Behavior changes require a documented client impact assessment.
+	// Version increases only for a wire change that breaks client decoding,
+	// and only in a release listed as a mandatory stopped upgrade. Behavior
+	// changes require a documented client impact assessment.
 	// See docs/technical/architecture/subsystems/api/protocol-compatibility.md.
 	// A compiled constant also identifies local builds without release ldflags.
 	Version = "40"

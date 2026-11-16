@@ -25,7 +25,8 @@ the operator must stop every RC.3 voter before starting an RC.4 voter.
 - Compatibility with beta or development revisions before `v3.0.0-rc.1` is
   not required.
 - Preserve published gRPC services, methods, request and response types, field
-  numbers, wire types, field identity, and enum numbers during the RC.
+  numbers, wire types, field identity, and enum numbers, unless the change
+  increases the service protocol revision as described below.
 - Preserve field and enum numbers stored in released Raft, snapshots, backups,
   and audit records. Internal-only format changes require a safe migration and
   a rollout design that accounts for any mandatory stopped boundary. Reserve
@@ -33,12 +34,14 @@ the operator must stop every RC.3 voter before starting an RC.4 voter.
   not migrate data.
 - Read `docs/technical/contributing/protobuf.md` before changing `.proto` files.
 
-### Service protocol revision — frozen during the release-candidate phase
+### Service protocol revision — changes only in a stopped upgrade
 
-Do not increment `pkg/grpcprotocol.Version`; it stays at `"40"` during the v3
-release-candidate phase. Assess and document the effect of behavior or
-configuration changes on existing clients. Escalate a wire change that cannot
-preserve client decoding instead of bumping the revision. Read the
+Prefer additive service changes that keep `pkg/grpcprotocol.Version`. A wire
+change that cannot preserve client decoding must increase the revision, and a
+revision increase must ship in a release listed in the operator's
+`mandatoryStopVersions`: nodes forward requests through the same gated service,
+so peers on different revisions cannot coexist in a rolling upgrade. Assess and
+document the effect of every service change on existing clients. Read the
 [protocol maintenance rules](docs/technical/architecture/subsystems/api/protocol-compatibility.md#maintaining-the-revision)
 before modifying this contract.
 

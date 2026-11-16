@@ -230,9 +230,10 @@ source locations through the actual plugin. Compare `existing-types.txt`
 membership with its documented source revision; never expand that baseline to
 silence a diagnostic. Layout lint must not force renumbering a published type.
 Verify its registration independently through the scripts and buf configuration.
-A passing lint result establishes initial layout only: the service wire-freeze
-gate and persisted/mixed-version compatibility have independent evidence and
-owners. No source proto, baseline or generated production file is changed by
+A passing lint result establishes initial layout only: the service protocol
+revision gate (a gated wire break needs a revision increase, and an increase
+needs a pending mandatory stopped upgrade) and persisted/mixed-version
+compatibility have independent evidence and owners. No source proto, baseline or generated production file is changed by
 this contract preparation.
 
 ## Boundaries

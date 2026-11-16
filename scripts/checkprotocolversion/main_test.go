@@ -4,6 +4,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -14,6 +15,7 @@ func TestVerdict(t *testing.T) {
 	t.Parallel()
 
 	breaks := []bufFinding{{Path: "misc/proto/api.proto", Type: "FIELD_WIRE_COMPATIBLE_TYPE"}}
+	pending := []string{"v3.0.0-rc.5"}
 
 	for _, tc := range []struct {
 		name     string
@@ -21,10 +23,12 @@ func TestVerdict(t *testing.T) {
 		errorSub string
 	}{
 		{name: "unchanged without break", res: result{baseVersion: 3, headVersion: 3}},
-		{name: "break", res: result{baseVersion: 3, headVersion: 3, clientFindings: breaks}, errorSub: "1 wire-incompatible change(s) reach a gated service"},
-		{name: "bump without break", res: result{baseVersion: 3, headVersion: 4}, errorSub: "changed from 3 to 4"},
-		{name: "bump does not excuse a break", res: result{baseVersion: 3, headVersion: 4, clientFindings: breaks}, errorSub: "wire-incompatible"},
-		{name: "decrease", res: result{baseVersion: 3, headVersion: 2}, errorSub: `changed from 3 to 2; it is frozen during the v3 release-candidate phase: restore "3"`},
+		{name: "break without bump", res: result{baseVersion: 3, headVersion: 3, clientFindings: breaks, pendingStops: pending}, errorSub: "1 wire-incompatible change(s) reach a gated service at revision 3"},
+		{name: "bump without pending stop", res: result{baseVersion: 3, headVersion: 4}, errorSub: "changed from 3 to 4 without a pending stopped upgrade"},
+		{name: "break with bump without pending stop", res: result{baseVersion: 3, headVersion: 4, clientFindings: breaks}, errorSub: "without a pending stopped upgrade"},
+		{name: "bump with pending stop", res: result{baseVersion: 3, headVersion: 4, pendingStops: pending}},
+		{name: "break with bump and pending stop", res: result{baseVersion: 3, headVersion: 4, clientFindings: breaks, pendingStops: pending}},
+		{name: "decrease", res: result{baseVersion: 3, headVersion: 2, pendingStops: pending}, errorSub: `decreased from 3 to 2; restore "3"`},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
@@ -70,6 +74,50 @@ func TestParseVersion(t *testing.T) {
 	}
 }
 
+func TestParseStopVersions(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name     string
+		source   string
+		want     []string
+		errorSub string
+	}{
+		{name: "entries", source: "package p\nvar mandatoryStopVersions = []string{\"v3.0.0-rc.4\", \"v3.0.0-rc.5\"}\n", want: []string{"v3.0.0-rc.4", "v3.0.0-rc.5"}},
+		{name: "empty", source: "package p\nvar mandatoryStopVersions = []string{}\n", want: []string{}},
+		{name: "grouped var", source: "package p\nvar (\n\tother = 1\n\tmandatoryStopVersions = []string{\"v1.0.0\"}\n)\n", want: []string{"v1.0.0"}},
+		{name: "computed", source: "package p\nvar mandatoryStopVersions = versions()\n", errorSub: "[]string literal"},
+		{name: "array", source: "package p\nvar mandatoryStopVersions = [1]string{\"v1.0.0\"}\n", errorSub: "[]string literal"},
+		{name: "non-literal entry", source: "package p\nvar mandatoryStopVersions = []string{other}\n", errorSub: "string literals"},
+		{name: "missing", source: "package p\nvar other = []string{}\n", errorSub: "not found"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			got, err := parseStopVersions([]byte(tc.source))
+			if tc.errorSub != "" {
+				require.ErrorContains(t, err, tc.errorSub)
+
+				return
+			}
+			require.NoError(t, err)
+			require.Equal(t, tc.want, got)
+		})
+	}
+}
+
+// The operator's declaration must stay readable by the gate.
+func TestParseStopVersionsFromOperator(t *testing.T) {
+	t.Parallel()
+
+	source, err := os.ReadFile(filepath.Join(repoRoot(t), stopFile))
+	require.NoError(t, err)
+
+	stops, err := parseStopVersions(source)
+	require.NoError(t, err)
+	require.NotEmpty(t, stops)
+}
+
 const fixtureProto = `syntax = "proto3";
 
 package api;
@@ -107,6 +155,7 @@ func TestCheckerClassifiesAgainstBase(t *testing.T) {
 		name         string
 		proto        string
 		version      string
+		stops        []string
 		wantGated    int
 		wantInternal int
 		errorSub     string
@@ -124,11 +173,19 @@ func TestCheckerClassifiesAgainstBase(t *testing.T) {
 			errorSub:  "1 wire-incompatible change(s) reach a gated service",
 		},
 		{
-			name:      "gated retype with bump",
+			name:      "gated retype with bump and pending stop",
 			proto:     strings.Replace(fixtureProto, "int64 amount = 2;", "string amount = 2;", 1),
 			version:   "4",
+			stops:     []string{"v3.0.0-rc.4", "v3.0.0-rc.5"},
 			wantGated: 1,
-			errorSub:  "changed from 3 to 4",
+		},
+		{
+			name:      "gated retype with bump and released stop only",
+			proto:     strings.Replace(fixtureProto, "int64 amount = 2;", "string amount = 2;", 1),
+			version:   "4",
+			stops:     []string{"v3.0.0-rc.4"},
+			wantGated: 1,
+			errorSub:  "changed from 3 to 4 without a pending stopped upgrade",
 		},
 		{
 			name:      "gated field deletion",
@@ -166,8 +223,10 @@ func TestCheckerClassifiesAgainstBase(t *testing.T) {
 			t.Parallel()
 
 			repo := newFixtureRepo(t)
+			runGit(t, repo, "tag", "v3.0.0-rc.4")
 			writeFixture(t, repo, "misc/proto/api.proto", tc.proto)
 			writeFixture(t, repo, protocolFile, protocolSource(tc.version))
+			writeFixture(t, repo, stopFile, stopSource(tc.stops))
 
 			res, err := checker{repoRoot: repo, base: "HEAD", buf: "buf", services: []string{"api.Api"}, pluginRoot: repoRoot(t)}.run()
 			require.NoError(t, err)
@@ -184,6 +243,17 @@ func TestCheckerClassifiesAgainstBase(t *testing.T) {
 			require.ErrorContains(t, err, tc.errorSub)
 		})
 	}
+}
+
+func TestCheckerRequiresReleaseTagsForBump(t *testing.T) {
+	t.Parallel()
+
+	repo := newFixtureRepo(t)
+	writeFixture(t, repo, protocolFile, protocolSource("4"))
+	writeFixture(t, repo, stopFile, stopSource([]string{"v3.0.0-rc.5"}))
+
+	_, err := checker{repoRoot: repo, base: "HEAD", buf: "buf", services: []string{"api.Api"}, pluginRoot: repoRoot(t)}.run()
+	require.ErrorContains(t, err, "no release tags found")
 }
 
 func TestCheckerRejectsUnknownGatedService(t *testing.T) {
@@ -250,6 +320,15 @@ func newFixtureRepo(t *testing.T) string {
 	runGit(t, repo, "-c", "user.name=test", "-c", "user.email=test@example.invalid", "commit", "--quiet", "-m", "base")
 
 	return repo
+}
+
+func stopSource(stops []string) string {
+	quoted := make([]string, len(stops))
+	for i, stop := range stops {
+		quoted[i] = strconv.Quote(stop)
+	}
+
+	return "package controller\n\nvar mandatoryStopVersions = []string{" + strings.Join(quoted, ", ") + "}\n"
 }
 
 func protocolSource(version string) string {

@@ -394,17 +394,24 @@ must implement the same revision; there is no compatibility fallback.
 
 ## Maintaining the revision
 
-Ledger v3 is in its release-candidate phase. The revision is frozen at `"40"`:
-do not increment `pkg/grpcprotocol.Version`. Preserve published gRPC service
-and method names, request and response types, protobuf field numbers, wire
-types, field identity, and enum numbers so existing clients can call and decode
-the service. The revision identifies this wire contract; it does not freeze
-every behavior or configuration setting for the release-candidate phase.
+Prefer changes that keep `pkg/grpcprotocol.Version`: preserve published gRPC
+service and method names, request and response types, protobuf field numbers,
+wire types, field identity, and enum numbers so existing clients can call and
+decode the service. The revision identifies this wire contract; it does not
+freeze every behavior or configuration setting.
+
+Removing or renaming a published RPC, changing its request or response type,
+or removing, renumbering, or repurposing a published field or enum value
+requires a higher revision. Clients built for the old revision are then
+rejected on every gated RPC until they upgrade. Nodes forward requests to each
+other through the same gated services, so a node rejects a peer on another
+revision just as it rejects an old client. A revision increase therefore ships
+only in a release that is a mandatory stopped upgrade: a version listed in
+`mandatoryStopVersions` (`misc/operator/internal/controller/required_upgrade.go`)
+that has not been released yet. Several increases may share one such release.
 
 The author of a service change must identify its effect on published clients.
-Removing or renaming a published RPC, changing its request or response type,
-or removing, renumbering, or repurposing a published field or enum value is not
-allowed during the RC. Behavior and configuration changes can ship when their
+Behavior and configuration changes can ship at the same revision when their
 effect and upgrade steps are documented in the PR and user guidance. Reviewers
 must check whether a client can still decode the response and how it must
 handle any changed result. Do not bump the revision to avoid this assessment.
@@ -422,13 +429,13 @@ persisted and audited data must remain readable, or have a safe migration. See
 ### Automated enforcement
 
 `PROTOCOL_BASE_SHA=<commit> just check-protocol-version` enforces the wire part
-of the freeze.
+of these rules.
 The required `Dirty` check and the `invariants` check run it on pull requests
 and merge-queue entries against the target tip, including after a PR changes
 base. `agent-check-pr` runs it when `misc/proto/**` or
 `pkg/grpcprotocol/**` changes.
 
-1. The check reads `Version` at the base and in the worktree. Any change fails.
+1. The check reads `Version` at the base and in the worktree. A decrease fails.
 2. The check runs `buf breaking` between the base and the worktree with the
    rules in `misc/proto/buf.yaml` (`WIRE`, `SERVICE_NO_DELETE`,
    `RPC_NO_DELETE`). Deleting, renumbering, or retyping a field is reported;
@@ -441,7 +448,12 @@ base. `agent-check-pr` runs it when `misc/proto/**` or
    line and column to distinguish nested declarations on the same line. A
    finding it cannot attribute to a declaration counts when its file declares a
    gated type. Raft-only and persisted-only messages are not counted.
-4. Any kept finding fails the check. A revision bump does not excuse it.
+4. A kept finding fails the check unless the worktree `Version` is higher than
+   the base.
+5. A higher `Version` fails unless `mandatoryStopVersions` lists a version with
+   no matching git tag. The check reads the slice from the operator source
+   without compiling it, and fails if the slice is not a `[]string` literal or
+   if the repository has no `v*` tags. CI checks out the full history with tags.
 
 The check does not detect semantic changes that keep the `.proto` text
 unchanged; those remain the author's and reviewer's classification. When a
@@ -692,8 +704,8 @@ HTTP and gRPC share. A request for more than 10000 values or facets returns
 10000, `has_more`, and a next cursor. Earlier builds returned the full requested
 page. The protobuf text changes only by a comment. Clients that previously
 treated the requested page as complete must now follow the cursor to read all
-results. This response behavior changes under revision 40 by the RC policy;
-the revision is frozen, and the client impact must be documented.
+results. This response behavior changes under revision 40, and the client
+impact must be documented.
 
 ## Cluster node ID width
 
