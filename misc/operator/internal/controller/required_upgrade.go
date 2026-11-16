@@ -23,7 +23,7 @@ import (
 // rc.3 voters cannot apply proposal payloads, and voters before rc.4 encode
 // mirror asset mappings differently in the audited CreateLedger order. Stop
 // every rc.3 node before starting rc.4; RC adjacency is still checked by
-// validateRCUpgrade.
+// validateRCUpgrade. scripts/checkprotocolversion parses this literal.
 var mandatoryStopVersions = []string{"v3.0.0-rc.4"}
 
 const requiredUpgradePoll = 5 * time.Second

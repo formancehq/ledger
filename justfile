@@ -5,7 +5,7 @@ pc: pre-commit
 
 # Compare the service contract with the current PR or merge-queue target.
 check-protocol-version:
-    go run ./scripts/checkprotocolversion --base "$PROTOCOL_BASE_SHA"
+    go run ./scripts/checkprotocolversion --base "$PROTOCOL_BASE_SHA" --base-ref "${PROTOCOL_BASE_REF:-}"
 
 # Regenerate the Grafana dashboards (otel + prom variants) from Jsonnet
 # sources under misc/devenv/monitoring-dashboards/jsonnet/. The output

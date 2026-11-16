@@ -4,7 +4,11 @@
 //
 //   - pkg/grpcprotocol.Version must not change;
 //   - no change may be wire-incompatible for a type reachable from a gated
-//     service, as classified by `buf breaking` with misc/proto/buf.yaml.
+//     service, as classified by `buf breaking` with misc/proto/buf.yaml,
+//     unless wireExceptions lists it;
+//   - a listed exception names an operator mandatoryStopVersions entry that
+//     the next build of the branch crosses, so nodes on either side of the
+//     change never forward to each other.
 //
 // Semantic changes that keep the `.proto` text unchanged remain a reviewer
 // classification.
@@ -25,9 +29,12 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 
+	"github.com/Masterminds/semver/v3"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/descriptorpb"
 
@@ -38,6 +45,8 @@ const (
 	protocolFile = "pkg/grpcprotocol/protocol.go"
 	protoDir     = "misc/proto"
 	bufConfig    = "misc/proto/buf.yaml"
+	stopFile     = "misc/operator/internal/controller/required_upgrade.go"
+	stopVar      = "mandatoryStopVersions"
 
 	// bufFindingsExitCode is the exit status `buf breaking` uses when it
 	// reports findings; any other non-zero status is a tool failure.
@@ -51,11 +60,33 @@ func gatedServices() []string {
 	return []string{"ledger.BucketService", "cluster.ClusterService", "restore.RestoreService"}
 }
 
+// wireException is a wire-incompatible change to a gated type that ships at
+// an unchanged revision. Clients built before it misdecode the type.
+type wireException struct {
+	declaration string // fully qualified message, enum or service
+	rule        string // buf rule
+	// message is the buf finding text up to its documentation link. It
+	// names the field and both types.
+	message string
+	// stop is the mandatoryStopVersions entry that keeps nodes on either
+	// side of the change from forwarding to each other.
+	stop string
+}
+
+// wireExceptions lists the accepted exceptions. Adding one requires the
+// review in protocol-compatibility.md ("Wire exceptions").
+func wireExceptions() []wireException {
+	return nil
+}
+
 type checker struct {
 	repoRoot string
 	base     string
-	buf      string
-	services []string
+	// baseRef is the branch the change targets, when known.
+	baseRef    string
+	buf        string
+	services   []string
+	exceptions []wireException
 	// pluginRoot is the repository providing tools/buf-plugin-ledger, which
 	// misc/proto/buf.yaml requires on PATH for every buf command.
 	pluginRoot string
@@ -74,19 +105,23 @@ type result struct {
 	baseVersion    int
 	headVersion    int
 	clientFindings []bufFinding
-	otherFindings  int
+	// excepted counts the findings of this change that wireExceptions lists.
+	excepted      int
+	otherFindings int
+	stopErrors    []error
 }
 
 func main() {
-	var base string
+	var base, baseRef string
 
 	flags := flag.NewFlagSet("checkprotocolversion", flag.ContinueOnError)
 	flags.StringVar(&base, "base", "", "commit the service contract is compared against")
+	flags.StringVar(&baseRef, "base-ref", "", "branch the change targets; a release/vX.Y branch ships only its own version line")
 	if err := flags.Parse(os.Args[1:]); err != nil {
 		os.Exit(2)
 	}
 	if base == "" || flags.NArg() != 0 {
-		fmt.Fprintln(os.Stderr, "usage: checkprotocolversion --base <commit>")
+		fmt.Fprintln(os.Stderr, "usage: checkprotocolversion --base <commit> [--base-ref <branch>]")
 		os.Exit(2)
 	}
 
@@ -96,10 +131,12 @@ func main() {
 	}
 
 	c := checker{
-		repoRoot: strings.TrimSpace(string(root)),
-		base:     base,
-		buf:      "buf",
-		services: gatedServices(),
+		repoRoot:   strings.TrimSpace(string(root)),
+		base:       base,
+		baseRef:    baseRef,
+		buf:        "buf",
+		services:   gatedServices(),
+		exceptions: wireExceptions(),
 	}
 	c.pluginRoot = c.repoRoot
 
@@ -119,8 +156,8 @@ func main() {
 		os.Exit(1)
 	}
 
-	fmt.Printf("check-protocol-version: PASS (revision %d unchanged, no gated wire break, %d internal-only)\n",
-		res.headVersion, res.otherFindings)
+	fmt.Printf("check-protocol-version: PASS (revision %d unchanged, no unlisted gated wire break, %d listed exception(s), %d internal-only)\n",
+		res.headVersion, res.excepted, res.otherFindings)
 }
 
 func fail(err error) {
@@ -144,7 +181,7 @@ func (r result) verdict() error {
 			len(r.clientFindings)))
 	}
 
-	return errors.Join(errs...)
+	return errors.Join(append(errs, r.stopErrors...)...)
 }
 
 func (c checker) run() (result, error) {
@@ -202,15 +239,275 @@ func (c checker) run() (result, error) {
 	}
 
 	index := newSpanIndex(headImage)
+	var introduced []wireException
 	for _, item := range findings {
-		if isGated(item, index, gated) {
-			res.clientFindings = append(res.clientFindings, item)
-		} else {
+		if !isGated(item, index, gated) {
 			res.otherFindings++
+		} else if exception, ok := c.exceptionFor(item, index); ok {
+			res.excepted++
+			introduced = append(introduced, exception)
+		} else {
+			res.clientFindings = append(res.clientFindings, item)
 		}
 	}
 
+	if res.stopErrors, err = c.exceptionStopErrors(introduced); err != nil {
+		return res, err
+	}
+
 	return res, nil
+}
+
+// exceptionFor returns the exception that lists a gated finding.
+func (c checker) exceptionFor(item bufFinding, index spanIndex) (wireException, bool) {
+	file := strings.TrimPrefix(filepath.ToSlash(item.Path), protoDir+"/")
+	name, ok := index.innermost(file, item.StartLine, item.StartColumn)
+	if !ok {
+		return wireException{}, false
+	}
+	message, _, _ := strings.Cut(item.Message, " See https://")
+	i := slices.IndexFunc(c.exceptions, func(e wireException) bool {
+		return e.declaration == name && e.rule == item.Type && e.message == message
+	})
+	if i < 0 {
+		return wireException{}, false
+	}
+
+	return c.exceptions[i], true
+}
+
+// exceptionStopErrors checks the stops of the listed exceptions. Every stop
+// must stay in the operator's list. The stop of an exception introduced by
+// the checked change must also be crossed by the next build of the branch.
+func (c checker) exceptionStopErrors(introduced []wireException) ([]error, error) {
+	if len(c.exceptions) == 0 {
+		return nil, nil
+	}
+
+	source, err := os.ReadFile(filepath.Join(c.repoRoot, stopFile))
+	if err != nil {
+		return nil, fmt.Errorf("reading %s: %w", stopFile, err)
+	}
+	listed, err := parseStopVersions(source)
+	if err != nil {
+		return nil, fmt.Errorf("%s: %w", stopFile, err)
+	}
+
+	var errs []error
+	for _, stop := range exceptionStops(c.exceptions) {
+		if !slices.Contains(listed, stop) {
+			errs = append(errs, fmt.Errorf(
+				"a wire exception relies on the stopped upgrade %s, which %s (%s) does not list: nodes on either side of the change would forward to each other in a rolling upgrade",
+				stop, stopVar, stopFile))
+		}
+	}
+	if len(introduced) == 0 {
+		return errs, nil
+	}
+
+	lower, floor, err := c.nextBuildBounds()
+	if err != nil {
+		return nil, err
+	}
+	for _, name := range exceptionStops(introduced) {
+		stop, ok := parseTag(name)
+		if !ok {
+			return nil, fmt.Errorf("wire exception stop %q is not a canonical version", name)
+		}
+		if (lower != nil && !lower.LessThan(stop)) || floor.LessThan(stop) {
+			errs = append(errs, fmt.Errorf(
+				"the wire exception stop %s does not separate the latest release from the next build of this branch: use v%s, the lowest version that build can be deployed as",
+				name, floor))
+		}
+	}
+
+	return errs, nil
+}
+
+// exceptionStops returns the distinct stops of some exceptions, in order.
+func exceptionStops(exceptions []wireException) []string {
+	var stops []string
+	for _, exception := range exceptions {
+		if !slices.Contains(stops, exception.stop) {
+			stops = append(stops, exception.stop)
+		}
+	}
+
+	return stops
+}
+
+// nextBuildBounds returns the latest release below the next build of the
+// branch, if any, and the lowest version that build can be deployed as. A
+// stop S separates the two when lower < S <= floor, the operator's rule.
+func (c checker) nextBuildBounds() (lower, floor *semver.Version, err error) {
+	reachable, err := c.versionTags("--merged", "HEAD")
+	if err != nil {
+		return nil, nil, err
+	}
+	reachable = slices.DeleteFunc(reachable, func(tag *semver.Version) bool { return !onReleaseLine(c.baseRef, tag) })
+	if len(reachable) == 0 {
+		return nil, nil, errors.New("no version tag of this branch's line is reachable from HEAD; fetch tags to place the branch among the releases")
+	}
+	if floor, err = deployFloor(slices.MaxFunc(reachable, (*semver.Version).Compare)); err != nil {
+		return nil, nil, err
+	}
+
+	tags, err := c.versionTags()
+	if err != nil {
+		return nil, nil, err
+	}
+	for _, tag := range tags {
+		// A release at or above the floor is not an upgrade source for this
+		// branch.
+		if tag.LessThan(floor) && (lower == nil || lower.LessThan(tag)) {
+			lower = tag
+		}
+	}
+
+	return lower, floor, nil
+}
+
+// versionTags lists the canonical version tags selected by the extra
+// `git tag` arguments.
+func (c checker) versionTags(args ...string) ([]*semver.Version, error) {
+	output, err := gitOutput(c.repoRoot, append([]string{"tag", "--list", "v*"}, args...)...)
+	if err != nil {
+		return nil, fmt.Errorf("listing version tags: %w", err)
+	}
+
+	var tags []*semver.Version
+	for name := range strings.FieldsSeq(string(output)) {
+		if tag, ok := parseTag(name); ok {
+			tags = append(tags, tag)
+		}
+	}
+
+	return tags, nil
+}
+
+// markerPrerelease is the prerelease of an RFC-0013 version-line marker.
+const markerPrerelease = "0"
+
+var (
+	rcPrerelease  = regexp.MustCompile(`^rc\.([1-9][0-9]*)$`)
+	releaseBranch = regexp.MustCompile(`^(?:refs/heads/)?release/v(0|[1-9][0-9]*)(?:\.(0|[1-9][0-9]*))?$`)
+)
+
+// onReleaseLine reports whether a build of the target branch can follow a
+// tag. A release/vX.Y or release/vX branch ships only its own version line,
+// which matters once the next line's marker sits on the branch point.
+func onReleaseLine(baseRef string, tag *semver.Version) bool {
+	line := releaseBranch.FindStringSubmatch(baseRef)
+	if line == nil {
+		return true
+	}
+	if strconv.FormatUint(tag.Major(), 10) != line[1] {
+		return false
+	}
+
+	return line[2] == "" || strconv.FormatUint(tag.Minor(), 10) == line[2]
+}
+
+// parseTag accepts the canonical vX.Y.Z[-prerelease] form the operator
+// requires of image tags.
+func parseTag(name string) (*semver.Version, bool) {
+	text, ok := strings.CutPrefix(name, "v")
+	if !ok {
+		return nil, false
+	}
+	version, err := semver.StrictNewVersion(text)
+	if err != nil || version.Metadata() != "" || version.String() != text {
+		return nil, false
+	}
+
+	return version, true
+}
+
+// deployFloor returns the lowest version the operator can deploy from a
+// build that follows the latest tag. See
+// docs/technical/contributing/release-versioning.md for the build versions.
+func deployFloor(latest *semver.Version) (*semver.Version, error) {
+	core := fmt.Sprintf("%d.%d.%d", latest.Major(), latest.Minor(), latest.Patch())
+	prerelease := latest.Prerelease()
+
+	var floor string
+	switch {
+	case prerelease == "":
+		floor = fmt.Sprintf("%d.%d.%d-%s", latest.Major(), latest.Minor(), latest.Patch()+1, markerPrerelease)
+	case prerelease == markerPrerelease:
+		return latest, nil
+	case rcPrerelease.MatchString(prerelease):
+		// From an RC, the operator rejects every -rc target except the next RC.
+		ordinal, err := strconv.ParseUint(rcPrerelease.FindStringSubmatch(prerelease)[1], 10, 64)
+		if err != nil {
+			return nil, fmt.Errorf("tag v%s: %w", latest, err)
+		}
+		floor = fmt.Sprintf("%s-rc.%d", core, ordinal+1)
+	default:
+		floor = core + "-" + prerelease + ".0"
+	}
+
+	version, err := semver.StrictNewVersion(floor)
+	if err != nil {
+		return nil, fmt.Errorf("deriving the version after v%s: %w", latest, err)
+	}
+
+	return version, nil
+}
+
+// parseStopVersions reads the mandatory stop versions without compiling the
+// operator module.
+func parseStopVersions(source []byte) ([]string, error) {
+	file, err := parser.ParseFile(token.NewFileSet(), stopFile, source, 0)
+	if err != nil {
+		return nil, fmt.Errorf("parsing: %w", err)
+	}
+
+	for _, decl := range file.Decls {
+		gen, ok := decl.(*ast.GenDecl)
+		if !ok || gen.Tok != token.VAR {
+			continue
+		}
+		for _, spec := range gen.Specs {
+			value := spec.(*ast.ValueSpec)
+			for i, name := range value.Names {
+				if name.Name != stopVar || i >= len(value.Values) {
+					continue
+				}
+
+				return stringSliceLiteral(value.Values[i])
+			}
+		}
+	}
+
+	return nil, fmt.Errorf("the %s variable was not found", stopVar)
+}
+
+func stringSliceLiteral(expr ast.Expr) ([]string, error) {
+	composite, ok := expr.(*ast.CompositeLit)
+	if !ok {
+		return nil, fmt.Errorf("%s must be a []string literal", stopVar)
+	}
+	if array, ok := composite.Type.(*ast.ArrayType); !ok || array.Len != nil {
+		return nil, fmt.Errorf("%s must be a []string literal", stopVar)
+	} else if elem, ok := array.Elt.(*ast.Ident); !ok || elem.Name != "string" {
+		return nil, fmt.Errorf("%s must be a []string literal", stopVar)
+	}
+
+	out := make([]string, 0, len(composite.Elts))
+	for _, elt := range composite.Elts {
+		lit, ok := elt.(*ast.BasicLit)
+		if !ok || lit.Kind != token.STRING {
+			return nil, fmt.Errorf("%s entries must be string literals", stopVar)
+		}
+		text, err := strconv.Unquote(lit.Value)
+		if err != nil {
+			return nil, fmt.Errorf("unquoting a %s entry: %w", stopVar, err)
+		}
+		out = append(out, text)
+	}
+
+	return out, nil
 }
 
 // parseVersion reads the Version constant without compiling the package, so

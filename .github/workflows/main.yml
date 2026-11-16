@@ -47,6 +47,7 @@ jobs:
         if: github.event_name == 'pull_request' || github.event_name == 'merge_group'
         env:
           PROTOCOL_BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
+          PROTOCOL_BASE_REF: ${{ github.base_ref || github.event.merge_group.base_ref }}
         run: nix develop .#ci --command just check-protocol-version
       - name: Get changed files
         id: changed-files
