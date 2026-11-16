@@ -20,6 +20,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
 	"github.com/formancehq/ledger/v3/internal/infra/state"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/v3/internal/proto/proposalpb"
 	"github.com/formancehq/ledger/v3/internal/query"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
@@ -465,6 +466,7 @@ func TestBackup_MultipleIncrementalsChain_RoundTrips(t *testing.T) {
 		audit := auditSuccess(seq, seq, seq)
 		audit.Timestamp = &commonpb.Timestamp{Data: seq * 100}
 		require.NoError(t, b.SetProto(coldAuditKey(seq), audit))
+		require.NoError(t, b.SetProto(coldAppliedProposalKey(seq), &proposalpb.AppliedProposal{Sequence: seq, MinLogSequence: seq, MaxLogSequence: seq}))
 		require.NoError(t, state.StoreLastAppliedTimestamp(b, seq*100))
 		saveNextLedgerIDForBackupTest(t, b, uint32(seq+1))
 		require.NoError(t, b.Commit())
@@ -560,6 +562,7 @@ func TestBackup_TruncatedIncrementalFailsThenHealthyRetrySucceeds(t *testing.T) 
 		batch := src.OpenWriteSession()
 		require.NoError(t, batch.SetProto(coldLogKey(seq), createLedgerLog(seq, name, uint32(seq))))
 		require.NoError(t, batch.SetProto(coldAuditKey(seq), auditSuccess(seq, seq, seq)))
+		require.NoError(t, batch.SetProto(coldAppliedProposalKey(seq), &proposalpb.AppliedProposal{Sequence: seq, MinLogSequence: seq, MaxLogSequence: seq}))
 		require.NoError(t, batch.Commit())
 	}
 
@@ -679,6 +682,7 @@ func TestBackup_PreparedQueryMutationsRoundTrip(t *testing.T) {
 	require.NoError(t, delta.SetProto(coldLogKey(6), preparedQueryLog(6, &commonpb.LogPayload{Type: &commonpb.LogPayload_DeletedPreparedQuery{DeletedPreparedQuery: &commonpb.DeletedPreparedQueryLog{Ledger: ledger, Name: "s"}}})))
 	for seq := uint64(2); seq <= 6; seq++ {
 		require.NoError(t, delta.SetProto(coldAuditKey(seq), auditSuccess(seq, seq, seq)))
+		require.NoError(t, delta.SetProto(coldAppliedProposalKey(seq), &proposalpb.AppliedProposal{Sequence: seq, MinLogSequence: seq, MaxLogSequence: seq}))
 	}
 	updatedQ := queryQ.CloneVT()
 	updatedQ.Filter = newLogFilter
@@ -785,6 +789,7 @@ func TestBackup_RemovedEventSinkDoesNotSurviveIncrementalRestore(t *testing.T) {
 	deltaBatch := src.OpenWriteSession()
 	require.NoError(t, deltaBatch.SetProto(coldLogKey(2), removeLog))
 	require.NoError(t, deltaBatch.SetProto(coldAuditKey(2), auditSuccess(2, 2, 2)))
+	require.NoError(t, deltaBatch.SetProto(coldAppliedProposalKey(2), &proposalpb.AppliedProposal{Sequence: 2, MinLogSequence: 2, MaxLogSequence: 2}))
 	require.NoError(t, attrs.SinkConfig.Delete(deltaBatch, domain.SinkConfigKey{Name: sinkName}.Bytes()))
 	require.NoError(t, deltaBatch.Commit())
 

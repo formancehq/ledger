@@ -406,21 +406,9 @@ func ApplyExportsAndRebuild(ctx context.Context, logger logging.Logger, storage 
 	if err != nil {
 		return fmt.Errorf("opening store for applied-proposal validation: %w", err)
 	}
-	hasAppliedProposalExport := false
-	for _, segment := range manifest.Exports {
-		if segment.Type == "appliedProposal" {
-			hasAppliedProposalExport = true
-			break
-		}
-	}
-	// Some legacy/offline fixtures contain audit rows without the optional
-	// AppliedProposal projection. Once a manifest carries that stream, however,
-	// its sparse rows are authoritative and must align with successful audits.
-	if hasAppliedProposalExport {
-		if err := validateAppliedProposalCoverage(ctx, readHandle, fromAuditSeq); err != nil {
-			_ = readHandle.Close()
-			return fmt.Errorf("validating applied-proposal coverage: %w", err)
-		}
+	if err := validateAppliedProposalCoverage(ctx, readHandle, fromAuditSeq); err != nil {
+		_ = readHandle.Close()
+		return fmt.Errorf("validating applied-proposal coverage: %w", err)
 	}
 	if err := readHandle.Close(); err != nil {
 		return fmt.Errorf("closing store after applied-proposal validation: %w", err)

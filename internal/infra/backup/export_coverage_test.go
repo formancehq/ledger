@@ -94,6 +94,14 @@ func writeAppliedProposalCoverageRow(t *testing.T, store *dal.Store, seq uint64,
 	}
 }
 
+func deleteExportedSegment(t *testing.T, manifest *Manifest, typ string) *Manifest {
+	t.Helper()
+	copy := *manifest
+	copy.Exports = slices.DeleteFunc(slices.Clone(manifest.Exports), func(segment ExportSegment) bool { return segment.Type == typ })
+
+	return &copy
+}
+
 func TestValidateAppliedProposalCoverage_AllowsFailureGaps(t *testing.T) {
 	t.Parallel()
 
@@ -230,6 +238,34 @@ func TestBackup_RejectsManifestMissingInteriorLogSegment(t *testing.T) {
 	lastLog, err := query.ReadLastLog(handle)
 	require.NoError(t, err)
 	require.Equal(t, full.LastLogSequence, lastLog.GetSequence(), "no export may be applied before the coverage check")
+}
+
+func TestBackup_RejectsManifestMissingOnlyAppliedProposalSegment(t *testing.T) {
+	t.Parallel()
+
+	const bucketID = "bucket"
+	src, store, _ := newSigningParityMachine(t)
+	require.NoError(t, applyMetadataCreation(t, src, store, 1, metadataCreationOrder("before", commonpb.LedgerMode_LEDGER_MODE_NORMAL, nil))[0].Error)
+	storage := newInMemoryBackupStorage()
+	full, err := RunBackup(t.Context(), testLogger(), store, storage, bucketID, "full")
+	require.NoError(t, err)
+	dstDir := t.TempDir()
+	require.NoError(t, store.Checkpoint(filepath.Join(dstDir, "live")))
+	require.NoError(t, applyMetadataCreation(t, src, store, 2, metadataCreationOrder("after", commonpb.LedgerMode_LEDGER_MODE_NORMAL, nil))[0].Error)
+	_, err = RunIncrementalBackup(t.Context(), testLogger(), store, storage, bucketID, 0)
+	require.NoError(t, err)
+	manifest, err := ReadManifest(t.Context(), storage, ManifestKey(bucketID))
+	require.NoError(t, err)
+	require.NotNil(t, findExport(manifest, "appliedProposal"))
+	require.Greater(t, manifest.LastExportAuditSequence(), full.LastAuditSequence)
+
+	withoutProposalSegment := deleteExportedSegment(t, manifest, "appliedProposal")
+	dst, err := dal.NewStore(dstDir, testLogger(), noop.NewMeterProvider().Meter("test"), dal.DefaultConfig())
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, dst.Close()) })
+	err = ApplyExportsAndRebuild(t.Context(), testLogger(), storage, dst, withoutProposalSegment)
+	require.ErrorContains(t, err, "successful audit sequence")
+	require.ErrorContains(t, err, "missing its applied proposal")
 }
 
 func TestValidateExportCoverage(t *testing.T) {
