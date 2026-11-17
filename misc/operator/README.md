@@ -1233,6 +1233,19 @@ kubectl ledger --help
 
 ### Commands
 
+Pod discovery in `get` and `logs --all` uses the live Cluster-owned
+StatefulSet selector and filters by its controller UID. Service discovery uses
+the Cluster controller UID. Custom selector labels and rejected desired-label
+drift do not hide the live workload.
+
+PVCs in `get` and the `delete` confirmation are a display-only association by
+claim-template name and StatefulSet ordinal name, including retained claims
+without owner references or workload labels. When the StatefulSet is missing,
+the preview uses the fetched Cluster's `wal` and `data` claim names. These names
+do not prove claim ownership or authorize deletion. The plugin deletes only the
+Cluster CR; the configured retention policy controls claim removal.
+An existing StatefulSet with no claim templates produces an empty PVC preview.
+
 ```
 kubectl ledger list [-A]                  # List all Clusters
 kubectl ledger get <name>                 # Show detailed status

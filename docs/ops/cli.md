@@ -13,6 +13,18 @@ Malformed paths return an error instead of applying a truncated path.
 Plugin commands report progress and operation outcomes synchronously, without
 background spinners, including while waiting for a backup run to finish.
 
+`kubectl ledger get` and `logs --all` discover Pods through the live
+Cluster-owned StatefulSet selector, including custom labels and selector
+expressions. They exclude Pods controlled by another StatefulSet. `get`
+lists Services by the Cluster's controller UID, not label matches.
+The PVC list in `get` and the `delete` confirmation associates claims by live
+claim-template names and StatefulSet ordinal names. If the StatefulSet is
+missing, it uses the `wal` and `data` claim names for the fetched Cluster.
+An existing StatefulSet with no claim templates produces an empty PVC preview.
+Retained claims need no owner reference or workload labels for this preview.
+Name association is not proof of ownership or authority to delete PVCs; the
+plugin deletes only the Cluster CR, leaving claim removal to retention policy.
+
 ## Getting Started
 
 ![Getting Started](../../misc/demo/demo_getting_started.gif)
