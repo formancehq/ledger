@@ -25,6 +25,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/pkg/signal"
 	"github.com/formancehq/ledger/v3/internal/proto/auditpb"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/v3/internal/proto/proposalpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/query"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
@@ -62,6 +63,10 @@ func coldAuditKey(seq uint64) []byte {
 		PutZonePrefix(dal.ZoneHistory, dal.SubHistoryAudit).
 		PutUint64(seq).
 		Build()
+}
+
+func coldAppliedProposalKey(seq uint64) []byte {
+	return dal.NewKeyBuilder().PutZonePrefix(dal.ZoneHistory, dal.SubHistoryAppliedProposal).PutUint64(seq).Build()
 }
 
 // createLedgerLog builds a log whose replay writes a ledger row to the global
@@ -2103,6 +2108,7 @@ func TestBackup_IdempotencyExpiresAtRestoreParity(t *testing.T) {
 	require.NoError(t, post.SetProto(coldLogKey(2), createLedgerLog(2, "ledger", 2)))
 	require.NoError(t, post.SetProto(coldAuditKey(2), entry))
 	require.NoError(t, post.SetProto(coldAuditItemKey(2, 0), auditItem(t, 0, fillGapOrder("ledger", 2))))
+	require.NoError(t, post.SetProto(coldAppliedProposalKey(2), &proposalpb.AppliedProposal{Sequence: 2, MinLogSequence: 2, MaxLogSequence: 2}))
 	require.NoError(t, state.SaveIdempotencyKey(post, key, &commonpb.IdempotencyKeyValue{
 		FirstLogSequence: 2, LogCount: 1, CreatedAt: createdAt, ExpiresAt: expiresAt,
 	}))

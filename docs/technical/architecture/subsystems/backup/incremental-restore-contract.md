@@ -42,6 +42,15 @@ audit-entry, audit-item, and applied-proposal rows. `ApplyExports` restores thos
 rows, then `RebuildDelta` reconstructs the derived state that the live FSM wrote
 after the checkpoint.
 
+Restore validation cross-checks the sparse applied-proposal stream against the
+dense audit stream after applying the raw exports. Failed audit outcomes are
+allowed to leave sequence gaps, but every successful audit outcome must have an
+`AppliedProposal` at the same sequence, and no applied proposal may lack a
+successful audit outcome. Successful entries with no replayable log range are
+accepted without this companion check because they contribute no delta fold.
+This rejects a manifest that silently omits an applied-proposal segment while
+preserving legitimate failure gaps.
+
 The audit secret is **preserved** checkpoint state, not a rebuilt projection:
 it is initialized once before the first audit entry and cannot be changed by
 post-checkpoint live apply. `RunBackup` refuses a full checkpoint without a
