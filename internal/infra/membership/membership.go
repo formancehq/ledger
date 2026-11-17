@@ -15,6 +15,7 @@ import (
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
 	"github.com/formancehq/ledger/v3/internal/infra/capabilities"
+	"github.com/formancehq/ledger/v3/internal/infra/capabilities/catalog"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
@@ -701,7 +702,7 @@ func (m *Membership) OnSnapshotInstalled() {
 	if err != nil {
 		panic(fmt.Errorf("reading cluster policy after snapshot install: %w", err))
 	}
-	if err := capabilities.ValidateSupportedActive(policy, capabilities.SupportedIDs()); err != nil {
+	if err := capabilities.ValidateSupportedActive(policy, catalog.SupportedIDs()); err != nil {
 		panic(fmt.Errorf("snapshot requires unsupported capability: %w", err))
 	}
 
@@ -719,7 +720,7 @@ func (m *Membership) OnSnapshotInstalled() {
 	// Better to fall through and let Rehydrate reload from Pebble
 	// (with the leader's possibly-stale self); the next OnSnapshot
 	// or restart will re-attempt the self-Put.
-	selfCapabilities := capabilities.IDsAsUint32(capabilities.SupportedIDs())
+	selfCapabilities := capabilities.IDsAsUint32(catalog.SupportedIDs())
 	if _, err := m.store.PutLocal(m.selfNodeID, m.selfRaftAddr, m.selfServiceAddr, m.selfInstanceID, selfCapabilities); err != nil {
 		m.logger.WithFields(map[string]any{
 			"error": err,

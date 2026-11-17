@@ -6,6 +6,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/formancehq/ledger/v3/internal/infra/capabilities"
+	"github.com/formancehq/ledger/v3/internal/infra/capabilities/catalog"
 	"github.com/formancehq/ledger/v3/internal/infra/node"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
@@ -112,7 +113,7 @@ func TestCapabilityActivationBarrierUntilCommitAfterDrain(t *testing.T) {
 
 func TestProposalCapabilityAdmissionSelectsCreateLedgerValidation(t *testing.T) {
 	t.Parallel()
-	const id = capabilities.CreateLedgerAccountTypesV2
+	const id = catalog.CreateLedgerAccountTypesV2
 	active := &commonpb.ClusterPolicy{CapabilityActivations: []*commonpb.CapabilityActivation{{Id: uint32(id), Active: true}}}
 	members := []capabilities.Member{{NodeID: 1, Role: capabilities.Voter, Reachable: true, Capabilities: []capabilities.CapabilityID{id}}}
 	command := &raftcmdpb.Proposal{Payload: &raftcmdpb.Proposal_Batch{Batch: &raftcmdpb.ExecutionBatch{
@@ -126,7 +127,7 @@ func TestProposalCapabilityAdmissionSelectsCreateLedgerValidation(t *testing.T) 
 	require.NoError(t, validateProposalCapabilityAdmission(&commonpb.ClusterPolicy{}, unmarked, members))
 	require.ErrorIs(t, validateProposalCapabilityAdmission(active, unmarked, members), capabilities.ErrMissingCapability)
 
-	capabilities.SelectCreateLedgerValidation(command, active)
+	catalog.SelectCreateLedgerValidation(command, active)
 	marked, err := node.NewProposal(2, command)
 	require.NoError(t, err)
 	require.Equal(t, []capabilities.CapabilityID{id}, marked.RequiredCapabilities())

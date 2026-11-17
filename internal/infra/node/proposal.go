@@ -4,6 +4,7 @@ import (
 	"google.golang.org/protobuf/encoding/protowire"
 
 	"github.com/formancehq/ledger/v3/internal/infra/capabilities"
+	"github.com/formancehq/ledger/v3/internal/infra/capabilities/catalog"
 	"github.com/formancehq/ledger/v3/internal/pkg/futures"
 	"github.com/formancehq/ledger/v3/internal/pkg/proposals"
 	"github.com/formancehq/ledger/v3/internal/pkg/protowireutil"
@@ -58,7 +59,7 @@ func newProposal(commandID uint64, data []byte, required []capabilities.Capabili
 // capability declaration against the final command and serializes that same
 // command, keeping typed admission metadata aligned with the wire payload.
 func NewProposal(commandID uint64, command *raftcmdpb.Proposal) (*Proposal, error) {
-	prepared, err := capabilities.PrepareProposal(command)
+	required, err := catalog.ValidateDeclaration(command)
 	if err != nil {
 		return nil, err
 	}
@@ -68,12 +69,12 @@ func NewProposal(commandID uint64, command *raftcmdpb.Proposal) (*Proposal, erro
 		return nil, err
 	}
 
-	proposal := newProposal(commandID, data, prepared.RequiredCapabilities())
-	proposal.hasCreateLedger = capabilities.HasCreateLedger(command)
+	proposal := newProposal(commandID, data, required)
+	proposal.hasCreateLedger = catalog.HasCreateLedger(command)
 	// Validate the complete serialized command before it enters the Raft queue.
 	// SetPredictedIndex only appends a fixed-width index field afterward; it
 	// cannot change the payload or its capability declaration.
-	if err := capabilities.ValidateFinalProposal(data, proposal.requiredCapabilities); err != nil {
+	if err := catalog.ValidateSerializedDeclaration(data, proposal.requiredCapabilities); err != nil {
 		return nil, err
 	}
 	proposal.hasBusinessOrders = len(proposals.BatchOrders(command)) != 0

@@ -6,7 +6,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
-	"github.com/formancehq/ledger/v3/internal/infra/capabilities"
+	"github.com/formancehq/ledger/v3/internal/infra/capabilities/catalog"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
 
@@ -37,12 +37,12 @@ func TestCreateLedgerCapabilitySelectsApplySemantics(t *testing.T) {
 			t.Parallel()
 			machine, store, _ := newTestMachine(t)
 			policy := machine.State.ClusterPolicy.CloneVT()
-			policy.CapabilityActivations = []*commonpb.CapabilityActivation{{Id: uint32(capabilities.CreateLedgerAccountTypesV2), Active: true}}
+			policy.CapabilityActivations = []*commonpb.CapabilityActivation{{Id: uint32(catalog.CreateLedgerAccountTypesV2), Active: true}}
 			machine.State.UpdateClusterPolicy(policy)
 			order := createLedgerOrderWithAccountTypes("l", tc.types)
 			proposal := makeProposal(1, order)
 			if tc.marked {
-				proposal.RequiredCapabilities = []uint32{uint32(capabilities.CreateLedgerAccountTypesV2)}
+				proposal.RequiredCapabilities = []uint32{uint32(catalog.CreateLedgerAccountTypesV2)}
 			}
 			results, err := machine.ApplyEntries(t.Context(), store, makeEntry(t, 1, proposal))
 			require.NoError(t, err)

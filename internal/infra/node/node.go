@@ -27,6 +27,7 @@ import (
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/infra/capabilities"
+	"github.com/formancehq/ledger/v3/internal/infra/capabilities/catalog"
 	"github.com/formancehq/ledger/v3/internal/infra/membership"
 	"github.com/formancehq/ledger/v3/internal/infra/state"
 	"github.com/formancehq/ledger/v3/internal/pkg/futures"
@@ -710,7 +711,7 @@ func NewNode(
 	// writes self for Bootstrap/Restore, but the restart branch never
 	// did — that's the gap the previous bootstrap hook used to cover
 	// before transport wiring moved into Membership.
-	if err := membership.Register(cfg.NodeID, cfg.AdvertiseAddr, cfg.ServiceAdvertiseAddr, cfg.InstanceID, capabilities.IDsAsUint32(capabilities.SupportedIDs())); err != nil {
+	if err := membership.Register(cfg.NodeID, cfg.AdvertiseAddr, cfg.ServiceAdvertiseAddr, cfg.InstanceID, capabilities.IDsAsUint32(catalog.SupportedIDs())); err != nil {
 		return nil, fmt.Errorf("refreshing self in peer store: %w", err)
 	}
 
@@ -4075,7 +4076,7 @@ func initialJoinVoters(peers []Peer, selfID uint64) []uint64 {
 // through WriteConfChange).
 func registerInitialPeers(m *membership.Membership, cfg NodeConfig, includeSelf bool) error {
 	if includeSelf {
-		if err := m.Register(cfg.NodeID, cfg.AdvertiseAddr, cfg.ServiceAdvertiseAddr, cfg.InstanceID, capabilities.IDsAsUint32(capabilities.SupportedIDs())); err != nil {
+		if err := m.Register(cfg.NodeID, cfg.AdvertiseAddr, cfg.ServiceAdvertiseAddr, cfg.InstanceID, capabilities.IDsAsUint32(catalog.SupportedIDs())); err != nil {
 			return fmt.Errorf("persisting self in peer store: %w", err)
 		}
 	}

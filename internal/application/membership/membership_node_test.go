@@ -15,6 +15,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
 	"github.com/formancehq/ledger/v3/internal/infra/cache"
 	"github.com/formancehq/ledger/v3/internal/infra/capabilities"
+	"github.com/formancehq/ledger/v3/internal/infra/capabilities/catalog"
 	inframembership "github.com/formancehq/ledger/v3/internal/infra/membership"
 	"github.com/formancehq/ledger/v3/internal/infra/node"
 	"github.com/formancehq/ledger/v3/internal/infra/state"
@@ -189,7 +190,7 @@ func TestService_ListPeersReturnsCompleteIndependentSnapshot(t *testing.T) {
 		// A cached row alone must not leak into the configured member response.
 		require.NoError(t, s.infraMembership.Set(3, "extra:7777", "extra:8888", []byte("extra-instanceid"), nil))
 		want := []Peer{
-			{ID: 1, RaftAddress: "public-self:7777", ServiceAddress: "public-self:8888", InstanceID: []byte("self-instance-id"), Capabilities: capabilities.IDsAsUint32(capabilities.SupportedIDs())},
+			{ID: 1, RaftAddress: "public-self:7777", ServiceAddress: "public-self:8888", InstanceID: []byte("self-instance-id"), Capabilities: capabilities.IDsAsUint32(catalog.SupportedIDs())},
 			{ID: 2, RaftAddress: "peer:7777", ServiceAddress: "peer:8888", InstanceID: []byte("peer-instance-id")},
 		}
 		peers, err := s.ListPeers(ctx)

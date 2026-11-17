@@ -49,6 +49,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/infra/bloom"
 	"github.com/formancehq/ledger/v3/internal/infra/cache"
 	"github.com/formancehq/ledger/v3/internal/infra/capabilities"
+	"github.com/formancehq/ledger/v3/internal/infra/capabilities/catalog"
 	clusterhealth "github.com/formancehq/ledger/v3/internal/infra/health"
 	raftmembership "github.com/formancehq/ledger/v3/internal/infra/membership"
 	"github.com/formancehq/ledger/v3/internal/infra/monitoring/diskusage"
@@ -263,7 +264,7 @@ func Module() fx.Option {
 			// not perform any Pebble read itself.
 			func(machine *state.Machine, store *dal.Store, membership *raftmembership.Membership) (*state.Recovery, error) {
 				recovery := state.NewRecovery(machine, store, state.WithStateRecovered(func(recovered *state.FSMState) error {
-					if err := capabilities.ValidateSupportedActive(recovered.ClusterPolicy, capabilities.SupportedIDs()); err != nil {
+					if err := capabilities.ValidateSupportedActive(recovered.ClusterPolicy, catalog.SupportedIDs()); err != nil {
 						return err
 					}
 
@@ -1275,7 +1276,7 @@ func validateProposalCapabilityAdmissionWithSupported(policy *commonpb.ClusterPo
 			}
 		}
 	}
-	if err := capabilities.ValidateCreateLedgerDeclaration(policy, proposal.HasCreateLedger(), proposal.RequiredCapabilities()); err != nil {
+	if err := catalog.ValidateCreateLedgerDeclaration(policy, proposal.HasCreateLedger(), proposal.RequiredCapabilities()); err != nil {
 		return err
 	}
 	decision := capabilities.Evaluate(state, proposal.RequiredCapabilities(), false, members)
@@ -1620,7 +1621,7 @@ func tryAddLearner(ctx context.Context, cfg Config, tlsCfg TLSConfig, logger log
 		RaftAddress:    cfg.RaftConfig.AdvertiseAddr,
 		ServiceAddress: cfg.PeerServiceAdvertiseAddr(),
 		InstanceId:     instanceID,
-		Capabilities:   capabilities.IDsAsUint32(capabilities.SupportedIDs()),
+		Capabilities:   capabilities.IDsAsUint32(catalog.SupportedIDs()),
 	}
 
 	dialPeer, err := newMembershipPeerDialer(cfg, tlsCfg)
@@ -1804,7 +1805,7 @@ func tryRefreshMembershipOnce(ctx context.Context, cfg Config, tlsCfg TLSConfig,
 		RaftAddress:    cfg.RaftConfig.AdvertiseAddr,
 		ServiceAddress: cfg.PeerServiceAdvertiseAddr(),
 		InstanceId:     instanceID,
-		Capabilities:   capabilities.IDsAsUint32(capabilities.SupportedIDs()),
+		Capabilities:   capabilities.IDsAsUint32(catalog.SupportedIDs()),
 	}
 
 	dialPeer, err := newMembershipPeerDialer(cfg, tlsCfg)

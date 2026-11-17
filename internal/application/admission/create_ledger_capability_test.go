@@ -6,7 +6,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
-	"github.com/formancehq/ledger/v3/internal/infra/capabilities"
+	"github.com/formancehq/ledger/v3/internal/infra/capabilities/catalog"
 	"github.com/formancehq/ledger/v3/internal/infra/state"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
@@ -34,7 +34,7 @@ func TestAdmitCreateLedgerSelectsCommittedCapability(t *testing.T) {
 
 	policy := h.machine.State.ClusterPolicy.CloneVT()
 	policy.Revision++
-	policy.CapabilityActivations = []*commonpb.CapabilityActivation{{Id: uint32(capabilities.CreateLedgerAccountTypesV2), Active: true}}
+	policy.CapabilityActivations = []*commonpb.CapabilityActivation{{Id: uint32(catalog.CreateLedgerAccountTypesV2), Active: true}}
 	batch := h.admission.store.OpenWriteSession()
 	require.NoError(t, state.SaveClusterPolicy(batch, policy))
 	require.NoError(t, batch.Commit())
@@ -44,5 +44,5 @@ func TestAdmitCreateLedgerSelectsCommittedCapability(t *testing.T) {
 	var invalid *domain.ErrInvalidPattern
 	require.ErrorAs(t, err, &invalid)
 	require.Len(t, h.proposals, 2)
-	require.Equal(t, []uint32{uint32(capabilities.CreateLedgerAccountTypesV2)}, h.proposals[1].GetRequiredCapabilities())
+	require.Equal(t, []uint32{uint32(catalog.CreateLedgerAccountTypesV2)}, h.proposals[1].GetRequiredCapabilities())
 }
