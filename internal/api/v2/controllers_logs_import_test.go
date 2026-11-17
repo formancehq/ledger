@@ -123,6 +123,50 @@ func TestLogsImportClosesStreamOnMalformedInput(t *testing.T) {
 	}
 }
 
+func TestLogsImportMalformedSuffixCancelsBeforeClosingStream(t *testing.T) {
+	t.Parallel()
+
+	log := ledger.NewLog(ledger.CreatedTransaction{Transaction: ledger.NewTransaction()})
+	body, err := json.Marshal(log)
+	require.NoError(t, err)
+	body = append(body, []byte("\n{")...)
+
+	systemController, ledgerController := newTestingSystemController(t, true)
+	ledgerController.EXPECT().Import(gomock.Any(), gomock.Any()).
+		DoAndReturn(func(ctx context.Context, stream chan ledger.Log) error {
+			count := 0
+			for range stream {
+				count++
+			}
+			require.Equal(t, 1, count)
+			// The importer must observe failure, rather than successful EOF,
+			// before deciding whether the received prefix can commit.
+			require.ErrorIs(t, ctx.Err(), context.Canceled)
+			return ctx.Err()
+		})
+
+	router := NewRouter(systemController, jwt.NewNoAuth(), "develop")
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/xxx/logs/import", bytes.NewReader(body)))
+	require.Equal(t, http.StatusInternalServerError, rec.Code)
+}
+
+func TestLogsImportInvalidPayloadReturnsError(t *testing.T) {
+	t.Parallel()
+	for _, body := range []string{
+		`{"type":"UNKNOWN","data":{}}`,
+		`{"type":"SET_METADATA","data":{"targetType":"UNKNOWN"}}`,
+		`{"type":"SET_METADATA","data":null}`,
+	} {
+		t.Run(body, func(t *testing.T) {
+			var log ledger.Log
+			require.NotPanics(t, func() {
+				require.Error(t, json.Unmarshal([]byte(body), &log))
+			})
+		})
+	}
+}
+
 func TestLogsImportCancellationClosesBlockedStreamSend(t *testing.T) {
 	t.Parallel()
 

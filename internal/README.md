@@ -281,7 +281,7 @@ var Zero = big.NewInt(0)
 ```
 
 <a name="ComputeIdempotencyHash"></a>
-## func [ComputeIdempotencyHash](<https://github.com/formancehq/ledger/blob/main/internal/log.go#L457>)
+## func [ComputeIdempotencyHash](<https://github.com/formancehq/ledger/blob/main/internal/log.go#L461>)
 
 ```go
 func ComputeIdempotencyHash(inputs any) string
@@ -372,7 +372,7 @@ func (a Account) GetAddress() string
 
 
 <a name="AccountMetadata"></a>
-## type [AccountMetadata](<https://github.com/formancehq/ledger/blob/main/internal/log.go#L211>)
+## type [AccountMetadata](<https://github.com/formancehq/ledger/blob/main/internal/log.go#L215>)
 
 
 
@@ -627,7 +627,7 @@ func (c *Configuration) Validate() error
 
 
 <a name="CreatedTransaction"></a>
-## type [CreatedTransaction](<https://github.com/formancehq/ledger/blob/main/internal/log.go#L213-L216>)
+## type [CreatedTransaction](<https://github.com/formancehq/ledger/blob/main/internal/log.go#L217-L220>)
 
 
 
@@ -639,7 +639,7 @@ type CreatedTransaction struct {
 ```
 
 <a name="CreatedTransaction.GetMemento"></a>
-### func \(CreatedTransaction\) [GetMemento](<https://github.com/formancehq/ledger/blob/main/internal/log.go#L237>)
+### func \(CreatedTransaction\) [GetMemento](<https://github.com/formancehq/ledger/blob/main/internal/log.go#L241>)
 
 ```go
 func (p CreatedTransaction) GetMemento() any
@@ -648,7 +648,7 @@ func (p CreatedTransaction) GetMemento() any
 
 
 <a name="CreatedTransaction.NeedsSchema"></a>
-### func \(CreatedTransaction\) [NeedsSchema](<https://github.com/formancehq/ledger/blob/main/internal/log.go#L218>)
+### func \(CreatedTransaction\) [NeedsSchema](<https://github.com/formancehq/ledger/blob/main/internal/log.go#L222>)
 
 ```go
 func (p CreatedTransaction) NeedsSchema() bool
@@ -657,7 +657,7 @@ func (p CreatedTransaction) NeedsSchema() bool
 
 
 <a name="CreatedTransaction.Type"></a>
-### func \(CreatedTransaction\) [Type](<https://github.com/formancehq/ledger/blob/main/internal/log.go#L231>)
+### func \(CreatedTransaction\) [Type](<https://github.com/formancehq/ledger/blob/main/internal/log.go#L235>)
 
 ```go
 func (p CreatedTransaction) Type() LogType
@@ -666,7 +666,7 @@ func (p CreatedTransaction) Type() LogType
 
 
 <a name="CreatedTransaction.ValidateWithSchema"></a>
-### func \(CreatedTransaction\) [ValidateWithSchema](<https://github.com/formancehq/ledger/blob/main/internal/log.go#L221>)
+### func \(CreatedTransaction\) [ValidateWithSchema](<https://github.com/formancehq/ledger/blob/main/internal/log.go#L225>)
 
 ```go
 func (p CreatedTransaction) ValidateWithSchema(schema Schema) error
@@ -675,7 +675,7 @@ func (p CreatedTransaction) ValidateWithSchema(schema Schema) error
 
 
 <a name="DeletedMetadata"></a>
-## type [DeletedMetadata](<https://github.com/formancehq/ledger/blob/main/internal/log.go#L318-L322>)
+## type [DeletedMetadata](<https://github.com/formancehq/ledger/blob/main/internal/log.go#L322-L326>)
 
 
 
@@ -688,7 +688,7 @@ type DeletedMetadata struct {
 ```
 
 <a name="DeletedMetadata.NeedsSchema"></a>
-### func \(DeletedMetadata\) [NeedsSchema](<https://github.com/formancehq/ledger/blob/main/internal/log.go#L324>)
+### func \(DeletedMetadata\) [NeedsSchema](<https://github.com/formancehq/ledger/blob/main/internal/log.go#L328>)
 
 ```go
 func (p DeletedMetadata) NeedsSchema() bool
@@ -697,7 +697,7 @@ func (p DeletedMetadata) NeedsSchema() bool
 
 
 <a name="DeletedMetadata.Type"></a>
-### func \(DeletedMetadata\) [Type](<https://github.com/formancehq/ledger/blob/main/internal/log.go#L331>)
+### func \(DeletedMetadata\) [Type](<https://github.com/formancehq/ledger/blob/main/internal/log.go#L335>)
 
 ```go
 func (s DeletedMetadata) Type() LogType
@@ -706,7 +706,7 @@ func (s DeletedMetadata) Type() LogType
 
 
 <a name="DeletedMetadata.UnmarshalJSON"></a>
-### func \(\*DeletedMetadata\) [UnmarshalJSON](<https://github.com/formancehq/ledger/blob/main/internal/log.go#L337>)
+### func \(\*DeletedMetadata\) [UnmarshalJSON](<https://github.com/formancehq/ledger/blob/main/internal/log.go#L341>)
 
 ```go
 func (s *DeletedMetadata) UnmarshalJSON(data []byte) error
@@ -715,7 +715,7 @@ func (s *DeletedMetadata) UnmarshalJSON(data []byte) error
 
 
 <a name="DeletedMetadata.ValidateWithSchema"></a>
-### func \(DeletedMetadata\) [ValidateWithSchema](<https://github.com/formancehq/ledger/blob/main/internal/log.go#L327>)
+### func \(DeletedMetadata\) [ValidateWithSchema](<https://github.com/formancehq/ledger/blob/main/internal/log.go#L331>)
 
 ```go
 func (s DeletedMetadata) ValidateWithSchema(schema Schema) error
@@ -1025,7 +1025,7 @@ type GetVolumesOptions struct {
 ```
 
 <a name="InsertedSchema"></a>
-## type [InsertedSchema](<https://github.com/formancehq/ledger/blob/main/internal/log.go#L416-L418>)
+## type [InsertedSchema](<https://github.com/formancehq/ledger/blob/main/internal/log.go#L420-L422>)
 
 
 
@@ -1036,7 +1036,7 @@ type InsertedSchema struct {
 ```
 
 <a name="InsertedSchema.NeedsSchema"></a>
-### func \(InsertedSchema\) [NeedsSchema](<https://github.com/formancehq/ledger/blob/main/internal/log.go#L420>)
+### func \(InsertedSchema\) [NeedsSchema](<https://github.com/formancehq/ledger/blob/main/internal/log.go#L424>)
 
 ```go
 func (p InsertedSchema) NeedsSchema() bool
@@ -1045,7 +1045,7 @@ func (p InsertedSchema) NeedsSchema() bool
 
 
 <a name="InsertedSchema.Type"></a>
-### func \(InsertedSchema\) [Type](<https://github.com/formancehq/ledger/blob/main/internal/log.go#L427>)
+### func \(InsertedSchema\) [Type](<https://github.com/formancehq/ledger/blob/main/internal/log.go#L431>)
 
 ```go
 func (u InsertedSchema) Type() LogType
@@ -1054,7 +1054,7 @@ func (u InsertedSchema) Type() LogType
 
 
 <a name="InsertedSchema.ValidateWithSchema"></a>
-### func \(InsertedSchema\) [ValidateWithSchema](<https://github.com/formancehq/ledger/blob/main/internal/log.go#L423>)
+### func \(InsertedSchema\) [ValidateWithSchema](<https://github.com/formancehq/ledger/blob/main/internal/log.go#L427>)
 
 ```go
 func (u InsertedSchema) ValidateWithSchema(schema Schema) error
@@ -1126,7 +1126,7 @@ func (l Ledger) WithMetadata(m metadata.Metadata) Ledger
 
 
 <a name="Log"></a>
-## type [Log](<https://github.com/formancehq/ledger/blob/main/internal/log.go#L89-L102>)
+## type [Log](<https://github.com/formancehq/ledger/blob/main/internal/log.go#L93-L106>)
 
 Log represents atomic actions made on the ledger.
 
@@ -1148,7 +1148,7 @@ type Log struct {
 ```
 
 <a name="NewLog"></a>
-### func [NewLog](<https://github.com/formancehq/ledger/blob/main/internal/log.go#L194>)
+### func [NewLog](<https://github.com/formancehq/ledger/blob/main/internal/log.go#L198>)
 
 ```go
 func NewLog(payload LogPayload) Log
@@ -1157,7 +1157,7 @@ func NewLog(payload LogPayload) Log
 
 
 <a name="Log.ChainLog"></a>
-### func \(Log\) [ChainLog](<https://github.com/formancehq/ledger/blob/main/internal/log.go#L115>)
+### func \(Log\) [ChainLog](<https://github.com/formancehq/ledger/blob/main/internal/log.go#L119>)
 
 ```go
 func (l Log) ChainLog(previous *Log) Log
@@ -1166,7 +1166,7 @@ func (l Log) ChainLog(previous *Log) Log
 
 
 <a name="Log.ComputeHash"></a>
-### func \(\*Log\) [ComputeHash](<https://github.com/formancehq/ledger/blob/main/internal/log.go#L146>)
+### func \(\*Log\) [ComputeHash](<https://github.com/formancehq/ledger/blob/main/internal/log.go#L150>)
 
 ```go
 func (l *Log) ComputeHash(previous *Log)
@@ -1175,7 +1175,7 @@ func (l *Log) ComputeHash(previous *Log)
 
 
 <a name="Log.UnmarshalJSON"></a>
-### func \(\*Log\) [UnmarshalJSON](<https://github.com/formancehq/ledger/blob/main/internal/log.go#L126>)
+### func \(\*Log\) [UnmarshalJSON](<https://github.com/formancehq/ledger/blob/main/internal/log.go#L130>)
 
 ```go
 func (l *Log) UnmarshalJSON(data []byte) error
@@ -1184,7 +1184,7 @@ func (l *Log) UnmarshalJSON(data []byte) error
 
 
 <a name="Log.ValidateWithSchema"></a>
-### func \(Log\) [ValidateWithSchema](<https://github.com/formancehq/ledger/blob/main/internal/log.go#L190>)
+### func \(Log\) [ValidateWithSchema](<https://github.com/formancehq/ledger/blob/main/internal/log.go#L194>)
 
 ```go
 func (l Log) ValidateWithSchema(schema Schema) error
@@ -1193,7 +1193,7 @@ func (l Log) ValidateWithSchema(schema Schema) error
 
 
 <a name="Log.WithDate"></a>
-### func \(Log\) [WithDate](<https://github.com/formancehq/ledger/blob/main/internal/log.go#L104>)
+### func \(Log\) [WithDate](<https://github.com/formancehq/ledger/blob/main/internal/log.go#L108>)
 
 ```go
 func (l Log) WithDate(date time.Time) Log
@@ -1202,7 +1202,7 @@ func (l Log) WithDate(date time.Time) Log
 
 
 <a name="Log.WithID"></a>
-### func \(Log\) [WithID](<https://github.com/formancehq/ledger/blob/main/internal/log.go#L185>)
+### func \(Log\) [WithID](<https://github.com/formancehq/ledger/blob/main/internal/log.go#L189>)
 
 ```go
 func (l Log) WithID(i uint64) Log
@@ -1211,7 +1211,7 @@ func (l Log) WithID(i uint64) Log
 
 
 <a name="Log.WithIdempotencyKey"></a>
-### func \(Log\) [WithIdempotencyKey](<https://github.com/formancehq/ledger/blob/main/internal/log.go#L110>)
+### func \(Log\) [WithIdempotencyKey](<https://github.com/formancehq/ledger/blob/main/internal/log.go#L114>)
 
 ```go
 func (l Log) WithIdempotencyKey(key string) Log
@@ -1220,7 +1220,7 @@ func (l Log) WithIdempotencyKey(key string) Log
 
 
 <a name="LogPayload"></a>
-## type [LogPayload](<https://github.com/formancehq/ledger/blob/main/internal/log.go#L201-L205>)
+## type [LogPayload](<https://github.com/formancehq/ledger/blob/main/internal/log.go#L205-L209>)
 
 
 
@@ -1233,7 +1233,7 @@ type LogPayload interface {
 ```
 
 <a name="HydrateLog"></a>
-### func [HydrateLog](<https://github.com/formancehq/ledger/blob/main/internal/log.go#L433>)
+### func [HydrateLog](<https://github.com/formancehq/ledger/blob/main/internal/log.go#L437>)
 
 ```go
 func HydrateLog(_type LogType, data []byte) (LogPayload, error)
@@ -1263,7 +1263,7 @@ const (
 ```
 
 <a name="LogTypeFromString"></a>
-### func [LogTypeFromString](<https://github.com/formancehq/ledger/blob/main/internal/log.go#L71>)
+### func [LogTypeFromString](<https://github.com/formancehq/ledger/blob/main/internal/log.go#L75>)
 
 ```go
 func LogTypeFromString(logType string) LogType
@@ -1290,7 +1290,7 @@ func (lt *LogType) Scan(src interface{}) error
 
 
 <a name="LogType.String"></a>
-### func \(LogType\) [String](<https://github.com/formancehq/ledger/blob/main/internal/log.go#L54>)
+### func \(LogType\) [String](<https://github.com/formancehq/ledger/blob/main/internal/log.go#L58>)
 
 ```go
 func (lt LogType) String() string
@@ -1317,7 +1317,7 @@ func (lt LogType) Value() (driver.Value, error)
 
 
 <a name="Memento"></a>
-## type [Memento](<https://github.com/formancehq/ledger/blob/main/internal/log.go#L207-L209>)
+## type [Memento](<https://github.com/formancehq/ledger/blob/main/internal/log.go#L211-L213>)
 
 
 
@@ -1623,7 +1623,7 @@ func (t QueryTemplates) Validate() error
 
 
 <a name="RevertedTransaction"></a>
-## type [RevertedTransaction](<https://github.com/formancehq/ledger/blob/main/internal/log.go#L370-L373>)
+## type [RevertedTransaction](<https://github.com/formancehq/ledger/blob/main/internal/log.go#L374-L377>)
 
 
 
@@ -1635,7 +1635,7 @@ type RevertedTransaction struct {
 ```
 
 <a name="RevertedTransaction.GetMemento"></a>
-### func \(RevertedTransaction\) [GetMemento](<https://github.com/formancehq/ledger/blob/main/internal/log.go#L388>)
+### func \(RevertedTransaction\) [GetMemento](<https://github.com/formancehq/ledger/blob/main/internal/log.go#L392>)
 
 ```go
 func (r RevertedTransaction) GetMemento() any
@@ -1644,7 +1644,7 @@ func (r RevertedTransaction) GetMemento() any
 
 
 <a name="RevertedTransaction.NeedsSchema"></a>
-### func \(RevertedTransaction\) [NeedsSchema](<https://github.com/formancehq/ledger/blob/main/internal/log.go#L375>)
+### func \(RevertedTransaction\) [NeedsSchema](<https://github.com/formancehq/ledger/blob/main/internal/log.go#L379>)
 
 ```go
 func (p RevertedTransaction) NeedsSchema() bool
@@ -1653,7 +1653,7 @@ func (p RevertedTransaction) NeedsSchema() bool
 
 
 <a name="RevertedTransaction.Type"></a>
-### func \(RevertedTransaction\) [Type](<https://github.com/formancehq/ledger/blob/main/internal/log.go#L382>)
+### func \(RevertedTransaction\) [Type](<https://github.com/formancehq/ledger/blob/main/internal/log.go#L386>)
 
 ```go
 func (r RevertedTransaction) Type() LogType
@@ -1662,7 +1662,7 @@ func (r RevertedTransaction) Type() LogType
 
 
 <a name="RevertedTransaction.ValidateWithSchema"></a>
-### func \(RevertedTransaction\) [ValidateWithSchema](<https://github.com/formancehq/ledger/blob/main/internal/log.go#L378>)
+### func \(RevertedTransaction\) [ValidateWithSchema](<https://github.com/formancehq/ledger/blob/main/internal/log.go#L382>)
 
 ```go
 func (r RevertedTransaction) ValidateWithSchema(schema Schema) error
@@ -1689,7 +1689,7 @@ const (
 ```
 
 <a name="SavedMetadata"></a>
-## type [SavedMetadata](<https://github.com/formancehq/ledger/blob/main/internal/log.go#L266-L270>)
+## type [SavedMetadata](<https://github.com/formancehq/ledger/blob/main/internal/log.go#L270-L274>)
 
 
 
@@ -1702,7 +1702,7 @@ type SavedMetadata struct {
 ```
 
 <a name="SavedMetadata.NeedsSchema"></a>
-### func \(SavedMetadata\) [NeedsSchema](<https://github.com/formancehq/ledger/blob/main/internal/log.go#L272>)
+### func \(SavedMetadata\) [NeedsSchema](<https://github.com/formancehq/ledger/blob/main/internal/log.go#L276>)
 
 ```go
 func (p SavedMetadata) NeedsSchema() bool
@@ -1711,7 +1711,7 @@ func (p SavedMetadata) NeedsSchema() bool
 
 
 <a name="SavedMetadata.Type"></a>
-### func \(SavedMetadata\) [Type](<https://github.com/formancehq/ledger/blob/main/internal/log.go#L279>)
+### func \(SavedMetadata\) [Type](<https://github.com/formancehq/ledger/blob/main/internal/log.go#L283>)
 
 ```go
 func (s SavedMetadata) Type() LogType
@@ -1720,7 +1720,7 @@ func (s SavedMetadata) Type() LogType
 
 
 <a name="SavedMetadata.UnmarshalJSON"></a>
-### func \(\*SavedMetadata\) [UnmarshalJSON](<https://github.com/formancehq/ledger/blob/main/internal/log.go#L285>)
+### func \(\*SavedMetadata\) [UnmarshalJSON](<https://github.com/formancehq/ledger/blob/main/internal/log.go#L289>)
 
 ```go
 func (s *SavedMetadata) UnmarshalJSON(data []byte) error
@@ -1729,7 +1729,7 @@ func (s *SavedMetadata) UnmarshalJSON(data []byte) error
 
 
 <a name="SavedMetadata.ValidateWithSchema"></a>
-### func \(SavedMetadata\) [ValidateWithSchema](<https://github.com/formancehq/ledger/blob/main/internal/log.go#L275>)
+### func \(SavedMetadata\) [ValidateWithSchema](<https://github.com/formancehq/ledger/blob/main/internal/log.go#L279>)
 
 ```go
 func (s SavedMetadata) ValidateWithSchema(schema Schema) error

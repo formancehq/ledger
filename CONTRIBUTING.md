@@ -330,45 +330,14 @@ When inserting a fund movement in the database with the `MOVES_HISTORY_POST_COMM
 
 ### Import
 
-Ledgers can be imported and exported.
+Ledger exports can be restored in ordered batches while the ledger is in
+`initializing` state. Each request holds the ledger lock and uses one database
+transaction. Earlier committed batches remain intact when a later batch fails.
 
-```mermaid
-sequenceDiagram
-    actor Client
-    actor Ledger
-    actor Database
-    Client->>Ledger: Create transaction
-    Ledger->>Database: Start SQL transaction (Serialization Isolation level)
-    Database-->>Ledger: SQL transaction started
-    Ledger->>Database: Count logs
-    Database-->>Ledger: Count of logs
-    alt id count > 0
-        note left of Ledger: Import is only allowed on empty ledgers
-        Ledger-->>Client: Invalid state error
-    else 
-        Ledger->>Ledger: Read log stream
-        loop over log stream
-            Ledger->>Database: Apply appropriate actions (create transactions, update metadata...)
-            Database-->>Ledger: OK
-        end
-    end
-    Ledger->>Database: Commit SQL transaction
-    alt another action has been made on the ledger in the meantime 
-        Database-->>Ledger: Serialization error
-    else
-        Database-->>Ledger: SQL Transaction committed
-    end
-    Ledger->>Client: OK
-```
-
-To import a ledger, we use the [Serializable Isolation Level](https://www.postgresql.org/docs/7.2/xact-serializable.html).
-This isolation level is the strictest Postgres can offer.
-
-That's way, if another concurrent request write something on the ledger (a new transaction for example), the import request will fail with a serialization error.
-It is the case, because, whatever the ledger is configured, finally, when writing, we will ***always*** write a log describing the action, causing conflict with Serializable Isolation Level.
-
-As said, this isolation level is the strictest Postgres can offer, we could ask why we don't use it all the time.
-That's because, if we would do that, we would have frequent serialization errors, and we would need to retry very often, and probably creating a big bottleneck.
+See [Ledger v2 log restoration](docs/import-restoration.md) for the admission,
+ID, rollback, trust and resume contracts. Send batches one at a time in export
+order; the lock does not impose the order of parallel requests. Start live writes
+only after restoration has reached the final exported log.
 
 ## Testing strategy
 

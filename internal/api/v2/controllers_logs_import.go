@@ -1,6 +1,7 @@
 package v2
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -15,11 +16,13 @@ import (
 )
 
 func importLogs(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithCancel(r.Context())
+	defer cancel()
 
 	stream := make(chan ledger.Log)
 	errChan := make(chan error, 1)
 	go func() {
-		err := common.LedgerFromContext(r.Context()).Import(r.Context(), stream)
+		err := common.LedgerFromContext(ctx).Import(ctx, stream)
 		if err != nil {
 			err = fmt.Errorf("importing logs: %w", err)
 		}
@@ -48,7 +51,11 @@ func importLogs(w http.ResponseWriter, r *http.Request) {
 				api.NoContent(w)
 				return
 			} else {
+				// Closing alone means successful EOF to the importer. Cancel first
+				// so a malformed suffix cannot commit a valid prefix.
+				cancel()
 				close(stream)
+				_ = <-errChan
 				common.InternalServerError(w, r, fmt.Errorf("reading input stream: %w", err))
 				return
 			}
@@ -57,6 +64,7 @@ func importLogs(w http.ResponseWriter, r *http.Request) {
 		select {
 		case stream <- l:
 		case <-r.Context().Done():
+			cancel()
 			close(stream)
 			common.InternalServerError(w, r, fmt.Errorf("request context done: %w", r.Context().Err()))
 			return

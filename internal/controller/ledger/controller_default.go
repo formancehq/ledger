@@ -228,59 +228,98 @@ func (ctrl *DefaultController) GetVolumesWithBalances(ctx context.Context, q sto
 	return ctrl.store.Volumes().Paginate(ctx, q)
 }
 
+// Import restores one batch. The system controller holds the ledger lock across
+// admission and commit, excluding another batch or the first live write. The last
+// stored ID and all replayed changes are read/written in the same transaction.
 func (ctrl *DefaultController) Import(ctx context.Context, stream chan ledger.Log) error {
+	store, _, err := ctrl.store.BeginTX(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("starting import transaction: %w", err)
+	}
+	defer func() { _ = store.Rollback(context.WithoutCancel(ctx)) }()
 
-	var lastLogID *uint64
-
-	// We can import only if the ledger is empty.
-	logs, err := ctrl.store.Logs().Paginate(ctx, storagecommon.InitialPaginatedQuery[any]{
-		PageSize: 1,
+	logs, err := store.Logs().Paginate(ctx, storagecommon.InitialPaginatedQuery[any]{
+		Column: "id", Order: pointer.For(paginate.Order(paginate.OrderDesc)), PageSize: 1,
 	})
 	if err != nil {
-		return fmt.Errorf("error listing logs: %w", err)
+		return fmt.Errorf("reading last imported log: %w", err)
 	}
-
+	var lastLogID *uint64
 	if len(logs.Data) > 0 {
 		lastLogID = logs.Data[0].ID
 	}
-
-	for log := range stream {
-		if lastLogID != nil && *log.ID <= *lastLogID {
-			return NewErrImport(fmt.Errorf("log %d already exists", *log.ID))
-		}
-		lastLogID = log.ID
-
-		store, _, err := ctrl.store.BeginTX(ctx, nil)
-		if err != nil {
-			return fmt.Errorf("starting transaction: %w", err)
-		}
-		err = func() error {
-			defer func() {
-				_ = store.Rollback(ctx)
-			}()
-
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case log, ok := <-stream:
+			if !ok {
+				// A decoder error cancels the context before closing the stream.
+				if err := ctx.Err(); err != nil {
+					return err
+				}
+				if err := store.Commit(ctx); err != nil {
+					return fmt.Errorf("committing import: %w", err)
+				}
+				return nil
+			}
+			if err := validateImportLog(log); err != nil {
+				return NewErrImport(err)
+			}
+			if lastLogID != nil && *log.ID <= *lastLogID {
+				return NewErrImport(errors.New("log identifiers must be strictly increasing"))
+			}
 			if err := ctrl.importLog(ctx, store, log); err != nil {
 				switch {
-				case errors.Is(err, postgres.ErrSerialization) ||
-					errors.Is(err, ledgerstore.ErrConcurrentTransaction{}):
-					return NewErrImport(errors.New("concurrent transaction occur" +
-						"red, cannot import the ledger"))
+				case errors.Is(err, postgres.ErrSerialization), errors.Is(err, ledgerstore.ErrConcurrentTransaction{}):
+					return NewErrImport(errors.New("concurrent transaction occurred, cannot import the ledger"))
 				}
 				return fmt.Errorf("importing log %d: %w", *log.ID, err)
 			}
-
-			if err := store.Commit(ctx); err != nil {
-				return fmt.Errorf("committing transaction: %w", err)
-			}
-
-			return nil
-		}()
-		if err != nil {
-			return err
+			lastLogID = log.ID
 		}
 	}
+}
 
-	return err
+// resetSuppliedDerivedVolumes canonicalizes the derived volume fields of an
+// imported transaction before its log is persisted (SEC-90). Store.CommitTransaction
+// recomputes PostCommitVolumes in place and, when the effective volumes feature is
+// enabled, PostCommitEffectiveVolumes; those recomputed values are the audit source
+// of truth. Entries supplied by the export that are not touched by the transaction's
+// postings (accounts or assets absent from the recomputation) are dropped, and when
+// the effective volumes feature is disabled the supplied effective volumes are
+// cleared: they are scan-only and must never be persisted from an untrusted export.
+// Hash and memento are unaffected: both exclude the volume fields (GetMemento).
+func (ctrl *DefaultController) resetSuppliedDerivedVolumes(tx *ledger.Transaction) {
+	if ctrl.ledger.HasFeature(features.FeatureMovesHistory, "ON") &&
+		ctrl.ledger.HasFeature(features.FeatureMovesHistoryPostCommitEffectiveVolumes, "SYNC") {
+		// The store recomputed the effective volumes in place from the moves; the
+		// supplied map may additionally carry account/asset entries the transaction
+		// does not touch. Keep only the entries the postings actually touch.
+		tx.PostCommitEffectiveVolumes = ledger.PostCommitVolumes(touchedEntries(tx.Postings, tx.PostCommitEffectiveVolumes))
+	} else {
+		// Effective volumes are scan-only: never persist supplied values when the
+		// feature is disabled.
+		tx.PostCommitEffectiveVolumes = nil
+	}
+}
+
+// touchedEntries keeps only the account/asset entries of volumes that appear in the
+// given postings. Both maps are expected to be canonical (recomputed by the store)
+// for the touched entries; entries present only in the supplied map are dropped.
+func touchedEntries(postings ledger.Postings, volumes ledger.PostCommitVolumes) map[string]ledger.VolumesByAssets {
+	ret := ledger.PostCommitVolumes{}
+	for _, update := range (&ledger.Transaction{TransactionData: ledger.TransactionData{Postings: postings}}).VolumeUpdates() {
+		if byAssets, ok := volumes[update.Account]; ok {
+			if v, ok := byAssets[update.Asset]; ok {
+				if _, ok := ret[update.Account]; !ok {
+					ret[update.Account] = ledger.VolumesByAssets{}
+				}
+				ret[update.Account][update.Asset] = v
+			}
+		}
+	}
+	return ret
 }
 
 func (ctrl *DefaultController) importLog(ctx context.Context, store Store, log ledger.Log) error {
@@ -310,10 +349,16 @@ func (ctrl *DefaultController) importLog(ctx context.Context, store Store, log l
 				if err := ctrl.upsertTransactionAccounts(ctx, store, schema, &payload.Transaction, payload.AccountMetadata); err != nil {
 					return nil, fmt.Errorf("failed to upsert transaction accounts: %w", err)
 				}
+				// SEC-90: CommitTransaction recomputes the canonical derived volumes
+				// in place on payload.Transaction. Reset the supplied ones so the
+				// log persisted below carries only canonical values; account/asset
+				// entries present only in the supplied volumes are dropped.
+				ctrl.resetSuppliedDerivedVolumes(&payload.Transaction)
+				log.Data = payload
 				logging.FromContext(ctx).Debugf("Imported transaction %d", *payload.Transaction.ID)
 			case ledger.RevertedTransaction:
 				logging.FromContext(ctx).Debugf("Reverting transaction %d", *payload.RevertedTransaction.ID)
-				_, _, err := store.RevertTransaction(
+				original, modified, err := store.RevertTransaction(
 					ctx,
 					*payload.RevertedTransaction.ID,
 					*payload.RevertedTransaction.RevertedAt,
@@ -321,9 +366,28 @@ func (ctrl *DefaultController) importLog(ctx context.Context, store Store, log l
 				if err != nil {
 					return nil, fmt.Errorf("failed to revert transaction: %w", err)
 				}
+				if !modified {
+					return nil, NewErrImport(errors.New("transaction already reverted"))
+				}
+				// Compare against stored history, never the caller's claimed original.
+				if !equalImportPostings(original.Postings.Reverse(), payload.RevertTransaction.Postings) ||
+					!equalImportPostings(original.Postings, payload.RevertedTransaction.Postings) ||
+					!original.Timestamp.Equal(payload.RevertedTransaction.Timestamp) ||
+					original.Reference != payload.RevertedTransaction.Reference {
+					return nil, NewErrImport(errors.New("revert does not match the stored transaction"))
+				}
 				if err := store.CommitTransaction(ctx, &payload.RevertTransaction); err != nil {
 					return nil, fmt.Errorf("failed to commit transaction: %w", err)
 				}
+				// SEC-90: same canonicalization as for created transactions. The
+				// reverted original transaction is re-read from the store
+				// (RevertTransaction returns the row as reverted, with its
+				// persisted postCommitVolumes), so the persisted log payload
+				// keeps the original transaction's real volumes instead of the
+				// supplied ones.
+				payload.RevertedTransaction = *original
+				ctrl.resetSuppliedDerivedVolumes(&payload.RevertTransaction)
+				log.Data = payload
 			case ledger.SavedMetadata:
 				switch payload.TargetType {
 				case ledger.MetaTargetTypeTransaction:
@@ -362,7 +426,7 @@ func (ctrl *DefaultController) importLog(ctx context.Context, store Store, log l
 
 			if ctrl.ledger.HasFeature(features.FeatureHashLogs, "SYNC") {
 				if !reflect.DeepEqual(log.Hash, logCopy.Hash) {
-					return nil, newErrInvalidHash(*log.ID, logCopy.Hash, log.Hash)
+					return nil, newErrInvalidHash(*log.ID)
 				}
 			}
 

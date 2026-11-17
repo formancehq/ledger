@@ -1,7 +1,6 @@
 package ledger
 
 import (
-	"encoding/base64"
 	"errors"
 	"fmt"
 
@@ -56,27 +55,18 @@ func NewErrImport(err error) ErrImport {
 var _ error = (*ErrInvalidHash)(nil)
 
 type ErrInvalidHash struct {
-	logID    uint64
-	expected []byte
-	got      []byte
+	logID uint64
 }
 
 func (i ErrInvalidHash) Error() string {
-	return fmt.Sprintf(
-		"invalid hash, expected %s got %s for log %d",
-		base64.StdEncoding.EncodeToString(i.expected),
-		base64.StdEncoding.EncodeToString(i.got),
-		i.logID,
-	)
+	return fmt.Sprintf("invalid hash for log %d", i.logID)
 }
 
 var _ error = (*ErrInvalidHash)(nil)
 
-func newErrInvalidHash(logID uint64, got, expected []byte) ErrImport {
+func newErrInvalidHash(logID uint64) ErrImport {
 	return NewErrImport(ErrInvalidHash{
-		expected: expected,
-		got:      got,
-		logID:    logID,
+		logID: logID,
 	})
 }
 
