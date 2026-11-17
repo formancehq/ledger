@@ -24,6 +24,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/application/admission"
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/domain/crypto/signing"
+	"github.com/formancehq/ledger/v3/internal/infra/capabilities"
 	"github.com/formancehq/ledger/v3/internal/infra/node"
 	"github.com/formancehq/ledger/v3/internal/infra/state"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
@@ -563,6 +564,13 @@ func TestConvertToGRPCError_MirrorNotCaughtUp(t *testing.T) {
 	require.True(t, ok, "forwarding must preserve the precondition kind")
 	require.Equal(t, domain.KindPrecondition, classification.Kind())
 	require.Equal(t, codes.FailedPrecondition, status.Code(forwarded))
+}
+
+func TestConvertToGRPCError_InactiveCapability(t *testing.T) {
+	t.Parallel()
+	st := status.Convert(convertToGRPCError(fmt.Errorf("mirror promotion: %w", capabilities.ErrCapabilityUnsupported), testLogger()))
+	require.Equal(t, codes.FailedPrecondition, st.Code())
+	require.Contains(t, st.Message(), "capability is unsupported")
 }
 
 // TestConvertToGRPCError_UnknownErrorIsSanitized pins the fix for #326.

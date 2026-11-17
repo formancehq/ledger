@@ -295,6 +295,7 @@ start_node() {
 	"$SERVER_BIN" run \
 		--node-id "$(( i + 1 ))" \
 		--cluster-id "$CLUSTER_ID" \
+		--activate-mirror-promotion-catch-up \
 		--bind-addr "127.0.0.1:${RAFT_PORTS[$i]}" \
 		--advertise-addr "127.0.0.1:${RAFT_PORTS[$i]}" \
 		--grpc-port "${GRPC_PORTS[$i]}" \
