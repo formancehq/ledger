@@ -1338,6 +1338,18 @@ just build-plugin   # Build kubectl plugin
 just install-plugin # Install kubectl plugin to $GOPATH/bin
 ```
 
+From the repository root, run the complete API-server integration suite with
+the race detector and Kubernetes 1.32.x envtest assets:
+
+```bash
+nix develop .#operator-tests --command just operator-test-integration
+```
+
+`just operator-test-admission` in the same Nix shell runs the fast admission
+and BackupRun recovery subset. CI runs both recipes. Envtest does not run a
+kubelet, StatefulSet controller or CSI driver; use the real-cluster E2E suite
+below for those boundaries.
+
 ### End-to-end tests
 
 From `misc/operator/`, run `just test-e2e` to build the images, create the kind

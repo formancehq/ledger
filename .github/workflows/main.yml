@@ -215,6 +215,9 @@ jobs:
       - name: Run Ledger target admission regressions
         run: >
           nix develop .#operator-tests --command just operator-test-admission
+      - name: Run all operator integration regressions
+        run: >
+          nix develop .#operator-tests --command just operator-test-integration
 
   Tests-E2E-Business:
     runs-on: namespace-profile-linux-amd64-4vcpu
