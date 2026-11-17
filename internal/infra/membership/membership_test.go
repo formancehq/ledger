@@ -165,8 +165,9 @@ func TestMembership_MigratesLegacyServicePortsOnce(t *testing.T) {
 	t.Parallel()
 
 	ps := newTestPeerStore(t)
-	require.NoError(t, ps.Put(1, "pod-0:7777", "pod-0:1111", fixedInstanceID(1), []uint32{7}))
-	putLegacyPeer(t, ps, 2, "pod-1:7777", "pod-1:2222", fixedInstanceID(2))
+	// Operator-managed members share the source public port.
+	require.NoError(t, ps.Put(1, "pod-0:7777", "pod-0:8888", fixedInstanceID(1), []uint32{7}))
+	putLegacyPeer(t, ps, 2, "pod-1:7777", "pod-1:8888", fixedInstanceID(2))
 
 	m, err := NewMembershipWithServicePort(
 		ps,
@@ -187,8 +188,8 @@ func TestMembership_MigratesLegacyServicePortsOnce(t *testing.T) {
 
 	legacy, err := ps.LoadAll()
 	require.NoError(t, err)
-	require.Equal(t, "pod-0:1111", legacy[1].ServiceAddress)
-	require.Equal(t, "pod-1:2222", legacy[2].ServiceAddress)
+	require.Equal(t, "pod-0:8888", legacy[1].ServiceAddress)
+	require.Equal(t, "pod-1:8888", legacy[2].ServiceAddress)
 	require.NoError(t, m.Rehydrate())
 
 	legacy, err = ps.LoadAll()
@@ -265,8 +266,9 @@ func TestMembership_MigratesLegacyPortsWithRefreshedSelf(t *testing.T) {
 
 	ps := newTestPeerStore(t)
 	putLegacyPeer(t, ps, 1, "localhost:7777", "localhost:8888", fixedInstanceID(1))
-	// The members may have had different public ports before RC.4.
-	putLegacyPeer(t, ps, 2, "localhost:7778", "localhost:8899", fixedInstanceID(2))
+	// The second member has the same public port, as in the supported
+	// Operator-managed source cluster.
+	putLegacyPeer(t, ps, 2, "localhost:7778", "localhost:8888", fixedInstanceID(2))
 	putLegacyPeer(t, ps, testSelfNodeID, testSelfRaftAddr, "localhost:9999", fixedInstanceID(0x42))
 
 	m, err := NewMembershipWithServicePort(
@@ -301,6 +303,7 @@ func TestMembership_MigratesLegacyPortsWithRefreshedSelf(t *testing.T) {
 
 func TestMembership_FreshNodePreservesDistinctPeerPorts(t *testing.T) {
 	t.Parallel()
+	// Native-format rows are never rewritten. This is not an upgrade fixture.
 	ps := newTestPeerStore(t)
 	m, err := NewMembershipWithServicePort(ps, noopTransport{}, noopPool{}, testSelfNodeID,
 		testSelfRaftAddr, "localhost:9999", 9999, fixedInstanceID(0x42), logging.Testing(), NoopClusterPolicyProvider)

@@ -200,6 +200,12 @@ must not coexist because they apply some proposal payloads differently.
 
 ### rc.4 → rc.5 peer-service migration
 
+This RC upgrade path supports Operator-managed Clusters only. The Operator
+uses one StatefulSet Pod template for every member, so the source public gRPC
+port and target peer gRPC port are each common across the cluster. Manually
+managed multi-node upgrades, including per-node port layouts, are outside
+this RC procedure.
+
 The peer-service port split first ships after the published RC.4. The operator
 drains and stops every RC.4 Pod before starting any RC.5 Pod. The first RC.5
 startup migrates legacy Membership service addresses to the dedicated peer

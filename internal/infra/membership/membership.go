@@ -170,6 +170,9 @@ func newMembership(store *PeerStore, transport Transport, pool Pool, selfNodeID 
 }
 
 func normalizeLegacyServiceAddresses(addresses map[uint64]ConfChangeContext, servicePort int, selfNodeID uint64, selfServiceAddr string) (map[uint64]ConfChangeContext, error) {
+	// The supported rc.4 → rc.5 upgrade uses one Operator-managed StatefulSet
+	// template, so every member has the same peer service port. Manually
+	// configured per-node ports are outside this RC migration contract.
 	if servicePort == 0 {
 		return addresses, nil
 	}

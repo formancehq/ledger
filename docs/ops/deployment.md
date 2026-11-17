@@ -78,8 +78,11 @@ IPv6 hosts retain their brackets.
 At the rc.4 → rc.5 boundary, the first rc.5 startup rewrites legacy membership
 rows that still contain the public service port to `--grpc-peer-port`. The
 migration runs after WAL replay and snapshot recovery, commits the converted
-rows atomically, and records a store-level format revision. Subsequent writes
-use the peer port directly; rc.4 and rc.5 are not mixed during this migration.
+rows atomically, and records a store-level format revision. This RC upgrade
+path is supported for Operator-managed Clusters, which give every Pod the same
+public and peer gRPC ports; manually managed multi-node upgrades are not
+covered. Subsequent writes use the peer port directly; rc.4 and rc.5 are not
+mixed during this migration.
 Once the StatefulSet has recorded `GRPC_PEER_PORT`, the operator rejects changes
 to `grpcPeerPort`; changing it requires a dedicated membership migration.
 

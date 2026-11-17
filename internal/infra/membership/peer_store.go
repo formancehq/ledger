@@ -54,7 +54,7 @@ func NewPeerStore(store *dal.Store) *PeerStore {
 	return &PeerStore{store: store}
 }
 
-// migrateLegacyServiceAddressesFromPort upgrades RC.3 rows. The local row may
+// migrateLegacyServiceAddressesFromPort upgrades RC.4 rows. The local row may
 // already have been refreshed with its peer address before WAL replay.
 func (p *PeerStore) migrateLegacyServiceAddressesFromPort(servicePort int, selfNodeID uint64, selfServiceAddr string) error {
 	if servicePort == 0 {
