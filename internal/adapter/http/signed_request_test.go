@@ -47,7 +47,7 @@ func TestSignedHTTPRoutes_ForwardOriginalEnvelope(t *testing.T) {
 
 		return &domain.ApplyResult{Logs: []*commonpb.Log{{Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_Apply{Apply: &commonpb.ApplyLedgerLog{Log: &commonpb.LedgerLog{Data: &commonpb.LedgerLogPayload{Payload: &commonpb.LedgerLogPayload_CreatedTransaction{CreatedTransaction: &commonpb.CreatedTransaction{Transaction: &commonpb.Transaction{Id: 1}}}}}}}}}}}, nil
 	})
-	router := NewHandler(logging.Testing(), backend, internalauth.AuthConfig{}, version.Info{})
+	router := NewHandler(logging.Testing(), backend, internalauth.AuthConfig{}, version.Info{}, nil)
 	r := httptest.NewRequest(http.MethodPost, "/v3/ledger/transactions", bytes.NewReader(wrapper))
 	r.Header.Set("Content-Type", "application/json")
 	r.Header.Set("Idempotency-Key", "signed-key")
@@ -93,7 +93,7 @@ func TestSignedHTTPRoutes_RejectMalformedEnvelope(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			backend := NewMockBackend(gomock.NewController(t))
-			router := NewHandler(logging.Testing(), backend, internalauth.AuthConfig{}, version.Info{})
+			router := NewHandler(logging.Testing(), backend, internalauth.AuthConfig{}, version.Info{}, nil)
 			r := httptest.NewRequest(tc.method, tc.path, strings.NewReader(tc.body))
 			r.Header.Set("Content-Type", "application/json; charset=utf-8")
 			r.Header.Set("Formance-Signing-Key-Id", "key")
@@ -119,7 +119,7 @@ func TestSignedHTTPRoutes_KeepJWTScopes(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			backend := NewMockBackend(gomock.NewController(t))
-			router := NewHandler(logging.Testing(), backend, internalauth.AuthConfig{Enabled: true, KeySet: keySet, Issuers: []string{testAuthIssuer}, Service: "ledger", ScopeMapping: internalauth.DefaultMapping("ledger")}, version.Info{})
+			router := NewHandler(logging.Testing(), backend, internalauth.AuthConfig{Enabled: true, KeySet: keySet, Issuers: []string{testAuthIssuer}, Service: "ledger", ScopeMapping: internalauth.DefaultMapping("ledger")}, version.Info{}, nil)
 			path := "/v3/ledger/transactions"
 			if tc.name == "transaction writer cannot write metadata" {
 				path += "/1/metadata"
@@ -182,7 +182,7 @@ func TestSignedHTTPRoutes_RejectMalformedSigningHeaders(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			backend := NewMockBackend(gomock.NewController(t))
-			router := NewHandler(logging.Testing(), backend, internalauth.AuthConfig{}, version.Info{})
+			router := NewHandler(logging.Testing(), backend, internalauth.AuthConfig{}, version.Info{}, nil)
 			r := httptest.NewRequest(http.MethodPost, "/v3/ledger/transactions", strings.NewReader(`{"request":{},"payload":"AQ=="}`))
 			r.Header.Set("Content-Type", tc.contentType)
 			for _, value := range tc.keyIDs {

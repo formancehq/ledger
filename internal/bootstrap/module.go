@@ -619,8 +619,8 @@ func Module() fx.Option {
 				return usagebuilder.NewBuilder(store, us, notifications, logger, meterProvider.Meter("usage.builder"), 0)
 			}, fx.ParamTags(``, ``, `name:"usage"`, ``, ``, ``)),
 			httpcompat.NewServer,
-			func(cfg Config, logger logging.Logger, backend httpcompat.Backend, authCfg internalauth.AuthConfig, info version.Info) http.Handler {
-				return httpcompat.NewHandler(logger, backend, authCfg, info)
+			func(cfg Config, logger logging.Logger, backend httpcompat.Backend, authCfg internalauth.AuthConfig, info version.Info, applyService servicepb.BucketServiceServer) http.Handler {
+				return httpcompat.NewHandler(logger, backend, authCfg, info, applyService)
 			},
 			func(node *node.Node, ctrl ctrl.Controller) httpcompat.Backend {
 				return httpcompat.NewDefaultBackend(node, ctrl)

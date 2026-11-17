@@ -32,6 +32,12 @@ for the distinction between a decoded rejection and raw transport cancellation.
 [LedgerInfo read contract](ledger-info.md) defines HTTP projection, exact counters,
 secret-safe current/checkpoint reads and downstream SDK ownership.
 
+## Atomic HTTP batches
+
+[Atomic HTTP Apply](http-api.md#atomic-http-apply) exposes cross-ledger and
+configuration batches with per-operation scopes, one retry identity, signed
+intent binding and the existing service execution boundary.
+
 ## Atomic creation
 
 [Atomic ledger creation metadata](atomic-ledger-creation.md) defines initial metadata, authorization, audit and restore behavior.

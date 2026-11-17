@@ -111,7 +111,7 @@ func TestHandleBulk_ProcessingResponseContract(t *testing.T) {
 
 						return &domain.ApplyResult{Logs: []*commonpb.Log{bulkContractSuccess()}}, nil
 					}).Times(map[bool]int{false: 2, true: 3}[continuation])
-				handler := NewHandler(logging.Testing(), backend, internalauth.AuthConfig{}, version.Info{})
+				handler := NewHandler(logging.Testing(), backend, internalauth.AuthConfig{}, version.Info{}, nil)
 				body := "[" + strings.Trim(bulkWriteBody, "[]") + "," + strings.Trim(bulkWriteBody, "[]") + "," + strings.Trim(bulkWriteBody, "[]") + "]"
 				r := httptest.NewRequest(http.MethodPost, fmt.Sprintf("/v3/ledger1/bulk?continueOnFailure=%t", continuation), strings.NewReader(body))
 				w := httptest.NewRecorder()
@@ -178,7 +178,7 @@ func TestHandleBulk_MatchesSingleRequestClassification(t *testing.T) {
 					t.Parallel()
 					backend := NewMockBackend(gomock.NewController(t))
 					backend.EXPECT().Apply(gomock.Any(), gomock.Any()).Return(nil, tc.err).Times(1)
-					handler := NewHandler(logging.Testing(), backend, internalauth.AuthConfig{}, version.Info{})
+					handler := NewHandler(logging.Testing(), backend, internalauth.AuthConfig{}, version.Info{}, nil)
 					r := httptest.NewRequest(http.MethodPost, fmt.Sprintf("/v3/ledger1/bulk?atomic=%t&continueOnFailure=%t", atomic, continuation), strings.NewReader(bulkWriteBody))
 					r.Header.Set("X-Request-ID", "bulk-classification")
 					w := httptest.NewRecorder()
@@ -229,7 +229,7 @@ func TestHandleBulk_IdempotencyContract(t *testing.T) {
 
 						return &domain.ApplyResult{Logs: logs}, nil
 					}).AnyTimes()
-				handler := NewHandler(logging.Testing(), backend, internalauth.AuthConfig{}, version.Info{})
+				handler := NewHandler(logging.Testing(), backend, internalauth.AuthConfig{}, version.Info{}, nil)
 				body := `[{"action":"CREATE_TRANSACTION","ik":"element-one","data":{}},{"action":"CREATE_TRANSACTION","ik":"element-two","data":{}}]`
 				r := httptest.NewRequest(http.MethodPost, fmt.Sprintf("/v3/ledger1/bulk?atomic=%t", atomic), strings.NewReader(body))
 				if header != "" {
@@ -267,7 +267,7 @@ func TestHandleBulk_InfrastructureResponseContract(t *testing.T) {
 				t.Parallel()
 				backend := NewMockBackend(gomock.NewController(t))
 				backend.EXPECT().Apply(gomock.Any(), gomock.Any()).Return(nil, tc.err).Times(1)
-				handler := NewHandler(logging.Testing(), backend, internalauth.AuthConfig{}, version.Info{})
+				handler := NewHandler(logging.Testing(), backend, internalauth.AuthConfig{}, version.Info{}, nil)
 				r := httptest.NewRequest(http.MethodPost, fmt.Sprintf("/v3/ledger1/bulk?continueOnFailure=%t", continuation), strings.NewReader(bulkWriteBody))
 				r.Header.Set("X-Request-ID", "bulk-contract")
 				w := httptest.NewRecorder()
@@ -293,7 +293,7 @@ func TestHandleBulk_AtomicErrorContract(t *testing.T) {
 			t.Parallel()
 			backend := NewMockBackend(gomock.NewController(t))
 			backend.EXPECT().Apply(gomock.Any(), gomock.Any()).Return(nil, &domain.ErrTransactionNotFound{TransactionID: 42}).Times(1)
-			handler := NewHandler(logging.Testing(), backend, internalauth.AuthConfig{}, version.Info{})
+			handler := NewHandler(logging.Testing(), backend, internalauth.AuthConfig{}, version.Info{}, nil)
 			body := `[{"action":"CREATE_TRANSACTION","data":{}},{"action":"REVERT_TRANSACTION","data":{"id":42}}]`
 			r := httptest.NewRequest(http.MethodPost, fmt.Sprintf("/v3/ledger1/bulk?atomic=true&continueOnFailure=%t", continuation), strings.NewReader(body))
 			w := httptest.NewRecorder()
@@ -347,7 +347,7 @@ func TestHandleBulk_RequestErrorContract(t *testing.T) {
 					}).Times(1)
 			}
 			cfg := internalauth.AuthConfig{Enabled: tc.auth, KeySet: keySet, Issuers: []string{testAuthIssuer}, Service: "ledger", ScopeMapping: internalauth.DefaultMapping("ledger")}
-			handler := NewHandler(logging.Testing(), backend, cfg, version.Info{})
+			handler := NewHandler(logging.Testing(), backend, cfg, version.Info{}, nil)
 			r := httptest.NewRequest(http.MethodPost, "/v3/ledger1/bulk?continueOnFailure=true", strings.NewReader(tc.body))
 			r.Header.Set("X-Request-ID", "bulk-contract")
 			if tc.token != "" {

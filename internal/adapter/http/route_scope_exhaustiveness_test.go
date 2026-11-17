@@ -204,6 +204,7 @@ func expectedRouteScopes() []routeScope {
 		// --- Bulk: no route-level gate; handleBulk checks each element
 		// (handler.go:203, handlers_bulk.go:64) ---
 		{http.MethodPost, "/v3/{ledgerName}/bulk", kindPerElement, "", false},
+		{http.MethodPost, "/v3/_/apply", kindPerElement, "", false},
 
 		// --- Prepared queries read, requireQueriesRead (handler.go:206-209) ---
 		{http.MethodGet, "/v3/{ledgerName}/prepared-queries", kindGuarded, internalauth.ScopeQueriesRead, false},
@@ -330,7 +331,7 @@ func newScopedHandler(t *testing.T, keySet oidc.KeySet) http.Handler {
 		Issuers:      []string{testAuthIssuer},
 		Service:      "ledger",
 		ScopeMapping: internalauth.DefaultMapping("ledger"),
-	}, version.Info{})
+	}, version.Info{}, nil)
 }
 
 // walkRoutes enumerates every (method, pattern) the router registers.

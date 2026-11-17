@@ -132,7 +132,16 @@ func (impl *BucketServiceServerImpl) apply(ctx context.Context, req *servicepb.A
 		return nil, err
 	}
 
-	*batchSize, _ = ctx.Value(applyBatchSizeKey{}).(int)
+	var sizeKnown bool
+	*batchSize, sizeKnown = ctx.Value(applyBatchSizeKey{}).(int)
+	if !sizeKnown {
+		// HTTP calls this service after its own authorization, without the
+		// gRPC interceptor's context value. Inspection is only for telemetry;
+		// admission remains responsible for authenticating the payload.
+		if batch, peekErr := servicepb.PeekBatch(req); peekErr == nil {
+			*batchSize = len(batch.GetRequests())
+		}
+	}
 
 	if impl.logger.Enabled(logging.TraceLevel) {
 		impl.logger.Tracef("Apply request received with %d requests", *batchSize)

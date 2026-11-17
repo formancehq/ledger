@@ -57,6 +57,7 @@ var protojsonRoutes = []struct {
 // new route a review checkpoint instead of silently escaping the projection
 // contract tests below.
 var jsonWriterFiles = map[string]bool{
+	"handlers_atomic_apply.go":    true,
 	"handlers_add_events_sink.go": true, "handlers_aggregate_volumes.go": true,
 	"handlers_analyze_accounts.go": true, "handlers_analyze_numscript.go": true,
 	"handlers_analyze_transactions.go": true, "handlers_create_index.go": true,
@@ -185,7 +186,10 @@ func TestMonetaryRoutes_PayloadHasCustomMarshalJSON(t *testing.T) {
 // rather than closed. Keep the allowlist minimal, justify every entry, and
 // treat a new entry as a review checkpoint: state whether the file marshals a
 // RESPONSE (needs a protojsonRoutes row) or only decodes a REQUEST (does not).
+// atomic_apply_json.go normalizes scalar HTTP input into typed protobuf JSON.
+// It does not encode responses or invoke response writers.
 var allowedProtojsonImporters = map[string]bool{
+	"atomic_apply_json.go":         true,
 	"response.go":                  true,
 	"handlers_get_events_sinks.go": true,
 	"handlers_create_ledger.go":    true,
@@ -261,7 +265,13 @@ func TestProtojsonRoutes_TableIsComplete(t *testing.T) {
 		})
 		contents, err := os.ReadFile(entry.Name())
 		require.NoError(t, err)
-		require.NotContains(t, string(contents), "protojson.Marshal")
+		if entry.Name() == "atomic_apply_json.go" {
+			// Input-only leaf normalization must never acquire a response writer.
+			require.False(t, actual[entry.Name()])
+			require.NotContains(t, string(contents), `"net/http"`)
+		} else {
+			require.NotContains(t, string(contents), "protojson.Marshal")
+		}
 		require.NotContains(t, string(contents), "MarshalProtoJSONNumbers")
 	}
 	require.Equal(t, jsonWriterFiles, actual)

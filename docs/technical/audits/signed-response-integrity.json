@@ -5,6 +5,9 @@
   "paths": [
     "internal/domain/crypto/signing/**",
     "internal/adapter/grpc/server_bucket.go",
+    "internal/adapter/http/handlers_atomic_apply.go",
+    "internal/adapter/http/atomic_apply_response.go",
+    "internal/adapter/http/handlers_atomic_apply_test.go",
     "internal/bootstrap/module.go",
     "cmd/ledgerctl/cmdutil/signing.go",
     "cmd/ledgerctl/cmdutil/signing_response_test.go",
@@ -20,14 +23,16 @@
     "docs/technical/audits/signed-response-integrity.md",
     "docs/technical/architecture/subsystems/admission/signing.md",
     "docs/ops/cli.md",
-    "docs/ops/signing.md"
+    "docs/ops/signing.md",
+    "docs/technical/architecture/subsystems/api/http-api.md"
   ],
   "invariants": [
     "When response signing is configured, each log returned by a supported production response path must carry a signature over the intended committed log fields, with only the signature envelope excluded from the signed bytes. Establish the registered paths and exceptions before asserting coverage.",
     "The signature envelope, authenticated payload, and visible log must describe the same committed log. A valid signature on detached payload bytes alone does not authenticate a separately modified visible log; verify the binding required by the actual client contract.",
     "A verifier configured with a trusted response public key must reject missing, malformed, or invalid signatures and a mismatched key for every log it claims to verify. An unconfigured verifier is an intentional no-op, not evidence that signatures were checked.",
     "A response key advertised through Discovery must correspond to the key actually used to sign responses at that node and configuration epoch. Do not infer durable or cluster-wide key rotation guarantees without an established contract.",
-    "Signing or verification failure must not be silently presented as a verified successful response at a reachable call site. Separate server signing failure, client verification failure, and intentional unsigned operation by configuration."
+    "Signing or verification failure must not be silently presented as a verified successful response at a reachable call site. Separate server signing failure, client verification failure, and intentional unsigned operation by configuration.",
+    "Atomic HTTP Apply reaches the existing service response signer and preserves each returned responseSignature envelope unchanged through its option-aware public log projection. Visible JSON is not a lossless protobuf codec: authenticate exact SignedLog payload bytes, decode them, and compare their public projection rather than reconstructing a Log from ambiguous JSON types. Post-commit signing/encoding failures do not roll back business effects."
   ],
   "adversarial_questions": [
     "Which registered response paths invoke responseSigner.SignLog, and can a path return a log after signing has been skipped or the log changed?",
@@ -35,13 +40,15 @@
     "Can a valid signature from one log or node be attached to a different visible log and accepted under the configured verification key?",
     "How does the client obtain and trust the response public key, and what happens when Discovery and a response come from different nodes or key epochs?",
     "Are missing keys, malformed envelopes, nil signatures, and serialization errors distinguishable from an intentional unsigned configuration?",
-    "Is a suspected failure already owned by request signing, audit-chain integrity, transport translation, or a concurrent PR?"
+    "Is a suspected failure already owned by request signing, audit-chain integrity, transport translation, or a concurrent PR?",
+    "Can atomic HTTP Apply bypass the service signer, strip or alter an envelope, or render visible log fields different from the authenticated payload projection, including creation id/metadata and bigint number/string selection?"
   ],
   "dynamic_checks_to_consider": [
     "Use a committed non-empty log with known fields; sign it, mutate transaction identity, posting amount, sequence, and the envelope independently, and compare the actual client acceptance with the required binding.",
     "Exercise multiple returned logs and supported command paths with verification enabled and disabled, including a missing signature in the middle of a response.",
     "Compare the node's Discovery public key and key ID with an actual returned signature, then repeat across supported key configuration changes.",
     "Use the existing response signing e2e and ledgerctl tests as leads, recording the exact assertions and any untested path rather than treating green tests as proof.",
-    "Exercise transactions set-metadata/delete-metadata and numscripts save through Apply with missing, corrupt, wrong-key and modified visible logs. Verify rejection before success output or returned script identity is displayed; retain valid-signature and verification-disabled controls."
+    "Exercise transactions set-metadata/delete-metadata and numscripts save through Apply with missing, corrupt, wrong-key and modified visible logs. Verify rejection before success output or returned script identity is displayed; retain valid-signature and verification-disabled controls.",
+    "Use the registered atomic HTTP route with an enabled real service ResponseSigner and nonempty ledger/configuration logs. Verify the original envelope bytes against its trusted key and compare the authenticated public projection with the returned log in both bigint modes. Include missing/invalid signing controls and checked-encoding failure without assuming rollback."
   ]
 }

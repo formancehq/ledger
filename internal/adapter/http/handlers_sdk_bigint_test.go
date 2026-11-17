@@ -149,7 +149,7 @@ func TestBigintOperations(t *testing.T) {
 				}},
 			}, nil
 		}).Times(2)
-	server := httptest.NewServer(NewHandler(logging.Testing(), backend, internalauth.AuthConfig{}, version.Info{}))
+	server := httptest.NewServer(NewHandler(logging.Testing(), backend, internalauth.AuthConfig{}, version.Info{}, nil))
 	defer server.Close()
 	command := exec.CommandContext(t.Context(), "node", script, server.URL)
 	output, err := command.CombinedOutput()

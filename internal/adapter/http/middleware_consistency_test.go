@@ -39,7 +39,7 @@ func serveGetAccount(t *testing.T, headerValues ...string) (*httptest.ResponseRe
 			return &commonpb.Account{Address: addr}, nil
 		}).AnyTimes()
 
-	handler := NewHandler(logging.Testing(), backend, internalauth.AuthConfig{}, version.Info{})
+	handler := NewHandler(logging.Testing(), backend, internalauth.AuthConfig{}, version.Info{}, nil)
 
 	r := httptest.NewRequest(http.MethodGet, APIVersionPrefix+"/ledger1/accounts/alice", nil)
 	for _, v := range headerValues {

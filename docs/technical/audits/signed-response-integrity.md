@@ -47,3 +47,17 @@ Key rotation, cross-node discovery consistency and unsigned operations are
 questions until the current product contract establishes their guarantees.
 Missing test coverage alone is not a defect. Every audit finding still requires
 the independent challenge described in `ai-audit-challenge.md`.
+
+## Atomic HTTP Apply
+
+Atomic HTTP Apply reaches the existing service response signer and preserves each returned responseSignature envelope unchanged through its option-aware public log projection. Visible JSON is not a lossless protobuf codec: authenticate exact SignedLog payload bytes, decode them, and compare their public projection rather than reconstructing a Log from ambiguous JSON types. Post-commit signing/encoding failures do not roll back business effects.
+
+Can atomic HTTP Apply bypass the service signer, strip or alter an envelope, or render visible log fields different from the authenticated payload projection, including creation id/metadata and bigint number/string selection?
+
+Use the registered atomic HTTP route with an enabled real service ResponseSigner and nonempty ledger/configuration logs. Verify the original envelope bytes against its trusted key and compare the authenticated public projection with the returned log in both bigint modes. Include missing/invalid signing controls and checked-encoding failure without assuming rollback.
+
+See [the HTTP contract](../architecture/subsystems/api/http-api.md#atomic-http-apply).
+API boundary owns conversion/output fidelity; authentication owns scopes and
+caller capture; idempotency owns durable atomicity and retry identity; signed
+response integrity owns the returned cryptographic proof. Deduplicate by the
+mechanism that must change, not by the number of affected operations.

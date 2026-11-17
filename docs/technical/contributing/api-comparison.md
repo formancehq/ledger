@@ -44,6 +44,36 @@ integer schema spans `-9223372036854775808` through `18446744073709551615`,
 matching signed negative and unsigned nonnegative metadata values. See
 [Metadata number decoding](../architecture/subsystems/api/http-api.md#metadata-number-decoding).
 
+## Atomic HTTP Apply
+
+`POST /v3/_/apply` is an additive v3 operation for ordered cross-ledger and
+configuration batches. In v2.4.16, `internal/api/v2/routes.go` registers
+`POST /v2/{ledger}/_bulk`, `controllers_bulk.go` chooses a ledger from the route
+and parses `atomic`, `continueOnFailure`, `parallel` and `schemaVersion`, and
+`controllers_bulk_test.go:TestBulk` covers atomic and atomic/parallel conflict
+cases. `openapi/v2.yaml` describes the `V2Bulk` array and `V2BulkResponse`.
+There is no bucket-wide Apply equivalent in that verified route/spec surface.
+
+The new route intentionally uses the existing v3 protobuf command union inside
+`{requests:[...]}`, one header key and `{data:{logs:[...]}}` instead of v2's
+ledger-local bulk action/data array and per-element outcomes. This represents
+all existing v3 service operations and preserves typed metadata and signed
+whole-batch identity without inventing lossy conversions for configuration
+commands. Requests are always atomic, accept no query parameters, and check
+every operation's granular scope. Explicit allowed business skip reasons retain
+the gRPC semantics. Existing v3 bulk remains the closest v2-facing operation;
+its modes, defaults, fields and envelopes are unchanged.
+
+The new endpoint reuses v2-compatible decimal posting amounts, RFC3339 times,
+ordinary JSON error envelopes and bigint response negotiation wherever their
+semantics match. It has no pagination or filtering. HTTP 200 returns ordered
+system logs, including configured response signatures; post-commit response
+failure does not imply rollback. The existing v2-to-v3 endpoint map stays
+unchanged because no mapped route is renamed, removed or replaced. Upgrade
+receiving HTTP nodes before using the additive route; protobuf and persisted
+formats and service revision 40 are unchanged. See
+[the complete contract](../architecture/subsystems/api/http-api.md#atomic-http-apply).
+
 ## HTTP transaction request signatures
 
 V3 adds opt-in signing headers with `application/json` for the

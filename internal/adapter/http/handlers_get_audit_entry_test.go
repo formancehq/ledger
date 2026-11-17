@@ -120,7 +120,7 @@ func TestAuditRoutes_FullRouteIntegration(t *testing.T) {
 			return &auditpb.AuditEntry{Sequence: 1}, nil
 		}).AnyTimes()
 
-	handler := NewHandler(logging.Testing(), backend, internalauth.AuthConfig{}, version.Info{})
+	handler := NewHandler(logging.Testing(), backend, internalauth.AuthConfig{}, version.Info{}, nil)
 
 	t.Run("list", func(t *testing.T) {
 		w := httptest.NewRecorder()

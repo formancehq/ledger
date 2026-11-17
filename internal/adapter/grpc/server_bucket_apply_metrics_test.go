@@ -87,6 +87,9 @@ func TestApplyDurationStatus(t *testing.T) {
 					histogram, ok := m.Data.(metricdata.Histogram[float64])
 					require.True(t, ok, m.Name)
 					for _, dp := range histogram.DataPoints {
+						size, exists := dp.Attributes.Value("batch_size")
+						require.True(t, exists)
+						require.Equal(t, int64(1), size.AsInt64(), "direct service calls must record the batch size without interceptor context")
 						value, _ := dp.Attributes.Value("status")
 						counts[value.AsString()] += dp.Count
 					}

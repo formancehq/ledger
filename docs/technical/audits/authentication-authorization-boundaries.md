@@ -255,3 +255,17 @@ including absent/foreign/wrong-status controls. Public HTTP codes remain generic
 UNAUTHENTICATED/PERMISSION_DENIED; bare/foreign auth errors retain 500. Key lifecycle
 and cryptographic primitive analysis remain excluded. See
 [HTTP signing](../architecture/subsystems/api/http-api.md#signed-transaction-requests).
+
+## Atomic HTTP Apply
+
+Atomic HTTP Apply checks RequiredScopeForRequest for every decoded command before its single service dispatch, with no incidental /_ read-ops scope or universal write scope. A later unauthorized command rejects the whole batch. Signed intent does not grant JWT scopes or caller/system trust; transport-only caller fields are not HTTP input.
+
+Can POST /v3/_/apply admit a mixed batch because only its first element is authorized, require an unrelated ops scope for ledger-only work, lose a checkpoint cluster-write requirement, or replace the authenticated caller with signing identity?
+
+Probe the registered atomic Apply route with each operation scope, mixed allowed/denied commands in multiple positions, anonymous and disabled-auth controls, valid signed batches and forged caller fields. Assert no service dispatch on denial and preserved caller attribution on authorized dispatch; reconcile the route inventory with its dynamic per-command policy.
+
+See [the HTTP contract](../architecture/subsystems/api/http-api.md#atomic-http-apply).
+API boundary owns conversion/output fidelity; authentication owns scopes and
+caller capture; idempotency owns durable atomicity and retry identity; signed
+response integrity owns the returned cryptographic proof. Deduplicate by the
+mechanism that must change, not by the number of affected operations.

@@ -172,7 +172,7 @@ func indexOfMiddleware(chain []func(http.Handler) http.Handler, name string) int
 func walkRouteMiddlewares(t *testing.T) map[string][]func(http.Handler) http.Handler {
 	t.Helper()
 
-	handler := NewHandler(logging.Testing(), nil, internalauth.AuthConfig{}, version.Info{})
+	handler := NewHandler(logging.Testing(), nil, internalauth.AuthConfig{}, version.Info{}, nil)
 
 	routes, ok := handler.(chi.Routes)
 	require.True(t, ok, "NewHandler must return a walkable chi router")
