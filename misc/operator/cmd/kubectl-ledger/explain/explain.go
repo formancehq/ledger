@@ -1,6 +1,7 @@
 package explain
 
 import (
+	"context"
 	"fmt"
 	"reflect"
 	"strings"
@@ -82,24 +83,11 @@ func NewCommand(restConfigFn RESTConfigFunc) *cobra.Command {
 }
 
 func runExplain(cmd *cobra.Command, restConfigFn RESTConfigFunc, args []string) error {
-	var specFields, statusFields []Field
-
-	restCfg, err := restConfigFn()
-	if err == nil {
-		specFields, err = FetchSpecFields(cmd.Context(), restCfg)
-	}
+	specFields, statusFields, err := resolveFields(cmd.Context(), restConfigFn)
 	if err != nil {
 		pterm.Warning.Printfln("Could not fetch CRD from cluster: %v", err)
 		pterm.Warning.Println("Falling back to compiled schema (no descriptions).")
 		pterm.Println()
-		specFields = SpecFields()
-	}
-
-	if restCfg != nil {
-		statusFields, _ = FetchStatusFields(cmd.Context(), restCfg)
-	}
-	if statusFields == nil {
-		statusFields = fieldsFromType(reflect.TypeFor[ledgerv1alpha1.ClusterStatus]())
 	}
 
 	root := []Field{
@@ -131,6 +119,29 @@ func runExplain(cmd *cobra.Command, restConfigFn RESTConfigFunc, args []string) 
 	printFields(root, 0)
 
 	return nil
+}
+
+func resolveFields(ctx context.Context, restConfigFn RESTConfigFunc) ([]Field, []Field, error) {
+	specFields := SpecFields()
+	statusFields := fieldsFromType(reflect.TypeFor[ledgerv1alpha1.ClusterStatus]())
+	cfg, err := restConfigFn()
+	if err != nil {
+		return specFields, statusFields, err
+	}
+	schema, err := fetchClusterSchema(ctx, cfg)
+	if err != nil {
+		return specFields, statusFields, err
+	}
+	liveSpec, specErr := fieldsFromSchema(schema, "spec")
+	if specErr == nil {
+		specFields = liveSpec
+	}
+	liveStatus, statusErr := fieldsFromSchema(schema, "status")
+	if statusErr == nil {
+		statusFields = liveStatus
+	}
+
+	return specFields, statusFields, specErr
 }
 
 func printFields(fields []Field, depth int) {
