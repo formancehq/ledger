@@ -156,7 +156,12 @@ func serveLedgerctlExecStreams(writer http.ResponseWriter, request *http.Request
 		}
 	}
 
-	return json.NewEncoder(byType[corev1.StreamTypeError]).Encode(status)
+	if err := json.NewEncoder(byType[corev1.StreamTypeError]).Encode(status); err != nil {
+		return err
+	}
+	connection.RemoveStreams(byType[corev1.StreamTypeError])
+
+	return nil
 }
 
 func TestLedgerctlExecOutputOwnershipWrappers(t *testing.T) {
