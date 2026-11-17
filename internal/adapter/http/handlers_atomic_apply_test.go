@@ -25,6 +25,7 @@ import (
 
 type atomicApplyTestService struct {
 	servicepb.UnimplementedBucketServiceServer
+
 	apply func(*servicepb.ApplyRequest) (*servicepb.ApplyResponse, error)
 }
 
@@ -98,6 +99,7 @@ func TestAtomicApplyHTTPSignedIntentBinding(t *testing.T) {
 			service := atomicApplyTestService{apply: func(request *servicepb.ApplyRequest) (*servicepb.ApplyResponse, error) {
 				called = true
 				require.True(t, proto.Equal(signed, request.GetSigned()))
+
 				return &servicepb.ApplyResponse{Logs: []*commonpb.Log{{Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_CreateLedger{CreateLedger: &commonpb.CreatedLedgerLog{Name: "one"}}}}}}, nil
 			}}
 			router := NewHandler(logging.Testing(), NewMockBackend(gomock.NewController(t)), internalauth.AuthConfig{}, version.Info{}, service)

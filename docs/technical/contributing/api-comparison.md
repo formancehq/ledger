@@ -67,7 +67,9 @@ its modes, defaults, fields and envelopes are unchanged.
 The new endpoint reuses v2-compatible decimal posting amounts, RFC3339 times,
 ordinary JSON error envelopes and bigint response negotiation wherever their
 semantics match. It has no pagination or filtering. HTTP 200 returns ordered
-system logs, including configured response signatures; post-commit response
+system logs, including configured response signatures except for redacted
+`addEventsSink` and mirror-ledger creation logs. Their original signed payloads
+contain credentials, so the HTTP response omits those signatures. Post-commit response
 failure does not imply rollback. The existing v2-to-v3 endpoint map stays
 unchanged because no mapped route is renamed, removed or replaced. Upgrade
 receiving HTTP nodes before using the additive route; protobuf and persisted

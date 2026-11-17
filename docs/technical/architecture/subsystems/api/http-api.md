@@ -898,7 +898,9 @@ Logs retain their named system payload variants, public ledger-log projections,
 optional `responseSignature`. Ledger creation includes
 all nine committed fields: `name`, `createdAt`, `metadataSchema`, `mode`,
 `mirrorSource`, `accountTypes`, `defaultEnforcementMode`, `id` and `metadata`,
-subject to normal omission rules. `Formance-Bigint-As-String` applies throughout
+subject to normal omission rules. Mirror-source credentials are redacted in the
+creation log, and its `responseSignature` is omitted because the signed payload
+contains the original credentials. `Formance-Bigint-As-String` applies throughout
 nested log payloads. Response encoding is checked before sending success headers.
 For `addEventsSink`, the HTTP response uses the same detached credential-redacted
 configuration as the sink GET endpoint and omits `responseSignature` for that

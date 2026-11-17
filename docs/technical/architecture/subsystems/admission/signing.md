@@ -79,7 +79,8 @@ single key. It checks every operation scope and compares the complete batch
 before invoking the existing service Apply once. It does not add signature
 verification to the HTTP codec or bypass mandatory admission policy. Unlike
 legacy transaction acknowledgements, its returned logs preserve the service's
-optional response-signature envelopes. See
+optional response-signature envelopes except for credential-redacted sink and
+mirror-ledger creation logs. See
 [atomic HTTP Apply](../api/http-api.md#atomic-http-apply).
 
 ### Response signature: per log

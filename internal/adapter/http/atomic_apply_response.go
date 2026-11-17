@@ -45,8 +45,15 @@ func atomicApplyResponse(response *servicepb.ApplyResponse) any {
 				ID                     uint32                           `json:"id"`
 				Metadata               map[string]any                   `json:"metadata,omitempty"`
 			}{
-				Name: created.GetName(), CreatedAt: created.GetCreatedAt(), MetadataSchema: created.GetMetadataSchema(), Mode: created.GetMode(), MirrorSource: created.GetMirrorSource(), AccountTypes: created.GetAccountTypes(), DefaultEnforcementMode: created.GetDefaultEnforcementMode(), ID: created.GetId(), Metadata: commonpb.MetadataToAnyMap(created.GetMetadata()),
-			}}, ResponseSignature: log.GetResponseSignature()}
+				Name: created.GetName(), CreatedAt: created.GetCreatedAt(), MetadataSchema: created.GetMetadataSchema(), Mode: created.GetMode(), MirrorSource: sensitive.Redact(created.GetMirrorSource()), AccountTypes: created.GetAccountTypes(), DefaultEnforcementMode: created.GetDefaultEnforcementMode(), ID: created.GetId(), Metadata: commonpb.MetadataToAnyMap(created.GetMetadata()),
+			}}, ResponseSignature: func() *signaturepb.SignedLog {
+				if created.GetMirrorSource() != nil {
+					// The signed protobuf log contains the original mirror credentials.
+					return nil
+				}
+
+				return log.GetResponseSignature()
+			}()}
 		}
 	}
 
