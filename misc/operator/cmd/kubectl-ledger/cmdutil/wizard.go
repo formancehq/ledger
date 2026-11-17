@@ -10,9 +10,9 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-// ResolveClusterName returns the ledger name from args or by interactive selection.
-// If args contains a name, it is returned directly. Otherwise, lists ledgers in
-// the resolved namespace and prompts the user to select one.
+// ResolveClusterName returns the ledger name from args or lists ledgers in the
+// resolved namespace. A single match is selected automatically. Multiple matches
+// prompt for selection in text mode and require an explicit name in JSON/YAML mode.
 func ResolveClusterName(ctx context.Context, opts *Options, args []string) (name, namespace string, err error) {
 	ns, err := opts.ResolvedNamespace()
 	if err != nil {
@@ -37,7 +37,9 @@ func ResolveClusterName(ctx context.Context, opts *Options, args []string) (name
 	return name, ns, nil
 }
 
-// ResolveBackupName returns the Backup name from args or by interactive selection.
+// ResolveBackupName returns the Backup name from args or lists Backups in the
+// resolved namespace. A single match is selected automatically. Multiple matches
+// prompt for selection in text mode and require an explicit name in JSON/YAML mode.
 func ResolveBackupName(ctx context.Context, opts *Options, args []string) (name, namespace string, err error) {
 	ns, err := opts.ResolvedNamespace()
 	if err != nil {
@@ -62,8 +64,10 @@ func ResolveBackupName(ctx context.Context, opts *Options, args []string) (name,
 	return name, ns, nil
 }
 
-// ResolveCredentialsName returns the Credentials name from args
-// or by interactive selection. Credentials is cluster-scoped so no namespace needed.
+// ResolveCredentialsName returns the Credentials name from args or lists
+// cluster-scoped Credentials without a namespace. A single match is selected
+// automatically. Multiple matches prompt for selection in text mode and require
+// an explicit name in JSON/YAML mode.
 func ResolveCredentialsName(ctx context.Context, opts *Options, args []string) (string, error) {
 	return resolveResourceName(opts, args, "Credentials", "credentials", "", func(c client.Client) ([]string, error) {
 		list, err := ListCredentials(ctx, c)
