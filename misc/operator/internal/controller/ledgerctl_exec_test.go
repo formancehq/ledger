@@ -97,7 +97,7 @@ func TestLedgerctlExecOutputWrappers(t *testing.T) {
 	}
 }
 
-func serveLedgerctlExecStreams(writer http.ResponseWriter, request *http.Request, execFails bool) error {
+func serveLedgerctlExecStreams(writer http.ResponseWriter, request *http.Request, execFails bool) (retErr error) {
 	if _, err := httpstream.Handshake(request, writer, []string{remotecommand.StreamProtocolV4Name}); err != nil {
 		return err
 	}
@@ -114,7 +114,9 @@ func serveLedgerctlExecStreams(writer http.ResponseWriter, request *http.Request
 	if connection == nil {
 		return errors.New("SPDY upgrade failed")
 	}
-	defer connection.Close()
+	defer func() {
+		retErr = errors.Join(retErr, connection.Close())
+	}()
 	byType := make(map[string]httpstream.Stream, 3)
 	for range 3 {
 		select {
