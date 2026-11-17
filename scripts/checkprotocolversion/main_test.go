@@ -1,6 +1,8 @@
 package main
 
 import (
+	"cmp"
+	"encoding/json"
 	"errors"
 	"os"
 	"os/exec"
@@ -27,7 +29,7 @@ func TestVerdict(t *testing.T) {
 		{name: "break", res: result{baseVersion: 3, headVersion: 3, clientFindings: breaks}, errorSub: "1 wire-incompatible change(s) reach a gated service"},
 		{name: "bump without break", res: result{baseVersion: 3, headVersion: 4}, errorSub: "changed from 3 to 4"},
 		{name: "bump does not excuse a break", res: result{baseVersion: 3, headVersion: 4, clientFindings: breaks}, errorSub: "wire-incompatible"},
-		{name: "exception stop error", res: result{baseVersion: 3, headVersion: 3, excepted: 1, stopErrors: []error{errors.New("stop not listed")}}, errorSub: "stop not listed"},
+		{name: "exception stop error", res: result{baseVersion: 3, headVersion: 3, excepted: 1, exceptionErrors: []error{errors.New("stop not listed")}}, errorSub: "stop not listed"},
 		{name: "exception with its stop", res: result{baseVersion: 3, headVersion: 3, excepted: 1}},
 		{name: "decrease", res: result{baseVersion: 3, headVersion: 2}, errorSub: `changed from 3 to 2; it is frozen during the v3 release-candidate phase: restore "3"`},
 	} {
@@ -326,13 +328,20 @@ func TestCheckerAppliesWireExceptions(t *testing.T) {
 
 	retyped := strings.Replace(fixtureProto, "int64 amount = 2;", "string amount = 2;", 1)
 	exception := func(stop string) []wireException {
-		return []wireException{{declaration: "api.Inner", rule: "FIELD_WIRE_COMPATIBLE_TYPE", message: retypeMessage, stop: stop}}
+		return []wireException{{Declaration: "api.Inner", Rule: "FIELD_WIRE_COMPATIBLE_TYPE", Message: retypeMessage, Stop: stop}}
 	}
 	// branchPointMarker tags the next line's marker on the latest release,
 	// as on a release branch cut without commits of its own.
 	branchPointMarker := func(t *testing.T, repo string) {
 		t.Helper()
 		runGit(t, repo, "tag", "v3.1.0-0")
+	}
+	// taggedChange puts a later tag on a commit of the checked change.
+	taggedChange := func(t *testing.T, repo string) {
+		t.Helper()
+		writeFixture(t, repo, "CHANGE", "change\n")
+		commitFixture(t, repo, "change")
+		runGit(t, repo, "tag", "v3.0.0-rc.9")
 	}
 	// releasedElsewhere tags a release on a branch this one does not contain.
 	releasedElsewhere := func(t *testing.T, repo string) {
@@ -351,6 +360,7 @@ func TestCheckerAppliesWireExceptions(t *testing.T) {
 		exceptions []wireException
 		stops      []string
 		baseRef    string
+		base       string
 		arrange    func(t *testing.T, repo string)
 		wantGated  int
 		excepted   int
@@ -359,16 +369,16 @@ func TestCheckerAppliesWireExceptions(t *testing.T) {
 		{name: "listed break behind the next release", proto: retyped, exceptions: exception("v3.0.0-rc.5"), stops: []string{"v3.0.0-rc.4", "v3.0.0-rc.5"}, excepted: 1},
 		{
 			name: "unlisted break", proto: retyped, stops: []string{"v3.0.0-rc.5"},
-			exceptions: []wireException{{declaration: "api.Inner", rule: "FIELD_WIRE_COMPATIBLE_TYPE", message: strings.Replace(retypeMessage, `"amount"`, `"count"`, 1), stop: "v3.0.0-rc.5"}},
+			exceptions: []wireException{{Declaration: "api.Inner", Rule: "FIELD_WIRE_COMPATIBLE_TYPE", Message: strings.Replace(retypeMessage, `"amount"`, `"count"`, 1), Stop: "v3.0.0-rc.5"}},
 			wantGated:  1, errorSub: "1 wire-incompatible change(s) reach a gated service",
 		},
 		{
 			name: "same text on another declaration", proto: retyped, stops: []string{"v3.0.0-rc.5"},
-			exceptions: []wireException{{declaration: "api.GetResponse", rule: "FIELD_WIRE_COMPATIBLE_TYPE", message: retypeMessage, stop: "v3.0.0-rc.5"}},
+			exceptions: []wireException{{Declaration: "api.GetResponse", Rule: "FIELD_WIRE_COMPATIBLE_TYPE", Message: retypeMessage, Stop: "v3.0.0-rc.5"}},
 			wantGated:  1, errorSub: "1 wire-incompatible change(s) reach a gated service",
 		},
 		{name: "stop missing from the operator", proto: retyped, exceptions: exception("v3.0.0-rc.5"), stops: []string{"v3.0.0-rc.4"}, excepted: 1, errorSub: "relies on the stopped upgrade v3.0.0-rc.5, which mandatoryStopVersions"},
-		{name: "stop already released", proto: retyped, exceptions: exception("v3.0.0-rc.4"), stops: []string{"v3.0.0-rc.4"}, excepted: 1, errorSub: "stop v3.0.0-rc.4 does not separate the latest release from the next build of this branch: use v3.0.0-rc.5"},
+		{name: "stop already released", proto: retyped, exceptions: exception("v3.0.0-rc.4"), stops: []string{"v3.0.0-rc.4"}, excepted: 1, errorSub: "stop v3.0.0-rc.4 does not separate the latest release from the next build of the target branch: use v3.0.0-rc.5"},
 		{name: "stop at a later rc", proto: retyped, exceptions: exception("v3.0.0-rc.6"), stops: []string{"v3.0.0-rc.6"}, excepted: 1, errorSub: "stop v3.0.0-rc.6 does not separate"},
 		// rc.5 can ship before the final release and would roll.
 		{name: "stop at the final release", proto: retyped, exceptions: exception("v3.0.0"), stops: []string{"v3.0.0"}, excepted: 1, errorSub: "stop v3.0.0 does not separate"},
@@ -386,7 +396,15 @@ func TestCheckerAppliesWireExceptions(t *testing.T) {
 		{
 			name: "release branch rejects the next line's stop", proto: retyped, exceptions: exception("v3.1.0-0"), stops: []string{"v3.1.0-0"},
 			baseRef: "refs/heads/release/v3.0", arrange: branchPointMarker, excepted: 1,
-			errorSub: "stop v3.1.0-0 does not separate the latest release from the next build of this branch: use v3.0.0-rc.5",
+			errorSub: "stop v3.1.0-0 does not separate the latest release from the next build of the target branch: use v3.0.0-rc.5",
+		},
+		// A tag that only the checked change carries is not a release of the
+		// target branch.
+		{name: "tag on the change does not move the floor", proto: retyped, exceptions: exception("v3.0.0-rc.5"), stops: []string{"v3.0.0-rc.5"}, base: "HEAD~1", arrange: taggedChange, excepted: 1},
+		{
+			name: "stop after a tag on the change", proto: retyped, exceptions: exception("v3.0.0-rc.10"), stops: []string{"v3.0.0-rc.10"},
+			base: "HEAD~1", arrange: taggedChange, excepted: 1,
+			errorSub: "stop v3.0.0-rc.10 does not separate the latest release from the next build of the target branch: use v3.0.0-rc.5",
 		},
 		{name: "stop above a release tagged elsewhere", proto: retyped, exceptions: exception("v3.1.0-0"), stops: []string{"v3.1.0-0"}, arrange: releasedElsewhere, excepted: 1},
 		{name: "stop below a release tagged elsewhere", proto: retyped, exceptions: exception("v3.0.0-rc.5"), stops: []string{"v3.0.0-rc.5"}, arrange: releasedElsewhere, excepted: 1, errorSub: "stop v3.0.0-rc.5 does not separate"},
@@ -401,10 +419,11 @@ func TestCheckerAppliesWireExceptions(t *testing.T) {
 			}
 			writeFixture(t, repo, "misc/proto/api.proto", tc.proto)
 			writeFixture(t, repo, stopFile, stopSource(tc.stops))
+			writeFixture(t, repo, exceptionsFile, exceptionsSource(t, tc.exceptions))
+			base := cmp.Or(tc.base, "HEAD")
 
 			res, err := checker{
-				repoRoot: repo, base: "HEAD", baseRef: tc.baseRef, buf: "buf", services: []string{"api.Api"},
-				exceptions: tc.exceptions, pluginRoot: repoRoot(t),
+				repoRoot: repo, base: base, baseRef: tc.baseRef, buf: "buf", services: []string{"api.Api"}, pluginRoot: repoRoot(t),
 			}.run()
 			require.NoError(t, err)
 			require.Len(t, res.clientFindings, tc.wantGated, "%v", res.clientFindings)
@@ -421,6 +440,101 @@ func TestCheckerAppliesWireExceptions(t *testing.T) {
 	}
 }
 
+// An exception that the base lists stays listed unchanged: once the break is
+// in the base, buf no longer reports it, so nothing else carries its stop.
+func TestCheckerKeepsMergedExceptions(t *testing.T) {
+	t.Parallel()
+
+	merged := wireException{Declaration: "api.Inner", Rule: "FIELD_WIRE_COMPATIBLE_TYPE", Message: retypeMessage, Stop: "v3.0.0-rc.5"}
+	other := wireException{Declaration: "api.GetResponse", Rule: "FIELD_WIRE_COMPATIBLE_TYPE", Message: "another", Stop: "v3.0.0-rc.5"}
+	retargeted := merged
+	retargeted.Stop = "v3.0.0-rc.6"
+
+	for _, tc := range []struct {
+		name       string
+		exceptions []wireException
+		stops      []string
+		noFile     bool
+		errorSub   string
+	}{
+		{name: "kept", exceptions: []wireException{merged}, stops: []string{"v3.0.0-rc.5"}},
+		{name: "kept next to a new one", exceptions: []wireException{other, merged}, stops: []string{"v3.0.0-rc.5"}},
+		{name: "removed with its stop", errorSub: "the wire exception for api.Inner (stop v3.0.0-rc.5) was removed or changed"},
+		{name: "file removed with its stop", noFile: true, errorSub: "the wire exception for api.Inner (stop v3.0.0-rc.5) was removed or changed"},
+		{name: "retargeted to a listed stop", exceptions: []wireException{retargeted}, stops: []string{"v3.0.0-rc.6"}, errorSub: "the wire exception for api.Inner (stop v3.0.0-rc.5) was removed or changed"},
+		{name: "replaced by another", exceptions: []wireException{other}, stops: []string{"v3.0.0-rc.5"}, errorSub: "the wire exception for api.Inner (stop v3.0.0-rc.5) was removed or changed"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			repo := newFixtureRepo(t)
+			writeFixture(t, repo, stopFile, stopSource([]string{"v3.0.0-rc.5"}))
+			writeFixture(t, repo, exceptionsFile, exceptionsSource(t, []wireException{merged}))
+			commitFixture(t, repo, "merged exception")
+
+			writeFixture(t, repo, stopFile, stopSource(tc.stops))
+			if tc.noFile {
+				require.NoError(t, os.Remove(filepath.Join(repo, filepath.FromSlash(exceptionsFile))))
+			} else {
+				writeFixture(t, repo, exceptionsFile, exceptionsSource(t, tc.exceptions))
+			}
+
+			res, err := checker{repoRoot: repo, base: "HEAD", buf: "buf", services: []string{"api.Api"}, pluginRoot: repoRoot(t)}.run()
+			require.NoError(t, err)
+
+			err = res.verdict()
+			if tc.errorSub == "" {
+				require.NoError(t, err)
+
+				return
+			}
+			require.ErrorContains(t, err, tc.errorSub)
+		})
+	}
+}
+
+func TestParseExceptions(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name     string
+		source   string
+		want     int
+		errorSub string
+	}{
+		{name: "empty list", source: `{"exceptions": []}`},
+		{name: "entry", source: `{"exceptions": [{"declaration": "a.B", "rule": "R", "message": "m", "stop": "v3.0.0-rc.5"}]}`, want: 1},
+		{name: "unknown field", source: `{"exceptions": [], "note": "x"}`, errorSub: "unknown field"},
+		{name: "missing message", source: `{"exceptions": [{"declaration": "a.B", "rule": "R", "stop": "v3.0.0-rc.5"}]}`, errorSub: "exception 0 needs a declaration, a rule and a message"},
+		{name: "missing stop", source: `{"exceptions": [{"declaration": "a.B", "rule": "R", "message": "m"}]}`, errorSub: `exception 0: stop "" is not a canonical version`},
+		{name: "not json", source: `exceptions`, errorSub: "invalid character"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			got, err := parseExceptions([]byte(tc.source))
+			if tc.errorSub != "" {
+				require.ErrorContains(t, err, tc.errorSub)
+
+				return
+			}
+			require.NoError(t, err)
+			require.Len(t, got, tc.want)
+		})
+	}
+}
+
+// The committed list must stay readable by the gate.
+func TestParseExceptionsFromRepository(t *testing.T) {
+	t.Parallel()
+
+	source, err := os.ReadFile(filepath.Join(repoRoot(t), exceptionsFile))
+	require.NoError(t, err)
+
+	_, err = parseExceptions(source)
+	require.NoError(t, err)
+}
+
 func TestCheckerFailsClosedOnExceptionStops(t *testing.T) {
 	t.Parallel()
 
@@ -432,14 +546,14 @@ func TestCheckerFailsClosedOnExceptionStops(t *testing.T) {
 		arrange  func(t *testing.T, repo string)
 		errorSub string
 	}{
-		{name: "no reachable tag", stop: "v3.0.0-rc.5", arrange: func(*testing.T, string) {}, errorSub: "no version tag of this branch's line is reachable from HEAD"},
+		{name: "no reachable tag", stop: "v3.0.0-rc.5", arrange: func(*testing.T, string) {}, errorSub: "no version tag of the target branch's line is reachable from the base commit"},
 		{
 			name: "non-canonical stop", stop: "3.0.0-rc.5",
 			arrange: func(t *testing.T, repo string) {
 				t.Helper()
 				runGit(t, repo, "tag", "v3.0.0-rc.4")
 			},
-			errorSub: `wire exception stop "3.0.0-rc.5" is not a canonical version`,
+			errorSub: `exception 0: stop "3.0.0-rc.5" is not a canonical version`,
 		},
 		{
 			name: "unreadable stop list", stop: "v3.0.0-rc.5",
@@ -456,12 +570,12 @@ func TestCheckerFailsClosedOnExceptionStops(t *testing.T) {
 			repo := newFixtureRepo(t)
 			writeFixture(t, repo, "misc/proto/api.proto", retyped)
 			writeFixture(t, repo, stopFile, stopSource([]string{tc.stop}))
+			writeFixture(t, repo, exceptionsFile, exceptionsSource(t, []wireException{
+				{Declaration: "api.Inner", Rule: "FIELD_WIRE_COMPATIBLE_TYPE", Message: retypeMessage, Stop: tc.stop},
+			}))
 			tc.arrange(t, repo)
 
-			_, err := checker{
-				repoRoot: repo, base: "HEAD", buf: "buf", services: []string{"api.Api"}, pluginRoot: repoRoot(t),
-				exceptions: []wireException{{declaration: "api.Inner", rule: "FIELD_WIRE_COMPATIBLE_TYPE", message: retypeMessage, stop: tc.stop}},
-			}.run()
+			_, err := checker{repoRoot: repo, base: "HEAD", buf: "buf", services: []string{"api.Api"}, pluginRoot: repoRoot(t)}.run()
 			require.ErrorContains(t, err, tc.errorSub)
 		})
 	}
@@ -538,6 +652,15 @@ func commitFixture(t *testing.T, repo, message string) {
 
 	runGit(t, repo, "add", ".")
 	runGit(t, repo, "-c", "user.name=test", "-c", "user.email=test@example.invalid", "commit", "--quiet", "-m", message)
+}
+
+func exceptionsSource(t *testing.T, exceptions []wireException) string {
+	t.Helper()
+
+	source, err := json.Marshal(map[string][]wireException{"exceptions": exceptions})
+	require.NoError(t, err)
+
+	return string(source)
 }
 
 func stopSource(stops []string) string {

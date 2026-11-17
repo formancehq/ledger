@@ -5,10 +5,12 @@
 //   - pkg/grpcprotocol.Version must not change;
 //   - no change may be wire-incompatible for a type reachable from a gated
 //     service, as classified by `buf breaking` with misc/proto/buf.yaml,
-//     unless wireExceptions lists it;
+//     unless misc/proto/wire-exceptions.json lists it;
 //   - a listed exception names an operator mandatoryStopVersions entry that
-//     the next build of the branch crosses, so nodes on either side of the
-//     change never forward to each other.
+//     the next build of the target branch crosses, so nodes on either side
+//     of the change never forward to each other;
+//   - a listed exception is never removed or changed, so its stop keeps
+//     protecting clusters that upgrade from before the change.
 //
 // Semantic changes that keep the `.proto` text unchanged remain a reviewer
 // classification.
@@ -26,6 +28,7 @@ import (
 	"go/parser"
 	"go/token"
 	"io"
+	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -45,8 +48,10 @@ const (
 	protocolFile = "pkg/grpcprotocol/protocol.go"
 	protoDir     = "misc/proto"
 	bufConfig    = "misc/proto/buf.yaml"
-	stopFile     = "misc/operator/internal/controller/required_upgrade.go"
-	stopVar      = "mandatoryStopVersions"
+	// exceptionsFile is data so that its content at the base is readable.
+	exceptionsFile = "misc/proto/wire-exceptions.json"
+	stopFile       = "misc/operator/internal/controller/required_upgrade.go"
+	stopVar        = "mandatoryStopVersions"
 
 	// bufFindingsExitCode is the exit status `buf breaking` uses when it
 	// reports findings; any other non-zero status is a tool failure.
@@ -63,29 +68,49 @@ func gatedServices() []string {
 // wireException is a wire-incompatible change to a gated type that ships at
 // an unchanged revision. Clients built before it misdecode the type.
 type wireException struct {
-	declaration string // fully qualified message, enum or service
-	rule        string // buf rule
-	// message is the buf finding text up to its documentation link. It
+	// Declaration is the fully qualified message, enum or service.
+	Declaration string `json:"declaration"`
+	// Rule is the buf rule.
+	Rule string `json:"rule"`
+	// Message is the buf finding text up to its documentation link. It
 	// names the field and both types.
-	message string
-	// stop is the mandatoryStopVersions entry that keeps nodes on either
+	Message string `json:"message"`
+	// Stop is the mandatoryStopVersions entry that keeps nodes on either
 	// side of the change from forwarding to each other.
-	stop string
+	Stop string `json:"stop"`
 }
 
-// wireExceptions lists the accepted exceptions. Adding one requires the
+// parseExceptions reads the exceptions file. Adding an entry requires the
 // review in protocol-compatibility.md ("Wire exceptions").
-func wireExceptions() []wireException {
-	return nil
+func parseExceptions(data []byte) ([]wireException, error) {
+	var file struct {
+		Exceptions []wireException `json:"exceptions"`
+	}
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&file); err != nil {
+		return nil, err
+	}
+	for i, exception := range file.Exceptions {
+		if exception.Declaration == "" || exception.Rule == "" || exception.Message == "" {
+			return nil, fmt.Errorf("exception %d needs a declaration, a rule and a message", i)
+		}
+		if _, ok := parseTag(exception.Stop); !ok {
+			return nil, fmt.Errorf("exception %d: stop %q is not a canonical version", i, exception.Stop)
+		}
+	}
+
+	return file.Exceptions, nil
 }
 
 type checker struct {
 	repoRoot string
 	base     string
 	// baseRef is the branch the change targets, when known.
-	baseRef    string
-	buf        string
-	services   []string
+	baseRef  string
+	buf      string
+	services []string
+	// exceptions is the worktree's list, loaded by run.
 	exceptions []wireException
 	// pluginRoot is the repository providing tools/buf-plugin-ledger, which
 	// misc/proto/buf.yaml requires on PATH for every buf command.
@@ -105,10 +130,11 @@ type result struct {
 	baseVersion    int
 	headVersion    int
 	clientFindings []bufFinding
-	// excepted counts the findings of this change that wireExceptions lists.
-	excepted      int
-	otherFindings int
-	stopErrors    []error
+	// excepted counts the findings of this change that the exceptions file
+	// lists.
+	excepted        int
+	otherFindings   int
+	exceptionErrors []error
 }
 
 func main() {
@@ -131,12 +157,11 @@ func main() {
 	}
 
 	c := checker{
-		repoRoot:   strings.TrimSpace(string(root)),
-		base:       base,
-		baseRef:    baseRef,
-		buf:        "buf",
-		services:   gatedServices(),
-		exceptions: wireExceptions(),
+		repoRoot: strings.TrimSpace(string(root)),
+		base:     base,
+		baseRef:  baseRef,
+		buf:      "buf",
+		services: gatedServices(),
 	}
 	c.pluginRoot = c.repoRoot
 
@@ -181,7 +206,7 @@ func (r result) verdict() error {
 			len(r.clientFindings)))
 	}
 
-	return errors.Join(append(errs, r.stopErrors...)...)
+	return errors.Join(append(errs, r.exceptionErrors...)...)
 }
 
 func (c checker) run() (result, error) {
@@ -193,6 +218,16 @@ func (c checker) run() (result, error) {
 	}
 	if res.baseVersion, err = parseVersion(baseSource); err != nil {
 		return res, fmt.Errorf("%s at %s: %w", protocolFile, c.base, err)
+	}
+
+	var removed []wireException
+	if c.exceptions, removed, err = c.loadExceptions(); err != nil {
+		return res, err
+	}
+	for _, exception := range removed {
+		res.exceptionErrors = append(res.exceptionErrors, fmt.Errorf(
+			"the wire exception for %s (stop %s) was removed or changed in %s: exceptions are permanent, because the stop keeps protecting clusters that upgrade from before the change",
+			exception.Declaration, exception.Stop, exceptionsFile))
 	}
 
 	headSource, err := os.ReadFile(filepath.Join(c.repoRoot, protocolFile))
@@ -251,11 +286,51 @@ func (c checker) run() (result, error) {
 		}
 	}
 
-	if res.stopErrors, err = c.exceptionStopErrors(introduced); err != nil {
+	stopErrors, err := c.exceptionStopErrors(introduced)
+	if err != nil {
 		return res, err
 	}
+	res.exceptionErrors = append(res.exceptionErrors, stopErrors...)
 
 	return res, nil
+}
+
+// loadExceptions returns the worktree's exceptions and the base's exceptions
+// that the worktree no longer lists unchanged. A missing file lists nothing.
+func (c checker) loadExceptions() (listed, removed []wireException, err error) {
+	data, err := os.ReadFile(filepath.Join(c.repoRoot, exceptionsFile))
+	switch {
+	case errors.Is(err, fs.ErrNotExist):
+	case err != nil:
+		return nil, nil, fmt.Errorf("reading %s: %w", exceptionsFile, err)
+	default:
+		if listed, err = parseExceptions(data); err != nil {
+			return nil, nil, fmt.Errorf("%s: %w", exceptionsFile, err)
+		}
+	}
+
+	tracked, err := gitOutput(c.repoRoot, "ls-tree", "--name-only", c.base, "--", exceptionsFile)
+	if err != nil {
+		return nil, nil, fmt.Errorf("looking up %s at %s: %w", exceptionsFile, c.base, err)
+	}
+	if len(bytes.TrimSpace(tracked)) == 0 {
+		return listed, nil, nil
+	}
+	data, err = gitOutput(c.repoRoot, "show", c.base+":"+exceptionsFile)
+	if err != nil {
+		return nil, nil, fmt.Errorf("reading %s at %s: %w", exceptionsFile, c.base, err)
+	}
+	before, err := parseExceptions(data)
+	if err != nil {
+		return nil, nil, fmt.Errorf("%s at %s: %w", exceptionsFile, c.base, err)
+	}
+	for _, exception := range before {
+		if !slices.Contains(listed, exception) {
+			removed = append(removed, exception)
+		}
+	}
+
+	return listed, removed, nil
 }
 
 // exceptionFor returns the exception that lists a gated finding.
@@ -267,7 +342,7 @@ func (c checker) exceptionFor(item bufFinding, index spanIndex) (wireException, 
 	}
 	message, _, _ := strings.Cut(item.Message, " See https://")
 	i := slices.IndexFunc(c.exceptions, func(e wireException) bool {
-		return e.declaration == name && e.rule == item.Type && e.message == message
+		return e.Declaration == name && e.Rule == item.Type && e.Message == message
 	})
 	if i < 0 {
 		return wireException{}, false
@@ -312,11 +387,12 @@ func (c checker) exceptionStopErrors(introduced []wireException) ([]error, error
 	for _, name := range exceptionStops(introduced) {
 		stop, ok := parseTag(name)
 		if !ok {
+			// parseExceptions rejects such an entry.
 			return nil, fmt.Errorf("wire exception stop %q is not a canonical version", name)
 		}
 		if (lower != nil && !lower.LessThan(stop)) || floor.LessThan(stop) {
 			errs = append(errs, fmt.Errorf(
-				"the wire exception stop %s does not separate the latest release from the next build of this branch: use v%s, the lowest version that build can be deployed as",
+				"the wire exception stop %s does not separate the latest release from the next build of the target branch: use v%s, the lowest version that build can be deployed as",
 				name, floor))
 		}
 	}
@@ -328,8 +404,8 @@ func (c checker) exceptionStopErrors(introduced []wireException) ([]error, error
 func exceptionStops(exceptions []wireException) []string {
 	var stops []string
 	for _, exception := range exceptions {
-		if !slices.Contains(stops, exception.stop) {
-			stops = append(stops, exception.stop)
+		if !slices.Contains(stops, exception.Stop) {
+			stops = append(stops, exception.Stop)
 		}
 	}
 
@@ -337,16 +413,18 @@ func exceptionStops(exceptions []wireException) []string {
 }
 
 // nextBuildBounds returns the latest release below the next build of the
-// branch, if any, and the lowest version that build can be deployed as. A
-// stop S separates the two when lower < S <= floor, the operator's rule.
+// target branch, if any, and the lowest version that build can be deployed
+// as. A stop S separates the two when lower < S <= floor, the operator's
+// rule. The target's own history places it: a tag that only the checked
+// change carries is not a release of the target branch.
 func (c checker) nextBuildBounds() (lower, floor *semver.Version, err error) {
-	reachable, err := c.versionTags("--merged", "HEAD")
+	reachable, err := c.versionTags("--merged", c.base)
 	if err != nil {
 		return nil, nil, err
 	}
 	reachable = slices.DeleteFunc(reachable, func(tag *semver.Version) bool { return !onReleaseLine(c.baseRef, tag) })
 	if len(reachable) == 0 {
-		return nil, nil, errors.New("no version tag of this branch's line is reachable from HEAD; fetch tags to place the branch among the releases")
+		return nil, nil, errors.New("no version tag of the target branch's line is reachable from the base commit; fetch tags to place the branch among the releases")
 	}
 	if floor, err = deployFloor(slices.MaxFunc(reachable, (*semver.Version).Compare)); err != nil {
 		return nil, nil, err

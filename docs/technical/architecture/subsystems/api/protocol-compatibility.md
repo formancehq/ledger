@@ -422,8 +422,8 @@ clients on every RPC.
 
 An exception therefore needs all of the following in the same PR:
 
-1. An entry in `wireExceptions()` in `scripts/checkprotocolversion/main.go`
-   naming the declaration, the `buf` rule, the finding text, and a stop.
+1. An entry in `misc/proto/wire-exceptions.json` naming the declaration, the
+   `buf` rule, the finding text up to its documentation link, and a stop.
 2. That stop in the operator's `mandatoryStopVersions`
    (`misc/operator/internal/controller/required_upgrade.go`), so nodes on
    either side of the change never run together.
@@ -440,10 +440,15 @@ stop covers whichever build ships next:
 | `vX.Y.Z` | `vX.Y.(Z+1)-0` | Development, beta and RC builds of the next patch all sort above `-0`. |
 | version-line marker `vX.Y.0-0` | `vX.Y.0-0` | Every build of the new line sorts at or above its marker. |
 
-The latest tag is the highest version tag in the branch's history, as for
-[development versions](../../../contributing/release-versioning.md). A change
-that targets `release/vX.Y` only counts tags of that line, because the next
-line's marker sits on the branch point.
+The latest tag is the highest version tag in the target branch's history, as
+for [development versions](../../../contributing/release-versioning.md). A tag
+that only the change itself carries does not count. A change that targets
+`release/vX.Y` only counts tags of that line, because the next line's marker
+sits on the branch point.
+
+An exception is permanent. Once the change is merged, `buf` no longer reports
+it, so the entry is the only record that its stop is still needed by clusters
+upgrading from before the change. Never remove an entry or change its stop.
 
 The stop list orders versions, not commits. Two development builds cut from
 the same tag on either side of the change cannot be separated by any entry, so
@@ -480,23 +485,28 @@ the operator's `required_upgrade.go` changes.
    line and column to distinguish nested declarations on the same line. A
    finding it cannot attribute to a declaration counts when its file declares a
    gated type. Raft-only and persisted-only messages are not counted.
-4. A kept finding fails the check unless `wireExceptions()` lists its
-   declaration, rule and text. A revision bump does not excuse it.
-5. When exceptions are listed, the check reads `mandatoryStopVersions` from
+4. A kept finding fails the check unless `misc/proto/wire-exceptions.json`
+   lists its declaration, rule and text. A revision bump does not excuse it.
+5. The check compares the exceptions file with its content at the base. An
+   entry that the base lists must still be listed unchanged, so neither an
+   exception nor its stop can be dropped after the change merges.
+6. When exceptions are listed, the check reads `mandatoryStopVersions` from
    the operator source without compiling it.
-   - On every run, each exception's stop must be in that list, so a stop
-     cannot be removed after its exception merges.
+   - On every run, each exception's stop must be in that list.
    - For an exception that the checked change introduces, the stop `S` must
      also satisfy `lower < S <= floor`. `floor` is the stop from the table
-     above. `lower` is the highest version tag in the repository below it, on
-     any branch, so a release tagged elsewhere is still separated.
+     above, taken from the tags reachable from the base commit. `lower` is
+     the highest version tag in the repository below it, on any branch, so a
+     release tagged elsewhere is still separated.
    - CI passes the target branch as `PROTOCOL_BASE_REF`. Without it, the
      branch is treated as shipping every version line.
 
-   The check fails if the list is not a `[]string` literal, if an introduced
-   exception's stop is not a canonical `vX.Y.Z[-prerelease]` version, or if
-   no version tag of the branch's line is reachable from `HEAD`. CI checks
-   out the full history with tags.
+   The check fails if the exceptions file has an unknown field, an empty
+   declaration, rule or message, or a stop that is not a canonical
+   `vX.Y.Z[-prerelease]` version; if the operator list is not a `[]string`
+   literal; or if an exception is introduced while no version tag of the
+   target branch's line is reachable from the base commit. CI checks out the
+   full history with tags.
 
 The check does not detect semantic changes that keep the `.proto` text
 unchanged; those remain the author's and reviewer's classification. When a
