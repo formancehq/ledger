@@ -96,10 +96,10 @@ func writeAppliedProposalCoverageRow(t *testing.T, store *dal.Store, seq uint64,
 
 func deleteExportedSegment(t *testing.T, manifest *Manifest, typ string) *Manifest {
 	t.Helper()
-	copy := *manifest
-	copy.Exports = slices.DeleteFunc(slices.Clone(manifest.Exports), func(segment ExportSegment) bool { return segment.Type == typ })
+	clonedManifest := *manifest
+	clonedManifest.Exports = slices.DeleteFunc(slices.Clone(manifest.Exports), func(segment ExportSegment) bool { return segment.Type == typ })
 
-	return &copy
+	return &clonedManifest
 }
 
 func TestValidateAppliedProposalCoverage_AllowsFailureGaps(t *testing.T) {
