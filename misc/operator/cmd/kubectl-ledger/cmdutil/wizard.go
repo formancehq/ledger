@@ -87,7 +87,10 @@ func resolveResourceName(opts *Options, args []string, kind, noun, namespace str
 	if err != nil {
 		return "", fmt.Errorf("creating client: %w", err)
 	}
-	pterm.Info.Printfln("Fetching %s resources...", kind)
+	structured := opts.OutputFormat() == "json" || opts.OutputFormat() == "yaml"
+	if !structured {
+		pterm.Info.Printfln("Fetching %s resources...", kind)
+	}
 	names, err := listNames(crdClient)
 	if err != nil {
 		pterm.Error.Printfln("Failed to list %s resources", kind)
@@ -106,9 +109,14 @@ func resolveResourceName(opts *Options, args []string, kind, noun, namespace str
 		return "", fmt.Errorf("no %s resources found in namespace %q", kind, namespace)
 	}
 	if len(names) == 1 {
-		pterm.Info.Printfln("Using %s: %s", noun, pterm.Cyan(names[0]))
+		if !structured {
+			pterm.Info.Printfln("Using %s: %s", noun, pterm.Cyan(names[0]))
+		}
 
 		return names[0], nil
+	}
+	if structured {
+		return "", fmt.Errorf("multiple %s resources found: specify an explicit %s name with -o %s", kind, noun, opts.OutputFormat())
 	}
 	prompt := "Select a " + kind
 	var selected string

@@ -15,6 +15,9 @@ background spinners, including while waiting for a backup run to finish.
 Read commands (`list`, `get`, `credentials list`, `backup list`, and
 `backup runs`) suppress progress with `-o json` or `-o yaml`, so successful
 stdout contains only the requested resource document.
+When a resource name is omitted, structured output silently selects the only
+matching resource. If multiple resources match, provide an explicit name;
+`-o json` and `-o yaml` reject ambiguous selection without an interactive prompt.
 
 `kubectl ledger get` and `logs --all` discover Pods through the live
 Cluster-owned StatefulSet selector, including custom labels and selector

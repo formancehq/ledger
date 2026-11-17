@@ -20,21 +20,31 @@ import (
 
 func TestReadCommandMachineOutput(t *testing.T) {
 	for _, scenario := range []struct {
-		name       string
-		args       []string
-		resource   string
-		kind       string
-		namespaced bool
-		get        bool
+		name            string
+		args            []string
+		resource        string
+		kind            string
+		namespaced      bool
+		get             bool
+		resolveResource string
+		resolveKind     string
+		ambiguous       bool
 	}{
 		{name: "list", args: []string{"list"}, resource: "clusters", kind: "Cluster", namespaced: true},
 		{name: "get", args: []string{"get", "audit"}, resource: "clusters", kind: "Cluster", namespaced: true, get: true},
 		{name: "credentials", args: []string{"credentials", "list"}, resource: "credentials", kind: "Credentials"},
 		{name: "backups", args: []string{"backup", "list"}, resource: "backups", kind: "Backup", namespaced: true},
 		{name: "runs", args: []string{"backup", "runs", "audit"}, resource: "backupruns", kind: "BackupRun", namespaced: true},
+		{name: "get resolved", args: []string{"get"}, resource: "clusters", kind: "Cluster", namespaced: true, get: true, resolveResource: "clusters", resolveKind: "Cluster"},
+		{name: "runs resolved", args: []string{"backup", "runs"}, resource: "backupruns", kind: "BackupRun", namespaced: true, resolveResource: "backups", resolveKind: "Backup"},
+		{name: "get ambiguous", args: []string{"get"}, resource: "clusters", kind: "Cluster", namespaced: true, get: true, resolveResource: "clusters", resolveKind: "Cluster", ambiguous: true},
+		{name: "runs ambiguous", args: []string{"backup", "runs"}, resource: "backupruns", kind: "BackupRun", namespaced: true, resolveResource: "backups", resolveKind: "Backup", ambiguous: true},
 	} {
 		for _, format := range []string{"json", "yaml"} {
 			for _, fail := range []bool{false, true} {
+				if scenario.ambiguous && fail {
+					continue
+				}
 				t.Run(fmt.Sprintf("%s/%s/failure=%t", scenario.name, format, fail), func(t *testing.T) {
 					outputPath := filepath.Join(t.TempDir(), "stdout")
 					output, err := os.Create(outputPath)
@@ -56,6 +66,8 @@ func TestReadCommandMachineOutput(t *testing.T) {
 						kind = scenario.kind
 					}
 					var operationCalls atomic.Int32
+					var resolutionCalls atomic.Int32
+					resolutionPath := "/apis/ledger.formance.com/v1alpha1/namespaces/default/" + scenario.resolveResource
 					server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 						writer.Header().Set("Content-Type", "application/json")
 						var body string
@@ -65,7 +77,20 @@ func TestReadCommandMachineOutput(t *testing.T) {
 						case "/apis":
 							body = `{"apiVersion":"v1","kind":"APIGroupList","groups":[{"name":"ledger.formance.com","versions":[{"groupVersion":"ledger.formance.com/v1alpha1","version":"v1alpha1"}],"preferredVersion":{"groupVersion":"ledger.formance.com/v1alpha1","version":"v1alpha1"}}]}`
 						case "/apis/ledger.formance.com/v1alpha1":
-							body = fmt.Sprintf(`{"apiVersion":"v1","kind":"APIResourceList","groupVersion":"ledger.formance.com/v1alpha1","resources":[{"name":%q,"namespaced":%t,"kind":%q,"verbs":["get","list"]}]}`, scenario.resource, scenario.namespaced, scenario.kind)
+							resources := fmt.Sprintf(`{"name":%q,"namespaced":%t,"kind":%q,"verbs":["get","list"]}`, scenario.resource, scenario.namespaced, scenario.kind)
+							if scenario.resolveResource != "" && scenario.resolveResource != scenario.resource {
+								resources += fmt.Sprintf(`,{"name":%q,"namespaced":true,"kind":%q,"verbs":["get","list"]}`, scenario.resolveResource, scenario.resolveKind)
+							}
+							body = fmt.Sprintf(`{"apiVersion":"v1","kind":"APIResourceList","groupVersion":"ledger.formance.com/v1alpha1","resources":[%s]}`, resources)
+						case resolutionPath:
+							assert.NotEmpty(t, scenario.resolveResource)
+							assert.Equal(t, http.MethodGet, request.Method)
+							resolutionCalls.Add(1)
+							items := fmt.Sprintf(`{"apiVersion":"ledger.formance.com/v1alpha1","kind":%q,"metadata":{"name":"audit","namespace":"default"}}`, scenario.resolveKind)
+							if scenario.ambiguous {
+								items += fmt.Sprintf(`,{"apiVersion":"ledger.formance.com/v1alpha1","kind":%q,"metadata":{"name":"other","namespace":"default"}}`, scenario.resolveKind)
+							}
+							body = fmt.Sprintf(`{"apiVersion":"ledger.formance.com/v1alpha1","kind":%q,"items":[%s]}`, scenario.resolveKind+"List", items)
 						case operationPath:
 							assert.Equal(t, http.MethodGet, request.Method)
 							operationCalls.Add(1)
@@ -96,10 +121,24 @@ func TestReadCommandMachineOutput(t *testing.T) {
 					command := newRootCommand()
 					command.SetArgs(append([]string{"--kubeconfig", kubeconfig, "-o", format}, scenario.args...))
 					err = command.ExecuteContext(t.Context())
-					require.EqualValues(t, 1, operationCalls.Load())
+					if scenario.resolveResource != "" {
+						require.EqualValues(t, 1, resolutionCalls.Load())
+					} else {
+						require.Zero(t, resolutionCalls.Load())
+					}
 					data, readErr := os.ReadFile(outputPath)
 					require.NoError(t, readErr)
 					require.NotContains(t, string(data), "Fetching")
+					require.NotContains(t, string(data), "Using")
+					if scenario.ambiguous {
+						noun := map[string]string{"Cluster": "ledger", "Backup": "backup"}[scenario.resolveKind]
+						require.EqualError(t, err, "multiple "+scenario.resolveKind+" resources found: specify an explicit "+noun+" name with -o "+format)
+						require.Zero(t, operationCalls.Load())
+						require.Empty(t, string(data))
+
+						return
+					}
+					require.EqualValues(t, 1, operationCalls.Load())
 					if fail {
 						require.ErrorContains(t, err, "machine output operation denied")
 						require.Contains(t, string(data), "Failed to")
