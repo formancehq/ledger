@@ -120,6 +120,7 @@ func TestHandleExecuteNumscript_UsesReferenceAndIgnoresPostings(t *testing.T) {
 			require.NotNil(t, execution)
 			require.Equal(t, "tx-1", execution.GetReference())
 			require.Equal(t, `send [USD 1] (source = @world destination = @alice)`, execution.GetScript().GetPlain())
+
 			return &domain.ApplyResult{Logs: []*commonpb.Log{log}}, nil
 		})
 	srv := newTestServer(t, backend)
