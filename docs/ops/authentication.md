@@ -104,6 +104,9 @@ Do not rewrite historical audit entries during the rollout.
 
 The server enforces the following rules at startup:
 
+- `--auth-enabled` requires `--cluster-secret` so peers can authenticate
+  follower-to-leader forwarding. Provision the same secret on every node, as
+  described in the [Quick Start](#quick-start).
 - `--auth-enabled` requires at least one of `--auth-issuer` or
   `--auth-issuers` (OIDC), or `--auth-ed25519-keys` (Ed25519 key file). The server refuses to start
   without a credential source.
@@ -148,6 +151,7 @@ The writes-only configuration is:
 ```bash
 ledger run --auth-enabled --auth-issuer https://auth.example.com \
   --tls-mode required --tls-cert-file /etc/ledger/tls.crt --tls-key-file /etc/ledger/tls.key \
+  --cluster-secret "$CLUSTER_SECRET" \
   --auth-anonymous-scopes "*:read"
 ```
 
