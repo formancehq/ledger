@@ -77,10 +77,11 @@ func IsSystemActor(ctx context.Context) bool {
 // ResolveCallerSnapshot returns the caller snapshot for the current context,
 // in precedence order:
 //  1. an explicit system actor (WithSystemActor) — a background action;
-//  2. an explicitly forwarded capability (set only after the leader validates
+//  2. locally disabled authentication, even on an authenticated peer hop;
+//  3. an explicitly forwarded capability (set only after the leader validates
 //     the cluster peer and the frozen snapshot);
-//  3. the authenticated cluster peer when no original caller was forwarded;
-//  4. one built from the immutable authentication state attached locally by
+//  4. the authenticated cluster peer when no original caller was forwarded;
+//  5. one built from the immutable authentication state attached locally by
 //     EvaluateGRPCCredentials.
 //
 // Use this from both the follower (when forwarding to the leader, to keep the
@@ -89,6 +90,12 @@ func IsSystemActor(ctx context.Context) bool {
 func ResolveCallerSnapshot(ctx context.Context) *commonpb.CallerSnapshot {
 	if component, ok := systemActorFromContext(ctx); ok {
 		return commands.SystemCallerSnapshot(component)
+	}
+
+	// Peer transport authentication identifies the sending node. It does not
+	// enable caller authentication for a cluster configured with auth disabled.
+	if state, ok := authenticationStateFromContext(ctx); ok && !state.enabled {
+		return authDisabledCallerSnapshot()
 	}
 
 	if forwarded := ForwardedSnapshotFromContext(ctx); forwarded != nil {
@@ -131,11 +138,7 @@ func buildCallerSnapshot(ctx context.Context) *commonpb.CallerSnapshot {
 			}
 		}
 
-		return &commonpb.CallerSnapshot{
-			Principal: &commonpb.CallerSnapshot_AuthDisabled{
-				AuthDisabled: &commonpb.AuthDisabledCaller{},
-			},
-		}
+		return authDisabledCallerSnapshot()
 	}
 
 	identity := &commonpb.CallerIdentity{
@@ -162,6 +165,14 @@ func buildCallerSnapshot(ctx context.Context) *commonpb.CallerSnapshot {
 
 	return &commonpb.CallerSnapshot{
 		Principal: &commonpb.CallerSnapshot_Authenticated{Authenticated: authenticated},
+	}
+}
+
+func authDisabledCallerSnapshot() *commonpb.CallerSnapshot {
+	return &commonpb.CallerSnapshot{
+		Principal: &commonpb.CallerSnapshot_AuthDisabled{
+			AuthDisabled: &commonpb.AuthDisabledCaller{},
+		},
 	}
 }
 

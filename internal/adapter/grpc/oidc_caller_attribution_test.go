@@ -210,6 +210,35 @@ func TestHTTPForwardingRevalidatesCallerAtLeader(t *testing.T) {
 	}
 }
 
+func TestAuthDisabledAttributionThroughPeerPool(t *testing.T) {
+	cfg := internalauth.AuthConfig{ClusterSecret: "trusted-cluster-secret"}
+	admission, proposals := newCallerAttributionAdmission(t, 1)
+	leader, _, address, clientTLS := newTLSAuthInterceptorServer(t, ServiceAuthPolicyPeer, cfg)
+	leader.applyFn = func(ctx context.Context, req *servicepb.ApplyRequest) (*domain.ApplyResult, error) {
+		ctx, err := (&BucketServiceServerImpl{}).adoptForwardedSnapshotIfTrusted(ctx, req)
+		if err != nil {
+			return nil, err
+		}
+		result, err := admission.Admit(ctx, req)
+		if err != nil {
+			return nil, err
+		}
+		return result, ggrpc.SetTrailer(ctx, metadata.Pairs(metadataKeyApplyReplayed, "false"))
+	}
+	pool := transport.NewConnectionPool(transport.TLSPolicy{TLSConfig: clientTLS, Strict: true}, transport.PoolConfig{AuthToken: cfg.ClusterSecret})
+	t.Cleanup(func() { require.NoError(t, pool.Close()) })
+	require.NoError(t, pool.AddPeer(1, address))
+	forwarder := NewLedgerGrpcClient(servicepb.NewBucketServiceClient(pool.GetConnection(1)))
+	ctx, err := internalauth.EvaluateGRPCCredentials(context.Background(), cfg)
+	require.NoError(t, err)
+	require.NotNil(t, internalauth.ResolveCallerSnapshot(ctx).GetAuthDisabled())
+
+	_, err = forwarder.Apply(ctx, callerAttributionWrite())
+	require.NoError(t, err)
+	require.NotNil(t, receiveCallerAttribution(t, ctx, proposals).GetAuthDisabled())
+	require.EqualValues(t, 1, leader.applyCalls.Load())
+}
+
 func newTLSAuthInterceptorServer(t *testing.T, mode ServiceAuthPolicy, cfg internalauth.AuthConfig) (*authInterceptorBucketServer, servicepb.BucketServiceClient, string, *tls.Config) {
 	t.Helper()
 	certs := newTestCerts(t)
