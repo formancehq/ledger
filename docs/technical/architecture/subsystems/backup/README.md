@@ -130,6 +130,30 @@ Two simultaneous backups to the same destination are rejected at FSM apply time.
 
 This FSM-managed per-destination slot is what closes the manifest-atomicity race (EN-1055): because only one backup holds a destination at a time, the read-modify-write of the shared manifest can never interleave, so no writer can overwrite another's manifest update and orphan its segments. It is a deterministic, clock-free alternative to a leased lock — the slot is held from `Start` to `Complete`/`Fail`, and an orphaned slot (executor gone after a leadership change or crash) is freed by the leader-only cleanup loop (`internal/application/backup/cleanup.go`).
 
+### Leader tenure and orphan cleanup
+
+Each full or incremental run captures the node's current leadership lease before
+registering its executor. Registration happens before the Start proposal,
+with its map insertion authorized by the lease gate. The registry lock is
+acquired before entering that gate, so registration cannot occur after lease
+revocation. Cleanup cannot mistake an accepted run for an orphan. The upload context is cancelled when either the RPC ends or the
+lease is revoked. Start and terminal proposals retain the captured lease token;
+a later leadership term cannot authorize an earlier executor. A terminal
+proposal is still attempted with a bounded context after an upload result, and
+its failure is reported or logged as before. No upload, Raft proposal, or other
+blocking work runs inside the admission gate.
+
+Cleanup scans only with an active lease. It checks the executor registry and
+rechecks lease authorization before each orphan Fail proposal. The scan and
+Raft I/O happen outside the lease gate; the proposal context is cancelled on
+lease revocation or service stop. An inherited RUNNING job can therefore be
+failed by the new leader without the old leader issuing a late cleanup order.
+The registry remains local and retains collision ownership: a duplicate job ID
+never deregisters another run's marker.
+
+This changes no persisted backup format, FSM apply behavior, or service wire
+contract. It changes only leader-local admission and cancellation.
+
 ### Manifest + incremental segments
 
 A full backup diffs the current checkpoint's SST file set against the previous manifest and uploads only the new/changed files, but always writes a fresh checkpoint manifest with an empty export set. An **incremental** backup (`IncrementalBackupOrder`) does not take a new checkpoint at all: it streams the log/audit/audit-item/applied-proposal entries written since the last recorded sequence into size-bounded export *segments* and appends them to the manifest's export list. Log and audit history is permanent in the primary store, so every export window is served from the hot store directly. Files that are no longer referenced by the newly written manifest are pruned from the destination *after* the manifest is committed (see "Crash-safe write ordering" above).

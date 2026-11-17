@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"slices"
+	"sync"
 	"testing"
 	"time"
 
@@ -321,4 +322,55 @@ func TestManager_CoalescedLeadershipFlapReplacesPriorGenerationWorker(t *testing
 
 		return current != nil && current != previous
 	}, time.Second, 10*time.Millisecond, "a worker from before the loss must not be retained by the new leader generation")
+}
+
+type testLeadershipLease struct {
+	mu     sync.Mutex
+	ctx    context.Context
+	cancel context.CancelFunc
+}
+
+func newTestLeadershipLease() *testLeadershipLease {
+	ctx, cancel := context.WithCancel(context.Background())
+
+	return &testLeadershipLease{ctx: ctx, cancel: cancel}
+}
+func (l *testLeadershipLease) Context() context.Context { return l.ctx }
+func (l *testLeadershipLease) Epoch() uint64            { return 1 }
+func (l *testLeadershipLease) Authorize(fn func()) bool {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if l.ctx.Err() != nil {
+		return false
+	}
+	fn()
+
+	return true
+}
+func (l *testLeadershipLease) Revoke() { l.mu.Lock(); l.cancel(); l.mu.Unlock() }
+
+func TestManager_LeaseRevocationFencesInitialization(t *testing.T) {
+	t.Parallel()
+	builder, store := newTestBuilder(t)
+	m := newTestManager(t, store, builder)
+	lease := newTestLeadershipLease()
+	m.OnLeadershipLease(lease)
+	leadership := m.leadershipSnapshot()
+	require.NotNil(t, leadership.initializationCtx)
+	lease.Revoke()
+	require.ErrorIs(t, leadership.initializationCtx.Err(), context.Canceled)
+	require.False(t, m.isCurrentLeader(leadership.generation))
+}
+
+func TestManager_RevokedLeaseCannotStartPreparedWorker(t *testing.T) {
+	t.Parallel()
+	m := &Manager{notifications: signal.NewNotifications(), workers: make(map[string]*Worker)}
+	lease := newTestLeadershipLease()
+	m.OnLeadershipLease(lease)
+	leadership := m.leadershipSnapshot()
+	prepared := &Worker{}
+	lease.Revoke()
+	require.False(t, m.registerWorker(leadership.generation, "prepared", prepared, leadership.initializationCtx))
+	require.Empty(t, m.workers)
+	require.Nil(t, prepared.w.StopCh(), "revoked lease must not launch worker")
 }

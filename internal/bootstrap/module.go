@@ -113,9 +113,14 @@ func provideWAL(cfg node.NodeConfig, logger logging.Logger, meterProvider metric
 // the Fx graph readable while leaving the policy logic in dedicated helpers.
 func newClusterPolicyReconciler(admission ctrl.Admission, store *dal.Store, builder *plan.Builder, cfg Config, raftNode *node.Node, logger logging.Logger) *reconciler.Reconciler {
 	return reconciler.New(func(ctx context.Context) {
-		if !raftNode.IsLeader() {
+		lease := raftNode.CurrentLeadershipLease()
+		if lease == nil {
 			return
 		}
+		leaseCtx, cancel := context.WithCancel(node.WithLeadershipLease(ctx, lease))
+		stop := context.AfterFunc(lease.Context(), cancel)
+		defer func() { stop(); cancel() }()
+		ctx = leaseCtx
 		if policy, err := query.ReadClusterPolicy(store); err == nil {
 			if err := raftNode.SetCapabilityGate(capabilities.ActiveIDs(policy)); err != nil {
 				logger.WithFields(map[string]any{"error": err}).Errorf("Invalid capability gate in committed cluster policy")
@@ -128,7 +133,7 @@ func newClusterPolicyReconciler(admission ctrl.Admission, store *dal.Store, buil
 
 			return
 		}
-		reconcileClusterPolicy(ctx, admission, store, cfg, raftNode.IsLeader, logger)
+		reconcileClusterPolicy(ctx, admission, store, cfg, func() bool { return lease.Context().Err() == nil }, logger)
 	}, clusterPolicyReconcileInterval)
 }
 
@@ -529,10 +534,10 @@ func Module() fx.Option {
 				)
 			},
 			func(builder *plan.Builder, n *node.Node, store *dal.Store, cfg Config, logger logging.Logger) *backupapp.Orchestrator {
-				return backupapp.NewOrchestrator(newBackupProposer(builder, n), store, logger, n.GetNodeID(), backupapp.NewExecutorRegistry(), cfg.BackupMaxSegmentBytes)
+				return backupapp.NewOrchestrator(newBackupProposer(builder, n), store, logger, n.GetNodeID(), backupapp.NewExecutorRegistry(), cfg.BackupMaxSegmentBytes, backupLeaseProvider{n})
 			},
 			func(builder *plan.Builder, n *node.Node, fsm *state.Machine, orchestrator *backupapp.Orchestrator, logger logging.Logger) *backupapp.Cleanup {
-				return backupapp.NewCleanup(fsm.Registry.BackupJobs, newBackupProposer(builder, n), n, orchestrator.Registry(), logger)
+				return backupapp.NewCleanup(fsm.Registry.BackupJobs, newBackupProposer(builder, n), backupLeaseProvider{n}, orchestrator.Registry(), logger)
 			},
 			fx.Annotate(func(n *node.Node, raftTransport *node.DefaultTransport, servicePool *transport.ConnectionPool, collector *diskusage.Collector, store *dal.Store, c *cache.Cache, ss *state.SharedState, ib *indexbuilder.Builder, rs *readstore.Store, ms *membership.Service, bo *backupapp.Orchestrator, logger logging.Logger, cfg Config, info version.Info) clusterpb.ClusterServiceServer {
 				return grpcadp.NewClusterServiceServer(n, raftTransport, servicePool, collector, store, c, ss, ib, rs, ms, bo, logger,
@@ -668,7 +673,7 @@ func Module() fx.Option {
 				admissionHandler ctrl.Admission,
 				raftNode *node.Node,
 			) *state.QueryCheckpointScheduler {
-				return state.NewQueryCheckpointScheduler(
+				scheduler := state.NewQueryCheckpointScheduler(
 					logger,
 					raftNode.IsLeader,
 					machine.QueryCheckpointSchedule,
@@ -683,6 +688,22 @@ func Module() fx.Option {
 					},
 					machine.QueryCheckpointScheduleChanged(),
 				)
+				scheduler.SetLeaseProposal(func() context.Context {
+					lease := raftNode.CurrentLeadershipLease()
+					if lease == nil {
+						return nil
+					}
+
+					return node.WithLeadershipLease(lease.Context(), lease)
+				}, func(ctx context.Context) error {
+					_, err := admissionHandler.Admit(internalauth.WithSystemActor(ctx, commands.ComponentQueryCheckpoint), servicepb.UnsignedApplyRequest("", &servicepb.Request{
+						Type: &servicepb.Request_CreateQueryCheckpoint{CreateQueryCheckpoint: &servicepb.CreateQueryCheckpointRequest{}},
+					}))
+
+					return err
+				})
+
+				return scheduler
 			},
 			fx.Annotate(func(
 				raftNode *node.Node,
@@ -953,7 +974,6 @@ func Module() fx.Option {
 				logger logging.Logger,
 				eventsManager *events.Manager,
 				mirrorManager *mirror.Manager,
-				backupOrchestrator *backupapp.Orchestrator,
 				healthChecker *clusterhealth.HealthChecker,
 				reconciler *reconciler.Reconciler,
 			) {
@@ -964,15 +984,6 @@ func Module() fx.Option {
 						// before admission can observe the new leadership term.
 						healthChecker.OnLeadershipChange(e.IsLeader)
 
-						// The backup orchestrator's OnLeadershipChange is cheap
-						// (it just swaps a context) and must observe leadership
-						// transitions IN ORDER: a stale goroutine landing
-						// OnLeadershipChange(false) after a newer (true) would
-						// leave leaderCtx cancelled while node.IsLeader()==true,
-						// failing every subsequent Backup RPC with ctx
-						// cancellation. Apply it inline.
-						backupOrchestrator.OnLeadershipChange(e.IsLeader)
-
 						// Record a leadership loss for the events / mirror
 						// managers inline so it cannot be reordered behind a
 						// later transition; a gain reaches them through
@@ -980,13 +991,17 @@ func Module() fx.Option {
 						// desired generation here; their lifecycle-owned loops
 						// perform the potentially slow Pebble reconciliation
 						// asynchronously.
-						handleLeadershipChangeEvent(e, eventsManager, mirrorManager, logger)
+						if !e.IsLeader {
+							eventsManager.OnLeadershipLease(nil)
+							mirrorManager.OnLeadershipLease(nil)
+						}
 					case node.LeaderReadyEvent:
 						healthChecker.OnLeaderReady()
 						// Recorded before the cluster-config proposal, which
 						// can block on its own commit.
-						handleLeaderReadyEvent(eventsManager, mirrorManager, logger)
-						proposeClusterConfigIfNeeded(e.Context, n, builder, store, cfg, logger)
+						eventsManager.OnLeadershipLease(e.Lease)
+						mirrorManager.OnLeadershipLease(e.Lease)
+						proposeClusterConfigIfNeeded(node.WithLeadershipLease(e.Context, e.Lease), n, builder, store, cfg, logger)
 					default:
 						logger.Errorf("Unknown observer event type: %T", event)
 					}
@@ -1117,6 +1132,16 @@ func Module() fx.Option {
 						machine.Registry.Idempotency,
 						cfg.IdempotencyEvictionInterval,
 					)
+					scheduler.SetLeaseContext(func(ctx context.Context) (context.Context, context.CancelFunc) {
+						lease := raftNode.CurrentLeadershipLease()
+						if lease == nil {
+							return nil, nil
+						}
+						workCtx, cancel := context.WithCancel(node.WithLeadershipLease(ctx, lease))
+						stop := context.AfterFunc(lease.Context(), cancel)
+
+						return workCtx, func() { stop(); cancel() }
+					})
 					lc.Append(fx.Hook{
 						OnStart: func(_ context.Context) error {
 							scheduler.Start()

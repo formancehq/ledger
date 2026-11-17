@@ -133,6 +133,11 @@ func (e *Emitter) Notify() {
 // Start begins the background event emission loop.
 // It is idempotent — calling Start on an already-running emitter is a no-op.
 func (e *Emitter) Start() {
+	e.StartWithContext(context.Background())
+}
+
+// StartWithContext ties emission and proposal waits to the leadership lease.
+func (e *Emitter) StartWithContext(parent context.Context) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 
@@ -146,7 +151,7 @@ func (e *Emitter) Start() {
 	e.started = make(chan struct{})
 	e.startErr = nil
 
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(parent)
 	e.cancel = cancel
 
 	go e.run(ctx)
@@ -199,6 +204,8 @@ func (e *Emitter) run(ctx context.Context) {
 
 	for {
 		select {
+		case <-ctx.Done():
+			return
 		case <-e.stopCh:
 			e.logger.Infof("Event emitter stopped")
 
@@ -207,6 +214,8 @@ func (e *Emitter) run(ctx context.Context) {
 		}
 
 		select {
+		case <-ctx.Done():
+			return
 		case <-e.stopCh:
 			e.logger.Infof("Event emitter stopped")
 
@@ -216,6 +225,8 @@ func (e *Emitter) run(ctx context.Context) {
 		}
 
 		select {
+		case <-ctx.Done():
+			return
 		case <-e.stopCh:
 			e.logger.Infof("Event emitter stopped")
 

@@ -449,6 +449,13 @@ type Node struct {
 	// Leadership loss cancels and joins the generation before publishing
 	// the loss event, so an old generation cannot emit readiness afterward.
 	leaderReady atomic.Pointer[leaderReadyGeneration]
+	// leadershipMu serializes tenure replacement and terminal closure. The
+	// lease's own gate orders local authorization against its revocation.
+	leadershipMu      sync.Mutex
+	leadershipLease   *LeadershipLease
+	leadershipEpoch   uint64
+	leadershipClosed  bool
+	leadershipEnabled bool
 
 	// lastCheckpointPersistedIndex tracks the persisted index at the time of the
 	// last background Pebble checkpoint. doMaintenance skips checkpoint creation
@@ -712,27 +719,28 @@ func NewNode(
 	}
 
 	node := &Node{
-		logger:           logger,
-		wal:              wal,
-		transport:        transport,
-		config:           cfg,
-		proposeCh:        make(chan *Proposal, cfg.ProposeQueueCapacity),
-		clusterCommandCh: make(chan *clusterCommand, 1),
-		fsm:              fsm,
-		recovery:         recovery,
-		synchronizer:     synchronizer,
-		applier:          applier,
-		readies:          make(chan raft.Ready, 1),
-		readyTerminated:  make(chan readyResult, 1),
-		localResponseCh:  localResponses,
-		tasks:            newTaskSet(),
-		stopChannel:      make(chan struct{}),
-		terminalCh:       make(chan struct{}),
-		pendingReads:     &SyncMap[string, *readIndexRequest]{},
-		membership:       membership,
-		lastAutoPromote:  make(map[uint64]time.Time),
-		indexTracker:     NewIndexTracker(initialIndex(wal)),
-		observer:         NewNoOpObserver(),
+		logger:            logger,
+		wal:               wal,
+		transport:         transport,
+		config:            cfg,
+		proposeCh:         make(chan *Proposal, cfg.ProposeQueueCapacity),
+		clusterCommandCh:  make(chan *clusterCommand, 1),
+		fsm:               fsm,
+		recovery:          recovery,
+		synchronizer:      synchronizer,
+		applier:           applier,
+		readies:           make(chan raft.Ready, 1),
+		readyTerminated:   make(chan readyResult, 1),
+		localResponseCh:   localResponses,
+		tasks:             newTaskSet(),
+		stopChannel:       make(chan struct{}),
+		terminalCh:        make(chan struct{}),
+		pendingReads:      &SyncMap[string, *readIndexRequest]{},
+		membership:        membership,
+		lastAutoPromote:   make(map[uint64]time.Time),
+		indexTracker:      NewIndexTracker(initialIndex(wal)),
+		observer:          NewNoOpObserver(),
+		leadershipEnabled: true,
 	}
 	for _, opt := range opts {
 		opt(node)
@@ -1294,6 +1302,7 @@ func (node *Node) run(ctx context.Context, ready func()) error {
 
 		// processReadies has exited and can no longer replace the generation.
 		// Join its detached waiter and synchronous observer before FSM cleanup.
+		node.closeLeadership()
 		node.leaderReady.Load().cancelAndWait()
 
 		// Stop background bloom tasks that may hold Pebble iterators.
@@ -1308,6 +1317,7 @@ func (node *Node) run(ctx context.Context, ready func()) error {
 			node.logger.Errorf("Error stopping remaining tasks after failure: %v", stopErr)
 		}
 
+		node.closeLeadership()
 		node.leaderReady.Load().cancelAndWait()
 
 		node.fsm.StopBackgroundTasks()
@@ -1399,6 +1409,10 @@ func (node *Node) processReadyLeadership(ctx context.Context, stop chan struct{}
 			// calling rawNode from the processReadies goroutine (rawNode is not thread-safe).
 			// v3.7: rd.HardState is a nil-able embedded pointer; use the getter for a nil-safe read.
 			term := rd.GetTerm()
+			if term == 0 {
+				// A SoftState-only Ready need not repeat the HardState term.
+				term = node.lastObservedTerm.Load()
+			}
 			logger := node.logger.WithFields(map[string]any{
 				"lead": ss.Lead,
 				"term": term,
@@ -1406,6 +1420,7 @@ func (node *Node) processReadyLeadership(ctx context.Context, stop chan struct{}
 
 			// leadership loss
 			if wasLeader && !isLeader {
+				oldLease, lossEpoch := node.loseLeadership()
 				node.leaderReady.Load().cancelAndWait()
 
 				logger.Infof("Leadership lost")
@@ -1415,10 +1430,14 @@ func (node *Node) processReadyLeadership(ctx context.Context, stop chan struct{}
 					"term":   term,
 				}
 				lifecycle.SendEvent("leadership_lost", details)
-				node.observer.Emit(LeadershipChangeEvent{IsLeader: false})
+				node.observer.Emit(LeadershipChangeEvent{IsLeader: false, Epoch: lossEpoch, Lease: oldLease})
 			}
 			// acquire leadership
 			if !wasLeader && isLeader {
+				lease := node.gainLeadership(ctx, term)
+				if lease == nil {
+					return raft.ErrStopped
+				}
 				logger.Infof("Leadership gained")
 				details := map[string]any{
 					"nodeID": node.config.NodeID,
@@ -1427,7 +1446,7 @@ func (node *Node) processReadyLeadership(ctx context.Context, stop chan struct{}
 				}
 				assert.Sometimes(true, "leadership gained", details)
 				lifecycle.SendEvent("leadership_gained", details)
-				node.observer.Emit(LeadershipChangeEvent{IsLeader: true})
+				node.observer.Emit(LeadershipChangeEvent{IsLeader: true, Epoch: lease.Epoch(), Lease: lease})
 
 				// Block admission until the FSM has applied all entries the
 				// previous leader had applied. The target is the no-op blank
@@ -1452,7 +1471,7 @@ func (node *Node) processReadyLeadership(ctx context.Context, stop chan struct{}
 						node.config.NodeID, term, err)
 				}
 
-				generation := newLeaderReadyGeneration(ctx)
+				generation := newLeaderReadyGeneration(lease.Context())
 				node.leaderReady.Store(generation)
 
 				node.applier.Drain(stop)
@@ -1462,7 +1481,9 @@ func (node *Node) processReadyLeadership(ctx context.Context, stop chan struct{}
 						func(waitCtx context.Context) error {
 							return node.fsm.WaitForApplied(waitCtx, target)
 						},
-						func() { node.observer.Emit(LeaderReadyEvent{Context: generation.ctx}) },
+						func() {
+							node.observer.Emit(LeaderReadyEvent{Context: generation.ctx, Epoch: lease.Epoch(), Lease: lease})
+						},
 					)
 					if err != nil && !errors.Is(err, context.Canceled) {
 						node.logger.WithFields(map[string]any{
@@ -2403,6 +2424,16 @@ func (node *Node) Propose(ctx context.Context, proposal *Proposal) (*futures.Fut
 			return nil, domain.ErrMaintenanceMode
 		}
 	}
+	// Capture one tenure before policy admission, which may perform slow
+	// preparation. An implicit caller must not borrow a later tenure after
+	// leadership changes while that preparation is in flight.
+	lease, explicitLease := leaseFromContext(ctx)
+	if node.leadershipEnabled && !explicitLease {
+		lease = node.CurrentLeadershipLease()
+	}
+	if node.leadershipEnabled && lease == nil {
+		return nil, ErrNotLeader
+	}
 
 	// Evaluate the authoritative policy gate while proposalAdmissionMu and the
 	// IndexTracker guard are held by the caller. A rejected proposal therefore
@@ -2434,25 +2465,69 @@ func (node *Node) Propose(ctx context.Context, proposal *Proposal) (*futures.Fut
 		node.applier.StoreFuture(proposal.commandID, proposalTerm, fsmFuture)
 	}
 
-	// Pre-increment before the channel send. All callers hold the tracker's
-	// mutex, so this is serialized with other proposals and with Decrement.
-	node.indexTracker.Increment(1)
+	proposal.leadershipLease = lease
 
-	select {
-	case node.proposeCh <- proposal:
-		if proposal.drainMarker {
-			node.drainOutstanding++
+	// A full queue is retried outside the lease gate. The tracker reservation
+	// and nonblocking send occur together under authorization, so invalidation
+	// cannot fall between validation and enqueue. The caller's proposal guard
+	// remains held until admission ends, as required by preload prediction.
+	var retry *time.Ticker
+	defer func() {
+		if retry != nil {
+			retry.Stop()
 		}
+	}()
+	for {
+		queued := false
+		register := func() {
+			node.indexTracker.Increment(1)
+			select {
+			case node.proposeCh <- proposal:
+				queued = true
+				if proposal.drainMarker {
+					node.drainOutstanding++
+				}
+			default:
+				node.indexTracker.RollbackIncrement(1)
+			}
+		}
+		authorized := lease == nil
+		if lease != nil {
+			authorized = lease.Authorize(register)
+		} else {
+			register()
+		}
+		if !authorized {
+			node.applier.DeleteFuture(proposal.commandID)
 
-		return fsmFuture, nil
-	case <-ctx.Done():
-		// Roll back the pre-increment. Use RollbackIncrement (no mutex)
-		// because the caller already holds the tracker lock.
-		node.indexTracker.RollbackIncrement(1)
-		node.applier.DeleteFuture(proposal.commandID)
+			return nil, ErrNotLeader
+		}
+		if queued {
+			return fsmFuture, nil
+		}
+		if retry == nil {
+			retry = time.NewTicker(time.Millisecond)
+		}
+		select {
+		case <-ctx.Done():
+			node.applier.DeleteFuture(proposal.commandID)
 
-		return nil, ctx.Err()
+			return nil, ctx.Err()
+		case <-leaseDone(lease):
+			node.applier.DeleteFuture(proposal.commandID)
+
+			return nil, ErrNotLeader
+		case <-retry.C:
+		}
 	}
+}
+
+func leaseDone(lease *LeadershipLease) <-chan struct{} {
+	if lease == nil {
+		return nil
+	}
+
+	return lease.Context().Done()
 }
 
 // rejectQueuedProposal resolves a proposal drained during terminal shutdown.
@@ -2480,14 +2555,26 @@ func (node *Node) releaseDroppedDrain(generation uint64) {
 // Must be called from the readyLoop goroutine.
 func (node *Node) handleProposal(p *Proposal) {
 	var err error
-	if p.expectedTerm != 0 {
-		status := node.rawNode.Status()
-		if status.GetTerm() != p.expectedTerm || status.RaftState != raft.StateLeader {
-			err = ErrLeadershipLost
+	accept := func() {
+		if p.expectedTerm != 0 || p.leadershipLease != nil {
+			status := node.rawNode.Status()
+			if p.expectedTerm != 0 && (status.GetTerm() != p.expectedTerm || status.RaftState != raft.StateLeader) {
+				err = ErrLeadershipLost
+			}
+			if err == nil && p.leadershipLease != nil && (status.GetTerm() != p.leadershipLease.term || status.RaftState != raft.StateLeader) {
+				err = ErrNotLeader
+			}
+		}
+		if err == nil {
+			err = node.rawNode.Propose(p.data)
 		}
 	}
-	if err == nil {
-		err = node.rawNode.Propose(p.data)
+	if p.leadershipLease != nil {
+		if !p.leadershipLease.Authorize(accept) {
+			err = ErrNotLeader
+		}
+	} else {
+		accept()
 	}
 	if err != nil {
 		// The IndexTracker was optimistically incremented in Propose().

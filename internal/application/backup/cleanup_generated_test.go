@@ -74,68 +74,6 @@ func (c *MockStaleProviderForEachActiveCall) DoAndReturn(f func(func(*raftcmdpb.
 	return c
 }
 
-// MockLeaderProbe is a mock of LeaderProbe interface.
-type MockLeaderProbe struct {
-	ctrl     *gomock.Controller
-	recorder *MockLeaderProbeMockRecorder
-	isgomock struct{}
-}
-
-// MockLeaderProbeMockRecorder is the mock recorder for MockLeaderProbe.
-type MockLeaderProbeMockRecorder struct {
-	mock *MockLeaderProbe
-}
-
-// NewMockLeaderProbe creates a new mock instance.
-func NewMockLeaderProbe(ctrl *gomock.Controller) *MockLeaderProbe {
-	mock := &MockLeaderProbe{ctrl: ctrl}
-	mock.recorder = &MockLeaderProbeMockRecorder{mock}
-	return mock
-}
-
-// EXPECT returns an object that allows the caller to indicate expected use.
-func (m *MockLeaderProbe) EXPECT() *MockLeaderProbeMockRecorder {
-	return m.recorder
-}
-
-// IsLeader mocks base method.
-func (m *MockLeaderProbe) IsLeader() bool {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "IsLeader")
-	ret0, _ := ret[0].(bool)
-	return ret0
-}
-
-// IsLeader indicates an expected call of IsLeader.
-func (mr *MockLeaderProbeMockRecorder) IsLeader() *MockLeaderProbeIsLeaderCall {
-	mr.mock.ctrl.T.Helper()
-	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "IsLeader", reflect.TypeOf((*MockLeaderProbe)(nil).IsLeader))
-	return &MockLeaderProbeIsLeaderCall{Call: call}
-}
-
-// MockLeaderProbeIsLeaderCall wrap *gomock.Call
-type MockLeaderProbeIsLeaderCall struct {
-	*gomock.Call
-}
-
-// Return rewrite *gomock.Call.Return
-func (c *MockLeaderProbeIsLeaderCall) Return(arg0 bool) *MockLeaderProbeIsLeaderCall {
-	c.Call = c.Call.Return(arg0)
-	return c
-}
-
-// Do rewrite *gomock.Call.Do
-func (c *MockLeaderProbeIsLeaderCall) Do(f func() bool) *MockLeaderProbeIsLeaderCall {
-	c.Call = c.Call.Do(f)
-	return c
-}
-
-// DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockLeaderProbeIsLeaderCall) DoAndReturn(f func() bool) *MockLeaderProbeIsLeaderCall {
-	c.Call = c.Call.DoAndReturn(f)
-	return c
-}
-
 // MockLiveJobsProbe is a mock of LiveJobsProbe interface.
 type MockLiveJobsProbe struct {
 	ctrl     *gomock.Controller
