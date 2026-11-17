@@ -53,7 +53,8 @@ func processCreateLedger(ledger string, order *raftcmdpb.CreateLedgerOrder, ctx 
 			parsedAccountTypes = make(map[string][]accounttype.PatternSegment, len(src))
 		}
 	}
-	for _, name := range slices.Sorted(maps.Keys(order.GetAccountTypes())) {
+	names := slices.Sorted(maps.Keys(order.GetAccountTypes()))
+	for i, name := range names {
 		at := order.GetAccountTypes()[name]
 		if len(name) > domain.MaxAccountTypeNameLength {
 			return nil, domain.ErrAccountTypeNameTooLong
@@ -72,7 +73,9 @@ func processCreateLedger(ledger string, order *raftcmdpb.CreateLedgerOrder, ctx 
 			if err := accounttype.ValidateSegmentTypes(segments, at.GetSegmentTypes()); err != nil {
 				return nil, &domain.ErrInvalidPattern{Pattern: at.GetPattern(), Details: err.Error()}
 			}
-			for _, existingName := range slices.Sorted(maps.Keys(parsedAccountTypes)) {
+			// Every preceding name was parsed and inserted successfully; the
+			// sorted prefix preserves deterministic conflict selection.
+			for _, existingName := range names[:i] {
 				if accounttype.PatternsConflict(segments, parsedAccountTypes[existingName]) {
 					existing := canonicalAccountTypes[existingName]
 
