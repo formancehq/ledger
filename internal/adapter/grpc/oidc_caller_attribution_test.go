@@ -223,6 +223,7 @@ func TestAuthDisabledAttributionThroughPeerPool(t *testing.T) {
 		if err != nil {
 			return nil, err
 		}
+
 		return result, ggrpc.SetTrailer(ctx, metadata.Pairs(metadataKeyApplyReplayed, "false"))
 	}
 	pool := transport.NewConnectionPool(transport.TLSPolicy{TLSConfig: clientTLS, Strict: true}, transport.PoolConfig{AuthToken: cfg.ClusterSecret})
