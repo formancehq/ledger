@@ -201,6 +201,33 @@ func TestOptionalPlaintextPeerDoesNotGainForwardingTrust(t *testing.T) {
 	require.NoError(t, err)
 }
 
+func TestPlaintextPeerRejectsForwardedAnonymousCaller(t *testing.T) {
+	cfg := internalauth.AuthConfig{
+		Enabled:       true,
+		ClusterSecret: "cluster-secret",
+		ScopeMapping: internalauth.ScopeMapping{
+			internalauth.ScopeMappingAnonymousKey: {internalauth.ScopeOpsRead},
+		},
+	}
+	ctx := metadata.NewIncomingContext(context.Background(), metadata.Pairs(
+		transport.PeerAuthMetadataKey, "Bearer cluster-secret",
+		transport.ForwardedAnonymousMetadataKey, "true",
+	))
+	// The credential itself is accepted: rejection must come from the missing
+	// trusted TLS peer boundary, before anonymous scopes authorize Barrier.
+	require.NoError(t, requirePeerCredential(ctx, cfg))
+	called := false
+	_, err := authUnaryInterceptor(cfg, true)(ctx, &servicepb.BarrierRequest{},
+		&ggrpc.UnaryServerInfo{FullMethod: "/ledger.BucketService/Barrier"},
+		func(context.Context, any) (any, error) {
+			called = true
+
+			return nil, nil
+		})
+	require.Equal(t, codes.Unauthenticated, status.Code(err))
+	require.False(t, called)
+}
+
 func TestPeerStreamTrustRequiresTLS(t *testing.T) {
 	cfg := internalauth.AuthConfig{Enabled: true, ClusterSecret: "cluster-secret"}
 	interceptor := authStreamInterceptor(cfg, true)
