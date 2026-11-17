@@ -81,15 +81,15 @@ func runDelete(cmd *cobra.Command, opts *cmdutil.Options, f *deleteFlags, args [
 		}
 	}
 
-	spinner, _ := pterm.DefaultSpinner.Start("Deleting Credentials...")
+	pterm.Info.Println("Deleting Credentials...")
 
 	if err := crdClient.Delete(ctx, credentials); err != nil {
-		spinner.Fail("Failed to delete Credentials")
+		pterm.Error.Println("Failed to delete Credentials")
 
 		return fmt.Errorf("deleting credentials %q: %w", name, err)
 	}
 
-	spinner.Success(fmt.Sprintf("Credentials %s deleted", pterm.Cyan(name)))
+	pterm.Success.Printfln("Credentials %s deleted", pterm.Cyan(name))
 
 	return nil
 }

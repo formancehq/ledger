@@ -10,6 +10,8 @@ release Operator requires a semantic release tag no newer than its own version.
 The plugin's `--set` paths use dotted keys and zero-based array indices from
 `0` through `65536`. Escape literal dots with `\.` or quote the key segment.
 Malformed paths return an error instead of applying a truncated path.
+Plugin commands report progress and operation outcomes synchronously, without
+background spinners, including while waiting for a backup run to finish.
 
 ## Getting Started
 

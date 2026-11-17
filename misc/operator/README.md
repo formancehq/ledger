@@ -1262,8 +1262,10 @@ kubectl ledger credentials get-key <name> # Retrieve credentials API key
 kubectl ledger version                    # Print version info
 ```
 
-Interactive resource selection reports fetch progress synchronously, without
-starting a background spinner. `explain` reads the installed Cluster CRD once
+Commands and interactive resource selection report progress synchronously,
+without starting background spinners. Mutating commands print success or failure
+messages after the Kubernetes operation; backup waits also report their terminal
+outcome. `explain` reads the installed Cluster CRD once
 for both spec and status fields; each missing section independently falls back
 to the compiled schema.
 
