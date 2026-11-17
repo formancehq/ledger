@@ -44,6 +44,7 @@ echo "==> Starting server (single-node, bootstrap, no auth)..."
 # independent from the host's production disk-pressure threshold.
 "$TMPDIR/ledger-server" run \
     --node-id 1 --cluster-id schemathesis-test --bootstrap \
+    --activate-mirror-promotion-catch-up \
     --bind-addr "127.0.0.1:$RAFT_PORT" \
     --wal-dir "$TMPDIR/wal" --data-dir "$TMPDIR/data" \
     --health-wal-threshold 1 --health-data-threshold 1 \

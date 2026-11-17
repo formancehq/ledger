@@ -38,6 +38,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/adapter/grpcerr"
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/infra/backup"
+	"github.com/formancehq/ledger/v3/internal/infra/capabilities"
 	"github.com/formancehq/ledger/v3/internal/infra/node"
 	"github.com/formancehq/ledger/v3/internal/infra/plan"
 	"github.com/formancehq/ledger/v3/internal/infra/state"
@@ -651,6 +652,13 @@ func convertToGRPCErrorWithContext(ctx context.Context, err error, logger loggin
 	// (with the STALE_RAFT_PROGRESS detail and remediation); this generic
 	// mapping covers the admin cluster.AddLearner path.
 	if errors.Is(err, node.ErrNodeStaleProgress) {
+		return status.Error(codes.FailedPrecondition, err.Error())
+	}
+
+	// A capability-dependent proposal is refused until the replicated policy
+	// activates it and every member advertises support. This is an operator
+	// precondition, not an unexpected server failure.
+	if errors.Is(err, capabilities.ErrCapabilityUnsupported) {
 		return status.Error(codes.FailedPrecondition, err.Error())
 	}
 

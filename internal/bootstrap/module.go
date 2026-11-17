@@ -1988,10 +1988,11 @@ func reconcileClusterPolicy(ctx context.Context, admission ctrl.Admission, store
 	}
 	if cfg.ActivateMirrorPromotionCatchUp {
 		found := false
-		for _, activation := range desired.CapabilityActivations {
+		for _, activation := range desired.GetCapabilityActivations() {
 			if activation.GetId() == uint32(capabilities.MirrorPromotionCatchUp) {
 				activation.Active = true
 				found = true
+
 				break
 			}
 		}

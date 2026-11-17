@@ -202,5 +202,6 @@ every member (or `spec.activateMirrorPromotionCatchUp: true` in the Operator)
 and increment `clusterPolicyRevision`. The reconciler proposes the activation;
 admission verifies every member's evidence before committing it. Until then,
 new promotions are refused at admission because their proposals require ID `1`.
-Other writes remain available. Keep the activation flag set on later revisions;
+The refusal is a gRPC `FailedPrecondition` until activation completes. Other
+writes remain available. Keep the activation flag set on later revisions;
 committed activations cannot be removed.
