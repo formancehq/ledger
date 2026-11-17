@@ -389,8 +389,8 @@ github.com/uptrace/opentelemetry-go-extra/otellogrus v0.3.2 h1:H8wwQwTe5sL6x30z7
 github.com/uptrace/opentelemetry-go-extra/otellogrus v0.3.2/go.mod h1:/kR4beFhlz2g+V5ik8jW+3PMiMQAPt29y6K64NNY53c=
 github.com/uptrace/opentelemetry-go-extra/otelsql v0.3.2 h1:ZjUj9BLYf9PEqBn8W/OapxhPjVRdC6CsXTdULHsyk5c=
 github.com/uptrace/opentelemetry-go-extra/otelsql v0.3.2/go.mod h1:O8bHQfyinKwTXKkiKNGmLQS7vRsqRxIQTFZpYpHK3IQ=
-github.com/uptrace/opentelemetry-go-extra/otelutil v0.3.2 h1:3/aHKUq7qaFMWxyQV0W2ryNgg8x8rVeKVA20KJUkfS0=
-github.com/uptrace/opentelemetry-go-extra/otelutil v0.3.2/go.mod h1:Zit4b8AQXaXvA68+nzmbyDzqiyFRISyw1JiD5JqUBjw=
+github.com/uptrace/opentelemetry-go-extra/otelutil v0.4.0 h1:ZC08i0whcTGacAS7iDFxYL5D/bHdtdzxAjMJD8M15Pg=
+github.com/uptrace/opentelemetry-go-extra/otelutil v0.4.0/go.mod h1:j5Tnr2zA8UTDRzfIAZUaseE5/QPQCRv8JShSuGZek1A=
 github.com/vmihailenco/msgpack/v5 v5.4.1 h1:cQriyiUvjTwOHg8QZaPihLWeRAAVoCpE00IUPn0Bjt8=
 github.com/vmihailenco/msgpack/v5 v5.4.1/go.mod h1:GaZTsDaehaPpQVyxrf5mtQlH+pc21PIudVV/E3rRQok=
 github.com/vmihailenco/tagparser/v2 v2.0.0 h1:y09buUbR+b5aycVFQs/g70pqKVZNBmxwAhO7/IwNM9g=

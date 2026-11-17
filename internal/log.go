@@ -46,9 +46,13 @@ func (lt *LogType) UnmarshalJSON(data []byte) error {
 		return err
 	}
 
-	*lt = LogTypeFromString(s)
-
-	return nil
+	for _, candidate := range []LogType{SetMetadataLogType, NewTransactionLogType, RevertedTransactionLogType, DeleteMetadataLogType, InsertedSchemaLogType} {
+		if candidate.String() == s {
+			*lt = candidate
+			return nil
+		}
+	}
+	return fmt.Errorf("unknown log type %q", s)
 }
 
 func (lt LogType) String() string {
@@ -301,7 +305,7 @@ func (s *SavedMetadata) UnmarshalJSON(data []byte) error {
 	case strings.ToUpper(MetaTargetTypeTransaction):
 		id, err = strconv.ParseUint(string(x.TargetID), 10, 64)
 	default:
-		panic("unknown type")
+		return fmt.Errorf("unknown type '%s'", x.TargetType)
 	}
 	if err != nil {
 		return err
@@ -446,7 +450,7 @@ func HydrateLog(_type LogType, data []byte) (LogPayload, error) {
 	default:
 		return nil, fmt.Errorf("unknown type '%s'", _type)
 	}
-	err := json.Unmarshal(data, &payload)
+	err := json.Unmarshal(data, payload)
 	if err != nil {
 		return nil, err
 	}
