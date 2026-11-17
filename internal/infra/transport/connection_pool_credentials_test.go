@@ -45,6 +45,29 @@ func TestStaticTokenCredentials_SeparatesPeerAndCallerCredentials(t *testing.T) 
 	require.NoError(t, err)
 	require.Equal(t, "Bearer cluster-secret", md[PeerAuthMetadataKey])
 	require.Equal(t, "Bearer user-jwt", md["authorization"])
+	require.NotContains(t, md, ForwardedAnonymousMetadataKey)
+}
+
+func TestStaticTokenCredentials_IdentifiesForwardedAnonymousCaller(t *testing.T) {
+	t.Parallel()
+
+	creds := staticTokenCredentials{token: "cluster-secret", header: PeerAuthMetadataKey}
+	ctx := WithForwardedAnonymousCaller(context.Background())
+	md, err := creds.GetRequestMetadata(ctx)
+	require.NoError(t, err)
+	require.Equal(t, "Bearer cluster-secret", md[PeerAuthMetadataKey])
+	require.Equal(t, "true", md[ForwardedAnonymousMetadataKey])
+	require.NotContains(t, md, "authorization")
+
+	internal, err := creds.GetRequestMetadata(context.Background())
+	require.NoError(t, err)
+	require.NotContains(t, internal, ForwardedAnonymousMetadataKey)
+
+	ctx = WithForwardedBearerToken(ctx, "user-jwt")
+	md, err = creds.GetRequestMetadata(ctx)
+	require.NoError(t, err)
+	require.Equal(t, "Bearer user-jwt", md["authorization"])
+	require.NotContains(t, md, ForwardedAnonymousMetadataKey)
 }
 
 func TestStaticTokenCredentials_RequireTransportSecurity(t *testing.T) {

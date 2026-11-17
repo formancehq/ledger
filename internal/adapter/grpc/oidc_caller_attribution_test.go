@@ -10,6 +10,8 @@ import (
 	"crypto/tls"
 	"encoding/json"
 	"net"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 	"time"
 
@@ -112,7 +114,7 @@ func TestOIDCCallerAttributionThroughPublicGRPC(t *testing.T) {
 		admission, proposals := newCallerAttributionAdmission(t, 1)
 		leaderConfig := cfg
 		leaderConfig.ClusterSecret = "trusted-cluster-secret"
-		leader, leaderClient := newTLSAuthInterceptorServer(t, ServiceAuthPolicyPeer, leaderConfig)
+		leader, leaderClient, _, _ := newTLSAuthInterceptorServer(t, ServiceAuthPolicyPeer, leaderConfig)
 		leader.applyFn = func(ctx context.Context, req *servicepb.ApplyRequest) (*domain.ApplyResult, error) {
 			ctx, err := (&BucketServiceServerImpl{}).adoptForwardedSnapshotIfTrusted(ctx, req)
 			if err != nil {
@@ -146,7 +148,69 @@ func TestOIDCCallerAttributionThroughPublicGRPC(t *testing.T) {
 	})
 }
 
-func newTLSAuthInterceptorServer(t *testing.T, mode ServiceAuthPolicy, cfg internalauth.AuthConfig) (*authInterceptorBucketServer, servicepb.BucketServiceClient) {
+// The HTTP ingress validates a caller on the follower. The peer connection
+// must carry that caller to the leader, where authentication is evaluated
+// again. A cluster-secret-only hop would incorrectly execute both requests.
+func TestHTTPForwardingRevalidatesCallerAtLeader(t *testing.T) {
+	const issuer = "https://identity.example.com"
+	sharedKey, err := rsa.GenerateKey(rand.Reader, 2048)
+	require.NoError(t, err)
+	followerOnlyKey, err := rsa.GenerateKey(rand.Reader, 2048)
+	require.NoError(t, err)
+	followerConfig := internalauth.AuthConfig{
+		Enabled: true, Issuers: []string{issuer}, Service: "ledger",
+		KeySet: oidc.NewStaticKeySet(
+			jose.JSONWebKey{Key: &sharedKey.PublicKey, KeyID: "shared", Algorithm: string(jose.RS256), Use: "sig"},
+			jose.JSONWebKey{Key: &followerOnlyKey.PublicKey, KeyID: "follower-only", Algorithm: string(jose.RS256), Use: "sig"},
+		),
+		ScopeMapping: internalauth.DefaultMapping("ledger"),
+	}
+	followerConfig.ScopeMapping[internalauth.ScopeMappingAnonymousKey] = []internalauth.Scope{internalauth.ScopeLedgersWrite}
+	leaderConfig := internalauth.AuthConfig{
+		Enabled: true, Issuers: []string{issuer}, Service: "ledger", ClusterSecret: "trusted-cluster-secret",
+		KeySet:       oidc.NewStaticKeySet(jose.JSONWebKey{Key: &sharedKey.PublicKey, KeyID: "shared", Algorithm: string(jose.RS256), Use: "sig"}),
+		ScopeMapping: internalauth.DefaultMapping("ledger"),
+	}
+	leader, _, address, clientTLS := newTLSAuthInterceptorServer(t, ServiceAuthPolicyPeer, leaderConfig)
+	leader.applyFn = func(ctx context.Context, _ *servicepb.ApplyRequest) (*domain.ApplyResult, error) {
+		return nil, ggrpc.SetTrailer(ctx, metadata.Pairs(metadataKeyApplyReplayed, "false"))
+	}
+	pool := transport.NewConnectionPool(transport.TLSPolicy{TLSConfig: clientTLS, Strict: true}, transport.PoolConfig{AuthToken: leaderConfig.ClusterSecret})
+	t.Cleanup(func() { require.NoError(t, pool.Close()) })
+	require.NoError(t, pool.AddPeer(1, address))
+	forwarder := NewLedgerGrpcClient(servicepb.NewBucketServiceClient(pool.GetConnection(1)))
+	var forwardErr error
+	handler := internalauth.HTTPAuthMiddleware(followerConfig)(internalauth.RequireScope(followerConfig, internalauth.ScopeLedgersWrite)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, forwardErr = forwarder.Apply(r.Context(), callerAttributionWrite())
+		w.WriteHeader(http.StatusNoContent)
+	})))
+
+	for _, tc := range []struct {
+		name      string
+		token     string
+		wantCode  codes.Code
+		wantCalls int32
+	}{
+		{name: "bearer accepted by both nodes", token: callerAttributionToken(t, jose.RS256, "shared", sharedKey, issuer, "ledger:WriteLedger"), wantCode: codes.OK, wantCalls: 1},
+		{name: "bearer rejected by leader", token: callerAttributionToken(t, jose.RS256, "follower-only", followerOnlyKey, issuer, "ledger:WriteLedger"), wantCode: codes.Unauthenticated, wantCalls: 1},
+		{name: "anonymous scope rejected by leader", wantCode: codes.Unauthenticated, wantCalls: 1},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			forwardErr = nil
+			r := httptest.NewRequest(http.MethodPost, "/v3/default/ledgers", nil)
+			if tc.token != "" {
+				r.Header.Set("Authorization", "Bearer "+tc.token)
+			}
+			w := httptest.NewRecorder()
+			handler.ServeHTTP(w, r)
+			require.Equal(t, http.StatusNoContent, w.Code)
+			require.Equal(t, tc.wantCode, status.Code(forwardErr))
+			require.Equal(t, tc.wantCalls, leader.applyCalls.Load())
+		})
+	}
+}
+
+func newTLSAuthInterceptorServer(t *testing.T, mode ServiceAuthPolicy, cfg internalauth.AuthConfig) (*authInterceptorBucketServer, servicepb.BucketServiceClient, string, *tls.Config) {
 	t.Helper()
 	certs := newTestCerts(t)
 	cert, err := tls.LoadX509KeyPair(certs.ServerCertFile, certs.ServerKeyFile)
@@ -162,13 +226,14 @@ func newTLSAuthInterceptorServer(t *testing.T, mode ServiceAuthPolicy, cfg inter
 	require.NoError(t, server.Listen())
 	go func() { _ = server.Serve() }()
 	t.Cleanup(func() { require.NoError(t, server.Stop()) })
+	clientTLS := clientTLSConfigTrustingCA(t, certs.CACertFile)
 	conn, err := ggrpc.NewClient(listener.Addr().String(),
-		ggrpc.WithTransportCredentials(credentials.NewTLS(clientTLSConfigTrustingCA(t, certs.CACertFile))),
+		ggrpc.WithTransportCredentials(credentials.NewTLS(clientTLS)),
 		grpcprotocol.ClientOption())
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, conn.Close()) })
 
-	return implementation, servicepb.NewBucketServiceClient(conn)
+	return implementation, servicepb.NewBucketServiceClient(conn), listener.Addr().String(), clientTLS
 }
 
 func callerAttributionToken(t *testing.T, algorithm jose.SignatureAlgorithm, keyID string, key any, issuer, scope string) string {

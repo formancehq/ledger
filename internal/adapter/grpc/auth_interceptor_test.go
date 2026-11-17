@@ -152,6 +152,41 @@ func TestPeerInterceptorTrustRequiresTLS(t *testing.T) {
 	}
 }
 
+func TestPeerInterceptorDistinguishesAnonymousFromInternal(t *testing.T) {
+	cfg := internalauth.AuthConfig{
+		Enabled: true, ClusterSecret: "cluster-secret",
+		ScopeMapping: internalauth.ScopeMapping{internalauth.ScopeMappingAnonymousKey: {internalauth.ScopeOpsRead}},
+	}
+	interceptor := authUnaryInterceptor(cfg, true)
+	info := &ggrpc.UnaryServerInfo{FullMethod: "/ledger.BucketService/Barrier"}
+	tlsContext := peer.NewContext(context.Background(), &peer.Peer{AuthInfo: credentials.TLSInfo{}})
+	for _, tc := range []struct {
+		name         string
+		metadata     metadata.MD
+		wantWrite    bool
+		wantError    codes.Code
+		wantExecuted bool
+	}{
+		{name: "anonymous", metadata: metadata.Pairs(transport.PeerAuthMetadataKey, "Bearer cluster-secret", transport.ForwardedAnonymousMetadataKey, "true"), wantExecuted: true},
+		{name: "internal", metadata: metadata.Pairs(transport.PeerAuthMetadataKey, "Bearer cluster-secret"), wantWrite: true, wantExecuted: true},
+		{name: "conflicting caller", metadata: metadata.Pairs(transport.PeerAuthMetadataKey, "Bearer cluster-secret", transport.ForwardedAnonymousMetadataKey, "true", "authorization", "Bearer user-jwt"), wantError: codes.Unauthenticated},
+		{name: "duplicate marker", metadata: metadata.Pairs(transport.PeerAuthMetadataKey, "Bearer cluster-secret", transport.ForwardedAnonymousMetadataKey, "true", transport.ForwardedAnonymousMetadataKey, "true"), wantError: codes.Unauthenticated},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx := metadata.NewIncomingContext(tlsContext, tc.metadata)
+			executed := false
+			_, err := interceptor(ctx, &servicepb.BarrierRequest{}, info, func(ctx context.Context, _ any) (any, error) {
+				executed = true
+				require.True(t, internalauth.IsClusterInternal(ctx))
+				require.Equal(t, tc.wantWrite, internalauth.HasScope(internalauth.ExpandedScopesFromContext(ctx), internalauth.ScopeTransactionsWrite))
+				return nil, nil
+			})
+			require.Equal(t, tc.wantError, status.Code(err))
+			require.Equal(t, tc.wantExecuted, executed)
+		})
+	}
+}
+
 func TestOptionalPlaintextPeerDoesNotGainForwardingTrust(t *testing.T) {
 	cfg := internalauth.AuthConfig{ClusterSecret: "cluster-secret"}
 	ctx := metadata.NewIncomingContext(context.Background(), metadata.Pairs(transport.PeerAuthMetadataKey, "Bearer cluster-secret"))

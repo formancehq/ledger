@@ -187,7 +187,10 @@ Ledger's internal peer listener uses a separate `x-ledger-peer-auth` metadata
 value for node-to-node transport authentication. It is not a user credential
 and is never accepted as a JWT on the public gRPC listener. Forwarded requests
 carry the original user JWT in `authorization`, which is evaluated by the node
-that executes the operation.
+that executes the operation. An authenticated peer marks forwarded anonymous
+requests with `x-ledger-forwarded-anonymous: true`; the executing node applies
+its own anonymous scopes. Peer calls without either caller marker are internal
+node actions.
 
 ## HTTP Authentication
 

@@ -107,6 +107,8 @@ func (c staticTokenCredentials) GetRequestMetadata(ctx context.Context, _ ...str
 	if header == PeerAuthMetadataKey {
 		if forwarded := ForwardedBearerToken(ctx); forwarded != "" {
 			metadata["authorization"] = "Bearer " + forwarded
+		} else if ForwardedAnonymousCaller(ctx) {
+			metadata[ForwardedAnonymousMetadataKey] = "true"
 		}
 	}
 

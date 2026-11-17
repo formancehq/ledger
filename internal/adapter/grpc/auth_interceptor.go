@@ -213,13 +213,22 @@ func evaluatePeerOrUserCredentials(ctx context.Context, cfg internalauth.AuthCon
 		return internalauth.EvaluateGRPCCredentials(ctx, cfg)
 	}
 
-	// A peer transport is authenticated independently of the caller. When a
-	// forwarded user token is present, evaluate it normally. Calls without one
-	// are internal node actions and retain the existing system-level scope
-	// behavior without treating CLUSTER_SECRET as a user bearer token.
+	// A peer transport is authenticated independently of the caller. Forwarded
+	// bearer and anonymous requests retain their caller identity; a peer call
+	// with neither is an internal node action.
 	_, presented, err := internalauth.BearerTokenFromGRPCContext(ctx)
 	if err != nil {
 		return ctx, err
+	}
+	md, _ := metadata.FromIncomingContext(ctx)
+	anonymous := md.Get(transport.ForwardedAnonymousMetadataKey)
+	if len(anonymous) > 0 {
+		if len(anonymous) != 1 || anonymous[0] != "true" || presented || !internalauth.IsClusterInternal(ctx) {
+			return ctx, status.Error(codes.Unauthenticated, "invalid forwarded anonymous caller")
+		}
+		if cfg.Enabled {
+			return internalauth.EvaluateGRPCCredentials(ctx, cfg)
+		}
 	}
 	if presented {
 		return internalauth.EvaluateGRPCCredentials(ctx, cfg)

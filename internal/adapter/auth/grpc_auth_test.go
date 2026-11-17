@@ -20,6 +20,8 @@ import (
 	"google.golang.org/grpc/status"
 
 	"github.com/formancehq/go-libs/v5/pkg/authn/oidc"
+
+	"github.com/formancehq/ledger/v3/internal/infra/transport"
 )
 
 func claimsFromContext(ctx context.Context) *oidc.AccessTokenClaims {
@@ -85,6 +87,19 @@ func ctxWithBearer(token string) context.Context {
 	md := metadata.Pairs("authorization", "Bearer "+token)
 
 	return metadata.NewIncomingContext(context.Background(), md)
+}
+
+func TestEvaluateGRPCCredentialsMarksOnlyEnabledAnonymousCallsForForwarding(t *testing.T) {
+	t.Parallel()
+
+	ctx, err := EvaluateGRPCCredentials(context.Background(), AuthConfig{Enabled: true})
+	require.NoError(t, err)
+	require.True(t, transport.ForwardedAnonymousCaller(ctx))
+	require.Empty(t, transport.ForwardedBearerToken(ctx))
+
+	ctx, err = EvaluateGRPCCredentials(context.Background(), AuthConfig{Enabled: false})
+	require.NoError(t, err)
+	require.False(t, transport.ForwardedAnonymousCaller(ctx))
 }
 
 func testAuthConfig(t *testing.T, keySet oidc.KeySet) AuthConfig {

@@ -68,6 +68,7 @@ func EvaluateGRPCCredentials(ctx context.Context, cfg AuthConfig) (context.Conte
 		effective := cfg.ScopeMapping.AnonymousScopes()
 		ctx = WithExpandedScopes(ctx, effective)
 		ctx = WithAuthPresented(ctx, false)
+		ctx = transport.WithForwardedAnonymousCaller(ctx)
 
 		return withAuthenticationState(ctx, true, false, effective), nil
 	}
