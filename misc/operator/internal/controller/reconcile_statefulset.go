@@ -319,28 +319,6 @@ func hasPodConfigHashBinding(sts *appsv1.StatefulSet) bool {
 	return sts.Annotations[annotationPodConfigHash] != "" && installed != "" && sts.Annotations[annotationPodConfigSpecHash] == installed
 }
 
-// preserveStorageSpecHash recognizes an old full-spec hash by reconstructing
-// its PVC-only inputs from the unchanged source templates. Once recognized,
-// the workload hash lives on STS metadata and remains valid after recreation.
-func preserveStorageSpecHash(ledger *ledgerv1alpha1.Cluster, existing *appsv1.StatefulSet, desired corev1.PodTemplateSpec, hash string) corev1.PodTemplateSpec {
-	old := existing.Spec.Template.Annotations[annotationSpecHash]
-	if old == "" {
-		return desired
-	}
-	if hasPodConfigHashBinding(existing) {
-		if existing.Annotations[annotationPodConfigHash] == hash {
-			desired.Annotations[annotationSpecHash] = old
-		}
-
-		return desired
-	}
-	if legacyStorageSpecHashMatches(ledger, existing) {
-		desired.Annotations[annotationSpecHash] = old
-	}
-
-	return desired
-}
-
 // Return evidence separately from the selected hash: equal desired/installed
 // annotations alone cannot certify an unpaired canonical marker.
 func legacyStorageSpecHashMatches(ledger *ledgerv1alpha1.Cluster, existing *appsv1.StatefulSet) bool {
