@@ -1354,8 +1354,20 @@ intended CSI driver installed.
 
 ### End-to-end tests
 
-From `misc/operator/`, run `just test-e2e` to build the images, create the kind
-cluster, and run the Chainsaw scenarios. The scenarios using the opaque `e2e`
+From the repository root, enter the pinned E2E toolchain, then run the tests:
+
+```sh
+nix develop .#upgrade
+cd misc/operator
+just test-e2e
+```
+
+The `upgrade` shell provides Chainsaw, kind, kubectl, and the Docker client;
+a running Docker daemon is required. The recipes do not install missing
+Chainsaw binaries automatically.
+
+`just test-e2e` builds the images, creates the kind cluster, and runs the
+Chainsaw scenarios. The scenarios using the opaque `e2e`
 Ledger tag run with the development Operator. The stopped rc.3-to-rc.4 upgrade
 scenario then runs with an Operator built as `v3.0.0-rc.4`, so the release
 version admission check is exercised. After the images are loaded, use
