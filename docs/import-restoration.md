@@ -81,7 +81,12 @@ use. The ledger remains `initializing` between batches; its first live write
 uses the existing sequence-reset and state-transition mechanism. Do not start
 live writes before restoration has completed.
 
-The derived `postCommitVolumes` and `postCommitEffectiveVolumes` audit fields are
-tracked separately by SEC-90. This patch does not recompute or validate them.
-Changes in the import controller may overlap SEC-90 and require a joint review
-when integrating the independent patches. No schema migration is introduced.
+Restoration includes SEC-90 canonicalization of derived audit volumes before log
+insertion. For created and revert transactions, storage recomputes
+`postCommitVolumes`; the reverted original comes from the stored transaction.
+`postCommitEffectiveVolumes` are recomputed and retained only when both
+`MOVES_HISTORY=ON` and `MOVES_HISTORY_POST_COMMIT_EFFECTIVE_VOLUMES=SYNC`;
+otherwise supplied effective volumes are cleared. Supplied account/asset entries
+not touched by the postings are dropped. Hashes and mementos remain unchanged.
+See [Canonical derived volumes on log import](database/import-log-canonical-volumes.md)
+for details. No schema migration is introduced.
