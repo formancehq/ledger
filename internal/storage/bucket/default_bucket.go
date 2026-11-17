@@ -117,7 +117,7 @@ var ledgerSetups = []ledgerSetup{
 		},
 		script: `
 		create trigger "update_transaction_metadata_history_{{.ID}}"
-		after update
+		after update of metadata
 		on "{{.Bucket}}"."transactions"
 		for each row
 		when (
