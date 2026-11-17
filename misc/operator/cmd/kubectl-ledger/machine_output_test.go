@@ -69,13 +69,14 @@ func TestReadCommandMachineOutput(t *testing.T) {
 						case operationPath:
 							assert.Equal(t, http.MethodGet, request.Method)
 							operationCalls.Add(1)
-							if fail {
+							switch {
+							case fail:
 								writer.WriteHeader(http.StatusForbidden)
 								body = `{"apiVersion":"v1","kind":"Status","status":"Failure","message":"machine output operation denied","reason":"Forbidden","code":403}`
-							} else if scenario.get {
+							case scenario.get:
 								body = fmt.Sprintf(`{"apiVersion":"ledger.formance.com/v1alpha1","kind":%q,"metadata":{"name":"audit","namespace":"default"}}`, kind)
-							} else {
-								body = fmt.Sprintf(`{"apiVersion":"ledger.formance.com/v1alpha1","kind":%q,"items":[]}`, kind)
+							default:
+								body = fmt.Sprintf(`{"apiVersion":"ledger.formance.com/v1alpha1","kind":%q,"items":[{"apiVersion":"ledger.formance.com/v1alpha1","kind":%q,"metadata":{"name":"audit","namespace":"default"}}]}`, kind, scenario.kind)
 							}
 						default:
 							t.Errorf("unexpected API request: %s %s", request.Method, request.URL.Path)
@@ -102,6 +103,7 @@ func TestReadCommandMachineOutput(t *testing.T) {
 					if fail {
 						require.ErrorContains(t, err, "machine output operation denied")
 						require.Contains(t, string(data), "Failed to")
+
 						return
 					}
 					require.NoError(t, err)
@@ -111,12 +113,23 @@ func TestReadCommandMachineOutput(t *testing.T) {
 					} else {
 						require.NoError(t, yaml.UnmarshalStrict(data, &decoded))
 					}
-					require.Equal(t, "ledger.formance.com/v1alpha1", decoded["apiVersion"])
-					require.Equal(t, kind, decoded["kind"])
+					require.NotContains(t, decoded, "apiVersion")
+					require.NotContains(t, decoded, "kind")
+					var resource map[string]any
 					if scenario.get {
-						require.Equal(t, "audit", decoded["metadata"].(map[string]any)["name"])
+						resource = decoded
 					} else {
-						require.Empty(t, decoded["items"])
+						items, ok := decoded["items"].([]any)
+						require.True(t, ok)
+						require.Len(t, items, 1)
+						resource, ok = items[0].(map[string]any)
+						require.True(t, ok)
+					}
+					metadata, ok := resource["metadata"].(map[string]any)
+					require.True(t, ok)
+					require.Equal(t, "audit", metadata["name"])
+					if scenario.namespaced {
+						require.Equal(t, "default", metadata["namespace"])
 					}
 				})
 			}
