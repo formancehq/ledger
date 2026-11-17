@@ -71,6 +71,7 @@ func ClusterPods(ctx context.Context, cs kubernetes.Interface, ledger *ledgerv1a
 	pods.Items = slices.DeleteFunc(pods.Items, func(pod corev1.Pod) bool {
 		return !metav1.IsControlledBy(&pod, sts)
 	})
+
 	return pods, nil
 }
 
@@ -100,9 +101,11 @@ func ClusterPVCs(ctx context.Context, cs kubernetes.Interface, ledger *ledgerv1a
 				return false
 			}
 			value, err := strconv.ParseUint(ordinal, 10, 32)
+
 			return err == nil && strconv.FormatUint(value, 10) == ordinal
 		})
 	})
+
 	return pvcs, nil
 }
 
@@ -117,6 +120,7 @@ func clusterOwnedStatefulSet(ctx context.Context, cs kubernetes.Interface, ledge
 	if !metav1.IsControlledBy(sts, ledger) {
 		return nil, fmt.Errorf("StatefulSet %q is not controlled by Cluster %q", sts.Name, ledger.Name)
 	}
+
 	return sts, nil
 }
 
@@ -142,6 +146,7 @@ func ClusterServices(ctx context.Context, cs kubernetes.Interface, ledger *ledge
 	services.Items = slices.DeleteFunc(services.Items, func(service corev1.Service) bool {
 		return !metav1.IsControlledBy(&service, ledger)
 	})
+
 	return services, nil
 }
 
