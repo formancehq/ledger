@@ -79,6 +79,30 @@ func TestProcessCreateLedger_RejectsConflictingInitialAccountTypes(t *testing.T)
 	require.Equal(t, "users-by-id", conflict.ExistingName)
 }
 
+func TestProcessCreateLedger_ConflictSelectionUsesFirstProcessedName(t *testing.T) {
+	t.Parallel()
+
+	// The first two patterns do not conflict, but both conflict with "last".
+	// Selection must use the first previously processed name, not map order.
+	for range 32 {
+		mockStore := NewMockScope(gomock.NewController(t))
+		expectGetLedger(mockStore, domain.LedgerKey{Name: "l"}, nil, domain.ErrNotFound)
+
+		_, derr := processCreateLedger("l", &raftcmdpb.CreateLedgerOrder{
+			AccountTypes: map[string]*commonpb.AccountType{
+				"b-second": {Pattern: "users:beta:{id}"},
+				"z-last":   {Pattern: "users:{group}:123"},
+				"a-first":  {Pattern: "users:alpha:{id}"},
+			},
+		}, &Context{Scope: mockStore, createLedgerAccountTypesV2: true})
+
+		var conflict *domain.ErrAccountTypeConflict
+		require.ErrorAs(t, derr, &conflict)
+		require.Equal(t, "a-first", conflict.ExistingName)
+		require.Equal(t, "users:alpha:{id}", conflict.ExistingPattern)
+	}
+}
+
 func TestProcessCreateLedger_UnmarkedHistoricalOrdersKeepLegacySemantics(t *testing.T) {
 	t.Parallel()
 
