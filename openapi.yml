@@ -4141,9 +4141,10 @@ components:
                 are preserved. Created-ledger payloads include assigned id and
                 initial metadata as well as the existing configuration fields.
                 Bigint response negotiation applies inside every payload.
-                An addEventsSink log has a credential-redacted configuration and
-                omits responseSignature because its original signed payload
-                contains the credentials. Other logs retain their signatures.
+                An addEventsSink log or a created-ledger log with a mirror source
+                has redacted credentials and omits responseSignature because
+                its original signed payload contains the credentials. Other
+                logs retain their signatures.
               items:
                 $ref: '#/components/schemas/SystemLog'
 
