@@ -139,6 +139,7 @@ func validateAppliedProposalCoverage(ctx context.Context, store dal.PebbleReader
 			if proposal != nil {
 				return fmt.Errorf("applied proposal sequence %d has no audit entry", proposal.GetSequence())
 			}
+
 			return nil
 		}
 		if err != nil {
@@ -408,6 +409,7 @@ func ApplyExportsAndRebuild(ctx context.Context, logger logging.Logger, storage 
 	}
 	if err := validateAppliedProposalCoverage(ctx, readHandle, fromAuditSeq); err != nil {
 		_ = readHandle.Close()
+
 		return fmt.Errorf("validating applied-proposal coverage: %w", err)
 	}
 	if err := readHandle.Close(); err != nil {
