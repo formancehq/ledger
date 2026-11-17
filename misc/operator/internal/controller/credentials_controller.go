@@ -90,7 +90,9 @@ func (r *CredentialsReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 			ObservedGeneration: credentials.Generation,
 		})
 		credentials.Status.Phase = "Error"
-		_ = r.Status().Update(ctx, credentials)
+		if statusErr := r.Status().Update(ctx, credentials); statusErr != nil {
+			err = errors.Join(err, fmt.Errorf("updating credentials error status: %w", statusErr))
+		}
 
 		return ctrl.Result{}, fmt.Errorf("resolving matched clusters: %w", err)
 	}
@@ -136,7 +138,9 @@ func (r *CredentialsReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 				ObservedGeneration: credentials.Generation,
 			})
 			credentials.Status.Phase = "Error"
-			_ = r.Status().Update(ctx, credentials)
+			if statusErr := r.Status().Update(ctx, credentials); statusErr != nil {
+				err = errors.Join(err, fmt.Errorf("updating credentials error status: %w", statusErr))
+			}
 
 			return ctrl.Result{}, fmt.Errorf("ensuring canonical secret: %w", err)
 		}
@@ -153,7 +157,9 @@ func (r *CredentialsReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 					ObservedGeneration: credentials.Generation,
 				})
 				credentials.Status.Phase = "Error"
-				_ = r.Status().Update(ctx, credentials)
+				if statusErr := r.Status().Update(ctx, credentials); statusErr != nil {
+					err = errors.Join(err, fmt.Errorf("updating credentials error status: %w", statusErr))
+				}
 
 				return ctrl.Result{}, fmt.Errorf("ensuring secret in %q: %w", ns, err)
 			}
