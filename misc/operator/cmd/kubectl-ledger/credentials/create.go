@@ -107,15 +107,15 @@ func runCreate(cmd *cobra.Command, opts *cmdutil.Options, setValues []string, dr
 		return fmt.Errorf("creating client: %w", err)
 	}
 
-	spinner, _ := pterm.DefaultSpinner.Start("Creating Credentials...")
+	pterm.Info.Println("Creating Credentials...")
 
 	if err := crdClient.Create(cmd.Context(), credentials); err != nil {
-		spinner.Fail("Failed to create Credentials")
+		pterm.Error.Println("Failed to create Credentials")
 
 		return fmt.Errorf("creating credentials %q: %w", name, err)
 	}
 
-	spinner.Success(fmt.Sprintf("Credentials %s created", pterm.Cyan(name)))
+	pterm.Success.Printfln("Credentials %s created", pterm.Cyan(name))
 
 	return nil
 }

@@ -32,16 +32,14 @@ func runList(cmd *cobra.Command, opts *cmdutil.Options) error {
 		return fmt.Errorf("creating client: %w", err)
 	}
 
-	spinner, _ := pterm.DefaultSpinner.Start("Fetching Credentials resources...")
+	pterm.Info.Println("Fetching Credentials resources...")
 
 	credentials, err := cmdutil.ListCredentials(ctx, crdClient)
 	if err != nil {
-		spinner.Fail("Failed to list Credentials resources")
+		pterm.Error.Println("Failed to list Credentials resources")
 
 		return fmt.Errorf("listing credentials: %w", err)
 	}
-
-	_ = spinner.Stop()
 
 	switch opts.OutputFormat() {
 	case "json":

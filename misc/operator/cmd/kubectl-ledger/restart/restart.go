@@ -76,15 +76,15 @@ func runRestart(cmd *cobra.Command, opts *cmdutil.Options, f *restartFlags, args
 	}
 	ledger.Spec.PodAnnotations["ledger.formance.com/restartedAt"] = time.Now().Format(time.RFC3339)
 
-	spinner, _ := pterm.DefaultSpinner.Start("Triggering rolling restart...")
+	pterm.Info.Println("Triggering rolling restart...")
 
 	if err := crdClient.Patch(ctx, ledger, patch); err != nil {
-		spinner.Fail("Failed to restart Cluster")
+		pterm.Error.Println("Failed to restart Cluster")
 
 		return fmt.Errorf("restarting ledger %q: %w", name, err)
 	}
 
-	spinner.Success("Rolling restart triggered for Cluster " + pterm.Cyan(name))
+	pterm.Success.Println("Rolling restart triggered for Cluster " + pterm.Cyan(name))
 
 	return nil
 }
