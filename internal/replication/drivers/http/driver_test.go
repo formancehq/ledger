@@ -4,9 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 
@@ -63,5 +67,137 @@ func TestHTTPDriver(t *testing.T) {
 		require.Len(t, receivedMessages, numberOfLogs)
 	default:
 		require.Fail(t, fmt.Sprintf("should have received %d messages", numberOfLogs))
+	}
+}
+
+func TestHTTPDriverClosesResponseBodies(t *testing.T) {
+	t.Parallel()
+
+	var opened, closed atomic.Int32
+	testServer := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = io.Copy(io.Discard, r.Body)
+		w.WriteHeader(http.StatusAccepted)
+		// A body that never completes cannot be pooled: every push opens a connection,
+		// and only a closed body lets the transport close it.
+		_, _ = w.Write([]byte("{"))
+		w.(http.Flusher).Flush()
+		<-r.Context().Done()
+	}))
+	testServer.Config.ConnState = func(_ net.Conn, state http.ConnState) {
+		switch state {
+		case http.StateNew:
+			opened.Add(1)
+		case http.StateClosed:
+			closed.Add(1)
+		}
+	}
+	testServer.Start()
+	t.Cleanup(func() {
+		testServer.CloseClientConnections()
+		testServer.Close()
+	})
+
+	driver, err := NewDriver(Config{URL: testServer.URL}, logging.Testing())
+	require.NoError(t, err)
+
+	const pushes = 20
+	for i := 0; i < pushes; i++ {
+		_, err := driver.Accept(context.TODO(), drivers.NewLogWithLedger(
+			"module",
+			ledger.NewLog(ledger.CreatedTransaction{Transaction: ledger.NewTransaction()}),
+		))
+		require.NoError(t, err)
+	}
+
+	require.EqualValues(t, pushes, opened.Load())
+	require.Eventually(t, func() bool {
+		return closed.Load() == opened.Load()
+	}, 5*time.Second, 10*time.Millisecond)
+}
+
+func TestHTTPDriverReturnsWithoutReadingBody(t *testing.T) {
+	t.Parallel()
+
+	// Accept must complete as soon as the status line is known, whatever the exporter
+	// does with the body afterwards, and the next push must still work.
+	for _, tc := range []struct {
+		name       string
+		status     int
+		body       func(w http.ResponseWriter, r *http.Request)
+		expectsErr bool
+	}{
+		{
+			name:   "stalled body after 202",
+			status: http.StatusAccepted,
+			body: func(w http.ResponseWriter, r *http.Request) {
+				_, _ = w.Write([]byte("{"))
+				w.(http.Flusher).Flush()
+				<-r.Context().Done()
+			},
+		},
+		{
+			name:   "stalled body after 500",
+			status: http.StatusInternalServerError,
+			body: func(w http.ResponseWriter, r *http.Request) {
+				_, _ = w.Write([]byte("{"))
+				w.(http.Flusher).Flush()
+				<-r.Context().Done()
+			},
+			expectsErr: true,
+		},
+		{
+			name:   "endless body after 202",
+			status: http.StatusAccepted,
+			body: func(w http.ResponseWriter, r *http.Request) {
+				chunk := make([]byte, 32<<10)
+				for {
+					if _, err := w.Write(chunk); err != nil {
+						return
+					}
+					w.(http.Flusher).Flush()
+					select {
+					case <-r.Context().Done():
+						return
+					default:
+					}
+				}
+			},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			testServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				_, _ = io.Copy(io.Discard, r.Body)
+				w.WriteHeader(tc.status)
+				tc.body(w, r)
+			}))
+			t.Cleanup(func() {
+				testServer.CloseClientConnections()
+				testServer.Close()
+			})
+
+			driver, err := NewDriver(Config{URL: testServer.URL}, logging.Testing())
+			require.NoError(t, err)
+			log := drivers.NewLogWithLedger("module", ledger.NewLog(ledger.CreatedTransaction{Transaction: ledger.NewTransaction()}))
+
+			for i := 0; i < 2; i++ {
+				done := make(chan error, 1)
+				go func() {
+					_, err := driver.Accept(context.TODO(), log)
+					done <- err
+				}()
+				select {
+				case err := <-done:
+					if tc.expectsErr {
+						require.Error(t, err)
+					} else {
+						require.NoError(t, err)
+					}
+				case <-time.After(5 * time.Second):
+					require.Fail(t, "Accept did not return: it must not wait for the response body")
+				}
+			}
+		})
 	}
 }
