@@ -69,6 +69,13 @@ type ServeCommandConfig struct {
 	DisableLedgerScopeOptimization bool `mapstructure:"disable-ledger-scope-optimization"`
 }
 
+func (cfg ServeCommandConfig) Validate() error {
+	if err := cfg.WorkerConfiguration.Validate(); err != nil {
+		return err
+	}
+	return cfg.SchemaEnforcementMode.Validate()
+}
+
 const (
 	BindFlag                   = "bind"
 	BallastSizeInBytesFlag     = "ballast-size"
@@ -216,7 +223,7 @@ func NewServeCommand() *cobra.Command {
 	cmd.Flags().StringSlice(NumscriptInterpreterFlagsToPass, nil, "Feature flags to pass to the experimental numscript interpreter")
 	cmd.Flags().String(WorkerGRPCAddressFlag, "localhost:8081", "GRPC address")
 	cmd.Flags().Bool(SemconvMetricsNames, false, "Use semconv metrics names (recommended)")
-	cmd.Flags().String(SchemaEnforcementMode, "audit", "Schema enforcement mode. Values: `audit`, `strict`")
+	cmd.Flags().String(SchemaEnforcementMode, "audit", "Schema enforcement mode. Values: `audit`, `strict` (case-sensitive; any other value fails startup)")
 	cmd.Flags().Bool(audit.AuditEnabledFlag, true, "Enable HTTP audit")
 	cmd.Flags().Bool(AuditAsyncEnabledFlag, true, "Publish HTTP audit events asynchronously")
 	cmd.Flags().Int(AuditAsyncQueueCapacityFlag, api.DefaultAuditAsyncQueueCapacity, "HTTP audit async publish queue capacity")
