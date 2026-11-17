@@ -1289,6 +1289,13 @@ the Ledger image tag configured on the Operator (`ledgerImage.tag`, or the
 chart's `appVersion`). Set `image.tag` explicitly to select a different
 compatible release.
 
+The plugin's `--set` paths support dotted keys and zero-based array indices
+from `0` through `65536`, inclusive. Escape literal dots with `\.` or quote
+the key segment, for example
+`--set 'ingress.annotations."traefik.ingress.kubernetes.io/router.tls"=true'`.
+Malformed paths are rejected instead of applying only part of the path.
+Values remain strings until conversion to the target spec field type.
+
 Plain `kubectl rollout restart statefulset/<name>` also works: the operator
 preserves the `kubectl.kubernetes.io/restartedAt` annotation kubectl stamps on
 the pod template instead of reverting it on the next reconcile. Prefer
