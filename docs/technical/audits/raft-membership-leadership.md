@@ -163,6 +163,17 @@ scans until `MsgStorageApplyResp` advances that frontier.
 
 ### Leadership and quorum transitions
 
+For local leadership leases, record the gain/loss transition epochs, the exact
+lease carried by each readiness event and proposal, the authorization versus
+revocation linearization order, and the Raft role/term at dequeue. Challenge a
+full proposal queue and a queued entry revoked before acceptance, including
+loss followed by regain. A rejected entry must leave no RawNode append, roll
+back its predicted index, and resolve both proposal and FSM futures. Confirm
+that a successor shifted by the drop is rejected before preload rather than
+silently applying with stale coverage. These epochs are local admission state,
+not quorum authority or a persisted fencing token; downstream worker cleanup
+belongs to the concurrency lifecycle domain.
+
 Use committed/applied indexes, not callback order or the locally reported Raft
 role, as the oracle. On acquisition, prove the drain/barrier that precedes
 leader-only admission, membership maintenance and ReadIndex ownership. On loss,

@@ -179,6 +179,18 @@ resource-close count as evidence of a whole-constructor shutdown bound. See the
 
 ## Concurrent transition scenarios
 
+For Node-owned leadership leases, pause each slow preparation before
+authorization, revoke the captured lease, then release preparation. Event and
+mirror registration/start, backup registry insertion, and maintenance proposal
+submission must reject that old tenure. Invert the order: authorize first,
+revoke second, and prove the already registered runtime observes synchronous
+lease-context cancellation. Race component Stop against a still-current Node
+lease to prove the local gate prevents recreation and drains existing work.
+Check detached terminal and cursor proposals retain their original lease and
+cannot borrow a later tenure. Record lock order and verify the lease gate never
+contains Pebble reads, network calls, readiness waits, Stop, or joins. Node
+dequeue and index/future accounting belong to the adjacent Raft domain.
+
 For learner preflight, complete a peer `Canceled` response before delivering
 local termination, while holding caller-side result handling or connection
 cleanup. The completed fatal response must remain a failure. Also retain the

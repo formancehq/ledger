@@ -29,6 +29,25 @@ type Proposer interface {
 	Propose(ctx context.Context, proposal *node.Proposal) (*futures.Future[state.ApplyResult], error)
 }
 
+// leadershipLease is the narrow authority needed by this consumer. Tests may
+// supply a controllable lease without constructing a Raft node.
+type leadershipLease interface {
+	Context() context.Context
+	Authorize(func()) bool
+	Epoch() uint64
+}
+
+// leaseContext retains the node-issued token for proposal admission. The
+// interface also permits focused manager tests with a controllable lease.
+func leaseContext(lease leadershipLease) context.Context {
+	ctx := lease.Context()
+	if token, ok := lease.(*node.LeadershipLease); ok {
+		return node.WithLeadershipLease(ctx, token)
+	}
+
+	return ctx
+}
+
 // Manager manages the lifecycle of mirror workers based on the Raft-replicated
 // ledger configuration. It creates one Worker per mirror ledger and only runs
 // workers on the leader node.
@@ -54,6 +73,7 @@ type Manager struct {
 	stopped              bool
 	initializationCtx    context.Context
 	cancelInitialization context.CancelFunc
+	lease                leadershipLease
 
 	w worker.Worker
 }
@@ -90,6 +110,7 @@ func (m *Manager) Stop() {
 
 	m.leadershipGeneration++
 	m.isLeader = false
+	m.lease = nil
 	m.stopped = true
 	if m.cancelInitialization != nil {
 		m.cancelInitialization()
@@ -104,13 +125,32 @@ func (m *Manager) Stop() {
 	m.teardown()
 }
 
-// OnLeadershipChange records the latest leadership generation and wakes the
-// lifecycle-owned reconciliation loop. It deliberately does not reconcile on
-// the caller: bootstrap invokes it synchronously from the Raft observer so
-// transitions are recorded in order without blocking the Raft processing loop
-// on Pebble reads or worker startup.
-// Canceling the prior generation also interrupts source initialization before
-// the queued reconciliation can run.
+// OnLeadershipLease records the node-owned lease and wakes reconciliation.
+// Canceling the prior generation interrupts source initialization before
+// the queued reconciliation runs.
+// Source construction and teardown remain on the manager loop.
+func (m *Manager) OnLeadershipLease(lease leadershipLease) {
+	m.leadershipMu.Lock()
+	if m.stopped {
+		m.leadershipMu.Unlock()
+
+		return
+	}
+	m.leadershipGeneration++
+	m.lease = lease
+	m.isLeader = lease != nil
+	if m.cancelInitialization != nil {
+		m.cancelInitialization()
+	}
+	m.initializationCtx, m.cancelInitialization = nil, nil
+	if lease != nil {
+		m.initializationCtx, m.cancelInitialization = context.WithCancel(leaseContext(lease))
+	}
+	m.leadershipMu.Unlock()
+	m.notifications.NotifyConfigChanged()
+}
+
+// OnLeadershipChange is retained for existing manager tests. Bootstrap uses the lease.
 func (m *Manager) OnLeadershipChange(isLeader bool) {
 	m.leadershipMu.Lock()
 	if m.stopped {
@@ -121,6 +161,7 @@ func (m *Manager) OnLeadershipChange(isLeader bool) {
 
 	m.leadershipGeneration++
 	m.isLeader = isLeader
+	m.lease = nil
 	if m.cancelInitialization != nil {
 		m.cancelInitialization()
 	}
@@ -178,7 +219,14 @@ func (m *Manager) isCurrentLeader(generation uint64) bool {
 	m.leadershipMu.Lock()
 	defer m.leadershipMu.Unlock()
 
-	return !m.stopped && m.isLeader && m.leadershipGeneration == generation
+	if m.stopped || !m.isLeader || m.leadershipGeneration != generation {
+		return false
+	}
+	if m.lease == nil {
+		return true // compatibility path used by existing manager tests
+	}
+
+	return m.lease.Authorize(func() {})
 }
 
 func (m *Manager) isCurrentGeneration(generation uint64) bool {
@@ -310,17 +358,43 @@ func (m *Manager) reconcileGeneration(leadership managerLeadership) {
 		if blocked != "" {
 			w.blockIngestion(blocked)
 		}
-		w.Start()
-		if !m.isCurrentLeader(generation) {
-			w.Stop()
+		if !m.registerWorker(generation, name, w, leadership.initializationCtx) {
+			if err := source.Close(); err != nil {
+				m.logger.WithFields(map[string]any{"ledger": name}).Errorf("Failed to close superseded mirror source: %v", err)
+			}
 
 			return
 		}
+		if !m.isCurrentLeader(generation) {
+			w.Stop()
+			delete(m.workers, name)
 
-		m.workers[name] = w
+			return
+		}
 	}
 
 	m.logger.Infof("Mirror workers reconciled (active=%d)", len(m.workers))
+}
+
+// registerWorker commits ownership and launches the worker under the lease
+// gate. Its callback performs no source I/O or goroutine drain.
+func (m *Manager) registerWorker(generation uint64, name string, worker *Worker, ctx context.Context) bool {
+	m.leadershipMu.Lock()
+	defer m.leadershipMu.Unlock()
+	if m.stopped || !m.isLeader || m.leadershipGeneration != generation {
+		return false
+	}
+	start := func() {
+		m.workers[name] = worker
+		worker.StartWithContext(ctx)
+	}
+	if m.lease == nil {
+		start()
+
+		return true
+	}
+
+	return m.lease.Authorize(start)
 }
 
 // teardown stops all workers. Must be called under lock.

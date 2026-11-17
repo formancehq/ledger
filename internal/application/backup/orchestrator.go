@@ -110,6 +110,20 @@ func (r *ExecutorRegistry) tryRegister(jobID uint64) bool {
 	return true
 }
 
+// tryRegisterAuthorized inserts only while the captured leadership lease is active.
+func (r *ExecutorRegistry) tryRegisterAuthorized(jobID uint64, lease LeadershipLease) (authorized, owner bool) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	authorized = lease.Authorize(func() {
+		if _, exists := r.jobs[jobID]; exists {
+			return
+		}
+		r.jobs[jobID] = struct{}{}
+		owner = true
+	})
+	return authorized, owner
+}
+
 func (r *ExecutorRegistry) deregister(jobID uint64) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -124,6 +138,18 @@ func (r *ExecutorRegistry) IsAlive(jobID uint64) bool {
 	_, ok := r.jobs[jobID]
 
 	return ok
+}
+
+// LeadershipLease is the node-owned tenure captured for one backup run.
+type LeadershipLease interface {
+	Context() context.Context
+	Authorize(func()) bool
+	ProposalContext(context.Context) context.Context
+}
+
+// LeaseProvider returns the current leadership tenure, if any.
+type LeaseProvider interface {
+	CurrentLeadershipLease() LeadershipLease
 }
 
 // Orchestrator drives the FSM lifecycle of a backup job. The caller
@@ -143,6 +169,7 @@ type Orchestrator struct {
 	logger   logging.Logger
 	nodeID   uint64
 	registry *ExecutorRegistry
+	leases   LeaseProvider
 
 	// mu guards leaderCtx / leaderCancel. RunFull reads
 	// leaderCtx once and derive a child context for the run; the read
@@ -163,7 +190,7 @@ type Orchestrator struct {
 // cancellation error. Bootstrap calls OnLeadershipChange on startup
 // (and on every transition thereafter) so the orchestrator's state
 // tracks the node's actual leadership.
-func NewOrchestrator(proposer Proposer, store *dal.Store, logger logging.Logger, nodeID uint64, registry *ExecutorRegistry) *Orchestrator {
+func NewOrchestrator(proposer Proposer, store *dal.Store, logger logging.Logger, nodeID uint64, registry *ExecutorRegistry, leases LeaseProvider) *Orchestrator {
 	cancelled, cancel := context.WithCancel(context.Background())
 	cancel()
 
@@ -173,6 +200,7 @@ func NewOrchestrator(proposer Proposer, store *dal.Store, logger logging.Logger,
 		logger:       logger.WithField("cmp", "backup-orchestrator"),
 		nodeID:       nodeID,
 		registry:     registry,
+		leases:       leases,
 		leaderCtx:    cancelled,
 		leaderCancel: cancel,
 	}
@@ -207,22 +235,14 @@ func (o *Orchestrator) OnLeadershipChange(isLeader bool) {
 // caller's ctx ends OR leadership is lost. The returned cancel must
 // be called by the caller (deferred) to release the watcher goroutine
 // even on the happy path.
-func (o *Orchestrator) runContext(ctx context.Context) (context.Context, context.CancelFunc) {
-	o.mu.Lock()
-	leaderCtx := o.leaderCtx
-	o.mu.Unlock()
-
+func (o *Orchestrator) runContext(ctx context.Context, lease LeadershipLease) (context.Context, context.CancelFunc) {
 	runCtx, cancel := context.WithCancel(ctx)
-
-	go func() {
-		select {
-		case <-leaderCtx.Done():
-			cancel()
-		case <-runCtx.Done():
-		}
-	}()
-
-	return runCtx, cancel
+	if lease == nil {
+		cancel()
+		return runCtx, cancel
+	}
+	stop := context.AfterFunc(lease.Context(), cancel)
+	return runCtx, func() { stop(); cancel() }
 }
 
 // RunFull proposes a full BackupOrder.Start, drives backup.RunBackup
@@ -240,8 +260,12 @@ func (o *Orchestrator) RunFull(ctx context.Context, dst *raftcmdpb.BackupDestina
 	// mid-flight — the S3 SDK respects ctx and aborts in-flight
 	// requests, so the second-writer race after a leadership transfer
 	// closes deterministically.
-	runCtx, cancelRun := o.runContext(ctx)
+	lease := o.leases.CurrentLeadershipLease()
+	runCtx, cancelRun := o.runContext(ctx, lease)
 	defer cancelRun()
+	if lease == nil {
+		return nil, context.Canceled
+	}
 
 	// Register BEFORE proposing Start so the cleanup tick — which can
 	// fire between Start-apply and the registration — never sees a
@@ -255,7 +279,10 @@ func (o *Orchestrator) RunFull(ctx context.Context, dst *raftcmdpb.BackupDestina
 	// (different destination). In both cases we MUST NOT deregister on
 	// exit — that would yank the other job's liveness and the cleanup
 	// loop would orphan-fail a valid in-flight backup.
-	deregisterOnExit := o.registry.tryRegister(jobID)
+	authorized, deregisterOnExit := o.registry.tryRegisterAuthorized(jobID, lease)
+	if !authorized {
+		return nil, context.Canceled
+	}
 	defer func() {
 		if deregisterOnExit {
 			o.registry.deregister(jobID)
@@ -266,7 +293,7 @@ func (o *Orchestrator) RunFull(ctx context.Context, dst *raftcmdpb.BackupDestina
 	// rejections. They flow back as the typed sentinels through
 	// proposeTechnical's apply-error wrapping (%w), so errors.Is at
 	// the caller still recognises them.
-	if err := o.proposeAndWait(runCtx, fullStart(jobID, dst, o.nodeID)); err != nil {
+	if err := o.proposeAndWait(lease.ProposalContext(runCtx), fullStart(jobID, dst, o.nodeID)); err != nil {
 		return nil, fmt.Errorf("propose backup start: %w", err)
 	}
 
@@ -279,7 +306,7 @@ func (o *Orchestrator) RunFull(ctx context.Context, dst *raftcmdpb.BackupDestina
 
 	result, runErr := backup.RunBackup(runCtx, o.logger, o.store, storage, dst.GetBucketId(), checkpointName)
 	if runErr != nil {
-		o.proposeTerminal(fullFail(jobID, runErr.Error()), jobID, "fail")
+		o.proposeTerminal(lease, fullFail(jobID, runErr.Error()), jobID, "fail")
 
 		return nil, runErr
 	}
@@ -287,7 +314,7 @@ func (o *Orchestrator) RunFull(ctx context.Context, dst *raftcmdpb.BackupDestina
 	termCtx, cancel := context.WithTimeout(context.Background(), TerminalProposeTimeout)
 	defer cancel()
 
-	if err := o.proposeAndWait(termCtx, fullComplete(jobID, result)); err != nil {
+	if err := o.proposeAndWait(lease.ProposalContext(termCtx), fullComplete(jobID, result)); err != nil {
 		o.logger.WithFields(map[string]any{
 			"jobID": jobID,
 			"error": err,
@@ -304,11 +331,11 @@ func (o *Orchestrator) RunFull(ctx context.Context, dst *raftcmdpb.BackupDestina
 // leaving the handler stuck indefinitely. A proposal error is logged rather
 // than replacing the upload error returned by RunFull; cleanup handles a job
 // that remains RUNNING.
-func (o *Orchestrator) proposeTerminal(populate func(*raftcmdpb.Proposal), jobID uint64, kind string) {
+func (o *Orchestrator) proposeTerminal(lease LeadershipLease, populate func(*raftcmdpb.Proposal), jobID uint64, kind string) {
 	ctx, cancel := context.WithTimeout(context.Background(), TerminalProposeTimeout)
 	defer cancel()
 
-	if err := o.proposeAndWait(ctx, populate); err != nil {
+	if err := o.proposeAndWait(lease.ProposalContext(ctx), populate); err != nil {
 		o.logger.WithFields(map[string]any{
 			"jobID": jobID,
 			"kind":  kind,

@@ -73,8 +73,7 @@ func TestCleanup_SkipsWhenNotLeader(t *testing.T) {
 	ctrl := gomock.NewController(t)
 
 	provider := NewMockStaleProvider(ctrl)
-	probe := NewMockLeaderProbe(ctrl)
-	probe.EXPECT().IsLeader().Return(false)
+	probe := &testLeaseProvider{}
 	prop := NewMockProposer(ctrl) // zero Propose calls expected
 
 	c := NewCleanup(provider, prop, probe, liveProbe(t), logging.Testing())
@@ -93,8 +92,7 @@ func TestCleanup_SkipsLiveJob(t *testing.T) {
 	provider := NewMockStaleProvider(ctrl)
 	expectForEachActive(provider, runningJob(42, raftcmdpb.BackupKind_BACKUP_KIND_FULL))
 
-	probe := NewMockLeaderProbe(ctrl)
-	probe.EXPECT().IsLeader().Return(true)
+	probe := &testLeaseProvider{lease: newTestLeadershipLease()}
 
 	prop := NewMockProposer(ctrl) // zero Propose expected: job is alive
 
@@ -115,8 +113,7 @@ func TestCleanup_FailsOrphanJob(t *testing.T) {
 	provider := NewMockStaleProvider(ctrl)
 	expectForEachActive(provider, runningJob(42, raftcmdpb.BackupKind_BACKUP_KIND_FULL))
 
-	probe := NewMockLeaderProbe(ctrl)
-	probe.EXPECT().IsLeader().Return(true)
+	probe := &testLeaseProvider{lease: newTestLeadershipLease()}
 
 	prop := resolvingProposer(t, nil)
 
@@ -138,8 +135,7 @@ func TestCleanup_IgnoresAlreadyTerminalJob(t *testing.T) {
 	provider := NewMockStaleProvider(ctrl)
 	expectForEachActive(provider, completed)
 
-	probe := NewMockLeaderProbe(ctrl)
-	probe.EXPECT().IsLeader().Return(true)
+	probe := &testLeaseProvider{lease: newTestLeadershipLease()}
 
 	prop := NewMockProposer(ctrl) // zero Propose expected
 
@@ -158,8 +154,7 @@ func TestCleanup_PropagatesProposeError(t *testing.T) {
 	provider := NewMockStaleProvider(ctrl)
 	expectForEachActive(provider, runningJob(7, raftcmdpb.BackupKind_BACKUP_KIND_INCREMENTAL))
 
-	probe := NewMockLeaderProbe(ctrl)
-	probe.EXPECT().IsLeader().Return(true)
+	probe := &testLeaseProvider{lease: newTestLeadershipLease()}
 
 	prop := NewMockProposer(ctrl)
 	prop.EXPECT().Propose(gomock.Any(), gomock.Any()).Return(errSimulated)
@@ -176,7 +171,7 @@ func TestCleanup_FailOrphan_RejectsUnknownKind(t *testing.T) {
 	t.Parallel()
 	ctrl := gomock.NewController(t)
 
-	c := NewCleanup(NewMockStaleProvider(ctrl), NewMockProposer(ctrl), NewMockLeaderProbe(ctrl), liveProbe(t), logging.Testing())
+	c := NewCleanup(NewMockStaleProvider(ctrl), NewMockProposer(ctrl), &testLeaseProvider{lease: newTestLeadershipLease()}, liveProbe(t), logging.Testing())
 	const unknownKind = raftcmdpb.BackupKind(99)
 
 	err := c.failOrphan(context.Background(), 1, unknownKind)
@@ -191,7 +186,7 @@ func TestCleanup_RunFillsDefaultInterval(t *testing.T) {
 	t.Parallel()
 	ctrl := gomock.NewController(t)
 
-	c := NewCleanup(NewMockStaleProvider(ctrl), NewMockProposer(ctrl), NewMockLeaderProbe(ctrl), liveProbe(t), logging.Testing())
+	c := NewCleanup(NewMockStaleProvider(ctrl), NewMockProposer(ctrl), &testLeaseProvider{lease: newTestLeadershipLease()}, liveProbe(t), logging.Testing())
 	c.Interval = 0
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -207,7 +202,7 @@ func TestCleanup_RunTerminatesOnContextCancel(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 
-		c := NewCleanup(NewMockStaleProvider(ctrl), NewMockProposer(ctrl), NewMockLeaderProbe(ctrl), liveProbe(t), logging.Testing())
+		c := NewCleanup(NewMockStaleProvider(ctrl), NewMockProposer(ctrl), &testLeaseProvider{lease: newTestLeadershipLease()}, liveProbe(t), logging.Testing())
 		c.Interval = 5 * time.Millisecond
 
 		ctx, cancel := context.WithCancel(context.Background())
@@ -226,4 +221,20 @@ func TestCleanup_RunTerminatesOnContextCancel(t *testing.T) {
 			t.Fatal("Run did not return after ctx cancel")
 		}
 	})
+}
+
+// A lease lost while scanning cannot authorize a Fail proposal from the old
+// leader, even when the orphan was already observed in the FSM snapshot.
+func TestCleanup_RevokedDuringScanDoesNotPropose(t *testing.T) {
+	t.Parallel()
+	ctrl := gomock.NewController(t)
+	lease := newTestLeadershipLease()
+	provider := NewMockStaleProvider(ctrl)
+	provider.EXPECT().ForEachActive(gomock.Any()).Do(func(fn func(*raftcmdpb.BackupJob)) {
+		fn(runningJob(42, raftcmdpb.BackupKind_BACKUP_KIND_FULL))
+		lease.cancel()
+	})
+	proposer := NewMockProposer(ctrl)
+	c := NewCleanup(provider, proposer, &testLeaseProvider{lease: lease}, liveProbe(t), logging.Testing())
+	c.tick(context.Background())
 }

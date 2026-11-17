@@ -104,11 +104,34 @@ func extractFullOrder(p *raftcmdpb.Proposal) *raftcmdpb.BackupOrder {
 	return nil
 }
 
-func newOrchestrator(prop Proposer, store *dal.Store) *Orchestrator {
-	o := NewOrchestrator(prop, store, logging.Testing(), 1, NewExecutorRegistry())
-	o.OnLeadershipChange(true)
+type testLeadershipLease struct {
+	ctx             context.Context
+	cancel          context.CancelFunc
+	beforeAuthorize func()
+}
 
-	return o
+func newTestLeadershipLease() *testLeadershipLease {
+	ctx, cancel := context.WithCancel(context.Background())
+	return &testLeadershipLease{ctx: ctx, cancel: cancel}
+}
+func (l *testLeadershipLease) Context() context.Context { return l.ctx }
+func (l *testLeadershipLease) Authorize(fn func()) bool {
+	if l.beforeAuthorize != nil {
+		l.beforeAuthorize()
+	}
+	if l.ctx.Err() != nil {
+		return false
+	}
+	fn()
+	return true
+}
+func (l *testLeadershipLease) ProposalContext(ctx context.Context) context.Context { return ctx }
+
+type testLeaseProvider struct{ lease LeadershipLease }
+
+func (p *testLeaseProvider) CurrentLeadershipLease() LeadershipLease { return p.lease }
+func newOrchestrator(prop Proposer, store *dal.Store) *Orchestrator {
+	return NewOrchestrator(prop, store, logging.Testing(), 1, NewExecutorRegistry(), &testLeaseProvider{lease: newTestLeadershipLease()})
 }
 
 func TestProposalBuilders_Full(t *testing.T) {
@@ -220,7 +243,7 @@ func TestOrchestrator_LeadershipChangeCancelsRunCtx(t *testing.T) {
 		o := newOrchestrator(nil, nil)
 		o.OnLeadershipChange(true)
 
-		runCtx, cancel := o.runContext(context.Background())
+		runCtx, cancel := o.runContext(context.Background(), o.leases.CurrentLeadershipLease())
 		defer cancel()
 		require.NoError(t, runCtx.Err(), "runCtx must be live while we are leader")
 
@@ -243,9 +266,9 @@ func TestOrchestrator_NonLeaderRunCtxStartsCancelled(t *testing.T) {
 		// Construct the orchestrator directly (not via newOrchestrator,
 		// which would call OnLeadershipChange(true)) so leaderCtx is the
 		// constructor's already-cancelled context.
-		o := NewOrchestrator(nil, nil, logging.Testing(), 1, NewExecutorRegistry())
+		o := NewOrchestrator(nil, nil, logging.Testing(), 1, NewExecutorRegistry(), &testLeaseProvider{})
 
-		runCtx, cancel := o.runContext(context.Background())
+		runCtx, cancel := o.runContext(context.Background(), o.leases.CurrentLeadershipLease())
 		defer cancel()
 
 		synctest.Wait()

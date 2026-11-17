@@ -65,9 +65,8 @@ func newRecoveryFixture(t *testing.T) *recoveryFixture {
 	proposer := NewMockProposer(ctrl)
 	proposer.EXPECT().Propose(gomock.Any(), gomock.Any()).AnyTimes().DoAndReturn(f.propose)
 	f.orchestrator = newOrchestrator(proposer, f.store)
-	t.Cleanup(func() { f.orchestrator.OnLeadershipChange(false) })
-	leader := NewMockLeaderProbe(ctrl)
-	leader.EXPECT().IsLeader().AnyTimes().Return(true)
+
+	leader := &testLeaseProvider{lease: newTestLeadershipLease()}
 	f.cleanup = NewCleanup(f.jobs, proposer, leader, f.orchestrator.Registry(), logging.Testing())
 	f.storage = NewMockStorage(ctrl)
 	f.storage.EXPECT().PutFile(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes().DoAndReturn(

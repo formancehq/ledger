@@ -30,13 +30,22 @@ const maxEvictionBatchSize = 10000
 // FSM apply gates each main-key delete on the in-memory map, so a duplicate
 // apply is a clean no-op, but the redundant proposal is still worth avoiding.
 type IdempotencyEvictionScheduler struct {
-	logger      logging.Logger
-	isLeader    func() bool
-	proposeFn   func(ctx context.Context, cutoffMicros uint64, lastScannedTimeIndexKey []byte, pebbleKeyHashes [][]byte)
-	store       dal.BackgroundScanner
-	idempotency *IdempotencyStore
-	interval    time.Duration
-	w           worker.Worker
+	logger   logging.Logger
+	isLeader func() bool
+	// leaseContext captures leadership before the potentially slow Pebble scan.
+	leaseContext func(context.Context) (context.Context, context.CancelFunc)
+	proposeFn    func(ctx context.Context, cutoffMicros uint64, lastScannedTimeIndexKey []byte, pebbleKeyHashes [][]byte)
+	store        dal.BackgroundScanner
+	idempotency  *IdempotencyStore
+	interval     time.Duration
+	w            worker.Worker
+}
+
+// SetLeaseContext supplies an exact leadership token for each scan and proposal.
+// A nil context skips the tick. The returned cleanup releases the per-tick
+// cancellation subscription after scan or proposal. Configure before Start.
+func (s *IdempotencyEvictionScheduler) SetLeaseContext(fn func(context.Context) (context.Context, context.CancelFunc)) {
+	s.leaseContext = fn
 }
 
 // NewIdempotencyEvictionScheduler creates a new scheduler.
@@ -89,37 +98,56 @@ func (s *IdempotencyEvictionScheduler) loop(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			if !s.isLeader() {
-				continue
-			}
-
-			cutoff := uint64(time.Now().UnixMicro())
-
-			// Pre-scan Pebble time index on the leader to collect expired key hashes.
-			// The hashes are included in the Raft proposal so the FSM apply is write-only.
-			// Batching is bounded by maxEvictionBatchSize to avoid oversized Raft commands.
-			handle, err := s.store.NewDirectReadHandle()
-			if err != nil {
-				s.logger.Errorf("Failed to open read handle for idempotency eviction scan: %v", err)
-
-				continue
-			}
-
-			hashes, lastScannedKey, err := s.idempotency.ScanExpiredKeyHashes(handle, cutoff, maxEvictionBatchSize)
-			_ = handle.Close()
-
-			if err != nil {
-				s.logger.Errorf("Failed to scan expired idempotency keys: %v", err)
-
-				continue
-			}
-
-			if len(hashes) == 0 {
-				continue
-			}
-
-			s.logger.Debugf("Proposing idempotency eviction with cutoff=%d, pebbleKeys=%d", cutoff, len(hashes))
-			s.proposeFn(ctx, cutoff, lastScannedKey, hashes)
+			s.runTick(ctx)
 		}
 	}
+}
+
+func (s *IdempotencyEvictionScheduler) runTick(ctx context.Context) {
+	proposalCtx := ctx
+	if s.leaseContext != nil {
+		var cleanup context.CancelFunc
+		proposalCtx, cleanup = s.leaseContext(ctx)
+		if proposalCtx == nil {
+			if cleanup != nil {
+				cleanup()
+			}
+
+			return
+		}
+		defer cleanup()
+	} else if !s.isLeader() {
+		return
+	}
+
+	cutoff := uint64(time.Now().UnixMicro())
+
+	// Pre-scan Pebble time index on the leader to collect expired key hashes.
+	// The hashes are included in the Raft proposal so the FSM apply is write-only.
+	// Batching is bounded by maxEvictionBatchSize to avoid oversized Raft commands.
+	handle, err := s.store.NewDirectReadHandle()
+	if err != nil {
+		s.logger.Errorf("Failed to open read handle for idempotency eviction scan: %v", err)
+
+		return
+	}
+
+	hashes, lastScannedKey, err := s.idempotency.ScanExpiredKeyHashes(handle, cutoff, maxEvictionBatchSize)
+	_ = handle.Close()
+
+	if err != nil {
+		s.logger.Errorf("Failed to scan expired idempotency keys: %v", err)
+
+		return
+	}
+
+	if len(hashes) == 0 {
+		return
+	}
+	if proposalCtx.Err() != nil {
+		return
+	}
+
+	s.logger.Debugf("Proposing idempotency eviction with cutoff=%d, pebbleKeys=%d", cutoff, len(hashes))
+	s.proposeFn(proposalCtx, cutoff, lastScannedKey, hashes)
 }

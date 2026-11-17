@@ -2,6 +2,8 @@
 
 Two leader-only background workers that tail the global log.
 
+Both managers start from a `LeaderReadyEvent` carrying Node's leadership lease. They construct sinks and sources outside the lease gate, then authorize registration and worker start against synchronous revocation. Worker contexts descend from the lease. Manager Stop drains workers. External deliveries already accepted cannot be revoked.
+
 - **Events** (`internal/application/events`) — emits domain events (transaction created, target-scoped metadata saved, account metadata updated by Numscript, etc.) to external sinks: NATS, Kafka, ClickHouse, Databricks, HTTP webhooks. At-least-once delivery, Raft-replicated cursors. Created-ledger events use a detached credential-redacted log projection; see [events](events.md#event-structure).
 - **Mirror** (`internal/application/mirror`) — runs per-ledger ingest from an external source (HTTP or PostgreSQL) and translates the source's logs into `MirrorIngest` Raft commands.
 

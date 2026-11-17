@@ -29,6 +29,7 @@ type Proposal struct {
 	membershipBarrier bool
 	// expectedTerm fences a drain preflight against a later leadership term.
 	expectedTerm         uint64
+	leadershipLease      *LeadershipLease
 	requiredCapabilities []capabilities.CapabilityID
 	hasBusinessOrders    bool
 	// activePolicyCapabilities is populated by the proposal factory for

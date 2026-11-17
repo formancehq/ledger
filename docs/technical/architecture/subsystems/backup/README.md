@@ -9,8 +9,7 @@ current manifest. A destination has one current restore point; Kubernetes
 
 The leader proposes a `BackupOrder.Start` through Raft before it starts work.
 The FSM reserves a destination slot keyed by `CanonicalDestinationKey`; another
-backup of the same destination is rejected. The leader cancels its executor on
-leadership loss, and the next leader fails orphaned jobs to release their slots.
+backup of the same destination is rejected. The leader captures a node-owned leadership lease for each executor. Lease revocation cancels uploads and fences later proposals. The next leader fails orphaned jobs to release their slots.
 The FSM records lifecycle orders without blocking on object upload.
 
 `RunBackup` requires the committed audit key. It calls `Store.Flush` before
