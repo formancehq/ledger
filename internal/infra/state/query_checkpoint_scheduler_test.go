@@ -25,6 +25,7 @@ func TestQueryCheckpointSchedulerLeaseProposal(t *testing.T) {
 		s := NewQueryCheckpointScheduler(logging.Testing(), func() bool { return true },
 			func() string { return "* * * * * *" }, func() error {
 				t.Fatal("legacy proposal called")
+
 				return nil
 			}, signal.New())
 		s.SetLeaseProposal(func() context.Context {
