@@ -307,6 +307,25 @@ func TestFilterTemplateResolution(t *testing.T) {
 			}`,
 		},
 		{
+			name:     "provided variable overrides default",
+			resource: ResourceKindAccount,
+			varDeclarations: map[string]VarDecl{
+				"minimum_balance": {
+					Type:    NewTypeNumeric(),
+					Default: json.Number("0"),
+				},
+			},
+			source: `{"$gt": {
+				"balance[COIN]": "${minimum_balance}"
+			}}`,
+			vars: map[string]any{
+				"minimum_balance": json.Number("1000"),
+			},
+			expectedFilter: `{"$gt": {
+				"balance[COIN]": 1000
+			}}`,
+		},
+		{
 			name:     "variable not provided",
 			resource: ResourceKindAccount,
 			varDeclarations: map[string]VarDecl{
