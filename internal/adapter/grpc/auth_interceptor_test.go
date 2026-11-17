@@ -179,6 +179,7 @@ func TestPeerInterceptorDistinguishesAnonymousFromInternal(t *testing.T) {
 				executed = true
 				require.True(t, internalauth.IsClusterInternal(ctx))
 				require.Equal(t, tc.wantWrite, internalauth.HasScope(internalauth.ExpandedScopesFromContext(ctx), internalauth.ScopeTransactionsWrite))
+
 				return nil, nil
 			})
 			require.Equal(t, tc.wantError, status.Code(err))
