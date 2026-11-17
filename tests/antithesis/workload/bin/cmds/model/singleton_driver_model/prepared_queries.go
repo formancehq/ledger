@@ -60,9 +60,9 @@ func createPreparedQueryReq(ledger string, q *commonpb.PreparedQuery) *servicepb
 	}}
 }
 
-func updatePreparedQueryReq(ledger, name string, filter *commonpb.QueryFilter) *servicepb.Request {
+func updatePreparedQueryReq(ledger, name string, target commonpb.QueryTarget, filter *commonpb.QueryFilter) *servicepb.Request {
 	return &servicepb.Request{Type: &servicepb.Request_UpdatePreparedQuery{
-		UpdatePreparedQuery: &servicepb.UpdatePreparedQueryRequest{Ledger: ledger, Name: name, Filter: filter},
+		UpdatePreparedQuery: &servicepb.UpdatePreparedQueryRequest{Ledger: ledger, Name: name, Target: target.Enum(), Filter: filter},
 	}}
 }
 
@@ -113,17 +113,16 @@ func generatePreparedQueryOp(src *generation.Source, g oracle.GlobalState, ledge
 		return deletePreparedQueryReq(ledger, name)
 	}
 	if oneIn(src, 8) {
-		return updatePreparedQueryReq(ledger, name, nil)
+		return updatePreparedQueryReq(ledger, name, stored.GetTarget(), nil)
 	}
 
-	// An update carries no target: the new filter must be valid on the STORED
-	// one, which is what the FSM validates it against.
+	// Keep the stored target while replacing the filter.
 	filter := genPreparedQueryFilter(src, ls, ledger, stored.GetTarget())
 	if filter == nil {
 		return nil
 	}
 
-	return updatePreparedQueryReq(ledger, name, filter)
+	return updatePreparedQueryReq(ledger, name, stored.GetTarget(), filter)
 }
 
 // genPreparedQueryFilter builds a filter to save for target: a concrete filter

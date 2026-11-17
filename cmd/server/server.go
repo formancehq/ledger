@@ -489,6 +489,12 @@ func LoadConfig(ctx context.Context, cmd *cobra.Command) (*bootstrap.Config, err
 		return defaultValue
 	}
 
+	getStringSlice := func(flagName string) []string {
+		val, _ := cmd.Flags().GetStringSlice(flagName)
+
+		return val
+	}
+
 	// Helper function to get int slice from flag
 	getIntSlice := func(flagName string) []int {
 		if val, _ := cmd.Flags().GetIntSlice(flagName); len(val) > 0 {
@@ -650,6 +656,7 @@ func LoadConfig(ctx context.Context, cmd *cobra.Command) (*bootstrap.Config, err
 	cfg.AuthConfig = bootstrap.AuthFlagConfig{
 		Enabled:              getBool(auth.AuthEnabledFlag, false),
 		Issuer:               getString(auth.AuthIssuerFlag, ""),
+		Issuers:              getStringSlice(auth.AuthIssuersFlag),
 		Service:              getString(auth.AuthServiceFlag, "ledger"),
 		Ed25519KeysFile:      ed25519KeysFile,
 		ScopeMappingFile:     scopeMappingFile,
@@ -873,6 +880,7 @@ func discoverPeersFromCluster(raftAddr string, tlsCfg bootstrap.TLSConfig, clust
 			Address:        p.GetRaftAddress(),
 			ServiceAddress: p.GetServiceAddress(),
 			InstanceID:     p.GetInstanceId(),
+			Capabilities:   append([]uint32(nil), p.GetCapabilities()...),
 		})
 	}
 

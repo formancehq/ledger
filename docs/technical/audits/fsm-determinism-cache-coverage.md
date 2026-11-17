@@ -255,6 +255,15 @@ prove that its branch is contractually impossible or that it leaves a divergent
 or falsely successful result. Assertions must uniquely identify the intended
 failure branch.
 
+A forwarded order (`OrderTechnical.preload_unavailable`) is one such failure
+prefix. Order processing fails it at its own position, before scope
+construction, overlay allocation and the skip matcher, so the earlier orders'
+staged writes form the discarded prefix and no skip whitelist can convert the
+gap into a skip log. The flag is committed order bytes, so every replica fails
+at the same position. Order processing returns `Describable`; the apply path
+tests `UncommittedFailure` first and treats any remaining failure that is not
+`SerializableError` as an invariant violation rather than an audited outcome.
+
 ## Numscript VM execution state
 
 A scripted order carries inline text or a versioned library reference, plus
@@ -456,6 +465,15 @@ on equivalent FSMs with cold and recovered state. Verify decision bytes, applied
 indexes and business/audit effects, then repeat across the supported rolling
 upgrade boundary. Preflight must reject an old member that cannot decode or
 apply these entries; the Raft audit owns that cluster admission gate.
+
+## Prepared-query target updates (EN-2601)
+
+An explicit `UpdatePreparedQueryOrder.target` changes the stored target and
+filter in one covered FSM mutation. The audit log carries both target values.
+An old order without the optional field retains its stored target and produces
+the historical filter-only log, including during audit replay. Compare the
+same committed order across voters at a supported upgrade boundary; target
+changes must not be admitted while old and new processors can coexist.
 
 ## Transaction account metadata address failures
 

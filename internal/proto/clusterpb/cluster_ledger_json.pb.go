@@ -286,11 +286,18 @@ func (x *AddLearnerRequest) MarshalJSON() ([]byte, error) {
 		RaftAddress    string `json:"raftAddress"`
 		ServiceAddress string `json:"serviceAddress"`
 		InstanceId     []byte `json:"instanceId"`
+		Capabilities   any    `json:"capabilities"`
 	}{
 		NodeId:         x.NodeId,
 		RaftAddress:    x.RaftAddress,
 		ServiceAddress: x.ServiceAddress,
 		InstanceId:     x.InstanceId,
+		Capabilities: func() any {
+			if x.Capabilities == nil {
+				return []any{}
+			}
+			return x.Capabilities
+		}(),
 	})
 }
 

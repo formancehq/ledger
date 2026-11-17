@@ -37,7 +37,7 @@ func TestMirrorIngest_UpstreamRevertPreservesOriginalIdentity(t *testing.T) {
 		// source pagination and the separate source-log-zero policy.
 		logs = append(logs, v2.V2Log{ID: uint64(i + 1), Type: fixture.kind, Date: fixture.date, Data: data})
 	}
-	orders, nextLogID, nextTxID, err := v2.TranslateBatch(ledger, logs, 1, 0, nil)
+	orders, nextLogID, nextTxID, err := v2.TranslateBatch(ledger, logs, 1, 0, v2.TranslateOptions{})
 	require.NoError(t, err)
 	require.Len(t, orders, 3)
 	require.Equal(t, uint64(4), nextLogID)

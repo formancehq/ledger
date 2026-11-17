@@ -86,7 +86,7 @@ func TestOpenAPI_NumscriptAuthentication(t *testing.T) {
 						mapping["anonymous"] = []internalauth.Scope{operation.scope}
 					}
 					handler := NewHandler(logging.Testing(), backend, internalauth.AuthConfig{
-						Enabled: tc.enabled, KeySet: keySet, Issuer: testAuthIssuer,
+						Enabled: tc.enabled, KeySet: keySet, Issuers: []string{testAuthIssuer},
 						Service: "ledger", ScopeMapping: mapping,
 					}, version.Info{})
 					path := strings.NewReplacer("{ledgerName}", "ledger1", "{name}", "script").Replace(operation.path)

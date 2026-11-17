@@ -37,7 +37,7 @@ func TestHTTPAuthMiddleware_PublicEndpoints(t *testing.T) {
 	handler := HTTPAuthMiddleware(AuthConfig{
 		Enabled: true,
 		KeySet:  keySet,
-		Issuer:  testIssuer,
+		Issuers: []string{testIssuer},
 		Service: "ledger",
 	})(ok200)
 
@@ -73,7 +73,7 @@ func TestHTTPAuthMiddleware_MissingToken(t *testing.T) {
 	handler := HTTPAuthMiddleware(AuthConfig{
 		Enabled: true,
 		KeySet:  keySet,
-		Issuer:  testIssuer,
+		Issuers: []string{testIssuer},
 	})(inner)
 
 	w := httptest.NewRecorder()
@@ -105,7 +105,7 @@ func TestHTTPAuthMiddleware_MissingToken_AnonymousReadScopes(t *testing.T) {
 	handler := HTTPAuthMiddleware(AuthConfig{
 		Enabled:      true,
 		KeySet:       keySet,
-		Issuer:       testIssuer,
+		Issuers:      []string{testIssuer},
 		ScopeMapping: mapping,
 	})(inner)
 
@@ -160,7 +160,7 @@ func TestHTTPAuthMiddleware_ValidToken_ClaimsInContext(t *testing.T) {
 	handler := HTTPAuthMiddleware(AuthConfig{
 		Enabled: true,
 		KeySet:  keySet,
-		Issuer:  testIssuer,
+		Issuers: []string{testIssuer},
 	})(inner)
 
 	token := signToken(t, privKey, newTestClaims("ledger:read"))
@@ -189,7 +189,7 @@ func TestHTTPAuthMiddleware_ExpandsScopesInContext(t *testing.T) {
 	cfg := AuthConfig{
 		Enabled:      true,
 		KeySet:       keySet,
-		Issuer:       testIssuer,
+		Issuers:      []string{testIssuer},
 		Service:      "ledger",
 		ScopeMapping: DefaultMapping("ledger"),
 	}
@@ -219,7 +219,7 @@ func TestHTTPAuthMiddleware_ExpiredToken(t *testing.T) {
 	handler := HTTPAuthMiddleware(AuthConfig{
 		Enabled: true,
 		KeySet:  keySet,
-		Issuer:  testIssuer,
+		Issuers: []string{testIssuer},
 	})(ok200)
 
 	token := signToken(t, privKey, claims)
@@ -240,7 +240,7 @@ func TestHTTPAuthMiddleware_WrongIssuer(t *testing.T) {
 	handler := HTTPAuthMiddleware(AuthConfig{
 		Enabled: true,
 		KeySet:  keySet,
-		Issuer:  testIssuer,
+		Issuers: []string{testIssuer},
 	})(ok200)
 
 	token := signToken(t, privKey, claims)
@@ -261,7 +261,7 @@ func TestHTTPAuthMiddleware_InvalidSignature(t *testing.T) {
 	handler := HTTPAuthMiddleware(AuthConfig{
 		Enabled: true,
 		KeySet:  keySet,
-		Issuer:  testIssuer,
+		Issuers: []string{testIssuer},
 	})(ok200)
 
 	token := signToken(t, otherKey, newTestClaims("ledger:read"))
@@ -320,7 +320,7 @@ func TestRequireScope_MatchingScope(t *testing.T) {
 	cfg := AuthConfig{
 		Enabled:      true,
 		KeySet:       keySet,
-		Issuer:       testIssuer,
+		Issuers:      []string{testIssuer},
 		Service:      "ledger",
 		ScopeMapping: DefaultMapping("ledger"),
 	}
@@ -344,7 +344,7 @@ func TestRequireScope_WrongScope(t *testing.T) {
 	cfg := AuthConfig{
 		Enabled:      true,
 		KeySet:       keySet,
-		Issuer:       testIssuer,
+		Issuers:      []string{testIssuer},
 		Service:      "ledger",
 		ScopeMapping: DefaultMapping("ledger"),
 	}
@@ -367,7 +367,7 @@ func TestRequireScope_WriteScope(t *testing.T) {
 	cfg := AuthConfig{
 		Enabled:      true,
 		KeySet:       keySet,
-		Issuer:       testIssuer,
+		Issuers:      []string{testIssuer},
 		Service:      "ledger",
 		ScopeMapping: DefaultMapping("ledger"),
 	}
@@ -404,7 +404,7 @@ func TestRequireScope_LedgersRead_GatesLogListing(t *testing.T) {
 	cfg := AuthConfig{
 		Enabled:      true,
 		KeySet:       keySet,
-		Issuer:       testIssuer,
+		Issuers:      []string{testIssuer},
 		Service:      "ledger",
 		ScopeMapping: DefaultMapping("ledger"),
 	}
@@ -600,7 +600,7 @@ func TestHTTPAuthMiddleware_SuperuserMode_GrantsAllScopes(t *testing.T) {
 	cfg := AuthConfig{
 		Enabled:      true,
 		KeySet:       keySet,
-		Issuer:       testIssuer,
+		Issuers:      []string{testIssuer},
 		Service:      "ledger",
 		ScopeMapping: DefaultMapping("ledger"),
 	}
@@ -630,7 +630,7 @@ func TestRequireScope_SuperuserMode_PassesAnyScope(t *testing.T) {
 	cfg := AuthConfig{
 		Enabled:      true,
 		KeySet:       keySet,
-		Issuer:       testIssuer,
+		Issuers:      []string{testIssuer},
 		Service:      "ledger",
 		ScopeMapping: DefaultMapping("ledger"),
 	}
@@ -665,7 +665,7 @@ func writesOnlyConfig(t *testing.T) (AuthConfig, *rsa.PrivateKey) {
 	return AuthConfig{
 		Enabled:      true,
 		KeySet:       keySet,
-		Issuer:       testIssuer,
+		Issuers:      []string{testIssuer},
 		Service:      "ledger",
 		ScopeMapping: mapping,
 	}, privKey

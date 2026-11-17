@@ -37,11 +37,11 @@ func TestHistoricalRemovalFollowerReplay(t *testing.T) {
 				})
 				var err error
 				m, err = membership.NewMembership(membership.NewPeerStore(setup.store), noopMemTransport{}, noopMemPool{},
-					3, "self:7777", "self:8888", []byte("self-instance-id"), logging.Testing())
+					3, "self:7777", "self:8888", []byte("self-instance-id"), logging.Testing(), membership.NoopClusterPolicyProvider)
 				require.NoError(t, err)
 				oldIdentity := []byte("old-instance-id-")
 				newIdentity := []byte("new-instance-id-")
-				require.NoError(t, m.Register(2, "old:7777", "old:8888", oldIdentity))
+				require.NoError(t, m.Register(2, "old:7777", "old:8888", oldIdentity, nil))
 
 				confState := &raftpb.ConfState{Voters: []uint64{1, 3}, Learners: []uint64{2}}
 				require.NoError(t, setup.wal.UpdateSnapshotConfState(confState))

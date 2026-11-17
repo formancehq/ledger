@@ -11,6 +11,7 @@ import (
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
+	"github.com/formancehq/ledger/v3/internal/storage/dal"
 	"github.com/formancehq/ledger/v3/internal/storage/wal"
 )
 
@@ -29,7 +30,9 @@ func testPromoteLearnerRetryDuringWALPersistence(t *testing.T, cancelDuringWAL b
 
 	n := newConfiguredPeersTestNode(t)
 	n.logger = logging.Testing()
-	setup := newTestApplierSetupWithConfChangeHandler(t, make(LocalResponses, 1024), n.membership.WriteConfChange)
+	setup := newTestApplierSetupWithConfChangeHandler(t, make(LocalResponses, 1024), func(entry *raftpb.Entry, session *dal.WriteSession) error {
+		return n.membership.WriteConfChange(entry, session)
+	})
 	n.fsm = setup.fsm
 	waitCtx, cancelWait := context.WithTimeout(t.Context(), 10*time.Second)
 	defer cancelWait()

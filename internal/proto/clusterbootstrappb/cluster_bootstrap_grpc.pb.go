@@ -19,8 +19,9 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	ClusterBootstrapService_GetPeers_FullMethodName      = "/cluster_bootstrap.ClusterBootstrapService/GetPeers"
-	ClusterBootstrapService_JoinAsLearner_FullMethodName = "/cluster_bootstrap.ClusterBootstrapService/JoinAsLearner"
+	ClusterBootstrapService_GetPeers_FullMethodName          = "/cluster_bootstrap.ClusterBootstrapService/GetPeers"
+	ClusterBootstrapService_JoinAsLearner_FullMethodName     = "/cluster_bootstrap.ClusterBootstrapService/JoinAsLearner"
+	ClusterBootstrapService_RefreshMembership_FullMethodName = "/cluster_bootstrap.ClusterBootstrapService/RefreshMembership"
 )
 
 // ClusterBootstrapServiceClient is the client API for ClusterBootstrapService service.
@@ -31,7 +32,7 @@ const (
 //
 // Unlike ClusterService (exposed on the external ServiceServer behind the
 // user JWT/scope pipeline), this service lives on the internal RaftServer
-// alongside the Raft transport. It carries the two RPCs required by a node
+// alongside the Raft transport. It carries the RPCs required by a node
 // that is joining an existing cluster:
 //
 //  1. GetPeers       — discover the current set of voter nodes and their
@@ -39,6 +40,8 @@ const (
 //     snapshot before starting Raft.
 //  2. JoinAsLearner  — register with the leader as a new learner, which
 //     proposes the corresponding ConfChange.
+//  3. RefreshMembership — refresh the committed endpoints and capability
+//     evidence of an existing member after restart.
 //
 // Authentication is the RaftServer's own: cluster-id metadata (always) and
 // the cluster-secret bearer when configured. No user JWT or scope check
@@ -46,6 +49,7 @@ const (
 type ClusterBootstrapServiceClient interface {
 	GetPeers(ctx context.Context, in *GetPeersRequest, opts ...grpc.CallOption) (*GetPeersResponse, error)
 	JoinAsLearner(ctx context.Context, in *JoinAsLearnerRequest, opts ...grpc.CallOption) (*JoinAsLearnerResponse, error)
+	RefreshMembership(ctx context.Context, in *RefreshMembershipRequest, opts ...grpc.CallOption) (*RefreshMembershipResponse, error)
 }
 
 type clusterBootstrapServiceClient struct {
@@ -76,6 +80,16 @@ func (c *clusterBootstrapServiceClient) JoinAsLearner(ctx context.Context, in *J
 	return out, nil
 }
 
+func (c *clusterBootstrapServiceClient) RefreshMembership(ctx context.Context, in *RefreshMembershipRequest, opts ...grpc.CallOption) (*RefreshMembershipResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(RefreshMembershipResponse)
+	err := c.cc.Invoke(ctx, ClusterBootstrapService_RefreshMembership_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // ClusterBootstrapServiceServer is the server API for ClusterBootstrapService service.
 // All implementations must embed UnimplementedClusterBootstrapServiceServer
 // for forward compatibility.
@@ -84,7 +98,7 @@ func (c *clusterBootstrapServiceClient) JoinAsLearner(ctx context.Context, in *J
 //
 // Unlike ClusterService (exposed on the external ServiceServer behind the
 // user JWT/scope pipeline), this service lives on the internal RaftServer
-// alongside the Raft transport. It carries the two RPCs required by a node
+// alongside the Raft transport. It carries the RPCs required by a node
 // that is joining an existing cluster:
 //
 //  1. GetPeers       — discover the current set of voter nodes and their
@@ -92,6 +106,8 @@ func (c *clusterBootstrapServiceClient) JoinAsLearner(ctx context.Context, in *J
 //     snapshot before starting Raft.
 //  2. JoinAsLearner  — register with the leader as a new learner, which
 //     proposes the corresponding ConfChange.
+//  3. RefreshMembership — refresh the committed endpoints and capability
+//     evidence of an existing member after restart.
 //
 // Authentication is the RaftServer's own: cluster-id metadata (always) and
 // the cluster-secret bearer when configured. No user JWT or scope check
@@ -99,6 +115,7 @@ func (c *clusterBootstrapServiceClient) JoinAsLearner(ctx context.Context, in *J
 type ClusterBootstrapServiceServer interface {
 	GetPeers(context.Context, *GetPeersRequest) (*GetPeersResponse, error)
 	JoinAsLearner(context.Context, *JoinAsLearnerRequest) (*JoinAsLearnerResponse, error)
+	RefreshMembership(context.Context, *RefreshMembershipRequest) (*RefreshMembershipResponse, error)
 	mustEmbedUnimplementedClusterBootstrapServiceServer()
 }
 
@@ -114,6 +131,9 @@ func (UnimplementedClusterBootstrapServiceServer) GetPeers(context.Context, *Get
 }
 func (UnimplementedClusterBootstrapServiceServer) JoinAsLearner(context.Context, *JoinAsLearnerRequest) (*JoinAsLearnerResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method JoinAsLearner not implemented")
+}
+func (UnimplementedClusterBootstrapServiceServer) RefreshMembership(context.Context, *RefreshMembershipRequest) (*RefreshMembershipResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method RefreshMembership not implemented")
 }
 func (UnimplementedClusterBootstrapServiceServer) mustEmbedUnimplementedClusterBootstrapServiceServer() {
 }
@@ -173,6 +193,24 @@ func _ClusterBootstrapService_JoinAsLearner_Handler(srv interface{}, ctx context
 	return interceptor(ctx, in, info, handler)
 }
 
+func _ClusterBootstrapService_RefreshMembership_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(RefreshMembershipRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ClusterBootstrapServiceServer).RefreshMembership(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ClusterBootstrapService_RefreshMembership_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ClusterBootstrapServiceServer).RefreshMembership(ctx, req.(*RefreshMembershipRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // ClusterBootstrapService_ServiceDesc is the grpc.ServiceDesc for ClusterBootstrapService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -187,6 +225,10 @@ var ClusterBootstrapService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "JoinAsLearner",
 			Handler:    _ClusterBootstrapService_JoinAsLearner_Handler,
+		},
+		{
+			MethodName: "RefreshMembership",
+			Handler:    _ClusterBootstrapService_RefreshMembership_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

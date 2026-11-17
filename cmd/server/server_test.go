@@ -320,3 +320,33 @@ func TestLoadConfig_HashAlgorithmEnvironment(t *testing.T) {
 		})
 	}
 }
+
+// The operator emits spec.auth.issuers as a comma-separated AUTH_ISSUERS.
+func TestLoadConfig_AuthIssuersEnvironment(t *testing.T) {
+	// The production binder reads process environment; these cases must be serial.
+	for _, test := range []struct {
+		name    string
+		issuer  string
+		issuers string
+		want    []string
+	}{
+		{name: "plural only", issuers: "https://a.example.com,https://b.example.com", want: []string{"https://a.example.com", "https://b.example.com"}},
+		{name: "singular and plural", issuer: "https://a.example.com", issuers: "https://b.example.com", want: []string{"https://a.example.com", "https://b.example.com"}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			t.Setenv("AUTH_ENABLED", "true")
+			t.Setenv("AUTH_ISSUER", test.issuer)
+			t.Setenv("AUTH_ISSUERS", test.issuers)
+			cmd := NewRunCommand()
+			require.NoError(t, cmd.ParseFlags([]string{
+				"--node-id=1", "--cluster-id=auth-test",
+				"--tls-mode=required", "--tls-cert-file=server.crt", "--tls-key-file=server.key",
+			}))
+			require.NoError(t, service.BindEnvToCommandWithError(cmd))
+			cfg, err := LoadConfig(context.Background(), cmd)
+			require.NoError(t, err)
+			require.NoError(t, cfg.Validate())
+			require.Equal(t, test.want, cfg.AuthConfig.TrustedIssuers())
+		})
+	}
+}

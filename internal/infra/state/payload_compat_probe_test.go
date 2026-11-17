@@ -2,11 +2,10 @@ package state
 
 // This probe deliberately uses only the RC.3 API. scripts/check-proposal-payload
 // compiles this same source against the released tree and the candidate. It
-// compares real FSM/audit results from separate binaries, not two modes of a
-// single decoder. Numeric wire tags below are the compatibility test oracle.
+// checks the same expected FSM/audit behavior in separate binaries, not two
+// modes of a single decoder. Numeric wire tags below are the format oracle.
 
 import (
-	"encoding/json"
 	"math"
 	"os"
 	"path/filepath"
@@ -20,7 +19,6 @@ import (
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
 	"github.com/formancehq/ledger/v3/internal/domain/processing"
-	"github.com/formancehq/ledger/v3/internal/proto/auditpb"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/query"
@@ -29,8 +27,7 @@ import (
 )
 
 func TestProposalPayloadCompatibilityProbe(t *testing.T) {
-	output := os.Getenv("LEDGER_PROPOSAL_PROBE_OUTPUT")
-	if output == "" {
+	if os.Getenv("LEDGER_PROPOSAL_PROBE_RUN") != "1" {
 		t.Skip("run scripts/check-proposal-payload for the two-binary compatibility test")
 	}
 	dir := os.Getenv("LEDGER_PROPOSAL_PROBE_DIR")
@@ -114,26 +111,33 @@ func TestProposalPayloadCompatibilityProbe(t *testing.T) {
 			require.Equal(t, !nativePolicy, result.Results[0].AuditEntryWritten)
 		}
 	}
-	var report struct {
-		Policy    *commonpb.ClusterPolicy
-		Ledgers   []*commonpb.LedgerInfo
-		Audit     []*auditpb.AuditEntry
-		Items     [][]*auditpb.AuditItem
-		Applied   uint64
-		Timestamp uint64
-	}
 	reader, err := store.NewDirectReadHandle()
 	require.NoError(t, err)
 	defer func() { require.NoError(t, reader.Close()) }()
-	for _, name := range []string{"compatibility", "after-upgrade"} {
-		if phase == "seed" && name == "after-upgrade" {
-			continue
-		}
-		ledger, err := query.GetLedgerByName(t.Context(), reader, name)
+	// Pin the released ledger identity and creation time across every run,
+	// including the RC.3 seed and the recovered upgrade/restart processes.
+	expectedLedgers := []struct {
+		name      string
+		id        uint32
+		createdAt uint64
+	}{
+		{name: "compatibility", id: 1, createdAt: 1700000002},
+		{name: "after-upgrade", id: 2, createdAt: 1700000005},
+	}
+	if phase == "seed" {
+		expectedLedgers = expectedLedgers[:1]
+	}
+	for _, expected := range expectedLedgers {
+		ledger, err := query.GetLedgerByName(t.Context(), reader, expected.name)
 		require.NoError(t, err)
-		report.Ledgers = append(report.Ledgers, ledger)
+		require.Equal(t, expected.name, ledger.GetName())
+		require.Equal(t, expected.id, ledger.GetId())
+		require.NotNil(t, ledger.GetCreatedAt())
+		require.Equal(t, expected.createdAt, ledger.GetCreatedAt().GetData())
 	}
 	var previousHash []byte
+	var historicalAuditHashes []byte
+	auditCount := 0
 	for sequence := uint64(1); sequence < machine.State.NextAuditSequenceID; sequence++ {
 		audit, err := query.ReadAuditEntry(t.Context(), reader, sequence)
 		require.NoError(t, err)
@@ -149,9 +153,27 @@ func TestProposalPayloadCompatibilityProbe(t *testing.T) {
 		generator := processing.NewHashGenerator(commonpb.HashAlgorithm(audit.GetHashVersion()), machine.State.AuditKey)
 		_, actualHash := generator.Compute(nil, previousHash, slices)
 		require.Equal(t, audit.GetHash(), actualHash)
+		if sequence <= 3 {
+			observedHash := audit.GetHash()
+			if os.Getenv("LEDGER_PROPOSAL_PROBE_MUTATE_REJECTION") == "1" && sequence == 3 {
+				// Negative control: model a changed rejection audit entry with a
+				// valid recomputed hash. The independent RC.3 oracle must reject it.
+				changed := audit.CloneVT()
+				failure := changed.GetFailure()
+				require.NotNil(t, failure)
+				details := failure.GetDetails().GetLedgerAlreadyExists()
+				require.NotNil(t, details)
+				details.Name = new("changed-ledger")
+				changedHeader, err := BuildHashedHeaderPayload(changed)
+				require.NoError(t, err)
+				changedSlices := append([][]byte{changedHeader}, slices[1:]...)
+				_, observedHash = generator.Compute(nil, previousHash, changedSlices)
+			}
+			historicalAuditHashes = protowire.AppendVarint(historicalAuditHashes, sequence)
+			historicalAuditHashes = protowire.AppendBytes(historicalAuditHashes, observedHash)
+		}
 		previousHash = audit.GetHash()
-		report.Audit = append(report.Audit, audit)
-		report.Items = append(report.Items, items)
+		auditCount++
 	}
 	expectedAudits := 5
 	switch {
@@ -162,14 +184,64 @@ func TestProposalPayloadCompatibilityProbe(t *testing.T) {
 	case os.Getenv("LEDGER_PROPOSAL_PROBE_ENCODING") == "payload":
 		expectedAudits = 3
 	}
-	require.Len(t, report.Audit, expectedAudits)
+	require.Equal(t, expectedAudits, auditCount)
+	expectedPolicy := compatibilityPolicyState{
+		Revision:                    3,
+		IdempotencyTtlMicros:        10000,
+		QueryCheckpointLimit:        10,
+		MetadataMaxEntriesPerEntity: 128,
+		MetadataMaxKeyBytes:         256,
+		MetadataMaxValueBytes:       16384,
+		MetadataMaxEntityBytes:      65536,
+		MetadataMaxCommandBytes:     1048576,
+	}
+	expectedApplied := uint64(5)
+	if phase == "seed" {
+		expectedPolicy.Revision = 2
+		expectedPolicy.IdempotencyTtlMicros = 9000
+		expectedApplied = 2
+	}
+	require.Equal(t, expectedPolicy, compatibilityPolicyStateFrom(machine.State.ClusterPolicy))
+	require.Equal(t, expectedApplied, machine.State.LastAppliedIndex)
+	require.Equal(t, 1700000000+expectedApplied, machine.State.LastAppliedTimestamp)
+	if oraclePath := os.Getenv("LEDGER_PROPOSAL_PROBE_AUDIT_ORACLE"); oraclePath != "" {
+		switch os.Getenv("LEDGER_PROPOSAL_PROBE_AUDIT_ORACLE_MODE") {
+		case "write":
+			require.NoError(t, os.WriteFile(oraclePath, historicalAuditHashes, 0o600))
+		case "check":
+			expectedHashes, err := os.ReadFile(oraclePath)
+			require.NoError(t, err)
+			require.Equal(t, expectedHashes, historicalAuditHashes, "historical RC.3 audit hashes diverged")
+		default:
+			t.Fatal("invalid audit oracle mode")
+		}
+	}
+}
 
-	report.Policy = machine.State.ClusterPolicy
-	report.Applied = machine.State.LastAppliedIndex
-	report.Timestamp = machine.State.LastAppliedTimestamp
-	data, err := json.Marshal(report)
-	require.NoError(t, err)
-	require.NoError(t, os.WriteFile(output, data, 0o600))
+// Compare the RC.3 policy contract by value. Later policy fields may be added
+// without changing the meaning of the fields already persisted by RC.3.
+type compatibilityPolicyState struct {
+	Revision                    uint64
+	IdempotencyTtlMicros        uint64
+	QueryCheckpointLimit        uint64
+	MetadataMaxEntriesPerEntity uint64
+	MetadataMaxKeyBytes         uint64
+	MetadataMaxValueBytes       uint64
+	MetadataMaxEntityBytes      uint64
+	MetadataMaxCommandBytes     uint64
+}
+
+func compatibilityPolicyStateFrom(policy *commonpb.ClusterPolicy) compatibilityPolicyState {
+	return compatibilityPolicyState{
+		Revision:                    policy.GetRevision(),
+		IdempotencyTtlMicros:        policy.GetIdempotencyTtlMicros(),
+		QueryCheckpointLimit:        policy.GetQueryCheckpointLimit(),
+		MetadataMaxEntriesPerEntity: policy.GetMetadataMaxEntriesPerEntity(),
+		MetadataMaxKeyBytes:         policy.GetMetadataMaxKeyBytes(),
+		MetadataMaxValueBytes:       policy.GetMetadataMaxValueBytes(),
+		MetadataMaxEntityBytes:      policy.GetMetadataMaxEntityBytes(),
+		MetadataMaxCommandBytes:     policy.GetMetadataMaxCommandBytes(),
+	}
 }
 
 func compatibilityProposalBytes(t *testing.T, index uint64, order *raftcmdpb.Order, payload bool) []byte {

@@ -106,7 +106,7 @@ _e2e-run-tests:
         --exclude-test-regex stopped-rc-upgrade --kube-context kind-ledger-e2e
     just _e2e-install-operator rc4-e2e
     chainsaw test --config e2e/chainsaw-test.yaml \
-        --test-dir e2e/tests/rolling-rc-upgrade/ --kube-context kind-ledger-e2e
+        --test-dir e2e/tests/stopped-rc-upgrade/ --kube-context kind-ledger-e2e
 
 # Verify the volume-protection policy renders only when the cluster supports
 # ValidatingAdmissionPolicy (K8s >= 1.30). Guards the default pvcProtection.enabled=true

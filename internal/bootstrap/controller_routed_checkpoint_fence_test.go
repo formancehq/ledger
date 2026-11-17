@@ -274,7 +274,7 @@ func startCheckpointFenceNode(t *testing.T, ctx context.Context, store *dal.Stor
 	require.NoError(t, err)
 	registry := state.NewStateRegistry(cacheStore, attributes.New())
 	shared := state.NewSharedState()
-	machine, err := state.NewMachine(logger, registry, state.NewCacheSnapshotter(logger, registry, nil), store, dal.NewSentinelFactory(store, false), meters, nil, shared, signal.NewNotifications(), nil, "checkpoint-fence", 0, func(*raftpb.Entry, *dal.WriteSession) error { return nil })
+	machine, err := state.NewMachine(logger, registry, state.NewCacheSnapshotter(logger, registry, nil), store, dal.NewSentinelFactory(store, false), meters, nil, shared, signal.NewNotifications(), nil, "checkpoint-fence", 0, func(*raftpb.Entry, *dal.WriteSession) error { return nil }, state.NoopCapabilityPolicyCommitHandler)
 	require.NoError(t, err)
 	t.Cleanup(machine.Close)
 	recovery := state.NewRecovery(machine, store)
@@ -296,7 +296,7 @@ func startCheckpointFenceNode(t *testing.T, ctx context.Context, store *dal.Stor
 		serviceAddr = raftAddr
 	}
 	instanceID := []byte(fmt.Sprintf("%016d", id))
-	member, err := membership.NewMembership(membership.NewPeerStore(store), raftTransport, pool, id, raftAddr, serviceAddr, instanceID, logger)
+	member, err := membership.NewMembership(membership.NewPeerStore(store), raftTransport, pool, id, raftAddr, serviceAddr, instanceID, logger, membership.NoopClusterPolicyProvider)
 	require.NoError(t, err)
 	responses := node.NewLocalResponses()
 	applier, err := node.NewApplier(machine, recovery, synchronizer, sp, store, w, logger, meter, 1000, 1000, nil, member, responses)

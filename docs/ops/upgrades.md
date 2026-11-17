@@ -30,14 +30,26 @@ volume templates, the operator completes the RC rollout before recreating the
 StatefulSet for the volume change.
 Old and new voters must communicate and apply each committed entry identically
 while they coexist. The embedded operator requires a complete stop at the
-`v3.0.0-rc.4` boundary because RC.3 cannot execute native proposal payloads.
+`v3.0.0-rc.4` boundary because RC.3 cannot execute native proposal payloads
+and encodes [mirror asset mappings](#mirror-asset-mappings) differently.
 `rc.3` includes the drain barrier used for this upgrade. RC adjacency remains mandatory.
 The `rc.1` to `rc.2` transition rolls one voter at a time with a maintenance
 barrier that pauses writes; it does not stop the whole cluster.
 The `rc.2` to `rc.3` transition remains rolling.
+Every explicit-target `UpdatePreparedQuery` order must wait until the stopped
+`rc.3` to `rc.4` upgrade completes. Even when the target value is unchanged,
+the new processor records target fields in the audit log, so old and new voters
+would produce different audit bytes for the same order. A changed target also
+changes replicated query state. The release containing these updates must list
+and validate the mandatory stopped boundary before clients submit them. The
+operator drain path is in place; [PR #2404](https://github.com/formancehq/ledger/pull/2404)
+coordinates that boundary. Until `rc.4` is active, clients must not submit
+explicit-target updates; use delete plus create for target changes.
 When the running version precedes a mandatory boundary, pin the target to a
 canonical version tag. Moving or non-canonical tags such as `latest` cannot
 prove whether the boundary is crossed, so the operator blocks the change.
+Likewise, the operator blocks a canonical target at or past a boundary when the
+running image has no canonical version tag, such as `latest` or a digest.
 
 ### Preflight for Clusters using `latest`
 
@@ -58,6 +70,20 @@ through each adjacent RC in order; do not jump to the newest RC. If the source
 cannot be identified or the current Operator already rejects the pinning step,
 stop and plan a separately validated migration. Do not delete the StatefulSet
 or PVCs to bypass the source check.
+### Maintainer-declared CLI break
+
+The `ledgerctl cluster add-learner` command is intentionally removed from the
+capability-evidence release. Existing scripts or runbooks invoking that command
+must be updated; the command is not kept as a compatibility alias and no
+protocol-version bump is required because the service gRPC contract is
+unchanged.
+
+To add a new node, configure its peer seed and start the Ledger binary. The
+bootstrap sequence calls `JoinAsLearner` and advertises the capabilities
+compiled into that binary. A node restarting with an existing WAL uses
+`RefreshMembership` to publish updated endpoints and capability evidence.
+The administrative `AddLearner` RPC remains an internal recovery API, but it is
+not a supported replacement for the removed CLI workflow.
 
 Before tagging a new release, verify the upgrade with state created by the
 supported source releases. Cover affected Pebble records, Raft log and snapshot
@@ -82,6 +108,12 @@ immediately preceding RC binary to the target binary in one cluster, including
 writes, replay, restart, audit verification and non-empty WAL. For a rolling
 release, include leadership transfer. Record source and target builds and the
 results in release validation. If the path fails, fix it before release.
+
+An accepted received snapshot may replace a node's Raft WAL directory while
+retaining the historical `raft/etcd/` path and WAL record format. If a process
+stops between the two directory renames, restart it with the version that
+started the replacement so startup can complete the directory recovery. Once
+`raft/etcd/` is present again, the preceding RC can read the completed WAL.
 
 ## Operator-required stopped restart
 
@@ -137,9 +169,17 @@ and backup compatibility. The operator does not delete Raft members or volumes.
 
 The drain blocks business writes before the stop; in-flight proposals after
 the cutoff reject at apply. Cluster-internal technical entries may continue
-and must remain replay-compatible with the target. Clients must retry an
-unacknowledged request with the same idempotency key. A release that changes
-replay or apply semantics must prove this
+and must remain replay-compatible with the target. Clients normally retry an
+unacknowledged request with the same idempotency key. An RC.3 batch containing
+a targetless `UpdatePreparedQuery` is an exception after the RC.4 upgrade: an
+identical retry fails `PREPARED_QUERY_TARGET_REQUIRED` before the retained
+outcome lookup. Adding `target` changes the request hash and conflicts with a
+retained key. Before submitting any replacement work, use `ledgerctl audit list`
+with an exact `idempotency_key` filter and inspect the prepared query and any
+other affected business state. Reconcile whether the original batch committed
+and its outcome; if the evidence is incomplete, keep the outcome unresolved
+and do not issue a replacement batch that could duplicate its effects. A release
+that changes replay or apply semantics must prove this
 with a non-empty source cluster before publishing. Rollback to an older binary
 is allowed only before the target has written incompatible persisted data, and
 only with a separately validated downgrade procedure. After that point, keep
@@ -301,6 +341,16 @@ Use this only when the target release permits rolling upgrades and mixed-version
 validation passes. For RC.1 to RC.2, follow the
 [maintenance-barrier rolling procedure](#account-metadata-address-validation).
 For RC.3 to RC.4, use the [operator-required stopped restart](#operator-required-stopped-restart).
+
+Capability metadata is the prerequisite for any future incompatible Raft entry,
+execution-plan, replay, or snapshot format. This release does not support
+mixed-version activation: stop every Ledger node, deploy the barrier-aware
+binary everywhere, restart the complete cluster, and only then enable the new
+feature. The capability reconciler does not arm features from membership
+advertisements. See the [capability contract](../technical/architecture/subsystems/consensus/capabilities.md)
+for the persisted replay boundary and coordinated rollout.
+
+Use this for RC updates after the mixed-version validation above passes:
 
 1. Record the current leader and voter set with `ledgerctl cluster status`.
 2. Restart one follower on the target binary.
@@ -501,26 +551,27 @@ installation, backup/restore, rollback, or the dormant stopped-upgrade path.
 The pinned binary-level rc.1 test and relevant model, restore and migration
 suites remain separate gates.
 
-The same harness has a separate, future `rc3-to-rc4` transition:
+The same harness has a separate `rc3-to-rc4` transition for the mandatory
+operator-required stopped restart:
 
 ```bash
 UPGRADE_TRANSITION=rc3-to-rc4 RELEASE_BRANCH=release/v3.0 just test-release-operator-upgrade
 ```
 
-Run it only after `v3.0.0-rc.3` has been published and the PR changing the
-persisted format has added `v3.0.0-rc.4` to the operator's mandatory stop
-boundaries. The target operator and Ledger are still built from one exact
-release-branch HEAD and tagged locally as rc.4; the harness publishes no tag
+Run it after `v3.0.0-rc.3` has been published, against a release branch whose
+operator lists `v3.0.0-rc.4` as a mandatory stop boundary. The target operator
+and Ledger are built from one exact release-branch HEAD and tagged locally as
+rc.4; the harness publishes no tag
 or image. This path requires the operator's drain barrier to advance past
 `Draining`, observes the StatefulSet and all old Pods absent before accepting
 any target Pod, and checks that the replacement StatefulSet has a new UID while
 PVC UIDs persist. It restarts a target voter to exercise replay, verifies the
 pre-upgrade account, commits another transaction, checks Raft progress and
 runs each voter's audit/derived-state checker after drain release. It fails
-against the current empty mandatory-stop list, so it is a release gate for the
-format-change PR, not evidence that rc.3 itself needs a stop. A future rc.4
-release still needs format-specific migration, snapshot, backup/restore and
-rollback validation outside this scenario.
+against an operator without the rc.4 boundary or if the mandatory stop is
+skipped, so it is a release gate for the format-change PR, not evidence that
+rc.3 itself needs a stop. The rc.4 release still needs format-specific migration,
+snapshot, backup/restore and rollback validation outside this scenario.
 
 ## Coordinated Restart
 
@@ -562,6 +613,32 @@ this format.
 The first native payload appended to the WAL closes the rollback window for
 RC.3. Restarting RC.3 on that storage requires a separately validated recovery
 procedure. See the [proposal migration contract](../technical/architecture/subsystems/consensus/proposal-payloads.md).
+
+## Change-specific notes
+
+### Mirror asset mappings
+
+`MirrorSourceConfig.asset_mappings` (field 6) is an additive optional field on
+a message stored in `LedgerInfo` and in the audited `CreatedLedgerLog`. Existing
+mirrors have an empty list, and their persisted state and audit hashes remain
+valid. No migration is required.
+
+Creating a mirror with `assetMappings` is not mixed-version safe. A voter
+without the field keeps it as an unknown field, and the deterministic order
+encoding appends unknown fields after the `http`/`postgres` source, while a
+voter that declares field 6 writes it before the source. The two voters
+therefore derive different `serialized_order` bytes, audit hash-chain entries
+and proposal hashes for the same committed `CreateLedger` entry, and their
+audit chains diverge from it. A leader running a release without asset-mapping
+support also ignores the field and ingests assets verbatim. The operator
+therefore lists `v3.0.0-rc.4` as a mandatory stop boundary, so no pre-`rc.4`
+member runs alongside an `rc.4` member. A cluster not managed by the operator
+must drain and stop every member before starting any `rc.4` member. See
+[asset mappings](../technical/architecture/subsystems/events-mirror/mirror.md#asset-mappings).
+
+A worker that finds assets v3 cannot represent among a mirror's stored volumes
+stops ingesting that mirror after the upgrade. Delete the mirror ledger and
+recreate it with the needed mappings.
 
 ## Repairing historical transaction address indexes
 

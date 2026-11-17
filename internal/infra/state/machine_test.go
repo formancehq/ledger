@@ -49,7 +49,7 @@ func newTestMachineWithThreshold(t *testing.T, generationThreshold uint64) (*Mac
 	registry := NewStateRegistry(c, attrs)
 	snapshotter := NewCacheSnapshotter(logger, registry, nil)
 
-	machine, err := NewMachine(logger, registry, snapshotter, dataStore, dal.NewSentinelFactory(dataStore, false), meterProvider, keystore.NewKeyStore(), NewSharedState(), newNoopNotifier(t), nil, "test-cluster", 0, noopConfChangeHandler)
+	machine, err := NewMachine(logger, registry, snapshotter, dataStore, dal.NewSentinelFactory(dataStore, false), meterProvider, keystore.NewKeyStore(), NewSharedState(), newNoopNotifier(t), nil, "test-cluster", 0, noopConfChangeHandler, NoopCapabilityPolicyCommitHandler)
 	require.NoError(t, err)
 
 	// NewMachine no longer performs the initial recoverState — the caller is
@@ -113,7 +113,7 @@ func recoverMachineOnStore(t *testing.T, dataStore *dal.Store) *Machine {
 	registry := NewStateRegistry(c, attributes.New())
 	snapshotter := NewCacheSnapshotter(logger, registry, nil)
 
-	m, err := NewMachine(logger, registry, snapshotter, dataStore, dal.NewSentinelFactory(dataStore, false), meterProvider, keystore.NewKeyStore(), NewSharedState(), newNoopNotifier(t), nil, "test-cluster", 0, noopConfChangeHandler)
+	m, err := NewMachine(logger, registry, snapshotter, dataStore, dal.NewSentinelFactory(dataStore, false), meterProvider, keystore.NewKeyStore(), NewSharedState(), newNoopNotifier(t), nil, "test-cluster", 0, noopConfChangeHandler, NoopCapabilityPolicyCommitHandler)
 	require.NoError(t, err)
 	require.NoError(t, NewRecovery(m, dataStore).RecoverState())
 
@@ -922,7 +922,7 @@ func TestNextLedgerIDRecovery(t *testing.T) {
 	// Create first machine and 3 ledgers.
 	reg1 := NewStateRegistry(c, attrs)
 	snap1 := NewCacheSnapshotter(logger, reg1, nil)
-	machine1, err := NewMachine(logger, reg1, snap1, dataStore, dal.NewSentinelFactory(dataStore, false), meterProvider, keystore.NewKeyStore(), NewSharedState(), newNoopNotifier(t), nil, "test-cluster", 0, noopConfChangeHandler)
+	machine1, err := NewMachine(logger, reg1, snap1, dataStore, dal.NewSentinelFactory(dataStore, false), meterProvider, keystore.NewKeyStore(), NewSharedState(), newNoopNotifier(t), nil, "test-cluster", 0, noopConfChangeHandler, NoopCapabilityPolicyCommitHandler)
 	require.NoError(t, err)
 	require.NoError(t, NewRecovery(machine1, dataStore).RecoverState())
 
@@ -958,7 +958,7 @@ func TestNextLedgerIDRecovery(t *testing.T) {
 
 	reg2 := NewStateRegistry(c2, attrs2)
 	snap2 := NewCacheSnapshotter(logger, reg2, nil)
-	machine2, err := NewMachine(logger, reg2, snap2, dataStore, dal.NewSentinelFactory(dataStore, false), meterProvider, keystore.NewKeyStore(), NewSharedState(), newNoopNotifier(t), nil, "test-cluster", 0, noopConfChangeHandler)
+	machine2, err := NewMachine(logger, reg2, snap2, dataStore, dal.NewSentinelFactory(dataStore, false), meterProvider, keystore.NewKeyStore(), NewSharedState(), newNoopNotifier(t), nil, "test-cluster", 0, noopConfChangeHandler, NoopCapabilityPolicyCommitHandler)
 	require.NoError(t, err)
 	require.NoError(t, NewRecovery(machine2, dataStore).RecoverState())
 
@@ -1018,7 +1018,7 @@ func TestPrepareEntriesTraceLogPipeliningLag(t *testing.T) {
 		registry := NewStateRegistry(c, attributes.New())
 		snapshotter := NewCacheSnapshotter(logger, registry, nil)
 
-		machine, err := NewMachine(logger, registry, snapshotter, dataStore, dal.NewSentinelFactory(dataStore, false), meterProvider, keystore.NewKeyStore(), NewSharedState(), newNoopNotifier(t), nil, "test-cluster", 0, noopConfChangeHandler)
+		machine, err := NewMachine(logger, registry, snapshotter, dataStore, dal.NewSentinelFactory(dataStore, false), meterProvider, keystore.NewKeyStore(), NewSharedState(), newNoopNotifier(t), nil, "test-cluster", 0, noopConfChangeHandler, NoopCapabilityPolicyCommitHandler)
 		require.NoError(t, err)
 		require.NoError(t, NewRecovery(machine, dataStore).RecoverState())
 

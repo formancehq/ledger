@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/formancehq/go-libs/v5/pkg/testing/testservice"
@@ -310,6 +311,14 @@ func WithAuthEnabled() testservice.InstrumentationFunc {
 func WithAuthIssuer(issuer string) testservice.InstrumentationFunc {
 	return func(ctx context.Context, cfg *testservice.RunConfiguration) error {
 		cfg.AppendArgs("--auth-issuer", issuer)
+
+		return nil
+	}
+}
+
+func WithAuthIssuers(issuers ...string) testservice.InstrumentationFunc {
+	return func(ctx context.Context, cfg *testservice.RunConfiguration) error {
+		cfg.AppendArgs("--auth-issuers", strings.Join(issuers, ","))
 
 		return nil
 	}

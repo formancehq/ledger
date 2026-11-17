@@ -460,9 +460,16 @@ jobs:
           registry: ghcr.io
           username: NumaryBot
           password: ${{ secrets.NUMARY_GITHUB_TOKEN }}
+      # RFC-0013: version the nightly as vX.Y.Z-dev.N.gSHA (or
+      # vX.Y.Z-P.dev.N.gSHA after a prerelease or marker tag) instead of a
+      # bare commit, so it is ordered against releases.
+      - name: Compute development version
+        id: dev-version
+        uses: formancehq/ci/actions/dev-version@e4b5ab22a0714d35a1731b73191162463b781131 # v1.0.4
       - name: Release nightly
         run: >
           nix develop .#ci --command just release-ci
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GORELEASER_KEY: ${{ secrets.GORELEASER_KEY }}
+          DEV_VERSION: ${{ steps.dev-version.outputs.version-number }}

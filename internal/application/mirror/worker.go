@@ -3,6 +3,8 @@ package mirror
 import (
 	"context"
 	"fmt"
+	"sort"
+	"strings"
 	"time"
 
 	"go.opentelemetry.io/otel/attribute"
@@ -12,12 +14,10 @@ import (
 	libtime "github.com/formancehq/go-libs/v5/pkg/types/time"
 
 	v2 "github.com/formancehq/ledger/v3/internal/adapter/v2"
-	"github.com/formancehq/ledger/v3/internal/adapter/v2/celrewrite"
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/infra/plan"
 	"github.com/formancehq/ledger/v3/internal/pkg/commands"
 	"github.com/formancehq/ledger/v3/internal/pkg/signal"
-	"github.com/formancehq/ledger/v3/internal/pkg/vtmarshal"
 	"github.com/formancehq/ledger/v3/internal/pkg/worker"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
@@ -51,7 +51,7 @@ type Worker struct {
 	ledgerName     string
 	batchSize      int
 	source         v2.Source
-	rewriter       *celrewrite.Rewriter
+	translate      v2.TranslateOptions
 	store          *dal.Store
 	proposer       Proposer
 	builder        *plan.Builder
@@ -94,6 +94,17 @@ type Worker struct {
 	boundariesLoaded   bool
 	prefetchCh         chan prefetchResult // pending prefetch from previous batch
 
+	// inventoryChecked records that the ledger's stored volumes were scanned
+	// once for assets ingested before asset-mapping support. A non-empty
+	// block stops ingestion for the worker's lifetime and is persisted as the
+	// sync error: it is set by that scan, whose offending assets only
+	// disappear with the ledger, or by blockIngestion for a configuration the
+	// worker cannot compile. blockReported tracks whether the block was
+	// confirmed persisted, so an abandoned report is retried next tick.
+	inventoryChecked bool
+	block            string
+	blockReported    bool
+
 	// Metrics
 	ledgerAttr        attribute.KeyValue
 	fetchDuration     metric.Float64Histogram
@@ -112,7 +123,7 @@ func NewWorker(
 	ledgerName string,
 	batchSize int,
 	source v2.Source,
-	rewriter *celrewrite.Rewriter,
+	translate v2.TranslateOptions,
 	store *dal.Store,
 	proposer Proposer,
 	builder *plan.Builder,
@@ -155,7 +166,7 @@ func NewWorker(
 		ledgerName: ledgerName,
 		batchSize:  batchSize,
 		source:     source,
-		rewriter:   rewriter,
+		translate:  translate,
 		store:      store,
 		proposer:   proposer,
 		builder:    builder,
@@ -212,6 +223,92 @@ func (w *Worker) loop(ctx context.Context) {
 	}
 }
 
+// failTick reports a tick's error, drops the boundary snapshot and sleeps the
+// current backoff. The caller returns from processLogs afterwards.
+func (w *Worker) failTick(ctx context.Context, err error) {
+	w.logger.WithFields(map[string]any{"error": err.Error()}).Errorf("Mirror sync error")
+	w.reportError(ctx, err.Error())
+
+	// Drop the boundary snapshot: it is a cache over the durable
+	// authority, so a failed batch must re-read rather than retry
+	// against a possibly-stale in-memory position (EN-1513).
+	w.boundariesLoaded = false
+
+	// Apply exponential backoff on persistent errors
+	if w.backoff == 0 {
+		w.backoff = initialBackoff
+	} else {
+		w.backoff = min(time.Duration(float64(w.backoff)*backoffMultiplier), maxBackoff)
+	}
+
+	select {
+	case <-ctx.Done():
+	case <-time.After(w.backoff):
+	}
+}
+
+// maxReportedInventoryAssets caps how many offending assets an inventory
+// block names, so the persisted status stays readable.
+const maxReportedInventoryAssets = 10
+
+// checkStoredAssets scans the ledger's volumes once and records, in block,
+// any stored (asset, color) that v3 cannot represent. Such rows come from a
+// release that ingested v2 assets verbatim; continuing would spread one v2
+// asset across incompatible buckets, so the mirror must be recreated with
+// mappings instead.
+func (w *Worker) checkStoredAssets() error {
+	start := time.Now()
+
+	result, err := w.builder.AggregateVolumes(w.ledgerName)
+	if err != nil {
+		return fmt.Errorf("scanning stored assets: %w", err)
+	}
+
+	var invalid []string
+	for _, vol := range result.GetVolumes() {
+		if domain.ValidateAsset(vol.GetAsset()) == nil && domain.ValidateColor(vol.GetColor()) == nil {
+			continue
+		}
+
+		if vol.GetColor() == "" {
+			invalid = append(invalid, vol.GetAsset())
+		} else {
+			invalid = append(invalid, vol.GetAsset()+`\`+vol.GetColor())
+		}
+	}
+
+	w.inventoryChecked = true
+	w.logger.WithFields(map[string]any{
+		"volumes":  len(result.GetVolumes()),
+		"invalid":  len(invalid),
+		"duration": time.Since(start).String(),
+	}).Infof("Mirror stored-asset inventory checked")
+
+	if len(invalid) == 0 {
+		return nil
+	}
+
+	sort.Strings(invalid)
+	if len(invalid) > maxReportedInventoryAssets {
+		invalid = append(invalid[:maxReportedInventoryAssets], fmt.Sprintf("... and %d more", len(invalid)-maxReportedInventoryAssets))
+	}
+
+	w.block = fmt.Sprintf(
+		"ledger contains assets ingested before asset-mapping support: %s; delete and recreate the mirror with assetMappings",
+		strings.Join(invalid, ", "),
+	)
+	w.logger.WithFields(map[string]any{"error": w.block}).Errorf("Mirror sync error")
+
+	return nil
+}
+
+// blockIngestion stops ingestion for the worker's lifetime and persists
+// message as the mirror's sync error. Call it before Start.
+func (w *Worker) blockIngestion(message string) {
+	w.block = message
+	w.logger.WithFields(map[string]any{"error": message}).Errorf("Mirror sync error")
+}
+
 // refreshSourceHead queries the v2 source for its latest log ID and stores
 // it in the worker for inclusion in subsequent cursor reports.
 func (w *Worker) refreshSourceHead(ctx context.Context) {
@@ -237,6 +334,24 @@ func (w *Worker) processLogs(ctx context.Context) {
 		default:
 		}
 
+		// A mirror with asset mappings was created by a release that
+		// validates every proposed asset, so its volumes need no scan.
+		if w.block == "" && !w.inventoryChecked && w.translate.Assets == nil {
+			if err := w.checkStoredAssets(); err != nil {
+				w.failTick(ctx, err)
+
+				return
+			}
+		}
+
+		if w.block != "" {
+			if !w.blockReported {
+				w.blockReported = w.reportError(ctx, w.block)
+			}
+
+			return
+		}
+
 		// Pause while Pebble is in a write stall to let compaction catch up.
 		if w.store.IsWriteStalled() {
 			w.logger.Infof("Pausing mirror ingestion: Pebble write stall in progress")
@@ -252,25 +367,7 @@ func (w *Worker) processLogs(ctx context.Context) {
 
 		hasMore, err := w.processBatch(ctx)
 		if err != nil {
-			w.logger.WithFields(map[string]any{"error": err.Error()}).Errorf("Mirror sync error")
-			w.reportError(ctx, err.Error())
-
-			// Drop the boundary snapshot: it is a cache over the durable
-			// authority, so a failed batch must re-read rather than retry
-			// against a possibly-stale in-memory position (EN-1513).
-			w.boundariesLoaded = false
-
-			// Apply exponential backoff on persistent errors
-			if w.backoff == 0 {
-				w.backoff = initialBackoff
-			} else {
-				w.backoff = min(time.Duration(float64(w.backoff)*backoffMultiplier), maxBackoff)
-			}
-
-			select {
-			case <-ctx.Done():
-			case <-time.After(w.backoff):
-			}
+			w.failTick(ctx, err)
 
 			return
 		}
@@ -371,7 +468,7 @@ func (w *Worker) processBatch(ctx context.Context) (bool, error) {
 	// Translate v2 logs to v3 orders
 	translateStart := time.Now()
 
-	orders, _, newNextTxID, err := v2.TranslateBatch(w.ledgerName, v2Logs, expectedNextLogID, expectedNextTxID, w.rewriter)
+	orders, _, newNextTxID, err := v2.TranslateBatch(w.ledgerName, v2Logs, expectedNextLogID, expectedNextTxID, w.translate)
 	if err != nil {
 		return false, err
 	}
@@ -457,18 +554,13 @@ func (w *Worker) processBatch(ctx context.Context) (bool, error) {
 	// Run preload + propose via the shared runner. Mirror is a
 	// single-shot caller (no concurrent admissions sharing loaders),
 	// so we release loaders immediately after the runner returns.
-	marshalFn := func(c *raftcmdpb.Proposal) ([]byte, error) {
-		data, err := marshalMirrorCommand(c)
-		if err != nil {
-			return nil, err
-		}
+	finalizeFn := func(c *raftcmdpb.Proposal) error {
+		w.commandSize.Record(ctx, int64(c.SizeVT()), attrs)
 
-		w.commandSize.Record(ctx, int64(len(data)), attrs)
-
-		return data, nil
+		return nil
 	}
 
-	runResult, err := w.builder.Run(ctx, cmd, build, marshalFn, w.proposer)
+	runResult, err := w.builder.Run(ctx, cmd, build, finalizeFn, w.proposer)
 	if err != nil {
 		return false, err
 	}
@@ -604,7 +696,9 @@ func (w *Worker) publishIdleStatus(ctx context.Context) {
 	w.statusClearConfirmed = true
 }
 
-func (w *Worker) reportError(ctx context.Context, message string) {
+// reportError persists message as the mirror's sync error and reports whether
+// the report was confirmed applied.
+func (w *Worker) reportError(ctx context.Context, message string) bool {
 	update := &raftcmdpb.MirrorSyncUpdate{
 		LedgerName: w.ledgerName,
 		Error: &commonpb.MirrorSyncError{
@@ -626,7 +720,7 @@ func (w *Worker) reportError(ctx context.Context, message string) {
 	// already resolves in this direction (EN-1773).
 	w.statusClearConfirmed = false
 
-	w.proposeMirrorSync(ctx, update, "mirror error report")
+	return w.proposeMirrorSync(ctx, update, "mirror error report")
 }
 
 // proposeMirrorSync proposes a technical-only MirrorSyncUpdate and reports
@@ -637,9 +731,10 @@ func (w *Worker) reportError(ctx context.Context, message string) {
 // label names the operation in the failure logs. The bool return is what makes
 // publishIdleStatus's bookkeeping safe: only a confirmed application may
 // advance the published state, or a rejected proposal would suppress the retry
-// on the next tick. reportError ignores it on purpose — it marks the status
-// dirty up front, because for that direction an unconfirmed-but-applied
-// proposal is the dangerous case.
+// on the next tick. reportError marks the status dirty up front regardless,
+// because for that direction an unconfirmed-but-applied proposal is the
+// dangerous case; it forwards the bool only so a block can retry
+// an unconfirmed report.
 func (w *Worker) proposeMirrorSync(ctx context.Context, update *raftcmdpb.MirrorSyncUpdate, label string) bool {
 	cmd := &raftcmdpb.Proposal{
 		Date:           &commonpb.Timestamp{Data: uint64(libtime.Now().UnixMicro())},
@@ -679,7 +774,7 @@ func (w *Worker) proposeMirrorSync(ctx context.Context, update *raftcmdpb.Mirror
 		return false
 	}
 
-	runResult, err := w.builder.Run(ctx, cmd, build, marshalMirrorCommand, w.proposer)
+	runResult, err := w.builder.Run(ctx, cmd, build, func(*raftcmdpb.Proposal) error { return nil }, w.proposer)
 	if err != nil {
 		logFailure("could not be proposed", err)
 
@@ -711,12 +806,6 @@ func (w *Worker) proposeMirrorSync(ctx context.Context, update *raftcmdpb.Mirror
 	}
 
 	return true
-}
-
-// marshalMirrorCommand marshals a proposal command into a newly allocated byte
-// slice using a pooled buffer. The returned slice is safe for Raft retention.
-func marshalMirrorCommand(cmd *raftcmdpb.Proposal) ([]byte, error) {
-	return vtmarshal.MarshalCopy(cmd)
 }
 
 // extractMirrorNeeds builds plan.Coverage from a mirror proposal's orders.
@@ -762,8 +851,8 @@ func (w *Worker) extractMirrorNeeds(cmd *raftcmdpb.Proposal) (*plan.Coverage, []
 
 		for _, posting := range postings {
 			for _, volKey := range []domain.VolumeKey{
-				{AccountKey: domain.AccountKey{LedgerName: w.ledgerName, Account: posting.GetSource()}, Asset: posting.GetAsset()},
-				{AccountKey: domain.AccountKey{LedgerName: w.ledgerName, Account: posting.GetDestination()}, Asset: posting.GetAsset()},
+				{AccountKey: domain.AccountKey{LedgerName: w.ledgerName, Account: posting.GetSource()}, Asset: posting.GetAsset(), Color: posting.GetColor()},
+				{AccountKey: domain.AccountKey{LedgerName: w.ledgerName, Account: posting.GetDestination()}, Asset: posting.GetAsset(), Color: posting.GetColor()},
 			} {
 				p.Add(dal.SubAttrVolume, volKey.Bytes())
 			}

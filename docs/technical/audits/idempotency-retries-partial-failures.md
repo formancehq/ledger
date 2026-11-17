@@ -20,6 +20,30 @@ the branch is reached. Evidence must distinguish those cases and show that a
 same-key retry after repair can establish one definitive outcome, while a
 same-key retry of an earlier committed outcome does not execute it again.
 
+## Forwarded preload gaps inside a keyed batch
+
+Admission forwards a keyed order whose dependency discovery failed, marked
+`OrderTechnical.preload_unavailable`, so the FSM dedup gate can replay a frozen
+outcome. Without one, the batch executes in sequence and the forwarded order
+fails at its own position with the uncommitted `PRELOAD_UNAVAILABLE`. An earlier
+order's definitive rejection (`INSUFFICIENT_FUNDS`, `VOLUME_OVERFLOW`, ...) is
+therefore audited and frozen under the key and replays on retry. Admission's
+overlay folds earlier effects without checking funds, so this ordering is what
+keeps a retry-forever client from looping on a gap that masks a real verdict.
+Evidence must show both directions: the earlier rejection wins and replays, and
+a gap after successful orders discards their effects, leaves no audit or
+idempotency row and lets a re-admitted retry under the same key execute.
+
+## Prepared-query ID target changes (EN-2601)
+
+New prepared-query updates carry their target explicitly. A retry of the same
+request therefore hashes the same order even if the stored query was deleted
+and recreated with another target. The FSM's ordinary key lookup returns the
+frozen outcome without a second mutation. A changed target or filter conflicts
+while the key remains live; an expired or evicted key is a fresh operation.
+The prepared-query E2E regression changes the target, deletes and recreates the
+query, retries the keyed update, and verifies the replacement query is intact.
+
 ## Peer closure followed by maintenance (EN-2212)
 
 The Antithesis `NewGRPCConn` factory retries in interceptors after EN-1627; a

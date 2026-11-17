@@ -9,6 +9,7 @@ import (
 
 	"google.golang.org/protobuf/reflect/protoreflect"
 
+	v2 "github.com/formancehq/ledger/v3/internal/adapter/v2"
 	"github.com/formancehq/ledger/v3/internal/adapter/v2/celrewrite"
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/domain/indexes"
@@ -398,8 +399,17 @@ func validateOrderPreparedQuery(order *raftcmdpb.Order) domain.Describable {
 			return err
 		}
 
-		// The update carries no target, so the per-target gate runs in the FSM
-		// against the stored query; the target-independent shape gate runs here.
+		// New requests have an explicit target. Keep the nil path for historical
+		// targetless orders, whose stored target the FSM validates during replay.
+		if p.UpdatePreparedQuery.Target != nil {
+			if !domain.IsPreparedQueryExecutableTarget(p.UpdatePreparedQuery.GetTarget()) {
+				return domain.ErrPreparedQueryTargetUnsupported
+			}
+			if err := domain.ValidateFilterForTarget(p.UpdatePreparedQuery.GetFilter(), p.UpdatePreparedQuery.GetTarget()); err != nil {
+				return err
+			}
+		}
+
 		return domain.ValidateFilterAdmissionShape(p.UpdatePreparedQuery.GetFilter())
 	case *raftcmdpb.LedgerScopedOrder_DeletePreparedQuery:
 		return domain.ValidatePreparedQueryName(p.DeletePreparedQuery.GetName())
@@ -441,6 +451,12 @@ func validateOrderMirrorSource(order *raftcmdpb.Order) domain.Describable {
 	// guarantees the worker can build the rewriter.
 	if _, err := celrewrite.NewRewriter(src.GetRewriteRules()); err != nil {
 		return ErrMirrorRewriteRuleInvalid
+	}
+
+	// Same contract for asset mappings: NewAssetMapper is what the worker
+	// builds, so a nil error here guarantees the mapper compiles there.
+	if _, err := v2.NewAssetMapper(src.GetAssetMappings()); err != nil {
+		return &mirrorAssetMappingError{cause: err}
 	}
 
 	if http := src.GetHttp(); http != nil {

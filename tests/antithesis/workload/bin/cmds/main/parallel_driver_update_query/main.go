@@ -69,6 +69,7 @@ func main() {
 				UpdatePreparedQuery: &servicepb.UpdatePreparedQueryRequest{
 					Ledger: ledger,
 					Name:   queryName,
+					Target: commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS.Enum(),
 					Filter: &commonpb.QueryFilter{
 						Filter: &commonpb.QueryFilter_Address{
 							Address: &commonpb.AddressMatch{

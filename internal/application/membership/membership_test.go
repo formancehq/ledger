@@ -41,7 +41,7 @@ func TestService_AddLearner_ValidatesRequest(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			err := s.AddLearner(context.Background(), tc.nodeID, tc.raftAddr, tc.serviceAddr, tc.instanceID)
+			err := s.AddLearner(context.Background(), tc.nodeID, tc.raftAddr, tc.serviceAddr, tc.instanceID, nil)
 			require.Error(t, err)
 			assert.Contains(t, err.Error(), tc.wantSubstr)
 		})
@@ -58,7 +58,7 @@ func TestService_AddLearner_RejectionPreservesServiceRouting(t *testing.T) {
 		ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
 		defer cancel()
 
-		err := s.AddLearner(ctx, 1, "self:7777", "attacker:8080", []byte("self-instance-id"))
+		err := s.AddLearner(ctx, 1, "self:7777", "attacker:8080", []byte("self-instance-id"), nil)
 		require.ErrorIs(t, err, node.ErrNodeAlreadyInCluster)
 		require.Equal(t, committedAddr, servicePool.GetPeerAddress(1))
 	})
@@ -67,7 +67,7 @@ func TestService_AddLearner_RejectionPreservesServiceRouting(t *testing.T) {
 func TestService_JoinAsLearner_RejectsMissingInstanceID(t *testing.T) {
 	t.Parallel()
 
-	err := (&Service{}).JoinAsLearner(context.Background(), 1, "r:1", "s:1", nil)
+	err := (&Service{}).JoinAsLearner(context.Background(), 1, "r:1", "s:1", nil, nil)
 	require.ErrorContains(t, err, "instance_id")
 }
 

@@ -160,7 +160,7 @@ func TestRequestToOrder_WrapsEveryRequestVariant(t *testing.T) {
 		{
 			name: "update_prepared_query",
 			req: &servicepb.Request{Type: &servicepb.Request_UpdatePreparedQuery{
-				UpdatePreparedQuery: &servicepb.UpdatePreparedQueryRequest{Ledger: ledger, Name: "q"},
+				UpdatePreparedQuery: &servicepb.UpdatePreparedQueryRequest{Ledger: ledger, Name: "q", Target: commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS.Enum()},
 			}},
 			expect: expect{
 				kind:   wrapLedger,
