@@ -12,6 +12,9 @@ The plugin's `--set` paths use dotted keys and zero-based array indices from
 Malformed paths return an error instead of applying a truncated path.
 Plugin commands report progress and operation outcomes synchronously, without
 background spinners, including while waiting for a backup run to finish.
+Read commands (`list`, `get`, `credentials list`, `backup list`, and
+`backup runs`) suppress progress with `-o json` or `-o yaml`, so successful
+stdout contains only the requested resource document.
 
 `kubectl ledger get` and `logs --all` discover Pods through the live
 Cluster-owned StatefulSet selector, including custom labels and selector

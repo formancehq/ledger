@@ -43,7 +43,9 @@ func runGet(cmd *cobra.Command, opts *cmdutil.Options, args []string) error {
 		return fmt.Errorf("creating clientset: %w", err)
 	}
 
-	pterm.Info.Println("Fetching Cluster details...")
+	if opts.OutputFormat() != "json" && opts.OutputFormat() != "yaml" {
+		pterm.Info.Println("Fetching Cluster details...")
+	}
 
 	ledger, err := cmdutil.GetCluster(ctx, crdClient, ns, name)
 	if err != nil {

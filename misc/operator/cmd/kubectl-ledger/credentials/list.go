@@ -32,7 +32,9 @@ func runList(cmd *cobra.Command, opts *cmdutil.Options) error {
 		return fmt.Errorf("creating client: %w", err)
 	}
 
-	pterm.Info.Println("Fetching Credentials resources...")
+	if opts.OutputFormat() != "json" && opts.OutputFormat() != "yaml" {
+		pterm.Info.Println("Fetching Credentials resources...")
+	}
 
 	credentials, err := cmdutil.ListCredentials(ctx, crdClient)
 	if err != nil {

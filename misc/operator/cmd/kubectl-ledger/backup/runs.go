@@ -36,7 +36,9 @@ func runRuns(cmd *cobra.Command, opts *cmdutil.Options, args []string) error {
 		return fmt.Errorf("creating client: %w", err)
 	}
 
-	pterm.Info.Println("Fetching BackupRun resources...")
+	if opts.OutputFormat() != "json" && opts.OutputFormat() != "yaml" {
+		pterm.Info.Println("Fetching BackupRun resources...")
+	}
 	runs, err := cmdutil.ListBackupRuns(ctx, crdClient, ns, name)
 	if err != nil {
 		pterm.Error.Println("Failed to list BackupRun resources")
