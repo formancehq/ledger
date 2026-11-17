@@ -10,6 +10,7 @@ import (
 	"github.com/formancehq/go-libs/v5/pkg/transport/api"
 	"github.com/formancehq/go-libs/v5/pkg/types/metadata"
 	"github.com/formancehq/go-libs/v5/pkg/types/time"
+	"github.com/formancehq/numscript"
 
 	ledger "github.com/formancehq/ledger/internal"
 	"github.com/formancehq/ledger/internal/api/common"
@@ -89,14 +90,16 @@ func createTransaction(w http.ResponseWriter, r *http.Request) {
 		}))
 		if err != nil {
 			switch {
-			case errors.Is(err, &ledgercontroller.ErrInsufficientFunds{}):
+			case errors.Is(err, &ledgercontroller.ErrInsufficientFunds{}), errors.Is(err, numscript.MissingFundsErr{}):
 				api.BadRequest(w, common.ErrInsufficientFund, err)
-			case errors.Is(err, &ledgercontroller.ErrInvalidVars{}) || errors.Is(err, ledgercontroller.ErrCompilationFailed{}):
+			case errors.Is(err, &ledgercontroller.ErrInvalidVars{}) || errors.Is(err, ledgercontroller.ErrCompilationFailed{}) ||
+				errors.Is(err, ledgercontroller.ErrParsing{}):
 				api.BadRequest(w, common.ErrScriptCompilationFailed, err)
 			case errors.Is(err, &ledgercontroller.ErrMetadataOverride{}):
 				api.BadRequest(w, common.ErrScriptMetadataOverride, err)
 			case errors.Is(err, ledgercontroller.ErrNoPostings) ||
-				errors.Is(err, ledgercontroller.ErrInvalidIdempotencyInput{}):
+				errors.Is(err, ledgercontroller.ErrInvalidIdempotencyInput{}) ||
+				errors.Is(err, ledgercontroller.ErrRuntime{}):
 				api.BadRequest(w, common.ErrValidation, err)
 			case errors.Is(err, ledgerstore.ErrTransactionReferenceConflict{}):
 				api.WriteErrorResponse(w, http.StatusConflict, common.ErrConflict, err)
@@ -130,13 +133,15 @@ func createTransaction(w http.ResponseWriter, r *http.Request) {
 	}))
 	if err != nil {
 		switch {
-		case errors.Is(err, &ledgercontroller.ErrInsufficientFunds{}):
+		case errors.Is(err, &ledgercontroller.ErrInsufficientFunds{}), errors.Is(err, numscript.MissingFundsErr{}):
 			api.BadRequest(w, common.ErrInsufficientFund, err)
 		case errors.Is(err, &ledgercontroller.ErrInvalidVars{}) ||
 			errors.Is(err, ledgercontroller.ErrCompilationFailed{}) ||
 			errors.Is(err, &ledgercontroller.ErrMetadataOverride{}) ||
 			errors.Is(err, ledgercontroller.ErrInvalidIdempotencyInput{}) ||
-			errors.Is(err, ledgercontroller.ErrNoPostings):
+			errors.Is(err, ledgercontroller.ErrNoPostings) ||
+			errors.Is(err, ledgercontroller.ErrParsing{}) ||
+			errors.Is(err, ledgercontroller.ErrRuntime{}):
 			api.BadRequest(w, common.ErrValidation, err)
 		case errors.Is(err, ledgerstore.ErrTransactionReferenceConflict{}):
 			api.WriteErrorResponse(w, http.StatusConflict, common.ErrConflict, err)
