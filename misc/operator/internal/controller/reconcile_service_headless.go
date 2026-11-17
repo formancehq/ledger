@@ -95,7 +95,7 @@ func grpcPeerPort(ledger *ledgerv1alpha1.Cluster) int32 {
 		return ledger.Spec.GrpcPeerPort
 	}
 
-	return serviceGrpcPort(ledger) + 1
+	return effectiveGrpcListenerPort(ledger) + 1
 }
 
 func serviceHttpPort(ledger *ledgerv1alpha1.Cluster) int32 {

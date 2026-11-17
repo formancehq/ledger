@@ -38,6 +38,31 @@ func TestReconcileOperatorCredentialsCreatesScopedCredential(t *testing.T) {
 	require.Equal(t, map[string]string{labelOperatorCredential: operatorCredentialsSelectorValue(cluster)}, credentials.Spec.Selector.MatchLabels)
 }
 
+func TestReconcileOperatorCredentialsDoesNotPersistRuntimeDefaults(t *testing.T) {
+	t.Setenv("LEDGER_IMAGE_TAG", "v3.0.0-rc.5")
+	scheme := authKeysScheme(t)
+	cluster := authEnabledCluster("ledger", "tenant-a", nil)
+	r := &ClusterReconciler{
+		Client: fake.NewClientBuilder().WithScheme(scheme).WithObjects(cluster).Build(),
+		Scheme: scheme,
+	}
+
+	applyDefaults(cluster)
+	require.Equal(t, "v3.0.0-rc.5", cluster.Spec.Image.Tag)
+	_, err := r.reconcileOperatorCredentials(t.Context(), cluster)
+	require.NoError(t, err)
+
+	persisted := &ledgerv1alpha1.Cluster{}
+	require.NoError(t, r.Get(t.Context(), types.NamespacedName{Name: cluster.Name, Namespace: cluster.Namespace}, persisted))
+	require.Empty(t, persisted.Spec.Image.Tag)
+	require.Empty(t, persisted.Spec.Image.Repository)
+	require.Zero(t, persisted.Spec.GrpcPort)
+	require.Zero(t, persisted.Spec.GrpcPeerPort)
+	require.Nil(t, persisted.Spec.Replicas)
+	require.Empty(t, persisted.Spec.Service.Type)
+	require.Equal(t, operatorCredentialsSelectorValue(cluster), persisted.Labels[labelOperatorCredential])
+}
+
 func TestResolveMatchedClustersRestrictsOperatorCredentialsToOwner(t *testing.T) {
 	scheme := authKeysScheme(t)
 	owner := authEnabledCluster("ledger", "tenant-a", map[string]string{"shared": "yes"})

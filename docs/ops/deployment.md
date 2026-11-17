@@ -58,7 +58,7 @@ Available flags for `run`:
 - `--cluster-id`: Cluster ID for inter-node communication and persisted configuration validation (required)
 - `--bind-addr`: Address to bind to for Raft transport (internal inter-node communication, default: `0.0.0.0:7777`)
 - `--grpc-port`: Port for gRPC service API (external client-facing, default: `8888`)
-- `--grpc-peer-port`: Port for authenticated inter-node service forwarding (default: `8889`)
+- `--grpc-peer-port`: Port for authenticated inter-node service forwarding (defaults to `--grpc-port + 1`, or `8889` with the default public port)
 - `--advertise-addr`: Address to advertise to other nodes (defaults to bind-addr)
 - `--wal-dir`: WAL directory for Raft (default: `./wal`)
 - `--data-dir`: Data directory for application storage (default: `./data`)

@@ -202,6 +202,42 @@ func TestValidateClusterSecretRequiresTLS(t *testing.T) {
 	}
 }
 
+func TestValidatePeerGRPCPort(t *testing.T) {
+	t.Parallel()
+
+	for _, tt := range []struct {
+		name     string
+		grpcPort int
+		httpPort int
+		peerPort int
+		wantErr  string
+	}{
+		{name: "default", grpcPort: 8888, httpPort: 9000},
+		{name: "custom distinct", grpcPort: 9190, httpPort: 9000, peerPort: 9292},
+		{name: "public grpc collision", grpcPort: 8888, httpPort: 9000, peerPort: 8888, wantErr: "must differ from --grpc-port"},
+		{name: "http collision", grpcPort: 8888, httpPort: 9000, peerPort: 9000, wantErr: "must differ from --http-port"},
+		{name: "derived http collision", grpcPort: 8999, httpPort: 9000, wantErr: "must differ from --http-port"},
+		{name: "raft collision", grpcPort: 8888, httpPort: 9000, peerPort: 7777, wantErr: "must differ from the Raft bind port"},
+		{name: "derived overflow", grpcPort: 65535, httpPort: 9000, wantErr: "between 1 and 65535"},
+		{name: "negative peer port", grpcPort: 8888, httpPort: 9000, peerPort: -1, wantErr: "between 1 and 65535"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			cfg := validBaseConfig()
+			cfg.GRPCPort = tt.grpcPort
+			cfg.HTTPPort = tt.httpPort
+			cfg.GRPCPeerPort = tt.peerPort
+			cfg.RaftConfig.BindAddr = "0.0.0.0:7777"
+			err := cfg.Validate()
+			if tt.wantErr == "" {
+				require.NoError(t, err)
+			} else {
+				require.ErrorContains(t, err, tt.wantErr)
+			}
+		})
+	}
+}
+
 func TestValidateClusterPolicyFields(t *testing.T) {
 	t.Parallel()
 

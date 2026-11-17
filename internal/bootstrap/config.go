@@ -305,6 +305,9 @@ func (c Config) Validate() error {
 	if c.ClusterID == "" {
 		return errors.New("--cluster-id is required")
 	}
+	if err := c.validatePeerGRPCPort(); err != nil {
+		return err
+	}
 
 	if err := c.validateTLSConfig(); err != nil {
 		return err
@@ -374,6 +377,24 @@ func (c Config) Validate() error {
 	}
 	if err := validateHealthThresholds(c.HealthConfig.DataThreshold, c.HealthConfig.DataResumeThreshold); err != nil {
 		return fmt.Errorf("data: %w", err)
+	}
+
+	return nil
+}
+
+func (c Config) validatePeerGRPCPort() error {
+	peerPort := c.PeerGRPCPort()
+	if peerPort < 1 || peerPort > 65535 {
+		return fmt.Errorf("--grpc-peer-port must resolve to a port between 1 and 65535, got %d", peerPort)
+	}
+	if peerPort == c.GRPCPort {
+		return fmt.Errorf("--grpc-peer-port must differ from --grpc-port, both are %d", peerPort)
+	}
+	if peerPort == c.HTTPPort {
+		return fmt.Errorf("--grpc-peer-port must differ from --http-port, both are %d", peerPort)
+	}
+	if _, raftPort, err := net.SplitHostPort(c.RaftConfig.BindAddr); err == nil && raftPort == strconv.Itoa(peerPort) {
+		return fmt.Errorf("--grpc-peer-port must differ from the Raft bind port, both are %d", peerPort)
 	}
 
 	return nil
@@ -525,10 +546,14 @@ func (c Config) ServiceAdvertiseAddr() string {
 // PeerGRPCPort is the dedicated service port used for authenticated
 // inter-node forwarding. A zero value keeps programmatic configurations
 // backwards-compatible by placing it immediately after the public service
-// port.
+// port. When the public port is 0 (an ephemeral listener used by local tests),
+// retain the standard 8889 peer port instead of trying to bind port 1.
 func (c Config) PeerGRPCPort() int {
 	if c.GRPCPeerPort != 0 {
 		return c.GRPCPeerPort
+	}
+	if c.GRPCPort == 0 {
+		return 8889
 	}
 
 	return c.GRPCPort + 1

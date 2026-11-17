@@ -4366,7 +4366,10 @@ ledger run --pebble-compression "none,snappy,zstd,zstd,zstd,zstd,zstd" [other fl
 For server startup, `--advertise-addr` supplies the host shared by the Raft
 and service endpoints; `--grpc-port` supplies the service port. For example,
 `--advertise-addr '[2001:db8::1]:7777' --grpc-port 8888` advertises
-`[2001:db8::1]:8888` for service RPCs. See [deployment](deployment.md#command-structure).
+`[2001:db8::1]:8888` for public service RPCs. The peer service port defaults
+to `--grpc-port + 1` (`8889` here); set `--grpc-peer-port` to override it.
+The peer port must differ from the public gRPC, HTTP, and Raft bind ports.
+See [deployment](deployment.md#command-structure).
 
 ### Server Raft Consensus Flags
 

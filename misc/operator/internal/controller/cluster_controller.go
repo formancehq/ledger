@@ -848,11 +848,7 @@ func applyDefaults(ledger *ledgerv1alpha1.Cluster) {
 		ledger.Spec.GrpcPort = 8888
 	}
 	if ledger.Spec.GrpcPeerPort == 0 {
-		if ledger.Spec.Service.GrpcPort != 0 {
-			ledger.Spec.GrpcPeerPort = ledger.Spec.Service.GrpcPort + 1
-		} else {
-			ledger.Spec.GrpcPeerPort = ledger.Spec.GrpcPort + 1
-		}
+		ledger.Spec.GrpcPeerPort = grpcPeerPort(ledger)
 	}
 	if ledger.Spec.HttpPort == 0 {
 		ledger.Spec.HttpPort = 9000
@@ -923,12 +919,6 @@ func validateClusterConfig(spec *ledgerv1alpha1.ClusterSpec) error {
 		}
 		if spec.HttpPort != 0 && spec.GrpcPeerPort == spec.HttpPort {
 			return fmt.Errorf("grpcPeerPort must differ from httpPort, both are %d", spec.GrpcPeerPort)
-		}
-		if spec.Service.GrpcPort != 0 && spec.GrpcPeerPort == spec.Service.GrpcPort {
-			return fmt.Errorf("grpcPeerPort must differ from service.grpcPort, both are %d", spec.GrpcPeerPort)
-		}
-		if spec.Service.HttpPort != 0 && spec.GrpcPeerPort == spec.Service.HttpPort {
-			return fmt.Errorf("grpcPeerPort must differ from service.httpPort, both are %d", spec.GrpcPeerPort)
 		}
 		if spec.GrpcPeerPort == raftPortFromBindAddr(spec.BindAddr) {
 			return fmt.Errorf("grpcPeerPort must differ from the Raft port, both are %d", spec.GrpcPeerPort)

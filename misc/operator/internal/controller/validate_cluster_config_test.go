@@ -78,14 +78,6 @@ func TestValidateClusterConfig_RejectsPeerPortCollisionsAndOverflow(t *testing.T
 			want: "grpcPeerPort must differ from httpPort",
 		},
 		{
-			name: "service grpc collision",
-			spec: ledgerv1alpha1.ClusterSpec{
-				GrpcPeerPort: 18888,
-				Service:      ledgerv1alpha1.ServiceSpec{GrpcPort: 18888},
-			},
-			want: "grpcPeerPort must differ from service.grpcPort",
-		},
-		{
 			name: "raft collision",
 			spec: ledgerv1alpha1.ClusterSpec{
 				BindAddr:     "0.0.0.0:7777",
@@ -108,6 +100,40 @@ func TestValidateClusterConfig_RejectsPeerPortCollisionsAndOverflow(t *testing.T
 			assert.Contains(t, err.Error(), tt.want)
 		})
 	}
+}
+
+func TestPeerPortDefaultUsesContainerListenerPort(t *testing.T) {
+	for _, tt := range []struct {
+		name     string
+		grpcPort int32
+		wantPeer int32
+	}{
+		{name: "default listener", wantPeer: 8889},
+		{name: "custom listener", grpcPort: 9190, wantPeer: 9191},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			cluster := &ledgerv1alpha1.Cluster{Spec: ledgerv1alpha1.ClusterSpec{
+				GrpcPort: tt.grpcPort,
+				Service:  ledgerv1alpha1.ServiceSpec{GrpcPort: 8999},
+			}}
+			require.Equal(t, tt.wantPeer, grpcPeerPort(cluster))
+			applyDefaults(cluster)
+			require.Equal(t, tt.wantPeer, cluster.Spec.GrpcPeerPort)
+			require.NoError(t, validateClusterConfig(&cluster.Spec))
+		})
+	}
+}
+
+func TestValidateClusterConfigAllowsServiceFrontendPortMatchingPeerListener(t *testing.T) {
+	t.Parallel()
+	spec := ledgerv1alpha1.ClusterSpec{
+		GrpcPeerPort: 18888,
+		Service: ledgerv1alpha1.ServiceSpec{
+			GrpcPort: 18888,
+			HttpPort: 18888,
+		},
+	}
+	require.NoError(t, validateClusterConfig(&spec))
 }
 
 func TestValidateClusterConfig_AuthRequiresTLS(t *testing.T) {

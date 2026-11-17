@@ -115,7 +115,7 @@ func TestBuildNetworkPolicySpec_InterNodeCustomPorts(t *testing.T) {
 	require.Len(t, interNode.Ports, 4)
 	assert.Equal(t, int32(27777), interNode.Ports[0].Port.IntVal)
 	assert.Equal(t, int32(28888), interNode.Ports[1].Port.IntVal)
-	assert.Equal(t, int32(18889), interNode.Ports[2].Port.IntVal)
+	assert.Equal(t, int32(28889), interNode.Ports[2].Port.IntVal)
 	assert.Equal(t, int32(29000), interNode.Ports[3].Port.IntVal)
 }
 
