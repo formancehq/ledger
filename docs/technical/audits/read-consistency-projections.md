@@ -69,6 +69,17 @@ when target-specific gates project it back to the main pin:
 - folded account membership retains the documented purged-address exception;
 - schema and `IndexVersionState` come from their owning pinned views.
 
+For account-asset first-touch rows, test the overlap between live folding and
+historical backfill. Seed an independently known first touch at sequence 5,
+create the index on a non-empty ledger, and fold a later live touch at sequence
+10 before backfill reaches 5. The live fold may first store 10, but after
+backfill the row must store `min(10, 5) = 5`. Presence alone is not a sufficient
+deduplication oracle. Inspect the stored stamp independently of the writer and
+verify the served-version readiness gate before testing query visibility at a
+pin. A pin before `CreateIndex` cannot use that index, even if the account's
+first touch predates its creation. See `TestAccountAssetBackfillRepairsLaterLiveFirstTouch`
+in `internal/application/indexbuilder/backfill_test.go` for the regression seam.
+
 ### Generated history classification and readiness
 
 Include `tools/protoc-gen-ledger-log-category/**`, its descriptor inputs in
