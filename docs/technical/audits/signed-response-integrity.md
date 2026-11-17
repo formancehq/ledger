@@ -1,6 +1,6 @@
 # Signed response integrity: evidence and ownership
 
-The [manifest](signed-response-integrity.json) covers the authenticity of logs
+The [manifest](signed-response-integrity.json) covers the authenticity of logs and separate public HTTP receipts
 returned to a client when response signing and verification are enabled. It does
 not presume that every client enables verification. Bind each claim to an exact
 commit and a registered response path.
@@ -39,8 +39,8 @@ after Apply does not roll back a mutation.
 `authentication-authorization-boundaries` owns client request signatures and admission.
 `integrity-verifier-soundness` owns persisted audit-chain verification.
 `api-boundary-contracts` owns generic response shape and wire conversion.
-This domain owns server response-log signing and the optional client check that
-purports to authenticate those logs. Hand off a shared symptom to the domain
+This domain owns server response-log signing, public HTTP receipt signing, and
+the optional client checks that purport to authenticate their distinct outputs. Hand off a shared symptom to the domain
 whose correction is needed; do not duplicate a finding.
 
 Key rotation, cross-node discovery consistency and unsigned operations are
@@ -61,3 +61,30 @@ API boundary owns conversion/output fidelity; authentication owns scopes and
 caller capture; idempotency owns durable atomicity and retry identity; signed
 response integrity owns the returned cryptographic proof. Deduplicate by the
 mechanism that must change, not by the number of affected operations.
+
+## Separate public HTTP receipt evidence
+
+Public receipts are an additional authenticity boundary, not a change to
+`SignedLog`. Trace all registered mutation wrappers, both HTTP Apply helpers,
+`ResponseSigner.SignPublicReceipt`, `pkg/httpreceipt` and bootstrap key wiring.
+Use [the wire contract](../architecture/subsystems/api/http-api.md#public-http-receipts)
+for exact domains, encoding, claims and bounds. Authenticate exact payload bytes,
+then compare observed method, origin-form target, status and entity bytes. Keys
+must be independently trusted for the serving HTTP node; keyId is an unsigned
+lookup hint. Historical same-method-target responses can verify: freshness,
+request-body identity, actor, cluster identity and audit inclusion are excluded.
+
+Require independent protocol fixtures and changed body/status/method/target,
+payload, domain, key and presence controls. Exercise 204, bigint encodings,
+sequential and atomic bulk with partial failures, real forwarded replay metadata,
+zero-log Apply and multi-Apply boundaries. Counts cover only successful returned
+results; an errored Apply can have committed. Invalid JSON or 16 MiB output
+overflow after Apply must not produce signed malformed output or unsigned
+success. Missing proof fails closed, including old-node/proxy/header-stripping
+and pre-wrapper failures. Delivery/verification failure is not rollback.
+
+The API-boundary domain owns routing/schema/status and CORS presentation;
+sensitive-data-exposure-boundaries owns detached projection and credential
+absence. This domain owns public response authenticity and aggregate binding.
+The existing SignedLog log-equality oracle and command-level regressions remain
+required independently. No audit execution is authorized by this maintenance.

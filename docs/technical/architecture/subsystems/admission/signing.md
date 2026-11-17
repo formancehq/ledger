@@ -2,7 +2,7 @@
 
 ## Overview
 
-Request signing is what makes a Ledger v3 batch **tamper-evident end-to-end**: the client signs the exact bytes it submits, the server verifies them without re-serialising, and the resulting log entries carry the original signature into the audit trail. Response signing does the symmetric thing on the way back: the server signs the committed logs so clients can audit them after the fact.
+Request signing is what makes a Ledger v3 batch **tamper-evident end-to-end**: the client signs the exact bytes it submits, the server verifies them without re-serialising, and the applied proposal retains the original signature in the audit trail. Response signing does the symmetric thing on the way back: the server signs the committed logs so clients can audit them after the fact.
 
 Signing is **optional by default** and can be made mandatory cluster-wide via `signing require`. When mandatory, unsigned batches are rejected at admission, except for the narrow cases below (bootstrap registration, maintenance mode, and leader-internal proposals). Operations documentation lives in [`docs/ops/signing.md`](../../../../ops/signing.md) and the maintenance-mode interaction is covered in [`docs/ops/maintenance-mode.md`](../../../../ops/maintenance-mode.md); this page covers the architecture.
 
@@ -105,9 +105,9 @@ The signature is propagated all the way into the audit chain:
 
 - `Proposal.Signature` carries the client's signature.
 - The header payload that gets hashed by `BuildHashedHeaderPayload` includes the signature (see [audit-chain.md](../checker/audit-chain.md)).
-- The signature ends up on each `Log` produced by the proposal as well, so an auditor reading a single log row can re-verify it independently against the client's public key.
+- The request signature remains on the applied proposal/audit entry. `Log` carries sequence, payload and the optional response signature, not a client `Log.Signature`.
 
-This means tampering with a stored `Log.Signature` is detectable by the checker — it would break the audit-chain hash, not just the signature.
+Audit verification uses the retained proposal evidence; a public log projection or HTTP receipt is not a substitute for that evidence.
 
 ## Key management
 
@@ -184,4 +184,16 @@ The signed payload is the published protobuf `ApplyBatch` format, not a Go-speci
 | `ErrInvalidSignature` returned at admission | Wrong key ID, tampered payload, or wrong private key. |
 | Bootstrap registration rejected | `RequireSignatures()` is true and there is no parent key — solution is the maintenance-mode workaround above. |
 | Client cannot verify a stored log | Server's response key has rotated; client must refresh via the Discovery RPC or the `--response-verify-key` flag. |
-| Audit chain hash mismatch on entries with valid `Log.Signature` | Log entry tampered after the fact — caught by the checker, not by signature verification (the signature still verifies; the hash chain doesn't). |
+| Audit chain hash mismatch on entries with a valid retained request signature | Log entry tampered after the fact — caught by the checker, not by signature verification (the signature still verifies; the hash chain doesn't). |
+
+## Separate public HTTP attestation
+
+The HTTP adapter can reuse `ResponseSigner` for an opt-in public receipt with
+its own `formance.http-public-receipt.v1` NUL-terminated signature domain.
+[Public HTTP receipts](../api/http-api.md#public-http-receipts) bind exact public
+status/body bytes and aggregate successful Apply provenance after execution.
+They never reinterpret `SignedLog`, sign a projected log as audit evidence,
+mutate accepted orders, or persist a new signature. The serving node signs;
+admission, request verification, replay identity and deterministic FSM apply
+are unchanged. Public receipt verification lives in `pkg/httpreceipt` and is
+separate from protobuf log decode-and-compare verification.
