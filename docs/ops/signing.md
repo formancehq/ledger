@@ -248,6 +248,10 @@ envelopes when response signing is configured; legacy transaction responses
 retain their existing shape. Verify the exact signed protobuf log bytes and
 compare their public projection with the visible JSON log. JSON output alone
 cannot reconstruct every protobuf type distinction.
+An `addEventsSink` log in an atomic Apply HTTP response has a redacted
+configuration and no `responseSignature`: the service signature payload would
+otherwise disclose the original credentials. Other logs in the same batch
+retain their signatures.
 
 ## Key Management
 

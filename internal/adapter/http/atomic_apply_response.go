@@ -1,6 +1,7 @@
 package http
 
 import (
+	"github.com/formancehq/ledger/v3/internal/pkg/sensitive"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/internal/proto/signaturepb"
@@ -18,6 +19,14 @@ func atomicApplyResponse(response *servicepb.ApplyResponse) any {
 			panic("atomic Apply returned a log without a payload")
 		}
 		logs[i] = log
+		if added := log.GetPayload().GetAddedEventsSink(); added != nil {
+			// The service signature contains the original protobuf log, including
+			// credentials. Return a detached public view without that envelope.
+			public := log.CloneVT()
+			public.Payload.GetAddedEventsSink().Config = sensitive.Redact(added.GetConfig())
+			public.ResponseSignature = nil
+			logs[i] = public
+		}
 		if created := log.GetPayload().GetCreateLedger(); created != nil {
 			// The shared creation-log JSON projection predates assigned IDs and
 			// initial metadata. Include both here without changing CLI/read JSON.

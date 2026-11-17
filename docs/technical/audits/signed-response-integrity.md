@@ -50,11 +50,11 @@ the independent challenge described in `ai-audit-challenge.md`.
 
 ## Atomic HTTP Apply
 
-Atomic HTTP Apply reaches the existing service response signer and preserves each returned responseSignature envelope unchanged through its option-aware public log projection. Visible JSON is not a lossless protobuf codec: authenticate exact SignedLog payload bytes, decode them, and compare their public projection rather than reconstructing a Log from ambiguous JSON types. Post-commit signing/encoding failures do not roll back business effects.
+Atomic HTTP Apply reaches the existing service response signer and preserves returned responseSignature envelopes through its option-aware public log projection, except for addEventsSink. That log uses a detached redacted configuration and omits its signature because the signed protobuf payload contains reusable credentials. The committed log and service signature remain unchanged. Visible JSON is not a lossless protobuf codec: for other logs, authenticate exact SignedLog payload bytes, decode them, and compare their public projection rather than reconstructing a Log from ambiguous JSON types. Post-commit signing/encoding failures do not roll back business effects.
 
-Can atomic HTTP Apply bypass the service signer, strip or alter an envelope, or render visible log fields different from the authenticated payload projection, including creation id/metadata and bigint number/string selection?
+Can atomic HTTP Apply bypass the service signer, strip or alter an envelope outside the addEventsSink exception, expose credentials through a sink log or signed payload, or render other visible log fields different from the authenticated payload projection, including creation id/metadata and bigint number/string selection?
 
-Use the registered atomic HTTP route with an enabled real service ResponseSigner and nonempty ledger/configuration logs. Verify the original envelope bytes against its trusted key and compare the authenticated public projection with the returned log in both bigint modes. Include missing/invalid signing controls and checked-encoding failure without assuming rollback.
+Use the registered atomic HTTP route with an enabled real service ResponseSigner and nonempty ledger/configuration logs. Verify the original envelope bytes against its trusted key and compare the authenticated public projection with non-sink logs in both bigint modes. For addEventsSink, assert redaction in the visible log and absence of the signature payload, while checking that the original service log is unchanged. Include missing/invalid signing controls and checked-encoding failure without assuming rollback.
 
 See [the HTTP contract](../architecture/subsystems/api/http-api.md#atomic-http-apply).
 API boundary owns conversion/output fidelity; authentication owns scopes and

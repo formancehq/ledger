@@ -900,6 +900,11 @@ all nine committed fields: `name`, `createdAt`, `metadataSchema`, `mode`,
 `mirrorSource`, `accountTypes`, `defaultEnforcementMode`, `id` and `metadata`,
 subject to normal omission rules. `Formance-Bigint-As-String` applies throughout
 nested log payloads. Response encoding is checked before sending success headers.
+For `addEventsSink`, the HTTP response uses the same detached credential-redacted
+configuration as the sink GET endpoint and omits `responseSignature` for that
+log. The service signature contains the original protobuf log bytes, including
+credentials, so it cannot be returned with the public projection. Other logs
+in the batch retain their service signatures.
 Response signature bytes authenticate the protobuf log; clients must verify
 those exact bytes and bind their decoded public projection to the visible log.
 The JSON projection is not a lossless protobuf reconstruction format.
