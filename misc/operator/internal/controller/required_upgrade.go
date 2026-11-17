@@ -23,7 +23,8 @@ import (
 // rc.3 voters cannot apply proposal payloads, and voters before rc.4 encode
 // mirror asset mappings differently in the audited CreateLedger order. Stop
 // every rc.3 node before starting rc.4. rc.4 cannot read schema 3 or apply
-// independent configuration/capability controls. rc.5 also retypes
+// independent configuration/capability controls or CreateLedger capability 1's
+// strengthened semantics. rc.5 also retypes
 // AggregatedVolume totals at the unchanged service protocol revision, so peers
 // on opposite sides of rc.5 misdecode forwarded aggregates. Stop every rc.4
 // node before starting rc.5. validateRCUpgrade checks adjacency, and

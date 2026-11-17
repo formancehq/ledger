@@ -77,16 +77,20 @@ audited orders without the proposal marker; rejected marked creations have a
 failure audit entry and no business effect to reconstruct.
 
 The capability is advertised by this binary but is **not automatically
-activated**. Activation requires a coordinated stop and restart of every
-member on a binary that supports ID 1, followed by a replicated ClusterPolicy
-activation after every member has refreshed its evidence. The current policy
+activated**. The embedded operator lists `v3.0.0-rc.5` as a mandatory
+stopped-upgrade boundary from RC.4. Activation requires that complete stop and
+restart of every member on a binary that supports ID 1, followed by a
+replicated ClusterPolicy activation after every member has refreshed its
+evidence. The current policy
 reconciler preserves an activation but does not create it; deployments without
 an activation retain the historical creation behavior. Do not activate during
 a mixed-version rollout: an old voter could still apply a marked order using
 the old rule. Hold new business admission until activation is committed so a
 proposal prepared while the policy was inactive cannot be queued behind the
 activation and retain old semantics. Once active, keep it active for all later
-releases and restores.
+releases and restores. RC.4 cannot be restarted on a cluster with the active
+capability or marked proposals; preserve the WAL and data volumes and recover
+with RC.5.
 
 Only CreateLedger admission adds a ClusterPolicy point read before proposal
 construction. The final proposal gate already reads the authoritative policy;
@@ -252,9 +256,9 @@ server. The node can therefore receive inbound Raft traffic before the refresh
 commits; the refresh is an evidence update, not a pre-traffic barrier. During
 the rc.2/rc.3 rolling upgrade, an older peer that returns `Unimplemented` is
 treated as transient and the node keeps retrying in the background until a
-compatible peer is available. The capability-dependent protocol cutover is
-reserved for the coordinated rc.3/rc.4 restart, after every node runs the
-barrier-aware binary.
+compatible peer is available. The capability-dependent proposal-payload
+cutover is reserved for the coordinated rc.3/rc.4 restart, after every node
+runs the barrier-aware binary.
 The leader validates the identity and capability evidence against the active
 policy, then proposes a
 `ConfChangeUpdateNode` containing the current endpoints and capabilities.

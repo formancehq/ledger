@@ -29,10 +29,12 @@ Outside a mandatory stopped boundary, when an RC image change also changes
 volume templates, the operator completes the RC rollout before recreating the
 StatefulSet for the volume change.
 Old and new voters must communicate and apply each committed entry identically
-while they coexist. The embedded operator requires a complete stop at the
+while they coexist. The embedded operator requires complete stops at the
 `v3.0.0-rc.4` boundary because RC.3 cannot execute native proposal payloads
-and encodes [mirror asset mappings](#mirror-asset-mappings) differently.
-`rc.3` includes the drain barrier used for this upgrade. RC adjacency remains mandatory.
+and encodes [mirror asset mappings](#mirror-asset-mappings) differently, and at
+`v3.0.0-rc.5` before capability 1 can select strengthened CreateLedger apply
+semantics. Both source releases include the drain barrier used for these
+upgrades. RC adjacency remains mandatory.
 The `rc.1` to `rc.2` transition rolls one voter at a time with a maintenance
 barrier that pauses writes; it does not stop the whole cluster.
 The `rc.2` to `rc.3` transition remains rolling.
@@ -379,7 +381,8 @@ is retained. Install a compatible Operator to resume reconciliation.
 Use this only when the target release permits rolling upgrades and mixed-version
 validation passes. For RC.1 to RC.2, follow the
 [maintenance-barrier rolling procedure](#account-metadata-address-validation).
-For RC.3 to RC.4, use the [operator-required stopped restart](#operator-required-stopped-restart).
+For RC.3 to RC.4 and RC.4 to RC.5, use the
+[operator-required stopped restart](#operator-required-stopped-restart).
 
 Capability metadata is the prerequisite for any future incompatible Raft entry,
 execution-plan, replay, or snapshot format. This release does not support
@@ -389,15 +392,18 @@ learner has committed support evidence, the leader automatically requests and
 activates each supported capability. There is no activation flag or extra
 operator setting. See the [capability contract](../technical/architecture/subsystems/consensus/capabilities.md).
 
-`CreateLedgerAccountTypesV2` (capability 1) is advertised by the binary but
-remains inactive until an explicit replicated ClusterPolicy activation after
-that stopped restart. Keep business admission paused until that activation is
-committed, then reopen it. Before activation, initial account types retain the
-released syntax-only validation; after activation, new creations reject invalid
-segment constraints and conflicting patterns. Existing ledgers are not
-rewritten. The current reconciler preserves but does not initiate activation,
-so operators must not assume that installing this binary alone enforces the
-stronger creation rule.
+`CreateLedgerAccountTypesV2` (capability 1) is advertised by the RC.5 binary
+but remains inactive until an explicit replicated ClusterPolicy activation
+after the operator-required RC.4 to RC.5 stopped restart. Keep external
+business admission paused after the operator releases its drain, verify every
+member is running RC.5 and has refreshed its capability evidence, then commit
+the activation and reopen admission. The operator does not activate the
+capability. Before activation, initial account types retain the released
+syntax-only validation; after activation, new creations reject invalid segment
+constraints and conflicting patterns. Existing ledgers are not rewritten.
+Do not roll back to RC.4 after activation: it cannot interpret the active
+capability or any marked proposals committed afterward. Recover with RC.5
+and the preserved WAL and data volumes.
 
 Use this for RC updates after the mixed-version validation above passes:
 
@@ -634,6 +640,21 @@ is skipped, so it is a release gate for the PR that adds the boundary, not
 evidence that the source release itself needs a stop. The rc.4 release still
 needs format-specific migration, snapshot, backup/restore and rollback
 validation outside this scenario.
+
+Before publishing RC.5, run the same stopped-upgrade scenario from the
+published RC.4 binary to the exact RC.5 release-branch HEAD:
+
+```bash
+UPGRADE_TRANSITION=rc4-to-rc5 RELEASE_BRANCH=release/v3.0 just test-release-operator-upgrade
+```
+
+The harness requires the RC.5 operator to list the boundary and proves that
+all RC.4 Pods disappear before any RC.5 Pod starts, while non-empty data, PVC
+identities, replay, Raft progress and audit verification survive. Run it
+before activating capability 1; the harness does not activate that policy or
+test rollback after activation. Activation must remain a separate,
+post-upgrade operation with external business admission paused as described
+above.
 
 ## Coordinated Restart
 
