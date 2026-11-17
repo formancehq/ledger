@@ -99,7 +99,7 @@ func (s *Server) publicReceipt(next http.HandlerFunc) http.HandlerFunc {
 		body := captured.body.Bytes()
 		// Streaming JSON encoders may append an error after partial output. Never
 		// attest a malformed public document or publish unsigned success on overflow.
-		if captured.err != nil || (captured.status != http.StatusNoContent && !json.Valid(body)) {
+		if captured.err != nil || (len(body) > 0 && !json.Valid(body)) {
 			writeInternalServerError(w, r, errors.New("public receipt response could not be encoded within its limit; mutation may have committed"))
 
 			return

@@ -106,6 +106,25 @@ func TestPublicReceiptEmptyAcknowledgement(t *testing.T) {
 	require.Equal(t, uint64(1), claims.Applies)
 }
 
+func TestPublicReceiptAccountTypeCreatedAcknowledgement(t *testing.T) {
+	t.Parallel()
+	signer := signing.NewResponseSigner(make([]byte, ed25519.SeedSize))
+	backend := NewMockBackend(gomock.NewController(t))
+	backend.EXPECT().Apply(gomock.Any(), gomock.Any()).Return(&domain.ApplyResult{Logs: []*commonpb.Log{{Sequence: 7}}}, nil)
+	router := NewHandler(logging.Testing(), backend, internalauth.AuthConfig{}, version.Info{}, signer)
+	target := "/v3/ledger1/account-types"
+	req := httptest.NewRequest(http.MethodPost, target, strings.NewReader(`{"name":"users","pattern":"users:*"}`))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set(httpreceipt.Header, httpreceipt.Version)
+	response := httptest.NewRecorder()
+	router.ServeHTTP(response, req)
+	require.Equal(t, http.StatusCreated, response.Code, response.Body.String())
+	require.Empty(t, response.Body.String())
+	claims, err := httpreceipt.Verify(response.Header().Get(httpreceipt.Header), signer.PublicKey(), http.MethodPost, target, response.Code, response.Body.Bytes())
+	require.NoError(t, err)
+	require.Equal(t, uint64(1), claims.Applies)
+}
+
 func TestPublicReceiptRejectsUnsupportedAndMalformed(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct {
