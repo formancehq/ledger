@@ -94,6 +94,7 @@ func TestMutationRequestsPropagateAuthenticatedContext(t *testing.T) {
 					UpdatePreparedQuery: &servicepb.UpdatePreparedQueryRequest{
 						Ledger: "main",
 						Name:   "accounts-by-owner",
+						Target: commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS.Enum(),
 					},
 				},
 			},

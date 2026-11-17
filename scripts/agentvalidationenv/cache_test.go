@@ -225,7 +225,10 @@ lease="$2/owner"
 printf '%s\noriginal\n' "$$" >"$lease"
 printf '%s\nreplacement\n' "$$" >"$lease.next"
 # Publish a successor after the PID is read, before its identity is checked.
-kill() { mv -- "$lease.next" "$lease"; }
+mkdir "$2/bin"
+printf '#!/bin/sh\nmv -- "$LEASE.next" "$LEASE"\n' >"$2/bin/kill"
+chmod +x "$2/bin/kill"
+export LEASE="$lease" PATH="$2/bin:$PATH"
 process_identity() { printf 'original\n'; }
 lease_is_live "$lease"
 [[ "$(sed -n '2p' "$lease")" == replacement ]]
@@ -238,19 +241,23 @@ func TestProcessExistsTreatsOnlyESRCHAsGone(t *testing.T) {
 	t.Parallel()
 
 	for _, tc := range []struct {
-		name, failure string
-		exists        bool
+		name, probe string
+		exists      bool
 	}{
-		{"permission denied", "Operation not permitted", true},
-		{"no such process", "No such process", false},
+		{"permission denied", `echo "kill: ($2) - Operation not permitted" >&2; exit 1`, true},
+		{"no such process", `echo "kill: ($2) - No such process" >&2; exit 1`, false},
+		{"probe died without a verdict", `kill -KILL $$`, true},
+		{"probe unavailable", `echo "env: kill: Permission denied" >&2; exit 126`, true},
 	} {
 		command := testenv.Command(t, "bash", "-euc", `
 source "$1"
-# Replace the builtin so the probe result does not depend on who runs the test.
-kill() { printf 'bash: kill: (%s) - %s\n' "$2" "$PROBE_FAILURE" >&2; return 1; }
+# A stub on PATH keeps the probe result independent of who runs the test.
+printf '#!/bin/sh\n%s\n' "$PROBE" >"$2/kill"
+chmod +x "$2/kill"
+PATH="$2:$PATH"
 process_exists 4242
-`, "process-exists", filepath.Join(filepath.Dir(validationEnvPath(t)), "agent-cache-contract"))
-		command.Env = append(command.Env, "PROBE_FAILURE="+tc.failure)
+`, "process-exists", filepath.Join(filepath.Dir(validationEnvPath(t)), "agent-cache-contract"), t.TempDir())
+		command.Env = append(command.Env, "PROBE="+tc.probe)
 		output, err := command.CombinedOutput()
 		if tc.exists {
 			require.NoError(t, err, "%s: %s", tc.name, output)

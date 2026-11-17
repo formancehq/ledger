@@ -640,6 +640,7 @@ var (
 	ErrPreparedQueryNameInvalidChar   = NewValidationSentinel("PREPARED_QUERY_NAME_INVALID_CHAR", "prepared query name must contain only printable ASCII (0x20–0x7E)")
 	ErrPreparedQueryNameTooLong       = NewValidationSentinel("PREPARED_QUERY_NAME_TOO_LONG", "prepared query name exceeds maximum length of 256 bytes")
 	ErrPreparedQueryTargetUnsupported = NewValidationSentinel("PREPARED_QUERY_TARGET_UNSUPPORTED", "prepared query target is not supported (use ACCOUNTS, TRANSACTIONS or LOGS)")
+	ErrPreparedQueryTargetRequired    = NewValidationSentinel("PREPARED_QUERY_TARGET_REQUIRED", "prepared query target is required")
 	// Signing-key identifier sentinels stay local: request signing is a
 	// ledger-internal feature, not part of the Formance-wide invariants in
 	// github.com/formancehq/invariants.

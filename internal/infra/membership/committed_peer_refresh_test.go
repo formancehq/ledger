@@ -61,12 +61,13 @@ func TestCommittedPeerRefreshUpdatesRaftTransport(t *testing.T) {
 		"self:8000",
 		[]byte("self-instance-id"),
 		logger,
+		membership.NoopClusterPolicyProvider,
 	)
 	require.NoError(t, err)
 	m.Start()
 
 	oldInstanceID := []byte("old-instance-id-")
-	require.NoError(t, m.Register(2, "old:7000", "old:8000", oldInstanceID))
+	require.NoError(t, m.Register(2, "old:7000", "old:8000", oldInstanceID, nil))
 	require.Equal(t, "old:7000", raftPool.GetPeerAddress(2))
 
 	newInstanceID := []byte("new-instance-id-")
@@ -88,7 +89,7 @@ func TestCommittedPeerRefreshUpdatesRaftTransport(t *testing.T) {
 
 	// Node.finishReady performs this Set as soon as it observes the commit,
 	// before submitting the entry to the asynchronous FSM applier.
-	require.NoError(t, m.Set(2, "new:7000", "new:8000", newInstanceID))
+	require.NoError(t, m.Set(2, "new:7000", "new:8000", newInstanceID, nil))
 
 	require.Equal(t, "new:7000", m.PeerAddresses()[2].RaftAddress)
 	require.Equal(t, newInstanceID, m.PeerAddresses()[2].InstanceID)

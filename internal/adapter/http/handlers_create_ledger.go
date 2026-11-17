@@ -69,6 +69,16 @@ type mirrorSourceBody struct {
 	// proto — the default JSON decoder can't dispatch its `scope` oneof, so we
 	// route each rule through protojson.
 	RewriteRules []stdjson.RawMessage `json:"rewriteRules,omitempty"`
+	// AssetMappings translate v2 posting assets that v3 cannot represent
+	// into a v3 asset and color. Applied after RewriteRules.
+	AssetMappings []mirrorAssetMappingBody `json:"assetMappings,omitempty"`
+}
+
+// mirrorAssetMappingBody is one MirrorAssetMapping in the create body.
+type mirrorAssetMappingBody struct {
+	SourceAsset string `json:"sourceAsset"`
+	Asset       string `json:"asset"`
+	Color       string `json:"color,omitempty"`
 }
 
 // handleCreateLedger handles POST /{ledgerName} to create a new ledger.
@@ -198,6 +208,14 @@ func mirrorSourceToProto(body *mirrorSourceBody) (*commonpb.MirrorSourceConfig, 
 		}
 
 		cfg.RewriteRules = append(cfg.RewriteRules, rule)
+	}
+
+	for _, m := range body.AssetMappings {
+		cfg.AssetMappings = append(cfg.AssetMappings, &commonpb.MirrorAssetMapping{
+			SourceAsset: m.SourceAsset,
+			Asset:       m.Asset,
+			Color:       m.Color,
+		})
 	}
 
 	switch body.Type {

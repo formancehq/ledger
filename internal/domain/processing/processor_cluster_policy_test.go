@@ -101,6 +101,29 @@ func TestProcessSetClusterPolicy_LowerRevisionStale(t *testing.T) {
 	require.Equal(t, uint64(5), stale.AppliedRevision)
 }
 
+func TestProcessSetClusterPolicy_CapabilityCannotDisappear(t *testing.T) {
+	t.Parallel()
+
+	ctrl := gomock.NewController(t)
+	mockStore := NewMockScope(ctrl)
+	processor, err := NewRequestProcessor(nil, 0)
+	require.NoError(t, err)
+
+	current := withMetadataLimits(&commonpb.ClusterPolicy{
+		Revision:              2,
+		CapabilityActivations: []*commonpb.CapabilityActivation{{Id: 7, Active: true}},
+		QueryCheckpointLimit:  1,
+	})
+	mockStore.EXPECT().GetClusterPolicy().Return(current)
+
+	proposed := withMetadataLimits(&commonpb.ClusterPolicy{Revision: 3, QueryCheckpointLimit: 1})
+	_, procErr := processor.ProcessOrder(clusterPolicyOrder(proposed), mockStore)
+
+	var invalid *domain.ErrClusterPolicyInvalid
+	require.ErrorAs(t, procErr, &invalid)
+	require.Contains(t, invalid.Detail, "capability 7 cannot be deactivated")
+}
+
 // Structural validation runs before the revision check, so it needs no applied
 // policy: a missing policy, a zero revision, and a zero limit each reject.
 func TestProcessSetClusterPolicy_StructuralValidation(t *testing.T) {

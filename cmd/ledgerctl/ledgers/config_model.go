@@ -647,11 +647,7 @@ func diffPreparedQueries(ledgerName string, current, desired *EditableConfig) ([
 			continue
 		}
 
-		// Target changed → delete + create. `UpdatePreparedQueryRequest`
-		// carries only Filter (no Target), so an in-place update would
-		// silently drop the target change. Mirror the `diffAccountTypes`
-		// remove+re-add pattern (#502 review).
-		if currentPQ.Target != desiredPQ.Target {
+		if currentPQ.Target != desiredPQ.Target || currentPQ.Filter != desiredPQ.Filter {
 			target := parseQueryTarget(desiredPQ.Target)
 
 			var filter *commonpb.QueryFilter
@@ -663,62 +659,16 @@ func diffPreparedQueries(ledgerName string, current, desired *EditableConfig) ([
 				}
 			}
 
-			actions = append(actions, DiffAction{
-				Section:     "preparedQuery",
-				Operation:   "remove",
-				Description: fmt.Sprintf("Delete prepared query %q (target change)", name),
-				Request: &servicepb.Request{
-					Type: &servicepb.Request_DeletePreparedQuery{
-						DeletePreparedQuery: &servicepb.DeletePreparedQueryRequest{
-							Ledger: ledgerName,
-							Name:   name,
-						},
-					},
-				},
-			})
-
-			actions = append(actions, DiffAction{
-				Section:     "preparedQuery",
-				Operation:   "add",
-				Description: fmt.Sprintf("Re-create prepared query %q (target=%s)", name, desiredPQ.Target),
-				Request: &servicepb.Request{
-					Type: &servicepb.Request_CreatePreparedQuery{
-						CreatePreparedQuery: &servicepb.CreatePreparedQueryRequest{
-							Ledger: ledgerName,
-							Query: &commonpb.PreparedQuery{
-								Name:   name,
-								Target: target,
-								Filter: filter,
-							},
-						},
-					},
-				},
-			})
-
-			continue
-		}
-
-		// Same target — only Filter can have moved. Use the in-place update.
-		if currentPQ.Filter != desiredPQ.Filter {
-			target := parseQueryTarget(desiredPQ.Target)
-
-			var filter *commonpb.QueryFilter
-			if desiredPQ.Filter != "" {
-				var err error
-				filter, err = filterexpr.Parse(desiredPQ.Filter, target)
-				if err != nil {
-					return nil, fmt.Errorf("prepared query %q filter: %w", name, err)
-				}
-			}
 			actions = append(actions, DiffAction{
 				Section:     "preparedQuery",
 				Operation:   "update",
-				Description: fmt.Sprintf("Update prepared query %q", name),
+				Description: fmt.Sprintf("Update prepared query %q (target=%s)", name, desiredPQ.Target),
 				Request: &servicepb.Request{
 					Type: &servicepb.Request_UpdatePreparedQuery{
 						UpdatePreparedQuery: &servicepb.UpdatePreparedQueryRequest{
 							Ledger: ledgerName,
 							Name:   name,
+							Target: target.Enum(),
 							Filter: filter,
 						},
 					},

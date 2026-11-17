@@ -67,6 +67,7 @@ func newTombstoneFSMMachine(t *testing.T) (*state.Machine, *dal.Store, *attribut
 		tombstoneFSMAuditKey,
 		0,
 		func(*raftpb.Entry, *dal.WriteSession) error { return nil },
+		state.NoopCapabilityPolicyCommitHandler,
 	)
 	require.NoError(t, err)
 

@@ -381,6 +381,7 @@ func NewCreatePreparedQueryOrderListReader(s []*CreatePreparedQueryOrder) Create
 type UpdatePreparedQueryOrderReader interface {
 	GetName() string
 	GetFilter() commonpb.QueryFilterReader
+	GetTarget() commonpb.QueryTarget
 	Mutate() *UpdatePreparedQueryOrder
 }
 
@@ -396,6 +397,10 @@ func (r *updatePreparedQueryOrderReadonly) GetFilter() commonpb.QueryFilterReade
 		return nil
 	}
 	return v.AsReader()
+}
+
+func (r *updatePreparedQueryOrderReadonly) GetTarget() commonpb.QueryTarget {
+	return (*UpdatePreparedQueryOrder)(r).GetTarget()
 }
 
 func (r *updatePreparedQueryOrderReadonly) Mutate() *UpdatePreparedQueryOrder {
@@ -3867,6 +3872,7 @@ type ProposalReader interface {
 	GetIdempotency() commonpb.IdempotencyReader
 	GetSignature() signaturepb.SignedApplyBatchReader
 	GetTechnicalUpdates() TechnicalUpdateListReader
+	GetRequiredCapabilities() []uint32
 	GetPayload() isProposal_Payload
 	Mutate() *Proposal
 }
@@ -3927,6 +3933,10 @@ func (r *proposalReadonly) GetSignature() signaturepb.SignedApplyBatchReader {
 
 func (r *proposalReadonly) GetTechnicalUpdates() TechnicalUpdateListReader {
 	return NewTechnicalUpdateListReader((*Proposal)(r).GetTechnicalUpdates())
+}
+
+func (r *proposalReadonly) GetRequiredCapabilities() []uint32 {
+	return slices.Clone((*Proposal)(r).GetRequiredCapabilities())
 }
 
 func (r *proposalReadonly) GetPayload() isProposal_Payload {
@@ -5955,6 +5965,7 @@ type PeerAddressReader interface {
 	GetRaftAddress() string
 	GetServiceAddress() string
 	GetInstanceId() []byte
+	GetCapabilities() []uint32
 	Mutate() *PeerAddress
 }
 
@@ -5974,6 +5985,10 @@ func (r *peerAddressReadonly) GetServiceAddress() string {
 
 func (r *peerAddressReadonly) GetInstanceId() []byte {
 	return bytes.Clone((*PeerAddress)(r).GetInstanceId())
+}
+
+func (r *peerAddressReadonly) GetCapabilities() []uint32 {
+	return slices.Clone((*PeerAddress)(r).GetCapabilities())
 }
 
 func (r *peerAddressReadonly) Mutate() *PeerAddress {

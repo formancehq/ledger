@@ -613,10 +613,10 @@ func CreatePreparedQuery(ctx context.Context, client servicepb.BucketServiceClie
 	return err
 }
 
-// UpdatePreparedQuery updates the filter of an existing prepared query.
-func UpdatePreparedQuery(ctx context.Context, client servicepb.BucketServiceClient, ledger, name string, filter *commonpb.QueryFilter) error {
+// UpdatePreparedQuery replaces the target and filter of an existing prepared query.
+func UpdatePreparedQuery(ctx context.Context, client servicepb.BucketServiceClient, ledger, name string, target commonpb.QueryTarget, filter *commonpb.QueryFilter) error {
 	_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("",
-		UpdatePreparedQueryAction(ledger, name, filter)))
+		UpdatePreparedQueryAction(ledger, name, target, filter)))
 
 	return err
 }

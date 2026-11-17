@@ -56,6 +56,30 @@ func TestDecodeDualFormat_Equivalence(t *testing.T) {
 			target: commonpb.QueryTarget_QUERY_TARGET_LOGS,
 		},
 		{
+			name:   "exact transaction id under or",
+			text:   `id == 0 or id == 18446744073709551615`,
+			json:   `{"$or":[{"$match":{"id":"0"}},{"$match":{"id":"18446744073709551615"}}]}`,
+			target: commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS,
+		},
+		{
+			name:   "exact log id under or",
+			text:   `id == 0 or id == 18446744073709551615`,
+			json:   `{"$or":[{"$match":{"id":"0"}},{"$match":{"id":"18446744073709551615"}}]}`,
+			target: commonpb.QueryTarget_QUERY_TARGET_LOGS,
+		},
+		{
+			name:   "log id closed range",
+			text:   `id between 1 and 9`,
+			json:   `{"$and":[{"$gte":{"id":"1"}},{"$lte":{"id":"9"}}]}`,
+			target: commonpb.QueryTarget_QUERY_TARGET_LOGS,
+		},
+		{
+			name:   "parameterized log id",
+			text:   `id == $wanted`,
+			json:   `{"$match":{"id":{"$param":"wanted"}}}`,
+			target: commonpb.QueryTarget_QUERY_TARGET_LOGS,
+		},
+		{
 			// EN-1544: the textual `date` field and the structured `date` bound both
 			// coerce the same RFC3339 string to a log date condition.
 			name:   "date RFC3339 on logs",
@@ -89,6 +113,14 @@ func TestDecodeDualFormat_Equivalence(t *testing.T) {
 				"text and JSON forms must decode to the same QueryFilter\n text: %v\n json: %v",
 				fromText, fromJSON)
 		})
+	}
+}
+
+func TestDecodeDualFormat_IDRejectsAccounts(t *testing.T) {
+	t.Parallel()
+	for _, raw := range []string{`id == 7`, `{"$match":{"id":"7"}}`, `id >= 7`, `{"$gte":{"id":"7"}}`} {
+		_, err := DecodeDualFormat([]byte(raw), commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS)
+		require.ErrorContains(t, err, "not valid on accounts queries", raw)
 	}
 }
 

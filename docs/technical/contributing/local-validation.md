@@ -95,7 +95,10 @@ after none of its lease processes exists. A lease counts as live when
 `kill -0` fails with `EPERM`: the process exists but the caller may not signal
 it. That happens for another user's process, or when a sandboxed validator
 probes a run started outside its sandbox. Only `ESRCH` proves a lease process
-is gone.
+is gone: a probe that fails without reporting it, for example because the
+probe itself crashed, also leaves the lease live. The probe runs as
+`env LC_ALL=C kill -0`, so the shell never switches its own locale; Nix bash on
+macOS can crash in `setlocale` inside a forked subshell.
 
 Lease checks read the PID and process identity from one published owner snapshot.
 If an owner file disappears during lock handoff, the waiting initializer defers

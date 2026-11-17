@@ -876,6 +876,7 @@ func pqUpdateReq(name string, filter *commonpb.QueryFilter) *servicepb.Request {
 			UpdatePreparedQuery: &servicepb.UpdatePreparedQueryRequest{
 				Ledger: "L",
 				Name:   name,
+				Target: commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS.Enum(),
 				Filter: filter,
 			},
 		},

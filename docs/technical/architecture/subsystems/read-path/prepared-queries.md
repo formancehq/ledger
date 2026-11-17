@@ -33,7 +33,11 @@ Source: `internal/domain/processing/processor_prepared_query.go`.
 
 Storage is per-ledger under the attributes zone, keyed by `PreparedQueryKey{LedgerName, Name}` (`internal/domain/keys.go:384`). The canonical key layout is the standard 64-byte padded ledger name followed by the query name string.
 
-There is no explicit version field. An update mutates the filter atomically — the previous filter is captured in the audit log payload (for the chain) but is **not** queryable through any read API. Clients see only the current filter via `ListPreparedQueries`. If a query needs historical visibility, the audit chain is the source.
+There is no explicit version field. An update can replace the target and filter
+atomically. Its audit log records the previous and new filter and, for an
+explicit-target update, both targets. Older orders without a target retain the
+stored target and their historical audit encoding. Clients see only the current
+definition via `ListPreparedQueries`; the audit chain is the historical source.
 
 ## Filter expressions
 
@@ -73,9 +77,10 @@ Two layers, following the project-wide pattern (see [admission / validation.md](
 - The filter is not compiled at write time. Errors that depend on the ledger's declared-metadata schema, index state, or runtime parameters surface at execution.
 
 HTTP creation treats an omitted `filter` and explicit JSON `null` as match-all.
-HTTP update treats omission as no change and JSON `null` as an explicit request
-to remove the stored filter. Apply/gRPC represents that removal with a nil
-protobuf filter because protobuf has no separate JSON-null value for this field.
+HTTP update requires both `target` and `filter`. Omitting `filter` is rejected;
+use explicit JSON `null` to remove the stored filter. Apply/gRPC represents that
+removal with a nil protobuf filter because protobuf has no separate JSON-null
+value for this field.
 
 A validation error at FSM time is hash-bound as an `AuditFailure`, so a checker run can re-derive the rejection from the audit chain.
 
@@ -178,7 +183,7 @@ The canonical shape (each node has **exactly one** top-level `$`-operator key):
     `BASE/PRECISION`, e.g. `USD/2`); this is how `AccountHasAssetCondition` is expressed.
 
 Fields: `metadata[<key>]`, `address`/`source`/`destination`, `reference`,
-`reverted` (bool), `ledger`, `id`, `timestamp`, `insertedAt`, `revertedAt`, `logId`,
+`reverted` (bool), `ledger`, `id`, `timestamp`, `insertedAt`, `revertedAt`,
 `date`. A value is a JSON literal or a parameter reference `{"$param": "<name>"}`
 (prepared-query parameters). An address prefix is expressed with a trailing `:` under
 `$match` (e.g. `{"$match": {"address": "users:"}}`); a parameterised prefix has no
@@ -187,7 +192,11 @@ DSL form (a param value cannot carry the trailing `:` marker), and the byte-leve
 the JSON/REST surface. Typed metadata uint64 bounds remain decimal strings so
 the decoder can distinguish them from int64 bounds and preserve values above 2^53.
 
-The codec is bidirectional and lossless. It fails loudly on an unknown operator, an
+The codec is bidirectional and lossless when decoded with its query target;
+`id` means the log ID on `LOGS` and the transaction ID on `TRANSACTIONS`.
+`{"$match":{"id":"7"}}` selects one entity, including inside `$or`.
+The legacy `logId` range spelling remains accepted for existing Console clients.
+The codec fails loudly on an unknown operator, an
 empty `$and`/`$or`, an operator body without exactly one field, an unsupported field,
 an empty `$param` name, and a proto oneof arm it does not recognise — so a new proto
 arm cannot silently drop a filter. The full DSL is documented under `QueryFilter` in
@@ -231,12 +240,15 @@ field: `account_data`, `transaction_data` or `log_data`. The LOGS path reuses th
 direct `ListLogs` machinery — the compiled LOGS iterator yields per-ledger logIDs,
 `ReadLedgerLogsCompiled` resolves them to global sequences through the log read-index
 and reads the log payloads from Pebble (`query.EnrichLogs`). Consequently the
-log-only filter fields (`logId`, `date`, `ledger`) are valid only when the target is
+log-only filter fields (`date`, `ledger`) are valid only when the target is
 `LOGS`; the REST create decode rejects them for `ACCOUNTS`/`TRANSACTIONS`, and the
 compile layer is the backstop (it rejects those conditions on non-LOGS targets at
-execute time). The update path carries only the new filter (the target is immutable
-and not read by the handler), so it defers the log-only check to the compile
-backstop.
+execute time). Update clients send the intended target with the replacement
+filter, so public `id` is decoded before the order enters Raft. The FSM
+validates the filter against the target carried by the order and atomically
+stores both. Historical targetless orders retain the stored target and validate
+against it during replay. Admission rejects new targetless requests and never
+reads the stored target.
 
 ## Recent changes
 

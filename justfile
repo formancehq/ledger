@@ -558,10 +558,13 @@ operator-helm-publish version='' suffix='':
 docker-build *ARGS:
     docker buildx build -t '{{ image_repository }}' --platform linux/amd64,linux/arm64 --push --build-arg BUILD_TAGS=kafka,nats,clickhouse,s3,azure,pyroscope {{ARGS}} .
 
-# Build and push the PR docker image with GoReleaser under a single explicit
-# `<repository>:pr-<num>-<sha7>[-run-<id>-<attempt>]` tag. It never touches `:latest`, `:nightly`, a
-# GitHub release or the Helm charts. Needs GORELEASER_KEY and a Docker login to
-# the registry. Used by the `Build-PR-Image` workflow job.
+# Build and push the PR docker image with GoReleaser under an explicit
+# `<repository>:pr-<num>-<sha7>[-run-<id>-<attempt>]` tag. With DEV_VERSION set
+# (RFC-0013 development version of the same commit, without the leading v), the
+# image is also tagged `v<DEV_VERSION>` and binaries report that version. It never
+# touches `:latest`, `:nightly`, a release tag, a GitHub release or the Helm
+# charts. Needs GORELEASER_KEY and a Docker login to the registry. Used by the
+# `Build-PR-Image` workflow job.
 #
 # .goreleaser.pr.yml includes the canonical .goreleaser.yml, so the PR image has
 # the same binaries and build tags as a release: kafka,nats,clickhouse,databricks,
@@ -572,6 +575,17 @@ docker-build-pr image: (_assert-pr-image image)
     image='{{ image }}'
     export IMAGE_REPOSITORY="${image%:*}"
     export PR_IMAGE_TAG="${image##*:}"
+    # A development version always ends in .dev.<N>.g<sha>, so it can never be a
+    # release tag, and its commit must be the one in the PR tag.
+    if [[ -n "${DEV_VERSION:-}" ]]; then
+        sha7="${PR_IMAGE_TAG#pr-*-}"
+        sha7="${sha7:0:7}"
+        if ! [[ "$DEV_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+-([0-9A-Za-z-]+\.)*dev\.[0-9]+\.g[0-9a-f]{7,}$ ]] ||
+            [[ "${DEV_VERSION##*.g}" != "$sha7"* ]]; then
+            echo "error: DEV_VERSION '$DEV_VERSION' is not a development version of commit $sha7" >&2
+            exit 1
+        fi
+    fi
     export IMAGE_PROVENANCE=mode=min
     # GITHUB_TOKEN is removed on purpose: a PR build must never reach the GitHub
     # releases API, even if a release step were enabled by mistake.

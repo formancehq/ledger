@@ -21,6 +21,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
 	"github.com/formancehq/ledger/v3/internal/infra/cache"
 	"github.com/formancehq/ledger/v3/internal/infra/health"
+	"github.com/formancehq/ledger/v3/internal/infra/membership"
 	"github.com/formancehq/ledger/v3/internal/infra/node"
 	"github.com/formancehq/ledger/v3/internal/infra/plan"
 	"github.com/formancehq/ledger/v3/internal/infra/state"
@@ -72,7 +73,7 @@ func newMetadataReplayHarness(t testing.TB) *metadataReplayHarness {
 	registry := state.NewStateRegistry(c, attrs)
 	ks := keystore.NewKeyStore()
 	shared := state.NewSharedState()
-	machine, err := state.NewMachine(logger, registry, state.NewCacheSnapshotter(logger, registry, nil), store, dal.NewSentinelFactory(store, false), meter, ks, shared, signal.NewNotifications(), nil, "test-cluster", 0, func(*raftpb.Entry, *dal.WriteSession) error { return nil })
+	machine, err := state.NewMachine(logger, registry, state.NewCacheSnapshotter(logger, registry, nil), store, dal.NewSentinelFactory(store, false), meter, ks, shared, signal.NewNotifications(), nil, "test-cluster", 0, func(*raftpb.Entry, *dal.WriteSession) error { return nil }, state.NoopCapabilityPolicyCommitHandler)
 	require.NoError(t, err)
 	require.NoError(t, state.NewRecovery(machine, store).RecoverState())
 	tracker := node.NewIndexTracker(1)
@@ -117,7 +118,7 @@ func newMetadataReplayHarness(t testing.TB) *metadataReplayHarness {
 	}).AnyTimes()
 	gate := health.NewMockWriteGate(gomock.NewController(t))
 	gate.EXPECT().CheckWritesAllowed().Return(nil).AnyTimes()
-	admission := NewAdmission(store, logger, proposer, plan.NewBuilder(tracker, c, attrs, store, nil, logger, 0), meter, gate, ks, shared, attrs, numscript.NewNumscriptCache(0), func(context.Context) error { return nil })
+	admission := NewAdmission(store, logger, proposer, &membership.Coordinator{}, plan.NewBuilder(tracker, c, attrs, store, nil, logger, 0), meter, gate, ks, shared, attrs, numscript.NewNumscriptCache(0), func(context.Context) error { return nil })
 	h.admission = admission
 	h.apply = func(p *raftcmdpb.Proposal) state.ApplyResult {
 		p.CallerSnapshot = commands.SystemCallerSnapshot(commands.ComponentClusterPolicy)
