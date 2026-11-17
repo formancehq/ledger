@@ -2,6 +2,7 @@ package cmdutil
 
 import (
 	"errors"
+	"maps"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -70,9 +71,7 @@ func TestClusterPods(t *testing.T) {
 			}
 			sts.Spec.Selector.MatchExpressions = []metav1.LabelSelectorRequirement{{Key: "zone", Operator: metav1.LabelSelectorOpIn, Values: []string{"west"}}}
 			podLabels := make(map[string]string)
-			for key, value := range sts.Spec.Selector.MatchLabels {
-				podLabels[key] = value
-			}
+			maps.Copy(podLabels, sts.Spec.Selector.MatchLabels)
 			podLabels["zone"] = "west"
 			owned := &corev1.Pod{ObjectMeta: metav1.ObjectMeta{
 				Name: "ledger-test-0", Namespace: ledger.Namespace, Labels: podLabels,
