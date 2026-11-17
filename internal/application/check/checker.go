@@ -4254,6 +4254,14 @@ func (c *Checker) compareIdempotencyOutcomes(
 		}
 	}
 
+	// Pebble reports errors encountered while advancing or reading an iterator
+	// through Iterator.Error after Valid becomes false. Treat that state as a
+	// failed verification: an iterator that stopped early must never be
+	// mistaken for a clean end-of-range scan.
+	if err := iter.Error(); err != nil {
+		return fmt.Errorf("iterating idempotency keys: %w", err)
+	}
+
 	return nil
 }
 
