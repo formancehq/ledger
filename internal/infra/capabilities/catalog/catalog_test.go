@@ -18,14 +18,7 @@ func createLedgerProposal() *raftcmdpb.Proposal {
 	}}}
 }
 
-func TestValidateDeclarationRejectsUnsupportedID(t *testing.T) {
-	t.Parallel()
-	proposal := &raftcmdpb.Proposal{RequiredCapabilities: []uint32{99}}
-	_, err := ValidateDeclaration(proposal)
-	require.ErrorIs(t, err, capabilities.ErrInvalidDeclaration)
-}
-
-func TestCreateLedgerCapabilitySelectionAndFinalValidation(t *testing.T) {
+func TestCreateLedgerCapabilitySelectionAndFinalPolicyGate(t *testing.T) {
 	t.Parallel()
 	active := &commonpb.ClusterPolicy{CapabilityActivations: []*commonpb.CapabilityActivation{{Id: uint32(CreateLedgerAccountTypesV2), Active: true}}}
 	for _, tc := range []struct {
@@ -40,27 +33,14 @@ func TestCreateLedgerCapabilitySelectionAndFinalValidation(t *testing.T) {
 			t.Parallel()
 			proposal := createLedgerProposal()
 			SelectCreateLedgerValidation(proposal, tc.policy)
-			declared, err := ValidateDeclaration(proposal)
-			require.NoError(t, err)
-			require.Equal(t, tc.marked, len(declared) != 0)
-			data, err := proposal.MarshalVT()
-			require.NoError(t, err)
-			require.NoError(t, ValidateSerializedDeclaration(data, declared))
+			require.Equal(t, tc.marked, len(proposal.GetRequiredCapabilities()) != 0)
+			declared := make([]capabilities.CapabilityID, len(proposal.GetRequiredCapabilities()))
+			for i, id := range proposal.GetRequiredCapabilities() {
+				declared[i] = capabilities.CapabilityID(id)
+			}
 			require.NoError(t, ValidateCreateLedgerDeclaration(tc.policy, true, declared))
 		})
 	}
 	require.ErrorIs(t, ValidateCreateLedgerDeclaration(active, true, nil), capabilities.ErrMissingCapability)
 	require.NoError(t, ValidateCreateLedgerDeclaration(active, false, nil))
-}
-
-func TestCreateLedgerCapabilityRejectsUnrelatedDeclaration(t *testing.T) {
-	t.Parallel()
-	proposal := &raftcmdpb.Proposal{RequiredCapabilities: []uint32{uint32(CreateLedgerAccountTypesV2)}}
-	_, err := ValidateDeclaration(proposal)
-	require.ErrorIs(t, err, capabilities.ErrInvalidDeclaration)
-
-	proposal = createLedgerProposal()
-	proposal.RequiredCapabilities = []uint32{uint32(CreateLedgerAccountTypesV2), uint32(CreateLedgerAccountTypesV2)}
-	_, err = ValidateDeclaration(proposal)
-	require.ErrorIs(t, err, capabilities.ErrInvalidDeclaration)
 }

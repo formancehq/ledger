@@ -8,6 +8,7 @@ import (
 	"google.golang.org/protobuf/encoding/protowire"
 
 	"github.com/formancehq/ledger/v3/internal/infra/capabilities"
+	"github.com/formancehq/ledger/v3/internal/infra/capabilities/catalog"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
@@ -23,6 +24,32 @@ func TestNewProposalBindsCapabilitiesToSerializedCommand(t *testing.T) {
 	data := proposal.Data()
 	data[0] ^= 0xff
 	require.NotEqual(t, data, proposal.Data())
+}
+
+func TestNewProposalKeepsExplicitCapabilityInWireAndAdmissionMetadata(t *testing.T) {
+	t.Parallel()
+	command := &raftcmdpb.Proposal{
+		RequiredCapabilities: []uint32{uint32(catalog.CreateLedgerAccountTypesV2)},
+		Payload: &raftcmdpb.Proposal_Batch{Batch: &raftcmdpb.ExecutionBatch{
+			Orders: []*raftcmdpb.Order{{Type: &raftcmdpb.Order_LedgerScoped{
+				LedgerScoped: &raftcmdpb.LedgerScopedOrder{
+					Ledger: "l",
+					Payload: &raftcmdpb.LedgerScopedOrder_CreateLedger{
+						CreateLedger: &raftcmdpb.CreateLedgerOrder{},
+					},
+				},
+			}}},
+		}},
+	}
+	proposal, err := NewProposal(1, command)
+	require.NoError(t, err)
+	require.Equal(t, []capabilities.CapabilityID{catalog.CreateLedgerAccountTypesV2}, proposal.RequiredCapabilities())
+
+	command.RequiredCapabilities[0] = 99
+	decoded := new(raftcmdpb.Proposal)
+	require.NoError(t, decoded.UnmarshalVT(proposal.Data()))
+	require.Equal(t, []uint32{uint32(catalog.CreateLedgerAccountTypesV2)}, decoded.GetRequiredCapabilities())
+	require.Equal(t, []capabilities.CapabilityID{catalog.CreateLedgerAccountTypesV2}, proposal.RequiredCapabilities())
 }
 
 func TestProposalSetPredictedIndexPatchesSerializedPayload(t *testing.T) {
