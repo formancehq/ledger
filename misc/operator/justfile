@@ -87,7 +87,7 @@ e2e-cluster-down:
     kind delete cluster --name ledger-e2e
 
 _ensure-chainsaw:
-    @which chainsaw >/dev/null 2>&1 || go install github.com/kyverno/chainsaw@latest
+    @command -v chainsaw >/dev/null 2>&1 || { printf '%s\n' 'chainsaw is required; from the repository root, run nix develop .#upgrade, then cd misc/operator and retry.' >&2; exit 1; }
 
 test-e2e: e2e-cluster-up _ensure-chainsaw
     just _e2e-run-tests
