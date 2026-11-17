@@ -17,10 +17,11 @@ import (
 )
 
 type Server struct {
-	logger      logging.Logger
-	backend     Backend
-	authCfg     internalauth.AuthConfig
-	bulkMaxSize int
+	logger         logging.Logger
+	backend        Backend
+	authCfg        internalauth.AuthConfig
+	bulkMaxSize    int
+	responseSigner *signing.ResponseSigner
 }
 
 // NewServer creates a new server instance (used by handlers).
@@ -42,6 +43,8 @@ func (s *Server) applyUnsigned(ctx context.Context, idempotencyKey string, reqs 
 		return nil, err
 	}
 
+	receiptState(ctx).record(result)
+
 	return result.Logs, nil
 }
 
@@ -62,6 +65,8 @@ func (s *Server) applyRequests(ctx context.Context, key string, requests ...*ser
 	if err != nil {
 		return nil, err
 	}
+
+	receiptState(ctx).record(result)
 
 	return result.Logs, nil
 }

@@ -2,7 +2,7 @@
 
 The ledger supports Ed25519 signing in two directions:
 
-- **Request signing** (client → server): the client signs the whole **batch** (an `ApplyBatch` — its ordered requests plus idempotency key), guaranteeing **authenticity** (who issued the batch), **integrity** (detect any modification in transit, including reordering, regrouping, or dropping requests), and **non-repudiation** (the batch signature is stored with every log the batch commits, for audit). Signing the batch — rather than each request — is what makes the *composition and ordering* of the atomic operation provable.
+- **Request signing** (client → server): the client signs the whole **batch** (an `ApplyBatch` — its ordered requests plus idempotency key), guaranteeing **authenticity** (who issued the batch), **integrity** (detect any modification in transit, including reordering, regrouping, or dropping requests), and **non-repudiation** (the batch signature is retained on the applied proposal/audit entry). Signing the batch — rather than each request — is what makes the *composition and ordering* of the atomic operation provable.
 - **Response signing** (server → client): guarantees that response logs truly come from the server and haven't been tampered with.
 
 ## Request Signing
@@ -37,8 +37,8 @@ Signing is **optional by default**. It can be made mandatory via the `signing re
                     ┌──────────────────────────────────────────────┐
                     │              FSM (all replicas)              │
                     │                                              │
-                    │  Proposal.Signature → every Log.Signature    │
-                    │  Log → AuditEntry (contains signature proof) │
+                    │  Proposal.Signature → AuditEntry.signature   │
+                    │  Applied proposal retains batch proof       │
                     └──────────────────────────────────────────────┘
 ```
 
@@ -370,10 +370,10 @@ Signing keys and configuration are persisted in **Pebble** under the Global zone
 The batch signature is carried through the entire pipeline for audit purposes:
 
 ```
-ApplyRequest.signed (SignedApplyBatch) → Proposal.Signature → every Log.Signature → AuditEntry
+ApplyRequest.signed (SignedApplyBatch) → Proposal.Signature → AuditEntry.signature
 ```
 
-The same signature is shared by every log the batch commits. An auditor verifies a log entry by calling `Ed25519.Verify(pubkey, log.Signature.Payload, log.Signature.Signature)` — `payload` is the serialized `ApplyBatch`, so the proof covers the whole atomic operation (its requests and their order), and verifying one log pulls in its batch-mates. Non-repudiation is therefore **per batch**, not per individual request.
+The retained request signature authenticates its exact serialized `ApplyBatch`, including request order and batch identity. Verify it from applied-proposal/audit evidence. `Log` has sequence, payload and optional response signature; it has no client `Log.Signature`. Non-repudiation is per batch, not per individual public response.
 
 ## Design Decisions
 
@@ -578,3 +578,61 @@ The `payload` contains the serialized `Log` message with the `response_signature
 - **Signing happens in the gRPC handler, not the FSM**: response signing is a presentation-layer concern. The FSM produces deterministic state; signing adds a transport-level proof on top.
 - **Single server keypair**: no per-client keys needed. All clients verify using the same public key, obtained via `Discovery` or out-of-band.
 - **No changes to Raft/FSM/Pebble**: the response signature is computed after Raft consensus and is not persisted. It appears in the gRPC response and the atomic HTTP Apply log projection.
+
+## Public HTTP receipts
+
+Configure the existing `--response-signing-key` on every HTTP-serving node, then
+send exactly one `Formance-Public-Receipt: v1` on a supported mutation. The same
+response header carries a compact proof for the exact status and public body;
+204 responses remain empty. See the [wire and failure contract](../technical/architecture/subsystems/api/http-api.md#public-http-receipts)
+for supported operations, claims, limits and partial-bulk semantics.
+
+Go clients use `github.com/formancehq/ledger/v3/pkg/httpreceipt.Verify` with the
+header, trusted Ed25519 public key, original method and the origin-form request
+target observed by Ledger, received status, and exact decoded response bytes. Preserve escaped
+paths and raw query spelling/order. Read the body before interpreting JSON;
+verify before treating any visible fields as authentic. Decode payload/signature
+as standard padded base64; the outer header is unpadded base64url JSON. The
+signature covers the domain `formance.http-public-receipt.v1`, NUL, then exact
+payload bytes. A receipt authenticates errors as well as successes; still check
+the status and each bulk result after verification.
+
+Provision the public key through a trusted file, operator-managed configuration
+or authenticated gRPC Discovery. A plaintext/unauthenticated Discovery response
+is not a trust root. `keyId` is a lookup hint (the existing truncated public-key
+fingerprint), never authority to trust an advertised key. The serving HTTP node
+signs the receipt, including follower requests; trust that node's key. For a
+mixed-node deployment, either provision the same key deliberately or distribute
+the trusted key set and coordinate rotation before switching clients. Receipts
+provide no automatic cross-node rotation or cluster-identity guarantee.
+
+Allow the request/response header through reverse proxies and include it in CORS
+request-header policy. Receipt responses append `Formance-Public-Receipt` to
+`Access-Control-Expose-Headers`; ingress must preserve that exposure. Configure
+proxy header budgets for the bounded 4096-byte receipt. Compression is compatible
+when clients verify decoded entity bytes. JSON rewriting, whitespace
+normalization or body/status rewriting after signing invalidates the proof.
+If a gateway strips a prefix such as `/api/ledger` or rewrites the path/query,
+provision that mapping through trusted client configuration and verify the exact
+Ledger-facing target. The external target will not match; receipts do not
+authenticate the gateway rewrite or trust forwarded headers as target authority.
+Deploy receiving nodes and proxy policy before clients require receipts: old
+nodes or header stripping can return an ordinary unsigned response, which a
+strict client must reject.
+
+Absent negotiation keeps ordinary output. Invalid/empty/repeated negotiation
+returns 400, unsupported operations reject before execution, and unavailable
+signing returns 503 before Apply. The response buffer is limited to 16 MiB.
+Encoding/invalid JSON/overflow or delivery failure after Apply can leave a
+committed write without proof. Treat that outcome as unauthenticated and
+ambiguous; recover using the existing route's idempotency contract when available,
+never assume an unkeyed retry is safe. Counts describe successful returned Apply
+results, not all possible effects; zero does not establish non-commit.
+
+Receipt-mode ledger creation masks known mirror credentials on a detached public
+projection; event sink creation still acknowledges only its name. Receipts do
+not expose raw signed protobuf logs, authenticate a submitted body, establish
+freshness/actor/cluster identity, or prove audit inclusion. Replaying a historical
+valid response for the same method and target remains possible. Request signing
+is independent and can be combined with receipts on its supported routes;
+request-signed bulk remains atomic-only. There is no HTTP `skipResponse` option.
