@@ -4222,6 +4222,7 @@ func (c *Checker) compareIdempotencyOutcomes(
 				fmt.Sprintf("malformed frozen idempotency key %x: expected %d bytes, got %d", key, 2+16, len(key)),
 				0, "", "", "",
 			))
+
 			continue
 		}
 
