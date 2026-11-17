@@ -312,6 +312,7 @@ func (m *Manager) reconcileGeneration(generation uint64, isLeader, stopped bool)
 
 		if ms := m.startSink(sc, generation); ms != nil {
 			if !m.isCurrentLeader(generation) {
+				delete(m.emitters, name)
 				m.stopSink(name, ms)
 
 				return

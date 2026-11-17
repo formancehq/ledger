@@ -997,6 +997,7 @@ func Module() fx.Option {
 						}
 					case node.LeaderReadyEvent:
 						healthChecker.OnLeaderReady()
+						logger.Infof("Leader ready — reconciling event emitter and mirror workers")
 						// Recorded before the cluster-config proposal, which
 						// can block on its own commit.
 						eventsManager.OnLeadershipLease(e.Lease)
