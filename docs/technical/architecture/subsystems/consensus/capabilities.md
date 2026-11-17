@@ -14,11 +14,14 @@ predate this foundation. IDs are never reused; semantic dependencies must be
 declared even when they do not add bytes to a proposal.
 
 The producer must rebuild its plan first, select the semantics from the
-committed activation policy where applicable, validate the final proposal
-shape, stamp `required_capabilities`, and pass the typed result alongside
-the serialized proposal. Admission reuses that result without decoding the
-proposal a second time. A payload that depends on an active capability but
-omits its declaration is rejected by the final `Node.Propose` policy gate.
+committed activation policy where applicable, and stamp
+`required_capabilities`. The Ledger-specific catalog validates that
+declaration against the final proposal shape and passes the typed result
+alongside the serialized proposal. Admission reuses that result without
+decoding the proposal a second time. The generic capabilities package only
+evaluates policy and membership evidence. A payload that depends on an active
+capability but omits its declaration is rejected by the final `Node.Propose`
+policy gate.
 An activation racing the producer's policy read rejects the unmarked
 proposal before Raft rather than applying it under old semantics.
 
@@ -161,8 +164,8 @@ binary versions.
 1. Name the semantic contract. Describe the old behavior, the new behavior,
    and the orders that use each behavior.
 2. Allocate a new capability ID. Never reuse an ID for a different contract.
-3. Add the capability to the binary registry and validate its declaration
-   against the final proposal in `RequiredCapabilities`. If inactive and active
+3. Add the capability to `internal/infra/capabilities/catalog` and validate
+   its declaration against the final proposal. If inactive and active
    orders share a payload shape, select the declaration from committed policy
    during admission and enforce its presence at the final proposal gate.
 4. Stamp the capability on every new order that needs the new behavior. Do not
@@ -222,10 +225,10 @@ transaction while evaluating the result. Policy decoding and the snapshot
 copy remain serialized by the proposal admission boundary, so they are part
 of the write-path budget rather than background work.
 
-The deterministic behavior matrix is covered by
-`internal/infra/capabilities/capabilities_test.go`: empty declarations,
-inactive policy, active policy with converged voters and learners, missing
-evidence, and unreachable members. The representative cost shape is measured
+The deterministic policy and membership matrix is covered by
+`internal/infra/capabilities/capabilities_test.go`; Ledger-specific
+declaration validation is covered by the catalog tests. The representative
+cost shape is measured
 by:
 
 ```text

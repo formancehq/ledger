@@ -25,7 +25,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/domain/indexes"
 	"github.com/formancehq/ledger/v3/internal/domain/processing/numscript"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
-	"github.com/formancehq/ledger/v3/internal/infra/capabilities"
+	"github.com/formancehq/ledger/v3/internal/infra/capabilities/catalog"
 	"github.com/formancehq/ledger/v3/internal/infra/health"
 	"github.com/formancehq/ledger/v3/internal/infra/membership"
 	"github.com/formancehq/ledger/v3/internal/infra/node"
@@ -837,14 +837,14 @@ func (a *Admission) buildPreload(ctx context.Context, cmd *raftcmdpb.Proposal, n
 }
 
 func (a *Admission) proposeAdmission(ctx context.Context, cmd *raftcmdpb.Proposal, build *plan.BuildResult) (*futures.Future[state.ApplyResult], func(), error) {
-	if capabilities.HasCreateLedger(cmd) {
+	if catalog.HasCreateLedger(cmd) {
 		policy, err := query.ReadClusterPolicy(a.store)
 		if err != nil {
 			build.ReleaseLoaders()
 
 			return nil, nil, fmt.Errorf("reading cluster policy for CreateLedger: %w", err)
 		}
-		capabilities.SelectCreateLedgerValidation(cmd, policy)
+		catalog.SelectCreateLedgerValidation(cmd, policy)
 	}
 
 	// Step 5: Marshal + acquire proposal guard + set PredictedIndex

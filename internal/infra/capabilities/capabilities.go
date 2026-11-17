@@ -10,37 +10,12 @@ import (
 	"fmt"
 	"slices"
 
-	"github.com/formancehq/ledger/v3/internal/pkg/proposals"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
 
 // CapabilityID is the stable numeric identity of a consensus capability.
 // The wire representation remains uint32 at protobuf and Raft JSON boundaries.
 type CapabilityID uint32
-
-// CreateLedgerAccountTypesV2 selects validation of initial account-type
-// constraints and conflicts during CreateLedger apply. Unmarked proposals keep
-// the released behavior, including when replayed after activation.
-const CreateLedgerAccountTypesV2 CapabilityID = 1
-
-// PreparedProposal is the opaque capability metadata produced while preparing
-// a final proposal. Callers can inspect it through RequiredCapabilities, but
-// cannot construct the declaration by passing an arbitrary slice to the node
-// proposal factory. Semantic selectors must match a known proposal shape.
-type PreparedProposal struct {
-	required []CapabilityID
-}
-
-// RequiredCapabilities returns a defensive copy of the derived declaration.
-func (p PreparedProposal) RequiredCapabilities() []CapabilityID {
-	return slices.Clone(p.required)
-}
-
-// SupportedIDs is the immutable capability set implemented by this binary.
-func SupportedIDs() []CapabilityID {
-	return []CapabilityID{CreateLedgerAccountTypesV2}
-}
 
 func MembershipRequiredIDs(policy *commonpb.ClusterPolicy) []uint32 {
 	var required []uint32
@@ -111,118 +86,6 @@ var (
 	ErrActivationPending     = errors.New("capability activation is pending")
 	ErrCapabilityUnsupported = errors.New("capability is unsupported by a cluster member")
 )
-
-// RequiredCapabilities validates declared semantic dependencies against the
-// final proposal shape. A CreateLedger proposal may be unmarked before policy
-// activation; the final policy gate requires its marker once activated.
-// Predicates inspect only replicated fields, keeping replay deterministic.
-func RequiredCapabilities(proposal *raftcmdpb.Proposal) ([]CapabilityID, error) {
-	if proposal == nil {
-		return nil, fmt.Errorf("%w: nil proposal", ErrInvalidDeclaration)
-	}
-
-	declared := make([]CapabilityID, len(proposal.GetRequiredCapabilities()))
-	for i, id := range proposal.GetRequiredCapabilities() {
-		declared[i] = CapabilityID(id)
-	}
-	if len(declared) == 0 {
-		return nil, nil
-	}
-	if len(declared) != 1 || declared[0] != CreateLedgerAccountTypesV2 || !HasCreateLedger(proposal) {
-		return nil, fmt.Errorf("%w: capability declaration does not match proposal orders", ErrInvalidDeclaration)
-	}
-
-	return declared, nil
-}
-
-// HasCreateLedger inspects the final proposal, including batched orders.
-func HasCreateLedger(proposal *raftcmdpb.Proposal) bool {
-	if proposal == nil {
-		return false
-	}
-	for _, order := range proposals.BatchOrders(proposal) {
-		if order.GetLedgerScoped().GetCreateLedger() != nil {
-			return true
-		}
-	}
-
-	return false
-}
-
-// SelectCreateLedgerValidation stamps the proposal-scoped semantic selector
-// from the committed policy observed by admission. The final Node.Propose gate
-// rechecks the policy: an activation racing this read rejects an unmarked
-// proposal instead of committing it with the wrong semantics.
-func SelectCreateLedgerValidation(proposal *raftcmdpb.Proposal, policy *commonpb.ClusterPolicy) {
-	if !HasCreateLedger(proposal) {
-		return
-	}
-	if FromPolicy(policy).Activations[CreateLedgerAccountTypesV2] {
-		proposal.RequiredCapabilities = []uint32{uint32(CreateLedgerAccountTypesV2)}
-	}
-}
-
-// ValidateCreateLedgerDeclaration enforces the activated rule at the final
-// serialized admission boundary, before Raft can commit a new order.
-func ValidateCreateLedgerDeclaration(policy *commonpb.ClusterPolicy, hasCreateLedger bool, required []CapabilityID) error {
-	if hasCreateLedger && FromPolicy(policy).Activations[CreateLedgerAccountTypesV2] && !slices.Contains(required, CreateLedgerAccountTypesV2) {
-		return fmt.Errorf("%w: CreateLedger requires capability %d", ErrMissingCapability, CreateLedgerAccountTypesV2)
-	}
-
-	return nil
-}
-
-// PrepareProposal validates and stamps the semantic capability declaration and
-// returns the typed result for the caller to pass alongside the serialized
-// proposal. Keeping the result avoids decoding the same proposal again during
-// admission.
-func PrepareProposal(proposal *raftcmdpb.Proposal) (PreparedProposal, error) {
-	required, err := RequiredCapabilities(proposal)
-	if err != nil {
-		return PreparedProposal{}, err
-	}
-	proposal.RequiredCapabilities = make([]uint32, len(required))
-	for i, id := range required {
-		proposal.RequiredCapabilities[i] = uint32(id)
-	}
-
-	return PreparedProposal{required: required}, nil
-}
-
-// ValidateFinalProposal verifies that the declaration carried by the
-// serialized proposal matches both its semantic payload and the metadata
-// captured by the proposal factory. The factory runs this before queueing the
-// proposal, keeping full decoding off the Raft orchestrator.
-func ValidateFinalProposal(data []byte, declared []CapabilityID) error {
-	proposal := new(raftcmdpb.Proposal)
-	if err := proposal.UnmarshalVT(data); err != nil {
-		return fmt.Errorf("decode final proposal: %w", err)
-	}
-	expected, err := RequiredCapabilities(proposal)
-	if err != nil {
-		return err
-	}
-	wire := make([]CapabilityID, len(proposal.GetRequiredCapabilities()))
-	for i, id := range proposal.GetRequiredCapabilities() {
-		wire[i] = CapabilityID(id)
-	}
-	wire, err = Normalize(wire)
-	if err != nil {
-		return err
-	}
-	declared, err = Normalize(declared)
-	if err != nil {
-		return err
-	}
-	if !slices.Equal(wire, expected) {
-		return fmt.Errorf("%w: wire declaration does not match semantic payload", ErrMissingCapability)
-	}
-	if !slices.Equal(wire, declared) {
-		return fmt.Errorf("%w: declaration does not match final payload", ErrMissingCapability)
-	}
-
-	return nil
-}
 
 func (s State) Validate() error {
 	return nil
