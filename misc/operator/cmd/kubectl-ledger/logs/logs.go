@@ -86,6 +86,7 @@ func runLogs(cmd *cobra.Command, opts *cmdutil.Options, f *logsFlags, args []str
 		if err != nil {
 			return fmt.Errorf("getting ledger %q: %w", name, err)
 		}
+
 		return streamAllPods(ctx, cs, ledger, logOpts)
 	}
 
