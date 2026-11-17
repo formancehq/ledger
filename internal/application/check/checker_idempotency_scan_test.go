@@ -14,7 +14,7 @@ import (
 
 // A scan that cannot decode a row is incomplete and must fail verification;
 // it must not be reported as a healthy idempotency projection.
-func TestCompareIdempotencyOutcomesRejectsIncompleteScan(t *testing.T) {
+func TestCompareIdempotencyOutcomesRejectsMalformedValue(t *testing.T) {
 	t.Parallel()
 	store := createTestStore(t)
 	batch := store.OpenWriteSession()
@@ -32,5 +32,5 @@ func TestCompareIdempotencyOutcomesRejectsIncompleteScan(t *testing.T) {
 	checker := NewChecker(store, attributes.New(), nil, logging.Testing())
 	err = checker.compareIdempotencyOutcomes(handle, nil, true, func(*servicepb.CheckStoreEvent) {})
 	require.Error(t, err)
-	require.Contains(t, err.Error(), "unmarshalling idempotency value")
+	require.ErrorContains(t, err, "unmarshalling idempotency value")
 }
