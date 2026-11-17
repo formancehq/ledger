@@ -15,11 +15,11 @@ declared even when they do not add bytes to a proposal.
 
 The producer must rebuild its plan first, select the semantics from the
 committed activation policy where applicable, and stamp
-`required_capabilities`. The Ledger-specific catalog validates that
-declaration against the final proposal shape and passes the typed result
-alongside the serialized proposal. Admission reuses that result without
-decoding the proposal a second time. The generic capabilities package only
-evaluates policy and membership evidence. A payload that depends on an active
+`required_capabilities`. The proposal factory serializes that command and
+copies the declaration into typed admission metadata. Admission reuses that
+metadata without decoding the serialized proposal. The Ledger-specific
+catalog owns the selection rule; the generic capabilities package evaluates
+policy and membership evidence. A payload that depends on an active
 capability but omits its declaration is rejected by the final `Node.Propose`
 policy gate.
 An activation racing the producer's policy read rejects the unmarked
@@ -164,10 +164,10 @@ binary versions.
 1. Name the semantic contract. Describe the old behavior, the new behavior,
    and the orders that use each behavior.
 2. Allocate a new capability ID. Never reuse an ID for a different contract.
-3. Add the capability to `internal/infra/capabilities/catalog` and validate
-   its declaration against the final proposal. If inactive and active
-   orders share a payload shape, select the declaration from committed policy
-   during admission and enforce its presence at the final proposal gate.
+3. Add the capability to `internal/infra/capabilities/catalog`. If inactive
+   and active orders share a payload shape, select the declaration from
+   committed policy during admission and enforce its presence at the final
+   proposal gate.
 4. Stamp the capability on every new order that needs the new behavior. Do not
    infer it from the current policy during FSM apply.
 5. Keep the old behavior for orders that do not carry the capability. Add
@@ -227,9 +227,8 @@ of the write-path budget rather than background work.
 
 The deterministic policy and membership matrix is covered by
 `internal/infra/capabilities/capabilities_test.go`; Ledger-specific
-declaration validation is covered by the catalog tests. The representative
-cost shape is measured
-by:
+selection and final admission checks are covered by the catalog and bootstrap
+tests. The representative cost shape is measured by:
 
 ```text
 go test ./internal/infra/capabilities -run '^$' -bench BenchmarkEvaluate -benchmem -count=5

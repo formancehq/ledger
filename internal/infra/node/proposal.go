@@ -1,6 +1,8 @@
 package node
 
 import (
+	"fmt"
+
 	"google.golang.org/protobuf/encoding/protowire"
 
 	"github.com/formancehq/ledger/v3/internal/infra/capabilities"
@@ -55,12 +57,18 @@ func newProposal(commandID uint64, data []byte, required []capabilities.Capabili
 	}
 }
 
-// NewProposal is the only public proposal factory. It validates the selected
-// capability declaration against the final command and serializes that same
-// command, keeping typed admission metadata aligned with the wire payload.
+// NewProposal is the only public proposal factory. It serializes the command
+// and retains its declared capabilities as typed admission metadata. The
+// producer selects the declaration before calling this factory.
 func NewProposal(commandID uint64, command *raftcmdpb.Proposal) (*Proposal, error) {
-	required, err := catalog.ValidateDeclaration(command)
-	if err != nil {
+	if command == nil {
+		return nil, fmt.Errorf("%w: nil proposal", capabilities.ErrInvalidDeclaration)
+	}
+	required := make([]capabilities.CapabilityID, len(command.GetRequiredCapabilities()))
+	for i, id := range command.GetRequiredCapabilities() {
+		required[i] = capabilities.CapabilityID(id)
+	}
+	if _, err := capabilities.Normalize(required); err != nil {
 		return nil, err
 	}
 
@@ -124,9 +132,8 @@ func (p *Proposal) SetPredictedIndex(index uint64) {
 	p.data = protowireutil.AppendFixed64(p.data, predictedIndexField, index)
 }
 
-// RequiredCapabilities returns the capabilities derived by the producer from
-// the final command before it was serialized. Admission reuses this typed
-// value instead of decoding the serialized proposal a second time.
+// RequiredCapabilities returns a copy of the declaration carried by the
+// serialized proposal. Admission reuses it without decoding that proposal.
 func (p *Proposal) RequiredCapabilities() []capabilities.CapabilityID {
 	return append([]capabilities.CapabilityID(nil), p.requiredCapabilities...)
 }

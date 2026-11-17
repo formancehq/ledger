@@ -1079,8 +1079,8 @@ func (a *Admission) Barrier(ctx context.Context) (uint64, error) {
 	}
 
 	cmd := commands.NewCommand() // no orders = no-op
-	// The proposal factory stamps the semantic capability declaration and
-	// serializes this final command atomically.
+	// Barrier has no orders or capability declaration; the proposal factory
+	// serializes this final command.
 	a.commandSizeHistogram.Record(ctx, int64(cmd.SizeVT()))
 	proposal, err := node.NewProposal(cmd.GetId(), cmd)
 	if err != nil {

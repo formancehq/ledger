@@ -111,6 +111,22 @@ func TestCapabilityActivationBarrierUntilCommitAfterDrain(t *testing.T) {
 	}
 }
 
+func TestProposalCapabilityAdmissionRejectsInactiveCapability(t *testing.T) {
+	t.Parallel()
+
+	proposal, err := node.NewProposal(1, &raftcmdpb.Proposal{
+		RequiredCapabilities: []uint32{99},
+	})
+	require.NoError(t, err)
+
+	err = validateProposalCapabilityAdmission(
+		&commonpb.ClusterPolicy{},
+		proposal,
+		[]capabilities.Member{{NodeID: 1, Role: capabilities.Voter, Reachable: true}},
+	)
+	require.ErrorIs(t, err, capabilities.ErrCapabilityUnsupported)
+}
+
 func TestProposalCapabilityAdmissionSelectsCreateLedgerValidation(t *testing.T) {
 	t.Parallel()
 	const id = catalog.CreateLedgerAccountTypesV2
