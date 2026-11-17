@@ -568,25 +568,6 @@ func applyMutableStatefulSetSpec(sts *appsv1.StatefulSet, desired appsv1.Statefu
 	sts.Spec.MinReadySeconds = desired.MinReadySeconds
 }
 
-// reconcileStatefulSetRetentionPolicy applies the same policy used by ordinary
-// StatefulSet creation. During a stopped upgrade buildRetentionPolicy always
-// returns Retain; callers must requeue until the StatefulSet controller has
-// observed the updated generation before detaching or reusing claims.
-func (r *ClusterReconciler) reconcileStatefulSetRetentionPolicy(ctx context.Context, ledger *ledgerv1alpha1.Cluster, sts *appsv1.StatefulSet) (bool, error) {
-	desired := buildRetentionPolicy(ledger)
-	if sts.Spec.PersistentVolumeClaimRetentionPolicy != nil &&
-		*sts.Spec.PersistentVolumeClaimRetentionPolicy == *desired {
-		return false, nil
-	}
-	updated := sts.DeepCopy()
-	updated.Spec.PersistentVolumeClaimRetentionPolicy = desired
-	if err := r.Update(ctx, updated); err != nil {
-		return false, fmt.Errorf("updating StatefulSet claim retention policy: %w", err)
-	}
-
-	return true, nil
-}
-
 // preserveExistingStorageWiring keeps the Pod template compatible with the
 // immutable claim templates while an RC image rolls out. The new storage layout
 // is installed only when the StatefulSet is recreated after that rollout.
