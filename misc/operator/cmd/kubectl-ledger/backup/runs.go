@@ -41,7 +41,9 @@ func runRuns(cmd *cobra.Command, opts *cmdutil.Options, args []string) error {
 	}
 	runs, err := cmdutil.ListBackupRuns(ctx, crdClient, ns, name)
 	if err != nil {
-		pterm.Error.Println("Failed to list BackupRun resources")
+		if opts.OutputFormat() != "json" && opts.OutputFormat() != "yaml" {
+			pterm.Error.Println("Failed to list BackupRun resources")
+		}
 
 		return fmt.Errorf("listing runs: %w", err)
 	}

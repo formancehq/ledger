@@ -40,7 +40,9 @@ func runList(cmd *cobra.Command, opts *cmdutil.Options) error {
 	}
 	backups, err := cmdutil.ListBackups(ctx, crdClient, ns)
 	if err != nil {
-		pterm.Error.Println("Failed to list Backup resources")
+		if opts.OutputFormat() != "json" && opts.OutputFormat() != "yaml" {
+			pterm.Error.Println("Failed to list Backup resources")
+		}
 
 		return fmt.Errorf("listing backups: %w", err)
 	}

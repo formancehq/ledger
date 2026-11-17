@@ -38,7 +38,9 @@ func runList(cmd *cobra.Command, opts *cmdutil.Options) error {
 
 	credentials, err := cmdutil.ListCredentials(ctx, crdClient)
 	if err != nil {
-		pterm.Error.Println("Failed to list Credentials resources")
+		if opts.OutputFormat() != "json" && opts.OutputFormat() != "yaml" {
+			pterm.Error.Println("Failed to list Credentials resources")
+		}
 
 		return fmt.Errorf("listing credentials: %w", err)
 	}

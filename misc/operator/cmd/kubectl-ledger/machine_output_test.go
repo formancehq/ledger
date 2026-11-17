@@ -49,11 +49,15 @@ func TestReadCommandMachineOutput(t *testing.T) {
 					outputPath := filepath.Join(t.TempDir(), "stdout")
 					output, err := os.Create(outputPath)
 					require.NoError(t, err)
-					stdout, infoWriter, errorWriter := os.Stdout, pterm.Info.Writer, pterm.Error.Writer
-					os.Stdout, pterm.Info.Writer, pterm.Error.Writer = output, output, output
+					errorPath := filepath.Join(t.TempDir(), "stderr")
+					errorOutput, err := os.Create(errorPath)
+					require.NoError(t, err)
+					stdout, stderr, infoWriter, errorWriter := os.Stdout, os.Stderr, pterm.Info.Writer, pterm.Error.Writer
+					os.Stdout, os.Stderr, pterm.Info.Writer, pterm.Error.Writer = output, errorOutput, output, output
 					t.Cleanup(func() {
-						os.Stdout, pterm.Info.Writer, pterm.Error.Writer = stdout, infoWriter, errorWriter
+						os.Stdout, os.Stderr, pterm.Info.Writer, pterm.Error.Writer = stdout, stderr, infoWriter, errorWriter
 						assert.NoError(t, output.Close())
+						assert.NoError(t, errorOutput.Close())
 					})
 					operationPath := "/apis/ledger.formance.com/v1alpha1/"
 					if scenario.namespaced {
@@ -128,6 +132,9 @@ func TestReadCommandMachineOutput(t *testing.T) {
 					}
 					data, readErr := os.ReadFile(outputPath)
 					require.NoError(t, readErr)
+					stderrData, readErr := os.ReadFile(errorPath)
+					require.NoError(t, readErr)
+					require.Empty(t, stderrData)
 					require.NotContains(t, string(data), "Fetching")
 					require.NotContains(t, string(data), "Using")
 					if scenario.ambiguous {
@@ -141,7 +148,7 @@ func TestReadCommandMachineOutput(t *testing.T) {
 					require.EqualValues(t, 1, operationCalls.Load())
 					if fail {
 						require.ErrorContains(t, err, "machine output operation denied")
-						require.Contains(t, string(data), "Failed to")
+						require.Empty(t, data)
 
 						return
 					}

@@ -97,7 +97,9 @@ func resolveResourceName(opts *Options, args []string, kind, noun, namespace str
 	}
 	names, err := listNames(crdClient)
 	if err != nil {
-		pterm.Error.Printfln("Failed to list %s resources", kind)
+		if !structured {
+			pterm.Error.Printfln("Failed to list %s resources", kind)
+		}
 		plural := noun + "s"
 		if kind == "Credentials" {
 			plural = noun
