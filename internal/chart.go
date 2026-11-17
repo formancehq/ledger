@@ -166,6 +166,8 @@ func (s *ChartSegment) UnmarshalJSON(data []byte) error {
 			if err != nil {
 				return fmt.Errorf("invalid account rules: %v", err)
 			}
+		} else if key != PATTERN_KEY { // .pattern is read and validated by the parent segment
+			return fmt.Errorf("unknown property %v", key)
 		}
 	}
 	isAccount = isAccount || isLeaf
