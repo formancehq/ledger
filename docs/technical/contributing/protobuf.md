@@ -78,7 +78,9 @@ migration. Follow the [upgrade policy](../../ops/upgrades.md#release-requirement
 CI enforces the service wire freeze with
 `PROTOCOL_BASE_SHA=<target-sha> just check-protocol-version`. It fails if the
 revision changes or `buf breaking` finds a wire-incompatible change in a type
-reachable from a gated service. Run it locally before pushing a `.proto`
+reachable from a gated service. An accepted break must be a
+[listed wire exception](../architecture/subsystems/api/protocol-compatibility.md#wire-exceptions)
+behind a mandatory stopped upgrade. Run it locally before pushing a `.proto`
 change; review behavior changes separately for client impact.
 
 1. Edit the `.proto` file in `misc/proto/`.

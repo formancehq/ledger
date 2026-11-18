@@ -231,8 +231,8 @@ membership with its documented source revision; never expand that baseline to
 silence a diagnostic. Layout lint must not force renumbering a published type.
 Verify its registration independently through the scripts and buf configuration.
 A passing lint result establishes initial layout only: the service wire-freeze
-gate and persisted/mixed-version compatibility have independent evidence and
-owners. No source proto, baseline or generated production file is changed by
+gate, its listed wire exceptions with their mandatory stopped upgrades, and
+persisted/mixed-version compatibility have independent evidence and owners. No source proto, baseline or generated production file is changed by
 this contract preparation.
 
 ## Boundaries
