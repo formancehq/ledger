@@ -300,7 +300,7 @@ func validateOrderContent(order *raftcmdpb.Order) domain.Describable {
 		o = data.CreateTransaction
 	case *raftcmdpb.LedgerApplyOrder_ExecuteNumscript:
 		execute = true
-		o = &raftcmdpb.CreateTransactionOrder{Script: data.ExecuteNumscript.GetScript(), NumscriptReference: data.ExecuteNumscript.GetNumscriptReference()}
+		o = &raftcmdpb.CreateTransactionOrder{Script: data.ExecuteNumscript.GetScript(), NumscriptReference: data.ExecuteNumscript.GetNumscriptReference(), Reference: data.ExecuteNumscript.GetReference()}
 	default:
 		return nil
 	}
