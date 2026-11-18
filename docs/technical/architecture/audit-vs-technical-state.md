@@ -37,12 +37,12 @@ schemas, enforcement modes, actual metadata values or query-checkpoint records.
 Any new policy field must be classified separately.
 
 The capability aggregate (`ZoneGlobal/0x18`) is deployment compatibility
-governance, not an extension of the quota exemption. Its requested/active
-lifecycle is explicitly trusted deployment state, preserved by Raft and
+governance, not an extension of the quota exemption. Its monotonic active
+state is explicitly trusted deployment state, preserved by Raft and
 versioned backups, rather than re-derived from business audit. It controls
 which semantic marker admission declares; that immutable marker and resulting
 business effects remain audit-bound and checker-verified. The checker does not
-prove when deployment activation was requested or authorized. Store/backup
+prove when deployment activation was authorized. Store/backup
 integrity and access control remain part of the existing trust boundary. This
 does not exempt signing permissions, enforcement modes or ledger schemas.
 See the [control-state contract](subsystems/storage/control-state.md).

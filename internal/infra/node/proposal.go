@@ -32,7 +32,7 @@ type Proposal struct {
 	requiredCapabilities []capabilities.CapabilityID
 	hasBusinessOrders    bool
 	// activePolicyCapabilities is populated by the proposal factory for
-	// SetClusterPolicy proposals/orders and requested or active capability transitions.
+	// SetClusterPolicy proposals/orders and capability activation transitions.
 	// Keeping the typed candidate alongside the
 	// serialized command lets the leader validate activation evidence before
 	// handing the bytes to Raft without decoding the command a second time.

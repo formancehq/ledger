@@ -51,7 +51,6 @@ func TestControlStateSchemaTwoMigration(t *testing.T) {
 	require.True(t, legacy.EqualVT(stored), "migration preserves the logical state at the applied index")
 	require.Len(t, stored.GetCapabilityActivations(), 2)
 	require.False(t, stored.GetCapabilityActivations()[0].GetActive())
-	require.False(t, stored.GetCapabilityActivations()[1].GetRequested())
 	policy, err := dal.ReadProto[*commonpb.ClusterPolicy](store, []byte{dal.ZoneGlobal, dal.SubGlobClusterPolicy})
 	require.NoError(t, err)
 	wantPolicy := legacy.CloneVT()

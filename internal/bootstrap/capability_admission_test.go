@@ -29,12 +29,14 @@ func TestValidateActiveAcceptsNoActivation(t *testing.T) {
 	require.NoError(t, capabilities.ValidateActive(nil, nil, nil))
 }
 
-func TestProposalCapabilityAdmissionRecoversCommittedFenceWithoutFlags(t *testing.T) {
+func TestProposalCapabilityAdmissionRecoversActiveWithoutIntent(t *testing.T) {
 	t.Parallel()
 	proposal, err := node.NewProposal(1, &raftcmdpb.Proposal{Orders: []*raftcmdpb.Order{{Type: &raftcmdpb.Order_LedgerScoped{LedgerScoped: &raftcmdpb.LedgerScopedOrder{Ledger: "l", Payload: &raftcmdpb.LedgerScopedOrder_CreateLedger{CreateLedger: &raftcmdpb.CreateLedgerOrder{}}}}}}})
 	require.NoError(t, err)
-	policy := &commonpb.ClusterPolicy{CapabilityActivations: []*commonpb.CapabilityActivation{{Id: 1, Requested: true}}}
-	require.ErrorIs(t, validateProposalCapabilityAdmission(policy, proposal, nil), capabilities.ErrActivationPending)
+	policy := &commonpb.ClusterPolicy{CapabilityActivations: []*commonpb.CapabilityActivation{{Id: 1, Active: true}}}
+	supported := []capabilities.CapabilityID{1}
+	members := []capabilities.Member{{NodeID: 1, Role: capabilities.Voter, Capabilities: supported}}
+	require.NoError(t, validateProposalCapabilityAdmissionWithSupported(policy, proposal, members, supported))
 }
 
 func TestValidateActiveAcceptsConvergedMembership(t *testing.T) {
@@ -71,7 +73,7 @@ func TestProposalCapabilityAdmissionRejectsActivationBeforeRaft(t *testing.T) {
 	require.ErrorIs(t, err, capabilities.ErrCapabilityUnsupported)
 }
 
-func TestCapabilityActivationBarrierBeforeRequestAndAfterDrain(t *testing.T) {
+func TestCapabilityActivationBarrierUntilCommitAfterDrain(t *testing.T) {
 	t.Parallel()
 	command := &raftcmdpb.Proposal{Payload: &raftcmdpb.Proposal_Batch{Batch: &raftcmdpb.ExecutionBatch{
 		Orders: []*raftcmdpb.Order{{Type: &raftcmdpb.Order_LedgerScoped{LedgerScoped: &raftcmdpb.LedgerScopedOrder{
@@ -86,22 +88,24 @@ func TestCapabilityActivationBarrierBeforeRequestAndAfterDrain(t *testing.T) {
 		require.NoError(t, validateProposalCapabilityAdmissionWithSupported(&commonpb.ClusterPolicy{}, proposal, members, supported))
 		members[1].Capabilities = supported
 		require.ErrorIs(t, validateProposalCapabilityAdmissionWithSupported(&commonpb.ClusterPolicy{}, proposal, members, supported), capabilities.ErrActivationPending)
-		pending := &commonpb.ClusterPolicy{CapabilityActivations: []*commonpb.CapabilityActivation{{Id: 7, Requested: true}}}
-		members[1].Capabilities = nil
-		require.ErrorIs(t, validateProposalCapabilityAdmissionWithSupported(pending, proposal, members, supported), capabilities.ErrActivationPending)
+		inactive := &commonpb.ClusterPolicy{CapabilityActivations: []*commonpb.CapabilityActivation{{Id: 7}}}
+		require.ErrorIs(t, validateProposalCapabilityAdmissionWithSupported(inactive, proposal, members, supported), capabilities.ErrActivationPending)
 		configuration, err := node.NewProposal(2, &raftcmdpb.Proposal{Payload: &raftcmdpb.Proposal_SetClusterPolicy{
 			SetClusterPolicy: &raftcmdpb.SetClusterPolicyProposal{Policy: &commonpb.ClusterPolicy{Revision: 2}, ConfigurationOnly: true},
 		}})
 		require.NoError(t, err)
-		require.NoError(t, validateProposalCapabilityAdmissionWithSupported(pending, configuration, members, supported))
-		request, err := node.NewProposal(3, &raftcmdpb.Proposal{Payload: &raftcmdpb.Proposal_TransitionCapability{
-			TransitionCapability: &commonpb.CapabilityActivation{Id: 7, Requested: true},
+		require.NoError(t, validateProposalCapabilityAdmissionWithSupported(inactive, configuration, members, supported))
+		activation, err := node.NewProposal(3, &raftcmdpb.Proposal{Payload: &raftcmdpb.Proposal_TransitionCapability{
+			TransitionCapability: &commonpb.CapabilityActivation{Id: 7, Active: true},
 		}})
 		require.NoError(t, err)
-		require.ErrorIs(t, validateProposalCapabilityAdmissionWithSupported(&commonpb.ClusterPolicy{}, request, members, supported), capabilities.ErrCapabilityUnsupported)
+		members[1].Capabilities = nil
+		require.ErrorIs(t, validateProposalCapabilityAdmissionWithSupported(inactive, activation, members, supported), capabilities.ErrCapabilityUnsupported)
+		require.NoError(t, validateProposalCapabilityAdmissionWithSupported(inactive, proposal, members, supported), "an uncommitted attempt does not create an irrevocable intent")
 		members[1].Capabilities = supported
-		require.NoError(t, validateProposalCapabilityAdmissionWithSupported(&commonpb.ClusterPolicy{}, request, members, supported))
-		pending.CapabilityActivations[0].Active = true
-		require.NoError(t, validateProposalCapabilityAdmissionWithSupported(pending, proposal, members, supported))
+		require.NoError(t, validateProposalCapabilityAdmissionWithSupported(inactive, activation, members, supported))
+		require.ErrorIs(t, validateProposalCapabilityAdmissionWithSupported(inactive, proposal, members, supported), capabilities.ErrActivationPending, "submission does not release the barrier before commit")
+		inactive.CapabilityActivations[0].Active = true
+		require.NoError(t, validateProposalCapabilityAdmissionWithSupported(inactive, proposal, members, supported))
 	}
 }

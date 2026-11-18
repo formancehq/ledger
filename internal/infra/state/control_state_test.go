@@ -34,14 +34,13 @@ func TestControlStateIndependentRevisionsAndRecovery(t *testing.T) {
 	control := func(policy *commonpb.ClusterPolicy) *raftcmdpb.Proposal {
 		return &raftcmdpb.Proposal{Payload: &raftcmdpb.Proposal_SetClusterPolicy{SetClusterPolicy: &raftcmdpb.SetClusterPolicyProposal{Policy: policy, ConfigurationOnly: true}}}
 	}
-	require.ErrorContains(t, apply(transition(true)), "must be requested")
-	require.NoError(t, apply(transition(false)))
-	pending, err := query.ReadClusterPolicy(store)
+	require.ErrorContains(t, apply(transition(false)), "must activate")
+	require.NoError(t, apply(transition(true)))
+	activated, err := query.ReadClusterPolicy(store)
 	require.NoError(t, err)
-	require.True(t, pending.GetCapabilityActivations()[0].GetRequested())
-	require.False(t, pending.GetCapabilityActivations()[0].GetActive())
+	require.True(t, activated.GetCapabilityActivations()[0].GetActive())
 	machine = recoverMachineOnStore(t, store)
-	require.True(t, pending.EqualVT(machine.State.ClusterPolicy))
+	require.True(t, activated.EqualVT(machine.State.ClusterPolicy))
 	require.NoError(t, apply(control(configuration)))
 	invalid := configuration.CloneVT()
 	invalid.CapabilityActivations = []*commonpb.CapabilityActivation{{Id: 2, Active: true}}
@@ -52,7 +51,7 @@ func TestControlStateIndependentRevisionsAndRecovery(t *testing.T) {
 	conflict.QueryCheckpointLimit++
 	var revisionConflict *domain.ErrClusterPolicyRevisionConflict
 	require.ErrorAs(t, apply(control(conflict)), &revisionConflict)
-	require.NoError(t, apply(transition(false)), "repeated request cannot deactivate")
+	require.ErrorContains(t, apply(transition(false)), "must activate", "deactivation is rejected")
 	configuration.Revision++
 	configuration.QueryCheckpointLimit++
 	require.NoError(t, apply(control(configuration)))

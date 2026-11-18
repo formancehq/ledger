@@ -84,11 +84,13 @@ is required. Keep the ordinary `ledger run` flags; there is no activation flag.
 The supported registry is empty until a separate feature registers an ID.
 
 Once every current member advertises a registered ID, the leader automatically
-commits request and activation controls. Ordinary configuration keeps its own
+commits a single activation control. Ordinary configuration keeps its own
 revision and proceeds independently. All audited order batches wait during activation,
 including immediately after drain release, and honors its original deadline.
-Requested state survives restart and leader change; it cannot be cancelled or
-downgraded. New members must support both requested and active IDs.
+Committed activation survives restart and leader change; it cannot be cancelled
+or downgraded. An interrupted uncommitted attempt is reevaluated from current
+membership after leader readiness. New members must support active IDs; membership
+changes wait for an in-flight activation to apply. No persistent request state exists.
 
 After RC.4 is published and this change is integrated into `release/v3.0`, run
 the stopped-upgrade harness from a clean checkout:

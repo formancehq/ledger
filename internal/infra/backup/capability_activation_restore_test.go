@@ -14,34 +14,36 @@ import (
 	"github.com/formancehq/ledger/v3/internal/query"
 )
 
-func TestCapabilityActivationPendingIncrementalRestore(t *testing.T) {
+func TestCapabilityActivationDirectIncrementalRestore(t *testing.T) {
 	t.Parallel()
 	source, store, _ := newSigningParityMachine(t)
 	storage := newInMemoryBackupStorage()
-	_, err := RunBackup(t.Context(), testLogger(), store, storage, "pending", "full")
+	_, err := RunBackup(t.Context(), testLogger(), store, storage, "direct", "full")
 	require.NoError(t, err)
-	for _, active := range []bool{false, true} {
+	for _, capabilityID := range []uint32{1, 2} {
 		index := source.State.LastAppliedIndex + 1
 		proposal := &raftcmdpb.Proposal{Id: index,
 			CallerSnapshot: commands.SystemCallerSnapshot(commands.ComponentClusterPolicy),
-			Payload:        &raftcmdpb.Proposal_TransitionCapability{TransitionCapability: &commonpb.CapabilityActivation{Id: 1, Active: active}},
+			Payload:        &raftcmdpb.Proposal_TransitionCapability{TransitionCapability: &commonpb.CapabilityActivation{Id: capabilityID, Active: true}},
 		}
 		data, err := proposal.MarshalVT()
 		require.NoError(t, err)
 		result, err := source.ApplyEntries(t.Context(), store, &raftpb.Entry{Index: new(index), Term: new(uint64(1)), Type: new(raftpb.EntryNormal), Data: data})
 		require.NoError(t, err)
 		require.NoError(t, result.Results[0].Error)
-		incremental, err := RunIncrementalBackup(t.Context(), testLogger(), store, storage, "pending", 0)
+		incremental, err := RunIncrementalBackup(t.Context(), testLogger(), store, storage, "direct", 0)
 		require.NoError(t, err)
 		require.Zero(t, incremental.LogEntriesExported)
-		manifest, err := ReadManifest(t.Context(), storage, ManifestKey("pending"))
+		manifest, err := ReadManifest(t.Context(), storage, ManifestKey("direct"))
 		require.NoError(t, err)
 		restored := restoreAuditKeyCheckpoint(t, storage, manifest)
 		policy, err := query.ReadClusterPolicy(restored)
 		require.NoError(t, err)
 		require.True(t, proto.Equal(source.State.ClusterPolicy, policy))
-		require.True(t, policy.GetCapabilityActivations()[0].GetRequested())
-		require.Equal(t, active, policy.GetCapabilityActivations()[0].GetActive())
+		require.Len(t, policy.GetCapabilityActivations(), int(capabilityID))
+		for _, activation := range policy.GetCapabilityActivations() {
+			require.True(t, activation.GetActive())
+		}
 		auditKeyCheckerClean(t, restored)
 	}
 }
@@ -57,7 +59,7 @@ func TestControlStateManifestRejectsLegacyDecoder(t *testing.T) {
 			Data         []byte `json:"data"`
 		} `json:"clusterPolicy"`
 	}
-	require.Error(t, json.Unmarshal(data, &legacy), "the released reader must fail rather than silently discard pending state")
+	require.Error(t, json.Unmarshal(data, &legacy), "the released reader must fail rather than silently discard capability state")
 	roundtrip, err := DecodeManifest(data)
 	require.NoError(t, err)
 	require.Equal(t, current.ClusterPolicy, roundtrip.ClusterPolicy)

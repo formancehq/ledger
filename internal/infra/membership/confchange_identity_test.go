@@ -155,14 +155,14 @@ func TestWriteConfChangeRejectsIncompleteRegistration(t *testing.T) {
 	}
 }
 
-func TestRequestedCapabilityFencesMembershipRegistration(t *testing.T) {
+func TestActiveCapabilityFencesMembershipRegistration(t *testing.T) {
 	t.Parallel()
 	for _, kind := range []raftpb.ConfChangeType{raftpb.ConfChangeAddLearnerNode, raftpb.ConfChangeUpdateNode} {
 		for _, source := range []string{"committed provider", "effective apply policy"} {
 			t.Run(kind.String()+"/"+source, func(t *testing.T) {
 				t.Parallel()
 				policy := &commonpb.ClusterPolicy{
-					CapabilityActivations: []*commonpb.CapabilityActivation{{Id: 7, Requested: true}},
+					CapabilityActivations: []*commonpb.CapabilityActivation{{Id: 7, Active: true}},
 				}
 				member := newTestMembership(t)
 				member.requiredCapabilities = nil

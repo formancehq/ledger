@@ -26779,7 +26779,6 @@ func NewCapabilityStateListReader(s []*CapabilityState) CapabilityStateListReade
 type CapabilityActivationReader interface {
 	GetId() uint32
 	GetActive() bool
-	GetRequested() bool
 	Mutate() *CapabilityActivation
 }
 
@@ -26791,10 +26790,6 @@ func (r *capabilityActivationReadonly) GetId() uint32 {
 
 func (r *capabilityActivationReadonly) GetActive() bool {
 	return (*CapabilityActivation)(r).GetActive()
-}
-
-func (r *capabilityActivationReadonly) GetRequested() bool {
-	return (*CapabilityActivation)(r).GetRequested()
 }
 
 func (r *capabilityActivationReadonly) Mutate() *CapabilityActivation {

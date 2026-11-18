@@ -52,27 +52,34 @@ trust model of this barrier.
 
 ## Capabilities that change FSM semantics
 
-Requested and active state live in a separate bounded aggregate. Activation
-requires a committed request and never consumes a configuration revision.
+Active state lives in a separate bounded aggregate. Activation commits directly
+in one Raft entry and never consumes a configuration revision.
 SetClusterPolicy retains its original identity and uses a configuration-only
 marker to merge with the latest applied capability state inside the
-FSM, so concurrent configuration cannot overwrite either transition. Repeated
-requests and activation are idempotent. The next leader resumes pending intent
-after its readiness barrier. A historical inactive entry is eligible for
-automatic activation once membership is ready; it is not itself durable intent.
+FSM, so concurrent configuration cannot overwrite activation. Repeated activation
+is idempotent; deactivation is rejected. A historical inactive entry is eligible
+for automatic activation once membership is ready. There is no durable intent
+before activation commits.
 
 The membership coordinator fences membership changes through apply, and the
 serialized Node.Propose gate rechecks member evidence before index allocation.
-Before request commit, the same gate pauses all audited order batches whenever all
-current members support a locally implemented but inactive capability. After
-request commit, durable intent keeps this barrier until activation commits.
+The same gate pauses all audited order batches whenever all current members
+support a locally implemented but inactive capability. The capability remains
+inactive in the committed view until activation applies, and membership is
+locked through apply, so this barrier covers the entire in-flight interval.
 This includes operational orders such as maintenance-mode changes and query
 checkpoints. Native configuration and capability controls bypass this barrier. This
 conservative MVP avoids feature-specific admission predicates and closes the
 drain-release interval for every future capability. Admission retries only a
 pre-submission activation-pending rejection, after releasing preparation guards.
-New membership announcements must support requested as well as active IDs, so
-an incompatible join cannot strand a committed request.
+New membership announcements must support active IDs. Before activation is
+submitted, an incompatible membership change may win serialization; the final
+support check then refuses activation. After submission, membership waits for
+durable apply and must respect the active ID. A new leader waits for its FSM
+readiness barrier before admission: inherited activation is either applied or
+absent, then current membership is reevaluated. Lost responses and restart never
+cause a committed activation to be undone. No intermediate `requested` state is
+needed; the unreleased draft field is removed without reassigning its number.
 
 The supported registry remains empty in this change. A feature must separately
 register its stable ID, select its proposal marker at preparation, and dispatch
@@ -208,7 +215,7 @@ treated as transient and the node keeps retrying in the background until a
 compatible peer is available. The capability-dependent protocol cutover is
 reserved for the coordinated rc.3/rc.4 restart, after every node runs the
 barrier-aware binary.
-The leader validates the identity and capability evidence against the requested and active
+The leader validates the identity and capability evidence against the active
 policy, then proposes a
 `ConfChangeUpdateNode` containing the current endpoints and capabilities.
 
@@ -220,7 +227,7 @@ uses `JoinAsLearner` and `ConfChangeAddLearnerNode`.
 The cluster-policy reconciler preserves committed capability activations while
 reconciling ordinary policy configuration; it does not arm capabilities from
 membership advertisements. The separate activation worker automatically
-requests activation once every member has committed support evidence after
+commits activation once every member has committed support evidence after
 the coordinated restart. A future feature must register a stable activation ID,
 stamp its final persisted proposals, and provide deterministic replay semantics.
 The generic pending-admission fence already covers all audited order batches;

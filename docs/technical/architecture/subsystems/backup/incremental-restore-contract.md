@@ -188,7 +188,7 @@ Native `SetClusterPolicyProposal` has no business log or audit entry.
 `Manifest.clusterPolicy` is an optional snapshot containing deterministic policy
 protobuf bytes and the source `appliedIndex`. New manifests encode `data` as
 `{"version":1,"policy":"<base64>"}`; the released RC.4 bytes decoder rejects
-that known-field type instead of ignoring pending intent. New readers accept
+that known-field type instead of ignoring activation state. New readers accept
 the legacy base64 form and reject unknown envelope versions. Full checkpoints
 include both schema-3 control rows and publish this snapshot too.
 Incremental backup reads policy, applied index and history endpoints from one
@@ -207,7 +207,7 @@ applies history exports, rebuilds their derived state (including legacy policy
 logs), then commits the operational policy override. Only successful staging
 restore may be activated. Failure leaves staging incomplete and must not activate
 it. Released manifests omit the override and preserve checkpoint/legacy-delta
-behavior. Both requested and active capability state survive restore, without
+behavior. Monotonic active capability state survives restore, without
 source-member readiness evidence. See the [migration and rollback
 contract](../storage/control-state.md). The source applied index orders backup captures; it is not a target
 Raft index to install during cross-cluster restore.

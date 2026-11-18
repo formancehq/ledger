@@ -135,6 +135,9 @@ func (p *RequestProcessor) ProcessCapabilityTransition(transition *commonpb.Capa
 	if transition == nil || transition.GetId() == 0 {
 		return &domain.ErrClusterPolicyInvalid{Detail: "capability transition requires a non-zero id"}
 	}
+	if !transition.GetActive() {
+		return &domain.ErrClusterPolicyInvalid{Detail: "capability transition must activate"}
+	}
 	scope, err := factory.NewScope(nil)
 	if err != nil {
 		return &domain.ErrInvalidExecutionPlan{Reason_: err.Error()}
@@ -147,19 +150,12 @@ func (p *RequestProcessor) ProcessCapabilityTransition(transition *commonpb.Capa
 		if current.GetActive() {
 			return nil
 		}
-		if transition.GetActive() && !current.GetRequested() {
-			return &domain.ErrClusterPolicyInvalid{Detail: "capability must be requested before activation"}
-		}
-		current.Requested = true
-		current.Active = transition.GetActive()
+		current.Active = true
 		scope.SetClusterPolicy(desired)
 
 		return nil
 	}
-	if transition.GetActive() {
-		return &domain.ErrClusterPolicyInvalid{Detail: "capability must be requested before activation"}
-	}
-	desired.CapabilityActivations = append(desired.CapabilityActivations, &commonpb.CapabilityActivation{Id: transition.GetId(), Requested: true})
+	desired.CapabilityActivations = append(desired.CapabilityActivations, &commonpb.CapabilityActivation{Id: transition.GetId(), Active: true})
 	scope.SetClusterPolicy(desired)
 
 	return nil

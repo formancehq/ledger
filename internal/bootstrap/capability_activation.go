@@ -26,7 +26,7 @@ func activateReadyCapabilities(ctx context.Context, admit func(context.Context, 
 	}
 	states := make(map[uint32]bool)
 	for _, activation := range policy.GetCapabilityActivations() {
-		states[activation.GetId()] = activation.GetActive() || activation.GetRequested()
+		states[activation.GetId()] = activation.GetActive()
 	}
 	ready, err := capabilities.Ready(supported, members())
 	if err != nil {
@@ -34,24 +34,9 @@ func activateReadyCapabilities(ctx context.Context, admit func(context.Context, 
 	}
 	for _, id := range ready {
 		if !states[uint32(id)] {
-			if _, err := admit(ctx, &commonpb.CapabilityActivation{Id: uint32(id), Requested: true}); err != nil {
+			if _, err := admit(ctx, &commonpb.CapabilityActivation{Id: uint32(id), Active: true}); err != nil {
 				return err
 			}
-		}
-	}
-	policy, err = query.ReadClusterPolicy(store)
-	if err != nil {
-		return err
-	}
-	for _, activation := range policy.GetCapabilityActivations() {
-		if activation.GetActive() || !activation.GetRequested() {
-			continue
-		}
-		if err := capabilities.ValidateActive(supported, []capabilities.CapabilityID{capabilities.CapabilityID(activation.GetId())}, members()); err != nil {
-			return err
-		}
-		if _, err := admit(ctx, &commonpb.CapabilityActivation{Id: activation.GetId(), Active: true}); err != nil {
-			return err
 		}
 	}
 

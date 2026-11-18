@@ -1265,11 +1265,6 @@ func validateProposalCapabilityAdmissionWithSupported(policy *commonpb.ClusterPo
 		return err
 	}
 	if proposal.HasBusinessOrders() {
-		for _, activation := range policy.GetCapabilityActivations() {
-			if activation.GetRequested() && !activation.GetActive() {
-				return fmt.Errorf("%w: committed activation intent for capability %d", capabilities.ErrActivationPending, activation.GetId())
-			}
-		}
 		ready, err := capabilities.Ready(supported, members)
 		if err != nil {
 			return err

@@ -9,7 +9,7 @@ Proposal
   payload:
     batch (11): ExecutionBatch { orders (1), technical_updates (2) }
     set_cluster_policy (12): SetClusterPolicyProposal { policy (1), configuration_only (2) }
-    transition_capability (13): CapabilityActivation { id (1), active (2), requested (3) }
+    transition_capability (13): CapabilityActivation { id (1), active (2) }
 ```
 
 Policy controls persist operational state without business audit or logs. Technical updates
@@ -45,7 +45,7 @@ Internal producers own payload construction; admission and processors own
 business validation. There is no transitional shape check or old-format write
 adapter. The RC.4 to RC.5 stopped boundary additionally introduces targeted
 configuration and capability controls, independent configuration revisions,
-and durable activation requests. Its startup migration and automatic activation
+and direct monotonic activation controls. Its startup migration and automatic activation
 are specified in the [control-state contract](../storage/control-state.md).
 
 ## Execution and technical updates

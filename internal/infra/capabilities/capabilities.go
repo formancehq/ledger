@@ -41,7 +41,7 @@ func SupportedIDs() []CapabilityID {
 func MembershipRequiredIDs(policy *commonpb.ClusterPolicy) []uint32 {
 	var required []uint32
 	for _, activation := range policy.GetCapabilityActivations() {
-		if activation.GetActive() || activation.GetRequested() {
+		if activation.GetActive() {
 			required = append(required, activation.GetId())
 		}
 	}
@@ -210,17 +210,12 @@ func ActiveIDs(policy *commonpb.ClusterPolicy) []uint32 {
 	return active
 }
 
-// ValidateSupportedActive refuses active or requested capabilities this binary
+// ValidateSupportedActive refuses active capabilities this binary
 // cannot enforce. It is used at boot and after installing a leader checkpoint.
 func ValidateSupportedActive(policy *commonpb.ClusterPolicy, supported []CapabilityID) error {
 	for _, id := range ActiveIDs(policy) {
 		if !slices.Contains(supported, CapabilityID(id)) {
 			return fmt.Errorf("active capability %d is not supported by this binary", id)
-		}
-	}
-	for _, activation := range policy.GetCapabilityActivations() {
-		if activation.GetRequested() && !slices.Contains(supported, CapabilityID(activation.GetId())) {
-			return fmt.Errorf("requested capability %d is not supported by this binary", activation.GetId())
 		}
 	}
 

@@ -22225,7 +22225,6 @@ type CapabilityActivation struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Id            uint32                 `protobuf:"fixed32,1,opt,name=id,proto3" json:"id,omitempty"`
 	Active        bool                   `protobuf:"varint,2,opt,name=active,proto3" json:"active,omitempty"`
-	Requested     bool                   `protobuf:"varint,3,opt,name=requested,proto3" json:"requested,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -22270,13 +22269,6 @@ func (x *CapabilityActivation) GetId() uint32 {
 func (x *CapabilityActivation) GetActive() bool {
 	if x != nil {
 		return x.Active
-	}
-	return false
-}
-
-func (x *CapabilityActivation) GetRequested() bool {
-	if x != nil {
-		return x.Requested
 	}
 	return false
 }
@@ -23913,11 +23905,10 @@ const file_common_proto_rawDesc = "" +
 	"\areverse\x18\x04 \x01(\bR\areverse\x12+\n" +
 	"\x06filter\x18\x05 \x01(\v2\x13.common.QueryFilterR\x06filter\"Q\n" +
 	"\x0fCapabilityState\x12>\n" +
-	"\vactivations\x18\x01 \x03(\v2\x1c.common.CapabilityActivationR\vactivations\"\\\n" +
+	"\vactivations\x18\x01 \x03(\v2\x1c.common.CapabilityActivationR\vactivations\">\n" +
 	"\x14CapabilityActivation\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\aR\x02id\x12\x16\n" +
-	"\x06active\x18\x02 \x01(\bR\x06active\x12\x1c\n" +
-	"\trequested\x18\x03 \x01(\bR\trequested*\xbb\x03\n" +
+	"\x06active\x18\x02 \x01(\bR\x06active*\xbb\x03\n" +
 	"\tAuthScope\x12\x1a\n" +
 	"\x16AUTH_SCOPE_UNSPECIFIED\x10\x00\x12\x1a\n" +
 	"\x16AUTH_SCOPE_LEDGER_READ\x10\x01\x12\x1b\n" +
