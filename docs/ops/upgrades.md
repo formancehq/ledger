@@ -32,7 +32,10 @@ Old and new voters must communicate and apply each committed entry identically
 while they coexist. The embedded operator requires a complete stop at the
 `v3.0.0-rc.4` boundary because RC.3 cannot execute native proposal payloads
 and encodes [mirror asset mappings](#mirror-asset-mappings) differently.
-`rc.3` includes the drain barrier used for this upgrade. RC adjacency remains mandatory.
+`rc.3` includes the drain barrier used for this upgrade. The `v3.0.0-rc.5`
+boundary is also a complete stop because RC.4 and RC.5 voters apply a keyed
+batch carrying a [forwarded preload gap](#forwarded-preload-gaps) differently.
+RC adjacency remains mandatory.
 The `rc.1` to `rc.2` transition rolls one voter at a time with a maintenance
 barrier that pauses writes; it does not stop the whole cluster.
 The `rc.2` to `rc.3` transition remains rolling.
@@ -92,14 +95,14 @@ projections. Document the upgrade procedure and rollback boundary in the
 release notes. Delay the release if the target cannot read or migrate the source
 state.
 
-The upgrade classes below describe existing procedures. The operator boundary
-at `rc.4` selects a stopped restart from `rc.3`; rebuild or restore applies
-only to the cases listed below.
+The upgrade classes below describe existing procedures. The operator
+boundaries at `rc.4` and `rc.5` select a stopped restart from `rc.3` and `rc.4`
+respectively; rebuild or restore applies only to the cases listed below.
 
 | Class | When it applies | Procedure |
 |-------|-----------------|-----------|
 | Rolling | Default between adjacent RCs on the same release line. | Restart followers one at a time, wait for each to catch up, transfer leadership to an upgraded voter, then restart the old leader. |
-| Operator-required stopped restart | An adjacent RC crossing a listed operator boundary; `rc.3` to `rc.4` crosses one. | Establish an operator-owned drain and verify its durable barrier on every member; retain the existing PVCs, delete the StatefulSet, wait until it and every old Pod are gone, then recreate it with the target image and the same claims. The cluster is unavailable throughout the stop. |
+| Operator-required stopped restart | An adjacent RC crossing a listed operator boundary; `rc.3` to `rc.4` and `rc.4` to `rc.5` cross one. | Establish an operator-owned drain and verify its durable barrier on every member; retain the existing PVCs, delete the StatefulSet, wait until it and every old Pod are gone, then recreate it with the target image and the same claims. The cluster is unavailable throughout the stop. |
 | Coordinated restart | A separate compatibility line that cannot safely mix binaries. | Enable maintenance mode, wait for every voter to apply the maintenance barrier durably, stop every node, replace all binaries, then restart without a mixed-version window. Preserve or migrate the released data. |
 | Migrate or restore | A separate line with a changed persisted or backup format, or development state before the first RC. | Follow a tested migration or restore a backup supported by the target release. A wipe or external rebuild is permitted only for unsupported pre-RC development state. Verify the complete state before serving writes. |
 
@@ -551,26 +554,38 @@ installation, backup/restore, rollback, or the dormant stopped-upgrade path.
 The pinned binary-level rc.1 test and relevant model, restore and migration
 suites remain separate gates.
 
-The same harness has a separate `rc3-to-rc4` transition for the mandatory
-operator-required stopped restart:
+The same harness has separate `rc3-to-rc4` and `rc4-to-rc5` transitions for
+the mandatory operator-required stopped restarts:
 
 ```bash
 UPGRADE_TRANSITION=rc3-to-rc4 RELEASE_BRANCH=release/v3.0 just test-release-operator-upgrade
 ```
 
-Run it after `v3.0.0-rc.3` has been published, against a release branch whose
-operator lists `v3.0.0-rc.4` as a mandatory stop boundary. The target operator
-and Ledger are built from one exact release-branch HEAD and tagged locally as
-rc.4; the harness publishes no tag
+```bash
+UPGRADE_TRANSITION=rc4-to-rc5 RELEASE_BRANCH=release/v3.0 just test-release-operator-upgrade
+```
+
+Each transition runs the same stopped-restart checks with its own source and
+target:
+
+| Transition | Published source | Operator boundary | Local target tag |
+|------------|------------------|-------------------|------------------|
+| `rc3-to-rc4` | `v3.0.0-rc.3` | `v3.0.0-rc.4` | rc.4 |
+| `rc4-to-rc5` | `v3.0.0-rc.4` | `v3.0.0-rc.5` | rc.5 |
+
+Run a transition after its source has been published, against a release branch
+whose operator lists its boundary. The target operator and Ledger are built
+from one exact release-branch HEAD and tagged locally with the target tag; the
+harness publishes no tag
 or image. This path requires the operator's drain barrier to advance past
 `Draining`, observes the StatefulSet and all old Pods absent before accepting
 any target Pod, and checks that the replacement StatefulSet has a new UID while
 PVC UIDs persist. It restarts a target voter to exercise replay, verifies the
 pre-upgrade account, commits another transaction, checks Raft progress and
 runs each voter's audit/derived-state checker after drain release. It fails
-against an operator without the rc.4 boundary or if the mandatory stop is
-skipped, so it is a release gate for the format-change PR, not evidence that
-rc.3 itself needs a stop. The rc.4 release still needs format-specific migration,
+against an operator without the transition's boundary or if the mandatory stop
+is skipped, so it is a release gate for the PR that adds the boundary, not
+evidence that the source release itself needs a stop. The rc.4 release still needs format-specific migration,
 snapshot, backup/restore and rollback validation outside this scenario.
 
 ## Coordinated Restart
@@ -613,6 +628,21 @@ this format.
 The first native payload appended to the WAL closes the rollback window for
 RC.3. Restarting RC.3 on that storage requires a separately validated recovery
 procedure. See the [proposal migration contract](../technical/architecture/subsystems/consensus/proposal-payloads.md).
+
+## Forwarded preload gaps
+
+The RC.4 to RC.5 transition requires the operator-owned stopped restart above.
+Admission forwards a keyed order whose dependency discovery failed, marked
+`OrderTechnical.preload_unavailable`. RC.4 rejects the whole batch with the
+uncommitted `PRELOAD_UNAVAILABLE` before executing any order. RC.5 executes the
+batch in sequence and fails the forwarded order at its own position, so an
+earlier order's definitive rejection is audited and frozen under the
+idempotency key. A mixed RC.4 and RC.5 cluster would therefore write different
+audit and idempotency state for the same committed entry. The drain applies
+every committed entry under RC.4 before any RC.5 voter starts. The change has
+no persisted, snapshot, backup or wire format effect, and existing audit and
+idempotency records stay valid. A cluster not managed by the operator must
+drain and stop every RC.4 member before starting any RC.5 member.
 
 ## Change-specific notes
 

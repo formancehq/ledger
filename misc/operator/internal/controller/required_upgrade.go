@@ -22,9 +22,13 @@ import (
 
 // rc.3 voters cannot apply proposal payloads, and voters before rc.4 encode
 // mirror asset mappings differently in the audited CreateLedger order. Stop
-// every rc.3 node before starting rc.4; RC adjacency is still checked by
+// every rc.3 node before starting rc.4. rc.4 voters reject a keyed batch that
+// carries a forwarded preload_unavailable order before executing any order,
+// while rc.5 voters fail it in sequence and freeze an earlier order's
+// definitive rejection, so the two apply such an entry differently: stop every
+// rc.4 node before starting rc.5. RC adjacency is still checked by
 // validateRCUpgrade.
-var mandatoryStopVersions = []string{"v3.0.0-rc.4"}
+var mandatoryStopVersions = []string{"v3.0.0-rc.4", "v3.0.0-rc.5"}
 
 const requiredUpgradePoll = 5 * time.Second
 

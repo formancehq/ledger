@@ -14,6 +14,7 @@ transition="${UPGRADE_TRANSITION:-rc2-to-rc3}"
 case "$transition" in
 	rc2-to-rc3) source_tag=v3.0.0-rc.2; target_tag=v3.0.0-rc.3; rejected_tag=v3.0.0-rc.1; rollout=rolling ;;
 	rc3-to-rc4) source_tag=v3.0.0-rc.3; target_tag=v3.0.0-rc.4; rejected_tag=v3.0.0-rc.2; rollout=stopped ;;
+	rc4-to-rc5) source_tag=v3.0.0-rc.4; target_tag=v3.0.0-rc.5; rejected_tag=v3.0.0-rc.3; rollout=stopped ;;
 	*) echo "unsupported upgrade transition: $transition" >&2; exit 2 ;;
 esac
 [ -z "$(git -C "$repo" status --porcelain)" ] || {
