@@ -295,11 +295,11 @@ func writeBulkResponse(w http.ResponseWriter, r *http.Request, elements []*servi
 			continue
 		}
 
+		if result.log == nil || result.log.GetData() == nil || result.log.GetData().GetPayload() == nil {
+			panic(emptyLogPayload("bulk", &commonpb.Log{Sequence: result.sequence}, nil))
+		}
 		if skipResponse {
 			requireAcknowledgementSequence(result.sequence)
-			if result.log.GetData() == nil || result.log.GetData().GetPayload() == nil {
-				panic(emptyLogPayload("bulk", &commonpb.Log{Sequence: result.sequence}, nil))
-			}
 			apiResults[i].Sequence = result.sequence
 		}
 

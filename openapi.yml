@@ -371,35 +371,35 @@ paths:
             GetCreatedLedger:
               operationId: v3GetLedger
               parameters:
-                ledgerName: '$response.body#/data/name'
+                ledgerName: '$request.path.ledgerName'
             DeleteCreatedLedger:
               operationId: v3DeleteLedger
               parameters:
-                ledgerName: '$response.body#/data/name'
+                ledgerName: '$request.path.ledgerName'
             GetLedgerStats:
               operationId: v3GetLedgerStats
               parameters:
-                ledgerName: '$response.body#/data/name'
+                ledgerName: '$request.path.ledgerName'
             CreateTransactionInLedger:
               operationId: v3CreateTransaction
               parameters:
-                ledgerName: '$response.body#/data/name'
+                ledgerName: '$request.path.ledgerName'
             ListLedgerAccounts:
               operationId: v3ListAccounts
               parameters:
-                ledgerName: '$response.body#/data/name'
+                ledgerName: '$request.path.ledgerName'
             ListLedgerLogs:
               operationId: v3ListLedgerLogs
               parameters:
-                ledgerName: '$response.body#/data/name'
+                ledgerName: '$request.path.ledgerName'
             SaveNumscriptInLedger:
               operationId: v3SaveNumscript
               parameters:
-                ledgerName: '$response.body#/data/name'
+                ledgerName: '$request.path.ledgerName'
             BulkInLedger:
               operationId: v3BulkOperations
               parameters:
-                ledgerName: '$response.body#/data/name'
+                ledgerName: '$request.path.ledgerName'
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
@@ -2152,7 +2152,7 @@ paths:
               operationId: v3GetNumscript
               parameters:
                 ledgerName: '$request.path.ledgerName'
-                name: '$response.body#/data/name'
+                name: '$request.path.name'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':

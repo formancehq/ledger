@@ -3,6 +3,7 @@ package http
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -155,41 +156,52 @@ func TestWriteResponse_InvalidOption(t *testing.T) {
 func TestWriteResponse_RejectsImpossibleAcknowledgements(t *testing.T) {
 	t.Parallel()
 	for _, path := range []string{"/v3/l1/transactions", "/v3/l1/indexes", "/v3/l1/bulk?atomic=true"} {
-		for _, bad := range []string{"nil", "missing", "zero-sequence", "missing-payload", "wrong-payload"} {
-			t.Run(path+"/"+bad, func(t *testing.T) {
-				t.Parallel()
-				entry := compactTransactionLog()
-				var logs []*commonpb.Log
-				switch bad {
-				case "nil":
-					logs = []*commonpb.Log{nil}
-				case "missing":
-				case "zero-sequence":
-					entry.Sequence = 0
-					logs = []*commonpb.Log{entry}
-				case "missing-payload":
-					entry.Payload = nil
-					logs = []*commonpb.Log{entry}
-				case "wrong-payload":
-					entry.Payload = &commonpb.LogPayload{Type: &commonpb.LogPayload_CreateLedger{CreateLedger: &commonpb.CreatedLedgerLog{Name: "l1"}}}
-					logs = []*commonpb.Log{entry}
+		for _, bad := range []string{"nil", "missing", "zero-sequence", "missing-payload", "missing-index-body", "wrong-payload"} {
+			for _, compact := range []bool{false, true} {
+				if bad == "missing-index-body" && !strings.Contains(path, "indexes") {
+					continue
 				}
-				backend := NewMockBackend(gomock.NewController(t))
-				backend.EXPECT().Apply(gomock.Any(), gomock.Any()).Return(&domain.ApplyResult{Logs: logs}, nil)
-				handler := NewHandler(logging.Testing(), backend, internalauth.AuthConfig{}, version.Info{})
-				body := `{}`
-				separator := "?"
-				if strings.Contains(path, "bulk") {
-					body = `[{"action":"CREATE_TRANSACTION","data":{}}]`
-					separator = "&"
-				} else if strings.Contains(path, "indexes") {
-					body = `{"id":"metadata:TARGET_TYPE_ACCOUNT:color"}`
+				if !compact && bad != "missing-payload" && bad != "missing-index-body" {
+					continue
 				}
-				w := httptest.NewRecorder()
-				handler.ServeHTTP(w, httptest.NewRequest(http.MethodPost, path+separator+"skipResponse=true", strings.NewReader(body)))
-				require.Equal(t, http.StatusInternalServerError, w.Code, w.Body.String())
-				require.NotContains(t, w.Body.String(), "signed-payload-canary")
-			})
+				t.Run(fmt.Sprintf("%s/%s/compact=%t", path, bad, compact), func(t *testing.T) {
+					t.Parallel()
+					entry := compactTransactionLog()
+					var logs []*commonpb.Log
+					switch bad {
+					case "nil":
+						logs = []*commonpb.Log{nil}
+					case "missing":
+					case "zero-sequence":
+						entry.Sequence = 0
+						logs = []*commonpb.Log{entry}
+					case "missing-payload":
+						entry.Payload = nil
+						logs = []*commonpb.Log{entry}
+					case "missing-index-body":
+						entry.Payload = &commonpb.LogPayload{Type: &commonpb.LogPayload_Apply{Apply: &commonpb.ApplyLedgerLog{Log: &commonpb.LedgerLog{Data: &commonpb.LedgerLogPayload{Payload: &commonpb.LedgerLogPayload_CreateIndex{}}}}}}
+						logs = []*commonpb.Log{entry}
+					case "wrong-payload":
+						entry.Payload = &commonpb.LogPayload{Type: &commonpb.LogPayload_CreateLedger{CreateLedger: &commonpb.CreatedLedgerLog{Name: "l1"}}}
+						logs = []*commonpb.Log{entry}
+					}
+					backend := NewMockBackend(gomock.NewController(t))
+					backend.EXPECT().Apply(gomock.Any(), gomock.Any()).Return(&domain.ApplyResult{Logs: logs}, nil)
+					handler := NewHandler(logging.Testing(), backend, internalauth.AuthConfig{}, version.Info{})
+					body := `{}`
+					separator := "?"
+					if strings.Contains(path, "bulk") {
+						body = `[{"action":"CREATE_TRANSACTION","data":{}}]`
+						separator = "&"
+					} else if strings.Contains(path, "indexes") {
+						body = `{"id":"metadata:TARGET_TYPE_ACCOUNT:color"}`
+					}
+					w := httptest.NewRecorder()
+					handler.ServeHTTP(w, httptest.NewRequest(http.MethodPost, fmt.Sprintf("%s%sskipResponse=%t", path, separator, compact), strings.NewReader(body)))
+					require.Equal(t, http.StatusInternalServerError, w.Code, w.Body.String())
+					require.NotContains(t, w.Body.String(), "signed-payload-canary")
+				})
+			}
 		}
 	}
 }

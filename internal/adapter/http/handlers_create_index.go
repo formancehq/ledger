@@ -68,12 +68,12 @@ func (s *Server) handleCreateIndex(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	details := map[string]any{"ledger": ledgerName}
+	entry := exactlyOneLog("create-index", logs, details)
+	if entry.GetPayload().GetApply().GetLog().GetData().GetCreateIndex() == nil {
+		panic(unexpectedLogPayload("create-index", entry, details))
+	}
 	if queryParamBool(r, "skipResponse") {
-		details := map[string]any{"ledger": ledgerName}
-		entry := exactlyOneLog("create-index", logs, details)
-		if entry.GetPayload().GetApply().GetLog().GetData().GetCreateIndex() == nil {
-			panic(unexpectedLogPayload("create-index", entry, details))
-		}
 		writeMutationCreated(w, r, entry, nil)
 
 		return

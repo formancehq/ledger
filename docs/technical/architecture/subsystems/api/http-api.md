@@ -384,6 +384,10 @@ lossless JSON decoder or retain the raw sequence token, rather than converting
 an already rounded number to bigint. The acknowledgement is unsigned and contains no signed-log
 receipt. Full internal logs remain available until outcome validation and
 response projection complete; the projection does not modify those logs.
+The OpenAPI links for created ledgers and saved numscripts use request path
+parameters and work in either response mode. Created-transaction links require
+the generated transaction ID in the full response, so they apply only when
+`skipResponse` is omitted or false.
 
 gRPC requests, signatures, accepted business payloads, audit, persistence and
 idempotency identity are unchanged. A retained keyed retry can change the HTTP
