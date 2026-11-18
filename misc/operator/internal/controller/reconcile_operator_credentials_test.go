@@ -63,6 +63,66 @@ func TestReconcileOperatorCredentialsDoesNotPersistRuntimeDefaults(t *testing.T)
 	require.Equal(t, operatorCredentialsSelectorValue(cluster), persisted.Labels[labelOperatorCredential])
 }
 
+func TestReconcileOperatorCredentialsPreservesRuntimeDefaultsWhenRepairingReadySelector(t *testing.T) {
+	t.Setenv("LEDGER_IMAGE_TAG", "v3.0.0-rc.5")
+	scheme := authKeysScheme(t)
+	cluster := authEnabledCluster("ledger", "tenant-a", nil)
+	credentials := &ledgerv1alpha1.Credentials{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: operatorCredentialsName(cluster),
+			Labels: map[string]string{
+				labelManagedBy:          "ledger-operator",
+				labelOperatorCredential: operatorCredentialsSelectorValue(cluster),
+			},
+			Annotations: map[string]string{annotationOperatorCluster: cluster.Namespace + "/" + cluster.Name},
+		},
+		Spec: ledgerv1alpha1.CredentialsSpec{
+			Scopes: append([]string(nil), operatorCredentialScopes...),
+			Selector: metav1.LabelSelector{MatchLabels: map[string]string{
+				labelOperatorCredential: operatorCredentialsSelectorValue(cluster),
+			}},
+		},
+		Status: ledgerv1alpha1.CredentialsStatus{
+			Phase:                 "Ready",
+			DistributedSecretRefs: []ledgerv1alpha1.SecretReference{{Namespace: cluster.Namespace, Name: "operator-key"}},
+		},
+	}
+	base := fake.NewClientBuilder().WithScheme(scheme).WithObjects(cluster, credentials).Build()
+	r := &ClusterReconciler{
+		Client: interceptor.NewClient(base, interceptor.Funcs{
+			Patch: func(ctx context.Context, c client.WithWatch, obj client.Object, patch client.Patch, opts ...client.PatchOption) error {
+				if err := c.Patch(ctx, obj, patch, opts...); err != nil {
+					return err
+				}
+				// The real API client decodes the server response into the patched
+				// object. Simulate that replacement; the fake client does not.
+				stored := &ledgerv1alpha1.Cluster{}
+				if err := c.Get(ctx, client.ObjectKeyFromObject(obj), stored); err != nil {
+					return err
+				}
+				*obj.(*ledgerv1alpha1.Cluster) = *stored
+				return nil
+			},
+		}),
+		Scheme: scheme,
+	}
+
+	applyDefaults(cluster)
+	ready, err := r.reconcileOperatorCredentials(t.Context(), cluster)
+	require.NoError(t, err)
+	require.True(t, ready)
+	require.Equal(t, operatorCredentialsSelectorValue(cluster), cluster.Labels[labelOperatorCredential])
+	require.Equal(t, "ghcr.io/formancehq/ledger", cluster.Spec.Image.Repository)
+	require.Equal(t, "v3.0.0-rc.5", cluster.Spec.Image.Tag)
+
+	persisted := &ledgerv1alpha1.Cluster{}
+	require.NoError(t, r.Get(t.Context(), client.ObjectKeyFromObject(cluster), persisted))
+	require.Equal(t, persisted.ResourceVersion, cluster.ResourceVersion)
+	require.Empty(t, persisted.Spec.Image.Repository)
+	require.Empty(t, persisted.Spec.Image.Tag)
+	require.Equal(t, operatorCredentialsSelectorValue(cluster), persisted.Labels[labelOperatorCredential])
+}
+
 func TestResolveMatchedClustersRestrictsOperatorCredentialsToOwner(t *testing.T) {
 	scheme := authKeysScheme(t)
 	owner := authEnabledCluster("ledger", "tenant-a", map[string]string{"shared": "yes"})

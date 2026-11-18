@@ -59,15 +59,23 @@ func (r *ClusterReconciler) reconcileOperatorCredentials(ctx context.Context, le
 	}
 
 	selectorValue := operatorCredentialsSelectorValue(ledger)
-	if ledger.Labels == nil {
-		ledger.Labels = make(map[string]string)
-	}
 	if ledger.Labels[labelOperatorCredential] != selectorValue {
 		before := ledger.DeepCopy()
-		ledger.Labels[labelOperatorCredential] = selectorValue
-		if err := r.Patch(ctx, ledger, client.MergeFromWithOptions(before, client.MergeFromWithOptimisticLock{})); err != nil {
+		patched := ledger.DeepCopy()
+		if patched.Labels == nil {
+			patched.Labels = make(map[string]string)
+		}
+		patched.Labels[labelOperatorCredential] = selectorValue
+		// The API response replaces the patched object. Keep the effective
+		// runtime defaults on ledger for the rest of this reconcile.
+		if err := r.Patch(ctx, patched, client.MergeFromWithOptions(before, client.MergeFromWithOptimisticLock{})); err != nil {
 			return false, fmt.Errorf("persisting operator Credentials selector label: %w", err)
 		}
+		if ledger.Labels == nil {
+			ledger.Labels = make(map[string]string)
+		}
+		ledger.Labels[labelOperatorCredential] = selectorValue
+		ledger.ResourceVersion = patched.ResourceVersion
 	}
 
 	credentials := &ledgerv1alpha1.Credentials{ObjectMeta: metav1.ObjectMeta{Name: credentialsName}}
