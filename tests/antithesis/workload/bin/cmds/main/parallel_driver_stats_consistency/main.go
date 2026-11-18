@@ -68,7 +68,10 @@ func main() {
 		for _, vol := range aggResp.GetVolumes() {
 			input, output, err := vol.Totals()
 			if err != nil {
-				log.Printf("AggregateVolumes returned a malformed total: %s", err)
+				assert.Unreachable("AggregateVolumes returned a malformed total", statsDetails.With(internal.Details{
+					"asset": vol.GetAsset(),
+					"error": err,
+				}))
 
 				return
 			}
