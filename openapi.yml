@@ -4863,6 +4863,14 @@ components:
         ledger:
           type: string
       type: object
+    AtomicApplyDeleteKVRequest:
+      additionalProperties: false
+      properties:
+        key:
+          type: string
+        ledger:
+          type: string
+      type: object
     AtomicApplyDeleteLedgerRequest:
       additionalProperties: false
       properties:
@@ -5456,6 +5464,18 @@ components:
         ledger:
           type: string
       type: object
+    AtomicApplyPutKVRequest:
+      additionalProperties: false
+      properties:
+        key:
+          type: string
+        ledger:
+          type: string
+        value:
+          type: string
+          format: byte
+          description: Base64-encoded opaque value bytes.
+      type: object
     AtomicApplyQueryFilter:
       additionalProperties: false
       allOf:
@@ -5630,6 +5650,10 @@ components:
                 - saveLedgerMetadata
             - required:
                 - deleteLedgerMetadata
+            - required:
+                - putKv
+            - required:
+                - deleteKv
       properties:
         addAccountType:
           $ref: '#/components/schemas/AtomicApplyAddAccountTypeLedgerRequest'
@@ -5647,6 +5671,8 @@ components:
           $ref: '#/components/schemas/AtomicApplyCreateQueryCheckpointRequest'
         deleteLedger:
           $ref: '#/components/schemas/AtomicApplyDeleteLedgerRequest'
+        deleteKv:
+          $ref: '#/components/schemas/AtomicApplyDeleteKVRequest'
         deleteLedgerMetadata:
           $ref: '#/components/schemas/AtomicApplyDeleteLedgerMetadataRequest'
         deletePreparedQuery:
@@ -5659,6 +5685,8 @@ components:
           $ref: '#/components/schemas/AtomicApplyDropIndexRequest'
         promoteLedger:
           $ref: '#/components/schemas/AtomicApplyPromoteLedgerRequest'
+        putKv:
+          $ref: '#/components/schemas/AtomicApplyPutKVRequest'
         registerSigningKey:
           $ref: '#/components/schemas/AtomicApplyRegisterSigningKeyRequest'
         removeAccountType:
