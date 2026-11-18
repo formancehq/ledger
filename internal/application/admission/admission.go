@@ -511,6 +511,9 @@ func (a *Admission) AdmitCapabilityTransition(ctx context.Context, transition *c
 	if transition == nil || transition.GetId() == 0 {
 		return nil, errors.New("capability transition requires a non-zero id")
 	}
+	if !transition.GetActive() {
+		return nil, errors.New("capability transition must activate")
+	}
 
 	return a.admit(ctx, func(ctx context.Context, caller *commonpb.CallerSnapshot) (*preparedAdmission, error) {
 		command := commands.NewCommand()

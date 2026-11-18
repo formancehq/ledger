@@ -2880,5 +2880,4 @@ message CapabilityState {
 message CapabilityActivation {
   fixed32 id = 1;
   bool active = 2;
-  bool requested = 3;
 }

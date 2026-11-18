@@ -162,7 +162,7 @@ func TestNodeHookStopCancellationRetainsRealCommitDrain(t *testing.T) {
 	require.Positive(t, n.LastPersistedIndex())
 }
 
-func newHookCommitDrainNode(t *testing.T, notifier state.Notifier) (*observedDrainNode, *dal.Store) {
+func newHookCommitDrainNode(t *testing.T, notifier state.Notifier, options ...node.NodeOption) (*observedDrainNode, *dal.Store) {
 	t.Helper()
 	logger := logging.Testing()
 	meters := noop.NewMeterProvider()
@@ -213,7 +213,7 @@ func newHookCommitDrainNode(t *testing.T, notifier state.Notifier) (*observedDra
 	raftNode, err := node.NewNode(node.NodeConfig{
 		NodeID: 1, AdvertiseAddr: "node-1:7000", ServiceAdvertiseAddr: "node-1:8000", InstanceID: instanceID,
 		TickInterval: time.Millisecond, ProcessingTickInterval: time.Millisecond, MaintenanceInterval: time.Hour,
-	}, raftTransport, applier, logger, meter, w, machine, recovery, synchronizer, member, responses)
+	}, raftTransport, applier, logger, meter, w, machine, recovery, synchronizer, member, responses, options...)
 	require.NoError(t, err)
 
 	return &observedDrainNode{Node: raftNode, runDone: make(chan struct{}), stopReturned: make(chan error, 1)}, store

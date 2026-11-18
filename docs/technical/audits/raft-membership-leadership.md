@@ -82,14 +82,18 @@ revisions. ClusterPolicy remains the flag-derived aggregate at its original
 key; current field-12 controls set `configuration_only` and merge committed
 capabilities, while omitted-marker historical controls keep their replay meaning.
 Automatic discovery must check every voter and learner; final
-serialized admission must recheck both request and activation against current
-membership. Requested IDs become membership requirements immediately after
-commit. Business proposals wait from readiness through activation, including
+serialized admission must recheck activation against current membership.
+Activation uses one entry, without durable intermediate intent. Membership is
+fenced through durable apply; active IDs then become membership requirements.
+After leadership loss, admission and membership wait for the current-term no-op
+to apply before reevaluating current evidence. Business proposals wait from readiness through activation, including
 after drain release, but ordinary configuration controls continue. Retrying a
 pre-submission activation barrier must release preparation guards, respect the
 caller deadline, preserve one caller action count, and never replay a submitted
 future. Schema-3 migration is stopped, atomic and synchronized before serving;
-requested and active state survive replay, snapshot and incremental restore.
+active state survives replay, snapshot and incremental restore. Exercise an
+uncommitted interrupted attempt, a committed activation with lost response,
+reopen, and an incompatible membership change winning before final admission.
 Self routing refreshes on restart or snapshot install must not add positive
 support evidence. Require the leader's own ConfChange refresh before automatic
 activation, including single-member recovery and transient refresh failures.

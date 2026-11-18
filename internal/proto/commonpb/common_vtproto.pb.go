@@ -9005,7 +9005,6 @@ func (m *CapabilityActivation) CloneVT() *CapabilityActivation {
 	r := new(CapabilityActivation)
 	r.Id = m.Id
 	r.Active = m.Active
-	r.Requested = m.Requested
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
 		copy(r.unknownFields, m.unknownFields)
@@ -23409,9 +23408,6 @@ func (this *CapabilityActivation) EqualVT(that *CapabilityActivation) bool {
 		return false
 	}
 	if this.Active != that.Active {
-		return false
-	}
-	if this.Requested != that.Requested {
 		return false
 	}
 	return string(this.unknownFields) == string(that.unknownFields)
@@ -43797,16 +43793,6 @@ func (m *CapabilityActivation) MarshalToSizedBufferVT(dAtA []byte) (int, error) 
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
-	if m.Requested {
-		i--
-		if m.Requested {
-			dAtA[i] = 1
-		} else {
-			dAtA[i] = 0
-		}
-		i--
-		dAtA[i] = 0x18
-	}
 	if m.Active {
 		i--
 		if m.Active {
@@ -52576,9 +52562,6 @@ func (m *CapabilityActivation) SizeVT() (n int) {
 		n += 5
 	}
 	if m.Active {
-		n += 2
-	}
-	if m.Requested {
 		n += 2
 	}
 	n += len(m.unknownFields)
@@ -97077,26 +97060,6 @@ func (m *CapabilityActivation) UnmarshalVT(dAtA []byte) error {
 				}
 			}
 			m.Active = bool(v != 0)
-		case 3:
-			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Requested", wireType)
-			}
-			var v int
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				v |= int(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			m.Requested = bool(v != 0)
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])

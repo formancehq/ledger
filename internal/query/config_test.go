@@ -21,7 +21,7 @@ func TestReadClusterPolicyControlStateIntegrity(t *testing.T) {
 		wantError    string
 	}{
 		{name: "legacy", schema: 2, policy: &commonpb.ClusterPolicy{Revision: 7, CapabilityActivations: []*commonpb.CapabilityActivation{{Id: 1, Active: true}}}},
-		{name: "extracted", schema: 3, policy: &commonpb.ClusterPolicy{Revision: 7}, capabilities: &commonpb.CapabilityState{Activations: []*commonpb.CapabilityActivation{{Id: 1, Requested: true}}}},
+		{name: "extracted", schema: 3, policy: &commonpb.ClusterPolicy{Revision: 7}, capabilities: &commonpb.CapabilityState{Activations: []*commonpb.CapabilityActivation{{Id: 1, Active: true}}}},
 		{name: "missing capabilities", schema: 3, policy: &commonpb.ClusterPolicy{Revision: 7}, wantError: "missing capability state"},
 		{name: "missing policy", schema: 3, capabilities: &commonpb.CapabilityState{}, wantError: "invalid split control state"},
 		{name: "duplicated ownership", schema: 3, policy: &commonpb.ClusterPolicy{CapabilityActivations: []*commonpb.CapabilityActivation{{Id: 1, Active: true}}}, capabilities: &commonpb.CapabilityState{}, wantError: "invalid split control state"},
