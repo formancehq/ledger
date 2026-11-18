@@ -243,5 +243,6 @@ func validateAtomicEnum(value any, descriptor protoreflect.EnumDescriptor, key s
 			return fmt.Errorf("undefined enum value %s for field %q", number, key)
 		}
 	}
+
 	return nil
 }
