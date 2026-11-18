@@ -30,7 +30,7 @@ func (t sinkTime) MarshalJSON() ([]byte, error) {
 // sinkEventData is the flattened event payload stored in analytical sinks.
 // Fields are populated based on the event type; unused fields are omitted.
 type sinkEventData struct {
-	// COMMITTED_TRANSACTION
+	// COMMITTED_TRANSACTION / ACCOUNT_METADATA_UPDATED
 	Transaction     *sinkTransaction             `json:"transaction,omitempty"`
 	AccountMetadata map[string]map[string]string `json:"accountMetadata,omitempty"`
 

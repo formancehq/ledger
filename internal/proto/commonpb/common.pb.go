@@ -513,6 +513,9 @@ const (
 	// failure (skippable_reasons) and was skipped instead of failing the whole
 	// proposal. The OrderSkippedLog carries the reason + context. See EN-1356.
 	EventType_SKIPPED_ORDER EventType = 7
+	// Emitted for a Numscript execution that updates account metadata without
+	// creating a transaction. The payload contains metadata keyed by account.
+	EventType_ACCOUNT_METADATA_UPDATED EventType = 8
 )
 
 // Enum value maps for EventType.
@@ -526,16 +529,18 @@ var (
 		5: "CREATED_LEDGER",
 		6: "DELETED_LEDGER",
 		7: "SKIPPED_ORDER",
+		8: "ACCOUNT_METADATA_UPDATED",
 	}
 	EventType_value = map[string]int32{
-		"EVENT_TYPE_UNSPECIFIED": 0,
-		"COMMITTED_TRANSACTION":  1,
-		"REVERTED_TRANSACTION":   2,
-		"SAVED_METADATA":         3,
-		"DELETED_METADATA":       4,
-		"CREATED_LEDGER":         5,
-		"DELETED_LEDGER":         6,
-		"SKIPPED_ORDER":          7,
+		"EVENT_TYPE_UNSPECIFIED":   0,
+		"COMMITTED_TRANSACTION":    1,
+		"REVERTED_TRANSACTION":     2,
+		"SAVED_METADATA":           3,
+		"DELETED_METADATA":         4,
+		"CREATED_LEDGER":           5,
+		"DELETED_LEDGER":           6,
+		"SKIPPED_ORDER":            7,
+		"ACCOUNT_METADATA_UPDATED": 8,
 	}
 )
 
@@ -24098,7 +24103,7 @@ const file_common_proto_rawDesc = "" +
 	"\x16LOG_BUILTIN_INDEX_DATE\x10\x01*C\n" +
 	"\rHashAlgorithm\x12\x19\n" +
 	"\x15HASH_ALGORITHM_BLAKE3\x10\x00\x12\x17\n" +
-	"\x13HASH_ALGORITHM_XXH3\x10\x01*\xc1\x01\n" +
+	"\x13HASH_ALGORITHM_XXH3\x10\x01*\xdf\x01\n" +
 	"\tEventType\x12\x1a\n" +
 	"\x16EVENT_TYPE_UNSPECIFIED\x10\x00\x12\x19\n" +
 	"\x15COMMITTED_TRANSACTION\x10\x01\x12\x18\n" +
@@ -24107,7 +24112,8 @@ const file_common_proto_rawDesc = "" +
 	"\x10DELETED_METADATA\x10\x04\x12\x12\n" +
 	"\x0eCREATED_LEDGER\x10\x05\x12\x12\n" +
 	"\x0eDELETED_LEDGER\x10\x06\x12\x11\n" +
-	"\rSKIPPED_ORDER\x10\a*<\n" +
+	"\rSKIPPED_ORDER\x10\a\x12\x1c\n" +
+	"\x18ACCOUNT_METADATA_UPDATED\x10\b*<\n" +
 	"\n" +
 	"LedgerMode\x12\x16\n" +
 	"\x12LEDGER_MODE_NORMAL\x10\x00\x12\x16\n" +

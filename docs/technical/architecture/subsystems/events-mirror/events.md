@@ -23,6 +23,7 @@ Events map directly to the global log payload types:
 | `COMMITTED_TRANSACTION` | Transaction created | `CreatedTransaction` |
 | `REVERTED_TRANSACTION` | Transaction reverted | `RevertedTransaction` |
 | `SAVED_METADATA` | Metadata saved on account or transaction | `SavedMetadata` |
+| `ACCOUNT_METADATA_UPDATED` | Numscript updates account metadata without creating a transaction | `AccountMetadataUpdated` |
 | `DELETED_METADATA` | Metadata key deleted | `DeletedMetadata` |
 | `CREATED_LEDGER` | Ledger created | `CreatedLedgerLog` |
 | `DELETED_LEDGER` | Ledger deleted | `DeletedLedgerLog` |
@@ -36,6 +37,7 @@ The event types align with `github.com/formancehq/ledger` where applicable:
 |---|---|---|
 | `COMMITTED_TRANSACTIONS` | `COMMITTED_TRANSACTION` | Singular (one event per log) |
 | `SAVED_METADATA` | `SAVED_METADATA` | Identical semantics |
+| _(none)_ | `ACCOUNT_METADATA_UPDATED` | New event for metadata-only Numscript execution; it has no single target |
 | `REVERTED_TRANSACTION` | `REVERTED_TRANSACTION` | Identical semantics |
 | `DELETED_METADATA` | `DELETED_METADATA` | Identical semantics |
 | `INSERTED_SCHEMA` | `CREATED_LEDGER` | Renamed (no schema concept in v3) |
@@ -60,6 +62,13 @@ message Event {
 ```
 
 The event carries the full `Log` entry, which contains the typed payload (transaction, metadata change, etc.) in its `LedgerLogPayload` oneof. This avoids duplicating payload definitions and ensures events always carry the complete log data.
+
+`SAVED_METADATA` retains its target-scoped payload. A metadata-only Numscript
+execution emits `ACCOUNT_METADATA_UPDATED` instead: its log payload contains an
+account-address-to-metadata map and no single target or transaction ID. Its
+analytical projection has no `targetType` or `targetId`. Event-type allow-lists
+must include `ACCOUNT_METADATA_UPDATED` to receive these events; selecting only
+`SAVED_METADATA` does not include them.
 
 `app` and `version` are routing and decoding metadata for broker consumers. Ledger v2's `publish.EventMessage` constructors emitted `app="ledger"` and `version="v2"`; the v3 envelope preserves the producer identity and reports its distinct contract as `version="v3"`. The emitter sets both fields before any sink-specific serialization, so NATS and Kafka publish the same values in JSON and Protobuf formats.
 
