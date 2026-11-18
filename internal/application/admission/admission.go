@@ -511,6 +511,7 @@ func (a *Admission) AdmitCapabilityTransition(ctx context.Context, transition *c
 	if transition == nil || transition.GetId() == 0 {
 		return nil, errors.New("capability transition requires a non-zero id")
 	}
+
 	return a.admit(ctx, func(ctx context.Context, caller *commonpb.CallerSnapshot) (*preparedAdmission, error) {
 		command := commands.NewCommand()
 		command.Payload = &raftcmdpb.Proposal_TransitionCapability{TransitionCapability: transition.CloneVT()}

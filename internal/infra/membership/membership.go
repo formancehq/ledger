@@ -359,7 +359,7 @@ func (m *Membership) ValidateTransitionEvidence(ctx *ConfChangeContext) error {
 		if policy != nil {
 			required = required[:0]
 			for _, activation := range policy.GetCapabilityActivations() {
-				if activation != nil && activation.GetActive() {
+				if activation != nil && (activation.GetActive() || activation.GetRequested()) {
 					required = append(required, activation.GetId())
 				}
 			}
@@ -790,7 +790,7 @@ func (m *Membership) writeConfChange(entry *raftpb.Entry, session *dal.WriteSess
 			if policy != nil {
 				required = make([]uint32, 0, len(policy.GetCapabilityActivations()))
 				for _, activation := range policy.GetCapabilityActivations() {
-					if activation != nil && activation.GetActive() {
+					if activation != nil && (activation.GetActive() || activation.GetRequested()) {
 						required = append(required, activation.GetId())
 					}
 				}

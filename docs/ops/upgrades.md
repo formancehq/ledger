@@ -85,10 +85,20 @@ The supported registry is empty until a separate feature registers an ID.
 
 Once every current member advertises a registered ID, the leader automatically
 commits request and activation controls. Ordinary configuration keeps its own
-revision and proceeds independently. Business admission waits during activation,
+revision and proceeds independently. All audited order batches wait during activation,
 including immediately after drain release, and honors its original deadline.
 Requested state survives restart and leader change; it cannot be cancelled or
 downgraded. New members must support both requested and active IDs.
+
+After RC.4 is published and this change is integrated into `release/v3.0`, run
+the stopped-upgrade harness from a clean checkout:
+
+```bash
+UPGRADE_TRANSITION=rc4-to-rc5 RELEASE_BRANCH=release/v3.0 just test-release-operator-upgrade
+```
+
+This builds the exact release-branch target locally and exercises retained PVCs,
+non-empty replay, drain release, and integrity checks. It does not publish a release.
 
 Binary rollback to RC.4 closes at migration commit, before activation. A failed
 fsync aborts boot but can leave the complete new batch visible; treat an uncertain
