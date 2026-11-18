@@ -236,9 +236,11 @@ coverage after construction.
 This mechanism keeps the lease out of the FSM apply path, Raft bytes, audit,
 snapshots, and backups. It changes no persisted format or service protocol.
 Authorization is constant local bookkeeping per proposal or registration;
-revocation cancellation scales with the live context descendants. Only a full
-proposal queue creates a short retry timer. Slow reads, I/O, readiness waits,
-teardown, and goroutine joins occur outside the gate. Component Stop retains
+revocation cancellation scales with the live context descendants. A full
+proposal queue waits for a dequeue notification before retrying under the lease
+gate. The dequeue term and role check uses Raft's allocation-free BasicStatus.
+Slow reads, I/O, readiness waits, teardown, and goroutine joins occur outside
+the gate. Component Stop retains
 its own gate and drain because Fx can stop a component while Node still owns
 leadership. Lease cancellation cannot undo an operation already accepted by an
 external system; stronger cross-process guarantees require destination-aware

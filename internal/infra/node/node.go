@@ -355,6 +355,7 @@ type Node struct {
 	transport        Transport
 	config           NodeConfig
 	proposeCh        chan *Proposal
+	proposalSpaceCh  chan struct{}
 	clusterCommandCh chan *clusterCommand
 	confState        atomic.Pointer[raftpb.ConfState]
 	lastSoftState    atomic.Pointer[raft.SoftState]
@@ -727,6 +728,7 @@ func NewNode(
 		transport:         transport,
 		config:            cfg,
 		proposeCh:         make(chan *Proposal, cfg.ProposeQueueCapacity),
+		proposalSpaceCh:   make(chan struct{}, 1),
 		clusterCommandCh:  make(chan *clusterCommand, 1),
 		fsm:               fsm,
 		recovery:          recovery,
@@ -2204,6 +2206,7 @@ func (node *Node) orchestrate(ctx context.Context, stop chan struct{}) error {
 
 				maybeCreateReady()
 			case p := <-node.proposeCh:
+				node.notifyProposalSpace()
 				node.handleProposal(p)
 			case cmd := <-node.clusterCommandCh:
 				if err := node.executeClusterCommand(cmd); err != nil {
@@ -2286,6 +2289,7 @@ func (node *Node) orchestrate(ctx context.Context, stop chan struct{}) error {
 
 					maybeCreateReady()
 				case p := <-node.proposeCh:
+					node.notifyProposalSpace()
 					node.handleProposal(p)
 				case cmd := <-node.clusterCommandCh:
 					if err := node.executeClusterCommand(cmd); err != nil {
@@ -2474,12 +2478,6 @@ func (node *Node) Propose(ctx context.Context, proposal *Proposal) (*futures.Fut
 	// and nonblocking send occur together under authorization, so invalidation
 	// cannot fall between validation and enqueue. The caller's proposal guard
 	// remains held until admission ends, as required by preload prediction.
-	var retry *time.Ticker
-	defer func() {
-		if retry != nil {
-			retry.Stop()
-		}
-	}()
 	for {
 		queued := false
 		register := func() {
@@ -2508,9 +2506,6 @@ func (node *Node) Propose(ctx context.Context, proposal *Proposal) (*futures.Fut
 		if queued {
 			return fsmFuture, nil
 		}
-		if retry == nil {
-			retry = time.NewTicker(time.Millisecond)
-		}
 		select {
 		case <-ctx.Done():
 			node.applier.DeleteFuture(proposal.commandID)
@@ -2520,8 +2515,17 @@ func (node *Node) Propose(ctx context.Context, proposal *Proposal) (*futures.Fut
 			node.applier.DeleteFuture(proposal.commandID)
 
 			return nil, ErrNotLeader
-		case <-retry.C:
+		case <-node.proposalSpaceCh:
 		}
+	}
+}
+
+// notifyProposalSpace wakes a producer after the ready loop frees a queue slot.
+// A buffered notification also covers a dequeue between the failed send and wait.
+func (node *Node) notifyProposalSpace() {
+	select {
+	case node.proposalSpaceCh <- struct{}{}:
+	default:
 	}
 }
 
@@ -2560,7 +2564,7 @@ func (node *Node) handleProposal(p *Proposal) {
 	var err error
 	accept := func() {
 		if p.expectedTerm != 0 || p.leadershipLease != nil {
-			status := node.rawNode.Status()
+			status := node.rawNode.BasicStatus()
 			if p.expectedTerm != 0 && (status.GetTerm() != p.expectedTerm || status.RaftState != raft.StateLeader) {
 				err = ErrLeadershipLost
 			}
