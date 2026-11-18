@@ -65,7 +65,7 @@ func TestExecutePreparedQueryRoutePagination(t *testing.T) {
 				}
 				mapping := internalauth.DefaultMapping("ledger")
 				mapping[internalauth.ScopeMappingAnonymousKey] = []internalauth.Scope{internalauth.ScopeQueriesRead}
-				handler := NewHandler(logging.Testing(), backend, internalauth.AuthConfig{Enabled: true, ScopeMapping: mapping}, version.Info{})
+				handler := NewHandler(logging.Testing(), backend, internalauth.AuthConfig{Enabled: true, ScopeMapping: mapping}, version.Info{}, nil)
 				body := fmt.Sprintf(`{"pageSize":%d,"mode":%q,"reverse":%t}`, tc.bodySize, tc.mode, reverse)
 				request := httptest.NewRequest(http.MethodPost, "/v3/ledger1/prepared-queries/accounts/execute"+tc.query, strings.NewReader(body))
 				response := httptest.NewRecorder()

@@ -58,7 +58,7 @@ func TestLedgerInfoReadResponsesRedactCredentials(t *testing.T) {
 				} else {
 					backend.EXPECT().GetLedgerByName(gomock.Any(), "mirror").Return(ledger, nil)
 				}
-				handler := NewHandler(logging.Testing(), backend, internalauth.AuthConfig{}, version.Info{})
+				handler := NewHandler(logging.Testing(), backend, internalauth.AuthConfig{}, version.Info{}, nil)
 				response := httptest.NewRecorder()
 				handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, path, nil))
 				require.Equal(t, http.StatusOK, response.Code)
@@ -91,7 +91,7 @@ func TestLedgerInfoReadMarshalFailureReturnsInternalError(t *testing.T) {
 				backend.EXPECT().GetLedgerByName(gomock.Any(), "mirror").Return(ledger, nil)
 			}
 			response := httptest.NewRecorder()
-			NewHandler(logging.Testing(), backend, internalauth.AuthConfig{}, version.Info{}).ServeHTTP(response, httptest.NewRequest(http.MethodGet, path, nil))
+			NewHandler(logging.Testing(), backend, internalauth.AuthConfig{}, version.Info{}, nil).ServeHTTP(response, httptest.NewRequest(http.MethodGet, path, nil))
 			require.Equal(t, http.StatusInternalServerError, response.Code)
 			require.NotContains(t, response.Body.String(), "999")
 			require.Contains(t, response.Body.String(), "INTERNAL_ERROR")
@@ -142,7 +142,7 @@ func TestLedgerInfoReadRewriteRules(t *testing.T) {
 				backend.EXPECT().GetLedgerByName(gomock.Any(), "mirror").Return(ledger, nil)
 			}
 			response := httptest.NewRecorder()
-			NewHandler(logging.Testing(), backend, internalauth.AuthConfig{}, version.Info{}).ServeHTTP(response, httptest.NewRequest(http.MethodGet, tc.path, nil))
+			NewHandler(logging.Testing(), backend, internalauth.AuthConfig{}, version.Info{}, nil).ServeHTTP(response, httptest.NewRequest(http.MethodGet, tc.path, nil))
 			require.Equal(t, http.StatusOK, response.Code)
 			// The generated protobuf projection follows EmitUnpopulated semantics:
 			// scalar defaults and empty collection defaults are present in the

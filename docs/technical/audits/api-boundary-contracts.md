@@ -496,3 +496,17 @@ Request signing adds no HTTP response authenticity. See
 [the HTTP contract](../architecture/subsystems/api/http-api.md#signed-transaction-requests)
 and [client recipe](../../ops/signing.md#http-request-signing). No audit execution
 is authorized by this contract update.
+
+## Atomic HTTP Apply
+
+POST /v3/_/apply decodes a nonempty requests object using strict canonical camelCase protobuf command fields, exact HTTP bigint/timestamp scalars and typed metadata; it rejects unknown/duplicate/null fields and body keys. All current Request and LedgerAction arms must have accurate OpenAPI input schemas. One Idempotency-Key header and signed full-batch equality preserve ordered intent. The adapter invokes the service Apply handler once, retaining checkpoint readiness and response signing, then emits checked public logs with bigint options and created-ledger identity/metadata. An addEventsSink log or a created-ledger log with a mirror source uses a detached credential-redacted configuration and omits its original signature envelope, whose payload contains credentials; the committed log remains unchanged. Existing bulk contracts remain unchanged.
+
+Can any atomic HTTP request arm or nested action lose a field/type, accept an alias/duplicate/null or body key, bypass the byte/depth/count limits, split dispatch, bypass service readiness, expose sink or mirror credentials, strip configuration logs or response signatures outside the sink and mirror-ledger creation exceptions, or silently round bigint values? Does OpenAPI enumerate the actual command graph instead of reusing incompatible public JSON projections?
+
+Exercise every Request and LedgerAction variant against the strict codec, then registered-router and real service fixtures for mixed cross-ledger/configuration commands, signed equality, header identity, exact scalar values, all bounds and checked response failures. Reconcile descriptor fields/unions with OpenAPI; compare actual full public logs including ledger creation id/metadata and nested bigint options. For addEventsSink and mirror-ledger creation, assert detached redaction, no signature payload, and unchanged original log. Distinguish helper decoding, routed dispatch and durable rollback evidence.
+
+See [the HTTP contract](../architecture/subsystems/api/http-api.md#atomic-http-apply).
+API boundary owns conversion/output fidelity; authentication owns scopes and
+caller capture; idempotency owns durable atomicity and retry identity; signed
+response integrity owns the returned cryptographic proof. Deduplicate by the
+mechanism that must change, not by the number of affected operations.

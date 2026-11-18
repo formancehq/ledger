@@ -87,6 +87,14 @@ routes (paths are relative to `/v3/{ledgerName}`):
 | DELETE `/transactions/{transactionId}/metadata/{key}` | Explicit `null` |
 | POST `/bulk?atomic=true` | Nonempty ordinary bulk array |
 
+`POST /v3/_/apply` also supports signing. Its `request` is the entire
+`{ "requests": [...] }` command object, not a ledger-scoped bulk array. The
+`Idempotency-Key` header supplies the one batch key. Sign all requests in order,
+including typed metadata, configuration fields and allowed skip reasons; no
+body key, `atomic` or `continueOnFailure` selector is accepted. Every operation's
+JWT scope is checked independently of the signing key. See the
+[atomic HTTP contract](../technical/architecture/subsystems/api/http-api.md#atomic-http-apply).
+
 Either signing header activates the signed representation, even if its value is
 empty. Supply both headers exactly once with nonempty values. Without either
 header, the route uses its ordinary unsigned REST body. JSON MIME parameters
@@ -234,8 +242,16 @@ protobuf, protocol revision (40), persisted state or data migration changes are
 required. Signing adds no replay protection: retained idempotency keys replay
 the existing frozen outcome, an empty key permits re-execution, and an expired
 key follows the ordinary eviction contract. Preserve the same key and payload
-for retries while the key is retained. HTTP signing adds no response signature
-or independently authenticated transaction response.
+for retries while the key is retained. Request signing itself adds no response signature. The atomic Apply endpoint
+returns the existing service logs with optional server `responseSignature`
+envelopes when response signing is configured; legacy transaction responses
+retain their existing shape. Verify the exact signed protobuf log bytes and
+compare their public projection with the visible JSON log. JSON output alone
+cannot reconstruct every protobuf type distinction.
+An `addEventsSink` log or a created-ledger log with a mirror source in an
+atomic Apply HTTP response has redacted credentials and no `responseSignature`:
+the service signature payload would otherwise disclose the original credentials.
+Other logs in the same batch retain their signatures.
 
 ## Key Management
 
@@ -561,4 +577,4 @@ The `payload` contains the serialized `Log` message with the `response_signature
 
 - **Signing happens in the gRPC handler, not the FSM**: response signing is a presentation-layer concern. The FSM produces deterministic state; signing adds a transport-level proof on top.
 - **Single server keypair**: no per-client keys needed. All clients verify using the same public key, obtained via `Discovery` or out-of-band.
-- **No changes to Raft/FSM/Pebble**: the response signature is computed after Raft consensus and is not persisted. It only appears in the gRPC response.
+- **No changes to Raft/FSM/Pebble**: the response signature is computed after Raft consensus and is not persisted. It appears in the gRPC response and the atomic HTTP Apply log projection.
