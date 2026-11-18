@@ -129,6 +129,19 @@ func TestValidateOrder_TransactionReferenceFactBound(t *testing.T) {
 	require.ErrorIs(t, validateOrder(order), domain.ErrTransactionReferenceTooLong)
 }
 
+func TestValidateOrder_ExecuteNumscriptReferenceFactBound(t *testing.T) {
+	t.Parallel()
+	order := &raftcmdpb.Order{Type: &raftcmdpb.Order_LedgerScoped{LedgerScoped: &raftcmdpb.LedgerScopedOrder{
+		Ledger: "l", Payload: &raftcmdpb.LedgerScopedOrder_Apply{Apply: &raftcmdpb.LedgerApplyOrder{
+			Data: &raftcmdpb.LedgerApplyOrder_ExecuteNumscript{ExecuteNumscript: &raftcmdpb.ExecuteNumscriptOrder{
+				Script:    &commonpb.Script{Plain: "send [USD/2 1] (source = @world destination = @users:alice)"},
+				Reference: strings.Repeat("r", domain.MaxTransactionReferenceLength+1),
+			}},
+		}},
+	}}}
+	require.ErrorIs(t, validateOrder(order), domain.ErrTransactionReferenceTooLong)
+}
+
 func TestValidateOrder_LedgerName(t *testing.T) {
 	t.Parallel()
 
