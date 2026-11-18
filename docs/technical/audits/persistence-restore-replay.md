@@ -249,6 +249,9 @@ See [the creation contract](../architecture/subsystems/api/atomic-ledger-creatio
 
 Schema 3 adds the stopped startup migration and independent configuration and
 capability controls described in [control-state storage](../architecture/subsystems/storage/control-state.md).
+ClusterPolicy retains its original key `0x13`; only capabilities move to `0x18`.
+The field-12 `configuration_only` discriminator preserves omitted-marker legacy
+replay while preventing current policy writers from replacing capability state.
 Exercise canceled migration followed by disk reopen, completed migration
 followed by reopen, unchanged logical state at the applied index, missing-row
 failure, concurrent configuration, durable pending intent and active state.

@@ -149,12 +149,12 @@ func ValidateOrPersistConfig(store *dal.Store, cfg Config, logger logging.Logger
 	if persisted.GetStorageSchemaVersion() == 2 {
 		return migrateControlState(store, current)
 	}
-	configuration, err := dal.ReadProto[*commonpb.ClusterPolicy](store, []byte{dal.ZoneGlobal, dal.SubGlobConfiguration})
+	policy, err := dal.ReadProto[*commonpb.ClusterPolicy](store, []byte{dal.ZoneGlobal, dal.SubGlobClusterPolicy})
 	if err != nil {
 		return err
 	}
-	if configuration == nil {
-		return errors.New("schema 3 is missing its control-state configuration")
+	if policy == nil {
+		return errors.New("schema 3 is missing its cluster policy")
 	}
 
 	return nil

@@ -27,7 +27,7 @@ whether a business command is accepted or which business data is returned.
 
 ### Operational cluster policy
 
-The configuration aggregate (`ZoneGlobal/0x17`, formerly `SubGlobClusterPolicy`)
+ClusterPolicy (`ZoneGlobal/0x13`, unchanged key, with capabilities extracted)
 is explicitly exempt from business-audit
 projection verification. Metadata size/count ceilings, query-checkpoint capacity
 and the idempotency TTL are operational limits. They can reject new work or

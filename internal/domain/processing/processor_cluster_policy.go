@@ -113,27 +113,20 @@ func validateClusterPolicyMetadataLimits(policy *commonpb.ClusterPolicy) domain.
 
 // ProcessClusterPolicy applies operational state without allocating business logs.
 // The released order handler above retains its original audited replay behavior.
-func (p *RequestProcessor) ProcessClusterPolicy(policy *commonpb.ClusterPolicy, factory ScopeFactory) domain.SerializableError {
+func (p *RequestProcessor) ProcessClusterPolicy(proposal *raftcmdpb.SetClusterPolicyProposal, factory ScopeFactory) domain.SerializableError {
+	policy := proposal.GetPolicy()
+	if proposal.GetConfigurationOnly() && (policy == nil || len(policy.GetCapabilityActivations()) != 0) {
+		return &domain.ErrClusterPolicyInvalid{Detail: "cluster policy cannot contain capabilities"}
+	}
 	scope, err := factory.NewScope(nil)
 	if err != nil {
 		return &domain.ErrInvalidExecutionPlan{Reason_: err.Error()}
+	}
+	if proposal.GetConfigurationOnly() {
+		policy = policy.CloneVT()
+		policy.CapabilityActivations = scope.GetClusterPolicy().CloneVT().GetCapabilityActivations()
 	}
 	_, processErr := applyClusterPolicy(policy, scope)
-
-	return processErr
-}
-
-func (p *RequestProcessor) ProcessConfiguration(policy *commonpb.ClusterPolicy, factory ScopeFactory) domain.SerializableError {
-	if policy == nil || len(policy.GetCapabilityActivations()) != 0 {
-		return &domain.ErrClusterPolicyInvalid{Detail: "configuration cannot contain capabilities"}
-	}
-	scope, err := factory.NewScope(nil)
-	if err != nil {
-		return &domain.ErrInvalidExecutionPlan{Reason_: err.Error()}
-	}
-	desired := policy.CloneVT()
-	desired.CapabilityActivations = scope.GetClusterPolicy().CloneVT().GetCapabilityActivations()
-	_, processErr := applyClusterPolicy(desired, scope)
 
 	return processErr
 }
