@@ -90,6 +90,9 @@ pre-submission activation barrier must release preparation guards, respect the
 caller deadline, preserve one caller action count, and never replay a submitted
 future. Schema-3 migration is stopped, atomic and synchronized before serving;
 requested and active state survive replay, snapshot and incremental restore.
+Self routing refreshes on restart or snapshot install must not add positive
+support evidence. Require the leader's own ConfChange refresh before automatic
+activation, including single-member recovery and transient refresh failures.
 
 For bootstrap join, restart refresh, promotion, and membership changes, record
 the member's `(node_id, instance_id)`, advertised capability IDs, committed

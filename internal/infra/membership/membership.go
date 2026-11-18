@@ -447,6 +447,8 @@ func (m *Membership) Remove(nodeID uint64) {
 // Unregister operation. instanceID is always the peer's 16-byte WAL/PVC
 // identity. Identity-less membership rows are rejected rather than persisted
 // as a partial member. capabilityIDs carries the peer's capability evidence.
+// Self routing refreshes can only retain or remove previously persisted IDs;
+// support additions must arrive through a committed ConfChange.
 func (m *Membership) Register(nodeID uint64, raftAddr, serviceAddr string, instanceID []byte, capabilityIDs []uint32) error {
 	// A restart refreshes the local addresses. Preserve evidence for another
 	// peer when no new proof is available, but never preserve self evidence:
@@ -456,7 +458,13 @@ func (m *Membership) Register(nodeID uint64, raftAddr, serviceAddr string, insta
 			capabilityIDs = existing.Capabilities
 		}
 	}
-	if err := m.store.Put(nodeID, raftAddr, serviceAddr, instanceID, capabilityIDs); err != nil {
+	var err error
+	if nodeID == m.selfNodeID {
+		capabilityIDs, err = m.store.PutLocal(nodeID, raftAddr, serviceAddr, instanceID, capabilityIDs)
+	} else {
+		err = m.store.Put(nodeID, raftAddr, serviceAddr, instanceID, capabilityIDs)
+	}
+	if err != nil {
 		return fmt.Errorf("persisting peer %d: %w", nodeID, err)
 	}
 
@@ -712,7 +720,7 @@ func (m *Membership) OnSnapshotInstalled() {
 	// (with the leader's possibly-stale self); the next OnSnapshot
 	// or restart will re-attempt the self-Put.
 	selfCapabilities := capabilities.IDsAsUint32(capabilities.SupportedIDs())
-	if err := m.store.Put(m.selfNodeID, m.selfRaftAddr, m.selfServiceAddr, m.selfInstanceID, selfCapabilities); err != nil {
+	if _, err := m.store.PutLocal(m.selfNodeID, m.selfRaftAddr, m.selfServiceAddr, m.selfInstanceID, selfCapabilities); err != nil {
 		m.logger.WithFields(map[string]any{
 			"error": err,
 		}).Errorf("Refreshing self in Pebble before snapshot reload failed; next checkpoint we serve may carry a stale self address")

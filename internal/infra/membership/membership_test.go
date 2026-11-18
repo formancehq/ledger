@@ -620,6 +620,27 @@ func TestMembershipRegisterSelfClearsStaleCapabilityEvidence(t *testing.T) {
 	require.Empty(t, m.PeerAddresses()[testSelfNodeID].Capabilities)
 }
 
+func TestMembershipLocalRefreshCannotAddCapabilityEvidence(t *testing.T) {
+	t.Parallel()
+	peerStore := newTestPeerStore(t)
+	identity := fixedInstanceID(0x42)
+	require.NoError(t, peerStore.Put(testSelfNodeID, testSelfRaftAddr, testSelfServiceAddr, identity, []uint32{1}))
+	registry, err := NewMembership(peerStore, noopTransport{}, noopPool{}, testSelfNodeID, testSelfRaftAddr, testSelfServiceAddr, identity, logging.Testing(), NoopClusterPolicyProvider)
+	require.NoError(t, err)
+	require.NoError(t, registry.Register(testSelfNodeID, "new:7000", "new:8000", identity, []uint32{1, 2}))
+	peers, err := peerStore.LoadAll()
+	require.NoError(t, err)
+	require.Equal(t, []uint32{1}, peers[testSelfNodeID].Capabilities)
+	require.Equal(t, []uint32{1}, registry.PeerAddresses()[testSelfNodeID].Capabilities)
+	require.Equal(t, "new:7000", peers[testSelfNodeID].RaftAddress)
+	require.NoError(t, registry.Rehydrate())
+	require.Equal(t, []uint32{1}, registry.PeerAddresses()[testSelfNodeID].Capabilities)
+	require.NoError(t, peerStore.Put(testSelfNodeID, "snapshot:7000", "snapshot:8000", identity, nil))
+	retained, err := peerStore.PutLocal(testSelfNodeID, "new:7000", "new:8000", identity, []uint32{1, 2})
+	require.NoError(t, err)
+	require.Empty(t, retained, "a snapshot's committed evidence, not the old cache, bounds local support")
+}
+
 func TestMembershipOnSnapshotInstalledRejectsUnsupportedActiveCapability(t *testing.T) {
 	ps := newTestPeerStore(t)
 	provider := func() (*commonpb.ClusterPolicy, error) {

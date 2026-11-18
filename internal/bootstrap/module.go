@@ -135,6 +135,14 @@ func newClusterPolicyReconciler(admission ctrl.Admission, store *dal.Store, buil
 func newCapabilityActivationReconciler(admission *admission.Admission, store *dal.Store, raftNode *node.Node, logger logging.Logger) *capabilityActivationReconciler {
 	return &capabilityActivationReconciler{reconciler.New(func(ctx context.Context) {
 		ctx = internalauth.WithSystemActor(ctx, commands.ComponentClusterPolicy)
+		if !raftNode.IsLeader() {
+			return
+		}
+		if err := raftNode.RefreshSelfMembership(ctx, capabilities.IDsAsUint32(capabilities.SupportedIDs())); err != nil {
+			logger.WithFields(map[string]any{"error": err}).Errorf("Capability evidence refresh failed; activation will retry")
+
+			return
+		}
 		if err := activateReadyCapabilities(ctx, admission.AdmitCapabilityTransition, store, raftNode.IsLeader, raftNode.CapabilityMembers, capabilities.SupportedIDs()); err != nil {
 			logger.WithFields(map[string]any{"error": err}).Errorf("Capability activation failed; will retry from committed policy")
 		}

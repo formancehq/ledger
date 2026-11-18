@@ -32,6 +32,15 @@ blocks admission of capability-dependent writes until that member is reachable
 again. Once a capability is active, every new membership announcement must
 include that capability.
 
+Restart and snapshot self-address refreshes cannot add support IDs: they retain
+only the intersection of the persisted same-incarnation evidence and the local
+binary's supported IDs. The activation worker first commits any missing leader
+self evidence through RefreshMembership, including in a single-member cluster.
+A failed or merely proposed refresh cannot make an activation ready. Address
+refresh still writes routing before publishing its cache; a failed write leaves
+the old cache unchanged. Snapshot refresh intersects the newly installed rows,
+not the pre-snapshot cache, before rehydration.
+
 A proposal that declares a capability is admitted only when that capability is
 active and every member advertises it. Proposals with no declared capability
 remain unaffected. FSM apply never consults node-local capability flags.
