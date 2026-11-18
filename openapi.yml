@@ -4583,6 +4583,30 @@ components:
           format: date-time
           type: string
       type: object
+    AtomicApplyExecuteNumscriptPayload:
+      additionalProperties: false
+      properties:
+        accountMetadata:
+          additionalProperties:
+            $ref: '#/components/schemas/AtomicApplyMetadataMap'
+          type: object
+        force:
+          type: boolean
+        metadata:
+          additionalProperties:
+            $ref: '#/components/schemas/AtomicApplyMetadataValue'
+          type: object
+        reference:
+          type: string
+        script:
+          $ref: '#/components/schemas/AtomicApplyScript'
+        scriptReference:
+          $ref: '#/components/schemas/AtomicApplyScriptReference'
+        timestamp:
+          description: RFC3339 timestamp, decoded to microsecond precision by the existing HTTP timestamp codec.
+          format: date-time
+          type: string
+      type: object
     AtomicApplyCreatedTransactionAction:
       additionalProperties: false
       allOf:
@@ -4944,6 +4968,8 @@ components:
             - required:
                 - createTransaction
             - required:
+                - executeNumscript
+            - required:
                 - addMetadata
             - required:
                 - revertTransaction
@@ -4964,6 +4990,8 @@ components:
           $ref: '#/components/schemas/AtomicApplyCreateTransactionPayload'
         deleteMetadata:
           $ref: '#/components/schemas/AtomicApplyDeleteMetadataCommand'
+        executeNumscript:
+          $ref: '#/components/schemas/AtomicApplyExecuteNumscriptPayload'
         removeAccountType:
           $ref: '#/components/schemas/AtomicApplyRemoveAccountTypeRequest'
         revertTransaction:
