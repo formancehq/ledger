@@ -7,6 +7,9 @@ manages Kubernetes Cluster resources. When `kubectl ledger create` omits
 `--set image.tag`, the Cluster inherits the Ledger image tag configured on its
 Operator. Use `--set image.tag=<release-tag>` to pin a specific release; a
 release Operator requires a semantic release tag no newer than its own version.
+The plugin's `--set` paths use dotted keys and zero-based array indices from
+`0` through `65536`. Escape literal dots with `\.` or quote the key segment.
+Malformed paths return an error instead of applying a truncated path.
 
 ## Getting Started
 
