@@ -49,6 +49,9 @@ an unready member cannot arm a new request. The existing membership coordinator
 holds membership stable through apply; final proposal admission checks support
 before index allocation. The next leader resumes durable pending intent, and a
 lost response is resolved by rereading committed state rather than undoing it.
+Before discovery, the leader commits its own changed support through a membership
+refresh. Local restart/snapshot routing writes cannot add capability evidence;
+single-member clusters use the same committed refresh, without a remote RPC.
 
 Before request commit, final admission pauses business proposals once all
 members support any locally implemented inactive capability. After commit,

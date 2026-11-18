@@ -1,9 +1,11 @@
 package membership
 
 import (
+	"bytes"
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"slices"
 
 	"github.com/cockroachdb/pebble/v2"
 
@@ -59,6 +61,31 @@ func NewPeerStore(store *dal.Store) *PeerStore {
 // another mutation atomically (see EN-1045 force-remove path).
 func (p *PeerStore) OpenWriteSession() *dal.WriteSession {
 	return p.store.OpenWriteSession()
+}
+
+// PutLocal refreshes routing without adding uncommitted capability evidence.
+// Locally unsupported IDs may be removed conservatively; new IDs require Raft.
+func (p *PeerStore) PutLocal(nodeID uint64, raftAddr, serviceAddr string, instanceID []byte, advertised []uint32) ([]uint32, error) {
+	if err := ValidateCapabilities(advertised); err != nil {
+		return nil, err
+	}
+	existing, err := dal.ReadProto[*raftcmdpb.PeerAddress](p.store, peerKey(nodeID))
+	if err != nil {
+		return nil, err
+	}
+	var retained []uint32
+	if bytes.Equal(existing.GetInstanceId(), instanceID) {
+		for _, capabilityID := range advertised {
+			if slices.Contains(existing.GetCapabilities(), capabilityID) {
+				retained = append(retained, capabilityID)
+			}
+		}
+	}
+	if err := p.Put(nodeID, raftAddr, serviceAddr, instanceID, retained); err != nil {
+		return nil, err
+	}
+
+	return retained, nil
 }
 
 // ---------------------------------------------------------------------------
