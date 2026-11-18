@@ -2,7 +2,7 @@ package node
 
 import (
 	"context"
-	"fmt"
+	"strconv"
 	"testing"
 	"time"
 
@@ -21,7 +21,7 @@ import (
 func TestCapabilityMembershipWaitsForSelfRefreshCommit(t *testing.T) {
 	t.Parallel()
 	for _, singleMember := range []bool{false, true} {
-		t.Run(fmt.Sprint(singleMember), func(t *testing.T) {
+		t.Run(strconv.FormatBool(singleMember), func(t *testing.T) {
 			t.Parallel()
 			raftNode := newConfiguredPeersTestNode(t)
 			raftNode.logger = logging.Testing()
