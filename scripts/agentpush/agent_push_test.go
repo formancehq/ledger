@@ -60,8 +60,27 @@ esac
 	require.Equal(t, initialRemote, run(t, remote, nil, "git", "rev-parse", "refs/heads/chore/ci-local-format-parity"))
 	run(t, repo, nil, "git", "restore", "tracked.txt")
 
-	run(t, repo, []string{"AI_REVIEW_BASE_SHA=" + base, "VALIDATOR_MODE=pass"}, "bash", "scripts/agent-push", "origin", "chore/ci-local-format-parity")
-	require.Equal(t, run(t, repo, nil, "git", "rev-parse", "HEAD"), run(t, remote, nil, "git", "rev-parse", "refs/heads/chore/ci-local-format-parity"))
+	realGit, err := exec.LookPath("git")
+	require.NoError(t, err)
+	bin := filepath.Join(dir, "bin")
+	require.NoError(t, os.Mkdir(bin, 0o755))
+	pushArgsLog := filepath.Join(dir, "push-args")
+	gitShim := "#!/usr/bin/env bash\nset -euo pipefail\nif [[ ${1:-} == push ]]; then printf '%s' \"$3\" > \"$PUSH_ARGS_LOG\"; fi\nPATH=\"${PATH#\"$SHIM_BIN:\"}\" exec \"$REAL_GIT\" \"$@\"\n"
+	require.NoError(t, os.WriteFile(filepath.Join(bin, "git"), []byte(gitShim), 0o755))
+	validatedHead := run(t, repo, nil, "git", "rev-parse", "HEAD")
+	pushEnv := []string{
+		"AI_REVIEW_BASE_SHA=" + base,
+		"VALIDATOR_MODE=pass",
+		"REAL_GIT=" + realGit,
+		"PUSH_ARGS_LOG=" + pushArgsLog,
+		"SHIM_BIN=" + bin,
+		"PATH=" + bin + string(os.PathListSeparator) + os.Getenv("PATH"),
+	}
+	run(t, repo, pushEnv, "bash", "scripts/agent-push", "origin", "chore/ci-local-format-parity")
+	refspec, err := os.ReadFile(pushArgsLog)
+	require.NoError(t, err)
+	require.Equal(t, validatedHead+":refs/heads/chore/ci-local-format-parity", string(refspec))
+	require.Equal(t, validatedHead, run(t, remote, nil, "git", "rev-parse", "refs/heads/chore/ci-local-format-parity"))
 }
 
 func run(t *testing.T, dir string, env []string, name string, args ...string) string {
@@ -75,8 +94,26 @@ func run(t *testing.T, dir string, env []string, name string, args ...string) st
 func runResult(dir string, env []string, name string, args ...string) (string, error) {
 	command := exec.Command(name, args...)
 	command.Dir = dir
-	command.Env = append(os.Environ(), env...)
+	command.Env = mergeEnvironment(os.Environ(), env)
 	output, err := command.CombinedOutput()
 
 	return string(output), err
+}
+
+func mergeEnvironment(current, overrides []string) []string {
+	merged := make(map[string]string, len(current)+len(overrides))
+	for _, entry := range current {
+		key, value, _ := strings.Cut(entry, "=")
+		merged[key] = value
+	}
+	for _, entry := range overrides {
+		key, value, _ := strings.Cut(entry, "=")
+		merged[key] = value
+	}
+	result := make([]string, 0, len(merged))
+	for key, value := range merged {
+		result = append(result, key+"="+value)
+	}
+
+	return result
 }

@@ -44,4 +44,4 @@ if [[ -n "$(git status --porcelain)" ]]; then
     exit 1
 fi
 
-git push "$remote" "HEAD:refs/heads/$branch"
+git push "$remote" "$head:refs/heads/$branch"
