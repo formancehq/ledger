@@ -150,6 +150,13 @@ race and subsystem gates are selected from the real diff. Run
 `agent-check-full` only for an explicit broad/high-risk fallback or diagnosis;
 CI owns broad clean validation before merge.
 
+Before an ordinary agent push, use `scripts/agent-push` with the exact PR base
+SHA. It runs `agent-check-pr` in the pinned Nix environment, then refuses to
+push if validation failed or normalization changed the worktree. Do not replace
+this gate with `gofmt`, package tests, or the faster `agent-check` baseline. If
+Nix is unavailable, stop before pushing. A conflict rebase that requires a
+force-with-lease push follows its separate guarded workflow.
+
 ### Canonical validation commands
 
 ```bash
@@ -158,6 +165,9 @@ bash scripts/agent-check
 
 # Targeted PR validation
 AI_REVIEW_BASE_SHA=<base-sha> bash scripts/agent-check-pr
+
+# Validate and push an ordinary PR branch
+AI_REVIEW_BASE_SHA=<base-sha> bash scripts/agent-push origin <branch>
 
 # Explicit/manual broad fallback
 bash scripts/agent-check-full

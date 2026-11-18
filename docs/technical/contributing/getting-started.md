@@ -125,6 +125,14 @@ just test-e2e
 3. Run focused tests for the changed package or subsystem
 4. Before publishing a PR candidate, run `AI_REVIEW_BASE_SHA=<base-sha> bash scripts/agent-check-pr`
 
+For an ordinary agent push, use
+`AI_REVIEW_BASE_SHA=<base-sha> bash scripts/agent-push origin <branch>`.
+The command runs the same PR validation with the pinned Nix tools and requires
+a clean worktree before and after normalization. If the tools are unavailable
+or normalization changes files, the command stops before `git push`. Commit
+the generated changes and rerun it. Conflict rebases use their separate
+force-with-lease procedure.
+
 The PR command selects applicable normalization and focused tests from the
 exact diff. Use `bash scripts/agent-check-full` only as an explicit broad
 fallback. See [Local validation](local-validation.md).

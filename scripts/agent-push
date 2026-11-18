@@ -1,0 +1,47 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+usage() {
+    echo "Usage: AI_REVIEW_BASE_SHA=<base-sha> bash scripts/agent-push <remote> <branch>" >&2
+}
+
+if [[ $# -ne 2 || -z "${AI_REVIEW_BASE_SHA:-}" ]]; then
+    usage
+    exit 2
+fi
+
+remote=$1
+branch=$2
+if [[ "$remote" == -* || "$branch" == -* || "$branch" == +* ]] || ! git check-ref-format --branch "$branch" >/dev/null 2>&1; then
+    usage
+    exit 2
+fi
+
+root=$(git rev-parse --show-toplevel)
+cd "$root"
+current_branch=$(git branch --show-current)
+if [[ "$current_branch" != "$branch" ]]; then
+    echo "agent-push: branch $current_branch does not match push target $branch" >&2
+    exit 1
+fi
+
+if [[ -n "$(git status --porcelain)" ]]; then
+    echo "agent-push: worktree must be clean before validation" >&2
+    git status --short >&2
+    exit 1
+fi
+
+head=$(git rev-parse HEAD)
+AI_REVIEW_BASE_SHA="$AI_REVIEW_BASE_SHA" bash scripts/agent-check-pr
+
+if [[ "$(git rev-parse HEAD)" != "$head" ]]; then
+    echo "agent-push: HEAD changed during validation" >&2
+    exit 1
+fi
+if [[ -n "$(git status --porcelain)" ]]; then
+    echo "agent-push: validation changed the worktree; commit the result before pushing" >&2
+    git status --short >&2
+    exit 1
+fi
+
+git push "$remote" "HEAD:refs/heads/$branch"
