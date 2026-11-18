@@ -60,6 +60,7 @@ func TestOpenAPIAtomicApplyCommandCoverage(t *testing.T) {
 	}{
 		{`{"requests":[{"createLedger":{"name":"new","metadata":{"tag":{"stringValue":"value"}}}},{"saveLedgerMetadata":{"ledger":"existing","metadata":{"count":{"intValue":"9007199254740993"}}}}]}`, true},
 		{`{"requests":[{"apply":{"ledger":"main","action":{"createTransaction":{"postings":[{"source":"world","destination":"bank","asset":"USD","amount":"9007199254740993"}],"timestamp":"2026-01-01T00:00:00Z"}}}}]}`, true},
+		{`{"requests":[{"putKv":{"ledger":"a","key":"k","value":"AQID"}},{"deleteKv":{"ledger":"a","key":"k"}}]}`, true},
 		{`{"request":{"requests":[{"createQueryCheckpoint":{}}]},"payload":"AQ=="}`, true},
 		{`{"requests":[]}`, false},
 		{`{"requests":[{}]}`, false},
