@@ -73,6 +73,13 @@ func (wb *WriteBatch) SetEventSequence(seq uint64) {
 	wb.eventSeq = seq
 }
 
+// EventSequence returns the sequence declared for the current fold batch.
+// Callers that compare an existing single-stamp row against a candidate must
+// use the same declaration that WriteAccountByAssetIndex will validate.
+func (wb *WriteBatch) EventSequence() uint64 {
+	return wb.eventSeq
+}
+
 // NewWriteBatch creates a new WriteBatch.
 func NewWriteBatch() *WriteBatch {
 	return &WriteBatch{}
@@ -234,13 +241,14 @@ func (wb *WriteBatch) WriteDestinationAccountTxMapping(kb *dal.KeyBuilder, ledge
 	return wb.put(key, nil)
 }
 
-// WriteAccountByAssetIndex records that an account has ever touched (assetBase,
-// precision). The value is the writing fold's raft sequence — the account's
-// FIRST touch, because the indexer dedups repeated cells before calling here
-// (writeAccountByAssetDedup) and never rewrites an existing row. A pinned read
-// admits the row only when that stamp is at or below its pin, which is what
-// keeps an aligned snapshot that folded ahead of the main handle from serving
-// members the handle cannot enrich (see compileAccountHasAssetCondition).
+// WriteAccountByAssetIndex records a touch of (assetBase, precision) by an
+// account, stamping the row with the writing fold's sequence. The caller
+// (writeAccountByAssetDedup) keeps the minimum stamp: a live fold skips an
+// existing earlier touch, while historical backfill can replace a later live
+// stamp when it discovers the actual first touch. A pinned read admits the row
+// only when that stamp is at or below its pin, which keeps an aligned snapshot
+// that folded ahead of the main handle from serving members the handle cannot
+// enrich (see compileAccountHasAssetCondition).
 func (wb *WriteBatch) WriteAccountByAssetIndex(kb *dal.KeyBuilder, ledgerName, account, assetBase string, precision uint8) error {
 	seq, err := wb.eventSequence()
 	if err != nil {

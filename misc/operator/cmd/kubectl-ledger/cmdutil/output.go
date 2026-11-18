@@ -101,8 +101,3 @@ func RenderBoxedTable(rows [][]string) {
 		WithData(rows).
 		Render()
 }
-
-// Separator prints a gray separator line.
-func Separator() {
-	pterm.Println(pterm.Gray("─────────────────────────────────────────"))
-}

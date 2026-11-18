@@ -114,16 +114,6 @@ func ListBackups(ctx context.Context, c client.Client, namespace string) (*ledge
 	return &list, nil
 }
 
-// GetBackupRun fetches a single BackupRun CR.
-func GetBackupRun(ctx context.Context, c client.Client, namespace, name string) (*ledgerv1alpha1.BackupRun, error) {
-	var run ledgerv1alpha1.BackupRun
-	if err := c.Get(ctx, types.NamespacedName{Namespace: namespace, Name: name}, &run); err != nil {
-		return nil, err
-	}
-
-	return &run, nil
-}
-
 // ListBackupRuns lists BackupRun CRs in a namespace, optionally filtered
 // by parent Backup name (matches the LabelBackup label). Pass an empty
 // backupName to list all runs in the namespace.

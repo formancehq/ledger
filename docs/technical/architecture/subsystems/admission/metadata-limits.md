@@ -232,8 +232,13 @@ convention (e.g. `spec.metadataMaxCommandBytes` sets `METADATA_MAX_COMMAND_BYTES
 
 All fields are optional; an unset field lets the server apply its built-in
 default. When changing any limit, bump `spec.clusterPolicyRevision` above its
-current value in the same manifest update — otherwise the server logs a
-divergence error and the policy is not updated. The mutual-satisfiability rule
+current value in the same manifest update. The `Cluster` CRD enforces this with
+transition rules: the API server rejects an update that changes a metadata
+limit or `spec.idempotencyTTL` without increasing the revision, and rejects a
+decrease of the revision (an unset revision counts as `1`). Adding, removing or
+re-spelling a field counts as a change even when the effective value is
+unchanged. Without the operator, a missing bump only makes the server log a
+divergence error and leave the policy unchanged. The mutual-satisfiability rule
 (`key <= entity <= command`) is validated at boot and rejected by the FSM;
 the CRD webhook does not enforce it independently.
 

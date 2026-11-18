@@ -333,6 +333,42 @@ func TestCheck_FailureOnlyHistory_ReportsTamperedIdempotencyOutcome(t *testing.T
 	}
 }
 
+// TestCheck_EmptyHistory_ReportsFabricatedIdempotencyOutcome ensures that a
+// genuinely empty audit history remains valid while a frozen idempotency row
+// cannot hide behind the absence of audit entries. There is no legitimate
+// frozen outcome without a corresponding audit entry.
+func TestCheck_EmptyHistory_ReportsFabricatedIdempotencyOutcome(t *testing.T) {
+	t.Parallel()
+
+	store := createTestStore(t)
+	writeIdempotencyEntry(t, store, "fabricated-empty-history", &commonpb.IdempotencyKeyValue{
+		CreatedAt: 1700000001,
+		Hash:      []byte("fabricated-hash"),
+	})
+
+	errs := collectCheckErrors(t, store, attributes.New())
+	require.NotZero(t,
+		countErrorsOfType(errs, servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_IDEMPOTENCY_MISMATCH),
+		"an idempotency outcome without audit history must be reported")
+}
+
+func TestCheck_EmptyHistory_ReportsMalformedIdempotencyKey(t *testing.T) {
+	t.Parallel()
+
+	store := createTestStore(t)
+	malformedKey := []byte{dal.ZoneIdempotency, dal.SubIdempKeys, 0x01}
+	value, err := (&commonpb.IdempotencyKeyValue{CreatedAt: 1700000001}).MarshalVT()
+	require.NoError(t, err)
+	batch := store.OpenWriteSession()
+	require.NoError(t, batch.SetBytes(malformedKey, value))
+	require.NoError(t, batch.Commit())
+
+	errs := collectCheckErrors(t, store, attributes.New())
+	require.NotZero(t,
+		countErrorsOfType(errs, servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_IDEMPOTENCY_MISMATCH),
+		"a malformed idempotency key without audit history must be reported")
+}
+
 // rewriteLogSequenceField rewrites the Log row at `keySequence` with its
 // `sequence` field set to `valueSequence`, leaving the Pebble key alone. That
 // is the divergence CHECK_STORE_ERROR_TYPE_LOG_SEQUENCE_MISMATCH exists to

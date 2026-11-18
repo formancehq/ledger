@@ -22,7 +22,7 @@
     },
     "spec": {
       "additionalProperties": false,
-      "description": "ClusterSpec defines the desired state of Cluster.",
+      "description": "ClusterSpec defines the desired state of Cluster.\n\nThe leader proposes the replicated cluster policy (idempotencyTTL and the\nmetadata limits) only when clusterPolicyRevision exceeds the applied\nrevision. Without these rules an edit that forgets the bump is accepted,\nrolled out, and then never applied, which only shows up as a leader log\nline. Presence counts as a change: setting a field to its default value\nstill needs a bump.",
       "properties": {
         "additionalLabels": {
           "additionalProperties": {
@@ -1094,7 +1094,7 @@
           ]
         },
         "clusterPolicyRevision": {
-          "description": "ClusterPolicyRevision is the monotonic revision number the leader must\npropose to replace the committed cluster policy. Bump this whenever you\nchange any metadata-limit field, idempotencyTTL, hashAlgorithm, or\nqueryCheckpointLimit. The leader proposes the policy only when this\nexceeds the applied revision; setting a new value without bumping the\nrevision logs a divergence error and changes nothing.",
+          "description": "ClusterPolicyRevision is the monotonic revision number the leader must\npropose to replace the committed cluster policy. Bump this whenever you\nchange idempotencyTTL or any metadata-limit field; the API server\nrejects such a change without a bump, and rejects a decrease. The leader\nproposes the policy only when this exceeds the applied revision.\nDefault: 1.",
           "format": "int64",
           "minimum": 1,
           "type": "integer"
@@ -1432,7 +1432,7 @@
           "type": "string"
         },
         "idempotencyTTL": {
-          "description": "IdempotencyTTL is the time-to-live for idempotency keys (0 = never expire).\nDefault: 24h.",
+          "description": "IdempotencyTTL is the time-to-live for idempotency keys (0 = never expire).\nReplicated in the cluster policy; changing it requires bumping\nclusterPolicyRevision. Default: 24h.",
           "type": "string"
         },
         "image": {
@@ -4107,7 +4107,17 @@
           ]
         }
       },
-      "type": "object"
+      "type": "object",
+      "x-kubernetes-validations": [
+        {
+          "message": "changing idempotencyTTL or a metadata limit requires increasing clusterPolicyRevision",
+          "rule": "(has(self.idempotencyTTL) == has(oldSelf.idempotencyTTL) \u0026\u0026 (!has(self.idempotencyTTL) || self.idempotencyTTL == oldSelf.idempotencyTTL) \u0026\u0026 has(self.metadataMaxEntries) == has(oldSelf.metadataMaxEntries) \u0026\u0026 (!has(self.metadataMaxEntries) || self.metadataMaxEntries == oldSelf.metadataMaxEntries) \u0026\u0026 has(self.metadataMaxKeyBytes) == has(oldSelf.metadataMaxKeyBytes) \u0026\u0026 (!has(self.metadataMaxKeyBytes) || self.metadataMaxKeyBytes == oldSelf.metadataMaxKeyBytes) \u0026\u0026 has(self.metadataMaxValueBytes) == has(oldSelf.metadataMaxValueBytes) \u0026\u0026 (!has(self.metadataMaxValueBytes) || self.metadataMaxValueBytes == oldSelf.metadataMaxValueBytes) \u0026\u0026 has(self.metadataMaxEntityBytes) == has(oldSelf.metadataMaxEntityBytes) \u0026\u0026 (!has(self.metadataMaxEntityBytes) || self.metadataMaxEntityBytes == oldSelf.metadataMaxEntityBytes) \u0026\u0026 has(self.metadataMaxCommandBytes) == has(oldSelf.metadataMaxCommandBytes) \u0026\u0026 (!has(self.metadataMaxCommandBytes) || self.metadataMaxCommandBytes == oldSelf.metadataMaxCommandBytes)) || (has(self.clusterPolicyRevision) ? self.clusterPolicyRevision : 1) \u003e (has(oldSelf.clusterPolicyRevision) ? oldSelf.clusterPolicyRevision : 1)"
+        },
+        {
+          "message": "clusterPolicyRevision must not decrease",
+          "rule": "(has(self.clusterPolicyRevision) ? self.clusterPolicyRevision : 1) \u003e= (has(oldSelf.clusterPolicyRevision) ? oldSelf.clusterPolicyRevision : 1)"
+        }
+      ]
     },
     "status": {
       "additionalProperties": false,
