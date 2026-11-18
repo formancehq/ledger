@@ -67,7 +67,8 @@
               "DELETED_METADATA",
               "CREATED_LEDGER",
               "DELETED_LEDGER",
-              "SKIPPED_ORDER"
+              "SKIPPED_ORDER",
+              "ACCOUNT_METADATA_UPDATED"
             ],
             "type": "string"
           },
