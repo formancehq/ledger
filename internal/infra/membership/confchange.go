@@ -42,7 +42,7 @@ func ValidateCapabilities(ids []uint32) error {
 }
 
 // ValidateCapabilityEvidence validates the proof attached to a membership
-// transition against all capabilities currently active in the committed
+// transition against all capabilities currently requested or active in the committed
 // policy. An empty policy keeps membership admission backwards-compatible.
 func ValidateCapabilityEvidence(ctx *ConfChangeContext, required []uint32) error {
 	if ctx == nil {
@@ -53,7 +53,7 @@ func ValidateCapabilityEvidence(ctx *ConfChangeContext, required []uint32) error
 	}
 	for _, id := range required {
 		if !slices.Contains(ctx.Capabilities, id) {
-			return fmt.Errorf("capability %d is required by the active policy", id)
+			return fmt.Errorf("capability %d is required by the committed policy", id)
 		}
 	}
 

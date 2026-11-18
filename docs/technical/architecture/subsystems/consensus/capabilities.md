@@ -53,10 +53,11 @@ automatic activation once membership is ready; it is not itself durable intent.
 
 The membership coordinator fences membership changes through apply, and the
 serialized Node.Propose gate rechecks member evidence before index allocation.
-Before request commit, the same gate pauses business proposals whenever all
+Before request commit, the same gate pauses all audited order batches whenever all
 current members support a locally implemented but inactive capability. After
 request commit, durable intent keeps this barrier until activation commits.
-Configuration and capability controls bypass this business barrier. This
+This includes operational orders such as maintenance-mode changes and query
+checkpoints. Native configuration and capability controls bypass this barrier. This
 conservative MVP avoids feature-specific admission predicates and closes the
 drain-release interval for every future capability. Admission retries only a
 pre-submission activation-pending rejection, after releasing preparation guards.
@@ -191,7 +192,7 @@ treated as transient and the node keeps retrying in the background until a
 compatible peer is available. The capability-dependent protocol cutover is
 reserved for the coordinated rc.3/rc.4 restart, after every node runs the
 barrier-aware binary.
-The leader validates the identity and capability evidence against the active
+The leader validates the identity and capability evidence against the requested and active
 policy, then proposes a
 `ConfChangeUpdateNode` containing the current endpoints and capabilities.
 
@@ -204,5 +205,7 @@ The cluster-policy reconciler preserves committed capability activations while
 reconciling ordinary policy configuration; it does not arm capabilities from
 membership advertisements. The separate activation worker automatically
 requests activation once every member has committed support evidence after
-the coordinated restart. A future feature must define its own
-pending-admission fence before adding a supported activation ID.
+the coordinated restart. A future feature must register a stable activation ID,
+stamp its final persisted proposals, and provide deterministic replay semantics.
+The generic pending-admission fence already covers all audited order batches;
+features must not add a separate activation switch.
