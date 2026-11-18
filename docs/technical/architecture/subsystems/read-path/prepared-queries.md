@@ -96,7 +96,7 @@ A validation error at FSM time is hash-bound as an `AuditFailure`, so a checker 
    main-store handle. This shares the direct unfiltered aggregation's single
    ledger-wide volume scan. It opens no read-index snapshot and skips filter
    compilation and account enumeration. Metadata-only accounts contribute no
-   volume rows; uint256 overflow is propagated as an error.
+   volume rows. Totals are exact and may exceed 2^256.
 5. Otherwise, opens the read-index snapshot and waits for alignment only when
    `AlignmentOwed` is true: the filter tree contains a read-index leaf or the
    target is LOGS. It then calls `Compile(pq.GetFilter(), compileOptions)` with

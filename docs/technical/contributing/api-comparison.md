@@ -338,7 +338,7 @@ JWT/anonymous policy; no new endpoint or authorization requirement is introduced
 | Get account balances | ⚠️ | ✅ | Included in account volumes |
 | Get account volumes | ✅ | ✅ | Returns input/output/balance per asset |
 | Analyze accounts | ✅ | ❌ | Suggest Chart of Accounts from address patterns |
-| Aggregate volumes | ✅ | ✅ | Per-asset aggregated volumes for filtered accounts (direct RPC, no prepared query needed) |
+| Aggregate volumes | ✅ | ✅ | Per-asset aggregated volumes for filtered accounts (direct RPC, no prepared query needed). Exact totals, including above 2^256 (`BigUint` on gRPC since `v3.0.0-rc.5`) |
 | Account date fields (`firstUsage`/`insertionDate`/`updatedAt`) | ❌ | ✅ | Intentionally removed — not returned, not filterable, not paginatable. Replacement: typed `datetime` account metadata + index ([details](#6--account-date-fields-first_usage-insertion_date-updated_at)) |
 | **Logs** |
 | List logs | ✅ | ✅ | HTTP `GET /v3/{ledgerName}/logs` accepts text or structured JSON `id` filters (exact/range); the gRPC stream accepts the equivalent `QueryFilter` protobuf. `ledger == "foo"` selects one ledger when its opt-in index is ready. |

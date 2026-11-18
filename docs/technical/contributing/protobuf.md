@@ -207,7 +207,8 @@ See [architecture/uint256-wire-format.md](../architecture/primitives/uint256-wir
 totals and `SignedBigInt` for balances. These response and audited-projection
 types are deliberately arbitrary precision: an individual persisted color
 bucket is bounded by `Uint256`, but `collapseColors` may sum multiple buckets
-past 256 bits. `BigUint.magnitude` is the minimal unsigned big-endian magnitude
+past 256 bits. `AggregatedVolume` uses `BigUint` for the same reason: it sums
+buckets across accounts, colors, prefixes and precisions. `BigUint.magnitude` is the minimal unsigned big-endian magnitude
 (empty for zero, never prefixed with a zero octet). `SignedBigInt` adds a sign;
 its zero has no magnitude and can never be negative. Public HTTP JSON uses
 exact decimal number tokens by default, matching v2. Clients can opt in to

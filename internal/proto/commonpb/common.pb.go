@@ -744,7 +744,6 @@ const (
 	// exists the FSM emits THIS reason: retryable (Kind=Unavailable), NOT frozen —
 	// a preparation gap, never an authoritative business verdict. See EN-1406.
 	ErrorReason_ERROR_REASON_PRELOAD_UNAVAILABLE ErrorReason = 59
-	ErrorReason_ERROR_REASON_AGGREGATE_OVERFLOW  ErrorReason = 60
 	ErrorReason_ERROR_REASON_BALANCE_NOT_FOUND   ErrorReason = 61
 	// ERROR_REASON_STALE_CLUSTER_POLICY: a cluster-policy update carried a
 	// revision lower than the applied one. Deterministic rejection — a newer
@@ -872,7 +871,6 @@ var (
 		57: "ERROR_REASON_MIRROR_V2_LOG_ID_INVALID",
 		58: "ERROR_REASON_STALE_INPUTS_RESOLUTION",
 		59: "ERROR_REASON_PRELOAD_UNAVAILABLE",
-		60: "ERROR_REASON_AGGREGATE_OVERFLOW",
 		61: "ERROR_REASON_BALANCE_NOT_FOUND",
 		62: "ERROR_REASON_STALE_CLUSTER_POLICY",
 		63: "ERROR_REASON_CLUSTER_POLICY_REVISION_CONFLICT",
@@ -948,7 +946,6 @@ var (
 		"ERROR_REASON_MIRROR_V2_LOG_ID_INVALID":         57,
 		"ERROR_REASON_STALE_INPUTS_RESOLUTION":          58,
 		"ERROR_REASON_PRELOAD_UNAVAILABLE":              59,
-		"ERROR_REASON_AGGREGATE_OVERFLOW":               60,
 		"ERROR_REASON_BALANCE_NOT_FOUND":                61,
 		"ERROR_REASON_STALE_CLUSTER_POLICY":             62,
 		"ERROR_REASON_CLUSTER_POLICY_REVISION_CONFLICT": 63,
@@ -20943,12 +20940,12 @@ func (x *PreparedQuery) GetTarget() QueryTarget {
 // AggregatedVolume represents aggregated input/output volumes for a single
 // (asset, color) bucket. When collapse_colors is requested on the aggregate
 // query, all entries are produced with color = "" and amounts summed across
-// colors.
+// colors. Totals are exact: a sum of buckets may exceed 2^256.
 type AggregatedVolume struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Asset         string                 `protobuf:"bytes,1,opt,name=asset,proto3" json:"asset,omitempty"`
-	Input         *Uint256               `protobuf:"bytes,2,opt,name=input,proto3" json:"input,omitempty"`
-	Output        *Uint256               `protobuf:"bytes,3,opt,name=output,proto3" json:"output,omitempty"`
+	Input         *BigUint               `protobuf:"bytes,2,opt,name=input,proto3" json:"input,omitempty"`
+	Output        *BigUint               `protobuf:"bytes,3,opt,name=output,proto3" json:"output,omitempty"`
 	Color         string                 `protobuf:"bytes,4,opt,name=color,proto3" json:"color,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -20991,14 +20988,14 @@ func (x *AggregatedVolume) GetAsset() string {
 	return ""
 }
 
-func (x *AggregatedVolume) GetInput() *Uint256 {
+func (x *AggregatedVolume) GetInput() *BigUint {
 	if x != nil {
 		return x.Input
 	}
 	return nil
 }
 
-func (x *AggregatedVolume) GetOutput() *Uint256 {
+func (x *AggregatedVolume) GetOutput() *BigUint {
 	if x != nil {
 		return x.Output
 	}
@@ -23786,8 +23783,8 @@ const file_common_proto_rawDesc = "" +
 	"\x06target\x18\x03 \x01(\x0e2\x13.common.QueryTargetR\x06target\"\x8e\x01\n" +
 	"\x10AggregatedVolume\x12\x14\n" +
 	"\x05asset\x18\x01 \x01(\tR\x05asset\x12%\n" +
-	"\x05input\x18\x02 \x01(\v2\x0f.common.Uint256R\x05input\x12'\n" +
-	"\x06output\x18\x03 \x01(\v2\x0f.common.Uint256R\x06output\x12\x14\n" +
+	"\x05input\x18\x02 \x01(\v2\x0f.common.BigUintR\x05input\x12'\n" +
+	"\x06output\x18\x03 \x01(\v2\x0f.common.BigUintR\x06output\x12\x14\n" +
 	"\x05color\x18\x04 \x01(\tR\x05color\"}\n" +
 	"\x0fAggregateResult\x122\n" +
 	"\avolumes\x18\x01 \x03(\v2\x18.common.AggregatedVolumeR\avolumes\x126\n" +
@@ -23940,7 +23937,7 @@ const file_common_proto_rawDesc = "" +
 	"\x12LEDGER_MODE_MIRROR\x10\x01*Q\n" +
 	"\x0fMirrorSyncState\x12\x1d\n" +
 	"\x19MIRROR_SYNC_STATE_SYNCING\x10\x00\x12\x1f\n" +
-	"\x1bMIRROR_SYNC_STATE_FOLLOWING\x10\x01*\xe8\x17\n" +
+	"\x1bMIRROR_SYNC_STATE_FOLLOWING\x10\x01*\xea\x17\n" +
 	"\vErrorReason\x12\x1c\n" +
 	"\x18ERROR_REASON_UNSPECIFIED\x10\x00\x12&\n" +
 	"\"ERROR_REASON_LEDGER_ALREADY_EXISTS\x10\x01\x12!\n" +
@@ -24002,8 +23999,7 @@ const file_common_proto_rawDesc = "" +
 	"!ERROR_REASON_MIRROR_V2_LOG_ID_GAP\x108\x12)\n" +
 	"%ERROR_REASON_MIRROR_V2_LOG_ID_INVALID\x109\x12(\n" +
 	"$ERROR_REASON_STALE_INPUTS_RESOLUTION\x10:\x12$\n" +
-	" ERROR_REASON_PRELOAD_UNAVAILABLE\x10;\x12#\n" +
-	"\x1fERROR_REASON_AGGREGATE_OVERFLOW\x10<\x12\"\n" +
+	" ERROR_REASON_PRELOAD_UNAVAILABLE\x10;\x12\"\n" +
 	"\x1eERROR_REASON_BALANCE_NOT_FOUND\x10=\x12%\n" +
 	"!ERROR_REASON_STALE_CLUSTER_POLICY\x10>\x121\n" +
 	"-ERROR_REASON_CLUSTER_POLICY_REVISION_CONFLICT\x10?\x12'\n" +
@@ -24016,7 +24012,7 @@ const file_common_proto_rawDesc = "" +
 	"+ERROR_REASON_REVERT_TARGET_CREATED_IN_BATCH\x10F\x12)\n" +
 	"%ERROR_REASON_SINK_CONTROLLER_MISMATCH\x10G\x12(\n" +
 	"$ERROR_REASON_NUMSCRIPT_COMPILE_ERROR\x10I\x12*\n" +
-	"&ERROR_REASON_NUMSCRIPT_EXECUTION_ERROR\x10J\"\x04\bH\x10H*'ERROR_REASON_INVALID_CALLER_ATTRIBUTION*Q\n" +
+	"&ERROR_REASON_NUMSCRIPT_EXECUTION_ERROR\x10J\"\x04\b<\x10<\"\x04\bH\x10H*\x1fERROR_REASON_AGGREGATE_OVERFLOW*'ERROR_REASON_INVALID_CALLER_ATTRIBUTION*Q\n" +
 	"\x14ChartEnforcementMode\x12\x1c\n" +
 	"\x18CHART_ENFORCEMENT_STRICT\x10\x00\x12\x1b\n" +
 	"\x17CHART_ENFORCEMENT_AUDIT\x10\x01*i\n" +
@@ -24823,8 +24819,8 @@ var file_common_proto_depIdxs = []int32{
 	15,  // 388: common.AddressMatch.role:type_name -> common.AddressRole
 	292, // 389: common.PreparedQuery.filter:type_name -> common.QueryFilter
 	16,  // 390: common.PreparedQuery.target:type_name -> common.QueryTarget
-	24,  // 391: common.AggregatedVolume.input:type_name -> common.Uint256
-	24,  // 392: common.AggregatedVolume.output:type_name -> common.Uint256
+	28,  // 391: common.AggregatedVolume.input:type_name -> common.BigUint
+	28,  // 392: common.AggregatedVolume.output:type_name -> common.BigUint
 	313, // 393: common.AggregateResult.volumes:type_name -> common.AggregatedVolume
 	315, // 394: common.AggregateResult.groups:type_name -> common.GroupedAggregateResult
 	313, // 395: common.GroupedAggregateResult.volumes:type_name -> common.AggregatedVolume

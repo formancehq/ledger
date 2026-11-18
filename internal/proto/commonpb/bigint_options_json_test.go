@@ -16,7 +16,7 @@ func TestBigIntegerEncodingOutsidePosting(t *testing.T) {
 		"nested": map[string]any{"values": []any{struct {
 			Value *Uint256 `json:"value"`
 		}{Value: value}}},
-		"aggregate":         &AggregatedVolume{Input: value},
+		"aggregate":         &AggregatedVolume{Input: NewBigUintFromUint64(9007199254740993)},
 		"custom projection": &Transaction{Postings: []*Posting{{Amount: value}}},
 	} {
 		t.Run(name, func(t *testing.T) {

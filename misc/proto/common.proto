@@ -2181,7 +2181,9 @@ enum ErrorReason {
   // exists the FSM emits THIS reason: retryable (Kind=Unavailable), NOT frozen —
   // a preparation gap, never an authoritative business verdict. See EN-1406.
   ERROR_REASON_PRELOAD_UNAVAILABLE = 59;
-  ERROR_REASON_AGGREGATE_OVERFLOW = 60;
+  // 60 was AGGREGATE_OVERFLOW; aggregate totals are exact.
+  reserved 60;
+  reserved "ERROR_REASON_AGGREGATE_OVERFLOW";
   ERROR_REASON_BALANCE_NOT_FOUND = 61;
   // ERROR_REASON_STALE_CLUSTER_POLICY: a cluster-policy update carried a
   // revision lower than the applied one. Deterministic rejection — a newer
@@ -2677,11 +2679,11 @@ message PreparedQuery {
 // AggregatedVolume represents aggregated input/output volumes for a single
 // (asset, color) bucket. When collapse_colors is requested on the aggregate
 // query, all entries are produced with color = "" and amounts summed across
-// colors.
+// colors. Totals are exact: a sum of buckets may exceed 2^256.
 message AggregatedVolume {
   string asset = 1;
-  Uint256 input = 2;
-  Uint256 output = 3;
+  BigUint input = 2;
+  BigUint output = 3;
   string color = 4;
 }
 

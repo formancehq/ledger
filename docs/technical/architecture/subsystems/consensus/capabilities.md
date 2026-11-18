@@ -103,6 +103,14 @@ Do not add a capability for a bug fix that restores the intended behavior when
 the old behavior was invalid. Add one when valid historical orders need to keep
 their old behavior while new orders use a different rule.
 
+A change confined to read paths needs no capability either, even when it
+touches a file the capability-contract gate watches. `common.proto` also
+defines service response types that no order carries, and `internal/infra/plan`
+also serves non-FSM reads. For example, the exact aggregate totals change
+(EN-3332) retypes the `AggregatedVolume` response totals, which the mirror
+stored-asset inventory also reads through `plan.Builder.AggregateVolumes`. No
+order, proposal, or apply rule changes.
+
 ## Rollout and recovery
 
 Deploy the barrier-aware binary to every member, stop the cluster, and restart

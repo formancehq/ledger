@@ -127,7 +127,7 @@ func TestExecute_AggregateIgnoresListPageSize(t *testing.T) {
 				volumes := resp.GetAggregate().GetVolumes()
 				require.Len(t, volumes, 1)
 				require.Equal(t, "USD/2", volumes[0].GetAsset())
-				require.Equal(t, commonpb.NewUint256FromUint64(1002), volumes[0].GetInput(), "aggregate every matching account, pageSize=%d", size)
+				require.Equal(t, commonpb.NewBigUintFromUint64(1002), volumes[0].GetInput(), "aggregate every matching account, pageSize=%d", size)
 			}
 		})
 	}

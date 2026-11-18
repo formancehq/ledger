@@ -15,10 +15,10 @@ import (
 	"github.com/formancehq/ledger/v3/tests/oracle/oracletest"
 )
 
-func u256(v uint64) *commonpb.Uint256 { return commonpb.NewUint256(uint256.NewInt(v)) }
+func amount(v uint64) *commonpb.BigUint { return commonpb.NewBigUintFromUint64(v) }
 
 func aggVolume(asset string, in, out uint64) *commonpb.AggregatedVolume {
-	return &commonpb.AggregatedVolume{Asset: asset, Input: u256(in), Output: u256(out)}
+	return &commonpb.AggregatedVolume{Asset: asset, Input: amount(in), Output: amount(out)}
 }
 
 func aggResult(vols ...*commonpb.AggregatedVolume) *commonpb.AggregateResult {
@@ -90,7 +90,7 @@ func TestAggregateMatchesRejectsDivergence(t *testing.T) {
 		}},
 		{"colored bucket the workload never produces", aggResult(
 			aggVolume("USD/2", 5, 0),
-			&commonpb.AggregatedVolume{Asset: "EUR/2", Color: "red", Input: u256(3), Output: u256(0)},
+			&commonpb.AggregatedVolume{Asset: "EUR/2", Color: "red", Input: amount(3), Output: amount(0)},
 		)},
 		{"empty result", aggResult()},
 	} {
