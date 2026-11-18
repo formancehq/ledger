@@ -27,7 +27,8 @@ whether a business command is accepted or which business data is returned.
 
 ### Operational cluster policy
 
-`ZoneGlobal/SubGlobClusterPolicy` is explicitly exempt from business-audit
+The configuration aggregate (`ZoneGlobal/0x17`, formerly `SubGlobClusterPolicy`)
+is explicitly exempt from business-audit
 projection verification. Metadata size/count ceilings, query-checkpoint capacity
 and the idempotency TTL are operational limits. They can reject new work or
 bound retention, but do not define the accounting or semantic validity of an
@@ -35,8 +36,19 @@ accepted transaction. This exemption does not cover signing permissions, ledger
 schemas, enforcement modes, actual metadata values or query-checkpoint records.
 Any new policy field must be classified separately.
 
+The capability aggregate (`ZoneGlobal/0x18`) is deployment compatibility
+governance, not an extension of the quota exemption. Its requested/active
+lifecycle is explicitly trusted deployment state, preserved by Raft and
+versioned backups, rather than re-derived from business audit. It controls
+which semantic marker admission declares; that immutable marker and resulting
+business effects remain audit-bound and checker-verified. The checker does not
+prove when deployment activation was requested or authorized. Store/backup
+integrity and access control remain part of the existing trust boundary. This
+does not exempt signing permissions, enforcement modes or ledger schemas.
+See the [control-state contract](subsystems/storage/control-state.md).
+
 Native `SetClusterPolicyProposal` updates are deterministic Raft controls. They
-persist to the policy row and snapshots without business logs, audit items or
+persist to the control-state rows and snapshots without business logs, audit items or
 business HLC advancement. The checker ignores the current policy row and skips
 operational quotas in isolated replay. It still verifies semantic validations,
 actual effects, audit integrity and the absolute expiry already frozen in each

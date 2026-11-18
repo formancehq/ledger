@@ -77,6 +77,17 @@ question rather than inventing a membership guarantee.
 
 ### Capability evidence and policy activation
 
+Configuration and capability state use independent control payloads and
+revisions. Automatic discovery must check every voter and learner; final
+serialized admission must recheck both request and activation against current
+membership. Requested IDs become membership requirements immediately after
+commit. Business proposals wait from readiness through activation, including
+after drain release, but ordinary configuration controls continue. Retrying a
+pre-submission activation barrier must release preparation guards, respect the
+caller deadline, preserve one caller action count, and never replay a submitted
+future. Schema-3 migration is stopped, atomic and synchronized before serving;
+requested and active state survive replay, snapshot and incremental restore.
+
 For bootstrap join, restart refresh, promotion, and membership changes, record
 the member's `(node_id, instance_id)`, advertised capability IDs, committed
 membership row, and the policy revision and active capabilities on every

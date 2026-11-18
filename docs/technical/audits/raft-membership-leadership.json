@@ -16,6 +16,9 @@
     "internal/application/ctrl/file_receiver*.go",
     "internal/application/ctrl/snapshot_fetcher*.go",
     "internal/bootstrap/config*.go",
+    "internal/bootstrap/capability_activation*.go",
+    "internal/bootstrap/capability_admission_test.go",
+    "cmd/server/capability_activation_test.go",
     "internal/bootstrap/controller_routed*.go",
     "internal/bootstrap/grpc_server_hook*.go",
     "internal/bootstrap/*join*.go",
@@ -75,6 +78,8 @@
     "docs/technical/architecture/subsystems/consensus/proposal-payloads.md"
   ],
   "invariants": [
+    "A business proposal activation-pending rejection before Raft submission releases the old preload and proposal guard before waiting and repreparing against committed policy. Retry respects cancellation, health and leader readiness, counts one caller action, and never retries an already submitted outcome.",
+    "Capability activation has a durable requested-to-active lifecycle independent of configuration revisions. Automatically request activation only after every current voter and learner declares support; empty membership is not ready. Fence business proposals from readiness before request commit, then from durable intent through leader/restart recovery, and never let configuration overwrite requested or active state. Schema 3 requires stopped migration and forbids old-binary rollback before activation.",
     "Valid historical remove/add/remove cycles at one ordinal replay in one Ready or across delayed cleanup without conflicts. Each committed removal retains independent identity admission protection until its durable applied index and matching tuple tombstone are verified; exact duplicates reuse the event, same-index contradictory identities fail, and stale cleanup cannot release another event. Caller cancellation cannot own protection.",
     "A normal Raft entry or ConfChange becomes committed only under the quorum rules of the configuration that governs that transition; no minority, stale leader, learner, or removed member may acknowledge a successful quorum-dependent operation.",
     "Leadership acquisition must establish an applied local horizon at least as new as the leadership barrier before opening leader-only admission, membership orchestration, forwarding ownership, or quorum-certified reads; leadership loss must fence pending leader-owned operations without reinterpreting a committed outcome as rejected.",

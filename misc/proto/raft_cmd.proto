@@ -460,6 +460,8 @@ message Proposal {
   oneof payload {
     ExecutionBatch batch = 11;
     SetClusterPolicyProposal set_cluster_policy = 12;
+    common.CapabilityActivation transition_capability = 13;
+    SetClusterPolicyProposal set_configuration = 14;
   }
 }
 

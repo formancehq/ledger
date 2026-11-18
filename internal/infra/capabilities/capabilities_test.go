@@ -13,6 +13,15 @@ func capabilityState() State {
 	return State{Activations: map[CapabilityID]bool{}}
 }
 
+func TestMembershipRequiredIDsIncludesPendingIntent(t *testing.T) {
+	t.Parallel()
+	policy := &commonpb.ClusterPolicy{CapabilityActivations: []*commonpb.CapabilityActivation{
+		{Id: 9, Active: true}, {Id: 4, Requested: true}, {Id: 7},
+	}}
+	require.Equal(t, []uint32{4, 9}, MembershipRequiredIDs(policy))
+	require.Equal(t, []uint32{9}, ActiveIDs(policy))
+}
+
 func TestValidateSupportedActiveRefusesDowngrade(t *testing.T) {
 	policy := &commonpb.ClusterPolicy{CapabilityActivations: []*commonpb.CapabilityActivation{
 		{Id: 7, Active: true},
@@ -20,6 +29,13 @@ func TestValidateSupportedActiveRefusesDowngrade(t *testing.T) {
 	}}
 	require.NoError(t, ValidateSupportedActive(policy, []CapabilityID{7}))
 	require.ErrorContains(t, ValidateSupportedActive(policy, nil), "active capability 7")
+}
+
+func TestValidateSupportedActiveRefusesUnsupportedPendingIntent(t *testing.T) {
+	t.Parallel()
+	policy := &commonpb.ClusterPolicy{CapabilityActivations: []*commonpb.CapabilityActivation{{Id: 7, Requested: true}}}
+	require.ErrorContains(t, ValidateSupportedActive(policy, nil), "requested capability 7")
+	require.NoError(t, ValidateSupportedActive(policy, []CapabilityID{7}))
 }
 
 func TestEvaluateIncludesVotersAndLearners(t *testing.T) {

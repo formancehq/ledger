@@ -29,6 +29,14 @@ func TestValidateActiveAcceptsNoActivation(t *testing.T) {
 	require.NoError(t, capabilities.ValidateActive(nil, nil, nil))
 }
 
+func TestProposalCapabilityAdmissionRecoversCommittedFenceWithoutFlags(t *testing.T) {
+	t.Parallel()
+	proposal, err := node.NewProposal(1, &raftcmdpb.Proposal{Orders: []*raftcmdpb.Order{{Type: &raftcmdpb.Order_LedgerScoped{LedgerScoped: &raftcmdpb.LedgerScopedOrder{Ledger: "l", Payload: &raftcmdpb.LedgerScopedOrder_CreateLedger{CreateLedger: &raftcmdpb.CreateLedgerOrder{}}}}}}})
+	require.NoError(t, err)
+	policy := &commonpb.ClusterPolicy{CapabilityActivations: []*commonpb.CapabilityActivation{{Id: 1, Requested: true}}}
+	require.ErrorIs(t, validateProposalCapabilityAdmission(policy, proposal, nil), capabilities.ErrActivationPending)
+}
+
 func TestValidateActiveAcceptsConvergedMembership(t *testing.T) {
 	t.Parallel()
 
@@ -61,4 +69,39 @@ func TestProposalCapabilityAdmissionRejectsActivationBeforeRaft(t *testing.T) {
 	)
 
 	require.ErrorIs(t, err, capabilities.ErrCapabilityUnsupported)
+}
+
+func TestCapabilityActivationBarrierBeforeRequestAndAfterDrain(t *testing.T) {
+	t.Parallel()
+	command := &raftcmdpb.Proposal{Payload: &raftcmdpb.Proposal_Batch{Batch: &raftcmdpb.ExecutionBatch{
+		Orders: []*raftcmdpb.Order{{Type: &raftcmdpb.Order_LedgerScoped{LedgerScoped: &raftcmdpb.LedgerScopedOrder{
+			Ledger: "ledger", Payload: &raftcmdpb.LedgerScopedOrder_CreateLedger{CreateLedger: &raftcmdpb.CreateLedgerOrder{}},
+		}}}},
+	}}}
+	proposal, err := node.NewProposal(1, command)
+	require.NoError(t, err)
+	supported := []capabilities.CapabilityID{7}
+	for _, role := range []capabilities.MemberRole{capabilities.Voter, capabilities.Learner} {
+		members := []capabilities.Member{{NodeID: 1, Role: capabilities.Voter, Capabilities: supported}, {NodeID: 2, Role: role}}
+		require.NoError(t, validateProposalCapabilityAdmissionWithSupported(&commonpb.ClusterPolicy{}, proposal, members, supported))
+		members[1].Capabilities = supported
+		require.ErrorIs(t, validateProposalCapabilityAdmissionWithSupported(&commonpb.ClusterPolicy{}, proposal, members, supported), capabilities.ErrActivationPending)
+		pending := &commonpb.ClusterPolicy{CapabilityActivations: []*commonpb.CapabilityActivation{{Id: 7, Requested: true}}}
+		members[1].Capabilities = nil
+		require.ErrorIs(t, validateProposalCapabilityAdmissionWithSupported(pending, proposal, members, supported), capabilities.ErrActivationPending)
+		configuration, err := node.NewProposal(2, &raftcmdpb.Proposal{Payload: &raftcmdpb.Proposal_SetConfiguration{
+			SetConfiguration: &raftcmdpb.SetClusterPolicyProposal{Policy: &commonpb.ClusterPolicy{Revision: 2}},
+		}})
+		require.NoError(t, err)
+		require.NoError(t, validateProposalCapabilityAdmissionWithSupported(pending, configuration, members, supported))
+		request, err := node.NewProposal(3, &raftcmdpb.Proposal{Payload: &raftcmdpb.Proposal_TransitionCapability{
+			TransitionCapability: &commonpb.CapabilityActivation{Id: 7, Requested: true},
+		}})
+		require.NoError(t, err)
+		require.ErrorIs(t, validateProposalCapabilityAdmissionWithSupported(&commonpb.ClusterPolicy{}, request, members, supported), capabilities.ErrCapabilityUnsupported)
+		members[1].Capabilities = supported
+		require.NoError(t, validateProposalCapabilityAdmissionWithSupported(&commonpb.ClusterPolicy{}, request, members, supported))
+		pending.CapabilityActivations[0].Active = true
+		require.NoError(t, validateProposalCapabilityAdmissionWithSupported(pending, proposal, members, supported))
+	}
 }

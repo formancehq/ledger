@@ -122,3 +122,52 @@ func (p *RequestProcessor) ProcessClusterPolicy(policy *commonpb.ClusterPolicy, 
 
 	return processErr
 }
+
+func (p *RequestProcessor) ProcessConfiguration(policy *commonpb.ClusterPolicy, factory ScopeFactory) domain.SerializableError {
+	if policy == nil || len(policy.GetCapabilityActivations()) != 0 {
+		return &domain.ErrClusterPolicyInvalid{Detail: "configuration cannot contain capabilities"}
+	}
+	scope, err := factory.NewScope(nil)
+	if err != nil {
+		return &domain.ErrInvalidExecutionPlan{Reason_: err.Error()}
+	}
+	desired := policy.CloneVT()
+	desired.CapabilityActivations = scope.GetClusterPolicy().CloneVT().GetCapabilityActivations()
+	_, processErr := applyClusterPolicy(desired, scope)
+
+	return processErr
+}
+
+func (p *RequestProcessor) ProcessCapabilityTransition(transition *commonpb.CapabilityActivation, factory ScopeFactory) domain.SerializableError {
+	if transition == nil || transition.GetId() == 0 {
+		return &domain.ErrClusterPolicyInvalid{Detail: "capability transition requires a non-zero id"}
+	}
+	scope, err := factory.NewScope(nil)
+	if err != nil {
+		return &domain.ErrInvalidExecutionPlan{Reason_: err.Error()}
+	}
+	desired := scope.GetClusterPolicy().CloneVT()
+	for _, current := range desired.GetCapabilityActivations() {
+		if current.GetId() != transition.GetId() {
+			continue
+		}
+		if current.GetActive() {
+			return nil
+		}
+		if transition.GetActive() && !current.GetRequested() {
+			return &domain.ErrClusterPolicyInvalid{Detail: "capability must be requested before activation"}
+		}
+		current.Requested = true
+		current.Active = transition.GetActive()
+		scope.SetClusterPolicy(desired)
+
+		return nil
+	}
+	if transition.GetActive() {
+		return &domain.ErrClusterPolicyInvalid{Detail: "capability must be requested before activation"}
+	}
+	desired.CapabilityActivations = append(desired.CapabilityActivations, &commonpb.CapabilityActivation{Id: transition.GetId(), Requested: true})
+	scope.SetClusterPolicy(desired)
+
+	return nil
+}

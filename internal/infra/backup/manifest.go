@@ -25,8 +25,49 @@ type Manifest struct {
 // ClusterPolicySnapshot is independent of business/audit sequence numbers: a
 // policy-only incremental backup can update it without exporting history.
 type ClusterPolicySnapshot struct {
-	AppliedIndex uint64 `json:"appliedIndex"`
-	Data         []byte `json:"data"` // deterministic ClusterPolicy protobuf bytes
+	AppliedIndex        uint64 `json:"appliedIndex"`
+	Data                []byte `json:"data"` // deterministic ClusterPolicy protobuf bytes
+	ConfigurationAbsent bool   `json:"-"`
+}
+
+type controlStateSnapshotData struct {
+	Version             uint32 `json:"version"`
+	Policy              []byte `json:"policy"`
+	ConfigurationAbsent bool   `json:"configurationAbsent,omitempty"`
+}
+
+func (snapshot ClusterPolicySnapshot) MarshalJSON() ([]byte, error) {
+	return json.Marshal(struct {
+		AppliedIndex uint64                   `json:"appliedIndex"`
+		Data         controlStateSnapshotData `json:"data"`
+	}{AppliedIndex: snapshot.AppliedIndex, Data: controlStateSnapshotData{Version: 1, Policy: snapshot.Data, ConfigurationAbsent: snapshot.ConfigurationAbsent}})
+}
+
+func (snapshot *ClusterPolicySnapshot) UnmarshalJSON(data []byte) error {
+	var wire struct {
+		AppliedIndex uint64          `json:"appliedIndex"`
+		Data         json.RawMessage `json:"data"`
+	}
+	if err := json.Unmarshal(data, &wire); err != nil {
+		return err
+	}
+	snapshot.AppliedIndex = wire.AppliedIndex
+	if len(wire.Data) != 0 && wire.Data[0] == '{' {
+		var payload controlStateSnapshotData
+		if err := json.Unmarshal(wire.Data, &payload); err != nil {
+			return err
+		}
+		if payload.Version != 1 {
+			return fmt.Errorf("unsupported control-state snapshot version %d", payload.Version)
+		}
+		snapshot.Data = payload.Policy
+		snapshot.ConfigurationAbsent = payload.ConfigurationAbsent
+
+		return nil
+	}
+	snapshot.ConfigurationAbsent = false
+
+	return json.Unmarshal(wire.Data, &snapshot.Data)
 }
 
 // CheckpointManifest describes a full Pebble checkpoint upload.

@@ -247,6 +247,15 @@ See [the creation contract](../architecture/subsystems/api/atomic-ledger-creatio
 
 ## Proposal payload cutover
 
+Schema 3 adds the stopped startup migration and independent configuration and
+capability controls described in [control-state storage](../architecture/subsystems/storage/control-state.md).
+Exercise canceled migration followed by disk reopen, completed migration
+followed by reopen, unchanged logical state at the applied index, missing-row
+failure, concurrent configuration, durable pending intent and active state.
+Full and operational-only incremental restore preserve both aggregates.
+Check the released RC.4 JSON shape rejects the new known-field data envelope;
+do not infer old-reader rejection from an unknown JSON field.
+
 The proposal codec is part of this contract. Production writers serialize the
 execution and policy oneof directly after a full-stop upgrade. All source nodes
 must stop before any target starts, and old binaries must never reopen a WAL
