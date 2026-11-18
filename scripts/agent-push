@@ -19,6 +19,14 @@ fi
 
 root=$(git rev-parse --show-toplevel)
 cd "$root"
+pr_base=$(gh pr view "$branch" --json baseRefOid --jq .baseRefOid) || {
+    echo "agent-push: unable to read PR base for branch $branch" >&2
+    exit 1
+}
+if [[ "$pr_base" != "$AI_REVIEW_BASE_SHA" ]]; then
+    echo "agent-push: AI_REVIEW_BASE_SHA does not match PR base ($pr_base)" >&2
+    exit 1
+fi
 current_branch=$(git branch --show-current)
 if [[ "$current_branch" != "$branch" ]]; then
     echo "agent-push: branch $current_branch does not match push target $branch" >&2
