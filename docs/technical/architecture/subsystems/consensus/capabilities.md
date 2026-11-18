@@ -43,11 +43,30 @@ trust model of this barrier.
 
 ## Capabilities that change FSM semantics
 
-A capability can describe a protocol or semantic behavior, not only a payload
-feature. For example, `MirrorIngestRejectInvalidAssetV2` can identify the
-behavior that rejects an asset which an older FSM accepted.
+Requested and active state live in a separate bounded aggregate. Activation
+requires a committed request and never consumes a configuration revision.
+SetConfiguration merges with the latest applied capability state inside the
+FSM, so concurrent configuration cannot overwrite either transition. Repeated
+requests and activation are idempotent. The next leader resumes pending intent
+after its readiness barrier. A historical inactive entry is eligible for
+automatic activation once membership is ready; it is not itself durable intent.
 
-The capability has two roles in this case:
+The membership coordinator fences membership changes through apply, and the
+serialized Node.Propose gate rechecks member evidence before index allocation.
+Before request commit, the same gate pauses business proposals whenever all
+current members support a locally implemented but inactive capability. After
+request commit, durable intent keeps this barrier until activation commits.
+Configuration and capability controls bypass this business barrier. This
+conservative MVP avoids feature-specific admission predicates and closes the
+drain-release interval for every future capability. Admission retries only a
+pre-submission activation-pending rejection, after releasing preparation guards.
+New membership announcements must support requested as well as active IDs, so
+an incompatible join cannot strand a committed request.
+
+The supported registry remains empty in this change. A feature must separately
+register its stable ID, select its proposal marker at preparation, and dispatch
+deterministic apply from that persisted marker. This infrastructure change does
+not introduce the account-type validation feature from PR #2552.
 
 1. The replicated `ClusterPolicy` controls whether the cluster may accept the
    behavior.
@@ -183,5 +202,7 @@ uses `JoinAsLearner` and `ConfChangeAddLearnerNode`.
 
 The cluster-policy reconciler preserves committed capability activations while
 reconciling ordinary policy configuration; it does not arm capabilities from
-membership advertisements. A future feature must define its activation policy
-explicitly and enable it only after the coordinated restart has completed.
+membership advertisements. The separate activation worker automatically
+requests activation once every member has committed support evidence after
+the coordinated restart. A future feature must define its own
+pending-admission fence before adding a supported activation ID.

@@ -5,6 +5,7 @@ import (
 
 	"github.com/formancehq/ledger/v3/internal/infra/capabilities"
 	"github.com/formancehq/ledger/v3/internal/pkg/futures"
+	"github.com/formancehq/ledger/v3/internal/pkg/proposals"
 	"github.com/formancehq/ledger/v3/internal/pkg/protowireutil"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
@@ -29,8 +30,10 @@ type Proposal struct {
 	// expectedTerm fences a drain preflight against a later leadership term.
 	expectedTerm         uint64
 	requiredCapabilities []capabilities.CapabilityID
+	hasBusinessOrders    bool
 	// activePolicyCapabilities is populated by the proposal factory for
-	// SetClusterPolicy proposals and orders. Keeping the typed candidate alongside the
+	// SetClusterPolicy proposals/orders and requested or active capability transitions.
+	// Keeping the typed candidate alongside the
 	// serialized command lets the leader validate activation evidence before
 	// handing the bytes to Raft without decoding the command a second time.
 	activePolicyCapabilities []capabilities.CapabilityID
@@ -71,6 +74,10 @@ func NewProposal(commandID uint64, command *raftcmdpb.Proposal) (*Proposal, erro
 	if err := capabilities.ValidateFinalProposal(data, proposal.requiredCapabilities); err != nil {
 		return nil, err
 	}
+	proposal.hasBusinessOrders = len(proposals.BatchOrders(command)) != 0
+	if transition := command.GetTransitionCapability(); transition != nil {
+		proposal.activePolicyCapabilities = append(proposal.activePolicyCapabilities, capabilities.CapabilityID(transition.GetId()))
+	}
 	if policy := command.GetSetClusterPolicy().GetPolicy(); policy != nil {
 		for _, activation := range policy.GetCapabilityActivations() {
 			if activation != nil && activation.GetActive() {
@@ -91,6 +98,10 @@ func NewProposal(commandID uint64, command *raftcmdpb.Proposal) (*Proposal, erro
 	}
 
 	return proposal, nil
+}
+
+func (p *Proposal) HasBusinessOrders() bool {
+	return p.hasBusinessOrders
 }
 
 // Data returns the serialized proposal data.

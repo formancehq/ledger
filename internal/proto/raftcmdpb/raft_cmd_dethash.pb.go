@@ -1656,6 +1656,22 @@ func (m *Proposal) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int, error)
 			i--
 			dAtA[i] = 0x62
 		}
+	case *Proposal_TransitionCapability:
+		if v.TransitionCapability != nil {
+			size, _ := v.TransitionCapability.MarshalToSizedBufferVT(dAtA[:i])
+			i -= size
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+			i--
+			dAtA[i] = 0x6a
+		}
+	case *Proposal_SetConfiguration:
+		if v.SetConfiguration != nil {
+			size, _ := v.SetConfiguration.MarshalToSizedBufferVT(dAtA[:i])
+			i -= size
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+			i--
+			dAtA[i] = 0x72
+		}
 	}
 	return len(dAtA) - i, nil
 }

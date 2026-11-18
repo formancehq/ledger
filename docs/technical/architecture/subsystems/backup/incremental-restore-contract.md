@@ -186,8 +186,11 @@ a nonempty creation delta with live entity reads and requires a healthy checker.
 
 Native `SetClusterPolicyProposal` has no business log or audit entry.
 `Manifest.clusterPolicy` is an optional snapshot containing deterministic policy
-protobuf bytes (`data`, base64 in JSON) and the source `appliedIndex`. Full
-checkpoints already include the policy row and reset this optional override.
+protobuf bytes and the source `appliedIndex`. New manifests encode `data` as
+`{"version":1,"policy":"<base64>"}`; the released RC.4 bytes decoder rejects
+that known-field type instead of ignoring pending intent. New readers accept
+the legacy base64 form and reject unknown envelope versions. Full checkpoints
+include both schema-3 control rows and publish this snapshot too.
 Incremental backup reads policy, applied index and history endpoints from one
 Pebble snapshot. It publishes a changed policy even when there are no history
 exports. A newer observation advances the policy watermark even when policy
@@ -204,7 +207,9 @@ applies history exports, rebuilds their derived state (including legacy policy
 logs), then commits the operational policy override. Only successful staging
 restore may be activated. Failure leaves staging incomplete and must not activate
 it. Released manifests omit the override and preserve checkpoint/legacy-delta
-behavior. The source applied index orders backup captures; it is not a target
+behavior. Both requested and active capability state survive restore, without
+source-member readiness evidence. See the [migration and rollback
+contract](../storage/control-state.md). The source applied index orders backup captures; it is not a target
 Raft index to install during cross-cluster restore.
 
 The policy is structurally validated, not authenticated by the business audit

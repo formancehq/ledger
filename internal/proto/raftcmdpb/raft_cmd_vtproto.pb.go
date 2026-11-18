@@ -1446,6 +1446,24 @@ func (m *Proposal_SetClusterPolicy) CloneVT() isProposal_Payload {
 	return r
 }
 
+func (m *Proposal_TransitionCapability) CloneVT() isProposal_Payload {
+	if m == nil {
+		return (*Proposal_TransitionCapability)(nil)
+	}
+	r := new(Proposal_TransitionCapability)
+	r.TransitionCapability = m.TransitionCapability.CloneVT()
+	return r
+}
+
+func (m *Proposal_SetConfiguration) CloneVT() isProposal_Payload {
+	if m == nil {
+		return (*Proposal_SetConfiguration)(nil)
+	}
+	r := new(Proposal_SetConfiguration)
+	r.SetConfiguration = m.SetConfiguration.CloneVT()
+	return r
+}
+
 func (m *TechnicalUpdate) CloneVT() *TechnicalUpdate {
 	if m == nil {
 		return (*TechnicalUpdate)(nil)
@@ -4740,6 +4758,56 @@ func (this *Proposal_SetClusterPolicy) EqualVT(thatIface isProposal_Payload) boo
 		return false
 	}
 	if p, q := this.SetClusterPolicy, that.SetClusterPolicy; p != q {
+		if p == nil {
+			p = &SetClusterPolicyProposal{}
+		}
+		if q == nil {
+			q = &SetClusterPolicyProposal{}
+		}
+		if !p.EqualVT(q) {
+			return false
+		}
+	}
+	return true
+}
+
+func (this *Proposal_TransitionCapability) EqualVT(thatIface isProposal_Payload) bool {
+	that, ok := thatIface.(*Proposal_TransitionCapability)
+	if !ok {
+		return false
+	}
+	if this == that {
+		return true
+	}
+	if this == nil && that != nil || this != nil && that == nil {
+		return false
+	}
+	if p, q := this.TransitionCapability, that.TransitionCapability; p != q {
+		if p == nil {
+			p = &commonpb.CapabilityActivation{}
+		}
+		if q == nil {
+			q = &commonpb.CapabilityActivation{}
+		}
+		if !p.EqualVT(q) {
+			return false
+		}
+	}
+	return true
+}
+
+func (this *Proposal_SetConfiguration) EqualVT(thatIface isProposal_Payload) bool {
+	that, ok := thatIface.(*Proposal_SetConfiguration)
+	if !ok {
+		return false
+	}
+	if this == that {
+		return true
+	}
+	if this == nil && that != nil || this != nil && that == nil {
+		return false
+	}
+	if p, q := this.SetConfiguration, that.SetConfiguration; p != q {
 		if p == nil {
 			p = &SetClusterPolicyProposal{}
 		}
@@ -9484,6 +9552,44 @@ func (m *Proposal_SetClusterPolicy) MarshalToSizedBufferVT(dAtA []byte) (int, er
 	}
 	return len(dAtA) - i, nil
 }
+func (m *Proposal_TransitionCapability) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *Proposal_TransitionCapability) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	if m.TransitionCapability != nil {
+		size, err := m.TransitionCapability.MarshalToSizedBufferVT(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		i--
+		dAtA[i] = 0x6a
+	}
+	return len(dAtA) - i, nil
+}
+func (m *Proposal_SetConfiguration) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *Proposal_SetConfiguration) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	if m.SetConfiguration != nil {
+		size, err := m.SetConfiguration.MarshalToSizedBufferVT(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		i--
+		dAtA[i] = 0x72
+	}
+	return len(dAtA) - i, nil
+}
 func (m *TechnicalUpdate) MarshalVT() (dAtA []byte, err error) {
 	if m == nil {
 		return nil, nil
@@ -13101,6 +13207,30 @@ func (m *Proposal_SetClusterPolicy) SizeVT() (n int) {
 	_ = l
 	if m.SetClusterPolicy != nil {
 		l = m.SetClusterPolicy.SizeVT()
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	return n
+}
+func (m *Proposal_TransitionCapability) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.TransitionCapability != nil {
+		l = m.TransitionCapability.SizeVT()
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	return n
+}
+func (m *Proposal_SetConfiguration) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.SetConfiguration != nil {
+		l = m.SetConfiguration.SizeVT()
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
 	return n
@@ -22302,6 +22432,88 @@ func (m *Proposal) UnmarshalVT(dAtA []byte) error {
 					return err
 				}
 				m.Payload = &Proposal_SetClusterPolicy{SetClusterPolicy: v}
+			}
+			iNdEx = postIndex
+		case 13:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field TransitionCapability", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if oneof, ok := m.Payload.(*Proposal_TransitionCapability); ok {
+				if err := oneof.TransitionCapability.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+					return err
+				}
+			} else {
+				v := &commonpb.CapabilityActivation{}
+				if err := v.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+					return err
+				}
+				m.Payload = &Proposal_TransitionCapability{TransitionCapability: v}
+			}
+			iNdEx = postIndex
+		case 14:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field SetConfiguration", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if oneof, ok := m.Payload.(*Proposal_SetConfiguration); ok {
+				if err := oneof.SetConfiguration.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+					return err
+				}
+			} else {
+				v := &SetClusterPolicyProposal{}
+				if err := v.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+					return err
+				}
+				m.Payload = &Proposal_SetConfiguration{SetConfiguration: v}
 			}
 			iNdEx = postIndex
 		default:

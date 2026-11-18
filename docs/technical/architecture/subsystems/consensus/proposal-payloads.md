@@ -1,6 +1,6 @@
 # Proposal payloads
 
-`Proposal.payload` separates an execution batch from a cluster-policy control:
+`Proposal.payload` separates execution batches from operational controls:
 
 ```text
 Proposal
@@ -8,7 +8,9 @@ Proposal
                  idempotency, signature
   payload:
     batch (11): ExecutionBatch { orders (1), technical_updates (2) }
-    set_cluster_policy (12): SetClusterPolicyProposal { policy (1) }
+    set_cluster_policy (12): SetClusterPolicyProposal { policy (1) } [historical]
+    transition_capability (13): CapabilityActivation { id (1), active (2), requested (3) }
+    set_configuration (14): SetClusterPolicyProposal { policy (1) }
 ```
 
 Policy controls persist operational state without business audit or logs. Technical updates
@@ -18,8 +20,9 @@ proposals remain consensus barriers.
 ## Upgrade boundary
 
 Producers serialize the oneof directly through the shared plan runner, including
-plan rebuilds and retries. A batch uses field 11 and a policy control uses field
-12. The deprecated fields remain available for reading historical proposals.
+plan rebuilds and retries. A batch uses field 11. Released policy controls use
+field 12; current configuration and capability producers use fields 14 and 13.
+The deprecated fields remain available for reading historical proposals.
 
 This format requires a **full-stop upgrade** from RC.3 to RC.4. Every source
 node must stop before any target node starts. An RC.3 decoder skips the unknown
@@ -37,14 +40,18 @@ and technical updates from either the current batch or historical fields;
 The legacy order handler shares the policy transition for historical WAL and
 audit replay. Accepted messages and their pooled buffers remain unchanged.
 Internal producers own payload construction; admission and processors own
-business validation. There is no transitional shape check, old-format write
-adapter, capability registry, or activation flag.
+business validation. There is no transitional shape check or old-format write
+adapter. The RC.4 to RC.5 stopped boundary additionally introduces targeted
+configuration and capability controls, independent configuration revisions,
+and durable activation requests. Its startup migration and automatic activation
+are specified in the [control-state contract](../storage/control-state.md).
 
 ## Execution and technical updates
 
-Admission constructs policy controls with the `cluster-policy` system caller
+Admission constructs operational controls with the `cluster-policy` system caller
 and no client idempotency or signature data. The policy processor decides
-revision, no-op, conflict and stale-policy outcomes. Native
+revision, no-op, conflict and stale-policy outcomes for configuration. Capability
+transitions are idempotent and monotonic without consuming that revision. Native
 controls update the replicated policy without consuming a business log or audit
 sequence, freezing an idempotency outcome, or advancing business HLC. No new
 policy is converted into a historical order. A native control may apply during

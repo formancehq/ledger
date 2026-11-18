@@ -36,6 +36,8 @@ and encodes [mirror asset mappings](#mirror-asset-mappings) differently.
 The `rc.1` to `rc.2` transition rolls one voter at a time with a maintenance
 barrier that pauses writes; it does not stop the whole cluster.
 The `rc.2` to `rc.3` transition remains rolling.
+RC.4 to RC.5 is also a mandatory stopped boundary: RC.4 cannot read storage
+schema 3 or apply the independent configuration and capability controls.
 Every explicit-target `UpdatePreparedQuery` order must wait until the stopped
 `rc.3` to `rc.4` upgrade completes. Even when the target value is unchanged,
 the new processor records target fields in the audit log, so old and new voters
@@ -70,6 +72,31 @@ through each adjacent RC in order; do not jump to the newest RC. If the source
 cannot be identified or the current Operator already rejects the pinning step,
 stop and plan a separately validated migration. Do not delete the StatefulSet
 or PVCs to bypass the source check.
+### Configuration and capability state
+
+RC.4 to RC.5 preserves the committed policy while splitting its configuration
+and capability state into two records. Use the operator-required stopped restart:
+stop all RC.4 voters and learners before starting RC.5 on the retained volumes.
+Startup migrates schema 2 to 3 atomically, then synchronizes the WAL before
+recovery, workers or listeners start. No history scan or external reconstruction
+is required. Keep the ordinary `ledger run` flags; there is no activation flag.
+The supported registry is empty until a separate feature registers an ID.
+
+Once every current member advertises a registered ID, the leader automatically
+commits request and activation controls. Ordinary configuration keeps its own
+revision and proceeds independently. Business admission waits during activation,
+including immediately after drain release, and honors its original deadline.
+Requested state survives restart and leader change; it cannot be cancelled or
+downgraded. New members must support both requested and active IDs.
+
+Binary rollback to RC.4 closes at migration commit, before activation. A failed
+fsync aborts boot but can leave the complete new batch visible; treat an uncertain
+migration as non-rollbackable. Recover using the target binary and retained
+volumes. Alternatively restore a separately retained pre-upgrade backup with its
+matching binary, losing writes after that backup. Use matching server and CLI
+versions: new backup manifests are deliberately rejected by old readers, and
+new readers still accept the released format. See the [storage contract](../technical/architecture/subsystems/storage/control-state.md).
+
 ### Maintainer-declared CLI break
 
 The `ledgerctl cluster add-learner` command is intentionally removed from the
@@ -345,10 +372,10 @@ For RC.3 to RC.4, use the [operator-required stopped restart](#operator-required
 Capability metadata is the prerequisite for any future incompatible Raft entry,
 execution-plan, replay, or snapshot format. This release does not support
 mixed-version activation: stop every Ledger node, deploy the barrier-aware
-binary everywhere, restart the complete cluster, and only then enable the new
-feature. The capability reconciler does not arm features from membership
-advertisements. See the [capability contract](../technical/architecture/subsystems/consensus/capabilities.md)
-for the persisted replay boundary and coordinated rollout.
+binary everywhere, and restart the complete cluster. Once every voter and
+learner has committed support evidence, the leader automatically requests and
+activates each supported capability. There is no activation flag or extra
+operator setting. See the [capability contract](../technical/architecture/subsystems/consensus/capabilities.md).
 
 Use this for RC updates after the mixed-version validation above passes:
 
