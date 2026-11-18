@@ -2,7 +2,7 @@
 set -euo pipefail
 
 usage() {
-    echo "Usage: AI_REVIEW_BASE_SHA=<base-sha> bash scripts/agent-push <remote> <branch>" >&2
+    echo "Usage: AI_REVIEW_BASE_SHA=<base-sha> [AI_REVIEW_BASE_REF=<base-branch>] bash scripts/agent-push <remote> <branch>" >&2
 }
 
 if [[ $# -ne 2 || -z "${AI_REVIEW_BASE_SHA:-}" ]]; then
@@ -19,13 +19,43 @@ fi
 
 root=$(git rev-parse --show-toplevel)
 cd "$root"
-pr_base=$(gh pr view "$branch" --json baseRefOid --jq .baseRefOid) || {
-    echo "agent-push: unable to read PR base for branch $branch" >&2
+pr_bases=$(gh pr list --head "$branch" --state open --json baseRefOid --jq '.[].baseRefOid') || {
+    echo "agent-push: unable to list PRs for branch $branch" >&2
     exit 1
 }
-if [[ "$pr_base" != "$AI_REVIEW_BASE_SHA" ]]; then
-    echo "agent-push: AI_REVIEW_BASE_SHA does not match PR base ($pr_base)" >&2
-    exit 1
+first_push=false
+if [[ -n "$pr_bases" ]]; then
+    if [[ "$pr_bases" == *$'\n'* ]]; then
+        echo "agent-push: multiple open PRs match branch $branch" >&2
+        exit 1
+    fi
+    if [[ "$pr_bases" != "$AI_REVIEW_BASE_SHA" ]]; then
+        echo "agent-push: AI_REVIEW_BASE_SHA does not match PR base ($pr_bases)" >&2
+        exit 1
+    fi
+else
+    first_push=true
+    base_ref=${AI_REVIEW_BASE_REF:-}
+    if [[ -z "$base_ref" ]] || ! git check-ref-format --branch "$base_ref" >/dev/null 2>&1; then
+        echo "agent-push: AI_REVIEW_BASE_REF must name the base branch before the first push" >&2
+        exit 2
+    fi
+    remote_head=$(git ls-remote --heads "$remote" "refs/heads/$branch") || {
+        echo "agent-push: unable to check remote branch $branch" >&2
+        exit 1
+    }
+    if [[ -n "$remote_head" ]]; then
+        echo "agent-push: remote branch $branch exists without an open PR" >&2
+        exit 1
+    fi
+    remote_base=$(git ls-remote --heads "$remote" "refs/heads/$base_ref") || {
+        echo "agent-push: unable to read remote base branch $base_ref" >&2
+        exit 1
+    }
+    if [[ "$remote_base" != "$AI_REVIEW_BASE_SHA"$'\t'"refs/heads/$base_ref" ]]; then
+        echo "agent-push: AI_REVIEW_BASE_SHA does not match remote base branch $base_ref" >&2
+        exit 1
+    fi
 fi
 current_branch=$(git branch --show-current)
 if [[ "$current_branch" != "$branch" ]]; then
@@ -52,4 +82,9 @@ if [[ -n "$(git status --porcelain)" ]]; then
     exit 1
 fi
 
-git push "$remote" "$head:refs/heads/$branch"
+if [[ "$first_push" == true ]]; then
+    # Require the target ref to remain absent until publication.
+    git push --force-with-lease="refs/heads/$branch:" "$remote" "$head:refs/heads/$branch"
+else
+    git push "$remote" "$head:refs/heads/$branch"
+fi

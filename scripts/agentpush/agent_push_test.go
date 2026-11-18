@@ -33,7 +33,7 @@ esac
 `), 0o755))
 	bin := filepath.Join(dir, "bin")
 	require.NoError(t, os.Mkdir(bin, 0o755))
-	ghScript := "#!/usr/bin/env bash\nset -euo pipefail\n[[ $* == *'baseRefOid'* ]]\nprintf '%s\\n' \"$EXPECTED_PR_BASE\"\n"
+	ghScript := "#!/usr/bin/env bash\nset -euo pipefail\n[[ ${1:-} == pr && ${2:-} == list && $* == *'baseRefOid'* ]]\nprintf '%s\\n' \"$EXPECTED_PR_BASE\"\n"
 	require.NoError(t, os.WriteFile(filepath.Join(bin, "gh"), []byte(ghScript), 0o755))
 	require.NoError(t, os.WriteFile(filepath.Join(repo, "tracked.txt"), []byte("initial\n"), 0o644))
 	run(t, repo, nil, "git", "add", ".")
@@ -89,6 +89,84 @@ esac
 	require.NoError(t, err)
 	require.Equal(t, validatedHead+":refs/heads/chore/ci-local-format-parity", string(refspec))
 	require.Equal(t, validatedHead, run(t, remote, nil, "git", "rev-parse", "refs/heads/chore/ci-local-format-parity"))
+}
+
+func TestAgentPushFirstPublish(t *testing.T) {
+	dir := t.TempDir()
+	repo := filepath.Join(dir, "repo")
+	remote := filepath.Join(dir, "remote.git")
+	require.NoError(t, os.Mkdir(repo, 0o755))
+	run(t, dir, nil, "git", "init", "--bare", remote)
+	run(t, repo, nil, "git", "init", "-b", "main")
+	run(t, repo, nil, "git", "config", "user.name", "Agent Push Test")
+	run(t, repo, nil, "git", "config", "user.email", "agent-push@example.com")
+	run(t, repo, nil, "git", "remote", "add", "origin", remote)
+	require.NoError(t, os.Mkdir(filepath.Join(repo, "scripts"), 0o755))
+	pushScript, err := os.ReadFile(filepath.Join("..", "agent-push"))
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(filepath.Join(repo, "scripts", "agent-push"), pushScript, 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(repo, "scripts", "agent-check-pr"), []byte(`#!/usr/bin/env bash
+set -euo pipefail
+case "${VALIDATOR_MODE:-pass}" in
+    pass) ;;
+    race) git push "$RACE_REMOTE" "$RACE_BASE:refs/heads/chore/new-branch" ;;
+    *) exit 17 ;;
+esac
+`), 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(repo, "tracked.txt"), []byte("base\n"), 0o644))
+	run(t, repo, nil, "git", "add", ".")
+	run(t, repo, nil, "git", "commit", "-m", "base")
+	run(t, repo, nil, "git", "push", "origin", "HEAD:refs/heads/main")
+	base := run(t, repo, nil, "git", "rev-parse", "HEAD")
+	run(t, repo, nil, "git", "switch", "-c", "chore/new-branch")
+	require.NoError(t, os.WriteFile(filepath.Join(repo, "tracked.txt"), []byte("candidate\n"), 0o644))
+	run(t, repo, nil, "git", "add", "tracked.txt")
+	run(t, repo, nil, "git", "commit", "-m", "candidate")
+	candidate := run(t, repo, nil, "git", "rev-parse", "HEAD")
+
+	bin := filepath.Join(dir, "bin")
+	require.NoError(t, os.Mkdir(bin, 0o755))
+	ghScript := "#!/usr/bin/env bash\nset -euo pipefail\n[[ ${1:-} == pr && ${2:-} == list && $* == *'baseRefOid'* ]]\n[[ ${GH_FAIL:-0} == 0 ]]\n"
+	require.NoError(t, os.WriteFile(filepath.Join(bin, "gh"), []byte(ghScript), 0o755))
+	baseEnv := []string{"AI_REVIEW_BASE_SHA=" + base, "AI_REVIEW_BASE_REF=main", "PATH=" + bin + string(os.PathListSeparator) + os.Getenv("PATH")}
+	push := func(env []string) (string, error) {
+		return runResult(repo, env, "bash", "scripts/agent-push", "origin", "chore/new-branch")
+	}
+	remoteBranchExists := func() bool {
+		_, err := runResult(remote, nil, "git", "rev-parse", "--verify", "refs/heads/chore/new-branch")
+
+		return err == nil
+	}
+
+	output, err := push(append(baseEnv, "AI_REVIEW_BASE_REF="))
+	require.Error(t, err)
+	require.Contains(t, output, "AI_REVIEW_BASE_REF must name")
+	require.False(t, remoteBranchExists())
+
+	output, err = push(append(baseEnv, "AI_REVIEW_BASE_SHA="+candidate))
+	require.Error(t, err)
+	require.Contains(t, output, "does not match remote base branch")
+	require.False(t, remoteBranchExists())
+
+	output, err = push(append(baseEnv, "GH_FAIL=1"))
+	require.Error(t, err)
+	require.Contains(t, output, "unable to list PRs")
+	require.False(t, remoteBranchExists())
+
+	_, err = push(append(baseEnv, "VALIDATOR_MODE=fail"))
+	require.Error(t, err)
+	require.False(t, remoteBranchExists())
+	_, err = push(append(baseEnv, "VALIDATOR_MODE=race", "RACE_REMOTE="+remote, "RACE_BASE="+base))
+	require.Error(t, err)
+	require.Equal(t, base, run(t, remote, nil, "git", "rev-parse", "refs/heads/chore/new-branch"))
+	run(t, repo, nil, "git", "push", "origin", ":refs/heads/chore/new-branch")
+
+	run(t, repo, baseEnv, "bash", "scripts/agent-push", "origin", "chore/new-branch")
+	require.Equal(t, candidate, run(t, remote, nil, "git", "rev-parse", "refs/heads/chore/new-branch"))
+
+	output, err = push(baseEnv)
+	require.Error(t, err)
+	require.Contains(t, output, "exists without an open PR")
 }
 
 func run(t *testing.T, dir string, env []string, name string, args ...string) string {

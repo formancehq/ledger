@@ -236,6 +236,11 @@ pushes. The fast `agent-check` baseline and `golangci-lint fmt` do not replace
 this gate: the `Dirty` job also runs `golangci-lint run --fix`, which can apply
 lint fixes that formatters do not.
 
+Before a PR exists, supply `AI_REVIEW_BASE_REF=<base-branch>` as well. The
+script requires the target branch to be absent on the remote and compares
+`AI_REVIEW_BASE_SHA` with the remote base branch before running the same gate.
+For an existing PR, it compares the SHA with the PR base.
+
 `bash scripts/agent-check-full` is the explicit broad fallback. It runs full
 normalization, the baseline, and the complete root-module race suite. It is not
 the default publication path.

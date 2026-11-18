@@ -127,6 +127,10 @@ just test-e2e
 
 For an ordinary agent push, use
 `AI_REVIEW_BASE_SHA=<base-sha> bash scripts/agent-push origin <branch>`.
+For the first push before a PR exists, also set `AI_REVIEW_BASE_REF=<base-branch>`
+and use the current SHA of that branch on `origin`. The target branch must not
+already exist on the remote. Once the PR exists, the command checks the SHA
+against the PR base instead.
 The command runs the same PR validation with the pinned Nix tools and requires
 a clean worktree before and after normalization. If the tools are unavailable
 or normalization changes files, the command stops before `git push`. Commit
