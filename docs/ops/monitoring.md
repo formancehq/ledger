@@ -224,16 +224,18 @@ HTTP server metrics are provided by `go-libs/httpserver` instrumentation.
 
 ## Apply Path Metrics
 
-A write batch reaches the controller through the gRPC Apply handler.
+A write batch reaches the controller through the shared Apply handler. HTTP
+atomic Apply calls this handler directly, so its latency is included.
 
 | Metric | Type | Unit | Description |
 |--------|------|------|-------------|
-| `grpc.apply.duration` | Histogram | s | Total duration of the gRPC Apply handler: forwarded identity, `ctrl.Apply`, checkpoint wait and response signing. Recorded on every exit, failures included; a panic recovered by the gRPC server counts as `error`. |
+| `grpc.apply.duration` | Histogram | s | Total duration of the shared Apply handler: forwarded identity, `ctrl.Apply`, checkpoint wait and response signing. Includes gRPC and HTTP atomic Apply calls, distinguished by `transport`. Recorded on every exit, failures included; a panic recovered by the gRPC server counts as `error`. |
 | `ctrl.apply.duration` | Histogram | s | Duration of a batch's admission in the controller. Recorded whenever admission returns, failures included; a panic during admission is not recorded here. |
 
 **Attributes**:
 - `batch_size`: number of requests in the batch
 - `status`: `success` or `error`; filter on `success` for latency SLOs, since fast rejections pull the error distribution down
+- `transport`: `grpc` or `http` for `grpc.apply.duration`; filter on `grpc` to preserve gRPC-only latency views
 
 ## Raft Consensus Metrics
 

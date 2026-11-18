@@ -64,6 +64,16 @@ func TestDecodeAtomicApplyBatch(t *testing.T) {
 		require.NoError(t, err)
 		require.Len(t, batch.GetRequests()[0].GetApply().GetSkippableReasons(), 1)
 	})
+	t.Run("undefined enum values are rejected before admission", func(t *testing.T) {
+		for _, body := range []string{
+			`{"requests":[{"createLedger":{"name":"a","mode":99}}]}`,
+			`{"requests":[{"createLedger":{"name":"a","defaultEnforcementMode":99}}]}`,
+			`{"requests":[{"apply":{"action":{"createTransaction":{}},"skippableReasons":[99]}}]}`,
+		} {
+			_, err := decodeAtomicApplyBatch([]byte(body))
+			require.ErrorContains(t, err, "undefined enum value")
+		}
+	})
 
 	for _, body := range []string{
 		`null`, `{}`, `{"requests":null}`, `{"requests":[null]}`, `{"requests":[{}]}`,

@@ -13,6 +13,7 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	internalauth "github.com/formancehq/ledger/v3/internal/adapter/auth"
+	internalgrpc "github.com/formancehq/ledger/v3/internal/adapter/grpc"
 	"github.com/formancehq/ledger/v3/internal/domain/crypto/signing"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
@@ -84,7 +85,7 @@ func (s *Server) serveAtomicApply(w http.ResponseWriter, r *http.Request, servic
 		}
 	}
 	trace.SpanFromContext(r.Context()).SetAttributes(attribute.Int("batch_size", len(batch.GetRequests())))
-	response, err := service.Apply(r.Context(), request)
+	response, err := service.Apply(internalgrpc.HTTPApplyContext(r.Context()), request)
 	if err != nil {
 		handleError(w, r, err)
 

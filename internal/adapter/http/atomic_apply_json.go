@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"strconv"
 
 	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
@@ -179,6 +180,11 @@ func normalizeAtomicJSON(value any, descriptor protoreflect.MessageDescriptor) (
 		if child == nil {
 			return nil, fmt.Errorf("field %q cannot be null", key)
 		}
+		if field.Kind() == protoreflect.EnumKind {
+			if err := validateAtomicEnum(child, field.Enum(), key); err != nil {
+				return nil, err
+			}
+		}
 		if field.Message() == nil {
 			continue
 		}
@@ -220,4 +226,22 @@ func normalizeAtomicJSON(value any, descriptor protoreflect.MessageDescriptor) (
 	}
 
 	return object, nil
+}
+
+func validateAtomicEnum(value any, descriptor protoreflect.EnumDescriptor, key string) error {
+	values := []any{value}
+	if list, ok := value.([]any); ok {
+		values = list
+	}
+	for _, item := range values {
+		number, ok := item.(json.Number)
+		if !ok {
+			continue // protojson validates symbolic names and other types.
+		}
+		parsed, err := strconv.ParseInt(number.String(), 10, 32)
+		if err != nil || descriptor.Values().ByNumber(protoreflect.EnumNumber(parsed)) == nil {
+			return fmt.Errorf("undefined enum value %s for field %q", number, key)
+		}
+	}
+	return nil
 }

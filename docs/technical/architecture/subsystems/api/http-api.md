@@ -830,9 +830,9 @@ make every combination admissible.
 
 This is a protobuf-shaped command input, not the legacy bulk `action/data/ik`
 array or a public log projection. Fields use only canonical camelCase names.
-Protobuf enums accept their full symbolic names or numeric values; admission
-still validates supported values. Protobuf 64-bit scalars accept decimal
-strings or exact JSON integer numbers. Bytes use base64. Metadata retains its
+Protobuf enums accept their full symbolic names or defined numeric values;
+undefined numbers are rejected before admission. Protobuf 64-bit scalars accept
+decimal strings or exact JSON integer numbers. Bytes use base64. Metadata retains its
 explicit protobuf type, for example `{ "intValue": "9007199254740993" }` or
 `{ "uintValue": "18446744073709551615" }`; plain REST metadata strings are
 not substituted for these tagged values. Nested maps such as `accountMetadata`
