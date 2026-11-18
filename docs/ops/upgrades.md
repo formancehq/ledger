@@ -75,8 +75,8 @@ stop and plan a separately validated migration. Do not delete the StatefulSet
 or PVCs to bypass the source check.
 ### Configuration and capability state
 
-RC.4 to RC.5 preserves the committed policy while splitting its configuration
-and capability state into two records. Use the operator-required stopped restart:
+RC.4 to RC.5 preserves ClusterPolicy at its original key and extracts only
+capability state into a separate record. Use the operator-required stopped restart:
 stop all RC.4 voters and learners before starting RC.5 on the retained volumes.
 Startup migrates schema 2 to 3 atomically, then synchronizes the WAL before
 recovery, workers or listeners start. No history scan or external reconstruction

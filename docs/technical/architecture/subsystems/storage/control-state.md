@@ -13,12 +13,14 @@ The MVP has two bounded aggregates, in the existing Pebble database:
 
 | Key in ZoneGlobal | Value | Owner |
 | --- | --- | --- |
-| `0x17` / `SubGlobConfiguration` | ClusterPolicy with no capability entries | SetConfiguration, operator revision |
+| `0x13` / `SubGlobClusterPolicy` | ClusterPolicy with no capability entries | SetClusterPolicy, operator revision |
 | `0x18` / `SubGlobCapabilityState` | CapabilityState | TransitionCapability, monotonic per-ID transitions |
 
-The existing ClusterPolicy message is the assembled compatibility view, not a
-third stored authority. TTL, checkpoint capacity and metadata limits remain one
-configuration aggregate in this MVP. Capabilities share one bounded record;
+ClusterPolicy retains its name, revision, original storage key, and role as the
+aggregate for flag-derived configuration. TTL, checkpoint capacity and metadata
+limits remain together; only capabilities are extracted. ReadClusterPolicy
+assembles the compatibility view in memory, not a third stored authority.
+Capabilities share one bounded record;
 there is no per-field revision, generic settings store, or additional database.
 The FSM writes both rows in its existing atomic batch. Readers assemble them
 from one snapshot, including final proposal admission and backup capture.
@@ -27,7 +29,9 @@ from one snapshot, including final proposal admission and backup capture.
 
 Configuration uses its own existing revision contract: lower is stale, equal
 and identical is a no-op, equal and different conflicts, greater replaces the
-configuration. SetConfiguration rejects capability fields. Its FSM handler
+configuration. Current SetClusterPolicy proposals reject embedded capability
+fields. Their `configuration_only=true` marker distinguishes them from released
+proposals without changing the meaning of historical WAL entries. The FSM handler
 combines the candidate with the latest applied capability state, not the
 producer's earlier read. Ordinary reconciliation never waits for support of a
 new, inactive capability. Active capabilities still enforce membership safety.
@@ -65,7 +69,8 @@ A submitted proposal's outcome is never retried by this path.
 Storage schema 3 is a mandatory stopped upgrade from schema 2. Before recovery,
 workers or listeners start, ValidateOrPersistConfig checks schema and identity,
 then reads the committed legacy policy. One synchronous Pebble batch writes the
-two aggregates, deletes legacy key `0x13`, and updates the schema anchor to 3.
+ClusterPolicy at its original key `0x13` without capabilities, writes the extracted
+CapabilityState at `0x18`, and updates the schema anchor to 3.
 WriteSession.Commit uses NoSync: after that atomic visibility change, startup
 calls Store.SyncWAL and waits for its fsync before allowing recovery or serving.
 No business history is scanned, rewritten or reconstructed. Values, revision,
@@ -79,7 +84,7 @@ or fsync failure aborts startup without rolling back visible state; reopen
 resolves whether the complete old or complete new batch survived. Do not
 attempt binary rollback after an uncertain migration outcome.
 Restart is idempotent. A schema-3 store with a missing aggregate, invalid IDs,
-or coexisting legacy authority fails closed rather than deriving defaults from
+or capabilities embedded in both records fails closed rather than deriving defaults from
 flags. Identity overrides cannot bypass schema or committed policy checks.
 
 During normal apply, WriteSet stages the control view and may advance private
@@ -89,11 +94,14 @@ published only after successful commit. A commit failure is fatal to serving;
 there is no promise of in-memory rollback or permission to continue serving
 the private prepared state.
 
-Released order and native SetClusterPolicy decoders remain replay-only
-compatibility paths. They fold historical policy into the split rows without
-changing historical business/audit bytes. New production writers emit only
-SetConfiguration and TransitionCapability. No old writer may coexist with
-them. Snapshot recovery assembles the same view as startup migration.
+Released orders and native SetClusterPolicy proposals without the new marker
+retain their original replay semantics, including embedded capabilities. They
+fold historical policy into the two rows without changing historical
+business/audit bytes. New production writers emit SetClusterPolicy with
+`configuration_only=true` and TransitionCapability. The marker is a persisted
+command discriminator, not an operator flag. No old writer may coexist with
+them: an old decoder ignores the marker and cannot preserve detached capabilities.
+Snapshot recovery assembles the same view as startup migration.
 
 ## Backups and rollback
 
@@ -123,8 +131,9 @@ after that backup. Never point an old binary at migrated volumes or new backups.
 ## Cost and integrity
 
 Migration is O(number of capability entries) with one atomic batch and no
-history scan. Each current read uses two aggregate lookups and a legacy-row
-absence check in one snapshot. Each transition rewrites the bounded aggregate
+history scan. Each current read uses two aggregate lookups in one snapshot;
+when capability state is absent, the schema anchor distinguishes a released
+store from an incomplete migration. Each transition rewrites the bounded aggregate
 pair; FSM apply adds no Pebble reads or cache coverage. Activation work is
 bounded by capabilities and members and runs on the existing one-second tick.
 

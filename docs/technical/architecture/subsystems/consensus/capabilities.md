@@ -45,7 +45,8 @@ trust model of this barrier.
 
 Requested and active state live in a separate bounded aggregate. Activation
 requires a committed request and never consumes a configuration revision.
-SetConfiguration merges with the latest applied capability state inside the
+SetClusterPolicy retains its original identity and uses a configuration-only
+marker to merge with the latest applied capability state inside the
 FSM, so concurrent configuration cannot overwrite either transition. Repeated
 requests and activation are idempotent. The next leader resumes pending intent
 after its readiness barrier. A historical inactive entry is eligible for

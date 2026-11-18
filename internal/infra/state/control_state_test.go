@@ -32,7 +32,7 @@ func TestControlStateIndependentRevisionsAndRecovery(t *testing.T) {
 	configuration.Revision++
 	configuration.QueryCheckpointLimit = 42
 	control := func(policy *commonpb.ClusterPolicy) *raftcmdpb.Proposal {
-		return &raftcmdpb.Proposal{Payload: &raftcmdpb.Proposal_SetConfiguration{SetConfiguration: &raftcmdpb.SetClusterPolicyProposal{Policy: policy}}}
+		return &raftcmdpb.Proposal{Payload: &raftcmdpb.Proposal_SetClusterPolicy{SetClusterPolicy: &raftcmdpb.SetClusterPolicyProposal{Policy: policy, ConfigurationOnly: true}}}
 	}
 	require.ErrorContains(t, apply(transition(true)), "must be requested")
 	require.NoError(t, apply(transition(false)))
@@ -43,6 +43,9 @@ func TestControlStateIndependentRevisionsAndRecovery(t *testing.T) {
 	machine = recoverMachineOnStore(t, store)
 	require.True(t, pending.EqualVT(machine.State.ClusterPolicy))
 	require.NoError(t, apply(control(configuration)))
+	invalid := configuration.CloneVT()
+	invalid.CapabilityActivations = []*commonpb.CapabilityActivation{{Id: 2, Active: true}}
+	require.ErrorContains(t, apply(control(invalid)), "cluster policy cannot contain capabilities")
 	require.NoError(t, apply(transition(true)))
 	require.NoError(t, apply(control(configuration.CloneVT())), "same config revision stays idempotent after activation")
 	conflict := configuration.CloneVT()
@@ -60,4 +63,29 @@ func TestControlStateIndependentRevisionsAndRecovery(t *testing.T) {
 	require.True(t, stored.GetCapabilityActivations()[0].GetActive())
 	machine = recoverMachineOnStore(t, store)
 	require.True(t, stored.EqualVT(machine.State.ClusterPolicy))
+}
+
+func TestControlStateLegacyPolicyReplay(t *testing.T) {
+	t.Parallel()
+	machine, store, _ := newTestMachine(t)
+	legacy := machine.State.ClusterPolicy.CloneVT()
+	legacy.Revision++
+	legacy.CapabilityActivations = []*commonpb.CapabilityActivation{{Id: 1, Active: true}}
+	command := &raftcmdpb.Proposal{Id: 1, Payload: &raftcmdpb.Proposal_SetClusterPolicy{
+		SetClusterPolicy: &raftcmdpb.SetClusterPolicyProposal{Policy: legacy},
+	}}
+	encoded, err := command.MarshalVT()
+	require.NoError(t, err)
+	decoded := &raftcmdpb.Proposal{}
+	require.NoError(t, decoded.UnmarshalVT(encoded))
+	require.False(t, decoded.GetSetClusterPolicy().GetConfigurationOnly())
+	result, err := machine.ApplyEntries(t.Context(), store, makeEntry(t, 1, decoded))
+	require.NoError(t, err)
+	require.NoError(t, result.Results[0].Error)
+	require.False(t, result.Results[0].AuditEntryWritten)
+	stored, err := query.ReadClusterPolicy(store)
+	require.NoError(t, err)
+	require.True(t, legacy.EqualVT(stored), "released controls preserve their embedded capability semantics")
+	machine = recoverMachineOnStore(t, store)
+	require.True(t, legacy.EqualVT(machine.State.ClusterPolicy))
 }

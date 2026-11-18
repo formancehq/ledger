@@ -78,7 +78,10 @@ question rather than inventing a membership guarantee.
 ### Capability evidence and policy activation
 
 Configuration and capability state use independent control payloads and
-revisions. Automatic discovery must check every voter and learner; final
+revisions. ClusterPolicy remains the flag-derived aggregate at its original
+key; current field-12 controls set `configuration_only` and merge committed
+capabilities, while omitted-marker historical controls keep their replay meaning.
+Automatic discovery must check every voter and learner; final
 serialized admission must recheck both request and activation against current
 membership. Requested IDs become membership requirements immediately after
 commit. Business proposals wait from readiness through activation, including

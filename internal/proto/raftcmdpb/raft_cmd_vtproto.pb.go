@@ -1372,6 +1372,7 @@ func (m *SetClusterPolicyProposal) CloneVT() *SetClusterPolicyProposal {
 	}
 	r := new(SetClusterPolicyProposal)
 	r.Policy = m.Policy.CloneVT()
+	r.ConfigurationOnly = m.ConfigurationOnly
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
 		copy(r.unknownFields, m.unknownFields)
@@ -1452,15 +1453,6 @@ func (m *Proposal_TransitionCapability) CloneVT() isProposal_Payload {
 	}
 	r := new(Proposal_TransitionCapability)
 	r.TransitionCapability = m.TransitionCapability.CloneVT()
-	return r
-}
-
-func (m *Proposal_SetConfiguration) CloneVT() isProposal_Payload {
-	if m == nil {
-		return (*Proposal_SetConfiguration)(nil)
-	}
-	r := new(Proposal_SetConfiguration)
-	r.SetConfiguration = m.SetConfiguration.CloneVT()
 	return r
 }
 
@@ -4621,6 +4613,9 @@ func (this *SetClusterPolicyProposal) EqualVT(that *SetClusterPolicyProposal) bo
 	if !this.Policy.EqualVT(that.Policy) {
 		return false
 	}
+	if this.ConfigurationOnly != that.ConfigurationOnly {
+		return false
+	}
 	return string(this.unknownFields) == string(that.unknownFields)
 }
 
@@ -4788,31 +4783,6 @@ func (this *Proposal_TransitionCapability) EqualVT(thatIface isProposal_Payload)
 		}
 		if q == nil {
 			q = &commonpb.CapabilityActivation{}
-		}
-		if !p.EqualVT(q) {
-			return false
-		}
-	}
-	return true
-}
-
-func (this *Proposal_SetConfiguration) EqualVT(thatIface isProposal_Payload) bool {
-	that, ok := thatIface.(*Proposal_SetConfiguration)
-	if !ok {
-		return false
-	}
-	if this == that {
-		return true
-	}
-	if this == nil && that != nil || this != nil && that == nil {
-		return false
-	}
-	if p, q := this.SetConfiguration, that.SetConfiguration; p != q {
-		if p == nil {
-			p = &SetClusterPolicyProposal{}
-		}
-		if q == nil {
-			q = &SetClusterPolicyProposal{}
 		}
 		if !p.EqualVT(q) {
 			return false
@@ -9364,6 +9334,16 @@ func (m *SetClusterPolicyProposal) MarshalToSizedBufferVT(dAtA []byte) (int, err
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
+	if m.ConfigurationOnly {
+		i--
+		if m.ConfigurationOnly {
+			dAtA[i] = 1
+		} else {
+			dAtA[i] = 0
+		}
+		i--
+		dAtA[i] = 0x10
+	}
 	if m.Policy != nil {
 		size, err := m.Policy.MarshalToSizedBufferVT(dAtA[:i])
 		if err != nil {
@@ -9568,25 +9548,6 @@ func (m *Proposal_TransitionCapability) MarshalToSizedBufferVT(dAtA []byte) (int
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 		i--
 		dAtA[i] = 0x6a
-	}
-	return len(dAtA) - i, nil
-}
-func (m *Proposal_SetConfiguration) MarshalToVT(dAtA []byte) (int, error) {
-	size := m.SizeVT()
-	return m.MarshalToSizedBufferVT(dAtA[:size])
-}
-
-func (m *Proposal_SetConfiguration) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
-	i := len(dAtA)
-	if m.SetConfiguration != nil {
-		size, err := m.SetConfiguration.MarshalToSizedBufferVT(dAtA[:i])
-		if err != nil {
-			return 0, err
-		}
-		i -= size
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
-		i--
-		dAtA[i] = 0x72
 	}
 	return len(dAtA) - i, nil
 }
@@ -13129,6 +13090,9 @@ func (m *SetClusterPolicyProposal) SizeVT() (n int) {
 		l = m.Policy.SizeVT()
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
+	if m.ConfigurationOnly {
+		n += 2
+	}
 	n += len(m.unknownFields)
 	return n
 }
@@ -13219,18 +13183,6 @@ func (m *Proposal_TransitionCapability) SizeVT() (n int) {
 	_ = l
 	if m.TransitionCapability != nil {
 		l = m.TransitionCapability.SizeVT()
-		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
-	}
-	return n
-}
-func (m *Proposal_SetConfiguration) SizeVT() (n int) {
-	if m == nil {
-		return 0
-	}
-	var l int
-	_ = l
-	if m.SetConfiguration != nil {
-		l = m.SetConfiguration.SizeVT()
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
 	return n
@@ -21967,6 +21919,26 @@ func (m *SetClusterPolicyProposal) UnmarshalVT(dAtA []byte) error {
 				return err
 			}
 			iNdEx = postIndex
+		case 2:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field ConfigurationOnly", wireType)
+			}
+			var v int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				v |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			m.ConfigurationOnly = bool(v != 0)
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
@@ -22473,47 +22445,6 @@ func (m *Proposal) UnmarshalVT(dAtA []byte) error {
 					return err
 				}
 				m.Payload = &Proposal_TransitionCapability{TransitionCapability: v}
-			}
-			iNdEx = postIndex
-		case 14:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field SetConfiguration", wireType)
-			}
-			var msglen int
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				msglen |= int(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			if msglen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + msglen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			if oneof, ok := m.Payload.(*Proposal_SetConfiguration); ok {
-				if err := oneof.SetConfiguration.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
-					return err
-				}
-			} else {
-				v := &SetClusterPolicyProposal{}
-				if err := v.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
-					return err
-				}
-				m.Payload = &Proposal_SetConfiguration{SetConfiguration: v}
 			}
 			iNdEx = postIndex
 		default:

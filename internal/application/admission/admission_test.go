@@ -1755,7 +1755,8 @@ func TestPolicyAdmissionDoesNotWaitForBusinessAuditKey(t *testing.T) {
 	policy := &commonpb.ClusterPolicy{Revision: 1}
 	got, err := admission.prepareClusterPolicy(ctx, &commonpb.CallerSnapshot{}, policy)
 	require.NoError(t, err, "operational policy does not enter audit-key or policy readiness waits")
-	require.True(t, policy.EqualVT(got.command.GetSetConfiguration().GetPolicy()))
+	require.True(t, policy.EqualVT(got.command.GetSetClusterPolicy().GetPolicy()))
+	require.True(t, got.command.GetSetClusterPolicy().GetConfigurationOnly())
 	require.Nil(t, got.command.GetBatch())
 	require.Empty(t, got.orders)
 	require.Empty(t, got.build.ExecutionPlan.GetAttributes(), "policy admission must not preload business state")

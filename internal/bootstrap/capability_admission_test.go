@@ -89,8 +89,8 @@ func TestCapabilityActivationBarrierBeforeRequestAndAfterDrain(t *testing.T) {
 		pending := &commonpb.ClusterPolicy{CapabilityActivations: []*commonpb.CapabilityActivation{{Id: 7, Requested: true}}}
 		members[1].Capabilities = nil
 		require.ErrorIs(t, validateProposalCapabilityAdmissionWithSupported(pending, proposal, members, supported), capabilities.ErrActivationPending)
-		configuration, err := node.NewProposal(2, &raftcmdpb.Proposal{Payload: &raftcmdpb.Proposal_SetConfiguration{
-			SetConfiguration: &raftcmdpb.SetClusterPolicyProposal{Policy: &commonpb.ClusterPolicy{Revision: 2}},
+		configuration, err := node.NewProposal(2, &raftcmdpb.Proposal{Payload: &raftcmdpb.Proposal_SetClusterPolicy{
+			SetClusterPolicy: &raftcmdpb.SetClusterPolicyProposal{Policy: &commonpb.ClusterPolicy{Revision: 2}, ConfigurationOnly: true},
 		}})
 		require.NoError(t, err)
 		require.NoError(t, validateProposalCapabilityAdmissionWithSupported(pending, configuration, members, supported))

@@ -547,8 +547,8 @@ func (a *Admission) prepareClusterPolicy(ctx context.Context, caller *commonpb.C
 	command := commands.NewCommand()
 	configuration := policy.CloneVT()
 	configuration.CapabilityActivations = nil
-	command.Payload = &raftcmdpb.Proposal_SetConfiguration{
-		SetConfiguration: &raftcmdpb.SetClusterPolicyProposal{Policy: configuration},
+	command.Payload = &raftcmdpb.Proposal_SetClusterPolicy{
+		SetClusterPolicy: &raftcmdpb.SetClusterPolicyProposal{Policy: configuration, ConfigurationOnly: true},
 	}
 
 	return a.prepareControl(ctx, caller, command)

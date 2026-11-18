@@ -4323,6 +4323,7 @@ func NewExecutionBatchListReader(s []*ExecutionBatch) ExecutionBatchListReader {
 // Call Mutate() to obtain a mutable clone.
 type SetClusterPolicyProposalReader interface {
 	GetPolicy() commonpb.ClusterPolicyReader
+	GetConfigurationOnly() bool
 	Mutate() *SetClusterPolicyProposal
 }
 
@@ -4334,6 +4335,10 @@ func (r *setClusterPolicyProposalReadonly) GetPolicy() commonpb.ClusterPolicyRea
 		return nil
 	}
 	return v.AsReader()
+}
+
+func (r *setClusterPolicyProposalReadonly) GetConfigurationOnly() bool {
+	return (*SetClusterPolicyProposal)(r).GetConfigurationOnly()
 }
 
 func (r *setClusterPolicyProposalReadonly) Mutate() *SetClusterPolicyProposal {

@@ -1413,9 +1413,7 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 	isControl := true
 	switch control := proposal.GetPayload().(type) {
 	case *raftcmdpb.Proposal_SetClusterPolicy:
-		controlErr = fsm.processor.ProcessClusterPolicy(control.SetClusterPolicy.GetPolicy(), scopeFactory)
-	case *raftcmdpb.Proposal_SetConfiguration:
-		controlErr = fsm.processor.ProcessConfiguration(control.SetConfiguration.GetPolicy(), scopeFactory)
+		controlErr = fsm.processor.ProcessClusterPolicy(control.SetClusterPolicy, scopeFactory)
 	case *raftcmdpb.Proposal_TransitionCapability:
 		controlErr = fsm.processor.ProcessCapabilityTransition(control.TransitionCapability, scopeFactory)
 	default:

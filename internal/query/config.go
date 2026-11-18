@@ -90,24 +90,17 @@ func ReadClusterPolicy(reader dal.PebbleGetter) (*commonpb.ClusterPolicy, error)
 
 		return policy, errors.Join(readErr, handle.Close())
 	}
-	configuration, err := dal.ReadProto[*commonpb.ClusterPolicy](reader, []byte{dal.ZoneGlobal, dal.SubGlobConfiguration})
+	policy, err := dal.ReadProto[*commonpb.ClusterPolicy](reader, []byte{dal.ZoneGlobal, dal.SubGlobClusterPolicy})
 	if err != nil {
-		return nil, fmt.Errorf("loading configuration: %w", err)
+		return nil, fmt.Errorf("loading cluster policy: %w", err)
 	}
 	capabilityState, err := dal.ReadProto[*commonpb.CapabilityState](reader, []byte{dal.ZoneGlobal, dal.SubGlobCapabilityState})
 	if err != nil {
 		return nil, fmt.Errorf("loading capability state: %w", err)
 	}
-	if configuration != nil || capabilityState != nil {
-		if configuration == nil || capabilityState == nil || len(configuration.GetCapabilityActivations()) != 0 {
+	if capabilityState != nil {
+		if policy == nil || len(policy.GetCapabilityActivations()) != 0 {
 			return nil, errors.New("incomplete or invalid split control state")
-		}
-		legacy, err := dal.ReadProto[*commonpb.ClusterPolicy](reader, []byte{dal.ZoneGlobal, dal.SubGlobClusterPolicy})
-		if err != nil {
-			return nil, err
-		}
-		if legacy != nil {
-			return nil, errors.New("legacy and split control state cannot coexist")
 		}
 		seen := make(map[uint32]bool)
 		for _, activation := range capabilityState.GetActivations() {
@@ -116,13 +109,16 @@ func ReadClusterPolicy(reader dal.PebbleGetter) (*commonpb.ClusterPolicy, error)
 			}
 			seen[activation.GetId()] = true
 		}
-		configuration.CapabilityActivations = capabilityState.GetActivations()
+		policy.CapabilityActivations = capabilityState.GetActivations()
 
-		return configuration, nil
+		return policy, nil
 	}
-	policy, err := dal.ReadProto[*commonpb.ClusterPolicy](reader, []byte{dal.ZoneGlobal, dal.SubGlobClusterPolicy})
+	config, err := ReadPersistedConfig(reader)
 	if err != nil {
-		return nil, fmt.Errorf("loading cluster policy: %w", err)
+		return nil, err
+	}
+	if config.GetStorageSchemaVersion() >= 3 {
+		return nil, errors.New("incomplete control state: schema 3 is missing capability state")
 	}
 
 	return policy, nil

@@ -8,9 +8,8 @@ Proposal
                  idempotency, signature
   payload:
     batch (11): ExecutionBatch { orders (1), technical_updates (2) }
-    set_cluster_policy (12): SetClusterPolicyProposal { policy (1) } [historical]
+    set_cluster_policy (12): SetClusterPolicyProposal { policy (1), configuration_only (2) }
     transition_capability (13): CapabilityActivation { id (1), active (2), requested (3) }
-    set_configuration (14): SetClusterPolicyProposal { policy (1) }
 ```
 
 Policy controls persist operational state without business audit or logs. Technical updates
@@ -20,8 +19,11 @@ proposals remain consensus barriers.
 ## Upgrade boundary
 
 Producers serialize the oneof directly through the shared plan runner, including
-plan rebuilds and retries. A batch uses field 11. Released policy controls use
-field 12; current configuration and capability producers use fields 14 and 13.
+plan rebuilds and retries. A batch uses field 11 and policy controls use field 12.
+Current policy producers keep field 12 and set `configuration_only=true`:
+they contain only flag-derived ClusterPolicy values, and apply merges the latest
+detached CapabilityState. Released proposals omit the marker and retain their
+original full-policy replay semantics. Capability producers use field 13.
 The deprecated fields remain available for reading historical proposals.
 
 This format requires a **full-stop upgrade** from RC.3 to RC.4. Every source

@@ -208,19 +208,19 @@ func saveClusterState(b *dal.WriteSession, state *commonpb.PersistedClusterState
 	return b.SetProto([]byte{dal.ZoneGlobal, dal.SubGlobClusterConfig}, state)
 }
 
-// SaveClusterPolicy atomically saves both aggregates and removes the legacy row.
-// The ClusterPolicy message is a compatibility view, not another stored authority.
+// SaveClusterPolicy atomically saves the existing policy and detached capabilities.
+// The assembled message is a compatibility view, not another stored authority.
 func SaveClusterPolicy(b *dal.WriteSession, policy *commonpb.ClusterPolicy) error {
 	configuration := policy.CloneVT()
 	configuration.CapabilityActivations = nil
-	if err := b.SetProto([]byte{dal.ZoneGlobal, dal.SubGlobConfiguration}, configuration); err != nil {
+	if err := b.SetProto([]byte{dal.ZoneGlobal, dal.SubGlobClusterPolicy}, configuration); err != nil {
 		return err
 	}
 	if err := b.SetProto([]byte{dal.ZoneGlobal, dal.SubGlobCapabilityState}, &commonpb.CapabilityState{Activations: policy.GetCapabilityActivations()}); err != nil {
 		return err
 	}
 
-	return b.DeleteKey([]byte{dal.ZoneGlobal, dal.SubGlobClusterPolicy})
+	return nil
 }
 
 // SaveQueryCheckpointSchedule stores the query checkpoint schedule cron expression in the batch.
