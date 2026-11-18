@@ -617,6 +617,9 @@ enum EventType {
   // failure (skippable_reasons) and was skipped instead of failing the whole
   // proposal. The OrderSkippedLog carries the reason + context. See EN-1356.
   SKIPPED_ORDER = 7;
+  // Emitted for a Numscript execution that updates account metadata without
+  // creating a transaction. The payload contains metadata keyed by account.
+  ACCOUNT_METADATA_UPDATED = 8;
 }
 
 // ============================================================================

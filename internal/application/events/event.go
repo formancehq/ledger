@@ -55,7 +55,7 @@ func LogToEvent(log *commonpb.Log) *eventspb.Event {
 		case *commonpb.LedgerLogPayload_SavedMetadata:
 			event.Type = commonpb.EventType_SAVED_METADATA
 		case *commonpb.LedgerLogPayload_AccountMetadataUpdated:
-			event.Type = commonpb.EventType_SAVED_METADATA
+			event.Type = commonpb.EventType_ACCOUNT_METADATA_UPDATED
 		case *commonpb.LedgerLogPayload_DeletedMetadata:
 			event.Type = commonpb.EventType_DELETED_METADATA
 		case *commonpb.LedgerLogPayload_SetMetadataFieldType:

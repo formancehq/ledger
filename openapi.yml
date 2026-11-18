@@ -6238,6 +6238,7 @@ components:
             - COMMITTED_TRANSACTION
             - REVERTED_TRANSACTION
             - SAVED_METADATA
+            - ACCOUNT_METADATA_UPDATED
             - DELETED_METADATA
             - CREATED_LEDGER
             - DELETED_LEDGER

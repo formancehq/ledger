@@ -1549,7 +1549,8 @@ and `controllerId`. Omitted or zero batching values use emitter defaults
 64-bit integer: clients should send a decimal string; a JSON integer is also
 accepted. `eventTypes` accepts protobuf enum names; an omitted or empty array
 selects all events. The current event names are `COMMITTED_TRANSACTION`,
-`REVERTED_TRANSACTION`, `SAVED_METADATA`, `DELETED_METADATA`, `CREATED_LEDGER`,
+`REVERTED_TRANSACTION`, `SAVED_METADATA`, `ACCOUNT_METADATA_UPDATED`,
+`DELETED_METADATA`, `CREATED_LEDGER`,
 `DELETED_LEDGER` and `SKIPPED_ORDER`. Business validation remains owned by Apply:
 for example, `batchSize > 100000` returns `400 SINK_BATCH_SIZE_TOO_LARGE`.
 This adapter does not introduce new validation of external URLs or credentials.
