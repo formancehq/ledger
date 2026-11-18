@@ -277,6 +277,11 @@ func TestRestorePolicySnapshotActivatesIncarnationBackfill(t *testing.T) {
 		require.NoError(t, batch.SetProto(coldAuditKey(uint64(seq+1)), entry))
 		key := dal.NewKeyBuilder().PutZonePrefix(dal.ZoneHistory, dal.SubHistoryAuditItem).PutUint64(uint64(seq + 1)).PutUint32(0).Build()
 		require.NoError(t, batch.SetProto(key, auditItem(t, uint64(seq+1), &raftcmdpb.Order{})))
+		require.NoError(t, batch.SetProto(coldAppliedProposalKey(uint64(seq+1)), &proposalpb.AppliedProposal{
+			Sequence:       uint64(seq + 1),
+			MinLogSequence: uint64(seq + 1),
+			MaxLogSequence: uint64(seq + 1),
+		}))
 	}
 	require.NoError(t, batch.Commit())
 	policy := &commonpb.ClusterPolicy{
