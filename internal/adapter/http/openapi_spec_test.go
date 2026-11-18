@@ -168,6 +168,21 @@ func TestOpenAPISpec_ExecuteNumscriptRequestSources(t *testing.T) {
 	}
 }
 
+func TestOpenAPISpec_BulkNumscriptMetadataResult(t *testing.T) {
+	t.Parallel()
+
+	doc, err := openapi3.NewLoader().LoadFromFile("../../../openapi.yml")
+	require.NoError(t, err)
+	data := doc.Components.Schemas["BulkResult"].Value.Properties["data"].Value
+	require.NoError(t, data.VisitJSON(map[string]any{
+		"users:alice": map[string]any{"owner": "customer", "verified": true},
+		"users:bob":   map[string]any{"limit": float64(42)},
+	}))
+	require.Error(t, data.VisitJSON(map[string]any{
+		"users:alice": []any{"owner"},
+	}))
+}
+
 func TestOpenAPISpec_LogPayloadPreservation(t *testing.T) {
 	t.Parallel()
 

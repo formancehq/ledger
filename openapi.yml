@@ -7185,6 +7185,14 @@ components:
         - $ref: '#/components/schemas/BulkResponse'
         - $ref: '#/components/schemas/ErrorResponse'
 
+    BulkAccountMetadataResult:
+      type: object
+      description: Account addresses mapped to their updated metadata fields.
+      additionalProperties:
+        type: object
+        additionalProperties:
+          $ref: '#/components/schemas/MetadataValue'
+
     BulkResult:
       type: object
       properties:
@@ -7213,20 +7221,25 @@ components:
             omitted; skips retain their complete OrderSkippedResponse. Errors
             and aborted entries have no sequence. Omitted/false preserves the
             existing operation data. Shape depends on the originating action:
-              - `CREATE_TRANSACTION` success: a `TransactionResponse` — the
-                created Transaction object.
+              - `CREATE_TRANSACTION` success, or `EXECUTE_NUMSCRIPT` success
+                with postings: a `TransactionResponse` — the created Transaction
+                object.
+              - `EXECUTE_NUMSCRIPT` success without postings: a
+                `BulkAccountMetadataResult` mapping account addresses directly
+                to their updated metadata fields.
               - Any skippable action skip (when the item opted into
                 `skippableReasons` and the FSM matched one): an
                 `OrderSkippedResponse` with `skipped: true`, `reason`, and
                 reason-specific `context`. Emitted for every REST-supported
                 skippable action — CREATE_TRANSACTION, REVERT_TRANSACTION,
                 DELETE_METADATA — not just create.
-              - Other successful non-create actions: `null`.
+              - Other successful actions: `data` is omitted.
             Branch on `OrderSkippedResponse.skipped` to distinguish a skip
             from a successful transaction.
           nullable: true
           oneOf:
             - $ref: '#/components/schemas/TransactionResponse'
+            - $ref: '#/components/schemas/BulkAccountMetadataResult'
             - $ref: '#/components/schemas/OrderSkippedResponse'
 
     CreateTransactionResponse:
