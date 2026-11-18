@@ -914,8 +914,9 @@ It does not split the batch or add a second transaction mechanism.
 Send `Content-Type: application/json` and an object with a nonempty `requests`
 array. Each element has exactly one canonical camelCase `Request` variant from
 `misc/proto/bucket.proto`; `apply` contains `ledger`, `action` (one
-`LedgerAction` variant), and optional `skippableReasons`. All 27 current request
-variants and seven ledger actions are represented in `openapi.yml`. For example:
+`LedgerAction` variant), and optional `skippableReasons`. The current request
+variants and ledger actions are represented in `openapi.yml` and checked against
+their protobuf descriptors by the HTTP adapter tests. For example:
 
 ```http
 POST /v3/_/apply
