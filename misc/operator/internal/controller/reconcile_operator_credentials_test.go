@@ -101,6 +101,7 @@ func TestReconcileOperatorCredentialsPreservesRuntimeDefaultsWhenRepairingReadyS
 					return err
 				}
 				*obj.(*ledgerv1alpha1.Cluster) = *stored
+
 				return nil
 			},
 		}),
