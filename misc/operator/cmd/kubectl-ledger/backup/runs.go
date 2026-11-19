@@ -36,14 +36,17 @@ func runRuns(cmd *cobra.Command, opts *cmdutil.Options, args []string) error {
 		return fmt.Errorf("creating client: %w", err)
 	}
 
-	spinner, _ := pterm.DefaultSpinner.Start("Fetching BackupRun resources...")
+	if opts.OutputFormat() != "json" && opts.OutputFormat() != "yaml" {
+		pterm.Info.Println("Fetching BackupRun resources...")
+	}
 	runs, err := cmdutil.ListBackupRuns(ctx, crdClient, ns, name)
 	if err != nil {
-		spinner.Fail("Failed to list BackupRun resources")
+		if opts.OutputFormat() != "json" && opts.OutputFormat() != "yaml" {
+			pterm.Error.Println("Failed to list BackupRun resources")
+		}
 
 		return fmt.Errorf("listing runs: %w", err)
 	}
-	_ = spinner.Stop()
 
 	sort.Slice(runs.Items, func(i, j int) bool {
 		return runs.Items[i].CreationTimestamp.After(runs.Items[j].CreationTimestamp.Time)

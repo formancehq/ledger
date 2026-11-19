@@ -35,14 +35,17 @@ func runList(cmd *cobra.Command, opts *cmdutil.Options) error {
 		return fmt.Errorf("creating client: %w", err)
 	}
 
-	spinner, _ := pterm.DefaultSpinner.Start("Fetching Backup resources...")
+	if opts.OutputFormat() != "json" && opts.OutputFormat() != "yaml" {
+		pterm.Info.Println("Fetching Backup resources...")
+	}
 	backups, err := cmdutil.ListBackups(ctx, crdClient, ns)
 	if err != nil {
-		spinner.Fail("Failed to list Backup resources")
+		if opts.OutputFormat() != "json" && opts.OutputFormat() != "yaml" {
+			pterm.Error.Println("Failed to list Backup resources")
+		}
 
 		return fmt.Errorf("listing backups: %w", err)
 	}
-	_ = spinner.Stop()
 
 	switch opts.OutputFormat() {
 	case "json":

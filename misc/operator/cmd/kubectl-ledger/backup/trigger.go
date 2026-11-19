@@ -88,13 +88,13 @@ func runTrigger(cmd *cobra.Command, opts *cmdutil.Options, f *triggerFlags, args
 		},
 	}
 
-	spinner, _ := pterm.DefaultSpinner.Start(fmt.Sprintf("Creating %s backup run for %s...", runType, name))
+	pterm.Info.Printfln("Creating %s backup run for %s...", runType, name)
 	if err := crdClient.Create(ctx, run); err != nil {
-		spinner.Fail("Failed to create BackupRun")
+		pterm.Error.Println("Failed to create BackupRun")
 
 		return fmt.Errorf("creating BackupRun: %w", err)
 	}
-	spinner.Success("Created BackupRun " + pterm.Cyan(run.Name))
+	pterm.Success.Println("Created BackupRun " + pterm.Cyan(run.Name))
 
 	if !f.wait {
 		return nil
@@ -119,7 +119,7 @@ func waitForTerminal(ctx context.Context, c client.Client, run *ledgerv1alpha1.B
 	deadlineCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
-	spinner, _ := pterm.DefaultSpinner.Start("Waiting for backup run to complete...")
+	pterm.Info.Println("Waiting for backup run to complete...")
 
 	var final ledgerv1alpha1.BackupRun
 	err := wait.PollUntilContextCancel(deadlineCtx, 2*time.Second, true, func(pollCtx context.Context) (bool, error) {
@@ -133,19 +133,19 @@ func waitForTerminal(ctx context.Context, c client.Client, run *ledgerv1alpha1.B
 		return final.IsTerminal(), nil
 	})
 	if err != nil {
-		spinner.Fail("Wait failed or timed out")
+		pterm.Error.Println("Wait failed or timed out")
 
 		return fmt.Errorf("waiting for run: %w", err)
 	}
 
 	if final.Status.Phase == ledgerv1alpha1.BackupRunPhaseSucceeded {
-		spinner.Success(fmt.Sprintf("Run %s succeeded", pterm.Cyan(final.Name)))
+		pterm.Success.Printfln("Run %s succeeded", pterm.Cyan(final.Name))
 		printRunSummary(&final)
 
 		return nil
 	}
 
-	spinner.Fail(fmt.Sprintf("Run %s failed", pterm.Cyan(final.Name)))
+	pterm.Error.Printfln("Run %s failed", pterm.Cyan(final.Name))
 	pterm.Error.Println(final.Status.Message)
 
 	return fmt.Errorf("backup run %s failed", final.Name)

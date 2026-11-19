@@ -94,15 +94,15 @@ func runCreate(cmd *cobra.Command, opts *cmdutil.Options, setValues []string, dr
 		return fmt.Errorf("creating client: %w", err)
 	}
 
-	spinner, _ := pterm.DefaultSpinner.Start("Creating Cluster...")
+	pterm.Info.Println("Creating Cluster...")
 
 	if err := crdClient.Create(cmd.Context(), ledger); err != nil {
-		spinner.Fail("Failed to create Cluster")
+		pterm.Error.Println("Failed to create Cluster")
 
 		return fmt.Errorf("creating ledger %q: %w", name, err)
 	}
 
-	spinner.Success(fmt.Sprintf("Cluster %s created in namespace %s", pterm.Cyan(name), pterm.Cyan(ns)))
+	pterm.Success.Printfln("Cluster %s created in namespace %s", pterm.Cyan(name), pterm.Cyan(ns))
 
 	return nil
 }
