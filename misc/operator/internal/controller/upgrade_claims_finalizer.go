@@ -52,9 +52,11 @@ func (r *ClusterReconciler) patchFinalizers(ctx context.Context, ledger *ledgerv
 }
 
 // finalizeUpgradeClaims deletes the recorded claims that no owner would reap
-// when the Cluster requested whenDeleted=Delete. A claim still owned by a
-// StatefulSet is left to garbage collection, and a claim recreated under a
-// recorded name is not the upgrade's claim.
+// when the Cluster requested whenDeleted=Delete. Claims are read from the API
+// server: a cached owner reference would release the finalizer on a claim that
+// garbage collection no longer reaps. A claim still owned by a StatefulSet is
+// left to garbage collection, and a claim recreated under a recorded name is
+// not the upgrade's claim.
 func (r *ClusterReconciler) finalizeUpgradeClaims(ctx context.Context, ledger *ledgerv1alpha1.Cluster) error {
 	if !controllerutil.ContainsFinalizer(ledger, upgradeClaimsFinalizer) {
 		return nil
@@ -63,7 +65,7 @@ func (r *ClusterReconciler) finalizeUpgradeClaims(ctx context.Context, ledger *l
 	if ledger.Status.Upgrade != nil && policy != nil && policy.WhenDeleted == "Delete" {
 		for name, uid := range ledger.Status.Upgrade.ClaimUIDs {
 			pvc := &corev1.PersistentVolumeClaim{}
-			err := r.Get(ctx, types.NamespacedName{Name: name, Namespace: ledger.Namespace}, pvc)
+			err := r.storageAPIReader().Get(ctx, types.NamespacedName{Name: name, Namespace: ledger.Namespace}, pvc)
 			if apierrors.IsNotFound(err) {
 				continue
 			}
@@ -73,7 +75,10 @@ func (r *ClusterReconciler) finalizeUpgradeClaims(ctx context.Context, ledger *l
 			if string(pvc.UID) != uid || !pvc.DeletionTimestamp.IsZero() || len(pvc.OwnerReferences) != 0 {
 				continue
 			}
-			if err := deleteInspected(ctx, r.Client, pvc); err != nil {
+			// The resourceVersion fences the owner check against a concurrent adoption.
+			observedUID, observedVersion := pvc.UID, pvc.ResourceVersion
+			err = r.Delete(ctx, pvc, client.Preconditions{UID: &observedUID, ResourceVersion: &observedVersion})
+			if err != nil && !apierrors.IsNotFound(err) {
 				return fmt.Errorf("deleting upgrade PVC %s: %w", name, err)
 			}
 		}

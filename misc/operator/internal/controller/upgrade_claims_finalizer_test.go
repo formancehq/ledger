@@ -12,6 +12,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
 	ledgerv1alpha1 "github.com/formancehq/ledger/misc/operator/api/v1alpha1"
@@ -23,12 +24,14 @@ func TestStoppedUpgradeClusterDeletionAppliesRequestedClaimRetention(t *testing.
 	t.Parallel()
 	for _, tt := range []struct {
 		whenDeleted string
+		dataClaim   string
 		deleted     bool
 	}{
-		{whenDeleted: "Delete", deleted: true},
-		{whenDeleted: "Retain", deleted: false},
+		{whenDeleted: "Delete", dataClaim: "replaced", deleted: true},
+		{whenDeleted: "Delete", dataClaim: "owned", deleted: true},
+		{whenDeleted: "Retain", dataClaim: "replaced", deleted: false},
 	} {
-		t.Run(tt.whenDeleted, func(t *testing.T) {
+		t.Run(tt.whenDeleted+"/"+tt.dataClaim, func(t *testing.T) {
 			t.Parallel()
 			ctx := context.Background()
 			cluster := newMinimalCluster()
@@ -69,7 +72,7 @@ func TestStoppedUpgradeClusterDeletionAppliesRequestedClaimRetention(t *testing.
 				claim(walName, "wal-uid", "pv-wal"), volume("pv-wal", "pv-wal-uid", walName, "wal-uid"),
 				claim(dataName, "data-uid", "pv-data"), volume("pv-data", "pv-data-uid", dataName, "data-uid"),
 			).Build()
-			r := &ClusterReconciler{Client: c, Scheme: scheme, stopVersions: testStopVersions}
+			r := &ClusterReconciler{Client: staleClaimOwnerReads{Client: c}, APIReader: c, Scheme: scheme, stopVersions: testStopVersions}
 			key := types.NamespacedName{Name: cluster.Name, Namespace: cluster.Namespace}
 
 			// The old Pod keeps the upgrade in Deleting.
@@ -79,9 +82,20 @@ func TestStoppedUpgradeClusterDeletionAppliesRequestedClaimRetention(t *testing.
 			require.Equal(t, "Deleting", cluster.Status.Upgrade.Phase)
 
 			require.NoError(t, c.Delete(ctx, cluster))
-			// A claim recreated under a recorded name is not the upgrade's claim.
-			require.NoError(t, c.Delete(ctx, claim(dataName, "data-uid", "pv-data")))
-			require.NoError(t, c.Create(ctx, claim(dataName, "foreign-uid", "")))
+			wantDataUID := types.UID("data-uid")
+			switch tt.dataClaim {
+			case "replaced":
+				// A claim recreated under a recorded name is not the upgrade's claim.
+				require.NoError(t, c.Delete(ctx, claim(dataName, "data-uid", "pv-data")))
+				require.NoError(t, c.Create(ctx, claim(dataName, "foreign-uid", "")))
+				wantDataUID = "foreign-uid"
+			case "owned":
+				// Garbage collection reaps a claim that still has an owner.
+				owned := &corev1.PersistentVolumeClaim{}
+				require.NoError(t, c.Get(ctx, types.NamespacedName{Name: dataName, Namespace: cluster.Namespace}, owned))
+				owned.OwnerReferences = []metav1.OwnerReference{{APIVersion: "apps/v1", Kind: "StatefulSet", Name: stsName, UID: "old-sts"}}
+				require.NoError(t, c.Update(ctx, owned))
+			}
 			_, err = r.Reconcile(ctx, ctrl.Request{NamespacedName: key})
 			require.NoError(t, err)
 
@@ -96,7 +110,22 @@ func TestStoppedUpgradeClusterDeletionAppliesRequestedClaimRetention(t *testing.
 			}
 			data := &corev1.PersistentVolumeClaim{}
 			require.NoError(t, c.Get(ctx, types.NamespacedName{Name: dataName, Namespace: cluster.Namespace}, data))
-			require.Equal(t, types.UID("foreign-uid"), data.UID)
+			require.Equal(t, wantDataUID, data.UID)
 		})
 	}
+}
+
+// staleClaimOwnerReads serves PVCs with the owner reference that a lagging
+// cache still holds after the upgrade detached it.
+type staleClaimOwnerReads struct{ client.Client }
+
+func (s staleClaimOwnerReads) Get(ctx context.Context, key client.ObjectKey, obj client.Object, opts ...client.GetOption) error {
+	if err := s.Client.Get(ctx, key, obj, opts...); err != nil {
+		return err
+	}
+	if pvc, ok := obj.(*corev1.PersistentVolumeClaim); ok && len(pvc.OwnerReferences) == 0 {
+		pvc.OwnerReferences = []metav1.OwnerReference{{APIVersion: "apps/v1", Kind: "StatefulSet", Name: "stale", UID: "old-sts"}}
+	}
+
+	return nil
 }
