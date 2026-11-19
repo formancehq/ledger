@@ -175,8 +175,20 @@ fi
 
 		return err == nil
 	}
+	pushRemote := filepath.Join(dir, "push.git")
+	run(t, dir, nil, "git", "init", "--bare", pushRemote)
+	run(t, repo, nil, "git", "push", pushRemote, candidate+":refs/heads/main")
+	run(t, repo, nil, "git", "remote", "set-url", "--push", "origin", pushRemote)
+	output, err := push(append(baseEnv, "EXPECTED_REMOTE_URL="+pushRemote))
+	require.Error(t, err)
+	require.Contains(t, output, "does not match remote base branch")
+	require.False(t, remoteBranchExists())
+	_, err = runResult(pushRemote, nil, "git", "rev-parse", "--verify", "refs/heads/chore/new-branch")
+	require.Error(t, err)
+	require.Equal(t, candidate, run(t, pushRemote, nil, "git", "rev-parse", "refs/heads/main"))
+	run(t, repo, nil, "git", "remote", "set-url", "--push", "origin", remote)
 
-	output, err := push(append(baseEnv, "AI_REVIEW_BASE_REF="))
+	output, err = push(append(baseEnv, "AI_REVIEW_BASE_REF="))
 	require.Error(t, err)
 	require.Contains(t, output, "AI_REVIEW_BASE_REF must name")
 	require.False(t, remoteBranchExists())

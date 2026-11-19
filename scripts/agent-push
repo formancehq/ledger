@@ -62,7 +62,7 @@ else
         echo "agent-push: AI_REVIEW_BASE_REF must name the base branch before the first push" >&2
         exit 2
     fi
-    remote_head=$(git ls-remote --heads "$remote" "refs/heads/$branch") || {
+    remote_head=$(git ls-remote --heads "$remote_url" "refs/heads/$branch") || {
         echo "agent-push: unable to check remote branch $branch" >&2
         exit 1
     }
@@ -70,7 +70,7 @@ else
         echo "agent-push: remote branch $branch exists without an open PR" >&2
         exit 1
     fi
-    remote_base=$(git ls-remote --heads "$remote" "refs/heads/$base_ref") || {
+    remote_base=$(git ls-remote --heads "$remote_url" "refs/heads/$base_ref") || {
         echo "agent-push: unable to read remote base branch $base_ref" >&2
         exit 1
     }
