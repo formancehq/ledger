@@ -36,6 +36,54 @@ type CheckpointManifest struct {
 	LastLogSequence   uint64                    `json:"lastLogSequence"`
 	LastAuditSequence uint64                    `json:"lastAuditSequence"`
 	Files             map[string]CheckpointFile `json:"files"` // local filename → stored object
+	ReadIndex         *ReadIndexManifest        `json:"readIndex,omitempty"`
+}
+
+// ReadIndexVersion identifies the portable seed format understood by this release.
+const ReadIndexVersion = 1
+
+// ReadIndexManifest is an optional physical index captured before the primary.
+// Each store has its own local names; both reference immutable objects in data/.
+// Released primary-only manifests omit this field.
+type ReadIndexManifest struct {
+	Version         uint32                    `json:"version"`
+	InventorySHA256 string                    `json:"inventorySHA256"` // binds this v1 inventory to its paired primary
+	Files           map[string]CheckpointFile `json:"files"`
+	opaque          json.RawMessage           // an unknown version survives incremental manifest rewrites
+}
+
+// UnmarshalJSON interprets only the version discriminator until the reader
+// knows the seed format. A future inventory need not use v1's file map.
+func (m *ReadIndexManifest) UnmarshalJSON(data []byte) error {
+	var header struct {
+		Version uint32 `json:"version"`
+	}
+	if err := json.Unmarshal(data, &header); err != nil {
+		return err
+	}
+	if header.Version != ReadIndexVersion {
+		*m = ReadIndexManifest{Version: header.Version, opaque: bytes.Clone(data)}
+
+		return nil
+	}
+	type v1 ReadIndexManifest
+	var decoded v1
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		return err
+	}
+	*m = ReadIndexManifest(decoded)
+
+	return nil
+}
+
+// MarshalJSON republishes a future seed without projecting it down to v1.
+func (m ReadIndexManifest) MarshalJSON() ([]byte, error) {
+	if m.opaque != nil {
+		return m.opaque, nil
+	}
+	type v1 ReadIndexManifest
+
+	return json.Marshal(v1(m))
 }
 
 // CheckpointFile records where one checkpoint file lives on storage and its
@@ -179,14 +227,50 @@ func DecodeManifest(data []byte) (*Manifest, error) {
 	return &manifest, nil
 }
 
-// WriteManifest encodes and writes a manifest to storage.
+// Restore bounds. Both inventories share the byte budget; each Pebble store
+// independently owns up to MaxRestoreManifestFiles names.
+const (
+	MaxRestoreManifestBytes = 32 << 20
+	MaxRestoreManifestFiles = 100_000
+)
+
+// WriteManifest encodes and writes a manifest to storage. The size check
+// occurs before PutFile for both full and incremental backups, so if the
+// added read-index inventory would exceed the restore contract, the old chain
+// remains published. Legacy primary-only writers keep their existing limits.
 func WriteManifest(ctx context.Context, storage Storage, key string, manifest *Manifest) error {
-	data, err := json.MarshalIndent(manifest, "", "  ")
+	data, err := marshalManifest(manifest, MaxRestoreManifestFiles, MaxRestoreManifestBytes)
 	if err != nil {
 		return fmt.Errorf("marshaling manifest: %w", err)
 	}
 
 	return storage.PutFile(ctx, key, bytes.NewReader(data), int64(len(data)))
+}
+
+func marshalManifest(manifest *Manifest, maxFiles, maxBytes int) ([]byte, error) {
+	if manifest == nil || manifest.Checkpoint == nil || manifest.Checkpoint.ReadIndex == nil {
+		return json.MarshalIndent(manifest, "", "  ")
+	}
+	cp := manifest.Checkpoint
+	if len(cp.Files) > maxFiles || len(cp.ReadIndex.Files) > maxFiles {
+		return nil, fmt.Errorf("checkpoint inventories have %d primary and %d read index files; restore limit is %d per store", len(cp.Files), len(cp.ReadIndex.Files), maxFiles)
+	}
+	if cp.ReadIndex.Version == ReadIndexVersion {
+		if err := cp.verifyReadIndexBinding(); err != nil {
+			return nil, err
+		}
+	}
+	// Each incremental republishes both inventories. Compact JSON reduces
+	// transfer size and leaves more of the bounded manifest for export entries.
+	data, err := json.Marshal(manifest)
+	if err != nil {
+		return nil, err
+	}
+	if len(data) > maxBytes {
+		return nil, fmt.Errorf("encoded manifest is %d bytes; restore limit is %d", len(data), maxBytes)
+	}
+
+	return data, nil
 }
 
 // ManifestKey returns the S3 key for the manifest file.

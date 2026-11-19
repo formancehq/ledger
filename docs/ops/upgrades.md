@@ -718,9 +718,12 @@ race a manual drop/create against reconciliation. See
 Existing frozen query checkpoints keep their original physical read-index
 copies. Repairing live indexes does not add omitted historical mappings to those
 copies. Create fresh query checkpoints after repair when complete historical
-address search is required. A main-store backup restore into a fresh read store
-instead replays retained history with the installed builder; address mappings are
-rebuildable local projections, not additional audit-bound business state.
+address search is required. Restoring an older primary-only backup into a
+fresh read store replays retained history with the installed builder. A full
+backup that also contains a physical read index preserves its existing
+mappings. Restoring that index does not fix historical omissions in its
+already-indexed prefix: use the explicit drop/create procedure above and verify
+the affected roles on every serving replica.
 
 ## Connector URL input policy
 

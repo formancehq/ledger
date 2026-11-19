@@ -3,6 +3,7 @@
   "title": "Read barriers, projection certification, and snapshot publication",
   "purpose": "Find reachable temporal-consistency defects in live and query-checkpoint reads: a requested consistency mode may establish the wrong Raft barrier, pinned stores may describe no valid common history, a projection may certify or publish incomplete state, or direct/prepared paths may enforce different temporal preconditions. Follow the companion evidence and ownership contract. Predicate membership, binding, ordering, and pagination at an equivalent fixed horizon and served index version belong to query-semantic-equivalence.",
   "paths": [
+    "internal/application/restoreseed/**",
     "internal/application/ctrl/**",
     "internal/query/**",
     "internal/storage/readstore/**",
@@ -56,6 +57,7 @@
     "The requested mode reaches RoutedController.readCtrl unchanged from either transport: gRPC x-consistency metadata and the HTTP X-Consistency header both store it via internal/query/consistency.go. An HTTP request with an unknown or repeated selector is rejected before any read and is never served as the default. A stale read is never forwarded, so it always describes the receiving replica.",
     "A request uses one fixed main-store handle and durable horizon H. It waits only for projections consulted, never chases a moving head, and reads each projection certificate from the immutable snapshot supplying the result.",
     "A projection publishes Raft progress H only after folding every relevant source item visible at H. Progress/cursor and all result-affecting writes for that boundary commit atomically; empty Raft entries advance certification when complete, while terminal corruption fails readiness and wakes waiters.",
+    "A read index restored from a physical backup must resume its proven native fold positions, never use source-cluster Raft certificates to admit a destination read, and converge to the same indexed results through a non-empty post-checkpoint delta as a fresh fold.",
     "At restart, index dispatch is restored from ledger history and active versions at the durable read-store cursor. A newer main registry cannot apply drops or ledger deletions early: any intermediate checkpoint certificate must include the index writes preceding those lifecycle logs.",
     "A projection snapshot certified beyond H cannot leak newer effects where common-history trimming is required. Transaction/log membership, account event/stamp resolution, enrichment, metadata schema, and served IndexVersionState obey their documented per-target pin rules.",
     "Direct, hardcoded, and prepared executions consulting the same stores enforce the same barrier propagation, fixed main horizon, projection waits, served-version resolution, history lease, trimming, and failure behavior. Fixed-state predicate/result equivalence remains outside this domain.",

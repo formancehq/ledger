@@ -18,6 +18,7 @@ import (
 
 	"github.com/formancehq/ledger/v3/internal/application/check"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
+	"github.com/formancehq/ledger/v3/internal/infra/backup"
 	"github.com/formancehq/ledger/v3/internal/infra/node"
 	"github.com/formancehq/ledger/v3/internal/proto/restorepb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
@@ -44,13 +45,13 @@ const (
 	// one entry per file; even a 1 TB / 16 k SST backup is well under
 	// a megabyte of JSON. 32 MiB keeps a huge margin without risking
 	// OOM on a malicious or runaway upload.
-	maxRestoreManifestBytes = 32 * 1024 * 1024
+	maxRestoreManifestBytes = backup.MaxRestoreManifestBytes
 
 	// maxRestoreManifestFiles caps the number of file entries inside the
 	// manifest. 100 k is generous (a 6 TB backup at 64 MiB/SST is ~100 k
 	// files); larger uploads should be flagged at backup-time, not blindly
 	// trusted in restore mode.
-	maxRestoreManifestFiles = 100_000
+	maxRestoreManifestFiles = backup.MaxRestoreManifestFiles
 )
 
 // safeStagingPath joins filename onto stagingDir while refusing any input
@@ -163,7 +164,8 @@ type RestoreServiceServerImpl struct {
 	// process"), and even if it did not, repeatedly warming up the table
 	// metadata for thousands of SSTs on a 1+ TB staging directory would be
 	// gratuitously slow.
-	stagingStore *dal.Store
+	stagingStore        *dal.Store
+	readIndexGeneration string
 
 	// storageFactory builds the backup.Storage used by a download job.
 	// Production code leaves this nil (defaults to S3); tests inject a fake
@@ -480,6 +482,7 @@ func (s *RestoreServiceServerImpl) FinalizeRestore(_ context.Context, _ *restore
 	store := s.stagingStore
 	validating := s.validating
 	validated := s.validated
+	generation := s.readIndexGeneration
 	if !downloaded || store == nil {
 		s.mu.Unlock()
 
@@ -564,12 +567,16 @@ func (s *RestoreServiceServerImpl) FinalizeRestore(_ context.Context, _ *restore
 	if err := node.WriteRestoredMarker(s.dataDir, node.RestoredMarker{
 		LastAppliedIndex:     lastAppliedIndex,
 		LastAppliedTimestamp: lastAppliedTimestamp,
+		ReadIndexGeneration:  generation,
 	}); err != nil {
 		// Roll the placement back: a checkpoint without its marker is a
 		// half-state the freshness guards would refuse to retry against
 		// (and the staging handle is already closed, so an in-process
 		// retry cannot re-finalize either). Undone, a restore-mode
 		// restart can run the download + finalize again.
+		if errors.Is(err, node.ErrRestoredMarkerPublished) {
+			return nil, err
+		}
 		if rmErr := os.RemoveAll(checkpointPath); rmErr != nil {
 			s.logger.WithFields(map[string]any{"error": rmErr}).
 				Errorf("Failed to remove checkpoint after marker write failure; delete %s manually before retrying", checkpointPath)

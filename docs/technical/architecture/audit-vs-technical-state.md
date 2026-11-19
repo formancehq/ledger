@@ -344,8 +344,8 @@ must be nonzero. Nonzero versions are not compared to the live pair, since
 current and pending versions legitimately coexist during a per-replica rewrite.
 
 The pass is skipped — loudly, via an INFO log, never reported as a clean result —
-when no readstore handle is attached (restore / CLI validating a staged main store
-that has no peer readstore) or when the readstore has not folded up to the replayed
+when no readstore handle is attached (restore / CLI validate the staged primary
+without attaching the optional read-index checkpoint) or when the readstore has not folded up to the replayed
 log sequence: the registry is written at Raft apply while the reverse map is folded
 asynchronously, so an ungated check would false-positive on every healthy cluster
 mid-fold.
@@ -366,7 +366,10 @@ cryptographically-verified source of truth), so corruption is repaired by
 dropping and re-indexing from the audit, not by a main-store compare pass.
 Because Raft replicates the *source* audit/log stream and not the readstore
 bytes, a bit-flip in one replica's index is local and not propagated to the
-others; detecting and repairing it is the index builder's **rebuild-health**
+others by Raft. A physical [backup of the read index](subsystems/backup/README.md#read-index-recovery)
+can carry an already incorrect index to the restored node: a matching file
+hash detects changes in transit, not a wrong source row. Detecting and repairing
+such a row is the index builder's **rebuild-health**
 responsibility (re-derive / verify a READY index against the audit before or
 while it is served), tracked under `EN-1323`. **This detect/drop/rebuild path is
 not yet wired**: until `EN-1323` lands, a corrupted or tampered READY index is

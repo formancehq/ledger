@@ -48,10 +48,11 @@ import (
 // and by a clean CheckStore pass.
 var _ = Describe("Restore index registry", Ordered, func() {
 	const (
-		ledgerName  = "idxreg-ledger"
-		emptyLedger = "idxreg-empty-ledger"
-		s3Bucket    = "restore-index-registry"
-		clusterID   = "idxreg-cluster"
+		ledgerName      = "idxreg-ledger"
+		emptyLedger     = "idxreg-empty-ledger"
+		s3Bucket        = "restore-index-registry"
+		sourceCluster   = "idxreg-source"
+		restoredCluster = "idxreg-restored"
 
 		// retypedKey's index is seeded before the checkpoint and version-bumped
 		// by the delta; removedKey's index is seeded before the checkpoint and
@@ -82,6 +83,7 @@ var _ = Describe("Restore index registry", Ordered, func() {
 		restoreWalDir  string
 		restoreDataDir string
 		minioEndpoint  string
+		indexedPrefix  uint64
 
 		// sourceRows carries the source node's complete registry rows (keyed
 		// by metadata field key) from Phase 1 into the Phase 3 comparison.
@@ -189,7 +191,7 @@ var _ = Describe("Restore index registry", Ordered, func() {
 		BeforeAll(func() {
 			instruments := testserver.DefaultTestInstruments(testserver.TestNodeConfig{
 				NodeID:    1,
-				ClusterID: clusterID,
+				ClusterID: sourceCluster,
 				Ports:     ports,
 				WalDir:    GinkgoT().TempDir(),
 				DataDir:   GinkgoT().TempDir(),
@@ -242,6 +244,12 @@ var _ = Describe("Restore index registry", Ordered, func() {
 			Expect(err).To(Succeed())
 
 			createAttributed(client, ownedCheckpointKey)
+			Expect(actions.WaitForMetadataIndexReady(ctx, client, ledgerName, commonpb.TargetType_TARGET_TYPE_ACCOUNT, ownedCheckpointKey)).To(Succeed())
+			_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("",
+				actions.SaveAccountMetadataAction(ledgerName, "unchanged", map[string]string{ownedCheckpointKey: "full"}),
+				actions.SaveAccountMetadataAction(ledgerName, "updated", map[string]string{ownedCheckpointKey: "full"})))
+			Expect(err).To(Succeed())
+			indexedPrefix = caughtUpReadIndexSequence(ctx, client)
 
 			// The full checkpoint carries both rows; everything after this
 			// backup reaches the restored store only through the delta fold.
@@ -252,8 +260,12 @@ var _ = Describe("Restore index registry", Ordered, func() {
 
 		It("mutates the registry in the delta", func() {
 			createAttributed(client, ownedDeltaKey)
-			// Retype: the delta must fold a version bump onto a checkpoint row.
 			_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("",
+				actions.SaveAccountMetadataAction(ledgerName, "updated", map[string]string{ownedCheckpointKey: "delta"})))
+			Expect(err).To(Succeed())
+
+			// Retype: the delta must fold a version bump onto a checkpoint row.
+			_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("",
 				actions.SetMetadataFieldTypeAction(ledgerName, commonpb.TargetType_TARGET_TYPE_ACCOUNT, retypedKey, commonpb.MetadataType_METADATA_TYPE_UINT64),
 			))
 			Expect(err).To(Succeed())
@@ -364,7 +376,7 @@ var _ = Describe("Restore index registry", Ordered, func() {
 					testservice.DebugInstrumentation(testutil.Debug),
 					testservice.OutputInstrumentation(GinkgoWriter),
 					testserver.WithNodeID(1),
-					testserver.WithClusterID(clusterID),
+					testserver.WithClusterID(restoredCluster),
 					testserver.WithHTTPPort(ports.HTTP()),
 					testserver.WithWalDir(restoreWalDir),
 					testserver.WithDataDir(restoreDataDir),
@@ -388,7 +400,7 @@ var _ = Describe("Restore index registry", Ordered, func() {
 		})
 
 		It("downloads and finalizes the backup", func() {
-			startResp, err := restoreClient.StartDownloadBackup(ctx, &restorepb.StartDownloadBackupRequest{Storage: storage()})
+			startResp, err := restoreClient.StartDownloadBackup(ctx, &restorepb.StartDownloadBackupRequest{BucketId: sourceCluster, Storage: storage()})
 			Expect(err).To(Succeed())
 
 			Eventually(func() restorepb.DownloadState {
@@ -414,14 +426,14 @@ var _ = Describe("Restore index registry", Ordered, func() {
 		BeforeAll(func() {
 			instruments := testserver.DefaultTestInstruments(testserver.TestNodeConfig{
 				NodeID:    1,
-				ClusterID: clusterID,
+				ClusterID: restoredCluster,
 				Ports:     ports,
 				WalDir:    restoreWalDir,
 				DataDir:   restoreDataDir,
 				Debug:     testutil.Debug,
 				Output:    GinkgoWriter,
 			})
-			instruments = append(instruments, testserver.WithBootstrap())
+			instruments = append(instruments, testserver.WithBootstrap(), testservice.AppendArgsInstrumentation("--otel-metrics-keep-in-memory"))
 
 			server = lease.NewService(cmdserver.NewRunCommandWithBindings, testservice.WithInstruments(instruments...))
 			Expect(server.Start(ctx)).To(Succeed())
@@ -445,6 +457,18 @@ var _ = Describe("Restore index registry", Ordered, func() {
 			Expect(server.Stop(stopCtx)).To(Succeed())
 			_ = os.RemoveAll(restoreWalDir)
 			_ = os.RemoveAll(restoreDataDir)
+		})
+
+		It("resumes the captured physical index and folds its delta", func() {
+			expectIndexResumedFromBackup(ctx, client, ports.HTTP(), indexedPrefix)
+			// A stale index still contains "updated" under "full"; an empty one
+			// loses "unchanged". Check both sides of the delta against the index.
+			for value, address := range map[string]string{"full": "unchanged", "delta": "updated"} {
+				rows, err := actions.ListAccountsFiltered(ctx, client, ledgerName, 0, "", actions.StringMetadataFilter(ownedCheckpointKey, value))
+				Expect(err).To(Succeed())
+				Expect(rows).To(HaveLen(1))
+				Expect(rows[0].GetAddress()).To(Equal(address))
+			}
 		})
 
 		It("restores the complete registry rows", func() {
@@ -471,8 +495,7 @@ var _ = Describe("Restore index registry", Ordered, func() {
 		})
 
 		It("reconstructs EMPTY and NON_EMPTY index readiness from checkpoint plus delta", func() {
-			// The restored node owns a fresh readstore. Replaying the checkpoint
-			// prefix plus exported delta must reproduce the source's history fold:
+			// The restored readstore must reproduce the source's history fold:
 			// historyKey backfills a pre-checkpoint row, while emptyKey is promoted
 			// on an empty ledger and indexes the later delta write live.
 			Expect(actions.WaitForMetadataIndexReady(ctx, client, ledgerName, commonpb.TargetType_TARGET_TYPE_ACCOUNT, historyKey)).To(Succeed())

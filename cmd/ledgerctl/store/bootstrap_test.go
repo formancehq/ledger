@@ -354,3 +354,15 @@ func TestDownloadBootstrapCheckpointDownloadFailures(t *testing.T) {
 		})
 	}
 }
+
+func TestReadBootstrapManifestBudget(t *testing.T) {
+	t.Parallel()
+	const legacy = `{"checkpoint":{"files":{}},"exports":[]}`
+	input := strings.NewReader(legacy)
+	_, err := readBootstrapManifest(input, 12)
+	require.ErrorContains(t, err, "manifest exceeds 12 bytes")
+	require.Equal(t, len(legacy)-13, input.Len())
+	manifest, err := readBootstrapManifest(strings.NewReader(legacy), int64(len(legacy)))
+	require.NoError(t, err)
+	require.NotNil(t, manifest.Checkpoint)
+}

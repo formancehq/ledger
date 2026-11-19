@@ -335,11 +335,11 @@ never fall back to a full audit-zone predicate scan.
 `idempotency_key` is projected from the hash-bound
 `AuditEntry.idempotency.key`. The expiring main-store deduplication row is not
 an index source: after its TTL expires, a later proposal may legitimately reuse
-the same key, and every matching audit sequence remains searchable. Rebuild
-drops the local index and replays the authoritative audit zone, including after
-checkpoint plus incremental-delta restore. Until that rebuild reaches and
-certifies the fixed main-store horizon, dependent reads fail explicitly rather
-than reporting a false absence.
+the same key, and every matching audit sequence remains searchable. A full
+rebuild drops the local index and replays the authoritative audit zone. A
+restored node with a usable audit index in its read-store checkpoint resumes
+from its native audit cursor. Until the worker reaches and certifies the fixed
+main-store horizon, dependent reads cannot report a false absence.
 
 ## Backfill — Atomic Switch
 

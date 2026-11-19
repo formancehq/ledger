@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"math"
 	"os"
 	"path/filepath"
@@ -20,6 +21,7 @@ import (
 
 	"github.com/formancehq/ledger/v3/internal/query"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
+	"github.com/formancehq/ledger/v3/internal/storage/readstore"
 )
 
 // Result contains statistics from a full backup run.
@@ -62,6 +64,17 @@ func RunBackup(
 	bucketID string,
 	checkpointName string,
 ) (*Result, error) {
+	return RunBackupWithReadIndex(ctx, logger, store, storage, bucketID, checkpointName, "")
+}
+
+// RunBackupWithReadIndex publishes a primary checkpoint with an optional physical
+// read-index seed. The caller owns the immutable read checkpoint. It must take
+// that checkpoint first, so every row the indexer consumed belongs to the
+// primary checkpoint captured here (or an earlier prefix of it).
+func RunBackupWithReadIndex(
+	ctx context.Context, logger logging.Logger, store *dal.Store, storage Storage,
+	bucketID, checkpointName, readIndexCheckpointPath string,
+) (*Result, error) {
 	start := time.Now()
 	key, err := query.ReadAuditKey(store)
 	if err != nil {
@@ -73,7 +86,7 @@ func RunBackup(
 
 	manifestKey := ManifestKey(bucketID)
 
-	// 1. Create temporary checkpoint (hard links, quasi-free)
+	// Freeze the primary after the caller has captured the read index.
 	checkpointPath, err := store.CreateTemporaryCheckpoint(checkpointName)
 	if err != nil {
 		return nil, fmt.Errorf("creating checkpoint: %w", err)
@@ -83,22 +96,8 @@ func RunBackup(
 		_ = store.RemoveTemporaryCheckpoint(checkpointName)
 	}()
 
-	// 2. List files in the checkpoint, hashing each so its stored key is
-	// content-addressed (see CheckpointFile / CheckpointFileKey). The hash both
-	// makes the object immutable per content and lets us skip re-uploading files
-	// already present under the same key.
-	checkpointFiles, err := listCheckpointFiles(bucketID, checkpointPath)
-	if err != nil {
-		return nil, fmt.Errorf("listing checkpoint files: %w", err)
-	}
-
-	// 3. Read existing manifest. It is used for two things: logging the upload
-	// delta, and classifying which objects the post-manifest prune (step 8)
-	// removes — objects the previous manifest referenced are stale checkpoint
-	// files this run superseded (normal churn, counted as FilesDeleted), objects
-	// it did not are true orphans leaked by a crashed run (OrphansDeleted).
-	// Correctness of the upload no longer depends on diffing sizes — the
-	// content-addressed key is the diff.
+	// Classify objects retired by this backup separately from orphans left
+	// behind by a previous failed publication.
 	prevManifest, err := ReadManifestOrEmpty(ctx, logger, storage, manifestKey)
 	if err != nil {
 		return nil, err
@@ -107,12 +106,12 @@ func RunBackup(
 	prevCheckpointKeys := checkpointKeySet(prevManifest)
 	prevExportKeys := exportKeySet(prevManifest)
 
-	// 4. Determine which files still need uploading. A file whose
+	// Determine which files still need uploading. A file whose
 	// content-addressed key already exists on storage is byte-identical to what
 	// is already there (that is what content-addressing guarantees), so it is
 	// skipped — this is the incremental dedup, now keyed by content rather than
 	// by name+size. Objects the new manifest will NOT reference are left in
-	// place and removed by the post-manifest orphan prune (step 8).
+	// place and removed by the post-manifest orphan prune.
 	//
 	// Existence is resolved with a single List of the checkpoint prefix rather
 	// than one GetObject/HEAD per file: a full backup hashes hundreds/thousands
@@ -124,90 +123,59 @@ func RunBackup(
 		return nil, fmt.Errorf("listing existing checkpoint objects: %w", err)
 	}
 
-	var toUpload []string
+	checkpoint, err := inspectBackupCheckpoint(logger, checkpointPath, readIndexCheckpointPath)
+	if err != nil {
+		return nil, err
+	}
 
-	for filename, cf := range checkpointFiles {
-		if _, exists := existingKeys[cf.Key]; !exists {
-			toUpload = append(toUpload, filename)
+	// Count both immutable inventories before hashing or uploading either one.
+	// A multi-TB full that cannot fit the restore file limit fails on directory
+	// entries alone. Preserve released primary-only behavior when no seed exists.
+	var maxFiles int
+	var readIndexNames []string
+	if readIndexCheckpointPath != "" {
+		maxFiles = MaxRestoreManifestFiles
+		readIndexNames, err = checkpointNames(ctx, readIndexCheckpointPath, true, maxFiles)
+		if err != nil {
+			return nil, fmt.Errorf("listing read index checkpoint: %w", err)
 		}
 	}
+	primaryNames, err := checkpointNames(ctx, checkpointPath, false, maxFiles)
+	if err != nil {
+		return nil, fmt.Errorf("listing primary checkpoint: %w", err)
+	}
 
-	logger.WithFields(map[string]any{
-		"totalFiles": len(checkpointFiles),
-		"toUpload":   len(toUpload),
-	}).Infof("Backup diff computed")
-
-	// 5. Upload the new/changed files.
-	//
-	// Crash-safety ordering (EN-888 / EN-1055): every object the new manifest
-	// will reference is uploaded BEFORE the manifest is written, and NO stale
-	// object is deleted before the new manifest is committed. Uploads are
-	// content-addressed, so this NEVER overwrites an object the currently
-	// published manifest still references (a changed file — e.g. a grown Pebble
-	// MANIFEST — lands on a new key). Combined with deferring all deletion to
-	// the post-manifest orphan prune (step 8), this makes the whole cycle
-	// crash-safe: a crash at any point before WriteManifest leaves the previous
-	// manifest fully restorable, and a crash after it leaves the new one
-	// restorable — there is never a window where the current manifest points at
-	// a half-written or deleted object.
-	for _, filename := range toUpload {
-		if err := uploadFile(ctx, storage, checkpointPath, checkpointFiles[filename].Key, filename); err != nil {
-			return nil, err
+	// All objects are immutable and uploaded before the manifest swap. Both
+	// inventories share the same content-addressed keys, so identical files
+	// need only one upload even if both checkpoints contain them.
+	checkpointFiles, uploaded, err := uploadCheckpoint(ctx, storage, bucketID, checkpointPath, primaryNames, existingKeys)
+	if err != nil {
+		return nil, fmt.Errorf("uploading primary checkpoint: %w", err)
+	}
+	checkpoint.Files = checkpointFiles
+	totalFiles := len(checkpointFiles)
+	if readIndexCheckpointPath != "" {
+		files, n, err := uploadCheckpoint(ctx, storage, bucketID, readIndexCheckpointPath, readIndexNames, existingKeys)
+		if err != nil {
+			return nil, fmt.Errorf("uploading read index checkpoint: %w", err)
 		}
+		checkpoint.ReadIndex = &ReadIndexManifest{
+			Version: ReadIndexVersion, Files: files,
+			InventorySHA256: readIndexBinding(checkpoint.Files, files),
+		}
+		uploaded += n
+		totalFiles += len(files)
 	}
 
-	// 6. Read sequences from the checkpoint to record in manifest
-	checkpointStore, err := dal.OpenReadOnly(checkpointPath, logger)
-	if err != nil {
-		return nil, fmt.Errorf("opening checkpoint for reading sequences: %w", err)
-	}
-
-	defer func() { _ = checkpointStore.Close() }()
-
-	readHandle, handleErr := checkpointStore.NewDirectReadHandle()
-	if handleErr != nil {
-		return nil, fmt.Errorf("creating read handle: %w", handleErr)
-	}
-
-	defer func() { _ = readHandle.Close() }()
-
-	lastAppliedIndex, err := query.ReadLastAppliedIndex(readHandle)
-	if err != nil {
-		return nil, fmt.Errorf("reading last applied index from checkpoint: %w", err)
-	}
-
-	lastLog, err := query.ReadLastLog(readHandle)
-	if err != nil {
-		return nil, fmt.Errorf("reading last log from checkpoint: %w", err)
-	}
-
-	var lastLogSeq uint64
-	if lastLog != nil {
-		lastLogSeq = lastLog.GetSequence()
-	}
-
-	lastAuditSeq, err := query.ReadLastAuditSequence(readHandle)
-	if err != nil {
-		return nil, fmt.Errorf("reading last audit sequence from checkpoint: %w", err)
-	}
-
-	// 7. Write updated manifest with new checkpoint and empty exports
-	newManifest := &Manifest{
-		Checkpoint: &CheckpointManifest{
-			Timestamp:         time.Now().UTC().Format(time.RFC3339Nano),
-			LastAppliedIndex:  lastAppliedIndex,
-			LastLogSequence:   lastLogSeq,
-			LastAuditSequence: lastAuditSeq,
-			Files:             checkpointFiles,
-		},
-		Exports: nil,
-	}
+	// Write updated manifest with new checkpoint and empty exports
+	checkpoint.Timestamp = time.Now().UTC().Format(time.RFC3339Nano)
+	newManifest := &Manifest{Checkpoint: checkpoint}
 
 	if err := WriteManifest(ctx, storage, manifestKey, newManifest); err != nil {
 		return nil, fmt.Errorf("writing manifest: %w", err)
 	}
 
-	// 8. Prune orphans now that the new manifest is committed. The manifest is
+	// Prune orphans now that the new manifest is committed. The manifest is
 	// the authoritative inventory; anything under data/ or exports/ not in it is
 	// dead weight — this includes both the stale checkpoint files this run
 	// replaced and every export segment obsoleted by the new checkpoint, plus
@@ -215,12 +183,7 @@ func RunBackup(
 	// diff step, which compares against the *previous manifest*, cannot reach
 	// those). Running the prune strictly after WriteManifest is what makes the
 	// cycle crash-safe: at no point is a still-referenced object deleted.
-	expectedKeys := make(map[string]struct{}, len(checkpointFiles))
-	for _, cf := range checkpointFiles {
-		expectedKeys[cf.Key] = struct{}{}
-	}
-
-	deletedCheckpointKeys := pruneOrphans(ctx, logger, storage, checkpointKeyspace(bucketID), expectedKeys)
+	deletedCheckpointKeys := pruneOrphans(ctx, logger, storage, checkpointKeyspace(bucketID), checkpointKeySet(newManifest))
 	// A full backup writes Exports: nil, so every export segment in storage is
 	// removed here. When this full backup follows one or more incrementals, the
 	// previous committed manifest referenced those export segments as live
@@ -256,17 +219,17 @@ func RunBackup(
 
 	logger.WithFields(map[string]any{
 		"duration":          duration.String(),
-		"uploaded":          len(toUpload),
+		"uploaded":          uploaded,
 		"filesDeleted":      filesDeleted,
 		"orphansDeleted":    orphansDeleted,
-		"total":             len(checkpointFiles),
-		"lastLogSequence":   lastLogSeq,
-		"lastAuditSequence": lastAuditSeq,
-		"lastAppliedIndex":  lastAppliedIndex,
+		"total":             totalFiles,
+		"lastLogSequence":   checkpoint.LastLogSequence,
+		"lastAuditSequence": checkpoint.LastAuditSequence,
+		"lastAppliedIndex":  checkpoint.LastAppliedIndex,
 	}).Infof("Backup completed")
 
 	return &Result{
-		FilesUploaded: len(toUpload),
+		FilesUploaded: uploaded,
 		// FilesDeleted counts objects this run superseded — checkpoint files and
 		// export segments the previous manifest referenced that the new manifest
 		// no longer does (normal roll-up churn). OrphansDeleted counts everything
@@ -274,11 +237,63 @@ func RunBackup(
 		// crashed before writing a manifest.
 		FilesDeleted:      filesDeleted,
 		OrphansDeleted:    orphansDeleted,
-		TotalFiles:        len(checkpointFiles),
+		TotalFiles:        totalFiles,
+		LastLogSequence:   checkpoint.LastLogSequence,
+		LastAuditSequence: checkpoint.LastAuditSequence,
+		LastAppliedIndex:  checkpoint.LastAppliedIndex,
+		Duration:          duration,
+	}, nil
+}
+
+// inspectBackupCheckpoint releases its two Pebble handles before the full's
+// potentially long upload. The two directories remain frozen throughout.
+func inspectBackupCheckpoint(logger logging.Logger, checkpointPath, readIndexCheckpointPath string) (_ *CheckpointManifest, retErr error) {
+	checkpointStore, err := dal.OpenReadOnly(checkpointPath, logger)
+	if err != nil {
+		return nil, fmt.Errorf("opening checkpoint for reading sequences: %w", err)
+	}
+
+	defer func() { retErr = errors.Join(retErr, checkpointStore.Close()) }()
+
+	readHandle, handleErr := checkpointStore.NewDirectReadHandle()
+	if handleErr != nil {
+		return nil, fmt.Errorf("creating read handle: %w", handleErr)
+	}
+
+	defer func() { retErr = errors.Join(retErr, readHandle.Close()) }()
+
+	lastAppliedIndex, err := query.ReadLastAppliedIndex(readHandle)
+	if err != nil {
+		return nil, fmt.Errorf("reading last applied index from checkpoint: %w", err)
+	}
+
+	lastLog, err := query.ReadLastLog(readHandle)
+	if err != nil {
+		return nil, fmt.Errorf("reading last log from checkpoint: %w", err)
+	}
+
+	var lastLogSeq uint64
+	if lastLog != nil {
+		lastLogSeq = lastLog.GetSequence()
+	}
+
+	lastAuditSeq, err := query.ReadLastAuditSequence(readHandle)
+	if err != nil {
+		return nil, fmt.Errorf("reading last audit sequence from checkpoint: %w", err)
+	}
+
+	// Validate the captured read progress against the frozen primary before any
+	// remote upload. A failed capture never replaces the previous backup.
+	if readIndexCheckpointPath != "" {
+		if err := readstore.ValidateBackupSeed(readIndexCheckpointPath, logger, readHandle, lastLogSeq, lastAuditSeq); err != nil {
+			return nil, fmt.Errorf("validating read index checkpoint: %w", err)
+		}
+	}
+
+	return &CheckpointManifest{
+		LastAppliedIndex:  lastAppliedIndex,
 		LastLogSequence:   lastLogSeq,
 		LastAuditSequence: lastAuditSeq,
-		LastAppliedIndex:  lastAppliedIndex,
-		Duration:          duration,
 	}, nil
 }
 
@@ -394,6 +409,12 @@ func checkpointKeySet(manifest *Manifest) map[string]struct{} {
 	keys := make(map[string]struct{}, len(manifest.Checkpoint.Files))
 	for _, cf := range manifest.Checkpoint.Files {
 		keys[cf.Key] = struct{}{}
+	}
+
+	if manifest.Checkpoint.ReadIndex != nil {
+		for _, cf := range manifest.Checkpoint.ReadIndex.Files {
+			keys[cf.Key] = struct{}{}
+		}
 	}
 
 	return keys
@@ -893,86 +914,85 @@ func (c *countingWriter) Write(p []byte) (int, error) {
 	return n, err
 }
 
-func uploadFile(ctx context.Context, storage Storage, checkpointPath, key, filename string) error {
-	localPath := filepath.Join(checkpointPath, filepath.FromSlash(filename))
-
-	file, err := os.Open(localPath)
-	if err != nil {
-		return fmt.Errorf("opening %s for upload: %w", filename, err)
-	}
-
-	info, err := file.Stat()
-	if err != nil {
-		_ = file.Close()
-
-		return fmt.Errorf("stat %s: %w", filename, err)
-	}
-
-	err = storage.PutFile(ctx, key, file, info.Size())
-	_ = file.Close()
-
-	if err != nil {
-		return fmt.Errorf("uploading %s: %w", filename, err)
-	}
-
-	return nil
-}
-
-// listCheckpointFiles walks the checkpoint directory and returns, per local
-// filename, its size and content-addressed storage key. Each file is hashed
-// (sha256 over its bytes) so its key embeds the content: a file whose bytes
-// change between checkpoints — notably Pebble's same-named MANIFEST-NNNNNN that
-// grows in place — maps to a different key and is uploaded as a new object
-// instead of overwriting the one the currently published manifest references.
-func listCheckpointFiles(bucketID, dir string) (map[string]CheckpointFile, error) {
-	files := make(map[string]CheckpointFile)
-
-	err := filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
+// checkpointNames enumerates immutable local files without reading their
+// contents. A zero limit retains the primary-only backup's existing behavior.
+func checkpointNames(ctx context.Context, dir string, readIndex bool, limit int) ([]string, error) {
+	var names []string
+	err := fs.WalkDir(os.DirFS(dir), ".", func(name string, entry fs.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
-
-		if info.IsDir() {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		if entry.IsDir() {
 			return nil
 		}
-
-		relPath, err := filepath.Rel(dir, path)
-		if err != nil {
-			return err
+		if !entry.Type().IsRegular() || (readIndex && !validReadIndexFilename(name)) {
+			return fmt.Errorf("invalid checkpoint file %q", name)
 		}
-
-		hash, err := hashFile(path)
-		if err != nil {
-			return fmt.Errorf("hashing %s: %w", relPath, err)
+		if limit > 0 && len(names) == limit {
+			return fmt.Errorf("checkpoint exceeds restore limit of %d files per store", limit)
 		}
-
-		// Normalize to forward slashes for consistent keys across platforms.
-		name := filepath.ToSlash(relPath)
-		files[name] = CheckpointFile{
-			Size: info.Size(),
-			Key:  CheckpointFileKey(bucketID, name, hash),
-		}
+		names = append(names, name)
 
 		return nil
 	})
 
-	return files, err
+	return names, err
 }
 
-// hashFile returns the hex-encoded sha256 of a file's contents, streamed so
-// memory stays bounded regardless of file size.
-func hashFile(path string) (string, error) {
-	f, err := os.Open(path)
+// uploadCheckpoint uploads immutable files from a local Pebble checkpoint. It
+// extends existingKeys after each successful Put so a second checkpoint can
+// reuse identical objects. Failure may leave unreferenced objects; only a
+// subsequent full's post-publication prune may remove them.
+func uploadCheckpoint(ctx context.Context, storage Storage, bucketID, dir string, names []string, existingKeys map[string]struct{}) (map[string]CheckpointFile, int, error) {
+	root, err := os.OpenRoot(dir)
 	if err != nil {
-		return "", err
+		return nil, 0, err
+	}
+	defer func() { _ = root.Close() }()
+
+	files := make(map[string]CheckpointFile, len(names))
+	uploaded := 0
+	for _, name := range names {
+		if err := ctx.Err(); err != nil {
+			return nil, uploaded, err
+		}
+		cf, err := uploadCheckpointFile(ctx, storage, bucketID, root, name, existingKeys)
+		if err != nil {
+			return nil, uploaded, err
+		}
+		files[name] = cf
+		if _, present := existingKeys[cf.Key]; !present {
+			existingKeys[cf.Key] = struct{}{}
+			uploaded++
+		}
 	}
 
-	defer func() { _ = f.Close() }()
+	return files, uploaded, nil
+}
 
+func uploadCheckpointFile(ctx context.Context, storage Storage, bucketID string, root *os.Root, name string, existingKeys map[string]struct{}) (CheckpointFile, error) {
+	f, err := root.Open(filepath.FromSlash(name))
+	if err != nil {
+		return CheckpointFile{}, err
+	}
+	defer func() { _ = f.Close() }() // read-only immutable source
 	h := sha256.New()
-	if _, err := io.Copy(h, f); err != nil {
-		return "", err
+	size, err := io.Copy(h, f)
+	if err != nil {
+		return CheckpointFile{}, fmt.Errorf("hashing %s: %w", name, err)
+	}
+	cf := CheckpointFile{Key: CheckpointFileKey(bucketID, name, hex.EncodeToString(h.Sum(nil))), Size: size}
+	if _, present := existingKeys[cf.Key]; !present {
+		if _, err := f.Seek(0, io.SeekStart); err != nil {
+			return CheckpointFile{}, err
+		}
+		if err := storage.PutFile(ctx, cf.Key, f, size); err != nil {
+			return CheckpointFile{}, fmt.Errorf("uploading %s: %w", name, err)
+		}
 	}
 
-	return hex.EncodeToString(h.Sum(nil)), nil
+	return cf, nil
 }

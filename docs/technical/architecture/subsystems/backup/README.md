@@ -46,7 +46,7 @@ parent admission and upgrade recovery, events, existing-run behavior and parent-
 
 ## How a backup is taken
 
-A Pebble *checkpoint* is the engine primitive: hard-link every live SST file into a separate directory at a point in time. The checkpoint is **quasi-free** (no copy), and writes to the live database keep going untouched.
+A Pebble *checkpoint* pins the live SST files at a point in time using hard links. For a full backup the leader flushes and checkpoints its WAL-less read store before taking the primary checkpoint. These are two sequential captures, not an atomic snapshot across databases. See [read-index recovery](#read-index-recovery).
 
 ```mermaid
 sequenceDiagram
@@ -59,8 +59,9 @@ sequenceDiagram
     Op->>FSM: BackupOrder(destination)
     FSM->>FSM: lock destination, status=START
     FSM-->>Exec: signal to run
-    Exec->>Peb: Checkpoint(tmpdir)
-    Peb-->>Exec: SST file set
+    Exec->>Peb: Flush and checkpoint read index
+    Exec->>Peb: Checkpoint primary store
+    Peb-->>Exec: Immutable file sets
     Exec->>Exec: diff vs previous manifest
     Exec->>Dst: upload new/changed SST files
     Exec->>Dst: write new manifest
@@ -119,7 +120,14 @@ the run before the manifest is touched, so a partial upload can never publish a
 dangling reference.
 
 `checkpoint.files` maps each filename to its size and content-addressed storage
-key. An unreadable manifest aborts backup and restore; a full backup never
+key. `checkpoint.readIndex` v1 holds a separate `files` map with the same entry
+format. Both maps reference `data/<filename>.<sha256>`: identical names and
+contents can share an object, but an identically named SST with different
+contents cannot overwrite it. Full-backup pruning keeps the union of both
+maps. A full or incremental writer that publishes a v1 read index must fit the
+32 MiB manifest budget and the 100,000-file limit per store. Exceeding a limit
+fails publication and leaves the previous chain in place. An unreadable
+manifest aborts backup and restore; a full backup never
 overwrites it. Restore resolves objects by the recorded key.
 
 The work is split between **Raft-coordinated lifecycle orders** (`BackupOrder`, `CompleteBackupOrder`, `FailBackupOrder` at `raft_cmd.proto:431-593`) and **executor work on the leader** (`internal/infra/backup/manager.go:40-180`). The FSM never blocks on the upload — it only records start, success, and failure.
@@ -146,12 +154,56 @@ The manifest itself (`internal/infra/backup/manifest.go`) records:
 
 - The Pebble checkpoint timestamp and applied Raft index.
 - The last audit + log sequence numbers.
-- The file map (`name → checksum → size`).
+- The primary file map and, when present, a separate versioned read-index file map. Each file entry identifies an immutable object and its size.
 - Any exports (incremental segments not yet rolled into a checkpoint).
 
 A fresh backup against an empty destination is just a "full" backup with an empty previous manifest. A backup right after a previous one transfers only the deltas.
 
 ## Restore
+
+### Read-index recovery
+
+The v1 `inventorySHA256` binds the two file inventories, including file names,
+sizes and content keys. Swapping an index from another full fails before its
+files are downloaded, even if both primaries have the same history lengths.
+This check neither authenticates a rewritten manifest nor verifies the logical
+correctness of the source index.
+
+A multi-terabyte cluster can take much longer to rebuild its indexes than to
+download its business data. The full backup therefore carries a copy of the
+leader's read store alongside the primary. This is a **resume point**: its
+rows and native progress cursors come from the same Pebble checkpoint. It can
+lag the primary because the normal and audit workers fold committed history
+asynchronously. Capturing it first avoids including writes newer than the
+primary checkpoint. Incrementals extend the primary history; they leave this
+copy at its original position. The temporary checkpoint lives on the configured
+read-index volume so Pebble can hard-link SSTs even when the primary and read
+index are on different disks. A full releases these links after success or
+failure; after a crash, opening the read store reclaims abandoned links under
+its exclusive Pebble lock. A terminal normal-indexer failure aborts capture
+before manifest publication.
+
+The restored cluster keeps the source log and audit sequences, which identify
+where the indexers can resume. Raft applied-index certificates belong to the
+source cluster and cannot establish freshness on the destination. The restore
+path checks nonzero log, audit and applied-proposal cursors against actual
+records in the full checkpoint before applying incrementals. Applied proposals
+occupy a sparse audit sequence range. The last folded proposal must not end
+beyond the folded log cursor. Preparation clears both source certificates in
+one batch and flushes that deletion before publication. The indexers
+then fold the remaining history, including new index definitions, changes and
+deletions, and certify the destination's read horizon. The restart shortens
+the replay; it does not repair index entries already wrong on the source.
+Checker validation on the staged primary does not verify every secondary row.
+
+The extension is optional in the manifest. Existing backups continue to work:
+without the extension or with an unknown read-index version, a fresh node builds its read store from primary history. Damage to a supported, advertised checkpoint fails restore; it does not silently switch to a potentially long rebuild.
+An older reader ignores the extension; an older writer that rewrites the
+manifest can drop it. A new full on an upgraded leader captures the index
+again. This changes neither the primary Pebble layout nor Raft or service
+messages. The separate usage database, historical query-checkpoint
+directories and read stores of followers joining by Raft are outside this
+mechanism.
 
 ### Global key lifetimes (EN-1415)
 
@@ -182,7 +234,34 @@ pre-release stores. In-cluster snapshot installation retains the local zone.
 
 For gRPC finalization, the restore service claims the single downloaded staging generation under its mutex before `PrepareForBackup`. The claim remains held through metadata reads, staging-handle closure, checkpoint publication, marker publication, and staging cleanup. A competing finalizer fails with `FailedPrecondition` before it can read or mutate the same generation. A sequential retry after success fails because the handle was cleared. `Shutdown` joins the active request before it closes retained resources.
 
-The durable publication sequence is: prepare and read metadata from the open staging store; close its Pebble handle; create the checkpoint parent and remove an old `checkpoints/0` path; hard-link staging into a temporary directory and rename it to `checkpoints/0`; atomically write `RESTORED`; then remove staging. `RESTORED` is the commit point and always follows checkpoint placement. A preparation error leaves an open staging handle, but its Pebble writes can be indeterminate after a commit or flush error. A filesystem publication error leaves staging files with no open handle and no marker; a marker-write error additionally attempts to remove the placed checkpoint. Cleanup failure after the marker is logged and does not revoke success. Recovery from an unsuccessful finalization requires a fresh restore-mode download and validation, with any leftover checkpoint removed if rollback failed; the same in-process staging generation cannot be retried after its handle was closed.
+Both finalize paths place and sync the prepared primary checkpoint at
+`checkpoints/0` before writing `RESTORED`. The writer syncs a temporary marker,
+renames it to `RESTORED`, then syncs the data directory. A marker error before
+rename attempts rollback of the placed checkpoint. An error syncing the
+directory after rename (`ErrRestoredMarkerPublished`) is returned to the caller;
+the visible marker and everything it names must be preserved even though its
+durability across a crash is uncertain. Ordinary cleanup after successful
+publication removes primary staging; a cleanup error is logged. Check the
+marker after recovery from a storage error before retrying. The gRPC staging
+handle is already closed at publication; that process cannot re-finalize it.
+
+The separate database resides at
+`<data-dir>/restore-readindex-staging/readindex/`. Its parent carries an
+ownership sentinel before staging can acquire that name. Cleanup refuses
+a foreign directory or symlink. `RESTORED.readIndexGeneration` identifies the
+prepared database. First boot validates the configured read-index location,
+including symlink aliases of reserved store paths, and installs that generation
+before opening either database. A same-volume install uses rename. Across
+volumes each completed file is synced and renamed inside a private destination
+of the same generation. A retry reuses completed files rather than copying the
+entire index again; only after coverage of the tree does a directory rename
+expose the live index. A restart after that rename accepts the matching
+installed generation and finishes cleanup. A missing generation or a non-empty
+foreign live index stops startup. A legacy marker without a generation is
+updated to name an empty index before installation. Once the WAL contains
+voters and the live primary exists, a stale marker cannot trigger a second
+install. With initialized voters and no live primary, a restore marker is a
+conflict rather than permission to replace the WAL.
 
 `internal/infra/backup/restore.go` is the entry point. The flow is conceptually the inverse:
 
@@ -192,7 +271,9 @@ The durable publication sequence is: prepare and read metadata from the open sta
    object must have exactly the manifest's `size` and its sha256 must equal the
    hash embedded in its content-addressed key. A damaged, truncated, or
    replaced object fails the download and names the file. This check detects
-   object corruption; it does not authenticate the manifest itself.
+   object corruption; it does not authenticate the manifest itself. Stage the supported
+   read index in a separate directory, verify its native cursors against the
+   full primary, clear both Raft certificates and flush before applying exports.
 3. Apply any incremental exports on top (`ApplyExports`).
 4. Reconstruct post-checkpoint derived state from the exported log and audit streams (`RebuildDelta`).
 5. Boot the node against the restored directory.
@@ -227,10 +308,10 @@ attempt's committed batches. Negative confirmation attempts staging removal.
 Fresh-target admission still rejects a `RESTORED` marker and live database and
 reclaims a lone unmarked checkpoint 0. Finalization closes the prepared store,
 rereads metadata, places checkpoint 0 via temporary-directory hard links and
-rename, writes the atomic `RESTORED` commit marker, then removes staging. Marker
-failure attempts checkpoint rollback; cleanup failure after the marker only warns.
-This changes no persisted format or wire contract and does not repair a finalized
-corrupt restore.
+rename, writes the `RESTORED` marker, then removes primary staging. Both
+marker-error cases above apply to offline bootstrap. A visible marker after a
+parent-sync error precludes checkpoint rollback. This does not repair a
+finalized corrupt restore.
 
 Each export object must terminate with its explicit stream footer at the exact
 end of the object and match the manifest byte size. Its keys must belong to
@@ -313,7 +394,7 @@ partially rebuilt store.
 
 After the restore, the node rejoins (or initialises) the Raft cluster as a fresh peer. The standard config validation (`internal/bootstrap/config_validation.go`) verifies that the restored `cluster-id` matches the cluster the node is supposed to be joining.
 
-The indexbuilder's `EMPTY`/`NON_EMPTY` ledger-history bytes are peer read-store state, not primary-store backup content. A restored node with a fresh read store reconstructs them by replaying the restored global log from zero; registry entries remain inactive until their `CreatedIndexLog` is reached. EMPTY ledgers promote their indexes without backfill, while NON_EMPTY ledgers schedule the normal replay. This state therefore needs no `RebuildDelta` branch: the exported log is its reconstruction evidence. Normal same-node restarts retain the byte atomically with the read-index cursor, and query checkpoints include it because they checkpoint the read store itself.
+The indexbuilder's `EMPTY`/`NON_EMPTY` ledger-history bytes are peer read-store state, captured with the peer checkpoint rather than the primary. Without such a checkpoint, a restored node reconstructs them by replaying the restored global log from zero; registry entries remain inactive until their `CreatedIndexLog` is reached. EMPTY ledgers promote their indexes without backfill, while NON_EMPTY ledgers schedule the normal replay. This state therefore needs no `RebuildDelta` branch: the exported log is its reconstruction evidence. Normal same-node restarts retain the byte atomically with the read-index cursor, and query checkpoints include it because they checkpoint the read store itself.
 
 A restore is **a node-level disaster-recovery operation**, not an in-cluster operation — it is not driven by a Raft order. Operators script it (or invoke it via the Operator) when a cluster needs to be rebuilt from cold.
 
@@ -328,7 +409,7 @@ The Operator's `Backup` CRD (`misc/operator/api/v1alpha1/`) wraps backups behind
 
 ## Performance characteristics
 
-- **Pebble checkpoint is hard-link-based.** Almost no I/O cost; the live database keeps serving writes.
+- **Full-backup cost includes the read index.** Pinning SSTs uses hard links. Flushing the WAL-less read store, hashing its files and transferring new content cost I/O, and pinned files cannot be reclaimed until capture releases them. Read-index lag and write volume since the full determine the remaining replay. Measure backup duration and indexed-read availability on representative hardware; size alone does not establish a recovery-time bound.
 - **Uploads are leader-only.** Followers are not involved. This avoids fan-out but means the leader's bandwidth caps backup throughput.
 - **Full-backup dedup is by content hash.** Each checkpoint file is sha256-hashed; a file whose content is already present on storage (same content-addressed key) is skipped. Pebble's compaction rewrites SSTs, so a heavily-churned database changes more file contents and re-uploads more than a quiet one — dedup is at whole-file granularity, there is no key-level diffing.
 - **No backups during snapshot transfer.** A follower receiving a Raft snapshot is in a transient state; the leader does not initiate a backup while a follower is mid-sync.
