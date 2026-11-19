@@ -3,9 +3,13 @@ package cmdutil
 import (
 	"context"
 	"fmt"
+	"slices"
+	"strconv"
+	"strings"
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes"
@@ -15,10 +19,6 @@ import (
 )
 
 const (
-	LabelName     = "app.kubernetes.io/name"
-	LabelInstance = "app.kubernetes.io/instance"
-	LabelValue    = "ledger"
-
 	// resourcePrefix mirrors internal/controller.resourcePrefix (names.go), the
 	// source of truth. The operator prefixes every object it creates with it, so
 	// a Cluster's StatefulSet is named "ledger-<cr>", not "<cr>" (EN-1319).
@@ -26,11 +26,6 @@ const (
 	// controller package would pull controller-runtime into this CLI.
 	resourcePrefix = "ledger-"
 )
-
-// LabelSelector returns a comma-separated label selector for the given Cluster name.
-func LabelSelector(name string) string {
-	return fmt.Sprintf("%s=%s,%s=%s", LabelName, LabelValue, LabelInstance, name)
-}
 
 // GetCluster fetches a single Cluster CR.
 func GetCluster(ctx context.Context, c client.Client, namespace, name string) (*ledgerv1alpha1.Cluster, error) {
@@ -56,18 +51,77 @@ func ListClusters(ctx context.Context, c client.Client, namespace string) (*ledg
 	return &list, nil
 }
 
-// ClusterPods lists pods matching the selector labels for a Cluster.
-func ClusterPods(ctx context.Context, cs kubernetes.Interface, namespace, name string) (*corev1.PodList, error) {
-	return cs.CoreV1().Pods(namespace).List(ctx, metav1.ListOptions{
-		LabelSelector: LabelSelector(name),
+// ClusterPods lists selected pods controlled by the Cluster's live StatefulSet.
+func ClusterPods(ctx context.Context, cs kubernetes.Interface, ledger *ledgerv1alpha1.Cluster) (*corev1.PodList, error) {
+	sts, err := clusterOwnedStatefulSet(ctx, cs, ledger)
+	if err != nil {
+		return nil, err
+	}
+	if sts == nil {
+		return &corev1.PodList{}, nil
+	}
+	selector, err := metav1.LabelSelectorAsSelector(sts.Spec.Selector)
+	if err != nil {
+		return nil, fmt.Errorf("reading StatefulSet %q selector: %w", sts.Name, err)
+	}
+	pods, err := cs.CoreV1().Pods(ledger.Namespace).List(ctx, metav1.ListOptions{LabelSelector: selector.String()})
+	if err != nil {
+		return nil, err
+	}
+	pods.Items = slices.DeleteFunc(pods.Items, func(pod corev1.Pod) bool {
+		return !metav1.IsControlledBy(&pod, sts)
 	})
+
+	return pods, nil
 }
 
-// ClusterPVCs lists PVCs matching the selector labels for a Cluster.
-func ClusterPVCs(ctx context.Context, cs kubernetes.Interface, namespace, name string) (*corev1.PersistentVolumeClaimList, error) {
-	return cs.CoreV1().PersistentVolumeClaims(namespace).List(ctx, metav1.ListOptions{
-		LabelSelector: LabelSelector(name),
+// ClusterPVCs lists associated claims for display only, not as deletion authority.
+func ClusterPVCs(ctx context.Context, cs kubernetes.Interface, ledger *ledgerv1alpha1.Cluster) (*corev1.PersistentVolumeClaimList, error) {
+	sts, err := clusterOwnedStatefulSet(ctx, cs, ledger)
+	if err != nil {
+		return nil, err
+	}
+	stsName := resourcePrefix + ledger.Name
+	volumeNames := []string{"wal", "data"}
+	if sts != nil {
+		stsName = sts.Name
+		volumeNames = make([]string, 0, len(sts.Spec.VolumeClaimTemplates))
+		for _, template := range sts.Spec.VolumeClaimTemplates {
+			volumeNames = append(volumeNames, template.Name)
+		}
+	}
+	pvcs, err := cs.CoreV1().PersistentVolumeClaims(ledger.Namespace).List(ctx, metav1.ListOptions{})
+	if err != nil {
+		return nil, err
+	}
+	pvcs.Items = slices.DeleteFunc(pvcs.Items, func(pvc corev1.PersistentVolumeClaim) bool {
+		return !slices.ContainsFunc(volumeNames, func(volumeName string) bool {
+			ordinal, found := strings.CutPrefix(pvc.Name, volumeName+"-"+stsName+"-")
+			if !found {
+				return false
+			}
+			value, err := strconv.ParseUint(ordinal, 10, 32)
+
+			return err == nil && strconv.FormatUint(value, 10) == ordinal
+		})
 	})
+
+	return pvcs, nil
+}
+
+func clusterOwnedStatefulSet(ctx context.Context, cs kubernetes.Interface, ledger *ledgerv1alpha1.Cluster) (*appsv1.StatefulSet, error) {
+	sts, err := ClusterStatefulSet(ctx, cs, ledger.Namespace, ledger.Name)
+	if apierrors.IsNotFound(err) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("getting StatefulSet for Cluster %q: %w", ledger.Name, err)
+	}
+	if !metav1.IsControlledBy(sts, ledger) {
+		return nil, fmt.Errorf("StatefulSet %q is not controlled by Cluster %q", sts.Name, ledger.Name)
+	}
+
+	return sts, nil
 }
 
 // ClusterStatefulSet fetches the StatefulSet for a Cluster. The
@@ -83,11 +137,17 @@ func ClusterPodName(name string, ordinal int) string {
 	return fmt.Sprintf("%s%s-%d", resourcePrefix, name, ordinal)
 }
 
-// Clusters lists services matching the selector labels for a Cluster.
-func Clusters(ctx context.Context, cs kubernetes.Interface, namespace, name string) (*corev1.ServiceList, error) {
-	return cs.CoreV1().Services(namespace).List(ctx, metav1.ListOptions{
-		LabelSelector: LabelSelector(name),
+// ClusterServices lists services controlled by the Cluster, independent of labels.
+func ClusterServices(ctx context.Context, cs kubernetes.Interface, ledger *ledgerv1alpha1.Cluster) (*corev1.ServiceList, error) {
+	services, err := cs.CoreV1().Services(ledger.Namespace).List(ctx, metav1.ListOptions{})
+	if err != nil {
+		return nil, err
+	}
+	services.Items = slices.DeleteFunc(services.Items, func(service corev1.Service) bool {
+		return !metav1.IsControlledBy(&service, ledger)
 	})
+
+	return services, nil
 }
 
 // GetBackup fetches a single Backup CR.
