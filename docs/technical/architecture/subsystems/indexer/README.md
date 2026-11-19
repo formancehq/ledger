@@ -20,5 +20,6 @@ version at that pin, and ignores membership events committed after it.
 ## Related
 
 - [Read path](../read-path/) — query consumer of the inverted index.
+- [Read-index recovery](../backup/README.md#read-index-recovery) — how a restored node resumes indexing from a full backup.
 - [Storage](../storage/) — the read store is a separate Pebble DB with WAL disabled.
 - [Attributes](../attributes/) — the same source attributes the indexer projects from.

@@ -1,14 +1,22 @@
 package node
 
 import (
+	"crypto/rand"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
+
+	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
 
 const restoredMarkerFile = "RESTORED"
+
+// ErrRestoredMarkerPublished means RESTORED is already visible. Failure to
+// sync its parent makes durability indeterminate, so callers must keep the
+// checkpoint and secondary the marker names and surface the error.
+var ErrRestoredMarkerPublished = errors.New("RESTORED published but directory sync failed")
 
 // RestoredMarker contains the metadata written by FinalizeRestore.
 type RestoredMarker struct {
@@ -21,6 +29,9 @@ type RestoredMarker struct {
 	// sequence-keyed and do not advance it).
 	LastAppliedIndex     uint64 `json:"lastAppliedIndex"`
 	LastAppliedTimestamp uint64 `json:"lastAppliedTimestamp"`
+	// ReadIndexGeneration identifies the prepared secondary directory, including
+	// an empty directory when a legacy backup requires a cold rebuild.
+	ReadIndexGeneration string `json:"readIndexGeneration,omitempty"`
 }
 
 // ReadRestoredMarker reads the RESTORED marker file from the data directory.
@@ -51,20 +62,40 @@ func ReadRestoredMarker(dataDir string) (*RestoredMarker, error) {
 // a marker observed without its checkpoint would make bootstrap plant the
 // restore WAL snapshot over whatever store the next boot opens.
 func WriteRestoredMarker(dataDir string, marker RestoredMarker) error {
+	return writeRestoredMarker(dataDir, marker, dal.FsyncDir)
+}
+
+func writeRestoredMarker(dataDir string, marker RestoredMarker, syncParent func(string) error) (retErr error) {
 	data, err := json.Marshal(marker)
 	if err != nil {
 		return fmt.Errorf("marshaling restored marker: %w", err)
 	}
 
-	tmpPath := filepath.Join(dataDir, restoredMarkerFile+".tmp")
-	if err := os.WriteFile(tmpPath, data, 0o644); err != nil {
-		return fmt.Errorf("writing restored marker temp file: %w", err)
+	temp := filepath.Join(dataDir, ".restored-marker-"+rand.Text())
+	file, err := os.OpenFile(temp, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o644)
+	if err != nil {
+		return err
 	}
-
-	if err := os.Rename(tmpPath, filepath.Join(dataDir, restoredMarkerFile)); err != nil {
-		_ = os.Remove(tmpPath)
-
+	defer func() {
+		if temp == "" {
+			return
+		}
+		if err := os.Remove(temp); err != nil && !errors.Is(err, os.ErrNotExist) {
+			retErr = errors.Join(retErr, err)
+		}
+	}()
+	if _, err = file.Write(data); err == nil {
+		err = file.Sync()
+	}
+	if err = errors.Join(err, file.Close()); err != nil {
+		return fmt.Errorf("writing restored marker: %w", err)
+	}
+	if err := os.Rename(temp, filepath.Join(dataDir, restoredMarkerFile)); err != nil {
 		return fmt.Errorf("renaming restored marker into place: %w", err)
+	}
+	temp = "" // The name now belongs to RESTORED. Only pre-rename errors own a temp.
+	if err := syncParent(dataDir); err != nil {
+		return errors.Join(ErrRestoredMarkerPublished, err)
 	}
 
 	return nil

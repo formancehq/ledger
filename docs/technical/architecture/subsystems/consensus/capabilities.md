@@ -103,6 +103,11 @@ Do not add a capability for a bug fix that restores the intended behavior when
 the old behavior was invalid. Add one when valid historical orders need to keep
 their old behavior while new orders use a different rule.
 
+The optional read-index inventory in a [full backup](../backup/README.md#read-index-recovery)
+and its local `RESTORED` generation require no capability. They change how
+one node recovers a derived store before boot. They do not change a committed
+order, its replay, Raft membership, or the service protocol revision.
+
 A change confined to read paths needs no capability either, even when it
 touches a file the capability-contract gate watches. `common.proto` also
 defines service response types that no order carries, and `internal/infra/plan`

@@ -1,6 +1,7 @@
 package grpc
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -15,6 +16,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
+	"github.com/formancehq/ledger/v3/internal/application/restoreseed"
 	"github.com/formancehq/ledger/v3/internal/infra/backup"
 	"github.com/formancehq/ledger/v3/internal/proto/restorepb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
@@ -50,6 +52,8 @@ type downloadJob struct {
 	totalFiles      atomic.Uint64
 	totalBytes      atomic.Uint64
 	currentFile     atomic.Pointer[string]
+	// Staged by the worker, published under the server lock by finishJob.
+	readIndexGeneration string
 
 	// Fields below are protected by RestoreServiceServerImpl.mu.
 	state      restorepb.DownloadState
@@ -183,9 +187,8 @@ func (s *RestoreServiceServerImpl) CancelDownload(_ context.Context, req *restor
 		return &restorepb.CancelDownloadResponse{}, nil
 	}
 
-	s.mu.Unlock()
-
 	job.cancel()
+	s.mu.Unlock()
 
 	// Wait briefly for the goroutine to drain so callers see a CANCELED status
 	// on their next poll. We cap the wait so a stuck storage client does not block
@@ -215,13 +218,13 @@ func (s *RestoreServiceServerImpl) runDownloadJob(
 
 	storage, manifest, err := s.prepareDownload(ctx, req, factory)
 	if err != nil {
-		s.finishJob(job, err, nil)
+		s.finishJob(ctx, job, err, nil)
 
 		return
 	}
 
-	stagingStore, err := s.executeDownload(ctx, job, storage, manifest)
-	s.finishJob(job, err, stagingStore)
+	stagingStore, err := s.executeDownload(ctx, job, storage, manifest, cmp.Or(req.GetBucketId(), s.clusterID))
+	s.finishJob(ctx, job, err, stagingStore)
 }
 
 // prepareDownload performs all blocking I/O that must succeed before workers
@@ -282,6 +285,9 @@ func (s *RestoreServiceServerImpl) prepareDownload(
 			len(manifest.Checkpoint.Files), maxRestoreManifestFiles)
 	}
 
+	if hasCheckpoint && manifest.Checkpoint.ReadIndex != nil && manifest.Checkpoint.ReadIndex.Version == backup.ReadIndexVersion && len(manifest.Checkpoint.ReadIndex.Files) > maxRestoreManifestFiles {
+		return nil, nil, status.Errorf(codes.FailedPrecondition, "backup manifest declares %d read-index files (max %d); refusing to download", len(manifest.Checkpoint.ReadIndex.Files), maxRestoreManifestFiles)
+	}
 	stagingDir := s.stagingDir()
 
 	if err := os.RemoveAll(stagingDir); err != nil {
@@ -302,7 +308,7 @@ func (s *RestoreServiceServerImpl) executeDownload(
 	ctx context.Context,
 	job *downloadJob,
 	storage backup.Storage,
-	manifest *backup.Manifest,
+	manifest *backup.Manifest, bucketID string,
 ) (*dal.Store, error) {
 	stagingDir := s.stagingDir()
 
@@ -316,6 +322,14 @@ func (s *RestoreServiceServerImpl) executeDownload(
 			}
 		}
 
+		if seed := manifest.Checkpoint.ReadIndex; seed != nil && seed.Version == backup.ReadIndexVersion {
+			job.totalFiles.Add(uint64(len(seed.Files)))
+			for _, cf := range seed.Files {
+				if cf.Size > 0 {
+					totalBytes += uint64(cf.Size)
+				}
+			}
+		}
 		job.totalBytes.Store(totalBytes)
 	}
 
@@ -334,6 +348,20 @@ func (s *RestoreServiceServerImpl) executeDownload(
 		return nil, fmt.Errorf("opening staging store: %w", err)
 	}
 
+	options := backup.ReadIndexDownloadOptions{
+		Parallelism:  s.parallelism,
+		FileVerified: job.recordDownloadedFile,
+	}
+	if seed := manifest.Checkpoint; seed != nil && seed.ReadIndex != nil && seed.ReadIndex.Version == backup.ReadIndexVersion {
+		// The files are downloaded concurrently; avoid naming a primary SST
+		// that has already finished throughout a potentially long second phase.
+		phase := "read index"
+		job.currentFile.Store(&phase)
+	}
+	job.readIndexGeneration, err = restoreseed.Stage(ctx, s.dataDir, bucketID, storage, manifest.Checkpoint, stagingStore, options, s.logger)
+	if err != nil {
+		return nil, errors.Join(err, stagingStore.Close())
+	}
 	if err := backup.ApplyExportsAndRebuild(ctx, s.logger, storage, stagingStore, manifest); err != nil {
 		_ = stagingStore.Close()
 
@@ -341,6 +369,11 @@ func (s *RestoreServiceServerImpl) executeDownload(
 	}
 
 	return stagingStore, nil
+}
+
+func (job *downloadJob) recordDownloadedFile(size int64) {
+	job.filesDownloaded.Add(1)
+	job.bytesDownloaded.Add(uint64(size))
 }
 
 // downloadCheckpointFiles fans out checkpoint downloads across a worker pool
@@ -427,8 +460,7 @@ func (s *RestoreServiceServerImpl) downloadOneFile(
 		return fmt.Errorf("closing file %s: %w", filename, closeErr)
 	}
 
-	job.filesDownloaded.Add(1)
-	job.bytesDownloaded.Add(uint64(n))
+	job.recordDownloadedFile(n)
 
 	return nil
 }
@@ -437,15 +469,23 @@ func (s *RestoreServiceServerImpl) downloadOneFile(
 // store is published; on failure or cancel the staging directory is wiped so
 // a retry starts from a clean slate. downloading is reset either way; downloaded
 // is set only on success.
-func (s *RestoreServiceServerImpl) finishJob(job *downloadJob, runErr error, stagingStore *dal.Store) {
+func (s *RestoreServiceServerImpl) finishJob(ctx context.Context, job *downloadJob, runErr error, stagingStore *dal.Store) {
 	finished := time.Now().Unix()
 
-	switch {
-	case runErr == nil:
-		s.mu.Lock()
+	// Serialize terminal success with cancellation and shutdown. An accepted
+	// cancellation must win even if the final file just finished writing.
+	s.mu.Lock()
+	if runErr == nil {
+		runErr = ctx.Err()
+		if runErr == nil && s.stopping {
+			runErr = errCanceled
+		}
+	}
+	if runErr == nil {
 		job.state = restorepb.DownloadState_DOWNLOAD_STATE_SUCCEEDED
 		job.finishedAt = finished
 		s.stagingStore = stagingStore
+		s.readIndexGeneration = job.readIndexGeneration
 		s.downloading = false
 		s.downloaded = true
 		s.validating = false
@@ -458,12 +498,16 @@ func (s *RestoreServiceServerImpl) finishJob(job *downloadJob, runErr error, sta
 			"totalBytes":      job.bytesDownloaded.Load(),
 		}).Infof("Backup downloaded successfully")
 
+		return
+	}
+	s.mu.Unlock()
+	switch {
 	case errors.Is(runErr, errCanceled) || errors.Is(runErr, context.Canceled):
 		if stagingStore != nil {
 			_ = stagingStore.Close()
 		}
 
-		if err := os.RemoveAll(s.stagingDir()); err != nil {
+		if err := errors.Join(os.RemoveAll(s.stagingDir()), restoreseed.Discard(s.dataDir)); err != nil {
 			s.logger.WithFields(map[string]any{"error": err}).Errorf("Failed to clean staging directory after cancel")
 		}
 
@@ -480,7 +524,7 @@ func (s *RestoreServiceServerImpl) finishJob(job *downloadJob, runErr error, sta
 			_ = stagingStore.Close()
 		}
 
-		if err := os.RemoveAll(s.stagingDir()); err != nil {
+		if err := errors.Join(os.RemoveAll(s.stagingDir()), restoreseed.Discard(s.dataDir)); err != nil {
 			s.logger.WithFields(map[string]any{"error": err}).Errorf("Failed to clean staging directory after failure")
 		}
 

@@ -72,6 +72,16 @@ rather than numeric ordering between unrelated Raft domains; it never publishes
 an intermediate source-cluster index, even when the destination domain has
 already overtaken that number.
 
+The optional [read-index checkpoint](README.md#read-index-recovery) changes
+where the destination starts indexing. It does not change the exported
+history or the primary replay contract. The native cursors refer to the full
+checkpoint or an earlier prefix, even when a later incremental would appear to
+justify a higher cursor. A restore test must distinguish resuming from that
+prefix from rebuilding to the same result from zero. Compare an indexed query
+against independent expected values before and after a non-empty delta; record
+the starting cursor separately. The source's normal and audit Raft certificates
+must not satisfy a destination read.
+
 Before changing an audited order, an FSM handler, a persisted projection, or a
 delete/purge cascade, classify every affected value:
 

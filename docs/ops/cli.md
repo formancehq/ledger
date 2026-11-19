@@ -2305,7 +2305,7 @@ ledgerctl s cp
 
 #### store backup
 
-Perform a full checkpoint backup of the Pebble store to S3 or Azure Blob Storage. The request is forwarded to the cluster leader because SST file numbering is node-local.
+Back up the primary Pebble store and the leader’s read index to S3 or Azure Blob Storage. The request is forwarded to the leader. See [read availability after restore](backup-restore.md#read-availability-after-restore) for what the receiving node reuses and what other replicas rebuild.
 
 Both `store backup` and `store incremental-backup` accept static S3 credentials
 through `S3_ACCESS_KEY_ID` and `S3_SECRET_ACCESS_KEY`, the existing environment
@@ -2448,6 +2448,7 @@ ledgerctl store bootstrap --driver s3 --s3-bucket <bucket> --data-dir /path/to/d
 | `--azure-endpoint` | | Custom Azure endpoint (for Azurite) |
 | `--bucket-id` | `default` | Namespace prefix for backup files (default: uses cluster-id from config) |
 | `--data-dir` | | Target data directory (required, must be fresh) |
+| `--max-manifest-bytes` | `33554432` | Maximum manifest size to read. Increase only to recover a trusted oversized legacy backup offline. |
 | `--validate` | `false` | Run integrity checks after download |
 | `-y, --yes` | `false` | Skip confirmation prompt |
 
@@ -2460,8 +2461,8 @@ ledgerctl store bootstrap --driver s3 --s3-bucket <bucket> --data-dir /path/to/d
 5. If `--validate` is set, runs the full integrity checker (same as `store check`); aborts before finalizing if any integrity error is found
 6. Prompts for confirmation (unless `--yes`)
 7. Prepares attributes for backup (Global-zone resets): preserves the applied index as the genesis boundary (the WAL-snapshot index the restored genesis occupies, so joiners must sync a checkpoint; fallback 1 for a genesis checkpoint), strips persisted config, drops persisted bloom blocks; the attribute zone is left intact
-8. Hard-links staging to `checkpoints/0`, writes `RESTORED` marker
-9. Cleans up the staging directory
+8. Places the primary checkpoint in `checkpoints/0` and writes the `RESTORED` marker naming the read-index generation.
+9. Cleans up primary staging; first startup installs the prepared index.
 
 Every attempt resets staging, including export-only restores. This command
 requires exclusive offline use of the target directory. Reset failure aborts
@@ -2470,10 +2471,17 @@ Download root handles close before replay and preview. Download/rebuild failures
 or confirmation EOF may leave new partial or fully rebuilt staging; the next
 attempt discards it and starts from the backup again so additive projections
 are not replayed twice. A successful finalization places the checkpoint before
-writing the `RESTORED` commit marker, then removes staging. A marked restore
+writing the `RESTORED` commit marker, then removes primary staging. A
+marker write that fails before rename attempts to roll back the checkpoint. If
+the following directory sync fails, the command reports failure and preserves
+the visible marker, checkpoint and read-index generation. A marked restore
 cannot be overwritten by retrying this command.
 
 After bootstrap, start the server with `--bootstrap` to use the restored data.
+When the backup includes a supported read-index checkpoint, that first start
+installs it at the configured read-index location. Use a fresh target there;
+an existing, unrelated read index cannot be used as the backup's index. See
+[read availability after restore](backup-restore.md#read-availability-after-restore).
 
 **Example:**
 
