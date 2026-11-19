@@ -120,7 +120,8 @@ var _ = Describe("Restore index registry", Ordered, func() {
 		_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("",
 			actions.SetMetadataFieldTypeAction(ledgerName, commonpb.TargetType_TARGET_TYPE_ACCOUNT, key, commonpb.MetadataType_METADATA_TYPE_STRING)))
 		Expect(err).To(Succeed())
-		// The attribution proof requires a singleton creation batch.
+		// Like the operator's later additions, each index is created in its own
+		// batch under the creation prefix.
 		_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest(creationPrefix+key,
 			actions.CreateAccountMetadataIndexAction(ledgerName, key)))
 		Expect(err).To(Succeed())

@@ -6,7 +6,7 @@ spec:
   replicas: 1
   image:
     repository: alpine
-    tag: "3"
+    tag: e2e
   persistence:
     data:
       storageClass: gp3

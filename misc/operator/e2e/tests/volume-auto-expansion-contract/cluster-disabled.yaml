@@ -6,7 +6,7 @@ spec:
   replicas: 1
   image:
     repository: alpine
-    tag: "3"
+    tag: e2e
   persistence:
     wal:
       hostPath:
@@ -14,6 +14,3 @@ spec:
     data:
       hostPath:
         path: /tmp/ledger-auto-disabled/data
-    coldCache:
-      hostPath:
-        path: /tmp/ledger-auto-disabled/cold-cache

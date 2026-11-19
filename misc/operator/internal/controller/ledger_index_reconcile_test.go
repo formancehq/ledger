@@ -48,10 +48,10 @@ func TestReconcileIndexes_CreateConflictDoesNotAdopt(t *testing.T) {
 			require.False(t, synced)
 			if firstCreated {
 				require.Equal(t, []string{"reference"}, ledger.Status.AppliedIndexes)
-				require.Len(t, commands, 4)
+				require.Len(t, commands, 5)
 			} else {
 				require.Empty(t, ledger.Status.AppliedIndexes)
-				require.Len(t, commands, 3)
+				require.Len(t, commands, 4)
 			}
 
 			// The next reconciliation observes the externally created index and
@@ -61,6 +61,9 @@ func TestReconcileIndexes_CreateConflictDoesNotAdopt(t *testing.T) {
 				commands = append(commands, args)
 				require.Equal(t, []string{"indexes", "list", "--ledger", "L", "--json"}, args[:5])
 				if slices.Contains(args, "--creation-key-prefix") {
+					if args[6] == "operator-ledger-create:resource-uid:" {
+						return "[]", nil
+					}
 					require.Equal(t, "ledger-operator/index/resource-uid/", args[6])
 					if firstCreated {
 						return `[{"id":{"txBuiltin":"TX_BUILTIN_INDEX_REFERENCE"}}]`, nil
@@ -73,10 +76,42 @@ func TestReconcileIndexes_CreateConflictDoesNotAdopt(t *testing.T) {
 			})
 			require.NoError(t, err)
 			require.True(t, synced)
-			require.Len(t, commands, 2)
+			require.Len(t, commands, 3)
 			require.NotContains(t, ledger.Status.AppliedIndexes, "timestamp")
 		})
 	}
+}
+
+// Indexes declared when the ledger was created are committed in its creation
+// batch, not in a standalone creation: they are attributed through the
+// creation key, so removing one from the spec drops it.
+func TestReconcileIndexesDropsAnIndexCreatedWithTheLedger(t *testing.T) {
+	t.Parallel()
+	ledger := &ledgerv1alpha1.Ledger{}
+	ledger.Spec.Name = "L"
+	ledger.UID = "resource-uid"
+	ledger.Spec.Indexes = &ledgerv1alpha1.LedgerIndexesSpec{Transaction: []string{"reference"}}
+	both := `[{"id":{"txBuiltin":"TX_BUILTIN_INDEX_REFERENCE"}}, {"id":{"txBuiltin":"TX_BUILTIN_INDEX_ADDRESS"}}]`
+	var drops [][]string
+	synced, err := reconcileIndexesWithExec(t.Context(), ledger, func(args ...string) (string, error) {
+		switch {
+		case args[1] == "drop":
+			drops = append(drops, args)
+
+			return "", nil
+		case !slices.Contains(args, "--creation-key-prefix"):
+			return both, nil
+		case args[6] == ledgerCreationKeyPrefix(ledger.UID):
+			return both, nil // both were created with the ledger
+		default:
+			return "[]", nil // no standalone creation
+		}
+	})
+	require.NoError(t, err)
+	require.False(t, synced)
+	require.Len(t, drops, 1)
+	require.Contains(t, drops[0], "address")
+	require.Equal(t, []string{"reference"}, ledger.Status.AppliedIndexes)
 }
 
 func TestReconcileIndexesRequiresUID(t *testing.T) {
