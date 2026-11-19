@@ -1842,7 +1842,9 @@ domain-separated receipt binds the public bytes without exposing authoritative
 logs. The default response remains unchanged when clients do not opt in.
 
 Send exactly one nonempty `Formance-Public-Receipt: v1` header on any of the 25
-Apply-backed mutation operations declared with that parameter in `openapi.yml`.
+legacy Apply-backed mutation operations declared with that parameter in `openapi.yml`.
+The separate atomic `POST /v3/_/apply` route has no receipt contract: its
+service response does not expose the replay provenance needed for receipt claims.
 These cover ledger create/delete/promote, transaction create/revert/metadata,
 account and ledger metadata, metadata schema, account types, indexes, numscripts,
 prepared-query mutations, event sink mutations, and atomic or sequential bulk.
