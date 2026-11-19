@@ -24,7 +24,7 @@ if [[ "$current_branch" != "$branch" ]]; then
     echo "agent-push: branch $current_branch does not match push target $branch" >&2
     exit 1
 fi
-remote_url=$(git remote get-url --push "$remote") || {
+remote_url=$(git remote get-url --push --all "$remote") || {
     echo "agent-push: unable to resolve push URL for remote $remote" >&2
     exit 1
 }
