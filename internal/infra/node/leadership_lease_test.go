@@ -59,6 +59,7 @@ func TestFullProposalQueueWakesOnDequeue(t *testing.T) {
 	}()
 	require.Eventually(t, func() bool {
 		_, registered := n.applier.futures.Load(proposal.commandID)
+
 		return registered
 	}, time.Second, time.Millisecond)
 	require.Equal(t, uint64(1), (<-n.proposeCh).commandID)
