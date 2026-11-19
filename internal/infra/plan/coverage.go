@@ -1,6 +1,8 @@
 package plan
 
 import (
+	"slices"
+
 	"github.com/antithesishq/antithesis-sdk-go/assert"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
@@ -38,6 +40,11 @@ type CoverageEntry struct {
 type Coverage struct {
 	Attributes      map[byte]map[attributes.U128]CoverageEntry
 	IdempotencyKeys map[domain.IdempotencyKey]struct{}
+
+	// Absent lists the declared keys the operation's planning observed as
+	// absent, in declaration order. Merge does not carry it: absences are
+	// bound to one order, never to the aggregate.
+	Absent []AbsentKey
 
 	// collision holds the first XXH3-128 collision detected by Add/Merge
 	// (two distinct canonical keys sharing a 128-bit id). It is surfaced
@@ -88,6 +95,25 @@ func (c *Coverage) Add(attrCode byte, canonical []byte) {
 		if c.collision == nil {
 			c.collision = &attributes.ErrCollisionDetected{Bytes: canonical, OriginalTag: existing.Tag, NewTag: tag}
 		}
+	}
+}
+
+// AbsentKey identifies a declared key observed as absent during planning.
+type AbsentKey struct {
+	AttrCode byte
+	ID       attributes.U128
+	Tag      uint64
+}
+
+// ExpectAbsent declares `canonical` like Add and records that planning
+// observed it as absent.
+func (c *Coverage) ExpectAbsent(attrCode byte, canonical []byte) {
+	c.Add(attrCode, canonical)
+
+	id, tag := attributes.MakeKey(canonical)
+	absent := AbsentKey{AttrCode: attrCode, ID: id, Tag: tag}
+	if !slices.Contains(c.Absent, absent) {
+		c.Absent = append(c.Absent, absent)
 	}
 }
 

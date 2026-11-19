@@ -280,7 +280,7 @@ func (p *RequestProcessor) processOrders(orders []*raftcmdpb.Order, scopeFactory
 			return nil, domain.ErrPreloadUnavailable
 		}
 
-		orderScope, scopeErr := scopeFactory.NewScope(order.GetTechnical().GetCoverageBits())
+		orderScope, scopeErr := scopeFactory.NewOrderScope(i, order.GetTechnical().GetCoverageBits())
 		if scopeErr != nil {
 			// Invariant violation surfaced by the FSM: the execution plan
 			// shipped by admission is structurally inconsistent. Detected
