@@ -173,6 +173,7 @@
             packages = ciPackages ++ (with pkgs; [ kyverno-chainsaw kind kubectl docker-client gh ]);
             GOTOOLCHAIN = "local";
             LEDGER_UPGRADE_SHELL = "1";
+            LEDGER_CHAINSAW_BIN = "${pkgs.kyverno-chainsaw}/bin/chainsaw";
           };
 
           default = pkgs.mkShell {
