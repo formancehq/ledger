@@ -136,6 +136,34 @@ func TestLogToEvent(t *testing.T) {
 			expectedName: "orders",
 		},
 		{
+			name: "ACCOUNT_METADATA_UPDATED",
+			log: &commonpb.Log{
+				Sequence: 8,
+				Payload: &commonpb.LogPayload{
+					Type: &commonpb.LogPayload_Apply{
+						Apply: &commonpb.ApplyLedgerLog{
+							LedgerName: "orders",
+							Log: &commonpb.LedgerLog{
+								Date: &commonpb.Timestamp{Data: 8000},
+								Id:   6,
+								Data: &commonpb.LedgerLogPayload{
+									Payload: &commonpb.LedgerLogPayload_AccountMetadataUpdated{
+										AccountMetadataUpdated: &commonpb.AccountMetadataUpdated{
+											AccountMetadata: map[string]*commonpb.MetadataMap{
+												"users:alice": {},
+											},
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			expectedType: commonpb.EventType_ACCOUNT_METADATA_UPDATED,
+			expectedName: "orders",
+		},
+		{
 			name: "DELETED_METADATA",
 			log: &commonpb.Log{
 				Sequence: 6,
@@ -209,6 +237,60 @@ func TestLogToEvent(t *testing.T) {
 			require.Equal(t, tc.log, event.GetLog())
 		})
 	}
+}
+
+func TestAccountMetadataUpdatedEventTypeFilter(t *testing.T) {
+	t.Parallel()
+
+	event := &eventspb.Event{Type: commonpb.EventType_ACCOUNT_METADATA_UPDATED}
+
+	savedMetadataOnly := &Emitter{config: EmitterConfig{
+		EventTypes: map[commonpb.EventType]struct{}{commonpb.EventType_SAVED_METADATA: {}},
+	}}
+	require.False(t, savedMetadataOnly.shouldEmit(event))
+
+	accountMetadataOnly := &Emitter{config: EmitterConfig{
+		EventTypes: map[commonpb.EventType]struct{}{commonpb.EventType_ACCOUNT_METADATA_UPDATED: {}},
+	}}
+	require.True(t, accountMetadataOnly.shouldEmit(event))
+}
+
+func TestAccountMetadataUpdatedEventProjection(t *testing.T) {
+	t.Parallel()
+
+	log := &commonpb.Log{
+		Sequence: 8,
+		Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_Apply{
+			Apply: &commonpb.ApplyLedgerLog{
+				LedgerName: "orders",
+				Log: &commonpb.LedgerLog{
+					Date: &commonpb.Timestamp{Data: 8000},
+					Data: &commonpb.LedgerLogPayload{Payload: &commonpb.LedgerLogPayload_AccountMetadataUpdated{
+						AccountMetadataUpdated: &commonpb.AccountMetadataUpdated{
+							AccountMetadata: map[string]*commonpb.MetadataMap{
+								"users:alice": {Values: map[string]*commonpb.MetadataValue{"tier": commonpb.NewStringValue("gold")}},
+							},
+						},
+					}},
+				},
+			},
+		}},
+	}
+	event := LogToEvent(log)
+	require.Equal(t, commonpb.EventType_ACCOUNT_METADATA_UPDATED, event.GetType())
+
+	eventJSON, err := SerializeEvent(event, FormatJSON)
+	require.NoError(t, err)
+	require.Contains(t, string(eventJSON), `"type":"ACCOUNT_METADATA_UPDATED"`)
+
+	projectionJSON, err := eventToSinkJSON(event)
+	require.NoError(t, err)
+	var projection map[string]any
+	require.NoError(t, json.Unmarshal(projectionJSON, &projection))
+	require.Equal(t, "gold", projection["accountMetadata"].(map[string]any)["users:alice"].(map[string]any)["tier"])
+	require.NotContains(t, projection, "targetType")
+	require.NotContains(t, projection, "targetId")
+	require.NotContains(t, projection, "transaction")
 }
 
 func TestSerializeEvent_JSON(t *testing.T) {

@@ -28,6 +28,14 @@ empty technical attempt from a missing export of an audited outcome.
 
 ## Reachability and proof
 
+`AccountMetadataUpdated` is a committed business effect even when its Numscript
+execution creates no transaction. A post-checkpoint instance belongs in the
+nonempty audit/log delta. `RebuildDelta` must fold its account metadata values
+over the checkpoint seed without inventing a transaction, reference or next-ID
+advance. Compare the source and restored metadata and transaction set directly,
+then run `CheckStore` and a subsequent admitted operation. The existing
+`TestBackup_NumscriptRestoreParity` fixture exercises this composition.
+
 For every candidate, establish all of the following at the audited SHA:
 
 1. **Production mutation:** trace an admitted order or supported persistence,

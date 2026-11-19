@@ -9,6 +9,15 @@ product guarantee or authorization to run an audit.
 
 ## Evidence contract
 
+For an audited metadata-only Numscript execution, the checker must re-execute
+the script from the chain-bound order, expect an `AccountMetadataUpdated` log,
+and compare the account metadata projection. The operation creates no
+transaction or reference and must not advance the expected next transaction
+ID. Audit replay ignores operational metadata size limits while retaining
+semantic validation; otherwise a healthy committed operation can fail replay
+against an empty or later policy. Pair a clean store with controlled metadata
+tampering and inspect both callback findings and the terminal error.
+
 For each candidate record the exact audited SHA, production entry point, primary
 snapshot and optional peer snapshot, persisted keyspace/field, corruption,
 authoritative witness, verification pass and interval, comparison direction,

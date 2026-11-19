@@ -68,7 +68,7 @@ The ledger accepts virtual scopes in JWTs and expands them to granular Ledger sc
 
 If `--auth-service=myapp`, the scopes become `myapp:read`, `myapp:write`, `myapp:admin`.
 
-Granular scopes use the Ledger application namespace with the `ledger:<Action><Resource>` shape:
+Granular Ledger scopes use the `ledger:<Action><Resource>` shape:
 
 ```
 ledger:ReadLedger       ledger:WriteLedger
@@ -78,6 +78,7 @@ ledger:ReadAudit        ledger:WriteAudit
 ledger:ReadOps          ledger:WriteOps
 ledger:ReadQuery        ledger:WriteQuery
 ledger:ReadCluster      ledger:WriteCluster
+ledger:ExecuteNumscript
 ```
 
 ### Migration from RC.1 granular labels
@@ -91,8 +92,9 @@ granular labels are not recognized as effective rights by the new default
 mapping. The aggregate token labels `ledger:read`, `ledger:write`, and
 `ledger:admin` are unchanged and continue to map to the corresponding new
 granular rights. Custom mapping files replace the default mapping, so update
-their values before deploying this revision. Ledger-local `*:read` and
-`*:write` values still expand to all matching rights.
+their values before deploying this revision. Ledger-local `*:read` values
+expand to all `Read` rights. `*:write` values expand to all `Write` rights and
+`ledger:ExecuteNumscript`.
 
 This change does not alter a business storage key or protobuf field. Effective
 scope strings are captured in persisted audit `CallerSnapshot` records and

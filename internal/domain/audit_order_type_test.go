@@ -306,3 +306,21 @@ func TestSystemScopedOrderType_ProtoExhaustive(t *testing.T) {
 			field.Name(), "unknown")
 	}
 }
+
+func TestLedgerApplyOrderType_ProtoExhaustive(t *testing.T) {
+	t.Parallel()
+
+	data := (&raftcmdpb.LedgerApplyOrder{}).ProtoReflect().Descriptor().Oneofs().ByName("data")
+	require.NotNil(t, data)
+	fields := data.Fields()
+	for i := range fields.Len() {
+		field := fields.Get(i)
+		apply := &raftcmdpb.LedgerApplyOrder{}
+		m := apply.ProtoReflect()
+		m.Set(field, m.NewField(field))
+		got := domain.AuditOrderType(&raftcmdpb.Order{Type: &raftcmdpb.Order_LedgerScoped{
+			LedgerScoped: &raftcmdpb.LedgerScopedOrder{Payload: &raftcmdpb.LedgerScopedOrder_Apply{Apply: apply}},
+		}})
+		require.NotEqualf(t, "unknown", got, "LedgerApplyOrder.data.%s has no audit order type", field.Name())
+	}
+}

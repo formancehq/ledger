@@ -531,6 +531,8 @@ func (x *SinkConfig) MarshalJSON() ([]byte, error) {
 							return "DELETED_LEDGER"
 						case EventType_SKIPPED_ORDER:
 							return "SKIPPED_ORDER"
+						case EventType_ACCOUNT_METADATA_UPDATED:
+							return "ACCOUNT_METADATA_UPDATED"
 						default:
 							return int32(x.EventTypes[i])
 						}
@@ -579,6 +581,8 @@ func (x *SinkConfig) MarshalJSON() ([]byte, error) {
 							return "DELETED_LEDGER"
 						case EventType_SKIPPED_ORDER:
 							return "SKIPPED_ORDER"
+						case EventType_ACCOUNT_METADATA_UPDATED:
+							return "ACCOUNT_METADATA_UPDATED"
 						default:
 							return int32(x.EventTypes[i])
 						}
@@ -627,6 +631,8 @@ func (x *SinkConfig) MarshalJSON() ([]byte, error) {
 							return "DELETED_LEDGER"
 						case EventType_SKIPPED_ORDER:
 							return "SKIPPED_ORDER"
+						case EventType_ACCOUNT_METADATA_UPDATED:
+							return "ACCOUNT_METADATA_UPDATED"
 						default:
 							return int32(x.EventTypes[i])
 						}
@@ -675,6 +681,8 @@ func (x *SinkConfig) MarshalJSON() ([]byte, error) {
 							return "DELETED_LEDGER"
 						case EventType_SKIPPED_ORDER:
 							return "SKIPPED_ORDER"
+						case EventType_ACCOUNT_METADATA_UPDATED:
+							return "ACCOUNT_METADATA_UPDATED"
 						default:
 							return int32(x.EventTypes[i])
 						}
@@ -723,6 +731,8 @@ func (x *SinkConfig) MarshalJSON() ([]byte, error) {
 							return "DELETED_LEDGER"
 						case EventType_SKIPPED_ORDER:
 							return "SKIPPED_ORDER"
+						case EventType_ACCOUNT_METADATA_UPDATED:
+							return "ACCOUNT_METADATA_UPDATED"
 						default:
 							return int32(x.EventTypes[i])
 						}
@@ -769,6 +779,8 @@ func (x *SinkConfig) MarshalJSON() ([]byte, error) {
 							return "DELETED_LEDGER"
 						case EventType_SKIPPED_ORDER:
 							return "SKIPPED_ORDER"
+						case EventType_ACCOUNT_METADATA_UPDATED:
+							return "ACCOUNT_METADATA_UPDATED"
 						default:
 							return int32(x.EventTypes[i])
 						}
