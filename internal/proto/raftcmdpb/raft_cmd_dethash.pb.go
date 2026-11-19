@@ -1258,7 +1258,7 @@ func (m *ExecuteNumscriptOrder) MarshalToSizedBufferDeterministicVT(dAtA []byte)
 		copy(dAtA[i:], m.Reference)
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.Reference)))
 		i--
-		dAtA[i] = 0x3a
+		dAtA[i] = 0x32
 	}
 	if len(m.AccountMetadata) > 0 {
 		keysPtr := _dethashKeyPoolGithubComFormancehqLedgerV3InternalProtoRaftcmdpbRaftCmdString.Get().(*[]string)

@@ -372,8 +372,7 @@ message ExecuteNumscriptOrder {
   common.Timestamp timestamp = 3;
   map<string, common.MetadataValue> metadata = 4;
   map<string, common.MetadataMap> account_metadata = 5;
-  reserved 6;
-  string reference = 7;
+  string reference = 6;
 }
 
 // NumscriptReference identifies a numscript from the library to use for a

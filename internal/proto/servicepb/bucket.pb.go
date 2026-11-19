@@ -3758,7 +3758,7 @@ type ExecuteNumscriptPayload struct {
 	Timestamp       *commonpb.Timestamp                `protobuf:"bytes,3,opt,name=timestamp,proto3" json:"timestamp,omitempty"`
 	Metadata        map[string]*commonpb.MetadataValue `protobuf:"bytes,4,rep,name=metadata,proto3" json:"metadata,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
 	AccountMetadata map[string]*commonpb.MetadataMap   `protobuf:"bytes,5,rep,name=account_metadata,json=accountMetadata,proto3" json:"account_metadata,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
-	Reference       string                             `protobuf:"bytes,7,opt,name=reference,proto3" json:"reference,omitempty"`
+	Reference       string                             `protobuf:"bytes,6,opt,name=reference,proto3" json:"reference,omitempty"`
 	unknownFields   protoimpl.UnknownFields
 	sizeCache       protoimpl.SizeCache
 }
@@ -9425,20 +9425,20 @@ const file_bucket_proto_rawDesc = "" +
 	"\x05value\x18\x02 \x01(\v2\x15.common.MetadataValueR\x05value:\x028\x01\x1aW\n" +
 	"\x14AccountMetadataEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12)\n" +
-	"\x05value\x18\x02 \x01(\v2\x13.common.MetadataMapR\x05value:\x028\x01:\x04\xe8\xd5\"\x01\"\xb9\x04\n" +
+	"\x05value\x18\x02 \x01(\v2\x13.common.MetadataMapR\x05value:\x028\x01:\x04\xe8\xd5\"\x01\"\xb3\x04\n" +
 	"\x17ExecuteNumscriptPayload\x12&\n" +
 	"\x06script\x18\x01 \x01(\v2\x0e.common.ScriptR\x06script\x12B\n" +
 	"\x10script_reference\x18\x02 \x01(\v2\x17.ledger.ScriptReferenceR\x0fscriptReference\x12/\n" +
 	"\ttimestamp\x18\x03 \x01(\v2\x11.common.TimestampR\ttimestamp\x12I\n" +
 	"\bmetadata\x18\x04 \x03(\v2-.ledger.ExecuteNumscriptPayload.MetadataEntryR\bmetadata\x12_\n" +
 	"\x10account_metadata\x18\x05 \x03(\v24.ledger.ExecuteNumscriptPayload.AccountMetadataEntryR\x0faccountMetadata\x12\x1c\n" +
-	"\treference\x18\a \x01(\tR\treference\x1aR\n" +
+	"\treference\x18\x06 \x01(\tR\treference\x1aR\n" +
 	"\rMetadataEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12+\n" +
 	"\x05value\x18\x02 \x01(\v2\x15.common.MetadataValueR\x05value:\x028\x01\x1aW\n" +
 	"\x14AccountMetadataEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12)\n" +
-	"\x05value\x18\x02 \x01(\v2\x13.common.MetadataMapR\x05value:\x028\x01:\x04\xe8\xd5\"\x01J\x04\b\x06\x10\a\"\xa9\x02\n" +
+	"\x05value\x18\x02 \x01(\v2\x13.common.MetadataMapR\x05value:\x028\x01:\x04\xe8\xd5\"\x01\"\xa9\x02\n" +
 	"\x18RevertTransactionPayload\x12%\n" +
 	"\x0etransaction_id\x18\x01 \x01(\x06R\rtransactionId\x12\x14\n" +
 	"\x05force\x18\x02 \x01(\bR\x05force\x12*\n" +
