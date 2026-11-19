@@ -59,3 +59,23 @@ func TestAtomicApplyProofRequiresSignerBeforeDispatch(t *testing.T) {
 	handler.ServeHTTP(response, request)
 	require.Equal(t, http.StatusServiceUnavailable, response.Code)
 }
+
+func TestAtomicApplyRejectsMalformedReceiptBeforeDispatch(t *testing.T) {
+	t.Parallel()
+	signer := signing.NewResponseSigner(make([]byte, ed25519.SeedSize))
+	service := atomicApplyTestService{apply: func(*servicepb.ApplyRequest) (*servicepb.ApplyResponse, error) {
+		t.Fatal("Apply must not be dispatched for malformed receipt negotiation")
+		return nil, nil
+	}}
+	handler := NewHandler(logging.Testing(), NewMockBackend(gomock.NewController(t)), internalauth.AuthConfig{}, version.Info{}, service, signer)
+	for _, values := range [][]string{{""}, {"v2"}, {"v1", "v1"}} {
+		request := httptest.NewRequest(http.MethodPost, "/v3/_/apply", strings.NewReader(`{"requests":[{"createLedger":{"name":"one"}}]}`))
+		for _, value := range values {
+			request.Header.Add(httpreceipt.Header, value)
+		}
+		response := httptest.NewRecorder()
+		handler.ServeHTTP(response, request)
+		require.Equal(t, http.StatusBadRequest, response.Code, response.Body.String())
+		require.Contains(t, response.Body.String(), "Formance-Public-Receipt must occur exactly once")
+	}
+}
