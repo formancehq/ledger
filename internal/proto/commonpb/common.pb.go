@@ -45,7 +45,7 @@ const (
 	AuthScope_AUTH_SCOPE_QUERY_WRITE       AuthScope = 12
 	AuthScope_AUTH_SCOPE_CLUSTER_READ      AuthScope = 13
 	AuthScope_AUTH_SCOPE_CLUSTER_WRITE     AuthScope = 14
-	AuthScope_AUTH_SCOPE_NUMSCRIPT_EXECUTE AuthScope = 15
+	AuthScope_AUTH_SCOPE_EXECUTE_NUMSCRIPT AuthScope = 15
 )
 
 // Enum value maps for AuthScope.
@@ -66,7 +66,7 @@ var (
 		12: "AUTH_SCOPE_QUERY_WRITE",
 		13: "AUTH_SCOPE_CLUSTER_READ",
 		14: "AUTH_SCOPE_CLUSTER_WRITE",
-		15: "AUTH_SCOPE_NUMSCRIPT_EXECUTE",
+		15: "AUTH_SCOPE_EXECUTE_NUMSCRIPT",
 	}
 	AuthScope_value = map[string]int32{
 		"AUTH_SCOPE_UNSPECIFIED":       0,
@@ -84,7 +84,7 @@ var (
 		"AUTH_SCOPE_QUERY_WRITE":       12,
 		"AUTH_SCOPE_CLUSTER_READ":      13,
 		"AUTH_SCOPE_CLUSTER_WRITE":     14,
-		"AUTH_SCOPE_NUMSCRIPT_EXECUTE": 15,
+		"AUTH_SCOPE_EXECUTE_NUMSCRIPT": 15,
 	}
 )
 
@@ -24065,7 +24065,7 @@ const file_common_proto_rawDesc = "" +
 	"\x16AUTH_SCOPE_QUERY_WRITE\x10\f\x12\x1b\n" +
 	"\x17AUTH_SCOPE_CLUSTER_READ\x10\r\x12\x1c\n" +
 	"\x18AUTH_SCOPE_CLUSTER_WRITE\x10\x0e\x12 \n" +
-	"\x1cAUTH_SCOPE_NUMSCRIPT_EXECUTE\x10\x0f*\xdc\x01\n" +
+	"\x1cAUTH_SCOPE_EXECUTE_NUMSCRIPT\x10\x0f*\xdc\x01\n" +
 	"\x13DynamicAuthResolver\x12%\n" +
 	"!DYNAMIC_AUTH_RESOLVER_UNSPECIFIED\x10\x00\x12\x1f\n" +
 	"\x1bDYNAMIC_AUTH_RESOLVER_APPLY\x10\x01\x12#\n" +

@@ -139,7 +139,7 @@ func TestRequiredScopeForLedgerApply_ExecuteNumscript(t *testing.T) {
 	req := &servicepb.Request{Type: &servicepb.Request_Apply{Apply: &servicepb.LedgerApplyRequest{
 		Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_ExecuteNumscript{}},
 	}}}
-	assert.Equal(t, ScopeNumscriptExecute, RequiredScopeForRequest(req))
+	assert.Equal(t, ScopeExecuteNumscript, RequiredScopeForRequest(req))
 }
 
 func TestRequiredScopeForLedgerApply_RevertTransaction(t *testing.T) {

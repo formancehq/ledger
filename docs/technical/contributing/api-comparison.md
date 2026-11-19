@@ -1664,7 +1664,7 @@ The governing rule: **a batched operation requires the same scope as its dedicat
 | Request variant | Scope | Matches |
 |---|---|---|
 | `apply` (`create_transaction`, `revert_transaction`) | `ledger:WriteTransaction` | `POST /v3/{ledgerName}/transactions` |
-| `apply` (`execute_numscript`) | `numscript:Execute` | `POST /v3/{ledgerName}/numscripts/execute` |
+| `apply` (`execute_numscript`) | `ledger:ExecuteNumscript` | `POST /v3/{ledgerName}/numscripts/execute` |
 | `apply` (`add_metadata`, `delete_metadata`) | `ledger:WriteMetadata` | metadata routes |
 | `apply` (`add_account_type`, `remove_account_type`, `set_default_enforcement_mode`) | `ledger:WriteMetadata` | `/v3/{ledgerName}/account-types*` |
 | `create_ledger`, `delete_ledger`, `promote_ledger`, `create_index`, `drop_index`, `save_numscript` | `ledger:WriteLedger` | the `requireLedgersWrite` route group |

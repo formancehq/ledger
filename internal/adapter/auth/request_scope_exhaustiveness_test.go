@@ -165,7 +165,7 @@ func requestScopeCases() map[string]scopeCase {
 func ledgerActionScopeCases() map[string]Scope {
 	return map[string]Scope{
 		"create_transaction": ScopeTransactionsWrite,
-		"execute_numscript":  ScopeNumscriptExecute,
+		"execute_numscript":  ScopeExecuteNumscript,
 		"revert_transaction": ScopeTransactionsWrite,
 		"add_metadata":       ScopeMetadataWrite,
 		"delete_metadata":    ScopeMetadataWrite,

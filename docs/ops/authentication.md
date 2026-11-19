@@ -68,7 +68,7 @@ The ledger accepts virtual scopes in JWTs and expands them to granular Ledger sc
 
 If `--auth-service=myapp`, the scopes become `myapp:read`, `myapp:write`, `myapp:admin`.
 
-Granular Ledger scopes use the `ledger:<Action><Resource>` shape. Numscript execution uses `numscript:Execute`:
+Granular Ledger scopes use the `ledger:<Action><Resource>` shape:
 
 ```
 ledger:ReadLedger       ledger:WriteLedger
@@ -78,7 +78,7 @@ ledger:ReadAudit        ledger:WriteAudit
 ledger:ReadOps          ledger:WriteOps
 ledger:ReadQuery        ledger:WriteQuery
 ledger:ReadCluster      ledger:WriteCluster
-numscript:Execute
+ledger:ExecuteNumscript
 ```
 
 ### Migration from RC.1 granular labels
