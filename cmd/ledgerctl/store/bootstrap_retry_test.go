@@ -200,6 +200,7 @@ func TestBootstrapRetryCheckpoint(t *testing.T) {
 			if corrupt {
 				for _, file := range manifest.Checkpoint.Files {
 					corruptKey = file.Key
+
 					break
 				}
 				require.NotEmpty(t, corruptKey)

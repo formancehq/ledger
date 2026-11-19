@@ -430,6 +430,7 @@ func latestFullResultRun(runs []ledgerv1alpha1.BackupRun) *ledgerv1alpha1.Backup
 			latest = &runs[i]
 		}
 	}
+
 	return latest
 }
 

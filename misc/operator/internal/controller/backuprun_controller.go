@@ -240,11 +240,13 @@ func (r *BackupRunReconciler) ensureBackupJob(
 			if !metav1.IsControlledBy(existing, run) {
 				return nil, fmt.Errorf("job %q is not controlled by BackupRun %q (UID %s)", existing.Name, run.Name, run.UID)
 			}
+
 			return existing, nil
 		}
 		if !apierrors.IsNotFound(err) {
 			return nil, fmt.Errorf("looking up legacy Job directly: %w", err)
 		}
+
 		return nil, &permanentBackupJobError{errors.New(legacyIncrementalRunMessage)}
 	}
 
@@ -364,6 +366,7 @@ func (r *BackupRunReconciler) applyJobResult(
 				return err
 			}
 			run.Status.Full = fullBackupStatus(result, &now)
+
 			return nil
 		}
 		var result incrementalBackupResult

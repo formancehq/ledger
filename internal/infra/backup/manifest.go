@@ -188,6 +188,7 @@ func ValidateCheckpointOnlyManifest(manifest *Manifest) error {
 	if manifest.Checkpoint == nil || len(manifest.Checkpoint.Files) == 0 {
 		return errors.New("backup manifest contains no checkpoint files")
 	}
+
 	return nil
 }
 
