@@ -678,9 +678,9 @@ call sites.
 
 #### Restore cycles (`--restore`, single node)
 
-`run_model_test.sh --restore` periodically quiesces the driver, takes an
-incremental backup, kills the node, bootstraps a fresh store from the backup
-(running the `RebuildDelta` replay), and relaunches on it — the driver then
+`run_model_test.sh --restore` periodically quiesces the driver, takes a
+checkpoint backup, kills the node, bootstraps a fresh store from that checkpoint,
+and relaunches on it — the driver then
 resumes and its ordinary checks validate the rebuilt state. The run fails if
 no cycle completed or any cycle failed. The driver-side knobs are
 `MODEL_RESTORE_INTERVAL` and `MODEL_RESTORE_TIMEOUT` (seconds; the timeout is

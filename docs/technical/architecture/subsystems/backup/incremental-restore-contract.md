@@ -61,9 +61,10 @@ For any persisted, audited, or deletion-cascade change with restore impact:
    checkpoint files. Do not require a no-write backup to upload zero files:
    starting the backup itself persists backup-job state.
 
-Test both S3 and Azure publication where provider behavior matters. The operator
-and Antithesis restore cycles must exercise a second checkpoint and verify a
-post-first-checkpoint sentinel after restore.
+Test both S3 and Azure publication where provider behavior matters. Operator
+E2E must exercise a second checkpoint and verify a post-first-checkpoint
+sentinel after restore. Each Antithesis restore cycle captures a quiesced
+committed state in a complete checkpoint and verifies it after restore.
 
 ## Code and test map
 

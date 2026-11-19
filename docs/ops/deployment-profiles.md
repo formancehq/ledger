@@ -175,7 +175,7 @@ Translate the customer's recovery promise into an operating procedure:
 
 | Objective | Deployment decision | Validation |
 |-----------|---------------------|------------|
-| RPO | Run incremental backups at least as often as the maximum acceptable data-loss window. Store them outside the cluster failure domain. | Verify backup completion and retention; a configured job without a successful artifact does not meet the RPO. |
+| RPO | Run checkpoint backups at least as often as the maximum acceptable data-loss window. Store them outside the cluster failure domain. | Verify backup completion and retention; a configured job without a successful artifact does not meet the RPO. |
 | RTO | Choose online restore or offline bootstrap from the measured recovery path, dataset size, download bandwidth, and rebuild time. | Time a full restore of production-sized data and compare the result with the promised RTO. |
 | Disaster readiness | Retain the credentials, encryption keys, manifests, and versioned binary needed to restore into a fresh environment. | Run a restore exercise after material storage, version, credential, or topology changes, and at a regular customer-approved cadence. |
 

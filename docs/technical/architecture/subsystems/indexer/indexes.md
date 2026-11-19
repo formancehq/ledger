@@ -156,14 +156,13 @@ verify restart, direct readiness, and exact date rows.
 
 ## Restore Lifecycle
 
-The index registry (the bucket-scoped `Index` rows under `SubAttrIndex`) is a persisted projection of the audited order stream, so a cross-cluster restore must reproduce it the same way the live apply path built it: the checkpoint's attribute zone carries the rows as of the checkpoint, and `RebuildDelta` (`internal/infra/backup/rebuild.go`, shared with `ledgerctl store bootstrap`) folds every post-checkpoint ledger log into them. The replay evidence is the exported logs themselves — each registry mutation is derived from a log payload alone, never from state the source cluster held outside the export:
-
-- **`CreateIndex`** writes the same fresh registry row the live `processCreateIndex` writes, at `forward_encoding_version` 1, stamped with the enclosing `LedgerLog`'s date (the apply-time effective date). The live FSM rejects duplicate creation, so a failed duplicate contributes no creation log to replay. Replay continues to fold accepted creation logs into fresh registry rows. The indexbuilder retains its guards against repeated log processing.
-- **`SetMetadataFieldType`** applies the retype cascade: when a registry row covers the retyped `(target, key)`, its `forward_encoding_version` is bumped, mirroring the live `processSetMetadataFieldType`. A field with no covering index is a registry no-op.
-- **`DropIndex`** deletes the registry row.
-- **`RemovedMetadataFieldType`** carries the removal cascade in the log itself: the payload names the index the removal dropped (`dropped_index`), and the row is deleted from the log alone — the replay never re-derives which index a removal covered.
-
-Same-window visibility follows the pattern of the other replayed projections (cf. volumes): replay-touched rows — including deletions, kept as explicit markers — are read back from the in-flight overlay, untouched rows from the committed checkpoint store. The deletion markers are what keep a later read in the same replay window from resurrecting a checkpoint row the replay already deleted (drop-then-recreate folds to exactly one live row).
+The index registry (the bucket-scoped `Index` rows under `SubAttrIndex`) is a
+persisted projection of the audited order stream. A cross-cluster restore
+copies those rows from the latest complete checkpoint. A later backup captures
+subsequent creation, retype, drop, and metadata-removal effects in its own
+checkpoint; the active restore path does not fold exported ledger logs.
+`RebuildDelta` in `internal/infra/backup/rebuild.go` remains as legacy export
+replay code but is not called by new backup or restore entry points.
 
 What is deliberately **not** restored by a main-store backup: the per-replica `IndexVersionState`, ledger-history tracker, cursors, and read-index keyspaces. They live in each node's peer read store. A fresh read store first leaves registry entries unresolved, then replays the restored log from cursor zero: the replay reconstructs the history tracker and resolves each `CreatedIndexLog` to direct promotion for `EMPTY` or a normal task for `NON_EMPTY`. Reaching replay EOF with an unresolved registry row or an active ledger without a tracker is an invariant failure. A normal process restart keeps the read store and resumes the persisted tracker/version/cursor snapshot. Query checkpoints are physical read-store checkpoints, so they capture the tracker at the same committed boundary as the index data and progress cursor. A data directory whose `read-indexes/` survived an offline restore of an *older* backup remains a corruption risk until the index builder's rebuild-health checks are wired.
 

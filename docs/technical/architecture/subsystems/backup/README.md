@@ -105,8 +105,9 @@ but is unreachable from new service and CLI paths.
   repeated checkpoint publication against object stores.
 - `tests/e2e/cluster/restore*_test.go` cover cross-cluster recovery of business
   data, audit and operational projections from later checkpoints.
-- Operator E2E and Antithesis restore cycles take a second checkpoint after
-  additional writes, destroy the source, and verify restored state.
+- Operator E2E takes a second checkpoint after additional writes; Antithesis
+  captures a quiesced committed state in each restore cycle. Both destroy the
+  source and verify restored state.
 
 The leader performs all hashing and uploading; compaction can replace SSTs and
 increase transfer volume. Backup is physical disaster recovery, not a logical
