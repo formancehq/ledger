@@ -9,6 +9,16 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
 
+// auditedFacts returns the audited failure facts of d, failing the test when d
+// is not an audited SerializableError.
+func auditedFacts(t *testing.T, d Describable) FailureFacts {
+	t.Helper()
+	audited, ok := d.(SerializableError)
+	require.Truef(t, ok, "%T is not an audited failure", d)
+
+	return FailureFactsOf(audited)
+}
+
 func TestTypedFailureDetailsCoverEveryStableCode(t *testing.T) {
 	t.Parallel()
 	fields := (&commonpb.FailureDetails{}).ProtoReflect().Descriptor().Oneofs().ByName("kind").Fields()
@@ -136,7 +146,7 @@ func TestFailureFactsExcludeDiagnosticText(t *testing.T) {
 
 	for _, tc := range []struct {
 		name string
-		err  SerializableError
+		err  Describable
 	}{
 		{"parse", &ErrNumscriptParse{Details: "unexpected token at /private/source"}},
 		{"filter", &ErrFilterCompilation{Detail: "parameter secret: parse failed"}},
@@ -145,13 +155,13 @@ func TestFailureFactsExcludeDiagnosticText(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			require.NotEmpty(t, tc.err.Error())
-			facts := FailureFactsOf(tc.err)
-			if tc.name == "parse" {
+			if audited, ok := tc.err.(SerializableError); ok {
+				facts := FailureFactsOf(audited)
 				require.NoError(t, ValidateFailureFacts(facts))
+				require.Empty(t, facts.Facts)
 			} else {
-				require.Empty(t, facts.Code, "technical failures have no audited code")
+				require.Implements(t, (*UncommittedFailure)(nil), tc.err, "technical failures have no audited code")
 			}
-			require.Empty(t, facts.Facts)
 			message, metadata, _ := PublicErrorDetails(tc.err)
 			require.NotContains(t, message, "private")
 			require.NotContains(t, message, "secret")

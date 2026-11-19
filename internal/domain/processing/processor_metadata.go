@@ -24,7 +24,7 @@ func validateTransactionTarget(txID uint64, boundaries *raftcmdpb.LedgerBoundari
 	return nil
 }
 
-func processAddMetadata(ledger string, order *raftcmdpb.SaveMetadataOrder, ctx *Context) (*commonpb.LedgerLogPayload, domain.SerializableError) {
+func processAddMetadata(ledger string, order *raftcmdpb.SaveMetadataOrder, ctx *Context) (*commonpb.LedgerLogPayload, domain.Describable) {
 	boundaries := ctx.Boundaries
 	s := ctx.Scope
 	info := ctx.LedgerInfo
@@ -108,7 +108,7 @@ func processAddMetadata(ledger string, order *raftcmdpb.SaveMetadataOrder, ctx *
 	}, nil
 }
 
-func processDeleteMetadata(ledger string, order *raftcmdpb.DeleteMetadataOrder, ctx *Context) (*commonpb.LedgerLogPayload, domain.SerializableError) {
+func processDeleteMetadata(ledger string, order *raftcmdpb.DeleteMetadataOrder, ctx *Context) (*commonpb.LedgerLogPayload, domain.Describable) {
 	boundaries := ctx.Boundaries
 	s := ctx.Scope
 

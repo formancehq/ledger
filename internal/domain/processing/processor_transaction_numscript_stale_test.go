@@ -12,7 +12,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
 
-// coverageMissDescribable is a domain.SerializableError carrying the COVERAGE_MISS
+// coverageMissDescribable is a domain.UncommittedFailure carrying the COVERAGE_MISS
 // reason — the same reason a real *state.ErrCoverageMiss carries. The processing
 // package cannot import *state.ErrCoverageMiss directly (import cycle: state
 // imports processing), so this stand-in reproduces the reason the apply path
@@ -23,9 +23,7 @@ type coverageMissDescribable struct{}
 func (coverageMissDescribable) Error() string          { return "preload coverage miss (test)" }
 func (coverageMissDescribable) Kind() domain.ErrorKind { return domain.KindInternal }
 func (coverageMissDescribable) Reason() string         { return domain.ErrReasonCoverageMiss }
-func (coverageMissDescribable) FailureDetails() *commonpb.FailureDetails {
-	return commonpb.MustFailureDetails(domain.ErrReasonCoverageMiss, nil)
-}
+func (coverageMissDescribable) UncommittedFailure()    {}
 
 // staleScript reads a balance DURING dependency resolution via balance() in a
 // var origin, so the apply-path re-resolution consults the Scope for @wallet's
@@ -111,7 +109,7 @@ func TestProduce_CoverageMissDuringResolutionIsLoudNotStale(t *testing.T) {
 	require.NotErrorIs(t, err, domain.ErrStaleInputsResolution,
 		"a coverage-contract violation must NOT be masked as stale (infinite re-admit loop)")
 
-	var describable domain.SerializableError
+	var describable domain.UncommittedFailure
 	require.ErrorAs(t, err, &describable)
 	require.Equal(t, domain.ErrReasonCoverageMiss, describable.Reason(),
 		"the coverage-contract violation must surface loudly with its own reason")

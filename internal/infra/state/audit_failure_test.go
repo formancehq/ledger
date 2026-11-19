@@ -129,8 +129,8 @@ type auditFailureCase struct {
 }
 
 // auditFailureCases carries one row per auditable Describable reachable from
-// the FSM failure path. UncommittedFailure producers are excluded because the
-// FSM returns them before the audit writer.
+// the FSM failure path. UncommittedFailure producers have no row: they are not
+// SerializableError, and the FSM returns them before the audit writer.
 func auditFailureCases() []auditFailureCase {
 	return []auditFailureCase{
 		// ErrInsufficientFunds gates the color key on the separate ColorKnown
@@ -704,7 +704,9 @@ func describableTypesIn(t *testing.T, dir string) map[string]bool {
 	out := make(map[string]bool)
 
 	for name := range hasReason {
-		if hasFacts[name] && !hasUncommitted[name] {
+		require.Falsef(t, hasFacts[name] && hasUncommitted[name],
+			"uncommitted failure %s declares FailureDetails: it has no audited outcome to offer", name)
+		if hasFacts[name] {
 			out[name] = true
 		}
 	}

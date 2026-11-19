@@ -526,8 +526,13 @@ func TestEveryDomainErrorImplementsDescribable(t *testing.T) {
 			"%s declares Kind() = %s but its reason %q classifies as %s in KindForReason — "+
 				"a frozen failure replays from the reason alone, so the two must agree",
 			name, d.Kind(), d.Reason(), KindForReason(ReasonCode(d.Reason())))
-		_, uncommitted := inst.(UncommittedFailure)
-		if serializable, ok := inst.(SerializableError); ok && !uncommitted && name != "validationSentinel" && name != "errValidation" && name != "ErrNumscriptCompile" && name != "ErrNumscriptExecution" {
+		// An uncommitted failure has no audited outcome, so it must not offer
+		// FailureDetails to the audit or idempotency writers.
+		serializable, auditable := inst.(SerializableError)
+		if _, uncommitted := inst.(UncommittedFailure); uncommitted {
+			require.Falsef(t, auditable, "uncommitted failure %s must not implement SerializableError", name)
+		}
+		if auditable && name != "validationSentinel" && name != "errValidation" && name != "ErrNumscriptCompile" && name != "ErrNumscriptExecution" {
 			details := TypedFailureOf(serializable)
 			require.Equal(t, ReasonCode(serializable.Reason()), commonpb.FailureDetailsReason(details), name)
 			decoded, err := FailureFactsFromDetails(details)
