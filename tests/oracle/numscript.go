@@ -639,6 +639,9 @@ func createContentReason(ct *servicepb.CreateTransactionPayload) string {
 // orders before it, and either rejects the batch or is forwarded to fail in
 // the FSM with PRELOAD_UNAVAILABLE. An order admission predicts the FSM will
 // skip, or whose reference is missing, is not resolved and contributes nothing.
+// A script admission would refuse on an order the FSM can skip on its
+// reference is forwarded with the refusal instead: the FSM skips the order or
+// fails it with that reason.
 //
 // The effects are admission's, not the FSM's: a create's postings, the account
 // metadata it carries and its reference fold in whether or not the FSM would
@@ -651,28 +654,29 @@ func createContentReason(ct *servicepb.CreateTransactionPayload) string {
 // The admitting node reads the state it has applied so far, so a verdict may
 // be older than the state the FSM applies the bulk on.
 type Admission struct {
-	forwarded map[int]bool
-	reason    string
+	forwarded      map[int]bool
+	planningFailed map[int]string
+	reason         string
 }
 
 // Key identifies the verdict, so equal verdicts reached on different bases
 // collapse.
 func (a Admission) Key() string {
-	return a.reason + "|" + fmt.Sprint(slices.Sorted(maps.Keys(a.forwarded)))
+	return a.reason + "|" + fmt.Sprint(slices.Sorted(maps.Keys(a.forwarded))) + "|" + fmt.Sprint(a.planningFailed)
 }
 
 // Admit runs the admission pass on g.
 func (g GlobalState) Admit(bulk Bulk) Admission {
-	forwarded, reason := g.admitScripts(bulk)
+	forwarded, planningFailed, reason := g.admitScripts(bulk)
 
-	return Admission{forwarded: forwarded, reason: reason}
+	return Admission{forwarded: forwarded, planningFailed: planningFailed, reason: reason}
 }
 
-func (g GlobalState) admitScripts(bulk Bulk) (forwarded map[int]bool, reason string) {
+func (g GlobalState) admitScripts(bulk Bulk) (forwarded map[int]bool, planningFailed map[int]string, reason string) {
 	if !slices.ContainsFunc(bulk.Requests, func(req *servicepb.Request) bool {
 		return IsScripted(req.GetApply().GetAction().GetCreateTransaction())
 	}) {
-		return nil, ""
+		return nil, nil, ""
 	}
 
 	scratch := g.clone()
@@ -724,8 +728,18 @@ func (g GlobalState) admitScripts(bulk Bulk) (forwarded map[int]bool, reason str
 				}
 
 				reason, fwd := ls.scriptAdmission(ct, overlays[name], deltas[name])
+				if reason != "" && ct.GetReference() != "" && skippable(domain.ErrReasonTransactionReferenceConflict) {
+					if planningFailed == nil {
+						planningFailed = map[int]string{}
+					}
+
+					planningFailed[i] = reason
+
+					continue
+				}
+
 				if reason != "" {
-					return nil, reason
+					return nil, nil, reason
 				}
 
 				if fwd {
@@ -797,7 +811,7 @@ func (g GlobalState) admitScripts(bulk Bulk) (forwarded map[int]bool, reason str
 		scratch.ledgers[name] = ls
 	}
 
-	return forwarded, ""
+	return forwarded, planningFailed, ""
 }
 
 // foldScriptEffects folds what a script's admission-time run produces: its

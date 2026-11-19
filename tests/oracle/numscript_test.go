@@ -322,7 +322,7 @@ send $m (
 
 	// The unfunded debit fails the floor in the FSM, yet admission folds it:
 	// a:1 reads negative, a state-dependent resolution failure.
-	fwd, reason := NewGlobalState().admitScripts(bulkOf(oracletest.TxReqL("L", "a:1", "b:1", "USD", 10), readsBalance))
+	fwd, _, reason := NewGlobalState().admitScripts(bulkOf(oracletest.TxReqL("L", "a:1", "b:1", "USD", 10), readsBalance))
 	require.Empty(t, reason)
 	require.True(t, fwd[1])
 
@@ -338,7 +338,7 @@ send [USD 1] (
 	strict := NewGlobalState().Apply(bulkOf(oracletest.AddTypeReq("users")))
 	require.True(t, strict.OK)
 
-	fwd, reason = strict.State.admitScripts(bulkOf(oracletest.AddAccountMetaReq("cfg:1", "dst", commonpb.NewStringValue("b:1")), readsMeta))
+	fwd, _, reason = strict.State.admitScripts(bulkOf(oracletest.AddAccountMetaReq("cfg:1", "dst", commonpb.NewStringValue("b:1")), readsMeta))
 	require.Empty(t, reason)
 	require.False(t, fwd[1])
 }
@@ -376,7 +376,7 @@ send $m (
 	// Admission folds the debit exactly, reads a:1 at 10-(2^256-1)-2 and
 	// forwards the script; wrapped at 2^256 the output would read 1 and the
 	// balance 9.
-	fwd, reason := seeded.State.admitScripts(bulk)
+	fwd, _, reason := seeded.State.admitScripts(bulk)
 	require.Empty(t, reason)
 	require.True(t, fwd[1])
 	require.Equal(t, domain.ErrReasonVolumeOverflow, seeded.State.Apply(bulk).Reason)
@@ -477,4 +477,39 @@ func TestScript_AdmissionOnDeletedLedger(t *testing.T) {
 	require.Equal(t, domain.ErrReasonNumscriptParseError, deleted.Apply(bulkOf(scriptReq("L", "send [USD", nil, false))).Reason)
 	require.Equal(t, domain.ErrReasonLedgerDeleted,
 		deleted.Apply(bulkOf(scriptReq("L", "send [USD 1] (source = @world destination = @a)", nil, false))).Reason)
+}
+
+// Admission never refuses the script of an order the FSM can skip on its
+// reference: the FSM skips it when the reference exists at apply and fails it
+// with admission's reason otherwise, so a keyed retry after a deletion replays.
+func TestScript_SkippableReferenceLeavesPlanningFailureToFSM(t *testing.T) {
+	t.Parallel()
+
+	live, _ := scriptFixtures(t)
+	junk := func(ref string, skippable bool) *servicepb.Request {
+		return withReference(scriptReq("L", "send [USD", nil, false), ref, skippable)
+	}
+
+	keyed := Bulk{Requests: []*servicepb.Request{junk("R", true)}, IdempotencyKey: "k"}
+	res := live.Apply(keyed)
+	require.True(t, res.OK, res.Reason)
+
+	res = res.State.Apply(bulkOf(&servicepb.Request{Type: &servicepb.Request_DeleteLedger{
+		DeleteLedger: &servicepb.DeleteLedgerRequest{Name: "L"},
+	}}))
+	require.True(t, res.OK, res.Reason)
+
+	deleted := res.State
+	require.True(t, deleted.Apply(keyed).OK)
+	keyed.IdempotencyKey = "fresh"
+	require.Equal(t, domain.ErrReasonLedgerDeleted, deleted.Apply(keyed).Reason)
+
+	require.Equal(t, domain.ErrReasonNumscriptParseError, live.Apply(bulkOf(junk("R2", true))).Reason)
+	require.Equal(t, domain.ErrReasonNumscriptParseError, live.Apply(bulkOf(junk("R2", false))).Reason)
+
+	created := live.Apply(bulkOf(oracletest.TxReqRefL("L", "R2", "world", "a", "USD", 1)))
+	require.True(t, created.OK, created.Reason)
+
+	late := bulkOf(junk("R2", true))
+	require.True(t, created.State.ApplyAdmitted(late, live.Admit(late)).OK)
 }

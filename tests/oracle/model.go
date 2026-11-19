@@ -1046,7 +1046,17 @@ func (g GlobalState) ApplyAdmitted(bulk Bulk, admission Admission) ApplyResult {
 		orderCells := map[VolumeKey]bool{}
 
 		beforeOrder := ls
-		oc := ls.applyOne(req, orderCells, batchInitialTxCount[name])
+
+		var oc OrderResult
+		if reason, failed := admission.planningFailed[i]; failed {
+			// The FSM checks the reference, then re-plans in place of executing.
+			oc = OrderResult{Reason: reason}
+			if ls.txByRef.Has(req.GetApply().GetAction().GetCreateTransaction().GetReference()) {
+				oc = OrderResult{Reason: domain.ErrReasonTransactionReferenceConflict}
+			}
+		} else {
+			oc = ls.applyOne(req, orderCells, batchInitialTxCount[name])
+		}
 		if !oc.OK && slices.Contains(req.GetApply().GetSkippableReasons(), domain.ReasonCode(oc.Reason)) {
 			ls = beforeOrder
 			orderCells = map[VolumeKey]bool{}
