@@ -33,6 +33,8 @@ const consistencyStale = "stale"
 type PerNodeConn struct {
 	// Addr is the dial target (e.g. "ledger-0:8888"), always populated.
 	Addr string
+	// PeerAddr is the advertised inter-node address used to identify this node in membership.
+	PeerAddr string
 	// NodeID is the Raft node ID resolved once from advertised membership.
 	// Zero means unresolved; a nonzero value does not prove reachability.
 	NodeID uint64
@@ -97,6 +99,7 @@ func nodeAddresses() []string {
 // must refresh this startup snapshot.
 func DialPerNode(ctx context.Context) (PerNodeConns, error) {
 	addrs := nodeAddresses()
+	peerAddrs := strings.Split(os.Getenv("LEDGER_PER_NODE_PEER_ADDR"), ",")
 
 	// As in NewGRPCConn, only a retry-forever client rides maintenance out.
 	retryMaintenance := os.Getenv("LEDGER_RETRY_FOREVER") != ""
@@ -109,7 +112,7 @@ func DialPerNode(ctx context.Context) (PerNodeConns, error) {
 	}
 
 	var conns PerNodeConns
-	for _, addr := range addrs {
+	for i, addr := range addrs {
 		conn, err := grpc.NewClient(addr, opts...)
 		if err != nil {
 			// A malformed target fails synchronously; skip it rather than
@@ -117,19 +120,24 @@ func DialPerNode(ctx context.Context) (PerNodeConns, error) {
 			continue
 		}
 
+		peerAddr := addr
+		if len(peerAddrs) == len(addrs) && strings.TrimSpace(peerAddrs[i]) != "" {
+			peerAddr = strings.TrimSpace(peerAddrs[i])
+		}
 		conns = append(conns, &PerNodeConn{
-			Addr:    addr,
-			conn:    conn,
-			Bucket:  servicepb.NewBucketServiceClient(conn),
-			Cluster: clusterpb.NewClusterServiceClient(conn),
+			Addr:     addr,
+			PeerAddr: peerAddr,
+			conn:     conn,
+			Bucket:   servicepb.NewBucketServiceClient(conn),
+			Cluster:  clusterpb.NewClusterServiceClient(conn),
 		})
 	}
 
-	// Resolve each connection's Raft node ID by matching its dial address
+	// Resolve each connection's Raft node ID by matching its peer address
 	// against the cluster's advertised service addresses. GetClusterState{0}
 	// routes to the leader, whose Nodes list carries (id, service_address) for
-	// every peer; ServiceAdvertiseAddr is "<raft-host>:<grpc-port>", which is
-	// exactly the form of the LEDGER_GRPC_ADDR entries we dial. NodeID is
+	// every peer. LEDGER_PER_NODE_PEER_ADDR maps the public dial targets to
+	// those addresses when the listeners use different ports. NodeID is
 	// required to poll a node's OWN applied index (GetClusterState{NodeId:id}
 	// routes to that node). A connection whose ID cannot be resolved is left
 	// at 0; it must not be used to compare at the leader's index.
@@ -140,7 +148,7 @@ func DialPerNode(ctx context.Context) (PerNodeConns, error) {
 		}
 
 		for _, n := range state.GetNodes() {
-			if n.GetServiceAddress() == c.Addr {
+			if n.GetServiceAddress() == c.PeerAddr {
 				c.NodeID = n.GetId()
 
 				break
@@ -157,7 +165,7 @@ func DialPerNode(ctx context.Context) (PerNodeConns, error) {
 
 			for _, other := range conns {
 				if other.NodeID == 0 {
-					other.NodeID = byAddr[other.Addr]
+					other.NodeID = byAddr[other.PeerAddr]
 				}
 			}
 

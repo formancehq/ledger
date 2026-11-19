@@ -5,10 +5,11 @@ import (
 )
 
 const (
-	labelManagedBy     = "app.kubernetes.io/managed-by"
-	labelInstance      = "app.kubernetes.io/instance"
-	labelName          = "app.kubernetes.io/name"
-	annotationSpecHash = "ledger.formance.com/spec-hash"
+	labelManagedBy          = "app.kubernetes.io/managed-by"
+	labelInstance           = "app.kubernetes.io/instance"
+	labelName               = "app.kubernetes.io/name"
+	labelOperatorCredential = "ledger.formance.com/operator-credential"
+	annotationSpecHash      = "ledger.formance.com/spec-hash"
 	// Stored on the StatefulSet metadata, outside the PodTemplate, so migrating
 	// legacy hashes and editing PVC settings do not restart existing Pods.
 	annotationPodConfigHash = "ledger.formance.com/pod-config-hash"
@@ -16,6 +17,7 @@ const (
 	// operator can update the Pod template while retaining unknown metadata.
 	annotationPodConfigSpecHash = "ledger.formance.com/pod-config-spec-hash"
 	annotationAuthKeysHash      = "ledger.formance.com/auth-keys-hash"
+	annotationOperatorCluster   = "ledger.formance.com/operator-cluster"
 
 	// annotationKubectlRestartedAt is stamped on the pod template by
 	// `kubectl rollout restart`. It is user-owned state, not drift: the

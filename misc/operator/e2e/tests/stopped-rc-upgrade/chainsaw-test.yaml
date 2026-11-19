@@ -40,7 +40,7 @@ spec:
                 done
               done
             timeout: 180s
-    - name: Request the stopped rc.3 to rc.4 upgrade
+    - name: Request the stopped rc.4 to rc.5 upgrade
       try:
         - apply:
             file: cluster-updated.yaml
@@ -57,7 +57,7 @@ spec:
                   spec:
                     containers:
                       - name: ledger
-                        image: ledger:v3.0.0-rc.4
+                        image: ledger:v3.0.0-rc.5
         - script:
             content: |
               set -eu

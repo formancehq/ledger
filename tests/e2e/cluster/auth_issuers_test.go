@@ -68,6 +68,7 @@ var _ = Describe("Auth with plural OIDC issuers", Ordered, func() {
 		instruments = append(instruments,
 			testserver.WithBootstrap(),
 			testserver.WithAuthEnabled(),
+			testserver.WithClusterSecret("test-cluster-secret"),
 			testserver.WithAuthIssuers(issuerA.URL, issuerB.URL),
 			testserver.WithAuthService("ledger"),
 			testserver.WithTLSMode("required"),

@@ -1,0 +1,7 @@
+apiVersion: ledger.formance.com/v1alpha1
+kind: Ledger
+metadata:
+  name: auth-indexed-ledger
+spec:
+  name: auth-indexed-ledger
+  clusterRef: auth-indexes

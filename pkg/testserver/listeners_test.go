@@ -76,7 +76,7 @@ func TestBindFreshReportsABindFailure(t *testing.T) {
 	require.ErrorIs(t, err, net.ErrClosed)
 }
 
-func TestAllocateNodeLeaseHoldsThreeDistinctPortsBound(t *testing.T) {
+func TestAllocateNodeLeaseHoldsFourDistinctPortsBound(t *testing.T) {
 	t.Parallel()
 
 	lease := AllocateNodeLease()
@@ -84,13 +84,16 @@ func TestAllocateNodeLeaseHoldsThreeDistinctPortsBound(t *testing.T) {
 
 	require.True(t, ports.Allocated())
 	require.NotEqual(t, ports.HTTP(), ports.GRPC())
+	require.NotEqual(t, ports.HTTP(), ports.Peer())
 	require.NotEqual(t, ports.HTTP(), ports.Raft())
+	require.NotEqual(t, ports.GRPC(), ports.Peer())
 	require.NotEqual(t, ports.GRPC(), ports.Raft())
+	require.NotEqual(t, ports.Peer(), ports.Raft())
 
 	// The point of a lease over an allocator: the sockets are already bound, so
 	// nothing else on the machine — including another test binary — can take
 	// these ports between now and the moment the node adopts them.
-	for _, port := range []int{ports.HTTP(), ports.GRPC(), ports.Raft()} {
+	for _, port := range []int{ports.HTTP(), ports.GRPC(), ports.Peer(), ports.Raft()} {
 		_, err := net.Listen("tcp4", fmt.Sprintf("%s:%d", loopbackHost, port))
 		require.Error(t, err, "port %d must already be bound by the lease", port)
 	}
@@ -105,16 +108,17 @@ func TestNodeLeaseRebindsTheSamePortsForARestart(t *testing.T) {
 	first := lease.NextGeneration()
 	require.Equal(t, ports.HTTP(), listenerPort(first.HTTP))
 	require.Equal(t, ports.GRPC(), listenerPort(first.Service))
+	require.Equal(t, ports.Peer(), listenerPort(first.Peer))
 	require.Equal(t, ports.Raft(), listenerPort(first.Raft))
 
 	// What the lifecycle does on stop.
-	for _, listener := range []net.Listener{first.HTTP, first.Service, first.Raft} {
+	for _, listener := range []net.Listener{first.HTTP, first.Service, first.Peer, first.Raft} {
 		require.NoError(t, listener.Close())
 	}
 
 	second := lease.NextGeneration()
 	t.Cleanup(func() {
-		for _, listener := range []net.Listener{second.HTTP, second.Service, second.Raft} {
+		for _, listener := range []net.Listener{second.HTTP, second.Service, second.Peer, second.Raft} {
 			_ = listener.Close()
 		}
 	})
@@ -122,6 +126,7 @@ func TestNodeLeaseRebindsTheSamePortsForARestart(t *testing.T) {
 	require.Equal(t, ports, lease.Ports(), "a restart must not move the node's addresses")
 	require.Equal(t, ports.HTTP(), listenerPort(second.HTTP))
 	require.Equal(t, ports.GRPC(), listenerPort(second.Service))
+	require.Equal(t, ports.Peer(), listenerPort(second.Peer))
 	require.Equal(t, ports.Raft(), listenerPort(second.Raft))
 	require.NotSame(t, first.HTTP, second.HTTP, "a consumed generation must not be handed out again")
 }
@@ -133,7 +138,7 @@ func TestNodeLeasePanicsWhenTheNodeWasNotStopped(t *testing.T) {
 
 	generation := lease.NextGeneration()
 	t.Cleanup(func() {
-		for _, listener := range []net.Listener{generation.HTTP, generation.Service, generation.Raft} {
+		for _, listener := range []net.Listener{generation.HTTP, generation.Service, generation.Peer, generation.Raft} {
 			_ = listener.Close()
 		}
 	})
