@@ -228,7 +228,8 @@ func testBackupRunCommittedCreateLostResponseIntegration(t *testing.T, manual bo
 				return false
 			}
 			return observed.Status.LastFullBackup != nil && observed.Status.LastFullRunCompletionTime != nil &&
-				observed.Status.NextIncrementalBackupTime != nil && apierrors.IsNotFound(c.Get(testCtx, req.NamespacedName, &ledgerv1alpha1.BackupRun{}))
-		}, 10*time.Second, 50*time.Millisecond, "manual result must enable incrementals and survive zero-retention pruning")
+				observed.Status.NextFullBackupTime != nil && observed.Status.NextIncrementalBackupTime == nil &&
+				apierrors.IsNotFound(c.Get(testCtx, req.NamespacedName, &ledgerv1alpha1.BackupRun{}))
+		}, 10*time.Second, 50*time.Millisecond, "manual checkpoint result must schedule the next checkpoint and survive zero-retention pruning")
 	}
 }
