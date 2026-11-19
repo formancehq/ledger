@@ -18,8 +18,9 @@ new checkpoint backup with the new binary before relying on that destination.
 
 The published `IncrementalBackup` RPC and the hidden
 `ledgerctl store incremental-backup` command remain compatibility aliases: they
-create a full checkpoint and report zero exported segments. New clients should
-call `Backup` / `ledgerctl store backup`.
+create a full checkpoint. The RPC reports zero legacy exported segments; the
+CLI prints the normal checkpoint result. New clients should call `Backup` /
+`ledgerctl store backup`.
 
 For topology and region-loss behavior, see
 [Availability and Disaster Recovery](./availability-and-recovery.md).
