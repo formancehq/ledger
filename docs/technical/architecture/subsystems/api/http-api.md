@@ -1037,7 +1037,8 @@ it is not an audit signature or evidence of inclusion in the audit chain.
 The trusted serving-node public key must be provisioned independently. This
 proof does not establish freshness, request-body identity, actor or cluster
 identity. A historical response for the same method and target can verify.
-Missing or invalid negotiation is rejected before Apply; a node without a
+Omitting the header preserves the ordinary unsigned response. Invalid or
+repeated negotiation is rejected before Apply; a node without a
 response signing key returns 503. The response is buffered up to 16 MiB before
 signing. Encoding, overflow, signing, delivery or verification failure after
 Apply may leave a committed batch without a usable proof; retry only under the

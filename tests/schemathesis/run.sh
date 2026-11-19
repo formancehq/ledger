@@ -40,6 +40,10 @@ cd "$REPO_ROOT"
 go build -o "$TMPDIR/ledger-server" .
 
 echo "==> Starting server (single-node, bootstrap, no auth)..."
+# Schemathesis may negotiate public receipts on /apply. Keep the disposable
+# fixture capable of signing those responses with a test-only seed.
+head -c 32 /dev/zero > "$TMPDIR/response-signing.seed"
+chmod 600 "$TMPDIR/response-signing.seed"
 # This disposable store shares the host filesystem. Keep conformance results
 # independent from the host's production disk-pressure threshold.
 "$TMPDIR/ledger-server" run \
@@ -47,6 +51,7 @@ echo "==> Starting server (single-node, bootstrap, no auth)..."
     --bind-addr "127.0.0.1:$RAFT_PORT" \
     --wal-dir "$TMPDIR/wal" --data-dir "$TMPDIR/data" \
     --health-wal-threshold 1 --health-data-threshold 1 \
+    --response-signing-key "$TMPDIR/response-signing.seed" \
     --http-port "$HTTP_PORT" --grpc-port "$GRPC_PORT" \
     > "$TMPDIR/server.log" 2>&1 &
 SERVER_PID=$!
@@ -97,6 +102,18 @@ seed "create ledger" -X POST "$API/test-ledger"
 # fixture ledger above — see the hook for why. It needs no data; existence is
 # enough for the fuzzer's first delete attempt to get a 2xx.
 seed "create delete-sacrifice ledger" -X POST "$API/delete-me-ledger"
+
+# Prove the fixture signs a successful negotiated response before fuzzing.
+receipt_headers="$TMPDIR/receipt.headers"
+seed "public receipt Apply" -X POST "$API/_/apply" \
+    -H 'Content-Type: application/json' \
+    -H 'Formance-Public-Receipt: v1' \
+    -D "$receipt_headers" \
+    -d '{"requests":[{"createLedger":{"name":"receipt-probe"}}]}'
+if ! grep -Eqi '^Formance-Public-Receipt: [A-Za-z0-9_-]+' "$receipt_headers"; then
+    echo "ERROR: negotiated Apply response has no public receipt" >&2
+    exit 1
+fi
 
 seed "transaction 1" -X POST "$API/test-ledger/transactions" \
     -H 'Content-Type: application/json' \
