@@ -36,7 +36,8 @@ secret-safe current/checkpoint reads and downstream SDK ownership.
 
 [Atomic HTTP Apply](http-api.md#atomic-http-apply) exposes cross-ledger and
 configuration batches with per-operation scopes, one retry identity, signed
-intent binding and the existing service execution boundary.
+intent binding and the existing service execution boundary. Its opt-in public
+response proof authenticates the credential-safe HTTP outcome.
 
 ## Atomic creation
 

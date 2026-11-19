@@ -11,6 +11,7 @@ import (
 
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/signaturepb"
+	"github.com/formancehq/ledger/v3/pkg/httpreceipt"
 )
 
 // ResponseSigner signs Log messages with an Ed25519 key for server-side response signing.
@@ -54,6 +55,11 @@ func (s *ResponseSigner) SignLog(log *commonpb.Log) *signaturepb.SignedLog {
 		Signature: ed25519.Sign(s.privateKey, payload),
 		Payload:   payload,
 	}
+}
+
+// SignPublicReceipt authenticates a public HTTP response without exposing log payloads.
+func (s *ResponseSigner) SignPublicReceipt(claims httpreceipt.Claims) (string, error) {
+	return httpreceipt.Sign(s.privateKey, claims)
 }
 
 // PublicKey returns the Ed25519 public key.

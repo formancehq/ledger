@@ -52,6 +52,14 @@ the independent challenge described in `ai-audit-challenge.md`.
 
 Atomic HTTP Apply reaches the existing service response signer and preserves returned responseSignature envelopes through its option-aware public log projection, except for addEventsSink and mirror-ledger creation. Those logs use detached redacted configurations and omit their signatures because the signed protobuf payload contains reusable credentials. The committed log and service signature remain unchanged. Visible JSON is not a lossless protobuf codec: for remaining logs, authenticate exact SignedLog payload bytes, decode them, and compare their public projection rather than reconstructing a Log from ambiguous JSON types. Post-commit signing/encoding failures do not roll back business effects.
 
+The opt-in public Apply proof authenticates the delivered HTTP status and exact
+public body under the serving node's response key. It covers redacted logs
+without presenting their original signed protobuf payloads. Verify the proof
+against the observed method, Ledger-facing target, status and bytes; mutate
+each independently. Check unavailable signing before dispatch and preserve
+post-commit failure ambiguity. The proof does not replace audit evidence or
+the individual service signatures on other logs.
+
 Can atomic HTTP Apply bypass the service signer, strip or alter an envelope outside the addEventsSink or mirror-ledger creation exceptions, expose credentials through a sink or mirror-ledger log or signed payload, or render other visible log fields different from the authenticated payload projection, including creation id/metadata and bigint number/string selection?
 
 Use the registered atomic HTTP route with an enabled real service ResponseSigner and nonempty ledger/configuration logs. Verify the original envelope bytes against its trusted key and compare the authenticated public projection with logs other than addEventsSink and mirror-ledger creation in both bigint modes. For addEventsSink and mirror-ledger creation, assert redaction in the visible log and absence of the signature payload, while checking that the original service log is unchanged. Include missing/invalid signing controls and checked-encoding failure without assuming rollback.

@@ -619,8 +619,8 @@ func Module() fx.Option {
 				return usagebuilder.NewBuilder(store, us, notifications, logger, meterProvider.Meter("usage.builder"), 0)
 			}, fx.ParamTags(``, ``, `name:"usage"`, ``, ``, ``)),
 			httpcompat.NewServer,
-			func(cfg Config, logger logging.Logger, backend httpcompat.Backend, authCfg internalauth.AuthConfig, info version.Info, applyService servicepb.BucketServiceServer) http.Handler {
-				return httpcompat.NewHandler(logger, backend, authCfg, info, applyService)
+			func(cfg Config, logger logging.Logger, backend httpcompat.Backend, authCfg internalauth.AuthConfig, info version.Info, applyService servicepb.BucketServiceServer, responseSigner *signing.ResponseSigner) http.Handler {
+				return httpcompat.NewHandler(logger, backend, authCfg, info, applyService, responseSigner)
 			},
 			func(node *node.Node, ctrl ctrl.Controller) httpcompat.Backend {
 				return httpcompat.NewDefaultBackend(node, ctrl)
@@ -2008,7 +2008,7 @@ func sameClusterPolicyConfiguration(a, b *commonpb.ClusterPolicy) bool {
 	return left.EqualVT(right)
 }
 
-// buildResponseSigner returns the Ed25519 response signer for the gRPC
+// buildResponseSigner returns the Ed25519 response signer for gRPC and HTTP
 // service plane.
 //
 //   - If --response-signing-key is not set, returns (nil, nil) — response

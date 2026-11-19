@@ -17,10 +17,11 @@ import (
 )
 
 type Server struct {
-	logger      logging.Logger
-	backend     Backend
-	authCfg     internalauth.AuthConfig
-	bulkMaxSize int
+	logger         logging.Logger
+	backend        Backend
+	authCfg        internalauth.AuthConfig
+	bulkMaxSize    int
+	responseSigner *signing.ResponseSigner
 }
 
 // NewServer creates a new server instance (used by handlers).

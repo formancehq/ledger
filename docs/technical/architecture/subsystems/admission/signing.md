@@ -4,6 +4,11 @@
 
 Request signing is what makes a Ledger v3 batch **tamper-evident end-to-end**: the client signs the exact bytes it submits, the server verifies them without re-serialising, and the resulting log entries carry the original signature into the audit trail. Response signing does the symmetric thing on the way back: the server signs the committed logs so clients can audit them after the fact.
 
+On HTTP atomic Apply, a client may additionally request a serving-node proof
+of the exact public response. This lets the client authenticate redacted logs
+without exposing the original service signature payload containing credentials.
+It remains a response presentation proof, separate from persisted audit evidence.
+
 Signing is **optional by default** and can be made mandatory cluster-wide via `signing require`. When mandatory, unsigned batches are rejected at admission, except for the narrow cases below (bootstrap registration, maintenance mode, and leader-internal proposals). Operations documentation lives in [`docs/ops/signing.md`](../../../../ops/signing.md) and the maintenance-mode interaction is covered in [`docs/ops/maintenance-mode.md`](../../../../ops/maintenance-mode.md); this page covers the architecture.
 
 ## Algorithm
