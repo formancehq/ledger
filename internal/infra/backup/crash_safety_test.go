@@ -16,15 +16,8 @@ import (
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
-	"github.com/formancehq/ledger/v3/internal/infra/state"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
-
-func saveNextLedgerIDForBackupTest(t *testing.T, batch *dal.WriteSession, nextID uint32) {
-	t.Helper()
-
-	require.NoError(t, state.StoreNextLedgerID(batch, nextID))
-}
 
 // crashSafetyState is the stateful backing behind the generated MockStorage used
 // by the crash-safety tests. The MockStorage (see storage_generated_test.go)
