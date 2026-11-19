@@ -46,7 +46,7 @@ func TestWriteResponse_SingleTransaction(t *testing.T) {
 
 					return &domain.ApplyResult{Logs: []*commonpb.Log{entry}}, nil
 				})
-			handler := NewHandler(logging.Testing(), backend, internalauth.AuthConfig{}, version.Info{})
+			handler := NewHandler(logging.Testing(), backend, internalauth.AuthConfig{}, version.Info{}, nil)
 			r := httptest.NewRequest(http.MethodPost, "/v3/l1/transactions"+query, strings.NewReader(`{}`))
 			r.Header.Set("Idempotency-Key", "same-key")
 			w := httptest.NewRecorder()
@@ -93,7 +93,7 @@ func TestWriteResponse_OtherMutations(t *testing.T) {
 			original := proto.Clone(entry)
 			backend := NewMockBackend(gomock.NewController(t))
 			backend.EXPECT().Apply(gomock.Any(), gomock.Any()).Return(&domain.ApplyResult{Logs: []*commonpb.Log{entry}}, nil).Times(3)
-			handler := NewHandler(logging.Testing(), backend, internalauth.AuthConfig{}, version.Info{})
+			handler := NewHandler(logging.Testing(), backend, internalauth.AuthConfig{}, version.Info{}, nil)
 			doc, err := openapi3.NewLoader().LoadFromFile("../../../openapi.yml")
 			require.NoError(t, err)
 			var defaultBody string
@@ -132,7 +132,7 @@ func TestWriteResponse_InvalidOption(t *testing.T) {
 	} {
 		t.Run(route.path, func(t *testing.T) {
 			t.Parallel()
-			handler := NewHandler(logging.Testing(), NewMockBackend(gomock.NewController(t)), internalauth.AuthConfig{}, version.Info{})
+			handler := NewHandler(logging.Testing(), NewMockBackend(gomock.NewController(t)), internalauth.AuthConfig{}, version.Info{}, nil)
 			for _, value := range []string{"", "TRUE", "1", "yes", "null", "false&skipResponse=true", "true&skipResponse=true", "%GG"} {
 				w := httptest.NewRecorder()
 				handler.ServeHTTP(w, httptest.NewRequest(route.method, route.path+"?skipResponse="+value, strings.NewReader(`{}`)))
@@ -145,7 +145,7 @@ func TestWriteResponse_InvalidOption(t *testing.T) {
 		{http.MethodGet, "/v3/l1/transactions"}, {http.MethodDelete, "/v3/l1"},
 		{http.MethodPost, "/v3/l1/accounts/a/metadata"},
 	} {
-		handler := NewHandler(logging.Testing(), NewMockBackend(gomock.NewController(t)), internalauth.AuthConfig{}, version.Info{})
+		handler := NewHandler(logging.Testing(), NewMockBackend(gomock.NewController(t)), internalauth.AuthConfig{}, version.Info{}, nil)
 		w := httptest.NewRecorder()
 		handler.ServeHTTP(w, httptest.NewRequest(route.method, route.path+"?skipResponse=true", nil))
 		require.Equal(t, http.StatusBadRequest, w.Code)
@@ -187,7 +187,7 @@ func TestWriteResponse_RejectsImpossibleAcknowledgements(t *testing.T) {
 					}
 					backend := NewMockBackend(gomock.NewController(t))
 					backend.EXPECT().Apply(gomock.Any(), gomock.Any()).Return(&domain.ApplyResult{Logs: logs}, nil)
-					handler := NewHandler(logging.Testing(), backend, internalauth.AuthConfig{}, version.Info{})
+					handler := NewHandler(logging.Testing(), backend, internalauth.AuthConfig{}, version.Info{}, nil)
 					body := `{}`
 					separator := "?"
 					if strings.Contains(path, "bulk") {
@@ -214,12 +214,12 @@ func TestWriteResponse_AuthenticationAndEmptyBulk(t *testing.T) {
 			if strings.HasSuffix(path, "bulk") {
 				body = `[{"action":"CREATE_TRANSACTION","data":{}}]`
 			}
-			handler := NewHandler(logging.Testing(), NewMockBackend(gomock.NewController(t)), internalauth.AuthConfig{Enabled: true}, version.Info{})
+			handler := NewHandler(logging.Testing(), NewMockBackend(gomock.NewController(t)), internalauth.AuthConfig{Enabled: true}, version.Info{}, nil)
 			w := httptest.NewRecorder()
 			handler.ServeHTTP(w, httptest.NewRequest(http.MethodPost, path+"?skipResponse="+compact, strings.NewReader(body)))
 			require.Equal(t, http.StatusUnauthorized, w.Code, w.Body.String())
 		}
-		handler := NewHandler(logging.Testing(), NewMockBackend(gomock.NewController(t)), internalauth.AuthConfig{}, version.Info{})
+		handler := NewHandler(logging.Testing(), NewMockBackend(gomock.NewController(t)), internalauth.AuthConfig{}, version.Info{}, nil)
 		w := httptest.NewRecorder()
 		handler.ServeHTTP(w, httptest.NewRequest(http.MethodPost, "/v3/l1/bulk?atomic=true&skipResponse="+compact, strings.NewReader(`[]`)))
 		require.Equal(t, http.StatusOK, w.Code)
@@ -276,7 +276,7 @@ func TestWriteResponse_Bulk(t *testing.T) {
 
 						return &domain.ApplyResult{Logs: []*commonpb.Log{skipped}}, nil
 					}).Times(map[bool]int{true: 1, false: 2}[atomic == "true"])
-				handler := NewHandler(logging.Testing(), backend, internalauth.AuthConfig{}, version.Info{})
+				handler := NewHandler(logging.Testing(), backend, internalauth.AuthConfig{}, version.Info{}, nil)
 				r := httptest.NewRequest(http.MethodPost, "/v3/l1/bulk?atomic="+atomic+"&skipResponse="+compact,
 					strings.NewReader(`[{"action":"CREATE_TRANSACTION","ik":"first","data":{}},{"action":"CREATE_TRANSACTION","ik":"second","data":{"reference":"dup"},"skippableReasons":["TRANSACTION_REFERENCE_CONFLICT"]}]`))
 				r.Header.Set("Idempotency-Key", "batch-key")
