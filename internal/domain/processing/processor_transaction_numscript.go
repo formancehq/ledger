@@ -336,7 +336,7 @@ func replanFailedScript(
 	order *raftcmdpb.CreateTransactionOrder,
 	script *commonpb.Script,
 	expectedInputsHash []byte,
-) domain.SerializableError {
+) domain.Describable {
 	if script == nil || script.GetPlain() == "" {
 		return &domain.ErrInvalidExecutionPlan{
 			Reason_: "order marked numscript_planning_failed carries no script",

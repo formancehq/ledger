@@ -51,7 +51,7 @@ func replanAdmissionHash(t *testing.T, input uint64) []byte {
 	return observed.InputsHash
 }
 
-func replan(t *testing.T, mockStore *MockScope, script string, vars map[string]string, expectedHash []byte) domain.SerializableError {
+func replan(t *testing.T, mockStore *MockScope, script string, vars map[string]string, expectedHash []byte) domain.Describable {
 	t.Helper()
 
 	return replanFailedScript(mockStore, numscript.NewNumscriptCache(16), "test",
