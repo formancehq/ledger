@@ -14,7 +14,7 @@ The MVP has two bounded aggregates, in the existing Pebble database:
 | Key in ZoneGlobal | Value | Owner |
 | --- | --- | --- |
 | `0x13` / `SubGlobClusterPolicy` | ClusterPolicy with no capability entries | SetClusterPolicy, operator revision |
-| `0x18` / `SubGlobCapabilityState` | CapabilityState | TransitionCapability, monotonic per-ID transitions |
+| `0x18` / `SubGlobCapabilityState` | CapabilityState | CapabilityActivation, monotonic per-ID activations |
 
 ClusterPolicy retains its name, revision, original storage key, and role as the
 aggregate for flag-derived configuration. TTL, checkpoint capacity and metadata
@@ -36,7 +36,7 @@ combines the candidate with the latest applied capability state, not the
 producer's earlier read. Ordinary reconciliation never waits for support of a
 new, inactive capability. Active capabilities still enforce membership safety.
 
-TransitionCapability addresses one ID and requires `active=true`. Activation is
+CapabilityActivation addresses one ID and requires `active=true`. Activation is
 idempotent and never clears an already active capability or changes the
 configuration revision. Deactivation controls are rejected at admission and
 deterministic apply. Historical entries with `active=false` remain inactive.
@@ -116,7 +116,7 @@ Released orders and native SetClusterPolicy proposals without the new marker
 retain their original replay semantics, including embedded capabilities. They
 fold historical policy into the two rows without changing historical
 business/audit bytes. New production writers emit SetClusterPolicy with
-`configuration_only=true` and TransitionCapability. The marker is a persisted
+`configuration_only=true` and CapabilityActivation. The marker is a persisted
 command discriminator, not an operator flag. No old writer may coexist with
 them: an old decoder ignores the marker and cannot preserve detached capabilities.
 Snapshot recovery assembles the same view as startup migration.

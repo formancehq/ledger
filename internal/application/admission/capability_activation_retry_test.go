@@ -64,7 +64,7 @@ func TestCapabilityTransitionThroughProductionAdmission(t *testing.T) {
 	proposer.EXPECT().Propose(gomock.Any(), gomock.Any()).DoAndReturn(func(_ context.Context, proposal *node.Proposal) (*futures.Future[state.ApplyResult], error) {
 		decoded := &raftcmdpb.Proposal{}
 		require.NoError(t, decoded.UnmarshalVT(proposal.Data()))
-		require.True(t, input.EqualVT(decoded.GetTransitionCapability()))
+		require.True(t, input.EqualVT(decoded.GetCapabilityActivation()))
 		require.Empty(t, decoded.GetOrders())
 		require.False(t, proposal.HasBusinessOrders())
 		require.Equal(t, []capabilities.CapabilityID{7}, proposal.ActivePolicyCapabilities())

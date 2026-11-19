@@ -24,7 +24,7 @@ func TestCapabilityActivationDirectIncrementalRestore(t *testing.T) {
 		index := source.State.LastAppliedIndex + 1
 		proposal := &raftcmdpb.Proposal{Id: index,
 			CallerSnapshot: commands.SystemCallerSnapshot(commands.ComponentClusterPolicy),
-			Payload:        &raftcmdpb.Proposal_TransitionCapability{TransitionCapability: &commonpb.CapabilityActivation{Id: capabilityID, Active: true}},
+			Payload:        &raftcmdpb.Proposal_CapabilityActivation{CapabilityActivation: &commonpb.CapabilityActivation{Id: capabilityID, Active: true}},
 		}
 		data, err := proposal.MarshalVT()
 		require.NoError(t, err)
