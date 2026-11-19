@@ -17,7 +17,6 @@ import (
 	"google.golang.org/grpc/status"
 	"google.golang.org/grpc/test/bufconn"
 
-	"github.com/formancehq/ledger/v3/internal/infra/backup"
 	"github.com/formancehq/ledger/v3/internal/infra/node"
 	"github.com/formancehq/ledger/v3/internal/infra/state"
 	"github.com/formancehq/ledger/v3/internal/proto/auditpb"
@@ -267,7 +266,7 @@ func TestFinalizeRestoreMarkerFailureRollsBackCheckpoint(t *testing.T) {
 	require.False(t, finalizing)
 }
 
-func TestFinalizeRestorePublishesRebuiltPostCheckpointDelta(t *testing.T) {
+func TestFinalizeRestorePublishesCompleteCheckpoint(t *testing.T) {
 	t.Parallel()
 
 	server := NewRestoreServiceServer(t.TempDir(), "target-cluster", 1, noopLogger{})
@@ -291,15 +290,15 @@ func TestFinalizeRestorePublishesRebuiltPostCheckpointDelta(t *testing.T) {
 		}))
 	}
 
-	// Capture a real Pebble checkpoint at sequence 1. Its projection already
-	// contains the prefix ledger, while the second creation exists only in the
-	// later log/audit delta.
+	// Capture a complete Pebble checkpoint with both ledger projections.
 	batch := source.OpenWriteSession()
 	require.NoError(t, state.SaveLedger(batch, "restored-ledger", &commonpb.LedgerInfo{Name: "restored-ledger"}))
+	require.NoError(t, state.SaveLedger(batch, "delta-ledger", &commonpb.LedgerInfo{Name: "delta-ledger"}))
 	require.NoError(t, batch.SetProto([]byte{dal.ZoneClusterTransient, dal.SubTransientDrainState}, &raftcmdpb.DrainState{
 		Epoch: "source-epoch", Index: 1, Members: []uint64{1, 2, 3}, PriorEpochs: []string{"released-source-epoch"},
 	}))
 	writeHistory(batch, 1, "restored-ledger", 1)
+	writeHistory(batch, 2, "delta-ledger", 2)
 	require.NoError(t, batch.Commit())
 	checkpointPath, err := source.CreateTemporaryCheckpoint("before-delta")
 	require.NoError(t, err)
@@ -311,13 +310,6 @@ func TestFinalizeRestorePublishesRebuiltPostCheckpointDelta(t *testing.T) {
 	server.stagingStore = store
 	server.downloaded = true
 	server.validated = true
-	batch = store.OpenWriteSession()
-	writeHistory(batch, 2, "delta-ledger", 2)
-	require.NoError(t, batch.Commit())
-	_, err = query.GetLedgerByName(t.Context(), store, "delta-ledger")
-	require.Error(t, err, "the delta projection must be absent before replay")
-	require.NoError(t, backup.RebuildDelta(t.Context(), noopLogger{}, store, 1, 1))
-
 	_, err = server.FinalizeRestore(t.Context(), &restorepb.FinalizeRestoreRequest{})
 	require.NoError(t, err)
 	marker, err := node.ReadRestoredMarker(server.dataDir)

@@ -87,10 +87,10 @@ Cross-cluster preparation classifies the checkpoint's Pebble zones as follows:
 | `ZoneClusterTransient` / backup jobs | Deleted | Source job coordination does not transfer to the destination. |
 | `ZoneCache` | Deleted | The destination re-seeds its own cache from preserved state. |
 
-`internal/infra/backup/restore.go` still contains the old export replay code for
-rolling RC compatibility with previously emitted orders, but new backup and
-restore entry points never call it. Legacy backup artifacts are intentionally
-unsupported; see the migration section in `docs/ops/backup-restore.md`.
+The old export and replay implementation has been removed. Previously emitted
+incremental backup artifacts are intentionally unsupported; see the migration
+section in `docs/ops/backup-restore.md`. The Raft FSM still applies previously
+committed incremental job orders during a rolling RC upgrade.
 
 ## Published compatibility surfaces
 
@@ -103,8 +103,7 @@ operators should move that cadence to `schedule.full`. In-flight Incremental
 runs are allowed to finish. Existing `IncrementalBackupOrder` Raft
 numbers and FSM application remain so old and new voters interpret committed
 entries identically during a rolling upgrade; new leaders never propose them.
-The old in-memory exporter is currently retained for these compatibility tests
-but is unreachable from new service and CLI paths.
+The old exporter and replay tests were removed with their implementation.
 
 ## Tests and limits
 

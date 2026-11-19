@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel/metric/noop"
 
@@ -23,7 +24,7 @@ import (
 	"github.com/formancehq/ledger/v3/pkg/actions"
 )
 
-func TestBackup_HistoricalAddressSearchAfterPurgeDelta(t *testing.T) {
+func TestBackup_HistoricalAddressSearchAfterSecondCheckpoint(t *testing.T) {
 	t.Parallel()
 	for _, withMetadata := range []bool{false, true} {
 		name := "absent-account"
@@ -61,7 +62,7 @@ func TestBackup_HistoricalAddressSearchAfterPurgeDelta(t *testing.T) {
 			require.NotNil(t, before, "the checkpoint must contain the funded account")
 			require.Equal(t, "100", before.GetInput().ToBigInt().String())
 			require.NoError(t, sourceStore.Flush())
-			_, err = RunBackup(ctx, testLogger(), sourceStore, storage, bucket, "full")
+			_, err = RunBackup(ctx, logging.Testing(), sourceStore, storage, bucket, "full")
 			require.NoError(t, err)
 
 			// The post-checkpoint drain removes the final volume cell. Transaction
@@ -70,14 +71,14 @@ func TestBackup_HistoricalAddressSearchAfterPurgeDelta(t *testing.T) {
 				actions.NewPosting(address, "world", big.NewInt(100), "USD"),
 			}, nil, nil))
 			require.NoError(t, sourceStore.Flush())
-			inc, err := RunIncrementalBackup(ctx, testLogger(), sourceStore, storage, bucket, 0)
+			second, err := RunBackup(ctx, logging.Testing(), sourceStore, storage, bucket, "second")
 			require.NoError(t, err)
-			require.Positive(t, inc.LogEntriesExported)
-			require.Positive(t, inc.AuditEntriesExported)
+			require.Positive(t, second.LastLogSequence)
+			require.Positive(t, second.LastAuditSequence)
 			manifest, err := ReadManifest(ctx, storage, ManifestKey(bucket))
 			require.NoError(t, err)
 			require.NotNil(t, manifest.Checkpoint)
-			require.NotEmpty(t, manifest.Exports)
+			require.Empty(t, manifest.Exports)
 			restored := restoreAuditKeyCheckpoint(t, storage, manifest)
 			auditKeyCheckerClean(t, restored)
 
@@ -92,7 +93,7 @@ func TestBackup_HistoricalAddressSearchAfterPurgeDelta(t *testing.T) {
 					metadata, err := attributes.New().Metadata.Get(pair.store, domain.MetadataKey{AccountKey: volumeKey.AccountKey, Key: "owner"}.Bytes())
 					require.NoError(t, err)
 					if withMetadata {
-						require.NotNil(t, metadata, "the checkpoint metadata must survive the drain delta")
+						require.NotNil(t, metadata, "the checkpoint metadata must survive the drain and second checkpoint")
 						require.Equal(t, "customer", metadata.GetStringValue())
 					} else {
 						require.Nil(t, metadata, "the drained account must lack current attributes")
@@ -125,10 +126,10 @@ func TestBackup_HistoricalAddressSearchAfterPurgeDelta(t *testing.T) {
 
 func buildHistoricalAddressProjection(t *testing.T, store *dal.Store, ledger string) *readstore.Store {
 	t.Helper()
-	rs, err := readstore.New(t.TempDir(), testLogger(), readstore.DefaultConfig())
+	rs, err := readstore.New(t.TempDir(), logging.Testing(), readstore.DefaultConfig())
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, rs.Close()) })
-	builder := indexbuilder.NewBuilder(store, rs, attributes.New(), testLogger(), noop.NewMeterProvider().Meter("test"), 100)
+	builder := indexbuilder.NewBuilder(store, rs, attributes.New(), logging.Testing(), noop.NewMeterProvider().Meter("test"), 100)
 	builder.SetNotifications(signal.NewNotifications())
 	builder.Start()
 	t.Cleanup(builder.Stop)

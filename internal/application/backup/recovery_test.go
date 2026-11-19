@@ -30,7 +30,7 @@ import (
 
 // recoveryFixture injects one transport failure at the Proposer boundary. It
 // executes and commits the real job-state transitions, not Raft elections. The
-// orchestration, checkpoint/export work and cleanup scan remain real.
+// orchestration, checkpoint work and cleanup scan remain real.
 type recoveryFixture struct {
 	t               *testing.T
 	store           *dal.Store
@@ -72,8 +72,7 @@ func newRecoveryFixture(t *testing.T) *recoveryFixture {
 	f.storage = NewMockStorage(ctrl)
 	f.storage.EXPECT().PutFile(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes().DoAndReturn(
 		func(_ context.Context, key string, data io.Reader, _ int64) error {
-			// Drain streaming exports even when injecting failure, so the pipe
-			// writer can terminate. Calls are serialized by the backup runner.
+			// Read uploaded checkpoint files even when injecting failure.
 			body, err := io.ReadAll(data)
 			if err != nil {
 				return err
@@ -125,14 +124,9 @@ func (f *recoveryFixture) propose(_ context.Context, proposal *raftcmdpb.Proposa
 	var complete *raftcmdpb.BackupOrderComplete
 	var fail *raftcmdpb.BackupOrderFail
 	kind := raftcmdpb.BackupKind_BACKUP_KIND_FULL
-	if order := extractFullOrder(proposal); order != nil {
-		start, complete, fail = order.GetStart(), order.GetComplete(), order.GetFail()
-	} else {
-		order := extractIncrementalOrder(proposal)
-		require.NotNil(f.t, order)
-		kind = raftcmdpb.BackupKind_BACKUP_KIND_INCREMENTAL
-		start, complete, fail = order.GetStart(), order.GetComplete(), order.GetFail()
-	}
+	order := extractFullOrder(proposal)
+	require.NotNil(f.t, order)
+	start, complete, fail = order.GetStart(), order.GetComplete(), order.GetFail()
 	isCleanup := fail != nil && fail.GetMessage() == "orphan: no live executor on this leader"
 	if isCleanup {
 		f.cleanupAttempts++
@@ -201,17 +195,16 @@ func (f *recoveryFixture) seedLedger(seq uint64) {
 	}}}
 	require.NoError(f.t, batch.SetProto(key, log))
 	require.NoError(f.t, batch.Commit())
-	// Populate the logical projection as well as its raw history. This is a
-	// small valid replay fixture, not an assertion that a full audit passes.
-	require.NoError(f.t, infrabackup.RebuildDelta(context.Background(), logging.Testing(), f.store, seq-1, 0))
+	// Populate the logical projection alongside its history. This fixture does
+	// not assert that a full audit passes.
+	projection := f.store.OpenWriteSession()
+	require.NoError(f.t, state.SaveLedger(projection, fmt.Sprintf("ledger-%d", seq),
+		&commonpb.LedgerInfo{Id: uint32(seq)}))
+	require.NoError(f.t, projection.Commit())
 }
 
 func (f *recoveryFixture) full() (*infrabackup.Result, error) {
 	return f.orchestrator.RunFull(context.Background(), f.dst, f.storage)
-}
-
-func (f *recoveryFixture) incremental() (*infrabackup.IncrementalBackupResult, error) {
-	return f.orchestrator.RunIncremental(context.Background(), f.dst, f.storage)
 }
 
 func (f *recoveryFixture) assertActive(jobID uint64) {
@@ -229,16 +222,11 @@ func (f *recoveryFixture) assertActive(jobID uint64) {
 	require.False(f.t, f.orchestrator.Registry().IsAlive(jobID), "returned attempt has no live executor")
 }
 
-func (f *recoveryFixture) assertBusy(incremental bool, jobID uint64) {
+func (f *recoveryFixture) assertBusy(jobID uint64) {
 	f.t.Helper()
 	before := maps.Clone(f.objects)
 	puts, deletes := f.puts, f.deletes
-	var err error
-	if incremental {
-		_, err = f.incremental()
-	} else {
-		_, err = f.full()
-	}
+	_, err := f.full()
 	require.ErrorIs(f.t, err, state.ErrBackupInProgress)
 	require.Equal(f.t, before, f.objects, "busy attempt must not modify published bytes")
 	require.Equal(f.t, puts, f.puts)
@@ -288,16 +276,13 @@ func (f *recoveryFixture) assertFinished() {
 	require.Equal(f.t, raftcmdpb.BackupJobStatus_BACKUP_JOB_STATUS_COMPLETE, history[len(history)-1].GetStatus())
 }
 
-func (f *recoveryFixture) assertRestorable(lastSeq uint64, incremental bool) {
+func (f *recoveryFixture) assertRestorable(lastSeq uint64) {
 	f.t.Helper()
 	manifest, err := infrabackup.ReadManifest(context.Background(), f.storage, infrabackup.ManifestKey(f.dst.GetBucketId()))
 	require.NoError(f.t, err)
 	require.NotEmpty(f.t, manifest.Checkpoint.Files)
-	require.Equal(f.t, lastSeq, manifest.LastExportLogSequence())
-	if incremental {
-		require.NotEmpty(f.t, manifest.Exports)
-		require.Greater(f.t, lastSeq, manifest.Checkpoint.LastLogSequence)
-	}
+	require.Equal(f.t, lastSeq, manifest.Checkpoint.LastLogSequence)
+	require.Empty(f.t, manifest.Exports)
 	checkpoint := f.t.TempDir()
 	for name, file := range manifest.Checkpoint.Files {
 		body, ok := f.objects[file.Key]
@@ -306,15 +291,9 @@ func (f *recoveryFixture) assertRestorable(lastSeq uint64, incremental bool) {
 		require.True(f.t, strings.HasSuffix(file.Key, fmt.Sprintf(".%x", sha256.Sum256(body))), "content-address checksum must match")
 		require.NoError(f.t, os.WriteFile(filepath.Join(checkpoint, name), body, 0600))
 	}
-	for _, segment := range manifest.Exports {
-		body, ok := f.objects[segment.Key]
-		require.True(f.t, ok, "export reference %s must exist", segment.Key)
-		require.Equal(f.t, segment.Size, int64(len(body)))
-	}
 	restored, err := dal.OpenDirect(checkpoint, logging.Testing())
 	require.NoError(f.t, err)
 	defer func() { require.NoError(f.t, restored.Close()) }()
-	require.NoError(f.t, infrabackup.ApplyExportsAndRebuild(context.Background(), logging.Testing(), f.storage, restored, manifest))
 	reader, err := restored.NewDirectReadHandle()
 	require.NoError(f.t, err)
 	defer func() { require.NoError(f.t, reader.Close()) }()
@@ -333,7 +312,7 @@ func (f *recoveryFixture) assertRestorable(lastSeq uint64, incremental bool) {
 		require.NoError(f.t, err)
 		require.Equal(f.t, live, ledger, "restored ledger projection must match live state")
 	}
-	f.t.Logf("restored checkpoint + %d exports: exact history bytes and %d ledgers", len(manifest.Exports), lastSeq)
+	f.t.Logf("restored checkpoint: exact history bytes and %d ledgers", lastSeq)
 }
 
 func TestBackupRecovery_FullUploadFailureLostFail(t *testing.T) {
@@ -349,83 +328,16 @@ func TestBackupRecovery_FullUploadFailureLostFail(t *testing.T) {
 	require.False(t, published, "failed upload must not publish a manifest")
 	jobID := f.starts[0]
 	f.assertActive(jobID)
-	f.assertBusy(false, jobID)
-	f.assertBusy(true, jobID) // full and incremental share the destination slot
+	f.assertBusy(jobID)
 	f.recoverOrphan(jobID)
 	result, err = f.full()
 	require.NoError(t, err)
 	require.NotNil(t, result)
 	require.Positive(t, result.FilesUploaded)
 	require.Equal(t, uint64(1), result.LastLogSequence)
-	require.Len(t, f.starts, 4, "failed upload, two busy attempts, successful retry")
+	require.Len(t, f.starts, 3, "failed upload, busy attempt, successful retry")
 	require.Len(t, f.terminals, 2)
 	require.Equal(t, raftcmdpb.BackupJobStatus_BACKUP_JOB_STATUS_FAILED, f.terminals[0].GetStatus())
 	f.assertFinished()
-	f.assertRestorable(1, false)
-}
-
-func TestBackupRecovery_IncrementalAmbiguousProposal(t *testing.T) {
-	t.Parallel()
-	for _, fault := range []string{"lost-complete", "start-ack", "complete-ack"} {
-		t.Run(fault, func(t *testing.T) {
-			t.Parallel()
-			f := newRecoveryFixture(t)
-			f.seedLedger(1)
-			_, err := f.full()
-			require.NoError(t, err)
-			f.seedLedger(2)
-			first, err := f.incremental()
-			require.NoError(t, err)
-			require.Equal(t, uint64(1), first.LogEntriesExported)
-			f.seedLedger(3)
-			f.fault = fault
-			putsBefore := f.puts
-			result, err := f.incremental()
-			require.Nil(t, result)
-			require.ErrorIs(t, err, f.errLost)
-			published, manifestErr := infrabackup.ReadManifest(context.Background(), f.storage, infrabackup.ManifestKey(f.dst.GetBucketId()))
-			require.NoError(t, manifestErr)
-			if fault == "start-ack" {
-				require.Equal(t, putsBefore, f.puts, "lost Start acknowledgment must exit before upload")
-				require.Equal(t, uint64(2), published.LastExportLogSequence())
-			} else {
-				require.Greater(t, f.puts, putsBefore, "Complete failure happens after export publication")
-				require.Equal(t, uint64(3), published.LastExportLogSequence())
-			}
-			jobID := f.starts[2]
-			if fault == "complete-ack" {
-				require.Empty(t, f.jobs.Snapshot(), "lost response after Complete commit must not retain the slot")
-				f.cleanup.tick(context.Background())
-				require.Zero(t, f.cleanupAttempts)
-			} else {
-				f.assertActive(jobID)
-				f.assertBusy(true, jobID)
-				f.recoverOrphan(jobID)
-			}
-			// A new committed log makes the retry do real export work even if
-			// the failed attempt already published sequence 3's manifest.
-			f.seedLedger(4)
-			result, err = f.incremental()
-			require.NoError(t, err)
-			require.NotNil(t, result)
-			require.Positive(t, result.SegmentsUploaded)
-			require.Equal(t, uint64(4), result.LastLogSequence)
-			exported := uint64(1)
-			if fault == "start-ack" {
-				exported = 2
-			}
-			require.Equal(t, exported, result.LogEntriesExported)
-			attempts := 5
-			if fault == "complete-ack" {
-				attempts = 4
-			}
-			require.Len(t, f.starts, attempts)
-			require.Len(t, f.terminals, 4)
-			if fault != "complete-ack" {
-				require.Equal(t, raftcmdpb.BackupJobStatus_BACKUP_JOB_STATUS_FAILED, f.terminals[2].GetStatus())
-			}
-			f.assertFinished()
-			f.assertRestorable(4, true)
-		})
-	}
+	f.assertRestorable(1)
 }

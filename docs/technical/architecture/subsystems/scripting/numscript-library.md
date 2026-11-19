@@ -421,7 +421,6 @@ Controller → query.ReadNumscript(versionAttr, contentAttr, reader, ledger, nam
 | Admission | `internal/application/admission/admission.go` | `plan.Coverage` declaration + script reference planning |
 | Admission overlay | `internal/application/admission/overlay.go` | Intra-bulk greatest-wins overlay |
 | Checker | `internal/application/check/checker.go` | `compareNumscripts` projection verification |
-| Rebuild | `internal/infra/backup/rebuild.go` | Projection rebuild from the audit chain |
 | Semver | `internal/pkg/semver/semver.go` | `Version`, `Parse`, `ParsePartial`, `Compare` |
 | DAL keys | `internal/domain/keys.go` | `NumscriptVersionKey`, `NumscriptEntryKey` |
 | DAL codes | `internal/storage/dal/store.go` | `SubAttrNumscriptVersion`, `SubAttrNumscriptContent` |

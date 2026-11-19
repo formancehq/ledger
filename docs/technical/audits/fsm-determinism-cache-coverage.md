@@ -449,7 +449,7 @@ Do new CreateLedger orders reject invalid or conflicting initial account types
 without allocating a ledger ID, and does audit replay still reconstruct both
 those historical successful definitions and newly valid creations?
 
-See [the creation contract](../architecture/subsystems/api/atomic-ledger-creation.md) for the authorized semantics and regression evidence. Treat HTTP response/forwarding, actual FSM readback, keyed replay, nonempty checkpoint-plus-delta restore, and primary-projection tampering as separate evidence oracles; a helper-only test does not prove every boundary.
+See [the creation contract](../architecture/subsystems/api/atomic-ledger-creation.md) for the authorized semantics and regression evidence. Treat HTTP response/forwarding, actual FSM readback, keyed replay, second complete checkpoint after a meaningful mutation, and primary-projection tampering as separate evidence oracles; a helper-only test does not prove every boundary.
 
 ## Controlled drain apply boundary
 

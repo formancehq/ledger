@@ -45,7 +45,7 @@ not as a universal identity for arbitrary orders inside a batch.
 The CLI filters audit entries by idempotency-key prefix using the secondary audit index, then fetches item details for matching candidates. A failed
 read does not authorize a deletion or return partial attribution as success.
 Recovery requires accessible audit history. Audit history is permanent primary
-state under the incremental restore contract; this command does not invent
+state under the checkpoint restore contract; this command does not invent
 evidence if history cannot be read. Lookup cost is proportional to the number of creation attempts for the given prefix, not to the total
 audit history, and remains bounded by the command timeout.
 

@@ -1501,8 +1501,8 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 
 	// Compute the effective date using the HLC to guarantee monotonicity.
 	// Keep the previous value: a proposal that returns without an audit entry
-	// must not advance the durable clock, because incremental restore rebuilds
-	// post-checkpoint HLC progress from audited timestamps alone.
+	// must not advance the durable clock, so an uncommitted rejection cannot
+	// change the effective date of a later accepted proposal.
 	previousTimestamp := fsm.State.LastAppliedTimestamp
 	effectiveDate := &commonpb.Timestamp{Data: fsm.State.AdvanceHLC(proposal.GetDate().GetData())}
 

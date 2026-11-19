@@ -16,9 +16,8 @@ type RestoredMarker struct {
 	// new log — the checkpoint's applied index, or 1 for a genesis checkpoint
 	// (PrepareForBackup guarantees >= 1). Bootstrap plants the WAL snapshot at
 	// this index so joiners must sync a checkpoint, and refuses a marker
-	// carrying 0. A boundary label only: after a full + incremental restore
-	// the restored state is NEWER than this index (exports are
-	// sequence-keyed and do not advance it).
+	// carrying 0. The complete checkpoint contains the business state at
+	// this applied index; later backups capture a new checkpoint and index.
 	LastAppliedIndex     uint64 `json:"lastAppliedIndex"`
 	LastAppliedTimestamp uint64 `json:"lastAppliedTimestamp"`
 }
