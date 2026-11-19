@@ -209,6 +209,13 @@ volumes are left in place when the check fails. If a development or PR Operator
 build has no semantic release version, a semantic Ledger tag is blocked with
 reason `OperatorVersionUnknown`.
 
+For CI development image tags of the form `vX.Y.Z-P.dev.B.gSHA` or
+`vX.Y.Z-dev.B.gSHA`, the version check compares the base release with the
+Operator version.
+This permits a development image built on the Operator's release while still
+blocking one built on a newer release. It does not establish binary or storage
+compatibility; mandatory stopped-upgrade checks continue to use the full tag.
+
 An opaque Ledger tag such as `latest`, `e2e`, or a commit SHA cannot be ordered.
 A release Operator blocks it with reason `LedgerVersionUnknown`. Development
 Operator builds accept opaque Ledger tags and report `VersionCompatible=Unknown`

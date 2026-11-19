@@ -28,7 +28,8 @@ The Ledger Operator manages `Cluster` and `EventSink` custom resources to automa
 
 For release-tagged Ledger images, the Cluster controller rejects a server
 version newer than the running Ledger Operator before creating or updating the
-StatefulSet. See [deployment](../../docs/ops/deployment.md#creating-a-ledger-cluster)
+StatefulSet. CI development tags use their base release for this comparison.
+See [deployment](../../docs/ops/deployment.md#creating-a-ledger-cluster)
 for the status conditions and the limits of tag-based comparison.
 
 During StatefulSet scale-down, every removed ordinal must satisfy the Raft
