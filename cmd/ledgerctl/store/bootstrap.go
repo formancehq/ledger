@@ -197,7 +197,7 @@ func runBootstrap(cmd *cobra.Command, _ []string) error {
 		}
 	}
 
-	// Prepare attributes for backup (Global-zone resets; no compaction).
+	// Clear source cluster-local zones and cache without compacting attributes.
 	prepareSpinner := cmdutil.StartSpinner("Preparing attributes for restore compatibility...")
 
 	prepareStore, err := dal.OpenDirect(stagingDir, logger)

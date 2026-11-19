@@ -570,7 +570,7 @@ ledgerctl store bootstrap --driver s3 --s3-bucket my-bucket --s3-region us-east-
 3. **Preview**: Opens the staging as a read-only Pebble database, reads metadata (last applied index, timestamp, ledger list), and displays a summary table.
 4. **Validate** (optional): If `--validate` is set, runs the full integrity checker (`check.Checker`) -- the same checker used by `store check` and `restore validate`. Execution failures or reported integrity errors abort bootstrap before confirmation, preparation, and finalization. Without this flag, bootstrap skips Checker entirely.
 5. **Confirm**: Unless `--yes` is set, prompts for user confirmation.
-6. **Prepare**: Prepares the checkpoint for the new cluster (Global-zone resets: applied index preserved as the genesis boundary — the restored genesis' WAL-snapshot index — persisted config stripped, persisted bloom blocks dropped); the attribute zone is left intact.
+6. **Prepare**: Clears source cluster identity, peers, backup jobs and cache; drops persisted Bloom blocks; and writes the checkpoint's applied index back as the destination genesis boundary (the restored genesis' WAL-snapshot index). Global business and governance state and the attribute zone remain intact.
 7. **Finalize**: After closing the prepared store and rereading its metadata, hard-links staging into a temporary checkpoint directory and renames it to `{data-dir}/checkpoints/0`. Only then writes the atomic `RESTORED` commit marker. A marker-write failure attempts to remove the placed checkpoint; remove it manually if rollback fails.
 8. **Cleanup**: Removes the staging directory. A cleanup error is reported as a warning after the restore has committed.
 
@@ -714,7 +714,7 @@ ledger run --node-id 1 --cluster-id prod-ledger --data-dir ./fresh-data --bootst
 | `internal/infra/backup/manager.go` | `RunBackup()` — diff, upload, manifest |
 | `internal/infra/backup/s3.go` | S3 storage driver |
 | `internal/infra/backup/storage.go` | Storage interface and driver factory |
-| `internal/infra/attributes/prepare.go` | `PrepareForBackup()` — Global-zone resets for portable backup (used during restore) |
+| `internal/infra/attributes/prepare.go` | `PrepareForBackup()` — source cluster-local zone and cache reset during restore |
 | **Restore (gRPC)** | |
 | `misc/proto/restore.proto` | RestoreService proto definition |
 | `internal/proto/restorepb/` | Generated proto code |
