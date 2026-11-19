@@ -87,9 +87,9 @@ e2e-cluster-down:
     kind delete cluster --name ledger-e2e
 
 _ensure-chainsaw:
-    @which chainsaw >/dev/null 2>&1 || go install github.com/kyverno/chainsaw@latest
+    @[ "${LEDGER_UPGRADE_SHELL:-}" = 1 ] && [ -n "${LEDGER_CHAINSAW_BIN:-}" ] && [ "${LEDGER_CHAINSAW_BIN#/}" != "$LEDGER_CHAINSAW_BIN" ] && [ -x "$LEDGER_CHAINSAW_BIN" ] || { printf '%s\n' 'pinned chainsaw is required; from the repository root, run nix develop .#upgrade, then cd misc/operator and retry.' >&2; exit 1; }
 
-test-e2e: e2e-cluster-up _ensure-chainsaw
+test-e2e: _ensure-chainsaw e2e-cluster-up
     just _e2e-run-tests
 
 # Run E2E tests without rebuilding the cluster (for rapid iteration).
@@ -102,10 +102,10 @@ _e2e-run-tests:
     #!/bin/bash
     set -euo pipefail
     just _e2e-install-operator e2e
-    chainsaw test --config e2e/chainsaw-test.yaml --test-dir e2e/tests/ \
+    "$LEDGER_CHAINSAW_BIN" test --config e2e/chainsaw-test.yaml --test-dir e2e/tests/ \
         --exclude-test-regex stopped-rc-upgrade --kube-context kind-ledger-e2e
     just _e2e-install-operator rc4-e2e
-    chainsaw test --config e2e/chainsaw-test.yaml \
+    "$LEDGER_CHAINSAW_BIN" test --config e2e/chainsaw-test.yaml \
         --test-dir e2e/tests/stopped-rc-upgrade/ --kube-context kind-ledger-e2e
 
 # Verify the volume-protection policy renders only when the cluster supports
