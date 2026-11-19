@@ -368,7 +368,7 @@ Initial creation metadata is one CreateLedger operation, returned by default in 
 
 Does initial metadata survive HTTP decoding, the service request and order unchanged, including integers beyond JSON float precision, omitted/null inputs and a schema type mismatch? Do malformed keys/scalars reject before any ledger is created?
 
-See [the creation contract](../architecture/subsystems/api/atomic-ledger-creation.md) for the authorized semantics and regression evidence. Treat HTTP response/forwarding, actual FSM readback, keyed replay, nonempty checkpoint-plus-delta restore, and primary-projection tampering as separate evidence oracles; a helper-only test does not prove every boundary.
+See [the creation contract](../architecture/subsystems/api/atomic-ledger-creation.md) for the authorized semantics and regression evidence. Treat HTTP response/forwarding, actual FSM readback, keyed replay, second complete checkpoint after a meaningful mutation, and primary-projection tampering as separate evidence oracles; a helper-only test does not prove every boundary.
 
 ## HTTP event sink mutations
 

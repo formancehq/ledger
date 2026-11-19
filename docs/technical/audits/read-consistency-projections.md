@@ -248,7 +248,7 @@ query-semantic-equivalence owns exact-versus-prefix predicate selection once
 index population and the query horizon are established. See the operational
 repair procedure in `docs/ops/upgrades.md`.
 
-The nonempty checkpoint-plus-purge-delta fixture in
+The nonempty second-checkpoint-after-purge fixture in
 `internal/infra/backup/historical_address_restore_test.go` also checks fresh
 read-store reconstruction against independently expected historical role IDs.
 Persistence-restore-replay owns the primary restore and retained-history evidence.

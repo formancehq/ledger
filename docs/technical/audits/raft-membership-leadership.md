@@ -443,7 +443,7 @@ Historical replay must retain exact audit bytes and hashes. Native policy
 controls are operational and emit neither audit nor business logs; they are never
 lowered to orders. Compare final state across formats, verify each chain and its
 expected audit count, and preserve the historical prefix byte-for-byte. Preserve
-coverage, HLC semantics and checkpoint boundaries. Test policy-only incremental
-manifest publication and mixed historical/native delta restore. Current policy
+coverage, HLC semantics and checkpoint boundaries. Test policy-only second
+checkpoint publication and mixed historical/native policy recovery. Current policy
 and operational quotas are explicitly outside business checker scope.
 See [proposal payloads](../architecture/subsystems/consensus/proposal-payloads.md).

@@ -1,22 +1,20 @@
 package backup
 
 import (
-	"context"
-	"path/filepath"
+	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
+	"github.com/formancehq/ledger/v3/internal/application/check"
+	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 	"go.etcd.io/raft/v3/raftpb"
-	"go.opentelemetry.io/otel/metric/noop"
 
-	"github.com/formancehq/ledger/v3/internal/application/check"
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
 	"github.com/formancehq/ledger/v3/internal/infra/state"
 	"github.com/formancehq/ledger/v3/internal/pkg/commands"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/internal/query"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
@@ -66,7 +64,7 @@ func readCreationLedger(t *testing.T, store *dal.Store, attrs *attributes.Attrib
 func creationIntegrityFindings(t *testing.T, store *dal.Store, attrs *attributes.Attributes) []*servicepb.CheckStoreError {
 	t.Helper()
 	var findings []*servicepb.CheckStoreError
-	checker := check.NewChecker(store, attrs, nil, testLogger())
+	checker := check.NewChecker(store, attrs, nil, logging.Testing())
 	require.NoError(t, checker.Check(t.Context(), func(event *servicepb.CheckStoreEvent) {
 		if e := event.GetError(); e != nil {
 			findings = append(findings, e)
@@ -76,21 +74,17 @@ func creationIntegrityFindings(t *testing.T, store *dal.Store, attrs *attributes
 	return findings
 }
 
-func TestBackup_CreateLedgerMetadataRestoreParity(t *testing.T) {
+func TestBackup_CreateLedgerMetadataSecondCheckpointParity(t *testing.T) {
 	t.Parallel()
 	for _, mode := range []commonpb.LedgerMode{commonpb.LedgerMode_LEDGER_MODE_NORMAL, commonpb.LedgerMode_LEDGER_MODE_MIRROR} {
 		t.Run(mode.String(), func(t *testing.T) {
 			t.Parallel()
-			src, store, attrs := newSigningParityMachine(t)
+			src, store, attrs := newCreationTestMachine(t)
 			prefix := metadataCreationOrder("prefix", commonpb.LedgerMode_LEDGER_MODE_NORMAL, map[string]*commonpb.MetadataValue{"owner": commonpb.NewStringValue("before")})
 			require.NoError(t, applyMetadataCreation(t, src, store, 1, prefix)[0].Error)
 			storage := newInMemoryBackupStorage()
-			full, err := RunBackup(t.Context(), testLogger(), store, storage, "bucket", "full")
+			_, err := RunBackup(t.Context(), logging.Testing(), store, storage, "bucket", "first")
 			require.NoError(t, err)
-			require.Positive(t, full.LastLogSequence)
-			dstDir := t.TempDir()
-			require.NoError(t, store.Checkpoint(filepath.Join(dstDir, "live")))
-
 			metadata := map[string]*commonpb.MetadataValue{"owner": commonpb.NewStringValue("after"), "count": commonpb.NewUintValue(9007199254740993), "enabled": commonpb.NewBoolValue(true), "missing": commonpb.NewNullValue("unconverted")}
 			order := metadataCreationOrder("delta", mode, metadata)
 			before := order.CloneVT()
@@ -100,16 +94,13 @@ func TestBackup_CreateLedgerMetadataRestoreParity(t *testing.T) {
 			require.Equal(t, metadata, readCreationLedger(t, store, attrs, "delta").GetMetadata())
 			require.Empty(t, creationIntegrityFindings(t, store, attrs))
 
-			inc, err := RunIncrementalBackup(t.Context(), testLogger(), store, storage, "bucket", 0)
+			second, err := RunBackup(t.Context(), logging.Testing(), store, storage, "bucket", "second")
 			require.NoError(t, err)
-			require.Positive(t, inc.LogEntriesExported, "creation must be in a non-empty delta")
+			require.Positive(t, second.LastLogSequence)
 			manifest, err := ReadManifest(t.Context(), storage, ManifestKey("bucket"))
 			require.NoError(t, err)
-			require.NotEmpty(t, manifest.Checkpoint.Files)
-			dst, err := dal.NewStore(dstDir, testLogger(), noop.NewMeterProvider().Meter("test"), dal.DefaultConfig())
-			require.NoError(t, err)
-			t.Cleanup(func() { require.NoError(t, dst.Close()) })
-			require.NoError(t, ApplyExportsAndRebuild(context.Background(), testLogger(), storage, dst, manifest))
+			require.Empty(t, manifest.Exports)
+			dst := restoreAuditKeyCheckpoint(t, storage, manifest)
 			dstAttrs := attributes.New()
 			require.Equal(t, readCreationLedger(t, store, attrs, "prefix"), readCreationLedger(t, dst, dstAttrs, "prefix"))
 			require.Equal(t, readCreationLedger(t, store, attrs, "delta"), readCreationLedger(t, dst, dstAttrs, "delta"))
@@ -128,7 +119,7 @@ func TestBackup_CreateLedgerMetadataRestoreParity(t *testing.T) {
 
 func TestCreateLedger_InitialMetadataLimitRollback(t *testing.T) {
 	t.Parallel()
-	machine, store, attrs := newSigningParityMachine(t)
+	machine, store, attrs := newCreationTestMachine(t)
 	policy := machine.State.ClusterPolicy.CloneVT()
 	policy.MetadataMaxValueBytes = 4
 	machine.State.UpdateClusterPolicy(policy)

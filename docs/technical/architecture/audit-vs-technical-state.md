@@ -67,8 +67,7 @@ recompute the genesis hash. The checker reads key and full history from one
 snapshot and fails on absence/corruption or a mismatched chain. A coordinated rewrite of the key and complete chain remains outside
 the checker's ability to detect without an external anchor.
 
-The key is **preserved** by a full checkpoint. It never changes in an
-incremental delta: backup refuses to take the prerequisite full checkpoint
+The key is **preserved** by every complete checkpoint. Backup refuses to run
 before initialization, and no rotation operation exists. Restore preparation
 removes the source node/cluster identity but keeps this root of trust. A
 plaintext backup reveals the key, so backup confidentiality, access control,

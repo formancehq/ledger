@@ -161,8 +161,7 @@ persisted projection of the audited order stream. A cross-cluster restore
 copies those rows from the latest complete checkpoint. A later backup captures
 subsequent creation, retype, drop, and metadata-removal effects in its own
 checkpoint; the active restore path does not fold exported ledger logs.
-`RebuildDelta` in `internal/infra/backup/rebuild.go` remains as legacy export
-replay code but is not called by new backup or restore entry points.
+The legacy export replay code has been removed.
 
 What is deliberately **not** restored by a main-store backup: the per-replica `IndexVersionState`, ledger-history tracker, cursors, and read-index keyspaces. They live in each node's peer read store. A fresh read store first leaves registry entries unresolved, then replays the restored log from cursor zero: the replay reconstructs the history tracker and resolves each `CreatedIndexLog` to direct promotion for `EMPTY` or a normal task for `NON_EMPTY`. Reaching replay EOF with an unresolved registry row or an active ledger without a tracker is an invariant failure. A normal process restart keeps the read store and resumes the persisted tracker/version/cursor snapshot. Query checkpoints are physical read-store checkpoints, so they capture the tracker at the same committed boundary as the index data and progress cursor. A data directory whose `read-indexes/` survived an offline restore of an *older* backup remains the classic corruption shape the checker's cursor pass reports — see [Checker Coverage](#checker-coverage).
 

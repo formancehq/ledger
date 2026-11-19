@@ -9,7 +9,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"slices"
 )
 
 // Manifest describes the published checkpoint. Exports and ClusterPolicy are
@@ -105,50 +104,6 @@ type ExportSegment struct {
 	Key      string `json:"key"` // S3 object key
 	Size     int64  `json:"size"`
 }
-
-// LastExportLogSequence returns the highest exported log sequence,
-// checking exports first then falling back to the checkpoint.
-func (m *Manifest) LastExportLogSequence() uint64 {
-	for _, v := range slices.Backward(m.Exports) {
-		if v.Type == "log" {
-			return v.EndSeq
-		}
-	}
-
-	if m.Checkpoint != nil {
-		return m.Checkpoint.LastLogSequence
-	}
-
-	return 0
-}
-
-// LastExportAuditSequence returns the highest exported audit sequence,
-// checking exports first then falling back to the checkpoint.
-func (m *Manifest) LastExportAuditSequence() uint64 {
-	for _, v := range slices.Backward(m.Exports) {
-		if v.Type == "audit" {
-			return v.EndSeq
-		}
-	}
-
-	if m.Checkpoint != nil {
-		return m.Checkpoint.LastAuditSequence
-	}
-
-	return 0
-}
-
-// ErrNoFullCheckpoint is returned by RunIncrementalBackup when the destination
-// manifest has no full checkpoint (Checkpoint == nil): either the destination is
-// empty/fresh, or it holds an export-only manifest. An incremental backup is
-// only meaningful on top of a full checkpoint — the checkpoint is what carries
-// the Global-zone persisted config, last-applied index, and timestamp that
-// restore needs to build a valid store. Publishing export-only segments against
-// a checkpoint-less manifest would produce an artifact restore cannot turn into
-// a store, so the incremental path fails fast and asks for a full backup first.
-var ErrNoFullCheckpoint = errors.New(
-	"backup: incremental backup requires an existing full checkpoint; " +
-		"none found at the destination — run a full backup before any incremental backup")
 
 // ReadManifest reads and decodes a manifest from storage.
 func ReadManifest(ctx context.Context, storage Storage, key string) (*Manifest, error) {

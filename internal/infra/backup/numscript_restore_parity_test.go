@@ -36,7 +36,7 @@ import (
 // applyingProposer replaces only Raft transport: the bytes admission's
 // Builder.Run produced are applied by the real FSM, so the scripted orders
 // under test carry the execution plan and coverage bits production admission
-// binds. The logs and audit entries exported below are the ones live apply emits.
+// binds. The logs and audit entries captured below are the ones live apply emits.
 type applyingProposer struct {
 	t       *testing.T
 	machine *state.Machine
@@ -92,7 +92,7 @@ func newScriptedNode(t *testing.T, store *dal.Store) *scriptedNode {
 	sharedState := state.NewSharedState()
 
 	machine, err := state.NewMachine(logger, registry, state.NewCacheSnapshotter(logger, registry, nil), store,
-		dal.NewSentinelFactory(store, false), meters, keyStore, sharedState, signingParityNotifier{}, nil,
+		dal.NewSentinelFactory(store, false), meters, keyStore, sharedState, creationTestNotifier{}, nil,
 		"", 0, func(*raftpb.Entry, *dal.WriteSession) error { return nil }, state.NoopCapabilityPolicyCommitHandler)
 	require.NoError(t, err)
 	require.NoError(t, state.NewRecovery(machine, store).RecoverState())
@@ -282,9 +282,9 @@ func (v numscriptRestoreView) balanceOf(t *testing.T, account string) int64 {
 
 // TestBackup_NumscriptRestoreParity is the cross-lifecycle proof (invariant
 // #11) for VM-executed Numscript: postings and metadata produced by inline and
-// library scripts after a full checkpoint must survive checkpoint-plus-delta
+// library scripts after a first checkpoint must survive a second checkpoint
 // restore. The audit keeps only the business order, never the compiled
-// artifact, so the delta carries what live apply produced and the restored
+// artifact, so the checkpoint carries what live apply produced and the restored
 // store is compared against the live source by business value, then handed to
 // the checker, which re-runs every audited scripted order itself.
 func TestBackup_NumscriptRestoreParity(t *testing.T) {
@@ -327,7 +327,7 @@ set_tx_meta("route", "inline")`, nil, nil))
 		map[string]string{"amt": "USD/2 100", "dest": "carol"}, nil))
 	require.NoError(t, srcStore.Flush())
 
-	_, err := RunBackup(ctx, testLogger(), srcStore, storage, bucketID, "bk-full")
+	_, err := RunBackup(ctx, logging.Testing(), srcStore, storage, bucketID, "bk-full")
 	require.NoError(t, err)
 
 	atCheckpoint := readNumscriptRestoreView(t, srcStore)
@@ -335,7 +335,7 @@ set_tx_meta("route", "inline")`, nil, nil))
 
 	// After the checkpoint, every scripted variant: an inline script reading
 	// balances and writing account metadata, an exact library version, a
-	// library version saved inside the delta, and "latest" resolving to it.
+	// library version saved after the first checkpoint, and "latest" resolving to it.
 	src.apply(actions.CreateScriptTransactionAction(numscriptRestoreLedger, `vars {
   monetary $amt
 }
@@ -362,17 +362,17 @@ set_tx_meta("route", "inline")`, map[string]string{"amt": "USD/2 300"}, nil))
 	require.Equal(t, "bob-then-alice", live.metadata["erin/paid_by"].GetStringValue())
 	require.Len(t, live.library, 2)
 
-	inc, err := RunIncrementalBackup(ctx, testLogger(), srcStore, storage, bucketID, 0)
+	second, err := RunBackup(ctx, logging.Testing(), srcStore, storage, bucketID, "bk-second")
 	require.NoError(t, err)
-	require.Positive(t, inc.LogEntriesExported, "the post-checkpoint scripted orders must export")
-	require.Positive(t, inc.AuditEntriesExported, "the post-checkpoint scripted orders must export")
+	require.Greater(t, second.LastLogSequence, uint64(2), "the post-checkpoint scripted orders must be captured")
+	require.Positive(t, second.LastAuditSequence)
 
 	manifest, err := ReadManifest(ctx, storage, ManifestKey(bucketID))
 	require.NoError(t, err)
 	require.NotNil(t, manifest.Checkpoint)
-	require.NotEmpty(t, manifest.Exports)
+	require.Empty(t, manifest.Exports)
 
-	// The restored cluster: the checkpoint files, then the delta.
+	// The restored cluster reads the second complete checkpoint.
 	restored := restoreAuditKeyCheckpoint(t, storage, manifest)
 
 	requireNumscriptRestoreViewsEqual(t, live, readNumscriptRestoreView(t, restored))
@@ -384,7 +384,7 @@ set_tx_meta("route", "inline")`, map[string]string{"amt": "USD/2 300"}, nil))
 
 	// The next decision consumes the restored projection: a scripted payment
 	// out of @alice on the restored store succeeds against her restored
-	// balance, which the delta alone produced.
+	// balance, which only the second checkpoint captured.
 	require.NoError(t, attributes.PrepareForBackup(restored))
 	newScriptedNode(t, restored).apply(actions.CreateScriptRefTransactionAction(numscriptRestoreLedger, "pay", "1.0.0",
 		map[string]string{"amt": "USD/2 500", "dest": "carol"}, nil))
