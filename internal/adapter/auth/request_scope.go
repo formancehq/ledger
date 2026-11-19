@@ -122,7 +122,7 @@ func requiredScopeForLedgerApply(req *servicepb.LedgerApplyRequest) (Scope, bool
 
 	switch req.GetAction().GetData().(type) {
 	case *servicepb.LedgerAction_ExecuteNumscript:
-		return ScopeTransactionsWrite, true
+		return ScopeNumscriptExecute, true
 	case *servicepb.LedgerAction_CreateTransaction:
 		return ScopeTransactionsWrite, true
 	case *servicepb.LedgerAction_RevertTransaction:

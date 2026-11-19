@@ -3791,7 +3791,6 @@ type ExecuteNumscriptPayloadReader interface {
 	GetTimestamp() commonpb.TimestampReader
 	GetMetadata() ExecuteNumscriptPayload_MetadataMapReader
 	GetAccountMetadata() ExecuteNumscriptPayload_AccountMetadataMapReader
-	GetForce() bool
 	GetReference() string
 	Mutate() *ExecuteNumscriptPayload
 }
@@ -3828,10 +3827,6 @@ func (r *executeNumscriptPayloadReadonly) GetMetadata() ExecuteNumscriptPayload_
 
 func (r *executeNumscriptPayloadReadonly) GetAccountMetadata() ExecuteNumscriptPayload_AccountMetadataMapReader {
 	return executeNumscriptPayload_accountMetadataMapReadonly((*ExecuteNumscriptPayload)(r).GetAccountMetadata())
-}
-
-func (r *executeNumscriptPayloadReadonly) GetForce() bool {
-	return (*ExecuteNumscriptPayload)(r).GetForce()
 }
 
 func (r *executeNumscriptPayloadReadonly) GetReference() string {

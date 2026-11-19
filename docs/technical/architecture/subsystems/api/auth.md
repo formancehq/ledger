@@ -66,7 +66,7 @@ The lack of cache is deliberate at this stage — JWKS lookups are local to the 
 
 ### Scopes
 
-`internal/adapter/auth/scopes.go:21-36` defines 14 granular scopes:
+`internal/adapter/auth/scopes.go` defines 15 granular scopes:
 
 ```
 ledger:ReadLedger       ledger:WriteLedger
@@ -76,9 +76,10 @@ ledger:ReadAudit        ledger:WriteAudit
 ledger:ReadOps          ledger:WriteOps
 ledger:ReadQuery        ledger:WriteQuery
 ledger:ReadCluster      ledger:WriteCluster
+numscript:Execute
 ```
 
-Tokens may carry either **granular** scopes (used as-is) or **virtual** scopes (for example `ledger:read`, `ledger:write`, `ledger:admin`) that expand into a granular set via a configurable mapping (`scopes.go:58-113`). Granular scopes are always in the Ledger application namespace with the `ledger:<Action><Resource>` shape, matching the Membership scope convention. The mapping can be a JSON file, an environment variable, or a built-in default. Once expanded, only the granular form is consulted at authorization time. [RC.1 migration details](../../../../ops/authentication.md#migration-from-rc1-granular-labels) cover tokens, custom mappings, anonymous grants, and historical audit records.
+Tokens may carry either **granular** scopes (used as-is) or **virtual** scopes (for example `ledger:read`, `ledger:write`, `ledger:admin`) that expand into a granular set via a configurable mapping. Numscript execution requires `numscript:Execute`, which the default `ledger:write` mapping includes. The mapping can be a JSON file, an environment variable, or a built-in default. Once expanded, only the granular form is consulted at authorization time. [RC.1 migration details](../../../../ops/authentication.md#migration-from-rc1-granular-labels) cover tokens, custom mappings, anonymous grants, and historical audit records.
 
 ### Authorization enforcement
 

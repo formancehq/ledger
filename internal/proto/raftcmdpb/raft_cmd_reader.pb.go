@@ -3163,7 +3163,6 @@ type ExecuteNumscriptOrderReader interface {
 	GetTimestamp() commonpb.TimestampReader
 	GetMetadata() ExecuteNumscriptOrder_MetadataMapReader
 	GetAccountMetadata() ExecuteNumscriptOrder_AccountMetadataMapReader
-	GetForce() bool
 	GetReference() string
 	Mutate() *ExecuteNumscriptOrder
 }
@@ -3200,10 +3199,6 @@ func (r *executeNumscriptOrderReadonly) GetMetadata() ExecuteNumscriptOrder_Meta
 
 func (r *executeNumscriptOrderReadonly) GetAccountMetadata() ExecuteNumscriptOrder_AccountMetadataMapReader {
 	return executeNumscriptOrder_accountMetadataMapReadonly((*ExecuteNumscriptOrder)(r).GetAccountMetadata())
-}
-
-func (r *executeNumscriptOrderReadonly) GetForce() bool {
-	return (*ExecuteNumscriptOrder)(r).GetForce()
 }
 
 func (r *executeNumscriptOrderReadonly) GetReference() string {

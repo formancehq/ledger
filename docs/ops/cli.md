@@ -3608,7 +3608,6 @@ ledgerctl numscripts execute --ledger my-ledger --name transfer --version 1.0.0 
 | `--metadata` | | Transaction metadata in `key=value` format; requires a transaction-producing script |
 | `--reference` | | Transaction reference; requires postings. A metadata-only result returns `METADATA_ONLY_REFERENCE` if the reference passes length and uniqueness checks first. |
 | `--idempotency-key` | | Reuse the same batch key when retrying an execution |
-| `--force` | `false` | Bypass balance checks |
 | `--json`, `--yaml` | `false` | Structured result output |
 | `--timeout` | `10s` | Request timeout |
 

@@ -1220,7 +1220,6 @@ func (m *ExecuteNumscriptOrder) CloneVT() *ExecuteNumscriptOrder {
 	r.Script = m.Script.CloneVT()
 	r.NumscriptReference = m.NumscriptReference.CloneVT()
 	r.Timestamp = m.Timestamp.CloneVT()
-	r.Force = m.Force
 	r.Reference = m.Reference
 	if rhs := m.Metadata; rhs != nil {
 		tmpContainer := make(map[string]*commonpb.MetadataValue, len(rhs))
@@ -4472,9 +4471,6 @@ func (this *ExecuteNumscriptOrder) EqualVT(that *ExecuteNumscriptOrder) bool {
 				return false
 			}
 		}
-	}
-	if this.Force != that.Force {
-		return false
 	}
 	if this.Reference != that.Reference {
 		return false
@@ -9048,16 +9044,6 @@ func (m *ExecuteNumscriptOrder) MarshalToSizedBufferVT(dAtA []byte) (int, error)
 		i--
 		dAtA[i] = 0x3a
 	}
-	if m.Force {
-		i--
-		if m.Force {
-			dAtA[i] = 1
-		} else {
-			dAtA[i] = 0
-		}
-		i--
-		dAtA[i] = 0x30
-	}
 	if len(m.AccountMetadata) > 0 {
 		for k := range m.AccountMetadata {
 			v := m.AccountMetadata[k]
@@ -13189,9 +13175,6 @@ func (m *ExecuteNumscriptOrder) SizeVT() (n int) {
 			mapEntrySize := 1 + len(k) + protohelpers.SizeOfVarint(uint64(len(k))) + l
 			n += mapEntrySize + 1 + protohelpers.SizeOfVarint(uint64(mapEntrySize))
 		}
-	}
-	if m.Force {
-		n += 2
 	}
 	l = len(m.Reference)
 	if l > 0 {
@@ -21355,26 +21338,6 @@ func (m *ExecuteNumscriptOrder) UnmarshalVT(dAtA []byte) error {
 			}
 			m.AccountMetadata[mapkey] = mapvalue
 			iNdEx = postIndex
-		case 6:
-			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Force", wireType)
-			}
-			var v int
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				v |= int(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			m.Force = bool(v != 0)
 		case 7:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field Reference", wireType)

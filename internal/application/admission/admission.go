@@ -2038,7 +2038,7 @@ func (a *Admission) resolveScriptsAndEnrichNeeds(ctx context.Context, orders []*
 			createTx = &raftcmdpb.LedgerApplyOrder_CreateTransaction{CreateTransaction: &raftcmdpb.CreateTransactionOrder{
 				Script: execution.GetScript(), NumscriptReference: execution.GetNumscriptReference(),
 				Timestamp: execution.GetTimestamp(), Metadata: execution.GetMetadata(),
-				AccountMetadata: execution.GetAccountMetadata(), Force: execution.GetForce(), Reference: execution.GetReference(),
+				AccountMetadata: execution.GetAccountMetadata(), Reference: execution.GetReference(),
 			}}
 		}
 
@@ -2658,7 +2658,7 @@ func (a *Admission) convertApplyRequest(ctx context.Context, apply *servicepb.Le
 		}
 		order.Data = &raftcmdpb.LedgerApplyOrder_ExecuteNumscript{ExecuteNumscript: &raftcmdpb.ExecuteNumscriptOrder{
 			Script: execution.GetScript(), NumscriptReference: ref, Timestamp: execution.GetTimestamp(),
-			Metadata: execution.GetMetadata(), AccountMetadata: execution.GetAccountMetadata(), Force: execution.GetForce(),
+			Metadata: execution.GetMetadata(), AccountMetadata: execution.GetAccountMetadata(),
 			Reference: execution.GetReference(),
 		}}
 	case *servicepb.LedgerAction_AddMetadata:
