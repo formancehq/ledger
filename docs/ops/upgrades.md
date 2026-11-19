@@ -29,10 +29,12 @@ Outside a mandatory stopped boundary, when an RC image change also changes
 volume templates, the operator completes the RC rollout before recreating the
 StatefulSet for the volume change.
 Old and new voters must communicate and apply each committed entry identically
-while they coexist. The embedded operator requires a complete stop at the
+while they coexist. The embedded operator requires complete stops at the
 `v3.0.0-rc.4` boundary because RC.3 cannot execute native proposal payloads
-and encodes [mirror asset mappings](#mirror-asset-mappings) differently.
-`rc.3` includes the drain barrier used for this upgrade. RC adjacency remains mandatory.
+and encodes [mirror asset mappings](#mirror-asset-mappings) differently, and at
+`v3.0.0-rc.5` before capability 1 can select strengthened CreateLedger apply
+semantics. Both source releases include the drain barrier used for these
+upgrades. RC adjacency remains mandatory.
 The `rc.1` to `rc.2` transition rolls one voter at a time with a maintenance
 barrier that pauses writes; it does not stop the whole cluster.
 The `rc.2` to `rc.3` transition remains rolling.
@@ -80,12 +82,12 @@ stop all RC.4 voters and learners before starting RC.5 on the retained volumes.
 Startup migrates schema 2 to 3 atomically, then synchronizes the WAL before
 recovery, workers or listeners start. No history scan or external reconstruction
 is required. Keep the ordinary `ledger run` flags; there is no activation flag.
-The supported registry is empty until a separate feature registers an ID.
+This branch registers `CreateLedgerAccountTypesV2` as capability ID 1.
 
 Once every current member advertises a registered ID, the leader automatically
 commits a single activation control. Ordinary configuration keeps its own
 revision and proceeds independently. All audited order batches wait during activation,
-including immediately after drain release, and honors its original deadline.
+including immediately after drain release, and honor their original deadlines.
 Committed activation survives restart and leader change; it cannot be cancelled
 or downgraded. An interrupted uncommitted attempt is reevaluated from current
 membership after leader readiness. New members must support active IDs; membership
@@ -379,7 +381,8 @@ is retained. Install a compatible Operator to resume reconciliation.
 Use this only when the target release permits rolling upgrades and mixed-version
 validation passes. For RC.1 to RC.2, follow the
 [maintenance-barrier rolling procedure](#account-metadata-address-validation).
-For RC.3 to RC.4, use the [operator-required stopped restart](#operator-required-stopped-restart).
+For RC.3 to RC.4 and RC.4 to RC.5, use the
+[operator-required stopped restart](#operator-required-stopped-restart).
 
 Capability metadata is the prerequisite for any future incompatible Raft entry,
 execution-plan, replay, or snapshot format. This release does not support
@@ -388,6 +391,18 @@ binary everywhere, and restart the complete cluster. Once every voter and
 learner has committed support evidence, the leader automatically requests and
 activates each supported capability. There is no activation flag or extra
 operator setting. See the [capability contract](../technical/architecture/subsystems/consensus/capabilities.md).
+
+`CreateLedgerAccountTypesV2` (capability 1) is advertised by the RC.5 binary
+but remains inactive until the activation worker commits it after the
+operator-required RC.4 to RC.5 stopped restart and every member has committed
+support evidence. The operator does not activate the capability; Ledger's
+leader does. Business admission waits once the capability is ready until that
+activation commits. Before activation, initial account types retain the released
+syntax-only validation; after activation, new creations reject invalid segment
+constraints and conflicting patterns. Existing ledgers are not rewritten.
+Do not roll back to RC.4 after activation: it cannot interpret the active
+capability or any marked proposals committed afterward. Recover with RC.5
+and the preserved WAL and data volumes.
 
 Use this for RC updates after the mixed-version validation above passes:
 
@@ -624,6 +639,20 @@ is skipped, so it is a release gate for the PR that adds the boundary, not
 evidence that the source release itself needs a stop. The rc.4 release still
 needs format-specific migration, snapshot, backup/restore and rollback
 validation outside this scenario.
+
+Before publishing RC.5, run the same stopped-upgrade scenario from the
+published RC.4 binary to the exact RC.5 release-branch HEAD:
+
+```bash
+UPGRADE_TRANSITION=rc4-to-rc5 RELEASE_BRANCH=release/v3.0 just test-release-operator-upgrade
+```
+
+The harness requires the RC.5 operator to list the boundary and proves that
+all RC.4 Pods disappear before any RC.5 Pod starts, while non-empty data, PVC
+identities, replay, Raft progress and audit verification survive. Run it
+before relying on capability 1; the harness does not prove that automatic
+activation committed or test rollback after activation. Verify the committed
+activation before admitting CreateLedger requests that require the stronger rule.
 
 ## Coordinated Restart
 

@@ -43,14 +43,18 @@ func processCreateLedger(ledger string, order *raftcmdpb.CreateLedgerOrder, ctx 
 	// an embedded Name here would make the audited order diverge from what
 	// was accepted — and, with an idempotency key, make the pre-processing
 	// frozen outcome hash disagree with the checker's hash re-derived from
-	// the audited order (EN-1533). A nil map value has GetPattern()=="" and
-	// is rejected by ValidatePattern ("pattern must not be empty") before the
-	// clone, so every entry cloned below is guaranteed non-nil.
+	// the audited order (EN-1533). Nil map values are rejected by the pattern
+	// parser before cloning, so every entry cloned below is guaranteed non-nil.
 	var canonicalAccountTypes map[string]*commonpb.AccountType
+	var parsedAccountTypes map[string][]accounttype.PatternSegment
 	if src := order.GetAccountTypes(); len(src) > 0 {
 		canonicalAccountTypes = make(map[string]*commonpb.AccountType, len(src))
+		if ctx.createLedgerAccountTypesV2 {
+			parsedAccountTypes = make(map[string][]accounttype.PatternSegment, len(src))
+		}
 	}
-	for _, name := range slices.Sorted(maps.Keys(order.GetAccountTypes())) {
+	names := slices.Sorted(maps.Keys(order.GetAccountTypes()))
+	for i, name := range names {
 		at := order.GetAccountTypes()[name]
 		if len(name) > domain.MaxAccountTypeNameLength {
 			return nil, domain.ErrAccountTypeNameTooLong
@@ -61,12 +65,34 @@ func processCreateLedger(ledger string, order *raftcmdpb.CreateLedgerOrder, ctx 
 		if len(at.GetPattern()) > domain.MaxAccountTypePatternLength {
 			return nil, domain.ErrAccountTypePatternTooLong
 		}
-		if err := accounttype.ValidatePattern(at.GetPattern()); err != nil {
+		segments, err := accounttype.ParsePattern(at.GetPattern())
+		if err != nil {
 			return nil, &domain.ErrInvalidPattern{Pattern: at.GetPattern(), Details: err.Error()}
+		}
+		if ctx.createLedgerAccountTypesV2 {
+			if err := accounttype.ValidateSegmentTypes(segments, at.GetSegmentTypes()); err != nil {
+				return nil, &domain.ErrInvalidPattern{Pattern: at.GetPattern(), Details: err.Error()}
+			}
+			// Every preceding name was parsed and inserted successfully; the
+			// sorted prefix preserves deterministic conflict selection.
+			for _, existingName := range names[:i] {
+				if accounttype.PatternsConflict(segments, parsedAccountTypes[existingName]) {
+					existing := canonicalAccountTypes[existingName]
+
+					return nil, &domain.ErrAccountTypeConflict{
+						NewPattern:      at.GetPattern(),
+						ExistingName:    existingName,
+						ExistingPattern: existing.GetPattern(),
+					}
+				}
+			}
 		}
 		clone := at.CloneVT()
 		clone.Name = name
 		canonicalAccountTypes[name] = clone
+		if ctx.createLedgerAccountTypesV2 {
+			parsedAccountTypes[name] = segments
+		}
 	}
 
 	if _, exhausted := domain.CheckedNextLedgerID(s.GetNextLedgerID()); exhausted != nil {

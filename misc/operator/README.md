@@ -5,12 +5,15 @@ Kubernetes operator for deploying and managing high-availability [Formance Ledge
 The embedded operator can require a complete StatefulSet stop when an image
 upgrade crosses a listed release boundary. RC.3 to RC.4 crosses a mandatory
 boundary because RC.3 cannot execute native proposal payloads and encodes
-mirror asset mappings differently. The operator
-uses the drain barrier available from RC.3 to stop writes and wait for durable replication,
+mirror asset mappings differently. RC.4 to RC.5 also requires a stop before
+capability 1 can be activated for strengthened CreateLedger validation. The
+operator uses the drain barrier available from RC.3 to stop writes and wait for durable replication,
 retains the existing PVCs, waits for the old StatefulSet and Pods to disappear,
 then recreates the StatefulSet with the requested image. See the
 [stopped restart procedure](../../docs/ops/upgrades.md#operator-required-stopped-restart)
-for preflight, recovery and rollback limits. The rc.1-to-rc.2 transition
+for preflight, recovery and rollback limits. Ledger's activation worker commits
+capability 1 after all RC.5 members publish support evidence; the operator does
+not activate it. The rc.1-to-rc.2 transition
 uses a [maintenance-barrier rolling procedure](../../docs/ops/upgrades.md#account-metadata-address-validation):
 writes pause while voters are replaced one at a time. RC.2 to RC.3 remains rolling.
 

@@ -433,7 +433,8 @@ func TestMembership_OnSnapshotInstalled(t *testing.T) {
 	require.Equal(t, "new:1", got[1].RaftAddress)
 	require.Equal(t, "new:3", got[3].RaftAddress)
 	require.Equal(t, testSelfRaftAddr, got[testSelfNodeID].RaftAddress, "self must be re-upserted with local truth")
-	require.Empty(t, got[testSelfNodeID].Capabilities, "self evidence must reflect the running binary after snapshot restore")
+	require.Empty(t, got[testSelfNodeID].Capabilities,
+		"snapshot restore must not promote local support before a committed membership refresh")
 	require.NotContains(t, got, uint64(7))
 }
 

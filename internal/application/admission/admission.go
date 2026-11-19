@@ -26,6 +26,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/domain/processing/numscript"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
 	"github.com/formancehq/ledger/v3/internal/infra/capabilities"
+	"github.com/formancehq/ledger/v3/internal/infra/capabilities/catalog"
 	"github.com/formancehq/ledger/v3/internal/infra/health"
 	"github.com/formancehq/ledger/v3/internal/infra/membership"
 	"github.com/formancehq/ledger/v3/internal/infra/node"
@@ -837,6 +838,18 @@ func (a *Admission) buildPreload(ctx context.Context, cmd *raftcmdpb.Proposal, n
 }
 
 func (a *Admission) proposeAdmission(ctx context.Context, cmd *raftcmdpb.Proposal, build *plan.BuildResult) (*futures.Future[state.ApplyResult], func(), error) {
+	selectedBeforeActivation := false
+	if catalog.HasCreateLedger(cmd) {
+		policy, err := query.ReadClusterPolicy(a.store)
+		if err != nil {
+			build.ReleaseLoaders()
+
+			return nil, nil, fmt.Errorf("reading cluster policy for CreateLedger: %w", err)
+		}
+		catalog.SelectCreateLedgerValidation(cmd, policy)
+		selectedBeforeActivation = !capabilities.FromPolicy(policy).Activations[catalog.CreateLedgerAccountTypesV2]
+	}
+
 	// Step 5: Marshal + acquire proposal guard + set PredictedIndex
 	// + propose, all via the shared preload runner. The runner also
 	// patches PredictedIndex onto the pre-marshaled buffer (or
@@ -878,6 +891,12 @@ func (a *Admission) proposeAdmission(ctx context.Context, cmd *raftcmdpb.Proposa
 		if runResult != nil {
 			a.proposalGuardDurationHistogram.Record(ctx, runResult.LockHeldDuration.Seconds())
 			a.proposeDurationHistogram.Record(ctx, runResult.ProposeDuration.Seconds())
+		}
+		// The final gate can observe activation after this admission selected
+		// the legacy marker. Reprepare against the newly committed policy;
+		// other missing declarations remain hard errors at the gate.
+		if selectedBeforeActivation && errors.Is(err, capabilities.ErrMissingCapability) {
+			return nil, nil, fmt.Errorf("%w: CreateLedger capability activated during proposal: %w", capabilities.ErrActivationPending, err)
 		}
 		if errors.Is(err, capabilities.ErrActivationPending) {
 			return nil, nil, err
@@ -1069,8 +1088,8 @@ func (a *Admission) Barrier(ctx context.Context) (uint64, error) {
 	}
 
 	cmd := commands.NewCommand() // no orders = no-op
-	// The proposal factory stamps the semantic capability declaration and
-	// serializes this final command atomically.
+	// Barrier has no orders or capability declaration; the proposal factory
+	// serializes this final command.
 	a.commandSizeHistogram.Record(ctx, int64(cmd.SizeVT()))
 	proposal, err := node.NewProposal(cmd.GetId(), cmd)
 	if err != nil {

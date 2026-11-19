@@ -6,7 +6,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
 
 func capabilityState() State {
@@ -92,14 +91,6 @@ func TestEvaluateAllowsActiveCapabilityWhenAllMembersAdvertiseAndReachIt(t *test
 
 	require.True(t, decision.Allowed)
 	require.Empty(t, decision.Blockers)
-}
-
-func TestPrepareProposalClearsFutureDeclarations(t *testing.T) {
-	proposal := &raftcmdpb.Proposal{RequiredCapabilities: []uint32{99}}
-	prepared, err := PrepareProposal(proposal)
-	require.NoError(t, err)
-	require.Empty(t, prepared.RequiredCapabilities())
-	require.Empty(t, proposal.GetRequiredCapabilities())
 }
 
 func TestFromPolicyRoundTrip(t *testing.T) {
