@@ -114,7 +114,10 @@ func newScriptedNode(t *testing.T, store *dal.Store) *scriptedNode {
 		admission: admission.NewAdmission(store, logger,
 			&applyingProposer{t: t, machine: machine, store: store, tracker: tracker}, &membership.Coordinator{},
 			builder, meters, writeGate, keyStore, sharedState, attrs,
-			numscript.NewNumscriptCache(0), func(context.Context) error { return nil }),
+			numscript.NewNumscriptCache(0), func(context.Context) error { return nil },
+			func() (commonpb.ClusterPolicyReader, error) {
+				return machine.CommittedClusterPolicy(), nil
+			}),
 	}
 }
 

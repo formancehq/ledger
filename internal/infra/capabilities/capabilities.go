@@ -12,11 +12,17 @@ import (
 
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
+	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
 
 // CapabilityID is the stable numeric identity of a consensus capability.
 // The wire representation remains uint32 at protobuf and Raft JSON boundaries.
 type CapabilityID uint32
+
+const (
+	AccountIncarnationWritesV1          CapabilityID = 1
+	AccountIncarnationHistoryCompleteV1 CapabilityID = 2
+)
 
 // PreparedProposal is the opaque capability metadata produced while preparing
 // a final proposal. Callers can inspect it through RequiredCapabilities, but
@@ -32,10 +38,29 @@ func (p PreparedProposal) RequiredCapabilities() []CapabilityID {
 }
 
 // SupportedIDs is the immutable capability set implemented by this binary.
-// No protocol feature is activated yet; this empty registry keeps the
-// membership-evidence plumbing ready for the first real capability.
+// Data readiness for the second capability is advertised separately from
+// this binary support list by the local migration marker.
 func SupportedIDs() []CapabilityID {
-	return nil
+	return []CapabilityID{AccountIncarnationWritesV1, AccountIncarnationHistoryCompleteV1}
+}
+
+// IsActive reports the committed activation at the reader's apply position.
+func IsActive(policy *commonpb.ClusterPolicy, id CapabilityID) bool {
+	return IsActiveReader(policy.AsReader(), id)
+}
+
+// IsActiveReader checks a published read-only policy without cloning it.
+func IsActiveReader(policy commonpb.ClusterPolicyReader, id CapabilityID) bool {
+	if policy == nil {
+		return false
+	}
+	for _, activation := range policy.GetCapabilityActivations().Range {
+		if activation != nil && activation.GetId() == uint32(id) {
+			return activation.GetActive()
+		}
+	}
+
+	return false
 }
 
 type MemberRole uint8
@@ -105,7 +130,26 @@ func RequiredCapabilities(proposal *raftcmdpb.Proposal) ([]CapabilityID, error) 
 		return nil, fmt.Errorf("%w: nil proposal", ErrInvalidDeclaration)
 	}
 
+	for _, attr := range proposal.GetExecutionPlan().GetAttributes() {
+		if attr.GetAttrCode() == uint32(dal.SubAttrAccountIncarnation) {
+			return []CapabilityID{AccountIncarnationWritesV1}, nil
+		}
+	}
+
 	return nil, nil
+}
+
+// TouchesAccounts identifies the legacy proposal shape that must carry an
+// incarnation coverage marker after the write capability is activated.
+func TouchesAccounts(proposal *raftcmdpb.Proposal) bool {
+	for _, attr := range proposal.GetExecutionPlan().GetAttributes() {
+		switch attr.GetAttrCode() {
+		case uint32(dal.SubAttrVolume), uint32(dal.SubAttrMetadata):
+			return true
+		}
+	}
+
+	return false
 }
 
 // PrepareProposal derives and stamps the semantic capability declaration and
@@ -182,12 +226,18 @@ func FromPolicy(policy *commonpb.ClusterPolicy) State {
 // deterministic order. Nil activations and inactive entries are ignored so
 // callers can pass the result directly to membership admission gates.
 func ActiveIDs(policy *commonpb.ClusterPolicy) []uint32 {
+	return ActiveIDsReader(policy.AsReader())
+}
+
+// ActiveIDsReader derives a canonical capability list from a read-only policy.
+func ActiveIDsReader(policy commonpb.ClusterPolicyReader) []uint32 {
 	if policy == nil {
 		return nil
 	}
 
-	active := make([]uint32, 0, len(policy.GetCapabilityActivations()))
-	for _, activation := range policy.GetCapabilityActivations() {
+	activations := policy.GetCapabilityActivations()
+	active := make([]uint32, 0, activations.Len())
+	for _, activation := range activations.Range {
 		if activation != nil && activation.GetActive() {
 			active = append(active, activation.GetId())
 		}

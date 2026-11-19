@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -22,6 +23,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/domain/processing"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
 	"github.com/formancehq/ledger/v3/internal/infra/bloom"
+	"github.com/formancehq/ledger/v3/internal/infra/capabilities"
 	"github.com/formancehq/ledger/v3/internal/pkg/proposals"
 	"github.com/formancehq/ledger/v3/internal/pkg/signal"
 	"github.com/formancehq/ledger/v3/internal/proto/auditpb"
@@ -116,6 +118,10 @@ type Machine struct {
 	// applied index — it may be less than lastPersistedIndex captured before
 	// the crash, and Raft is expected to redeliver the missing entries.
 	lastPersistedIndex atomic.Uint64
+	// committedClusterPolicy is published only after the matching Pebble batch
+	// commits. Admission may read it without observing PrepareEntries' ahead-of-
+	// commit FSMState or taking fsm.mu.
+	committedClusterPolicy atomic.Pointer[commonpb.ClusterPolicy]
 
 	// writeSet is a reusable WriteSet for applyProposal. Since the FSM is
 	// single-goroutine, we can avoid per-proposal allocations by resetting
@@ -160,13 +166,13 @@ type Machine struct {
 	// replay path naturally idempotent — every replay of the entry
 	// re-asserts the membership row. EN-1413.
 	confChangeHandler             func(entry *raftpb.Entry, session *dal.WriteSession) error
-	capabilityPolicyCommitHandler func(*commonpb.ClusterPolicy)
+	capabilityPolicyCommitHandler func(commonpb.ClusterPolicyReader)
 }
 
 // NoopCapabilityPolicyCommitHandler is an explicit dependency for callers
 // that do not maintain an in-memory membership gate (for example replay and
 // isolated FSM tests). Production bootstrap injects the membership publisher.
-func NoopCapabilityPolicyCommitHandler(*commonpb.ClusterPolicy) {}
+func NoopCapabilityPolicyCommitHandler(commonpb.ClusterPolicyReader) {}
 
 // NewMachine constructs the hot-path FSM. It composes pre-built sub-objects
 // (Registry, CacheSnapshotter) so the constructor reads no Pebble and keeps
@@ -178,7 +184,7 @@ func NoopCapabilityPolicyCommitHandler(*commonpb.ClusterPolicy) {}
 // confChangeHandler is invoked from PrepareEntries for every
 // EntryConfChange* in the in-flight batch (see the field comment on
 // Machine). Must be non-nil.
-func NewMachine(logger logging.Logger, registry *StateRegistry, cacheSnapshotter *CacheSnapshotter, fileArtifacts dal.QueryCheckpoints, sentinel dal.SentinelFactory, meterProvider metric.MeterProvider, ks *keystore.KeyStore, sharedState *SharedState, notifier Notifier, bloomFilters *bloom.FilterSet, auditKey string, numscriptCacheSize int, confChangeHandler func(entry *raftpb.Entry, session *dal.WriteSession) error, capabilityPolicyCommitHandler func(*commonpb.ClusterPolicy)) (*Machine, error) {
+func NewMachine(logger logging.Logger, registry *StateRegistry, cacheSnapshotter *CacheSnapshotter, fileArtifacts dal.QueryCheckpoints, sentinel dal.SentinelFactory, meterProvider metric.MeterProvider, ks *keystore.KeyStore, sharedState *SharedState, notifier Notifier, bloomFilters *bloom.FilterSet, auditKey string, numscriptCacheSize int, confChangeHandler func(entry *raftpb.Entry, session *dal.WriteSession) error, capabilityPolicyCommitHandler func(commonpb.ClusterPolicyReader)) (*Machine, error) {
 	if capabilityPolicyCommitHandler == nil {
 		return nil, errors.New("capability policy commit handler is required")
 	}
@@ -336,6 +342,12 @@ func (fsm *Machine) ClusterPolicy() *commonpb.ClusterPolicy {
 	return fsm.State.ClusterPolicy.CloneVT()
 }
 
+// CommittedClusterPolicy returns a read-only snapshot of the last policy
+// committed to the main store. The published protobuf is never mutated.
+func (fsm *Machine) CommittedClusterPolicy() commonpb.ClusterPolicyReader {
+	return fsm.committedClusterPolicy.Load().AsReader()
+}
+
 // RestoreState atomically replaces the FSM-level state. The intended callers
 // are Recovery (at boot) and Synchronizer (after install-snapshot), which
 // build a fresh FSMState from Pebble via LoadFSMStateFromStore and swap it
@@ -353,6 +365,7 @@ func (fsm *Machine) ClusterPolicy() *commonpb.ClusterPolicy {
 // internal/infra/node/applier.go.
 func (fsm *Machine) RestoreState(s *FSMState) {
 	fsm.State = s
+	fsm.committedClusterPolicy.Store(s.ClusterPolicy.CloneVT())
 }
 
 // publishApplied advances lastPersistedIndex and wakes WaitForApplied
@@ -857,11 +870,14 @@ func (fsm *Machine) CommitPreparedBatch(ctx context.Context, pb *PreparedBatch) 
 	}
 
 	pb.batch = nil // committed, prevent double-close
+	if pb.capabilityPolicy != nil {
+		fsm.committedClusterPolicy.Store(pb.capabilityPolicy)
+	}
 	if pb.bloomReplacement {
 		fsm.BloomFilters.ConfirmPersistedReplacement(pb.bloomReplacementEpoch)
 	}
 	if fsm.capabilityPolicyCommitHandler != nil && pb.capabilityPolicy != nil {
-		fsm.capabilityPolicyCommitHandler(pb.capabilityPolicy)
+		fsm.capabilityPolicyCommitHandler(pb.capabilityPolicy.AsReader())
 	}
 
 	fsm.batchCommitHistogram.Record(ctx, time.Since(commitStart).Seconds())
@@ -1610,7 +1626,6 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 			}
 		}
 	}
-
 	// Process the proposal unless the dedup gate rejected it as a conflict
 	// (err set). Handlers see the gated Scope facade for state reads/writes;
 	// cross-order signals (schedule, sink config, cleanup, ...) are derived
@@ -1700,6 +1715,15 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 	}
 
 	transientErr := buffer.ValidateTransientVolumes(validateScope)
+	if transientErr == nil && slices.Contains(proposal.GetRequiredCapabilities(), uint32(capabilities.AccountIncarnationWritesV1)) {
+		for _, attr := range proposal.GetExecutionPlan().GetAttributes() {
+			if attr.GetAttrCode() == uint32(dal.SubAttrAccountIncarnation) {
+				transientErr = buffer.ensureAccountIncarnations(validateScope)
+
+				break
+			}
+		}
+	}
 
 	if err := transientErr; err != nil {
 		if _, uncommitted := errors.AsType[domain.UncommittedFailure](err); uncommitted {

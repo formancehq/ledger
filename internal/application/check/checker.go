@@ -25,6 +25,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/domain/processing"
 	domainreplay "github.com/formancehq/ledger/v3/internal/domain/replay"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
+	"github.com/formancehq/ledger/v3/internal/infra/incarnationmigration"
 	"github.com/formancehq/ledger/v3/internal/infra/state"
 	"github.com/formancehq/ledger/v3/internal/pkg/bitset"
 	"github.com/formancehq/ledger/v3/internal/pkg/cursor"
@@ -193,7 +194,11 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 		return err
 	}
 
-	return c.compareProjections(ctx, snap, peerSnap, storedMaxLogSeq, chainBound, folds, state, callback)
+	if err := c.compareProjections(ctx, snap, peerSnap, storedMaxLogSeq, chainBound, folds, state, callback); err != nil {
+		return err
+	}
+
+	return incarnationmigration.Verify(ctx, snap, c.logger)
 }
 
 // checkReplayState contains the audit-derived projections produced by the single

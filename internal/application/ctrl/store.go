@@ -1,6 +1,7 @@
 package ctrl
 
 import (
+	"errors"
 	"fmt"
 	"math/big"
 	"sort"
@@ -9,8 +10,11 @@ import (
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
+	"github.com/formancehq/ledger/v3/internal/infra/capabilities"
+	"github.com/formancehq/ledger/v3/internal/infra/incarnationmigration"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
+	"github.com/formancehq/ledger/v3/internal/query"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
 
@@ -150,8 +154,8 @@ func buildAccountVolumes(volEntries []attributes.ComputedEntry[*raftcmdpb.Volume
 }
 
 // scanAccount performs two forward scans — one for Volume and one for Metadata —
-// and returns an assembled Account. With the type-prefixed key layout, V and M
-// entries are in separate Pebble ranges.
+// and reads the account incarnation from the same Pebble snapshot. With the
+// type-prefixed key layout, V and M entries are in separate Pebble ranges.
 //
 // When diagLogger is non-nil, each Pebble entry is logged with its raft index
 // and attribute type to help diagnose snapshot divergence issues.
@@ -161,6 +165,7 @@ func scanAccount(
 	ledgerName string,
 	address string,
 	collapseColors bool,
+	includeDates bool,
 	diagLogger ...logging.Logger,
 ) (*commonpb.Account, error) {
 	var logger logging.Logger
@@ -191,6 +196,13 @@ func scanAccount(
 	if err != nil {
 		return nil, fmt.Errorf("scanning metadata: %w", err)
 	}
+	var incarnation *commonpb.AccountIncarnation
+	if includeDates {
+		incarnation, err = attrs.AccountIncarnation.Get(reader, canonicalBase)
+		if err != nil {
+			return nil, fmt.Errorf("reading account incarnation: %w", err)
+		}
+	}
 
 	if logger != nil {
 		logger.WithFields(map[string]any{
@@ -200,5 +212,33 @@ func scanAccount(
 		}).Tracef("scanAccount complete")
 	}
 
-	return assembleAccount(address, volEntries, metaEntries, collapseColors)
+	account, err := assembleAccount(address, volEntries, metaEntries, collapseColors)
+	if err != nil {
+		return nil, err
+	}
+	if incarnation != nil {
+		account.InsertionDate = incarnation.GetInsertedAt()
+		account.UpdatedAt = incarnation.GetUpdatedAt()
+	}
+
+	return account, nil
+}
+
+func accountDatesActive(reader dal.PebbleGetter) (bool, error) {
+	policy, err := query.ReadClusterPolicy(reader)
+	if err != nil {
+		return false, fmt.Errorf("reading account-date capability policy: %w", err)
+	}
+	if !capabilities.IsActive(policy, capabilities.AccountIncarnationHistoryCompleteV1) {
+		return false, nil
+	}
+	marker, err := incarnationmigration.ReadMarker(reader)
+	if err != nil {
+		return false, err
+	}
+	if !marker.Complete {
+		return false, errors.New("account history capability is active without a completed local migration")
+	}
+
+	return true, nil
 }

@@ -29,8 +29,8 @@ func TestNumscriptCompetingMetadataErrorsReachProposalPreparation(t *testing.T) 
 	}}}
 	orders := []*raftcmdpb.Order{order}
 	overlay := newBulkOverlay()
-	needs, perOrder, err := admission.extractPreloadNeeds(context.Background(), orders, overlay)
+	needs, perOrder, err := admission.extractPreloadNeeds(context.Background(), orders, overlay, true)
 	require.NoError(t, err)
-	require.NoError(t, admission.resolveScriptsAndEnrichNeeds(context.Background(), orders, overlay, needs, perOrder, true))
+	require.NoError(t, admission.resolveScriptsAndEnrichNeeds(context.Background(), orders, overlay, needs, perOrder, true, true))
 	require.False(t, order.GetTechnical().GetPreloadUnavailable())
 }

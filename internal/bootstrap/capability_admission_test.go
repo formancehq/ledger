@@ -9,6 +9,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/infra/node"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
+	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
 
 func TestValidateActiveRejectsIncompleteMembership(t *testing.T) {
@@ -61,4 +62,16 @@ func TestProposalCapabilityAdmissionRejectsActivationBeforeRaft(t *testing.T) {
 	)
 
 	require.ErrorIs(t, err, capabilities.ErrCapabilityUnsupported)
+}
+
+func TestProposalCapabilityAdmissionRejectsLegacyAccountWriteAfterActivation(t *testing.T) {
+	command := &raftcmdpb.Proposal{Id: 2, ExecutionPlan: &raftcmdpb.ExecutionPlan{Attributes: []*raftcmdpb.AttributeCoverage{{AttrCode: uint32(dal.SubAttrVolume)}}}}
+	proposal, err := node.NewProposal(2, command)
+	require.NoError(t, err)
+	err = validateProposalCapabilityAdmission(
+		&commonpb.ClusterPolicy{CapabilityActivations: []*commonpb.CapabilityActivation{{Id: uint32(capabilities.AccountIncarnationWritesV1), Active: true}}},
+		proposal,
+		[]capabilities.Member{{NodeID: 1, Role: capabilities.Voter, Capabilities: []capabilities.CapabilityID{capabilities.AccountIncarnationWritesV1}}},
+	)
+	require.ErrorContains(t, err, "missing incarnation coverage")
 }

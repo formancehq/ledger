@@ -204,6 +204,13 @@ linters:
       linters: [forbidigo]
     - path: internal/infra/backup/
       linters: [forbidigo]
+    # Account incarnation migration runs only in the explicit stopped-node
+    # command or against an isolated incoming checkpoint/restore store. Its
+    # bounded commits update durable attributes and the resume marker before
+    # the store is exposed to Raft or account reads.
+    - path: internal/infra/incarnationmigration/migration\.go$
+      linters: [forbidigo]
+      source: 'store\.OpenWriteSession\(\)'
     - path: internal/bootstrap/config_validation\.go
       linters: [forbidigo]
     # peer_store.go persists Raft cluster membership in Pebble. Writes

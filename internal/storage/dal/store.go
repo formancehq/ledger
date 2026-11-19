@@ -233,18 +233,19 @@ const (
 
 // Attribute sub-prefixes (zone 0x01), ordered by hot-path write frequency.
 const (
-	SubAttrVolume           byte = 0x01
-	SubAttrMetadata         byte = 0x02
-	SubAttrTransaction      byte = 0x03
-	SubAttrLedger           byte = 0x04
-	SubAttrBoundary         byte = 0x05
-	SubAttrReference        byte = 0x06
-	SubAttrLedgerMetadata   byte = 0x07
-	SubAttrSinkConfig       byte = 0x08
-	SubAttrNumscriptVersion byte = 0x09
-	SubAttrNumscriptContent byte = 0x0A
-	SubAttrPreparedQuery    byte = 0x0B
-	SubAttrIndex            byte = 0x0C
+	SubAttrVolume             byte = 0x01
+	SubAttrMetadata           byte = 0x02
+	SubAttrTransaction        byte = 0x03
+	SubAttrLedger             byte = 0x04
+	SubAttrBoundary           byte = 0x05
+	SubAttrReference          byte = 0x06
+	SubAttrLedgerMetadata     byte = 0x07
+	SubAttrSinkConfig         byte = 0x08
+	SubAttrNumscriptVersion   byte = 0x09
+	SubAttrNumscriptContent   byte = 0x0A
+	SubAttrPreparedQuery      byte = 0x0B
+	SubAttrIndex              byte = 0x0C
+	SubAttrAccountIncarnation byte = 0x0D
 )
 
 // Cache sub-prefixes (zone 0x02).
@@ -336,6 +337,10 @@ const (
 	// SubGlobMembershipFormat stores the format revision for the persisted
 	// cluster membership directory.
 	SubGlobMembershipFormat byte = 0x17
+	// SubGlobAccountIncarnationMigration is a node-local, checkpoint-carried
+	// backfill cursor and completion marker. It is written only while the node
+	// is suspended from Raft and never advances the applied index.
+	SubGlobAccountIncarnationMigration byte = 0x18
 )
 
 // ClusterTransient sub-prefixes (zone 0x07).
