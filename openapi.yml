@@ -1291,7 +1291,12 @@ paths:
         '204': {description: Value stored}
         '400': { $ref: '#/components/responses/BadRequest' }
         '404': { $ref: '#/components/responses/NotFound' }
-        '413': {description: Value exceeds 1 MiB}
+        '413':
+          description: Value exceeds 1 MiB (`BODY_TOO_LARGE`)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
     delete:
       summary: Delete a ledger KV value
       description: Removes a key. An absent key is accepted as a no-op and the order is audited. Requires `ledger:WriteKV` (included in the default `ledger:write` mapping).

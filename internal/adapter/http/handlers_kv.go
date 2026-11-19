@@ -56,7 +56,7 @@ func (s *Server) handlePutKV(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if len(value) > domain.MaxKVValueBytes {
-		http.Error(w, "KV value exceeds 1 MiB", http.StatusRequestEntityTooLarge)
+		writeErrorResponse(w, http.StatusRequestEntityTooLarge, "BODY_TOO_LARGE", errors.New("KV value exceeds 1 MiB"))
 
 		return
 	}
