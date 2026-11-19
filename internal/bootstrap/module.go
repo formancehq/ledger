@@ -139,12 +139,12 @@ func newCapabilityActivationReconciler(admission *admission.Admission, store *da
 		if !raftNode.IsLeader() {
 			return
 		}
-		if err := raftNode.RefreshSelfMembership(ctx, capabilities.IDsAsUint32(capabilities.SupportedIDs())); err != nil {
+		if err := raftNode.RefreshSelfMembership(ctx, capabilities.IDsAsUint32(catalog.SupportedIDs())); err != nil {
 			logger.WithFields(map[string]any{"error": err}).Errorf("Capability evidence refresh failed; activation will retry")
 
 			return
 		}
-		if err := activateReadyCapabilities(ctx, admission.AdmitCapabilityTransition, store, raftNode.IsLeader, raftNode.CapabilityMembers, capabilities.SupportedIDs()); err != nil {
+		if err := activateReadyCapabilities(ctx, admission.AdmitCapabilityTransition, store, raftNode.IsLeader, raftNode.CapabilityMembers, catalog.SupportedIDs()); err != nil {
 			logger.WithFields(map[string]any{"error": err}).Errorf("Capability activation failed; will retry from committed policy")
 		}
 	}, clusterPolicyReconcileInterval)}
@@ -1204,7 +1204,7 @@ func Module() fx.Option {
 // from the final command, while policy and membership are the committed
 // snapshots captured at the serialized admission boundary.
 func validateProposalCapabilityAdmission(policy *commonpb.ClusterPolicy, proposal *node.Proposal, members []capabilities.Member) error {
-	return validateProposalCapabilityAdmissionWithSupported(policy, proposal, members, capabilities.SupportedIDs())
+	return validateProposalCapabilityAdmissionWithSupported(policy, proposal, members, catalog.SupportedIDs())
 }
 
 func validateProposalCapabilityAdmissionWithSupported(policy *commonpb.ClusterPolicy, proposal *node.Proposal, members []capabilities.Member, supported []capabilities.CapabilityID) error {

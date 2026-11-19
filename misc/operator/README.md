@@ -11,9 +11,9 @@ operator uses the drain barrier available from RC.3 to stop writes and wait for 
 retains the existing PVCs, waits for the old StatefulSet and Pods to disappear,
 then recreates the StatefulSet with the requested image. See the
 [stopped restart procedure](../../docs/ops/upgrades.md#operator-required-stopped-restart)
-for preflight, recovery and rollback limits. Capability 1 remains inactive
-until an explicit policy activation after all RC.5 members refresh their
-evidence. The rc.1-to-rc.2 transition
+for preflight, recovery and rollback limits. Ledger's activation worker commits
+capability 1 after all RC.5 members publish support evidence; the operator does
+not activate it. The rc.1-to-rc.2 transition
 uses a [maintenance-barrier rolling procedure](../../docs/ops/upgrades.md#account-metadata-address-validation):
 writes pause while voters are replaced one at a time. RC.2 to RC.3 remains rolling.
 

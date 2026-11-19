@@ -79,12 +79,6 @@ func NewProposal(commandID uint64, command *raftcmdpb.Proposal) (*Proposal, erro
 
 	proposal := newProposal(commandID, data, required)
 	proposal.hasCreateLedger = catalog.HasCreateLedger(command)
-	// Validate the complete serialized command before it enters the Raft queue.
-	// SetPredictedIndex only appends a fixed-width index field afterward; it
-	// cannot change the payload or its capability declaration.
-	if err := catalog.ValidateSerializedDeclaration(data, proposal.requiredCapabilities); err != nil {
-		return nil, err
-	}
 	proposal.hasBusinessOrders = len(proposals.BatchOrders(command)) != 0
 	if transition := command.GetCapabilityActivation(); transition != nil {
 		proposal.activePolicyCapabilities = append(proposal.activePolicyCapabilities, capabilities.CapabilityID(transition.GetId()))

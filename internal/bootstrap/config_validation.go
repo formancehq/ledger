@@ -10,6 +10,7 @@ import (
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/infra/capabilities"
+	"github.com/formancehq/ledger/v3/internal/infra/capabilities/catalog"
 	"github.com/formancehq/ledger/v3/internal/infra/state"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/query"
@@ -168,7 +169,7 @@ func migrateControlState(store *dal.Store, config *commonpb.PersistedConfig) err
 	if policy == nil {
 		policy = &commonpb.ClusterPolicy{}
 	}
-	if err := capabilities.ValidateSupportedActive(policy, capabilities.SupportedIDs()); err != nil {
+	if err := capabilities.ValidateSupportedActive(policy, catalog.SupportedIDs()); err != nil {
 		return err
 	}
 	batch := store.OpenWriteSession()

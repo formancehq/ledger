@@ -30,14 +30,14 @@ func TestValidateActiveAcceptsNoActivation(t *testing.T) {
 	require.NoError(t, capabilities.ValidateActive(nil, nil, nil))
 }
 
-func TestProposalCapabilityAdmissionRecoversActiveWithoutIntent(t *testing.T) {
+func TestProposalCapabilityAdmissionRejectsUnmarkedCreateLedgerAfterActivation(t *testing.T) {
 	t.Parallel()
 	proposal, err := node.NewProposal(1, &raftcmdpb.Proposal{Orders: []*raftcmdpb.Order{{Type: &raftcmdpb.Order_LedgerScoped{LedgerScoped: &raftcmdpb.LedgerScopedOrder{Ledger: "l", Payload: &raftcmdpb.LedgerScopedOrder_CreateLedger{CreateLedger: &raftcmdpb.CreateLedgerOrder{}}}}}}})
 	require.NoError(t, err)
 	policy := &commonpb.ClusterPolicy{CapabilityActivations: []*commonpb.CapabilityActivation{{Id: 1, Active: true}}}
 	supported := []capabilities.CapabilityID{1}
 	members := []capabilities.Member{{NodeID: 1, Role: capabilities.Voter, Capabilities: supported}}
-	require.NoError(t, validateProposalCapabilityAdmissionWithSupported(policy, proposal, members, supported))
+	require.ErrorIs(t, validateProposalCapabilityAdmissionWithSupported(policy, proposal, members, supported), capabilities.ErrMissingCapability)
 }
 
 func TestValidateActiveAcceptsConvergedMembership(t *testing.T) {
@@ -140,7 +140,7 @@ func TestProposalCapabilityAdmissionSelectsCreateLedgerValidation(t *testing.T) 
 
 	unmarked, err := node.NewProposal(1, command)
 	require.NoError(t, err)
-	require.NoError(t, validateProposalCapabilityAdmission(&commonpb.ClusterPolicy{}, unmarked, members))
+	require.ErrorIs(t, validateProposalCapabilityAdmission(&commonpb.ClusterPolicy{}, unmarked, members), capabilities.ErrActivationPending)
 	require.ErrorIs(t, validateProposalCapabilityAdmission(active, unmarked, members), capabilities.ErrMissingCapability)
 
 	catalog.SelectCreateLedgerValidation(command, active)
@@ -148,6 +148,6 @@ func TestProposalCapabilityAdmissionSelectsCreateLedgerValidation(t *testing.T) 
 	require.NoError(t, err)
 	require.Equal(t, []capabilities.CapabilityID{id}, marked.RequiredCapabilities())
 	require.NoError(t, validateProposalCapabilityAdmission(active, marked, members))
-	require.ErrorIs(t, validateProposalCapabilityAdmission(&commonpb.ClusterPolicy{}, marked, members), capabilities.ErrCapabilityUnsupported)
+	require.ErrorIs(t, validateProposalCapabilityAdmission(&commonpb.ClusterPolicy{}, marked, members), capabilities.ErrActivationPending)
 	require.ErrorIs(t, validateProposalCapabilityAdmission(active, marked, []capabilities.Member{{NodeID: 1, Role: capabilities.Voter, Reachable: true}}), capabilities.ErrCapabilityUnsupported)
 }
