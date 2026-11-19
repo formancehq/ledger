@@ -3870,6 +3870,8 @@ func (node *Node) ForceRemoveNode(ctx context.Context, nodeID uint64) error {
 
 		// EN-1045: land the blacklist entry atomically with the peer
 		// row delete in a single Pebble batch.
+		node.proposalAdmissionMu.Lock()
+		defer node.proposalAdmissionMu.Unlock()
 		if err := node.membership.UnregisterAndBlacklist(nodeID, instanceID, uint64(time.Now().UnixMicro())); err != nil {
 			return fmt.Errorf("force-remove atomic batch: %w", err)
 		}

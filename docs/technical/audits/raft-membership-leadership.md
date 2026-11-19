@@ -85,8 +85,9 @@ Automatic discovery must check every voter and learner; final
 serialized admission must recheck activation against current membership.
 Activation uses one entry, without durable intermediate intent. Membership is
 fenced through durable apply; active IDs then become membership requirements.
-After leadership loss, admission and membership wait for the current-term no-op
-to apply before reevaluating current evidence. Business proposals wait from readiness through activation, including
+After leadership loss, admission and consensus-based membership changes wait
+for the current-term no-op to apply before reevaluating current evidence.
+Business proposals wait from readiness through activation, including
 after drain release, but ordinary configuration controls continue. Retrying a
 pre-submission activation barrier must release preparation guards, respect the
 caller deadline, preserve one caller action count, and never replay a submitted
@@ -94,6 +95,10 @@ future. Schema-3 migration is stopped, atomic and synchronized before serving;
 active state survives replay, snapshot and incremental restore. Exercise an
 uncommitted interrupted attempt, a committed activation with lost response,
 reopen, and an incompatible membership change winning before final admission.
+ForceRemoveNode is an emergency exception: it uses raw Raft leadership without
+WaitLeaderReady. It shares the membership coordinator with activation and
+serializes peer removal with final proposal admission. Previously admitted
+proposals may commit after the removal.
 Self routing refreshes on restart or snapshot install must not add positive
 support evidence. Require the leader's own ConfChange refresh before automatic
 activation, including single-member recovery and transient refresh failures.

@@ -59,16 +59,21 @@ Final admission pauses business proposals once all members support any locally
 implemented inactive capability. This gate remains true from discovery through
 activation apply, including after drain release: the capability stays inactive
 in the committed view, and the coordinator prevents membership evidence changes
-while the activation is in flight. Configuration and activation controls bypass
-the business fence. FSM apply never reads readiness or node-local configuration.
+while the activation is in flight. ForceRemoveNode shares that coordinator and
+serializes its local peer removal with final proposal admission. Configuration
+and activation controls bypass the business fence. FSM apply never reads
+readiness or node-local configuration.
 
 Leadership loss releases no durable intent because none exists. The new leader
-must pass WaitLeaderReady before admission or membership changes: application of
-the current-term no-op includes any inherited committed activation. If activation
+must pass WaitLeaderReady before admission or consensus-based membership changes:
+application of the current-term no-op includes any inherited committed activation. If activation
 survived, active membership constraints apply. Otherwise the worker and business
 gate reevaluate current evidence. An incompatible member ordered before a new
 activation prevents it; one ordered after activation must support it. An
 uncommitted attempt is not an irrevocable request and may be abandoned safely.
+Emergency ForceRemoveNode checks raw Raft leadership and bypasses this readiness
+wait to work without quorum. It only removes a member; it does not add support
+evidence. Proposals admitted before that removal may still commit afterward.
 
 Business admission holds an order batch rejected by this final barrier, then
 reprepares it from committed policy after a bounded poll interval. It releases
