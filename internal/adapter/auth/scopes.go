@@ -25,7 +25,7 @@ var (
 	ScopeLedgersWrite      Scope = "ledger:WriteLedger"
 	ScopeTransactionsRead  Scope = "ledger:ReadTransaction"
 	ScopeTransactionsWrite Scope = "ledger:WriteTransaction"
-	ScopeNumscriptExecute  Scope = "numscript:Execute"
+	ScopeExecuteNumscript  Scope = "ledger:ExecuteNumscript"
 	ScopeAccountsRead      Scope = "ledger:ReadAccount"
 	ScopeMetadataWrite     Scope = "ledger:WriteMetadata"
 	ScopeAuditRead         Scope = "ledger:ReadAudit"
@@ -44,7 +44,7 @@ var AllGranularScopes = map[Scope]struct{}{
 	ScopeLedgersWrite:      {},
 	ScopeTransactionsRead:  {},
 	ScopeTransactionsWrite: {},
-	ScopeNumscriptExecute:  {},
+	ScopeExecuteNumscript:  {},
 	ScopeAccountsRead:      {},
 	ScopeMetadataWrite:     {},
 	ScopeAuditRead:         {},
@@ -80,7 +80,7 @@ func DefaultMapping(service string) ScopeMapping {
 		service + ":write": {
 			ScopeLedgersWrite,
 			ScopeTransactionsWrite,
-			ScopeNumscriptExecute,
+			ScopeExecuteNumscript,
 			ScopeMetadataWrite,
 			ScopeAuditWrite,
 			ScopeOpsWrite,

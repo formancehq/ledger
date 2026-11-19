@@ -35,7 +35,7 @@ func NewHandler(logger logging.Logger, backend Backend, authCfg internalauth.Aut
 	requireLedgersWrite := internalauth.RequireScope(authCfg, internalauth.ScopeLedgersWrite)
 	requireTransactionsRead := internalauth.RequireScope(authCfg, internalauth.ScopeTransactionsRead)
 	requireTransactionsWrite := internalauth.RequireScope(authCfg, internalauth.ScopeTransactionsWrite)
-	requireNumscriptExecute := internalauth.RequireScope(authCfg, internalauth.ScopeNumscriptExecute)
+	requireNumscriptExecute := internalauth.RequireScope(authCfg, internalauth.ScopeExecuteNumscript)
 	requireAccountsRead := internalauth.RequireScope(authCfg, internalauth.ScopeAccountsRead)
 	requireAuditRead := internalauth.RequireScope(authCfg, internalauth.ScopeAuditRead)
 	requireMetadataWrite := internalauth.RequireScope(authCfg, internalauth.ScopeMetadataWrite)
