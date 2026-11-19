@@ -264,9 +264,9 @@ var _ = Describe("Restore", Ordered, func() {
 			_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.SaveAccountMetadataAction(ledgerName, "alice", map[string]string{"role": "customer"})))
 			Expect(err).To(Succeed())
 
-			// eve is funded BEFORE the checkpoint (input=1000, output=0). Its 0xFF
-			// cache entry is captured in the checkpoint; the drain below (post
-			// checkpoint) makes that cache entry stale. Phase 3 exercises it via apply.
+			// eve is funded before the first checkpoint (input=1000, output=0),
+			// then drained before the later checkpoint. Phase 3 verifies that
+			// restore seeds a cold cache from the updated attribute value.
 			_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
 				actions.NewPosting("world", "eve", big.NewInt(1000), "USD"),
 			}, nil, nil)))
@@ -442,7 +442,7 @@ var _ = Describe("Restore", Ordered, func() {
 
 			_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
 				actions.NewPosting("world", "erin", big.NewInt(2500), "USD"),
-			}, map[string]string{"type": "second-incremental"}, nil)))
+			}, map[string]string{"type": "second-checkpoint"}, nil)))
 			Expect(err).To(Succeed())
 
 			resp, err := clusterClient.Backup(ctx, &clusterpb.BackupRequest{

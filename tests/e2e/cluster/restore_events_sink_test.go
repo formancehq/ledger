@@ -52,7 +52,7 @@ func removeRestoreEventSink(name string) *servicepb.Request {
 	}}
 }
 
-// The checkpoint contains a configured sink while the exported delta contains
+// The first checkpoint contains a configured sink while the later checkpoint contains
 // its removal. A real restore must preserve the source's durable absence, pass
 // CheckStore, and allow the same sink name to be admitted again.
 var _ = Describe("Restore removed event sink", Ordered, func() {
@@ -124,7 +124,7 @@ var _ = Describe("Restore removed event sink", Ordered, func() {
 		Expect(err).To(Succeed())
 	})
 
-	Describe("source checkpoint and delta", Ordered, func() {
+	Describe("source checkpoints before and after sink removal", Ordered, func() {
 		var (
 			server        *testservice.Service
 			client        servicepb.BucketServiceClient
@@ -173,7 +173,7 @@ var _ = Describe("Restore removed event sink", Ordered, func() {
 			Expect(backupResp.GetTotalFiles()).To(BeNumerically(">", 0))
 		})
 
-		It("removes the sink in a non-empty exported delta", func() {
+		It("removes the sink before the later checkpoint", func() {
 			_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", removeRestoreEventSink(sinkName)))
 			Expect(err).To(Succeed())
 
@@ -183,7 +183,7 @@ var _ = Describe("Restore removed event sink", Ordered, func() {
 
 			incResp, err := clusterClient.Backup(ctx, &clusterpb.BackupRequest{Storage: storage()})
 			Expect(err).To(Succeed())
-			Expect(incResp.GetTotalFiles()).To(BeNumerically(">", 0), "the removal log must be exported")
+			Expect(incResp.GetTotalFiles()).To(BeNumerically(">", 0), "the later checkpoint must capture the sink removal")
 		})
 	})
 
@@ -218,7 +218,7 @@ var _ = Describe("Restore removed event sink", Ordered, func() {
 			Expect(server.Stop(stopCtx)).To(Succeed())
 		})
 
-		It("downloads and finalizes the checkpoint plus delta", func() {
+		It("downloads and finalizes the later checkpoint", func() {
 			startResp, err := restoreClient.StartDownloadBackup(ctx, &restorepb.StartDownloadBackupRequest{Storage: storage()})
 			Expect(err).To(Succeed())
 			Eventually(func() restorepb.DownloadState {

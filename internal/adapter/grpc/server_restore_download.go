@@ -293,8 +293,8 @@ func (s *RestoreServiceServerImpl) prepareDownload(
 }
 
 // executeDownload transitions the job to RUNNING, downloads every checkpoint
-// file in parallel, then opens the staging store and applies incremental
-// exports. The returned store is non-nil only on success.
+// file in parallel, then opens the complete staging store. The returned store
+// is non-nil only on success.
 func (s *RestoreServiceServerImpl) executeDownload(
 	ctx context.Context,
 	job *downloadJob,

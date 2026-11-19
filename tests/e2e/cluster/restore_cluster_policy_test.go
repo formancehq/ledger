@@ -123,7 +123,7 @@ var _ = Describe("Restore replicated cluster policy", Ordered, func() {
 		Expect(err).To(Succeed())
 	})
 
-	Describe("Phase 1: post-checkpoint policy revision in the exported delta", Ordered, func() {
+	Describe("Phase 1: post-checkpoint policy revision before the later backup", Ordered, func() {
 		var (
 			sourceServer  *testservice.Service
 			client        servicepb.BucketServiceClient
@@ -188,7 +188,7 @@ var _ = Describe("Restore replicated cluster policy", Ordered, func() {
 		It("bumps the policy and writes business data after the checkpoint", func() {
 			// Restart with a higher desired revision. The leader-side reconciler
 			// submits the internal policy command, keeping it out of Apply while
-			// still producing the post-checkpoint delta.
+			// still producing a policy change for the later checkpoint.
 			stopCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
 			Expect(sourceServer.Stop(stopCtx)).To(Succeed())
 			cancel()
@@ -202,13 +202,13 @@ var _ = Describe("Restore replicated cluster policy", Ordered, func() {
 			waitForClusterPolicy(client, postCheckpointRevision, postCheckpointLimit)
 
 			// A business write proves the gate is open (policy committed) and puts
-			// a post-checkpoint ledger in the delta, so a dropped delta on restore
-			// surfaces as a missing ledger rather than passing silently.
+			// a post-checkpoint ledger in the later backup, so a missing checkpoint
+			// update surfaces as a missing ledger rather than passing silently.
 			_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction(deltaLedger, nil)))
 			Expect(err).To(Succeed())
 		})
 
-		It("exports a non-empty delta", func() {
+		It("publishes the later checkpoint", func() {
 			incResp, err := clusterClient.Backup(ctx, &clusterpb.BackupRequest{Storage: storage()})
 			Expect(err).To(Succeed())
 			Expect(incResp.GetTotalFiles()).To(BeNumerically(">", 0))
@@ -311,9 +311,9 @@ var _ = Describe("Restore replicated cluster policy", Ordered, func() {
 			_ = os.RemoveAll(restoreDataDir)
 		})
 
-		It("restored the post-checkpoint delta", func() {
+		It("restored the post-checkpoint ledger", func() {
 			_, err := client.GetLedger(ctx, &servicepb.GetLedgerRequest{Ledger: deltaLedger})
-			Expect(err).To(Succeed(), "the post-checkpoint ledger must be restored from the delta")
+			Expect(err).To(Succeed(), "the post-checkpoint ledger must be restored from the later checkpoint")
 		})
 
 		It("restored the post-checkpoint operational policy", func() {
