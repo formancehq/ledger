@@ -1,6 +1,7 @@
 package state
 
 import (
+	"context"
 	"sync/atomic"
 	"testing"
 	"testing/synctest"
@@ -12,6 +13,44 @@ import (
 
 	"github.com/formancehq/ledger/v3/internal/pkg/signal"
 )
+
+func TestQueryCheckpointSchedulerLeaseProposal(t *testing.T) {
+	t.Parallel()
+
+	synctest.Test(t, func(t *testing.T) {
+		type leaseKey struct{}
+		lease := &struct{}{}
+		var enabled atomic.Bool
+		var calls atomic.Int32
+		s := NewQueryCheckpointScheduler(logging.Testing(), func() bool { return true },
+			func() string { return "* * * * * *" }, func() error {
+				t.Fatal("legacy proposal called")
+
+				return nil
+			}, signal.New())
+		s.SetLeaseProposal(func() context.Context {
+			if !enabled.Load() {
+				return nil
+			}
+
+			return context.WithValue(context.Background(), leaseKey{}, lease)
+		}, func(ctx context.Context) error {
+			require.Same(t, lease, ctx.Value(leaseKey{}))
+			calls.Add(1)
+
+			return nil
+		})
+		s.Start()
+		time.Sleep(2 * time.Second)
+		synctest.Wait()
+		require.Zero(t, calls.Load())
+		enabled.Store(true)
+		time.Sleep(2 * time.Second)
+		synctest.Wait()
+		require.Equal(t, int32(2), calls.Load())
+		s.Stop()
+	})
+}
 
 func TestQueryCheckpointSchedulerStartStop(t *testing.T) {
 	t.Parallel()

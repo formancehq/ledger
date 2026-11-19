@@ -50,11 +50,14 @@ stale is closed before worker startup. Once ownership transfers to a Worker,
 Existing workers are torn down by reconciliation after canceled construction
 unwinds, or by `Stop` after the manager loop exits.
 
-Initialization cancellation does not provide atomic authorization for worker
-startup or proposals. The existing post-start generation check still stops a
-worker if leadership changes across startup. Shared Node leadership leases and
-lease-scoped runtime execution are separate work (EN-1963). Cancellation also
-cannot undo an external operation that has already completed.
+Initialization cancellation alone does not authorize worker startup or
+proposals. The Manager registers and starts a prepared worker in one short
+authorization callback under the captured Node lease gate. Source construction,
+database reads, stopping, and draining remain outside that gate. The worker
+runtime context descends from the lease and its proposals retain that token
+through Node acceptance. Manager generations still reject obsolete
+reconciliation and Stop still drains workers when Node remains leader.
+Cancellation cannot undo an external operation already accepted by its source.
 
 The Worker (`worker.go:27-175`) is a polling loop:
 

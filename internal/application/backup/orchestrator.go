@@ -110,6 +110,23 @@ func (r *ExecutorRegistry) tryRegister(jobID uint64) bool {
 	return true
 }
 
+// tryRegisterAuthorized takes the registry mutex before entering the lease
+// gate. The callback only performs in-memory map operations, so revocation
+// cannot linearize between authorization and marker insertion.
+func (r *ExecutorRegistry) tryRegisterAuthorized(jobID uint64, lease LeadershipLease) (authorized, owner bool) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	authorized = lease.Authorize(func() {
+		if _, exists := r.jobs[jobID]; exists {
+			return
+		}
+		r.jobs[jobID] = struct{}{}
+		owner = true
+	})
+
+	return authorized, owner
+}
+
 func (r *ExecutorRegistry) deregister(jobID uint64) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -126,108 +143,49 @@ func (r *ExecutorRegistry) IsAlive(jobID uint64) bool {
 	return ok
 }
 
-// Orchestrator drives the FSM lifecycle of a backup job. The caller
-// (today: the gRPC handlers on the leader) holds the connection open
-// while the job runs; the orchestrator emits proposals on its behalf.
-//
-// Backups run under a leadership-scoped context. When leadership
-// transfers, OnLeadershipChange(false) cancels that context, which
-// propagates to every in-flight RunFull/RunIncremental, aborts the
-// S3 SDK request mid-flight, and lets the goroutine exit promptly.
-// Without this, an old leader's executor would keep writing to S3
-// while the new leader's cleanup loop frees the destination slot —
-// the second writer race flemzord raised on PR #401.
+// LeadershipLease is the node-owned tenure captured for one backup run. The
+// bootstrap adapter attaches its concrete node token to proposal contexts.
+type LeadershipLease interface {
+	Context() context.Context
+	Authorize(func()) bool
+	ProposalContext(context.Context) context.Context
+}
+
+// LeaseProvider returns the currently active leadership tenure, if any.
+type LeaseProvider interface {
+	CurrentLeadershipLease() LeadershipLease
+}
+
+// Orchestrator drives the FSM lifecycle of a backup job. A run captures one
+// tenure, so leadership loss cancels its upload and rejects later proposals.
 type Orchestrator struct {
-	proposer Proposer
-	store    *dal.Store
-	logger   logging.Logger
-	nodeID   uint64
-	registry *ExecutorRegistry
-
-	// maxSegmentBytes caps each incremental export segment before it splits.
-	// 0 lets RunIncrementalBackup pick its default.
+	proposer        Proposer
+	store           *dal.Store
+	logger          logging.Logger
+	nodeID          uint64
+	registry        *ExecutorRegistry
+	leases          LeaseProvider
 	maxSegmentBytes int64
-
-	// mu guards leaderCtx / leaderCancel. RunFull/RunIncremental read
-	// leaderCtx once and derive a child context for the run; the read
-	// is under the lock so a concurrent OnLeadershipChange cannot
-	// swap leaderCtx in the middle of the read.
-	mu           sync.Mutex
-	leaderCtx    context.Context
-	leaderCancel context.CancelFunc
 }
 
-// NewOrchestrator wires the dependencies. nodeID is stamped onto each
-// Start proposal so operator-facing history shows which node drove the
-// job.
-//
-// The orchestrator starts in a non-leader state: leaderCtx is an
-// already-cancelled context, so any RunFull/RunIncremental called
-// before OnLeadershipChange(true) returns immediately with the
-// cancellation error. Bootstrap calls OnLeadershipChange on startup
-// (and on every transition thereafter) so the orchestrator's state
-// tracks the node's actual leadership.
-func NewOrchestrator(proposer Proposer, store *dal.Store, logger logging.Logger, nodeID uint64, registry *ExecutorRegistry, maxSegmentBytes int64) *Orchestrator {
-	cancelled, cancel := context.WithCancel(context.Background())
-	cancel()
-
-	return &Orchestrator{
-		proposer:        proposer,
-		store:           store,
-		logger:          logger.WithField("cmp", "backup-orchestrator"),
-		nodeID:          nodeID,
-		registry:        registry,
-		maxSegmentBytes: maxSegmentBytes,
-		leaderCtx:       cancelled,
-		leaderCancel:    cancel,
-	}
+func NewOrchestrator(proposer Proposer, store *dal.Store, logger logging.Logger, nodeID uint64, registry *ExecutorRegistry, maxSegmentBytes int64, leases LeaseProvider) *Orchestrator {
+	return &Orchestrator{proposer: proposer, store: store, logger: logger.WithField("cmp", "backup-orchestrator"), nodeID: nodeID, registry: registry, maxSegmentBytes: maxSegmentBytes, leases: leases}
 }
 
-// Registry exposes the in-memory executor registry. The cleanup loop
-// uses it to tell orphan jobs from live ones.
+// Registry exposes the in-memory executor registry to cleanup.
 func (o *Orchestrator) Registry() *ExecutorRegistry { return o.registry }
 
-// OnLeadershipChange is wired by bootstrap onto every node leadership
-// transition. On gain: install a fresh leaderCtx so subsequent
-// RunFull / RunIncremental calls run under a context that survives
-// only while this node is leader. On loss: cancel that context — every
-// in-flight upload's runCtx unblocks, the S3 SDK aborts its request,
-// the executor goroutine returns runErr and deregisters itself. The
-// proposeTerminal call on the way out also fails (we are no longer
-// leader to propose) and is logged but not retried; the new leader's
-// cleanup loop then proposes Fail for the orphan it inherited via FSM
-// state.
-func (o *Orchestrator) OnLeadershipChange(isLeader bool) {
-	o.mu.Lock()
-	defer o.mu.Unlock()
-
-	o.leaderCancel()
-
-	if isLeader {
-		o.leaderCtx, o.leaderCancel = context.WithCancel(context.Background())
-	}
-}
-
-// runContext returns a context that is cancelled when either the
-// caller's ctx ends OR leadership is lost. The returned cancel must
-// be called by the caller (deferred) to release the watcher goroutine
-// even on the happy path.
-func (o *Orchestrator) runContext(ctx context.Context) (context.Context, context.CancelFunc) {
-	o.mu.Lock()
-	leaderCtx := o.leaderCtx
-	o.mu.Unlock()
-
+// runContext binds the upload to the caller and the captured tenure.
+func (o *Orchestrator) runContext(ctx context.Context, lease LeadershipLease) (context.Context, context.CancelFunc) {
 	runCtx, cancel := context.WithCancel(ctx)
+	if lease == nil {
+		cancel()
 
-	go func() {
-		select {
-		case <-leaderCtx.Done():
-			cancel()
-		case <-runCtx.Done():
-		}
-	}()
+		return runCtx, cancel
+	}
+	stop := context.AfterFunc(lease.Context(), cancel)
 
-	return runCtx, cancel
+	return runCtx, func() { stop(); cancel() }
 }
 
 // RunFull proposes a full BackupOrder.Start, drives backup.RunBackup
@@ -245,7 +203,8 @@ func (o *Orchestrator) RunFull(ctx context.Context, dst *raftcmdpb.BackupDestina
 	// mid-flight — the S3 SDK respects ctx and aborts in-flight
 	// requests, so the second-writer race after a leadership transfer
 	// closes deterministically.
-	runCtx, cancelRun := o.runContext(ctx)
+	lease := o.leases.CurrentLeadershipLease()
+	runCtx, cancelRun := o.runContext(ctx, lease)
 	defer cancelRun()
 
 	// Register BEFORE proposing Start so the cleanup tick — which can
@@ -260,7 +219,15 @@ func (o *Orchestrator) RunFull(ctx context.Context, dst *raftcmdpb.BackupDestina
 	// (different destination). In both cases we MUST NOT deregister on
 	// exit — that would yank the other job's liveness and the cleanup
 	// loop would orphan-fail a valid in-flight backup.
-	deregisterOnExit := o.registry.tryRegister(jobID)
+	if lease == nil {
+		return nil, context.Canceled
+	}
+	// Acquire the registry lock before entering the lease gate. The callback
+	// only inserts a map marker; the collision loser never owns removal.
+	authorized, deregisterOnExit := o.registry.tryRegisterAuthorized(jobID, lease)
+	if !authorized {
+		return nil, context.Canceled
+	}
 	defer func() {
 		if deregisterOnExit {
 			o.registry.deregister(jobID)
@@ -271,7 +238,7 @@ func (o *Orchestrator) RunFull(ctx context.Context, dst *raftcmdpb.BackupDestina
 	// rejections. They flow back as the typed sentinels through
 	// proposeTechnical's apply-error wrapping (%w), so errors.Is at
 	// the caller still recognises them.
-	if err := o.proposeAndWait(runCtx, fullStart(jobID, dst, o.nodeID)); err != nil {
+	if err := o.proposeAndWait(lease.ProposalContext(runCtx), fullStart(jobID, dst, o.nodeID)); err != nil {
 		return nil, fmt.Errorf("propose backup start: %w", err)
 	}
 
@@ -284,7 +251,7 @@ func (o *Orchestrator) RunFull(ctx context.Context, dst *raftcmdpb.BackupDestina
 
 	result, runErr := backup.RunBackup(runCtx, o.logger, o.store, storage, dst.GetBucketId(), checkpointName)
 	if runErr != nil {
-		o.proposeTerminal(fullFail(jobID, runErr.Error()), jobID, "fail")
+		o.proposeTerminal(lease, fullFail(jobID, runErr.Error()), jobID, "fail")
 
 		return nil, runErr
 	}
@@ -292,7 +259,7 @@ func (o *Orchestrator) RunFull(ctx context.Context, dst *raftcmdpb.BackupDestina
 	termCtx, cancel := context.WithTimeout(context.Background(), TerminalProposeTimeout)
 	defer cancel()
 
-	if err := o.proposeAndWait(termCtx, fullComplete(jobID, result)); err != nil {
+	if err := o.proposeAndWait(lease.ProposalContext(termCtx), fullComplete(jobID, result)); err != nil {
 		o.logger.WithFields(map[string]any{
 			"jobID": jobID,
 			"error": err,
@@ -308,24 +275,33 @@ func (o *Orchestrator) RunFull(ctx context.Context, dst *raftcmdpb.BackupDestina
 func (o *Orchestrator) RunIncremental(ctx context.Context, dst *raftcmdpb.BackupDestination, storage backup.Storage) (*backup.IncrementalBackupResult, error) {
 	jobID := commands.GenerateRandomID()
 
-	runCtx, cancelRun := o.runContext(ctx)
+	lease := o.leases.CurrentLeadershipLease()
+	runCtx, cancelRun := o.runContext(ctx, lease)
 	defer cancelRun()
 
 	// See RunFull for the tryRegister rationale — same reasoning.
-	deregisterOnExit := o.registry.tryRegister(jobID)
+	if lease == nil {
+		return nil, context.Canceled
+	}
+	// Acquire the registry lock before entering the lease gate. The callback
+	// only inserts a map marker; the collision loser never owns removal.
+	authorized, deregisterOnExit := o.registry.tryRegisterAuthorized(jobID, lease)
+	if !authorized {
+		return nil, context.Canceled
+	}
 	defer func() {
 		if deregisterOnExit {
 			o.registry.deregister(jobID)
 		}
 	}()
 
-	if err := o.proposeAndWait(runCtx, incrementalStart(jobID, dst, o.nodeID)); err != nil {
+	if err := o.proposeAndWait(lease.ProposalContext(runCtx), incrementalStart(jobID, dst, o.nodeID)); err != nil {
 		return nil, fmt.Errorf("propose incremental start: %w", err)
 	}
 
 	result, runErr := backup.RunIncrementalBackup(runCtx, o.logger, o.store, storage, dst.GetBucketId(), o.maxSegmentBytes)
 	if runErr != nil {
-		o.proposeTerminal(incrementalFail(jobID, runErr.Error()), jobID, "incremental fail")
+		o.proposeTerminal(lease, incrementalFail(jobID, runErr.Error()), jobID, "incremental fail")
 
 		return nil, runErr
 	}
@@ -333,7 +309,7 @@ func (o *Orchestrator) RunIncremental(ctx context.Context, dst *raftcmdpb.Backup
 	termCtx, cancel := context.WithTimeout(context.Background(), TerminalProposeTimeout)
 	defer cancel()
 
-	if err := o.proposeAndWait(termCtx, incrementalComplete(jobID, result)); err != nil {
+	if err := o.proposeAndWait(lease.ProposalContext(termCtx), incrementalComplete(jobID, result)); err != nil {
 		o.logger.WithFields(map[string]any{
 			"jobID": jobID,
 			"error": err,
@@ -351,11 +327,11 @@ func (o *Orchestrator) RunIncremental(ctx context.Context, dst *raftcmdpb.Backup
 // a propose-level error to, so we log and continue. The bounded
 // context (vs bare context.Background) caps how long a stuck propose
 // can keep the handler goroutine alive if leadership is lost.
-func (o *Orchestrator) proposeTerminal(populate func(*raftcmdpb.Proposal), jobID uint64, kind string) {
+func (o *Orchestrator) proposeTerminal(lease LeadershipLease, populate func(*raftcmdpb.Proposal), jobID uint64, kind string) {
 	ctx, cancel := context.WithTimeout(context.Background(), TerminalProposeTimeout)
 	defer cancel()
 
-	if err := o.proposeAndWait(ctx, populate); err != nil {
+	if err := o.proposeAndWait(lease.ProposalContext(ctx), populate); err != nil {
 		o.logger.WithFields(map[string]any{
 			"jobID": jobID,
 			"kind":  kind,

@@ -2,6 +2,17 @@
 
 Two leader-only background workers that tail the global log.
 
+Both managers start from a `LeaderReadyEvent` carrying Node's exact leadership
+lease. They perform sink/source construction and persisted-state reads outside
+the lease gate, then authorize local registration and nonblocking worker start
+against synchronous lease revocation. Worker runtime contexts descend from the
+lease and proposal contexts retain its token through Node dequeue. Manager-local
+Stop still prevents recreation and drains workers even if Node remains leader.
+The existing manager generations remain reconciliation and cleanup guards; the
+Node lease is the authority for new leader-only work. Cancellation interrupts
+cooperative local reads and writes, but cannot revoke a delivery already
+accepted by an external sink or source.
+
 - **Events** (`internal/application/events`) — emits domain events (transaction created, metadata changed, etc.) to external sinks: NATS, Kafka, ClickHouse, Databricks, HTTP webhooks. At-least-once delivery, Raft-replicated cursors.
 - **Mirror** (`internal/application/mirror`) — runs per-ledger ingest from an external source (HTTP or PostgreSQL) and translates the source's logs into `MirrorIngest` Raft commands.
 

@@ -5,6 +5,17 @@ features deployed with a coordinated stop-and-restart. It is separate from the
 client-facing gRPC protocol revision. This release does not implement a
 mixed-version rolling activation path.
 
+## Process-local leadership leases
+
+Leadership leases fence local producer work and proposal admission during a
+leadership transfer. The lease identity and epoch exist only in the Node process;
+neither is encoded in a Raft proposal, persisted state, snapshot, or backup.
+Revoking a lease rejects work that has not reached Raft. Entries already accepted
+by Raft retain their original bytes and apply semantics on every voter. This is
+backward-compatible with the existing capability and replay contracts and does
+not require a new capability ID or service protocol revision. The consensus
+documentation describes the authorization and cancellation order.
+
 ## Wire contract
 
 `common.ClusterPolicy` carries the replicated activation state.

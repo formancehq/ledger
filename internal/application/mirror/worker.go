@@ -81,9 +81,10 @@ type Worker struct {
 	// and it is idempotent.
 	statusClearConfirmed bool
 
-	notify  signal.Signal
-	w       worker.Worker
-	backoff time.Duration // current backoff duration (0 = no backoff)
+	notify    signal.Signal
+	w         worker.Worker
+	runCancel context.CancelFunc
+	backoff   time.Duration // current backoff duration (0 = no backoff)
 	// lastAppliedV2LogID caches LedgerBoundaries.last_mirror_v2_log_id, the
 	// sole durable authority for the ingestion position. It is an
 	// optimisation only: it is seeded from the boundary, advanced solely
@@ -188,12 +189,22 @@ func NewWorker(
 
 // Start begins the background sync loop.
 func (w *Worker) Start() {
+	w.StartWithContext(context.Background())
+}
+
+// StartWithContext ties source reads and proposal waits to the leadership lease.
+func (w *Worker) StartWithContext(parent context.Context) {
+	ctx, cancel := context.WithCancel(parent)
+	w.runCancel = cancel
 	w.w = worker.New()
-	w.w.RunCtx(w.loop)
+	w.w.Run(func(<-chan struct{}) { w.loop(ctx) })
 }
 
 // Stop gracefully stops the sync loop and closes the source.
 func (w *Worker) Stop() {
+	if w.runCancel != nil {
+		w.runCancel()
+	}
 	w.w.Stop()
 	_ = w.source.Close() // best-effort cleanup
 }

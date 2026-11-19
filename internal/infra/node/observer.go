@@ -6,12 +6,18 @@ import "context"
 // Emitted synchronously in the Raft processing loop, BEFORE the FSM catches up.
 type LeadershipChangeEvent struct {
 	IsLeader bool
+	// Epoch orders every local gain and loss. On loss, Lease identifies the
+	// revoked tenure; on gain, it identifies the newly issued tenure.
+	Epoch uint64
+	Lease *LeadershipLease
 }
 
 // LeaderReadyEvent is emitted after a node becomes leader AND the FSM has
 // caught up with all committed entries. At this point, the Pebble state is
 // up to date and it is safe to read persisted config and propose updates.
 type LeaderReadyEvent struct {
+	Epoch uint64
+	Lease *LeadershipLease
 	// Context is cancelled on leadership loss or terminal node shutdown.
 	// Synchronous observers must use it for blocking work so the generation
 	// can join them before releasing their dependencies.

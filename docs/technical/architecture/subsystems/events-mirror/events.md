@@ -243,8 +243,8 @@ If no notification arrives (e.g., after restart), the emitter polls at a configu
 
 The event system is gated by both the node's leader status and the presence of sink configs:
 
-- **On leader readiness**: The Raft observer records `Manager.OnLeadershipChange(true)` synchronously on `LeaderReadyEvent`, once the FSM has applied the new leader's no-op entry. A leader elected while its store is behind its Raft log reaches that point only after fetching a checkpoint and replaying its spool, so the sink configs the Manager reads are current. The Manager's lifecycle-owned loop reconciles the latest recorded generation and starts one Emitter per configured sink.
-- **On losing leadership**: The Raft observer records `Manager.OnLeadershipChange(false)` synchronously. The same loop tears down all Emitters and Sinks; reconciliation from a superseded generation is discarded.
+- **On leader readiness**: The Raft observer records the event's exact Node lease with `Manager.OnLeadershipLease` once the FSM has applied the new leader's no-op entry. A leader elected while its store is behind its Raft log reaches that point only after fetching a checkpoint and replaying its spool, so the sink configs the Manager reads are current. The Manager's lifecycle-owned loop reconciles the latest recorded generation and starts one Emitter per configured sink. Registration and nonblocking start are authorized together under the lease gate; construction and startup waits stay outside it.
+- **On losing leadership**: Node synchronously revokes the lease and the Raft observer records `Manager.OnLeadershipLease(nil)`. The same loop tears down all Emitters and Sinks; reconciliation from a superseded generation is discarded. Emitter runtime and proposal contexts retain the captured lease.
 - **On config change (while leader)**: The FSM signals the Manager via a `Signal` notification. The Manager reconciles by diffing the desired sink configs against the currently running emitters — only sinks that were added, removed, or changed are affected; unchanged sinks keep running.
 - **Followers**: Never emit events, regardless of config.
 

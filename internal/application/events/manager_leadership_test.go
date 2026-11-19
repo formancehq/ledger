@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"sync"
 	"testing"
 	"time"
 
@@ -135,4 +136,58 @@ func TestManager_CoalescedLeadershipFlapReplacesPriorGenerationEmitter(t *testin
 
 		return current != nil && current != previous
 	}, time.Second, 10*time.Millisecond, "an emitter from before the loss must not be retained by the new leader generation")
+}
+
+type testLeadershipLease struct {
+	mu     sync.Mutex
+	ctx    context.Context
+	cancel context.CancelFunc
+}
+
+func newTestLeadershipLease() *testLeadershipLease {
+	ctx, cancel := context.WithCancel(context.Background())
+
+	return &testLeadershipLease{ctx: ctx, cancel: cancel}
+}
+
+func (l *testLeadershipLease) Context() context.Context { return l.ctx }
+func (l *testLeadershipLease) Epoch() uint64            { return 1 }
+func (l *testLeadershipLease) Authorize(fn func()) bool {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if l.ctx.Err() != nil {
+		return false
+	}
+	fn()
+
+	return true
+}
+func (l *testLeadershipLease) Revoke() { l.mu.Lock(); l.cancel(); l.mu.Unlock() }
+
+func TestManager_LeaseRevocationFencesStartup(t *testing.T) {
+	t.Parallel()
+	m := &Manager{notifications: signal.NewNotifications()}
+	lease := newTestLeadershipLease()
+	m.OnLeadershipLease(lease)
+	generation, _, _ := m.leadershipSnapshot()
+	ctx, current := m.currentLeaderContext(generation)
+	require.True(t, current)
+	lease.Revoke()
+	require.ErrorIs(t, ctx.Err(), context.Canceled)
+	require.False(t, m.isCurrentLeader(generation))
+}
+
+func TestManager_RevokedLeaseCannotStartPreparedSink(t *testing.T) {
+	t.Parallel()
+	m := &Manager{notifications: signal.NewNotifications(), emitters: make(map[string]*managedSink)}
+	lease := newTestLeadershipLease()
+	m.OnLeadershipLease(lease)
+	generation, _, _ := m.leadershipSnapshot()
+	ctx, current := m.currentLeaderContext(generation)
+	require.True(t, current)
+	prepared := &managedSink{emitter: &Emitter{}}
+	lease.Revoke()
+	require.False(t, m.registerSink(generation, "prepared", prepared, ctx))
+	require.Empty(t, m.emitters)
+	require.Nil(t, prepared.emitter.stopCh, "revoked lease must not launch emitter")
 }

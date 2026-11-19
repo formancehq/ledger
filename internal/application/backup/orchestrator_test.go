@@ -117,15 +117,38 @@ func extractIncrementalOrder(p *raftcmdpb.Proposal) *raftcmdpb.IncrementalBackup
 	return nil
 }
 
-// newOrchestrator returns an Orchestrator already in the leader state so
-// most tests don't need to call OnLeadershipChange. Tests that
-// explicitly exercise leadership transitions construct the orchestrator
-// directly and drive OnLeadershipChange themselves.
-func newOrchestrator(prop Proposer, store *dal.Store) *Orchestrator {
-	o := NewOrchestrator(prop, store, logging.Testing(), 1, NewExecutorRegistry(), 0)
-	o.OnLeadershipChange(true)
+type testLeadershipLease struct {
+	ctx             context.Context
+	cancel          context.CancelFunc
+	beforeAuthorize func()
+}
 
-	return o
+func newTestLeadershipLease() *testLeadershipLease {
+	ctx, cancel := context.WithCancel(context.Background())
+
+	return &testLeadershipLease{ctx: ctx, cancel: cancel}
+}
+func (l *testLeadershipLease) Context() context.Context { return l.ctx }
+func (l *testLeadershipLease) Authorize(fn func()) bool {
+	if l.beforeAuthorize != nil {
+		l.beforeAuthorize()
+	}
+	if l.ctx.Err() != nil {
+		return false
+	}
+	fn()
+
+	return true
+}
+func (l *testLeadershipLease) ProposalContext(ctx context.Context) context.Context { return ctx }
+
+type testLeaseProvider struct{ lease LeadershipLease }
+
+func (p *testLeaseProvider) CurrentLeadershipLease() LeadershipLease { return p.lease }
+
+func newOrchestrator(prop Proposer, store *dal.Store) *Orchestrator {
+	return NewOrchestrator(prop, store, logging.Testing(), 1, NewExecutorRegistry(), 0,
+		&testLeaseProvider{lease: newTestLeadershipLease()})
 }
 
 func TestProposalBuilders_Full(t *testing.T) {
@@ -233,56 +256,27 @@ func TestProposeAndWait(t *testing.T) {
 	})
 }
 
-// TestOrchestrator_LeadershipChangeCancelsRunCtx pins flemzord's
-// fencing concern: when leadership transfers mid-backup, the old
-// leader's runCtx must cancel so the S3 upload aborts. Without this,
-// the new leader's cleanup loop frees the destination slot while the
-// old executor keeps writing, opening a two-writer race.
-//
-// We do not run a real backup here — RunFull is mostly upstream of
-// the leaderCtx hook anyway. The test instead asserts the contract
-// directly: runContext returns a child ctx of leaderCtx, and
-// OnLeadershipChange(false) cancels the ctx within the watcher
-// goroutine's window.
-func TestOrchestrator_LeadershipChangeCancelsRunCtx(t *testing.T) {
+func TestOrchestrator_LeaseRevocationCancelsRunCtx(t *testing.T) {
 	t.Parallel()
-
 	synctest.Test(t, func(t *testing.T) {
+		lease := newTestLeadershipLease()
 		o := newOrchestrator(nil, nil)
-		o.OnLeadershipChange(true)
-
-		runCtx, cancel := o.runContext(context.Background())
+		runCtx, cancel := o.runContext(context.Background(), lease)
 		defer cancel()
-		require.NoError(t, runCtx.Err(), "runCtx must be live while we are leader")
-
-		o.OnLeadershipChange(false)
-
-		// Wait returns once the watcher goroutine has observed leaderCtx.
+		require.NoError(t, runCtx.Err())
+		lease.cancel()
 		synctest.Wait()
-		require.ErrorIs(t, runCtx.Err(), context.Canceled, "runCtx must cancel when leadership is lost")
+		require.ErrorIs(t, runCtx.Err(), context.Canceled)
 	})
 }
 
-// TestOrchestrator_NonLeaderRunCtxStartsCancelled pins the
-// constructor's documented contract: before OnLeadershipChange(true)
-// runs at boot, RunFull / RunIncremental must short-circuit
-// immediately rather than start a backup that nothing will Complete.
 func TestOrchestrator_NonLeaderRunCtxStartsCancelled(t *testing.T) {
 	t.Parallel()
-
-	synctest.Test(t, func(t *testing.T) {
-		// Construct the orchestrator directly (not via newOrchestrator,
-		// which would call OnLeadershipChange(true)) so leaderCtx is the
-		// constructor's already-cancelled context.
-		o := NewOrchestrator(nil, nil, logging.Testing(), 1, NewExecutorRegistry(), 0)
-
-		runCtx, cancel := o.runContext(context.Background())
-		defer cancel()
-
-		synctest.Wait()
-		require.ErrorIs(t, runCtx.Err(), context.Canceled,
-			"runCtx must be cancelled when the orchestrator has not seen leadership")
-	})
+	o := NewOrchestrator(nil, nil, logging.Testing(), 1, NewExecutorRegistry(), 0,
+		&testLeaseProvider{})
+	runCtx, cancel := o.runContext(context.Background(), o.leases.CurrentLeadershipLease())
+	defer cancel()
+	require.ErrorIs(t, runCtx.Err(), context.Canceled)
 }
 
 // TestExecutorRegistry covers the in-memory liveness API the cleanup
@@ -290,6 +284,40 @@ func TestOrchestrator_NonLeaderRunCtxStartsCancelled(t *testing.T) {
 // crypto/rand jobID-collision case: only the first registrar owns the
 // liveness marker, so a subsequent caller (whose Start the FSM will
 // reject) must NOT pull the entry out on its way back.
+// Revocation immediately before the registration gate prevents both the
+// liveness marker and Start proposal from an old leader.
+func TestOrchestrator_RevokedBeforeRegistration(t *testing.T) {
+	t.Parallel()
+	for _, run := range []struct {
+		name string
+		call func(*Orchestrator) error
+	}{
+		{"full", func(o *Orchestrator) error {
+			_, err := o.RunFull(context.Background(), testDestination(), nil)
+
+			return err
+		}},
+		{"incremental", func(o *Orchestrator) error {
+			_, err := o.RunIncremental(context.Background(), testDestination(), nil)
+
+			return err
+		}},
+	} {
+		t.Run(run.name, func(t *testing.T) {
+			t.Parallel()
+			lease := newTestLeadershipLease()
+			lease.beforeAuthorize = lease.cancel
+			registry := NewExecutorRegistry()
+			prop := NewMockProposer(gomock.NewController(t))
+			o := NewOrchestrator(prop, nil, logging.Testing(), 1, registry, 0, &testLeaseProvider{lease: lease})
+			require.ErrorIs(t, run.call(o), context.Canceled)
+			registry.mu.RLock()
+			defer registry.mu.RUnlock()
+			require.Empty(t, registry.jobs)
+		})
+	}
+}
+
 func TestExecutorRegistry(t *testing.T) {
 	t.Parallel()
 
@@ -319,7 +347,7 @@ func TestProposeTerminal(t *testing.T) {
 		capture := &proposalCapture{}
 		prop := recordingProposer(t, capture, nil)
 		o := newOrchestrator(prop, nil)
-		o.proposeTerminal(fullFail(7, "boom"), 7, "fail")
+		o.proposeTerminal(o.leases.CurrentLeadershipLease(), fullFail(7, "boom"), 7, "fail")
 		require.Len(t, capture.all(), 1)
 	})
 
@@ -327,7 +355,7 @@ func TestProposeTerminal(t *testing.T) {
 		t.Parallel()
 		prop := erroringProposer(t, errors.New("down"))
 		o := newOrchestrator(prop, nil)
-		o.proposeTerminal(fullFail(7, "boom"), 7, "fail") // must not panic
+		o.proposeTerminal(o.leases.CurrentLeadershipLease(), fullFail(7, "boom"), 7, "fail") // must not panic
 	})
 }
 
