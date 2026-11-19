@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/accounts"
+	"github.com/formancehq/ledger/v3/cmd/ledgerctl/kv"
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/ledgers"
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/transactions"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
@@ -44,6 +45,7 @@ func newTestRootCommand() *cobra.Command {
 	rootCmd.AddCommand(ledgers.NewCommand())
 	rootCmd.AddCommand(accounts.NewCommand())
 	rootCmd.AddCommand(transactions.NewCommand())
+	rootCmd.AddCommand(kv.NewCommand())
 
 	return rootCmd
 }

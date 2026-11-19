@@ -13,6 +13,12 @@ import (
 
 func TestDecodeAtomicApplyBatch(t *testing.T) {
 	t.Parallel()
+	t.Run("KV commands preserve opaque bytes", func(t *testing.T) {
+		batch, err := decodeAtomicApplyBatch([]byte(`{"requests":[{"putKv":{"ledger":"a","key":"k","value":"AQID"}},{"deleteKv":{"ledger":"a","key":"k"}}]}`))
+		require.NoError(t, err)
+		require.Equal(t, []byte{1, 2, 3}, batch.GetRequests()[0].GetPutKv().GetValue())
+		require.Equal(t, "k", batch.GetRequests()[1].GetDeleteKv().GetKey())
+	})
 	t.Run("exact amounts timestamps and typed metadata", func(t *testing.T) {
 		batch, err := decodeAtomicApplyBatch([]byte(`{"requests":[{"apply":{"ledger":"a","action":{"createTransaction":{"postings":[{"source":"world","destination":"a","asset":"USD","amount":9007199254740993}],"timestamp":"2026-01-01T00:00:00Z","metadata":{"large":{"intValue":"9007199254740993"},"text":{"stringValue":"9007199254740993"}}}}}}]}`))
 		require.NoError(t, err)
@@ -24,7 +30,7 @@ func TestDecodeAtomicApplyBatch(t *testing.T) {
 	})
 	t.Run("every request variant", func(t *testing.T) {
 		fields := (&servicepb.Request{}).ProtoReflect().Descriptor().Fields()
-		require.Equal(t, 27, fields.Len())
+		require.Equal(t, 29, fields.Len())
 		for i := range fields.Len() {
 			field := fields.Get(i)
 			value := `{}`

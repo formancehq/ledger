@@ -306,3 +306,39 @@ func TestSystemScopedOrderType_ProtoExhaustive(t *testing.T) {
 			field.Name(), "unknown")
 	}
 }
+
+func TestLedgerScopedOrderType_ProtoExhaustive(t *testing.T) {
+	t.Parallel()
+	payload := (&raftcmdpb.LedgerScopedOrder{}).ProtoReflect().Descriptor().Oneofs().ByName("payload")
+	require.NotNil(t, payload)
+	fields := payload.Fields()
+	for i := range fields.Len() {
+		field := fields.Get(i)
+		if string(field.Name()) == "apply" {
+			continue // The nested LedgerApplyOrder has its own variant classifier.
+		}
+		order := &raftcmdpb.LedgerScopedOrder{}
+		m := order.ProtoReflect()
+		m.Set(field, m.NewField(field))
+		got := domain.AuditOrderType(&raftcmdpb.Order{Type: &raftcmdpb.Order_LedgerScoped{LedgerScoped: order}})
+		require.NotEqualf(t, "unknown", got, "LedgerScopedOrder.payload.%s has no audit token", field.Name())
+	}
+}
+
+func TestKVOrderAuditTypes(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name    string
+		payload *raftcmdpb.LedgerScopedOrder
+		want    string
+	}{
+		{"put", &raftcmdpb.LedgerScopedOrder{Payload: &raftcmdpb.LedgerScopedOrder_PutKv{PutKv: &raftcmdpb.PutKVOrder{}}}, "put_kv"},
+		{"delete", &raftcmdpb.LedgerScopedOrder{Payload: &raftcmdpb.LedgerScopedOrder_DeleteKv{DeleteKv: &raftcmdpb.DeleteKVOrder{}}}, "delete_kv"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			order := &raftcmdpb.Order{Type: &raftcmdpb.Order_LedgerScoped{LedgerScoped: tc.payload}}
+			require.Equal(t, tc.want, domain.AuditOrderType(order))
+		})
+	}
+}

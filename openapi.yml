@@ -1241,6 +1241,84 @@ paths:
         '405':
           $ref: '#/components/responses/MethodNotAllowed'
 
+  /v3/{ledgerName}/kv/{key}:
+    get:
+      summary: Get a ledger KV value
+      description: Returns the opaque bytes stored under a key in one ledger. Requires `ledger:ReadKV` (included in the default `ledger:read` mapping).
+      operationId: v3GetKV
+      x-speakeasy-name-override: GetKV
+      tags: [Ledgers]
+      security:
+        - BearerAuth: []
+        - {}
+      parameters:
+        - $ref: '#/components/parameters/LedgerName'
+        - name: key
+          in: path
+          required: true
+          description: UTF-8 text key containing 1 to 256 bytes (the byte limit also applies to multibyte characters).
+          schema: {type: string, minLength: 1, maxLength: 256}
+      responses:
+        '200':
+          description: Opaque value
+          content:
+            application/octet-stream:
+              schema: {type: string, format: binary}
+        '404': { $ref: '#/components/responses/NotFound' }
+    put:
+      summary: Put a ledger KV value
+      description: Replaces the value for a key. The mutation is Raft replicated and audited. Requires `ledger:WriteKV` (included in the default `ledger:write` mapping).
+      operationId: v3PutKV
+      x-speakeasy-name-override: PutKV
+      tags: [Ledgers]
+      security:
+        - BearerAuth: []
+        - {}
+      parameters:
+        - $ref: '#/components/parameters/LedgerName'
+        - name: key
+          in: path
+          required: true
+          description: UTF-8 text key containing 1 to 256 bytes (the byte limit also applies to multibyte characters).
+          schema: {type: string, minLength: 1, maxLength: 256}
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/octet-stream:
+            schema: {type: string, format: binary, maxLength: 1048576}
+      responses:
+        '204': {description: Value stored}
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '413':
+          description: Value exceeds 1 MiB (`BODY_TOO_LARGE`)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    delete:
+      summary: Delete a ledger KV value
+      description: Removes a key. An absent key is accepted as a no-op and the order is audited. Requires `ledger:WriteKV` (included in the default `ledger:write` mapping).
+      operationId: v3DeleteKV
+      x-speakeasy-name-override: DeleteKV
+      tags: [Ledgers]
+      security:
+        - BearerAuth: []
+        - {}
+      parameters:
+        - $ref: '#/components/parameters/LedgerName'
+        - name: key
+          in: path
+          required: true
+          description: UTF-8 text key containing 1 to 256 bytes (the byte limit also applies to multibyte characters).
+          schema: {type: string, minLength: 1, maxLength: 256}
+        - $ref: '#/components/parameters/IdempotencyKey'
+      responses:
+        '204': {description: Key absent}
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
   /v3/{ledgerName}/metadata:
     post:
       summary: Save ledger metadata
@@ -4629,6 +4707,14 @@ components:
         ledger:
           type: string
       type: object
+    AtomicApplyDeleteKVRequest:
+      additionalProperties: false
+      properties:
+        key:
+          type: string
+        ledger:
+          type: string
+      type: object
     AtomicApplyDeleteLedgerRequest:
       additionalProperties: false
       properties:
@@ -5214,6 +5300,18 @@ components:
         ledger:
           type: string
       type: object
+    AtomicApplyPutKVRequest:
+      additionalProperties: false
+      properties:
+        key:
+          type: string
+        ledger:
+          type: string
+        value:
+          type: string
+          format: byte
+          description: Base64-encoded opaque value bytes.
+      type: object
     AtomicApplyQueryFilter:
       additionalProperties: false
       allOf:
@@ -5388,6 +5486,10 @@ components:
                 - saveLedgerMetadata
             - required:
                 - deleteLedgerMetadata
+            - required:
+                - putKv
+            - required:
+                - deleteKv
       properties:
         addAccountType:
           $ref: '#/components/schemas/AtomicApplyAddAccountTypeLedgerRequest'
@@ -5405,6 +5507,8 @@ components:
           $ref: '#/components/schemas/AtomicApplyCreateQueryCheckpointRequest'
         deleteLedger:
           $ref: '#/components/schemas/AtomicApplyDeleteLedgerRequest'
+        deleteKv:
+          $ref: '#/components/schemas/AtomicApplyDeleteKVRequest'
         deleteLedgerMetadata:
           $ref: '#/components/schemas/AtomicApplyDeleteLedgerMetadataRequest'
         deletePreparedQuery:
@@ -5417,6 +5521,8 @@ components:
           $ref: '#/components/schemas/AtomicApplyDropIndexRequest'
         promoteLedger:
           $ref: '#/components/schemas/AtomicApplyPromoteLedgerRequest'
+        putKv:
+          $ref: '#/components/schemas/AtomicApplyPutKVRequest'
         registerSigningKey:
           $ref: '#/components/schemas/AtomicApplyRegisterSigningKeyRequest'
         removeAccountType:

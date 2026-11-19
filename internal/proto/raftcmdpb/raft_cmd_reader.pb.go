@@ -6198,3 +6198,140 @@ func (l attributeIDListReadonly) Range(yield func(int, AttributeIDReader) bool) 
 func NewAttributeIDListReader(s []*AttributeID) AttributeIDListReader {
 	return attributeIDListReadonly(s)
 }
+
+// PutKVOrderReader provides read-only access to PutKVOrder.
+// Call Mutate() to obtain a mutable clone.
+type PutKVOrderReader interface {
+	GetKey() string
+	GetValue() []byte
+	Mutate() *PutKVOrder
+}
+
+type putKVOrderReadonly PutKVOrder
+
+func (r *putKVOrderReadonly) GetKey() string {
+	return (*PutKVOrder)(r).GetKey()
+}
+
+func (r *putKVOrderReadonly) GetValue() []byte {
+	return bytes.Clone((*PutKVOrder)(r).GetValue())
+}
+
+func (r *putKVOrderReadonly) Mutate() *PutKVOrder {
+	return (*PutKVOrder)(r).CloneVT()
+}
+
+// AsReader returns a read-only view of this PutKVOrder.
+func (m *PutKVOrder) AsReader() PutKVOrderReader {
+	if m == nil {
+		return nil
+	}
+	return (*putKVOrderReadonly)(m)
+}
+
+// Mutate returns a mutable deep clone of this PutKVOrder.
+func (m *PutKVOrder) Mutate() *PutKVOrder {
+	return m.CloneVT()
+}
+
+// PutKVOrderListReader provides read-only iteration over []*PutKVOrder.
+type PutKVOrderListReader interface {
+	Len() int
+	Get(i int) PutKVOrderReader
+	Range(yield func(int, PutKVOrderReader) bool)
+}
+
+type putKVOrderListReadonly []*PutKVOrder
+
+func (l putKVOrderListReadonly) Len() int { return len(l) }
+
+func (l putKVOrderListReadonly) Get(i int) PutKVOrderReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l putKVOrderListReadonly) Range(yield func(int, PutKVOrderReader) bool) {
+	for i, v := range l {
+		var r PutKVOrderReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewPutKVOrderListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewPutKVOrderListReader(s []*PutKVOrder) PutKVOrderListReader { return putKVOrderListReadonly(s) }
+
+// DeleteKVOrderReader provides read-only access to DeleteKVOrder.
+// Call Mutate() to obtain a mutable clone.
+type DeleteKVOrderReader interface {
+	GetKey() string
+	Mutate() *DeleteKVOrder
+}
+
+type deleteKVOrderReadonly DeleteKVOrder
+
+func (r *deleteKVOrderReadonly) GetKey() string {
+	return (*DeleteKVOrder)(r).GetKey()
+}
+
+func (r *deleteKVOrderReadonly) Mutate() *DeleteKVOrder {
+	return (*DeleteKVOrder)(r).CloneVT()
+}
+
+// AsReader returns a read-only view of this DeleteKVOrder.
+func (m *DeleteKVOrder) AsReader() DeleteKVOrderReader {
+	if m == nil {
+		return nil
+	}
+	return (*deleteKVOrderReadonly)(m)
+}
+
+// Mutate returns a mutable deep clone of this DeleteKVOrder.
+func (m *DeleteKVOrder) Mutate() *DeleteKVOrder {
+	return m.CloneVT()
+}
+
+// DeleteKVOrderListReader provides read-only iteration over []*DeleteKVOrder.
+type DeleteKVOrderListReader interface {
+	Len() int
+	Get(i int) DeleteKVOrderReader
+	Range(yield func(int, DeleteKVOrderReader) bool)
+}
+
+type deleteKVOrderListReadonly []*DeleteKVOrder
+
+func (l deleteKVOrderListReadonly) Len() int { return len(l) }
+
+func (l deleteKVOrderListReadonly) Get(i int) DeleteKVOrderReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l deleteKVOrderListReadonly) Range(yield func(int, DeleteKVOrderReader) bool) {
+	for i, v := range l {
+		var r DeleteKVOrderReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewDeleteKVOrderListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewDeleteKVOrderListReader(s []*DeleteKVOrder) DeleteKVOrderListReader {
+	return deleteKVOrderListReadonly(s)
+}

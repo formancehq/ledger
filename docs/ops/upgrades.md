@@ -2,6 +2,25 @@
 
 ## Release requirement from v3.0.0-rc.1
 
+### Ledger KV rollout
+
+The first release containing ledger KV is `v3.0.0-rc.4` and requires a
+full-cluster stop. For operator-managed PVC-backed clusters, deploy the rc.4
+operator first, then request the adjacent rc.4 Ledger image. The operator's
+mandatory `v3.0.0-rc.4` boundary drains writes, waits for a durable cutoff on
+every voter, removes the source StatefulSet and all old Pods, then creates the
+target StatefulSet against the retained PVCs. Do not allow KV writes until
+every target voter is ready and the drain has been released. For deployments
+without this operator, stop writes, wait for the committed index to persist on
+every voter, stop all voters, replace every binary, then restart the cluster
+before permitting KV requests. Do not perform a rolling rollout: an earlier
+binary cannot apply the new PutKV/DeleteKV Raft orders. Once the first KV order
+is committed, do not restart an earlier binary against that WAL or snapshot;
+use the new binary and forward recovery. Existing primary-store data needs no
+backfill, and the new KV keyspace starts empty. Record the source/target build,
+the stopped-voter evidence, and a replay plus CheckStore result in release
+validation.
+
 `v3.0.0-rc.1` is the first supported v3 persisted-state baseline. Every later
 v3 release, including another RC and the stable release, must provide a tested
 forward upgrade from the preceding released version. Preserve committed
@@ -31,13 +50,14 @@ StatefulSet for the volume change.
 Old and new voters must communicate and apply each committed entry identically
 while they coexist. The embedded operator requires a complete stop at the
 `v3.0.0-rc.4` boundary because RC.3 cannot execute native proposal payloads
-and encodes [mirror asset mappings](#mirror-asset-mappings) differently.
-`rc.3` includes the drain barrier used for this upgrade. RC adjacency remains mandatory.
-The `rc.1` to `rc.2` transition rolls one voter at a time with a maintenance
-barrier that pauses writes; it does not stop the whole cluster.
-The `rc.2` to `rc.3` transition remains rolling. The dedicated peer-service
-port and Membership address migration first ship after the published `rc.4`,
-so the operator also requires a stopped `rc.4` to `rc.5` upgrade.
+or Ledger KV orders and encodes [mirror asset mappings](#mirror-asset-mappings)
+differently. RC.3 includes the drain barrier used for this upgrade. RC
+adjacency remains mandatory. The `rc.1` to `rc.2` transition rolls one voter
+at a time with a maintenance barrier that pauses writes; it does not stop the
+whole cluster. The `rc.2` to `rc.3` transition remains rolling. The dedicated
+peer-service port and Membership address migration first ship after the
+published `rc.4`, so the operator also requires a stopped `rc.4` to `rc.5`
+upgrade.
 Every explicit-target `UpdatePreparedQuery` order must wait until the stopped
 `rc.3` to `rc.4` upgrade completes. Even when the target value is unchanged,
 the new processor records target fields in the audit log, so old and new voters
@@ -616,9 +636,10 @@ target:
 
 Run each transition after its source RC has been published, against a release
 branch whose operator lists the target RC as a mandatory stop boundary. The
-target operator and Ledger are built from one exact release-branch HEAD and
-tagged locally as the target RC; the harness publishes no tag
-or image. This path requires the operator's drain barrier to advance past
+`rc3-to-rc4` target must include Ledger KV. The target operator and Ledger are
+built from one exact release-branch HEAD and tagged locally as the target RC;
+the harness publishes no tag or image. This path requires the operator's drain
+barrier to advance past
 `Draining`, observes the StatefulSet and all old Pods absent before accepting
 any target Pod, and checks that the replacement StatefulSet has a new UID while
 PVC UIDs persist. It restarts a target voter to exercise replay, verifies the

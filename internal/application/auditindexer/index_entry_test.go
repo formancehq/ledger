@@ -73,6 +73,28 @@ func TestAppendEntryKeys(t *testing.T) {
 	require.Equal(t, 1, idempotencyKeys)
 }
 
+func TestAppendEntryKeysKVOrderTypes(t *testing.T) {
+	t.Parallel()
+	items := []*auditpb.AuditItem{}
+	for i, payload := range []*raftcmdpb.LedgerScopedOrder{
+		{Payload: &raftcmdpb.LedgerScopedOrder_PutKv{PutKv: &raftcmdpb.PutKVOrder{}}},
+		{Payload: &raftcmdpb.LedgerScopedOrder_DeleteKv{DeleteKv: &raftcmdpb.DeleteKVOrder{}}},
+	} {
+		order := &raftcmdpb.Order{Type: &raftcmdpb.Order_LedgerScoped{LedgerScoped: payload}}
+		items = append(items, &auditpb.AuditItem{OrderIndex: uint32(i), SerializedOrder: mustOrderBytes(t, order)})
+	}
+	kb := dal.NewKeyBuilder()
+	var keys [][]byte
+	require.NoError(t, appendEntryKeys(kb, func(key []byte) error {
+		keys = append(keys, key)
+
+		return nil
+	}, &auditpb.AuditEntry{Sequence: 7}, items))
+	for _, token := range []string{"put_kv", "delete_kv"} {
+		require.Contains(t, keys, readstore.AuditIndexStringKey(dal.NewKeyBuilder(), readstore.AuditFieldOrderType, token, 7))
+	}
+}
+
 func TestAppendEntryKeysFailureNilCaller(t *testing.T) {
 	t.Parallel()
 

@@ -490,6 +490,9 @@ type scopeImpl struct {
 	reverted map[string]bool
 }
 
+func (s *scopeImpl) PutKV(_, _ string, _ []byte) {}
+func (s *scopeImpl) DeleteKV(_, _ string)        {}
+
 // constantCheckScopeFactory yields the same Scope for every NewScope call.
 // The checker's per-order coverage is enforced upstream (proposal.Validate);
 // here we just need a stub that returns the test's scopeImpl.

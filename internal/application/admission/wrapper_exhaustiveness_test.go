@@ -88,6 +88,8 @@ func ledgerScopedCoveredByDispatchTest(t *testing.T) map[string]struct{} {
 		"create_prepared_query":  {},
 		"update_prepared_query":  {},
 		"delete_prepared_query":  {},
+		"put_kv":                 {},
+		"delete_kv":              {},
 	}
 }
 
