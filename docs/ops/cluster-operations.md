@@ -604,6 +604,163 @@ fault has been resolved.
   another partition can still commit, force-removal can create divergent
   histories.
 
+## Replace a Kubernetes Node Without Changing Replica Count
+
+Use this procedure when an operator-managed pod with ordinal greater than zero
+has damaged local state but the other two voters in a three-node cluster are
+healthy and synchronized. Pod 0 bootstraps with an empty WAL; do not replace
+its PVCs with this procedure. Replace only the target node's WAL and data PVCs.
+The surviving voters keep the
+committed cluster data. Do not use this procedure to repair a lost quorum or a
+leader whose state is the only surviving copy. Check the current backup and
+[recovery plan](./availability-and-recovery.md) before deleting any volume.
+
+The example assumes a Flux-managed operator release, PVC-backed `wal` and
+`data` volumes, and a StatefulSet named `ledger-<cluster>`. Substitute the
+actual resource names. The operator can manage other Ledger clusters in the
+same Kubernetes cluster, so keep its pause as short as possible.
+Run the command blocks in the same shell so the variables and `k` function
+remain available.
+
+### Inspect the Cluster and Record Volume Identities
+
+```bash
+KCTX="REPLACE_WITH_KUBERNETES_CONTEXT"
+NS="REPLACE_WITH_LEDGER_NAMESPACE"
+CLUSTER="REPLACE_WITH_CLUSTER_NAME"
+ORDINAL=1 # Example: pod ordinal 1 is Raft node ID 2.
+OP_NS="REPLACE_WITH_OPERATOR_NAMESPACE"
+OP_DEPLOY="REPLACE_WITH_OPERATOR_DEPLOYMENT"
+RELEASE="REPLACE_WITH_OPERATOR_HELMRELEASE"
+LEADER_POD="REPLACE_WITH_SURVIVING_LEADER_POD"
+OTHER_POD="REPLACE_WITH_OTHER_SURVIVING_POD"
+ST="ledger-${CLUSTER}"
+POD="${ST}-${ORDINAL}"
+NODE_ID=$((ORDINAL + 1))
+k() { kubectl --context "$KCTX" "$@"; }
+
+k -n "$NS" get cluster "$CLUSTER"
+k -n "$NS" get statefulset "$ST" -o jsonpath='{.spec.persistentVolumeClaimRetentionPolicy}'
+k -n "$NS" get pod "$POD" -o custom-columns=NAME:.metadata.name,UID:.metadata.uid,STATUS:.status.phase
+k -n "$NS" get pvc "wal-${POD}" "data-${POD}" -o 'custom-columns=NAME:.metadata.name,UID:.metadata.uid,PV:.spec.volumeName,STATUS:.status.phase'
+k -n "$OP_NS" get helmrelease "$RELEASE" -o jsonpath='{.spec.suspend}'
+k -n "$OP_NS" get deployment "$OP_DEPLOY" -o jsonpath='{.spec.replicas}'
+k -n "$NS" exec "$LEADER_POD" -c ledger -- ./ledgerctl cluster status
+```
+
+Record the target pod UID, both PVC UIDs, both bound PV names, the HelmRelease
+`spec.suspend` value, and the operator Deployment replica count. Confirm the
+target is not the leader, the two surviving voters can form a quorum, and the
+Cluster has no upgrade in progress. If the target is leader, transfer leadership
+and verify the new leader before continuing. Stop if the StatefulSet retention
+policy is not `Retain` for both `whenDeleted` and `whenScaled`.
+
+### Fence the Target Pod
+
+Pause the Flux HelmRelease before scaling its operator Deployment to zero.
+Verify that another GitOps controller will not undo the pause. The operator
+pause affects every Cluster it manages.
+
+```bash
+k -n "$OP_NS" patch helmrelease "$RELEASE" --type=merge -p '{"spec":{"suspend":true}}'
+k -n "$OP_NS" scale deployment "$OP_DEPLOY" --replicas=0
+k -n "$OP_NS" rollout status deployment "$OP_DEPLOY"
+k -n "$OP_NS" get deployment "$OP_DEPLOY"
+```
+
+Delete the StatefulSet with orphan propagation. This keeps the surviving pods
+running. Delete only the target pod, without `--force`, and wait for it to
+disappear. Do not scale the StatefulSet down: a scale-down removes the highest
+ordinal, which may be a different node or the leader.
+
+```bash
+k -n "$NS" delete statefulset "$ST" --cascade=orphan --wait=true
+k -n "$NS" get pods -l "app.kubernetes.io/instance=${CLUSTER},app.kubernetes.io/name=ledger"
+k -n "$NS" delete pod "$POD" --wait=true
+k -n "$NS" get pod "$POD" --ignore-not-found
+k -n "$NS" get pvc "wal-${POD}" "data-${POD}"
+```
+
+Before continuing, verify the target pod is absent, the two surviving pods are
+ready, and both target PVCs are still bound. If the target pod is recreated,
+find the controller that recreated it before changing Raft membership.
+
+### Remove the Old Member and Its Volumes
+
+Run normal removal from a surviving leader pod. Normal `remove-node` uses Raft
+consensus; it also accepts a request through a follower. Verify the target ID
+is absent from `cluster status` on both surviving pods before touching PVCs.
+
+```bash
+k -n "$NS" exec "$LEADER_POD" -c ledger -- ./ledgerctl cluster remove-node "$NODE_ID"
+k -n "$NS" exec "$LEADER_POD" -c ledger -- ./ledgerctl cluster status
+k -n "$NS" exec "$OTHER_POD" -c ledger -- ./ledgerctl cluster status
+```
+
+If the command reports an error after committing the removal, check status
+before retrying. Treat a target ID absent from both survivors as the successful
+postcondition. Do not switch to `--force` merely because normal removal failed.
+The [force-removal procedure](#force-removing-a-down-node) is leader-only and
+requires permanent fencing of the old member.
+
+For protected PVCs, add the per-volume deletion annotation. Delete only the
+target pod's `wal` and `data` PVCs, then confirm they are gone. With the common
+`Delete` reclaim policy, Kubernetes also deletes their old PVs. If the reclaim
+policy is `Retain`, leave the released PVs for separate storage cleanup; never
+reattach them to the replacement node.
+
+```bash
+k -n "$NS" annotate pvc "wal-${POD}" "data-${POD}" formance.com/allow-deletion=true --overwrite
+k -n "$NS" delete pvc "wal-${POD}" "data-${POD}" --wait=true
+k -n "$NS" get pvc "wal-${POD}" "data-${POD}" --ignore-not-found
+```
+
+The admission policy protects selected PVCs from accidental deletion. The
+annotation permits this deliberate deletion. It is not necessary to annotate
+bound PVs when deleting their PVCs; the PV policy permits normal reclaim after
+the PVC is gone. See [volume deletion protection](../../misc/operator/README.md#volume-deletion-protection).
+
+### Recreate and Verify the Node
+
+Restart the operator while the HelmRelease remains suspended. It recreates the
+StatefulSet, adopts the surviving pods, creates new target PVCs, and starts the
+target pod with `--join`. Wait for the target to catch up and become a voter.
+
+```bash
+k -n "$OP_NS" scale deployment "$OP_DEPLOY" --replicas=1
+k -n "$OP_NS" rollout status deployment "$OP_DEPLOY"
+k -n "$NS" wait --for=create "statefulset/${ST}" --timeout=120s
+k -n "$NS" wait --for=condition=Ready "pod/${POD}" --timeout=180s
+k -n "$NS" rollout status "statefulset/${ST}" --timeout=300s
+k -n "$NS" get pvc "wal-${POD}" "data-${POD}" -o wide
+k -n "$NS" exec "$POD" -c ledger -- ./ledgerctl cluster status
+```
+
+Confirm the new PVC UIDs differ from the recorded target UIDs. Confirm the
+surviving PVC UIDs did not change. `cluster status` must show every expected
+node as a voter, the same applied and commit indexes, normal sync, and full
+replication. Check the Cluster `Ready` condition, pod restart counts, and recent
+logs on all nodes for peer transport or replay errors. For a deeper data check,
+use [`ledgerctl store check`](./correctness.md#store-integrity-check) and compare
+application-level counts or known records with a pre-operation baseline.
+
+If `spec.suspend` was absent before this procedure, remove the temporary
+field and verify the HelmRelease becomes Ready. If it was explicitly `false`,
+restore that value instead:
+
+```bash
+k -n "$OP_NS" patch helmrelease "$RELEASE" --type=json -p '[{"op":"remove","path":"/spec/suspend"}]'
+k -n "$OP_NS" get helmrelease "$RELEASE"
+```
+
+If the member was removed from Raft, do not restart it with its old WAL. The
+removed identity is blocked from rejoining, and the old replica has stale
+membership. If replacement fails before PVC deletion, preserve the old volumes
+for diagnosis without remounting them. After PVC deletion, fix the fresh join
+path or recover from a verified backup if the surviving data is compromised.
+Before Raft removal commits, the original PVCs can still be used to restore
+the pod.
+
 ## Cluster Configuration Updates
 
 Some configuration parameters can be changed on a live cluster via a **rolling upgrade** -- restart nodes one by one with the new CLI flags. The new leader propagates the configuration change through Raft consensus so all nodes converge deterministically.
