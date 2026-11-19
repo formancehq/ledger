@@ -93,7 +93,7 @@ mapping. The aggregate token labels `ledger:read`, `ledger:write`, and
 `ledger:admin` are unchanged and continue to map to the corresponding new
 granular rights. Custom mapping files replace the default mapping, so update
 their values before deploying this revision. Ledger-local `*:read` and
-`*:write` values still expand to all matching rights.
+`*:write` values expand to all `Write` rights and `ledger:ExecuteNumscript`.
 
 This change does not alter a business storage key or protobuf field. Effective
 scope strings are captured in persisted audit `CallerSnapshot` records and

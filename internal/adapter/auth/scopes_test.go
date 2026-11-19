@@ -175,6 +175,7 @@ func TestExpandWildcardScope_Write(t *testing.T) {
 
 	assert.Contains(t, got, ScopeLedgersWrite)
 	assert.Contains(t, got, ScopeTransactionsWrite)
+	assert.Contains(t, got, ScopeExecuteNumscript)
 	assert.Contains(t, got, ScopeMetadataWrite)
 	assert.Contains(t, got, ScopeAuditWrite)
 	assert.Contains(t, got, ScopeOpsWrite)

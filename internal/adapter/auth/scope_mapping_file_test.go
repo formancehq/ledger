@@ -117,6 +117,19 @@ func TestParseScopeMappingJSON_WildcardRead(t *testing.T) {
 	assert.NotContains(t, anon, ScopeTransactionsWrite)
 }
 
+func TestParseScopeMappingJSON_WildcardWriteGrantsNumscriptExecution(t *testing.T) {
+	t.Parallel()
+
+	mapping, err := ParseScopeMappingJSON([]byte(`{
+		"custom:write": ["*:write"],
+		"anonymous": ["*:write"]
+	}`))
+	require.NoError(t, err)
+
+	assert.True(t, HasScope(mapping.ExpandScopes([]string{"custom:write"}), ScopeExecuteNumscript))
+	assert.True(t, HasScope(mapping.AnonymousScopes(), ScopeExecuteNumscript))
+}
+
 func TestParseScopeMappingJSON_WildcardMixedWithExplicit(t *testing.T) {
 	t.Parallel()
 

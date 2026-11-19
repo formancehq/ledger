@@ -127,14 +127,14 @@ func (m ScopeMapping) AnonymousScopes() map[Scope]struct{} {
 }
 
 // ExpandWildcardScope expands a wildcard token (e.g. "*:read", "*:write") into
-// the list of granular scopes with a matching action prefix. Returns (nil, false)
-// when the input is not a recognized wildcard.
+// granular scopes. The write wildcard also grants Numscript execution, as the
+// default write mapping does. Returns (nil, false) for unknown wildcards.
 func ExpandWildcardScope(s string) ([]Scope, bool) {
 	switch s {
 	case WildcardRead:
 		return scopesWithAction("Read"), true
 	case WildcardWrite:
-		return scopesWithAction("Write"), true
+		return append(scopesWithAction("Write"), ScopeExecuteNumscript), true
 	default:
 		return nil, false
 	}
