@@ -74,6 +74,19 @@ FSM counters from Pebble and create a new Raft WAL snapshot at that boundary.
 Joiners therefore receive checkpoint sync instead of replaying source-domain
 entries onto an empty store. The per-replica read store is rebuilt locally.
 
+### Global key lifetimes (EN-1415)
+
+Cross-cluster preparation classifies the checkpoint's Pebble zones as follows:
+
+| Pebble keys | Restore behavior | Reason |
+|---|---|---|
+| `ZoneGlobal` / ledger info, next ledger ID, signing key/config, audit key, cluster policy, maintenance mode, event sink state, query checkpoint rows/allocator/schedule | Retained; query checkpoint rows are marked as restored | Business, governance and delivery state follows the complete checkpoint. Physical query checkpoint directories are not part of the backup. |
+| `ZoneGlobal` / `SubGlobClusterConfig`, last applied HLC timestamp and idempotency eviction cutoff | Retained | The hash algorithm, cache epoch, clock floor and eviction scan horizon must survive. |
+| `ZoneClusterPersistent` / applied index | Replaced with the restored genesis boundary | Source Raft indexes do not identify destination log entries. |
+| `ZoneClusterPersistent` / node and cluster identity, peers, removed-member registry and Bloom blocks | Deleted; destination identity and Bloom blocks are rebuilt | These values belong to the source cluster. |
+| `ZoneClusterTransient` / backup jobs | Deleted | Source job coordination does not transfer to the destination. |
+| `ZoneCache` | Deleted | The destination re-seeds its own cache from preserved state. |
+
 `internal/infra/backup/restore.go` still contains the old export replay code for
 rolling RC compatibility with previously emitted orders, but new backup and
 restore entry points never call it. Legacy backup artifacts are intentionally

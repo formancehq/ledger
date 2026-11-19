@@ -41,9 +41,9 @@ import (
 // bumps in those rows.
 //
 // Per the checkpoint-restore contract, the registry lifecycle spans the
-// checkpoint boundary: rows seeded BEFORE the full checkpoint are then
-// retyped (version fold over checkpoint state) and cascade-deleted by the
-// delta, one row is created inside the delta, and the restored store must
+// checkpoint boundary: rows seeded BEFORE the first checkpoint are then
+// retyped and cascade-deleted before the later checkpoint, while another row
+// is created between checkpoints. The restored store must
 // hold the complete logical rows the source held — verified field by field
 // and by a clean CheckStore pass.
 var _ = Describe("Restore index registry", Ordered, func() {
@@ -53,16 +53,15 @@ var _ = Describe("Restore index registry", Ordered, func() {
 		s3Bucket    = "restore-index-registry"
 		clusterID   = "idxreg-cluster"
 
-		// retypedKey's index is seeded before the checkpoint and version-bumped
-		// by the delta; removedKey's index is seeded before the checkpoint and
-		// cascade-deleted by the delta; deltaKey's index only ever exists in
-		// the delta.
+		// retypedKey's index is seeded before the first checkpoint and then
+		// version-bumped; removedKey's index is later cascade-deleted;
+		// deltaKey's index only exists in the later checkpoint.
 		retypedKey = "k0"
 		removedKey = "k1"
 		deltaKey   = "k2"
 
-		// historyKey is populated before the checkpoint and indexed in the
-		// delta, so its index must take the NON_EMPTY backfill path. emptyKey
+		// historyKey is populated before the first checkpoint and indexed later,
+		// so its index must take the NON_EMPTY backfill path. emptyKey
 		// is indexed while emptyLedger still has only CONTROL logs, so it must
 		// take the EMPTY fast path and then receive later writes live.
 		historyKey         = "history"
@@ -244,15 +243,15 @@ var _ = Describe("Restore index registry", Ordered, func() {
 			createAttributed(client, ownedCheckpointKey)
 
 			// The full checkpoint carries both rows; everything after this
-			// backup reaches the restored store only through the delta fold.
+			// backup reaches the restored store through the later checkpoint.
 			backupResp, err := clusterClient.Backup(ctx, &clusterpb.BackupRequest{Storage: storage()})
 			Expect(err).To(Succeed())
 			Expect(backupResp.GetTotalFiles()).To(BeNumerically(">", 0))
 		})
 
-		It("mutates the registry in the delta", func() {
+		It("mutates the registry before the later checkpoint", func() {
 			createAttributed(client, ownedDeltaKey)
-			// Retype: the delta must fold a version bump onto a checkpoint row.
+			// Retype: the later checkpoint must include a version bump on the row.
 			_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("",
 				actions.SetMetadataFieldTypeAction(ledgerName, commonpb.TargetType_TARGET_TYPE_ACCOUNT, retypedKey, commonpb.MetadataType_METADATA_TYPE_UINT64),
 			))
@@ -269,7 +268,7 @@ var _ = Describe("Restore index registry", Ordered, func() {
 			))
 			Expect(err).To(Succeed())
 
-			// Both indexes are created in the exported delta. ledgerName already
+			// Both indexes are created after the first checkpoint. ledgerName already
 			// contains the pre-checkpoint metadata write, so historyKey must
 			// backfill it. emptyLedger has no HISTORY log yet, so emptyKey becomes
 			// live without a backfill and must index the following write normally.
@@ -303,7 +302,7 @@ var _ = Describe("Restore index registry", Ordered, func() {
 			Expect(removed.GetDroppedIndex()).ToNot(BeNil(), "live premise: the removal must drop the checkpoint-seeded index")
 		})
 
-		It("audits rejected duplicate creations in the delta without resetting registry rows", func() {
+		It("audits rejected duplicate creations before the later checkpoint without resetting registry rows", func() {
 			for _, key := range []string{retypedKey, deltaKey} {
 				before := registryRow(client, ledgerName, key)
 				Expect(before).NotTo(BeNil())
@@ -319,11 +318,11 @@ var _ = Describe("Restore index registry", Ordered, func() {
 			Expect(result.Errors).To(BeEmpty())
 		})
 
-		It("exports the delta and captures the source registry", func() {
+		It("publishes the later checkpoint and captures the source registry", func() {
 			incResp, err := clusterClient.Backup(ctx, &clusterpb.BackupRequest{Storage: storage()})
 			Expect(err).To(Succeed())
 			Expect(incResp.GetTotalFiles()).To(BeNumerically(">", 0))
-			Expect(incResp.GetTotalFiles()).To(BeNumerically(">", 0), "delta must include the failed duplicate creations")
+			Expect(incResp.GetTotalFiles()).To(BeNumerically(">", 0), "later checkpoint must include the failed duplicate creations")
 
 			sourceRows = map[string]*commonpb.Index{
 				retypedKey:         registryRow(client, ledgerName, retypedKey),
@@ -450,7 +449,7 @@ var _ = Describe("Restore index registry", Ordered, func() {
 		It("restores the complete registry rows", func() {
 			// expectSameRow compares the full logical row, not just presence:
 			// identity, scope, forward-encoding version, build status and
-			// creation date must all survive the checkpoint+delta composition.
+			// creation date must all survive the later checkpoint.
 			expectSameRow := func(key string) {
 				source := sourceRows[key]
 				restored := registryRow(client, ledgerName, key)
@@ -470,11 +469,11 @@ var _ = Describe("Restore index registry", Ordered, func() {
 			Expect(registryRow(client, ledgerName, removedKey)).To(BeNil(), "the cascade-deleted checkpoint row must not resurrect")
 		})
 
-		It("reconstructs EMPTY and NON_EMPTY index readiness from checkpoint plus delta", func() {
+		It("reconstructs EMPTY and NON_EMPTY index readiness from the later checkpoint", func() {
 			// The restored node owns a fresh readstore. Replaying the checkpoint
-			// prefix plus exported delta must reproduce the source's history fold:
+			// later checkpoint must reproduce the source's history fold:
 			// historyKey backfills a pre-checkpoint row, while emptyKey is promoted
-			// on an empty ledger and indexes the later delta write live.
+			// on an empty ledger and indexes the later write live.
 			Expect(actions.WaitForMetadataIndexReady(ctx, client, ledgerName, commonpb.TargetType_TARGET_TYPE_ACCOUNT, historyKey)).To(Succeed())
 			Expect(actions.WaitForMetadataIndexReady(ctx, client, emptyLedger, commonpb.TargetType_TARGET_TYPE_ACCOUNT, emptyKey)).To(Succeed())
 
@@ -502,7 +501,7 @@ var _ = Describe("Restore index registry", Ordered, func() {
 			Expect(result.Errors).To(BeEmpty(), "CheckStore errors on the restored store: %v", result.Errors)
 		})
 
-		It("preserves singleton audit attribution across checkpoint and delta", func() {
+		It("preserves singleton audit attribution in the later checkpoint", func() {
 			entries, err := actions.ListAuditEntries(ctx, client, false)
 			Expect(err).To(Succeed())
 			for _, key := range []string{ownedCheckpointKey, ownedDeltaKey} {
@@ -570,7 +569,7 @@ var _ = Describe("Restore index registry", Ordered, func() {
 						Expect(full.GetItems()[0].GetLogSequence()).To(BeZero())
 					}
 				}
-				Expect(found).To(Equal(1), "failed duplicate audit for %s must survive the delta", key)
+				Expect(found).To(Equal(1), "failed duplicate audit for %s must survive the checkpoint", key)
 				_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("idxreg-restored-duplicate-"+key,
 					actions.CreateAccountMetadataIndexAction(ledgerName, key)))
 				Expect(status.Code(err)).To(Equal(codes.AlreadyExists))

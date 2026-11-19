@@ -248,7 +248,7 @@ Backup preparation is performed on the **restore side** (during `FinalizeRestore
 2. **Mark query-checkpoint metadata as restored**: Physical query-checkpoint directories are not part of the restored Pebble store. Surviving rows are marked `restored_from_backup`. The read-index builder uses it to keep source-cluster Raft indexes out of destination-cluster progress certificates.
 3. **Wipe the cluster-transient zone**: In-flight-only tracking (e.g. running backup jobs) has no meaning on the restored cluster.
 4. **Wipe the cluster-persistent zone**: One range delete removes source node/cluster identity, Raft peers, removed-member tombstones and stale Bloom blocks. The destination re-seeds its identity and membership and rebuilds Bloom from attributes. The restored genesis boundary is written back to this zone after the delete in the same batch.
-5. **Clear the cache zone**: Checkpoint-era cache rows predate the delta replayed into the attribute zone; the restored node boots with a cold cache and re-seeds from the rebuilt attribute zone on first touch.
+5. **Clear the cache zone**: Source-cluster cache rows are not valid in the destination cluster; the restored node boots with a cold cache and re-seeds from the preserved attribute zone on first touch.
 
 **File**: `internal/infra/attributes/prepare.go` — `PrepareForBackup()`
 
@@ -560,26 +560,26 @@ ledgerctl store bootstrap --driver s3 --s3-bucket my-bucket --s3-region us-east-
 | `--azure-endpoint` | | Custom Azure endpoint (for Azurite) |
 | `--bucket-id` | | Namespace prefix for backup files (default: uses cluster-id from config) |
 | `--data-dir` | | Target data directory (required, must be fresh) |
-| `--validate` | `false` | Run Checker after download/replay and before finalization; abort on validation failure |
+| `--validate` | `false` | Run Checker after checkpoint download and before finalization; abort on validation failure |
 | `-y, --yes` | `false` | Skip confirmation prompt |
 
 ### How It Works
 
 1. **Fresh directory guard**: Rejects a `RESTORED` marker, live database or incompatible checkpoint layout. A lone unmarked `checkpoints/0` from interrupted finalization is reclaimed before downloading.
 2. **Download**: Reads the manifest from the configured backend, creates or opens the selected data directory, then inspects `restore-staging/` with rooted `Lstat`. An existing symlink (even to a target inside the data directory) or non-directory is rejected. Any old real staging directory is removed through the data-directory root before a fresh directory is created and opened. Downloads checkpoint files sequentially through a filesystem root opened on staging. Each manifest filename is converted from slash-separated form and must be lexically local before parent creation, object lookup or file creation for that entry. Rooted parent and file creation reject symlink escapes. Each checkpoint file is verified against its manifest size and the sha256 in its object key; a mismatch aborts bootstrap and names the file. An export-only manifest is rejected before staging.
-4. **Preview**: Opens the staging as a read-only Pebble database, reads metadata (last applied index, timestamp, ledger list), and displays a summary table.
-5. **Validate** (optional): If `--validate` is set, runs the full integrity checker (`check.Checker`) -- the same checker used by `store check` and `restore validate`. Execution failures or reported integrity errors abort bootstrap before confirmation, preparation, and finalization. Without this flag, bootstrap skips Checker entirely.
-6. **Confirm**: Unless `--yes` is set, prompts for user confirmation.
-7. **Prepare**: Prepares attributes for backup (Global-zone resets: applied index preserved as the genesis boundary — the restored genesis' WAL-snapshot index — persisted config stripped, persisted bloom blocks dropped); the attribute zone is left intact.
-8. **Finalize**: After closing the prepared store and rereading its metadata, hard-links staging into a temporary checkpoint directory and renames it to `{data-dir}/checkpoints/0`. Only then writes the atomic `RESTORED` commit marker. A marker-write failure attempts to remove the placed checkpoint; remove it manually if rollback fails.
-9. **Cleanup**: Removes the staging directory. A cleanup error is reported as a warning after the restore has committed.
+3. **Preview**: Opens the staging as a read-only Pebble database, reads metadata (last applied index, timestamp, ledger list), and displays a summary table.
+4. **Validate** (optional): If `--validate` is set, runs the full integrity checker (`check.Checker`) -- the same checker used by `store check` and `restore validate`. Execution failures or reported integrity errors abort bootstrap before confirmation, preparation, and finalization. Without this flag, bootstrap skips Checker entirely.
+5. **Confirm**: Unless `--yes` is set, prompts for user confirmation.
+6. **Prepare**: Prepares the checkpoint for the new cluster (Global-zone resets: applied index preserved as the genesis boundary — the restored genesis' WAL-snapshot index — persisted config stripped, persisted bloom blocks dropped); the attribute zone is left intact.
+7. **Finalize**: After closing the prepared store and rereading its metadata, hard-links staging into a temporary checkpoint directory and renames it to `{data-dir}/checkpoints/0`. Only then writes the atomic `RESTORED` commit marker. A marker-write failure attempts to remove the placed checkpoint; remove it manually if rollback fails.
+8. **Cleanup**: Removes the staging directory. A cleanup error is reported as a warning after the restore has committed.
 
 Use the target directory exclusively while this offline command runs. Every
-attempt discards prior staging before downloading or replaying, including for
-incomplete checkpoint backups. This prevents files from an earlier
-rebuild being folded again. Reset failure aborts before replay or publication;
-old staging may be partly removed or absent. A later download or rebuild failure,
-or EOF at confirmation, can leave new partial or fully rebuilt staging. It is
+attempt discards prior staging before downloading checkpoint files, including
+after an incomplete attempt. This prevents stale files from a prior attempt
+from mixing with the current checkpoint. Reset failure aborts before publication;
+old staging may be partly removed or absent. A later download or preparation failure,
+or EOF at confirmation, can leave new partial or fully prepared staging. It is
 not activated and the next invocation resets it again. An explicit negative
 confirmation instead attempts to remove staging. The existing freshness and
 `RESTORED` marker guards still apply: retries do not repair an already finalized

@@ -29,24 +29,22 @@ import (
 	"google.golang.org/grpc"
 )
 
-// This suite proves the restored FSM cache serves checkpoint-era values for
-// keys the delta modified. The account "mallory" is funded before the full
-// checkpoint (its VolumePair lands in the checkpoint's 0xFF cache zone) and
+// This suite proves the restored FSM cache does not serve stale source values
+// for keys modified after the first checkpoint. The account "mallory" is
+// funded before that checkpoint (its VolumePair enters the source cache) and
 // drained after it (the drain is captured by the next checkpoint).
-// The second checkpoint carries the updated 0xF1 attribute zone, while the
-// 0xFF cache zone stays byte-for-byte checkpoint-era, so the restored node
-// boots with an in-memory cache holding mallory=(input 1000, output 0) while
-// 0xF1 holds the true (1000, 1000).
+// The second checkpoint carries the updated 0xF1 attribute zone. Restore
+// preparation clears the 0xFF cache zone so the destination reads the true
+// mallory volume (input 1000, output 1000).
 //
 // The rotation threshold is set far above the test's raft-index count, on
 // both the source and the restored node, so:
 //   - no rotation ever evicts mallory from the source cache before the
 //     checkpoint (a low threshold hides the bug by evicting the entry);
 //   - the restored node's CheckCache stays in the same-generation branch,
-//     making the stale entry a CacheHit (coverage-only, no Pebble reload);
+//     where any stale entry that escaped preparation would be a CacheHit;
 //   - the restored node's persisted cluster config matches its CLI flags, so
-//     no cluster-config proposal fires ResetWithThreshold and wipes the
-//     restored cache (a mismatched threshold hides the bug by clearing it).
+//     no cluster-config proposal clears the cache and masks a preparation bug.
 var _ = Describe("Restore stale cache", Ordered, func() {
 	const (
 		ledgerName        = "stale-ledger"
@@ -117,8 +115,8 @@ var _ = Describe("Restore stale cache", Ordered, func() {
 		Expect(err).To(Succeed())
 	})
 
-	// Phase 1: fund mallory, checkpoint, drain mallory, export the delta.
-	Describe("Phase 1: fund, checkpoint, drain, export", Ordered, func() {
+	// Phase 1: fund mallory, checkpoint, drain mallory, take another checkpoint.
+	Describe("Phase 1: fund, checkpoint, drain, checkpoint", Ordered, func() {
 		var (
 			sourceServer  *testservice.Service
 			client        servicepb.BucketServiceClient
@@ -185,10 +183,9 @@ var _ = Describe("Restore stale cache", Ordered, func() {
 			Expect(resp.GetTotalFiles()).To(BeNumerically(">", 0))
 		})
 
-		It("should drain mallory post-checkpoint and export the delta", func() {
+		It("should drain mallory and publish the later checkpoint", func() {
 			// The drain is captured by the second checkpoint: after restore,
-			// 0xF1 says (1000, 1000) while the checkpoint's 0xFF cache entry
-			// still says (1000, 0).
+			// 0xF1 says (1000, 1000) and the source cache is cleared.
 			_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
 				actions.NewPosting("mallory", "world", big.NewInt(1000), "USD"),
 			}, nil, nil)))
@@ -269,7 +266,7 @@ var _ = Describe("Restore stale cache", Ordered, func() {
 	})
 
 	// Phase 3: boot on the restored data and verify the apply path reads the
-	// delta-rebuilt volumes, not the checkpoint-era cache entry.
+	// later-checkpoint volumes, not a stale source cache entry.
 	Describe("Phase 3: verify the apply path after restore", Ordered, func() {
 		var (
 			client        servicepb.BucketServiceClient
@@ -323,7 +320,7 @@ var _ = Describe("Restore stale cache", Ordered, func() {
 		It("should serve the drained volumes on the query path", func() {
 			// 0xF1 sanity check: the second checkpoint captured the drain, so the
 			// query path (which reads 0xF1 directly) must see it. This
-			// isolates any failure below to the cache, not the rebuild.
+			// isolates any failure below to the cache, not checkpoint transfer.
 			resp, err := client.GetAccount(ctx, &servicepb.GetAccountRequest{Ledger: ledgerName, Address: "mallory"})
 			Expect(err).To(Succeed())
 			Expect(resp.FindVolume("USD", "").GetInput().DecimalString()).To(Equal("1000"))
@@ -340,7 +337,7 @@ var _ = Describe("Restore stale cache", Ordered, func() {
 			Expect(err).To(Succeed())
 			Expect(resp.FindVolume("USD", "").GetInput().DecimalString()).To(Equal("1500"))
 			Expect(resp.FindVolume("USD", "").GetOutput().DecimalString()).To(Equal("1000"),
-				"the FSM read mallory's VolumePair from the restored 0xFF cache (checkpoint-era input=1000/output=0) instead of the delta-rebuilt 0xF1 value, clobbering the drain")
+				"the FSM read mallory's VolumePair from a stale restored 0xFF cache entry (input=1000/output=0) instead of the later checkpoint's 0xF1 value, clobbering the drain")
 		})
 	})
 })

@@ -63,7 +63,7 @@ var _ = Describe("Restore mirror resume position", Ordered, func() {
 
 		// Source logs 1..4 carry transactions 0..3, each crediting `account`
 		// with 100. sourceLogCount is therefore the cursor the mirror must hold
-		// when the delta is exported.
+		// when the later checkpoint is published.
 		sourceLogCount           = 4
 		checkpointSourceLogCount = 1
 		perTxAmount              = "100"
@@ -86,15 +86,15 @@ var _ = Describe("Restore mirror resume position", Ordered, func() {
 		// reconnects to that exact address.
 		mockV2 *mockV2Server
 
-		// Captured on the live node before the delta is exported, then compared
+		// Captured on the live node before the later checkpoint is published, then compared
 		// against the restored node.
 		preBackupCursor  uint64
 		preBackupTxCount int
 		// Recorded rather than hard-coded so the comparison pins "unchanged by
 		// the restore" instead of a particular amount encoding.
 		preBackupInput string
-		// The transaction projection is rebuilt from the exported ledger-log
-		// delta. Keep an independent source-date oracle so the restore cannot
+		// The transaction projection is copied from the later checkpoint.
+		// Keep an independent source-date oracle so the restore cannot
 		// silently replace that field with its own apply time.
 		sourceDateMicrosByTxID map[uint64]uint64
 
@@ -207,7 +207,7 @@ var _ = Describe("Restore mirror resume position", Ordered, func() {
 		Expect(err).To(Succeed())
 	})
 
-	Describe("Phase 1: a mirror checkpoint prefix followed by an exported delta", Ordered, func() {
+	Describe("Phase 1: mirror writes between complete checkpoints", Ordered, func() {
 		var (
 			sourceServer  *testservice.Service
 			client        servicepb.BucketServiceClient
@@ -290,7 +290,7 @@ var _ = Describe("Restore mirror resume position", Ordered, func() {
 			Expect(backupResp.GetTotalFiles()).To(BeNumerically(">", 0))
 		})
 
-		It("syncs source-dated transactions into the post-checkpoint delta", func() {
+		It("syncs source-dated transactions before the later checkpoint", func() {
 			for logID := checkpointSourceLogCount + 1; logID <= sourceLogCount; logID++ {
 				addSourceTransaction(logID)
 			}
@@ -329,7 +329,7 @@ var _ = Describe("Restore mirror resume position", Ordered, func() {
 			expectSingleIngestion(Default, client, "live")
 		})
 
-		It("exports the delta", func() {
+		It("publishes the later checkpoint", func() {
 			incResp, err := clusterClient.Backup(ctx, &clusterpb.BackupRequest{Storage: storage()})
 			Expect(err).To(Succeed())
 			Expect(incResp.GetTotalFiles()).To(BeNumerically(">", 0))
@@ -415,7 +415,7 @@ var _ = Describe("Restore mirror resume position", Ordered, func() {
 			// mirror workers on the leadership callback, which is not ordered
 			// against the sampling read below — so without this the worker
 			// could complete a fetch first and the sample would witness a
-			// re-ingest rather than the rebuild. Pausing makes "no source fetch
+			// re-ingest rather than checkpoint restore. Pausing makes "no source fetch
 			// has happened" a fact instead of a timing bet: parked requests are
 			// held at the handler entry, before the counter moves.
 			mockV2.pause()
@@ -455,11 +455,11 @@ var _ = Describe("Restore mirror resume position", Ordered, func() {
 			_ = os.RemoveAll(restoreDataDir)
 		})
 
-		It("rebuilds the mirror high-water mark from the replayed delta", func() {
+		It("retains the mirror high-water mark from the later checkpoint", func() {
 			// The sample has to predate the mirror worker, or it proves nothing:
 			// on an unfixed build the rebuilt mark is 0, the worker restarts at
 			// source log 1 and re-applies logs 1..4, and processMirrorIngest
-			// advances the cursor back to 4 — the same value a correct rebuild
+			// advances the cursor back to 4 — the same value a correct restore
 			// leaves. No source request means no ingest, so the value below was
 			// written before the second checkpoint.
 			//
@@ -515,7 +515,7 @@ var _ = Describe("Restore mirror resume position", Ordered, func() {
 			}, 12*time.Second, 1*time.Second).Should(Succeed())
 		})
 
-		It("passes the integrity checker after restoring the non-empty mirror delta", func() {
+		It("passes the integrity checker after restoring the later mirror checkpoint", func() {
 			result, err := actions.CollectCheckStoreEvents(ctx, client)
 			Expect(err).To(Succeed())
 			Expect(result.Errors).To(BeEmpty())
