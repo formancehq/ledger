@@ -78,11 +78,12 @@ func (r *ClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (re
 		return ctrl.Result{}, ignoreNotFound(err)
 	}
 
-	// Handle deletion — owned resources are garbage-collected via owner references.
+	// Handle deletion — owned resources are garbage-collected via owner
+	// references; claims detached by a stopped upgrade are not.
 	if !ledger.DeletionTimestamp.IsZero() {
 		r.claimTemplateRetries.forget(req.NamespacedName)
 
-		return ctrl.Result{}, nil
+		return ctrl.Result{}, r.finalizeUpgradeClaims(ctx, ledger)
 	}
 	// Commit the identity before any resource can start a Ledger process. An
 	// update conflict aborts this reconcile; the next read uses the winning ID.

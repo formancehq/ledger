@@ -361,6 +361,9 @@ func TestStoppedUpgradeWaitsForOldPodsAndRetainsClaim(t *testing.T) {
 	require.NotEqual(t, computeSpecHash(&cluster.Spec), cluster.Status.Upgrade.TargetSpecHash)
 	require.NotEmpty(t, cluster.Status.Upgrade.DrainEpoch)
 	require.False(t, drained)
+	persisted := &ledgerv1alpha1.Cluster{}
+	require.NoError(t, c.Get(ctx, types.NamespacedName{Name: cluster.Name, Namespace: cluster.Namespace}, persisted))
+	require.Contains(t, persisted.Finalizers, upgradeClaimsFinalizer, "claims are detached only after the finalizer is durable")
 	proceed, _, err = r.reconcileRequiredUpgradeWithExec(ctx, cluster, sts, exec)
 	require.NoError(t, err)
 	require.False(t, proceed)
@@ -533,6 +536,8 @@ func TestStoppedUpgradeWaitsForOldPodsAndRetainsClaim(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, proceed)
 	require.Nil(t, cluster.Status.Upgrade)
+	require.NoError(t, c.Get(ctx, types.NamespacedName{Name: cluster.Name, Namespace: cluster.Namespace}, persisted))
+	require.NotContains(t, persisted.Finalizers, upgradeClaimsFinalizer)
 	require.Equal(t, appsv1.DeletePersistentVolumeClaimRetentionPolicyType, buildRetentionPolicy(cluster).WhenDeleted)
 	require.False(t, drained)
 	require.True(t, released)

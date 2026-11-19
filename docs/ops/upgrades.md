@@ -143,6 +143,13 @@ removes the existing claims' owner references, and verifies their UIDs and bound
 PV identities. This path requires existing PVC-backed WAL and data volumes;
 hostPath clusters are held for a separately validated manual procedure. A
 missing, unbound, deleting or replaced claim or PV blocks the upgrade.
+Detached claims are outside garbage collection, so the operator holds the
+`ledger.formance.com/upgrade-claims` finalizer on the Cluster while
+`status.upgrade` exists. If the Cluster is deleted during the upgrade with
+`whenDeleted: Delete`, the operator deletes each recorded claim that still has
+its recorded UID and no owner reference, then releases the finalizer. Claims
+still owned by the StatefulSet are left to garbage collection. With `Retain`,
+it releases the finalizer without deleting claims.
 The operator then deletes the StatefulSet with background propagation. It
 waits for the StatefulSet and **all old ordinal Pods** to disappear. A delete
 acknowledgement or elapsed time does not satisfy this condition. It does not
@@ -165,7 +172,8 @@ until the pinned count is restored. If a Pod will not terminate, diagnose its
 node and storage attachment, then let Kubernetes finish termination; the
 operator keeps the cluster unavailable. Verify the replacement is fully ready,
 then check cluster status, representative reads and writes, audit verification
-and backup compatibility. The operator does not delete Raft members or volumes.
+and backup compatibility. The operator does not delete Raft members, and
+deletes upgrade claims only when the Cluster itself is deleted as described above.
 
 The drain blocks business writes before the stop; in-flight proposals after
 the cutoff reject at apply. Cluster-internal technical entries may continue
