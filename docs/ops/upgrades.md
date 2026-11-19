@@ -623,9 +623,10 @@ volumes. The target reads historical entries and writes `ExecutionBatch` or
 `SetClusterPolicyProposal` directly. Existing snapshots, backups and audit
 history need no rewrite or backfill. Native policy controls persist operational
 state without business audit entries. Historical policy audits remain readable
-with unchanged hashes. Incremental backups preserve newer policy in a separate
-manifest snapshot, including policy-only changes. No capability flag enables
-this format.
+with unchanged hashes. Current checkpoint backups include policy changes in
+the Pebble state, including policy-only changes. Legacy incremental backup
+artifacts are not supported by the current restore path. No capability flag
+enables this format.
 
 The first native payload appended to the WAL closes the rollback window for
 RC.3. Restarting RC.3 on that storage requires a separately validated recovery

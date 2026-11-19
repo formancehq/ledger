@@ -827,7 +827,7 @@ The replacement changes no wire or WAL record fields and requires no migration
 of released RC state. Old and new voters remain interoperable during a rolling
 upgrade. The WAL suffix is cluster-local Raft state; cross-cluster
 restore continues to rebuild its independent Raft domain from the restored
-business checkpoint and exported delta.
+complete business checkpoint.
 
 #### Snapshot Synchronization Flow
 

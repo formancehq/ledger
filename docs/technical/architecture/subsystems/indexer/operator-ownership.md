@@ -74,14 +74,14 @@ audit alone cannot close the interval.
 
 ## Restore and verification
 
-Full checkpoints retain audit entries, audit items and index creation dates.
-Nonempty incremental exports retain the audit rows, while registry replay
-reconstructs creation dates from creation logs. No new persistence format or
-restore projection is introduced. Restored evidence is usable by the same CR
+Complete checkpoints retain audit entries, audit items, index registry rows
+and creation dates. A later checkpoint also captures changes committed since
+the previous one. No new persistence format or restore projection is
+introduced. Restored evidence is usable by the same CR
 UID; a different UID does not adopt it.
 
 Regression coverage includes real CLI/service creation followed by a one-shot
 status failure, fresh-controller recovery and spec withdrawal; lost responses;
 external existing/concurrent creations; known replacements; new CR UIDs; audit
-pagination and invalid evidence. Restore coverage spans a checkpoint and a
-nonempty delta and verifies that audit identity and creation dates still match.
+pagination and invalid evidence. Restore coverage captures changes in a later
+complete checkpoint and verifies that audit identity and creation dates still match.
