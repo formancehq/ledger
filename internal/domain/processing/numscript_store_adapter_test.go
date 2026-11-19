@@ -146,7 +146,7 @@ func TestGetAccountsMetadata_Basic(t *testing.T) {
 		Key:        "status",
 	}
 
-	expectGetAccountMetadata(mockStore, metaKey, commonpb.NewStringValue("active"), nil)
+	expectGetAccountMetadata(mockStore, metaKey, commonpb.NewStringValue("active").AsReader(), nil)
 
 	query := numscriptlib.MetadataQuery{{Account: "users:001", Keys: []string{"status"}}}
 
@@ -178,7 +178,7 @@ func TestGetAccountsMetadata_PresentEmptyString(t *testing.T) {
 		Key:        "note",
 	}
 
-	expectGetAccountMetadata(mockStore, metaKey, commonpb.NewStringValue(""), nil)
+	expectGetAccountMetadata(mockStore, metaKey, commonpb.NewStringValue("").AsReader(), nil)
 
 	query := numscriptlib.MetadataQuery{{Account: "users:001", Keys: []string{"note"}}}
 
@@ -229,7 +229,7 @@ func TestGetAccountsMetadata_PreservesVerbatimAcrossDeclaredType(t *testing.T) {
 		Key:        "age",
 	}
 
-	expectGetAccountMetadata(mockStore, metaKey, commonpb.NewStringValue("030"), nil)
+	expectGetAccountMetadata(mockStore, metaKey, commonpb.NewStringValue("030").AsReader(), nil)
 
 	query := numscriptlib.MetadataQuery{{Account: "users:001", Keys: []string{"age"}}}
 
