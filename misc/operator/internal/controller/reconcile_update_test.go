@@ -9,6 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 	appsv1 "k8s.io/api/apps/v1"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/util/retry"
 
 	ledgerv1alpha1 "github.com/formancehq/ledger/misc/operator/api/v1alpha1"
 )
@@ -28,9 +29,13 @@ func TestReconcile_SpecHashChanges(t *testing.T) {
 
 	// Update spec to trigger hash change
 	updated := &ledgerv1alpha1.Cluster{}
-	require.NoError(t, k8sClient.Get(ctx, types.NamespacedName{Name: "hash-change", Namespace: ns}, updated))
-	updated.Spec.Debug = true
-	require.NoError(t, k8sClient.Update(ctx, updated))
+	require.NoError(t, retry.RetryOnConflict(retry.DefaultRetry, func() error {
+		if err := k8sClient.Get(ctx, types.NamespacedName{Name: "hash-change", Namespace: ns}, updated); err != nil {
+			return err
+		}
+		updated.Spec.Debug = true
+		return k8sClient.Update(ctx, updated)
+	}))
 
 	// Wait for spec hash to change
 	requireEventually(t, func() bool {
@@ -63,20 +68,28 @@ func TestReconcile_PreservesKubectlRestartedAt(t *testing.T) {
 	// pod template. This patch itself triggers a reconcile of the owned
 	// StatefulSet.
 	const restartedAt = "2026-08-24T10:00:00Z"
-	require.NoError(t, k8sClient.Get(ctx, stsName, sts))
-	if sts.Spec.Template.Annotations == nil {
-		sts.Spec.Template.Annotations = map[string]string{}
-	}
-	sts.Spec.Template.Annotations[annotationKubectlRestartedAt] = restartedAt
-	require.NoError(t, k8sClient.Update(ctx, sts))
+	require.NoError(t, retry.RetryOnConflict(retry.DefaultRetry, func() error {
+		if err := k8sClient.Get(ctx, stsName, sts); err != nil {
+			return err
+		}
+		if sts.Spec.Template.Annotations == nil {
+			sts.Spec.Template.Annotations = map[string]string{}
+		}
+		sts.Spec.Template.Annotations[annotationKubectlRestartedAt] = restartedAt
+		return k8sClient.Update(ctx, sts)
+	}))
 
 	// Force a reconcile that rewrites the template from the CR and wait for it
 	// to land (new spec hash). The kubectl stamp must survive that rewrite.
 	initialHash := sts.Spec.Template.Annotations[annotationSpecHash]
 	updated := &ledgerv1alpha1.Cluster{}
-	require.NoError(t, k8sClient.Get(ctx, types.NamespacedName{Name: "kubectl-restart", Namespace: ns}, updated))
-	updated.Spec.Debug = true
-	require.NoError(t, k8sClient.Update(ctx, updated))
+	require.NoError(t, retry.RetryOnConflict(retry.DefaultRetry, func() error {
+		if err := k8sClient.Get(ctx, types.NamespacedName{Name: "kubectl-restart", Namespace: ns}, updated); err != nil {
+			return err
+		}
+		updated.Spec.Debug = true
+		return k8sClient.Update(ctx, updated)
+	}))
 
 	requireEventually(t, func() bool {
 		if err := k8sClient.Get(ctx, stsName, sts); err != nil {
