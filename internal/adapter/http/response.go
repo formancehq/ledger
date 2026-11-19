@@ -34,13 +34,6 @@ func writeJSONResponse(w http.ResponseWriter, r *http.Request, statusCode int, d
 	w.WriteHeader(statusCode)
 
 	if err := json.MarshalWriteWithOptions(w, data, bigIntegerEncoding(r)); err != nil {
-		// Receipt mode has not sent headers yet: discard the captured result
-		// instead of authenticating an encoder error under a success status.
-		if captured, ok := w.(*publicReceiptWriter); ok {
-			captured.err = err
-
-			return
-		}
 		// Headers already sent; log but can't change the status code.
 		_, _ = fmt.Fprintf(w, `{"errorCode":"INTERNAL_ERROR","errorMessage":"failed to marshal response: %s"}`, err.Error())
 	}

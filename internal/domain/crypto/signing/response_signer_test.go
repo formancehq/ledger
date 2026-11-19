@@ -13,7 +13,6 @@ import (
 
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/signaturepb"
-	"github.com/formancehq/ledger/v3/pkg/httpreceipt"
 )
 
 func TestResponseSigner(t *testing.T) {
@@ -269,17 +268,4 @@ func TestLoadPublicKeyFromFile(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, pubKey, loaded)
 	})
-}
-
-func TestResponseSignerPublicReceipt(t *testing.T) {
-	t.Parallel()
-	signer := NewResponseSigner(make([]byte, 32))
-	empty := sha256.Sum256(nil)
-	target := sha256.Sum256([]byte("/"))
-	claims := httpreceipt.Claims{Version: "v1", Method: "DELETE", TargetHash: hex.EncodeToString(target[:]), BodyHash: hex.EncodeToString(empty[:]), Status: 204, Applies: 1, Logs: 1, SequencesHash: hex.EncodeToString(empty[:])}
-	header, err := signer.SignPublicReceipt(claims)
-	require.NoError(t, err)
-	actual, err := httpreceipt.Verify(header, signer.PublicKey(), "DELETE", "/", 204, nil)
-	require.NoError(t, err)
-	require.Equal(t, claims, *actual)
 }

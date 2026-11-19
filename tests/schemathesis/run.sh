@@ -25,7 +25,6 @@ MAX_EXAMPLES=${MAX_EXAMPLES:-50}
 SCHEMATHESIS_WORKERS=${SCHEMATHESIS_WORKERS:-1}
 
 TMPDIR=$(mktemp -d)
-printf '%064d\n' 0 > "$TMPDIR/response-signing-seed.hex"
 # On exit, preserve the server log as an uploadable diagnostic BEFORE removing
 # TMPDIR, so a failing run still ships server-side context. The filename matches
 # the CI artifact glob (/tmp/schemathesis-*.txt).
@@ -45,7 +44,6 @@ echo "==> Starting server (single-node, bootstrap, no auth)..."
 # independent from the host's production disk-pressure threshold.
 "$TMPDIR/ledger-server" run \
     --node-id 1 --cluster-id schemathesis-test --bootstrap \
-    --response-signing-key "$TMPDIR/response-signing-seed.hex" \
     --bind-addr "127.0.0.1:$RAFT_PORT" \
     --wal-dir "$TMPDIR/wal" --data-dir "$TMPDIR/data" \
     --health-wal-threshold 1 --health-data-threshold 1 \
@@ -93,21 +91,6 @@ seed() {
 }
 
 seed "create ledger" -X POST "$API/test-ledger"
-seed "create receipt smoke ledger" -X POST "$API/receipt-smoke-ledger"
-
-# Exercise the receipt mode against the same signer-enabled server that the
-# generated OpenAPI cases use. The empty 201 acknowledgement is intentional.
-receipt_status=$(curl -s -D "$TMPDIR/receipt-headers" -o "$TMPDIR/receipt-body" -w '%{http_code}' \
-    -X POST "$API/receipt-smoke-ledger/account-types" \
-    -H 'Content-Type: application/json' \
-    -H 'Formance-Public-Receipt: v1' \
-    -d '{"name":"schemathesis-receipt","pattern":"schemathesis:{id}"}')
-if [ "$receipt_status" != 201 ] || [ -s "$TMPDIR/receipt-body" ] || \
-    ! grep -Eqi '^Formance-Public-Receipt: [A-Za-z0-9_-]+' "$TMPDIR/receipt-headers"; then
-    echo "ERROR: receipt-mode account-type acknowledgement failed ($receipt_status)" >&2
-    cat "$TMPDIR/receipt-body" >&2
-    exit 1
-fi
 
 # Sacrificial ledger for DELETE /v3/{ledgerName}. That operation is itself
 # fuzzed, and test_api.py's before_call hook routes it here instead of the

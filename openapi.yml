@@ -72,6 +72,12 @@ paths:
         including optional server response signatures. A post-commit readiness,
         signing, encoding or transport failure cannot roll back committed work.
         This operation does not change the existing ledger bulk modes.
+
+        Clients that require a proof of the public Apply outcome may send
+        Formance-Public-Receipt: v1. The response header signs the HTTP status
+        and exact public body, including credential-redacted logs whose service
+        signatures cannot be exposed. The serving node must have response
+        signing enabled. Other routes do not support this header.
       security:
         - BearerAuth: []
         - {}
@@ -81,6 +87,13 @@ paths:
         - $ref: '#/components/parameters/SigningKeyId'
         - $ref: '#/components/parameters/RequestSignature'
         - $ref: '#/components/parameters/BigIntAsString'
+        - name: Formance-Public-Receipt
+          in: header
+          required: false
+          schema:
+            type: string
+            enum: [v1]
+          description: Request an Ed25519 proof of the exact public Apply response.
       requestBody:
         required: true
         content:
@@ -117,6 +130,11 @@ paths:
       responses:
         '200':
           description: Atomic batch applied, or its retained outcome replayed
+          headers:
+            Formance-Public-Receipt:
+              description: Signed public response proof when requested.
+              schema:
+                type: string
           content:
             application/json:
               schema:

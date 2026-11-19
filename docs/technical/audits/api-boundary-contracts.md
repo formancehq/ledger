@@ -500,6 +500,13 @@ is authorized by this contract update.
 
 ## Atomic HTTP Apply
 
+Only this route accepts the opt-in public response proof header. Invalid or
+repeated negotiation and unavailable signing reject before Apply. Compare
+ordinary and proof-mode response shapes through the registered router; the
+proof must not alter redaction, status or error classification. Legacy mutation
+routes reject the header before execution. The signed-response-integrity
+domain owns verification of the header against the delivered bytes.
+
 POST /v3/_/apply decodes a nonempty requests object using strict canonical camelCase protobuf command fields, exact HTTP bigint/timestamp scalars and typed metadata; it rejects unknown/duplicate/null fields and body keys. All current Request and LedgerAction arms must have accurate OpenAPI input schemas. One Idempotency-Key header and signed full-batch equality preserve ordered intent. The adapter invokes the service Apply handler once, retaining checkpoint readiness and response signing, then emits checked public logs with bigint options and created-ledger identity/metadata. An addEventsSink log or a created-ledger log with a mirror source uses a detached credential-redacted configuration and omits its original signature envelope, whose payload contains credentials; the committed log remains unchanged. Existing bulk contracts remain unchanged.
 
 Can any atomic HTTP request arm or nested action lose a field/type, accept an alias/duplicate/null or body key, bypass the byte/depth/count limits, split dispatch, bypass service readiness, expose sink or mirror credentials, strip configuration logs or response signatures outside the sink and mirror-ledger creation exceptions, or silently round bigint values? Does OpenAPI enumerate the actual command graph instead of reusing incompatible public JSON projections?

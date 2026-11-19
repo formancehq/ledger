@@ -43,8 +43,6 @@ func (s *Server) applyUnsigned(ctx context.Context, idempotencyKey string, reqs 
 		return nil, err
 	}
 
-	receiptState(ctx).record(result)
-
 	return result.Logs, nil
 }
 
@@ -65,8 +63,6 @@ func (s *Server) applyRequests(ctx context.Context, key string, requests ...*ser
 	if err != nil {
 		return nil, err
 	}
-
-	receiptState(ctx).record(result)
 
 	return result.Logs, nil
 }

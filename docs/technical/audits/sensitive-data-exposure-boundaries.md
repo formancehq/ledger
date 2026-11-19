@@ -331,23 +331,3 @@ The executable oracles are `TestHTTPSource_TransportDiagnostics`,
 transport regression in `internal/application/mirror/worker_diagnostic_test.go`.
 This protects newly emitted diagnostics; it does not rewrite historical status
 or classify configuration/audit read projections as safe.
-
-## Public receipt projection oracle
-
-Receipt-mode ledger creation adds a public projection boundary before JSON
-encoding and hashing. Exercise distinct synthetic mirror credentials and
-unknown protobuf fields through the registered creation handler. Require their
-absence from public body and decoded receipt envelope/claims, preserved ledger
-identity and supported safe connection metadata, and unchanged authoritative
-returned protobuf/log bytes. Verify that the receipt commits to the emitted
-public body, never a digest of secret-bearing source bytes. Keep event sink
-creation's name-only acknowledgement and check bulk outputs independently.
-
-Do not expose opaque SignedLog payloads alongside redacted fields, or sign a
-redacted log under the authoritative-log contract. The separate domain signs
-public status/body hashes and aggregate counts; it is not audit evidence.
-Default non-receipt output is unchanged by this feature. Projection is not an
-arbitrary-secret detector for metadata or error text. Cryptographic verification
-and exact-byte binding belong to signed-response-integrity; this domain owns
-credential absence and nonmutation of authoritative state. See
-[the projection contract](../architecture/subsystems/api/sensitive-projection.md#receipt-mode-mutation-responses).
