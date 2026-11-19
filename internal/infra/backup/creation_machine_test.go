@@ -2,7 +2,15 @@ package backup
 
 import (
 	"context"
+	"testing"
+
+	"github.com/stretchr/testify/require"
+	"go.etcd.io/raft/v3/raftpb"
+	"go.opentelemetry.io/otel/metric/noop"
+	"google.golang.org/protobuf/proto"
+
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
+
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/domain/crypto/keystore"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
@@ -12,11 +20,6 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
-	"github.com/stretchr/testify/require"
-	"go.etcd.io/raft/v3/raftpb"
-	"go.opentelemetry.io/otel/metric/noop"
-	"google.golang.org/protobuf/proto"
-	"testing"
 )
 
 const creationTestAuditKey = "0123456789abcdef0123456789abcdef"

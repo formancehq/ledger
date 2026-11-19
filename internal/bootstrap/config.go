@@ -190,8 +190,8 @@ type Config struct {
 	// SpoolSegmentMaxBytes caps the size of a spool segment before rotation
 	// (sealing). 0 means use the spool default (256Mi).
 	SpoolSegmentMaxBytes int64
-	NumscriptCacheSize    int
-	MirrorMaxBatchSize    int
+	NumscriptCacheSize   int
+	MirrorMaxBatchSize   int
 	// MaxExecutionPlanSize caps the number of AttributeCoverage entries an
 	// ExecutionPlan may carry. 0 disables the cap. See plan.Builder.
 	MaxExecutionPlanSize        int

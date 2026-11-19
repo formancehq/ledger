@@ -7,11 +7,12 @@ import (
 	"io"
 	"testing"
 
-	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 	"github.com/stretchr/testify/require"
 	"go.etcd.io/raft/v3/raftpb"
 	"go.uber.org/mock/gomock"
 	"google.golang.org/protobuf/proto"
+
+	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
 	"github.com/formancehq/ledger/v3/internal/infra/state"
 	"github.com/formancehq/ledger/v3/internal/pkg/commands"
@@ -119,8 +120,10 @@ func TestPolicyOnlyBackupPublicationAndRetry(t *testing.T) {
 		func(ctx context.Context, key string, data io.Reader, size int64) error {
 			if key == ManifestKey("policy") && !failed {
 				failed = true
+
 				return errors.New("manifest unavailable")
 			}
+
 			return storage.PutFile(ctx, key, data, size)
 		}).AnyTimes()
 
