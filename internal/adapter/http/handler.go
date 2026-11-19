@@ -16,6 +16,7 @@ import (
 
 	internalauth "github.com/formancehq/ledger/v3/internal/adapter/auth"
 	"github.com/formancehq/ledger/v3/internal/pkg/version"
+	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
 // APIVersionPrefix is the URL prefix under which business API routes are
@@ -26,7 +27,7 @@ const APIVersionPrefix = "/v3"
 // NewHandler creates a new HTTP handler (router) for the ledger service.
 // The authCfg parameter controls JWT authentication with read/write scopes:
 // when Enabled is false, requests pass through without authentication.
-func NewHandler(logger logging.Logger, backend Backend, authCfg internalauth.AuthConfig, info version.Info) http.Handler {
+func NewHandler(logger logging.Logger, backend Backend, authCfg internalauth.AuthConfig, info version.Info, applyService servicepb.BucketServiceServer) http.Handler {
 	r := chi.NewRouter()
 
 	// Granular scope-bound middleware helpers
@@ -111,6 +112,8 @@ func NewHandler(logger logging.Logger, backend Backend, authCfg internalauth.Aut
 	// Business API routes: mounted under APIVersionPrefix.
 	registerAPIRoutes := func(r chi.Router) {
 		r.With(contentTypeMiddleware, utf8PathParamValidator, readConsistency).Group(func(r chi.Router) {
+			r.Post("/_/apply", signedRequest(knownQuery(server.handleAtomicApply(applyService))))
+
 			// Profiled reads (EN-1859). Declared here, outside the scope groups
 			// below, because chi applies group middleware BEFORE route
 			// middleware: inside `r.With(requireXRead).Group(…)` the scope guard

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"math/big"
 	"testing"
 
 	"github.com/holiman/uint256"
@@ -85,7 +86,7 @@ func TestServerAggregateKeysByAssetAndColor(t *testing.T) {
 	t.Parallel()
 
 	vol := func(asset, color string, in, out uint64) *commonpb.AggregatedVolume {
-		return &commonpb.AggregatedVolume{Asset: asset, Color: color, Input: commonpb.NewUint256(uint256.NewInt(in)), Output: commonpb.NewUint256(uint256.NewInt(out))}
+		return &commonpb.AggregatedVolume{Asset: asset, Color: color, Input: commonpb.NewBigUintFromUint64(in), Output: commonpb.NewBigUintFromUint64(out)}
 	}
 
 	got, ok := serverAggregate(&commonpb.AggregateResult{Volumes: []*commonpb.AggregatedVolume{vol("USD/2", "", 3, 1), vol("USD/2", "a", 2, 2), vol("EUR/2", "", 0, 0)}})
@@ -96,4 +97,20 @@ func TestServerAggregateKeysByAssetAndColor(t *testing.T) {
 
 	_, ok = serverAggregate(&commonpb.AggregateResult{Volumes: []*commonpb.AggregatedVolume{vol("USD/2", "a", 1, 1), vol("USD/2", "a", 1, 1)}})
 	require.False(t, ok)
+}
+
+// The model sums modulo 2^256, so an exact server total above it compares by
+// its low 256 bits.
+func TestServerAggregateWrapsExactTotals(t *testing.T) {
+	t.Parallel()
+
+	above, err := commonpb.NewBigUint(new(big.Int).Add(new(big.Int).Lsh(big.NewInt(1), 256), big.NewInt(5)))
+	require.NoError(t, err)
+
+	got, ok := serverAggregate(&commonpb.AggregateResult{Volumes: []*commonpb.AggregatedVolume{
+		{Asset: "USD/2", Input: above, Output: commonpb.NewBigUintFromUint64(7)},
+	}})
+	require.True(t, ok)
+	require.Equal(t, "5", got[assetColor{Asset: "USD/2"}].in.Dec())
+	require.Equal(t, "7", got[assetColor{Asset: "USD/2"}].out.Dec())
 }

@@ -5,7 +5,7 @@ pc: pre-commit
 
 # Compare the service contract with the current PR or merge-queue target.
 check-protocol-version:
-    go run ./scripts/checkprotocolversion --base "$PROTOCOL_BASE_SHA"
+    go run ./scripts/checkprotocolversion --base "$PROTOCOL_BASE_SHA" --base-ref "${PROTOCOL_BASE_REF:-}"
 
 # Regenerate the Grafana dashboards (otel + prom variants) from Jsonnet
 # sources under misc/devenv/monitoring-dashboards/jsonnet/. The output
@@ -508,7 +508,7 @@ operator-test-admission:
     KUBEBUILDER_ASSETS=$(setup-envtest use 1.32.x -p path)
     export KUBEBUILDER_ASSETS
     cd misc/operator
-    go test -race -tags integration ./internal/controller -run '^(TestLedgerAdmission|TestTraceSampling|TestBackupRunAdmission|TestBackupRunParentSelectorIntegration$|TestBackupRunCommittedCreateLostResponseIntegration$|TestBackupRunManualAssociationIntegration$)' -count=1 -timeout 3m
+    go test -race -tags integration ./internal/controller -run '^(TestLedgerAdmission|TestClusterPolicyRevisionAdmission|TestTraceSampling|TestBackupRunAdmission|TestBackupRunParentSelectorIntegration$|TestBackupRunCommittedCreateLostResponseIntegration$|TestBackupRunManualAssociationIntegration$)' -count=1 -timeout 3m
 
 # Run operator pre-commit checks (generate + tidy + build)
 operator-pre-commit: operator-generate

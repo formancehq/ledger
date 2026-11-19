@@ -7,6 +7,8 @@ import (
 	"strings"
 )
 
+const maxArrayIndex = 65536
+
 // ParseSetValues parses a list of Helm-style "key=value" strings into a nested map.
 // Keys use dotted paths with optional array indices:
 //
@@ -14,7 +16,8 @@ import (
 //	"ingress.tls[0].hosts[0]=example.com"
 //	"raft.electionTick=10"
 //
-// Values are coerced: "true"/"false" -> bool, valid integers -> float64, else string.
+// Array indices must be decimal integers between 0 and 65536, inclusive.
+// Values remain strings until ApplyToStruct converts them to the target types.
 func ParseSetValues(sets []string) (map[string]any, error) {
 	result := make(map[string]any)
 
@@ -37,7 +40,10 @@ func ParseSetValues(sets []string) (map[string]any, error) {
 // setNestedPath sets a value at a dotted path with array index support.
 // It creates intermediate maps and slices as needed.
 func setNestedPath(root map[string]any, path string, val any) error {
-	segments := parseSegments(path)
+	segments, err := parseSegments(path)
+	if err != nil {
+		return err
+	}
 
 	return setSegments(root, segments, val)
 }
@@ -53,45 +59,66 @@ type segment struct {
 // Escaped dots (\.) are treated as literal dots in key names, e.g.:
 //
 //	"annotations.service\.beta\.kubernetes\.io/foo" → key(annotations), key(service.beta.kubernetes.io/foo)
-func parseSegments(path string) []segment {
+func parseSegments(path string) ([]segment, error) {
+	parts, err := splitEscaped(path, '.')
+	if err != nil {
+		return nil, err
+	}
 	var segs []segment
-	for _, part := range splitEscaped(path, '.') {
+	for _, part := range parts {
+		if part == "" {
+			return nil, errors.New("empty key in path")
+		}
 		bracketIdx := strings.IndexByte(part, '[')
 		if bracketIdx < 0 {
+			if strings.ContainsRune(part, ']') {
+				return nil, fmt.Errorf("unexpected ']' in key %q", part)
+			}
 			segs = append(segs, segment{key: part})
 
 			continue
 		}
 
 		name := part[:bracketIdx]
-		if name != "" {
-			segs = append(segs, segment{key: name})
+		if name == "" {
+			return nil, errors.New("array index must follow a key")
 		}
+		if strings.ContainsRune(name, ']') {
+			return nil, fmt.Errorf("unexpected ']' in key %q", name)
+		}
+		segs = append(segs, segment{key: name})
 
 		rest := part[bracketIdx:]
 		for rest != "" {
 			if rest[0] != '[' {
-				break
+				return nil, fmt.Errorf("unexpected text after array index: %q", rest)
 			}
 			end := strings.IndexByte(rest, ']')
 			if end < 0 {
-				break
+				return nil, errors.New("unclosed array index")
 			}
-			n, err := strconv.Atoi(rest[1:end])
-			if err == nil {
-				segs = append(segs, segment{index: n, isIdx: true})
+			indexText := rest[1:end]
+			if indexText == "" || strings.ContainsFunc(indexText, func(char rune) bool {
+				return char < '0' || char > '9'
+			}) {
+				return nil, fmt.Errorf("array index %q must be a decimal integer between 0 and %d", indexText, maxArrayIndex)
 			}
+			index, err := strconv.Atoi(indexText)
+			if err != nil || index > maxArrayIndex {
+				return nil, fmt.Errorf("array index %q exceeds maximum %d", indexText, maxArrayIndex)
+			}
+			segs = append(segs, segment{index: index, isIdx: true})
 			rest = rest[end+1:]
 		}
 	}
 
-	return segs
+	return segs, nil
 }
 
 // splitEscaped splits a string on sep, respecting:
 //   - \. escaped dots (Helm-style)
 //   - "quoted.segments" where dots are literal
-func splitEscaped(s string, sep byte) []string {
+func splitEscaped(s string, sep byte) ([]string, error) {
 	var parts []string
 	var buf strings.Builder
 	inQuote := false
@@ -111,9 +138,12 @@ func splitEscaped(s string, sep byte) []string {
 			buf.WriteByte(ch)
 		}
 	}
+	if inQuote {
+		return nil, errors.New("unclosed quoted key")
+	}
 	parts = append(parts, buf.String())
 
-	return parts
+	return parts, nil
 }
 
 // setSegments recursively navigates/creates the structure and sets the value.

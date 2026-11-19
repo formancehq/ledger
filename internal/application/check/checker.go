@@ -2190,10 +2190,11 @@ func (c *Checker) verifyAuditHashChain(
 		// verifySkippedOrder during the log iteration loop.
 		expectedSkippable = make(map[uint64]*expectedSkippableOrder)
 		expectedLogs      = make(map[uint64]*commonpb.Log)
-		// hasVerifiedRange records whether any entry was verified — the gate
-		// for the idempotency comparison, whose expectation is only complete
-		// once the audit range has been folded.
-		hasVerifiedRange bool
+		// hasVerifiedRange records whether the audit range is usable for the
+		// idempotency comparison. An empty audit history is a complete,
+		// verified range too: it legitimately has no expected outcomes, so
+		// every stored outcome is fabricated and must be reported.
+		hasVerifiedRange = true
 	)
 	result := &auditVerification{skippable: expectedSkippable, logs: expectedLogs}
 
@@ -4183,8 +4184,8 @@ func expectedIdempotencyOutcome(entry *auditpb.AuditEntry, items []*auditpb.Audi
 // whole audit range is re-derived, and every freeze is written by the same
 // apply as its audit entry. A stored entry matching no freeze is therefore a
 // tampered created_at or a fabricated entry and is reported. When no entry was
-// verified (hasVerifiedRange false) the expectation was never built, so all
-// entries are skipped.
+// verified, including the legitimately empty audit range, the expectation is
+// complete and every stored outcome must match one of its entries.
 //
 // This pass verifies the INTEGRITY of the entries that are stored — it does not
 // detect a DELETED entry. A frozen outcome that is simply absent cannot be
@@ -4216,6 +4217,12 @@ func (c *Checker) compareIdempotencyOutcomes(
 	for iter.First(); iter.Valid(); iter.Next() {
 		key := iter.Key()
 		if len(key) != 2+16 {
+			callback(errorEvent(
+				servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_IDEMPOTENCY_MISMATCH,
+				fmt.Sprintf("malformed frozen idempotency key %x: expected %d bytes, got %d", key, 2+16, len(key)),
+				0, "", "", "",
+			))
+
 			continue
 		}
 

@@ -142,7 +142,7 @@ server-specific compatibility repair.
 HTTP consumers do not send this gRPC metadata. Internal forwarding from HTTP
 uses the server's service client and is subject to the same gate at the peer.
 Nodes with different service revisions can therefore fail forwarded requests;
-the revision-40 wire contract alone does not prove a rolling upgrade safe.
+a matching revision alone does not prove a rolling upgrade safe.
 Releases that permit rolling must preserve peer communication, Raft apply and
 persisted-state compatibility while old and new servers coexist. RC.3 to RC.4
 requires a full stop, with no mixed-binary window and preserved data.
@@ -404,11 +404,55 @@ every behavior or configuration setting for the release-candidate phase.
 The author of a service change must identify its effect on published clients.
 Removing or renaming a published RPC, changing its request or response type,
 or removing, renumbering, or repurposing a published field or enum value is not
-allowed during the RC. Behavior and configuration changes can ship when their
+allowed during the RC outside a [wire exception](#wire-exceptions). Behavior and configuration changes can ship when their
 effect and upgrade steps are documented in the PR and user guidance. Reviewers
 must check whether a client can still decode the response and how it must
 handle any changed result. Do not bump the revision to avoid this assessment.
 Documentation-only changes need no client assessment.
+
+### Wire exceptions
+
+A wire-incompatible change to a gated type can ship at the unchanged revision
+only as a listed exception, when breaking decoding for existing clients of
+that type is accepted. The revision gate cannot protect such a change:
+clients built before it pass the gate and misdecode the type, and so does a
+node that receives it from a peer on the other side of the change. Bumping the
+revision is not the remedy during the RC, because it would reject existing
+clients on every RPC.
+
+An exception therefore needs all of the following in the same PR:
+
+1. An entry in `misc/proto/wire-exceptions.json` naming the declaration, the
+   `buf` rule, the finding text up to its documentation link, and a stop.
+2. That stop in the operator's `mandatoryStopVersions`
+   (`misc/operator/internal/controller/required_upgrade.go`), so nodes on
+   either side of the change never run together.
+3. The client impact and the upgrade steps in the PR and in
+   [the upgrade guide](../../../../ops/upgrades.md).
+
+The stop must be the lowest version the next build of the branch can be
+deployed as. The operator stops an upgrade when `from < stop <= to`, so that
+stop covers whichever build ships next:
+
+| Latest tag on the branch | Stop to list | Why |
+|--------------------------|--------------|-----|
+| `vX.Y.Z-rc.N` | `vX.Y.Z-rc.(N+1)` | From an RC, the operator rejects every `-rc` target except the next RC, and the final release sorts above it. |
+| `vX.Y.Z` | `vX.Y.(Z+1)-0` | Development, beta and RC builds of the next patch all sort above `-0`. |
+| version-line marker `vX.Y.0-0` | `vX.Y.0-0` | Every build of the new line sorts at or above its marker. |
+
+The latest tag is the highest version tag in the target branch's history, as
+for [development versions](../../../contributing/release-versioning.md). A tag
+that only the change itself carries does not count. A change that targets
+`release/vX.Y` only counts tags of that line, because the next line's marker
+sits on the branch point.
+
+An exception is permanent. Once the change is merged, `buf` no longer reports
+it, so the entry is the only record that its stop is still needed by clusters
+upgrading from before the change. Never remove an entry or change its stop.
+
+The stop list orders versions, not commits. Two development builds cut from
+the same tag on either side of the change cannot be separated by any entry, so
+an upgrade between them rolls.
 
 The service wire contract is separate from the
 [persisted-data upgrade guarantee](../../../../ops/upgrades.md#release-requirement-from-v300-rc1).
@@ -425,8 +469,8 @@ persisted and audited data must remain readable, or have a safe migration. See
 of the freeze.
 The required `Dirty` check and the `invariants` check run it on pull requests
 and merge-queue entries against the target tip, including after a PR changes
-base. `agent-check-pr` runs it when `misc/proto/**` or
-`pkg/grpcprotocol/**` changes.
+base. `agent-check-pr` runs it when `misc/proto/**`, `pkg/grpcprotocol/**` or
+the operator's `required_upgrade.go` changes.
 
 1. The check reads `Version` at the base and in the worktree. Any change fails.
 2. The check runs `buf breaking` between the base and the worktree with the
@@ -441,7 +485,28 @@ base. `agent-check-pr` runs it when `misc/proto/**` or
    line and column to distinguish nested declarations on the same line. A
    finding it cannot attribute to a declaration counts when its file declares a
    gated type. Raft-only and persisted-only messages are not counted.
-4. Any kept finding fails the check. A revision bump does not excuse it.
+4. A kept finding fails the check unless `misc/proto/wire-exceptions.json`
+   lists its declaration, rule and text. A revision bump does not excuse it.
+5. The check compares the exceptions file with its content at the base. An
+   entry that the base lists must still be listed unchanged, so neither an
+   exception nor its stop can be dropped after the change merges.
+6. When exceptions are listed, the check reads `mandatoryStopVersions` from
+   the operator source without compiling it.
+   - On every run, each exception's stop must be in that list.
+   - For an exception that the checked change introduces, the stop `S` must
+     also satisfy `lower < S <= floor`. `floor` is the stop from the table
+     above, taken from the tags reachable from the base commit. `lower` is
+     the highest version tag in the repository below it, on any branch, so a
+     release tagged elsewhere is still separated.
+   - CI passes the target branch as `PROTOCOL_BASE_REF`. Without it, the
+     branch is treated as shipping every version line.
+
+   The check fails if the exceptions file has an unknown field, an empty
+   declaration, rule or message, or a stop that is not a canonical
+   `vX.Y.Z[-prerelease]` version; if the operator list is not a `[]string`
+   literal; or if an exception is introduced while no version tag of the
+   target branch's line is reachable from the base commit. CI checks out the
+   full history with tags.
 
 The check does not detect semantic changes that keep the `.proto` text
 unchanged; those remain the author's and reviewer's classification. When a
@@ -684,6 +749,27 @@ policy retry the request. A measured disk block still returns
 block retains its existing response. Admission checks the gate before proposing
 an order, so a retry after `Unavailable` cannot duplicate a committed write.
 This status change requires revision 40 clients and servers together.
+
+## Exact aggregate totals (wire exception at revision 40)
+
+EN-3332 changes `AggregatedVolume.input` (2) and `output` (3) from `Uint256` to
+`BigUint`, so `AggregateVolumes` and prepared-query `AGGREGATE_VOLUMES` serve
+exact totals. A total of buckets that each fit in 256 bits, across accounts,
+colors, prefixes or rescaled precisions, may exceed 2^256. The
+`AGGREGATE_OVERFLOW` reason (60) is removed and reserved.
+
+This is a [wire exception](#wire-exceptions): the revision stays at 40.
+
+- A client built before RC.5 passes the revision check and misdecodes the two
+  fields: it fails to decode the response or reads the totals as zero. Clients
+  that read aggregate volumes must upgrade with the servers. Every other RPC
+  keeps working, which a revision bump would not allow.
+- A node misdecodes an aggregate forwarded by a peer on the other side of the
+  change in the same way, so RC.5 is a mandatory stopped upgrade from RC.4
+  (see [server upgrades](../../../../ops/upgrades.md#exact-aggregate-totals)).
+
+HTTP responses keep their JSON shape and no longer fail with
+`AGGREGATE_OVERFLOW`. No persisted, Raft, snapshot or audit format changes.
 
 ## Capped index inspection page size
 

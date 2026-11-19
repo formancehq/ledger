@@ -18,7 +18,9 @@ are rolling unless the embedded operator lists a mandatory stopped-upgrade
 boundary. Such a boundary must preserve committed data and prove non-empty
 replay. Old and new voters must apply entries identically whenever they coexist.
 The RC.3 to RC.4 proposal payload cutover is a mandatory stopped boundary:
-the operator must stop every RC.3 voter before starting an RC.4 voter.
+the operator must stop every RC.3 voter before starting an RC.4 voter. RC.4 to
+RC.5 is one too, because RC.5 retypes `AggregatedVolume` totals as a wire
+exception at the unchanged service protocol revision.
 
 - Classify persisted, Raft, snapshot, backup, and audit changes against the RC
   baseline. Include a tested migration or prove existing data remains valid.
@@ -38,7 +40,8 @@ the operator must stop every RC.3 voter before starting an RC.4 voter.
 Do not increment `pkg/grpcprotocol.Version`; it stays at `"40"` during the v3
 release-candidate phase. Assess and document the effect of behavior or
 configuration changes on existing clients. Escalate a wire change that cannot
-preserve client decoding instead of bumping the revision. Read the
+preserve client decoding instead of bumping the revision; an accepted one
+ships as a listed wire exception behind a mandatory stopped upgrade. Read the
 [protocol maintenance rules](docs/technical/architecture/subsystems/api/protocol-compatibility.md#maintaining-the-revision)
 before modifying this contract.
 

@@ -2,6 +2,7 @@ package indexbuilder
 
 import (
 	"context"
+	"encoding/binary"
 	"errors"
 	"testing"
 	"time"
@@ -458,6 +459,53 @@ func TestIndexPostingAddressMappingsAccountByAssetDedup(t *testing.T) {
 		"accounts:alice": {},
 		"accounts:bob":   {},
 	}, got)
+}
+
+// TestAccountAssetBackfillRepairsLaterLiveFirstTouch reproduces EN-3309:
+// CreateIndex makes the account-asset index pending while live folding remains
+// active. A later live transaction can therefore write the row before the
+// backfill replays the historical first touch. Presence-only dedup used to
+// preserve the later stamp forever; the backfill must retain the minimum.
+func TestAccountAssetBackfillRepairsLaterLiveFirstTouch(t *testing.T) {
+	t.Parallel()
+
+	store, err := readstore.New(t.TempDir(), noopLogger{}, readstore.DefaultConfig())
+	require.NoError(t, err)
+	defer func() { _ = store.Close() }()
+
+	b := &Builder{
+		readStore: store,
+		kb:        dal.NewKeyBuilder(),
+		wb:        readstore.NewWriteBatch(),
+	}
+	cfg := acctAssetConfig()
+
+	// Interleaving step 1: the live fold observes a later log first.
+	live := store.NewBatch()
+	b.initBatch(live)
+	b.wb.SetEventSequence(10)
+	require.NoError(t, b.indexPostingAddressMappings(
+		b.kb, cfg, "test", 10, "accounts:alice", "accounts:bank", "USD/2", "",
+		false, false, false, nil,
+	))
+	require.NoError(t, b.wb.Flush())
+
+	// Interleaving step 2: historical backfill reaches the true first touch.
+	historical := store.NewBatch()
+	b.initBatch(historical)
+	b.wb.SetEventSequence(5)
+	require.NoError(t, b.indexPostingAddressMappings(
+		b.kb, cfg, "test", 5, "accounts:alice", "accounts:bank", "USD/2", "",
+		false, false, false, nil,
+	))
+	require.NoError(t, b.wb.Flush())
+
+	key := readstore.AccountByAssetKey(dal.NewKeyBuilder(), "test", "USD", 2, "accounts:alice")
+	value, closer, err := store.DB().Get(key)
+	require.NoError(t, err)
+	defer func() { _ = closer.Close() }()
+	require.Len(t, value, 8)
+	assert.Equal(t, uint64(5), binary.BigEndian.Uint64(value), "backfill must repair a later live first-touch stamp")
 }
 
 // TestIndexPostingAddressMappingsAccountByAssetSurvivesInBatchDelete guards the

@@ -52,11 +52,17 @@ sequenceDiagram
 | Layer | Location | Role |
 |-------|----------|------|
 | gRPC interceptor | `authUnaryInterceptor` — `internal/adapter/grpc/auth_interceptor.go` | Authenticate the caller and inspect the request with `PeekBatch`. If the payload is parseable, authorize every embedded request and attach its non-authoritative batch size to the context. Signed payloads that cannot be peeked continue to admission so signature verification retains precedence. The interceptor does not verify the signed payload or adopt a forwarded caller snapshot. |
-| gRPC handler | `BucketServiceServerImpl.Apply` — `internal/adapter/grpc/server_bucket.go` | At the forwarding trust boundary, adopt a forwarded caller snapshot only from a cluster-internal connection, short-circuit cross-node forwarding, record metrics from any batch size peeked by the interceptor, then delegate. |
+| gRPC handler | `BucketServiceServerImpl.Apply` — `internal/adapter/grpc/server_bucket.go` | At the forwarding trust boundary, adopt a forwarded caller snapshot only from a cluster-internal connection, short-circuit cross-node forwarding, record metrics from the interceptor batch-size observation or a non-authoritative `PeekBatch` fallback for direct HTTP service invocation, then delegate. |
 | Controller | `DefaultController.Apply` — `internal/application/ctrl/controller_default.go` | Forwarding layer. Peeks the batch for metrics and traces, delegates to `Admission.Admit`, records duration. No mutation. |
 | Admission | `Admission.Admit` — `internal/application/admission/admission.go` | Verify and extract signed payloads, then run the real pipeline. Only this verified extraction makes a signed batch authoritative. |
 
 The gRPC interceptor, handler, and controller layers exist so the same admission logic can sit behind multiple transports (HTTP REST is a thin wrapper over the same controller) and so cross-cutting concerns (auth, telemetry, forwarding, and peek-then-delegate) stay outside the pipeline body.
+
+`POST /v3/_/apply` enters the service handler directly after HTTP authentication,
+per-command scope checks and signed-intent equality. It retains service-level
+checkpoint readiness and response signing; ordinary legacy HTTP writes keep
+their existing controller entry points. The batch-size fallback is telemetry
+only and does not authenticate a signed payload or change admission precedence.
 
 ## The Admit pipeline
 

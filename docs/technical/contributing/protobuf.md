@@ -78,7 +78,9 @@ migration. Follow the [upgrade policy](../../ops/upgrades.md#release-requirement
 CI enforces the service wire freeze with
 `PROTOCOL_BASE_SHA=<target-sha> just check-protocol-version`. It fails if the
 revision changes or `buf breaking` finds a wire-incompatible change in a type
-reachable from a gated service. Run it locally before pushing a `.proto`
+reachable from a gated service. An accepted break must be a
+[listed wire exception](../architecture/subsystems/api/protocol-compatibility.md#wire-exceptions)
+behind a mandatory stopped upgrade. Run it locally before pushing a `.proto`
 change; review behavior changes separately for client impact.
 
 1. Edit the `.proto` file in `misc/proto/`.
@@ -205,7 +207,8 @@ See [architecture/uint256-wire-format.md](../architecture/primitives/uint256-wir
 totals and `SignedBigInt` for balances. These response and audited-projection
 types are deliberately arbitrary precision: an individual persisted color
 bucket is bounded by `Uint256`, but `collapseColors` may sum multiple buckets
-past 256 bits. `BigUint.magnitude` is the minimal unsigned big-endian magnitude
+past 256 bits. `AggregatedVolume` uses `BigUint` for the same reason: it sums
+buckets across accounts, colors, prefixes and precisions. `BigUint.magnitude` is the minimal unsigned big-endian magnitude
 (empty for zero, never prefixed with a zero octet). `SignedBigInt` adds a sign;
 its zero has no magnitude and can never be negative. Public HTTP JSON uses
 exact decimal number tokens by default, matching v2. Clients can opt in to

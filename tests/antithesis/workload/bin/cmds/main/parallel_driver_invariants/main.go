@@ -29,8 +29,15 @@ func main() {
 		}
 
 		for _, vol := range resp.GetVolumes() {
-			input := vol.GetInput().ToBigInt()
-			output := vol.GetOutput().ToBigInt()
+			input, output, err := vol.Totals()
+			if err != nil {
+				assert.Unreachable("AggregateVolumes returned unexpected error", internal.Details{
+					"ledger": ledger,
+					"error":  err,
+				})
+
+				return
+			}
 
 			assert.Always(input.Cmp(output) == 0, "aggregate double-entry: input must equal output", internal.Details{
 				"ledger": ledger,

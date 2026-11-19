@@ -66,8 +66,15 @@ func main() {
 		}
 
 		for _, vol := range aggResp.GetVolumes() {
-			input := vol.GetInput().ToBigInt()
-			output := vol.GetOutput().ToBigInt()
+			input, output, err := vol.Totals()
+			if err != nil {
+				assert.Unreachable("AggregateVolumes returned a malformed total", statsDetails.With(internal.Details{
+					"asset": vol.GetAsset(),
+					"error": err,
+				}))
+
+				return
+			}
 			balance := new(big.Int).Sub(input, output)
 
 			assert.Always(

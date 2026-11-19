@@ -1,6 +1,7 @@
 package query
 
 import (
+	"math/big"
 	"testing"
 
 	"github.com/holiman/uint256"
@@ -30,7 +31,7 @@ func makeEntry(ledgerName string, account, asset string, input, output uint64) a
 func TestVolumeAggregator_NoRescaling(t *testing.T) {
 	t.Parallel()
 
-	va := newVolumeAggregator(false, false)
+	va := newVolumeAggregator(AggregateOptions{})
 
 	require.NoError(t, va.accumulate(makeEntry("test", "a", "USD/2", 100, 50)))
 	require.NoError(t, va.accumulate(makeEntry("test", "a", "USD/4", 10000, 5000)))
@@ -45,7 +46,7 @@ func TestVolumeAggregator_NoRescaling(t *testing.T) {
 func TestVolumeAggregator_UseMaxPrecision(t *testing.T) {
 	t.Parallel()
 
-	va := newVolumeAggregator(true, false)
+	va := newVolumeAggregator(AggregateOptions{UseMaxPrecision: true})
 
 	// USD/2: 100 in, 50 out → rescaled to /4: 10000 in, 5000 out
 	require.NoError(t, va.accumulate(makeEntry("test", "a", "USD/2", 100, 50)))
@@ -58,8 +59,8 @@ func TestVolumeAggregator_UseMaxPrecision(t *testing.T) {
 	require.Equal(t, "USD/4", result.GetVolumes()[0].GetAsset())
 
 	var gotInput, gotOutput uint256.Int
-	result.GetVolumes()[0].GetInput().IntoUint256(&gotInput)
-	result.GetVolumes()[0].GetOutput().IntoUint256(&gotOutput)
+	bigUintInto(t, result.GetVolumes()[0].GetInput(), &gotInput)
+	bigUintInto(t, result.GetVolumes()[0].GetOutput(), &gotOutput)
 
 	require.Equal(t, uint256.NewInt(20000), &gotInput)  // 10000 + 100*100
 	require.Equal(t, uint256.NewInt(10000), &gotOutput) // 5000 + 50*100
@@ -68,7 +69,7 @@ func TestVolumeAggregator_UseMaxPrecision(t *testing.T) {
 func TestVolumeAggregator_UseMaxPrecision_SamePrecision(t *testing.T) {
 	t.Parallel()
 
-	va := newVolumeAggregator(true, false)
+	va := newVolumeAggregator(AggregateOptions{UseMaxPrecision: true})
 
 	require.NoError(t, va.accumulate(makeEntry("test", "a", "EUR/2", 200, 100)))
 	require.NoError(t, va.accumulate(makeEntry("test", "b", "EUR/2", 300, 150)))
@@ -79,14 +80,14 @@ func TestVolumeAggregator_UseMaxPrecision_SamePrecision(t *testing.T) {
 	require.Equal(t, "EUR/2", result.GetVolumes()[0].GetAsset())
 
 	var gotInput uint256.Int
-	result.GetVolumes()[0].GetInput().IntoUint256(&gotInput)
+	bigUintInto(t, result.GetVolumes()[0].GetInput(), &gotInput)
 	require.Equal(t, uint256.NewInt(500), &gotInput)
 }
 
 func TestVolumeAggregator_UseMaxPrecision_MixedAssets(t *testing.T) {
 	t.Parallel()
 
-	va := newVolumeAggregator(true, false)
+	va := newVolumeAggregator(AggregateOptions{UseMaxPrecision: true})
 
 	require.NoError(t, va.accumulate(makeEntry("test", "a", "USD/2", 100, 0)))
 	require.NoError(t, va.accumulate(makeEntry("test", "a", "USD/4", 10000, 0)))
@@ -103,7 +104,7 @@ func TestVolumeAggregator_UseMaxPrecision_MixedAssets(t *testing.T) {
 func TestVolumeAggregator_UseMaxPrecision_NoPrecision(t *testing.T) {
 	t.Parallel()
 
-	va := newVolumeAggregator(true, false)
+	va := newVolumeAggregator(AggregateOptions{UseMaxPrecision: true})
 
 	require.NoError(t, va.accumulate(makeEntry("test", "a", "GOLD", 500, 100)))
 	require.NoError(t, va.accumulate(makeEntry("test", "b", "GOLD", 300, 200)))
@@ -114,7 +115,7 @@ func TestVolumeAggregator_UseMaxPrecision_NoPrecision(t *testing.T) {
 	require.Equal(t, "GOLD", result.GetVolumes()[0].GetAsset())
 
 	var gotInput uint256.Int
-	result.GetVolumes()[0].GetInput().IntoUint256(&gotInput)
+	bigUintInto(t, result.GetVolumes()[0].GetInput(), &gotInput)
 	require.Equal(t, uint256.NewInt(800), &gotInput)
 }
 
@@ -139,14 +140,14 @@ func TestGroupedAggregator_BasicPrefixes(t *testing.T) {
 	require.Len(t, result.GetGroups()[0].GetVolumes(), 1)
 
 	var usersInput uint256.Int
-	result.GetGroups()[0].GetVolumes()[0].GetInput().IntoUint256(&usersInput)
+	bigUintInto(t, result.GetGroups()[0].GetVolumes()[0].GetInput(), &usersInput)
 	require.Equal(t, uint256.NewInt(300), &usersInput) // 100 + 200
 
 	require.Equal(t, "merchants:", result.GetGroups()[1].GetPrefix())
 	require.Len(t, result.GetGroups()[1].GetVolumes(), 1)
 
 	var merchantsInput uint256.Int
-	result.GetGroups()[1].GetVolumes()[0].GetInput().IntoUint256(&merchantsInput)
+	bigUintInto(t, result.GetGroups()[1].GetVolumes()[0].GetInput(), &merchantsInput)
 	require.Equal(t, uint256.NewInt(500), &merchantsInput)
 }
 
@@ -165,7 +166,7 @@ func TestGroupedAggregator_UnmatchedAccountSkipped(t *testing.T) {
 	require.Len(t, result.GetGroups(), 1)
 
 	var input uint256.Int
-	result.GetGroups()[0].GetVolumes()[0].GetInput().IntoUint256(&input)
+	bigUintInto(t, result.GetGroups()[0].GetVolumes()[0].GetInput(), &input)
 	require.Equal(t, uint256.NewInt(100), &input)
 }
 
@@ -187,7 +188,7 @@ func TestGroupedAggregator_WithMaxPrecision(t *testing.T) {
 	require.Equal(t, "USD/4", result.GetGroups()[0].GetVolumes()[0].GetAsset())
 
 	var gotInput uint256.Int
-	result.GetGroups()[0].GetVolumes()[0].GetInput().IntoUint256(&gotInput)
+	bigUintInto(t, result.GetGroups()[0].GetVolumes()[0].GetInput(), &gotInput)
 	require.Equal(t, uint256.NewInt(20000), &gotInput) // 100*100 + 10000
 }
 
@@ -204,7 +205,7 @@ func TestGroupedAggregator_FirstPrefixWins(t *testing.T) {
 	require.NoError(t, err)
 	// "users:vip1" matches "users:" first.
 	var input uint256.Int
-	result.GetGroups()[0].GetVolumes()[0].GetInput().IntoUint256(&input)
+	bigUintInto(t, result.GetGroups()[0].GetVolumes()[0].GetInput(), &input)
 	require.Equal(t, uint256.NewInt(100), &input)
 
 	// Second group should be empty.
@@ -235,29 +236,6 @@ func TestNewAccumulator_GroupedWhenPrefixes(t *testing.T) {
 	require.Len(t, result.GetGroups(), 1)
 }
 
-func TestPow10(t *testing.T) {
-	t.Parallel()
-
-	for exp, expected := range map[uint8]*uint256.Int{
-		0: uint256.NewInt(1),
-		1: uint256.NewInt(10),
-		2: uint256.NewInt(100),
-		6: uint256.NewInt(1000000),
-	} {
-		actual, overflow := pow10(exp)
-		require.False(t, overflow)
-		require.Equal(t, expected, actual)
-	}
-
-	maxFactor, overflow := pow10(77)
-	require.False(t, overflow)
-	require.Equal(t, mustUint256Decimal(t, "100000000000000000000000000000000000000000000000000000000000000000000000000000"), maxFactor)
-
-	result, overflow := pow10(78)
-	require.True(t, overflow)
-	require.Nil(t, result)
-}
-
 func mustUint256Decimal(t *testing.T, value string) *uint256.Int {
 	t.Helper()
 
@@ -273,7 +251,7 @@ func TestVolumeAggregator_UseMaxPrecision_FactorBoundary(t *testing.T) {
 	t.Run("difference 77 is exact", func(t *testing.T) {
 		t.Parallel()
 
-		va := newVolumeAggregator(true, false)
+		va := newVolumeAggregator(AggregateOptions{UseMaxPrecision: true})
 		require.NoError(t, va.accumulate(makeEntry("test", "a", "USD", 1, 1)))
 		require.NoError(t, va.accumulate(makeEntry("test", "b", "USD/77", 1, 1)))
 
@@ -283,51 +261,43 @@ func TestVolumeAggregator_UseMaxPrecision_FactorBoundary(t *testing.T) {
 
 		expected := mustUint256Decimal(t, "100000000000000000000000000000000000000000000000000000000000000000000000000001")
 		var input, output uint256.Int
-		result.GetVolumes()[0].GetInput().IntoUint256(&input)
-		result.GetVolumes()[0].GetOutput().IntoUint256(&output)
+		bigUintInto(t, result.GetVolumes()[0].GetInput(), &input)
+		bigUintInto(t, result.GetVolumes()[0].GetOutput(), &output)
 		require.Equal(t, expected, &input)
 		require.Equal(t, expected, &output)
 	})
 
-	for _, side := range []string{"input", "output"} {
-		t.Run("difference 78 rejects "+side, func(t *testing.T) {
-			t.Parallel()
+	t.Run("difference 78 exceeds uint256 exactly", func(t *testing.T) {
+		t.Parallel()
 
-			va := newVolumeAggregator(true, false)
-			lowInput, lowOutput := uint64(0), uint64(0)
-			if side == "input" {
-				lowInput = 1
-			} else {
-				lowOutput = 1
-			}
-			require.NoError(t, va.accumulate(makeEntry("test", "a", "USD", lowInput, lowOutput)))
-			require.NoError(t, va.accumulate(makeEntry("test", "b", "USD/78", 1, 1)))
+		va := newVolumeAggregator(AggregateOptions{UseMaxPrecision: true})
+		require.NoError(t, va.accumulate(makeEntry("test", "a", "USD", 1, 0)))
+		require.NoError(t, va.accumulate(makeEntry("test", "b", "USD/78", 1, 1)))
 
-			result, err := va.result()
-			require.Nil(t, result)
-			var overflow *ErrAggregateOverflow
-			require.ErrorAs(t, err, &overflow)
-			require.Equal(t, "max-precision-rescale", overflow.Stage)
-			require.Equal(t, side, overflow.Side)
-		})
-	}
+		result, err := va.result()
+		require.NoError(t, err)
+		require.Len(t, result.GetVolumes(), 1)
+
+		scaled := new(big.Int).Exp(big.NewInt(10), big.NewInt(78), nil)
+		requireTotals(t, result.GetVolumes()[0], scaled.Add(scaled, big.NewInt(1)), big.NewInt(1))
+	})
 
 	t.Run("zero lower precision bucket remains representable", func(t *testing.T) {
 		t.Parallel()
 
-		va := newVolumeAggregator(true, false)
+		va := newVolumeAggregator(AggregateOptions{UseMaxPrecision: true})
 		require.NoError(t, va.accumulate(makeEntry("test", "a", "USD", 0, 0)))
 		require.NoError(t, va.accumulate(makeEntry("test", "b", "USD/78", 1, 1)))
 
 		result, err := va.result()
 		require.NoError(t, err)
 		require.Len(t, result.GetVolumes(), 1)
-		require.Equal(t, commonpb.NewUint256FromUint64(1), result.GetVolumes()[0].GetInput())
-		require.Equal(t, commonpb.NewUint256FromUint64(1), result.GetVolumes()[0].GetOutput())
+		require.Equal(t, commonpb.NewBigUintFromUint64(1), result.GetVolumes()[0].GetInput())
+		require.Equal(t, commonpb.NewBigUintFromUint64(1), result.GetVolumes()[0].GetOutput())
 	})
 }
 
-func TestGroupedAggregator_UseMaxPrecision_FactorOverflow(t *testing.T) {
+func TestGroupedAggregator_UseMaxPrecision_FactorAbove2Pow256(t *testing.T) {
 	t.Parallel()
 
 	ga := newGroupedAggregator(AggregateOptions{
@@ -338,11 +308,11 @@ func TestGroupedAggregator_UseMaxPrecision_FactorOverflow(t *testing.T) {
 	require.NoError(t, ga.accumulate(makeEntry("test", "users:bob", "USD/78", 1, 0)))
 
 	result, err := ga.result()
-	require.Nil(t, result)
-	var overflow *ErrAggregateOverflow
-	require.ErrorAs(t, err, &overflow)
-	require.Equal(t, "max-precision-rescale", overflow.Stage)
-	require.Equal(t, "input", overflow.Side)
+	require.NoError(t, err)
+	require.Len(t, result.GetGroups(), 1)
+	require.Len(t, result.GetGroups()[0].GetVolumes(), 1)
+	scaled := new(big.Int).Exp(big.NewInt(10), big.NewInt(78), nil)
+	requireTotals(t, result.GetGroups()[0].GetVolumes()[0], scaled.Add(scaled, big.NewInt(1)), big.NewInt(0))
 }
 
 // makeColoredEntry builds a volume entry with a non-empty color, used to
@@ -366,7 +336,7 @@ func makeColoredEntry(ledgerName, account, asset, color string, input, output ui
 func TestVolumeAggregator_SegregatesColorsByDefault(t *testing.T) {
 	t.Parallel()
 
-	va := newVolumeAggregator(false, false)
+	va := newVolumeAggregator(AggregateOptions{})
 
 	require.NoError(t, va.accumulate(makeColoredEntry("test", "a", "USD/2", "", 100, 50)))
 	require.NoError(t, va.accumulate(makeColoredEntry("test", "a", "USD/2", "GRANTS", 200, 80)))
@@ -387,14 +357,14 @@ func TestVolumeAggregator_SegregatesColorsByDefault(t *testing.T) {
 	require.Contains(t, byColor, "OPS")
 
 	var got uint256.Int
-	byColor["GRANTS"].GetInput().IntoUint256(&got)
+	bigUintInto(t, byColor["GRANTS"].GetInput(), &got)
 	require.Equal(t, uint256.NewInt(200), &got, "GRANTS bucket must keep its own input")
 }
 
 func TestVolumeAggregator_CollapseColors(t *testing.T) {
 	t.Parallel()
 
-	va := newVolumeAggregator(false, true) // collapseColors=true
+	va := newVolumeAggregator(AggregateOptions{CollapseColors: true})
 
 	require.NoError(t, va.accumulate(makeColoredEntry("test", "a", "USD/2", "", 100, 50)))
 	require.NoError(t, va.accumulate(makeColoredEntry("test", "a", "USD/2", "GRANTS", 200, 80)))
@@ -409,8 +379,8 @@ func TestVolumeAggregator_CollapseColors(t *testing.T) {
 	require.Equal(t, "", vol.GetColor(), "collapsed entries are produced under the empty color")
 
 	var input, output uint256.Int
-	vol.GetInput().IntoUint256(&input)
-	vol.GetOutput().IntoUint256(&output)
+	bigUintInto(t, vol.GetInput(), &input)
+	bigUintInto(t, vol.GetOutput(), &output)
 	require.Equal(t, uint256.NewInt(330), &input, "100+200+30")
 	require.Equal(t, uint256.NewInt(140), &output, "50+80+10")
 }
@@ -418,7 +388,7 @@ func TestVolumeAggregator_CollapseColors(t *testing.T) {
 func TestVolumeAggregator_CollapseColors_WithMaxPrecision(t *testing.T) {
 	t.Parallel()
 
-	va := newVolumeAggregator(true, true)
+	va := newVolumeAggregator(AggregateOptions{UseMaxPrecision: true, CollapseColors: true})
 
 	// USD/2 RED: 100 in, 50 out → rescaled to /4: 10000, 5000
 	require.NoError(t, va.accumulate(makeColoredEntry("test", "a", "USD/2", "RED", 100, 50)))
@@ -436,8 +406,8 @@ func TestVolumeAggregator_CollapseColors_WithMaxPrecision(t *testing.T) {
 	require.Empty(t, vol.GetColor())
 
 	var input, output uint256.Int
-	vol.GetInput().IntoUint256(&input)
-	vol.GetOutput().IntoUint256(&output)
+	bigUintInto(t, vol.GetInput(), &input)
+	bigUintInto(t, vol.GetOutput(), &output)
 	require.Equal(t, uint256.NewInt(10003), &input, "10000 + 1 + 2")
 	require.Equal(t, uint256.NewInt(5001), &output, "5000 + 0 + 1")
 }
@@ -457,4 +427,13 @@ func TestGroupedAggregator_RespectsColor(t *testing.T) {
 	require.Len(t, result.GetGroups(), 1)
 	require.Len(t, result.GetGroups()[0].GetVolumes(), 2,
 		"grouped aggregator must keep colors segregated within a prefix bucket")
+}
+
+// bigUintInto decodes an aggregate total that fits in uint256.
+func bigUintInto(t *testing.T, value *commonpb.BigUint, dst *uint256.Int) {
+	t.Helper()
+
+	total, err := value.ToBigInt()
+	require.NoError(t, err)
+	require.False(t, dst.SetFromBig(total), "total %s exceeds uint256", total)
 }

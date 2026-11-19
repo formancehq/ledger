@@ -181,8 +181,8 @@ audit entry or frozen outcome. A retry re-admits, resolves the saved script and
 plans it.
 
 The placement follows the [replicated-state rule](validation.md#replicated-policy-refusals).
-The expectation is an internal Raft field that RC.3 voters ignore, so the change
-relies on the RC.3 to RC.4 stopped upgrade; see
+The expectation is an internal Raft field that RC.4 voters ignore, so the change
+relies on the RC.4 to RC.5 stopped upgrade; see
 [the upgrade note](../../../../ops/upgrades.md#numscript-reference-replay-recovery).
 
 ## Numscript Dependency-Resolution Failures

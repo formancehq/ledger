@@ -34,6 +34,15 @@ type ClusterList struct {
 }
 
 // ClusterSpec defines the desired state of Cluster.
+//
+// The leader proposes the replicated cluster policy (idempotencyTTL and the
+// metadata limits) only when clusterPolicyRevision exceeds the applied
+// revision. Without these rules an edit that forgets the bump is accepted,
+// rolled out, and then never applied, which only shows up as a leader log
+// line. Presence counts as a change: setting a field to its default value
+// still needs a bump.
+// +kubebuilder:validation:XValidation:rule="(has(self.idempotencyTTL) == has(oldSelf.idempotencyTTL) && (!has(self.idempotencyTTL) || self.idempotencyTTL == oldSelf.idempotencyTTL) && has(self.metadataMaxEntries) == has(oldSelf.metadataMaxEntries) && (!has(self.metadataMaxEntries) || self.metadataMaxEntries == oldSelf.metadataMaxEntries) && has(self.metadataMaxKeyBytes) == has(oldSelf.metadataMaxKeyBytes) && (!has(self.metadataMaxKeyBytes) || self.metadataMaxKeyBytes == oldSelf.metadataMaxKeyBytes) && has(self.metadataMaxValueBytes) == has(oldSelf.metadataMaxValueBytes) && (!has(self.metadataMaxValueBytes) || self.metadataMaxValueBytes == oldSelf.metadataMaxValueBytes) && has(self.metadataMaxEntityBytes) == has(oldSelf.metadataMaxEntityBytes) && (!has(self.metadataMaxEntityBytes) || self.metadataMaxEntityBytes == oldSelf.metadataMaxEntityBytes) && has(self.metadataMaxCommandBytes) == has(oldSelf.metadataMaxCommandBytes) && (!has(self.metadataMaxCommandBytes) || self.metadataMaxCommandBytes == oldSelf.metadataMaxCommandBytes)) || (has(self.clusterPolicyRevision) ? self.clusterPolicyRevision : 1) > (has(oldSelf.clusterPolicyRevision) ? oldSelf.clusterPolicyRevision : 1)",message="changing idempotencyTTL or a metadata limit requires increasing clusterPolicyRevision"
+// +kubebuilder:validation:XValidation:rule="(has(self.clusterPolicyRevision) ? self.clusterPolicyRevision : 1) >= (has(oldSelf.clusterPolicyRevision) ? oldSelf.clusterPolicyRevision : 1)",message="clusterPolicyRevision must not decrease"
 type ClusterSpec struct {
 	// Image configuration for the ledger container.
 	// +optional
@@ -166,7 +175,8 @@ type ClusterSpec struct {
 	MaxExecutionPlanSize *int32 `json:"maxExecutionPlanSize,omitempty"`
 
 	// IdempotencyTTL is the time-to-live for idempotency keys (0 = never expire).
-	// Default: 24h.
+	// Replicated in the cluster policy; changing it requires bumping
+	// clusterPolicyRevision. Default: 24h.
 	// +optional
 	IdempotencyTTL string `json:"idempotencyTTL,omitempty"`
 
@@ -188,10 +198,10 @@ type ClusterSpec struct {
 
 	// ClusterPolicyRevision is the monotonic revision number the leader must
 	// propose to replace the committed cluster policy. Bump this whenever you
-	// change any metadata-limit field, idempotencyTTL, hashAlgorithm, or
-	// queryCheckpointLimit. The leader proposes the policy only when this
-	// exceeds the applied revision; setting a new value without bumping the
-	// revision logs a divergence error and changes nothing.
+	// change idempotencyTTL or any metadata-limit field; the API server
+	// rejects such a change without a bump, and rejects a decrease. The leader
+	// proposes the policy only when this exceeds the applied revision.
+	// Default: 1.
 	// +kubebuilder:validation:Minimum=1
 	// +optional
 	ClusterPolicyRevision *int64 `json:"clusterPolicyRevision,omitempty"`

@@ -276,7 +276,7 @@ func TestHandleAnalyzeAccounts_FullRouteIntegration(t *testing.T) {
 			}, nil
 		}).AnyTimes()
 
-	handler := NewHandler(logging.Testing(), backend, internalauth.AuthConfig{}, version.Info{})
+	handler := NewHandler(logging.Testing(), backend, internalauth.AuthConfig{}, version.Info{}, nil)
 
 	w := httptest.NewRecorder()
 	r := httptest.NewRequest(http.MethodGet, "/v3/my-ledger/analyze-accounts", nil)

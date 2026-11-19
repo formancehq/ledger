@@ -7,6 +7,9 @@ manages Kubernetes Cluster resources. When `kubectl ledger create` omits
 `--set image.tag`, the Cluster inherits the Ledger image tag configured on its
 Operator. Use `--set image.tag=<release-tag>` to pin a specific release; a
 release Operator requires a semantic release tag no newer than its own version.
+The plugin's `--set` paths use dotted keys and zero-based array indices from
+`0` through `65536`. Escape literal dots with `\.` or quote the key segment.
+Malformed paths return an error instead of applying a truncated path.
 
 ## Getting Started
 
@@ -4122,8 +4125,10 @@ To change a policy value, raise `--cluster-policy-revision` so the new policy su
 ledger run --cluster-policy-revision 2 --query-checkpoint-limit 20 [other flags...]
 ```
 
-The metadata ceilings follow the same rule: raising one without bumping
-`--cluster-policy-revision` logs a payload-divergence error and changes nothing.
+The metadata ceilings and `--idempotency-ttl` follow the same rule: changing one
+without bumping `--cluster-policy-revision` logs a payload-divergence error and
+changes nothing. With the operator, the `Cluster` CRD rejects such an update,
+and a decrease of `spec.clusterPolicyRevision`, at admission time.
 They are enforced for HTTP, public gRPC and bulk admission, mirror batches before
 proposal and during apply, and metadata a Numscript program merges in. Public
 API violations return HTTP 400 / gRPC

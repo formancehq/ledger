@@ -45,6 +45,13 @@ import (
 
 var bucketTracer = otel.Tracer("grpc.bucket")
 
+type httpApplyContextKey struct{}
+
+// HTTPApplyContext identifies an HTTP request calling the shared Apply service.
+func HTTPApplyContext(ctx context.Context) context.Context {
+	return context.WithValue(ctx, httpApplyContextKey{}, true)
+}
+
 const (
 	metadataKeyApplyReplayed      = "ledger-apply-replayed"
 	metadataKeyQueryProfile       = "x-query-profile"
@@ -74,7 +81,7 @@ func NewBucketServiceServer(logger logging.Logger, c ctrl.Controller, localCtrl 
 	meter := meterProvider.Meter("grpc")
 	applyDuration, _ := meter.Float64Histogram("grpc.apply.duration",
 		metric.WithUnit("s"),
-		metric.WithDescription("Total duration of the gRPC Apply handler (forwarded identity + ctrl.Apply + signing)"),
+		metric.WithDescription("Total duration of the shared Apply handler (forwarded identity + ctrl.Apply + signing), labelled by transport"),
 		metric.WithExplicitBucketBoundaries(
 			0, 0.0001, 0.0005, 0.002, 0.01, 0.05, 0.2, 1,
 		),
@@ -114,8 +121,12 @@ func (impl *BucketServiceServerImpl) Apply(ctx context.Context, req *servicepb.A
 		if returned && err == nil {
 			status = "success"
 		}
+		transport := "grpc"
+		if ctx.Value(httpApplyContextKey{}) != nil {
+			transport = "http"
+		}
 		impl.applyDuration.Record(ctx, time.Since(start).Seconds(),
-			metric.WithAttributes(attribute.Int("batch_size", batchSize), attribute.String("status", status)))
+			metric.WithAttributes(attribute.Int("batch_size", batchSize), attribute.String("status", status), attribute.String("transport", transport)))
 	}()
 
 	resp, err = impl.apply(ctx, req, &batchSize)
@@ -132,7 +143,16 @@ func (impl *BucketServiceServerImpl) apply(ctx context.Context, req *servicepb.A
 		return nil, err
 	}
 
-	*batchSize, _ = ctx.Value(applyBatchSizeKey{}).(int)
+	var sizeKnown bool
+	*batchSize, sizeKnown = ctx.Value(applyBatchSizeKey{}).(int)
+	if !sizeKnown {
+		// HTTP calls this service after its own authorization, without the
+		// gRPC interceptor's context value. Inspection is only for telemetry;
+		// admission remains responsible for authenticating the payload.
+		if batch, peekErr := servicepb.PeekBatch(req); peekErr == nil {
+			*batchSize = len(batch.GetRequests())
+		}
+	}
 
 	if impl.logger.Enabled(logging.TraceLevel) {
 		impl.logger.Tracef("Apply request received with %d requests", *batchSize)
