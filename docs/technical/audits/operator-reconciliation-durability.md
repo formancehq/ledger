@@ -314,7 +314,7 @@ or successful summary is certified before the result status write succeeds.
 
 Use the result-read and fallback-log recovery regressions as evidence oracles:
 verify actual fail-then-success acquisition, unchanged Job identity, final literal
-summary values, sibling exclusion and parent full-summary/incremental eligibility.
+summary values, sibling exclusion, parent full summary and next checkpoint cadence.
 With zero history retention, the run must survive pending acquisition and can be
 pruned only after terminal accounting is recorded. These fake-client and HTTP
 fixtures do not prove Kubernetes garbage collection, kubelet execution or live
