@@ -328,6 +328,10 @@ Before any server upgrade:
 The Ledger Operator blocks a declared Ledger image tag newer than its own
 release version, or one that cannot be compared, before changing the
 StatefulSet. Upgrade the Operator first, then change the Ledger image. This
+comparison uses the base release for CI development tags ending in
+`.dev.B.gSHA`; a development image from a later release line remains blocked.
+Using a development image still requires verifying its compatibility with the
+target cluster state and any mandatory stopped-upgrade boundary. This
 ordering check applies before an Operator-managed workload change; it does
 not establish mixed-version compatibility or make a downgrade safe. Mutable
 registry tags can serve different contents, which this check cannot verify.
