@@ -2,6 +2,7 @@ package query_test
 
 import (
 	"context"
+	"math/big"
 	"testing"
 
 	"github.com/holiman/uint256"
@@ -177,13 +178,13 @@ func TestExecute_ParameterizedFilterAggregateStillUsesAccountIterator(t *testing
 	require.Equal(t, "USD/2", got.GetVolumes()[0].GetAsset())
 
 	var input uint256.Int
-	got.GetVolumes()[0].GetInput().IntoUint256(&input)
+	bigUintInto(t, got.GetVolumes()[0].GetInput(), &input)
 	require.Equal(t, uint256.NewInt(10), &input,
 		"only the matched account's volumes may be aggregated")
 }
 
-// Overflow must propagate through Execute without returning a partial aggregate.
-func TestExecute_NilFilterAggregateOverflow(t *testing.T) {
+// A total above 2^256 is served exactly by Execute and by the direct scan.
+func TestExecute_NilFilterAggregateAbove2Pow256(t *testing.T) {
 	t.Parallel()
 
 	for _, side := range []string{"input", "output"} {
@@ -210,26 +211,32 @@ func TestExecute_NilFilterAggregateOverflow(t *testing.T) {
 			profile := &query.QueryProfile{}
 			resp, err := query.Execute(context.Background(), rs, store, attrs.Volume, attrs.PreparedQuery, attrs.Index,
 				&servicepb.ExecutePreparedQueryRequest{Ledger: "l", QueryName: "q", Mode: commonpb.QueryMode_QUERY_MODE_AGGREGATE_VOLUMES}, profile, nil)
-			require.Nil(t, resp)
-			var overflow *query.ErrAggregateOverflow
-			require.ErrorAs(t, err, &overflow)
-			require.Equal(t, "accumulate", overflow.Stage)
-			require.Equal(t, side, overflow.Side)
-			require.Nil(t, profile.Root, "overflow must originate from the unfiltered fast path")
+			require.NoError(t, err)
+			require.Nil(t, profile.Root, "the total must come from the unfiltered fast path")
+			volumes := resp.GetAggregate().GetVolumes()
+			require.Len(t, volumes, 1)
+			total := new(big.Int).Lsh(big.NewInt(1), 256)
+			input, output, err := volumes[0].Totals()
+			require.NoError(t, err)
+			if side == "input" {
+				require.Zero(t, total.Cmp(input))
+				require.Zero(t, output.Sign())
+			} else {
+				require.Zero(t, input.Sign())
+				require.Zero(t, total.Cmp(output))
+			}
 
 			handle, err := store.NewReadHandle()
 			require.NoError(t, err)
 			defer func() { _ = handle.Close() }()
 			direct, err := query.AggregateAllVolumes(handle, attrs.Volume, "l", query.AggregateOptions{})
-			require.Nil(t, direct)
-			var directOverflow *query.ErrAggregateOverflow
-			require.ErrorAs(t, err, &directOverflow)
-			require.Equal(t, overflow, directOverflow)
+			require.NoError(t, err)
+			require.True(t, proto.Equal(resp.GetAggregate(), direct))
 		})
 	}
 }
 
-func TestAggregateRoutes_UseMaxPrecisionFactorOverflow(t *testing.T) {
+func TestAggregateRoutes_UseMaxPrecisionFactorAbove2Pow256(t *testing.T) {
 	t.Parallel()
 
 	for _, tc := range []struct {
@@ -274,11 +281,14 @@ func TestAggregateRoutes_UseMaxPrecisionFactorOverflow(t *testing.T) {
 			)
 
 			result, err := tc.aggregate(store, attrs)
-			require.Nil(t, result)
-			var overflow *query.ErrAggregateOverflow
-			require.ErrorAs(t, err, &overflow)
-			require.Equal(t, "max-precision-rescale", overflow.Stage)
-			require.Equal(t, "input", overflow.Side)
+			require.NoError(t, err)
+			require.Len(t, result.GetVolumes(), 1)
+			want := new(big.Int).Exp(big.NewInt(10), big.NewInt(78), nil)
+			want.Add(want, big.NewInt(1))
+			input, output, err := result.GetVolumes()[0].Totals()
+			require.NoError(t, err)
+			require.Zero(t, want.Cmp(input))
+			require.Zero(t, want.Cmp(output))
 		})
 	}
 }
@@ -322,7 +332,7 @@ func TestExecute_NilFilterAggregateUsesPinnedSnapshot(t *testing.T) {
 			require.Len(t, resp.GetAggregate().GetVolumes(), 1)
 			volume := resp.GetAggregate().GetVolumes()[0]
 			require.Equal(t, "USD/2", volume.GetAsset())
-			require.True(t, proto.Equal(commonpb.NewUint256FromUint64(10), volume.GetInput()))
+			require.True(t, proto.Equal(commonpb.NewBigUintFromUint64(10), volume.GetInput()))
 			require.Nil(t, profile.Root)
 			require.Equal(t, uint64(100), rs.Leases().BeginGC(100), "the reservation must be released after the fast path")
 		})
@@ -388,4 +398,12 @@ func TestExecute_UnsupportedModeWinsOverFilterCompilation(t *testing.T) {
 	require.ErrorAs(t, err, &modeErr,
 		"unsupported mode must surface before filter compilation; got: %v", err)
 	require.Equal(t, commonpb.QueryMode(999), modeErr.Mode)
+}
+
+func bigUintInto(t *testing.T, value *commonpb.BigUint, dst *uint256.Int) {
+	t.Helper()
+
+	total, err := value.ToBigInt()
+	require.NoError(t, err)
+	require.False(t, dst.SetFromBig(total), "total %s exceeds uint256", total)
 }

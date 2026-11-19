@@ -125,7 +125,12 @@ func (s *Server) handleExecutePreparedQuery(w http.ResponseWriter, r *http.Reque
 	envelope := executePreparedQueryResponseJSON{}
 	switch result := resp.GetResult().(type) {
 	case *servicepb.ExecutePreparedQueryResponse_Aggregate:
-		envelope.AggregateResult = toAggregateVolumesJSON(result.Aggregate)
+		envelope.AggregateResult, err = toAggregateVolumesJSON(result.Aggregate)
+		if err != nil {
+			handleError(w, r, err)
+
+			return
+		}
 	case *servicepb.ExecutePreparedQueryResponse_Cursor:
 		envelope.Cursor = result.Cursor
 	}

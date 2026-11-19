@@ -982,8 +982,6 @@ func (x *LedgerApplyRequest) MarshalJSON() ([]byte, error) {
 						return "ERROR_REASON_STALE_INPUTS_RESOLUTION"
 					case commonpb.ErrorReason_ERROR_REASON_PRELOAD_UNAVAILABLE:
 						return "ERROR_REASON_PRELOAD_UNAVAILABLE"
-					case commonpb.ErrorReason_ERROR_REASON_AGGREGATE_OVERFLOW:
-						return "ERROR_REASON_AGGREGATE_OVERFLOW"
 					case commonpb.ErrorReason_ERROR_REASON_BALANCE_NOT_FOUND:
 						return "ERROR_REASON_BALANCE_NOT_FOUND"
 					case commonpb.ErrorReason_ERROR_REASON_STALE_CLUSTER_POLICY:

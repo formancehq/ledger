@@ -295,7 +295,7 @@ func TestHandleBulk_AuthEnabled_NoToken_Unauthorized(t *testing.T) {
 		Enabled:      true,
 		ScopeMapping: internalauth.DefaultMapping("ledger"),
 	}
-	handler := NewHandler(logging.Testing(), backend, authCfg, version.Info{})
+	handler := NewHandler(logging.Testing(), backend, authCfg, version.Info{}, nil)
 
 	w := httptest.NewRecorder()
 	r := httptest.NewRequest(http.MethodPost, "/v3/ledger1/bulk", strings.NewReader(bulkWriteBody))
@@ -318,7 +318,7 @@ func TestHandleBulk_AuthDisabled_NoToken_Allowed(t *testing.T) {
 				{Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_Apply{Apply: &commonpb.ApplyLedgerLog{Log: &commonpb.LedgerLog{}}}}},
 			}}, nil
 		}).Times(1)
-	handler := NewHandler(logging.Testing(), backend, internalauth.AuthConfig{}, version.Info{})
+	handler := NewHandler(logging.Testing(), backend, internalauth.AuthConfig{}, version.Info{}, nil)
 
 	w := httptest.NewRecorder()
 	r := httptest.NewRequest(http.MethodPost, "/v3/ledger1/bulk", strings.NewReader(bulkWriteBody))
@@ -361,7 +361,7 @@ func TestHandleBulk_NullElement_Rejected(t *testing.T) {
 					ScopeMapping: internalauth.DefaultMapping("ledger"),
 				}
 			}
-			handler := NewHandler(logging.Testing(), NewMockBackend(gomock.NewController(t)), authCfg, version.Info{})
+			handler := NewHandler(logging.Testing(), NewMockBackend(gomock.NewController(t)), authCfg, version.Info{}, nil)
 
 			w := httptest.NewRecorder()
 			r := httptest.NewRequest(http.MethodPost, "/v3/ledger1/bulk"+tc.query, strings.NewReader(tc.body))

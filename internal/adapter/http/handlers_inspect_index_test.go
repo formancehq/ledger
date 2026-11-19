@@ -26,7 +26,7 @@ func TestHandleInspectIndex_InvalidModeRouting(t *testing.T) {
 			t.Parallel()
 
 			backend := NewMockBackend(gomock.NewController(t))
-			handler := NewHandler(logging.Testing(), backend, internalauth.AuthConfig{}, version.Info{})
+			handler := NewHandler(logging.Testing(), backend, internalauth.AuthConfig{}, version.Info{}, nil)
 			w := httptest.NewRecorder()
 			r := httptest.NewRequest(http.MethodGet, "/v3/ledger1/indexes/metadata:TARGET_TYPE_ACCOUNT:color/inspect?mode="+mode, nil)
 
@@ -51,7 +51,7 @@ func TestHandleInspectIndex_InvalidPageSizeRouting(t *testing.T) {
 				t.Parallel()
 
 				backend := NewMockBackend(gomock.NewController(t))
-				handler := NewHandler(logging.Testing(), backend, internalauth.AuthConfig{}, version.Info{})
+				handler := NewHandler(logging.Testing(), backend, internalauth.AuthConfig{}, version.Info{}, nil)
 				w := httptest.NewRecorder()
 				r := httptest.NewRequest(http.MethodGet, "/v3/ledger1/indexes/metadata:TARGET_TYPE_ACCOUNT:color/inspect?mode="+mode+"&pageSize="+size, nil)
 
@@ -111,7 +111,7 @@ func TestHandleInspectIndex_QueryOptionsRouting(t *testing.T) {
 						}, nil
 					})
 				backend.EXPECT().GetLedgerByName(gomock.Any(), "ledger1").Return(&commonpb.LedgerInfo{Name: "ledger1"}, nil)
-				handler := NewHandler(logging.Testing(), backend, internalauth.AuthConfig{}, version.Info{})
+				handler := NewHandler(logging.Testing(), backend, internalauth.AuthConfig{}, version.Info{}, nil)
 				w := httptest.NewRecorder()
 				r := httptest.NewRequest(http.MethodGet, "/v3/ledger1/indexes/metadata:TARGET_TYPE_ACCOUNT:color/inspect?"+mode.query+size.query+"cursor=page-token", nil)
 

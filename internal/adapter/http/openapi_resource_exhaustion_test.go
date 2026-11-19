@@ -84,7 +84,7 @@ func TestOpenAPI_WriteResourceExhaustion(t *testing.T) {
 						}
 						backend := NewMockBackend(gomock.NewController(t))
 						backend.EXPECT().Apply(gomock.Any(), gomock.Any()).Return(nil, backendError)
-						handler := NewHandler(logging.Testing(), backend, internalauth.AuthConfig{}, version.Info{})
+						handler := NewHandler(logging.Testing(), backend, internalauth.AuthConfig{}, version.Info{}, nil)
 						path := strings.NewReplacer(
 							"{ledgerName}", "ledger1", "{name}", "script", "{canonicalId}", "metadata:TARGET_TYPE_ACCOUNT:color",
 							"{transactionId}", "1", "{address}", "alice", "{key}", "approved", "{targetType}", "account",

@@ -94,7 +94,12 @@ The public service consumes this inventory in unary and streaming interceptors b
 
 The public service, loopback-by-default restore service, and Raft transport have distinct trust modes. Restore does not install JWT interceptors. Raft uses its own cluster-secret interceptor.
 
-HTTP follows the same model: a `RequireScope` middleware (`http_middleware.go:100-126`) wraps each protected route.
+HTTP fixed-scope routes use `RequireScope` middleware
+(`http_middleware.go`). Bulk and `POST /v3/_/apply` instead authorize every
+operation through `RequiredScopeForRequest` before dispatch. Atomic Apply
+enters the service handler directly, so HTTP must perform these checks itself;
+gRPC interceptors are not invoked by an in-process service call. The `/_` path
+does not add a read-ops requirement to this dynamic write route.
 
 ### Error mapping
 

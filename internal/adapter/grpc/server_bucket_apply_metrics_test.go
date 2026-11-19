@@ -32,6 +32,7 @@ func TestApplyDurationStatus(t *testing.T) {
 		ctrlApply  func(context.Context, *servicepb.ApplyRequest) (*domain.ApplyResult, error)
 		wantCode   codes.Code
 		wantStatus string
+		transport  string
 	}{
 		{
 			name: "success",
@@ -40,6 +41,7 @@ func TestApplyDurationStatus(t *testing.T) {
 			},
 			wantCode:   codes.OK,
 			wantStatus: "success",
+			transport:  "grpc",
 		},
 		{
 			name: "error",
@@ -48,6 +50,7 @@ func TestApplyDurationStatus(t *testing.T) {
 			},
 			wantCode:   codes.FailedPrecondition,
 			wantStatus: "error",
+			transport:  "grpc",
 		},
 		{
 			name: "recovered panic",
@@ -56,6 +59,16 @@ func TestApplyDurationStatus(t *testing.T) {
 			},
 			wantCode:   codes.Internal,
 			wantStatus: "error",
+			transport:  "grpc",
+		},
+		{
+			name: "HTTP service call",
+			ctrlApply: func(context.Context, *servicepb.ApplyRequest) (*domain.ApplyResult, error) {
+				return &domain.ApplyResult{}, nil
+			},
+			wantCode:   codes.OK,
+			wantStatus: "success",
+			transport:  "http",
 		},
 	} {
 		t.Run(test.name, func(t *testing.T) {
@@ -72,7 +85,11 @@ func TestApplyDurationStatus(t *testing.T) {
 
 			// The production chain: the recovery interceptor wraps the handler.
 			intercept := recoveryInterceptor(logging.FromContext(logging.TestingContext()))
-			_, err = intercept(context.Background(), servicepb.UnsignedApplyRequest("", &servicepb.Request{}),
+			ctx := context.Background()
+			if test.transport == "http" {
+				ctx = HTTPApplyContext(ctx)
+			}
+			_, err = intercept(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{}),
 				&ggrpc.UnaryServerInfo{FullMethod: "/test/Apply"},
 				func(ctx context.Context, req any) (any, error) {
 					return impl.Apply(ctx, req.(*servicepb.ApplyRequest))
@@ -87,7 +104,13 @@ func TestApplyDurationStatus(t *testing.T) {
 					histogram, ok := m.Data.(metricdata.Histogram[float64])
 					require.True(t, ok, m.Name)
 					for _, dp := range histogram.DataPoints {
+						size, exists := dp.Attributes.Value("batch_size")
+						require.True(t, exists)
+						require.Equal(t, int64(1), size.AsInt64(), "direct service calls must record the batch size without interceptor context")
 						value, _ := dp.Attributes.Value("status")
+						transport, exists := dp.Attributes.Value("transport")
+						require.True(t, exists)
+						require.Equal(t, test.transport, transport.AsString())
 						counts[value.AsString()] += dp.Count
 					}
 				}

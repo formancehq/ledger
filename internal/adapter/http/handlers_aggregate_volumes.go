@@ -31,13 +31,20 @@ type groupedAggregateResultJSON struct {
 	Volumes []*aggregatedVolumeJSON `json:"volumes"`
 }
 
-func toAggregatedVolumeJSON(v *commonpb.AggregatedVolume) *aggregatedVolumeJSON {
-	input := v.GetInput().ToBigInt()
-	output := v.GetOutput().ToBigInt()
+func toAggregatedVolumeJSON(v *commonpb.AggregatedVolume) (*aggregatedVolumeJSON, error) {
+	input, output, err := v.Totals()
+	if err != nil {
+		return nil, err
+	}
 	balance := new(big.Int).Sub(input, output)
-	// Uint256 inputs are unsigned, so conversion cannot fail.
-	inputAmount, _ := commonpb.NewBigUint(input)
-	outputAmount, _ := commonpb.NewBigUint(output)
+	inputAmount, err := commonpb.NewBigUint(input)
+	if err != nil {
+		return nil, err
+	}
+	outputAmount, err := commonpb.NewBigUint(output)
+	if err != nil {
+		return nil, err
+	}
 
 	return &aggregatedVolumeJSON{
 		Asset:   v.GetAsset(),
@@ -45,33 +52,46 @@ func toAggregatedVolumeJSON(v *commonpb.AggregatedVolume) *aggregatedVolumeJSON 
 		Input:   inputAmount,
 		Output:  outputAmount,
 		Balance: commonpb.NewSignedBigInt(balance),
-	}
+	}, nil
 }
 
-func toAggregateVolumesJSON(result *commonpb.AggregateResult) *aggregateVolumesResponseJSON {
+func toAggregatedVolumesJSON(volumes []*commonpb.AggregatedVolume) ([]*aggregatedVolumeJSON, error) {
+	out := make([]*aggregatedVolumeJSON, 0, len(volumes))
+	for _, v := range volumes {
+		vol, err := toAggregatedVolumeJSON(v)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, vol)
+	}
+
+	return out, nil
+}
+
+func toAggregateVolumesJSON(result *commonpb.AggregateResult) (*aggregateVolumesResponseJSON, error) {
 	resp := &aggregateVolumesResponseJSON{}
 
-	resp.Volumes = make([]*aggregatedVolumeJSON, 0, len(result.GetVolumes()))
-	for _, v := range result.GetVolumes() {
-		resp.Volumes = append(resp.Volumes, toAggregatedVolumeJSON(v))
+	var err error
+	if resp.Volumes, err = toAggregatedVolumesJSON(result.GetVolumes()); err != nil {
+		return nil, err
 	}
 
 	if len(result.GetGroups()) > 0 {
 		resp.Groups = make([]*groupedAggregateResultJSON, 0, len(result.GetGroups()))
 		for _, g := range result.GetGroups() {
-			group := &groupedAggregateResultJSON{
-				Prefix:  g.GetPrefix(),
-				Volumes: make([]*aggregatedVolumeJSON, 0, len(g.GetVolumes())),
-			}
-			for _, v := range g.GetVolumes() {
-				group.Volumes = append(group.Volumes, toAggregatedVolumeJSON(v))
+			volumes, err := toAggregatedVolumesJSON(g.GetVolumes())
+			if err != nil {
+				return nil, err
 			}
 
-			resp.Groups = append(resp.Groups, group)
+			resp.Groups = append(resp.Groups, &groupedAggregateResultJSON{
+				Prefix:  g.GetPrefix(),
+				Volumes: volumes,
+			})
 		}
 	}
 
-	return resp
+	return resp, nil
 }
 
 // handleAggregateVolumes handles GET /{ledgerName}/volumes.
@@ -116,6 +136,13 @@ func (s *Server) handleAggregateVolumes(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
+	resp, err := toAggregateVolumesJSON(result)
+	if err != nil {
+		handleError(w, r, err)
+
+		return
+	}
+
 	finishProfile(w, r, profile)
-	writeOK(w, r, toAggregateVolumesJSON(result))
+	writeOK(w, r, resp)
 }

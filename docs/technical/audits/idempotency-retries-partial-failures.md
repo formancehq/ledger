@@ -130,3 +130,17 @@ historical scan or consensus-spanning lifecycle lock. Preserve cost-shape tests
 and local benchmark evidence; do not claim network/saturation measurements.
 No persisted projection, format, FSM interpreter or restore reconstruction changes.
 See [the admission contract](../architecture/subsystems/admission/idempotency.md#replay-after-metadata-limits-tighten).
+
+## Atomic HTTP Apply
+
+Atomic HTTP Apply submits one ordered service batch across ledgers/configuration with one header identity. An unskipped business failure discards all staged business effects; allowed explicit skip reasons retain successful skipped-order semantics. Retained same-key outcomes replay and changed content conflicts. A post-commit readiness/signing/encoding/transport failure does not prove rollback or justify a fresh key.
+
+Can the atomic HTTP adapter split a batch, accept conflicting identity sources, lose a retained outcome after response failure, or leak a successful first ledger mutation after a later unskipped rejection? Does checkpoint replay retain service readiness/provenance behavior?
+
+Use routed real admission/FSM tests for nonempty cross-ledger success and later-order failure, inspect both ledgers and committed logs, then replay identical content and conflict changed content under one header key. Inject or observe response loss after commit and recover with the original key. Compare the unchanged legacy bulk modes separately; do not infer durable atomicity from a mocked service call.
+
+See [the HTTP contract](../architecture/subsystems/api/http-api.md#atomic-http-apply).
+API boundary owns conversion/output fidelity; authentication owns scopes and
+caller capture; idempotency owns durable atomicity and retry identity; signed
+response integrity owns the returned cryptographic proof. Deduplicate by the
+mechanism that must change, not by the number of affected operations.

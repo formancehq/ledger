@@ -73,6 +73,16 @@ protocol revision (40), and requires no data migration. Upgrade receiving HTTP
 nodes before clients send signing headers. Existing retained-key replay,
 unkeyed execution and expired-key behavior remain unchanged.
 
+The atomic HTTP Apply route uses the same boundary for all exposed command
+variants. Its wrapper `request` is `{requests:[...]}` and the header carries the
+single key. It checks every operation scope and compares the complete batch
+before invoking the existing service Apply once. It does not add signature
+verification to the HTTP codec or bypass mandatory admission policy. Unlike
+legacy transaction acknowledgements, its returned logs preserve the service's
+optional response-signature envelopes except for credential-redacted sink and
+mirror-ledger creation logs. See
+[atomic HTTP Apply](../api/http-api.md#atomic-http-apply).
+
 ### Response signature: per log
 
 For every log that ends up in the response, the server signs a `Log` derived from it (with the `response_signature` field cleared). The signature is then attached back on `log.response_signature` as a `SignedLog`. A client first verifies the signature over the envelope's exact payload bytes, decodes those authenticated bytes as a `Log`, and compares that value with the visible log after clearing its `response_signature`. A valid envelope alone does not authenticate the separately supplied visible fields. `ledgerctl` rejects the response before consuming a mismatched log. Comparing decoded values also permits equivalent protobuf wire encodings without requiring client and server serialization to be byte-identical.

@@ -149,7 +149,7 @@ func TestBigintOperations(t *testing.T) {
 				}},
 			}, nil
 		}).Times(2)
-	server := httptest.NewServer(NewHandler(logging.Testing(), backend, internalauth.AuthConfig{}, version.Info{}))
+	server := httptest.NewServer(NewHandler(logging.Testing(), backend, internalauth.AuthConfig{}, version.Info{}, nil))
 	defer server.Close()
 	command := exec.CommandContext(t.Context(), "node", script, server.URL)
 	output, err := command.CombinedOutput()
@@ -183,6 +183,6 @@ func sdkAccount(address, amount string) *commonpb.Account {
 
 func sdkAggregate(amount string) *commonpb.AggregateResult {
 	return &commonpb.AggregateResult{Volumes: []*commonpb.AggregatedVolume{{Asset: "USD",
-		Input: commonpb.NewUint256FromUint64(0), Output: commonpb.NewUint256(uint256.MustFromDecimal(amount)),
+		Input: commonpb.NewBigUintFromUint64(0), Output: commonpb.MustBigUintFromDecimal(amount),
 	}}}
 }

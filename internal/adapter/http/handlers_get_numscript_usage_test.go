@@ -267,7 +267,7 @@ func TestHandleGetNumscriptUsage_FullRouteIntegration(t *testing.T) {
 			return &commonpb.TemplateUsage{Count: 3}, nil
 		}).AnyTimes()
 
-	handler := NewHandler(logging.Testing(), backend, internalauth.AuthConfig{}, version.Info{})
+	handler := NewHandler(logging.Testing(), backend, internalauth.AuthConfig{}, version.Info{}, nil)
 
 	w := httptest.NewRecorder()
 	r := httptest.NewRequest(http.MethodGet, "/v3/my-ledger/numscripts/payout/usage", nil)

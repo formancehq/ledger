@@ -78,7 +78,7 @@ func TestAccountAddressRouting(t *testing.T) {
 				var captured string
 				backend := NewMockBackend(gomock.NewController(t))
 				route.expect(t, backend, &captured)
-				handler := NewHandler(logging.Testing(), backend, internalauth.AuthConfig{}, version.Info{})
+				handler := NewHandler(logging.Testing(), backend, internalauth.AuthConfig{}, version.Info{}, nil)
 				var body io.Reader
 				if route.body != "" {
 					body = strings.NewReader(route.body)
@@ -176,7 +176,7 @@ func TestNamedResourceRouting(t *testing.T) {
 				var captured string
 				backend := NewMockBackend(gomock.NewController(t))
 				route.expect(t, backend, &captured, name.decoded)
-				handler := NewHandler(logging.Testing(), backend, internalauth.AuthConfig{}, version.Info{})
+				handler := NewHandler(logging.Testing(), backend, internalauth.AuthConfig{}, version.Info{}, nil)
 				var body io.Reader
 				if route.body != "" {
 					body = strings.NewReader(route.body)

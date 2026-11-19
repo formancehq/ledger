@@ -94453,7 +94453,7 @@ func (m *AggregatedVolume) UnmarshalVT(dAtA []byte) error {
 				return io.ErrUnexpectedEOF
 			}
 			if m.Input == nil {
-				m.Input = &Uint256{}
+				m.Input = &BigUint{}
 			}
 			if err := m.Input.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
 				return err
@@ -94489,7 +94489,7 @@ func (m *AggregatedVolume) UnmarshalVT(dAtA []byte) error {
 				return io.ErrUnexpectedEOF
 			}
 			if m.Output == nil {
-				m.Output = &Uint256{}
+				m.Output = &BigUint{}
 			}
 			if err := m.Output.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
 				return err

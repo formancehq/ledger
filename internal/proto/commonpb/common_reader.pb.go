@@ -21732,8 +21732,8 @@ func NewPreparedQueryListReader(s []*PreparedQuery) PreparedQueryListReader {
 // Call Mutate() to obtain a mutable clone.
 type AggregatedVolumeReader interface {
 	GetAsset() string
-	GetInput() Uint256Reader
-	GetOutput() Uint256Reader
+	GetInput() BigUintReader
+	GetOutput() BigUintReader
 	GetColor() string
 	Mutate() *AggregatedVolume
 }
@@ -21744,7 +21744,7 @@ func (r *aggregatedVolumeReadonly) GetAsset() string {
 	return (*AggregatedVolume)(r).GetAsset()
 }
 
-func (r *aggregatedVolumeReadonly) GetInput() Uint256Reader {
+func (r *aggregatedVolumeReadonly) GetInput() BigUintReader {
 	v := (*AggregatedVolume)(r).GetInput()
 	if v == nil {
 		return nil
@@ -21752,7 +21752,7 @@ func (r *aggregatedVolumeReadonly) GetInput() Uint256Reader {
 	return v.AsReader()
 }
 
-func (r *aggregatedVolumeReadonly) GetOutput() Uint256Reader {
+func (r *aggregatedVolumeReadonly) GetOutput() BigUintReader {
 	v := (*AggregatedVolume)(r).GetOutput()
 	if v == nil {
 		return nil

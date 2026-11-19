@@ -33,8 +33,10 @@ while they coexist. The embedded operator requires a complete stop at the
 `v3.0.0-rc.4` boundary because RC.3 cannot execute native proposal payloads
 and encodes [mirror asset mappings](#mirror-asset-mappings) differently.
 `rc.3` includes the drain barrier used for this upgrade. The `v3.0.0-rc.5`
-boundary is also a complete stop because RC.4 and RC.5 voters apply a keyed
-batch carrying a [forwarded preload gap](#forwarded-preload-gaps) differently.
+boundary is also a complete stop because RC.5 retypes
+[aggregate totals](#exact-aggregate-totals) on the wire and applies a keyed
+batch carrying a [forwarded preload gap](#forwarded-preload-gaps) differently
+from RC.4.
 RC adjacency remains mandatory.
 The `rc.1` to `rc.2` transition rolls one voter at a time with a maintenance
 barrier that pauses writes; it does not stop the whole cluster.
@@ -585,8 +587,9 @@ pre-upgrade account, commits another transaction, checks Raft progress and
 runs each voter's audit/derived-state checker after drain release. It fails
 against an operator without the transition's boundary or if the mandatory stop
 is skipped, so it is a release gate for the PR that adds the boundary, not
-evidence that the source release itself needs a stop. The rc.4 release still needs format-specific migration,
-snapshot, backup/restore and rollback validation outside this scenario.
+evidence that the source release itself needs a stop. The rc.4 release still
+needs format-specific migration, snapshot, backup/restore and rollback
+validation outside this scenario.
 
 ## Coordinated Restart
 
@@ -628,6 +631,23 @@ this format.
 The first native payload appended to the WAL closes the rollback window for
 RC.3. Restarting RC.3 on that storage requires a separately validated recovery
 procedure. See the [proposal migration contract](../technical/architecture/subsystems/consensus/proposal-payloads.md).
+
+## Exact aggregate totals
+
+The RC.4 to RC.5 transition requires the operator-owned stopped restart above.
+RC.5 changes the `AggregatedVolume` totals on gRPC from `Uint256` to `BigUint`
+while the service protocol revision stays at 40. Nodes forward aggregate reads
+to each other, and a member on one side of the change misdecodes the totals
+sent by a member on the other, so RC.4 and RC.5 members must not serve
+together. The change has no persisted, Raft, snapshot, backup or audit format
+effect. A cluster not managed by the operator must drain and stop every RC.4
+member before starting any RC.5 member.
+
+Upgrade gRPC clients that read aggregate volumes, including `ledgerctl`,
+together with the servers. A client built before RC.5 is not rejected by the
+revision check: it fails to decode the totals or reads them as zero. Other
+RPCs and HTTP clients are unaffected. See the
+[wire exception](../technical/architecture/subsystems/api/protocol-compatibility.md#exact-aggregate-totals-wire-exception-at-revision-40).
 
 ## Forwarded preload gaps
 

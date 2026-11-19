@@ -328,11 +328,15 @@ func renderAggregate(cmd *cobra.Command, result *commonpb.AggregateResult) error
 		if rescale != nil {
 			raw := make([]cmdutil.RawVolume, 0, len(vols))
 			for _, v := range vols {
+				input, output, err := v.Totals()
+				if err != nil {
+					return nil, err
+				}
 				raw = append(raw, cmdutil.RawVolume{
 					Asset:  v.GetAsset(),
 					Color:  v.GetColor(),
-					Input:  v.GetInput().ToBigInt().String(),
-					Output: v.GetOutput().ToBigInt().String(),
+					Input:  input.String(),
+					Output: output.String(),
 				})
 			}
 
@@ -354,11 +358,15 @@ func renderAggregate(cmd *cobra.Command, result *commonpb.AggregateResult) error
 		}
 
 		for _, v := range vols {
+			input, output, err := v.Totals()
+			if err != nil {
+				return nil, err
+			}
 			tableData = append(tableData, []string{
 				v.GetAsset(),
 				v.GetColor(),
-				v.GetInput().ToBigInt().String(),
-				v.GetOutput().ToBigInt().String(),
+				input.String(),
+				output.String(),
 			})
 		}
 

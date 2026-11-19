@@ -39,7 +39,8 @@ each one's reason and procedure.
 Do not increment `pkg/grpcprotocol.Version`; it stays at `"40"` during the v3
 release-candidate phase. Assess and document the effect of behavior or
 configuration changes on existing clients. Escalate a wire change that cannot
-preserve client decoding instead of bumping the revision. Read the
+preserve client decoding instead of bumping the revision; an accepted one
+ships as a listed wire exception behind a mandatory stopped upgrade. Read the
 [protocol maintenance rules](docs/technical/architecture/subsystems/api/protocol-compatibility.md#maintaining-the-revision)
 before modifying this contract.
 

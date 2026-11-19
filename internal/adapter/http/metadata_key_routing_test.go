@@ -61,7 +61,7 @@ func TestMetadataKeyRouting(t *testing.T) {
 
 					return &domain.ApplyResult{Logs: []*commonpb.Log{{}}}, nil
 				})
-				handler := NewHandler(logging.Testing(), backend, internalauth.AuthConfig{}, version.Info{})
+				handler := NewHandler(logging.Testing(), backend, internalauth.AuthConfig{}, version.Info{}, nil)
 				req := httptest.NewRequest(route.method, "/v3/ledger1"+route.path+key.encoded, strings.NewReader(`{"type":"string"}`))
 				require.Equal(t, key.rawPath, req.URL.RawPath != "")
 				rec := httptest.NewRecorder()
@@ -91,7 +91,7 @@ func TestCanonicalIDRoutingSingleDecode(t *testing.T) {
 
 					return &commonpb.Index{Ledger: req.GetLedger()}, nil
 				})
-				handler := NewHandler(logging.Testing(), backend, internalauth.AuthConfig{}, version.Info{})
+				handler := NewHandler(logging.Testing(), backend, internalauth.AuthConfig{}, version.Info{}, nil)
 				req := httptest.NewRequest(http.MethodGet, "/v3/"+scope+"/indexes/metadata:TARGET_TYPE_ACCOUNT:"+key.encoded, nil)
 				rec := httptest.NewRecorder()
 				handler.ServeHTTP(rec, req)

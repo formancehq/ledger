@@ -101,7 +101,7 @@ func TestMetadataIntegers_Routes(t *testing.T) {
 					r.ContentLength = -1
 				}
 				w := httptest.NewRecorder()
-				NewHandler(logging.Testing(), backend, internalauth.AuthConfig{}, version.Info{}).ServeHTTP(w, r)
+				NewHandler(logging.Testing(), backend, internalauth.AuthConfig{}, version.Info{}, nil).ServeHTTP(w, r)
 				require.Equal(t, status, w.Code, w.Body.String())
 				if tc.want == nil {
 					require.Equal(t, "INVALID_REQUEST", decodeResponse[ErrorResponse](t, w).ErrorCode)

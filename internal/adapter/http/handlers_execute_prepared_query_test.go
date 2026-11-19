@@ -2,6 +2,7 @@ package http
 
 import (
 	"context"
+	"math/big"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -236,8 +237,8 @@ func TestHandleExecutePreparedQuery_AggregateEmitsColor(t *testing.T) {
 				Result: &servicepb.ExecutePreparedQueryResponse_Aggregate{
 					Aggregate: &commonpb.AggregateResult{
 						Volumes: []*commonpb.AggregatedVolume{
-							{Asset: "USD", Color: "", Input: commonpb.NewUint256FromUint64(100), Output: commonpb.NewUint256FromUint64(30)},
-							{Asset: "USD", Color: "RED", Input: commonpb.NewUint256FromUint64(50), Output: commonpb.NewUint256FromUint64(0)},
+							{Asset: "USD", Color: "", Input: commonpb.NewBigUintFromUint64(100), Output: commonpb.NewBigUintFromUint64(30)},
+							{Asset: "USD", Color: "RED", Input: commonpb.NewBigUintFromUint64(50), Output: commonpb.NewBigUintFromUint64(0)},
 						},
 					},
 				},
@@ -402,4 +403,37 @@ func TestHandleExecutePreparedQuery_Reverse(t *testing.T) {
 			require.Equal(t, tc.want, captured.GetReverse())
 		})
 	}
+}
+
+func TestHandleExecutePreparedQuery_AggregateTotalsAbove2Pow256(t *testing.T) {
+	t.Parallel()
+
+	above := new(big.Int).Lsh(big.NewInt(5), 256)
+	input, err := commonpb.NewBigUint(above)
+	require.NoError(t, err)
+
+	backend := NewMockBackend(gomock.NewController(t))
+	backend.EXPECT().ExecutePreparedQuery(gomock.Any(), gomock.Any()).DoAndReturn(
+		func(_ context.Context, req *servicepb.ExecutePreparedQueryRequest) (*servicepb.ExecutePreparedQueryResponse, error) {
+			return &servicepb.ExecutePreparedQueryResponse{Result: &servicepb.ExecutePreparedQueryResponse_Aggregate{
+				Aggregate: &commonpb.AggregateResult{Volumes: []*commonpb.AggregatedVolume{{
+					Asset:  "USD/2",
+					Input:  input,
+					Output: &commonpb.BigUint{},
+				}}},
+			}}, nil
+		})
+	srv := newTestServer(t, backend)
+
+	w := httptest.NewRecorder()
+	r := newRequest(t, http.MethodPost, "/ledger1/prepared-queries/my-query/execute",
+		strings.NewReader(`{"mode":"AGGREGATE_VOLUMES"}`), map[string]string{
+			"ledgerName": "ledger1",
+			"queryName":  "my-query",
+		})
+	srv.handleExecutePreparedQuery(w, r)
+
+	require.Equal(t, http.StatusOK, w.Code)
+	require.Contains(t, w.Body.String(), `"input":`+above.String())
+	require.Contains(t, w.Body.String(), `"balance":`+above.String())
 }

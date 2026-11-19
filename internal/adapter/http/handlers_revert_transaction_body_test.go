@@ -85,7 +85,7 @@ func TestHandleRevertTransaction_BodyFraming(t *testing.T) {
 							}}},
 						}}}}}, nil
 					}).MaxTimes(1)
-				router := NewHandler(logging.Testing(), backend, internalauth.AuthConfig{}, version.Info{})
+				router := NewHandler(logging.Testing(), backend, internalauth.AuthConfig{}, version.Info{}, nil)
 				path := APIVersionPrefix + "/ledger1/transactions/1/revert"
 				var status int
 				var responseBody []byte
