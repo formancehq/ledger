@@ -121,7 +121,7 @@ send $amt (
 
 // requireCompileError asserts err is a freezable ErrNumscriptCompile and
 // returns its detail.
-func requireCompileError(t *testing.T, err domain.SerializableError) string {
+func requireCompileError(t *testing.T, err domain.Describable) string {
 	t.Helper()
 
 	require.NotNil(t, err)
@@ -159,12 +159,13 @@ func TestCompileScript_CompilesOncePerCachedScript(t *testing.T) {
 	require.Same(t, firstErr, secondErr, "a compile failure is cached")
 }
 
-func requireUnclassifiedCompileError(t *testing.T, err domain.SerializableError) {
+func requireUnclassifiedCompileError(t *testing.T, err domain.Describable) {
 	t.Helper()
 	require.NotNil(t, err)
 	var uncommitted interface{ UncommittedFailure() }
 	require.ErrorAs(t, err, &uncommitted)
-	require.Nil(t, err.FailureDetails())
+	_, auditable := err.(domain.SerializableError)
+	require.False(t, auditable)
 }
 
 // TestVMStore_ForceReturnsUnlimitedBalance mirrors the resolver-facing
@@ -360,14 +361,14 @@ func TestSafeExecCompiled_WarmInstanceReleasesSource(t *testing.T) {
 		name string
 		// source returns a fresh source and reports whether it is still alive.
 		source func() (ValueSource, func() bool)
-		check  func(t *testing.T, err domain.SerializableError)
+		check  func(t *testing.T, err domain.Describable)
 	}{
 		{
 			name: "success",
 			source: func() (ValueSource, func() bool) {
 				return weakSource(&mapValueSource{balances: map[string]*big.Int{"src\x00COIN\x00": big.NewInt(100)}})
 			},
-			check: func(t *testing.T, err domain.SerializableError) {
+			check: func(t *testing.T, err domain.Describable) {
 				t.Helper()
 				require.Nil(t, err)
 			},
@@ -377,7 +378,7 @@ func TestSafeExecCompiled_WarmInstanceReleasesSource(t *testing.T) {
 			source: func() (ValueSource, func() bool) {
 				return weakSource(&mapValueSource{balances: map[string]*big.Int{"src\x00COIN\x00": big.NewInt(10)}})
 			},
-			check: func(t *testing.T, err domain.SerializableError) {
+			check: func(t *testing.T, err domain.Describable) {
 				t.Helper()
 				var insufficientFunds *domain.ErrInsufficientFunds
 				require.ErrorAs(t, err, &insufficientFunds)
@@ -386,7 +387,7 @@ func TestSafeExecCompiled_WarmInstanceReleasesSource(t *testing.T) {
 		{
 			name:   "panic",
 			source: func() (ValueSource, func() bool) { return weakSource(&panickingValueSource{}) },
-			check: func(t *testing.T, err domain.SerializableError) {
+			check: func(t *testing.T, err domain.Describable) {
 				t.Helper()
 				require.True(t, IsPanic(err))
 			},

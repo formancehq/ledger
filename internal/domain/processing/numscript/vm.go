@@ -26,7 +26,7 @@ type CompiledScript struct {
 // cannot run is an admission rejection: typed compiler errors produce
 // ErrNumscriptCompile; an unclassified compiler error remains uncommitted.
 // A library panic produces panicError (IsPanic).
-func compileScript(entry *lruEntry, vars map[string]string) (out *CompiledScript, err domain.SerializableError) {
+func compileScript(entry *lruEntry, vars map[string]string) (out *CompiledScript, err domain.Describable) {
 	defer func() {
 		if panicErr := numscriptPanicToDescribable(recover()); panicErr != nil {
 			out = nil
@@ -54,7 +54,7 @@ func compileScript(entry *lruEntry, vars map[string]string) (out *CompiledScript
 // compileFromText compiles script and vars from business input. Admission,
 // FSM apply, and audit replay use the same compiler. Agreement across binary
 // versions still requires stable script semantics (see docs/ops/deployment.md).
-func compileFromText(cache *NumscriptCache, script string, vars map[string]string) (*CompiledScript, domain.SerializableError) {
+func compileFromText(cache *NumscriptCache, script string, vars map[string]string) (*CompiledScript, domain.Describable) {
 	entry := cache.getOrParseEntry(script)
 	if entry.script.err != nil {
 		return nil, entry.script.err
@@ -67,13 +67,13 @@ func compileFromText(cache *NumscriptCache, script string, vars map[string]strin
 // Admission executes concurrently, so it never touches the FSM's warm
 // instances (which must not run concurrently — see compiledLruEntry); the
 // program itself is immutable and safe to share across instances.
-func execCompiledScript(compiled *CompiledScript, store *VMStore) (numscriptlib.ExecutionResult, domain.SerializableError) {
+func execCompiledScript(compiled *CompiledScript, store *VMStore) (numscriptlib.ExecutionResult, domain.Describable) {
 	return safeExecVM(numscriptlib.NewVm(compiled.program.program), &compiled.vars, store)
 }
 
 // safeExecVM executes a VM instance with the panic-recovery and
 // error-conversion contract shared by every VM execution.
-func safeExecVM(vm *numscriptlib.Vm, vars *numscriptlib.Vars, store *VMStore) (result numscriptlib.ExecutionResult, err domain.SerializableError) {
+func safeExecVM(vm *numscriptlib.Vm, vars *numscriptlib.Vars, store *VMStore) (result numscriptlib.ExecutionResult, err domain.Describable) {
 	defer func() {
 		if panicErr := numscriptPanicToDescribable(recover()); panicErr != nil {
 			result = numscriptlib.ExecutionResult{}
@@ -135,7 +135,7 @@ func (s *VMStore) GetMetadata(_ context.Context, account, scope, key string) (st
 // the FSM uses it sequentially, and the library releases its store
 // after each run so it cannot retain an old proposal's Scope. Cache hits
 // affect performance only.
-func SafeExecCompiled(cache *NumscriptCache, compiled *CompiledScript, store *VMStore) (result numscriptlib.ExecutionResult, err domain.SerializableError) {
+func SafeExecCompiled(cache *NumscriptCache, compiled *CompiledScript, store *VMStore) (result numscriptlib.ExecutionResult, err domain.Describable) {
 	defer func() {
 		if panicErr := numscriptPanicToDescribable(recover()); panicErr != nil {
 			result = numscriptlib.ExecutionResult{}
@@ -155,7 +155,7 @@ func SafeExecCompiled(cache *NumscriptCache, compiled *CompiledScript, store *VM
 // bundled library and executes them. FSM apply and audit replay both use this
 // path. The program is cached for later orders; cache state affects only
 // performance. Cross-version agreement requires stable script semantics.
-func SafeExecFromText(cache *NumscriptCache, script string, scriptVars map[string]string, store *VMStore) (numscriptlib.ExecutionResult, domain.SerializableError) {
+func SafeExecFromText(cache *NumscriptCache, script string, scriptVars map[string]string, store *VMStore) (numscriptlib.ExecutionResult, domain.Describable) {
 	compiled, compileErr := compileFromText(cache, script, scriptVars)
 	if compileErr != nil {
 		return numscriptlib.ExecutionResult{}, compileErr
@@ -173,7 +173,7 @@ func SafeExecFromText(cache *NumscriptCache, script string, scriptVars map[strin
 // errors with no domain type — is ErrNumscriptRuntime.
 // Asset scaling never reaches here: dependency resolution rejects a scaling
 // script at admission (ErrNumscriptScalingUnsupported), before compilation.
-func convertVMError(err error) domain.SerializableError {
+func convertVMError(err error) domain.Describable {
 	if err == nil {
 		return nil
 	}
@@ -186,7 +186,7 @@ func convertVMError(err error) domain.SerializableError {
 		}
 	}
 
-	if d, ok := errors.AsType[domain.SerializableError](err); ok {
+	if d, ok := domain.ProcessingFailureOf(err); ok {
 		return d
 	}
 	if mapped := mapVMError(err); mapped != nil {

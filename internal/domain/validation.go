@@ -62,7 +62,7 @@ const MaxHasAssetPrecision = math.MaxUint8
 // The prepared-query FSM handler re-runs the same validation during apply, so
 // the sentinel must serialise its own context — it is the concrete error rather
 // than a BusinessError carrier, which cannot.
-var ErrFilterTooDeep SerializableError = &ErrFilterCompilation{
+var ErrFilterTooDeep Describable = &ErrFilterCompilation{
 	Detail: fmt.Sprintf("query filter exceeds maximum nesting depth (%d)", MaxFilterDepth),
 }
 
@@ -238,7 +238,7 @@ func IsPreparedQueryExecutableTarget(target commonpb.QueryTarget) bool {
 // enforces at execute time — so a maliciously (or accidentally) deep tree is
 // rejected at write time with ErrFilterTooDeep instead of being persisted (only
 // to fail every execution) or overflowing the Go stack on the write path (#341).
-func ValidateFilterForTarget(f *commonpb.QueryFilter, target commonpb.QueryTarget) SerializableError {
+func ValidateFilterForTarget(f *commonpb.QueryFilter, target commonpb.QueryTarget) Describable {
 	return validateFilterForTarget(f, target, 0)
 }
 
@@ -252,7 +252,7 @@ func ValidateFilterForTarget(f *commonpb.QueryFilter, target commonpb.QueryTarge
 // unexecutable prepared query be persisted; a deeper one would overflow the
 // stack here before Compile's guard is ever reached — the exact fatal DoS,
 // invariant #7).
-func validateFilterForTarget(f *commonpb.QueryFilter, target commonpb.QueryTarget, depth int) SerializableError {
+func validateFilterForTarget(f *commonpb.QueryFilter, target commonpb.QueryTarget, depth int) Describable {
 	if f == nil {
 		return nil
 	}
@@ -299,7 +299,7 @@ func validateFilterForTarget(f *commonpb.QueryFilter, target commonpb.QueryTarge
 // MaxHasAssetPrecision. query.Compile and query.CompileReverse apply it to every
 // node they dispatch and ValidateFilterForTarget to every leaf it walks, so a
 // stored prepared query never fails on its own shape. Combinators pass.
-func ValidateFilterLeaf(f *commonpb.QueryFilter) SerializableError {
+func ValidateFilterLeaf(f *commonpb.QueryFilter) Describable {
 	switch v := f.GetFilter().(type) {
 	case *commonpb.QueryFilter_Field:
 		return validateFieldConditionShape(v.Field)
@@ -367,11 +367,11 @@ func ValidateFilterLeaf(f *commonpb.QueryFilter) SerializableError {
 //     re-parses as different conditions.
 //
 // The walk is bounded by MaxFilterDepth like ValidateFilterForTarget.
-func ValidateFilterAdmissionShape(f *commonpb.QueryFilter) SerializableError {
+func ValidateFilterAdmissionShape(f *commonpb.QueryFilter) Describable {
 	return validateFilterAdmissionShape(f, 0)
 }
 
-func validateFilterAdmissionShape(f *commonpb.QueryFilter, depth int) SerializableError {
+func validateFilterAdmissionShape(f *commonpb.QueryFilter, depth int) Describable {
 	if f == nil {
 		return nil
 	}
@@ -410,7 +410,7 @@ func validateFilterAdmissionShape(f *commonpb.QueryFilter, depth int) Serializab
 	return nil
 }
 
-func validateFieldConditionShape(fc *commonpb.FieldCondition) SerializableError {
+func validateFieldConditionShape(fc *commonpb.FieldCondition) Describable {
 	if fc.GetField() == nil {
 		return filterShapeError("field condition has no field reference")
 	}
@@ -430,7 +430,7 @@ func validateFieldConditionShape(fc *commonpb.FieldCondition) SerializableError 
 	return nil
 }
 
-func validateStringConditionValue(cond *commonpb.StringCondition) SerializableError {
+func validateStringConditionValue(cond *commonpb.StringCondition) Describable {
 	if cond.GetValue() == nil {
 		return filterShapeError("string condition has no value")
 	}
@@ -438,7 +438,7 @@ func validateStringConditionValue(cond *commonpb.StringCondition) SerializableEr
 	return nil
 }
 
-func filterShapeError(detail string) SerializableError {
+func filterShapeError(detail string) Describable {
 	return &ErrFilterCompilation{Detail: detail}
 }
 

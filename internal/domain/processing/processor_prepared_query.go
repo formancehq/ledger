@@ -14,7 +14,7 @@ import (
 // (notably *state.ErrCoverageMiss) propagates verbatim so the FSM rejects it
 // without auditing a storage fault (EN-1379); any other
 // error wraps into ErrStorageOperation. Mirrors the loadLedger pattern.
-func lookupPreparedQuery(s Scope, ledger, name string) (commonpb.PreparedQueryReader, domain.SerializableError) {
+func lookupPreparedQuery(s Scope, ledger, name string) (commonpb.PreparedQueryReader, domain.Describable) {
 	pq, err := s.PreparedQueries().Get(domain.PreparedQueryKey{LedgerName: ledger, Name: name})
 	if errors.Is(err, domain.ErrNotFound) {
 		return nil, nil
@@ -27,7 +27,7 @@ func lookupPreparedQuery(s Scope, ledger, name string) (commonpb.PreparedQueryRe
 	return pq, nil
 }
 
-func processCreatePreparedQuery(ledger string, order *raftcmdpb.CreatePreparedQueryOrder, ctx *Context) (*commonpb.LogPayload, domain.SerializableError) {
+func processCreatePreparedQuery(ledger string, order *raftcmdpb.CreatePreparedQueryOrder, ctx *Context) (*commonpb.LogPayload, domain.Describable) {
 	s := ctx.Scope
 	// Validate payload BEFORE loading the ledger. After moving `ledger` off
 	// `PreparedQuery` onto the surrounding request (PR #522), a malformed
@@ -84,7 +84,7 @@ func processCreatePreparedQuery(ledger string, order *raftcmdpb.CreatePreparedQu
 	}, nil
 }
 
-func processUpdatePreparedQuery(ledger string, order *raftcmdpb.UpdatePreparedQueryOrder, ctx *Context) (*commonpb.LogPayload, domain.SerializableError) {
+func processUpdatePreparedQuery(ledger string, order *raftcmdpb.UpdatePreparedQueryOrder, ctx *Context) (*commonpb.LogPayload, domain.Describable) {
 	s := ctx.Scope
 	if err := domain.ValidatePreparedQueryName(order.GetName()); err != nil {
 		return nil, err
@@ -144,7 +144,7 @@ func processUpdatePreparedQuery(ledger string, order *raftcmdpb.UpdatePreparedQu
 	}, nil
 }
 
-func processDeletePreparedQuery(ledger string, order *raftcmdpb.DeletePreparedQueryOrder, ctx *Context) (*commonpb.LogPayload, domain.SerializableError) {
+func processDeletePreparedQuery(ledger string, order *raftcmdpb.DeletePreparedQueryOrder, ctx *Context) (*commonpb.LogPayload, domain.Describable) {
 	s := ctx.Scope
 	if err := domain.ValidatePreparedQueryName(order.GetName()); err != nil {
 		return nil, err
