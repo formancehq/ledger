@@ -48,7 +48,10 @@ not the pre-snapshot cache, before rehydration.
 
 A proposal that declares a capability is admitted only when that capability is
 active and every member advertises it. Proposals with no declared capability
-remain unaffected unless their order requires an active semantic capability.
+remain unaffected after activation settles unless their order requires an
+active semantic capability. While every member supports a locally implemented
+but inactive capability, all audited order batches pause, including unrelated
+unmarked writes; admission retries them after activation commits.
 FSM apply never consults node-local capability flags.
 Membership evidence is an authenticated cluster fact, not a proof of code
 inspection: a node can only cause activation for IDs in the leader's local
@@ -127,10 +130,12 @@ absent, then current membership is reevaluated. Lost responses and restart never
 cause a committed activation to be undone. No intermediate `requested` state is
 needed; the unreleased draft field is removed without reassigning its number.
 
-The supported registry remains empty in this change. A feature must separately
-register its stable ID, select its proposal marker at preparation, and dispatch
-deterministic apply from that persisted marker. This infrastructure change does
-not introduce the account-type validation feature from PR #2552.
+The supported registry contains `CreateLedgerAccountTypesV2` (ID 1). Its
+activation requires committed support evidence from every member after the
+mandatory stopped RC.4-to-RC.5 upgrade. CreateLedger selects its marker from
+the committed policy, and FSM apply dispatches from that persisted marker.
+Future features must likewise register stable IDs and select their semantics
+from replicated state.
 
 1. The replicated `ClusterPolicy` controls whether the cluster may accept the
    behavior.

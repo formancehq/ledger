@@ -838,6 +838,7 @@ func (a *Admission) buildPreload(ctx context.Context, cmd *raftcmdpb.Proposal, n
 }
 
 func (a *Admission) proposeAdmission(ctx context.Context, cmd *raftcmdpb.Proposal, build *plan.BuildResult) (*futures.Future[state.ApplyResult], func(), error) {
+	selectedBeforeActivation := false
 	if catalog.HasCreateLedger(cmd) {
 		policy, err := query.ReadClusterPolicy(a.store)
 		if err != nil {
@@ -846,6 +847,7 @@ func (a *Admission) proposeAdmission(ctx context.Context, cmd *raftcmdpb.Proposa
 			return nil, nil, fmt.Errorf("reading cluster policy for CreateLedger: %w", err)
 		}
 		catalog.SelectCreateLedgerValidation(cmd, policy)
+		selectedBeforeActivation = !capabilities.FromPolicy(policy).Activations[catalog.CreateLedgerAccountTypesV2]
 	}
 
 	// Step 5: Marshal + acquire proposal guard + set PredictedIndex
@@ -889,6 +891,12 @@ func (a *Admission) proposeAdmission(ctx context.Context, cmd *raftcmdpb.Proposa
 		if runResult != nil {
 			a.proposalGuardDurationHistogram.Record(ctx, runResult.LockHeldDuration.Seconds())
 			a.proposeDurationHistogram.Record(ctx, runResult.ProposeDuration.Seconds())
+		}
+		// The final gate can observe activation after this admission selected
+		// the legacy marker. Reprepare against the newly committed policy;
+		// other missing declarations remain hard errors at the gate.
+		if selectedBeforeActivation && errors.Is(err, capabilities.ErrMissingCapability) {
+			return nil, nil, fmt.Errorf("%w: CreateLedger capability activated during proposal: %w", capabilities.ErrActivationPending, err)
 		}
 		if errors.Is(err, capabilities.ErrActivationPending) {
 			return nil, nil, err
