@@ -28,7 +28,7 @@ import (
 func TestBackupRunCredentialsStayInSecrets(t *testing.T) {
 	t.Parallel()
 
-	for _, runType := range []ledgerv1alpha1.BackupRunType{ledgerv1alpha1.BackupRunTypeFull, ledgerv1alpha1.BackupRunTypeIncremental} {
+	for _, runType := range []ledgerv1alpha1.BackupRunType{ledgerv1alpha1.BackupRunTypeFull} {
 		for _, static := range []bool{false, true} {
 			name := string(runType) + "/ambient"
 			if static {

@@ -91,14 +91,14 @@
     },
     "schedule": {
       "additionalProperties": false,
-      "description": "Schedule defines cron schedules for full and incremental backups.\nBoth entries are optional; a Backup without any schedule is valid\nand acts as a backup configuration template for manual BackupRun resources.",
+      "description": "Schedule defines the checkpoint backup cadence.\nBoth entries are optional; a Backup without any schedule is valid\nand acts as a backup configuration template for manual BackupRun resources.",
       "properties": {
         "full": {
           "description": "Full is the cron expression for full backups (e.g. \"0 2 * * 0\" for weekly Sunday 2am).",
           "type": "string"
         },
         "incremental": {
-          "description": "Incremental is the cron expression for incremental backups (e.g. \"0 * * * *\" for hourly).",
+          "description": "Incremental is a deprecated cron expression. When set, it schedules Full\ncheckpoint runs until the field is cleared and Full is configured.",
           "type": "string"
         }
       },

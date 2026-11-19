@@ -12,18 +12,17 @@ import (
 	"slices"
 )
 
-// Manifest describes the current state of a backup, combining a full checkpoint
-// with incremental log/audit exports.
+// Manifest describes the published checkpoint. Exports and ClusterPolicy are
+// retained only to decode and reject legacy backup artifacts during restore.
 type Manifest struct {
 	Checkpoint *CheckpointManifest `json:"checkpoint"`
 	Exports    []ExportSegment     `json:"exports"`
-	// ClusterPolicy is operational state captured from the same snapshot as
-	// the latest exports. Absent on released manifests: replay their old logs.
+	// ClusterPolicy is a legacy out-of-band policy override. Current checkpoints
+	// include the policy directly in Pebble and do not write this field.
 	ClusterPolicy *ClusterPolicySnapshot `json:"clusterPolicy,omitempty"`
 }
 
-// ClusterPolicySnapshot is independent of business/audit sequence numbers: a
-// policy-only incremental backup can update it without exporting history.
+// ClusterPolicySnapshot is the legacy policy-only backup representation.
 type ClusterPolicySnapshot struct {
 	AppliedIndex        uint64 `json:"appliedIndex"`
 	Data                []byte `json:"data"` // deterministic ClusterPolicy protobuf bytes
@@ -139,7 +138,7 @@ func (cf CheckpointFile) CopyVerified(dst io.Writer, src io.Reader) (int64, erro
 	return n, nil
 }
 
-// ExportSegment describes a single incremental export segment stored on S3.
+// ExportSegment describes a legacy incremental export segment stored on S3.
 type ExportSegment struct {
 	Type     string `json:"type"` // "log", "audit", "auditItem", or "appliedProposal"
 	StartSeq uint64 `json:"startSeq"`
@@ -218,6 +217,19 @@ func DecodeManifest(data []byte) (*Manifest, error) {
 	}
 
 	return &manifest, nil
+}
+
+// ValidateCheckpointOnlyManifest rejects backup formats that require the
+// removed export replay path. Both restore entry points call this before
+// creating or activating staging state.
+func ValidateCheckpointOnlyManifest(manifest *Manifest) error {
+	if len(manifest.Exports) != 0 || manifest.ClusterPolicy != nil {
+		return errors.New("incremental backup manifests are no longer supported; take a new checkpoint backup")
+	}
+	if manifest.Checkpoint == nil || len(manifest.Checkpoint.Files) == 0 {
+		return errors.New("backup manifest contains no checkpoint files")
+	}
+	return nil
 }
 
 // WriteManifest encodes and writes a manifest to storage.

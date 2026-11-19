@@ -6,6 +6,8 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 	"sync"
@@ -79,6 +81,45 @@ func seedBackupTestAuditKey(t *testing.T, store *dal.Store) {
 	batch := store.OpenWriteSession()
 	require.NoError(t, batch.SetBytes([]byte{dal.ZoneGlobal, dal.SubGlobAuditKey}, []byte("0123456789abcdef0123456789abcdef")))
 	require.NoError(t, batch.Commit())
+}
+
+func TestRunBackupFlushesCommittedMemtable(t *testing.T) {
+	t.Parallel()
+	store := newBackupTestStore(t)
+	batch := store.OpenWriteSession()
+	require.NoError(t, batch.SetBytes([]byte("confirmed-transaction"), []byte("present")))
+	require.NoError(t, batch.Commit())
+
+	storage := newInMemoryBackupStorage()
+	_, err := RunBackup(t.Context(), logging.Testing(), store, storage, "bucket", "flushed-backup")
+	require.NoError(t, err)
+	manifest, err := ReadManifest(t.Context(), storage, ManifestKey("bucket"))
+	require.NoError(t, err)
+	require.NotEmpty(t, manifest.Checkpoint.Files)
+
+	// The idle fixture has no concurrent writer. Reopen the uploaded checkpoint
+	// without its WAL files to prove the confirmed value reached an SST.
+	dir := t.TempDir()
+	for name, file := range manifest.Checkpoint.Files {
+		if strings.HasSuffix(name, ".log") {
+			continue
+		}
+		path := filepath.Join(dir, filepath.FromSlash(name))
+		require.NoError(t, os.MkdirAll(filepath.Dir(path), 0o755))
+		src, getErr := storage.GetFile(t.Context(), file.Key)
+		require.NoError(t, getErr)
+		data, readErr := io.ReadAll(src)
+		require.NoError(t, readErr)
+		require.NoError(t, src.Close())
+		require.NoError(t, os.WriteFile(path, data, 0o600))
+	}
+	checkpoint, err := dal.OpenReadOnly(dir, logging.Testing())
+	require.NoError(t, err)
+	defer func() { require.NoError(t, checkpoint.Close()) }()
+	got, closer, err := checkpoint.Get([]byte("confirmed-transaction"))
+	require.NoError(t, err)
+	require.Equal(t, []byte("present"), got)
+	require.NoError(t, closer.Close())
 }
 
 // writeCorruptColdEntry writes an undecodable value under the given cold sub-zone

@@ -20,7 +20,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
 
-// The four driver stages share this execution path. The proposal seam commits
+// Repeated checkpoints and the published legacy RPC alias share this path. The proposal seam commits
 // Start before losing its response: busy comes from real durable backup state,
 // not a preprogrammed sequence of RPC errors. Orchestrator recovery tests cover
 // the real cleanup executor and uploaded bytes independently of this client seam.
@@ -31,9 +31,9 @@ func TestRetryBackup_CommittedStartLostResponse(t *testing.T) {
 		kind      raftcmdpb.BackupKind
 	}{
 		{"Backup", raftcmdpb.BackupKind_BACKUP_KIND_FULL},
-		{"Backup (pre-incremental)", raftcmdpb.BackupKind_BACKUP_KIND_FULL},
-		{"IncrementalBackup", raftcmdpb.BackupKind_BACKUP_KIND_INCREMENTAL},
-		{"second IncrementalBackup", raftcmdpb.BackupKind_BACKUP_KIND_INCREMENTAL},
+		{"Backup (second checkpoint)", raftcmdpb.BackupKind_BACKUP_KIND_FULL},
+		{"IncrementalBackup alias", raftcmdpb.BackupKind_BACKUP_KIND_FULL},
+		{"Backup (third checkpoint)", raftcmdpb.BackupKind_BACKUP_KIND_FULL},
 	} {
 		t.Run(tc.operation, func(t *testing.T) {
 			t.Parallel()

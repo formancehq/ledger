@@ -36,11 +36,11 @@ import (
 // (singleton_driver_model: remove-field-type dropped-index mismatch): after a
 // backup/restore cycle, a removeFieldType on an indexed field reports nothing
 // dropped even though the CreateIndex committed before the backup. The live
-// FSM persists index registry rows in the main store, and the restore rebuild
-// (backup.RebuildDelta → replay.ReplayLedgerLog) must fold CreateIndex /
-// DropIndex / the removal cascade / the retype version bump back into them.
+// FSM persists index registry rows in the main store. The second checkpoint
+// must capture CreateIndex, DropIndex, the removal cascade, and retype version
+// bumps in those rows.
 //
-// Per the incremental-restore contract, the registry lifecycle spans the
+// Per the checkpoint-restore contract, the registry lifecycle spans the
 // checkpoint boundary: rows seeded BEFORE the full checkpoint are then
 // retyped (version fold over checkpoint state) and cascade-deleted by the
 // delta, one row is created inside the delta, and the restored store must
@@ -320,10 +320,10 @@ var _ = Describe("Restore index registry", Ordered, func() {
 		})
 
 		It("exports the delta and captures the source registry", func() {
-			incResp, err := clusterClient.IncrementalBackup(ctx, &clusterpb.IncrementalBackupRequest{Storage: storage()})
+			incResp, err := clusterClient.Backup(ctx, &clusterpb.BackupRequest{Storage: storage()})
 			Expect(err).To(Succeed())
-			Expect(incResp.GetLogEntriesExported()).To(BeNumerically(">", 0))
-			Expect(incResp.GetAuditEntriesExported()).To(BeNumerically(">", 0), "delta must include the failed duplicate creations")
+			Expect(incResp.GetTotalFiles()).To(BeNumerically(">", 0))
+			Expect(incResp.GetTotalFiles()).To(BeNumerically(">", 0), "delta must include the failed duplicate creations")
 
 			sourceRows = map[string]*commonpb.Index{
 				retypedKey:         registryRow(client, ledgerName, retypedKey),

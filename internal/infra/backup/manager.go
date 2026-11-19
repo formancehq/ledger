@@ -47,8 +47,8 @@ type IncrementalBackupResult struct {
 }
 
 // RunBackup performs a full checkpoint backup cycle.
-// It creates a Pebble checkpoint, diffs SST files against the previous manifest,
-// uploads new/changed files, cleans up stale exports, and writes an updated manifest.
+// It flushes memtables, creates a Pebble checkpoint, uploads missing
+// content-addressed files, publishes a manifest, and prunes stale objects.
 //
 // checkpointName is the name of the temporary checkpoint directory the
 // store creates. Callers running multiple concurrent backups MUST pass
@@ -74,7 +74,15 @@ func RunBackup(
 
 	manifestKey := ManifestKey(bucketID)
 
-	// 1. Create temporary checkpoint (hard links, quasi-free)
+	// 1. Flush committed memtables for a portable backup, then create a
+	// temporary checkpoint. Follower sync also uses CreateTemporaryCheckpoint
+	// but does not require this extra flush.
+	if err := store.Flush(); err != nil {
+		return nil, fmt.Errorf("flushing store before backup checkpoint: %w", err)
+	}
+	// Concurrent writes after the flush remain safe: WithFlushedWAL includes
+	// the Pebble WAL in the checkpoint when required, and the upload includes
+	// every checkpoint file.
 	checkpointPath, err := store.CreateTemporaryCheckpoint(checkpointName)
 	if err != nil {
 		return nil, fmt.Errorf("creating checkpoint: %w", err)

@@ -23,7 +23,7 @@ import (
 
 func TestBackupRunResultReadRecovery(t *testing.T) {
 	t.Parallel()
-	for _, runType := range []ledgerv1alpha1.BackupRunType{ledgerv1alpha1.BackupRunTypeFull, ledgerv1alpha1.BackupRunTypeIncremental} {
+	for _, runType := range []ledgerv1alpha1.BackupRunType{ledgerv1alpha1.BackupRunTypeFull} {
 		for _, missing := range []bool{false, true} {
 			name := string(runType) + "/list-error"
 			if missing {
@@ -134,7 +134,7 @@ func TestBackupRunResultRecoveryPreservesParentAccounting(t *testing.T) {
 	var backup ledgerv1alpha1.Backup
 	key := client.ObjectKey{Namespace: run.Namespace, Name: run.Spec.BackupRef}
 	require.NoError(t, c.Get(ctx, key, &backup))
-	backup.Spec.Schedule.Incremental = "* * * * *"
+	backup.Spec.Schedule.Full = "* * * * *"
 	backup.Spec.FailedRunsHistoryLimit = new(int32)
 	backup.Spec.SuccessfulRunsHistoryLimit = new(int32)
 	require.NoError(t, c.Update(ctx, &backup))
@@ -170,10 +170,10 @@ func TestBackupRunResultRecoveryPreservesParentAccounting(t *testing.T) {
 	require.NoError(t, c.Get(ctx, key, &backup))
 	require.Nil(t, backup.Status.LastFullBackup)
 	require.Nil(t, backup.Status.LastFullRunCompletionTime)
-	require.Nil(t, backup.Status.NextIncrementalBackupTime)
+	require.NotNil(t, backup.Status.NextFullBackupTime)
 	var runs ledgerv1alpha1.BackupRunList
 	require.NoError(t, c.List(ctx, &runs))
-	require.Len(t, runs.Items, 1, "no incremental run before the full result is captured")
+	require.Len(t, runs.Items, 1, "no second run before the first result is captured")
 
 	r = &BackupRunReconciler{Client: c, APIReader: c, Scheme: c.Scheme(), Clientset: pods}
 	_, err = r.Reconcile(ctx, req)
@@ -188,11 +188,10 @@ func TestBackupRunResultRecoveryPreservesParentAccounting(t *testing.T) {
 	require.EqualValues(t, 7, backup.Status.LastFullBackup.FilesUploaded)
 	require.EqualValues(t, 42, backup.Status.LastFullBackup.LastAppliedIndex)
 	require.Equal(t, run.Status.CompletionTime, backup.Status.LastFullRunCompletionTime)
-	require.NotNil(t, backup.Status.NextIncrementalBackupTime)
+	require.NotNil(t, backup.Status.NextFullBackupTime)
 	require.True(t, apierrors.IsNotFound(c.Get(ctx, req.NamespacedName, run)), "successful retention zero prunes only after parent status captures the result")
 	require.NoError(t, c.List(ctx, &runs))
-	require.Len(t, runs.Items, 1)
-	require.Equal(t, ledgerv1alpha1.BackupRunTypeIncremental, runs.Items[0].Spec.Type)
+	require.Empty(t, runs.Items, "next scheduled checkpoint waits for its cron deadline")
 	require.Equal(t, 2, attempts)
 }
 

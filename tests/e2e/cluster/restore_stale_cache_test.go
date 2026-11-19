@@ -32,8 +32,8 @@ import (
 // This suite proves the restored FSM cache serves checkpoint-era values for
 // keys the delta modified. The account "mallory" is funded before the full
 // checkpoint (its VolumePair lands in the checkpoint's 0xFF cache zone) and
-// drained after it (the drain exists only in the incremental export).
-// RebuildDelta rewrites the 0xF1 attribute zone from the export logs but the
+// drained after it (the drain is captured by the next checkpoint).
+// The second checkpoint carries the updated 0xF1 attribute zone, while the
 // 0xFF cache zone stays byte-for-byte checkpoint-era, so the restored node
 // boots with an in-memory cache holding mallory=(input 1000, output 0) while
 // 0xF1 holds the true (1000, 1000).
@@ -186,7 +186,7 @@ var _ = Describe("Restore stale cache", Ordered, func() {
 		})
 
 		It("should drain mallory post-checkpoint and export the delta", func() {
-			// The drain lives only in the incremental export: after restore,
+			// The drain is captured by the second checkpoint: after restore,
 			// 0xF1 says (1000, 1000) while the checkpoint's 0xFF cache entry
 			// still says (1000, 0).
 			_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
@@ -194,7 +194,7 @@ var _ = Describe("Restore stale cache", Ordered, func() {
 			}, nil, nil)))
 			Expect(err).To(Succeed())
 
-			resp, err := clusterClient.IncrementalBackup(ctx, &clusterpb.IncrementalBackupRequest{
+			resp, err := clusterClient.Backup(ctx, &clusterpb.BackupRequest{
 				Storage: testutil.S3BackupStorage(&commonpb.S3StorageConfig{
 					Bucket:   staleS3Bucket,
 					Region:   restoreS3Region,
@@ -202,7 +202,7 @@ var _ = Describe("Restore stale cache", Ordered, func() {
 				}),
 			})
 			Expect(err).To(Succeed())
-			Expect(resp.GetLogEntriesExported()).To(BeNumerically(">", 0))
+			Expect(resp.GetTotalFiles()).To(BeNumerically(">", 0))
 		})
 	})
 
@@ -321,7 +321,7 @@ var _ = Describe("Restore stale cache", Ordered, func() {
 		})
 
 		It("should serve the drained volumes on the query path", func() {
-			// 0xF1 sanity check: RebuildDelta replayed the drain, so the
+			// 0xF1 sanity check: the second checkpoint captured the drain, so the
 			// query path (which reads 0xF1 directly) must see it. This
 			// isolates any failure below to the cache, not the rebuild.
 			resp, err := client.GetAccount(ctx, &servicepb.GetAccountRequest{Ledger: ledgerName, Address: "mallory"})

@@ -213,46 +213,17 @@ func TestBackupScheduling_ActiveRunBlocksAfterRestart(t *testing.T) {
 	}
 }
 
-func TestBackupScheduling_IncrementalZeroRetentionRestart(t *testing.T) {
+func TestBackupScheduling_MigratesLegacyIncrementalCadenceToCheckpoint(t *testing.T) {
 	t.Parallel()
-	for _, phase := range []ledgerv1alpha1.BackupRunPhase{ledgerv1alpha1.BackupRunPhaseSucceeded, ledgerv1alpha1.BackupRunPhaseFailed} {
-		t.Run(string(phase), func(t *testing.T) {
-			t.Parallel()
-			f := newBackupSchedulingFixture(t)
-			backup := f.backup(t)
-			backup.Spec.Schedule.Incremental = "CRON_TZ=UTC 0 * * * *"
-			require.NoError(t, f.client.Update(context.Background(), backup))
-			now := time.Date(2026, 9, 10, 2, 0, 0, 0, time.UTC)
-			f.reconcile(t, now)
-			runs := f.runs(t)
-			require.Len(t, runs, 1, "incremental requires a successful full")
-			require.Equal(t, ledgerv1alpha1.BackupRunTypeFull, runs[0].Spec.Type)
-			f.complete(t, runs[0], ledgerv1alpha1.BackupRunPhaseSucceeded, now.Add(time.Minute))
-			f.reconcile(t, now.Add(2*time.Minute))
-			runs = f.runs(t)
-			require.Len(t, runs, 1, "full is pruned while first incremental starts")
-			require.Equal(t, ledgerv1alpha1.BackupRunTypeIncremental, runs[0].Spec.Type)
-			f.complete(t, runs[0], phase, now.Add(3*time.Minute))
-			f.reconcile(t, now.Add(4*time.Minute))
-			require.Empty(t, f.runs(t))
-			f.reconcile(t, now.Add(5*time.Minute))
-			require.Empty(t, f.runs(t))
-			backup = f.backup(t)
-			require.NotNil(t, backup.Status.NextIncrementalBackupTime, "pruning full must not disable incrementals")
-			require.True(t, now.Add(time.Hour).Equal(backup.Status.NextIncrementalBackupTime.Time))
-			require.True(t, now.Add(time.Minute).Equal(backup.Status.LastFullRunCompletionTime.Time))
-			require.True(t, now.Add(3*time.Minute).Equal(backup.Status.LastIncrementalRunCompletionTime.Time))
-			if phase == ledgerv1alpha1.BackupRunPhaseFailed {
-				require.Nil(t, backup.Status.LastIncrementalBackup)
-			} else {
-				require.NotNil(t, backup.Status.LastIncrementalBackup)
-			}
-			f.reconcile(t, now.Add(time.Hour))
-			runs = f.runs(t)
-			require.Len(t, runs, 1)
-			require.Equal(t, ledgerv1alpha1.BackupRunTypeIncremental, runs[0].Spec.Type)
-		})
-	}
+	f := newBackupSchedulingFixture(t)
+	backup := f.backup(t)
+	backup.Spec.Schedule.Incremental = "0 * * * *"
+	require.NoError(t, f.client.Update(t.Context(), backup))
+	f.reconcile(t, time.Date(2026, 9, 10, 2, 0, 0, 0, time.UTC))
+	runs := f.runs(t)
+	require.Len(t, runs, 1)
+	require.Equal(t, ledgerv1alpha1.BackupRunTypeFull, runs[0].Spec.Type)
+	require.Equal(t, ledgerv1alpha1.BackupPhaseReady, f.backup(t).Status.Phase)
 }
 
 func TestBackupScheduling_DisabledScheduleAndOlderHistory(t *testing.T) {
@@ -391,7 +362,7 @@ func TestBackupScheduling_ManualAssociationUsesSpec(t *testing.T) {
 			f := newBackupSchedulingFixture(t)
 			now := time.Date(2026, 9, 10, 3, 0, 0, 0, time.UTC)
 			backup := f.backup(t)
-			backup.Spec.Schedule = ledgerv1alpha1.BackupSchedule{Incremental: "CRON_TZ=UTC 0 4 * * *"}
+			backup.Spec.Schedule = ledgerv1alpha1.BackupSchedule{Full: "CRON_TZ=UTC 0 4 * * *"}
 			require.NoError(t, f.client.Update(t.Context(), backup))
 			manual := &ledgerv1alpha1.BackupRun{
 				ObjectMeta: metav1.ObjectMeta{Name: "manual", Namespace: f.key.Namespace},
@@ -404,11 +375,11 @@ func TestBackupScheduling_ManualAssociationUsesSpec(t *testing.T) {
 			f.complete(t, *manual, ledgerv1alpha1.BackupRunPhaseSucceeded, now)
 			f.reconcile(t, now)
 			backup = f.backup(t)
-			require.NotNil(t, backup.Status.LastFullBackup, "manual full result must enable incremental scheduling")
+			require.NotNil(t, backup.Status.LastFullBackup, "manual full result must update the backup summary")
 			require.EqualValues(t, 7, backup.Status.LastFullBackup.FilesUploaded)
 			require.NotNil(t, backup.Status.LastFullRunCompletionTime)
 			require.True(t, now.Equal(backup.Status.LastFullRunCompletionTime.Time))
-			require.NotNil(t, backup.Status.NextIncrementalBackupTime)
+			require.NotNil(t, backup.Status.NextFullBackupTime)
 			var retained ledgerv1alpha1.BackupRun
 			err := f.client.Get(t.Context(), client.ObjectKeyFromObject(manual), &retained)
 			require.True(t, apierrors.IsNotFound(err), "zero retention must prune the accounted manual run: %v", err)

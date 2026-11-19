@@ -175,10 +175,8 @@ var _ = Describe("Restore reversion bitset", Ordered, func() {
 				return state.Leader != 0
 			}).Within(10 * time.Second).ProbeEvery(100 * time.Millisecond).Should(BeTrue())
 
-			// Full checkpoint on the EMPTY store: everything after it lands in
-			// the incremental delta, so the restore reconstructs the reversion
-			// state purely by replaying the exported log instead of copying
-			// checkpoint files.
+			// The first checkpoint is empty. Later reversion state must be
+			// captured by the next checkpoint and survive restore.
 			var backupResp *clusterpb.BackupResponse
 			Eventually(func() error {
 				var err error
@@ -233,9 +231,9 @@ var _ = Describe("Restore reversion bitset", Ordered, func() {
 		})
 
 		It("exports the delta", func() {
-			incResp, err := clusterClient.IncrementalBackup(ctx, &clusterpb.IncrementalBackupRequest{Storage: storage()})
+			incResp, err := clusterClient.Backup(ctx, &clusterpb.BackupRequest{Storage: storage()})
 			Expect(err).To(Succeed())
-			Expect(incResp.GetLogEntriesExported()).To(BeNumerically(">", 0))
+			Expect(incResp.GetTotalFiles()).To(BeNumerically(">", 0))
 		})
 	})
 

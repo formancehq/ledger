@@ -117,7 +117,7 @@ var _ = Describe("S3 Backup with explicit credentials", Ordered, func() {
 		Expect(resp.GetFilesUploaded()).To(BeNumerically(">", 0))
 	})
 
-	It("should succeed with explicit credentials in the incremental backup request", func() {
+	It("should preserve credentials on the deprecated incremental RPC alias", func() {
 		// Add more data
 		_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateForceTransactionAction("creds-test",
 			[]*commonpb.Posting{
@@ -138,7 +138,8 @@ var _ = Describe("S3 Backup with explicit credentials", Ordered, func() {
 			BucketId: "creds-cluster",
 		})
 		Expect(err).To(Succeed())
-		Expect(resp.GetLogEntriesExported()).To(BeNumerically(">", 0))
+		Expect(resp.GetLastLogSequence()).To(BeNumerically(">", 0))
+		Expect(resp.GetSegmentsUploaded()).To(BeZero())
 	})
 
 	It("should fail without explicit credentials when env vars are bogus", func() {
