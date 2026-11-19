@@ -91,12 +91,14 @@ var _ = DescribeTable("Rejected learner registration routing preserves active pe
 			_, err = leader.ClusterClient.AddLearner(ctx, &clusterpb.AddLearnerRequest{
 				NodeId: targetID, RaftAddress: deadRaftAddress,
 				ServiceAddress: deadServiceAddress, InstanceId: newIdentity,
+				Capabilities: originalPeer.GetCapabilities(),
 			})
 		} else {
 			By("rejecting boot JoinAsLearner with the same stale replication progress")
 			_, err = bootstrapClient.JoinAsLearner(bootstrapCtx, &clusterbootstrappb.JoinAsLearnerRequest{
 				NodeId: targetID, RaftAddress: deadRaftAddress,
 				ServiceAddress: deadServiceAddress, InstanceId: newIdentity,
+				Capabilities: originalPeer.GetCapabilities(),
 			})
 		}
 		Expect(status.Code(err)).To(Equal(codes.FailedPrecondition))

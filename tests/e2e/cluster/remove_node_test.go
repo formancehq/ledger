@@ -105,6 +105,7 @@ var _ = Describe("Remove node", func() {
 				RaftAddress:    raftAddr,
 				ServiceAddress: serviceAddr,
 				InstanceId:     instanceID,
+				Capabilities:   phantomPeerCapabilities(),
 			})
 			Expect(err).To(Succeed())
 
@@ -353,6 +354,7 @@ var _ = Describe("Remove node", func() {
 				RaftAddress:    raftAddr,
 				ServiceAddress: serviceAddr,
 				InstanceId:     instanceID,
+				Capabilities:   phantomPeerCapabilities(),
 			})
 			Expect(err).To(Succeed())
 			waitForLearner(servers[lid-1].ClusterClient, lid, 6)
