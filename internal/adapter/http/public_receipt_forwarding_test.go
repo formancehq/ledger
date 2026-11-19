@@ -72,7 +72,7 @@ func TestPublicReceiptSignedRequestThroughGRPC(t *testing.T) {
 			// serialization and server-produced trailers rather than mocking provenance.
 			forwarded := grpcadapter.NewLedgerGrpcClient(servicepb.NewBucketServiceClient(conn))
 			signer := signing.NewResponseSigner(bytes.Repeat([]byte{1}, 32))
-			router := NewHandler(logging.Testing(), &DefaultBackend{Controller: forwarded}, internalauth.AuthConfig{}, version.Info{}, signer)
+			router := NewHandler(logging.Testing(), &DefaultBackend{Controller: forwarded}, internalauth.AuthConfig{}, version.Info{}, nil, signer)
 			target := "/v3/ledger/transactions"
 			req := httptest.NewRequest(http.MethodPost, target, bytes.NewReader(wrapper))
 			ctx, cancel := context.WithTimeout(req.Context(), 5*time.Second)
@@ -114,7 +114,7 @@ func TestPublicReceiptSignedRequestKeepsAuthorization(t *testing.T) {
 			t.Parallel()
 			backend := NewMockBackend(gomock.NewController(t)) // No Apply is permitted.
 			signer := signing.NewResponseSigner(make([]byte, 32))
-			router := NewHandler(logging.Testing(), backend, internalauth.AuthConfig{Enabled: true, KeySet: keySet, Issuers: []string{testAuthIssuer}, Service: "ledger", ScopeMapping: internalauth.DefaultMapping("ledger")}, version.Info{}, signer)
+			router := NewHandler(logging.Testing(), backend, internalauth.AuthConfig{Enabled: true, KeySet: keySet, Issuers: []string{testAuthIssuer}, Service: "ledger", ScopeMapping: internalauth.DefaultMapping("ledger")}, version.Info{}, nil, signer)
 			req := httptest.NewRequest(http.MethodPost, test.path, bytes.NewBufferString(`{"request":{},"payload":"AQ=="}`))
 			req.Header.Set("Content-Type", "application/json")
 			req.Header.Set("Formance-Signing-Key-Id", "key")

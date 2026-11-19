@@ -28,7 +28,7 @@ import (
 func TestPublicReceiptDisabledBeforeDispatch(t *testing.T) {
 	t.Parallel()
 	backend := NewMockBackend(gomock.NewController(t))
-	handler := NewHandler(logging.Testing(), backend, internalauth.AuthConfig{}, version.Info{})
+	handler := NewHandler(logging.Testing(), backend, internalauth.AuthConfig{}, version.Info{}, nil)
 	req := httptest.NewRequest(http.MethodPost, "/v3/ledger1/bulk", strings.NewReader(`[]`))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Formance-Public-Receipt", "v1")
@@ -52,7 +52,7 @@ func TestPublicReceiptResultAndReplay(t *testing.T) {
 			original := log.CloneVT()
 			backend := NewMockBackend(gomock.NewController(t))
 			backend.EXPECT().Apply(gomock.Any(), gomock.Any()).Return(&domain.ApplyResult{Logs: []*commonpb.Log{log}, Replayed: replayed}, nil).Times(2)
-			router := NewHandler(logging.Testing(), backend, internalauth.AuthConfig{}, version.Info{}, signer)
+			router := NewHandler(logging.Testing(), backend, internalauth.AuthConfig{}, version.Info{}, nil, signer)
 			target := "/v3/ledger1/transactions"
 			var responses []*httptest.ResponseRecorder
 			for _, opt := range []bool{false, true} {
@@ -92,7 +92,7 @@ func TestPublicReceiptEmptyAcknowledgement(t *testing.T) {
 	signer := signing.NewResponseSigner(make([]byte, ed25519.SeedSize))
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().Apply(gomock.Any(), gomock.Any()).Return(&domain.ApplyResult{Logs: []*commonpb.Log{{Sequence: 7}}}, nil)
-	router := NewHandler(logging.Testing(), backend, internalauth.AuthConfig{}, version.Info{}, signer)
+	router := NewHandler(logging.Testing(), backend, internalauth.AuthConfig{}, version.Info{}, nil, signer)
 	target := "/v3/ledger1/metadata"
 	req := httptest.NewRequest(http.MethodPost, target, strings.NewReader(`{"color":"blue"}`))
 	req.Header.Set("Content-Type", "application/json")
@@ -111,7 +111,7 @@ func TestPublicReceiptAccountTypeCreatedAcknowledgement(t *testing.T) {
 	signer := signing.NewResponseSigner(make([]byte, ed25519.SeedSize))
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().Apply(gomock.Any(), gomock.Any()).Return(&domain.ApplyResult{Logs: []*commonpb.Log{{Sequence: 7}}}, nil)
-	router := NewHandler(logging.Testing(), backend, internalauth.AuthConfig{}, version.Info{}, signer)
+	router := NewHandler(logging.Testing(), backend, internalauth.AuthConfig{}, version.Info{}, nil, signer)
 	target := "/v3/ledger1/account-types"
 	req := httptest.NewRequest(http.MethodPost, target, strings.NewReader(`{"name":"users","pattern":"users:*"}`))
 	req.Header.Set("Content-Type", "application/json")
@@ -137,7 +137,7 @@ func TestPublicReceiptRejectsUnsupportedAndMalformed(t *testing.T) {
 		t.Run(tc.method+tc.target+strings.Join(tc.values, ","), func(t *testing.T) {
 			t.Parallel()
 			backend := NewMockBackend(gomock.NewController(t))
-			router := NewHandler(logging.Testing(), backend, internalauth.AuthConfig{}, version.Info{}, signing.NewResponseSigner(make([]byte, 32)))
+			router := NewHandler(logging.Testing(), backend, internalauth.AuthConfig{}, version.Info{}, nil, signing.NewResponseSigner(make([]byte, 32)))
 			req := httptest.NewRequest(tc.method, tc.target, strings.NewReader(`[]`))
 			req.Header.Set("Content-Type", "application/json")
 			for _, value := range tc.values {
@@ -163,7 +163,7 @@ func TestPublicReceiptBulk(t *testing.T) {
 			} else {
 				gomock.InOrder(backend.EXPECT().Apply(gomock.Any(), gomock.Any()).Return(&domain.ApplyResult{Logs: []*commonpb.Log{receiptTransactionLog(42)}, Replayed: true}, nil), backend.EXPECT().Apply(gomock.Any(), gomock.Any()).Return(nil, errors.New("failed second write")))
 			}
-			router := NewHandler(logging.Testing(), backend, internalauth.AuthConfig{}, version.Info{}, signer)
+			router := NewHandler(logging.Testing(), backend, internalauth.AuthConfig{}, version.Info{}, nil, signer)
 			target := "/v3/ledger1/bulk?atomic=" + strconv.FormatBool(atomic)
 			body := strings.TrimSuffix(bulkWriteBody, "]") + "," + strings.TrimPrefix(bulkWriteBody, "[")
 			req := httptest.NewRequest(http.MethodPost, target, strings.NewReader(body))
@@ -203,7 +203,7 @@ func TestPublicReceiptPostApplyEncodingFailures(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			backend := NewMockBackend(gomock.NewController(t))
 			backend.EXPECT().Apply(gomock.Any(), gomock.Any()).Return(&domain.ApplyResult{Logs: []*commonpb.Log{tc.log}}, nil)
-			router := NewHandler(logging.Testing(), backend, internalauth.AuthConfig{}, version.Info{}, signing.NewResponseSigner(make([]byte, 32)))
+			router := NewHandler(logging.Testing(), backend, internalauth.AuthConfig{}, version.Info{}, nil, signing.NewResponseSigner(make([]byte, 32)))
 			req := httptest.NewRequest(http.MethodPost, "/v3/ledger1", nil)
 			req.Header.Set(httpreceipt.Header, "v1")
 			response := httptest.NewRecorder()
@@ -238,7 +238,7 @@ func TestPublicReceiptCredentialProjection(t *testing.T) {
 			}
 			original := log.CloneVT()
 			backend.EXPECT().Apply(gomock.Any(), gomock.Any()).Return(&domain.ApplyResult{Logs: []*commonpb.Log{log}}, nil)
-			router := NewHandler(logging.Testing(), backend, internalauth.AuthConfig{}, version.Info{}, signer)
+			router := NewHandler(logging.Testing(), backend, internalauth.AuthConfig{}, version.Info{}, nil, signer)
 			req := httptest.NewRequest(http.MethodPost, target, strings.NewReader(body))
 			req.Header.Set("Content-Type", "application/json")
 			req.Header.Set(httpreceipt.Header, "v1")
@@ -281,7 +281,7 @@ func TestPublicReceiptSequenceGrouping(t *testing.T) {
 				}
 				backend.EXPECT().Apply(gomock.Any(), gomock.Any()).Return(&domain.ApplyResult{Logs: logs}, nil).Times(tc.calls)
 			}
-			router := NewHandler(logging.Testing(), backend, internalauth.AuthConfig{}, version.Info{}, signer)
+			router := NewHandler(logging.Testing(), backend, internalauth.AuthConfig{}, version.Info{}, nil, signer)
 			req := httptest.NewRequest(http.MethodPost, tc.target, strings.NewReader(tc.body))
 			req.Header.Set("Content-Type", "application/json")
 			req.Header.Set(httpreceipt.Header, "v1")
@@ -309,7 +309,7 @@ func TestPublicReceiptBigIntegerRepresentation(t *testing.T) {
 			log.GetPayload().GetApply().GetLog().GetData().GetCreatedTransaction().GetTransaction().Postings = []*commonpb.Posting{{Source: "world", Destination: "bank", Asset: "USD", Amount: commonpb.NewUint256FromUint64(9007199254740993)}}
 			backend := NewMockBackend(gomock.NewController(t))
 			backend.EXPECT().Apply(gomock.Any(), gomock.Any()).Return(&domain.ApplyResult{Logs: []*commonpb.Log{log}}, nil)
-			router := NewHandler(logging.Testing(), backend, internalauth.AuthConfig{}, version.Info{}, signer)
+			router := NewHandler(logging.Testing(), backend, internalauth.AuthConfig{}, version.Info{}, nil, signer)
 			target := "/v3/ledger1/transactions"
 			req := httptest.NewRequest(http.MethodPost, target, strings.NewReader(`{"postings":[{"source":"world","destination":"bank","amount":"9007199254740993","asset":"USD"}]}`))
 			req.Header.Set("Content-Type", "application/json")

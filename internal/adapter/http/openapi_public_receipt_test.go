@@ -46,7 +46,7 @@ func TestOpenAPI_PublicReceiptMutationCoverage(t *testing.T) {
 				require.NotNil(t, operation.Responses.Value("503"))
 				target := strings.NewReplacer("{ledgerName}", "ledger1", "{transactionId}", "1", "{address}", "users:1", "{key}", "color", "{name}", "script", "{queryName}", "query", "{canonicalId}", "index", "{sinkName}", "sink", "{typeName}", "user", "{targetType}", "account").Replace(path)
 				backend := NewMockBackend(gomock.NewController(t))
-				router := NewHandler(logging.Testing(), backend, internalauth.AuthConfig{}, version.Info{})
+				router := NewHandler(logging.Testing(), backend, internalauth.AuthConfig{}, version.Info{}, nil)
 				req := httptest.NewRequest(method, target, strings.NewReader(`[]`))
 				req.Header.Set("Content-Type", "application/json")
 				req.Header.Set(httpreceipt.Header, "v1")
