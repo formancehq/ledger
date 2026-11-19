@@ -205,6 +205,16 @@ e2e cross-store/checkpoint, and Antithesis projection tests as evidence leads.
 Inspect their assertions and reachability, and record exact commands and fault
 points. Label proposed checks as unexecuted.
 
+## Read index imported from a backup
+
+Open a read index that already contains rows and native progress on another
+cluster. Keep the read and audit workers behind the restored primary and check
+that neither source certificate can satisfy a destination read. Let the workers
+catch up and compare before/after-delta results against independently expected
+IDs. Confirm their starting positions: correct final results alone do not
+distinguish resume from a full replay. Backup transport, seed selection and
+restore publication belong to `persistence-restore-replay`.
+
 ## Deduplication and later execution
 
 Refresh open PRs, qualified reports, and backlog state before a campaign. A

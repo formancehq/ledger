@@ -189,7 +189,7 @@ machine-dependent, while the operation counts are the stable comparison.
 
 ## Snapshot / restore
 
-The usagestore is not part of Pebble snapshots or backups: it is a projection that is trivially rebuildable from the audit chain. On restore, the running usagebuilder catches up organically from its last successfully flushed cursor; if the primary store was rolled back beneath that cursor, `usagestore.Reset()` durably clears the projection before the next boot/tick repopulates it from audit sequence 0.
+A full backup can include the peer read index, but excludes the separate usage database. The usagebuilder reconstructs its counters from the audit chain. On restore, the running usagebuilder catches up organically from its last successfully flushed cursor; if the primary store was rolled back beneath that cursor, `usagestore.Reset()` durably clears the projection before the next boot/tick repopulates it from audit sequence 0.
 
 The audit chain remains the source of truth in every case.
 
@@ -197,7 +197,7 @@ The audit chain remains the source of truth in every case.
 
 ## Integrity verification (checker scope)
 
-The usagestore is **deliberately excluded from `internal/application/check/checker.go`**. Invariant #8 ("every persisted projection must be verified by the checker") is scoped to projections that live in the **primary** Pebble store — the store that participates in Pebble snapshots and backups, and that an operator cannot rebuild without stopping the cluster. The usagestore, like the read store (`readstore`), is a physically separate secondary Pebble instance at `<data-dir>/usage/`: it is never snapshotted, never backed up, and is rebuildable from the audit chain via the online boot/tick fold (and `usagestore.Reset()` on rollback detection). A tampered or corrupted usagestore is therefore not a durable integrity vector — the next fold reconstructs it from the hash-chained audit, which the checker *does* verify. Extending the checker to walk a peer store would couple it to a subsystem it has no authority over and duplicate the rebuild logic that already re-derives every counter from the same source of truth.
+The usagestore is **deliberately excluded from `internal/application/check/checker.go`**. Invariant #8 ("every persisted projection must be verified by the checker") is scoped to projections that live in the **primary** Pebble store — the store that participates in Pebble snapshots and backups, and that an operator cannot rebuild without stopping the cluster. The usagestore is a physically separate secondary Pebble instance at `<data-dir>/usage/`. It is excluded from backups and is rebuildable from the audit chain via the online boot/tick fold (and `usagestore.Reset()` on rollback detection). A tampered or corrupted usagestore is therefore not a durable integrity vector — the next fold reconstructs it from the hash-chained audit, which the checker *does* verify. Extending the checker to walk a peer store would couple it to a subsystem it has no authority over and duplicate the rebuild logic that already re-derives every counter from the same source of truth.
 
 The usagestore needs no equivalent exception because every counter is reconverged by the online fold and by `usagestore.Reset()` on rollback.
 

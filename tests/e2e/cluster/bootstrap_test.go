@@ -72,6 +72,7 @@ var _ = Describe("Bootstrap from backup", Ordered, func() {
 		bootstrapWalDir  string
 		bootstrapDataDir string
 		minioEndpoint    string
+		indexedPrefix    uint64
 	)
 
 	BeforeAll(func() {
@@ -235,6 +236,8 @@ var _ = Describe("Bootstrap from backup", Ordered, func() {
 			Expect(incrResp.GetLogEntriesExported()).To(BeNumerically(">", 0))
 			Expect(incrResp.GetAuditEntriesExported()).To(BeNumerically(">", 0))
 
+			indexedPrefix = caughtUpReadIndexSequence(ctx, client)
+
 			// Take a new full backup to include all data (clears exports)
 			fullResp, err := clusterClient.Backup(ctx, &clusterpb.BackupRequest{
 				Storage: testutil.S3BackupStorage(&commonpb.S3StorageConfig{
@@ -321,7 +324,7 @@ var _ = Describe("Bootstrap from backup", Ordered, func() {
 				Debug:     testutil.Debug,
 				Output:    GinkgoWriter,
 			})
-			instruments = append(instruments, testserver.WithBootstrap())
+			instruments = append(instruments, testserver.WithBootstrap(), testservice.AppendArgsInstrumentation("--otel-metrics-keep-in-memory"))
 
 			server = lease.NewService(cmdserver.NewRunCommandWithBindings,
 				testservice.WithInstruments(instruments...),
@@ -344,6 +347,10 @@ var _ = Describe("Bootstrap from backup", Ordered, func() {
 			stopCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 			defer cancel()
 			Expect(server.Stop(stopCtx)).To(Succeed())
+		})
+
+		It("resumes the prebuilt read index after offline bootstrap", func() {
+			expectIndexResumedFromBackup(ctx, client, ports.HTTP(), indexedPrefix)
 		})
 
 		It("should have consumed the RESTORED marker", func() {

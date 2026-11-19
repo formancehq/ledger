@@ -24,6 +24,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/query"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
+	"github.com/formancehq/ledger/v3/internal/storage/readstore"
 )
 
 //go:generate mockgen -typed -write_source_comment=false -write_package_comment=false -source=../../infra/backup/storage.go -destination=recovery_storage_generated_test.go -package=backup Storage
@@ -64,7 +65,7 @@ func newRecoveryFixture(t *testing.T) *recoveryFixture {
 	ctrl := gomock.NewController(t)
 	proposer := NewMockProposer(ctrl)
 	proposer.EXPECT().Propose(gomock.Any(), gomock.Any()).AnyTimes().DoAndReturn(f.propose)
-	f.orchestrator = newOrchestrator(proposer, f.store)
+	f.orchestrator = newOrchestrator(t, proposer, f.store)
 	t.Cleanup(func() { f.orchestrator.OnLeadershipChange(false) })
 	leader := NewMockLeaderProbe(ctrl)
 	leader.EXPECT().IsLeader().AnyTimes().Return(true)
@@ -293,6 +294,8 @@ func (f *recoveryFixture) assertRestorable(lastSeq uint64, incremental bool) {
 	manifest, err := infrabackup.ReadManifest(context.Background(), f.storage, infrabackup.ManifestKey(f.dst.GetBucketId()))
 	require.NoError(f.t, err)
 	require.NotEmpty(f.t, manifest.Checkpoint.Files)
+	require.NotNil(f.t, manifest.Checkpoint.ReadIndex)
+	require.NotEmpty(f.t, manifest.Checkpoint.ReadIndex.Files)
 	require.Equal(f.t, lastSeq, manifest.LastExportLogSequence())
 	if incremental {
 		require.NotEmpty(f.t, manifest.Exports)
@@ -334,6 +337,30 @@ func (f *recoveryFixture) assertRestorable(lastSeq uint64, incremental bool) {
 		require.Equal(f.t, live, ledger, "restored ledger projection must match live state")
 	}
 	f.t.Logf("restored checkpoint + %d exports: exact history bytes and %d ledgers", len(manifest.Exports), lastSeq)
+}
+
+func TestBackupRecovery_FailedReadProjectionPreservesPreviousBackup(t *testing.T) {
+	t.Parallel()
+
+	f := newRecoveryFixture(t)
+	f.seedLedger(1)
+	_, err := f.full()
+	require.NoError(t, err)
+	previous := maps.Clone(f.objects)
+	puts, deletes := f.puts, f.deletes
+	f.seedLedger(2)
+	f.orchestrator.readIndex.SetReadProjectionFailed()
+
+	_, err = f.full()
+	require.ErrorIs(t, err, readstore.ErrReadProjectionFailed)
+	require.Equal(t, puts, f.puts)
+	require.Equal(t, deletes, f.deletes)
+	require.Equal(t, previous, f.objects)
+	require.Len(t, f.terminals, 2)
+	require.Equal(t, raftcmdpb.BackupJobStatus_BACKUP_JOB_STATUS_FAILED, f.terminals[1].GetStatus())
+	require.Empty(t, f.jobs.Snapshot())
+	require.False(t, f.orchestrator.Registry().IsAlive(f.starts[1]))
+	f.assertRestorable(1, false)
 }
 
 func TestBackupRecovery_FullUploadFailureLostFail(t *testing.T) {

@@ -152,6 +152,11 @@ satisfy both rules and yield the same logs. The proposal payload and capability
 registry remain unchanged. A mixed-version rollout across this boundary is
 unsupported.
 
+The optional read-index inventory in a [full backup](../backup/README.md#read-index-recovery)
+and its local `RESTORED` generation require no capability. They change how
+one node recovers a derived store before boot. They do not change a committed
+order, its replay, Raft membership, or the service protocol revision.
+
 A change confined to read paths needs no capability either, even when it
 touches a file the capability-contract gate watches. `common.proto` also
 defines service response types that no order carries, and `internal/infra/plan`

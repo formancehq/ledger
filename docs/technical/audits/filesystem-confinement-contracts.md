@@ -69,6 +69,14 @@ filesystem semantics, provenance and attacker influence before extending a
 claim to that case. Preserve allowed nested paths and do not impose a blanket
 symlink, archive-type or filename policy absent from the contract.
 
+A full backup can now supply a second file inventory for the physical read
+index. Cover both restore entry points and use equal basenames with distinct
+contents as a control: a seed file must not address the primary staging root
+or the configured live read-index directory. Test rejection or containment
+without disturbing adjacent directories, including a foreign installed read
+index. Persistence owns manifest generation, I/O integrity and activation;
+this domain owns where the accepted filename can write.
+
 For offline bootstrap, root acquisition and final writes form one authority
 chain. The operator selects the data root; manifest filenames select only
 entries within its real `restore-staging` directory. Rooted `Lstat` rejects a
