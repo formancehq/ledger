@@ -13,9 +13,9 @@ backup of the same destination is rejected. The leader cancels its executor on
 leadership loss, and the next leader fails orphaned jobs to release their slots.
 The FSM records lifecycle orders without blocking on object upload.
 
-`RunBackup` requires the committed audit key. It calls
-`Store.CreateTemporaryCheckpoint`, which flushes Pebble memtables and then calls
-`pebble.DB.Checkpoint(..., pebble.WithFlushedWAL())`. The flush materializes
+`RunBackup` requires the committed audit key. It calls `Store.Flush` before
+`Store.CreateTemporaryCheckpoint`, which calls
+`pebble.DB.Checkpoint(..., pebble.WithFlushedWAL())`. The backup flush materializes
 committed writes in SSTs before capture. Concurrent writes may still be carried
 by Pebble WAL files in the checkpoint. The backup walks **every** file in the
 completed checkpoint directory; neither SST-only selection nor filename-only
