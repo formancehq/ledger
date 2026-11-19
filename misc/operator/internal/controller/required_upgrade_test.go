@@ -25,6 +25,7 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
+	"sigs.k8s.io/controller-runtime/pkg/client/interceptor"
 
 	ledgerv1alpha1 "github.com/formancehq/ledger/misc/operator/api/v1alpha1"
 )
@@ -312,7 +313,9 @@ func TestStoppedUpgradeWaitsForOldPodsAndRetainsClaim(t *testing.T) {
 	released := false
 	durable := false
 	var commands []string
-	exec := func(_ context.Context, _ *rest.Config, _ kubernetes.Interface, _, pod, _ string, command []string) (*execResult, error) {
+	exec := func(_ context.Context, config *rest.Config, clients kubernetes.Interface, _, pod, _ string, command []string) (*execResult, error) {
+		require.Same(t, r.Config, config)
+		require.Same(t, r.Clientset, clients)
 		cmd := command[len(command)-1]
 		commands = append(commands, cmd)
 		switch {
@@ -619,7 +622,7 @@ func TestStoppedUpgradeUsesLiveGRPCPort(t *testing.T) {
 	sts.Spec.Template.Spec.Containers[0].Ports = []corev1.ContainerPort{{Name: "grpc", ContainerPort: 8888, Protocol: corev1.ProtocolTCP}}
 	pod := &corev1.Pod{ObjectMeta: metav1.ObjectMeta{Name: sts.Name + "-0", Namespace: sts.Namespace,
 		OwnerReferences: []metav1.OwnerReference{{APIVersion: "apps/v1", Kind: "StatefulSet", Name: sts.Name, UID: sts.UID, Controller: new(true)}}}}
-	r := &ClusterReconciler{Config: &rest.Config{}, Clientset: kubernetesfake.NewSimpleClientset(pod)}
+	actor := &stoppedUpgradeReconciler{config: &rest.Config{}, clientset: kubernetesfake.NewSimpleClientset(pod)}
 	exec := func(_ context.Context, _ *rest.Config, _ kubernetes.Interface, _, _, _ string, command []string) (*execResult, error) {
 		require.Contains(t, command[len(command)-1], ":8888")
 		require.NotContains(t, command[len(command)-1], ":9999")
@@ -628,8 +631,85 @@ func TestStoppedUpgradeUsesLiveGRPCPort(t *testing.T) {
 	}
 	live, err := drainClusterFromWorkload(cluster, sts)
 	require.NoError(t, err)
-	_, err = r.upgradeDrainCluster(live, sts, exec).run(t.Context(), 0, "cluster", "status", "--json")
+	actor.exec = exec
+	_, err = actor.upgradeDrainCluster(live, sts).run(t.Context(), 0, "cluster", "status", "--json")
 	require.NoError(t, err)
+}
+
+func TestStoppedUpgradeWiresBoundaryOverrides(t *testing.T) {
+	t.Parallel()
+	for _, test := range []struct {
+		name         string
+		stopVersions []string
+		blocked      bool
+	}{
+		{name: "released defaults", blocked: true},
+		{name: "explicitly disabled", stopVersions: []string{}},
+		{name: "custom boundary", stopVersions: []string{"v3.0.0-rc.3"}},
+		{name: "custom future boundary", stopVersions: []string{"v3.0.0-rc.5"}, blocked: true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			cluster := newMinimalCluster()
+			cluster.Spec.Image.Tag = "latest"
+			reconciler := &ClusterReconciler{stopVersions: test.stopVersions}
+			proceed, _, err := reconciler.reconcileRequiredUpgrade(t.Context(), cluster, rcStatefulSet("ledger:v3.0.0-rc.3", true))
+			if test.blocked {
+				require.ErrorContains(t, err, "pin a canonical version tag")
+				require.False(t, proceed)
+			} else {
+				require.NoError(t, err)
+				require.True(t, proceed)
+			}
+		})
+	}
+}
+
+func TestStoppedUpgradeStatusPatchFailurePreservesLocalState(t *testing.T) {
+	t.Parallel()
+	for _, operation := range []string{"start", "advance", "clear"} {
+		t.Run(operation, func(t *testing.T) {
+			t.Parallel()
+			cluster := newMinimalCluster()
+			cluster.ResourceVersion = "42"
+			state := &ledgerv1alpha1.ClusterUpgradeStatus{Source: "v3.0.0-rc.3", Target: "v3.0.0-rc.4", Phase: "Preflighting", DrainEpoch: "pinned-epoch"}
+			if operation != "start" {
+				cluster.Status.Upgrade = state.DeepCopy()
+				meta.SetStatusCondition(&cluster.Status.Conditions, metav1.Condition{Type: "Upgrade", Status: metav1.ConditionTrue, Reason: "Preflighting", Message: "persisted progress"})
+			}
+			before := cluster.DeepCopy()
+			failure := errors.New("status patch unavailable")
+			attempts := 0
+			wrapped := interceptor.NewClient(fake.NewClientBuilder().Build(), interceptor.Funcs{
+				SubResourcePatch: func(ctx context.Context, _ client.Client, subresource string, obj client.Object, patch client.Patch, _ ...client.SubResourcePatchOption) error {
+					attempts++
+					require.Equal(t, "status", subresource)
+					data, err := patch.Data(obj)
+					require.NoError(t, err)
+					var body map[string]any
+					require.NoError(t, json.Unmarshal(data, &body))
+					require.Equal(t, "42", body["metadata"].(map[string]any)["resourceVersion"])
+					obj.SetResourceVersion("uncommitted")
+
+					return failure
+				},
+			})
+			actor := &stoppedUpgradeReconciler{client: wrapped}
+			var err error
+			switch operation {
+			case "start":
+				err = actor.persistUpgrade(t.Context(), cluster, state)
+			case "advance":
+				err = actor.advanceUpgrade(t.Context(), cluster, "Draining")
+			case "clear":
+				err = actor.persistUpgrade(t.Context(), cluster, nil)
+			}
+			require.ErrorIs(t, err, failure)
+			require.ErrorContains(t, err, "persisting stopped upgrade state")
+			require.Equal(t, 1, attempts)
+			require.Equal(t, before, cluster)
+		})
+	}
 }
 
 func TestStoppedUpgradeResumesReleasedIntentAndRejectsClaimDeclarationChanges(t *testing.T) {

@@ -14,6 +14,8 @@ import (
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/rest"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
@@ -130,6 +132,23 @@ func (r *ClusterReconciler) reconcileRequiredUpgrade(ctx context.Context, ledger
 }
 
 func (r *ClusterReconciler) reconcileRequiredUpgradeWithExec(ctx context.Context, ledger *ledgerv1alpha1.Cluster, sts *appsv1.StatefulSet, exec ledgerctlExec) (proceed bool, result ctrl.Result, err error) {
+	actor := stoppedUpgradeReconciler{
+		client: r.Client, config: r.Config, clientset: r.Clientset,
+		stopVersions: r.stopVersions, exec: exec,
+	}
+
+	return actor.reconcile(ctx, ledger, sts)
+}
+
+type stoppedUpgradeReconciler struct {
+	client       client.Client
+	config       *rest.Config
+	clientset    kubernetes.Interface
+	stopVersions []string
+	exec         ledgerctlExec
+}
+
+func (r *stoppedUpgradeReconciler) reconcile(ctx context.Context, ledger *ledgerv1alpha1.Cluster, sts *appsv1.StatefulSet) (proceed bool, result ctrl.Result, err error) {
 	state := ledger.Status.Upgrade
 	if state == nil && sts == nil {
 		return true, ctrl.Result{}, nil
@@ -224,7 +243,7 @@ func (r *ClusterReconciler) reconcileRequiredUpgradeWithExec(ctx context.Context
 		if err != nil {
 			return false, ctrl.Result{}, err
 		}
-		if err := preflightDrain(ctx, r.upgradeDrainCluster(live, sts, exec)); err != nil {
+		if err := preflightDrain(ctx, r.upgradeDrainCluster(live, sts)); err != nil {
 			return false, ctrl.Result{}, fmt.Errorf("preflighting stopped-upgrade drain: %w", err)
 		}
 		if err := r.advanceUpgrade(ctx, ledger, "Draining"); err != nil {
@@ -243,7 +262,7 @@ func (r *ClusterReconciler) reconcileRequiredUpgradeWithExec(ctx context.Context
 		if err != nil {
 			return false, ctrl.Result{}, err
 		}
-		ready, err := ensureDrain(ctx, r.upgradeDrainCluster(live, sts, exec), state.DrainEpoch)
+		ready, err := ensureDrain(ctx, r.upgradeDrainCluster(live, sts), state.DrainEpoch)
 		if err != nil {
 			return false, ctrl.Result{}, err
 		}
@@ -287,14 +306,14 @@ func (r *ClusterReconciler) reconcileRequiredUpgradeWithExec(ctx context.Context
 				if err != nil {
 					return false, ctrl.Result{}, err
 				}
-				ready, err := ensureDrain(ctx, r.upgradeDrainCluster(live, sts, exec), state.DrainEpoch)
+				ready, err := ensureDrain(ctx, r.upgradeDrainCluster(live, sts), state.DrainEpoch)
 				if err != nil {
 					return false, ctrl.Result{}, fmt.Errorf("rechecking drain barrier before delete: %w", err)
 				}
 				if !ready {
 					return false, ctrl.Result{RequeueAfter: requiredUpgradePoll}, nil
 				}
-				if err := deleteInspected(ctx, r.Client, sts, client.PropagationPolicy(metav1.DeletePropagationBackground)); err != nil {
+				if err := deleteInspected(ctx, r.client, sts, client.PropagationPolicy(metav1.DeletePropagationBackground)); err != nil {
 					return false, ctrl.Result{}, fmt.Errorf("deleting source StatefulSet: %w", err)
 				}
 			}
@@ -302,7 +321,7 @@ func (r *ClusterReconciler) reconcileRequiredUpgradeWithExec(ctx context.Context
 			return false, ctrl.Result{RequeueAfter: requiredUpgradePoll}, nil
 		}
 		pods := &corev1.PodList{}
-		if err := r.List(ctx, pods, client.InNamespace(ledger.Namespace)); err != nil {
+		if err := r.client.List(ctx, pods, client.InNamespace(ledger.Namespace)); err != nil {
 			return false, ctrl.Result{}, fmt.Errorf("listing old pods: %w", err)
 		}
 		for _, pod := range pods.Items {
@@ -384,7 +403,7 @@ func (r *ClusterReconciler) reconcileRequiredUpgradeWithExec(ctx context.Context
 		if err != nil {
 			return false, ctrl.Result{}, err
 		}
-		ready, err := ensureDrainReleased(ctx, r.upgradeDrainCluster(live, sts, exec), state.DrainEpoch)
+		ready, err := ensureDrainReleased(ctx, r.upgradeDrainCluster(live, sts), state.DrainEpoch)
 		if err != nil {
 			return false, ctrl.Result{}, fmt.Errorf("releasing stopped-upgrade drain: %w", err)
 		}
@@ -413,7 +432,7 @@ func verifyReplacementReplicaCount(sts *appsv1.StatefulSet, state *ledgerv1alpha
 	return nil
 }
 
-func (r *ClusterReconciler) restoreUpgradeProgress(ctx context.Context, ledger *ledgerv1alpha1.Cluster, state *ledgerv1alpha1.ClusterUpgradeStatus) error {
+func (r *stoppedUpgradeReconciler) restoreUpgradeProgress(ctx context.Context, ledger *ledgerv1alpha1.Cluster, state *ledgerv1alpha1.ClusterUpgradeStatus) error {
 	condition := meta.FindStatusCondition(ledger.Status.Conditions, "Upgrade")
 	if condition == nil || condition.Status != metav1.ConditionFalse {
 		return nil
@@ -422,7 +441,7 @@ func (r *ClusterReconciler) restoreUpgradeProgress(ctx context.Context, ledger *
 	return r.persistUpgrade(ctx, ledger, state)
 }
 
-func (r *ClusterReconciler) resumeMissingUpgradeReplacement(ctx context.Context, ledger *ledgerv1alpha1.Cluster) (bool, ctrl.Result, error) {
+func (r *stoppedUpgradeReconciler) resumeMissingUpgradeReplacement(ctx context.Context, ledger *ledgerv1alpha1.Cluster) (bool, ctrl.Result, error) {
 	gone, err := r.upgradeOrdinalPodsGone(ctx, ledger)
 	if err != nil {
 		return false, ctrl.Result{}, err
@@ -437,9 +456,9 @@ func (r *ClusterReconciler) resumeMissingUpgradeReplacement(ctx context.Context,
 	return true, ctrl.Result{}, nil
 }
 
-func (r *ClusterReconciler) upgradeOrdinalPodsGone(ctx context.Context, ledger *ledgerv1alpha1.Cluster) (bool, error) {
+func (r *stoppedUpgradeReconciler) upgradeOrdinalPodsGone(ctx context.Context, ledger *ledgerv1alpha1.Cluster) (bool, error) {
 	pods := &corev1.PodList{}
-	if err := r.List(ctx, pods, client.InNamespace(ledger.Namespace)); err != nil {
+	if err := r.client.List(ctx, pods, client.InNamespace(ledger.Namespace)); err != nil {
 		return false, fmt.Errorf("listing Pods during stopped upgrade: %w", err)
 	}
 	for _, pod := range pods.Items {
@@ -451,7 +470,7 @@ func (r *ClusterReconciler) upgradeOrdinalPodsGone(ctx context.Context, ledger *
 	return true, nil
 }
 
-func (r *ClusterReconciler) persistUpgrade(ctx context.Context, ledger *ledgerv1alpha1.Cluster, state *ledgerv1alpha1.ClusterUpgradeStatus) error {
+func (r *stoppedUpgradeReconciler) persistUpgrade(ctx context.Context, ledger *ledgerv1alpha1.Cluster, state *ledgerv1alpha1.ClusterUpgradeStatus) error {
 	before := ledger.DeepCopy()
 	updated := ledger.DeepCopy()
 	updated.Status.Upgrade = state
@@ -460,7 +479,7 @@ func (r *ClusterReconciler) persistUpgrade(ctx context.Context, ledger *ledgerv1
 	} else {
 		meta.SetStatusCondition(&updated.Status.Conditions, metav1.Condition{Type: "Upgrade", Status: metav1.ConditionTrue, Reason: state.Phase, Message: fmt.Sprintf("stopped upgrade %s to %s: %s", state.Source, state.Target, state.Phase), ObservedGeneration: ledger.Generation})
 	}
-	if err := r.Status().Patch(ctx, updated, client.MergeFromWithOptions(before, client.MergeFromWithOptimisticLock{})); err != nil {
+	if err := r.client.Status().Patch(ctx, updated, client.MergeFromWithOptions(before, client.MergeFromWithOptimisticLock{})); err != nil {
 		return fmt.Errorf("persisting stopped upgrade state: %w", err)
 	}
 	ledger.ResourceVersion = updated.ResourceVersion
@@ -470,21 +489,21 @@ func (r *ClusterReconciler) persistUpgrade(ctx context.Context, ledger *ledgerv1
 	return nil
 }
 
-func (r *ClusterReconciler) advanceUpgrade(ctx context.Context, ledger *ledgerv1alpha1.Cluster, phase string) error {
+func (r *stoppedUpgradeReconciler) advanceUpgrade(ctx context.Context, ledger *ledgerv1alpha1.Cluster, phase string) error {
 	next := ledger.Status.Upgrade.DeepCopy()
 	next.Phase = phase
 
 	return r.persistUpgrade(ctx, ledger, next)
 }
 
-func (r *ClusterReconciler) upgradeDrainCluster(live *ledgerv1alpha1.Cluster, sts *appsv1.StatefulSet, exec ledgerctlExec) *ledgerctlDrainCluster {
+func (r *stoppedUpgradeReconciler) upgradeDrainCluster(live *ledgerv1alpha1.Cluster, sts *appsv1.StatefulSet) *ledgerctlDrainCluster {
 	return &ledgerctlDrainCluster{
 		cluster: live, tlsMode: currentTLSModeFromStatefulSet(sts),
-		config: r.Config, clientset: r.Clientset, exec: ownedPodExec(sts, exec),
+		config: r.config, clientset: r.clientset, exec: ownedPodExec(sts, r.exec),
 	}
 }
 
-func (r *ClusterReconciler) upgradeClaims(ctx context.Context, ledger *ledgerv1alpha1.Cluster, sts *appsv1.StatefulSet) (map[string]string, error) {
+func (r *stoppedUpgradeReconciler) upgradeClaims(ctx context.Context, ledger *ledgerv1alpha1.Cluster, sts *appsv1.StatefulSet) (map[string]string, error) {
 	if len(sts.Spec.VolumeClaimTemplates) != 2 {
 		return nil, errors.New("stopped upgrade requires existing WAL and data PVC templates")
 	}
@@ -504,7 +523,7 @@ func (r *ClusterReconciler) upgradeClaims(ctx context.Context, ledger *ledgerv1a
 		for ordinal := range replicas {
 			name := fmt.Sprintf("%s-%s-%d", template.Name, sts.Name, ordinal)
 			pvc := &corev1.PersistentVolumeClaim{}
-			if err := r.Get(ctx, types.NamespacedName{Name: name, Namespace: ledger.Namespace}, pvc); err != nil {
+			if err := r.client.Get(ctx, types.NamespacedName{Name: name, Namespace: ledger.Namespace}, pvc); err != nil {
 				return nil, fmt.Errorf("required upgrade PVC %s is unavailable: %w", name, err)
 			}
 			if !pvc.DeletionTimestamp.IsZero() || pvc.Spec.VolumeName == "" || pvc.Status.Phase != corev1.ClaimBound {
@@ -520,11 +539,11 @@ func (r *ClusterReconciler) upgradeClaims(ctx context.Context, ledger *ledgerv1a
 	return claims, nil
 }
 
-func (r *ClusterReconciler) verifyUpgradeClaims(ctx context.Context, ledger *ledgerv1alpha1.Cluster, state *ledgerv1alpha1.ClusterUpgradeStatus) error {
+func (r *stoppedUpgradeReconciler) verifyUpgradeClaims(ctx context.Context, ledger *ledgerv1alpha1.Cluster, state *ledgerv1alpha1.ClusterUpgradeStatus) error {
 	observedVolumes := make(map[string]string)
 	for name, uid := range state.ClaimUIDs {
 		pvc := &corev1.PersistentVolumeClaim{}
-		if err := r.Get(ctx, types.NamespacedName{Name: name, Namespace: ledger.Namespace}, pvc); err != nil {
+		if err := r.client.Get(ctx, types.NamespacedName{Name: name, Namespace: ledger.Namespace}, pvc); err != nil {
 			return fmt.Errorf("upgrade PVC %s missing: %w", name, err)
 		}
 		if string(pvc.UID) != uid || !pvc.DeletionTimestamp.IsZero() || pvc.Spec.VolumeName == "" || pvc.Status.Phase != corev1.ClaimBound {
@@ -538,7 +557,7 @@ func (r *ClusterReconciler) verifyUpgradeClaims(ctx context.Context, ledger *led
 			return fmt.Errorf("upgrade PV %s is no longer referenced by an original claim", name)
 		}
 		pv := &corev1.PersistentVolume{}
-		if err := r.Get(ctx, types.NamespacedName{Name: name}, pv); err != nil {
+		if err := r.client.Get(ctx, types.NamespacedName{Name: name}, pv); err != nil {
 			return fmt.Errorf("upgrade PV %s missing: %w", name, err)
 		}
 		if string(pv.UID) != uid || !pv.DeletionTimestamp.IsZero() || pv.Status.Phase != corev1.VolumeBound || pv.Spec.ClaimRef == nil || pv.Spec.ClaimRef.Name != claimName || pv.Spec.ClaimRef.Namespace != ledger.Namespace || string(pv.Spec.ClaimRef.UID) != state.ClaimUIDs[claimName] {
@@ -549,15 +568,15 @@ func (r *ClusterReconciler) verifyUpgradeClaims(ctx context.Context, ledger *led
 	return nil
 }
 
-func (r *ClusterReconciler) upgradeVolumes(ctx context.Context, ledger *ledgerv1alpha1.Cluster, claims map[string]string) (map[string]string, error) {
+func (r *stoppedUpgradeReconciler) upgradeVolumes(ctx context.Context, ledger *ledgerv1alpha1.Cluster, claims map[string]string) (map[string]string, error) {
 	volumes := make(map[string]string)
 	for name, uid := range claims {
 		pvc := &corev1.PersistentVolumeClaim{}
-		if err := r.Get(ctx, types.NamespacedName{Name: name, Namespace: ledger.Namespace}, pvc); err != nil {
+		if err := r.client.Get(ctx, types.NamespacedName{Name: name, Namespace: ledger.Namespace}, pvc); err != nil {
 			return nil, err
 		}
 		pv := &corev1.PersistentVolume{}
-		if err := r.Get(ctx, types.NamespacedName{Name: pvc.Spec.VolumeName}, pv); err != nil {
+		if err := r.client.Get(ctx, types.NamespacedName{Name: pvc.Spec.VolumeName}, pv); err != nil {
 			return nil, fmt.Errorf("required upgrade PV %s is unavailable: %w", pvc.Spec.VolumeName, err)
 		}
 		if !pv.DeletionTimestamp.IsZero() || pv.Status.Phase != corev1.VolumeBound || pv.Spec.ClaimRef == nil || pv.Spec.ClaimRef.Name != name || pv.Spec.ClaimRef.Namespace != ledger.Namespace || string(pv.Spec.ClaimRef.UID) != uid {
@@ -572,10 +591,10 @@ func (r *ClusterReconciler) upgradeVolumes(ctx context.Context, ledger *ledgerv1
 	return volumes, nil
 }
 
-func (r *ClusterReconciler) detachUpgradeClaimOwners(ctx context.Context, ledger *ledgerv1alpha1.Cluster, state *ledgerv1alpha1.ClusterUpgradeStatus) error {
+func (r *stoppedUpgradeReconciler) detachUpgradeClaimOwners(ctx context.Context, ledger *ledgerv1alpha1.Cluster, state *ledgerv1alpha1.ClusterUpgradeStatus) error {
 	for name := range state.ClaimUIDs {
 		pvc := &corev1.PersistentVolumeClaim{}
-		if err := r.Get(ctx, types.NamespacedName{Name: name, Namespace: ledger.Namespace}, pvc); err != nil {
+		if err := r.client.Get(ctx, types.NamespacedName{Name: name, Namespace: ledger.Namespace}, pvc); err != nil {
 			return err
 		}
 		if len(pvc.OwnerReferences) == 0 {
@@ -593,7 +612,7 @@ func (r *ClusterReconciler) detachUpgradeClaimOwners(ctx context.Context, ledger
 		}
 		detachedPVC := pvc.DeepCopy()
 		detachedPVC.OwnerReferences = nil
-		if err := r.Patch(ctx, detachedPVC, client.MergeFromWithOptions(pvc, client.MergeFromWithOptimisticLock{})); err != nil {
+		if err := r.client.Patch(ctx, detachedPVC, client.MergeFromWithOptions(pvc, client.MergeFromWithOptimisticLock{})); err != nil {
 			return fmt.Errorf("detaching owner references from PVC %s: %w", name, err)
 		}
 	}
@@ -601,13 +620,13 @@ func (r *ClusterReconciler) detachUpgradeClaimOwners(ctx context.Context, ledger
 	return r.verifyDetachedUpgradeClaims(ctx, ledger, state)
 }
 
-func (r *ClusterReconciler) verifyDetachedUpgradeClaims(ctx context.Context, ledger *ledgerv1alpha1.Cluster, state *ledgerv1alpha1.ClusterUpgradeStatus) error {
+func (r *stoppedUpgradeReconciler) verifyDetachedUpgradeClaims(ctx context.Context, ledger *ledgerv1alpha1.Cluster, state *ledgerv1alpha1.ClusterUpgradeStatus) error {
 	if err := r.verifyUpgradeClaims(ctx, ledger, state); err != nil {
 		return err
 	}
 	for name := range state.ClaimUIDs {
 		pvc := &corev1.PersistentVolumeClaim{}
-		if err := r.Get(ctx, types.NamespacedName{Name: name, Namespace: ledger.Namespace}, pvc); err != nil {
+		if err := r.client.Get(ctx, types.NamespacedName{Name: name, Namespace: ledger.Namespace}, pvc); err != nil {
 			return err
 		}
 		if len(pvc.OwnerReferences) != 0 {
@@ -616,4 +635,23 @@ func (r *ClusterReconciler) verifyDetachedUpgradeClaims(ctx context.Context, led
 	}
 
 	return nil
+}
+
+// reconcileStatefulSetRetentionPolicy applies the same policy used by ordinary
+// StatefulSet creation. During a stopped upgrade buildRetentionPolicy always
+// returns Retain; callers must requeue until the StatefulSet controller has
+// observed the updated generation before detaching or reusing claims.
+func (r *stoppedUpgradeReconciler) reconcileStatefulSetRetentionPolicy(ctx context.Context, ledger *ledgerv1alpha1.Cluster, sts *appsv1.StatefulSet) (bool, error) {
+	desired := buildRetentionPolicy(ledger)
+	if sts.Spec.PersistentVolumeClaimRetentionPolicy != nil &&
+		*sts.Spec.PersistentVolumeClaimRetentionPolicy == *desired {
+		return false, nil
+	}
+	updated := sts.DeepCopy()
+	updated.Spec.PersistentVolumeClaimRetentionPolicy = desired
+	if err := r.client.Update(ctx, updated); err != nil {
+		return false, fmt.Errorf("updating StatefulSet claim retention policy: %w", err)
+	}
+
+	return true, nil
 }

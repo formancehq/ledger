@@ -1315,6 +1315,15 @@ stops after the first pod. In that configuration, restart through the CR only
 
 ## Development
 
+### Internal reconciliation
+
+The Cluster controller delegates the stopped-upgrade phase machine to
+`stoppedUpgradeReconciler`, which receives explicit Kubernetes client, REST
+configuration, clientset, stop-version list, and pod-exec dependencies. The actor
+owns upgrade retention and claim checks; the Cluster controller keeps the
+ordinary workload reconciliation entry point. Upgrade status patches commit
+before the in-memory status and resource version advance.
+
 ### Setup
 
 The project uses [Nix](https://nixos.org/) for reproducible development environments:
