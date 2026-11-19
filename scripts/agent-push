@@ -19,10 +19,32 @@ fi
 
 root=$(git rev-parse --show-toplevel)
 cd "$root"
-pr_bases=$(gh pr list --head "$branch" --state open --json baseRefOid --jq '.[].baseRefOid') || {
+current_branch=$(git branch --show-current)
+if [[ "$current_branch" != "$branch" ]]; then
+    echo "agent-push: branch $current_branch does not match push target $branch" >&2
+    exit 1
+fi
+remote_url=$(git remote get-url --push "$remote") || {
+    echo "agent-push: unable to resolve push URL for remote $remote" >&2
+    exit 1
+}
+if [[ "$remote_url" == *$'\n'* ]]; then
+    echo "agent-push: remote $remote has multiple push URLs" >&2
+    exit 1
+fi
+publication_repo=$(gh repo view "$remote_url" --json nameWithOwner --jq '.nameWithOwner') || {
+    echo "agent-push: unable to identify publication repository for remote $remote" >&2
+    exit 1
+}
+if [[ -z "$publication_repo" ]]; then
+    echo "agent-push: publication repository for remote $remote is empty" >&2
+    exit 1
+fi
+pr_heads=$(gh pr list --head "$branch" --state open --json baseRefOid,headRefName,headRepository --jq '.[] | [.headRepository.nameWithOwner // "", .headRefName, .baseRefOid] | @tsv') || {
     echo "agent-push: unable to list PRs for branch $branch" >&2
     exit 1
 }
+pr_bases=$(awk -F '\t' -v repo="$publication_repo" -v branch="$branch" '$1 == repo && $2 == branch { print $3 }' <<< "$pr_heads")
 first_push=false
 if [[ -n "$pr_bases" ]]; then
     if [[ "$pr_bases" == *$'\n'* ]]; then
@@ -57,12 +79,6 @@ else
         exit 1
     fi
 fi
-current_branch=$(git branch --show-current)
-if [[ "$current_branch" != "$branch" ]]; then
-    echo "agent-push: branch $current_branch does not match push target $branch" >&2
-    exit 1
-fi
-
 if [[ -n "$(git status --porcelain)" ]]; then
     echo "agent-push: worktree must be clean before validation" >&2
     git status --short >&2

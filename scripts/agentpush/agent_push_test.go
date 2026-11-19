@@ -33,7 +33,17 @@ esac
 `), 0o755))
 	bin := filepath.Join(dir, "bin")
 	require.NoError(t, os.Mkdir(bin, 0o755))
-	ghScript := "#!/usr/bin/env bash\nset -euo pipefail\n[[ ${1:-} == pr && ${2:-} == list && $* == *'baseRefOid'* ]]\nprintf '%s\\n' \"$EXPECTED_PR_BASE\"\n"
+	ghScript := `#!/usr/bin/env bash
+set -euo pipefail
+if [[ ${1:-} == repo && ${2:-} == view ]]; then
+    [[ $3 == "$EXPECTED_REMOTE_URL" ]]
+    printf '%s\n' test/origin
+elif [[ ${1:-} == pr && ${2:-} == list && $* == *'headRepository'* ]]; then
+    printf '%s\t%s\t%s\n' "${GH_PR_REPO:-test/origin}" chore/ci-local-format-parity "$EXPECTED_PR_BASE"
+else
+    exit 1
+fi
+`
 	require.NoError(t, os.WriteFile(filepath.Join(bin, "gh"), []byte(ghScript), 0o755))
 	require.NoError(t, os.WriteFile(filepath.Join(repo, "tracked.txt"), []byte("initial\n"), 0o644))
 	run(t, repo, nil, "git", "add", ".")
@@ -44,8 +54,17 @@ esac
 	run(t, repo, nil, "git", "add", "tracked.txt")
 	run(t, repo, nil, "git", "commit", "-m", "candidate")
 	base := run(t, repo, nil, "git", "rev-parse", "HEAD^")
-	baseEnv := []string{"AI_REVIEW_BASE_SHA=" + base, "EXPECTED_PR_BASE=" + base, "PATH=" + bin + string(os.PathListSeparator) + os.Getenv("PATH")}
-	output, err := runResult(repo, baseEnv, "bash", "scripts/agent-push", "origin", "chore/another-branch")
+	baseEnv := []string{"AI_REVIEW_BASE_SHA=" + base, "EXPECTED_PR_BASE=" + base, "EXPECTED_REMOTE_URL=" + remote, "PATH=" + bin + string(os.PathListSeparator) + os.Getenv("PATH")}
+	otherRemote := filepath.Join(dir, "other.git")
+	run(t, dir, nil, "git", "init", "--bare", otherRemote)
+	run(t, repo, nil, "git", "remote", "add", "other", otherRemote)
+	run(t, repo, nil, "git", "push", "other", base+":refs/heads/chore/ci-local-format-parity")
+	output, err := runResult(repo, append(baseEnv, "GH_PR_REPO=test/other", "AI_REVIEW_BASE_REF=main"), "bash", "scripts/agent-push", "origin", "chore/ci-local-format-parity")
+	require.Error(t, err)
+	require.Contains(t, output, "exists without an open PR")
+	require.Equal(t, initialRemote, run(t, remote, nil, "git", "rev-parse", "refs/heads/chore/ci-local-format-parity"))
+	require.Equal(t, base, run(t, otherRemote, nil, "git", "rev-parse", "refs/heads/chore/ci-local-format-parity"))
+	output, err = runResult(repo, baseEnv, "bash", "scripts/agent-push", "origin", "chore/another-branch")
 	require.Error(t, err)
 	require.Contains(t, output, "does not match push target")
 	require.Equal(t, initialRemote, run(t, remote, nil, "git", "rev-parse", "refs/heads/chore/ci-local-format-parity"))
@@ -83,6 +102,7 @@ esac
 		"SHIM_BIN=" + bin,
 		"PATH=" + bin + string(os.PathListSeparator) + os.Getenv("PATH"),
 		"EXPECTED_PR_BASE=" + base,
+		"EXPECTED_REMOTE_URL=" + remote,
 	}
 	run(t, repo, pushEnv, "bash", "scripts/agent-push", "origin", "chore/ci-local-format-parity")
 	refspec, err := os.ReadFile(pushArgsLog)
@@ -126,9 +146,19 @@ esac
 
 	bin := filepath.Join(dir, "bin")
 	require.NoError(t, os.Mkdir(bin, 0o755))
-	ghScript := "#!/usr/bin/env bash\nset -euo pipefail\n[[ ${1:-} == pr && ${2:-} == list && $* == *'baseRefOid'* ]]\n[[ ${GH_FAIL:-0} == 0 ]]\n"
+	ghScript := `#!/usr/bin/env bash
+set -euo pipefail
+if [[ ${1:-} == repo && ${2:-} == view ]]; then
+    [[ $3 == "$EXPECTED_REMOTE_URL" ]]
+    printf '%s\n' test/origin
+elif [[ ${1:-} == pr && ${2:-} == list && $* == *'headRepository'* ]]; then
+    [[ ${GH_FAIL:-0} == 0 ]]
+else
+    exit 1
+fi
+`
 	require.NoError(t, os.WriteFile(filepath.Join(bin, "gh"), []byte(ghScript), 0o755))
-	baseEnv := []string{"AI_REVIEW_BASE_SHA=" + base, "AI_REVIEW_BASE_REF=main", "PATH=" + bin + string(os.PathListSeparator) + os.Getenv("PATH")}
+	baseEnv := []string{"AI_REVIEW_BASE_SHA=" + base, "AI_REVIEW_BASE_REF=main", "EXPECTED_REMOTE_URL=" + remote, "PATH=" + bin + string(os.PathListSeparator) + os.Getenv("PATH")}
 	push := func(env []string) (string, error) {
 		return runResult(repo, env, "bash", "scripts/agent-push", "origin", "chore/new-branch")
 	}
