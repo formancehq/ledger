@@ -84,7 +84,7 @@ import (
 type walFreshStart bool
 
 func publishCapabilityGate(membership *raftmembership.Membership, policy *commonpb.ClusterPolicy) error {
-	return membership.SetCapabilityGate(capabilities.ActiveIDs(policy))
+	return membership.SetCapabilityGate(capabilities.MembershipRequiredIDs(policy))
 }
 
 // nodeProvideResult groups the outputs of the Node provider so we can also
@@ -117,7 +117,7 @@ func newClusterPolicyReconciler(admission ctrl.Admission, store *dal.Store, buil
 			return
 		}
 		if policy, err := query.ReadClusterPolicy(store); err == nil {
-			if err := raftNode.SetCapabilityGate(capabilities.ActiveIDs(policy)); err != nil {
+			if err := raftNode.SetCapabilityGate(capabilities.MembershipRequiredIDs(policy)); err != nil {
 				logger.WithFields(map[string]any{"error": err}).Errorf("Invalid capability gate in committed cluster policy")
 
 				return
@@ -130,6 +130,23 @@ func newClusterPolicyReconciler(admission ctrl.Admission, store *dal.Store, buil
 		}
 		reconcileClusterPolicy(ctx, admission, store, cfg, raftNode.IsLeader, logger)
 	}, clusterPolicyReconcileInterval)
+}
+
+func newCapabilityActivationReconciler(admission *admission.Admission, store *dal.Store, raftNode *node.Node, logger logging.Logger) *capabilityActivationReconciler {
+	return &capabilityActivationReconciler{reconciler.New(func(ctx context.Context) {
+		ctx = internalauth.WithSystemActor(ctx, commands.ComponentClusterPolicy)
+		if !raftNode.IsLeader() {
+			return
+		}
+		if err := raftNode.RefreshSelfMembership(ctx, capabilities.IDsAsUint32(capabilities.SupportedIDs())); err != nil {
+			logger.WithFields(map[string]any{"error": err}).Errorf("Capability evidence refresh failed; activation will retry")
+
+			return
+		}
+		if err := activateReadyCapabilities(ctx, admission.AdmitCapabilityTransition, store, raftNode.IsLeader, raftNode.CapabilityMembers, capabilities.SupportedIDs()); err != nil {
+			logger.WithFields(map[string]any{"error": err}).Errorf("Capability activation failed; will retry from committed policy")
+		}
+	}, clusterPolicyReconcileInterval)}
 }
 
 func Module() fx.Option {
@@ -638,7 +655,7 @@ func Module() fx.Option {
 				attrs *attributes.Attributes,
 				rs *readstore.Store,
 				authCfg internalauth.AuthConfig,
-			) ctrl.Admission {
+			) *admission.Admission {
 				var opts []func(*admission.Admission)
 				if cfg.AdmissionMetrics {
 					opts = append(opts, admission.WithMetrics())
@@ -716,7 +733,9 @@ func Module() fx.Option {
 
 				return clusterhealth.NewGRPCHealthUpdater(n, hs, clusterPolicyReady, rs.ReadProjectionHealthy)
 			},
+			func(service *admission.Admission) ctrl.Admission { return service },
 			newClusterPolicyReconciler,
+			newCapabilityActivationReconciler,
 		),
 		fx.Decorate(func(
 			params struct {
@@ -1074,6 +1093,9 @@ func Module() fx.Option {
 			func(lc fx.Lifecycle, reconciler *reconciler.Reconciler) {
 				lc.Append(worker.FxHook(reconciler))
 			},
+			func(lc fx.Lifecycle, activation *capabilityActivationReconciler) {
+				lc.Append(worker.FxHook(activation))
+			},
 			func(lc fx.Lifecycle, cfg Config, logger logging.Logger, raftNode *node.Node, store *dal.Store, machine *state.Machine, builder *plan.Builder) {
 				if cfg.IdempotencyEvictionInterval > 0 {
 					scheduler := state.NewIdempotencyEvictionScheduler(
@@ -1181,12 +1203,16 @@ func Module() fx.Option {
 // from the final command, while policy and membership are the committed
 // snapshots captured at the serialized admission boundary.
 func validateProposalCapabilityAdmission(policy *commonpb.ClusterPolicy, proposal *node.Proposal, members []capabilities.Member) error {
+	return validateProposalCapabilityAdmissionWithSupported(policy, proposal, members, capabilities.SupportedIDs())
+}
+
+func validateProposalCapabilityAdmissionWithSupported(policy *commonpb.ClusterPolicy, proposal *node.Proposal, members []capabilities.Member, supported []capabilities.CapabilityID) error {
 	if proposal == nil {
 		return errors.New("raft proposal gate received a nil proposal")
 	}
 
 	if err := capabilities.ValidateActive(
-		capabilities.SupportedIDs(),
+		supported,
 		proposal.ActivePolicyCapabilities(),
 		members,
 	); err != nil {
@@ -1196,6 +1222,17 @@ func validateProposalCapabilityAdmission(policy *commonpb.ClusterPolicy, proposa
 	state := capabilities.FromPolicy(policy)
 	if err := state.Validate(); err != nil {
 		return err
+	}
+	if proposal.HasBusinessOrders() {
+		ready, err := capabilities.Ready(supported, members)
+		if err != nil {
+			return err
+		}
+		for _, id := range ready {
+			if !state.Activations[id] {
+				return fmt.Errorf("%w: ready capability %d has not committed", capabilities.ErrActivationPending, id)
+			}
+		}
 	}
 	decision := capabilities.Evaluate(state, proposal.RequiredCapabilities(), false, members)
 	if !decision.Allowed {
@@ -1910,10 +1947,9 @@ const clusterPolicyReconcileInterval = time.Second
 // reconcileClusterPolicy drives the replicated cluster policy toward the desired
 // revision. It gates on leadership itself and is safe to call repeatedly: the
 // generic reconciler invokes it on a ticker so a transient proposal failure
-// self-heals on the next tick. Unlike the cluster config, the policy flows
-// through AdmitClusterPolicy as an internal audited SetClusterPolicy order so
-// the checker can re-derive it; the write-readiness gate exempts this
-// non-business proposal so it is never blocked by its own cluster-policy gate.
+// self-heals on the next tick. AdmitClusterPolicy emits a configuration-only
+// control; capability transitions have an independent durable lifecycle.
+// The write-readiness gate exempts this non-business proposal.
 func reconcileClusterPolicy(ctx context.Context, admission ctrl.Admission, store *dal.Store, cfg Config, isLeader func() bool, logger logging.Logger) {
 	if !isLeader() {
 		return
@@ -1945,13 +1981,7 @@ func reconcileClusterPolicy(ctx context.Context, admission ctrl.Admission, store
 		}
 	}
 
-	// The operator-controlled revision is an independent monotonic guard. A
-	// capability-only reconciliation may advance a policy revision, but it must
-	// never make a stale leader's ordinary configuration look newer than the
-	// revision it was configured to own. A higher applied revision is therefore
-	// acceptable only when the operator-controlled fields still match; this lets
-	// later capability-only reconciliations continue without requiring another
-	// flag bump.
+	// A stale leader must never overwrite newer configuration with local flags.
 	appliedRev := applied.GetRevision()
 	if applied != nil && appliedRev > cfg.ClusterPolicyRevision && !sameClusterPolicyConfiguration(applied, desired) {
 		return
@@ -1990,9 +2020,8 @@ func reconcileClusterPolicy(ctx context.Context, admission ctrl.Admission, store
 }
 
 // sameClusterPolicyConfiguration compares the operator-controlled fields while
-// deliberately ignoring capability activations. Capabilities are reconciled
-// from membership evidence and may legitimately require a revision bump; all
-// other fields must remain protected by the configured revision.
+// deliberately ignoring capability activations and their independent lifecycle.
+// Configuration fields remain protected by the configured revision.
 func sameClusterPolicyConfiguration(a, b *commonpb.ClusterPolicy) bool {
 	if a == nil || b == nil {
 		return a == b

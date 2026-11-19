@@ -53,6 +53,14 @@ The CLI uses a subcommand structure:
 ledger run [flags]
 ```
 
+Capability activation is automatic, not deployment configuration. For the
+stopped RC.4 to RC.5 upgrade, keep the existing flags. The independent worker
+activates capabilities after all voters and learners commit support evidence.
+Business admission waits from that readiness point until activation commits,
+including after drain release; ordinary configuration updates can still proceed.
+This mechanism does not register any business capability by itself. See
+[activation and rollback limits](upgrades.md#configuration-and-capability-state).
+
 Available flags for `run`:
 - `--node-id`: Numeric node ID for this instance (must be non-zero)
 - `--cluster-id`: Cluster ID for inter-node communication and persisted configuration validation (required)

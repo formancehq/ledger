@@ -313,9 +313,8 @@ const (
 	// still-alive removed pod from rejoining and being auto-promoted. See
 	// docs/technical/architecture/subsystems/consensus/removed-member-registry.md.
 	SubGlobRemovedMembers byte = 0x12
-	// SubGlobClusterPolicy stores the Raft-replicated cluster policy (EN-1827):
-	// [ZoneGlobal][SubGlobClusterPolicy] → common.ClusterPolicy. A single global
-	// row; revision monotonicity is validated in the FSM apply path.
+	// SubGlobClusterPolicy keeps flag-derived configuration at its original key.
+	// Schema-3 startup extracts embedded capabilities to SubGlobCapabilityState.
 	SubGlobClusterPolicy byte = 0x13
 	// SubGlobLastIdempotencyEvictionCutoff stores the monotonic high-water scan
 	// horizon of every applied IdempotencyEviction: [ZoneGlobal][…] → uint64 BE
@@ -333,6 +332,7 @@ const (
 	// from a complete scan. It lives outside SubGlobBloom so the prior binary's
 	// block reader ignores it during rollback.
 	SubGlobBloomProjectionSeal byte = 0x16
+	SubGlobCapabilityState     byte = 0x18
 )
 
 // ClusterTransient sub-prefixes (zone 0x07).

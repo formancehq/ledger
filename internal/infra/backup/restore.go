@@ -380,11 +380,25 @@ func ApplyExportsAndRebuild(ctx context.Context, logger logging.Logger, storage 
 		if err := policy.UnmarshalVT(snapshot.Data); err != nil {
 			return fmt.Errorf("decoding backup cluster policy: %w", err)
 		}
-		if policy.GetRevision() == 0 || policy.GetQueryCheckpointLimit() == 0 {
-			return errors.New("invalid backup cluster policy")
-		}
-		if err := domain.MetadataLimitsFromPolicy(policy).Validate(); err != nil {
-			return fmt.Errorf("invalid backup cluster policy limits: %w", err)
+		if policy.GetRevision() == 0 {
+			if !snapshot.ConfigurationAbsent {
+				return errors.New("backup configuration is missing without an explicit absence marker")
+			}
+			configuration := policy.CloneVT()
+			configuration.CapabilityActivations = nil
+			if !configuration.EqualVT(&commonpb.ClusterPolicy{}) {
+				return errors.New("invalid uninitialized backup configuration")
+			}
+		} else {
+			if snapshot.ConfigurationAbsent {
+				return errors.New("backup configuration contradicts its absence marker")
+			}
+			if policy.GetQueryCheckpointLimit() == 0 {
+				return errors.New("invalid backup cluster policy")
+			}
+			if err := domain.MetadataLimitsFromPolicy(policy).Validate(); err != nil {
+				return fmt.Errorf("invalid backup cluster policy limits: %w", err)
+			}
 		}
 	}
 	if len(manifest.Exports) == 0 && policy == nil {

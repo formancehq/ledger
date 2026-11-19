@@ -2873,6 +2873,10 @@ message ListOptions {
 
 // CapabilityActivation is intentionally small and wire-stable. IDs are fixed
 // integers owned by the producer, not hashes of implementation names.
+message CapabilityState {
+  repeated CapabilityActivation activations = 1;
+}
+
 message CapabilityActivation {
   fixed32 id = 1;
   bool active = 2;

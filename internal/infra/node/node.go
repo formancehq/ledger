@@ -3331,6 +3331,17 @@ func (node *Node) RefreshMembership(ctx context.Context, nodeID uint64, raftAddr
 	}, nil)
 }
 
+// RefreshSelfMembership commits the leader's own support before activation,
+// including on a single-member restart with no remote refresh endpoint.
+func (node *Node) RefreshSelfMembership(ctx context.Context, capabilityIDs []uint32) error {
+	current := node.membership.PeerAddresses()[node.config.NodeID]
+	if bytes.Equal(current.InstanceID, node.config.InstanceID) && slices.Equal(current.Capabilities, capabilityIDs) {
+		return nil
+	}
+
+	return node.RefreshMembership(ctx, node.config.NodeID, node.config.AdvertiseAddr, node.config.ServiceAdvertiseAddr, node.config.InstanceID, capabilityIDs)
+}
+
 // SetCapabilityGate updates the leader-side membership admission gate from a
 // committed ClusterPolicy projection.
 func (node *Node) SetCapabilityGate(required []uint32) error {
@@ -3859,6 +3870,8 @@ func (node *Node) ForceRemoveNode(ctx context.Context, nodeID uint64) error {
 
 		// EN-1045: land the blacklist entry atomically with the peer
 		// row delete in a single Pebble batch.
+		node.proposalAdmissionMu.Lock()
+		defer node.proposalAdmissionMu.Unlock()
 		if err := node.membership.UnregisterAndBlacklist(nodeID, instanceID, uint64(time.Now().UnixMicro())); err != nil {
 			return fmt.Errorf("force-remove atomic batch: %w", err)
 		}

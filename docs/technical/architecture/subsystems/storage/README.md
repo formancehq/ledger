@@ -14,6 +14,7 @@ in-cluster snapshot installation retain it. See the [restore classification](../
 | Document | Description |
 |----------|-------------|
 | [storage.md](storage.md) | WAL replacement after received snapshots, Raft apply-ack compaction boundary, runtime stores, persistence, and crash recovery. |
+| [control-state.md](control-state.md) | Schema-3 stopped migration, independent configuration/capability writes, single-commit activation, backup compatibility and rollback. |
 | [follower-sync.md](follower-sync.md) | Checkpoint streaming, session lifetime, SHA-256 verification, retries, and WAL reclamation after snapshot install. |
 | [storage-drivers.md](storage-drivers.md) | Pebble storage driver characteristics, configuration, and write session ownership. |
 | [spool.md](spool.md) | Committed entry buffer between Raft and FSM synchronization. |

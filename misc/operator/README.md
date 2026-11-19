@@ -14,6 +14,12 @@ for preflight, recovery and rollback limits. The rc.1-to-rc.2 transition
 uses a [maintenance-barrier rolling procedure](../../docs/ops/upgrades.md#account-metadata-address-validation):
 writes pause while voters are replaced one at a time. RC.2 to RC.3 remains rolling.
 
+RC.4 to RC.5 is a second mandatory stopped boundary for the schema-3 control
+state migration and new native configuration/capability proposals. Keep the PVCs
+and existing server flags. Activation is automatic after all members advertise
+support; there is no activation setting in the Cluster CRD. Binary rollback
+closes when a volume's schema migration commits, not when a capability activates.
+
 ## Overview
 
 The Ledger Operator manages `Cluster` and `EventSink` custom resources to automate the lifecycle of distributed ledger clusters and event delivery on Kubernetes. It handles:

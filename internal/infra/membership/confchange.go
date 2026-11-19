@@ -53,7 +53,7 @@ func ValidateCapabilityEvidence(ctx *ConfChangeContext, required []uint32) error
 	}
 	for _, id := range required {
 		if !slices.Contains(ctx.Capabilities, id) {
-			return fmt.Errorf("capability %d is required by the active policy", id)
+			return fmt.Errorf("capability %d is required by the committed policy", id)
 		}
 	}
 

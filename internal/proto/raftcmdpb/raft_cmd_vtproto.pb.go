@@ -1372,6 +1372,7 @@ func (m *SetClusterPolicyProposal) CloneVT() *SetClusterPolicyProposal {
 	}
 	r := new(SetClusterPolicyProposal)
 	r.Policy = m.Policy.CloneVT()
+	r.ConfigurationOnly = m.ConfigurationOnly
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
 		copy(r.unknownFields, m.unknownFields)
@@ -1443,6 +1444,15 @@ func (m *Proposal_SetClusterPolicy) CloneVT() isProposal_Payload {
 	}
 	r := new(Proposal_SetClusterPolicy)
 	r.SetClusterPolicy = m.SetClusterPolicy.CloneVT()
+	return r
+}
+
+func (m *Proposal_CapabilityActivation) CloneVT() isProposal_Payload {
+	if m == nil {
+		return (*Proposal_CapabilityActivation)(nil)
+	}
+	r := new(Proposal_CapabilityActivation)
+	r.CapabilityActivation = m.CapabilityActivation.CloneVT()
 	return r
 }
 
@@ -4603,6 +4613,9 @@ func (this *SetClusterPolicyProposal) EqualVT(that *SetClusterPolicyProposal) bo
 	if !this.Policy.EqualVT(that.Policy) {
 		return false
 	}
+	if this.ConfigurationOnly != that.ConfigurationOnly {
+		return false
+	}
 	return string(this.unknownFields) == string(that.unknownFields)
 }
 
@@ -4745,6 +4758,31 @@ func (this *Proposal_SetClusterPolicy) EqualVT(thatIface isProposal_Payload) boo
 		}
 		if q == nil {
 			q = &SetClusterPolicyProposal{}
+		}
+		if !p.EqualVT(q) {
+			return false
+		}
+	}
+	return true
+}
+
+func (this *Proposal_CapabilityActivation) EqualVT(thatIface isProposal_Payload) bool {
+	that, ok := thatIface.(*Proposal_CapabilityActivation)
+	if !ok {
+		return false
+	}
+	if this == that {
+		return true
+	}
+	if this == nil && that != nil || this != nil && that == nil {
+		return false
+	}
+	if p, q := this.CapabilityActivation, that.CapabilityActivation; p != q {
+		if p == nil {
+			p = &commonpb.CapabilityActivation{}
+		}
+		if q == nil {
+			q = &commonpb.CapabilityActivation{}
 		}
 		if !p.EqualVT(q) {
 			return false
@@ -9296,6 +9334,16 @@ func (m *SetClusterPolicyProposal) MarshalToSizedBufferVT(dAtA []byte) (int, err
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
+	if m.ConfigurationOnly {
+		i--
+		if m.ConfigurationOnly {
+			dAtA[i] = 1
+		} else {
+			dAtA[i] = 0
+		}
+		i--
+		dAtA[i] = 0x10
+	}
 	if m.Policy != nil {
 		size, err := m.Policy.MarshalToSizedBufferVT(dAtA[:i])
 		if err != nil {
@@ -9481,6 +9529,25 @@ func (m *Proposal_SetClusterPolicy) MarshalToSizedBufferVT(dAtA []byte) (int, er
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 		i--
 		dAtA[i] = 0x62
+	}
+	return len(dAtA) - i, nil
+}
+func (m *Proposal_CapabilityActivation) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *Proposal_CapabilityActivation) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	if m.CapabilityActivation != nil {
+		size, err := m.CapabilityActivation.MarshalToSizedBufferVT(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		i--
+		dAtA[i] = 0x6a
 	}
 	return len(dAtA) - i, nil
 }
@@ -13023,6 +13090,9 @@ func (m *SetClusterPolicyProposal) SizeVT() (n int) {
 		l = m.Policy.SizeVT()
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
+	if m.ConfigurationOnly {
+		n += 2
+	}
 	n += len(m.unknownFields)
 	return n
 }
@@ -13101,6 +13171,18 @@ func (m *Proposal_SetClusterPolicy) SizeVT() (n int) {
 	_ = l
 	if m.SetClusterPolicy != nil {
 		l = m.SetClusterPolicy.SizeVT()
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	return n
+}
+func (m *Proposal_CapabilityActivation) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.CapabilityActivation != nil {
+		l = m.CapabilityActivation.SizeVT()
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
 	return n
@@ -21837,6 +21919,26 @@ func (m *SetClusterPolicyProposal) UnmarshalVT(dAtA []byte) error {
 				return err
 			}
 			iNdEx = postIndex
+		case 2:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field ConfigurationOnly", wireType)
+			}
+			var v int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				v |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			m.ConfigurationOnly = bool(v != 0)
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
@@ -22302,6 +22404,47 @@ func (m *Proposal) UnmarshalVT(dAtA []byte) error {
 					return err
 				}
 				m.Payload = &Proposal_SetClusterPolicy{SetClusterPolicy: v}
+			}
+			iNdEx = postIndex
+		case 13:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field CapabilityActivation", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if oneof, ok := m.Payload.(*Proposal_CapabilityActivation); ok {
+				if err := oneof.CapabilityActivation.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+					return err
+				}
+			} else {
+				v := &commonpb.CapabilityActivation{}
+				if err := v.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+					return err
+				}
+				m.Payload = &Proposal_CapabilityActivation{CapabilityActivation: v}
 			}
 			iNdEx = postIndex
 		default:

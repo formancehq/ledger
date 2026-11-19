@@ -18,6 +18,7 @@ import (
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/query"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
@@ -192,7 +193,15 @@ func RunBackup(
 	}
 
 	// 7. Write updated manifest with new checkpoint and empty exports
+	policy, err := query.ReadClusterPolicy(readHandle)
+	if err != nil {
+		return nil, fmt.Errorf("reading checkpoint control state: %w", err)
+	}
+	if policy == nil {
+		policy = &commonpb.ClusterPolicy{}
+	}
 	newManifest := &Manifest{
+		ClusterPolicy: &ClusterPolicySnapshot{AppliedIndex: lastAppliedIndex, Data: policy.MarshalDeterministicVT(nil), ConfigurationAbsent: policy.GetRevision() == 0},
 		Checkpoint: &CheckpointManifest{
 			Timestamp:         time.Now().UTC().Format(time.RFC3339Nano),
 			LastAppliedIndex:  lastAppliedIndex,
@@ -529,7 +538,7 @@ func RunIncrementalBackup(
 	if policy != nil && appliedIndex >= policyFloor && currentLogSeq >= afterLogSeq && currentAuditSeq >= afterAuditSeq {
 		data := policy.MarshalDeterministicVT(nil)
 		if manifest.ClusterPolicy == nil || appliedIndex > manifest.ClusterPolicy.AppliedIndex || !bytes.Equal(manifest.ClusterPolicy.Data, data) {
-			manifest.ClusterPolicy = &ClusterPolicySnapshot{AppliedIndex: appliedIndex, Data: data}
+			manifest.ClusterPolicy = &ClusterPolicySnapshot{AppliedIndex: appliedIndex, Data: data, ConfigurationAbsent: policy.GetRevision() == 0}
 			policyChanged = true
 		}
 	}
