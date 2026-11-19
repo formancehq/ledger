@@ -34,7 +34,7 @@ import (
 
 // Frozen idempotency failures across an incremental restore. A keyed failure
 // committed after the last full checkpoint lives only in the exported audit
-// delta; RebuildDelta re-derives its frozen outcome from the audit reason
+// second checkpoint; its frozen outcome and audit reason
 // (state.IdempotencyValueFromAudit, gated on domain.KindForReason). If that
 // re-freeze were lost, a retry on the restored node would re-execute against
 // the new state and commit — a different outcome for the same key. If it
@@ -240,7 +240,7 @@ send [USD 10] (
 			Expect(err).To(Succeed())
 
 			// Every keyed failure after this checkpoint lands in the incremental
-			// delta, so its frozen outcome can only come back through RebuildDelta.
+			// second checkpoint, so its frozen outcome must be captured there.
 			backupResp, err := clusterClient.Backup(ctx, &clusterpb.BackupRequest{Storage: storage()})
 			Expect(err).To(Succeed())
 			Expect(backupResp.GetTotalFiles()).To(BeNumerically(">", 0))
@@ -320,9 +320,9 @@ send [USD 10] (
 		})
 
 		It("exports the delta", func() {
-			incResp, err := clusterClient.IncrementalBackup(ctx, &clusterpb.IncrementalBackupRequest{Storage: storage()})
+			incResp, err := clusterClient.Backup(ctx, &clusterpb.BackupRequest{Storage: storage()})
 			Expect(err).To(Succeed())
-			Expect(incResp.GetLogEntriesExported()).To(BeNumerically(">", 0))
+			Expect(incResp.GetTotalFiles()).To(BeNumerically(">", 0))
 		})
 	})
 

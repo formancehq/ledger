@@ -28,8 +28,8 @@ import (
 	"google.golang.org/grpc"
 )
 
-// Native policy is operational state: the incremental manifest must preserve
-// a post-checkpoint revision independently of the business audit chain.
+// Native policy is operational state: the second checkpoint must include
+// a later revision independently of the business audit chain.
 var _ = Describe("Restore replicated cluster policy", Ordered, func() {
 	const (
 		s3Bucket    = "restore-cluster-policy"
@@ -37,9 +37,8 @@ var _ = Describe("Restore replicated cluster policy", Ordered, func() {
 		seedLedger  = "policy-seed-ledger"
 		deltaLedger = "policy-delta-ledger"
 
-		// postCheckpointRevision is committed after the full backup, so it is
-		// reconstructable only from the exported delta, never copied from the
-		// checkpoint files.
+		// postCheckpointRevision is committed after the first backup and
+		// must be copied from the second checkpoint files.
 		postCheckpointRevision = uint64(2)
 		postCheckpointLimit    = uint64(5)
 	)
@@ -210,9 +209,9 @@ var _ = Describe("Restore replicated cluster policy", Ordered, func() {
 		})
 
 		It("exports a non-empty delta", func() {
-			incResp, err := clusterClient.IncrementalBackup(ctx, &clusterpb.IncrementalBackupRequest{Storage: storage()})
+			incResp, err := clusterClient.Backup(ctx, &clusterpb.BackupRequest{Storage: storage()})
 			Expect(err).To(Succeed())
-			Expect(incResp.GetLogEntriesExported()).To(BeNumerically(">", 0))
+			Expect(incResp.GetTotalFiles()).To(BeNumerically(">", 0))
 		})
 	})
 

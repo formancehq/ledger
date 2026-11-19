@@ -181,9 +181,9 @@ var _ = Describe("Restore removed event sink", Ordered, func() {
 			Expect(err).To(Succeed())
 			Expect(resp.GetSinks()).To(BeEmpty(), "the uninterrupted source must persist the removal")
 
-			incResp, err := clusterClient.IncrementalBackup(ctx, &clusterpb.IncrementalBackupRequest{Storage: storage()})
+			incResp, err := clusterClient.Backup(ctx, &clusterpb.BackupRequest{Storage: storage()})
 			Expect(err).To(Succeed())
-			Expect(incResp.GetLogEntriesExported()).To(BeNumerically(">", 0), "the removal log must be exported")
+			Expect(incResp.GetTotalFiles()).To(BeNumerically(">", 0), "the removal log must be exported")
 		})
 	})
 

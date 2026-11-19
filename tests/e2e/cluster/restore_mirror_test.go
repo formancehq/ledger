@@ -33,9 +33,8 @@ import (
 // (EN-1773, regression for EN-1776). Since EN-1513 there is no persisted mirror
 // cursor: LedgerBoundaries.last_mirror_v2_log_id — the FSM-applied high-water
 // mark — is the sole durable ingestion authority, and the worker resumes from
-// it. RebuildDelta replays the exported ledger logs to reconstruct the
-// boundaries, but it did not fold the mirror high-water mark, so a restored
-// mirror ledger came back with last_mirror_v2_log_id == 0.
+// it. The second checkpoint must capture this boundary after ingestion. A
+// restored mirror with last_mirror_v2_log_id == 0 would restart from log 1.
 //
 // The consequence is not a stalled mirror — it is a silent double ingestion.
 // The worker restarts at source log 1, and processMirrorIngest sees v2LogID ==
@@ -104,7 +103,7 @@ var _ = Describe("Restore mirror resume position", Ordered, func() {
 		// The mock's request count immediately before the restored node starts,
 		// and again at the instant the cursor was sampled. Equal means no source
 		// fetch completed before the read returned, so the cursor came from
-		// RebuildDelta rather than from a re-ingest. The mock is shared across
+		// the checkpoint rather than from a re-ingest. The mock is shared across
 		// all three phases, so the floor has to be captured, not assumed zero.
 		preRestoreRequests int
 		requestsAtSample   int
@@ -331,9 +330,9 @@ var _ = Describe("Restore mirror resume position", Ordered, func() {
 		})
 
 		It("exports the delta", func() {
-			incResp, err := clusterClient.IncrementalBackup(ctx, &clusterpb.IncrementalBackupRequest{Storage: storage()})
+			incResp, err := clusterClient.Backup(ctx, &clusterpb.BackupRequest{Storage: storage()})
 			Expect(err).To(Succeed())
-			Expect(incResp.GetLogEntriesExported()).To(BeNumerically(">", 0))
+			Expect(incResp.GetTotalFiles()).To(BeNumerically(">", 0))
 		})
 	})
 
@@ -430,7 +429,7 @@ var _ = Describe("Restore mirror resume position", Ordered, func() {
 
 			// Sample the rebuilt high-water mark while the source is still
 			// parked. GetLedger serves from local Pebble and needs no leader,
-			// so this answers whatever RebuildDelta wrote.
+			// so this answers what the second checkpoint captured.
 			Eventually(func(g Gomega) {
 				info, err := client.GetLedger(ctx, &servicepb.GetLedgerRequest{Ledger: ledgerName})
 				g.Expect(err).To(Succeed())
@@ -462,15 +461,15 @@ var _ = Describe("Restore mirror resume position", Ordered, func() {
 			// source log 1 and re-applies logs 1..4, and processMirrorIngest
 			// advances the cursor back to 4 — the same value a correct rebuild
 			// leaves. No source request means no ingest, so the value below was
-			// written by RebuildDelta.
+			// written before the second checkpoint.
 			//
 			// The mock was paused across the sample, so this holds by
 			// construction rather than by winning a race with the election.
 			Expect(requestsAtSample).To(Equal(preRestoreRequests),
 				"the mirror worker fetched from the source before the cursor was sampled, so this read cannot distinguish a rebuilt mark from a re-ingested one")
 
-			// EN-1776: RebuildDelta folded every other boundary field but left
-			// last_mirror_v2_log_id at 0, so this read returned 0.
+			// EN-1776: The second checkpoint must include the captured
+			// last_mirror_v2_log_id, not reset it to zero.
 			Expect(restoredCursor).To(Equal(preBackupCursor),
 				"restored mirror cursor must match the position the backup captured")
 		})
@@ -483,7 +482,7 @@ var _ = Describe("Restore mirror resume position", Ordered, func() {
 			//
 			// ReadMirrorSyncProgress derives FOLLOWING from
 			// `sourceHead > 0 && cursor >= sourceHead`, and the source head lives
-			// in SubPLMirrorSourceHead, which RebuildDelta does NOT reconstruct.
+			// in SubPLMirrorSourceHead, which must survive checkpoint restore.
 			// A correctly restored mirror has nothing left to ingest, so the
 			// ingest path — which normally bundles the source head into its data
 			// proposal — never runs. To keep an idle restored mirror from

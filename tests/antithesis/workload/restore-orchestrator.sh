@@ -7,16 +7,15 @@
 # on the shared volume, and waits for MODEL_RESTORE_RESP. One cycle here is a
 # full disaster-recovery pass through the operator:
 #
-#   1. incremental backup at the quiesce point (exec ledgerctl in a ledger pod)
+#   1. flushed checkpoint backup at the quiesce point (exec ledgerctl in a ledger pod)
 #   2. tear the cluster down: delete the Cluster CR and every PVC
 #   3. re-create the Cluster in restore mode (1 replica), exec
 #      `ledgerctl restore download` + `restore validate` + `restore finalize`
-#      (RebuildDelta runs inside bootstrap-from-backup on the restored store)
 #   4. flip the Cluster back to normal mode: pod 0 self-bootstraps from the
 #      restored store (RESTORED marker), the other replicas join fresh and
 #      snapshot-install the restored state
 #   5. answer ok/err; the driver resumes and its ordinary model checks validate
-#      the rebuilt state
+#      the restored checkpoint state
 #
 # The declarative parts (pod restarts, mode switches, membership) converge via
 # the operator no matter what faults hit the ledger pods; the imperative execs
@@ -24,9 +23,7 @@
 # failure the normal-mode Cluster spec is re-applied so the driver never
 # resumes against a cluster stuck in restore mode.
 #
-# An initial full backup is taken once at startup (mid-traffic is fine: the
-# restore replays the per-cycle incremental delta, cut at the quiesce point, on
-# top of whatever checkpoint the full backup carried).
+# Each cycle captures a complete checkpoint after the driver quiesces.
 set -uo pipefail
 
 NS="${NAMESPACE:-default}"
@@ -120,7 +117,7 @@ capture_specs() {
 # teardown_cluster is idempotent and succeeds only once the CR, pods, and
 # volume claims are verifiably gone — callers retry it until then. A lingering
 # claim would hand the re-created pod its old store back, silently voiding the
-# RebuildDelta coverage the cycle claims.
+# checkpoint coverage the cycle claims.
 teardown_cluster() {
 	k delete cluster "$CLUSTER" --ignore-not-found --wait=true --timeout=120s || return 1
 	local i
@@ -235,25 +232,16 @@ restore_from_backup() {
 # retried until it lands, however long that takes (the run's duration bounds
 # it; the driver's lease expiry just parks it on transient retries meanwhile).
 do_one_restore() {
-	# Incrementals build on the initial full backup; if that never succeeded
-	# (or a cycle-time check finds it missing), (re)take it here — the driver
-	# is quiesced, so a cycle-time full backup is as valid a base as any.
-	if [ "$FULL_BACKUP_OK" != 1 ]; then
-		retry 3 backup_exec "store backup" || { log "full backup (retry) failed"; return 1; }
-		FULL_BACKUP_OK=1
-	fi
+	# The model is quiesced, so this checkpoint captures its committed state.
+	retry 3 backup_exec "store backup" || { log "checkpoint backup failed"; return 1; }
 
-	retry 3 backup_exec "store incremental-backup" || { log "incremental backup failed"; return 1; }
-
-	# RebuildDelta only runs when the manifest carries exports; a cycle whose
-	# incremental exported nothing (e.g. taken right after a cycle-time full
-	# backup) would restore without exercising the replay. Fail it rather than
-	# record hollow coverage — the local runner has the same guard.
-	local exports
-	exports=$(jq -r '(.segmentsUploaded // 0) + (.logEntriesExported // 0)' "$BACKUP_OUT" 2>/dev/null)
-	case "$exports" in
+	# Object deduplication can make filesUploaded zero. Require an actual
+	# checkpoint inventory before destroying the source cluster.
+	local files
+	files=$(jq -r '.totalFiles // 0' "$BACKUP_OUT" 2>/dev/null)
+	case "$files" in
 	""|0|null)
-		log "incremental produced no exports (RebuildDelta would be a no-op); failing cycle"
+		log "checkpoint backup contains no files; failing cycle"
 		return 1
 		;;
 	esac
@@ -277,7 +265,7 @@ do_one_restore() {
 		until teardown_cluster; do sleep 10; done
 		sleep 10
 	done
-	log "cluster back up on the restored (RebuildDelta) store"
+	log "cluster back up on the restored checkpoint store"
 }
 
 main() {
@@ -285,14 +273,6 @@ main() {
 	wait_ready_replicas "$REPLICAS" 1800 || log "WARNING: cluster not ready at startup; continuing"
 
 	retry 10 capture_specs || { log "FATAL: cannot capture cluster spec"; exit 1; }
-
-FULL_BACKUP_OK=0
-log "taking initial full backup"
-if retry 5 backup_exec "store backup"; then
-	FULL_BACKUP_OK=1
-else
-	log "WARNING: initial full backup failed; the next cycle retakes it before its incremental"
-fi
 
 log "armed; watching $REQ"
 while true; do
@@ -305,7 +285,7 @@ while true; do
 	if do_one_restore; then
 		printf 'ok\n' > "$RESP"
 	else
-		# Only pre-teardown steps report err (backup / exports guard), and
+		# Only pre-teardown steps report err (backup / checkpoint guard), and
 		# those leave the running cluster untouched — the driver just logs
 		# the err and continues against it. Post-teardown failures never
 		# reach here: do_one_restore retries the restore until it lands.

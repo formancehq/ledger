@@ -3,6 +3,9 @@
 package e2e
 
 import (
+	"encoding/json"
+	"io"
+	"strings"
 	"testing"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -27,16 +30,47 @@ func TestFullBackup_S3Objects(t *testing.T) {
 	}
 }
 
-// TestIncrementalBackup_S3Segments verifies that incremental backup
-// created additional segment objects in MinIO.
-func TestIncrementalBackup_S3Segments(t *testing.T) {
+// TestRepeatedCheckpointBackup_S3Objects verifies the second checkpoint
+// left a restorable object inventory in MinIO.
+func TestRepeatedCheckpointBackup_S3Objects(t *testing.T) {
 	bucket := "e2e-incr-backup"
 
 	out, err := s3Client.ListObjectsV2(ctx, &s3.ListObjectsV2Input{
 		Bucket: aws.String(bucket),
 	})
 	require.NoError(t, err, "listing objects in bucket %s", bucket)
-	assert.NotEmpty(t, out.Contents, "incremental backup should have created objects in S3 bucket %s", bucket)
+	assert.NotEmpty(t, out.Contents, "checkpoint backup should have created objects in S3 bucket %s", bucket)
+	var manifestKey string
+	objects := make(map[string]struct{}, len(out.Contents))
+	for _, obj := range out.Contents {
+		objects[aws.ToString(obj.Key)] = struct{}{}
+		if strings.HasSuffix(aws.ToString(obj.Key), "/manifest.json") {
+			manifestKey = aws.ToString(obj.Key)
+		}
+	}
+	require.NotEmpty(t, manifestKey, "checkpoint manifest missing")
+	manifestObject, err := s3Client.GetObject(ctx, &s3.GetObjectInput{Bucket: aws.String(bucket), Key: aws.String(manifestKey)})
+	require.NoError(t, err)
+	defer manifestObject.Body.Close()
+	manifestBytes, err := io.ReadAll(manifestObject.Body)
+	require.NoError(t, err)
+	var manifest struct {
+		Checkpoint struct {
+			LastLogSequence uint64 `json:"lastLogSequence"`
+			Files           map[string]struct {
+				Key string `json:"key"`
+			} `json:"files"`
+		} `json:"checkpoint"`
+		Exports []json.RawMessage `json:"exports"`
+	}
+	require.NoError(t, json.Unmarshal(manifestBytes, &manifest))
+	require.Empty(t, manifest.Exports, "checkpoint-only manifest must not publish exports")
+	require.Positive(t, manifest.Checkpoint.LastLogSequence)
+	require.NotEmpty(t, manifest.Checkpoint.Files)
+	for name, file := range manifest.Checkpoint.Files {
+		_, ok := objects[file.Key]
+		require.True(t, ok, "manifest file %s references missing object %s", name, file.Key)
+	}
 
 	for _, obj := range out.Contents {
 		t.Logf("  %s (%d bytes)", *obj.Key, *obj.Size)

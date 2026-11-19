@@ -1,8 +1,0 @@
-apiVersion: ledger.formance.com/v1alpha1
-kind: Backup
-metadata:
-  name: incr-bk
-status:
-  phase: Ready
-  lastIncrementalBackup:
-    (time != null): true

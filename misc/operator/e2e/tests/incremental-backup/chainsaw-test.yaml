@@ -44,7 +44,7 @@ spec:
         - assert:
             file: assert-full-done.yaml
 
-    # Insert new data AFTER the full backup so the incremental has something to export.
+    # Insert new data after the first checkpoint.
     - name: Provision additional data
       try:
         - script:
@@ -53,10 +53,18 @@ spec:
                 /bin/sh -c './ledgerctl provision run subscription --scale 0.5 --server 127.0.0.1:8888 --insecure --auth-token "$CLUSTER_SECRET"'
             timeout: 120s
 
-    - name: Wait for incremental backup
+    - name: Run second checkpoint backup
       try:
+        - apply:
+            file: second-run.yaml
         - assert:
-            file: assert-incremental-done.yaml
+            resource:
+              apiVersion: ledger.formance.com/v1alpha1
+              kind: BackupRun
+              metadata:
+                name: second-checkpoint
+              status:
+                phase: Succeeded
 
     - name: Verify S3 content
       try:
@@ -64,7 +72,7 @@ spec:
             content: |
               set -eu
               cd "$(git rev-parse --show-toplevel)/misc/operator"
-              test_name=TestIncrementalBackup_S3Segments
+              test_name=TestRepeatedCheckpointBackup_S3Objects
               go test -tags e2e -count=1 -list "^${test_name}$" ./e2e/... | grep -Fqx "${test_name}"
               go test -tags e2e -v -count=1 -run "^${test_name}$" -timeout 30s ./e2e/...
             timeout: 60s

@@ -2,7 +2,7 @@
 
 The Kubernetes `Backup` controller schedules `BackupRun` resources; the
 `BackupRun` controller executes them through Jobs. This is control-plane
-operational state, outside Ledger's audited store and exported backup data.
+operational state, outside Ledger's audited store and checkpoint backup data.
 Restoring Ledger data into another cluster does not restore these Kubernetes
 objects or their scheduling cursors.
 
@@ -67,7 +67,7 @@ protocol revision.
 ## Retention must not reset the schedule (EN-2000)
 
 History limits control retained Kubernetes execution records. Deleting those
-records must not cause an early execution or disable an incremental schedule.
+records must not cause an early execution or disable the checkpoint schedule.
 Previously the scheduler derived its only execution cursor from retained
 terminal children. Zero successful or failed retention erased that cursor,
 so the next reconciliation, including after restart, ran immediately.
@@ -82,22 +82,31 @@ executions use the first cron occurrence strictly after the completion cursor.
 A changed cron expression is evaluated against the same cursor.
 
 `lastFullBackup` and `lastIncrementalBackup` remain successful-result summaries;
-failed runs never manufacture those summaries. Incremental scheduling requires
-a successful full summary, which survives pruning. `nextFullBackupTime` and
-`nextIncrementalBackupTime` remain derived next-deadline information, cleared
-when their schedule is absent (or the incremental prerequisite is missing).
+failed runs never manufacture those summaries. New scheduled runs are always
+`Full` checkpoints. When the legacy `spec.schedule.incremental` expression is
+set, it takes precedence as the checkpoint cadence during migration; otherwise
+`spec.schedule.full` is used. The effective Full cursor is the later of the
+two terminal completion cursors, avoiding an early run on upgrade.
+An old Pending Incremental run rejected before Job creation never published a
+backup, so its failure does not advance the incremental completion cursor; the
+replacement Full checkpoint can run immediately. A legacy Incremental Job that
+publishes a full checkpoint contributes its `status.full` to the parent's
+`lastFullBackup` summary even though its type remains Incremental.
+`nextFullBackupTime` is the derived next deadline; `nextIncrementalBackupTime`
+is cleared.
 They are not scheduling cursors: while a run is active they describe the next
 cron occurrence after the current reconciliation time.
 
 ## Reconciliation and failure ordering
 
 1. Read the Backup directly from the API server, validate the Cluster and cron
-   expressions, then list child runs directly from the API server. A failed direct
+   expression, then list child runs directly from the API server. A failed direct
    read stops reconciliation before any scheduling or pruning.
 2. Refresh completion cursors monotonically and successful-result summaries in
    memory from the observed children.
-3. Evaluate schedules and create due runs. A same-type Pending, Running, or
-   not-yet-initialized child prevents another scheduled run. The BackupRun
+3. Evaluate the effective checkpoint schedule and create due Full runs. A Full
+   or legacy Incremental Pending, Running, or not-yet-initialized child prevents
+   another scheduled run. The BackupRun
    controller separately gates execution on Running siblings across both types.
 4. Persist the complete Backup status, including cursors, summaries, next
    deadlines, phase and conditions.
@@ -132,11 +141,19 @@ protocol revision.
 `misc/operator/internal/controller/backup_scheduling_test.go` combines daily
 scheduling, zero retention, successful and failed completion, and fresh
 reconciler instances before and at the next deadline. Additional cases cover
-write/delete failures, active runs, independent incremental progress, disabled
+write/delete failures, active legacy runs, cadence migration, disabled
 and changed schedules, older retained history, and a parent informer lagging
 behind child deletion.
 
 ## Completed Job result recovery
+
+New `Incremental` BackupRuns are rejected before Job creation. During rolling
+upgrade, an older operator may already have created an Incremental Job; the new
+operator checks the API server directly before concluding the Job is absent,
+then continues to observe and finalize that existing Job. A Ledger-first
+rollout can produce a full-checkpoint JSON result from the hidden CLI alias;
+the new operator recognizes that shape and records full checkpoint statistics
+on the run and parent. Old incremental JSON remains readable for pre-upgrade Jobs.
 
 A successful Job is execution evidence; the run becomes Succeeded only after its
 summary is acquired, parsed, and persisted with the terminal status. A Pod-list
@@ -158,8 +175,8 @@ or resubmission for permanently unavailable result evidence, and historical Fail
 runs are not reopened.
 
 The result-recovery regressions in `backuprun_result_recovery_test.go` exercise
-full and incremental runs, one-time Pod-list errors and missing Pods, fresh
-reconcilers, sibling exclusion, parent accounting, incremental eligibility and zero
+full and legacy incremental runs, one-time Pod-list errors and missing Pods, fresh
+reconcilers, sibling exclusion, parent accounting and zero
 retention. `backuprun_result_logs_test.go` exercises fallback log opening and read
 failures followed by complete valid summaries. These client/HTTP fixtures prove
 controller decisions, not kubelet execution or Kubernetes garbage collection.

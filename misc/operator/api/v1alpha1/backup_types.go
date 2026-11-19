@@ -44,13 +44,15 @@ type BackupDestination struct {
 	S3SecretAccessKeyFrom *SecretKeyRef `json:"s3SecretAccessKeyFrom,omitempty"`
 }
 
-// BackupSchedule defines cron schedules for full and incremental backups.
+// BackupSchedule defines the checkpoint cadence. The legacy incremental field
+// takes precedence during migration so existing Backup resources keep running.
 type BackupSchedule struct {
 	// Full is the cron expression for full backups (e.g. "0 2 * * 0" for weekly Sunday 2am).
 	// +optional
 	Full string `json:"full,omitempty"`
 
-	// Incremental is the cron expression for incremental backups (e.g. "0 * * * *" for hourly).
+	// Incremental is a deprecated cron expression. When set, it schedules Full
+	// checkpoint runs until the field is cleared and Full is configured.
 	// +optional
 	Incremental string `json:"incremental,omitempty"`
 }
@@ -65,7 +67,7 @@ type BackupSpec struct {
 	// +kubebuilder:validation:Required
 	Destination BackupDestination `json:"destination"`
 
-	// Schedule defines cron schedules for full and incremental backups.
+	// Schedule defines the checkpoint backup cadence.
 	// Both entries are optional; a Backup without any schedule is valid
 	// and acts as a backup configuration template for manual BackupRun resources.
 	// +optional
