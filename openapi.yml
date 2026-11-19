@@ -8739,9 +8739,11 @@ components:
         firstSeen:
           type: string
           format: date-time
+          description: Earliest transaction timestamp in the pattern, in RFC3339 with its microseconds. Omitted when unknown.
         lastSeen:
           type: string
           format: date-time
+          description: Latest transaction timestamp in the pattern, in RFC3339 with its microseconds. Omitted when unknown.
         transactionsPerDay:
           type: number
           format: double

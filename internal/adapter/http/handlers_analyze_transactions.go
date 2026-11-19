@@ -39,10 +39,10 @@ type normalizedPostingJSON struct {
 }
 
 type temporalStatsJSON struct {
-	FirstSeen          string            `json:"firstSeen,omitempty"`
-	LastSeen           string            `json:"lastSeen,omitempty"`
-	TransactionsPerDay float64           `json:"transactionsPerDay"`
-	PeakHours          []*hourBucketJSON `json:"peakHours,omitempty"`
+	FirstSeen          *commonpb.Timestamp `json:"firstSeen,omitempty"`
+	LastSeen           *commonpb.Timestamp `json:"lastSeen,omitempty"`
+	TransactionsPerDay float64             `json:"transactionsPerDay"`
+	PeakHours          []*hourBucketJSON   `json:"peakHours,omitempty"`
 }
 
 type hourBucketJSON struct {
@@ -112,14 +112,9 @@ func toFlowPatternJSON(fp *servicepb.FlowPattern) (*flowPatternJSON, error) {
 
 	if fp.GetTemporal() != nil {
 		result.Temporal = &temporalStatsJSON{
+			FirstSeen:          fp.GetTemporal().GetFirstSeen(),
+			LastSeen:           fp.GetTemporal().GetLastSeen(),
 			TransactionsPerDay: fp.GetTemporal().GetTransactionsPerDay(),
-		}
-		if fp.GetTemporal().GetFirstSeen() != nil {
-			result.Temporal.FirstSeen = fp.GetTemporal().GetFirstSeen().AsTime().Format("2006-01-02T15:04:05Z07:00")
-		}
-
-		if fp.GetTemporal().GetLastSeen() != nil {
-			result.Temporal.LastSeen = fp.GetTemporal().GetLastSeen().AsTime().Format("2006-01-02T15:04:05Z07:00")
 		}
 
 		for _, h := range fp.GetTemporal().GetPeakHours() {
