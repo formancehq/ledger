@@ -217,7 +217,6 @@ func buildEnvVars(ledger *ledgerv1alpha1.Cluster, targetTLSMode string, credenti
 		// DAL-specific Pebble flags
 		envs = appendIfQuantity(envs, "PEBBLE_WAL_BYTES_PER_SYNC", spec.Pebble.WalBytesPerSync)
 		envs = appendIfStr(envs, "PEBBLE_WAL_MIN_SYNC_INTERVAL", spec.Pebble.WalMinSyncInterval)
-		envs = appendIfBool(envs, "PEBBLE_DISABLE_WAL", spec.Pebble.DisableWAL)
 		envs = appendIfInt64(envs, "PEBBLE_INCREMENTAL_COMPACT_THRESHOLD", spec.Pebble.IncrementalCompactThreshold)
 		envs = appendIfInt32(envs, "PEBBLE_MAX_CHECKPOINTS", spec.Pebble.MaxCheckpoints)
 		if spec.Pebble.ValueSeparation != nil {

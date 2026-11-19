@@ -5,6 +5,9 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
+	"go.opentelemetry.io/otel/metric/noop"
+
+	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 )
 
 func TestDefaultConfig(t *testing.T) {
@@ -23,6 +26,14 @@ func TestDefaultConfig(t *testing.T) {
 	require.Equal(t, 1<<20, cfg.WALBytesPerSync)
 	require.Equal(t, 2, cfg.MaxConcurrentCompactions)
 	require.Equal(t, time.Duration(0), cfg.WALMinSyncInterval)
-	require.False(t, cfg.DisableWAL)
 	require.Equal(t, 10, cfg.MaxCheckpoints)
+}
+
+func TestNewStoreAlwaysEnablesWAL(t *testing.T) {
+	t.Parallel()
+
+	store, err := NewStore(t.TempDir(), logging.Testing(), noop.NewMeterProvider().Meter("test"), DefaultConfig())
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, store.Close()) })
+	require.False(t, store.opts.DisableWAL)
 }

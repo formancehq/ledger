@@ -74,7 +74,6 @@ These have indirect or minor memory impact:
 | `--pebble-bytes-per-sync` | 1 MiB | Bytes written before fsync during flush/compaction |
 | `--pebble-wal-bytes-per-sync` | 1 MiB | WAL bytes written before fsync |
 | `--pebble-wal-min-sync-interval` | 0 | Min delay between WAL syncs (0 = immediate) |
-| `--pebble-disable-wal` | false | Disables WAL entirely (**dangerous**: data loss on crash) |
 
 ---
 

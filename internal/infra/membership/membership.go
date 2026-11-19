@@ -459,7 +459,9 @@ func (m *Membership) UnregisterAndBlacklist(nodeID uint64, instanceID []byte, re
 		return fmt.Errorf("writing blacklist entry in force-remove batch: %w", err)
 	}
 
-	if err := session.Commit(); err != nil {
+	// Force-remove bypasses Raft apply, so neither its peer deletion nor its
+	// tombstone can be reconstructed from the WAL after an abrupt exit.
+	if err := session.CommitSync(); err != nil {
 		return fmt.Errorf("commit force-remove batch: %w", err)
 	}
 
