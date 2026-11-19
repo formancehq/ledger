@@ -2315,8 +2315,9 @@ ledgerctl s bk --driver s3 --s3-bucket my-bucket
 #### store incremental-backup (deprecated alias)
 
 This hidden compatibility command invokes the same full checkpoint path as
-`store backup`. It accepts the same destination flags. Its legacy export
-counters are zero; use `store backup` for new automation.
+`store backup`. It accepts the same destination flags and prints the normal
+checkpoint result, including `filesUploaded` and `totalFiles`. Use `store backup`
+for new automation.
 
 ```bash
 ledgerctl store incremental-backup --driver s3 --s3-bucket my-bucket
