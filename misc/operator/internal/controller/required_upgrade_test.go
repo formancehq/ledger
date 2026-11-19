@@ -526,11 +526,41 @@ func TestStoppedUpgradeWaitsForOldPodsAndRetainsClaim(t *testing.T) {
 	replacement.UID = types.UID("newer-sts")
 	require.NoError(t, c.Create(ctx, replacement))
 	require.NoError(t, c.Status().Update(ctx, replacement))
-	for _, phase := range []string{"Verifying", "Unblocking"} {
+	for _, phase := range []string{"Verifying", "Unblocking", "Adopting"} {
 		proceed, _, err = r.reconcileRequiredUpgradeWithExec(ctx, cluster, replacement, exec)
 		require.NoError(t, err)
 		require.False(t, proceed)
 		require.Equal(t, phase, cluster.Status.Upgrade.Phase)
+	}
+	require.False(t, drained)
+	require.True(t, released)
+	require.Contains(t, strings.Join(commands, " "), "'end-drain'")
+	require.Equal(t, appsv1.DeletePersistentVolumeClaimRetentionPolicyType, buildRetentionPolicy(cluster).WhenDeleted)
+	proceed, _, err = r.reconcileRequiredUpgradeWithExec(ctx, cluster, replacement, exec)
+	require.NoError(t, err)
+	require.False(t, proceed)
+	require.NoError(t, c.Get(ctx, key, replacement))
+	require.Equal(t, appsv1.DeletePersistentVolumeClaimRetentionPolicyType, replacement.Spec.PersistentVolumeClaimRetentionPolicy.WhenDeleted)
+	require.Equal(t, appsv1.DeletePersistentVolumeClaimRetentionPolicyType, replacement.Spec.PersistentVolumeClaimRetentionPolicy.WhenScaled)
+	// Ordinary reconciliation recreates a missing replacement with the requested
+	// policy while the claim inventory stays recorded.
+	proceed, _, err = r.reconcileRequiredUpgradeWithExec(ctx, cluster, nil, exec)
+	require.NoError(t, err)
+	require.True(t, proceed)
+	require.Equal(t, "Adopting", cluster.Status.Upgrade.Phase)
+	// Until the replacement owns every recorded claim, Cluster deletion still
+	// needs the finalizer and the claim inventory.
+	for _, name := range []string{claimName, dataClaimName} {
+		proceed, _, err = r.reconcileRequiredUpgradeWithExec(ctx, cluster, replacement, exec)
+		require.NoError(t, err)
+		require.False(t, proceed)
+		require.Equal(t, "Adopting", cluster.Status.Upgrade.Phase)
+		require.NoError(t, c.Get(ctx, types.NamespacedName{Name: cluster.Name, Namespace: cluster.Namespace}, persisted))
+		require.Contains(t, persisted.Finalizers, upgradeClaimsFinalizer)
+		adopted := &corev1.PersistentVolumeClaim{}
+		require.NoError(t, c.Get(ctx, types.NamespacedName{Name: name, Namespace: cluster.Namespace}, adopted))
+		adopted.OwnerReferences = []metav1.OwnerReference{{APIVersion: "apps/v1", Kind: "StatefulSet", Name: replacement.Name, UID: replacement.UID}}
+		require.NoError(t, c.Update(ctx, adopted))
 	}
 	proceed, _, err = r.reconcileRequiredUpgradeWithExec(ctx, cluster, replacement, exec)
 	require.NoError(t, err)
@@ -538,10 +568,6 @@ func TestStoppedUpgradeWaitsForOldPodsAndRetainsClaim(t *testing.T) {
 	require.Nil(t, cluster.Status.Upgrade)
 	require.NoError(t, c.Get(ctx, types.NamespacedName{Name: cluster.Name, Namespace: cluster.Namespace}, persisted))
 	require.NotContains(t, persisted.Finalizers, upgradeClaimsFinalizer)
-	require.Equal(t, appsv1.DeletePersistentVolumeClaimRetentionPolicyType, buildRetentionPolicy(cluster).WhenDeleted)
-	require.False(t, drained)
-	require.True(t, released)
-	require.Contains(t, strings.Join(commands, " "), "'end-drain'")
 	proceed, _, err = r.reconcileRequiredUpgradeWithExec(ctx, cluster, replacement, exec)
 	require.NoError(t, err)
 	require.True(t, proceed)

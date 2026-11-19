@@ -194,6 +194,9 @@ func (r *ClusterReconciler) reconcileRequiredUpgradeWithExec(ctx context.Context
 	if err := r.ensureUpgradeClaimsFinalizer(ctx, ledger); err != nil {
 		return false, ctrl.Result{}, err
 	}
+	if state.Phase == "Adopting" {
+		return r.reconcileUpgradeClaimAdoption(ctx, ledger, sts)
+	}
 	if ledger.Spec.Image.Tag != state.Target {
 		return false, ctrl.Result{}, fmt.Errorf("upgrade from %s to %s is in progress; restore spec.image.tag to %s before changing target", state.Source, state.Target, state.Target)
 	}
@@ -399,14 +402,11 @@ func (r *ClusterReconciler) reconcileRequiredUpgradeWithExec(ctx context.Context
 		if !ready {
 			return false, ctrl.Result{RequeueAfter: requiredUpgradePoll}, nil
 		}
-		if err := r.persistUpgrade(ctx, ledger, nil); err != nil {
-			return false, ctrl.Result{}, err
-		}
-		if err := r.releaseUpgradeClaimsFinalizer(ctx, ledger); err != nil {
+		if err := r.advanceUpgrade(ctx, ledger, "Adopting"); err != nil {
 			return false, ctrl.Result{}, err
 		}
 
-		return true, ctrl.Result{}, nil
+		return false, ctrl.Result{RequeueAfter: requiredUpgradePoll}, nil
 	default:
 		return false, ctrl.Result{}, fmt.Errorf("unknown stopped upgrade phase %q", state.Phase)
 	}

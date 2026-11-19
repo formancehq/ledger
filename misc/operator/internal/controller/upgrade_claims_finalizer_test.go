@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -18,20 +19,24 @@ import (
 	ledgerv1alpha1 "github.com/formancehq/ledger/misc/operator/api/v1alpha1"
 )
 
-// The source StatefulSet is gone and its claims are detached, so garbage
-// collection no longer applies the requested whenDeleted policy to them.
+// The recorded claims are detached while the source StatefulSet is deleted
+// (Deleting) and until the replacement adopts them (Adopting), so garbage
+// collection does not apply the requested whenDeleted policy to them.
 func TestStoppedUpgradeClusterDeletionAppliesRequestedClaimRetention(t *testing.T) {
 	t.Parallel()
 	for _, tt := range []struct {
+		phase       string
 		whenDeleted string
 		dataClaim   string
 		deleted     bool
 	}{
-		{whenDeleted: "Delete", dataClaim: "replaced", deleted: true},
-		{whenDeleted: "Delete", dataClaim: "owned", deleted: true},
-		{whenDeleted: "Retain", dataClaim: "replaced", deleted: false},
+		{phase: "Deleting", whenDeleted: "Delete", dataClaim: "replaced", deleted: true},
+		{phase: "Deleting", whenDeleted: "Delete", dataClaim: "owned", deleted: true},
+		{phase: "Deleting", whenDeleted: "Retain", dataClaim: "replaced", deleted: false},
+		{phase: "Adopting", whenDeleted: "Delete", dataClaim: "replaced", deleted: true},
+		{phase: "Adopting", whenDeleted: "Delete", dataClaim: "owned", deleted: true},
 	} {
-		t.Run(tt.whenDeleted+"/"+tt.dataClaim, func(t *testing.T) {
+		t.Run(tt.phase+"/"+tt.whenDeleted+"/"+tt.dataClaim, func(t *testing.T) {
 			t.Parallel()
 			ctx := context.Background()
 			cluster := newMinimalCluster()
@@ -47,7 +52,7 @@ func TestStoppedUpgradeClusterDeletionAppliesRequestedClaimRetention(t *testing.
 				TargetSpecHash: computePodSpecHash(&cluster.Spec, false), ExpectedReplicas: 1,
 				ClaimUIDs:  map[string]string{walName: "wal-uid", dataName: "data-uid"},
 				VolumeUIDs: map[string]string{"pv-wal": "pv-wal-uid", "pv-data": "pv-data-uid"},
-				DrainEpoch: "epoch", Phase: "Deleting",
+				DrainEpoch: "epoch", Phase: tt.phase,
 			}
 			claim := func(name, uid, pv string) *corev1.PersistentVolumeClaim {
 				return &corev1.PersistentVolumeClaim{
@@ -63,23 +68,32 @@ func TestStoppedUpgradeClusterDeletionAppliesRequestedClaimRetention(t *testing.
 					Status:     corev1.PersistentVolumeStatus{Phase: corev1.VolumeBound},
 				}
 			}
-			oldPod := &corev1.Pod{ObjectMeta: metav1.ObjectMeta{Name: stsName + "-0", Namespace: cluster.Namespace}}
+			// The old Pod keeps the upgrade in Deleting; the replacement StatefulSet
+			// has not adopted the claims in Adopting.
+			workload, ownerUID := client.Object(&corev1.Pod{ObjectMeta: metav1.ObjectMeta{Name: stsName + "-0", Namespace: cluster.Namespace}}), types.UID("old-sts")
+			var sts *appsv1.StatefulSet
+			if tt.phase == "Adopting" {
+				sts = rcStatefulSet("ledger:"+cluster.Spec.Image.Tag, true)
+				sts.Name, sts.Namespace, sts.UID = stsName, cluster.Namespace, "new-sts"
+				sts.OwnerReferences = []metav1.OwnerReference{{APIVersion: "ledger.formance.com/v1alpha1", Kind: "Cluster", Name: cluster.Name, UID: cluster.UID, Controller: new(true)}}
+				sts.Spec.PersistentVolumeClaimRetentionPolicy = &appsv1.StatefulSetPersistentVolumeClaimRetentionPolicy{WhenDeleted: appsv1.RetainPersistentVolumeClaimRetentionPolicyType, WhenScaled: appsv1.RetainPersistentVolumeClaimRetentionPolicyType}
+				workload, ownerUID = sts, sts.UID
+			}
 			scheme := runtime.NewScheme()
 			require.NoError(t, clientgoscheme.AddToScheme(scheme))
 			require.NoError(t, ledgerv1alpha1.AddToScheme(scheme))
 			c := fake.NewClientBuilder().WithScheme(scheme).WithStatusSubresource(cluster).WithObjects(
-				cluster, oldPod,
+				cluster, workload,
 				claim(walName, "wal-uid", "pv-wal"), volume("pv-wal", "pv-wal-uid", walName, "wal-uid"),
 				claim(dataName, "data-uid", "pv-data"), volume("pv-data", "pv-data-uid", dataName, "data-uid"),
 			).Build()
 			r := &ClusterReconciler{Client: staleClaimOwnerReads{Client: c}, APIReader: c, Scheme: scheme, stopVersions: testStopVersions}
 			key := types.NamespacedName{Name: cluster.Name, Namespace: cluster.Namespace}
 
-			// The old Pod keeps the upgrade in Deleting.
-			proceed, _, err := r.reconcileRequiredUpgradeWithExec(ctx, cluster, nil, nil)
+			proceed, _, err := r.reconcileRequiredUpgradeWithExec(ctx, cluster, sts, nil)
 			require.NoError(t, err)
 			require.False(t, proceed)
-			require.Equal(t, "Deleting", cluster.Status.Upgrade.Phase)
+			require.Equal(t, tt.phase, cluster.Status.Upgrade.Phase)
 
 			require.NoError(t, c.Delete(ctx, cluster))
 			wantDataUID := types.UID("data-uid")
@@ -93,7 +107,7 @@ func TestStoppedUpgradeClusterDeletionAppliesRequestedClaimRetention(t *testing.
 				// Garbage collection reaps a claim that still has an owner.
 				owned := &corev1.PersistentVolumeClaim{}
 				require.NoError(t, c.Get(ctx, types.NamespacedName{Name: dataName, Namespace: cluster.Namespace}, owned))
-				owned.OwnerReferences = []metav1.OwnerReference{{APIVersion: "apps/v1", Kind: "StatefulSet", Name: stsName, UID: "old-sts"}}
+				owned.OwnerReferences = []metav1.OwnerReference{{APIVersion: "apps/v1", Kind: "StatefulSet", Name: stsName, UID: ownerUID}}
 				require.NoError(t, c.Update(ctx, owned))
 			}
 			_, err = r.Reconcile(ctx, ctrl.Request{NamespacedName: key})

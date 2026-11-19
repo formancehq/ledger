@@ -4,9 +4,12 @@ import (
 	"context"
 	"fmt"
 
+	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
@@ -85,4 +88,60 @@ func (r *ClusterReconciler) finalizeUpgradeClaims(ctx context.Context, ledger *l
 	}
 
 	return r.releaseUpgradeClaimsFinalizer(ctx, ledger)
+}
+
+// reconcileUpgradeClaimAdoption restores the requested retention policy on the
+// replacement StatefulSet and keeps the claim inventory and finalizer until
+// garbage collection can reap every recorded claim that whenDeleted=Delete
+// covers. Without a StatefulSet, ordinary reconciliation recreates it with the
+// requested policy.
+func (r *ClusterReconciler) reconcileUpgradeClaimAdoption(ctx context.Context, ledger *ledgerv1alpha1.Cluster, sts *appsv1.StatefulSet) (bool, ctrl.Result, error) {
+	if sts == nil {
+		return true, ctrl.Result{}, nil
+	}
+	if !metav1.IsControlledBy(sts, ledger) {
+		return false, ctrl.Result{}, fmt.Errorf("StatefulSet %s is not controlled by Cluster %s", sts.Name, ledger.Name)
+	}
+	changed, err := r.reconcileStatefulSetRetentionPolicy(ctx, ledger, sts)
+	if err != nil {
+		return false, ctrl.Result{}, fmt.Errorf("restoring replacement StatefulSet claim retention: %w", err)
+	}
+	if changed {
+		return false, ctrl.Result{RequeueAfter: requiredUpgradePoll}, nil
+	}
+	if buildRetentionPolicy(ledger).WhenDeleted == appsv1.DeletePersistentVolumeClaimRetentionPolicyType {
+		for name, uid := range ledger.Status.Upgrade.ClaimUIDs {
+			pvc := &corev1.PersistentVolumeClaim{}
+			err := r.storageAPIReader().Get(ctx, types.NamespacedName{Name: name, Namespace: ledger.Namespace}, pvc)
+			if apierrors.IsNotFound(err) {
+				continue
+			}
+			if err != nil {
+				return false, ctrl.Result{}, fmt.Errorf("reading upgrade PVC %s: %w", name, err)
+			}
+			if string(pvc.UID) != uid || !pvc.DeletionTimestamp.IsZero() || ownedBy(pvc, sts.UID) {
+				continue
+			}
+
+			return false, ctrl.Result{RequeueAfter: requiredUpgradePoll}, nil
+		}
+	}
+	if err := r.persistUpgrade(ctx, ledger, nil); err != nil {
+		return false, ctrl.Result{}, err
+	}
+	if err := r.releaseUpgradeClaimsFinalizer(ctx, ledger); err != nil {
+		return false, ctrl.Result{}, err
+	}
+
+	return true, ctrl.Result{}, nil
+}
+
+func ownedBy(obj metav1.Object, owner types.UID) bool {
+	for _, ref := range obj.GetOwnerReferences() {
+		if ref.UID == owner {
+			return true
+		}
+	}
+
+	return false
 }

@@ -128,8 +128,8 @@ The upgrade state machine owns only the stop barrier, the PVC identity and
 retention checks, and the decision to release ordinary reconciliation. The
 ordinary StatefulSet reconciler creates the replacement and applies its pod
 template and mutable fields. Both paths use the same retention policy builder;
-while `status.upgrade` exists it selects `Retain`, and after the drain is
-released it restores the requested policy.
+it selects `Retain` until the drain is released, and the `Adopting` phase then
+restores the requested policy.
 While the workload is stopped, reconciliation still repairs the headless Service
 needed to reach voters, the ServiceAccount, and the TLS cluster Secret and
 auth-key ConfigMap needed by replacement Pods. It keeps an existing auth-key
@@ -150,6 +150,12 @@ Detached claims are outside garbage collection, so the operator holds the
 its recorded UID and no owner reference, then releases the finalizer. Claims
 still owned by the StatefulSet are left to garbage collection. With `Retain`,
 it releases the finalizer without deleting claims.
+Operators up to `v3.0.0-rc.4` run stopped upgrades without this finalizer. Do
+not delete a Cluster while a stopped upgrade started by such an operator is in
+progress. After upgrading the operator, wait until the Cluster carries the
+`ledger.formance.com/upgrade-claims` finalizer before deleting it. A Cluster
+deleted earlier with `whenDeleted: Delete` leaves its WAL and data PVCs and
+their volumes behind; delete them manually.
 The operator then deletes the StatefulSet with background propagation. It
 waits for the StatefulSet and **all old ordinal Pods** to disappear. A delete
 acknowledgement or elapsed time does not satisfy this condition. It does not
@@ -157,8 +163,12 @@ force-delete a stuck Pod. Only then may it create the target StatefulSet and
 reuse the same PVC names. The replacement keeps both PVC retention policies at
 `Retain` throughout the active upgrade, including recovery if the replacement
 disappears. After all target replicas are ready, the operator commits the drain
-release and waits for every member to persist it. Normal reconciliation then
-restores the requested retention policies. `status.upgrade` and the `Upgrade` condition show the
+release and waits for every member to persist it. In the `Adopting` phase it
+then restores the requested retention policies on the replacement StatefulSet.
+With `whenDeleted: Delete`, it keeps `status.upgrade` and the finalizer until
+the StatefulSet controller has made the replacement StatefulSet the owner of
+every recorded claim, so garbage collection covers each claim before the
+operator stops tracking it. `status.upgrade` and the `Upgrade` condition show the
 phase or blocking error. The operator retries after API failures; do not remove
 the status record or create a replacement workload by hand while it is active.
 If the replacement StatefulSet disappears before the drain is released, the

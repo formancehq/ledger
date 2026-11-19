@@ -716,9 +716,9 @@ func buildRetentionPolicy(ledger *ledgerv1alpha1.Cluster) *appsv1.StatefulSetPer
 	whenScaled := appsv1.RetainPersistentVolumeClaimRetentionPolicyType
 	whenDeleted := appsv1.RetainPersistentVolumeClaimRetentionPolicyType
 	// The replacement StatefulSet must not acquire PVC deletion ownership while
-	// recovery may still delete and recreate it. The requested policy is restored
-	// by the ordinary reconcile after status.upgrade has been cleared.
-	if ledger.Status.Upgrade != nil {
+	// recovery may still delete and recreate it. The Adopting phase restores the
+	// requested policy once the drain is released.
+	if ledger.Status.Upgrade != nil && ledger.Status.Upgrade.Phase != "Adopting" {
 		return &appsv1.StatefulSetPersistentVolumeClaimRetentionPolicy{WhenScaled: whenScaled, WhenDeleted: whenDeleted}
 	}
 
