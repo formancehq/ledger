@@ -125,3 +125,27 @@ func TestRun_IdempotencyOnlyNeedsTakesFastPath(t *testing.T) {
 	require.Zero(t, ep.GetCacheEpoch())
 	require.Len(t, ep.GetIdempotencyKeys(), 1)
 }
+
+// TestApplyBits_AttachesAbsenceExpectations pins that every plan applyBits
+// assigns, including a plan rebuilt under the guard, carries the batch's
+// absence expectations bound to each order's position.
+func TestApplyBits_AttachesAbsenceExpectations(t *testing.T) {
+	t.Parallel()
+
+	missing := NewCoverage()
+	missing.ExpectAbsent(0x01, []byte("absent"))
+	missing.ExpectAbsent(0x01, []byte("absent"))
+	perOrder := []*Coverage{NewCoverage(), missing}
+	absences := AbsenceExpectations(perOrder)
+	require.Len(t, absences, 1)
+	require.Equal(t, uint32(1), absences[0].GetOrderIndex())
+	require.True(t, missing.Has(0x01, []byte("absent")), "an expected-absent key is also declared")
+
+	build := &BuildResult{}
+	build.SetAbsenceExpectations(absences)
+	for _, assigned := range []*raftcmdpb.ExecutionPlan{{CacheEpoch: 1}, {CacheEpoch: 2}} {
+		cmd := &raftcmdpb.Proposal{ExecutionPlan: assigned}
+		require.NoError(t, build.applyBits(cmd, nil))
+		require.Equal(t, absences, cmd.GetExecutionPlan().GetAbsenceExpectations())
+	}
+}

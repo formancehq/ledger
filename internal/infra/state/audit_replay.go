@@ -34,9 +34,14 @@ type auditReplayScopeFactory struct{ scope processing.Scope }
 type auditReplayScope struct{ *WriteSet }
 
 func (s *auditReplayScope) CheckCoverage(byte, processing.CoverageKey) error { return nil }
+func (s *auditReplayScope) IsCovered(byte, processing.CoverageKey) bool      { return true }
 func (s *auditReplayScope) ForOrder(_, _ []byte) processing.Scope            { return s }
 
 func (f auditReplayScopeFactory) NewScope(_ []byte) (processing.Scope, error) {
+	return f.scope, nil
+}
+
+func (f auditReplayScopeFactory) NewOrderScope(int, []byte) (processing.Scope, error) {
 	return f.scope, nil
 }
 

@@ -126,6 +126,11 @@ type Scope interface {
 	// fresh slice on every gated read (100 allocs / 50-tx proposal on
 	// the world-to-bank benchmark).
 	CheckCoverage(kind byte, key CoverageKey) error
+
+	// IsCovered reports whether the proposal declared the key for this scope,
+	// without recording a coverage miss. Only for reads whose absence from
+	// the plan is an expected cross-proposal race the caller rejects itself.
+	IsCovered(kind byte, key CoverageKey) bool
 }
 
 // CoverageKey is the minimal shape a canonical key type must expose to
@@ -161,6 +166,11 @@ type ScopeFactory interface {
 	// proposal-wide scope (admit every declared AttributeCoverage, e.g.
 	// for ValidateTransientVolumes) must use NewProposalScope.
 	NewScope(coverageBits []byte) (Scope, error)
+
+	// NewOrderScope is NewScope for batch order orderIndex: a read that
+	// finds a key the order expected absent (ExecutionPlan.absence_expectations)
+	// fails with domain.ErrStaleInputsResolution.
+	NewOrderScope(orderIndex int, coverageBits []byte) (Scope, error)
 
 	// NewProposalScope returns a scope that admits every AttributeCoverage
 	// the proposal declared. Distinct from NewScope(nil) so a per-order

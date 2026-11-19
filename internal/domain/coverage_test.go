@@ -159,6 +159,14 @@ func TestStoreFailure(t *testing.T) {
 		require.Same(t, miss, got)
 	})
 
+	t.Run("propagates a wrapped stale-inputs rejection", func(t *testing.T) {
+		t.Parallel()
+
+		got := StoreFailure("resolving numscript", fmt.Errorf("gate: %w", ErrStaleInputsResolution))
+
+		require.Equal(t, ErrStaleInputsResolution, got)
+	})
+
 	t.Run("wraps a genuine store fault", func(t *testing.T) {
 		t.Parallel()
 

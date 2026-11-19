@@ -16,8 +16,8 @@ The complementary rule is in [`feedback_admission_structural_fsm_invariant`](../
 ### Replicated-policy refusals
 
 For an authenticated, structurally valid client request, a definitive refusal
-whose outcome depends on mutable, Raft-replicated cluster policy belongs in the
-FSM. The FSM evaluates the policy committed before that proposal at its apply
+whose outcome depends on mutable, Raft-replicated state, such as cluster policy
+or the Numscript library, belongs in the FSM. The FSM evaluates the policy committed before that proposal at its apply
 index, after checking whether the idempotency key already has a recorded
 outcome. A new policy-based refusal is an audited failure; a replay returns the
 recorded outcome. An admission decision based on the currently observed policy
@@ -51,6 +51,7 @@ not move any validator or change client behavior.
 | Account type name ≤ 256 bytes and pattern ≤ 4096 bytes | ✅ | ✅ | Admission rejects oversized inputs before consensus. The FSM repeats the bounds for replay and directly proposed orders so error facts retain the original value rather than a digest. |
 | Transaction reference ≤ 4096 bytes | ✅ | ✅ | The conflict fact contains the exact reference; both layers reject an oversized reference before a conflict can be audited. |
 | Idempotency key (UTF-8, ≤ 256 bytes) | ✅ | — | The *uniqueness* of the key is checked at FSM time against `SubIdempKeys`; the *shape* is checked at admission. |
+| Numscript library reference exists | — | ✅ | `processCreateTransaction` resolves the selector after idempotency lookup. Admission forwards an unresolved reference with its resolution coverage, so a fresh `NUMSCRIPT_NOT_FOUND` is audited and a retained outcome replays after the library changes. |
 | Numscript parses + dependency analysis | ✅ | — | `DiscoverNumscriptDependencies` in admission. Syntax errors caught here. |
 | Numscript runtime execution | — | ✅ | `processCreateTransaction` runs the program with preloaded state. Runtime errors → `AuditFailure`. |
 | Account balance sufficient for posting | — | ✅ | Requires committed state — admission can't know. `processPosting`. |
