@@ -32,6 +32,8 @@ Old and new voters must communicate and apply each committed entry identically
 while they coexist. The embedded operator requires a complete stop at the
 `v3.0.0-rc.4` boundary because RC.3 cannot execute native proposal payloads
 and encodes [mirror asset mappings](#mirror-asset-mappings) differently.
+The mirror promotion FSM result for new marked proposals changes when the
+promotion capability is activated after the target rollout.
 `rc.3` includes the drain barrier used for this upgrade. RC adjacency remains mandatory.
 The `rc.1` to `rc.2` transition rolls one voter at a time with a maintenance
 barrier that pauses writes; it does not stop the whole cluster.
@@ -47,6 +49,9 @@ and validate the mandatory stopped boundary before clients submit them. The
 operator drain path is in place; [PR #2404](https://github.com/formancehq/ledger/pull/2404)
 coordinates that boundary. Until `rc.4` is active, clients must not submit
 explicit-target updates; use delete plus create for target changes.
+Promotion orders committed by `rc.3` must be applied durably on every member
+before the stopped upgrade begins. Audit replay reconstructs their original
+results after the restart.
 When the running version precedes a mandatory boundary, pin the target to a
 canonical version tag. Moving or non-canonical tags such as `latest` cannot
 prove whether the boundary is crossed, so the operator blocks the change.
@@ -416,6 +421,25 @@ the separate
 [Cluster Configuration Updates](./cluster-operations.md#cluster-configuration-updates)
 procedure.
 
+## Mirror promotion capability activation
+
+For an upgrade from published RC.4 to a build containing the mirror promotion
+catch-up check, complete the coordinated stop and restart with the existing
+volumes. Start with `activateMirrorPromotionCatchUp` unset or false. Wait until
+every voter and learner runs the new binary and its refreshed membership record
+advertises capability ID `1`. New mirror promotions are refused at admission
+until activation; unrelated writes remain available. Historical unmarked RC.4
+promotions retain their original FSM apply behavior during Raft replay.
+
+Then set `spec.activateMirrorPromotionCatchUp: true` and increment
+`spec.clusterPolicyRevision` in the Operator's `Cluster` resource. For a cluster
+without the Operator, set `--activate-mirror-promotion-catch-up=true` on every
+member and increment `--cluster-policy-revision`. The leader proposes the new
+replicated policy; admission verifies capability evidence for every current
+voter and learner. Confirm the new policy revision and active capability before
+allowing an administrator to promote a mirror. Keep the activation setting on
+subsequent revisions because an active capability cannot be deactivated.
+
 ## Metadata-limit replay recovery
 
 Upgraded leaders can recover a retained keyed outcome when a retry's original
@@ -455,6 +479,10 @@ failure, forking the authoritative audit hash. Admission on a new leader alone
 cannot protect an old leader or previously committed proposals.
 
 The published `rc.1` binary cannot participate in an operator-owned drain.
+The `rc.3` to `rc.4` transition uses the operator-required stopped restart.
+The operator drains every voter, stops all old Pods, and retains their PVCs
+before starting the target image. This prevents old and new FSMs from applying
+the same promotion with different outcomes.
 
 1. With every voter still on the source binary, establish a healthy, consistent
    audit history and take a backup. Existing divergent history is an incident;

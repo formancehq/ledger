@@ -1008,6 +1008,8 @@ func (x *LedgerApplyRequest) MarshalJSON() ([]byte, error) {
 						return "ERROR_REASON_NUMSCRIPT_COMPILE_ERROR"
 					case commonpb.ErrorReason_ERROR_REASON_NUMSCRIPT_EXECUTION_ERROR:
 						return "ERROR_REASON_NUMSCRIPT_EXECUTION_ERROR"
+					case commonpb.ErrorReason_ERROR_REASON_MIRROR_NOT_CAUGHT_UP:
+						return "ERROR_REASON_MIRROR_NOT_CAUGHT_UP"
 					default:
 						return int32(x.SkippableReasons[i])
 					}

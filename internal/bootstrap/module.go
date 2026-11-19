@@ -1986,6 +1986,22 @@ func reconcileClusterPolicy(ctx context.Context, admission ctrl.Admission, store
 			}
 		}
 	}
+	if cfg.ActivateMirrorPromotionCatchUp {
+		found := false
+		for _, activation := range desired.GetCapabilityActivations() {
+			if activation.GetId() == uint32(capabilities.MirrorPromotionCatchUp) {
+				activation.Active = true
+				found = true
+
+				break
+			}
+		}
+		if !found {
+			desired.CapabilityActivations = append(desired.CapabilityActivations, &commonpb.CapabilityActivation{
+				Id: uint32(capabilities.MirrorPromotionCatchUp), Active: true,
+			})
+		}
+	}
 
 	// The operator-controlled revision is an independent monotonic guard. A
 	// capability-only reconciliation may advance a policy revision, but it must
@@ -2032,8 +2048,8 @@ func reconcileClusterPolicy(ctx context.Context, admission ctrl.Admission, store
 }
 
 // sameClusterPolicyConfiguration compares the operator-controlled fields while
-// deliberately ignoring capability activations. Capabilities are reconciled
-// from membership evidence and may legitimately require a revision bump; all
+// deliberately ignoring capability activations. Capabilities may be activated
+// after membership evidence is established and require a revision bump; all
 // other fields must remain protected by the configured revision.
 func sameClusterPolicyConfiguration(a, b *commonpb.ClusterPolicy) bool {
 	if a == nil || b == nil {

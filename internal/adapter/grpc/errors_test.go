@@ -25,6 +25,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/domain/crypto/signing"
 	"github.com/formancehq/ledger/v3/internal/infra/backup"
+	"github.com/formancehq/ledger/v3/internal/infra/capabilities"
 	"github.com/formancehq/ledger/v3/internal/infra/node"
 	"github.com/formancehq/ledger/v3/internal/infra/state"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
@@ -544,6 +545,33 @@ func TestConvertToGRPCError_BusinessError(t *testing.T) {
 	st, ok := status.FromError(grpcErr)
 	require.True(t, ok)
 	require.Equal(t, codes.NotFound, st.Code())
+}
+
+func TestConvertToGRPCError_MirrorNotCaughtUp(t *testing.T) {
+	t.Parallel()
+	err := &domain.ErrMirrorNotCaughtUp{Name: "m1", Cursor: 0, Head: 20}
+	encoded := convertToGRPCError(err, testLogger())
+	st := status.Convert(encoded)
+	require.Equal(t, codes.FailedPrecondition, st.Code())
+	require.Contains(t, st.Message(), "mirror not caught up")
+	require.Len(t, st.Details(), 1)
+	info, ok := st.Details()[0].(*errdetails.ErrorInfo)
+	require.True(t, ok)
+	require.Equal(t, domain.ErrReasonMirrorNotCaughtUp, info.GetReason())
+	require.Equal(t, errorDomain, info.GetDomain())
+	require.Equal(t, map[string]string{"name": "m1", "cursor": "0", "sourceLogCount": "20", "syncError": "false"}, info.GetMetadata())
+	forwarded := grpcerr.FromStatusError(encoded)
+	classification, ok := errors.AsType[domain.Classifiable](forwarded)
+	require.True(t, ok, "forwarding must preserve the precondition kind")
+	require.Equal(t, domain.KindPrecondition, classification.Kind())
+	require.Equal(t, codes.FailedPrecondition, status.Code(forwarded))
+}
+
+func TestConvertToGRPCError_InactiveCapability(t *testing.T) {
+	t.Parallel()
+	st := status.Convert(convertToGRPCError(fmt.Errorf("mirror promotion: %w", capabilities.ErrCapabilityUnsupported), testLogger()))
+	require.Equal(t, codes.FailedPrecondition, st.Code())
+	require.Contains(t, st.Message(), "capability is unsupported")
 }
 
 // TestConvertToGRPCError_UnknownErrorIsSanitized pins the fix for #326.

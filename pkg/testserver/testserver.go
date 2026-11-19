@@ -145,6 +145,14 @@ func WithClusterPolicyRevision(revision uint64) testservice.InstrumentationFunc 
 	}
 }
 
+func WithMirrorPromotionCatchUpActivation() testservice.InstrumentationFunc {
+	return func(ctx context.Context, cfg *testservice.RunConfiguration) error {
+		cfg.AppendArgs("--activate-mirror-promotion-catch-up")
+
+		return nil
+	}
+}
+
 func WithQueryCheckpointLimit(limit uint64) testservice.InstrumentationFunc {
 	return func(ctx context.Context, cfg *testservice.RunConfiguration) error {
 		cfg.AppendArgs("--query-checkpoint-limit", strconv.FormatUint(limit, 10))

@@ -38,6 +38,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/adapter/grpcerr"
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/infra/backup"
+	"github.com/formancehq/ledger/v3/internal/infra/capabilities"
 	"github.com/formancehq/ledger/v3/internal/infra/node"
 	"github.com/formancehq/ledger/v3/internal/infra/plan"
 	"github.com/formancehq/ledger/v3/internal/infra/state"
@@ -654,6 +655,13 @@ func convertToGRPCErrorWithContext(ctx context.Context, err error, logger loggin
 		return status.Error(codes.FailedPrecondition, err.Error())
 	}
 
+	// A capability-dependent proposal is refused until the replicated policy
+	// activates it and every member advertises support. This is an operator
+	// precondition, not an unexpected server failure.
+	if errors.Is(err, capabilities.ErrCapabilityUnsupported) {
+		return status.Error(codes.FailedPrecondition, err.Error())
+	}
+
 	// Convert ErrNodeRemoved to FailedPrecondition (EN-1045 blacklist).
 	if errors.Is(err, node.ErrNodeRemoved) {
 		return status.Error(codes.FailedPrecondition, err.Error())
@@ -669,7 +677,8 @@ func convertToGRPCErrorWithContext(ctx context.Context, err error, logger loggin
 	// a transport guard, a read-path argument check — flows through one
 	// exhaustive Kind switch in classifiableToGRPCStatus. Kind is all the
 	// status code needs; the Reason and its metadata are read there only from
-	// the errors that own a public wire contract.
+	// the errors that own a public wire contract. The mirror catch-up guard
+	// above adds a generic ErrorInfo solely to preserve forwarding semantics.
 	if c, ok := errors.AsType[domain.Classifiable](err); ok {
 		if c.Kind() == domain.KindInternal {
 			recordGRPCInternalError(ctx, logger, err)

@@ -4,8 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"os"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 	appsv1 "k8s.io/api/apps/v1"
@@ -191,13 +193,20 @@ func TestLedgerPromotionFailureRetries(t *testing.T) {
 func newRealPromotionHarness(t *testing.T) *realIndexHarness {
 	t.Helper()
 	h := newRealIndexHarness(t)
+	sourceURL := os.Getenv("LEDGER_PROMOTION_TEST_SOURCE")
+	require.NotEmpty(t, sourceURL)
 	h.ledger.Name += "-mirror"
 	h.ledger.Spec.Name += "-mirror"
-	_, err := h.run("ledgers", "create", "--mode", "mirror", "--mirror-base-url", "http://127.0.0.1:1", h.ledger.Spec.Name)
+	_, err := h.run("ledgers", "create", "--mode", "mirror", "--mirror-base-url", sourceURL, h.ledger.Spec.Name)
 	require.NoError(t, err)
+	require.Eventually(t, func() bool {
+		_, err := h.run("transactions", "get", "0", "--ledger", h.ledger.Spec.Name)
+
+		return err == nil
+	}, 20*time.Second, 100*time.Millisecond, "mirror must ingest the source log before promotion")
 	h.ledger.Spec.Mode = "mirror"
 	h.ledger.Spec.MirrorSource = &ledgerv1alpha1.MirrorSourceSpec{
-		HTTP: &ledgerv1alpha1.HTTPMirrorSource{BaseURL: "http://127.0.0.1:1"},
+		HTTP: &ledgerv1alpha1.HTTPMirrorSource{BaseURL: sourceURL},
 	}
 	// Persist the creation hash so index convergence also proves that recovery
 	// replaces the old mirror hash rather than bypassing immutable-spec drift.

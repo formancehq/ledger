@@ -173,6 +173,22 @@ func PrepareForBackup(s *dal.Store) error {
 		return fmt.Errorf("deleting cache zone: %w", err)
 	}
 
+	// The source-head observation belongs to the source cluster's mirror
+	// worker. Incremental restore replays business logs and advances the
+	// ingestion cursor, but does not replay technical source observations.
+	// An old nonzero head could therefore authorize promotion before the
+	// restored worker observes the source again. Keep the durable cursor and
+	// sync error; require a fresh head observation for the next promotion.
+	if err := batch.DeleteRange(
+		[]byte{dal.ZonePerLedger, dal.SubPLMirrorSourceHead},
+		[]byte{dal.ZonePerLedger, dal.SubPLMirrorSourceHead + 1},
+		pebble.NoSync,
+	); err != nil {
+		_ = batch.Cancel()
+
+		return fmt.Errorf("resetting mirror source-head observations: %w", err)
+	}
+
 	if err := batch.Commit(); err != nil {
 		return fmt.Errorf("committing backup preparation: %w", err)
 	}

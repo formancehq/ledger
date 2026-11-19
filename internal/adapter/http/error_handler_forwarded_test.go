@@ -32,6 +32,18 @@ func leaderStatus(t *testing.T, code codes.Code, message, reason string) error {
 	return detailed.Err()
 }
 
+func TestMirrorPromotionDirectAndForwardedRendering(t *testing.T) {
+	t.Parallel()
+	local := &domain.ErrMirrorNotCaughtUp{Name: "mirror", Cursor: 4, Head: 5}
+	message, metadata, _ := domain.PublicErrorDetails(local)
+	st, err := status.New(codes.FailedPrecondition, message).WithDetails(&errdetails.ErrorInfo{
+		Reason: local.Reason(), Domain: "ledger", Metadata: metadata,
+	})
+	require.NoError(t, err)
+	forwarded := grpcerr.FromStatusError(st.Err())
+	require.Equal(t, classifyError(local), classifyError(forwarded))
+}
+
 // TestHandleErrorForwardedFromLeader is the regression for EN-1636.
 //
 // A REST write that lands on a follower is forwarded to the leader over gRPC.
@@ -67,6 +79,13 @@ func TestHandleErrorForwardedFromLeader(t *testing.T) {
 				domain.ErrReasonMetadataFieldNotInSchema),
 			expectedStatus: http.StatusBadRequest,
 			expectedCode:   "METADATA_FIELD_NOT_IN_SCHEMA",
+		},
+		{
+			name: "unready mirror promotion keeps its precondition classification",
+			leaderErr: leaderStatus(t, codes.FailedPrecondition,
+				"mirror sample is not caught up: cursor=0 head=20 sync_error=false", domain.ErrReasonMirrorNotCaughtUp),
+			expectedStatus: http.StatusBadRequest,
+			expectedCode:   domain.ErrReasonMirrorNotCaughtUp,
 		},
 		{
 			// The collapse case. Both KindConflict and KindPrecondition are sent

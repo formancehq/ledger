@@ -20,6 +20,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/pkg/actions"
+	"github.com/formancehq/ledger/v3/pkg/testserver"
 	"github.com/formancehq/ledger/v3/tests/e2e/testutil"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -223,7 +224,7 @@ var _ = Describe("Mirror", Ordered, func() {
 
 	BeforeAll(func() {
 		var node *testutil.ServiceWithClient
-		ctx, node = testutil.SetupSingleNode()
+		ctx, node = testutil.SetupSingleNode(testserver.WithMirrorPromotionCatchUpActivation())
 		client = node.Client
 	})
 
