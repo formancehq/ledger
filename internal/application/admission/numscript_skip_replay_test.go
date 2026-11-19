@@ -2,6 +2,8 @@ package admission
 
 import (
 	"context"
+	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -307,4 +309,55 @@ send $b (
 	orders := h.proposals[len(h.proposals)-1].GetBatch().GetOrders()
 	require.False(t, orders[0].GetTechnical().GetNumscriptPlanningFailed())
 	require.NotEmpty(t, orders[0].GetTechnical().GetCoverageBits())
+}
+
+// unclassifiedCompileScript overflows the compiler's register bank, a compile
+// failure the ledger does not classify and therefore never freezes.
+func unclassifiedCompileScript() *servicepb.CreateTransactionPayload {
+	var script strings.Builder
+	script.WriteString("send [USD/2 100] (\n\tsource = @world\n\tdestination = {\n")
+	for i := range 299 {
+		fmt.Fprintf(&script, "\t\t1/300 to @d%d\n", i)
+	}
+	script.WriteString("\t\tremaining to @last\n\t}\n)")
+
+	return &servicepb.CreateTransactionPayload{Script: &commonpb.Script{Plain: script.String()}}
+}
+
+// TestAdmitUnclassifiedSkippableScriptIsNotFrozen covers a forwarded planning
+// failure the FSM cannot commit: it rejects the batch with the compile reason
+// admission would give, without an audit entry or a frozen key.
+func TestAdmitUnclassifiedSkippableScriptIsNotFrozen(t *testing.T) {
+	t.Parallel()
+	h := newMetadataReplayHarness(t)
+	ctx := attributedTestContext(context.Background())
+	request := numscriptReplayBatch("key", skipReplayCreate("fresh-reference", true, unclassifiedCompileScript()))
+	audit, sequence := h.machine.State.NextAuditSequenceID, h.machine.State.NextSequenceID
+
+	for attempt := range 2 {
+		result, err := h.admission.Admit(ctx, request)
+		require.Nil(t, result)
+		var failure domain.Describable
+		require.ErrorAs(t, err, &failure)
+		require.Equal(t, domain.ErrReasonNumscriptCompileError, failure.Reason())
+		require.ErrorContains(t, failure, "register bank overflow")
+		require.Len(t, h.proposals, attempt+1, "each attempt is decided at apply")
+		require.True(t, lastProposedOrder(t, h).GetTechnical().GetNumscriptPlanningFailed())
+		require.Equal(t, audit, h.machine.State.NextAuditSequenceID)
+		require.Equal(t, sequence, h.machine.State.NextSequenceID)
+	}
+}
+
+// TestAdmitUnclassifiedSkippableScriptSkipsOnReference covers the same script
+// on a duplicate: the FSM skips it on the reference before re-planning.
+func TestAdmitUnclassifiedSkippableScriptSkipsOnReference(t *testing.T) {
+	t.Parallel()
+	h := newMetadataReplayHarness(t)
+	ctx := attributedTestContext(context.Background())
+	_, err := h.admission.Admit(ctx, numscriptReplayBatch("", skipReplayCreate("r1", false, skipReplayPosting("world", "alice"))))
+	require.NoError(t, err)
+
+	result, err := h.admission.Admit(ctx, numscriptReplayBatch("key", skipReplayCreate("r1", true, unclassifiedCompileScript())))
+	require.NoError(t, err)
+	require.Len(t, result.Logs, 1)
 }
