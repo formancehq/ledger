@@ -1438,7 +1438,7 @@ Read endpoints comparison with the original ledger:
 | `GET /v3/` | ✅ | ✅ | List ledgers, paged by name ([pagination](#pagination)) |
 | `GET /v3/{ledgerName}/metadata-schema` | ✅ | ❌ | Get declared metadata field types |
 | `GET /v3/{ledgerName}/analyze-accounts` | ✅ | ❌ | Analyze accounts and suggest Chart of Accounts |
-| `GET /v3/{ledgerName}/analyze-transactions` | ✅ | ❌ | Analyze transaction flow patterns |
+| `GET /v3/{ledgerName}/analyze-transactions` | ✅ | ❌ | Analyze transaction flow patterns; `temporal.firstSeen`/`lastSeen` are RFC3339 with the same microseconds as gRPC `TemporalStats` |
 | `PUT /v3/{ledgerName}/metadata-schema/{targetType}/{key}` | ✅ | ❌ | Set metadata field type |
 | `DELETE /v3/{ledgerName}/metadata-schema/{targetType}/{key}` | ✅ | ❌ | Remove metadata field type |
 | `POST /v3/{ledgerName}/prepared-queries` | ✅ | ❌ | Create a prepared query |

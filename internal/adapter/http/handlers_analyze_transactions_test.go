@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	stdtime "time"
 
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
@@ -353,6 +354,89 @@ func TestHandleAnalyzeTransactions_MonetaryEncoding(t *testing.T) {
 			}
 			require.Contains(t, w.Body.String(), `"transactionCount":1`)
 			require.Equal(t, byte('\n'), w.Body.Bytes()[w.Body.Len()-1], "preserve the analysis streaming newline")
+		})
+	}
+}
+
+func TestHandleAnalyzeTransactions_TemporalTimestamps(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name      string
+		firstSeen *commonpb.Timestamp
+		lastSeen  *commonpb.Timestamp
+		want      string
+	}{
+		{
+			name:      "fractional microseconds",
+			firstSeen: &commonpb.Timestamp{Data: 1767225600123456},
+			lastSeen:  &commonpb.Timestamp{Data: 1767225600000001},
+			want:      `"firstSeen":"2026-01-01T00:00:00.123456Z","lastSeen":"2026-01-01T00:00:00.000001Z"`,
+		},
+		{
+			name:      "whole seconds",
+			firstSeen: &commonpb.Timestamp{Data: 1000000},
+			lastSeen:  &commonpb.Timestamp{Data: 2000000},
+			want:      `"firstSeen":"1970-01-01T00:00:01Z","lastSeen":"1970-01-01T00:00:02Z"`,
+		},
+		{
+			name: "absent",
+			want: `"temporal":{"transactionsPerDay":1}`,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			pattern := &servicepb.FlowPattern{
+				TransactionCount: 1,
+				Temporal: &servicepb.TemporalStats{
+					FirstSeen:          tc.firstSeen,
+					LastSeen:           tc.lastSeen,
+					TransactionsPerDay: 1,
+				},
+			}
+
+			converted, err := toFlowPatternJSON(pattern)
+			require.NoError(t, err)
+			encoded, err := stdjson.Marshal(converted)
+			require.NoError(t, err)
+			require.Contains(t, string(encoded), tc.want)
+
+			backend := NewMockBackend(gomock.NewController(t))
+			backend.EXPECT().AnalyzeTransactions(gomock.Any(), "my-ledger", uint32(0), gomock.Any()).Return(&servicepb.AnalyzeTransactionsResponse{
+				TotalTransactions: 1,
+				FlowPatterns:      []*servicepb.FlowPattern{pattern},
+			}, nil)
+			handler := NewHandler(logging.Testing(), backend, internalauth.AuthConfig{}, version.Info{}, nil)
+			w := httptest.NewRecorder()
+			handler.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/v3/my-ledger/analyze-transactions", nil))
+			require.Equal(t, http.StatusOK, w.Code)
+			require.Contains(t, w.Body.String(), tc.want)
+
+			wrapper := decodeResponse[BaseResponse[struct {
+				FlowPatterns []struct {
+					Temporal struct {
+						FirstSeen *string `json:"firstSeen"`
+						LastSeen  *string `json:"lastSeen"`
+					} `json:"temporal"`
+				} `json:"flowPatterns"`
+			}]](t, w)
+			require.Len(t, wrapper.Data.FlowPatterns, 1)
+			temporal := wrapper.Data.FlowPatterns[0].Temporal
+			for _, field := range []struct {
+				source  *commonpb.Timestamp
+				decoded *string
+			}{{tc.firstSeen, temporal.FirstSeen}, {tc.lastSeen, temporal.LastSeen}} {
+				if field.source == nil {
+					require.Nil(t, field.decoded)
+
+					continue
+				}
+				require.NotNil(t, field.decoded)
+				decoded, err := stdtime.Parse(stdtime.RFC3339Nano, *field.decoded)
+				require.NoError(t, err)
+				require.Equal(t, int64(field.source.GetData()), decoded.UnixMicro())
+			}
 		})
 	}
 }
