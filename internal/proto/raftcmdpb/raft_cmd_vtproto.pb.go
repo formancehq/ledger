@@ -9080,7 +9080,7 @@ func (m *ExecuteNumscriptOrder) MarshalToSizedBufferVT(dAtA []byte) (int, error)
 		copy(dAtA[i:], m.Reference)
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.Reference)))
 		i--
-		dAtA[i] = 0x3a
+		dAtA[i] = 0x32
 	}
 	if len(m.AccountMetadata) > 0 {
 		for k := range m.AccountMetadata {
@@ -21420,7 +21420,7 @@ func (m *ExecuteNumscriptOrder) UnmarshalVT(dAtA []byte) error {
 			}
 			m.AccountMetadata[mapkey] = mapvalue
 			iNdEx = postIndex
-		case 7:
+		case 6:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field Reference", wireType)
 			}
