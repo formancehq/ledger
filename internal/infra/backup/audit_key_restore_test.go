@@ -7,10 +7,11 @@ import (
 	"path/filepath"
 	"testing"
 
-	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 	"github.com/stretchr/testify/require"
 	"go.etcd.io/raft/v3/raftpb"
 	"go.opentelemetry.io/otel/metric/noop"
+
+	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
 	"github.com/formancehq/ledger/v3/internal/application/check"
 	"github.com/formancehq/ledger/v3/internal/domain/crypto/keystore"
