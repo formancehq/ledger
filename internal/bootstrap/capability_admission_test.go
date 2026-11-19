@@ -95,8 +95,8 @@ func TestCapabilityActivationBarrierUntilCommitAfterDrain(t *testing.T) {
 		}})
 		require.NoError(t, err)
 		require.NoError(t, validateProposalCapabilityAdmissionWithSupported(inactive, configuration, members, supported))
-		activation, err := node.NewProposal(3, &raftcmdpb.Proposal{Payload: &raftcmdpb.Proposal_TransitionCapability{
-			TransitionCapability: &commonpb.CapabilityActivation{Id: 7, Active: true},
+		activation, err := node.NewProposal(3, &raftcmdpb.Proposal{Payload: &raftcmdpb.Proposal_CapabilityActivation{
+			CapabilityActivation: &commonpb.CapabilityActivation{Id: 7, Active: true},
 		}})
 		require.NoError(t, err)
 		members[1].Capabilities = nil

@@ -116,7 +116,7 @@ func TestCapabilityActivationRechecksMembershipAfterDiscovery(t *testing.T) {
 	admit := func(_ context.Context, transition *commonpb.CapabilityActivation) (*domain.ApplyResult, error) {
 		attempts++
 		members = append(members, capabilities.Member{NodeID: 2, Role: capabilities.Learner})
-		proposal, err := node.NewProposal(1, &raftcmdpb.Proposal{Payload: &raftcmdpb.Proposal_TransitionCapability{TransitionCapability: transition}})
+		proposal, err := node.NewProposal(1, &raftcmdpb.Proposal{Payload: &raftcmdpb.Proposal_CapabilityActivation{CapabilityActivation: transition}})
 		require.NoError(t, err)
 		policy, err := query.ReadClusterPolicy(store)
 		require.NoError(t, err)

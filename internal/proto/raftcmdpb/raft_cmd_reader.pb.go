@@ -4410,6 +4410,7 @@ type ProposalReader interface {
 	GetRequiredCapabilities() []uint32
 	GetBatch() ExecutionBatchReader
 	GetSetClusterPolicy() SetClusterPolicyProposalReader
+	GetCapabilityActivation() commonpb.CapabilityActivationReader
 	WhichPayload() Proposal_PayloadReaderCase
 	Mutate() *Proposal
 }
@@ -4492,13 +4493,22 @@ func (r *proposalReadonly) GetSetClusterPolicy() SetClusterPolicyProposalReader 
 	return v.SetClusterPolicy.AsReader()
 }
 
+func (r *proposalReadonly) GetCapabilityActivation() commonpb.CapabilityActivationReader {
+	v, ok := (*Proposal)(r).GetPayload().(*Proposal_CapabilityActivation)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.CapabilityActivation.AsReader()
+}
+
 // Proposal_PayloadReaderCase identifies a selected oneof arm by its protobuf field number.
 type Proposal_PayloadReaderCase int32
 
 const (
-	Proposal_PayloadReaderCase_Unset            Proposal_PayloadReaderCase = 0
-	Proposal_PayloadReaderCase_Batch            Proposal_PayloadReaderCase = 11
-	Proposal_PayloadReaderCase_SetClusterPolicy Proposal_PayloadReaderCase = 12
+	Proposal_PayloadReaderCase_Unset                Proposal_PayloadReaderCase = 0
+	Proposal_PayloadReaderCase_Batch                Proposal_PayloadReaderCase = 11
+	Proposal_PayloadReaderCase_SetClusterPolicy     Proposal_PayloadReaderCase = 12
+	Proposal_PayloadReaderCase_CapabilityActivation Proposal_PayloadReaderCase = 13
 )
 
 func (r *proposalReadonly) WhichPayload() Proposal_PayloadReaderCase {
@@ -4507,6 +4517,8 @@ func (r *proposalReadonly) WhichPayload() Proposal_PayloadReaderCase {
 		return Proposal_PayloadReaderCase_Batch
 	case *Proposal_SetClusterPolicy:
 		return Proposal_PayloadReaderCase_SetClusterPolicy
+	case *Proposal_CapabilityActivation:
+		return Proposal_PayloadReaderCase_CapabilityActivation
 	default:
 		return Proposal_PayloadReaderCase_Unset
 	}

@@ -114,7 +114,7 @@ func TestCapabilityActivationDirectThroughRaftAfterDrain(t *testing.T) {
 		require.NoError(t, proposeControl(configuration))
 		require.ErrorIs(t, gate(ctx, proposal), capabilities.ErrActivationPending)
 		command := commands.NewCommand()
-		command.Payload = &raftcmdpb.Proposal_TransitionCapability{TransitionCapability: activation}
+		command.Payload = &raftcmdpb.Proposal_CapabilityActivation{CapabilityActivation: activation}
 		require.NoError(t, proposeControl(command))
 
 		return nil, lostResponse

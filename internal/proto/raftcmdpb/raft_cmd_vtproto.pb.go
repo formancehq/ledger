@@ -1447,12 +1447,12 @@ func (m *Proposal_SetClusterPolicy) CloneVT() isProposal_Payload {
 	return r
 }
 
-func (m *Proposal_TransitionCapability) CloneVT() isProposal_Payload {
+func (m *Proposal_CapabilityActivation) CloneVT() isProposal_Payload {
 	if m == nil {
-		return (*Proposal_TransitionCapability)(nil)
+		return (*Proposal_CapabilityActivation)(nil)
 	}
-	r := new(Proposal_TransitionCapability)
-	r.TransitionCapability = m.TransitionCapability.CloneVT()
+	r := new(Proposal_CapabilityActivation)
+	r.CapabilityActivation = m.CapabilityActivation.CloneVT()
 	return r
 }
 
@@ -4766,8 +4766,8 @@ func (this *Proposal_SetClusterPolicy) EqualVT(thatIface isProposal_Payload) boo
 	return true
 }
 
-func (this *Proposal_TransitionCapability) EqualVT(thatIface isProposal_Payload) bool {
-	that, ok := thatIface.(*Proposal_TransitionCapability)
+func (this *Proposal_CapabilityActivation) EqualVT(thatIface isProposal_Payload) bool {
+	that, ok := thatIface.(*Proposal_CapabilityActivation)
 	if !ok {
 		return false
 	}
@@ -4777,7 +4777,7 @@ func (this *Proposal_TransitionCapability) EqualVT(thatIface isProposal_Payload)
 	if this == nil && that != nil || this != nil && that == nil {
 		return false
 	}
-	if p, q := this.TransitionCapability, that.TransitionCapability; p != q {
+	if p, q := this.CapabilityActivation, that.CapabilityActivation; p != q {
 		if p == nil {
 			p = &commonpb.CapabilityActivation{}
 		}
@@ -9532,15 +9532,15 @@ func (m *Proposal_SetClusterPolicy) MarshalToSizedBufferVT(dAtA []byte) (int, er
 	}
 	return len(dAtA) - i, nil
 }
-func (m *Proposal_TransitionCapability) MarshalToVT(dAtA []byte) (int, error) {
+func (m *Proposal_CapabilityActivation) MarshalToVT(dAtA []byte) (int, error) {
 	size := m.SizeVT()
 	return m.MarshalToSizedBufferVT(dAtA[:size])
 }
 
-func (m *Proposal_TransitionCapability) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+func (m *Proposal_CapabilityActivation) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	i := len(dAtA)
-	if m.TransitionCapability != nil {
-		size, err := m.TransitionCapability.MarshalToSizedBufferVT(dAtA[:i])
+	if m.CapabilityActivation != nil {
+		size, err := m.CapabilityActivation.MarshalToSizedBufferVT(dAtA[:i])
 		if err != nil {
 			return 0, err
 		}
@@ -13175,14 +13175,14 @@ func (m *Proposal_SetClusterPolicy) SizeVT() (n int) {
 	}
 	return n
 }
-func (m *Proposal_TransitionCapability) SizeVT() (n int) {
+func (m *Proposal_CapabilityActivation) SizeVT() (n int) {
 	if m == nil {
 		return 0
 	}
 	var l int
 	_ = l
-	if m.TransitionCapability != nil {
-		l = m.TransitionCapability.SizeVT()
+	if m.CapabilityActivation != nil {
+		l = m.CapabilityActivation.SizeVT()
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
 	return n
@@ -22408,7 +22408,7 @@ func (m *Proposal) UnmarshalVT(dAtA []byte) error {
 			iNdEx = postIndex
 		case 13:
 			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field TransitionCapability", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field CapabilityActivation", wireType)
 			}
 			var msglen int
 			for shift := uint(0); ; shift += 7 {
@@ -22435,8 +22435,8 @@ func (m *Proposal) UnmarshalVT(dAtA []byte) error {
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			if oneof, ok := m.Payload.(*Proposal_TransitionCapability); ok {
-				if err := oneof.TransitionCapability.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+			if oneof, ok := m.Payload.(*Proposal_CapabilityActivation); ok {
+				if err := oneof.CapabilityActivation.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
 					return err
 				}
 			} else {
@@ -22444,7 +22444,7 @@ func (m *Proposal) UnmarshalVT(dAtA []byte) error {
 				if err := v.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
 					return err
 				}
-				m.Payload = &Proposal_TransitionCapability{TransitionCapability: v}
+				m.Payload = &Proposal_CapabilityActivation{CapabilityActivation: v}
 			}
 			iNdEx = postIndex
 		default:

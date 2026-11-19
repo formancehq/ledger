@@ -335,7 +335,7 @@ const (
 	// SubGlobMembershipFormat stores the format revision for the persisted
 	// cluster membership directory.
 	SubGlobMembershipFormat byte = 0x17
-	SubGlobCapabilityState byte = 0x18
+	SubGlobCapabilityState  byte = 0x18
 )
 
 // ClusterTransient sub-prefixes (zone 0x07).

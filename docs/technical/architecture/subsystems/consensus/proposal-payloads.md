@@ -9,7 +9,7 @@ Proposal
   payload:
     batch (11): ExecutionBatch { orders (1), technical_updates (2) }
     set_cluster_policy (12): SetClusterPolicyProposal { policy (1), configuration_only (2) }
-    transition_capability (13): CapabilityActivation { id (1), active (2) }
+    capability_activation (13): CapabilityActivation { id (1), active (2) }
 ```
 
 Policy controls persist operational state without business audit or logs. Technical updates

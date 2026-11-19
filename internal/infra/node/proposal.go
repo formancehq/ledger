@@ -75,7 +75,7 @@ func NewProposal(commandID uint64, command *raftcmdpb.Proposal) (*Proposal, erro
 		return nil, err
 	}
 	proposal.hasBusinessOrders = len(proposals.BatchOrders(command)) != 0
-	if transition := command.GetTransitionCapability(); transition != nil {
+	if transition := command.GetCapabilityActivation(); transition != nil {
 		proposal.activePolicyCapabilities = append(proposal.activePolicyCapabilities, capabilities.CapabilityID(transition.GetId()))
 	}
 	if policy := command.GetSetClusterPolicy().GetPolicy(); policy != nil {

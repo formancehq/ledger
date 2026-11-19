@@ -517,7 +517,7 @@ func (a *Admission) AdmitCapabilityTransition(ctx context.Context, transition *c
 
 	return a.admit(ctx, func(ctx context.Context, caller *commonpb.CallerSnapshot) (*preparedAdmission, error) {
 		command := commands.NewCommand()
-		command.Payload = &raftcmdpb.Proposal_TransitionCapability{TransitionCapability: transition.CloneVT()}
+		command.Payload = &raftcmdpb.Proposal_CapabilityActivation{CapabilityActivation: transition.CloneVT()}
 
 		return a.prepareControl(ctx, caller, command)
 	}, a.proposeClusterPolicy)

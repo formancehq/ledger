@@ -3454,7 +3454,7 @@ type Proposal struct {
 	//
 	//	*Proposal_Batch
 	//	*Proposal_SetClusterPolicy
-	//	*Proposal_TransitionCapability
+	//	*Proposal_CapabilityActivation
 	Payload       isProposal_Payload `protobuf_oneof:"payload"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -3587,10 +3587,10 @@ func (x *Proposal) GetSetClusterPolicy() *SetClusterPolicyProposal {
 	return nil
 }
 
-func (x *Proposal) GetTransitionCapability() *commonpb.CapabilityActivation {
+func (x *Proposal) GetCapabilityActivation() *commonpb.CapabilityActivation {
 	if x != nil {
-		if x, ok := x.Payload.(*Proposal_TransitionCapability); ok {
-			return x.TransitionCapability
+		if x, ok := x.Payload.(*Proposal_CapabilityActivation); ok {
+			return x.CapabilityActivation
 		}
 	}
 	return nil
@@ -3608,15 +3608,15 @@ type Proposal_SetClusterPolicy struct {
 	SetClusterPolicy *SetClusterPolicyProposal `protobuf:"bytes,12,opt,name=set_cluster_policy,json=setClusterPolicy,proto3,oneof"`
 }
 
-type Proposal_TransitionCapability struct {
-	TransitionCapability *commonpb.CapabilityActivation `protobuf:"bytes,13,opt,name=transition_capability,json=transitionCapability,proto3,oneof"`
+type Proposal_CapabilityActivation struct {
+	CapabilityActivation *commonpb.CapabilityActivation `protobuf:"bytes,13,opt,name=capability_activation,json=capabilityActivation,proto3,oneof"`
 }
 
 func (*Proposal_Batch) isProposal_Payload() {}
 
 func (*Proposal_SetClusterPolicy) isProposal_Payload() {}
 
-func (*Proposal_TransitionCapability) isProposal_Payload() {}
+func (*Proposal_CapabilityActivation) isProposal_Payload() {}
 
 // TechnicalUpdate is the per-update envelope that carries the coverage
 // gate alongside one of the supported tech-update payloads. Mirrors the
@@ -6054,7 +6054,7 @@ const file_raft_cmd_proto_rawDesc = "" +
 	" \x03(\aR\x14requiredCapabilities\x12,\n" +
 	"\x05batch\x18\v \x01(\v2\x14.raft.ExecutionBatchH\x00R\x05batch\x12N\n" +
 	"\x12set_cluster_policy\x18\f \x01(\v2\x1e.raft.SetClusterPolicyProposalH\x00R\x10setClusterPolicy\x12S\n" +
-	"\x15transition_capability\x18\r \x01(\v2\x1c.common.CapabilityActivationH\x00R\x14transitionCapabilityB\t\n" +
+	"\x15capability_activation\x18\r \x01(\v2\x1c.common.CapabilityActivationH\x00R\x14capabilityActivationB\t\n" +
 	"\apayload\"\xe8\x04\n" +
 	"\x0fTechnicalUpdate\x12#\n" +
 	"\rcoverage_bits\x18\x01 \x01(\fR\fcoverageBits\x129\n" +
@@ -6451,7 +6451,7 @@ var file_raft_cmd_proto_depIdxs = []int32{
 	50,  // 94: raft.Proposal.technical_updates:type_name -> raft.TechnicalUpdate
 	47,  // 95: raft.Proposal.batch:type_name -> raft.ExecutionBatch
 	48,  // 96: raft.Proposal.set_cluster_policy:type_name -> raft.SetClusterPolicyProposal
-	111, // 97: raft.Proposal.transition_capability:type_name -> common.CapabilityActivation
+	111, // 97: raft.Proposal.capability_activation:type_name -> common.CapabilityActivation
 	64,  // 98: raft.TechnicalUpdate.mirror_sync:type_name -> raft.MirrorSyncUpdate
 	65,  // 99: raft.TechnicalUpdate.events_sink:type_name -> raft.EventsSinkUpdate
 	63,  // 100: raft.TechnicalUpdate.idempotency_eviction:type_name -> raft.IdempotencyEviction
@@ -6559,7 +6559,7 @@ func file_raft_cmd_proto_init() {
 	file_raft_cmd_proto_msgTypes[47].OneofWrappers = []any{
 		(*Proposal_Batch)(nil),
 		(*Proposal_SetClusterPolicy)(nil),
-		(*Proposal_TransitionCapability)(nil),
+		(*Proposal_CapabilityActivation)(nil),
 	}
 	file_raft_cmd_proto_msgTypes[48].OneofWrappers = []any{
 		(*TechnicalUpdate_MirrorSync)(nil),

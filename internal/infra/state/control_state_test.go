@@ -26,7 +26,7 @@ func TestControlStateIndependentRevisionsAndRecovery(t *testing.T) {
 		return result.Results[0].Error
 	}
 	transition := func(active bool) *raftcmdpb.Proposal {
-		return &raftcmdpb.Proposal{Payload: &raftcmdpb.Proposal_TransitionCapability{TransitionCapability: &commonpb.CapabilityActivation{Id: 1, Active: active}}}
+		return &raftcmdpb.Proposal{Payload: &raftcmdpb.Proposal_CapabilityActivation{CapabilityActivation: &commonpb.CapabilityActivation{Id: 1, Active: active}}}
 	}
 	configuration := machine.State.ClusterPolicy.CloneVT()
 	configuration.Revision++
