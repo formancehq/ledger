@@ -420,6 +420,38 @@ audit entry records the definitive failure. Refused orders have no business
 effects; snapshots, backups and restore need no migration. Service protocol revision 40 and the public wire are unchanged.
 See [the replay contract](../technical/architecture/subsystems/admission/idempotency.md#replay-after-a-referenced-script-is-removed).
 
+## Skipped-script replay recovery
+
+RC.5 leaders never refuse the Numscript of a transaction the FSM can skip on
+its reference: a create that carries a `reference` and lists
+`TRANSACTION_REFERENCE_CONFLICT` in `skippableReasons`. They plan the script
+even when they predict the skip, and forward a planning failure to the FSM. A
+keyed retry of a batch that committed through such a skip then replays its
+retained outcome after a ledger deletion purged the references. On a fresh
+request whose reference is absent, the script's failure keeps its reason and
+details, is decided at apply, and is audited and frozen under the key. If an
+input the script read changes between admission and apply, the request is
+rejected with a retryable `STALE_INPUTS_RESOLUTION`, without an audit entry.
+
+Planning a skipped duplicate costs what planning a first-time scripted
+transaction costs: the script's reads at admission, its coverage in the Raft
+entry and the preload of those keys. Bulk re-submissions of scripted
+transactions that rely on the skip are slower than on RC.4.
+
+The forwarded order carries the new internal field
+`OrderTechnical.numscript_planning_failed`. RC.4 voters ignore it and would
+execute the script, so this change depends on the stopped RC.4 to RC.5 upgrade,
+an [operator-required stopped restart](#operator-required-stopped-restart): no
+RC.4 voter may apply an entry proposed by an RC.5 leader. It needs no
+[capability](../technical/architecture/subsystems/consensus/capabilities.md#order-markers-that-ride-a-stopped-upgrade).
+Historical entries never carry the
+field and replay unchanged. The field is execution metadata carried only in
+the Raft entry: audit items keep the business order, and the audit entry
+records the definitive failure. Refused orders have no business effects;
+snapshots, backups and restore need no migration. Service protocol revision 40
+and the public wire are unchanged.
+See [the replay contract](../technical/architecture/subsystems/admission/idempotency.md#replay-after-a-skipped-scripted-transaction).
+
 ## Account metadata address validation
 
 RC.1 to RC.2 uses the maintenance-barrier rolling procedure below: writes pause,

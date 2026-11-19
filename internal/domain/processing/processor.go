@@ -62,6 +62,12 @@ type Context struct {
 	// Empty for every non-revert order.
 	RevertTargetDigest []byte
 
+	// NumscriptPlanningFailed is set when admission forwarded THIS order after
+	// its Numscript planning failed (from OrderTechnical). The
+	// CreateTransaction handler then re-runs that planning in place of
+	// execution, against InputsResolutionHash.
+	NumscriptPlanningFailed bool
+
 	// batchInitialNextTxID is the NextTransactionId each ledger carried before
 	// this batch mutated it, captured by processApply on the first *apply* order
 	// for that ledger. A revert whose target id is at or above this value targets
@@ -564,6 +570,7 @@ func (p *RequestProcessor) processOrder(order *raftcmdpb.Order, s Scope, ctx *Co
 	// CreateTransactionOrder.
 	ctx.InputsResolutionHash = order.GetTechnical().GetInputsResolutionHash()
 	ctx.RevertTargetDigest = order.GetTechnical().GetRevertTargetDigest()
+	ctx.NumscriptPlanningFailed = order.GetTechnical().GetNumscriptPlanningFailed()
 	// Reset per-apply fields — only processApply/processMirrorIngest set them.
 	ctx.Boundaries = nil
 	ctx.LedgerInfo = nil

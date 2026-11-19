@@ -162,3 +162,23 @@ API boundary owns conversion/output fidelity; authentication owns scopes and
 caller capture; idempotency owns durable atomicity and retry identity; signed
 response integrity owns the returned cryptographic proof. Deduplicate by the
 mechanism that must change, not by the number of affected operations.
+
+## Skipped scripted transactions and retained recovery
+
+A scripted create that carries a reference and whitelists
+`TRANSACTION_REFERENCE_CONFLICT` commits through a skip whatever its script
+is, and must replay that outcome after the reference registry changes,
+including a ledger deletion that purges it. Admission plans the script whether
+or not it predicts the skip and never refuses it: a planning failure is
+forwarded with `OrderTechnical.numscript_planning_failed`, the keys planning
+read and their hash. Prove replay after deletion for a failure before any read
+and one after a read. Prove that a fresh keyed request with the reference
+absent is refused at apply with the failure facts admission gives an order it
+cannot skip, audited and frozen. Hold a create of the reference proposed
+before the scripted order, apply it first, and prove the scripted order is
+skipped. Change an input the script read between admission and apply and prove
+a retryable stale rejection with no audit entry, frozen key or coverage miss,
+and that its retry reaches the definitive refusal. The marker relies on the
+stopped RC.4 to RC.5 upgrade. It is Raft-only execution metadata: audit items
+keep the business order. See
+[the admission contract](../architecture/subsystems/admission/idempotency.md#replay-after-a-skipped-scripted-transaction).

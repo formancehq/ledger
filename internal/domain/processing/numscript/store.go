@@ -147,8 +147,8 @@ func (s *Store) GetAccountsMetadata(_ context.Context, query numscriptlib.Metada
 type RecordingStore struct {
 	inner numscriptlib.Store
 
-	balanceRecords  map[string]string // "account\x00asset\x00color\x00scope" -> amount (decimal)
-	metadataRecords map[string]string // "account\x00scope\x00key" -> value or absent sentinel
+	balanceRecords  map[balanceRecord]string  // -> amount (decimal)
+	metadataRecords map[metadataRecord]string // -> value or absent sentinel
 
 	force         bool // mirrors the inner Store's force flag; forced balance reads consult no state
 	readAttempted bool // set before any inner lookup that reads real mutable state
@@ -161,8 +161,8 @@ func NewRecordingStore(inner numscriptlib.Store, force bool) *RecordingStore {
 	return &RecordingStore{
 		inner:           inner,
 		force:           force,
-		balanceRecords:  map[string]string{},
-		metadataRecords: map[string]string{},
+		balanceRecords:  map[balanceRecord]string{},
+		metadataRecords: map[metadataRecord]string{},
 	}
 }
 
@@ -190,7 +190,7 @@ func (s *RecordingStore) GetBalances(ctx context.Context, query numscriptlib.Bal
 			amount = row.Amount.String()
 		}
 
-		s.balanceRecords[balanceRecordKey(row.Account, row.Asset, row.Color, row.Scope)] = amount
+		s.balanceRecords[balanceRecord{account: row.Account, asset: row.Asset, color: row.Color, scope: row.Scope}] = amount
 	}
 
 	return rows, nil
@@ -212,14 +212,14 @@ func (s *RecordingStore) GetAccountsMetadata(ctx context.Context, query numscrip
 		return nil, err
 	}
 
-	present := make(map[string]string, len(rows))
+	present := make(map[metadataRecord]string, len(rows))
 	for _, row := range rows {
-		present[metadataRecordKey(row.Account, row.Scope, row.Key)] = row.Value
+		present[metadataRecord{account: row.Account, scope: row.Scope, key: row.Key}] = row.Value
 	}
 
 	for _, item := range query {
 		for _, key := range item.Keys {
-			k := metadataRecordKey(item.Account, item.Scope, key)
+			k := metadataRecord{account: item.Account, scope: item.Scope, key: key}
 			if value, ok := present[k]; ok {
 				s.metadataRecords[k] = value
 			} else {
@@ -231,12 +231,36 @@ func (s *RecordingStore) GetAccountsMetadata(ctx context.Context, query numscrip
 	return rows, nil
 }
 
-func balanceRecordKey(account, asset, color, scope string) string {
-	return account + "\x00" + asset + "\x00" + color + "\x00" + scope
+type balanceRecord struct{ account, asset, color, scope string }
+
+func (r balanceRecord) hashKey() string {
+	return r.account + "\x00" + r.asset + "\x00" + r.color + "\x00" + r.scope
 }
 
-func metadataRecordKey(account, scope, key string) string {
-	return account + "\x00" + scope + "\x00" + key
+type metadataRecord struct{ account, scope, key string }
+
+func (r metadataRecord) hashKey() string {
+	return r.account + "\x00" + r.scope + "\x00" + r.key
+}
+
+// ReadKeys returns the ledger keys of every balance and metadata lookup
+// recorded so far, the same lookups Hash covers. A metadata key the store had
+// no value for is included: its absence is an input too.
+func (s *RecordingStore) ReadKeys(ledgerName string) (map[domain.VolumeKey]struct{}, map[domain.MetadataKey]struct{}) {
+	volumes := make(map[domain.VolumeKey]struct{}, len(s.balanceRecords))
+	for record := range s.balanceRecords {
+		volumes[domain.NewVolumeKey(ledgerName, record.account, record.asset, record.color)] = struct{}{}
+	}
+
+	metadata := make(map[domain.MetadataKey]struct{}, len(s.metadataRecords))
+	for record := range s.metadataRecords {
+		metadata[domain.MetadataKey{
+			AccountKey: domain.AccountKey{LedgerName: ledgerName, Account: record.account},
+			Key:        record.key,
+		}] = struct{}{}
+	}
+
+	return volumes, metadata
 }
 
 // ReadNothing reports whether the resolution consulted no balance or metadata
@@ -284,8 +308,18 @@ func (s *RecordingStore) Hash() []byte {
 		}
 	}
 
-	writeSection("balances", s.balanceRecords)
-	writeSection("metadata", s.metadataRecords)
+	balances := make(map[string]string, len(s.balanceRecords))
+	for record, amount := range s.balanceRecords {
+		balances[record.hashKey()] = amount
+	}
+
+	metadata := make(map[string]string, len(s.metadataRecords))
+	for record, value := range s.metadataRecords {
+		metadata[record.hashKey()] = value
+	}
+
+	writeSection("balances", balances)
+	writeSection("metadata", metadata)
 
 	return h.Sum()
 }
