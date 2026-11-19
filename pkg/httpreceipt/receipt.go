@@ -12,6 +12,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/http"
 )
 
 const (
@@ -24,20 +25,15 @@ const (
 )
 
 // Claims binds the exact method, request target (escaped path and raw query),
-// HTTP status and response body to a summary of successful Apply responses.
-// Hashes are lowercase hex SHA-256. Replayed counts replayed Apply responses;
-// Logs counts returned logs. SequencesHash commits to the server's ordered
-// sequence transcript, without exposing logs or other business payloads.
+// HTTP status and exact public Apply response body. The body contains the
+// ordered log sequence and credential-safe projection. Hashes are lowercase
+// hex SHA-256.
 type Claims struct {
-	Version       string `json:"version"`
-	Method        string `json:"method"`
-	TargetHash    string `json:"targetHash"`
-	BodyHash      string `json:"bodyHash"`
-	Status        int    `json:"status"`
-	Applies       uint64 `json:"applies"`
-	Logs          uint64 `json:"logs"`
-	Replayed      uint64 `json:"replayed"`
-	SequencesHash string `json:"sequencesHash"`
+	Version    string `json:"version"`
+	Method     string `json:"method"`
+	TargetHash string `json:"targetHash"`
+	BodyHash   string `json:"bodyHash"`
+	Status     int    `json:"status"`
 }
 
 type envelope struct {
@@ -114,10 +110,10 @@ func (c Claims) validate() error {
 	if c.Version != Version {
 		return errors.New("unsupported public receipt version")
 	}
-	if c.Method == "" || c.Status < 200 || c.Status > 599 || (c.Applies == 0 && c.Logs != 0) || c.Replayed > c.Applies {
+	if c.Method != http.MethodPost || c.Status < 200 || c.Status > 599 {
 		return errors.New("invalid public receipt claims")
 	}
-	for _, value := range []string{c.TargetHash, c.BodyHash, c.SequencesHash} {
+	for _, value := range []string{c.TargetHash, c.BodyHash} {
 		decoded, err := hex.DecodeString(value)
 		if err != nil || len(decoded) != sha256.Size || hex.EncodeToString(decoded) != value {
 			return errors.New("invalid public receipt hash")

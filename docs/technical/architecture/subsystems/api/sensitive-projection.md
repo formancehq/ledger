@@ -20,9 +20,8 @@ whose confidentiality cannot be established from the schema. Empty strings stay
 empty. Public response-signature envelopes retain their existing schema policy.
 
 The source remains unchanged, including authoritative signed bytes and worker or
-sink configuration. Never use the projector to persist records or sign projected logs as audit
-evidence. The separate public HTTP receipt may authenticate the final public
-response bytes; it does not authenticate an authoritative log. Annotations do not change serialization by
+sink configuration. Never use the projector to persist or sign records: a public
+projection is not audit evidence. Annotations do not change serialization by
 themselves; callers must explicitly project at a read boundary. Diagnostic
 sanitization and CLI connector-specific formatting retain their own contracts.
 
@@ -97,15 +96,3 @@ Sink status messages are sanitized by their producing adaptor and remain
 visible. `SinkError.message` deliberately has no sensitive annotation so useful
 operational diagnostics survive; mirror and audit diagnostics have independent
 annotation contracts.
-
-## Receipt-mode mutation responses
-
-Opt-in public HTTP receipts require a safe public representation before hashing.
-Ledger creation projects a detached `LedgerInfo` before JSON encoding, including
-known mirror credentials and unknown protobuf fields. The authoritative returned
-log and configuration remain unchanged. Default non-receipt output is unchanged.
-Event sink creation continues to return only the name; receipts never attach raw
-`SignedLog` payloads, which could contain credentials even when visible fields
-were redacted. The receipt hashes the emitted public body, not secret-bearing
-source bytes. Its separate domain attests public output, not audit evidence.
-See [the receipt contract](http-api.md#public-http-receipts).

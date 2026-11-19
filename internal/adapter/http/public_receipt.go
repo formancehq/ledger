@@ -4,15 +4,12 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
-	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
-	"hash"
 	"maps"
 	"net/http"
 
-	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/pkg/httpreceipt"
 )
 
@@ -20,16 +17,8 @@ const publicReceiptBodyLimit = 16 << 20
 
 type publicReceiptContextKey struct{}
 
-// publicReceiptState records only successful Apply results, including historical
-// replay provenance returned through follower forwarding. It never retains raw
-// logs: their signed protobuf payloads can contain connector credentials.
-// HTTP bulk calls are sequential; this request-local collector is not shared.
-type publicReceiptState struct {
-	applies   uint64
-	logs      uint64
-	replayed  uint64
-	sequences hash.Hash
-}
+// publicReceiptState marks the single route that supports an Apply proof.
+type publicReceiptState struct{}
 
 func receiptState(ctx context.Context) *publicReceiptState {
 	state, _ := ctx.Value(publicReceiptContextKey{}).(*publicReceiptState)
@@ -37,39 +26,13 @@ func receiptState(ctx context.Context) *publicReceiptState {
 	return state
 }
 
-func (s *publicReceiptState) record(result *domain.ApplyResult) {
-	if s == nil {
-		return
-	}
-	if result == nil {
-		panic("successful Apply returned no result")
-	}
-	s.applies++
-	s.logs += uint64(len(result.Logs))
-	if result.Replayed {
-		s.replayed++
-	}
-	// Length-prefix each successful Apply group to preserve batch boundaries.
-	var encoded [8]byte
-	binary.BigEndian.PutUint64(encoded[:], uint64(len(result.Logs)))
-	_, _ = s.sequences.Write(encoded[:]) // hash.Hash.Write never returns an error.
-	for _, log := range result.Logs {
-		if log == nil {
-			panic("successful Apply returned a nil log")
-		}
-		binary.BigEndian.PutUint64(encoded[:], log.GetSequence())
-		_, _ = s.sequences.Write(encoded[:]) // hash.Hash.Write never returns an error.
-	}
-}
-
 func hasPublicReceipt(r *http.Request) bool {
 	return len(r.Header.Values(httpreceipt.Header)) != 0
 }
 
-// publicReceipt authenticates the public HTTP exchange, not an authoritative
-// SignedLog or audit record. Signing a redacted Log would violate that contract;
-// this separate claim signs only the digest of the credential-safe HTTP bytes.
-// The responding node signs after ordinary Apply; admission and FSM are unchanged.
+// publicReceipt authenticates the complete public Apply response, including
+// redacted logs whose original SignedLog cannot be exposed to HTTP clients.
+// The responding node signs after service Apply; admission and FSM are unchanged.
 func (s *Server) publicReceipt(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if !hasPublicReceipt(r) {
@@ -89,7 +52,7 @@ func (s *Server) publicReceipt(next http.HandlerFunc) http.HandlerFunc {
 
 			return
 		}
-		state := &publicReceiptState{sequences: sha256.New()}
+		state := &publicReceiptState{}
 		r = r.WithContext(context.WithValue(r.Context(), publicReceiptContextKey{}, state))
 		captured := &publicReceiptWriter{header: w.Header().Clone()}
 		next(captured, r)
@@ -109,8 +72,6 @@ func (s *Server) publicReceipt(next http.HandlerFunc) http.HandlerFunc {
 		receipt, err := s.responseSigner.SignPublicReceipt(httpreceipt.Claims{
 			Version: httpreceipt.Version, Method: r.Method, Status: captured.status,
 			TargetHash: hex.EncodeToString(targetHash[:]), BodyHash: hex.EncodeToString(bodyHash[:]),
-			Applies: state.applies, Logs: state.logs, Replayed: state.replayed,
-			SequencesHash: hex.EncodeToString(state.sequences.Sum(nil)),
 		})
 		if err != nil {
 			writeInternalServerError(w, r, err)
@@ -129,18 +90,6 @@ func (s *Server) publicReceipt(next http.HandlerFunc) http.HandlerFunc {
 			s.logger.Errorf("writing public receipt response: %v", err)
 		}
 	}
-}
-
-// rejectPublicReceipt is used by routes without a mutation receipt contract.
-func rejectPublicReceipt(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if hasPublicReceipt(r) {
-			writeBadRequest(w, "INVALID_REQUEST", errors.New("public receipts are not supported on this route"))
-
-			return
-		}
-		next.ServeHTTP(w, r)
-	})
 }
 
 // publicReceiptWriter withholds headers and bounds retained output before it

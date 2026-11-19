@@ -1026,6 +1026,23 @@ Response signature bytes authenticate the protobuf log; clients must verify
 those exact bytes and bind their decoded public projection to the visible log.
 The JSON projection is not a lossless protobuf reconstruction format.
 
+Clients that need to authenticate the complete public Apply outcome may send
+`Formance-Public-Receipt: v1` on this route. With response signing configured,
+the serving node returns a proof in the same response header. The proof binds
+the method, Ledger-observed request target, status, and SHA-256 hash of the exact
+public response bytes. This includes redacted sink and mirror creation logs
+without exposing their original service signature payloads. Other service log
+signatures remain available. The proof describes the returned HTTP outcome;
+it is not an audit signature or evidence of inclusion in the audit chain.
+The trusted serving-node public key must be provisioned independently. This
+proof does not establish freshness, request-body identity, actor or cluster
+identity. A historical response for the same method and target can verify.
+Missing or invalid negotiation is rejected before Apply; a node without a
+response signing key returns 503. The response is buffered up to 16 MiB before
+signing. Encoding, overflow, signing, delivery or verification failure after
+Apply may leave a committed batch without a usable proof; retry only under the
+existing idempotency contract. Legacy mutation routes do not support the header.
+
 An unskipped business failure discards all staged business mutations in this
 batch. Explicit allowed `skippableReasons` retain the existing gRPC semantics:
 a matching failure becomes an audited skipped-order log and the batch succeeds.
@@ -1895,90 +1912,3 @@ To deepen your understanding:
 2. [General Architecture](../../overview.md) - How the APIs integrate
 3. [Data Flows](../../data-flows.md) - Detailed flows of requests
 4. [Development](../../../contributing/development.md) - Add new endpoints
-
-## Public HTTP receipts
-
-HTTP clients need to authenticate the public response they actually consume,
-including empty acknowledgements and partial bulk failures. Existing `SignedLog`
-proofs cover protobuf logs, whose public JSON is lossy and whose opaque payloads
-can contain credentials. Exposing those payloads or signing redacted logs under
-the same contract would violate confidentiality or audit semantics. A separate,
-domain-separated receipt binds the public bytes without exposing authoritative
-logs. The default response remains unchanged when clients do not opt in.
-
-Send exactly one nonempty `Formance-Public-Receipt: v1` header on any of the 25
-legacy Apply-backed mutation operations declared with that parameter in `openapi.yml`.
-The separate atomic `POST /v3/_/apply` route has no receipt contract: its
-service response does not expose the replay provenance needed for receipt claims.
-These cover ledger create/delete/promote, transaction create/revert/metadata,
-account and ledger metadata, metadata schema, account types, indexes, numscripts,
-prepared-query mutations, event sink mutations, and atomic or sequential bulk.
-Reads, analysis, prepared-query execution and operational probes do not support
-receipts. Invalid, repeated or empty negotiation returns 400; unsupported routes
-reject before execution. A supported request without a configured response signer
-returns 503 before dispatch. Authentication can reject earlier without a receipt.
-Request signing, scopes, idempotency and bulk execution semantics are unchanged;
-request signing still restricts signed bulk to atomic mode. `skipResponse` is not
-an HTTP option; service gRPC response suppression is unchanged.
-
-The response uses the same header name. It is unpadded base64url of JSON with
-`keyId`, `payload` and `signature`; payload and signature are standard padded base64
-strings. Payload bytes are JSON with these authenticated claims:
-
-| Claim | Meaning |
-| --- | --- |
-| `version` | `v1` |
-| `method` | Exact request method |
-| `targetHash` | Lowercase hex SHA-256 of the origin-form request target (escaped path plus raw query, preserving spelling/order) |
-| `status` | HTTP status integer |
-| `bodyHash` | Lowercase hex SHA-256 of exact public response entity bytes |
-| `applies` | Unsigned 64-bit count of backend Apply calls returning successful results |
-| `logs` | Unsigned 64-bit sum of logs in those results |
-| `replayed` | Unsigned 64-bit count of those results marked Replayed, including forwarded results |
-| `sequencesHash` | Lowercase hex SHA-256 of the ordered sequence commitment below |
-
-For each successful Apply in execution order, append its log count as an
-unsigned 64-bit big-endian integer, then each returned log sequence in order in
-the same format. Hash the concatenation; with no successful Apply, hash the empty byte sequence.
-This distinguishes Apply boundaries and zero-log results. It does not provide
-inspectable per-log descriptors or prove audit inclusion.
-
-Ed25519 signs the UTF-8 domain `formance.http-public-receipt.v1`, one NUL byte,
-and the exact payload bytes, in that order. It uses the existing response
-signing key on the serving HTTP node, even when Apply forwards to a leader.
-`pkg/httpreceipt.Verify` verifies the header using a trusted public key and the
-received method, Ledger-observed origin-form target (`r.URL.RequestURI()`), status
-and body. Prefix-stripping gateways require a trusted, configured mapping to that
-Ledger-facing target; the receipt does not authenticate the rewrite. Forwarded
-headers do not override the signed target. Verify exact payload bytes rather than
-reserializing claims. Verify entity bytes after HTTP content/transfer decoding
-and before JSON normalization. The 204 body is empty and retains status 204.
-Ordinary response envelopes, bigint negotiation and full bulk outcome arrays
-remain intact. Receipt-mode ledger creation projects a detached `LedgerInfo`
-through `sensitive.Redact` before encoding, so known mirror credentials and
-unknown protobuf fields cannot enter the signed public representation. Sink
-creation retains its name-only acknowledgement. The source log remains intact.
-
-Only successful Apply results contribute counts; a failed call can have committed
-before its error reached the server. Zero counts therefore do not prove absence
-of effects. A receipt authenticates the entire public status/body, including
-partial bulk errors, without turning the operation into a success. It does not
-prove request-body identity, freshness, actor, cluster identity or audit history.
-A historical response for the same method and target can still verify. Other
-response headers are not authenticated. This is a public response attestation,
-not a `SignedLog` or persisted audit record.
-
-The adapter buffers at most 16 MiB of response entity bytes; receipt headers are
-limited to 4096 bytes. Buffering/hashing costs O(response bytes), and sequence
-hashing costs O(returned logs) with constant digest state, independent of ledger
-history. Only opted-in requests pay this response-buffering cost. Serialization,
-invalid JSON or overflow after Apply returns an unsigned 500; effects already
-committed remain committed. Delivery failure is equally ambiguous. Strict
-clients reject missing or invalid proof, including old-node/proxy responses;
-verification failure is never rollback or permission to retry unkeyed writes.
-Existing route-specific idempotency and retention rules govern recovery.
-
-No proposal, FSM, storage, backup, audit or protobuf representation changes.
-Protocol revision remains 40; no migration is required. Deploy support and
-trusted serving-node keys before enabling strict clients. See the
-[operational recipe](../../../../ops/signing.md#public-http-receipts).
