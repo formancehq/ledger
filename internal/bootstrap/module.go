@@ -104,8 +104,14 @@ func provideNodeConfig(cfg Config) (node.NodeConfig, error) {
 	return buildNodeConfig(cfg)
 }
 
-func provideWAL(cfg node.NodeConfig, logger logging.Logger, meterProvider metric.MeterProvider) (*wal.DefaultWAL, error) {
-	return wal.New(cfg.WalDir, logger, meterProvider.Meter("wal"))
+func provideWAL(cfg node.NodeConfig, logger logging.Logger, meterProvider metric.MeterProvider, resources *StartupResources) (*wal.DefaultWAL, error) {
+	w, err := wal.New(cfg.WalDir, logger, meterProvider.Meter("wal"))
+	if err != nil {
+		return nil, err
+	}
+	resources.Track(w, w.Close)
+
+	return w, nil
 }
 
 // newClusterPolicyReconciler wires the leader-only policy maintenance into the
@@ -155,7 +161,7 @@ func Module() fx.Option {
 					cfg.ServiceAdvertiseAddr(),
 				)
 			}, fx.ParamTags(``, ``, `name:"raft"`, ``)),
-			func(cfg Config, meterProvider metric.MeterProvider, logger logging.Logger) (*dal.Store, error) {
+			func(cfg Config, meterProvider metric.MeterProvider, logger logging.Logger, resources *StartupResources) (*dal.Store, error) {
 				store, err := dal.NewStore(
 					cfg.DataDir,
 					logger,
@@ -183,17 +189,25 @@ func Module() fx.Option {
 					}).Infof("Configuration validation done")
 				}
 
+				resources.Track(store, store.Close)
+
 				return store, nil
 			},
 			provideWAL,
-			func(cfg Config, logger logging.Logger) (*spool.Default, error) {
-				return spool.NewDefault(spool.DefaultSpoolConfig{
+			func(cfg Config, logger logging.Logger, resources *StartupResources) (*spool.Default, error) {
+				sp, err := spool.NewDefault(spool.DefaultSpoolConfig{
 					Dir:             filepath.Join(cfg.DataDir, "spool"),
 					SegmentMaxBytes: cfg.SpoolSegmentMaxBytes,
 					Logger: logger.WithFields(map[string]any{
 						"cmp": "spool",
 					}),
 				})
+				if err != nil {
+					return nil, err
+				}
+				resources.Track(sp, sp.Close)
+
+				return sp, nil
 			},
 			func(cfg Config, transport *node.DefaultTransport, logger logging.Logger) state.SnapshotFetcherProvider {
 				return ctrl.GRPCSnapshotFetcherProvider(
@@ -318,6 +332,7 @@ func Module() fx.Option {
 				usageNotifications *signal.Notifications,
 				bloomFilters *bloom.FilterSet,
 				membership *raftmembership.Membership,
+				resources *StartupResources,
 			) (*state.Machine, error) {
 				machineStart := time.Now()
 
@@ -361,13 +376,18 @@ func Module() fx.Option {
 					return nil, err
 				}
 				machine = m
+				resources.Track(m, func() error {
+					m.Close()
+
+					return nil
+				})
 
 				logger.WithFields(map[string]any{
 					"duration": time.Since(machineStart).String(),
 				}).Infof("FSM Machine created")
 
 				return m, nil
-			}, fx.ParamTags(``, ``, ``, ``, ``, ``, ``, ``, `name:"events"`, `name:"mirror"`, `name:"index"`, `name:"usage"`, ``, ``)),
+			}, fx.ParamTags(``, ``, ``, ``, ``, ``, ``, ``, `name:"events"`, `name:"mirror"`, `name:"index"`, `name:"usage"`, ``, ``, ``)),
 			func(
 				params struct {
 					fx.In
@@ -578,13 +598,19 @@ func Module() fx.Option {
 				return n
 			},
 			// Read index store (Pebble) — always enabled
-			func(cfg Config, logger logging.Logger) (*readstore.Store, error) {
+			func(cfg Config, logger logging.Logger, resources *StartupResources) (*readstore.Store, error) {
 				dir := cfg.ReadIndexConfig.Dir
 				if dir == "" {
 					dir = filepath.Join(cfg.DataDir, "read-indexes")
 				}
 
-				return readstore.New(dir, logger, cfg.ReadIndexConfig.PebbleConfig)
+				rs, err := readstore.New(dir, logger, cfg.ReadIndexConfig.PebbleConfig)
+				if err != nil {
+					return nil, err
+				}
+				resources.Track(rs, rs.Close)
+
+				return rs, nil
 			},
 			// Index builder — tails the Raft log to populate the read index
 			func(store *dal.Store, rs *readstore.Store, attrs *attributes.Attributes, logger logging.Logger, meterProvider metric.MeterProvider, cfg Config) *indexbuilder.Builder {
@@ -604,10 +630,15 @@ func Module() fx.Option {
 			// usagebuilder projections. Kept physically separate from the
 			// readstore so an operational reset is just a directory drop and
 			// the builder re-derives every counter from the audit chain.
-			func(cfg Config, logger logging.Logger) (*usagestore.Store, error) {
+			func(cfg Config, logger logging.Logger, resources *StartupResources) (*usagestore.Store, error) {
 				dir := filepath.Join(cfg.DataDir, "usage")
+				us, err := usagestore.New(dir, logger, usagestore.DefaultConfig())
+				if err != nil {
+					return nil, err
+				}
+				resources.Track(us, us.Close)
 
-				return usagestore.New(dir, logger, usagestore.DefaultConfig())
+				return us, nil
 			},
 			// Usage builder — tails the FSM audit chain to populate the usage
 			// store (template usage + per-ledger event counters). Notifications
@@ -756,29 +787,31 @@ func Module() fx.Option {
 				rs *readstore.Store,
 				us *usagestore.Store,
 				sp *spool.Default,
+				resources *StartupResources,
 				cfg Config,
 				logger logging.Logger,
 			) {
 				lc.Append(fx.Hook{
 					OnStop: func(ctx context.Context) error {
-						return wal.Close()
+						return resources.Close(wal)
 					},
 				})
 				lc.Append(fx.Hook{
 					OnStop: func(_ context.Context) error {
-						return runtime.Close()
+						return resources.Close(runtime)
 					},
 				})
 				lc.Append(fx.Hook{
 					OnStop: func(_ context.Context) error {
-						return rs.Close()
+						return resources.Close(rs)
 					},
 				})
 				lc.Append(fx.Hook{
 					OnStop: func(_ context.Context) error {
-						return us.Close()
+						return resources.Close(us)
 					},
 				})
+				lc.Append(fx.StopHook(func(context.Context) error { return resources.Close(sp) }))
 			},
 			// Bloom-rebuild dispatcher: the Machine signals on its
 			// BloomRebuildCh when a cluster-config change requires a rebuild;
@@ -1134,12 +1167,10 @@ func Module() fx.Option {
 			func(lc fx.Lifecycle, scheduler *state.QueryCheckpointScheduler) {
 				lc.Append(worker.FxHook(scheduler))
 			},
-			func(lc fx.Lifecycle, machine *state.Machine) {
+			func(lc fx.Lifecycle, machine *state.Machine, resources *StartupResources) {
 				lc.Append(fx.Hook{
 					OnStop: func(_ context.Context) error {
-						machine.Close()
-
-						return nil
+						return resources.Close(machine)
 					},
 				})
 			},

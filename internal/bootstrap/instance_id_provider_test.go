@@ -31,6 +31,7 @@ func TestWALProviderDependsOnNodeIdentity(t *testing.T) {
 	app := fx.New(
 		fx.NopLogger,
 		fx.Supply(Config{RaftConfig: node.NodeConfig{WalDir: walDir}}),
+		fx.Supply(NewStartupResources()),
 		fx.Provide(
 			func() logging.Logger { return logging.Testing() },
 			func() metric.MeterProvider { return noop.NewMeterProvider() },
@@ -61,6 +62,7 @@ func TestNodeConfigProviderRefusesExistingWALWithoutIdentity(t *testing.T) {
 	app := fx.New(
 		fx.NopLogger,
 		fx.Supply(Config{RaftConfig: node.NodeConfig{WalDir: walDir}}),
+		fx.Supply(NewStartupResources()),
 		fx.Provide(
 			func() logging.Logger { return logging.Testing() },
 			func() metric.MeterProvider { return noop.NewMeterProvider() },

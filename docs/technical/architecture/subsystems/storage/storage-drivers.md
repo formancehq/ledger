@@ -288,6 +288,12 @@ The `Store` (`internal/storage/dal/store.go`) manages the Pebble database lifecy
 - **Audit**: `ListAuditEntries`
 - **Snapshots**: `CreateSnapshot`, `CreateBackup`
 
+During server construction, opened WAL and Pebble stores are registered with
+`StartupResources`. If a later provider fails before Fx starts, the run command
+closes them in reverse open order and releases injected listeners. Normal Fx
+`OnStop` hooks use the same once-only closers, so an `OnStart` rollback and the
+run command cannot close a store twice.
+
 The `Batch` (`internal/storage/dal/batch.go`) provides atomic write operations:
 
 - `SetAppliedIndex` / `SetLastAppliedTimestamp` — Raft progress tracking
