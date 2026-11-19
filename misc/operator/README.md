@@ -1347,8 +1347,10 @@ nix develop .#operator-tests --command just operator-test-integration
 
 `just operator-test-admission` in the same Nix shell runs the fast admission
 and BackupRun recovery subset. CI runs both recipes. Envtest does not run a
-kubelet, StatefulSet controller or CSI driver; use the real-cluster E2E suite
-below for those boundaries.
+kubelet, StatefulSet controller, or CSI driver. The Kind E2E suite below
+exercises kubelet and StatefulSet behavior with the `rancher.io/local-path`
+provisioner. Validate CSI driver behavior separately on a cluster with the
+intended CSI driver installed.
 
 ### End-to-end tests
 
