@@ -269,14 +269,11 @@ func (s *RestoreServiceServerImpl) prepareDownload(
 	}
 
 	manifest := *manifestPtr
-
-	hasCheckpoint := manifest.Checkpoint != nil && len(manifest.Checkpoint.Files) > 0
-	if !hasCheckpoint && len(manifest.Exports) == 0 {
-		return nil, nil, status.Error(codes.FailedPrecondition,
-			"backup manifest contains no checkpoint files and no export segments")
+	if err := backup.ValidateCheckpointOnlyManifest(&manifest); err != nil {
+		return nil, nil, status.Error(codes.FailedPrecondition, err.Error())
 	}
 
-	if hasCheckpoint && len(manifest.Checkpoint.Files) > maxRestoreManifestFiles {
+	if len(manifest.Checkpoint.Files) > maxRestoreManifestFiles {
 		return nil, nil, status.Errorf(codes.FailedPrecondition,
 			"backup manifest declares %d files (max %d); refusing to download",
 			len(manifest.Checkpoint.Files), maxRestoreManifestFiles)
@@ -296,8 +293,8 @@ func (s *RestoreServiceServerImpl) prepareDownload(
 }
 
 // executeDownload transitions the job to RUNNING, downloads every checkpoint
-// file in parallel, then opens the staging store and applies incremental
-// exports. The returned store is non-nil only on success.
+// file in parallel, then opens the complete staging store. The returned store
+// is non-nil only on success.
 func (s *RestoreServiceServerImpl) executeDownload(
 	ctx context.Context,
 	job *downloadJob,
@@ -332,12 +329,6 @@ func (s *RestoreServiceServerImpl) executeDownload(
 	stagingStore, err := dal.OpenDirect(stagingDir, s.logger)
 	if err != nil {
 		return nil, fmt.Errorf("opening staging store: %w", err)
-	}
-
-	if err := backup.ApplyExportsAndRebuild(ctx, s.logger, storage, stagingStore, manifest); err != nil {
-		_ = stagingStore.Close()
-
-		return nil, fmt.Errorf("applying export segments: %w", err)
 	}
 
 	return stagingStore, nil

@@ -32,15 +32,14 @@ import (
 	"google.golang.org/grpc/status"
 )
 
-// Frozen idempotency failures across an incremental restore. A keyed failure
-// committed after the last full checkpoint lives only in the exported audit
-// delta; RebuildDelta re-derives its frozen outcome from the audit reason
-// (state.IdempotencyValueFromAudit, gated on domain.KindForReason). If that
-// re-freeze were lost, a retry on the restored node would re-execute against
+// Frozen idempotency failures across a checkpoint restore. A keyed failure
+// committed after the first checkpoint must survive in the later checkpoint
+// with its frozen outcome and audit reason. If that state were lost, a retry
+// on the restored node would re-execute against
 // the new state and commit — a different outcome for the same key. If it
 // over-froze, a retryable failure would be pinned forever.
 //
-// Two frozen keyed failures sit in the delta; a third, retryable interruption
+// Two frozen keyed failures precede the later checkpoint; a third, retryable interruption
 // has no audited outcome:
 //   - frozenKey fails INSUFFICIENT_FUNDS (KindPrecondition, freezable). Its
 //     source is funded afterwards, so only the frozen outcome keeps the retry
@@ -202,7 +201,7 @@ send [USD 10] (
 		Expect(err).To(Succeed())
 	})
 
-	Describe("Phase 1: keyed failures in the exported delta", Ordered, func() {
+	Describe("Phase 1: keyed failures after the first checkpoint", Ordered, func() {
 		var (
 			sourceServer  *testservice.Service
 			client        servicepb.BucketServiceClient
@@ -239,8 +238,8 @@ send [USD 10] (
 				actions.CreateLedgerAction(ledgerName, nil)))
 			Expect(err).To(Succeed())
 
-			// Every keyed failure after this checkpoint lands in the incremental
-			// delta, so its frozen outcome can only come back through RebuildDelta.
+			// Every keyed failure after this checkpoint must appear in the later
+			// checkpoint, including its frozen outcome.
 			backupResp, err := clusterClient.Backup(ctx, &clusterpb.BackupRequest{Storage: storage()})
 			Expect(err).To(Succeed())
 			Expect(backupResp.GetTotalFiles()).To(BeNumerically(">", 0))
@@ -319,10 +318,10 @@ send [USD 10] (
 			expectExecReplay(client, "live")
 		})
 
-		It("exports the delta", func() {
-			incResp, err := clusterClient.IncrementalBackup(ctx, &clusterpb.IncrementalBackupRequest{Storage: storage()})
+		It("publishes the later checkpoint", func() {
+			incResp, err := clusterClient.Backup(ctx, &clusterpb.BackupRequest{Storage: storage()})
 			Expect(err).To(Succeed())
-			Expect(incResp.GetLogEntriesExported()).To(BeNumerically(">", 0))
+			Expect(incResp.GetTotalFiles()).To(BeNumerically(">", 0))
 		})
 	})
 

@@ -11,6 +11,8 @@ import (
 	"go.etcd.io/raft/v3/raftpb"
 	"go.opentelemetry.io/otel/metric/noop"
 
+	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
+
 	"github.com/formancehq/ledger/v3/internal/application/check"
 	"github.com/formancehq/ledger/v3/internal/domain/crypto/keystore"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
@@ -36,10 +38,9 @@ func restoreAuditKeyCheckpoint(t *testing.T, storage Storage, manifest *Manifest
 		require.NoError(t, os.MkdirAll(filepath.Dir(path), 0o700))
 		require.NoError(t, os.WriteFile(path, data, 0o600))
 	}
-	store, err := dal.OpenDirect(dir, testLogger())
+	store, err := dal.OpenDirect(dir, logging.Testing())
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, store.Close()) })
-	require.NoError(t, ApplyExportsAndRebuild(context.Background(), testLogger(), storage, store, manifest))
 
 	return store
 }
@@ -47,7 +48,7 @@ func restoreAuditKeyCheckpoint(t *testing.T, storage Storage, manifest *Manifest
 func auditKeyCheckerClean(t *testing.T, store *dal.Store) {
 	t.Helper()
 	var findings []*servicepb.CheckStoreError
-	checker := check.NewChecker(store, attributes.New(), nil, testLogger())
+	checker := check.NewChecker(store, attributes.New(), nil, logging.Testing())
 	require.NoError(t, checker.Check(context.Background(), func(event *servicepb.CheckStoreEvent) {
 		if e, ok := event.GetType().(*servicepb.CheckStoreEvent_Error); ok {
 			findings = append(findings, e.Error)
@@ -62,9 +63,9 @@ func recoveredAuditKeyMachine(t *testing.T, store *dal.Store) *state.Machine {
 	c, err := cache.New(1000, meter.Meter("test"))
 	require.NoError(t, err)
 	registry := state.NewStateRegistry(c, attributes.New())
-	m, err := state.NewMachine(testLogger(), registry, state.NewCacheSnapshotter(testLogger(), registry, nil), store,
+	m, err := state.NewMachine(logging.Testing(), registry, state.NewCacheSnapshotter(logging.Testing(), registry, nil), store,
 		dal.NewSentinelFactory(store, false), meter, keystore.NewKeyStore(), state.NewSharedState(),
-		signingParityNotifier{}, nil, "", 0, func(*raftpb.Entry, *dal.WriteSession) error { return nil }, state.NoopCapabilityPolicyCommitHandler)
+		creationTestNotifier{}, nil, "", 0, func(*raftpb.Entry, *dal.WriteSession) error { return nil }, state.NoopCapabilityPolicyCommitHandler)
 	require.NoError(t, err)
 	require.NoError(t, state.NewRecovery(m, store).RecoverState())
 
@@ -82,26 +83,26 @@ func lastAuditForKeyTest(t *testing.T, store *dal.Store) *auditpb.AuditEntry {
 	return entry
 }
 
-func TestAuditKeyFullIncrementalRestoreAcrossClusterIDs(t *testing.T) {
+func TestAuditKeyCheckpointRestoreAcrossClusterIDs(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	storage := newInMemoryBackupStorage()
-	source, sourceStore, _ := newSigningParityMachine(t)
+	source, sourceStore, _ := newCreationTestMachine(t)
 	keyA, err := query.ReadAuditKey(sourceStore)
 	require.NoError(t, err)
 	require.Len(t, keyA, 32)
 	applySigningEntry(t, source, sourceStore, 1, signingRegisterOrder("before", make([]byte, 32), ""))
 	require.NoError(t, sourceStore.Flush())
-	_, err = RunBackup(ctx, testLogger(), sourceStore, storage, "cluster-a", "audit-key-full-a")
+	_, err = RunBackup(ctx, logging.Testing(), sourceStore, storage, "cluster-a", "audit-key-full-a")
 	require.NoError(t, err)
 	applySigningEntry(t, source, sourceStore, 2, signingRegisterOrder("after", make([]byte, 32), ""))
 	require.NoError(t, sourceStore.Flush())
-	inc, err := RunIncrementalBackup(ctx, testLogger(), sourceStore, storage, "cluster-a", 0)
+	second, err := RunBackup(ctx, logging.Testing(), sourceStore, storage, "cluster-a", "audit-key-second-a")
 	require.NoError(t, err)
-	require.Positive(t, inc.AuditEntriesExported)
+	require.Equal(t, uint64(2), second.LastAuditSequence)
 	manifest, err := ReadManifest(ctx, storage, ManifestKey("cluster-a"))
 	require.NoError(t, err)
-	require.NotEmpty(t, manifest.Exports)
+	require.Empty(t, manifest.Exports)
 
 	restored := restoreAuditKeyCheckpoint(t, storage, manifest)
 	for seq := uint64(1); seq <= 2; seq++ {
@@ -131,7 +132,7 @@ func TestAuditKeyFullIncrementalRestoreAcrossClusterIDs(t *testing.T) {
 	auditKeyCheckerClean(t, restored)
 
 	// The destination's new Raft log starts at the checkpoint boundary + 1;
-	// the delta's audit sequence is already present and becomes the hash head.
+	// the second checkpoint's audit sequence is already the hash head.
 	destination := recoveredAuditKeyMachine(t, restored)
 	require.Equal(t, string(keyA), destination.State.AuditKey)
 	before := lastAuditForKeyTest(t, restored)
@@ -144,7 +145,7 @@ func TestAuditKeyFullIncrementalRestoreAcrossClusterIDs(t *testing.T) {
 	auditKeyCheckerClean(t, restored)
 
 	require.NoError(t, restored.Flush())
-	_, err = RunBackup(ctx, testLogger(), restored, storage, "cluster-b", "audit-key-full-b")
+	_, err = RunBackup(ctx, logging.Testing(), restored, storage, "cluster-b", "audit-key-full-b")
 	require.NoError(t, err)
 	bManifest, err := ReadManifest(ctx, storage, ManifestKey("cluster-b"))
 	require.NoError(t, err)

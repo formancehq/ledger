@@ -132,7 +132,7 @@ spec:
                 type: integer
               schedule:
                 description: |-
-                  Schedule defines cron schedules for full and incremental backups.
+                  Schedule defines the checkpoint backup cadence.
                   Both entries are optional; a Backup without any schedule is valid
                   and acts as a backup configuration template for manual BackupRun resources.
                 properties:
@@ -141,8 +141,9 @@ spec:
                       "0 2 * * 0" for weekly Sunday 2am).
                     type: string
                   incremental:
-                    description: Incremental is the cron expression for incremental
-                      backups (e.g. "0 * * * *" for hourly).
+                    description: |-
+                      Incremental is a deprecated cron expression. When set, it schedules Full
+                      checkpoint runs until the field is cleared and Full is configured.
                     type: string
                 type: object
               successfulRunsHistoryLimit:

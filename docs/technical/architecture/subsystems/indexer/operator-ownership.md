@@ -45,7 +45,7 @@ not as a universal identity for arbitrary orders inside a batch.
 The CLI filters audit entries by idempotency-key prefix using the secondary audit index, then fetches item details for matching candidates. A failed
 read does not authorize a deletion or return partial attribution as success.
 Recovery requires accessible audit history. Audit history is permanent primary
-state under the incremental restore contract; this command does not invent
+state under the checkpoint restore contract; this command does not invent
 evidence if history cannot be read. Lookup cost is proportional to the number of creation attempts for the given prefix, not to the total
 audit history, and remains bounded by the command timeout.
 
@@ -74,14 +74,14 @@ audit alone cannot close the interval.
 
 ## Restore and verification
 
-Full checkpoints retain audit entries, audit items and index creation dates.
-Nonempty incremental exports retain the audit rows, while registry replay
-reconstructs creation dates from creation logs. No new persistence format or
-restore projection is introduced. Restored evidence is usable by the same CR
+Complete checkpoints retain audit entries, audit items, index registry rows
+and creation dates. A later checkpoint also captures changes committed since
+the previous one. No new persistence format or restore projection is
+introduced. Restored evidence is usable by the same CR
 UID; a different UID does not adopt it.
 
 Regression coverage includes real CLI/service creation followed by a one-shot
 status failure, fresh-controller recovery and spec withdrawal; lost responses;
 external existing/concurrent creations; known replacements; new CR UIDs; audit
-pagination and invalid evidence. Restore coverage spans a checkpoint and a
-nonempty delta and verifies that audit identity and creation dates still match.
+pagination and invalid evidence. Restore coverage captures changes in a later
+complete checkpoint and verifies that audit identity and creation dates still match.

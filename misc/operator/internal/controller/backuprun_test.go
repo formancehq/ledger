@@ -1,14 +1,68 @@
 package controller
 
 import (
+	"context"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
+	batchv1 "k8s.io/api/batch/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
+	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
 	ledgerv1alpha1 "github.com/formancehq/ledger/misc/operator/api/v1alpha1"
 )
+
+func TestIncrementalBackupRunDoesNotStartNewJob(t *testing.T) {
+	t.Parallel()
+	scheme := runtime.NewScheme()
+	assert.NoError(t, batchv1.AddToScheme(scheme))
+	assert.NoError(t, ledgerv1alpha1.AddToScheme(scheme))
+	c := fake.NewClientBuilder().WithScheme(scheme).Build()
+	r := &BackupRunReconciler{Client: c, APIReader: c, Scheme: scheme}
+	run := &ledgerv1alpha1.BackupRun{ObjectMeta: metav1.ObjectMeta{Name: "legacy", Namespace: "test"}, Spec: ledgerv1alpha1.BackupRunSpec{Type: ledgerv1alpha1.BackupRunTypeIncremental}}
+	_, err := r.ensureBackupJob(context.Background(), run, &ledgerv1alpha1.Backup{}, &ledgerv1alpha1.Cluster{})
+	assert.ErrorContains(t, err, "create a Full BackupRun")
+}
+
+func TestIncrementalBackupRunObservesUncachedExistingJob(t *testing.T) {
+	t.Parallel()
+	scheme := runtime.NewScheme()
+	assert.NoError(t, batchv1.AddToScheme(scheme))
+	assert.NoError(t, ledgerv1alpha1.AddToScheme(scheme))
+	run := &ledgerv1alpha1.BackupRun{ObjectMeta: metav1.ObjectMeta{Name: "legacy", Namespace: "test", UID: "run-uid"}, Spec: ledgerv1alpha1.BackupRunSpec{Type: ledgerv1alpha1.BackupRunTypeIncremental}}
+	controller := true
+	job := &batchv1.Job{ObjectMeta: metav1.ObjectMeta{
+		Name: backupJobName(run), Namespace: run.Namespace,
+		OwnerReferences: []metav1.OwnerReference{{APIVersion: "ledger.formance.com/v1alpha1", Kind: "BackupRun", Name: run.Name, UID: run.UID, Controller: &controller}},
+	}}
+	cache := fake.NewClientBuilder().WithScheme(scheme).Build()
+	live := fake.NewClientBuilder().WithScheme(scheme).WithObjects(job).Build()
+	r := &BackupRunReconciler{Client: cache, APIReader: live, Scheme: scheme}
+	got, err := r.ensureBackupJob(context.Background(), run, &ledgerv1alpha1.Backup{}, &ledgerv1alpha1.Cluster{})
+	assert.NoError(t, err)
+	assert.Equal(t, job.Name, got.Name)
+}
+
+func TestLegacyIncrementalMigrationKeepsCheckpointCursorAndSummary(t *testing.T) {
+	t.Parallel()
+	older := metav1.NewTime(time.Date(2026, 1, 1, 1, 0, 0, 0, time.UTC))
+	newer := metav1.NewTime(older.Add(time.Hour))
+	runs := []ledgerv1alpha1.BackupRun{
+		{Spec: ledgerv1alpha1.BackupRunSpec{Type: ledgerv1alpha1.BackupRunTypeFull}, Status: ledgerv1alpha1.BackupRunStatus{Phase: ledgerv1alpha1.BackupRunPhaseSucceeded, CompletionTime: &older, Full: &ledgerv1alpha1.FullBackupStatus{TotalFiles: 1}}},
+		{Spec: ledgerv1alpha1.BackupRunSpec{Type: ledgerv1alpha1.BackupRunTypeIncremental}, Status: ledgerv1alpha1.BackupRunStatus{Phase: ledgerv1alpha1.BackupRunPhaseFailed, CompletionTime: &newer, Message: "provisioning backup Job: " + legacyIncrementalRunMessage}},
+	}
+	backup := &ledgerv1alpha1.Backup{}
+	r := &BackupReconciler{}
+	r.refreshCompletionCursors(backup, runs)
+	assert.Nil(t, backup.Status.LastIncrementalRunCompletionTime, "rejected run must not delay the replacement checkpoint")
+	assert.Equal(t, older, *backup.Status.LastFullRunCompletionTime)
+
+	runs[1].Status = ledgerv1alpha1.BackupRunStatus{Phase: ledgerv1alpha1.BackupRunPhaseSucceeded, CompletionTime: &newer, Full: &ledgerv1alpha1.FullBackupStatus{TotalFiles: 5}}
+	r.refreshStatusSummaries(backup, runs)
+	assert.EqualValues(t, 5, backup.Status.LastFullBackup.TotalFiles)
+}
 
 func TestHasRunningRun_TreatsPendingAndEmptyAsRunning(t *testing.T) {
 	t.Parallel()

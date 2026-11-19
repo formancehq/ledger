@@ -2,6 +2,7 @@ package controller
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"time"
@@ -56,6 +57,8 @@ type BackupRunReconciler struct {
 // concurrencyRequeue is how long to wait before re-checking when another run
 // is in flight for the same Backup.
 const concurrencyRequeue = 10 * time.Second
+
+const legacyIncrementalRunMessage = "incremental BackupRuns are deprecated; create a Full BackupRun for a checkpoint"
 
 func (r *BackupRunReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
@@ -222,6 +225,30 @@ func (r *BackupRunReconciler) ensureBackupJob(
 	if !apierrors.IsNotFound(err) {
 		return nil, fmt.Errorf("looking up Job: %w", err)
 	}
+	// An Incremental Job created by an older operator may still be running during
+	// the upgrade. Observe that Job above, but never start a new legacy run:
+	// the current ledgerctl alias writes a full-backup result instead.
+	if run.Spec.Type == ledgerv1alpha1.BackupRunTypeIncremental {
+		if r.APIReader == nil {
+			return nil, errors.New("APIReader not configured for legacy BackupRun Job lookup")
+		}
+		// A Job admitted by the old operator may be committed but still absent
+		// from this reconciler's informer cache. Confirm absence directly from
+		// the API server before failing the run and releasing its reservation.
+		err = r.APIReader.Get(ctx, types.NamespacedName{Name: backupJobName(run), Namespace: run.Namespace}, existing)
+		if err == nil {
+			if !metav1.IsControlledBy(existing, run) {
+				return nil, fmt.Errorf("job %q is not controlled by BackupRun %q (UID %s)", existing.Name, run.Name, run.UID)
+			}
+
+			return existing, nil
+		}
+		if !apierrors.IsNotFound(err) {
+			return nil, fmt.Errorf("looking up legacy Job directly: %w", err)
+		}
+
+		return nil, &permanentBackupJobError{errors.New(legacyIncrementalRunMessage)}
+	}
 
 	// Desired spec may already omit TLS while the live workload is optional.
 	// Resolve both transport and trust from the same owned workload snapshot.
@@ -323,18 +350,25 @@ func (r *BackupRunReconciler) applyJobResult(
 			return err
 		}
 
-		run.Status.Full = &ledgerv1alpha1.FullBackupStatus{
-			Time:              &now,
-			FilesUploaded:     result.FilesUploaded,
-			FilesDeleted:      result.FilesDeleted,
-			OrphansDeleted:    result.OrphansDeleted,
-			TotalFiles:        result.TotalFiles,
-			DurationMs:        result.DurationMs,
-			LastLogSequence:   result.LastLogSequence,
-			LastAuditSequence: result.LastAuditSequence,
-			LastAppliedIndex:  result.LastAppliedIndex,
-		}
+		run.Status.Full = fullBackupStatus(result, &now)
 	case ledgerv1alpha1.BackupRunTypeIncremental:
+		// During a Ledger-first rollout an older operator can start an
+		// Incremental Job using a new ledgerctl image. Its CLI alias publishes a
+		// full checkpoint and emits full-result JSON. Preserve those statistics
+		// instead of accepting a permissive zero-valued incremental unmarshal.
+		var shape map[string]json.RawMessage
+		if err := parseBackupResult(payload, run.Spec.Type, &shape); err != nil {
+			return err
+		}
+		if _, full := shape["totalFiles"]; full {
+			var result fullBackupResult
+			if err := parseBackupResult(payload, run.Spec.Type, &result); err != nil {
+				return err
+			}
+			run.Status.Full = fullBackupStatus(result, &now)
+
+			return nil
+		}
 		var result incrementalBackupResult
 		if err := parseBackupResult(payload, run.Spec.Type, &result); err != nil {
 			return err
@@ -355,6 +389,20 @@ func (r *BackupRunReconciler) applyJobResult(
 	}
 
 	return nil
+}
+
+func fullBackupStatus(result fullBackupResult, now *metav1.Time) *ledgerv1alpha1.FullBackupStatus {
+	return &ledgerv1alpha1.FullBackupStatus{
+		Time:              now,
+		FilesUploaded:     result.FilesUploaded,
+		FilesDeleted:      result.FilesDeleted,
+		OrphansDeleted:    result.OrphansDeleted,
+		TotalFiles:        result.TotalFiles,
+		DurationMs:        result.DurationMs,
+		LastLogSequence:   result.LastLogSequence,
+		LastAuditSequence: result.LastAuditSequence,
+		LastAppliedIndex:  result.LastAppliedIndex,
+	}
 }
 
 // backupResultReadError distinguishes unavailable evidence from an acquired

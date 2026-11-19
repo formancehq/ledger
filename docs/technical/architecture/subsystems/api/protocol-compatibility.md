@@ -515,7 +515,7 @@ check fails if a listed service no longer exists.
 
 The gate is a transport admission check. Its metadata and revision are not
 persisted, included in audited business intent, or consulted during Raft apply.
-It introduces no storage migration or incremental-restore state. It does not
+It introduces no storage migration or checkpoint-restore state. It does not
 validate whether a backup's persisted format matches the restore binary.
 
 ## Validation contract

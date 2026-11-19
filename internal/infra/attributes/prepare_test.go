@@ -294,9 +294,9 @@ func TestPrepareForBackupRejectsMalformedAppliedIndex(t *testing.T) {
 
 // TestPrepareForBackupClearsCacheZone asserts the cache zone is dropped in
 // full: per-entry rows in both generation slots, per-generation rotation
-// metadata, and the global snapshot meta. Checkpoint-era cache rows predate
-// the delta RebuildDelta replays into the attribute zone; leaving any of
-// them behind would let the restored FSM serve stale values as CacheHits.
+// metadata, and the global snapshot meta. A restored checkpoint may contain
+// old cache rows; leaving them behind would let the restored FSM serve stale
+// values as CacheHits.
 func TestPrepareForBackupClearsCacheZone(t *testing.T) {
 	t.Parallel()
 

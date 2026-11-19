@@ -119,11 +119,10 @@ func runBootstrap(cmd *cobra.Command, _ []string) error {
 	}
 
 	manifest := *manifestPtr
+	if err := backup.ValidateCheckpointOnlyManifest(&manifest); err != nil {
+		spinner.Fail("Unsupported backup manifest")
 
-	if manifest.Checkpoint == nil && len(manifest.Exports) == 0 {
-		spinner.Fail("Manifest contains no checkpoint and no exports")
-
-		return cmdutil.Displayed(errors.New("manifest contains no data to restore"))
+		return cmdutil.Displayed(err)
 	}
 
 	var checkpointFiles int
@@ -131,8 +130,7 @@ func runBootstrap(cmd *cobra.Command, _ []string) error {
 		checkpointFiles = len(manifest.Checkpoint.Files)
 	}
 
-	spinner.Success(fmt.Sprintf("Manifest loaded: %d checkpoint files, %d export segments",
-		checkpointFiles, len(manifest.Exports)))
+	spinner.Success(fmt.Sprintf("Manifest loaded: %d checkpoint files", checkpointFiles))
 
 	stagingDir := filepath.Join(dataDir, "restore-staging")
 	var files map[string]backup.CheckpointFile
@@ -150,33 +148,6 @@ func runBootstrap(cmd *cobra.Command, _ []string) error {
 	dlSpinner.Success(fmt.Sprintf("Downloaded %d checkpoint files (%s)", len(files), cmdutil.FormatBytes(totalBytes)))
 
 	logger := logging.NopZap()
-
-	// Restore incremental history and operational state, including policy-only updates.
-	if len(manifest.Exports) > 0 || manifest.ClusterPolicy != nil {
-		exportSpinner := cmdutil.StartSpinner("Applying incremental backup state...")
-
-		exportStore, err := dal.OpenDirect(stagingDir, logger)
-		if err != nil {
-			exportSpinner.Fail("Failed to open staging for exports")
-
-			return cmdutil.Displayed(err)
-		}
-
-		if err := backup.ApplyExportsAndRebuild(cmd.Context(), logger, storage, exportStore, &manifest); err != nil {
-			_ = exportStore.Close()
-			exportSpinner.Fail("Failed to apply export segments")
-
-			return cmdutil.Displayed(err)
-		}
-
-		if err := exportStore.Close(); err != nil {
-			exportSpinner.Fail("Failed to close staging after exports")
-
-			return cmdutil.Displayed(err)
-		}
-
-		exportSpinner.Success(fmt.Sprintf("Restored incremental state (%d history segments)", len(manifest.Exports)))
-	}
 
 	// Open staging as read-only to read metadata.
 
@@ -226,7 +197,7 @@ func runBootstrap(cmd *cobra.Command, _ []string) error {
 		}
 	}
 
-	// Prepare attributes for backup (Global-zone resets; no compaction).
+	// Clear source cluster-local zones and cache without compacting attributes.
 	prepareSpinner := cmdutil.StartSpinner("Preparing attributes for restore compatibility...")
 
 	prepareStore, err := dal.OpenDirect(stagingDir, logger)

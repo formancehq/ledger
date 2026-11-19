@@ -678,9 +678,9 @@ call sites.
 
 #### Restore cycles (`--restore`, single node)
 
-`run_model_test.sh --restore` periodically quiesces the driver, takes an
-incremental backup, kills the node, bootstraps a fresh store from the backup
-(running the `RebuildDelta` replay), and relaunches on it — the driver then
+`run_model_test.sh --restore` periodically quiesces the driver, takes a
+checkpoint backup, kills the node, bootstraps a fresh store from that checkpoint,
+and relaunches on it — the driver then
 resumes and its ordinary checks validate the rebuilt state. The run fails if
 no cycle completed or any cycle failed. The driver-side knobs are
 `MODEL_RESTORE_INTERVAL` and `MODEL_RESTORE_TIMEOUT` (seconds; the timeout is
@@ -882,9 +882,9 @@ nix develop .#ci --command go test -race -tags s3 ./cmd/ledgerctl/store -count=1
 ```
 
 These command tests use an in-process object-store HTTP endpoint, without Docker
-or cloud credentials. The retry regression creates a real full checkpoint and
-nonempty incremental delta, interrupts after completed or partially committed
-rebuild, then checks exact volumes/balances and Checker health after retry.
+or cloud credentials. The retry regression creates a complete checkpoint,
+interrupts a restore, then checks exact volumes/balances and Checker health
+after retry.
 
 CI runs `Tests-Unit` (light unit coverage), `Tests-Internal` (all `./internal/...`
 packages with every optional feature tag), and `Tests-Store`

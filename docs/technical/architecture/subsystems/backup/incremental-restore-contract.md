@@ -1,215 +1,93 @@
-# Incremental Restore Parity
+# Checkpoint Restore Parity
 
 ## Invariant
 
-For every committed effect intended to survive a cross-cluster restore, applying
-the complete history live must produce the same logical persisted state as
-restoring a checkpoint of the history prefix and rebuilding the exported delta:
+A backup captures a flushed Pebble checkpoint. Every committed effect visible at
+the capture point and intended to survive cross-cluster restore must be present
+in that checkpoint. A later backup captures a new complete checkpoint; restore
+does not replay history between two checkpoints.
 
 ```text
-live(prefix + delta) == restore(checkpoint(prefix), delta)
+live(at capture) == restore(checkpoint(at capture))
 ```
 
-The comparison is logical, not necessarily byte-for-byte. Protobuf map encoding,
-cluster-local state, caches, and other explicitly reset data may differ in bytes
-or be absent after restore. Every difference requires a documented lifecycle
-classification; it must not arise accidentally from an omitted replay effect.
+Compare logical business state, not byte-for-byte Pebble files. Cross-cluster
+restore intentionally removes cluster-local identity and caches and re-seeds the
+destination genesis. The audit chain, business projections, log, audit items,
+applied proposals, and last applied HLC are captured together in one Pebble
+checkpoint. The checker must validate the restored business state.
 
-This is a correctness invariant, not merely a backup test convention. The FSM
-apply path and `RebuildDelta` are two folds of the same committed business
-history. If one advances, deletes, or creates a durable projection and the other
-does not, the restored store can contain business data that disagrees with the
-state used to admit or apply the next order.
+A confirmed write before the backup capture point is included. Writes concurrent
+with checkpoint creation may fall on either side of the capture point and appear
+no later than the next successful backup. The backup path flushes memtables before
+calling Pebble `Checkpoint(...WithFlushedWAL())`, and uploads every checkpoint
+file, including a Pebble WAL file if present. Raft WAL files are outside the
+backup.
 
-Residency is part of that state, not an implementation detail below it: log,
-audit, audit-item, and applied-proposal history is permanent in the primary
-store, so a restored store must hold exactly the rows the source held — no
-export may be skipped, and no restored row may be dropped afterwards.
+## Publication and restore
 
-## Restore evidence and responsibilities
+The backup enumerates and hashes every checkpoint file, uploads objects absent
+from the content-addressed destination, publishes one manifest with the new
+checkpoint and sequence metadata, then prunes unreferenced objects. The manifest
+write is the publication boundary: an incomplete upload must leave the prior
+manifest restorable. A failed prune may leave harmless orphans for a retry.
 
-The last applied HLC timestamp starts at the checkpoint value and folds the
-maximum effective timestamp from every exported post-checkpoint audit entry.
-Successful and audited failed business proposals both advance that clock.
-Uncommitted rejections and idempotency replays restore the previous HLC value;
-technical-only proposals do not advance it. `RebuildDelta` stores the folded value before staging is
-activated, so the first destination proposal cannot acquire a timestamp older
-than a restored audit entry.
+Both gRPC restore and offline bootstrap require checkpoint files and reject old
+manifests with export segments or a separate cluster policy override. The user
+must create a new checkpoint backup with the updated binary before restoring
+from that destination. Compatibility with the old backup artifact is deliberately
+not maintained during the RC; persisted Ledger and Raft data retain their normal
+upgrade requirements.
 
-A full checkpoint carries the Pebble state at its log and audit sequence
-boundaries. Incremental backup segments after that boundary carry raw log,
-audit-entry, audit-item, and applied-proposal rows. `ApplyExports` restores those
-rows, then `RebuildDelta` reconstructs the derived state that the live FSM wrote
-after the checkpoint.
+`PrepareForBackup` discards source cluster-local state after the download and
+before activation. The audit secret remains with the chain. Source Raft applied
+indexes in business records remain provenance, not destination Raft certificates.
+The destination genesis and index builders must use the restored checkpoint
+boundary as specified in their own subsystem contracts.
 
-Restore validation cross-checks the sparse applied-proposal stream against the
-dense audit stream after applying the raw exports. Failed audit outcomes are
-allowed to leave sequence gaps, but every successful audit outcome must have an
-`AppliedProposal` at the same sequence, and no applied proposal may lack a
-successful audit outcome. Successful entries with no replayable log range are
-accepted without this companion check because they contribute no delta fold.
-This rejects a manifest that silently omits an applied-proposal segment while
-preserving legitimate failure gaps.
+## Required regression evidence
 
-The audit secret is **preserved** checkpoint state, not a rebuilt projection:
-it is initialized once before the first audit entry and cannot be changed by
-post-checkpoint live apply. `RunBackup` refuses a full checkpoint without a
-committed key, so an incremental delta can never contain the first audit entry
-without its key in the base checkpoint. `PrepareForBackup` discards the source
-operational cluster identity but leaves the secret alongside the source
-history. The destination uses that secret to check and extend the chain while
-its own cluster ID names membership and subsequent backup artifacts.
+For any persisted, audited, or deletion-cascade change with restore impact:
 
-Raft applied indexes embedded in rebuilt business records remain source-cluster
-provenance, not certificates in the restored cluster's new Raft domain. A
-consumer that coordinates rebuildable local projections against such a record
-must bind its wait and published certificate to the restored store's captured
-applied index. Query-checkpoint materialization follows this rule: the audit
-projection certifies the complete restored audit head at the new genesis
-boundary, while `PrepareForBackup` and `RebuildDelta` mark surviving checkpoint
-rows with explicit restore provenance. The normal index builder uses that marker
-rather than numeric ordering between unrelated Raft domains; it never publishes
-an intermediate source-cluster index, even when the destination domain has
-already overtaken that number.
+1. Create a checkpoint, perform a meaningful committed mutation, then create a
+   second checkpoint at the same destination.
+2. Restore **the second checkpoint** through the production restore service or
+   offline bootstrap. Do not take a third checkpoint that could mask a missing
+   second capture.
+3. Compare exact business values and relevant future admission behavior with
+   the source, not only row counts or successful checker completion.
+4. Run `CheckStore` on the restored store.
+5. Where object reuse matters, compare manifest object keys for unchanged
+   checkpoint files. Do not require a no-write backup to upload zero files:
+   starting the backup itself persists backup-job state.
 
-Before changing an audited order, an FSM handler, a persisted projection, or a
-delete/purge cascade, classify every affected value:
-
-| Classification | Required behavior |
-|---|---|
-| Preserved | The checkpoint value remains correct because the delta cannot change it. Document why. |
-| Rebuilt | The delta can change the value. Identify the exported evidence and fold it into the restored projection. |
-| Discarded | The value is cluster-local, cache-like, or otherwise invalid after cross-cluster restore. Delete it in the restore preparation lifecycle and document how it is re-seeded. |
-
-"Present in the checkpoint" is not a valid explanation for a value that can
-change in the delta. Rebuild requirements include deletes and resets, not only
-creations and updates.
-
-For a rebuilt value, answer all of the following before implementation:
-
-1. Which live apply path mutates it?
-2. Which exported record contains enough authoritative evidence to reproduce the mutation?
-3. What is the fold rule: assignment, maximum, sum, set membership, tombstone, or another deterministic operation?
-4. How is the checkpoint value used as the fold seed?
-5. How do later delete, promote, purge, or recreate operations affect the result?
-6. Which checker pass independently re-derives or validates the final value?
-
-Query-checkpoint schedules use the checkpoint row as their fold seed. A
-post-checkpoint `SetQueryCheckpointSchedule` log replaces that value and a
-`DeleteQueryCheckpointSchedule` log deletes it; later logs win in sequence
-order. Both effects are staged in the current rebuild batch. Before that batch
-commits, a replay error leaves the last committed checkpoint-or-delta value in
-place; after commit, durable state contains the complete fold and startup loads
-that value into the scheduler. The audit-bound schedule log is the replay
-evidence; schedule checker coverage remains a separate integrity concern.
-
-Prepared-query target and filter are **rebuilt** projections. Apply stages both
-fields in one prepared-query write after validating the explicit update target;
-the durable audit log records the previous and new target when the order carries
-one. A post-checkpoint `UpdatedPreparedQueryLog` replaces both fields in the
-rebuild fold, while a historical filter-only log replaces just the filter.
-Later deletion removes the definition, and recreation supplies a new seed.
-The checkpoint carries the earlier definition; a failed rebuild batch leaves
-that checkpoint value durable until a successful retry commits the delta.
-
-If the ledger-log payload omits information that the live apply used, inspect the
-chain-bound serialized order in `AuditItem` and the `AppliedProposal` companion
-record. Do not silently default a missing fact. Prefer a shared, pure decoder for
-authoritative replay facts, while retaining a test oracle independent of the
-restore writer so a shared mistake cannot make both sides agree incorrectly.
-
-## Required tests
-
-A change with restore impact is not complete with an isolated `RebuildDelta`
-unit test alone. Cover the behavior at the lowest useful level and prove the
-cross-lifecycle composition.
-
-The restore regression must:
-
-1. create meaningful state before the full checkpoint;
-2. perform the affected successful operation after the checkpoint;
-3. assert that the manifest contains a non-empty export covering that operation;
-4. restore the checkpoint plus delta through `ApplyExportsAndRebuild` or the real restore service;
-5. compare the restored logical projection with the live source state;
-6. run `CheckStore` on the restored store and require no integrity findings;
-7. exercise the next admission or apply decision that consumes the projection when practical.
-
-Choose assertions that expose duplicate or forgotten effects. Counts alone are
-often insufficient: a replay can overwrite a row with the same identifier while
-applying postings or counters twice. Compare balances and volumes, boundary
-fields, metadata values, idempotency outcomes, lifecycle modes, and rejection
-reasons as applicable.
-
-For field or order-kind changes, use table-driven coverage for every relevant
-variant. A test covering only an uncommon variant does not establish the common
-path. When practical, demonstrate that disabling the new rebuild fold makes the
-regression fail; this falsifies a vacuous test that never reached the delta path.
-
-## Review checklist
-
-- The delta is non-empty and contains the intended operation.
-- Live apply and restore use the same authoritative evidence but are compared by an independent oracle.
-- Checkpoint seeding and delta folding are both exercised.
-- Create, update, delete, and lifecycle transitions relevant to the projection are covered.
-- `CheckStore` verifies the restored primary-store projection, or the documented exemption remains valid.
-- Tests assert business values and future gate behavior, not only row presence or cardinality.
-- The subsystem documentation and code comments describe any new non-obvious restore rule.
+Test both S3 and Azure publication where provider behavior matters. Operator
+E2E must exercise a second checkpoint and verify a post-first-checkpoint
+sentinel after restore. Each Antithesis restore cycle captures a quiesced
+committed state in a complete checkpoint and verifies it after restore.
 
 ## Code and test map
 
 | Concern | Location |
 |---|---|
-| Export application and rebuild orchestration | `internal/infra/backup/restore.go` |
-| Delta reconstruction | `internal/infra/backup/rebuild.go` |
-| Shared audit/order replay facts | `internal/domain/replay/` |
+| Backup memtable flush and checkpoint creation | `internal/infra/backup/manager.go`, `internal/storage/dal/store.go` |
+| Object upload and manifest publication | `internal/infra/backup/manager.go`, `manifest.go` |
+| gRPC restore download | `internal/adapter/grpc/server_restore_download.go` |
+| Offline bootstrap | `cmd/ledgerctl/store/bootstrap.go` |
 | Live persisted mutations | `internal/domain/processing/`, `internal/infra/state/` |
 | Integrity oracle | `internal/application/check/` |
-| Rebuild unit tests | `internal/infra/backup/rebuild_test.go` |
 | Cross-lifecycle restore tests | `tests/e2e/cluster/restore*_test.go` |
 | Model-driven restore cycles | `tests/antithesis/run_model_test.sh --restore` |
 
 Also read [Audit-Bound vs Technical State](../../audit-vs-technical-state.md)
-before deciding whether a value is authoritative, checker-verified, rebuildable,
-or deliberately excluded from cross-cluster restore.
-
-## Initial ledger metadata
-
-Initial ledger metadata is rebuilt from post-checkpoint CreatedLedgerLog.metadata
-in the same rebuild batch as ledger info and boundaries. Later save/delete and
-ledger-purge logs retain their ordered effects. The canonical metadata keyspace
-is independently checked against successful chain-verified orders by
-ledgerMetadataVerifier. The normal/mirror cross-lifecycle regression is
-TestBackup_CreateLedgerMetadataRestoreParity; it compares a real checkpoint plus
-a nonempty creation delta with live entity reads and requires a healthy checker.
+before deciding whether a value is authoritative, checker-verified, or
+deliberately excluded from cross-cluster restore.
 
 ## Operational cluster policy
 
-Native `SetClusterPolicyProposal` has no business log or audit entry.
-`Manifest.clusterPolicy` is an optional snapshot containing deterministic policy
-protobuf bytes (`data`, base64 in JSON) and the source `appliedIndex`. Full
-checkpoints already include the policy row and reset this optional override.
-Incremental backup reads policy, applied index and history endpoints from one
-Pebble snapshot. It publishes a changed policy even when there are no history
-exports. A newer observation advances the policy watermark even when policy
-bytes are unchanged. A snapshot older than the checkpoint or previous policy snapshot, or
-behind already exported history, cannot replace the manifest policy.
-
-New history objects are uploaded before the manifest is published. A failed
-manifest write leaves the previously published backup intact; retry captures
-and publishes again. Policy-only updates use the same manifest publication
-boundary without creating empty export segments.
-
-Restore validates the optional policy before modifying the staging store,
-applies history exports, rebuilds their derived state (including legacy policy
-logs), then commits the operational policy override. Only successful staging
-restore may be activated. Failure leaves staging incomplete and must not activate
-it. Released manifests omit the override and preserve checkpoint/legacy-delta
-behavior. The source applied index orders backup captures; it is not a target
-Raft index to install during cross-cluster restore.
-
-The policy is structurally validated, not authenticated by the business audit
-chain. The manifest's integrity and access controls cover this operational state.
-The checker still verifies business effects without replaying operational quotas.
-Regression coverage includes a historical policy delta followed by a native
-update, a policy-only delta with no exports, restart conflict checks, and the
-real S3 restore lifecycle with Discovery readback of the post-checkpoint revision.
+Native policy is stored in Pebble and captured in the same flushed checkpoint as
+the rest of the primary store. A policy update after one backup requires a second
+checkpoint before it can be restored. The old manifest-level `clusterPolicy`
+override is rejected by current restore paths; no separate policy-only backup
+publication exists. The manifest and object-store access controls protect this
+operational state; it is not authenticated by the business audit chain.

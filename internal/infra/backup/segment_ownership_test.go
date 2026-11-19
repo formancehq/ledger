@@ -15,8 +15,8 @@ import (
 // hash64 is a well-formed stand-in for the hex sha256 CheckpointFileKey appends.
 func hash64() string { return strings.Repeat("ab", sha256HexLen/2) }
 
-// TestKeyBuildersProduceOwnedKeys pins every production key builder to the
-// recogniser that guards its prune. If a builder's shape changes and the
+// TestKeyBuildersProduceOwnedKeys pins the checkpoint key builder and legacy
+// export key shapes to the recognisers that guard pruning. If a shape changes and the
 // recogniser is not updated with it, the prune silently stops deleting that
 // chain's own orphans — a leak rather than a loud failure — so this is the
 // anti-drift gate for that pairing.
@@ -44,10 +44,10 @@ func TestKeyBuildersProduceOwnedKeys(t *testing.T) {
 		t.Parallel()
 
 		for name, key := range map[string]string{
-			"log":             ExportLogSegmentKey(bucketID, 1, 2, 0),
-			"audit":           ExportAuditSegmentKey(bucketID, 1, 2, 0),
-			"auditItem":       ExportAuditItemSegmentKey(bucketID, 1, 2, 0),
-			"appliedProposal": ExportAppliedProposalSegmentKey(bucketID, 1, 2, 0),
+			"log":             "tenant/exports/logs-00000000000000000001-00000000000000000002-00000.bin",
+			"audit":           "tenant/exports/audit-00000000000000000001-00000000000000000002-00000.bin",
+			"auditItem":       "tenant/exports/audit-items-00000000000000000001-00000000000000000002-00000.bin",
+			"appliedProposal": "tenant/exports/applied-proposals-00000000000000000001-00000000000000000002-00000.bin",
 		} {
 			require.True(t, ownsExportKey(bucketID, key),
 				"%s segment key must be recognised as owned: %s", name, key)
@@ -171,7 +171,7 @@ func TestRunBackup_PreservesNestedChain(t *testing.T) {
 
 			// Give the child an export segment too, so both of the parent's
 			// prune roots are exercised against it.
-			childExport := ExportLogSegmentKey(tc.child, 1, 2, 0)
+			childExport := ExportPrefix(tc.child) + "logs-00000000000000000001-00000000000000000002-00000.bin"
 			require.NoError(t, storage.PutFile(context.Background(), childExport,
 				bytes.NewReader([]byte("segment")), int64(len("segment"))))
 			childKeys = append(childKeys, childExport)

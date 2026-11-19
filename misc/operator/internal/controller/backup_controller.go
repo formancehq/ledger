@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/robfig/cron/v3"
@@ -58,8 +59,6 @@ func (r *BackupReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 }
 
 func (r *BackupReconciler) reconcile(ctx context.Context, req ctrl.Request, now time.Time) (ctrl.Result, error) {
-	logger := log.FromContext(ctx)
-
 	if r.APIReader == nil {
 		return ctrl.Result{}, errors.New("APIReader not configured")
 	}
@@ -84,21 +83,19 @@ func (r *BackupReconciler) reconcile(ctx context.Context, req ctrl.Request, now 
 
 	parser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
 
-	var fullSched cron.Schedule
-	if backup.Spec.Schedule.Full != "" {
-		var err error
-		fullSched, err = parser.Parse(backup.Spec.Schedule.Full)
-		if err != nil {
-			return r.setFailed(ctx, &backup, fmt.Sprintf("invalid full backup schedule: %v", err))
-		}
-	}
-
-	var incrSched cron.Schedule
+	// Existing resources often carry both fields. During migration, use the
+	// legacy incremental cadence for checkpoint runs rather than
+	// silently stopping backups until an operator edits the resource.
+	scheduleExpr := backup.Spec.Schedule.Full
 	if backup.Spec.Schedule.Incremental != "" {
+		scheduleExpr = backup.Spec.Schedule.Incremental
+	}
+	var fullSched cron.Schedule
+	if scheduleExpr != "" {
 		var err error
-		incrSched, err = parser.Parse(backup.Spec.Schedule.Incremental)
+		fullSched, err = parser.Parse(scheduleExpr)
 		if err != nil {
-			return r.setFailed(ctx, &backup, fmt.Sprintf("invalid incremental backup schedule: %v", err))
+			return r.setFailed(ctx, &backup, fmt.Sprintf("invalid backup schedule: %v", err))
 		}
 	}
 
@@ -132,22 +129,7 @@ func (r *BackupReconciler) reconcile(ctx context.Context, req ctrl.Request, now 
 		backup.Status.NextFullBackupTime = nil
 	}
 
-	if incrSched != nil {
-		// An incremental backup is only meaningful after at least one Succeeded Full run.
-		if backup.Status.LastFullBackup != nil {
-			next, err := r.scheduleType(ctx, &backup, runs, ledgerv1alpha1.BackupRunTypeIncremental, incrSched, now)
-			if err != nil {
-				return ctrl.Result{}, err
-			}
-			backup.Status.NextIncrementalBackupTime = &metav1.Time{Time: next}
-			nextRequeue = minDuration(nextRequeue, next.Sub(now))
-		} else {
-			logger.V(1).Info("skipping incremental schedule: no successful full backup yet")
-			backup.Status.NextIncrementalBackupTime = nil
-		}
-	} else {
-		backup.Status.NextIncrementalBackupTime = nil
-	}
+	backup.Status.NextIncrementalBackupTime = nil
 
 	backup.Status.Phase = ledgerv1alpha1.BackupPhaseReady
 	backup.Status.Message = ""
@@ -180,7 +162,7 @@ func (r *BackupReconciler) scheduleType(
 ) (time.Time, error) {
 	logger := log.FromContext(ctx)
 
-	if hasRunningRun(runs, runType) {
+	if hasRunningRun(runs, runType) || (runType == ledgerv1alpha1.BackupRunTypeFull && hasRunningRun(runs, ledgerv1alpha1.BackupRunTypeIncremental)) {
 		// Concurrency Forbid: defer scheduling until the in-flight run finishes.
 		return sched.Next(now), nil
 	}
@@ -189,6 +171,9 @@ func (r *BackupReconciler) scheduleType(
 	switch runType {
 	case ledgerv1alpha1.BackupRunTypeFull:
 		lastTime = backup.Status.LastFullRunCompletionTime
+		if previous := backup.Status.LastIncrementalRunCompletionTime; previous != nil && (lastTime == nil || previous.After(lastTime.Time)) {
+			lastTime = previous
+		}
 	case ledgerv1alpha1.BackupRunTypeIncremental:
 		lastTime = backup.Status.LastIncrementalRunCompletionTime
 	default:
@@ -266,7 +251,7 @@ func (r *BackupReconciler) refreshStatusSummaries(
 	backup *ledgerv1alpha1.Backup,
 	runs []ledgerv1alpha1.BackupRun,
 ) {
-	if latest := latestSucceededRun(runs, ledgerv1alpha1.BackupRunTypeFull); latest != nil && latest.Status.Full != nil {
+	if latest := latestFullResultRun(runs); latest != nil {
 		backup.Status.LastFullBackup = latest.Status.Full.DeepCopy()
 		meta.SetStatusCondition(&backup.Status.Conditions, metav1.Condition{
 			Type:               "FullBackupHealthy",
@@ -416,12 +401,33 @@ func lastRunTime(runs []ledgerv1alpha1.BackupRun, runType ledgerv1alpha1.BackupR
 		if !runs[i].IsTerminal() {
 			continue
 		}
+		// A rejected legacy run never published a checkpoint. Keep the prior
+		// cursor so the replacement Full run is due immediately.
+		if runType == ledgerv1alpha1.BackupRunTypeIncremental && strings.Contains(runs[i].Status.Message, legacyIncrementalRunMessage) {
+			continue
+		}
 		t := runs[i].Status.CompletionTime
 		if t == nil {
 			continue
 		}
 		if latest == nil || t.After(latest.Time) {
 			latest = t
+		}
+	}
+
+	return latest
+}
+
+// latestFullResultRun includes a checkpoint published through the deprecated
+// incremental CLI alias during a Ledger-first rolling upgrade.
+func latestFullResultRun(runs []ledgerv1alpha1.BackupRun) *ledgerv1alpha1.BackupRun {
+	var latest *ledgerv1alpha1.BackupRun
+	for i := range runs {
+		if runs[i].Status.Phase != ledgerv1alpha1.BackupRunPhaseSucceeded || runs[i].Status.Full == nil {
+			continue
+		}
+		if latest == nil || completionOrCreation(&runs[i]).After(completionOrCreation(latest).Time) {
+			latest = &runs[i]
 		}
 	}
 

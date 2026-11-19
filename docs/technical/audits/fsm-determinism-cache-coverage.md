@@ -438,7 +438,7 @@ CreateLedger stages initial metadata in the canonical ledger-metadata keyspace i
 
 For normal and mirror creation, do rejection, proposal rollback and idempotent replay preserve initial metadata atomically without a second save, new metadata read dependency, duplicate allocation or order mutation?
 
-See [the creation contract](../architecture/subsystems/api/atomic-ledger-creation.md) for the authorized semantics and regression evidence. Treat HTTP response/forwarding, actual FSM readback, keyed replay, nonempty checkpoint-plus-delta restore, and primary-projection tampering as separate evidence oracles; a helper-only test does not prove every boundary.
+See [the creation contract](../architecture/subsystems/api/atomic-ledger-creation.md) for the authorized semantics and regression evidence. Treat HTTP response/forwarding, actual FSM readback, keyed replay, second complete checkpoint after a meaningful mutation, and primary-projection tampering as separate evidence oracles; a helper-only test does not prove every boundary.
 
 ## Controlled drain apply boundary
 

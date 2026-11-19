@@ -222,7 +222,7 @@ Initial metadata on normal or mirror creation is authorized by ledger:WriteLedge
 
 Can a caller with LedgerWrite create a ledger with initial metadata without MetadataWrite, while the same caller cannot use the later metadata-save operation without its required scope?
 
-See [the creation contract](../architecture/subsystems/api/atomic-ledger-creation.md) for the authorized semantics and regression evidence. Treat HTTP response/forwarding, actual FSM readback, keyed replay, nonempty checkpoint-plus-delta restore, and primary-projection tampering as separate evidence oracles; a helper-only test does not prove every boundary.
+See [the creation contract](../architecture/subsystems/api/atomic-ledger-creation.md) for the authorized semantics and regression evidence. Treat HTTP response/forwarding, actual FSM readback, keyed replay, second complete checkpoint after a meaningful mutation, and primary-projection tampering as separate evidence oracles; a helper-only test does not prove every boundary.
 
 ## HTTP signed transactions and existing authorization
 

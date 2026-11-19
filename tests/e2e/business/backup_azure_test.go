@@ -159,38 +159,20 @@ var _ = Describe("Azure Blob Backup", Ordered, func() {
 		}
 	})
 
-	It("should export new entries incrementally after a full backup", func() {
-		fullResp, err := clusterClient.Backup(ctx, &clusterpb.BackupRequest{
-			Storage:  azureStorage(),
-			BucketId: "test-cluster",
-		})
+	It("should replace the checkpoint after new transactions", func() {
+		before, err := readAzureBackupManifest(ctx, azureClient)
 		Expect(err).To(Succeed())
-		checkpointLogSeq := fullResp.GetLastLogSequence()
-
 		_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateForceTransactionAction("azure-backup-test",
-			[]*commonpb.Posting{
-				actions.NewPosting("world", "users:charlie", big.NewInt(500), "GBP"),
-			},
-			nil,
-		)))
+			[]*commonpb.Posting{actions.NewPosting("world", "users:charlie", big.NewInt(500), "GBP")}, nil)))
 		Expect(err).To(Succeed())
-
-		incrResp, err := clusterClient.IncrementalBackup(ctx, &clusterpb.IncrementalBackupRequest{
-			Storage:  azureStorage(),
-			BucketId: "test-cluster",
-		})
+		response, err := clusterClient.Backup(ctx, &clusterpb.BackupRequest{Storage: azureStorage(), BucketId: "test-cluster"})
 		Expect(err).To(Succeed())
-		Expect(incrResp.GetLogEntriesExported()).To(BeNumerically(">", 0))
-		Expect(incrResp.GetSegmentsUploaded()).To(BeNumerically(">", 0))
-		Expect(incrResp.GetLastLogSequence()).To(BeNumerically(">", checkpointLogSeq))
-
-		manifest, err := readAzureBackupManifest(ctx, azureClient)
+		Expect(response.GetLastLogSequence()).To(BeNumerically(">", before.Checkpoint.LastLogSequence))
+		after, err := readAzureBackupManifest(ctx, azureClient)
 		Expect(err).To(Succeed())
-		Expect(manifest.Exports).NotTo(BeEmpty())
-
-		for _, seg := range manifest.Exports {
-			Expect(azureBlobExists(ctx, azureClient, seg.Key)).To(BeTrue(),
-				"export segment %s should exist", seg.Key)
+		Expect(after.Exports).To(BeEmpty())
+		for _, file := range after.Checkpoint.Files {
+			Expect(azureBlobExists(ctx, azureClient, file.Key)).To(BeTrue())
 		}
 	})
 })
