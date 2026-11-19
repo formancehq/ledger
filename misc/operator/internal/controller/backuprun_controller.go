@@ -58,7 +58,7 @@ type BackupRunReconciler struct {
 // is in flight for the same Backup.
 const concurrencyRequeue = 10 * time.Second
 
-const legacyIncrementalRunMessage = "Incremental BackupRuns are deprecated; create a Full BackupRun for a checkpoint"
+const legacyIncrementalRunMessage = "incremental BackupRuns are deprecated; create a Full BackupRun for a checkpoint"
 
 func (r *BackupRunReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
