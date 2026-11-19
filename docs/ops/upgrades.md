@@ -160,15 +160,18 @@ The operator then deletes the StatefulSet with background propagation. It
 waits for the StatefulSet and **all old ordinal Pods** to disappear. A delete
 acknowledgement or elapsed time does not satisfy this condition. It does not
 force-delete a stuck Pod. Only then may it create the target StatefulSet and
-reuse the same PVC names. The replacement keeps both PVC retention policies at
-`Retain` throughout the active upgrade, including recovery if the replacement
+reuse the same PVC names. Until the drain is released, the replacement keeps
+both PVC retention policies at `Retain`, including recovery if the replacement
 disappears. After all target replicas are ready, the operator commits the drain
 release and waits for every member to persist it. In the `Adopting` phase it
 then restores the requested retention policies on the replacement StatefulSet.
 With `whenDeleted: Delete`, it keeps `status.upgrade` and the finalizer until
 the StatefulSet controller has made the replacement StatefulSet the owner of
 every recorded claim, so garbage collection covers each claim before the
-operator stops tracking it. `status.upgrade` and the `Upgrade` condition show the
+operator stops tracking it. If the replacement disappears during `Adopting`,
+ordinary reconciliation recreates it with the requested policies; under
+`whenDeleted: Delete`, deleting the replacement then also deletes the claims it
+already owns. `status.upgrade` and the `Upgrade` condition show the
 phase or blocking error. The operator retries after API failures; do not remove
 the status record or create a replacement workload by hand while it is active.
 If the replacement StatefulSet disappears before the drain is released, the
@@ -176,9 +179,12 @@ operator waits for its Pods to terminate, verifies the original PVC/PV identitie
 and recreates it while keeping the drain active.
 
 Keep the requested target tag, workload spec and replica count fixed until
-`status.upgrade` clears. An edit during the operation is rejected. A direct
-replica-count edit to the replacement StatefulSet reports `Upgrade=Blocked`
-until the pinned count is restored. If a Pod will not terminate, diagnose its
+`status.upgrade` clears. Before the drain is released, an edit is rejected, and
+a direct replica-count edit to the replacement StatefulSet reports
+`Upgrade=Blocked` until the pinned count is restored. In `Adopting`, a target
+tag edit is still rejected, but workload spec and replica-count edits are not:
+they wait until adoption completes and then apply through ordinary
+reconciliation. If a Pod will not terminate, diagnose its
 node and storage attachment, then let Kubernetes finish termination; the
 operator keeps the cluster unavailable. Verify the replacement is fully ready,
 then check cluster status, representative reads and writes, audit verification

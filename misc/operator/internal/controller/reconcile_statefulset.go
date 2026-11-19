@@ -591,9 +591,10 @@ func applyMutableStatefulSetSpec(sts *appsv1.StatefulSet, desired appsv1.Statefu
 }
 
 // reconcileStatefulSetRetentionPolicy applies the same policy used by ordinary
-// StatefulSet creation. During a stopped upgrade buildRetentionPolicy always
-// returns Retain; callers must requeue until the StatefulSet controller has
-// observed the updated generation before detaching or reusing claims.
+// StatefulSet creation. During a stopped upgrade buildRetentionPolicy returns
+// Retain until the Adopting phase; callers must requeue until the StatefulSet
+// controller has observed the updated generation before detaching or reusing
+// claims.
 func (r *ClusterReconciler) reconcileStatefulSetRetentionPolicy(ctx context.Context, ledger *ledgerv1alpha1.Cluster, sts *appsv1.StatefulSet) (bool, error) {
 	desired := buildRetentionPolicy(ledger)
 	if sts.Spec.PersistentVolumeClaimRetentionPolicy != nil &&
