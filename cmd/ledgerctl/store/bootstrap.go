@@ -121,6 +121,7 @@ func runBootstrap(cmd *cobra.Command, _ []string) error {
 	manifest := *manifestPtr
 	if err := backup.ValidateCheckpointOnlyManifest(&manifest); err != nil {
 		spinner.Fail("Unsupported backup manifest")
+
 		return cmdutil.Displayed(err)
 	}
 
