@@ -19,7 +19,7 @@ func processExecuteNumscript(ledger string, execution *raftcmdpb.ExecuteNumscrip
 	return processTransactionOrNumscript(ledger, &raftcmdpb.CreateTransactionOrder{
 		Script: execution.GetScript(), NumscriptReference: execution.GetNumscriptReference(),
 		Timestamp: execution.GetTimestamp(), Metadata: execution.GetMetadata(),
-		AccountMetadata: execution.GetAccountMetadata(), Force: execution.GetForce(), Reference: execution.GetReference(),
+		AccountMetadata: execution.GetAccountMetadata(), Reference: execution.GetReference(),
 	}, ctx, true)
 }
 

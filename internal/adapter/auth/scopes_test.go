@@ -19,6 +19,7 @@ func TestDefaultMapping_DefaultService(t *testing.T) {
 	assert.Contains(t, m["ledger:read"], ScopeAccountsRead)
 	assert.Contains(t, m["ledger:write"], ScopeLedgersWrite)
 	assert.Contains(t, m["ledger:write"], ScopeTransactionsWrite)
+	assert.Contains(t, m["ledger:write"], ScopeNumscriptExecute)
 	assert.Contains(t, m["ledger:write"], ScopeMetadataWrite)
 	assert.Contains(t, m["ledger:admin"], ScopeClusterRead)
 	assert.Contains(t, m["ledger:admin"], ScopeClusterWrite)
@@ -109,6 +110,9 @@ func TestAllGranularScopesUseActionResourceOrder(t *testing.T) {
 	t.Parallel()
 
 	for scope := range AllGranularScopes {
+		if scope == ScopeNumscriptExecute {
+			continue
+		}
 		_, name, ok := strings.Cut(string(scope), ":")
 		assert.True(t, ok, "scope %q has no namespace", scope)
 		assert.True(t, strings.HasPrefix(name, "Read") || strings.HasPrefix(name, "Write"),

@@ -86,7 +86,7 @@ func TestLoadScopeMappingFromFile_NotFound(t *testing.T) {
 func TestParseScopeMappingJSON_AllScopes(t *testing.T) {
 	t.Parallel()
 
-	// Verify all 14 granular scopes can be used in a mapping
+	// Verify granular scopes can be used in a mapping
 	data := []byte(`{
 		"all:read": ["ledger:ReadLedger", "ledger:ReadTransaction", "ledger:ReadAccount", "ledger:ReadAudit", "ledger:ReadOps", "ledger:ReadQuery", "ledger:ReadCluster"],
 		"all:write": ["ledger:WriteLedger", "ledger:WriteTransaction", "ledger:WriteMetadata", "ledger:WriteAudit", "ledger:WriteOps", "ledger:WriteQuery", "ledger:WriteCluster"]

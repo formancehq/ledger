@@ -17,7 +17,7 @@ const (
 	WildcardWrite = "*:write"
 )
 
-// Granular scopes — 14 total, grouped by resource category.
+// Granular scopes — 15 total, grouped by resource category.
 // Canonical Ledger scopes use the app namespace followed by ActionResource,
 // matching the Membership scope style (for example, ledger:ReadCluster).
 var (
@@ -25,6 +25,7 @@ var (
 	ScopeLedgersWrite      Scope = "ledger:WriteLedger"
 	ScopeTransactionsRead  Scope = "ledger:ReadTransaction"
 	ScopeTransactionsWrite Scope = "ledger:WriteTransaction"
+	ScopeNumscriptExecute  Scope = "numscript:Execute"
 	ScopeAccountsRead      Scope = "ledger:ReadAccount"
 	ScopeMetadataWrite     Scope = "ledger:WriteMetadata"
 	ScopeAuditRead         Scope = "ledger:ReadAudit"
@@ -43,6 +44,7 @@ var AllGranularScopes = map[Scope]struct{}{
 	ScopeLedgersWrite:      {},
 	ScopeTransactionsRead:  {},
 	ScopeTransactionsWrite: {},
+	ScopeNumscriptExecute:  {},
 	ScopeAccountsRead:      {},
 	ScopeMetadataWrite:     {},
 	ScopeAuditRead:         {},
@@ -78,6 +80,7 @@ func DefaultMapping(service string) ScopeMapping {
 		service + ":write": {
 			ScopeLedgersWrite,
 			ScopeTransactionsWrite,
+			ScopeNumscriptExecute,
 			ScopeMetadataWrite,
 			ScopeAuditWrite,
 			ScopeOpsWrite,

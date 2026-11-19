@@ -37,6 +37,7 @@ paths:
         no query parameters are accepted. Every request's required granular
         scope is checked before dispatch. Ledger/index/numscript operations
         require ledger:WriteLedger; transactions ledger:WriteTransaction;
+        Numscript execution requires numscript:Execute;
         metadata/schema/account types ledger:WriteMetadata; prepared queries
         ledger:WriteQuery; signing/events/maintenance ledger:WriteOps; query
         checkpoints and schedules ledger:WriteCluster. Initial ledger metadata
@@ -4590,8 +4591,6 @@ components:
           additionalProperties:
             $ref: '#/components/schemas/AtomicApplyMetadataMap'
           type: object
-        force:
-          type: boolean
         metadata:
           additionalProperties:
             $ref: '#/components/schemas/AtomicApplyMetadataValue'
@@ -6918,9 +6917,6 @@ components:
           $ref: '#/components/schemas/Script'
         scriptReference:
           $ref: '#/components/schemas/ScriptReference'
-        force:
-          type: boolean
-          default: false
 
     PostingRequest:
       type: object

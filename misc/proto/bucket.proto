@@ -585,7 +585,7 @@ message ExecuteNumscriptPayload {
   common.Timestamp timestamp = 3;
   map<string, common.MetadataValue> metadata = 4;
   map<string, common.MetadataMap> account_metadata = 5;
-  bool force = 6;
+  reserved 6;
   string reference = 7;
 }
 
