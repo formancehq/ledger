@@ -76,14 +76,11 @@ because their definitions satisfy both rules. The checker can replay successful
 audited orders without the proposal marker; rejected marked creations have a
 failure audit entry and no business effect to reconstruct.
 
-The capability is advertised by this binary but is **not automatically
-activated**. The embedded operator lists `v3.0.0-rc.5` as a mandatory
-stopped-upgrade boundary from RC.4. Activation requires that complete stop and
-restart of every member on a binary that supports ID 1, followed by a
-replicated ClusterPolicy activation after every member has refreshed its
-evidence. The current policy
-reconciler preserves an activation but does not create it; deployments without
-an activation retain the historical creation behavior. Do not activate during
+The capability is advertised by this binary and automatically activated after
+the embedded operator's mandatory stopped upgrade from RC.4, once every member
+has committed support evidence for ID 1. The independent activation worker
+commits the replicated activation; the ordinary policy reconciler preserves it.
+Until that commit, creations retain the historical behavior. Do not activate during
 a mixed-version rollout: an old voter could still apply a marked order using
 the old rule. Hold new business admission until activation is committed so a
 proposal prepared while the policy was inactive cannot be queued behind the

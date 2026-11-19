@@ -39,7 +39,7 @@ func TestCapabilityActivationRetryRepreparesBeforeSubmission(t *testing.T) {
 
 				return nil, capabilities.ErrActivationPending
 			}
-			require.Empty(t, proposal.RequiredCapabilities())
+			require.Equal(t, []capabilities.CapabilityID{1}, proposal.RequiredCapabilities())
 			proposal.Resolve(nil, nil)
 			future := futures.New[state.ApplyResult]()
 			future.Resolve(state.ApplyResult{AppliedIndex: 1}, nil)

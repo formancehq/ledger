@@ -83,12 +83,12 @@ stop all RC.4 voters and learners before starting RC.5 on the retained volumes.
 Startup migrates schema 2 to 3 atomically, then synchronizes the WAL before
 recovery, workers or listeners start. No history scan or external reconstruction
 is required. Keep the ordinary `ledger run` flags; there is no activation flag.
-The supported registry is empty until a separate feature registers an ID.
+This branch registers `CreateLedgerAccountTypesV2` as capability ID 1.
 
 Once every current member advertises a registered ID, the leader automatically
 commits a single activation control. Ordinary configuration keeps its own
 revision and proceeds independently. All audited order batches wait during activation,
-including immediately after drain release, and honors its original deadline.
+including immediately after drain release, and honor their original deadlines.
 Committed activation survives restart and leader change; it cannot be cancelled
 or downgraded. An interrupted uncommitted attempt is reevaluated from current
 membership after leader readiness. New members must support active IDs; membership
@@ -439,12 +439,11 @@ activates each supported capability. There is no activation flag or extra
 operator setting. See the [capability contract](../technical/architecture/subsystems/consensus/capabilities.md).
 
 `CreateLedgerAccountTypesV2` (capability 1) is advertised by the RC.5 binary
-but remains inactive until an explicit replicated ClusterPolicy activation
-after the operator-required RC.4 to RC.5 stopped restart. Keep external
-business admission paused after the operator releases its drain, verify every
-member is running RC.5 and has refreshed its capability evidence, then commit
-the activation and reopen admission. The operator does not activate the
-capability. Before activation, initial account types retain the released
+but remains inactive until the activation worker commits it after the
+operator-required RC.4 to RC.5 stopped restart and every member has committed
+support evidence. The operator does not activate the capability; Ledger's
+leader does. Business admission waits once the capability is ready until that
+activation commits. Before activation, initial account types retain the released
 syntax-only validation; after activation, new creations reject invalid segment
 constraints and conflicting patterns. Existing ledgers are not rewritten.
 Do not roll back to RC.4 after activation: it cannot interpret the active
@@ -694,10 +693,9 @@ UPGRADE_TRANSITION=rc4-to-rc5 RELEASE_BRANCH=release/v3.0 just test-release-oper
 The harness requires the RC.5 operator to list the boundary and proves that
 all RC.4 Pods disappear before any RC.5 Pod starts, while non-empty data, PVC
 identities, replay, Raft progress and audit verification survive. Run it
-before activating capability 1; the harness does not activate that policy or
-test rollback after activation. Activation must remain a separate,
-post-upgrade operation with external business admission paused as described
-above.
+before relying on capability 1; the harness does not prove that automatic
+activation committed or test rollback after activation. Verify the committed
+activation before admitting CreateLedger requests that require the stronger rule.
 
 ## Coordinated Restart
 
