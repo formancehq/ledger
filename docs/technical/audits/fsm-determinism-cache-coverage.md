@@ -255,6 +255,15 @@ prove that its branch is contractually impossible or that it leaves a divergent
 or falsely successful result. Assertions must uniquely identify the intended
 failure branch.
 
+A forwarded order (`OrderTechnical.preload_unavailable`) is one such failure
+prefix. Order processing fails it at its own position, before scope
+construction, overlay allocation and the skip matcher, so the earlier orders'
+staged writes form the discarded prefix and no skip whitelist can convert the
+gap into a skip log. The flag is committed order bytes, so every replica fails
+at the same position. Order processing returns `Describable`; the apply path
+tests `UncommittedFailure` first and treats any remaining failure that is not
+`SerializableError` as an invariant violation rather than an audited outcome.
+
 ## Numscript VM execution state
 
 A scripted order carries inline text or a versioned library reference, plus

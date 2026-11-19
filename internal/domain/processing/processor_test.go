@@ -612,3 +612,85 @@ func TestProcessOrders_MirrorReplayEmitsNoLog(t *testing.T) {
 type countingSink struct{ count int }
 
 func (s *countingSink) Absorb(_ *raftcmdpb.Order, _ *commonpb.Log) { s.count++ }
+
+// TestProcessOrders_PreloadUnavailableFailsInSequence pins that a forwarded
+// (preload_unavailable) order fails the batch at its own position: the orders
+// before it execute, so their definitive rejection would win, and the forwarded
+// order itself never reaches a scope.
+func TestProcessOrders_PreloadUnavailableFailsInSequence(t *testing.T) {
+	t.Parallel()
+
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockStore := NewMockScope(ctrl)
+	expectDefaultMetadataLimits(mockStore)
+	processor, err := NewRequestProcessor(nil, 0)
+	require.NoError(t, err)
+
+	createLedger := func(name string) *raftcmdpb.Order {
+		return &raftcmdpb.Order{
+			Type: &raftcmdpb.Order_LedgerScoped{
+				LedgerScoped: &raftcmdpb.LedgerScopedOrder{
+					Ledger:  name,
+					Payload: &raftcmdpb.LedgerScopedOrder_CreateLedger{CreateLedger: &raftcmdpb.CreateLedgerOrder{}},
+				},
+			},
+		}
+	}
+	forwarded := createLedger("never-prepared")
+	forwarded.Technical = &raftcmdpb.OrderTechnical{PreloadUnavailable: true}
+
+	// Only the first order touches the scope; the strict mock rejects any
+	// read of "never-prepared".
+	expectGetLedger(mockStore, domain.LedgerKey{Name: "prepared"}, nil, domain.ErrNotFound)
+	mockStore.EXPECT().GetNextLedgerID().Return(uint32(1))
+	mockStore.EXPECT().IncrementNextLedgerID().Return(uint32(1))
+	mockStore.EXPECT().GetDate().Return((&commonpb.Timestamp{Data: 1234567890}).AsReader())
+	expectPutLedger(t, mockStore, domain.LedgerKey{Name: "prepared"}, nil)
+	expectPutBoundaries(t, mockStore, domain.LedgerKey{Name: "prepared"}, nil)
+	mockStore.EXPECT().IncrementNextSequenceID().Return(uint64(100), nil)
+
+	response, err := processor.ProcessOrders([]*raftcmdpb.Order{createLedger("prepared"), forwarded}, mockFactory(mockStore), noopSink{})
+	require.ErrorIs(t, err, domain.ErrPreloadUnavailable)
+	require.Nil(t, response)
+}
+
+// TestProcessOrders_PreloadUnavailableIsNeverSkipped pins that a
+// skippable_reasons whitelist naming PRELOAD_UNAVAILABLE does not turn a
+// forwarded order into a skip log: the order was never prepared, so there is
+// no executed outcome to skip over.
+func TestProcessOrders_PreloadUnavailableIsNeverSkipped(t *testing.T) {
+	t.Parallel()
+
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockStore := NewMockScope(ctrl)
+	expectDefaultMetadataLimits(mockStore)
+	processor, err := NewRequestProcessor(nil, 0)
+	require.NoError(t, err)
+
+	order := &raftcmdpb.Order{
+		Technical: &raftcmdpb.OrderTechnical{PreloadUnavailable: true},
+		Type: &raftcmdpb.Order_LedgerScoped{
+			LedgerScoped: &raftcmdpb.LedgerScopedOrder{
+				Ledger: "L",
+				Payload: &raftcmdpb.LedgerScopedOrder_Apply{
+					Apply: &raftcmdpb.LedgerApplyOrder{
+						SkippableReasons: []commonpb.ErrorReason{commonpb.ErrorReason_ERROR_REASON_PRELOAD_UNAVAILABLE},
+						Data: &raftcmdpb.LedgerApplyOrder_CreateTransaction{
+							CreateTransaction: &raftcmdpb.CreateTransactionOrder{
+								Script: &commonpb.Script{Plain: "send [USD/2 10] (source = @a destination = @b)"},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	response, err := processor.ProcessOrders([]*raftcmdpb.Order{order}, mockFactory(mockStore), noopSink{})
+	require.ErrorIs(t, err, domain.ErrPreloadUnavailable)
+	require.Nil(t, response)
+}

@@ -37,7 +37,7 @@ func TestMandatoryStopVersionBoundary(t *testing.T) {
 	require.True(t, requiresStoppedUpgrade("v3.0.0-rc.3", "v3.0.0-rc.4", mandatoryStopVersions), "rc.4 must stop rc.3 voters before emitting payloads")
 	require.True(t, requiresPinnedUpgradeTarget("v3.0.0-rc.2", "latest", mandatoryStopVersions), "a moving tag could cross the rc.4 boundary")
 	require.True(t, requiresPinnedUpgradeTarget("v3.0.0-rc.3", "latest", mandatoryStopVersions))
-	require.True(t, requiresStoppedUpgrade("v3.0.0-rc.4", "v3.0.0-rc.5", mandatoryStopVersions), "rc.5 must stop rc.4 voters: they misdecode aggregate totals forwarded by an rc.5 peer")
+	require.True(t, requiresStoppedUpgrade("v3.0.0-rc.4", "v3.0.0-rc.5", mandatoryStopVersions), "rc.5 must stop rc.4 voters: they misdecode aggregate totals forwarded by an rc.5 peer and apply a batch carrying a forwarded order differently")
 	require.True(t, requiresPinnedUpgradeTarget("v3.0.0-rc.4", "latest", mandatoryStopVersions), "a moving tag could cross the rc.5 boundary")
 	for _, tt := range []struct {
 		source, target string

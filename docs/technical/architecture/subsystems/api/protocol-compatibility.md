@@ -144,8 +144,9 @@ uses the server's service client and is subject to the same gate at the peer.
 Nodes with different service revisions can therefore fail forwarded requests;
 a matching revision alone does not prove a rolling upgrade safe.
 Releases that permit rolling must preserve peer communication, Raft apply and
-persisted-state compatibility while old and new servers coexist. RC.3 to RC.4
-requires a full stop, with no mixed-binary window and preserved data.
+persisted-state compatibility while old and new servers coexist. An upgrade
+across a boundary listed by the operator requires a full stop, with no
+mixed-binary window and preserved data.
 The separate Raft transport and snapshot server retain their own contracts. See [server upgrades](../../../../ops/upgrades.md).
 
 ## Apply execution provenance (revision 7)
@@ -663,9 +664,10 @@ Malformed caller attribution and a maintenance gate can also reject a committed
 proposal in the FSM, but both return before the order-audit path; they are not
 `AuditFailure` records. Maintenance mode remains a public operational error;
 malformed caller attribution is an internal trust-boundary failure with no
-public `ErrorReason`. `PRELOAD_UNAVAILABLE` also returns before order
-processing when no earlier idempotency outcome exists: it is a retryable
-preparation interruption with no audit entry or frozen result.
+public `ErrorReason`. `PRELOAD_UNAVAILABLE` is raised by order processing at
+the forwarded order's position when no earlier idempotency outcome exists and
+every earlier order applied: it is a retryable preparation interruption with no
+audit entry or frozen result.
 `STALE_PROPOSAL` and `INVALID_EXECUTION_PLAN` remain typed audited outcomes.
 
 The `FailureDetails` oneof now contains only variants eligible for the audited
