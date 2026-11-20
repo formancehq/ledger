@@ -178,8 +178,11 @@ the script's failure keeps its HTTP status, gRPC code, reason and context. For
 a keyed request it is now decided at apply; a definitive failure is audited
 and frozen under the key, while one the ledger cannot commit (such as an
 unclassified compile error) leaves the key free, so a same-key retry runs
-again. An unkeyed request that is not predicted to skip is still refused
-before consensus. A request whose script
+again. A keyed state-dependent failure (after a balance or metadata read, or
+on a `latest` library reference), when the skip is not predicted, still returns the retryable `PRELOAD_UNAVAILABLE` for
+the whole batch, even if the reference appears before apply; a retry admitted
+once it exists is skipped. An unkeyed request that is not predicted to skip is
+still refused before consensus. A request whose script
 inputs change between admission and apply can return the retryable
 `STALE_INPUTS_RESOLUTION`. Routes, fields, envelopes and protocol revision 40
 are unchanged; v2 has no `skippableReasons`, so there is no v2 mapping.

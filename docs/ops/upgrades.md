@@ -429,7 +429,11 @@ reference is absent, the script's failure keeps its reason and details and is
 decided at apply. A definitive failure is audited and frozen under the key. A
 failure the FSM cannot commit, such as an unclassified compile error, rejects
 the batch without an audit entry and leaves the key free, as admission's
-refusal did on RC.4. If an
+refusal did on RC.4. A keyed state-dependent failure (after a balance or
+metadata read, or on a `latest` library reference), when the skip is not
+predicted, keeps the RC.4 behavior: the batch is
+rejected with the retryable `PRELOAD_UNAVAILABLE`, even if the reference
+appears before apply. If an
 input the script read changes between admission and apply, the request is
 rejected with a retryable `STALE_INPUTS_RESOLUTION`, without an audit entry.
 
