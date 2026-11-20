@@ -2455,7 +2455,7 @@ ledgerctl store bootstrap --driver s3 --s3-bucket <bucket> --data-dir /path/to/d
 
 1. Rejects a `RESTORED` marker, live database or incompatible checkpoint layout; reclaims a lone unmarked `checkpoints/0` left by interrupted finalization.
 2. Creates or opens the selected data directory, rejects a symlink or non-directory at `restore-staging/`, removes any old real staging directory through the data-directory root, then creates a fresh staging directory. Downloads checkpoint files sequentially through rooted filesystem operations. Rejects non-local manifest filenames and symlink escapes. Each filename is checked before its parent directories are created or its object is read; file size and sha256 verification still apply.
-3. Applies export segments and rebuilds derived state from logs (if any)
+3. Checks each export stream against the snapshot endpoints recorded by new manifests before applying segments, then rebuilds derived state from logs (if any). A missing final segment aborts before finalization even without `--validate`; older manifests without endpoints retain interior continuity checks.
 4. Opens the staging as a read-only Pebble database and displays a preview (ledger count, timestamps)
 5. If `--validate` is set, runs the full integrity checker (same as `store check`); aborts before finalizing if any integrity error is found
 6. Prompts for confirmation (unless `--yes`)

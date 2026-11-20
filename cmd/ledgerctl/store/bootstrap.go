@@ -152,7 +152,7 @@ func runBootstrap(cmd *cobra.Command, _ []string) error {
 	logger := logging.NopZap()
 
 	// Restore incremental history and operational state, including policy-only updates.
-	if len(manifest.Exports) > 0 || manifest.ClusterPolicy != nil {
+	if len(manifest.Exports) > 0 || manifest.ClusterPolicy != nil || manifest.ExportBoundary != nil {
 		exportSpinner := cmdutil.StartSpinner("Applying incremental backup state...")
 
 		exportStore, err := dal.OpenDirect(stagingDir, logger)
