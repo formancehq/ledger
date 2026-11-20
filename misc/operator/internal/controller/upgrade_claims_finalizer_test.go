@@ -41,6 +41,7 @@ func TestStoppedUpgradeClusterDeletionAppliesRequestedClaimRetention(t *testing.
 			ctx := context.Background()
 			cluster := newMinimalCluster()
 			cluster.UID = "cluster-uid"
+			cluster.Finalizers = []string{operatorCredentialsFinalizer}
 			cluster.Spec.Image.Tag = "v3.0.0-rc.4"
 			cluster.Spec.Replicas = new(int32(1))
 			cluster.Spec.Persistence.RetentionPolicy = &ledgerv1alpha1.RetentionPolicySpec{WhenDeleted: tt.whenDeleted}
