@@ -798,6 +798,7 @@ func TestRunIncrementalBackup_InvokesPruneForExportsOnly(t *testing.T) {
 
 	storage.EXPECT().GetFile(gomock.Any(), ManifestKey(bucketID)).
 		Return(io.NopCloser(bytes.NewReader(body)), nil)
+	storage.EXPECT().PutFile(gomock.Any(), ManifestKey(bucketID), gomock.Any(), gomock.Any()).Return(nil)
 
 	storage.EXPECT().ListFiles(gomock.Any(), ExportPrefix(bucketID)).Return(nil, nil)
 	// data/ must NOT be listed by the incremental path. Any other ListFiles

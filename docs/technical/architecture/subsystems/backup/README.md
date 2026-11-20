@@ -249,9 +249,16 @@ disjoint above the audit boundary. A gap, overlap, or reordering fails with
 `ErrExportCoverageGap` before any export segment is downloaded or applied, on
 both the offline bootstrap and the gRPC download path. Checkpoint files are
 already in staging at that point: the gRPC download job wipes them, and offline
-bootstrap leaves them for the next attempt to discard. The check does not
-detect a missing final segment, which leaves the manifest a consistent prefix
-of the source history. `ApplyExports` writes large segments in
+bootstrap leaves them for the next attempt to discard. New manifests also record
+the log, audit, and audit-item endpoints observed in the backup snapshot.
+Before any export download, restore compares each stream's final segment with
+its recorded endpoint, including when all segments of a stream are absent.
+Audit items have their own endpoint because older history can contain audit
+entries without items. Released manifests without these endpoints retain
+interior range checks but cannot prove that a complete final suffix is present.
+The endpoints are manifest metadata, not an authentication mechanism: replacing
+the manifest and its endpoints together is outside this check. `ApplyExports`
+writes large segments in
 bounded Pebble batches, so batches committed before a later read failure can
 remain until the caller discards or retries that staging directory. The gRPC
 download job wipes staging on failure and never enables finalization; an

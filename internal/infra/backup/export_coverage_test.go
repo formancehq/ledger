@@ -3,6 +3,7 @@ package backup
 import (
 	"context"
 	"fmt"
+	"os"
 	"path/filepath"
 	"slices"
 	"testing"
@@ -185,6 +186,11 @@ func TestBackup_RejectsManifestMissingInteriorLogSegment(t *testing.T) {
 	intactDir, gappedDir := t.TempDir(), t.TempDir()
 	require.NoError(t, store.Checkpoint(filepath.Join(intactDir, "live")))
 	require.NoError(t, store.Checkpoint(filepath.Join(gappedDir, "live")))
+	tailDirs := map[string]string{}
+	for _, typ := range []string{"log", "audit", "auditItem"} {
+		tailDirs[typ] = t.TempDir()
+		require.NoError(t, store.Checkpoint(filepath.Join(tailDirs[typ], "live")))
+	}
 
 	transfers := []struct {
 		source, destination string
@@ -221,6 +227,30 @@ func TestBackup_RejectsManifestMissingInteriorLogSegment(t *testing.T) {
 		}
 	}
 	require.Empty(t, creationIntegrityFindings(t, intact, intactAttrs))
+	require.NotNil(t, manifest.ExportBoundary)
+	for _, typ := range []string{"log", "audit", "auditItem"} {
+		t.Run("missing final "+typ, func(t *testing.T) {
+			t.Parallel()
+			dir := tailDirs[typ]
+			truncated := *manifest
+			truncated.Exports = slices.Clone(manifest.Exports)
+			for i, v := range slices.Backward(truncated.Exports) {
+				if v.Type == typ {
+					truncated.Exports = slices.Delete(truncated.Exports, i, i+1)
+
+					break
+				}
+			}
+			restored, err := dal.NewStore(dir, testLogger(), noop.NewMeterProvider().Meter("test"), dal.DefaultConfig())
+			require.NoError(t, err)
+			defer func() { require.NoError(t, restored.Close()) }()
+			err = ApplyExportsAndRebuild(t.Context(), testLogger(), storage, restored, &truncated)
+			require.ErrorIs(t, err, ErrExportCoverageGap)
+			require.ErrorContains(t, err, `"`+typ+`"`)
+			_, markerErr := os.Stat(filepath.Join(dir, "RESTORED"))
+			require.ErrorIs(t, markerErr, os.ErrNotExist)
+		})
+	}
 
 	middle := logSegments[1]
 	gapped := *manifest
@@ -329,4 +359,27 @@ func TestValidateExportCoverage(t *testing.T) {
 
 	err := validateExportCoverage(&Manifest{Exports: []ExportSegment{seg("bogus", 1, 1)}})
 	require.ErrorContains(t, err, `unsupported export segment type "bogus"`)
+	err = validateExportCoverage(&Manifest{Checkpoint: checkpoint, ExportBoundary: &ExportBoundary{
+		LastLogSequence: 11, LastAuditSequence: 5, LastAuditItemSequence: 5,
+	}})
+	require.ErrorIs(t, err, ErrExportCoverageGap)
+	require.ErrorContains(t, err, `"log"`)
+
+	for _, tc := range []struct {
+		name, missing string
+	}{
+		{name: "log", missing: "log"},
+		{name: "audit", missing: "audit"},
+		{name: "audit item", missing: "auditItem"},
+	} {
+		t.Run("snapshot boundary rejects missing final "+tc.name, func(t *testing.T) {
+			t.Parallel()
+			manifest := &Manifest{Checkpoint: checkpoint, ExportBoundary: &ExportBoundary{LastLogSequence: 12, LastAuditSequence: 7, LastAuditItemSequence: 7},
+				Exports: []ExportSegment{seg("log", 11, 12), seg("audit", 6, 7), seg("auditItem", 6, 7)}}
+			manifest.Exports = slices.DeleteFunc(manifest.Exports, func(seg ExportSegment) bool { return seg.Type == tc.missing })
+			err := validateExportCoverage(manifest)
+			require.ErrorIs(t, err, ErrExportCoverageGap)
+			require.ErrorContains(t, err, `"`+tc.missing+`"`)
+		})
+	}
 }

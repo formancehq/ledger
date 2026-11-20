@@ -45,6 +45,36 @@ type IncrementalBackupResult struct {
 	LastAuditSequence    uint64
 }
 
+// lastAuditItemSequence reads the source snapshot, independently of the
+// manifest's segment inventory. Historical audit entries can lack items.
+func lastAuditItemSequence(reader dal.PebbleReader) (uint64, error) {
+	lower := []byte{dal.ZoneHistory, dal.SubHistoryAuditItem}
+	iter, err := dal.NewBoundedIter(reader, lower, dal.ZonePrefixUpperBound(dal.ZoneHistory, dal.SubHistoryAuditItem))
+	if err != nil {
+		return 0, err
+	}
+	var seq uint64
+	if iter.Last() {
+		key := iter.Key()
+		if len(key) != 14 {
+			_ = iter.Close()
+
+			return 0, fmt.Errorf("invalid audit-item key %x", key)
+		}
+		seq = binary.BigEndian.Uint64(key[2:10])
+	}
+	if err := iter.Error(); err != nil {
+		_ = iter.Close()
+
+		return 0, err
+	}
+	if err := iter.Close(); err != nil {
+		return 0, err
+	}
+
+	return seq, nil
+}
+
 // RunBackup performs a full checkpoint backup cycle.
 // It creates a Pebble checkpoint, diffs SST files against the previous manifest,
 // uploads new/changed files, cleans up stale exports, and writes an updated manifest.
@@ -193,6 +223,7 @@ func RunBackup(
 
 	// 7. Write updated manifest with new checkpoint and empty exports
 	newManifest := &Manifest{
+		ExportBoundary: &ExportBoundary{LastLogSequence: lastLogSeq, LastAuditSequence: lastAuditSeq, LastAuditItemSequence: lastAuditSeq},
 		Checkpoint: &CheckpointManifest{
 			Timestamp:         time.Now().UTC().Format(time.RFC3339Nano),
 			LastAppliedIndex:  lastAppliedIndex,
@@ -510,6 +541,10 @@ func RunIncrementalBackup(
 	if err != nil {
 		return nil, fmt.Errorf("reading current last audit sequence: %w", err)
 	}
+	currentAuditItemSeq, err := lastAuditItemSequence(readHandle)
+	if err != nil {
+		return nil, fmt.Errorf("reading current last audit-item sequence: %w", err)
+	}
 
 	// Capture operational policy from this exact history snapshot. Never replace
 	// a newer manifest policy with one observed before a snapshot rollback.
@@ -540,11 +575,24 @@ func RunIncrementalBackup(
 	// Never regress below the manifest.
 	currentLogSeq = max(currentLogSeq, afterLogSeq)
 	currentAuditSeq = max(currentAuditSeq, afterAuditSeq)
+	currentAuditItemSeq = max(currentAuditItemSeq, manifest.Checkpoint.LastAuditSequence)
+	if manifest.ExportBoundary != nil {
+		currentAuditItemSeq = max(currentAuditItemSeq, manifest.ExportBoundary.LastAuditItemSequence)
+	}
+	for _, seg := range manifest.Exports {
+		if seg.Type == "auditItem" {
+			currentAuditItemSeq = max(currentAuditItemSeq, seg.EndSeq)
+		}
+	}
+	// Keep the boundary tied to the same read snapshot as the exports. A
+	// policy-only publication also upgrades older manifests to this contract.
+	boundaryMissing := manifest.ExportBoundary == nil
+	manifest.ExportBoundary = &ExportBoundary{LastLogSequence: currentLogSeq, LastAuditSequence: currentAuditSeq, LastAuditItemSequence: currentAuditItemSeq}
 
 	// 5. Check if there's anything new
 	if currentLogSeq <= afterLogSeq && currentAuditSeq <= afterAuditSeq {
 		logger.Infof("No new entries to export")
-		if policyChanged {
+		if policyChanged || boundaryMissing {
 			if err := WriteManifest(ctx, storage, manifestKey, manifest); err != nil {
 				return nil, fmt.Errorf("writing operational policy manifest: %w", err)
 			}

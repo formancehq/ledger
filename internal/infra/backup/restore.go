@@ -97,6 +97,17 @@ func validateExportCoverage(manifest *Manifest) error {
 
 		ends[seg.Type] = seg.EndSeq
 	}
+	if boundary := manifest.ExportBoundary; boundary != nil {
+		for _, stream := range []struct {
+			name string
+			want uint64
+		}{{"log", boundary.LastLogSequence}, {"audit", boundary.LastAuditSequence}, {"auditItem", boundary.LastAuditItemSequence}} {
+			if ends[stream.name] != stream.want {
+				return fmt.Errorf("%w: %q ends at %d, expected snapshot sequence %d",
+					ErrExportCoverageGap, stream.name, ends[stream.name], stream.want)
+			}
+		}
+	}
 
 	return nil
 }
@@ -387,7 +398,7 @@ func ApplyExportsAndRebuild(ctx context.Context, logger logging.Logger, storage 
 			return fmt.Errorf("invalid backup cluster policy limits: %w", err)
 		}
 	}
-	if len(manifest.Exports) == 0 && policy == nil {
+	if len(manifest.Exports) == 0 && policy == nil && manifest.ExportBoundary == nil {
 		return nil
 	}
 
