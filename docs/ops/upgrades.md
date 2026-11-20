@@ -189,7 +189,10 @@ a direct replica-count edit to the replacement StatefulSet reports
 `Upgrade=Blocked` until the pinned count is restored. In `Adopting`, a target
 tag edit is still rejected, but workload spec and replica-count edits are not:
 they wait until adoption completes and then apply through ordinary
-reconciliation. If a Pod will not terminate, diagnose its
+reconciliation. A `spec.persistence.retentionPolicy` edit applies immediately
+instead: `Adopting` restores the current requested policy, and switching
+`whenDeleted` to `Retain` completes adoption without waiting for claim
+ownership. If a Pod will not terminate, diagnose its
 node and storage attachment, then let Kubernetes finish termination; the
 operator keeps the cluster unavailable. Verify the replacement is fully ready,
 then check cluster status, representative reads and writes, audit verification
