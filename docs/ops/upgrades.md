@@ -133,8 +133,8 @@ The upgrade state machine owns only the stop barrier, the PVC identity and
 retention checks, and the decision to release ordinary reconciliation. The
 ordinary StatefulSet reconciler creates the replacement and applies its pod
 template and mutable fields. Both paths use the same retention policy builder;
-while `status.upgrade` exists it selects `Retain`, and after the drain is
-released it restores the requested policy.
+it selects `Retain` until the drain is released, and the `Adopting` phase then
+restores the requested policy.
 While the workload is stopped, reconciliation still repairs the headless Service
 needed to reach voters, the ServiceAccount, and the TLS cluster Secret and
 auth-key ConfigMap needed by replacement Pods. It keeps an existing auth-key
@@ -148,15 +148,39 @@ removes the existing claims' owner references, and verifies their UIDs and bound
 PV identities. This path requires existing PVC-backed WAL and data volumes;
 hostPath clusters are held for a separately validated manual procedure. A
 missing, unbound, deleting or replaced claim or PV blocks the upgrade.
+Detached claims are outside garbage collection, so the operator holds the
+`ledger.formance.com/upgrade-claims` finalizer on the Cluster while
+`status.upgrade` exists. If the Cluster is deleted during the upgrade with
+`whenDeleted: Delete`, the operator deletes each recorded claim that still has
+its recorded UID and no owner reference, then releases the finalizer. Claims
+still owned by the StatefulSet are left to garbage collection. With `Retain`,
+it releases the finalizer without deleting claims.
+Operators up to `v3.0.0-rc.4` run stopped upgrades without this finalizer. Do
+not delete a Cluster while a stopped upgrade started by such an operator is in
+progress. After upgrading the operator, wait until the Cluster carries the
+`ledger.formance.com/upgrade-claims` finalizer before deleting it. A Cluster
+deleted earlier with `whenDeleted: Delete` leaves its WAL and data PVCs and
+their volumes behind; delete them manually.
 The operator then deletes the StatefulSet with background propagation. It
 waits for the StatefulSet and **all old ordinal Pods** to disappear. A delete
 acknowledgement or elapsed time does not satisfy this condition. It does not
 force-delete a stuck Pod. Only then may it create the target StatefulSet and
-reuse the same PVC names. The replacement keeps both PVC retention policies at
-`Retain` throughout the active upgrade, including recovery if the replacement
+reuse the same PVC names. Until the drain is released, the replacement keeps
+both PVC retention policies at `Retain`, including recovery if the replacement
 disappears. After all target replicas are ready, the operator commits the drain
-release and waits for every member to persist it. Normal reconciliation then
-restores the requested retention policies. `status.upgrade` and the `Upgrade` condition show the
+release and waits for every member to persist it. In the `Adopting` phase it
+then restores the requested retention policies on the replacement StatefulSet.
+With `whenDeleted: Delete`, it keeps `status.upgrade` and the finalizer until
+the StatefulSet controller has made the replacement StatefulSet the owner of
+every recorded claim, so garbage collection covers each claim before the
+operator stops tracking it. As in `Verifying`, every recorded claim and volume
+must keep its identity and binding during `Adopting`: a missing, replaced,
+deleting or rebound claim blocks the upgrade instead of completing it, because
+the StatefulSet would recreate that claim empty. If the replacement disappears
+during `Adopting`,
+ordinary reconciliation recreates it with the requested policies; under
+`whenDeleted: Delete`, deleting the replacement then also deletes the claims it
+already owns. `status.upgrade` and the `Upgrade` condition show the
 phase or blocking error. The operator retries after API failures; do not remove
 the status record or create a replacement workload by hand while it is active.
 If the replacement StatefulSet disappears before the drain is released, the
@@ -164,13 +188,20 @@ operator waits for its Pods to terminate, verifies the original PVC/PV identitie
 and recreates it while keeping the drain active.
 
 Keep the requested target tag, workload spec and replica count fixed until
-`status.upgrade` clears. An edit during the operation is rejected. A direct
-replica-count edit to the replacement StatefulSet reports `Upgrade=Blocked`
-until the pinned count is restored. If a Pod will not terminate, diagnose its
+`status.upgrade` clears. Before the drain is released, an edit is rejected, and
+a direct replica-count edit to the replacement StatefulSet reports
+`Upgrade=Blocked` until the pinned count is restored. In `Adopting`, a target
+tag edit is still rejected, but workload spec and replica-count edits are not:
+they wait until adoption completes and then apply through ordinary
+reconciliation. A `spec.persistence.retentionPolicy` edit applies immediately
+instead: `Adopting` restores the current requested policy, and switching
+`whenDeleted` to `Retain` completes adoption without waiting for claim
+ownership. If a Pod will not terminate, diagnose its
 node and storage attachment, then let Kubernetes finish termination; the
 operator keeps the cluster unavailable. Verify the replacement is fully ready,
 then check cluster status, representative reads and writes, audit verification
-and backup compatibility. The operator does not delete Raft members or volumes.
+and backup compatibility. The operator does not delete Raft members, and
+deletes upgrade claims only when the Cluster itself is deleted as described above.
 
 The drain blocks business writes before the stop; in-flight proposals after
 the cutoff reject at apply. Cluster-internal technical entries may continue

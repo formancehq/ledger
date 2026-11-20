@@ -272,6 +272,14 @@ StatefulSet, removes claim owner references, and verifies that every original
 claim remains bound. After deleting the StatefulSet, it must wait for both its
 absence and every old ordinal Pod's absence before creating the target. Trace
 API errors, target edits, missing claims and a fresh reconciler at each phase.
+The upgrade-claims finalizer must be durable before claims are detached. A
+Cluster deleted while `status.upgrade` exists must apply the requested
+`whenDeleted` policy to recorded, unowned claims with their recorded UID before
+the finalizer is released; a same-name replacement claim is not a target.
+Completion must not clear `status.upgrade` or release the finalizer while a
+recorded claim is missing, replaced, deleting or rebound, nor under
+`whenDeleted: Delete` until the replacement StatefulSet owns every recorded
+claim.
 Fake clients establish ordering only; Kubernetes GC, retention-controller
 observation, Pod termination, volume reattachment and non-empty WAL replay need
 separate integration evidence.
