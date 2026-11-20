@@ -8921,10 +8921,11 @@ components:
                 minimum: 0
                 maximum: 18446744073709551615
           description: >-
-            Typed values substituted into filter placeholders. JSON integer
-            tokens are parsed exactly: negative values use int64 and zero or
-            positive values use uint64. Values outside those ranges, fractions,
-            and exponent notation are rejected. Use a lossless JSON number
+            Typed values substituted into filter placeholders. JSON integral
+            numbers are parsed exactly: negative values use int64 and zero or
+            positive values use uint64. Integral decimal and exponent spellings
+            are accepted; values outside those ranges, fractions, and null are
+            rejected. Use a lossless JSON number
             serializer for integers above 2^53.
         pageSize:
           type: integer

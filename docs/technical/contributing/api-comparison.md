@@ -1475,10 +1475,11 @@ Read endpoints comparison with the original ledger:
 | `POST /v3/{ledgerName}/bulk` | ✅ | ❌ | Bulk operations (alternate path without underscore) |
 | `GET /_info` | ✅ | ❌ | Server build info (`version`, `commit`, `buildDate`, `goVersion`); unauthenticated, flat JSON (no `data` envelope) |
 
-HTTP prepared-query parameters accept strings, booleans and exact JSON integer
-tokens. Negative integers map to gRPC `int64_value`; zero and positive integers
-map to `uint64_value`. The HTTP adapter rejects values outside those ranges,
-fractions and exponent notation with `400 INVALID_PARAMETERS` before execution.
+HTTP prepared-query parameters accept strings, booleans and exact JSON integral
+numbers. Negative values map to gRPC `int64_value`; zero and positive values
+map to `uint64_value`. Integral decimal and exponent spellings are accepted;
+values outside those ranges, fractions and null are rejected with `400
+INVALID_PARAMETERS` before execution.
 Clients sending integers above 2^53 must use a lossless JSON serializer. This
 matches the typed gRPC parameter values without changing the service protocol.
 

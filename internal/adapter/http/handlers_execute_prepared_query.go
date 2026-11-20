@@ -6,8 +6,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"strconv"
-	"strings"
 
 	"github.com/formancehq/ledger/v3/internal/application/ctrl"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
@@ -170,6 +168,10 @@ func convertJSONParameters(raw map[string]json.RawMessage) (map[string]*commonpb
 }
 
 func jsonToParameterValue(raw json.RawMessage) (*commonpb.ParameterValue, error) {
+	if string(raw) == "null" {
+		return nil, errors.New("unsupported value type: null")
+	}
+
 	var s string
 	if err := json.Unmarshal(raw, &s); err == nil {
 		return &commonpb.ParameterValue{Value: &commonpb.ParameterValue_StringValue{StringValue: s}}, nil
@@ -186,27 +188,18 @@ func jsonToParameterValue(raw json.RawMessage) (*commonpb.ParameterValue, error)
 
 	value := string(raw)
 	if len(value) > 0 && (value[0] == '-' || value[0] >= '0' && value[0] <= '9') {
-		if strings.ContainsAny(value, ".eE") {
-			return nil, fmt.Errorf("fractional or exponential values are not supported: %s", value)
-		}
-		if value[0] == '-' {
-			n, err := strconv.ParseInt(value, 10, 64)
-			if err != nil {
-				return nil, fmt.Errorf("invalid signed integer %s: %w", value, err)
-			}
-
-			if n == 0 {
-				return &commonpb.ParameterValue{Value: &commonpb.ParameterValue_Uint64Value{Uint64Value: 0}}, nil
-			}
-
-			return &commonpb.ParameterValue{Value: &commonpb.ParameterValue_Int64Value{Int64Value: n}}, nil
-		}
-		n, err := strconv.ParseUint(value, 10, 64)
+		number, err := commonpb.MetadataValueFromAny(json.Number(value))
 		if err != nil {
-			return nil, fmt.Errorf("invalid unsigned integer %s: %w", value, err)
+			return nil, err
 		}
-
-		return &commonpb.ParameterValue{Value: &commonpb.ParameterValue_Uint64Value{Uint64Value: n}}, nil
+		switch typed := number.GetType().(type) {
+		case *commonpb.MetadataValue_IntValue:
+			return &commonpb.ParameterValue{Value: &commonpb.ParameterValue_Int64Value{Int64Value: typed.IntValue}}, nil
+		case *commonpb.MetadataValue_UintValue:
+			return &commonpb.ParameterValue{Value: &commonpb.ParameterValue_Uint64Value{Uint64Value: typed.UintValue}}, nil
+		default:
+			return nil, fmt.Errorf("unsupported numeric value: %s", value)
+		}
 	}
 
 	return nil, fmt.Errorf("unsupported value type: %s", string(raw))

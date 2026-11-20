@@ -167,6 +167,10 @@ func TestHandleExecutePreparedQuery_IntegerParameters(t *testing.T) {
 		{"negative above float64 precision", "-9007199254740993", &commonpb.ParameterValue{Value: &commonpb.ParameterValue_Int64Value{Int64Value: -9007199254740993}}},
 		{"zero", "0", &commonpb.ParameterValue{Value: &commonpb.ParameterValue_Uint64Value{Uint64Value: 0}}},
 		{"negative zero", "-0", &commonpb.ParameterValue{Value: &commonpb.ParameterValue_Uint64Value{Uint64Value: 0}}},
+		{"integral decimal", "1.0", &commonpb.ParameterValue{Value: &commonpb.ParameterValue_Uint64Value{Uint64Value: 1}}},
+		{"integral exponent", "1e3", &commonpb.ParameterValue{Value: &commonpb.ParameterValue_Uint64Value{Uint64Value: 1000}}},
+		{"negative integral exponent", "-1.2E+1", &commonpb.ParameterValue{Value: &commonpb.ParameterValue_Int64Value{Int64Value: -12}}},
+		{"precise decimal", "9007199254740993.000", &commonpb.ParameterValue{Value: &commonpb.ParameterValue_Uint64Value{Uint64Value: 9007199254740993}}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -189,9 +193,9 @@ func TestHandleExecutePreparedQuery_IntegerParameters(t *testing.T) {
 	}
 }
 
-func TestHandleExecutePreparedQuery_RejectsInvalidIntegerParameters(t *testing.T) {
+func TestHandleExecutePreparedQuery_RejectsInvalidParameters(t *testing.T) {
 	t.Parallel()
-	for _, value := range []string{"18446744073709551616", "-9223372036854775809", "1.5", "1.0", "1e3"} {
+	for _, value := range []string{"18446744073709551616", "-9223372036854775809", "1.5", "1e-400", "null"} {
 		t.Run(value, func(t *testing.T) {
 			t.Parallel()
 			srv := newTestServer(t, NewMockBackend(gomock.NewController(t)))
