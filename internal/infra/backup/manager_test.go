@@ -842,6 +842,30 @@ func TestRunIncrementalBackup_DoesNotCertifyLegacyManifestWithoutNewHistory(t *t
 	require.Nil(t, manifest.ExportBoundary, "a no-op run cannot certify a legacy manifest")
 }
 
+func TestRunIncrementalBackup_CertifiesLegacyAuditOnlyIncrement(t *testing.T) {
+	t.Parallel()
+
+	const bucketID = "bucket"
+	store := newBackupTestStore(t)
+	writeFailureAuditEntry(t, store, 1)
+	storage := newInMemoryBackupStorage()
+	require.NoError(t, WriteManifest(t.Context(), storage, ManifestKey(bucketID), &Manifest{
+		Checkpoint: &CheckpointManifest{},
+	}))
+
+	_, err := RunIncrementalBackup(t.Context(), logging.Testing(), store, storage, bucketID, 0)
+	require.NoError(t, err)
+	manifest, err := ReadManifest(t.Context(), storage, ManifestKey(bucketID))
+	require.NoError(t, err)
+	require.NotNil(t, manifest.ExportBoundary)
+	require.Zero(t, manifest.ExportBoundary.LastLogSequence)
+	require.EqualValues(t, 1, manifest.ExportBoundary.LastAuditSequence)
+	require.NotNil(t, findExport(manifest, "audit"))
+
+	manifest.Exports = nil
+	require.ErrorIs(t, validateExportCoverage(manifest), ErrExportCoverageGap)
+}
+
 func coldAuditItemKey(seq uint64, idx uint32) []byte {
 	return dal.NewKeyBuilder().PutZonePrefix(dal.ZoneHistory, dal.SubHistoryAuditItem).PutUint64(seq).PutUint32(idx).Build()
 }

@@ -583,14 +583,15 @@ func RunIncrementalBackup(
 	// this run exports no new history: either could certify a missing final
 	// segment from the old manifest.
 	canEstablishBoundary := false
-	if manifest.ExportBoundary == nil && currentLogSeq > afterLogSeq && currentAuditSeq > afterAuditSeq {
+	if manifest.ExportBoundary == nil && currentLogSeq >= afterLogSeq && currentAuditSeq >= afterAuditSeq &&
+		(currentLogSeq > afterLogSeq || currentAuditSeq > afterAuditSeq) {
 		auditItemFloor := manifest.Checkpoint.LastAuditSequence
 		for _, seg := range manifest.Exports {
 			if seg.Type == "auditItem" {
 				auditItemFloor = max(auditItemFloor, seg.EndSeq)
 			}
 		}
-		canEstablishBoundary = currentAuditItemSeq > auditItemFloor
+		canEstablishBoundary = currentAuditItemSeq >= auditItemFloor
 	}
 
 	// Ensure monotonicity: after a RestoreCheckpoint (leadership change +
