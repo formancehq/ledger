@@ -17,6 +17,16 @@ clears `response_signature`, then marshals and signs the clone.
 result with the visible log after clearing its envelope. Inspect each consumer
 to confirm it invokes that binding check before using visible fields. Do not
 substitute client reserialization for the decode-and-compare contract.
+For `ledgerctl` writes with a response verification key, also compare the
+submitted `ApplyBatch` with the ordered signed logs: count, sequence order,
+operation variant, ledger, target, and fields present in both request and log.
+Trace signed and unsigned request variants. Also verify the response-only
+receipt: its signed payload must contain the hash of the submitted batch and
+the ordered hashes of the signed log payloads. A checkpoint creation and a
+script-based transaction have too little request identity in their logs alone;
+the receipt must bind those cases. An identical request and previously signed
+response can still replay because there is no fresh request nonce; do not claim
+the receipt proves freshness.
 
 Use a non-empty committed log and independently mutate visible fields, payload,
 signature, key and presence. A verifier accepting signed bytes says nothing by
@@ -33,6 +43,10 @@ assert rejection before success output or returned script identity is printed.
 Keep valid signatures and verification-disabled responses as controls alongside
 missing, corrupt, wrong-key, and modified visible logs. A verification failure
 after Apply does not roll back a mutation.
+Add empty, missing, extra, reordered, and unrelated but valid signed logs to
+the command-level oracle, alongside a matching valid signed response.
+Exercise a receipt for a different script batch, a substituted signed log,
+missing receipt, corrupt receipt signature, and a matching receipt.
 
 ## Ownership boundaries
 

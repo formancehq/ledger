@@ -64,7 +64,7 @@ func runCreate(cmd *cobra.Command, _ []string) error {
 		return cmdutil.FormatGRPCError("query checkpoint creation failed", err)
 	}
 
-	if err := cmdutil.VerifyResponseSignatures(cmd, resp.GetLogs()); err != nil {
+	if err := cmdutil.VerifyApplyResponse(cmd, applyReq, resp.GetLogs(), resp.GetResponseReceipt()); err != nil {
 		if spinner != nil {
 			_ = spinner.Stop()
 		}

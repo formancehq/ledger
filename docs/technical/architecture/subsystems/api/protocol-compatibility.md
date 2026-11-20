@@ -394,6 +394,18 @@ must implement the same revision; there is no compatibility fallback.
 
 ## Maintaining the revision
 
+The additive `ApplyRequest.response_binding_payload` and
+`ApplyResponse.response_receipt` fields let the client supply exact unsigned
+batch bytes for a server-signed receipt over their hash and the ordered signed
+logs. Signed batches already carry exact bytes in their existing envelope.
+Existing clients ignore the unknown response field and keep decoding `logs`;
+no published field is removed or renumbered. An updated client using response verification requires
+the receipt and fails closed against older servers, so deploy servers before
+enabling verification with the updated CLI. During rolling upgrades a request
+routed to an older server may commit before the client reports that verification
+failed. The receipt is response-only and changes no Raft, audit, snapshot, or
+backup bytes. Revision 40 remains unchanged.
+
 Ledger v3 is in its release-candidate phase. The revision is frozen at `"40"`:
 do not increment `pkg/grpcprotocol.Version`. Preserve published gRPC service
 and method names, request and response types, protobuf field numbers, wire

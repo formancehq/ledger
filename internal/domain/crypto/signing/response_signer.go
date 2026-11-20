@@ -3,15 +3,120 @@ package signing
 import (
 	"crypto/ed25519"
 	"crypto/sha256"
+	"crypto/subtle"
 	"encoding/hex"
 	"errors"
 	"fmt"
 	"os"
 	"strings"
 
+	"google.golang.org/protobuf/proto"
+
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/internal/proto/signaturepb"
 )
+
+const responseReceiptDomain = "ledger.apply-response-receipt.v1\x00"
+
+// SignResponseReceipt binds one submitted batch to the ordered signed logs.
+// It is response-only state and never enters Raft or the audit log.
+func (s *ResponseSigner) SignResponseReceipt(request *servicepb.ApplyRequest, logs []*commonpb.Log) (*signaturepb.SignedResponseReceipt, error) {
+	receipt, err := buildResponseReceipt(request, logs)
+	if err != nil {
+		return nil, err
+	}
+	payload, err := receipt.MarshalVT()
+	if err != nil {
+		return nil, fmt.Errorf("encode response receipt: %w", err)
+	}
+
+	return &signaturepb.SignedResponseReceipt{KeyId: s.keyID, Payload: payload, Signature: ed25519.Sign(s.privateKey, append([]byte(responseReceiptDomain), payload...))}, nil
+}
+
+// VerifyResponseReceipt rejects a receipt for any other batch or log list.
+func VerifyResponseReceipt(request *servicepb.ApplyRequest, logs []*commonpb.Log, signed *signaturepb.SignedResponseReceipt, publicKey ed25519.PublicKey) error {
+	if signed == nil {
+		return errors.New("missing signed response receipt")
+	}
+	if len(signed.GetPayload()) == 0 || len(signed.GetSignature()) != ed25519.SignatureSize || !ed25519.Verify(publicKey, append([]byte(responseReceiptDomain), signed.GetPayload()...), signed.GetSignature()) {
+		return errors.New("response receipt signature verification failed")
+	}
+	var actual signaturepb.ResponseReceipt
+	if err := actual.UnmarshalVT(signed.GetPayload()); err != nil {
+		return fmt.Errorf("decode signed response receipt: %w", err)
+	}
+	expected, err := buildResponseReceipt(request, logs)
+	if err != nil {
+		return err
+	}
+	if subtle.ConstantTimeCompare(actual.GetBatchHash(), expected.GetBatchHash()) != 1 || len(actual.GetLogHashes()) != len(expected.GetLogHashes()) {
+		return errors.New("response receipt does not match submitted batch or logs")
+	}
+	for i := range expected.GetLogHashes() {
+		if subtle.ConstantTimeCompare(actual.GetLogHashes()[i], expected.GetLogHashes()[i]) != 1 {
+			return fmt.Errorf("response receipt does not match log %d", i)
+		}
+	}
+
+	return nil
+}
+
+func buildResponseReceipt(request *servicepb.ApplyRequest, logs []*commonpb.Log) (*signaturepb.ResponseReceipt, error) {
+	if _, err := servicepb.PeekBatch(request); err != nil {
+		return nil, fmt.Errorf("decode submitted batch for response receipt: %w", err)
+	}
+	batchBytes := request.GetSigned().GetPayload()
+	if request.GetUnsigned() != nil {
+		batchBytes = request.GetResponseBindingPayload()
+		if len(batchBytes) == 0 {
+			return nil, errors.New("unsigned request has no response binding payload")
+		}
+		if err := ValidateResponseBinding(request); err != nil {
+			return nil, err
+		}
+	}
+	batchHash := sha256.Sum256(batchBytes)
+	receipt := &signaturepb.ResponseReceipt{BatchHash: batchHash[:]}
+	for i, log := range logs {
+		if log == nil || log.GetResponseSignature() == nil {
+			return nil, fmt.Errorf("response log %d is missing its signature", i)
+		}
+		hash := sha256.Sum256(log.GetResponseSignature().GetPayload())
+		receipt.LogHashes = append(receipt.LogHashes, hash[:])
+	}
+
+	return receipt, nil
+}
+
+// ValidateResponseBinding rejects an unsigned binding payload that does not
+// describe the submitted batch. Call before applying the request: a malformed
+// binding must never turn a committed write into a receipt-signing error.
+func ValidateResponseBinding(request *servicepb.ApplyRequest) error {
+	if request.GetSigned() != nil {
+		if len(request.GetResponseBindingPayload()) > 0 {
+			return errors.New("signed request must not include an unsigned response binding payload")
+		}
+
+		return nil
+	}
+	if len(request.GetResponseBindingPayload()) == 0 {
+		return nil
+	}
+	batch := request.GetUnsigned()
+	if batch == nil {
+		return errors.New("response binding payload requires an unsigned batch")
+	}
+	var bound servicepb.ApplyBatch
+	if err := bound.UnmarshalVT(request.GetResponseBindingPayload()); err != nil {
+		return fmt.Errorf("decode response binding payload: %w", err)
+	}
+	if !proto.Equal(batch, &bound) {
+		return errors.New("response binding payload does not match submitted batch")
+	}
+
+	return nil
+}
 
 // ResponseSigner signs Log messages with an Ed25519 key for server-side response signing.
 type ResponseSigner struct {

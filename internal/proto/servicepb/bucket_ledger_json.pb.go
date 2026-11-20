@@ -143,31 +143,37 @@ func (x *ApplyRequest) MarshalJSON() ([]byte, error) {
 	switch oneofValueVariant := x.Variant.(type) {
 	case *ApplyRequest_Unsigned:
 		return jsonv2.Marshal(struct {
-			Unsigned                any  `json:"unsigned"`
-			ForwardedCallerSnapshot any  `json:"forwardedCallerSnapshot,omitempty,omitzero"`
-			SkipResponse            bool `json:"skipResponse"`
+			Unsigned                any    `json:"unsigned"`
+			ForwardedCallerSnapshot any    `json:"forwardedCallerSnapshot,omitempty,omitzero"`
+			SkipResponse            bool   `json:"skipResponse"`
+			ResponseBindingPayload  []byte `json:"responseBindingPayload"`
 		}{
 			Unsigned:                oneofValueVariant.Unsigned,
 			ForwardedCallerSnapshot: x.ForwardedCallerSnapshot,
 			SkipResponse:            x.SkipResponse,
+			ResponseBindingPayload:  x.ResponseBindingPayload,
 		})
 	case *ApplyRequest_Signed:
 		return jsonv2.Marshal(struct {
-			Signed                  any  `json:"signed"`
-			ForwardedCallerSnapshot any  `json:"forwardedCallerSnapshot,omitempty,omitzero"`
-			SkipResponse            bool `json:"skipResponse"`
+			Signed                  any    `json:"signed"`
+			ForwardedCallerSnapshot any    `json:"forwardedCallerSnapshot,omitempty,omitzero"`
+			SkipResponse            bool   `json:"skipResponse"`
+			ResponseBindingPayload  []byte `json:"responseBindingPayload"`
 		}{
 			Signed:                  oneofValueVariant.Signed,
 			ForwardedCallerSnapshot: x.ForwardedCallerSnapshot,
 			SkipResponse:            x.SkipResponse,
+			ResponseBindingPayload:  x.ResponseBindingPayload,
 		})
 	default:
 		return jsonv2.Marshal(struct {
-			ForwardedCallerSnapshot any  `json:"forwardedCallerSnapshot,omitempty,omitzero"`
-			SkipResponse            bool `json:"skipResponse"`
+			ForwardedCallerSnapshot any    `json:"forwardedCallerSnapshot,omitempty,omitzero"`
+			SkipResponse            bool   `json:"skipResponse"`
+			ResponseBindingPayload  []byte `json:"responseBindingPayload"`
 		}{
 			ForwardedCallerSnapshot: x.ForwardedCallerSnapshot,
 			SkipResponse:            x.SkipResponse,
+			ResponseBindingPayload:  x.ResponseBindingPayload,
 		})
 	}
 }
@@ -189,7 +195,8 @@ func (x *ApplyBatch) MarshalJSON() ([]byte, error) {
 
 func (x *ApplyResponse) MarshalJSON() ([]byte, error) {
 	return jsonv2.Marshal(struct {
-		Logs any `json:"logs"`
+		Logs            any `json:"logs"`
+		ResponseReceipt any `json:"responseReceipt,omitempty,omitzero"`
 	}{
 		Logs: func() any {
 			if x.Logs == nil {
@@ -197,6 +204,7 @@ func (x *ApplyResponse) MarshalJSON() ([]byte, error) {
 			}
 			return x.Logs
 		}(),
+		ResponseReceipt: x.ResponseReceipt,
 	})
 }
 

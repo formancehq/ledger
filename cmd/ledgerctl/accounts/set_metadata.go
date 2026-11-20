@@ -141,11 +141,16 @@ func runSetMetadata(cmd *cobra.Command, args []string) error {
 		return cmdutil.Displayed(err)
 	}
 
-	_, err = client.Apply(ctx, applyReq)
+	resp, err := client.Apply(ctx, applyReq)
 	if err != nil {
 		_ = spinner.Stop()
 
 		return cmdutil.FormatGRPCError("failed to set metadata", err)
+	}
+	if err := cmdutil.VerifyApplyResponse(cmd, applyReq, resp.GetLogs(), resp.GetResponseReceipt()); err != nil {
+		spinner.Fail("Response signature verification failed")
+
+		return cmdutil.Displayed(fmt.Errorf("response signature verification failed: %w", err))
 	}
 
 	spinner.Success("Metadata set")

@@ -30,3 +30,17 @@ message SignedLog {
   bytes signature = 2;  // Ed25519 signature (64 bytes)
   bytes payload = 3;    // Exact serialized Log bytes that were signed
 }
+
+// ResponseReceipt binds the submitted batch to the exact ordered response
+// logs. Hashes keep request contents (including credentials) out of responses.
+message ResponseReceipt {
+  bytes batch_hash = 1;
+  repeated bytes log_hashes = 2;
+}
+
+// SignedResponseReceipt authenticates the serialized ResponseReceipt.
+message SignedResponseReceipt {
+  string key_id = 1;
+  bytes signature = 2;
+  bytes payload = 3;
+}

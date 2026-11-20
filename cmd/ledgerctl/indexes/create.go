@@ -133,7 +133,7 @@ func runCreateIndex(cmd *cobra.Command, _ []string) error {
 		return cmdutil.FormatGRPCError("failed to create index", err)
 	}
 
-	if err := cmdutil.VerifyResponseSignatures(cmd, resp.GetLogs()); err != nil {
+	if err := cmdutil.VerifyApplyResponse(cmd, applyReq, resp.GetLogs(), resp.GetResponseReceipt()); err != nil {
 		spinner.Fail("Response signature verification failed")
 
 		return cmdutil.Displayed(fmt.Errorf("response signature verification failed: %w", err))

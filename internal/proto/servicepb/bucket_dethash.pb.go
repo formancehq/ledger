@@ -269,6 +269,13 @@ func (m *ApplyRequest) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int, er
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
+	if len(m.ResponseBindingPayload) > 0 {
+		i -= len(m.ResponseBindingPayload)
+		copy(dAtA[i:], m.ResponseBindingPayload)
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.ResponseBindingPayload)))
+		i--
+		dAtA[i] = 0x2a
+	}
 	if m.SkipResponse {
 		i--
 		if m.SkipResponse {
@@ -363,6 +370,13 @@ func (m *ApplyResponse) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int, e
 	if m.unknownFields != nil {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
+	}
+	if m.ResponseReceipt != nil {
+		size, _ := m.ResponseReceipt.MarshalToSizedBufferVT(dAtA[:i])
+		i -= size
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		i--
+		dAtA[i] = 0x12
 	}
 	if len(m.Logs) > 0 {
 		for iNdEx := len(m.Logs) - 1; iNdEx >= 0; iNdEx-- {

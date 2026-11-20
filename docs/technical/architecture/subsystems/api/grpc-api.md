@@ -583,14 +583,22 @@ for _, log := range resp.Logs {
 ```protobuf
 message ApplyResponse {
   repeated Log logs = 1;  // One log per request
+  signature.SignedResponseReceipt response_receipt = 2;  // Optional when response signing is disabled
 }
 
 message Log {
   fixed64 sequence = 1;     // Global log sequence number
   LogPayload payload = 2;   // Log content (varies by operation type)
-  Idempotency idempotency = 3;
+  signature.SignedLog response_signature = 3;  // Optional server signature
 }
 ```
+
+For an unsigned `ApplyRequest`, clients that verify the response receipt send
+the exact serialized `ApplyBatch` bytes in `response_binding_payload`. The
+server checks that those bytes decode to the submitted unsigned batch before
+applying it. Signed requests use their existing signed payload. The receipt
+authenticates the batch hash and the ordered signed log hashes; legacy unsigned
+requests without binding bytes continue receiving signed logs without a receipt.
 
 ### Log Payload Types
 

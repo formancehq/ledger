@@ -6,6 +6,7 @@ package servicepb
 import (
 	bytes "bytes"
 	commonpb "github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	signaturepb "github.com/formancehq/ledger/v3/internal/proto/signaturepb"
 	slices "slices"
 )
 
@@ -835,6 +836,7 @@ func NewGetLedgerRequestListReader(s []*GetLedgerRequest) GetLedgerRequestListRe
 type ApplyRequestReader interface {
 	GetForwardedCallerSnapshot() commonpb.CallerSnapshotReader
 	GetSkipResponse() bool
+	GetResponseBindingPayload() []byte
 	GetVariant() isApplyRequest_Variant
 	Mutate() *ApplyRequest
 }
@@ -851,6 +853,10 @@ func (r *applyRequestReadonly) GetForwardedCallerSnapshot() commonpb.CallerSnaps
 
 func (r *applyRequestReadonly) GetSkipResponse() bool {
 	return (*ApplyRequest)(r).GetSkipResponse()
+}
+
+func (r *applyRequestReadonly) GetResponseBindingPayload() []byte {
+	return bytes.Clone((*ApplyRequest)(r).GetResponseBindingPayload())
 }
 
 func (r *applyRequestReadonly) GetVariant() isApplyRequest_Variant {
@@ -985,6 +991,7 @@ func NewApplyBatchListReader(s []*ApplyBatch) ApplyBatchListReader { return appl
 // Call Mutate() to obtain a mutable clone.
 type ApplyResponseReader interface {
 	GetLogs() commonpb.LogListReader
+	GetResponseReceipt() signaturepb.SignedResponseReceiptReader
 	Mutate() *ApplyResponse
 }
 
@@ -992,6 +999,14 @@ type applyResponseReadonly ApplyResponse
 
 func (r *applyResponseReadonly) GetLogs() commonpb.LogListReader {
 	return commonpb.NewLogListReader((*ApplyResponse)(r).GetLogs())
+}
+
+func (r *applyResponseReadonly) GetResponseReceipt() signaturepb.SignedResponseReceiptReader {
+	v := (*ApplyResponse)(r).GetResponseReceipt()
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
 }
 
 func (r *applyResponseReadonly) Mutate() *ApplyResponse {

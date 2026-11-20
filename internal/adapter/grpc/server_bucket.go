@@ -37,6 +37,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/auditpb"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	"github.com/formancehq/ledger/v3/internal/proto/signaturepb"
 	"github.com/formancehq/ledger/v3/internal/query"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 	"github.com/formancehq/ledger/v3/internal/storage/readstore"
@@ -142,6 +143,9 @@ func (impl *BucketServiceServerImpl) apply(ctx context.Context, req *servicepb.A
 	if err != nil {
 		return nil, err
 	}
+	if err := signing.ValidateResponseBinding(req); err != nil {
+		return nil, status.Errorf(codes.InvalidArgument, "invalid response binding: %v", err)
+	}
 
 	var sizeKnown bool
 	*batchSize, sizeKnown = ctx.Value(applyBatchSizeKey{}).(int)
@@ -179,12 +183,19 @@ func (impl *BucketServiceServerImpl) apply(ctx context.Context, req *servicepb.A
 	}
 
 	skipResponse := req.GetSkipResponse()
+	var responseReceipt *signaturepb.SignedResponseReceipt
 
 	if !skipResponse {
 		// Sign response logs with server Ed25519 key
 		if impl.responseSigner != nil {
 			for _, log := range logs {
 				log.ResponseSignature = impl.responseSigner.SignLog(log)
+			}
+			if req.GetSigned() != nil || len(req.GetResponseBindingPayload()) > 0 {
+				responseReceipt, err = impl.responseSigner.SignResponseReceipt(req, logs)
+				if err != nil {
+					return nil, fmt.Errorf("sign Apply response receipt: %w", err)
+				}
 			}
 		}
 	}
@@ -196,7 +207,7 @@ func (impl *BucketServiceServerImpl) apply(ctx context.Context, req *servicepb.A
 		}
 	}
 
-	return &servicepb.ApplyResponse{Logs: logs}, nil
+	return &servicepb.ApplyResponse{Logs: logs, ResponseReceipt: responseReceipt}, nil
 }
 
 // waitCreatedQueryCheckpoints blocks until every query checkpoint created by

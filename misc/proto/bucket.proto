@@ -275,6 +275,10 @@ message ApplyRequest {
   // Only the sequence number is returned for each log. Useful for
   // historical ingestion where the client does not need the full response.
   bool skip_response = 4;
+  // Exact client-serialized ApplyBatch bytes for response receipt binding.
+  // The server decodes and compares these with unsigned before hashing them.
+  // Signed requests already carry exact batch bytes in signed.payload.
+  bytes response_binding_payload = 5;
 }
 
 // ApplyBatch is the atomic unit: an ordered set of requests applied
@@ -288,6 +292,9 @@ message ApplyBatch {
 
 message ApplyResponse {
   repeated common.Log logs = 1;
+  // Present when response signing is configured, skip_response is false,
+  // and the request carries signed or response-binding batch bytes.
+  signature.SignedResponseReceipt response_receipt = 2;
 }
 
 message Request {
