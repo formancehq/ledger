@@ -572,17 +572,29 @@ func RunIncrementalBackup(
 	// A legacy manifest has no independent endpoint. Do not turn its own
 	// segment ends into a boundary when the snapshot has rolled back, or when
 	// this run exports no new history: either could certify a missing final
-	// segment from the old manifest.
+	// segment from the old manifest. Each stream with legacy exports needs a
+	// source sequence beyond its recorded end; equality only repeats the
+	// manifest's own claim, even if another stream advances.
 	canEstablishBoundary := false
 	if manifest.ExportBoundary == nil && currentLogSeq >= afterLogSeq && currentAuditSeq >= afterAuditSeq &&
 		(currentLogSeq > afterLogSeq || currentAuditSeq > afterAuditSeq) {
 		auditItemFloor := manifest.Checkpoint.LastAuditSequence
+		legacyLog, legacyAudit, legacyAuditItem := false, false, false
 		for _, seg := range manifest.Exports {
-			if seg.Type == "auditItem" {
+			switch seg.Type {
+			case "log":
+				legacyLog = true
+			case "audit":
+				legacyAudit = true
+			case "auditItem":
+				legacyAuditItem = true
 				auditItemFloor = max(auditItemFloor, seg.EndSeq)
 			}
 		}
-		canEstablishBoundary = currentAuditItemSeq >= auditItemFloor
+		canEstablishBoundary = (!legacyLog || currentLogSeq > afterLogSeq) &&
+			(!legacyAudit || currentAuditSeq > afterAuditSeq) &&
+			currentAuditItemSeq >= auditItemFloor &&
+			(!legacyAuditItem || currentAuditItemSeq > auditItemFloor)
 	}
 
 	// Ensure monotonicity: after a RestoreCheckpoint (leadership change +

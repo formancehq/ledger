@@ -866,6 +866,80 @@ func TestRunIncrementalBackup_CertifiesLegacyAuditOnlyIncrement(t *testing.T) {
 	require.ErrorIs(t, validateExportCoverage(manifest), ErrExportCoverageGap)
 }
 
+func TestRunIncrementalBackup_DoesNotCertifyUnchangedLegacyLogFromAuditIncrement(t *testing.T) {
+	t.Parallel()
+
+	const bucketID = "bucket"
+	store := newBackupTestStore(t)
+	batch := store.OpenWriteSession()
+	logKey := dal.NewKeyBuilder().PutZonePrefix(dal.ZoneHistory, dal.SubHistoryLog).PutUint64(1).Build()
+	require.NoError(t, batch.SetProto(logKey, &commonpb.Log{Sequence: 1}))
+	require.NoError(t, batch.Commit())
+	writeFailureAuditEntry(t, store, 1)
+
+	storage := newInMemoryBackupStorage()
+	require.NoError(t, WriteManifest(t.Context(), storage, ManifestKey(bucketID), &Manifest{
+		Checkpoint: &CheckpointManifest{},
+		Exports:    []ExportSegment{{Type: "log", StartSeq: 1, EndSeq: 1, Key: "legacy-log-segment"}},
+	}))
+
+	_, err := RunIncrementalBackup(t.Context(), logging.Testing(), store, storage, bucketID, 0)
+	require.NoError(t, err)
+	manifest, err := ReadManifest(t.Context(), storage, ManifestKey(bucketID))
+	require.NoError(t, err)
+	require.Nil(t, manifest.ExportBoundary, "an audit increment cannot certify an unchanged legacy log tail")
+	require.NotNil(t, findExport(manifest, "audit"), "the audit increment must actually be published")
+}
+
+func TestRunIncrementalBackup_DoesNotCertifyUnchangedLegacyAuditFromLogIncrement(t *testing.T) {
+	t.Parallel()
+
+	const bucketID = "bucket"
+	store := newBackupTestStore(t)
+	writeFailureAuditEntry(t, store, 1)
+	batch := store.OpenWriteSession()
+	logKey := dal.NewKeyBuilder().PutZonePrefix(dal.ZoneHistory, dal.SubHistoryLog).PutUint64(1).Build()
+	require.NoError(t, batch.SetProto(logKey, &commonpb.Log{Sequence: 1}))
+	require.NoError(t, batch.Commit())
+
+	storage := newInMemoryBackupStorage()
+	require.NoError(t, WriteManifest(t.Context(), storage, ManifestKey(bucketID), &Manifest{
+		Checkpoint: &CheckpointManifest{},
+		Exports:    []ExportSegment{{Type: "audit", StartSeq: 1, EndSeq: 1, Key: "legacy-audit-segment"}},
+	}))
+
+	_, err := RunIncrementalBackup(t.Context(), logging.Testing(), store, storage, bucketID, 0)
+	require.NoError(t, err)
+	manifest, err := ReadManifest(t.Context(), storage, ManifestKey(bucketID))
+	require.NoError(t, err)
+	require.Nil(t, manifest.ExportBoundary, "a log increment cannot certify an unchanged legacy audit tail")
+	require.NotNil(t, findExport(manifest, "log"), "the log increment must actually be published")
+}
+
+func TestRunIncrementalBackup_DoesNotCertifyUnchangedLegacyAuditItems(t *testing.T) {
+	t.Parallel()
+
+	const bucketID = "bucket"
+	store := newBackupTestStore(t)
+	writeSuccessAuditEntryWithItem(t, store, 1)
+	writeFailureAuditEntry(t, store, 2)
+	storage := newInMemoryBackupStorage()
+	require.NoError(t, WriteManifest(t.Context(), storage, ManifestKey(bucketID), &Manifest{
+		Checkpoint: &CheckpointManifest{},
+		Exports: []ExportSegment{
+			{Type: "audit", StartSeq: 1, EndSeq: 1, Key: "legacy-audit-segment"},
+			{Type: "auditItem", StartSeq: 1, EndSeq: 1, Key: "legacy-item-segment"},
+		},
+	}))
+
+	_, err := RunIncrementalBackup(t.Context(), logging.Testing(), store, storage, bucketID, 0)
+	require.NoError(t, err)
+	manifest, err := ReadManifest(t.Context(), storage, ManifestKey(bucketID))
+	require.NoError(t, err)
+	require.Nil(t, manifest.ExportBoundary, "a new item-less audit cannot certify an unchanged legacy item tail")
+	require.EqualValues(t, 2, manifest.LastExportAuditSequence(), "the new audit must actually be published")
+}
+
 func coldAuditItemKey(seq uint64, idx uint32) []byte {
 	return dal.NewKeyBuilder().PutZonePrefix(dal.ZoneHistory, dal.SubHistoryAuditItem).PutUint64(seq).PutUint32(idx).Build()
 }

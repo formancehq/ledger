@@ -254,11 +254,12 @@ the log, audit, and audit-item endpoints observed in the backup snapshot.
 Before any export download, restore compares each stream's final segment with
 its recorded endpoint, including when all segments of a stream are absent.
 An incremental run establishes endpoints for a legacy manifest when new log or
-audit history is exported and the source snapshot independently reaches every
-recorded stream floor. This includes audit-only increments. It leaves a legacy
-manifest without endpoints when the source snapshot is behind recorded segments
-or no new history is exported; those segments cannot independently certify their
-own final boundary.
+audit history is exported and the source snapshot independently advances beyond
+the recorded end of every stream with legacy exports. Streams without legacy
+exports may remain at their checkpoint endpoint, so an audit-only increment can
+certify a manifest with no earlier log segments. A legacy manifest remains
+without endpoints when a recorded stream is unchanged or the source snapshot is
+behind it; a segment cannot independently certify its own final boundary.
 Audit items have their own endpoint because older history can contain audit
 entries without items. Released manifests without these endpoints retain
 interior range checks but cannot prove that a complete final suffix is present.
