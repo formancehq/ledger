@@ -93,9 +93,13 @@ func (r *ClusterReconciler) finalizeUpgradeClaims(ctx context.Context, ledger *l
 // reconcileUpgradeClaimAdoption restores the requested retention policy on the
 // replacement StatefulSet and keeps the claim inventory and finalizer until
 // garbage collection can reap every recorded claim that whenDeleted=Delete
-// covers. Without a StatefulSet, ordinary reconciliation recreates it with the
-// requested policy.
+// covers. Every recorded claim and volume must keep its identity until then:
+// a lost claim would be recreated empty under its name. Without a StatefulSet,
+// ordinary reconciliation recreates it with the requested policy.
 func (r *ClusterReconciler) reconcileUpgradeClaimAdoption(ctx context.Context, ledger *ledgerv1alpha1.Cluster, sts *appsv1.StatefulSet) (bool, ctrl.Result, error) {
+	if err := r.verifyUpgradeClaims(ctx, ledger, ledger.Status.Upgrade); err != nil {
+		return false, ctrl.Result{}, err
+	}
 	if sts == nil {
 		return true, ctrl.Result{}, nil
 	}
@@ -112,14 +116,13 @@ func (r *ClusterReconciler) reconcileUpgradeClaimAdoption(ctx context.Context, l
 	if buildRetentionPolicy(ledger).WhenDeleted == appsv1.DeletePersistentVolumeClaimRetentionPolicyType {
 		for name, uid := range ledger.Status.Upgrade.ClaimUIDs {
 			pvc := &corev1.PersistentVolumeClaim{}
-			err := r.storageAPIReader().Get(ctx, types.NamespacedName{Name: name, Namespace: ledger.Namespace}, pvc)
-			if apierrors.IsNotFound(err) {
-				continue
-			}
-			if err != nil {
+			if err := r.storageAPIReader().Get(ctx, types.NamespacedName{Name: name, Namespace: ledger.Namespace}, pvc); err != nil {
 				return false, ctrl.Result{}, fmt.Errorf("reading upgrade PVC %s: %w", name, err)
 			}
-			if string(pvc.UID) != uid || !pvc.DeletionTimestamp.IsZero() || ownedBy(pvc, sts.UID) {
+			if string(pvc.UID) != uid || !pvc.DeletionTimestamp.IsZero() {
+				return false, ctrl.Result{}, fmt.Errorf("upgrade PVC %s changed identity or is deleting", name)
+			}
+			if ownedBy(pvc, sts.UID) {
 				continue
 			}
 

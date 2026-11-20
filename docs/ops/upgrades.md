@@ -173,7 +173,11 @@ then restores the requested retention policies on the replacement StatefulSet.
 With `whenDeleted: Delete`, it keeps `status.upgrade` and the finalizer until
 the StatefulSet controller has made the replacement StatefulSet the owner of
 every recorded claim, so garbage collection covers each claim before the
-operator stops tracking it. If the replacement disappears during `Adopting`,
+operator stops tracking it. As in `Verifying`, every recorded claim and volume
+must keep its identity and binding during `Adopting`: a missing, replaced,
+deleting or rebound claim blocks the upgrade instead of completing it, because
+the StatefulSet would recreate that claim empty. If the replacement disappears
+during `Adopting`,
 ordinary reconciliation recreates it with the requested policies; under
 `whenDeleted: Delete`, deleting the replacement then also deletes the claims it
 already owns. `status.upgrade` and the `Upgrade` condition show the

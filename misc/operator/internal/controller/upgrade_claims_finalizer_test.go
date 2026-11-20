@@ -144,3 +144,104 @@ func (s staleClaimOwnerReads) Get(ctx context.Context, key client.ObjectKey, obj
 
 	return nil
 }
+
+// Adoption completes only while every recorded claim and volume keeps its
+// identity: a lost claim would be recreated empty under its recorded name.
+func TestStoppedUpgradeAdoptionRejectsLostClaims(t *testing.T) {
+	t.Parallel()
+	for _, whenDeleted := range []string{"Delete", "Retain"} {
+		for _, withSTS := range []bool{true, false} {
+			for _, loss := range []string{"intact", "missing", "replaced", "deleting", "rebound"} {
+				name := whenDeleted + "/" + loss
+				if !withSTS {
+					name += "/no-statefulset"
+				}
+				t.Run(name, func(t *testing.T) {
+					t.Parallel()
+					ctx := context.Background()
+					cluster := newMinimalCluster()
+					cluster.UID = "cluster-uid"
+					cluster.Finalizers = []string{upgradeClaimsFinalizer}
+					cluster.Spec.Image.Tag = "v3.0.0-rc.4"
+					cluster.Spec.Replicas = new(int32(1))
+					cluster.Spec.Persistence.RetentionPolicy = &ledgerv1alpha1.RetentionPolicySpec{WhenDeleted: whenDeleted}
+					applyDefaults(cluster)
+					stsName := resourceName(cluster.Name)
+					walName, dataName := "wal-"+stsName+"-0", "data-"+stsName+"-0"
+					cluster.Status.Upgrade = &ledgerv1alpha1.ClusterUpgradeStatus{
+						Source: "v3.0.0-rc.3", Target: cluster.Spec.Image.Tag, StatefulSetUID: "old-sts",
+						TargetSpecHash: computePodSpecHash(&cluster.Spec, false), ExpectedReplicas: 1,
+						ClaimUIDs:  map[string]string{walName: "wal-uid", dataName: "data-uid"},
+						VolumeUIDs: map[string]string{"pv-wal": "pv-wal-uid", "pv-data": "pv-data-uid"},
+						DrainEpoch: "epoch", Phase: "Adopting",
+					}
+					sts := rcStatefulSet("ledger:"+cluster.Spec.Image.Tag, true)
+					sts.Name, sts.Namespace, sts.UID = stsName, cluster.Namespace, "new-sts"
+					sts.OwnerReferences = []metav1.OwnerReference{{APIVersion: "ledger.formance.com/v1alpha1", Kind: "Cluster", Name: cluster.Name, UID: cluster.UID, Controller: new(true)}}
+					sts.Spec.PersistentVolumeClaimRetentionPolicy = buildRetentionPolicy(cluster)
+					claim := func(name, uid, pv string) *corev1.PersistentVolumeClaim {
+						return &corev1.PersistentVolumeClaim{
+							ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: cluster.Namespace, UID: types.UID(uid), OwnerReferences: []metav1.OwnerReference{{APIVersion: "apps/v1", Kind: "StatefulSet", Name: stsName, UID: sts.UID}}},
+							Spec:       corev1.PersistentVolumeClaimSpec{VolumeName: pv},
+							Status:     corev1.PersistentVolumeClaimStatus{Phase: corev1.ClaimBound},
+						}
+					}
+					volume := func(name, uid, claimName, claimUID string) *corev1.PersistentVolume {
+						return &corev1.PersistentVolume{
+							ObjectMeta: metav1.ObjectMeta{Name: name, UID: types.UID(uid)},
+							Spec:       corev1.PersistentVolumeSpec{ClaimRef: &corev1.ObjectReference{Name: claimName, Namespace: cluster.Namespace, UID: types.UID(claimUID)}},
+							Status:     corev1.PersistentVolumeStatus{Phase: corev1.VolumeBound},
+						}
+					}
+					data := claim(dataName, "data-uid", "pv-data")
+					dataVolume := volume("pv-data", "pv-data-uid", dataName, "data-uid")
+					wantErr := dataName
+					switch loss {
+					case "replaced":
+						data.UID = "foreign-uid"
+					case "deleting":
+						data.Finalizers = []string{"kubernetes.io/pvc-protection"}
+					case "rebound":
+						dataVolume.Spec.ClaimRef.UID = "foreign-uid"
+						wantErr = "pv-data"
+					}
+					objects := []client.Object{cluster, sts, claim(walName, "wal-uid", "pv-wal"), volume("pv-wal", "pv-wal-uid", walName, "wal-uid"), dataVolume}
+					if loss != "missing" {
+						objects = append(objects, data)
+					}
+					scheme := runtime.NewScheme()
+					require.NoError(t, clientgoscheme.AddToScheme(scheme))
+					require.NoError(t, ledgerv1alpha1.AddToScheme(scheme))
+					c := fake.NewClientBuilder().WithScheme(scheme).WithStatusSubresource(cluster).WithObjects(objects...).Build()
+					if loss == "deleting" {
+						require.NoError(t, c.Delete(ctx, data))
+					}
+					r := &ClusterReconciler{Client: c, APIReader: c, Scheme: scheme, stopVersions: testStopVersions}
+					current := sts
+					if !withSTS {
+						current = nil
+					}
+
+					proceed, _, err := r.reconcileRequiredUpgradeWithExec(ctx, cluster, current, nil)
+					persisted := &ledgerv1alpha1.Cluster{}
+					require.NoError(t, c.Get(ctx, types.NamespacedName{Name: cluster.Name, Namespace: cluster.Namespace}, persisted))
+					if loss == "intact" {
+						require.NoError(t, err)
+						require.True(t, proceed)
+						if withSTS {
+							require.Nil(t, persisted.Status.Upgrade)
+							require.NotContains(t, persisted.Finalizers, upgradeClaimsFinalizer)
+						}
+
+						return
+					}
+					require.ErrorContains(t, err, wantErr)
+					require.False(t, proceed)
+					require.NotNil(t, persisted.Status.Upgrade)
+					require.Equal(t, "Adopting", persisted.Status.Upgrade.Phase)
+					require.Contains(t, persisted.Finalizers, upgradeClaimsFinalizer)
+				})
+			}
+		}
+	}
+}
