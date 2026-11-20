@@ -175,8 +175,11 @@ reference decides before the script does: such an entry is skipped even when
 its Numscript cannot be planned, and a same-key retry replays that outcome
 after a ledger deletion purged the references. When the reference is absent,
 the script's failure keeps its HTTP status, gRPC code, reason and context. For
-a keyed request it is now decided at apply, audited and frozen under the key;
-an unkeyed request is still refused before consensus. A request whose script
+a keyed request it is now decided at apply; a definitive failure is audited
+and frozen under the key, while one the ledger cannot commit (such as an
+unclassified compile error) leaves the key free, so a same-key retry runs
+again. An unkeyed request that is not predicted to skip is still refused
+before consensus. A request whose script
 inputs change between admission and apply can return the retryable
 `STALE_INPUTS_RESOLUTION`. Routes, fields, envelopes and protocol revision 40
 are unchanged; v2 has no `skippableReasons`, so there is no v2 mapping.

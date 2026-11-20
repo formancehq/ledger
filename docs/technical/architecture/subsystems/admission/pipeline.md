@@ -155,9 +155,11 @@ An order the FSM can skip before it reaches its script is planned whatever
 `predictOrderSkip` answers: a `CreateTransaction` with a `reference` and
 `TRANSACTION_REFERENCE_CONFLICT` in `skippable_reasons`. The prediction only
 decides whether the order's effects feed later orders of the batch. If its
-planning fails, admission does not refuse it. It forwards the order with
+planning fails and the skip is predicted, or the order is keyed and the
+failure is one admission would refuse, admission forwards the order with
 `OrderTechnical.numscript_planning_failed`, the keys planning read and their
-hash, and the FSM skips the order or re-runs the planning. See
+hash, and the FSM skips the order or re-runs the planning. An unkeyed order
+that admission does not predict to skip is still refused here. See
 [the replay contract](idempotency.md#replay-after-a-skipped-scripted-transaction).
 
 ### 7. Build the execution plan

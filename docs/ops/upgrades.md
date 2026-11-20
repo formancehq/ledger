@@ -417,14 +417,19 @@ See [the replay contract](../technical/architecture/subsystems/admission/idempot
 
 ## Skipped-script replay recovery
 
-RC.5 leaders never refuse the Numscript of a transaction the FSM can skip on
-its reference: a create that carries a `reference` and lists
+RC.5 leaders plan the Numscript of every transaction the FSM can skip on its
+reference: a create that carries a `reference` and lists
 `TRANSACTION_REFERENCE_CONFLICT` in `skippableReasons`. They plan the script
-even when they predict the skip, and forward a planning failure to the FSM. A
-keyed retry of a batch that committed through such a skip then replays its
-retained outcome after a ledger deletion purged the references. On a fresh
-request whose reference is absent, the script's failure keeps its reason and
-details, is decided at apply, and is audited and frozen under the key. If an
+even when they predict the skip. A planning failure goes to the FSM when the
+skip is predicted or the request carries an idempotency key; an unkeyed
+request not predicted to skip is still refused at admission. A keyed retry of
+a batch that committed through such a skip then replays its retained outcome
+after a ledger deletion purged the references. On a fresh keyed request whose
+reference is absent, the script's failure keeps its reason and details and is
+decided at apply. A definitive failure is audited and frozen under the key. A
+failure the FSM cannot commit, such as an unclassified compile error, rejects
+the batch without an audit entry and leaves the key free, as admission's
+refusal did on RC.4. If an
 input the script read changes between admission and apply, the request is
 rejected with a retryable `STALE_INPUTS_RESOLUTION`, without an audit entry.
 

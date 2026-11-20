@@ -193,8 +193,9 @@ when the reference exists. The FSM checks the reference before it looks at the
 script, so a skipped order commits whatever its script is. The reference
 registry is mutable replicated state: deleting a ledger purges it. A keyed
 retry of a batch that committed through such a skip must still return its
-retained outcome, so admission never refuses the script of an order the FSM
-can skip. The FSM decides between the skip and the script's failure.
+retained outcome, so admission does not refuse the script of a keyed order the
+FSM can skip, nor of an order it predicts to skip. The FSM decides between the
+skip and the script's failure.
 
 Admission plans the script of every such order, whether or not it predicts the
 skip. An order predicted to skip adds nothing to the batch effects that later
@@ -223,7 +224,7 @@ over the order's coverage:
 
 | Apply-time planning | Outcome |
 |---|---|
-| Fails, and the values read hash to `inputs_resolution_hash` | That failure. It is audited and frozen under the key like any definitive failure. A recovered library panic stays uncommitted, as at admission. |
+| Fails, and the values read hash to `inputs_resolution_hash` | That failure. A definitive failure is audited and frozen under the key. A failure that cannot be committed, such as an unclassified compile error or a recovered library panic, rejects the batch without an audit entry and leaves the key free, as at admission. |
 | Fails over different values, or reads a key the order did not declare | `STALE_INPUTS_RESOLUTION`: retryable, no audit entry, nothing frozen |
 | Succeeds | `STALE_INPUTS_RESOLUTION`: admission's failure no longer holds |
 
