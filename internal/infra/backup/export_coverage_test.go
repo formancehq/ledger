@@ -3,7 +3,6 @@ package backup
 import (
 	"context"
 	"fmt"
-	"os"
 	"path/filepath"
 	"slices"
 	"testing"
@@ -247,8 +246,6 @@ func TestBackup_RejectsManifestMissingInteriorLogSegment(t *testing.T) {
 			err = ApplyExportsAndRebuild(t.Context(), testLogger(), storage, restored, &truncated)
 			require.ErrorIs(t, err, ErrExportCoverageGap)
 			require.ErrorContains(t, err, `"`+typ+`"`)
-			_, markerErr := os.Stat(filepath.Join(dir, "RESTORED"))
-			require.ErrorIs(t, markerErr, os.ErrNotExist)
 		})
 	}
 

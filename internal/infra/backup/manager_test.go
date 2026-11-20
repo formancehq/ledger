@@ -798,7 +798,6 @@ func TestRunIncrementalBackup_InvokesPruneForExportsOnly(t *testing.T) {
 
 	storage.EXPECT().GetFile(gomock.Any(), ManifestKey(bucketID)).
 		Return(io.NopCloser(bytes.NewReader(body)), nil)
-	storage.EXPECT().PutFile(gomock.Any(), ManifestKey(bucketID), gomock.Any(), gomock.Any()).Return(nil)
 
 	storage.EXPECT().ListFiles(gomock.Any(), ExportPrefix(bucketID)).Return(nil, nil)
 	// data/ must NOT be listed by the incremental path. Any other ListFiles
@@ -808,6 +807,39 @@ func TestRunIncrementalBackup_InvokesPruneForExportsOnly(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, result)
 	require.Zero(t, result.OrphansDeleted)
+}
+
+func TestRunIncrementalBackup_DoesNotCertifyLegacyManifestFromRollback(t *testing.T) {
+	t.Parallel()
+
+	const bucketID = "bucket"
+	store := newBackupTestStore(t)
+	storage := newInMemoryBackupStorage()
+	legacy := &Manifest{Checkpoint: &CheckpointManifest{}, Exports: []ExportSegment{{
+		Type: "log", StartSeq: 1, EndSeq: 2, Key: "existing-log-segment",
+	}}}
+	require.NoError(t, WriteManifest(t.Context(), storage, ManifestKey(bucketID), legacy))
+
+	_, err := RunIncrementalBackup(t.Context(), logging.Testing(), store, storage, bucketID, 0)
+	require.NoError(t, err)
+	manifest, err := ReadManifest(t.Context(), storage, ManifestKey(bucketID))
+	require.NoError(t, err)
+	require.Nil(t, manifest.ExportBoundary, "a rolled-back snapshot cannot certify the legacy segment inventory")
+}
+
+func TestRunIncrementalBackup_DoesNotCertifyLegacyManifestWithoutNewHistory(t *testing.T) {
+	t.Parallel()
+
+	const bucketID = "bucket"
+	store := newBackupTestStore(t)
+	storage := newInMemoryBackupStorage()
+	require.NoError(t, WriteManifest(t.Context(), storage, ManifestKey(bucketID), &Manifest{Checkpoint: &CheckpointManifest{}}))
+
+	_, err := RunIncrementalBackup(t.Context(), logging.Testing(), store, storage, bucketID, 0)
+	require.NoError(t, err)
+	manifest, err := ReadManifest(t.Context(), storage, ManifestKey(bucketID))
+	require.NoError(t, err)
+	require.Nil(t, manifest.ExportBoundary, "a no-op run cannot certify a legacy manifest")
 }
 
 func coldAuditItemKey(seq uint64, idx uint32) []byte {
