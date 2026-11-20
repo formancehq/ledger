@@ -276,6 +276,14 @@ it returns `413 BODY_TOO_LARGE`, including when only the suffix is oversized.
 
 ### Response Format
 
+Prepared-query execution decodes each JSON parameter before calling the read
+backend. Strings and booleans retain their types. Negative integer tokens map
+to signed 64-bit values; zero and positive tokens map to unsigned 64-bit values.
+The adapter parses the decimal lexeme exactly, including values above 2^53,
+and rejects overflow, fractions and exponent notation with `400
+INVALID_PARAMETERS`. Clients must serialize large integers without losing
+precision before sending the request. No persisted or Raft format changes.
+
 #### Large integers and the string opt-in
 
 Every HTTP response value represented by `commonpb.Uint256`, `commonpb.BigUint`

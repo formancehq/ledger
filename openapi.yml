@@ -2163,6 +2163,12 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Ledger not found (`LEDGER_NOT_FOUND`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '409':
           description: |
             The version already exists (`NUMSCRIPT_VERSION_ALREADY_EXISTS`) —
@@ -8903,8 +8909,23 @@ components:
         parameters:
           type: object
           additionalProperties:
-            type: string
-          description: Parameter values for the query (substituted into filter placeholders)
+            oneOf:
+              - type: string
+              - type: boolean
+              - type: integer
+                format: int64
+                minimum: -9223372036854775808
+                maximum: -1
+              - type: integer
+                format: uint64
+                minimum: 0
+                maximum: 18446744073709551615
+          description: >-
+            Typed values substituted into filter placeholders. JSON integer
+            tokens are parsed exactly: negative values use int64 and zero or
+            positive values use uint64. Values outside those ranges, fractions,
+            and exponent notation are rejected. Use a lossless JSON number
+            serializer for integers above 2^53.
         pageSize:
           type: integer
           format: uint32
