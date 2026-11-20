@@ -102,6 +102,10 @@ The [Numscript projection owner](checker.md#numscript-projection-ownership)
 keeps library expectation initialization, save/deletion transitions and comparison
 together while preserving the existing checker phases and diagnostics.
 
+The query-checkpoint pass compares live rows, the next checkpoint ID and the
+cron schedule with audited checkpoint and schedule logs. Deleted checkpoints
+leave the allocation high-water mark unchanged, so their IDs cannot be reused.
+
 ## Related
 
 - [Consensus → global-log.md](../consensus/global-log.md) — what produces the audit entries the chain links.

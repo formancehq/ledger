@@ -114,6 +114,8 @@ type testEngine struct {
 	numscriptContent       map[string]*commonpb.NumscriptInfo // key = NumscriptEntryKey bytes
 	numscriptLatest        map[string]string                  // key = NumscriptVersionKey bytes
 	nextLedgerID           uint32
+	nextQueryCheckpointID  uint64
+	queryCheckpointIDs     map[uint64]struct{}
 	nextAuditSequenceID    uint64
 	lastAuditHash          []byte
 	raftIndex              uint64
@@ -134,26 +136,28 @@ func newTestEngine(t *testing.T) *testEngine {
 	require.NoError(t, err)
 
 	return &testEngine{
-		t:                   t,
-		store:               store,
-		attrs:               attrs,
-		processor:           proc,
-		cache:               c,
-		clusterID:           checkerTestAuditKey,
-		nextSequenceID:      1,
-		nextLedgerID:        1,
-		ledgers:             make(map[string]*commonpb.LedgerInfo),
-		boundaries:          make(map[string]*raftcmdpb.LedgerBoundaries),
-		volumes:             make(map[string]*raftcmdpb.VolumePair),
-		metadata:            make(map[string]*commonpb.MetadataValue),
-		idempotency:         make(map[string]*commonpb.IdempotencyKeyValue),
-		references:          make(map[string]*commonpb.TransactionReferenceValue),
-		transactionStates:   make(map[string]*commonpb.TransactionState),
-		reversions:          make(map[string]*bitset.Bitset),
-		numscriptContent:    make(map[string]*commonpb.NumscriptInfo),
-		numscriptLatest:     make(map[string]string),
-		nextAuditSequenceID: 1,
-		raftIndex:           1,
+		t:                     t,
+		store:                 store,
+		attrs:                 attrs,
+		processor:             proc,
+		cache:                 c,
+		clusterID:             checkerTestAuditKey,
+		nextSequenceID:        1,
+		nextLedgerID:          1,
+		nextQueryCheckpointID: 1,
+		queryCheckpointIDs:    make(map[uint64]struct{}),
+		ledgers:               make(map[string]*commonpb.LedgerInfo),
+		boundaries:            make(map[string]*raftcmdpb.LedgerBoundaries),
+		volumes:               make(map[string]*raftcmdpb.VolumePair),
+		metadata:              make(map[string]*commonpb.MetadataValue),
+		idempotency:           make(map[string]*commonpb.IdempotencyKeyValue),
+		references:            make(map[string]*commonpb.TransactionReferenceValue),
+		transactionStates:     make(map[string]*commonpb.TransactionState),
+		reversions:            make(map[string]*bitset.Bitset),
+		numscriptContent:      make(map[string]*commonpb.NumscriptInfo),
+		numscriptLatest:       make(map[string]string),
+		nextAuditSequenceID:   1,
+		raftIndex:             1,
 	}
 }
 
@@ -782,12 +786,25 @@ func (s *scopeImpl) PutNumscript(ledger string, info *commonpb.NumscriptInfo) {
 func (s *scopeImpl) SetNumscriptLatestVersion(ledger, name, version string) {
 	s.engine.numscriptLatest[string(domain.NumscriptVersionKey{LedgerName: ledger, Name: name}.Bytes())] = version
 }
-func (s *scopeImpl) GetNextQueryCheckpointID() uint64                      { return 1 }
-func (s *scopeImpl) IncrementNextQueryCheckpointID() uint64                { return 1 }
-func (s *scopeImpl) SaveQueryCheckpoint(_ *raftcmdpb.QueryCheckpointState) {}
-func (s *scopeImpl) DeleteQueryCheckpoint(_ uint64)                        {}
-func (s *scopeImpl) LiveQueryCheckpointCount() uint64                      { return 0 }
-func (s *scopeImpl) QueryCheckpointExists(_ uint64) bool                   { return false }
+func (s *scopeImpl) GetNextQueryCheckpointID() uint64 { return s.engine.nextQueryCheckpointID }
+func (s *scopeImpl) IncrementNextQueryCheckpointID() uint64 {
+	id := s.engine.nextQueryCheckpointID
+	s.engine.nextQueryCheckpointID++
+
+	return id
+}
+func (s *scopeImpl) SaveQueryCheckpoint(cp *raftcmdpb.QueryCheckpointState) {
+	s.engine.queryCheckpointIDs[cp.GetCheckpointId()] = struct{}{}
+}
+func (s *scopeImpl) DeleteQueryCheckpoint(id uint64) { delete(s.engine.queryCheckpointIDs, id) }
+func (s *scopeImpl) LiveQueryCheckpointCount() uint64 {
+	return uint64(len(s.engine.queryCheckpointIDs))
+}
+func (s *scopeImpl) QueryCheckpointExists(id uint64) bool {
+	_, ok := s.engine.queryCheckpointIDs[id]
+
+	return ok
+}
 func (s *scopeImpl) ResolveNumscriptContent(ledger, name, version string) (commonpb.NumscriptInfoReader, error) {
 	info, ok := s.engine.numscriptContent[string(domain.NumscriptEntryKey{LedgerName: ledger, Name: name, Version: version}.Bytes())]
 	if !ok {
