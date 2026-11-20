@@ -1252,6 +1252,11 @@ kubectl ledger credentials get-key <name> # Retrieve credentials API key
 kubectl ledger version                    # Print version info
 ```
 
+Interactive resource selection reports fetch progress synchronously, without
+starting a background spinner. `explain` reads the installed Cluster CRD once
+for both spec and status fields; each missing section independently falls back
+to the compiled schema.
+
 ### Examples
 
 ```bash
