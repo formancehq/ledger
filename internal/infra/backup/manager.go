@@ -578,6 +578,21 @@ func RunIncrementalBackup(
 		}
 	}
 
+	// A legacy manifest has no independent endpoint. Do not turn its own
+	// segment ends into a boundary when the snapshot has rolled back, or when
+	// this run exports no new history: either could certify a missing final
+	// segment from the old manifest.
+	canEstablishBoundary := false
+	if manifest.ExportBoundary == nil && currentLogSeq > afterLogSeq && currentAuditSeq > afterAuditSeq {
+		auditItemFloor := manifest.Checkpoint.LastAuditSequence
+		for _, seg := range manifest.Exports {
+			if seg.Type == "auditItem" {
+				auditItemFloor = max(auditItemFloor, seg.EndSeq)
+			}
+		}
+		canEstablishBoundary = currentAuditItemSeq > auditItemFloor
+	}
+
 	// Ensure monotonicity: after a RestoreCheckpoint (leadership change +
 	// snapshot from new leader), Pebble may have a lower history-zone sequence
 	// than what the manifest already recorded from a previous export.
@@ -586,6 +601,8 @@ func RunIncrementalBackup(
 	currentAuditSeq = max(currentAuditSeq, afterAuditSeq)
 	currentAuditItemSeq = max(currentAuditItemSeq, manifest.Checkpoint.LastAuditSequence)
 	if manifest.ExportBoundary != nil {
+		currentLogSeq = max(currentLogSeq, manifest.ExportBoundary.LastLogSequence)
+		currentAuditSeq = max(currentAuditSeq, manifest.ExportBoundary.LastAuditSequence)
 		currentAuditItemSeq = max(currentAuditItemSeq, manifest.ExportBoundary.LastAuditItemSequence)
 	}
 	for _, seg := range manifest.Exports {
@@ -593,15 +610,14 @@ func RunIncrementalBackup(
 			currentAuditItemSeq = max(currentAuditItemSeq, seg.EndSeq)
 		}
 	}
-	// Keep the boundary tied to the same read snapshot as the exports. A
-	// policy-only publication also upgrades older manifests to this contract.
-	boundaryMissing := manifest.ExportBoundary == nil
-	manifest.ExportBoundary = &ExportBoundary{LastLogSequence: currentLogSeq, LastAuditSequence: currentAuditSeq, LastAuditItemSequence: currentAuditItemSeq}
+	if manifest.ExportBoundary != nil || canEstablishBoundary {
+		manifest.ExportBoundary = &ExportBoundary{LastLogSequence: currentLogSeq, LastAuditSequence: currentAuditSeq, LastAuditItemSequence: currentAuditItemSeq}
+	}
 
 	// 5. Check if there's anything new
 	if currentLogSeq <= afterLogSeq && currentAuditSeq <= afterAuditSeq {
 		logger.Infof("No new entries to export")
-		if policyChanged || boundaryMissing {
+		if policyChanged {
 			if err := WriteManifest(ctx, storage, manifestKey, manifest); err != nil {
 				return nil, fmt.Errorf("writing operational policy manifest: %w", err)
 			}
