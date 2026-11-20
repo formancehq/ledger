@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	"google.golang.org/protobuf/proto"
 
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/eventspb"
@@ -206,7 +207,7 @@ func TestLogToEvent(t *testing.T) {
 			require.Equal(t, tc.expectedType, event.GetType())
 			require.Equal(t, tc.expectedName, event.GetLedger())
 			require.Equal(t, tc.log.GetSequence(), event.GetLogSequence())
-			require.Equal(t, tc.log, event.GetLog())
+			require.True(t, proto.Equal(tc.log, event.GetLog()))
 		})
 	}
 }

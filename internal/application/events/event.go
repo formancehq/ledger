@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/formancehq/ledger/v3/internal/adapter/json"
+	"github.com/formancehq/ledger/v3/internal/pkg/sensitive"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/eventspb"
 )
@@ -25,7 +26,7 @@ const (
 func LogToEvent(log *commonpb.Log) *eventspb.Event {
 	event := &eventspb.Event{
 		LogSequence: log.GetSequence(),
-		Log:         log,
+		Log:         sensitive.Redact(log),
 		App:         EventApp,
 		Version:     EventVersion,
 	}
