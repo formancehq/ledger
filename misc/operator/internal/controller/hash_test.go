@@ -76,6 +76,8 @@ func TestResolveStorageSpecHash_LegacyMigration(t *testing.T) {
 	t.Parallel()
 	f := newClaimRecoveryFixture(t)
 	cluster := f.ledger
+	cluster.Spec.Persistence.WAL.Size = resource.MustParse("10Gi")
+	cluster.Spec.Persistence.Data.Size = resource.MustParse("100Gi")
 	legacyHash := computePodSpecHash(&cluster.Spec, false)
 	sts := f.source
 	sts.Spec = buildStatefulSetSpec(cluster, legacyHash, nil, tlsModeDisabled)
@@ -84,6 +86,7 @@ func TestResolveStorageSpecHash_LegacyMigration(t *testing.T) {
 	cluster.Spec.Persistence.Data.Size = resource.MustParse("200Gi")
 	cluster.Spec.Persistence.WAL.VolumeAttributesClassName = "fast"
 	hash := computeSpecHash(&cluster.Spec)
+	require.NotEqual(t, legacyHash, hash, "released and canonical hashes must differ to exercise preservation")
 	desired := buildStatefulSetSpec(cluster, hash, nil, tlsModeDisabled)
 	got, err := f.reconciler(f.client).resolveStorageSpecHash(t.Context(), cluster, sts, desired.Template, hash)
 	require.NoError(t, err)
