@@ -94,7 +94,7 @@ func runUpdate(cmd *cobra.Command, args []string) error {
 		return cmdutil.FormatGRPCError("failed to update prepared query", err)
 	}
 
-	if err := cmdutil.VerifyResponseSignatures(cmd, resp.GetLogs()); err != nil {
+	if err := cmdutil.VerifyApplyResponse(cmd, applyReq, resp.GetLogs(), resp.GetResponseReceipt()); err != nil {
 		return fmt.Errorf("response signature verification failed: %w", err)
 	}
 

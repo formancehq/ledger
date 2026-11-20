@@ -158,3 +158,160 @@ func (l signedLogListReadonly) Range(yield func(int, SignedLogReader) bool) {
 // NewSignedLogListReader wraps s for read-only iteration. The returned
 // view aliases the underlying slice; do not mutate s afterwards.
 func NewSignedLogListReader(s []*SignedLog) SignedLogListReader { return signedLogListReadonly(s) }
+
+// ResponseReceiptReader provides read-only access to ResponseReceipt.
+// Call Mutate() to obtain a mutable clone.
+type ResponseReceiptReader interface {
+	GetBatchHash() []byte
+	GetLogHashes() [][]byte
+	Mutate() *ResponseReceipt
+}
+
+type responseReceiptReadonly ResponseReceipt
+
+func (r *responseReceiptReadonly) GetBatchHash() []byte {
+	return bytes.Clone((*ResponseReceipt)(r).GetBatchHash())
+}
+
+func (r *responseReceiptReadonly) GetLogHashes() [][]byte {
+	src := (*ResponseReceipt)(r).GetLogHashes()
+	if src == nil {
+		return nil
+	}
+	out := make([][]byte, len(src))
+	for i, b := range src {
+		out[i] = bytes.Clone(b)
+	}
+	return out
+}
+
+func (r *responseReceiptReadonly) Mutate() *ResponseReceipt {
+	return (*ResponseReceipt)(r).CloneVT()
+}
+
+// AsReader returns a read-only view of this ResponseReceipt.
+func (m *ResponseReceipt) AsReader() ResponseReceiptReader {
+	if m == nil {
+		return nil
+	}
+	return (*responseReceiptReadonly)(m)
+}
+
+// Mutate returns a mutable deep clone of this ResponseReceipt.
+func (m *ResponseReceipt) Mutate() *ResponseReceipt {
+	return m.CloneVT()
+}
+
+// ResponseReceiptListReader provides read-only iteration over []*ResponseReceipt.
+type ResponseReceiptListReader interface {
+	Len() int
+	Get(i int) ResponseReceiptReader
+	Range(yield func(int, ResponseReceiptReader) bool)
+}
+
+type responseReceiptListReadonly []*ResponseReceipt
+
+func (l responseReceiptListReadonly) Len() int { return len(l) }
+
+func (l responseReceiptListReadonly) Get(i int) ResponseReceiptReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l responseReceiptListReadonly) Range(yield func(int, ResponseReceiptReader) bool) {
+	for i, v := range l {
+		var r ResponseReceiptReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewResponseReceiptListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewResponseReceiptListReader(s []*ResponseReceipt) ResponseReceiptListReader {
+	return responseReceiptListReadonly(s)
+}
+
+// SignedResponseReceiptReader provides read-only access to SignedResponseReceipt.
+// Call Mutate() to obtain a mutable clone.
+type SignedResponseReceiptReader interface {
+	GetKeyId() string
+	GetSignature() []byte
+	GetPayload() []byte
+	Mutate() *SignedResponseReceipt
+}
+
+type signedResponseReceiptReadonly SignedResponseReceipt
+
+func (r *signedResponseReceiptReadonly) GetKeyId() string {
+	return (*SignedResponseReceipt)(r).GetKeyId()
+}
+
+func (r *signedResponseReceiptReadonly) GetSignature() []byte {
+	return bytes.Clone((*SignedResponseReceipt)(r).GetSignature())
+}
+
+func (r *signedResponseReceiptReadonly) GetPayload() []byte {
+	return bytes.Clone((*SignedResponseReceipt)(r).GetPayload())
+}
+
+func (r *signedResponseReceiptReadonly) Mutate() *SignedResponseReceipt {
+	return (*SignedResponseReceipt)(r).CloneVT()
+}
+
+// AsReader returns a read-only view of this SignedResponseReceipt.
+func (m *SignedResponseReceipt) AsReader() SignedResponseReceiptReader {
+	if m == nil {
+		return nil
+	}
+	return (*signedResponseReceiptReadonly)(m)
+}
+
+// Mutate returns a mutable deep clone of this SignedResponseReceipt.
+func (m *SignedResponseReceipt) Mutate() *SignedResponseReceipt {
+	return m.CloneVT()
+}
+
+// SignedResponseReceiptListReader provides read-only iteration over []*SignedResponseReceipt.
+type SignedResponseReceiptListReader interface {
+	Len() int
+	Get(i int) SignedResponseReceiptReader
+	Range(yield func(int, SignedResponseReceiptReader) bool)
+}
+
+type signedResponseReceiptListReadonly []*SignedResponseReceipt
+
+func (l signedResponseReceiptListReadonly) Len() int { return len(l) }
+
+func (l signedResponseReceiptListReadonly) Get(i int) SignedResponseReceiptReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l signedResponseReceiptListReadonly) Range(yield func(int, SignedResponseReceiptReader) bool) {
+	for i, v := range l {
+		var r SignedResponseReceiptReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewSignedResponseReceiptListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewSignedResponseReceiptListReader(s []*SignedResponseReceipt) SignedResponseReceiptListReader {
+	return signedResponseReceiptListReadonly(s)
+}

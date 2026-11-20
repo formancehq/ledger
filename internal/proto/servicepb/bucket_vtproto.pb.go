@@ -234,6 +234,11 @@ func (m *ApplyRequest) CloneVT() *ApplyRequest {
 	if m.Variant != nil {
 		r.Variant = m.Variant.(interface{ CloneVT() isApplyRequest_Variant }).CloneVT()
 	}
+	if rhs := m.ResponseBindingPayload; rhs != nil {
+		tmpBytes := make([]byte, len(rhs))
+		copy(tmpBytes, rhs)
+		r.ResponseBindingPayload = tmpBytes
+	}
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
 		copy(r.unknownFields, m.unknownFields)
@@ -292,6 +297,7 @@ func (m *ApplyResponse) CloneVT() *ApplyResponse {
 		return (*ApplyResponse)(nil)
 	}
 	r := new(ApplyResponse)
+	r.ResponseReceipt = m.ResponseReceipt.CloneVT()
 	if rhs := m.Logs; rhs != nil {
 		tmpContainer := make([]*commonpb.Log, len(rhs))
 		for k, v := range rhs {
@@ -3359,6 +3365,9 @@ func (this *ApplyRequest) EqualVT(that *ApplyRequest) bool {
 	if this.SkipResponse != that.SkipResponse {
 		return false
 	}
+	if string(this.ResponseBindingPayload) != string(that.ResponseBindingPayload) {
+		return false
+	}
 	return string(this.unknownFields) == string(that.unknownFields)
 }
 
@@ -3477,6 +3486,9 @@ func (this *ApplyResponse) EqualVT(that *ApplyResponse) bool {
 				return false
 			}
 		}
+	}
+	if !this.ResponseReceipt.EqualVT(that.ResponseReceipt) {
+		return false
 	}
 	return string(this.unknownFields) == string(that.unknownFields)
 }
@@ -8470,6 +8482,13 @@ func (m *ApplyRequest) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		}
 		i -= size
 	}
+	if len(m.ResponseBindingPayload) > 0 {
+		i -= len(m.ResponseBindingPayload)
+		copy(dAtA[i:], m.ResponseBindingPayload)
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.ResponseBindingPayload)))
+		i--
+		dAtA[i] = 0x2a
+	}
 	if m.SkipResponse {
 		i--
 		if m.SkipResponse {
@@ -8612,6 +8631,16 @@ func (m *ApplyResponse) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	if m.unknownFields != nil {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
+	}
+	if m.ResponseReceipt != nil {
+		size, err := m.ResponseReceipt.MarshalToSizedBufferVT(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		i--
+		dAtA[i] = 0x12
 	}
 	if len(m.Logs) > 0 {
 		for iNdEx := len(m.Logs) - 1; iNdEx >= 0; iNdEx-- {
@@ -15954,6 +15983,10 @@ func (m *ApplyRequest) SizeVT() (n int) {
 	if m.SkipResponse {
 		n += 2
 	}
+	l = len(m.ResponseBindingPayload)
+	if l > 0 {
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
 	n += len(m.unknownFields)
 	return n
 }
@@ -16013,6 +16046,10 @@ func (m *ApplyResponse) SizeVT() (n int) {
 			l = e.SizeVT()
 			n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 		}
+	}
+	if m.ResponseReceipt != nil {
+		l = m.ResponseReceipt.SizeVT()
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
 	n += len(m.unknownFields)
 	return n
@@ -20505,6 +20542,40 @@ func (m *ApplyRequest) UnmarshalVT(dAtA []byte) error {
 				}
 			}
 			m.SkipResponse = bool(v != 0)
+		case 5:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field ResponseBindingPayload", wireType)
+			}
+			var byteLen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				byteLen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if byteLen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + byteLen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.ResponseBindingPayload = append(m.ResponseBindingPayload[:0], dAtA[iNdEx:postIndex]...)
+			if m.ResponseBindingPayload == nil {
+				m.ResponseBindingPayload = []byte{}
+			}
+			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
@@ -20704,6 +20775,42 @@ func (m *ApplyResponse) UnmarshalVT(dAtA []byte) error {
 			}
 			m.Logs = append(m.Logs, &commonpb.Log{})
 			if err := m.Logs[len(m.Logs)-1].UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
+		case 2:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field ResponseReceipt", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if m.ResponseReceipt == nil {
+				m.ResponseReceipt = &signaturepb.SignedResponseReceipt{}
+			}
+			if err := m.ResponseReceipt.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
 				return err
 			}
 			iNdEx = postIndex

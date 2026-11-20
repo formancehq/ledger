@@ -538,7 +538,7 @@ ledgerctl --response-verify-key ./response-keys/pubkey.hex \
   transactions create --ledger my-ledger --posting "world,bank,1000,USD"
 ```
 
-If the server's response signature is missing or invalid, or if the visible log differs from the authenticated payload, the command fails before consuming the log. This includes `transactions set-metadata`, `transactions delete-metadata`, and `numscripts save`: they verify returned logs before reporting success or displaying returned script details. Verification remains optional when the flag is unset.
+If the server's response signature or signed response receipt is missing or invalid, the visible log differs from the authenticated payload, or the logs do not match the submitted orders, the command fails before reporting success. Verification requires exactly one log per order in increasing sequence order and checks each log's operation, ledger, target, and available identifying fields. The receipt binds the submitted batch and every ordered signed log, including script-based transactions whose result cannot be predicted from the request. This includes `transactions set-metadata`, `transactions delete-metadata`, and `numscripts save`. Verification remains optional when the flag is unset. An older server without receipts cannot satisfy verification; upgrade servers before enabling the updated CLI's verification flag. A previously signed response to an identical request can still be replayed; use an idempotency key when retries must not execute a write twice.
 
 The RPC has already completed when the response is verified. A verification failure does not roll back a mutation and leaves its outcome unauthenticated.
 

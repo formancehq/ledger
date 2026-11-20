@@ -14,11 +14,14 @@ import (
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
 
+	"github.com/formancehq/ledger/v3/cmd/ledgerctl/indexes"
+	"github.com/formancehq/ledger/v3/cmd/ledgerctl/ledgers"
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/numscripts"
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/queries"
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/querycheckpoint"
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/transactions"
 	"github.com/formancehq/ledger/v3/internal/domain/crypto/signing"
+	"github.com/formancehq/ledger/v3/internal/pkg/filterexpr"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
@@ -40,6 +43,22 @@ func TestQueryMutationResponseSignatures(t *testing.T) {
 	}
 	for _, command := range commands {
 		t.Run(command.name, func(t *testing.T) {
+			var payload *commonpb.LogPayload
+			switch command.name {
+			case "create query":
+				payload = &commonpb.LogPayload{Type: &commonpb.LogPayload_CreatedPreparedQuery{CreatedPreparedQuery: &commonpb.CreatedPreparedQueryLog{Ledger: "test", Query: &commonpb.PreparedQuery{Name: "active", Target: commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS}}}}
+			case "delete query":
+				payload = &commonpb.LogPayload{Type: &commonpb.LogPayload_DeletedPreparedQuery{DeletedPreparedQuery: &commonpb.DeletedPreparedQueryLog{Ledger: "test", Name: "active"}}}
+			case "update query":
+				filter, err := filterexpr.DecodeDualFormatStructuralOnly([]byte("metadata[active] == true"), commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS)
+				require.NoError(t, err)
+				target := commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS
+				payload = &commonpb.LogPayload{Type: &commonpb.LogPayload_UpdatedPreparedQuery{UpdatedPreparedQuery: &commonpb.UpdatedPreparedQueryLog{Ledger: "test", Name: "active", NewTarget: &target, NewFilter: filter}}}
+			case "create checkpoint":
+				payload = &commonpb.LogPayload{Type: &commonpb.LogPayload_CreatedQueryCheckpoint{CreatedQueryCheckpoint: &commonpb.CreatedQueryCheckpointLog{CheckpointId: 42, MaxSequence: 7}}}
+			case "delete checkpoint":
+				payload = &commonpb.LogPayload{Type: &commonpb.LogPayload_DeletedQueryCheckpoint{DeletedQueryCheckpoint: &commonpb.DeletedQueryCheckpointLog{CheckpointId: 42}}}
+			}
 			for _, signature := range []struct {
 				name      string
 				verify    bool
@@ -58,9 +77,7 @@ func TestQueryMutationResponseSignatures(t *testing.T) {
 					signer := signing.NewResponseSigner(make([]byte, ed25519.SeedSize))
 					log := &commonpb.Log{
 						Sequence: 7,
-						Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_CreatedQueryCheckpoint{
-							CreatedQueryCheckpoint: &commonpb.CreatedQueryCheckpointLog{CheckpointId: 42, MaxSequence: 7},
-						}},
+						Payload:  payload,
 					}
 					if signature.signed {
 						log.ResponseSignature = signer.SignLog(log)
@@ -76,7 +93,7 @@ func TestQueryMutationResponseSignatures(t *testing.T) {
 					listener, err := net.Listen("tcp4", "127.0.0.1:0")
 					require.NoError(t, err)
 					server := grpc.NewServer()
-					fixture := &queryMutationSignatureServer{response: &servicepb.ApplyResponse{Logs: []*commonpb.Log{log}}}
+					fixture := &queryMutationSignatureServer{response: &servicepb.ApplyResponse{Logs: []*commonpb.Log{log}}, receiptSigner: signer}
 					servicepb.RegisterBucketServiceServer(server, fixture)
 					go func() { _ = server.Serve(listener) }() // Stop closes the owned listener.
 					t.Cleanup(server.Stop)
@@ -106,17 +123,131 @@ func TestQueryMutationResponseSignatures(t *testing.T) {
 	}
 }
 
+// A valid signature on a different command's log is not an acknowledgement of
+// the query creation sent by this command.
+func TestQueryCreateBindsSignedResponseToRequest(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		payload   *commonpb.LogPayload
+		empty     bool
+		wantError bool
+	}{
+		{name: "empty", empty: true, wantError: true},
+		{name: "unrelated signed log", payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_CreatedPreparedQuery{CreatedPreparedQuery: &commonpb.CreatedPreparedQueryLog{Ledger: "other", Query: &commonpb.PreparedQuery{Name: "active"}}}}, wantError: true},
+		{name: "matching signed log", payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_CreatedPreparedQuery{CreatedPreparedQuery: &commonpb.CreatedPreparedQueryLog{Ledger: "test", Query: &commonpb.PreparedQuery{Name: "active"}}}}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			signer := signing.NewResponseSigner(make([]byte, ed25519.SeedSize))
+			keyPath := filepath.Join(t.TempDir(), "response.pub")
+			require.NoError(t, os.WriteFile(keyPath, signer.PublicKey(), 0o600))
+			response := &servicepb.ApplyResponse{}
+			if !tc.empty {
+				log := &commonpb.Log{Sequence: 7, Payload: tc.payload}
+				log.ResponseSignature = signer.SignLog(log)
+				response.Logs = []*commonpb.Log{log}
+			}
+			listener, err := net.Listen("tcp4", "127.0.0.1:0")
+			require.NoError(t, err)
+			server := grpc.NewServer()
+			fixture := &queryMutationSignatureServer{response: response, receiptSigner: signer}
+			servicepb.RegisterBucketServiceServer(server, fixture)
+			go func() { _ = server.Serve(listener) }()
+			t.Cleanup(server.Stop)
+			cmd := &cobra.Command{Use: "ledgerctl", SilenceUsage: true, SilenceErrors: true}
+			cmd.PersistentFlags().String("server", listener.Addr().String(), "")
+			cmd.PersistentFlags().Bool("insecure", true, "")
+			cmd.PersistentFlags().String("auth-token", "test-token", "")
+			cmd.PersistentFlags().String("response-verify-key", keyPath, "")
+			cmd.AddCommand(queries.NewCommand())
+			cmd.SetArgs([]string{"queries", "create", "active", "--ledger", "test"})
+			err = cmd.Execute()
+			if tc.wantError {
+				require.ErrorContains(t, err, "response signature verification failed")
+			} else {
+				require.NoError(t, err)
+			}
+			require.EqualValues(t, 1, fixture.calls.Load())
+		})
+	}
+}
+
+// Ledger creation with an initial index sends two orders in one Apply RPC.
+// The command must reject a response that omits, adds, or reorders their logs.
+func TestLedgerCreateBindsEverySignedResponseLog(t *testing.T) {
+	id, err := indexes.ParseDefinition("reference")
+	require.NoError(t, err)
+	created := &commonpb.LogPayload{Type: &commonpb.LogPayload_CreateLedger{CreateLedger: &commonpb.CreatedLedgerLog{Name: "test"}}}
+	indexed := &commonpb.LogPayload{Type: &commonpb.LogPayload_Apply{Apply: &commonpb.ApplyLedgerLog{LedgerName: "test", Log: &commonpb.LedgerLog{Data: &commonpb.LedgerLogPayload{Payload: &commonpb.LedgerLogPayload_CreateIndex{CreateIndex: &commonpb.CreatedIndexLog{Id: id}}}}}}}
+	for _, tc := range []struct {
+		name      string
+		payloads  []*commonpb.LogPayload
+		wantError string
+	}{
+		{name: "missing", payloads: []*commonpb.LogPayload{created}, wantError: "expected 2 response logs"},
+		{name: "extra", payloads: []*commonpb.LogPayload{created, indexed, indexed}, wantError: "expected 2 response logs"},
+		{name: "reordered", payloads: []*commonpb.LogPayload{indexed, created}, wantError: "does not match submitted order"},
+		{name: "matching", payloads: []*commonpb.LogPayload{created, indexed}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			signer := signing.NewResponseSigner(make([]byte, ed25519.SeedSize))
+			keyPath := filepath.Join(t.TempDir(), "response.pub")
+			require.NoError(t, os.WriteFile(keyPath, signer.PublicKey(), 0o600))
+			response := &servicepb.ApplyResponse{}
+			for i, payload := range tc.payloads {
+				log := &commonpb.Log{Sequence: uint64(i + 1), Payload: payload}
+				log.ResponseSignature = signer.SignLog(log)
+				response.Logs = append(response.Logs, log)
+			}
+			listener, err := net.Listen("tcp4", "127.0.0.1:0")
+			require.NoError(t, err)
+			server := grpc.NewServer()
+			fixture := &queryMutationSignatureServer{response: response, receiptSigner: signer}
+			servicepb.RegisterBucketServiceServer(server, fixture)
+			go func() { _ = server.Serve(listener) }()
+			t.Cleanup(server.Stop)
+			cmd := &cobra.Command{Use: "ledgerctl", SilenceUsage: true, SilenceErrors: true}
+			cmd.PersistentFlags().String("server", listener.Addr().String(), "")
+			cmd.PersistentFlags().Bool("insecure", true, "")
+			cmd.PersistentFlags().String("auth-token", "test-token", "")
+			cmd.PersistentFlags().String("response-verify-key", keyPath, "")
+			cmd.AddCommand(ledgers.NewCommand())
+			cmd.SetArgs([]string{"ledgers", "create", "test", "--index", "reference"})
+			err = cmd.ExecuteContext(t.Context())
+			if tc.wantError != "" {
+				require.ErrorContains(t, err, tc.wantError)
+			} else {
+				require.NoError(t, err)
+			}
+			require.EqualValues(t, 1, fixture.calls.Load())
+		})
+	}
+}
+
 type queryMutationSignatureServer struct {
 	servicepb.UnimplementedBucketServiceServer
 
-	response *servicepb.ApplyResponse
-	calls    atomic.Int32
-	request  *servicepb.ApplyRequest
+	response      *servicepb.ApplyResponse
+	calls         atomic.Int32
+	request       *servicepb.ApplyRequest
+	receiptSigner *signing.ResponseSigner
 }
 
 func (s *queryMutationSignatureServer) Apply(_ context.Context, request *servicepb.ApplyRequest) (*servicepb.ApplyResponse, error) {
 	s.calls.Add(1)
 	s.request = request
+	if s.receiptSigner != nil {
+		allSigned := true
+		for _, log := range s.response.GetLogs() {
+			allSigned = allSigned && log.GetResponseSignature() != nil
+		}
+		if allSigned {
+			receipt, err := s.receiptSigner.SignResponseReceipt(request, s.response.GetLogs())
+			if err != nil {
+				return nil, err
+			}
+			s.response.ResponseReceipt = receipt
+		}
+	}
 
 	return s.response, nil
 }
@@ -167,16 +298,27 @@ func TestMetadataAndNumscriptMutationResponseSignatures(t *testing.T) {
 	}
 	for _, command := range commands {
 		t.Run(command.name, func(t *testing.T) {
+			var payload *commonpb.LogPayload
+			switch command.name {
+			case "set metadata":
+				payload = &commonpb.LogPayload{Type: &commonpb.LogPayload_Apply{Apply: &commonpb.ApplyLedgerLog{LedgerName: "test", Log: &commonpb.LedgerLog{Data: &commonpb.LedgerLogPayload{Payload: &commonpb.LedgerLogPayload_SavedMetadata{SavedMetadata: &commonpb.SavedMetadata{Target: &commonpb.Target{Target: &commonpb.Target_TransactionId{TransactionId: 42}}, Metadata: commonpb.MetadataFromGoMap(map[string]string{"status": "processed"})}}}}}}}
+			case "delete metadata":
+				payload = &commonpb.LogPayload{Type: &commonpb.LogPayload_Apply{Apply: &commonpb.ApplyLedgerLog{LedgerName: "test", Log: &commonpb.LedgerLog{Data: &commonpb.LedgerLogPayload{Payload: &commonpb.LedgerLogPayload_DeletedMetadata{DeletedMetadata: &commonpb.DeletedMetadata{Target: &commonpb.Target{Target: &commonpb.Target_TransactionId{TransactionId: 42}}, Key: "status"}}}}}}}
+			case "save numscript":
+				payload = &commonpb.LogPayload{Type: &commonpb.LogPayload_SavedNumscript{SavedNumscript: &commonpb.SavedNumscriptLog{Info: &commonpb.NumscriptInfo{Ledger: "test", Name: "transfer", Version: "1.0.0", Content: "send [USD 100] (source = @world destination = @bank)"}}}}
+			}
 			for _, signature := range []struct {
-				name                                                    string
-				verify, signed, corrupt, wrongKey, alterLog, invalidKey bool
-				wantError                                               string
+				name                                                                      string
+				verify, signed, corrupt, wrongKey, alterLog, invalidKey, unrelated, empty bool
+				wantError                                                                 string
 			}{
 				{name: "missing", verify: true, wantError: "log 7: missing response signature"},
 				{name: "corrupt", verify: true, signed: true, corrupt: true, wantError: "log 7: response signature verification failed"},
 				{name: "wrong key", verify: true, signed: true, wrongKey: true, wantError: "log 7: response signature verification failed"},
 				{name: "altered visible log", verify: true, signed: true, alterLog: true, wantError: "log 8: visible response log does not match signed payload"},
 				{name: "invalid key file", verify: true, invalidKey: true, wantError: "failed to load response verify key"},
+				{name: "empty", verify: true, empty: true, wantError: "expected 1 response logs"},
+				{name: "unrelated signed log", verify: true, signed: true, unrelated: true, wantError: "does not match submitted order"},
 				{name: "valid", verify: true, signed: true},
 				{name: "verification disabled"},
 			} {
@@ -187,11 +329,15 @@ func TestMetadataAndNumscriptMutationResponseSignatures(t *testing.T) {
 						seed[0] = 1
 					}
 					signer := signing.NewResponseSigner(seed)
-					log := &commonpb.Log{Sequence: 7, Payload: &commonpb.LogPayload{
-						Type: &commonpb.LogPayload_SavedNumscript{SavedNumscript: &commonpb.SavedNumscriptLog{
-							Info: &commonpb.NumscriptInfo{Name: "returned-script", Version: "9.8.7"},
-						}},
-					}}
+					log := &commonpb.Log{Sequence: 7, Payload: payload.CloneVT()}
+					if signature.unrelated {
+						switch command.name {
+						case "set metadata", "delete metadata":
+							log.Payload.GetApply().LedgerName = "other"
+						case "save numscript":
+							log.Payload.GetSavedNumscript().Info.Name = "other"
+						}
+					}
 					if signature.signed {
 						log.ResponseSignature = signer.SignLog(log)
 						require.NotNil(t, log.GetResponseSignature())
@@ -205,7 +351,11 @@ func TestMetadataAndNumscriptMutationResponseSignatures(t *testing.T) {
 					listener, err := net.Listen("tcp4", "127.0.0.1:0")
 					require.NoError(t, err)
 					server := grpc.NewServer()
-					fixture := &queryMutationSignatureServer{response: &servicepb.ApplyResponse{Logs: []*commonpb.Log{log}}}
+					response := &servicepb.ApplyResponse{Logs: []*commonpb.Log{log}}
+					if signature.empty {
+						response.Logs = nil
+					}
+					fixture := &queryMutationSignatureServer{response: response, receiptSigner: signer}
 					servicepb.RegisterBucketServiceServer(server, fixture)
 					go func() { _ = server.Serve(listener) }() // Stop closes the owned listener.
 					t.Cleanup(server.Stop)
@@ -250,8 +400,8 @@ func TestMetadataAndNumscriptMutationResponseSignatures(t *testing.T) {
 						require.NoError(t, err)
 						require.Contains(t, string(printed), command.success)
 						if command.name == "save numscript" {
-							require.Contains(t, string(printed), "returned-script")
-							require.Contains(t, string(printed), "9.8.7")
+							require.Contains(t, string(printed), "transfer")
+							require.Contains(t, string(printed), "1.0.0")
 						}
 					}
 				})

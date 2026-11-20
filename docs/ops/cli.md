@@ -341,6 +341,8 @@ ledgerctl --signing-key /path/to/seed.key --signing-key-id admin-key-1 transacti
 
 The key file should contain a 32-byte Ed25519 seed, either as raw binary or hex-encoded text.
 
+With `--response-verify-key`, write commands require one authenticated response log per submitted order, in order, with the operation and available ledger/target fields matching the request. A signed receipt must also bind the submitted batch to the exact ordered logs, including script-based writes. Missing, extra, or unrelated logs and a missing receipt fail the command before success output. Upgrade servers before enabling verification with this CLI; a write routed to an older server can commit even though verification then fails. A previously signed response to an identical request cannot be distinguished from a fresh response; use an idempotency key for retry control.
+
 ## Commands
 
 ### ledgers
