@@ -17,9 +17,18 @@ import (
 type Manifest struct {
 	Checkpoint *CheckpointManifest `json:"checkpoint"`
 	Exports    []ExportSegment     `json:"exports"`
+	// ExportBoundary records the complete history in the backup snapshot.
+	// Older manifests omit it and retain the checks available from their segments.
+	ExportBoundary *ExportBoundary `json:"exportBoundary,omitempty"`
 	// ClusterPolicy is operational state captured from the same snapshot as
 	// the latest exports. Absent on released manifests: replay their old logs.
 	ClusterPolicy *ClusterPolicySnapshot `json:"clusterPolicy,omitempty"`
+}
+
+type ExportBoundary struct {
+	LastLogSequence       uint64 `json:"lastLogSequence"`
+	LastAuditSequence     uint64 `json:"lastAuditSequence"`
+	LastAuditItemSequence uint64 `json:"lastAuditItemSequence"`
 }
 
 // ClusterPolicySnapshot is independent of business/audit sequence numbers: a
