@@ -199,17 +199,19 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 // checkReplayState contains the audit-derived projections produced by the single
 // forward log scan. Its fields are private to the checker phases.
 type checkReplayState struct {
-	replay                 *replayStore
-	observed               storedLogObservations
-	excluded               excludedVolumesSet
-	knownLedgers           map[string]struct{}
-	ledgerRevertedTxIDs    map[string]*bitset.Bitset
-	expectedIndexes        map[domain.IndexKey]*commonpb.Index
-	deletedInReplay        map[string]struct{}
-	expectedSchemas        map[string]*commonpb.MetadataSchema
-	boundaries             auditBoundaryExpectation
-	numscripts             *numscriptProjection
-	derivedLiveCheckpoints map[uint64]*commonpb.CreatedQueryCheckpointLog
+	replay                  *replayStore
+	observed                storedLogObservations
+	excluded                excludedVolumesSet
+	knownLedgers            map[string]struct{}
+	ledgerRevertedTxIDs     map[string]*bitset.Bitset
+	expectedIndexes         map[domain.IndexKey]*commonpb.Index
+	deletedInReplay         map[string]struct{}
+	expectedSchemas         map[string]*commonpb.MetadataSchema
+	boundaries              auditBoundaryExpectation
+	numscripts              *numscriptProjection
+	derivedLiveCheckpoints  map[uint64]*commonpb.CreatedQueryCheckpointLog
+	nextQueryCheckpointID   uint64
+	queryCheckpointSchedule string
 }
 
 // pinCheckSnapshots pins the peer before the primary store. The order keeps
@@ -372,7 +374,9 @@ func (c *Checker) replayLogs(ctx context.Context, snap dal.PebbleReader, replay 
 		// value so max_sequence / created_at can be verified. A create sets the
 		// entry, a later delete removes it. compareQueryCheckpoints diffs it
 		// against the stored rows both ways, contents included.
-		derivedLiveCheckpoints = make(map[uint64]*commonpb.CreatedQueryCheckpointLog)
+		derivedLiveCheckpoints  = make(map[uint64]*commonpb.CreatedQueryCheckpointLog)
+		nextQueryCheckpointID   = uint64(1)
+		queryCheckpointSchedule string
 	)
 
 	// excluded is built incrementally as SimulateEphemeralPurge decides to
@@ -655,11 +659,18 @@ func (c *Checker) replayLogs(ctx context.Context, snap dal.PebbleReader, replay 
 			case *commonpb.LogPayload_CreatedQueryCheckpoint:
 				if cp := payload.CreatedQueryCheckpoint; cp != nil {
 					derivedLiveCheckpoints[cp.GetCheckpointId()] = cp
+					if cp.GetCheckpointId() >= nextQueryCheckpointID {
+						nextQueryCheckpointID = cp.GetCheckpointId() + 1
+					}
 				}
 			case *commonpb.LogPayload_DeletedQueryCheckpoint:
 				if cp := payload.DeletedQueryCheckpoint; cp != nil {
 					delete(derivedLiveCheckpoints, cp.GetCheckpointId())
 				}
+			case *commonpb.LogPayload_SetQueryCheckpointSchedule:
+				queryCheckpointSchedule = payload.SetQueryCheckpointSchedule.GetCron()
+			case *commonpb.LogPayload_DeleteQueryCheckpointSchedule:
+				queryCheckpointSchedule = ""
 			case *commonpb.LogPayload_Apply:
 				if payload.Apply != nil {
 					ledgerName := payload.Apply.GetLedgerName()
@@ -850,9 +861,11 @@ func (c *Checker) replayLogs(ctx context.Context, snap dal.PebbleReader, replay 
 		knownLedgers: knownLedgers, ledgerRevertedTxIDs: ledgerRevertedTxIDs,
 		expectedIndexes: expectedIndexes,
 		deletedInReplay: deletedInReplay, expectedSchemas: expectedSchemas,
-		boundaries:             auditExpected.boundaries,
-		numscripts:             numscripts,
-		derivedLiveCheckpoints: derivedLiveCheckpoints,
+		boundaries:              auditExpected.boundaries,
+		numscripts:              numscripts,
+		derivedLiveCheckpoints:  derivedLiveCheckpoints,
+		nextQueryCheckpointID:   nextQueryCheckpointID,
+		queryCheckpointSchedule: queryCheckpointSchedule,
 	}, nil
 }
 
@@ -948,6 +961,34 @@ func (c *Checker) compareProjections(ctx context.Context, snap dal.PebbleReader,
 	// load the injected row into LiveQueryCheckpointIDs unchecked (EN-1515).
 	if err := c.compareQueryCheckpoints(snap, derivedLiveCheckpoints, callback); err != nil {
 		return err
+	}
+	if state.boundaries.complete {
+		if err := c.compareQueryCheckpointControls(snap, state.nextQueryCheckpointID, state.queryCheckpointSchedule, callback); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+// compareQueryCheckpointControls checks the allocator and scheduler values
+// against the complete audited checkpoint and schedule log history.
+func (c *Checker) compareQueryCheckpointControls(reader dal.PebbleReader, expectedNext uint64, expectedSchedule string, callback func(*servicepb.CheckStoreEvent)) error {
+	next, err := query.ReadNextQueryCheckpointID(reader)
+	if err != nil {
+		return fmt.Errorf("reading next query checkpoint ID: %w", err)
+	}
+	if next != expectedNext {
+		callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_QUERY_CHECKPOINT_MISMATCH,
+			fmt.Sprintf("stored next query checkpoint ID %d does not match audited allocation %d", next, expectedNext), 0, "", "", ""))
+	}
+	schedule, err := query.ReadQueryCheckpointSchedule(reader)
+	if err != nil {
+		return fmt.Errorf("reading query checkpoint schedule: %w", err)
+	}
+	if schedule != expectedSchedule {
+		callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_QUERY_CHECKPOINT_MISMATCH,
+			fmt.Sprintf("stored query checkpoint schedule %q does not match audited schedule %q", schedule, expectedSchedule), 0, "", "", ""))
 	}
 
 	return nil

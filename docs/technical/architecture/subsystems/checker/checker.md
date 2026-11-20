@@ -84,6 +84,14 @@ Each pass takes a persisted projection, re-derives the expected value by replayi
 | 17 | `compareBoundaries` | Stored `LedgerBoundaries.next_transaction_id` and `next_log_id`, including missing and surplus rows | Final boundaries exported from the existing isolated FSM replay of successful chain-verified audit proposals; comparison requires a complete replay | `BOUNDARY_MISMATCH` |
 | 18 | Audit-item physical identity and membership | Every retained item has an exact canonical key, nonzero parent sequence, an existing parent with matching sequence identity, and matching item order index, including zero-log items | Independent scan of the entire `AuditItem` prefix on the pinned primary snapshot; parent membership is structural evidence only | `HASH_MISMATCH` |
 
+The query-checkpoint projection comparison also checks
+`SubGlobNextQueryCheckpointID` and `SubGlobQueryCheckpointSchedule` against the
+audited log fold. The allocator starts at 1 and advances past every created ID,
+including checkpoints later deleted. The schedule starts empty; set replaces it
+and delete clears it. Both comparisons use the same pinned primary snapshot and
+emit `QUERY_CHECKPOINT_MISMATCH` before a clean check can be reported. They do
+not rewrite IDs or schedules; the existing audit rebuild retains their fold.
+
 Notes:
 
 - **Account metadata and transaction projection keys must decode.** A surplus row with a valid protobuf value but a malformed canonical key emits `METADATA_MISMATCH` or `TRANSACTION_UPDATE_MISMATCH`, respectively. The event includes the raw key and decoding error; identity fields remain unset because partial decoding is not authoritative. Each malformed key counts as an error, and checking continues over the remaining rows.
