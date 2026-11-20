@@ -14,6 +14,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
 
+	"github.com/formancehq/ledger/v3/cmd/ledgerctl/accounts"
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/indexes"
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/ledgers"
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/numscripts"
@@ -294,6 +295,8 @@ func TestMetadataAndNumscriptMutationResponseSignatures(t *testing.T) {
 	}{
 		{"set metadata", []string{"transactions", "set-metadata", "42", "--ledger", "test", "--metadata", "status=processed"}, "Metadata set"},
 		{"delete metadata", []string{"transactions", "delete-metadata", "42", "status", "--ledger", "test", "--yes"}, "Deleted"},
+		{"set account metadata", []string{"accounts", "set-metadata", "bank", "--ledger", "test", "--metadata", "status=processed"}, "Metadata set"},
+		{"delete account metadata", []string{"accounts", "delete-metadata", "bank", "status", "--ledger", "test", "--yes"}, "Deleted"},
 		{"save numscript", []string{"numscripts", "save", "transfer", "--ledger", "test", "--version", "1.0.0", "--file", scriptPath}, "Saved"},
 	}
 	for _, command := range commands {
@@ -304,6 +307,10 @@ func TestMetadataAndNumscriptMutationResponseSignatures(t *testing.T) {
 				payload = &commonpb.LogPayload{Type: &commonpb.LogPayload_Apply{Apply: &commonpb.ApplyLedgerLog{LedgerName: "test", Log: &commonpb.LedgerLog{Data: &commonpb.LedgerLogPayload{Payload: &commonpb.LedgerLogPayload_SavedMetadata{SavedMetadata: &commonpb.SavedMetadata{Target: &commonpb.Target{Target: &commonpb.Target_TransactionId{TransactionId: 42}}, Metadata: commonpb.MetadataFromGoMap(map[string]string{"status": "processed"})}}}}}}}
 			case "delete metadata":
 				payload = &commonpb.LogPayload{Type: &commonpb.LogPayload_Apply{Apply: &commonpb.ApplyLedgerLog{LedgerName: "test", Log: &commonpb.LedgerLog{Data: &commonpb.LedgerLogPayload{Payload: &commonpb.LedgerLogPayload_DeletedMetadata{DeletedMetadata: &commonpb.DeletedMetadata{Target: &commonpb.Target{Target: &commonpb.Target_TransactionId{TransactionId: 42}}, Key: "status"}}}}}}}
+			case "set account metadata":
+				payload = &commonpb.LogPayload{Type: &commonpb.LogPayload_Apply{Apply: &commonpb.ApplyLedgerLog{LedgerName: "test", Log: &commonpb.LedgerLog{Data: &commonpb.LedgerLogPayload{Payload: &commonpb.LedgerLogPayload_SavedMetadata{SavedMetadata: &commonpb.SavedMetadata{Target: &commonpb.Target{Target: &commonpb.Target_Account{Account: &commonpb.TargetAccount{Addr: "bank"}}}, Metadata: commonpb.MetadataFromGoMap(map[string]string{"status": "processed"})}}}}}}}
+			case "delete account metadata":
+				payload = &commonpb.LogPayload{Type: &commonpb.LogPayload_Apply{Apply: &commonpb.ApplyLedgerLog{LedgerName: "test", Log: &commonpb.LedgerLog{Data: &commonpb.LedgerLogPayload{Payload: &commonpb.LedgerLogPayload_DeletedMetadata{DeletedMetadata: &commonpb.DeletedMetadata{Target: &commonpb.Target{Target: &commonpb.Target_Account{Account: &commonpb.TargetAccount{Addr: "bank"}}}, Key: "status"}}}}}}}
 			case "save numscript":
 				payload = &commonpb.LogPayload{Type: &commonpb.LogPayload_SavedNumscript{SavedNumscript: &commonpb.SavedNumscriptLog{Info: &commonpb.NumscriptInfo{Ledger: "test", Name: "transfer", Version: "1.0.0", Content: "send [USD 100] (source = @world destination = @bank)"}}}}
 			}
@@ -332,7 +339,7 @@ func TestMetadataAndNumscriptMutationResponseSignatures(t *testing.T) {
 					log := &commonpb.Log{Sequence: 7, Payload: payload.CloneVT()}
 					if signature.unrelated {
 						switch command.name {
-						case "set metadata", "delete metadata":
+						case "set metadata", "delete metadata", "set account metadata", "delete account metadata":
 							log.Payload.GetApply().LedgerName = "other"
 						case "save numscript":
 							log.Payload.GetSavedNumscript().Info.Name = "other"
@@ -374,7 +381,7 @@ func TestMetadataAndNumscriptMutationResponseSignatures(t *testing.T) {
 					cmd.PersistentFlags().Bool("insecure", true, "")
 					cmd.PersistentFlags().String("auth-token", "test-token", "")
 					cmd.PersistentFlags().String("response-verify-key", keyPath, "")
-					cmd.AddCommand(transactions.NewCommand(), numscripts.NewCommand())
+					cmd.AddCommand(transactions.NewCommand(), accounts.NewCommand(), numscripts.NewCommand())
 					cmd.SetArgs(command.args)
 
 					output, err := os.Create(filepath.Join(t.TempDir(), "output"))

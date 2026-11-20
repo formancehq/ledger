@@ -2,12 +2,12 @@ package cmdutil
 
 import (
 	"crypto/ed25519"
+	"errors"
 	"fmt"
 	"maps"
 
-	"google.golang.org/protobuf/proto"
-
 	"github.com/spf13/cobra"
+	"google.golang.org/protobuf/proto"
 
 	"github.com/formancehq/ledger/v3/internal/domain/crypto/signing"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
@@ -51,7 +51,7 @@ func VerifyApplyResponse(cmd *cobra.Command, request *servicepb.ApplyRequest, lo
 	var batch *servicepb.ApplyBatch
 	switch {
 	case request == nil || request.GetSkipResponse():
-		return fmt.Errorf("cannot verify a response without the submitted batch and full logs")
+		return errors.New("cannot verify a response without the submitted batch and full logs")
 	case request.GetUnsigned() != nil:
 		batch = request.GetUnsigned()
 	case request.GetSigned() != nil:
@@ -60,10 +60,10 @@ func VerifyApplyResponse(cmd *cobra.Command, request *servicepb.ApplyRequest, lo
 			return fmt.Errorf("decode submitted signed batch: %w", err)
 		}
 	default:
-		return fmt.Errorf("submitted Apply request has no batch")
+		return errors.New("submitted Apply request has no batch")
 	}
 	if len(batch.GetRequests()) == 0 {
-		return fmt.Errorf("submitted Apply batch has no orders to verify")
+		return errors.New("submitted Apply batch has no orders to verify")
 	}
 	if len(logs) != len(batch.GetRequests()) {
 		return fmt.Errorf("expected %d response logs for submitted orders, got %d", len(batch.GetRequests()), len(logs))
@@ -86,6 +86,7 @@ func VerifyApplyResponse(cmd *cobra.Command, request *servicepb.ApplyRequest, lo
 	if err := signing.VerifyResponseReceipt(request, logs, receipt, key); err != nil {
 		return err
 	}
+
 	return nil
 }
 
@@ -99,6 +100,7 @@ func containsMetadata(actual, submitted map[string]*commonpb.MetadataValue) bool
 			return false
 		}
 	}
+
 	return true
 }
 
@@ -129,6 +131,7 @@ func matchesInitialSchema(actual *commonpb.MetadataSchema, commands []*commonpb.
 	if len(commands) == 0 {
 		return actual == nil || proto.Equal(actual, expected)
 	}
+
 	return proto.Equal(actual, expected)
 }
 
@@ -145,41 +148,52 @@ func responseMatchesOrder(order *servicepb.Request, log *commonpb.LogPayload) bo
 	switch o := order.GetType().(type) {
 	case *servicepb.Request_CreateLedger:
 		l := log.GetCreateLedger()
+
 		return l != nil && l.GetName() == o.CreateLedger.GetName() && sameMetadata(l.GetMetadata(), o.CreateLedger.GetMetadata()) && matchesInitialSchema(l.GetMetadataSchema(), o.CreateLedger.GetInitialSchema()) && matchesInitialAccountTypes(l.GetAccountTypes(), o.CreateLedger.GetAccountTypes()) && l.GetMode() == o.CreateLedger.GetMode() && proto.Equal(l.GetMirrorSource(), o.CreateLedger.GetMirrorSource()) && l.GetDefaultEnforcementMode() == o.CreateLedger.GetDefaultEnforcementMode()
 	case *servicepb.Request_DeleteLedger:
 		l := log.GetDeleteLedger()
+
 		return l != nil && l.GetName() == o.DeleteLedger.GetName()
 	case *servicepb.Request_PromoteLedger:
 		l := log.GetPromoteLedger()
+
 		return l != nil && l.GetName() == o.PromoteLedger.GetLedger()
 	case *servicepb.Request_SaveLedgerMetadata:
 		l := log.GetSavedLedgerMetadata()
+
 		return l != nil && l.GetLedger() == o.SaveLedgerMetadata.GetLedger() && sameMetadata(l.GetMetadata(), o.SaveLedgerMetadata.GetMetadata())
 	case *servicepb.Request_DeleteLedgerMetadata:
 		l := log.GetDeletedLedgerMetadata()
+
 		return l != nil && l.GetLedger() == o.DeleteLedgerMetadata.GetLedger() && l.GetKey() == o.DeleteLedgerMetadata.GetKey()
 	case *servicepb.Request_CreatePreparedQuery:
 		l := log.GetCreatedPreparedQuery()
+
 		return l != nil && l.GetLedger() == o.CreatePreparedQuery.GetLedger() && proto.Equal(l.GetQuery(), o.CreatePreparedQuery.GetQuery())
 	case *servicepb.Request_UpdatePreparedQuery:
 		l := log.GetUpdatedPreparedQuery()
+
 		return l != nil && l.GetLedger() == o.UpdatePreparedQuery.GetLedger() && l.GetName() == o.UpdatePreparedQuery.GetName() && proto.Equal(l.GetNewFilter(), o.UpdatePreparedQuery.GetFilter()) && l.NewTarget != nil && o.UpdatePreparedQuery.Target != nil && l.GetNewTarget() == o.UpdatePreparedQuery.GetTarget()
 	case *servicepb.Request_DeletePreparedQuery:
 		l := log.GetDeletedPreparedQuery()
+
 		return l != nil && l.GetLedger() == o.DeletePreparedQuery.GetLedger() && l.GetName() == o.DeletePreparedQuery.GetName()
 	case *servicepb.Request_CreateQueryCheckpoint:
 		return log.GetCreatedQueryCheckpoint() != nil
 	case *servicepb.Request_DeleteQueryCheckpoint:
 		l := log.GetDeletedQueryCheckpoint()
+
 		return l != nil && l.GetCheckpointId() == o.DeleteQueryCheckpoint.GetCheckpointId()
 	case *servicepb.Request_SetQueryCheckpointSchedule:
 		l := log.GetSetQueryCheckpointSchedule()
+
 		return l != nil && l.GetCron() == o.SetQueryCheckpointSchedule.GetCron()
 	case *servicepb.Request_DeleteQueryCheckpointSchedule:
 		return log.GetDeleteQueryCheckpointSchedule() != nil
 	case *servicepb.Request_SaveNumscript:
 		l := log.GetSavedNumscript()
 		info := l.GetInfo()
+
 		return info != nil && info.GetLedger() == o.SaveNumscript.GetLedger() && info.GetName() == o.SaveNumscript.GetName() && info.GetVersion() == o.SaveNumscript.GetVersion() && info.GetContent() == o.SaveNumscript.GetContent()
 	case *servicepb.Request_CreateIndex:
 		return matchLedgerIndex(log, o.CreateIndex.GetLedger(), o.CreateIndex.GetId(), true)
@@ -191,6 +205,7 @@ func responseMatchesOrder(order *servicepb.Request, log *commonpb.LogPayload) bo
 			return false
 		}
 		m := l.GetLog().GetData().GetSetMetadataFieldType()
+
 		return m != nil && m.GetTargetType() == o.SetMetadataFieldType.GetTargetType() && m.GetKey() == o.SetMetadataFieldType.GetKey() && m.GetType() == o.SetMetadataFieldType.GetType()
 	case *servicepb.Request_RemoveMetadataFieldType:
 		l := log.GetApply()
@@ -198,15 +213,19 @@ func responseMatchesOrder(order *servicepb.Request, log *commonpb.LogPayload) bo
 			return false
 		}
 		m := l.GetLog().GetData().GetRemovedMetadataFieldType()
+
 		return m != nil && m.GetTargetType() == o.RemoveMetadataFieldType.GetTargetType() && m.GetKey() == o.RemoveMetadataFieldType.GetKey()
 	case *servicepb.Request_AddAccountType:
 		l := log.GetApply()
+
 		return l != nil && l.GetLedgerName() == o.AddAccountType.GetLedger() && proto.Equal(l.GetLog().GetData().GetAddedAccountType().GetAccountType(), o.AddAccountType.GetAccountType()) && l.GetLog().GetData().GetAddedAccountType() != nil
 	case *servicepb.Request_RemoveAccountType:
 		l := log.GetApply()
+
 		return l != nil && l.GetLedgerName() == o.RemoveAccountType.GetLedger() && l.GetLog().GetData().GetRemovedAccountType() != nil && l.GetLog().GetData().GetRemovedAccountType().GetName() == o.RemoveAccountType.GetName()
 	case *servicepb.Request_SetDefaultEnforcementMode:
 		l := log.GetApply()
+
 		return l != nil && l.GetLedgerName() == o.SetDefaultEnforcementMode.GetLedger() && l.GetLog().GetData().GetUpdatedDefaultEnforcementMode() != nil && l.GetLog().GetData().GetUpdatedDefaultEnforcementMode().GetEnforcementMode() == o.SetDefaultEnforcementMode.GetEnforcementMode()
 	case *servicepb.Request_Apply:
 		return matchLedgerApply(o.Apply, log.GetApply())
@@ -224,9 +243,11 @@ func matchLedgerIndex(log *commonpb.LogPayload, ledger string, id *commonpb.Inde
 	}
 	if create {
 		l := a.GetLog().GetData().GetCreateIndex()
+
 		return l != nil && proto.Equal(l.GetId(), id)
 	}
 	l := a.GetLog().GetData().GetDropIndex()
+
 	return l != nil && proto.Equal(l.GetId(), id)
 }
 
@@ -241,12 +262,15 @@ func matchLedgerApply(request *servicepb.LedgerApplyRequest, log *commonpb.Apply
 	switch action := request.GetAction().GetData().(type) {
 	case *servicepb.LedgerAction_AddMetadata:
 		l := data.GetSavedMetadata()
+
 		return l != nil && proto.Equal(l.GetTarget(), action.AddMetadata.GetTarget()) && sameMetadata(l.GetMetadata(), action.AddMetadata.GetMetadata())
 	case *servicepb.LedgerAction_DeleteMetadata:
 		l := data.GetDeletedMetadata()
+
 		return l != nil && proto.Equal(l.GetTarget(), action.DeleteMetadata.GetTarget()) && l.GetKey() == action.DeleteMetadata.GetKey()
 	case *servicepb.LedgerAction_RevertTransaction:
 		l := data.GetRevertedTransaction()
+
 		return l != nil && l.GetRevertedTransactionId() == action.RevertTransaction.GetTransactionId() && sameMetadata(l.GetRevertTransaction().GetMetadata(), action.RevertTransaction.GetMetadata())
 	case *servicepb.LedgerAction_CreateTransaction:
 		l := data.GetCreatedTransaction()
@@ -272,15 +296,19 @@ func matchLedgerApply(request *servicepb.LedgerApplyRequest, log *commonpb.Apply
 				}
 			}
 		}
+
 		return true
 	case *servicepb.LedgerAction_AddAccountType:
 		l := data.GetAddedAccountType()
+
 		return l != nil && proto.Equal(l.GetAccountType(), action.AddAccountType.GetAccountType())
 	case *servicepb.LedgerAction_RemoveAccountType:
 		l := data.GetRemovedAccountType()
+
 		return l != nil && l.GetName() == action.RemoveAccountType.GetName()
 	case *servicepb.LedgerAction_SetDefaultEnforcementMode:
 		l := data.GetUpdatedDefaultEnforcementMode()
+
 		return l != nil && l.GetEnforcementMode() == action.SetDefaultEnforcementMode.GetEnforcementMode()
 	default:
 		return false
@@ -366,6 +394,7 @@ func BuildApplyRequestWithIdempotencyKey(cmd *cobra.Command, idempotencyKey stri
 			return nil, fmt.Errorf("encode batch for response binding: %w", err)
 		}
 		request.ResponseBindingPayload = payload
+
 		return request, nil
 	}
 

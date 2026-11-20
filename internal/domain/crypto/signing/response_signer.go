@@ -30,6 +30,7 @@ func (s *ResponseSigner) SignResponseReceipt(request *servicepb.ApplyRequest, lo
 	if err != nil {
 		return nil, fmt.Errorf("encode response receipt: %w", err)
 	}
+
 	return &signaturepb.SignedResponseReceipt{KeyId: s.keyID, Payload: payload, Signature: ed25519.Sign(s.privateKey, append([]byte(responseReceiptDomain), payload...))}, nil
 }
 
@@ -57,6 +58,7 @@ func VerifyResponseReceipt(request *servicepb.ApplyRequest, logs []*commonpb.Log
 			return fmt.Errorf("response receipt does not match log %d", i)
 		}
 	}
+
 	return nil
 }
 
@@ -83,6 +85,7 @@ func buildResponseReceipt(request *servicepb.ApplyRequest, logs []*commonpb.Log)
 		hash := sha256.Sum256(log.GetResponseSignature().GetPayload())
 		receipt.LogHashes = append(receipt.LogHashes, hash[:])
 	}
+
 	return receipt, nil
 }
 
@@ -94,6 +97,7 @@ func ValidateResponseBinding(request *servicepb.ApplyRequest) error {
 		if len(request.GetResponseBindingPayload()) > 0 {
 			return errors.New("signed request must not include an unsigned response binding payload")
 		}
+
 		return nil
 	}
 	if len(request.GetResponseBindingPayload()) == 0 {
@@ -110,6 +114,7 @@ func ValidateResponseBinding(request *servicepb.ApplyRequest) error {
 	if !proto.Equal(batch, &bound) {
 		return errors.New("response binding payload does not match submitted batch")
 	}
+
 	return nil
 }
 

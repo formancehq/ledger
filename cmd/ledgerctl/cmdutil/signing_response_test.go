@@ -94,6 +94,7 @@ func TestVerifyApplyResponseBindsOrderedBatch(t *testing.T) {
 	newLog := func(sequence uint64, ledger, name string) *commonpb.Log {
 		log := &commonpb.Log{Sequence: sequence, Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_DeletedPreparedQuery{DeletedPreparedQuery: &commonpb.DeletedPreparedQueryLog{Ledger: ledger, Name: name}}}}
 		log.ResponseSignature = signer.SignLog(log)
+
 		return log
 	}
 	first, second := newLog(7, "one", "first"), newLog(8, "two", "second")
@@ -143,6 +144,7 @@ func TestVerifyApplyResponseBindsScriptWithoutVisibleIdentity(t *testing.T) {
 		var err error
 		request.ResponseBindingPayload, err = request.GetUnsigned().MarshalVT()
 		require.NoError(t, err)
+
 		return request
 	}
 	log := &commonpb.Log{Sequence: 7, Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_Apply{Apply: &commonpb.ApplyLedgerLog{LedgerName: "ledger", Log: &commonpb.LedgerLog{Data: &commonpb.LedgerLogPayload{Payload: &commonpb.LedgerLogPayload_CreatedTransaction{CreatedTransaction: &commonpb.CreatedTransaction{Transaction: &commonpb.Transaction{Id: 42}}}}}}}}}
