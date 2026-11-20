@@ -48,17 +48,30 @@ func (b *Builder) initIndexConfig(ctx context.Context) (err error) {
 		}
 	}()
 
+	cursor, err := b.readStore.LastIndexedSequenceFrom(snapshot)
+	if err != nil {
+		return fmt.Errorf("reading last indexed sequence: %w", err)
+	}
 	if err := b.loadLedgerHistory(snapshot); err != nil {
 		return fmt.Errorf("reading ledger history state: %w", err)
 	}
 
-	return b.initIndexConfigAfterHistory(ctx, snapshot)
+	return b.initIndexConfigAfterHistory(ctx, snapshot, cursor)
 }
+
+// errMainStoreBehindReadStore reports a main store that has not yet regained
+// every log the read store folded. Both stores commit without fsync and lose
+// unsynced writes independently on a crash, so the main store can reopen behind
+// the read-store cursor until WAL replay or follower sync restores those logs.
+// Boot retries instead of deriving replay obligations from that older view.
+var errMainStoreBehindReadStore = errors.New("main store is behind the read-store cursor")
 
 // initIndexConfigAfterHistory uses the same read-store snapshot as the caller's
 // history tracker and cursor. Main-store inventory is read separately and only
-// supplies replay expectations and bucket-scoped declarations.
-func (b *Builder) initIndexConfigAfterHistory(ctx context.Context, reader dal.PebbleReader) error {
+// supplies replay expectations and bucket-scoped declarations; it must contain
+// every log up to cursor, or a ledger or index that the read store already saw
+// deleted would become an obligation that no later log can resolve.
+func (b *Builder) initIndexConfigAfterHistory(ctx context.Context, reader dal.PebbleReader, cursor uint64) error {
 	// Reset builder-local init state so every attempt (including a retry
 	// after a partial failure) starts from a clean slate. backfillTasks
 	// and schemaRewriteTasks are slices appended to by
@@ -80,6 +93,14 @@ func (b *Builder) initIndexConfigAfterHistory(ctx context.Context, reader dal.Pe
 	}
 
 	defer func() { _ = handle.Close() }()
+
+	mainSequence, err := query.ReadLastSequence(handle)
+	if err != nil {
+		return fmt.Errorf("reading main-store log head for index config: %w", err)
+	}
+	if mainSequence < cursor {
+		return fmt.Errorf("%w: main-store log head %d, read-store cursor %d", errMainStoreBehindReadStore, mainSequence, cursor)
+	}
 
 	// Version states and ledger history must describe the same fold position.
 	versionEntries, err := b.readStore.ReadAllIndexVersionStatesFrom(reader)
