@@ -53,13 +53,15 @@ message Event {
   string ledger = 2;                 // Ledger name (empty for system events like CREATED_LEDGER)
   common.Timestamp date = 3;         // Event timestamp (HLC)
   fixed64 log_sequence = 4;          // Global log sequence (monotonic, unique)
-  common.Log log = 5;                // Full log entry with payload
+  common.Log log = 5;                // Public projection of log entry with payload
   string app = 6;                    // Stable producer identifier: "ledger"
   string version = 7;                // Event envelope generation: "v3"
 }
 ```
 
-The event carries the full `Log` entry, which contains the typed payload (transaction, metadata change, etc.) in its `LedgerLogPayload` oneof. This avoids duplicating payload definitions and ensures events always carry the complete log data.
+The event carries a detached public projection of the `Log` entry, which contains the typed payload (transaction, metadata change, etc.) in its `LedgerLogPayload` oneof. Before publication, annotated credentials in any log variant are masked and unknown protobuf fields are removed. The committed log remains unchanged. Consumers retain the event type, sequence, and non-sensitive payload fields, but must not use the outbound event as an exact copy of the audit log.
+
+For mirror-ledger creation, PostgreSQL DSN passwords, HTTP source URL credentials, OAuth client secrets, and token-endpoint credentials are redacted in both JSON and protobuf events. Sink-configuration logs receive the same projection. This changes observable event payload values while retaining existing protobuf field numbers and types; no service protocol revision or persisted-state migration is needed. Deployments that previously published these events should assess already delivered credentials in downstream retention and rotate affected secrets as appropriate.
 
 `app` and `version` are routing and decoding metadata for broker consumers. Ledger v2's `publish.EventMessage` constructors emitted `app="ledger"` and `version="v2"`; the v3 envelope preserves the producer identity and reports its distinct contract as `version="v3"`. The emitter sets both fields before any sink-specific serialization, so NATS and Kafka publish the same values in JSON and Protobuf formats.
 
