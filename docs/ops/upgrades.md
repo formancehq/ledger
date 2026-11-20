@@ -421,8 +421,9 @@ RC.5 leaders plan the Numscript of every transaction the FSM can skip on its
 reference: a create that carries a `reference` and lists
 `TRANSACTION_REFERENCE_CONFLICT` in `skippableReasons`. They plan the script
 even when they predict the skip. A planning failure goes to the FSM when the
-skip is predicted or the request carries an idempotency key; an unkeyed
-request not predicted to skip is still refused at admission. A keyed retry of
+skip is predicted or the request carries an idempotency key (a keyed
+state-dependent failure as `PRELOAD_UNAVAILABLE`, below); an unkeyed request
+not predicted to skip is still refused at admission. A keyed retry of
 a batch that committed through such a skip then replays its retained outcome
 after a ledger deletion purged the references. On a fresh keyed request whose
 reference is absent, the script's failure keeps its reason and details and is

@@ -141,10 +141,13 @@ A scripted create that carries a reference and whitelists
 `TRANSACTION_REFERENCE_CONFLICT` commits through a skip whatever its script is,
 and must replay that outcome after the reference registry changes, including a
 ledger deletion that purges it. Admission plans the script whether or not it
-predicts the skip. When the skip is predicted or the request is keyed, a
-planning failure is forwarded with `OrderTechnical.numscript_planning_failed`,
-the keys planning read and their hash; an unkeyed request not predicted to skip
-is still refused at admission. Prove replay after deletion for a failure before
+predicts the skip. A planning failure is forwarded with
+`OrderTechnical.numscript_planning_failed`, the keys planning read and their
+hash when the skip is predicted, or when the request is keyed and admission
+would otherwise refuse the failure. A keyed state-dependent failure not
+predicted to skip keeps `preload_unavailable` and returns the retryable
+`PRELOAD_UNAVAILABLE`; an unkeyed request not predicted to skip is still
+refused at admission. Prove replay after deletion for a failure before
 any read and one after a read. Prove that a fresh keyed request with the
 reference absent is refused at apply with the failure facts admission gives an
 order it cannot skip, audited and frozen when the failure is definitive. Hold a
