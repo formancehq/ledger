@@ -26,7 +26,7 @@ func TestHandleCreateIndex_Success(t *testing.T) {
 		func(_ context.Context, req *servicepb.ApplyRequest) (*domain.ApplyResult, error) {
 			capturedRequest = req.GetUnsigned().GetRequests()[0]
 
-			return &domain.ApplyResult{Logs: []*commonpb.Log{{}}}, nil
+			return &domain.ApplyResult{Logs: []*commonpb.Log{createIndexTestLog()}}, nil
 		}).AnyTimes()
 	srv := newTestServer(t, backend)
 
@@ -61,7 +61,7 @@ func TestHandleCreateIndex_ResponseIDIsCanonicalized(t *testing.T) {
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(
 		func(_ context.Context, _ *servicepb.ApplyRequest) (*domain.ApplyResult, error) {
-			return &domain.ApplyResult{Logs: []*commonpb.Log{{}}}, nil
+			return &domain.ApplyResult{Logs: []*commonpb.Log{createIndexTestLog()}}, nil
 		}).AnyTimes()
 	srv := newTestServer(t, backend)
 
@@ -155,7 +155,7 @@ func TestHandleCreateIndex_IdempotencyKeyPropagated(t *testing.T) {
 		func(_ context.Context, req *servicepb.ApplyRequest) (*domain.ApplyResult, error) {
 			capturedBatch = req.GetUnsigned()
 
-			return &domain.ApplyResult{Logs: []*commonpb.Log{{}}}, nil
+			return &domain.ApplyResult{Logs: []*commonpb.Log{createIndexTestLog()}}, nil
 		}).AnyTimes()
 	srv := newTestServer(t, backend)
 
@@ -214,4 +214,16 @@ func TestHandleCreateIndex_AlreadyExists(t *testing.T) {
 
 	require.Equal(t, http.StatusConflict, w.Code)
 	require.JSONEq(t, `{"errorCode":"INDEX_ALREADY_EXISTS","errorMessage":"index already exists: index=\"tx_builtin:TX_BUILTIN_INDEX_TIMESTAMP\""}`, w.Body.String())
+}
+
+func createIndexTestLog() *commonpb.Log {
+	return &commonpb.Log{
+		Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_Apply{
+			Apply: &commonpb.ApplyLedgerLog{Log: &commonpb.LedgerLog{
+				Data: &commonpb.LedgerLogPayload{Payload: &commonpb.LedgerLogPayload_CreateIndex{
+					CreateIndex: &commonpb.CreatedIndexLog{},
+				}},
+			}},
+		}},
+	}
 }

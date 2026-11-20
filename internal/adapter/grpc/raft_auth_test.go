@@ -2,6 +2,7 @@ package grpc
 
 import (
 	"context"
+	"crypto/tls"
 	"fmt"
 	"testing"
 	"time"
@@ -9,22 +10,23 @@ import (
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/credentials"
 	healthpb "google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 )
 
-// startTestRaftServerWithSecret boots a Raft gRPC server in plaintext mode
-// guarded by the given clusterSecret. We use plaintext (no TLS) to keep the
-// test focused on the auth interceptor logic; in production the
-// bootstrap.Config.Validate gate refuses --cluster-secret without TLS.
+// startTestRaftServerWithSecret boots a dual-listener Raft server to exercise
+// both the authenticated TLS path and the transitional plaintext path.
 func startTestRaftServerWithSecret(t *testing.T, clusterSecret string) *serverTestSetup {
 	t.Helper()
 
 	port := freeTCPPort(t)
-
-	srv, err := NewRaftServer(port, noopLogger{}, nil, true, clusterSecret)
+	certs := newTestCerts(t)
+	cert, err := tls.LoadX509KeyPair(certs.ServerCertFile, certs.ServerKeyFile)
+	require.NoError(t, err)
+	tlsCfg := &tls.Config{Certificates: []tls.Certificate{cert}, MinVersion: tls.VersionTLS12, NextProtos: []string{"h2"}}
+	srv, err := NewRaftServer(port, noopLogger{}, tlsCfg, true, clusterSecret)
 	require.NoError(t, err)
 
 	healthpb.RegisterHealthServer(srv.GetServer(), healthShim{})
@@ -37,16 +39,16 @@ func startTestRaftServerWithSecret(t *testing.T, clusterSecret string) *serverTe
 
 	t.Cleanup(func() { _ = srv.Stop() })
 
-	return &serverTestSetup{port: port}
+	return &serverTestSetup{port: port, clientTLSCfg: clientTLSConfigTrustingCA(t, certs.CACertFile)}
 }
 
-func dialPlaintextWithBearer(t *testing.T, port int, token string) *grpc.ClientConn {
+func dialTLSWithBearer(t *testing.T, setup *serverTestSetup, token string) *grpc.ClientConn {
 	t.Helper()
 
-	addr := fmt.Sprintf("127.0.0.1:%d", port)
+	addr := fmt.Sprintf("localhost:%d", setup.port)
 
 	opts := []grpc.DialOption{
-		grpc.WithTransportCredentials(insecure.NewCredentials()),
+		grpc.WithTransportCredentials(credentials.NewTLS(setup.clientTLSCfg)),
 	}
 
 	if token != "" {
@@ -85,7 +87,7 @@ func TestRaftAuth_CorrectTokenAccepted(t *testing.T) {
 	const secret = "correct-horse-battery-staple"
 	setup := startTestRaftServerWithSecret(t, secret)
 
-	requireHealthOK(t, dialPlaintextWithBearer(t, setup.port, secret))
+	requireHealthOK(t, dialTLSWithBearer(t, setup, secret))
 }
 
 func TestRaftAuth_WrongTokenRejected(t *testing.T) {
@@ -94,7 +96,7 @@ func TestRaftAuth_WrongTokenRejected(t *testing.T) {
 	const secret = "correct-horse-battery-staple"
 	setup := startTestRaftServerWithSecret(t, secret)
 
-	conn := dialPlaintextWithBearer(t, setup.port, "wrong-token")
+	conn := dialTLSWithBearer(t, setup, "wrong-token")
 	requireHealthUnauthenticated(t, conn)
 }
 
@@ -106,7 +108,7 @@ func TestRaftAuth_MissingTokenRejected(t *testing.T) {
 
 	// No bearer credentials at all — a network attacker who can reach the
 	// raft port but does not know the secret.
-	conn := dialPlaintext(t, setup.port)
+	conn := dialTLSWithBearer(t, setup, "")
 	requireHealthUnauthenticated(t, conn)
 }
 
@@ -116,7 +118,7 @@ func TestRaftAuth_NonBearerAuthorizationRejected(t *testing.T) {
 	const secret = "correct-horse-battery-staple"
 	setup := startTestRaftServerWithSecret(t, secret)
 
-	conn := dialPlaintext(t, setup.port)
+	conn := dialTLSWithBearer(t, setup, "")
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 
@@ -126,6 +128,12 @@ func TestRaftAuth_NonBearerAuthorizationRejected(t *testing.T) {
 	_, err := healthpb.NewHealthClient(conn).Check(ctx, &healthpb.HealthCheckRequest{})
 	require.Error(t, err)
 	require.Equal(t, codes.Unauthenticated, status.Code(err))
+}
+
+func TestRaftAuth_OptionalPlaintextPeerAllowedWithoutToken(t *testing.T) {
+	t.Parallel()
+	setup := startTestRaftServerWithSecret(t, "cluster-secret")
+	requireHealthOK(t, dialPlaintext(t, setup.port))
 }
 
 func requireHealthUnauthenticated(t *testing.T, conn *grpc.ClientConn) {

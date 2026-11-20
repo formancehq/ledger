@@ -75,6 +75,8 @@ spec:
           value: "ledger-ledger:8888"
         - name: LEDGER_PER_NODE_GRPC_ADDR
           value: "ledger-ledger-0.ledger-ledger-headless.default.svc.cluster.local:8888,ledger-ledger-1.ledger-ledger-headless.default.svc.cluster.local:8888,ledger-ledger-2.ledger-ledger-headless.default.svc.cluster.local:8888,ledger-ledger-3.ledger-ledger-headless.default.svc.cluster.local:8888,ledger-ledger-4.ledger-ledger-headless.default.svc.cluster.local:8888,ledger-ledger-5.ledger-ledger-headless.default.svc.cluster.local:8888,ledger-ledger-6.ledger-ledger-headless.default.svc.cluster.local:8888"
+        - name: LEDGER_PER_NODE_PEER_ADDR
+          value: "ledger-ledger-0.ledger-ledger-headless.default.svc.cluster.local:8889,ledger-ledger-1.ledger-ledger-headless.default.svc.cluster.local:8889,ledger-ledger-2.ledger-ledger-headless.default.svc.cluster.local:8889,ledger-ledger-3.ledger-ledger-headless.default.svc.cluster.local:8889,ledger-ledger-4.ledger-ledger-headless.default.svc.cluster.local:8889,ledger-ledger-5.ledger-ledger-headless.default.svc.cluster.local:8889,ledger-ledger-6.ledger-ledger-headless.default.svc.cluster.local:8889"
         - name: EXPECTED_VOTERS
           value: "3"
         - name: EXIT_AFTER_SETUP
@@ -97,6 +99,8 @@ spec:
           value: "ledger-ledger:8888"
         - name: LEDGER_PER_NODE_GRPC_ADDR
           value: "ledger-ledger-0.ledger-ledger-headless.default.svc.cluster.local:8888,ledger-ledger-1.ledger-ledger-headless.default.svc.cluster.local:8888,ledger-ledger-2.ledger-ledger-headless.default.svc.cluster.local:8888,ledger-ledger-3.ledger-ledger-headless.default.svc.cluster.local:8888,ledger-ledger-4.ledger-ledger-headless.default.svc.cluster.local:8888,ledger-ledger-5.ledger-ledger-headless.default.svc.cluster.local:8888,ledger-ledger-6.ledger-ledger-headless.default.svc.cluster.local:8888"
+        - name: LEDGER_PER_NODE_PEER_ADDR
+          value: "ledger-ledger-0.ledger-ledger-headless.default.svc.cluster.local:8889,ledger-ledger-1.ledger-ledger-headless.default.svc.cluster.local:8889,ledger-ledger-2.ledger-ledger-headless.default.svc.cluster.local:8889,ledger-ledger-3.ledger-ledger-headless.default.svc.cluster.local:8889,ledger-ledger-4.ledger-ledger-headless.default.svc.cluster.local:8889,ledger-ledger-5.ledger-ledger-headless.default.svc.cluster.local:8889,ledger-ledger-6.ledger-ledger-headless.default.svc.cluster.local:8889"
         - name: EXPECTED_VOTERS
           value: "3"
         # Per-bulk driver decisions (dispatch, outcome, model verdict) in the

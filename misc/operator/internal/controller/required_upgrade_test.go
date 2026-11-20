@@ -29,15 +29,15 @@ import (
 	ledgerv1alpha1 "github.com/formancehq/ledger/misc/operator/api/v1alpha1"
 )
 
-var testStopVersions = []string{"v3.0.0-rc.4"}
+var testStopVersions = []string{"v3.0.0-rc.4", "v3.0.0-rc.5"}
 
 func TestMandatoryStopVersionBoundary(t *testing.T) {
 	t.Parallel()
 	require.False(t, requiresStoppedUpgrade("v3.0.0-rc.2", "v3.0.0-rc.3", mandatoryStopVersions), "rc.3 must remain rolling")
 	require.True(t, requiresStoppedUpgrade("v3.0.0-rc.3", "v3.0.0-rc.4", mandatoryStopVersions), "rc.4 must stop rc.3 voters before emitting payloads")
+	require.True(t, requiresStoppedUpgrade("v3.0.0-rc.4", "v3.0.0-rc.5", mandatoryStopVersions), "rc.5 must stop rc.4 voters before changing the peer port and aggregate totals")
 	require.True(t, requiresPinnedUpgradeTarget("v3.0.0-rc.2", "latest", mandatoryStopVersions), "a moving tag could cross the rc.4 boundary")
 	require.True(t, requiresPinnedUpgradeTarget("v3.0.0-rc.3", "latest", mandatoryStopVersions))
-	require.True(t, requiresStoppedUpgrade("v3.0.0-rc.4", "v3.0.0-rc.5", mandatoryStopVersions), "rc.5 must stop rc.4 voters: they misdecode aggregate totals forwarded by an rc.5 peer")
 	require.True(t, requiresPinnedUpgradeTarget("v3.0.0-rc.4", "latest", mandatoryStopVersions), "a moving tag could cross the rc.5 boundary")
 	for _, tt := range []struct {
 		source, target string
@@ -47,16 +47,19 @@ func TestMandatoryStopVersionBoundary(t *testing.T) {
 		{"v3.0.0-rc.2", "v3.0.0-rc.3", false},
 		{"v3.0.0-rc.1", "v3.0.0-rc.3", false}, // Admission still rejects the RC jump.
 		{"v3.0.0-rc.3", "v3.0.0-rc.4", true},
+		{"v3.0.0-rc.4", "v3.0.0-rc.5", true},
 		{"v3.0.0-rc.2", "v3.0.0-rc.4", true}, // Selection crosses the boundary; admission still rejects the RC jump.
 		{"v3.0.0-rc.3", "v3.0.0-rc.3", false},
 		{"v3.0.0-rc.4", "v3.0.0-rc.3", false},
 		{"latest", "v3.0.0-rc.4", false},
+		{"latest", "v3.0.0-rc.5", false},
 	} {
 		require.Equal(t, tt.stop, requiresStoppedUpgrade(tt.source, tt.target, testStopVersions), "%s -> %s", tt.source, tt.target)
 	}
 	require.True(t, requiresPinnedUpgradeTarget("v3.0.0-rc.3", "latest", testStopVersions))
 	require.True(t, requiresPinnedUpgradeTarget("v3.0.0-rc.3", "3.0.0-rc.4", testStopVersions))
-	require.False(t, requiresPinnedUpgradeTarget("v3.0.0-rc.4", "latest", testStopVersions))
+	require.True(t, requiresPinnedUpgradeTarget("v3.0.0-rc.4", "latest", testStopVersions))
+	require.False(t, requiresPinnedUpgradeTarget("v3.0.0-rc.5", "latest", testStopVersions))
 	for _, tt := range []struct {
 		source, target string
 		block          bool
@@ -64,6 +67,7 @@ func TestMandatoryStopVersionBoundary(t *testing.T) {
 		{"latest", "v3.0.0", true},
 		{"", "v3.0.0", true}, // Digest or unreadable source image.
 		{"latest", "v3.0.0-rc.4", true},
+		{"latest", "v3.0.0-rc.5", true},
 		{"latest", "v3.0.0-rc.3", false},
 		{"latest", "latest", false},
 		{"latest", "main", false},

@@ -58,6 +58,7 @@ func TestServiceAdvertiseAddr_IPv6RemoteRPC(t *testing.T) {
 		DataDir:  t.TempDir(),
 		GRPCPort: listener.Addr().(*net.TCPAddr).Port,
 	}
+	cfg.GRPCPeerPort = cfg.GRPCPort
 	// Exercise the same provider registered in the bootstrap Fx graph.
 	published, err := provideNodeConfig(cfg)
 	require.NoError(t, err)

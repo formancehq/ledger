@@ -1095,7 +1095,7 @@ func TestWriteBulkResponse_AllSuccess(t *testing.T) {
 	require.Equal(t, http.StatusOK, w.Code)
 }
 
-func TestWriteBulkResponse_NilLog(t *testing.T) {
+func TestWriteBulkResponse_RejectsNilLog(t *testing.T) {
 	t.Parallel()
 
 	elements := []*servicepb.BulkElement{
@@ -1109,9 +1109,9 @@ func TestWriteBulkResponse_NilLog(t *testing.T) {
 	}
 
 	w := httptest.NewRecorder()
-	writeBulkResponse(w, testBulkRequest(), elements, results, false)
-
-	require.Equal(t, http.StatusOK, w.Code)
+	require.Panics(t, func() {
+		writeBulkResponse(w, testBulkRequest(), elements, results, false)
+	})
 }
 
 func TestWriteBulkErrorResponse_NilError(t *testing.T) {
@@ -1472,7 +1472,7 @@ func TestWriteBulkResponse_LogWithCreatedTransaction(t *testing.T) {
 	require.Contains(t, w.Body.String(), "CREATE_TRANSACTION")
 }
 
-func TestWriteBulkResponse_LogWithoutData(t *testing.T) {
+func TestWriteBulkResponse_RejectsLogWithoutData(t *testing.T) {
 	t.Parallel()
 
 	elements := []*servicepb.BulkElement{
@@ -1491,9 +1491,9 @@ func TestWriteBulkResponse_LogWithoutData(t *testing.T) {
 	}
 
 	w := httptest.NewRecorder()
-	writeBulkResponse(w, testBulkRequest(), elements, results, false)
-
-	require.Equal(t, http.StatusOK, w.Code)
+	require.Panics(t, func() {
+		writeBulkResponse(w, testBulkRequest(), elements, results, false)
+	})
 }
 
 // --------------------------------------------------------------------------

@@ -34,6 +34,18 @@ func TestServiceAdvertiseAddr_WithoutPort(t *testing.T) {
 	require.Equal(t, "myhost:8080", cfg.ServiceAdvertiseAddr())
 }
 
+func TestPeerServiceAdvertiseAddr_UsesPeerPort(t *testing.T) {
+	t.Parallel()
+
+	cfg := Config{
+		RaftConfig:   node.NodeConfig{AdvertiseAddr: "myhost:7777"},
+		GRPCPort:     8888,
+		GRPCPeerPort: 9999,
+	}
+
+	require.Equal(t, "myhost:9999", cfg.PeerServiceAdvertiseAddr())
+}
+
 func TestServiceAdvertiseAddr_RoundTrip(t *testing.T) {
 	t.Parallel()
 
@@ -190,6 +202,42 @@ func TestValidateClusterSecretRequiresTLS(t *testing.T) {
 	}
 }
 
+func TestValidatePeerGRPCPort(t *testing.T) {
+	t.Parallel()
+
+	for _, tt := range []struct {
+		name     string
+		grpcPort int
+		httpPort int
+		peerPort int
+		wantErr  string
+	}{
+		{name: "default", grpcPort: 8888, httpPort: 9000},
+		{name: "custom distinct", grpcPort: 9190, httpPort: 9000, peerPort: 9292},
+		{name: "public grpc collision", grpcPort: 8888, httpPort: 9000, peerPort: 8888, wantErr: "must differ from --grpc-port"},
+		{name: "http collision", grpcPort: 8888, httpPort: 9000, peerPort: 9000, wantErr: "must differ from --http-port"},
+		{name: "derived http collision", grpcPort: 8999, httpPort: 9000, wantErr: "must differ from --http-port"},
+		{name: "raft collision", grpcPort: 8888, httpPort: 9000, peerPort: 7777, wantErr: "must differ from the Raft bind port"},
+		{name: "derived overflow", grpcPort: 65535, httpPort: 9000, wantErr: "between 1 and 65535"},
+		{name: "negative peer port", grpcPort: 8888, httpPort: 9000, peerPort: -1, wantErr: "between 1 and 65535"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			cfg := validBaseConfig()
+			cfg.GRPCPort = tt.grpcPort
+			cfg.HTTPPort = tt.httpPort
+			cfg.GRPCPeerPort = tt.peerPort
+			cfg.RaftConfig.BindAddr = "0.0.0.0:7777"
+			err := cfg.Validate()
+			if tt.wantErr == "" {
+				require.NoError(t, err)
+			} else {
+				require.ErrorContains(t, err, tt.wantErr)
+			}
+		})
+	}
+}
+
 func TestValidateClusterPolicyFields(t *testing.T) {
 	t.Parallel()
 
@@ -314,22 +362,25 @@ func TestValidateAuthConfig(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name    string
-		auth    AuthFlagConfig
-		tlsMode TLSMode
-		wantErr string
+		name          string
+		auth          AuthFlagConfig
+		tlsMode       TLSMode
+		clusterSecret string
+		wantErr       string
 	}{
 		{
-			name:    "auth enabled with issuer over TLS required",
-			auth:    AuthFlagConfig{Enabled: true, Issuer: "https://issuer.example.com"},
-			tlsMode: TLSModeRequired,
-			wantErr: "",
+			name:          "auth enabled with issuer over TLS required",
+			auth:          AuthFlagConfig{Enabled: true, Issuer: "https://issuer.example.com"},
+			tlsMode:       TLSModeRequired,
+			clusterSecret: "cluster-secret",
+			wantErr:       "",
 		},
 		{
-			name:    "auth enabled with plural issuers only over TLS required",
-			auth:    AuthFlagConfig{Enabled: true, Issuers: []string{"https://a.example.com", "https://b.example.com"}},
-			tlsMode: TLSModeRequired,
-			wantErr: "",
+			name:          "auth enabled with plural issuers only over TLS required",
+			auth:          AuthFlagConfig{Enabled: true, Issuers: []string{"https://a.example.com", "https://b.example.com"}},
+			tlsMode:       TLSModeRequired,
+			clusterSecret: "cluster-secret",
+			wantErr:       "",
 		},
 		{
 			name:    "auth enabled with issuer over TLS optional is rejected",
@@ -338,16 +389,18 @@ func TestValidateAuthConfig(t *testing.T) {
 			wantErr: "--auth-enabled requires --tls-mode=required",
 		},
 		{
-			name:    "auth enabled with ed25519 keys file over TLS",
-			auth:    AuthFlagConfig{Enabled: true, Ed25519KeysFile: "/path/to/keys"},
-			tlsMode: TLSModeRequired,
-			wantErr: "",
+			name:          "auth enabled with ed25519 keys file over TLS",
+			auth:          AuthFlagConfig{Enabled: true, Ed25519KeysFile: "/path/to/keys"},
+			tlsMode:       TLSModeRequired,
+			clusterSecret: "cluster-secret",
+			wantErr:       "",
 		},
 		{
-			name:    "auth enabled with both issuer and ed25519 over TLS",
-			auth:    AuthFlagConfig{Enabled: true, Issuer: "https://issuer.example.com", Ed25519KeysFile: "/path/to/keys"},
-			tlsMode: TLSModeRequired,
-			wantErr: "",
+			name:          "auth enabled with both issuer and ed25519 over TLS",
+			auth:          AuthFlagConfig{Enabled: true, Issuer: "https://issuer.example.com", Ed25519KeysFile: "/path/to/keys"},
+			tlsMode:       TLSModeRequired,
+			clusterSecret: "cluster-secret",
+			wantErr:       "",
 		},
 		{
 			name:    "auth enabled with credentials but TLS disabled",
@@ -360,6 +413,12 @@ func TestValidateAuthConfig(t *testing.T) {
 			auth:    AuthFlagConfig{Enabled: true},
 			tlsMode: TLSModeRequired,
 			wantErr: "--auth-enabled requires either",
+		},
+		{
+			name:    "auth enabled without cluster secret",
+			auth:    AuthFlagConfig{Enabled: true, Issuer: "https://issuer.example.com"},
+			tlsMode: TLSModeRequired,
+			wantErr: "--auth-enabled requires --cluster-secret",
 		},
 		{
 			name:    "auth disabled no flags",
@@ -389,6 +448,7 @@ func TestValidateAuthConfig(t *testing.T) {
 			cfg := validBaseConfig()
 			cfg.AuthConfig = tt.auth
 			cfg.TLSConfig.Mode = tt.tlsMode
+			cfg.ClusterSecret = tt.clusterSecret
 			if tt.tlsMode.AllowsTLS() {
 				// Provide cert/key so the TLS-config validation doesn't trip first.
 				cfg.TLSConfig.CertFile = "/tmp/fake.crt"
