@@ -1451,7 +1451,7 @@ Read endpoints comparison with the original ledger:
 | `GET /v3/{ledgerName}/numscripts/{name}?version=` | ✅ | ❌ | Get numscript (version selector, empty/latest = greatest semver) |
 | `GET /v3/{ledgerName}/numscripts/{name}/usage` | ✅ | ❌ | Get invocation count + last-used timestamp. A missing or deleted ledger returns `404 LEDGER_NOT_FOUND`; a never-invoked template returns a zero-valued `200` response |
 | `GET /v3/{ledgerName}/numscripts/{name}/versions` | ✅ | ❌ | List version history |
-| `PUT /v3/{ledgerName}/numscripts/{name}` | ✅ | ❌ | Save an immutable version (explicit full semver). Requires `ledger:WriteLedger` on both the dedicated route and gRPC `Apply(SaveNumscript)` |
+| `PUT /v3/{ledgerName}/numscripts/{name}` | ✅ | ❌ | Save an immutable version (explicit full semver). Requires `ledger:WriteLedger` on both the dedicated route and gRPC `Apply(SaveNumscript)`; missing ledger returns `404 LEDGER_NOT_FOUND` |
 | `GET /v3/{ledgerName}/account-types` | ✅ | ❌ | List account types |
 | `GET /v3/{ledgerName}/account-types/{typeName}` | ✅ | ❌ | Get account type |
 | `POST /v3/{ledgerName}/account-types` | ✅ | ❌ | Add account type. Requires `ledger:WriteMetadata` on both the dedicated route and gRPC `Apply` |
@@ -1474,6 +1474,14 @@ Read endpoints comparison with the original ledger:
 | `GET /v3/_/indexes/{canonicalId}/status` | ✅ | ❌ | Bucket-scoped IndexEntry |
 | `POST /v3/{ledgerName}/bulk` | ✅ | ❌ | Bulk operations (alternate path without underscore) |
 | `GET /_info` | ✅ | ❌ | Server build info (`version`, `commit`, `buildDate`, `goVersion`); unauthenticated, flat JSON (no `data` envelope) |
+
+HTTP prepared-query parameters accept strings, booleans and exact JSON integral
+numbers. Negative values map to gRPC `int64_value`; zero and positive values
+map to `uint64_value`. Integral decimal and exponent spellings are accepted;
+values outside those ranges, fractions and null are rejected with `400
+INVALID_PARAMETERS` before execution.
+Clients sending integers above 2^53 must use a lossless JSON serializer. This
+matches the typed gRPC parameter values without changing the service protocol.
 
 **Read consistency selector.** Every `/v3` read accepts `X-Consistency:
 stale` over HTTP, matching the gRPC `x-consistency: stale` metadata. The
