@@ -74,6 +74,22 @@ If a producer cannot mark the new orders, the change must remain backward
 compatible or add an explicit semantic version to the order. A capability by
 itself is an admission barrier; it is not a historical replay version.
 
+## Order markers that ride a stopped upgrade
+
+A per-order marker can select a new apply rule without a capability when a
+mandatory stopped upgrade already separates the binaries that read it from
+those that ignore it. The marker is the persisted declaration: an entry without
+it keeps its historical semantics on replay, and the stopped upgrade guarantees
+that no voter that ignores the marker applies an entry that carries it.
+
+`OrderTechnical.numscript_planning_failed` (EN-3331) is such a marker. An RC.5
+FSM re-plans the script of a flagged order and returns the planning failure; an
+RC.4 FSM ignores the flag and executes the script. Only RC.5 leaders produce
+flagged orders, after the
+[stopped RC.4 to RC.5 upgrade](../../../../ops/upgrades.md#operator-required-stopped-restart).
+A cluster not managed by the operator must stop every RC.4 member before
+starting an RC.5 member.
+
 ## Adding a protocol-breaking capability
 
 Use this workflow when a change can make an order apply differently on two

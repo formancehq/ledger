@@ -514,6 +514,15 @@ So discovery failure is treated as a **preparation gap, not a verdict**:
 
 That reason is **retryable and deliberately neither auditable nor freezable**: a preparation gap is not an executed business outcome. A non-replay preload-unavailable writes no audit entry or idempotency result; the client retries and eventually re-admits successfully or replays an outcome frozen by another proposal. `preload_unavailable` rides in `OrderTechnical`, so it is excluded from the idempotency hash — a forwarded retry hashes identically to the original, which lets the FSM dedup match and replay.
 
+### Planning failures on orders the FSM can skip
+
+A `CreateTransaction` that carries a `reference` and whitelists `TRANSACTION_REFERENCE_CONFLICT` is skipped by the FSM when the reference exists, before the script is looked at. Admission's `predictOrderSkip` only mirrors that decision to keep a skipped order's effects out of the batch overlay; it does not decide whether the script is planned. Every such order is planned. A planning failure is not refused at admission when the skip is predicted or the order is keyed, because the refusal would run before the FSM's idempotency dedup and could deny the replay of a batch that committed through the skip. An unkeyed order not predicted to skip keeps the fail-fast refusal: no outcome is retained for it.
+
+- **Admission** — on a planning failure it sets `OrderTechnical.numscript_planning_failed`, declares the keys `DiscoverNumscriptDependencies` read before failing (it returns them, with their `InputsHash`, alongside the error) and binds that hash in `inputs_resolution_hash`. This applies to any failure when the skip is predicted, and under an idempotency key to the failures admission would otherwise refuse. State-dependent failures of an order not predicted to skip keep the `preload_unavailable` path above.
+- **FSM** — `processCreateTransaction` runs its prologue first, so an existing reference skips the order. Otherwise `replanFailedScript` re-runs `DiscoverNumscriptDependencies` over the declared keys instead of executing. The same failure over values that hash to `inputs_resolution_hash` is the order's outcome: audited and frozen when it is a definitive failure, or a batch rejection that leaves the key free when it is an `UncommittedFailure` such as an unclassified compile error. A different hash, a read outside the declared keys (probed with `Scope.IsCovered`, so no coverage miss is recorded) or a planning that now succeeds returns the retryable `ErrStaleInputsResolution`.
+
+See [the replay contract](../architecture/subsystems/admission/idempotency.md#replay-after-a-skipped-scripted-transaction).
+
 ### Notes
 
 - **Shared parsing cache**: dependency resolution, the admission-side compile and the FSM-time stale re-resolution all use the NumscriptCache's parsed entry, so a script is parsed once per cache instance (admission and the FSM apply path each own one). Execution never walks the parsed AST: the FSM compiles the committed script text locally and runs it with bound variables, caching one verified warm VM instance per local compilation on the cache's compiled side.

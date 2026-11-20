@@ -113,6 +113,10 @@ func processCreateTransaction(ledger string, order *raftcmdpb.CreateTransactionO
 		return nil, exhausted
 	}
 
+	if ctx.NumscriptPlanningFailed {
+		return nil, replanFailedScript(s, ctx.NumscriptCache, ledger, order, script, ctx.InputsResolutionHash)
+	}
+
 	// Produce postings (handles balance checks and buffer updates)
 	result, err := producer.produce(s, ledger, order, script)
 	if err != nil {
