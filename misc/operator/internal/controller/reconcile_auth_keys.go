@@ -215,7 +215,7 @@ func (r *ClusterReconciler) reconcileAuthKeysProjectionWithDeletion(ctx context.
 		return nil, authKeysNotPending, err
 	}
 
-	logger.V(1).Info("resolved credentials keys", "matched", matched, "resolved", len(credentials), "unresolved", len(unresolved))
+	logger.V(1).Info("resolved credentials keys", "clusterLabels", ledger.Labels, "matched", matched, "resolved", len(credentials), "unresolved", len(unresolved))
 
 	cmName := authKeysConfigMapName(ledger.Name)
 
@@ -711,10 +711,7 @@ func (r *ClusterReconciler) credentialsToClusters(ctx context.Context, obj clien
 		return nil
 	}
 
-	requests := r.clustersMatchingSelector(ctx, &credentials.Spec.Selector, "")
-	log.FromContext(ctx).Info("mapping Credentials event to Clusters", "credentials", credentials.Name, "requests", len(requests))
-
-	return requests
+	return r.clustersMatchingSelector(ctx, &credentials.Spec.Selector, "")
 }
 
 // clustersMatchingSelector lists Clusters matching the given label selector.
