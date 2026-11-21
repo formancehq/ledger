@@ -11,6 +11,7 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/util/retry"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	ledgerv1alpha1 "github.com/formancehq/ledger/misc/operator/api/v1alpha1"
@@ -212,9 +213,13 @@ func TestReconcile_CredentialsOrphanCleanup(t *testing.T) {
 
 	// Remove the matching label from the service in nsB so it leaves the selector scope.
 	lsB := &ledgerv1alpha1.Cluster{}
-	require.NoError(t, k8sClient.Get(ctx, types.NamespacedName{Namespace: nsB, Name: "cleanup-cluster"}, lsB))
-	lsB.Labels = map[string]string{"tier": "elsewhere"}
-	require.NoError(t, k8sClient.Update(ctx, lsB))
+	require.NoError(t, retry.RetryOnConflict(retry.DefaultRetry, func() error {
+		if err := k8sClient.Get(ctx, types.NamespacedName{Namespace: nsB, Name: "cleanup-cluster"}, lsB); err != nil {
+			return err
+		}
+		lsB.Labels = map[string]string{"tier": "elsewhere"}
+		return k8sClient.Update(ctx, lsB)
+	}))
 
 	// The replica in nsB must disappear; the one in nsA must remain.
 	requireEventually(t, func() bool {
