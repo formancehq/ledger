@@ -607,6 +607,14 @@ func (r *ClusterReconciler) collectClusterCredentialsKeys(ctx context.Context, r
 	if err := reader.List(ctx, &list); err != nil {
 		return nil, 0, nil, fmt.Errorf("listing Credentials: %w", err)
 	}
+	if len(list.Items) > 0 {
+		for i := range list.Items {
+			cred := &list.Items[i]
+			logger.Info("scanning credentials selector", "cluster", ledger.Name, "credentials", cred.Name, "selector", cred.Spec.Selector.MatchLabels, "phase", cred.Status.Phase)
+		}
+	} else {
+		logger.Info("credentials list is empty", "cluster", ledger.Name)
+	}
 
 	var keys []credentialsKeyInfo
 	var unresolved []unresolvedCredential
@@ -711,7 +719,10 @@ func (r *ClusterReconciler) credentialsToClusters(ctx context.Context, obj clien
 		return nil
 	}
 
-	return r.clustersMatchingSelector(ctx, &credentials.Spec.Selector, "")
+	requests := r.clustersMatchingSelector(ctx, &credentials.Spec.Selector, "")
+	log.FromContext(ctx).Info("mapping Credentials event to Clusters", "credentials", credentials.Name, "phase", credentials.Status.Phase, "refs", len(credentials.Status.DistributedSecretRefs), "requests", len(requests))
+
+	return requests
 }
 
 // clustersMatchingSelector lists Clusters matching the given label selector.
