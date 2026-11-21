@@ -8,7 +8,6 @@ import (
 	"maps"
 	"path"
 	"sort"
-	"strings"
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
@@ -202,10 +201,10 @@ func (r *ClusterReconciler) reconcileAuthKeysProjection(ctx context.Context, led
 
 func (r *ClusterReconciler) reconcileAuthKeysProjectionWithDeletion(ctx context.Context, ledger *ledgerv1alpha1.Cluster, retainMountedConfigMap, mayDelete bool) ([]credentialsKeyInfo, authKeysPendingReason, error) {
 	logger := log.FromContext(ctx)
-	// A cached Credentials list can lag a successful distribution and make a
-	// matching key look revoked. Read the current selector, status and Secret
-	// directly from the API before changing the auth-keys projection.
-	reader := r.storageAPIReader()
+	var reader client.Reader = r.Client
+	if retainMountedConfigMap {
+		reader = r.storageAPIReader()
+	}
 
 	// Collect keys from cluster-scoped Credentials. matched counts Credentials
 	// whose selector matches this Cluster, regardless of distribution state;
@@ -216,7 +215,7 @@ func (r *ClusterReconciler) reconcileAuthKeysProjectionWithDeletion(ctx context.
 		return nil, authKeysNotPending, err
 	}
 
-	logger.V(1).Info("resolved credentials keys", "clusterLabels", ledger.Labels, "matched", matched, "resolved", len(credentials), "unresolved", len(unresolved))
+	logger.V(1).Info("resolved credentials keys", "matched", matched, "resolved", len(credentials), "unresolved", len(unresolved))
 
 	cmName := authKeysConfigMapName(ledger.Name)
 
@@ -608,13 +607,6 @@ func (r *ClusterReconciler) collectClusterCredentialsKeys(ctx context.Context, r
 	if err := reader.List(ctx, &list); err != nil {
 		return nil, 0, nil, fmt.Errorf("listing Credentials: %w", err)
 	}
-	if strings.HasPrefix(ledger.Name, "authcm-") || strings.HasPrefix(ledger.Name, "authsts-") || strings.HasPrefix(ledger.Name, "authhash-") {
-		fmt.Printf("AUTH SCAN cluster=%s count=%d\n", ledger.Name, len(list.Items))
-		for i := range list.Items {
-			cred := &list.Items[i]
-			fmt.Printf("AUTH SCAN cluster=%s credential=%s selector=%v phase=%s\n", ledger.Name, cred.Name, cred.Spec.Selector.MatchLabels, cred.Status.Phase)
-		}
-	}
 
 	var keys []credentialsKeyInfo
 	var unresolved []unresolvedCredential
@@ -719,10 +711,7 @@ func (r *ClusterReconciler) credentialsToClusters(ctx context.Context, obj clien
 		return nil
 	}
 
-	requests := r.clustersMatchingSelector(ctx, &credentials.Spec.Selector, "")
-	log.FromContext(ctx).Info("mapping Credentials event to Clusters", "credentials", credentials.Name, "phase", credentials.Status.Phase, "refs", len(credentials.Status.DistributedSecretRefs), "requests", len(requests))
-
-	return requests
+	return r.clustersMatchingSelector(ctx, &credentials.Spec.Selector, "")
 }
 
 // clustersMatchingSelector lists Clusters matching the given label selector.
@@ -741,10 +730,7 @@ func (r *ClusterReconciler) clustersMatchingSelector(ctx context.Context, ls *me
 	}
 
 	var ledgers ledgerv1alpha1.ClusterList
-	// A Credentials event may arrive before the Cluster cache observes its
-	// current labels. Use the live API so a missed mapping cannot strand the
-	// auth-key projection after the Credentials becomes Ready.
-	if err := r.storageAPIReader().List(ctx, &ledgers, opts); err != nil {
+	if err := r.List(ctx, &ledgers, opts); err != nil {
 		log.FromContext(ctx).Error(err, "failed to list Clusters for credentials mapping")
 
 		return nil

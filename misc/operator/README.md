@@ -947,12 +947,8 @@ geometry with the current deletion-protection toggle. Recovery protection
 checks saved PVC/PV UIDs and bindings and fences label patches with
 UID/resourceVersion preconditions. Newer invalid auth, TLS
 or replica fields do not change those dependency inputs.
-Both recovery and normal auth-key projection read current Credentials and their
-referenced Secrets directly from the API, rather than relying on cached
-key-distribution observations. A stale cache must not make a matching key look
-removed during normal reconciliation. Credentials events also select matching
-Clusters through the direct API reader, so a stale Cluster cache cannot miss
-the reconciliation that publishes a newly distributed key.
+Recovery reads current Credentials and their referenced Secrets directly from
+the API, rather than relying on cached key-distribution observations.
 Independent auth-key ConfigMap and cluster-secret writes also retain the live
 Cluster's `spec.additionalLabels`.
 

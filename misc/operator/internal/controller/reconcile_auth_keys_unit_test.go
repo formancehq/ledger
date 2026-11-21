@@ -585,47 +585,6 @@ func TestReconcileAuthKeys_Distributed_CreatesConfigMap(t *testing.T) {
 	assert.Equal(t, "deadbeef", cm.Data["credentials-thierry-cred-pubkey.hex"])
 }
 
-// A Credentials status update may be visible through the API before the
-// manager's cache observes it. The projection must not interpret that stale
-// cache view as a revoked key set.
-func TestReconcileAuthKeys_Distributed_UsesLiveReaderWhenCacheIsStale(t *testing.T) {
-	t.Parallel()
-
-	const (
-		clusterName = "thierry"
-		namespace   = "ledger-v3"
-		secretName  = "thierry-cred-secret"
-	)
-	scheme := authKeysScheme(t)
-	selector := map[string]string{"tier": "gold"}
-	cred := matchingCredentials("thierry-cred", selector, true, namespace, secretName)
-	secret := &corev1.Secret{
-		ObjectMeta: metav1.ObjectMeta{Name: secretName, Namespace: namespace},
-		Data: map[string][]byte{
-			"pubkey.hex": []byte("deadbeef"),
-			"key-id":     []byte("kid-123"),
-		},
-	}
-
-	// The cached client deliberately has no Credentials or Secret. The direct
-	// reader represents the current API state after distribution completed.
-	cached := fake.NewClientBuilder().WithScheme(scheme).Build()
-	live := fake.NewClientBuilder().WithScheme(scheme).WithObjects(cred, secret).Build()
-	r := &ClusterReconciler{Client: cached, APIReader: live, Scheme: scheme}
-	cluster := authEnabledCluster(clusterName, namespace, selector)
-
-	credentials, pending, err := r.reconcileAuthKeys(t.Context(), cluster)
-	require.NoError(t, err)
-	assert.False(t, pending.pending())
-	require.Len(t, credentials, 1)
-	assert.Equal(t, "kid-123", credentials[0].KeyID)
-
-	cm := &corev1.ConfigMap{}
-	require.NoError(t, cached.Get(t.Context(), types.NamespacedName{Namespace: namespace, Name: authKeysConfigMapName(clusterName)}, cm))
-	assert.Equal(t, "deadbeef", cm.Data["credentials-thierry-cred-pubkey.hex"])
-	assert.Contains(t, cm.Data["auth-keys.json"], "kid-123")
-}
-
 // TestReconcileAuthKeys_FullyResolved_MalformedConfigMap_SelfHeals is the
 // regression for the delta finding: the fully-resolved path (no unresolved
 // credential) must stay self-healing. A pre-existing auth-keys ConfigMap whose
@@ -1041,8 +1000,7 @@ func TestReconcileAuthKeys_PartialResolution_NoPriorKey_Skips(t *testing.T) {
 // TestCredentialsToClusters_EnqueuesMatchingCluster verifies the watch mapping
 // that drives convergence: a Credentials change must enqueue every Cluster its
 // selector matches, so the transition non-distributed -> distributed triggers a
-// re-reconcile. A Cluster that initially sees no Credentials has no pending
-// auth-key requeue, so this mapping must not miss that transition.
+// re-reconcile without waiting for the requeue safety net.
 func TestCredentialsToClusters_EnqueuesMatchingCluster(t *testing.T) {
 	t.Parallel()
 
@@ -1067,27 +1025,6 @@ func TestCredentialsToClusters_EnqueuesMatchingCluster(t *testing.T) {
 	requests := r.credentialsToClusters(context.Background(), client.Object(cred))
 	require.Len(t, requests, 1, "only the Cluster matched by the selector must be enqueued")
 	assert.Equal(t, types.NamespacedName{Name: clusterName, Namespace: namespace}, requests[0].NamespacedName)
-}
-
-func TestCredentialsToClusters_UsesLiveReaderWhenClusterCacheIsStale(t *testing.T) {
-	t.Parallel()
-
-	const namespace = "ledger-v3"
-	selector := map[string]string{"tier": "gold"}
-	scheme := authKeysScheme(t)
-	matching := authEnabledCluster("thierry", namespace, selector)
-	nonMatching := authEnabledCluster("other", namespace, map[string]string{"tier": "silver"})
-	stale := matching.DeepCopy()
-	stale.Labels = map[string]string{"tier": "silver"}
-
-	cached := fake.NewClientBuilder().WithScheme(scheme).WithObjects(stale).Build()
-	live := fake.NewClientBuilder().WithScheme(scheme).WithObjects(matching, nonMatching).Build()
-	r := &ClusterReconciler{Client: cached, APIReader: live, Scheme: scheme}
-	cred := matchingCredentials("thierry-cred", selector, true, namespace, "secret")
-
-	requests := r.credentialsToClusters(t.Context(), cred)
-	require.Len(t, requests, 1, "the live matching Cluster must be enqueued even if its cached labels are stale")
-	assert.Equal(t, types.NamespacedName{Name: matching.Name, Namespace: namespace}, requests[0].NamespacedName)
 }
 
 // TestReconcileVolumeProtectionPass_RunsIndependentlyOfAuthKeys is the core
