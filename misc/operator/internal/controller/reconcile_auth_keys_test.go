@@ -15,38 +15,6 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 )
 
-// Capture the live API state before the credentials cleanup runs if an async
-// auth-keys assertion fails. The values explain whether the selector stopped
-// matching or the projection failed after distribution became Ready.
-func logAuthKeysStateOnFailure(t *testing.T, clusterKey, credentialsKey types.NamespacedName) {
-	t.Helper()
-	t.Cleanup(func() {
-		if !t.Failed() {
-			return
-		}
-
-		cluster := &ledgerv1alpha1.Cluster{}
-		clusterErr := k8sClient.Get(ctx, clusterKey, cluster)
-		credentials := &ledgerv1alpha1.Credentials{}
-		credentialsErr := k8sClient.Get(ctx, credentialsKey, credentials)
-		cm := &corev1.ConfigMap{}
-		cmErr := k8sClient.Get(ctx, types.NamespacedName{Namespace: clusterKey.Namespace, Name: "ledger-" + clusterKey.Name + "-auth-keys"}, cm)
-		sts := &appsv1.StatefulSet{}
-		stsErr := k8sClient.Get(ctx, types.NamespacedName{Namespace: clusterKey.Namespace, Name: "ledger-" + clusterKey.Name}, sts)
-		hasAuthVolume := false
-		for _, volume := range sts.Spec.Template.Spec.Volumes {
-			if volume.Name == "auth-keys" {
-				hasAuthVolume = true
-				break
-			}
-		}
-		t.Logf("auth-keys state: cluster=%s clusterGet=%v labels=%v; credentials=%s credentialsGet=%v selector=%v phase=%q distributedRefs=%d; configMapGet=%v; statefulSetGet=%v authVolume=%t authHash=%q",
-			clusterKey, clusterErr, cluster.Labels, credentialsKey, credentialsErr, credentials.Spec.Selector.MatchLabels,
-			credentials.Status.Phase, len(credentials.Status.DistributedSecretRefs), cmErr, stsErr,
-			hasAuthVolume, sts.Spec.Template.Annotations[annotationAuthKeysHash])
-	})
-}
-
 func TestReconcile_AuthKeysConfigMap(t *testing.T) {
 	ns := createTestNamespace(t)
 
@@ -61,7 +29,6 @@ func TestReconcile_AuthKeysConfigMap(t *testing.T) {
 	t.Cleanup(func() {
 		_ = k8sClient.Delete(ctx, credentials) //nolint:errcheck // best-effort cleanup
 	})
-	logAuthKeysStateOnFailure(t, types.NamespacedName{Namespace: ns, Name: ls.Name}, types.NamespacedName{Name: credentials.Name})
 
 	// Wait for the credentials to be ready (secret created in the service's namespace).
 	requireEventually(t, func() bool {
@@ -115,7 +82,6 @@ func TestReconcile_AuthKeysStatefulSet(t *testing.T) {
 	t.Cleanup(func() {
 		_ = k8sClient.Delete(ctx, credentials) //nolint:errcheck // best-effort cleanup
 	})
-	logAuthKeysStateOnFailure(t, types.NamespacedName{Namespace: ns, Name: ls.Name}, types.NamespacedName{Name: credentials.Name})
 
 	// Wait for credentials to be ready.
 	requireEventually(t, func() bool {
@@ -204,7 +170,6 @@ func TestReconcile_AuthKeysHashAnnotation(t *testing.T) {
 	t.Cleanup(func() {
 		_ = k8sClient.Delete(ctx, credentials) //nolint:errcheck // best-effort cleanup
 	})
-	logAuthKeysStateOnFailure(t, types.NamespacedName{Namespace: ns, Name: ls.Name}, types.NamespacedName{Name: credentials.Name})
 
 	// Wait for credentials to be ready.
 	requireEventually(t, func() bool {

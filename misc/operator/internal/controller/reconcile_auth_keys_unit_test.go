@@ -585,6 +585,47 @@ func TestReconcileAuthKeys_Distributed_CreatesConfigMap(t *testing.T) {
 	assert.Equal(t, "deadbeef", cm.Data["credentials-thierry-cred-pubkey.hex"])
 }
 
+// A Credentials status update may be visible through the API before the
+// manager's cache observes it. The projection must not interpret that stale
+// cache view as a revoked key set.
+func TestReconcileAuthKeys_Distributed_UsesLiveReaderWhenCacheIsStale(t *testing.T) {
+	t.Parallel()
+
+	const (
+		clusterName = "thierry"
+		namespace   = "ledger-v3"
+		secretName  = "thierry-cred-secret"
+	)
+	scheme := authKeysScheme(t)
+	selector := map[string]string{"tier": "gold"}
+	cred := matchingCredentials("thierry-cred", selector, true, namespace, secretName)
+	secret := &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{Name: secretName, Namespace: namespace},
+		Data: map[string][]byte{
+			"pubkey.hex": []byte("deadbeef"),
+			"key-id":     []byte("kid-123"),
+		},
+	}
+
+	// The cached client deliberately has no Credentials or Secret. The direct
+	// reader represents the current API state after distribution completed.
+	cached := fake.NewClientBuilder().WithScheme(scheme).Build()
+	live := fake.NewClientBuilder().WithScheme(scheme).WithObjects(cred, secret).Build()
+	r := &ClusterReconciler{Client: cached, APIReader: live, Scheme: scheme}
+	cluster := authEnabledCluster(clusterName, namespace, selector)
+
+	credentials, pending, err := r.reconcileAuthKeys(t.Context(), cluster)
+	require.NoError(t, err)
+	assert.False(t, pending.pending())
+	require.Len(t, credentials, 1)
+	assert.Equal(t, "kid-123", credentials[0].KeyID)
+
+	cm := &corev1.ConfigMap{}
+	require.NoError(t, cached.Get(t.Context(), types.NamespacedName{Namespace: namespace, Name: authKeysConfigMapName(clusterName)}, cm))
+	assert.Equal(t, "deadbeef", cm.Data["credentials-thierry-cred-pubkey.hex"])
+	assert.Contains(t, cm.Data["auth-keys.json"], "kid-123")
+}
+
 // TestReconcileAuthKeys_FullyResolved_MalformedConfigMap_SelfHeals is the
 // regression for the delta finding: the fully-resolved path (no unresolved
 // credential) must stay self-healing. A pre-existing auth-keys ConfigMap whose
