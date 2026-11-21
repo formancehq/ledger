@@ -201,10 +201,10 @@ func (r *ClusterReconciler) reconcileAuthKeysProjection(ctx context.Context, led
 
 func (r *ClusterReconciler) reconcileAuthKeysProjectionWithDeletion(ctx context.Context, ledger *ledgerv1alpha1.Cluster, retainMountedConfigMap, mayDelete bool) ([]credentialsKeyInfo, authKeysPendingReason, error) {
 	logger := log.FromContext(ctx)
-	var reader client.Reader = r.Client
-	if retainMountedConfigMap {
-		reader = r.storageAPIReader()
-	}
+	// A cached Credentials list can lag a successful distribution and make a
+	// matching key look revoked. Read the current selector, status and Secret
+	// directly from the API before changing the auth-keys projection.
+	reader := r.storageAPIReader()
 
 	// Collect keys from cluster-scoped Credentials. matched counts Credentials
 	// whose selector matches this Cluster, regardless of distribution state;
@@ -730,7 +730,10 @@ func (r *ClusterReconciler) clustersMatchingSelector(ctx context.Context, ls *me
 	}
 
 	var ledgers ledgerv1alpha1.ClusterList
-	if err := r.List(ctx, &ledgers, opts); err != nil {
+	// A Credentials event may arrive before the Cluster cache observes its
+	// current labels. Use the live API so a missed mapping cannot strand the
+	// auth-key projection after the Credentials becomes Ready.
+	if err := r.storageAPIReader().List(ctx, &ledgers, opts); err != nil {
 		log.FromContext(ctx).Error(err, "failed to list Clusters for credentials mapping")
 
 		return nil

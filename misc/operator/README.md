@@ -941,8 +941,12 @@ geometry with the current deletion-protection toggle. Recovery protection
 checks saved PVC/PV UIDs and bindings and fences label patches with
 UID/resourceVersion preconditions. Newer invalid auth, TLS
 or replica fields do not change those dependency inputs.
-Recovery reads current Credentials and their referenced Secrets directly from
-the API, rather than relying on cached key-distribution observations.
+Both recovery and normal auth-key projection read current Credentials and their
+referenced Secrets directly from the API, rather than relying on cached
+key-distribution observations. A stale cache must not make a matching key look
+removed during normal reconciliation. Credentials events also select matching
+Clusters through the direct API reader, so a stale Cluster cache cannot miss
+the reconciliation that publishes a newly distributed key.
 Independent auth-key ConfigMap and cluster-secret writes also retain the live
 Cluster's `spec.additionalLabels`.
 
@@ -1338,6 +1342,20 @@ just pre-commit     # Run all checks (generate + tidy + build)
 just build-plugin   # Build kubectl plugin
 just install-plugin # Install kubectl plugin to $GOPATH/bin
 ```
+
+From the repository root, run the complete API-server integration suite with
+the race detector and Kubernetes 1.32.x envtest assets:
+
+```bash
+nix develop .#operator-tests --command just operator-test-integration
+```
+
+`just operator-test-admission` in the same Nix shell runs the fast admission
+and BackupRun recovery subset. CI runs both recipes. Envtest does not run a
+kubelet, StatefulSet controller, or CSI driver. The Kind E2E suite below
+exercises kubelet and StatefulSet behavior with the `rancher.io/local-path`
+provisioner. Validate CSI driver behavior separately on a cluster with the
+intended CSI driver installed.
 
 ### End-to-end tests
 

@@ -579,7 +579,9 @@ removing all matching Credentials can therefore prevent a restarted Pod with
 the saved key-file wiring from starting. It does not disable authentication.
 The condition clears after the recovery pointer is gone and a normal
 StatefulSet pass succeeds; verify the actual Pod rollout separately. Recovery
-reads current Credentials and their referenced Secrets directly from the API.
+and normal auth-key projection read current Credentials and their referenced
+Secrets directly from the API, so a stale operator cache cannot make a
+matching key appear removed.
 
 Ed25519 keys and authorization metadata are loaded once at Pod boot. ConfigMap
 refresh alone does not revoke keys or reduce scopes in running Pods. The

@@ -150,14 +150,25 @@ func TestStoreIntegration(t *testing.T) {
 
 ### Operator API-server regressions
 
+`nix develop .#operator-tests --command just operator-test-integration` runs
+the complete Operator module suite with the `integration` build tag and race
+detector against Kubernetes 1.32.x envtest. The recipe does not filter test
+names or packages, so new integration tests enter the CI gate automatically.
+It limits parallel tests to four because some tests start isolated API servers
+in addition to the shared controller environment. The suite has a 20-minute
+timeout; it does not require Docker.
+
 `nix develop .#operator-tests --command just operator-test-admission` runs
-Ledger and BackupRun target admission and BackupRun recovery/association regressions with
+the fast Ledger and BackupRun target admission and BackupRun recovery/association subset with
 the race detector against Kubernetes 1.32.x envtest. The selection includes
 both labeled lost-response recovery and minimally admitted, unlabeled manual
 runs through Job-result capture, parent events and accounting. These tests
 publish Job and Pod status themselves; they do not run a kubelet or prove
 garbage collection. Keep the recipe's selection aligned with these regression
-names so CI executes the API-server evidence as well as operator unit tests.
+names. CI preserves this fast subset and also runs the complete integration
+suite, separately from untagged operator unit tests. Envtest does not prove
+kubelet behavior, StatefulSet adoption, garbage collection or CSI completion;
+real-cluster E2E tests remain separate.
 `TestBackupRunParentSelectorIntegration` checks the CRD field selector and real
 manager-cache index with unlabeled runs, misleading labels, other parents,
 namespace isolation and empty results.
@@ -1043,16 +1054,17 @@ export DOCKER_HOST=unix://$HOME/.orbstack/run/docker.sock
 
 ### Operator Integration Tests
 
-The default Nix shell provides `setup-envtest`, and its shell hook exports `KUBEBUILDER_ASSETS`. The first shell start downloads the etcd and kube-apiserver binaries. The lean `ci` shell does not include envtest. The `Tests-Operator` CI job uses the dedicated `operator-tests` shell for Ledger and BackupRun target admission plus BackupRun recovery and manual association regressions, selecting Kubernetes 1.32.x assets. See the [canonical selection description](#operator-api-server-regressions) above:
+The default Nix shell provides `setup-envtest`, and its shell hook exports
+`KUBEBUILDER_ASSETS`. The lean `ci` shell does not include envtest. The
+`Tests-Operator` CI job uses the dedicated `operator-tests` shell for both the
+fast admission subset and the complete integration suite. Both recipes select
+Kubernetes 1.32.x assets explicitly, downloading the etcd and kube-apiserver
+binaries on first use. See the [suite description](#operator-api-server-regressions)
+above:
 
 ```bash
 nix develop .#operator-tests --command just operator-test-admission
-```
-
-```bash
-# Run from misc/operator/ inside the default shell
-cd misc/operator
-go test -tags=integration ./internal/controller/ -v -count=1 -timeout=120s
+nix develop .#operator-tests --command just operator-test-integration
 ```
 
 ### Specific Tests
@@ -1313,9 +1325,11 @@ To learn more:
 
 ### Operator API admission
 
-CI runs `just operator-test-admission` in `nix develop .#operator-tests`.
+CI runs `just operator-test-admission` and `just operator-test-integration`
+in `nix develop .#operator-tests`.
 The recipe selects integration-tagged `TestLedgerAdmission` and
 `TestTraceSampling` cases in the Operator module using envtest. This preserves
 Ledger target immutability coverage and exercises trace sampler schema
 validation plus typed/raw conflict correction through the real StatefulSet
-environment. Untagged `go test ./...` in that module covers unit tests only.
+environment. The complete integration recipe runs every package without a
+test-name filter. Untagged `go test ./...` in that module covers unit tests only.
