@@ -8,6 +8,7 @@ import (
 	"maps"
 	"path"
 	"sort"
+	"strings"
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
@@ -607,13 +608,12 @@ func (r *ClusterReconciler) collectClusterCredentialsKeys(ctx context.Context, r
 	if err := reader.List(ctx, &list); err != nil {
 		return nil, 0, nil, fmt.Errorf("listing Credentials: %w", err)
 	}
-	if len(list.Items) > 0 {
+	if strings.HasPrefix(ledger.Name, "authcm-") || strings.HasPrefix(ledger.Name, "authsts-") || strings.HasPrefix(ledger.Name, "authhash-") {
+		fmt.Printf("AUTH SCAN cluster=%s count=%d\n", ledger.Name, len(list.Items))
 		for i := range list.Items {
 			cred := &list.Items[i]
-			logger.Info("scanning credentials selector", "cluster", ledger.Name, "credentials", cred.Name, "selector", cred.Spec.Selector.MatchLabels, "phase", cred.Status.Phase)
+			fmt.Printf("AUTH SCAN cluster=%s credential=%s selector=%v phase=%s\n", ledger.Name, cred.Name, cred.Spec.Selector.MatchLabels, cred.Status.Phase)
 		}
-	} else {
-		logger.Info("credentials list is empty", "cluster", ledger.Name)
 	}
 
 	var keys []credentialsKeyInfo
