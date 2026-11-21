@@ -730,7 +730,10 @@ func (r *ClusterReconciler) clustersMatchingSelector(ctx context.Context, ls *me
 	}
 
 	var ledgers ledgerv1alpha1.ClusterList
-	if err := r.List(ctx, &ledgers, opts); err != nil {
+	// A Credentials event may arrive before the Cluster cache observes its
+	// current labels. Use the live API so a missed mapping cannot strand the
+	// auth-key projection after the Credentials becomes Ready.
+	if err := r.storageAPIReader().List(ctx, &ledgers, opts); err != nil {
 		log.FromContext(ctx).Error(err, "failed to list Clusters for credentials mapping")
 
 		return nil
