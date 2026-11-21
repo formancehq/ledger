@@ -51,6 +51,7 @@ func storageManagerFixtureWithClient(t *testing.T, k8sClient client.Client, ctx 
 	class := &storagev1.StorageClass{ObjectMeta: metav1.ObjectMeta{Name: className}, Provisioner: "example.csi", AllowVolumeExpansion: new(true)}
 	require.NoError(t, k8sClient.Create(ctx, class))
 	cluster := newCluster("storage-manager", namespace)
+	clusterKey := client.ObjectKey{Namespace: namespace, Name: cluster.Name}
 	cluster.Spec.Image.Tag = imageTag
 	cluster.Spec.Replicas = new(int32(1))
 	cluster.Spec.Persistence = ledgerv1alpha1.PersistenceSpec{
@@ -89,7 +90,21 @@ func storageManagerFixtureWithClient(t *testing.T, k8sClient client.Client, ctx 
 	requireEventually(t, func() bool {
 		return k8sClient.Get(ctx, sourceKey, source) == nil && hasPodConfigHashBinding(source)
 	}, "the manager must create the source with its installed workload hash")
-	require.NoError(t, k8sClient.Get(ctx, client.ObjectKeyFromObject(cluster), cluster))
+	clusterReadKey := client.ObjectKeyFromObject(cluster)
+	createdUID := cluster.UID
+	if err := k8sClient.Get(ctx, clusterReadKey, cluster); err != nil {
+		liveNamespace := &corev1.Namespace{}
+		namespaceErr := k8sClient.Get(ctx, client.ObjectKey{Name: namespace}, liveNamespace)
+		clusters := &ledgerv1alpha1.ClusterList{}
+		listErr := k8sClient.List(ctx, clusters, client.InNamespace(namespace))
+		var listed []string
+		for _, item := range clusters.Items {
+			listed = append(listed, fmt.Sprintf("%s/%s uid=%s", item.Namespace, item.Name, item.UID))
+		}
+		t.Logf("storage fixture state: immutableKey=%s actualKey=%s createdUID=%s clusterGet=%v namespaceGet=%v namespaceDeletion=%v clusterList=%v listed=%v",
+			clusterKey, clusterReadKey, createdUID, err, namespaceErr, liveNamespace.DeletionTimestamp, listErr, listed)
+		require.NoError(t, err)
+	}
 	original := cluster.DeepCopy()
 	before := cluster.DeepCopy()
 	cluster.Spec.Replicas = new(int32(2))
