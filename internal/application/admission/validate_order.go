@@ -15,6 +15,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/domain/indexes"
 	"github.com/formancehq/ledger/v3/internal/pkg/connectionurl"
 	"github.com/formancehq/ledger/v3/internal/pkg/semver"
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
 
@@ -60,7 +61,7 @@ func validateOrder(order *raftcmdpb.Order) error {
 		return &domain.BusinessError{Err: err}
 	}
 
-	if err := validateOrderSinkURL(order); err != nil {
+	if err := validateOrderSinkConfig(order); err != nil {
 		return &domain.BusinessError{Err: err}
 	}
 
@@ -442,6 +443,9 @@ func validateOrderMirrorSource(order *raftcmdpb.Order) domain.Describable {
 	src := create.CreateLedger.GetMirrorSource()
 	if src == nil {
 		return nil
+	}
+	if create.CreateLedger.GetMode() != commonpb.LedgerMode_LEDGER_MODE_MIRROR {
+		return ErrMirrorSourceRequiresMirrorMode
 	}
 
 	// Compile the CEL rewrite rules before the order reaches the audit chain, so

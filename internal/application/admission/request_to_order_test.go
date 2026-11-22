@@ -371,7 +371,10 @@ func TestRequestToOrder_WrapsEveryRequestVariant(t *testing.T) {
 		{
 			name: "add_events_sink",
 			req: &servicepb.Request{Type: &servicepb.Request_AddEventsSink{
-				AddEventsSink: &servicepb.AddEventsSinkRequest{Config: &commonpb.SinkConfig{Name: "s"}},
+				AddEventsSink: &servicepb.AddEventsSinkRequest{Config: &commonpb.SinkConfig{
+					Name: "s",
+					Type: &commonpb.SinkConfig_Http{Http: &commonpb.HttpSinkConfig{Endpoint: "http://localhost:3068"}},
+				}},
 			}},
 			expect: expect{
 				kind: wrapSystem,
@@ -513,7 +516,10 @@ func TestRequestToOrder_FamilyConversionSideEffects(t *testing.T) {
 	require.True(t, ok)
 	require.Equal(t, "1.0.0", latest)
 
-	config := &commonpb.SinkConfig{Name: "events"}
+	config := &commonpb.SinkConfig{
+		Name: "events",
+		Type: &commonpb.SinkConfig_Http{Http: &commonpb.HttpSinkConfig{Endpoint: "http://localhost:3068"}},
+	}
 	added, err := admission.requestToOrder(t.Context(), &servicepb.Request{
 		Type: &servicepb.Request_AddEventsSink{AddEventsSink: &servicepb.AddEventsSinkRequest{Config: config}},
 	}, nil, overlay)

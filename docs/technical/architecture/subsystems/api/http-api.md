@@ -85,7 +85,7 @@ path segment themselves.
 ### Encoded path identifiers
 
 The single-decoding rule also applies to every free-form identifier carried in
-a path segment: account addresses (`GET /accounts/{address}` and the account
+a path segment: ledger names, account addresses (`GET /accounts/{address}` and the account
 metadata POST/DELETE routes), numscript names, prepared-query names,
 account-type names and events sink names. The adapter extracts them with
 `requirePathParameter`, never with a raw `chi.URLParam`. For example,
@@ -93,6 +93,22 @@ account-type names and events sink names. The adapter extracts them with
 decoding, an encoded address would read an empty account with HTTP 200, or be
 rejected by admission on metadata writes. A double-encoded `users%253Aa`
 selects the literal `users%3Aa`, which is not a valid account address.
+Similarly, `test%3Aledger` selects the ledger named `test:ledger`, while
+`test%253Aledger` is rejected because the decoded name still contains `%`.
+
+### Prepared-query bodies and parameters
+
+Create, update, and execute consume the complete HTTP body before making a
+backend call. A supplied body must contain one JSON value followed only by
+whitespace. An empty execute body is allowed. The entire body counts toward the
+4 MiB limit, including trailing whitespace or invalid trailing data.
+
+Generated clients use strings for execute parameters. Raw REST clients can
+also send booleans and exact JSON integers within the signed 64-bit minimum to
+unsigned 64-bit maximum range; the filter type can further narrow that range.
+Use a decimal string if the client cannot represent the integer exactly.
+Supplying `null` yields `400 INVALID_PARAMETERS`; use an explicit empty string
+when the filter is intended to match one.
 
 ### Ledger information
 
@@ -1476,7 +1492,10 @@ backend execution. Authentication failures use the standard `401`/`403` errors.
 
 The request body is a configuration object directly, without a `data` or
 `config` wrapper. `name` and exactly one of `nats`, `clickhouse`, `kafka`, `http`
-or `databricks` are required. Configuration fields use protobuf JSON camelCase,
+or `databricks` are required. Shared admission also validates that each new
+`Apply(AddEventsSink)` has a name and a type. This applies to native gRPC and
+bucket-wide REST Apply. Old committed entries remain replayable.
+Configuration fields use protobuf JSON camelCase,
 as in the existing GET response. Unknown fields, duplicate fields, multiple
 sink types and malformed JSON return `400 INVALID_REQUEST`. The complete
 request, including trailing whitespace, is subject to the 4 MiB HTTP body

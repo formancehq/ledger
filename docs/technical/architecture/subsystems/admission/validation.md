@@ -46,6 +46,8 @@ not move any validator or change client behavior.
 | Metadata value shape (no null byte) | ✅ | — | `ValidateMetadataValue`. |
 | Metadata size: entry count, key bytes, value bytes, per-entity bytes, per-command bytes | — | ✅ | Existing handlers check the policy committed at apply after idempotency lookup. Fresh refusals are audited; retained outcomes replay. Public admission retains structural checks. Mirror workers keep their separate preflight and retry contract. See [metadata limits](metadata-limits.md). |
 | Metadata size of the map Numscript merges into the caller's | — | ✅ | `processCreateTransaction` re-checks the *merged* transaction and per-account maps. Admission cannot: the union of caller metadata and `set_tx_meta` / `set_account_meta` output only exists after the script runs. |
+| Event sink name and type | ✅ | — | New `AddEventsSink` orders require a nonempty name and one sink variant. |
+| Ledger mode with a mirror source | ✅ | — | A non-nil mirror source requires explicit `MIRROR`; `NORMAL` creation must omit the source. |
 | HTTP mirror base URL syntax, HTTP(S) scheme and nonempty hostname | ✅ | — | Rejected with a safe `VALIDATION` error before Raft or ledger creation. No connectivity probe or configuration rewrite; raw URL parser errors may contain credentials and must not be exposed. |
 | Ledger name shape (no null, printable ASCII, ≤ `dal.LedgerNameFixedSize`) | ✅ | — | `ValidateLedgerName`. The fixed size matters because ledger names pad into Pebble keys. |
 | Account type name ≤ 256 bytes and pattern ≤ 4096 bytes | ✅ | ✅ | Admission rejects oversized inputs before consensus. The FSM repeats the bounds for replay and directly proposed orders so error facts retain the original value rather than a digest. |

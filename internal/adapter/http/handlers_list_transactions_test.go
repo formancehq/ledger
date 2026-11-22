@@ -157,6 +157,33 @@ func TestHandleListTransactions_ReferenceFilterAndDateRange(t *testing.T) {
 	require.Equal(t, "ref-1", refCond.GetReference().GetCond().GetHardcoded())
 }
 
+func TestHandleListTransactions_FractionalDateBounds(t *testing.T) {
+	t.Parallel()
+
+	backend := NewMockBackend(gomock.NewController(t))
+	backend.EXPECT().ListTransactions(gomock.Any(), "ledger1", gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
+		func(_ context.Context, _ string, _ uint32, _ uint64, filter *commonpb.QueryFilter, _ bool) (cursor.Cursor[*commonpb.Transaction], error) {
+			cond := filter.GetBuiltinUint()
+			require.Equal(t, commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP, cond.GetField())
+			bounds := cond.GetCond()
+			require.NotNil(t, bounds)
+			require.Equal(t, uint64(123457), bounds.GetMin())
+			require.False(t, bounds.GetMinExclusive())
+			require.Equal(t, uint64(123458), bounds.GetMax())
+			require.True(t, bounds.GetMaxExclusive())
+
+			return cursor.NewSliceCursor[*commonpb.Transaction](nil), nil
+		})
+
+	w := httptest.NewRecorder()
+	r := newRequest(t, http.MethodGet,
+		"/ledger1/transactions?startDate=1970-01-01T00%3A00%3A00.123456500Z&endDate=1970-01-01T01%3A00%3A00.123457500%2B01%3A00",
+		nil, map[string]string{"ledgerName": "ledger1"})
+	newTestServer(t, backend).handleListTransactions(w, r)
+
+	require.Equal(t, http.StatusOK, w.Code)
+}
+
 // TestHandleListTransactions_DualFormatFilter is the endpoint-level EN-1511
 // acceptance check: the same logical filter passed via `?filter=` in the textual
 // form and in the structured JSON form reaches the backend as the same

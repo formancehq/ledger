@@ -44,6 +44,20 @@ integer schema spans `-9223372036854775808` through `18446744073709551615`,
 matching signed negative and unsigned nonnegative metadata values. See
 [Metadata number decoding](../architecture/subsystems/api/http-api.md#metadata-number-decoding).
 
+## REST and gRPC input compatibility
+
+REST path parameters decode ledger names once before validation. On REST
+transaction and log lists, RFC3339 range bounds preserve the documented
+inclusive/exclusive semantics against stored microseconds. Textual metadata
+filters preserve quoted strings on every route that accepts them.
+
+Prepared-query mutation and execution routes reject trailing JSON before
+calling the controller. Execution preserves exact integral REST parameters
+and rejects null. New sink creation requires a name and sink type through
+either transport; ledger creation with a source requires `MIRROR`. Resubmit
+formerly accepted invalid shapes with valid inputs. This does not change
+existing persisted entries or the gRPC wire contract.
+
 ## Atomic HTTP Apply
 
 `POST /v3/_/apply` is an additive v3 operation for ordered cross-ledger and

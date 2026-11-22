@@ -499,7 +499,7 @@ message MirrorAssetMapping {
 The whole `MirrorSourceConfig`, including rewrite rules and asset mappings, is
 fixed at ledger creation.
 
-A ledger created with `mirror_source` set has `LedgerInfo.mode = MIRROR`, which is what the manager looks at to decide whether to spin up a worker.
+A create request with `mirror_source` must explicitly set `MIRROR`, which is what the manager checks before it starts a worker. Both REST and gRPC reject a source on a `NORMAL` ledger in admission. To create a normal ledger, omit the source. This applies to fresh submissions and retries of a formerly accepted invalid shape; already committed entries still replay.
 
 ## Declaring indexes on a mirror ledger (operator)
 
