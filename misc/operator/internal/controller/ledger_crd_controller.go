@@ -646,24 +646,12 @@ func (r *LedgerReconciler) ledgerctlExec(ctx context.Context, cluster *ledgerv1a
 // errClusterRuntimeAbsent, errResourceNameConflict or errPodNotOwned and runs
 // nothing.
 func (r *LedgerReconciler) ledgerctlExecOutput(ctx context.Context, cluster *ledgerv1alpha1.Cluster, grpcPort int32, args ...string) (string, error) {
-	sts, err := fetchClusterStatefulSet(ctx, r.Client, cluster)
-	if err != nil {
-		return "", fmt.Errorf("resolving the StatefulSet of Cluster %q: %w", cluster.Name, err)
-	}
-
-	serverAddr := podSelfServerAddr(headlessServiceName(cluster.Name), grpcPort)
-	cmd := ledgerctlCommand(serverAddr, currentTLSModeFromStatefulSet(sts), args...)
-
 	exec := r.exec
 	if exec == nil {
 		exec = podExec
 	}
-	res, err := ownedPodExec(sts, exec)(ctx, r.Config, r.Clientset, cluster.Namespace, podName(cluster.Name, 0), ledgerContainer, cmd)
-	if err != nil {
-		return "", fmt.Errorf("ledgerctl %s: %w", args[0], err)
-	}
 
-	return res.Stdout, nil
+	return execLedgerctlOutput(ctx, r.Client, r.Config, r.Clientset, exec, cluster, grpcPort, args...)
 }
 
 // resolveCluster reads the referenced Cluster and its gRPC port from the
