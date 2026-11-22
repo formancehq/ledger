@@ -3535,9 +3535,7 @@ components:
         details:
           type: string
           description: >-
-            Optional human-readable detail string present on certain validation
-            errors. Contains plain text from err.Error(), not a URL. Absent on
-            most error codes including COMPILATION_FAILED.
+            Optional human-readable detail string present on certain validation errors. Contains plain text from err.Error(), not a URL. Absent on most error codes including COMPILATION_FAILED.
           example: account had insufficient funds
         transaction:
           $ref: '#/components/schemas/Transaction'
@@ -3938,9 +3936,7 @@ components:
         details:
           type: string
           description: >-
-            Optional human-readable detail string present on certain validation
-            errors. Contains plain text from err.Error(), not a URL. Absent on
-            most error codes including COMPILATION_FAILED.
+            Optional human-readable detail string present on certain validation errors. Contains plain text from err.Error(), not a URL. Absent on most error codes including COMPILATION_FAILED.
           example: account had insufficient funds
     ErrorsEnum:
       type: string
@@ -4819,9 +4815,7 @@ components:
         details:
           type: string
           description: >-
-            Optional human-readable detail string present on certain validation
-            errors. Contains plain text from err.Error(), not a URL. Absent on
-            most error codes including COMPILATION_FAILED.
+            Optional human-readable detail string present on certain validation errors. Contains plain text from err.Error(), not a URL. Absent on most error codes including COMPILATION_FAILED.
           example: account had insufficient funds
     V2ErrorsEnum:
       type: string
