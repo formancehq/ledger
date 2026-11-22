@@ -1526,10 +1526,10 @@ components:
         details:
           type: string
           description: >-
-            Optional link carrying additional context about the error, such as a Numscript playground URL
-            reproducing it
-          example: >-
-            https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9
+            Optional human-readable detail string present on certain validation
+            errors. Contains plain text from err.Error(), not a URL. Absent on
+            most error codes including COMPILATION_FAILED.
+          example: account had insufficient funds
         transaction:
           $ref: '#/components/schemas/Transaction'
     Account:
@@ -1932,10 +1932,10 @@ components:
         details:
           type: string
           description: >-
-            Optional link carrying additional context about the error, such as a Numscript playground URL
-            reproducing it
-          example: >-
-            https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9
+            Optional human-readable detail string present on certain validation
+            errors. Contains plain text from err.Error(), not a URL. Absent on
+            most error codes including COMPILATION_FAILED.
+          example: account had insufficient funds
     ErrorsEnum:
       type: string
       description: Machine-readable error code identifying the failure
