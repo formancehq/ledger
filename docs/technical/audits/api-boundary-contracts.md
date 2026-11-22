@@ -33,7 +33,8 @@ Use the `REST and gRPC business parity` specs in
 transports and checks ledger identity after URL decoding, exact aggregate
 totals and typed filter results, and list results at fractional date bounds.
 It rereads public state after malformed prepared-query writes and shared
-admission refusals. Adapter tests cover lexical round-tripping, complete-body
+admission refusals, including `MIRROR` creation without a source. Adapter
+tests cover lexical round-tripping, complete-body
 validation and the size boundary. The common admission rules affect new
 requests only; do not replay historical records under the new validators.
 

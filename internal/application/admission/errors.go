@@ -16,6 +16,7 @@ var (
 	ErrSinkClickHouseURLInvalid = &invalidIntegrationConfig{message: "sink.clickhouse.dsn must be a clickhouse://, http:// or https:// URL with a host"}
 
 	ErrMirrorSourceRequiresMirrorMode = &invalidIntegrationConfig{message: "mirrorSource requires mode MIRROR"}
+	ErrMirrorModeRequiresSource       = &invalidIntegrationConfig{message: "mode MIRROR requires mirrorSource"}
 	ErrSinkConfigIncomplete           = &invalidIntegrationConfig{message: "sink name and one sink type are required"}
 
 	// ErrMirrorHTTPURLInvalid rejects unusable HTTP source URLs before the

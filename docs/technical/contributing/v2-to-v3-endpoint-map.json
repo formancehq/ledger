@@ -205,7 +205,7 @@
       "v3": [
         "POST /v3/{ledgerName}"
       ],
-      "notes": "`bucket` and `features` are not accepted. The body takes `metadata`, `mode`, `mirrorSource`, `defaultEnforcementMode`, `initialSchema` and `accountTypes`. Returns `201`.",
+      "notes": "`bucket` and `features` are not accepted. The body takes `metadata`, `mode`, `mirrorSource`, `defaultEnforcementMode`, `initialSchema` and `accountTypes`. `MIRROR` requires `mirrorSource`; `NORMAL` must omit it. Returns `201` on success.",
       "docs": "/modules/ledger/migration/removed-capabilities"
     },
     "POST /v2/{ledger}/schemas/{version}": {

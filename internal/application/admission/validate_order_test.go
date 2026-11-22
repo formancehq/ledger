@@ -1108,8 +1108,8 @@ func TestValidateOrder_MirrorIAMRegion(t *testing.T) {
 		wantMsg string
 	}{
 		{
-			name: "no mirror source",
-			src:  nil,
+			name:    "no mirror source",
+			wantErr: ErrMirrorModeRequiresSource,
 		},
 		{
 			name: "postgres mirror without IAM auth",

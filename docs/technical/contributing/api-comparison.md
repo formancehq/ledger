@@ -54,8 +54,9 @@ filters preserve quoted strings on every route that accepts them.
 Prepared-query mutation and execution routes reject trailing JSON before
 calling the controller. Execution preserves exact integral REST parameters
 and rejects null. New sink creation requires a name and sink type through
-either transport; ledger creation with a source requires `MIRROR`. Resubmit
-formerly accepted invalid shapes with valid inputs. This does not change
+either transport. `MIRROR` creation requires a source and `NORMAL` creation
+must omit it. Resubmit formerly accepted invalid shapes with valid inputs.
+This does not change
 existing persisted entries or the gRPC wire contract.
 
 ## Atomic HTTP Apply
@@ -812,6 +813,9 @@ Mirror mode enables one-way synchronization from an existing v2 ledger into a v3
 **Create a mirror ledger:** `POST /v3/{ledgerName}`
 
 Request body includes `mode` (`"MIRROR"`) and a `mirrorSource` object specifying the source configuration. `mode` accepts only `"NORMAL"` (the default when omitted) or `"MIRROR"`, case-sensitive; any other value is rejected with HTTP 400 (`INVALID_REQUEST`) and no ledger is created.
+
+Omitting `mirrorSource` in `MIRROR` mode, or supplying it in `NORMAL` mode, is
+rejected before any ledger is created: HTTP 400 / gRPC `InvalidArgument`.
 
 **Source types:**
 - **HTTP** (`type: "http"`) — Polls the v2 API endpoint `GET /v2/{ledger}/logs`. Fields: `baseUrl`, `oauth2ClientId`, `oauth2ClientSecret`, `oauth2TokenEndpoint`, `oauth2Scopes` (optional, for OAuth2 client credentials authentication).

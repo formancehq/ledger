@@ -111,6 +111,28 @@ var _ = Describe("REST and gRPC business parity", func() {
 		}
 	})
 
+	It("rejects a mirror ledger without a source over REST", func() {
+		const name = "parity-rest-mirror-no-source"
+		raw := parityHTTP(http.MethodPost, "/"+name, `{"mode":"MIRROR"}`, http.StatusBadRequest)
+		Expect(parityDecode[struct{ ErrorMessage string }](raw).ErrorMessage).To(Equal("mode MIRROR requires mirrorSource"))
+		parityHTTP(http.MethodGet, "/"+name, "", http.StatusNotFound)
+	})
+
+	It("rejects a mirror ledger without a source over gRPC", func() {
+		ctx := GinkgoT().Context()
+		const name = "parity-grpc-mirror-no-source"
+		_, err := sharedClient.Apply(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
+			Type: &servicepb.Request_CreateLedger{CreateLedger: &servicepb.CreateLedgerRequest{
+				Name: name,
+				Mode: commonpb.LedgerMode_LEDGER_MODE_MIRROR,
+			}},
+		}))
+		Expect(status.Code(err)).To(Equal(codes.InvalidArgument), "%v", err)
+		Expect(status.Convert(err).Message()).To(ContainSubstring("mode MIRROR requires mirrorSource"))
+		_, err = sharedClient.GetLedger(ctx, &servicepb.GetLedgerRequest{Ledger: name})
+		Expect(status.Code(err)).To(Equal(codes.NotFound), "%v", err)
+	})
+
 	It("uses exact prepared query integers and rejects a null filter argument", func() {
 		ctx := GinkgoT().Context()
 		const ledger = "parity-prepared-params"

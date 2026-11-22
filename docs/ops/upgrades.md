@@ -773,9 +773,8 @@ RPCs and HTTP clients are unaffected. See the
 
 No persisted-state migration or stopped upgrade is needed for these fixes.
 Existing committed sink and ledger records still replay unchanged. New requests
-and retries must supply a sink name and type and must set `MIRROR` when supplying
-a mirror source. Remove the source from requests that should create a
-`NORMAL` ledger.
+and retries must supply a sink name and type. Supply a source configuration
+when creating a `MIRROR` ledger. Omit the source when creating a `NORMAL` ledger.
 
 Use bare signed integers or booleans for typed textual filter values and quote
 string identifiers. For prepared-query execution, replace null with the

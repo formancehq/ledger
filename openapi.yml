@@ -341,8 +341,8 @@ paths:
         named `_` would be unreachable over REST. Creating it is rejected with a
         validation error. The exact name `_system` is also reserved for system
         events and rejected. Other underscore-prefixed names remain valid.
-        A supplied mirrorSource requires mode MIRROR. A NORMAL ledger must omit
-        mirrorSource; the request is rejected rather than ignoring it.
+        MIRROR requires mirrorSource. NORMAL, including when mode is omitted,
+        must omit mirrorSource. A mismatch returns HTTP 400 without creating a ledger.
       operationId: v3CreateLedger
       x-speakeasy-name-override: CreateLedger
       tags:
@@ -4465,6 +4465,7 @@ components:
       type: object
     AtomicApplyCreateLedgerRequest:
       additionalProperties: false
+      description: LEDGER_MODE_MIRROR requires mirrorSource. A normal ledger must omit it.
       properties:
         accountTypes:
           additionalProperties:
@@ -6477,7 +6478,7 @@ components:
             - NORMAL
             - MIRROR
           default: NORMAL
-          description: Ledger mode. MIRROR creates a read-only ledger that syncs from an external v2 source. Values are case-sensitive; any other value is rejected with 400 INVALID_REQUEST.
+          description: Ledger mode. MIRROR requires mirrorSource and creates a read-only ledger that syncs from an external v2 source. NORMAL must omit mirrorSource. Values are case-sensitive; any other value is rejected with 400 INVALID_REQUEST.
         mirrorSource:
           $ref: '#/components/schemas/MirrorSourceConfig'
         defaultEnforcementMode:
