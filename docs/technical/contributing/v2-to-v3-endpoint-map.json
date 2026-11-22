@@ -217,7 +217,7 @@
         "PUT /v3/{ledgerName}/numscripts/{name}",
         "POST /v3/{ledgerName}/prepared-queries"
       ],
-      "notes": "Write each part of the schema to its own resource. There is no version to insert.",
+      "notes": "Write each part of the schema to its own resource. There is no version to insert. Saving a numscript for a missing ledger returns `404 LEDGER_NOT_FOUND`.",
       "docs": "/modules/ledger/migration/update-clients#replace-ledger-schema-workflows"
     },
     "GET /v2/{ledger}/schemas/{version}": {
