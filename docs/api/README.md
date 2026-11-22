@@ -5518,7 +5518,7 @@ Volumes aggregated per account and per asset
 |---|---|---|---|---|
 |errorCode|[V2ErrorsEnum](#schemav2errorsenum)|true|none|Machine-readable error code identifying the failure|
 |errorMessage|string|true|none|Human-readable description of the error|
-|details|string|false|none|Optional link carrying additional context about the error, such as a Numscript playground URL reproducing it|
+|details|string|false|none|Optional human-readable detail string present on certain validation errors. Contains plain text from err.Error(), not a URL. Absent on most error codes including COMPILATION_FAILED.|
 
 <h2 id="tocS_V2ErrorsEnum">V2ErrorsEnum</h2>
 <!-- backwards compatibility -->
