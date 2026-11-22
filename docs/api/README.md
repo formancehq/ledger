@@ -302,7 +302,7 @@ Accept: application/json
 {
   "errorCode": "VALIDATION",
   "errorMessage": "[VALIDATION] invalid 'cursor' query param",
-  "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"
+  "details": "account had insufficient funds"
 }
 ```
 
@@ -426,7 +426,7 @@ Idempotency-Key: string
 {
   "errorCode": "VALIDATION",
   "errorMessage": "[VALIDATION] invalid 'cursor' query param",
-  "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"
+  "details": "account had insufficient funds"
 }
 ```
 
@@ -734,7 +734,7 @@ Accept: application/json
 {
   "errorCode": "VALIDATION",
   "errorMessage": "[VALIDATION] invalid 'cursor' query param",
-  "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"
+  "details": "account had insufficient funds"
 }
 ```
 
@@ -781,7 +781,7 @@ Accept: application/json
 {
   "errorCode": "VALIDATION",
   "errorMessage": "[VALIDATION] invalid 'cursor' query param",
-  "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"
+  "details": "account had insufficient funds"
 }
 ```
 
@@ -1075,7 +1075,7 @@ Accept: application/json
 {
   "errorCode": "VALIDATION",
   "errorMessage": "[VALIDATION] invalid 'cursor' query param",
-  "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"
+  "details": "account had insufficient funds"
 }
 ```
 
@@ -1356,7 +1356,7 @@ Idempotency-Key: string
 {
   "errorCode": "VALIDATION",
   "errorMessage": "[VALIDATION] invalid 'cursor' query param",
-  "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"
+  "details": "account had insufficient funds"
 }
 ```
 
@@ -1415,7 +1415,7 @@ Delete metadata by key
 {
   "errorCode": "VALIDATION",
   "errorMessage": "[VALIDATION] invalid 'cursor' query param",
-  "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"
+  "details": "account had insufficient funds"
 }
 ```
 
@@ -1525,7 +1525,7 @@ Accept: application/json
 {
   "errorCode": "VALIDATION",
   "errorMessage": "[VALIDATION] invalid 'cursor' query param",
-  "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"
+  "details": "account had insufficient funds"
 }
 ```
 
@@ -2095,7 +2095,7 @@ Idempotency-Key: string
 {
   "errorCode": "VALIDATION",
   "errorMessage": "[VALIDATION] invalid 'cursor' query param",
-  "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"
+  "details": "account had insufficient funds"
 }
 ```
 
@@ -2585,7 +2585,7 @@ file: string
 {
   "errorCode": "VALIDATION",
   "errorMessage": "[VALIDATION] invalid 'cursor' query param",
-  "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"
+  "details": "account had insufficient funds"
 }
 ```
 
@@ -2632,7 +2632,7 @@ Accept: application/octet-stream
 {
   "errorCode": "VALIDATION",
   "errorMessage": "[VALIDATION] invalid 'cursor' query param",
-  "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"
+  "details": "account had insufficient funds"
 }
 ```
 
@@ -3143,7 +3143,7 @@ Accept: application/json
 {
   "errorCode": "VALIDATION",
   "errorMessage": "[VALIDATION] invalid 'cursor' query param",
-  "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"
+  "details": "account had insufficient funds"
 }
 ```
 
@@ -3188,7 +3188,7 @@ Accept: application/json
 {
   "errorCode": "VALIDATION",
   "errorMessage": "[VALIDATION] invalid 'cursor' query param",
-  "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"
+  "details": "account had insufficient funds"
 }
 ```
 
@@ -3234,7 +3234,7 @@ Delete a bucket by marking all ledgers in the bucket as deleted (soft delete). A
 {
   "errorCode": "VALIDATION",
   "errorMessage": "[VALIDATION] invalid 'cursor' query param",
-  "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"
+  "details": "account had insufficient funds"
 }
 ```
 
@@ -3282,7 +3282,7 @@ Restore a deleted bucket by unmarking all ledgers in the bucket as deleted. All 
 {
   "errorCode": "VALIDATION",
   "errorMessage": "[VALIDATION] invalid 'cursor' query param",
-  "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"
+  "details": "account had insufficient funds"
 }
 ```
 
@@ -3541,7 +3541,7 @@ Accept: application/json
 {
   "errorCode": "VALIDATION",
   "errorMessage": "[VALIDATION] invalid 'cursor' query param",
-  "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"
+  "details": "account had insufficient funds"
 }
 ```
 
@@ -3586,7 +3586,7 @@ Accept: application/json
 {
   "errorCode": "VALIDATION",
   "errorMessage": "[VALIDATION] invalid 'cursor' query param",
-  "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"
+  "details": "account had insufficient funds"
 }
 ```
 
@@ -3631,7 +3631,7 @@ Accept: application/json
 {
   "errorCode": "VALIDATION",
   "errorMessage": "[VALIDATION] invalid 'cursor' query param",
-  "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"
+  "details": "account had insufficient funds"
 }
 ```
 
@@ -3676,7 +3676,7 @@ Accept: application/json
 {
   "errorCode": "VALIDATION",
   "errorMessage": "[VALIDATION] invalid 'cursor' query param",
-  "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"
+  "details": "account had insufficient funds"
 }
 ```
 
@@ -5507,7 +5507,7 @@ Volumes aggregated per account and per asset
 {
   "errorCode": "VALIDATION",
   "errorMessage": "[VALIDATION] invalid 'cursor' query param",
-  "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"
+  "details": "account had insufficient funds"
 }
 
 ```
