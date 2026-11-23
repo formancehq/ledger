@@ -2377,9 +2377,9 @@ Every attempt resets staging before downloading the checkpoint. This command
 requires exclusive offline use of the target directory. Reset failure aborts
 before publication and may leave old staging partly removed or absent.
 Download root handles close before preview. Download failures
-or confirmation EOF may leave new partial or fully rebuilt staging; the next
-attempt discards it and starts from the backup again so additive projections
-are not applied twice. A successful finalization places the checkpoint before
+or confirmation EOF may leave partial or fully downloaded checkpoint staging;
+the next attempt discards it so stale files cannot mix with the current
+checkpoint. A successful finalization places the checkpoint before
 writing the `RESTORED` commit marker, then removes staging. A marked restore
 cannot be overwritten by retrying this command.
 

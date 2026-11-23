@@ -592,9 +592,11 @@ Use the target directory exclusively while this offline command runs. Every
 attempt discards prior staging before downloading checkpoint files, including
 after an incomplete attempt. This prevents stale files from a prior attempt
 from mixing with the current checkpoint. Reset failure aborts before publication;
-old staging may be partly removed or absent. A later download or preparation failure,
-or EOF at confirmation, can leave new partial or fully prepared staging. It is
-not activated and the next invocation resets it again. An explicit negative
+old staging may be partly removed or absent. A download failure can leave
+partially downloaded staging. Validation failure or EOF at confirmation leaves
+a fully downloaded but unprepared checkpoint. A preparation failure may leave
+partially prepared staging. None of these states is activated; the next
+invocation resets staging again. An explicit negative
 confirmation instead attempts to remove staging. The existing freshness and
 `RESTORED` marker guards still apply: retries do not repair an already finalized
 restore.
