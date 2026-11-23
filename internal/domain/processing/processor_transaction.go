@@ -12,24 +12,51 @@ import (
 )
 
 func processCreateTransaction(ledger string, order *raftcmdpb.CreateTransactionOrder, ctx *Context) (*commonpb.LedgerLogPayload, domain.SerializableError) {
-	return processTransactionOrNumscript(ledger, order, ctx, false)
+	prepared, err := prepareTransactionExecution(ledger, order, ctx)
+	if err != nil {
+		return nil, err
+	}
+	if len(prepared.result.Postings) == 0 {
+		return nil, domain.ErrEmptyTransaction
+	}
+	return processProducedTransaction(ledger, order, ctx, prepared)
 }
 
 func processExecuteNumscript(ledger string, execution *raftcmdpb.ExecuteNumscriptOrder, ctx *Context) (*commonpb.LedgerLogPayload, domain.SerializableError) {
-	return processTransactionOrNumscript(ledger, &raftcmdpb.CreateTransactionOrder{
+	order := &raftcmdpb.CreateTransactionOrder{
 		Script: execution.GetScript(), NumscriptReference: execution.GetNumscriptReference(),
 		Timestamp: execution.GetTimestamp(), Metadata: execution.GetMetadata(),
 		AccountMetadata: execution.GetAccountMetadata(), Reference: execution.GetReference(),
-	}, ctx, true)
+	}
+	prepared, err := prepareTransactionExecution(ledger, order, ctx)
+	if err != nil {
+		return nil, err
+	}
+	if len(prepared.result.Postings) == 0 {
+		if (len(prepared.result.TransactionMetadata) > 0 || len(order.GetMetadata()) > 0) && (hasScriptAccountMetadataUpdates(prepared.result.AccountsMetadata) || hasAccountMetadataUpdates(order.GetAccountMetadata())) {
+			return nil, domain.ErrMetadataOnlyTransactionMetadata
+		}
+		if hasScriptAccountMetadataUpdates(prepared.result.AccountsMetadata) || hasAccountMetadataUpdates(order.GetAccountMetadata()) {
+			return processMetadataOnly(ledger, order, prepared.result, ctx)
+		}
+		return nil, domain.ErrEmptyTransaction
+	}
+	return processProducedTransaction(ledger, order, ctx, prepared)
 }
 
-func processTransactionOrNumscript(ledger string, order *raftcmdpb.CreateTransactionOrder, ctx *Context, allowMetadataOnly bool) (*commonpb.LedgerLogPayload, domain.SerializableError) {
+type preparedTransactionExecution struct {
+	result                *produceResult
+	nextTransactionID     uint64
+	advancedTransactionID uint64
+	metadataOnlyCandidate bool
+}
+
+func prepareTransactionExecution(ledger string, order *raftcmdpb.CreateTransactionOrder, ctx *Context) (*preparedTransactionExecution, domain.SerializableError) {
 	if len(order.GetReference()) > domain.MaxTransactionReferenceLength {
 		return nil, domain.ErrTransactionReferenceTooLong
 	}
 	boundaries := ctx.Boundaries
 	s := ctx.Scope
-	info := ctx.LedgerInfo
 
 	// Check transaction reference uniqueness if reference is provided.
 	// This block is the strict prologue of the processor — no Scope.Put*
@@ -139,26 +166,17 @@ func processTransactionOrNumscript(ledger string, order *raftcmdpb.CreateTransac
 		return nil, err
 	}
 
-	// Post-producer invariant: a created transaction must move at least one
-	// posting. The structural admission gate (validateOrderContent) rejects
-	// orders with no content source, but a numscript that runs cleanly yet
-	// emits no `send` (or whose `send` short-circuits via vars) only surfaces
-	// here. Without this guard the FSM commits a zero-posting log entry
-	// (#452).
-	if len(result.Postings) == 0 {
-		if !allowMetadataOnly {
-			return nil, domain.ErrEmptyTransaction
-		}
-		if (len(result.TransactionMetadata) > 0 || len(order.GetMetadata()) > 0) && (hasScriptAccountMetadataUpdates(result.AccountsMetadata) || hasAccountMetadataUpdates(order.GetAccountMetadata())) {
-			return nil, domain.ErrMetadataOnlyTransactionMetadata
-		}
-		if hasScriptAccountMetadataUpdates(result.AccountsMetadata) || hasAccountMetadataUpdates(order.GetAccountMetadata()) {
-			return processMetadataOnly(ledger, order, result, ctx)
-		}
+	return &preparedTransactionExecution{result: result, nextTransactionID: nextTransactionID, advancedTransactionID: advancedTransactionID, metadataOnlyCandidate: metadataOnlyCandidate}, nil
+}
 
-		return nil, domain.ErrEmptyTransaction
-	}
-	if metadataOnlyCandidate {
+func processProducedTransaction(ledger string, order *raftcmdpb.CreateTransactionOrder, ctx *Context, prepared *preparedTransactionExecution) (*commonpb.LedgerLogPayload, domain.SerializableError) {
+	result := prepared.result
+	boundaries := ctx.Boundaries
+	s := ctx.Scope
+	info := ctx.LedgerInfo
+	nextTransactionID := prepared.nextTransactionID
+	advancedTransactionID := prepared.advancedTransactionID
+	if prepared.metadataOnlyCandidate {
 		nextTransactionID = boundaries.GetNextTransactionId()
 		var exhausted *domain.ErrSequenceExhausted
 		advancedTransactionID, exhausted = domain.CheckedNextSequence(nextTransactionID, domain.SequenceCounterTransactionID)
@@ -173,7 +191,6 @@ func processTransactionOrNumscript(ledger string, order *raftcmdpb.CreateTransac
 	// are no longer maintained on LedgerBoundaries — they are derived from the
 	// audit chain by internal/application/usagebuilder and served by the
 	// LedgerStats handler out of usagestore. See EN-1420.
-	_ = isNumscript
 
 	// Use the user-provided timestamp, or fall back to the command date.
 	// The effective timestamp is recorded on TransactionState so reverts can
@@ -237,27 +254,7 @@ func processTransactionOrNumscript(ledger string, order *raftcmdpb.CreateTransac
 
 	// Merge account metadata from script output and order.
 	// Order metadata takes precedence over script metadata (same key → order wins).
-	var accountMetadata map[string]*commonpb.MetadataMap
-	if len(result.AccountsMetadata) > 0 {
-		accountMetadata = make(map[string]*commonpb.MetadataMap, len(result.AccountsMetadata))
-		for account, mdMap := range result.AccountsMetadata {
-			accountMetadata[account] = &commonpb.MetadataMap{Values: mdMap}
-		}
-	}
-
-	for account, mm := range order.GetAccountMetadata() {
-		if accountMetadata == nil {
-			accountMetadata = make(map[string]*commonpb.MetadataMap)
-		}
-
-		existing := accountMetadata[account]
-		if existing == nil {
-			accountMetadata[account] = mm
-		} else {
-			// Order keys take precedence: merge order entries into existing.
-			maps.Copy(existing.GetValues(), mm.GetValues())
-		}
-	}
+	accountMetadata := mergeAccountMetadata(result.AccountsMetadata, order.GetAccountMetadata())
 
 	// Same reasoning as the transaction map above, per account. Checked in its
 	// own pass — and reporting the lexicographically smallest offending account
@@ -355,19 +352,7 @@ func processMetadataOnly(ledger string, order *raftcmdpb.CreateTransactionOrder,
 		return nil, domain.ErrPostingsAndScriptConflict
 	}
 
-	accountMetadata := make(map[string]*commonpb.MetadataMap, len(result.AccountsMetadata)+len(order.GetAccountMetadata()))
-	for account, values := range result.AccountsMetadata {
-		accountMetadata[account] = &commonpb.MetadataMap{Values: values}
-	}
-	for account, mm := range order.GetAccountMetadata() {
-		existing := accountMetadata[account]
-		if existing == nil {
-			accountMetadata[account] = mm
-
-			continue
-		}
-		maps.Copy(existing.GetValues(), mm.GetValues())
-	}
+	accountMetadata := mergeAccountMetadata(result.AccountsMetadata, order.GetAccountMetadata())
 	if !hasAccountMetadataUpdates(accountMetadata) {
 		return nil, domain.ErrEmptyTransaction
 	}
@@ -398,6 +383,25 @@ func processMetadataOnly(ledger string, order *raftcmdpb.CreateTransactionOrder,
 	ctx.metadataBudget.bytes = total
 
 	return &commonpb.LedgerLogPayload{Payload: &commonpb.LedgerLogPayload_AccountMetadataUpdated{AccountMetadataUpdated: &commonpb.AccountMetadataUpdated{AccountMetadata: accountMetadata}}}, nil
+}
+
+// Caller supplied keys take precedence over keys emitted by the script.
+func mergeAccountMetadata(script map[string]map[string]*commonpb.MetadataValue, caller map[string]*commonpb.MetadataMap) map[string]*commonpb.MetadataMap {
+	if len(script) == 0 && len(caller) == 0 {
+		return nil
+	}
+	merged := make(map[string]*commonpb.MetadataMap, len(script)+len(caller))
+	for account, values := range script {
+		merged[account] = &commonpb.MetadataMap{Values: values}
+	}
+	for account, values := range caller {
+		if existing := merged[account]; existing != nil {
+			maps.Copy(existing.GetValues(), values.GetValues())
+		} else {
+			merged[account] = values
+		}
+	}
+	return merged
 }
 
 func hasAccountMetadataUpdates(accountMetadata map[string]*commonpb.MetadataMap) bool {
