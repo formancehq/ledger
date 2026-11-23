@@ -1179,7 +1179,7 @@ func (c *MockControllerListSigningKeysCall) DoAndReturn(f func(context.Context) 
 }
 
 // ListTransactions mocks base method.
-func (m *MockController) ListTransactions(ctx context.Context, ledgerName string, pageSize uint32, afterTxID uint64, filter *commonpb.QueryFilter, reverse bool) (cursor.Cursor[*commonpb.Transaction], error) {
+func (m *MockController) ListTransactions(ctx context.Context, ledgerName string, pageSize uint32, afterTxID *uint64, filter *commonpb.QueryFilter, reverse bool) (cursor.Cursor[*commonpb.Transaction], error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "ListTransactions", ctx, ledgerName, pageSize, afterTxID, filter, reverse)
 	ret0, _ := ret[0].(cursor.Cursor[*commonpb.Transaction])
@@ -1206,13 +1206,13 @@ func (c *MockControllerListTransactionsCall) Return(arg0 cursor.Cursor[*commonpb
 }
 
 // Do rewrite *gomock.Call.Do
-func (c *MockControllerListTransactionsCall) Do(f func(context.Context, string, uint32, uint64, *commonpb.QueryFilter, bool) (cursor.Cursor[*commonpb.Transaction], error)) *MockControllerListTransactionsCall {
+func (c *MockControllerListTransactionsCall) Do(f func(context.Context, string, uint32, *uint64, *commonpb.QueryFilter, bool) (cursor.Cursor[*commonpb.Transaction], error)) *MockControllerListTransactionsCall {
 	c.Call = c.Call.Do(f)
 	return c
 }
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockControllerListTransactionsCall) DoAndReturn(f func(context.Context, string, uint32, uint64, *commonpb.QueryFilter, bool) (cursor.Cursor[*commonpb.Transaction], error)) *MockControllerListTransactionsCall {
+func (c *MockControllerListTransactionsCall) DoAndReturn(f func(context.Context, string, uint32, *uint64, *commonpb.QueryFilter, bool) (cursor.Cursor[*commonpb.Transaction], error)) *MockControllerListTransactionsCall {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }

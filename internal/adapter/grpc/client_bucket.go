@@ -89,12 +89,12 @@ func (g *BucketGrpcClient) GetTransaction(ctx context.Context, ledgerName string
 	return resp.GetTransaction(), nil
 }
 
-func (g *BucketGrpcClient) ListTransactions(ctx context.Context, ledgerName string, pageSize uint32, afterTxID uint64, filter *commonpb.QueryFilter, reverse bool) (cursor.Cursor[*commonpb.Transaction], error) {
+func (g *BucketGrpcClient) ListTransactions(ctx context.Context, ledgerName string, pageSize uint32, afterTxID *uint64, filter *commonpb.QueryFilter, reverse bool) (cursor.Cursor[*commonpb.Transaction], error) {
 	stream, err := g.client.ListTransactions(ctx, &servicepb.ListTransactionsRequest{
 		Ledger: ledgerName,
 		Options: &commonpb.ListOptions{
 			PageSize: pageSize,
-			Cursor:   uint64ResumeToken(afterTxID),
+			Cursor:   transactionResumeToken(afterTxID),
 			Reverse:  reverse,
 			Filter:   filter,
 		},
@@ -500,3 +500,12 @@ func (g *BucketGrpcClient) ListIndexes(ctx context.Context, req *servicepb.ListI
 }
 
 var _ ctrl.Controller = (*BucketGrpcClient)(nil)
+
+// transactionResumeToken preserves an explicit transaction ID zero.
+func transactionResumeToken(after *uint64) string {
+	if after == nil {
+		return ""
+	}
+
+	return pagecursor.Cursor{Key: strconv.FormatUint(*after, 10)}.Encode()
+}

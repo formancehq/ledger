@@ -312,12 +312,12 @@ func assembleTransactionFromState(ctx context.Context, reader dal.PebbleReader, 
 // ListTransactions returns a cursor over transactions for a ledger.
 // API convention: reverse=false means newest-first (descending), reverse=true means oldest-first.
 // Internally listEntities uses reverse=true for descending, so we invert the flag here.
-func (ctrl *DefaultController) ListTransactions(ctx context.Context, ledgerName string, pageSize uint32, afterTxID uint64, filter *commonpb.QueryFilter, reverse bool) (cursor.Cursor[*commonpb.Transaction], error) {
+func (ctrl *DefaultController) ListTransactions(ctx context.Context, ledgerName string, pageSize uint32, afterTxID *uint64, filter *commonpb.QueryFilter, reverse bool) (cursor.Cursor[*commonpb.Transaction], error) {
 	return ctrl.ListTransactionsFrom(ctx, ctrl.store, ctrl.readStore, ledgerName, pageSize, afterTxID, filter, reverse)
 }
 
 // ListTransactionsFrom returns a cursor over transactions using the provided stores (live or checkpoint).
-func (ctrl *DefaultController) ListTransactionsFrom(ctx context.Context, store *dal.Store, rs *readstore.Store, ledgerName string, pageSize uint32, afterTxID uint64, filter *commonpb.QueryFilter, reverse bool) (cursor.Cursor[*commonpb.Transaction], error) {
+func (ctrl *DefaultController) ListTransactionsFrom(ctx context.Context, store *dal.Store, rs *readstore.Store, ledgerName string, pageSize uint32, afterTxID *uint64, filter *commonpb.QueryFilter, reverse bool) (cursor.Cursor[*commonpb.Transaction], error) {
 	ctx, span := tracer.Start(ctx, "ctrl.list_transactions",
 		trace.WithAttributes(
 			attribute.String("ledger", ledgerName),
@@ -361,7 +361,8 @@ func (ctrl *DefaultController) ListTransactionsFrom(ctx context.Context, store *
 		target:        commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS,
 		ledgerName:    ledgerInfo.GetName(),
 		pageSize:      pageSize,
-		after:         afterTxID,
+		after:         valueOrZero(afterTxID),
+		hasAfter:      afterTxID != nil,
 		filter:        filter,
 		reverse:       !reverse, // API: reverse=false → newest-first (desc); listEntities: reverse=true → desc
 		schema:        schemaFields,
@@ -456,6 +457,7 @@ func (ctrl *DefaultController) ListAccounts(ctx context.Context, ledgerName stri
 		ledgerName:    ledgerInfo.GetName(),
 		pageSize:      pageSize,
 		after:         afterAddress,
+		hasAfter:      afterAddress != "",
 		filter:        filter,
 		reverse:       reverse,
 		schema:        schemaFields,
@@ -2202,3 +2204,12 @@ func (ctrl *DefaultController) Apply(ctx context.Context, req *servicepb.ApplyRe
 }
 
 var _ Controller = (*DefaultController)(nil)
+
+// valueOrZero converts an absent transaction cursor for the generic list parameters.
+func valueOrZero(id *uint64) uint64 {
+	if id == nil {
+		return 0
+	}
+
+	return *id
+}

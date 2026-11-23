@@ -95,7 +95,7 @@ func TestListTransactions_Success(t *testing.T) {
 	mock.EXPECT().ListTransactions(gomock.Any(), gomock.Any()).Return(stream, nil)
 
 	client := NewLedgerGrpcClient(mock)
-	cursor, err := client.ListTransactions(context.Background(), "ledger1", 10, 0, nil, false)
+	cursor, err := client.ListTransactions(context.Background(), "ledger1", 10, nil, nil, false)
 	require.NoError(t, err)
 
 	tx1, err := cursor.Next()
@@ -110,6 +110,28 @@ func TestListTransactions_Success(t *testing.T) {
 	require.ErrorIs(t, err, io.EOF)
 }
 
+func TestListTransactions_ForwardZeroCursor(t *testing.T) {
+	t.Parallel()
+	controller := gomock.NewController(t)
+	mock := NewMockBucketServiceClient(controller)
+	zero := uint64(0)
+	mock.EXPECT().ListTransactions(gomock.Any(), gomock.Any()).DoAndReturn(
+		func(_ context.Context, req *servicepb.ListTransactionsRequest, _ ...grpc.CallOption) (grpc.ServerStreamingClient[commonpb.Transaction], error) {
+			decoded, err := pagecursor.Decode(req.GetOptions().GetCursor())
+			require.NoError(t, err)
+			require.Equal(t, "0", decoded.Key)
+
+			stream := newRecvStream[commonpb.Transaction](controller, nil, nil)
+			stream.EXPECT().CloseSend().Return(nil)
+			return stream, nil
+		},
+	)
+	client := NewLedgerGrpcClient(mock)
+	page, err := client.ListTransactions(t.Context(), "ledger1", 10, &zero, nil, true)
+	require.NoError(t, err)
+	require.NoError(t, page.Close())
+}
+
 func TestListTransactions_StreamError(t *testing.T) {
 	t.Parallel()
 
@@ -118,7 +140,7 @@ func TestListTransactions_StreamError(t *testing.T) {
 	mock.EXPECT().ListTransactions(gomock.Any(), gomock.Any()).Return(nil, errors.New("stream init failed"))
 
 	client := NewLedgerGrpcClient(mock)
-	_, err := client.ListTransactions(context.Background(), "ledger1", 10, 0, nil, false)
+	_, err := client.ListTransactions(context.Background(), "ledger1", 10, nil, nil, false)
 	require.Error(t, err)
 }
 
