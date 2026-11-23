@@ -231,7 +231,7 @@ func RunBackup(
 		policy = &commonpb.ClusterPolicy{}
 	}
 	newManifest := &Manifest{
-		ClusterPolicy: &ClusterPolicySnapshot{AppliedIndex: lastAppliedIndex, Data: policy.MarshalDeterministicVT(nil), ConfigurationAbsent: policy.GetRevision() == 0},
+		ClusterPolicy:  &ClusterPolicySnapshot{AppliedIndex: lastAppliedIndex, Data: policy.MarshalDeterministicVT(nil), ConfigurationAbsent: policy.GetRevision() == 0},
 		ExportBoundary: &ExportBoundary{LastLogSequence: lastLogSeq, LastAuditSequence: lastAuditSeq, LastAuditItemSequence: lastAuditSeq},
 		Checkpoint: &CheckpointManifest{
 			Timestamp:         time.Now().UTC().Format(time.RFC3339Nano),
