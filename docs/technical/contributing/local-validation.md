@@ -5,20 +5,16 @@
 Local validation is fast engineering feedback and targeted evidence. GitHub CI
 is the authoritative broad, clean validation boundary before merge.
 
-Local agents are cooperative. The workflow protects against accidental stale
-cache entries, cross-worktree mistakes, the wrong toolchain, a stale target,
-the wrong candidate, flaky focused tests, generated drift, and process crashes.
-It does not isolate caches against deliberate same-user poisoning of Go or lint
-cache internals, intercept Git commands, or defend against mutate-and-restore
-behavior in the primary checkout.
+Local agents are cooperative. The validation scripts protect against accidental
+stale cache entries, the wrong toolchain, flaky focused tests, and generated
+drift. `agent-check-pr` checks that the supplied base is a local commit and
+checks the worktree and HEAD only when all `EXPECTED_*` binding variables are
+provided. It does not fetch the target branch, check that the base is current,
+review the candidate, or publish it.
 
-The cooperative cache policy does not relax publication identity:
-
-- candidate and trusted-root worktrees remain distinct and mechanically bound;
-- the exact candidate SHA and complete worktree state remain review inputs;
-- the target is fetched and revalidated at publication boundaries;
-- pushes retain the exact remote-head lease; and
-- required GitHub checks and human review remain merge gates.
+Before publishing a PR update, establish the current target and remote head
+separately, review the exact candidate, and use a push that cannot overwrite a
+newer remote head. Required GitHub checks and human review remain merge gates.
 
 ## Shared external caches
 
@@ -44,11 +40,9 @@ path reused the trimmed entries, recompiled nothing, and linted in 3.4s. Under
 `-trimpath`, `runtime.Caller` returns module-relative file names, so tests
 locate fixtures from their working directory (the package directory) instead.
 
-The cache root must be absolute and outside the candidate worktree, trusted
-root, and disposable validation directory. Run cleanup never removes it.
-`HOME` is inherited for validation; it is not synthesized per run. Reviewer
-adapters may still isolate `HOME`/`CODEX_HOME` to exclude personal reviewer
-configuration, while their Go and lint caches use the shared root.
+The cache root must be absolute and outside the worktree and disposable
+validation directory. Run cleanup never removes it. `HOME` is inherited for
+validation; it is not synthesized per run.
 
 ### Inherited TMPDIR
 
@@ -189,9 +183,9 @@ Apple workstation. They are comparative evidence, not performance budgets:
 | Fast baseline | 22.44s | Build/`Dirty` overlap | Compile, invariants, diff hygiene | `KEEP_LOCAL` |
 | Focused race tests | 2.7-28.4s in representative packages | `Tests` overlap | Regression and affected behavior | `KEEP_LOCAL` when affected |
 | Full root race fallback | 7m32s warm end to end | `Tests` and coverage overlap | Useful only for unknown/high-risk changes | `MOVE_TO_CI` by default |
-| Exact review | Provider-dependent | Human review is independent | Candidate intent and exact bytes | `KEEP_LOCAL` |
-| Repeated review/validation | Provider-dependent | No | None in the linear workflow | `REMOVE` |
-| Target/head revalidation and leased push | Seconds | Merge protection is additive | Fresh base and exact publication identity | `KEEP_LOCAL` |
+
+This table covers validation cost. Review, target freshness, and publication
+are separate steps; `agent-check-pr` does not perform them.
 
 The earlier 35.97s concurrent-worktree measurement used the unsafe original
 v2.12.2 value format and is no longer correctness evidence. The cache
@@ -231,7 +225,7 @@ baseline, and adds focused race or affected subsystem tests.
 
 `bash scripts/agent-check-full` is the explicit broad fallback. It runs full
 normalization, the baseline, and the complete root-module race suite. It is not
-the default publication path.
+the default validation path.
 
 The selector intentionally stays small. Unknown inputs, dependency/toolchain
 changes, protobuf/generated surfaces, shared public types, and production Go
