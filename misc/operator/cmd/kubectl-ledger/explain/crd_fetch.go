@@ -13,64 +13,33 @@ import (
 
 const clusterCRDName = "clusters.ledger.formance.com"
 
-// FetchSpecFields fetches the Cluster CRD from the cluster and builds
-// the field tree from its OpenAPI v3 schema. Returns descriptions, defaults,
-// and validation info that reflection alone cannot provide.
-func FetchSpecFields(ctx context.Context, cfg *rest.Config) ([]Field, error) {
+func fetchClusterSchema(ctx context.Context, cfg *rest.Config) (*apiextv1.JSONSchemaProps, error) {
 	client, err := apiextensionsclientset.NewForConfig(cfg)
 	if err != nil {
 		return nil, fmt.Errorf("creating apiextensions client: %w", err)
 	}
-
 	crd, err := client.ApiextensionsV1().CustomResourceDefinitions().Get(ctx, clusterCRDName, metav1.GetOptions{})
 	if err != nil {
 		return nil, fmt.Errorf("fetching CRD %s: %w", clusterCRDName, err)
 	}
-
 	if len(crd.Spec.Versions) == 0 {
 		return nil, fmt.Errorf("CRD %s has no versions", clusterCRDName)
 	}
-
 	schema := crd.Spec.Versions[0].Schema
 	if schema == nil || schema.OpenAPIV3Schema == nil {
 		return nil, fmt.Errorf("CRD %s has no OpenAPI v3 schema", clusterCRDName)
 	}
 
-	specProp, ok := schema.OpenAPIV3Schema.Properties["spec"]
-	if !ok {
-		return nil, fmt.Errorf("CRD %s has no spec property", clusterCRDName)
-	}
-
-	return fieldsFromOpenAPI(specProp.Properties), nil
+	return schema.OpenAPIV3Schema, nil
 }
 
-// FetchStatusFields fetches status fields from the cluster CRD.
-func FetchStatusFields(ctx context.Context, cfg *rest.Config) ([]Field, error) {
-	client, err := apiextensionsclientset.NewForConfig(cfg)
-	if err != nil {
-		return nil, fmt.Errorf("creating apiextensions client: %w", err)
-	}
-
-	crd, err := client.ApiextensionsV1().CustomResourceDefinitions().Get(ctx, clusterCRDName, metav1.GetOptions{})
-	if err != nil {
-		return nil, fmt.Errorf("fetching CRD %s: %w", clusterCRDName, err)
-	}
-
-	if len(crd.Spec.Versions) == 0 {
-		return nil, fmt.Errorf("CRD %s has no versions", clusterCRDName)
-	}
-
-	schema := crd.Spec.Versions[0].Schema
-	if schema == nil || schema.OpenAPIV3Schema == nil {
-		return nil, fmt.Errorf("CRD %s has no OpenAPI v3 schema", clusterCRDName)
-	}
-
-	statusProp, ok := schema.OpenAPIV3Schema.Properties["status"]
+func fieldsFromSchema(schema *apiextv1.JSONSchemaProps, property string) ([]Field, error) {
+	prop, ok := schema.Properties[property]
 	if !ok {
-		return nil, fmt.Errorf("CRD %s has no status property", clusterCRDName)
+		return nil, fmt.Errorf("CRD %s has no %s property", clusterCRDName, property)
 	}
 
-	return fieldsFromOpenAPI(statusProp.Properties), nil
+	return fieldsFromOpenAPI(prop.Properties), nil
 }
 
 // fieldsFromOpenAPI converts an OpenAPI v3 properties map to []Field.
