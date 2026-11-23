@@ -46,6 +46,16 @@ func TestInitializeEmptyBootstrap(t *testing.T) {
 	})
 }
 
+func TestVerifySkipsDormantIncarnationsAfterEmptyBootstrap(t *testing.T) {
+	store := migrationStore(t)
+	require.NoError(t, InitializeEmptyBootstrap(store))
+	appendFixture(t, store, 1, 100, nil)
+	reader, err := store.NewReadHandle()
+	require.NoError(t, err)
+	defer func() { require.NoError(t, reader.Close()) }()
+	require.NoError(t, Verify(t.Context(), reader, logging.Testing()))
+}
+
 func appendFixture(t *testing.T, store *dal.Store, sequence, timestamp uint64, payload *commonpb.LogPayload) {
 	t.Helper()
 	batch := store.OpenWriteSession()
