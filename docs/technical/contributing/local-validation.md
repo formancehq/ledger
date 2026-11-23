@@ -263,65 +263,6 @@ and the race detector. The internal suite requires Docker. They produce the
 required `internal.out` and `store.out` profiles. Full-tag E2E coverage and
 full-tag linting do not execute these assertions.
 
-## Linear workflow DAG
-
-One normalization pass is followed by at most one replay on the resulting
-state. A clean replay proves the fixpoint. The committed candidate then receives
-one proportional validation followed by one exact final review. The publication
-path does not add another identical last-mile validation when HEAD and worktree
-state are unchanged.
-
-```mermaid
-flowchart LR
-    A[Fetch and bind target/head] --> B[Focused reproduction or regression]
-    B --> C[Applicable normalization]
-    C --> D[Exact candidate commit]
-    D --> E[Targeted agent-check-pr]
-    E --> F[Collect unresolved GitHub findings]
-    F --> G[Exact final review]
-    G --> H[Revalidate target and remote head]
-    H --> I[Leased push]
-    I --> J[Clean CI in parallel with human review]
-    J --> K[Required checks and approval]
-    K --> L[Merge]
-```
-
-An existing PR's CI starts from its first push while local review proceeds.
-Subsequent fixes are not delayed by local replays of broad jobs that CI runs
-independently.
-
-Representative warm local compute is therefore about 23 seconds for a docs-only
-change, 1.5-2 minutes for a focused test-only change, 2-5 minutes plus its
-reproduction/review evidence for an ordinary bugfix, and about 7.5 minutes for
-the explicit high-risk fallback. Tooling changes that exercise all script
-launchers are typically 3-4 minutes. Provider review time is intentionally not
-hidden inside these command measurements.
-
-### Cooperative-boundary baseline
-
-The 2026-09-04 PR-tooling measurement used a primary checkout containing
-219,330 ignored entries and 14.28 GiB of ignored logical content. The previous
-integrity guard took more than 65.662 seconds for one snapshot, took seven
-snapshots per straight run, and launched 63 Git processes. Its measured lower
-bound exceeded 7 minutes 40 seconds. The cooperative guard does not enumerate
-ignored entries: a warm six-process benchmark of the same checkout took 235
-ms, while the final complete boundary measured 175 ms before and 153 ms after
-(328 ms of snapshot compute and 0.49 seconds wall time). The two snapshots
-launch 12 Git processes. The Git interceptor was removed.
-
-The proportional validation for that tooling change completed in about 90
-seconds on a warm cache, including the single affected race suite. The guard
-was therefore below 1% of measured local compute. Use the following warm local
-objectives to identify future measured optimization work; they are diagnostic
-objectives, not validation gates:
-
-| Change class | Local compute objective | Excluded time |
-| --- | ---: | --- |
-| Documentation or small tooling | <3m | Reviewer-provider latency |
-| Focused test-only | <5m | Reviewer-provider latency |
-| Focused Go change | <5m | Intrinsically slow affected tests and reviewer-provider latency |
-| Ordinary bugfix | <10m | Reviewer-provider latency |
-
 ## CI boundary
 
 The default workflow runs clean normalization, unit coverage, operator, E2E,
