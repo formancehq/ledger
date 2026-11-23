@@ -208,6 +208,9 @@ func TestLogToEvent(t *testing.T) {
 			require.Equal(t, tc.expectedName, event.GetLedger())
 			require.Equal(t, tc.log.GetSequence(), event.GetLogSequence())
 			require.True(t, proto.Equal(tc.log, event.GetLog()))
+			if tc.expectedType != commonpb.EventType_CREATED_LEDGER {
+				require.Same(t, tc.log, event.GetLog())
+			}
 		})
 	}
 }
