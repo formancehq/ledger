@@ -67,6 +67,7 @@ func TestAccountIncarnationRolloutAcrossOfflineMigration(t *testing.T) {
 	writes.Revision++
 	writes.CapabilityActivations = []*commonpb.CapabilityActivation{{Id: uint32(capabilities.AccountIncarnationWritesV1), Active: true}}
 	node.applyClusterPolicy(writes)
+	node.activateCapability(capabilities.AccountIncarnationWritesV1)
 	node.apply(actions.CreateTransactionAction(ledger, []*commonpb.Posting{posting("world", "alice")}, nil, nil))
 	node.apply(actions.CreateTransactionAction(ledger, []*commonpb.Posting{posting("alice", "bob")}, nil, nil))
 	live, err := attr.Get(store, key)
@@ -100,6 +101,7 @@ func TestAccountIncarnationRolloutAcrossOfflineMigration(t *testing.T) {
 	history.CapabilityActivations = append(history.CapabilityActivations,
 		&commonpb.CapabilityActivation{Id: uint32(capabilities.AccountIncarnationHistoryCompleteV1), Active: true})
 	restarted.applyClusterPolicy(history)
+	restarted.activateCapability(capabilities.AccountIncarnationHistoryCompleteV1)
 	account := readAccount(store, "alice")
 	require.Equal(t, merged.GetInsertedAt().GetData(), account.GetInsertionDate().GetData())
 	require.Equal(t, merged.GetUpdatedAt().GetData(), account.GetUpdatedAt().GetData())

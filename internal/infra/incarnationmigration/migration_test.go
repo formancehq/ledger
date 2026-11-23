@@ -27,6 +27,25 @@ func migrationStore(t *testing.T) *dal.Store {
 	return store
 }
 
+func TestInitializeEmptyBootstrap(t *testing.T) {
+	t.Run("empty store", func(t *testing.T) {
+		store := migrationStore(t)
+		require.NoError(t, InitializeEmptyBootstrap(store))
+		marker, err := ReadMarker(store)
+		require.NoError(t, err)
+		require.True(t, marker.Complete)
+		require.NoError(t, InitializeEmptyBootstrap(store))
+	})
+	t.Run("existing history", func(t *testing.T) {
+		store := migrationStore(t)
+		appendFixture(t, store, 1, 100, nil)
+		require.NoError(t, InitializeEmptyBootstrap(store))
+		marker, err := ReadMarker(store)
+		require.NoError(t, err)
+		require.False(t, marker.Complete)
+	})
+}
+
 func appendFixture(t *testing.T, store *dal.Store, sequence, timestamp uint64, payload *commonpb.LogPayload) {
 	t.Helper()
 	batch := store.OpenWriteSession()
