@@ -319,13 +319,7 @@ func (b *Builder) dispatchOrder(
 	case *raftcmdpb.LedgerApplyOrder_CreateTransaction:
 		return b.dispatchCreateTransaction(ctx, handle, ledger, data.CreateTransaction, logSeq, state, entry)
 	case *raftcmdpb.LedgerApplyOrder_ExecuteNumscript:
-		execution := data.ExecuteNumscript
-
-		return b.dispatchCreateTransaction(ctx, handle, ledger, &raftcmdpb.CreateTransactionOrder{
-			Script: execution.GetScript(), NumscriptReference: execution.GetNumscriptReference(),
-			Timestamp: execution.GetTimestamp(), Metadata: execution.GetMetadata(),
-			AccountMetadata: execution.GetAccountMetadata(), Reference: execution.GetReference(),
-		}, logSeq, state, entry)
+		return b.dispatchExecuteNumscript(ctx, handle, ledger, data.ExecuteNumscript, logSeq, state, entry)
 	case *raftcmdpb.LedgerApplyOrder_RevertTransaction:
 		return b.dispatchRevertTransaction(ctx, handle, ledger, logSeq, state, entry)
 	}
@@ -456,14 +450,45 @@ func applyVolumeAnnotations(ledger string, ann logVolumeAnnotations, state *batc
 	}
 }
 
-// dispatchCreateTransaction projects the effects of a transaction creation or
-// standalone Numscript execution. A metadata-only script counts as an execution
-// without creating a transaction.
+// dispatchCreateTransaction projects the effects of a transaction creation.
 func (b *Builder) dispatchCreateTransaction(
 	ctx context.Context,
 	handle dal.PebbleGetter,
 	ledger string,
 	order *raftcmdpb.CreateTransactionOrder,
+	logSeq uint64,
+	state *batchState,
+	entry *entryVolumeState,
+) error {
+	return b.dispatchTransactionUsage(ctx, handle, ledger, order, logSeq, state, entry)
+}
+
+// dispatchExecuteNumscript projects either a created transaction or a
+// metadata-only execution without changing the order's type.
+func (b *Builder) dispatchExecuteNumscript(
+	ctx context.Context,
+	handle dal.PebbleGetter,
+	ledger string,
+	order *raftcmdpb.ExecuteNumscriptOrder,
+	logSeq uint64,
+	state *batchState,
+	entry *entryVolumeState,
+) error {
+	return b.dispatchTransactionUsage(ctx, handle, ledger, order, logSeq, state, entry)
+}
+
+type transactionUsageSource interface {
+	GetReference() string
+	GetNumscriptReference() *raftcmdpb.NumscriptReference
+	GetScript() *commonpb.Script
+	GetTimestamp() *commonpb.Timestamp
+}
+
+func (b *Builder) dispatchTransactionUsage(
+	ctx context.Context,
+	handle dal.PebbleGetter,
+	ledger string,
+	order transactionUsageSource,
 	logSeq uint64,
 	state *batchState,
 	entry *entryVolumeState,
@@ -492,8 +517,7 @@ func (b *Builder) dispatchCreateTransaction(
 		state.addCounter(ledger, usagestore.CounterReference, 1)
 	}
 
-	isScripted := order.GetNumscriptReference() != nil ||
-		(order.GetScript() != nil && order.GetScript().GetPlain() != "")
+	isScripted := order.GetNumscriptReference() != nil || (order.GetScript() != nil && order.GetScript().GetPlain() != "")
 
 	if isScripted {
 		state.addCounter(ledger, usagestore.CounterNumscriptExecution, 1)
