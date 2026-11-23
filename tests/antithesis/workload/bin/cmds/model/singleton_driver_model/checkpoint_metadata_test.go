@@ -5,6 +5,7 @@ import (
 	"errors"
 	"sync/atomic"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/stretchr/testify/require"
@@ -72,6 +73,7 @@ type checkpointMetadataServer struct {
 	remainingDemotions      atomic.Int32
 	remainingMissingAddress atomic.Int32
 	metadataReads           atomic.Int32
+	discoveryDelay          time.Duration
 }
 
 func (s *checkpointMetadataServer) Barrier(context.Context, *servicepb.BarrierRequest) (*servicepb.BarrierResponse, error) {
@@ -90,8 +92,13 @@ func (s *checkpointMetadataServer) Barrier(context.Context, *servicepb.BarrierRe
 	return &servicepb.BarrierResponse{CommitIndex: 42}, nil
 }
 
-func (s *checkpointMetadataServer) GetClusterState(_ context.Context, req *clusterpb.GetClusterStateRequest) (*clusterpb.ClusterState, error) {
+func (s *checkpointMetadataServer) GetClusterState(ctx context.Context, req *clusterpb.GetClusterStateRequest) (*clusterpb.ClusterState, error) {
 	if req.GetNodeId() == 0 {
+		select {
+		case <-ctx.Done():
+			return nil, status.FromContextError(ctx.Err()).Err()
+		case <-time.After(s.discoveryDelay):
+		}
 		if s.remainingDemotions.CompareAndSwap(1, 0) {
 			return &clusterpb.ClusterState{State: "Follower", LocalNode: 1}, nil
 		}
@@ -214,6 +221,44 @@ func TestCheckpointSetupRetriesTransientProbeFailures(t *testing.T) {
 	require.Same(t, node, selected)
 }
 
+// A leader with an unreachable peer answers identity discovery only after its
+// 2s peer timeout; the probe must still complete the fence.
+func TestCheckpointSetupOutlastsLeaderPeerTimeout(t *testing.T) {
+	t.Parallel()
+	synctest.Test(t, func(t *testing.T) {
+		ctx, cancel := context.WithTimeout(t.Context(), time.Minute)
+		defer cancel()
+		server, bucket, cluster := checkpointMetadataClients(t)
+		server.discoveryDelay = 2*time.Second + 500*time.Millisecond
+		node := &internal.PerNodeConn{Addr: "node", NodeID: 2, Bucket: bucket, Cluster: cluster}
+
+		selected, err := waitForCheckpointSetupNode(ctx, internal.PerNodeConns{node})
+		require.NoError(t, err)
+		require.Same(t, node, selected)
+	})
+}
+
+// A partitioned node never answers; it must not delay a reachable one.
+func TestCheckpointSetupDoesNotWaitForHangingNode(t *testing.T) {
+	t.Parallel()
+	synctest.Test(t, func(t *testing.T) {
+		ctx, cancel := context.WithTimeout(t.Context(), time.Minute)
+		defer cancel()
+		hangingServer, hangingBucket, hangingCluster := checkpointMetadataClients(t)
+		hangingServer.discoveryDelay = time.Hour
+		reachableServer, reachableBucket, reachableCluster := checkpointMetadataClients(t)
+		hangingServer.addr, reachableServer.addr = "hanging", "reachable"
+		hanging := &internal.PerNodeConn{Addr: "hanging", NodeID: 2, Bucket: hangingBucket, Cluster: hangingCluster}
+		reachable := &internal.PerNodeConn{Addr: "reachable", NodeID: 2, Bucket: reachableBucket, Cluster: reachableCluster}
+
+		start := time.Now()
+		selected, err := selectCheckpointSetupNode(ctx, internal.PerNodeConns{hanging, reachable})
+		require.NoError(t, err)
+		require.Same(t, reachable, selected)
+		require.Less(t, time.Since(start), time.Second)
+	})
+}
+
 func TestCheckpointSetupReturnsDefinitiveProbeFailure(t *testing.T) {
 	t.Parallel()
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -232,24 +277,26 @@ func TestCheckpointSetupReturnsDefinitiveProbeFailure(t *testing.T) {
 
 func TestCheckpointSetupResolvesIdentityAfterFailedDialDiscovery(t *testing.T) {
 	t.Parallel()
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-	firstServer, firstBucket, firstCluster := checkpointMetadataClients(t)
-	firstServer.failDiscovery = true
-	secondServer, secondBucket, secondCluster := checkpointMetadataClients(t)
-	secondServer.addr = "second"
-	// DialPerNode discovery is best effort. A down first address can consume
-	// its shared deadline and leave even reachable connections unresolved.
-	first := &internal.PerNodeConn{Addr: "first", Bucket: firstBucket, Cluster: firstCluster}
-	second := &internal.PerNodeConn{Addr: "second", Bucket: secondBucket, Cluster: secondCluster}
-	selected, err := waitForCheckpointSetupNode(ctx, internal.PerNodeConns{first, second})
-	require.NoError(t, err)
-	require.Same(t, second, selected)
-	response, err := readCheckpointSchedule(ctx, selected)
-	require.NoError(t, err)
-	require.Equal(t, modelCheckpointCrons[0], response.GetCron())
-	require.Zero(t, selected.NodeID, "resolution must not race by mutating a connection shared with workers")
-	require.Zero(t, firstServer.metadataReads.Load())
+	synctest.Test(t, func(t *testing.T) {
+		ctx, cancel := context.WithTimeout(t.Context(), time.Minute)
+		defer cancel()
+		firstServer, firstBucket, firstCluster := checkpointMetadataClients(t)
+		firstServer.failDiscovery = true
+		secondServer, secondBucket, secondCluster := checkpointMetadataClients(t)
+		secondServer.addr = "second"
+		// DialPerNode discovery is best effort. A down first address can consume
+		// its shared deadline and leave even reachable connections unresolved.
+		first := &internal.PerNodeConn{Addr: "first", Bucket: firstBucket, Cluster: firstCluster}
+		second := &internal.PerNodeConn{Addr: "second", Bucket: secondBucket, Cluster: secondCluster}
+		selected, err := waitForCheckpointSetupNode(ctx, internal.PerNodeConns{first, second})
+		require.NoError(t, err)
+		require.Same(t, second, selected)
+		response, err := readCheckpointSchedule(ctx, selected)
+		require.NoError(t, err)
+		require.Equal(t, modelCheckpointCrons[0], response.GetCron())
+		require.Zero(t, selected.NodeID, "resolution must not race by mutating a connection shared with workers")
+		require.Zero(t, firstServer.metadataReads.Load())
+	})
 }
 
 func TestCheckpointSetupRetriesDiscoveryDuringLeadershipChange(t *testing.T) {
