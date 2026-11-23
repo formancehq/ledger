@@ -115,7 +115,16 @@ func repositoryFiles() ([]string, error) {
 			continue
 		}
 
-		files = append(files, string(part))
+		path := string(part)
+		if _, err := os.Lstat(path); err != nil {
+			if os.IsNotExist(err) {
+				// Git still lists tracked files deleted in the worktree.
+				continue
+			}
+
+			return nil, fmt.Errorf("stating %s: %w", path, err)
+		}
+		files = append(files, path)
 	}
 
 	return files, nil
