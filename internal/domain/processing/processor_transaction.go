@@ -19,6 +19,7 @@ func processCreateTransaction(ledger string, order *raftcmdpb.CreateTransactionO
 	if len(staged.result.Postings) == 0 {
 		return nil, domain.ErrEmptyTransaction
 	}
+
 	return processProducedTransaction(ledger, order, ctx, staged)
 }
 
@@ -39,8 +40,10 @@ func processExecuteNumscript(ledger string, execution *raftcmdpb.ExecuteNumscrip
 		if hasScriptAccountMetadataUpdates(staged.result.AccountsMetadata) || hasAccountMetadataUpdates(order.GetAccountMetadata()) {
 			return processMetadataOnly(ledger, order, staged.result, ctx)
 		}
+
 		return nil, domain.ErrEmptyTransaction
 	}
+
 	return processProducedTransaction(ledger, order, ctx, staged)
 }
 
@@ -401,6 +404,7 @@ func mergeAccountMetadata(script map[string]map[string]*commonpb.MetadataValue, 
 			merged[account] = values
 		}
 	}
+
 	return merged
 }
 
