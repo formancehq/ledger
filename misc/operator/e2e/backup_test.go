@@ -5,6 +5,8 @@ package e2e
 import (
 	"encoding/json"
 	"io"
+	"os"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -34,6 +36,11 @@ func TestFullBackup_S3Objects(t *testing.T) {
 // left a restorable object inventory in MinIO.
 func TestRepeatedCheckpointBackup_S3Objects(t *testing.T) {
 	bucket := "e2e-incr-backup"
+	firstSequence, err := strconv.ParseUint(os.Getenv("FIRST_CHECKPOINT_SEQUENCE"), 10, 64)
+	require.NoError(t, err, "first BackupRun must report its checkpoint sequence")
+	secondSequence, err := strconv.ParseUint(os.Getenv("SECOND_CHECKPOINT_SEQUENCE"), 10, 64)
+	require.NoError(t, err, "second BackupRun must report its checkpoint sequence")
+	require.Greater(t, secondSequence, firstSequence, "second BackupRun must advance beyond the first")
 
 	out, err := s3Client.ListObjectsV2(ctx, &s3.ListObjectsV2Input{
 		Bucket: aws.String(bucket),
@@ -65,7 +72,7 @@ func TestRepeatedCheckpointBackup_S3Objects(t *testing.T) {
 	}
 	require.NoError(t, json.Unmarshal(manifestBytes, &manifest))
 	require.Empty(t, manifest.Exports, "checkpoint-only manifest must not publish exports")
-	require.Positive(t, manifest.Checkpoint.LastLogSequence)
+	require.Equal(t, secondSequence, manifest.Checkpoint.LastLogSequence, "manifest must publish the second BackupRun checkpoint")
 	require.NotEmpty(t, manifest.Checkpoint.Files)
 	for name, file := range manifest.Checkpoint.Files {
 		_, ok := objects[file.Key]

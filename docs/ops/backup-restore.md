@@ -71,12 +71,14 @@ are removed. The operator records a single `BackupHealthy` condition.
 `kubectl ledger backup trigger` no longer accepts `--type`; every run creates
 a checkpoint.
 
-The old objects have no supported in-place conversion. Delete any existing
-BackupRun and Backup resources after confirming no Job is active. Install the
-new CRDs, recreate Backups from the updated manifests, then start the new
-operator. This removes Kubernetes run history and schedule cursors;
-the first scheduled checkpoint runs immediately. Ledger data and the current
-object-store checkpoint are separate from these Kubernetes resources.
+The old objects have no supported in-place conversion. Stop the existing
+operator first, then confirm no backup Job is active. Delete any existing
+BackupRun and Backup resources, install the new CRDs, and recreate Backups
+from the updated manifests while the operator remains stopped. Start the new
+operator only after those steps. This removes Kubernetes run history and
+schedule cursors; the first scheduled checkpoint runs immediately. Ledger data
+and the current object-store checkpoint are separate from these Kubernetes
+resources.
 
 #### S3 credentials for operator backups
 
