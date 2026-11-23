@@ -148,6 +148,82 @@ func TestProcessRevertTransaction_Success(t *testing.T) {
 	require.Equal(t, uint64(3), revertedTx.GetRevertTransaction().GetRevertsTransaction())
 }
 
+func TestProcessRevertTransaction_ChainedPostingOrder(t *testing.T) {
+	t.Parallel()
+
+	postings := []*commonpb.Posting{
+		{Source: "world", Destination: "A", Amount: commonpb.NewUint256FromUint64(10), Asset: "USD"},
+		{Source: "A", Destination: "B", Amount: commonpb.NewUint256FromUint64(10), Asset: "USD"},
+	}
+	for _, tc := range []struct {
+		name, expectedSource string
+		marked, force, spent bool
+		wantFailure          bool
+	}{
+		{name: "new order restores chain", marked: true, expectedSource: "B"},
+		{name: "spent destination still fails", marked: true, spent: true, wantFailure: true},
+		{name: "historical order replays in original order", force: true, expectedSource: "A"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			ctrl := gomock.NewController(t)
+			store := NewMockScope(ctrl)
+			key := domain.TransactionKey{LedgerName: "L", ID: 1}
+			store.EXPECT().GetReverted(key).Return(false, nil)
+			expectGetTransactionState(store, key, (&commonpb.TransactionState{Postings: postings, Timestamp: &commonpb.Timestamp{Data: 1}}).AsReader(), nil)
+
+			volumes := map[string]*raftcmdpb.VolumePair{
+				"world": {Input: commonpb.NewUint256FromUint64(0), Output: commonpb.NewUint256FromUint64(0)},
+				"A":     {Input: commonpb.NewUint256FromUint64(10), Output: commonpb.NewUint256FromUint64(10)},
+				"B":     {Input: commonpb.NewUint256FromUint64(10), Output: commonpb.NewUint256FromUint64(0)},
+			}
+			if tc.spent {
+				volumes["B"].Output = commonpb.NewUint256FromUint64(10)
+			}
+			stub := setupVolumesStub(store)
+			stub.onGet(func(k domain.VolumeKey) (raftcmdpb.VolumePairReader, error) {
+				return volumes[k.AccountKey.Account].AsReader(), nil
+			})
+			stub.onPut(func(k domain.VolumeKey, v *raftcmdpb.VolumePair) {
+				volumes[k.AccountKey.Account] = v
+			})
+
+			if !tc.wantFailure {
+				store.EXPECT().PutReverted(key, true)
+				store.EXPECT().GetDate().Return((&commonpb.Timestamp{Data: 2}).AsReader()).AnyTimes()
+				store.EXPECT().GetNextSequenceID().Return(uint64(2))
+				expectPutTransactionState(t, store, key, nil)
+				expectPutTransactionState(t, store, domain.TransactionKey{LedgerName: "L", ID: 2}, nil)
+			}
+			committed := &raftcmdpb.RevertTransactionOrder{
+				TransactionId: 1, ReversePostingOrder: tc.marked, Force: tc.force,
+			}
+			encoded, encodeErr := committed.MarshalVT()
+			require.NoError(t, encodeErr)
+			decoded := new(raftcmdpb.RevertTransactionOrder)
+			require.NoError(t, decoded.UnmarshalVT(encoded))
+			payload, err := processRevertTransaction("L", decoded, &Context{
+				Scope: store, Boundaries: &raftcmdpb.LedgerBoundaries{NextTransactionId: 2},
+				LedgerInfo:         (&commonpb.LedgerInfo{}).AsReader(),
+				RevertTargetDigest: domain.RevertTargetDigest(postings, true),
+			})
+			if tc.wantFailure {
+				var insufficient *domain.ErrInsufficientFunds
+				require.ErrorAs(t, err, &insufficient)
+				require.Nil(t, payload)
+				return
+			}
+			require.Nil(t, err)
+			reverted := payload.GetRevertedTransaction().GetRevertTransaction()
+			require.Equal(t, tc.expectedSource, reverted.GetPostings()[0].GetSource())
+			if tc.marked {
+				require.Equal(t, "0", volumes["A"].GetInput().ToBigInt().Sub(volumes["A"].GetInput().ToBigInt(), volumes["A"].GetOutput().ToBigInt()).String())
+				require.Equal(t, volumes["B"].GetInput().ToBigInt().String(), volumes["B"].GetOutput().ToBigInt().String())
+			}
+		})
+	}
+}
+
 func TestProcessRevertTransaction_AtEffectiveDate(t *testing.T) {
 	t.Parallel()
 

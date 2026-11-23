@@ -1709,7 +1709,7 @@ func (s *LedgerState) applyRevert(
 
 	reversed := make([]*commonpb.Posting, len(orig.postings))
 	for i, p := range orig.postings {
-		reversed[i] = &commonpb.Posting{
+		reversed[len(orig.postings)-1-i] = &commonpb.Posting{
 			Source:      p.GetDestination(),
 			Destination: p.GetSource(),
 			Amount:      p.GetAmount(),

@@ -105,7 +105,11 @@ func processRevertTransaction(ledger string, order *raftcmdpb.RevertTransactionO
 	// (account, asset, color) on the way out, so they must return under the same bucket.
 	revertPostings := make([]*commonpb.Posting, len(originalPostings))
 	for i, originalPosting := range originalPostings {
-		revertPostings[i] = &commonpb.Posting{
+		index := i
+		if order.GetReversePostingOrder() {
+			index = len(originalPostings) - 1 - i
+		}
+		revertPostings[index] = &commonpb.Posting{
 			Source:      originalPosting.GetDestination(),
 			Destination: originalPosting.GetSource(),
 			Amount:      originalPosting.GetAmount(),

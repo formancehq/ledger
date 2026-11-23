@@ -1381,11 +1381,11 @@ also keyed per `(account, asset, color)` while `first_usage` is per address.
 
 ### 3. Posting Order in Revert
 
-**POC:** Postings are reversed (source ↔ destination) AND the order is reversed.
+**V3:** New reverts swap source and destination and apply postings in reverse order. Historical committed reverts retain their original order during replay.
 
 **Original:** Same behavior.
 
-**Status:** ✅ Compliant
+**Status:** ✅ Compliant after capability activation
 
 ### 4. Idempotency
 

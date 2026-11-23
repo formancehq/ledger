@@ -2771,10 +2771,11 @@ func (a *Admission) convertApplyRequest(ctx context.Context, apply *servicepb.Le
 		}
 
 		revert := &raftcmdpb.RevertTransactionOrder{
-			TransactionId:   txID,
-			Force:           data.RevertTransaction.GetForce(),
-			AtEffectiveDate: data.RevertTransaction.GetAtEffectiveDate(),
-			Metadata:        data.RevertTransaction.GetMetadata(),
+			TransactionId:       txID,
+			Force:               data.RevertTransaction.GetForce(),
+			AtEffectiveDate:     data.RevertTransaction.GetAtEffectiveDate(),
+			Metadata:            data.RevertTransaction.GetMetadata(),
+			ReversePostingOrder: true,
 		}
 		overlay.recordRevertTarget(apply.GetLedger(), revert, observation)
 

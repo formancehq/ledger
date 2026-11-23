@@ -81,29 +81,33 @@ absent, then current membership is reevaluated. Lost responses and restart never
 cause a committed activation to be undone. No intermediate `requested` state is
 needed; the unreleased draft field is removed without reassigning its number.
 
-The supported registry remains empty in this change. A feature must separately
-register its stable ID, select its proposal marker at preparation, and dispatch
-deterministic apply from that persisted marker. This infrastructure change does
-not introduce the account-type validation feature from PR #2552.
+The supported registry contains capability ID 1, `RevertReversePostingOrder`.
+Admission marks newly built revert orders with
+`RevertTransactionOrder.reverse_posting_order`. The final proposal derives ID 1
+when any order carries that marker. Apply selects posting sequence from the
+persisted marker alone: marked orders swap directions and reverse the sequence;
+historical unmarked orders swap directions in their original sequence. Both
+forms remain replayable after activation. The marker is internal Raft and audit
+data; the client request and service protocol revision are unchanged.
 
 1. The replicated `ClusterPolicy` controls whether the cluster may accept the
    behavior.
 2. The order declares the capability that selects the behavior during FSM
    apply.
 
-The serialized proposal currently carries `required_capabilities` at proposal
-scope. That is sufficient only when every order in the proposal has the same
-semantic contract. A proposal can batch multiple orders, so a future change
-that mixes old and new semantics must either add a persisted marker to each
-order (and dispatch apply from that marker) or reject mixed-semantic batches.
-The conceptual marker for a homogeneous proposal is:
+The serialized proposal carries `required_capabilities` at proposal scope.
+Because a proposal can batch old and new semantic forms, the revert change
+also persists `reverse_posting_order` on each revert order. The proposal
+declares ID 1 if any contained revert is marked; apply dispatches each revert
+from its own marker. Other future mixed-semantic changes need an equivalent
+per-order marker or must reject mixed batches. The revert declaration is:
 
 ```text
-old proposal:  required_capabilities = []
-new proposal:  required_capabilities = [MirrorIngestRejectInvalidAssetV2]
+historical revert: reverse_posting_order = false
+new revert:        reverse_posting_order = true; required_capabilities includes 1
 ```
 
-The FSM must use the persisted declaration to select the behavior. It must not
+The FSM must use the persisted order marker to select the behavior. It must not
 infer the behavior from the current policy alone. An old order can be replayed
 after the capability becomes active, and it must keep its old semantics.
 

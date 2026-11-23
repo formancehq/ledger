@@ -102,6 +102,29 @@ func TestPrepareProposalClearsFutureDeclarations(t *testing.T) {
 	require.Empty(t, proposal.GetRequiredCapabilities())
 }
 
+func TestRevertPostingOrderCapabilityFollowsPersistedMarker(t *testing.T) {
+	t.Parallel()
+	newOrder := &raftcmdpb.Order{Type: &raftcmdpb.Order_LedgerScoped{LedgerScoped: &raftcmdpb.LedgerScopedOrder{
+		Payload: &raftcmdpb.LedgerScopedOrder_Apply{Apply: &raftcmdpb.LedgerApplyOrder{
+			Data: &raftcmdpb.LedgerApplyOrder_RevertTransaction{RevertTransaction: &raftcmdpb.RevertTransactionOrder{ReversePostingOrder: true}},
+		}},
+	}}}
+	proposal := &raftcmdpb.Proposal{Payload: &raftcmdpb.Proposal_Batch{Batch: &raftcmdpb.ExecutionBatch{Orders: []*raftcmdpb.Order{newOrder}}}}
+	prepared, err := PrepareProposal(proposal)
+	require.NoError(t, err)
+	require.Equal(t, []CapabilityID{RevertReversePostingOrder}, prepared.RequiredCapabilities())
+	require.Equal(t, []uint32{uint32(RevertReversePostingOrder)}, proposal.GetRequiredCapabilities())
+	data, err := proposal.MarshalVT()
+	require.NoError(t, err)
+	require.NoError(t, ValidateFinalProposal(data, prepared.RequiredCapabilities()))
+
+	newOrder.GetLedgerScoped().GetApply().GetRevertTransaction().ReversePostingOrder = false
+	legacy, err := RequiredCapabilities(proposal)
+	require.NoError(t, err)
+	require.Empty(t, legacy)
+	require.Equal(t, []CapabilityID{RevertReversePostingOrder}, SupportedIDs())
+}
+
 func TestFromPolicyRoundTrip(t *testing.T) {
 	state := FromPolicy(&commonpb.ClusterPolicy{
 		CapabilityActivations: []*commonpb.CapabilityActivation{{Id: 99, Active: true}},

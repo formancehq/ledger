@@ -17,9 +17,10 @@ import (
 // writerStub satisfies replay.Writer with no-ops; the index hooks are
 // overridable so the dispatch tests can observe calls and inject failures.
 type writerStub struct {
-	createIndex func(ledger string, id *commonpb.IndexID, createdAt *commonpb.Timestamp) error
-	dropIndex   func(ledger string, id *commonpb.IndexID) error
-	setMetadata func(key []byte, value *commonpb.MetadataValue) error
+	createIndex       func(ledger string, id *commonpb.IndexID, createdAt *commonpb.Timestamp) error
+	dropIndex         func(ledger string, id *commonpb.IndexID) error
+	setMetadata       func(key []byte, value *commonpb.MetadataValue) error
+	createTransaction func(postings []*commonpb.Posting) error
 
 	removedFieldTypes int
 }
@@ -37,7 +38,10 @@ func (w *writerStub) SetMetadata(key []byte, value *commonpb.MetadataValue) erro
 }
 func (w *writerStub) DeleteMetadata([]byte) error       { return nil }
 func (w *writerStub) MoveMetadata([]byte, []byte) error { return nil }
-func (w *writerStub) CreateTransaction([]byte, uint64, *commonpb.Timestamp, map[string]*commonpb.MetadataValue, []*commonpb.Posting, uint64) error {
+func (w *writerStub) CreateTransaction(_ []byte, _ uint64, _ *commonpb.Timestamp, _ map[string]*commonpb.MetadataValue, postings []*commonpb.Posting, _ uint64) error {
+	if w.createTransaction != nil {
+		return w.createTransaction(postings)
+	}
 	return nil
 }
 func (w *writerStub) SetTransactionReference(string, string, uint64) error { return nil }
@@ -115,6 +119,31 @@ func TestReplayLedgerLog_AccountMetadataUpdated(t *testing.T) {
 	}))
 	require.Equal(t, domain.MetadataKey{AccountKey: domain.AccountKey{LedgerName: "ledger", Account: "users:alice"}, Key: "tier"}.Bytes(), gotKey)
 	require.Equal(t, "gold", gotValue.GetStringValue())
+}
+
+func TestReplayLedgerLog_PreservesHistoricalRevertPostingOrder(t *testing.T) {
+	t.Parallel()
+	legacy := &commonpb.LedgerLogPayload{Payload: &commonpb.LedgerLogPayload_RevertedTransaction{
+		RevertedTransaction: &commonpb.RevertedTransaction{
+			RevertedTransactionId: 1,
+			RevertTransaction: &commonpb.Transaction{Id: 2, Postings: []*commonpb.Posting{
+				{Source: "A", Destination: "world", Amount: commonpb.NewUint256FromUint64(10), Asset: "USD"},
+				{Source: "B", Destination: "A", Amount: commonpb.NewUint256FromUint64(10), Asset: "USD"},
+			}},
+		},
+	}}
+	encoded, err := legacy.MarshalVT()
+	require.NoError(t, err)
+	decoded := new(commonpb.LedgerLogPayload)
+	require.NoError(t, decoded.UnmarshalVT(encoded))
+	var replayed []*commonpb.Posting
+	w := &writerStub{createTransaction: func(postings []*commonpb.Posting) error {
+		replayed = postings
+		return nil
+	}}
+	require.NoError(t, replayOne(t, w, &commonpb.Timestamp{Data: 3}, decoded))
+	require.Equal(t, "A", replayed[0].GetSource())
+	require.Equal(t, "B", replayed[1].GetSource())
 }
 
 func TestReplayLedgerLog_CreateIndexDispatch(t *testing.T) {

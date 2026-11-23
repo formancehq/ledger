@@ -63,6 +63,16 @@ The `rc.1` to `rc.2` transition rolls one voter at a time with a maintenance
 barrier that pauses writes; it does not stop the whole cluster.
 The `rc.2` to `rc.3` transition remains rolling. The dedicated peer-service
 port and Membership address migration first ship after the published `rc.4`.
+That stopped boundary also enables capability ID 1 for reverse-order reverts.
+Keep the original PVCs and committed history. After all RC.4 voters have
+stopped and all RC.5 members have advertised support, the replicated capability
+activation commits; only then can new revert proposals carry the reverse-order
+marker. Until activation, new reverts are rejected at admission and may be
+retried. Historical unmarked reverts replay with their original posting order,
+including their recorded audit result; the marker does not rewrite stored
+transaction states, snapshots, backups, or audit entries. A rollback to RC.4
+after the first marked revert is unsafe because RC.4 does not recognize the
+marker or apply the new semantics.
 Every explicit-target `UpdatePreparedQuery` order must wait until the stopped
 `rc.3` to `rc.4` upgrade completes. Even when the target value is unchanged,
 the new processor records target fields in the audit log, so old and new voters

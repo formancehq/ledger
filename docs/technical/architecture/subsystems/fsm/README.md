@@ -9,6 +9,13 @@ loads the key from the primary store and checks it against the genesis hash
 before swapping FSM state; an audit history without a matching key is an
 invariant failure.
 
+Revert posting order is selected by the persisted order marker. New marked
+orders apply compensating postings from last to first, so funds from a chain's
+destination reach an intermediate account before it is debited. Historical
+unmarked orders retain their original order on WAL and audit replay. The
+processor reads the marker from the committed order, never from node-local
+configuration or the current capability policy.
+
 Numscript-generated transaction metadata is validated in ascending key order at
 apply. If several entries are invalid, the first selected error becomes the
 authoritative audit failure (including its reason, code, and facts), so selection
