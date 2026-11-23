@@ -4,9 +4,9 @@ metadata:
   name: manual-bk
 status:
   phase: Ready
-  lastFullBackup:
+  lastBackup:
     (time != null): true
     (totalFiles >= `0`): true
   conditions:
-    - type: FullBackupHealthy
+    - type: BackupHealthy
       status: "True"

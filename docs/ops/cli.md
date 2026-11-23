@@ -2327,6 +2327,10 @@ For periodic backups, schedule `ledgerctl store backup` at the desired
 frequency. Each run publishes a complete checkpoint and reuses unchanged
 content-addressed objects.
 
+For operator-managed backups, `kubectl ledger backup trigger [backup-name]`
+creates a checkpoint `BackupRun`. The former `--type` flag is removed; set
+`Backup.spec.schedule` to one cron string for scheduled checkpoints.
+
 
 ---
 

@@ -3,5 +3,5 @@ kind: Backup
 metadata:
   name: incr-bk
 status:
-  lastFullBackup:
+  lastBackup:
     (time != null): true

@@ -4,4 +4,4 @@ metadata:
   name: ri-bk
 status:
   phase: Ready
-  lastFullBackup: {}
+  lastBackup: {}

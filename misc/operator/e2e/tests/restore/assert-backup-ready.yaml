@@ -4,4 +4,4 @@ metadata:
   name: restore-bk
 status:
   phase: Ready
-  lastFullBackup: {}
+  lastBackup: {}

@@ -106,34 +106,23 @@
         },
         "failedRunsHistoryLimit": {
           "default": 1,
-          "description": "FailedRunsHistoryLimit is the maximum number of failed BackupRun\nresources to keep per type (full/incremental). Older runs are garbage-collected.\nDefaults to 1.",
+          "description": "FailedRunsHistoryLimit is the maximum number of failed BackupRun\nresources to keep. Older runs are garbage-collected.\nDefaults to 1.",
           "format": "int32",
           "type": "integer"
         },
         "schedule": {
-          "additionalProperties": false,
-          "description": "Schedule defines the checkpoint backup cadence.\nBoth entries are optional; a Backup without any schedule is valid\nand acts as a backup configuration template for manual BackupRun resources.",
-          "properties": {
-            "full": {
-              "description": "Full is the cron expression for full backups (e.g. \"0 2 * * 0\" for weekly Sunday 2am).",
-              "type": "string"
-            },
-            "incremental": {
-              "description": "Incremental is a deprecated cron expression. When set, it schedules Full\ncheckpoint runs until the field is cleared and Full is configured.",
-              "type": "string"
-            }
-          },
-          "type": "object"
+          "description": "Schedule is the cron expression for checkpoint backups.\nIt is optional; a Backup without a schedule is valid\nand acts as a backup configuration template for manual BackupRun resources.",
+          "type": "string"
         },
         "successfulRunsHistoryLimit": {
           "default": 3,
-          "description": "SuccessfulRunsHistoryLimit is the maximum number of successful BackupRun\nresources to keep per type (full/incremental). Older runs are garbage-collected.\nDefaults to 3.",
+          "description": "SuccessfulRunsHistoryLimit is the maximum number of successful BackupRun\nresources to keep. Older runs are garbage-collected.\nDefaults to 3.",
           "format": "int32",
           "type": "integer"
         },
         "timeout": {
           "default": "1h",
-          "description": "Timeout caps how long the `ledgerctl store backup` /\n`ledgerctl store incremental-backup` RPC may run before the client\naborts. The operator forwards it as `--timeout` to the Job's\nledgerctl invocation; tune it for the size of the ledger and the\nthroughput of the destination bucket. Defaults to 1h, which is\nenough for tens of GB on S3 while still bounding stuck runs.",
+          "description": "Timeout caps how long the `ledgerctl store backup` RPC may run before the client\naborts. The operator forwards it as `--timeout` to the Job's\nledgerctl invocation; tune it for the size of the ledger and the\nthroughput of the destination bucket. Defaults to 1h, which is\nenough for tens of GB on S3 while still bounding stuck runs.",
           "type": "string"
         }
       },
@@ -203,22 +192,22 @@
           },
           "type": "array"
         },
-        "lastFullBackup": {
+        "lastBackup": {
           "additionalProperties": false,
-          "description": "LastFullBackup holds the result of the last full backup.",
+          "description": "LastBackup holds the result of the last successful checkpoint.",
           "properties": {
             "durationMs": {
-              "description": "DurationMs is the duration of the last full backup in milliseconds.",
+              "description": "DurationMs is the duration of the last checkpoint in milliseconds.",
               "format": "int64",
               "type": "integer"
             },
             "filesDeleted": {
-              "description": "FilesDeleted is the number of stale files deleted in the last full backup\n(the diff between the previous manifest and the new checkpoint).",
+              "description": "FilesDeleted is the number of stale files deleted in the last checkpoint\n(the diff between the previous manifest and the new checkpoint).",
               "format": "int32",
               "type": "integer"
             },
             "filesUploaded": {
-              "description": "FilesUploaded is the number of files uploaded in the last full backup.",
+              "description": "FilesUploaded is the number of files uploaded in the last checkpoint.",
               "format": "int32",
               "type": "integer"
             },
@@ -238,12 +227,12 @@
               "type": "integer"
             },
             "orphansDeleted": {
-              "description": "OrphansDeleted is the number of orphan files pruned from storage in the\nlast full backup. Orphans are leftovers from previous failed runs that\ncrashed before writing a manifest.",
+              "description": "OrphansDeleted is the number of orphan files pruned from storage in the\nlast checkpoint. Orphans are leftovers from previous failed runs that\ncrashed before writing a manifest.",
               "format": "int32",
               "type": "integer"
             },
             "time": {
-              "description": "Time is when the last full backup completed.",
+              "description": "Time is when the last checkpoint completed.",
               "format": "date-time",
               "type": "string"
             },
@@ -255,60 +244,8 @@
           },
           "type": "object"
         },
-        "lastFullRunCompletionTime": {
-          "description": "LastFullRunCompletionTime is the latest observed terminal full run completion,\nsuccessful or failed. It is preserved independently of run history retention.",
-          "format": "date-time",
-          "type": "string"
-        },
-        "lastIncrementalBackup": {
-          "additionalProperties": false,
-          "description": "LastIncrementalBackup holds the result of the last incremental backup.",
-          "properties": {
-            "auditEntriesExported": {
-              "description": "AuditEntriesExported is the number of audit entries exported.",
-              "format": "int64",
-              "type": "integer"
-            },
-            "durationMs": {
-              "description": "DurationMs is the duration of the last incremental backup in milliseconds.",
-              "format": "int64",
-              "type": "integer"
-            },
-            "lastAuditSequence": {
-              "description": "LastAuditSequence is the last audit sequence in the incremental backup.",
-              "format": "int64",
-              "type": "integer"
-            },
-            "lastLogSequence": {
-              "description": "LastLogSequence is the last log sequence in the incremental backup.",
-              "format": "int64",
-              "type": "integer"
-            },
-            "logEntriesExported": {
-              "description": "LogEntriesExported is the number of log entries exported.",
-              "format": "int64",
-              "type": "integer"
-            },
-            "orphansDeleted": {
-              "description": "OrphansDeleted is the number of orphan export segments pruned from\nstorage in the last incremental backup.",
-              "format": "int32",
-              "type": "integer"
-            },
-            "segmentsUploaded": {
-              "description": "SegmentsUploaded is the number of segments uploaded.",
-              "format": "int32",
-              "type": "integer"
-            },
-            "time": {
-              "description": "Time is when the last incremental backup completed.",
-              "format": "date-time",
-              "type": "string"
-            }
-          },
-          "type": "object"
-        },
-        "lastIncrementalRunCompletionTime": {
-          "description": "LastIncrementalRunCompletionTime is the latest observed terminal incremental\nrun completion, successful or failed, independent of run history retention.",
+        "lastRunCompletionTime": {
+          "description": "LastRunCompletionTime is the latest observed terminal run completion,\nsuccessful or failed. It is preserved independently of run history retention.",
           "format": "date-time",
           "type": "string"
         },
@@ -316,13 +253,8 @@
           "description": "Message contains human-readable status information.",
           "type": "string"
         },
-        "nextFullBackupTime": {
-          "description": "NextFullBackupTime is the next scheduled time for a full backup.",
-          "format": "date-time",
-          "type": "string"
-        },
-        "nextIncrementalBackupTime": {
-          "description": "NextIncrementalBackupTime is the next scheduled time for an incremental backup.",
+        "nextBackupTime": {
+          "description": "NextBackupTime is the next scheduled checkpoint time.",
           "format": "date-time",
           "type": "string"
         },

@@ -72,14 +72,12 @@ func testBackupRunCommittedCreateLostResponseIntegration(t *testing.T, manual bo
 			Name: "recovery-run", Namespace: namespace,
 			Labels: map[string]string{ledgerv1alpha1.LabelBackup: backup.Name},
 		},
-		Spec: ledgerv1alpha1.BackupRunSpec{BackupRef: backup.Name, Type: ledgerv1alpha1.BackupRunTypeFull},
+		Spec: ledgerv1alpha1.BackupRunSpec{BackupRef: backup.Name},
 	}
 	if manual {
 		run.Labels = nil
-		run.Spec.Type = "" // Exercise the API server's Full default.
 	}
 	require.NoError(t, c.Create(testCtx, run))
-	require.Equal(t, ledgerv1alpha1.BackupRunTypeFull, run.Spec.Type)
 	if manual {
 		require.Empty(t, run.Labels)
 		require.Empty(t, run.OwnerReferences)
@@ -194,11 +192,11 @@ func testBackupRunCommittedCreateLostResponseIntegration(t *testing.T, manual bo
 	require.Equal(t, ledgerv1alpha1.BackupRunPhaseSucceeded, run.Status.Phase)
 	require.NotNil(t, run.Status.CompletionTime)
 	require.Equal(t, reservedStart, run.Status.StartTime)
-	require.NotNil(t, run.Status.Full)
-	require.Equal(t, uint32(7), run.Status.Full.FilesUploaded)
-	require.Equal(t, uint64(42), run.Status.Full.LastAppliedIndex)
-	require.Equal(t, uint64(40), run.Status.Full.LastLogSequence)
-	require.Equal(t, uint64(41), run.Status.Full.LastAuditSequence)
+	require.NotNil(t, run.Status.Result)
+	require.Equal(t, uint32(7), run.Status.Result.FilesUploaded)
+	require.Equal(t, uint64(42), run.Status.Result.LastAppliedIndex)
+	require.Equal(t, uint64(40), run.Status.Result.LastLogSequence)
+	require.Equal(t, uint64(41), run.Status.Result.LastAuditSequence)
 	var jobs batchv1.JobList
 	require.NoError(t, c.List(testCtx, &jobs, client.InNamespace(namespace)))
 	require.Len(t, jobs.Items, 1)
@@ -212,23 +210,23 @@ func testBackupRunCommittedCreateLostResponseIntegration(t *testing.T, manual bo
 			if err := c.Get(testCtx, client.ObjectKeyFromObject(backup), &observed); err != nil {
 				return false
 			}
-			return observed.Status.LastFullBackup != nil && observed.Status.LastFullRunCompletionTime != nil
+			return observed.Status.LastBackup != nil && observed.Status.LastRunCompletionTime != nil
 		}, 10*time.Second, 50*time.Millisecond, "unowned manual run must notify its parent")
 		require.NoError(t, c.Get(testCtx, client.ObjectKeyFromObject(backup), backup))
-		require.EqualValues(t, 7, backup.Status.LastFullBackup.FilesUploaded)
-		require.EqualValues(t, 42, backup.Status.LastFullBackup.LastAppliedIndex)
-		require.Equal(t, run.Status.CompletionTime, backup.Status.LastFullRunCompletionTime)
+		require.EqualValues(t, 7, backup.Status.LastBackup.FilesUploaded)
+		require.EqualValues(t, 42, backup.Status.LastBackup.LastAppliedIndex)
+		require.Equal(t, run.Status.CompletionTime, backup.Status.LastRunCompletionTime)
 		zero := int32(0)
 		backup.Spec.SuccessfulRunsHistoryLimit = &zero
-		backup.Spec.Schedule.Incremental = "0 4 * * *"
+		backup.Spec.Schedule = "0 4 * * *"
 		require.NoError(t, c.Update(testCtx, backup))
 		require.Eventually(t, func() bool {
 			var observed ledgerv1alpha1.Backup
 			if err := c.Get(testCtx, client.ObjectKeyFromObject(backup), &observed); err != nil {
 				return false
 			}
-			return observed.Status.LastFullBackup != nil && observed.Status.LastFullRunCompletionTime != nil &&
-				observed.Status.NextFullBackupTime != nil && observed.Status.NextIncrementalBackupTime == nil &&
+			return observed.Status.LastBackup != nil && observed.Status.LastRunCompletionTime != nil &&
+				observed.Status.NextBackupTime != nil &&
 				apierrors.IsNotFound(c.Get(testCtx, req.NamespacedName, &ledgerv1alpha1.BackupRun{}))
 		}, 10*time.Second, 50*time.Millisecond, "manual checkpoint result must schedule the next checkpoint and survive zero-retention pruning")
 	}

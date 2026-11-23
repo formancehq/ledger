@@ -4,4 +4,3 @@ metadata:
   name: second-checkpoint
 spec:
   backupRef: ri-bk
-  type: Full

@@ -36,14 +36,9 @@ All backup/restore commands accept the same provider flags; only the `--driver` 
 
 ### Scheduling with the Kubernetes Operator
 
-The operator schedules a single type of backup: a Pebble checkpoint. It uses
-`spec.schedule.incremental` as the checkpoint cadence when that legacy field is
-set, so existing resources continue to run during an operator upgrade. Otherwise
-it uses `spec.schedule.full`. Move the desired cadence to `spec.schedule.full`
-and clear `spec.schedule.incremental` in the same configuration update. The
-operator completes existing incremental Jobs but rejects a new `Incremental`
-`BackupRun` before creating a Job; create a `Full` run instead. New
-configurations should use:
+The operator schedules Pebble checkpoints using the optional cron expression
+`spec.schedule`. A Backup without a schedule is a template for manual runs.
+Configure a scheduled Backup as follows:
 
 ```yaml
 apiVersion: ledger.formance.com/v1alpha1
@@ -58,11 +53,30 @@ spec:
     s3:
       bucket: customer-ledger-backups
       region: eu-west-1
-  schedule:
-    full: "0 * * * *"
+  schedule: "0 * * * *"
   successfulRunsHistoryLimit: 3
   failedRunsHistoryLimit: 1
 ```
+
+#### CRD migration for checkpoint-only scheduling
+
+This operator CRD change intentionally breaks the earlier RC Backup and
+BackupRun resource shapes. Before installing the new CRDs, replace
+`spec.schedule.full` or `spec.schedule.incremental` with the single string
+`spec.schedule`. Remove `BackupRun.spec.type` and the optional
+`ledger.formance.com/backup-type` label. The new status fields are
+`Backup.status.lastBackup`, `lastRunCompletionTime`, and `nextBackupTime`,
+and `BackupRun.status.result`; the old per-type status fields and conditions
+are removed. The operator records a single `BackupHealthy` condition.
+`kubectl ledger backup trigger` no longer accepts `--type`; every run creates
+a checkpoint.
+
+The old objects have no supported in-place conversion. Delete any existing
+BackupRun and Backup resources after confirming no Job is active. Install the
+new CRDs, recreate Backups from the updated manifests, then start the new
+operator. This removes Kubernetes run history and schedule cursors;
+the first scheduled checkpoint runs immediately. Ledger data and the current
+object-store checkpoint are separate from these Kubernetes resources.
 
 #### S3 credentials for operator backups
 
@@ -141,7 +155,7 @@ or automatic backup resubmission is introduced. Runs already marked Failed by an
 older operator remain terminal.
 
 To trigger a run directly, apply a `BackupRun` in the Backup's namespace with
-`metadata.name` and `spec.backupRef`; `spec.type` defaults to `Full`. No labels
+`metadata.name` and `spec.backupRef`. No labels
 or owner references are required. `spec.backupRef` is immutable from creation,
 including Pending and completed runs; create a new run for a different parent.
 When upgrading existing CRDs, stop the operator and recover any previously
@@ -160,7 +174,7 @@ not retain historical backup artifacts or restore points in object storage.
 Setting either limit to zero removes all terminal runs of that outcome without
 resetting the cron schedule, including after an operator restart. The first run
 is immediate; subsequent runs follow the cron expression after the latest
-completed run of that type, whether it succeeded or failed. A failed run does
+completed run, whether it succeeded or failed. A failed run does
 not trigger an immediate retry outside the schedule.
 
 Completion cursors and successful-result summaries persist in `Backup.status`

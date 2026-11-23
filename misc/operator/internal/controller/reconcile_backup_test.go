@@ -41,8 +41,7 @@ func TestBackupReconcile_InvalidSchedule(t *testing.T) {
 	require.NoError(t, k8sClient.Create(ctx, ls))
 
 	backup := newBackup("bk-invalid-sched", ns, "bk-cluster")
-	backup.Spec.Schedule.Full = "not a cron"
-	backup.Spec.Schedule.Incremental = ""
+	backup.Spec.Schedule = "not a cron"
 	require.NoError(t, k8sClient.Create(ctx, backup))
 
 	requireEventually(t, func() bool {
@@ -68,8 +67,7 @@ func TestBackupReconcile_NoScheduleAllowed(t *testing.T) {
 	require.NoError(t, k8sClient.Create(ctx, ls))
 
 	backup := newBackup("bk-no-sched", ns, "bk-cluster2")
-	backup.Spec.Schedule.Full = ""
-	backup.Spec.Schedule.Incremental = ""
+	backup.Spec.Schedule = ""
 	require.NoError(t, k8sClient.Create(ctx, backup))
 
 	requireEventually(t, func() bool {
@@ -81,10 +79,10 @@ func TestBackupReconcile_NoScheduleAllowed(t *testing.T) {
 	}, "backup without schedule should reach Ready phase")
 }
 
-// TestBackupReconcile_ScheduleCreatesFullRun verifies that when a due full schedule fires,
+// TestBackupReconcile_ScheduleCreatesCheckpointRun verifies that when a due checkpoint schedule fires,
 // the BackupReconciler creates a child BackupRun with the right owner reference
 // and labels (instead of running ledgerctl inline).
-func TestBackupReconcile_ScheduleCreatesFullRun(t *testing.T) {
+func TestBackupReconcile_ScheduleCreatesCheckpointRun(t *testing.T) {
 	ns := createTestNamespace(t)
 
 	ls := newCluster("bk-cluster-sched", ns)
@@ -92,8 +90,7 @@ func TestBackupReconcile_ScheduleCreatesFullRun(t *testing.T) {
 
 	backup := newBackup("bk-sched", ns, "bk-cluster-sched")
 	// "Every minute" so the first tick is due immediately (no prior run).
-	backup.Spec.Schedule.Full = "* * * * *"
-	backup.Spec.Schedule.Incremental = ""
+	backup.Spec.Schedule = "* * * * *"
 	require.NoError(t, k8sClient.Create(ctx, backup))
 
 	requireEventually(t, func() bool {
@@ -116,9 +113,7 @@ func TestBackupReconcile_ScheduleCreatesFullRun(t *testing.T) {
 
 	run := &runs.Items[0]
 	assert.Equal(t, "bk-sched", run.Spec.BackupRef)
-	assert.Equal(t, ledgerv1alpha1.BackupRunTypeFull, run.Spec.Type)
 	assert.Equal(t, "bk-sched", run.Labels[ledgerv1alpha1.LabelBackup])
-	assert.Equal(t, string(ledgerv1alpha1.BackupRunTypeFull), run.Labels[ledgerv1alpha1.LabelBackupRunType])
 
 	require.Len(t, run.OwnerReferences, 1)
 	owner := run.OwnerReferences[0]
@@ -138,8 +133,7 @@ func TestBackupReconcile_RetentionPolicy(t *testing.T) {
 
 	limit := int32(2)
 	backup := newBackup("bk-retention", ns, "bk-cluster-retention")
-	backup.Spec.Schedule.Full = ""
-	backup.Spec.Schedule.Incremental = ""
+	backup.Spec.Schedule = ""
 	backup.Spec.SuccessfulRunsHistoryLimit = &limit
 	require.NoError(t, k8sClient.Create(ctx, backup))
 
@@ -187,8 +181,7 @@ func createSucceededRun(t *testing.T, ns string, backup *ledgerv1alpha1.Backup, 
 			Namespace:    ns,
 			GenerateName: backup.Name + "-full-",
 			Labels: map[string]string{
-				ledgerv1alpha1.LabelBackup:        backup.Name,
-				ledgerv1alpha1.LabelBackupRunType: string(ledgerv1alpha1.BackupRunTypeFull),
+				ledgerv1alpha1.LabelBackup: backup.Name,
 			},
 			OwnerReferences: []metav1.OwnerReference{{
 				APIVersion: "ledger.formance.com/v1alpha1",
@@ -200,7 +193,6 @@ func createSucceededRun(t *testing.T, ns string, backup *ledgerv1alpha1.Backup, 
 		},
 		Spec: ledgerv1alpha1.BackupRunSpec{
 			BackupRef: backup.Name,
-			Type:      ledgerv1alpha1.BackupRunTypeFull,
 		},
 	}
 	require.NoError(t, k8sClient.Create(ctx, run))
@@ -208,7 +200,7 @@ func createSucceededRun(t *testing.T, ns string, backup *ledgerv1alpha1.Backup, 
 	run.Status.Phase = ledgerv1alpha1.BackupRunPhaseSucceeded
 	run.Status.StartTime = &completion
 	run.Status.CompletionTime = &completion
-	run.Status.Full = &ledgerv1alpha1.FullBackupStatus{
+	run.Status.Result = &ledgerv1alpha1.BackupResult{
 		Time:       &completion,
 		TotalFiles: 1,
 		DurationMs: 10,
@@ -246,10 +238,7 @@ func newBackup(name, namespace, clusterRef string) *ledgerv1alpha1.Backup {
 					Region: "us-east-1",
 				},
 			},
-			Schedule: ledgerv1alpha1.BackupSchedule{
-				Full:        "0 2 * * 0",
-				Incremental: "0 * * * *",
-			},
+			Schedule: "0 2 * * 0",
 		},
 	}
 }

@@ -97,10 +97,8 @@ committed incremental job orders during a rolling RC upgrade.
 `ClusterService.IncrementalBackup` remains a published RPC during the RC. The
 new server routes it to the normal full-checkpoint executor and returns zero
 legacy export counts. `ledgerctl store incremental-backup` is a hidden alias
-for `store backup`. The operator uses an existing `schedule.incremental` cron
-as the checkpoint cadence during upgrade, then schedules only Full runs;
-operators should move that cadence to `schedule.full`. In-flight Incremental
-runs are allowed to finish. Existing `IncrementalBackupOrder` Raft
+for `store backup`. The operator CRDs expose only checkpoint runs and one
+`spec.schedule` cron expression. Existing `IncrementalBackupOrder` Raft
 numbers and FSM application remain so old and new voters interpret committed
 entries identically during a rolling upgrade; new leaders never propose them.
 The old exporter and replay tests were removed with their implementation.

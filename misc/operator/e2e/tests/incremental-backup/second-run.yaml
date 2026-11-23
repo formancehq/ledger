@@ -4,4 +4,3 @@ metadata:
   name: second-checkpoint
 spec:
   backupRef: incr-bk
-  type: Full

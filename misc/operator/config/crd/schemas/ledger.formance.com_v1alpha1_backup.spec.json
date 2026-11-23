@@ -85,34 +85,23 @@
     },
     "failedRunsHistoryLimit": {
       "default": 1,
-      "description": "FailedRunsHistoryLimit is the maximum number of failed BackupRun\nresources to keep per type (full/incremental). Older runs are garbage-collected.\nDefaults to 1.",
+      "description": "FailedRunsHistoryLimit is the maximum number of failed BackupRun\nresources to keep. Older runs are garbage-collected.\nDefaults to 1.",
       "format": "int32",
       "type": "integer"
     },
     "schedule": {
-      "additionalProperties": false,
-      "description": "Schedule defines the checkpoint backup cadence.\nBoth entries are optional; a Backup without any schedule is valid\nand acts as a backup configuration template for manual BackupRun resources.",
-      "properties": {
-        "full": {
-          "description": "Full is the cron expression for full backups (e.g. \"0 2 * * 0\" for weekly Sunday 2am).",
-          "type": "string"
-        },
-        "incremental": {
-          "description": "Incremental is a deprecated cron expression. When set, it schedules Full\ncheckpoint runs until the field is cleared and Full is configured.",
-          "type": "string"
-        }
-      },
-      "type": "object"
+      "description": "Schedule is the cron expression for checkpoint backups.\nIt is optional; a Backup without a schedule is valid\nand acts as a backup configuration template for manual BackupRun resources.",
+      "type": "string"
     },
     "successfulRunsHistoryLimit": {
       "default": 3,
-      "description": "SuccessfulRunsHistoryLimit is the maximum number of successful BackupRun\nresources to keep per type (full/incremental). Older runs are garbage-collected.\nDefaults to 3.",
+      "description": "SuccessfulRunsHistoryLimit is the maximum number of successful BackupRun\nresources to keep. Older runs are garbage-collected.\nDefaults to 3.",
       "format": "int32",
       "type": "integer"
     },
     "timeout": {
       "default": "1h",
-      "description": "Timeout caps how long the `ledgerctl store backup` /\n`ledgerctl store incremental-backup` RPC may run before the client\naborts. The operator forwards it as `--timeout` to the Job's\nledgerctl invocation; tune it for the size of the ledger and the\nthroughput of the destination bucket. Defaults to 1h, which is\nenough for tens of GB on S3 while still bounding stuck runs.",
+      "description": "Timeout caps how long the `ledgerctl store backup` RPC may run before the client\naborts. The operator forwards it as `--timeout` to the Job's\nledgerctl invocation; tune it for the size of the ledger and the\nthroughput of the destination bucket. Defaults to 1h, which is\nenough for tens of GB on S3 while still bounding stuck runs.",
       "type": "string"
     }
   },

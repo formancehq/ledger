@@ -90,7 +90,7 @@ func TestBackupRunLogResultRecovery(t *testing.T) {
 			require.Equal(t, ledgerv1alpha1.BackupRunPhaseRunning, run.Status.Phase)
 			require.Equal(t, start, run.Status.StartTime)
 			require.Nil(t, run.Status.CompletionTime)
-			require.Nil(t, run.Status.Full)
+			require.Nil(t, run.Status.Result)
 			require.Nil(t, meta.FindStatusCondition(run.Status.Conditions, "BackupCompleted"))
 			require.Contains(t, run.Status.Message, failure+` for pod "result"`)
 			require.EqualValues(t, 1, logAttempts.Load())
@@ -105,13 +105,13 @@ func TestBackupRunLogResultRecovery(t *testing.T) {
 			require.Equal(t, start, run.Status.StartTime)
 			require.NotNil(t, run.Status.CompletionTime)
 			require.Empty(t, run.Status.Message)
-			require.NotNil(t, run.Status.Full)
-			require.NotNil(t, run.Status.Full.Time)
-			require.Equal(t, &ledgerv1alpha1.FullBackupStatus{
-				Time: run.Status.Full.Time, FilesUploaded: 7, FilesDeleted: 2,
+			require.NotNil(t, run.Status.Result)
+			require.NotNil(t, run.Status.Result.Time)
+			require.Equal(t, &ledgerv1alpha1.BackupResult{
+				Time: run.Status.Result.Time, FilesUploaded: 7, FilesDeleted: 2,
 				OrphansDeleted: 3, TotalFiles: 11, DurationMs: 125,
 				LastLogSequence: 41, LastAuditSequence: 43, LastAppliedIndex: 47,
-			}, run.Status.Full)
+			}, run.Status.Result)
 			require.True(t, meta.IsStatusConditionTrue(run.Status.Conditions, "BackupCompleted"))
 			require.EqualValues(t, 2, logAttempts.Load())
 			require.EqualValues(t, 2, podLists.Load())
