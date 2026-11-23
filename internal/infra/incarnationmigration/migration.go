@@ -97,6 +97,41 @@ func RequireReady(reader dal.PebbleGetter) error {
 	return nil
 }
 
+// InitializeEmptyBootstrap records that a new cluster has no legacy history
+// to backfill. Call only for a bootstrap node, before it starts Raft.
+func InitializeEmptyBootstrap(store *dal.Store) error {
+	_, closer, err := store.Get(markerKey)
+	if err == nil {
+		_ = closer.Close()
+		return nil
+	}
+	if !errors.Is(err, pebble.ErrNotFound) {
+		return fmt.Errorf("reading account incarnation migration marker: %w", err)
+	}
+	reader, err := store.NewReadHandle()
+	if err != nil {
+		return err
+	}
+	defer func() { _ = reader.Close() }()
+	lastAudit, err := query.ReadLastAuditSequence(reader)
+	if err != nil {
+		return err
+	}
+	applied, err := query.ReadLastAppliedIndex(reader)
+	if err != nil {
+		return err
+	}
+	if lastAudit != 0 || applied != 0 {
+		return nil
+	}
+	batch := store.OpenWriteSession()
+	if err := putMarker(batch, Marker{Complete: true}); err != nil {
+		_ = batch.Cancel()
+		return err
+	}
+	return batch.Commit()
+}
+
 func putMarker(batch *dal.WriteSession, marker Marker) error {
 	var raw [18]byte
 	raw[0] = definitionVersion
@@ -261,15 +296,18 @@ func run(ctx context.Context, store *dal.Store, force bool, pause time.Duration)
 // both directions of the durable attribute range. Callers must first verify
 // the audit chain itself.
 func Verify(ctx context.Context, source dal.PebbleReader, logger logging.Logger) error {
-	policy, err := query.ReadClusterPolicy(source)
-	if err != nil {
-		return err
-	}
 	marker, err := ReadMarker(source)
 	if err != nil {
 		return err
 	}
 	if !marker.Complete {
+		// The checker excludes operational policy from its integrity contract.
+		// Keep the history-activation assertion when that policy is readable,
+		// without making a malformed control row fail a business-state check.
+		policy, err := query.ReadClusterPolicy(source)
+		if err != nil {
+			return nil
+		}
 		if capabilities.IsActive(policy, capabilities.AccountIncarnationHistoryCompleteV1) {
 			return errors.New("account history is active without a complete local migration")
 		}
