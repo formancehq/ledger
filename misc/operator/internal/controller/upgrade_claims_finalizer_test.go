@@ -146,12 +146,13 @@ func (s staleClaimOwnerReads) Get(ctx context.Context, key client.ObjectKey, obj
 }
 
 // Adoption completes only while every recorded claim and volume keeps its
-// identity: a lost claim would be recreated empty under its recorded name.
+// identity: a lost claim would be recreated empty under its recorded name. A
+// target edit is rejected rather than applied by ordinary reconciliation.
 func TestStoppedUpgradeAdoptionRejectsLostClaims(t *testing.T) {
 	t.Parallel()
 	for _, whenDeleted := range []string{"Delete", "Retain"} {
 		for _, withSTS := range []bool{true, false} {
-			for _, loss := range []string{"intact", "missing", "replaced", "deleting", "rebound"} {
+			for _, loss := range []string{"intact", "missing", "replaced", "deleting", "rebound", "retargeted"} {
 				name := whenDeleted + "/" + loss
 				if !withSTS {
 					name += "/no-statefulset"
@@ -209,6 +210,9 @@ func TestStoppedUpgradeAdoptionRejectsLostClaims(t *testing.T) {
 					case "rebound":
 						dataVolume.Spec.ClaimRef.UID = "foreign-uid"
 						wantErr = "pv-data"
+					case "retargeted":
+						cluster.Spec.Image.Tag = "v3.0.0-rc.5"
+						wantErr = "restore spec.image.tag"
 					}
 					objects := []client.Object{cluster, sts, claim(walName, "wal-uid", "pv-wal"), volume("pv-wal", "pv-wal-uid", walName, "wal-uid"), dataVolume}
 					if loss != "missing" {

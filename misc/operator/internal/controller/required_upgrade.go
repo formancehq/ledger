@@ -194,11 +194,11 @@ func (r *ClusterReconciler) reconcileRequiredUpgradeWithExec(ctx context.Context
 	if err := r.ensureUpgradeClaimsFinalizer(ctx, ledger); err != nil {
 		return false, ctrl.Result{}, err
 	}
-	if state.Phase == "Adopting" {
-		return r.reconcileUpgradeClaimAdoption(ctx, ledger, sts)
-	}
 	if ledger.Spec.Image.Tag != state.Target {
 		return false, ctrl.Result{}, fmt.Errorf("upgrade from %s to %s is in progress; restore spec.image.tag to %s before changing target", state.Source, state.Target, state.Target)
+	}
+	if state.Phase == "Adopting" {
+		return r.reconcileUpgradeClaimAdoption(ctx, ledger, sts)
 	}
 	// Keep the released intent hash, including claim declarations. The Pod hash
 	// excludes those fields, but storage edits must not alter a pinned upgrade.
