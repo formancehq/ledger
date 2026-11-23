@@ -103,6 +103,7 @@ func InitializeEmptyBootstrap(store *dal.Store) error {
 	_, closer, err := store.Get(markerKey)
 	if err == nil {
 		_ = closer.Close()
+
 		return nil
 	}
 	if !errors.Is(err, pebble.ErrNotFound) {
@@ -127,8 +128,10 @@ func InitializeEmptyBootstrap(store *dal.Store) error {
 	batch := store.OpenWriteSession()
 	if err := putMarker(batch, Marker{Complete: true}); err != nil {
 		_ = batch.Cancel()
+
 		return err
 	}
+
 	return batch.Commit()
 }
 

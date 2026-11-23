@@ -40,6 +40,18 @@ func TestProposalCapabilityAdmissionRecoversActiveWithoutIntent(t *testing.T) {
 	require.NoError(t, validateProposalCapabilityAdmissionWithSupported(policy, proposal, members, supported))
 }
 
+func TestManualHistoryReadinessDoesNotBlockBusinessWrites(t *testing.T) {
+	proposal, err := node.NewProposal(1, &raftcmdpb.Proposal{Payload: &raftcmdpb.Proposal_Batch{Batch: &raftcmdpb.ExecutionBatch{
+		Orders: []*raftcmdpb.Order{{Type: &raftcmdpb.Order_LedgerScoped{LedgerScoped: &raftcmdpb.LedgerScopedOrder{
+			Ledger: "ledger", Payload: &raftcmdpb.LedgerScopedOrder_CreateLedger{CreateLedger: &raftcmdpb.CreateLedgerOrder{}},
+		}}}},
+	}}})
+	require.NoError(t, err)
+	policy := &commonpb.ClusterPolicy{CapabilityActivations: []*commonpb.CapabilityActivation{{Id: uint32(capabilities.AccountIncarnationWritesV1), Active: true}}}
+	members := []capabilities.Member{{NodeID: 1, Role: capabilities.Voter, Capabilities: capabilities.SupportedIDs()}}
+	require.NoError(t, validateProposalCapabilityAdmission(policy, proposal, members))
+}
+
 func TestValidateActiveAcceptsConvergedMembership(t *testing.T) {
 	t.Parallel()
 
