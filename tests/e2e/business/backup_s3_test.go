@@ -180,6 +180,8 @@ var _ = Describe("S3 Backup", Ordered, func() {
 		Expect(manifest.Checkpoint.Files).NotTo(BeEmpty())
 		Expect(manifest.Checkpoint.LastLogSequence).To(BeNumerically(">", 0))
 		Expect(manifest.Checkpoint.LastAuditSequence).To(BeNumerically(">", 0))
+		Expect(manifest.Checkpoint.LastLogSequence).To(Equal(resp.GetLastLogSequence()))
+		Expect(manifest.Checkpoint.LastAuditSequence).To(Equal(resp.GetLastAuditSequence()))
 		Expect(manifest.Exports).To(BeEmpty())
 
 		// Verify all checkpoint files exist on S3 at their content-addressed keys.
@@ -196,6 +198,8 @@ var _ = Describe("S3 Backup", Ordered, func() {
 		Expect(err).To(Succeed())
 		Expect(manifestBefore.Checkpoint).NotTo(BeNil())
 		timestampBefore := manifestBefore.Checkpoint.Timestamp
+		logBefore := manifestBefore.Checkpoint.LastLogSequence
+		auditBefore := manifestBefore.Checkpoint.LastAuditSequence
 
 		// Add more data
 		for i := range 5 {
@@ -212,11 +216,17 @@ var _ = Describe("S3 Backup", Ordered, func() {
 		resp, err := clusterClient.Backup(ctx, backupRequest())
 		Expect(err).To(Succeed())
 		Expect(resp.GetTotalFiles()).To(BeNumerically(">", 0))
+		Expect(resp.GetLastLogSequence()).To(BeNumerically(">", logBefore))
+		Expect(resp.GetLastAuditSequence()).To(BeNumerically(">", auditBefore))
 
 		// Verify manifest was updated
 		manifestAfter, err := readS3BackupManifest(ctx, s3Client)
 		Expect(err).To(Succeed())
+		Expect(manifestAfter.Checkpoint).NotTo(BeNil())
+		Expect(manifestAfter.Checkpoint.Files).NotTo(BeEmpty())
 		Expect(manifestAfter.Checkpoint.Timestamp).NotTo(Equal(timestampBefore))
+		Expect(manifestAfter.Checkpoint.LastLogSequence).To(Equal(resp.GetLastLogSequence()))
+		Expect(manifestAfter.Checkpoint.LastAuditSequence).To(Equal(resp.GetLastAuditSequence()))
 
 		// Verify all checkpoint files exist on S3 at their content-addressed keys.
 		for _, cf := range manifestAfter.Checkpoint.Files {
@@ -228,6 +238,7 @@ var _ = Describe("S3 Backup", Ordered, func() {
 	It("should make the deprecated incremental RPC publish a checkpoint", func() {
 		manifestBefore, err := readS3BackupManifest(ctx, s3Client)
 		Expect(err).To(Succeed())
+		Expect(manifestBefore.Checkpoint).NotTo(BeNil())
 		beforeLog := manifestBefore.Checkpoint.LastLogSequence
 		beforeAudit := manifestBefore.Checkpoint.LastAuditSequence
 
