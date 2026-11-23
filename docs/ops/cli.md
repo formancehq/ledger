@@ -3827,6 +3827,7 @@ ledgerctl queries execute <name> --ledger <ledger-name> [flags]
 | `--timeout` | `10s` | Request timeout, applied to each page request |
 
 **Behavior:**
+- List results for accounts, transactions, and logs appear in the selected human, JSON, or YAML output format
 - In list mode without `--all`, the CLI prints one page and asks before it loads the next one. With `--json` or `--yaml`, it prints only the first page
 - With `--all`, the CLI sends one request per page of `--page-size` results. It follows the response cursor until the server reports no more results, then prints every result in one table or one JSON/YAML array
 - With `--all --analyze`, the profile shown is the profile of the last page request
