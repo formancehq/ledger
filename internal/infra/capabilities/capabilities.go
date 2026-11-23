@@ -44,10 +44,10 @@ func SupportedIDs() []CapabilityID {
 	return []CapabilityID{AccountIncarnationWritesV1, AccountIncarnationHistoryCompleteV1}
 }
 
-// AutomaticallyActivatedIDs excludes capabilities that require a coordinated
-// operator cutover even when every member has advertised local readiness.
+// AutomaticallyActivatedIDs is empty while incarnation rollout requires an
+// operator-controlled cutover for both writes and historical coverage.
 func AutomaticallyActivatedIDs() []CapabilityID {
-	return []CapabilityID{AccountIncarnationWritesV1}
+	return nil
 }
 
 // IsActive reports the committed activation at the reader's apply position.
