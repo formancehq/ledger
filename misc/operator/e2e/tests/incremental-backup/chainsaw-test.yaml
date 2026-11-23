@@ -87,10 +87,12 @@ spec:
               cd "$(git rev-parse --show-toplevel)/misc/operator"
               first_sequence=$(kubectl get backuprun first-checkpoint -n "$NAMESPACE" -o jsonpath='{.status.result.lastLogSequence}')
               second_sequence=$(kubectl get backuprun second-checkpoint -n "$NAMESPACE" -o jsonpath='{.status.result.lastLogSequence}')
+              bucket_id=$(kubectl get cluster bk-incr-cluster -n "$NAMESPACE" -o jsonpath='{.spec.clusterID}')
               test -n "$first_sequence"
               test -n "$second_sequence"
+              test -n "$bucket_id"
               test_name=TestRepeatedCheckpointBackup_S3Objects
               go test -tags e2e -count=1 -list "^${test_name}$" ./e2e/... | grep -Fqx "${test_name}"
-              FIRST_CHECKPOINT_SEQUENCE="$first_sequence" SECOND_CHECKPOINT_SEQUENCE="$second_sequence" \
+              BACKUP_BUCKET_ID="$bucket_id" FIRST_CHECKPOINT_SEQUENCE="$first_sequence" SECOND_CHECKPOINT_SEQUENCE="$second_sequence" \
                 go test -tags e2e -v -count=1 -run "^${test_name}$" -timeout 30s ./e2e/...
             timeout: 60s

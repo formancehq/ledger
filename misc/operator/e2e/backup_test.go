@@ -7,7 +7,6 @@ import (
 	"io"
 	"os"
 	"strconv"
-	"strings"
 	"testing"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -36,6 +35,8 @@ func TestFullBackup_S3Objects(t *testing.T) {
 // left a restorable object inventory in MinIO.
 func TestRepeatedCheckpointBackup_S3Objects(t *testing.T) {
 	bucket := "e2e-incr-backup"
+	bucketID := os.Getenv("BACKUP_BUCKET_ID")
+	require.NotEmpty(t, bucketID, "current cluster bucket ID is required")
 	firstSequence, err := strconv.ParseUint(os.Getenv("FIRST_CHECKPOINT_SEQUENCE"), 10, 64)
 	require.NoError(t, err, "first BackupRun must report its checkpoint sequence")
 	secondSequence, err := strconv.ParseUint(os.Getenv("SECOND_CHECKPOINT_SEQUENCE"), 10, 64)
@@ -44,18 +45,16 @@ func TestRepeatedCheckpointBackup_S3Objects(t *testing.T) {
 
 	out, err := s3Client.ListObjectsV2(ctx, &s3.ListObjectsV2Input{
 		Bucket: aws.String(bucket),
+		Prefix: aws.String(bucketID + "/"),
 	})
 	require.NoError(t, err, "listing objects in bucket %s", bucket)
 	assert.NotEmpty(t, out.Contents, "checkpoint backup should have created objects in S3 bucket %s", bucket)
-	var manifestKey string
 	objects := make(map[string]struct{}, len(out.Contents))
 	for _, obj := range out.Contents {
 		objects[aws.ToString(obj.Key)] = struct{}{}
-		if strings.HasSuffix(aws.ToString(obj.Key), "/manifest.json") {
-			manifestKey = aws.ToString(obj.Key)
-		}
 	}
-	require.NotEmpty(t, manifestKey, "checkpoint manifest missing")
+	manifestKey := bucketID + "/manifest.json"
+	require.Contains(t, objects, manifestKey, "current cluster checkpoint manifest missing")
 	manifestObject, err := s3Client.GetObject(ctx, &s3.GetObjectInput{Bucket: aws.String(bucket), Key: aws.String(manifestKey)})
 	require.NoError(t, err)
 	defer manifestObject.Body.Close()
