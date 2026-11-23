@@ -75,16 +75,17 @@ entries within its real `restore-staging` directory. Rooted `Lstat` rejects a
 symlink or non-directory before reset. Rooted `RemoveAll` discards old real
 staging, including nested/leaf symlinks without following their targets; strict
 `Mkdir` and `OpenRoot` acquire fresh staging for checkpoint-only manifests.
-Unrelated siblings must survive. Reset failure stops before replay/publication
-and may leave old staging partly removed or absent. The target remains exclusively
+Unrelated siblings must survive. Reset failure stops before checkpoint
+preparation and publication and may leave old staging partly removed or absent.
+The target remains exclusively
 owned by the offline command; no concurrent namespace writer is introduced.
 Downloads remain sequential and verified by content
 key/size/hash. Rejection is per entry: earlier files and partial failing files
-may remain, and errors stop before replay, preview, Checker, confirmation and
-finalization. The download roots close before those later steps. Do not turn
+may remain, and errors stop before checkpoint preparation, preview, Checker,
+confirmation and finalization. The download roots close before those later steps. Do not turn
 this into a whole-manifest preflight, immediate cleanup on download failure or
 hardlink-isolation requirement. A later invocation resets staging again;
-projection retry parity belongs to `persistence-restore-replay`. Trace the actual
+checkpoint retry parity belongs to `persistence-restore-replay`. Trace the actual
 `runBootstrap` caller separately from tests of its
 production download helper.
 

@@ -160,10 +160,10 @@ To trigger a run directly, apply a `BackupRun` in the Backup's namespace with
 `metadata.name` and `spec.backupRef`. No labels
 or owner references are required. `spec.backupRef` is immutable from creation,
 including Pending and completed runs; create a new run for a different parent.
-When upgrading existing CRDs, stop the operator and recover any previously
-retargeted runs, spec-less runs and affected parent accounting before installing
-the rules requiring `spec` and freezing its parent;
-see [the admission upgrade procedure](../technical/architecture/subsystems/backup/operator-scheduling.md#upgrading-parent-admission).
+For an upgrade to the checkpoint-only CRDs, follow the
+[resource replacement procedure](#crd-migration-for-checkpoint-only-scheduling)
+above. The historical parent-admission upgrade procedure does not apply to
+these old resources because this migration deletes them.
 The referenced Backup accounts for the run's
 result and completion cursor, applies its history limits, and includes it in
 sibling exclusion even if the association label is missing or incorrect.

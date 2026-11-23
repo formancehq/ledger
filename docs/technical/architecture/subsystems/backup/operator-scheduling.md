@@ -47,7 +47,13 @@ histories still increase reconciliation cost.
 The association change does not provide atomic execution exclusion across
 concurrent reconcilers; it preserves the existing Running-reservation policy.
 
-### Upgrading parent admission
+### Historical parent-admission upgrade
+
+This procedure applied to the earlier RC parent-admission change. It is not an
+alternative to the current checkpoint-only CRD migration, which requires
+deleting old BackupRun and Backup resources before installing the new CRDs.
+Follow [the current migration steps](../../../../ops/backup-restore.md#crd-migration-for-checkpoint-only-scheduling)
+when upgrading to checkpoint-only scheduling.
 
 The rule freezes the currently stored reference on existing runs; it cannot
 recover a reference changed before installation. Stop the operator before
