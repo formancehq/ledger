@@ -95,7 +95,8 @@ func TestControlStateThroughRunAndRestart(t *testing.T) {
 	_, err = client.Apply(ctx, request("drained"))
 	require.Error(t, err)
 	stop()
-	require.Empty(t, capabilities.ActiveIDs(readPolicy()), "the generic release does not advertise a business capability")
+	require.Equal(t, []uint32{uint32(capabilities.MirrorPromotionCatchUp)}, capabilities.ActiveIDs(readPolicy()),
+		"the automatically activated capability must survive the drain restart")
 
 	client, cluster, stop = start()
 	require.Eventually(t, func() bool {
@@ -117,7 +118,7 @@ func TestControlStateThroughRunAndRestart(t *testing.T) {
 		require.NoError(t, err)
 	}()
 	policy := readPolicy()
-	require.Empty(t, capabilities.ActiveIDs(policy))
+	require.Equal(t, []uint32{uint32(capabilities.MirrorPromotionCatchUp)}, capabilities.ActiveIDs(policy))
 	require.Equal(t, uint64(1), policy.GetRevision())
 	require.Equal(t, uint64(10), policy.GetQueryCheckpointLimit())
 }
