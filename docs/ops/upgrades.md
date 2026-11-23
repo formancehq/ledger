@@ -154,7 +154,9 @@ Detached claims are outside garbage collection, so the operator holds the
 `whenDeleted: Delete`, the operator deletes each recorded claim that still has
 its recorded UID and no owner reference, then releases the finalizer. Claims
 still owned by the StatefulSet are left to garbage collection. With `Retain`,
-it releases the finalizer without deleting claims.
+it applies `Retain` to the StatefulSet and releases the finalizer without
+deleting claims once no recorded claim is still owned by that StatefulSet;
+garbage collection would otherwise delete an owned claim with it.
 Operators up to `v3.0.0-rc.4` run stopped upgrades without this finalizer. Do
 not delete a Cluster while a stopped upgrade started by such an operator is in
 progress. After upgrading the operator, wait until the Cluster carries the
@@ -194,9 +196,9 @@ a direct replica-count edit to the replacement StatefulSet reports
 tag edit is still rejected, but workload spec and replica-count edits are not:
 they wait until adoption completes and then apply through ordinary
 reconciliation. A `spec.persistence.retentionPolicy` edit applies immediately
-instead: `Adopting` restores the current requested policy, and switching
-`whenDeleted` to `Retain` completes adoption without waiting for claim
-ownership. If a Pod will not terminate, diagnose its
+instead: `Adopting` restores the current requested policy. After a switch to
+`whenDeleted: Retain`, it completes only once the StatefulSet controller has
+removed the replacement's owner references from every recorded claim. If a Pod will not terminate, diagnose its
 node and storage attachment, then let Kubernetes finish termination; the
 operator keeps the cluster unavailable. Verify the replacement is fully ready,
 then check cluster status, representative reads and writes, audit verification

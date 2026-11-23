@@ -179,9 +179,14 @@ func TestStoppedUpgradeAdoptionRejectsLostClaims(t *testing.T) {
 					sts.Name, sts.Namespace, sts.UID = stsName, cluster.Namespace, "new-sts"
 					sts.OwnerReferences = []metav1.OwnerReference{{APIVersion: "ledger.formance.com/v1alpha1", Kind: "Cluster", Name: cluster.Name, UID: cluster.UID, Controller: new(true)}}
 					sts.Spec.PersistentVolumeClaimRetentionPolicy = buildRetentionPolicy(cluster)
+					// The StatefulSet controller owns the claims only under Delete.
+					var owners []metav1.OwnerReference
+					if whenDeleted == "Delete" {
+						owners = []metav1.OwnerReference{{APIVersion: "apps/v1", Kind: "StatefulSet", Name: stsName, UID: sts.UID}}
+					}
 					claim := func(name, uid, pv string) *corev1.PersistentVolumeClaim {
 						return &corev1.PersistentVolumeClaim{
-							ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: cluster.Namespace, UID: types.UID(uid), OwnerReferences: []metav1.OwnerReference{{APIVersion: "apps/v1", Kind: "StatefulSet", Name: stsName, UID: sts.UID}}},
+							ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: cluster.Namespace, UID: types.UID(uid), OwnerReferences: owners},
 							Spec:       corev1.PersistentVolumeClaimSpec{VolumeName: pv},
 							Status:     corev1.PersistentVolumeClaimStatus{Phase: corev1.ClaimBound},
 						}
@@ -243,5 +248,129 @@ func TestStoppedUpgradeAdoptionRejectsLostClaims(t *testing.T) {
 				})
 			}
 		}
+	}
+}
+
+// Switching whenDeleted from Delete to Retain during Adopting leaves the
+// replacement's owner references on the claims until the StatefulSet controller
+// observes Retain. Garbage collection would delete owned claims with the
+// Cluster, so neither adoption nor Cluster deletion releases the finalizer
+// before those references are gone.
+func TestStoppedUpgradeRetainSwitchWaitsForClaimRelease(t *testing.T) {
+	t.Parallel()
+	for _, deleteCluster := range []bool{false, true} {
+		name := "adoption"
+		if deleteCluster {
+			name = "cluster-deletion"
+		}
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			ctx := context.Background()
+			cluster := newMinimalCluster()
+			cluster.UID = "cluster-uid"
+			cluster.Finalizers = []string{operatorCredentialsFinalizer, upgradeClaimsFinalizer}
+			cluster.Spec.Image.Tag = "v3.0.0-rc.4"
+			cluster.Spec.Replicas = new(int32(1))
+			cluster.Spec.Persistence.RetentionPolicy = &ledgerv1alpha1.RetentionPolicySpec{WhenDeleted: "Delete"}
+			applyDefaults(cluster)
+			stsName := resourceName(cluster.Name)
+			walName, dataName := "wal-"+stsName+"-0", "data-"+stsName+"-0"
+			cluster.Status.Upgrade = &ledgerv1alpha1.ClusterUpgradeStatus{
+				Source: "v3.0.0-rc.3", Target: cluster.Spec.Image.Tag, StatefulSetUID: "old-sts",
+				TargetSpecHash: computePodSpecHash(&cluster.Spec, false), ExpectedReplicas: 1,
+				ClaimUIDs:  map[string]string{walName: "wal-uid", dataName: "data-uid"},
+				VolumeUIDs: map[string]string{"pv-wal": "pv-wal-uid", "pv-data": "pv-data-uid"},
+				DrainEpoch: "epoch", Phase: "Adopting",
+			}
+			sts := rcStatefulSet("ledger:"+cluster.Spec.Image.Tag, true)
+			sts.Name, sts.Namespace, sts.UID = stsName, cluster.Namespace, "new-sts"
+			sts.OwnerReferences = []metav1.OwnerReference{{APIVersion: "ledger.formance.com/v1alpha1", Kind: "Cluster", Name: cluster.Name, UID: cluster.UID, Controller: new(true)}}
+			sts.Spec.PersistentVolumeClaimRetentionPolicy = buildRetentionPolicy(cluster)
+			claim := func(name, uid, pv string) *corev1.PersistentVolumeClaim {
+				return &corev1.PersistentVolumeClaim{
+					ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: cluster.Namespace, UID: types.UID(uid), OwnerReferences: []metav1.OwnerReference{{APIVersion: "apps/v1", Kind: "StatefulSet", Name: stsName, UID: sts.UID}}},
+					Spec:       corev1.PersistentVolumeClaimSpec{VolumeName: pv},
+					Status:     corev1.PersistentVolumeClaimStatus{Phase: corev1.ClaimBound},
+				}
+			}
+			volume := func(name, uid, claimName, claimUID string) *corev1.PersistentVolume {
+				return &corev1.PersistentVolume{
+					ObjectMeta: metav1.ObjectMeta{Name: name, UID: types.UID(uid)},
+					Spec:       corev1.PersistentVolumeSpec{ClaimRef: &corev1.ObjectReference{Name: claimName, Namespace: cluster.Namespace, UID: types.UID(claimUID)}},
+					Status:     corev1.PersistentVolumeStatus{Phase: corev1.VolumeBound},
+				}
+			}
+			scheme := runtime.NewScheme()
+			require.NoError(t, clientgoscheme.AddToScheme(scheme))
+			require.NoError(t, ledgerv1alpha1.AddToScheme(scheme))
+			c := fake.NewClientBuilder().WithScheme(scheme).WithStatusSubresource(cluster).WithObjects(
+				cluster, sts,
+				claim(walName, "wal-uid", "pv-wal"), volume("pv-wal", "pv-wal-uid", walName, "wal-uid"),
+				claim(dataName, "data-uid", "pv-data"), volume("pv-data", "pv-data-uid", dataName, "data-uid"),
+			).Build()
+			r := &ClusterReconciler{Client: c, APIReader: c, Scheme: scheme, stopVersions: testStopVersions}
+			key := types.NamespacedName{Name: cluster.Name, Namespace: cluster.Namespace}
+			stsKey := types.NamespacedName{Name: stsName, Namespace: cluster.Namespace}
+
+			persisted := &ledgerv1alpha1.Cluster{}
+			require.NoError(t, c.Get(ctx, key, persisted))
+			persisted.Spec.Persistence.RetentionPolicy.WhenDeleted = "Retain"
+			require.NoError(t, c.Update(ctx, persisted))
+			if deleteCluster {
+				require.NoError(t, c.Delete(ctx, persisted))
+			}
+			reconcile := func() {
+				t.Helper()
+				if deleteCluster {
+					_, err := r.Reconcile(ctx, ctrl.Request{NamespacedName: key})
+					require.NoError(t, err)
+
+					return
+				}
+				current := &ledgerv1alpha1.Cluster{}
+				require.NoError(t, c.Get(ctx, key, current))
+				currentSTS := &appsv1.StatefulSet{}
+				require.NoError(t, c.Get(ctx, stsKey, currentSTS))
+				_, _, err := r.reconcileRequiredUpgradeWithExec(ctx, current, currentSTS, nil)
+				require.NoError(t, err)
+			}
+			// The first pass applies Retain to the replacement; the claims stay
+			// owned until the StatefulSet controller observes it.
+			for range 2 {
+				reconcile()
+				current := &ledgerv1alpha1.Cluster{}
+				require.NoError(t, c.Get(ctx, key, current))
+				require.Contains(t, current.Finalizers, upgradeClaimsFinalizer)
+				require.NotNil(t, current.Status.Upgrade)
+				require.Equal(t, "Adopting", current.Status.Upgrade.Phase)
+			}
+			currentSTS := &appsv1.StatefulSet{}
+			require.NoError(t, c.Get(ctx, stsKey, currentSTS))
+			require.Equal(t, appsv1.RetainPersistentVolumeClaimRetentionPolicyType, currentSTS.Spec.PersistentVolumeClaimRetentionPolicy.WhenDeleted)
+
+			released := &corev1.PersistentVolumeClaim{}
+			require.NoError(t, c.Get(ctx, types.NamespacedName{Name: walName, Namespace: cluster.Namespace}, released))
+			released.OwnerReferences = nil
+			require.NoError(t, c.Update(ctx, released))
+			reconcile()
+			current := &ledgerv1alpha1.Cluster{}
+			require.NoError(t, c.Get(ctx, key, current))
+			require.Contains(t, current.Finalizers, upgradeClaimsFinalizer, "the data claim is still owned")
+
+			require.NoError(t, c.Get(ctx, types.NamespacedName{Name: dataName, Namespace: cluster.Namespace}, released))
+			released.OwnerReferences = nil
+			require.NoError(t, c.Update(ctx, released))
+			reconcile()
+			if deleteCluster {
+				require.True(t, apierrors.IsNotFound(c.Get(ctx, key, &ledgerv1alpha1.Cluster{})), "the finalizer must be released")
+			} else {
+				require.NoError(t, c.Get(ctx, key, current))
+				require.Nil(t, current.Status.Upgrade)
+				require.NotContains(t, current.Finalizers, upgradeClaimsFinalizer)
+			}
+			for _, claimName := range []string{walName, dataName} {
+				require.NoError(t, c.Get(ctx, types.NamespacedName{Name: claimName, Namespace: cluster.Namespace}, &corev1.PersistentVolumeClaim{}))
+			}
+		})
 	}
 }

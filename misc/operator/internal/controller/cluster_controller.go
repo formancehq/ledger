@@ -100,7 +100,7 @@ func (r *ClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (re
 			}
 		}
 
-		return ctrl.Result{}, r.finalizeUpgradeClaims(ctx, ledger)
+		return r.finalizeUpgradeClaims(ctx, ledger)
 	}
 	if !controllerutil.ContainsFinalizer(ledger, operatorCredentialsFinalizer) {
 		controllerutil.AddFinalizer(ledger, operatorCredentialsFinalizer)
