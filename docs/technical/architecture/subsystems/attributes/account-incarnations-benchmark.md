@@ -43,6 +43,8 @@ Roll out in these stages:
 
 A fresh bootstrap with no applied entries or audit history has nothing to backfill. It writes the completion marker before starting Raft, so later automatic capability activation does not make its first restart fail. A joining learner never takes this shortcut; it must receive and convert its checkpoint before advertising history readiness.
 
+The activation reconciler may activate `AccountIncarnationWritesV1` automatically once members support it. `AccountIncarnationHistoryCompleteV1` remains an explicit operator transition after the coordinated backfill; automatic activation would prevent empty learners from joining before checkpoint conversion.
+
 Backfill only the durable attribute zone; do not load every historical incarnation into the two-generation FSM cache. The migration clears stale incarnation cache slots on completion. Admission loads cold entries from Pebble. The prototype has no incarnation Bloom filter. A future Bloom filter would need a complete, sealed rebuild before negative lookups are safe.
 
 An empty new learner cannot currently join after the history capability is active: join admission requires capability evidence before the learner receives a checkpoint. Seed it from a converted backup before joining, or add a pending-learner protocol in a follow-up. This restriction does not affect rolling restarts of existing members.

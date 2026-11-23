@@ -158,7 +158,7 @@ func newCapabilityActivationReconciler(admission *admission.Admission, store *da
 
 			return
 		}
-		if err := activateReadyCapabilities(ctx, admission.AdmitCapabilityTransition, store, raftNode.IsLeader, raftNode.CapabilityMembers, capabilities.SupportedIDs()); err != nil {
+		if err := activateReadyCapabilities(ctx, admission.AdmitCapabilityTransition, store, raftNode.IsLeader, raftNode.CapabilityMembers, capabilities.AutomaticallyActivatedIDs()); err != nil {
 			logger.WithFields(map[string]any{"error": err}).Errorf("Capability activation failed; will retry from committed policy")
 		}
 	}, clusterPolicyReconcileInterval)}
@@ -218,6 +218,7 @@ func Module() fx.Option {
 					if cfg.RaftConfig.Bootstrap {
 						if err := incarnationmigration.InitializeEmptyBootstrap(store); err != nil {
 							_ = store.Close()
+
 							return nil, fmt.Errorf("initializing empty bootstrap account history: %w", err)
 						}
 					}
@@ -1282,10 +1283,14 @@ func Module() fx.Option {
 // from the final command, while policy and membership are the committed
 // snapshots captured at the serialized admission boundary.
 func validateProposalCapabilityAdmission(policy *commonpb.ClusterPolicy, proposal *node.Proposal, members []capabilities.Member) error {
-	return validateProposalCapabilityAdmissionWithSupported(policy, proposal, members, capabilities.SupportedIDs())
+	return validateProposalCapabilityAdmissionWithActivationSet(policy, proposal, members, capabilities.SupportedIDs(), capabilities.AutomaticallyActivatedIDs())
 }
 
 func validateProposalCapabilityAdmissionWithSupported(policy *commonpb.ClusterPolicy, proposal *node.Proposal, members []capabilities.Member, supported []capabilities.CapabilityID) error {
+	return validateProposalCapabilityAdmissionWithActivationSet(policy, proposal, members, supported, supported)
+}
+
+func validateProposalCapabilityAdmissionWithActivationSet(policy *commonpb.ClusterPolicy, proposal *node.Proposal, members []capabilities.Member, supported, automatic []capabilities.CapabilityID) error {
 	if proposal == nil {
 		return errors.New("raft proposal gate received a nil proposal")
 	}
@@ -1306,7 +1311,7 @@ func validateProposalCapabilityAdmissionWithSupported(policy *commonpb.ClusterPo
 		return err
 	}
 	if proposal.HasBusinessOrders() {
-		ready, err := capabilities.Ready(supported, members)
+		ready, err := capabilities.Ready(automatic, members)
 		if err != nil {
 			return err
 		}

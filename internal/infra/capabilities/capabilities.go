@@ -44,6 +44,12 @@ func SupportedIDs() []CapabilityID {
 	return []CapabilityID{AccountIncarnationWritesV1, AccountIncarnationHistoryCompleteV1}
 }
 
+// AutomaticallyActivatedIDs excludes capabilities that require a coordinated
+// operator cutover even when every member has advertised local readiness.
+func AutomaticallyActivatedIDs() []CapabilityID {
+	return []CapabilityID{AccountIncarnationWritesV1}
+}
+
 // IsActive reports the committed activation at the reader's apply position.
 func IsActive(policy *commonpb.ClusterPolicy, id CapabilityID) bool {
 	return IsActiveReader(policy.AsReader(), id)
