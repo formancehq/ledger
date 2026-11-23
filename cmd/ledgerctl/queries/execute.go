@@ -240,6 +240,7 @@ func executeAll(cmd *cobra.Command, client servicepb.BucketServiceClient, req *s
 	for _, page := range pages {
 		merged.AccountData = append(merged.AccountData, page.GetAccountData()...)
 		merged.TransactionData = append(merged.TransactionData, page.GetTransactionData()...)
+		merged.LogData = append(merged.LogData, page.GetLogData()...)
 	}
 
 	renderCursorPage(cmd, merged, 1)
@@ -295,6 +296,42 @@ func renderCursorPage(cmd *cobra.Command, cursor *commonpb.PreparedQueryCursor, 
 				t.GetTimestamp().AsTime().Format("2006-01-02 15:04:05"),
 				strconv.Itoa(len(t.GetPostings())),
 				t.GetReference(),
+			})
+		}
+
+		_ = pterm.DefaultTable.WithHasHeader().WithData(tableData).Render()
+
+		return
+	}
+
+	if len(cursor.GetLogData()) > 0 {
+		if handled, err := cmdutil.EncodeStructured(cmd, cursor.GetLogData()); handled || err != nil {
+			return
+		}
+
+		if pageNum > 1 {
+			pterm.Println()
+		}
+
+		pterm.Printf("Results (Page %d)\n", pageNum)
+		pterm.Println(pterm.Gray("─────────────────────────────────"))
+
+		tableData := pterm.TableData{{"SEQUENCE", "LEDGER LOG ID", "DATE", "TYPE"}}
+		for _, log := range cursor.GetLogData() {
+			ledgerLog := log.GetPayload().GetApply().GetLog()
+			date := ""
+			logType := "Unknown"
+			if ledgerLog.GetDate() != nil {
+				date = ledgerLog.GetDate().AsTime().Format("2006-01-02 15:04:05")
+			}
+			if ledgerLog.GetData() != nil {
+				logType = cmdutil.DescribeOneofField(ledgerLog.GetData().ProtoReflect(), "payload", "Log", false).Type
+			}
+			tableData = append(tableData, []string{
+				strconv.FormatUint(log.GetSequence(), 10),
+				strconv.FormatUint(ledgerLog.GetId(), 10),
+				date,
+				logType,
 			})
 		}
 
