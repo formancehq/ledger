@@ -151,6 +151,23 @@ apply is rejected as stale rather than executed. `processCreateTransaction` then
 and a retained outcome replays. See
 [the replay contract](idempotency.md#replay-after-a-referenced-script-is-removed).
 
+An order the FSM can skip before it reaches its script is planned whatever
+`predictOrderSkip` answers: a `CreateTransaction` with a `reference` and
+`TRANSACTION_REFERENCE_CONFLICT` in `skippable_reasons`. The prediction only
+decides whether the order's effects feed later orders of the batch. If its
+planning fails and the skip is predicted, or the order is keyed and the
+failure is one admission would refuse, admission forwards the order with
+`OrderTechnical.numscript_planning_failed`, the keys planning read and their
+hash, and the FSM skips the order or re-runs the planning. An unkeyed order
+that admission does not predict to skip is still refused here. A keyed order
+that admission does not predict to skip and whose planning failure is
+state-dependent (after a balance or metadata read, or on a `latest` library
+reference) keeps the `preload_unavailable` path instead: after
+the idempotency lookup, the FSM rejects the whole batch with the retryable
+`PRELOAD_UNAVAILABLE` before any order runs, even if the reference now exists.
+See
+[the replay contract](idempotency.md#replay-after-a-skipped-scripted-transaction).
+
 ### 7. Build the execution plan
 
 `builder.Build(aggregate, operations)` (`internal/infra/plan/builder.go`) dispatches each `plan.Coverage` entry to its `attrCode` resolver, hits the gen0/gen1 attribute cache first, and falls back to Pebble for misses. The result is an `ExecutionPlan` — the read-only view the FSM apply path will see when it runs.
@@ -245,6 +262,7 @@ Node-local operational policy is a separate category. Flags, environment variabl
 | Write gate / maintenance / signature / structural validation | gRPC returns error, no Raft proposal | Client only | **No** — admission did not propose. |
 | Metadata policy | Existing FSM handlers, after idempotency lookup | Client | **Yes** for fresh refusals and conflicts; **no** new audit for a retained replay. |
 | Missing Numscript library reference | `processCreateTransaction`, after idempotency lookup | Client | **Yes** for fresh refusals; **no** new audit for a retained replay. |
+| Numscript planning failure forwarded with `numscript_planning_failed` (an order the FSM can skip on its reference, when the skip is predicted or the request is keyed) | `processCreateTransaction`, after idempotency lookup and the reference check | Client | **Yes** for fresh definitive refusals; **no** for a retained replay, a skip, a stale rejection, or a failure that cannot be committed (an unclassified compile error), which also leaves the key free. An unkeyed order not predicted to skip is refused at admission, without an audit entry. |
 | FSM apply (validation, overflow, balance, etc.) | Proposal returned with `Failure` outcome | Client + Raft log | **Yes** — `AuditEntry` with `outcome = Failure`, bound by the hash chain. |
 
 This distinction matters: anything that lands in the audit chain is replayable and verifiable by the checker. A new rejection at admission is invisible to history because its orders never reached the cluster. A retained FSM replay returns an earlier historical outcome without adding to history.

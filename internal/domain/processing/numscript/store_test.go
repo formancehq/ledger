@@ -118,12 +118,12 @@ func TestRecordingStore_HashInjectiveOverAmbiguousMetadata(t *testing.T) {
 	t.Parallel()
 
 	a := &RecordingStore{
-		balanceRecords:  map[string]string{},
-		metadataRecords: map[string]string{"acct\x00\x00k1": "v\nacct\x00\x00k2=w"},
+		balanceRecords:  map[balanceRecord]string{},
+		metadataRecords: map[metadataRecord]string{{account: "acct", key: "k1"}: "v\nacct\x00\x00k2=w"},
 	}
 	b := &RecordingStore{
-		balanceRecords:  map[string]string{},
-		metadataRecords: map[string]string{"acct\x00\x00k1": "v", "acct\x00\x00k2": "w"},
+		balanceRecords:  map[balanceRecord]string{},
+		metadataRecords: map[metadataRecord]string{{account: "acct", key: "k1"}: "v", {account: "acct", key: "k2"}: "w"},
 	}
 
 	require.NotEqual(t, a.Hash(), b.Hash(),

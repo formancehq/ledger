@@ -1748,6 +1748,10 @@ func describableCause(cause error) (domain.Describable, bool) {
 	return nil, false
 }
 
+func isContextError(err error) bool {
+	return errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded)
+}
+
 // classifyResolutionFailure decides what to do when admission cannot build the
 // preload for an order (discovery/skip-prediction failed against current state).
 // With an idempotency key present the failure is NOT authoritative — the batch
@@ -1784,7 +1788,7 @@ func (a *Admission) classifyResolutionFailure(order *raftcmdpb.Order, cause erro
 	// PRELOAD_UNAVAILABLE (EN-1557, invariant #7). Checked before the freezable
 	// and provenance branches: a ctx error is neither, and the errors.As unwrap
 	// below would happily walk past it to the inner cause.
-	if errors.Is(cause, context.Canceled) || errors.Is(cause, context.DeadlineExceeded) {
+	if isContextError(cause) {
 		return false, &domain.BusinessError{Err: &domain.ErrDependencyDiscoveryFailed{Cause: cause}}
 	}
 
@@ -1931,12 +1935,8 @@ func (a *Admission) resolveScriptsAndEnrichNeeds(ctx context.Context, orders []*
 		switch applyData := applyPayload.Apply.GetData().(type) {
 		case *raftcmdpb.LedgerApplyOrder_CreateTransaction:
 			// Handled below (script resolution + effect folding). A predicted
-			// skip short-circuits the whole resolution: the FSM will drop this
-			// order, so it must contribute no effects and needs no resolution
-			// hash (a skipped order's hash is never checked).
-			if skip {
-				continue
-			}
+			// skip is planned like any other create, because only the FSM
+			// decides the skip. It contributes no effects.
 		case *raftcmdpb.LedgerApplyOrder_RevertTransaction:
 			if skip {
 				continue
@@ -2071,6 +2071,10 @@ func (a *Admission) resolveScriptsAndEnrichNeeds(ctx context.Context, orders []*
 			scriptText = script.GetPlain()
 			scriptVars = script.GetVars()
 		} else {
+			if skip {
+				continue
+			}
+
 			// Postings-only — its preload keys are handled by extractPreloadNeeds,
 			// but its balance effects still feed later orders' resolution in this
 			// batch (EN-1406 P1-1), so fold them into the accumulator before moving
@@ -2126,61 +2130,54 @@ func (a *Admission) resolveScriptsAndEnrichNeeds(ctx context.Context, orders []*
 			// frozen outcome, or rejects with the retryable, non-frozen
 			// ERROR_REASON_PRELOAD_UNAVAILABLE. Without a key there is no replay to
 			// preserve, so it fails fast (DEPENDENCY_DISCOVERY_FAILED). See EN-1406.
-			if forwarded, ferr := a.classifyResolutionFailure(order, err, refIsLatest, hasIdempotencyKey); ferr != nil {
-				return ferr
-			} else if forwarded {
-				continue
+			//
+			// An order the FSM can skip before it reaches the script is never
+			// refused here. Whether the reference exists is the FSM's call, so
+			// the failure is forwarded with the inputs planning read: apply
+			// skips the order, or re-plans it and reaches this same failure.
+			fsmDecides := skip && !isContextError(err)
+			if !fsmDecides {
+				_, ferr := a.classifyResolutionFailure(order, err, refIsLatest, hasIdempotencyKey)
+				if ferr == nil {
+					continue
+				}
+
+				if !hasIdempotencyKey || !skipsOnReferenceConflict(applyPayload.Apply) || isContextError(err) {
+					return ferr
+				}
 			}
+
+			orderTechnical(order).NumscriptPlanningFailed = true
 		}
 
-		if discovered != nil {
-			// Volume reads and writes both need preloading: the FSM apply path
-			// reads every touched source balance and mutates both source and
-			// destination volumes. The union is preloaded so every read/mutate
-			// resolves from cache. #1560 (EN-1406) threads color: a discovered key
-			// may carry a non-empty key.Color, so preloading passes it through to
-			// the segregated (account, asset, color) bucket. Scope-qualified
-			// balances are still rejected upstream.
-			for key := range discovered.ReadVolumes {
-				addVolumeNeed(p, key.LedgerName, key.Account, key.Asset, key.Color)
-				addVolumeNeed(orderNeeds, key.LedgerName, key.Account, key.Asset, key.Color)
-			}
+		declareScriptCoverage(p, orderNeeds, discovered)
 
-			for key := range discovered.WriteVolumes {
-				addVolumeNeed(p, key.LedgerName, key.Account, key.Asset, key.Color)
-				addVolumeNeed(orderNeeds, key.LedgerName, key.Account, key.Asset, key.Color)
-			}
+		// Bind the resolved inputs to the order's technical sub-message. The
+		// FSM re-resolves against preloaded values and rejects with
+		// ErrStaleInputsResolution if the hash differs (inputs changed between
+		// admission and apply). Nil for fully-static scripts (nothing read) —
+		// the FSM then skips the check. Technical is created nil-safely and
+		// shared with the coverage-bits pass (order-independent).
+		orderTechnical(order).InputsResolutionHash = discovered.InputsHash
 
-			// Metadata reads must be preloaded so the FSM's stale-inputs
-			// re-resolution (which reads meta() through the coverage gate) and
-			// the metadata read on the apply path resolve from cache. Metadata
-			// writes must be preloaded too: the apply path captures the
-			// previous value before writing (indexbuilder relies on it, #186)
-			// via a coverage-gated read.
-			for key := range discovered.ReadMetadata {
-				canonical := key.Bytes()
-				p.Add(dal.SubAttrMetadata, canonical)
-				orderNeeds.Add(dal.SubAttrMetadata, canonical)
-			}
-
-			for key := range discovered.WriteMetadata {
-				canonical := key.Bytes()
-				p.Add(dal.SubAttrMetadata, canonical)
-				orderNeeds.Add(dal.SubAttrMetadata, canonical)
-			}
-
-			// Bind the resolved inputs to the order's technical sub-message. The
-			// FSM re-resolves against preloaded values and rejects with
-			// ErrStaleInputsResolution if the hash differs (inputs changed between
-			// admission and apply). Nil for fully-static scripts (nothing read) —
-			// the FSM then skips the check. Technical is created nil-safely and
-			// shared with the coverage-bits pass (order-independent).
-			orderTechnical(order).InputsResolutionHash = discovered.InputsHash
-
-			// Fold this script's effects into the batch accumulator so a later
-			// order in the same atomic batch resolves against them (EN-1406 P1-1).
-			effects.mergeDiscovery(discovered.NetBalanceDeltas, discovered.MetadataWrites)
+		// For references: preload the content for the version admission observed
+		// (the discovered greatest for "latest", or the exact semver). The FSM
+		// resolves the reference from the dual-gen cache. If a "latest" ref's
+		// greatest advanced since planning, the FSM's read of the newer version's
+		// content is not covered and surfaces as a retryable stale proposal.
+		if isReference {
+			declareNumscriptReferenceCoverage(p, orderNeeds, ledgerName, refName, resolvedVersion, refIsLatest)
 		}
+
+		// Skip parity: an order the FSM drops, or one that can only fail, leaves
+		// no trace for later orders of the batch.
+		if skip || err != nil {
+			continue
+		}
+
+		// Fold this script's effects into the batch accumulator so a later
+		// order in the same atomic batch resolves against them (EN-1406 P1-1).
+		effects.mergeDiscovery(discovered.NetBalanceDeltas, discovered.MetadataWrites)
 
 		// Caller-supplied account metadata is folded AFTER the script's writes
 		// because the FSM merges it with precedence over set_account_meta
@@ -2197,18 +2194,48 @@ func (a *Admission) resolveScriptsAndEnrichNeeds(ctx context.Context, orders []*
 		if txRef := createTx.CreateTransaction.GetReference(); txRef != "" {
 			effects.recordReference(domain.TransactionReferenceKey{LedgerName: ledgerName, Reference: txRef})
 		}
-
-		// For references: preload the content for the version admission observed
-		// (the discovered greatest for "latest", or the exact semver). The FSM
-		// resolves the reference from the dual-gen cache. If a "latest" ref's
-		// greatest advanced since planning, the FSM's read of the newer version's
-		// content is not covered and surfaces as a retryable stale proposal.
-		if isReference {
-			declareNumscriptReferenceCoverage(p, orderNeeds, ledgerName, refName, resolvedVersion, refIsLatest)
-		}
 	}
 
 	return nil
+}
+
+// declareScriptCoverage declares every key a script's planning read or will
+// write, proposal-wide and for its own order.
+func declareScriptCoverage(p, orderNeeds *plan.Coverage, discovered *numscript.DiscoveryResult) {
+	// Volume reads and writes both need preloading: the FSM apply path
+	// reads every touched source balance and mutates both source and
+	// destination volumes. The union is preloaded so every read/mutate
+	// resolves from cache. #1560 (EN-1406) threads color: a discovered key
+	// may carry a non-empty key.Color, so preloading passes it through to
+	// the segregated (account, asset, color) bucket. Scope-qualified
+	// balances are still rejected upstream.
+	for key := range discovered.ReadVolumes {
+		addVolumeNeed(p, key.LedgerName, key.Account, key.Asset, key.Color)
+		addVolumeNeed(orderNeeds, key.LedgerName, key.Account, key.Asset, key.Color)
+	}
+
+	for key := range discovered.WriteVolumes {
+		addVolumeNeed(p, key.LedgerName, key.Account, key.Asset, key.Color)
+		addVolumeNeed(orderNeeds, key.LedgerName, key.Account, key.Asset, key.Color)
+	}
+
+	// Metadata reads must be preloaded so the FSM's stale-inputs
+	// re-resolution (which reads meta() through the coverage gate) and
+	// the metadata read on the apply path resolve from cache. Metadata
+	// writes must be preloaded too: the apply path captures the
+	// previous value before writing (indexbuilder relies on it, #186)
+	// via a coverage-gated read.
+	for key := range discovered.ReadMetadata {
+		canonical := key.Bytes()
+		p.Add(dal.SubAttrMetadata, canonical)
+		orderNeeds.Add(dal.SubAttrMetadata, canonical)
+	}
+
+	for key := range discovered.WriteMetadata {
+		canonical := key.Bytes()
+		p.Add(dal.SubAttrMetadata, canonical)
+		orderNeeds.Add(dal.SubAttrMetadata, canonical)
+	}
 }
 
 // declareNumscriptReferenceCoverage declares the library reads the FSM makes to
