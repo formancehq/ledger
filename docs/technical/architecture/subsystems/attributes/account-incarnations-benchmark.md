@@ -131,3 +131,25 @@ Each migration job had a 6 CPU, 12 GiB memory limit. All three began at an empty
 | 2 | 14 min 34 s | 15 min 43 s |
 
 The second completed local migration finished 15 min 53 s after the jobs started; all three finished after 29 min 11 s. This is a measurement of local conversion under three simultaneous jobs, not a measured service outage. A real offline upgrade also needs image startup, Raft quorum formation, catch-up, and any operator sequencing. If migration is strictly one node at a time while all nodes remain stopped, the time to migrate two nodes is roughly the sum of two node durations, before Raft starts. Replica 0 showed substantially more Pebble compaction and took nearly twice as long as the other two, so use the slowest replica when planning completion of all three. The data generator and migration helper were temporary benchmark resources; these volumes were never rejoined to the cluster.
+
+### Profiling and reduced migration time
+
+A second isolated ACME cluster used the same hardware and 100-million-account shape. The first load accepted 999,102 of 1,000,000 bulks; a separate load accepted 898 bulks with fresh account addresses, restoring the total to exactly 1,000,000 accepted bulks and 100,000,000 distinct accounts. The three local migration jobs ran in parallel with CPU, allocation, heap and Pebble metrics profiles. They measured three variants on different replicas, so the times alone do not isolate a single change:
+
+| Replica | Variant | Migration duration |
+| --- | --- | ---: |
+| 0 | Branch migration before this profiling pass | 28 min 55 s |
+| 1 | Direct history reader, without other changes | 17 min 50 s |
+| 2 | Direct reader, one forward audit-item iterator, account types compiled on changes | 13 min 09 s |
+
+The baseline profile attributed 1,247 CPU seconds and about 9.1 TB of cumulative allocation to incarnation point lookups, mostly Pebble SST filter-block reads. Even a rare false positive in the migration-local 16-bit-per-key Bloom filter can trigger an expensive point lookup against the growing projection. The direct-reader variant still spent 656 CPU seconds in those lookups and allocated about 4.9 TB through Pebble filter-block reads; the combined variant spent 423 CPU seconds and allocated about 3.2 TB there. These are cumulative CPU/allocation figures across goroutines, not elapsed time or retained memory. The baseline kept one Pebble snapshot open but its reported pinned size was zero. The direct reader alone therefore has no established independent benefit from this experiment.
+
+The migration-local filter was increased from 16 bits and 8 probes to 32 bits and 16 probes per key. A third clean three-replica ACME cluster completed all 1,000,000 bulks in one run, without failed requests. Its local migration jobs used that more precise filter together with the sequential audit-item reader and account-type cache. All three started with an empty migration cursor and finished with `complete=true`, `audit_cursor=1,000,001`, and `applied_index=1,000,009`:
+
+| Replica | Migration duration |
+| --- | ---: |
+| 0 | 5 min 25 s |
+| 1 | 5 min 27 s |
+| 2 | 5 min 16 s |
+
+All three jobs completed within about 6 min 35 s of launch, including checkout and compilation of the benchmark helper. On replica 0, cumulative allocation fell from about 9.5 TB in the baseline profile to about 395 GB; the incarnation point-read path disappeared from the leading CPU stacks. The remaining CPU is mainly Pebble compaction, sequential log decoding, and committing incarnation batches. A 32-bit-per-key growable filter uses roughly 0.5 GiB at this cardinality; the observed migration pods stayed below their 12 GiB memory limit. This third run measures local conversion, not Raft restart or actual service downtime. The full store-checker verification is separate from the `migrate-incarnations` command and was not included in any migration duration.

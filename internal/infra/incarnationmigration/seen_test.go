@@ -35,7 +35,7 @@ func TestAccountSeenKeepsFalsePositivesBounded(t *testing.T) {
 			falsePositives++
 		}
 	}
-	require.Less(t, falsePositives, 1000)
+	require.Less(t, falsePositives, 10)
 }
 
 func TestFoldKeepsFirstDateAcrossCommittedBatches(t *testing.T) {

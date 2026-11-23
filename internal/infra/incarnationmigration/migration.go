@@ -155,7 +155,9 @@ func run(ctx context.Context, store *dal.Store, force bool, pause time.Duration)
 		return nil
 	}
 
-	reader, err := store.NewReadHandle()
+	// This store is exclusively owned by the offline migrator. Audit and log
+	// history remain immutable while the new incarnation projection is written.
+	reader, err := store.NewDirectReadHandle()
 	if err != nil {
 		return fmt.Errorf("opening incarnation migration snapshot: %w", err)
 	}
@@ -196,16 +198,23 @@ func run(ctx context.Context, store *dal.Store, force bool, pause time.Duration)
 		return err
 	}
 	defer func() { _ = logs.close() }()
+	items, err := newAuditItemsReader(reader)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = items.close() }()
 
 	fold := &folder{
-		reader:  reader,
-		logs:    logs,
-		current: store,
-		attrs:   attributes.New(),
-		types:   make(map[string]map[string]*commonpb.AccountType),
-		rows:    make(map[domain.AccountKey]*commonpb.AccountIncarnation),
-		deletes: make(map[string]struct{}),
-		seen:    seen,
+		reader:   reader,
+		logs:     logs,
+		items:    items,
+		current:  store,
+		attrs:    attributes.New(),
+		types:    make(map[string]map[string]*commonpb.AccountType),
+		compiled: make(map[string][]accounttype.CompiledType),
+		rows:     make(map[domain.AccountKey]*commonpb.AccountIncarnation),
+		deletes:  make(map[string]struct{}),
+		seen:     seen,
 	}
 	var previous uint64
 	var pending int
@@ -310,7 +319,12 @@ func Verify(ctx context.Context, source dal.PebbleReader, logger logging.Logger)
 		return err
 	}
 	defer func() { _ = logs.close() }()
-	fold := &folder{reader: source, logs: logs, current: expected, attrs: attributes.New(), types: make(map[string]map[string]*commonpb.AccountType), rows: make(map[domain.AccountKey]*commonpb.AccountIncarnation), deletes: make(map[string]struct{}), seen: newAccountSeen()}
+	items, err := newAuditItemsReader(source)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = items.close() }()
+	fold := &folder{reader: source, logs: logs, items: items, current: expected, attrs: attributes.New(), types: make(map[string]map[string]*commonpb.AccountType), compiled: make(map[string][]accounttype.CompiledType), rows: make(map[domain.AccountKey]*commonpb.AccountIncarnation), deletes: make(map[string]struct{}), seen: newAccountSeen()}
 	var sequence uint64
 	var pending int
 	for {
@@ -384,15 +398,17 @@ func Verify(ctx context.Context, source dal.PebbleReader, logger logging.Logger)
 }
 
 type folder struct {
-	reader  dal.PebbleReader
-	logs    *auditLogReader
-	current dal.PebbleGetter
-	attrs   *attributes.Attributes
-	types   map[string]map[string]*commonpb.AccountType
-	rows    map[domain.AccountKey]*commonpb.AccountIncarnation
-	deletes map[string]struct{}
-	seen    *accountSeen
-	newKeys [][]byte
+	reader   dal.PebbleReader
+	logs     *auditLogReader
+	items    *auditItemsReader
+	current  dal.PebbleGetter
+	attrs    *attributes.Attributes
+	types    map[string]map[string]*commonpb.AccountType
+	compiled map[string][]accounttype.CompiledType
+	rows     map[domain.AccountKey]*commonpb.AccountIncarnation
+	deletes  map[string]struct{}
+	seen     *accountSeen
+	newKeys  [][]byte
 }
 
 func readExistingIncarnations(reader dal.PebbleReader) (*accountSeen, error) {
@@ -407,11 +423,13 @@ func readExistingIncarnations(reader dal.PebbleReader) (*accountSeen, error) {
 	}
 	if err := iter.Error(); err != nil {
 		_ = iter.Close()
+
 		return nil, fmt.Errorf("scanning existing account incarnations: %w", err)
 	}
 	if err := iter.Close(); err != nil {
 		return nil, fmt.Errorf("closing account incarnation scan: %w", err)
 	}
+
 	return seen, nil
 }
 
@@ -420,7 +438,7 @@ func (f *folder) process(ctx context.Context, entry *auditpb.AuditEntry, write b
 	if success == nil {
 		return nil
 	}
-	items, err := query.ReadAuditItems(ctx, f.reader, entry.GetSequence())
+	items, err := f.items.read(ctx, entry.GetSequence())
 	if err != nil {
 		return err
 	}
@@ -449,11 +467,11 @@ func (f *folder) process(ctx context.Context, entry *auditpb.AuditEntry, write b
 		if _, deleted := deletedHere[key.LedgerName]; deleted {
 			continue
 		}
-		types, exists := f.types[key.LedgerName]
+		_, exists := f.types[key.LedgerName]
 		if !exists {
 			return fmt.Errorf("account write without live ledger %q", key.LedgerName)
 		}
-		if matched := accounttype.FindMatchingType(key.Account, accounttype.CompileTypes(types)); matched != nil && matched.GetPersistence() != commonpb.AccountTypePersistence_ACCOUNT_TYPE_NORMAL {
+		if matched := accounttype.FindMatchingType(key.Account, f.compiled[key.LedgerName]); matched != nil && matched.GetPersistence() != commonpb.AccountTypePersistence_ACCOUNT_TYPE_NORMAL {
 			continue
 		}
 		if err := f.touch(key, entry.GetTimestamp()); err != nil {
@@ -472,12 +490,14 @@ func (f *folder) processLog(log *commonpb.Log, touched map[domain.AccountKey]str
 			accountTypes = make(map[string]*commonpb.AccountType)
 		}
 		f.types[create.GetName()] = accountTypes
+		f.compiled[create.GetName()] = accounttype.CompileTypes(accountTypes)
 
 		return nil
 	}
 	if deleted := payload.GetDeleteLedger(); deleted != nil {
 		name := deleted.GetName()
 		delete(f.types, name)
+		delete(f.compiled, name)
 		deletedHere[name] = struct{}{}
 		if write {
 			f.deletes[name] = struct{}{}
@@ -502,9 +522,11 @@ func (f *folder) processLog(log *commonpb.Log, touched map[domain.AccountKey]str
 		}
 		typ := added.GetAccountType()
 		f.types[ledger][typ.GetName()] = typ
+		f.compiled[ledger] = accounttype.CompileTypes(f.types[ledger])
 	}
 	if removed := data.GetRemovedAccountType(); removed != nil {
 		delete(f.types[ledger], removed.GetName())
+		f.compiled[ledger] = accounttype.CompileTypes(f.types[ledger])
 	}
 	add := func(account string) { touched[domain.AccountKey{LedgerName: ledger, Account: account}] = struct{}{} }
 	if created := data.GetCreatedTransaction(); created != nil {

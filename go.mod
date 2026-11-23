@@ -24,6 +24,7 @@ require (
 	github.com/aws/smithy-go v1.27.10
 	github.com/benbjohnson/immutable v0.4.3
 	github.com/bytedance/sonic v1.15.3
+	github.com/cespare/xxhash/v2 v2.3.0
 	github.com/cockroachdb/pebble/v2 v2.1.7
 	github.com/creack/pty v1.1.18
 	github.com/databricks/databricks-sql-go v1.12.0
@@ -140,7 +141,6 @@ require (
 	github.com/bytedance/sonic/loader v0.5.2 // indirect
 	github.com/cenkalti/backoff/v4 v4.3.0 // indirect
 	github.com/cenkalti/backoff/v5 v5.0.3 // indirect
-	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/cloudwego/base64x v0.1.6 // indirect
 	github.com/cockroachdb/crlib v0.0.0-20241112164430-1264a2edc35b // indirect
 	github.com/cockroachdb/errors v1.11.3 // indirect
