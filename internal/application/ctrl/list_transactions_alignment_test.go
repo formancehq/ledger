@@ -120,9 +120,9 @@ func TestListTransactions_ZeroCursor(t *testing.T) {
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, rs.Close()) })
 	controller := NewDefaultController(nil, store, logger, attrs, rs, nil, noop.NewMeterProvider().Meter("test"))
-	collectIDs := func(after *uint64, reverse bool) []uint64 {
+	collectIDs := func(after *uint64, pageSize uint32, reverse bool) []uint64 {
 		t.Helper()
-		page, err := controller.ListTransactions(t.Context(), ledger, 2, after, nil, reverse)
+		page, err := controller.ListTransactions(t.Context(), ledger, pageSize, after, nil, reverse)
 		require.NoError(t, err)
 		rows, err := cursor.Collect(page)
 		require.NoError(t, err)
@@ -134,9 +134,13 @@ func TestListTransactions_ZeroCursor(t *testing.T) {
 		return ids
 	}
 	zero := uint64(0)
-	require.Equal(t, []uint64{0, 1}, collectIDs(nil, true))
-	require.Equal(t, []uint64{1, 2}, collectIDs(&zero, true))
-	require.Empty(t, collectIDs(&zero, false))
+	one, two := uint64(1), uint64(2)
+	require.Equal(t, []uint64{0}, collectIDs(nil, 1, true))
+	require.Equal(t, []uint64{1}, collectIDs(&zero, 1, true))
+	require.Equal(t, []uint64{2}, collectIDs(&one, 1, true))
+	require.Empty(t, collectIDs(&two, 1, true))
+	require.Equal(t, []uint64{1, 2}, collectIDs(&zero, 2, true))
+	require.Empty(t, collectIDs(&zero, 2, false))
 }
 
 // seedCreatedTransaction writes the minimum authoritative state required by
