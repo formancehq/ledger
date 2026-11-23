@@ -78,17 +78,12 @@ jobs:
       - name: Compute development version
         id: dev-version
         uses: formancehq/ci/actions/dev-version@e4b5ab22a0714d35a1731b73191162463b781131 # v1.0.4
-      - name: Build and push Ledger PR image with GoReleaser
-        run: >
-          nix develop .#ci --command just docker-build-pr '${{ steps.tag.outputs.build_image }}'
+      - name: Build and push Ledger and operator PR images with GoReleaser
+        run: nix develop .#ci --command just docker-build-pr "$BUILD_IMAGE" true
         env:
+          BUILD_IMAGE: ${{ steps.tag.outputs.build_image }}
           GORELEASER_KEY: ${{ secrets.GORELEASER_KEY }}
           DEV_VERSION: ${{ steps.dev-version.outputs.version-number }}
-      - name: Build and push Ledger Operator PR image with GoReleaser
-        run: >
-          nix develop .#ci --command just operator-docker-build-pr '${{ steps.tag.outputs.operator_image }}'
-        env:
-          GORELEASER_KEY: ${{ secrets.GORELEASER_KEY }}
       - name: Summarize image digests
         env:
           image: ${{ steps.tag.outputs.image }}

@@ -6,6 +6,15 @@ Ledger development builds carry SemVer-valid versions, as specified by RFC-0013
 This page explains how those versions are computed and what to do when you cut
 a release branch.
 
+## Release build
+
+The root `.goreleaser.yml` builds Ledger, `ledgerctl`, and the operator. A
+release tag runs GoReleaser once. It publishes the existing Ledger archives
+and both `linux/amd64` and `linux/arm64` images: `ledger` and
+`ledger-operator`. The operator stays image-only. Both images use the Git
+tag; only stable releases also update `latest`. The release workflow then
+publishes the operator Helm charts, after their image is available.
+
 ## Development versions
 
 `Release-Latest` in `.github/workflows/main.yml` runs
@@ -19,7 +28,8 @@ archives on `main` are versioned from it:
 | prerelease `vX.Y.Z-P`, including a marker `vX.Y.0-0` | `vX.Y.Z-P.dev.N.g<sha>` |
 
 `N` is the number of commits since that tag. Images also keep a
-`nightly-<short-commit>` alias tag. Release images are not affected.
+`nightly-<short-commit>` alias tag for Ledger. Nightlies do not move either
+image's `latest` tag and do not publish Helm charts.
 
 PR images (`Build-PR-Image` in `.github/workflows/pr-images.yml`) are built as
 the development version of the PR head commit, computed on the line of the PR's
@@ -28,7 +38,11 @@ base branch, for example `v3.0.0-rc.3.dev.39.g3a0ae49`. The `ledger-server` and
 and the image is tagged with it. The `pr-<num>-<sha7>` and
 `pr-<num>-<sha7>-run-<id>-<attempt>` tags stay on the same digest.
 `just docker-build-pr` rejects a `DEV_VERSION` that is not a development version
-of the PR tag's commit, so a PR build cannot push a release tag. The `g<sha>`
+of the PR tag's commit, so a PR build cannot push a release tag. The same
+GoReleaser invocation publishes the operator under `pr-<num>-<sha7>` when
+`just docker-build-pr <ledger-image> true` requests it. The standalone perf
+build omits the second argument and publishes only Ledger. Both paths disable
+GitHub Release publication. The `g<sha>`
 part is the same commit as `<sha7>`. The squash commit built on `main` after
 merge is a different commit, so it gets its own version.
 
