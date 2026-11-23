@@ -4441,6 +4441,7 @@ type LedgerActionReader interface {
 	GetAddAccountType() AddAccountTypeRequestReader
 	GetRemoveAccountType() RemoveAccountTypeRequestReader
 	GetSetDefaultEnforcementMode() SetDefaultEnforcementModeRequestReader
+	GetExecuteNumscript() ExecuteNumscriptPayloadReader
 	WhichData() LedgerAction_DataReaderCase
 	Mutate() *LedgerAction
 }
@@ -4503,6 +4504,14 @@ func (r *ledgerActionReadonly) GetSetDefaultEnforcementMode() SetDefaultEnforcem
 	return v.SetDefaultEnforcementMode.AsReader()
 }
 
+func (r *ledgerActionReadonly) GetExecuteNumscript() ExecuteNumscriptPayloadReader {
+	v, ok := (*LedgerAction)(r).GetData().(*LedgerAction_ExecuteNumscript)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.ExecuteNumscript.AsReader()
+}
+
 // LedgerAction_DataReaderCase identifies a selected oneof arm by its protobuf field number.
 type LedgerAction_DataReaderCase int32
 
@@ -4515,6 +4524,7 @@ const (
 	LedgerAction_DataReaderCase_AddAccountType            LedgerAction_DataReaderCase = 5
 	LedgerAction_DataReaderCase_RemoveAccountType         LedgerAction_DataReaderCase = 6
 	LedgerAction_DataReaderCase_SetDefaultEnforcementMode LedgerAction_DataReaderCase = 7
+	LedgerAction_DataReaderCase_ExecuteNumscript          LedgerAction_DataReaderCase = 8
 )
 
 func (r *ledgerActionReadonly) WhichData() LedgerAction_DataReaderCase {
@@ -4533,6 +4543,8 @@ func (r *ledgerActionReadonly) WhichData() LedgerAction_DataReaderCase {
 		return LedgerAction_DataReaderCase_RemoveAccountType
 	case *LedgerAction_SetDefaultEnforcementMode:
 		return LedgerAction_DataReaderCase_SetDefaultEnforcementMode
+	case *LedgerAction_ExecuteNumscript:
+		return LedgerAction_DataReaderCase_ExecuteNumscript
 	default:
 		return LedgerAction_DataReaderCase_Unset
 	}

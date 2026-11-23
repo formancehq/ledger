@@ -6530,6 +6530,7 @@ type LedgerLogPayloadReader interface {
 	GetRemovedAccountType() RemovedAccountTypeLogReader
 	GetUpdatedDefaultEnforcementMode() UpdatedDefaultEnforcementModeLogReader
 	GetOrderSkipped() OrderSkippedLogReader
+	GetAccountMetadataUpdated() AccountMetadataUpdatedReader
 	WhichPayload() LedgerLogPayload_PayloadReaderCase
 	Mutate() *LedgerLogPayload
 }
@@ -6640,6 +6641,14 @@ func (r *ledgerLogPayloadReadonly) GetOrderSkipped() OrderSkippedLogReader {
 	return v.OrderSkipped.AsReader()
 }
 
+func (r *ledgerLogPayloadReadonly) GetAccountMetadataUpdated() AccountMetadataUpdatedReader {
+	v, ok := (*LedgerLogPayload)(r).GetPayload().(*LedgerLogPayload_AccountMetadataUpdated)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.AccountMetadataUpdated.AsReader()
+}
+
 // LedgerLogPayload_PayloadReaderCase identifies a selected oneof arm by its protobuf field number.
 type LedgerLogPayload_PayloadReaderCase int32
 
@@ -6658,6 +6667,7 @@ const (
 	LedgerLogPayload_PayloadReaderCase_RemovedAccountType            LedgerLogPayload_PayloadReaderCase = 11
 	LedgerLogPayload_PayloadReaderCase_UpdatedDefaultEnforcementMode LedgerLogPayload_PayloadReaderCase = 12
 	LedgerLogPayload_PayloadReaderCase_OrderSkipped                  LedgerLogPayload_PayloadReaderCase = 13
+	LedgerLogPayload_PayloadReaderCase_AccountMetadataUpdated        LedgerLogPayload_PayloadReaderCase = 14
 )
 
 func (r *ledgerLogPayloadReadonly) WhichPayload() LedgerLogPayload_PayloadReaderCase {
@@ -6688,6 +6698,8 @@ func (r *ledgerLogPayloadReadonly) WhichPayload() LedgerLogPayload_PayloadReader
 		return LedgerLogPayload_PayloadReaderCase_UpdatedDefaultEnforcementMode
 	case *LedgerLogPayload_OrderSkipped:
 		return LedgerLogPayload_PayloadReaderCase_OrderSkipped
+	case *LedgerLogPayload_AccountMetadataUpdated:
+		return LedgerLogPayload_PayloadReaderCase_AccountMetadataUpdated
 	default:
 		return LedgerLogPayload_PayloadReaderCase_Unset
 	}
@@ -6899,6 +6911,8 @@ type FailureDetailsReader interface {
 	GetNumscriptScopedNegativeBalance() NumscriptScopedNegativeBalanceDetailsReader
 	GetNumscriptVersionNotFound() NumscriptVersionNotFoundDetailsReader
 	GetMirrorAssetMappingInvalid() MirrorAssetMappingInvalidDetailsReader
+	GetMetadataOnlyTransactionMetadata() MetadataOnlyTransactionMetadataDetailsReader
+	GetMetadataOnlyReference() MetadataOnlyReferenceDetailsReader
 	WhichKind() FailureDetails_KindReaderCase
 	Mutate() *FailureDetails
 }
@@ -8097,6 +8111,22 @@ func (r *failureDetailsReadonly) GetMirrorAssetMappingInvalid() MirrorAssetMappi
 	return v.MirrorAssetMappingInvalid.AsReader()
 }
 
+func (r *failureDetailsReadonly) GetMetadataOnlyTransactionMetadata() MetadataOnlyTransactionMetadataDetailsReader {
+	v, ok := (*FailureDetails)(r).GetKind().(*FailureDetails_MetadataOnlyTransactionMetadata)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.MetadataOnlyTransactionMetadata.AsReader()
+}
+
+func (r *failureDetailsReadonly) GetMetadataOnlyReference() MetadataOnlyReferenceDetailsReader {
+	v, ok := (*FailureDetails)(r).GetKind().(*FailureDetails_MetadataOnlyReference)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.MetadataOnlyReference.AsReader()
+}
+
 // FailureDetails_KindReaderCase identifies a selected oneof arm by its protobuf field number.
 type FailureDetails_KindReaderCase int32
 
@@ -8251,6 +8281,8 @@ const (
 	FailureDetails_KindReaderCase_NumscriptScopedNegativeBalance           FailureDetails_KindReaderCase = 147
 	FailureDetails_KindReaderCase_NumscriptVersionNotFound                 FailureDetails_KindReaderCase = 148
 	FailureDetails_KindReaderCase_MirrorAssetMappingInvalid                FailureDetails_KindReaderCase = 149
+	FailureDetails_KindReaderCase_MetadataOnlyTransactionMetadata          FailureDetails_KindReaderCase = 150
+	FailureDetails_KindReaderCase_MetadataOnlyReference                    FailureDetails_KindReaderCase = 151
 )
 
 func (r *failureDetailsReadonly) WhichKind() FailureDetails_KindReaderCase {
@@ -8553,6 +8585,10 @@ func (r *failureDetailsReadonly) WhichKind() FailureDetails_KindReaderCase {
 		return FailureDetails_KindReaderCase_NumscriptVersionNotFound
 	case *FailureDetails_MirrorAssetMappingInvalid:
 		return FailureDetails_KindReaderCase_MirrorAssetMappingInvalid
+	case *FailureDetails_MetadataOnlyTransactionMetadata:
+		return FailureDetails_KindReaderCase_MetadataOnlyTransactionMetadata
+	case *FailureDetails_MetadataOnlyReference:
+		return FailureDetails_KindReaderCase_MetadataOnlyReference
 	default:
 		return FailureDetails_KindReaderCase_Unset
 	}

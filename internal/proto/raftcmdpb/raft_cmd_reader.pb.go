@@ -2813,6 +2813,7 @@ type LedgerApplyOrderReader interface {
 	GetAddAccountType() AddAccountTypeOrderReader
 	GetRemoveAccountType() RemoveAccountTypeOrderReader
 	GetUpdateDefaultEnforcementMode() UpdateDefaultEnforcementModeOrderReader
+	GetExecuteNumscript() ExecuteNumscriptOrderReader
 	GetSkippableReasons() []commonpb.ErrorReason
 	WhichData() LedgerApplyOrder_DataReaderCase
 	Mutate() *LedgerApplyOrder
@@ -2908,6 +2909,14 @@ func (r *ledgerApplyOrderReadonly) GetUpdateDefaultEnforcementMode() UpdateDefau
 	return v.UpdateDefaultEnforcementMode.AsReader()
 }
 
+func (r *ledgerApplyOrderReadonly) GetExecuteNumscript() ExecuteNumscriptOrderReader {
+	v, ok := (*LedgerApplyOrder)(r).GetData().(*LedgerApplyOrder_ExecuteNumscript)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.ExecuteNumscript.AsReader()
+}
+
 func (r *ledgerApplyOrderReadonly) GetSkippableReasons() []commonpb.ErrorReason {
 	return slices.Clone((*LedgerApplyOrder)(r).GetSkippableReasons())
 }
@@ -2928,6 +2937,7 @@ const (
 	LedgerApplyOrder_DataReaderCase_AddAccountType               LedgerApplyOrder_DataReaderCase = 9
 	LedgerApplyOrder_DataReaderCase_RemoveAccountType            LedgerApplyOrder_DataReaderCase = 10
 	LedgerApplyOrder_DataReaderCase_UpdateDefaultEnforcementMode LedgerApplyOrder_DataReaderCase = 11
+	LedgerApplyOrder_DataReaderCase_ExecuteNumscript             LedgerApplyOrder_DataReaderCase = 13
 )
 
 func (r *ledgerApplyOrderReadonly) WhichData() LedgerApplyOrder_DataReaderCase {
@@ -2954,6 +2964,8 @@ func (r *ledgerApplyOrderReadonly) WhichData() LedgerApplyOrder_DataReaderCase {
 		return LedgerApplyOrder_DataReaderCase_RemoveAccountType
 	case *LedgerApplyOrder_UpdateDefaultEnforcementMode:
 		return LedgerApplyOrder_DataReaderCase_UpdateDefaultEnforcementMode
+	case *LedgerApplyOrder_ExecuteNumscript:
+		return LedgerApplyOrder_DataReaderCase_ExecuteNumscript
 	default:
 		return LedgerApplyOrder_DataReaderCase_Unset
 	}
