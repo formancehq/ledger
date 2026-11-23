@@ -1409,9 +1409,19 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 
 	// Native policy controls are operational consensus state: no business log,
 	// audit sequence, idempotency outcome or HLC advancement.
-	if control, ok := proposal.GetPayload().(*raftcmdpb.Proposal_SetClusterPolicy); ok {
-		if err := fsm.processor.ProcessClusterPolicy(control.SetClusterPolicy.GetPolicy(), scopeFactory); err != nil {
-			result.Error = &domain.BusinessError{Err: err}
+	var controlErr domain.SerializableError
+	isControl := true
+	switch control := proposal.GetPayload().(type) {
+	case *raftcmdpb.Proposal_SetClusterPolicy:
+		controlErr = fsm.processor.ProcessClusterPolicy(control.SetClusterPolicy, scopeFactory)
+	case *raftcmdpb.Proposal_CapabilityActivation:
+		controlErr = fsm.processor.ProcessCapabilityTransition(control.CapabilityActivation, scopeFactory)
+	default:
+		isControl = false
+	}
+	if isControl {
+		if controlErr != nil {
+			result.Error = &domain.BusinessError{Err: controlErr}
 
 			return result, nil
 		}

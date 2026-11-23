@@ -25,6 +25,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/domain/indexes"
 	"github.com/formancehq/ledger/v3/internal/domain/processing/numscript"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
+	"github.com/formancehq/ledger/v3/internal/infra/capabilities"
 	"github.com/formancehq/ledger/v3/internal/infra/health"
 	"github.com/formancehq/ledger/v3/internal/infra/membership"
 	"github.com/formancehq/ledger/v3/internal/infra/node"
@@ -506,6 +507,22 @@ func (a *Admission) AdmitClusterPolicy(ctx context.Context, policy *commonpb.Clu
 	}, a.proposeClusterPolicy)
 }
 
+func (a *Admission) AdmitCapabilityTransition(ctx context.Context, transition *commonpb.CapabilityActivation) (*domain.ApplyResult, error) {
+	if transition == nil || transition.GetId() == 0 {
+		return nil, errors.New("capability transition requires a non-zero id")
+	}
+	if !transition.GetActive() {
+		return nil, errors.New("capability transition must activate")
+	}
+
+	return a.admit(ctx, func(ctx context.Context, caller *commonpb.CallerSnapshot) (*preparedAdmission, error) {
+		command := commands.NewCommand()
+		command.Payload = &raftcmdpb.Proposal_CapabilityActivation{CapabilityActivation: transition.CloneVT()}
+
+		return a.prepareControl(ctx, caller, command)
+	}, a.proposeClusterPolicy)
+}
+
 type preparedAdmission struct {
 	command *raftcmdpb.Proposal
 	build   *plan.BuildResult
@@ -530,17 +547,21 @@ func (a *Admission) prepareExecutionBatch(ctx context.Context, caller *commonpb.
 }
 
 func (a *Admission) prepareClusterPolicy(ctx context.Context, caller *commonpb.CallerSnapshot, policy *commonpb.ClusterPolicy) (*preparedAdmission, error) {
-	// Policy reconciliation is operational configuration, so maintenance does
-	// not stop it. The drain fence in checkAdmissionMaintenance still does.
+	command := commands.NewCommand()
+	configuration := policy.CloneVT()
+	configuration.CapabilityActivations = nil
+	command.Payload = &raftcmdpb.Proposal_SetClusterPolicy{
+		SetClusterPolicy: &raftcmdpb.SetClusterPolicyProposal{Policy: configuration, ConfigurationOnly: true},
+	}
+
+	return a.prepareControl(ctx, caller, command)
+}
+
+func (a *Admission) prepareControl(ctx context.Context, caller *commonpb.CallerSnapshot, command *raftcmdpb.Proposal) (*preparedAdmission, error) {
 	if err := a.checkAdmissionMaintenance(true); err != nil {
 		return nil, err
 	}
-
-	command := commands.NewCommand()
 	command.CallerSnapshot = caller
-	command.Payload = &raftcmdpb.Proposal_SetClusterPolicy{
-		SetClusterPolicy: &raftcmdpb.SetClusterPolicyProposal{Policy: policy},
-	}
 
 	// A policy control has no orders or FSM cache reads. It still receives an
 	// empty execution plan so the shared guarded proposer can stamp its index.
@@ -582,22 +603,46 @@ func (a *Admission) admit(ctx context.Context, prepare func(context.Context, *co
 		a.commandDurationHistogram.Record(ctx, time.Since(start).Seconds())
 	}()
 
-	prepared, err := prepare(ctx, caller.Snapshot())
-	if prepared != nil && prepared.orders != nil {
-		// Every built order shares the atomic batch outcome, including preparation failures.
-		defer a.recordActionOutcome(ctx, prepared.orders, &err)
-	}
-	if err != nil {
-		return nil, err
-	}
+	var orders []*raftcmdpb.Order
+	defer func() {
+		if orders != nil {
+			a.recordActionOutcome(ctx, orders, &err)
+		}
+	}()
+	for {
+		prepared, prepareErr := prepare(ctx, caller.Snapshot())
+		if prepared != nil {
+			orders = prepared.orders
+		}
+		if prepareErr != nil {
+			return nil, prepareErr
+		}
+		fsmFuture, cleanup, proposeErr := propose(ctx, prepared.command, prepared.build)
+		if proposeErr != nil {
+			if !errors.Is(proposeErr, capabilities.ErrActivationPending) {
+				return nil, proposeErr
+			}
+			timer := time.NewTimer(clusterPolicyReadyPollInterval)
+			select {
+			case <-ctx.Done():
+				timer.Stop()
 
-	fsmFuture, cleanup, err := propose(ctx, prepared.command, prepared.build)
-	if err != nil {
-		return nil, err
-	}
-	defer cleanup()
+				return nil, fmt.Errorf("waiting for capability activation: %w", ctx.Err())
+			case <-timer.C:
+			}
+			if err := a.writeGate.CheckWritesAllowed(); err != nil {
+				return nil, err
+			}
+			if err := a.waitLeaderReady(ctx); err != nil {
+				return nil, err
+			}
 
-	return a.resolveAdmissionResult(ctx, prepared.command, fsmFuture)
+			continue
+		}
+		defer cleanup()
+
+		return a.resolveAdmissionResult(ctx, prepared.command, fsmFuture)
+	}
 }
 
 func (a *Admission) proposeClusterPolicy(ctx context.Context, command *raftcmdpb.Proposal, build *plan.BuildResult) (*futures.Future[state.ApplyResult], func(), error) {
@@ -833,6 +878,9 @@ func (a *Admission) proposeAdmission(ctx context.Context, cmd *raftcmdpb.Proposa
 		if runResult != nil {
 			a.proposalGuardDurationHistogram.Record(ctx, runResult.LockHeldDuration.Seconds())
 			a.proposeDurationHistogram.Record(ctx, runResult.ProposeDuration.Seconds())
+		}
+		if errors.Is(err, capabilities.ErrActivationPending) {
+			return nil, nil, err
 		}
 
 		// Distinguish proposer error (queue full / shutdown) from

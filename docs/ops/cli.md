@@ -4119,6 +4119,10 @@ The cluster policy is a Raft-replicated record of settings that must apply ident
 | `--metadata-max-entity-bytes` | uint64 | `65536` | Maximum total metadata bytes one command may carry for a single entity. Must be greater than zero and not exceed `--metadata-max-command-bytes`. |
 | `--metadata-max-command-bytes` | uint64 | `1048576` | Maximum total metadata bytes one command may carry across every entity it touches. Must be greater than zero. |
 
+Capability activation is independent of this revision and requires no flag.
+The leader activates implemented IDs after every voter and learner advertises
+support. See [migration and rollback](upgrades.md#configuration-and-capability-state).
+
 To change a policy value, raise `--cluster-policy-revision` so the new policy supersedes the applied one:
 
 ```bash

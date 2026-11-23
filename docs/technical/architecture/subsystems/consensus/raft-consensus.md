@@ -219,7 +219,7 @@ write gate. Consumers must use the barrier required by the state they read.
 
 | Capability | Minimum activation condition | Loss, cancellation, and stale-signal protection |
 | --- | --- | --- |
-| Admission and membership changes | `WaitLeaderReady` before admission pre-reads or membership proposals; admission also requires a current-epoch disk/clock write-gate verdict before waiting. | The readiness generation wakes pending waiters with `ErrNotLeader` on loss. Admission's later Raft proposal remains subject to normal leadership checks. |
+| Admission and consensus-based membership changes | `WaitLeaderReady` before admission pre-reads or membership proposals; admission also requires a current-epoch disk/clock write-gate verdict before waiting. | The readiness generation wakes pending waiters with `ErrNotLeader` on loss. Admission's later Raft proposal remains subject to normal leadership checks. Emergency `ForceRemoveNode` checks raw Raft leadership and bypasses this readiness wait to work without quorum. |
 | Event emitters and mirror workers | Bootstrap records a gain only on `LeaderReadyEvent`; their managers then reconcile persisted configuration on their own loops. Each sink/source must also initialize successfully before its worker runs. | Bootstrap records loss inline. Manager generations fence obsolete scans and startup; generation contexts cancel initialization, and manager shutdown prevents late worker creation. See [events and mirror](../events-mirror/). |
 | Cluster configuration reconciliation | `LeaderReadyEvent` before reading persisted cluster state and proposing the desired technical update. | The proposal timeout derives from the readiness generation context; loss or shutdown cancels the blocking proposal wait. |
 | Backup execution | Raw Raft leadership installs the orchestrator's leader context. The backup request still needs its Raft `Start` order and a live executor registration; `LeaderReadyEvent` is not its activation signal. | Loss cancels the leader context and in-flight upload context. The new leader's cleanup loop handles inherited jobs without a local executor. See [backup](../backup/). |
@@ -237,7 +237,7 @@ Leadership acquisition does not admit writes immediately. The node first
 drains previously submitted apply work and waits until the FSM has applied the
 new leader's current-term no-op entry. Applying that entry proves that every
 preceding entry is committed and locally applied. `WaitLeaderReady` exposes
-this generation-specific gate to admission and to membership changes, and
+this generation-specific gate to admission and to consensus-based membership changes, and
 `LeaderReadyEvent` lets bootstrap reconcile persisted cluster configuration and
 start the event and mirror managers only after the same gate.
 

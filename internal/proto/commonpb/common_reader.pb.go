@@ -26707,6 +26707,73 @@ func NewListOptionsListReader(s []*ListOptions) ListOptionsListReader {
 	return listOptionsListReadonly(s)
 }
 
+// CapabilityStateReader provides read-only access to CapabilityState.
+// Call Mutate() to obtain a mutable clone.
+type CapabilityStateReader interface {
+	GetActivations() CapabilityActivationListReader
+	Mutate() *CapabilityState
+}
+
+type capabilityStateReadonly CapabilityState
+
+func (r *capabilityStateReadonly) GetActivations() CapabilityActivationListReader {
+	return NewCapabilityActivationListReader((*CapabilityState)(r).GetActivations())
+}
+
+func (r *capabilityStateReadonly) Mutate() *CapabilityState {
+	return (*CapabilityState)(r).CloneVT()
+}
+
+// AsReader returns a read-only view of this CapabilityState.
+func (m *CapabilityState) AsReader() CapabilityStateReader {
+	if m == nil {
+		return nil
+	}
+	return (*capabilityStateReadonly)(m)
+}
+
+// Mutate returns a mutable deep clone of this CapabilityState.
+func (m *CapabilityState) Mutate() *CapabilityState {
+	return m.CloneVT()
+}
+
+// CapabilityStateListReader provides read-only iteration over []*CapabilityState.
+type CapabilityStateListReader interface {
+	Len() int
+	Get(i int) CapabilityStateReader
+	Range(yield func(int, CapabilityStateReader) bool)
+}
+
+type capabilityStateListReadonly []*CapabilityState
+
+func (l capabilityStateListReadonly) Len() int { return len(l) }
+
+func (l capabilityStateListReadonly) Get(i int) CapabilityStateReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l capabilityStateListReadonly) Range(yield func(int, CapabilityStateReader) bool) {
+	for i, v := range l {
+		var r CapabilityStateReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewCapabilityStateListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewCapabilityStateListReader(s []*CapabilityState) CapabilityStateListReader {
+	return capabilityStateListReadonly(s)
+}
+
 // CapabilityActivationReader provides read-only access to CapabilityActivation.
 // Call Mutate() to obtain a mutable clone.
 type CapabilityActivationReader interface {

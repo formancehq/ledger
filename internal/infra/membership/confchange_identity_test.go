@@ -154,3 +154,61 @@ func TestWriteConfChangeRejectsIncompleteRegistration(t *testing.T) {
 		}
 	}
 }
+
+func TestActiveCapabilityFencesMembershipRegistration(t *testing.T) {
+	t.Parallel()
+	for _, kind := range []raftpb.ConfChangeType{raftpb.ConfChangeAddLearnerNode, raftpb.ConfChangeUpdateNode} {
+		for _, source := range []string{"committed provider", "effective apply policy"} {
+			t.Run(kind.String()+"/"+source, func(t *testing.T) {
+				t.Parallel()
+				policy := &commonpb.ClusterPolicy{
+					CapabilityActivations: []*commonpb.CapabilityActivation{{Id: 7, Active: true}},
+				}
+				member := newTestMembership(t)
+				member.requiredCapabilities = nil
+				member.capabilityPolicyProvider = func() (*commonpb.ClusterPolicy, error) {
+					if source == "committed provider" {
+						return policy, nil
+					}
+
+					return nil, nil
+				}
+				for _, supported := range []bool{false, true} {
+					evidence := &ConfChangeContext{
+						RaftAddress: "peer:7777", ServiceAddress: "peer:8888", InstanceID: fixedInstanceID(1),
+					}
+					if supported {
+						evidence.Capabilities = []uint32{7}
+					}
+					if source == "committed provider" {
+						err := member.ValidateTransitionEvidence(evidence)
+						if supported {
+							require.NoError(t, err)
+						} else {
+							require.ErrorContains(t, err, "capability 7 is required")
+						}
+					}
+					context, err := MarshalConfChangeContext(*evidence)
+					require.NoError(t, err)
+					encoded, err := proto.Marshal(&raftpb.ConfChangeV2{
+						Changes: []*raftpb.ConfChangeSingle{{Type: new(kind), NodeId: new(uint64(9))}}, Context: context,
+					})
+					require.NoError(t, err)
+					session := member.store.OpenWriteSession()
+					entry := &raftpb.Entry{Type: new(raftpb.EntryConfChangeV2), Data: encoded}
+					if source == "effective apply policy" {
+						err = member.WriteConfChange(entry, session, policy)
+					} else {
+						err = member.WriteConfChange(entry, session)
+					}
+					if supported {
+						require.NoError(t, err)
+					} else {
+						require.ErrorContains(t, err, "capability 7 is required")
+					}
+					require.NoError(t, session.Commit())
+				}
+			})
+		}
+	}
+}
