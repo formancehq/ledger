@@ -148,15 +148,21 @@ removes the existing claims' owner references, and verifies their UIDs and bound
 PV identities. This path requires existing PVC-backed WAL and data volumes;
 hostPath clusters are held for a separately validated manual procedure. A
 missing, unbound, deleting or replaced claim or PV blocks the upgrade.
-Detached claims are outside garbage collection, so the operator holds the
-`ledger.formance.com/upgrade-claims` finalizer on the Cluster while
-`status.upgrade` exists. If the Cluster is deleted during the upgrade with
-`whenDeleted: Delete`, the operator deletes each recorded claim that still has
-its recorded UID and no owner reference, then releases the finalizer. Claims
-still owned by the StatefulSet are left to garbage collection. With `Retain`,
-it applies `Retain` to the StatefulSet and releases the finalizer without
-deleting claims once no recorded claim is still owned by that StatefulSet;
-garbage collection would otherwise delete an owned claim with it.
+A stopped upgrade changes which claims the StatefulSet owns, so garbage
+collection cannot be relied on to apply `whenDeleted` to them. The operator
+holds the `ledger.formance.com/upgrade-claims` finalizer on the Cluster while
+`status.upgrade` exists and, if the Cluster is deleted during the upgrade,
+applies the requested policy to every recorded claim that still has its
+recorded UID before releasing the finalizer. With `whenDeleted: Delete`, it
+deletes each of them, whether or not the StatefulSet currently owns it. With
+`Retain`, it deletes none and removes the owner references of the StatefulSet
+and its Pods from them; while the StatefulSet exists and is not being deleted,
+it first applies `Retain` to it and waits for the StatefulSet controller to
+observe that policy. A claim with any other owner is not deleted, and that
+owner reference is kept. A claim that Kubernetes has already marked for
+deletion cannot be retained: after switching `whenDeleted` from `Delete` to
+`Retain`, wait until the claims no longer list the StatefulSet as an owner
+before deleting the Cluster or its StatefulSet, as outside an upgrade.
 Operators up to `v3.0.0-rc.4` run stopped upgrades without this finalizer. Do
 not delete a Cluster while a stopped upgrade started by such an operator is in
 progress. After upgrading the operator, wait until the Cluster carries the
@@ -172,10 +178,11 @@ both PVC retention policies at `Retain`, including recovery if the replacement
 disappears. After all target replicas are ready, the operator commits the drain
 release and waits for every member to persist it. In the `Adopting` phase it
 then restores the requested retention policies on the replacement StatefulSet.
-With `whenDeleted: Delete`, it keeps `status.upgrade` and the finalizer until
-the StatefulSet controller has made the replacement StatefulSet the owner of
-every recorded claim, so garbage collection covers each claim before the
-operator stops tracking it. As in `Verifying`, every recorded claim and volume
+It keeps `status.upgrade` and the finalizer until the StatefulSet controller
+has observed those policies and claim ownership matches them. With
+`whenDeleted: Delete`, the replacement StatefulSet must own every recorded
+claim, so garbage collection covers each claim before the operator stops
+tracking it; with `Retain`, it must own none. As in `Verifying`, every recorded claim and volume
 must keep its identity and binding during `Adopting`: a missing, replaced,
 deleting or rebound claim blocks the upgrade instead of completing it, because
 the StatefulSet would recreate that claim empty. If the replacement disappears
@@ -196,9 +203,8 @@ a direct replica-count edit to the replacement StatefulSet reports
 tag edit is still rejected, but workload spec and replica-count edits are not:
 they wait until adoption completes and then apply through ordinary
 reconciliation. A `spec.persistence.retentionPolicy` edit applies immediately
-instead: `Adopting` restores the current requested policy. After a switch to
-`whenDeleted: Retain`, it completes only once the StatefulSet controller has
-removed the replacement's owner references from every recorded claim. If a Pod will not terminate, diagnose its
+instead: `Adopting` restores the current requested policy and completes only
+once claim ownership matches it. If a Pod will not terminate, diagnose its
 node and storage attachment, then let Kubernetes finish termination; the
 operator keeps the cluster unavailable. Verify the replacement is fully ready,
 then check cluster status, representative reads and writes, audit verification

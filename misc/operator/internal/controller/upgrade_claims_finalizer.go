@@ -16,9 +16,10 @@ import (
 	ledgerv1alpha1 "github.com/formancehq/ledger/misc/operator/api/v1alpha1"
 )
 
-// A stopped upgrade forces Retain and detaches the recorded claims, so garbage
-// collection cannot apply the requested whenDeleted policy to them. This
-// finalizer holds Cluster deletion until the operator has applied it.
+// A stopped upgrade forces Retain, detaches the recorded claims and later hands
+// them back to the replacement StatefulSet, so garbage collection cannot be
+// relied on to apply the requested whenDeleted policy to them. This finalizer
+// holds Cluster deletion until the operator has applied it.
 const upgradeClaimsFinalizer = "ledger.formance.com/upgrade-claims"
 
 func (r *ClusterReconciler) ensureUpgradeClaimsFinalizer(ctx context.Context, ledger *ledgerv1alpha1.Cluster) error {
@@ -54,30 +55,31 @@ func (r *ClusterReconciler) patchFinalizers(ctx context.Context, ledger *ledgerv
 	return nil
 }
 
-// finalizeUpgradeClaims deletes the recorded claims that no owner would reap
-// when the Cluster requested whenDeleted=Delete. Claims are read from the API
-// server: a cached owner reference would release the finalizer on a claim that
-// garbage collection no longer reaps. A claim still owned by a StatefulSet is
-// left to garbage collection, and a claim recreated under a recorded name is
-// not the upgrade's claim. Under Retain, the finalizer is held until no
-// recorded claim is owned by the StatefulSet that garbage collection deletes
-// with the Cluster.
+// finalizeUpgradeClaims applies the requested whenDeleted policy to every
+// recorded claim itself. A stopped upgrade changes which claims the StatefulSet
+// owns, so an owner reference read here does not tell what garbage collection
+// will do once the Cluster is gone. Under Delete each recorded claim is
+// deleted; under Retain the workload's owner references are removed once no
+// StatefulSet can add them back. Claims are read from the API server. A claim
+// recreated under a recorded name is not the upgrade's claim, and a claim
+// already deleting cannot be retained.
 func (r *ClusterReconciler) finalizeUpgradeClaims(ctx context.Context, ledger *ledgerv1alpha1.Cluster) (ctrl.Result, error) {
 	if !controllerutil.ContainsFinalizer(ledger, upgradeClaimsFinalizer) {
 		return ctrl.Result{}, nil
 	}
-	policy := ledger.Spec.Persistence.RetentionPolicy
-	if ledger.Status.Upgrade != nil && (policy == nil || policy.WhenDeleted != "Delete") {
-		released, err := r.retainedClaimsReleased(ctx, ledger)
-		if err != nil {
-			return ctrl.Result{}, err
+	if state := ledger.Status.Upgrade; state != nil {
+		policy := ledger.Spec.Persistence.RetentionPolicy
+		deleteClaims := policy != nil && policy.WhenDeleted == "Delete"
+		if !deleteClaims {
+			settled, err := r.statefulSetRetainsClaims(ctx, ledger)
+			if err != nil {
+				return ctrl.Result{}, err
+			}
+			if !settled {
+				return ctrl.Result{RequeueAfter: requiredUpgradePoll}, nil
+			}
 		}
-		if !released {
-			return ctrl.Result{RequeueAfter: requiredUpgradePoll}, nil
-		}
-	}
-	if ledger.Status.Upgrade != nil && policy != nil && policy.WhenDeleted == "Delete" {
-		for name, uid := range ledger.Status.Upgrade.ClaimUIDs {
+		for name, uid := range state.ClaimUIDs {
 			pvc := &corev1.PersistentVolumeClaim{}
 			err := r.storageAPIReader().Get(ctx, types.NamespacedName{Name: name, Namespace: ledger.Namespace}, pvc)
 			if apierrors.IsNotFound(err) {
@@ -86,10 +88,26 @@ func (r *ClusterReconciler) finalizeUpgradeClaims(ctx context.Context, ledger *l
 			if err != nil {
 				return ctrl.Result{}, fmt.Errorf("reading upgrade PVC %s: %w", name, err)
 			}
-			if string(pvc.UID) != uid || !pvc.DeletionTimestamp.IsZero() || len(pvc.OwnerReferences) != 0 {
+			if string(pvc.UID) != uid || !pvc.DeletionTimestamp.IsZero() {
 				continue
 			}
-			// The resourceVersion fences the owner check against a concurrent adoption.
+			otherOwners := ownersOutsideWorkload(pvc, ledger)
+			if !deleteClaims {
+				if len(otherOwners) == len(pvc.OwnerReferences) {
+					continue
+				}
+				detached := pvc.DeepCopy()
+				detached.OwnerReferences = otherOwners
+				if err := r.Patch(ctx, detached, client.MergeFromWithOptions(pvc, client.MergeFromWithOptimisticLock{})); err != nil {
+					return ctrl.Result{}, fmt.Errorf("detaching owner references from PVC %s: %w", name, err)
+				}
+
+				continue
+			}
+			// Another owner keeps the claim alive under garbage collection too.
+			if len(otherOwners) != 0 {
+				continue
+			}
 			observedUID, observedVersion := pvc.UID, pvc.ResourceVersion
 			err = r.Delete(ctx, pvc, client.Preconditions{UID: &observedUID, ResourceVersion: &observedVersion})
 			if err != nil && !apierrors.IsNotFound(err) {
@@ -101,12 +119,12 @@ func (r *ClusterReconciler) finalizeUpgradeClaims(ctx context.Context, ledger *l
 	return ctrl.Result{}, r.releaseUpgradeClaimsFinalizer(ctx, ledger)
 }
 
-// retainedClaimsReleased applies the Retain policy to the Cluster's StatefulSet
-// and reports whether the StatefulSet controller has removed its owner
-// reference from every recorded claim.
-func (r *ClusterReconciler) retainedClaimsReleased(ctx context.Context, ledger *ledgerv1alpha1.Cluster) (bool, error) {
+// statefulSetRetainsClaims reports whether the Cluster's StatefulSet can no
+// longer add its owner reference to a claim: it is gone or deleting, or its
+// controller has observed the Retain policy applied here.
+func (r *ClusterReconciler) statefulSetRetainsClaims(ctx context.Context, ledger *ledgerv1alpha1.Cluster) (bool, error) {
 	sts := &appsv1.StatefulSet{}
-	err := r.Get(ctx, types.NamespacedName{Name: resourceName(ledger.Name), Namespace: ledger.Namespace}, sts)
+	err := r.storageAPIReader().Get(ctx, types.NamespacedName{Name: resourceName(ledger.Name), Namespace: ledger.Namespace}, sts)
 	if apierrors.IsNotFound(err) {
 		return true, nil
 	}
@@ -120,31 +138,35 @@ func (r *ClusterReconciler) retainedClaimsReleased(ctx context.Context, ledger *
 	if err != nil {
 		return false, fmt.Errorf("retaining StatefulSet claims: %w", err)
 	}
-	if changed {
-		return false, nil
-	}
-	for name, uid := range ledger.Status.Upgrade.ClaimUIDs {
-		pvc := &corev1.PersistentVolumeClaim{}
-		err := r.storageAPIReader().Get(ctx, types.NamespacedName{Name: name, Namespace: ledger.Namespace}, pvc)
-		if apierrors.IsNotFound(err) {
+
+	return !changed && sts.Status.ObservedGeneration >= sts.Generation, nil
+}
+
+// ownersOutsideWorkload returns the claim's owner references other than the
+// Cluster's StatefulSet and its Pods, which garbage collection removes with the
+// Cluster.
+func ownersOutsideWorkload(pvc *corev1.PersistentVolumeClaim, ledger *ledgerv1alpha1.Cluster) []metav1.OwnerReference {
+	var others []metav1.OwnerReference
+	for _, owner := range pvc.OwnerReferences {
+		if owner.Kind == "StatefulSet" && owner.Name == resourceName(ledger.Name) {
 			continue
 		}
-		if err != nil {
-			return false, fmt.Errorf("reading upgrade PVC %s: %w", name, err)
+		if owner.Kind == "Pod" && hasStatefulSetOrdinal(owner.Name, resourceName(ledger.Name)) {
+			continue
 		}
-		if string(pvc.UID) == uid && pvc.DeletionTimestamp.IsZero() && ownedBy(pvc, sts.UID) {
-			return false, nil
-		}
+		others = append(others, owner)
 	}
 
-	return true, nil
+	return others
 }
 
 // reconcileUpgradeClaimAdoption restores the requested retention policy on the
-// replacement StatefulSet and keeps the claim inventory and finalizer until the
-// claims' ownership matches it: under whenDeleted=Delete, garbage collection
-// must reach every recorded claim through the replacement; under Retain, the
-// StatefulSet controller must have removed that ownership. Every recorded claim and volume must keep its identity until then:
+// replacement StatefulSet and keeps the claim inventory and finalizer until its
+// controller has observed that policy and the claims' ownership matches it:
+// under whenDeleted=Delete, garbage collection must reach every recorded claim
+// through the replacement; under Retain, the replacement must own none. A
+// StatefulSet controller that has not observed the policy can still change
+// ownership after it was read. Every recorded claim and volume must keep its identity until then:
 // a lost claim would be recreated empty under its name. Without a StatefulSet,
 // ordinary reconciliation recreates it with the requested policy.
 func (r *ClusterReconciler) reconcileUpgradeClaimAdoption(ctx context.Context, ledger *ledgerv1alpha1.Cluster, sts *appsv1.StatefulSet) (bool, ctrl.Result, error) {
@@ -161,7 +183,7 @@ func (r *ClusterReconciler) reconcileUpgradeClaimAdoption(ctx context.Context, l
 	if err != nil {
 		return false, ctrl.Result{}, fmt.Errorf("restoring replacement StatefulSet claim retention: %w", err)
 	}
-	if changed {
+	if changed || sts.Status.ObservedGeneration < sts.Generation {
 		return false, ctrl.Result{RequeueAfter: requiredUpgradePoll}, nil
 	}
 	deleteClaims := buildRetentionPolicy(ledger).WhenDeleted == appsv1.DeletePersistentVolumeClaimRetentionPolicyType

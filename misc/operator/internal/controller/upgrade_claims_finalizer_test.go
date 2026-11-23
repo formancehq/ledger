@@ -21,20 +21,25 @@ import (
 
 // The recorded claims are detached while the source StatefulSet is deleted
 // (Deleting) and until the replacement adopts them (Adopting), so garbage
-// collection does not apply the requested whenDeleted policy to them.
+// collection does not apply the requested whenDeleted policy to them. The
+// operator applies it to every recorded claim, whatever the workload's owner
+// references say at that instant.
 func TestStoppedUpgradeClusterDeletionAppliesRequestedClaimRetention(t *testing.T) {
 	t.Parallel()
 	for _, tt := range []struct {
 		phase       string
 		whenDeleted string
 		dataClaim   string
-		deleted     bool
 	}{
-		{phase: "Deleting", whenDeleted: "Delete", dataClaim: "replaced", deleted: true},
-		{phase: "Deleting", whenDeleted: "Delete", dataClaim: "owned", deleted: true},
-		{phase: "Deleting", whenDeleted: "Retain", dataClaim: "replaced", deleted: false},
-		{phase: "Adopting", whenDeleted: "Delete", dataClaim: "replaced", deleted: true},
-		{phase: "Adopting", whenDeleted: "Delete", dataClaim: "owned", deleted: true},
+		{phase: "Deleting", whenDeleted: "Delete", dataClaim: "replaced"},
+		{phase: "Deleting", whenDeleted: "Delete", dataClaim: "owned"},
+		{phase: "Deleting", whenDeleted: "Delete", dataClaim: "foreign-owner"},
+		{phase: "Deleting", whenDeleted: "Retain", dataClaim: "replaced"},
+		{phase: "Deleting", whenDeleted: "Retain", dataClaim: "owned"},
+		{phase: "Deleting", whenDeleted: "Retain", dataClaim: "foreign-owner"},
+		{phase: "Adopting", whenDeleted: "Delete", dataClaim: "replaced"},
+		{phase: "Adopting", whenDeleted: "Delete", dataClaim: "owned"},
+		{phase: "Adopting", whenDeleted: "Delete", dataClaim: "foreign-owner"},
 	} {
 		t.Run(tt.phase+"/"+tt.whenDeleted+"/"+tt.dataClaim, func(t *testing.T) {
 			t.Parallel()
@@ -104,11 +109,17 @@ func TestStoppedUpgradeClusterDeletionAppliesRequestedClaimRetention(t *testing.
 				require.NoError(t, c.Delete(ctx, claim(dataName, "data-uid", "pv-data")))
 				require.NoError(t, c.Create(ctx, claim(dataName, "foreign-uid", "")))
 				wantDataUID = "foreign-uid"
-			case "owned":
-				// Garbage collection reaps a claim that still has an owner.
+			case "owned", "foreign-owner":
+				// The workload's owner reference does not decide the claim's
+				// fate: the StatefulSet controller may still remove it, or the
+				// StatefulSet may already be gone. Any other owner does.
+				owners := []metav1.OwnerReference{{APIVersion: "apps/v1", Kind: "StatefulSet", Name: stsName, UID: ownerUID}}
+				if tt.dataClaim == "foreign-owner" {
+					owners = append(owners, metav1.OwnerReference{APIVersion: "v1", Kind: "ConfigMap", Name: "hold", UID: "hold-uid"})
+				}
 				owned := &corev1.PersistentVolumeClaim{}
 				require.NoError(t, c.Get(ctx, types.NamespacedName{Name: dataName, Namespace: cluster.Namespace}, owned))
-				owned.OwnerReferences = []metav1.OwnerReference{{APIVersion: "apps/v1", Kind: "StatefulSet", Name: stsName, UID: ownerUID}}
+				owned.OwnerReferences = owners
 				require.NoError(t, c.Update(ctx, owned))
 			}
 			_, err = r.Reconcile(ctx, ctrl.Request{NamespacedName: key})
@@ -117,15 +128,30 @@ func TestStoppedUpgradeClusterDeletionAppliesRequestedClaimRetention(t *testing.
 			require.True(t, apierrors.IsNotFound(c.Get(ctx, key, &ledgerv1alpha1.Cluster{})), "the finalizer must be released")
 			wal := &corev1.PersistentVolumeClaim{}
 			err = c.Get(ctx, types.NamespacedName{Name: walName, Namespace: cluster.Namespace}, wal)
-			if tt.deleted {
+			if tt.whenDeleted == "Delete" {
 				require.True(t, apierrors.IsNotFound(err), "detached claim must follow whenDeleted=Delete")
 			} else {
 				require.NoError(t, err)
 				require.Equal(t, types.UID("wal-uid"), wal.UID)
 			}
 			data := &corev1.PersistentVolumeClaim{}
-			require.NoError(t, c.Get(ctx, types.NamespacedName{Name: dataName, Namespace: cluster.Namespace}, data))
+			err = c.Get(ctx, types.NamespacedName{Name: dataName, Namespace: cluster.Namespace}, data)
+			if tt.whenDeleted == "Delete" && tt.dataClaim == "owned" {
+				require.True(t, apierrors.IsNotFound(err), "a claim owned by the workload must follow whenDeleted=Delete")
+
+				return
+			}
+			require.NoError(t, err)
 			require.Equal(t, wantDataUID, data.UID)
+			switch {
+			case tt.dataClaim != "foreign-owner":
+				require.Empty(t, data.OwnerReferences, "a retained claim must not stay owned by the workload")
+			case tt.whenDeleted == "Delete":
+				require.Len(t, data.OwnerReferences, 2)
+			default:
+				require.Len(t, data.OwnerReferences, 1)
+				require.Equal(t, "ConfigMap", data.OwnerReferences[0].Kind)
+			}
 		})
 	}
 }
@@ -258,16 +284,13 @@ func TestStoppedUpgradeAdoptionRejectsLostClaims(t *testing.T) {
 // Switching whenDeleted from Delete to Retain during Adopting leaves the
 // replacement's owner references on the claims until the StatefulSet controller
 // observes Retain. Garbage collection would delete owned claims with the
-// Cluster, so neither adoption nor Cluster deletion releases the finalizer
-// before those references are gone.
-func TestStoppedUpgradeRetainSwitchWaitsForClaimRelease(t *testing.T) {
+// Cluster, so adoption keeps the finalizer until the controller has observed
+// Retain and owns no claim, and Cluster deletion removes those references
+// itself once no StatefulSet can add them back.
+func TestStoppedUpgradeRetainSwitchReleasesClaims(t *testing.T) {
 	t.Parallel()
-	for _, deleteCluster := range []bool{false, true} {
-		name := "adoption"
-		if deleteCluster {
-			name = "cluster-deletion"
-		}
-		t.Run(name, func(t *testing.T) {
+	for _, mode := range []string{"adoption", "cluster-deletion", "cluster-deletion-terminating-statefulset"} {
+		t.Run(mode, func(t *testing.T) {
 			t.Parallel()
 			ctx := context.Background()
 			cluster := newMinimalCluster()
@@ -288,6 +311,7 @@ func TestStoppedUpgradeRetainSwitchWaitsForClaimRelease(t *testing.T) {
 			}
 			sts := rcStatefulSet("ledger:"+cluster.Spec.Image.Tag, true)
 			sts.Name, sts.Namespace, sts.UID = stsName, cluster.Namespace, "new-sts"
+			sts.Finalizers = []string{"foregroundDeletion"}
 			sts.OwnerReferences = []metav1.OwnerReference{{APIVersion: "ledger.formance.com/v1alpha1", Kind: "Cluster", Name: cluster.Name, UID: cluster.UID, Controller: new(true)}}
 			sts.Spec.PersistentVolumeClaimRetentionPolicy = buildRetentionPolicy(cluster)
 			claim := func(name, uid, pv string) *corev1.PersistentVolumeClaim {
@@ -320,12 +344,10 @@ func TestStoppedUpgradeRetainSwitchWaitsForClaimRelease(t *testing.T) {
 			require.NoError(t, c.Get(ctx, key, persisted))
 			persisted.Spec.Persistence.RetentionPolicy.WhenDeleted = "Retain"
 			require.NoError(t, c.Update(ctx, persisted))
-			if deleteCluster {
-				require.NoError(t, c.Delete(ctx, persisted))
-			}
+
 			reconcile := func() {
 				t.Helper()
-				if deleteCluster {
+				if mode != "adoption" {
 					_, err := r.Reconcile(ctx, ctrl.Request{NamespacedName: key})
 					require.NoError(t, err)
 
@@ -338,43 +360,95 @@ func TestStoppedUpgradeRetainSwitchWaitsForClaimRelease(t *testing.T) {
 				_, _, err := r.reconcileRequiredUpgradeWithExec(ctx, current, currentSTS, nil)
 				require.NoError(t, err)
 			}
-			// The first pass applies Retain to the replacement; the claims stay
-			// owned until the StatefulSet controller observes it.
-			for range 2 {
+			// The StatefulSet controller reports the generation it has acted on.
+			setObserved := func(observed bool) {
+				t.Helper()
+				current := &appsv1.StatefulSet{}
+				require.NoError(t, c.Get(ctx, stsKey, current))
+				current.Status.ObservedGeneration = current.Generation
+				if !observed {
+					current.Status.ObservedGeneration--
+				}
+				require.NoError(t, c.Status().Update(ctx, current))
+			}
+			owners := func(name string) []metav1.OwnerReference {
+				t.Helper()
+				pvc := &corev1.PersistentVolumeClaim{}
+				require.NoError(t, c.Get(ctx, types.NamespacedName{Name: name, Namespace: cluster.Namespace}, pvc))
+				require.True(t, pvc.DeletionTimestamp.IsZero())
+
+				return pvc.OwnerReferences
+			}
+			release := func(name string) {
+				t.Helper()
+				pvc := &corev1.PersistentVolumeClaim{}
+				require.NoError(t, c.Get(ctx, types.NamespacedName{Name: name, Namespace: cluster.Namespace}, pvc))
+				pvc.OwnerReferences = nil
+				require.NoError(t, c.Update(ctx, pvc))
+			}
+			requireTracked := func(reason string) {
+				t.Helper()
+				current := &ledgerv1alpha1.Cluster{}
+				require.NoError(t, c.Get(ctx, key, current))
+				require.Contains(t, current.Finalizers, upgradeClaimsFinalizer, reason)
+				require.NotNil(t, current.Status.Upgrade, reason)
+				require.Equal(t, "Adopting", current.Status.Upgrade.Phase)
+			}
+			requirePolicy := func(want appsv1.PersistentVolumeClaimRetentionPolicyType) {
+				t.Helper()
+				current := &appsv1.StatefulSet{}
+				require.NoError(t, c.Get(ctx, stsKey, current))
+				require.Equal(t, want, current.Spec.PersistentVolumeClaimRetentionPolicy.WhenDeleted)
+			}
+
+			switch mode {
+			case "adoption":
+				reconcile()
+				requireTracked("Retain was only just applied to the replacement")
+				requirePolicy(appsv1.RetainPersistentVolumeClaimRetentionPolicyType)
+				setObserved(true)
+				reconcile()
+				requireTracked("both claims are still owned")
+				release(walName)
+				reconcile()
+				requireTracked("the data claim is still owned")
+				// A controller that has not observed Retain can still own the
+				// claims again after they were read.
+				release(dataName)
+				setObserved(false)
+				reconcile()
+				requireTracked("the StatefulSet controller has not observed Retain")
+				setObserved(true)
 				reconcile()
 				current := &ledgerv1alpha1.Cluster{}
 				require.NoError(t, c.Get(ctx, key, current))
-				require.Contains(t, current.Finalizers, upgradeClaimsFinalizer)
-				require.NotNil(t, current.Status.Upgrade)
-				require.Equal(t, "Adopting", current.Status.Upgrade.Phase)
-			}
-			currentSTS := &appsv1.StatefulSet{}
-			require.NoError(t, c.Get(ctx, stsKey, currentSTS))
-			require.Equal(t, appsv1.RetainPersistentVolumeClaimRetentionPolicyType, currentSTS.Spec.PersistentVolumeClaimRetentionPolicy.WhenDeleted)
-
-			released := &corev1.PersistentVolumeClaim{}
-			require.NoError(t, c.Get(ctx, types.NamespacedName{Name: walName, Namespace: cluster.Namespace}, released))
-			released.OwnerReferences = nil
-			require.NoError(t, c.Update(ctx, released))
-			reconcile()
-			current := &ledgerv1alpha1.Cluster{}
-			require.NoError(t, c.Get(ctx, key, current))
-			require.Contains(t, current.Finalizers, upgradeClaimsFinalizer, "the data claim is still owned")
-
-			require.NoError(t, c.Get(ctx, types.NamespacedName{Name: dataName, Namespace: cluster.Namespace}, released))
-			released.OwnerReferences = nil
-			require.NoError(t, c.Update(ctx, released))
-			reconcile()
-			if deleteCluster {
-				require.True(t, apierrors.IsNotFound(c.Get(ctx, key, &ledgerv1alpha1.Cluster{})), "the finalizer must be released")
-			} else {
-				require.NoError(t, c.Get(ctx, key, current))
 				require.Nil(t, current.Status.Upgrade)
 				require.NotContains(t, current.Finalizers, upgradeClaimsFinalizer)
+			case "cluster-deletion":
+				require.NoError(t, c.Delete(ctx, persisted))
+				reconcile()
+				requireTracked("Retain was only just applied to the StatefulSet")
+				requirePolicy(appsv1.RetainPersistentVolumeClaimRetentionPolicyType)
+				setObserved(false)
+				reconcile()
+				requireTracked("the StatefulSet controller can still add its owner reference")
+				require.Len(t, owners(walName), 1)
+				require.Len(t, owners(dataName), 1)
+				setObserved(true)
+				reconcile()
+				require.True(t, apierrors.IsNotFound(c.Get(ctx, key, &ledgerv1alpha1.Cluster{})), "the finalizer must be released")
+			case "cluster-deletion-terminating-statefulset":
+				// A deleting StatefulSet no longer reconciles its claims, so
+				// nothing else removes the owner references before garbage
+				// collection deletes the claims with it.
+				require.NoError(t, c.Delete(ctx, sts))
+				require.NoError(t, c.Delete(ctx, persisted))
+				reconcile()
+				require.True(t, apierrors.IsNotFound(c.Get(ctx, key, &ledgerv1alpha1.Cluster{})), "the finalizer must be released")
+				requirePolicy(appsv1.DeletePersistentVolumeClaimRetentionPolicyType)
 			}
-			for _, claimName := range []string{walName, dataName} {
-				require.NoError(t, c.Get(ctx, types.NamespacedName{Name: claimName, Namespace: cluster.Namespace}, &corev1.PersistentVolumeClaim{}))
-			}
+			require.Empty(t, owners(walName))
+			require.Empty(t, owners(dataName))
 		})
 	}
 }
