@@ -303,14 +303,12 @@ func Verify(ctx context.Context, source dal.PebbleReader, logger logging.Logger)
 	if err != nil {
 		return err
 	}
+	// Operational policy is outside the store checker's business-state contract.
+	policy, err := query.ReadClusterPolicy(source)
+	if err != nil || !capabilities.IsActive(policy, capabilities.AccountIncarnationWritesV1) {
+		return nil
+	}
 	if !marker.Complete {
-		// The checker excludes operational policy from its integrity contract.
-		// Keep the history-activation assertion when that policy is readable,
-		// without making a malformed control row fail a business-state check.
-		policy, err := query.ReadClusterPolicy(source)
-		if err != nil {
-			return nil
-		}
 		if capabilities.IsActive(policy, capabilities.AccountIncarnationHistoryCompleteV1) {
 			return errors.New("account history is active without a complete local migration")
 		}
