@@ -12,7 +12,7 @@ import (
 )
 
 func processCreateTransaction(ledger string, order *raftcmdpb.CreateTransactionOrder, ctx *Context) (*commonpb.LedgerLogPayload, domain.SerializableError) {
-	staged, err := stageLedgerExecution(ledger, order, ctx)
+	staged, err := stageLedgerExecution(ledger, order, order.GetPostings(), order.GetForce(), ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -24,27 +24,33 @@ func processCreateTransaction(ledger string, order *raftcmdpb.CreateTransactionO
 }
 
 func processExecuteNumscript(ledger string, execution *raftcmdpb.ExecuteNumscriptOrder, ctx *Context) (*commonpb.LedgerLogPayload, domain.SerializableError) {
-	order := &raftcmdpb.CreateTransactionOrder{
-		Script: execution.GetScript(), NumscriptReference: execution.GetNumscriptReference(),
-		Timestamp: execution.GetTimestamp(), Metadata: execution.GetMetadata(),
-		AccountMetadata: execution.GetAccountMetadata(), Reference: execution.GetReference(),
-	}
-	staged, err := stageLedgerExecution(ledger, order, ctx)
+	staged, err := stageLedgerExecution(ledger, execution, nil, false, ctx)
 	if err != nil {
 		return nil, err
 	}
 	if len(staged.result.Postings) == 0 {
-		if (len(staged.result.TransactionMetadata) > 0 || len(order.GetMetadata()) > 0) && (hasScriptAccountMetadataUpdates(staged.result.AccountsMetadata) || hasAccountMetadataUpdates(order.GetAccountMetadata())) {
+		if (len(staged.result.TransactionMetadata) > 0 || len(execution.GetMetadata()) > 0) && (hasScriptAccountMetadataUpdates(staged.result.AccountsMetadata) || hasAccountMetadataUpdates(execution.GetAccountMetadata())) {
 			return nil, domain.ErrMetadataOnlyTransactionMetadata
 		}
-		if hasScriptAccountMetadataUpdates(staged.result.AccountsMetadata) || hasAccountMetadataUpdates(order.GetAccountMetadata()) {
-			return processMetadataOnly(ledger, order, staged.result, ctx)
+		if hasScriptAccountMetadataUpdates(staged.result.AccountsMetadata) || hasAccountMetadataUpdates(execution.GetAccountMetadata()) {
+			return processMetadataOnly(ledger, execution, staged.result, ctx)
 		}
 
 		return nil, domain.ErrEmptyTransaction
 	}
 
-	return processProducedTransaction(ledger, order, ctx, staged)
+	return processProducedTransaction(ledger, execution, ctx, staged)
+}
+
+// The two orders share script, metadata and reference semantics. Postings and
+// force belong only to CreateTransactionOrder and are passed separately.
+type ledgerExecutionOrder interface {
+	GetScript() *commonpb.Script
+	GetNumscriptReference() *raftcmdpb.NumscriptReference
+	GetTimestamp() *commonpb.Timestamp
+	GetReference() string
+	GetMetadata() map[string]*commonpb.MetadataValue
+	GetAccountMetadata() map[string]*commonpb.MetadataMap
 }
 
 type stagedLedgerExecution struct {
@@ -54,7 +60,7 @@ type stagedLedgerExecution struct {
 	metadataOnlyCandidate bool
 }
 
-func stageLedgerExecution(ledger string, order *raftcmdpb.CreateTransactionOrder, ctx *Context) (*stagedLedgerExecution, domain.SerializableError) {
+func stageLedgerExecution(ledger string, order ledgerExecutionOrder, postings []*commonpb.Posting, force bool, ctx *Context) (*stagedLedgerExecution, domain.SerializableError) {
 	if len(order.GetReference()) > domain.MaxTransactionReferenceLength {
 		return nil, domain.ErrTransactionReferenceTooLong
 	}
@@ -130,19 +136,7 @@ func stageLedgerExecution(ledger string, order *raftcmdpb.CreateTransactionOrder
 		script = order.GetScript()
 	}
 
-	// Select the appropriate posting producer
-	var producer postingProducer
 	isNumscript := script != nil && script.GetPlain() != ""
-	if isNumscript {
-		producer = &numscriptPostingProducer{
-			cache:                ctx.NumscriptCache,
-			ledgerName:           ledger,
-			assetCache:           ctx.AssetCache,
-			inputsResolutionHash: ctx.InputsResolutionHash,
-		}
-	} else {
-		producer = &stdPostingProducer{assetCache: ctx.AssetCache}
-	}
 
 	// The persisted boundary stores the next allocatable ID. MaxUint64 itself
 	// is therefore not allocatable: advancing it would wrap the boundary to zero
@@ -152,7 +146,7 @@ func stageLedgerExecution(ledger string, order *raftcmdpb.CreateTransactionOrder
 	// check until the producer confirms whether the script is metadata-only;
 	// the proposal scope rolls back staged mutations if it turns out to be a
 	// transaction and the sequence is exhausted.
-	metadataOnlyCandidate := isNumscript && len(order.GetPostings()) == 0
+	metadataOnlyCandidate := isNumscript && len(postings) == 0
 	var nextTransactionID, advancedTransactionID uint64
 	if !metadataOnlyCandidate {
 		nextTransactionID = boundaries.GetNextTransactionId()
@@ -164,7 +158,20 @@ func stageLedgerExecution(ledger string, order *raftcmdpb.CreateTransactionOrder
 	}
 
 	// Produce postings (handles balance checks and buffer updates)
-	result, err := producer.produce(s, ledger, order, script)
+	var result *produceResult
+	var err domain.SerializableError
+	if isNumscript {
+		producer := &numscriptPostingProducer{
+			cache:                ctx.NumscriptCache,
+			ledgerName:           ledger,
+			assetCache:           ctx.AssetCache,
+			inputsResolutionHash: ctx.InputsResolutionHash,
+		}
+		result, err = producer.produceExecution(s, ledger, force, script)
+	} else {
+		producer := &stdPostingProducer{assetCache: ctx.AssetCache}
+		result, err = producer.producePostings(s, ledger, postings, force)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -172,7 +179,7 @@ func stageLedgerExecution(ledger string, order *raftcmdpb.CreateTransactionOrder
 	return &stagedLedgerExecution{result: result, nextTransactionID: nextTransactionID, advancedTransactionID: advancedTransactionID, metadataOnlyCandidate: metadataOnlyCandidate}, nil
 }
 
-func processProducedTransaction(ledger string, order *raftcmdpb.CreateTransactionOrder, ctx *Context, staged *stagedLedgerExecution) (*commonpb.LedgerLogPayload, domain.SerializableError) {
+func processProducedTransaction(ledger string, order ledgerExecutionOrder, ctx *Context, staged *stagedLedgerExecution) (*commonpb.LedgerLogPayload, domain.SerializableError) {
 	result := staged.result
 	boundaries := ctx.Boundaries
 	s := ctx.Scope
@@ -271,13 +278,7 @@ func processProducedTransaction(ledger string, order *raftcmdpb.CreateTransactio
 	// Admission can only count caller input. Replace this transaction's input
 	// contribution with its merged output in the proposal-wide budget, retaining
 	// every other order's input and the output of earlier scripts.
-	inputBytes := domain.OrderMetadataSize(&raftcmdpb.Order{
-		Type: &raftcmdpb.Order_LedgerScoped{LedgerScoped: &raftcmdpb.LedgerScopedOrder{
-			Payload: &raftcmdpb.LedgerScopedOrder_Apply{Apply: &raftcmdpb.LedgerApplyOrder{
-				Data: &raftcmdpb.LedgerApplyOrder_CreateTransaction{CreateTransaction: order},
-			}},
-		}},
-	})
+	inputBytes := transactionMetadataSize(order.GetMetadata(), order.GetAccountMetadata())
 	if ctx.metadataBudget == nil {
 		// Direct handler callers execute a single transaction.
 		ctx.metadataBudget = &commandMetadataBudget{bytes: inputBytes}
@@ -350,7 +351,7 @@ func processProducedTransaction(ledger string, order *raftcmdpb.CreateTransactio
 // shares the producer and validation path with normal transaction creation, so
 // script execution, metadata limits, address validation, and proposal rollback
 // retain the same semantics.
-func processMetadataOnly(ledger string, order *raftcmdpb.CreateTransactionOrder, result *produceResult, ctx *Context) (*commonpb.LedgerLogPayload, domain.SerializableError) {
+func processMetadataOnly(ledger string, order ledgerExecutionOrder, result *produceResult, ctx *Context) (*commonpb.LedgerLogPayload, domain.SerializableError) {
 	if len(result.Postings) > 0 {
 		return nil, domain.ErrPostingsAndScriptConflict
 	}
@@ -367,7 +368,7 @@ func processMetadataOnly(ledger string, order *raftcmdpb.CreateTransactionOrder,
 	if metaErr := validateMergedAccountMetadata(accountMetadata, limits); metaErr != nil {
 		return nil, metaErr
 	}
-	inputBytes := domain.OrderMetadataSize(&raftcmdpb.Order{Type: &raftcmdpb.Order_LedgerScoped{LedgerScoped: &raftcmdpb.LedgerScopedOrder{Payload: &raftcmdpb.LedgerScopedOrder_Apply{Apply: &raftcmdpb.LedgerApplyOrder{Data: &raftcmdpb.LedgerApplyOrder_CreateTransaction{CreateTransaction: order}}}}}})
+	inputBytes := transactionMetadataSize(order.GetMetadata(), order.GetAccountMetadata())
 	if ctx.metadataBudget == nil {
 		ctx.metadataBudget = &commandMetadataBudget{bytes: inputBytes}
 	}
@@ -495,25 +496,21 @@ type produceResult struct {
 	AccountsMetadata    map[string]map[string]*commonpb.MetadataValue // Metadata from set_account_meta in Numscript
 }
 
-type postingProducer interface {
-	produce(s Scope, ledger string, order *raftcmdpb.CreateTransactionOrder, script *commonpb.Script) (*produceResult, domain.SerializableError)
-}
-
 type stdPostingProducer struct {
 	assetCache map[string]cachedAssetPrecision
 }
 
-func (p *stdPostingProducer) produce(s Scope, ledger string, order *raftcmdpb.CreateTransactionOrder, _ *commonpb.Script) (*produceResult, domain.SerializableError) {
-	for _, posting := range order.GetPostings() {
+func (p *stdPostingProducer) producePostings(s Scope, ledger string, postings []*commonpb.Posting, force bool) (*produceResult, domain.SerializableError) {
+	for _, posting := range postings {
 		// Skip balance check when Force is true
-		err := applyPosting(s, ledger, posting, order.GetForce(), p.assetCache)
+		err := applyPosting(s, ledger, posting, force, p.assetCache)
 		if err != nil {
 			return nil, err
 		}
 	}
 
 	return &produceResult{
-		Postings:            order.GetPostings(),
+		Postings:            postings,
 		TransactionMetadata: nil, // No script metadata for standard postings
 	}, nil
 }
