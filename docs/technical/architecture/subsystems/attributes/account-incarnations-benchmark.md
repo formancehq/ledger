@@ -153,3 +153,19 @@ The migration-local filter was increased from 16 bits and 8 probes to 32 bits an
 | 2 | 5 min 16 s |
 
 All three jobs completed within about 6 min 35 s of launch, including checkout and compilation of the benchmark helper. On replica 0, cumulative allocation fell from about 9.5 TB in the baseline profile to about 395 GB; the incarnation point-read path disappeared from the leading CPU stacks. The remaining CPU is mainly Pebble compaction, sequential log decoding, and committing incarnation batches. A 32-bit-per-key growable filter uses roughly 0.5 GiB at this cardinality; the observed migration pods stayed below their 12 GiB memory limit. This third run measures local conversion, not Raft restart or actual service downtime. The full store-checker verification is separate from the `migrate-incarnations` command and was not included in any migration duration.
+
+### Cold restart and batch-size probe
+
+A fourth isolated ACME cluster used the same legacy image and hardware. Its first k6 load stopped at the generator's implicit ten-minute limit after 550,081 accepted bulks; two follow-up loads with disjoint account addresses brought the total to exactly 1,000,000 accepted bulks (50 million transactions, 100 million distinct account addresses). The cluster was then restarted by deleting all three pods at 19:25:00 UTC. An independent pod polled `/readyz` and a real account read once per second. The first failed account read occurred at 19:25:02; the first successful one occurred at 19:26:16, giving a **74-second observed service interruption** and 76 seconds from the deletion command. The first pod became Ready at 19:25:41, the second at 19:26:18, and the third at 19:26:56. `/readyz` returned 200 on the first pod while account reads still returned 503 before Raft quorum, so pod readiness alone understates service downtime.
+
+On the first replica, Pebble opened in 21.7 seconds after the process began opening the existing database, and the FSM state was recovered from the store about 0.7 seconds later. The remaining time to service availability includes the StatefulSet's `OrderedReady` startup of the second pod and Raft election. Starting the first two replicas in parallel is a plausible operational optimization, but this benchmark did not test it. This restart used the legacy image and unmigrated data; its 74 seconds must not be presented as a measured post-migration restart or added to the migration duration as a validated end-to-end outage. The PR image was not available for the post-migration restart experiment, so that measurement remains open.
+
+After the restart, the cluster was stopped and its three volumes migrated with the PR head and different audit batch sizes. Every migration completed at `audit_cursor=1,000,002` and `applied_index=1,000,012`; the extra audit entry reflects the load attempts. The runs are on different replicas, so small differences are confounded by replica and compaction variation:
+
+| Replica | Audit entries per commit | Local migration duration |
+| --- | ---: | ---: |
+| 0 | 256 (current) | 5 min 23 s |
+| 1 | 1,024 | 5 min 45 s |
+| 2 | 4,096 | 6 min 19 s |
+
+Increasing the batch size did not produce a gain in this run and increased observed working memory. Keep the current 256-entry batch. The remaining profile is dominated by Pebble compaction, log decoding, and incarnation serialization. Changing Pebble's compaction or compression policy would require a separate correctness and durability test; these profiles alone do not justify such a change.
