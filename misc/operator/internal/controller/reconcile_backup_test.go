@@ -54,7 +54,7 @@ func TestBackupReconcile_InvalidSchedule(t *testing.T) {
 
 	var got ledgerv1alpha1.Backup
 	require.NoError(t, k8sClient.Get(ctx, types.NamespacedName{Name: "bk-invalid-sched", Namespace: ns}, &got))
-	assert.Contains(t, got.Status.Message, "invalid full backup schedule")
+	assert.Contains(t, got.Status.Message, "invalid backup schedule")
 }
 
 // TestBackupReconcile_NoScheduleAllowed verifies that a Backup without any
