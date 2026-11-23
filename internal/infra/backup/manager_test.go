@@ -842,7 +842,7 @@ func TestRunIncrementalBackup_DoesNotCertifyLegacyManifestWithoutNewHistory(t *t
 	require.Nil(t, manifest.ExportBoundary, "a no-op run cannot certify a legacy manifest")
 }
 
-func TestRunIncrementalBackup_CertifiesLegacyAuditOnlyIncrement(t *testing.T) {
+func TestRunIncrementalBackup_DoesNotCertifyLegacyAuditOnlyIncrement(t *testing.T) {
 	t.Parallel()
 
 	const bucketID = "bucket"
@@ -857,11 +857,50 @@ func TestRunIncrementalBackup_CertifiesLegacyAuditOnlyIncrement(t *testing.T) {
 	require.NoError(t, err)
 	manifest, err := ReadManifest(t.Context(), storage, ManifestKey(bucketID))
 	require.NoError(t, err)
-	require.NotNil(t, manifest.ExportBoundary)
-	require.Zero(t, manifest.ExportBoundary.LastLogSequence)
-	require.EqualValues(t, 1, manifest.ExportBoundary.LastAuditSequence)
+	require.Nil(t, manifest.ExportBoundary, "an absent legacy log stream may hide an omitted final segment")
 	require.NotNil(t, findExport(manifest, "audit"))
+}
 
+func TestRunIncrementalBackup_DoesNotCertifyAbsentLegacyLogWithAuditAndItemProgress(t *testing.T) {
+	t.Parallel()
+
+	const bucketID = "bucket"
+	store := newBackupTestStore(t)
+	writeSuccessAuditEntryWithItem(t, store, 1)
+	storage := newInMemoryBackupStorage()
+	require.NoError(t, WriteManifest(t.Context(), storage, ManifestKey(bucketID), &Manifest{
+		Checkpoint: &CheckpointManifest{},
+	}))
+
+	_, err := RunIncrementalBackup(t.Context(), logging.Testing(), store, storage, bucketID, 0)
+	require.NoError(t, err)
+	manifest, err := ReadManifest(t.Context(), storage, ManifestKey(bucketID))
+	require.NoError(t, err)
+	require.Nil(t, manifest.ExportBoundary, "audit and audit-item progress cannot certify an absent legacy log tail")
+	require.NotNil(t, findExport(manifest, "audit"))
+	require.NotNil(t, findExport(manifest, "auditItem"))
+}
+
+func TestRunIncrementalBackup_CertifiesLegacyManifestAfterEveryStreamAdvances(t *testing.T) {
+	t.Parallel()
+
+	const bucketID = "bucket"
+	store := newBackupTestStore(t)
+	batch := store.OpenWriteSession()
+	logKey := dal.NewKeyBuilder().PutZonePrefix(dal.ZoneHistory, dal.SubHistoryLog).PutUint64(1).Build()
+	require.NoError(t, batch.SetProto(logKey, &commonpb.Log{Sequence: 1}))
+	require.NoError(t, batch.Commit())
+	writeSuccessAuditEntryWithItem(t, store, 1)
+	storage := newInMemoryBackupStorage()
+	require.NoError(t, WriteManifest(t.Context(), storage, ManifestKey(bucketID), &Manifest{
+		Checkpoint: &CheckpointManifest{},
+	}))
+
+	_, err := RunIncrementalBackup(t.Context(), logging.Testing(), store, storage, bucketID, 0)
+	require.NoError(t, err)
+	manifest, err := ReadManifest(t.Context(), storage, ManifestKey(bucketID))
+	require.NoError(t, err)
+	require.Equal(t, &ExportBoundary{LastLogSequence: 1, LastAuditSequence: 1, LastAuditItemSequence: 1}, manifest.ExportBoundary)
 	manifest.Exports = nil
 	require.ErrorIs(t, validateExportCoverage(manifest), ErrExportCoverageGap)
 }
