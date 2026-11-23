@@ -13,8 +13,6 @@ Malformed paths return an error instead of applying a truncated path.
 
 ## Getting Started
 
-![Getting Started](../../misc/demo/demo_getting_started.gif)
-
 ## Installation
 
 ### Download a prebuilt binary
@@ -1136,8 +1134,6 @@ refund     1.0.0     2025-01-15T10:30:00Z
 
 ### accounts
 
-![Metadata Demo](../../misc/demo/demo_metadata.gif)
-
 Manage accounts in a ledger.
 
 **Aliases:** `account`, `acc`, `a`
@@ -1536,8 +1532,6 @@ ledgerctl accounts analyze --ledger my-ledger --json
 ---
 
 ### transactions
-
-![Transactions Demo](../../misc/demo/demo_transactions.gif)
 
 Manage transactions in a ledger.
 
@@ -2092,8 +2086,6 @@ ledgerctl store dump /path/to/data --raw
 ---
 
 ### store
-
-![Operations Demo](../../misc/demo/demo_operations.gif)
 
 Storage operations.
 
@@ -3490,8 +3482,6 @@ ledgerctl --server other:8888 ledgers list
 ---
 
 ### signing
-
-![Signing Demo](../../misc/demo/demo_signing.gif)
 
 Manage Ed25519 signing keys and signature configuration.
 
@@ -5066,8 +5056,6 @@ ledgerctl --server ledger.example.com:8888 --insecure ledgers list
 ---
 
 ## Numscript Support
-
-![Numscript Demo](../../misc/demo/demo_numscript.gif)
 
 The CLI supports creating transactions using Numscript files. All experimental Numscript features are **enabled by default**.
 

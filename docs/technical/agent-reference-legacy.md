@@ -72,7 +72,6 @@ and [upgrade policy](../ops/upgrades.md) govern new work:
 - **Update `openapi.yml`** if HTTP endpoints change
 - **Update code comments** if interfaces or behavior change
 - **Keep documentation in English**
-- **Regenerate demo GIFs** after CLI changes: `just generate-demo`
 
 ## Pre-commit Checks
 
@@ -134,7 +133,6 @@ Key rules:
 - **Query**: `internal/query/` - CQRS read-side queries
 - **Adapters**: `internal/adapter/` - transport layer (`grpc/` primary API, `http/` REST compat, `json/` serialization, `auth/` JWT/Ed25519 authentication, `v2/` v2 compatibility layer)
 - **Proto definitions**: `misc/proto/` -> generated code in `internal/proto/`
-- **Demos**: `misc/demo/` - VHS tape files for CLI demos
 - **Numscript examples**: `misc/numscript/examples/`
 - **Public packages**: `pkg/` - public API (`actions/`, `scenario/`, `testserver/`)
 - **Tests**: `tests/` - test suites (`e2e/`, `scenarios/`, `antithesis/`, `perf/`, `schemathesis/`)
