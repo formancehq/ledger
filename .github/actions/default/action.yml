@@ -8,7 +8,7 @@ runs:
   using: composite
   steps:
     - name: Install Nix
-      uses: cachix/install-nix-action@v31
+      uses: cachix/install-nix-action@v32
     ## Disabling cache for now, as it's slowing down the build. Downloading nix
     ## dependencies from cache.nixos.org is faster than restoring from the cache.
     #- name: Cache dependencies
