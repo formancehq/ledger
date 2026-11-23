@@ -653,6 +653,15 @@ Streaming cursors also preserve these decoded statuses before interpreting raw
 `Canceled` as EOF or a retryable transport failure. An unknown Ledger reason
 carried by `Canceled` remains an error with its original details.
 
+A handler that ends with `Canceled` after its incoming deadline has passed is
+reported as `DeadlineExceeded`, keeping its message and details. grpc-go
+cancels the handler context from its own deadline timer, which can fire before
+the context's deadline timer, so a call forwarded with that context fails with
+`Canceled` although nobody cancelled it. `Canceled` before the deadline, or on
+a call without one, is unchanged. grpc-go's client applies the same rule to a
+`RST_STREAM` cancellation. This applies to every unary and streaming
+service-plane RPC through the error-conversion interceptors.
+
 Unary leader forwarding also distinguishes a local peer-connection teardown
 from caller cancellation (EN-2212). `grpcerr.Conn.Invoke` maps grpc-go's exact
 bare `ErrClientConnClosing` to `Unavailable` only when the actual local
