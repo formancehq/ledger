@@ -152,9 +152,6 @@
             GOTOOLCHAIN = "local";
           };
 
-          # `just generate-demo`: vhs wraps ffmpeg, ttyd and, on Linux, chromium.
-          demo = mkTaskShell (with pkgs; [ grpcurl vhs ]);
-
           # `just test-sdk-bigint` and tests/sdk contract probes.
           sdk = mkTaskShell [
             pkgs.nodejs_22

@@ -188,7 +188,7 @@ Read the API subsystem docs and update the compatibility/spec material required 
 
 ### CLI changes
 
-Read `docs/ops/cli.md` and keep it synchronized with flags/commands/behavior. Regenerate demos when applicable.
+Read `docs/ops/cli.md` and keep it synchronized with flags/commands/behavior.
 
 ### Protocol Buffers
 
