@@ -55,7 +55,8 @@ type AuditEntry struct {
 	//     domain-separated BLAKE3, independently of the operational cluster ID
 	//   - `header_payload` is the canonical binary encoding of EVERY other field
 	//     of this AuditEntry (sequence, timestamp, proposal_id, outcome,
-	//     order_count, ledgers, hash_version, caller_snapshot), rebuilt by the
+	//     order_count, ledgers, hash_version, caller_snapshot, and nonempty
+	//     required_capabilities), rebuilt by the
 	//     verifier at check time from the stored fields via
 	//     state.BuildHashedHeaderPayload — never persisted separately, so the
 	//     typed fields ARE the source of truth
@@ -80,10 +81,13 @@ type AuditEntry struct {
 	// This is the authoritative, chain-verified home for batch non-repudiation;
 	// the AppliedProposal projection carries a copy of the idempotency key for
 	// event consumers, which the checker verifies against this entry.
-	Idempotency   *commonpb.Idempotency         `protobuf:"bytes,12,opt,name=idempotency,proto3" json:"idempotency,omitempty"`
-	Signature     *signaturepb.SignedApplyBatch `protobuf:"bytes,13,opt,name=signature,proto3" json:"signature,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	Idempotency *commonpb.Idempotency         `protobuf:"bytes,12,opt,name=idempotency,proto3" json:"idempotency,omitempty"`
+	Signature   *signaturepb.SignedApplyBatch `protobuf:"bytes,13,opt,name=signature,proto3" json:"signature,omitempty"`
+	// Proposal-level semantic requirements, preserved after Raft WAL compaction.
+	// This is distinct from request identity and is not part of idempotency.
+	RequiredCapabilities []uint32 `protobuf:"fixed32,14,rep,packed,name=required_capabilities,json=requiredCapabilities,proto3" json:"required_capabilities,omitempty"`
+	unknownFields        protoimpl.UnknownFields
+	sizeCache            protoimpl.SizeCache
 }
 
 func (x *AuditEntry) Reset() {
@@ -214,6 +218,13 @@ func (x *AuditEntry) GetIdempotency() *commonpb.Idempotency {
 func (x *AuditEntry) GetSignature() *signaturepb.SignedApplyBatch {
 	if x != nil {
 		return x.Signature
+	}
+	return nil
+}
+
+func (x *AuditEntry) GetRequiredCapabilities() []uint32 {
+	if x != nil {
+		return x.RequiredCapabilities
 	}
 	return nil
 }
@@ -416,7 +427,7 @@ var File_audit_proto protoreflect.FileDescriptor
 
 const file_audit_proto_rawDesc = "" +
 	"\n" +
-	"\vaudit.proto\x12\x05audit\x1a\fcommon.proto\x1a\x0fsignature.proto\"\xb4\x04\n" +
+	"\vaudit.proto\x12\x05audit\x1a\fcommon.proto\x1a\x0fsignature.proto\"\xe9\x04\n" +
 	"\n" +
 	"AuditEntry\x12\x1a\n" +
 	"\bsequence\x18\x01 \x01(\x06R\bsequence\x12/\n" +
@@ -434,7 +445,8 @@ const file_audit_proto_rawDesc = "" +
 	" \x01(\rR\vhashVersion\x12?\n" +
 	"\x0fcaller_snapshot\x18\v \x01(\v2\x16.common.CallerSnapshotR\x0ecallerSnapshot\x125\n" +
 	"\vidempotency\x18\f \x01(\v2\x13.common.IdempotencyR\vidempotency\x129\n" +
-	"\tsignature\x18\r \x01(\v2\x1b.signature.SignedApplyBatchR\tsignatureB\t\n" +
+	"\tsignature\x18\r \x01(\v2\x1b.signature.SignedApplyBatchR\tsignature\x123\n" +
+	"\x15required_capabilities\x18\x0e \x03(\aR\x14requiredCapabilitiesB\t\n" +
 	"\aoutcome\"z\n" +
 	"\tAuditItem\x12\x1f\n" +
 	"\vorder_index\x18\x01 \x01(\rR\n" +
