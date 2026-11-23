@@ -136,8 +136,9 @@ func (b *Builder) indexLogEntry(cfg *ledgerIndexConfig, log *commonpb.Log, propo
 
 	// Schema logs are deliberately absent from this switch. The only caller,
 	// processBackfill, gates on the generated HISTORY category, which admits exactly
-	// CreatedTransaction / RevertedTransaction / SavedMetadata / DeletedMetadata
-	// / OrderSkipped and switches on the same discriminator used here — so a
+	// CreatedTransaction / RevertedTransaction / SavedMetadata /
+	// AccountMetadataUpdated / DeletedMetadata / OrderSkipped and switches on
+	// the same discriminator used here — so a
 	// SetMetadataFieldType or RemovedMetadataFieldType log can never arrive,
 	// and neither can the CreateIndex / DropIndex cases below, which the live
 	// path reaches through indexPayload.
