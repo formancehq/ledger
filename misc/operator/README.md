@@ -13,6 +13,12 @@ then recreates the StatefulSet with the requested image. See the
 for preflight, recovery and rollback limits. Other adjacent RC upgrades roll;
 the same guide names the transitions that also need a maintenance barrier.
 
+RC.4 to RC.5 is a second mandatory stopped boundary for the schema-3 control
+state migration and new native configuration/capability proposals. Keep the PVCs
+and existing server flags. Activation is automatic after all members advertise
+support; there is no activation setting in the Cluster CRD. Binary rollback
+closes when a volume's schema migration commits, not when a capability activates.
+
 ## Overview
 
 The Ledger Operator manages `Cluster` and `EventSink` custom resources to automate the lifecycle of distributed ledger clusters and event delivery on Kubernetes. It handles:
@@ -27,7 +33,8 @@ The Ledger Operator manages `Cluster` and `EventSink` custom resources to automa
 
 For release-tagged Ledger images, the Cluster controller rejects a server
 version newer than the running Ledger Operator before creating or updating the
-StatefulSet. See [deployment](../../docs/ops/deployment.md#creating-a-ledger-cluster)
+StatefulSet. CI development tags use their base release for this comparison.
+See [deployment](../../docs/ops/deployment.md#creating-a-ledger-cluster)
 for the status conditions and the limits of tag-based comparison.
 
 During StatefulSet scale-down, every removed ordinal must satisfy the Raft
@@ -1250,6 +1257,11 @@ kubectl ledger credentials get-key <name> # Retrieve credentials API key
 kubectl ledger version                    # Print version info
 ```
 
+Interactive resource selection reports fetch progress synchronously, without
+starting a background spinner. `explain` reads the installed Cluster CRD once
+for both spec and status fields; each missing section independently falls back
+to the compiled schema.
+
 ### Examples
 
 ```bash
@@ -1336,8 +1348,8 @@ just install-plugin # Install kubectl plugin to $GOPATH/bin
 
 From `misc/operator/`, run `just test-e2e` to build the images, create the kind
 cluster, and run the Chainsaw scenarios. The scenarios using the opaque `e2e`
-Ledger tag run with the development Operator. The stopped rc.3-to-rc.4 upgrade
-scenario then runs with an Operator built as `v3.0.0-rc.4`, so the release
+Ledger tag run with the development Operator. The stopped rc.4-to-rc.5 upgrade
+scenario then runs with an Operator built as `v3.0.0-rc.5`, so the release
 version admission check is exercised. After the images are loaded, use
 `just test-e2e-only` to rerun both groups without rebuilding the cluster.
 Use `just e2e-cluster-down` to remove it.

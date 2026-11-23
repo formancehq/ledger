@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/formancehq/ledger/v3/internal/infra/transport"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
 
@@ -171,6 +172,38 @@ func TestHTTPAuthMiddleware_ValidToken_ClaimsInContext(t *testing.T) {
 
 	assert.Equal(t, http.StatusOK, w.Code)
 	assert.Equal(t, "test-user", capturedSubject)
+}
+
+func TestHTTPAuthMiddleware_ForwardedCaller(t *testing.T) {
+	t.Parallel()
+	privKey, keySet := testKeyPair(t)
+	cfg := AuthConfig{Enabled: true, KeySet: keySet, Issuers: []string{testIssuer}}
+	token := signToken(t, privKey, newTestClaims("ledger:read"))
+
+	for _, tc := range []struct {
+		name          string
+		authorization string
+		wantBearer    string
+		wantAnonymous bool
+	}{
+		{name: "bearer", authorization: "Bearer " + token, wantBearer: token},
+		{name: "anonymous", wantAnonymous: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			handler := HTTPAuthMiddleware(cfg)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				require.Equal(t, tc.wantBearer, transport.ForwardedBearerToken(r.Context()))
+				require.Equal(t, tc.wantAnonymous, transport.ForwardedAnonymousCaller(r.Context()))
+				w.WriteHeader(http.StatusOK)
+			}))
+			r := httptest.NewRequest(http.MethodGet, "/v3/default/ledgers", nil)
+			if tc.authorization != "" {
+				r.Header.Set("Authorization", tc.authorization)
+			}
+			w := httptest.NewRecorder()
+			handler.ServeHTTP(w, r)
+			require.Equal(t, http.StatusOK, w.Code)
+		})
+	}
 }
 
 func TestHTTPAuthMiddleware_ExpandsScopesInContext(t *testing.T) {

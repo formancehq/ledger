@@ -29,7 +29,9 @@
     "internal/proto/raftcmdpb/**",
     "internal/proto/auditpb/**",
     "internal/proto/servicepb/bucket_skippable.pb.go",
-    "misc/proto/bucket.proto"
+    "misc/proto/bucket.proto",
+    "internal/proto/**/*reader*.go",
+    "internal/domain/accounttype/**"
   ],
   "related_docs": [
     "AGENTS.md",
@@ -81,6 +83,7 @@
     "Generated deterministic marshalers and hand-written proposal stamping must preserve the established business-intent and committed-proposal encoding contracts. Equivalent map contents constructed in different insertion orders must produce the same deterministic bytes and audit hash. Descriptor field identity and wire type must agree with the append helper; generated-reader access must not expose a mutation capability that changes an accepted business payload before audit capture. This domain owns apply/hash/ownership consequences, while API projection and published wire compatibility remain with api-boundary-contracts.",
     "The generated per-action skippable-reason whitelist must agree with the explicit descriptor annotations consumed by admission. An unannotated or unknown action must not acquire another action's whitelist. A permitted skip still follows the existing commit-or-discard overlay contract; descriptor-to-switch agreement alone does not prove rollback or audit correctness.",
     "Cache key-value primitives and reversion bitsets must preserve the entries and bits required by the owning apply transition, including defined zero versus absence and old-value capture. Unordered shard iteration cannot determine an audited result. Inspect size and contents at an established quiescent boundary rather than inventing a linearizable size/snapshot contract during concurrent mutation; synchronization and lifetime failures remain owned by concurrency-lifecycle-shutdown.",
+    "Generated reader oneof access cannot expose mutable protobuf wrappers or aliases through nested messages and collections. Discriminators preserve selected zero, nil and typed-nil arm identity; Mutate is the explicit deep-clone boundary. Borrowed reader views remain live and do not authorize concurrent mutation by a raw owner.",
     "Order processing fails a forwarded (preload_unavailable) order at its position, before scope construction, overlay allocation and the skippable_reasons matcher. The flag is part of the committed order bytes, so replicas agree on the failing position; a skip whitelist naming PRELOAD_UNAVAILABLE never turns it into an OrderSkippedLog. Order processing returns Describable: the apply path handles UncommittedFailure first and requires SerializableError only on the audited branch, failing the apply loudly when a failure is neither."
   ],
   "adversarial_questions": [
@@ -111,6 +114,7 @@
     "Can a generator change preserve compilation while changing deterministic map encoding, field omission, business-intent bytes, or reader alias ownership? Follow the generated output into a real accepted-order hash/apply consumer, and compare with an independently specified field/byte expectation rather than a second consumer of the same helper.",
     "Does every currently registered action receive exactly its descriptor-declared skip reasons, including actions with no annotation? Can generated slice reuse or a returned mutable view change the whitelist or accepted order for a later request?",
     "Can keys in the same shard, replacement of a defined zero, or a reversion bit crossing a word boundary change collision detection, rollback, cache rotation or post-commit observations? Establish the real primitive caller and its synchronization before claiming a shared-helper defect.",
+    "Can an OrderReader, ProposalReader batch/policy view, or cached account-type constraint escape through a mutable oneof wrapper, nested message, map/list element or bytes arm? Do absent, selected nil and typed-nil wrappers preserve identity without panics, and do clones detach all nested business payloads?",
     "Can a forwarded order reach a scope, overlay or skip conversion before its preload flag is checked, or fail at a different batch position on different replicas? Can an error that is neither UncommittedFailure nor SerializableError reach buildAuditFailure or the idempotency writer?"
   ],
   "dynamic_checks_to_consider": [
@@ -140,6 +144,7 @@
     "Compare AppendProposalPredictedIndex against both its descriptor field kind/number and generated marshal/decode at nonzero, boundary and maximum indexes. Preserve the nonempty proposal prefix and prove it remains unchanged. Start with TestAppendProposalPredictedIndexMatchesCanonicalMarshal and TestAppendProposalPredictedIndexWireFormat; distinguish published wire compatibility from the local stamping contract.",
     "Build the skippable generator in its own nested module and invoke it only against temporary descriptor/output fixtures. Enumerate action annotations independently, compare every generated whitelist including unannotated/unknown controls, then exercise a real permitted failure after a staged write and a forbidden reason through admission and apply. Assert business rollback, the established skip audit outcome and later-order behavior; do not treat a successful generator build as an exercised policy oracle.",
     "Exercise cache/attribute callers with distinct keys sharing one shard and a map oracle that distinguishes absent, defined zero and replacement values. Compare quiescent entry sets, old-value captures and rollback results. For reversion bitsets exercise bits 0, 63, 64 and 65 through real write-set/cache snapshot consumers, checking neighboring bits and decoded word bytes against explicit expected values. Retain generation rotation as the sole cache-entry eviction mechanism. Temporary mutations or fixtures must stay outside tracked source; record planned versus executed checks separately.",
+    "Run generator descriptor-to-executable fixture tests plus commonpb/raftcmdpb reader_oneof_test.go, existing reader_immutability_test.go, accounttype validate_reader_test.go and reader allocation tests/benchmarks. Compare exact source bytes after nested clone mutation, test actual Proposal batch and policy arms and pre-existing Order arms, and preserve zero-allocation borrowed oneof traversal.",
     "Run TestProcessOrders_PreloadUnavailableFailsInSequence (a strict mock proves the forwarded order touches no scope after the earlier order executes), TestProcessOrders_PreloadUnavailableIsNeverSkipped and TestPreloadUnavailableIsUncommittedNotAudited. Apply a forwarded batch on cloned replicas and compare the error, empty audit/idempotency deltas and restored HLC."
   ]
 }

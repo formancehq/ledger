@@ -33,14 +33,16 @@ while they coexist. The embedded operator requires a complete stop at the
 `v3.0.0-rc.4` boundary because RC.3 cannot execute native proposal payloads
 and encodes [mirror asset mappings](#mirror-asset-mappings) differently.
 `rc.3` includes the drain barrier used for this upgrade. The `v3.0.0-rc.5`
-boundary is also a complete stop because RC.5 retypes
+boundary is also a complete stop: RC.4 cannot read storage schema 3 or apply
+the independent configuration and capability controls
+([peer-service migration](#rc4--rc5-peer-service-migration)), and RC.5 retypes
 [aggregate totals](#exact-aggregate-totals) on the wire and applies a keyed
-batch carrying a [forwarded preload gap](#forwarded-preload-gaps) differently
-from RC.4.
+batch carrying a [forwarded preload gap](#forwarded-preload-gaps) differently.
 RC adjacency remains mandatory.
 The `rc.1` to `rc.2` transition rolls one voter at a time with a maintenance
 barrier that pauses writes; it does not stop the whole cluster.
-The `rc.2` to `rc.3` transition remains rolling.
+The `rc.2` to `rc.3` transition remains rolling. The dedicated peer-service
+port and Membership address migration first ship after the published `rc.4`.
 Every explicit-target `UpdatePreparedQuery` order must wait until the stopped
 `rc.3` to `rc.4` upgrade completes. Even when the target value is unchanged,
 the new processor records target fields in the audit log, so old and new voters
@@ -75,6 +77,43 @@ through each adjacent RC in order; do not jump to the newest RC. If the source
 cannot be identified or the current Operator already rejects the pinning step,
 stop and plan a separately validated migration. Do not delete the StatefulSet
 or PVCs to bypass the source check.
+### Configuration and capability state
+
+RC.4 to RC.5 preserves ClusterPolicy at its original key and extracts only
+capability state into a separate record. Use the operator-required stopped restart:
+stop all RC.4 voters and learners before starting RC.5 on the retained volumes.
+Startup migrates schema 2 to 3 atomically, then synchronizes the WAL before
+recovery, workers or listeners start. No history scan or external reconstruction
+is required. Keep the ordinary `ledger run` flags; there is no activation flag.
+The supported registry is empty until a separate feature registers an ID.
+
+Once every current member advertises a registered ID, the leader automatically
+commits a single activation control. Ordinary configuration keeps its own
+revision and proceeds independently. All audited order batches wait during activation,
+including immediately after drain release, and honors its original deadline.
+Committed activation survives restart and leader change; it cannot be cancelled
+or downgraded. An interrupted uncommitted attempt is reevaluated from current
+membership after leader readiness. New members must support active IDs; membership
+changes wait for an in-flight activation to apply. No persistent request state exists.
+
+After RC.4 is published and this change is integrated into `release/v3.0`, run
+the stopped-upgrade harness from a clean checkout:
+
+```bash
+UPGRADE_TRANSITION=rc4-to-rc5 RELEASE_BRANCH=release/v3.0 just test-release-operator-upgrade
+```
+
+This builds the exact release-branch target locally and exercises retained PVCs,
+non-empty replay, drain release, and integrity checks. It does not publish a release.
+
+Binary rollback to RC.4 closes at migration commit, before activation. A failed
+fsync aborts boot but can leave the complete new batch visible; treat an uncertain
+migration as non-rollbackable. Recover using the target binary and retained
+volumes. Alternatively restore a separately retained pre-upgrade backup with its
+matching binary, losing writes after that backup. Use matching server and CLI
+versions: new backup manifests are deliberately rejected by old readers, and
+new readers still accept the released format. See the [storage contract](../technical/architecture/subsystems/storage/control-state.md).
+
 ### Maintainer-declared CLI break
 
 The `ledgerctl cluster add-learner` command is intentionally removed from the
@@ -97,9 +136,12 @@ projections. Document the upgrade procedure and rollback boundary in the
 release notes. Delay the release if the target cannot read or migrate the source
 state.
 
-The upgrade classes below describe existing procedures. The operator
-boundaries at `rc.4` and `rc.5` select a stopped restart from `rc.3` and `rc.4`
-respectively; rebuild or restore applies only to the cases listed below.
+The upgrade classes below describe existing procedures. RC changes use the
+rolling class when the two binaries can safely coexist. The `rc.3` → `rc.4`
+proposal-payload cutover and `rc.4` → `rc.5` peer-service migration and
+aggregate-totals wire change are explicit operator-required stopped restarts.
+Each requires a durable drain, a full stop, and a complete restart without a
+mixed-version window. Rebuild or restore applies only to the cases listed below.
 
 | Class | When it applies | Procedure |
 |-------|-----------------|-----------|
@@ -189,6 +231,44 @@ with a non-empty source cluster before publishing. Rollback to an older binary
 is allowed only before the target has written incompatible persisted data, and
 only with a separately validated downgrade procedure. After that point, keep
 the target or restore through a supported forward recovery path.
+
+### rc.3 → rc.4 stopped restart details
+
+The rc.3 → rc.4 upgrade is not a rolling upgrade. The operator first performs
+the durable drain described above; once every voter has applied the maintenance
+barrier, it stops all Ledger Pods, updates the operator and Ledger image, and
+restarts the complete cluster with the existing PVCs. RC.3 and RC.4 voters
+must not coexist because they apply some proposal payloads differently.
+
+### rc.4 → rc.5 peer-service migration
+
+This RC upgrade path supports Operator-managed Clusters only. The Operator
+uses one StatefulSet Pod template for every member, so the source public gRPC
+port and target peer gRPC port are each common across the cluster. Manually
+managed multi-node upgrades, including per-node port layouts, are outside
+this RC procedure.
+
+The peer-service port split first ships after the published RC.4. The operator
+drains and stops every RC.4 Pod before starting any RC.5 Pod. The first RC.5
+startup migrates legacy Membership service addresses to the dedicated peer
+port after WAL replay and snapshot recovery. Do not run RC.4 and RC.5 voters
+together during this migration. During the preflight, the new operator uses
+the `LEDGERCTL_AUTH_TOKEN` already present in RC.4 Pods; replacement Pods use
+the operator-managed Credentials to generate short-lived tokens.
+
+Before the membership format revision is written, RC.4 service addresses are
+converted to the configured common peer port. The local row may already have
+that peer address because startup refreshes it before migration. Its address
+is preserved, and the revision is committed with the remaining conversions.
+
+Before publishing an RC update, demonstrate the applicable upgrade class from
+the immediately preceding RC binary to the target binary in one cluster. For a
+rolling update, include leadership transfer, writes, replay, and restart. For
+the rc.3 → rc.4 stopped restart, include the durable maintenance barrier,
+full stop, restart, and post-upgrade writes. For rc.4 → rc.5, also include the
+Membership migration. Record the source and target builds and the results in
+release validation. Do not infer
+support from a successful single-node restart.
 
 For upgrades from builds before `v3.0.0-rc.1`, the change-specific constraints
 documented under
@@ -333,6 +413,10 @@ Before any server upgrade:
 The Ledger Operator blocks a declared Ledger image tag newer than its own
 release version, or one that cannot be compared, before changing the
 StatefulSet. Upgrade the Operator first, then change the Ledger image. This
+comparison uses the base release for CI development tags ending in
+`.dev.B.gSHA`; a development image from a later release line remains blocked.
+Using a development image still requires verifying its compatibility with the
+target cluster state and any mandatory stopped-upgrade boundary. This
 ordering check applies before an Operator-managed workload change; it does
 not establish mixed-version compatibility or make a downgrade safe. Mutable
 registry tags can serve different contents, which this check cannot verify.
@@ -350,10 +434,10 @@ For an upgrade that crosses a listed boundary, use the [operator-required stoppe
 Capability metadata is the prerequisite for any future incompatible Raft entry,
 execution-plan, replay, or snapshot format. This release does not support
 mixed-version activation: stop every Ledger node, deploy the barrier-aware
-binary everywhere, restart the complete cluster, and only then enable the new
-feature. The capability reconciler does not arm features from membership
-advertisements. See the [capability contract](../technical/architecture/subsystems/consensus/capabilities.md)
-for the persisted replay boundary and coordinated rollout.
+binary everywhere, and restart the complete cluster. Once every voter and
+learner has committed support evidence, the leader automatically requests and
+activates each supported capability. There is no activation flag or extra
+operator setting. See the [capability contract](../technical/architecture/subsystems/consensus/capabilities.md).
 
 Use this for RC updates after the mixed-version validation above passes:
 
@@ -561,9 +645,6 @@ the mandatory operator-required stopped restarts:
 
 ```bash
 UPGRADE_TRANSITION=rc3-to-rc4 RELEASE_BRANCH=release/v3.0 just test-release-operator-upgrade
-```
-
-```bash
 UPGRADE_TRANSITION=rc4-to-rc5 RELEASE_BRANCH=release/v3.0 just test-release-operator-upgrade
 ```
 
@@ -575,21 +656,21 @@ target:
 | `rc3-to-rc4` | `v3.0.0-rc.3` | `v3.0.0-rc.4` | rc.4 |
 | `rc4-to-rc5` | `v3.0.0-rc.4` | `v3.0.0-rc.5` | rc.5 |
 
-Run a transition after its source has been published, against a release branch
-whose operator lists its boundary. The target operator and Ledger are built
-from one exact release-branch HEAD and tagged locally with the target tag; the
-harness publishes no tag
+Run each transition after its source RC has been published, against a release
+branch whose operator lists the target RC as a mandatory stop boundary. The
+target operator and Ledger are built from one exact release-branch HEAD and
+tagged locally as the target RC; the harness publishes no tag
 or image. This path requires the operator's drain barrier to advance past
 `Draining`, observes the StatefulSet and all old Pods absent before accepting
 any target Pod, and checks that the replacement StatefulSet has a new UID while
 PVC UIDs persist. It restarts a target voter to exercise replay, verifies the
 pre-upgrade account, commits another transaction, checks Raft progress and
 runs each voter's audit/derived-state checker after drain release. It fails
-against an operator without the transition's boundary or if the mandatory stop
-is skipped, so it is a release gate for the PR that adds the boundary, not
-evidence that the source release itself needs a stop. The rc.4 release still
-needs format-specific migration, snapshot, backup/restore and rollback
-validation outside this scenario.
+against an operator without the target boundary or if the mandatory stop is
+skipped, so it is a release gate for the target change, not evidence that
+the source RC itself needs a stop. Each target release still needs
+format-specific migration, snapshot, backup/restore and rollback validation
+outside this scenario.
 
 ## Coordinated Restart
 

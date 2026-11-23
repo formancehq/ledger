@@ -30,8 +30,12 @@ func (noopMemPool) RemovePeer(uint64) error      { return nil }
 // Pebble store and noop transport/pool, in the post-Start state. Used
 // by Node-level tests that need a *membership.Membership to plug into
 // a Node struct (recovery / maintenance / confstate suites).
-func newTestMembership(t *testing.T) *membership.Membership {
+func newTestMembership(t *testing.T, transports ...membership.Transport) *membership.Membership {
 	t.Helper()
+	var peerTransport membership.Transport = noopMemTransport{}
+	if len(transports) > 0 {
+		peerTransport = transports[0]
+	}
 
 	ctx := logging.TestingContext()
 	logger := logging.FromContext(ctx)
@@ -43,7 +47,7 @@ func newTestMembership(t *testing.T) *membership.Membership {
 
 	m, err := membership.NewMembership(
 		membership.NewPeerStore(store),
-		noopMemTransport{}, noopMemPool{},
+		peerTransport, noopMemPool{},
 		42, "self:7777", "self:8888",
 		[]byte("self-instance-id"),
 		logging.Testing(),

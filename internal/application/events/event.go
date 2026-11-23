@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/formancehq/ledger/v3/internal/adapter/json"
+	"github.com/formancehq/ledger/v3/internal/pkg/sensitive"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/eventspb"
 )
@@ -33,6 +34,9 @@ func LogToEvent(log *commonpb.Log) *eventspb.Event {
 	switch p := log.GetPayload().GetType().(type) {
 	case *commonpb.LogPayload_CreateLedger:
 		event.Type = commonpb.EventType_CREATED_LEDGER
+		// Mirror credentials can occur in created-ledger logs. Other emitted
+		// log variants have no credential-bearing configuration fields.
+		event.Log = sensitive.Redact(log)
 		event.Ledger = p.CreateLedger.GetName()
 		event.Date = p.CreateLedger.GetCreatedAt()
 	case *commonpb.LogPayload_DeleteLedger:

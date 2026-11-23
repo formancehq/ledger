@@ -16,6 +16,8 @@ type AuditEntryReader interface {
 	GetSequence() uint64
 	GetTimestamp() commonpb.TimestampReader
 	GetProposalId() uint64
+	GetSuccess() AuditSuccessReader
+	GetFailure() AuditFailureReader
 	GetOrderCount() uint32
 	GetItems() AuditItemListReader
 	GetLedgers() []string
@@ -24,7 +26,7 @@ type AuditEntryReader interface {
 	GetCallerSnapshot() commonpb.CallerSnapshotReader
 	GetIdempotency() commonpb.IdempotencyReader
 	GetSignature() signaturepb.SignedApplyBatchReader
-	GetOutcome() isAuditEntry_Outcome
+	WhichOutcome() AuditEntry_OutcomeReaderCase
 	Mutate() *AuditEntry
 }
 
@@ -44,6 +46,22 @@ func (r *auditEntryReadonly) GetTimestamp() commonpb.TimestampReader {
 
 func (r *auditEntryReadonly) GetProposalId() uint64 {
 	return (*AuditEntry)(r).GetProposalId()
+}
+
+func (r *auditEntryReadonly) GetSuccess() AuditSuccessReader {
+	v, ok := (*AuditEntry)(r).GetOutcome().(*AuditEntry_Success)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.Success.AsReader()
+}
+
+func (r *auditEntryReadonly) GetFailure() AuditFailureReader {
+	v, ok := (*AuditEntry)(r).GetOutcome().(*AuditEntry_Failure)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.Failure.AsReader()
 }
 
 func (r *auditEntryReadonly) GetOrderCount() uint32 {
@@ -90,8 +108,24 @@ func (r *auditEntryReadonly) GetSignature() signaturepb.SignedApplyBatchReader {
 	return v.AsReader()
 }
 
-func (r *auditEntryReadonly) GetOutcome() isAuditEntry_Outcome {
-	return (*AuditEntry)(r).GetOutcome()
+// AuditEntry_OutcomeReaderCase identifies a selected oneof arm by its protobuf field number.
+type AuditEntry_OutcomeReaderCase int32
+
+const (
+	AuditEntry_OutcomeReaderCase_Unset   AuditEntry_OutcomeReaderCase = 0
+	AuditEntry_OutcomeReaderCase_Success AuditEntry_OutcomeReaderCase = 4
+	AuditEntry_OutcomeReaderCase_Failure AuditEntry_OutcomeReaderCase = 5
+)
+
+func (r *auditEntryReadonly) WhichOutcome() AuditEntry_OutcomeReaderCase {
+	switch (*AuditEntry)(r).GetOutcome().(type) {
+	case *AuditEntry_Success:
+		return AuditEntry_OutcomeReaderCase_Success
+	case *AuditEntry_Failure:
+		return AuditEntry_OutcomeReaderCase_Failure
+	default:
+		return AuditEntry_OutcomeReaderCase_Unset
+	}
 }
 
 func (r *auditEntryReadonly) Mutate() *AuditEntry {

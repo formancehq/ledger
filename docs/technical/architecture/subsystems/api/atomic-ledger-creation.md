@@ -29,8 +29,10 @@ writes. Explicit protobuf `NullValue` follows the existing typed-value contract.
 Initial schema declarations remain index/query hints: creation stores supported
 values verbatim even when their supplied type differs from the declared type.
 
-The response remains one created ledger in the existing response envelope with
-HTTP 201, now including its initial metadata. A subsequent ledger read enriches
+By default the response remains one created ledger in the existing response
+envelope with HTTP 201, including its initial metadata. Opting into
+`skipResponse=true` retains 201 and returns only the global sequence; see
+[compact write acknowledgements](http-api.md#compact-write-acknowledgements). A subsequent ledger read enriches
 LedgerInfo from the canonical metadata keyspace. Metadata is not duplicated in
 the persisted LedgerInfo row.
 

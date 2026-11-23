@@ -73,11 +73,18 @@ func (r *ClusterReconciler) reconcileStatefulSetWithExec(ctx context.Context, le
 		return ctrl.Result{}, err
 	}
 
-	targetTLSMode := computeTargetTLSMode(
-		desiredTLSMode(ledger),
-		observedTLSMode(ledger, existingForTLS),
-		rolloutConverged(existingForTLS),
-	)
+	desiredMode := desiredTLSMode(ledger)
+	observedMode := observedTLSMode(ledger, existingForTLS)
+	converged := rolloutConverged(existingForTLS)
+	targetTLSMode := computeTargetTLSMode(desiredMode, observedMode, converged)
+	if observedMode != "" && observedMode != targetTLSMode {
+		logger.Info("Advancing ledger TLS rollout",
+			"observedMode", observedMode,
+			"targetMode", targetTLSMode,
+			"desiredMode", desiredMode,
+			"previousRolloutConverged", converged,
+			"clusterSecretInjected", shouldInjectClusterSecret(targetTLSMode))
+	}
 	ledger.Status.TLSMigrationPhase = tlsMigrationPhase(desiredTLSMode(ledger), targetTLSMode)
 	effective, err := prepareTLSRollout(ctx, r.Client, ledger, existingForTLS, targetTLSMode)
 	if err != nil {
@@ -310,28 +317,6 @@ func hasPodConfigHashBinding(sts *appsv1.StatefulSet) bool {
 	installed := sts.Spec.Template.Annotations[annotationSpecHash]
 
 	return sts.Annotations[annotationPodConfigHash] != "" && installed != "" && sts.Annotations[annotationPodConfigSpecHash] == installed
-}
-
-// preserveStorageSpecHash recognizes an old full-spec hash by reconstructing
-// its PVC-only inputs from the unchanged source templates. Once recognized,
-// the workload hash lives on STS metadata and remains valid after recreation.
-func preserveStorageSpecHash(ledger *ledgerv1alpha1.Cluster, existing *appsv1.StatefulSet, desired corev1.PodTemplateSpec, hash string) corev1.PodTemplateSpec {
-	old := existing.Spec.Template.Annotations[annotationSpecHash]
-	if old == "" {
-		return desired
-	}
-	if hasPodConfigHashBinding(existing) {
-		if existing.Annotations[annotationPodConfigHash] == hash {
-			desired.Annotations[annotationSpecHash] = old
-		}
-
-		return desired
-	}
-	if legacyStorageSpecHashMatches(ledger, existing) {
-		desired.Annotations[annotationSpecHash] = old
-	}
-
-	return desired
 }
 
 // Return evidence separately from the selected hash: equal desired/installed
@@ -753,6 +738,7 @@ func buildPodTemplate(ledger *ledgerv1alpha1.Cluster, specHash string, credentia
 	ports := []corev1.ContainerPort{
 		{Name: "http", ContainerPort: spec.HttpPort, Protocol: corev1.ProtocolTCP},
 		{Name: "grpc", ContainerPort: spec.GrpcPort, Protocol: corev1.ProtocolTCP},
+		{Name: "grpc-peer", ContainerPort: grpcPeerPort(ledger), Protocol: corev1.ProtocolTCP},
 		{Name: "raft", ContainerPort: raftPortFromBindAddr(spec.BindAddr), Protocol: corev1.ProtocolTCP},
 	}
 
@@ -839,6 +825,21 @@ func buildPodTemplate(ledger *ledgerv1alpha1.Cluster, specHash string, credentia
 					SecretName: spec.TLS.SecretName,
 				},
 			},
+		})
+	}
+
+	if spec.Auth != nil && spec.Auth.Enabled != nil && *spec.Auth.Enabled && targetTLSMode != tlsModeDisabled {
+		credentialsName := operatorCredentialsName(ledger)
+		volumeMounts = append(volumeMounts, corev1.VolumeMount{
+			Name:      "operator-credentials",
+			MountPath: "/operator-credentials",
+			ReadOnly:  true,
+		})
+		volumes = append(volumes, corev1.Volume{
+			Name: "operator-credentials",
+			VolumeSource: corev1.VolumeSource{Secret: &corev1.SecretVolumeSource{
+				SecretName: operatorCredentialsSecretName(credentialsName),
+			}},
 		})
 	}
 

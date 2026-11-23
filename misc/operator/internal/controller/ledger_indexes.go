@@ -331,22 +331,6 @@ func diffIndexes(desired []managedIndex, actual map[string]bool, applied []strin
 	return diff
 }
 
-// canonicalList returns the sorted canonical keys of the managed set.
-func canonicalList(indexes []managedIndex) []string {
-	if len(indexes) == 0 {
-		return nil
-	}
-
-	out := make([]string, 0, len(indexes))
-	for _, mi := range indexes {
-		out = append(out, mi.canonical)
-	}
-
-	sort.Strings(out)
-
-	return out
-}
-
 // nextAppliedIndexes computes the observed operator-created set to persist in
 // status.appliedIndexes after applying diff: the audit-attributed set plus the
 // indexes just created, minus the indexes just dropped. The caller reconstructs

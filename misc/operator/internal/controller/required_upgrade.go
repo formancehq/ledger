@@ -22,13 +22,13 @@ import (
 
 // rc.3 voters cannot apply proposal payloads, and voters before rc.4 encode
 // mirror asset mappings differently in the audited CreateLedger order. Stop
-// every rc.3 node before starting rc.4. rc.5 retypes AggregatedVolume totals
-// at the unchanged service protocol revision, so a node on one side of rc.5
-// misdecodes an aggregate forwarded by a peer on the other. rc.4 voters also
-// reject a keyed batch that carries a forwarded preload_unavailable order
-// before executing any order, while rc.5 voters fail it in sequence and freeze
-// an earlier order's definitive rejection. Stop every rc.4 node before starting
-// rc.5. RC adjacency is still checked by validateRCUpgrade.
+// every rc.3 node before starting rc.4. The dedicated peer service port and
+// membership address migration first ship after the published rc.4, which
+// cannot read schema 3 or apply native configuration/capability controls.
+// rc.5 also retypes AggregatedVolume totals at the unchanged protocol revision,
+// and fails a forwarded preload_unavailable order at its position in the batch,
+// where rc.4 rejects the whole batch before executing any order. Stop every
+// rc.4 node before starting rc.5. validateRCUpgrade checks adjacency, and
 // scripts/checkprotocolversion parses this literal.
 var mandatoryStopVersions = []string{"v3.0.0-rc.4", "v3.0.0-rc.5"}
 

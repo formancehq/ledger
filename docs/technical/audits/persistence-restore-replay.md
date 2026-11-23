@@ -247,6 +247,20 @@ See [the creation contract](../architecture/subsystems/api/atomic-ledger-creatio
 
 ## Proposal payload cutover
 
+Schema 3 adds the stopped startup migration and independent configuration and
+capability controls described in [control-state storage](../architecture/subsystems/storage/control-state.md).
+ClusterPolicy retains its original key `0x13`; only capabilities move to `0x18`.
+The field-12 `configuration_only` discriminator preserves omitted-marker legacy
+replay while preventing current policy writers from replacing capability state.
+Exercise canceled migration followed by disk reopen, completed migration
+followed by reopen, unchanged logical state at the applied index, missing-row
+failure, concurrent configuration and monotonic active state. Direct activation
+uses one entry; interrupted uncommitted attempts leave no durable intent, while
+lost responses after commit must not cause deactivation or a duplicate effect.
+Full and operational-only incremental restore preserve both aggregates.
+Check the released RC.4 JSON shape rejects the new known-field data envelope;
+do not infer old-reader rejection from an unknown JSON field.
+
 The proposal codec is part of this contract. Production writers serialize the
 execution and policy oneof directly after a full-stop upgrade. All source nodes
 must stop before any target starts, and old binaries must never reopen a WAL

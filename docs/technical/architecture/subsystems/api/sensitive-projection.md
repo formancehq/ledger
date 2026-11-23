@@ -4,7 +4,8 @@ Public configuration reads must remove credentials while preserving supported
 connection hosts, paths and harmless options. `internal/pkg/sensitive.Redact`
 builds a detached public view before wire encoding. It is used by HTTP ledger
 get/list and sink reads, service gRPC ledger get/list (including checkpoints)
-and sink reads, atomic Apply sink and mirror-ledger creation logs, and the CLI
+and sink reads, atomic Apply sink and mirror-ledger creation logs, outbound event
+logs, and the CLI
 HTTP sink configuration renderer. Atomic Apply omits response signatures for
 these projected logs because the signed payload retains the original credentials.
 

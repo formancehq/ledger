@@ -1,6 +1,7 @@
 package bootstrap
 
 import (
+	"errors"
 	"fmt"
 	"math"
 	"strconv"
@@ -8,18 +9,19 @@ import (
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
+	"github.com/formancehq/ledger/v3/internal/infra/capabilities"
+	"github.com/formancehq/ledger/v3/internal/infra/state"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/query"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
 
 // CurrentStorageSchemaVersion is the storage schema version that this binary
-// expects. Version 2 is the v3.0.0-rc.1 baseline. Future schema changes must
-// ship a tested migration from the preceding release. Schema 1 introduced the
-// cluster-local zone; schema 2 requires the once-committed audit key for
-// history verification.
+// expects. Schema 3 atomically splits schema 2's policy into configuration and
+// capability state during the coordinated stopped upgrade. Schema 2 is the
+// v3.0.0-rc.1 baseline and requires the once-committed audit key.
 // The old ZoneGlobal boot anchor is rejected before the current layout is read.
-const CurrentStorageSchemaVersion uint32 = 2
+const CurrentStorageSchemaVersion uint32 = 3
 
 // SchemaVersionError is returned when the persisted storage schema version is
 // incompatible with the running binary. This is NOT bypassable with
@@ -67,7 +69,7 @@ func ValidateOrPersistConfig(store *dal.Store, cfg Config, logger logging.Logger
 		// First boot: persist current config
 		logger.Infof("First boot detected, persisting configuration for future safety checks (schema version %d)", CurrentStorageSchemaVersion)
 
-		return persistConfig(store, current)
+		return migrateControlState(store, current)
 	}
 
 	// Backfill StorageSchemaVersion for configs persisted before this field existed.
@@ -96,7 +98,7 @@ func ValidateOrPersistConfig(store *dal.Store, cfg Config, logger logging.Logger
 		}
 	}
 
-	if persisted.GetStorageSchemaVersion() < current.GetStorageSchemaVersion() {
+	if persisted.GetStorageSchemaVersion() < current.GetStorageSchemaVersion() && persisted.GetStorageSchemaVersion() != 2 {
 		return &SchemaVersionError{
 			Persisted: persisted.GetStorageSchemaVersion(),
 			Current:   current.GetStorageSchemaVersion(),
@@ -138,10 +140,51 @@ func ValidateOrPersistConfig(store *dal.Store, cfg Config, logger logging.Logger
 				}).Infof("WARNING: configuration mismatch overridden by --unsafe-skip-config-validation")
 			}
 			// Force-overwrite persisted config
-			return persistConfig(store, current)
+			return migrateControlState(store, current)
 		}
 		// Return the first mismatch as a fatal error
 		return mismatches[0]
+	}
+
+	if persisted.GetStorageSchemaVersion() == 2 {
+		return migrateControlState(store, current)
+	}
+	policy, err := dal.ReadProto[*commonpb.ClusterPolicy](store, []byte{dal.ZoneGlobal, dal.SubGlobClusterPolicy})
+	if err != nil {
+		return err
+	}
+	if policy == nil {
+		return errors.New("schema 3 is missing its cluster policy")
+	}
+
+	return nil
+}
+
+func migrateControlState(store *dal.Store, config *commonpb.PersistedConfig) error {
+	policy, err := query.ReadClusterPolicy(store)
+	if err != nil {
+		return err
+	}
+	if policy == nil {
+		policy = &commonpb.ClusterPolicy{}
+	}
+	if err := capabilities.ValidateSupportedActive(policy, capabilities.SupportedIDs()); err != nil {
+		return err
+	}
+	batch := store.OpenWriteSession()
+	defer func() { _ = batch.Cancel() }()
+	if err := state.SaveClusterPolicy(batch, policy); err != nil {
+		return err
+	}
+	if err := SavePersistedConfig(batch, config); err != nil {
+		return err
+	}
+
+	if err := batch.Commit(); err != nil {
+		return err
+	}
+	if err := store.SyncWAL(); err != nil {
+		return fmt.Errorf("synchronizing control-state migration: %w", err)
 	}
 
 	return nil

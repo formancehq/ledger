@@ -418,6 +418,9 @@ message ExecutionBatch {
 // Historical SetClusterPolicyOrder remains readable.
 message SetClusterPolicyProposal {
   common.ClusterPolicy policy = 1;
+  // Current producers change flag-derived policy only. Omitted by released
+  // entries, whose embedded capabilities retain their historical replay meaning.
+  bool configuration_only = 2;
 }
 
 // Proposal separates execution batches from operational cluster-policy controls.
@@ -460,6 +463,7 @@ message Proposal {
   oneof payload {
     ExecutionBatch batch = 11;
     SetClusterPolicyProposal set_cluster_policy = 12;
+    common.CapabilityActivation capability_activation = 13;
   }
 }
 

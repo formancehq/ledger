@@ -1,9 +1,11 @@
 package membership
 
 import (
+	"bytes"
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"slices"
 
 	"github.com/cockroachdb/pebble/v2"
 
@@ -54,11 +56,127 @@ func NewPeerStore(store *dal.Store) *PeerStore {
 	return &PeerStore{store: store}
 }
 
+// migrateLegacyServiceAddressesFromPort upgrades RC.4 rows. The local row may
+// already have been refreshed with its peer address before WAL replay.
+func (p *PeerStore) migrateLegacyServiceAddressesFromPort(servicePort int, selfNodeID uint64, selfServiceAddr string) error {
+	if servicePort == 0 {
+		return nil
+	}
+	revision, err := p.membershipFormatRevision()
+	if err != nil {
+		return err
+	}
+	if revision >= membershipFormatRevisionPeerPort {
+		return nil
+	}
+
+	addresses, err := p.LoadAll()
+	if err != nil {
+		return fmt.Errorf("loading legacy membership: %w", err)
+	}
+	normalized, err := normalizeLegacyServiceAddresses(addresses, servicePort, selfNodeID, selfServiceAddr)
+	if err != nil {
+		return err
+	}
+	session := p.store.OpenWriteSession()
+	for nodeID, address := range addresses {
+		if normalized[nodeID].Equal(address) {
+			continue
+		}
+		if err := session.SetProto(peerKey(nodeID), &raftcmdpb.PeerAddress{
+			NodeId:         nodeID,
+			RaftAddress:    normalized[nodeID].RaftAddress,
+			ServiceAddress: normalized[nodeID].ServiceAddress,
+			InstanceId:     normalized[nodeID].InstanceID,
+			Capabilities:   normalized[nodeID].Capabilities,
+		}); err != nil {
+			_ = session.Cancel()
+
+			return fmt.Errorf("migrating peer %d: %w", nodeID, err)
+		}
+	}
+
+	if err := session.SetBytes(membershipFormatKey, membershipFormatRevisionBytes(membershipFormatRevisionPeerPort)); err != nil {
+		_ = session.Cancel()
+
+		return fmt.Errorf("writing membership format revision: %w", err)
+	}
+
+	if err := session.Commit(); err != nil {
+		return fmt.Errorf("committing membership migration: %w", err)
+	}
+
+	return nil
+}
+
+func (p *PeerStore) markNativeMembershipFormat() error {
+	session := p.store.OpenWriteSession()
+	if err := session.SetBytes(membershipFormatKey, membershipFormatRevisionBytes(membershipFormatRevisionPeerPort)); err != nil {
+		_ = session.Cancel()
+
+		return fmt.Errorf("marking native membership format: %w", err)
+	}
+	if err := session.Commit(); err != nil {
+		return fmt.Errorf("committing native membership format: %w", err)
+	}
+
+	return nil
+}
+
+func membershipFormatRevisionBytes(revision uint32) []byte {
+	var revisionBytes [4]byte
+	binary.BigEndian.PutUint32(revisionBytes[:], revision)
+
+	return revisionBytes[:]
+}
+
+func (p *PeerStore) membershipFormatRevision() (uint32, error) {
+	value, closer, err := p.store.Get(membershipFormatKey)
+	if errors.Is(err, pebble.ErrNotFound) {
+		return membershipFormatRevisionLegacy, nil
+	}
+	if err != nil {
+		return 0, fmt.Errorf("reading membership format revision: %w", err)
+	}
+	defer func() { _ = closer.Close() }()
+
+	if len(value) != 4 {
+		return 0, fmt.Errorf("membership format revision has invalid length %d", len(value))
+	}
+
+	return binary.BigEndian.Uint32(value), nil
+}
+
 // OpenWriteSession returns a fresh write session on the underlying Pebble
 // store. Used by lifecycle paths that need to combine a peer mutation with
 // another mutation atomically (see EN-1045 force-remove path).
 func (p *PeerStore) OpenWriteSession() *dal.WriteSession {
 	return p.store.OpenWriteSession()
+}
+
+// PutLocal refreshes routing without adding uncommitted capability evidence.
+// Locally unsupported IDs may be removed conservatively; new IDs require Raft.
+func (p *PeerStore) PutLocal(nodeID uint64, raftAddr, serviceAddr string, instanceID []byte, advertised []uint32) ([]uint32, error) {
+	if err := ValidateCapabilities(advertised); err != nil {
+		return nil, err
+	}
+	existing, err := dal.ReadProto[*raftcmdpb.PeerAddress](p.store, peerKey(nodeID))
+	if err != nil {
+		return nil, err
+	}
+	var retained []uint32
+	if bytes.Equal(existing.GetInstanceId(), instanceID) {
+		for _, capabilityID := range advertised {
+			if slices.Contains(existing.GetCapabilities(), capabilityID) {
+				retained = append(retained, capabilityID)
+			}
+		}
+	}
+	if err := p.Put(nodeID, raftAddr, serviceAddr, instanceID, retained); err != nil {
+		return nil, err
+	}
+
+	return retained, nil
 }
 
 // ---------------------------------------------------------------------------
@@ -68,6 +186,17 @@ func (p *PeerStore) OpenWriteSession() *dal.WriteSession {
 // peerKeyLen is the fixed length of a peer key:
 // 1 byte zone + 1 byte sub-prefix + 8 bytes big-endian NodeID.
 const peerKeyLen = 1 + 1 + 8
+
+const (
+	// membershipFormatRevisionLegacy identifies stores written before the
+	// dedicated peer service port was persisted.
+	membershipFormatRevisionLegacy uint32 = 0
+	// membershipFormatRevisionPeerPort marks the one-shot rc.4 → rc.5
+	// migration complete. Subsequent writes already use the peer port.
+	membershipFormatRevisionPeerPort uint32 = 1
+)
+
+var membershipFormatKey = []byte{dal.ZoneClusterPersistent, dal.SubGlobMembershipFormat}
 
 // peerKey builds the Pebble key for the given NodeID.
 func peerKey(nodeID uint64) []byte {

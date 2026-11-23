@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"math"
 	"net/http"
 
 	"github.com/formancehq/ledger/v3/internal/application/ctrl"
@@ -169,6 +168,10 @@ func convertJSONParameters(raw map[string]json.RawMessage) (map[string]*commonpb
 }
 
 func jsonToParameterValue(raw json.RawMessage) (*commonpb.ParameterValue, error) {
+	if string(raw) == "null" {
+		return nil, errors.New("unsupported value type: null")
+	}
+
 	var s string
 	if err := json.Unmarshal(raw, &s); err == nil {
 		return &commonpb.ParameterValue{Value: &commonpb.ParameterValue_StringValue{StringValue: s}}, nil
@@ -183,17 +186,20 @@ func jsonToParameterValue(raw json.RawMessage) (*commonpb.ParameterValue, error)
 		}
 	}
 
-	var f float64
-	if err := json.Unmarshal(raw, &f); err == nil {
-		if f != math.Trunc(f) {
-			return nil, fmt.Errorf("floating-point values are not supported, got %v", f)
+	value := string(raw)
+	if len(value) > 0 && (value[0] == '-' || value[0] >= '0' && value[0] <= '9') {
+		number, err := commonpb.MetadataValueFromAny(json.Number(value))
+		if err != nil {
+			return nil, err
 		}
-
-		if f < 0 {
-			return &commonpb.ParameterValue{Value: &commonpb.ParameterValue_Int64Value{Int64Value: int64(f)}}, nil
+		switch typed := number.GetType().(type) {
+		case *commonpb.MetadataValue_IntValue:
+			return &commonpb.ParameterValue{Value: &commonpb.ParameterValue_Int64Value{Int64Value: typed.IntValue}}, nil
+		case *commonpb.MetadataValue_UintValue:
+			return &commonpb.ParameterValue{Value: &commonpb.ParameterValue_Uint64Value{Uint64Value: typed.UintValue}}, nil
+		default:
+			return nil, fmt.Errorf("unsupported numeric value: %s", value)
 		}
-
-		return &commonpb.ParameterValue{Value: &commonpb.ParameterValue_Uint64Value{Uint64Value: uint64(f)}}, nil
 	}
 
 	return nil, fmt.Errorf("unsupported value type: %s", string(raw))

@@ -66,5 +66,5 @@ func (s *Server) handleCreateTransaction(w http.ResponseWriter, r *http.Request)
 		panic(emptyLogPayload("create-transaction", logEntry, details))
 	}
 
-	writeCreated(w, r, created.CreatedTransaction)
+	writeMutationCreated(w, r, logEntry, created.CreatedTransaction)
 }

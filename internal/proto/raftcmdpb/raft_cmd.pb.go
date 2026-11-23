@@ -3357,10 +3357,13 @@ func (x *ExecutionBatch) GetTechnicalUpdates() []*TechnicalUpdate {
 // SetClusterPolicyProposal updates operational state without business audit or logs.
 // Historical SetClusterPolicyOrder remains readable.
 type SetClusterPolicyProposal struct {
-	state         protoimpl.MessageState  `protogen:"open.v1"`
-	Policy        *commonpb.ClusterPolicy `protobuf:"bytes,1,opt,name=policy,proto3" json:"policy,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state  protoimpl.MessageState  `protogen:"open.v1"`
+	Policy *commonpb.ClusterPolicy `protobuf:"bytes,1,opt,name=policy,proto3" json:"policy,omitempty"`
+	// Current producers change flag-derived policy only. Omitted by released
+	// entries, whose embedded capabilities retain their historical replay meaning.
+	ConfigurationOnly bool `protobuf:"varint,2,opt,name=configuration_only,json=configurationOnly,proto3" json:"configuration_only,omitempty"`
+	unknownFields     protoimpl.UnknownFields
+	sizeCache         protoimpl.SizeCache
 }
 
 func (x *SetClusterPolicyProposal) Reset() {
@@ -3398,6 +3401,13 @@ func (x *SetClusterPolicyProposal) GetPolicy() *commonpb.ClusterPolicy {
 		return x.Policy
 	}
 	return nil
+}
+
+func (x *SetClusterPolicyProposal) GetConfigurationOnly() bool {
+	if x != nil {
+		return x.ConfigurationOnly
+	}
+	return false
 }
 
 // Proposal separates execution batches from operational cluster-policy controls.
@@ -3444,6 +3454,7 @@ type Proposal struct {
 	//
 	//	*Proposal_Batch
 	//	*Proposal_SetClusterPolicy
+	//	*Proposal_CapabilityActivation
 	Payload       isProposal_Payload `protobuf_oneof:"payload"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -3576,6 +3587,15 @@ func (x *Proposal) GetSetClusterPolicy() *SetClusterPolicyProposal {
 	return nil
 }
 
+func (x *Proposal) GetCapabilityActivation() *commonpb.CapabilityActivation {
+	if x != nil {
+		if x, ok := x.Payload.(*Proposal_CapabilityActivation); ok {
+			return x.CapabilityActivation
+		}
+	}
+	return nil
+}
+
 type isProposal_Payload interface {
 	isProposal_Payload()
 }
@@ -3588,9 +3608,15 @@ type Proposal_SetClusterPolicy struct {
 	SetClusterPolicy *SetClusterPolicyProposal `protobuf:"bytes,12,opt,name=set_cluster_policy,json=setClusterPolicy,proto3,oneof"`
 }
 
+type Proposal_CapabilityActivation struct {
+	CapabilityActivation *commonpb.CapabilityActivation `protobuf:"bytes,13,opt,name=capability_activation,json=capabilityActivation,proto3,oneof"`
+}
+
 func (*Proposal_Batch) isProposal_Payload() {}
 
 func (*Proposal_SetClusterPolicy) isProposal_Payload() {}
+
+func (*Proposal_CapabilityActivation) isProposal_Payload() {}
 
 // TechnicalUpdate is the per-update envelope that carries the coverage
 // gate alongside one of the supported tech-update payloads. Mirrors the
@@ -6010,9 +6036,10 @@ const file_raft_cmd_proto_rawDesc = "" +
 	"\x03key\x18\x01 \x01(\tR\x03key\"y\n" +
 	"\x0eExecutionBatch\x12#\n" +
 	"\x06orders\x18\x01 \x03(\v2\v.raft.OrderR\x06orders\x12B\n" +
-	"\x11technical_updates\x18\x02 \x03(\v2\x15.raft.TechnicalUpdateR\x10technicalUpdates\"I\n" +
+	"\x11technical_updates\x18\x02 \x03(\v2\x15.raft.TechnicalUpdateR\x10technicalUpdates\"x\n" +
 	"\x18SetClusterPolicyProposal\x12-\n" +
-	"\x06policy\x18\x01 \x01(\v2\x15.common.ClusterPolicyR\x06policy\"\x88\x05\n" +
+	"\x06policy\x18\x01 \x01(\v2\x15.common.ClusterPolicyR\x06policy\x12-\n" +
+	"\x12configuration_only\x18\x02 \x01(\bR\x11configurationOnly\"\xdd\x05\n" +
 	"\bProposal\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\x06R\x02id\x12'\n" +
 	"\x06orders\x18\x02 \x03(\v2\v.raft.OrderB\x02\x18\x01R\x06orders\x12%\n" +
@@ -6026,7 +6053,8 @@ const file_raft_cmd_proto_rawDesc = "" +
 	"\x15required_capabilities\x18\n" +
 	" \x03(\aR\x14requiredCapabilities\x12,\n" +
 	"\x05batch\x18\v \x01(\v2\x14.raft.ExecutionBatchH\x00R\x05batch\x12N\n" +
-	"\x12set_cluster_policy\x18\f \x01(\v2\x1e.raft.SetClusterPolicyProposalH\x00R\x10setClusterPolicyB\t\n" +
+	"\x12set_cluster_policy\x18\f \x01(\v2\x1e.raft.SetClusterPolicyProposalH\x00R\x10setClusterPolicy\x12S\n" +
+	"\x15capability_activation\x18\r \x01(\v2\x1c.common.CapabilityActivationH\x00R\x14capabilityActivationB\t\n" +
 	"\apayload\"\xe8\x04\n" +
 	"\x0fTechnicalUpdate\x12#\n" +
 	"\rcoverage_bits\x18\x01 \x01(\fR\fcoverageBits\x129\n" +
@@ -6315,14 +6343,15 @@ var file_raft_cmd_proto_goTypes = []any{
 	(*commonpb.CallerSnapshot)(nil),              // 108: common.CallerSnapshot
 	(*commonpb.Idempotency)(nil),                 // 109: common.Idempotency
 	(*signaturepb.SignedApplyBatch)(nil),         // 110: signature.SignedApplyBatch
-	(*commonpb.ClusterConfig)(nil),               // 111: common.ClusterConfig
-	(*commonpb.MirrorSyncError)(nil),             // 112: common.MirrorSyncError
-	(*commonpb.SinkError)(nil),                   // 113: common.SinkError
-	(*commonpb.Log)(nil),                         // 114: common.Log
-	(*commonpb.Uint256)(nil),                     // 115: common.Uint256
-	(*commonpb.IdempotencyKeyValue)(nil),         // 116: common.IdempotencyKeyValue
-	(*commonpb.MetadataValue)(nil),               // 117: common.MetadataValue
-	(*commonpb.MetadataMap)(nil),                 // 118: common.MetadataMap
+	(*commonpb.CapabilityActivation)(nil),        // 111: common.CapabilityActivation
+	(*commonpb.ClusterConfig)(nil),               // 112: common.ClusterConfig
+	(*commonpb.MirrorSyncError)(nil),             // 113: common.MirrorSyncError
+	(*commonpb.SinkError)(nil),                   // 114: common.SinkError
+	(*commonpb.Log)(nil),                         // 115: common.Log
+	(*commonpb.Uint256)(nil),                     // 116: common.Uint256
+	(*commonpb.IdempotencyKeyValue)(nil),         // 117: common.IdempotencyKeyValue
+	(*commonpb.MetadataValue)(nil),               // 118: common.MetadataValue
+	(*commonpb.MetadataMap)(nil),                 // 119: common.MetadataMap
 }
 var file_raft_cmd_proto_depIdxs = []int32{
 	4,   // 0: raft.Order.ledger_scoped:type_name -> raft.LedgerScopedOrder
@@ -6422,52 +6451,53 @@ var file_raft_cmd_proto_depIdxs = []int32{
 	50,  // 94: raft.Proposal.technical_updates:type_name -> raft.TechnicalUpdate
 	47,  // 95: raft.Proposal.batch:type_name -> raft.ExecutionBatch
 	48,  // 96: raft.Proposal.set_cluster_policy:type_name -> raft.SetClusterPolicyProposal
-	64,  // 97: raft.TechnicalUpdate.mirror_sync:type_name -> raft.MirrorSyncUpdate
-	65,  // 98: raft.TechnicalUpdate.events_sink:type_name -> raft.EventsSinkUpdate
-	63,  // 99: raft.TechnicalUpdate.idempotency_eviction:type_name -> raft.IdempotencyEviction
-	111, // 100: raft.TechnicalUpdate.cluster_config:type_name -> common.ClusterConfig
-	58,  // 101: raft.TechnicalUpdate.backup_order:type_name -> raft.BackupOrder
-	59,  // 102: raft.TechnicalUpdate.incremental_backup_order:type_name -> raft.IncrementalBackupOrder
-	51,  // 103: raft.TechnicalUpdate.drain_marker:type_name -> raft.DrainMarker
-	52,  // 104: raft.TechnicalUpdate.drain_release:type_name -> raft.DrainRelease
-	55,  // 105: raft.BackupDestination.s3:type_name -> raft.S3BackupTarget
-	56,  // 106: raft.BackupDestination.azure:type_name -> raft.AzureBackupTarget
-	0,   // 107: raft.BackupJob.kind:type_name -> raft.BackupKind
-	1,   // 108: raft.BackupJob.status:type_name -> raft.BackupJobStatus
-	54,  // 109: raft.BackupJob.destination:type_name -> raft.BackupDestination
-	60,  // 110: raft.BackupOrder.start:type_name -> raft.BackupOrderStart
-	61,  // 111: raft.BackupOrder.complete:type_name -> raft.BackupOrderComplete
-	62,  // 112: raft.BackupOrder.fail:type_name -> raft.BackupOrderFail
-	60,  // 113: raft.IncrementalBackupOrder.start:type_name -> raft.BackupOrderStart
-	61,  // 114: raft.IncrementalBackupOrder.complete:type_name -> raft.BackupOrderComplete
-	62,  // 115: raft.IncrementalBackupOrder.fail:type_name -> raft.BackupOrderFail
-	54,  // 116: raft.BackupOrderStart.destination:type_name -> raft.BackupDestination
-	112, // 117: raft.MirrorSyncUpdate.error:type_name -> common.MirrorSyncError
-	113, // 118: raft.EventsSinkUpdate.error:type_name -> common.SinkError
-	114, // 119: raft.CreatedLogOrReference.created_log:type_name -> common.Log
-	115, // 120: raft.VolumePair.input:type_name -> common.Uint256
-	115, // 121: raft.VolumePair.output:type_name -> common.Uint256
-	70,  // 122: raft.ExecutionPlan.attributes:type_name -> raft.AttributeCoverage
-	72,  // 123: raft.ExecutionPlan.idempotency_keys:type_name -> raft.ReloadIdempotencyKey
-	77,  // 124: raft.AttributeCoverage.id:type_name -> raft.AttributeID
-	71,  // 125: raft.AttributeCoverage.value:type_name -> raft.AttributeValue
-	116, // 126: raft.ReloadIdempotencyKey.value:type_name -> common.IdempotencyKeyValue
-	104, // 127: raft.CreateLedgerOrder.AccountTypesEntry.value:type_name -> common.AccountType
-	117, // 128: raft.CreateLedgerOrder.MetadataEntry.value:type_name -> common.MetadataValue
-	117, // 129: raft.MirrorCreatedTransaction.MetadataEntry.value:type_name -> common.MetadataValue
-	118, // 130: raft.MirrorCreatedTransaction.AccountMetadataEntry.value:type_name -> common.MetadataMap
-	117, // 131: raft.MirrorSavedMetadata.MetadataEntry.value:type_name -> common.MetadataValue
-	117, // 132: raft.MirrorRevertedTransaction.MetadataEntry.value:type_name -> common.MetadataValue
-	117, // 133: raft.CreateTransactionOrder.MetadataEntry.value:type_name -> common.MetadataValue
-	118, // 134: raft.CreateTransactionOrder.AccountMetadataEntry.value:type_name -> common.MetadataMap
-	117, // 135: raft.SaveMetadataOrder.MetadataEntry.value:type_name -> common.MetadataValue
-	117, // 136: raft.RevertTransactionOrder.MetadataEntry.value:type_name -> common.MetadataValue
-	117, // 137: raft.SaveLedgerMetadataOrder.MetadataEntry.value:type_name -> common.MetadataValue
-	138, // [138:138] is the sub-list for method output_type
-	138, // [138:138] is the sub-list for method input_type
-	138, // [138:138] is the sub-list for extension type_name
-	138, // [138:138] is the sub-list for extension extendee
-	0,   // [0:138] is the sub-list for field type_name
+	111, // 97: raft.Proposal.capability_activation:type_name -> common.CapabilityActivation
+	64,  // 98: raft.TechnicalUpdate.mirror_sync:type_name -> raft.MirrorSyncUpdate
+	65,  // 99: raft.TechnicalUpdate.events_sink:type_name -> raft.EventsSinkUpdate
+	63,  // 100: raft.TechnicalUpdate.idempotency_eviction:type_name -> raft.IdempotencyEviction
+	112, // 101: raft.TechnicalUpdate.cluster_config:type_name -> common.ClusterConfig
+	58,  // 102: raft.TechnicalUpdate.backup_order:type_name -> raft.BackupOrder
+	59,  // 103: raft.TechnicalUpdate.incremental_backup_order:type_name -> raft.IncrementalBackupOrder
+	51,  // 104: raft.TechnicalUpdate.drain_marker:type_name -> raft.DrainMarker
+	52,  // 105: raft.TechnicalUpdate.drain_release:type_name -> raft.DrainRelease
+	55,  // 106: raft.BackupDestination.s3:type_name -> raft.S3BackupTarget
+	56,  // 107: raft.BackupDestination.azure:type_name -> raft.AzureBackupTarget
+	0,   // 108: raft.BackupJob.kind:type_name -> raft.BackupKind
+	1,   // 109: raft.BackupJob.status:type_name -> raft.BackupJobStatus
+	54,  // 110: raft.BackupJob.destination:type_name -> raft.BackupDestination
+	60,  // 111: raft.BackupOrder.start:type_name -> raft.BackupOrderStart
+	61,  // 112: raft.BackupOrder.complete:type_name -> raft.BackupOrderComplete
+	62,  // 113: raft.BackupOrder.fail:type_name -> raft.BackupOrderFail
+	60,  // 114: raft.IncrementalBackupOrder.start:type_name -> raft.BackupOrderStart
+	61,  // 115: raft.IncrementalBackupOrder.complete:type_name -> raft.BackupOrderComplete
+	62,  // 116: raft.IncrementalBackupOrder.fail:type_name -> raft.BackupOrderFail
+	54,  // 117: raft.BackupOrderStart.destination:type_name -> raft.BackupDestination
+	113, // 118: raft.MirrorSyncUpdate.error:type_name -> common.MirrorSyncError
+	114, // 119: raft.EventsSinkUpdate.error:type_name -> common.SinkError
+	115, // 120: raft.CreatedLogOrReference.created_log:type_name -> common.Log
+	116, // 121: raft.VolumePair.input:type_name -> common.Uint256
+	116, // 122: raft.VolumePair.output:type_name -> common.Uint256
+	70,  // 123: raft.ExecutionPlan.attributes:type_name -> raft.AttributeCoverage
+	72,  // 124: raft.ExecutionPlan.idempotency_keys:type_name -> raft.ReloadIdempotencyKey
+	77,  // 125: raft.AttributeCoverage.id:type_name -> raft.AttributeID
+	71,  // 126: raft.AttributeCoverage.value:type_name -> raft.AttributeValue
+	117, // 127: raft.ReloadIdempotencyKey.value:type_name -> common.IdempotencyKeyValue
+	104, // 128: raft.CreateLedgerOrder.AccountTypesEntry.value:type_name -> common.AccountType
+	118, // 129: raft.CreateLedgerOrder.MetadataEntry.value:type_name -> common.MetadataValue
+	118, // 130: raft.MirrorCreatedTransaction.MetadataEntry.value:type_name -> common.MetadataValue
+	119, // 131: raft.MirrorCreatedTransaction.AccountMetadataEntry.value:type_name -> common.MetadataMap
+	118, // 132: raft.MirrorSavedMetadata.MetadataEntry.value:type_name -> common.MetadataValue
+	118, // 133: raft.MirrorRevertedTransaction.MetadataEntry.value:type_name -> common.MetadataValue
+	118, // 134: raft.CreateTransactionOrder.MetadataEntry.value:type_name -> common.MetadataValue
+	119, // 135: raft.CreateTransactionOrder.AccountMetadataEntry.value:type_name -> common.MetadataMap
+	118, // 136: raft.SaveMetadataOrder.MetadataEntry.value:type_name -> common.MetadataValue
+	118, // 137: raft.RevertTransactionOrder.MetadataEntry.value:type_name -> common.MetadataValue
+	118, // 138: raft.SaveLedgerMetadataOrder.MetadataEntry.value:type_name -> common.MetadataValue
+	139, // [139:139] is the sub-list for method output_type
+	139, // [139:139] is the sub-list for method input_type
+	139, // [139:139] is the sub-list for extension type_name
+	139, // [139:139] is the sub-list for extension extendee
+	0,   // [0:139] is the sub-list for field type_name
 }
 
 func init() { file_raft_cmd_proto_init() }
@@ -6529,6 +6559,7 @@ func file_raft_cmd_proto_init() {
 	file_raft_cmd_proto_msgTypes[47].OneofWrappers = []any{
 		(*Proposal_Batch)(nil),
 		(*Proposal_SetClusterPolicy)(nil),
+		(*Proposal_CapabilityActivation)(nil),
 	}
 	file_raft_cmd_proto_msgTypes[48].OneofWrappers = []any{
 		(*TechnicalUpdate_MirrorSync)(nil),
