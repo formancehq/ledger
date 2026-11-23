@@ -2,6 +2,7 @@ package controller
 
 import (
 	"context"
+	"slices"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -23,24 +24,26 @@ import (
 // (Deleting) and until the replacement adopts them (Adopting), so garbage
 // collection does not apply the requested whenDeleted policy to them. The
 // operator applies it to every recorded claim, whatever the workload's owner
-// references say at that instant.
+// references say at that instant. An owner counts as the workload by UID: a
+// live object that merely carries the StatefulSet's or a Pod's name is another
+// owner.
 func TestStoppedUpgradeClusterDeletionAppliesRequestedClaimRetention(t *testing.T) {
 	t.Parallel()
-	for _, tt := range []struct {
+	type testCase struct {
 		phase       string
 		whenDeleted string
 		dataClaim   string
-	}{
-		{phase: "Deleting", whenDeleted: "Delete", dataClaim: "replaced"},
-		{phase: "Deleting", whenDeleted: "Delete", dataClaim: "owned"},
-		{phase: "Deleting", whenDeleted: "Delete", dataClaim: "foreign-owner"},
-		{phase: "Deleting", whenDeleted: "Retain", dataClaim: "replaced"},
-		{phase: "Deleting", whenDeleted: "Retain", dataClaim: "owned"},
-		{phase: "Deleting", whenDeleted: "Retain", dataClaim: "foreign-owner"},
-		{phase: "Adopting", whenDeleted: "Delete", dataClaim: "replaced"},
-		{phase: "Adopting", whenDeleted: "Delete", dataClaim: "owned"},
-		{phase: "Adopting", whenDeleted: "Delete", dataClaim: "foreign-owner"},
-	} {
+	}
+	var tests []testCase
+	for _, whenDeleted := range []string{"Delete", "Retain"} {
+		for _, dataClaim := range []string{"replaced", "owned", "pod-owned", "stale-statefulset", "stale-pod", "foreign-owner", "foreign-group", "foreign-statefulset", "foreign-pod", "foreign-statefulset-pod"} {
+			tests = append(tests, testCase{phase: "Deleting", whenDeleted: whenDeleted, dataClaim: dataClaim})
+		}
+	}
+	for _, dataClaim := range []string{"replaced", "owned", "foreign-owner", "foreign-group"} {
+		tests = append(tests, testCase{phase: "Adopting", whenDeleted: "Delete", dataClaim: dataClaim})
+	}
+	for _, tt := range tests {
 		t.Run(tt.phase+"/"+tt.whenDeleted+"/"+tt.dataClaim, func(t *testing.T) {
 			t.Parallel()
 			ctx := context.Background()
@@ -76,7 +79,11 @@ func TestStoppedUpgradeClusterDeletionAppliesRequestedClaimRetention(t *testing.
 			}
 			// The old Pod keeps the upgrade in Deleting; the replacement StatefulSet
 			// has not adopted the claims in Adopting.
-			workload, ownerUID := client.Object(&corev1.Pod{ObjectMeta: metav1.ObjectMeta{Name: stsName + "-0", Namespace: cluster.Namespace}}), types.UID("old-sts")
+			oldPod := &corev1.Pod{ObjectMeta: metav1.ObjectMeta{
+				Name: stsName + "-0", Namespace: cluster.Namespace, UID: "old-pod",
+				OwnerReferences: []metav1.OwnerReference{{APIVersion: "apps/v1", Kind: "StatefulSet", Name: stsName, UID: "old-sts", Controller: new(true)}},
+			}}
+			workload, ownerUID := client.Object(oldPod), types.UID("old-sts")
 			var sts *appsv1.StatefulSet
 			if tt.phase == "Adopting" {
 				sts = rcStatefulSet("ledger:"+cluster.Spec.Image.Tag, true)
@@ -109,13 +116,42 @@ func TestStoppedUpgradeClusterDeletionAppliesRequestedClaimRetention(t *testing.
 				require.NoError(t, c.Delete(ctx, claim(dataName, "data-uid", "pv-data")))
 				require.NoError(t, c.Create(ctx, claim(dataName, "foreign-uid", "")))
 				wantDataUID = "foreign-uid"
-			case "owned", "foreign-owner":
+			default:
 				// The workload's owner reference does not decide the claim's
 				// fate: the StatefulSet controller may still remove it, or the
 				// StatefulSet may already be gone. Any other owner does.
 				owners := []metav1.OwnerReference{{APIVersion: "apps/v1", Kind: "StatefulSet", Name: stsName, UID: ownerUID}}
-				if tt.dataClaim == "foreign-owner" {
+				switch tt.dataClaim {
+				case "pod-owned":
+					owners = []metav1.OwnerReference{{APIVersion: "v1", Kind: "Pod", Name: oldPod.Name, UID: oldPod.UID}}
+				case "stale-statefulset", "foreign-statefulset":
+					// A live StatefulSet of that name that is not the Cluster's.
+					// A reference to the earlier incarnation designates nothing.
+					foreign := rcStatefulSet("other", true)
+					foreign.Name, foreign.Namespace, foreign.UID = stsName, cluster.Namespace, "foreign-sts"
+					require.NoError(t, c.Create(ctx, foreign))
+					if tt.dataClaim == "foreign-statefulset" {
+						owners[0].UID = foreign.UID
+					}
+				case "stale-pod", "foreign-pod", "foreign-statefulset-pod":
+					// A live Pod of that name that no StatefulSet of the Cluster
+					// controls. A reference to the earlier incarnation designates
+					// nothing.
+					foreign := &corev1.Pod{}
+					require.NoError(t, c.Get(ctx, client.ObjectKeyFromObject(oldPod), foreign))
+					foreign.OwnerReferences = nil
+					if tt.dataClaim == "foreign-statefulset-pod" {
+						foreign.OwnerReferences = []metav1.OwnerReference{{APIVersion: "apps/v1", Kind: "StatefulSet", Name: stsName, UID: "foreign-sts", Controller: new(true)}}
+					}
+					require.NoError(t, c.Update(ctx, foreign))
+					owners = []metav1.OwnerReference{{APIVersion: "v1", Kind: "Pod", Name: oldPod.Name, UID: oldPod.UID}}
+					if tt.dataClaim == "stale-pod" {
+						owners[0].UID = "gone-pod"
+					}
+				case "foreign-owner":
 					owners = append(owners, metav1.OwnerReference{APIVersion: "v1", Kind: "ConfigMap", Name: "hold", UID: "hold-uid"})
+				case "foreign-group":
+					owners[0].APIVersion = "example.com/v1"
 				}
 				owned := &corev1.PersistentVolumeClaim{}
 				require.NoError(t, c.Get(ctx, types.NamespacedName{Name: dataName, Namespace: cluster.Namespace}, owned))
@@ -136,21 +172,24 @@ func TestStoppedUpgradeClusterDeletionAppliesRequestedClaimRetention(t *testing.
 			}
 			data := &corev1.PersistentVolumeClaim{}
 			err = c.Get(ctx, types.NamespacedName{Name: dataName, Namespace: cluster.Namespace}, data)
-			if tt.whenDeleted == "Delete" && tt.dataClaim == "owned" {
+			workloadOwned := slices.Contains([]string{"owned", "pod-owned", "stale-statefulset", "stale-pod"}, tt.dataClaim)
+			if tt.whenDeleted == "Delete" && workloadOwned {
 				require.True(t, apierrors.IsNotFound(err), "a claim owned by the workload must follow whenDeleted=Delete")
 
 				return
 			}
-			require.NoError(t, err)
+			require.NoError(t, err, "a claim with another owner must not be deleted")
 			require.Equal(t, wantDataUID, data.UID)
 			switch {
-			case tt.dataClaim != "foreign-owner":
+			case workloadOwned || tt.dataClaim == "replaced":
 				require.Empty(t, data.OwnerReferences, "a retained claim must not stay owned by the workload")
-			case tt.whenDeleted == "Delete":
+			case tt.dataClaim == "foreign-owner" && tt.whenDeleted == "Delete":
 				require.Len(t, data.OwnerReferences, 2)
-			default:
+			case tt.dataClaim == "foreign-owner":
 				require.Len(t, data.OwnerReferences, 1)
 				require.Equal(t, "ConfigMap", data.OwnerReferences[0].Kind)
+			default:
+				require.Len(t, data.OwnerReferences, 1, "another owner's reference must be preserved")
 			}
 		})
 	}

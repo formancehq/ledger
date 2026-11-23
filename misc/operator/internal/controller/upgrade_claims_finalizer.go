@@ -8,6 +8,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -68,10 +69,17 @@ func (r *ClusterReconciler) finalizeUpgradeClaims(ctx context.Context, ledger *l
 		return ctrl.Result{}, nil
 	}
 	if state := ledger.Status.Upgrade; state != nil {
+		sts := &appsv1.StatefulSet{}
+		err := r.storageAPIReader().Get(ctx, types.NamespacedName{Name: resourceName(ledger.Name), Namespace: ledger.Namespace}, sts)
+		if apierrors.IsNotFound(err) {
+			sts = nil
+		} else if err != nil {
+			return ctrl.Result{}, fmt.Errorf("reading StatefulSet: %w", err)
+		}
 		policy := ledger.Spec.Persistence.RetentionPolicy
 		deleteClaims := policy != nil && policy.WhenDeleted == "Delete"
 		if !deleteClaims {
-			settled, err := r.statefulSetRetainsClaims(ctx, ledger)
+			settled, err := r.statefulSetRetainsClaims(ctx, ledger, sts)
 			if err != nil {
 				return ctrl.Result{}, err
 			}
@@ -91,7 +99,10 @@ func (r *ClusterReconciler) finalizeUpgradeClaims(ctx context.Context, ledger *l
 			if string(pvc.UID) != uid || !pvc.DeletionTimestamp.IsZero() {
 				continue
 			}
-			otherOwners := ownersOutsideWorkload(pvc, ledger)
+			otherOwners, err := r.ownersOutsideWorkload(ctx, ledger, sts, pvc)
+			if err != nil {
+				return ctrl.Result{}, err
+			}
 			if !deleteClaims {
 				if len(otherOwners) == len(pvc.OwnerReferences) {
 					continue
@@ -122,16 +133,8 @@ func (r *ClusterReconciler) finalizeUpgradeClaims(ctx context.Context, ledger *l
 // statefulSetRetainsClaims reports whether the Cluster's StatefulSet can no
 // longer add its owner reference to a claim: it is gone or deleting, or its
 // controller has observed the Retain policy applied here.
-func (r *ClusterReconciler) statefulSetRetainsClaims(ctx context.Context, ledger *ledgerv1alpha1.Cluster) (bool, error) {
-	sts := &appsv1.StatefulSet{}
-	err := r.storageAPIReader().Get(ctx, types.NamespacedName{Name: resourceName(ledger.Name), Namespace: ledger.Namespace}, sts)
-	if apierrors.IsNotFound(err) {
-		return true, nil
-	}
-	if err != nil {
-		return false, fmt.Errorf("reading StatefulSet: %w", err)
-	}
-	if !metav1.IsControlledBy(sts, ledger) || !sts.DeletionTimestamp.IsZero() {
+func (r *ClusterReconciler) statefulSetRetainsClaims(ctx context.Context, ledger *ledgerv1alpha1.Cluster, sts *appsv1.StatefulSet) (bool, error) {
+	if sts == nil || !metav1.IsControlledBy(sts, ledger) || !sts.DeletionTimestamp.IsZero() {
 		return true, nil
 	}
 	changed, err := r.reconcileStatefulSetRetentionPolicy(ctx, ledger, sts)
@@ -142,22 +145,48 @@ func (r *ClusterReconciler) statefulSetRetainsClaims(ctx context.Context, ledger
 	return !changed && sts.Status.ObservedGeneration >= sts.Generation, nil
 }
 
-// ownersOutsideWorkload returns the claim's owner references other than the
-// Cluster's StatefulSet and its Pods, which garbage collection removes with the
-// Cluster.
-func ownersOutsideWorkload(pvc *corev1.PersistentVolumeClaim, ledger *ledgerv1alpha1.Cluster) []metav1.OwnerReference {
+// ownersOutsideWorkload returns the claim's owner references that garbage
+// collection does not remove with the Cluster. A reference named after the
+// Cluster's StatefulSet or one of its Pods counts as the workload's only by
+// UID: the object it designates no longer exists, or exists and belongs to the
+// Cluster. A live object of the same name that is not the Cluster's is another
+// owner.
+func (r *ClusterReconciler) ownersOutsideWorkload(ctx context.Context, ledger *ledgerv1alpha1.Cluster, sts *appsv1.StatefulSet, pvc *corev1.PersistentVolumeClaim) ([]metav1.OwnerReference, error) {
+	stsName := resourceName(ledger.Name)
+	workloadUIDs := map[types.UID]bool{types.UID(ledger.Status.Upgrade.StatefulSetUID): true}
+	if sts != nil && metav1.IsControlledBy(sts, ledger) {
+		workloadUIDs[sts.UID] = true
+	}
 	var others []metav1.OwnerReference
 	for _, owner := range pvc.OwnerReferences {
-		if owner.Kind == "StatefulSet" && owner.Name == resourceName(ledger.Name) {
+		group, err := schema.ParseGroupVersion(owner.APIVersion)
+		if err != nil {
+			others = append(others, owner)
+
 			continue
 		}
-		if owner.Kind == "Pod" && hasStatefulSetOrdinal(owner.Name, resourceName(ledger.Name)) {
-			continue
+		switch {
+		case group.Group == appsv1.GroupName && owner.Kind == "StatefulSet" && owner.Name == stsName:
+			if sts == nil || sts.UID != owner.UID || metav1.IsControlledBy(sts, ledger) {
+				continue
+			}
+		case group.Group == corev1.GroupName && owner.Kind == "Pod" && hasStatefulSetOrdinal(owner.Name, stsName):
+			pod := &corev1.Pod{}
+			err := r.storageAPIReader().Get(ctx, types.NamespacedName{Name: owner.Name, Namespace: ledger.Namespace}, pod)
+			if err != nil && !apierrors.IsNotFound(err) {
+				return nil, fmt.Errorf("reading Pod %s: %w", owner.Name, err)
+			}
+			if err != nil || pod.UID != owner.UID {
+				continue
+			}
+			if controller := metav1.GetControllerOf(pod); controller != nil && controller.Kind == "StatefulSet" && controller.Name == stsName && workloadUIDs[controller.UID] {
+				continue
+			}
 		}
 		others = append(others, owner)
 	}
 
-	return others
+	return others, nil
 }
 
 // reconcileUpgradeClaimAdoption restores the requested retention policy on the

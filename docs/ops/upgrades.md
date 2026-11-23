@@ -159,7 +159,9 @@ deletes each of them, whether or not the StatefulSet currently owns it. With
 and its Pods from them; while the StatefulSet exists and is not being deleted,
 it first applies `Retain` to it and waits for the StatefulSet controller to
 observe that policy. A claim with any other owner is not deleted, and that
-owner reference is kept. A claim that Kubernetes has already marked for
+owner reference is kept. Owners are identified by UID: a live StatefulSet or
+Pod that only carries the workload's name is another owner, and a reference to
+a StatefulSet or Pod that no longer exists is handled as the workload's. A claim that Kubernetes has already marked for
 deletion cannot be retained: after switching `whenDeleted` from `Delete` to
 `Retain`, wait until the claims no longer list the StatefulSet as an owner
 before deleting the Cluster or its StatefulSet, as outside an upgrade.

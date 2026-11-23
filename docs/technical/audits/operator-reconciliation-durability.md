@@ -279,7 +279,10 @@ finalizer is released, without inferring the outcome from the workload's owner
 references: `Delete` deletes the claim, `Retain` removes the owner references
 of the StatefulSet and its Pods once the StatefulSet is absent, deleting, or
 has observed `Retain`. A same-name replacement claim is not a target, and
-another owner's reference is preserved and blocks deletion. Completion must not
+another owner's reference is preserved and blocks deletion. Workload owners are
+identified by UID and API group: a live same-name StatefulSet or Pod that is
+not the Cluster's is another owner, and only a reference whose target no longer
+exists is treated as the workload's. Completion must not
 clear `status.upgrade` or release the finalizer while a recorded claim is
 missing, replaced, deleting or rebound, nor until the StatefulSet controller
 has observed the requested policy and claim ownership matches it: under
