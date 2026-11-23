@@ -373,10 +373,10 @@ var _ = Describe("Restore idempotency keys", Ordered, func() {
 		})
 
 		It("replays the pre-checkpoint key after restore", func() {
-			// preservedKey's outcome rode the raw-SST checkpoint copy, not the
-			// later checkpoint; replaying it after restore proves the earlier key
-			// of the expires_at projection survived (CheckStore below re-verifies
-			// its frozen expires_at against the audit chain).
+			// preservedKey was committed before the first checkpoint and remains
+			// in the latest complete checkpoint. Replaying it after restore proves
+			// the earlier key of the expires_at projection survived. CheckStore below
+			// re-verifies its frozen expires_at against the audit chain.
 			_, err := client.Apply(ctx, preservedTx())
 			Expect(err).To(Succeed(), "restored: replaying the pre-checkpoint key must succeed")
 

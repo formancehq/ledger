@@ -72,8 +72,8 @@ Outbound event checks use credential-bearing created-ledger logs. Encode the pro
 
 `BackupDestination.s3AccessKeyIdFrom` and `s3SecretAccessKeyFrom` carry only
 same-namespace Secret name/key references. `buildBackupJob` emits non-optional
-`secretKeyRef` environment entries. Exercise full and incremental reconciliation
-and JSON/YAML serialization of Backup, BackupRun, Job and Pod template with
+`secretKeyRef` environment entries. Exercise scheduled and manual checkpoint
+reconciliation and JSON/YAML serialization of Backup, BackupRun, Job and Pod template with
 separate synthetic key canaries and a retained bucket control. Require no raw
 or serialized/encoded credentials in these resources or S3 command arguments.
 Then exercise the production `ledgerctl` environment binder and storage protobuf

@@ -194,6 +194,7 @@ var _ = Describe("S3 Backup", Ordered, func() {
 	It("should update the backup after adding more data on S3", func() {
 		manifestBefore, err := readS3BackupManifest(ctx, s3Client)
 		Expect(err).To(Succeed())
+		Expect(manifestBefore.Checkpoint).NotTo(BeNil())
 		timestampBefore := manifestBefore.Checkpoint.Timestamp
 
 		// Add more data
@@ -225,16 +226,25 @@ var _ = Describe("S3 Backup", Ordered, func() {
 	})
 
 	It("should make the deprecated incremental RPC publish a checkpoint", func() {
-		_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateForceTransactionAction("s3-backup-test",
+		manifestBefore, err := readS3BackupManifest(ctx, s3Client)
+		Expect(err).To(Succeed())
+		beforeLog := manifestBefore.Checkpoint.LastLogSequence
+		beforeAudit := manifestBefore.Checkpoint.LastAuditSequence
+
+		_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateForceTransactionAction("s3-backup-test",
 			[]*commonpb.Posting{actions.NewPosting("world", "users:charlie", big.NewInt(500), "GBP")}, nil)))
 		Expect(err).To(Succeed())
 		response, err := clusterClient.IncrementalBackup(ctx, incrementalBackupRequest())
 		Expect(err).To(Succeed())
 		Expect(response.GetSegmentsUploaded()).To(BeZero())
+		Expect(response.GetLastLogSequence()).To(BeNumerically(">", beforeLog))
+		Expect(response.GetLastAuditSequence()).To(BeNumerically(">", beforeAudit))
 		manifest, err := readS3BackupManifest(ctx, s3Client)
 		Expect(err).To(Succeed())
 		Expect(manifest.Exports).To(BeEmpty())
 		Expect(manifest.Checkpoint.Files).NotTo(BeEmpty())
+		Expect(manifest.Checkpoint.LastLogSequence).To(Equal(response.GetLastLogSequence()))
+		Expect(manifest.Checkpoint.LastAuditSequence).To(Equal(response.GetLastAuditSequence()))
 		for _, file := range manifest.Checkpoint.Files {
 			Expect(backupS3ObjectExists(ctx, s3Client, file.Key)).To(BeTrue())
 		}
