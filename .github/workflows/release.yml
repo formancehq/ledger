@@ -31,7 +31,7 @@ jobs:
           username: NumaryBot
           password: ${{ secrets.NUMARY_GITHUB_TOKEN }}
       - run: >
-          nix develop .#ci --command just release
+          nix develop .#release --command just release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GORELEASER_KEY: ${{ secrets.GORELEASER_KEY }}

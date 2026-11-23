@@ -4,12 +4,11 @@ version: 2
 project_name: ledger
 dist: build/release
 
-# IMAGE_REPOSITORY controls where Docker images are pushed. Override the env
-# var to publish to a different GHCR location. Default targets the canonical
-# `formancehq/ledger` published image.
+# Override these repositories for isolated image publication.
+# The PR recipe sets PR_IMAGE_TAG and, when requested, PR_OPERATOR_TAG.
+# An omitted operator tag skips the operator only in PR mode.
 env:
 - IMAGE_REPOSITORY={{ envOrDefault "IMAGE_REPOSITORY" "ghcr.io/formancehq/ledger" }}
-
 - OPERATOR_IMAGE_REPOSITORY={{ envOrDefault "OPERATOR_IMAGE_REPOSITORY" "ghcr.io/formancehq/ledger-operator" }}
 
 builds:
@@ -124,6 +123,15 @@ archives:
   name_template: '{{ .ProjectName }}_{{ if or (not .IsNightly) (index .Env "DEV_VERSION") }}v{{ end }}{{ .Version }}_{{ .Os }}-{{ .Arch }}'
   wrap_in_directory: true
 
+# Catalog the actual downloaded archives, including their Go dependencies.
+sboms:
+- id: archive-spdx
+  artifacts: archive
+  documents: ["${artifact}.spdx.json"]
+  # Inventory the archive without network enrichment during release.
+  args: ["$artifact", "--output", "spdx-json=$document"]
+  disable: "{{ .IsNightly }}"
+
 checksum:
   name_template: "checksums.txt"
 
@@ -168,7 +176,7 @@ dockers_v2:
   platforms:
   - linux/amd64
   - linux/arm64
-  sbom: false
+  sbom: "{{ not .IsNightly }}"
   flags:
   # PR image builds enable provenance; retain the existing release default.
   - '--provenance={{ envOrDefault "IMAGE_PROVENANCE" "false" }}'
@@ -195,7 +203,7 @@ dockers_v2:
   platforms:
   - linux/amd64
   - linux/arm64
-  sbom: false
+  sbom: "{{ not .IsNightly }}"
   flags:
   - '--provenance={{ envOrDefault "IMAGE_PROVENANCE" "false" }}'
   labels:

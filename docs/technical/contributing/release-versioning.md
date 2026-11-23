@@ -15,12 +15,22 @@ and both `linux/amd64` and `linux/arm64` images: `ledger` and
 tag; only stable releases also update `latest`. The release workflow then
 publishes the operator Helm charts, after their image is available.
 
+### Software bills of materials
+
+For a tag, including a release candidate, GoReleaser uses Syft from the
+`nix develop .#release` shell to attach one `<archive>.spdx.json` asset per
+Ledger archive. BuildKit attaches an SPDX SBOM for each platform of each
+image. Inspect the image SBOM by digest with
+`docker buildx imagetools inspect <repository>@<digest> --format '{{json .SBOM}}'`.
+PR and nightly builds do not generate SBOMs.
+
 ## Development versions
 
 `Release-Latest` in `.github/workflows/main.yml` runs
 [`formancehq/ci/actions/dev-version`](https://github.com/formancehq/ci/blob/main/docs/actions/dev-version.md)
 and passes the result to GoReleaser as `DEV_VERSION`. The nightly images and
-archives on `main` are versioned from it:
+Ledger archives on `main` are versioned from it. The Ledger and operator
+images share the same nightly version:
 
 | Highest SemVer tag reachable from the commit | Nightly version |
 |---|---|
@@ -42,9 +52,8 @@ of the PR tag's commit, so a PR build cannot push a release tag. The same
 GoReleaser invocation publishes the operator under `pr-<num>-<sha7>` when
 `just docker-build-pr <ledger-image> true` requests it. The standalone perf
 build omits the second argument and publishes only Ledger. Both paths disable
-GitHub Release publication. The `g<sha>`
-part is the same commit as `<sha7>`. The squash commit built on `main` after
-merge is a different commit, so it gets its own version.
+GitHub Release publication. The `g<sha>` part is the same commit as `<sha7>`.
+The squash commit built on `main` after merge gets its own version.
 
 Only tags in the commit's history count. A release tagged on a release branch is
 not visible from `main`, so `main` needs a marker once it starts the next
