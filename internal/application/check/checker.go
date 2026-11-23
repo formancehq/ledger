@@ -214,8 +214,8 @@ type checkReplayState struct {
 	queryCheckpointSchedule string
 }
 
-// pinCheckSnapshots pins the peer before the primary store. The order keeps
-// the peer fold cursor no farther ahead than the primary log head.
+// pinCheckSnapshots pins the peer before the primary store. The order keeps a
+// race from putting the peer fold cursor ahead of the primary log head.
 func (c *Checker) pinCheckSnapshots() (*pebble.Snapshot, *dal.ReadHandle, uint64, error) {
 	// Pin the peer read-index snapshot FIRST — strictly BEFORE the primary one.
 	// The order is load-bearing for compareReverseMapOrphans, which compares the
@@ -230,8 +230,9 @@ func (c *Checker) pinCheckSnapshots() (*pebble.Snapshot, *dal.ReadHandle, uint64
 	//
 	//	indexedSequence = progress(t0) <= maxLogSeq(t0) <= maxLogSeq(t1) = lastSequence
 	//
-	// which makes a peer cursor AHEAD of the verified sequence impossible by
-	// construction rather than merely unlikely. Taken in the reverse order the
+	// so no race can put the peer cursor AHEAD of the verified sequence. A crash
+	// still can, because both stores lose unsynced writes independently; see
+	// ALIGNMENT in reverse_map_orphans.go. Taken in the reverse order the
 	// gap admits logs applied and folded between the two pins, and the pass then
 	// judges rows for ledgers and fields created after the primary pin against
 	// oracles that predate them — reporting a healthy cluster as corrupt.

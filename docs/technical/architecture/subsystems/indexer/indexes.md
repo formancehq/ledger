@@ -308,14 +308,14 @@ The pass skips — logged at INFO, never reported as a clean result — when the
 |---|---|
 | `indexedSequence == lastSequence` | judges rows: reports any field with no registered index; the replayed schema classifies the finding against the owning lifecycle path |
 | `indexedSequence < lastSequence` | decodes keys only — no verdict |
-| `indexedSequence > lastSequence` | reports the position itself as `REVERSE_MAP_ORPHAN`; still no per-row verdict |
+| `indexedSequence > lastSequence` | decodes keys only — no verdict |
 | any position | a key that does not decode is always reported; it needs no oracle |
 
 The two unaligned positions are not symmetric.
 
 *Behind* is the ordinary state on a live cluster: the registry is written at Raft apply while the reverse map folds later, so between apply and fold a legitimately-removed field has no registry entry but still has live rows.
 
-*Ahead* cannot happen by race. The builder folds **from** the primary log stream and writes its cursor for logs it has already read out of the primary store, so `progress(t) <= maxLogSeq(t)` at every instant, and both values are monotonically non-decreasing. `Check()` pins the peer snapshot **strictly before** the primary snapshot precisely so that ordering is inherited:
+*Ahead* cannot happen by race while both stores keep every write. The builder folds **from** the primary log stream and writes its cursor for logs it has already read out of the primary store, so `progress(t) <= maxLogSeq(t)` at every instant, and both values are monotonically non-decreasing. `Check()` pins the peer snapshot **strictly before** the primary snapshot precisely so that ordering is inherited:
 
 ```
 indexedSequence = progress(t_peer) <= maxLogSeq(t_peer) <= maxLogSeq(t_primary) = lastSequence
@@ -323,9 +323,7 @@ indexedSequence = progress(t_peer) <= maxLogSeq(t_peer) <= maxLogSeq(t_primary) 
 
 Taken in the reverse order, the gap between the two pins admits logs applied and folded in between, and the pass then judges rows for ledgers and fields created after the primary pin against oracles that predate them — reporting a healthy cluster as corrupt. The ordering is what makes cross-store snapshot atomicity unnecessary: an ordering that can only leave the peer *behind* is enough, because behind is already a skip.
 
-Ahead is not reachable at runtime at all. `RestoreCheckpoint` — the only thing that replaces the primary store wholesale — has a single production caller (`dal.incomingRestoreFactory.Run`, via `state.Synchronizer.SynchronizeWithLeader`), and it installs a checkpoint fetched **from** the leader, which only moves a node forward; an applied index can never exceed the leader's log to begin with.
-
-So an ahead cursor means the deployment is already broken — an offline restore of an older backup into a data directory whose `read-indexes/` survived is the classic shape — and the read index then holds rows folded from logs the primary no longer has. That state never self-heals (the index builder, unlike `usagebuilder`, has **no** rollback reset), and it is the corruption this pass exists to surface, so it is **reported**: limiting the pass to key decoding would leave the one read-index limb the checker covers unverified behind an INFO log (invariant #7). The rows themselves stay unjudged — every oracle term is frozen at the verified sequence — so the finding carries the two cursor positions and no per-row orphan.
+A crash breaks that ordering. Both stores commit with `pebble.NoSync` and lose unsynced writes independently, so the primary store can reopen behind the read-store cursor. WAL replay or follower sync restores the committed logs, but `CheckStore` is served while an out-of-sync node waits for the leader's checkpoint. An offline restore of an older backup into a data directory whose `read-indexes/` survived leaves the same position permanently, and the two stores cannot tell these cases apart. *Ahead* is therefore a skip like *behind*: every oracle term is frozen at the verified sequence, so no row can be judged, and reporting the position would flag a recovering node as corrupt.
 
 **Ledger liveness is the only oracle for the unknown-ledger class.** `DeleteLedger` removes the name from the audit-derived live set (and range-deletes the whole `[0x03][ledger]` span at apply); a later `CreateLedger` of the same name puts it back. Deriving the verdict from liveness alone — rather than from a separate append-only "was deleted in the replay" set consulted first — is what keeps a recreated ledger's rows legitimate by construction, instead of resting on the retained tombstone that makes that lifecycle unreachable today.
 

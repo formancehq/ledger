@@ -81,7 +81,8 @@ this manifest.
   and audited ledger liveness, not row values. It pins the peer before the main
   snapshot. Aligned cursors permit oracle-dependent verdicts; lag or no peer
   prevents full verification, malformed keys need no oracle, and ahead is
-  reported according to the current contract. Nonzero concurrent versions are
+  skipped like lag: a crash can reopen the primary behind the peer until it
+  regains its logs. Nonzero concurrent versions are
   valid during rewrites. `IndexVersionState`, other peer index contents and
   `usagestore` remain outside main-store checking.
 - Deletion and retention qualify comparisons. In particular, idempotency
