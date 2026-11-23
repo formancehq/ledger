@@ -96,3 +96,27 @@ func TestExecuteLogResults(t *testing.T) {
 		}
 	}
 }
+
+func TestExecuteLogResultFileFailure(t *testing.T) {
+	for _, all := range []bool{false, true} {
+		t.Run(strconv.FormatBool(all), func(t *testing.T) {
+			client := &logQueryClient{}
+			cmd := NewExecuteCommand()
+			cmd.SetContext(context.Background())
+			cmd.Flags().String("auth-token", "test", "")
+			cmd.Flags().String("result-file", "", "")
+			require.NoError(t, cmd.Flags().Set("json", "true"))
+			require.NoError(t, cmd.Flags().Set("result-file", t.TempDir()))
+			req := &servicepb.ExecutePreparedQueryRequest{Ledger: "ledger", QueryName: "logs"}
+			var err error
+			if all {
+				err = executeAll(cmd, client, req, false)
+				require.Equal(t, []string{"", "next-page"}, client.cursors)
+			} else {
+				err = executeWithPager(cmd, client, req, false)
+				require.Equal(t, []string{""}, client.cursors)
+			}
+			require.ErrorContains(t, err, "opening result file")
+		})
+	}
+}

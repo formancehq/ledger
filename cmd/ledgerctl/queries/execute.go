@@ -136,7 +136,9 @@ func executeWithPager(cmd *cobra.Command, client servicepb.BucketServiceClient, 
 
 		switch result := resp.GetResult().(type) {
 		case *servicepb.ExecutePreparedQueryResponse_Cursor:
-			renderCursorPage(cmd, result.Cursor, pageNum)
+			if err := renderCursorPage(cmd, result.Cursor, pageNum); err != nil {
+				return err
+			}
 
 			if showProfile {
 				cmdutil.RenderProfile(cmdutil.ExtractProfile(trailer))
@@ -243,7 +245,9 @@ func executeAll(cmd *cobra.Command, client servicepb.BucketServiceClient, req *s
 		merged.LogData = append(merged.LogData, page.GetLogData()...)
 	}
 
-	renderCursorPage(cmd, merged, 1)
+	if err := renderCursorPage(cmd, merged, 1); err != nil {
+		return err
+	}
 
 	if showProfile {
 		cmdutil.RenderProfile(cmdutil.ExtractProfile(lastTrailer))
@@ -252,10 +256,10 @@ func executeAll(cmd *cobra.Command, client servicepb.BucketServiceClient, req *s
 	return nil
 }
 
-func renderCursorPage(cmd *cobra.Command, cursor *commonpb.PreparedQueryCursor, pageNum int) {
+func renderCursorPage(cmd *cobra.Command, cursor *commonpb.PreparedQueryCursor, pageNum int) error {
 	if len(cursor.GetAccountData()) > 0 {
 		if handled, err := cmdutil.EncodeStructured(cmd, cursor.GetAccountData()); handled || err != nil {
-			return
+			return err
 		}
 
 		if pageNum > 1 {
@@ -274,12 +278,12 @@ func renderCursorPage(cmd *cobra.Command, cursor *commonpb.PreparedQueryCursor, 
 
 		_ = pterm.DefaultTable.WithHasHeader().WithData(tableData).Render()
 
-		return
+		return nil
 	}
 
 	if len(cursor.GetTransactionData()) > 0 {
 		if handled, err := cmdutil.EncodeStructured(cmd, cursor.GetTransactionData()); handled || err != nil {
-			return
+			return err
 		}
 
 		if pageNum > 1 {
@@ -301,12 +305,12 @@ func renderCursorPage(cmd *cobra.Command, cursor *commonpb.PreparedQueryCursor, 
 
 		_ = pterm.DefaultTable.WithHasHeader().WithData(tableData).Render()
 
-		return
+		return nil
 	}
 
 	if len(cursor.GetLogData()) > 0 {
 		if handled, err := cmdutil.EncodeStructured(cmd, cursor.GetLogData()); handled || err != nil {
-			return
+			return err
 		}
 
 		if pageNum > 1 {
@@ -337,7 +341,7 @@ func renderCursorPage(cmd *cobra.Command, cursor *commonpb.PreparedQueryCursor, 
 
 		_ = pterm.DefaultTable.WithHasHeader().WithData(tableData).Render()
 
-		return
+		return nil
 	}
 
 	if pageNum == 1 {
@@ -345,6 +349,8 @@ func renderCursorPage(cmd *cobra.Command, cursor *commonpb.PreparedQueryCursor, 
 	} else {
 		pterm.Info.Println("No more results.")
 	}
+
+	return nil
 }
 
 func renderAggregate(cmd *cobra.Command, result *commonpb.AggregateResult) error {
