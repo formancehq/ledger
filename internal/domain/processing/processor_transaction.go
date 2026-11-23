@@ -12,14 +12,14 @@ import (
 )
 
 func processCreateTransaction(ledger string, order *raftcmdpb.CreateTransactionOrder, ctx *Context) (*commonpb.LedgerLogPayload, domain.SerializableError) {
-	prepared, err := prepareTransactionExecution(ledger, order, ctx)
+	staged, err := stageLedgerExecution(ledger, order, ctx)
 	if err != nil {
 		return nil, err
 	}
-	if len(prepared.result.Postings) == 0 {
+	if len(staged.result.Postings) == 0 {
 		return nil, domain.ErrEmptyTransaction
 	}
-	return processProducedTransaction(ledger, order, ctx, prepared)
+	return processProducedTransaction(ledger, order, ctx, staged)
 }
 
 func processExecuteNumscript(ledger string, execution *raftcmdpb.ExecuteNumscriptOrder, ctx *Context) (*commonpb.LedgerLogPayload, domain.SerializableError) {
@@ -28,30 +28,30 @@ func processExecuteNumscript(ledger string, execution *raftcmdpb.ExecuteNumscrip
 		Timestamp: execution.GetTimestamp(), Metadata: execution.GetMetadata(),
 		AccountMetadata: execution.GetAccountMetadata(), Reference: execution.GetReference(),
 	}
-	prepared, err := prepareTransactionExecution(ledger, order, ctx)
+	staged, err := stageLedgerExecution(ledger, order, ctx)
 	if err != nil {
 		return nil, err
 	}
-	if len(prepared.result.Postings) == 0 {
-		if (len(prepared.result.TransactionMetadata) > 0 || len(order.GetMetadata()) > 0) && (hasScriptAccountMetadataUpdates(prepared.result.AccountsMetadata) || hasAccountMetadataUpdates(order.GetAccountMetadata())) {
+	if len(staged.result.Postings) == 0 {
+		if (len(staged.result.TransactionMetadata) > 0 || len(order.GetMetadata()) > 0) && (hasScriptAccountMetadataUpdates(staged.result.AccountsMetadata) || hasAccountMetadataUpdates(order.GetAccountMetadata())) {
 			return nil, domain.ErrMetadataOnlyTransactionMetadata
 		}
-		if hasScriptAccountMetadataUpdates(prepared.result.AccountsMetadata) || hasAccountMetadataUpdates(order.GetAccountMetadata()) {
-			return processMetadataOnly(ledger, order, prepared.result, ctx)
+		if hasScriptAccountMetadataUpdates(staged.result.AccountsMetadata) || hasAccountMetadataUpdates(order.GetAccountMetadata()) {
+			return processMetadataOnly(ledger, order, staged.result, ctx)
 		}
 		return nil, domain.ErrEmptyTransaction
 	}
-	return processProducedTransaction(ledger, order, ctx, prepared)
+	return processProducedTransaction(ledger, order, ctx, staged)
 }
 
-type preparedTransactionExecution struct {
+type stagedLedgerExecution struct {
 	result                *produceResult
 	nextTransactionID     uint64
 	advancedTransactionID uint64
 	metadataOnlyCandidate bool
 }
 
-func prepareTransactionExecution(ledger string, order *raftcmdpb.CreateTransactionOrder, ctx *Context) (*preparedTransactionExecution, domain.SerializableError) {
+func stageLedgerExecution(ledger string, order *raftcmdpb.CreateTransactionOrder, ctx *Context) (*stagedLedgerExecution, domain.SerializableError) {
 	if len(order.GetReference()) > domain.MaxTransactionReferenceLength {
 		return nil, domain.ErrTransactionReferenceTooLong
 	}
@@ -166,17 +166,17 @@ func prepareTransactionExecution(ledger string, order *raftcmdpb.CreateTransacti
 		return nil, err
 	}
 
-	return &preparedTransactionExecution{result: result, nextTransactionID: nextTransactionID, advancedTransactionID: advancedTransactionID, metadataOnlyCandidate: metadataOnlyCandidate}, nil
+	return &stagedLedgerExecution{result: result, nextTransactionID: nextTransactionID, advancedTransactionID: advancedTransactionID, metadataOnlyCandidate: metadataOnlyCandidate}, nil
 }
 
-func processProducedTransaction(ledger string, order *raftcmdpb.CreateTransactionOrder, ctx *Context, prepared *preparedTransactionExecution) (*commonpb.LedgerLogPayload, domain.SerializableError) {
-	result := prepared.result
+func processProducedTransaction(ledger string, order *raftcmdpb.CreateTransactionOrder, ctx *Context, staged *stagedLedgerExecution) (*commonpb.LedgerLogPayload, domain.SerializableError) {
+	result := staged.result
 	boundaries := ctx.Boundaries
 	s := ctx.Scope
 	info := ctx.LedgerInfo
-	nextTransactionID := prepared.nextTransactionID
-	advancedTransactionID := prepared.advancedTransactionID
-	if prepared.metadataOnlyCandidate {
+	nextTransactionID := staged.nextTransactionID
+	advancedTransactionID := staged.advancedTransactionID
+	if staged.metadataOnlyCandidate {
 		nextTransactionID = boundaries.GetNextTransactionId()
 		var exhausted *domain.ErrSequenceExhausted
 		advancedTransactionID, exhausted = domain.CheckedNextSequence(nextTransactionID, domain.SequenceCounterTransactionID)
