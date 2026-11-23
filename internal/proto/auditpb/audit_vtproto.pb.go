@@ -1282,7 +1282,7 @@ func (m *AuditEntry) UnmarshalVT(dAtA []byte) error {
 						break
 					}
 				}
-				if packedLen < 0 {
+				if packedLen < 0 || packedLen%4 != 0 {
 					return protohelpers.ErrInvalidLength
 				}
 				postIndex := iNdEx + packedLen
@@ -1299,7 +1299,7 @@ func (m *AuditEntry) UnmarshalVT(dAtA []byte) error {
 				}
 				for iNdEx < postIndex {
 					var v uint32
-					if (iNdEx + 4) > l {
+					if (iNdEx + 4) > postIndex {
 						return io.ErrUnexpectedEOF
 					}
 					v = uint32(binary.LittleEndian.Uint32(dAtA[iNdEx:]))
