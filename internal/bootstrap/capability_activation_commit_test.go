@@ -12,7 +12,6 @@ import (
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/infra/capabilities"
-	"github.com/formancehq/ledger/v3/internal/infra/capabilities/catalog"
 	"github.com/formancehq/ledger/v3/internal/infra/node"
 	"github.com/formancehq/ledger/v3/internal/pkg/commands"
 	"github.com/formancehq/ledger/v3/internal/pkg/signal"
@@ -27,7 +26,7 @@ func TestCapabilityActivationDirectThroughRaftAfterDrain(t *testing.T) {
 	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
 	defer cancel()
 	supported := []capabilities.CapabilityID{1}
-	members := []capabilities.Member{{NodeID: 1, Role: capabilities.Voter, Reachable: true, Capabilities: supported}}
+	members := []capabilities.Member{{NodeID: 1, Role: capabilities.Voter, Capabilities: supported}}
 	var store *dal.Store
 	gate := func(_ context.Context, proposal *node.Proposal) error {
 		policy, err := query.ReadClusterPolicy(store)
@@ -131,9 +130,5 @@ func TestCapabilityActivationDirectThroughRaftAfterDrain(t *testing.T) {
 	require.Equal(t, uint64(7), policy.GetRevision())
 	require.Equal(t, uint64(42), policy.GetQueryCheckpointLimit())
 	require.Equal(t, []uint32{1}, capabilities.ActiveIDs(policy))
-	require.ErrorIs(t, gate(ctx, proposal), capabilities.ErrMissingCapability)
-	catalog.SelectCreateLedgerValidation(business, policy)
-	marked, err := node.NewProposal(business.GetId(), business)
-	require.NoError(t, err)
-	require.NoError(t, gate(ctx, marked))
+	require.NoError(t, gate(ctx, proposal))
 }

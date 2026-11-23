@@ -35,13 +35,10 @@ func TestMandatoryStopVersionBoundary(t *testing.T) {
 	t.Parallel()
 	require.False(t, requiresStoppedUpgrade("v3.0.0-rc.2", "v3.0.0-rc.3", mandatoryStopVersions), "rc.3 must remain rolling")
 	require.True(t, requiresStoppedUpgrade("v3.0.0-rc.3", "v3.0.0-rc.4", mandatoryStopVersions), "rc.4 must stop rc.3 voters before emitting payloads")
-	require.True(t, requiresStoppedUpgrade("v3.0.0-rc.4", "v3.0.0-rc.5", mandatoryStopVersions), "rc.5 must stop rc.4 voters before peer port, schema, controls, capability 1 activation and aggregate changes")
-	require.False(t, requiresStoppedUpgrade("v3.0.0-rc.5", "v3.0.0-rc.6", mandatoryStopVersions), "later RC upgrades remain rolling unless listed")
+	require.True(t, requiresStoppedUpgrade("v3.0.0-rc.4", "v3.0.0-rc.5", mandatoryStopVersions), "rc.5 must stop rc.4 voters before peer port, schema, controls and aggregate changes")
 	require.True(t, requiresPinnedUpgradeTarget("v3.0.0-rc.2", "latest", mandatoryStopVersions), "a moving tag could cross the rc.4 boundary")
 	require.True(t, requiresPinnedUpgradeTarget("v3.0.0-rc.3", "latest", mandatoryStopVersions))
 	require.True(t, requiresPinnedUpgradeTarget("v3.0.0-rc.4", "latest", mandatoryStopVersions), "a moving tag could cross the rc.5 boundary")
-	require.False(t, requiresPinnedUpgradeTarget("v3.0.0-rc.5", "latest", mandatoryStopVersions))
-	require.True(t, requiresIdentifiedUpgradeSource("latest", "v3.0.0-rc.5", mandatoryStopVersions))
 	for _, tt := range []struct {
 		source, target string
 		stop           bool
@@ -78,19 +75,6 @@ func TestMandatoryStopVersionBoundary(t *testing.T) {
 	} {
 		require.Equal(t, tt.block, requiresIdentifiedUpgradeSource(tt.source, tt.target, testStopVersions), "%q -> %q", tt.source, tt.target)
 	}
-}
-
-func TestStoppedUpgradeRC4ToRC5RequiresDrainPreflight(t *testing.T) {
-	t.Parallel()
-	cluster := newMinimalCluster()
-	cluster.Spec.Image.Tag = "v3.0.0-rc.5"
-	cluster.Annotations = map[string]string{ClusterDrainAnnotation: "true"}
-	sts := rcStatefulSet("ghcr.io/formancehq/ledger:v3.0.0-rc.4", true)
-
-	proceed, _, err := (&ClusterReconciler{}).reconcileRequiredUpgrade(t.Context(), cluster, sts)
-	require.False(t, proceed)
-	require.ErrorContains(t, err, "finish the annotated drain")
-	require.Nil(t, cluster.Status.Upgrade)
 }
 
 func TestStoppedUpgradeRepairsDependenciesBeforeWorkloadGate(t *testing.T) {

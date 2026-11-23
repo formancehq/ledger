@@ -2,11 +2,6 @@
 
 Admission (`internal/application/admission`) prepares Raft proposals. Client `Apply` requests become audited execution batches after signature validation, order conversion, and preload. The internal cluster-policy reconciler creates a separate operational-control proposal with no orders. Both forms share caller attribution, write gates, guarded submission, and result handling.
 
-For a batch containing CreateLedger, admission reads the committed capability
-policy and stamps capability ID 1 when active. The final `Node.Propose` gate
-rechecks policy and refuses an unmarked CreateLedger if activation raced the
-read; the FSM uses the persisted marker to select validation during replay.
-
 ## Documents
 
 | Document | Description |

@@ -118,17 +118,6 @@ membership, `ConfState`, and admission decision on every replica. This records
 the foundation for future activations; the current protocol cutover uses a
 coordinated stop and restart.
 
-For `CreateLedgerAccountTypesV2` (ID 1), collect the producer's observed policy,
-the final proposal marker, the policy revision at `Node.Propose`, and every
-voter and learner's committed support evidence. Activation between preparation
-and submission must reject an unmarked CreateLedger before reserving a Raft
-index. A marked proposal must be rejected while activation or any member's
-evidence is missing. The supported rollout remains a coordinated stop and
-restart before policy activation, with business admission paused until the
-activation is committed. Otherwise an unmarked proposal prepared before
-activation could be queued behind the policy proposal. Membership
-advertisements alone do not arm the new validation.
-
 ### Normal membership changes
 
 Prove which `ConfChangeV2` was admitted and which configuration commits it.

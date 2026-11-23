@@ -53,9 +53,8 @@ func TestAuditReplayerDisablesWAL(t *testing.T) {
 	require.NoError(t, err)
 }
 
-// Successful pre-activation creations remain valid business history after
-// capability 1 is introduced, even when their initial types are now rejected
-// for new marked proposals.
+// Successful creations from before the strengthened rule remain valid business
+// history, even when their initial types are rejected for new orders.
 func TestAuditReplayerPreservesLegacyCreateLedgerAccountTypes(t *testing.T) {
 	t.Parallel()
 

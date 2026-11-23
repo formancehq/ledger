@@ -49,7 +49,7 @@ func processCreateLedger(ledger string, order *raftcmdpb.CreateLedgerOrder, ctx 
 	var parsedAccountTypes map[string][]accounttype.PatternSegment
 	if src := order.GetAccountTypes(); len(src) > 0 {
 		canonicalAccountTypes = make(map[string]*commonpb.AccountType, len(src))
-		if ctx.createLedgerAccountTypesV2 {
+		if ctx.strictCreateLedgerAccountTypes {
 			parsedAccountTypes = make(map[string][]accounttype.PatternSegment, len(src))
 		}
 	}
@@ -69,7 +69,7 @@ func processCreateLedger(ledger string, order *raftcmdpb.CreateLedgerOrder, ctx 
 		if err != nil {
 			return nil, &domain.ErrInvalidPattern{Pattern: at.GetPattern(), Details: err.Error()}
 		}
-		if ctx.createLedgerAccountTypesV2 {
+		if ctx.strictCreateLedgerAccountTypes {
 			if err := accounttype.ValidateSegmentTypes(segments, at.GetSegmentTypes()); err != nil {
 				return nil, &domain.ErrInvalidPattern{Pattern: at.GetPattern(), Details: err.Error()}
 			}
@@ -90,7 +90,7 @@ func processCreateLedger(ledger string, order *raftcmdpb.CreateLedgerOrder, ctx 
 		clone := at.CloneVT()
 		clone.Name = name
 		canonicalAccountTypes[name] = clone
-		if ctx.createLedgerAccountTypesV2 {
+		if ctx.strictCreateLedgerAccountTypes {
 			parsedAccountTypes[name] = segments
 		}
 	}

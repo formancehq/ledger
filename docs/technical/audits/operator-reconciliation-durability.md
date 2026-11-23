@@ -99,17 +99,14 @@ decision and truthful status.
 ## RC upgrade boundary
 
 The `rc.2` to `rc.3` transition remains rolling; no stopped boundary may be
-selected for that adjacent pair. The hardcoded stopped boundaries are `rc.3`
-to `rc.4` and `rc.4` to `rc.5`. Prove that each target Operator rejects a
-skipped RC and a target newer than itself before changing the workload. At
-both stopped boundaries, preserve the drain epoch, PVC/PV identities and
-old-Pod absence across controller restarts and failed API writes. A
-release-grade test uses data and audit history created by the published source
-RC, then verifies non-empty replay and post-upgrade writes on the target.
-For RC.5, capability 1 remains inactive through the stop and may be activated
-only after every target member has restarted and refreshed its evidence.
-Locally built source candidates are useful preflight evidence but do not
-replace the published-source upgrade test.
+selected for that adjacent pair. The hardcoded stopped boundary is `rc.3` to
+`rc.4`. Prove that the rc.4 Operator rejects a skipped RC and a target newer
+than itself before changing the workload. At the stopped boundary, preserve
+the same drain epoch, PVC/PV identities and old-Pod absence across controller
+restarts and failed API writes. A release-grade test uses data and audit history
+created by the published rc.3 binary, then verifies non-empty replay and
+post-upgrade writes on rc.4. A locally built rc.3 candidate is useful preflight
+evidence but does not replace the published-source upgrade test.
 
 ## Derived object ownership boundary
 

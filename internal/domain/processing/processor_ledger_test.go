@@ -52,7 +52,7 @@ func TestProcessCreateLedger_RejectsInvalidInitialAccountTypeConstraints(t *test
 				},
 			},
 		},
-	}, &Context{Scope: mockStore, createLedgerAccountTypesV2: true})
+	}, &Context{Scope: mockStore, strictCreateLedgerAccountTypes: true})
 
 	var invalid *domain.ErrInvalidPattern
 	require.ErrorAs(t, derr, &invalid)
@@ -72,7 +72,7 @@ func TestProcessCreateLedger_RejectsConflictingInitialAccountTypes(t *testing.T)
 			"users-by-id":   {Pattern: "users:{id}"},
 			"users-by-name": {Pattern: "users:{name}"},
 		},
-	}, &Context{Scope: mockStore, createLedgerAccountTypesV2: true})
+	}, &Context{Scope: mockStore, strictCreateLedgerAccountTypes: true})
 
 	var conflict *domain.ErrAccountTypeConflict
 	require.ErrorAs(t, derr, &conflict)
@@ -94,7 +94,7 @@ func TestProcessCreateLedger_ConflictSelectionUsesFirstProcessedName(t *testing.
 				"z-last":   {Pattern: "users:{group}:123"},
 				"a-first":  {Pattern: "users:alpha:{id}"},
 			},
-		}, &Context{Scope: mockStore, createLedgerAccountTypesV2: true})
+		}, &Context{Scope: mockStore, strictCreateLedgerAccountTypes: true})
 
 		var conflict *domain.ErrAccountTypeConflict
 		require.ErrorAs(t, derr, &conflict)

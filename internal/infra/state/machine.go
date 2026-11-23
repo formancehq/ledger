@@ -5,7 +5,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"slices"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -23,7 +22,6 @@ import (
 	"github.com/formancehq/ledger/v3/internal/domain/processing"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
 	"github.com/formancehq/ledger/v3/internal/infra/bloom"
-	"github.com/formancehq/ledger/v3/internal/infra/capabilities/catalog"
 	"github.com/formancehq/ledger/v3/internal/pkg/proposals"
 	"github.com/formancehq/ledger/v3/internal/pkg/signal"
 	"github.com/formancehq/ledger/v3/internal/proto/auditpb"
@@ -1632,10 +1630,7 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 	// never re-walks `logs` to rebuild them.
 	var ordersResult *processing.OrdersResult
 	if err == nil {
-		ordersResult, err = fsm.processor.ProcessOrdersWithCreateLedgerValidation(
-			orders, scopeFactory, buffer,
-			slices.Contains(proposal.GetRequiredCapabilities(), uint32(catalog.CreateLedgerAccountTypesV2)),
-		)
+		ordersResult, err = fsm.processor.ProcessOrders(orders, scopeFactory, buffer)
 		if ordersResult != nil {
 			logs = ordersResult.Logs
 		}

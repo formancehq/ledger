@@ -24,12 +24,10 @@ import (
 // mirror asset mappings differently in the audited CreateLedger order. Stop
 // every rc.3 node before starting rc.4. The dedicated peer service port and
 // membership address migration first ship after the published rc.4, which
-// cannot read schema 3 or apply native configuration/capability controls or
-// CreateLedger capability 1's strengthened semantics. rc.5 also retypes
-// AggregatedVolume totals at the unchanged service protocol revision, so peers
-// on opposite sides of rc.5 misdecode forwarded aggregates. Stop every rc.4
-// node before starting rc.5. validateRCUpgrade checks adjacency, and
-// scripts/checkprotocolversion parses this literal.
+// cannot read schema 3 or apply native configuration/capability controls.
+// rc.5 also retypes AggregatedVolume totals at the unchanged protocol revision.
+// Stop every rc.4 node before starting rc.5. validateRCUpgrade checks adjacency,
+// and scripts/checkprotocolversion parses this literal.
 var mandatoryStopVersions = []string{"v3.0.0-rc.4", "v3.0.0-rc.5"}
 
 const requiredUpgradePoll = 5 * time.Second

@@ -11,11 +11,32 @@ import (
 	"slices"
 
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
 
 // CapabilityID is the stable numeric identity of a consensus capability.
 // The wire representation remains uint32 at protobuf and Raft JSON boundaries.
 type CapabilityID uint32
+
+// PreparedProposal is the opaque capability metadata produced while preparing
+// a final proposal. Callers can inspect it through RequiredCapabilities, but
+// cannot construct the declaration by passing an arbitrary slice to the node
+// proposal factory.
+type PreparedProposal struct {
+	required []CapabilityID
+}
+
+// RequiredCapabilities returns a defensive copy of the derived declaration.
+func (p PreparedProposal) RequiredCapabilities() []CapabilityID {
+	return slices.Clone(p.required)
+}
+
+// SupportedIDs is the immutable capability set implemented by this binary.
+// No protocol feature is activated yet; this empty registry keeps the
+// membership-evidence plumbing ready for the first real capability.
+func SupportedIDs() []CapabilityID {
+	return nil
+}
 
 func MembershipRequiredIDs(policy *commonpb.ClusterPolicy) []uint32 {
 	var required []uint32
@@ -86,6 +107,71 @@ var (
 	ErrActivationPending     = errors.New("capability activation is pending")
 	ErrCapabilityUnsupported = errors.New("capability is unsupported by a cluster member")
 )
+
+// RequiredCapabilities derives semantic protocol dependencies from the final
+// proposal shape. The registry is deliberately colocated with the wire
+// contract so a producer cannot make a feature-specific payload appear safe by
+// omitting required_capabilities. Predicates inspect only replicated fields,
+// which makes the result deterministic on every member.
+func RequiredCapabilities(proposal *raftcmdpb.Proposal) ([]CapabilityID, error) {
+	if proposal == nil {
+		return nil, fmt.Errorf("%w: nil proposal", ErrInvalidDeclaration)
+	}
+
+	return nil, nil
+}
+
+// PrepareProposal derives and stamps the semantic capability declaration and
+// returns the typed result for the caller to pass alongside the serialized
+// proposal. Keeping the result avoids decoding the same proposal again during
+// admission.
+func PrepareProposal(proposal *raftcmdpb.Proposal) (PreparedProposal, error) {
+	required, err := RequiredCapabilities(proposal)
+	if err != nil {
+		return PreparedProposal{}, err
+	}
+	proposal.RequiredCapabilities = make([]uint32, len(required))
+	for i, id := range required {
+		proposal.RequiredCapabilities[i] = uint32(id)
+	}
+
+	return PreparedProposal{required: required}, nil
+}
+
+// ValidateFinalProposal verifies that the declaration carried by the
+// serialized proposal matches both its semantic payload and the metadata
+// captured by the proposal factory. The factory runs this before queueing the
+// proposal, keeping full decoding off the Raft orchestrator.
+func ValidateFinalProposal(data []byte, declared []CapabilityID) error {
+	proposal := new(raftcmdpb.Proposal)
+	if err := proposal.UnmarshalVT(data); err != nil {
+		return fmt.Errorf("decode final proposal: %w", err)
+	}
+	expected, err := RequiredCapabilities(proposal)
+	if err != nil {
+		return err
+	}
+	wire := make([]CapabilityID, len(proposal.GetRequiredCapabilities()))
+	for i, id := range proposal.GetRequiredCapabilities() {
+		wire[i] = CapabilityID(id)
+	}
+	wire, err = Normalize(wire)
+	if err != nil {
+		return err
+	}
+	declared, err = Normalize(declared)
+	if err != nil {
+		return err
+	}
+	if !slices.Equal(wire, expected) {
+		return fmt.Errorf("%w: wire declaration does not match semantic payload", ErrMissingCapability)
+	}
+	if !slices.Equal(wire, declared) {
+		return fmt.Errorf("%w: declaration does not match final payload", ErrMissingCapability)
+	}
+
+	return nil
+}
 
 func (s State) Validate() error {
 	return nil

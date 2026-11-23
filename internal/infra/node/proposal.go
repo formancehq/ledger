@@ -1,12 +1,9 @@
 package node
 
 import (
-	"fmt"
-
 	"google.golang.org/protobuf/encoding/protowire"
 
 	"github.com/formancehq/ledger/v3/internal/infra/capabilities"
-	"github.com/formancehq/ledger/v3/internal/infra/capabilities/catalog"
 	"github.com/formancehq/ledger/v3/internal/pkg/futures"
 	"github.com/formancehq/ledger/v3/internal/pkg/proposals"
 	"github.com/formancehq/ledger/v3/internal/pkg/protowireutil"
@@ -34,7 +31,6 @@ type Proposal struct {
 	expectedTerm         uint64
 	requiredCapabilities []capabilities.CapabilityID
 	hasBusinessOrders    bool
-	hasCreateLedger      bool
 	// activePolicyCapabilities is populated by the proposal factory for
 	// SetClusterPolicy proposals/orders and capability activation transitions.
 	// Keeping the typed candidate alongside the
@@ -57,18 +53,12 @@ func newProposal(commandID uint64, data []byte, required []capabilities.Capabili
 	}
 }
 
-// NewProposal is the only public proposal factory. It serializes the command
-// and retains its declared capabilities as typed admission metadata. The
-// producer selects the declaration before calling this factory.
+// NewProposal is the only public proposal factory. It derives the capability
+// declaration and serializes the same final command, making it impossible for
+// the typed admission metadata to diverge from the wire payload.
 func NewProposal(commandID uint64, command *raftcmdpb.Proposal) (*Proposal, error) {
-	if command == nil {
-		return nil, fmt.Errorf("%w: nil proposal", capabilities.ErrInvalidDeclaration)
-	}
-	required := make([]capabilities.CapabilityID, len(command.GetRequiredCapabilities()))
-	for i, id := range command.GetRequiredCapabilities() {
-		required[i] = capabilities.CapabilityID(id)
-	}
-	if _, err := capabilities.Normalize(required); err != nil {
+	prepared, err := capabilities.PrepareProposal(command)
+	if err != nil {
 		return nil, err
 	}
 
@@ -77,8 +67,13 @@ func NewProposal(commandID uint64, command *raftcmdpb.Proposal) (*Proposal, erro
 		return nil, err
 	}
 
-	proposal := newProposal(commandID, data, required)
-	proposal.hasCreateLedger = catalog.HasCreateLedger(command)
+	proposal := newProposal(commandID, data, prepared.RequiredCapabilities())
+	// Validate the complete serialized command before it enters the Raft queue.
+	// SetPredictedIndex only appends a fixed-width index field afterward; it
+	// cannot change the payload or its capability declaration.
+	if err := capabilities.ValidateFinalProposal(data, proposal.requiredCapabilities); err != nil {
+		return nil, err
+	}
 	proposal.hasBusinessOrders = len(proposals.BatchOrders(command)) != 0
 	if transition := command.GetCapabilityActivation(); transition != nil {
 		proposal.activePolicyCapabilities = append(proposal.activePolicyCapabilities, capabilities.CapabilityID(transition.GetId()))
@@ -126,14 +121,11 @@ func (p *Proposal) SetPredictedIndex(index uint64) {
 	p.data = protowireutil.AppendFixed64(p.data, predictedIndexField, index)
 }
 
-// RequiredCapabilities returns a copy of the declaration carried by the
-// serialized proposal. Admission reuses it without decoding that proposal.
+// RequiredCapabilities returns the capabilities derived by the producer from
+// the final command before it was serialized. Admission reuses this typed
+// value instead of decoding the serialized proposal a second time.
 func (p *Proposal) RequiredCapabilities() []capabilities.CapabilityID {
 	return append([]capabilities.CapabilityID(nil), p.requiredCapabilities...)
-}
-
-func (p *Proposal) HasCreateLedger() bool {
-	return p.hasCreateLedger
 }
 
 // ActivePolicyCapabilities returns the active capabilities requested by a

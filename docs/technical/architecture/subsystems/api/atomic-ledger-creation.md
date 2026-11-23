@@ -18,18 +18,17 @@ including initial metadata, schema and account types. Subsequent metadata saves
 still require `ledger:WriteMetadata`. HTTP, gRPC and unsigned bulk use the same
 creation scope decision.
 
+New `CreateLedger` orders also validate each initial account type's segment
+constraints and reject equal-specificity overlapping patterns before allocating
+the ledger ID. `AddAccountType` keeps its existing validation. Successful
+creations written before this change remain valid history, including definitions
+that the new rule would reject: audit replay uses the historical creation rule
+to reconstruct their original logs. New successful definitions satisfy both
+rules and produce the same replayed log.
+
 Normal and mirror ledgers both accept initial ledger metadata. This is a
 provisioning operation; it does not change restrictions on subsequent writes or
 turn mirror ingestion into a source of ledger metadata.
-
-Once consensus capability `CreateLedgerAccountTypesV2` (ID 1) is active,
-initial account types use the same definition checks as subsequent
-`AddAccountType` operations: the pattern and every declared segment constraint
-must be valid, and two initial patterns may not have an ambiguous overlap at
-the same specificity. Validation is deterministic by sorted account-type name,
-so a rejected creation cannot persist a type that the STRICT matcher would
-silently skip. Until activation, creation retains the released syntax-only
-rule for Raft replay compatibility; see the [capability rollout](../consensus/capabilities.md#createledger-account-type-validation-capability-1).
 
 The shared HTTP metadata converter preserves exact integer values, infers
 supported scalar types, rejects fractional numbers, objects and arrays, and

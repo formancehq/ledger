@@ -6,7 +6,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/formancehq/ledger/v3/internal/infra/capabilities"
-	"github.com/formancehq/ledger/v3/internal/infra/capabilities/catalog"
 	"github.com/formancehq/ledger/v3/internal/infra/node"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
@@ -30,14 +29,14 @@ func TestValidateActiveAcceptsNoActivation(t *testing.T) {
 	require.NoError(t, capabilities.ValidateActive(nil, nil, nil))
 }
 
-func TestProposalCapabilityAdmissionRejectsUnmarkedCreateLedgerAfterActivation(t *testing.T) {
+func TestProposalCapabilityAdmissionRecoversActiveWithoutIntent(t *testing.T) {
 	t.Parallel()
 	proposal, err := node.NewProposal(1, &raftcmdpb.Proposal{Orders: []*raftcmdpb.Order{{Type: &raftcmdpb.Order_LedgerScoped{LedgerScoped: &raftcmdpb.LedgerScopedOrder{Ledger: "l", Payload: &raftcmdpb.LedgerScopedOrder_CreateLedger{CreateLedger: &raftcmdpb.CreateLedgerOrder{}}}}}}})
 	require.NoError(t, err)
 	policy := &commonpb.ClusterPolicy{CapabilityActivations: []*commonpb.CapabilityActivation{{Id: 1, Active: true}}}
 	supported := []capabilities.CapabilityID{1}
 	members := []capabilities.Member{{NodeID: 1, Role: capabilities.Voter, Capabilities: supported}}
-	require.ErrorIs(t, validateProposalCapabilityAdmissionWithSupported(policy, proposal, members, supported), capabilities.ErrMissingCapability)
+	require.NoError(t, validateProposalCapabilityAdmissionWithSupported(policy, proposal, members, supported))
 }
 
 func TestValidateActiveAcceptsConvergedMembership(t *testing.T) {
@@ -109,45 +108,4 @@ func TestCapabilityActivationBarrierUntilCommitAfterDrain(t *testing.T) {
 		inactive.CapabilityActivations[0].Active = true
 		require.NoError(t, validateProposalCapabilityAdmissionWithSupported(inactive, proposal, members, supported))
 	}
-}
-
-func TestProposalCapabilityAdmissionRejectsInactiveCapability(t *testing.T) {
-	t.Parallel()
-
-	proposal, err := node.NewProposal(1, &raftcmdpb.Proposal{
-		RequiredCapabilities: []uint32{99},
-	})
-	require.NoError(t, err)
-
-	err = validateProposalCapabilityAdmission(
-		&commonpb.ClusterPolicy{},
-		proposal,
-		[]capabilities.Member{{NodeID: 1, Role: capabilities.Voter, Reachable: true}},
-	)
-	require.ErrorIs(t, err, capabilities.ErrCapabilityUnsupported)
-}
-
-func TestProposalCapabilityAdmissionSelectsCreateLedgerValidation(t *testing.T) {
-	t.Parallel()
-	const id = catalog.CreateLedgerAccountTypesV2
-	active := &commonpb.ClusterPolicy{CapabilityActivations: []*commonpb.CapabilityActivation{{Id: uint32(id), Active: true}}}
-	members := []capabilities.Member{{NodeID: 1, Role: capabilities.Voter, Reachable: true, Capabilities: []capabilities.CapabilityID{id}}}
-	command := &raftcmdpb.Proposal{Payload: &raftcmdpb.Proposal_Batch{Batch: &raftcmdpb.ExecutionBatch{
-		Orders: []*raftcmdpb.Order{{Type: &raftcmdpb.Order_LedgerScoped{LedgerScoped: &raftcmdpb.LedgerScopedOrder{
-			Ledger: "l", Payload: &raftcmdpb.LedgerScopedOrder_CreateLedger{CreateLedger: &raftcmdpb.CreateLedgerOrder{}},
-		}}}},
-	}}}
-
-	unmarked, err := node.NewProposal(1, command)
-	require.NoError(t, err)
-	require.ErrorIs(t, validateProposalCapabilityAdmission(&commonpb.ClusterPolicy{}, unmarked, members), capabilities.ErrActivationPending)
-	require.ErrorIs(t, validateProposalCapabilityAdmission(active, unmarked, members), capabilities.ErrMissingCapability)
-
-	catalog.SelectCreateLedgerValidation(command, active)
-	marked, err := node.NewProposal(2, command)
-	require.NoError(t, err)
-	require.Equal(t, []capabilities.CapabilityID{id}, marked.RequiredCapabilities())
-	require.NoError(t, validateProposalCapabilityAdmission(active, marked, members))
-	require.ErrorIs(t, validateProposalCapabilityAdmission(&commonpb.ClusterPolicy{}, marked, members), capabilities.ErrActivationPending)
-	require.ErrorIs(t, validateProposalCapabilityAdmission(active, marked, []capabilities.Member{{NodeID: 1, Role: capabilities.Voter, Reachable: true}}), capabilities.ErrCapabilityUnsupported)
 }

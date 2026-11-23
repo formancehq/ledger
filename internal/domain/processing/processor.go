@@ -43,9 +43,9 @@ type RequestProcessor struct {
 type Context struct {
 	// auditReplay executes recorded business intent without operational quotas.
 	auditReplay bool
-	// createLedgerAccountTypesV2 is selected only by the committed proposal's
-	// required_capabilities marker; current node policy never influences apply.
-	createLedgerAccountTypesV2 bool
+	// strictCreateLedgerAccountTypes enables strict initial type validation for
+	// new orders. Audit replay retains the historical creation semantics.
+	strictCreateLedgerAccountTypes bool
 
 	// Metadata budget is shared by all orders in one atomic proposal.
 	metadataBudget *commandMetadataBudget
@@ -234,25 +234,19 @@ func (r *OrdersResult) recordCreatedLog(log *commonpb.Log) bool {
 // coverage map is never mutated. Per-order isolation is therefore
 // structural: order N's scope cannot read keys declared by order M.
 func (p *RequestProcessor) ProcessOrders(orders []*raftcmdpb.Order, scopeFactory ScopeFactory, sink SignalSink) (*OrdersResult, domain.SerializableError) {
-	return p.processOrders(orders, scopeFactory, sink, false, false)
-}
-
-// ProcessOrdersWithCreateLedgerValidation selects the strengthened validation
-// for proposals that carry the replicated semantic capability marker.
-func (p *RequestProcessor) ProcessOrdersWithCreateLedgerValidation(orders []*raftcmdpb.Order, scopeFactory ScopeFactory, sink SignalSink, enabled bool) (*OrdersResult, domain.SerializableError) {
-	return p.processOrders(orders, scopeFactory, sink, false, enabled)
+	return p.processOrders(orders, scopeFactory, sink, false, true)
 }
 
 // ProcessAuditedOrders verifies recorded business effects. Operational quotas
 // are live admission/apply concerns, not historical business invariants. Audit
-// items contain orders, not proposal-level capability metadata. Successful
-// marked CreateLedger orders satisfy the legacy validation too and reconstruct
-// the same log; historical unmarked orders retain their original semantics.
+// items contain orders, and historical creations may contain initial account
+// types that the stricter new-order validation would reject. Successful new
+// creations satisfy the legacy validation and reconstruct the same log.
 func (p *RequestProcessor) ProcessAuditedOrders(orders []*raftcmdpb.Order, scopeFactory ScopeFactory, sink SignalSink) (*OrdersResult, domain.SerializableError) {
 	return p.processOrders(orders, scopeFactory, sink, true, false)
 }
 
-func (p *RequestProcessor) processOrders(orders []*raftcmdpb.Order, scopeFactory ScopeFactory, sink SignalSink, auditReplay bool, createLedgerAccountTypesV2 bool) (*OrdersResult, domain.SerializableError) {
+func (p *RequestProcessor) processOrders(orders []*raftcmdpb.Order, scopeFactory ScopeFactory, sink SignalSink, auditReplay bool, strictCreateLedgerAccountTypes bool) (*OrdersResult, domain.SerializableError) {
 	clear(p.compiledTypesCache)
 	clear(p.assetCache)
 
@@ -261,12 +255,12 @@ func (p *RequestProcessor) processOrders(orders []*raftcmdpb.Order, scopeFactory
 	// per-apply fields (Boundaries, LedgerInfo) are populated by the apply
 	// orchestrators.
 	ctx := &Context{
-		auditReplay:                auditReplay,
-		createLedgerAccountTypesV2: createLedgerAccountTypesV2,
-		NumscriptCache:             p.numscriptCache,
-		CompiledTypes:              p.compiledTypesCache,
-		AssetCache:                 p.assetCache,
-		batchInitialNextTxID:       make(map[string]uint64),
+		auditReplay:                    auditReplay,
+		strictCreateLedgerAccountTypes: strictCreateLedgerAccountTypes,
+		NumscriptCache:                 p.numscriptCache,
+		CompiledTypes:                  p.compiledTypesCache,
+		AssetCache:                     p.assetCache,
+		batchInitialNextTxID:           make(map[string]uint64),
 	}
 
 	ctx.metadataBudget = &commandMetadataBudget{}

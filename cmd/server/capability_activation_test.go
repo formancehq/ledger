@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"path/filepath"
-	"slices"
 	"sync"
 	"testing"
 	"time"
@@ -82,11 +81,6 @@ func TestControlStateThroughRunAndRestart(t *testing.T) {
 	testserver.WaitForWriteAdmission(t, ctx, client)
 	_, err := client.Apply(ctx, request("before-drain"))
 	require.NoError(t, err)
-	require.Eventually(t, func() bool {
-		response, err := client.Discovery(ctx, &servicepb.DiscoveryRequest{})
-
-		return err == nil && slices.Equal(capabilities.ActiveIDs(response.GetClusterPolicy()), []uint32{1})
-	}, 10*time.Second, 10*time.Millisecond, "capability activation did not commit before drain")
 	const epoch = "capability-activation"
 	begin, err := cluster.BeginDrain(ctx, &clusterpb.BeginDrainRequest{Epoch: epoch})
 	require.NoError(t, err)
@@ -101,7 +95,7 @@ func TestControlStateThroughRunAndRestart(t *testing.T) {
 	_, err = client.Apply(ctx, request("drained"))
 	require.Error(t, err)
 	stop()
-	require.Equal(t, []uint32{1}, capabilities.ActiveIDs(readPolicy()), "activation must survive the stopped restart")
+	require.Empty(t, capabilities.ActiveIDs(readPolicy()), "the generic release does not advertise a business capability")
 
 	client, cluster, stop = start()
 	require.Eventually(t, func() bool {
@@ -123,7 +117,7 @@ func TestControlStateThroughRunAndRestart(t *testing.T) {
 		require.NoError(t, err)
 	}()
 	policy := readPolicy()
-	require.Equal(t, []uint32{1}, capabilities.ActiveIDs(policy))
+	require.Empty(t, capabilities.ActiveIDs(policy))
 	require.Equal(t, uint64(1), policy.GetRevision())
 	require.Equal(t, uint64(10), policy.GetQueryCheckpointLimit())
 }

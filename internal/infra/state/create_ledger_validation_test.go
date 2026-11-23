@@ -6,11 +6,10 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
-	"github.com/formancehq/ledger/v3/internal/infra/capabilities/catalog"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
 
-func TestCreateLedgerCapabilitySelectsApplySemantics(t *testing.T) {
+func TestCreateLedgerRejectsInvalidInitialAccountTypesAtApply(t *testing.T) {
 	t.Parallel()
 
 	invalidConstraint := map[string]*commonpb.AccountType{"users": {
@@ -24,26 +23,17 @@ func TestCreateLedgerCapabilitySelectsApplySemantics(t *testing.T) {
 	for _, tc := range []struct {
 		name     string
 		types    map[string]*commonpb.AccountType
-		marked   bool
 		wantKind string
 	}{
-		{name: "historical invalid constraint", types: invalidConstraint},
-		{name: "marked invalid constraint", types: invalidConstraint, marked: true, wantKind: "invalid"},
-		{name: "historical conflict", types: conflicting},
-		{name: "marked conflict", types: conflicting, marked: true, wantKind: "conflict"},
-		{name: "marked valid", types: map[string]*commonpb.AccountType{"users": {Pattern: "users:{id}"}}, marked: true},
+		{name: "invalid constraint", types: invalidConstraint, wantKind: "invalid"},
+		{name: "conflict", types: conflicting, wantKind: "conflict"},
+		{name: "valid", types: map[string]*commonpb.AccountType{"users": {Pattern: "users:{id}"}}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			machine, store, _ := newTestMachine(t)
-			policy := machine.State.ClusterPolicy.CloneVT()
-			policy.CapabilityActivations = []*commonpb.CapabilityActivation{{Id: uint32(catalog.CreateLedgerAccountTypesV2), Active: true}}
-			machine.State.UpdateClusterPolicy(policy)
 			order := createLedgerOrderWithAccountTypes("l", tc.types)
 			proposal := makeProposal(1, order)
-			if tc.marked {
-				proposal.RequiredCapabilities = []uint32{uint32(catalog.CreateLedgerAccountTypesV2)}
-			}
 			results, err := machine.ApplyEntries(t.Context(), store, makeEntry(t, 1, proposal))
 			require.NoError(t, err)
 			require.Len(t, results.Results, 1)
