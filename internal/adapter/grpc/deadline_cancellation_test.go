@@ -133,8 +133,13 @@ func TestForwardedCallEndedByIncomingDeadlineIsDeadlineExceeded(t *testing.T) {
 			assert.Equal(t, codes.DeadlineExceeded, status.Code(err))
 		})
 	}
-	for range calls {
-		<-received
+	allReceived := time.After(10 * time.Second)
+	for got := range calls {
+		select {
+		case <-received:
+		case <-allReceived:
+			t.Fatalf("%d of %d forwarded calls never reached the upstream", calls-got, calls)
+		}
 	}
 	close(stalled)
 	wg.Wait()
