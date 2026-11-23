@@ -98,9 +98,13 @@ func TestReconcile_CredentialsSecretIdempotent(t *testing.T) {
 	initialPubKey := string(secret.Data["pubkey.hex"])
 	initialKeyID := string(secret.Data["key-id"])
 
-	require.NoError(t, k8sClient.Get(ctx, types.NamespacedName{Name: "idempotent"}, credentials))
-	credentials.Spec.Scopes = []string{"read", "write"}
-	require.NoError(t, k8sClient.Update(ctx, credentials))
+	require.NoError(t, retry.RetryOnConflict(retry.DefaultRetry, func() error {
+		if err := k8sClient.Get(ctx, types.NamespacedName{Name: "idempotent"}, credentials); err != nil {
+			return err
+		}
+		credentials.Spec.Scopes = []string{"read", "write"}
+		return k8sClient.Update(ctx, credentials)
+	}))
 
 	requireEventually(t, func() bool {
 		if err := k8sClient.Get(ctx, types.NamespacedName{Name: "idempotent"}, credentials); err != nil {
