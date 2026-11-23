@@ -9,10 +9,12 @@ import (
 	"os/signal"
 	"runtime"
 	"runtime/debug"
+	"strings"
 	"syscall"
 	"time"
 
 	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
 	"go.opentelemetry.io/otel"
 	sdklog "go.opentelemetry.io/otel/sdk/log"
 	"go.uber.org/fx"
@@ -59,6 +61,62 @@ func NewRootCommand() *cobra.Command {
 	rootCmd.AddCommand(NewRunCommand())
 
 	return rootCmd
+}
+
+// NewServiceRootCommand prepares the root command for service.Execute, whose
+// environment binding runs before Cobra parses command-line arguments.
+func NewServiceRootCommand() *cobra.Command {
+	root := NewRootCommand()
+	installSlicePrecedence(root)
+
+	return root
+}
+
+// installSlicePrecedence compensates for service.Execute binding environment
+// values before Cobra parses explicit flags. pflag otherwise appends the first
+// CLI slice value to the already selected environment slice.
+func installSlicePrecedence(root *cobra.Command) {
+	for _, cmd := range root.Commands() {
+		cmd.Flags().VisitAll(func(flag *pflag.Flag) {
+			if flag.Value.Type() != "stringSlice" && flag.Value.Type() != "intSlice" {
+				return
+			}
+			flag.Value = &precedenceSliceValue{Value: flag.Value, SliceValue: flag.Value.(pflag.SliceValue), name: flag.Name}
+		})
+	}
+}
+
+type precedenceSliceValue struct {
+	pflag.Value
+	pflag.SliceValue
+
+	name    string
+	set     bool
+	fromEnv bool
+}
+
+func (v *precedenceSliceValue) Set(value string) error {
+	if v.fromEnv {
+		// Replace only the first CLI occurrence. Repeated CLI flags still append.
+		if err := v.Replace(nil); err != nil {
+			return err
+		}
+		v.fromEnv = false
+	}
+	if err := v.Value.Set(value); err != nil {
+		return err
+	}
+	if !v.set {
+		v.set = true
+		envName := strings.ToUpper(strings.ReplaceAll(v.name, "-", "_"))
+		envValue := strings.Trim(os.Getenv(envName), " ")
+		if v.Type() == "stringSlice" {
+			envValue = strings.ReplaceAll(envValue, " ", ",")
+		}
+		v.fromEnv = envValue != "" && value == envValue
+	}
+
+	return nil
 }
 
 // NewRunCommand returns the run command for the ledger server.

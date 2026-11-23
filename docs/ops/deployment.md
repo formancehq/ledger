@@ -108,6 +108,9 @@ named in the diagnostic; Ledger does not open its service listeners or report
 readiness. When the same flag is explicitly supplied on the command line, that
 higher-precedence value is used and the lower-precedence environment value is
 ignored.
+For comma-separated slice flags such as `--auth-issuers` and the Raft transport
+queue flags, the first explicit flag replaces the whole environment slice;
+additional occurrences of that flag append to the explicit value.
 
 Byte-size flags accept non-negative integer bytes or an integer with a binary
 suffix (`Ki`, `Mi`, `Gi`, `Ti`, `Pi`, `Ei`) or decimal suffix (`k`, `M`, `G`,
