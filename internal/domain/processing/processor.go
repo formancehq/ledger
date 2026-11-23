@@ -486,13 +486,13 @@ func HashOrders(orders []*raftcmdpb.Order) []byte {
 
 // MarshalOrderBusinessIntent returns the deterministic wire bytes of an order's
 // business intent: the order with its OrderTechnical sub-message excluded. This
-// is the SINGLE definition of what both the audit hash chain
-// (AuditItem.serialized_order) and the idempotency hash (hashOrder) bind — so a
-// new technical field can never silently diverge the two.
+// defines what the audit hash chain (AuditItem.serialized_order) binds. The
+// idempotency hash also excludes the
+// revert posting-order marker so pre-upgrade retries match frozen outcomes.
 //
-// All admission-derived fields live on OrderTechnical, which is excluded so the
+// Execution metadata normally lives on OrderTechnical, which is excluded so the
 // SAME logical request always serializes identically (idempotency dedup / replay
-// must match across retries, and the audit proves only accepted intent).
+// must match across retries).
 // OrderTechnical carries:
 //
 //   - coverage_bits: admission rebuilds it from the proposal-wide ExecutionPlan,
@@ -527,11 +527,17 @@ func MarshalOrderBusinessIntent(order *raftcmdpb.Order, buf []byte) []byte {
 	return out
 }
 
-// hashOrder computes a blake3 hash of one order's business intent, returning the
-// hash and the (grown) marshal buffer to reuse. The bytes hashed are exactly the
-// business-intent projection MarshalOrderBusinessIntent produces, so the
-// idempotency hash and the audit serialization bind the identical bytes.
+// hashOrder computes the request identity used for idempotency. A revert's
+// posting-order marker selects committed execution semantics, but an RC.4
+// request retried after upgrade must still match its frozen outcome. The audit
+// serialization retains the marker so replay preserves those semantics.
 func hashOrder(order *raftcmdpb.Order, buf []byte) (hash []byte, grownBuf []byte) {
+	revert := order.GetLedgerScoped().GetApply().GetRevertTransaction()
+	if revert != nil {
+		saved := revert.ReversePostingOrder
+		revert.ReversePostingOrder = false
+		defer func() { revert.ReversePostingOrder = saved }()
+	}
 	buf = MarshalOrderBusinessIntent(order, buf)
 
 	sum := blake3.Sum256(buf)

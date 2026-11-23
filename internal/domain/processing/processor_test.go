@@ -179,6 +179,29 @@ func TestHashOrders_MatchesHashProposal(t *testing.T) {
 		"HashOrders must be byte-identical to HashProposal so the checker re-derives the frozen hash")
 }
 
+func TestHashOrders_RevertRetryAcrossPostingOrderUpgrade(t *testing.T) {
+	t.Parallel()
+
+	makeOrder := func(reverse bool) *raftcmdpb.Order {
+		return &raftcmdpb.Order{Type: &raftcmdpb.Order_LedgerScoped{
+			LedgerScoped: &raftcmdpb.LedgerScopedOrder{Ledger: "L", Payload: &raftcmdpb.LedgerScopedOrder_Apply{
+				Apply: &raftcmdpb.LedgerApplyOrder{Data: &raftcmdpb.LedgerApplyOrder_RevertTransaction{
+					RevertTransaction: &raftcmdpb.RevertTransactionOrder{TransactionId: 7, ReversePostingOrder: reverse},
+				}},
+			}},
+		}}
+	}
+
+	historical := makeOrder(false)
+	marked := makeOrder(true)
+	require.Equal(t, HashOrders([]*raftcmdpb.Order{historical}), HashOrders([]*raftcmdpb.Order{marked}),
+		"same keyed revert must replay its frozen RC.4 outcome after upgrade")
+	require.NotEqual(t, MarshalOrderBusinessIntent(historical, nil), MarshalOrderBusinessIntent(marked, nil),
+		"audit bytes must retain the posting-order marker")
+	require.True(t, marked.GetLedgerScoped().GetApply().GetRevertTransaction().GetReversePostingOrder(),
+		"hashing must restore the live order")
+}
+
 func TestProcessOrders_WithoutIdempotencyKey(t *testing.T) {
 	t.Parallel()
 

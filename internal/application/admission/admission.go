@@ -2758,7 +2758,8 @@ func (a *Admission) convertApplyRequest(ctx context.Context, apply *servicepb.Le
 		// in the overlay sidecar for the preload, intra-bulk effect and
 		// digest-binding passes, NOT attached to the order: the FSM re-derives
 		// the postings from the coverage-gated TransactionState, so the
-		// audit-bound order carries only caller intent.
+		// audit-bound order carries caller intent and the persisted posting-order
+		// marker, but no state-derived target postings.
 		//
 		// A miss (missing ledger or missing tx) is an absent observation, not an
 		// error, and the proposal still enters Raft; the FSM apply is the audit
