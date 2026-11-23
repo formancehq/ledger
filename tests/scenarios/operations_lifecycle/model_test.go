@@ -9,7 +9,6 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/pkg/actions"
-	"github.com/formancehq/ledger/v3/pkg/testserver"
 	"github.com/formancehq/ledger/v3/tests/oracle"
 	"github.com/formancehq/ledger/v3/tests/oracle/oracletest"
 	"github.com/formancehq/ledger/v3/tests/scenarios/scenariotest"
@@ -22,7 +21,7 @@ import (
 // The same request stream crosses the real Apply RPC and the independent oracle.
 // This guards against encoding plausible, but incorrect, lifecycle semantics.
 func TestLifecycleModelMatchesService(t *testing.T) {
-	sc := scenariotest.SetupSingleNode(t, testserver.WithMirrorPromotionCatchUpActivation())
+	sc := scenariotest.SetupSingleNode(t)
 	state := oracle.NewGlobalState()
 	apply := func(reqs ...*servicepb.Request) {
 		t.Helper()
@@ -137,7 +136,7 @@ func TestLifecycleModelMatchesService(t *testing.T) {
 }
 
 func TestCreateThenPromoteMirrorBatchIsRejected(t *testing.T) {
-	sc := scenariotest.SetupSingleNode(t, testserver.WithMirrorPromotionCatchUpActivation())
+	sc := scenariotest.SetupSingleNode(t)
 	create := &servicepb.Request{Type: &servicepb.Request_CreateLedger{CreateLedger: &servicepb.CreateLedgerRequest{
 		Name: "new-mirror", Mode: commonpb.LedgerMode_LEDGER_MODE_MIRROR,
 		MirrorSource: &commonpb.MirrorSourceConfig{LedgerName: "unconfigured"},

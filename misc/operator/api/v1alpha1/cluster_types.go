@@ -211,11 +211,6 @@ type ClusterSpec struct {
 	// +optional
 	ClusterPolicyRevision *int64 `json:"clusterPolicyRevision,omitempty"`
 
-	// ActivateMirrorPromotionCatchUp activates the replicated promotion capability.
-	// Set only after every member runs a supporting binary, and bump clusterPolicyRevision.
-	// +optional
-	ActivateMirrorPromotionCatchUp *bool `json:"activateMirrorPromotionCatchUp,omitempty"`
-
 	// MetadataMaxEntries is the maximum number of metadata entries one command
 	// may carry for a single entity (transaction, account, or ledger). This is
 	// replicated in the cluster policy; changing it requires bumping

@@ -1487,14 +1487,6 @@ func TestBuildEnvVars_ClusterPolicyRevision(t *testing.T) {
 	})
 }
 
-func TestBuildEnvVars_ActivateMirrorPromotionCatchUp(t *testing.T) {
-	t.Parallel()
-	ls := newMinimalCluster()
-	value := true
-	ls.Spec.ActivateMirrorPromotionCatchUp = &value
-	assertEnv(t, buildEnvVars(ls, "disabled", nil), "ACTIVATE_MIRROR_PROMOTION_CATCH_UP", "true")
-}
-
 func TestBuildEnvVars_MetadataLimits(t *testing.T) {
 	t.Parallel()
 

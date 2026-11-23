@@ -188,7 +188,6 @@ func buildEnvVars(ledger *ledgerv1alpha1.Cluster, targetTLSMode string, credenti
 	// Each field maps directly to its CLI flag via the uppercase-with-underscores
 	// convention: --cluster-policy-revision -> CLUSTER_POLICY_REVISION, etc.
 	envs = appendIfInt64(envs, "CLUSTER_POLICY_REVISION", spec.ClusterPolicyRevision)
-	envs = appendIfBool(envs, "ACTIVATE_MIRROR_PROMOTION_CATCH_UP", spec.ActivateMirrorPromotionCatchUp)
 	envs = appendIfInt64(envs, "METADATA_MAX_ENTRIES", spec.MetadataMaxEntries)
 	envs = appendIfInt64(envs, "METADATA_MAX_KEY_BYTES", spec.MetadataMaxKeyBytes)
 	envs = appendIfInt64(envs, "METADATA_MAX_VALUE_BYTES", spec.MetadataMaxValueBytes)

@@ -2022,23 +2022,6 @@ func reconcileClusterPolicy(ctx context.Context, admission ctrl.Admission, store
 			}
 		}
 	}
-	if cfg.ActivateMirrorPromotionCatchUp {
-		found := false
-		for _, activation := range desired.GetCapabilityActivations() {
-			if activation.GetId() == uint32(capabilities.MirrorPromotionCatchUp) {
-				activation.Active = true
-				found = true
-
-				break
-			}
-		}
-		if !found {
-			desired.CapabilityActivations = append(desired.CapabilityActivations, &commonpb.CapabilityActivation{
-				Id: uint32(capabilities.MirrorPromotionCatchUp), Active: true,
-			})
-		}
-	}
-
 	// A stale leader must never overwrite newer configuration with local flags.
 	appliedRev := applied.GetRevision()
 	if applied != nil && appliedRev > cfg.ClusterPolicyRevision && !sameClusterPolicyConfiguration(applied, desired) {

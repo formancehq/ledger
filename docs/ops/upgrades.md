@@ -545,20 +545,14 @@ procedure.
 
 For an upgrade from published RC.4 to a build containing the mirror promotion
 catch-up check, complete the coordinated stop and restart with the existing
-volumes. Start with `activateMirrorPromotionCatchUp` unset or false. Wait until
-every voter and learner runs the new binary and its refreshed membership record
-advertises capability ID `1`. New mirror promotions are refused at admission
-until activation; unrelated writes remain available. Historical unmarked RC.4
-promotions retain their original FSM apply behavior during Raft replay.
-
-Then set `spec.activateMirrorPromotionCatchUp: true` and increment
-`spec.clusterPolicyRevision` in the Operator's `Cluster` resource. For a cluster
-without the Operator, set `--activate-mirror-promotion-catch-up=true` on every
-member and increment `--cluster-policy-revision`. The leader proposes the new
-replicated policy; admission verifies capability evidence for every current
-voter and learner. Confirm the new policy revision and active capability before
-allowing an administrator to promote a mirror. Keep the activation setting on
-subsequent revisions because an active capability cannot be deactivated.
+volumes. Wait until every voter and learner runs the new binary and its
+committed membership record advertises capability ID `1`. The leader then
+activates the capability automatically through a separate durable control.
+Audited writes wait while activation is pending. Confirm that capability ID `1`
+is active before an administrator promotes a mirror. Historical unmarked RC.4
+promotions retain their original FSM apply behavior during Raft replay. No
+Operator field, server flag, or cluster-policy revision bump is required for
+activation.
 
 ## Metadata-limit replay recovery
 

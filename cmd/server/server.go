@@ -211,7 +211,6 @@ func NewRunCommandWithBindings(bindings network.Bindings) *cobra.Command {
 
 	// Cluster policy (replicated via Raft; see EN-1827)
 	runCmd.Flags().Uint64("cluster-policy-revision", 1, "Desired revision of the replicated cluster policy (must be greater than zero)")
-	runCmd.Flags().Bool("activate-mirror-promotion-catch-up", false, "Activate the replicated mirror promotion catch-up capability after the coordinated rollout")
 	runCmd.Flags().Uint64("query-checkpoint-limit", 10, "Maximum number of live query checkpoints, carried in the replicated cluster policy (must be greater than zero)")
 	runCmd.Flags().Uint64("metadata-max-entries", domain.DefaultMetadataMaxEntriesPerEntity, "Maximum metadata entries one command may carry for a single entity, carried in the replicated cluster policy (must be greater than zero)")
 	runCmd.Flags().Uint64("metadata-max-key-bytes", domain.DefaultMetadataMaxKeyBytes, "Maximum metadata key size in bytes, carried in the replicated cluster policy (must be greater than zero)")
@@ -670,7 +669,6 @@ func LoadConfig(ctx context.Context, cmd *cobra.Command) (*bootstrap.Config, err
 	cfg.IdempotencyTTL = getDuration("idempotency-ttl", 24*time.Hour)
 	cfg.IdempotencyEvictionInterval = getDuration("idempotency-eviction-interval", 60*time.Second)
 	cfg.ClusterPolicyRevision = getUint64("cluster-policy-revision", 1)
-	cfg.ActivateMirrorPromotionCatchUp = getBool("activate-mirror-promotion-catch-up", false)
 	cfg.QueryCheckpointLimit = getUint64("query-checkpoint-limit", 10)
 	cfg.MetadataMaxEntriesPerEntity = getUint64("metadata-max-entries", domain.DefaultMetadataMaxEntriesPerEntity)
 	cfg.MetadataMaxKeyBytes = getUint64("metadata-max-key-bytes", domain.DefaultMetadataMaxKeyBytes)

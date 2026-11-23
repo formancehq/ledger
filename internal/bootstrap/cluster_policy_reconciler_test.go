@@ -11,7 +11,6 @@ import (
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
-	"github.com/formancehq/ledger/v3/internal/infra/capabilities"
 	"github.com/formancehq/ledger/v3/internal/infra/state"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
@@ -207,45 +206,5 @@ func TestReconcileClusterPolicy(t *testing.T) {
 
 		require.Equal(t, 1, admission.callCount())
 		require.Equal(t, []*commonpb.CapabilityActivation{{Id: 7, Active: true}}, admission.lastPolicy.GetCapabilityActivations())
-	})
-
-	t.Run("activates mirror promotion after a revision bump", func(t *testing.T) {
-		t.Parallel()
-		store := newReconcilerTestStore(t)
-		cfg := validBaseConfig()
-		cfg.ActivateMirrorPromotionCatchUp = true
-		cfg.ClusterPolicyRevision++
-		batch := store.OpenWriteSession()
-		require.NoError(t, state.SaveClusterPolicy(batch, &commonpb.ClusterPolicy{
-			Revision:              cfg.ClusterPolicyRevision - 1,
-			CapabilityActivations: []*commonpb.CapabilityActivation{{Id: 7, Active: true}},
-		}))
-		require.NoError(t, batch.Commit())
-
-		admission := &fakeAdmission{}
-		reconcileClusterPolicy(t.Context(), admission, store, cfg, func() bool { return true }, logging.Testing())
-
-		require.Equal(t, 1, admission.callCount())
-		require.Equal(t, cfg.ClusterPolicyRevision, admission.lastPolicy.GetRevision())
-		require.Equal(t, []*commonpb.CapabilityActivation{
-			{Id: 7, Active: true},
-			{Id: uint32(capabilities.MirrorPromotionCatchUp), Active: true},
-		}, admission.lastPolicy.GetCapabilityActivations())
-	})
-
-	t.Run("does not activate without a revision bump", func(t *testing.T) {
-		t.Parallel()
-		store := newReconcilerTestStore(t)
-		cfg := validBaseConfig()
-		cfg.ActivateMirrorPromotionCatchUp = true
-		batch := store.OpenWriteSession()
-		require.NoError(t, state.SaveClusterPolicy(batch, &commonpb.ClusterPolicy{
-			Revision: cfg.ClusterPolicyRevision,
-		}))
-		require.NoError(t, batch.Commit())
-
-		admission := &fakeAdmission{}
-		reconcileClusterPolicy(t.Context(), admission, store, cfg, func() bool { return true }, logging.Testing())
-		require.Zero(t, admission.callCount())
 	})
 }

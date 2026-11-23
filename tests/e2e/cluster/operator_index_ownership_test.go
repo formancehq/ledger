@@ -50,7 +50,7 @@ func TestOperatorIndexOwnership(t *testing.T) {
 		NodeID: 1, ClusterID: "operator-index-test", Ports: ports,
 		WalDir: t.TempDir(), DataDir: t.TempDir(), Output: io.Discard,
 	})
-	instruments = append(instruments, testserver.WithBootstrap(), testserver.WithMirrorPromotionCatchUpActivation())
+	instruments = append(instruments, testserver.WithBootstrap())
 	server := lease.NewService(cmdserver.NewRunCommandWithBindings, testservice.WithInstruments(instruments...))
 	require.NoError(t, server.Start(ctx))
 	t.Cleanup(func() {

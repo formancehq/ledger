@@ -60,11 +60,6 @@ spec:
               line. Presence counts as a change: setting a field to its default value
               still needs a bump.
             properties:
-              activateMirrorPromotionCatchUp:
-                description: |-
-                  ActivateMirrorPromotionCatchUp activates the replicated promotion capability.
-                  Set only after every member runs a supporting binary, and bump clusterPolicyRevision.
-                type: boolean
               additionalLabels:
                 additionalProperties:
                   type: string
