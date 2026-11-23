@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"path/filepath"
+	"slices"
 	"sync"
 	"testing"
 	"time"
@@ -81,6 +82,11 @@ func TestControlStateThroughRunAndRestart(t *testing.T) {
 	testserver.WaitForWriteAdmission(t, ctx, client)
 	_, err := client.Apply(ctx, request("before-drain"))
 	require.NoError(t, err)
+	require.Eventually(t, func() bool {
+		response, err := client.Discovery(ctx, &servicepb.DiscoveryRequest{})
+
+		return err == nil && slices.Equal(capabilities.ActiveIDs(response.GetClusterPolicy()), []uint32{1})
+	}, 10*time.Second, 10*time.Millisecond, "capability activation did not commit before drain")
 	const epoch = "capability-activation"
 	begin, err := cluster.BeginDrain(ctx, &clusterpb.BeginDrainRequest{Epoch: epoch})
 	require.NoError(t, err)
