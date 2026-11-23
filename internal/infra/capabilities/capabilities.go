@@ -128,6 +128,7 @@ func RequiredCapabilities(proposal *raftcmdpb.Proposal) ([]CapabilityID, error) 
 			return []CapabilityID{RevertReversePostingOrder}, nil
 		}
 	}
+
 	return nil, nil
 }
 

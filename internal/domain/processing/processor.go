@@ -534,7 +534,7 @@ func MarshalOrderBusinessIntent(order *raftcmdpb.Order, buf []byte) []byte {
 func hashOrder(order *raftcmdpb.Order, buf []byte) (hash []byte, grownBuf []byte) {
 	revert := order.GetLedgerScoped().GetApply().GetRevertTransaction()
 	if revert != nil {
-		saved := revert.ReversePostingOrder
+		saved := revert.GetReversePostingOrder()
 		revert.ReversePostingOrder = false
 		defer func() { revert.ReversePostingOrder = saved }()
 	}

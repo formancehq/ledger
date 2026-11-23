@@ -185,7 +185,7 @@ func TestProcessRevertTransaction_ChainedPostingOrder(t *testing.T) {
 				return volumes[k.AccountKey.Account].AsReader(), nil
 			})
 			stub.onPut(func(k domain.VolumeKey, v *raftcmdpb.VolumePair) {
-				volumes[k.AccountKey.Account] = v
+				volumes[k.Account] = v
 			})
 
 			if !tc.wantFailure {
@@ -211,6 +211,7 @@ func TestProcessRevertTransaction_ChainedPostingOrder(t *testing.T) {
 				var insufficient *domain.ErrInsufficientFunds
 				require.ErrorAs(t, err, &insufficient)
 				require.Nil(t, payload)
+
 				return
 			}
 			require.Nil(t, err)

@@ -42,6 +42,7 @@ func (w *writerStub) CreateTransaction(_ []byte, _ uint64, _ *commonpb.Timestamp
 	if w.createTransaction != nil {
 		return w.createTransaction(postings)
 	}
+
 	return nil
 }
 func (w *writerStub) SetTransactionReference(string, string, uint64) error { return nil }
@@ -139,6 +140,7 @@ func TestReplayLedgerLog_PreservesHistoricalRevertPostingOrder(t *testing.T) {
 	var replayed []*commonpb.Posting
 	w := &writerStub{createTransaction: func(postings []*commonpb.Posting) error {
 		replayed = postings
+
 		return nil
 	}}
 	require.NoError(t, replayOne(t, w, &commonpb.Timestamp{Data: 3}, decoded))
