@@ -3347,9 +3347,18 @@ func (node *Node) RefreshMembership(ctx context.Context, nodeID uint64, raftAddr
 	}, nil)
 }
 
-// RefreshSelfMembership commits the leader's own support before activation,
-// including on a single-member restart with no remote refresh endpoint.
-func (node *Node) RefreshSelfMembership(ctx context.Context, capabilityIDs []uint32) error {
+// LocalCapabilityEvidence derives this node's claim from its durable local state.
+type LocalCapabilityEvidence interface {
+	AdvertisedIDs() ([]uint32, error)
+}
+
+// RefreshSelfMembership commits the leader's locally proven capabilities before
+// activation, including on a single-member restart with no remote endpoint.
+func (node *Node) RefreshSelfMembership(ctx context.Context, evidence LocalCapabilityEvidence) error {
+	capabilityIDs, err := evidence.AdvertisedIDs()
+	if err != nil {
+		return err
+	}
 	current := node.membership.PeerAddresses()[node.config.NodeID]
 	if bytes.Equal(current.InstanceID, node.config.InstanceID) && slices.Equal(current.Capabilities, capabilityIDs) {
 		return nil

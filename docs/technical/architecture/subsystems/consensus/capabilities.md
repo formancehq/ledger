@@ -42,6 +42,12 @@ refresh still writes routing before publishing its cache; a failed write leaves
 the old cache unchanged. Snapshot refresh intersects the newly installed rows,
 not the pre-snapshot cache, before rehydration.
 
+The leader's self-refresh consumes a local evidence source instead of a caller-
+assembled list of capability IDs. For account incarnations, that source reads
+the durable migration marker: it announces history readiness only after local
+backfill completed. The resulting claim still needs a committed membership
+refresh before activation can count it.
+
 A proposal that declares a capability is admitted only when that capability is
 active and every member advertises it. Proposals with no declared capability
 remain unaffected. FSM apply never consults node-local capability flags.

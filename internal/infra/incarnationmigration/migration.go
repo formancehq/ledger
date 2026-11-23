@@ -76,6 +76,20 @@ func AdvertisedIDs(reader dal.PebbleGetter) ([]uint32, error) {
 	return ids, nil
 }
 
+// LocalEvidence derives membership claims from this node's durable migration state.
+// It is passed to the Raft membership refresh instead of a caller-built ID list.
+type LocalEvidence struct {
+	reader dal.PebbleGetter
+}
+
+func NewLocalEvidence(reader dal.PebbleGetter) LocalEvidence {
+	return LocalEvidence{reader: reader}
+}
+
+func (e LocalEvidence) AdvertisedIDs() ([]uint32, error) {
+	return AdvertisedIDs(e.reader)
+}
+
 // RequireReady prevents a node from starting Raft on an unmigrated store.
 // Operators run the local migration explicitly while the node is stopped.
 func RequireReady(reader dal.PebbleGetter) error {
