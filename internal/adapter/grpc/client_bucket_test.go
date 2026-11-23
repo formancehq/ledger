@@ -123,6 +123,7 @@ func TestListTransactions_ForwardZeroCursor(t *testing.T) {
 
 			stream := newRecvStream[commonpb.Transaction](controller, nil, nil)
 			stream.EXPECT().CloseSend().Return(nil)
+
 			return stream, nil
 		},
 	)
