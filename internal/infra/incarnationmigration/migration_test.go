@@ -27,33 +27,44 @@ func migrationStore(t *testing.T) *dal.Store {
 	return store
 }
 
-func TestInitializeEmptyBootstrap(t *testing.T) {
-	t.Run("empty store", func(t *testing.T) {
-		store := migrationStore(t)
-		require.NoError(t, InitializeEmptyBootstrap(store))
-		marker, err := ReadMarker(store)
-		require.NoError(t, err)
-		require.True(t, marker.Complete)
-		require.NoError(t, InitializeEmptyBootstrap(store))
-	})
-	t.Run("existing history", func(t *testing.T) {
-		store := migrationStore(t)
-		appendFixture(t, store, 1, 100, nil)
-		require.NoError(t, InitializeEmptyBootstrap(store))
-		marker, err := ReadMarker(store)
-		require.NoError(t, err)
-		require.False(t, marker.Complete)
-	})
-}
-
-func TestVerifySkipsDormantIncarnationsAfterEmptyBootstrap(t *testing.T) {
+func TestEmptyBootstrapLegacyWritesRequireMigration(t *testing.T) {
 	store := migrationStore(t)
-	require.NoError(t, InitializeEmptyBootstrap(store))
-	appendFixture(t, store, 1, 100, nil)
+	marker, err := ReadMarker(store)
+	require.NoError(t, err)
+	require.False(t, marker.Complete)
+	appendFixture(t, store, 1, 100, &commonpb.LogPayload{Type: &commonpb.LogPayload_CreateLedger{CreateLedger: &commonpb.CreatedLedgerLog{Name: "ledger"}}})
+	appendFixture(t, store, 2, 200, &commonpb.LogPayload{Type: &commonpb.LogPayload_Apply{Apply: &commonpb.ApplyLedgerLog{
+		LedgerName: "ledger", Log: &commonpb.LedgerLog{Data: &commonpb.LedgerLogPayload{Payload: &commonpb.LedgerLogPayload_CreatedTransaction{
+			CreatedTransaction: &commonpb.CreatedTransaction{Transaction: &commonpb.Transaction{Postings: []*commonpb.Posting{{Source: "world", Destination: "alice"}}}},
+		}}},
+	}}})
+	require.NoError(t, Run(t.Context(), store)) // Dormant migration must not seal history.
+	marker, err = ReadMarker(store)
+	require.NoError(t, err)
+	require.False(t, marker.Complete)
 	reader, err := store.NewReadHandle()
 	require.NoError(t, err)
-	defer func() { require.NoError(t, reader.Close()) }()
 	require.NoError(t, Verify(t.Context(), reader, logging.Testing()))
+	require.NoError(t, reader.Close())
+
+	activateWrites(t, store)
+	require.ErrorContains(t, RequireReady(store), "migrate-incarnations")
+	ids, err := AdvertisedIDs(store)
+	require.NoError(t, err)
+	require.Equal(t, []uint32{uint32(capabilities.AccountIncarnationWritesV1)}, ids)
+	require.NoError(t, Run(t.Context(), store))
+	require.NoError(t, RequireReady(store))
+	marker, err = ReadMarker(store)
+	require.NoError(t, err)
+	require.True(t, marker.Complete)
+	require.Equal(t, uint64(2), marker.Cursor)
+	row, err := attributes.New().AccountIncarnation.Get(store, (domain.AccountKey{LedgerName: "ledger", Account: "alice"}).Bytes())
+	require.NoError(t, err)
+	require.Equal(t, uint64(200), row.GetInsertedAt().GetData())
+	require.Equal(t, uint64(200), row.GetUpdatedAt().GetData())
+	ids, err = AdvertisedIDs(store)
+	require.NoError(t, err)
+	require.Equal(t, []uint32{uint32(capabilities.AccountIncarnationWritesV1), uint32(capabilities.AccountIncarnationHistoryCompleteV1)}, ids)
 }
 
 func appendFixture(t *testing.T, store *dal.Store, sequence, timestamp uint64, payload *commonpb.LogPayload) {

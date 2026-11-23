@@ -97,44 +97,6 @@ func RequireReady(reader dal.PebbleGetter) error {
 	return nil
 }
 
-// InitializeEmptyBootstrap records that a new cluster has no legacy history
-// to backfill. Call only for a bootstrap node, before it starts Raft.
-func InitializeEmptyBootstrap(store *dal.Store) error {
-	_, closer, err := store.Get(markerKey)
-	if err == nil {
-		_ = closer.Close()
-
-		return nil
-	}
-	if !errors.Is(err, pebble.ErrNotFound) {
-		return fmt.Errorf("reading account incarnation migration marker: %w", err)
-	}
-	reader, err := store.NewReadHandle()
-	if err != nil {
-		return err
-	}
-	defer func() { _ = reader.Close() }()
-	lastAudit, err := query.ReadLastAuditSequence(reader)
-	if err != nil {
-		return err
-	}
-	applied, err := query.ReadLastAppliedIndex(reader)
-	if err != nil {
-		return err
-	}
-	if lastAudit != 0 || applied != 0 {
-		return nil
-	}
-	batch := store.OpenWriteSession()
-	if err := putMarker(batch, Marker{Complete: true}); err != nil {
-		_ = batch.Cancel()
-
-		return err
-	}
-
-	return batch.Commit()
-}
-
 func putMarker(batch *dal.WriteSession, marker Marker) error {
 	var raw [18]byte
 	raw[0] = definitionVersion
@@ -198,6 +160,10 @@ func run(ctx context.Context, store *dal.Store, force bool, pause time.Duration)
 		return fmt.Errorf("opening incarnation migration snapshot: %w", err)
 	}
 	defer func() { _ = reader.Close() }()
+	seen, err := readExistingIncarnations(reader)
+	if err != nil {
+		return err
+	}
 	lastAudit, err := query.ReadLastAuditSequence(reader)
 	if err != nil {
 		return err
@@ -225,14 +191,21 @@ func run(ctx context.Context, store *dal.Store, force bool, pause time.Duration)
 		return err
 	}
 	defer func() { _ = cursor.Close() }()
+	logs, err := newAuditLogReader(ctx, reader)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = logs.close() }()
 
 	fold := &folder{
 		reader:  reader,
+		logs:    logs,
 		current: store,
 		attrs:   attributes.New(),
 		types:   make(map[string]map[string]*commonpb.AccountType),
 		rows:    make(map[domain.AccountKey]*commonpb.AccountIncarnation),
 		deletes: make(map[string]struct{}),
+		seen:    seen,
 	}
 	var previous uint64
 	var pending int
@@ -332,7 +305,12 @@ func Verify(ctx context.Context, source dal.PebbleReader, logger logging.Logger)
 		return err
 	}
 	defer func() { _ = cursor.Close() }()
-	fold := &folder{reader: source, current: expected, attrs: attributes.New(), types: make(map[string]map[string]*commonpb.AccountType), rows: make(map[domain.AccountKey]*commonpb.AccountIncarnation), deletes: make(map[string]struct{})}
+	logs, err := newAuditLogReader(ctx, source)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = logs.close() }()
+	fold := &folder{reader: source, logs: logs, current: expected, attrs: attributes.New(), types: make(map[string]map[string]*commonpb.AccountType), rows: make(map[domain.AccountKey]*commonpb.AccountIncarnation), deletes: make(map[string]struct{}), seen: newAccountSeen()}
 	var sequence uint64
 	var pending int
 	for {
@@ -407,11 +385,34 @@ func Verify(ctx context.Context, source dal.PebbleReader, logger logging.Logger)
 
 type folder struct {
 	reader  dal.PebbleReader
+	logs    *auditLogReader
 	current dal.PebbleGetter
 	attrs   *attributes.Attributes
 	types   map[string]map[string]*commonpb.AccountType
 	rows    map[domain.AccountKey]*commonpb.AccountIncarnation
 	deletes map[string]struct{}
+	seen    *accountSeen
+	newKeys [][]byte
+}
+
+func readExistingIncarnations(reader dal.PebbleReader) (*accountSeen, error) {
+	seen := newAccountSeen()
+	prefix := []byte{dal.ZoneAttributes, dal.SubAttrAccountIncarnation}
+	iter, err := reader.NewIter(&pebble.IterOptions{LowerBound: prefix, UpperBound: dal.PrefixUpperBound(prefix)})
+	if err != nil {
+		return nil, fmt.Errorf("scanning existing account incarnations: %w", err)
+	}
+	for iter.First(); iter.Valid(); iter.Next() {
+		seen.add(iter.Key()[len(prefix):])
+	}
+	if err := iter.Error(); err != nil {
+		_ = iter.Close()
+		return nil, fmt.Errorf("scanning existing account incarnations: %w", err)
+	}
+	if err := iter.Close(); err != nil {
+		return nil, fmt.Errorf("closing account incarnation scan: %w", err)
+	}
+	return seen, nil
 }
 
 func (f *folder) process(ctx context.Context, entry *auditpb.AuditEntry, write bool) error {
@@ -433,7 +434,7 @@ func (f *folder) process(ctx context.Context, entry *auditpb.AuditEntry, write b
 		if sequence == 0 || sequence < success.GetMinLogSequence() || sequence > success.GetMaxLogSequence() {
 			continue
 		}
-		log, err := query.ReadLogBySequence(ctx, f.reader, sequence)
+		log, err := f.logs.get(ctx, sequence)
 		if err != nil || log == nil {
 			return fmt.Errorf("reading audit-linked log %d: %w", sequence, err)
 		}
@@ -543,15 +544,20 @@ func (f *folder) touch(key domain.AccountKey, date *commonpb.Timestamp) error {
 	}
 	row := f.rows[key]
 	if row == nil {
-		if _, deleted := f.deletes[key.LedgerName]; !deleted {
+		canonicalKey := key.Bytes()
+		// The migration's own rows soon occupy large SSTs. Probing every
+		// never-before-seen account would repeatedly read their filter blocks;
+		// the migration-local filter avoids those guaranteed misses.
+		if _, deleted := f.deletes[key.LedgerName]; !deleted && f.seen.mayContain(canonicalKey) {
 			var err error
-			row, err = f.attrs.AccountIncarnation.Get(f.current, key.Bytes())
+			row, err = f.attrs.AccountIncarnation.Get(f.current, canonicalKey)
 			if err != nil {
 				return err
 			}
 		}
 		if row == nil {
 			row = &commonpb.AccountIncarnation{Persistence: commonpb.AccountTypePersistence_ACCOUNT_TYPE_NORMAL}
+			f.newKeys = append(f.newKeys, canonicalKey)
 		}
 		f.rows[key] = row
 	}
@@ -587,8 +593,12 @@ func (f *folder) commit(store *dal.Store, marker Marker) error {
 	if err := batch.Commit(); err != nil {
 		return err
 	}
+	for _, key := range f.newKeys {
+		f.seen.add(key)
+	}
 	clear(f.rows)
 	clear(f.deletes)
+	f.newKeys = f.newKeys[:0]
 
 	return nil
 }

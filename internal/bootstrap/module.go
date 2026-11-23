@@ -215,13 +215,6 @@ func Module() fx.Option {
 					}).Infof("Configuration validation done")
 				}
 				if !cfg.Restore {
-					if cfg.RaftConfig.Bootstrap {
-						if err := incarnationmigration.InitializeEmptyBootstrap(store); err != nil {
-							_ = store.Close()
-
-							return nil, fmt.Errorf("initializing empty bootstrap account history: %w", err)
-						}
-					}
 					if err := incarnationmigration.RequireReady(store); err != nil {
 						_ = store.Close()
 
