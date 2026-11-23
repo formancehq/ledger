@@ -105,9 +105,10 @@ func TestBootInitPreservesAddressQueryPinnedBeforeDrop(t *testing.T) {
 	}
 	results := make(chan result, 1)
 	readDone := make(chan struct{})
+	afterTxID := uint64(111)
 	go func() {
 		defer close(readDone)
-		cur, err := c.ListTransactions(observed, ledger, 3, 111, filter, true)
+		cur, err := c.ListTransactions(observed, ledger, 3, &afterTxID, filter, true)
 		if err != nil {
 			results <- result{err: err}
 

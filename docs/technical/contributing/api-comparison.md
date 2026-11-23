@@ -305,7 +305,7 @@ JWT/anonymous policy; no new endpoint or authorization requirement is introduced
 | Create transaction with `force` | ✅ | ✅ | Bypasses balance checks |
 | **Transactions (Read)** |
 | Get transaction by ID | ✅ | ✅ | |
-| List transactions | ✅ | ✅ | HTTP `GET /v3/{ledgerName}/transactions` and gRPC stream: cursor pagination, `startDate`/`endDate` range, and the generic `filter` (`source`/`destination`/`address`, `reference`, exact/range `id`, metadata) |
+| List transactions | ✅ | ✅ | HTTP `GET /v3/{ledgerName}/transactions` and gRPC stream: cursor pagination (including exclusive key `"0"` for mirrored transaction ID zero), `startDate`/`endDate` range, and the generic `filter` (`source`/`destination`/`address`, `reference`, exact/range `id`, metadata) |
 | **Metadata** |
 | Save account metadata | ✅ | ✅ | |
 | Delete account metadata | ✅ | ✅ | |

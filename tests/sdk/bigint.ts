@@ -2,6 +2,8 @@
 // fields must be expressible through the public generated types.
 import { SDK } from "./sdk/sdk.js";
 import { HTTPClient } from "./lib/http.js";
+import type { CompactWriteResponseData } from "./models/compact-write-response.js";
+import type { CreateTransactionResponseData } from "./models/create-transaction-response.js";
 
 declare const process: { argv: string[] };
 const exact = "340282366920938463463374607431768211457";
@@ -9,6 +11,13 @@ function equal(actual: unknown, expected: unknown, description: string): void {
   if (actual !== expected) {
     throw new Error(`${description}: expected ${String(expected)}, received ${String(actual)}`);
   }
+}
+
+function createdTransaction(data: CompactWriteResponseData | CreateTransactionResponseData) {
+  if (!("transaction" in data) || !data.transaction) {
+    throw new Error("create response did not contain a transaction");
+  }
+  return data.transaction;
 }
 
 const transport = new HTTPClient();
@@ -29,20 +38,20 @@ const numeric = await sdk.transactions.createTransaction({
   ledgerName: "ledger1",
   body: { postings: [{ source: "world", destination: "alice", amount: 42, asset: "USD" }] },
 });
-equal(numeric.result.data.transaction?.postings[0]?.amount, 42, "default numeric amount");
+equal(createdTransaction(numeric.result.data).postings[0]?.amount, 42, "default numeric amount");
 
 const created = await sdk.transactions.createTransaction({
   ledgerName: "ledger1",
   formanceBigintAsString: "true",
   body: { postings: [{ source: "world", destination: "alice", amount: exact, asset: "USD" }] },
 });
-equal(created.result.data.transaction?.postings[0]?.amount, exact, "exact create response");
+equal(createdTransaction(created.result.data).postings[0]?.amount, exact, "exact create response");
 
 const stringDefault = await sdk.transactions.createTransaction({
   ledgerName: "ledger1",
   body: { reference: "string-default", postings: [{ source: "world", destination: "alice", amount: exact, asset: "USD" }] },
 });
-equal(typeof stringDefault.result.data.transaction?.postings[0]?.amount, "number", "string input without negotiation");
+equal(typeof createdTransaction(stringDefault.result.data).postings[0]?.amount, "number", "string input without negotiation");
 
 const retrieved = await sdk.transactions.getTransaction({
   ledgerName: "ledger1", transactionId: 2, formanceBigintAsString: "true",
