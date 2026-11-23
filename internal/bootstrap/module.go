@@ -147,7 +147,13 @@ func newCapabilityActivationReconciler(admission *admission.Admission, store *da
 		if !raftNode.IsLeader() {
 			return
 		}
-		if err := raftNode.RefreshSelfMembership(ctx, capabilities.IDsAsUint32(capabilities.SupportedIDs())); err != nil {
+		advertised, err := incarnationmigration.AdvertisedIDs(store)
+		if err != nil {
+			logger.WithFields(map[string]any{"error": err}).Errorf("Reading local capability evidence failed; activation will retry")
+
+			return
+		}
+		if err := raftNode.RefreshSelfMembership(ctx, advertised); err != nil {
 			logger.WithFields(map[string]any{"error": err}).Errorf("Capability evidence refresh failed; activation will retry")
 
 			return
