@@ -324,6 +324,18 @@ misses, and requires both the noncanonical-key and the missing-registration
 `INDEX_MISMATCH`. Other passes that decode ledger-name-keyed rows and match on
 the logical key are candidates for the same probe.
 
+## Noncanonical reversion-word keys
+
+`ReadReversions` is shared by checker comparison, startup recovery and
+incremental rebuild. It requires the exact physical word-key length and the
+canonical encoding of the decoded ledger name and word index before accepting
+a row. A key with nonzero ledger-name padding must be reported by the checker
+as `REVERTED_MISMATCH`, must not satisfy an audit-derived revert, and must not
+replace a canonical word in recovery. `checker_reversions_test.go` moves a
+legitimate word to an alias while retaining the audit and logs, then checks
+the full checker verdict. It also pairs canonical and alias words to verify
+the recovery reader ignores the alias.
+
 ## Index registrations without Id (EN-3237)
 
 A value field must not decide whether a row takes part in membership checks.
