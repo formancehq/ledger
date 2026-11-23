@@ -2,9 +2,13 @@ package indexbuilder
 
 import (
 	"context"
+	"fmt"
+	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
+	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 	"github.com/stretchr/testify/require"
 	metricnoop "go.opentelemetry.io/otel/metric/noop"
 
@@ -126,15 +130,19 @@ func TestWorkerBootsAfterLeaderSyncRestoresMainStoreBehindReadStore(t *testing.T
 	t.Parallel()
 	f := newResyncFixture(t)
 	b := f.b
+	retries := &bootRetryLogger{}
+	b.logger = retries
 
 	b.Start()
 	t.Cleanup(b.Stop)
 
-	require.Never(t, func() bool {
-		cursor, err := b.readStore.LastIndexedSequence()
-
-		return !b.readStore.ReadProjectionHealthy() || err != nil || cursor != f.folded
-	}, 300*time.Millisecond, 10*time.Millisecond, "boot must wait without failing or folding")
+	require.Eventually(t, func() bool {
+		return retries.laggingMain.Load() > 0
+	}, 10*time.Second, 10*time.Millisecond, "boot must observe the lagging main store and retry")
+	require.True(t, b.readStore.ReadProjectionHealthy())
+	cursor, err := b.readStore.LastIndexedSequence()
+	require.NoError(t, err)
+	require.Equal(t, f.folded, cursor)
 
 	f.installLeaderCheckpoint(t)
 
@@ -147,3 +155,23 @@ func TestWorkerBootsAfterLeaderSyncRestoresMainStoreBehindReadStore(t *testing.T
 		return !b.readStore.ReadProjectionHealthy()
 	}, 300*time.Millisecond, 10*time.Millisecond, "catch-up validation must accept the folded deletion")
 }
+
+// bootRetryLogger counts boot attempts that RetryWithBackoff retried because
+// the main store was behind the read-store cursor.
+type bootRetryLogger struct {
+	noopLogger
+
+	laggingMain atomic.Int64
+}
+
+func (l *bootRetryLogger) Errorf(format string, args ...any) {
+	if strings.Contains(fmt.Sprintf(format, args...), errMainStoreBehindReadStore.Error()) {
+		l.laggingMain.Add(1)
+	}
+}
+
+func (l *bootRetryLogger) WithFields(map[string]any) logging.Logger { return l }
+
+func (l *bootRetryLogger) WithField(string, any) logging.Logger { return l }
+
+func (l *bootRetryLogger) WithContext(context.Context) logging.Logger { return l }
