@@ -27,6 +27,7 @@ func newAuditLogReader(ctx context.Context, reader dal.PebbleReader) (*auditLogR
 	if err != nil {
 		return nil, err
 	}
+
 	return &auditLogReader{reader: reader, cursor: logs}, nil
 }
 
@@ -45,6 +46,7 @@ func (r *auditLogReader) get(ctx context.Context, sequence uint64) (*commonpb.Lo
 			if log == nil {
 				return nil, fmt.Errorf("missing audit-linked log %d", sequence)
 			}
+
 			return log, nil
 		}
 	}
@@ -63,6 +65,7 @@ func (r *auditLogReader) get(ctx context.Context, sequence uint64) (*commonpb.Lo
 		if log.GetSequence() != sequence {
 			return nil, fmt.Errorf("missing audit-linked log %d", sequence)
 		}
+
 		return log, nil
 	}
 }

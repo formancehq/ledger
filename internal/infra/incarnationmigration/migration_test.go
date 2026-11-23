@@ -260,6 +260,35 @@ func TestBackfillAcceptsAccountTypeAddedToInitiallyUntypedLedger(t *testing.T) {
 	require.True(t, marker.Complete)
 }
 
+func TestBackfillRecompilesAccountTypesWhenRemoved(t *testing.T) {
+	store := migrationStore(t)
+	appendFixture(t, store, 1, 100, &commonpb.LogPayload{Type: &commonpb.LogPayload_CreateLedger{CreateLedger: &commonpb.CreatedLedgerLog{Name: "ledger"}}})
+	apply := func(data *commonpb.LedgerLogPayload) *commonpb.LogPayload {
+		return &commonpb.LogPayload{Type: &commonpb.LogPayload_Apply{Apply: &commonpb.ApplyLedgerLog{
+			LedgerName: "ledger", Log: &commonpb.LedgerLog{Data: data},
+		}}}
+	}
+	appendFixture(t, store, 2, 200, apply(&commonpb.LedgerLogPayload{Payload: &commonpb.LedgerLogPayload_AddedAccountType{
+		AddedAccountType: &commonpb.AddedAccountTypeLog{AccountType: &commonpb.AccountType{Name: "ephemeral", Pattern: "alice", Persistence: commonpb.AccountTypePersistence_ACCOUNT_TYPE_EPHEMERAL}},
+	}}))
+	transaction := func() *commonpb.LedgerLogPayload {
+		return &commonpb.LedgerLogPayload{Payload: &commonpb.LedgerLogPayload_CreatedTransaction{
+			CreatedTransaction: &commonpb.CreatedTransaction{Transaction: &commonpb.Transaction{Postings: []*commonpb.Posting{{Source: "alice", Destination: "world"}}}},
+		}}
+	}
+	appendFixture(t, store, 3, 300, apply(transaction()))
+	appendFixture(t, store, 4, 400, apply(&commonpb.LedgerLogPayload{Payload: &commonpb.LedgerLogPayload_RemovedAccountType{
+		RemovedAccountType: &commonpb.RemovedAccountTypeLog{Name: "ephemeral"},
+	}}))
+	appendFixture(t, store, 5, 500, apply(transaction()))
+	activateWrites(t, store)
+	require.NoError(t, Run(t.Context(), store))
+	row, err := attributes.New().AccountIncarnation.Get(store, (domain.AccountKey{LedgerName: "ledger", Account: "alice"}).Bytes())
+	require.NoError(t, err)
+	require.Equal(t, uint64(500), row.GetInsertedAt().GetData())
+	require.Equal(t, uint64(500), row.GetUpdatedAt().GetData())
+}
+
 func TestRequireReadyRejectsUnmigratedActiveStore(t *testing.T) {
 	store := migrationStore(t)
 	require.NoError(t, RequireReady(store))
