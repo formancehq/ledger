@@ -2,6 +2,8 @@ package numscriptgen_test
 
 import (
 	"fmt"
+	"maps"
+	"math/rand"
 	"testing"
 
 	gen "github.com/formancehq/ledger/v3/tests/numscriptgen"
@@ -28,6 +30,31 @@ func TestGenerationIsSeedDeterministic(t *testing.T) {
 			}
 			if len(gotVars) != len(wantVars) || len(gotBalances) != len(wantBalances) || len(gotMeta) != len(wantMeta) {
 				t.Fatalf("seed %d generated the same program with different inputs", s)
+			}
+		}
+	}
+}
+
+func TestRerollVarsIsSeedDeterministic(t *testing.T) {
+	t.Parallel()
+
+	vars := map[string]string{
+		"account_0":  "a",
+		"account_1":  "b",
+		"asset_0":    "USD/2",
+		"number_0":   "1",
+		"monetary_0": "USD/2 10",
+		"portion_0":  "1/2",
+		"string_0":   "s",
+	}
+	accounts := []string{"x", "y", "z"}
+
+	for s := range 50 {
+		want := gen.RerollVars(rand.New(rand.NewSource(int64(s))), vars, accounts)
+		for range 20 {
+			got := gen.RerollVars(rand.New(rand.NewSource(int64(s))), vars, accounts)
+			if !maps.Equal(got, want) {
+				t.Fatalf("seed %d rerolled differently: %v vs %v", s, want, got)
 			}
 		}
 	}

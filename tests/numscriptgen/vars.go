@@ -2,7 +2,9 @@ package numscriptgen
 
 import (
 	"fmt"
+	"maps"
 	"math/rand"
+	"slices"
 	"strconv"
 	"strings"
 )
@@ -14,7 +16,8 @@ import (
 // Account values are drawn from accounts, or world.
 func RerollVars(rng *rand.Rand, vars map[string]string, accounts []string) map[string]string {
 	out := make(map[string]string, len(vars))
-	for name, value := range vars {
+	for _, name := range slices.Sorted(maps.Keys(vars)) {
+		value := vars[name]
 		out[name] = value
 
 		if rng.Intn(2) == 0 {
