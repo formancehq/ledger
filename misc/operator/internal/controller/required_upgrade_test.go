@@ -747,6 +747,45 @@ func TestStoppedUpgradeStatusPatchFailurePreservesLocalState(t *testing.T) {
 	}
 }
 
+func TestStoppedUpgradeFinalizerPatchFailureBlocksReconcile(t *testing.T) {
+	t.Parallel()
+	for _, test := range []struct {
+		name      string
+		upgrading bool
+	}{
+		{name: "release after upgrade"},
+		{name: "ensure during upgrade", upgrading: true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			cluster := newMinimalCluster()
+			if test.upgrading {
+				cluster.Status.Upgrade = &ledgerv1alpha1.ClusterUpgradeStatus{Phase: "Preflighting"}
+			} else {
+				cluster.Finalizers = []string{upgradeClaimsFinalizer}
+			}
+			before := cluster.DeepCopy()
+			failure := errors.New("finalizer patch unavailable")
+			attempts := 0
+			wrapped := interceptor.NewClient(fake.NewClientBuilder().Build(), interceptor.Funcs{
+				Patch: func(_ context.Context, _ client.WithWatch, obj client.Object, _ client.Patch, _ ...client.PatchOption) error {
+					attempts++
+					require.IsType(t, &ledgerv1alpha1.Cluster{}, obj)
+
+					return failure
+				},
+			})
+			reconciler := &ClusterReconciler{Client: wrapped}
+			proceed, _, err := reconciler.reconcileRequiredUpgradeWithExec(t.Context(), cluster, nil, nil)
+			require.ErrorIs(t, err, failure)
+			require.ErrorContains(t, err, "patching Cluster finalizers")
+			require.False(t, proceed)
+			require.Equal(t, 1, attempts)
+			require.Equal(t, before, cluster)
+		})
+	}
+}
+
 func TestStoppedUpgradeResumesReleasedIntentAndRejectsClaimDeclarationChanges(t *testing.T) {
 	t.Parallel()
 	for _, tt := range []struct {
