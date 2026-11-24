@@ -21,6 +21,7 @@ func TestRefreshStatusSummaries_SuccessesInSameSecondAfterPruning(t *testing.T) 
 	base := time.Date(2025, 1, 1, 12, 0, 0, 0, time.UTC)
 	run := func(name string, nanos int64, sequence uint64) ledgerv1alpha1.BackupRun {
 		completed := metav1.NewTime(base.Add(time.Duration(nanos)))
+
 		return ledgerv1alpha1.BackupRun{
 			ObjectMeta: metav1.ObjectMeta{Name: name},
 			Status: ledgerv1alpha1.BackupRunStatus{
