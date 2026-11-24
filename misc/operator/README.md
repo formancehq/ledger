@@ -272,8 +272,7 @@ before upgrading an operator with existing Backup resources.
 
 Manual `BackupRun` resources use `spec.backupRef` to identify their parent in
 the same namespace. The reference is immutable from creation; create a new run
-to select another parent. Follow the [admission upgrade procedure](../../docs/technical/architecture/subsystems/backup/operator-scheduling.md#upgrading-parent-admission)
-for existing runs before updating CRDs. Association labels and owner references are not required
+to select another parent. Association labels and owner references are not required
 for parent accounting, history retention or sibling exclusion. Events from
 unowned runs also reconcile their referenced parent.
 
