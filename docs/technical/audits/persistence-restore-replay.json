@@ -61,7 +61,7 @@
     "Every committed effect before a backup capture point that must survive cross-cluster restore is present in the flushed Pebble checkpoint, including audit history, primary projections, and operational policy. A second checkpoint after a committed mutation restores that mutation without an exported delta.",
     "A metadata-only Numscript execution is an audited business effect even when it creates no transaction. A checkpoint taken after that execution must capture the updated account metadata and audit history without inventing a transaction, reference, or next-ID advance. Restore must preserve those values and the next admitted operation.",
     "The backup uploads and verifies every checkpoint file, including a Pebble WAL file if present; publishes the new manifest only after all required objects exist; and prunes objects only after publication. A failed upload or manifest write leaves the previous manifest restorable.",
-    "Restore rejects legacy manifests containing exports or a separate cluster-policy override before activating staging. Offline bootstrap and gRPC restore use the same checkpoint-only contract."
+    "Restore rejects legacy manifests containing exports or a separate cluster-policy override before activating staging. Offline bootstrap and gRPC restore use the same checkpoint-only contract. This is the maintainer-approved PR #2600 RC artifact exception; rejection is not evidence that the old artifact remains recoverable after source loss."
   ],
   "adversarial_questions": [
     "Can a successful audited order write no ledger log, share old logs through idempotency, or emit multiple logs, and does the next checkpoint include the resulting durable state and audit evidence coherently?",

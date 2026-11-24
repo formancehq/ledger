@@ -33,9 +33,13 @@ exercises this composition.
 Both gRPC restore and offline bootstrap reject old manifests containing exports
 or a separate cluster-policy override. Staging reset, path containment, file
 size/hash validation, validation before activation, and failure residue remain
-part of the restore contract. Legacy export application code may remain for
-rolling-version compatibility, but it is unreachable from new backup and
-restore entry points and is not the current backup format.
+part of the restore contract. The legacy export application code is removed;
+the Raft FSM still applies committed legacy backup orders during a rolling
+upgrade, but new backup and restore entry points do not use the export format.
+The rejection is the maintainer-approved PR #2600 RC artifact exception, not
+evidence that an old incremental backup remains recoverable after source loss.
+The audit must still prove current checkpoint restore parity and that both
+entry points fail closed on the unsupported manifest.
 
 ## State classification
 

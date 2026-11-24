@@ -15,6 +15,14 @@ capture may be included or left for the next backup. Restore uses the latest
 checkpoint directly; it does not replay incremental export segments. A manifest
 with old incremental exports is rejected before staging is activated. Create a
 new checkpoint backup with the new binary before relying on that destination.
+This is the maintainer-approved RC artifact exception in
+[the upgrade policy](./upgrades.md#release-requirement-from-v300-rc1). Keep the
+source volumes through the upgrade, run a new checkpoint backup immediately
+after the target starts, and verify restore from that backup before treating
+the destination as protected. If the source volumes are lost before the new
+checkpoint is published, the target binary cannot recover the committed
+post-checkpoint delta from the old incremental artifact. No automatic
+conversion of that artifact exists.
 
 The published `IncrementalBackup` RPC and the hidden
 `ledgerctl store incremental-backup` command remain compatibility aliases: they

@@ -88,8 +88,10 @@ Cross-cluster preparation classifies the checkpoint's Pebble zones as follows:
 | `ZoneCache` | Deleted | The destination re-seeds its own cache from preserved state. |
 
 The old export and replay implementation has been removed. Previously emitted
-incremental backup artifacts are intentionally unsupported; see the migration
-section in `docs/ops/backup-restore.md`. The Raft FSM still applies previously
+incremental backup artifacts are intentionally unsupported; see the recovery
+steps in `docs/ops/backup-restore.md`. If source volumes disappear before a
+new checkpoint is published, the target restore path cannot recover an old
+artifact's post-checkpoint delta. The Raft FSM still applies previously
 committed incremental job orders during a rolling RC upgrade.
 
 ## Published compatibility surfaces

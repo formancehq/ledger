@@ -37,7 +37,9 @@ manifests with export segments or a separate cluster policy override. The user
 must create a new checkpoint backup with the updated binary before restoring
 from that destination. Compatibility with the old backup artifact is deliberately
 not maintained during the RC; persisted Ledger and Raft data retain their normal
-upgrade requirements.
+upgrade requirements. This is the narrow maintainer-approved PR #2600 artifact
+exception: loss of the source before a new checkpoint is published leaves the
+old artifact's post-checkpoint delta unrecoverable by the target binary.
 
 `PrepareForBackup` discards source cluster-local state after the download and
 before activation. The audit secret remains with the chain. Source Raft applied

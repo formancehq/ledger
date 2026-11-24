@@ -10,6 +10,16 @@ and test a safe migration when a format changes. A full data wipe or external
 reconstruction is not an acceptable release upgrade. Beta and development
 revisions before `v3.0.0-rc.1` remain outside this guarantee.
 
+**Maintainer-approved backup artifact exception (PR #2600):** the
+checkpoint-only backup release does not restore incremental export manifests
+published by earlier RCs. This exception applies only to object-store backup
+artifacts; the upgrade on retained volumes still preserves committed business
+data, audit history, and cluster state. A new checkpoint backup must complete
+and be verified after the target binary starts before that destination is a
+supported recovery point. If the source volumes are lost before then, the
+target binary cannot recover the post-checkpoint history in the old artifact.
+This is an accepted recovery gap, not a data migration.
+
 During the RC line, keep the service gRPC revision at 40 and document the client
 impact and upgrade steps of behavior or configuration changes. See the
 [protocol policy](../technical/architecture/subsystems/api/protocol-compatibility.md#maintaining-the-revision).
@@ -113,8 +123,10 @@ fsync aborts boot but can leave the complete new batch visible; treat an uncerta
 migration as non-rollbackable. Recover using the target binary and retained
 volumes. Alternatively restore a separately retained pre-upgrade backup with its
 matching binary, losing writes after that backup. Use matching server and CLI
-versions: new backup manifests are deliberately rejected by old readers, and
-new readers still accept the released format. See the [storage contract](../technical/architecture/subsystems/storage/control-state.md).
+versions: new backup manifests are deliberately rejected by old readers.
+The target binary also rejects released RC incremental manifests under the
+exception above. See the
+[storage contract](../technical/architecture/subsystems/storage/control-state.md).
 
 ### Maintainer-declared CLI break
 
@@ -136,7 +148,7 @@ supported source releases. Cover affected Pebble records, Raft log and snapshot
 state, backup and restore formats, audit verification, and rebuildable
 projections. Document the upgrade procedure and rollback boundary in the
 release notes. Delay the release if the target cannot read or migrate the source
-state.
+state, except for the explicit PR #2600 backup artifact exception above.
 
 The upgrade classes below describe existing procedures. RC changes use the
 rolling class when the two binaries can safely coexist. The `rc.3` → `rc.4`
@@ -254,8 +266,9 @@ once claim ownership matches it. If a Pod will not terminate, diagnose its
 node and storage attachment, then let Kubernetes finish termination; the
 operator keeps the cluster unavailable. Verify the replacement is fully ready,
 then check cluster status, representative reads and writes, audit verification
-and backup compatibility. The operator does not delete Raft members, and
-deletes upgrade claims only when the Cluster itself is deleted as described above.
+and a new checkpoint backup and restore. Previously published RC incremental
+artifacts follow the exception above. The operator does not delete Raft members,
+and deletes upgrade claims only when the Cluster itself is deleted as described above.
 
 The drain blocks business writes before the stop; in-flight proposals after
 the cutoff reject at apply. Cluster-internal technical entries may continue

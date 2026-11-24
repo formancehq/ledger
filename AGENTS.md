@@ -26,6 +26,12 @@ as a wire exception at the unchanged service protocol revision.
 
 - Classify persisted, Raft, snapshot, backup, and audit changes against the RC
   baseline. Include a tested migration or prove existing data remains valid.
+- The checkpoint-only backup change in PR #2600 is a maintainer-approved,
+  narrow exception for previously published RC incremental backup artifacts.
+  The target restore paths reject manifests with exports or a policy sidecar.
+  This does not permit loss of live persisted Ledger, Raft, or audit state
+  during an upgrade; see the explicit recovery window and risk in
+  `docs/ops/backup-restore.md`.
 - Compatibility with beta or development revisions before `v3.0.0-rc.1` is
   not required.
 - Preserve published gRPC services, methods, request and response types, field
