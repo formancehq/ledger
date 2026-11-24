@@ -277,7 +277,7 @@ func TestBootstrapRetryRebuild(t *testing.T) {
 			defer func() { require.NoError(t, restored.Close()) }()
 			requireBootstrapRetryVolumes(t, restored, uint64(100+deltaCount))
 			var findings []*servicepb.CheckStoreError
-			checker := check.NewChecker(restored, attributes.New(), nil, logger)
+			checker := check.NewChecker(restored, attributes.New(), logger)
 			require.NoError(t, checker.Check(t.Context(), func(event *servicepb.CheckStoreEvent) {
 				if e, ok := event.GetType().(*servicepb.CheckStoreEvent_Error); ok {
 					findings = append(findings, e.Error)

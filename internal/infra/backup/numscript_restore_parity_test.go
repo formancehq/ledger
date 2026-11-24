@@ -352,10 +352,15 @@ set_tx_meta("route", "inline")`, map[string]string{"amt": "USD/2 300"}, nil))
 	src.apply(actions.SaveNumscriptWithVersionAction(numscriptRestoreLedger, "pay", numscriptRestorePayV2, "1.1.0"))
 	src.apply(actions.CreateScriptRefTransactionAction(numscriptRestoreLedger, "pay", "latest",
 		map[string]string{"amt": "USD/2 350", "dest": "erin"}, nil))
+	// This execution changes only account metadata. It must be exported in the
+	// delta and rebuilt without allocating another transaction.
+	src.apply(actions.ExecuteScriptAction(numscriptRestoreLedger,
+		`set_account_meta(@alice, "tier", "premium")`, nil))
 	require.NoError(t, srcStore.Flush())
 
 	live := readNumscriptRestoreView(t, srcStore)
 	require.Len(t, live.transactions, 5)
+	require.Equal(t, "premium", live.metadata["alice/tier"].GetStringValue())
 	require.Equal(t, int64(1000-100-300-50-50), live.balanceOf(t, "alice"), "v1.1.0 drains @bob's 300, then 50 from @alice")
 	require.Equal(t, int64(0), live.balanceOf(t, "bob"))
 	require.Equal(t, int64(350), live.balanceOf(t, "erin"))

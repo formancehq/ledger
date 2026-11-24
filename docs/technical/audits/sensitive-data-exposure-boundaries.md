@@ -83,6 +83,10 @@ rendered Pod template, not kubelet resolution or actual Pod propagation.
 
 ### CLI sink URL credential projection
 
+The shared sink configuration gate in
+`internal/application/admission/validate_order_sink_config.go` still validates
+URLs before consensus without including raw URLs in validation diagnostics.
+
 `ledgerctl events list` and the successful local `events add-sink` summary are
 independent credential-emitting boundaries: a server-side projection does not
 protect the configuration that add-sink renders after submission. Exercise the

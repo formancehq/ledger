@@ -24,6 +24,12 @@ and script output. The scan uses linear time and constant auxiliary space.
 Posting and transaction mutations staged earlier are discarded on rejection;
 the failure audit entry and a keyed definitive failure still commit.
 
+New ledger creation validates initial account-type segment constraints and
+rejects equal-specificity pattern conflicts before allocating a ledger ID.
+The mandatory RC.4-to-RC.5 stopped upgrade applies older committed business
+entries under RC.4. Audit replay retains the historical creation rule so
+previously successful orders remain reproducible.
+
 Changing this selection from unordered traversal requires the
 [maintenance-gated rolling upgrade](../../../../ops/upgrades.md#account-metadata-address-validation)
 when upgrading affected releases. Existing stored audit failures are preserved.

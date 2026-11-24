@@ -239,7 +239,7 @@ func (b *RoutedController) GetTransaction(ctx context.Context, ledgerName string
 	return tx, err
 }
 
-func (b *RoutedController) ListTransactions(ctx context.Context, ledgerName string, pageSize uint32, afterTxID uint64, filter *commonpb.QueryFilter, reverse bool) (cursor.Cursor[*commonpb.Transaction], error) {
+func (b *RoutedController) ListTransactions(ctx context.Context, ledgerName string, pageSize uint32, afterTxID *uint64, filter *commonpb.QueryFilter, reverse bool) (cursor.Cursor[*commonpb.Transaction], error) {
 	c, barrier, err := b.readCtrl(ctx)
 	if err != nil {
 		return nil, err

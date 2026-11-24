@@ -67,31 +67,33 @@ func protoFieldJSON(msg proto.Message) (json.RawValue, error) {
 // submessages, and the empty-on-list slices.
 func (x *AuditEntry) MarshalJSON() ([]byte, error) {
 	type Aux struct {
-		Sequence       uint64              `json:"sequence"`
-		Timestamp      *commonpb.Timestamp `json:"timestamp,omitempty"`
-		ProposalId     uint64              `json:"proposalId"`
-		Success        *AuditSuccess       `json:"success,omitempty"`
-		Failure        *AuditFailure       `json:"failure,omitempty"`
-		OrderCount     uint32              `json:"orderCount"`
-		Items          []*AuditItem        `json:"items,omitempty"`
-		Ledgers        []string            `json:"ledgers,omitempty"`
-		Hash           string              `json:"hash,omitempty"`
-		HashVersion    uint32              `json:"hashVersion"`
-		CallerSnapshot json.RawValue       `json:"callerSnapshot,omitempty"`
-		Idempotency    json.RawValue       `json:"idempotency,omitempty"`
-		Signature      json.RawValue       `json:"signature,omitempty"`
+		Sequence             uint64              `json:"sequence"`
+		Timestamp            *commonpb.Timestamp `json:"timestamp,omitempty"`
+		ProposalId           uint64              `json:"proposalId"`
+		Success              *AuditSuccess       `json:"success,omitempty"`
+		Failure              *AuditFailure       `json:"failure,omitempty"`
+		OrderCount           uint32              `json:"orderCount"`
+		Items                []*AuditItem        `json:"items,omitempty"`
+		Ledgers              []string            `json:"ledgers,omitempty"`
+		Hash                 string              `json:"hash,omitempty"`
+		HashVersion          uint32              `json:"hashVersion"`
+		CallerSnapshot       json.RawValue       `json:"callerSnapshot,omitempty"`
+		Idempotency          json.RawValue       `json:"idempotency,omitempty"`
+		Signature            json.RawValue       `json:"signature,omitempty"`
+		RequiredCapabilities []uint32            `json:"requiredCapabilities,omitempty"`
 	}
 
 	aux := Aux{
-		Sequence:    x.GetSequence(),
-		Timestamp:   x.GetTimestamp(),
-		ProposalId:  x.GetProposalId(),
-		Success:     x.GetSuccess(),
-		Failure:     x.GetFailure(),
-		OrderCount:  x.GetOrderCount(),
-		Items:       x.GetItems(),
-		Ledgers:     x.GetLedgers(),
-		HashVersion: x.GetHashVersion(),
+		Sequence:             x.GetSequence(),
+		Timestamp:            x.GetTimestamp(),
+		ProposalId:           x.GetProposalId(),
+		Success:              x.GetSuccess(),
+		Failure:              x.GetFailure(),
+		OrderCount:           x.GetOrderCount(),
+		Items:                x.GetItems(),
+		Ledgers:              x.GetLedgers(),
+		HashVersion:          x.GetHashVersion(),
+		RequiredCapabilities: x.GetRequiredCapabilities(),
 	}
 
 	var err error

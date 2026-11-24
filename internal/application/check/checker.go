@@ -11,6 +11,7 @@ import (
 	"math/big"
 	"math/bits"
 	"slices"
+	"sort"
 	"strconv"
 
 	"github.com/cockroachdb/pebble/v2"
@@ -34,7 +35,6 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/internal/query"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
-	"github.com/formancehq/ledger/v3/internal/storage/readstore"
 )
 
 const progressInterval = 100
@@ -44,25 +44,15 @@ type Checker struct {
 	store  *dal.Store
 	attrs  *attributes.Attributes
 	logger logging.Logger
-	// readStore gives the reverse-map orphan pass read access to the peer
-	// read-index store. nil at the restore / CLI call sites, where no peer
-	// readstore exists for the staged store being validated — the pass then
-	// skips with an INFO log rather than reporting a clean result it did not
-	// verify. This is the one documented exception to invariant #8's
-	// peer-store carve-out.
-	readStore *readstore.Store
 }
 
 // NewChecker creates a new Checker. Audit verification reads the committed
-// secret from the same pinned store snapshot as the history. readStore may be nil when no peer
-// read-index store is available (restore / CLI backup validation); the
-// reverse-map orphan pass is then skipped.
-func NewChecker(store *dal.Store, attrs *attributes.Attributes, readStore *readstore.Store, logger logging.Logger) *Checker {
+// secret from the same pinned store snapshot as the history.
+func NewChecker(store *dal.Store, attrs *attributes.Attributes, logger logging.Logger) *Checker {
 	return &Checker{
-		store:     store,
-		attrs:     attrs,
-		logger:    logger,
-		readStore: readStore,
+		store:  store,
+		attrs:  attrs,
+		logger: logger,
 	}
 }
 
@@ -81,7 +71,7 @@ func logPrefixUpperBound() []byte {
 
 // readHighestLogKey returns the greatest Log KEY sequence in the store, or 0
 // when it holds no Log row. Read off the key, never off the value's `sequence`
-// field — see the head comment in pinCheckSnapshots.
+// field — see the head comment in pinCheckSnapshot.
 func readHighestLogKey(reader dal.PebbleReader) (uint64, error) {
 	iter, err := reader.NewIter(&pebble.IterOptions{
 		LowerBound: []byte{dal.ZoneHistory, dal.SubHistoryLog},
@@ -168,12 +158,9 @@ func emitSequenceGapRun(first, last uint64, callback func(*servicepb.CheckStoreE
 // Snapshots, audit verification, log replay, and projection comparisons run
 // in that order; each phase preserves the event order of its checks.
 func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStoreEvent)) error {
-	peerSnap, snap, storedMaxLogSeq, err := c.pinCheckSnapshots()
+	snap, storedMaxLogSeq, err := c.pinCheckSnapshot()
 	if err != nil {
 		return err
-	}
-	if peerSnap != nil {
-		defer func() { _ = peerSnap.Close() }()
 	}
 	defer func() { _ = snap.Close() }()
 	// Allocate replay storage before the audit walk, as in the original check.
@@ -193,7 +180,7 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 		return err
 	}
 
-	return c.compareProjections(ctx, snap, peerSnap, storedMaxLogSeq, chainBound, folds, state, callback)
+	return c.compareProjections(ctx, snap, storedMaxLogSeq, chainBound, folds, state, callback)
 }
 
 // checkReplayState contains the audit-derived projections produced by the single
@@ -206,7 +193,6 @@ type checkReplayState struct {
 	ledgerRevertedTxIDs     map[string]*bitset.Bitset
 	expectedIndexes         map[domain.IndexKey]*commonpb.Index
 	deletedInReplay         map[string]struct{}
-	expectedSchemas         map[string]*commonpb.MetadataSchema
 	boundaries              auditBoundaryExpectation
 	numscripts              *numscriptProjection
 	derivedLiveCheckpoints  map[uint64]*commonpb.CreatedQueryCheckpointLog
@@ -214,61 +200,26 @@ type checkReplayState struct {
 	queryCheckpointSchedule string
 }
 
-// pinCheckSnapshots pins the peer before the primary store. The order keeps
-// the peer fold cursor no farther ahead than the primary log head.
-func (c *Checker) pinCheckSnapshots() (*pebble.Snapshot, *dal.ReadHandle, uint64, error) {
-	// Pin the peer read-index snapshot FIRST — strictly BEFORE the primary one.
-	// The order is load-bearing for compareReverseMapOrphans, which compares the
-	// peer's fold cursor against lastSequence (read off the primary snapshot
-	// below) and can only judge rows on an exactly aligned view.
-	//
-	// The index builder folds FROM the primary log stream: it writes
-	// WriteProgress(batch, lastSeq) for logs it has just read out of the primary
-	// store, so progress(t) <= maxLogSeq(t) at every instant, and both values are
-	// monotonically non-decreasing. Pinning the peer at t0 and the primary at
-	// t1 >= t0 therefore gives
-	//
-	//	indexedSequence = progress(t0) <= maxLogSeq(t0) <= maxLogSeq(t1) = lastSequence
-	//
-	// which makes a peer cursor AHEAD of the verified sequence impossible by
-	// construction rather than merely unlikely. Taken in the reverse order the
-	// gap admits logs applied and folded between the two pins, and the pass then
-	// judges rows for ledgers and fields created after the primary pin against
-	// oracles that predate them — reporting a healthy cluster as corrupt.
-	//
-	// The two snapshots still cannot be taken atomically across two Pebble
-	// stores, but atomicity is not what this needs: an ordering that can only
-	// ever leave the peer BEHIND is enough, because behind is a state the pass
-	// already handles by skipping. See ALIGNMENT in reverse_map_orphans.go.
-	var peerSnap *pebble.Snapshot
-
-	if c.readStore != nil {
-		peerSnap = c.readStore.NewSnapshot()
-	}
-
+// pinCheckSnapshot reads the log head and all subsequent checker inputs from
+// one primary-store snapshot.
+func (c *Checker) pinCheckSnapshot() (*dal.ReadHandle, uint64, error) {
 	// Take a point-in-time snapshot so that log iteration and live attribute
 	// reads see the same committed state. Without this, entries committed
 	// between the log scan and the attribute scan cause false-positive
 	// mismatches (the live volumes include effects of logs the replay never saw).
 	snap, err := c.store.NewReadHandle()
 	if err != nil {
-		if peerSnap != nil {
-			_ = peerSnap.Close()
-		}
-
-		return nil, nil, 0, fmt.Errorf("creating read snapshot: %w", err)
+		return nil, 0, fmt.Errorf("creating read snapshot: %w", err)
 	}
 
 	// The store head, read off the Pebble KEY of the last Log row rather than
 	// off the value's `sequence` field (query.ReadLastSequence). ONE head, used
-	// for everything: progress sizing, the reverse-map alignment oracle and the
-	// audit-derived bound comparison below.
+	// for progress sizing and the audit-derived bound comparison below.
 	//
 	// The value's field is not hash-bound, and editing it is itself a reported
 	// finding (CHECK_STORE_ERROR_TYPE_LOG_SEQUENCE_MISMATCH), so a head taken
 	// from it could be moved by the same edit this run is meant to catch — it
-	// would move the progress total, and it would move the alignment the
-	// reverse-map pass reaches its verdict under. Both now sit on the key.
+	// would move the progress total. The bound therefore sits on the key.
 	//
 	// Read here rather than accumulated in the log loop below because progress
 	// needs the total before the first row is read. `snap` is a pinned
@@ -276,14 +227,11 @@ func (c *Checker) pinCheckSnapshots() (*pebble.Snapshot, *dal.ReadHandle, uint64
 	storedMaxLogSeq, err := readHighestLogKey(snap)
 	if err != nil {
 		_ = snap.Close()
-		if peerSnap != nil {
-			_ = peerSnap.Close()
-		}
 
-		return nil, nil, 0, fmt.Errorf("getting last sequence: %w", err)
+		return nil, 0, fmt.Errorf("getting last sequence: %w", err)
 	}
 
-	return peerSnap, snap, storedMaxLogSeq, nil
+	return snap, storedMaxLogSeq, nil
 }
 
 // verifyCheckAudit verifies the complete audit chain, including histories
@@ -362,11 +310,6 @@ func (c *Checker) replayLogs(ctx context.Context, snap dal.PebbleReader, replay 
 		// range. Lets compareIndexes / compareNumscripts / compareMirrorV2LogID
 		// name the cause when a stored row survives a replayed deletion.
 		deletedInReplay = make(map[string]struct{})
-		// Expected metadata schema per ledger, derived from
-		// CreateLedger.initial_schema + SetMetadataFieldType /
-		// RemovedMetadataFieldType logs. Compared against the stored
-		// schema-dependent reverse-map diagnostics.
-		expectedSchemas = make(map[string]*commonpb.MetadataSchema)
 		numscripts      = newNumscriptProjection()
 
 		// derivedLiveCheckpoints is the audit-derived set of live query checkpoints
@@ -625,14 +568,12 @@ func (c *Checker) replayLogs(ctx context.Context, snap dal.PebbleReader, replay 
 				if payload.CreateLedger != nil {
 					name := payload.CreateLedger.GetName()
 					knownLedgers[name] = struct{}{}
-					expectedSchemas[name] = payload.CreateLedger.GetMetadataSchema().CloneVT()
 					seedAccountTypes(rawLedgerTypes, ledgerAccountTypes, name, payload.CreateLedger.GetAccountTypes())
 				}
 			case *commonpb.LogPayload_DeleteLedger:
 				if payload.DeleteLedger != nil {
 					name := payload.DeleteLedger.GetName()
 					delete(knownLedgers, name)
-					delete(expectedSchemas, name)
 					delete(rawLedgerTypes, name)
 					delete(ledgerAccountTypes, name)
 
@@ -735,15 +676,7 @@ func (c *Checker) replayLogs(ctx context.Context, snap dal.PebbleReader, replay 
 								}
 								delete(expectedIndexes, key)
 							}
-						case *commonpb.LedgerLogPayload_SetMetadataFieldType:
-							if l := d.SetMetadataFieldType; l != nil {
-								setExpectedSchemaField(expectedSchemas, ledgerName, l.GetTargetType(), l.GetKey(), l.GetType())
-							}
 						case *commonpb.LedgerLogPayload_RemovedMetadataFieldType:
-							if l := d.RemovedMetadataFieldType; l != nil {
-								removeExpectedSchemaField(expectedSchemas, ledgerName, l.GetTargetType(), l.GetKey())
-							}
-
 							// processRemoveMetadataFieldType cascades into a
 							// DropIndex when an index was attached to the
 							// removed field; the dropped id rides on the log
@@ -859,8 +792,8 @@ func (c *Checker) replayLogs(ctx context.Context, snap dal.PebbleReader, replay 
 	return &checkReplayState{
 		replay: replay, observed: observed, excluded: excluded,
 		knownLedgers: knownLedgers, ledgerRevertedTxIDs: ledgerRevertedTxIDs,
-		expectedIndexes: expectedIndexes,
-		deletedInReplay: deletedInReplay, expectedSchemas: expectedSchemas,
+		expectedIndexes:         expectedIndexes,
+		deletedInReplay:         deletedInReplay,
 		boundaries:              auditExpected.boundaries,
 		numscripts:              numscripts,
 		derivedLiveCheckpoints:  derivedLiveCheckpoints,
@@ -871,7 +804,7 @@ func (c *Checker) replayLogs(ctx context.Context, snap dal.PebbleReader, replay 
 
 // compareProjections checks stored rows against the completed replay and audit
 // folds, in the same order in which Check historically emitted findings.
-func (c *Checker) compareProjections(ctx context.Context, snap dal.PebbleReader, peerSnap *pebble.Snapshot, storedMaxLogSeq uint64, chainBound *chainBoundState, folds chainVerifierFolds, state *checkReplayState, callback func(*servicepb.CheckStoreEvent)) error {
+func (c *Checker) compareProjections(ctx context.Context, snap dal.PebbleReader, storedMaxLogSeq uint64, chainBound *chainBoundState, folds chainVerifierFolds, state *checkReplayState, callback func(*servicepb.CheckStoreEvent)) error {
 	replay := state.replay
 	observed := state.observed
 	excluded := state.excluded
@@ -879,7 +812,6 @@ func (c *Checker) compareProjections(ctx context.Context, snap dal.PebbleReader,
 	ledgerRevertedTxIDs := state.ledgerRevertedTxIDs
 	expectedIndexes := state.expectedIndexes
 	deletedInReplay := state.deletedInReplay
-	expectedSchemas := state.expectedSchemas
 	derivedLiveCheckpoints := state.derivedLiveCheckpoints
 	signing, bounds := folds.signing, folds.bounds
 
@@ -893,21 +825,6 @@ func (c *Checker) compareProjections(ctx context.Context, snap dal.PebbleReader,
 		reader:          snap,
 		expected:        expectedIndexes,
 		deletedInReplay: deletedInReplay,
-	}, callback)
-
-	// Runs over every store, a zero-log one included: an empty log stream does
-	// not make the peer store trustworthy. The read index folds FROM the log
-	// stream, so a reverse-map row over a store with no logs is unaudited by
-	// definition, and malformed keys plus rows for ledgers the audit never
-	// created are exactly the classes this pass exists to report (EN-1458).
-	// With no logs every oracle term below is legitimately empty and the head
-	// is 0, which the alignment rule in reverse_map_orphans.go already handles.
-	c.compareReverseMapOrphans(reverseMapOrphanScope{
-		reader:          snap,
-		peer:            peerSnap,
-		lastSequence:    storedMaxLogSeq,
-		liveLedgers:     knownLedgers,
-		replayedSchemas: expectedSchemas,
 	}, callback)
 
 	c.compareMirrorV2LogID(snap, chainBound, deletedInReplay, callback)
@@ -1113,10 +1030,7 @@ type compareIndexesScope struct {
 // lands and threads an audit-bound order through the same machinery.
 //
 // There is no unmatched-row tolerance: an unmatched stored entry is a hard
-// mismatch. A tolerated stale or tampered registry row is exactly what makes
-// compareReverseMapOrphans' registry term treat orphaned reverse-map rows as
-// legitimate — two corrupted projections could mask each other and leave
-// Check() clean (EN-1458 review).
+// mismatch against the audit-derived registry.
 func (c *Checker) compareIndexes(
 	scope compareIndexesScope,
 	callback func(*servicepb.CheckStoreEvent),
@@ -2448,6 +2362,7 @@ func (c *Checker) verifyAuditHashChain(
 				if replayErr != nil {
 					return nil, fmt.Errorf("replaying chain-verified audit entry %d: %w", entry.GetSequence(), replayErr)
 				}
+				reconcileMetadataOnlyChainBound(items, orders, logs, chainBound)
 				for _, log := range logs {
 					if _, duplicate := expectedLogs[log.GetSequence()]; duplicate {
 						return nil, fmt.Errorf("invariant: audit replay produced duplicate log sequence %d", log.GetSequence())
@@ -2534,6 +2449,77 @@ func (c *Checker) verifyAuditHashChain(
 	return result, nil
 }
 
+// reconcileMetadataOnlyChainBound corrects checker-only projections that are
+// derived from the serialized order before the FSM resolves a Numscript. A
+// metadata-only script has no transaction ID, while collectExpectedSkippable
+// must conservatively derive IDs from orders alone for older log formats.
+// Replay gives us the authoritative payload shape, so remove the speculative
+// transaction slot and fold script-emitted account metadata into the skip
+// timeline.
+func reconcileMetadataOnlyChainBound(items []*auditpb.AuditItem, orders []*raftcmdpb.Order, logs []*commonpb.Log, chainBound *chainBoundState) {
+	bySequence := make(map[uint64]*commonpb.Log, len(logs))
+	for _, log := range logs {
+		if log != nil {
+			bySequence[log.GetSequence()] = log
+		}
+	}
+	for i, order := range orders {
+		if i >= len(items) || order == nil {
+			continue
+		}
+		log := bySequence[items[i].GetLogSequence()]
+		if log == nil {
+			continue
+		}
+
+		ledger := order.GetLedgerScoped().GetLedger()
+
+		// Seed transaction-scoped predicates from the replayed transaction, not
+		// from the order-derived counter: a metadata-only order earlier in the
+		// same entry consumes no FSM transaction id, so the speculative
+		// allocation is one too high for every later create.
+		if tx := log.GetPayload().GetApply().GetLog().GetData().GetCreatedTransaction().GetTransaction(); tx != nil {
+			if execution := order.GetLedgerScoped().GetApply().GetExecuteNumscript(); execution != nil && execution.GetReference() != "" {
+				rememberReferenceClaim(chainBound.references, ledger, execution.GetReference(), items[i].GetLogSequence())
+			}
+			if _, anchored := chainBound.ledgerCreationSeen[ledger]; anchored {
+				rememberReferenceTxID(chainBound.referenceTxIDs, ledger, tx.GetReference(), tx.GetId())
+
+				target := metadataTimelineTarget(true, strconv.FormatUint(tx.GetId(), 10))
+				for key := range tx.GetMetadata() {
+					appendMetadataMutation(chainBound.metadata, ledger, target, key, items[i].GetLogSequence(), true)
+				}
+			}
+
+			continue
+		}
+
+		if tx := log.GetPayload().GetApply().GetLog().GetData().GetRevertedTransaction().GetRevertTransaction(); tx != nil {
+			if _, anchored := chainBound.ledgerCreationSeen[ledger]; anchored {
+				target := metadataTimelineTarget(true, strconv.FormatUint(tx.GetId(), 10))
+				for key := range tx.GetMetadata() {
+					appendMetadataMutation(chainBound.metadata, ledger, target, key, items[i].GetLogSequence(), true)
+				}
+			}
+
+			continue
+		}
+
+		payload := log.GetPayload().GetApply().GetLog().GetData().GetAccountMetadataUpdated()
+		if payload == nil {
+			continue
+		}
+		if next, ok := chainBound.nextTxID[ledger]; ok && next > 1 {
+			chainBound.nextTxID[ledger] = next - 1
+		}
+		for account, metadata := range payload.GetAccountMetadata() {
+			for key := range metadata.GetValues() {
+				appendMetadataMutation(chainBound.metadata, ledger, metadataTimelineTarget(false, account), key, items[i].GetLogSequence(), true)
+			}
+		}
+	}
+}
+
 // chainBoundState aggregates the audit-derived state the verifier consults
 // to prove each per-reason skip is legitimate. Every entry is populated by
 // collectExpectedSkippable during the audit chain scan — projections
@@ -2570,11 +2556,10 @@ type chainBoundState struct {
 	// transaction id) with the SAME first-claim-wins semantic, so the
 	// verifier can re-derive and pin OrderSkipped.context["existingTransactionId"]
 	// against audit-bound data. Every reference-claim source carries the
-	// owning tx id: a CreateTransaction gets it from the chain-bound
-	// counter (allocateChainBoundTxID), a mirror ingest from
-	// MirrorCreatedTransaction.transaction_id. An id of 0 means "claim seen
-	// but owning tx id not derivable" (an unanchored counter) — the verifier
-	// stays permissive in that case. See finding EN-1356
+	// owning tx id: a replayed CreatedTransaction supplies it for a regular
+	// create, while a mirror ingest supplies MirrorCreatedTransaction.transaction_id.
+	// An id of 0 means "claim seen but owning tx id not derivable" — the
+	// verifier stays permissive in that case. See finding EN-1356
 	// existingTransactionId (invariant #8).
 	referenceTxIDs map[string]map[string]uint64
 	reverted       map[string]map[uint64]uint64
@@ -2887,9 +2872,11 @@ func collectExpectedSkippable(
 			}
 		}
 
-		// Track every chain-bound reference claim on this ledger, not just
-		// the ones from orders that opted into skip. Two order shapes can
-		// originate a reference write:
+		// Track chain-bound reference claims on this ledger, not just
+		// the ones from orders that opted into skip. CreateTransaction
+		// and MirrorIngest reveal their claims in the order; ExecuteNumscript
+		// claims are confirmed from replayed CreatedTransaction logs later.
+		// The order-derived claimants are:
 		//   - LedgerApplyOrder_CreateTransaction (regular path)
 		//   - LedgerScopedOrder_MirrorIngest carrying a
 		//     MirrorCreatedTransaction (mirror ingestion after a mirror
@@ -2991,12 +2978,10 @@ func collectExpectedSkippable(
 //
 //   - RemoveAccountType → chainBound.accountTypes (exists=false).
 //
-//   - CreateTransaction.metadata → chainBound.metadata (exists=true)
-//     at target=<allocated tx id>. The tx id is derived from the
-//     per-ledger nextTxID counter which mirrors the FSM's
-//     LedgerBoundaries.NextTransactionId. Skipped CreateTransactions
-//     (identified via the chain-bound reference already claimed) do
-//     NOT consume a slot — see chainBoundCreateTxSkipped.
+//   - CreateTransaction.metadata is seeded into chainBound.metadata by
+//     reconcileMetadataOnlyChainBound from the replayed CreatedTransaction's
+//     authoritative ID. It is intentionally not recorded from this order
+//     fold, whose nextTxID allocation cannot identify metadata-only creates.
 //
 //   - RevertTransaction.metadata → chainBound.metadata (exists=true)
 //     at target=<newly-allocated revert tx id>. The revert produces a
@@ -3108,33 +3093,25 @@ func recordChainBoundMutations(
 				}
 			}
 
-			txID, err := allocateChainBoundTxID(ledger, chainBound)
+			_, err := allocateChainBoundTxID(ledger, chainBound)
 			if err != nil {
 				return err
 			}
+		}
+	}
 
-			// The successful CreateTransaction owns its reference — record
-			// the (ref → txID) binding so a later conflicting order's skip
-			// can have its context["existingTransactionId"] pinned. Only
-			// anchored ledgers get a reliable counter; on an unanchored
-			// ledger allocateChainBoundTxID defaults the counter and the id
-			// would be mis-attributed, so leave the binding absent and let
-			// the verifier stay permissive.
-			if _, anchored := chainBound.ledgerCreationSeen[ledger]; anchored {
-				if ref := ct.GetReference(); ref != "" {
-					rememberReferenceTxID(chainBound.referenceTxIDs, ledger, ref, txID)
-				}
-
-				// Seed under the SAME "tx:<id>" namespace verifySkippedOrder
-				// looks up via metadataTimelineTarget(isTx=true, id). A bare
-				// decimal target here would never match the verifier's keyed
-				// lookup, letting a forged METADATA_NOT_FOUND on tx metadata
-				// written by this successful transaction pass undetected.
-				target := metadataTimelineTarget(true, strconv.FormatUint(txID, 10))
-				for key := range ct.GetMetadata() {
-					appendMetadataMutation(chainBound.metadata, ledger, target, key, logSeq, true)
-				}
+	if execution := apply.GetExecuteNumscript(); execution != nil {
+		// Execution has no reference to skip against. Its account metadata is
+		// a successful write regardless of whether it creates a transaction.
+		for account, mm := range execution.GetAccountMetadata() {
+			for key := range mm.GetValues() {
+				appendMetadataMutation(chainBound.metadata, ledger, metadataTimelineTarget(false, account), key, logSeq, true)
 			}
+		}
+		// The order does not reveal whether the script emitted postings. The
+		// replayed log reconciles the speculative slot for metadata-only output.
+		if _, err := allocateChainBoundTxID(ledger, chainBound); err != nil {
+			return err
 		}
 	}
 
@@ -3147,20 +3124,9 @@ func recordChainBoundMutations(
 			// counter allocation.
 			rememberFirstRevert(chainBound.reverted, ledger, rt.GetTransactionId(), logSeq)
 
-			newTxID, err := allocateChainBoundTxID(ledger, chainBound)
+			_, err := allocateChainBoundTxID(ledger, chainBound)
 			if err != nil {
 				return err
-			}
-
-			if _, anchored := chainBound.ledgerCreationSeen[ledger]; anchored {
-				// Same "tx:<id>" namespacing as the CreateTransaction path
-				// above — the revert's metadata targets the newly-allocated
-				// revert tx, and verifySkippedOrder keys tx targets through
-				// metadataTimelineTarget(isTx=true, id).
-				target := metadataTimelineTarget(true, strconv.FormatUint(newTxID, 10))
-				for key := range rt.GetMetadata() {
-					appendMetadataMutation(chainBound.metadata, ledger, target, key, logSeq, true)
-				}
 			}
 		}
 	}
@@ -3432,10 +3398,10 @@ func rememberFirstRevert(
 }
 
 // appendMetadataMutation appends a presence-flip to the per-(ledger,
-// target, key) chronological list. collectExpectedSkippable iterates in
-// seq order, so the append order matches seq order — the verifier's
-// backward scan finds the latest transition strictly before the skip
-// sequence.
+// target, key) chronological list. Replay-derived mutations can be inserted
+// after order-fold mutations from the same proposal, so keep the slice sorted
+// at insertion time; the verifier's backward scan then finds the latest
+// transition strictly before the skip sequence without rescanning history.
 func appendMetadataMutation(
 	metadata map[string]map[string]map[string][]chainBoundMutation,
 	ledger, target, key string,
@@ -3454,7 +3420,21 @@ func appendMetadataMutation(
 		perLedger[target] = perTarget
 	}
 
-	perTarget[key] = append(perTarget[key], chainBoundMutation{seq: logSeq, exists: exists})
+	mutations := perTarget[key]
+	mutation := chainBoundMutation{seq: logSeq, exists: exists}
+	if len(mutations) == 0 || mutations[len(mutations)-1].seq <= logSeq {
+		perTarget[key] = append(mutations, mutation)
+
+		return
+	}
+
+	index := sort.Search(len(mutations), func(i int) bool {
+		return mutations[i].seq > logSeq
+	})
+	mutations = append(mutations, chainBoundMutation{})
+	copy(mutations[index+1:], mutations[index:])
+	mutations[index] = mutation
+	perTarget[key] = mutations
 }
 
 // appendAccountTypeMutation is appendMetadataMutation's account-type
@@ -3524,11 +3504,9 @@ func metadataTimelineTargetFromProto(target *commonpb.Target) string {
 	}
 }
 
-// rememberReferenceClaim records the first chain-bound claim of a
-// (ledger, reference) pair. Used by collectExpectedSkippable across the
-// two order shapes that produce references (CreateTransactionOrder and
-// MirrorIngestOrder.MirrorCreatedTransaction) to keep the
-// first-claim-wins semantic the verifier relies on (`firstSeenSeq < seq`).
+// rememberReferenceClaim retains the earliest chain-bound log sequence for a
+// (ledger, reference) pair. Replay-confirmed ExecuteNumscript claims are folded
+// after all orders in their batch, so insertion order need not be log order.
 func rememberReferenceClaim(
 	chainBoundReferences map[string]map[string]uint64,
 	ledger, reference string,
@@ -3544,7 +3522,7 @@ func rememberReferenceClaim(
 		chainBoundReferences[ledger] = perLedger
 	}
 
-	if _, claimed := perLedger[reference]; claimed {
+	if first, claimed := perLedger[reference]; claimed && first <= logSeq {
 		return
 	}
 
@@ -3767,8 +3745,8 @@ func verifySkippedOrder(
 
 		// Pin context["existingTransactionId"] against the owning tx id the
 		// checker recorded for the first successful claim of this reference
-		// (chainBound.referenceTxIDs, populated from the CreateTransaction
-		// counter or mirror ingestion). A tamperer who rewrites this field to
+		// (chainBound.referenceTxIDs, populated from replayed CreatedTransaction
+		// data or mirror ingestion). A tamperer who rewrites this field to
 		// misattribute the conflicting transaction is caught here. Stays
 		// permissive only when the owning id is not derivable (ownerTxID==0).
 		if ownerTxID := chainBound.referenceTxIDs[ledger][expected.reference]; ownerTxID != 0 {
@@ -4596,58 +4574,6 @@ func accountTypesEqual(a, b map[string]*commonpb.AccountType) bool {
 	}
 
 	return true
-}
-
-// setExpectedSchemaField records a field-type declaration on the ledger's
-// expected schema during replay, lazily creating it. Mirrors
-// processSetMetadataFieldType.
-func setExpectedSchemaField(schemas map[string]*commonpb.MetadataSchema, ledger string, target commonpb.TargetType, key string, typ commonpb.MetadataType) {
-	schema := schemas[ledger]
-	if schema == nil {
-		schema = &commonpb.MetadataSchema{}
-		schemas[ledger] = schema
-	}
-
-	field := &commonpb.MetadataFieldSchema{Type: typ}
-
-	switch target {
-	case commonpb.TargetType_TARGET_TYPE_ACCOUNT:
-		if schema.AccountFields == nil {
-			schema.AccountFields = make(map[string]*commonpb.MetadataFieldSchema)
-		}
-
-		schema.AccountFields[key] = field
-	case commonpb.TargetType_TARGET_TYPE_TRANSACTION:
-		if schema.TransactionFields == nil {
-			schema.TransactionFields = make(map[string]*commonpb.MetadataFieldSchema)
-		}
-
-		schema.TransactionFields[key] = field
-	case commonpb.TargetType_TARGET_TYPE_LEDGER:
-		if schema.LedgerFields == nil {
-			schema.LedgerFields = make(map[string]*commonpb.MetadataFieldSchema)
-		}
-
-		schema.LedgerFields[key] = field
-	}
-}
-
-// removeExpectedSchemaField drops a field-type declaration during replay.
-// Mirrors processRemoveMetadataFieldType.
-func removeExpectedSchemaField(schemas map[string]*commonpb.MetadataSchema, ledger string, target commonpb.TargetType, key string) {
-	schema := schemas[ledger]
-	if schema == nil {
-		return
-	}
-
-	switch target {
-	case commonpb.TargetType_TARGET_TYPE_ACCOUNT:
-		delete(schema.GetAccountFields(), key)
-	case commonpb.TargetType_TARGET_TYPE_TRANSACTION:
-		delete(schema.GetTransactionFields(), key)
-	case commonpb.TargetType_TARGET_TYPE_LEDGER:
-		delete(schema.GetLedgerFields(), key)
-	}
 }
 
 // schemaEqual compares two metadata schemas by field-type content, treating a

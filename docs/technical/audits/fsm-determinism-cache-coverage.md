@@ -445,7 +445,18 @@ persistence audit owns checkpoint and cross-cluster restore parity.
 
 CreateLedger stages initial metadata in the canonical ledger-metadata keyspace in the same proposal as ledger identity, boundaries and initial schema. Committed metadata limits apply before staging; creation metadata requires no additional preload read and cannot mutate the audited order.
 
+New CreateLedger orders validate initial account-type segment constraints and
+equal-specificity pattern conflicts in sorted name order before allocating a
+ledger ID. The first error and failure audit entry must be replica-identical.
+Audit replay uses the historical creation rule for previously successful
+orders, including definitions newly rejected during apply. Successful new
+creations must reconstruct the same log under that historical replay rule.
+
 For normal and mirror creation, do rejection, proposal rollback and idempotent replay preserve initial metadata atomically without a second save, new metadata read dependency, duplicate allocation or order mutation?
+
+Do new CreateLedger orders reject invalid or conflicting initial account types
+without allocating a ledger ID, and does audit replay still reconstruct both
+those historical successful definitions and newly valid creations?
 
 See [the creation contract](../architecture/subsystems/api/atomic-ledger-creation.md) for the authorized semantics and regression evidence. Treat HTTP response/forwarding, actual FSM readback, keyed replay, nonempty checkpoint-plus-delta restore, and primary-projection tampering as separate evidence oracles; a helper-only test does not prove every boundary.
 

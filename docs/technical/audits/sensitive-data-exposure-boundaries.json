@@ -77,9 +77,9 @@
     "internal/proto/raftcmdpb/**",
     "internal/pkg/sensitive/**",
     "internal/pkg/connectionurl/**",
-    "internal/application/admission/validate_order_sink_url.go",
+    "internal/application/admission/validate_order_sink_config.go",
     "internal/application/admission/connection_url_test.go",
-    "internal/application/admission/connection_url_error.go",
+    "internal/application/admission/integration_config_error.go",
     "internal/adapter/http/ledger_info_contract_test.go",
     "internal/adapter/grpc/ledger_info_read_test.go"
   ],

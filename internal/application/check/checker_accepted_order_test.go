@@ -134,7 +134,7 @@ func TestVerifyAuditHashChain_KeyedNumscriptTxBindsAcceptedOrder(t *testing.T) {
 func collectIdempotencyMismatches(t *testing.T, store *dal.Store, clusterID string) []*servicepb.CheckStoreError {
 	t.Helper()
 
-	checker := NewChecker(store, attributes.New(), nil, logging.Testing())
+	checker := NewChecker(store, attributes.New(), logging.Testing())
 
 	handle, err := store.NewReadHandle()
 	require.NoError(t, err)

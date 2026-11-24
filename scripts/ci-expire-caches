@@ -34,7 +34,7 @@ max_age_days=${CACHE_MAX_AGE_DAYS:-3}
 budget_gb=${CACHE_BUDGET_GB:-35}
 dry_run=${DRY_RUN:-0}
 # Dev shells entered by .github/workflows; keep in sync when a job adds one.
-ci_shells=(ci operator-tests)
+ci_shells=(ci operator-tests release)
 
 if [[ $dry_run != 1 && ${GITHUB_ACTIONS:-} != true ]]; then
     echo "ci-expire-caches deletes from the caches of the machine it runs on;" \

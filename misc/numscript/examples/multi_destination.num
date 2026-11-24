@@ -1,5 +1,5 @@
 // Split a payment to multiple destinations
-// Usage: ledgerctl transactions create --ledger my-ledger --script multi_destination.num \
+// Usage: ledgerctl numscripts execute --ledger my-ledger --file multi_destination.num \
 //        --var "source=@sales:revenue" --var "tax_account=@taxes:vat" \
 //        --var "main_account=@bank:main" --var "amount=EUR/2 1000"
 

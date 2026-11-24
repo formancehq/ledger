@@ -154,24 +154,48 @@ func checkpointMetadataNodeID(ctx context.Context, node *internal.PerNodeConn) (
 	}
 }
 
-// Probe before changing the checkpoint baseline: an unavailable first address must not consume
-// the complete workload lifetime when another node can serve the baseline.
+// checkpointSetupProbeTimeout bounds one probe round. A leader answers
+// GetClusterState only after waiting up to 2s for each unreachable peer, and
+// the fence still needs a Barrier and its persistence after that answer.
+const checkpointSetupProbeTimeout = 15 * time.Second
+
+// Probe every node concurrently before changing the checkpoint baseline, so an
+// unreachable node cannot delay one that can serve the baseline.
 func selectCheckpointSetupNode(ctx context.Context, nodes internal.PerNodeConns) (*internal.PerNodeConn, error) {
-	failures := make(checkpointSetupProbeFailures, 0, len(nodes))
-	for _, node := range nodes {
-		probeCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
-		err := fenceCheckpointMetadata(probeCtx, node)
-		cancel()
-		if err == nil {
-			return node, nil
-		}
-		if ctx.Err() != nil {
-			return nil, ctx.Err()
-		}
-		failures = append(failures, checkpointSetupProbeFailure{addr: node.Addr, err: err})
-	}
-	if len(failures) == 0 {
+	if len(nodes) == 0 {
 		return nil, errors.New("no checkpoint setup nodes configured")
+	}
+	probeCtx, cancel := context.WithTimeout(ctx, checkpointSetupProbeTimeout)
+	defer cancel()
+	type probeResult struct {
+		index int
+		err   error
+	}
+	results := make(chan probeResult, len(nodes))
+	for index, node := range nodes {
+		go func() {
+			results <- probeResult{index: index, err: fenceCheckpointMetadata(probeCtx, node)}
+		}()
+	}
+	errs := make([]error, len(nodes))
+	var selected *internal.PerNodeConn
+	for range nodes {
+		result := <-results
+		if result.err == nil && selected == nil {
+			selected = nodes[result.index]
+			cancel()
+		}
+		errs[result.index] = result.err
+	}
+	if selected != nil {
+		return selected, nil
+	}
+	if ctx.Err() != nil {
+		return nil, ctx.Err()
+	}
+	failures := make(checkpointSetupProbeFailures, 0, len(nodes))
+	for index, node := range nodes {
+		failures = append(failures, checkpointSetupProbeFailure{addr: node.Addr, err: errs[index]})
 	}
 
 	return nil, failures

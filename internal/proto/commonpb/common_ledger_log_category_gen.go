@@ -50,6 +50,8 @@ func LedgerLogCategoryOf(payload *LedgerLogPayload) LedgerLogCategory {
 		return LedgerLogCategory_LEDGER_LOG_CATEGORY_CONTROL
 	case *LedgerLogPayload_OrderSkipped:
 		return LedgerLogCategory_LEDGER_LOG_CATEGORY_HISTORY
+	case *LedgerLogPayload_AccountMetadataUpdated:
+		return LedgerLogCategory_LEDGER_LOG_CATEGORY_HISTORY
 	default:
 		return LedgerLogCategory_LEDGER_LOG_CATEGORY_UNSPECIFIED
 	}

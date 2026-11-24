@@ -26,6 +26,7 @@ type AuditEntryReader interface {
 	GetCallerSnapshot() commonpb.CallerSnapshotReader
 	GetIdempotency() commonpb.IdempotencyReader
 	GetSignature() signaturepb.SignedApplyBatchReader
+	GetRequiredCapabilities() []uint32
 	WhichOutcome() AuditEntry_OutcomeReaderCase
 	Mutate() *AuditEntry
 }
@@ -106,6 +107,10 @@ func (r *auditEntryReadonly) GetSignature() signaturepb.SignedApplyBatchReader {
 		return nil
 	}
 	return v.AsReader()
+}
+
+func (r *auditEntryReadonly) GetRequiredCapabilities() []uint32 {
+	return slices.Clone((*AuditEntry)(r).GetRequiredCapabilities())
 }
 
 // AuditEntry_OutcomeReaderCase identifies a selected oneof arm by its protobuf field number.

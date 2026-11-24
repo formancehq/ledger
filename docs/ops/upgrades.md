@@ -35,9 +35,16 @@ and encodes [mirror asset mappings](#mirror-asset-mappings) differently.
 `rc.3` includes the drain barrier used for this upgrade. The `v3.0.0-rc.5`
 boundary is also a complete stop: RC.4 cannot read storage schema 3 or apply
 the independent configuration and capability controls
-([peer-service migration](#rc4--rc5-peer-service-migration)), and RC.5 retypes
-[aggregate totals](#exact-aggregate-totals) on the wire and applies a keyed
-batch carrying a [forwarded preload gap](#forwarded-preload-gaps) differently.
+([peer-service migration](#rc4--rc5-peer-service-migration)). RC.5 retypes
+[aggregate totals](#exact-aggregate-totals) on the wire, rejects invalid
+segment constraints and equal-specificity conflicts in initial account types
+during `CreateLedger` apply, and applies a keyed batch carrying a
+[forwarded preload gap](#forwarded-preload-gaps) differently. The
+stopped-upgrade drain waits for a durable FSM cursor beyond the admission
+cutoff on every member, so RC.4 business entries are applied by RC.4 before
+RC.5 starts. Keep the retained data and WAL volumes; audit replay preserves the
+historical creation rule for previously successful orders. Existing ledgers are
+not rewritten.
 RC adjacency remains mandatory.
 The `rc.1` to `rc.2` transition rolls one voter at a time with a maintenance
 barrier that pauses writes; it does not stop the whole cluster.
@@ -175,8 +182,8 @@ The upgrade state machine owns only the stop barrier, the PVC identity and
 retention checks, and the decision to release ordinary reconciliation. The
 ordinary StatefulSet reconciler creates the replacement and applies its pod
 template and mutable fields. Both paths use the same retention policy builder;
-while `status.upgrade` exists it selects `Retain`, and after the drain is
-released it restores the requested policy.
+it selects `Retain` until the drain is released, and the `Adopting` phase then
+restores the requested policy.
 While the workload is stopped, reconciliation still repairs the headless Service
 needed to reach voters, the ServiceAccount, and the TLS cluster Secret and
 auth-key ConfigMap needed by replacement Pods. It keeps an existing auth-key
@@ -190,15 +197,50 @@ removes the existing claims' owner references, and verifies their UIDs and bound
 PV identities. This path requires existing PVC-backed WAL and data volumes;
 hostPath clusters are held for a separately validated manual procedure. A
 missing, unbound, deleting or replaced claim or PV blocks the upgrade.
+A stopped upgrade changes which claims the StatefulSet owns, so garbage
+collection cannot be relied on to apply `whenDeleted` to them. The operator
+holds the `ledger.formance.com/upgrade-claims` finalizer on the Cluster while
+`status.upgrade` exists and, if the Cluster is deleted during the upgrade,
+applies the requested policy to every recorded claim that still has its
+recorded UID before releasing the finalizer. With `whenDeleted: Delete`, it
+deletes each of them, whether or not the StatefulSet currently owns it. With
+`Retain`, it deletes none and removes the owner references of the StatefulSet
+and its Pods from them; while the StatefulSet exists and is not being deleted,
+it first applies `Retain` to it and waits for the StatefulSet controller to
+observe that policy. A claim with any other owner is not deleted, and that
+owner reference is kept. Owners are identified by UID: a live StatefulSet or
+Pod that only carries the workload's name is another owner, and a reference to
+a StatefulSet or Pod that no longer exists is handled as the workload's. A claim that Kubernetes has already marked for
+deletion cannot be retained: after switching `whenDeleted` from `Delete` to
+`Retain`, wait until the claims no longer list the StatefulSet as an owner
+before deleting the Cluster or its StatefulSet, as outside an upgrade.
+Operators up to `v3.0.0-rc.4` run stopped upgrades without this finalizer. Do
+not delete a Cluster while a stopped upgrade started by such an operator is in
+progress. After upgrading the operator, wait until the Cluster carries the
+`ledger.formance.com/upgrade-claims` finalizer before deleting it. A Cluster
+deleted earlier with `whenDeleted: Delete` leaves its WAL and data PVCs and
+their volumes behind; delete them manually.
 The operator then deletes the StatefulSet with background propagation. It
 waits for the StatefulSet and **all old ordinal Pods** to disappear. A delete
 acknowledgement or elapsed time does not satisfy this condition. It does not
 force-delete a stuck Pod. Only then may it create the target StatefulSet and
-reuse the same PVC names. The replacement keeps both PVC retention policies at
-`Retain` throughout the active upgrade, including recovery if the replacement
+reuse the same PVC names. Until the drain is released, the replacement keeps
+both PVC retention policies at `Retain`, including recovery if the replacement
 disappears. After all target replicas are ready, the operator commits the drain
-release and waits for every member to persist it. Normal reconciliation then
-restores the requested retention policies. `status.upgrade` and the `Upgrade` condition show the
+release and waits for every member to persist it. In the `Adopting` phase it
+then restores the requested retention policies on the replacement StatefulSet.
+It keeps `status.upgrade` and the finalizer until the StatefulSet controller
+has observed those policies and claim ownership matches them. With
+`whenDeleted: Delete`, the replacement StatefulSet must own every recorded
+claim, so garbage collection covers each claim before the operator stops
+tracking it; with `Retain`, it must own none. As in `Verifying`, every recorded claim and volume
+must keep its identity and binding during `Adopting`: a missing, replaced,
+deleting or rebound claim blocks the upgrade instead of completing it, because
+the StatefulSet would recreate that claim empty. If the replacement disappears
+during `Adopting`,
+ordinary reconciliation recreates it with the requested policies; under
+`whenDeleted: Delete`, deleting the replacement then also deletes the claims it
+already owns. `status.upgrade` and the `Upgrade` condition show the
 phase or blocking error. The operator retries after API failures; do not remove
 the status record or create a replacement workload by hand while it is active.
 If the replacement StatefulSet disappears before the drain is released, the
@@ -206,13 +248,19 @@ operator waits for its Pods to terminate, verifies the original PVC/PV identitie
 and recreates it while keeping the drain active.
 
 Keep the requested target tag, workload spec and replica count fixed until
-`status.upgrade` clears. An edit during the operation is rejected. A direct
-replica-count edit to the replacement StatefulSet reports `Upgrade=Blocked`
-until the pinned count is restored. If a Pod will not terminate, diagnose its
+`status.upgrade` clears. Before the drain is released, an edit is rejected, and
+a direct replica-count edit to the replacement StatefulSet reports
+`Upgrade=Blocked` until the pinned count is restored. In `Adopting`, a target
+tag edit is still rejected, but workload spec and replica-count edits are not:
+they wait until adoption completes and then apply through ordinary
+reconciliation. A `spec.persistence.retentionPolicy` edit applies immediately
+instead: `Adopting` restores the current requested policy and completes only
+once claim ownership matches it. If a Pod will not terminate, diagnose its
 node and storage attachment, then let Kubernetes finish termination; the
 operator keeps the cluster unavailable. Verify the replacement is fully ready,
 then check cluster status, representative reads and writes, audit verification
-and backup compatibility. The operator does not delete Raft members or volumes.
+and backup compatibility. The operator does not delete Raft members, and
+deletes upgrade claims only when the Cluster itself is deleted as described above.
 
 The drain blocks business writes before the stop; in-flight proposals after
 the cutoff reject at apply. Cluster-internal technical entries may continue
@@ -746,6 +794,19 @@ idempotency records stay valid. A cluster not managed by the operator must
 drain and stop every RC.4 member before starting any RC.5 member.
 
 ## Change-specific notes
+
+### REST and gRPC input validation
+
+No persisted-state migration or stopped upgrade is needed for these fixes.
+Existing committed sink and ledger records still replay unchanged. New requests
+and retries must supply a sink name and type. Supply a source configuration
+when creating a `MIRROR` ledger. Omit the source when creating a `NORMAL` ledger.
+
+Use bare signed integers or booleans for typed textual filter values and quote
+string identifiers. For prepared-query execution, replace null with the
+intended value or omit an optional argument. Send a single JSON value in
+prepared-query requests; trailing whitespace is allowed. See
+[HTTP body and parameter semantics](../technical/architecture/subsystems/api/http-api.md#prepared-query-bodies-and-parameters).
 
 ### Mirror asset mappings
 

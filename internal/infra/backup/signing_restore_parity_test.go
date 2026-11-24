@@ -322,7 +322,7 @@ func TestBackup_SigningCascadeRestoreParity(t *testing.T) {
 	// the restored rows, so agreement here is the audit side of the same claim.
 	var findings []*servicepb.CheckStoreError
 
-	checker := check.NewChecker(dstStore, dstAttrs, nil, testLogger())
+	checker := check.NewChecker(dstStore, dstAttrs, testLogger())
 	require.NoError(t, checker.Check(ctx, func(event *servicepb.CheckStoreEvent) {
 		if e, ok := event.GetType().(*servicepb.CheckStoreEvent_Error); ok {
 			findings = append(findings, e.Error)

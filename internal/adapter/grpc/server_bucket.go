@@ -532,11 +532,11 @@ func (impl *BucketServiceServerImpl) ListTransactions(req *servicepb.ListTransac
 		defer cleanup()
 
 		profile.EnterExecute()
-		c, err = impl.localCtrl.ListTransactionsFrom(ctx, mainStore, readIdx, req.GetLedger(), fetchSize, afterTxID, opts.GetFilter(), reverse)
+		c, err = impl.localCtrl.ListTransactionsFrom(ctx, mainStore, readIdx, req.GetLedger(), fetchSize, transactionAfterID(page.Key, afterTxID), opts.GetFilter(), reverse)
 		profile.LeaveExecute()
 	} else {
 		profile.EnterExecute()
-		c, err = impl.ctrl.ListTransactions(ctx, req.GetLedger(), fetchSize, afterTxID, opts.GetFilter(), reverse)
+		c, err = impl.ctrl.ListTransactions(ctx, req.GetLedger(), fetchSize, transactionAfterID(page.Key, afterTxID), opts.GetFilter(), reverse)
 		profile.LeaveExecute()
 	}
 
@@ -781,7 +781,7 @@ func (impl *BucketServiceServerImpl) ListIndexes(req *servicepb.ListIndexesReque
 }
 
 func (impl *BucketServiceServerImpl) CheckStore(_ *servicepb.CheckStoreRequest, stream servicepb.BucketService_CheckStoreServer) error {
-	checker := check.NewChecker(impl.store, impl.attrs, impl.readStore, impl.logger)
+	checker := check.NewChecker(impl.store, impl.attrs, impl.logger)
 
 	return checker.Check(stream.Context(), func(event *servicepb.CheckStoreEvent) {
 		_ = stream.Send(event)
@@ -1325,4 +1325,13 @@ func profileToMetadata(profile *query.QueryProfile) metadata.MD {
 
 func RegisterBucketService(registrar ggrpc.ServiceRegistrar, ledgerServiceServer servicepb.BucketServiceServer) {
 	servicepb.RegisterBucketServiceServer(registrar, ledgerServiceServer)
+}
+
+// transactionAfterID keeps an explicit zero distinct from an empty cursor.
+func transactionAfterID(key string, id uint64) *uint64 {
+	if key == "" {
+		return nil
+	}
+
+	return &id
 }

@@ -4152,6 +4152,172 @@ func (m createTransactionPayload_accountMetadataMapReadonly) Range(yield func(st
 	}
 }
 
+// ExecuteNumscriptPayloadReader provides read-only access to ExecuteNumscriptPayload.
+// Call Mutate() to obtain a mutable clone.
+type ExecuteNumscriptPayloadReader interface {
+	GetScript() commonpb.ScriptReader
+	GetScriptReference() ScriptReferenceReader
+	GetTimestamp() commonpb.TimestampReader
+	GetMetadata() ExecuteNumscriptPayload_MetadataMapReader
+	GetAccountMetadata() ExecuteNumscriptPayload_AccountMetadataMapReader
+	GetReference() string
+	Mutate() *ExecuteNumscriptPayload
+}
+
+type executeNumscriptPayloadReadonly ExecuteNumscriptPayload
+
+func (r *executeNumscriptPayloadReadonly) GetScript() commonpb.ScriptReader {
+	v := (*ExecuteNumscriptPayload)(r).GetScript()
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (r *executeNumscriptPayloadReadonly) GetScriptReference() ScriptReferenceReader {
+	v := (*ExecuteNumscriptPayload)(r).GetScriptReference()
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (r *executeNumscriptPayloadReadonly) GetTimestamp() commonpb.TimestampReader {
+	v := (*ExecuteNumscriptPayload)(r).GetTimestamp()
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (r *executeNumscriptPayloadReadonly) GetMetadata() ExecuteNumscriptPayload_MetadataMapReader {
+	return executeNumscriptPayload_metadataMapReadonly((*ExecuteNumscriptPayload)(r).GetMetadata())
+}
+
+func (r *executeNumscriptPayloadReadonly) GetAccountMetadata() ExecuteNumscriptPayload_AccountMetadataMapReader {
+	return executeNumscriptPayload_accountMetadataMapReadonly((*ExecuteNumscriptPayload)(r).GetAccountMetadata())
+}
+
+func (r *executeNumscriptPayloadReadonly) GetReference() string {
+	return (*ExecuteNumscriptPayload)(r).GetReference()
+}
+
+func (r *executeNumscriptPayloadReadonly) Mutate() *ExecuteNumscriptPayload {
+	return (*ExecuteNumscriptPayload)(r).CloneVT()
+}
+
+// AsReader returns a read-only view of this ExecuteNumscriptPayload.
+func (m *ExecuteNumscriptPayload) AsReader() ExecuteNumscriptPayloadReader {
+	if m == nil {
+		return nil
+	}
+	return (*executeNumscriptPayloadReadonly)(m)
+}
+
+// Mutate returns a mutable deep clone of this ExecuteNumscriptPayload.
+func (m *ExecuteNumscriptPayload) Mutate() *ExecuteNumscriptPayload {
+	return m.CloneVT()
+}
+
+// ExecuteNumscriptPayloadListReader provides read-only iteration over []*ExecuteNumscriptPayload.
+type ExecuteNumscriptPayloadListReader interface {
+	Len() int
+	Get(i int) ExecuteNumscriptPayloadReader
+	Range(yield func(int, ExecuteNumscriptPayloadReader) bool)
+}
+
+type executeNumscriptPayloadListReadonly []*ExecuteNumscriptPayload
+
+func (l executeNumscriptPayloadListReadonly) Len() int { return len(l) }
+
+func (l executeNumscriptPayloadListReadonly) Get(i int) ExecuteNumscriptPayloadReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l executeNumscriptPayloadListReadonly) Range(yield func(int, ExecuteNumscriptPayloadReader) bool) {
+	for i, v := range l {
+		var r ExecuteNumscriptPayloadReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewExecuteNumscriptPayloadListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewExecuteNumscriptPayloadListReader(s []*ExecuteNumscriptPayload) ExecuteNumscriptPayloadListReader {
+	return executeNumscriptPayloadListReadonly(s)
+}
+
+// ExecuteNumscriptPayload_MetadataMapReader provides read-only access to ExecuteNumscriptPayload.Metadata.
+type ExecuteNumscriptPayload_MetadataMapReader interface {
+	Len() int
+	Get(k string) (commonpb.MetadataValueReader, bool)
+	Range(yield func(string, commonpb.MetadataValueReader) bool)
+}
+
+type executeNumscriptPayload_metadataMapReadonly map[string]*commonpb.MetadataValue
+
+func (m executeNumscriptPayload_metadataMapReadonly) Len() int { return len(m) }
+
+func (m executeNumscriptPayload_metadataMapReadonly) Get(k string) (commonpb.MetadataValueReader, bool) {
+	v, ok := m[k]
+	if !ok || v == nil {
+		return nil, ok
+	}
+	return v.AsReader(), true
+}
+
+func (m executeNumscriptPayload_metadataMapReadonly) Range(yield func(string, commonpb.MetadataValueReader) bool) {
+	for k, v := range m {
+		var r commonpb.MetadataValueReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(k, r) {
+			return
+		}
+	}
+}
+
+// ExecuteNumscriptPayload_AccountMetadataMapReader provides read-only access to ExecuteNumscriptPayload.AccountMetadata.
+type ExecuteNumscriptPayload_AccountMetadataMapReader interface {
+	Len() int
+	Get(k string) (commonpb.MetadataMapReader, bool)
+	Range(yield func(string, commonpb.MetadataMapReader) bool)
+}
+
+type executeNumscriptPayload_accountMetadataMapReadonly map[string]*commonpb.MetadataMap
+
+func (m executeNumscriptPayload_accountMetadataMapReadonly) Len() int { return len(m) }
+
+func (m executeNumscriptPayload_accountMetadataMapReadonly) Get(k string) (commonpb.MetadataMapReader, bool) {
+	v, ok := m[k]
+	if !ok || v == nil {
+		return nil, ok
+	}
+	return v.AsReader(), true
+}
+
+func (m executeNumscriptPayload_accountMetadataMapReadonly) Range(yield func(string, commonpb.MetadataMapReader) bool) {
+	for k, v := range m {
+		var r commonpb.MetadataMapReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(k, r) {
+			return
+		}
+	}
+}
+
 // RevertTransactionPayloadReader provides read-only access to RevertTransactionPayload.
 // Call Mutate() to obtain a mutable clone.
 type RevertTransactionPayloadReader interface {
@@ -4275,6 +4441,7 @@ type LedgerActionReader interface {
 	GetAddAccountType() AddAccountTypeRequestReader
 	GetRemoveAccountType() RemoveAccountTypeRequestReader
 	GetSetDefaultEnforcementMode() SetDefaultEnforcementModeRequestReader
+	GetExecuteNumscript() ExecuteNumscriptPayloadReader
 	WhichData() LedgerAction_DataReaderCase
 	Mutate() *LedgerAction
 }
@@ -4337,6 +4504,14 @@ func (r *ledgerActionReadonly) GetSetDefaultEnforcementMode() SetDefaultEnforcem
 	return v.SetDefaultEnforcementMode.AsReader()
 }
 
+func (r *ledgerActionReadonly) GetExecuteNumscript() ExecuteNumscriptPayloadReader {
+	v, ok := (*LedgerAction)(r).GetData().(*LedgerAction_ExecuteNumscript)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.ExecuteNumscript.AsReader()
+}
+
 // LedgerAction_DataReaderCase identifies a selected oneof arm by its protobuf field number.
 type LedgerAction_DataReaderCase int32
 
@@ -4349,6 +4524,7 @@ const (
 	LedgerAction_DataReaderCase_AddAccountType            LedgerAction_DataReaderCase = 5
 	LedgerAction_DataReaderCase_RemoveAccountType         LedgerAction_DataReaderCase = 6
 	LedgerAction_DataReaderCase_SetDefaultEnforcementMode LedgerAction_DataReaderCase = 7
+	LedgerAction_DataReaderCase_ExecuteNumscript          LedgerAction_DataReaderCase = 8
 )
 
 func (r *ledgerActionReadonly) WhichData() LedgerAction_DataReaderCase {
@@ -4367,6 +4543,8 @@ func (r *ledgerActionReadonly) WhichData() LedgerAction_DataReaderCase {
 		return LedgerAction_DataReaderCase_RemoveAccountType
 	case *LedgerAction_SetDefaultEnforcementMode:
 		return LedgerAction_DataReaderCase_SetDefaultEnforcementMode
+	case *LedgerAction_ExecuteNumscript:
+		return LedgerAction_DataReaderCase_ExecuteNumscript
 	default:
 		return LedgerAction_DataReaderCase_Unset
 	}

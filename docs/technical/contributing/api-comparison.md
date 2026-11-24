@@ -44,6 +44,21 @@ integer schema spans `-9223372036854775808` through `18446744073709551615`,
 matching signed negative and unsigned nonnegative metadata values. See
 [Metadata number decoding](../architecture/subsystems/api/http-api.md#metadata-number-decoding).
 
+## REST and gRPC input compatibility
+
+REST path parameters decode ledger names once before validation. On REST
+transaction and log lists, RFC3339 range bounds preserve the documented
+inclusive/exclusive semantics against stored microseconds. Textual metadata
+filters preserve quoted strings on every route that accepts them.
+
+Prepared-query mutation and execution routes reject trailing JSON before
+calling the controller. Execution preserves exact integral REST parameters
+and rejects null. New sink creation requires a name and sink type through
+either transport. `MIRROR` creation requires a source and `NORMAL` creation
+must omit it. Resubmit formerly accepted invalid shapes with valid inputs.
+This does not change
+existing persisted entries or the gRPC wire contract.
+
 ## Atomic HTTP Apply
 
 `POST /v3/_/apply` is an additive v3 operation for ordered cross-ledger and
@@ -305,7 +320,7 @@ JWT/anonymous policy; no new endpoint or authorization requirement is introduced
 | Create transaction with `force` | ✅ | ✅ | Bypasses balance checks |
 | **Transactions (Read)** |
 | Get transaction by ID | ✅ | ✅ | |
-| List transactions | ✅ | ✅ | HTTP `GET /v3/{ledgerName}/transactions` and gRPC stream: cursor pagination, `startDate`/`endDate` range, and the generic `filter` (`source`/`destination`/`address`, `reference`, exact/range `id`, metadata) |
+| List transactions | ✅ | ✅ | HTTP `GET /v3/{ledgerName}/transactions` and gRPC stream: cursor pagination (including exclusive key `"0"` for mirrored transaction ID zero), `startDate`/`endDate` range, and the generic `filter` (`source`/`destination`/`address`, `reference`, exact/range `id`, metadata) |
 | **Metadata** |
 | Save account metadata | ✅ | ✅ | |
 | Delete account metadata | ✅ | ✅ | |
@@ -493,11 +508,16 @@ for the full discriminator list and the information retained in the projection.
 - ✅ Numscript variables support
 - ✅ Balance verification (insufficient funds)
 - ✅ `force` option (bypass balance checks)
+- ✅ Numscript transaction creation when the script emits postings; otherwise `EMPTY_TRANSACTION`
 - ✅ Transaction metadata
 - ✅ Account metadata in the same request
 - ✅ Transaction reference
 - ✅ Custom timestamp
 - ✅ Idempotency key
+
+`POST /v3/{ledgerName}/numscripts/execute` runs a Numscript independently of
+transaction creation. It returns a transaction when the script emits postings,
+or HTTP 204 when it updates account metadata without postings.
 
 **Numscript Experimental Features (available, require `#![feature(...)]` opt-in):**
 - ✅ Account interpolation (dynamic addresses like `@escrow:$order_id`)
@@ -683,6 +703,7 @@ to 8.
 
 **Supported actions:**
 - ✅ `CREATE_TRANSACTION`
+- ✅ `EXECUTE_NUMSCRIPT` (creates a transaction for postings or updates account metadata without postings)
 - ✅ `ADD_METADATA` (account and transaction)
 - ✅ `REVERT_TRANSACTION`
 - ✅ `DELETE_METADATA` (account and transaction)
@@ -799,6 +820,9 @@ Mirror mode enables one-way synchronization from an existing v2 ledger into a v3
 
 Request body includes `mode` (`"MIRROR"`) and a `mirrorSource` object specifying the source configuration. `mode` accepts only `"NORMAL"` (the default when omitted) or `"MIRROR"`, case-sensitive; any other value is rejected with HTTP 400 (`INVALID_REQUEST`) and no ledger is created.
 
+Omitting `mirrorSource` in `MIRROR` mode, or supplying it in `NORMAL` mode, is
+rejected before any ledger is created: HTTP 400 / gRPC `InvalidArgument`.
+
 **Source types:**
 - **HTTP** (`type: "http"`) — Polls the v2 API endpoint `GET /v2/{ledger}/logs`. Fields: `baseUrl`, `oauth2ClientId`, `oauth2ClientSecret`, `oauth2TokenEndpoint`, `oauth2Scopes` (optional, for OAuth2 client credentials authentication).
 - **PostgreSQL** (`type: "postgres"`) — Reads directly from the v2 ledger's PostgreSQL database. Fields: `dsn`. AWS RDS IAM authentication is provisioned via the operator `Ledger` CRD (`mirrorSource.postgres.awsIamAuth.region` + optional `assumeRoleArn` for cross-account / multi-tenant mirrors) — see `misc/operator/api/v1alpha1/ledger_crd_types.go`. The mirror pod mints SigV4 tokens per connection from the ambient AWS credential chain (IRSA on EKS).
@@ -881,6 +905,9 @@ Numscripts use **semantic versioning** (semver) with the format `major.minor.pat
 When saving a numscript via `PUT /v3/{ledgerName}/numscripts/{name}`, the request body includes:
 - `content` (required): The numscript source code
 - `version` (required): An explicit full semver (e.g. `"2.0.0"`) creating a new immutable version. Fails with 409 if the version already exists, and with 400 (`NUMSCRIPT_INVALID_VERSION`) for an empty, partial, or `"latest"` value.
+
+Saving a numscript requires an existing ledger. A missing ledger returns HTTP
+404 (`LEDGER_NOT_FOUND`).
 
 When retrieving a numscript via `GET /v3/{ledgerName}/numscripts/{name}`, the `version` query parameter selects which version to return. If omitted or empty, the latest version is returned.
 
@@ -1619,7 +1646,7 @@ Paged list RPCs follow the shared `ListOptions` contract and publish the
 | `ListNumscripts` | List the greatest version of each saved numscript | ✅ |
 | `ListNumscriptVersions` | List the latest pointer and every stored version | ✅ |
 | `ListAuditEntries` | Stream audit log entries (success + failure). Request is `{ options }` only — no dedicated filter fields. Follows the shared `ListOptions` contract: cursor/page_size/reverse/checkpoint_id plus a bare-audit-field `QueryFilter` (outcome, ledger, caller_subject, order_type, idempotency_key, seq, proposal_id, timestamp, log_seq — bare fields resolved against the audit query target, EN-1549 replacing the old `audit[...]` syntax) resolved through the audit secondary index. `idempotency_key` supports equality and prefix matching and may return several historical entries after key reuse. Ledger scope and outcome selection are expressed as filter conditions | ✅ |
-| `GetAuditEntry` | Get a single audit entry by sequence number | ✅ |
+| `GetAuditEntry` | Get a single audit entry by sequence number; `requiredCapabilities` exposes the committed proposal declaration when present | ✅ |
 | `ListLogs` | Stream system logs for a ledger (requires `ledger` field). Follows the shared `ListOptions` contract: cursor/page_size/reverse (descending ledger-local id)/checkpoint_id plus `log_id` and date filters. Ledger-scoped read → requires `ledger:read` (granular `ledger:ReadLedger`), same as the HTTP `GET /v3/{ledgerName}/logs` route | ✅ |
 | `GetLog` | Get a single system log by bucket-wide sequence number. No ledger identity in the request → requires `ledger` ops-read (granular `ledger:ReadOps`), like the HTTP `GET /v3/_/logs/{sequence}` route | ✅ |
 | `ListSigningKeys` | Stream registered signing keys, paged by key id | ✅ |
@@ -1647,6 +1674,7 @@ The `Apply` method is the **single entry point for all ledger write operations**
 - `skip_response`: When `true`, strips log payloads from the response (only `sequence` is returned per log). Useful for historical ingestion where the client does not need the full response on success.
 - One of:
   - `create_transaction`: Create a new transaction
+  - `execute_numscript`: Execute a script, creating a transaction for postings or updating account metadata without postings
   - `add_metadata`: Add metadata to an account or transaction
   - `revert_transaction`: Revert a transaction
   - `delete_metadata`: Delete metadata from an account or transaction
@@ -1665,6 +1693,7 @@ The governing rule: **a batched operation requires the same scope as its dedicat
 | Request variant | Scope | Matches |
 |---|---|---|
 | `apply` (`create_transaction`, `revert_transaction`) | `ledger:WriteTransaction` | `POST /v3/{ledgerName}/transactions` |
+| `apply` (`execute_numscript`) | `ledger:ExecuteNumscript` | `POST /v3/{ledgerName}/numscripts/execute` |
 | `apply` (`add_metadata`, `delete_metadata`) | `ledger:WriteMetadata` | metadata routes |
 | `apply` (`add_account_type`, `remove_account_type`, `set_default_enforcement_mode`) | `ledger:WriteMetadata` | `/v3/{ledgerName}/account-types*` |
 | `create_ledger`, `delete_ledger`, `promote_ledger`, `create_index`, `drop_index`, `save_numscript` | `ledger:WriteLedger` | the `requireLedgersWrite` route group |
@@ -1684,7 +1713,7 @@ Two properties are enforced by tests rather than convention:
 
 > **Breaking change (EN-1954).** `BucketService.CreatePreparedQuery`, `UpdatePreparedQuery`, `DeletePreparedQuery` and `ClusterService.CreateQueryCheckpoint`, `DeleteQueryCheckpoint` are removed. Every one of these operations is a `ledger.Request` variant submitted through `BucketService.Apply`, so it is now batchable, idempotent under a batch key, signable as part of the batch, scope-checked once, and forwarded to the leader through the single Apply path. Required scopes and error semantics are unchanged. A newly executed checkpoint creation waits for local read-index readiness (leader only with `skip_response`), unless concurrent deletion supersedes it. An idempotent replay returns the historical logs immediately, including after deletion or while the original creation still materializes; it does not guarantee current existence or readiness. Server-produced response provenance preserves this distinction across follower forwarding. The HTTP prepared-query routes are unchanged — they already delegated to the same Apply backend.
 
-Note that `POST /v3/{ledgerName}/bulk` shares this classifier but can only express the four `LedgerAction` variants its JSON decoder accepts (`CREATE_TRANSACTION`, `ADD_METADATA`, `REVERT_TRANSACTION`, `DELETE_METADATA`), so the table's top-level rows are unreachable over HTTP bulk.
+Note that `POST /v3/{ledgerName}/bulk` shares this classifier but can only express the five `LedgerAction` variants its JSON decoder accepts (`CREATE_TRANSACTION`, `EXECUTE_NUMSCRIPT`, `ADD_METADATA`, `REVERT_TRANSACTION`, `DELETE_METADATA`), so the table's top-level rows are unreachable over HTTP bulk. `EXECUTE_NUMSCRIPT` produces a transaction log when the script emits postings or an account metadata update log when it emits only account metadata.
 
 ### gRPC Error Mapping
 

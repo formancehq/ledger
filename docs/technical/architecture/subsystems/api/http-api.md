@@ -35,6 +35,15 @@ inputs; invalid source or version returns typed diagnostics in a 200 response.
 The operation is independent of ledger state. See the
 [scripting contract](../scripting/numscript-library.md#read-only-source-analysis).
 
+`POST /v3/{ledgerName}/transactions` accepts explicit postings or a Numscript
+that produces postings. `POST /v3/{ledgerName}/numscripts/execute` accepts an
+inline or saved Numscript with an optional transaction reference. A reference
+requires postings. A metadata-only result returns `METADATA_ONLY_REFERENCE` if
+the reference passes length and uniqueness checks first. The endpoint returns 201 with
+the created transaction when the script produces postings, or 204 when it only
+updates account metadata. Both routes use the same Apply admission and audit
+path; the Numscript execution is a distinct `LedgerAction` on the gRPC Apply RPC.
+
 ### Base URL
 
 By default: `http://localhost:9000`
@@ -85,7 +94,7 @@ path segment themselves.
 ### Encoded path identifiers
 
 The single-decoding rule also applies to every free-form identifier carried in
-a path segment: account addresses (`GET /accounts/{address}` and the account
+a path segment: ledger names, account addresses (`GET /accounts/{address}` and the account
 metadata POST/DELETE routes), numscript names, prepared-query names,
 account-type names and events sink names. The adapter extracts them with
 `requirePathParameter`, never with a raw `chi.URLParam`. For example,
@@ -93,6 +102,21 @@ account-type names and events sink names. The adapter extracts them with
 decoding, an encoded address would read an empty account with HTTP 200, or be
 rejected by admission on metadata writes. A double-encoded `users%253Aa`
 selects the literal `users%3Aa`, which is not a valid account address.
+Similarly, `test%3Aledger` selects the ledger named `test:ledger`, while
+`test%253Aledger` is rejected because the decoded name still contains `%`.
+
+### Prepared-query bodies and parameters
+
+Create, update, and execute consume the complete HTTP body before making a
+backend call. A supplied body must contain one JSON value followed only by
+whitespace. An empty execute body is allowed. The entire body counts toward the
+4 MiB limit, including trailing whitespace or invalid trailing data.
+
+Execute parameters accept strings, booleans and exact JSON integers within the signed 64-bit minimum to
+unsigned 64-bit maximum range; the filter type can further narrow that range.
+Use a decimal string if the client cannot represent the integer exactly.
+Supplying `null` yields `400 INVALID_PARAMETERS`; use an explicit empty string
+when the filter is intended to match one.
 
 ### Ledger information
 
@@ -194,10 +218,11 @@ value. Ops routes (`/health`, `/readyz`, `/clusterz`, …) do not parse the
 header. `TestReadConsistency_InstalledOnEveryBusinessRoute` requires the
 middleware on every `/v3` route and forbids it on ops routes.
 
-### Signed transaction requests
+### Signed mutation requests
 
-The transaction create, revert, metadata-save and metadata-delete routes,
-atomic bulk and atomic Apply use `application/json` for signed and ordinary unsigned bodies;
+The transaction create, Numscript execute, revert, metadata-save,
+metadata-delete, atomic bulk and atomic Apply routes use `application/json`
+for signed and ordinary unsigned bodies;
 MIME parameters are accepted. The presence of either `Formance-Signing-Key-Id`
 or `Formance-Signature`, even if empty, selects the signed wrapper. When
 neither header is present, the ordinary unsigned REST body is used.
@@ -498,6 +523,7 @@ and `internal/domain/processing/processor.go` (`IncrementNextSequenceID`).
 | POST, DELETE | `/{ledgerName}` | `ErrorResponse` |
 | POST | `/{ledgerName}/promote` | `ErrorResponse` |
 | PUT | `/{ledgerName}/numscripts/{name}` | `ErrorResponse` |
+| POST | `/{ledgerName}/numscripts/execute` | `ErrorResponse` |
 | POST | `/{ledgerName}/indexes` | `ErrorResponse` |
 | DELETE | `/{ledgerName}/indexes/{canonicalId}` | `ErrorResponse` |
 | POST | `/{ledgerName}/transactions` | `ErrorResponse` |
@@ -1479,7 +1505,10 @@ backend execution. Authentication failures use the standard `401`/`403` errors.
 
 The request body is a configuration object directly, without a `data` or
 `config` wrapper. `name` and exactly one of `nats`, `clickhouse`, `kafka`, `http`
-or `databricks` are required. Configuration fields use protobuf JSON camelCase,
+or `databricks` are required. Shared admission also validates that each new
+`Apply(AddEventsSink)` has a name and a type. This applies to native gRPC and
+bucket-wide REST Apply. Old committed entries remain replayable.
+Configuration fields use protobuf JSON camelCase,
 as in the existing GET response. Unknown fields, duplicate fields, multiple
 sink types and malformed JSON return `400 INVALID_REQUEST`. The complete
 request, including trailing whitespace, is subject to the 4 MiB HTTP body
@@ -1541,7 +1570,8 @@ and `controllerId`. Omitted or zero batching values use emitter defaults
 64-bit integer: clients should send a decimal string; a JSON integer is also
 accepted. `eventTypes` accepts protobuf enum names; an omitted or empty array
 selects all events. The current event names are `COMMITTED_TRANSACTION`,
-`REVERTED_TRANSACTION`, `SAVED_METADATA`, `DELETED_METADATA`, `CREATED_LEDGER`,
+`REVERTED_TRANSACTION`, `SAVED_METADATA`, `ACCOUNT_METADATA_UPDATED`,
+`DELETED_METADATA`, `CREATED_LEDGER`,
 `DELETED_LEDGER` and `SKIPPED_ORDER`. Business validation remains owned by Apply:
 for example, `batchSize > 100000` returns `400 SINK_BATCH_SIZE_TOO_LARGE`.
 This adapter does not introduce new validation of external URLs or credentials.

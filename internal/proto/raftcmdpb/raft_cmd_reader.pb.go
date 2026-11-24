@@ -2813,6 +2813,7 @@ type LedgerApplyOrderReader interface {
 	GetAddAccountType() AddAccountTypeOrderReader
 	GetRemoveAccountType() RemoveAccountTypeOrderReader
 	GetUpdateDefaultEnforcementMode() UpdateDefaultEnforcementModeOrderReader
+	GetExecuteNumscript() ExecuteNumscriptOrderReader
 	GetSkippableReasons() []commonpb.ErrorReason
 	WhichData() LedgerApplyOrder_DataReaderCase
 	Mutate() *LedgerApplyOrder
@@ -2908,6 +2909,14 @@ func (r *ledgerApplyOrderReadonly) GetUpdateDefaultEnforcementMode() UpdateDefau
 	return v.UpdateDefaultEnforcementMode.AsReader()
 }
 
+func (r *ledgerApplyOrderReadonly) GetExecuteNumscript() ExecuteNumscriptOrderReader {
+	v, ok := (*LedgerApplyOrder)(r).GetData().(*LedgerApplyOrder_ExecuteNumscript)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.ExecuteNumscript.AsReader()
+}
+
 func (r *ledgerApplyOrderReadonly) GetSkippableReasons() []commonpb.ErrorReason {
 	return slices.Clone((*LedgerApplyOrder)(r).GetSkippableReasons())
 }
@@ -2928,6 +2937,7 @@ const (
 	LedgerApplyOrder_DataReaderCase_AddAccountType               LedgerApplyOrder_DataReaderCase = 9
 	LedgerApplyOrder_DataReaderCase_RemoveAccountType            LedgerApplyOrder_DataReaderCase = 10
 	LedgerApplyOrder_DataReaderCase_UpdateDefaultEnforcementMode LedgerApplyOrder_DataReaderCase = 11
+	LedgerApplyOrder_DataReaderCase_ExecuteNumscript             LedgerApplyOrder_DataReaderCase = 13
 )
 
 func (r *ledgerApplyOrderReadonly) WhichData() LedgerApplyOrder_DataReaderCase {
@@ -2954,6 +2964,8 @@ func (r *ledgerApplyOrderReadonly) WhichData() LedgerApplyOrder_DataReaderCase {
 		return LedgerApplyOrder_DataReaderCase_RemoveAccountType
 	case *LedgerApplyOrder_UpdateDefaultEnforcementMode:
 		return LedgerApplyOrder_DataReaderCase_UpdateDefaultEnforcementMode
+	case *LedgerApplyOrder_ExecuteNumscript:
+		return LedgerApplyOrder_DataReaderCase_ExecuteNumscript
 	default:
 		return LedgerApplyOrder_DataReaderCase_Unset
 	}
@@ -3674,6 +3686,172 @@ func (m createTransactionOrder_accountMetadataMapReadonly) Get(k string) (common
 }
 
 func (m createTransactionOrder_accountMetadataMapReadonly) Range(yield func(string, commonpb.MetadataMapReader) bool) {
+	for k, v := range m {
+		var r commonpb.MetadataMapReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(k, r) {
+			return
+		}
+	}
+}
+
+// ExecuteNumscriptOrderReader provides read-only access to ExecuteNumscriptOrder.
+// Call Mutate() to obtain a mutable clone.
+type ExecuteNumscriptOrderReader interface {
+	GetScript() commonpb.ScriptReader
+	GetNumscriptReference() NumscriptReferenceReader
+	GetTimestamp() commonpb.TimestampReader
+	GetMetadata() ExecuteNumscriptOrder_MetadataMapReader
+	GetAccountMetadata() ExecuteNumscriptOrder_AccountMetadataMapReader
+	GetReference() string
+	Mutate() *ExecuteNumscriptOrder
+}
+
+type executeNumscriptOrderReadonly ExecuteNumscriptOrder
+
+func (r *executeNumscriptOrderReadonly) GetScript() commonpb.ScriptReader {
+	v := (*ExecuteNumscriptOrder)(r).GetScript()
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (r *executeNumscriptOrderReadonly) GetNumscriptReference() NumscriptReferenceReader {
+	v := (*ExecuteNumscriptOrder)(r).GetNumscriptReference()
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (r *executeNumscriptOrderReadonly) GetTimestamp() commonpb.TimestampReader {
+	v := (*ExecuteNumscriptOrder)(r).GetTimestamp()
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (r *executeNumscriptOrderReadonly) GetMetadata() ExecuteNumscriptOrder_MetadataMapReader {
+	return executeNumscriptOrder_metadataMapReadonly((*ExecuteNumscriptOrder)(r).GetMetadata())
+}
+
+func (r *executeNumscriptOrderReadonly) GetAccountMetadata() ExecuteNumscriptOrder_AccountMetadataMapReader {
+	return executeNumscriptOrder_accountMetadataMapReadonly((*ExecuteNumscriptOrder)(r).GetAccountMetadata())
+}
+
+func (r *executeNumscriptOrderReadonly) GetReference() string {
+	return (*ExecuteNumscriptOrder)(r).GetReference()
+}
+
+func (r *executeNumscriptOrderReadonly) Mutate() *ExecuteNumscriptOrder {
+	return (*ExecuteNumscriptOrder)(r).CloneVT()
+}
+
+// AsReader returns a read-only view of this ExecuteNumscriptOrder.
+func (m *ExecuteNumscriptOrder) AsReader() ExecuteNumscriptOrderReader {
+	if m == nil {
+		return nil
+	}
+	return (*executeNumscriptOrderReadonly)(m)
+}
+
+// Mutate returns a mutable deep clone of this ExecuteNumscriptOrder.
+func (m *ExecuteNumscriptOrder) Mutate() *ExecuteNumscriptOrder {
+	return m.CloneVT()
+}
+
+// ExecuteNumscriptOrderListReader provides read-only iteration over []*ExecuteNumscriptOrder.
+type ExecuteNumscriptOrderListReader interface {
+	Len() int
+	Get(i int) ExecuteNumscriptOrderReader
+	Range(yield func(int, ExecuteNumscriptOrderReader) bool)
+}
+
+type executeNumscriptOrderListReadonly []*ExecuteNumscriptOrder
+
+func (l executeNumscriptOrderListReadonly) Len() int { return len(l) }
+
+func (l executeNumscriptOrderListReadonly) Get(i int) ExecuteNumscriptOrderReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l executeNumscriptOrderListReadonly) Range(yield func(int, ExecuteNumscriptOrderReader) bool) {
+	for i, v := range l {
+		var r ExecuteNumscriptOrderReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewExecuteNumscriptOrderListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewExecuteNumscriptOrderListReader(s []*ExecuteNumscriptOrder) ExecuteNumscriptOrderListReader {
+	return executeNumscriptOrderListReadonly(s)
+}
+
+// ExecuteNumscriptOrder_MetadataMapReader provides read-only access to ExecuteNumscriptOrder.Metadata.
+type ExecuteNumscriptOrder_MetadataMapReader interface {
+	Len() int
+	Get(k string) (commonpb.MetadataValueReader, bool)
+	Range(yield func(string, commonpb.MetadataValueReader) bool)
+}
+
+type executeNumscriptOrder_metadataMapReadonly map[string]*commonpb.MetadataValue
+
+func (m executeNumscriptOrder_metadataMapReadonly) Len() int { return len(m) }
+
+func (m executeNumscriptOrder_metadataMapReadonly) Get(k string) (commonpb.MetadataValueReader, bool) {
+	v, ok := m[k]
+	if !ok || v == nil {
+		return nil, ok
+	}
+	return v.AsReader(), true
+}
+
+func (m executeNumscriptOrder_metadataMapReadonly) Range(yield func(string, commonpb.MetadataValueReader) bool) {
+	for k, v := range m {
+		var r commonpb.MetadataValueReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(k, r) {
+			return
+		}
+	}
+}
+
+// ExecuteNumscriptOrder_AccountMetadataMapReader provides read-only access to ExecuteNumscriptOrder.AccountMetadata.
+type ExecuteNumscriptOrder_AccountMetadataMapReader interface {
+	Len() int
+	Get(k string) (commonpb.MetadataMapReader, bool)
+	Range(yield func(string, commonpb.MetadataMapReader) bool)
+}
+
+type executeNumscriptOrder_accountMetadataMapReadonly map[string]*commonpb.MetadataMap
+
+func (m executeNumscriptOrder_accountMetadataMapReadonly) Len() int { return len(m) }
+
+func (m executeNumscriptOrder_accountMetadataMapReadonly) Get(k string) (commonpb.MetadataMapReader, bool) {
+	v, ok := m[k]
+	if !ok || v == nil {
+		return nil, ok
+	}
+	return v.AsReader(), true
+}
+
+func (m executeNumscriptOrder_accountMetadataMapReadonly) Range(yield func(string, commonpb.MetadataMapReader) bool) {
 	for k, v := range m {
 		var r commonpb.MetadataMapReader
 		if v != nil {

@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -1898,6 +1899,7 @@ func (fsm *Machine) writeProposalAuditEntry(batch *dal.WriteSession, proposal *r
 		entry.Idempotency = &commonpb.Idempotency{Key: idem.GetKey(), ExpiresAt: idempotencyExpiresAt}
 	}
 	entry.Signature = proposal.GetSignature()
+	entry.RequiredCapabilities = slices.Clone(proposal.GetRequiredCapabilities())
 
 	items := buildAuditItems(serializedOrders, logs)
 

@@ -86,7 +86,8 @@ func (r *ClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (re
 
 	// Credentials is cluster-scoped while Cluster is namespaced, so Kubernetes
 	// cannot garbage-collect the generated credential through an owner reference.
-	// Use a Cluster finalizer to remove it explicitly.
+	// Use a Cluster finalizer to remove it explicitly. Claims detached by a
+	// stopped upgrade are not garbage-collected either.
 	if !ledger.DeletionTimestamp.IsZero() {
 		r.claimTemplateRetries.forget(req.NamespacedName)
 		if err := r.deleteOperatorCredentials(ctx, ledger); err != nil {
@@ -99,7 +100,7 @@ func (r *ClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (re
 			}
 		}
 
-		return ctrl.Result{}, nil
+		return r.finalizeUpgradeClaims(ctx, ledger)
 	}
 	if !controllerutil.ContainsFinalizer(ledger, operatorCredentialsFinalizer) {
 		controllerutil.AddFinalizer(ledger, operatorCredentialsFinalizer)

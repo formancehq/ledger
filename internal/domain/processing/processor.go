@@ -43,6 +43,9 @@ type RequestProcessor struct {
 type Context struct {
 	// auditReplay executes recorded business intent without operational quotas.
 	auditReplay bool
+	// strictCreateLedgerAccountTypes enables strict initial type validation for
+	// new orders. Audit replay retains the historical creation semantics.
+	strictCreateLedgerAccountTypes bool
 
 	// Metadata budget is shared by all orders in one atomic proposal.
 	metadataBudget *commandMetadataBudget
@@ -231,16 +234,19 @@ func (r *OrdersResult) recordCreatedLog(log *commonpb.Log) bool {
 // coverage map is never mutated. Per-order isolation is therefore
 // structural: order N's scope cannot read keys declared by order M.
 func (p *RequestProcessor) ProcessOrders(orders []*raftcmdpb.Order, scopeFactory ScopeFactory, sink SignalSink) (*OrdersResult, domain.Describable) {
-	return p.processOrders(orders, scopeFactory, sink, false)
+	return p.processOrders(orders, scopeFactory, sink, false, true)
 }
 
 // ProcessAuditedOrders verifies recorded business effects. Operational quotas
-// are live admission/apply concerns, not historical business invariants.
+// are live admission/apply concerns, not historical business invariants. Audit
+// items contain orders, and historical creations may contain initial account
+// types that the stricter new-order validation would reject. Successful new
+// creations satisfy the legacy validation and reconstruct the same log.
 func (p *RequestProcessor) ProcessAuditedOrders(orders []*raftcmdpb.Order, scopeFactory ScopeFactory, sink SignalSink) (*OrdersResult, domain.Describable) {
-	return p.processOrders(orders, scopeFactory, sink, true)
+	return p.processOrders(orders, scopeFactory, sink, true, false)
 }
 
-func (p *RequestProcessor) processOrders(orders []*raftcmdpb.Order, scopeFactory ScopeFactory, sink SignalSink, auditReplay bool) (*OrdersResult, domain.Describable) {
+func (p *RequestProcessor) processOrders(orders []*raftcmdpb.Order, scopeFactory ScopeFactory, sink SignalSink, auditReplay bool, strictCreateLedgerAccountTypes bool) (*OrdersResult, domain.Describable) {
 	clear(p.compiledTypesCache)
 	clear(p.assetCache)
 
@@ -249,11 +255,12 @@ func (p *RequestProcessor) processOrders(orders []*raftcmdpb.Order, scopeFactory
 	// per-apply fields (Boundaries, LedgerInfo) are populated by the apply
 	// orchestrators.
 	ctx := &Context{
-		auditReplay:          auditReplay,
-		NumscriptCache:       p.numscriptCache,
-		CompiledTypes:        p.compiledTypesCache,
-		AssetCache:           p.assetCache,
-		batchInitialNextTxID: make(map[string]uint64),
+		auditReplay:                    auditReplay,
+		strictCreateLedgerAccountTypes: strictCreateLedgerAccountTypes,
+		NumscriptCache:                 p.numscriptCache,
+		CompiledTypes:                  p.compiledTypesCache,
+		AssetCache:                     p.assetCache,
+		batchInitialNextTxID:           make(map[string]uint64),
 	}
 
 	ctx.metadataBudget = &commandMetadataBudget{}

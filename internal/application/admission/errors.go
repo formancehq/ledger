@@ -11,9 +11,13 @@ import (
 // live here so the domain package keeps its narrow ledger-semantics scope.
 var (
 	// Connection syntax errors never echo credential-bearing input or parser errors.
-	ErrMirrorPostgresURLInvalid = &invalidConnectionURL{message: "mirrorSource.postgres.dsn must be a hierarchical URL with an explicit scheme"}
-	ErrSinkNATSURLInvalid       = &invalidConnectionURL{message: "sink.nats.url must contain explicit nats://, tls://, ws:// or wss:// server URLs"}
-	ErrSinkClickHouseURLInvalid = &invalidConnectionURL{message: "sink.clickhouse.dsn must be a clickhouse://, http:// or https:// URL with a host"}
+	ErrMirrorPostgresURLInvalid = &invalidIntegrationConfig{message: "mirrorSource.postgres.dsn must be a hierarchical URL with an explicit scheme"}
+	ErrSinkNATSURLInvalid       = &invalidIntegrationConfig{message: "sink.nats.url must contain explicit nats://, tls://, ws:// or wss:// server URLs"}
+	ErrSinkClickHouseURLInvalid = &invalidIntegrationConfig{message: "sink.clickhouse.dsn must be a clickhouse://, http:// or https:// URL with a host"}
+
+	ErrMirrorSourceRequiresMirrorMode = &invalidIntegrationConfig{message: "mirrorSource requires mode MIRROR"}
+	ErrMirrorModeRequiresSource       = &invalidIntegrationConfig{message: "mode MIRROR requires mirrorSource"}
+	ErrSinkConfigIncomplete           = &invalidIntegrationConfig{message: "sink name and one sink type are required"}
 
 	// ErrMirrorHTTPURLInvalid rejects unusable HTTP source URLs before the
 	// configuration reaches Raft. Never include the credential-bearing input

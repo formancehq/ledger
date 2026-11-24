@@ -576,9 +576,10 @@ func applyMutableStatefulSetSpec(sts *appsv1.StatefulSet, desired appsv1.Statefu
 }
 
 // reconcileStatefulSetRetentionPolicy applies the same policy used by ordinary
-// StatefulSet creation. During a stopped upgrade buildRetentionPolicy always
-// returns Retain; callers must requeue until the StatefulSet controller has
-// observed the updated generation before detaching or reusing claims.
+// StatefulSet creation. During a stopped upgrade buildRetentionPolicy returns
+// Retain until the Adopting phase; callers must requeue until the StatefulSet
+// controller has observed the updated generation before detaching or reusing
+// claims.
 func (r *ClusterReconciler) reconcileStatefulSetRetentionPolicy(ctx context.Context, ledger *ledgerv1alpha1.Cluster, sts *appsv1.StatefulSet) (bool, error) {
 	desired := buildRetentionPolicy(ledger)
 	if sts.Spec.PersistentVolumeClaimRetentionPolicy != nil &&
@@ -701,9 +702,9 @@ func buildRetentionPolicy(ledger *ledgerv1alpha1.Cluster) *appsv1.StatefulSetPer
 	whenScaled := appsv1.RetainPersistentVolumeClaimRetentionPolicyType
 	whenDeleted := appsv1.RetainPersistentVolumeClaimRetentionPolicyType
 	// The replacement StatefulSet must not acquire PVC deletion ownership while
-	// recovery may still delete and recreate it. The requested policy is restored
-	// by the ordinary reconcile after status.upgrade has been cleared.
-	if ledger.Status.Upgrade != nil {
+	// recovery may still delete and recreate it. The Adopting phase restores the
+	// requested policy once the drain is released.
+	if ledger.Status.Upgrade != nil && ledger.Status.Upgrade.Phase != "Adopting" {
 		return &appsv1.StatefulSetPersistentVolumeClaimRetentionPolicy{WhenScaled: whenScaled, WhenDeleted: whenDeleted}
 	}
 

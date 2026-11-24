@@ -37,6 +37,13 @@ Raft transport generated code lives in `internal/proto/rafttransportpb/` (`raft_
 
 ## Regenerating Code
 
+`just generate-proto` also runs `scripts/fix-vtproto-capability-length.go` to
+reject malformed packed `fixed32` capability declarations in the generated
+AuditEntry and Proposal decoders. The pinned vtprotobuf generator checks the
+outer message length rather than the packed field boundary; the postprocessor
+fails if its expected generated shape changes. Keep the malformed-wire tests
+in both protobuf packages when updating the generator.
+
 ```bash
 just generate-proto
 ```

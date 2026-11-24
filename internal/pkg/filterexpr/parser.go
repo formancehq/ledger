@@ -1034,48 +1034,39 @@ func (v *Value) resolve() string {
 func metadataEqualityToProto(field *commonpb.FieldRef, val *Value) (*commonpb.QueryFilter, error) {
 	fc := &commonpb.FieldCondition{Field: field}
 
-	if val.Param != "" {
+	// Use the lexical kind, not the resolved text: quoted "true" or "42"
+	// is a string, regardless of what the characters could also represent.
+	switch {
+	case val.Param != "":
 		// Parameterized: default to string
 		fc.Condition = &commonpb.FieldCondition_StringCond{
 			StringCond: &commonpb.StringCondition{
 				Value: &commonpb.StringCondition_Param{Param: val.Param},
 			},
 		}
-
-		return &commonpb.QueryFilter{
-			Filter: &commonpb.QueryFilter_Field{Field: fc},
-		}, nil
-	}
-
-	raw := val.resolve()
-
-	switch raw {
-	case "true":
+	case val.Bool != "":
 		fc.Condition = &commonpb.FieldCondition_BoolCond{
 			BoolCond: &commonpb.BoolCondition{
-				Value: &commonpb.BoolCondition_Hardcoded{Hardcoded: true},
+				Value: &commonpb.BoolCondition_Hardcoded{Hardcoded: val.Bool == "true"},
 			},
 		}
-	case "false":
-		fc.Condition = &commonpb.FieldCondition_BoolCond{
-			BoolCond: &commonpb.BoolCondition{
-				Value: &commonpb.BoolCondition_Hardcoded{Hardcoded: false},
+	case val.Num != "":
+		intVal, err := strconv.ParseInt(val.Num, 10, 64)
+		if err != nil {
+			return nil, fmt.Errorf("metadata comparison requires a signed 64-bit integer, got %q: %w", val.Num, err)
+		}
+
+		fc.Condition = &commonpb.FieldCondition_IntCond{
+			IntCond: &commonpb.IntCondition{
+				Min: &intVal,
+				Max: &intVal,
 			},
 		}
 	default:
-		if intVal, intErr := strconv.ParseInt(raw, 10, 64); intErr == nil {
-			fc.Condition = &commonpb.FieldCondition_IntCond{
-				IntCond: &commonpb.IntCondition{
-					Min: &intVal,
-					Max: &intVal,
-				},
-			}
-		} else {
-			fc.Condition = &commonpb.FieldCondition_StringCond{
-				StringCond: &commonpb.StringCondition{
-					Value: &commonpb.StringCondition_Hardcoded{Hardcoded: raw},
-				},
-			}
+		fc.Condition = &commonpb.FieldCondition_StringCond{
+			StringCond: &commonpb.StringCondition{
+				Value: &commonpb.StringCondition_Hardcoded{Hardcoded: val.resolve()},
+			},
 		}
 	}
 
@@ -1111,11 +1102,9 @@ func metadataRangeToProto(field *commonpb.FieldRef, val *Value, op string) (*com
 		}, nil
 	}
 
-	raw := val.resolve()
-
-	intVal, intErr := strconv.ParseInt(raw, 10, 64)
-	if intErr != nil {
-		return nil, fmt.Errorf("range operators only support integer values, got %q", raw)
+	intVal, err := parseIntValue(val)
+	if err != nil {
+		return nil, err
 	}
 
 	ic := &commonpb.IntCondition{}
@@ -1202,11 +1191,13 @@ func metadataBetweenToProto(field *commonpb.FieldRef, r *BetweenRange) (*commonp
 // error message that metadataRangeToProto uses so the two operators report
 // type-mismatches consistently.
 func parseIntValue(v *Value) (int64, error) {
-	raw := v.resolve()
+	if v.Num == "" {
+		return 0, fmt.Errorf("range operators only support integer values, got %q", v.resolve())
+	}
 
-	n, err := strconv.ParseInt(raw, 10, 64)
+	n, err := strconv.ParseInt(v.Num, 10, 64)
 	if err != nil {
-		return 0, fmt.Errorf("range operators only support integer values, got %q", raw)
+		return 0, fmt.Errorf("range operators only support integer values, got %q", v.Num)
 	}
 
 	return n, nil

@@ -430,6 +430,18 @@ func (x *Account) jsonValue() *accountJSON {
 
 // Note: Log.MarshalJSON is already implemented in log.go
 
+// MarshalJSON emits the account-address map directly as the public log data.
+// The LedgerLog type already identifies this payload, so a second
+// accountMetadata field would add an unnecessary envelope.
+func (x *AccountMetadataUpdated) MarshalJSON() ([]byte, error) {
+	return json.Marshal(AccountMetadataToAnyMap(x.GetAccountMetadata()))
+}
+
+// MarshalJSONTo preserves the same projection with the request-scoped codec.
+func (x *AccountMetadataUpdated) MarshalJSONTo(enc *jsontext.Encoder) error {
+	return json.MarshalEncode(enc, AccountMetadataToAnyMap(x.GetAccountMetadata()))
+}
+
 // MarshalJSON implements json.Marshaler for CreatedTransaction. Post-commit
 // volumes ride on the embedded Transaction, so they surface via the
 // "transaction" field rather than as a sibling here.

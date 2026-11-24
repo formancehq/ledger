@@ -15,6 +15,39 @@ import (
 	"github.com/formancehq/ledger/v3/internal/storage/readstore"
 )
 
+func TestListEntitiesZeroCursorIsExclusive(t *testing.T) {
+	t.Parallel()
+
+	const ledger = "zero-cursor"
+	rs, err := readstore.New(t.TempDir(), logging.NopZap(), readstore.DefaultConfig())
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, rs.Close()) })
+
+	kb := dal.NewKeyBuilder()
+	for id := range uint64(3) {
+		require.NoError(t, rs.DB().Set(readstore.LedgerLogKey(kb, ledger, id), nil, pebble.NoSync))
+	}
+	params := entityListParams[uint64]{
+		target: commonpb.QueryTarget_QUERY_TARGET_LOGS, ledgerName: ledger,
+		pageSize: 2, after: 0, hasAfter: true,
+		afterToBytes: func(id uint64) []byte { return binary.BigEndian.AppendUint64(nil, id) },
+	}
+	var forward [][]byte
+	require.NoError(t, listAscending(rs.DB(), params, &forward))
+	require.Equal(t, []uint64{1, 2}, []uint64{binary.BigEndian.Uint64(forward[0]), binary.BigEndian.Uint64(forward[1])})
+
+	var reverse [][]byte
+	require.NoError(t, listDescUnfiltered(rs.DB(), params, &reverse))
+	require.Empty(t, reverse)
+
+	params.filter = &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_Ledger{Ledger: &commonpb.LedgerCondition{
+		Cond: &commonpb.StringCondition{Value: &commonpb.StringCondition_Hardcoded{Hardcoded: ledger}},
+	}}}
+	var filtered [][]byte
+	require.NoError(t, listDescFiltered(rs.DB(), params, &filtered))
+	require.Empty(t, filtered)
+}
+
 // Exercise the controller's actual compile/filter/paginate path. Instrument
 // the compiled iterator with its profiling counters and the horizon wrapper's
 // predicate, so a drain added before OR after pagination fails this test.
@@ -80,7 +113,7 @@ func TestListDescFilteredStopsAtLookahead(t *testing.T) {
 
 			err := listDescFiltered(rs.DB(), entityListParams[uint64]{
 				target:     commonpb.QueryTarget_QUERY_TARGET_LOGS,
-				ledgerName: ledger, pageSize: 3, after: tc.after, afterToBytes: encode,
+				ledgerName: ledger, pageSize: 3, after: tc.after, hasAfter: tc.name != "first page", afterToBytes: encode,
 				filter: filter, profile: profile,
 				horizonKeep: func([]byte) (bool, error) {
 					visits++

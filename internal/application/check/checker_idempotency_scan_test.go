@@ -29,7 +29,7 @@ func TestCompareIdempotencyOutcomesRejectsMalformedValue(t *testing.T) {
 	require.NoError(t, err)
 	defer func() { _ = handle.Close() }()
 
-	checker := NewChecker(store, attributes.New(), nil, logging.Testing())
+	checker := NewChecker(store, attributes.New(), logging.Testing())
 	err = checker.compareIdempotencyOutcomes(handle, nil, true, func(*servicepb.CheckStoreEvent) {})
 	require.Error(t, err)
 	require.ErrorContains(t, err, "unmarshalling idempotency value")

@@ -54,6 +54,7 @@ func TestVerifyAuditHashChain_DetectsTampering(t *testing.T) {
 		}},
 		{"ledgers_swap", "success", func(e *auditpb.AuditEntry, _ []*auditpb.AuditItem) { e.Ledgers = []string{"different-ledger"} }},
 		{"hash_version", "success", func(e *auditpb.AuditEntry, _ []*auditpb.AuditItem) { e.HashVersion = 99 }},
+		{"required_capabilities", "success", func(e *auditpb.AuditEntry, _ []*auditpb.AuditItem) { e.RequiredCapabilities = []uint32{7} }},
 
 		// Outcome flips — same `hash` field, different outcome semantics.
 		{"outcome_flip_success_to_failure", "success", func(e *auditpb.AuditEntry, _ []*auditpb.AuditItem) {
@@ -377,7 +378,7 @@ func TestVerifyAuditHashChain_DetectsIdempotencyOutcomeTampering(t *testing.T) {
 
 	collectIdempotencyMismatches := func(store *dal.Store) []*servicepb.CheckStoreError {
 		attrs := attributes.New()
-		checker := NewChecker(store, attrs, nil, logging.Testing())
+		checker := NewChecker(store, attrs, logging.Testing())
 
 		handle, err := store.NewReadHandle()
 		require.NoError(t, err)
@@ -515,7 +516,7 @@ func runChainVerifierWithFolds(
 	t.Helper()
 
 	attrs := attributes.New()
-	checker := NewChecker(store, attrs, nil, logging.Testing())
+	checker := NewChecker(store, attrs, logging.Testing())
 
 	handle, err := store.NewReadHandle()
 	require.NoError(t, err)

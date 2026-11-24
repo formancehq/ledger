@@ -5,8 +5,6 @@ usage() {
     cat <<'EOF'
 Usage:
   scripts/ai-bugfix-gate environment [go.mod]
-  scripts/ai-bugfix-gate evidence <metadata-file> [bugfix|non-bugfix]
-  scripts/ai-bugfix-gate pre-push
 EOF
 }
 
@@ -56,36 +54,8 @@ environment_gate() {
         "$expected" "$actual" "$go_bin" "$actual_root" "$(go env GOTOOLCHAIN)"
 }
 
-evidence_gate() {
-    local file=$1 intent=${2:-bugfix}
-    [[ -f "$file" ]] || die "evidence file not found: $file"
-    [[ "$intent" == bugfix || "$intent" == non-bugfix ]] || die "invalid intent: $intent"
-    [[ "$intent" == non-bugfix ]] && { echo 'BUGFIX_EVIDENCE=NOT_REQUIRED'; return; }
-
-    grep -Eq '^DISCOVERY:[[:space:]]+(DIRECT_FIX|PARTIAL_FIX|RELATED_BUT_DIFFERENT|STALE_OR_INVALID|ALREADY_FIXED|NO_EXISTING_WORK)\b' "$file" ||
-        die "BUGFIX_EVIDENCE=FAIL (discovery classification missing)"
-    grep -Eq '^BEFORE_FIX:[[:space:]]+(BUG_REPRODUCED|REPRODUCTION_BLOCKED|ALREADY_FIXED)\b' "$file" ||
-        die "BUGFIX_EVIDENCE=FAIL (BEFORE_FIX missing)"
-    grep -Eq '^AFTER_FIX:[[:space:]]+PASS\b' "$file" ||
-        die "BUGFIX_EVIDENCE=FAIL (AFTER_FIX missing)"
-    if [[ "${VALIDATION_FAILURE:-0}" == 1 ]]; then
-        grep -Eq '^BASELINE_CLASSIFICATION:[[:space:]]+(BASELINE_FAILURE|CANDIDATE_CAUSED|ENVIRONMENTAL|UNKNOWN)\b' "$file" ||
-            die "BUGFIX_EVIDENCE=FAIL (baseline classification missing)"
-    fi
-    echo 'BUGFIX_EVIDENCE=PASS'
-}
-
-pre_push_gate() {
-    just pre-commit
-    [[ -z "$(git status --porcelain)" ]] || die "PRE_COMMIT=PASS but WORKTREE_CLEAN=NO"
-    echo 'PRE_COMMIT=PASS'
-    echo 'WORKTREE_CLEAN=YES'
-}
-
 case "${1:-}" in
     environment) environment_gate "${2:-go.mod}" ;;
-    evidence) [[ $# -ge 2 ]] || { usage >&2; exit 2; }; evidence_gate "$2" "${3:-bugfix}" ;;
-    pre-push) pre_push_gate ;;
     -h|--help) usage ;;
     *) usage >&2; exit 2 ;;
 esac

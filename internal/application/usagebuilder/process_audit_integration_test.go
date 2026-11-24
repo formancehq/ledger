@@ -201,6 +201,15 @@ func createTxOrder(ledger string, order *raftcmdpb.CreateTransactionOrder) *raft
 	}
 }
 
+func executeNumscriptOrder(ledger string, execution *raftcmdpb.ExecuteNumscriptOrder) *raftcmdpb.Order {
+	return &raftcmdpb.Order{Type: &raftcmdpb.Order_LedgerScoped{LedgerScoped: &raftcmdpb.LedgerScopedOrder{
+		Ledger: ledger,
+		Payload: &raftcmdpb.LedgerScopedOrder_Apply{Apply: &raftcmdpb.LedgerApplyOrder{
+			Data: &raftcmdpb.LedgerApplyOrder_ExecuteNumscript{ExecuteNumscript: execution},
+		}},
+	}}}
+}
+
 // revertTxOrder wraps a RevertTransactionOrder in an Order.
 func revertTxOrder(ledger string, order *raftcmdpb.RevertTransactionOrder) *raftcmdpb.Order {
 	return &raftcmdpb.Order{
@@ -1062,7 +1071,83 @@ func TestProcessAuditEntries_Dispatch(t *testing.T) {
 	}
 }
 
-// TestProcessAuditEntries_SkippedCreateDoesNotCount guards the isCreatedTx gate:
+func TestProcessAuditEntries_MetadataOnlyNumscriptCounts(t *testing.T) {
+	t.Parallel()
+	const ledger = "l1"
+	for _, tc := range []struct {
+		name      string
+		reference *raftcmdpb.NumscriptReference
+	}{
+		{name: "inline"},
+		{name: "saved", reference: &raftcmdpb.NumscriptReference{Name: "payout", Version: "latest"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			primary, usage := newUsageTestStores(t)
+			payload := &commonpb.LedgerLogPayload{Payload: &commonpb.LedgerLogPayload_AccountMetadataUpdated{
+				AccountMetadataUpdated: &commonpb.AccountMetadataUpdated{AccountMetadata: map[string]*commonpb.MetadataMap{
+					"users:alice": {Values: map[string]*commonpb.MetadataValue{"tier": commonpb.NewStringValue("gold")}},
+				}},
+			}}
+			log := &commonpb.Log{Sequence: 10, Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_Apply{
+				Apply: &commonpb.ApplyLedgerLog{LedgerName: ledger, Log: &commonpb.LedgerLog{
+					Id: 10, Date: &commonpb.Timestamp{Data: 1234}, Data: payload,
+				}},
+			}}}
+			seedAuditData(t, primary, []seedAuditEntry{{
+				seq: 1, success: true, items: []seedAuditItem{{
+					order: executeNumscriptOrder(ledger, &raftcmdpb.ExecuteNumscriptOrder{
+						Script: &commonpb.Script{Plain: "set_account_meta(...)"}, NumscriptReference: tc.reference,
+					}),
+					logSeq: 10,
+					log:    log,
+				}},
+			}})
+			b := newTestBuilder(primary, usage, 200)
+			cursor, err := b.processAuditEntries(t.Context(), 0, time.Time{})
+			require.NoError(t, err)
+			require.Equal(t, uint64(1), cursor)
+			count, err := usage.GetCounter(ledger, usagestore.CounterNumscriptExecution)
+			require.NoError(t, err)
+			require.Equal(t, uint64(1), count)
+			for _, id := range []byte{usagestore.CounterPosting, usagestore.CounterReference, usagestore.CounterVolume} {
+				count, err := usage.GetCounter(ledger, id)
+				require.NoError(t, err)
+				require.Zero(t, count)
+			}
+			if tc.reference != nil {
+				usageEntry, err := usage.GetTemplateUsage(ledger, tc.reference.GetName())
+				require.NoError(t, err)
+				require.Equal(t, uint64(1), usageEntry.GetCount())
+				require.Equal(t, uint64(1234), usageEntry.GetLastUsed().GetData())
+			}
+		})
+	}
+}
+
+func TestProcessAuditEntries_ExecuteNumscriptReferenceCount(t *testing.T) {
+	t.Parallel()
+	const ledger = "l1"
+	primary, usage := newUsageTestStores(t)
+	seedAuditData(t, primary, []seedAuditEntry{{
+		seq: 1, success: true, items: []seedAuditItem{{
+			order: executeNumscriptOrder(ledger, &raftcmdpb.ExecuteNumscriptOrder{
+				Script: &commonpb.Script{Plain: "send ..."}, Reference: "ref-1",
+			}),
+			logSeq: 10,
+			log: createdTxLog(10, ledger, nil,
+				[]*commonpb.Posting{usagePosting("world", "alice", "USD", 100)}, nil, nil, nil),
+		}},
+	}})
+	b := newTestBuilder(primary, usage, 200)
+	_, err := b.processAuditEntries(t.Context(), 0, time.Time{})
+	require.NoError(t, err)
+	count, err := usage.GetCounter(ledger, usagestore.CounterReference)
+	require.NoError(t, err)
+	require.Equal(t, uint64(1), count)
+}
+
+// TestProcessAuditEntries_SkippedCreateDoesNotCount guards the success gate:
 // a CreateTransaction that produced an OrderSkipped log (no CreatedTransaction /
 // RevertedTransaction payload) must contribute no reference / numscript /
 // template counters even though the order carried them.

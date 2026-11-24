@@ -1,5 +1,5 @@
 // Fund an account from the world (money creation)
-// Usage: ledgerctl transactions create --ledger my-ledger --script world_funding.num \
+// Usage: ledgerctl numscripts execute --ledger my-ledger --file world_funding.num \
 //        --var "destination=@bank" --var "amount=USD/2 10000"
 
 vars {

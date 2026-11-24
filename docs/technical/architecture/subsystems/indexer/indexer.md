@@ -42,10 +42,10 @@ metadata-only event does not rescan entity existence.
 On `Start()`, the builder runs a boot prologue (`bootInit`) that rebuilds the in-memory index-config cache and seeds the progress cursors as a single **retryable unit**:
 
 1. Pins one read-store snapshot and reads the main progress cursor, every durable per-ledger `EMPTY`/`NON_EMPTY` history byte (`SubInternalLedgerHistory`), and all `IndexVersionState` entries from that same view.
-2. Rebuilds the index-config cache (`initIndexConfig`) at that recovered cursor. Ledger history seeds the historical ledgers; active version identities restore their dispatch entries, even when a newer main-store snapshot already contains their drop or ledger deletion. Current versions are live; pending-only versions resume historical backfills; current plus pending resumes a reverse-map schema rewrite with the persisted type binding and task cursor. Tombstones retain their version allocation high-water mark without activating an index. The main snapshot supplies bucket-scoped declarations and replay obligations: a registry row without a local active version must be resolved by its `CreatedIndexLog`, and a historical ledger already absent from main must reach `DeleteLedger`. Init resets its builder-local state, so retry cannot duplicate tasks.
+2. Rebuilds the index-config cache (`initIndexConfig`) at that recovered cursor. Ledger history seeds the historical ledgers; active version identities restore their dispatch entries, even when a newer main-store snapshot already contains their drop or ledger deletion. Current versions are live; pending-only versions resume historical backfills; current plus pending resumes a reverse-map schema rewrite with the persisted type binding and task cursor. Tombstones retain their version allocation high-water mark without activating an index. The main snapshot supplies bucket-scoped declarations and replay obligations: a registry row without a local active version must be resolved by its `CreatedIndexLog`, and a historical ledger already absent from main must reach `DeleteLedger`. That snapshot must contain every log up to the recovered cursor. Both stores commit with `pebble.NoSync` and lose unsynced writes independently on a crash, so the main store can reopen behind the read store; on an out-of-sync restart the builder also starts before follower sync installs the leader's checkpoint. Init then returns a retryable error rather than deriving obligations for a ledger or index the read store has already seen deleted, which no later log could resolve. Init resets its builder-local state, so retry cannot duplicate tasks.
 3. Reads AppliedProposal progress and the last-known Pebble sequence — see [Progress Cursors](#progress-cursors).
 
-`bootInit` is wrapped in `worker.RetryWithBackoff` (100 ms → 10 s). A transient Pebble / read-store failure at boot must **not** advance the persisted cursor against an incomplete config, so boot retries until it succeeds or shutdown is requested. Durable tracker corruption and history/config invariant violations are terminal instead: the retry loop stops, the read projection is marked failed, gRPC health becomes `NOT_SERVING`, and projection waiters return `ErrReadProjectionFailed`. The config rebuild, `LastIndexedSequence`, and the Pebble read-handle open otherwise remain retryable; the AppliedProposal-progress and last-sequence reads stay best-effort. After the retry returns, a `ctx.Err()` check distinguishes "init succeeded" from "shutdown requested" so the loop never processes logs against a failed init.
+`bootInit` is wrapped in `worker.RetryWithBackoff` (100 ms → 10 s). A transient Pebble / read-store failure at boot must **not** advance the persisted cursor against an incomplete config, so boot retries until it succeeds or shutdown is requested. Durable tracker corruption and history/config invariant violations are terminal instead: the retry loop stops, the read projection is marked failed, gRPC health becomes `NOT_SERVING`, and projection waiters return `ErrReadProjectionFailed`. The config rebuild (including a main store still behind the read-store cursor), `LastIndexedSequence`, and the Pebble read-handle open otherwise remain retryable; the AppliedProposal-progress and last-sequence reads stay best-effort. After the retry returns, a `ctx.Err()` check distinguishes "init succeeded" from "shutdown requested" so the loop never processes logs against a failed init.
 
 Only once boot init succeeds does the builder perform an **initial catch-up pass** with a larger batch size, stripping locally unbuilt indexes from the dispatch set so partially built keyspaces do not receive ordinary live writes before backfill resumes. At the first clean EOF it validates that every registry row was resolved, every expected ledger deletion was replayed, and every active ledger has a coherent history byte.
 
@@ -66,6 +66,7 @@ flowchart TB
     C -->|CreatedTransaction| H1[indexCreatedTransaction]
     C -->|RevertedTransaction| H2[indexRevertedTransaction]
     C -->|SavedMetadata| H3[indexSavedMetadata]
+    C -->|AccountMetadataUpdated| H3
     C -->|DeletedMetadata| H4[indexDeletedMetadata]
     C -->|SetMetadataFieldType| H5[addSchemaRewriteTask]
     C -->|CreateIndex / DropIndex| H6[config mutation]
@@ -174,6 +175,7 @@ matching and prefixes over current accounts are documented in the
 | `CreatedTransaction` | `indexCreatedTransaction` | Postings-address mappings (any / source / destination via `WriteAccountTxMapping` + `WriteSourceAccountTxMapping` + `WriteDestinationAccountTxMapping`), reference / timestamp / inserted-at builtin indexes, account-metadata via `dualWriteMetadataIndex`, transaction-metadata via the insert-known-absent path. Existence rows are written only for entities that carry an indexed metadata key — there is no standalone transaction-existence or account-existence write. |
 | `RevertedTransaction` | `indexRevertedTransaction` | Inverse adjustments to the postings mappings; the revert link is kept (not deleted) so revert lookups stay queryable. Metadata on the newly minted revert transaction uses the insert-known-absent path. |
 | `SavedMetadata` | `indexSavedMetadata` → `dualWriteMetadataIndex` | New `(value, entity)` row in the metadata index, plus a reverse-map row for later schema rewrites. |
+| `AccountMetadataUpdated` | `indexSavedMetadata` for each account | Each account's updated metadata follows the same metadata-index and reverse-map path as `SavedMetadata`. Both live indexing and historical backfill dispatch this `HISTORY` payload; it creates no transaction index rows. |
 | `DeletedMetadata` | `indexDeletedMetadata` → `dualDeleteMetadataEntry` | Removes the metadata index row and the reverse-map row. |
 | `SetMetadataFieldType` | `addSchemaRewriteTask` | Schedules a deferred rewrite that re-encodes the existing values under a new type tag (see [Schema Rewrite](#schema-rewrite)). |
 | `CreateIndex` / `DropIndex` | `handleCreatedIndexLog` / `handleDroppedIndexLog` | Mutates the in-memory config and per-replica version state. `DropIndex` tombstones the state so `HighWater` survives, cancels local work, and purges all metadata-index forward (`0x01`), existence (`0x02`), and reverse-map (`0x03`) rows in the same fold batch. |
@@ -227,7 +229,7 @@ The read store partitions its keyspace by a single leading byte:
 |--------|---------|--------|
 | `0x01` | Metadata index (forward, append-only events — see [readstore-event-keys.md](../read-path/readstore-event-keys.md)) | `MetadataIndexPrefixV` / `MetadataIndexEventKeyV` |
 | `0x02` | Entity existence (null / non-null, append-only events) | `EntityExistsEventKeyV`, `EntityExistsNonNullPrefixV`, `EntityExistsNullPrefixV` |
-| `0x03` | Reverse map (field/version → entity → encoded value, for mutation lookup and rewrites). Field and field/version prefixes support bounded maintenance; the checker also scans it for orphan detection — see [Reverse-map rows are checker-visible](indexes.md#reverse-map-rows-are-checker-visible) | `AccountReverseMapKeyV`, `TransactionReverseMapKeyV`, `ReverseMapFieldPrefix`, `ReverseMapVersionPrefix` |
+| `0x03` | Reverse map (field/version → entity → encoded value, for mutation lookup and rewrites). Field and field/version prefixes support bounded maintenance; readstore integrity remains index-builder work — see [Reverse-map integrity](indexes.md#reverse-map-integrity) | `AccountReverseMapKeyV`, `TransactionReverseMapKeyV`, `ReverseMapFieldPrefix`, `ReverseMapVersionPrefix` |
 | `0x04` | Account → transaction mapping | `AccountTxKey` |
 | `0x05` | Source-account → transaction | dedicated key builder |
 | `0x06` | Destination-account → transaction | dedicated key builder |
@@ -433,9 +435,7 @@ overlay: an exact lookup after the purge observes deletion instead of falling
 through to committed Pebble state, while a later exact write supersedes the
 range in the same order Pebble applies the batch. A missing write batch remains
 a hard error (invariant #7), since a silent skip would strand all three limbs.
-`compareReverseMapOrphans` continues to scan `0x03` as a checker defense and
-flags rows whose field has no registered index. See [Reverse-map rows are
-checker-visible](indexes.md#reverse-map-rows-are-checker-visible).
+The main-store checker does not scan `0x03`; readstore corruption detection and repair remain index-builder work (EN-1514 / EN-1323).
 
 ### Recovery and observability
 

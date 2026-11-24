@@ -66,7 +66,7 @@ func readCreationLedger(t *testing.T, store *dal.Store, attrs *attributes.Attrib
 func creationIntegrityFindings(t *testing.T, store *dal.Store, attrs *attributes.Attributes) []*servicepb.CheckStoreError {
 	t.Helper()
 	var findings []*servicepb.CheckStoreError
-	checker := check.NewChecker(store, attrs, nil, testLogger())
+	checker := check.NewChecker(store, attrs, testLogger())
 	require.NoError(t, checker.Check(t.Context(), func(event *servicepb.CheckStoreEvent) {
 		if e := event.GetError(); e != nil {
 			findings = append(findings, e)
