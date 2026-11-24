@@ -1,6 +1,7 @@
 package v1
 
 import (
+	"context"
 	"encoding/json"
 	"math/big"
 	"net/http"
@@ -16,6 +17,7 @@ import (
 	"github.com/formancehq/go-libs/v5/pkg/transport/api"
 	"github.com/formancehq/go-libs/v5/pkg/types/pointer"
 	"github.com/formancehq/go-libs/v5/pkg/types/time"
+	"github.com/formancehq/numscript"
 
 	ledger "github.com/formancehq/ledger/internal"
 	"github.com/formancehq/ledger/internal/api/common"
@@ -31,7 +33,42 @@ func TestTransactionsCreate(t *testing.T) {
 		expectedStatusCode int
 		expectedErrorCode  string
 		queryParams        url.Values
+		returnErr          error
 	}
+
+	postingsPayload := CreateTransactionRequest{
+		Postings: []ledger.Posting{
+			ledger.NewPosting("world", "bank", "USD", big.NewInt(100)),
+		},
+	}
+	postingsRunScript := ledgercontroller.TxToScriptData(ledger.NewTransactionData().WithPostings(
+		ledger.NewPosting("world", "bank", "USD", big.NewInt(100)),
+	), false)
+	scriptPayload := CreateTransactionRequest{
+		Script: Script{
+			Script: ledgercontroller.Script{
+				Plain: `XXX`,
+			},
+		},
+	}
+	scriptRunScript := ledgercontroller.RunScript{
+		Script: ledgercontroller.Script{
+			Plain: `XXX`,
+			Vars:  map[string]string{},
+		},
+	}
+	interpreterParseErr := numscriptInterpreterError(t, `not a valid numscript`)
+	interpreterRuntimeErr := numscriptInterpreterError(t, `vars {
+		monetary $amount
+	}
+	send $amount (
+		source = @world
+		destination = @bank
+	)`)
+	interpreterMissingFundsErr := numscriptInterpreterError(t, `send [USD 100] (
+		source = @alice
+		destination = @bank
+	)`)
 
 	testCases := []testCase{
 		{
@@ -224,6 +261,54 @@ func TestTransactionsCreate(t *testing.T) {
 			expectedStatusCode: http.StatusBadRequest,
 			expectedErrorCode:  common.ErrValidation,
 		},
+		{
+			name:               "using JSON postings with interpreter parse error",
+			payload:            postingsPayload,
+			expectedRunScript:  postingsRunScript,
+			returnErr:          interpreterParseErr,
+			expectedStatusCode: http.StatusBadRequest,
+			expectedErrorCode:  common.ErrCompilationFailed,
+		},
+		{
+			name:               "using JSON postings with interpreter runtime error",
+			payload:            postingsPayload,
+			expectedRunScript:  postingsRunScript,
+			returnErr:          interpreterRuntimeErr,
+			expectedStatusCode: http.StatusBadRequest,
+			expectedErrorCode:  common.ErrValidation,
+		},
+		{
+			name:               "using JSON postings with interpreter missing funds",
+			payload:            postingsPayload,
+			expectedRunScript:  postingsRunScript,
+			returnErr:          interpreterMissingFundsErr,
+			expectedStatusCode: http.StatusBadRequest,
+			expectedErrorCode:  common.ErrInsufficientFund,
+		},
+		{
+			name:               "using plain numscript with interpreter parse error",
+			payload:            scriptPayload,
+			expectedRunScript:  scriptRunScript,
+			returnErr:          interpreterParseErr,
+			expectedStatusCode: http.StatusBadRequest,
+			expectedErrorCode:  common.ErrValidation,
+		},
+		{
+			name:               "using plain numscript with interpreter runtime error",
+			payload:            scriptPayload,
+			expectedRunScript:  scriptRunScript,
+			returnErr:          interpreterRuntimeErr,
+			expectedStatusCode: http.StatusBadRequest,
+			expectedErrorCode:  common.ErrValidation,
+		},
+		{
+			name:               "using plain numscript with interpreter missing funds",
+			payload:            scriptPayload,
+			expectedRunScript:  scriptRunScript,
+			returnErr:          interpreterMissingFundsErr,
+			expectedStatusCode: http.StatusBadRequest,
+			expectedErrorCode:  common.ErrInsufficientFund,
+		},
 	}
 
 	for _, tc := range testCases {
@@ -238,20 +323,24 @@ func TestTransactionsCreate(t *testing.T) {
 			expectedTx.ID = pointer.For(uint64(0))
 
 			systemController, ledgerController := newTestingSystemController(t, true)
-			if tc.expectedStatusCode < 300 && tc.expectedStatusCode >= 200 {
+			if tc.expectedStatusCode < 300 && tc.expectedStatusCode >= 200 || tc.returnErr != nil {
 				tc.expectedRunScript.Timestamp = time.Time{}
-				ledgerController.EXPECT().
+				expect := ledgerController.EXPECT().
 					CreateTransaction(gomock.Any(), ledgercontroller.Parameters[ledgercontroller.CreateTransaction]{
 						DryRun: tc.expectedPreview,
 						Input: ledgercontroller.CreateTransaction{
 							RunScript: tc.expectedRunScript,
 						},
-					}).
-					Return(&ledger.Log{
+					})
+				if tc.returnErr != nil {
+					expect.Return(nil, nil, false, tc.returnErr)
+				} else {
+					expect.Return(&ledger.Log{
 						ID: pointer.For(uint64(0)),
 					}, &ledger.CreatedTransaction{
 						Transaction: expectedTx,
 					}, false, nil)
+				}
 			}
 
 			router := NewRouter(systemController, jwt.NewNoAuth(), "develop", os.Getenv("DEBUG") == "true")
@@ -274,4 +363,19 @@ func TestTransactionsCreate(t *testing.T) {
 			}
 		})
 	}
+}
+
+// numscriptInterpreterError returns the error the ledger controller produces
+// when the experimental Numscript interpreter fails to parse or run script.
+func numscriptInterpreterError(t *testing.T, script string) error {
+	t.Helper()
+
+	parsed := numscript.Parse(script)
+	if errs := parsed.GetParsingErrors(); len(errs) > 0 {
+		return ledgercontroller.ErrParsing{Source: script, Errors: errs}
+	}
+
+	_, err := parsed.Run(context.Background(), numscript.VariablesMap{}, numscript.StaticStore{})
+	require.NotNil(t, err)
+	return ledgercontroller.ErrRuntime{Source: script, InterpreterError: err}
 }
