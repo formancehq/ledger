@@ -48,7 +48,7 @@ func restoreAuditKeyCheckpoint(t *testing.T, storage Storage, manifest *Manifest
 func auditKeyCheckerClean(t *testing.T, store *dal.Store) {
 	t.Helper()
 	var findings []*servicepb.CheckStoreError
-	checker := check.NewChecker(store, attributes.New(), testLogger())
+	checker := check.NewChecker(store, attributes.New(), logging.Testing())
 	require.NoError(t, checker.Check(context.Background(), func(event *servicepb.CheckStoreEvent) {
 		if e, ok := event.GetType().(*servicepb.CheckStoreEvent_Error); ok {
 			findings = append(findings, e.Error)

@@ -314,7 +314,7 @@ func TestBackup_NumscriptRestoreParity(t *testing.T) {
 
 	// Before the checkpoint: the ledger, the library's first version, and one
 	// inline and one library scripted transaction, so the checkpoint seeds
-	// non-zero balances and metadata the delta builds on.
+	// non-zero balances and metadata for the later checkpoint.
 	src.apply(actions.CreateLedgerAction(numscriptRestoreLedger, nil))
 	src.apply(actions.SaveNumscriptWithVersionAction(numscriptRestoreLedger, "pay", numscriptRestorePay, "1.0.0"))
 	src.apply(actions.CreateScriptTransactionAction(numscriptRestoreLedger, `send [USD/2 1000] (
@@ -352,13 +352,16 @@ set_tx_meta("route", "inline")`, map[string]string{"amt": "USD/2 300"}, nil))
 	src.apply(actions.SaveNumscriptWithVersionAction(numscriptRestoreLedger, "pay", numscriptRestorePayV2, "1.1.0"))
 	src.apply(actions.CreateScriptRefTransactionAction(numscriptRestoreLedger, "pay", "latest",
 		map[string]string{"amt": "USD/2 350", "dest": "erin"}, nil))
-	// This execution changes only account metadata. It must be exported in the
-	// delta and rebuilt without allocating another transaction.
+	// This execution changes only account metadata. The second checkpoint must
+	// capture it without allocating another transaction.
+	beforeMetadataOnly := readNumscriptRestoreView(t, srcStore)
 	src.apply(actions.ExecuteScriptAction(numscriptRestoreLedger,
 		`set_account_meta(@alice, "tier", "premium")`, nil))
 	require.NoError(t, srcStore.Flush())
 
 	live := readNumscriptRestoreView(t, srcStore)
+	require.Equal(t, beforeMetadataOnly.transactions, live.transactions,
+		"metadata-only execution must not create a transaction")
 	require.Len(t, live.transactions, 5)
 	require.Equal(t, "premium", live.metadata["alice/tier"].GetStringValue())
 	require.Equal(t, int64(1000-100-300-50-50), live.balanceOf(t, "alice"), "v1.1.0 drains @bob's 300, then 50 from @alice")
@@ -395,6 +398,12 @@ set_tx_meta("route", "inline")`, map[string]string{"amt": "USD/2 300"}, nil))
 		map[string]string{"amt": "USD/2 500", "dest": "carol"}, nil))
 
 	after := readNumscriptRestoreView(t, restored)
+	var lastTransactionID uint64
+	for id := range live.transactions {
+		lastTransactionID = max(lastTransactionID, id)
+	}
+	require.Contains(t, after.transactions, lastTransactionID+1,
+		"metadata-only execution must not advance the next transaction ID")
 	require.Equal(t, live.balanceOf(t, "alice")-500, after.balanceOf(t, "alice"))
 	require.Equal(t, live.balanceOf(t, "carol")+500, after.balanceOf(t, "carol"))
 	auditKeyCheckerClean(t, restored)
