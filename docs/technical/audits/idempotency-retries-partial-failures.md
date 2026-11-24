@@ -117,6 +117,50 @@ and local benchmark evidence; do not claim network/saturation measurements.
 No persisted projection, format, FSM interpreter or restore reconstruction changes.
 See [the admission contract](../architecture/subsystems/admission/idempotency.md#replay-after-metadata-limits-tighten).
 
+## Numscript library removal and retained recovery
+
+A transaction referencing a library script by `latest` or exact semver must
+replay its retained outcome after the library changes, including a ledger
+deletion that purges it. Admission forwards an unresolved reference with the
+coverage of the FSM's selector resolution and no script planning; the FSM
+decides `NUMSCRIPT_NOT_FOUND` after idempotency lookup. Prove replay for both
+selectors after deletion, an audited fresh-key refusal with its apply-time
+reason, and audited keyed and unkeyed `NUMSCRIPT_NOT_FOUND` on a live ledger
+whose failure facts match the client error. Hold a save proposed before the
+reference, apply it first, and prove the reference is a retryable stale
+rejection with no audit entry, frozen key or coverage miss, and that its retry
+commits. The `ExecutionPlan.absence_expectations` entry binding the missing key
+to its order relies on the stopped RC.4 to RC.5 restart. It is Raft-only execution metadata: audit items
+keep the business order and the audit entry records the definitive failure.
+Refused orders have no business effects, so restore reconstruction is unchanged.
+See [the admission contract](../architecture/subsystems/admission/idempotency.md#replay-after-a-referenced-script-is-removed).
+
+## Skipped scripted transactions and retained recovery
+
+A scripted create that carries a reference and whitelists
+`TRANSACTION_REFERENCE_CONFLICT` commits through a skip whatever its script is,
+and must replay that outcome after the reference registry changes, including a
+ledger deletion that purges it. Admission plans the script whether or not it
+predicts the skip. A planning failure is forwarded with
+`OrderTechnical.numscript_planning_failed`, the keys planning read and their
+hash when the skip is predicted, or when the request is keyed and admission
+would otherwise refuse the failure. A keyed state-dependent failure not
+predicted to skip keeps `preload_unavailable` and returns the retryable
+`PRELOAD_UNAVAILABLE`; an unkeyed request not predicted to skip is still
+refused at admission. Prove replay after deletion for a failure before
+any read and one after a read. Prove that a fresh keyed request with the
+reference absent is refused at apply with the failure facts admission gives an
+order it cannot skip, audited and frozen when the failure is definitive. Hold a
+create of the reference proposed before the scripted order, apply it first, and
+prove the scripted order is skipped. Change an input the script read between
+admission and apply and prove a retryable stale rejection with no audit entry,
+frozen key or coverage miss, and that its retry reaches the definitive refusal.
+Prove that a failure the FSM cannot commit, such as an unclassified compile
+error, rejects the batch with the compile reason and freezes nothing. The
+marker relies on the stopped RC.4 to RC.5 restart. It is Raft-only execution
+metadata: audit items keep the business order. See
+[the admission contract](../architecture/subsystems/admission/idempotency.md#replay-after-a-skipped-scripted-transaction).
+
 ## Atomic HTTP Apply
 
 Atomic HTTP Apply submits one ordered service batch across ledgers/configuration with one header identity. An unskipped business failure discards all staged business effects; allowed explicit skip reasons retain successful skipped-order semantics. Retained same-key outcomes replay and changed content conflicts. A post-commit readiness/signing/encoding/transport failure does not prove rollback or justify a fresh key.

@@ -6,8 +6,11 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
+	"go.opentelemetry.io/otel/sdk/metric/metricdata"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
+	"github.com/formancehq/ledger/v3/internal/domain/processing"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
@@ -297,4 +300,145 @@ func TestScope_OrderDelete_RequiresCoverage(t *testing.T) {
 	var miss *ErrCoverageMiss
 	require.ErrorAs(t, err, &miss, "Scope.AccountMetadata().Delete on an undeclared key must surface ErrCoverageMiss")
 	require.Equal(t, "account_metadata", miss.Attribute)
+}
+
+// TestScope_IsCoveredRecordsNoMiss pins that the probe answers like the gate
+// but leaves no coverage-miss trace, unlike CheckCoverage.
+func TestScope_IsCoveredRecordsNoMiss(t *testing.T) {
+	t.Parallel()
+
+	fsm, _, _ := newTestMachine(t)
+	reader := sdkmetric.NewManualReader()
+	misses, err := sdkmetric.NewMeterProvider(sdkmetric.WithReader(reader)).Meter("scope").Int64Counter("misses")
+	require.NoError(t, err)
+	key := domain.NumscriptEntryKey{LedgerName: "l", Name: "ns", Version: "1.0.0"}
+	id, _ := attributes.MakeKey(key.Bytes())
+	fsm.writeSet.Reset(&commonpb.Timestamp{Data: 1})
+	factory := NewScopeFactory(fsm.writeSet, &raftcmdpb.ExecutionPlan{
+		Attributes: []*raftcmdpb.AttributeCoverage{declareTestPlan(id, dal.SubAttrNumscriptContent)},
+	}, fsm.logger, misses, 1)
+	// NewScope reconfigures one scope in place, so check each configuration
+	// before requesting the next.
+	declared, err := factory.NewScope([]byte{1})
+	require.NoError(t, err)
+	require.True(t, declared.IsCovered(dal.SubAttrNumscriptContent, key))
+	undeclared, err := factory.NewScope(nil)
+	require.NoError(t, err)
+	require.False(t, undeclared.IsCovered(dal.SubAttrNumscriptContent, key))
+	require.False(t, undeclared.IsCovered(dal.SubAttrNumscriptVersion, domain.NumscriptVersionKey{LedgerName: "l", Name: "ns"}))
+
+	missCount := func() int64 {
+		var rm metricdata.ResourceMetrics
+		require.NoError(t, reader.Collect(context.Background(), &rm))
+		var total int64
+		for _, sm := range rm.ScopeMetrics {
+			for _, m := range sm.Metrics {
+				if sum, ok := m.Data.(metricdata.Sum[int64]); ok {
+					for _, dp := range sum.DataPoints {
+						total += dp.Value
+					}
+				}
+			}
+		}
+
+		return total
+	}
+	require.Zero(t, missCount())
+	require.Error(t, undeclared.CheckCoverage(dal.SubAttrNumscriptContent, key))
+	require.Equal(t, int64(1), missCount(), "the gate itself still records the miss")
+}
+
+// TestScope_AbsenceExpectationsBindToTheirOrder pins that a gated read fails
+// stale only when it finds a key its own order expected absent, and that an
+// expectation must be in that order's coverage.
+func TestScope_AbsenceExpectationsBindToTheirOrder(t *testing.T) {
+	t.Parallel()
+
+	fsm, _, _ := newTestMachine(t)
+	saved := domain.NumscriptEntryKey{LedgerName: "l", Name: "ns", Version: "1.0.0"}
+	missing := domain.NumscriptEntryKey{LedgerName: "l", Name: "ns", Version: "2.0.0"}
+	ledger := domain.LedgerKey{Name: "l"}
+	executionPlan := &raftcmdpb.ExecutionPlan{}
+	for _, declared := range []struct {
+		code byte
+		key  []byte
+	}{
+		{dal.SubAttrNumscriptContent, saved.Bytes()},
+		{dal.SubAttrNumscriptContent, missing.Bytes()},
+		{dal.SubAttrLedger, ledger.Bytes()},
+	} {
+		id, tag := attributes.MakeKey(declared.key)
+		executionPlan.Attributes = append(executionPlan.Attributes, declareTestPlan(id, declared.code))
+		executionPlan.AbsenceExpectations = append(executionPlan.AbsenceExpectations, &raftcmdpb.AbsenceExpectation{
+			OrderIndex: 1,
+			AttrCode:   uint32(declared.code),
+			Id:         &raftcmdpb.AttributeID{Id: id.Bytes(), Tag: tag},
+		})
+	}
+	fsm.writeSet.Reset(&commonpb.Timestamp{Data: 1})
+	fsm.writeSet.PutNumscript("l", &commonpb.NumscriptInfo{Name: "ns", Version: "1.0.0", Content: "send"})
+	fsm.writeSet.Ledgers().Put(ledger, &commonpb.LedgerInfo{Id: 1, Name: "l"})
+	factory := NewScopeFactory(fsm.writeSet, executionPlan, fsm.logger, nil, 1)
+	allPlans := []byte{0b111}
+
+	// Each call reconfigures one scope in place, so check before the next.
+	requireReads := func(t *testing.T, scope processing.Scope, stale bool) {
+		t.Helper()
+		info, err := scope.ResolveNumscriptContent("l", "ns", "1.0.0")
+		exists, existsErr := scope.NumscriptVersionExists("l", "ns", "1.0.0")
+		_, ledgerErr := scope.Ledgers().Get(ledger)
+		if stale {
+			require.ErrorIs(t, err, domain.ErrStaleInputsResolution)
+			require.ErrorIs(t, existsErr, domain.ErrStaleInputsResolution)
+			require.ErrorIs(t, ledgerErr, domain.ErrStaleInputsResolution)
+		} else {
+			require.NoError(t, err)
+			require.NotNil(t, info)
+			require.NoError(t, existsErr)
+			require.True(t, exists)
+			require.NoError(t, ledgerErr)
+		}
+		absent, err := scope.ResolveNumscriptContent("l", "ns", "2.0.0")
+		require.NoError(t, err, "an expected-absent key that is still absent reads normally")
+		require.Nil(t, absent)
+	}
+	other, err := factory.NewOrderScope(0, allPlans)
+	require.NoError(t, err)
+	requireReads(t, other, false)
+	bound, err := factory.NewOrderScope(1, allPlans)
+	require.NoError(t, err)
+	requireReads(t, bound, true)
+	technical, err := factory.NewScope(allPlans)
+	require.NoError(t, err)
+	requireReads(t, technical, false)
+
+	_, err = factory.NewOrderScope(1, []byte{0b011})
+	var invalid *domain.ErrInvalidExecutionPlan
+	require.ErrorAs(t, err, &invalid, "an expectation outside the order's coverage is a plan bug")
+}
+
+func TestValidateAbsenceExpectations(t *testing.T) {
+	t.Parallel()
+
+	id, tag := attributes.MakeKey(domain.NumscriptVersionKey{LedgerName: "l", Name: "ns"}.Bytes())
+	expectation := func(order uint32, code byte, raw []byte) *raftcmdpb.AbsenceExpectation {
+		return &raftcmdpb.AbsenceExpectation{OrderIndex: order, AttrCode: uint32(code), Id: &raftcmdpb.AttributeID{Id: raw, Tag: tag}}
+	}
+	valid := expectation(1, dal.SubAttrNumscriptVersion, id.Bytes())
+	require.Nil(t, validateAbsenceExpectations(nil, 0))
+	require.Nil(t, validateAbsenceExpectations(&raftcmdpb.ExecutionPlan{
+		AbsenceExpectations: []*raftcmdpb.AbsenceExpectation{valid, expectation(0, dal.SubAttrNumscriptVersion, id.Bytes())},
+	}, 2))
+
+	for name, expectations := range map[string][]*raftcmdpb.AbsenceExpectation{
+		"order outside the batch": {expectation(2, dal.SubAttrNumscriptVersion, id.Bytes())},
+		"short id":                {expectation(0, dal.SubAttrNumscriptVersion, id.Bytes()[:8])},
+		"ungated attr code":       {expectation(0, 0xff, id.Bytes())},
+		"duplicate":               {valid, valid},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			require.NotNil(t, validateAbsenceExpectations(&raftcmdpb.ExecutionPlan{AbsenceExpectations: expectations}, 2))
+		})
+	}
 }

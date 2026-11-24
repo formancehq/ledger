@@ -519,6 +519,71 @@ payload when recovering an ambiguous earlier attempt. The existing retention
 window and transport caps still apply; this adds no guarantee after expiry.
 See [the mechanism and cost boundary](../technical/architecture/subsystems/admission/idempotency.md#replay-after-metadata-limits-tighten).
 
+## Numscript-reference replay recovery
+
+RC.5 leaders forward a transaction whose Numscript library reference they
+cannot resolve, instead of refusing it. A keyed retry of a committed reference
+then replays its retained outcome after a ledger deletion purged the library.
+A fresh refusal, keyed or not, is an audited `NUMSCRIPT_NOT_FOUND` decided at
+apply; on a deleted ledger the earlier apply check returns `LEDGER_DELETED`.
+If a save commits between admission and apply, the request is rejected with a
+retryable `STALE_INPUTS_RESOLUTION`, without an audit entry.
+
+The proposal's execution plan carries the new internal field
+`ExecutionPlan.absence_expectations`, which binds the key admission observed as
+missing to the order's batch position, so the FSM does not execute a script
+admission did not plan. RC.4 voters ignore the field and would execute it, so
+this change depends on the [stopped RC.4 to RC.5 restart](#operator-required-stopped-restart):
+no RC.4 voter may apply an entry proposed by an RC.5 leader. Historical entries
+never carry the field and replay unchanged. The field is execution metadata
+carried only in the Raft entry: audit items keep the business order, and the
+audit entry records the definitive failure. Refused orders have no business
+effects; snapshots, backups and restore need no migration. Service protocol revision 40 and the public wire are unchanged.
+See [the replay contract](../technical/architecture/subsystems/admission/idempotency.md#replay-after-a-referenced-script-is-removed).
+
+## Skipped-script replay recovery
+
+RC.5 leaders plan the Numscript of every transaction the FSM can skip on its
+reference: a create that carries a `reference` and lists
+`TRANSACTION_REFERENCE_CONFLICT` in `skippableReasons`. They plan the script
+even when they predict the skip. A planning failure goes to the FSM when the
+skip is predicted or the request carries an idempotency key (a keyed
+state-dependent failure as `PRELOAD_UNAVAILABLE`, below); an unkeyed request
+not predicted to skip, a cancelled or timed-out request and a recovered
+Numscript panic are still refused at admission. A keyed retry of
+a batch that committed through such a skip then replays its retained outcome
+after a ledger deletion purged the references. On a fresh keyed request whose
+reference is absent, the script's failure keeps its reason and details and is
+decided at apply. A definitive failure is audited and frozen under the key. A
+failure the FSM cannot commit, such as an unclassified compile error, rejects
+the batch without an audit entry and leaves the key free, as admission's
+refusal did on RC.4. A keyed state-dependent failure (after a balance or
+metadata read, or on a `latest` library reference), when the skip is not
+predicted, keeps the RC.4 behavior: the batch is
+rejected with the retryable `PRELOAD_UNAVAILABLE`, even if the reference
+appears before apply. If an
+input the script read changes between admission and apply, the request is
+rejected with a retryable `STALE_INPUTS_RESOLUTION`, without an audit entry.
+
+Planning a skipped duplicate costs what planning a first-time scripted
+transaction costs: the script's reads at admission, its coverage in the Raft
+entry and the preload of those keys. Bulk re-submissions of scripted
+transactions that rely on the skip are slower than on RC.4.
+
+The forwarded order carries the new internal field
+`OrderTechnical.numscript_planning_failed`. RC.4 voters ignore it and would
+execute the script, so this change depends on the stopped RC.4 to RC.5 upgrade,
+an [operator-required stopped restart](#operator-required-stopped-restart): no
+RC.4 voter may apply an entry proposed by an RC.5 leader. It needs no
+[capability](../technical/architecture/subsystems/consensus/capabilities.md#order-markers-that-ride-a-stopped-upgrade).
+Historical entries never carry the
+field and replay unchanged. The field is execution metadata carried only in
+the Raft entry: audit items keep the business order, and the audit entry
+records the definitive failure. Refused orders have no business effects;
+snapshots, backups and restore need no migration. Service protocol revision 40
+and the public wire are unchanged.
+See [the replay contract](../technical/architecture/subsystems/admission/idempotency.md#replay-after-a-skipped-scripted-transaction).
+
 ## Account metadata address validation
 
 RC.1 to RC.2 uses the maintenance-barrier rolling procedure below: writes pause,

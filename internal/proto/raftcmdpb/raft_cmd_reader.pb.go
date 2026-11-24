@@ -125,6 +125,7 @@ type OrderTechnicalReader interface {
 	GetInputsResolutionHash() []byte
 	GetPreloadUnavailable() bool
 	GetRevertTargetDigest() []byte
+	GetNumscriptPlanningFailed() bool
 	Mutate() *OrderTechnical
 }
 
@@ -144,6 +145,10 @@ func (r *orderTechnicalReadonly) GetPreloadUnavailable() bool {
 
 func (r *orderTechnicalReadonly) GetRevertTargetDigest() []byte {
 	return bytes.Clone((*OrderTechnical)(r).GetRevertTargetDigest())
+}
+
+func (r *orderTechnicalReadonly) GetNumscriptPlanningFailed() bool {
+	return (*OrderTechnical)(r).GetNumscriptPlanningFailed()
 }
 
 func (r *orderTechnicalReadonly) Mutate() *OrderTechnical {
@@ -6558,6 +6563,7 @@ type ExecutionPlanReader interface {
 	GetCacheEpoch() uint64
 	GetAttributes() AttributeCoverageListReader
 	GetIdempotencyKeys() ReloadIdempotencyKeyListReader
+	GetAbsenceExpectations() AbsenceExpectationListReader
 	Mutate() *ExecutionPlan
 }
 
@@ -6577,6 +6583,10 @@ func (r *executionPlanReadonly) GetAttributes() AttributeCoverageListReader {
 
 func (r *executionPlanReadonly) GetIdempotencyKeys() ReloadIdempotencyKeyListReader {
 	return NewReloadIdempotencyKeyListReader((*ExecutionPlan)(r).GetIdempotencyKeys())
+}
+
+func (r *executionPlanReadonly) GetAbsenceExpectations() AbsenceExpectationListReader {
+	return NewAbsenceExpectationListReader((*ExecutionPlan)(r).GetAbsenceExpectations())
 }
 
 func (r *executionPlanReadonly) Mutate() *ExecutionPlan {
@@ -6631,6 +6641,87 @@ func (l executionPlanListReadonly) Range(yield func(int, ExecutionPlanReader) bo
 // view aliases the underlying slice; do not mutate s afterwards.
 func NewExecutionPlanListReader(s []*ExecutionPlan) ExecutionPlanListReader {
 	return executionPlanListReadonly(s)
+}
+
+// AbsenceExpectationReader provides read-only access to AbsenceExpectation.
+// Call Mutate() to obtain a mutable clone.
+type AbsenceExpectationReader interface {
+	GetOrderIndex() uint32
+	GetAttrCode() uint32
+	GetId() AttributeIDReader
+	Mutate() *AbsenceExpectation
+}
+
+type absenceExpectationReadonly AbsenceExpectation
+
+func (r *absenceExpectationReadonly) GetOrderIndex() uint32 {
+	return (*AbsenceExpectation)(r).GetOrderIndex()
+}
+
+func (r *absenceExpectationReadonly) GetAttrCode() uint32 {
+	return (*AbsenceExpectation)(r).GetAttrCode()
+}
+
+func (r *absenceExpectationReadonly) GetId() AttributeIDReader {
+	v := (*AbsenceExpectation)(r).GetId()
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (r *absenceExpectationReadonly) Mutate() *AbsenceExpectation {
+	return (*AbsenceExpectation)(r).CloneVT()
+}
+
+// AsReader returns a read-only view of this AbsenceExpectation.
+func (m *AbsenceExpectation) AsReader() AbsenceExpectationReader {
+	if m == nil {
+		return nil
+	}
+	return (*absenceExpectationReadonly)(m)
+}
+
+// Mutate returns a mutable deep clone of this AbsenceExpectation.
+func (m *AbsenceExpectation) Mutate() *AbsenceExpectation {
+	return m.CloneVT()
+}
+
+// AbsenceExpectationListReader provides read-only iteration over []*AbsenceExpectation.
+type AbsenceExpectationListReader interface {
+	Len() int
+	Get(i int) AbsenceExpectationReader
+	Range(yield func(int, AbsenceExpectationReader) bool)
+}
+
+type absenceExpectationListReadonly []*AbsenceExpectation
+
+func (l absenceExpectationListReadonly) Len() int { return len(l) }
+
+func (l absenceExpectationListReadonly) Get(i int) AbsenceExpectationReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l absenceExpectationListReadonly) Range(yield func(int, AbsenceExpectationReader) bool) {
+	for i, v := range l {
+		var r AbsenceExpectationReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewAbsenceExpectationListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewAbsenceExpectationListReader(s []*AbsenceExpectation) AbsenceExpectationListReader {
+	return absenceExpectationListReadonly(s)
 }
 
 // AttributeCoverageReader provides read-only access to AttributeCoverage.

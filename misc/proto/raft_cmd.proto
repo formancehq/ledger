@@ -84,6 +84,16 @@ message OrderTechnical {
   // checks, so a target that is unknown or already reverted keeps returning
   // those reasons. Empty for every non-revert order.
   bytes revert_target_digest = 4;
+  // numscript_planning_failed marks a CreateTransaction whose Numscript
+  // planning failed at admission, on an order the FSM can skip before it
+  // reaches the script (a reference with TRANSACTION_REFERENCE_CONFLICT
+  // skippable). The order's coverage holds the keys planning read before it
+  // failed and inputs_resolution_hash binds their values. The FSM runs its
+  // usual prologue, so a reference conflict still skips the order. Past the
+  // prologue it re-runs the same planning in place of execution: the same
+  // failure over the same inputs is the order's outcome, anything else is
+  // ERROR_REASON_STALE_INPUTS_RESOLUTION (retryable).
+  bool numscript_planning_failed = 5;
 }
 
 // LedgerScopedOrder is the wrapper for every Order variant that targets a
@@ -795,6 +805,20 @@ message ExecutionPlan {
   // wire level.
   repeated ReloadIdempotencyKey idempotency_keys = 4;
 
+  // Keys admission observed as absent while resolving one order's inputs.
+  // Each key is also in that order's coverage. The FSM rejects the order with
+  // ERROR_REASON_STALE_INPUTS_RESOLUTION (retryable) if the key is present
+  // when the order reads it, since admission planned nothing that depends on
+  // its value.
+  repeated AbsenceExpectation absence_expectations = 5;
+}
+
+// AbsenceExpectation binds a key admission observed as absent to the order,
+// by its position in the batch, whose planning depended on that absence.
+message AbsenceExpectation {
+  uint32 order_index = 1;
+  uint32 attr_code = 2;
+  AttributeID id = 3;
 }
 
 // AttributeCoverage declares the FSM apply path may access `id` under

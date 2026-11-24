@@ -149,7 +149,8 @@ stored format, restore classification or committed-entry semantics.
 
 `AuditItem.serialized_order` stores the *business-intent* bytes of the order — the
 order with its `OrderTechnical` sub-message (`coverage_bits`,
-`inputs_resolution_hash`, `preload_unavailable`, `revert_target_digest`) excluded. These fields are
+`inputs_resolution_hash`, `preload_unavailable`, `revert_target_digest`,
+`numscript_planning_failed`) excluded. These fields are
 admission-derived execution metadata that rides in the Raft entry for the FSM apply
 path but is not part of the accepted user intent, so it must not participate in the
 audit hash. The exclusion is defined once in `processing.MarshalOrderBusinessIntent`

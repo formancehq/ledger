@@ -68,6 +68,30 @@ type BuildResult struct {
 	nextIndexGen  uint64 // gen(nextIndex, threshold) — the future generation used by CheckCache
 	operations    []WriteOperation
 	aggregate     *Coverage
+	absences      []*raftcmdpb.AbsenceExpectation
+}
+
+// SetAbsenceExpectations attaches the batch orders' observed absences to
+// every ExecutionPlan Run assigns, including a rebuild under the guard.
+func (b *BuildResult) SetAbsenceExpectations(absences []*raftcmdpb.AbsenceExpectation) {
+	b.absences = absences
+}
+
+// AbsenceExpectations binds each order's observed absences to its batch
+// position: perOrder[i] is the coverage of batch order i.
+func AbsenceExpectations(perOrder []*Coverage) []*raftcmdpb.AbsenceExpectation {
+	var out []*raftcmdpb.AbsenceExpectation
+	for i, coverage := range perOrder {
+		for _, absent := range coverage.Absent {
+			out = append(out, &raftcmdpb.AbsenceExpectation{
+				OrderIndex: uint32(i),
+				AttrCode:   uint32(absent.AttrCode),
+				Id:         &raftcmdpb.AttributeID{Id: absent.ID.Bytes(), Tag: absent.Tag},
+			})
+		}
+	}
+
+	return out
 }
 
 // ReleaseLoaders releases the loader cleanup token from the build.

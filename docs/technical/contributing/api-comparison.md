@@ -169,6 +169,40 @@ This correction changes neither contract. See
 [the replay contract](../architecture/subsystems/admission/idempotency.md#replay-after-metadata-limits-tighten)
 and [client upgrade behavior](../../ops/upgrades.md#metadata-limit-replay-recovery).
 
+## Idempotency after Numscript library removal
+
+A v3 transaction referencing a library script reaches the FSM even when admission
+cannot resolve the reference. A same-key retry replays its retained outcome
+after a ledger deletion purged the library. A fresh missing reference still
+returns HTTP 404 / gRPC `NotFound` with reason `NUMSCRIPT_NOT_FOUND` and the same
+`name` and `version` context, and is now audited. A fresh request on a deleted
+ledger returns `LEDGER_DELETED` instead. A reference racing a concurrent save of
+its script can return the retryable `STALE_INPUTS_RESOLUTION` or
+`STALE_PROPOSAL`. Routes, fields, envelopes and protocol
+revision 40 are unchanged; v2 has no Numscript library, so there is no v2 mapping.
+See [the replay contract](../architecture/subsystems/admission/idempotency.md#replay-after-a-referenced-script-is-removed).
+
+## Idempotency after a skipped scripted transaction
+
+A v3 bulk entry can list `TRANSACTION_REFERENCE_CONFLICT` in
+`skippableReasons`, so a create whose `reference` exists is skipped. The
+reference decides before the script does: such an entry is skipped even when
+its Numscript cannot be planned, and a same-key retry replays that outcome
+after a ledger deletion purged the references. When the reference is absent,
+the script's failure keeps its HTTP status, gRPC code, reason and context. For
+a keyed request it is now decided at apply; a definitive failure is audited
+and frozen under the key, while one the ledger cannot commit (such as an
+unclassified compile error) leaves the key free, so a same-key retry runs
+again. A keyed state-dependent failure (after a balance or metadata read, or
+on a `latest` library reference), when the skip is not predicted, still returns the retryable `PRELOAD_UNAVAILABLE` for
+the whole batch, even if the reference appears before apply; a retry admitted
+once it exists is skipped. An unkeyed request that is not predicted to skip is
+still refused before consensus. A request whose script
+inputs change between admission and apply can return the retryable
+`STALE_INPUTS_RESOLUTION`. Routes, fields, envelopes and protocol revision 40
+are unchanged; v2 has no `skippableReasons`, so there is no v2 mapping.
+See [the replay contract](../architecture/subsystems/admission/idempotency.md#replay-after-a-skipped-scripted-transaction).
+
 ## Ledger integrity checking
 
 The v3 gRPC `CheckStore` and `ValidateRestore` streams verify canonical and global

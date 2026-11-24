@@ -571,3 +571,62 @@ func TestDiscover_ServesColoredRead(t *testing.T) {
 	require.Contains(t, result.WriteVolumes, coloredVolKey("wallet", "COIN", "RED"))
 	require.Contains(t, result.WriteVolumes, coloredVolKey("dest", "COIN", "RED"))
 }
+
+// TestDiscover_FailureKeepsObservedInputs pins what a failed discovery still
+// returns: the keys it read before failing and the hash of their values, which
+// is what lets the FSM re-run the same planning from declared coverage.
+func TestDiscover_FailureKeepsObservedInputs(t *testing.T) {
+	t.Parallel()
+
+	script := `
+vars {
+  monetary $amt = balance(@wallet, USD/2)
+}
+send $amt (
+	source = @alice with scaling through @pool
+	destination = @bob
+)
+`
+	discover := func(balance int64) *DiscoveryResult {
+		source := newFakeSource().withBalance("wallet", "USD/2", balance)
+		result, err := DiscoverNumscriptDependencies(NewNumscriptCache(16), script, nil, "ledger", source.build(t), false)
+		require.ErrorIs(t, err, domain.ErrNumscriptScalingUnsupported)
+		require.NotNil(t, result)
+
+		return result
+	}
+
+	result := discover(100)
+	require.Equal(t, map[domain.VolumeKey]struct{}{domain.NewVolumeKey("ledger", "wallet", "USD/2", ""): {}}, result.ReadVolumes)
+	require.Empty(t, result.ReadMetadata)
+	require.NotEmpty(t, result.InputsHash)
+	require.Nil(t, result.NetBalanceDeltas)
+
+	require.Equal(t, result.InputsHash, discover(100).InputsHash)
+	require.NotEqual(t, result.InputsHash, discover(101).InputsHash, "the hash binds the values read before the failure")
+}
+
+// TestDiscover_FailureBeforeAnyReadObservesNothing covers the failures that
+// depend on the script and vars alone.
+func TestDiscover_FailureBeforeAnyReadObservesNothing(t *testing.T) {
+	t.Parallel()
+
+	for name, tc := range map[string]struct {
+		script string
+		vars   map[string]string
+	}{
+		"parse error":      {script: `send [USD/2 100] (`},
+		"invalid variable": {script: "vars { monetary $m }\nsend $m (source = @world destination = @out)", vars: map[string]string{"m": "@world"}},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			result, err := DiscoverNumscriptDependencies(NewNumscriptCache(16), tc.script, tc.vars, "ledger", newFakeSource().build(t), false)
+			require.Error(t, err)
+			require.NotNil(t, result)
+			require.Empty(t, result.ReadVolumes)
+			require.Empty(t, result.ReadMetadata)
+			require.Empty(t, result.InputsHash)
+		})
+	}
+}

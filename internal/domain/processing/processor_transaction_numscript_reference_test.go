@@ -52,10 +52,10 @@ func TestProcessCreateTransaction_NumscriptReference_ResolvesContent(t *testing.
 
 			if tt.resolveLatest {
 				mockStore.EXPECT().GetNumscriptLatestVersion(ledger, name).Return(tt.resolvedVersion, nil)
-				mockStore.EXPECT().CheckCoverage(
+				mockStore.EXPECT().IsCovered(
 					dal.SubAttrNumscriptContent,
 					domain.NumscriptEntryKey{LedgerName: ledger, Name: name, Version: tt.resolvedVersion},
-				).Return(nil)
+				).Return(true)
 			}
 
 			mockStore.EXPECT().ResolveNumscriptContent(ledger, name, tt.resolvedVersion).Return(
@@ -103,7 +103,6 @@ func TestProcessCreateTransaction_NumscriptReference_RejectsResolutionFailures(t
 	)
 
 	latestLookupErr := errors.New("latest lookup failed")
-	coverageErr := errors.New("content key is outside proposal coverage")
 	contentLookupErr := errors.New("content lookup failed")
 
 	tests := []struct {
@@ -144,10 +143,10 @@ func TestProcessCreateTransaction_NumscriptReference_RejectsResolutionFailures(t
 			selector: "latest",
 			setup: func(mockStore *MockScope) {
 				mockStore.EXPECT().GetNumscriptLatestVersion(ledger, name).Return("2.0.0", nil)
-				mockStore.EXPECT().CheckCoverage(
+				mockStore.EXPECT().IsCovered(
 					dal.SubAttrNumscriptContent,
 					domain.NumscriptEntryKey{LedgerName: ledger, Name: name, Version: "2.0.0"},
-				).Return(coverageErr)
+				).Return(false)
 			},
 			assert: func(t *testing.T, err domain.SerializableError) {
 				t.Helper()
@@ -179,6 +178,30 @@ func TestProcessCreateTransaction_NumscriptReference_RejectsResolutionFailures(t
 				require.ErrorAs(t, err, &notFound)
 				require.Equal(t, name, notFound.Name)
 				require.Equal(t, "1.2.3", notFound.Version)
+			},
+		},
+		{
+			// The gate rejects content the order expected absent; the stale
+			// reason must survive the store-failure wrapping.
+			name:     "content expected absent but saved since",
+			selector: "1.2.3",
+			setup: func(mockStore *MockScope) {
+				mockStore.EXPECT().ResolveNumscriptContent(ledger, name, "1.2.3").Return(nil, domain.ErrStaleInputsResolution)
+			},
+			assert: func(t *testing.T, err domain.SerializableError) {
+				t.Helper()
+				require.Equal(t, domain.ErrReasonStaleInputsResolution, err.Reason(), "not relabelled as a storage failure")
+			},
+		},
+		{
+			name:     "latest pointer expected absent but saved since",
+			selector: "latest",
+			setup: func(mockStore *MockScope) {
+				mockStore.EXPECT().GetNumscriptLatestVersion(ledger, name).Return("", domain.ErrStaleInputsResolution)
+			},
+			assert: func(t *testing.T, err domain.SerializableError) {
+				t.Helper()
+				require.Equal(t, domain.ErrReasonStaleInputsResolution, err.Reason(), "not relabelled as a storage failure")
 			},
 		},
 		{

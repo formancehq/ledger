@@ -172,15 +172,15 @@ The discriminator between them: **only the `CacheSnapshotter` method takes `attr
 
 `Builder.Build(aggregate *Coverage, operations []WriteOperation) (*BuildResult, error)` (`internal/infra/plan/builder.go`) resolves the aggregate and produces the `ExecutionPlan` the proposal carries. `Builder.Run(...)` (`internal/infra/plan/runner.go`) drives the whole propose sequence around it.
 
-`ExecutionPlan` (`misc/proto/raft_cmd.proto:761`):
+`ExecutionPlan` (`misc/proto/raft_cmd.proto:756`):
 
 | Field | Meaning |
 |-------|---------|
 | `fixed64 lastPersistedIndex = 1` | cache-generation boundary index computed at propose time from the *predicted* next Raft index (`cache.BoundaryIndex(nextIndex, GenerationThreshold)`, `internal/infra/plan/builder.go`); `Machine.Preload` requires it to equal the base index of Gen0 or Gen1, else the seeds would target a generation that no longer exists (hard error + `assert.Unreachable`). Despite the name it is **not** a persistence cursor — that is `Machine.LastPersistedIndex()`, an unrelated value. |
-| `fixed64 cache_epoch = 4` | cache epoch at admission time; the FSM rejects on mismatch |
-| `repeated AttributeCoverage attributes = 6` | the resolved coverage entries |
-| `repeated ReloadIdempotencyKey idempotency_keys = 7` | the separate idempotency channel |
-| `reserved 2, 3, 5, 8` | former `preloads`, `touches`, `declared`, `productions` |
+| `fixed64 cache_epoch = 2` | cache epoch at admission time; the FSM rejects on mismatch |
+| `repeated AttributeCoverage attributes = 3` | the resolved coverage entries |
+| `repeated ReloadIdempotencyKey idempotency_keys = 4` | the separate idempotency channel |
+| `repeated AbsenceExpectation absence_expectations = 5` | keys an order's planning observed as absent, see [absence expectations](#absence-expectations) |
 
 ### `AttributeCoverage` — seed vs coverage-only
 
@@ -198,6 +198,25 @@ The discriminator between them: **only the `CacheSnapshotter` method takes `attr
 `Builder.Run` assigns the result onto each operation's `Target` **immediately before every marshal** — the happy path and the rare rebuild under the proposal guard alike. Bit positions must be re-resolved at marshal time because the `ExecutionPlan` is only finalised after `Build` and may be swapped out on a rebuild; a bitset computed once and reused would index into the wrong plan.
 
 The bitset lives on `OrderTechnical` (`misc/proto/raft_cmd.proto:64`) and `TechnicalUpdate` (`misc/proto/raft_cmd.proto:486`) — **not** on the order body. That move was EN-1558: technical execution data is kept out of the audit hashes, so stamping `coverage_bits` does not disturb the business-intent bytes the audit chain binds.
+
+### Absence expectations
+
+An `AbsenceExpectation` names a batch order by position (`order_index`) and a
+key (`attr_code`, `id`) that order's planning observed as absent. A producer
+records one with `Coverage.ExpectAbsent`, which also declares the key, and
+binds them with `BuildResult.SetAbsenceExpectations(AbsenceExpectations(perOrder))`.
+`Builder.Run` attaches them to every plan it assigns, including a rebuild under
+the guard. The binding is per order, not per plan: a later order in the same
+batch can observe the key present, for example after a same-batch save.
+
+The FSM validates them before preload: the order exists, the key is well formed,
+and no expectation repeats. `ScopeFactory.NewOrderScope` binds an order's
+expectations and rejects one outside that order's coverage as
+`INVALID_EXECUTION_PLAN`. The coverage gate enforces them on every gated read
+of that order: a read that finds an expected-absent key present fails with
+`STALE_INPUTS_RESOLUTION`, since the plan did not account for its value, and
+`domain.StoreFailure` keeps that reason. Handlers do not check expectations
+themselves. The Numscript reference resolution is the only producer.
 
 ### `PredictedIndex` and the proposal guard
 
