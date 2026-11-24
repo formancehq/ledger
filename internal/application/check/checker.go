@@ -2449,7 +2449,7 @@ func (c *Checker) verifyAuditHashChain(
 				if replayErr != nil {
 					return nil, fmt.Errorf("replaying chain-verified audit entry %d: %w", entry.GetSequence(), replayErr)
 				}
-				reconcileMetadataOnlyChainBound(items, orders, logs, chainBound)
+				reconcileReplayedChainBound(items, orders, logs, chainBound)
 				for _, log := range logs {
 					if _, duplicate := expectedLogs[log.GetSequence()]; duplicate {
 						return nil, fmt.Errorf("invariant: audit replay produced duplicate log sequence %d", log.GetSequence())
@@ -2536,14 +2536,14 @@ func (c *Checker) verifyAuditHashChain(
 	return result, nil
 }
 
-// reconcileMetadataOnlyChainBound corrects checker-only projections that are
-// derived from the serialized order before the FSM resolves a Numscript. A
-// metadata-only script has no transaction ID, while collectExpectedSkippable
-// must conservatively derive IDs from orders alone for older log formats.
-// Replay gives us the authoritative payload shape, so remove the speculative
-// transaction slot and fold script-emitted account metadata into the skip
-// timeline.
-func reconcileMetadataOnlyChainBound(items []*auditpb.AuditItem, orders []*raftcmdpb.Order, logs []*commonpb.Log, chainBound *chainBoundState) {
+// reconcileReplayedChainBound corrects order-derived checker projections using
+// the replayed log for each order. Skipped executions and metadata-only scripts
+// consume no transaction ID; skipped executions also write no account metadata.
+// Created and reverted transactions provide their actual IDs and metadata,
+// while a created transaction confirms an ExecuteNumscript reference claim.
+// Metadata-only scripts contribute their emitted account metadata instead of
+// a speculative transaction slot.
+func reconcileReplayedChainBound(items []*auditpb.AuditItem, orders []*raftcmdpb.Order, logs []*commonpb.Log, chainBound *chainBoundState) {
 	bySequence := make(map[uint64]*commonpb.Log, len(logs))
 	for _, log := range logs {
 		if log != nil {
@@ -3087,7 +3087,7 @@ func collectExpectedSkippable(
 //   - RemoveAccountType → chainBound.accountTypes (exists=false).
 //
 //   - CreateTransaction.metadata is seeded into chainBound.metadata by
-//     reconcileMetadataOnlyChainBound from the replayed CreatedTransaction's
+//     reconcileReplayedChainBound from the replayed CreatedTransaction's
 //     authoritative ID. It is intentionally not recorded from this order
 //     fold, whose nextTxID allocation cannot identify metadata-only creates.
 //
