@@ -132,6 +132,7 @@
           localPackages = (with pkgs; [
             acli
             ginkgo
+            gh
             grpcurl
             trufflehog
             uv

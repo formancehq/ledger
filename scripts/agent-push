@@ -1,0 +1,130 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+usage() {
+    echo "Usage: AI_REVIEW_BASE_SHA=<base-sha> [AI_REVIEW_BASE_REF=<base-branch>] bash scripts/agent-push <remote> <branch>" >&2
+}
+
+if [[ $# -ne 2 || -z "${AI_REVIEW_BASE_SHA:-}" ]]; then
+    usage
+    exit 2
+fi
+
+remote=$1
+branch=$2
+if [[ "$remote" == -* || "$branch" == -* || "$branch" == +* ]] || ! git check-ref-format --branch "$branch" >/dev/null 2>&1; then
+    usage
+    exit 2
+fi
+
+root=$(git rev-parse --show-toplevel)
+cd "$root"
+current_branch=$(git branch --show-current)
+if [[ "$current_branch" != "$branch" ]]; then
+    echo "agent-push: branch $current_branch does not match push target $branch" >&2
+    exit 1
+fi
+remote_url=$(git remote get-url --push --all "$remote") || {
+    echo "agent-push: unable to resolve push URL for remote $remote" >&2
+    exit 1
+}
+if [[ "$remote_url" == *$'\n'* ]]; then
+    echo "agent-push: remote $remote has multiple push URLs" >&2
+    exit 1
+fi
+publication_repo=$(gh repo view "$remote_url" --json nameWithOwner --jq '.nameWithOwner') || {
+    echo "agent-push: unable to identify publication repository for remote $remote" >&2
+    exit 1
+}
+if [[ -z "$publication_repo" ]]; then
+    echo "agent-push: publication repository for remote $remote is empty" >&2
+    exit 1
+fi
+read_pr_bases() {
+    gh pr list --head "$branch" --state open --json baseRefName,baseRefOid,headRefName,headRepository --jq '.[] | [.headRepository.nameWithOwner // "", .headRefName, .baseRefName, .baseRefOid] | @tsv'
+}
+pr_heads=$(read_pr_bases) || {
+    echo "agent-push: unable to list PRs for branch $branch" >&2
+    exit 1
+}
+pr_bases=$(awk -F '\t' -v repo="$publication_repo" -v branch="$branch" '$1 == repo && $2 == branch { print $3 "\t" $4 }' <<< "$pr_heads")
+first_push=false
+if [[ -n "$pr_bases" ]]; then
+    if [[ "$pr_bases" == *$'\n'* ]]; then
+        echo "agent-push: multiple open PRs match branch $branch" >&2
+        exit 1
+    fi
+    if [[ "${pr_bases#*$'\t'}" != "$AI_REVIEW_BASE_SHA" ]]; then
+        echo "agent-push: AI_REVIEW_BASE_SHA does not match PR base ($pr_bases)" >&2
+        exit 1
+    fi
+else
+    first_push=true
+    base_ref=${AI_REVIEW_BASE_REF:-}
+    if [[ -z "$base_ref" ]] || ! git check-ref-format --branch "$base_ref" >/dev/null 2>&1; then
+        echo "agent-push: AI_REVIEW_BASE_REF must name the base branch before the first push" >&2
+        exit 2
+    fi
+    remote_head=$(git ls-remote --heads "$remote_url" "refs/heads/$branch") || {
+        echo "agent-push: unable to check remote branch $branch" >&2
+        exit 1
+    }
+    if [[ -n "$remote_head" ]]; then
+        echo "agent-push: remote branch $branch exists without an open PR" >&2
+        exit 1
+    fi
+    remote_base=$(git ls-remote --heads "$remote_url" "refs/heads/$base_ref") || {
+        echo "agent-push: unable to read remote base branch $base_ref" >&2
+        exit 1
+    }
+    if [[ "$remote_base" != "$AI_REVIEW_BASE_SHA"$'\t'"refs/heads/$base_ref" ]]; then
+        echo "agent-push: AI_REVIEW_BASE_SHA does not match remote base branch $base_ref" >&2
+        exit 1
+    fi
+fi
+if [[ -n "$(git status --porcelain)" ]]; then
+    echo "agent-push: worktree must be clean before validation" >&2
+    git status --short >&2
+    exit 1
+fi
+
+head=$(git rev-parse HEAD)
+AI_REVIEW_BASE_SHA="$AI_REVIEW_BASE_SHA" bash scripts/agent-check-pr
+
+if [[ "$(git rev-parse HEAD)" != "$head" ]]; then
+    echo "agent-push: HEAD changed during validation" >&2
+    exit 1
+fi
+if [[ -n "$(git status --porcelain)" ]]; then
+    echo "agent-push: validation changed the worktree; commit the result before pushing" >&2
+    git status --short >&2
+    exit 1
+fi
+
+if [[ "$first_push" == true ]]; then
+    remote_base=$(git ls-remote --heads "$remote_url" "refs/heads/$base_ref") || {
+        echo "agent-push: unable to recheck remote base branch $base_ref" >&2
+        exit 1
+    }
+    if [[ "$remote_base" != "$AI_REVIEW_BASE_SHA"$'\t'"refs/heads/$base_ref" ]]; then
+        echo "agent-push: remote base branch $base_ref changed during validation" >&2
+        exit 1
+    fi
+else
+    current_pr_heads=$(read_pr_bases) || {
+        echo "agent-push: unable to recheck PR base" >&2
+        exit 1
+    }
+    current_pr_bases=$(awk -F '\t' -v repo="$publication_repo" -v branch="$branch" '$1 == repo && $2 == branch { print $3 "\t" $4 }' <<< "$current_pr_heads")
+    if [[ "$current_pr_bases" != "$pr_bases" ]]; then
+        echo "agent-push: PR base changed during validation" >&2
+        exit 1
+    fi
+fi
+
+if [[ "$first_push" == true ]]; then
+    # Require the target ref to remain absent until publication.
+    git push --force-with-lease="refs/heads/$branch:" "$remote" "$head:refs/heads/$branch"
+else
+    git push "$remote" "$head:refs/heads/$branch"
+fi

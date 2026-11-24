@@ -223,6 +223,20 @@ It classifies the exact base-to-worktree diff, runs the straightforward
 pre-commit recipe only when Go/generated/tooling inputs are involved, runs the
 baseline, and adds focused race or affected subsystem tests.
 
+Agents use `AI_REVIEW_BASE_SHA=<sha> bash scripts/agent-push origin <branch>`
+for an ordinary PR push. This runs `agent-check-pr` with the pinned Nix tools
+and checks that normalization left the committed worktree clean before it
+pushes. The fast `agent-check` baseline and `golangci-lint fmt` do not replace
+this gate: the `Dirty` job also runs `golangci-lint run --fix`, which can apply
+lint fixes that formatters do not.
+
+Before a PR exists, supply `AI_REVIEW_BASE_REF=<base-branch>` as well. The
+script requires the target branch to be absent on the remote and compares
+`AI_REVIEW_BASE_SHA` with the remote base branch before running the same gate.
+For an existing PR, it compares the SHA with the PR base. After validation and
+before publication, it checks the selected base again. It refuses to push if
+the remote base advanced or the PR base branch or SHA changed.
+
 `bash scripts/agent-check-full` is the explicit broad fallback. It runs full
 normalization, the baseline, and the complete root-module race suite. It is not
 the default validation path.
