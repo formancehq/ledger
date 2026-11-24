@@ -8,5 +8,6 @@ if [[ "${1:-}" == "--fuzz-inventory" ]]; then
 fi
 
 bash "$SCRIPT_DIR/check-dashboard-test-reachability"
+bash "$SCRIPT_DIR/check-tools-test-reachability"
 go run ./scripts "$@"
 go run ./scripts/checkoperatorci
