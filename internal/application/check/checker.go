@@ -4510,58 +4510,6 @@ func accountTypesEqual(a, b map[string]*commonpb.AccountType) bool {
 	return true
 }
 
-// setExpectedSchemaField records a field-type declaration on the ledger's
-// expected schema during replay, lazily creating it. Mirrors
-// processSetMetadataFieldType.
-func setExpectedSchemaField(schemas map[string]*commonpb.MetadataSchema, ledger string, target commonpb.TargetType, key string, typ commonpb.MetadataType) {
-	schema := schemas[ledger]
-	if schema == nil {
-		schema = &commonpb.MetadataSchema{}
-		schemas[ledger] = schema
-	}
-
-	field := &commonpb.MetadataFieldSchema{Type: typ}
-
-	switch target {
-	case commonpb.TargetType_TARGET_TYPE_ACCOUNT:
-		if schema.AccountFields == nil {
-			schema.AccountFields = make(map[string]*commonpb.MetadataFieldSchema)
-		}
-
-		schema.AccountFields[key] = field
-	case commonpb.TargetType_TARGET_TYPE_TRANSACTION:
-		if schema.TransactionFields == nil {
-			schema.TransactionFields = make(map[string]*commonpb.MetadataFieldSchema)
-		}
-
-		schema.TransactionFields[key] = field
-	case commonpb.TargetType_TARGET_TYPE_LEDGER:
-		if schema.LedgerFields == nil {
-			schema.LedgerFields = make(map[string]*commonpb.MetadataFieldSchema)
-		}
-
-		schema.LedgerFields[key] = field
-	}
-}
-
-// removeExpectedSchemaField drops a field-type declaration during replay.
-// Mirrors processRemoveMetadataFieldType.
-func removeExpectedSchemaField(schemas map[string]*commonpb.MetadataSchema, ledger string, target commonpb.TargetType, key string) {
-	schema := schemas[ledger]
-	if schema == nil {
-		return
-	}
-
-	switch target {
-	case commonpb.TargetType_TARGET_TYPE_ACCOUNT:
-		delete(schema.GetAccountFields(), key)
-	case commonpb.TargetType_TARGET_TYPE_TRANSACTION:
-		delete(schema.GetTransactionFields(), key)
-	case commonpb.TargetType_TARGET_TYPE_LEDGER:
-		delete(schema.GetLedgerFields(), key)
-	}
-}
-
 // schemaEqual compares two metadata schemas by field-type content, treating a
 // nil schema and one with no fields as equal (nil vs empty maps must not read
 // as a divergence).
