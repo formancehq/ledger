@@ -24,6 +24,7 @@ cannot drift. Current whitelist:
 | Action | Skippable reason |
 |--------|------------------|
 | `create_transaction` | `TRANSACTION_REFERENCE_CONFLICT` |
+| `execute_numscript` | `TRANSACTION_REFERENCE_CONFLICT` |
 | `revert_transaction` | `TRANSACTION_ALREADY_REVERTED` |
 | `delete_metadata` | `METADATA_NOT_FOUND` |
 | `add_account_type` | `ACCOUNT_TYPE_ALREADY_EXISTS` |
@@ -32,6 +33,18 @@ cannot drift. Current whitelist:
 **Admission** rejects `UNSPECIFIED` / out-of-whitelist reasons, and a non-empty
 `skippable_reasons` on an action with no annotation, up front
 (`ErrInvalidSkippableReason` → 4xx). Empty (default) preserves fail-fast.
+
+For `execute_numscript`, a reference and this opt-in let a connector replay a
+script that created a transaction after losing the Apply response. The first
+execution creates the referenced transaction; the replay records an
+`OrderSkipped` with the original transaction ID and lets subsequent orders in
+the same atomic batch (such as a cursor update) commit. The reference check is
+the processor's dry prologue, before script execution or state writes, so a
+replay does not depend on current balances or script inputs. A metadata-only
+script with a new reference still fails with `METADATA_ONLY_REFERENCE` and
+creates no transaction. If the reference already exists, the conflict takes
+precedence. A skipped conflict identifies an existing reference, not equality
+of the original and replayed business payload.
 
 ## FSM mechanism: commit-or-discard overlay
 
