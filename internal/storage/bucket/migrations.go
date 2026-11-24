@@ -51,7 +51,10 @@ func runMigrate(ctx context.Context, tracer trace.Tracer, db bun.IDB, name strin
 	defer span.End()
 
 	migrator := GetMigrator(db, name, options...)
+	return runMigrator(ctx, migrator)
+}
 
+func runMigrator(ctx context.Context, migrator *migrations.Migrator) error {
 	for {
 		err := migrator.UpByOne(ctx)
 		if err != nil {

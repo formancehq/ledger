@@ -39,7 +39,7 @@ next schedule and continues from the existing chain head.
 
 `WalkMigrations` breaks ties on the numeric prefix by directory name. This keeps
 the released order of the two `51-*` migrations stable.
-`TestWalkMigrationsKeepsReleasedOrder` pins positions 51 to 57.
+`TestWalkMigrationsKeepsReleasedOrder` pins positions 51 to 55.
 
 ## Classification and compatibility
 
@@ -96,9 +96,8 @@ the old or the new primary key.
 
 The bucket is at version 55 or later, and the `logs_blocks` primary key is
 `(ledger, previous)`. Version 55 means this migration has run; a full upgrade
-of this release line ends at version 57, after
-[`54-fix-log-hash-lookup`](log-hash-lookup.md) and
-[`55-fix-transaction-metadata-history`](transaction-metadata-history.md):
+of this release line ends at version 56, after
+[`54-fix-log-hash-lookup`](log-hash-lookup.md):
 
 ```sql
 select a.attname
@@ -122,9 +121,8 @@ order by k.ord;
   Postgres 16: v2.4.10 → v2.4.11 leaves version 54 with `[previous]`; this
   release then sets `[ledger previous]` at version 55. The direct v2.4.10, the
   v2.4.11 and the fresh paths end at version 55 with `[ledger previous]`. This
-  check predates migrations `54-fix-log-hash-lookup` and
-  `55-fix-transaction-metadata-history`; a full upgrade now continues to
-  version 57 and the primary key result is the same.
+  check predates `54-fix-log-hash-lookup`; with it, a full upgrade continues to
+  version 56 and the primary key result is the same.
 - Not measured: lock duration on production-size buckets.
 
 Run the storage integration tests with:

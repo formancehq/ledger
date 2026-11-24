@@ -42,7 +42,12 @@ func (b *DefaultBucket) IsUpToDate(ctx context.Context, db bun.IDB) (bool, error
 }
 
 func (b *DefaultBucket) Migrate(ctx context.Context, db bun.IDB, options ...migrations.Option) error {
-	return runMigrate(ctx, b.tracer, db, b.name, append(options, migrations.WithTracer(b.tracer))...)
+	if err := runMigrate(ctx, b.tracer, db, b.name, append(options, migrations.WithTracer(b.tracer))...); err != nil {
+		return err
+	}
+	// Run compatible corrections even when the main schema is already current.
+	// Complete the main migrations first: they may replace the same functions.
+	return runCompatibleMigrations(ctx, db, b.name, b.tracer)
 }
 
 func (b *DefaultBucket) HasMinimalVersion(ctx context.Context, db bun.IDB) (bool, error) {

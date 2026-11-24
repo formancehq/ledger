@@ -4,39 +4,87 @@ With `TRANSACTION_METADATA_HISTORY=SYNC`, transaction creation records the initi
 metadata and subsequent metadata changes append a revision. Reverting a transaction
 without changing its metadata must not append a revision.
 
-New ledgers install an `AFTER UPDATE OF metadata` trigger. Migration
-`55-fix-transaction-metadata-history` also protects existing ledgers by replacing
-the shared `update_transaction_metadata_history()` function with a version that
-returns immediately when `OLD.metadata` and `NEW.metadata` are identical. Existing
-triggers remain valid, including the older `AFTER UPDATE` triggers. Existing
-revisions, including duplicates, are retained.
+New ledgers install an `AFTER UPDATE OF metadata` trigger. Existing ledgers may
+still have broad `AFTER UPDATE` triggers. The compatible correction
+`0-transaction-metadata-history.sql` replaces the shared
+`update_transaction_metadata_history()` function with a version that returns
+immediately when `OLD.metadata` and `NEW.metadata` are identical. It preserves
+real metadata changes and deletions. Existing revisions, including duplicates,
+are retained; this change does not clean historical data.
 
 ## Migration and compatibility
 
-This is a corrective migration owned by the existing bucket migrator. Apply it
-through the usual bucket upgrade command before resuming writes. It replaces one
-function per bucket, performs no data scan or backfill, and can be reapplied safely.
-Function DDL can wait for concurrent database activity; the existing migrator's
-locking and timeout behavior still applies. This change does not add new timeout
-or interruption controls.
+Class: **corrective**, with no contract or data cleanup phase. The existing bucket
+upgrade path owns both migration streams. It first completes the main migrations,
+then applies compatible corrections through the same go-libs migrator using the
+bucket-local `compatible_migrations` table. That table records version 1 for this
+correction. Main bucket version `goose_db_version` remains 56; the released main
+migration files and order are unchanged.
 
-The corrected function keeps the previous SQL contract, including for broad
-triggers. However, the previous binary rejects a bucket schema version newer than
-its known migrations. An application-only rollback to that binary is therefore
-unsupported after this migration. Older running processes also reject ledger
-creation in an upgraded bucket. Stop old writers before upgrading and use the
-new binary for subsequent operations; a rolling deployment across this schema
-boundary is not supported by the existing version checks.
+The separate registry is restricted to corrections that preserve the SQL and data
+contract of every supported binary at the current main version. Incompatible
+changes must use the main migration stream. Applied corrections are immutable.
+Older binaries ignore the additive registry, accept main version 56 and keep
+using the same shared function. `detectDowngrades` and the ledger-creation version
+check remain strict and unchanged. No compatibility exception is required for
+this correction against the preceding version-56 binary; this does not claim
+compatibility for earlier binaries that reject version 56 itself.
 
-Before deployment, retain a database recovery point and validate its restore
-procedure. After a successful migration, prefer a forward repair. Returning to the
-previous binary requires restoring the previous database state and reconciling
-any writes since that recovery point. Do not lower the migration version manually.
-If the migration fails, retry the bucket upgrade. Do not remove historical
-revisions as a recovery step. No deployment or production restore was performed
-as part of the local verification.
+Both fresh bucket creation and the usual bucket upgrade commands apply the
+correction. Run `ledger buckets upgrade '*'`, `ledger migrate`, or
+`ledger serve --auto-upgrade` even when the main migration status says current:
+that status describes only the main stream. The compatible runner serializes
+repairs by its own qualified versions table. The correction and its completion
+record commit in one transaction (a savepoint during ledger creation). On error,
+both roll back; retry the usual upgrade command. The correction replaces one
+function per bucket without a scan or backfill. The SQL statement is
+atomic and safe to reapply. Compatible corrections have a 30-second deadline,
+including transaction-lock and catalog-lock waits, and honor shorter caller
+deadlines. Transaction locks are released on commit or rollback. The principal
+migrator retains its existing timeout behavior; configure session timeouts for
+that stream as needed. Future principal migrations that replace the shared
+function must retain this guard or append a new compatible correction: completed
+corrections are not replayed on later upgrades. A future correction is eligible
+only if older writers, readers, provisioning, restart and application rollback
+remain valid; it must not remove objects, change stored meaning or require an
+atomic replica switch. Review and test those properties before appending it.
 
-The integration tests cover the first ledger in a new bucket and a second ledger
-in an existing bucket. The migration fixtures reproduce an old broad trigger and
-verify that the upgrade preserves historical rows, prevents further duplicates,
-and still records real metadata changes.
+## Rolling deployment and rollback
+
+1. The operator runs the bucket upgrade with the corrected binary. Existing
+   version-56 replicas may keep running and restart against repaired buckets.
+2. The operator rolls out the corrected binary. An older replica can still
+   create a ledger in a repaired bucket: its broad trigger invokes the corrected
+   shared function. A new bucket created entirely by an older replica retains
+   the original bug until it receives the correction.
+3. The operator reruns the bucket upgrade after the last older replica stops,
+   covering buckets created during the rollout. Verify version 1 is applied in
+   each bucket's `compatible_migrations` table.
+
+An application-only rollback to the preceding version-56 binary remains possible.
+Leave the compatible registry and corrected function in place; no data restore
+or history rewrite is required. Older code may create new affected buckets after
+rollback, so the final upgrade scan is still needed when rolling forward again.
+Never lower the main schema version. A general backup/restore policy still
+applies independently of this non-destructive correction.
+
+## Validation
+
+The driver tests cover first and second ledgers, legacy broad triggers at version
+56, historical-row preservation, real metadata updates and deletions, duplicate
+and concurrent execution, and a rolled-back attempt followed by retry. The
+compatibility fixture uses the unchanged version-56 main registry and version
+checks, then reinstalls the old broad trigger to test old ledger-creation
+behavior. An unknown main version is still rejected.
+
+A separate PostgreSQL 16 binary check compiled the preceding release-branch
+commit `148a77477a5f041fabce85d99238d5bd73fcab22`. That binary reproduced the
+original duplicate, then restarted against the corrected database and created a
+second ledger through its HTTP API. Reverts added no duplicate; real metadata
+updates and deletions remained historized. Running the old and new bucket upgrade
+commands afterwards preserved the corrected function definition and historical
+rows; another old-binary restart and ledger creation succeeded. This exercises
+the actual preceding `CreateLedger` and `detectDowngrades`, beyond the fixture's
+unchanged version count. The full suite covers normal log restoration. This is
+local test evidence, not a production deployment, a production restore exercise
+or a production-scale lock measurement.
