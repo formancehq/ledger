@@ -184,6 +184,13 @@ func New(dir string, logger logging.Logger, cfg Config, options ...Option) (*Sto
 		return nil, fmt.Errorf("opening Pebble read index: %w", err)
 	}
 
+	// Only the owner of Pebble's exclusive writer lock may release pins
+	// left by a backup interrupted before normal cleanup. Failed scratch
+	// cleanup can consume disk, but does not make the live index unreadable.
+	if err := os.RemoveAll(filepath.Join(dbPath, backupScratchDir)); err != nil {
+		logger.Errorf("Cleaning up read index backup checkpoints: %v", err)
+	}
+
 	m := db.Metrics()
 	logger.WithFields(map[string]any{
 		"duration":          time.Since(openStart).String(),
@@ -254,11 +261,7 @@ func (s *Store) CreateCheckpoint(destDir string) error {
 		return fmt.Errorf("flushing pending index promotions before checkpoint: %w", err)
 	}
 
-	if err := s.db.Flush(); err != nil {
-		return fmt.Errorf("flushing read index before checkpoint: %w", err)
-	}
-
-	return s.db.Checkpoint(destDir)
+	return s.checkpointFlushedVersion(destDir)
 }
 
 // Close closes the underlying Pebble database.

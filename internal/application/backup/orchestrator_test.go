@@ -22,6 +22,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/pkg/commands"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
+	"github.com/formancehq/ledger/v3/internal/storage/readstore"
 )
 
 // testDestination returns a small valid BackupDestination used across
@@ -121,8 +122,16 @@ func extractIncrementalOrder(p *raftcmdpb.Proposal) *raftcmdpb.IncrementalBackup
 // most tests don't need to call OnLeadershipChange. Tests that
 // explicitly exercise leadership transitions construct the orchestrator
 // directly and drive OnLeadershipChange themselves.
-func newOrchestrator(prop Proposer, store *dal.Store) *Orchestrator {
-	o := NewOrchestrator(prop, store, logging.Testing(), 1, NewExecutorRegistry(), 0)
+func newOrchestrator(t *testing.T, prop Proposer, store *dal.Store) *Orchestrator {
+	t.Helper()
+	var rs *readstore.Store
+	if store != nil {
+		var err error
+		rs, err = readstore.New(t.TempDir(), logging.Testing(), readstore.DefaultConfig())
+		require.NoError(t, err)
+		t.Cleanup(func() { require.NoError(t, rs.Close()) })
+	}
+	o := NewOrchestrator(prop, store, rs, logging.Testing(), 1, NewExecutorRegistry(), 0)
 	o.OnLeadershipChange(true)
 
 	return o
@@ -203,7 +212,7 @@ func TestProposeAndWait(t *testing.T) {
 
 		capture := &proposalCapture{}
 		prop := recordingProposer(t, capture, nil)
-		o := newOrchestrator(prop, nil)
+		o := newOrchestrator(t, prop, nil)
 
 		err := o.proposeAndWait(context.Background(), fullStart(7, testDestination(), 1))
 		require.NoError(t, err)
@@ -215,7 +224,7 @@ func TestProposeAndWait(t *testing.T) {
 
 		errBoom := errors.New("transport-level propose error")
 		prop := erroringProposer(t, errBoom)
-		o := newOrchestrator(prop, nil)
+		o := newOrchestrator(t, prop, nil)
 
 		err := o.proposeAndWait(context.Background(), fullStart(7, testDestination(), 1))
 		require.ErrorIs(t, err, errBoom)
@@ -226,7 +235,7 @@ func TestProposeAndWait(t *testing.T) {
 
 		capture := &proposalCapture{}
 		prop := recordingProposer(t, capture, state.ErrBackupInProgress)
-		o := newOrchestrator(prop, nil)
+		o := newOrchestrator(t, prop, nil)
 
 		err := o.proposeAndWait(context.Background(), fullStart(7, testDestination(), 1))
 		require.ErrorIs(t, err, state.ErrBackupInProgress)
@@ -248,7 +257,7 @@ func TestOrchestrator_LeadershipChangeCancelsRunCtx(t *testing.T) {
 	t.Parallel()
 
 	synctest.Test(t, func(t *testing.T) {
-		o := newOrchestrator(nil, nil)
+		o := newOrchestrator(t, nil, nil)
 		o.OnLeadershipChange(true)
 
 		runCtx, cancel := o.runContext(context.Background())
@@ -274,7 +283,7 @@ func TestOrchestrator_NonLeaderRunCtxStartsCancelled(t *testing.T) {
 		// Construct the orchestrator directly (not via newOrchestrator,
 		// which would call OnLeadershipChange(true)) so leaderCtx is the
 		// constructor's already-cancelled context.
-		o := NewOrchestrator(nil, nil, logging.Testing(), 1, NewExecutorRegistry(), 0)
+		o := NewOrchestrator(nil, nil, nil, logging.Testing(), 1, NewExecutorRegistry(), 0)
 
 		runCtx, cancel := o.runContext(context.Background())
 		defer cancel()
@@ -318,7 +327,7 @@ func TestProposeTerminal(t *testing.T) {
 		t.Parallel()
 		capture := &proposalCapture{}
 		prop := recordingProposer(t, capture, nil)
-		o := newOrchestrator(prop, nil)
+		o := newOrchestrator(t, prop, nil)
 		o.proposeTerminal(fullFail(7, "boom"), 7, "fail")
 		require.Len(t, capture.all(), 1)
 	})
@@ -326,7 +335,7 @@ func TestProposeTerminal(t *testing.T) {
 	t.Run("propose error is logged", func(t *testing.T) {
 		t.Parallel()
 		prop := erroringProposer(t, errors.New("down"))
-		o := newOrchestrator(prop, nil)
+		o := newOrchestrator(t, prop, nil)
 		o.proposeTerminal(fullFail(7, "boom"), 7, "fail") // must not panic
 	})
 }
@@ -400,7 +409,7 @@ func TestRunIncremental_NoOpHappyPath(t *testing.T) {
 	capture := &proposalCapture{}
 	prop := recordingProposer(t, capture, nil)
 
-	o := newOrchestrator(prop, store)
+	o := newOrchestrator(t, prop, store)
 	dst := &raftcmdpb.BackupDestination{
 		BucketId: bucketID,
 		Target: &raftcmdpb.BackupDestination_S3{
@@ -439,7 +448,7 @@ func TestRunIncremental_StartRejectionShortCircuits(t *testing.T) {
 	capture := &proposalCapture{}
 	prop := recordingProposer(t, capture, state.ErrBackupInProgress)
 
-	o := newOrchestrator(prop, newTempStore(t))
+	o := newOrchestrator(t, prop, newTempStore(t))
 	dst := &raftcmdpb.BackupDestination{
 		BucketId: "busy",
 		Target: &raftcmdpb.BackupDestination_S3{
@@ -469,7 +478,7 @@ func TestRunFull_HappyPath(t *testing.T) {
 	capture := &proposalCapture{}
 	prop := recordingProposer(t, capture, nil)
 
-	o := newOrchestrator(prop, store)
+	o := newOrchestrator(t, prop, store)
 	dst := &raftcmdpb.BackupDestination{
 		BucketId: bucketID,
 		Target: &raftcmdpb.BackupDestination_S3{
@@ -509,7 +518,7 @@ func TestRunFull_StartRejectionShortCircuits(t *testing.T) {
 	capture := &proposalCapture{}
 	prop := recordingProposer(t, capture, state.ErrBackupInProgress)
 
-	o := newOrchestrator(prop, newTempStore(t))
+	o := newOrchestrator(t, prop, newTempStore(t))
 	dst := &raftcmdpb.BackupDestination{
 		BucketId: "busy-full",
 		Target: &raftcmdpb.BackupDestination_S3{

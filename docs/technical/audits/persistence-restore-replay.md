@@ -127,6 +127,18 @@ post-checkpoint business export, restore preparation, checker validation and
 subsequent admission. `TestFinalizeRestorePublishesRebuiltPostCheckpointDelta`
 also checks that the published restore checkpoint has no source drain state.
 
+### Optional physical read index
+
+Trace both file sets through the full manifest, an incremental rewrite, the
+next full, and post-publication cleanup. A failed upload must leave the previous
+chain restorable. Compare a seeded and a primary-only restore with a non-empty
+delta. Use a seed whose native cursor is ahead of the full but behind the
+incremental head as a negative control. Evidence must distinguish a valid
+resume from replaying the prefix from zero. This domain owns coupling the
+correct generation to the primary and its activation; the read-consistency
+domain owns publication of fresh destination certificates. See
+[read-index recovery](../architecture/subsystems/backup/README.md#read-index-recovery).
+
 ## Delete and reset parity
 
 Incremental parity includes absence. For a checkpoint-era ledger deleted in the

@@ -32,6 +32,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/pkg/commands"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
+	"github.com/formancehq/ledger/v3/internal/storage/readstore"
 )
 
 // TerminalProposeTimeout caps the time the orchestrator spends pushing
@@ -138,11 +139,12 @@ func (r *ExecutorRegistry) IsAlive(jobID uint64) bool {
 // while the new leader's cleanup loop frees the destination slot —
 // the second writer race flemzord raised on PR #401.
 type Orchestrator struct {
-	proposer Proposer
-	store    *dal.Store
-	logger   logging.Logger
-	nodeID   uint64
-	registry *ExecutorRegistry
+	proposer  Proposer
+	store     *dal.Store
+	readIndex *readstore.Store
+	logger    logging.Logger
+	nodeID    uint64
+	registry  *ExecutorRegistry
 
 	// maxSegmentBytes caps each incremental export segment before it splits.
 	// 0 lets RunIncrementalBackup pick its default.
@@ -167,13 +169,14 @@ type Orchestrator struct {
 // cancellation error. Bootstrap calls OnLeadershipChange on startup
 // (and on every transition thereafter) so the orchestrator's state
 // tracks the node's actual leadership.
-func NewOrchestrator(proposer Proposer, store *dal.Store, logger logging.Logger, nodeID uint64, registry *ExecutorRegistry, maxSegmentBytes int64) *Orchestrator {
+func NewOrchestrator(proposer Proposer, store *dal.Store, readIndex *readstore.Store, logger logging.Logger, nodeID uint64, registry *ExecutorRegistry, maxSegmentBytes int64) *Orchestrator {
 	cancelled, cancel := context.WithCancel(context.Background())
 	cancel()
 
 	return &Orchestrator{
 		proposer:        proposer,
 		store:           store,
+		readIndex:       readIndex,
 		logger:          logger.WithField("cmp", "backup-orchestrator"),
 		nodeID:          nodeID,
 		registry:        registry,
@@ -282,7 +285,7 @@ func (o *Orchestrator) RunFull(ctx context.Context, dst *raftcmdpb.BackupDestina
 	// shared.
 	checkpointName := fmt.Sprintf("backup-%016x", jobID)
 
-	result, runErr := backup.RunBackup(runCtx, o.logger, o.store, storage, dst.GetBucketId(), checkpointName)
+	result, runErr := o.uploadFull(runCtx, storage, dst.GetBucketId(), checkpointName)
 	if runErr != nil {
 		o.proposeTerminal(fullFail(jobID, runErr.Error()), jobID, "fail")
 
@@ -302,6 +305,25 @@ func (o *Orchestrator) RunFull(ctx context.Context, dst *raftcmdpb.BackupDestina
 	}
 
 	return result, nil
+}
+
+func (o *Orchestrator) uploadFull(ctx context.Context, storage backup.Storage, bucketID, checkpointName string) (*backup.Result, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	// Freeze the projection first. Its durable native cursors can lag the
+	// later primary checkpoint; they must never skip history absent from it.
+	readIndexPath, release, err := o.readIndex.CaptureBackupCheckpoint()
+	if err != nil {
+		return nil, fmt.Errorf("capturing read index for full backup: %w", err)
+	}
+	defer release()
+
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+
+	return backup.RunBackupWithReadIndex(ctx, o.logger, o.store, storage, bucketID, checkpointName, readIndexPath)
 }
 
 // RunIncremental mirrors RunFull for the incremental pipeline.

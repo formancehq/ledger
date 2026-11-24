@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -19,6 +20,7 @@ import (
 
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/cmdutil"
 	"github.com/formancehq/ledger/v3/internal/application/check"
+	"github.com/formancehq/ledger/v3/internal/application/restoreseed"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
 	"github.com/formancehq/ledger/v3/internal/infra/backup"
 	"github.com/formancehq/ledger/v3/internal/infra/node"
@@ -44,6 +46,7 @@ This is a purely offline operation — no server needed.`,
 	cmdutil.AddBackupStorageFlags(cmd)
 	cmd.Flags().String("bucket-id", "", "Namespace prefix for backup files (default: uses cluster-id from config)")
 	cmd.Flags().String("data-dir", "", "Target data directory (required, must be fresh)")
+	cmd.Flags().Int64("max-manifest-bytes", backup.MaxRestoreManifestBytes, "Maximum backup manifest size in bytes (increase for a trusted oversized legacy backup)")
 	cmd.Flags().Bool("validate", false, "Run integrity checks after download")
 	cmd.Flags().BoolP("yes", "y", false, "Skip confirmation prompt")
 
@@ -54,11 +57,16 @@ This is a purely offline operation — no server needed.`,
 
 func runBootstrap(cmd *cobra.Command, _ []string) error {
 	var (
-		bucketID, _ = cmd.Flags().GetString("bucket-id")
-		dataDir, _  = cmd.Flags().GetString("data-dir")
-		validate, _ = cmd.Flags().GetBool("validate")
-		yes, _      = cmd.Flags().GetBool("yes")
+		bucketID, _         = cmd.Flags().GetString("bucket-id")
+		dataDir, _          = cmd.Flags().GetString("data-dir")
+		validate, _         = cmd.Flags().GetBool("validate")
+		maxManifestBytes, _ = cmd.Flags().GetInt64("max-manifest-bytes")
+		yes, _              = cmd.Flags().GetBool("yes")
 	)
+
+	if maxManifestBytes <= 0 || maxManifestBytes == math.MaxInt64 {
+		return fmt.Errorf("--max-manifest-bytes must be between 1 and %d", int64(math.MaxInt64-1))
+	}
 
 	// Ensure the data directory is fresh: no RESTORED marker, no live/
 	// database, no checkpoints (normal startup prefers live/ over the
@@ -102,20 +110,12 @@ func runBootstrap(cmd *cobra.Command, _ []string) error {
 		return cmdutil.Displayed(fmt.Errorf("reading backup manifest: %w", err))
 	}
 
-	manifestData, err := io.ReadAll(manifestReader)
-	_ = manifestReader.Close()
-
+	manifestPtr, err := readBootstrapManifest(manifestReader, maxManifestBytes)
+	err = errors.Join(err, manifestReader.Close())
 	if err != nil {
-		spinner.Fail("Failed to read manifest")
+		spinner.Fail("Failed to read backup manifest")
 
-		return cmdutil.Displayed(fmt.Errorf("reading manifest data: %w", err))
-	}
-
-	manifestPtr, err := backup.DecodeManifest(manifestData)
-	if err != nil {
-		spinner.Fail("Failed to parse manifest")
-
-		return cmdutil.Displayed(fmt.Errorf("parsing manifest: %w", err))
+		return cmdutil.Displayed(err)
 	}
 
 	manifest := *manifestPtr
@@ -129,6 +129,12 @@ func runBootstrap(cmd *cobra.Command, _ []string) error {
 	var checkpointFiles int
 	if manifest.Checkpoint != nil {
 		checkpointFiles = len(manifest.Checkpoint.Files)
+		if seed := manifest.Checkpoint.ReadIndex; seed != nil && seed.Version == backup.ReadIndexVersion &&
+			(checkpointFiles > backup.MaxRestoreManifestFiles || len(seed.Files) > backup.MaxRestoreManifestFiles) {
+			spinner.Fail("Backup manifest has too many files")
+
+			return cmdutil.Displayed(fmt.Errorf("backup exceeds %d checkpoint files per store", backup.MaxRestoreManifestFiles))
+		}
 	}
 
 	spinner.Success(fmt.Sprintf("Manifest loaded: %d checkpoint files, %d export segments",
@@ -152,8 +158,9 @@ func runBootstrap(cmd *cobra.Command, _ []string) error {
 	logger := logging.NopZap()
 
 	// Restore incremental history and operational state, including policy-only updates.
-	if len(manifest.Exports) > 0 || manifest.ClusterPolicy != nil {
-		exportSpinner := cmdutil.StartSpinner("Applying incremental backup state...")
+	var generation string
+	if manifest.Checkpoint != nil && manifest.Checkpoint.ReadIndex != nil || len(manifest.Exports) > 0 || manifest.ClusterPolicy != nil {
+		exportSpinner := cmdutil.StartSpinner("Restoring read indexes and applying incremental state...")
 
 		exportStore, err := dal.OpenDirect(stagingDir, logger)
 		if err != nil {
@@ -162,6 +169,12 @@ func runBootstrap(cmd *cobra.Command, _ []string) error {
 			return cmdutil.Displayed(err)
 		}
 
+		generation, err = restoreseed.Stage(cmd.Context(), dataDir, bucketID, storage, manifest.Checkpoint, exportStore, backup.ReadIndexDownloadOptions{Parallelism: 1}, logger)
+		if err != nil {
+			exportSpinner.Fail("Failed to prepare read-index backup")
+
+			return cmdutil.Displayed(errors.Join(err, exportStore.Close()))
+		}
 		if err := backup.ApplyExportsAndRebuild(cmd.Context(), logger, storage, exportStore, &manifest); err != nil {
 			_ = exportStore.Close()
 			exportSpinner.Fail("Failed to apply export segments")
@@ -176,6 +189,11 @@ func runBootstrap(cmd *cobra.Command, _ []string) error {
 		}
 
 		exportSpinner.Success(fmt.Sprintf("Restored incremental state (%d history segments)", len(manifest.Exports)))
+	} else {
+		generation, err = restoreseed.StageCold(cmd.Context(), dataDir)
+		if err != nil {
+			return cmdutil.Displayed(err)
+		}
 	}
 
 	// Open staging as read-only to read metadata.
@@ -220,9 +238,7 @@ func runBootstrap(cmd *cobra.Command, _ []string) error {
 		if !strings.HasPrefix(strings.ToLower(strings.TrimSpace(answer)), "y") {
 			pterm.Info.Println("Bootstrap cancelled")
 
-			_ = os.RemoveAll(stagingDir)
-
-			return nil
+			return errors.Join(os.RemoveAll(stagingDir), restoreseed.Discard(dataDir))
 		}
 	}
 
@@ -282,9 +298,13 @@ func runBootstrap(cmd *cobra.Command, _ []string) error {
 	if err := node.WriteRestoredMarker(dataDir, node.RestoredMarker{
 		LastAppliedIndex:     lastAppliedIndex,
 		LastAppliedTimestamp: lastAppliedTimestamp,
+		ReadIndexGeneration:  generation,
 	}); err != nil {
 		// Roll the placement back: a checkpoint without its marker would
 		// make the freshness guard refuse a re-run of this command.
+		if errors.Is(err, node.ErrRestoredMarkerPublished) {
+			return err
+		}
 		if rmErr := os.RemoveAll(checkpointPath); rmErr != nil {
 			pterm.Warning.Printfln("Failed to remove checkpoint after marker write failure; delete %s manually before retrying: %v", checkpointPath, rmErr)
 		}
@@ -301,6 +321,20 @@ func runBootstrap(cmd *cobra.Command, _ []string) error {
 		lastAppliedIndex, len(ledgerNames))
 
 	return nil
+}
+
+// The offline reader can opt into a larger legacy manifest than the bounded
+// restore server. Read at most one byte beyond its configured limit.
+func readBootstrapManifest(reader io.Reader, maxBytes int64) (*backup.Manifest, error) {
+	data, err := io.ReadAll(io.LimitReader(reader, maxBytes+1))
+	if err != nil {
+		return nil, fmt.Errorf("reading manifest: %w", err)
+	}
+	if int64(len(data)) > maxBytes {
+		return nil, fmt.Errorf("manifest exceeds %d bytes; increase --max-manifest-bytes only for a trusted backup", maxBytes)
+	}
+
+	return backup.DecodeManifest(data)
 }
 
 // readBootstrapPreviewData reads metadata and ledger names from a store.

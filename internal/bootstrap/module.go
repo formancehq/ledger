@@ -154,6 +154,7 @@ func Module() fx.Option {
 		transport.Module(),
 		attributes.Module(),
 		fx.Provide(
+			prepareRestoredReadIndex,
 			fx.Annotate(func(
 				cfg Config,
 				logger logging.Logger,
@@ -172,7 +173,7 @@ func Module() fx.Option {
 					cfg.PeerServiceAdvertiseAddr(),
 				)
 			}, fx.ParamTags(``, ``, `name:"raft"`, ``)),
-			func(cfg Config, meterProvider metric.MeterProvider, logger logging.Logger) (*dal.Store, error) {
+			func(cfg Config, meterProvider metric.MeterProvider, logger logging.Logger, _ restoredReadIndexReady) (*dal.Store, error) {
 				store, err := dal.NewStore(
 					cfg.DataDir,
 					logger,
@@ -563,8 +564,8 @@ func Module() fx.Option {
 					cfg.PeerServiceAdvertiseAddr(),
 				)
 			},
-			func(builder *plan.Builder, n *node.Node, store *dal.Store, cfg Config, logger logging.Logger) *backupapp.Orchestrator {
-				return backupapp.NewOrchestrator(newBackupProposer(builder, n), store, logger, n.GetNodeID(), backupapp.NewExecutorRegistry(), cfg.BackupMaxSegmentBytes)
+			func(builder *plan.Builder, n *node.Node, store *dal.Store, rs *readstore.Store, cfg Config, logger logging.Logger) *backupapp.Orchestrator {
+				return backupapp.NewOrchestrator(newBackupProposer(builder, n), store, rs, logger, n.GetNodeID(), backupapp.NewExecutorRegistry(), cfg.BackupMaxSegmentBytes)
 			},
 			func(builder *plan.Builder, n *node.Node, fsm *state.Machine, orchestrator *backupapp.Orchestrator, logger logging.Logger) *backupapp.Cleanup {
 				return backupapp.NewCleanup(fsm.Registry.BackupJobs, newBackupProposer(builder, n), n, orchestrator.Registry(), logger)
@@ -613,13 +614,8 @@ func Module() fx.Option {
 				return n
 			},
 			// Read index store (Pebble) — always enabled
-			func(cfg Config, logger logging.Logger) (*readstore.Store, error) {
-				dir := cfg.ReadIndexConfig.Dir
-				if dir == "" {
-					dir = filepath.Join(cfg.DataDir, "read-indexes")
-				}
-
-				return readstore.New(dir, logger, cfg.ReadIndexConfig.PebbleConfig)
+			func(cfg Config, logger logging.Logger, _ restoredReadIndexReady) (*readstore.Store, error) {
+				return readstore.New(cfg.readIndexDir(), logger, cfg.ReadIndexConfig.PebbleConfig)
 			},
 			// Index builder — tails the Raft log to populate the read index
 			func(store *dal.Store, rs *readstore.Store, attrs *attributes.Attributes, logger logging.Logger, meterProvider metric.MeterProvider, cfg Config) *indexbuilder.Builder {

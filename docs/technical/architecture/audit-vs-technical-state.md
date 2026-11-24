@@ -335,7 +335,10 @@ cryptographically-verified source of truth), so corruption is repaired by
 dropping and re-indexing from the audit, not by a main-store compare pass.
 Because Raft replicates the *source* audit/log stream and not the readstore
 bytes, a bit-flip in one replica's index is local and not propagated to the
-others; detecting and repairing it is the index builder's **rebuild-health**
+others by Raft. A physical [backup of the read index](subsystems/backup/README.md#read-index-recovery)
+can carry an already incorrect index to the restored node: a matching file
+hash detects changes in transit, not a wrong source row. Detecting and repairing
+such a row is the index builder's **rebuild-health**
 responsibility (re-derive / verify a READY index against the audit before or
 while it is served), tracked under `EN-1323`. **This detect/drop/rebuild path is
 not yet wired**: until `EN-1323` lands, a corrupted or tampered READY index is
