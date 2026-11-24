@@ -88,7 +88,11 @@ A changed cron expression is evaluated against the same cursor.
 
 `lastBackup` is the last successful checkpoint result; failed runs never
 manufacture a summary. `BackupRun.status.result` holds the corresponding
-per-run result. `BackupHealthy` reports the latest observed terminal outcome,
+per-run result. Successful results also persist the completion time in Unix
+nanoseconds. Kubernetes serializes the public completion timestamp to seconds;
+the nanosecond value lets the parent keep the newer success when two runs finish
+in that second, including after the older run has been pruned. `BackupHealthy`
+reports the latest observed terminal outcome,
 including failures after an earlier success. The persisted completion cursor
 prevents an older retained run from reversing that condition after history
 pruning, even when either history limit is zero. A failure wins when completion

@@ -1,15 +1,60 @@
 package controller
 
 import (
+	"encoding/json"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	ledgerv1alpha1 "github.com/formancehq/ledger/misc/operator/api/v1alpha1"
 )
+
+func TestRefreshStatusSummaries_SuccessesInSameSecondAfterPruning(t *testing.T) {
+	t.Parallel()
+
+	// Round-trip through the API representation: metav1.Time loses subsecond
+	// precision, while the success ordering must survive pruning and restart.
+	base := time.Date(2025, 1, 1, 12, 0, 0, 0, time.UTC)
+	run := func(name string, nanos int64, sequence uint64) ledgerv1alpha1.BackupRun {
+		completed := metav1.NewTime(base.Add(time.Duration(nanos)))
+		return ledgerv1alpha1.BackupRun{
+			ObjectMeta: metav1.ObjectMeta{Name: name},
+			Status: ledgerv1alpha1.BackupRunStatus{
+				Phase: ledgerv1alpha1.BackupRunPhaseSucceeded, CompletionTime: &completed,
+				Result: &ledgerv1alpha1.BackupResult{
+					Time: &completed, CompletionUnixNano: completed.UnixNano(), LastLogSequence: sequence,
+				},
+			},
+		}
+	}
+	roundTrip := func(v, out any) {
+		data, err := json.Marshal(v)
+		require.NoError(t, err)
+		require.NoError(t, json.Unmarshal(data, out))
+	}
+	var first, second ledgerv1alpha1.BackupRun
+	roundTrip(run("first", 100, 41), &first)
+	roundTrip(run("second", 200, 42), &second)
+	require.True(t, first.Status.CompletionTime.Equal(second.Status.CompletionTime))
+
+	reconciler := &BackupReconciler{}
+	backup := &ledgerv1alpha1.Backup{}
+	reconciler.refreshStatusSummaries(backup, []ledgerv1alpha1.BackupRun{first})
+	require.Equal(t, uint64(41), backup.Status.LastBackup.LastLogSequence)
+	require.Len(t, excessRuns([]ledgerv1alpha1.BackupRun{first}, ledgerv1alpha1.BackupRunPhaseSucceeded, 0), 1)
+
+	var persisted ledgerv1alpha1.Backup
+	roundTrip(backup, &persisted)
+	reconciler.refreshStatusSummaries(&persisted, []ledgerv1alpha1.BackupRun{second})
+	require.Equal(t, uint64(42), persisted.Status.LastBackup.LastLogSequence)
+	require.Len(t, excessRuns([]ledgerv1alpha1.BackupRun{second}, ledgerv1alpha1.BackupRunPhaseSucceeded, 0), 1)
+	reconciler.refreshStatusSummaries(&persisted, nil)
+	require.Equal(t, uint64(42), persisted.Status.LastBackup.LastLogSequence)
+}
 
 func TestHasRunningRun_TreatsPendingAndEmptyAsRunning(t *testing.T) {
 	t.Parallel()

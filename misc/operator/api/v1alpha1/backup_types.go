@@ -90,6 +90,11 @@ type BackupResult struct {
 	// +optional
 	Time *metav1.Time `json:"time,omitempty"`
 
+	// CompletionUnixNano orders successful runs whose Kubernetes timestamps
+	// have the same second. It is preserved with LastBackup after run pruning.
+	// +optional
+	CompletionUnixNano int64 `json:"completionUnixNano,omitempty"`
+
 	// FilesUploaded is the number of files uploaded in the last checkpoint.
 	// +optional
 	FilesUploaded uint32 `json:"filesUploaded,omitempty"`

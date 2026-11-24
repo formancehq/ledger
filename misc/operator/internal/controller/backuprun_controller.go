@@ -173,10 +173,13 @@ func (r *BackupRunReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		return r.setRunFailed(ctx, &run, fmt.Sprintf("reading backup result: %v", err))
 	}
 
-	completion := metav1.Now()
+	completedAt := time.Now()
+	completion := metav1.NewTime(completedAt)
 	run.Status.Phase = ledgerv1alpha1.BackupRunPhaseSucceeded
 	run.Status.Message = ""
 	run.Status.CompletionTime = &completion
+	run.Status.Result.Time = &completion
+	run.Status.Result.CompletionUnixNano = completedAt.UnixNano()
 	meta.SetStatusCondition(&run.Status.Conditions, metav1.Condition{
 		Type:               "BackupCompleted",
 		Status:             metav1.ConditionTrue,

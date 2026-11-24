@@ -210,7 +210,9 @@ func (r *BackupReconciler) refreshStatusSummaries(
 ) {
 	latestSuccess := latestResultRun(runs)
 	if latestSuccess != nil && (backup.Status.LastBackup == nil || backup.Status.LastBackup.Time == nil ||
-		completionOrCreation(latestSuccess).After(backup.Status.LastBackup.Time.Time)) {
+		completionOrCreation(latestSuccess).After(backup.Status.LastBackup.Time.Time) ||
+		(completionOrCreation(latestSuccess).Time.Equal(backup.Status.LastBackup.Time.Time) &&
+			latestSuccess.Status.Result.CompletionUnixNano > backup.Status.LastBackup.CompletionUnixNano)) {
 		backup.Status.LastBackup = latestSuccess.Status.Result.DeepCopy()
 	}
 	latestFailure := latestFailedRun(runs)
@@ -378,7 +380,9 @@ func latestResultRun(runs []ledgerv1alpha1.BackupRun) *ledgerv1alpha1.BackupRun 
 		if runs[i].Status.Phase != ledgerv1alpha1.BackupRunPhaseSucceeded || runs[i].Status.Result == nil {
 			continue
 		}
-		if latest == nil || completionOrCreation(&runs[i]).After(completionOrCreation(latest).Time) {
+		if latest == nil || completionOrCreation(&runs[i]).After(completionOrCreation(latest).Time) ||
+			(completionOrCreation(&runs[i]).Time.Equal(completionOrCreation(latest).Time) &&
+				runs[i].Status.Result.CompletionUnixNano > latest.Status.Result.CompletionUnixNano) {
 			latest = &runs[i]
 		}
 	}

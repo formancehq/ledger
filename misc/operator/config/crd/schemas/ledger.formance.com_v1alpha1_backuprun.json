@@ -123,6 +123,11 @@
           "additionalProperties": false,
           "description": "Result holds the result of a successful checkpoint backup run.",
           "properties": {
+            "completionUnixNano": {
+              "description": "CompletionUnixNano orders successful runs whose Kubernetes timestamps\nhave the same second. It is preserved with LastBackup after run pruning.",
+              "format": "int64",
+              "type": "integer"
+            },
             "durationMs": {
               "description": "DurationMs is the duration of the last checkpoint in milliseconds.",
               "format": "int64",

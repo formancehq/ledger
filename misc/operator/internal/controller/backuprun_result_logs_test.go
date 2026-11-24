@@ -107,8 +107,11 @@ func TestBackupRunLogResultRecovery(t *testing.T) {
 			require.Empty(t, run.Status.Message)
 			require.NotNil(t, run.Status.Result)
 			require.NotNil(t, run.Status.Result.Time)
+			require.Equal(t, run.Status.CompletionTime, run.Status.Result.Time)
+			require.Positive(t, run.Status.Result.CompletionUnixNano)
 			require.Equal(t, &ledgerv1alpha1.BackupResult{
-				Time: run.Status.Result.Time, FilesUploaded: 7, FilesDeleted: 2,
+				Time: run.Status.Result.Time, CompletionUnixNano: run.Status.Result.CompletionUnixNano,
+				FilesUploaded: 7, FilesDeleted: 2,
 				OrphansDeleted: 3, TotalFiles: 11, DurationMs: 125,
 				LastLogSequence: 41, LastAuditSequence: 43, LastAppliedIndex: 47,
 			}, run.Status.Result)
