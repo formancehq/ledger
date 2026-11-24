@@ -7,7 +7,7 @@ namespace="$1"
   "${UPGRADE_TARGET_OPERATOR_CHART:?}" "${UPGRADE_TARGET_OPERATOR_IMAGE:?}" \
   "${UPGRADE_TARGET_OPERATOR_IMAGE_ID:?}" "${UPGRADE_SOURCE_OPERATOR_IMAGE:?}" \
   "${UPGRADE_SOURCE_OPERATOR_IMAGE_ID:?}" \
-  "${UPGRADE_SOURCE_REPOSITORY:?}" "${UPGRADE_SOURCE_TAG:?}" \
+  "${UPGRADE_SOURCE_REPOSITORY:?}" "${UPGRADE_SOURCE_TAG:?}" "${UPGRADE_SOURCE_IMAGE_ID:?}" \
   "${UPGRADE_TARGET_REPOSITORY:?}" "${UPGRADE_TARGET_TAG:?}" \
   "${UPGRADE_TARGET_IMAGE_ID:?}" "${UPGRADE_EVIDENCE_DIR:?}" \
   "${UPGRADE_ROLLOUT:?}" "${UPGRADE_REJECTED_TAG:?}"
@@ -210,11 +210,37 @@ upgrade_operator 1
 new_operator_uid="$(wait_operator "$UPGRADE_TARGET_OPERATOR_IMAGE" "$UPGRADE_TARGET_OPERATOR_IMAGE_ID")"
 [ "$new_operator_uid" != "$old_operator_uid" ] || { echo 'operator Pod was not replaced' >&2; exit 1; }
 echo "operator upgraded before Ledger: $old_operator_uid -> $new_operator_uid"
+if [ "$UPGRADE_SOURCE_TAG" = v3.0.0-rc.4 ]; then
+  # The RC.5 operator adds the peer gRPC port to the StatefulSet template.
+  # Wait for that RC.4-image rollout before using Pod UIDs as the stopped
+  # binary-upgrade baseline.
+  deadline=$(( $(date +%s) + 120 ))
+  until k get statefulset "$statefulset" -o json | jq -e '
+    any(.spec.template.spec.containers[]; .name == "ledger" and
+      any(.env[]?; .name == "GRPC_PEER_PORT") and
+      any(.ports[]?; .name == "grpc-peer"))' >/dev/null; do
+    [ "$(date +%s)" -lt "$deadline" ] || { echo 'operator did not add the peer gRPC port' >&2; exit 1; }
+    sleep 2
+  done
+  k rollout status "statefulset/$statefulset" --timeout=180s
+fi
 wait_consistent
 check_data "$before"
 after_operator_pods="$(k get pods -o json | jq -r --arg name "$statefulset" \
   '.items[] | select(.metadata.name | startswith($name + "-")) | .metadata.name + " " + .metadata.uid' | sort)"
-[ "$after_operator_pods" = "$before_pods" ] || { echo 'Ledger Pods changed during operator upgrade' >&2; exit 1; }
+[ "$(wc -l <<<"$after_operator_pods" | tr -d ' ')" -eq 3 ] || { echo 'missing RC.4 Pods after operator upgrade' >&2; exit 1; }
+if [ "$UPGRADE_SOURCE_TAG" = v3.0.0-rc.4 ]; then
+  for ordinal in 0 1 2; do
+    k get pod "$(pod "$ordinal")" -o json | jq -e \
+      --arg image "$source_image" --arg id "$UPGRADE_SOURCE_IMAGE_ID" '
+      ([.spec.containers[] | select(.name == "ledger") | .image][0] == $image) and
+      ([.status.containerStatuses[] | select(.name == "ledger") | .imageID][0] | contains($id)) and
+      any(.status.conditions[]?; .type == "Ready" and .status == "True")' >/dev/null
+  done
+  before_pods="$after_operator_pods"
+else
+  [ "$after_operator_pods" = "$before_pods" ] || { echo 'Ledger Pods changed during operator upgrade' >&2; exit 1; }
+fi
 [ "$(pvc_ids)" = "$before_pvcs" ] || { echo 'PVC identity changed during operator upgrade' >&2; exit 1; }
 
 # A non-adjacent downgrade stays below the local target operator version, so

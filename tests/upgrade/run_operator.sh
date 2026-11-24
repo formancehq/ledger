@@ -149,6 +149,7 @@ UPGRADE_TARGET_OPERATOR_CHART="$target_chart" UPGRADE_TARGET_OPERATOR_IMAGE="$op
 UPGRADE_TARGET_OPERATOR_IMAGE_ID="$target_operator_id" \
 UPGRADE_SOURCE_OPERATOR_IMAGE="$source_operator_image" UPGRADE_SOURCE_OPERATOR_IMAGE_ID="$source_operator_id" \
 UPGRADE_SOURCE_REPOSITORY="$source_repository" UPGRADE_SOURCE_TAG="$source_tag" \
+UPGRADE_SOURCE_IMAGE_ID="$source_id" \
 UPGRADE_TARGET_REPOSITORY="$target_repository" UPGRADE_TARGET_TAG="$target_tag" \
 UPGRADE_TARGET_IMAGE_ID="$target_id" \
 	UPGRADE_ROLLOUT="$rollout" UPGRADE_REJECTED_TAG="$rejected_tag" \
