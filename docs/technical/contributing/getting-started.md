@@ -30,6 +30,7 @@ Repository scripts and contributor workflows must not rely on host-installed CLI
 |---|---|---|
 | `default` | `nix develop` (loaded by direnv) | `ci` plus everyday local tools: `trufflehog` and `uv` (pre-commit hooks set up by `.envrc`), the `ginkgo` CLI, `grpcurl`, `acli` (Jira publication) and `setup-envtest`. The shell hook exports `KUBEBUILDER_ASSETS`. |
 | `ci` | `nix develop .#ci` | Only the tools CI jobs run: Go, Just, golangci-lint, protoc and its plugins, mockgen, jsonnet, `jq`, Python, Helm, GoReleaser Pro. |
+| `release` | `nix develop .#release --command just release` | `ci` plus Syft for tagged release archive SBOMs. |
 | `sdk` | `nix develop .#sdk --command just test-sdk-bigint` | `ci` plus Speakeasy and Node.js. |
 | `perf` | `nix develop .#perf` | `ci` plus `k6`, Pulumi, `kubectl`, AWS CLI, Docker CLI, Node.js for workflow tests and `benchstat` (goperf). See [performance benchmarks](performance-benchmarks.md). |
 | `operator-tests` | `nix develop .#operator-tests` | `ci` plus pinned `setup-envtest` for Docker-free operator admission tests; select Kubernetes 1.32.x with `setup-envtest use 1.32.x -p path`. |
