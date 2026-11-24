@@ -89,6 +89,19 @@ through each adjacent RC in order; do not jump to the newest RC. If the source
 cannot be identified or the current Operator already rejects the pinning step,
 stop and plan a separately validated migration. Do not delete the StatefulSet
 or PVCs to bypass the source check.
+
+### Backup CRD migration for checkpoint-only scheduling
+
+For the `rc.4` to `rc.5` operator upgrade, migrate any existing `Backup` and
+`BackupRun` resources before starting the target operator. Stop the old operator,
+confirm no backup Job is active, delete the old BackupRuns and Backups, install
+the new CRDs, recreate Backups with the new schedule shape, then start the
+target operator. The old objects cannot be converted in place; leaving them
+stored can prevent the target operator from decoding its Backup cache. Follow
+the [Backup CRD migration procedure](backup-restore.md#crd-migration-for-checkpoint-only-scheduling)
+for the full field and status changes. This Kubernetes resource migration is
+separate from the backup artifact exception above.
+
 ### Configuration and capability state
 
 RC.4 to RC.5 preserves ClusterPolicy at its original key and extracts only
