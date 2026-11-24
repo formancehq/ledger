@@ -35,7 +35,7 @@ jobs:
     env:
       GOPATH: /tmp/go
     steps:
-      - uses: namespacelabs/nscloud-checkout-action@66f2dc6f6c42a8ac6c4e53473c4840006822831e # v9
+      - uses: namespacelabs/nscloud-checkout-action@c79409f8642d7fca9c1169a97f84d7ada5de1f9e # v9
         with:
           fetch-depth: 0
           dissociate: true
@@ -66,7 +66,7 @@ jobs:
     env:
       GOPATH: /tmp/go
     steps:
-      - uses: namespacelabs/nscloud-checkout-action@66f2dc6f6c42a8ac6c4e53473c4840006822831e # v9
+      - uses: namespacelabs/nscloud-checkout-action@c79409f8642d7fca9c1169a97f84d7ada5de1f9e # v9
         with:
           fetch-depth: 0
           dissociate: true
@@ -89,7 +89,7 @@ jobs:
     env:
       GOPATH: /tmp/go
     steps:
-      - uses: namespacelabs/nscloud-checkout-action@66f2dc6f6c42a8ac6c4e53473c4840006822831e # v9
+      - uses: namespacelabs/nscloud-checkout-action@c79409f8642d7fca9c1169a97f84d7ada5de1f9e # v9
         with:
           fetch-depth: 0
           dissociate: true
@@ -112,7 +112,7 @@ jobs:
     env:
       GOPATH: /tmp/go
     steps:
-      - uses: namespacelabs/nscloud-checkout-action@66f2dc6f6c42a8ac6c4e53473c4840006822831e # v9
+      - uses: namespacelabs/nscloud-checkout-action@c79409f8642d7fca9c1169a97f84d7ada5de1f9e # v9
         with:
           fetch-depth: 0
           dissociate: true
@@ -135,7 +135,7 @@ jobs:
     env:
       GOPATH: /tmp/go
     steps:
-      - uses: namespacelabs/nscloud-checkout-action@66f2dc6f6c42a8ac6c4e53473c4840006822831e # v9
+      - uses: namespacelabs/nscloud-checkout-action@c79409f8642d7fca9c1169a97f84d7ada5de1f9e # v9
         with:
           fetch-depth: 0
           dissociate: true
@@ -158,7 +158,7 @@ jobs:
     env:
       GOPATH: /tmp/go
     steps:
-      - uses: namespacelabs/nscloud-checkout-action@66f2dc6f6c42a8ac6c4e53473c4840006822831e # v9
+      - uses: namespacelabs/nscloud-checkout-action@c79409f8642d7fca9c1169a97f84d7ada5de1f9e # v9
         with:
           fetch-depth: 0
           dissociate: true
@@ -203,7 +203,7 @@ jobs:
     env:
       GOPATH: /tmp/go
     steps:
-      - uses: namespacelabs/nscloud-checkout-action@66f2dc6f6c42a8ac6c4e53473c4840006822831e # v9
+      - uses: namespacelabs/nscloud-checkout-action@c79409f8642d7fca9c1169a97f84d7ada5de1f9e # v9
         with:
           fetch-depth: 0
           dissociate: true
@@ -222,7 +222,7 @@ jobs:
     env:
       GOPATH: /tmp/go
     steps:
-      - uses: namespacelabs/nscloud-checkout-action@66f2dc6f6c42a8ac6c4e53473c4840006822831e # v9
+      - uses: namespacelabs/nscloud-checkout-action@c79409f8642d7fca9c1169a97f84d7ada5de1f9e # v9
         with:
           fetch-depth: 0
           dissociate: true
@@ -245,7 +245,7 @@ jobs:
     env:
       GOPATH: /tmp/go
     steps:
-      - uses: namespacelabs/nscloud-checkout-action@66f2dc6f6c42a8ac6c4e53473c4840006822831e # v9
+      - uses: namespacelabs/nscloud-checkout-action@c79409f8642d7fca9c1169a97f84d7ada5de1f9e # v9
         with:
           fetch-depth: 0
           dissociate: true
@@ -268,7 +268,7 @@ jobs:
     env:
       GOPATH: /tmp/go
     steps:
-      - uses: namespacelabs/nscloud-checkout-action@66f2dc6f6c42a8ac6c4e53473c4840006822831e # v9
+      - uses: namespacelabs/nscloud-checkout-action@c79409f8642d7fca9c1169a97f84d7ada5de1f9e # v9
         with:
           fetch-depth: 0
           dissociate: true
@@ -291,7 +291,7 @@ jobs:
     env:
       GOPATH: /tmp/go
     steps:
-      - uses: namespacelabs/nscloud-checkout-action@66f2dc6f6c42a8ac6c4e53473c4840006822831e # v9
+      - uses: namespacelabs/nscloud-checkout-action@c79409f8642d7fca9c1169a97f84d7ada5de1f9e # v9
         with:
           fetch-depth: 0
           dissociate: true
@@ -313,7 +313,7 @@ jobs:
     env:
       GOPATH: /tmp/go
     steps:
-      - uses: namespacelabs/nscloud-checkout-action@66f2dc6f6c42a8ac6c4e53473c4840006822831e # v9
+      - uses: namespacelabs/nscloud-checkout-action@c79409f8642d7fca9c1169a97f84d7ada5de1f9e # v9
         with:
           fetch-depth: 0
           dissociate: true
@@ -330,7 +330,7 @@ jobs:
     env:
       GOPATH: /tmp/go
     steps:
-      - uses: namespacelabs/nscloud-checkout-action@66f2dc6f6c42a8ac6c4e53473c4840006822831e # v9
+      - uses: namespacelabs/nscloud-checkout-action@c79409f8642d7fca9c1169a97f84d7ada5de1f9e # v9
         with:
           fetch-depth: 0
           dissociate: true
@@ -383,7 +383,7 @@ jobs:
     env:
       GOPATH: /tmp/go
     steps:
-      - uses: namespacelabs/nscloud-checkout-action@66f2dc6f6c42a8ac6c4e53473c4840006822831e # v9
+      - uses: namespacelabs/nscloud-checkout-action@c79409f8642d7fca9c1169a97f84d7ada5de1f9e # v9
         with:
           fetch-depth: 0
           dissociate: true
@@ -405,7 +405,7 @@ jobs:
     env:
       GOPATH: /tmp/go
     steps:
-      - uses: namespacelabs/nscloud-checkout-action@66f2dc6f6c42a8ac6c4e53473c4840006822831e # v9
+      - uses: namespacelabs/nscloud-checkout-action@c79409f8642d7fca9c1169a97f84d7ada5de1f9e # v9
         with:
           fetch-depth: 0
           dissociate: true
@@ -446,8 +446,9 @@ jobs:
       GOPATH: /tmp/go
       # See pr-images.yml for the override semantics.
       IMAGE_REPOSITORY: ${{ vars.IMAGE_REPOSITORY || 'ghcr.io/formancehq/ledger' }}
+      OPERATOR_IMAGE_REPOSITORY: ${{ vars.OPERATOR_IMAGE_REPOSITORY || 'ghcr.io/formancehq/ledger-operator' }}
     steps:
-      - uses: namespacelabs/nscloud-checkout-action@66f2dc6f6c42a8ac6c4e53473c4840006822831e # v9
+      - uses: namespacelabs/nscloud-checkout-action@c79409f8642d7fca9c1169a97f84d7ada5de1f9e # v9
         with:
           fetch-depth: 0
           dissociate: true

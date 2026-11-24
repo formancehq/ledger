@@ -132,6 +132,7 @@
           localPackages = (with pkgs; [
             acli
             ginkgo
+            gh
             grpcurl
             trufflehog
             uv
@@ -152,8 +153,9 @@
             GOTOOLCHAIN = "local";
           };
 
-          # `just generate-demo`: vhs wraps ffmpeg, ttyd and, on Linux, chromium.
-          demo = mkTaskShell (with pkgs; [ grpcurl vhs ]);
+          # Tagged releases generate SPDX files with Syft. Nightly and PR
+          # builds use the smaller CI shell and do not generate SBOMs.
+          release = mkTaskShell [ pkgs-unstable.syft ];
 
           # `just test-sdk-bigint` and tests/sdk contract probes.
           sdk = mkTaskShell [

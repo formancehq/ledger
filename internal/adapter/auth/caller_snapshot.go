@@ -16,15 +16,15 @@ type (
 )
 
 // WithClusterInternal marks the context as belonging to a request that
-// authenticated via the cluster-secret (peer-to-peer trust boundary).
+// arrived through the authenticated peer transport boundary.
 // It allows downstream handlers to distinguish forwarded requests from
 // direct user requests when deciding which fields to trust.
 func WithClusterInternal(ctx context.Context, internal bool) context.Context {
 	return context.WithValue(ctx, clusterInternalKey{}, internal)
 }
 
-// IsClusterInternal reports whether the request authenticated via the
-// cluster-secret fast path. False when the marker is absent.
+// IsClusterInternal reports whether the request arrived through the
+// authenticated peer transport boundary. False when the marker is absent.
 func IsClusterInternal(ctx context.Context) bool {
 	v, _ := ctx.Value(clusterInternalKey{}).(bool)
 
@@ -77,10 +77,11 @@ func IsSystemActor(ctx context.Context) bool {
 // ResolveCallerSnapshot returns the caller snapshot for the current context,
 // in precedence order:
 //  1. an explicit system actor (WithSystemActor) — a background action;
-//  2. an explicitly forwarded capability (set only after the leader validates
+//  2. locally disabled authentication, even on an authenticated peer hop;
+//  3. an explicitly forwarded capability (set only after the leader validates
 //     the cluster peer and the frozen snapshot);
-//  3. the authenticated cluster peer when no original caller was forwarded;
-//  4. one built from the immutable authentication state attached locally by
+//  4. the authenticated cluster peer when no original caller was forwarded;
+//  5. one built from the immutable authentication state attached locally by
 //     EvaluateGRPCCredentials.
 //
 // Use this from both the follower (when forwarding to the leader, to keep the
@@ -91,11 +92,17 @@ func ResolveCallerSnapshot(ctx context.Context) *commonpb.CallerSnapshot {
 		return commands.SystemCallerSnapshot(component)
 	}
 
+	// Peer transport authentication identifies the sending node. It does not
+	// enable caller authentication for a cluster configured with auth disabled.
+	if state, ok := authenticationStateFromContext(ctx); ok && !state.enabled {
+		return authDisabledCallerSnapshot()
+	}
+
 	if forwarded := ForwardedSnapshotFromContext(ctx); forwarded != nil {
 		return forwarded
 	}
 
-	// The cluster secret authenticates the peer, not an anonymous user. When a
+	// The peer transport credential authenticates the node, not an anonymous user. When a
 	// request carries no forwarded caller (for example ledgerctl or a reconcile
 	// RPC), preserve that distinction instead of fabricating an anonymous caller
 	// holding every scope granted to the peer transport.
@@ -131,11 +138,7 @@ func buildCallerSnapshot(ctx context.Context) *commonpb.CallerSnapshot {
 			}
 		}
 
-		return &commonpb.CallerSnapshot{
-			Principal: &commonpb.CallerSnapshot_AuthDisabled{
-				AuthDisabled: &commonpb.AuthDisabledCaller{},
-			},
-		}
+		return authDisabledCallerSnapshot()
 	}
 
 	identity := &commonpb.CallerIdentity{
@@ -162,6 +165,14 @@ func buildCallerSnapshot(ctx context.Context) *commonpb.CallerSnapshot {
 
 	return &commonpb.CallerSnapshot{
 		Principal: &commonpb.CallerSnapshot_Authenticated{Authenticated: authenticated},
+	}
+}
+
+func authDisabledCallerSnapshot() *commonpb.CallerSnapshot {
+	return &commonpb.CallerSnapshot{
+		Principal: &commonpb.CallerSnapshot_AuthDisabled{
+			AuthDisabled: &commonpb.AuthDisabledCaller{},
+		},
 	}
 }
 

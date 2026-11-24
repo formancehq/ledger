@@ -301,3 +301,16 @@ The chain's existence is what allows every other dataset in Pebble to be a *proj
 > If a dataset is derivable from the audit chain by replay, the checker re-derives it and compares. If a dataset is *not* derivable, it **must** be hash-bound.
 
 See `internal/application/check/checker.go:37-68` and `194-227` for the in-code formulation. The corollary is the rule in [`AGENTS.md` invariant #8](../../../../../AGENTS.md): adding a new persisted dataset without a matching `compare*` / `collect*` pass in the checker is the violation. Hash-binding is the escape hatch reserved for data that cannot be derived — and the audit chain is the only thing currently in that category.
+# Proposal capability declarations
+
+`AuditEntry.required_capabilities` preserves the committed proposal's semantic
+requirements after Raft WAL compaction. The list is copied from the proposal
+for both successful and failed audited outcomes. A nonempty list is appended
+to the canonical header hash preimage as a big-endian count followed by
+big-endian capability IDs in proposal order. An absent list adds no bytes,
+preserving every historical entry's hash. Checker and replay read the stored
+entry; the list does not participate in request identity or idempotency.
+The current binary supports no active semantic capability IDs, so it cannot
+emit a nonempty declaration while mixed with an older binary. A later feature
+must activate its capability only after this audit format is available on all
+voters, preserving identical apply output during rolling upgrades.

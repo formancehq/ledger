@@ -351,7 +351,9 @@ The Operator's `Backup` CRD (`misc/operator/api/v1alpha1/`) wraps backups behind
 | Delta projection rebuild | `internal/infra/backup/rebuild.go`, `internal/domain/replay/` |
 | `Backup` / `BackupRun` CRDs | `misc/operator/api/v1alpha1/` |
 
-Operational cluster policy is retained in full checkpoints. Incremental manifests
+Configuration and capability state are retained in full checkpoints. Versioned full and incremental manifests
 carry a separate policy snapshot even if no business history changed; restore
 applies it after legacy log rebuilding. See the
 [policy restore contract](incremental-restore-contract.md#operational-cluster-policy).
+Schema-3 migration and old-reader rejection are specified in the
+[control-state contract](../storage/control-state.md).

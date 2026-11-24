@@ -22,11 +22,12 @@ import (
 
 // rc.3 voters cannot apply proposal payloads, and voters before rc.4 encode
 // mirror asset mappings differently in the audited CreateLedger order. Stop
-// every rc.3 node before starting rc.4. rc.5 retypes AggregatedVolume totals
-// at the unchanged service protocol revision, so a node on one side of rc.5
-// misdecodes an aggregate forwarded by a peer on the other: stop every rc.4
-// node before starting rc.5. RC adjacency is still checked by
-// validateRCUpgrade. scripts/checkprotocolversion parses this literal.
+// every rc.3 node before starting rc.4. The dedicated peer service port and
+// membership address migration first ship after the published rc.4, which
+// cannot read schema 3 or apply native configuration/capability controls.
+// rc.5 also retypes AggregatedVolume totals at the unchanged protocol revision.
+// Stop every rc.4 node before starting rc.5. validateRCUpgrade checks adjacency,
+// and scripts/checkprotocolversion parses this literal.
 var mandatoryStopVersions = []string{"v3.0.0-rc.4", "v3.0.0-rc.5"}
 
 const requiredUpgradePoll = 5 * time.Second
@@ -131,6 +132,11 @@ func (r *ClusterReconciler) reconcileRequiredUpgrade(ctx context.Context, ledger
 
 func (r *ClusterReconciler) reconcileRequiredUpgradeWithExec(ctx context.Context, ledger *ledgerv1alpha1.Cluster, sts *appsv1.StatefulSet, exec ledgerctlExec) (proceed bool, result ctrl.Result, err error) {
 	state := ledger.Status.Upgrade
+	if state == nil {
+		if err := r.releaseUpgradeClaimsFinalizer(ctx, ledger); err != nil {
+			return false, ctrl.Result{}, err
+		}
+	}
 	if state == nil && sts == nil {
 		return true, ctrl.Result{}, nil
 	}
@@ -186,8 +192,14 @@ func (r *ClusterReconciler) reconcileRequiredUpgradeWithExec(ctx context.Context
 			return false, ctrl.Result{}, err
 		}
 	}
+	if err := r.ensureUpgradeClaimsFinalizer(ctx, ledger); err != nil {
+		return false, ctrl.Result{}, err
+	}
 	if ledger.Spec.Image.Tag != state.Target {
 		return false, ctrl.Result{}, fmt.Errorf("upgrade from %s to %s is in progress; restore spec.image.tag to %s before changing target", state.Source, state.Target, state.Target)
+	}
+	if state.Phase == "Adopting" {
+		return r.reconcileUpgradeClaimAdoption(ctx, ledger, sts)
 	}
 	// Keep the released intent hash, including claim declarations. The Pod hash
 	// excludes those fields, but storage edits must not alter a pinned upgrade.
@@ -391,11 +403,11 @@ func (r *ClusterReconciler) reconcileRequiredUpgradeWithExec(ctx context.Context
 		if !ready {
 			return false, ctrl.Result{RequeueAfter: requiredUpgradePoll}, nil
 		}
-		if err := r.persistUpgrade(ctx, ledger, nil); err != nil {
+		if err := r.advanceUpgrade(ctx, ledger, "Adopting"); err != nil {
 			return false, ctrl.Result{}, err
 		}
 
-		return true, ctrl.Result{}, nil
+		return false, ctrl.Result{RequeueAfter: requiredUpgradePoll}, nil
 	default:
 		return false, ctrl.Result{}, fmt.Errorf("unknown stopped upgrade phase %q", state.Phase)
 	}

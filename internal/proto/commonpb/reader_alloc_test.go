@@ -21,9 +21,9 @@ func BenchmarkReader_AsReader(b *testing.B) {
 	}
 }
 
-// BenchmarkReader_GetChain confirms that a chained descent through sub-message
-// getters allocates nothing: each transitive AsReader() is likewise a pointer
-// type-conversion.
+// BenchmarkReader_GetChain measures a descent through a message list. Singular
+// AsReader conversions allocate nothing; boxing a ListReader slice into an
+// interface can allocate when the compiler cannot inline the chain.
 func BenchmarkReader_GetChain(b *testing.B) {
 	tx := &commonpb.Transaction{
 		Postings: []*commonpb.Posting{{Source: "world", Destination: "user:1", Asset: "USD"}},

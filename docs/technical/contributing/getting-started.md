@@ -30,7 +30,7 @@ Repository scripts and contributor workflows must not rely on host-installed CLI
 |---|---|---|
 | `default` | `nix develop` (loaded by direnv) | `ci` plus everyday local tools: `trufflehog` and `uv` (pre-commit hooks set up by `.envrc`), the `ginkgo` CLI, `grpcurl`, `acli` (Jira publication) and `setup-envtest`. The shell hook exports `KUBEBUILDER_ASSETS`. |
 | `ci` | `nix develop .#ci` | Only the tools CI jobs run: Go, Just, golangci-lint, protoc and its plugins, mockgen, jsonnet, `jq`, Python, Helm, GoReleaser Pro. |
-| `demo` | `nix develop .#demo --command just generate-demo` | `ci` plus `vhs` (which wraps ffmpeg, ttyd and, on Linux, chromium) and `grpcurl`. |
+| `release` | `nix develop .#release --command just release` | `ci` plus Syft for tagged release archive SBOMs. |
 | `sdk` | `nix develop .#sdk --command just test-sdk-bigint` | `ci` plus Speakeasy and Node.js. |
 | `perf` | `nix develop .#perf` | `ci` plus `k6`, Pulumi, `kubectl`, AWS CLI, Docker CLI, Node.js for workflow tests and `benchstat` (goperf). See [performance benchmarks](performance-benchmarks.md). |
 | `operator-tests` | `nix develop .#operator-tests` | `ci` plus pinned `setup-envtest` for Docker-free operator admission tests; select Kubernetes 1.32.x with `setup-envtest use 1.32.x -p path`. |
@@ -81,7 +81,6 @@ ledger/
 ├── tests/                     # Test suites (e2e/, scenarios/, antithesis/, perf/, schemathesis/)
 ├── misc/
 │   ├── proto/                 # Protocol Buffer definitions
-│   ├── demo/                  # VHS tape files for CLI demos
 │   ├── numscript/examples/    # Numscript examples
 │   └── devenv/                # Development environment
 └── docs/                      # Documentation
@@ -124,6 +123,18 @@ just test-e2e
 2. Run the fast baseline: `bash scripts/agent-check`
 3. Run focused tests for the changed package or subsystem
 4. Before publishing a PR candidate, run `AI_REVIEW_BASE_SHA=<base-sha> bash scripts/agent-check-pr`
+
+For an ordinary agent push, use
+`AI_REVIEW_BASE_SHA=<base-sha> bash scripts/agent-push origin <branch>`.
+For the first push before a PR exists, also set `AI_REVIEW_BASE_REF=<base-branch>`
+and use the current SHA of that branch on `origin`. The target branch must not
+already exist on the remote. Once the PR exists, the command checks the SHA
+against the PR base instead.
+The command runs the same PR validation with the pinned Nix tools and requires
+a clean worktree before and after normalization. If the tools are unavailable
+or normalization changes files, the command stops before `git push`. Commit
+the generated changes and rerun it. Conflict rebases use their separate
+force-with-lease procedure.
 
 The PR command selects applicable normalization and focused tests from the
 exact diff. Use `bash scripts/agent-check-full` only as an explicit broad

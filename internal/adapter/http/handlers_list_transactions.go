@@ -111,7 +111,7 @@ func (s *Server) handleListTransactions(w http.ResponseWriter, r *http.Request) 
 	filter := combineFilters(filters...)
 
 	profile.EnterExecute()
-	cursor, err := s.backend.ListTransactions(ctx, ledgerName, page.fetchSize(), afterTxID, filter, page.reverse)
+	cursor, err := s.backend.ListTransactions(ctx, ledgerName, page.fetchSize(), transactionAfterID(page.cursor.Key, afterTxID), filter, page.reverse)
 	profile.LeaveExecute()
 
 	if err != nil {
@@ -129,4 +129,13 @@ func (s *Server) handleListTransactions(w http.ResponseWriter, r *http.Request) 
 
 	finishProfile(w, r, profile)
 	writePageOK(w, r, transactions, links)
+}
+
+// transactionAfterID keeps an explicit zero distinct from an empty cursor.
+func transactionAfterID(key string, id uint64) *uint64 {
+	if key == "" {
+		return nil
+	}
+
+	return &id
 }

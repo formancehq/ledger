@@ -29,15 +29,15 @@ import (
 	ledgerv1alpha1 "github.com/formancehq/ledger/misc/operator/api/v1alpha1"
 )
 
-var testStopVersions = []string{"v3.0.0-rc.4"}
+var testStopVersions = []string{"v3.0.0-rc.4", "v3.0.0-rc.5"}
 
 func TestMandatoryStopVersionBoundary(t *testing.T) {
 	t.Parallel()
 	require.False(t, requiresStoppedUpgrade("v3.0.0-rc.2", "v3.0.0-rc.3", mandatoryStopVersions), "rc.3 must remain rolling")
 	require.True(t, requiresStoppedUpgrade("v3.0.0-rc.3", "v3.0.0-rc.4", mandatoryStopVersions), "rc.4 must stop rc.3 voters before emitting payloads")
+	require.True(t, requiresStoppedUpgrade("v3.0.0-rc.4", "v3.0.0-rc.5", mandatoryStopVersions), "rc.5 must stop rc.4 voters before peer port, schema, controls and aggregate changes")
 	require.True(t, requiresPinnedUpgradeTarget("v3.0.0-rc.2", "latest", mandatoryStopVersions), "a moving tag could cross the rc.4 boundary")
 	require.True(t, requiresPinnedUpgradeTarget("v3.0.0-rc.3", "latest", mandatoryStopVersions))
-	require.True(t, requiresStoppedUpgrade("v3.0.0-rc.4", "v3.0.0-rc.5", mandatoryStopVersions), "rc.5 must stop rc.4 voters: they misdecode aggregate totals forwarded by an rc.5 peer")
 	require.True(t, requiresPinnedUpgradeTarget("v3.0.0-rc.4", "latest", mandatoryStopVersions), "a moving tag could cross the rc.5 boundary")
 	for _, tt := range []struct {
 		source, target string
@@ -47,16 +47,19 @@ func TestMandatoryStopVersionBoundary(t *testing.T) {
 		{"v3.0.0-rc.2", "v3.0.0-rc.3", false},
 		{"v3.0.0-rc.1", "v3.0.0-rc.3", false}, // Admission still rejects the RC jump.
 		{"v3.0.0-rc.3", "v3.0.0-rc.4", true},
+		{"v3.0.0-rc.4", "v3.0.0-rc.5", true},
 		{"v3.0.0-rc.2", "v3.0.0-rc.4", true}, // Selection crosses the boundary; admission still rejects the RC jump.
 		{"v3.0.0-rc.3", "v3.0.0-rc.3", false},
 		{"v3.0.0-rc.4", "v3.0.0-rc.3", false},
 		{"latest", "v3.0.0-rc.4", false},
+		{"latest", "v3.0.0-rc.5", false},
 	} {
 		require.Equal(t, tt.stop, requiresStoppedUpgrade(tt.source, tt.target, testStopVersions), "%s -> %s", tt.source, tt.target)
 	}
 	require.True(t, requiresPinnedUpgradeTarget("v3.0.0-rc.3", "latest", testStopVersions))
 	require.True(t, requiresPinnedUpgradeTarget("v3.0.0-rc.3", "3.0.0-rc.4", testStopVersions))
-	require.False(t, requiresPinnedUpgradeTarget("v3.0.0-rc.4", "latest", testStopVersions))
+	require.True(t, requiresPinnedUpgradeTarget("v3.0.0-rc.4", "latest", testStopVersions))
+	require.False(t, requiresPinnedUpgradeTarget("v3.0.0-rc.5", "latest", testStopVersions))
 	for _, tt := range []struct {
 		source, target string
 		block          bool
@@ -64,6 +67,7 @@ func TestMandatoryStopVersionBoundary(t *testing.T) {
 		{"latest", "v3.0.0", true},
 		{"", "v3.0.0", true}, // Digest or unreadable source image.
 		{"latest", "v3.0.0-rc.4", true},
+		{"latest", "v3.0.0-rc.5", true},
 		{"latest", "v3.0.0-rc.3", false},
 		{"latest", "latest", false},
 		{"latest", "main", false},
@@ -361,6 +365,9 @@ func TestStoppedUpgradeWaitsForOldPodsAndRetainsClaim(t *testing.T) {
 	require.NotEqual(t, computeSpecHash(&cluster.Spec), cluster.Status.Upgrade.TargetSpecHash)
 	require.NotEmpty(t, cluster.Status.Upgrade.DrainEpoch)
 	require.False(t, drained)
+	persisted := &ledgerv1alpha1.Cluster{}
+	require.NoError(t, c.Get(ctx, types.NamespacedName{Name: cluster.Name, Namespace: cluster.Namespace}, persisted))
+	require.Contains(t, persisted.Finalizers, upgradeClaimsFinalizer, "claims are detached only after the finalizer is durable")
 	proceed, _, err = r.reconcileRequiredUpgradeWithExec(ctx, cluster, sts, exec)
 	require.NoError(t, err)
 	require.False(t, proceed)
@@ -523,20 +530,48 @@ func TestStoppedUpgradeWaitsForOldPodsAndRetainsClaim(t *testing.T) {
 	replacement.UID = types.UID("newer-sts")
 	require.NoError(t, c.Create(ctx, replacement))
 	require.NoError(t, c.Status().Update(ctx, replacement))
-	for _, phase := range []string{"Verifying", "Unblocking"} {
+	for _, phase := range []string{"Verifying", "Unblocking", "Adopting"} {
 		proceed, _, err = r.reconcileRequiredUpgradeWithExec(ctx, cluster, replacement, exec)
 		require.NoError(t, err)
 		require.False(t, proceed)
 		require.Equal(t, phase, cluster.Status.Upgrade.Phase)
 	}
+	require.False(t, drained)
+	require.True(t, released)
+	require.Contains(t, strings.Join(commands, " "), "'end-drain'")
+	require.Equal(t, appsv1.DeletePersistentVolumeClaimRetentionPolicyType, buildRetentionPolicy(cluster).WhenDeleted)
+	proceed, _, err = r.reconcileRequiredUpgradeWithExec(ctx, cluster, replacement, exec)
+	require.NoError(t, err)
+	require.False(t, proceed)
+	require.NoError(t, c.Get(ctx, key, replacement))
+	require.Equal(t, appsv1.DeletePersistentVolumeClaimRetentionPolicyType, replacement.Spec.PersistentVolumeClaimRetentionPolicy.WhenDeleted)
+	require.Equal(t, appsv1.DeletePersistentVolumeClaimRetentionPolicyType, replacement.Spec.PersistentVolumeClaimRetentionPolicy.WhenScaled)
+	// Ordinary reconciliation recreates a missing replacement with the requested
+	// policy while the claim inventory stays recorded.
+	proceed, _, err = r.reconcileRequiredUpgradeWithExec(ctx, cluster, nil, exec)
+	require.NoError(t, err)
+	require.True(t, proceed)
+	require.Equal(t, "Adopting", cluster.Status.Upgrade.Phase)
+	// Until the replacement owns every recorded claim, Cluster deletion still
+	// needs the finalizer and the claim inventory.
+	for _, name := range []string{claimName, dataClaimName} {
+		proceed, _, err = r.reconcileRequiredUpgradeWithExec(ctx, cluster, replacement, exec)
+		require.NoError(t, err)
+		require.False(t, proceed)
+		require.Equal(t, "Adopting", cluster.Status.Upgrade.Phase)
+		require.NoError(t, c.Get(ctx, types.NamespacedName{Name: cluster.Name, Namespace: cluster.Namespace}, persisted))
+		require.Contains(t, persisted.Finalizers, upgradeClaimsFinalizer)
+		adopted := &corev1.PersistentVolumeClaim{}
+		require.NoError(t, c.Get(ctx, types.NamespacedName{Name: name, Namespace: cluster.Namespace}, adopted))
+		adopted.OwnerReferences = []metav1.OwnerReference{{APIVersion: "apps/v1", Kind: "StatefulSet", Name: replacement.Name, UID: replacement.UID}}
+		require.NoError(t, c.Update(ctx, adopted))
+	}
 	proceed, _, err = r.reconcileRequiredUpgradeWithExec(ctx, cluster, replacement, exec)
 	require.NoError(t, err)
 	require.True(t, proceed)
 	require.Nil(t, cluster.Status.Upgrade)
-	require.Equal(t, appsv1.DeletePersistentVolumeClaimRetentionPolicyType, buildRetentionPolicy(cluster).WhenDeleted)
-	require.False(t, drained)
-	require.True(t, released)
-	require.Contains(t, strings.Join(commands, " "), "'end-drain'")
+	require.NoError(t, c.Get(ctx, types.NamespacedName{Name: cluster.Name, Namespace: cluster.Namespace}, persisted))
+	require.NotContains(t, persisted.Finalizers, upgradeClaimsFinalizer)
 	proceed, _, err = r.reconcileRequiredUpgradeWithExec(ctx, cluster, replacement, exec)
 	require.NoError(t, err)
 	require.True(t, proceed)

@@ -37,6 +37,7 @@ paths:
         no query parameters are accepted. Every request's required granular
         scope is checked before dispatch. Ledger/index/numscript operations
         require ledger:WriteLedger; transactions ledger:WriteTransaction;
+        Numscript execution requires ledger:ExecuteNumscript;
         metadata/schema/account types ledger:WriteMetadata; prepared queries
         ledger:WriteQuery; signing/events/maintenance ledger:WriteOps; query
         checkpoints and schedules ledger:WriteCluster. Initial ledger metadata
@@ -341,6 +342,8 @@ paths:
         named `_` would be unreachable over REST. Creating it is rejected with a
         validation error. The exact name `_system` is also reserved for system
         events and rejected. Other underscore-prefixed names remain valid.
+        MIRROR requires mirrorSource. NORMAL, including when mode is omitted,
+        must omit mirrorSource. A mismatch returns HTTP 400 without creating a ledger.
       operationId: v3CreateLedger
       x-speakeasy-name-override: CreateLedger
       tags:
@@ -349,6 +352,7 @@ paths:
         - BearerAuth: []
         - {}
       parameters:
+        - $ref: '#/components/parameters/SkipResponse'
         - $ref: '#/components/parameters/LedgerName'
         - $ref: '#/components/parameters/IdempotencyKey'
       requestBody:
@@ -363,40 +367,42 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/CreateLedgerResponse'
+                anyOf:
+                  - $ref: '#/components/schemas/CompactWriteResponse'
+                  - $ref: '#/components/schemas/CreateLedgerResponse'
           links:
             GetCreatedLedger:
               operationId: v3GetLedger
               parameters:
-                ledgerName: '$response.body#/data/name'
+                ledgerName: '$request.path.ledgerName'
             DeleteCreatedLedger:
               operationId: v3DeleteLedger
               parameters:
-                ledgerName: '$response.body#/data/name'
+                ledgerName: '$request.path.ledgerName'
             GetLedgerStats:
               operationId: v3GetLedgerStats
               parameters:
-                ledgerName: '$response.body#/data/name'
+                ledgerName: '$request.path.ledgerName'
             CreateTransactionInLedger:
               operationId: v3CreateTransaction
               parameters:
-                ledgerName: '$response.body#/data/name'
+                ledgerName: '$request.path.ledgerName'
             ListLedgerAccounts:
               operationId: v3ListAccounts
               parameters:
-                ledgerName: '$response.body#/data/name'
+                ledgerName: '$request.path.ledgerName'
             ListLedgerLogs:
               operationId: v3ListLedgerLogs
               parameters:
-                ledgerName: '$response.body#/data/name'
+                ledgerName: '$request.path.ledgerName'
             SaveNumscriptInLedger:
               operationId: v3SaveNumscript
               parameters:
-                ledgerName: '$response.body#/data/name'
+                ledgerName: '$request.path.ledgerName'
             BulkInLedger:
               operationId: v3BulkOperations
               parameters:
-                ledgerName: '$response.body#/data/name'
+                ledgerName: '$request.path.ledgerName'
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
@@ -542,6 +548,7 @@ paths:
             format: date-time
           description: |
             Filter logs with date >= startDate (inclusive, RFC3339 format).
+            A sub-microsecond bound is rounded up to the next stored microsecond.
             Must be on or after the Unix epoch (1970-01-01T00:00:00Z); earlier
             dates are rejected with a 400.
             Requires the builtin `LOG_DATE` index to be enabled on the ledger.
@@ -552,6 +559,7 @@ paths:
             format: date-time
           description: |
             Filter logs with date < endDate (exclusive, RFC3339 format).
+            A sub-microsecond bound is rounded up to the next stored microsecond.
             Must be on or after the Unix epoch (1970-01-01T00:00:00Z); earlier
             dates are rejected with a 400.
             Requires the builtin `LOG_DATE` index to be enabled on the ledger.
@@ -775,6 +783,7 @@ paths:
         - BearerAuth: []
         - {}
       parameters:
+        - $ref: '#/components/parameters/SkipResponse'
         - $ref: '#/components/parameters/LedgerName'
       responses:
         '201':
@@ -782,7 +791,9 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/PromoteLedgerResponse'
+                anyOf:
+                  - $ref: '#/components/schemas/CompactWriteResponse'
+                  - $ref: '#/components/schemas/PromoteLedgerResponse'
         '400':
           description: The request is invalid, or the ledger is not in mirror mode (`LEDGER_NOT_IN_MIRROR_MODE`).
           content:
@@ -812,11 +823,73 @@ paths:
         '405':
           $ref: '#/components/responses/MethodNotAllowed'
 
+  /v3/{ledgerName}/numscripts/execute:
+    post:
+      summary: Execute a Numscript
+      description: |
+        Executes an inline or saved Numscript. Returns a transaction when the
+        script produces postings, or updates account metadata without a
+        transaction when it produces no postings. An optional transaction
+        reference applies only when postings are produced. Metadata-only results
+        reject it after reference length and uniqueness checks pass. Requires
+        `ledger:write` scope. Signed requests use the
+        same signing headers and batch verification as transaction creation.
+      operationId: v3ExecuteNumscript
+      x-speakeasy-name-override: ExecuteNumscript
+      tags:
+        - Transactions
+      security:
+        - BearerAuth: []
+        - {}
+      parameters:
+        - $ref: '#/components/parameters/BigIntAsString'
+        - $ref: '#/components/parameters/LedgerName'
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/SigningKeyId'
+        - $ref: '#/components/parameters/RequestSignature'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              anyOf:
+                - $ref: '#/components/schemas/ExecuteNumscriptRequest'
+                - $ref: '#/components/schemas/SignedExecuteNumscriptRequest'
+      responses:
+        '201':
+          description: Transaction created by the script
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreateTransactionResponse'
+        '204':
+          description: Account metadata updated without creating a transaction
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '429':
+          $ref: '#/components/responses/ResourceExhausted'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
+        '405':
+          $ref: '#/components/responses/MethodNotAllowed'
+
   /v3/{ledgerName}/transactions:
     post:
       summary: Create a new transaction
       description: |
-        Creates a new transaction in the specified ledger with the specified postings. Requires `ledger:write` scope.
+        Creates a new transaction in the specified ledger. A Numscript supplied here must produce postings. Requires `ledger:write` scope.
         Signed requests use `application/json` (including MIME parameters) with
         `request` and standard-base64 `payload`. Either signing header, even if
         empty, selects this wrapper; with neither header present, the ordinary REST body applies.
@@ -840,6 +913,7 @@ paths:
         - BearerAuth: []
         - {}
       parameters:
+        - $ref: '#/components/parameters/SkipResponse'
         - $ref: '#/components/parameters/BigIntAsString'
         - $ref: '#/components/parameters/LedgerName'
         - $ref: '#/components/parameters/IdempotencyKey'
@@ -859,7 +933,9 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/CreateTransactionResponse'
+                anyOf:
+                  - $ref: '#/components/schemas/CompactWriteResponse'
+                  - $ref: '#/components/schemas/CreateTransactionResponse'
           links:
             GetCreatedTransaction:
               operationId: v3GetTransaction
@@ -948,6 +1024,7 @@ paths:
             format: date-time
           description: |
             Filter transactions with timestamp >= startDate (inclusive, RFC3339 format).
+            A sub-microsecond bound is rounded up to the next stored microsecond.
             Requires the builtin `TX_BUILTIN_INDEX_TIMESTAMP` index to be enabled on the ledger.
         - name: endDate
           in: query
@@ -956,6 +1033,7 @@ paths:
             format: date-time
           description: |
             Filter transactions with timestamp < endDate (exclusive, RFC3339 format).
+            A sub-microsecond bound is rounded up to the next stored microsecond.
             Requires the builtin `TX_BUILTIN_INDEX_TIMESTAMP` index to be enabled on the ledger.
         - $ref: '#/components/parameters/ListFilter'
         - $ref: '#/components/parameters/QueryProfile'
@@ -1590,6 +1668,7 @@ paths:
         - BearerAuth: []
         - {}
       parameters:
+        - $ref: '#/components/parameters/SkipResponse'
         - $ref: '#/components/parameters/BigIntAsString'
         - $ref: '#/components/parameters/LedgerName'
         - $ref: '#/components/parameters/TransactionId'
@@ -1610,7 +1689,9 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/RevertedTransactionResponse'
+                anyOf:
+                  - $ref: '#/components/schemas/CompactWriteResponse'
+                  - $ref: '#/components/schemas/RevertedTransactionResponse'
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
@@ -2112,6 +2193,7 @@ paths:
         - BearerAuth: []
         - {}
       parameters:
+        - $ref: '#/components/parameters/SkipResponse'
         - $ref: '#/components/parameters/LedgerName'
         - name: name
           in: path
@@ -2131,19 +2213,27 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/GetNumscriptResponse'
+                anyOf:
+                  - $ref: '#/components/schemas/CompactWriteResponse'
+                  - $ref: '#/components/schemas/GetNumscriptResponse'
           links:
             GetSavedNumscript:
               operationId: v3GetNumscript
               parameters:
                 ledgerName: '$request.path.ledgerName'
-                name: '$response.body#/data/name'
+                name: '$request.path.name'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
         '400':
           description: Bad request (version not an explicit full semver, parse error, etc.)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Ledger not found (`LEDGER_NOT_FOUND`).
           content:
             application/json:
               schema:
@@ -2357,6 +2447,7 @@ paths:
         - BearerAuth: []
         - {}
       parameters:
+        - $ref: '#/components/parameters/SkipResponse'
         - $ref: '#/components/parameters/BigIntAsString'
         - $ref: '#/components/parameters/LedgerName'
         - $ref: '#/components/parameters/IdempotencyKey'
@@ -2484,6 +2575,8 @@ paths:
       description: |
         Creates a new prepared query for a ledger. A prepared query defines a reusable
         filter that can be executed later with parameter substitution. Requires `ledger:WriteQuery` scope.
+        A supplied body must contain a single complete JSON value. Trailing
+        whitespace is allowed and counts toward the 4 MiB body limit.
       operationId: v3CreatePreparedQuery
       x-speakeasy-name-override: CreatePreparedQuery
       tags:
@@ -2519,6 +2612,8 @@ paths:
           $ref: '#/components/responses/ServiceUnavailable'
         '500':
           $ref: '#/components/responses/InternalServerError'
+        '413':
+          $ref: '#/components/responses/RequestEntityTooLarge'
         '415':
           $ref: '#/components/responses/UnsupportedMediaType'
         '405':
@@ -2565,6 +2660,8 @@ paths:
       summary: Update a prepared query
       description: |
         Updates the filter of an existing prepared query. Requires `ledger:WriteQuery` scope.
+        A supplied body must contain a single complete JSON value. Trailing
+        whitespace is allowed and counts toward the 4 MiB body limit.
       operationId: v3UpdatePreparedQuery
       x-speakeasy-name-override: UpdatePreparedQuery
       tags:
@@ -2600,6 +2697,8 @@ paths:
           $ref: '#/components/responses/ServiceUnavailable'
         '500':
           $ref: '#/components/responses/InternalServerError'
+        '413':
+          $ref: '#/components/responses/RequestEntityTooLarge'
         '415':
           $ref: '#/components/responses/UnsupportedMediaType'
         '405':
@@ -2651,6 +2750,8 @@ paths:
         AGGREGATE_VOLUMES ignores pageSize and aggregates all matching accounts. Also
         accepts pageSize, cursor and reverse as query parameters. Supplied pageSize and
         reverse values, and nonempty cursor values, override the body. Requires `ledger:ReadQuery` scope.
+        A supplied body must contain a single complete JSON value. Trailing
+        whitespace is allowed and counts toward the 4 MiB body limit.
       operationId: v3ExecutePreparedQuery
       x-speakeasy-name-override: ExecutePreparedQuery
       tags:
@@ -2717,6 +2818,8 @@ paths:
           $ref: '#/components/responses/ServiceUnavailable'
         '500':
           $ref: '#/components/responses/InternalServerError'
+        '413':
+          $ref: '#/components/responses/RequestEntityTooLarge'
         '415':
           $ref: '#/components/responses/UnsupportedMediaType'
         '405':
@@ -3053,6 +3156,7 @@ paths:
         - BearerAuth: []
         - {}
       parameters:
+        - $ref: '#/components/parameters/SkipResponse'
         - $ref: '#/components/parameters/IdempotencyKey'
       requestBody:
         required: true
@@ -3064,19 +3168,21 @@ paths:
         '415':
           $ref: '#/components/responses/UnsupportedMediaType'
         '201':
-          description: Event sink created successfully. Only its name is returned.
+          description: Event sink created successfully. Returns its name by default, or the compact sequence acknowledgement with skipResponse=true.
           content:
             application/json:
               schema:
-                type: object
-                required: [data]
-                properties:
-                  data:
-                    type: object
-                    required: [name]
+                anyOf:
+                  - $ref: '#/components/schemas/CompactWriteResponse'
+                  - type: object
+                    required: [data]
                     properties:
-                      name:
-                        type: string
+                      data:
+                        type: object
+                        required: [name]
+                        properties:
+                          name:
+                            type: string
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
@@ -3480,6 +3586,7 @@ paths:
         - BearerAuth: []
         - {}
       parameters:
+        - $ref: '#/components/parameters/SkipResponse'
         - $ref: '#/components/parameters/LedgerName'
         - name: Idempotency-Key
           in: header
@@ -3507,13 +3614,16 @@ paths:
           $ref: '#/components/responses/UnsupportedMediaType'
         '201':
           description: |
-            Index creation queued. The body carries the canonical id of the
-            created index (round-trip normalized), usable directly on the
+            Index creation queued. With skipResponse=true the body carries only
+            the compact sequence acknowledgement. Otherwise it carries the
+            canonical id of the created index (round-trip normalized), usable directly on the
             follow-up GET/DELETE `/v3/{ledgerName}/indexes/{canonicalId}` routes.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/CreateIndexResponse'
+                anyOf:
+                  - $ref: '#/components/schemas/CompactWriteResponse'
+                  - $ref: '#/components/schemas/CreateIndexResponse'
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
@@ -3761,6 +3871,26 @@ components:
         the `PageToken` schema). Omit for the first page. Pass the same
         `reverse` and `filter` on every page of a walk.
 
+    SkipResponse:
+      name: skipResponse
+      in: query
+      required: false
+      description: |
+        Suppress successful business response data. Supply exactly one lowercase
+        true or false; empty, repeated or other values return 400 INVALID_REQUEST
+        before execution. Omitted or false preserves the existing response.
+        Single writes retain 201 and return data.sequence, the global unsigned
+        log sequence, without a signed receipt. Bulk retains responseType,
+        logID, status, errors and skip diagnostics; successful entries add
+        sequence and omit ordinary operation data. Empty bulk remains {}.
+        This option changes HTTP presentation only, including on keyed replay.
+        Older nodes reject this query name; upgrade every HTTP-serving node
+        before enabling it. Sequence remains a JSON number even with the
+        Formance-Bigint-As-String header; clients must preserve uint64 precision.
+      schema:
+        type: boolean
+        default: false
+
     BigIntAsString:
       name: Formance-Bigint-As-String
       in: header
@@ -3786,7 +3916,9 @@ components:
       required: true
       schema:
         type: string
-      description: Name of the ledger
+      description: |
+        Name of the ledger. This path segment is decoded once before validation.
+        For example, test%3Aledger selects the ledger named test:ledger.
 
     TransactionId:
       name: transactionId
@@ -4396,6 +4528,7 @@ components:
       type: object
     AtomicApplyCreateLedgerRequest:
       additionalProperties: false
+      description: LEDGER_MODE_MIRROR requires mirrorSource. A normal ledger must omit it.
       properties:
         accountTypes:
           additionalProperties:
@@ -4461,6 +4594,28 @@ components:
           items:
             $ref: '#/components/schemas/AtomicApplyPosting'
           type: array
+        reference:
+          type: string
+        script:
+          $ref: '#/components/schemas/AtomicApplyScript'
+        scriptReference:
+          $ref: '#/components/schemas/AtomicApplyScriptReference'
+        timestamp:
+          description: RFC3339 timestamp, decoded to microsecond precision by the existing HTTP timestamp codec.
+          format: date-time
+          type: string
+      type: object
+    AtomicApplyExecuteNumscriptPayload:
+      additionalProperties: false
+      properties:
+        accountMetadata:
+          additionalProperties:
+            $ref: '#/components/schemas/AtomicApplyMetadataMap'
+          type: object
+        metadata:
+          additionalProperties:
+            $ref: '#/components/schemas/AtomicApplyMetadataValue'
+          type: object
         reference:
           type: string
         script:
@@ -4833,6 +4988,8 @@ components:
             - required:
                 - createTransaction
             - required:
+                - executeNumscript
+            - required:
                 - addMetadata
             - required:
                 - revertTransaction
@@ -4853,6 +5010,8 @@ components:
           $ref: '#/components/schemas/AtomicApplyCreateTransactionPayload'
         deleteMetadata:
           $ref: '#/components/schemas/AtomicApplyDeleteMetadataCommand'
+        executeNumscript:
+          $ref: '#/components/schemas/AtomicApplyExecuteNumscriptPayload'
         removeAccountType:
           $ref: '#/components/schemas/AtomicApplyRemoveAccountTypeRequest'
         revertTransaction:
@@ -6127,6 +6286,7 @@ components:
             - COMMITTED_TRANSACTION
             - REVERTED_TRANSACTION
             - SAVED_METADATA
+            - ACCOUNT_METADATA_UPDATED
             - DELETED_METADATA
             - CREATED_LEDGER
             - DELETED_LEDGER
@@ -6312,6 +6472,7 @@ components:
             - ADDED_ACCOUNT_TYPE
             - REMOVED_ACCOUNT_TYPE
             - UPDATED_DEFAULT_ENFORCEMENT_MODE
+            - ACCOUNT_METADATA_UPDATED
         data:
           type: object
           additionalProperties: true
@@ -6323,7 +6484,9 @@ components:
             TRANSACTION) and targetId: an account-address string or an unsigned
             64-bit transaction integer, including zero. SET_METADATA also
             contains metadata; DELETE_METADATA contains key. ORDER_SKIPPED
-            contains reason and optional context. Other types carry the fields
+            contains reason and optional context. ACCOUNT_METADATA_UPDATED
+            is an account-address-to-metadata map written by a metadata-only script;
+            its data object has account addresses as direct keys. Other types carry the fields
             of their corresponding operation directly. FILL_GAP contains originalId,
             a uint64 encoded as a decimal JSON number. Transaction IDs,
             revertedTransactionId and transaction targetId are JSON numbers;
@@ -6408,7 +6571,7 @@ components:
             - NORMAL
             - MIRROR
           default: NORMAL
-          description: Ledger mode. MIRROR creates a read-only ledger that syncs from an external v2 source. Values are case-sensitive; any other value is rejected with 400 INVALID_REQUEST.
+          description: Ledger mode. MIRROR requires mirrorSource and creates a read-only ledger that syncs from an external v2 source. NORMAL must omit mirrorSource. Values are case-sensitive; any other value is rejected with 400 INVALID_REQUEST.
         mirrorSource:
           $ref: '#/components/schemas/MirrorSourceConfig'
         defaultEnforcementMode:
@@ -6621,6 +6784,18 @@ components:
         payload:
           $ref: '#/components/schemas/SignedBatchPayload'
 
+    SignedExecuteNumscriptRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - request
+        - payload
+      properties:
+        request:
+          $ref: '#/components/schemas/ExecuteNumscriptRequest'
+        payload:
+          $ref: '#/components/schemas/SignedBatchPayload'
+
     SignedRevertTransactionRequest:
       type: object
       additionalProperties: false
@@ -6684,7 +6859,7 @@ components:
         A transaction must declare exactly one content source: explicit
         `postings`, an inline `script`, or a `scriptReference`. The
         `postings` array cannot be combined with `script` or
-        `scriptReference`. Idempotency is controlled exclusively via the
+        `scriptReference`. A script must produce postings. Idempotency is controlled exclusively via the
         `Idempotency-Key` HTTP header — there is no body-level key.
       properties:
         accountMetadata:
@@ -6728,6 +6903,41 @@ components:
           type: boolean
           default: false
           description: Skip the balance check, so the transaction commits even when a source account has insufficient funds.
+
+    ExecuteNumscriptRequest:
+      type: object
+      oneOf:
+        - required: [script]
+        - required: [scriptReference]
+      description: |
+        Execute a Numscript independently of transaction creation. Specify
+        exactly one of `script` and `scriptReference`. As with transaction
+        creation, unrecognized properties are ignored. `postings` has no effect
+        on this action. A transaction `reference` applies when the script emits
+        postings; a metadata-only result rejects it after reference length and
+        uniqueness checks pass.
+      properties:
+        accountMetadata:
+          type: object
+          additionalProperties:
+            type: object
+            additionalProperties:
+              $ref: '#/components/schemas/MetadataValue'
+        timestamp:
+          type: string
+          format: date-time
+        metadata:
+          type: object
+          additionalProperties:
+            $ref: '#/components/schemas/MetadataValue'
+          description: Transaction metadata, accepted only when the script produces postings.
+        reference:
+          type: string
+          description: Transaction reference, accepted only when the script produces postings.
+        script:
+          $ref: '#/components/schemas/Script'
+        scriptReference:
+          $ref: '#/components/schemas/ScriptReference'
 
     PostingRequest:
       type: object
@@ -6807,12 +7017,13 @@ components:
           type: string
           enum:
             - CREATE_TRANSACTION
+            - EXECUTE_NUMSCRIPT
             - ADD_METADATA
             - REVERT_TRANSACTION
             - DELETE_METADATA
           description: |
             The type of operation to perform. The REST bulk endpoint accepts
-            these four actions only; account-type actions
+            these five actions only; account-type actions
             (`ADD_ACCOUNT_TYPE` / `REMOVE_ACCOUNT_TYPE`) are gRPC-only and
             are rejected here.
         ik:
@@ -6820,8 +7031,9 @@ components:
           maxLength: 256
           description: Idempotency key for this operation
         data:
-          oneOf:
+          anyOf:
             - $ref: '#/components/schemas/CreateTransactionRequest'
+            - $ref: '#/components/schemas/ExecuteNumscriptRequest'
             - $ref: '#/components/schemas/AddMetadataRequest'
             - $ref: '#/components/schemas/RevertTransactionRequest'
             - $ref: '#/components/schemas/DeleteMetadataRequest'
@@ -6948,6 +7160,31 @@ components:
           type: string
           description: Metadata key to delete
 
+    CompactWriteSequence:
+      type: integer
+      format: uint64
+      minimum: 1
+      maximum: 18446744073709551615
+      description: |
+        Global committed log sequence, distinct from transaction IDs and
+        ledger-local logID. A numeric unsigned acknowledgement, without a
+        cryptographic signature or signed-log receipt. Decode without loss of
+        uint64 precision; large-integer response negotiation does not change it.
+
+    CompactWriteResponse:
+      description: Successful single-write acknowledgement with skipResponse=true.
+      type: object
+      additionalProperties: false
+      required: [data]
+      properties:
+        data:
+          type: object
+          additionalProperties: false
+          required: [sequence]
+          properties:
+            sequence:
+              $ref: '#/components/schemas/CompactWriteSequence'
+
     BulkResponse:
       type: object
       properties:
@@ -6971,6 +7208,14 @@ components:
         - $ref: '#/components/schemas/BulkResponse'
         - $ref: '#/components/schemas/ErrorResponse'
 
+    BulkAccountMetadataResult:
+      type: object
+      description: Account addresses mapped to their updated metadata fields.
+      additionalProperties:
+        type: object
+        additionalProperties:
+          $ref: '#/components/schemas/MetadataValue'
+
     BulkResult:
       type: object
       properties:
@@ -6981,6 +7226,8 @@ components:
           type: integer
           format: int64
           description: Log ID of the applied operation (0 on error)
+        sequence:
+          $ref: '#/components/schemas/CompactWriteSequence'
         errorCode:
           type: string
           description: Error code (present only on error)
@@ -6993,21 +7240,29 @@ components:
             error codes and the bulk response shape are preserved.
         data:
           description: |
-            Operation result data. Shape depends on the originating action:
-              - `CREATE_TRANSACTION` success: a `TransactionResponse` — the
-                created Transaction object.
+            With skipResponse=true, ordinary successful operation data is
+            omitted; skips retain their complete OrderSkippedResponse. Errors
+            and aborted entries have no sequence. Omitted/false preserves the
+            existing operation data. Shape depends on the originating action:
+              - `CREATE_TRANSACTION` success, or `EXECUTE_NUMSCRIPT` success
+                with postings: a `TransactionResponse` — the created Transaction
+                object.
+              - `EXECUTE_NUMSCRIPT` success without postings: a
+                `BulkAccountMetadataResult` mapping account addresses directly
+                to their updated metadata fields.
               - Any skippable action skip (when the item opted into
                 `skippableReasons` and the FSM matched one): an
                 `OrderSkippedResponse` with `skipped: true`, `reason`, and
                 reason-specific `context`. Emitted for every REST-supported
                 skippable action — CREATE_TRANSACTION, REVERT_TRANSACTION,
                 DELETE_METADATA — not just create.
-              - Other successful non-create actions: `null`.
+              - Other successful actions: `data` is omitted.
             Branch on `OrderSkippedResponse.skipped` to distinguish a skip
             from a successful transaction.
           nullable: true
           oneOf:
             - $ref: '#/components/schemas/TransactionResponse'
+            - $ref: '#/components/schemas/BulkAccountMetadataResult'
             - $ref: '#/components/schemas/OrderSkippedResponse'
 
     CreateTransactionResponse:
@@ -8745,9 +9000,11 @@ components:
         firstSeen:
           type: string
           format: date-time
+          description: Earliest transaction timestamp in the pattern, in RFC3339 with its microseconds. Omitted when unknown.
         lastSeen:
           type: string
           format: date-time
+          description: Latest transaction timestamp in the pattern, in RFC3339 with its microseconds. Omitted when unknown.
         transactionsPerDay:
           type: number
           format: double
@@ -8834,8 +9091,24 @@ components:
         parameters:
           type: object
           additionalProperties:
-            type: string
-          description: Parameter values for the query (substituted into filter placeholders)
+            oneOf:
+              - type: string
+              - type: boolean
+              - type: integer
+                format: int64
+                minimum: -9223372036854775808
+                maximum: -1
+              - type: integer
+                format: uint64
+                minimum: 0
+                maximum: 18446744073709551615
+          description: >-
+            Typed values substituted into filter placeholders. JSON integral
+            numbers are parsed exactly: negative values use int64 and zero or
+            positive values use uint64. Integral decimal and exponent spellings
+            are accepted; values outside those ranges, fractions, and null are
+            rejected. Use a lossless JSON number
+            serializer for integers above 2^53.
         pageSize:
           type: integer
           format: uint32
@@ -9328,6 +9601,12 @@ components:
           type: integer
           format: uint32
           description: Hash algorithm version
+        requiredCapabilities:
+          type: array
+          description: Committed proposal-level semantic capability IDs; absent for legacy proposals
+          items:
+            type: integer
+            format: uint32
         callerSnapshot:
           type: object
           additionalProperties: true

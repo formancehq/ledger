@@ -55,7 +55,7 @@ func replan(t *testing.T, mockStore *MockScope, script string, vars map[string]s
 	t.Helper()
 
 	return replanFailedScript(mockStore, numscript.NewNumscriptCache(16), "test",
-		&raftcmdpb.CreateTransactionOrder{}, &commonpb.Script{Plain: script, Vars: vars}, expectedHash)
+		false, &commonpb.Script{Plain: script, Vars: vars}, expectedHash)
 }
 
 // TestReplan_SameInputsReproduceAdmissionFailure pins the definitive outcome:
@@ -128,7 +128,7 @@ func TestReplan_MarkedOrderWithoutScriptIsInvalid(t *testing.T) {
 	t.Parallel()
 
 	err := replanFailedScript(NewMockScope(gomock.NewController(t)), numscript.NewNumscriptCache(16), "test",
-		&raftcmdpb.CreateTransactionOrder{}, nil, nil)
+		false, nil, nil)
 
 	var invalid *domain.ErrInvalidExecutionPlan
 	require.ErrorAs(t, err, &invalid)

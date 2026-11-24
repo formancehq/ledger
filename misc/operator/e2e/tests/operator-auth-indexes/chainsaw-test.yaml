@@ -1,0 +1,103 @@
+apiVersion: chainsaw.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: operator-auth-indexes
+spec:
+  timeouts:
+    assert: 5m
+  steps:
+    - name: Create a certificate for the Ledger pod DNS name
+      try:
+        - script:
+            content: |
+              set -eu
+              workdir=$(mktemp -d)
+              trap 'rm -rf "$workdir"' EXIT
+              cd "$workdir"
+              openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:P-256 \
+                -nodes -keyout ca.key -out ca.crt -days 1 -subj "/CN=auth-indexes-ca"
+              cat > csr.cnf <<EOF
+              [req]
+              distinguished_name=req
+              [SAN]
+              subjectAltName=DNS:localhost,DNS:ledger-auth-indexes-headless,DNS:*.ledger-auth-indexes-headless.${NAMESPACE}.svc.cluster.local,IP:127.0.0.1
+              EOF
+              openssl req -newkey ec -pkeyopt ec_paramgen_curve:P-256 \
+                -nodes -keyout tls.key -out tls.csr -subj "/CN=auth-indexes"
+              openssl x509 -req -in tls.csr -CA ca.crt -CAkey ca.key \
+                -CAcreateserial -out tls.crt -days 1 -extfile csr.cnf -extensions SAN
+              kubectl create secret generic auth-indexes-certs -n "$NAMESPACE" \
+                --from-file=tls.crt --from-file=tls.key --from-file=ca.crt
+            timeout: 60s
+
+    - name: Start the authenticated Cluster
+      try:
+        - apply:
+            file: cluster.yaml
+        - assert:
+            resource:
+              apiVersion: apps/v1
+              kind: StatefulSet
+              metadata:
+                name: ledger-auth-indexes
+              status:
+                readyReplicas: 1
+
+    - name: Create the Ledger before declaring managed indexes
+      try:
+        - apply:
+            file: ledger-empty.yaml
+        - assert:
+            resource:
+              apiVersion: ledger.formance.com/v1alpha1
+              kind: Ledger
+              metadata:
+                name: auth-indexed-ledger
+              status:
+                phase: Ready
+
+    - name: Create transaction and metadata indexes under operator credentials
+      try:
+        - apply:
+            file: ledger.yaml
+        - script:
+            content: |
+              set -eu
+              for attempt in $(seq 1 90); do
+                if kubectl get ledger auth-indexed-ledger -n "$NAMESPACE" -o json | jq -e '
+                  .metadata.generation as $generation |
+                  .status.observedGeneration == $generation and
+                  any(.status.conditions[]?; .type == "IndexesSynced" and .status == "True" and .observedGeneration == $generation) and
+                  ((.status.appliedIndexes // []) | contains(["reference", "address", "metadata:account:category"]))
+                ' >/dev/null; then
+                  exit 0
+                fi
+                sleep 2
+              done
+              kubectl get ledger auth-indexed-ledger -n "$NAMESPACE" -o yaml
+              exit 1
+            timeout: 200s
+
+    - name: Remove an owned index and create its replacement
+      try:
+        - apply:
+            file: ledger-reindexed.yaml
+        - script:
+            content: |
+              set -eu
+              for attempt in $(seq 1 90); do
+                if kubectl get ledger auth-indexed-ledger -n "$NAMESPACE" -o json | jq -e '
+                  .metadata.generation as $generation |
+                  .status.observedGeneration == $generation and
+                  any(.status.conditions[]?; .type == "IndexesSynced" and .status == "True" and .observedGeneration == $generation) and
+                  ((.status.appliedIndexes // []) | contains(["reference", "timestamp"])) and
+                  ((.status.appliedIndexes // []) | index("address") == null) and
+                  ((.status.appliedIndexes // []) | index("metadata:account:category") == null)
+                ' >/dev/null; then
+                  exit 0
+                fi
+                sleep 2
+              done
+              kubectl get ledger auth-indexed-ledger -n "$NAMESPACE" -o yaml
+              exit 1
+            timeout: 200s

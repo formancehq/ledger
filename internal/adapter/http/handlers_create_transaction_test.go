@@ -56,6 +56,84 @@ func TestHandleCreateTransaction_Success(t *testing.T) {
 	require.Equal(t, http.StatusCreated, w.Code)
 }
 
+func TestHandleExecuteNumscript_MetadataOnlyReturnsNoContent(t *testing.T) {
+	t.Parallel()
+
+	log := &commonpb.Log{Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_Apply{
+		Apply: &commonpb.ApplyLedgerLog{Log: &commonpb.LedgerLog{Data: &commonpb.LedgerLogPayload{
+			Payload: &commonpb.LedgerLogPayload_AccountMetadataUpdated{
+				AccountMetadataUpdated: &commonpb.AccountMetadataUpdated{AccountMetadata: map[string]*commonpb.MetadataMap{
+					"users:alice": {Values: map[string]*commonpb.MetadataValue{"tier": commonpb.NewStringValue("gold")}},
+				}},
+			},
+		}}},
+	}}}
+	srv := newTestServer(t, backendReturningLogs(t, []*commonpb.Log{log}))
+
+	w := httptest.NewRecorder()
+	r := newRequest(t, http.MethodPost, "/ledger1/numscripts/execute", strings.NewReader(`{"script":{"plain":"set_account_meta(@users:alice, \"tier\", \"gold\")"}}`), map[string]string{
+		"ledgerName": "ledger1",
+	})
+
+	srv.handleExecuteNumscript(w, r)
+
+	require.Equal(t, http.StatusNoContent, w.Code)
+}
+
+func TestHandleExecuteNumscript_TransactionReturnsCreated(t *testing.T) {
+	t.Parallel()
+
+	log := &commonpb.Log{Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_Apply{
+		Apply: &commonpb.ApplyLedgerLog{Log: &commonpb.LedgerLog{Data: &commonpb.LedgerLogPayload{
+			Payload: &commonpb.LedgerLogPayload_CreatedTransaction{
+				CreatedTransaction: &commonpb.CreatedTransaction{Transaction: &commonpb.Transaction{Id: 1}},
+			},
+		}}},
+	}}}
+	srv := newTestServer(t, backendReturningLogs(t, []*commonpb.Log{log}))
+	w := httptest.NewRecorder()
+	r := newRequest(t, http.MethodPost, "/ledger1/numscripts/execute", strings.NewReader(`{"script":{"plain":"send [USD 1] (source = @world destination = @alice)"}}`), map[string]string{
+		"ledgerName": "ledger1",
+	})
+
+	srv.handleExecuteNumscript(w, r)
+
+	require.Equal(t, http.StatusCreated, w.Code)
+}
+
+func TestHandleExecuteNumscript_UsesReferenceAndIgnoresPostings(t *testing.T) {
+	t.Parallel()
+
+	log := &commonpb.Log{Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_Apply{
+		Apply: &commonpb.ApplyLedgerLog{Log: &commonpb.LedgerLog{Data: &commonpb.LedgerLogPayload{
+			Payload: &commonpb.LedgerLogPayload_CreatedTransaction{
+				CreatedTransaction: &commonpb.CreatedTransaction{Transaction: &commonpb.Transaction{Id: 1, Reference: "tx-1"}},
+			},
+		}}},
+	}}}
+	backend := NewMockBackend(gomock.NewController(t))
+	backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(
+		func(_ context.Context, req *servicepb.ApplyRequest) (*domain.ApplyResult, error) {
+			requests := req.GetUnsigned().GetRequests()
+			require.Len(t, requests, 1)
+			execution := requests[0].GetApply().GetAction().GetExecuteNumscript()
+			require.NotNil(t, execution)
+			require.Equal(t, "tx-1", execution.GetReference())
+			require.Equal(t, `send [USD 1] (source = @world destination = @alice)`, execution.GetScript().GetPlain())
+
+			return &domain.ApplyResult{Logs: []*commonpb.Log{log}}, nil
+		})
+	srv := newTestServer(t, backend)
+	w := httptest.NewRecorder()
+	r := newRequest(t, http.MethodPost, "/ledger1/numscripts/execute", strings.NewReader(`{"script":{"plain":"send [USD 1] (source = @world destination = @alice)"},"reference":"tx-1","postings":[{"source":"@world","destination":"@mallory","amount":1,"asset":"USD"}]}`), map[string]string{
+		"ledgerName": "ledger1",
+	})
+
+	srv.handleExecuteNumscript(w, r)
+
+	require.Equal(t, http.StatusCreated, w.Code)
+}
+
 // TestHandleCreateTransaction_LogContractViolations locks in the exact-one
 // typed-log contract: exactly one non-nil Apply log carrying a CreatedTransaction
 // inner payload. Any other cardinality, a nil sole log, a non-Apply outer

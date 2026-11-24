@@ -319,6 +319,11 @@ Every paged list exchanges **page tokens** built by `pkg/pagecursor`. A token is
 | Prepared queries | decimal id for TRANSACTIONS / LOGS targets, address for ACCOUNTS |
 | Index inspection | base64url of the encoded metadata value |
 
+For transaction lists, an empty key means no position. The decimal key `"0"` is
+an exclusive position at transaction ID zero, which can exist in mirror
+ledgers. Direct HTTP and gRPC reads preserve this distinction through routing;
+prepared LIST queries apply the same rule.
+
 Both directions are exclusive of the key and always return rows in the **requested** order (`reverse` included):
 
 | Token | Page served |

@@ -84,7 +84,7 @@ import (
 type walFreshStart bool
 
 func publishCapabilityGate(membership *raftmembership.Membership, policy *commonpb.ClusterPolicy) error {
-	return membership.SetCapabilityGate(capabilities.ActiveIDs(policy))
+	return membership.SetCapabilityGate(capabilities.MembershipRequiredIDs(policy))
 }
 
 // nodeProvideResult groups the outputs of the Node provider so we can also
@@ -117,7 +117,7 @@ func newClusterPolicyReconciler(admission ctrl.Admission, store *dal.Store, buil
 			return
 		}
 		if policy, err := query.ReadClusterPolicy(store); err == nil {
-			if err := raftNode.SetCapabilityGate(capabilities.ActiveIDs(policy)); err != nil {
+			if err := raftNode.SetCapabilityGate(capabilities.MembershipRequiredIDs(policy)); err != nil {
 				logger.WithFields(map[string]any{"error": err}).Errorf("Invalid capability gate in committed cluster policy")
 
 				return
@@ -130,6 +130,23 @@ func newClusterPolicyReconciler(admission ctrl.Admission, store *dal.Store, buil
 		}
 		reconcileClusterPolicy(ctx, admission, store, cfg, raftNode.IsLeader, logger)
 	}, clusterPolicyReconcileInterval)
+}
+
+func newCapabilityActivationReconciler(admission *admission.Admission, store *dal.Store, raftNode *node.Node, logger logging.Logger) *capabilityActivationReconciler {
+	return &capabilityActivationReconciler{reconciler.New(func(ctx context.Context) {
+		ctx = internalauth.WithSystemActor(ctx, commands.ComponentClusterPolicy)
+		if !raftNode.IsLeader() {
+			return
+		}
+		if err := raftNode.RefreshSelfMembership(ctx, capabilities.IDsAsUint32(capabilities.SupportedIDs())); err != nil {
+			logger.WithFields(map[string]any{"error": err}).Errorf("Capability evidence refresh failed; activation will retry")
+
+			return
+		}
+		if err := activateReadyCapabilities(ctx, admission.AdmitCapabilityTransition, store, raftNode.IsLeader, raftNode.CapabilityMembers, capabilities.SupportedIDs()); err != nil {
+			logger.WithFields(map[string]any{"error": err}).Errorf("Capability activation failed; will retry from committed policy")
+		}
+	}, clusterPolicyReconcileInterval)}
 }
 
 func Module() fx.Option {
@@ -152,7 +169,7 @@ func Module() fx.Option {
 					cfg.ClusterID,
 					cfg.RaftConfig.TransportBufferSize,
 					cfg.RaftConfig.AdvertiseAddr,
-					cfg.ServiceAdvertiseAddr(),
+					cfg.PeerServiceAdvertiseAddr(),
 				)
 			}, fx.ParamTags(``, ``, `name:"raft"`, ``)),
 			func(cfg Config, meterProvider metric.MeterProvider, logger logging.Logger) (*dal.Store, error) {
@@ -275,14 +292,15 @@ func Module() fx.Option {
 				servicePool *transport.ConnectionPool,
 				cfg node.NodeConfig,
 				durableStore *dal.Store,
+				appCfg Config,
 				logger logging.Logger,
 			) (*raftmembership.Membership, error) {
 				policyProvider := func() (*commonpb.ClusterPolicy, error) {
 					return query.ReadClusterPolicy(durableStore)
 				}
 
-				return raftmembership.NewMembership(peerStore, defaultTransport, servicePool, cfg.NodeID, cfg.AdvertiseAddr, cfg.ServiceAdvertiseAddr, cfg.InstanceID, logger, policyProvider)
-			}, fx.ParamTags(``, ``, `name:"service"`, ``, ``, ``)),
+				return raftmembership.NewMembershipWithServicePort(peerStore, defaultTransport, servicePool, cfg.NodeID, cfg.AdvertiseAddr, appCfg.PeerServiceAdvertiseAddr(), appCfg.PeerGRPCPort(), cfg.InstanceID, logger, policyProvider)
+			}, fx.ParamTags(``, ``, `name:"service"`, ``, ``, ``, ``)),
 			// Provide events.Proposer from the Raft node (used by event emitter to replicate cursor).
 			// Events go through Builder.Run, which already holds the IndexTracker
 			// mutex around its proposer.Propose call. Wrapping the node in a
@@ -499,6 +517,23 @@ func Module() fx.Option {
 				return grpcadp.NewServiceServer(grpcadp.ServiceAuthPolicyPublic, authCfg, "", cfg.GRPCPort, logger, cfg.Debug, cfg.GRPCSlowThreshold, tlsCfg, cfg.TLSConfig.Mode.AllowsPlaintext(),
 					listenerOptions(bindings.Service)...)
 			},
+			fx.Annotate(func(cfg Config, lc fx.Lifecycle, logger logging.Logger, authCfg internalauth.AuthConfig, bindings network.Bindings) (*grpcadp.ServiceServer, error) {
+				tlsCfg, reloader, err := ServerTLSConfig(cfg.TLSConfig)
+				if err != nil {
+					return nil, fmt.Errorf("loading TLS config for peer service server: %w", err)
+				}
+
+				RegisterCertReloaderLifecycle(lc, reloader, logger)
+
+				peerPort := cfg.PeerGRPCPort()
+				// Tests that inject the public listener without a peer binding use
+				// an ephemeral peer port to avoid sharing the production default.
+				if bindings.Service != nil && bindings.Peer == nil {
+					peerPort = 0
+				}
+
+				return grpcadp.NewServiceServer(grpcadp.ServiceAuthPolicyPeer, authCfg, "", peerPort, logger, cfg.Debug, cfg.GRPCSlowThreshold, tlsCfg, cfg.TLSConfig.Mode.AllowsPlaintext(), listenerOptions(bindings.Peer)...)
+			}, fx.ResultTags(`name:"peer"`)),
 			// Provide a single AuthConfig used by gRPC and HTTP handlers.
 			fx.Annotate(buildAuthConfig, fx.ParamTags(``, ``, `optional:"true"`)),
 			fx.Annotate(func(cfg Config, logger logging.Logger, c ctrl.Controller, localCtrl *ctrl.DefaultController, s *dal.Store, rs *readstore.Store, attrs *attributes.Attributes, ss *state.SharedState, respSigner *signing.ResponseSigner, meterProvider metric.MeterProvider, n *node.Node, servicePool *transport.ConnectionPool, info version.Info) servicepb.BucketServiceServer {
@@ -525,7 +560,7 @@ func Module() fx.Option {
 				return membership.NewService(
 					n, infraMembership, logger,
 					cfg.RaftConfig.AdvertiseAddr,
-					cfg.ServiceAdvertiseAddr(),
+					cfg.PeerServiceAdvertiseAddr(),
 				)
 			},
 			func(builder *plan.Builder, n *node.Node, store *dal.Store, cfg Config, logger logging.Logger) *backupapp.Orchestrator {
@@ -638,7 +673,7 @@ func Module() fx.Option {
 				attrs *attributes.Attributes,
 				rs *readstore.Store,
 				authCfg internalauth.AuthConfig,
-			) ctrl.Admission {
+			) *admission.Admission {
 				var opts []func(*admission.Admission)
 				if cfg.AdmissionMetrics {
 					opts = append(opts, admission.WithMetrics())
@@ -716,7 +751,9 @@ func Module() fx.Option {
 
 				return clusterhealth.NewGRPCHealthUpdater(n, hs, clusterPolicyReady, rs.ReadProjectionHealthy)
 			},
+			func(service *admission.Admission) ctrl.Admission { return service },
 			newClusterPolicyReconciler,
+			newCapabilityActivationReconciler,
 		),
 		fx.Decorate(func(
 			params struct {
@@ -889,6 +926,16 @@ func Module() fx.Option {
 
 				return nil
 			},
+			fx.Annotate(func(serviceServer *grpcadp.ServiceServer, bucketServiceServer servicepb.BucketServiceServer) error {
+				grpcadp.RegisterBucketService(serviceServer.GetServer(), bucketServiceServer)
+
+				return nil
+			}, fx.ParamTags(`name:"peer"`, ``)),
+			fx.Annotate(func(serviceServer *grpcadp.ServiceServer, clusterServiceServer clusterpb.ClusterServiceServer) error {
+				grpcadp.RegisterClusterService(serviceServer.GetServer(), clusterServiceServer)
+
+				return nil
+			}, fx.ParamTags(`name:"peer"`, ``)),
 			// Backup cleanup loop: leader-only, fails stale jobs so a
 			// crashed executor doesn't permanently lock the destination.
 			// Run is leader-aware itself so this just needs lifecycle.
@@ -1049,6 +1096,19 @@ func Module() fx.Option {
 					RequestShutdown: shutdownRequester(shutdowner),
 				}))
 			},
+			fx.Annotate(func(
+				lc fx.Lifecycle,
+				serviceServer *grpcadp.ServiceServer,
+				logger logging.Logger,
+				shutdowner fx.Shutdowner,
+			) {
+				lc.Append(grpcServerHook(grpcServerHookConfig{
+					Server:          serviceServer,
+					Name:            "Peer service gRPC server",
+					Logger:          logger,
+					RequestShutdown: shutdownRequester(shutdowner),
+				}))
+			}, fx.ParamTags(``, `name:"peer"`, ``, ``)),
 			// Join mode preflight is registered EARLIER (before the Raft
 			// transport/server/node startup hooks) so it runs before any inbound
 			// Raft traffic can be stepped — see the joinPreflightHook closure
@@ -1073,6 +1133,9 @@ func Module() fx.Option {
 			},
 			func(lc fx.Lifecycle, reconciler *reconciler.Reconciler) {
 				lc.Append(worker.FxHook(reconciler))
+			},
+			func(lc fx.Lifecycle, activation *capabilityActivationReconciler) {
+				lc.Append(worker.FxHook(activation))
 			},
 			func(lc fx.Lifecycle, cfg Config, logger logging.Logger, raftNode *node.Node, store *dal.Store, machine *state.Machine, builder *plan.Builder) {
 				if cfg.IdempotencyEvictionInterval > 0 {
@@ -1181,12 +1244,16 @@ func Module() fx.Option {
 // from the final command, while policy and membership are the committed
 // snapshots captured at the serialized admission boundary.
 func validateProposalCapabilityAdmission(policy *commonpb.ClusterPolicy, proposal *node.Proposal, members []capabilities.Member) error {
+	return validateProposalCapabilityAdmissionWithSupported(policy, proposal, members, capabilities.SupportedIDs())
+}
+
+func validateProposalCapabilityAdmissionWithSupported(policy *commonpb.ClusterPolicy, proposal *node.Proposal, members []capabilities.Member, supported []capabilities.CapabilityID) error {
 	if proposal == nil {
 		return errors.New("raft proposal gate received a nil proposal")
 	}
 
 	if err := capabilities.ValidateActive(
-		capabilities.SupportedIDs(),
+		supported,
 		proposal.ActivePolicyCapabilities(),
 		members,
 	); err != nil {
@@ -1196,6 +1263,17 @@ func validateProposalCapabilityAdmission(policy *commonpb.ClusterPolicy, proposa
 	state := capabilities.FromPolicy(policy)
 	if err := state.Validate(); err != nil {
 		return err
+	}
+	if proposal.HasBusinessOrders() {
+		ready, err := capabilities.Ready(supported, members)
+		if err != nil {
+			return err
+		}
+		for _, id := range ready {
+			if !state.Activations[id] {
+				return fmt.Errorf("%w: ready capability %d has not committed", capabilities.ErrActivationPending, id)
+			}
+		}
 	}
 	decision := capabilities.Evaluate(state, proposal.RequiredCapabilities(), false, members)
 	if !decision.Allowed {
@@ -1388,7 +1466,7 @@ func joinPreflightHook(cfg Config, logger logging.Logger) fx.Hook {
 			logger.WithFields(map[string]any{
 				"nodeID":         cfg.RaftConfig.NodeID,
 				"raftAddress":    cfg.RaftConfig.AdvertiseAddr,
-				"serviceAddress": cfg.ServiceAdvertiseAddr(),
+				"serviceAddress": cfg.PeerServiceAdvertiseAddr(),
 			}).Infof("Join mode: requesting peer to add this node as learner (preflight, before Raft traffic)")
 
 			return tryAddLearner(ctx, cfg, cfg.TLSConfig, logger)
@@ -1407,7 +1485,9 @@ func newMembershipPeerDialer(cfg Config, tlsCfg TLSConfig) (func(string) (*ggrpc
 	}
 
 	dialOpts := []ggrpc.DialOption{ggrpc.WithTransportCredentials(creds)}
-	if cfg.ClusterSecret != "" {
+	// Per-RPC credentials require transport security. Do not attach the
+	// cluster secret to a plaintext membership call.
+	if cfg.ClusterSecret != "" && tlsCfg.Mode != TLSModeDisabled {
 		dialOpts = append(dialOpts, transport.BearerTokenDialOption(cfg.ClusterSecret))
 	}
 
@@ -1428,7 +1508,7 @@ func membershipRefreshHook(cfg Config, membership *raftmembership.Membership, lo
 			logger.WithFields(map[string]any{
 				"nodeID":         cfg.RaftConfig.NodeID,
 				"raftAddress":    cfg.RaftConfig.AdvertiseAddr,
-				"serviceAddress": cfg.ServiceAdvertiseAddr(),
+				"serviceAddress": cfg.PeerServiceAdvertiseAddr(),
 			}).Infof("Restart mode: refreshing membership capabilities")
 
 			// Perform one bounded synchronous attempt before the node starts serving. A
@@ -1535,7 +1615,7 @@ func tryAddLearner(ctx context.Context, cfg Config, tlsCfg TLSConfig, logger log
 	req := &clusterbootstrappb.JoinAsLearnerRequest{
 		NodeId:         cfg.RaftConfig.NodeID,
 		RaftAddress:    cfg.RaftConfig.AdvertiseAddr,
-		ServiceAddress: cfg.ServiceAdvertiseAddr(),
+		ServiceAddress: cfg.PeerServiceAdvertiseAddr(),
 		InstanceId:     instanceID,
 		Capabilities:   capabilities.IDsAsUint32(capabilities.SupportedIDs()),
 	}
@@ -1544,7 +1624,6 @@ func tryAddLearner(ctx context.Context, cfg Config, tlsCfg TLSConfig, logger log
 	if err != nil {
 		return fmt.Errorf("loading TLS credentials for learner registration: %w", err)
 	}
-
 	backoff := 500 * time.Millisecond
 	maxBackoff := 5 * time.Second
 
@@ -1720,7 +1799,7 @@ func tryRefreshMembershipOnce(ctx context.Context, cfg Config, tlsCfg TLSConfig,
 	req := &clusterbootstrappb.RefreshMembershipRequest{
 		NodeId:         cfg.RaftConfig.NodeID,
 		RaftAddress:    cfg.RaftConfig.AdvertiseAddr,
-		ServiceAddress: cfg.ServiceAdvertiseAddr(),
+		ServiceAddress: cfg.PeerServiceAdvertiseAddr(),
 		InstanceId:     instanceID,
 		Capabilities:   capabilities.IDsAsUint32(capabilities.SupportedIDs()),
 	}
@@ -1910,10 +1989,9 @@ const clusterPolicyReconcileInterval = time.Second
 // reconcileClusterPolicy drives the replicated cluster policy toward the desired
 // revision. It gates on leadership itself and is safe to call repeatedly: the
 // generic reconciler invokes it on a ticker so a transient proposal failure
-// self-heals on the next tick. Unlike the cluster config, the policy flows
-// through AdmitClusterPolicy as an internal audited SetClusterPolicy order so
-// the checker can re-derive it; the write-readiness gate exempts this
-// non-business proposal so it is never blocked by its own cluster-policy gate.
+// self-heals on the next tick. AdmitClusterPolicy emits a configuration-only
+// control; capability transitions have an independent durable lifecycle.
+// The write-readiness gate exempts this non-business proposal.
 func reconcileClusterPolicy(ctx context.Context, admission ctrl.Admission, store *dal.Store, cfg Config, isLeader func() bool, logger logging.Logger) {
 	if !isLeader() {
 		return
@@ -1945,13 +2023,7 @@ func reconcileClusterPolicy(ctx context.Context, admission ctrl.Admission, store
 		}
 	}
 
-	// The operator-controlled revision is an independent monotonic guard. A
-	// capability-only reconciliation may advance a policy revision, but it must
-	// never make a stale leader's ordinary configuration look newer than the
-	// revision it was configured to own. A higher applied revision is therefore
-	// acceptable only when the operator-controlled fields still match; this lets
-	// later capability-only reconciliations continue without requiring another
-	// flag bump.
+	// A stale leader must never overwrite newer configuration with local flags.
 	appliedRev := applied.GetRevision()
 	if applied != nil && appliedRev > cfg.ClusterPolicyRevision && !sameClusterPolicyConfiguration(applied, desired) {
 		return
@@ -1990,9 +2062,8 @@ func reconcileClusterPolicy(ctx context.Context, admission ctrl.Admission, store
 }
 
 // sameClusterPolicyConfiguration compares the operator-controlled fields while
-// deliberately ignoring capability activations. Capabilities are reconciled
-// from membership evidence and may legitimately require a revision bump; all
-// other fields must remain protected by the configured revision.
+// deliberately ignoring capability activations and their independent lifecycle.
+// Configuration fields remain protected by the configured revision.
 func sameClusterPolicyConfiguration(a, b *commonpb.ClusterPolicy) bool {
 	if a == nil || b == nil {
 		return a == b
@@ -2259,7 +2330,9 @@ func handleLeaderReadyEvent(
 
 func buildNodeConfig(cfg Config) (node.NodeConfig, error) {
 	cfg.RaftConfig.DataDir = cfg.DataDir
-	cfg.RaftConfig.ServiceAdvertiseAddr = cfg.ServiceAdvertiseAddr()
+	// Membership service addresses are used for inter-node forwarding and must
+	// point at the authenticated peer listener, never the public API listener.
+	cfg.RaftConfig.ServiceAdvertiseAddr = cfg.PeerServiceAdvertiseAddr()
 	cfg.RaftConfig.SetDefaults()
 
 	// EN-1045: establish this peer's identity UUID before any

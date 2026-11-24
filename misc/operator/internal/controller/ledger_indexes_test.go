@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"sort"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -8,6 +9,22 @@ import (
 
 	ledgerv1alpha1 "github.com/formancehq/ledger/misc/operator/api/v1alpha1"
 )
+
+// canonicalList returns the sorted canonical keys of the managed set.
+func canonicalList(indexes []managedIndex) []string {
+	if len(indexes) == 0 {
+		return nil
+	}
+
+	out := make([]string, 0, len(indexes))
+	for _, mi := range indexes {
+		out = append(out, mi.canonical)
+	}
+
+	sort.Strings(out)
+
+	return out
+}
 
 // ---------------------------------------------------------------------------
 // desiredIndexes — flattening + CRD→CLI mapping

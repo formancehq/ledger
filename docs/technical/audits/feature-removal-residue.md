@@ -14,6 +14,8 @@ needs a migration. Generated bindings and hand-written wire helpers must agree.
 Build an inventory of the removed feature's identifiers across production
 paths, protobuf and OpenAPI surfaces, generated and hand-written bindings,
 configuration, operator/deployment files, tests, workloads and documentation.
+Search historical paths from the removal diff when their directories no longer
+exist in the current repository.
 For every candidate, show a reachable caller or externally observable surface
 that should have disappeared. A dormant test fixture or unrelated ordinary use
 of the same word is not enough.

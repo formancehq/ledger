@@ -326,6 +326,7 @@ var _ = Describe("HTTP events sinks mutation scopes", func() {
 			WalDir: GinkgoT().TempDir(), DataDir: GinkgoT().TempDir(), Output: GinkgoWriter,
 		})
 		instruments = append(instruments, testserver.WithBootstrap(), testserver.WithAuthEnabled(),
+			testserver.WithClusterSecret("http-sinks-scope-cluster-secret"),
 			testserver.WithAuthEd25519Keys(configPath), testserver.WithAuthService("ledger"),
 			testserver.WithTLSMode("required"), testserver.WithTLSCertFile(certs.ServerCertFile),
 			testserver.WithTLSKeyFile(certs.ServerKeyFile))

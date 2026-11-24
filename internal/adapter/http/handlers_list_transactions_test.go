@@ -23,7 +23,7 @@ func TestHandleListTransactions_Success(t *testing.T) {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().ListTransactions(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, _ string, _ uint32, _ uint64, _ *commonpb.QueryFilter, _ bool) (cursor.Cursor[*commonpb.Transaction], error) {
+		func(_ context.Context, _ string, _ uint32, _ *uint64, _ *commonpb.QueryFilter, _ bool) (cursor.Cursor[*commonpb.Transaction], error) {
 			return cursor.NewSliceCursor([]*commonpb.Transaction{
 				{Id: 1, RevertedByTransaction: 7},
 				{Id: 2},
@@ -59,13 +59,13 @@ func TestHandleListTransactions_WithPaginationAndReverse(t *testing.T) {
 
 	var (
 		capturedPageSize uint32
-		capturedAfter    uint64
+		capturedAfter    *uint64
 		capturedReverse  bool
 	)
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().ListTransactions(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, _ string, pageSize uint32, afterTxID uint64, _ *commonpb.QueryFilter, reverse bool) (cursor.Cursor[*commonpb.Transaction], error) {
+		func(_ context.Context, _ string, pageSize uint32, afterTxID *uint64, _ *commonpb.QueryFilter, reverse bool) (cursor.Cursor[*commonpb.Transaction], error) {
 			capturedPageSize = pageSize
 			capturedAfter = afterTxID
 			capturedReverse = reverse
@@ -83,8 +83,24 @@ func TestHandleListTransactions_WithPaginationAndReverse(t *testing.T) {
 
 	require.Equal(t, http.StatusOK, w.Code)
 	require.Equal(t, uint32(26), capturedPageSize, "one row beyond the page detects a next page")
-	require.Equal(t, uint64(42), capturedAfter)
+	require.Equal(t, uint64(42), *capturedAfter)
 	require.True(t, capturedReverse)
+}
+
+func TestHandleListTransactions_ZeroCursorForwarded(t *testing.T) {
+	t.Parallel()
+
+	backend := NewMockBackend(gomock.NewController(t))
+	zero := uint64(0)
+	backend.EXPECT().ListTransactions(gomock.Any(), "ledger1", gomock.Any(), &zero, gomock.Any(), true).
+		Return(cursor.NewSliceCursor[*commonpb.Transaction](nil), nil)
+	srv := newTestServer(t, backend)
+	w := httptest.NewRecorder()
+	r := newRequest(t, http.MethodGet, "/ledger1/transactions?reverse=true&cursor="+pagecursor.Cursor{Key: "0"}.Encode(), nil, map[string]string{
+		"ledgerName": "ledger1",
+	})
+	srv.handleListTransactions(w, r)
+	require.Equal(t, http.StatusOK, w.Code)
 }
 
 // TestHandleListTransactions_ReferenceFilterAndDateRange proves the canonical
@@ -102,7 +118,7 @@ func TestHandleListTransactions_ReferenceFilterAndDateRange(t *testing.T) {
 
 		backend := NewMockBackend(gomock.NewController(t))
 		backend.EXPECT().ListTransactions(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
-			func(_ context.Context, _ string, _ uint32, _ uint64, filter *commonpb.QueryFilter, _ bool) (cursor.Cursor[*commonpb.Transaction], error) {
+			func(_ context.Context, _ string, _ uint32, _ *uint64, filter *commonpb.QueryFilter, _ bool) (cursor.Cursor[*commonpb.Transaction], error) {
 				capturedFilter = filter
 
 				return cursor.NewSliceCursor[*commonpb.Transaction](nil), nil
@@ -141,6 +157,33 @@ func TestHandleListTransactions_ReferenceFilterAndDateRange(t *testing.T) {
 	require.Equal(t, "ref-1", refCond.GetReference().GetCond().GetHardcoded())
 }
 
+func TestHandleListTransactions_FractionalDateBounds(t *testing.T) {
+	t.Parallel()
+
+	backend := NewMockBackend(gomock.NewController(t))
+	backend.EXPECT().ListTransactions(gomock.Any(), "ledger1", gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
+		func(_ context.Context, _ string, _ uint32, _ *uint64, filter *commonpb.QueryFilter, _ bool) (cursor.Cursor[*commonpb.Transaction], error) {
+			cond := filter.GetBuiltinUint()
+			require.Equal(t, commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP, cond.GetField())
+			bounds := cond.GetCond()
+			require.NotNil(t, bounds)
+			require.Equal(t, uint64(123457), bounds.GetMin())
+			require.False(t, bounds.GetMinExclusive())
+			require.Equal(t, uint64(123458), bounds.GetMax())
+			require.True(t, bounds.GetMaxExclusive())
+
+			return cursor.NewSliceCursor[*commonpb.Transaction](nil), nil
+		})
+
+	w := httptest.NewRecorder()
+	r := newRequest(t, http.MethodGet,
+		"/ledger1/transactions?startDate=1970-01-01T00%3A00%3A00.123456500Z&endDate=1970-01-01T01%3A00%3A00.123457500%2B01%3A00",
+		nil, map[string]string{"ledgerName": "ledger1"})
+	newTestServer(t, backend).handleListTransactions(w, r)
+
+	require.Equal(t, http.StatusOK, w.Code)
+}
+
 // TestHandleListTransactions_DualFormatFilter is the endpoint-level EN-1511
 // acceptance check: the same logical filter passed via `?filter=` in the textual
 // form and in the structured JSON form reaches the backend as the same
@@ -155,7 +198,7 @@ func TestHandleListTransactions_DualFormatFilter(t *testing.T) {
 
 		backend := NewMockBackend(gomock.NewController(t))
 		backend.EXPECT().ListTransactions(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
-			func(_ context.Context, _ string, _ uint32, _ uint64, filter *commonpb.QueryFilter, _ bool) (cursor.Cursor[*commonpb.Transaction], error) {
+			func(_ context.Context, _ string, _ uint32, _ *uint64, filter *commonpb.QueryFilter, _ bool) (cursor.Cursor[*commonpb.Transaction], error) {
 				captured = filter
 
 				return cursor.NewSliceCursor[*commonpb.Transaction](nil), nil
@@ -276,7 +319,7 @@ func TestHandleListTransactions_BackendError(t *testing.T) {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().ListTransactions(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, _ string, _ uint32, _ uint64, _ *commonpb.QueryFilter, _ bool) (cursor.Cursor[*commonpb.Transaction], error) {
+		func(_ context.Context, _ string, _ uint32, _ *uint64, _ *commonpb.QueryFilter, _ bool) (cursor.Cursor[*commonpb.Transaction], error) {
 			return nil, errors.New("backend broke")
 		}).AnyTimes()
 	srv := newTestServer(t, backend)

@@ -180,7 +180,8 @@ func TestLedgerReconcileUsesConfiguredClusterPort(t *testing.T) {
 				}
 				require.Contains(t, commands[0][2], fmt.Sprintf(`--server "$POD_NAME.ledger-main-headless.$POD_NAMESPACE.svc.cluster.local:%d"`, wantPort))
 				require.Contains(t, commands[0][2], `--tls-ca-cert "$TLS_CA_CERT_FILE"`)
-				require.Contains(t, commands[0][2], `--auth-token "$CLUSTER_SECRET"`)
+				require.Contains(t, commands[0][2], `--auth-token "${OPERATOR_AUTH_TOKEN:-${LEDGERCTL_AUTH_TOKEN:-}}"`)
+				require.NotContains(t, commands[0][2], `--auth-token "$CLUSTER_SECRET"`)
 				stored := &ledgerv1alpha1.Ledger{}
 				if deleting {
 					require.Contains(t, commands[0][2], "'ledgers' 'delete' '--yes'")

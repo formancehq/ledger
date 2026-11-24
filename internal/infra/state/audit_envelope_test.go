@@ -383,8 +383,37 @@ func goldenBuildHeader(e *auditpb.AuditEntry) []byte {
 	buf = goldenLenString(buf, e.GetIdempotency().GetKey())
 	buf = goldenU64(buf, e.GetIdempotency().GetExpiresAt())
 	buf = goldenLenBytes(buf, goldenBuildSignature(e.GetSignature()))
+	if ids := e.GetRequiredCapabilities(); len(ids) != 0 {
+		buf = goldenU32(buf, uint32(len(ids)))
+		for _, id := range ids {
+			buf = goldenU32(buf, id)
+		}
+	}
 
 	return buf
+}
+
+func TestAuditCapabilitiesLegacyAndTamper(t *testing.T) {
+	t.Parallel()
+	entry := &auditpb.AuditEntry{Sequence: 1, Outcome: &auditpb.AuditEntry_Success{Success: &auditpb.AuditSuccess{}}}
+	legacy, err := BuildHashedHeaderPayload(entry)
+	require.NoError(t, err)
+	require.Equal(t, goldenBuildHeader(entry), legacy)
+
+	entry.RequiredCapabilities = []uint32{7, 11}
+	bound, err := BuildHashedHeaderPayload(entry)
+	require.NoError(t, err)
+	require.Equal(t, goldenBuildHeader(entry), bound)
+	require.NotEqual(t, legacy, bound)
+
+	entry.RequiredCapabilities[1] = 12
+	tampered, err := BuildHashedHeaderPayload(entry)
+	require.NoError(t, err)
+	require.NotEqual(t, bound, tampered)
+	entry.RequiredCapabilities = nil
+	stripped, err := BuildHashedHeaderPayload(entry)
+	require.NoError(t, err)
+	require.Equal(t, legacy, stripped)
 }
 
 func goldenBuildSignature(sb *signaturepb.SignedApplyBatch) []byte {

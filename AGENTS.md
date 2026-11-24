@@ -18,9 +18,11 @@ are rolling unless the embedded operator lists a mandatory stopped-upgrade
 boundary. Such a boundary must preserve committed data and prove non-empty
 replay. Old and new voters must apply entries identically whenever they coexist.
 The RC.3 to RC.4 proposal payload cutover is a mandatory stopped boundary:
-the operator must stop every RC.3 voter before starting an RC.4 voter. RC.4 to
-RC.5 is one too, because RC.5 retypes `AggregatedVolume` totals as a wire
-exception at the unchanged service protocol revision.
+the operator must stop every RC.3 voter before starting an RC.4 voter.
+The RC.4 to RC.5 upgrade is another mandatory stopped boundary: the peer-service
+port and control-state migrations (schema 3 and native configuration/capability
+controls) cannot coexist with RC.4. RC.5 also retypes `AggregatedVolume` totals
+as a wire exception at the unchanged service protocol revision.
 
 - Classify persisted, Raft, snapshot, backup, and audit changes against the RC
   baseline. Include a tested migration or prove existing data remains valid.
@@ -130,7 +132,7 @@ Documentation is part of the change when behavior, architecture, interfaces, CLI
 
 - New technical mechanism/subsystem/non-obvious invariant: update the matching `docs/technical/architecture/` subsystem documentation and its README.
 - API endpoint change: update `docs/technical/contributing/api-comparison.md`; update `openapi.yml` for HTTP changes; update `docs/technical/contributing/v2-to-v3-endpoint-map.json` when a route it names changes.
-- CLI behavior/flag/command change: update `docs/ops/cli.md`; regenerate demo GIFs when applicable.
+- CLI behavior/flag/command change: update `docs/ops/cli.md`.
 - Interface/behavior change: update relevant code comments.
 - Durability and recovery documentation must state the actual in-memory mutation order, durable-write order, and residual state after failure; do not describe the intended end state as if it were the execution sequence.
 - Documentation is written in English.
@@ -153,6 +155,16 @@ race and subsystem gates are selected from the real diff. Run
 `agent-check-full` only for an explicit broad/high-risk fallback or diagnosis;
 CI owns broad clean validation before merge.
 
+Before an ordinary agent push, use `scripts/agent-push` with the exact PR base
+SHA. It runs `agent-check-pr` in the pinned Nix environment, then refuses to
+push if validation failed or normalization changed the worktree. Do not replace
+this gate with `gofmt`, package tests, or the faster `agent-check` baseline. If
+Nix is unavailable, stop before pushing. A conflict rebase that requires a
+force-with-lease push follows its separate guarded workflow.
+For the first push of a branch without a PR, also set `AI_REVIEW_BASE_REF` to
+the intended base branch. The script verifies the SHA against that branch on
+the remote and requires the target branch to be absent there.
+
 ### Canonical validation commands
 
 ```bash
@@ -161,6 +173,12 @@ bash scripts/agent-check
 
 # Targeted PR validation
 AI_REVIEW_BASE_SHA=<base-sha> bash scripts/agent-check-pr
+
+# Validate and push an ordinary PR branch
+AI_REVIEW_BASE_SHA=<base-sha> bash scripts/agent-push origin <branch>
+
+# Validate and publish a new branch before creating its PR
+AI_REVIEW_BASE_REF=<base-branch> AI_REVIEW_BASE_SHA=<remote-base-sha> bash scripts/agent-push origin <new-branch>
 
 # Explicit/manual broad fallback
 bash scripts/agent-check-full

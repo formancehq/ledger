@@ -131,8 +131,8 @@ send $amount (
 
 **Usage:**
 ```bash
-ledgerctl transactions create --ledger demo \
-  --script escrow.num \
+ledgerctl numscripts execute --ledger demo \
+  --file escrow.num \
   --var "buyer=users:alice" \
   --var "order_id=order-12345" \
   --var "amount=USD/2 500"
@@ -372,8 +372,8 @@ send [USD/2 10000] (
 ### Create Transaction with Numscript
 
 ```bash
-ledgerctl transactions create --ledger demo \
-  --script path/to/script.num \
+ledgerctl numscripts execute --ledger demo \
+  --file path/to/script.num \
   --var "source=users:alice" \
   --var "destination=users:bob" \
   --var "amount=USD/2 1000"
@@ -383,21 +383,21 @@ ledgerctl transactions create --ledger demo \
 
 ```bash
 # Fund from world
-ledgerctl transactions create --ledger demo \
-  --script numscript/examples/world_funding.num \
+ledgerctl numscripts execute --ledger demo \
+  --file numscript/examples/world_funding.num \
   --var "destination=treasury" \
   --var "amount=USD/2 100000"
 
 # Simple transfer
-ledgerctl transactions create --ledger demo \
-  --script numscript/examples/simple_transfer.num \
+ledgerctl numscripts execute --ledger demo \
+  --file numscript/examples/simple_transfer.num \
   --var "source=treasury" \
   --var "destination=users:alice" \
   --var "amount=USD/2 1000"
 
 # Payment with fees
-ledgerctl transactions create --ledger demo \
-  --script numscript/examples/payment_with_fees.num \
+ledgerctl numscripts execute --ledger demo \
+  --file numscript/examples/payment_with_fees.num \
   --var "source=users:alice" \
   --var "merchant=merchants:shop" \
   --var "platform=platform:fees" \

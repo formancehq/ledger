@@ -115,17 +115,17 @@ func (s *Server) handleCreateLedger(w http.ResponseWriter, r *http.Request) {
 
 		createReq.Mode = ledgerMode
 
-		if ledgerMode == commonpb.LedgerMode_LEDGER_MODE_MIRROR {
-			if body.MirrorSource != nil {
-				cfg, err := mirrorSourceToProto(body.MirrorSource)
-				if err != nil {
-					writeBadRequest(w, "INVALID_REQUEST", err)
+		if body.MirrorSource != nil {
+			// Preserve the supplied source so admission can validate that it
+			// agrees with the mode, just as it does for a native Apply request.
+			cfg, err := mirrorSourceToProto(body.MirrorSource)
+			if err != nil {
+				writeBadRequest(w, "INVALID_REQUEST", err)
 
-					return
-				}
-
-				createReq.MirrorSource = cfg
+				return
 			}
+
+			createReq.MirrorSource = cfg
 		}
 
 		if body.DefaultEnforcementMode != "" {
@@ -187,7 +187,7 @@ func (s *Server) handleCreateLedger(w http.ResponseWriter, r *http.Request) {
 
 	info := createLedgerLog.ToLedgerInfo()
 	info.Metadata = createLedgerLog.GetMetadata()
-	writeCreated(w, r, info)
+	writeMutationCreated(w, r, logEntry, info)
 }
 
 // mirrorSourceToProto converts the HTTP body to the proto MirrorSourceConfig.

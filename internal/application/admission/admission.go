@@ -25,6 +25,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/domain/indexes"
 	"github.com/formancehq/ledger/v3/internal/domain/processing/numscript"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
+	"github.com/formancehq/ledger/v3/internal/infra/capabilities"
 	"github.com/formancehq/ledger/v3/internal/infra/health"
 	"github.com/formancehq/ledger/v3/internal/infra/membership"
 	"github.com/formancehq/ledger/v3/internal/infra/node"
@@ -506,6 +507,22 @@ func (a *Admission) AdmitClusterPolicy(ctx context.Context, policy *commonpb.Clu
 	}, a.proposeClusterPolicy)
 }
 
+func (a *Admission) AdmitCapabilityTransition(ctx context.Context, transition *commonpb.CapabilityActivation) (*domain.ApplyResult, error) {
+	if transition == nil || transition.GetId() == 0 {
+		return nil, errors.New("capability transition requires a non-zero id")
+	}
+	if !transition.GetActive() {
+		return nil, errors.New("capability transition must activate")
+	}
+
+	return a.admit(ctx, func(ctx context.Context, caller *commonpb.CallerSnapshot) (*preparedAdmission, error) {
+		command := commands.NewCommand()
+		command.Payload = &raftcmdpb.Proposal_CapabilityActivation{CapabilityActivation: transition.CloneVT()}
+
+		return a.prepareControl(ctx, caller, command)
+	}, a.proposeClusterPolicy)
+}
+
 type preparedAdmission struct {
 	command *raftcmdpb.Proposal
 	build   *plan.BuildResult
@@ -530,17 +547,21 @@ func (a *Admission) prepareExecutionBatch(ctx context.Context, caller *commonpb.
 }
 
 func (a *Admission) prepareClusterPolicy(ctx context.Context, caller *commonpb.CallerSnapshot, policy *commonpb.ClusterPolicy) (*preparedAdmission, error) {
-	// Policy reconciliation is operational configuration, so maintenance does
-	// not stop it. The drain fence in checkAdmissionMaintenance still does.
+	command := commands.NewCommand()
+	configuration := policy.CloneVT()
+	configuration.CapabilityActivations = nil
+	command.Payload = &raftcmdpb.Proposal_SetClusterPolicy{
+		SetClusterPolicy: &raftcmdpb.SetClusterPolicyProposal{Policy: configuration, ConfigurationOnly: true},
+	}
+
+	return a.prepareControl(ctx, caller, command)
+}
+
+func (a *Admission) prepareControl(ctx context.Context, caller *commonpb.CallerSnapshot, command *raftcmdpb.Proposal) (*preparedAdmission, error) {
 	if err := a.checkAdmissionMaintenance(true); err != nil {
 		return nil, err
 	}
-
-	command := commands.NewCommand()
 	command.CallerSnapshot = caller
-	command.Payload = &raftcmdpb.Proposal_SetClusterPolicy{
-		SetClusterPolicy: &raftcmdpb.SetClusterPolicyProposal{Policy: policy},
-	}
 
 	// A policy control has no orders or FSM cache reads. It still receives an
 	// empty execution plan so the shared guarded proposer can stamp its index.
@@ -582,22 +603,46 @@ func (a *Admission) admit(ctx context.Context, prepare func(context.Context, *co
 		a.commandDurationHistogram.Record(ctx, time.Since(start).Seconds())
 	}()
 
-	prepared, err := prepare(ctx, caller.Snapshot())
-	if prepared != nil && prepared.orders != nil {
-		// Every built order shares the atomic batch outcome, including preparation failures.
-		defer a.recordActionOutcome(ctx, prepared.orders, &err)
-	}
-	if err != nil {
-		return nil, err
-	}
+	var orders []*raftcmdpb.Order
+	defer func() {
+		if orders != nil {
+			a.recordActionOutcome(ctx, orders, &err)
+		}
+	}()
+	for {
+		prepared, prepareErr := prepare(ctx, caller.Snapshot())
+		if prepared != nil {
+			orders = prepared.orders
+		}
+		if prepareErr != nil {
+			return nil, prepareErr
+		}
+		fsmFuture, cleanup, proposeErr := propose(ctx, prepared.command, prepared.build)
+		if proposeErr != nil {
+			if !errors.Is(proposeErr, capabilities.ErrActivationPending) {
+				return nil, proposeErr
+			}
+			timer := time.NewTimer(clusterPolicyReadyPollInterval)
+			select {
+			case <-ctx.Done():
+				timer.Stop()
 
-	fsmFuture, cleanup, err := propose(ctx, prepared.command, prepared.build)
-	if err != nil {
-		return nil, err
-	}
-	defer cleanup()
+				return nil, fmt.Errorf("waiting for capability activation: %w", ctx.Err())
+			case <-timer.C:
+			}
+			if err := a.writeGate.CheckWritesAllowed(); err != nil {
+				return nil, err
+			}
+			if err := a.waitLeaderReady(ctx); err != nil {
+				return nil, err
+			}
 
-	return a.resolveAdmissionResult(ctx, prepared.command, fsmFuture)
+			continue
+		}
+		defer cleanup()
+
+		return a.resolveAdmissionResult(ctx, prepared.command, fsmFuture)
+	}
 }
 
 func (a *Admission) proposeClusterPolicy(ctx context.Context, command *raftcmdpb.Proposal, build *plan.BuildResult) (*futures.Future[state.ApplyResult], func(), error) {
@@ -836,6 +881,9 @@ func (a *Admission) proposeAdmission(ctx context.Context, cmd *raftcmdpb.Proposa
 		if runResult != nil {
 			a.proposalGuardDurationHistogram.Record(ctx, runResult.LockHeldDuration.Seconds())
 			a.proposeDurationHistogram.Record(ctx, runResult.ProposeDuration.Seconds())
+		}
+		if errors.Is(err, capabilities.ErrActivationPending) {
+			return nil, nil, err
 		}
 
 		// Distinguish proposer error (queue full / shutdown) from
@@ -1489,6 +1537,17 @@ func extractLedgerScopedNeeds(p *plan.Coverage, ls *raftcmdpb.LedgerScopedOrder,
 		p.Add(dal.SubAttrLedger, ledgerBytes)
 
 		switch applyData := payload.Apply.GetData().(type) {
+		case *raftcmdpb.LedgerApplyOrder_ExecuteNumscript:
+			if ref := applyData.ExecuteNumscript.GetReference(); ref != "" {
+				p.Add(dal.SubAttrReference, domain.TransactionReferenceKey{LedgerName: ledgerName, Reference: ref}.Bytes())
+			}
+			for account, mm := range applyData.ExecuteNumscript.GetAccountMetadata() {
+				for key := range mm.GetValues() {
+					p.Add(dal.SubAttrMetadata, domain.MetadataKey{
+						AccountKey: domain.AccountKey{LedgerName: ledgerName, Account: account}, Key: key,
+					}.Bytes())
+				}
+			}
 		case *raftcmdpb.LedgerApplyOrder_CreateTransaction:
 			if applyData.CreateTransaction.GetReference() != "" {
 				p.Add(dal.SubAttrReference, domain.TransactionReferenceKey{
@@ -1940,6 +1999,10 @@ func (a *Admission) resolveScriptsAndEnrichNeeds(ctx context.Context, orders []*
 		// resolve — fold their effects and move on. A predecessor that would be
 		// skipped folds nothing (skip parity above).
 		switch applyData := applyPayload.Apply.GetData().(type) {
+		case *raftcmdpb.LedgerApplyOrder_ExecuteNumscript:
+			if skip {
+				continue
+			}
 		case *raftcmdpb.LedgerApplyOrder_CreateTransaction:
 			// Handled below (script resolution + effect folding). A predicted
 			// skip is planned like any other create, because only the FSM
@@ -2024,7 +2087,18 @@ func (a *Admission) resolveScriptsAndEnrichNeeds(ctx context.Context, orders []*
 			continue
 		}
 
-		createTx := applyPayload.Apply.GetData().(*raftcmdpb.LedgerApplyOrder_CreateTransaction)
+		var createTx *raftcmdpb.LedgerApplyOrder_CreateTransaction
+		switch data := applyPayload.Apply.GetData().(type) {
+		case *raftcmdpb.LedgerApplyOrder_CreateTransaction:
+			createTx = data
+		case *raftcmdpb.LedgerApplyOrder_ExecuteNumscript:
+			execution := data.ExecuteNumscript
+			createTx = &raftcmdpb.LedgerApplyOrder_CreateTransaction{CreateTransaction: &raftcmdpb.CreateTransactionOrder{
+				Script: execution.GetScript(), NumscriptReference: execution.GetNumscriptReference(),
+				Timestamp: execution.GetTimestamp(), Metadata: execution.GetMetadata(),
+				AccountMetadata: execution.GetAccountMetadata(), Reference: execution.GetReference(),
+			}}
+		}
 
 		// Script-discovered keys belong to this order's coverage. perOrder
 		// is initialized by extractPreloadNeeds with one entry per input
@@ -2194,13 +2268,15 @@ func (a *Admission) resolveScriptsAndEnrichNeeds(ctx context.Context, orders []*
 		// not the script value, for the same key.
 		foldCallerAccountMetadata(effects, ledgerName, createTx.CreateTransaction)
 
-		// Record this create's transaction reference (if any) so a later
-		// same-batch create carrying the same reference is predicted to skip
-		// (TRANSACTION_REFERENCE_CONFLICT). We reach here only for a create that
-		// was NOT predicted to skip, so it registers the reference exactly as the
-		// FSM will (processCreateTransaction stores it in TransactionReferences).
-		if txRef := createTx.CreateTransaction.GetReference(); txRef != "" {
-			effects.recordReference(domain.TransactionReferenceKey{LedgerName: ledgerName, Reference: txRef})
+		// A script with discovered volume effects will create a transaction
+		// and persist its reference, so a later same-batch create carrying the
+		// same reference is predicted to skip (TRANSACTION_REFERENCE_CONFLICT).
+		// A script with metadata effects only must not claim the reference: the
+		// metadata-only FSM path rejects references and writes no reference row.
+		if len(discovered.NetBalanceDeltas) > 0 {
+			if txRef := createTx.CreateTransaction.GetReference(); txRef != "" {
+				effects.recordReference(domain.TransactionReferenceKey{LedgerName: ledgerName, Reference: txRef})
+			}
 		}
 	}
 
@@ -2681,6 +2757,20 @@ func (a *Admission) convertApplyRequest(ctx context.Context, apply *servicepb.Le
 				NumscriptReference: numscriptRef,
 			},
 		}
+	case *servicepb.LedgerAction_ExecuteNumscript:
+		execution := data.ExecuteNumscript
+		if execution.GetScript() != nil && execution.GetScriptReference() != nil {
+			return nil, &domain.BusinessError{Err: domain.ErrScriptAndReferenceConflict}
+		}
+		var ref *raftcmdpb.NumscriptReference
+		if source := execution.GetScriptReference(); source != nil {
+			ref = &raftcmdpb.NumscriptReference{Name: source.GetName(), Version: source.GetVersion(), Vars: source.GetVars()}
+		}
+		order.Data = &raftcmdpb.LedgerApplyOrder_ExecuteNumscript{ExecuteNumscript: &raftcmdpb.ExecuteNumscriptOrder{
+			Script: execution.GetScript(), NumscriptReference: ref, Timestamp: execution.GetTimestamp(),
+			Metadata: execution.GetMetadata(), AccountMetadata: execution.GetAccountMetadata(),
+			Reference: execution.GetReference(),
+		}}
 	case *servicepb.LedgerAction_AddMetadata:
 		order.Data = &raftcmdpb.LedgerApplyOrder_AddMetadata{
 			AddMetadata: &raftcmdpb.SaveMetadataOrder{

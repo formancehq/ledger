@@ -59,6 +59,12 @@ func WalkOrderMetadata(order *raftcmdpb.Order, walk MetadataWalk) SerializableEr
 // walkApplyMetadata walks the metadata carried by a LedgerApplyOrder.
 func walkApplyMetadata(apply *raftcmdpb.LedgerApplyOrder, walk MetadataWalk) SerializableError {
 	switch d := apply.GetData().(type) {
+	case *raftcmdpb.LedgerApplyOrder_ExecuteNumscript:
+		if err := walk.VisitMap("", d.ExecuteNumscript.GetMetadata()); err != nil {
+			return err
+		}
+
+		return walkAccountMetadata(d.ExecuteNumscript.GetAccountMetadata(), walk)
 	case *raftcmdpb.LedgerApplyOrder_CreateTransaction:
 		if err := walk.VisitMap("", d.CreateTransaction.GetMetadata()); err != nil {
 			return err

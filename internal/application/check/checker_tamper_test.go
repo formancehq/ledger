@@ -54,6 +54,7 @@ func TestVerifyAuditHashChain_DetectsTampering(t *testing.T) {
 		}},
 		{"ledgers_swap", "success", func(e *auditpb.AuditEntry, _ []*auditpb.AuditItem) { e.Ledgers = []string{"different-ledger"} }},
 		{"hash_version", "success", func(e *auditpb.AuditEntry, _ []*auditpb.AuditItem) { e.HashVersion = 99 }},
+		{"required_capabilities", "success", func(e *auditpb.AuditEntry, _ []*auditpb.AuditItem) { e.RequiredCapabilities = []uint32{7} }},
 
 		// Outcome flips — same `hash` field, different outcome semantics.
 		{"outcome_flip_success_to_failure", "success", func(e *auditpb.AuditEntry, _ []*auditpb.AuditItem) {

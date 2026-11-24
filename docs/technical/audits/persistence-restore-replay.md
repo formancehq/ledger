@@ -28,6 +28,14 @@ empty technical attempt from a missing export of an audited outcome.
 
 ## Reachability and proof
 
+`AccountMetadataUpdated` is a committed business effect even when its Numscript
+execution creates no transaction. A post-checkpoint instance belongs in the
+nonempty audit/log delta. `RebuildDelta` must fold its account metadata values
+over the checkpoint seed without inventing a transaction, reference or next-ID
+advance. Compare the source and restored metadata and transaction set directly,
+then run `CheckStore` and a subsequent admitted operation. The existing
+`TestBackup_NumscriptRestoreParity` fixture exercises this composition.
+
 For every candidate, establish all of the following at the audited SHA:
 
 1. **Production mutation:** trace an admitted order or supported persistence,
@@ -246,6 +254,20 @@ Does a restore with nonempty checkpoint files and a nonempty post-checkpoint cre
 See [the creation contract](../architecture/subsystems/api/atomic-ledger-creation.md) for the authorized semantics and regression evidence. Treat HTTP response/forwarding, actual FSM readback, keyed replay, nonempty checkpoint-plus-delta restore, and primary-projection tampering as separate evidence oracles; a helper-only test does not prove every boundary.
 
 ## Proposal payload cutover
+
+Schema 3 adds the stopped startup migration and independent configuration and
+capability controls described in [control-state storage](../architecture/subsystems/storage/control-state.md).
+ClusterPolicy retains its original key `0x13`; only capabilities move to `0x18`.
+The field-12 `configuration_only` discriminator preserves omitted-marker legacy
+replay while preventing current policy writers from replacing capability state.
+Exercise canceled migration followed by disk reopen, completed migration
+followed by reopen, unchanged logical state at the applied index, missing-row
+failure, concurrent configuration and monotonic active state. Direct activation
+uses one entry; interrupted uncommitted attempts leave no durable intent, while
+lost responses after commit must not cause deactivation or a duplicate effect.
+Full and operational-only incremental restore preserve both aggregates.
+Check the released RC.4 JSON shape rejects the new known-field data envelope;
+do not infer old-reader rejection from an unknown JSON field.
 
 The proposal codec is part of this contract. Production writers serialize the
 execution and policy oneof directly after a full-stop upgrade. All source nodes

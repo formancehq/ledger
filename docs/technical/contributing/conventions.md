@@ -150,8 +150,7 @@ package-mode import path in a single directive so the package loads once.
    through the real command tree. Keep assertions independent of exact help
    or error wording.
 
-5. Update `docs/ops/cli.md` when commands, flags, or behavior change, and
-   regenerate the relevant demo GIFs when applicable.
+5. Update `docs/ops/cli.md` when commands, flags, or behavior change.
 
 ## Adding a New HTTP Handler
 

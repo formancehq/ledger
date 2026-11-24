@@ -11,6 +11,7 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/util/retry"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	ledgerv1alpha1 "github.com/formancehq/ledger/misc/operator/api/v1alpha1"
@@ -76,8 +77,13 @@ func TestTraceSamplingReconcileConflictThenFix(t *testing.T) {
 			workloadKey := client.ObjectKey{Namespace: cluster.Namespace, Name: "ledger-" + cluster.Name}
 			require.True(t, apierrors.IsNotFound(k8sClient.Get(ctx, workloadKey, &statefulSet)), "invalid config must not provision a StatefulSet")
 
-			cluster.Spec.ExtraEnv = nil
-			require.NoError(t, k8sClient.Update(ctx, cluster))
+			require.NoError(t, retry.RetryOnConflict(retry.DefaultRetry, func() error {
+				if err := k8sClient.Get(ctx, key, cluster); err != nil {
+					return err
+				}
+				cluster.Spec.ExtraEnv = nil
+				return k8sClient.Update(ctx, cluster)
+			}))
 			requireEventually(t, func() bool {
 				return k8sClient.Get(ctx, workloadKey, &statefulSet) == nil
 			}, "correcting the conflict must resume reconciliation")

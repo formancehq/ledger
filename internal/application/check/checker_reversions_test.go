@@ -1,6 +1,9 @@
 package check
 
 import (
+	"bytes"
+	"encoding/binary"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -10,7 +13,9 @@ import (
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
 	"github.com/formancehq/ledger/v3/internal/infra/state"
 	"github.com/formancehq/ledger/v3/internal/pkg/bitset"
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	"github.com/formancehq/ledger/v3/internal/query"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
 
@@ -21,6 +26,84 @@ func writeReversionWord(t *testing.T, store *dal.Store, ledger string, wordIndex
 	batch := store.OpenWriteSession()
 	require.NoError(t, state.SaveReversionWord(batch, ledger, wordIndex, value))
 	require.NoError(t, batch.Commit())
+}
+
+// The audit and logs remain intact while the only persisted reversion word is
+// moved to a key that decodes to the same ledger and word index.
+func TestCheckerRejectsNoncanonicalReversionWord(t *testing.T) {
+	t.Parallel()
+
+	engine := newTestEngine(t)
+	engine.processAndCommit(createLedgerOrder("ledger-a"))
+	engine.processAndCommit(createTransactionOrder("ledger-a", true, &commonpb.Posting{
+		Source: "world", Destination: "alice", Asset: "USD", Amount: commonpb.NewUint256FromUint64(1),
+	}))
+	engine.processAndCommit(engine.revertTransactionOrder("ledger-a", 1))
+	require.Empty(t, collectCheckErrors(t, engine.store, engine.attrs))
+
+	canonical := reversionWordKey("ledger-a", 0)
+	alias := bytes.Clone(canonical)
+	alias[2+len("ledger-a")+1] = 'x'
+
+	handle, err := engine.store.NewReadHandle()
+	require.NoError(t, err)
+	word, closer, err := handle.Get(canonical)
+	require.NoError(t, err)
+	require.NotNil(t, closer)
+	word = bytes.Clone(word)
+	require.NoError(t, closer.Close())
+	require.NoError(t, handle.Close())
+
+	batch := engine.store.OpenWriteSession()
+	require.NoError(t, batch.DeleteKey(canonical))
+	require.NoError(t, batch.SetBytes(alias, word))
+	require.NoError(t, batch.Commit())
+
+	got := collectCheckErrors(t, engine.store, engine.attrs)
+	var aliasFound, missingFound bool
+	for _, event := range got {
+		if event.GetErrorType() != servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_REVERTED_MISMATCH {
+			continue
+		}
+		if strings.Contains(event.GetMessage(), "malformed reversion row") &&
+			strings.Contains(event.GetMessage(), "noncanonical key") {
+			aliasFound = true
+		}
+		if strings.Contains(event.GetMessage(), "reversion bit missing for tx 1") {
+			missingFound = true
+		}
+	}
+	require.True(t, aliasFound, "the aliased physical row must be reported")
+	require.True(t, missingFound, "the alias must not satisfy the audit-derived word")
+}
+
+func reversionWordKey(ledger string, index uint64) []byte {
+	key := make([]byte, 2+dal.LedgerNameFixedSize+8)
+	key[0], key[1] = dal.ZonePerLedger, dal.SubPLReversions
+	copy(key[2:], ledger)
+	binary.BigEndian.PutUint64(key[2+dal.LedgerNameFixedSize:], index)
+
+	return key
+}
+
+func TestReadReversionsCanonicalWordSurvivesAlias(t *testing.T) {
+	t.Parallel()
+	store := createTestStore(t)
+	writeReversionWord(t, store, "ledger-a", 0, 1<<1)
+	alias := reversionWordKey("ledger-a", 0)
+	alias[2+len("ledger-a")+1] = 'x'
+	batch := store.OpenWriteSession()
+	require.NoError(t, batch.SetBytes(alias, bitset.MarshalWord(1<<2)))
+	require.NoError(t, batch.Commit())
+	handle, err := store.NewReadHandle()
+	require.NoError(t, err)
+	defer func() { _ = handle.Close() }()
+	words, malformed, err := query.ReadReversions(handle)
+	require.NoError(t, err)
+	require.Len(t, malformed, 1)
+	require.Contains(t, malformed[0].Reason, "noncanonical key")
+	require.True(t, words["ledger-a"].Test(1))
+	require.False(t, words["ledger-a"].Test(2), "the alias must not replace the canonical word")
 }
 
 // collectReversionEvents runs compareReversions against the store's persisted

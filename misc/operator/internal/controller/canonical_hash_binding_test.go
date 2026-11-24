@@ -93,17 +93,14 @@ func TestCanonicalHashBindingMissingOrBrokenUsesLegacyMigration(t *testing.T) {
 				require.False(t, hasPodConfigHashBinding(f.source))
 				before := f.source.DeepCopy()
 				desired := buildStatefulSetSpec(f.ledger, canonical, nil, tlsModeDisabled).Template
-				helper := preserveStorageSpecHash(f.ledger, f.source, *desired.DeepCopy(), canonical)
 				got, err := f.reconciler(f.client).resolveStorageSpecHash(t.Context(), f.ledger, f.source, *desired.DeepCopy(), canonical)
 				require.Equal(t, before, f.source, "hash resolution must not mutate the source")
 				if exact {
 					require.NoError(t, err)
-					require.Equal(t, old, helper.Annotations[annotationSpecHash])
 					require.Equal(t, old, got.Annotations[annotationSpecHash], "association loss alone cannot force a storage-only rollout")
 					recordPodConfigHash(f.source, canonical)
 					require.Equal(t, old, f.source.Annotations[annotationPodConfigSpecHash], "bind the retained historical hash")
 				} else {
-					require.Equal(t, canonical, helper.Annotations[annotationSpecHash])
 					require.ErrorContains(t, err, "cannot reconstruct")
 					f.ledger.Annotations = map[string]string{annotationLegacySpecHashProof: "{"}
 					_, err = f.reconciler(f.client).resolveStorageSpecHash(t.Context(), f.ledger, f.source, *desired.DeepCopy(), canonical)
@@ -133,13 +130,11 @@ func TestCanonicalHashBindingValidPairTakesPrecedence(t *testing.T) {
 			desired := buildStatefulSetSpec(f.ledger, wanted, nil, tlsModeDisabled).Template
 			got, err := f.reconciler(f.client).resolveStorageSpecHash(t.Context(), f.ledger, f.source, *desired.DeepCopy(), wanted)
 			require.NoError(t, err)
-			helper := preserveStorageSpecHash(f.ledger, f.source, *desired.DeepCopy(), wanted)
 			expected := "retained-historical-pod-hash"
 			if change {
 				expected = wanted
 			}
 			require.Equal(t, expected, got.Annotations[annotationSpecHash])
-			require.Equal(t, expected, helper.Annotations[annotationSpecHash])
 		})
 	}
 }
@@ -156,7 +151,6 @@ func TestCanonicalHashBindingMissingInstalledHashDoesNotTrustMetadata(t *testing
 	got, err := f.reconciler(f.client).resolveStorageSpecHash(t.Context(), f.ledger, f.source, *desired.DeepCopy(), canonical)
 	require.NoError(t, err)
 	require.Equal(t, desired, got)
-	require.Equal(t, desired, preserveStorageSpecHash(f.ledger, f.source, *desired.DeepCopy(), canonical))
 }
 
 func TestCanonicalHashBindingUnpairedCanonicalHashIsNotHistoricalEvidence(t *testing.T) {

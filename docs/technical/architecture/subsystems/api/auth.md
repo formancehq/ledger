@@ -7,7 +7,7 @@ Authentication on the API surface is **JWT bearer tokens** in the standard `Auth
 Two distinct auth layers coexist:
 
 1. **Client auth** — JWT, validated on every request, gates the public gRPC/HTTP API.
-2. **Inter-node auth (Raft)** — shared cluster secret, not JWT, gates the Raft transport between nodes.
+2. **Inter-node auth (Raft)** — shared cluster secret, not JWT, gates TLS Raft transport between nodes. Optional-mode plaintext is accepted only during migration.
 
 This page covers both. The cryptographic request-signing layer (Ed25519, used to sign batch bodies for tamper-evidence and audit) is a separate concern, documented in [admission / signing.md](../admission/signing.md).
 
@@ -49,7 +49,7 @@ per-request scope and superuser checks still use the successfully loaded policy.
 | gRPC | `metadata.FromIncomingContext(ctx)` → `authorization: Bearer <token>` |
 | HTTP | `r.Header.Get("Authorization")` |
 
-If no bearer is present, the request is treated as **anonymous** and given whatever scopes are configured via `--auth-anonymous-scopes` (CSV, default empty). A method requiring a scope not in the anonymous set returns `Unauthenticated` (gRPC) / `401` (HTTP).
+If no bearer is present, the request is treated as **anonymous** and given whatever scopes are configured via `--auth-anonymous-scopes` (CSV, default empty). For gRPC, this anonymous fallback applies when the authorization metadata is absent or contains a single non-Bearer value. Multiple `authorization` metadata values are rejected as ambiguous before anonymous evaluation. A method requiring a scope not in the anonymous set returns `Unauthenticated` (gRPC) / `401` (HTTP).
 
 ### Token validation
 
@@ -66,7 +66,7 @@ The lack of cache is deliberate at this stage — JWKS lookups are local to the 
 
 ### Scopes
 
-`internal/adapter/auth/scopes.go:21-36` defines 14 granular scopes:
+`internal/adapter/auth/scopes.go` defines 15 granular scopes:
 
 ```
 ledger:ReadLedger       ledger:WriteLedger
@@ -76,9 +76,10 @@ ledger:ReadAudit        ledger:WriteAudit
 ledger:ReadOps          ledger:WriteOps
 ledger:ReadQuery        ledger:WriteQuery
 ledger:ReadCluster      ledger:WriteCluster
+ledger:ExecuteNumscript
 ```
 
-Tokens may carry either **granular** scopes (used as-is) or **virtual** scopes (for example `ledger:read`, `ledger:write`, `ledger:admin`) that expand into a granular set via a configurable mapping (`scopes.go:58-113`). Granular scopes are always in the Ledger application namespace with the `ledger:<Action><Resource>` shape, matching the Membership scope convention. The mapping can be a JSON file, an environment variable, or a built-in default. Once expanded, only the granular form is consulted at authorization time. [RC.1 migration details](../../../../ops/authentication.md#migration-from-rc1-granular-labels) cover tokens, custom mappings, anonymous grants, and historical audit records.
+Tokens may carry either **granular** scopes (used as-is) or **virtual** scopes (for example `ledger:read`, `ledger:write`, `ledger:admin`) that expand into a granular set via a configurable mapping. Numscript execution requires `ledger:ExecuteNumscript`, which the default `ledger:write` mapping includes. The mapping can be a JSON file, an environment variable, or a built-in default. Once expanded, only the granular form is consulted at authorization time. [RC.1 migration details](../../../../ops/authentication.md#migration-from-rc1-granular-labels) cover tokens, custom mappings, anonymous grants, and historical audit records.
 
 ### Authorization enforcement
 
@@ -131,11 +132,15 @@ This is the right setting to relax for embedded / dev deployments without disabl
 
 Raft transport uses a **shared cluster secret**, not JWT. `internal/adapter/grpc/raft_auth.go:27-75`:
 
-- Each Raft RPC carries `authorization: Bearer <clusterSecret>` in metadata.
+- Each TLS Raft RPC carries `authorization: Bearer <clusterSecret>` in metadata.
+- During an `optional` rollout, legacy plaintext Raft RPCs carry no secret
+  and are admitted until the listener becomes TLS-only.
 - Comparison uses `crypto/subtle.ConstantTimeCompare` to avoid timing attacks.
-- If `--cluster-secret` is empty, the legacy "no auth" mode is used (not recommended).
+- If `--cluster-secret` is empty, the legacy "no auth" mode is used. This mode
+  is incompatible with `--auth-enabled`, which requires a peer transport
+  secret for forwarding.
 
-There is a **fast path** when the cluster secret is presented through the client surface (`grpc_auth.go:EvaluateGRPCCredentials`): the request bypasses JWT validation, gets every granular scope, is marked as cluster-internal in the context, and — if the request is a leader forwarding a follower's work — carries the forwarded `CallerSnapshot` so the audit chain still attributes the operation to the original caller. Auth-disabled snapshots are the exception: each node derives that explicit principal locally, so followers do not forward it. If a request carries a forwarded snapshot but the connection is **not** cluster-internal (cluster secret unset or mismatched), the leader **rejects** it with `PermissionDenied` rather than silently dropping the identity (`server_bucket.go:adoptForwardedSnapshotIfTrusted`) — a misconfiguration surfaces as a failed write instead of an unattributed audit entry.
+The cluster secret is reserved for the Raft plane and the dedicated peer service listener used for follower-to-leader forwarding. On TLS connections to the peer listener it is carried in `x-ledger-peer-auth`, separate from the user's `authorization` metadata. Optional-mode plaintext connections carry no peer credential and are not trusted forwarding hops. The public service listener rejects the cluster secret; it is never a direct `ledgerctl` credential. Forwarded user tokens are evaluated at the terminal node. An authenticated peer marks forwarded anonymous callers with `x-ledger-forwarded-anonymous: true`; the terminal node applies its anonymous scopes. Peer calls with neither a user token nor this marker are node-system actions. Auth-disabled snapshots are derived locally. Forwarding trust is derived from an authenticated TLS peer connection, not from client-controlled request fields.
 
 ## Caller identity in the audit chain
 
@@ -174,8 +179,8 @@ It is resolved into an opaque, validated `attribution.Capability` by
 `ResolveCallerAttribution()` (`internal/adapter/auth/caller_snapshot.go`), in precedence order:
 
 1. **System actor** — a background action marked with `WithSystemActor(ctx, component)` resolves to a `system` principal (e.g. `query-checkpoint-scheduler`, `mirror`, `events-sink`, `cluster-config`, `idempotency-eviction`, `backup`).
-2. **Trusted forwarded snapshot** — a follower authenticated with the cluster secret sends the authenticated, anonymous, or system snapshot it captured; the leader validates and freezes it before installing an opaque capability in the context. Auth-disabled snapshots are never forwarded: the leader derives the same explicit `auth_disabled` principal locally. Absent forwarded attribution resolves to `cluster-peer`; malformed supplied snapshots are rejected. A snapshot on a non-cluster-internal connection is rejected as spoofing. Plaintext clusters without a cluster secret are not trusted forwarding hops.
-3. **Cluster peer** — a request authenticated by the cluster secret with no forwarded caller resolves to the `cluster-peer` system principal rather than to an anonymous caller with transport-level scopes.
+2. **Trusted forwarded snapshot** — a follower authenticated with the peer transport credential sends the authenticated, anonymous, or system snapshot it captured; the leader validates and freezes it before installing an opaque capability in the context. Auth-disabled snapshots are never forwarded: the leader derives the same explicit `auth_disabled` principal locally. Absent forwarded attribution resolves to `cluster-peer`; malformed supplied snapshots are rejected. A snapshot on a non-cluster-internal connection is rejected as spoofing. Plaintext clusters without a cluster secret are not trusted forwarding hops.
+3. **Cluster peer** — a request authenticated by the peer transport credential with no forwarded caller resolves to the `cluster-peer` system principal rather than to an anonymous caller with transport-level scopes.
 4. **Local authentication state** — otherwise `buildCallerSnapshot()` produces `authenticated` from validated OIDC/Ed25519 claims, `anonymous` from configured anonymous access, or `auth_disabled` when authentication is disabled.
 
 Every admitted write proposal therefore records exactly one explicit principal.

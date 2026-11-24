@@ -17,13 +17,14 @@ func TestAuditEntry_MarshalJSON_CamelCase(t *testing.T) {
 	t.Parallel()
 
 	entry := &AuditEntry{
-		Sequence:    7,
-		Timestamp:   &commonpb.Timestamp{Data: 1700000000000000},
-		ProposalId:  42,
-		OrderCount:  1,
-		Ledgers:     []string{"main"},
-		HashVersion: 3,
-		Hash:        []byte{0xde, 0xad, 0xbe, 0xef},
+		Sequence:             7,
+		Timestamp:            &commonpb.Timestamp{Data: 1700000000000000},
+		ProposalId:           42,
+		OrderCount:           1,
+		Ledgers:              []string{"main"},
+		HashVersion:          3,
+		RequiredCapabilities: []uint32{7, 11},
+		Hash:                 []byte{0xde, 0xad, 0xbe, 0xef},
 		Outcome: &AuditEntry_Success{Success: &AuditSuccess{
 			MinLogSequence: 10,
 			MaxLogSequence: 12,
@@ -43,6 +44,7 @@ func TestAuditEntry_MarshalJSON_CamelCase(t *testing.T) {
 	require.Contains(t, out, `"proposalId":42`)
 	require.Contains(t, out, `"orderCount":1`)
 	require.Contains(t, out, `"hashVersion":3`)
+	require.Contains(t, out, `"requiredCapabilities":[7,11]`)
 	require.Contains(t, out, `"minLogSequence":10`)
 	require.Contains(t, out, `"maxLogSequence":12`)
 	require.Contains(t, out, `"orderIndex":3`)

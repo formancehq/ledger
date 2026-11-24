@@ -276,7 +276,7 @@ func (impl *BucketServiceServerImpl) adoptForwardedSnapshotIfTrusted(ctx context
 
 	if !internalauth.IsClusterInternal(ctx) {
 		impl.logger.Errorf("rejecting forwarded caller snapshot on a non-cluster-internal connection; " +
-			"cluster secret is likely unset or mismatched between peers")
+			"peer transport authentication is likely missing or mismatched")
 
 		return ctx, status.Error(codes.PermissionDenied,
 			"forwarded caller snapshot on a non-cluster-internal connection")
@@ -532,11 +532,11 @@ func (impl *BucketServiceServerImpl) ListTransactions(req *servicepb.ListTransac
 		defer cleanup()
 
 		profile.EnterExecute()
-		c, err = impl.localCtrl.ListTransactionsFrom(ctx, mainStore, readIdx, req.GetLedger(), fetchSize, afterTxID, opts.GetFilter(), reverse)
+		c, err = impl.localCtrl.ListTransactionsFrom(ctx, mainStore, readIdx, req.GetLedger(), fetchSize, transactionAfterID(page.Key, afterTxID), opts.GetFilter(), reverse)
 		profile.LeaveExecute()
 	} else {
 		profile.EnterExecute()
-		c, err = impl.ctrl.ListTransactions(ctx, req.GetLedger(), fetchSize, afterTxID, opts.GetFilter(), reverse)
+		c, err = impl.ctrl.ListTransactions(ctx, req.GetLedger(), fetchSize, transactionAfterID(page.Key, afterTxID), opts.GetFilter(), reverse)
 		profile.LeaveExecute()
 	}
 
@@ -1210,8 +1210,8 @@ func (impl *BucketServiceServerImpl) Barrier(ctx context.Context, _ *servicepb.B
 	// Barrier proposes a no-op through Raft and waits for it to apply, so it
 	// consumes consensus capacity like a write. Require an authenticated scope
 	// (ledger:ReadOps) so it can't be used anonymously as a DoS amplifier or a
-	// commit-index timing side channel. Leader-forwarded calls carry the
-	// cluster secret, which grants all scopes.
+	// commit-index timing side channel. Leader-forwarded calls carry the peer
+	// transport credential and the original caller token.
 	commitIndex, err := impl.ctrl.Barrier(ctx)
 	if err != nil {
 		return nil, err
@@ -1325,4 +1325,13 @@ func profileToMetadata(profile *query.QueryProfile) metadata.MD {
 
 func RegisterBucketService(registrar ggrpc.ServiceRegistrar, ledgerServiceServer servicepb.BucketServiceServer) {
 	servicepb.RegisterBucketServiceServer(registrar, ledgerServiceServer)
+}
+
+// transactionAfterID keeps an explicit zero distinct from an empty cursor.
+func transactionAfterID(key string, id uint64) *uint64 {
+	if key == "" {
+		return nil
+	}
+
+	return &id
 }

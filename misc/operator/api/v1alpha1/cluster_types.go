@@ -87,6 +87,11 @@ type ClusterSpec struct {
 	// +optional
 	GrpcPort int32 `json:"grpcPort,omitempty"`
 
+	// GrpcPeerPort is the dedicated gRPC port used for authenticated
+	// inter-node service forwarding.
+	// +optional
+	GrpcPeerPort int32 `json:"grpcPeerPort,omitempty"`
+
 	// HttpPort is the HTTP service port.
 	// +kubebuilder:default=9000
 	// +optional
@@ -348,7 +353,9 @@ type ClusterSpec struct {
 	// +optional
 	TopologySpreadConstraints []corev1.TopologySpreadConstraint `json:"topologySpreadConstraints,omitempty"`
 
-	// NetworkPolicy configuration for egress restrictions.
+	// NetworkPolicy configuration for ingress and egress restrictions. When
+	// enabled, public HTTP/gRPC ingress is limited to the declared service
+	// ports, while Raft and peer gRPC ingress is limited to Ledger Pods.
 	// +optional
 	NetworkPolicy *NetworkPolicySpec `json:"networkPolicy,omitempty"`
 
@@ -1288,9 +1295,11 @@ type PodAntiAffinitySpec struct {
 	TopologyKey string `json:"topologyKey,omitempty"`
 }
 
-// NetworkPolicySpec defines egress NetworkPolicy configuration.
+// NetworkPolicySpec defines ingress and egress NetworkPolicy configuration.
 type NetworkPolicySpec struct {
-	// Enabled enables the egress NetworkPolicy.
+	// Enabled enables the NetworkPolicy. It restricts both egress and ingress:
+	// public HTTP/gRPC ports remain reachable according to the generated rules,
+	// while Raft and peer gRPC ports are reachable only between Ledger Pods.
 	// +optional
 	Enabled bool `json:"enabled,omitempty"`
 

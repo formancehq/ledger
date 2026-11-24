@@ -4,7 +4,7 @@
 //   - An unexported <message>Readonly named type defined as `type X Msg` so
 //     that AsReader() can convert *Msg -> *<message>Readonly without heap
 //     allocation. The resulting *<message>Readonly fits in the interface data
-//     word, and every transitive GetFoo() reader view is likewise zero-alloc.
+//     word, and every singular sub-message reader view is likewise zero-alloc.
 //   - An AsReader() method on the concrete type returning the reader interface
 //   - A Mutate() method on the concrete type returning CloneVT()
 //
@@ -20,6 +20,9 @@
 //   - Singular []byte getters return a freshly-cloned slice (bytes.Clone).
 //   - Repeated []byte ([][]byte) getters return a deep clone of the slice.
 //   - Singular scalar getters return value types directly.
+//   - Oneof arms use those same rules; Which<Group>() reports the selected
+//     field number, including selected nil/zero values. Mutable group wrappers
+//     are never exposed.
 //
 // Install:  go build -o protoc-gen-reader .
 // Usage:    protoc --reader_out=. --reader_opt=module=<module> ...
@@ -64,6 +67,9 @@ var (
 func main() {
 	protogen.Options{}.Run(func(gen *protogen.Plugin) error {
 		gen.SupportedFeatures = uint64(pluginpb.CodeGeneratorResponse_FEATURE_PROTO3_OPTIONAL)
+		if err := validateOneofNames(gen); err != nil {
+			return err
+		}
 
 		for _, f := range gen.Files {
 			if !f.Generate {
@@ -120,28 +126,18 @@ func generateMessage(g *protogen.GeneratedFile, msg *protogen.Message) {
 	g.P("type ", readerName, " interface {")
 
 	for _, field := range msg.Fields {
-		if field.Oneof != nil && !field.Desc.HasOptionalKeyword() {
-			// Oneof fields are accessed via the oneof getter, not individual field getters.
-			// We'll handle the oneof getter below.
-			continue
-		}
-
 		getterName := "Get" + field.GoName
 		retType := readerFieldType(g, msg, field)
 		g.P("\t", getterName, "() ", retType)
 	}
 
-	// Oneof getters (one per oneof group)
+	// Discriminators preserve presence independently of the arm's value.
 	for _, oneof := range msg.Oneofs {
 		if oneof.Desc.IsSynthetic() {
 			continue // proto3 optional — already handled as regular field
 		}
 
-		getterName := "Get" + oneof.GoName
-		// The oneof getter returns the unexported interface type from protoc-gen-go.
-		// We use the same type to maintain compatibility.
-		oneofInterfaceName := fmt.Sprintf("is%s_%s", typeName, oneof.GoName)
-		g.P("\t", getterName, "() ", oneofInterfaceName)
+		g.P("\tWhich", oneof.GoName, "() ", oneofCaseName(msg, oneof))
 	}
 
 	// Extra custom read-only methods
@@ -162,7 +158,7 @@ func generateMessage(g *protogen.GeneratedFile, msg *protogen.Message) {
 	// Defined as a named type over the concrete message so that AsReader() can
 	// convert *typeName -> *wrapperName without allocating a heap wrapper. The
 	// resulting *wrapperName fits in the interface data-word, keeping the whole
-	// reader-view chain zero-alloc.
+	// singular message-reader chain zero-alloc.
 	g.P()
 	g.P("type ", wrapperName, " ", typeName)
 
@@ -171,23 +167,38 @@ func generateMessage(g *protogen.GeneratedFile, msg *protogen.Message) {
 
 	for _, field := range msg.Fields {
 		if field.Oneof != nil && !field.Desc.HasOptionalKeyword() {
+			writeOneofGetter(g, msg, field, wrapperName, base)
+
 			continue
 		}
 
 		writeWrapperGetter(g, msg, field, wrapperName, base)
 	}
 
-	// Oneof getters on wrapper
+	// Oneof cases and discriminators on wrapper.
 	for _, oneof := range msg.Oneofs {
 		if oneof.Desc.IsSynthetic() {
 			continue
 		}
 
-		getterName := "Get" + oneof.GoName
-		oneofInterfaceName := fmt.Sprintf("is%s_%s", typeName, oneof.GoName)
+		caseName := oneofCaseName(msg, oneof)
 		g.P()
-		g.P("func (r *", wrapperName, ") ", getterName, "() ", oneofInterfaceName, " {")
-		g.P("\treturn ", base, ".", getterName, "()")
+		g.P("// ", caseName, " identifies a selected oneof arm by its protobuf field number.")
+		g.P("type ", caseName, " int32")
+		g.P("const (")
+		g.P(caseName, "_Unset ", caseName, " = 0")
+		for _, field := range oneof.Fields {
+			g.P(caseName, "_", field.GoName, " ", caseName, " = ", field.Desc.Number())
+		}
+		g.P(")")
+		g.P()
+		g.P("func (r *", wrapperName, ") Which", oneof.GoName, "() ", caseName, " {")
+		g.P("switch ", base, ".Get", oneof.GoName, "().(type) {")
+		for _, field := range oneof.Fields {
+			g.P("case *", g.QualifiedGoIdent(field.GoIdent), ": return ", caseName, "_", field.GoName)
+		}
+		g.P("default: return ", caseName, "_Unset")
+		g.P("}")
 		g.P("}")
 	}
 
@@ -235,6 +246,130 @@ func generateMessage(g *protogen.GeneratedFile, msg *protogen.Message) {
 
 		writeMapReader(g, msg, field)
 	}
+}
+
+func oneofCaseName(msg *protogen.Message, oneof *protogen.Oneof) string {
+	return msg.GoIdent.GoName + "_" + oneof.GoName + "ReaderCase"
+}
+
+// validateOneofNames fails generation rather than silently shadowing a schema
+// declaration (including nested messages) or another generated reader symbol.
+func validateOneofNames(gen *protogen.Plugin) error {
+	names := make(map[protogen.GoImportPath]map[string]bool)
+	add := func(pkg protogen.GoImportPath, name string) {
+		if names[pkg] == nil {
+			names[pkg] = make(map[string]bool)
+		}
+		names[pkg][name] = true
+	}
+	var walk func(*protogen.Message)
+	walk = func(msg *protogen.Message) {
+		pkg := msg.GoIdent.GoImportPath
+		add(pkg, msg.GoIdent.GoName)
+		if !msg.Desc.IsMapEntry() {
+			add(pkg, msg.GoIdent.GoName+"Reader")
+			add(pkg, unexport(msg.GoIdent.GoName)+"Readonly")
+			add(pkg, msg.GoIdent.GoName+"ListReader")
+			add(pkg, listReadonlyName(msg))
+			add(pkg, listReaderCtorName(msg))
+		}
+		for _, field := range msg.Fields {
+			if field.Oneof != nil && !field.Oneof.Desc.IsSynthetic() {
+				add(pkg, field.GoIdent.GoName)
+			}
+			if field.Desc.IsMap() {
+				add(pkg, mapReaderInterfaceName(msg, field))
+				add(pkg, mapReadonlyName(msg, field))
+			}
+		}
+		for _, enum := range msg.Enums {
+			add(pkg, enum.GoIdent.GoName)
+			for _, value := range enum.Values {
+				add(pkg, value.GoIdent.GoName)
+			}
+		}
+		for _, nested := range msg.Messages {
+			walk(nested)
+		}
+	}
+	for _, file := range gen.Files {
+		for _, msg := range file.Messages {
+			walk(msg)
+		}
+		for _, enum := range file.Enums {
+			add(file.GoImportPath, enum.GoIdent.GoName)
+			for _, value := range enum.Values {
+				add(file.GoImportPath, value.GoIdent.GoName)
+			}
+		}
+	}
+	var check func(*protogen.Message) error
+	check = func(msg *protogen.Message) error {
+		for _, oneof := range msg.Oneofs {
+			if oneof.Desc.IsSynthetic() {
+				continue
+			}
+			caseName := oneofCaseName(msg, oneof)
+			decls := []string{caseName, caseName + "_Unset"}
+			for _, field := range oneof.Fields {
+				decls = append(decls, caseName+"_"+field.GoName)
+			}
+			for _, name := range decls {
+				if names[msg.GoIdent.GoImportPath][name] {
+					return fmt.Errorf("%s: oneof reader declaration %s conflicts with another Go declaration", oneof.Desc.FullName(), name)
+				}
+				add(msg.GoIdent.GoImportPath, name)
+			}
+		}
+		for _, nested := range msg.Messages {
+			if err := check(nested); err != nil {
+				return err
+			}
+		}
+
+		return nil
+	}
+	for _, file := range gen.Files {
+		if !file.Generate {
+			continue
+		}
+		for _, msg := range file.Messages {
+			if err := check(msg); err != nil {
+				return err
+			}
+		}
+	}
+
+	return nil
+}
+
+// writeOneofGetter reads the selected wrapper without returning it. Unlike
+// protoc's getters, it also tolerates an interface containing a typed-nil arm.
+func writeOneofGetter(g *protogen.GeneratedFile, msg *protogen.Message, field *protogen.Field, wrapperName, base string) {
+	g.P()
+	g.P("func (r *", wrapperName, ") Get", field.GoName, "() ", readerFieldType(g, msg, field), " {")
+	g.P("v, ok := ", base, ".Get", field.Oneof.GoName, "().(*", g.QualifiedGoIdent(field.GoIdent), ")")
+	g.P("if !ok || v == nil {")
+	if field.Desc.Kind() == protoreflect.MessageKind || field.Desc.Kind() == protoreflect.GroupKind {
+		g.P("return nil")
+	} else {
+		// Delegate defaults to protoc, including proto2 enum/scalar defaults.
+		if field.Desc.Kind() == protoreflect.BytesKind {
+			g.P("return ", g.QualifiedGoIdent(protogen.GoIdent{GoName: "Clone", GoImportPath: bytesPkg}), "((*", msg.GoIdent.GoName, ")(nil).Get", field.GoName, "())")
+		} else {
+			g.P("return (*", msg.GoIdent.GoName, ")(nil).Get", field.GoName, "()")
+		}
+	}
+	g.P("}")
+	switch field.Desc.Kind() {
+	case protoreflect.MessageKind, protoreflect.GroupKind:
+		g.P("return v.", field.GoName, ".AsReader()")
+	case protoreflect.BytesKind:
+		g.P("return ", g.QualifiedGoIdent(protogen.GoIdent{GoName: "Clone", GoImportPath: bytesPkg}), "(v.", field.GoName, ")")
+	default:
+		g.P("return v.", field.GoName)
+	}
+	g.P("}")
 }
 
 // readerFieldType returns the Go type of a field as exposed on the Reader interface.

@@ -9,6 +9,15 @@ product guarantee or authorization to run an audit.
 
 ## Evidence contract
 
+For an audited metadata-only Numscript execution, the checker must re-execute
+the script from the chain-bound order, expect an `AccountMetadataUpdated` log,
+and compare the account metadata projection. The operation creates no
+transaction or reference and must not advance the expected next transaction
+ID. Audit replay ignores operational metadata size limits while retaining
+semantic validation; otherwise a healthy committed operation can fail replay
+against an empty or later policy. Pair a clean store with controlled metadata
+tampering and inspect both callback findings and the terminal error.
+
 For each candidate record the exact audited SHA, production entry point, primary
 snapshot and optional peer snapshot, persisted keyspace/field, corruption,
 authoritative witness, verification pass and interval, comparison direction,
@@ -54,7 +63,7 @@ root cause across multiple affected passes or callers.
 | Pass selection and verdict | `internal/application/check/checker.go`: trace `Check`, every comparison and early exit. Inventory current calls, not a frozen count from the documentation table. `Check` returns execution errors and emits corruption through its callback; progress and a nil return are not alone a healthy verdict. |
 | Source chain and bounds | `verifyAuditHashChain`, `newProposalBoundaryReader`, `internal/query/audit.go`, `log.go`, `applied_proposal.go`, `internal/infra/state/audit_envelope.go`, `batch.go`, `machine.go`: identify entry/item/log/proposal key ranges and cardinalities, hash inputs and the verified source of replay inputs. Include first/last inclusivity and iterator terminal errors. |
 | Reconstruction | `checker.go`, `replay_store.go`, `internal/domain/replay/`, `internal/domain/processing/processor*.go`: establish order-to-log-to-projection provenance. Inspect producer code to establish semantics and correlated defects, without treating producer agreement as an independent oracle. |
-| Projection coverage | Inventory volumes, metadata, transactions and post-commit volumes, reversions, exclusions, idempotency outcomes, indexes, mirror position, numscript content/latest pointers, ledger presence/schema/account types/boundaries/references, signing and query checkpoints from actual calls. Map each field to expected-source and stored-row scans, including deletion and unmatched rows. This discovery list must be refreshed on the audited SHA. |
+| Projection coverage | Inventory volumes, metadata, transactions and post-commit volumes, reversions, exclusions, idempotency outcomes, indexes, mirror position, numscript content/latest pointers, ledger presence/schema/account types/boundaries/references, signing and query checkpoints from actual calls. For query checkpoints include live rows, the next-ID allocator and schedule; derive the allocator from all audited creations even after deletion, and fold schedule set/delete in order. Map each field to expected-source and stored-row scans, including deletion and unmatched rows. This discovery list must be refreshed on the audited SHA. |
 | Storage boundary | `internal/storage/dal/`, `internal/infra/attributes/`, `internal/storage/readstore/`, `reverse_map_orphans.go`: primary snapshot and cursor semantics; only the documented reverse-map exception reads peer data for a verdict. Broad globs are counterevidence sources, not a general storage or index audit. |
 | Result consumption | `internal/adapter/grpc/server_bucket.go` (`CheckStore`), `server_restore.go` (`CheckRestore`), `cmd/ledgerctl/store/check.go`, `bootstrap.go`: trace events, transport errors and final decisions. A staged store has no peer readstore; it cannot certify peer contents. Restore correctness itself belongs to the persistence domain. |
 | Existing evidence | `internal/application/check/*_test.go`, `internal/domain/replay/*_test.go`, relevant `tests/e2e/business/` and `tests/e2e/cluster/`: record assertions actually reached, not test names or line coverage as proof. |
@@ -323,6 +332,18 @@ moves the registration to a padding alias, confirms the canonical point lookup
 misses, and requires both the noncanonical-key and the missing-registration
 `INDEX_MISMATCH`. Other passes that decode ledger-name-keyed rows and match on
 the logical key are candidates for the same probe.
+
+## Noncanonical reversion-word keys
+
+`ReadReversions` is shared by checker comparison, startup recovery and
+incremental rebuild. It requires the exact physical word-key length and the
+canonical encoding of the decoded ledger name and word index before accepting
+a row. A key with nonzero ledger-name padding must be reported by the checker
+as `REVERTED_MISMATCH`, must not satisfy an audit-derived revert, and must not
+replace a canonical word in recovery. `checker_reversions_test.go` moves a
+legitimate word to an alias while retaining the audit and logs, then checks
+the full checker verdict. It also pairs canonical and alias words to verify
+the recovery reader ignores the alias.
 
 ## Index registrations without Id (EN-3237)
 
