@@ -162,7 +162,7 @@ func TestHandleListTransactions_FractionalDateBounds(t *testing.T) {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().ListTransactions(gomock.Any(), "ledger1", gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, _ string, _ uint32, _ uint64, filter *commonpb.QueryFilter, _ bool) (cursor.Cursor[*commonpb.Transaction], error) {
+		func(_ context.Context, _ string, _ uint32, _ *uint64, filter *commonpb.QueryFilter, _ bool) (cursor.Cursor[*commonpb.Transaction], error) {
 			cond := filter.GetBuiltinUint()
 			require.Equal(t, commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP, cond.GetField())
 			bounds := cond.GetCond()
