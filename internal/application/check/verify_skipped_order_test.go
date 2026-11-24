@@ -2452,6 +2452,40 @@ func TestKnownCreateConflictDoesNotLoseTransactionSlotOnReplay(t *testing.T) {
 	require.Empty(t, cb.metadata[ledger][metadataTimelineTarget(false, "account")]["cursor"])
 }
 
+func TestUnreplayedExecutionMetadataDoesNotCauseInvalidSkip(t *testing.T) {
+	t.Parallel()
+	const ledger, account, key = "L", "account", "cursor"
+	cb := newChainBoundState()
+	appendMetadataMutation(cb.metadata, ledger, metadataTimelineTarget(false, account), key, 10, true)
+	execution := &raftcmdpb.Order{Type: &raftcmdpb.Order_LedgerScoped{LedgerScoped: &raftcmdpb.LedgerScopedOrder{
+		Ledger: ledger, Payload: &raftcmdpb.LedgerScopedOrder_Apply{Apply: &raftcmdpb.LedgerApplyOrder{
+			Data: &raftcmdpb.LedgerApplyOrder_ExecuteNumscript{ExecuteNumscript: &raftcmdpb.ExecuteNumscriptOrder{
+				Reference:       "possibly-skipped",
+				AccountMetadata: map[string]*commonpb.MetadataMap{account: {Values: map[string]*commonpb.MetadataValue{key: commonpb.NewStringValue("42")}}},
+			}},
+			SkippableReasons: []commonpb.ErrorReason{commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT},
+		}},
+	}}}
+	expected := map[uint64]*expectedSkippableOrder{11: {
+		reasons: []commonpb.ErrorReason{commonpb.ErrorReason_ERROR_REASON_METADATA_NOT_FOUND},
+		ledger:  ledger, metadataTarget: account, metadataKey: key,
+	}}
+	skip := skippedPayloadWithContext(commonpb.ErrorReason_ERROR_REASON_METADATA_NOT_FOUND, map[string]string{"target": account, "key": key})
+	requireInvalidSkipEvent(t, captureEventsState(t, ledger, 11, skip, expected, cb), 11)
+	execution.GetLedgerScoped().GetApply().SkippableReasons = nil
+	markUnreplayedExecutionMetadata([]*auditpb.AuditItem{{LogSequence: 10}}, []*raftcmdpb.Order{execution}, cb)
+	requireInvalidSkipEvent(t, captureEventsState(t, ledger, 11, skip, expected, cb), 11)
+	execution.GetLedgerScoped().GetApply().SkippableReasons = []commonpb.ErrorReason{commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT}
+	markUnreplayedExecutionMetadata([]*auditpb.AuditItem{{LogSequence: 10}}, []*raftcmdpb.Order{execution}, cb)
+	require.Empty(t, captureEventsState(t, ledger, 11, skip, expected, cb))
+	requireInvalidSkipEvent(t, captureEventsState(t, ledger, 11,
+		skippedPayloadWithContext(commonpb.ErrorReason_ERROR_REASON_METADATA_NOT_FOUND, map[string]string{"target": account, "key": "other"}), expected, cb), 11)
+
+	appendMetadataMutation(cb.metadata, ledger, metadataTimelineTarget(false, account), key, 12, true)
+	expected[13] = expected[11]
+	require.Empty(t, captureEventsState(t, ledger, 13, skip, expected, cb), "incomplete replay cannot certify later order-derived mutations")
+}
+
 func TestExecuteNumscriptReferenceConflictSkipIsCheckerValid(t *testing.T) {
 	t.Parallel()
 	const ledger, reference = "L", "replayed-script"

@@ -209,6 +209,14 @@ The chain cannot detect every truncation on its own — a *coordinated* deletion
 
 ## Replay machinery
 
+If a chain break or invalid success range suppresses replay, order-derived
+account metadata from a referenced, conflict-skippable `ExecuteNumscript` cannot
+establish whether the execution ran or was skipped. For affected keys,
+`METADATA_NOT_FOUND` skip checks still validate the audited reason and target/key
+context, but defer the presence
+verdict for the rest of that check. The original integrity finding remains;
+the checker does not add a speculative `INVALID_SKIP`.
+
 Three building blocks under `internal/domain/replay/`:
 
 | Function | Purpose |

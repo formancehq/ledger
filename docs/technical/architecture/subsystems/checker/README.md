@@ -92,6 +92,12 @@ make an incomplete check appear healthy. Creation timestamp and numeric
 ledger ID remain outside that pass; read-time metadata and mirror progress
 are excluded enrichments. See [checker.md](checker.md) for errors and scope.
 
+When replay is suppressed, a referenced, conflict-skippable `ExecuteNumscript`
+order's caller account metadata may have been written or skipped. The skip
+checker treats those keys as uncertain for the remainder of that check; it still
+checks the audited skip reason and
+context, but does not infer `INVALID_SKIP` from the uncertain presence state.
+
 The allocation-boundary pass derives `nextTransactionId` and `nextLogId` from
 that same completed, verified FSM replay. A separate full-prefix scan validates
 every retained audit item's physical identity and parent membership, including

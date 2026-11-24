@@ -2459,6 +2459,7 @@ func (c *Checker) verifyAuditHashChain(
 			} else {
 				// An incomplete replay cannot substantiate final ledger policy.
 				folds.ledgerPolicy.liveTruncated = true
+				markUnreplayedExecutionMetadata(items, decoded, chainBound)
 			}
 
 			// Fold signing orders from this successful entry, over the SAME fresh-log
@@ -2646,6 +2647,38 @@ func reconcileReplayedChainBound(items []*auditpb.AuditItem, orders []*raftcmdpb
 	}
 }
 
+// markUnreplayedExecutionMetadata records where the order scan cannot tell
+// whether an execution wrote caller account metadata or was skipped.
+func markUnreplayedExecutionMetadata(items []*auditpb.AuditItem, orders []*raftcmdpb.Order, chainBound *chainBoundState) {
+	for i, order := range orders {
+		if order == nil || order.GetLedgerScoped() == nil || i >= len(items) || items[i].GetLogSequence() == 0 {
+			continue
+		}
+		ls := order.GetLedgerScoped()
+		apply := ls.GetApply()
+		execution := apply.GetExecuteNumscript()
+		if execution == nil || execution.GetReference() == "" ||
+			!slices.Contains(apply.GetSkippableReasons(), commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT) {
+			continue
+		}
+		for account, metadata := range execution.GetAccountMetadata() {
+			for key := range metadata.GetValues() {
+				identity := metadataTimelineKey{ledger: ls.GetLedger(), target: metadataTimelineTarget(false, account), key: key}
+				chainBound.unreplayedExecutionMetadata[identity] = max(chainBound.unreplayedExecutionMetadata[identity], items[i].GetLogSequence())
+			}
+		}
+	}
+}
+
+// metadataStateUncertain reports that a prior execution may have been skipped.
+// Once replay is incomplete, later order-derived mutations cannot restore a
+// definitive presence witness for this key in the current check.
+func metadataStateUncertain(chainBound *chainBoundState, ledger, target, key string, seq uint64) bool {
+	uncertainSeq := chainBound.unreplayedExecutionMetadata[metadataTimelineKey{ledger: ledger, target: target, key: key}]
+
+	return uncertainSeq != 0 && uncertainSeq < seq
+}
+
 // chainBoundState aggregates the audit-derived state the verifier consults
 // to prove each per-reason skip is legitimate. Every entry is populated by
 // collectExpectedSkippable during the audit chain scan — projections
@@ -2690,7 +2723,10 @@ type chainBoundState struct {
 	referenceTxIDs map[string]map[string]uint64
 	reverted       map[string]map[uint64]uint64
 	metadata       map[string]map[string]map[string][]chainBoundMutation
-	accountTypes   map[string]map[string][]chainBoundMutation
+	// Keys whose order-derived presence may have come from a skipped
+	// ExecuteNumscript when replay could not establish its outcome.
+	unreplayedExecutionMetadata map[metadataTimelineKey]uint64
+	accountTypes                map[string]map[string][]chainBoundMutation
 	// A skippable create can be provisionally counted before replay reveals
 	// an earlier same-entry ExecuteNumscript reference claim. Only these
 	// sequences need their transaction slot and metadata removed on a skip.
@@ -2739,21 +2775,26 @@ type chainBoundMutation struct {
 	exists bool
 }
 
+type metadataTimelineKey struct {
+	ledger, target, key string
+}
+
 // newChainBoundState allocates the four maps with empty top-level entries;
 // per-ledger sub-maps are added on demand as collectExpectedSkippable
 // observes each ledger.
 func newChainBoundState() *chainBoundState {
 	return &chainBoundState{
-		savedMetadata:          make(map[uint64]chainBoundSavedMetadata),
-		references:             make(map[string]map[string]uint64),
-		referenceTxIDs:         make(map[string]map[string]uint64),
-		reverted:               make(map[string]map[uint64]uint64),
-		metadata:               make(map[string]map[string]map[string][]chainBoundMutation),
-		accountTypes:           make(map[string]map[string][]chainBoundMutation),
-		speculativeCreateTxIDs: make(map[uint64]struct{}),
-		nextTxID:               make(map[string]uint64),
-		ledgerCreationSeen:     make(map[string]struct{}),
-		maxMirrorV2LogID:       make(map[string]uint64),
+		savedMetadata:               make(map[uint64]chainBoundSavedMetadata),
+		references:                  make(map[string]map[string]uint64),
+		referenceTxIDs:              make(map[string]map[string]uint64),
+		reverted:                    make(map[string]map[uint64]uint64),
+		metadata:                    make(map[string]map[string]map[string][]chainBoundMutation),
+		unreplayedExecutionMetadata: make(map[metadataTimelineKey]uint64),
+		accountTypes:                make(map[string]map[string][]chainBoundMutation),
+		speculativeCreateTxIDs:      make(map[uint64]struct{}),
+		nextTxID:                    make(map[string]uint64),
+		ledgerCreationSeen:          make(map[string]struct{}),
+		maxMirrorV2LogID:            make(map[string]uint64),
 	}
 }
 
@@ -4028,6 +4069,11 @@ func verifySkippedOrder(
 
 			return
 		}
+		if metadataStateUncertain(chainBound, ledger, metadataTimelineTarget(expected.metadataTargetIsTx, expected.metadataTarget), expected.metadataKey, seq) {
+			// Replay was already suppressed by an integrity finding; the
+			// earlier execution may have been skipped without writing this key.
+			return
+		}
 
 		// Consult the chain-bound metadata timeline. A SetMetadata /
 		// SaveMetadata order records a presence witness directly from
@@ -4235,6 +4281,9 @@ func verifyExpectedSkipNotElided(
 		))
 
 	case slices.Contains(expected.reasons, commonpb.ErrorReason_ERROR_REASON_METADATA_NOT_FOUND) && expected.metadataKey != "":
+		if metadataStateUncertain(chainBound, ledger, metadataTimelineTarget(expected.metadataTargetIsTx, expected.metadataTarget), expected.metadataKey, seq) {
+			return
+		}
 		present, _ := mutationStateWithWitness(chainBound.metadata[ledger][metadataTimelineTarget(expected.metadataTargetIsTx, expected.metadataTarget)][expected.metadataKey], seq)
 		if present {
 			// Chain shows PRESENT → a Delete would have succeeded, not
