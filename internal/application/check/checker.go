@@ -2537,8 +2537,9 @@ func (c *Checker) verifyAuditHashChain(
 }
 
 // reconcileReplayedChainBound corrects order-derived checker projections using
-// the replayed log for each order. Skipped executions and metadata-only scripts
-// consume no transaction ID; skipped executions also write no account metadata.
+// the replayed log for each order. Skipped creates, skipped executions, and
+// metadata-only scripts consume no transaction ID; skipped orders also write
+// no account metadata.
 // Created and reverted transactions provide their actual IDs and metadata,
 // while a created transaction confirms an ExecuteNumscript reference claim.
 // Metadata-only scripts contribute their emitted account metadata instead of
@@ -2560,6 +2561,25 @@ func reconcileReplayedChainBound(items []*auditpb.AuditItem, orders []*raftcmdpb
 		}
 
 		ledger := order.GetLedgerScoped().GetLedger()
+		if create := order.GetLedgerScoped().GetApply().GetCreateTransaction(); create != nil &&
+			log.GetPayload().GetApply().GetLog().GetData().GetOrderSkipped() != nil {
+			if _, speculative := chainBound.speculativeCreateTxIDs[items[i].GetLogSequence()]; speculative {
+				if next := chainBound.nextTxID[ledger]; next > 1 {
+					chainBound.nextTxID[ledger] = next - 1
+				}
+				for account, metadata := range create.GetAccountMetadata() {
+					for key := range metadata.GetValues() {
+						target := metadataTimelineTarget(false, account)
+						mutations := chainBound.metadata[ledger][target][key]
+						chainBound.metadata[ledger][target][key] = slices.DeleteFunc(mutations, func(m chainBoundMutation) bool {
+							return m.seq == items[i].GetLogSequence()
+						})
+					}
+				}
+			}
+
+			continue
+		}
 		if execution := order.GetLedgerScoped().GetApply().GetExecuteNumscript(); execution != nil &&
 			log.GetPayload().GetApply().GetLog().GetData().GetOrderSkipped() != nil {
 			// The order scan could not know the script's outcome. A skipped
@@ -2671,6 +2691,10 @@ type chainBoundState struct {
 	reverted       map[string]map[uint64]uint64
 	metadata       map[string]map[string]map[string][]chainBoundMutation
 	accountTypes   map[string]map[string][]chainBoundMutation
+	// A skippable create can be provisionally counted before replay reveals
+	// an earlier same-entry ExecuteNumscript reference claim. Only these
+	// sequences need their transaction slot and metadata removed on a skip.
+	speculativeCreateTxIDs map[uint64]struct{}
 	// nextTxID mirrors LedgerBoundaries.NextTransactionId per ledger,
 	// bumped on every SUCCESSFUL CreateTransactionOrder / RevertTransactionOrder
 	// the chain scan replays (skipped orders don't consume a slot). Used
@@ -2720,15 +2744,16 @@ type chainBoundMutation struct {
 // observes each ledger.
 func newChainBoundState() *chainBoundState {
 	return &chainBoundState{
-		savedMetadata:      make(map[uint64]chainBoundSavedMetadata),
-		references:         make(map[string]map[string]uint64),
-		referenceTxIDs:     make(map[string]map[string]uint64),
-		reverted:           make(map[string]map[uint64]uint64),
-		metadata:           make(map[string]map[string]map[string][]chainBoundMutation),
-		accountTypes:       make(map[string]map[string][]chainBoundMutation),
-		nextTxID:           make(map[string]uint64),
-		ledgerCreationSeen: make(map[string]struct{}),
-		maxMirrorV2LogID:   make(map[string]uint64),
+		savedMetadata:          make(map[uint64]chainBoundSavedMetadata),
+		references:             make(map[string]map[string]uint64),
+		referenceTxIDs:         make(map[string]map[string]uint64),
+		reverted:               make(map[string]map[uint64]uint64),
+		metadata:               make(map[string]map[string]map[string][]chainBoundMutation),
+		accountTypes:           make(map[string]map[string][]chainBoundMutation),
+		speculativeCreateTxIDs: make(map[uint64]struct{}),
+		nextTxID:               make(map[string]uint64),
+		ledgerCreationSeen:     make(map[string]struct{}),
+		maxMirrorV2LogID:       make(map[string]uint64),
 	}
 }
 
@@ -2869,6 +2894,8 @@ func collectExpectedSkippable(
 	expectedSkippable map[uint64]*expectedSkippableOrder,
 	chainBound *chainBoundState,
 ) ([]*raftcmdpb.Order, error) {
+	// Reconciliation only needs allocations from this entry's order scan.
+	clear(chainBound.speculativeCreateTxIDs)
 	// Parallel to `items` by index, which is what lets a caller pair an order back
 	// to the item it came from — the filters below are per-item and each caller
 	// applies its own, so a compacted slice would not line up.
@@ -3204,6 +3231,9 @@ func recordChainBoundMutations(
 			_, err := allocateChainBoundTxID(ledger, chainBound)
 			if err != nil {
 				return err
+			}
+			if conflictSkippable {
+				chainBound.speculativeCreateTxIDs[logSeq] = struct{}{}
 			}
 		}
 	}
