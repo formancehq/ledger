@@ -2478,6 +2478,9 @@ func TestUnreplayedExecutionMetadataDoesNotCauseInvalidSkip(t *testing.T) {
 	execution.GetLedgerScoped().GetApply().SkippableReasons = []commonpb.ErrorReason{commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT}
 	markUnreplayedExecutionMetadata([]*auditpb.AuditItem{{LogSequence: 10}}, []*raftcmdpb.Order{execution}, cb)
 	require.Empty(t, captureEventsState(t, ledger, 11, skip, expected, cb))
+	markUnreplayedExecutionMetadata([]*auditpb.AuditItem{{LogSequence: 20}}, []*raftcmdpb.Order{execution}, cb)
+	require.Equal(t, uint64(10), cb.unreplayedExecutionMetadata[metadataTimelineKey{ledger: ledger, target: metadataTimelineTarget(false, account), key: key}])
+	require.Empty(t, captureEventsState(t, ledger, 11, skip, expected, cb), "a later uncertainty must not hide the earlier one")
 	requireInvalidSkipEvent(t, captureEventsState(t, ledger, 11,
 		skippedPayloadWithContext(commonpb.ErrorReason_ERROR_REASON_METADATA_NOT_FOUND, map[string]string{"target": account, "key": "other"}), expected, cb), 11)
 

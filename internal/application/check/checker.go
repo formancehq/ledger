@@ -2664,7 +2664,10 @@ func markUnreplayedExecutionMetadata(items []*auditpb.AuditItem, orders []*raftc
 		for account, metadata := range execution.GetAccountMetadata() {
 			for key := range metadata.GetValues() {
 				identity := metadataTimelineKey{ledger: ls.GetLedger(), target: metadataTimelineTarget(false, account), key: key}
-				chainBound.unreplayedExecutionMetadata[identity] = max(chainBound.unreplayedExecutionMetadata[identity], items[i].GetLogSequence())
+				seq := items[i].GetLogSequence()
+				if first := chainBound.unreplayedExecutionMetadata[identity]; first == 0 || seq < first {
+					chainBound.unreplayedExecutionMetadata[identity] = seq
+				}
 			}
 		}
 	}
