@@ -299,6 +299,11 @@ func (o *Orchestrator) RunFull(ctx context.Context, dst *raftcmdpb.BackupDestina
 	return result, nil
 }
 
+// proposeTerminal submits a Fail order after an upload error. Its bounded
+// background context lets the proposal outlive caller cancellation without
+// leaving the handler stuck indefinitely. A proposal error is logged rather
+// than replacing the upload error returned by RunFull; cleanup handles a job
+// that remains RUNNING.
 func (o *Orchestrator) proposeTerminal(populate func(*raftcmdpb.Proposal), jobID uint64, kind string) {
 	ctx, cancel := context.WithTimeout(context.Background(), TerminalProposeTimeout)
 	defer cancel()
