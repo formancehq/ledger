@@ -623,7 +623,9 @@ message LedgerAction {
       (allowed_skippable_reasons) = ERROR_REASON_ACCOUNT_TYPE_NOT_FOUND
     ];
     SetDefaultEnforcementModeRequest set_default_enforcement_mode = 7;
-    ExecuteNumscriptPayload execute_numscript = 8;
+    ExecuteNumscriptPayload execute_numscript = 8 [
+      (allowed_skippable_reasons) = ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT
+    ];
   }
 }
 
@@ -637,7 +639,7 @@ message LedgerApplyRequest {
   // Validated at admission against the per-action whitelist declared inline on
   // each LedgerAction.data oneof case via `(allowed_skippable_reasons)` (the
   // single source of truth; the generated SkippableReasonsForLedgerAction is
-  // what admission consults). Today: CreateTransaction accepts
+  // what admission consults). Today: CreateTransaction and ExecuteNumscript accept
   // TRANSACTION_REFERENCE_CONFLICT, RevertTransaction TRANSACTION_ALREADY_REVERTED,
   // DeleteMetadata METADATA_NOT_FOUND, AddAccountType ACCOUNT_TYPE_ALREADY_EXISTS,
   // RemoveAccountType ACCOUNT_TYPE_NOT_FOUND. An opt-in on an action that

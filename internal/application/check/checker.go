@@ -2362,7 +2362,7 @@ func (c *Checker) verifyAuditHashChain(
 				if replayErr != nil {
 					return nil, fmt.Errorf("replaying chain-verified audit entry %d: %w", entry.GetSequence(), replayErr)
 				}
-				reconcileMetadataOnlyChainBound(items, orders, logs, chainBound)
+				reconcileReplayedChainBound(items, orders, logs, chainBound)
 				for _, log := range logs {
 					if _, duplicate := expectedLogs[log.GetSequence()]; duplicate {
 						return nil, fmt.Errorf("invariant: audit replay produced duplicate log sequence %d", log.GetSequence())
@@ -2372,6 +2372,7 @@ func (c *Checker) verifyAuditHashChain(
 			} else {
 				// An incomplete replay cannot substantiate final ledger policy.
 				folds.ledgerPolicy.liveTruncated = true
+				markUnreplayedExecutionMetadata(items, decoded, chainBound)
 			}
 
 			// Fold signing orders from this successful entry, over the SAME fresh-log
@@ -2449,14 +2450,15 @@ func (c *Checker) verifyAuditHashChain(
 	return result, nil
 }
 
-// reconcileMetadataOnlyChainBound corrects checker-only projections that are
-// derived from the serialized order before the FSM resolves a Numscript. A
-// metadata-only script has no transaction ID, while collectExpectedSkippable
-// must conservatively derive IDs from orders alone for older log formats.
-// Replay gives us the authoritative payload shape, so remove the speculative
-// transaction slot and fold script-emitted account metadata into the skip
-// timeline.
-func reconcileMetadataOnlyChainBound(items []*auditpb.AuditItem, orders []*raftcmdpb.Order, logs []*commonpb.Log, chainBound *chainBoundState) {
+// reconcileReplayedChainBound corrects order-derived checker projections using
+// the replayed log for each order. Skipped creates, skipped executions, and
+// metadata-only scripts consume no transaction ID; skipped orders also write
+// no account metadata.
+// Created and reverted transactions provide their actual IDs and metadata,
+// while a created transaction confirms an ExecuteNumscript reference claim.
+// Metadata-only scripts contribute their emitted account metadata instead of
+// a speculative transaction slot.
+func reconcileReplayedChainBound(items []*auditpb.AuditItem, orders []*raftcmdpb.Order, logs []*commonpb.Log, chainBound *chainBoundState) {
 	bySequence := make(map[uint64]*commonpb.Log, len(logs))
 	for _, log := range logs {
 		if log != nil {
@@ -2473,6 +2475,44 @@ func reconcileMetadataOnlyChainBound(items []*auditpb.AuditItem, orders []*raftc
 		}
 
 		ledger := order.GetLedgerScoped().GetLedger()
+		if create := order.GetLedgerScoped().GetApply().GetCreateTransaction(); create != nil &&
+			log.GetPayload().GetApply().GetLog().GetData().GetOrderSkipped() != nil {
+			if _, speculative := chainBound.speculativeCreateTxIDs[items[i].GetLogSequence()]; speculative {
+				if next := chainBound.nextTxID[ledger]; next > 1 {
+					chainBound.nextTxID[ledger] = next - 1
+				}
+				for account, metadata := range create.GetAccountMetadata() {
+					for key := range metadata.GetValues() {
+						target := metadataTimelineTarget(false, account)
+						mutations := chainBound.metadata[ledger][target][key]
+						chainBound.metadata[ledger][target][key] = slices.DeleteFunc(mutations, func(m chainBoundMutation) bool {
+							return m.seq == items[i].GetLogSequence()
+						})
+					}
+				}
+			}
+
+			continue
+		}
+		if execution := order.GetLedgerScoped().GetApply().GetExecuteNumscript(); execution != nil &&
+			log.GetPayload().GetApply().GetLog().GetData().GetOrderSkipped() != nil {
+			// The order scan could not know the script's outcome. A skipped
+			// execution neither consumes a transaction ID nor writes metadata.
+			if next := chainBound.nextTxID[ledger]; next > 1 {
+				chainBound.nextTxID[ledger] = next - 1
+			}
+			for account, metadata := range execution.GetAccountMetadata() {
+				for key := range metadata.GetValues() {
+					target := metadataTimelineTarget(false, account)
+					mutations := chainBound.metadata[ledger][target][key]
+					chainBound.metadata[ledger][target][key] = slices.DeleteFunc(mutations, func(m chainBoundMutation) bool {
+						return m.seq == items[i].GetLogSequence()
+					})
+				}
+			}
+
+			continue
+		}
 
 		// Seed transaction-scoped predicates from the replayed transaction, not
 		// from the order-derived counter: a metadata-only order earlier in the
@@ -2520,6 +2560,41 @@ func reconcileMetadataOnlyChainBound(items []*auditpb.AuditItem, orders []*raftc
 	}
 }
 
+// markUnreplayedExecutionMetadata records where the order scan cannot tell
+// whether an execution wrote caller account metadata or was skipped.
+func markUnreplayedExecutionMetadata(items []*auditpb.AuditItem, orders []*raftcmdpb.Order, chainBound *chainBoundState) {
+	for i, order := range orders {
+		if order == nil || order.GetLedgerScoped() == nil || i >= len(items) || items[i].GetLogSequence() == 0 {
+			continue
+		}
+		ls := order.GetLedgerScoped()
+		apply := ls.GetApply()
+		execution := apply.GetExecuteNumscript()
+		if execution == nil || execution.GetReference() == "" ||
+			!slices.Contains(apply.GetSkippableReasons(), commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT) {
+			continue
+		}
+		for account, metadata := range execution.GetAccountMetadata() {
+			for key := range metadata.GetValues() {
+				identity := metadataTimelineKey{ledger: ls.GetLedger(), target: metadataTimelineTarget(false, account), key: key}
+				seq := items[i].GetLogSequence()
+				if first := chainBound.unreplayedExecutionMetadata[identity]; first == 0 || seq < first {
+					chainBound.unreplayedExecutionMetadata[identity] = seq
+				}
+			}
+		}
+	}
+}
+
+// metadataStateUncertain reports that a prior execution may have been skipped.
+// Once replay is incomplete, later order-derived mutations cannot restore a
+// definitive presence witness for this key in the current check.
+func metadataStateUncertain(chainBound *chainBoundState, ledger, target, key string, seq uint64) bool {
+	uncertainSeq := chainBound.unreplayedExecutionMetadata[metadataTimelineKey{ledger: ledger, target: target, key: key}]
+
+	return uncertainSeq != 0 && uncertainSeq < seq
+}
+
 // chainBoundState aggregates the audit-derived state the verifier consults
 // to prove each per-reason skip is legitimate. Every entry is populated by
 // collectExpectedSkippable during the audit chain scan — projections
@@ -2564,7 +2639,14 @@ type chainBoundState struct {
 	referenceTxIDs map[string]map[string]uint64
 	reverted       map[string]map[uint64]uint64
 	metadata       map[string]map[string]map[string][]chainBoundMutation
-	accountTypes   map[string]map[string][]chainBoundMutation
+	// Keys whose order-derived presence may have come from a skipped
+	// ExecuteNumscript when replay could not establish its outcome.
+	unreplayedExecutionMetadata map[metadataTimelineKey]uint64
+	accountTypes                map[string]map[string][]chainBoundMutation
+	// A skippable create can be provisionally counted before replay reveals
+	// an earlier same-entry ExecuteNumscript reference claim. Only these
+	// sequences need their transaction slot and metadata removed on a skip.
+	speculativeCreateTxIDs map[uint64]struct{}
 	// nextTxID mirrors LedgerBoundaries.NextTransactionId per ledger,
 	// bumped on every SUCCESSFUL CreateTransactionOrder / RevertTransactionOrder
 	// the chain scan replays (skipped orders don't consume a slot). Used
@@ -2609,20 +2691,26 @@ type chainBoundMutation struct {
 	exists bool
 }
 
+type metadataTimelineKey struct {
+	ledger, target, key string
+}
+
 // newChainBoundState allocates the four maps with empty top-level entries;
 // per-ledger sub-maps are added on demand as collectExpectedSkippable
 // observes each ledger.
 func newChainBoundState() *chainBoundState {
 	return &chainBoundState{
-		savedMetadata:      make(map[uint64]chainBoundSavedMetadata),
-		references:         make(map[string]map[string]uint64),
-		referenceTxIDs:     make(map[string]map[string]uint64),
-		reverted:           make(map[string]map[uint64]uint64),
-		metadata:           make(map[string]map[string]map[string][]chainBoundMutation),
-		accountTypes:       make(map[string]map[string][]chainBoundMutation),
-		nextTxID:           make(map[string]uint64),
-		ledgerCreationSeen: make(map[string]struct{}),
-		maxMirrorV2LogID:   make(map[string]uint64),
+		savedMetadata:               make(map[uint64]chainBoundSavedMetadata),
+		references:                  make(map[string]map[string]uint64),
+		referenceTxIDs:              make(map[string]map[string]uint64),
+		reverted:                    make(map[string]map[uint64]uint64),
+		metadata:                    make(map[string]map[string]map[string][]chainBoundMutation),
+		unreplayedExecutionMetadata: make(map[metadataTimelineKey]uint64),
+		accountTypes:                make(map[string]map[string][]chainBoundMutation),
+		speculativeCreateTxIDs:      make(map[uint64]struct{}),
+		nextTxID:                    make(map[string]uint64),
+		ledgerCreationSeen:          make(map[string]struct{}),
+		maxMirrorV2LogID:            make(map[string]uint64),
 	}
 }
 
@@ -2763,6 +2851,8 @@ func collectExpectedSkippable(
 	expectedSkippable map[uint64]*expectedSkippableOrder,
 	chainBound *chainBoundState,
 ) ([]*raftcmdpb.Order, error) {
+	// Reconciliation only needs allocations from this entry's order scan.
+	clear(chainBound.speculativeCreateTxIDs)
 	// Parallel to `items` by index, which is what lets a caller pair an order back
 	// to the item it came from — the filters below are per-item and each caller
 	// applies its own, so a compacted slice would not line up.
@@ -2914,6 +3004,8 @@ func collectExpectedSkippable(
 
 		if ct != nil {
 			exp.reference = ct.GetReference()
+		} else if execution := apply.GetExecuteNumscript(); execution != nil {
+			exp.reference = execution.GetReference()
 		}
 
 		// Per-order correlators for the non-CreateTransaction skip
@@ -2979,7 +3071,7 @@ func collectExpectedSkippable(
 //   - RemoveAccountType → chainBound.accountTypes (exists=false).
 //
 //   - CreateTransaction.metadata is seeded into chainBound.metadata by
-//     reconcileMetadataOnlyChainBound from the replayed CreatedTransaction's
+//     reconcileReplayedChainBound from the replayed CreatedTransaction's
 //     authoritative ID. It is intentionally not recorded from this order
 //     fold, whose nextTxID allocation cannot identify metadata-only creates.
 //
@@ -3097,12 +3189,14 @@ func recordChainBoundMutations(
 			if err != nil {
 				return err
 			}
+			if conflictSkippable {
+				chainBound.speculativeCreateTxIDs[logSeq] = struct{}{}
+			}
 		}
 	}
 
 	if execution := apply.GetExecuteNumscript(); execution != nil {
-		// Execution has no reference to skip against. Its account metadata is
-		// a successful write regardless of whether it creates a transaction.
+		// Speculative writes are removed by replay reconciliation if skipped.
 		for account, mm := range execution.GetAccountMetadata() {
 			for key := range mm.GetValues() {
 				appendMetadataMutation(chainBound.metadata, ledger, metadataTimelineTarget(false, account), key, logSeq, true)
@@ -3891,6 +3985,11 @@ func verifySkippedOrder(
 
 			return
 		}
+		if metadataStateUncertain(chainBound, ledger, metadataTimelineTarget(expected.metadataTargetIsTx, expected.metadataTarget), expected.metadataKey, seq) {
+			// Replay was already suppressed by an integrity finding; the
+			// earlier execution may have been skipped without writing this key.
+			return
+		}
 
 		// Consult the chain-bound metadata timeline. A SetMetadata /
 		// SaveMetadata order records a presence witness directly from
@@ -4098,6 +4197,9 @@ func verifyExpectedSkipNotElided(
 		))
 
 	case slices.Contains(expected.reasons, commonpb.ErrorReason_ERROR_REASON_METADATA_NOT_FOUND) && expected.metadataKey != "":
+		if metadataStateUncertain(chainBound, ledger, metadataTimelineTarget(expected.metadataTargetIsTx, expected.metadataTarget), expected.metadataKey, seq) {
+			return
+		}
 		present, _ := mutationStateWithWitness(chainBound.metadata[ledger][metadataTimelineTarget(expected.metadataTargetIsTx, expected.metadataTarget)][expected.metadataKey], seq)
 		if present {
 			// Chain shows PRESENT → a Delete would have succeeded, not

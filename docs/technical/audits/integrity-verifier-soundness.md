@@ -18,6 +18,25 @@ semantic validation; otherwise a healthy committed operation can fail replay
 against an empty or later policy. Pair a clean store with controlled metadata
 tampering and inspect both callback findings and the terminal error.
 
+For referenced, conflict-skippable `ExecuteNumscript` orders, a suppressed
+replay leaves the order-derived caller account metadata uncertain: the
+execution may have written it or skipped on a reference conflict. The checker
+must retain the earliest uncertainty sequence for each key. A later legitimate
+`METADATA_NOT_FOUND` skip on that key must not gain a speculative `INVALID_SKIP`
+finding. The chain or range error that suppressed replay must remain visible.
+This deferral applies only to presence inferred from affected keys; the audited
+skip reason and target/key facts remain checkable, as do presence claims for
+unaffected keys.
+
+Probe two uncertain executions on the same key at sequences 10 and 30, with a
+legitimate `METADATA_NOT_FOUND` skip at 20. Pair that case with an unaffected
+key that has an audited presence witness and a forged `METADATA_NOT_FOUND` log
+projection. Also alter the reason or target/key facts of the affected skip.
+Inspect callback events and the terminal result: the incomplete-integrity
+finding persists, the legitimate intervening skip has no `INVALID_SKIP`, and
+the forged or mismatched projections still do. A helper-only timeline test is
+useful branch evidence, but it does not prove the full `CheckStore` outcome.
+
 For each candidate record the exact audited SHA, production entry point, primary
 snapshot, persisted keyspace/field, corruption,
 authoritative witness, verification pass and interval, comparison direction,
