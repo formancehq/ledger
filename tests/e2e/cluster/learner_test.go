@@ -9,6 +9,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/formancehq/ledger/v3/internal/infra/capabilities"
 	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
@@ -29,6 +30,13 @@ import (
 func phantomPeer() (raftAddr, serviceAddr string, instanceID []byte) {
 	identity := uuid.New()
 	return testserver.AllocateDeadAddress(), testserver.AllocateDeadAddress(), identity[:]
+}
+
+func phantomCapabilities() []uint32 {
+	return []uint32{
+		uint32(capabilities.AccountIncarnationWritesV1),
+		uint32(capabilities.AccountIncarnationHistoryCompleteV1),
+	}
 }
 
 // waitForLearner polls the cluster state on the leader until the given node appears as a learner.
@@ -70,6 +78,7 @@ var _ = Describe("Learner node", func() {
 				RaftAddress:    raftAddr,
 				ServiceAddress: serviceAddr,
 				InstanceId:     instanceID,
+				Capabilities:   phantomCapabilities(),
 			})
 			Expect(err).To(Succeed())
 
@@ -183,6 +192,7 @@ var _ = Describe("Learner node", func() {
 				RaftAddress:    raftAddr,
 				ServiceAddress: serviceAddr,
 				InstanceId:     instanceID,
+				Capabilities:   phantomCapabilities(),
 			})
 			Expect(err).To(Succeed())
 
@@ -237,6 +247,7 @@ var _ = Describe("Learner node", func() {
 				RaftAddress:    raftAddr,
 				ServiceAddress: serviceAddr,
 				InstanceId:     instanceID,
+				Capabilities:   phantomCapabilities(),
 			})
 			Expect(err).To(Succeed())
 			waitForLearner(servers[lid-1].ClusterClient, lid, 5)
@@ -323,6 +334,7 @@ var _ = Describe("Learner node", func() {
 				RaftAddress:    raftAddr,
 				ServiceAddress: serviceAddr,
 				InstanceId:     instanceID,
+				Capabilities:   phantomCapabilities(),
 			})
 			Expect(err).To(Succeed())
 
@@ -333,6 +345,7 @@ var _ = Describe("Learner node", func() {
 				RaftAddress:    raftAddr,
 				ServiceAddress: serviceAddr,
 				InstanceId:     instanceID,
+				Capabilities:   phantomCapabilities(),
 			})
 			Expect(err).To(HaveOccurred())
 		})
@@ -348,6 +361,7 @@ var _ = Describe("Learner node", func() {
 				RaftAddress:    raftAddr,
 				ServiceAddress: serviceAddr,
 				InstanceId:     instanceID,
+				Capabilities:   phantomCapabilities(),
 			})
 			Expect(err).To(Succeed())
 
