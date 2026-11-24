@@ -37,6 +37,10 @@ The current rules are:
    `Tests-Operator` job that runs the full default-tag `misc/operator` unit
    suite through the pinned Nix toolchain. The command is kept explicit so
    the nested Go module cannot silently fall outside root-module `./...` tests.
+5. Every nested `tools/` Go module with tracked or non-ignored Go tests must
+   have a `go test ./...` command in the resolved `pre-commit` recipe. The
+   `scripts/check-tools-test-reachability` gate enforces this inventory so
+   adding a tested generator cannot leave its tests outside validation.
 
 The FSM boundary is recursive and consists of:
 
@@ -60,6 +64,10 @@ The dashboard reachability check inspects the tracked nested module, Just
 recipe metadata, and the Default workflow. It fails if the module loses its
 tracked tests, generation no longer precedes the tests, the nested
 `go test ./...` command disappears, or CI stops invoking `pre-commit`.
+
+The tools reachability check uses Git's tracked and non-ignored untracked file
+inventory, so ignored scratch tests do not add validation requirements. It
+compares tested nested modules with the resolved `pre-commit` plan.
 
 The operator-test reachability check parses the workflow as YAML and requires
 the exact argument-free unit-test command. It rejects job or step conditions,

@@ -14,12 +14,12 @@ fail() {
 pre_commit_plan=$(just --dry-run pre-commit 2>&1)
 while IFS= read -r module_file; do
     module=${module_file%/go.mod}
-    if ! find "$module" -name '*_test.go' -type f -print -quit | grep -q .; then
+    if ! git ls-files --cached --others --exclude-standard -- "$module" | grep -Eq '(^|/)[^/]+_test\.go$'; then
         continue
     fi
     if ! grep -Eq "^go -C ${module} test ([^[:space:]]+ )*\./\.\.\.([[:space:]]|$)" <<<"$pre_commit_plan"; then
         fail "$module has Go tests but pre-commit does not run go test ./..."
     fi
-done < <(find tools -name go.mod -type f | sort)
+done < <(git ls-files --cached --others --exclude-standard -- tools | grep -E '^tools/.+/go\.mod$' | sort -u)
 
 echo "tools-test-reachability: PASS"
