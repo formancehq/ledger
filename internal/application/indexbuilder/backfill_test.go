@@ -2520,8 +2520,7 @@ func countKeysWithPrefix(t *testing.T, store *readstore.Store, prefix []byte) in
 // temporary config holding the task's index, and indexLogEntry keys writes
 // by each log's own ledger — so a foreign ledger's SavedMetadata on the same
 // key would pass the config gates and write forward+rmap rows into the
-// foreign keyspace for a field that ledger never indexed, surfacing as
-// reverse-map orphans in compareReverseMapOrphans (EN-1458). The postings
+// foreign keyspace for a field that ledger never indexed. The postings
 // driver carries the same guard, pinned by
 // TestAccountAssetBackfillDoesNotWipeUnrelatedLedger.
 func TestMetadataBackfillSkipsForeignLedgerLogs(t *testing.T) {

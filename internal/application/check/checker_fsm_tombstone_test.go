@@ -280,7 +280,7 @@ func TestCheckerFSMTransientDrainDeletesPersistedZeroRow(t *testing.T) {
 
 	var findings []*servicepb.CheckStoreError
 
-	checker := NewChecker(store, attrs, nil, logging.Testing())
+	checker := NewChecker(store, attrs, logging.Testing())
 	require.NoError(t, checker.Check(context.Background(), func(event *servicepb.CheckStoreEvent) {
 		if e, ok := event.GetType().(*servicepb.CheckStoreEvent_Error); ok {
 			findings = append(findings, e.Error)

@@ -128,7 +128,7 @@ func countErrorsOfType(errs []*servicepb.CheckStoreError, want servicepb.CheckSt
 func collectCheckProgress(t *testing.T, store *dal.Store) []*servicepb.CheckStoreProgress {
 	t.Helper()
 
-	checker := NewChecker(store, attributes.New(), nil, logging.Testing())
+	checker := NewChecker(store, attributes.New(), logging.Testing())
 
 	var progress []*servicepb.CheckStoreProgress
 
@@ -232,7 +232,7 @@ func TestCheck_FailureOnlyHistory_PhaseEventOrder(t *testing.T) {
 	rewriteAuditEntry(t, store, entries[0], items[0])
 	writeQueryCheckpointRow(t, store, 1)
 
-	checker := NewChecker(store, attributes.New(), nil, logging.Testing())
+	checker := NewChecker(store, attributes.New(), logging.Testing())
 	var events []*servicepb.CheckStoreEvent
 	require.NoError(t, checker.Check(t.Context(), func(event *servicepb.CheckStoreEvent) {
 		events = append(events, event)
@@ -551,7 +551,7 @@ func TestCheck_EmptyStore_EmitsSingleProgressEvent(t *testing.T) {
 			))
 		}
 
-		checker := NewChecker(engine.store, engine.attrs, nil, logging.Testing())
+		checker := NewChecker(engine.store, engine.attrs, logging.Testing())
 
 		var progress []*servicepb.CheckStoreProgress
 
