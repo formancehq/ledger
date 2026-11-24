@@ -40,12 +40,31 @@ func TestReconcile_AuthKeysConfigMap(t *testing.T) {
 		return credentials.Status.Phase == "Ready" && len(credentials.Status.DistributedSecretRefs) > 0
 	}, "credentials should be Ready with a distributed secret ref")
 
-	// Wait for the auth-keys ConfigMap to appear.
+	// Wait for the user key to be projected. The ConfigMap can first contain
+	// only the operator-managed key while Cluster reconciliation catches up.
 	cm := &corev1.ConfigMap{}
 	cmKey := types.NamespacedName{Namespace: ns, Name: "ledger-authcm-cluster-auth-keys"}
+	publicKeyFile := "credentials-authcm-credentials-pubkey.hex"
+	publicKeyPath := "/auth-keys/" + publicKeyFile
 	requireEventually(t, func() bool {
-		return k8sClient.Get(ctx, cmKey, cm) == nil
-	}, "auth-keys ConfigMap should be created")
+		if err := k8sClient.Get(ctx, cmKey, cm); err != nil {
+			return false
+		}
+		rawJSON, ok := cm.Data["auth-keys.json"]
+		if !ok || cm.Data[publicKeyFile] == "" {
+			return false
+		}
+		var projected authKeysJSON
+		if err := json.Unmarshal([]byte(rawJSON), &projected); err != nil {
+			return false
+		}
+		for _, key := range projected.Keys {
+			if key.PublicKeyFile == publicKeyPath && key.KeyID == credentials.Status.KeyID {
+				return true
+			}
+		}
+		return false
+	}, "auth-keys ConfigMap should project the user key and public key file")
 
 	// Verify auth-keys.json exists and is valid.
 	rawJSON, ok := cm.Data["auth-keys.json"]
@@ -57,7 +76,7 @@ func TestReconcile_AuthKeysConfigMap(t *testing.T) {
 	// Find the user Credentials entry without depending on its position.
 	var userKey *authKeyEntry
 	for i := range authKeys.Keys {
-		if authKeys.Keys[i].PublicKeyFile == "/auth-keys/credentials-authcm-credentials-pubkey.hex" {
+		if authKeys.Keys[i].PublicKeyFile == publicKeyPath {
 			userKey = &authKeys.Keys[i]
 			break
 		}
@@ -67,7 +86,7 @@ func TestReconcile_AuthKeysConfigMap(t *testing.T) {
 	assert.Equal(t, []string{"read", "write"}, userKey.Scopes)
 
 	// Verify the individual pubkey file exists.
-	pubKeyData, ok := cm.Data["credentials-authcm-credentials-pubkey.hex"]
+	pubKeyData, ok := cm.Data[publicKeyFile]
 	assert.True(t, ok, "ConfigMap must contain the credentials pubkey file")
 	assert.NotEmpty(t, pubKeyData)
 }
