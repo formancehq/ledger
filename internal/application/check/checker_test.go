@@ -1044,7 +1044,7 @@ func deleteAccountMetadataOrder(ledger, account, key string) *raftcmdpb.Order {
 func collectCheckErrors(t *testing.T, store *dal.Store, attrs *attributes.Attributes) []*servicepb.CheckStoreError {
 	t.Helper()
 
-	checker := NewChecker(store, attrs, nil, logging.Testing())
+	checker := NewChecker(store, attrs, logging.Testing())
 
 	var errors []*servicepb.CheckStoreError
 
@@ -1091,7 +1091,7 @@ func TestCheckerAuditKeyMissingCorruptOrMismatched(t *testing.T) {
 				require.NoError(t, batch.SetBytes([]byte{dal.ZoneGlobal, dal.SubGlobAuditKey}, tc.key))
 			}
 			require.NoError(t, batch.Commit())
-			checker := NewChecker(engine.store, engine.attrs, nil, logging.Testing())
+			checker := NewChecker(engine.store, engine.attrs, logging.Testing())
 			var findings []*servicepb.CheckStoreError
 			err := checker.Check(context.Background(), func(event *servicepb.CheckStoreEvent) {
 				if e, ok := event.GetType().(*servicepb.CheckStoreEvent_Error); ok {
@@ -1354,7 +1354,7 @@ func TestCheckerProgressEvents(t *testing.T) {
 		))
 	}
 
-	checker := NewChecker(engine.store, engine.attrs, nil, logging.Testing())
+	checker := NewChecker(engine.store, engine.attrs, logging.Testing())
 
 	var progressEvents []*servicepb.CheckStoreProgress
 
@@ -1681,7 +1681,7 @@ func TestCheckerSurfacesCorruptAuditEntry(t *testing.T) {
 	require.NoError(t, batch.SetBytes(auditKey, []byte{0xFF, 0xFF, 0xFF, 0xFF}))
 	require.NoError(t, batch.Commit())
 
-	checker := NewChecker(engine.store, engine.attrs, nil, logging.Testing())
+	checker := NewChecker(engine.store, engine.attrs, logging.Testing())
 	err := checker.Check(context.Background(), func(_ *servicepb.CheckStoreEvent) {})
 
 	// Before the fix: Check returned nil; the cursor break swallowed the
@@ -2066,7 +2066,7 @@ func indexCheckerFor(t *testing.T, stored map[domain.IndexKey]*commonpb.Index) (
 
 	ctx := logging.TestingContext()
 
-	return NewChecker(store, attrs, nil, logging.FromContext(ctx)), store
+	return NewChecker(store, attrs, logging.FromContext(ctx)), store
 }
 
 // TestCompareIndexes_Identical pins the happy path: when the SubAttrIndex
@@ -2208,12 +2208,8 @@ func TestCompareIndexes_BucketScopeIgnored(t *testing.T) {
 // for every registry entry, so an entry absent from `expected` is genuinely
 // unaccounted for and must be flagged rather than excused.
 //
-// This is the masking channel the EN-1458 review found: a tolerated skip here
-// accepts a stale or tampered metadata-index row, and compareReverseMapOrphans'
-// registry term then treats that row as proof the field is still indexed,
-// silencing the orphan verdict on its reverse-map rows. Both corrupted
-// projections pass Check() together. Keep this assertion: a tolerance re-opens
-// that channel.
+// A tolerated skip here would let a stale or tampered index registry row
+// pass Check() without a finding.
 func TestCompareIndexes_UnexpectedEntryFlagged(t *testing.T) {
 	t.Parallel()
 
@@ -2342,7 +2338,7 @@ func schemaCheckerFor(t *testing.T, ledgers []*commonpb.LedgerInfo) (*Checker, *
 
 	ctx := logging.TestingContext()
 
-	return NewChecker(store, attrs, nil, logging.FromContext(ctx)), store
+	return NewChecker(store, attrs, logging.FromContext(ctx)), store
 }
 
 func accountFieldSchema(key string, typ commonpb.MetadataType) *commonpb.MetadataSchema {

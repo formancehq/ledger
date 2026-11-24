@@ -39,6 +39,12 @@ The `rc.2` to `rc.3` transition remains rolling. The dedicated peer-service
 port and Membership address migration first ship after the published `rc.4`.
 The operator also requires a stopped `rc.4` to `rc.5` upgrade: RC.4 cannot read
 storage schema 3 or apply the independent configuration and capability controls.
+RC.5 also rejects invalid segment constraints and equal-specificity conflicts
+in initial account types during `CreateLedger` apply. The stopped-upgrade drain
+waits for a durable FSM cursor beyond the admission cutoff on every member, so
+RC.4 business entries are applied by RC.4 before RC.5 starts. Keep the retained
+data and WAL volumes; audit replay preserves the historical creation rule for
+previously successful orders. Existing ledgers are not rewritten.
 RC.4 also drops the Numscript library version `description` when it applies a
 save, so old and new voters would store different library entries and audit
 bytes for a described save. The stopped boundary prevents that coexistence.

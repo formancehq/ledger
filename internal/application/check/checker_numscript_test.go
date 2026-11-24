@@ -267,7 +267,7 @@ func TestCompareNumscripts_ExplicitExpectations(t *testing.T) {
 	// Explicit expectations are authoritative for this comparison interface;
 	// it must not reconstruct them from either the stored rows or the audit.
 	var got []*servicepb.CheckStoreError
-	checker := NewChecker(e.store, e.attrs, nil, logging.Testing())
+	checker := NewChecker(e.store, e.attrs, logging.Testing())
 	checker.compareNumscripts(reader,
 		map[domain.NumscriptEntryKey]*commonpb.NumscriptInfo{
 			{LedgerName: "main", Name: "pay", Version: "1.0.0"}: logs[0].GetPayload().GetSavedNumscript().GetInfo(),

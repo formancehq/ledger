@@ -128,7 +128,7 @@ func TestVerifyAuditHashChain_SigningFoldIgnoresLegacyReplayReferences(t *testin
 	})
 
 	verifier := newSigningVerifier()
-	checker := NewChecker(store, attributes.New(), nil, logging.Testing())
+	checker := NewChecker(store, attributes.New(), logging.Testing())
 
 	handle, err := store.NewReadHandle()
 	require.NoError(t, err)

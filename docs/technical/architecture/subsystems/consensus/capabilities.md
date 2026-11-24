@@ -140,6 +140,18 @@ Do not add a capability for a bug fix that restores the intended behavior when
 the old behavior was invalid. Add one when valid historical orders need to keep
 their old behavior while new orders use a different rule.
 
+EN-2915 strengthens initial account-type validation in `CreateLedger` without
+registering a capability. RC.4 accepted invalid constraints and conflicting
+patterns; those successful creations remain committed business history. The
+operator-required RC.4-to-RC.5 stopped upgrade drains every member and waits
+for its durable FSM cursor to pass the admission cutoff, so RC.4 business
+entries finish applying under RC.4 before RC.5 starts. RC.5 applies the
+strengthened rule to new orders. Audit replay explicitly uses the historical
+creation rule to reproduce successful old orders; successful new creations
+satisfy both rules and yield the same logs. The proposal payload and capability
+registry remain unchanged. A mixed-version rollout across this boundary is
+unsupported.
+
 A change confined to read paths needs no capability either, even when it
 touches a file the capability-contract gate watches. `common.proto` also
 defines service response types that no order carries, and `internal/infra/plan`

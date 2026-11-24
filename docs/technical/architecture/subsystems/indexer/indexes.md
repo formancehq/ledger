@@ -165,7 +165,7 @@ The index registry (the bucket-scoped `Index` rows under `SubAttrIndex`) is a pe
 
 Same-window visibility follows the pattern of the other replayed projections (cf. volumes): replay-touched rows — including deletions, kept as explicit markers — are read back from the in-flight overlay, untouched rows from the committed checkpoint store. The deletion markers are what keep a later read in the same replay window from resurrecting a checkpoint row the replay already deleted (drop-then-recreate folds to exactly one live row).
 
-What is deliberately **not** restored by a main-store backup: the per-replica `IndexVersionState`, ledger-history tracker, cursors, and read-index keyspaces. They live in each node's peer read store. A fresh read store first leaves registry entries unresolved, then replays the restored log from cursor zero: the replay reconstructs the history tracker and resolves each `CreatedIndexLog` to direct promotion for `EMPTY` or a normal task for `NON_EMPTY`. Reaching replay EOF with an unresolved registry row or an active ledger without a tracker is an invariant failure. A normal process restart keeps the read store and resumes the persisted tracker/version/cursor snapshot. Query checkpoints are physical read-store checkpoints, so they capture the tracker at the same committed boundary as the index data and progress cursor. A data directory whose `read-indexes/` survived an offline restore of an *older* backup remains the classic corruption shape the checker's cursor pass reports — see [Checker Coverage](#checker-coverage).
+What is deliberately **not** restored by a main-store backup: the per-replica `IndexVersionState`, ledger-history tracker, cursors, and read-index keyspaces. They live in each node's peer read store. A fresh read store first leaves registry entries unresolved, then replays the restored log from cursor zero: the replay reconstructs the history tracker and resolves each `CreatedIndexLog` to direct promotion for `EMPTY` or a normal task for `NON_EMPTY`. Reaching replay EOF with an unresolved registry row or an active ledger without a tracker is an invariant failure. A normal process restart keeps the read store and resumes the persisted tracker/version/cursor snapshot. Query checkpoints are physical read-store checkpoints, so they capture the tracker at the same committed boundary as the index data and progress cursor. A data directory whose `read-indexes/` survived an offline restore of an *older* backup remains a corruption risk until the index builder's rebuild-health checks are wired.
 
 ## Statistics (computed on demand)
 
@@ -284,50 +284,9 @@ Because the index registry and the per-replica version state are projections (on
 
 In-flight `IndexVersionState` is NOT checked: by design it is per-replica and may legitimately differ across nodes while a rewrite is propagating.
 
-### Reverse-map rows are checker-visible
+### Reverse-map integrity
 
-The read store is a peer secondary store, and its index **contents** stay out of the main-store checker's scope (`EN-1514` / `EN-1323`). One limb is an exception: `compareReverseMapOrphans` (`internal/application/check/reverse_map_orphans.go`, EN-1458) opens a read-only snapshot of the read store and scans the reverse map (`0x03`) for rows whose `(ledger, target, metadata key)` has no stored `SubAttrIndex` registry entry. Findings emit `CHECK_STORE_ERROR_TYPE_REVERSE_MAP_ORPHAN`, aggregated per `(ledger, namespace, metadata key)` with a row count and one sample entity. The audit-replayed `MetadataSchema` affects only the diagnostic label: it classifies the finding against the `DropIndex` or `RemovedMetadataFieldType` lifecycle without identifying the cause of the orphan row.
-
-The reverse map remains checker-visible as a defense on the maintenance-critical
-projection. Its field/version-first keying now gives `0x03` the same atomic,
-field-bounded `DeleteRange` property as `0x01` and `0x02`; a removal no longer
-scans the namespace or emits one point tombstone per entity. The checker still
-detects orphan rows introduced by corruption or a broken lifecycle path rather
-than treating the cheaper purge as proof that divergence is impossible.
-
-What it does **not** cover:
-
-- **Which nonzero encoding version is live.** Version zero is rejected as malformed; other versions are not compared to the live pair: `v_current` and `v_pending` legitimately coexist during a rewrite, and stale versions are reclaimed at boot by `purgeOrphanVersions`.
-- **Row values.** Only presence is judged, never the encoded value or the entity it points at.
-
-The pass skips — logged at INFO, never reported as a clean result — when the checker has no read-store handle. An empty audit is **not** a skip: the read index folds from the log stream, so a reverse-map row over a zero-log store has nothing behind it.
-
-**Cursor alignment.** The read store is folded asynchronously and independently of the primary store, while every oracle term the pass compares against is frozen at the log sequence the checker verified. A verdict is therefore only sound when the read store has folded exactly that range:
-
-| Cursor position | What the pass does |
-|---|---|
-| `indexedSequence == lastSequence` | judges rows: reports any field with no registered index; the replayed schema classifies the finding against the owning lifecycle path |
-| `indexedSequence < lastSequence` | decodes keys only — no verdict |
-| `indexedSequence > lastSequence` | reports the position itself as `REVERSE_MAP_ORPHAN`; still no per-row verdict |
-| any position | a key that does not decode is always reported; it needs no oracle |
-
-The two unaligned positions are not symmetric.
-
-*Behind* is the ordinary state on a live cluster: the registry is written at Raft apply while the reverse map folds later, so between apply and fold a legitimately-removed field has no registry entry but still has live rows.
-
-*Ahead* cannot happen by race. The builder folds **from** the primary log stream and writes its cursor for logs it has already read out of the primary store, so `progress(t) <= maxLogSeq(t)` at every instant, and both values are monotonically non-decreasing. `Check()` pins the peer snapshot **strictly before** the primary snapshot precisely so that ordering is inherited:
-
-```
-indexedSequence = progress(t_peer) <= maxLogSeq(t_peer) <= maxLogSeq(t_primary) = lastSequence
-```
-
-Taken in the reverse order, the gap between the two pins admits logs applied and folded in between, and the pass then judges rows for ledgers and fields created after the primary pin against oracles that predate them — reporting a healthy cluster as corrupt. The ordering is what makes cross-store snapshot atomicity unnecessary: an ordering that can only leave the peer *behind* is enough, because behind is already a skip.
-
-Ahead is not reachable at runtime at all. `RestoreCheckpoint` — the only thing that replaces the primary store wholesale — has a single production caller (`dal.incomingRestoreFactory.Run`, via `state.Synchronizer.SynchronizeWithLeader`), and it installs a checkpoint fetched **from** the leader, which only moves a node forward; an applied index can never exceed the leader's log to begin with.
-
-So an ahead cursor means the deployment is already broken — an offline restore of an older backup into a data directory whose `read-indexes/` survived is the classic shape — and the read index then holds rows folded from logs the primary no longer has. That state never self-heals (the index builder, unlike `usagebuilder`, has **no** rollback reset), and it is the corruption this pass exists to surface, so it is **reported**: limiting the pass to key decoding would leave the one read-index limb the checker covers unverified behind an INFO log (invariant #7). The rows themselves stay unjudged — every oracle term is frozen at the verified sequence — so the finding carries the two cursor positions and no per-row orphan.
-
-**Ledger liveness is the only oracle for the unknown-ledger class.** `DeleteLedger` removes the name from the audit-derived live set (and range-deletes the whole `[0x03][ledger]` span at apply); a later `CreateLedger` of the same name puts it back. Deriving the verdict from liveness alone — rather than from a separate append-only "was deleted in the replay" set consulted first — is what keeps a recreated ledger's rows legitimate by construction, instead of resting on the retained tombstone that makes that lifecycle unreachable today.
+The reverse map (`0x03`) is maintained in the per-replica readstore. Field removal uses a bounded `DeleteRange` across all versions, but the main-store checker does not scan this peer store. Detection and repair of readstore corruption remain part of the index builder's rebuild-health work (`EN-1514` / `EN-1323`).
 
 ## Summary
 
@@ -336,7 +295,7 @@ So an ahead cursor means the deployment is already broken — an offline restore
 | Index definition (presence + `IndexID`) | `commonpb.Index` in `SubAttrIndex` | Yes | No — projection of `CreateIndex` / `DropIndex` / `RemovedMetadataFieldType` / `DeleteLedger` logs (re-verified by `compareIndexes` — presence + identity only). |
 | Cluster-wide rewrite version | `Index.forward_encoding_version` | Yes (with the definition) | No — **not** re-verified by the checker. The version is informational at the registry level; the per-replica `IndexVersionState.CurrentVersion` is what queries gate on, and is also not checked across replicas (legitimately per-local). |
 | Per-replica rewrite state | `IndexVersionState` in `SubInternalIndexVersion` | Yes | No — purely local; not compared across replicas. |
-| Reverse-map row presence | `0x03` keyspace in the peer read store | Yes (peer store) | No — projection of the metadata logs. Row *presence* is re-verified by `compareReverseMapOrphans` against the registry; the replayed schema supplies diagnostics only. Row values are not verified. |
+| Reverse-map row presence | `0x03` keyspace in the peer read store | Yes (peer store) | No — projection of the metadata logs. Neither row presence nor values are verified by the main-store checker. |
 | Cardinality / Min / Max / null counts | Computed by `inspectSummary` on demand | **No** | N/A — derived from the live keyspace. |
 | Bloom counters | OTel | No | N/A — monitoring only. |
 
