@@ -217,6 +217,64 @@ func TestGlobalState_LifecycleInitialConfiguration(t *testing.T) {
 	require.Empty(t, created.State.Ledger("L").LogIDs())
 }
 
+func TestGlobalState_CreateLedgerValidatesInitialAccountTypes(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name       string
+		types      map[string]*commonpb.AccountType
+		wantReason string
+	}{
+		{
+			name: "unknown segment constraint",
+			types: map[string]*commonpb.AccountType{"users": {
+				Pattern: "users:{id}",
+				SegmentTypes: map[string]*commonpb.SegmentType{
+					"unknown": {Constraint: &commonpb.SegmentType_Uuid{Uuid: &commonpb.UUIDConstraint{}}},
+				},
+			}},
+			wantReason: domain.ErrReasonInvalidPattern,
+		},
+		{
+			name: "conflicting patterns",
+			types: map[string]*commonpb.AccountType{
+				"users-by-id":   {Pattern: "users:{id}"},
+				"users-by-name": {Pattern: "users:{name}"},
+			},
+			wantReason: domain.ErrReasonAccountTypeConflict,
+		},
+		{
+			name: "valid distinct patterns and constraint",
+			types: map[string]*commonpb.AccountType{
+				"users": {
+					Pattern: "users:{id}",
+					SegmentTypes: map[string]*commonpb.SegmentType{
+						"id": {Constraint: &commonpb.SegmentType_Uuid{Uuid: &commonpb.UUIDConstraint{}}},
+					},
+				},
+				"wallets": {Pattern: "wallets:{id}"},
+			},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			base := NewGlobalState()
+			req := createLifecycleLedger(commonpb.LedgerMode_LEDGER_MODE_NORMAL)
+			req.GetCreateLedger().AccountTypes = tc.types
+			result := base.Apply(bulkOf(req))
+			if tc.wantReason != "" {
+				require.False(t, result.OK)
+				require.Equal(t, tc.wantReason, result.Reason)
+				require.Equal(t, base.Fingerprint(), result.State.Fingerprint())
+
+				return
+			}
+			require.True(t, result.OK)
+			require.Equal(t, len(tc.types), result.State.Ledger("L").Types().Len())
+		})
+	}
+}
+
 func TestGlobalState_LifecycleDeleteDiscardsSameBulkWrites(t *testing.T) {
 	t.Parallel()
 	base := NewGlobalState().Apply(bulkOf(createLifecycleLedger(commonpb.LedgerMode_LEDGER_MODE_NORMAL))).State
