@@ -35,6 +35,7 @@ func NewHandler(logger logging.Logger, backend Backend, authCfg internalauth.Aut
 	requireLedgersWrite := internalauth.RequireScope(authCfg, internalauth.ScopeLedgersWrite)
 	requireTransactionsRead := internalauth.RequireScope(authCfg, internalauth.ScopeTransactionsRead)
 	requireTransactionsWrite := internalauth.RequireScope(authCfg, internalauth.ScopeTransactionsWrite)
+	requireNumscriptExecute := internalauth.RequireScope(authCfg, internalauth.ScopeExecuteNumscript)
 	requireAccountsRead := internalauth.RequireScope(authCfg, internalauth.ScopeAccountsRead)
 	requireAuditRead := internalauth.RequireScope(authCfg, internalauth.ScopeAuditRead)
 	requireMetadataWrite := internalauth.RequireScope(authCfg, internalauth.ScopeMetadataWrite)
@@ -229,6 +230,7 @@ func NewHandler(logger logging.Logger, backend Backend, authCfg internalauth.Aut
 				r.Post("/{ledgerName}/transactions", signedRequest(knownMutationQuery(server.handleCreateTransaction)))
 				r.Post("/{ledgerName}/transactions/{transactionId}/revert", signedRequest(knownMutationQuery(server.handleRevertTransaction)))
 			})
+			r.With(requireNumscriptExecute).Post("/{ledgerName}/numscripts/execute", signedRequest(knownQuery(server.handleExecuteNumscript)))
 
 			// Metadata write scope
 			r.With(requireMetadataWrite).Group(func(r chi.Router) {

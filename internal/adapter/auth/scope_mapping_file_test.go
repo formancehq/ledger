@@ -86,7 +86,7 @@ func TestLoadScopeMappingFromFile_NotFound(t *testing.T) {
 func TestParseScopeMappingJSON_AllScopes(t *testing.T) {
 	t.Parallel()
 
-	// Verify all 14 granular scopes can be used in a mapping
+	// Verify granular scopes can be used in a mapping
 	data := []byte(`{
 		"all:read": ["ledger:ReadLedger", "ledger:ReadTransaction", "ledger:ReadAccount", "ledger:ReadAudit", "ledger:ReadOps", "ledger:ReadQuery", "ledger:ReadCluster"],
 		"all:write": ["ledger:WriteLedger", "ledger:WriteTransaction", "ledger:WriteMetadata", "ledger:WriteAudit", "ledger:WriteOps", "ledger:WriteQuery", "ledger:WriteCluster"]
@@ -115,6 +115,19 @@ func TestParseScopeMappingJSON_WildcardRead(t *testing.T) {
 	assert.Contains(t, anon, ScopeQueriesRead)
 	assert.Contains(t, anon, ScopeClusterRead)
 	assert.NotContains(t, anon, ScopeTransactionsWrite)
+}
+
+func TestParseScopeMappingJSON_WildcardWriteGrantsNumscriptExecution(t *testing.T) {
+	t.Parallel()
+
+	mapping, err := ParseScopeMappingJSON([]byte(`{
+		"custom:write": ["*:write"],
+		"anonymous": ["*:write"]
+	}`))
+	require.NoError(t, err)
+
+	assert.True(t, HasScope(mapping.ExpandScopes([]string{"custom:write"}), ScopeExecuteNumscript))
+	assert.True(t, HasScope(mapping.AnonymousScopes(), ScopeExecuteNumscript))
 }
 
 func TestParseScopeMappingJSON_WildcardMixedWithExplicit(t *testing.T) {

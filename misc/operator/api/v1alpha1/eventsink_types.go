@@ -33,7 +33,7 @@ type EventSinkSpec struct {
 	// EventTypes filters events. Empty selects all event types.
 	// +optional
 	// +listType=set
-	// +kubebuilder:validation:items:Enum=COMMITTED_TRANSACTION;REVERTED_TRANSACTION;SAVED_METADATA;DELETED_METADATA;CREATED_LEDGER;DELETED_LEDGER;SKIPPED_ORDER
+	// +kubebuilder:validation:items:Enum=COMMITTED_TRANSACTION;REVERTED_TRANSACTION;SAVED_METADATA;DELETED_METADATA;CREATED_LEDGER;DELETED_LEDGER;SKIPPED_ORDER;ACCOUNT_METADATA_UPDATED
 	EventTypes []string `json:"eventTypes,omitempty"`
 }
 

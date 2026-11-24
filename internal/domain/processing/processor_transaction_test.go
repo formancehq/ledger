@@ -1331,6 +1331,155 @@ func TestProcessCreateTransaction_Numscript_SetAccountMeta_WritesOnce(t *testing
 	require.Equal(t, "viewer", commonpb.MetadataMapToGoMap(aliceMeta)["role"])
 }
 
+func TestExecuteNumscript_MetadataOnly_PersistsWithoutTransaction(t *testing.T) {
+	t.Parallel()
+
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+	mockStore := NewMockScope(ctrl)
+	expectDefaultMetadataLimits(mockStore)
+	processor, err := NewRequestProcessor(nil, 0)
+	require.NoError(t, err)
+
+	now := &commonpb.Timestamp{Data: 1234567890}
+	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 7, NextLogId: 3}
+	expectGetBoundaries(mockStore, domain.LedgerKey{Name: "test-ledger"}, boundaries.AsReader(), nil)
+	expectGetLedger(mockStore, domain.LedgerKey{Name: "test-ledger"}, (&commonpb.LedgerInfo{Name: "test-ledger", Id: 1}).AsReader(), nil).AnyTimes()
+	mockStore.EXPECT().GetDate().Return(now.AsReader()).AnyTimes()
+	expectPutBoundaries(t, mockStore, domain.LedgerKey{Name: "test-ledger"}, nil)
+
+	metaKey := domain.MetadataKey{AccountKey: domain.AccountKey{LedgerName: "test-ledger", Account: "users:alice"}, Key: "tier"}
+	expectPutAccountMetadata(t, mockStore, metaKey, commonpb.NewStringValue("gold"))
+
+	request := &servicepb.Request{Type: &servicepb.Request_Apply{Apply: &servicepb.LedgerApplyRequest{
+		Ledger: "test-ledger",
+		Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_ExecuteNumscript{ExecuteNumscript: &servicepb.ExecuteNumscriptPayload{
+			Script: &commonpb.Script{Plain: `set_account_meta(@users:alice, "tier", "gold")`},
+		}}},
+	}}}
+
+	result, err := processor.ProcessOrder(requestToOrder(t, request), mockStore)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	log := result.GetApply().GetLog()
+	require.NotNil(t, log.GetData().GetAccountMetadataUpdated())
+	require.Equal(t, uint64(7), boundaries.GetNextTransactionId(), "metadata-only execution must not allocate a transaction ID")
+	require.Equal(t, "gold", commonpb.MetadataMapToGoMap(log.GetData().GetAccountMetadataUpdated().GetAccountMetadata()["users:alice"])["tier"])
+}
+
+func TestExecuteNumscript_MetadataOnly_RejectsReference(t *testing.T) {
+	t.Parallel()
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+	mockStore := NewMockScope(ctrl)
+	expectDefaultMetadataLimits(mockStore)
+	processor, err := NewRequestProcessor(nil, 0)
+	require.NoError(t, err)
+	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 7, NextLogId: 3}
+	expectGetBoundaries(mockStore, domain.LedgerKey{Name: "test-ledger"}, boundaries.AsReader(), nil)
+	expectGetLedger(mockStore, domain.LedgerKey{Name: "test-ledger"}, (&commonpb.LedgerInfo{Name: "test-ledger", Id: 1}).AsReader(), nil).AnyTimes()
+	refs, _ := stubsFor(mockStore).transactionReferencesStubFor(mockStore)
+	refs.expectGet(domain.TransactionReferenceKey{LedgerName: "test-ledger", Reference: "ref-1"}, nil, domain.ErrNotFound)
+	request := &servicepb.Request{Type: &servicepb.Request_Apply{Apply: &servicepb.LedgerApplyRequest{
+		Ledger: "test-ledger",
+		Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_ExecuteNumscript{ExecuteNumscript: &servicepb.ExecuteNumscriptPayload{
+			Script:    &commonpb.Script{Plain: `set_account_meta(@users:alice, "tier", "gold")`},
+			Reference: "ref-1",
+		}}},
+	}}}
+	_, err = processor.ProcessOrder(requestToOrder(t, request), mockStore)
+	require.ErrorIs(t, err, domain.ErrMetadataOnlyReference)
+	require.Equal(t, uint64(7), boundaries.GetNextTransactionId())
+}
+
+func TestExecuteNumscript_Postings_UsesReference(t *testing.T) {
+	t.Parallel()
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+	mockStore := NewMockScope(ctrl)
+	expectDefaultMetadataLimits(mockStore)
+	processor, err := NewRequestProcessor(nil, 0)
+	require.NoError(t, err)
+	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1}
+	expectGetBoundaries(mockStore, domain.LedgerKey{Name: "test-ledger"}, boundaries.AsReader(), nil)
+	expectGetLedger(mockStore, domain.LedgerKey{Name: "test-ledger"}, (&commonpb.LedgerInfo{Name: "test-ledger", Id: 1}).AsReader(), nil).AnyTimes()
+	mockStore.EXPECT().GetDate().Return((&commonpb.Timestamp{Data: 1234567890}).AsReader()).AnyTimes()
+	expectPutBoundaries(t, mockStore, domain.LedgerKey{Name: "test-ledger"}, nil)
+	setupNumscriptVolumeMocks(mockStore)
+	mockStore.EXPECT().GetNextSequenceID().Return(uint64(1))
+	expectPutTransactionState(t, mockStore, domain.TransactionKey{LedgerName: "test-ledger", ID: 1}, nil)
+	refKey := domain.TransactionReferenceKey{LedgerName: "test-ledger", Reference: "ref-1"}
+	refs, _ := stubsFor(mockStore).transactionReferencesStubFor(mockStore)
+	refs.expectGet(refKey, nil, domain.ErrNotFound)
+	expectPutTransactionReference(t, mockStore, refKey, nil)
+	request := &servicepb.Request{Type: &servicepb.Request_Apply{Apply: &servicepb.LedgerApplyRequest{
+		Ledger: "test-ledger",
+		Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_ExecuteNumscript{ExecuteNumscript: &servicepb.ExecuteNumscriptPayload{
+			Script:    &commonpb.Script{Plain: `send [USD/2 100] (source = @world destination = @users:alice)`},
+			Reference: "ref-1",
+		}}},
+	}}}
+	result, err := processor.ProcessOrder(requestToOrder(t, request), mockStore)
+	require.NoError(t, err)
+	require.Equal(t, "ref-1", result.GetApply().GetLog().GetData().GetCreatedTransaction().GetTransaction().GetReference())
+}
+
+func TestCreateTransaction_MetadataOnlyScriptIsRejected(t *testing.T) {
+	t.Parallel()
+
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+	mockStore := NewMockScope(ctrl)
+	expectDefaultMetadataLimits(mockStore)
+	processor, err := NewRequestProcessor(nil, 0)
+	require.NoError(t, err)
+
+	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 7, NextLogId: 3}
+	expectGetBoundaries(mockStore, domain.LedgerKey{Name: "test-ledger"}, boundaries.AsReader(), nil)
+	expectGetLedger(mockStore, domain.LedgerKey{Name: "test-ledger"}, (&commonpb.LedgerInfo{Name: "test-ledger", Id: 1}).AsReader(), nil).AnyTimes()
+
+	request := &servicepb.Request{Type: &servicepb.Request_Apply{Apply: &servicepb.LedgerApplyRequest{
+		Ledger: "test-ledger",
+		Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{CreateTransaction: &servicepb.CreateTransactionPayload{
+			Script: &commonpb.Script{Plain: `set_account_meta(@users:alice, "tier", "gold")`},
+		}}},
+	}}}
+
+	result, err := processor.ProcessOrder(requestToOrder(t, request), mockStore)
+	require.Nil(t, result)
+	require.ErrorIs(t, err, domain.ErrEmptyTransaction)
+	require.Equal(t, uint64(7), boundaries.GetNextTransactionId())
+}
+
+func TestExecuteNumscript_MetadataOnly_RejectsCallerTransactionMetadata(t *testing.T) {
+	t.Parallel()
+
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+	mockStore := NewMockScope(ctrl)
+	expectDefaultMetadataLimits(mockStore)
+	processor, err := NewRequestProcessor(nil, 0)
+	require.NoError(t, err)
+
+	now := &commonpb.Timestamp{Data: 1234567890}
+	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 7, NextLogId: 3}
+	expectGetBoundaries(mockStore, domain.LedgerKey{Name: "test-ledger"}, boundaries.AsReader(), nil)
+	expectGetLedger(mockStore, domain.LedgerKey{Name: "test-ledger"}, (&commonpb.LedgerInfo{Name: "test-ledger", Id: 1}).AsReader(), nil).AnyTimes()
+	mockStore.EXPECT().GetDate().Return(now.AsReader()).AnyTimes()
+
+	request := &servicepb.Request{Type: &servicepb.Request_Apply{Apply: &servicepb.LedgerApplyRequest{
+		Ledger: "test-ledger",
+		Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_ExecuteNumscript{ExecuteNumscript: &servicepb.ExecuteNumscriptPayload{
+			Script:   &commonpb.Script{Plain: `set_account_meta(@users:alice, "tier", "gold")`},
+			Metadata: map[string]*commonpb.MetadataValue{"receipt": commonpb.NewStringValue("x")},
+		}}},
+	}}}
+
+	_, err = processor.ProcessOrder(requestToOrder(t, request), mockStore)
+	require.ErrorIs(t, err, domain.ErrMetadataOnlyTransactionMetadata)
+	require.Equal(t, uint64(7), boundaries.GetNextTransactionId(), "rejected metadata-only execution must not allocate a transaction ID")
+}
+
 func TestProcessCreateTransaction_Force_InsufficientFunds(t *testing.T) {
 	t.Parallel()
 

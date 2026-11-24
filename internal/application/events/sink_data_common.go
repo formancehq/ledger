@@ -30,7 +30,7 @@ func (t sinkTime) MarshalJSON() ([]byte, error) {
 // sinkEventData is the flattened event payload stored in analytical sinks.
 // Fields are populated based on the event type; unused fields are omitted.
 type sinkEventData struct {
-	// COMMITTED_TRANSACTION
+	// COMMITTED_TRANSACTION / ACCOUNT_METADATA_UPDATED
 	Transaction     *sinkTransaction             `json:"transaction,omitempty"`
 	AccountMetadata map[string]map[string]string `json:"accountMetadata,omitempty"`
 
@@ -157,6 +157,9 @@ func sinkPopulateApply(data *sinkEventData, apply *commonpb.ApplyLedgerLog) {
 	case *commonpb.LedgerLogPayload_SavedMetadata:
 		data.TargetType, data.TargetID = sinkConvertTarget(lp.SavedMetadata.GetTarget())
 		data.Metadata = sinkConvertMetadata(lp.SavedMetadata.GetMetadata())
+
+	case *commonpb.LedgerLogPayload_AccountMetadataUpdated:
+		data.AccountMetadata = sinkConvertAccountMetadataMap(lp.AccountMetadataUpdated.GetAccountMetadata())
 
 	case *commonpb.LedgerLogPayload_DeletedMetadata:
 		data.TargetType, data.TargetID = sinkConvertTarget(lp.DeletedMetadata.GetTarget())

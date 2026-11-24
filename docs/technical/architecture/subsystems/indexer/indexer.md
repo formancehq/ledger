@@ -66,6 +66,7 @@ flowchart TB
     C -->|CreatedTransaction| H1[indexCreatedTransaction]
     C -->|RevertedTransaction| H2[indexRevertedTransaction]
     C -->|SavedMetadata| H3[indexSavedMetadata]
+    C -->|AccountMetadataUpdated| H3
     C -->|DeletedMetadata| H4[indexDeletedMetadata]
     C -->|SetMetadataFieldType| H5[addSchemaRewriteTask]
     C -->|CreateIndex / DropIndex| H6[config mutation]
@@ -174,6 +175,7 @@ matching and prefixes over current accounts are documented in the
 | `CreatedTransaction` | `indexCreatedTransaction` | Postings-address mappings (any / source / destination via `WriteAccountTxMapping` + `WriteSourceAccountTxMapping` + `WriteDestinationAccountTxMapping`), reference / timestamp / inserted-at builtin indexes, account-metadata via `dualWriteMetadataIndex`, transaction-metadata via the insert-known-absent path. Existence rows are written only for entities that carry an indexed metadata key — there is no standalone transaction-existence or account-existence write. |
 | `RevertedTransaction` | `indexRevertedTransaction` | Inverse adjustments to the postings mappings; the revert link is kept (not deleted) so revert lookups stay queryable. Metadata on the newly minted revert transaction uses the insert-known-absent path. |
 | `SavedMetadata` | `indexSavedMetadata` → `dualWriteMetadataIndex` | New `(value, entity)` row in the metadata index, plus a reverse-map row for later schema rewrites. |
+| `AccountMetadataUpdated` | `indexSavedMetadata` for each account | Each account's updated metadata follows the same metadata-index and reverse-map path as `SavedMetadata`. Both live indexing and historical backfill dispatch this `HISTORY` payload; it creates no transaction index rows. |
 | `DeletedMetadata` | `indexDeletedMetadata` → `dualDeleteMetadataEntry` | Removes the metadata index row and the reverse-map row. |
 | `SetMetadataFieldType` | `addSchemaRewriteTask` | Schedules a deferred rewrite that re-encodes the existing values under a new type tag (see [Schema Rewrite](#schema-rewrite)). |
 | `CreateIndex` / `DropIndex` | `handleCreatedIndexLog` / `handleDroppedIndexLog` | Mutates the in-memory config and per-replica version state. `DropIndex` tombstones the state so `HighWater` survives, cancels local work, and purges all metadata-index forward (`0x01`), existence (`0x02`), and reverse-map (`0x03`) rows in the same fold batch. |

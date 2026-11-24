@@ -291,6 +291,34 @@ func TestRunRejectsDuplicateSetItems(t *testing.T) {
 	require.Error(t, sch.Validate(instance), "duplicate entries in a set-type list must be rejected")
 }
 
+func TestRunAcceptsAccountMetadataUpdatedEventType(t *testing.T) {
+	t.Parallel()
+
+	crdDir := filepath.Join("..", "..", "config", "crd", "bases")
+	outDir := t.TempDir()
+	require.NoError(t, run(crdDir, outDir))
+
+	schemaFile, err := os.Open(filepath.Join(outDir, "ledger.formance.com_v1alpha1_eventsink.spec.json"))
+	require.NoError(t, err)
+	defer func() { require.NoError(t, schemaFile.Close()) }()
+
+	schemaDoc, err := jsonschema.UnmarshalJSON(schemaFile)
+	require.NoError(t, err)
+
+	compiler := jsonschema.NewCompiler()
+	require.NoError(t, compiler.AddResource("ledger.formance.com_v1alpha1_eventsink.spec.json", schemaDoc))
+	schema, err := compiler.Compile("ledger.formance.com_v1alpha1_eventsink.spec.json")
+	require.NoError(t, err)
+
+	instance, err := jsonschema.UnmarshalJSON(strings.NewReader(`{
+		"clusterRef": {"name": "orders"},
+		"nats": {"url": "nats://nats:4222", "topic": "ledger"},
+		"eventTypes": ["ACCOUNT_METADATA_UPDATED"]
+	}`))
+	require.NoError(t, err)
+	require.NoError(t, schema.Validate(instance))
+}
+
 // TestRunDoesNotRequireDefaultedFields reproduces a review finding: a field
 // that is both "required" and carries a "default" (e.g. Backup's
 // destination.driver, defaulted to "s3") is filled in by Kubernetes

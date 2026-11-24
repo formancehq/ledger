@@ -37,6 +37,7 @@ paths:
         no query parameters are accepted. Every request's required granular
         scope is checked before dispatch. Ledger/index/numscript operations
         require ledger:WriteLedger; transactions ledger:WriteTransaction;
+        Numscript execution requires ledger:ExecuteNumscript;
         metadata/schema/account types ledger:WriteMetadata; prepared queries
         ledger:WriteQuery; signing/events/maintenance ledger:WriteOps; query
         checkpoints and schedules ledger:WriteCluster. Initial ledger metadata
@@ -822,11 +823,73 @@ paths:
         '405':
           $ref: '#/components/responses/MethodNotAllowed'
 
+  /v3/{ledgerName}/numscripts/execute:
+    post:
+      summary: Execute a Numscript
+      description: |
+        Executes an inline or saved Numscript. Returns a transaction when the
+        script produces postings, or updates account metadata without a
+        transaction when it produces no postings. An optional transaction
+        reference applies only when postings are produced. Metadata-only results
+        reject it after reference length and uniqueness checks pass. Requires
+        `ledger:write` scope. Signed requests use the
+        same signing headers and batch verification as transaction creation.
+      operationId: v3ExecuteNumscript
+      x-speakeasy-name-override: ExecuteNumscript
+      tags:
+        - Transactions
+      security:
+        - BearerAuth: []
+        - {}
+      parameters:
+        - $ref: '#/components/parameters/BigIntAsString'
+        - $ref: '#/components/parameters/LedgerName'
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/SigningKeyId'
+        - $ref: '#/components/parameters/RequestSignature'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              anyOf:
+                - $ref: '#/components/schemas/ExecuteNumscriptRequest'
+                - $ref: '#/components/schemas/SignedExecuteNumscriptRequest'
+      responses:
+        '201':
+          description: Transaction created by the script
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreateTransactionResponse'
+        '204':
+          description: Account metadata updated without creating a transaction
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '429':
+          $ref: '#/components/responses/ResourceExhausted'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
+        '405':
+          $ref: '#/components/responses/MethodNotAllowed'
+
   /v3/{ledgerName}/transactions:
     post:
       summary: Create a new transaction
       description: |
-        Creates a new transaction in the specified ledger with the specified postings. Requires `ledger:write` scope.
+        Creates a new transaction in the specified ledger. A Numscript supplied here must produce postings. Requires `ledger:write` scope.
         Signed requests use `application/json` (including MIME parameters) with
         `request` and standard-base64 `payload`. Either signing header, even if
         empty, selects this wrapper; with neither header present, the ordinary REST body applies.
@@ -4542,6 +4605,28 @@ components:
           format: date-time
           type: string
       type: object
+    AtomicApplyExecuteNumscriptPayload:
+      additionalProperties: false
+      properties:
+        accountMetadata:
+          additionalProperties:
+            $ref: '#/components/schemas/AtomicApplyMetadataMap'
+          type: object
+        metadata:
+          additionalProperties:
+            $ref: '#/components/schemas/AtomicApplyMetadataValue'
+          type: object
+        reference:
+          type: string
+        script:
+          $ref: '#/components/schemas/AtomicApplyScript'
+        scriptReference:
+          $ref: '#/components/schemas/AtomicApplyScriptReference'
+        timestamp:
+          description: RFC3339 timestamp, decoded to microsecond precision by the existing HTTP timestamp codec.
+          format: date-time
+          type: string
+      type: object
     AtomicApplyCreatedTransactionAction:
       additionalProperties: false
       allOf:
@@ -4903,6 +4988,8 @@ components:
             - required:
                 - createTransaction
             - required:
+                - executeNumscript
+            - required:
                 - addMetadata
             - required:
                 - revertTransaction
@@ -4923,6 +5010,8 @@ components:
           $ref: '#/components/schemas/AtomicApplyCreateTransactionPayload'
         deleteMetadata:
           $ref: '#/components/schemas/AtomicApplyDeleteMetadataCommand'
+        executeNumscript:
+          $ref: '#/components/schemas/AtomicApplyExecuteNumscriptPayload'
         removeAccountType:
           $ref: '#/components/schemas/AtomicApplyRemoveAccountTypeRequest'
         revertTransaction:
@@ -6197,6 +6286,7 @@ components:
             - COMMITTED_TRANSACTION
             - REVERTED_TRANSACTION
             - SAVED_METADATA
+            - ACCOUNT_METADATA_UPDATED
             - DELETED_METADATA
             - CREATED_LEDGER
             - DELETED_LEDGER
@@ -6382,6 +6472,7 @@ components:
             - ADDED_ACCOUNT_TYPE
             - REMOVED_ACCOUNT_TYPE
             - UPDATED_DEFAULT_ENFORCEMENT_MODE
+            - ACCOUNT_METADATA_UPDATED
         data:
           type: object
           additionalProperties: true
@@ -6393,7 +6484,9 @@ components:
             TRANSACTION) and targetId: an account-address string or an unsigned
             64-bit transaction integer, including zero. SET_METADATA also
             contains metadata; DELETE_METADATA contains key. ORDER_SKIPPED
-            contains reason and optional context. Other types carry the fields
+            contains reason and optional context. ACCOUNT_METADATA_UPDATED
+            is an account-address-to-metadata map written by a metadata-only script;
+            its data object has account addresses as direct keys. Other types carry the fields
             of their corresponding operation directly. FILL_GAP contains originalId,
             a uint64 encoded as a decimal JSON number. Transaction IDs,
             revertedTransactionId and transaction targetId are JSON numbers;
@@ -6691,6 +6784,18 @@ components:
         payload:
           $ref: '#/components/schemas/SignedBatchPayload'
 
+    SignedExecuteNumscriptRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - request
+        - payload
+      properties:
+        request:
+          $ref: '#/components/schemas/ExecuteNumscriptRequest'
+        payload:
+          $ref: '#/components/schemas/SignedBatchPayload'
+
     SignedRevertTransactionRequest:
       type: object
       additionalProperties: false
@@ -6754,7 +6859,7 @@ components:
         A transaction must declare exactly one content source: explicit
         `postings`, an inline `script`, or a `scriptReference`. The
         `postings` array cannot be combined with `script` or
-        `scriptReference`. Idempotency is controlled exclusively via the
+        `scriptReference`. A script must produce postings. Idempotency is controlled exclusively via the
         `Idempotency-Key` HTTP header — there is no body-level key.
       properties:
         accountMetadata:
@@ -6798,6 +6903,41 @@ components:
           type: boolean
           default: false
           description: Skip the balance check, so the transaction commits even when a source account has insufficient funds.
+
+    ExecuteNumscriptRequest:
+      type: object
+      oneOf:
+        - required: [script]
+        - required: [scriptReference]
+      description: |
+        Execute a Numscript independently of transaction creation. Specify
+        exactly one of `script` and `scriptReference`. As with transaction
+        creation, unrecognized properties are ignored. `postings` has no effect
+        on this action. A transaction `reference` applies when the script emits
+        postings; a metadata-only result rejects it after reference length and
+        uniqueness checks pass.
+      properties:
+        accountMetadata:
+          type: object
+          additionalProperties:
+            type: object
+            additionalProperties:
+              $ref: '#/components/schemas/MetadataValue'
+        timestamp:
+          type: string
+          format: date-time
+        metadata:
+          type: object
+          additionalProperties:
+            $ref: '#/components/schemas/MetadataValue'
+          description: Transaction metadata, accepted only when the script produces postings.
+        reference:
+          type: string
+          description: Transaction reference, accepted only when the script produces postings.
+        script:
+          $ref: '#/components/schemas/Script'
+        scriptReference:
+          $ref: '#/components/schemas/ScriptReference'
 
     PostingRequest:
       type: object
@@ -6874,12 +7014,13 @@ components:
           type: string
           enum:
             - CREATE_TRANSACTION
+            - EXECUTE_NUMSCRIPT
             - ADD_METADATA
             - REVERT_TRANSACTION
             - DELETE_METADATA
           description: |
             The type of operation to perform. The REST bulk endpoint accepts
-            these four actions only; account-type actions
+            these five actions only; account-type actions
             (`ADD_ACCOUNT_TYPE` / `REMOVE_ACCOUNT_TYPE`) are gRPC-only and
             are rejected here.
         ik:
@@ -6887,8 +7028,9 @@ components:
           maxLength: 256
           description: Idempotency key for this operation
         data:
-          oneOf:
+          anyOf:
             - $ref: '#/components/schemas/CreateTransactionRequest'
+            - $ref: '#/components/schemas/ExecuteNumscriptRequest'
             - $ref: '#/components/schemas/AddMetadataRequest'
             - $ref: '#/components/schemas/RevertTransactionRequest'
             - $ref: '#/components/schemas/DeleteMetadataRequest'
@@ -7060,6 +7202,14 @@ components:
         - $ref: '#/components/schemas/BulkResponse'
         - $ref: '#/components/schemas/ErrorResponse'
 
+    BulkAccountMetadataResult:
+      type: object
+      description: Account addresses mapped to their updated metadata fields.
+      additionalProperties:
+        type: object
+        additionalProperties:
+          $ref: '#/components/schemas/MetadataValue'
+
     BulkResult:
       type: object
       properties:
@@ -7088,20 +7238,25 @@ components:
             omitted; skips retain their complete OrderSkippedResponse. Errors
             and aborted entries have no sequence. Omitted/false preserves the
             existing operation data. Shape depends on the originating action:
-              - `CREATE_TRANSACTION` success: a `TransactionResponse` — the
-                created Transaction object.
+              - `CREATE_TRANSACTION` success, or `EXECUTE_NUMSCRIPT` success
+                with postings: a `TransactionResponse` — the created Transaction
+                object.
+              - `EXECUTE_NUMSCRIPT` success without postings: a
+                `BulkAccountMetadataResult` mapping account addresses directly
+                to their updated metadata fields.
               - Any skippable action skip (when the item opted into
                 `skippableReasons` and the FSM matched one): an
                 `OrderSkippedResponse` with `skipped: true`, `reason`, and
                 reason-specific `context`. Emitted for every REST-supported
                 skippable action — CREATE_TRANSACTION, REVERT_TRANSACTION,
                 DELETE_METADATA — not just create.
-              - Other successful non-create actions: `null`.
+              - Other successful actions: `data` is omitted.
             Branch on `OrderSkippedResponse.skipped` to distinguish a skip
             from a successful transaction.
           nullable: true
           oneOf:
             - $ref: '#/components/schemas/TransactionResponse'
+            - $ref: '#/components/schemas/BulkAccountMetadataResult'
             - $ref: '#/components/schemas/OrderSkippedResponse'
 
     CreateTransactionResponse:

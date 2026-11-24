@@ -17,7 +17,7 @@ const (
 	WildcardWrite = "*:write"
 )
 
-// Granular scopes — 14 total, grouped by resource category.
+// Granular scopes — 15 total, grouped by resource category.
 // Canonical Ledger scopes use the app namespace followed by ActionResource,
 // matching the Membership scope style (for example, ledger:ReadCluster).
 var (
@@ -25,6 +25,7 @@ var (
 	ScopeLedgersWrite      Scope = "ledger:WriteLedger"
 	ScopeTransactionsRead  Scope = "ledger:ReadTransaction"
 	ScopeTransactionsWrite Scope = "ledger:WriteTransaction"
+	ScopeExecuteNumscript  Scope = "ledger:ExecuteNumscript"
 	ScopeAccountsRead      Scope = "ledger:ReadAccount"
 	ScopeMetadataWrite     Scope = "ledger:WriteMetadata"
 	ScopeAuditRead         Scope = "ledger:ReadAudit"
@@ -43,6 +44,7 @@ var AllGranularScopes = map[Scope]struct{}{
 	ScopeLedgersWrite:      {},
 	ScopeTransactionsRead:  {},
 	ScopeTransactionsWrite: {},
+	ScopeExecuteNumscript:  {},
 	ScopeAccountsRead:      {},
 	ScopeMetadataWrite:     {},
 	ScopeAuditRead:         {},
@@ -78,6 +80,7 @@ func DefaultMapping(service string) ScopeMapping {
 		service + ":write": {
 			ScopeLedgersWrite,
 			ScopeTransactionsWrite,
+			ScopeExecuteNumscript,
 			ScopeMetadataWrite,
 			ScopeAuditWrite,
 			ScopeOpsWrite,
@@ -124,14 +127,14 @@ func (m ScopeMapping) AnonymousScopes() map[Scope]struct{} {
 }
 
 // ExpandWildcardScope expands a wildcard token (e.g. "*:read", "*:write") into
-// the list of granular scopes with a matching action prefix. Returns (nil, false)
-// when the input is not a recognized wildcard.
+// granular scopes. The write wildcard also grants Numscript execution, as the
+// default write mapping does. Returns (nil, false) for unknown wildcards.
 func ExpandWildcardScope(s string) ([]Scope, bool) {
 	switch s {
 	case WildcardRead:
 		return scopesWithAction("Read"), true
 	case WildcardWrite:
-		return scopesWithAction("Write"), true
+		return append(scopesWithAction("Write"), ScopeExecuteNumscript), true
 	default:
 		return nil, false
 	}

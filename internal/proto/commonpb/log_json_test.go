@@ -74,6 +74,7 @@ func TestLedgerLogJSONOutput(t *testing.T) {
 		{commonpb.AddedAccountTypeLogType, `{"addedAccountType":{"accountType":{"name":"users","pattern":"users:{id}","persistence":"ACCOUNT_TYPE_EPHEMERAL","segmentTypes":{"id":{"uint64":{}}}}}}`},
 		{commonpb.RemovedAccountTypeLogType, `{"removedAccountType":{"name":"users"}}`},
 		{commonpb.UpdatedDefaultEnforcementModeLogType, `{"updatedDefaultEnforcementMode":{"enforcementMode":"CHART_ENFORCEMENT_AUDIT"}}`},
+		{commonpb.AccountMetadataUpdatedLogType, `{"accountMetadataUpdated":{"accountMetadata":{"users:alice":{"values":{"tier":{"stringValue":"gold"}}}}}}`},
 	} {
 		payload := &commonpb.LedgerLogPayload{}
 		require.NoError(t, protojson.Unmarshal([]byte(tc.wire), payload))
@@ -126,6 +127,11 @@ func TestLedgerLogJSONOutput(t *testing.T) {
 					}
 					require.NoError(t, err)
 					require.JSONEq(t, string(expected), string(envelope.Data))
+					if tc.kind == commonpb.AccountMetadataUpdatedLogType {
+						require.JSONEq(t, `{"users:alice":{"tier":"gold"}}`, string(envelope.Data))
+						require.NotContains(t, wireData, "accountMetadata")
+						require.NotContains(t, wireData, "account_metadata")
+					}
 					if tc.name == "created" || tc.name == "reverted" {
 						transactionField := "transaction"
 						wantID := "9007199254740993"
