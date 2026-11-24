@@ -896,8 +896,8 @@ results. See the [operational boundary](../architecture/subsystems/operator/stor
 
 ## Manual backup parent association
 
-Use minimally admitted BackupRuns with only a name and same-namespace
-`spec.backupRef` (type defaults to Full), including missing and contradictory
+Use minimally admitted checkpoint BackupRuns with only a name and same-namespace
+`spec.backupRef`, including missing and contradictory
 association labels and absent parent owner references. Trace parent discovery,
 event routing, scheduling, result summaries, completion cursors, pruning and
 directional sibling exclusion through the spec reference. A label naming a
@@ -910,11 +910,12 @@ reject whole-spec removal by update, JSON Patch or merge patch and a subsequent
 attempt to re-add a different parent. Verify stored spec/status remain intact.
 A rejected edit after Job creation must preserve the original sibling reservation, Job UID and result attribution. Fake clients do
 not establish admission. Old/new parent event mapping remains defensive only.
-Before installing the rule, stop the operator and recover already stored
-retargeting, spec-less runs and affected parent accounting; recover original
-parent identity from execution evidence before restoring a missing spec. Freezing
-the current reference is not retrospective identity recovery. Follow the
-[upgrade procedure](../architecture/subsystems/backup/operator-scheduling.md#upgrading-parent-admission).
+The earlier parent-admission upgrade required recovery of stored retargeting
+and spec-less runs from original execution evidence before installing its rule;
+that procedure is now historical. For the current checkpoint-only CRD change,
+the old BackupRuns and Backups are deleted rather than repaired in place. Follow
+the [current resource replacement procedure](../../ops/backup-restore.md#crd-migration-for-checkpoint-only-scheduling)
+before installing the new CRDs.
 
 Exercise the API-server-backed manual execution path through a successful Job
 result and parent accounting before zero-retention pruning, then verify a labeled
