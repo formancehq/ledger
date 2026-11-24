@@ -91,7 +91,9 @@ manufacture a summary. `BackupRun.status.result` holds the corresponding
 per-run result. `BackupHealthy` reports the latest observed terminal outcome,
 including failures after an earlier success. The persisted completion cursor
 prevents an older retained run from reversing that condition after history
-pruning, even when either history limit is zero. `spec.schedule` is the optional
+pruning, even when either history limit is zero. A failure wins when completion
+timestamps tie; an equal-time success cannot clear a recorded failure after
+pruning. A later completion can restore healthy status. `spec.schedule` is the optional
 checkpoint cron expression.
 `nextBackupTime` is the derived next deadline. It is not a scheduling cursor:
 while a run is active it describes the next

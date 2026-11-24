@@ -221,9 +221,24 @@ func (r *BackupReconciler) refreshStatusSummaries(
 	if latestFailure != nil && (latestTerminal == nil || !completionOrCreation(latestFailure).Time.Before(completionOrCreation(latestTerminal).Time)) {
 		latestTerminal = latestFailure
 	}
-	if latestTerminal == nil || (backup.Status.LastRunCompletionTime != nil &&
-		completionOrCreation(latestTerminal).Time.Before(backup.Status.LastRunCompletionTime.Time)) {
+	if latestTerminal == nil {
 		return
+	}
+	if cursor := backup.Status.LastRunCompletionTime; cursor != nil {
+		completed := completionOrCreation(latestTerminal).Time
+		if completed.Before(cursor.Time) {
+			return
+		}
+		// CompletionTime can tie across runs. A recorded failure wins the tie
+		// even after that run is pruned; otherwise a retained success would
+		// incorrectly make the parent healthy again.
+		if completed.Equal(cursor.Time) {
+			previous := meta.FindStatusCondition(backup.Status.Conditions, "BackupHealthy")
+			if previous != nil && (previous.Status == metav1.ConditionFalse ||
+				latestTerminal.Status.Phase == ledgerv1alpha1.BackupRunPhaseSucceeded) {
+				return
+			}
+		}
 	}
 	if latestTerminal.Status.Phase == ledgerv1alpha1.BackupRunPhaseSucceeded {
 		meta.SetStatusCondition(&backup.Status.Conditions, metav1.Condition{

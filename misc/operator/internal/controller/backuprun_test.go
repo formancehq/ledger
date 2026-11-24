@@ -138,6 +138,44 @@ func TestRefreshStatusSummaries_LatestOutcomeSurvivesPruning(t *testing.T) {
 	assert.Equal(t, uint32(2), backup.Status.LastBackup.FilesUploaded)
 }
 
+func TestRefreshStatusSummaries_FailureWinsEqualCompletionTimeAfterPruning(t *testing.T) {
+	t.Parallel()
+
+	completed := metav1.NewTime(time.Date(2025, 1, 1, 12, 0, 0, 0, time.UTC))
+	success := ledgerv1alpha1.BackupRun{Status: ledgerv1alpha1.BackupRunStatus{
+		Phase: ledgerv1alpha1.BackupRunPhaseSucceeded, CompletionTime: &completed,
+		Result: &ledgerv1alpha1.BackupResult{Time: &completed, FilesUploaded: 1},
+	}}
+	failure := ledgerv1alpha1.BackupRun{Status: ledgerv1alpha1.BackupRunStatus{
+		Phase: ledgerv1alpha1.BackupRunPhaseFailed, CompletionTime: &completed, Message: "upload failed",
+	}}
+	backup := &ledgerv1alpha1.Backup{}
+	reconciler := &BackupReconciler{}
+	reconciler.refreshStatusSummaries(backup, []ledgerv1alpha1.BackupRun{success, failure})
+	reconciler.refreshCompletionCursors(backup, []ledgerv1alpha1.BackupRun{success, failure})
+	assert.Equal(t, metav1.ConditionFalse, meta.FindStatusCondition(backup.Status.Conditions, "BackupHealthy").Status)
+
+	// Once retention removes the failure, the equal-time success must not
+	// overwrite the durable failure outcome or its diagnostic message.
+	reconciler.refreshStatusSummaries(backup, []ledgerv1alpha1.BackupRun{success})
+	condition := meta.FindStatusCondition(backup.Status.Conditions, "BackupHealthy")
+	assert.Equal(t, metav1.ConditionFalse, condition.Status)
+	assert.Equal(t, "upload failed", condition.Message)
+
+	// With equal timestamps, a newly observed success cannot prove that it
+	// followed the recorded failure, so health remains conservatively false.
+	success.Status.Result.FilesUploaded = 2
+	reconciler.refreshStatusSummaries(backup, []ledgerv1alpha1.BackupRun{success})
+	assert.Equal(t, metav1.ConditionFalse, meta.FindStatusCondition(backup.Status.Conditions, "BackupHealthy").Status)
+
+	// A later completion can establish a fresh healthy outcome.
+	later := metav1.NewTime(completed.Add(time.Second))
+	success.Status.CompletionTime = &later
+	success.Status.Result.Time = &later
+	reconciler.refreshStatusSummaries(backup, []ledgerv1alpha1.BackupRun{success})
+	assert.Equal(t, metav1.ConditionTrue, meta.FindStatusCondition(backup.Status.Conditions, "BackupHealthy").Status)
+}
+
 func TestExcessRuns_KeepsLimitAndReturnsOldestFirst(t *testing.T) {
 	t.Parallel()
 
