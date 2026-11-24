@@ -9419,6 +9419,12 @@ components:
           type: integer
           format: uint32
           description: Hash algorithm version
+        requiredCapabilities:
+          type: array
+          description: Committed proposal-level semantic capability IDs; absent for legacy proposals
+          items:
+            type: integer
+            format: uint32
         callerSnapshot:
           type: object
           additionalProperties: true

@@ -454,6 +454,7 @@ generate-proto:
         misc/proto/events.proto \
         misc/proto/restore.proto \
         misc/proto/proposal.proto
+    @go run ./scripts/fix-vtproto-capability-length.go
 
 test-rpcauth-generator:
     go -C tools/protoc-gen-rpcauth test ./...
