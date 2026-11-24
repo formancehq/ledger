@@ -2467,11 +2467,23 @@ func (g *GlobalState) applyLifecycle(req *servicepb.Request) (OrderResult, bool)
 		}
 		ls := NewLedgerState()
 		ls.defaultEnforcementMode = r.CreateLedger.GetDefaultEnforcementMode()
-		for _, key := range slices.Sorted(maps.Keys(r.CreateLedger.GetAccountTypes())) {
+		names := slices.Sorted(maps.Keys(r.CreateLedger.GetAccountTypes()))
+		parsedTypes := make(map[string][]accounttype.PatternSegment, len(names))
+		for i, key := range names {
 			at := r.CreateLedger.GetAccountTypes()[key]
-			if err := accounttype.ValidatePattern(at.GetPattern()); err != nil {
+			segments, err := accounttype.ParsePattern(at.GetPattern())
+			if err != nil {
 				return OrderResult{Reason: domain.ErrReasonInvalidPattern}, true
 			}
+			if err := accounttype.ValidateSegmentTypes(segments, at.GetSegmentTypes()); err != nil {
+				return OrderResult{Reason: domain.ErrReasonInvalidPattern}, true
+			}
+			for _, existingKey := range names[:i] {
+				if accounttype.PatternsConflict(segments, parsedTypes[existingKey]) {
+					return OrderResult{Reason: domain.ErrReasonAccountTypeConflict}, true
+				}
+			}
+			parsedTypes[key] = segments
 			ls.types = ls.types.Set(key, TypeState{Name: key, Pattern: at.GetPattern(), Persistence: at.GetPersistence()})
 		}
 		for _, field := range r.CreateLedger.GetInitialSchema() {
