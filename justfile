@@ -107,11 +107,6 @@ all_tags := "kafka,nats,clickhouse,databricks,s3,azure,pyroscope"
 # `formancehq/ledger` published image.
 image_repository := env_var_or_default("IMAGE_REPOSITORY", "ghcr.io/formancehq/ledger")
 
-# Operator Docker image repository (registry + name). Override via env var
-# to push to a different GHCR location. Default targets the canonical
-# `formancehq/ledger-operator` published image.
-operator_image_repository := env_var_or_default("OPERATOR_IMAGE_REPOSITORY", "ghcr.io/formancehq/ledger-operator")
-
 test-perf:
     go -C tests/perf test -race ./...
 
@@ -521,36 +516,6 @@ operator-pre-commit: operator-generate
     echo "==> operator: go build"
     go build ./...
 
-# Build and push operator Docker image (multi-arch). With a tag argument, also tags :latest.
-operator-docker-build tag='':
-    #!/bin/bash
-    set -euo pipefail
-    image='{{ operator_image_repository }}'
-    if [ -n "{{ tag }}" ]; then
-        docker buildx build -t "${image}:{{ tag }}" -t "${image}:latest" \
-            --build-arg "OPERATOR_VERSION={{ tag }}" \
-            --platform linux/amd64,linux/arm64 --push misc/operator
-    else
-        docker buildx build -t "${image}:latest" \
-            --platform linux/amd64,linux/arm64 --push misc/operator
-    fi
-
-# Build and push a PR operator image with GoReleaser under one explicit
-# `<repository>:pr-<num>-<sha7>` tag. It never touches :latest, a GitHub release
-# or the Helm charts. Needs GORELEASER_KEY and a Docker login to the registry.
-# Config: misc/operator/.goreleaser.pr.yml.
-operator-docker-build-pr image: (_assert-pr-image image)
-    #!/usr/bin/env bash
-    set -euo pipefail
-    image='{{ image }}'
-    export OPERATOR_IMAGE_REPOSITORY="${image%:*}"
-    export PR_IMAGE_TAG="${image##*:}"
-    cd misc/operator
-    # GITHUB_TOKEN is removed on purpose: a PR build must never reach the GitHub
-    # releases API, even if a release step were enabled by mistake.
-    env -u GITHUB_TOKEN -u GH_TOKEN \
-        goreleaser release --nightly --clean --config .goreleaser.pr.yml --skip=archive
-
 # Package and publish operator Helm charts to GHCR. Args are positional: version then suffix.
 operator-helm-publish version='' suffix='':
     cd misc/operator && just helm-publish '{{ version }}' '{{ suffix }}'
@@ -567,15 +532,22 @@ docker-build *ARGS:
 # charts. Needs GORELEASER_KEY and a Docker login to the registry. Used by the
 # `Build-PR-Image` workflow job.
 #
-# .goreleaser.pr.yml includes the canonical .goreleaser.yml, so the PR image has
-# the same binaries and build tags as a release: kafka,nats,clickhouse,databricks,
-# s3,pyroscope. It does not include `azure`, unlike `just docker-build`.
-docker-build-pr image: (_assert-pr-image image)
+# Pass true to also publish the operator under the commit-scoped PR tag.
+# The perf workflow omits it because it only needs Ledger.
+[positional-arguments]
+docker-build-pr image with_operator='false': (_assert-pr-image image)
     #!/usr/bin/env bash
     set -euo pipefail
-    image='{{ image }}'
+    image="$1"
+    with_operator="$2"
     export IMAGE_REPOSITORY="${image%:*}"
     export PR_IMAGE_TAG="${image##*:}"
+    unset PR_OPERATOR_TAG
+    case "$with_operator" in
+        true) export PR_OPERATOR_TAG="${PR_IMAGE_TAG%-run-*}" ;;
+        false) ;;
+        *) echo 'error: with_operator must be true or false' >&2; exit 1 ;;
+    esac
     # A development version always ends in .dev.<N>.g<sha>, so it can never be a
     # release tag, and its commit must be the one in the PR tag.
     if [[ -n "${DEV_VERSION:-}" ]]; then
@@ -591,15 +563,16 @@ docker-build-pr image: (_assert-pr-image image)
     # GITHUB_TOKEN is removed on purpose: a PR build must never reach the GitHub
     # releases API, even if a release step were enabled by mistake.
     env -u GITHUB_TOKEN -u GH_TOKEN \
-        goreleaser release --nightly --clean --config .goreleaser.pr.yml --skip=archive
+        goreleaser release --nightly --clean --skip=archive
 
 # Accept PR image tags with an optional build-attempt suffix, so a
 # PR build cannot move `latest`, `nightly` or a release tag.
 [private]
+[positional-arguments]
 _assert-pr-image image:
     #!/usr/bin/env bash
     set -euo pipefail
-    image='{{ image }}'
+    image="$1"
     last="${image##*/}"
     tag="${last#*:}"
     if [[ "$last" != *:* ]] || ! [[ "$tag" =~ ^pr-[0-9]+-[0-9a-f]{7}(-run-[1-9][0-9]*-[1-9][0-9]*)?$ ]]; then

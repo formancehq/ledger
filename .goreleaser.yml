@@ -2,12 +2,14 @@
 ---
 version: 2
 project_name: ledger
+dist: build/release
 
-# IMAGE_REPOSITORY controls where Docker images are pushed. Override the env
-# var to publish to a different GHCR location. Default targets the canonical
-# `formancehq/ledger` published image.
+# Override these repositories for isolated image publication.
+# The PR recipe sets PR_IMAGE_TAG and, when requested, PR_OPERATOR_TAG.
+# An omitted operator tag skips the operator only in PR mode.
 env:
 - IMAGE_REPOSITORY={{ envOrDefault "IMAGE_REPOSITORY" "ghcr.io/formancehq/ledger" }}
+- OPERATOR_IMAGE_REPOSITORY={{ envOrDefault "OPERATOR_IMAGE_REPOSITORY" "ghcr.io/formancehq/ledger-operator" }}
 
 builds:
 - binary: ledger-server
@@ -66,6 +68,22 @@ builds:
   - amd64
   - arm64
 
+- id: operator
+  binary: operator
+  dir: misc/operator
+  main: ./cmd/operator
+  # The standalone perf build only publishes the Ledger image.
+  skip: '{{ if and (index .Env "PR_IMAGE_TAG") (not (index .Env "PR_OPERATOR_TAG")) }}true{{ else }}false{{ end }}'
+  ldflags:
+  - '-X main.version={{ if index .Env "PR_IMAGE_TAG" }}{{ .Env.PR_OPERATOR_TAG }}{{ else if .IsNightly }}{{ if index .Env "DEV_VERSION" }}v{{ end }}{{ .Version }}{{ else }}{{ .Tag }}{{ end }}'
+  env:
+  - CGO_ENABLED=0
+  goos:
+  - linux
+  goarch:
+  - amd64
+  - arm64
+
 nightly:
   tag_name: nightly
   publish_release: true
@@ -76,9 +94,10 @@ nightly:
   # computed by formancehq/ci/actions/dev-version (e.g. 3.1.0-0.dev.12.g1a2b3c4).
   # Without DEV_VERSION, for example `just release-ci` run outside the
   # Release-Latest job, it keeps the historical nightly-<short-commit> form.
-  version_template: '{{ if index .Env "DEV_VERSION" }}{{ .Env.DEV_VERSION }}{{ else }}nightly-{{ .ShortCommit }}{{ end }}'
+  version_template: '{{ if index .Env "DEV_VERSION" }}{{ .Env.DEV_VERSION }}{{ else if index .Env "PR_IMAGE_TAG" }}{{ .Env.PR_IMAGE_TAG }}{{ else }}nightly-{{ .ShortCommit }}{{ end }}'
 
 release:
+  disable: '{{ if index .Env "PR_IMAGE_TAG" }}true{{ else }}false{{ end }}'
   prerelease: auto
   extra_files:
   - glob: openapi.yml
@@ -104,6 +123,15 @@ archives:
   name_template: '{{ .ProjectName }}_{{ if or (not .IsNightly) (index .Env "DEV_VERSION") }}v{{ end }}{{ .Version }}_{{ .Os }}-{{ .Arch }}'
   wrap_in_directory: true
 
+# Catalog the actual downloaded archives, including their Go dependencies.
+sboms:
+- id: archive-spdx
+  artifacts: archive
+  documents: ["${artifact}.spdx.json"]
+  # Inventory the archive without network enrichment during release.
+  args: ["$artifact", "--output", "spdx-json=$document"]
+  disable: "{{ .IsNightly }}"
+
 checksum:
   name_template: "checksums.txt"
 
@@ -127,7 +155,8 @@ changelog:
     order: 999
 
 dockers_v2:
-- ids:
+- id: ledger
+  ids:
   - ledger-server
   - ledgerctl
   dockerfile: build.Dockerfile
@@ -135,7 +164,7 @@ dockers_v2:
   - "{{ .Env.IMAGE_REPOSITORY }}"
   tags:
   # Releases and SemVer development builds (DEV_VERSION) get a leading v, like
-  # Git tags. This covers main nightlies and PR images (.goreleaser.pr.yml).
+  # Git tags. This covers main nightlies and PR images.
   - '{{ if or (not .IsNightly) (index .Env "DEV_VERSION") }}v{{ end }}{{ .Version }}'
   - "{{ if not .IsNightly }}{{ if not .Prerelease }}latest{{ end }}{{ end }}"
   # Compatibility alias for consumers of the former nightly-<short-commit>
@@ -147,7 +176,7 @@ dockers_v2:
   platforms:
   - linux/amd64
   - linux/arm64
-  sbom: false
+  sbom: "{{ not .IsNightly }}"
   flags:
   # PR image builds enable provenance; retain the existing release default.
   - '--provenance={{ envOrDefault "IMAGE_PROVENANCE" "false" }}'
@@ -158,5 +187,31 @@ dockers_v2:
     org.opencontainers.image.source: https://github.com/formancehq/ledger
     org.opencontainers.image.version: "{{ .Version }}"
     org.opencontainers.image.created: "{{ time \"2006-01-02T15:04:05Z07:00\" }}"
+    org.opencontainers.image.revision: "{{ .FullCommit }}"
+    org.opencontainers.image.licenses: MIT
+
+- id: operator
+  ids:
+  - operator
+  dockerfile: misc/operator/build.Dockerfile
+  disable: '{{ if and (index .Env "PR_IMAGE_TAG") (not (index .Env "PR_OPERATOR_TAG")) }}true{{ else }}false{{ end }}'
+  images:
+  - "{{ .Env.OPERATOR_IMAGE_REPOSITORY }}"
+  tags:
+  - '{{ if index .Env "PR_IMAGE_TAG" }}{{ .Env.PR_OPERATOR_TAG }}{{ else }}{{ if or (not .IsNightly) (index .Env "DEV_VERSION") }}v{{ end }}{{ .Version }}{{ end }}'
+  - '{{ if and (not .IsNightly) (not .Prerelease) }}latest{{ end }}'
+  platforms:
+  - linux/amd64
+  - linux/arm64
+  sbom: "{{ not .IsNightly }}"
+  flags:
+  - '--provenance={{ envOrDefault "IMAGE_PROVENANCE" "false" }}'
+  labels:
+    org.opencontainers.image.title: ledger-operator
+    org.opencontainers.image.description: ledger-operator
+    org.opencontainers.image.url: https://github.com/formancehq/ledger
+    org.opencontainers.image.source: https://github.com/formancehq/ledger
+    org.opencontainers.image.version: "{{ .Version }}"
+    org.opencontainers.image.created: '{{ time "2006-01-02T15:04:05Z07:00" }}'
     org.opencontainers.image.revision: "{{ .FullCommit }}"
     org.opencontainers.image.licenses: MIT

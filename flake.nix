@@ -153,6 +153,10 @@
             GOTOOLCHAIN = "local";
           };
 
+          # Tagged releases generate SPDX files with Syft. Nightly and PR
+          # builds use the smaller CI shell and do not generate SBOMs.
+          release = mkTaskShell [ pkgs-unstable.syft ];
+
           # `just test-sdk-bigint` and tests/sdk contract probes.
           sdk = mkTaskShell [
             pkgs.nodejs_22
