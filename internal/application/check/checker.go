@@ -226,6 +226,7 @@ func (c *Checker) pinCheckSnapshot() (*dal.ReadHandle, uint64, error) {
 	storedMaxLogSeq, err := readHighestLogKey(snap)
 	if err != nil {
 		_ = snap.Close()
+
 		return nil, 0, fmt.Errorf("getting last sequence: %w", err)
 	}
 
