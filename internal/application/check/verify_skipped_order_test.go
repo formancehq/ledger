@@ -2430,6 +2430,37 @@ func TestExecuteNumscriptReferenceConflictSkipIsCheckerValid(t *testing.T) {
 	require.Empty(t, captureEventsState(t, ledger, 11, skip, expected, cb))
 }
 
+func TestSkippedExecuteNumscriptDoesNotSeedCheckerState(t *testing.T) {
+	t.Parallel()
+	const ledger, reference = "L", "replayed-script"
+	accountMetadata := map[string]*commonpb.MetadataMap{
+		"account": {Values: map[string]*commonpb.MetadataValue{
+			"cursor": {Type: &commonpb.MetadataValue_StringValue{StringValue: "42"}},
+		}},
+	}
+	order := &raftcmdpb.Order{Type: &raftcmdpb.Order_LedgerScoped{LedgerScoped: &raftcmdpb.LedgerScopedOrder{
+		Ledger: ledger, Payload: &raftcmdpb.LedgerScopedOrder_Apply{Apply: &raftcmdpb.LedgerApplyOrder{
+			Data: &raftcmdpb.LedgerApplyOrder_ExecuteNumscript{ExecuteNumscript: &raftcmdpb.ExecuteNumscriptOrder{
+				Reference: reference, AccountMetadata: accountMetadata,
+			}},
+			SkippableReasons: []commonpb.ErrorReason{commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT},
+		}}}}}
+	item := buildAuditItem(t, 11, order)
+	cb := newChainBoundState()
+	cb.nextTxID[ledger] = 2
+	cb.ledgerCreationSeen[ledger] = struct{}{}
+	cb.references[ledger] = map[string]uint64{reference: 10}
+	expected := make(map[uint64]*expectedSkippableOrder)
+	orders := requireCollectExpectedSkippable(t, []*auditpb.AuditItem{item}, 11, 11, expected, cb)
+	require.Equal(t, uint64(3), cb.nextTxID[ledger])
+	skip := &commonpb.LedgerLogPayload{Payload: &commonpb.LedgerLogPayload_OrderSkipped{OrderSkipped: &commonpb.OrderSkippedLog{
+		Details: commonpb.MustFailureDetails("TRANSACTION_REFERENCE_CONFLICT", map[string]string{"ledger": ledger, "reference": reference, "existingTransactionId": "1"}),
+	}}}
+	reconcileMetadataOnlyChainBound([]*auditpb.AuditItem{item}, orders, []*commonpb.Log{applyLog(11, skip)}, cb)
+	require.Equal(t, uint64(2), cb.nextTxID[ledger])
+	require.Empty(t, cb.metadata[ledger][metadataTimelineTarget(false, "account")]["cursor"])
+}
+
 func TestVerifySkippedOrder_LedgerMismatchAcrossReasons(t *testing.T) {
 	t.Parallel()
 

@@ -29,6 +29,61 @@ func scriptOrderWithReference(ledger, plain, reference string, skippable bool) *
 	return order
 }
 
+func executeOrderWithReference(ledger, plain, reference string, skippable bool) *raftcmdpb.Order {
+	order := applyOrder(ledger, &raftcmdpb.LedgerApplyOrder{
+		Data: &raftcmdpb.LedgerApplyOrder_ExecuteNumscript{ExecuteNumscript: &raftcmdpb.ExecuteNumscriptOrder{
+			Script: &commonpb.Script{Plain: plain}, Reference: reference,
+		}},
+	})
+	if skippable {
+		order.GetLedgerScoped().GetApply().SkippableReasons = []commonpb.ErrorReason{commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT}
+	}
+	return order
+}
+
+func TestPredictOrderSkip_ExecuteNumscriptReference(t *testing.T) {
+	t.Parallel()
+	store := createTestStore(t)
+	admission, _ := createTestAdmission(t, store)
+	writeReference(t, admission, testLedgerName, "taken", 42)
+	for _, tc := range []struct {
+		name, reference string
+		skippable       bool
+		want            bool
+	}{
+		{"duplicate_opted_in", "taken", true, true},
+		{"duplicate_strict", "taken", false, false},
+		{"fresh_opted_in", "new", true, false},
+		{"empty_reference", "", true, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			order := executeOrderWithReference(testLedgerName, `send [USD/2 1] (source = @world destination = @a)`, tc.reference, tc.skippable)
+			got, err := admission.predictOrderSkip(order, testLedgerName, newBatchEffects())
+			require.NoError(t, err)
+			require.Equal(t, tc.want, got)
+		})
+	}
+}
+
+func TestResolveScripts_SkippedExecuteNumscriptNotFolded(t *testing.T) {
+	t.Parallel()
+	store := createTestStore(t)
+	admission, _ := createTestAdmission(t, store)
+	writeReference(t, admission, testLedgerName, "taken", 42)
+	batch := []*raftcmdpb.Order{
+		executeOrderWithReference(testLedgerName,
+			`send [USD/2 100] (source = @world destination = @skip:src)`, "taken", true),
+		scriptOrder(testLedgerName, dependentBalanceScript("skip:src")),
+	}
+	got := resolveHashFor(t, admission, newBulkOverlay(), batch, 1)
+	baselineStore := createTestStore(t)
+	baseline, _ := createTestAdmission(t, baselineStore)
+	want := resolveHashFor(t, baseline, newBulkOverlay(), []*raftcmdpb.Order{
+		scriptOrder(testLedgerName, dependentBalanceScript("skip:src")),
+	}, 0)
+	require.Equal(t, want, got)
+}
+
 // postingsOrderWithReference builds a postings-only (no script) CreateTransaction
 // order that carries a transaction reference and (optionally) opts into the
 // TRANSACTION_REFERENCE_CONFLICT skippable reason. Used to guard that the

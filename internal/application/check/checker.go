@@ -2560,6 +2560,24 @@ func reconcileMetadataOnlyChainBound(items []*auditpb.AuditItem, orders []*raftc
 		}
 
 		ledger := order.GetLedgerScoped().GetLedger()
+		if execution := order.GetLedgerScoped().GetApply().GetExecuteNumscript(); execution != nil &&
+			log.GetPayload().GetApply().GetLog().GetData().GetOrderSkipped() != nil {
+			// The order scan could not know the script's outcome. A skipped
+			// execution neither consumes a transaction ID nor writes metadata.
+			if next := chainBound.nextTxID[ledger]; next > 1 {
+				chainBound.nextTxID[ledger] = next - 1
+			}
+			for account, metadata := range execution.GetAccountMetadata() {
+				for key := range metadata.GetValues() {
+					target := metadataTimelineTarget(false, account)
+					mutations := chainBound.metadata[ledger][target][key]
+					chainBound.metadata[ledger][target][key] = slices.DeleteFunc(mutations, func(m chainBoundMutation) bool {
+						return m.seq == items[i].GetLogSequence()
+					})
+				}
+			}
+			continue
+		}
 
 		// Seed transaction-scoped predicates from the replayed transaction, not
 		// from the order-derived counter: a metadata-only order earlier in the
@@ -3190,8 +3208,7 @@ func recordChainBoundMutations(
 	}
 
 	if execution := apply.GetExecuteNumscript(); execution != nil {
-		// Execution has no reference to skip against. Its account metadata is
-		// a successful write regardless of whether it creates a transaction.
+		// Speculative writes are removed by replay reconciliation if skipped.
 		for account, mm := range execution.GetAccountMetadata() {
 			for key := range mm.GetValues() {
 				appendMetadataMutation(chainBound.metadata, ledger, metadataTimelineTarget(false, account), key, logSeq, true)

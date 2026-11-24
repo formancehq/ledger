@@ -45,6 +45,11 @@ script with a new reference still fails with `METADATA_ONLY_REFERENCE` and
 creates no transaction. If the reference already exists, the conflict takes
 precedence. A skipped conflict identifies an existing reference, not equality
 of the original and replayed business payload.
+Admission predicts this conflict before resolving a skipped script, so changed
+inputs cannot abort the replay or contribute phantom effects to later orders.
+The checker derives the reference from the audited execution order and removes
+the speculative transaction slot and metadata writes when replay confirms an
+`OrderSkipped` log.
 
 ## FSM mechanism: commit-or-discard overlay
 
