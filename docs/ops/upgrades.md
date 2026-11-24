@@ -118,9 +118,12 @@ RC.4 to RC.5 preserves ClusterPolicy at its original key and extracts only
 capability state into a separate record. Use the operator-required stopped restart:
 stop all RC.4 voters and learners before starting RC.5 on the retained volumes.
 Startup migrates schema 2 to 3 atomically, then synchronizes the WAL before
-recovery, workers or listeners start. No history scan or external reconstruction
-is required. Keep the ordinary `ledger run` flags; there is no activation flag.
-The supported registry is empty until a separate feature registers an ID.
+recovery, workers or listeners start. That configuration conversion does not
+scan history. Separately, each RC.5 Pod resumes a local audit-history backfill
+of account incarnations under the applied drain before starting Raft. This work
+can extend the stopped-upgrade duration; it requires no external reconstruction.
+Keep the ordinary `ledger run` flags; there is no activation flag. The supported
+registry includes the two account-incarnation capability IDs.
 
 Once every current member advertises a registered ID, the leader automatically
 commits a single activation control. Ordinary configuration keeps its own
