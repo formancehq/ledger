@@ -198,6 +198,26 @@ func TestChartValidation(t *testing.T) {
 			expectedError: "invalid segment",
 		},
 		{
+			name:          "misspelled pattern property",
+			source:        `{ "bank": { ".self": {}, ".patern": "^[A-Z]{4}$" } }`,
+			expectedError: "unknown property .patern",
+		},
+		{
+			name:          "misspelled metadata property",
+			source:        `{ "bank": { ".self": {}, ".metadatas": { "x": { "default": "y" } } } }`,
+			expectedError: "unknown property .metadatas",
+		},
+		{
+			name:          "misspelled rules property",
+			source:        `{ "bank": { ".self": {}, ".rulez": {} } }`,
+			expectedError: "unknown property .rulez",
+		},
+		{
+			name:          "unknown property on variable segment",
+			source:        `{ "users": { "$id": { ".pattern": "^[0-9]+$", ".forbiden": { "client": true } } } }`,
+			expectedError: "unknown property .forbiden",
+		},
+		{
 			name:          "root account",
 			source:        `{ ".self": { } }`,
 			expectedError: "root cannot be an account",
