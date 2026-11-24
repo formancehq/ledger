@@ -1653,7 +1653,7 @@ The `Apply` method is the **single entry point for all ledger write operations**
 - `skip_response`: When `true`, strips log payloads from the response (only `sequence` is returned per log). Useful for historical ingestion where the client does not need the full response on success.
 - One of:
   - `create_transaction`: Create a new transaction
-  - `execute_numscript`: Execute a script, creating a transaction for postings or updating account metadata without postings
+  - `execute_numscript`: Execute a script, creating a transaction for postings or updating account metadata without postings. A referenced execution that creates a transaction may opt into `TRANSACTION_REFERENCE_CONFLICT` in `skippable_reasons` so a replay skips the duplicate and later orders in the Apply batch commit; a metadata-only result rejects a new reference.
   - `add_metadata`: Add metadata to an account or transaction
   - `revert_transaction`: Revert a transaction
   - `delete_metadata`: Delete metadata from an account or transaction

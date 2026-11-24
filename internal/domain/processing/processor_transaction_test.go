@@ -1382,6 +1382,7 @@ func TestExecuteNumscript_MetadataOnly_RejectsReference(t *testing.T) {
 	refs.expectGet(domain.TransactionReferenceKey{LedgerName: "test-ledger", Reference: "ref-1"}, nil, domain.ErrNotFound)
 	request := &servicepb.Request{Type: &servicepb.Request_Apply{Apply: &servicepb.LedgerApplyRequest{
 		Ledger: "test-ledger",
+		SkippableReasons: []commonpb.ErrorReason{commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT},
 		Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_ExecuteNumscript{ExecuteNumscript: &servicepb.ExecuteNumscriptPayload{
 			Script:    &commonpb.Script{Plain: `set_account_meta(@users:alice, "tier", "gold")`},
 			Reference: "ref-1",
