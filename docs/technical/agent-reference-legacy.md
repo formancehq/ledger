@@ -5,13 +5,8 @@ It is not a current engineering contract. Start with [AGENTS.md](../../AGENTS.md
 and [agent-context.md](agent-context.md); current subsystem documentation takes
 precedence over every section below.
 
-> **Reverse-map snapshot warning (EN-1957):** the reverse-map exception below
-> describes the removed entity-first layout and scan/point-delete cleanup.
-> Current reverse maps use field/version/entity keys and atomic bounded range
-> cleanup. Encoding version zero is malformed; nonzero versions are not compared
-> with the current/pending pair. The checker classifies lifecycle state without
-> attributing orphan rows to a missed purge. See the current
-> [index layout](architecture/subsystems/indexer/indexes.md) and
+> **Historical note:** the reverse-map checker pass described below was removed.
+> `CheckStore` now reads only the primary FSM store. See the current
 > [checker contract](architecture/subsystems/checker/checker.md).
 
 > **Obsolete content warning (EN-1945):** every mention of chapters, chapter

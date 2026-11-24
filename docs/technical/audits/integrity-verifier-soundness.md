@@ -10,7 +10,7 @@ product guarantee or authorization to run an audit.
 ## Evidence contract
 
 For each candidate record the exact audited SHA, production entry point, primary
-snapshot and optional peer snapshot, persisted keyspace/field, corruption,
+snapshot, persisted keyspace/field, corruption,
 authoritative witness, verification pass and interval, comparison direction,
 callback events, terminal error and caller-visible outcome. Establish why this
 state is within the promised scope using [AGENTS.md](../../../AGENTS.md), the
@@ -55,7 +55,7 @@ root cause across multiple affected passes or callers.
 | Source chain and bounds | `verifyAuditHashChain`, `newProposalBoundaryReader`, `internal/query/audit.go`, `log.go`, `applied_proposal.go`, `internal/infra/state/audit_envelope.go`, `batch.go`, `machine.go`: identify entry/item/log/proposal key ranges and cardinalities, hash inputs and the verified source of replay inputs. Include first/last inclusivity and iterator terminal errors. |
 | Reconstruction | `checker.go`, `replay_store.go`, `internal/domain/replay/`, `internal/domain/processing/processor*.go`: establish order-to-log-to-projection provenance. Inspect producer code to establish semantics and correlated defects, without treating producer agreement as an independent oracle. |
 | Projection coverage | Inventory volumes, metadata, transactions and post-commit volumes, reversions, exclusions, idempotency outcomes, indexes, mirror position, numscript content/latest pointers, ledger presence/schema/account types/boundaries/references, signing and query checkpoints from actual calls. For query checkpoints include live rows, the next-ID allocator and schedule; derive the allocator from all audited creations even after deletion, and fold schedule set/delete in order. Map each field to expected-source and stored-row scans, including deletion and unmatched rows. This discovery list must be refreshed on the audited SHA. |
-| Storage boundary | `internal/storage/dal/`, `internal/infra/attributes/`, `internal/storage/readstore/`, `reverse_map_orphans.go`: primary snapshot and cursor semantics; only the documented reverse-map exception reads peer data for a verdict. Broad globs are counterevidence sources, not a general storage or index audit. |
+| Storage boundary | `internal/storage/dal/`, `internal/infra/attributes/`: primary snapshot and cursor semantics. The checker does not read peer-store data for a verdict. Broad globs are counterevidence sources, not a general storage or index audit. |
 | Result consumption | `internal/adapter/grpc/server_bucket.go` (`CheckStore`), `server_restore.go` (`CheckRestore`), `cmd/ledgerctl/store/check.go`, `bootstrap.go`: trace events, transport errors and final decisions. A staged store has no peer readstore; it cannot certify peer contents. Restore correctness itself belongs to the persistence domain. |
 | Existing evidence | `internal/application/check/*_test.go`, `internal/domain/replay/*_test.go`, relevant `tests/e2e/business/` and `tests/e2e/cluster/`: record assertions actually reached, not test names or line coverage as proof. |
 
@@ -207,7 +207,7 @@ files and one corrupted store do not justify duplicate issues.
 | `integrity-verifier-soundness` | Missing or unsound verifier pass/field/range, unchecked source dependency, incomplete/error signal lost within checker-specific consumption. A faulty producer can be counterevidence or a trigger, but the finding must establish an independently missing checker protection. |
 | `accounting-invariants` | Business outcomes, conservation, posting/amount semantics and deterministic application. If producer and checker share a defect, this domain owns only a distinct detection gap with an independent witness; cross-reference the accounting root cause rather than cloning it. |
 | `persistence-restore-replay` | Durability, snapshots, backup/delta reconstruction and restore parity, including corruption introduced there. Here a restored store is only an input to the verifier; a restore loss already owned elsewhere remains there. |
-| `read-consistency-projections` | Query/index content correctness, GC and per-replica detect/drop/rebuild. Only the existing reverse-map checker exception belongs here; do not expand it to full peer validation. |
+| `read-consistency-projections` | Query/index content correctness, GC and per-replica detect/drop/rebuild. Readstore integrity remains in this domain; the main-store checker does not validate peer data. |
 | `idempotency-retries-partial-failures` | Outcome retention/reuse and retry semantics. This domain checks the applicable frozen-outcome verification, not a new TTL policy. |
 | `api-boundary-contracts` | Generic RPC/CLI adaptation and transport error handling. Checker-specific loss of the distinction between mismatch, incomplete and healthy is examined here, but a shared adapter defect remains API-owned. |
 | `authentication-authorization-boundaries`, `configuration-startup-contracts` | Access, redaction, secret handling, configuration precedence and persisted identity validation. Here signing/policy rows and hash inputs are verifier sources, not a new authorization or startup audit. |

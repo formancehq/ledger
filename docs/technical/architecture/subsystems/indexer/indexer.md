@@ -227,7 +227,7 @@ The read store partitions its keyspace by a single leading byte:
 |--------|---------|--------|
 | `0x01` | Metadata index (forward, append-only events — see [readstore-event-keys.md](../read-path/readstore-event-keys.md)) | `MetadataIndexPrefixV` / `MetadataIndexEventKeyV` |
 | `0x02` | Entity existence (null / non-null, append-only events) | `EntityExistsEventKeyV`, `EntityExistsNonNullPrefixV`, `EntityExistsNullPrefixV` |
-| `0x03` | Reverse map (field/version → entity → encoded value, for mutation lookup and rewrites). Field and field/version prefixes support bounded maintenance; the checker also scans it for orphan detection — see [Reverse-map rows are checker-visible](indexes.md#reverse-map-rows-are-checker-visible) | `AccountReverseMapKeyV`, `TransactionReverseMapKeyV`, `ReverseMapFieldPrefix`, `ReverseMapVersionPrefix` |
+| `0x03` | Reverse map (field/version → entity → encoded value, for mutation lookup and rewrites). Field and field/version prefixes support bounded maintenance; readstore integrity remains index-builder work — see [Reverse-map integrity](indexes.md#reverse-map-integrity) | `AccountReverseMapKeyV`, `TransactionReverseMapKeyV`, `ReverseMapFieldPrefix`, `ReverseMapVersionPrefix` |
 | `0x04` | Account → transaction mapping | `AccountTxKey` |
 | `0x05` | Source-account → transaction | dedicated key builder |
 | `0x06` | Destination-account → transaction | dedicated key builder |
@@ -433,9 +433,7 @@ overlay: an exact lookup after the purge observes deletion instead of falling
 through to committed Pebble state, while a later exact write supersedes the
 range in the same order Pebble applies the batch. A missing write batch remains
 a hard error (invariant #7), since a silent skip would strand all three limbs.
-`compareReverseMapOrphans` continues to scan `0x03` as a checker defense and
-flags rows whose field has no registered index. See [Reverse-map rows are
-checker-visible](indexes.md#reverse-map-rows-are-checker-visible).
+The main-store checker does not scan `0x03`; readstore corruption detection and repair remain index-builder work (EN-1514 / EN-1323).
 
 ### Recovery and observability
 
