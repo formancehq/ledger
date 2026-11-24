@@ -2,6 +2,7 @@ package admission
 
 import (
 	"context"
+	"errors"
 	"math/big"
 	"testing"
 
@@ -298,6 +299,14 @@ send $x (
 			require.False(t, order.GetTechnical().GetPreloadUnavailable(),
 				"a panic must never be softened to PRELOAD_UNAVAILABLE — invariant #7 (hasKey=%v)", hasKey)
 		}
+	})
+
+	t.Run("panic and cancellation are never forwarded for the FSM to skip", func(t *testing.T) {
+		t.Parallel()
+
+		require.True(t, planningFailureIsTerminal(panicCause(t)))
+		require.True(t, planningFailureIsTerminal(&numscript.DependencyResolutionError{Cause: context.Canceled}))
+		require.False(t, planningFailureIsTerminal(&numscript.DependencyResolutionError{Cause: errors.New("account deleted")}))
 	})
 
 	t.Run("cancellation stays loud even with read attempted and key", func(t *testing.T) {

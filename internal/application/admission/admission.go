@@ -1752,6 +1752,13 @@ func isContextError(err error) bool {
 	return errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded)
 }
 
+// planningFailureIsTerminal reports a planning failure admission refuses even
+// for an order the FSM could skip: a host-context error, or a recovered
+// Numscript panic, which must surface loudly (invariant #7).
+func planningFailureIsTerminal(err error) bool {
+	return isContextError(err) || numscript.IsPanic(err)
+}
+
 // classifyResolutionFailure decides what to do when admission cannot build the
 // preload for an order (discovery/skip-prediction failed against current state).
 // With an idempotency key present the failure is NOT authoritative — the batch
@@ -2135,14 +2142,15 @@ func (a *Admission) resolveScriptsAndEnrichNeeds(ctx context.Context, orders []*
 			// refused here. Whether the reference exists is the FSM's call, so
 			// the failure is forwarded with the inputs planning read: apply
 			// skips the order, or re-plans it and reaches this same failure.
-			fsmDecides := skip && !isContextError(err)
+			terminal := planningFailureIsTerminal(err)
+			fsmDecides := skip && !terminal
 			if !fsmDecides {
 				_, ferr := a.classifyResolutionFailure(order, err, refIsLatest, hasIdempotencyKey)
 				if ferr == nil {
 					continue
 				}
 
-				if !hasIdempotencyKey || !skipsOnReferenceConflict(applyPayload.Apply) || isContextError(err) {
+				if !hasIdempotencyKey || !skipsOnReferenceConflict(applyPayload.Apply) || terminal {
 					return ferr
 				}
 			}

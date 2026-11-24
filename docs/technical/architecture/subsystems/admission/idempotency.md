@@ -209,6 +209,10 @@ When planning fails, admission forwards the order instead of refusing it:
   otherwise refuse. A state-dependent failure keeps the
   [`preload_unavailable` path](#numscript-dependency-resolution-failures).
 
+Two failures are never forwarded: a host-context error (the request was
+cancelled or timed out) and a recovered Numscript panic, which must surface
+loudly. Admission refuses both, whatever the skip prediction or key.
+
 The forwarded order carries `OrderTechnical.numscript_planning_failed`. Its
 coverage holds the keys planning read before it failed, and
 `inputs_resolution_hash` binds their values. An unkeyed order that admission
