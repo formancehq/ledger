@@ -77,14 +77,10 @@ this manifest.
   their documented restart integrity gap rather than granting a blanket cache
   exemption. Prepared queries, maintenance mode and the cluster-config hash
   algorithm are also known gaps, not approved exemptions.
-- The reverse-map pass checks presence/key validity against registered indexes
-  and audited ledger liveness, not row values. It pins the peer before the main
-  snapshot. Aligned cursors permit oracle-dependent verdicts; lag or no peer
-  prevents full verification, malformed keys need no oracle, and ahead is
-  skipped like lag: a crash can reopen the primary behind the peer until it
-  regains its logs. Nonzero concurrent versions are
-  valid during rewrites. `IndexVersionState`, other peer index contents and
-  `usagestore` remain outside main-store checking.
+- The checker reads only the pinned primary snapshot. Reverse-map rows,
+  `IndexVersionState`, other peer index contents and `usagestore` counters are
+  outside its verdict. Treat peer index integrity as the documented gap owned
+  by `read-consistency-projections`, not as checker coverage.
 - Deletion and retention qualify comparisons. In particular, idempotency
   eviction is permitted and an audit record does not alone prove its outcome
   row must still exist. Establish the active retention contract before proposing
@@ -233,9 +229,10 @@ challenge or Jira orchestration itself.
   chapters/cold storage were removed. Historical archival checker fixes such as
   #1854 and EN-1903/#1828 are not evidence of a current reachable archival path.
 - EN-1514 / EN-1323 own the documented peer index-content integrity gap.
-  EN-1458 reverse-map checking, EN-1515 signing checking and EN-1550 mirror
-  boundary checking are existing protections; EN-1513 removed the duplicate
-  durable mirror cursor. Do not convert these historical defects into new ones.
+  EN-1458 reverse-map checking was retired; it is not a current checker
+  protection. EN-1515 signing checking and EN-1550 mirror boundary checking
+  remain protections; EN-1513 removed the duplicate durable mirror cursor.
+  Do not convert these historical defects into new ones.
 - Prepared-query, persisted-bloom restart, maintenance-mode and cluster-config
   hash-algorithm gaps are already described in Audit-Bound vs Technical State.
   Transaction log `inserted_at` / `updated_at` verification is also a documented
@@ -347,8 +344,8 @@ the physical key and lets the identity comparison report the missing `Id`. `chec
 FSM-produced registry: a surplus row with and without `Id` must each produce
 exactly one "no matching CreateIndex" `INDEX_MISMATCH`, and an audited row
 stripped of its `Id` must produce exactly one `Id`-drift `INDEX_MISMATCH`.
-`collectIndexedFields` in the reverse-map pass still ignores rows without `Id`;
-that only widens its orphan verdicts, and `compareIndexes` reports the row.
+Peer reverse-map contents remain outside the checker verdict; this regression
+tests only the primary-store index registry comparison.
 
 ## Operational policy exemption
 
