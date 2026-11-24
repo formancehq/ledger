@@ -2,6 +2,7 @@ package node
 
 import (
 	"context"
+	"errors"
 	"strconv"
 	"testing"
 	"time"
@@ -17,6 +18,25 @@ import (
 	"github.com/formancehq/ledger/v3/internal/pkg/futures"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
+
+type staticCapabilityEvidence []uint32
+
+func (e staticCapabilityEvidence) AdvertisedIDs() ([]uint32, error) {
+	return e, nil
+}
+
+type failingCapabilityEvidence struct{ err error }
+
+func (e failingCapabilityEvidence) AdvertisedIDs() ([]uint32, error) {
+	return nil, e.err
+}
+
+func TestRefreshSelfMembershipRejectsMissingLocalEvidence(t *testing.T) {
+	raftNode := newConfiguredPeersTestNode(t)
+	failure := errors.New("unreadable local evidence")
+	require.ErrorIs(t, raftNode.RefreshSelfMembership(t.Context(), failingCapabilityEvidence{failure}), failure)
+	require.Empty(t, raftNode.membership.PeerAddresses()[raftNode.config.NodeID].Capabilities)
+}
 
 func TestCapabilityMembershipWaitsForSelfRefreshCommit(t *testing.T) {
 	t.Parallel()
@@ -45,10 +65,10 @@ func TestCapabilityMembershipWaitsForSelfRefreshCommit(t *testing.T) {
 			require.Empty(t, ready, "local self registration cannot arm activation")
 			failed, cancel := context.WithCancel(t.Context())
 			cancel()
-			require.ErrorIs(t, raftNode.RefreshSelfMembership(failed, []uint32{1}), context.Canceled)
+			require.ErrorIs(t, raftNode.RefreshSelfMembership(failed, staticCapabilityEvidence{1}), context.Canceled)
 			require.Empty(t, raftNode.membership.PeerAddresses()[1].Capabilities)
 			results := make(chan error, 1)
-			go func() { results <- raftNode.RefreshSelfMembership(t.Context(), []uint32{1}) }()
+			go func() { results <- raftNode.RefreshSelfMembership(t.Context(), staticCapabilityEvidence{1}) }()
 			command := <-raftNode.clusterCommandCh
 			require.NoError(t, command.fn())
 			var change *raftpb.Entry
