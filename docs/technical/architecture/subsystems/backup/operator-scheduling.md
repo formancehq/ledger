@@ -88,7 +88,11 @@ A changed cron expression is evaluated against the same cursor.
 
 `lastBackup` is the last successful checkpoint result; failed runs never
 manufacture a summary. `BackupRun.status.result` holds the corresponding
-per-run result. `spec.schedule` is the optional checkpoint cron expression.
+per-run result. `BackupHealthy` reports the latest observed terminal outcome,
+including failures after an earlier success. The persisted completion cursor
+prevents an older retained run from reversing that condition after history
+pruning, even when either history limit is zero. `spec.schedule` is the optional
+checkpoint cron expression.
 `nextBackupTime` is the derived next deadline. It is not a scheduling cursor:
 while a run is active it describes the next
 cron occurrence after the current reconciliation time.
@@ -98,8 +102,9 @@ cron occurrence after the current reconciliation time.
 1. Read the Backup directly from the API server, validate the Cluster and cron
    expression, then list child runs directly from the API server. A failed direct
    read stops reconciliation before any scheduling or pruning.
-2. Refresh completion cursors monotonically and successful-result summaries in
-   memory from the observed children.
+2. Refresh the successful-result summary and health condition against the
+   persisted completion cursor, then advance that cursor monotonically from
+   the observed children.
 3. Evaluate the checkpoint schedule and create a due run. Any Pending, Running,
    or not-yet-initialized child prevents another scheduled run. The BackupRun
    controller separately gates execution on Running siblings.

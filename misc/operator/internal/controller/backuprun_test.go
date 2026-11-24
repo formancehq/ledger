@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/assert"
+	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	ledgerv1alpha1 "github.com/formancehq/ledger/misc/operator/api/v1alpha1"
@@ -95,6 +96,46 @@ func TestRefreshStatusSummaries_SkipsSucceededRunWithoutResult(t *testing.T) {
 		assert.Equal(t, uint32(2), backup.Status.LastBackup.FilesUploaded)
 		assert.Equal(t, &middle, backup.Status.LastBackup.Time)
 	}
+}
+
+func TestRefreshStatusSummaries_LatestOutcomeSurvivesPruning(t *testing.T) {
+	t.Parallel()
+
+	old := metav1.NewTime(time.Date(2025, 1, 1, 12, 0, 0, 0, time.UTC))
+	newer := metav1.NewTime(old.Add(time.Hour))
+	success := ledgerv1alpha1.BackupRun{Status: ledgerv1alpha1.BackupRunStatus{
+		Phase: ledgerv1alpha1.BackupRunPhaseSucceeded, CompletionTime: &old,
+		Result: &ledgerv1alpha1.BackupResult{Time: &old, FilesUploaded: 1},
+	}}
+	failure := ledgerv1alpha1.BackupRun{Status: ledgerv1alpha1.BackupRunStatus{
+		Phase: ledgerv1alpha1.BackupRunPhaseFailed, CompletionTime: &newer, Message: "upload failed",
+	}}
+	backup := &ledgerv1alpha1.Backup{}
+	reconciler := &BackupReconciler{}
+	reconciler.refreshStatusSummaries(backup, []ledgerv1alpha1.BackupRun{success, failure})
+	reconciler.refreshCompletionCursors(backup, []ledgerv1alpha1.BackupRun{success, failure})
+	assert.Equal(t, metav1.ConditionFalse, meta.FindStatusCondition(backup.Status.Conditions, "BackupHealthy").Status)
+	assert.Equal(t, "upload failed", meta.FindStatusCondition(backup.Status.Conditions, "BackupHealthy").Message)
+	assert.NotNil(t, backup.Status.LastBackup)
+
+	// A zero failure history limit removes the latest run. The retained older
+	// success must not make the persisted health condition healthy again.
+	reconciler.refreshStatusSummaries(backup, []ledgerv1alpha1.BackupRun{success})
+	assert.Equal(t, metav1.ConditionFalse, meta.FindStatusCondition(backup.Status.Conditions, "BackupHealthy").Status)
+
+	success.Status.CompletionTime = &newer
+	success.Status.Result = &ledgerv1alpha1.BackupResult{Time: &newer, FilesUploaded: 2}
+	failure.Status.CompletionTime = &old
+	backup = &ledgerv1alpha1.Backup{}
+	reconciler.refreshStatusSummaries(backup, []ledgerv1alpha1.BackupRun{failure, success})
+	reconciler.refreshCompletionCursors(backup, []ledgerv1alpha1.BackupRun{failure, success})
+	assert.Equal(t, metav1.ConditionTrue, meta.FindStatusCondition(backup.Status.Conditions, "BackupHealthy").Status)
+	assert.Equal(t, uint32(2), backup.Status.LastBackup.FilesUploaded)
+
+	// A zero success history limit must not resurrect the older failure.
+	reconciler.refreshStatusSummaries(backup, []ledgerv1alpha1.BackupRun{failure})
+	assert.Equal(t, metav1.ConditionTrue, meta.FindStatusCondition(backup.Status.Conditions, "BackupHealthy").Status)
+	assert.Equal(t, uint32(2), backup.Status.LastBackup.FilesUploaded)
 }
 
 func TestExcessRuns_KeepsLimitAndReturnsOldestFirst(t *testing.T) {

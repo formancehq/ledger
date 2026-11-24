@@ -105,8 +105,8 @@ func (r *BackupReconciler) reconcile(ctx context.Context, req ctrl.Request, now 
 
 	// Capture terminal progress before history can be pruned, even with schedules
 	// disabled. Successful summaries remain distinct from scheduling cursors.
-	r.refreshCompletionCursors(&backup, runs)
 	r.refreshStatusSummaries(&backup, runs)
+	r.refreshCompletionCursors(&backup, runs)
 
 	var nextRequeue time.Duration
 
@@ -202,25 +202,42 @@ func (r *BackupReconciler) refreshCompletionCursors(backup *ledgerv1alpha1.Backu
 	}
 }
 
-// refreshStatusSummaries updates LastBackup from the latest Succeeded run.
+// refreshStatusSummaries preserves the last successful result and reports the
+// latest terminal outcome, even when older runs remain after history pruning.
 func (r *BackupReconciler) refreshStatusSummaries(
 	backup *ledgerv1alpha1.Backup,
 	runs []ledgerv1alpha1.BackupRun,
 ) {
-	if latest := latestResultRun(runs); latest != nil {
-		backup.Status.LastBackup = latest.Status.Result.DeepCopy()
+	latestSuccess := latestResultRun(runs)
+	if latestSuccess != nil && (backup.Status.LastBackup == nil || backup.Status.LastBackup.Time == nil ||
+		completionOrCreation(latestSuccess).After(backup.Status.LastBackup.Time.Time)) {
+		backup.Status.LastBackup = latestSuccess.Status.Result.DeepCopy()
+	}
+	latestFailure := latestFailedRun(runs)
+	var latestTerminal *ledgerv1alpha1.BackupRun
+	if latestSuccess != nil {
+		latestTerminal = latestSuccess
+	}
+	if latestFailure != nil && (latestTerminal == nil || !completionOrCreation(latestFailure).Time.Before(completionOrCreation(latestTerminal).Time)) {
+		latestTerminal = latestFailure
+	}
+	if latestTerminal == nil || (backup.Status.LastRunCompletionTime != nil &&
+		completionOrCreation(latestTerminal).Time.Before(backup.Status.LastRunCompletionTime.Time)) {
+		return
+	}
+	if latestTerminal.Status.Phase == ledgerv1alpha1.BackupRunPhaseSucceeded {
 		meta.SetStatusCondition(&backup.Status.Conditions, metav1.Condition{
 			Type:               "BackupHealthy",
 			Status:             metav1.ConditionTrue,
 			Reason:             "BackupSucceeded",
 			ObservedGeneration: backup.Generation,
 		})
-	} else if latestFailed := latestFailedRun(runs); latestFailed != nil {
+	} else {
 		meta.SetStatusCondition(&backup.Status.Conditions, metav1.Condition{
 			Type:               "BackupHealthy",
 			Status:             metav1.ConditionFalse,
 			Reason:             "BackupFailed",
-			Message:            latestFailed.Status.Message,
+			Message:            latestTerminal.Status.Message,
 			ObservedGeneration: backup.Generation,
 		})
 	}
