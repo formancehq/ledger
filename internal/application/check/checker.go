@@ -3001,6 +3001,8 @@ func collectExpectedSkippable(
 
 		if ct != nil {
 			exp.reference = ct.GetReference()
+		} else if execution := apply.GetExecuteNumscript(); execution != nil {
+			exp.reference = execution.GetReference()
 		}
 
 		// Per-order correlators for the non-CreateTransaction skip

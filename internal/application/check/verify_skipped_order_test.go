@@ -2401,6 +2401,35 @@ func TestExecuteNumscriptReferenceClaimPrecedesSameBatchConflict(t *testing.T) {
 	require.Empty(t, result)
 }
 
+func TestExecuteNumscriptReferenceConflictSkipIsCheckerValid(t *testing.T) {
+	t.Parallel()
+	const ledger, reference = "L", "replayed-script"
+	create := &raftcmdpb.Order{Type: &raftcmdpb.Order_LedgerScoped{LedgerScoped: &raftcmdpb.LedgerScopedOrder{
+		Ledger: ledger, Payload: &raftcmdpb.LedgerScopedOrder_Apply{Apply: &raftcmdpb.LedgerApplyOrder{
+			Data: &raftcmdpb.LedgerApplyOrder_CreateTransaction{CreateTransaction: &raftcmdpb.CreateTransactionOrder{Reference: reference}},
+		}},
+	}}}
+	execution := &raftcmdpb.Order{Type: &raftcmdpb.Order_LedgerScoped{LedgerScoped: &raftcmdpb.LedgerScopedOrder{
+		Ledger: ledger, Payload: &raftcmdpb.LedgerScopedOrder_Apply{Apply: &raftcmdpb.LedgerApplyOrder{
+			Data:             &raftcmdpb.LedgerApplyOrder_ExecuteNumscript{ExecuteNumscript: &raftcmdpb.ExecuteNumscriptOrder{Reference: reference}},
+			SkippableReasons: []commonpb.ErrorReason{commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT},
+		}},
+	}}}
+	items := []*auditpb.AuditItem{buildAuditItem(t, 10, create), buildAuditItem(t, 11, execution)}
+	cb := newChainBoundState()
+	cb.ledgerCreationSeen[ledger] = struct{}{}
+	expected := make(map[uint64]*expectedSkippableOrder)
+	requireCollectExpectedSkippable(t, items, 10, 11, expected, cb)
+	require.Equal(t, reference, expected[11].reference)
+	cb.referenceTxIDs[ledger] = map[string]uint64{reference: 1}
+	skip := &commonpb.LedgerLogPayload{Payload: &commonpb.LedgerLogPayload_OrderSkipped{OrderSkipped: &commonpb.OrderSkippedLog{
+		Details: commonpb.MustFailureDetails("TRANSACTION_REFERENCE_CONFLICT", map[string]string{
+			"ledger": ledger, "reference": reference, "existingTransactionId": "1",
+		}),
+	}}}
+	require.Empty(t, captureEventsState(t, ledger, 11, skip, expected, cb))
+}
+
 func TestVerifySkippedOrder_LedgerMismatchAcrossReasons(t *testing.T) {
 	t.Parallel()
 

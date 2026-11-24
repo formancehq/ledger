@@ -50,7 +50,7 @@ func TestExtractSkippableReasonsFromApply_ExecuteNumscript(t *testing.T) {
 	}
 	got, err := extractSkippableReasonsFromApply(apply)
 	require.NoError(t, err)
-	require.Equal(t, apply.SkippableReasons, got)
+	require.Equal(t, apply.GetSkippableReasons(), got)
 
 	apply.SkippableReasons = []commonpb.ErrorReason{commonpb.ErrorReason_ERROR_REASON_INSUFFICIENT_FUNDS}
 	_, err = extractSkippableReasonsFromApply(apply)
