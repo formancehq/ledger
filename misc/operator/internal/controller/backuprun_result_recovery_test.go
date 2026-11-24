@@ -23,26 +23,22 @@ import (
 
 func TestBackupRunResultReadRecovery(t *testing.T) {
 	t.Parallel()
-	for _, runType := range []ledgerv1alpha1.BackupRunType{ledgerv1alpha1.BackupRunTypeFull, ledgerv1alpha1.BackupRunTypeIncremental} {
-		for _, missing := range []bool{false, true} {
-			name := string(runType) + "/list-error"
-			if missing {
-				name = string(runType) + "/missing-pod"
-			}
-			t.Run(name, func(t *testing.T) {
-				t.Parallel()
-				testBackupRunResultReadRecovery(t, runType, missing)
-			})
+	for _, missing := range []bool{false, true} {
+		name := "list-error"
+		if missing {
+			name = "missing-pod"
 		}
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			testBackupRunResultReadRecovery(t, missing)
+		})
 	}
 }
 
-func testBackupRunResultReadRecovery(t *testing.T, runType ledgerv1alpha1.BackupRunType, missing bool) {
+func testBackupRunResultReadRecovery(t *testing.T, missing bool) {
 	t.Helper()
 	ctx := t.Context()
 	c, run := backupRunRecoveryFixture(t)
-	run.Spec.Type = runType
-	require.NoError(t, c.Update(ctx, run))
 	r := &BackupRunReconciler{Client: c, APIReader: c, Scheme: c.Scheme()}
 	req := ctrl.Request{NamespacedName: client.ObjectKeyFromObject(run)}
 	_, err := r.Reconcile(ctx, req)
@@ -80,8 +76,7 @@ func testBackupRunResultReadRecovery(t *testing.T, runType ledgerv1alpha1.Backup
 	require.NoError(t, c.Get(ctx, req.NamespacedName, run))
 	require.Equal(t, ledgerv1alpha1.BackupRunPhaseRunning, run.Status.Phase)
 	require.Nil(t, run.Status.CompletionTime)
-	require.Nil(t, run.Status.Full)
-	require.Nil(t, run.Status.Incremental)
+	require.Nil(t, run.Status.Result)
 	require.Nil(t, meta.FindStatusCondition(run.Status.Conditions, "BackupCompleted"))
 	require.Contains(t, run.Status.Message, "reading backup result")
 	sibling := &ledgerv1alpha1.BackupRun{
@@ -107,15 +102,9 @@ func testBackupRunResultReadRecovery(t *testing.T, runType ledgerv1alpha1.Backup
 	require.Equal(t, start, run.Status.StartTime)
 	require.NotNil(t, run.Status.CompletionTime)
 	require.Empty(t, run.Status.Message)
-	if runType == ledgerv1alpha1.BackupRunTypeFull {
-		require.NotNil(t, run.Status.Full)
-		require.EqualValues(t, 7, run.Status.Full.FilesUploaded)
-		require.EqualValues(t, 42, run.Status.Full.LastAppliedIndex)
-	} else {
-		require.NotNil(t, run.Status.Incremental)
-		require.EqualValues(t, 13, run.Status.Incremental.LogEntriesExported)
-		require.EqualValues(t, 2, run.Status.Incremental.SegmentsUploaded)
-	}
+	require.NotNil(t, run.Status.Result)
+	require.EqualValues(t, 7, run.Status.Result.FilesUploaded)
+	require.EqualValues(t, 42, run.Status.Result.LastAppliedIndex)
 	expectedAttempts := 2
 	if missing {
 		expectedAttempts = 3
@@ -134,7 +123,7 @@ func TestBackupRunResultRecoveryPreservesParentAccounting(t *testing.T) {
 	var backup ledgerv1alpha1.Backup
 	key := client.ObjectKey{Namespace: run.Namespace, Name: run.Spec.BackupRef}
 	require.NoError(t, c.Get(ctx, key, &backup))
-	backup.Spec.Schedule.Incremental = "* * * * *"
+	backup.Spec.Schedule = "* * * * *"
 	backup.Spec.FailedRunsHistoryLimit = new(int32)
 	backup.Spec.SuccessfulRunsHistoryLimit = new(int32)
 	require.NoError(t, c.Update(ctx, &backup))
@@ -168,12 +157,12 @@ func TestBackupRunResultRecoveryPreservesParentAccounting(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, c.Get(ctx, req.NamespacedName, run), "zero failed retention must preserve the recovering run")
 	require.NoError(t, c.Get(ctx, key, &backup))
-	require.Nil(t, backup.Status.LastFullBackup)
-	require.Nil(t, backup.Status.LastFullRunCompletionTime)
-	require.Nil(t, backup.Status.NextIncrementalBackupTime)
+	require.Nil(t, backup.Status.LastBackup)
+	require.Nil(t, backup.Status.LastRunCompletionTime)
+	require.NotNil(t, backup.Status.NextBackupTime)
 	var runs ledgerv1alpha1.BackupRunList
 	require.NoError(t, c.List(ctx, &runs))
-	require.Len(t, runs.Items, 1, "no incremental run before the full result is captured")
+	require.Len(t, runs.Items, 1, "no second run before the first result is captured")
 
 	r = &BackupRunReconciler{Client: c, APIReader: c, Scheme: c.Scheme(), Clientset: pods}
 	_, err = r.Reconcile(ctx, req)
@@ -184,15 +173,14 @@ func TestBackupRunResultRecoveryPreservesParentAccounting(t *testing.T) {
 	_, err = parent.Reconcile(ctx, parentReq)
 	require.NoError(t, err)
 	require.NoError(t, c.Get(ctx, key, &backup))
-	require.NotNil(t, backup.Status.LastFullBackup)
-	require.EqualValues(t, 7, backup.Status.LastFullBackup.FilesUploaded)
-	require.EqualValues(t, 42, backup.Status.LastFullBackup.LastAppliedIndex)
-	require.Equal(t, run.Status.CompletionTime, backup.Status.LastFullRunCompletionTime)
-	require.NotNil(t, backup.Status.NextIncrementalBackupTime)
+	require.NotNil(t, backup.Status.LastBackup)
+	require.EqualValues(t, 7, backup.Status.LastBackup.FilesUploaded)
+	require.EqualValues(t, 42, backup.Status.LastBackup.LastAppliedIndex)
+	require.Equal(t, run.Status.CompletionTime, backup.Status.LastRunCompletionTime)
+	require.NotNil(t, backup.Status.NextBackupTime)
 	require.True(t, apierrors.IsNotFound(c.Get(ctx, req.NamespacedName, run)), "successful retention zero prunes only after parent status captures the result")
 	require.NoError(t, c.List(ctx, &runs))
-	require.Len(t, runs.Items, 1)
-	require.Equal(t, ledgerv1alpha1.BackupRunTypeIncremental, runs.Items[0].Spec.Type)
+	require.Empty(t, runs.Items, "next scheduled checkpoint waits for its cron deadline")
 	require.Equal(t, 2, attempts)
 }
 
@@ -231,8 +219,7 @@ func TestBackupRunDefinitiveResultFailure(t *testing.T) {
 			require.Equal(t, ledgerv1alpha1.BackupRunPhaseFailed, run.Status.Phase)
 			require.NotNil(t, run.Status.CompletionTime)
 			require.Contains(t, run.Status.Message, message)
-			require.Nil(t, run.Status.Full)
-			require.Nil(t, run.Status.Incremental)
+			require.Nil(t, run.Status.Result)
 			conditionStatus := meta.FindStatusCondition(run.Status.Conditions, "BackupCompleted")
 			require.NotNil(t, conditionStatus)
 			require.Equal(t, metav1.ConditionFalse, conditionStatus.Status)
@@ -304,8 +291,8 @@ func TestBackupRunResultDiagnosticWriteRecovery(t *testing.T) {
 	require.NoError(t, c.Get(ctx, req.NamespacedName, run))
 	require.Equal(t, ledgerv1alpha1.BackupRunPhaseSucceeded, run.Status.Phase)
 	require.Empty(t, run.Status.Message)
-	require.EqualValues(t, 7, run.Status.Full.FilesUploaded)
-	require.EqualValues(t, 42, run.Status.Full.LastAppliedIndex)
+	require.EqualValues(t, 7, run.Status.Result.FilesUploaded)
+	require.EqualValues(t, 42, run.Status.Result.LastAppliedIndex)
 	require.Equal(t, 4, attempts)
 	require.Equal(t, 3, writes)
 }

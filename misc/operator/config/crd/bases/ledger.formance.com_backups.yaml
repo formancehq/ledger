@@ -23,11 +23,8 @@ spec:
     - jsonPath: .status.phase
       name: Phase
       type: string
-    - jsonPath: .status.lastFullBackup.time
-      name: Last Full
-      type: date
-    - jsonPath: .status.lastIncrementalBackup.time
-      name: Last Incremental
+    - jsonPath: .status.lastBackup.time
+      name: Last Backup
       type: date
     - jsonPath: .metadata.creationTimestamp
       name: Age
@@ -126,38 +123,28 @@ spec:
                 default: 1
                 description: |-
                   FailedRunsHistoryLimit is the maximum number of failed BackupRun
-                  resources to keep per type (full/incremental). Older runs are garbage-collected.
+                  resources to keep. Older runs are garbage-collected.
                   Defaults to 1.
                 format: int32
                 type: integer
               schedule:
                 description: |-
-                  Schedule defines cron schedules for full and incremental backups.
-                  Both entries are optional; a Backup without any schedule is valid
+                  Schedule is the cron expression for checkpoint backups.
+                  It is optional; a Backup without a schedule is valid
                   and acts as a backup configuration template for manual BackupRun resources.
-                properties:
-                  full:
-                    description: Full is the cron expression for full backups (e.g.
-                      "0 2 * * 0" for weekly Sunday 2am).
-                    type: string
-                  incremental:
-                    description: Incremental is the cron expression for incremental
-                      backups (e.g. "0 * * * *" for hourly).
-                    type: string
-                type: object
+                type: string
               successfulRunsHistoryLimit:
                 default: 3
                 description: |-
                   SuccessfulRunsHistoryLimit is the maximum number of successful BackupRun
-                  resources to keep per type (full/incremental). Older runs are garbage-collected.
+                  resources to keep. Older runs are garbage-collected.
                   Defaults to 3.
                 format: int32
                 type: integer
               timeout:
                 default: 1h
                 description: |-
-                  Timeout caps how long the `ledgerctl store backup` /
-                  `ledgerctl store incremental-backup` RPC may run before the client
+                  Timeout caps how long the `ledgerctl store backup` RPC may run before the client
                   aborts. The operator forwards it as `--timeout` to the Job's
                   ledgerctl invocation; tune it for the size of the ledger and the
                   throughput of the destination bucket. Defaults to 1h, which is
@@ -227,23 +214,29 @@ spec:
                   - type
                   type: object
                 type: array
-              lastFullBackup:
-                description: LastFullBackup holds the result of the last full backup.
+              lastBackup:
+                description: LastBackup holds the result of the last successful checkpoint.
                 properties:
+                  completionUnixNano:
+                    description: |-
+                      CompletionUnixNano orders successful runs whose Kubernetes timestamps
+                      have the same second. It is preserved with LastBackup after run pruning.
+                    format: int64
+                    type: integer
                   durationMs:
-                    description: DurationMs is the duration of the last full backup
+                    description: DurationMs is the duration of the last checkpoint
                       in milliseconds.
                     format: int64
                     type: integer
                   filesDeleted:
                     description: |-
-                      FilesDeleted is the number of stale files deleted in the last full backup
+                      FilesDeleted is the number of stale files deleted in the last checkpoint
                       (the diff between the previous manifest and the new checkpoint).
                     format: int32
                     type: integer
                   filesUploaded:
                     description: FilesUploaded is the number of files uploaded in
-                      the last full backup.
+                      the last checkpoint.
                     format: int32
                     type: integer
                   lastAppliedIndex:
@@ -264,12 +257,12 @@ spec:
                   orphansDeleted:
                     description: |-
                       OrphansDeleted is the number of orphan files pruned from storage in the
-                      last full backup. Orphans are leftovers from previous failed runs that
+                      last checkpoint. Orphans are leftovers from previous failed runs that
                       crashed before writing a manifest.
                     format: int32
                     type: integer
                   time:
-                    description: Time is when the last full backup completed.
+                    description: Time is when the last checkpoint completed.
                     format: date-time
                     type: string
                   totalFiles:
@@ -278,72 +271,17 @@ spec:
                     format: int32
                     type: integer
                 type: object
-              lastFullRunCompletionTime:
+              lastRunCompletionTime:
                 description: |-
-                  LastFullRunCompletionTime is the latest observed terminal full run completion,
+                  LastRunCompletionTime is the latest observed terminal run completion,
                   successful or failed. It is preserved independently of run history retention.
-                format: date-time
-                type: string
-              lastIncrementalBackup:
-                description: LastIncrementalBackup holds the result of the last incremental
-                  backup.
-                properties:
-                  auditEntriesExported:
-                    description: AuditEntriesExported is the number of audit entries
-                      exported.
-                    format: int64
-                    type: integer
-                  durationMs:
-                    description: DurationMs is the duration of the last incremental
-                      backup in milliseconds.
-                    format: int64
-                    type: integer
-                  lastAuditSequence:
-                    description: LastAuditSequence is the last audit sequence in the
-                      incremental backup.
-                    format: int64
-                    type: integer
-                  lastLogSequence:
-                    description: LastLogSequence is the last log sequence in the incremental
-                      backup.
-                    format: int64
-                    type: integer
-                  logEntriesExported:
-                    description: LogEntriesExported is the number of log entries exported.
-                    format: int64
-                    type: integer
-                  orphansDeleted:
-                    description: |-
-                      OrphansDeleted is the number of orphan export segments pruned from
-                      storage in the last incremental backup.
-                    format: int32
-                    type: integer
-                  segmentsUploaded:
-                    description: SegmentsUploaded is the number of segments uploaded.
-                    format: int32
-                    type: integer
-                  time:
-                    description: Time is when the last incremental backup completed.
-                    format: date-time
-                    type: string
-                type: object
-              lastIncrementalRunCompletionTime:
-                description: |-
-                  LastIncrementalRunCompletionTime is the latest observed terminal incremental
-                  run completion, successful or failed, independent of run history retention.
                 format: date-time
                 type: string
               message:
                 description: Message contains human-readable status information.
                 type: string
-              nextFullBackupTime:
-                description: NextFullBackupTime is the next scheduled time for a full
-                  backup.
-                format: date-time
-                type: string
-              nextIncrementalBackupTime:
-                description: NextIncrementalBackupTime is the next scheduled time
-                  for an incremental backup.
+              nextBackupTime:
+                description: NextBackupTime is the next scheduled checkpoint time.
                 format: date-time
                 type: string
               phase:

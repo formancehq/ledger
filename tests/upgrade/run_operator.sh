@@ -48,7 +48,7 @@ cluster="ledger-operator-upgrade-$$"
 on_exit() {
 	local result="$?" namespace
 	if [ -s "$workdir/kubeconfig" ]; then
-		kubectl --kubeconfig "$workdir/kubeconfig" get clusters,statefulsets,pods,pvc -A -o yaml > "$workdir/kubernetes.yaml" 2>&1 || true
+		kubectl --kubeconfig "$workdir/kubeconfig" get clusters,statefulsets,pods,pvc,backups,backupruns,jobs -A -o yaml > "$workdir/kubernetes.yaml" 2>&1 || true
 		kubectl --kubeconfig "$workdir/kubeconfig" -n ledger-system logs deployment/ledger-operator > "$workdir/operator.log" 2>&1 || true
 		for namespace in $(kubectl --kubeconfig "$workdir/kubeconfig" get namespaces -o jsonpath='{.items[*].metadata.name}' 2>/dev/null); do
 			case "$namespace" in chainsaw-*)
@@ -88,7 +88,9 @@ case "$(docker info --format '{{.Architecture}}')" in
 esac
 printf 'imageArchivePlatform=%s\n' "$image_platform" | tee -a "$workdir/revisions.txt"
 build_tag="ledger-upgrade:build-${target_sha:0:12}"
-docker build -q -t "$build_tag" "$target_tree" | tee "$workdir/target-build.txt"
+build_args=()
+if [ "$transition" = rc4-to-rc5 ]; then build_args=(--build-arg BUILD_TAGS=s3); fi
+docker build -q "${build_args[@]}" -t "$build_tag" "$target_tree" | tee "$workdir/target-build.txt"
 target_repository=ledger-upgrade
 target_image="$target_repository:$target_tag"
 docker tag "$build_tag" "$target_image"
@@ -96,8 +98,13 @@ docker tag "$build_tag" "$target_image"
 # image store, inspect --platform may instead return the platform manifest ID.
 # Read the exact configurations from the archive Kind will import.
 image_archive="$workdir/kind-images.tar"
-docker image save --platform "$image_platform" -o "$image_archive" \
-	"$source_image" "$target_image" "$source_operator_image" "$operator_image"
+archive_images=("$source_image" "$target_image" "$source_operator_image" "$operator_image")
+if [ "$transition" = rc4-to-rc5 ]; then
+	minio_image=ghcr.io/formancehq/minio:RELEASE.2025-10-15T17-29-55Z
+	docker pull "$minio_image" | tee "$workdir/minio-pull.txt"
+	archive_images+=("$minio_image")
+fi
+docker image save --platform "$image_platform" -o "$image_archive" "${archive_images[@]}"
 archive_image_id() {
 	local image="$1" config_path digest
 	config_path="$(tar -xOf "$image_archive" manifest.json | jq -er --arg image "$image" \
@@ -120,6 +127,12 @@ kind get kubeconfig --name "$cluster" > "$workdir/kubeconfig"
 # self-contained for the architecture of its Docker-backed node.
 kind load image-archive "$image_archive" --name "$cluster"
 rm -f "$image_archive"
+if [ "$transition" = rc4-to-rc5 ]; then
+	kubectl --kubeconfig "$workdir/kubeconfig" --context "kind-$cluster" \
+		apply -f "$target_tree/misc/operator/e2e/manifests/minio.yaml"
+	kubectl --kubeconfig "$workdir/kubeconfig" --context "kind-$cluster" \
+		-n minio wait --for=condition=available deployment/minio --timeout=300s
+fi
 source_chart="$source_tree/misc/operator/helm/operator"
 target_chart="$target_tree/misc/operator/helm/operator"
 helm dependency build "$source_chart"
@@ -136,6 +149,7 @@ UPGRADE_TARGET_OPERATOR_CHART="$target_chart" UPGRADE_TARGET_OPERATOR_IMAGE="$op
 UPGRADE_TARGET_OPERATOR_IMAGE_ID="$target_operator_id" \
 UPGRADE_SOURCE_OPERATOR_IMAGE="$source_operator_image" UPGRADE_SOURCE_OPERATOR_IMAGE_ID="$source_operator_id" \
 UPGRADE_SOURCE_REPOSITORY="$source_repository" UPGRADE_SOURCE_TAG="$source_tag" \
+UPGRADE_SOURCE_IMAGE_ID="$source_id" \
 UPGRADE_TARGET_REPOSITORY="$target_repository" UPGRADE_TARGET_TAG="$target_tag" \
 UPGRADE_TARGET_IMAGE_ID="$target_id" \
 	UPGRADE_ROLLOUT="$rollout" UPGRADE_REJECTED_TAG="$rejected_tag" \

@@ -469,7 +469,7 @@ fallback is provided. The configured topic remains the operator's subject prefix
 Publication still waits for each JetStream acknowledgement. On failure, the
 emitter retains the pending batch's cursor, reports the error and retries;
 other named sinks advance independently. This change does not alter persisted
-state, audit payloads, FSM application or incremental restore behavior.
+state, audit payloads, FSM application or checkpoint restore behavior.
 
 ## Configuration
 

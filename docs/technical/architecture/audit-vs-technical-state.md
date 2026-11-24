@@ -57,11 +57,11 @@ Admission does not permit operational quota errors as skippable order reasons.
 Historical policy orders are still replayed to reproduce their released log
 slots and audit bytes, without making their policy the current checker oracle.
 
-Full checkpoints preserve policy; incremental backup carries a separate
-operational policy snapshot, even without new business history. Restore applies
-it after folding legacy logs. Its validity is checked structurally; its historical
-authenticity is outside business-audit verification, like other operational
-backup metadata. Backup access control and artifact integrity remain required.
+Checkpoint backups preserve policy in Pebble state, even without new business
+history. Restore copies that state without a separate policy override or legacy
+log replay. The historical authenticity of operational policy is outside
+business-audit verification. Backup access control and artifact integrity
+remain required.
 
 ### Audit-key root of trust (EN-2479)
 
@@ -79,8 +79,7 @@ recompute the genesis hash. The checker reads key and full history from one
 snapshot and fails on absence/corruption or a mismatched chain. A coordinated rewrite of the key and complete chain remains outside
 the checker's ability to detect without an external anchor.
 
-The key is **preserved** by a full checkpoint. It never changes in an
-incremental delta: backup refuses to take the prerequisite full checkpoint
+The key is **preserved** by every complete checkpoint. Backup refuses to run
 before initialization, and no rotation operation exists. Restore preparation
 removes the source node/cluster identity but keeps this root of trust. A
 plaintext backup reveals the key, so backup confidentiality, access control,

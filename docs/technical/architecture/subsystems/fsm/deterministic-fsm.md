@@ -163,7 +163,7 @@ changing boundaries. A terminal `last_mirror_v2_log_id == MaxUint64` remains a
 valid applied high-water mark: every representable replay is at or below it and
 is therefore a no-op; contiguity checks never compute `last + 1` in that state.
 
-Recovery, incremental-restore rebuilding, and checker replay use the same
+Recovery and checker replay use the same
 checked transition. A persisted terminal key is detected and rejected instead
 of being hidden by an exclusive iterator bound or reconstructed as zero. This
 keeps retry, replay, and restart behavior deterministic (EN-1860).
@@ -560,7 +560,7 @@ FSM flushes at apply time (batch, no sync):
 
 ### 12.3 Backup preparation (backup only)
 
-There is exactly one entry per canonical key, so there is no attribute compaction. Backup preparation (`PrepareForBackup`) leaves the attribute zone byte-for-byte intact and only resets cluster-local and checkpoint-era state: applied index preserved as the genesis boundary (the restored genesis’ WAL-snapshot index — the new log starts just above it, forcing joiners through checkpoint sync; a genesis checkpoint falls back to 1), persisted config deleted, cluster-transient zone wiped, persisted bloom blocks and Raft peers dropped, and the cache zone cleared (checkpoint-era cache rows predate the replayed delta and would otherwise serve stale CacheHits on the restored node).
+There is exactly one entry per canonical key, so there is no attribute compaction. Backup preparation (`PrepareForBackup`) leaves the attribute zone byte-for-byte intact and only resets cluster-local and checkpoint-era state: applied index preserved as the genesis boundary (the restored genesis’ WAL-snapshot index — the new log starts just above it, forcing joiners through checkpoint sync; a genesis checkpoint falls back to 1), persisted config deleted, cluster-transient zone wiped, persisted bloom blocks and Raft peers dropped, and the cache zone cleared (checkpoint-era cache rows would otherwise serve stale CacheHits on the restored node).
 
 ### 12.4 Pebble key layout
 

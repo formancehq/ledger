@@ -1,14 +1,18 @@
 package backup
 
 import (
+	"context"
 	"errors"
 	"fmt"
+	"io"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 	"go.etcd.io/raft/v3/raftpb"
 	"go.uber.org/mock/gomock"
 	"google.golang.org/protobuf/proto"
+
+	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
 	"github.com/formancehq/ledger/v3/internal/infra/state"
 	"github.com/formancehq/ledger/v3/internal/pkg/commands"
@@ -17,12 +21,12 @@ import (
 	"github.com/formancehq/ledger/v3/internal/query"
 )
 
-func TestProposalPayloadPolicyIncrementalRestore(t *testing.T) {
+func TestProposalPayloadPolicyCheckpointRestore(t *testing.T) {
 	t.Parallel()
 	for _, legacyDelta := range []bool{false, true} {
 		t.Run(fmt.Sprintf("legacy_delta_%t", legacyDelta), func(t *testing.T) {
 			t.Parallel()
-			source, store, _ := newSigningParityMachine(t)
+			source, store, _ := newCreationTestMachine(t)
 			policy := source.State.ClusterPolicy.CloneVT()
 			policy.Revision = 2
 			applyPolicy := func(index uint64, modern bool) {
@@ -44,7 +48,7 @@ func TestProposalPayloadPolicyIncrementalRestore(t *testing.T) {
 			}
 			applyPolicy(1, false)
 			storage := newInMemoryBackupStorage()
-			_, err := RunBackup(t.Context(), testLogger(), store, storage, "payload", "full")
+			_, err := RunBackup(t.Context(), logging.Testing(), store, storage, "payload", "full")
 			require.NoError(t, err)
 			policy.Revision = 3
 			policy.IdempotencyTtlMicros = 50000
@@ -55,21 +59,17 @@ func TestProposalPayloadPolicyIncrementalRestore(t *testing.T) {
 			policy.QueryCheckpointLimit = 21
 			applyPolicy(source.State.LastAppliedIndex+1, true)
 			applyPolicy(source.State.LastAppliedIndex+1, true) // Native no-op consumes neither audit nor log sequence.
-			inc, err := RunIncrementalBackup(t.Context(), testLogger(), store, storage, "payload", 0)
+			second, err := RunBackup(t.Context(), logging.Testing(), store, storage, "payload", "second")
 			require.NoError(t, err)
-			if legacyDelta {
-				require.EqualValues(t, 1, inc.LogEntriesExported)
-			} else {
-				require.Zero(t, inc.LogEntriesExported)
-			}
+			require.NotNil(t, second)
 			manifest, err := ReadManifest(t.Context(), storage, ManifestKey("payload"))
 			require.NoError(t, err)
-			require.NotNil(t, manifest.ClusterPolicy)
-			require.Equal(t, source.State.LastAppliedIndex, manifest.ClusterPolicy.AppliedIndex)
+			require.Empty(t, manifest.Exports)
+			require.Nil(t, manifest.ClusterPolicy)
 			restored := restoreAuditKeyCheckpoint(t, storage, manifest)
 			actual, err := query.ReadClusterPolicy(restored)
 			require.NoError(t, err)
-			require.True(t, proto.Equal(policy, actual), "delta must replace checkpoint policy")
+			require.True(t, proto.Equal(policy, actual), "second checkpoint must carry updated policy")
 			auditKeyCheckerClean(t, store)
 			auditKeyCheckerClean(t, restored)
 
@@ -93,15 +93,18 @@ func TestProposalPayloadPolicyIncrementalRestore(t *testing.T) {
 	}
 }
 
+// A policy-only mutation still changes the complete checkpoint. A failed
+// manifest publication leaves the prior restore point intact for retry.
 func TestPolicyOnlyBackupPublicationAndRetry(t *testing.T) {
 	t.Parallel()
-	source, store, _ := newSigningParityMachine(t)
-	policy := source.State.ClusterPolicy.CloneVT()
+	source, store, _ := newCreationTestMachine(t)
 	storage := newInMemoryBackupStorage()
-	_, err := RunBackup(t.Context(), testLogger(), store, storage, "policy", "full")
+	_, err := RunBackup(t.Context(), logging.Testing(), store, storage, "policy", "first")
 	require.NoError(t, err)
 	old, err := ReadManifest(t.Context(), storage, ManifestKey("policy"))
 	require.NoError(t, err)
+
+	policy := source.State.ClusterPolicy.CloneVT()
 	policy.Revision++
 	batch := store.OpenWriteSession()
 	require.NoError(t, state.SaveClusterPolicy(batch, policy))
@@ -111,63 +114,34 @@ func TestPolicyOnlyBackupPublicationAndRetry(t *testing.T) {
 	mock := NewMockStorage(gomock.NewController(t))
 	mock.EXPECT().GetFile(gomock.Any(), gomock.Any()).DoAndReturn(storage.GetFile).AnyTimes()
 	mock.EXPECT().ListFiles(gomock.Any(), gomock.Any()).DoAndReturn(storage.ListFiles).AnyTimes()
-	gomock.InOrder(
-		mock.EXPECT().PutFile(gomock.Any(), ManifestKey("policy"), gomock.Any(), gomock.Any()).Return(errors.New("manifest unavailable")),
-		mock.EXPECT().PutFile(gomock.Any(), ManifestKey("policy"), gomock.Any(), gomock.Any()).DoAndReturn(storage.PutFile),
-		mock.EXPECT().PutFile(gomock.Any(), ManifestKey("policy"), gomock.Any(), gomock.Any()).DoAndReturn(storage.PutFile),
-	)
-	_, err = RunIncrementalBackup(t.Context(), testLogger(), store, mock, "policy", 0)
+	mock.EXPECT().DeleteFile(gomock.Any(), gomock.Any()).DoAndReturn(storage.DeleteFile).AnyTimes()
+	failed := false
+	mock.EXPECT().PutFile(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
+		func(ctx context.Context, key string, data io.Reader, size int64) error {
+			if key == ManifestKey("policy") && !failed {
+				failed = true
+
+				return errors.New("manifest unavailable")
+			}
+
+			return storage.PutFile(ctx, key, data, size)
+		}).AnyTimes()
+
+	_, err = RunBackup(t.Context(), logging.Testing(), store, mock, "policy", "failed")
 	require.ErrorContains(t, err, "manifest unavailable")
 	retained, err := ReadManifest(t.Context(), storage, ManifestKey("policy"))
 	require.NoError(t, err)
 	require.Equal(t, old, retained)
-	retry, err := RunIncrementalBackup(t.Context(), testLogger(), store, mock, "policy", 0)
+
+	result, err := RunBackup(t.Context(), logging.Testing(), store, mock, "policy", "retry")
 	require.NoError(t, err)
-	require.Zero(t, retry.LogEntriesExported)
+	require.Equal(t, uint64(10), result.LastAppliedIndex)
 	published, err := ReadManifest(t.Context(), storage, ManifestKey("policy"))
 	require.NoError(t, err)
-	require.Equal(t, policy.MarshalDeterministicVT(nil), published.ClusterPolicy.Data)
-	require.Equal(t, uint64(10), published.ClusterPolicy.AppliedIndex)
-	require.Empty(t, published.Exports)
-
-	// A newer observed snapshot advances the publication watermark even if
-	// no-op policy controls or unrelated technical work leave policy identical.
-	batch = store.OpenWriteSession()
-	require.NoError(t, state.SetAppliedIndex(batch, 20))
-	require.NoError(t, batch.Commit())
-	_, err = RunIncrementalBackup(t.Context(), testLogger(), store, mock, "policy", 0)
+	require.Nil(t, published.ClusterPolicy)
+	require.Equal(t, uint64(10), published.Checkpoint.LastAppliedIndex)
+	restored := restoreAuditKeyCheckpoint(t, storage, published)
+	actual, err := query.ReadClusterPolicy(restored)
 	require.NoError(t, err)
-	latest, err := ReadManifest(t.Context(), storage, ManifestKey("policy"))
-	require.NoError(t, err)
-	require.Equal(t, published.ClusterPolicy.Data, latest.ClusterPolicy.Data)
-	require.Equal(t, uint64(20), latest.ClusterPolicy.AppliedIndex)
-	published = latest
-
-	// A snapshot rollback must not overwrite the newer published policy.
-	batch = store.OpenWriteSession()
-	require.NoError(t, state.SaveClusterPolicy(batch, source.State.ClusterPolicy))
-	require.NoError(t, state.SetAppliedIndex(batch, 9))
-	require.NoError(t, batch.Commit())
-	_, err = RunIncrementalBackup(t.Context(), testLogger(), store, mock, "policy", 0)
-	require.NoError(t, err)
-	retained, err = ReadManifest(t.Context(), storage, ManifestKey("policy"))
-	require.NoError(t, err)
-	require.Equal(t, published, retained)
-}
-
-func TestRestoreRejectsMalformedOperationalPolicyBeforeHistory(t *testing.T) {
-	t.Parallel()
-	source, store, _ := newSigningParityMachine(t)
-	valid := source.State.ClusterPolicy.CloneVT()
-	batch := store.OpenWriteSession()
-	require.NoError(t, state.SaveClusterPolicy(batch, valid))
-	require.NoError(t, batch.Commit())
-	for _, data := range [][]byte{{0xff}, {}, (&commonpb.ClusterPolicy{Revision: 1, QueryCheckpointLimit: 1}).MarshalDeterministicVT(nil)} {
-		manifest := &Manifest{ClusterPolicy: &ClusterPolicySnapshot{Data: data}}
-		err := ApplyExportsAndRebuild(t.Context(), testLogger(), newInMemoryBackupStorage(), store, manifest)
-		require.Error(t, err)
-		actual, readErr := query.ReadClusterPolicy(store)
-		require.NoError(t, readErr)
-		require.True(t, proto.Equal(valid, actual))
-	}
+	require.True(t, proto.Equal(policy, actual))
 }

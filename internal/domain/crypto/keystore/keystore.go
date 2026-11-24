@@ -46,8 +46,7 @@ func (ks *KeyStore) GetPublicKey(keyID string) ed25519.PublicKey {
 // (state.WriteSet.GetSigningKeyChildren). Keeping the stale edge would make that
 // cascade restart-dependent: every other representation of the parent drops it —
 // the persisted row (state.SaveSigningKey writes a bare public key when the
-// parent is empty), the store recovery rebuilds from those rows, the audit-driven
-// rebuild (backup.RebuildDelta) and the checker's replay (check.signingVerifier)
+// parent is empty), the store recovery rebuilds from those rows, the checker's replay (check.signingVerifier)
 // — so an un-restarted replica would cascade the reassigned key while a restarted
 // one would not, and the two would emit different
 // RevokedSigningKeyLog.cascadedKeyIds for the same order. That breaks invariants

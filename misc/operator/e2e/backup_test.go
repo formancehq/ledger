@@ -3,6 +3,10 @@
 package e2e
 
 import (
+	"encoding/json"
+	"io"
+	"os"
+	"strconv"
 	"testing"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -27,16 +31,52 @@ func TestFullBackup_S3Objects(t *testing.T) {
 	}
 }
 
-// TestIncrementalBackup_S3Segments verifies that incremental backup
-// created additional segment objects in MinIO.
-func TestIncrementalBackup_S3Segments(t *testing.T) {
+// TestRepeatedCheckpointBackup_S3Objects verifies the second checkpoint
+// left a restorable object inventory in MinIO.
+func TestRepeatedCheckpointBackup_S3Objects(t *testing.T) {
 	bucket := "e2e-incr-backup"
+	bucketID := os.Getenv("BACKUP_BUCKET_ID")
+	require.NotEmpty(t, bucketID, "current cluster bucket ID is required")
+	firstSequence, err := strconv.ParseUint(os.Getenv("FIRST_CHECKPOINT_SEQUENCE"), 10, 64)
+	require.NoError(t, err, "first BackupRun must report its checkpoint sequence")
+	secondSequence, err := strconv.ParseUint(os.Getenv("SECOND_CHECKPOINT_SEQUENCE"), 10, 64)
+	require.NoError(t, err, "second BackupRun must report its checkpoint sequence")
+	require.Greater(t, secondSequence, firstSequence, "second BackupRun must advance beyond the first")
 
 	out, err := s3Client.ListObjectsV2(ctx, &s3.ListObjectsV2Input{
 		Bucket: aws.String(bucket),
+		Prefix: aws.String(bucketID + "/"),
 	})
 	require.NoError(t, err, "listing objects in bucket %s", bucket)
-	assert.NotEmpty(t, out.Contents, "incremental backup should have created objects in S3 bucket %s", bucket)
+	assert.NotEmpty(t, out.Contents, "checkpoint backup should have created objects in S3 bucket %s", bucket)
+	objects := make(map[string]struct{}, len(out.Contents))
+	for _, obj := range out.Contents {
+		objects[aws.ToString(obj.Key)] = struct{}{}
+	}
+	manifestKey := bucketID + "/manifest.json"
+	require.Contains(t, objects, manifestKey, "current cluster checkpoint manifest missing")
+	manifestObject, err := s3Client.GetObject(ctx, &s3.GetObjectInput{Bucket: aws.String(bucket), Key: aws.String(manifestKey)})
+	require.NoError(t, err)
+	defer manifestObject.Body.Close()
+	manifestBytes, err := io.ReadAll(manifestObject.Body)
+	require.NoError(t, err)
+	var manifest struct {
+		Checkpoint struct {
+			LastLogSequence uint64 `json:"lastLogSequence"`
+			Files           map[string]struct {
+				Key string `json:"key"`
+			} `json:"files"`
+		} `json:"checkpoint"`
+		Exports []json.RawMessage `json:"exports"`
+	}
+	require.NoError(t, json.Unmarshal(manifestBytes, &manifest))
+	require.Empty(t, manifest.Exports, "checkpoint-only manifest must not publish exports")
+	require.Equal(t, secondSequence, manifest.Checkpoint.LastLogSequence, "manifest must publish the second BackupRun checkpoint")
+	require.NotEmpty(t, manifest.Checkpoint.Files)
+	for name, file := range manifest.Checkpoint.Files {
+		_, ok := objects[file.Key]
+		require.True(t, ok, "manifest file %s references missing object %s", name, file.Key)
+	}
 
 	for _, obj := range out.Contents {
 		t.Logf("  %s (%d bytes)", *obj.Key, *obj.Size)

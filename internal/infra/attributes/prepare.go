@@ -28,9 +28,8 @@ import (
 // The destination reseeds its persisted identity, peers and bloom filters.
 // The removed-member registry is intentionally discarded with the source peers.
 //
-// The caller must ensure all in-memory state has been flushed to Pebble before
-// the checkpoint was taken. The backup flow achieves this by running the flush
-// and checkpoint atomically on the Raft loop.
+// The backup executor flushes Pebble memtables before taking the checkpoint.
+// A checkpoint copied for follower synchronization may instead carry a WAL.
 func PrepareForBackup(s *dal.Store) error {
 	// The checkpoint's applied index becomes the restored genesis boundary:
 	// the RESTORED bootstrap plants its WAL snapshot at this index, so the
@@ -42,9 +41,8 @@ func PrepareForBackup(s *dal.Store) error {
 	// restored row — so a genesis checkpoint gets the fallback boundary 1.
 	//
 	// The boundary is a label for the new log's start, NOT the state's
-	// source-cluster provenance: incremental exports are sequence-keyed and
-	// never advance this key, so after a full + incremental restore the
-	// state is newer than the boundary.
+	// source-cluster provenance. The complete checkpoint contains the
+	// source state through this applied index.
 	// Read the raw key: only genuine absence may fall back — a present but
 	// malformed value is a corrupt checkpoint and must fail closed, not be
 	// silently rewritten as the genesis fallback.
@@ -83,7 +81,7 @@ func PrepareForBackup(s *dal.Store) error {
 	// physical main/read-index checkpoint directories do not. Mark every live
 	// row before the restored node starts so the asynchronous read-index builder
 	// never interprets a source-cluster applied index as progress in the new Raft
-	// domain. RebuildDelta applies the same marker to post-checkpoint rows.
+	// domain. The complete checkpoint contains all rows to mark.
 	checkpointReader, err := s.NewDirectReadHandle()
 	if err != nil {
 		_ = batch.Cancel()
@@ -155,14 +153,10 @@ func PrepareForBackup(s *dal.Store) error {
 		return fmt.Errorf("writing genesis boundary: %w", err)
 	}
 
-	// Clear the cache zone (per-entry cache rows + rotation metadata). Same
-	// rationale as the bloom blocks above: these rows predate the logs
-	// RebuildDelta replayed into the attribute zone, so a key modified
-	// post-checkpoint still carries its checkpoint-era value here while the
-	// attribute zone holds the fresh one. RestoreFromStore would load the
-	// stale entries and the FSM would serve them as CacheHits — and
-	// MirrorPreload's existing-entry-wins seeding means even a fresh Pebble
-	// reload cannot displace them.
+	// Clear the cache zone (per-entry cache rows + rotation metadata). These
+	// source-cluster cache entries are not part of the destination's cache
+	// generation. RestoreFromStore could load them as CacheHits; clearing them
+	// makes the destination seed from the checkpoint's attribute zone.
 	if err := batch.DeleteRange(
 		[]byte{dal.ZoneCache},
 		[]byte{dal.ZoneCache + 1},

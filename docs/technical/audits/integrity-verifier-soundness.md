@@ -230,8 +230,8 @@ files and one corrupted store do not justify duplicate issues.
 | --- | --- |
 | `integrity-verifier-soundness` | Missing or unsound verifier pass/field/range, unchecked source dependency, incomplete/error signal lost within checker-specific consumption. A faulty producer can be counterevidence or a trigger, but the finding must establish an independently missing checker protection. |
 | `accounting-invariants` | Business outcomes, conservation, posting/amount semantics and deterministic application. If producer and checker share a defect, this domain owns only a distinct detection gap with an independent witness; cross-reference the accounting root cause rather than cloning it. |
-| `persistence-restore-replay` | Durability, snapshots, backup/delta reconstruction and restore parity, including corruption introduced there. Here a restored store is only an input to the verifier; a restore loss already owned elsewhere remains there. |
 | `read-consistency-projections` | Query/index content correctness, GC and per-replica detect/drop/rebuild. Readstore integrity remains in this domain; the main-store checker does not validate peer data. |
+| `persistence-restore-replay` | Durability, snapshots, backup checkpoint recovery and restore parity, including corruption introduced there. Here a restored store is only an input to the verifier; a restore loss already owned elsewhere remains there. |
 | `idempotency-retries-partial-failures` | Outcome retention/reuse and retry semantics. This domain checks the applicable frozen-outcome verification, not a new TTL policy. |
 | `api-boundary-contracts` | Generic RPC/CLI adaptation and transport error handling. Checker-specific loss of the distinction between mismatch, incomplete and healthy is examined here, but a shared adapter defect remains API-owned. |
 | `authentication-authorization-boundaries`, `configuration-startup-contracts` | Access, redaction, secret handling, configuration precedence and persisted identity validation. Here signing/policy rows and hash inputs are verifier sources, not a new authorization or startup audit. |
@@ -323,7 +323,7 @@ Ledger metadata expectations fold successful chain-bound audited creation, save,
 
 Can missing, injected or altered creation metadata evade detection, or can later saves/deletes produce false mismatches? Does a truncated audit chain cause misleading metadata errors based on an incomplete prefix?
 
-See [the creation contract](../architecture/subsystems/api/atomic-ledger-creation.md) for the authorized semantics and regression evidence. Treat HTTP response/forwarding, actual FSM readback, keyed replay, nonempty checkpoint-plus-delta restore, and primary-projection tampering as separate evidence oracles; a helper-only test does not prove every boundary.
+See [the creation contract](../architecture/subsystems/api/atomic-ledger-creation.md) for the authorized semantics and regression evidence. Treat HTTP response/forwarding, actual FSM readback, keyed replay, second complete checkpoint after a meaningful mutation, and primary-projection tampering as separate evidence oracles; a helper-only test does not prove every boundary.
 
 ## Malformed account metadata and transaction keys
 
@@ -386,6 +386,7 @@ idempotency outcomes and historical audit integrity. Retain tamper regressions
 for business projections; policy absence or different current limits alone must
 not produce a business-integrity finding.
 
-Restore evidence must include a policy-only incremental snapshot and a legacy
-policy log followed by a native override. Discovery and recovery validate the
+Restore evidence must include a policy-only mutation followed by a second
+complete checkpoint, and a legacy policy log followed by a native override.
+Discovery and recovery validate the
 restored operational state independently of a clean business checker result.

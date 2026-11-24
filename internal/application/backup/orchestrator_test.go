@@ -3,7 +3,6 @@ package backup
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"errors"
 	"io"
 	"slices"
@@ -105,24 +104,8 @@ func extractFullOrder(p *raftcmdpb.Proposal) *raftcmdpb.BackupOrder {
 	return nil
 }
 
-// extractIncrementalOrder mirrors extractFullOrder for the incremental
-// pipeline's TechnicalUpdate envelope.
-func extractIncrementalOrder(p *raftcmdpb.Proposal) *raftcmdpb.IncrementalBackupOrder {
-	for _, tu := range p.GetBatch().GetTechnicalUpdates() {
-		if k, ok := tu.GetKind().(*raftcmdpb.TechnicalUpdate_IncrementalBackupOrder); ok {
-			return k.IncrementalBackupOrder
-		}
-	}
-
-	return nil
-}
-
-// newOrchestrator returns an Orchestrator already in the leader state so
-// most tests don't need to call OnLeadershipChange. Tests that
-// explicitly exercise leadership transitions construct the orchestrator
-// directly and drive OnLeadershipChange themselves.
 func newOrchestrator(prop Proposer, store *dal.Store) *Orchestrator {
-	o := NewOrchestrator(prop, store, logging.Testing(), 1, NewExecutorRegistry(), 0)
+	o := NewOrchestrator(prop, store, logging.Testing(), 1, NewExecutorRegistry())
 	o.OnLeadershipChange(true)
 
 	return o
@@ -165,36 +148,22 @@ func TestProposalBuilders_Full(t *testing.T) {
 	require.Equal(t, "boom", fail.GetMessage())
 }
 
-func TestProposalBuilders_Incremental(t *testing.T) {
+// Old RC incremental jobs still need a Fail order to release their persisted
+// destination reservation during a rolling upgrade.
+func TestIncrementalFailBuildsLegacyOrder(t *testing.T) {
 	t.Parallel()
 
-	dst := testDestination()
-
 	p := commands.NewTechnicalCommand()
-	incrementalStart(11, dst, 3)(p)
-	require.NotNil(t, extractIncrementalOrder(p))
-	require.Equal(t, uint64(11), extractIncrementalOrder(p).GetStart().GetJobId())
-	require.Equal(t, uint64(3), extractIncrementalOrder(p).GetStart().GetExecutorNodeId())
-
-	p = commands.NewTechnicalCommand()
-	incrementalComplete(11, &backup.IncrementalBackupResult{
-		LastLogSequence:   2_222,
-		LastAuditSequence: 1_111,
-		SegmentsUploaded:  4,
-	})(p)
-	require.Equal(t, uint64(11), extractIncrementalOrder(p).GetComplete().GetJobId())
-	require.Equal(t, uint64(2_222), extractIncrementalOrder(p).GetComplete().GetLastLogSequence())
-	require.Equal(t, uint64(1_111), extractIncrementalOrder(p).GetComplete().GetLastAuditSequence())
-	require.Equal(t, uint64(4), extractIncrementalOrder(p).GetComplete().GetSegmentsUploaded())
-
-	p = commands.NewTechnicalCommand()
-	incrementalFail(11, "kaboom")(p)
-	require.Equal(t, "kaboom", extractIncrementalOrder(p).GetFail().GetMessage())
+	incrementalFail(7, "orphan: no live executor on this leader")(p)
+	require.Len(t, p.GetBatch().GetTechnicalUpdates(), 1)
+	kind, ok := p.GetBatch().GetTechnicalUpdates()[0].GetKind().(*raftcmdpb.TechnicalUpdate_IncrementalBackupOrder)
+	require.True(t, ok)
+	fail := kind.IncrementalBackupOrder.GetFail()
+	require.NotNil(t, fail)
+	require.Equal(t, uint64(7), fail.GetJobId())
+	require.Equal(t, "orphan: no live executor on this leader", fail.GetMessage())
 }
 
-// TestProposeAndWait pins the orchestrator's contract with the bootstrap
-// adapter: Propose returns an error rolling up Raft accept + FSM apply,
-// FSM business rejections come back via errors.Is on the typed sentinel.
 func TestProposeAndWait(t *testing.T) {
 	t.Parallel()
 
@@ -265,7 +234,7 @@ func TestOrchestrator_LeadershipChangeCancelsRunCtx(t *testing.T) {
 
 // TestOrchestrator_NonLeaderRunCtxStartsCancelled pins the
 // constructor's documented contract: before OnLeadershipChange(true)
-// runs at boot, RunFull / RunIncremental must short-circuit
+// runs at boot, RunFull must short-circuit
 // immediately rather than start a backup that nothing will Complete.
 func TestOrchestrator_NonLeaderRunCtxStartsCancelled(t *testing.T) {
 	t.Parallel()
@@ -274,7 +243,7 @@ func TestOrchestrator_NonLeaderRunCtxStartsCancelled(t *testing.T) {
 		// Construct the orchestrator directly (not via newOrchestrator,
 		// which would call OnLeadershipChange(true)) so leaderCtx is the
 		// constructor's already-cancelled context.
-		o := NewOrchestrator(nil, nil, logging.Testing(), 1, NewExecutorRegistry(), 0)
+		o := NewOrchestrator(nil, nil, logging.Testing(), 1, NewExecutorRegistry())
 
 		runCtx, cancel := o.runContext(context.Background())
 		defer cancel()
@@ -378,86 +347,9 @@ func newTempStore(t *testing.T) *dal.Store {
 	return store
 }
 
-// TestRunIncremental_NoOpHappyPath exercises the orchestrator's
-// incremental flow end-to-end when the manifest reports no new
-// entries to export. The inner backup runner takes its early-return
-// branch; the orchestrator still proposes Start and Complete. Locks
-// down: (1) Start lands with the supplied destination, (2) registry
-// flips alive then back to dead across the run, (3) Complete uses the
-// same job_id, (4) no Fail is proposed on the happy path.
-func TestRunIncremental_NoOpHappyPath(t *testing.T) {
-	t.Parallel()
-
-	const bucketID = "bucket-int"
-
-	store := newTempStore(t)
-
-	manifest := &backup.Manifest{Checkpoint: &backup.CheckpointManifest{}}
-	body, err := json.Marshal(manifest)
-	require.NoError(t, err)
-	storage := &stubStorage{manifest: body}
-
-	capture := &proposalCapture{}
-	prop := recordingProposer(t, capture, nil)
-
-	o := newOrchestrator(prop, store)
-	dst := &raftcmdpb.BackupDestination{
-		BucketId: bucketID,
-		Target: &raftcmdpb.BackupDestination_S3{
-			S3: &raftcmdpb.S3BackupTarget{Bucket: "ledger-backups", Region: "eu-west-1"},
-		},
-	}
-
-	res, err := o.RunIncremental(context.Background(), dst, storage)
-	require.NoError(t, err)
-	require.NotNil(t, res)
-
-	all := capture.all()
-	require.Len(t, all, 2, "Start + Complete on the no-op happy path")
-
-	start := extractIncrementalOrder(all[0]).GetStart()
-	require.NotNil(t, start)
-	require.Equal(t, bucketID, start.GetDestination().GetBucketId())
-	require.Equal(t, uint64(1), start.GetExecutorNodeId())
-
-	complete := extractIncrementalOrder(all[1]).GetComplete()
-	require.NotNil(t, complete)
-	require.Equal(t, start.GetJobId(), complete.GetJobId())
-
-	// After the call returns, the registry must have deregistered the
-	// job — the cleanup loop should see no live executor for it.
-	require.False(t, o.Registry().IsAlive(start.GetJobId()))
-}
-
-// TestRunIncremental_StartRejectionShortCircuits: an FSM-rejected
-// Start (the typical destination-busy path) does not reach the inner
-// runner nor propose terminal orders, and does NOT register in the
-// executor registry.
-func TestRunIncremental_StartRejectionShortCircuits(t *testing.T) {
-	t.Parallel()
-
-	capture := &proposalCapture{}
-	prop := recordingProposer(t, capture, state.ErrBackupInProgress)
-
-	o := newOrchestrator(prop, newTempStore(t))
-	dst := &raftcmdpb.BackupDestination{
-		BucketId: "busy",
-		Target: &raftcmdpb.BackupDestination_S3{
-			S3: &raftcmdpb.S3BackupTarget{Bucket: "b", Region: "r"},
-		},
-	}
-	storage := &stubStorage{}
-
-	_, err := o.RunIncremental(context.Background(), dst, storage)
-	require.ErrorIs(t, err, state.ErrBackupInProgress)
-	require.Len(t, capture.all(), 1, "only Start must be proposed")
-}
-
-// TestRunFull_HappyPath drives the full backup orchestrator against a
-// fresh empty Pebble store. The inner backup.RunBackup actually
-// creates a checkpoint, lists its (few) SST files, uploads them via a
-// stub Storage, and writes a manifest. Locks down the bookends: Start
-// → registry alive → upload → Complete → registry dead.
+// TestRunFull_HappyPath exercises the full checkpoint orchestration:
+// Start lands with the destination, Complete uses the same job ID,
+// and the executor leaves the registry after publication.
 func TestRunFull_HappyPath(t *testing.T) {
 	t.Parallel()
 
@@ -501,8 +393,7 @@ func TestRunFull_HappyPath(t *testing.T) {
 	require.False(t, o.Registry().IsAlive(start.GetJobId()))
 }
 
-// TestRunFull_StartRejectionShortCircuits mirrors the incremental
-// version for the full path.
+// TestRunFull_StartRejectionShortCircuits checks destination contention.
 func TestRunFull_StartRejectionShortCircuits(t *testing.T) {
 	t.Parallel()
 

@@ -69,7 +69,7 @@ Initial metadata shares the CreateLedger operation identity and proposal atomici
 
 After a keyed creation carrying metadata, does replay preserve the original metadata and audit sequence? Does an invalid metadata map leave neither a ledger nor metadata rows or a consumed ledger ID?
 
-See [the creation contract](../architecture/subsystems/api/atomic-ledger-creation.md) for the authorized semantics and regression evidence. Treat HTTP response/forwarding, actual FSM readback, keyed replay, nonempty checkpoint-plus-delta restore, and primary-projection tampering as separate evidence oracles; a helper-only test does not prove every boundary.
+See [the creation contract](../architecture/subsystems/api/atomic-ledger-creation.md) for the authorized semantics and regression evidence. Treat HTTP response/forwarding, actual FSM readback, keyed replay, second complete checkpoint after a meaningful mutation, and primary-projection tampering as separate evidence oracles; a helper-only test does not prove every boundary.
 
 ## Technical-update submission boundary
 

@@ -74,17 +74,18 @@ chain. The operator selects the data root; manifest filenames select only
 entries within its real `restore-staging` directory. Rooted `Lstat` rejects a
 symlink or non-directory before reset. Rooted `RemoveAll` discards old real
 staging, including nested/leaf symlinks without following their targets; strict
-`Mkdir` and `OpenRoot` acquire fresh staging even for export-only manifests.
-Unrelated siblings must survive. Reset failure stops before replay/publication
-and may leave old staging partly removed or absent. The target remains exclusively
+`Mkdir` and `OpenRoot` acquire fresh staging for checkpoint-only manifests.
+Unrelated siblings must survive. Reset failure stops before checkpoint
+preparation and publication and may leave old staging partly removed or absent.
+The target remains exclusively
 owned by the offline command; no concurrent namespace writer is introduced.
 Downloads remain sequential and verified by content
 key/size/hash. Rejection is per entry: earlier files and partial failing files
-may remain, and errors stop before replay, preview, Checker, confirmation and
-finalization. The download roots close before those later steps. Do not turn
+may remain, and errors stop before checkpoint preparation, preview, Checker,
+confirmation and finalization. The download roots close before those later steps. Do not turn
 this into a whole-manifest preflight, immediate cleanup on download failure or
 hardlink-isolation requirement. A later invocation resets staging again;
-projection retry parity belongs to `persistence-restore-replay`. Trace the actual
+checkpoint retry parity belongs to `persistence-restore-replay`. Trace the actual
 `runBootstrap` caller separately from tests of its
 production download helper.
 
@@ -111,7 +112,7 @@ manifest preparation. Use pinned Nix tools and shared cache generations normally
 | Follower | `TestFileFetcher_FetchFileOnceRejectsNonLocalPath`, `TestGRPCSnapshotFetcher_RejectsNonLocalManifestPath`, `TestGRPCSnapshotFetcher_RejectsSymlinkEscape` | No outside write; final bytes for valid control; observe rooted creation/rename/cleanup, not merely string rejection. |
 | Whole peer manifest | `TestValidateSnapshotManifest_RejectsCollidingEntries`, `TestGRPCSnapshotFetcher_RejectsStagingPathCollision`, `TestGRPCSnapshotFetcher_RejectsDuplicateManifestPath` | Rejection before any FetchFile; retain valid distinct staging names. Other aliases require a concrete supported-filesystem interleaving. |
 | Restore destinations | Existing `TestSafeStagingPath_*` and `server_restore_download_test.go` injected `storageFactory`; synthetic manifest plus local content | Trace admission through actual download and staging recreation. Lexical tests alone do not prove final containment. No live S3 or cloud credentials. |
-| Offline bootstrap destinations | `TestDownloadBootstrapCheckpoint*` in `cmd/ledgerctl/store/bootstrap_test.go`, generated `backup.Storage` mocks and one owned temporary parent | Valid root/nested verified bytes and export-only staging; traversal, absolute/empty names; stale nested/leaf symlinks; staging-root symlinks inside/outside dataDir and root non-directories. Require reset before object reads (also export-only), stale entries removed, symlink targets and sibling inventory unchanged, no object reads on lexical/root rejection, final rooted creation, and retained missing-object/size/hash coverage. Reset failure must not reach replay/publication. Establish `runBootstrap` reachability by code; helper tests do not exercise full CLI admission, replay or finalization. |
+| Offline bootstrap destinations | `TestDownloadBootstrapCheckpoint*` in `cmd/ledgerctl/store/bootstrap_test.go`, generated `backup.Storage` mocks and one owned temporary parent | Valid root/nested verified bytes in a checkpoint-only manifest; traversal, absolute/empty names; stale nested/leaf symlinks; staging-root symlinks inside/outside dataDir and root non-directories. Require reset before object reads, stale entries removed, symlink targets and sibling inventory unchanged, no object reads on lexical/root rejection, final rooted creation, and retained missing-object/size/hash coverage. Reset failure must not reach publication. Establish `runBootstrap` reachability by code; helper tests do not exercise full CLI admission or finalization. |
 | Retry/cleanup | Existing `TestGRPCSnapshotFetcher_RetryRewritesPartialFile`; bounded failure then success and sibling sentinels | Attempt count, correct final bytes, temporary-file cleanup, unrelated state unchanged. No assertion of durable restart parity. |
 | Namespace races | Temporary synchronized replacement at the precise validation/use or staging/publication boundary | Owned parent containing separate root and sentinel directories; deterministic barrier, bounded cleanup, no sleeps or arbitrary host paths. If no feasible influence is established, report the limitation. |
 | Archive seed | Caller search first; optional isolated tar helper characterization | Clearly label helper-only results. No product finding without an actual production consumer. |

@@ -1,0 +1,6 @@
+apiVersion: ledger.formance.com/v1alpha1
+kind: BackupRun
+metadata:
+  name: first-checkpoint
+spec:
+  backupRef: incr-bk

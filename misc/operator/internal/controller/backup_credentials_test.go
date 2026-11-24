@@ -28,97 +28,93 @@ import (
 func TestBackupRunCredentialsStayInSecrets(t *testing.T) {
 	t.Parallel()
 
-	for _, runType := range []ledgerv1alpha1.BackupRunType{ledgerv1alpha1.BackupRunTypeFull, ledgerv1alpha1.BackupRunTypeIncremental} {
-		for _, static := range []bool{false, true} {
-			name := string(runType) + "/ambient"
-			if static {
-				name = string(runType) + "/static"
-			}
-			t.Run(name, func(t *testing.T) {
-				t.Parallel()
-				const accessKey = "AUDIT_S3_ACCESS_69da"
-				const secretKey = "AUDIT_S3_SECRET_71ca+/='\"$(false)"
-				scheme := runtime.NewScheme()
-				require.NoError(t, corev1.AddToScheme(scheme))
-				require.NoError(t, appsv1.AddToScheme(scheme))
-				require.NoError(t, batchv1.AddToScheme(scheme))
-				require.NoError(t, ledgerv1alpha1.AddToScheme(scheme))
-				cluster := &ledgerv1alpha1.Cluster{
-					ObjectMeta: metav1.ObjectMeta{Name: "ledger", Namespace: "test", UID: "cluster-uid"},
-					Spec: ledgerv1alpha1.ClusterSpec{
-						Image: ledgerv1alpha1.ImageSpec{Repository: "ledger", Tag: "test"},
-						TLS:   &ledgerv1alpha1.TLSConfig{Enabled: true, SecretName: "ledger-tls", CASecretKey: "ca.crt"},
-					},
-				}
-				backup := &ledgerv1alpha1.Backup{
-					ObjectMeta: metav1.ObjectMeta{Name: "backup", Namespace: "test"},
-					Spec: ledgerv1alpha1.BackupSpec{ClusterRef: cluster.Name, Destination: ledgerv1alpha1.BackupDestination{
-						Driver: "s3", S3: &ledgerv1alpha1.S3Config{Bucket: "audit-control", Region: "eu-west-1"},
-					}},
-				}
-				if static {
-					backup.Spec.Destination.S3AccessKeyIDFrom = &ledgerv1alpha1.SecretKeyRef{Name: "s3-auth", Key: "access"}
-					backup.Spec.Destination.S3SecretAccessKeyFrom = &ledgerv1alpha1.SecretKeyRef{Name: "s3-auth", Key: "secret"}
-				}
-				run := &ledgerv1alpha1.BackupRun{
-					ObjectMeta: metav1.ObjectMeta{Name: "run", Namespace: "test", UID: "run-uid"},
-					Spec:       ledgerv1alpha1.BackupRunSpec{BackupRef: backup.Name, Type: runType},
-				}
-				sts := backupTLSWorkload(cluster, tlsModeRequired)
-
-				secret := &corev1.Secret{ObjectMeta: metav1.ObjectMeta{Name: "s3-auth", Namespace: "test"},
-					Data: map[string][]byte{"access": []byte(accessKey), "secret": []byte(secretKey)}}
-				c := fake.NewClientBuilder().WithScheme(scheme).
-					WithIndex(&ledgerv1alpha1.BackupRun{}, backupRunParentField, backupRunParentIndex).WithStatusSubresource(run).
-					WithObjects(cluster, backup, run, sts, backupClusterService(cluster), secret).Build()
-				r := &BackupRunReconciler{Client: c, APIReader: c, Scheme: scheme}
-				_, err := r.Reconcile(t.Context(), ctrl.Request{NamespacedName: client.ObjectKeyFromObject(run)})
-				require.NoError(t, err)
-				job := &batchv1.Job{}
-				require.NoError(t, c.Get(t.Context(), types.NamespacedName{Name: backupJobName(run), Namespace: "test"}, job))
-				require.NoError(t, c.Get(t.Context(), client.ObjectKeyFromObject(backup), backup))
-				require.NoError(t, c.Get(t.Context(), client.ObjectKeyFromObject(run), run))
-				require.Equal(t, ledgerv1alpha1.BackupRunPhaseRunning, run.Status.Phase)
-				require.Equal(t, run.UID, job.OwnerReferences[0].UID)
-				container := job.Spec.Template.Spec.Containers[0]
-				if static {
-					require.Contains(t, container.Env, secretKeyEnv("S3_ACCESS_KEY_ID", "s3-auth", "access"))
-					require.Contains(t, container.Env, secretKeyEnv("S3_SECRET_ACCESS_KEY", "s3-auth", "secret"))
-				} else {
-					for _, env := range container.Env {
-						require.NotContains(t, []string{"S3_ACCESS_KEY_ID", "S3_SECRET_ACCESS_KEY"}, env.Name)
-					}
-				}
-				require.Contains(t, container.Command[2], "'--s3-bucket' 'audit-control'")
-				subcommand, err := backupSubcommand(runType)
-				require.NoError(t, err)
-				require.Contains(t, container.Command[2], "'store' '"+subcommand+"'")
-				for _, surface := range []any{backup, run, job, job.Spec.Template} {
-					for _, marshal := range []func(any) ([]byte, error){json.Marshal, yaml.Marshal} {
-						data, err := marshal(surface)
-						require.NoError(t, err)
-						for _, value := range []string{accessKey, secretKey} {
-							require.NotContains(t, string(data), value)
-							encoded, err := json.Marshal(value)
-							require.NoError(t, err)
-							require.NotContains(t, string(data), string(encoded[1:len(encoded)-1]))
-							require.NotContains(t, string(data), "AUDIT_S3_SECRET_71ca")
-							require.NotContains(t, string(data), base64.StdEncoding.EncodeToString([]byte(value)))
-						}
-						require.NotContains(t, string(data), "--s3-access-key-id")
-						require.NotContains(t, string(data), "--s3-secret-access-key")
-					}
-				}
-				// Generated deep copies must not alias either newly added reference.
-				if static {
-					cloned := backup.DeepCopy()
-					cloned.Spec.Destination.S3AccessKeyIDFrom.Key = "changed"
-					cloned.Spec.Destination.S3SecretAccessKeyFrom.Key = "changed"
-					require.Equal(t, "access", backup.Spec.Destination.S3AccessKeyIDFrom.Key)
-					require.Equal(t, "secret", backup.Spec.Destination.S3SecretAccessKeyFrom.Key)
-				}
-			})
+	for _, static := range []bool{false, true} {
+		name := "ambient"
+		if static {
+			name = "static"
 		}
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			const accessKey = "AUDIT_S3_ACCESS_69da"
+			const secretKey = "AUDIT_S3_SECRET_71ca+/='\"$(false)"
+			scheme := runtime.NewScheme()
+			require.NoError(t, corev1.AddToScheme(scheme))
+			require.NoError(t, appsv1.AddToScheme(scheme))
+			require.NoError(t, batchv1.AddToScheme(scheme))
+			require.NoError(t, ledgerv1alpha1.AddToScheme(scheme))
+			cluster := &ledgerv1alpha1.Cluster{
+				ObjectMeta: metav1.ObjectMeta{Name: "ledger", Namespace: "test", UID: "cluster-uid"},
+				Spec: ledgerv1alpha1.ClusterSpec{
+					Image: ledgerv1alpha1.ImageSpec{Repository: "ledger", Tag: "test"},
+					TLS:   &ledgerv1alpha1.TLSConfig{Enabled: true, SecretName: "ledger-tls", CASecretKey: "ca.crt"},
+				},
+			}
+			backup := &ledgerv1alpha1.Backup{
+				ObjectMeta: metav1.ObjectMeta{Name: "backup", Namespace: "test"},
+				Spec: ledgerv1alpha1.BackupSpec{ClusterRef: cluster.Name, Destination: ledgerv1alpha1.BackupDestination{
+					Driver: "s3", S3: &ledgerv1alpha1.S3Config{Bucket: "audit-control", Region: "eu-west-1"},
+				}},
+			}
+			if static {
+				backup.Spec.Destination.S3AccessKeyIDFrom = &ledgerv1alpha1.SecretKeyRef{Name: "s3-auth", Key: "access"}
+				backup.Spec.Destination.S3SecretAccessKeyFrom = &ledgerv1alpha1.SecretKeyRef{Name: "s3-auth", Key: "secret"}
+			}
+			run := &ledgerv1alpha1.BackupRun{
+				ObjectMeta: metav1.ObjectMeta{Name: "run", Namespace: "test", UID: "run-uid"},
+				Spec:       ledgerv1alpha1.BackupRunSpec{BackupRef: backup.Name},
+			}
+			sts := backupTLSWorkload(cluster, tlsModeRequired)
+
+			secret := &corev1.Secret{ObjectMeta: metav1.ObjectMeta{Name: "s3-auth", Namespace: "test"},
+				Data: map[string][]byte{"access": []byte(accessKey), "secret": []byte(secretKey)}}
+			c := fake.NewClientBuilder().WithScheme(scheme).
+				WithIndex(&ledgerv1alpha1.BackupRun{}, backupRunParentField, backupRunParentIndex).WithStatusSubresource(run).
+				WithObjects(cluster, backup, run, sts, backupClusterService(cluster), secret).Build()
+			r := &BackupRunReconciler{Client: c, APIReader: c, Scheme: scheme}
+			_, err := r.Reconcile(t.Context(), ctrl.Request{NamespacedName: client.ObjectKeyFromObject(run)})
+			require.NoError(t, err)
+			job := &batchv1.Job{}
+			require.NoError(t, c.Get(t.Context(), types.NamespacedName{Name: backupJobName(run), Namespace: "test"}, job))
+			require.NoError(t, c.Get(t.Context(), client.ObjectKeyFromObject(backup), backup))
+			require.NoError(t, c.Get(t.Context(), client.ObjectKeyFromObject(run), run))
+			require.Equal(t, ledgerv1alpha1.BackupRunPhaseRunning, run.Status.Phase)
+			require.Equal(t, run.UID, job.OwnerReferences[0].UID)
+			container := job.Spec.Template.Spec.Containers[0]
+			if static {
+				require.Contains(t, container.Env, secretKeyEnv("S3_ACCESS_KEY_ID", "s3-auth", "access"))
+				require.Contains(t, container.Env, secretKeyEnv("S3_SECRET_ACCESS_KEY", "s3-auth", "secret"))
+			} else {
+				for _, env := range container.Env {
+					require.NotContains(t, []string{"S3_ACCESS_KEY_ID", "S3_SECRET_ACCESS_KEY"}, env.Name)
+				}
+			}
+			require.Contains(t, container.Command[2], "'--s3-bucket' 'audit-control'")
+			require.Contains(t, container.Command[2], "'store' 'backup'")
+			for _, surface := range []any{backup, run, job, job.Spec.Template} {
+				for _, marshal := range []func(any) ([]byte, error){json.Marshal, yaml.Marshal} {
+					data, err := marshal(surface)
+					require.NoError(t, err)
+					for _, value := range []string{accessKey, secretKey} {
+						require.NotContains(t, string(data), value)
+						encoded, err := json.Marshal(value)
+						require.NoError(t, err)
+						require.NotContains(t, string(data), string(encoded[1:len(encoded)-1]))
+						require.NotContains(t, string(data), "AUDIT_S3_SECRET_71ca")
+						require.NotContains(t, string(data), base64.StdEncoding.EncodeToString([]byte(value)))
+					}
+					require.NotContains(t, string(data), "--s3-access-key-id")
+					require.NotContains(t, string(data), "--s3-secret-access-key")
+				}
+			}
+			// Generated deep copies must not alias either newly added reference.
+			if static {
+				cloned := backup.DeepCopy()
+				cloned.Spec.Destination.S3AccessKeyIDFrom.Key = "changed"
+				cloned.Spec.Destination.S3SecretAccessKeyFrom.Key = "changed"
+				require.Equal(t, "access", backup.Spec.Destination.S3AccessKeyIDFrom.Key)
+				require.Equal(t, "secret", backup.Spec.Destination.S3SecretAccessKeyFrom.Key)
+			}
+		})
 	}
 }
 

@@ -123,21 +123,24 @@ Snapshot recovery assembles the same view as startup migration.
 
 ## Backups and rollback
 
-Both aggregates survive checkpoints. Full and incremental manifests carry one
-control-state snapshot at a single source applied index, after legacy delta
-folding on restore. Active state, configuration and its
-revision are preserved across clusters. Member support is not exported as
-activation evidence: the target checks its own membership. The source applied
-index is provenance, not the destination's Raft progress.
+Both aggregates survive in a complete Pebble checkpoint. New backup manifests
+reference that checkpoint and contain no incremental exports or separate
+control-state snapshot. Active state, configuration and its revision are
+preserved when restoring a new checkpoint across clusters. Member support is
+not exported as activation evidence: the target checks its own membership.
+The source applied index is provenance, not the destination's Raft progress.
 
-The manifest's existing `clusterPolicy.data` field now contains
-`{"version":1,"policy":"<base64 protobuf>"}` instead of a base64 string.
-The released RC.4 decoder expects bytes at that known field and rejects the
-object. New readers accept both forms and reject unknown versions. Every new
-full backup also writes the envelope, including for uninitialized policy, so
-an old reader cannot silently restore only the checkpoint and drop activation state.
-Publication still uploads immutable objects before atomically replacing the
-manifest; failure retains the previously published backup.
+Released RC.4 incremental manifests may contain `clusterPolicy.data` as a
+base64 protobuf string. Later RCs could write a versioned JSON envelope at
+that field. The current manifest decoder recognizes both shapes to report an
+unsupported artifact, but both restore entry points reject any separate
+`clusterPolicy` field or export segment. This is the explicit RC backup artifact
+exception in [the upgrade policy](../../../../ops/upgrades.md#release-requirement-from-v300-rc1),
+not a migration. The target release must publish and verify a new complete
+checkpoint before its object-store destination is a supported recovery point.
+Publication uploads immutable objects before replacing the manifest; failure
+retains the previously published backup, which may itself be unsupported by
+the target restore path.
 
 The schema upgrade closes binary rollback before capability activation: RC.4
 cannot open schema 3. New Raft payloads independently close WAL rollback.

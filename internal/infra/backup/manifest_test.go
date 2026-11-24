@@ -14,6 +14,31 @@ import (
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 )
 
+func TestValidateCheckpointOnlyManifest(t *testing.T) {
+	t.Parallel()
+	checkpoint := &CheckpointManifest{Files: map[string]CheckpointFile{"CURRENT": {Size: 1, Key: "bucket/data/checkpoint.hash"}}}
+	for _, tc := range []struct {
+		name     string
+		manifest Manifest
+		want     string
+	}{
+		{name: "checkpoint", manifest: Manifest{Checkpoint: checkpoint}},
+		{name: "exports", manifest: Manifest{Checkpoint: checkpoint, Exports: []ExportSegment{{Type: "log"}}}, want: "incremental backup manifests"},
+		{name: "policy", manifest: Manifest{Checkpoint: checkpoint, ClusterPolicy: &ClusterPolicySnapshot{}}, want: "incremental backup manifests"},
+		{name: "missing checkpoint", manifest: Manifest{}, want: "no checkpoint files"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			err := ValidateCheckpointOnlyManifest(&tc.manifest)
+			if tc.want == "" {
+				require.NoError(t, err)
+			} else {
+				require.ErrorContains(t, err, tc.want)
+			}
+		})
+	}
+}
+
 // A manifest with an invalid checkpoint file entry must fail closed.
 func TestReadManifest_InvalidFileEntryReturnsError(t *testing.T) {
 	t.Parallel()

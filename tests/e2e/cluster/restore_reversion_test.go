@@ -33,9 +33,9 @@ import (
 // the model knew was already applied got re-attempted after a restore). The
 // FSM's already-reverted gate reads the per-ledger reversion bitset
 // (ZonePerLedger/SubPLReversions), which only the FSM hot path persists; the
-// restore rebuild replays RevertedTransaction logs into the per-transaction
-// RevertedByTransaction markers but must also rebuild the bitset — otherwise
-// every revert inside the exported delta is forgotten by the gate, and a
+// checkpoint restore must retain both the per-transaction
+// RevertedByTransaction markers and the bitset — otherwise
+// a revert committed after the first checkpoint is forgotten by the gate, and a
 // second revert of the same transaction passes it. When the account still
 // holds funds, that second revert SUCCEEDS and moves them again (a double
 // refund); otherwise it surfaces as a wrong rejection (insufficient funds /
@@ -142,7 +142,7 @@ var _ = Describe("Restore reversion bitset", Ordered, func() {
 		Expect(err).To(Succeed())
 	})
 
-	Describe("Phase 1: a reverted transaction in the exported delta", Ordered, func() {
+	Describe("Phase 1: a reverted transaction after the first checkpoint", Ordered, func() {
 		var (
 			sourceServer  *testservice.Service
 			client        servicepb.BucketServiceClient
@@ -175,10 +175,8 @@ var _ = Describe("Restore reversion bitset", Ordered, func() {
 				return state.Leader != 0
 			}).Within(10 * time.Second).ProbeEvery(100 * time.Millisecond).Should(BeTrue())
 
-			// Full checkpoint on the EMPTY store: everything after it lands in
-			// the incremental delta, so the restore reconstructs the reversion
-			// state purely by replaying the exported log instead of copying
-			// checkpoint files.
+			// The first checkpoint is empty. Later reversion state must be
+			// captured by the next checkpoint and survive restore.
 			var backupResp *clusterpb.BackupResponse
 			Eventually(func() error {
 				var err error
@@ -232,10 +230,10 @@ var _ = Describe("Restore reversion bitset", Ordered, func() {
 			expectAccountVolumes(client, "live")
 		})
 
-		It("exports the delta", func() {
-			incResp, err := clusterClient.IncrementalBackup(ctx, &clusterpb.IncrementalBackupRequest{Storage: storage()})
+		It("publishes the later checkpoint", func() {
+			incResp, err := clusterClient.Backup(ctx, &clusterpb.BackupRequest{Storage: storage()})
 			Expect(err).To(Succeed())
-			Expect(incResp.GetLogEntriesExported()).To(BeNumerically(">", 0))
+			Expect(incResp.GetTotalFiles()).To(BeNumerically(">", 0))
 		})
 	})
 
@@ -335,7 +333,7 @@ var _ = Describe("Restore reversion bitset", Ordered, func() {
 			_ = os.RemoveAll(restoreDataDir)
 		})
 
-		It("still rejects a double revert after the rebuild", func() {
+		It("still rejects a double revert after restore", func() {
 			expectAlreadyReverted(client, "restored")
 			// A successful double revert would have moved another 100 out of
 			// the account; the volumes pin that no funds moved.

@@ -9,5 +9,4 @@ spec:
     s3:
       bucket: unused
       region: us-east-1
-  schedule:
-    full: "not a cron expression"
+  schedule: "not a cron expression"

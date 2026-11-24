@@ -26,7 +26,6 @@ func TestBackupRunAdmissionRejectsParentChanges(t *testing.T) {
 					Spec:       ledgerv1alpha1.BackupRunSpec{BackupRef: "original"},
 				}
 				require.NoError(t, k8sClient.Create(t.Context(), run))
-				require.Equal(t, ledgerv1alpha1.BackupRunTypeFull, run.Spec.Type)
 				run.Status.Phase = phase
 				require.NoError(t, k8sClient.Status().Update(t.Context(), run))
 				original := run.DeepCopy()
