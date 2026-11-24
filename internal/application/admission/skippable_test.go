@@ -36,10 +36,6 @@ func TestExtractSkippableReasonsFromApply_AcceptsWhitelistedReason(t *testing.T)
 	require.Equal(t, []commonpb.ErrorReason{commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT}, got)
 }
 
-// TestExtractSkippableReasonsFromApply_EmptyListReturnsNil verifies the
-// historical no-opt-in default: an empty/missing skippable_reasons disables
-// the skip mechanism and returns (nil, nil) so the order's SkippableReasons
-// field stays unset.
 func TestExtractSkippableReasonsFromApply_ExecuteNumscript(t *testing.T) {
 	t.Parallel()
 	apply := &servicepb.LedgerApplyRequest{
@@ -57,6 +53,10 @@ func TestExtractSkippableReasonsFromApply_ExecuteNumscript(t *testing.T) {
 	requireInvalidSkippableReason(t, err, commonpb.ErrorReason_ERROR_REASON_INSUFFICIENT_FUNDS)
 }
 
+// TestExtractSkippableReasonsFromApply_EmptyListReturnsNil verifies the
+// historical no-opt-in default: an empty/missing skippable_reasons disables
+// the skip mechanism and returns (nil, nil) so the order's SkippableReasons
+// field stays unset.
 func TestExtractSkippableReasonsFromApply_EmptyListReturnsNil(t *testing.T) {
 	t.Parallel()
 
