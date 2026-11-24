@@ -44,6 +44,21 @@ integer schema spans `-9223372036854775808` through `18446744073709551615`,
 matching signed negative and unsigned nonnegative metadata values. See
 [Metadata number decoding](../architecture/subsystems/api/http-api.md#metadata-number-decoding).
 
+## REST and gRPC input compatibility
+
+REST path parameters decode ledger names once before validation. On REST
+transaction and log lists, RFC3339 range bounds preserve the documented
+inclusive/exclusive semantics against stored microseconds. Textual metadata
+filters preserve quoted strings on every route that accepts them.
+
+Prepared-query mutation and execution routes reject trailing JSON before
+calling the controller. Execution preserves exact integral REST parameters
+and rejects null. New sink creation requires a name and sink type through
+either transport. `MIRROR` creation requires a source and `NORMAL` creation
+must omit it. Resubmit formerly accepted invalid shapes with valid inputs.
+This does not change
+existing persisted entries or the gRPC wire contract.
+
 ## Atomic HTTP Apply
 
 `POST /v3/_/apply` is an additive v3 operation for ordered cross-ledger and
@@ -799,6 +814,9 @@ Mirror mode enables one-way synchronization from an existing v2 ledger into a v3
 
 Request body includes `mode` (`"MIRROR"`) and a `mirrorSource` object specifying the source configuration. `mode` accepts only `"NORMAL"` (the default when omitted) or `"MIRROR"`, case-sensitive; any other value is rejected with HTTP 400 (`INVALID_REQUEST`) and no ledger is created.
 
+Omitting `mirrorSource` in `MIRROR` mode, or supplying it in `NORMAL` mode, is
+rejected before any ledger is created: HTTP 400 / gRPC `InvalidArgument`.
+
 **Source types:**
 - **HTTP** (`type: "http"`) — Polls the v2 API endpoint `GET /v2/{ledger}/logs`. Fields: `baseUrl`, `oauth2ClientId`, `oauth2ClientSecret`, `oauth2TokenEndpoint`, `oauth2Scopes` (optional, for OAuth2 client credentials authentication).
 - **PostgreSQL** (`type: "postgres"`) — Reads directly from the v2 ledger's PostgreSQL database. Fields: `dsn`. AWS RDS IAM authentication is provisioned via the operator `Ledger` CRD (`mirrorSource.postgres.awsIamAuth.region` + optional `assumeRoleArn` for cross-account / multi-tenant mirrors) — see `misc/operator/api/v1alpha1/ledger_crd_types.go`. The mirror pod mints SigV4 tokens per connection from the ambient AWS credential chain (IRSA on EKS).
@@ -881,6 +899,9 @@ Numscripts use **semantic versioning** (semver) with the format `major.minor.pat
 When saving a numscript via `PUT /v3/{ledgerName}/numscripts/{name}`, the request body includes:
 - `content` (required): The numscript source code
 - `version` (required): An explicit full semver (e.g. `"2.0.0"`) creating a new immutable version. Fails with 409 if the version already exists, and with 400 (`NUMSCRIPT_INVALID_VERSION`) for an empty, partial, or `"latest"` value.
+
+Saving a numscript requires an existing ledger. A missing ledger returns HTTP
+404 (`LEDGER_NOT_FOUND`).
 
 When retrieving a numscript via `GET /v3/{ledgerName}/numscripts/{name}`, the `version` query parameter selects which version to return. If omitted or empty, the latest version is returned.
 

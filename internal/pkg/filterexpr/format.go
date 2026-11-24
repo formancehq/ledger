@@ -312,7 +312,7 @@ func formatAsNotEqual(fc *commonpb.FieldCondition) string {
 	key := quoteIfNeeded(fc.GetField().GetMetadata())
 	switch cond := fc.GetCondition().(type) {
 	case *commonpb.FieldCondition_StringCond:
-		return fmt.Sprintf("metadata[%s] != %s", key, formatStringCondValue(cond.StringCond))
+		return fmt.Sprintf("metadata[%s] != %s", key, formatMetadataStringCondValue(cond.StringCond))
 	case *commonpb.FieldCondition_IntCond:
 		if eq := formatIntCondAsEquality(cond.IntCond); eq != "" {
 			return fmt.Sprintf("metadata[%s] != %s", key, eq)
@@ -329,7 +329,7 @@ func formatFieldCondition(fc *commonpb.FieldCondition) string {
 
 	switch cond := fc.GetCondition().(type) {
 	case *commonpb.FieldCondition_StringCond:
-		return fmt.Sprintf("metadata[%s] == %s", key, formatStringCondValue(cond.StringCond))
+		return fmt.Sprintf("metadata[%s] == %s", key, formatMetadataStringCondValue(cond.StringCond))
 	case *commonpb.FieldCondition_IntCond:
 		return formatIntCondition(key, cond.IntCond)
 	case *commonpb.FieldCondition_UintCond:
@@ -340,6 +340,16 @@ func formatFieldCondition(fc *commonpb.FieldCondition) string {
 		return fmt.Sprintf("metadata[%s] exists", key)
 	default:
 		return fmt.Sprintf("metadata[%s] <unknown>", key)
+	}
+}
+
+func formatMetadataStringCondValue(sc *commonpb.StringCondition) string {
+	switch s := sc.GetHardcoded(); s {
+	case "true", "false":
+		// These would be parsed as booleans in a metadata comparison.
+		return strconv.Quote(s)
+	default:
+		return formatStringCondValue(sc)
 	}
 }
 

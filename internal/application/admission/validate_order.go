@@ -15,6 +15,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/domain/indexes"
 	"github.com/formancehq/ledger/v3/internal/pkg/connectionurl"
 	"github.com/formancehq/ledger/v3/internal/pkg/semver"
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
 
@@ -60,7 +61,7 @@ func validateOrder(order *raftcmdpb.Order) error {
 		return &domain.BusinessError{Err: err}
 	}
 
-	if err := validateOrderSinkURL(order); err != nil {
+	if err := validateOrderSinkConfig(order); err != nil {
 		return &domain.BusinessError{Err: err}
 	}
 
@@ -418,13 +419,9 @@ func validateOrderPreparedQuery(order *raftcmdpb.Order) domain.Describable {
 	}
 }
 
-// validateOrderMirrorSource enforces structural well-formedness on the
-// optional MirrorSource carried by a CreateLedger order. Mirror ledgers go
-// through the standard create path, so a missing/blank field reaches the
-// FSM and is only surfaced when the mirror worker actually tries to open a
-// connection -- well after the ledger has been persisted via Raft. This
-// gate fails fast at admission so a malformed mirror config is rejected
-// before it lands in the audit chain.
+// validateOrderMirrorSource requires a source for MIRROR creation and checks
+// its configuration before the order is proposed. Otherwise an unusable
+// source can reach the audit chain before the mirror worker sees it.
 func validateOrderMirrorSource(order *raftcmdpb.Order) domain.Describable {
 	// System-scoped orders carry no mirror source. The proto-generated
 	// GetLedgerScoped/GetPayload getters are nil-safe by themselves, but
@@ -440,8 +437,16 @@ func validateOrderMirrorSource(order *raftcmdpb.Order) domain.Describable {
 	}
 
 	src := create.CreateLedger.GetMirrorSource()
+	isMirror := create.CreateLedger.GetMode() == commonpb.LedgerMode_LEDGER_MODE_MIRROR
 	if src == nil {
+		if isMirror {
+			return ErrMirrorModeRequiresSource
+		}
+
 		return nil
+	}
+	if !isMirror {
+		return ErrMirrorSourceRequiresMirrorMode
 	}
 
 	// Compile the CEL rewrite rules before the order reaches the audit chain, so

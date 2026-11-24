@@ -37,6 +37,24 @@ func TestFormatIDRoundTrip(t *testing.T) {
 	}
 }
 
+func TestFormatMetadataStringRoundTrip(t *testing.T) {
+	t.Parallel()
+
+	for _, value := range []string{"true", "false", "42", "-5", "9223372036854775808", ""} {
+		t.Run(strconv.Quote(value), func(t *testing.T) {
+			t.Parallel()
+
+			original, err := DecodeDualFormat([]byte(`{"$match":{"metadata[code]":`+strconv.Quote(value)+`}}`), tx)
+			require.NoError(t, err)
+			formatted := Format(original)
+			require.Equal(t, "metadata[code] == "+strconv.Quote(value), formatted)
+			reparsed, err := Parse(formatted, tx)
+			require.NoError(t, err)
+			require.True(t, proto.Equal(original, reparsed), "formatting must preserve the string condition")
+		})
+	}
+}
+
 func TestFormatAccountHasAsset(t *testing.T) {
 	t.Parallel()
 

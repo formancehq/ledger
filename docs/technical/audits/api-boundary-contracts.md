@@ -26,6 +26,18 @@ they do not provide a focused inventory of transport presence, codecs, limits,
 schemas and stream framing. This domain adds that inventory to the native audit
 workflow without adding a runner or changing product guarantees.
 
+## REST and gRPC parity regressions
+
+Use the `REST and gRPC business parity` specs in
+`tests/e2e/business/api_parity_test.go`. The fixture exercises both
+transports and checks ledger identity after URL decoding, exact aggregate
+totals and typed filter results, and list results at fractional date bounds.
+It rereads public state after malformed prepared-query writes and shared
+admission refusals, including `MIRROR` creation without a source. Adapter
+tests cover lexical round-tripping, complete-body
+validation and the size boundary. The common admission rules affect new
+requests only; do not replay historical records under the new validators.
+
 ## Evidence contract
 
 For each hypothesis, identify a registered entry point, its middleware or

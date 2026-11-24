@@ -769,6 +769,19 @@ RPCs and HTTP clients are unaffected. See the
 
 ## Change-specific notes
 
+### REST and gRPC input validation
+
+No persisted-state migration or stopped upgrade is needed for these fixes.
+Existing committed sink and ledger records still replay unchanged. New requests
+and retries must supply a sink name and type. Supply a source configuration
+when creating a `MIRROR` ledger. Omit the source when creating a `NORMAL` ledger.
+
+Use bare signed integers or booleans for typed textual filter values and quote
+string identifiers. For prepared-query execution, replace null with the
+intended value or omit an optional argument. Send a single JSON value in
+prepared-query requests; trailing whitespace is allowed. See
+[HTTP body and parameter semantics](../technical/architecture/subsystems/api/http-api.md#prepared-query-bodies-and-parameters).
+
 ### Mirror asset mappings
 
 `MirrorSourceConfig.asset_mappings` (field 6) is an additive optional field on

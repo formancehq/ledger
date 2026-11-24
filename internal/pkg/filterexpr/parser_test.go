@@ -498,6 +498,19 @@ func TestParse(t *testing.T) {
 		assert.Contains(t, err.Error(), "range operators only support integer values")
 	})
 
+	t.Run("quoted integer-looking ranges remain strings", func(t *testing.T) {
+		t.Parallel()
+
+		for _, text := range []string{
+			`metadata[rank] >= "42"`,
+			`metadata[rank] between "42" and "43"`,
+			`metadata[rank] between $lo and "43"`,
+		} {
+			_, err := Parse(text, tx)
+			require.ErrorContains(t, err, "range operators only support integer values")
+		}
+	})
+
 	t.Run("metadata between inclusive range", func(t *testing.T) {
 		t.Parallel()
 
