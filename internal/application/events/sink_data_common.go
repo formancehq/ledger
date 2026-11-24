@@ -31,8 +31,9 @@ func (t sinkTime) MarshalJSON() ([]byte, error) {
 // Fields are populated based on the event type; unused fields are omitted.
 type sinkEventData struct {
 	// COMMITTED_TRANSACTION
-	Transaction     *sinkTransaction             `json:"transaction,omitempty"`
-	AccountMetadata map[string]map[string]string `json:"accountMetadata,omitempty"`
+	Transaction            *sinkTransaction             `json:"transaction,omitempty"`
+	AccountMetadata        map[string]map[string]string `json:"accountMetadata,omitempty"`
+	DeletedAccountMetadata map[string][]string          `json:"deletedAccountMetadata,omitempty"`
 
 	// REVERTED_TRANSACTION
 	RevertedTransactionID *uint64          `json:"revertedTransactionId,omitempty"`
@@ -149,6 +150,7 @@ func sinkPopulateApply(data *sinkEventData, apply *commonpb.ApplyLedgerLog) {
 	case *commonpb.LedgerLogPayload_CreatedTransaction:
 		data.Transaction = sinkConvertTransaction(lp.CreatedTransaction.GetTransaction())
 		data.AccountMetadata = sinkConvertAccountMetadataMap(lp.CreatedTransaction.GetAccountMetadata())
+		data.DeletedAccountMetadata = sinkConvertDeletedAccountMetadata(lp.CreatedTransaction.GetDeletedAccountMetadata())
 
 	case *commonpb.LedgerLogPayload_RevertedTransaction:
 		data.RevertedTransactionID = &lp.RevertedTransaction.RevertedTransactionId
@@ -238,6 +240,19 @@ func sinkConvertAccountMetadataMap(am map[string]*commonpb.MetadataMap) map[stri
 	result := make(map[string]map[string]string, len(am))
 	for addr, mm := range am {
 		result[addr] = sinkConvertMetadata(mm.GetValues())
+	}
+
+	return result
+}
+
+func sinkConvertDeletedAccountMetadata(deleted map[string]*commonpb.MetadataKeys) map[string][]string {
+	if len(deleted) == 0 {
+		return nil
+	}
+
+	result := make(map[string][]string, len(deleted))
+	for addr, keys := range deleted {
+		result[addr] = keys.GetKeys()
 	}
 
 	return result

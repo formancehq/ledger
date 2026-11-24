@@ -110,6 +110,28 @@ This is useful for:
 - Tracking account categories or types
 - Storing audit information about account creation
 
+### Deleting Account Metadata
+
+The ledger can apply `delete_account_metadata(account, key)`, but the bundled
+Numscript library does not provide that function yet. Until it does, scripts
+cannot use it. `numscript.AccountMetadataDeletions` in
+`internal/domain/processing/numscript/vm.go` is the only place that will read
+deletions from the library's result.
+
+The ledger applies a deletion with these rules:
+
+- The library reports the net effect of the script. A key the script both sets
+  and deletes fails the transaction with `NUMSCRIPT_RUNTIME`.
+- Caller-supplied `accountMetadata` wins: if the caller sets the same key, the
+  deletion is dropped, as a script write would be.
+- Deleting a key that does not exist succeeds and changes nothing.
+- The `CreatedTransaction` log lists every remaining deletion in
+  `deleted_account_metadata`, by account, with sorted keys. Replay, the search
+  index, and the analytical event sinks (`deletedAccountMetadata`) read it from
+  there.
+- The library's dependency resolution must list a deleted key as a metadata
+  write, so admission preloads it and the FSM may remove it.
+
 ## Feature Examples
 
 ### 1. Account Interpolation (Dynamic Addresses)
@@ -461,7 +483,7 @@ Admission calls `ParseResult.ResolveDependencies(ctx, vars, store)`, which walks
 - **account reads** — balances the resolution consulted (bounded sources, capped/allotment amounts, `balance()`/`overdraft()` in vars or selectors);
 - **account writes** — accounts the script credits or debits (sources — including unbounded ones — and destinations);
 - **account metadata reads** — `meta()` lookups;
-- **account metadata writes** — `set_account_meta` targets;
+- **account metadata writes** — `set_account_meta` targets (and, once the library supports it, `delete_account_metadata` targets);
 - **transaction metadata writes** — `set_tx_meta` keys.
 
 The wrapper lives in `internal/domain/processing/numscript/discover.go` (`DiscoverNumscriptDependencies`), the `Store` adapter and value-recording layer in `internal/domain/processing/numscript/store.go`:
@@ -486,7 +508,7 @@ This is **uniform**: source or destination, bounded or unbounded. In particular 
 
 When several orders arrive in one atomic batch, the FSM applies them **sequentially** against a single mutated `WriteSet`, so a later order sees the balances and metadata written by earlier orders in the same batch. Admission mirrors this during discovery: each order is resolved against the pre-batch Pebble snapshot **with the accumulated effects of every preceding order layered on top** (`internal/application/admission/numscript_source.go`, `batchEffects`). Concretely, the balance/metadata effect of every preceding **mutating** order is folded — not just `CreateTransaction`:
 
-- **`CreateTransaction`** — script/postings net `(input − output)` **balance deltas** per `(ledger, account, asset)`, plus `set_account_meta` writes; the caller-supplied `AccountMetadata` is folded **after** the script's writes because the FSM merges it with precedence over `set_account_meta` for the same key;
+- **`CreateTransaction`** — script/postings net `(input − output)` **balance deltas** per `(ledger, account, asset)`, plus `set_account_meta` writes and `delete_account_metadata` tombstones; the caller-supplied `AccountMetadata` is folded **after** the script's writes because the FSM merges it with precedence over `set_account_meta` for the same key;
 - **`RevertTransaction`** — the reversed-posting balance deltas (original destination → source, original source → destination), the inverse of the original postings, matching `processRevertTransaction`;
 - **`AddMetadata`** (account target) — the metadata value it writes;
 - **`DeleteMetadata`** (account target) — a **tombstone** for the key, so a later `meta()` resolves *absent* even if the pre-batch snapshot still holds a value.

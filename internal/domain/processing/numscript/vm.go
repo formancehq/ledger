@@ -164,6 +164,26 @@ func SafeExecFromText(cache *NumscriptCache, script string, scriptVars map[strin
 	return SafeExecCompiled(cache, compiled, store)
 }
 
+// AccountMetadataDeletion is an account-metadata key a script removed with
+// delete_account_metadata(account, key).
+type AccountMetadataDeletion struct {
+	Account string
+	Key     string
+}
+
+// AccountMetadataDeletions returns the account-metadata keys an execution
+// removed. The library must report the net effect of the script: a key it
+// sets after deleting appears only in result.AccountsMetadata, and a key it
+// deletes after setting appears only here.
+//
+// The bundled library does not implement delete_account_metadata yet, so no
+// execution reports a deletion. Map the library's result here when it does.
+// Before then, its dependency resolution must also list deleted keys as
+// metadata writes so admission preloads them for the FSM.
+func AccountMetadataDeletions(_ numscriptlib.ExecutionResult) []AccountMetadataDeletion {
+	return nil
+}
+
 // convertVMError is convertNumscriptError's counterpart for the VM's error
 // types: the same missing-funds mapping (the VM error carries no account or
 // color either, so ColorKnown stays false), the same typed-failure pass-through

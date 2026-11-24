@@ -295,6 +295,32 @@ func (p *numscriptPostingProducer) produce(s Scope, ledgerName string, order *ra
 		}
 	}
 
+	// Keys removed by delete_account_metadata get the same key validation as
+	// set_account_meta keys. The library reports the net effect of the script,
+	// so a key both set and deleted is an impossible state (invariant #7).
+	var accountsMetaDeleted map[string]map[string]struct{}
+	for _, deletion := range numscript.AccountMetadataDeletions(result) {
+		if err := domain.ValidateMetadataKey(deletion.Key); err != nil {
+			return nil, &domain.ErrAccountValidation{Account: deletion.Account, Cause: err}
+		}
+
+		if _, alsoSet := accountsMeta[deletion.Account][deletion.Key]; alsoSet {
+			return nil, &domain.ErrNumscriptRuntime{
+				Detail: fmt.Sprintf("account %s metadata key %q is both set and deleted", deletion.Account, deletion.Key),
+			}
+		}
+
+		if accountsMetaDeleted == nil {
+			accountsMetaDeleted = make(map[string]map[string]struct{})
+		}
+
+		if accountsMetaDeleted[deletion.Account] == nil {
+			accountsMetaDeleted[deletion.Account] = make(map[string]struct{})
+		}
+
+		accountsMetaDeleted[deletion.Account][deletion.Key] = struct{}{}
+	}
+
 	// Transaction metadata arrives already rendered to strings by the library.
 	var txMeta map[string]*commonpb.MetadataValue
 	if len(result.Metadata) > 0 {
@@ -317,9 +343,10 @@ func (p *numscriptPostingProducer) produce(s Scope, ledgerName string, order *ra
 	}
 
 	return &produceResult{
-		Postings:            postings,
-		TransactionMetadata: txMeta,
-		AccountsMetadata:    accountsMeta,
+		Postings:                postings,
+		TransactionMetadata:     txMeta,
+		AccountsMetadata:        accountsMeta,
+		AccountsMetadataDeleted: accountsMetaDeleted,
 	}, nil
 }
 

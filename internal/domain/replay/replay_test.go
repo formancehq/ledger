@@ -7,6 +7,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/domain/accounttype"
 	"github.com/formancehq/ledger/v3/internal/domain/replay"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
@@ -20,6 +21,7 @@ type writerStub struct {
 	dropIndex   func(ledger string, id *commonpb.IndexID) error
 
 	removedFieldTypes int
+	deletedMetadata   [][]byte
 }
 
 func (w *writerStub) AddVolumeDelta([]byte, *big.Int, *big.Int) error { return nil }
@@ -29,7 +31,11 @@ func (w *writerStub) MoveVolume([]byte, []byte) error                 { return n
 func (w *writerStub) SetMetadata([]byte, *commonpb.MetadataValue) error {
 	return nil
 }
-func (w *writerStub) DeleteMetadata([]byte) error       { return nil }
+func (w *writerStub) DeleteMetadata(canonicalKey []byte) error {
+	w.deletedMetadata = append(w.deletedMetadata, canonicalKey)
+
+	return nil
+}
 func (w *writerStub) MoveMetadata([]byte, []byte) error { return nil }
 func (w *writerStub) CreateTransaction([]byte, uint64, *commonpb.Timestamp, map[string]*commonpb.MetadataValue, []*commonpb.Posting, uint64) error {
 	return nil
@@ -234,4 +240,30 @@ func TestReplayLedgerLog_RemovedFieldTypeCascade(t *testing.T) {
 			},
 		},
 	}), boom)
+}
+
+// TestReplayLedgerLog_CreatedTransactionDeletesAccountMetadata pins that a
+// rebuild removes the account-metadata keys a Numscript transaction deleted.
+func TestReplayLedgerLog_CreatedTransactionDeletesAccountMetadata(t *testing.T) {
+	t.Parallel()
+
+	w := &writerStub{}
+	require.NoError(t, replayOne(t, w, &commonpb.Timestamp{Data: 1}, &commonpb.LedgerLogPayload{
+		Payload: &commonpb.LedgerLogPayload_CreatedTransaction{
+			CreatedTransaction: &commonpb.CreatedTransaction{
+				Transaction: &commonpb.Transaction{Id: 1},
+				DeletedAccountMetadata: map[string]*commonpb.MetadataKeys{
+					"users:001": {Keys: []string{"a", "b"}},
+				},
+			},
+		},
+	}))
+
+	metaKey := func(key string) []byte {
+		return domain.MetadataKey{
+			AccountKey: domain.AccountKey{LedgerName: "ledger", Account: "users:001"},
+			Key:        key,
+		}.Bytes()
+	}
+	require.Equal(t, [][]byte{metaKey("a"), metaKey("b")}, w.deletedMetadata)
 }

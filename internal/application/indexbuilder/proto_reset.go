@@ -110,6 +110,7 @@ func resetCreatedTransaction(ct *commonpb.CreatedTransaction) {
 	}
 
 	clear(ct.GetAccountMetadata())
+	clear(ct.GetDeletedAccountMetadata())
 
 	resetTransaction(ct.GetTransaction())
 }
