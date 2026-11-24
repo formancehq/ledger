@@ -29,6 +29,7 @@ set -euo pipefail
 case "${VALIDATOR_MODE:-pass}" in
     fail) exit 17 ;;
     dirty) printf 'normalized\n' >> tracked.txt ;;
+    retarget) printf '%s\n' other-base > "$PR_BASE_REF_FILE" ;;
 esac
 `), 0o755))
 	bin := filepath.Join(dir, "bin")
@@ -39,7 +40,7 @@ if [[ ${1:-} == repo && ${2:-} == view ]]; then
     [[ $3 == "$EXPECTED_REMOTE_URL" ]]
     printf '%s\n' test/origin
 elif [[ ${1:-} == pr && ${2:-} == list && $* == *'headRepository'* ]]; then
-    printf '%s\t%s\t%s\n' "${GH_PR_REPO:-test/origin}" chore/ci-local-format-parity "$EXPECTED_PR_BASE"
+    printf '%s\t%s\t%s\t%s\n' "${GH_PR_REPO:-test/origin}" chore/ci-local-format-parity "$(cat "$PR_BASE_REF_FILE")" "$EXPECTED_PR_BASE"
 else
     exit 1
 fi
@@ -54,7 +55,9 @@ fi
 	run(t, repo, nil, "git", "add", "tracked.txt")
 	run(t, repo, nil, "git", "commit", "-m", "candidate")
 	base := run(t, repo, nil, "git", "rev-parse", "HEAD^")
-	baseEnv := []string{"AI_REVIEW_BASE_SHA=" + base, "EXPECTED_PR_BASE=" + base, "EXPECTED_REMOTE_URL=" + remote, "PATH=" + bin + string(os.PathListSeparator) + os.Getenv("PATH")}
+	baseRefFile := filepath.Join(dir, "pr-base-ref")
+	require.NoError(t, os.WriteFile(baseRefFile, []byte("main\n"), 0o644))
+	baseEnv := []string{"AI_REVIEW_BASE_SHA=" + base, "EXPECTED_PR_BASE=" + base, "EXPECTED_REMOTE_URL=" + remote, "PR_BASE_REF_FILE=" + baseRefFile, "PATH=" + bin + string(os.PathListSeparator) + os.Getenv("PATH")}
 	otherRemote := filepath.Join(dir, "other.git")
 	run(t, dir, nil, "git", "init", "--bare", otherRemote)
 	run(t, repo, nil, "git", "remote", "add", "other", otherRemote)
@@ -95,6 +98,11 @@ fi
 	require.Contains(t, output, "validation changed the worktree")
 	require.Equal(t, initialRemote, run(t, remote, nil, "git", "rev-parse", "refs/heads/chore/ci-local-format-parity"))
 	run(t, repo, nil, "git", "restore", "tracked.txt")
+	output, err = runResult(repo, append(baseEnv, "VALIDATOR_MODE=retarget"), "bash", "scripts/agent-push", "origin", "chore/ci-local-format-parity")
+	require.Error(t, err)
+	require.Contains(t, output, "PR base changed during validation")
+	require.Equal(t, initialRemote, run(t, remote, nil, "git", "rev-parse", "refs/heads/chore/ci-local-format-parity"))
+	require.NoError(t, os.WriteFile(baseRefFile, []byte("main\n"), 0o644))
 
 	realGit, err := exec.LookPath("git")
 	require.NoError(t, err)
@@ -111,6 +119,7 @@ fi
 		"PATH=" + bin + string(os.PathListSeparator) + os.Getenv("PATH"),
 		"EXPECTED_PR_BASE=" + base,
 		"EXPECTED_REMOTE_URL=" + remote,
+		"PR_BASE_REF_FILE=" + baseRefFile,
 	}
 	run(t, repo, pushEnv, "bash", "scripts/agent-push", "origin", "chore/ci-local-format-parity")
 	refspec, err := os.ReadFile(pushArgsLog)
@@ -138,6 +147,7 @@ set -euo pipefail
 case "${VALIDATOR_MODE:-pass}" in
     pass) ;;
     race) git push "$RACE_REMOTE" "$RACE_BASE:refs/heads/chore/new-branch" ;;
+    base-change) git push "$RACE_REMOTE" HEAD:refs/heads/main ;;
     *) exit 17 ;;
 esac
 `), 0o755))
@@ -210,6 +220,11 @@ fi
 	require.Error(t, err)
 	require.Equal(t, base, run(t, remote, nil, "git", "rev-parse", "refs/heads/chore/new-branch"))
 	run(t, repo, nil, "git", "push", "origin", ":refs/heads/chore/new-branch")
+	output, err = push(append(baseEnv, "VALIDATOR_MODE=base-change", "RACE_REMOTE="+remote))
+	require.Error(t, err)
+	require.Contains(t, output, "remote base branch main changed during validation")
+	require.False(t, remoteBranchExists())
+	run(t, repo, nil, "git", "push", "--force", "origin", base+":refs/heads/main")
 
 	run(t, repo, baseEnv, "bash", "scripts/agent-push", "origin", "chore/new-branch")
 	require.Equal(t, candidate, run(t, remote, nil, "git", "rev-parse", "refs/heads/chore/new-branch"))

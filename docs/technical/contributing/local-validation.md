@@ -239,7 +239,9 @@ lint fixes that formatters do not.
 Before a PR exists, supply `AI_REVIEW_BASE_REF=<base-branch>` as well. The
 script requires the target branch to be absent on the remote and compares
 `AI_REVIEW_BASE_SHA` with the remote base branch before running the same gate.
-For an existing PR, it compares the SHA with the PR base.
+For an existing PR, it compares the SHA with the PR base. After validation and
+before publication, it checks the selected base again. It refuses to push if
+the remote base advanced or the PR base branch or SHA changed.
 
 `bash scripts/agent-check-full` is the explicit broad fallback. It runs full
 normalization, the baseline, and the complete root-module race suite. It is not

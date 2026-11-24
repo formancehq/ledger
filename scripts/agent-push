@@ -40,18 +40,21 @@ if [[ -z "$publication_repo" ]]; then
     echo "agent-push: publication repository for remote $remote is empty" >&2
     exit 1
 fi
-pr_heads=$(gh pr list --head "$branch" --state open --json baseRefOid,headRefName,headRepository --jq '.[] | [.headRepository.nameWithOwner // "", .headRefName, .baseRefOid] | @tsv') || {
+read_pr_bases() {
+    gh pr list --head "$branch" --state open --json baseRefName,baseRefOid,headRefName,headRepository --jq '.[] | [.headRepository.nameWithOwner // "", .headRefName, .baseRefName, .baseRefOid] | @tsv'
+}
+pr_heads=$(read_pr_bases) || {
     echo "agent-push: unable to list PRs for branch $branch" >&2
     exit 1
 }
-pr_bases=$(awk -F '\t' -v repo="$publication_repo" -v branch="$branch" '$1 == repo && $2 == branch { print $3 }' <<< "$pr_heads")
+pr_bases=$(awk -F '\t' -v repo="$publication_repo" -v branch="$branch" '$1 == repo && $2 == branch { print $3 "\t" $4 }' <<< "$pr_heads")
 first_push=false
 if [[ -n "$pr_bases" ]]; then
     if [[ "$pr_bases" == *$'\n'* ]]; then
         echo "agent-push: multiple open PRs match branch $branch" >&2
         exit 1
     fi
-    if [[ "$pr_bases" != "$AI_REVIEW_BASE_SHA" ]]; then
+    if [[ "${pr_bases#*$'\t'}" != "$AI_REVIEW_BASE_SHA" ]]; then
         echo "agent-push: AI_REVIEW_BASE_SHA does not match PR base ($pr_bases)" >&2
         exit 1
     fi
@@ -96,6 +99,27 @@ if [[ -n "$(git status --porcelain)" ]]; then
     echo "agent-push: validation changed the worktree; commit the result before pushing" >&2
     git status --short >&2
     exit 1
+fi
+
+if [[ "$first_push" == true ]]; then
+    remote_base=$(git ls-remote --heads "$remote_url" "refs/heads/$base_ref") || {
+        echo "agent-push: unable to recheck remote base branch $base_ref" >&2
+        exit 1
+    }
+    if [[ "$remote_base" != "$AI_REVIEW_BASE_SHA"$'\t'"refs/heads/$base_ref" ]]; then
+        echo "agent-push: remote base branch $base_ref changed during validation" >&2
+        exit 1
+    fi
+else
+    current_pr_heads=$(read_pr_bases) || {
+        echo "agent-push: unable to recheck PR base" >&2
+        exit 1
+    }
+    current_pr_bases=$(awk -F '\t' -v repo="$publication_repo" -v branch="$branch" '$1 == repo && $2 == branch { print $3 "\t" $4 }' <<< "$current_pr_heads")
+    if [[ "$current_pr_bases" != "$pr_bases" ]]; then
+        echo "agent-push: PR base changed during validation" >&2
+        exit 1
+    fi
 fi
 
 if [[ "$first_push" == true ]]; then
