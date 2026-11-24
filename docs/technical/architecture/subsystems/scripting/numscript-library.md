@@ -11,7 +11,7 @@ Each numscript is identified by a **name** (e.g. `payment-with-fees`) scoped to 
 - **Every version is an explicit full semver** (`major.minor.patch`). Saving with an empty, `"latest"`, or partial version is rejected with `NUMSCRIPT_INVALID_VERSION`.
 - **Content entries are immutable.** Once `payment-with-fees` `1.0.0` is stored it can never be overwritten or removed. Re-saving the same `(name, version)` returns `NUMSCRIPT_VERSION_ALREADY_EXISTS`.
 - **There is no delete and no restore.** Nothing tombstones or clears a version; the only mutation is appending a new one.
-- **A version can carry a description.** The optional free-text `description` (at most 1024 bytes) is stored with that version and is part of its immutable entry, so changing it means saving a new version. It is part of the audited `SaveNumscriptOrder` and `SavedNumscriptLog`, and the checker compares it with the stored entry. A longer description returns `NUMSCRIPT_DESCRIPTION_TOO_LONG`.
+- **A version can carry a description.** The optional free-text `description` (at most 1024 bytes) is stored with that version and is part of its immutable entry, so changing it means saving a new version. It is part of the audited `SaveNumscriptOrder` and `SavedNumscriptLog`, and the checker compares it with the stored entry. A longer description is rejected with reason `VALIDATION`; the audit log records the failure code `NUMSCRIPT_DESCRIPTION_TOO_LONG`. Servers before `v3.0.0-rc.5` ignore the field and still save the version, so a client that depends on the description checks that the save response echoes it.
 - **Each name has a `latest` pointer equal to the greatest stored semver.** Saving advances the pointer to `max(current, saved)`. Versions may be saved out of order — saving `1.0.0` after `2.0.0` leaves the pointer at `2.0.0`.
 
 Because there is no soft-delete state, a stored version has no derived status: it simply exists, and exactly one of them (the greatest) is what the latest pointer resolves to.
@@ -162,7 +162,7 @@ ledgerctl numscripts versions payment-with-fees --ledger my-ledger
 | Content required | — | 400 | INVALID_ARGUMENT | Empty content |
 | Parse error | `NUMSCRIPT_PARSE_ERROR` | 400 | INVALID_ARGUMENT | Invalid Numscript syntax |
 | Invalid version | `NUMSCRIPT_INVALID_VERSION` | 400 | INVALID_ARGUMENT | Save version is not a full semver |
-| Description too long | `NUMSCRIPT_DESCRIPTION_TOO_LONG` | 400 | INVALID_ARGUMENT | Save description exceeds 1024 bytes |
+| Description too long | `VALIDATION` (audit failure code `NUMSCRIPT_DESCRIPTION_TOO_LONG`) | 400 | INVALID_ARGUMENT | Save description exceeds 1024 bytes of UTF-8 |
 | Version exists | `NUMSCRIPT_VERSION_ALREADY_EXISTS` | 409 | ALREADY_EXISTS | The `(name, version)` is already stored (immutable) |
 | Not found | `NUMSCRIPT_NOT_FOUND` | 404 | NOT_FOUND | Get a non-existent numscript or version |
 | Not runnable on the VM | `NUMSCRIPT_COMPILE_ERROR` | 400 | INVALID_ARGUMENT | A typed compiler rejection has structured facts and can be audited. An unclassified compiler diagnostic keeps this public reason but exits without an audited verdict or frozen idempotency key. |

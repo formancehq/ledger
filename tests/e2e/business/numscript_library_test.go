@@ -152,6 +152,10 @@ var _ = Describe("Numscript Library", Ordered, func() {
 			Expect(ok).To(BeTrue())
 			Expect(st.Code()).To(Equal(codes.InvalidArgument))
 			Expect(st.Message()).To(ContainSubstring("description"))
+
+			info := actions.ExtractGRPCErrorInfo(err)
+			Expect(info).NotTo(BeNil())
+			Expect(info.Reason).To(Equal(domain.ErrReasonValidation))
 		})
 	})
 
