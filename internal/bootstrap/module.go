@@ -232,7 +232,7 @@ func Module() fx.Option {
 				}
 				if !cfg.Restore {
 					ctx := logging.ContextWithLogger(migrationCtx.Context, logger)
-					if err := incarnationmigration.MigrateBeforeRaft(ctx, store, cfg.RaftConfig.Bootstrap); err != nil {
+					if err := incarnationmigration.MigrateBeforeRaft(ctx, store); err != nil {
 						_ = store.Close()
 
 						return nil, fmt.Errorf("migrating local account incarnations before Raft startup: %w", err)

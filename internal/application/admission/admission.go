@@ -622,7 +622,22 @@ func (a *Admission) admit(ctx context.Context, prepare func(context.Context, *co
 	for {
 		if business {
 			if err := a.requireIncarnationActivation(); err != nil {
-				return nil, err
+				if !errors.Is(err, capabilities.ErrActivationPending) {
+					return nil, err
+				}
+				timer := time.NewTimer(clusterPolicyReadyPollInterval)
+				select {
+				case <-ctx.Done():
+					timer.Stop()
+
+					return nil, fmt.Errorf("waiting for incarnation write capability activation: %w", ctx.Err())
+				case <-timer.C:
+				}
+				if err := a.writeGate.CheckWritesAllowed(); err != nil {
+					return nil, err
+				}
+
+				continue
 			}
 		}
 		prepared, prepareErr := prepare(ctx, caller.Snapshot())
@@ -678,7 +693,7 @@ func (a *Admission) requireIncarnationActivation() error {
 		return err
 	}
 	if marker.Complete {
-		return errors.New("account incarnation history is migrated; waiting for write capability activation")
+		return fmt.Errorf("account incarnation history is migrated; waiting for write capability activation: %w", capabilities.ErrActivationPending)
 	}
 
 	return nil

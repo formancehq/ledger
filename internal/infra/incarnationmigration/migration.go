@@ -121,7 +121,7 @@ func RequireDrainBarrier(reader dal.PebbleGetter) error {
 // MigrateBeforeRaft converts an unmigrated store while startup still owns it
 // exclusively. The completed marker makes ordinary restarts a no-op; an
 // interrupted run resumes from its last atomically committed audit cursor.
-func MigrateBeforeRaft(ctx context.Context, store *dal.Store, bootstrap bool) error {
+func MigrateBeforeRaft(ctx context.Context, store *dal.Store) error {
 	policy, err := query.ReadClusterPolicy(store)
 	if err != nil {
 		return err
@@ -137,7 +137,7 @@ func MigrateBeforeRaft(ctx context.Context, store *dal.Store, bootstrap bool) er
 	if marker.Complete {
 		return nil
 	}
-	if !writesActive && bootstrap {
+	if !writesActive {
 		reader, err := store.NewDirectReadHandle()
 		if err != nil {
 			return err

@@ -268,6 +268,8 @@ the first Pod becoming Ready does not release writes. A restart during the
 backfill resumes from the last durable audit cursor. If migration fails, the
 Pod stays unready and the drain remains active; inspect its migration error
 and retained volume before retrying.
+An empty store is marked complete before Raft starts, including on a new
+learner, so it can join a cluster whose incarnation capabilities are active.
 It keeps `status.upgrade` and the finalizer until the StatefulSet controller
 has observed those policies and claim ownership matches them. With
 `whenDeleted: Delete`, the replacement StatefulSet must own every recorded

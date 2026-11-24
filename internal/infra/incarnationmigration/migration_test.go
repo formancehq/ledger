@@ -26,12 +26,12 @@ func TestMigrateBeforeRaftRequiresAppliedDrainAndResumes(t *testing.T) {
 	store := migrationStore(t)
 	appendFixture(t, store, 1, 100, &commonpb.LogPayload{Type: &commonpb.LogPayload_CreateLedger{CreateLedger: &commonpb.CreatedLedgerLog{Name: "ledger"}}})
 	activateWrites(t, store)
-	require.ErrorContains(t, MigrateBeforeRaft(t.Context(), store, false), "requires an active cluster drain")
+	require.ErrorContains(t, MigrateBeforeRaft(t.Context(), store), "requires an active cluster drain")
 
 	batch := store.OpenWriteSession()
 	require.NoError(t, batch.SetProto([]byte{dal.ZoneClusterTransient, dal.SubTransientDrainState}, &raftcmdpb.DrainState{Epoch: "upgrade", Index: 8, Members: []uint64{1}}))
 	require.NoError(t, batch.Commit())
-	require.ErrorContains(t, MigrateBeforeRaft(t.Context(), store, false), "barrier at index 8")
+	require.ErrorContains(t, MigrateBeforeRaft(t.Context(), store), "barrier at index 8")
 
 	batch = store.OpenWriteSession()
 	var applied [8]byte
@@ -40,17 +40,17 @@ func TestMigrateBeforeRaftRequiresAppliedDrainAndResumes(t *testing.T) {
 	require.NoError(t, batch.Commit())
 	canceled, cancel := context.WithCancel(t.Context())
 	cancel()
-	require.ErrorIs(t, MigrateBeforeRaft(canceled, store, false), context.Canceled)
+	require.ErrorIs(t, MigrateBeforeRaft(canceled, store), context.Canceled)
 	marker, err := ReadMarker(store)
 	require.NoError(t, err)
 	require.False(t, marker.Complete)
 
-	require.NoError(t, MigrateBeforeRaft(t.Context(), store, false))
+	require.NoError(t, MigrateBeforeRaft(t.Context(), store))
 	marker, err = ReadMarker(store)
 	require.NoError(t, err)
 	require.True(t, marker.Complete)
 	require.Equal(t, uint64(1), marker.Cursor)
-	require.NoError(t, MigrateBeforeRaft(t.Context(), store, false))
+	require.NoError(t, MigrateBeforeRaft(t.Context(), store))
 }
 
 func TestMigrateBeforeRaftConvertsDormantHistoryUnderDrain(t *testing.T) {
@@ -69,7 +69,7 @@ func TestMigrateBeforeRaftConvertsDormantHistoryUnderDrain(t *testing.T) {
 	binary.BigEndian.PutUint64(applied[:], 7)
 	require.NoError(t, batch.SetBytes([]byte{dal.ZoneClusterPersistent, dal.SubGlobLastAppliedIndex}, applied[:]))
 	require.NoError(t, batch.Commit())
-	require.NoError(t, MigrateBeforeRaft(t.Context(), store, false))
+	require.NoError(t, MigrateBeforeRaft(t.Context(), store))
 	marker, err := ReadMarker(store)
 	require.NoError(t, err)
 	require.True(t, marker.Complete)
@@ -77,12 +77,12 @@ func TestMigrateBeforeRaftConvertsDormantHistoryUnderDrain(t *testing.T) {
 	row, err := attributes.New().AccountIncarnation.Get(store, (domain.AccountKey{LedgerName: "ledger", Account: "alice"}).Bytes())
 	require.NoError(t, err)
 	require.Equal(t, uint64(200), row.GetInsertedAt().GetData())
-	require.NoError(t, MigrateBeforeRaft(t.Context(), store, false))
+	require.NoError(t, MigrateBeforeRaft(t.Context(), store))
 }
 
-func TestMigrateBeforeRaftSealsEmptyBootstrap(t *testing.T) {
+func TestMigrateBeforeRaftSealsEmptyStore(t *testing.T) {
 	store := migrationStore(t)
-	require.NoError(t, MigrateBeforeRaft(t.Context(), store, true))
+	require.NoError(t, MigrateBeforeRaft(t.Context(), store))
 	marker, err := ReadMarker(store)
 	require.NoError(t, err)
 	require.True(t, marker.Complete)
@@ -110,7 +110,7 @@ func TestMigrateBeforeRaftResumesCommittedCursorAfterCancellation(t *testing.T) 
 	}, 10*time.Second, 10*time.Millisecond)
 	cancel()
 	require.ErrorIs(t, <-done, context.Canceled)
-	require.NoError(t, MigrateBeforeRaft(t.Context(), store, false))
+	require.NoError(t, MigrateBeforeRaft(t.Context(), store))
 	marker, err := ReadMarker(store)
 	require.NoError(t, err)
 	require.True(t, marker.Complete)
