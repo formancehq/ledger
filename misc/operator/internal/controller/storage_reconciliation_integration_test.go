@@ -80,7 +80,10 @@ func storageManagerFixtureWithClient(t *testing.T, k8sClient client.Client, ctx 
 			if len(latest.GetFinalizers()) != 0 {
 				before := latest.DeepCopyObject().(client.Object)
 				latest.SetFinalizers(nil)
-				assert.NoError(t, k8sClient.Patch(ctx, latest, client.MergeFrom(before)))
+				// Delete may complete between Get and Patch during cleanup.
+				if err := k8sClient.Patch(ctx, latest, client.MergeFrom(before)); err != nil && !apierrors.IsNotFound(err) {
+					assert.NoError(t, err)
+				}
 			}
 		}
 	})

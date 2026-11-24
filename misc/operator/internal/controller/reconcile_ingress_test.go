@@ -10,6 +10,7 @@ import (
 	networkingv1 "k8s.io/api/networking/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/util/retry"
 
 	ledgerv1alpha1 "github.com/formancehq/ledger/misc/operator/api/v1alpha1"
 )
@@ -94,9 +95,13 @@ func TestReconcile_IngressDisabledCleansUp(t *testing.T) {
 	}, "Ingress should be created")
 
 	updated := &ledgerv1alpha1.Cluster{}
-	require.NoError(t, k8sClient.Get(ctx, types.NamespacedName{Name: "ing-cleanup", Namespace: ns}, updated))
-	updated.Spec.Ingress.Enabled = false
-	require.NoError(t, k8sClient.Update(ctx, updated))
+	require.NoError(t, retry.RetryOnConflict(retry.DefaultRetry, func() error {
+		if err := k8sClient.Get(ctx, types.NamespacedName{Name: "ing-cleanup", Namespace: ns}, updated); err != nil {
+			return err
+		}
+		updated.Spec.Ingress.Enabled = false
+		return k8sClient.Update(ctx, updated)
+	}))
 
 	requireEventually(t, func() bool {
 		err := k8sClient.Get(ctx, types.NamespacedName{Name: "ledger-ing-cleanup", Namespace: ns}, ing)

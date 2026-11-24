@@ -211,7 +211,10 @@ func TestClaimTemplateRecoveryPersistsSnapshotBeforeOrphanDeleteIntegration(t *t
 			if len(latest.GetFinalizers()) != 0 {
 				base := latest.DeepCopyObject().(client.Object)
 				latest.SetFinalizers(nil)
-				assert.NoError(t, c.Patch(ctx, latest, client.MergeFrom(base)))
+				// Delete may complete between Get and Patch during cleanup.
+				if err := c.Patch(ctx, latest, client.MergeFrom(base)); err != nil && !apierrors.IsNotFound(err) {
+					assert.NoError(t, err)
+				}
 			}
 		}
 	})
