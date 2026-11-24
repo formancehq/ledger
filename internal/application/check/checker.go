@@ -2576,6 +2576,7 @@ func reconcileMetadataOnlyChainBound(items []*auditpb.AuditItem, orders []*raftc
 					})
 				}
 			}
+
 			continue
 		}
 

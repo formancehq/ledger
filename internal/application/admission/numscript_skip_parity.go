@@ -64,6 +64,7 @@ func (a *Admission) predictOrderSkip(order *raftcmdpb.Order, ledgerName string, 
 		if ref == "" || !slices.Contains(allowed, commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT) {
 			return false, nil
 		}
+
 		return a.referenceExists(ledgerName, ref, effects)
 
 	case *raftcmdpb.LedgerApplyOrder_RevertTransaction:

@@ -38,6 +38,7 @@ func executeOrderWithReference(ledger, plain, reference string, skippable bool) 
 	if skippable {
 		order.GetLedgerScoped().GetApply().SkippableReasons = []commonpb.ErrorReason{commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT}
 	}
+
 	return order
 }
 
