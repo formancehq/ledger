@@ -107,7 +107,7 @@ func runList(cmd *cobra.Command, _ []string) error {
 			info.GetName(),
 			info.GetVersion(),
 			createdAt,
-			info.GetDescription(),
+			cmdutil.TerminalSafe(info.GetDescription()),
 		})
 	}
 

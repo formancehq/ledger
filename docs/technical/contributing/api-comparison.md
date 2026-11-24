@@ -905,7 +905,7 @@ Numscripts use **semantic versioning** (semver) with the format `major.minor.pat
 When saving a numscript via `PUT /v3/{ledgerName}/numscripts/{name}`, the request body includes:
 - `content` (required): The numscript source code
 - `version` (required): An explicit full semver (e.g. `"2.0.0"`) creating a new immutable version. Fails with 409 if the version already exists, and with 400 (`NUMSCRIPT_INVALID_VERSION`) for an empty, partial, or `"latest"` value.
-- `description` (optional): Free text stored with this version, replacing the v2 template `description`. It is limited to 1024 bytes of UTF-8; a longer value fails with 400 (`VALIDATION`). Changing a description requires saving a new version.
+- `description` (optional): Free text stored with this version, replacing the v2 template `description`. It is limited to 1024 bytes of UTF-8 and must not contain control characters other than newline and tab; a violating value fails with 400 (`VALIDATION`). Changing a description requires saving a new version.
 
 Saving a numscript requires an existing ledger. A missing ledger returns HTTP
 404 (`LEDGER_NOT_FOUND`).

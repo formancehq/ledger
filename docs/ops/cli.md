@@ -3676,7 +3676,7 @@ ledgerctl numscripts save <name> --ledger <ledger-name> --version <semver> [flag
 |------|---------|-------------|
 | `--file` | | Path to the numscript file (reads stdin if omitted) |
 | `--version` | | Explicit full semver (e.g. `1.0.0`); required |
-| `--description` | | Description stored with this version, at most 1024 bytes of UTF-8; a longer value is rejected with reason `VALIDATION` |
+| `--description` | | Description stored with this version: at most 1024 bytes of UTF-8, with no control characters other than newline and tab. Other values are rejected with reason `VALIDATION`. Human-readable output escapes control characters, for example `\n`; `--json` and `--yaml` keep the stored value. |
 | `--timeout` | `10s` | Request timeout |
 
 **Example:**

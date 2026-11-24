@@ -134,7 +134,7 @@ func TestProcessSaveNumscript_KeepsGreatestPointer(t *testing.T) {
 func TestProcessSaveNumscript_StoresDescription(t *testing.T) {
 	t.Parallel()
 
-	for _, description := range []string{"", "Pay out a user", strings.Repeat("é", domain.MaxNumscriptDescriptionLength/2)} {
+	for _, description := range []string{"", "Pay out a user", "Line one\n\tLine two", strings.Repeat("é", domain.MaxNumscriptDescriptionLength/2)} {
 		t.Run(description, func(t *testing.T) {
 			t.Parallel()
 
@@ -175,4 +175,31 @@ func TestProcessSaveNumscript_RejectsLongDescription(t *testing.T) {
 	result, perr := processor.ProcessOrder(saveNumscriptOrderWithDescription("main", "pay", validNumscriptContent, "1.0.0", description), mockStore)
 	require.Nil(t, result)
 	require.ErrorIs(t, perr, domain.ErrNumscriptDescriptionTooLong)
+}
+
+// TestProcessSaveNumscript_RejectsControlCharacters: control characters other
+// than newline and tab are rejected before any store interaction.
+func TestProcessSaveNumscript_RejectsControlCharacters(t *testing.T) {
+	t.Parallel()
+
+	for name, description := range map[string]string{
+		"escape":          "\x1b[2Jcleared",
+		"bell":            "ring\x07",
+		"carriage return": "real\rfake",
+		"delete":          "a\x7fb",
+		"c1 csi":          "a\u009bb",
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			ctrl := gomock.NewController(t)
+			mockStore := NewMockScope(ctrl)
+			processor, err := NewRequestProcessor(nil, 0)
+			require.NoError(t, err)
+
+			result, perr := processor.ProcessOrder(saveNumscriptOrderWithDescription("main", "pay", validNumscriptContent, "1.0.0", description), mockStore)
+			require.Nil(t, result)
+			require.ErrorIs(t, perr, domain.ErrNumscriptDescriptionInvalidChar)
+		})
+	}
 }

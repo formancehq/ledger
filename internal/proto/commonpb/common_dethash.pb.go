@@ -2724,6 +2724,17 @@ func (m *NumscriptCurrencyMismatchDetails) MarshalDeterministicVT(dAtA []byte) [
 	return append(dAtA, b...)
 }
 
+func (m *NumscriptDescriptionInvalidCharDetails) MarshalDeterministicVT(dAtA []byte) []byte {
+	if m == nil {
+		return dAtA
+	}
+	b, err := m.MarshalVT()
+	if err != nil {
+		panic("MarshalDeterministicVT: " + err.Error())
+	}
+	return append(dAtA, b...)
+}
+
 func (m *NumscriptDescriptionTooLongDetails) MarshalDeterministicVT(dAtA []byte) []byte {
 	if m == nil {
 		return dAtA

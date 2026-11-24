@@ -36,12 +36,24 @@ func TestMetadataOnlyRejectionsBuildAuditFailure(t *testing.T) {
 	}
 }
 
-func TestNumscriptDescriptionTooLongBuildsAuditFailure(t *testing.T) {
+func TestNumscriptDescriptionRejectionsBuildAuditFailure(t *testing.T) {
 	t.Parallel()
 
-	failure := buildAuditFailure(domain.ErrNumscriptDescriptionTooLong)
-	require.Equal(t, "NUMSCRIPT_DESCRIPTION_TOO_LONG", commonpb.FailureDetailsCode(failure.GetDetails()))
-	require.Equal(t, commonpb.ErrorReason_ERROR_REASON_VALIDATION, commonpb.FailureDetailsReason(failure.GetDetails()))
+	for _, tc := range []struct {
+		err  domain.SerializableError
+		code string
+	}{
+		{domain.ErrNumscriptDescriptionTooLong, "NUMSCRIPT_DESCRIPTION_TOO_LONG"},
+		{domain.ErrNumscriptDescriptionInvalidChar, "NUMSCRIPT_DESCRIPTION_INVALID_CHAR"},
+	} {
+		t.Run(tc.code, func(t *testing.T) {
+			t.Parallel()
+
+			failure := buildAuditFailure(tc.err)
+			require.Equal(t, tc.code, commonpb.FailureDetailsCode(failure.GetDetails()))
+			require.Equal(t, commonpb.ErrorReason_ERROR_REASON_VALIDATION, commonpb.FailureDetailsReason(failure.GetDetails()))
+		})
+	}
 }
 
 // TestIdempotencyFailureFactsMatchAudit pins the equality the checker's

@@ -6924,6 +6924,7 @@ type FailureDetailsReader interface {
 	GetMetadataOnlyTransactionMetadata() MetadataOnlyTransactionMetadataDetailsReader
 	GetMetadataOnlyReference() MetadataOnlyReferenceDetailsReader
 	GetNumscriptDescriptionTooLong() NumscriptDescriptionTooLongDetailsReader
+	GetNumscriptDescriptionInvalidChar() NumscriptDescriptionInvalidCharDetailsReader
 	WhichKind() FailureDetails_KindReaderCase
 	Mutate() *FailureDetails
 }
@@ -8146,6 +8147,14 @@ func (r *failureDetailsReadonly) GetNumscriptDescriptionTooLong() NumscriptDescr
 	return v.NumscriptDescriptionTooLong.AsReader()
 }
 
+func (r *failureDetailsReadonly) GetNumscriptDescriptionInvalidChar() NumscriptDescriptionInvalidCharDetailsReader {
+	v, ok := (*FailureDetails)(r).GetKind().(*FailureDetails_NumscriptDescriptionInvalidChar)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.NumscriptDescriptionInvalidChar.AsReader()
+}
+
 // FailureDetails_KindReaderCase identifies a selected oneof arm by its protobuf field number.
 type FailureDetails_KindReaderCase int32
 
@@ -8303,6 +8312,7 @@ const (
 	FailureDetails_KindReaderCase_MetadataOnlyTransactionMetadata          FailureDetails_KindReaderCase = 150
 	FailureDetails_KindReaderCase_MetadataOnlyReference                    FailureDetails_KindReaderCase = 151
 	FailureDetails_KindReaderCase_NumscriptDescriptionTooLong              FailureDetails_KindReaderCase = 152
+	FailureDetails_KindReaderCase_NumscriptDescriptionInvalidChar          FailureDetails_KindReaderCase = 153
 )
 
 func (r *failureDetailsReadonly) WhichKind() FailureDetails_KindReaderCase {
@@ -8611,6 +8621,8 @@ func (r *failureDetailsReadonly) WhichKind() FailureDetails_KindReaderCase {
 		return FailureDetails_KindReaderCase_MetadataOnlyReference
 	case *FailureDetails_NumscriptDescriptionTooLong:
 		return FailureDetails_KindReaderCase_NumscriptDescriptionTooLong
+	case *FailureDetails_NumscriptDescriptionInvalidChar:
+		return FailureDetails_KindReaderCase_NumscriptDescriptionInvalidChar
 	default:
 		return FailureDetails_KindReaderCase_Unset
 	}
@@ -14182,6 +14194,68 @@ func (l numscriptCurrencyMismatchDetailsListReadonly) Range(yield func(int, Nums
 // view aliases the underlying slice; do not mutate s afterwards.
 func NewNumscriptCurrencyMismatchDetailsListReader(s []*NumscriptCurrencyMismatchDetails) NumscriptCurrencyMismatchDetailsListReader {
 	return numscriptCurrencyMismatchDetailsListReadonly(s)
+}
+
+// NumscriptDescriptionInvalidCharDetailsReader provides read-only access to NumscriptDescriptionInvalidCharDetails.
+// Call Mutate() to obtain a mutable clone.
+type NumscriptDescriptionInvalidCharDetailsReader interface {
+	Mutate() *NumscriptDescriptionInvalidCharDetails
+}
+
+type numscriptDescriptionInvalidCharDetailsReadonly NumscriptDescriptionInvalidCharDetails
+
+func (r *numscriptDescriptionInvalidCharDetailsReadonly) Mutate() *NumscriptDescriptionInvalidCharDetails {
+	return (*NumscriptDescriptionInvalidCharDetails)(r).CloneVT()
+}
+
+// AsReader returns a read-only view of this NumscriptDescriptionInvalidCharDetails.
+func (m *NumscriptDescriptionInvalidCharDetails) AsReader() NumscriptDescriptionInvalidCharDetailsReader {
+	if m == nil {
+		return nil
+	}
+	return (*numscriptDescriptionInvalidCharDetailsReadonly)(m)
+}
+
+// Mutate returns a mutable deep clone of this NumscriptDescriptionInvalidCharDetails.
+func (m *NumscriptDescriptionInvalidCharDetails) Mutate() *NumscriptDescriptionInvalidCharDetails {
+	return m.CloneVT()
+}
+
+// NumscriptDescriptionInvalidCharDetailsListReader provides read-only iteration over []*NumscriptDescriptionInvalidCharDetails.
+type NumscriptDescriptionInvalidCharDetailsListReader interface {
+	Len() int
+	Get(i int) NumscriptDescriptionInvalidCharDetailsReader
+	Range(yield func(int, NumscriptDescriptionInvalidCharDetailsReader) bool)
+}
+
+type numscriptDescriptionInvalidCharDetailsListReadonly []*NumscriptDescriptionInvalidCharDetails
+
+func (l numscriptDescriptionInvalidCharDetailsListReadonly) Len() int { return len(l) }
+
+func (l numscriptDescriptionInvalidCharDetailsListReadonly) Get(i int) NumscriptDescriptionInvalidCharDetailsReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l numscriptDescriptionInvalidCharDetailsListReadonly) Range(yield func(int, NumscriptDescriptionInvalidCharDetailsReader) bool) {
+	for i, v := range l {
+		var r NumscriptDescriptionInvalidCharDetailsReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewNumscriptDescriptionInvalidCharDetailsListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewNumscriptDescriptionInvalidCharDetailsListReader(s []*NumscriptDescriptionInvalidCharDetails) NumscriptDescriptionInvalidCharDetailsListReader {
+	return numscriptDescriptionInvalidCharDetailsListReadonly(s)
 }
 
 // NumscriptDescriptionTooLongDetailsReader provides read-only access to NumscriptDescriptionTooLongDetails.

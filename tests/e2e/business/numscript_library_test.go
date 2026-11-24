@@ -144,9 +144,26 @@ var _ = Describe("Numscript Library", Ordered, func() {
 			Expect(got).To(Equal(map[string]string{"2.0.0": "", "1.0.0": "Credit Alice 1.00 USD"}))
 		})
 
+		It("Should reject control characters other than newline and tab", func() {
+			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("",
+				actions.SaveDescribedNumscriptAction(ledgerName, "pay", script100, "3.0.0", "\x1b]52;c;cHduZWQ=\x07")))
+			Expect(err).To(HaveOccurred())
+			st, ok := status.FromError(err)
+			Expect(ok).To(BeTrue())
+			Expect(st.Code()).To(Equal(codes.InvalidArgument))
+
+			info := actions.ExtractGRPCErrorInfo(err)
+			Expect(info).NotTo(BeNil())
+			Expect(info.Reason).To(Equal(domain.ErrReasonValidation))
+
+			_, err = sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("",
+				actions.SaveDescribedNumscriptAction(ledgerName, "pay", script100, "3.0.0", "Line one\n\tLine two")))
+			Expect(err).To(Succeed())
+		})
+
 		It("Should reject a description longer than 1024 bytes", func() {
 			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("",
-				actions.SaveDescribedNumscriptAction(ledgerName, "pay", script100, "3.0.0", strings.Repeat("a", domain.MaxNumscriptDescriptionLength+1))))
+				actions.SaveDescribedNumscriptAction(ledgerName, "pay", script100, "4.0.0", strings.Repeat("a", domain.MaxNumscriptDescriptionLength+1))))
 			Expect(err).To(HaveOccurred())
 			st, ok := status.FromError(err)
 			Expect(ok).To(BeTrue())

@@ -1020,6 +1020,7 @@ message FailureDetails {
     MetadataOnlyTransactionMetadataDetails metadata_only_transaction_metadata = 150 [(failure_reason) = ERROR_REASON_VALIDATION];
     MetadataOnlyReferenceDetails metadata_only_reference = 151 [(failure_reason) = ERROR_REASON_VALIDATION];
     NumscriptDescriptionTooLongDetails numscript_description_too_long = 152 [(failure_reason) = ERROR_REASON_VALIDATION];
+    NumscriptDescriptionInvalidCharDetails numscript_description_invalid_char = 153 [(failure_reason) = ERROR_REASON_VALIDATION];
   }
 }
 
@@ -1367,6 +1368,9 @@ message NumscriptContentRequiredDetails {
 message NumscriptCurrencyMismatchDetails {
   optional string expected = 1;
   optional string got = 2;
+}
+
+message NumscriptDescriptionInvalidCharDetails {
 }
 
 message NumscriptDescriptionTooLongDetails {

@@ -5666,8 +5666,9 @@ components:
           type: string
           description: |
             Optional description stored with this version, limited to 1024
-            bytes of UTF-8 (not characters). A longer value is rejected with
-            reason `VALIDATION`.
+            bytes of UTF-8 (not characters), with no control characters other
+            than newline and tab. A violating value is rejected with reason
+            `VALIDATION`.
         ledger:
           type: string
         name:
@@ -8732,8 +8733,9 @@ components:
           type: string
           description: |
             Optional free-text description stored with this version, limited to
-            1024 bytes of UTF-8 (not characters). A longer value returns 400
-            with reason `VALIDATION`. Changing it requires saving a new version.
+            1024 bytes of UTF-8 (not characters). Control characters other than
+            newline and tab are not allowed. A violating value returns 400 with
+            reason `VALIDATION`. Changing it requires saving a new version.
 
     NumscriptInfo:
       type: object

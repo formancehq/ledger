@@ -70,7 +70,7 @@ func runGet(cmd *cobra.Command, args []string) error {
 	pterm.Printf("Version:    %s\n", info.GetVersion())
 
 	if d := info.GetDescription(); d != "" {
-		pterm.Printf("Description: %s\n", d)
+		pterm.Printf("Description: %s\n", cmdutil.TerminalSafe(d))
 	}
 
 	if info.GetCreatedAt() != nil {

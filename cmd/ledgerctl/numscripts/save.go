@@ -129,7 +129,7 @@ func runSave(cmd *cobra.Command, args []string) error {
 			pterm.Printf("Version: %s\n", saved.GetInfo().GetVersion())
 
 			if d := saved.GetInfo().GetDescription(); d != "" {
-				pterm.Printf("Description: %s\n", d)
+				pterm.Printf("Description: %s\n", cmdutil.TerminalSafe(d))
 			}
 
 			return nil

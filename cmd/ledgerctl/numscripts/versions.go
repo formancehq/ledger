@@ -82,7 +82,7 @@ func runVersions(cmd *cobra.Command, args []string) error {
 		tableData = append(tableData, []string{
 			v.GetVersion(),
 			createdAt,
-			v.GetDescription(),
+			cmdutil.TerminalSafe(v.GetDescription()),
 		})
 	}
 
