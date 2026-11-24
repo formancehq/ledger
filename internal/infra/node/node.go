@@ -4096,7 +4096,7 @@ func nodeAdvertisedCapabilities(cfg NodeConfig) []uint32 {
 
 func registerInitialPeers(m *membership.Membership, cfg NodeConfig, includeSelf bool) error {
 	if includeSelf {
-		if err := m.Register(cfg.NodeID, cfg.AdvertiseAddr, cfg.ServiceAdvertiseAddr, cfg.InstanceID, nodeAdvertisedCapabilities(cfg)); err != nil {
+		if err := m.RegisterGenesisSelf(nodeAdvertisedCapabilities(cfg)); err != nil {
 			return fmt.Errorf("persisting self in peer store: %w", err)
 		}
 	}

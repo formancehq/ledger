@@ -476,6 +476,21 @@ func (m *Membership) Register(nodeID uint64, raftAddr, serviceAddr string, insta
 	return nil
 }
 
+// RegisterGenesisSelf establishes the local member in a newly created Raft
+// ConfState. Bootstrap and restored bootstrap have no prior committed member
+// in this Raft history, so their validated local evidence is the initial
+// evidence. Ordinary restarts must continue to use Register and PutLocal.
+func (m *Membership) RegisterGenesisSelf(capabilityIDs []uint32) error {
+	if err := m.store.Put(m.selfNodeID, m.selfRaftAddr, m.selfServiceAddr, m.selfInstanceID, capabilityIDs); err != nil {
+		return fmt.Errorf("persisting genesis peer %d: %w", m.selfNodeID, err)
+	}
+	if err := m.Set(m.selfNodeID, m.selfRaftAddr, m.selfServiceAddr, m.selfInstanceID, capabilityIDs); err != nil {
+		return fmt.Errorf("registering genesis peer %d: %w", m.selfNodeID, err)
+	}
+
+	return nil
+}
+
 // Unregister is the dual of Register: Pebble delete + cache delete.
 // Pebble first so a crash between the two leaves a state the next boot
 // can heal from (LoadAll won't see the deleted peer).
