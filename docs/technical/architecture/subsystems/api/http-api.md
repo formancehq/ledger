@@ -103,8 +103,7 @@ backend call. A supplied body must contain one JSON value followed only by
 whitespace. An empty execute body is allowed. The entire body counts toward the
 4 MiB limit, including trailing whitespace or invalid trailing data.
 
-Generated clients use strings for execute parameters. Raw REST clients can
-also send booleans and exact JSON integers within the signed 64-bit minimum to
+Execute parameters accept strings, booleans and exact JSON integers within the signed 64-bit minimum to
 unsigned 64-bit maximum range; the filter type can further narrow that range.
 Use a decimal string if the client cannot represent the integer exactly.
 Supplying `null` yields `400 INVALID_PARAMETERS`; use an explicit empty string
