@@ -2,8 +2,8 @@
 
 Ledger's capability metadata is the protocol foundation for future incompatible
 features deployed with a coordinated stop-and-restart. It is separate from the
-client-facing gRPC protocol revision. Account incarnations add a staged rolling
-migration after every member runs the compatible binary. Mixed-version
+client-facing gRPC protocol revision. Account incarnations use the stopped
+rc.4 to rc.5 upgrade to backfill every member before activation. Mixed-version
 activation remains unsupported.
 
 ## Wire contract
@@ -181,10 +181,9 @@ stopped-upgrade boundary is needed for these checks.
 ## Rollout and recovery
 
 Deploy the barrier-aware binary to every member before enabling an incompatible
-feature. The account-incarnation migration uses two activation milestones and
-one-at-a-time member restarts. Other features still require a coordinated stop
-and restart. An old leader cannot be made safe by upgrading only the other
-nodes. Restart, snapshot
+feature. The account-incarnation migration uses two activation milestones under
+the rc.4 to rc.5 stopped upgrade. An old leader cannot be made safe by upgrading
+only the other nodes. Restart, snapshot
 install, restore, and downgrade code must preserve the policy. Membership
 changes are not used as a rolling activation mechanism. `Node.Propose` evaluates the authoritative
 policy while holding the proposal and index-tracker guards, before reserving a

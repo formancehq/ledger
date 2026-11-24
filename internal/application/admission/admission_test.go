@@ -21,6 +21,8 @@ import (
 	"github.com/formancehq/ledger/v3/internal/domain/processing/numscript"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
 	"github.com/formancehq/ledger/v3/internal/infra/cache"
+	"github.com/formancehq/ledger/v3/internal/infra/capabilities"
+	"github.com/formancehq/ledger/v3/internal/infra/incarnationmigration"
 	"github.com/formancehq/ledger/v3/internal/infra/node"
 	"github.com/formancehq/ledger/v3/internal/infra/plan"
 	"github.com/formancehq/ledger/v3/internal/infra/state"
@@ -146,6 +148,21 @@ func createTestAdmission(t *testing.T, store *dal.Store) (*Admission, *attribute
 
 func attributedTestContext(ctx context.Context) context.Context {
 	return internalauth.WithSystemActor(ctx, commands.ComponentClusterPolicy)
+}
+
+func TestMigratedStoreWaitsForWriteActivation(t *testing.T) {
+	store := createTestStore(t)
+	a, _ := createTestAdmission(t, store)
+	require.NoError(t, a.requireIncarnationActivation())
+	require.NoError(t, incarnationmigration.MigrateBeforeRaft(t.Context(), store, true))
+	require.ErrorContains(t, a.requireIncarnationActivation(), "waiting for write capability activation")
+	policy, err := query.ReadClusterPolicy(store)
+	require.NoError(t, err)
+	policy.CapabilityActivations = append(policy.CapabilityActivations, &commonpb.CapabilityActivation{Id: uint32(capabilities.AccountIncarnationWritesV1), Active: true})
+	batch := store.OpenWriteSession()
+	require.NoError(t, state.SaveClusterPolicy(batch, policy))
+	require.NoError(t, batch.Commit())
+	require.NoError(t, a.requireIncarnationActivation())
 }
 
 func TestAccountNeedsFollowCommittedIncarnationCapability(t *testing.T) {

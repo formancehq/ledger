@@ -44,10 +44,11 @@ func SupportedIDs() []CapabilityID {
 	return []CapabilityID{AccountIncarnationWritesV1, AccountIncarnationHistoryCompleteV1}
 }
 
-// AutomaticallyActivatedIDs is empty while incarnation rollout requires an
-// operator-controlled cutover for both writes and historical coverage.
+// AutomaticallyActivatedIDs is used only after every member advertises a
+// completed local migration. The stopped-upgrade drain stays active until
+// both activations are committed.
 func AutomaticallyActivatedIDs() []CapabilityID {
-	return nil
+	return []CapabilityID{AccountIncarnationWritesV1, AccountIncarnationHistoryCompleteV1}
 }
 
 // IsActive reports the committed activation at the reader's apply position.

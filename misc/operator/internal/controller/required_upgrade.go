@@ -30,8 +30,9 @@ import (
 // rc.5 also retypes AggregatedVolume totals at the unchanged protocol revision,
 // and fails a forwarded preload_unavailable order at its position in the batch,
 // where rc.4 rejects the whole batch before executing any order. Stop every
-// rc.4 node before starting rc.5. validateRCUpgrade checks adjacency, and
-// scripts/checkprotocolversion parses this literal.
+// rc.4 node before starting rc.5. Account history is backfilled under this
+// drain before Raft starts on each replacement Pod. validateRCUpgrade checks
+// adjacency, and scripts/checkprotocolversion parses this literal.
 var mandatoryStopVersions = []string{"v3.0.0-rc.4", "v3.0.0-rc.5"}
 
 const requiredUpgradePoll = 5 * time.Second
@@ -427,7 +428,17 @@ func (r *stoppedUpgradeReconciler) reconcile(ctx context.Context, ledger *ledger
 		if err != nil {
 			return false, ctrl.Result{}, err
 		}
-		ready, err := ensureDrainReleased(ctx, r.upgradeDrainCluster(live, sts), state.DrainEpoch)
+		upgradeCluster := r.upgradeDrainCluster(live, sts)
+		if state.Target == "v3.0.0-rc.5" {
+			active, err := upgradeCluster.IncarnationCapabilitiesActive(ctx)
+			if err != nil {
+				return false, ctrl.Result{}, fmt.Errorf("checking account incarnation activation before drain release: %w", err)
+			}
+			if !active {
+				return false, ctrl.Result{RequeueAfter: requiredUpgradePoll}, nil
+			}
+		}
+		ready, err := ensureDrainReleased(ctx, upgradeCluster, state.DrainEpoch)
 		if err != nil {
 			return false, ctrl.Result{}, fmt.Errorf("releasing stopped-upgrade drain: %w", err)
 		}

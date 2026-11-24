@@ -70,6 +70,9 @@ func runMigrateIncarnations(cmd *cobra.Command, _ []string) error {
 	if !capabilities.IsActive(policy, capabilities.AccountIncarnationWritesV1) {
 		return errors.New("AccountIncarnationWritesV1 must be active before migrating account incarnations")
 	}
+	if err := incarnationmigration.RequireDrainBarrier(store); err != nil {
+		return err
+	}
 	pause, err := cmd.Flags().GetDuration("pause-after-batch")
 	if err != nil {
 		return err

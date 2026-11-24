@@ -84,6 +84,10 @@ import (
 // It is used to decide whether a joining node needs to register as a learner.
 type walFreshStart bool
 
+// StartupMigrationContext carries command and process-signal cancellation to
+// store construction, which happens before Fx starts its lifecycle hooks.
+type StartupMigrationContext struct{ context.Context }
+
 func publishCapabilityGate(membership *raftmembership.Membership, policy commonpb.ClusterPolicyReader) error {
 	return membership.SetCapabilityGate(capabilities.ActiveIDsReader(policy))
 }
@@ -158,6 +162,18 @@ func newCapabilityActivationReconciler(admission *admission.Admission, store *da
 
 			return
 		}
+		// The drain may be lifted only after every voter and learner has
+		// converted its own store. Do not activate writes from software-only
+		// evidence while another member is still migrating.
+		ready, err := capabilities.Ready([]capabilities.CapabilityID{capabilities.AccountIncarnationHistoryCompleteV1}, raftNode.CapabilityMembers())
+		if err != nil {
+			logger.WithFields(map[string]any{"error": err}).Errorf("Checking account migration evidence failed; activation will retry")
+
+			return
+		}
+		if len(ready) == 0 {
+			return
+		}
 		if err := activateReadyCapabilities(ctx, admission.AdmitCapabilityTransition, store, raftNode.IsLeader, raftNode.CapabilityMembers, capabilities.AutomaticallyActivatedIDs()); err != nil {
 			logger.WithFields(map[string]any{"error": err}).Errorf("Capability activation failed; will retry from committed policy")
 		}
@@ -187,7 +203,7 @@ func Module() fx.Option {
 					cfg.PeerServiceAdvertiseAddr(),
 				)
 			}, fx.ParamTags(``, ``, `name:"raft"`, ``)),
-			func(cfg Config, meterProvider metric.MeterProvider, logger logging.Logger) (*dal.Store, error) {
+			func(cfg Config, meterProvider metric.MeterProvider, logger logging.Logger, migrationCtx StartupMigrationContext) (*dal.Store, error) {
 				store, err := dal.NewStore(
 					cfg.DataDir,
 					logger,
@@ -215,10 +231,11 @@ func Module() fx.Option {
 					}).Infof("Configuration validation done")
 				}
 				if !cfg.Restore {
-					if err := incarnationmigration.RequireReady(store); err != nil {
+					ctx := logging.ContextWithLogger(migrationCtx.Context, logger)
+					if err := incarnationmigration.MigrateBeforeRaft(ctx, store, cfg.RaftConfig.Bootstrap); err != nil {
 						_ = store.Close()
 
-						return nil, fmt.Errorf("checking local account incarnation readiness before Raft startup: %w", err)
+						return nil, fmt.Errorf("migrating local account incarnations before Raft startup: %w", err)
 					}
 				}
 

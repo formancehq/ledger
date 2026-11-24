@@ -60,6 +60,11 @@ The `rc.1` to `rc.2` transition rolls one voter at a time with a maintenance
 barrier that pauses writes; it does not stop the whole cluster.
 The `rc.2` to `rc.3` transition remains rolling. The dedicated peer-service
 port and Membership address migration first ship after the published `rc.4`.
+The `rc.4` to `rc.5` stopped upgrade also covers account-incarnation history
+backfill. Each replacement Pod migrates its retained store before starting Raft.
+The operator keeps the drain until all Pods are ready and both incarnation
+capabilities have been committed. The default startup probe allows two hours;
+increase an overridden probe if the measured migration can take longer.
 Every explicit-target `UpdatePreparedQuery` order must wait until the stopped
 `rc.3` to `rc.4` upgrade completes. Even when the target value is unchanged,
 the new processor records target fields in the audit log, so old and new voters
@@ -179,7 +184,7 @@ mixed-version window. Rebuild or restore applies only to the cases listed below.
 | Class | When it applies | Procedure |
 |-------|-----------------|-----------|
 | Rolling | Default between adjacent RCs on the same release line. | Restart followers one at a time, wait for each to catch up, transfer leadership to an upgraded voter, then restart the old leader. |
-| Operator-required stopped restart | An adjacent RC crossing a listed operator boundary; `rc.3` to `rc.4` and `rc.4` to `rc.5` cross one. | Establish an operator-owned drain and verify its durable barrier on every member; retain the existing PVCs, delete the StatefulSet, wait until it and every old Pod are gone, then recreate it with the target image and the same claims. The cluster is unavailable throughout the stop. |
+| Operator-required stopped restart | An adjacent RC crossing a listed operator boundary; `rc.3` to `rc.4`, `rc.4` to `rc.5` cross one. | Establish an operator-owned drain and verify its durable barrier on every member; retain the existing PVCs, delete the StatefulSet, wait until it and every old Pod are gone, then recreate it with the target image and the same claims. The cluster is unavailable throughout the stop. |
 | Coordinated restart | A separate compatibility line that cannot safely mix binaries. | Enable maintenance mode, wait for every voter to apply the maintenance barrier durably, stop every node, replace all binaries, then restart without a mixed-version window. Preserve or migrate the released data. |
 | Migrate or restore | A separate line with a changed persisted or backup format, or development state before the first RC. | Follow a tested migration or restore a backup supported by the target release. A wipe or external rebuild is permitted only for unsupported pre-RC development state. Verify the complete state before serving writes. |
 
@@ -252,9 +257,17 @@ acknowledgement or elapsed time does not satisfy this condition. It does not
 force-delete a stuck Pod. Only then may it create the target StatefulSet and
 reuse the same PVC names. Until the drain is released, the replacement keeps
 both PVC retention policies at `Retain`, including recovery if the replacement
-disappears. After all target replicas are ready, the operator commits the drain
-release and waits for every member to persist it. In the `Adopting` phase it
+disappears. After all target replicas are ready and the rc.5 capability gate
+below has passed, the operator commits the drain release and waits for every
+member to persist it. In the `Adopting` phase it
 then restores the requested retention policies on the replacement StatefulSet.
+At the `rc.4` to `rc.5` boundary, each replacement Pod first backfills its
+account-incarnation history under the active drain. The operator waits for
+both incarnation capabilities to be committed before sending the release;
+the first Pod becoming Ready does not release writes. A restart during the
+backfill resumes from the last durable audit cursor. If migration fails, the
+Pod stays unready and the drain remains active; inspect its migration error
+and retained volume before retrying.
 It keeps `status.upgrade` and the finalizer until the StatefulSet controller
 has observed those policies and claim ownership matches them. With
 `whenDeleted: Delete`, the replacement StatefulSet must own every recorded

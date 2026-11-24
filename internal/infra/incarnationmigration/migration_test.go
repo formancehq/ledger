@@ -1,9 +1,12 @@
 package incarnationmigration
 
 import (
+	"context"
 	"encoding/binary"
+	"fmt"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel/metric/noop"
@@ -15,8 +18,104 @@ import (
 	"github.com/formancehq/ledger/v3/internal/infra/capabilities"
 	"github.com/formancehq/ledger/v3/internal/proto/auditpb"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
+
+func TestMigrateBeforeRaftRequiresAppliedDrainAndResumes(t *testing.T) {
+	store := migrationStore(t)
+	appendFixture(t, store, 1, 100, &commonpb.LogPayload{Type: &commonpb.LogPayload_CreateLedger{CreateLedger: &commonpb.CreatedLedgerLog{Name: "ledger"}}})
+	activateWrites(t, store)
+	require.ErrorContains(t, MigrateBeforeRaft(t.Context(), store, false), "requires an active cluster drain")
+
+	batch := store.OpenWriteSession()
+	require.NoError(t, batch.SetProto([]byte{dal.ZoneClusterTransient, dal.SubTransientDrainState}, &raftcmdpb.DrainState{Epoch: "upgrade", Index: 8, Members: []uint64{1}}))
+	require.NoError(t, batch.Commit())
+	require.ErrorContains(t, MigrateBeforeRaft(t.Context(), store, false), "barrier at index 8")
+
+	batch = store.OpenWriteSession()
+	var applied [8]byte
+	binary.BigEndian.PutUint64(applied[:], 8)
+	require.NoError(t, batch.SetBytes([]byte{dal.ZoneClusterPersistent, dal.SubGlobLastAppliedIndex}, applied[:]))
+	require.NoError(t, batch.Commit())
+	canceled, cancel := context.WithCancel(t.Context())
+	cancel()
+	require.ErrorIs(t, MigrateBeforeRaft(canceled, store, false), context.Canceled)
+	marker, err := ReadMarker(store)
+	require.NoError(t, err)
+	require.False(t, marker.Complete)
+
+	require.NoError(t, MigrateBeforeRaft(t.Context(), store, false))
+	marker, err = ReadMarker(store)
+	require.NoError(t, err)
+	require.True(t, marker.Complete)
+	require.Equal(t, uint64(1), marker.Cursor)
+	require.NoError(t, MigrateBeforeRaft(t.Context(), store, false))
+}
+
+func TestMigrateBeforeRaftConvertsDormantHistoryUnderDrain(t *testing.T) {
+	store := migrationStore(t)
+	appendFixture(t, store, 1, 100, &commonpb.LogPayload{Type: &commonpb.LogPayload_CreateLedger{CreateLedger: &commonpb.CreatedLedgerLog{Name: "ledger"}}})
+	appendFixture(t, store, 2, 200, &commonpb.LogPayload{Type: &commonpb.LogPayload_Apply{Apply: &commonpb.ApplyLedgerLog{
+		LedgerName: "ledger", Log: &commonpb.LedgerLog{Data: &commonpb.LedgerLogPayload{Payload: &commonpb.LedgerLogPayload_CreatedTransaction{
+			CreatedTransaction: &commonpb.CreatedTransaction{Transaction: &commonpb.Transaction{Postings: []*commonpb.Posting{{Source: "world", Destination: "alice"}}}},
+		}}},
+	}}})
+	// The source RC has no incarnation capability. Its drain still makes the
+	// historical store immutable while the target binary migrates at startup.
+	batch := store.OpenWriteSession()
+	require.NoError(t, batch.SetProto([]byte{dal.ZoneClusterTransient, dal.SubTransientDrainState}, &raftcmdpb.DrainState{Epoch: "upgrade", Index: 7, Members: []uint64{1}}))
+	var applied [8]byte
+	binary.BigEndian.PutUint64(applied[:], 7)
+	require.NoError(t, batch.SetBytes([]byte{dal.ZoneClusterPersistent, dal.SubGlobLastAppliedIndex}, applied[:]))
+	require.NoError(t, batch.Commit())
+	require.NoError(t, MigrateBeforeRaft(t.Context(), store, false))
+	marker, err := ReadMarker(store)
+	require.NoError(t, err)
+	require.True(t, marker.Complete)
+	require.Equal(t, uint64(2), marker.Cursor)
+	row, err := attributes.New().AccountIncarnation.Get(store, (domain.AccountKey{LedgerName: "ledger", Account: "alice"}).Bytes())
+	require.NoError(t, err)
+	require.Equal(t, uint64(200), row.GetInsertedAt().GetData())
+	require.NoError(t, MigrateBeforeRaft(t.Context(), store, false))
+}
+
+func TestMigrateBeforeRaftSealsEmptyBootstrap(t *testing.T) {
+	store := migrationStore(t)
+	require.NoError(t, MigrateBeforeRaft(t.Context(), store, true))
+	marker, err := ReadMarker(store)
+	require.NoError(t, err)
+	require.True(t, marker.Complete)
+	require.Zero(t, marker.Cursor)
+}
+
+func TestMigrateBeforeRaftResumesCommittedCursorAfterCancellation(t *testing.T) {
+	store := migrationStore(t)
+	for sequence := uint64(1); sequence <= 257; sequence++ {
+		appendFixture(t, store, sequence, sequence*100, &commonpb.LogPayload{Type: &commonpb.LogPayload_CreateLedger{
+			CreateLedger: &commonpb.CreatedLedgerLog{Name: fmt.Sprintf("ledger-%d", sequence)},
+		}})
+	}
+	activateWrites(t, store)
+	batch := store.OpenWriteSession()
+	require.NoError(t, batch.SetProto([]byte{dal.ZoneClusterTransient, dal.SubTransientDrainState}, &raftcmdpb.DrainState{Epoch: "upgrade", Index: 7, Members: []uint64{1}}))
+	require.NoError(t, batch.Commit())
+	ctx, cancel := context.WithCancel(t.Context())
+	done := make(chan error, 1)
+	go func() { done <- RunWithPause(ctx, store, time.Hour) }()
+	require.Eventually(t, func() bool {
+		marker, err := ReadMarker(store)
+
+		return err == nil && marker.Cursor == 256
+	}, 10*time.Second, 10*time.Millisecond)
+	cancel()
+	require.ErrorIs(t, <-done, context.Canceled)
+	require.NoError(t, MigrateBeforeRaft(t.Context(), store, false))
+	marker, err := ReadMarker(store)
+	require.NoError(t, err)
+	require.True(t, marker.Complete)
+	require.Equal(t, uint64(257), marker.Cursor)
+}
 
 func migrationStore(t *testing.T) *dal.Store {
 	t.Helper()

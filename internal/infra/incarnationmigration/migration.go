@@ -77,7 +77,6 @@ func AdvertisedIDs(reader dal.PebbleGetter) ([]uint32, error) {
 }
 
 // RequireReady prevents a node from starting Raft on an unmigrated store.
-// Operators run the local migration explicitly while the node is stopped.
 func RequireReady(reader dal.PebbleGetter) error {
 	policy, err := query.ReadClusterPolicy(reader)
 	if err != nil {
@@ -97,6 +96,85 @@ func RequireReady(reader dal.PebbleGetter) error {
 	return nil
 }
 
+// RequireDrainBarrier checks that this local store has applied the active
+// cluster drain before its history is changed outside Raft. The check must run
+// before both the standalone migration command and startup migration.
+func RequireDrainBarrier(reader dal.PebbleGetter) error {
+	drain, err := query.ReadDrainState(reader)
+	if err != nil {
+		return fmt.Errorf("reading drain state before account incarnation migration: %w", err)
+	}
+	if drain == nil || drain.GetReleasedIndex() != 0 {
+		return errors.New("account incarnation migration requires an active cluster drain")
+	}
+	applied, err := query.ReadLastAppliedIndex(reader)
+	if err != nil {
+		return fmt.Errorf("reading applied index before account incarnation migration: %w", err)
+	}
+	if applied < drain.GetIndex() {
+		return fmt.Errorf("account incarnation migration requires the drain barrier at index %d to be applied (last applied %d)", drain.GetIndex(), applied)
+	}
+
+	return nil
+}
+
+// MigrateBeforeRaft converts an unmigrated store while startup still owns it
+// exclusively. The completed marker makes ordinary restarts a no-op; an
+// interrupted run resumes from its last atomically committed audit cursor.
+func MigrateBeforeRaft(ctx context.Context, store *dal.Store, bootstrap bool) error {
+	policy, err := query.ReadClusterPolicy(store)
+	if err != nil {
+		return err
+	}
+	writesActive := capabilities.IsActive(policy, capabilities.AccountIncarnationWritesV1)
+	if capabilities.IsActive(policy, capabilities.AccountIncarnationHistoryCompleteV1) && !writesActive {
+		return errors.New("account history capability active without incarnation writes")
+	}
+	marker, err := ReadMarker(store)
+	if err != nil {
+		return err
+	}
+	if marker.Complete {
+		return nil
+	}
+	if !writesActive && bootstrap {
+		reader, err := store.NewDirectReadHandle()
+		if err != nil {
+			return err
+		}
+		lastAudit, readErr := query.ReadLastAuditSequence(reader)
+		applied, appliedErr := query.ReadLastAppliedIndex(reader)
+		closeErr := reader.Close()
+		if readErr != nil {
+			return readErr
+		}
+		if appliedErr != nil {
+			return appliedErr
+		}
+		if closeErr != nil {
+			return closeErr
+		}
+		if lastAudit == 0 && applied == 0 {
+			return run(ctx, store, false, 0, true)
+		}
+	}
+	drain, err := query.ReadDrainState(store)
+	if err != nil {
+		return err
+	}
+	if !writesActive && (drain == nil || drain.GetReleasedIndex() != 0) {
+		return nil
+	}
+	if err := RequireDrainBarrier(store); err != nil {
+		return err
+	}
+	if err := run(ctx, store, false, 0, true); err != nil {
+		return err
+	}
+
+	return RequireReady(store)
+}
+
 func putMarker(batch *dal.WriteSession, marker Marker) error {
 	var raw [18]byte
 	raw[0] = definitionVersion
@@ -113,7 +191,7 @@ func putMarker(batch *dal.WriteSession, marker Marker) error {
 // The caller must hold exclusive ownership of this Pebble store and must not
 // start Raft, admission, or account reads until Run returns successfully.
 func Run(ctx context.Context, store *dal.Store) error {
-	return run(ctx, store, false, 0)
+	return run(ctx, store, false, 0, false)
 }
 
 // RunWithPause lets the explicit migration command limit sustained Pebble load.
@@ -123,7 +201,7 @@ func RunWithPause(ctx context.Context, store *dal.Store, pause time.Duration) er
 		return errors.New("migration batch pause must be non-negative")
 	}
 
-	return run(ctx, store, false, pause)
+	return run(ctx, store, false, pause, false)
 }
 
 // ReconcileAfterDelta refreshes a checkpoint-carried incarnation projection
@@ -131,10 +209,10 @@ func RunWithPause(ctx context.Context, store *dal.Store, pause time.Duration) er
 // It scans the historical fold to recover account types, then writes only the
 // audit suffix beyond the checkpoint's completion marker.
 func ReconcileAfterDelta(ctx context.Context, store *dal.Store) error {
-	return run(ctx, store, true, 0)
+	return run(ctx, store, true, 0, false)
 }
 
-func run(ctx context.Context, store *dal.Store, force bool, pause time.Duration) error {
+func run(ctx context.Context, store *dal.Store, force bool, pause time.Duration, allowDormant bool) error {
 	policy, err := query.ReadClusterPolicy(store)
 	if err != nil {
 		return err
@@ -144,7 +222,9 @@ func run(ctx context.Context, store *dal.Store, force bool, pause time.Duration)
 			return errors.New("account history capability active without incarnation writes")
 		}
 
-		return nil
+		if !allowDormant {
+			return nil
+		}
 	}
 
 	marker, err := ReadMarker(store)

@@ -28,6 +28,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
 	"github.com/formancehq/ledger/v3/internal/infra/capabilities"
 	"github.com/formancehq/ledger/v3/internal/infra/health"
+	"github.com/formancehq/ledger/v3/internal/infra/incarnationmigration"
 	"github.com/formancehq/ledger/v3/internal/infra/membership"
 	"github.com/formancehq/ledger/v3/internal/infra/node"
 	"github.com/formancehq/ledger/v3/internal/infra/plan"
@@ -75,6 +76,9 @@ type Admission struct {
 	// startup window before a fresh leader's reconciler commits the policy.
 	clusterPolicyCommitted atomic.Bool
 	auditKeyCommitted      atomic.Bool
+	// Incarnation activation is monotonic; one observed commit removes the
+	// migration fence check from the steady-state business write path.
+	incarnationActivated atomic.Bool
 
 	// Metrics (noop when metricsEnabled is false)
 	metricsEnabled                 bool
@@ -499,7 +503,7 @@ func (a *Admission) recordPhaseOnExit(ctx context.Context, hist metric.Float64Hi
 func (a *Admission) Admit(ctx context.Context, req *servicepb.ApplyRequest) (*domain.ApplyResult, error) {
 	return a.admit(ctx, func(ctx context.Context, caller *commonpb.CallerSnapshot) (*preparedAdmission, error) {
 		return a.prepareExecutionBatch(ctx, caller, req)
-	}, a.proposeAdmission)
+	}, a.proposeAdmission, true)
 }
 
 // AdmitClusterPolicy admits the leader's internal cluster-policy reconciliation
@@ -511,7 +515,7 @@ func (a *Admission) AdmitClusterPolicy(ctx context.Context, policy *commonpb.Clu
 
 	return a.admit(ctx, func(ctx context.Context, caller *commonpb.CallerSnapshot) (*preparedAdmission, error) {
 		return a.prepareClusterPolicy(ctx, caller, policy)
-	}, a.proposeClusterPolicy)
+	}, a.proposeClusterPolicy, false)
 }
 
 func (a *Admission) AdmitCapabilityTransition(ctx context.Context, transition *commonpb.CapabilityActivation) (*domain.ApplyResult, error) {
@@ -527,7 +531,7 @@ func (a *Admission) AdmitCapabilityTransition(ctx context.Context, transition *c
 		command.Payload = &raftcmdpb.Proposal_CapabilityActivation{CapabilityActivation: transition.CloneVT()}
 
 		return a.prepareControl(ctx, caller, command)
-	}, a.proposeClusterPolicy)
+	}, a.proposeClusterPolicy, false)
 }
 
 type preparedAdmission struct {
@@ -582,7 +586,7 @@ func (a *Admission) prepareControl(ctx context.Context, caller *commonpb.CallerS
 
 type admissionPropose func(context.Context, *raftcmdpb.Proposal, *plan.BuildResult) (*futures.Future[state.ApplyResult], func(), error)
 
-func (a *Admission) admit(ctx context.Context, prepare func(context.Context, *commonpb.CallerSnapshot) (*preparedAdmission, error), propose admissionPropose) (response *domain.ApplyResult, err error) {
+func (a *Admission) admit(ctx context.Context, prepare func(context.Context, *commonpb.CallerSnapshot) (*preparedAdmission, error), propose admissionPropose, business bool) (response *domain.ApplyResult, err error) {
 	caller, err := auth.ResolveCallerAttribution(ctx)
 	if err != nil {
 		invalid, ok := errors.AsType[*domain.ErrInvalidCallerAttribution](err)
@@ -603,7 +607,6 @@ func (a *Admission) admit(ctx context.Context, prepare func(context.Context, *co
 	if err := a.waitLeaderReady(ctx); err != nil {
 		return nil, fmt.Errorf("waiting for leader readiness: %w", err)
 	}
-
 	// Exclude caller, write-gate, and leader-readiness waits from command duration.
 	start := time.Now()
 	defer func() {
@@ -617,6 +620,11 @@ func (a *Admission) admit(ctx context.Context, prepare func(context.Context, *co
 		}
 	}()
 	for {
+		if business {
+			if err := a.requireIncarnationActivation(); err != nil {
+				return nil, err
+			}
+		}
 		prepared, prepareErr := prepare(ctx, caller.Snapshot())
 		if prepared != nil {
 			orders = prepared.orders
@@ -650,6 +658,30 @@ func (a *Admission) admit(ctx context.Context, prepare func(context.Context, *co
 
 		return a.resolveAdmissionResult(ctx, prepared.command, fsmFuture)
 	}
+}
+
+func (a *Admission) requireIncarnationActivation() error {
+	if a.incarnationActivated.Load() {
+		return nil
+	}
+	policy, err := a.committedPolicy()
+	if err != nil {
+		return fmt.Errorf("reading committed policy before account write: %w", err)
+	}
+	if capabilities.IsActiveReader(policy, capabilities.AccountIncarnationWritesV1) {
+		a.incarnationActivated.Store(true)
+
+		return nil
+	}
+	marker, err := incarnationmigration.ReadMarker(a.store)
+	if err != nil {
+		return err
+	}
+	if marker.Complete {
+		return errors.New("account incarnation history is migrated; waiting for write capability activation")
+	}
+
+	return nil
 }
 
 func (a *Admission) proposeClusterPolicy(ctx context.Context, command *raftcmdpb.Proposal, build *plan.BuildResult) (*futures.Future[state.ApplyResult], func(), error) {

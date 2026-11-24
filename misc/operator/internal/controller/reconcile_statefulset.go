@@ -1235,10 +1235,9 @@ func defaultReadinessProbe() *corev1.Probe {
 	}
 }
 
-// defaultStartupProbe returns a startup probe that gives the process up to
-// 5 minutes (failureThreshold 30 * periodSeconds 10) to finish initialising.
-// This prevents the liveness probe from killing pods that are warming up a
-// large Pebble database on cold start.
+// defaultStartupProbe allows up to two hours (720 * 10 seconds) for a stopped
+// upgrade's resumable account-history migration before Raft and HTTP start.
+// An interrupted migration keeps its committed cursor and resumes on restart.
 func defaultStartupProbe() *corev1.Probe {
 	return &corev1.Probe{
 		ProbeHandler: corev1.ProbeHandler{
@@ -1248,7 +1247,7 @@ func defaultStartupProbe() *corev1.Probe {
 			},
 		},
 		PeriodSeconds:    10,
-		FailureThreshold: 30,
+		FailureThreshold: 720,
 	}
 }
 
