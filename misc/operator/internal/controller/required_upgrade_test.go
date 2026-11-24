@@ -786,6 +786,43 @@ func TestStoppedUpgradeFinalizerPatchFailureBlocksReconcile(t *testing.T) {
 	}
 }
 
+func TestStoppedUpgradeUsesClaimLifecycleCallbacks(t *testing.T) {
+	t.Parallel()
+	cluster := newMinimalCluster()
+	actor := &stoppedUpgradeReconciler{}
+	calls := make([]string, 0, 3)
+	adoptionFailure := errors.New("adoption callback")
+	claims := stoppedUpgradeClaimLifecycle{
+		releaseFinalizer: func(context.Context, *ledgerv1alpha1.Cluster) error {
+			calls = append(calls, "release")
+
+			return nil
+		},
+		ensureFinalizer: func(context.Context, *ledgerv1alpha1.Cluster) error {
+			calls = append(calls, "ensure")
+
+			return nil
+		},
+		adoptClaims: func(context.Context, *ledgerv1alpha1.Cluster, *appsv1.StatefulSet) (bool, ctrl.Result, error) {
+			calls = append(calls, "adopt")
+
+			return false, ctrl.Result{}, adoptionFailure
+		},
+	}
+
+	proceed, _, err := actor.reconcile(t.Context(), cluster, nil, claims)
+	require.NoError(t, err)
+	require.True(t, proceed)
+	require.Equal(t, []string{"release"}, calls)
+
+	cluster.Spec.Image.Tag = "v3.0.0-rc.4"
+	cluster.Status.Upgrade = &ledgerv1alpha1.ClusterUpgradeStatus{Phase: "Adopting", Target: cluster.Spec.Image.Tag}
+	proceed, _, err = actor.reconcile(t.Context(), cluster, nil, claims)
+	require.ErrorIs(t, err, adoptionFailure)
+	require.False(t, proceed)
+	require.Equal(t, []string{"release", "ensure", "adopt"}, calls)
+}
+
 func TestStoppedUpgradeResumesReleasedIntentAndRejectsClaimDeclarationChanges(t *testing.T) {
 	t.Parallel()
 	for _, tt := range []struct {

@@ -137,10 +137,20 @@ func (r *ClusterReconciler) reconcileRequiredUpgrade(ctx context.Context, ledger
 func (r *ClusterReconciler) reconcileRequiredUpgradeWithExec(ctx context.Context, ledger *ledgerv1alpha1.Cluster, sts *appsv1.StatefulSet, exec ledgerctlExec) (proceed bool, result ctrl.Result, err error) {
 	actor := stoppedUpgradeReconciler{
 		client: r.Client, config: r.Config, clientset: r.Clientset,
-		stopVersions: r.stopVersions, exec: exec, owner: r,
+		stopVersions: r.stopVersions, exec: exec,
 	}
 
-	return actor.reconcile(ctx, ledger, sts)
+	return actor.reconcile(ctx, ledger, sts, stoppedUpgradeClaimLifecycle{
+		ensureFinalizer:  r.ensureUpgradeClaimsFinalizer,
+		releaseFinalizer: r.releaseUpgradeClaimsFinalizer,
+		adoptClaims:      r.reconcileUpgradeClaimAdoption,
+	})
+}
+
+type stoppedUpgradeClaimLifecycle struct {
+	ensureFinalizer  func(context.Context, *ledgerv1alpha1.Cluster) error
+	releaseFinalizer func(context.Context, *ledgerv1alpha1.Cluster) error
+	adoptClaims      func(context.Context, *ledgerv1alpha1.Cluster, *appsv1.StatefulSet) (bool, ctrl.Result, error)
 }
 
 type stoppedUpgradeReconciler struct {
@@ -149,14 +159,12 @@ type stoppedUpgradeReconciler struct {
 	clientset    kubernetes.Interface
 	stopVersions []string
 	exec         ledgerctlExec
-	// Claim finalization and adoption stay on the Cluster reconciler.
-	owner *ClusterReconciler
 }
 
-func (r *stoppedUpgradeReconciler) reconcile(ctx context.Context, ledger *ledgerv1alpha1.Cluster, sts *appsv1.StatefulSet) (proceed bool, result ctrl.Result, err error) {
+func (r *stoppedUpgradeReconciler) reconcile(ctx context.Context, ledger *ledgerv1alpha1.Cluster, sts *appsv1.StatefulSet, claims stoppedUpgradeClaimLifecycle) (proceed bool, result ctrl.Result, err error) {
 	state := ledger.Status.Upgrade
 	if state == nil {
-		if err := r.owner.releaseUpgradeClaimsFinalizer(ctx, ledger); err != nil {
+		if err := claims.releaseFinalizer(ctx, ledger); err != nil {
 			return false, ctrl.Result{}, err
 		}
 	}
@@ -215,14 +223,14 @@ func (r *stoppedUpgradeReconciler) reconcile(ctx context.Context, ledger *ledger
 			return false, ctrl.Result{}, err
 		}
 	}
-	if err := r.owner.ensureUpgradeClaimsFinalizer(ctx, ledger); err != nil {
+	if err := claims.ensureFinalizer(ctx, ledger); err != nil {
 		return false, ctrl.Result{}, err
 	}
 	if ledger.Spec.Image.Tag != state.Target {
 		return false, ctrl.Result{}, fmt.Errorf("upgrade from %s to %s is in progress; restore spec.image.tag to %s before changing target", state.Source, state.Target, state.Target)
 	}
 	if state.Phase == "Adopting" {
-		return r.owner.reconcileUpgradeClaimAdoption(ctx, ledger, sts)
+		return claims.adoptClaims(ctx, ledger, sts)
 	}
 	// Keep the released intent hash, including claim declarations. The Pod hash
 	// excludes those fields, but storage edits must not alter a pinned upgrade.
