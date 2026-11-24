@@ -108,7 +108,7 @@ func (c *Checker) validateGetNumscript(maxTicket uint64, ledger, name, selector 
 
 		version, content, ok := base.Ledger(ledger).NumscriptSelect(name, selector)
 
-		return ok && info.GetName() == name && info.GetVersion() == version &&
+		return ok && info.GetLedger() == ledger && info.GetName() == name && info.GetVersion() == version &&
 			info.GetContent() == content && info.GetCreatedAt() != nil
 	}) {
 		assert.Reachable("singleton_driver_model: numscript read matched the library", internal.Details{"selector": selector})
@@ -134,7 +134,7 @@ func (c *Checker) validateListNumscripts(maxTicket uint64, ledger string, served
 			return false
 		}
 
-		return latestListingMatches(base.Ledger(ledger), served)
+		return latestListingMatches(base.Ledger(ledger), ledger, served)
 	}) {
 		if len(served) > 0 {
 			assert.Reachable("singleton_driver_model: numscript listing matched the library", internal.Details{"rows": len(served)})
@@ -151,7 +151,7 @@ func (c *Checker) validateListNumscripts(maxTicket uint64, ledger string, served
 
 // latestListingMatches holds a ListNumscripts page — the greatest version of
 // each name, ordered by name — to one base's library.
-func latestListingMatches(ls oracle.LedgerState, served []*commonpb.NumscriptInfo) bool {
+func latestListingMatches(ls oracle.LedgerState, ledger string, served []*commonpb.NumscriptInfo) bool {
 	names := map[string]struct{}{}
 	for k := range ls.Numscripts() {
 		names[k.Name] = struct{}{}
@@ -174,7 +174,7 @@ func latestListingMatches(ls oracle.LedgerState, served []*commonpb.NumscriptInf
 		content, _ := ls.NumscriptContent(name, version)
 
 		got := served[i]
-		if got.GetName() != name || got.GetVersion() != version || got.GetContent() != content || got.GetCreatedAt() == nil {
+		if got.GetLedger() != ledger || got.GetName() != name || got.GetVersion() != version || got.GetContent() != content || got.GetCreatedAt() == nil {
 			return false
 		}
 	}
