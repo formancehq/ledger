@@ -126,5 +126,5 @@ has-asset, reverted_at — keep their plain rows. Membership there is never
 revoked, so fold-ahead can only *add* rows, and the per-row keep against the
 pinned main handle (`MainHorizonKeep`) restores exactness without a format
 change. The reverse map (`0x03`) also keeps prompt deletion: it is builder
-bookkeeping, never query-facing, and the checker's reverse-map pass reads it
+bookkeeping, never query-facing, and the index builder maintains it
 as-is.

@@ -414,6 +414,7 @@ func TestLedgerHistoryRestartKeepsEmptyIndexLive(t *testing.T) {
 	canonical := indexes.Canonical(id)
 	persistLedgerAndIndexRegistry(t, b, ledger, id)
 	persistLedgerHistory(t, b, ledger, ledgerHistoryEmpty)
+	writeLogToFSM(t, b, &commonpb.Log{Sequence: 7})
 
 	batch := b.readStore.NewBatch()
 	require.NoError(t, b.readStore.WriteIndexVersionState(batch, ledger, canonical, readstore.IndexVersionState{

@@ -112,7 +112,7 @@ func TestReadReversionsCanonicalWordSurvivesAlias(t *testing.T) {
 func collectReversionEvents(t *testing.T, store *dal.Store, derived map[string]*bitset.Bitset, knownLedgers map[string]struct{}) []*servicepb.CheckStoreError {
 	t.Helper()
 
-	checker := NewChecker(store, attributes.New(), nil, logging.Testing())
+	checker := NewChecker(store, attributes.New(), logging.Testing())
 
 	handle, err := store.NewReadHandle()
 	require.NoError(t, err)

@@ -69,6 +69,14 @@ when target-specific gates project it back to the main pin:
 - folded account membership retains the documented purged-address exception;
 - schema and `IndexVersionState` come from their owning pinned views.
 
+The read store may be ahead of the main store after a crash: both commit
+without fsync and lose unsynced writes independently. Boot derives replay
+obligations from the main registry only once the main log head reaches the
+read-store cursor; an older main view would turn a ledger or index the read
+store already saw deleted into an obligation no later log can resolve. See
+`TestWorkerBootsAfterLeaderSyncRestoresMainStoreBehindReadStore` in
+`internal/application/indexbuilder/resync_boot_test.go`.
+
 For account-asset first-touch rows, test the overlap between live folding and
 historical backfill. Seed an independently known first touch at sequence 5,
 create the index on a non-empty ledger, and fold a later live touch at sequence
