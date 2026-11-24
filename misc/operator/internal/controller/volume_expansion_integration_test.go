@@ -35,6 +35,7 @@ func TestVolumeExpansionReconcilerPatchesPVCInEnvtest(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{Name: "auto-expand", Namespace: namespace},
 		Spec: ledgerv1alpha1.ClusterSpec{
 			Replicas: &replicas,
+			Image:    ledgerv1alpha1.ImageSpec{Tag: "v3.0.0"},
 			Persistence: ledgerv1alpha1.PersistenceSpec{
 				Data: ledgerv1alpha1.VolumeSpec{
 					Size:         resource.MustParse("100Gi"),
@@ -65,9 +66,11 @@ func TestVolumeExpansionReconcilerPatchesPVCInEnvtest(t *testing.T) {
 	pvc.Status.Phase = corev1.ClaimBound
 	pvc.Status.Capacity = corev1.ResourceList{corev1.ResourceStorage: request}
 	require.NoError(t, k8sClient.Status().Update(ctx, pvc))
+	applyDefaults(cluster)
+	_, err := (&ClusterReconciler{Client: k8sClient, Scheme: k8sClient.Scheme()}).reconcileStatefulSetWithExec(ctx, cluster, computeSpecHash(&cluster.Spec), nil, nil)
+	require.NoError(t, err)
 
-	// The volume reconciler watches Cluster objects, not PVCs. Wait until the
-	// primary reconciler has created the live StatefulSet, then supply the
+	// The volume reconciler watches Cluster objects, not PVCs. Supply the
 	// retained claim's live Pod evidence before enqueueing a Cluster update.
 	requireEventually(t, func() bool {
 		var statefulSet appsv1.StatefulSet

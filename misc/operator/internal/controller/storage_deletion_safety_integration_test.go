@@ -28,6 +28,7 @@ func TestStorageLayoutDeletionPreconditionsIntegration(t *testing.T) {
 			cluster := newCluster("layout", namespace)
 			cluster.UID = types.UID(namespace + "-cluster")
 			applyDefaults(cluster)
+			cluster.Spec.Image.Tag = "v3.0.0"
 			cluster.Spec.Persistence.DeletionProtection = new(false)
 			cluster.Spec.Persistence.Data.HostPath = &ledgerv1alpha1.HostPathVolumeSpec{Path: "/data"}
 			r := &ClusterReconciler{Client: k8sClient, Scheme: k8sClient.Scheme()}
