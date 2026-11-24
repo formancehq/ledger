@@ -136,7 +136,8 @@ fsync aborts boot but can leave the complete new batch visible; treat an uncerta
 migration as non-rollbackable. Recover using the target binary and retained
 volumes. Alternatively restore a separately retained pre-upgrade backup with its
 matching binary, losing writes after that backup. Use matching server and CLI
-versions: new backup manifests are deliberately rejected by old readers.
+versions: restoring a new checkpoint with RC.4 is unsupported even if its
+manifest parses successfully. Keep a separate RC.4 backup for rollback.
 The target binary also rejects released RC incremental manifests under the
 exception above. See the
 [storage contract](../technical/architecture/subsystems/storage/control-state.md).
