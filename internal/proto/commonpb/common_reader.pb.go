@@ -4589,6 +4589,7 @@ type NumscriptInfoReader interface {
 	GetVersion() string
 	GetCreatedAt() TimestampReader
 	GetLedger() string
+	GetDescription() string
 	Mutate() *NumscriptInfo
 }
 
@@ -4616,6 +4617,10 @@ func (r *numscriptInfoReadonly) GetCreatedAt() TimestampReader {
 
 func (r *numscriptInfoReadonly) GetLedger() string {
 	return (*NumscriptInfo)(r).GetLedger()
+}
+
+func (r *numscriptInfoReadonly) GetDescription() string {
+	return (*NumscriptInfo)(r).GetDescription()
 }
 
 func (r *numscriptInfoReadonly) Mutate() *NumscriptInfo {
@@ -4748,6 +4753,7 @@ func NewSavedNumscriptLogListReader(s []*SavedNumscriptLog) SavedNumscriptLogLis
 type NumscriptVersionEntryReader interface {
 	GetVersion() string
 	GetCreatedAt() TimestampReader
+	GetDescription() string
 	Mutate() *NumscriptVersionEntry
 }
 
@@ -4763,6 +4769,10 @@ func (r *numscriptVersionEntryReadonly) GetCreatedAt() TimestampReader {
 		return nil
 	}
 	return v.AsReader()
+}
+
+func (r *numscriptVersionEntryReadonly) GetDescription() string {
+	return (*NumscriptVersionEntry)(r).GetDescription()
 }
 
 func (r *numscriptVersionEntryReadonly) Mutate() *NumscriptVersionEntry {
@@ -6913,6 +6923,7 @@ type FailureDetailsReader interface {
 	GetMirrorAssetMappingInvalid() MirrorAssetMappingInvalidDetailsReader
 	GetMetadataOnlyTransactionMetadata() MetadataOnlyTransactionMetadataDetailsReader
 	GetMetadataOnlyReference() MetadataOnlyReferenceDetailsReader
+	GetNumscriptDescriptionTooLong() NumscriptDescriptionTooLongDetailsReader
 	WhichKind() FailureDetails_KindReaderCase
 	Mutate() *FailureDetails
 }
@@ -8127,6 +8138,14 @@ func (r *failureDetailsReadonly) GetMetadataOnlyReference() MetadataOnlyReferenc
 	return v.MetadataOnlyReference.AsReader()
 }
 
+func (r *failureDetailsReadonly) GetNumscriptDescriptionTooLong() NumscriptDescriptionTooLongDetailsReader {
+	v, ok := (*FailureDetails)(r).GetKind().(*FailureDetails_NumscriptDescriptionTooLong)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.NumscriptDescriptionTooLong.AsReader()
+}
+
 // FailureDetails_KindReaderCase identifies a selected oneof arm by its protobuf field number.
 type FailureDetails_KindReaderCase int32
 
@@ -8283,6 +8302,7 @@ const (
 	FailureDetails_KindReaderCase_MirrorAssetMappingInvalid                FailureDetails_KindReaderCase = 149
 	FailureDetails_KindReaderCase_MetadataOnlyTransactionMetadata          FailureDetails_KindReaderCase = 150
 	FailureDetails_KindReaderCase_MetadataOnlyReference                    FailureDetails_KindReaderCase = 151
+	FailureDetails_KindReaderCase_NumscriptDescriptionTooLong              FailureDetails_KindReaderCase = 152
 )
 
 func (r *failureDetailsReadonly) WhichKind() FailureDetails_KindReaderCase {
@@ -8589,6 +8609,8 @@ func (r *failureDetailsReadonly) WhichKind() FailureDetails_KindReaderCase {
 		return FailureDetails_KindReaderCase_MetadataOnlyTransactionMetadata
 	case *FailureDetails_MetadataOnlyReference:
 		return FailureDetails_KindReaderCase_MetadataOnlyReference
+	case *FailureDetails_NumscriptDescriptionTooLong:
+		return FailureDetails_KindReaderCase_NumscriptDescriptionTooLong
 	default:
 		return FailureDetails_KindReaderCase_Unset
 	}
@@ -14160,6 +14182,68 @@ func (l numscriptCurrencyMismatchDetailsListReadonly) Range(yield func(int, Nums
 // view aliases the underlying slice; do not mutate s afterwards.
 func NewNumscriptCurrencyMismatchDetailsListReader(s []*NumscriptCurrencyMismatchDetails) NumscriptCurrencyMismatchDetailsListReader {
 	return numscriptCurrencyMismatchDetailsListReadonly(s)
+}
+
+// NumscriptDescriptionTooLongDetailsReader provides read-only access to NumscriptDescriptionTooLongDetails.
+// Call Mutate() to obtain a mutable clone.
+type NumscriptDescriptionTooLongDetailsReader interface {
+	Mutate() *NumscriptDescriptionTooLongDetails
+}
+
+type numscriptDescriptionTooLongDetailsReadonly NumscriptDescriptionTooLongDetails
+
+func (r *numscriptDescriptionTooLongDetailsReadonly) Mutate() *NumscriptDescriptionTooLongDetails {
+	return (*NumscriptDescriptionTooLongDetails)(r).CloneVT()
+}
+
+// AsReader returns a read-only view of this NumscriptDescriptionTooLongDetails.
+func (m *NumscriptDescriptionTooLongDetails) AsReader() NumscriptDescriptionTooLongDetailsReader {
+	if m == nil {
+		return nil
+	}
+	return (*numscriptDescriptionTooLongDetailsReadonly)(m)
+}
+
+// Mutate returns a mutable deep clone of this NumscriptDescriptionTooLongDetails.
+func (m *NumscriptDescriptionTooLongDetails) Mutate() *NumscriptDescriptionTooLongDetails {
+	return m.CloneVT()
+}
+
+// NumscriptDescriptionTooLongDetailsListReader provides read-only iteration over []*NumscriptDescriptionTooLongDetails.
+type NumscriptDescriptionTooLongDetailsListReader interface {
+	Len() int
+	Get(i int) NumscriptDescriptionTooLongDetailsReader
+	Range(yield func(int, NumscriptDescriptionTooLongDetailsReader) bool)
+}
+
+type numscriptDescriptionTooLongDetailsListReadonly []*NumscriptDescriptionTooLongDetails
+
+func (l numscriptDescriptionTooLongDetailsListReadonly) Len() int { return len(l) }
+
+func (l numscriptDescriptionTooLongDetailsListReadonly) Get(i int) NumscriptDescriptionTooLongDetailsReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l numscriptDescriptionTooLongDetailsListReadonly) Range(yield func(int, NumscriptDescriptionTooLongDetailsReader) bool) {
+	for i, v := range l {
+		var r NumscriptDescriptionTooLongDetailsReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewNumscriptDescriptionTooLongDetailsListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewNumscriptDescriptionTooLongDetailsListReader(s []*NumscriptDescriptionTooLongDetails) NumscriptDescriptionTooLongDetailsListReader {
+	return numscriptDescriptionTooLongDetailsListReadonly(s)
 }
 
 // NumscriptDivideByZeroDetailsReader provides read-only access to NumscriptDivideByZeroDetails.

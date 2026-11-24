@@ -19,7 +19,7 @@ func TestHandleListNumscriptVersions_Success(t *testing.T) {
 	backend.EXPECT().ListNumscriptVersions(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
 		func(_ context.Context, _, _ string) (string, []*commonpb.NumscriptVersionEntry, error) {
 			return "2.0.0", []*commonpb.NumscriptVersionEntry{
-				{Version: "2.0.0"},
+				{Version: "2.0.0", Description: "Second release"},
 				{Version: "1.0.0"},
 			}, nil
 		}).AnyTimes()
@@ -34,6 +34,7 @@ func TestHandleListNumscriptVersions_Success(t *testing.T) {
 	require.Equal(t, http.StatusOK, w.Code)
 	require.Contains(t, w.Body.String(), `"latestVersion":"2.0.0"`)
 	require.Contains(t, w.Body.String(), `"version":"1.0.0"`)
+	require.Contains(t, w.Body.String(), `"description":"Second release"`)
 }
 
 func TestHandleListNumscriptVersions_MissingName(t *testing.T) {

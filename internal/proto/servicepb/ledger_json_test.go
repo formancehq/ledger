@@ -36,10 +36,11 @@ func TestListNumscriptVersionsJSONProjectsNestedEntries(t *testing.T) {
 	raw, err := json.Marshal(&ListNumscriptVersionsResponse{
 		LatestVersion: "v2",
 		Versions: []*commonpb.NumscriptVersionEntry{{
-			Version:   "v1",
-			CreatedAt: &commonpb.Timestamp{Data: 123},
+			Version:     "v1",
+			CreatedAt:   &commonpb.Timestamp{Data: 123},
+			Description: "first",
 		}},
 	})
 	require.NoError(t, err)
-	require.JSONEq(t, `{"latestVersion":"v2","versions":[{"version":"v1","createdAt":"1970-01-01T00:00:00.000123Z"}]}`, string(raw))
+	require.JSONEq(t, `{"latestVersion":"v2","versions":[{"version":"v1","createdAt":"1970-01-01T00:00:00.000123Z","description":"first"}]}`, string(raw))
 }

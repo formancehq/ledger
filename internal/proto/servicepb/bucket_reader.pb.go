@@ -2976,6 +2976,7 @@ type SaveNumscriptRequestReader interface {
 	GetContent() string
 	GetVersion() string
 	GetLedger() string
+	GetDescription() string
 	Mutate() *SaveNumscriptRequest
 }
 
@@ -2995,6 +2996,10 @@ func (r *saveNumscriptRequestReadonly) GetVersion() string {
 
 func (r *saveNumscriptRequestReadonly) GetLedger() string {
 	return (*SaveNumscriptRequest)(r).GetLedger()
+}
+
+func (r *saveNumscriptRequestReadonly) GetDescription() string {
+	return (*SaveNumscriptRequest)(r).GetDescription()
 }
 
 func (r *saveNumscriptRequestReadonly) Mutate() *SaveNumscriptRequest {

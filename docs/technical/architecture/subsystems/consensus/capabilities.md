@@ -155,6 +155,14 @@ committed order under the same rules as an older voter, including historically
 accepted shapes. No capability, persisted migration, wire revision, or
 stopped-upgrade boundary is needed for these checks.
 
+The Numscript library version description (EN-3381) adds an optional
+`SaveNumscriptOrder.description` that the FSM stores in `NumscriptInfo` and
+echoes in `SavedNumscriptLog`. An RC.4 voter would apply the same order without
+it, so old and new voters must not coexist. That release ships behind the
+mandatory stopped `rc.4` to `rc.5` upgrade, which stops every RC.4 voter first.
+An order without a description, including every historical order, applies and
+replays exactly as before. No capability ID is needed.
+
 ## Rollout and recovery
 
 Deploy the barrier-aware binary to every member, stop the cluster, and restart

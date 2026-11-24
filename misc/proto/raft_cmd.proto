@@ -183,6 +183,7 @@ message SaveNumscriptOrder {
   string name = 1;
   string content = 2;
   string version = 3;
+  string description = 4;
 }
 
 // CreateQueryCheckpointOrder triggers a physical Pebble checkpoint via Raft.

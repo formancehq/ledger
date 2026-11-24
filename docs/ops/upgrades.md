@@ -39,6 +39,9 @@ The `rc.2` to `rc.3` transition remains rolling. The dedicated peer-service
 port and Membership address migration first ship after the published `rc.4`.
 The operator also requires a stopped `rc.4` to `rc.5` upgrade: RC.4 cannot read
 storage schema 3 or apply the independent configuration and capability controls.
+RC.4 also drops the Numscript library version `description` when it applies a
+save, so old and new voters would store different library entries and audit
+bytes for a described save. The stopped boundary prevents that coexistence.
 Every explicit-target `UpdatePreparedQuery` order must wait until the stopped
 `rc.3` to `rc.4` upgrade completes. Even when the target value is unchanged,
 the new processor records target fields in the audit log, so old and new voters

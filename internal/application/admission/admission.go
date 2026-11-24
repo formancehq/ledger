@@ -2472,9 +2472,10 @@ func (a *Admission) ledgerRequestToOrder(order *raftcmdpb.Order, req *servicepb.
 			Ledger: reqType.SaveNumscript.GetLedger(),
 			Payload: &raftcmdpb.LedgerScopedOrder_SaveNumscript{
 				SaveNumscript: &raftcmdpb.SaveNumscriptOrder{
-					Name:    reqType.SaveNumscript.GetName(),
-					Content: reqType.SaveNumscript.GetContent(),
-					Version: reqType.SaveNumscript.GetVersion(),
+					Name:        reqType.SaveNumscript.GetName(),
+					Content:     reqType.SaveNumscript.GetContent(),
+					Version:     reqType.SaveNumscript.GetVersion(),
+					Description: reqType.SaveNumscript.GetDescription(),
 				},
 			},
 		})

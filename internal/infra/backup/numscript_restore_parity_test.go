@@ -349,7 +349,7 @@ set_account_meta(@bob, "tier", "gold")
 set_tx_meta("route", "inline")`, map[string]string{"amt": "USD/2 300"}, nil))
 	src.apply(actions.CreateScriptRefTransactionAction(numscriptRestoreLedger, "pay", "1.0.0",
 		map[string]string{"amt": "USD/2 50", "dest": "dave"}, nil))
-	src.apply(actions.SaveNumscriptWithVersionAction(numscriptRestoreLedger, "pay", numscriptRestorePayV2, "1.1.0"))
+	src.apply(actions.SaveDescribedNumscriptAction(numscriptRestoreLedger, "pay", numscriptRestorePayV2, "1.1.0", "Drain @bob before @alice"))
 	src.apply(actions.CreateScriptRefTransactionAction(numscriptRestoreLedger, "pay", "latest",
 		map[string]string{"amt": "USD/2 350", "dest": "erin"}, nil))
 	// This execution changes only account metadata. It must be exported in the
@@ -366,6 +366,7 @@ set_tx_meta("route", "inline")`, map[string]string{"amt": "USD/2 300"}, nil))
 	require.Equal(t, int64(350), live.balanceOf(t, "erin"))
 	require.Equal(t, "bob-then-alice", live.metadata["erin/paid_by"].GetStringValue())
 	require.Len(t, live.library, 2)
+	require.Equal(t, "Drain @bob before @alice", live.library["1.1.0"].GetDescription())
 
 	inc, err := RunIncrementalBackup(ctx, testLogger(), srcStore, storage, bucketID, 0)
 	require.NoError(t, err)

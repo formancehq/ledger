@@ -447,11 +447,13 @@ func (x *SavedNumscriptLog) MarshalJSON() ([]byte, error) {
 
 func (x *NumscriptVersionEntry) MarshalJSON() ([]byte, error) {
 	return jsonv2.Marshal(struct {
-		Version   string `json:"version"`
-		CreatedAt any    `json:"createdAt,omitempty,omitzero"`
+		Version     string `json:"version"`
+		CreatedAt   any    `json:"createdAt,omitempty,omitzero"`
+		Description string `json:"description"`
 	}{
-		Version:   x.Version,
-		CreatedAt: x.CreatedAt,
+		Version:     x.Version,
+		CreatedAt:   x.CreatedAt,
+		Description: x.Description,
 	})
 }
 

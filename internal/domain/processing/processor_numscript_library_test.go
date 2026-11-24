@@ -1,6 +1,7 @@
 package processing
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -14,9 +15,15 @@ import (
 const validNumscriptContent = "send [USD 1] (source = @world destination = @x)"
 
 func saveNumscriptOrder(ledger, name, content, version string) *raftcmdpb.Order {
+	return saveNumscriptOrderWithDescription(ledger, name, content, version, "")
+}
+
+func saveNumscriptOrderWithDescription(ledger, name, content, version, description string) *raftcmdpb.Order {
 	return &raftcmdpb.Order{Type: &raftcmdpb.Order_LedgerScoped{LedgerScoped: &raftcmdpb.LedgerScopedOrder{
-		Ledger:  ledger,
-		Payload: &raftcmdpb.LedgerScopedOrder_SaveNumscript{SaveNumscript: &raftcmdpb.SaveNumscriptOrder{Name: name, Content: content, Version: version}},
+		Ledger: ledger,
+		Payload: &raftcmdpb.LedgerScopedOrder_SaveNumscript{SaveNumscript: &raftcmdpb.SaveNumscriptOrder{
+			Name: name, Content: content, Version: version, Description: description,
+		}},
 	}}}
 }
 
@@ -119,4 +126,53 @@ func TestProcessSaveNumscript_KeepsGreatestPointer(t *testing.T) {
 	result, perr := processor.ProcessOrder(saveNumscriptOrder(ledger, "pay", validNumscriptContent, "1.0.0"), mockStore)
 	require.Nil(t, perr)
 	require.NotNil(t, result.GetSavedNumscript())
+}
+
+// TestProcessSaveNumscript_StoresDescription: the description is persisted with
+// the version and echoed in the audited log; an order without one (every order
+// accepted before the field existed) stores and logs an empty description.
+func TestProcessSaveNumscript_StoresDescription(t *testing.T) {
+	t.Parallel()
+
+	for _, description := range []string{"", "Pay out a user", strings.Repeat("é", domain.MaxNumscriptDescriptionLength/2)} {
+		t.Run(description, func(t *testing.T) {
+			t.Parallel()
+
+			const ledger = "main"
+
+			ctrl := gomock.NewController(t)
+			mockStore := NewMockScope(ctrl)
+			processor, err := NewRequestProcessor(nil, 0)
+			require.NoError(t, err)
+
+			var stored *commonpb.NumscriptInfo
+
+			expectGetLedger(mockStore, domain.LedgerKey{Name: ledger}, (&commonpb.LedgerInfo{Name: ledger}).AsReader(), nil)
+			mockStore.EXPECT().NumscriptVersionExists(ledger, "pay", "1.0.0").Return(false, nil)
+			mockStore.EXPECT().GetNumscriptLatestVersion(ledger, "pay").Return("", nil)
+			mockStore.EXPECT().PutNumscript(ledger, gomock.Any()).Do(func(_ string, info *commonpb.NumscriptInfo) { stored = info })
+			mockStore.EXPECT().GetDate().Return((&commonpb.Timestamp{}).AsReader())
+
+			result, perr := processor.ProcessOrder(saveNumscriptOrderWithDescription(ledger, "pay", validNumscriptContent, "1.0.0", description), mockStore)
+			require.Nil(t, perr)
+			require.Equal(t, description, stored.GetDescription())
+			require.Equal(t, description, result.GetSavedNumscript().GetInfo().GetDescription())
+		})
+	}
+}
+
+// TestProcessSaveNumscript_RejectsLongDescription: the byte limit is checked
+// before any store interaction.
+func TestProcessSaveNumscript_RejectsLongDescription(t *testing.T) {
+	t.Parallel()
+
+	ctrl := gomock.NewController(t)
+	mockStore := NewMockScope(ctrl)
+	processor, err := NewRequestProcessor(nil, 0)
+	require.NoError(t, err)
+
+	description := strings.Repeat("a", domain.MaxNumscriptDescriptionLength+1)
+	result, perr := processor.ProcessOrder(saveNumscriptOrderWithDescription("main", "pay", validNumscriptContent, "1.0.0", description), mockStore)
+	require.Nil(t, result)
+	require.ErrorIs(t, perr, domain.ErrNumscriptDescriptionTooLong)
 }

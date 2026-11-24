@@ -634,6 +634,7 @@ message NumscriptInfo {
   string version = 3;
   Timestamp created_at = 4;
   string ledger = 5;
+  string description = 6;
 }
 
 // SavedNumscriptLog records a numscript version being saved to the library.
@@ -647,6 +648,7 @@ message NumscriptVersionEntry {
 	option (ledger_json) = true;
   string version = 1;
   Timestamp created_at = 2;
+  string description = 3;
 }
 
 // TemplateUsage tracks per-template invocation usage. Persisted as a
@@ -1017,6 +1019,7 @@ message FailureDetails {
     MirrorAssetMappingInvalidDetails mirror_asset_mapping_invalid = 149 [(failure_reason) = ERROR_REASON_VALIDATION];
     MetadataOnlyTransactionMetadataDetails metadata_only_transaction_metadata = 150 [(failure_reason) = ERROR_REASON_VALIDATION];
     MetadataOnlyReferenceDetails metadata_only_reference = 151 [(failure_reason) = ERROR_REASON_VALIDATION];
+    NumscriptDescriptionTooLongDetails numscript_description_too_long = 152 [(failure_reason) = ERROR_REASON_VALIDATION];
   }
 }
 
@@ -1364,6 +1367,9 @@ message NumscriptContentRequiredDetails {
 message NumscriptCurrencyMismatchDetails {
   optional string expected = 1;
   optional string got = 2;
+}
+
+message NumscriptDescriptionTooLongDetails {
 }
 
 message NumscriptDivideByZeroDetails {

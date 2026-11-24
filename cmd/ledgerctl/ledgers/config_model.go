@@ -62,8 +62,9 @@ type EditablePreparedQuery struct {
 
 // EditableNumscript is the editable subset of a numscript library entry.
 type EditableNumscript struct {
-	Content string `json:"content"           yaml:"content"`
-	Version string `json:"version,omitempty" yaml:"version,omitempty"`
+	Content     string `json:"content"               yaml:"content"`
+	Version     string `json:"version,omitempty"     yaml:"version,omitempty"`
+	Description string `json:"description,omitempty" yaml:"description,omitempty"`
 }
 
 // ConfigFromProto builds an EditableConfig from the server's proto responses.
@@ -183,8 +184,9 @@ func ConfigFromProto(
 	// Numscripts
 	for _, ns := range numscripts {
 		cfg.Numscripts[ns.GetName()] = EditableNumscript{
-			Content: ns.GetContent(),
-			Version: ns.GetVersion(),
+			Content:     ns.GetContent(),
+			Version:     ns.GetVersion(),
+			Description: ns.GetDescription(),
 		}
 	}
 
@@ -715,6 +717,10 @@ func diffNumscripts(ledgerName string, current, desired *EditableConfig) ([]Diff
 				return nil, fmt.Errorf("numscript %q: content changed but version %q was not bumped; publish the change under a new semver", name, desiredNS.Version)
 			}
 
+			if currentNS.Description != desiredNS.Description {
+				return nil, fmt.Errorf("numscript %q: description changed but version %q was not bumped; publish the change under a new semver", name, desiredNS.Version)
+			}
+
 			continue
 		}
 
@@ -752,10 +758,11 @@ func diffNumscripts(ledgerName string, current, desired *EditableConfig) ([]Diff
 			Request: &servicepb.Request{
 				Type: &servicepb.Request_SaveNumscript{
 					SaveNumscript: &servicepb.SaveNumscriptRequest{
-						Ledger:  ledgerName,
-						Name:    name,
-						Content: desiredNS.Content,
-						Version: desiredNS.Version,
+						Ledger:      ledgerName,
+						Name:        name,
+						Content:     desiredNS.Content,
+						Version:     desiredNS.Version,
+						Description: desiredNS.Description,
 					},
 				},
 			},

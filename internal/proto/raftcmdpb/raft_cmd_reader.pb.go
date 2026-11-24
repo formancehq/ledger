@@ -1345,6 +1345,7 @@ type SaveNumscriptOrderReader interface {
 	GetName() string
 	GetContent() string
 	GetVersion() string
+	GetDescription() string
 	Mutate() *SaveNumscriptOrder
 }
 
@@ -1360,6 +1361,10 @@ func (r *saveNumscriptOrderReadonly) GetContent() string {
 
 func (r *saveNumscriptOrderReadonly) GetVersion() string {
 	return (*SaveNumscriptOrder)(r).GetVersion()
+}
+
+func (r *saveNumscriptOrderReadonly) GetDescription() string {
+	return (*SaveNumscriptOrder)(r).GetDescription()
 }
 
 func (r *saveNumscriptOrderReadonly) Mutate() *SaveNumscriptOrder {

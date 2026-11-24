@@ -91,7 +91,7 @@ func TestConfigStructuredRoundTrip(t *testing.T) {
 		{Name: "audit-trail", Target: commonpb.QueryTarget_QUERY_TARGET_LOGS},
 	}
 	numscripts := []*commonpb.NumscriptInfo{
-		{Name: "transfer", Content: "send 1 BTC from @user:alice to @user:bob", Version: "1"},
+		{Name: "transfer", Content: "send 1 BTC from @user:alice to @user:bob", Version: "1", Description: "Move BTC between users"},
 		{Name: "burn", Content: "send 1 BTC from @user:alice to @burn", Version: "1"},
 	}
 
@@ -271,6 +271,40 @@ func TestDiffPreparedQueryFilterChange(t *testing.T) {
 	require.Equal(t, "preparedQuery", actions[0].Section)
 	require.Equal(t, "update", actions[0].Operation)
 	require.NotNil(t, actions[0].Request.GetUpdatePreparedQuery().Target)
+}
+
+// TestDiffNumscriptDescription: a description travels with a new version, and
+// changing it under an already-stored version is refused like a content edit.
+func TestDiffNumscriptDescription(t *testing.T) {
+	t.Parallel()
+
+	current := &EditableConfig{Numscripts: map[string]EditableNumscript{
+		"transfer": {Content: "send [USD 1] (source = @world destination = @x)", Version: "1.0.0", Description: "old"},
+	}}
+
+	t.Run("same version", func(t *testing.T) {
+		t.Parallel()
+
+		desired := &EditableConfig{Numscripts: map[string]EditableNumscript{
+			"transfer": {Content: "send [USD 1] (source = @world destination = @x)", Version: "1.0.0", Description: "new"},
+		}}
+
+		_, err := ComputeDiff("any-ledger", current, desired)
+		require.ErrorContains(t, err, "description changed but version")
+	})
+
+	t.Run("new version", func(t *testing.T) {
+		t.Parallel()
+
+		desired := &EditableConfig{Numscripts: map[string]EditableNumscript{
+			"transfer": {Content: "send [USD 1] (source = @world destination = @x)", Version: "1.1.0", Description: "new"},
+		}}
+
+		actions, err := ComputeDiff("any-ledger", current, desired)
+		require.NoError(t, err)
+		require.Len(t, actions, 1)
+		require.Equal(t, "new", actions[0].Request.GetSaveNumscript().GetDescription())
+	})
 }
 
 func assertRoundTrip(

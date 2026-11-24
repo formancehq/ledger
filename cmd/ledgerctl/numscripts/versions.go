@@ -70,7 +70,7 @@ func runVersions(cmd *cobra.Command, args []string) error {
 	pterm.Printf("Latest: %s\n\n", pterm.Cyan(resp.GetLatestVersion()))
 
 	tableData := pterm.TableData{
-		{"VERSION", "CREATED AT"},
+		{"VERSION", "CREATED AT", "DESCRIPTION"},
 	}
 
 	for _, v := range versions {
@@ -82,6 +82,7 @@ func runVersions(cmd *cobra.Command, args []string) error {
 		tableData = append(tableData, []string{
 			v.GetVersion(),
 			createdAt,
+			v.GetDescription(),
 		})
 	}
 

@@ -36,6 +36,14 @@ func TestMetadataOnlyRejectionsBuildAuditFailure(t *testing.T) {
 	}
 }
 
+func TestNumscriptDescriptionTooLongBuildsAuditFailure(t *testing.T) {
+	t.Parallel()
+
+	failure := buildAuditFailure(domain.ErrNumscriptDescriptionTooLong)
+	require.Equal(t, "NUMSCRIPT_DESCRIPTION_TOO_LONG", commonpb.FailureDetailsCode(failure.GetDetails()))
+	require.Equal(t, commonpb.ErrorReason_ERROR_REASON_VALIDATION, commonpb.FailureDetailsReason(failure.GetDetails()))
+}
+
 // TestIdempotencyFailureFactsMatchAudit pins the equality the checker's
 // idempotencyMismatch depends on: the reason, code, and facts frozen into the
 // SubIdempKeys projection by recordIdempotencyFailure must equal the ones
