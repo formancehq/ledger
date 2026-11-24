@@ -38,7 +38,7 @@ func TestHasRunningRun_TreatsPendingAndEmptyAsRunning(t *testing.T) {
 	assert.False(t, hasRunningRun(runs))
 }
 
-func TestLatestSucceededRun_PicksMostRecent(t *testing.T) {
+func TestLatestRunInPhase_PicksMostRecentSucceeded(t *testing.T) {
 	t.Parallel()
 
 	older := metav1.NewTime(time.Date(2025, 1, 1, 12, 0, 0, 0, time.UTC))
@@ -66,6 +66,34 @@ func TestLatestSucceededRun_PicksMostRecent(t *testing.T) {
 	latest := latestRunInPhase(runs, ledgerv1alpha1.BackupRunPhaseSucceeded)
 	if assert.NotNil(t, latest) {
 		assert.Equal(t, "new", latest.Name)
+	}
+}
+
+func TestRefreshStatusSummaries_SkipsSucceededRunWithoutResult(t *testing.T) {
+	t.Parallel()
+
+	old := metav1.NewTime(time.Date(2025, 1, 1, 12, 0, 0, 0, time.UTC))
+	middle := metav1.NewTime(old.Add(time.Hour))
+	newest := metav1.NewTime(middle.Add(time.Hour))
+	runs := []ledgerv1alpha1.BackupRun{
+		{Status: ledgerv1alpha1.BackupRunStatus{
+			Phase: ledgerv1alpha1.BackupRunPhaseSucceeded, CompletionTime: &old,
+			Result: &ledgerv1alpha1.BackupResult{Time: &old, FilesUploaded: 1},
+		}},
+		{Status: ledgerv1alpha1.BackupRunStatus{
+			Phase: ledgerv1alpha1.BackupRunPhaseSucceeded, CompletionTime: &newest,
+		}},
+		{Status: ledgerv1alpha1.BackupRunStatus{
+			Phase: ledgerv1alpha1.BackupRunPhaseSucceeded, CompletionTime: &middle,
+			Result: &ledgerv1alpha1.BackupResult{Time: &middle, FilesUploaded: 2},
+		}},
+	}
+
+	backup := &ledgerv1alpha1.Backup{}
+	(&BackupReconciler{}).refreshStatusSummaries(backup, runs)
+	if assert.NotNil(t, backup.Status.LastBackup) {
+		assert.Equal(t, uint32(2), backup.Status.LastBackup.FilesUploaded)
+		assert.Equal(t, &middle, backup.Status.LastBackup.Time)
 	}
 }
 
