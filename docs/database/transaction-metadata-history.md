@@ -72,7 +72,9 @@ applies independently of this non-destructive correction.
 
 The driver tests cover first and second ledgers, legacy broad triggers at version
 56, historical-row preservation, real metadata updates and deletions, duplicate
-and concurrent execution, and a rolled-back attempt followed by retry. The
+and concurrent execution with both waiters observed in PostgreSQL, and a
+rolled-back attempt followed by retry. Lock tests exercise both the internal
+30-second cap without a caller deadline and a shorter caller deadline. The
 compatibility fixture uses the unchanged version-56 main registry and version
 checks, then reinstalls the old broad trigger to test old ledger-creation
 behavior. An unknown main version is still rejected.

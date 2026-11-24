@@ -108,20 +108,58 @@ func TestTransactionMetadataHistoryCompatibleUpgrade(t *testing.T) {
 	t.Cleanup(func() { _ = lock.Rollback() })
 	_, err = lock.ExecContext(ctx, "select pg_advisory_xact_lock(hashtext(?))", `"`+schema+`"."compatible_migrations"`)
 	require.NoError(t, err)
+	if !t.Run("internal deadline without caller deadline", func(t *testing.T) {
+		// Exercise the actual production limit. A test watchdog releases the
+		// held lock through cleanup if that limit is accidentally removed.
+		unbounded := context.WithoutCancel(ctx)
+		_, hasDeadline := unbounded.Deadline()
+		require.False(t, hasDeadline)
+		result := make(chan error, 1)
+		started := stdtime.Now()
+		go func() { result <- d.UpgradeBucket(unbounded, schema) }()
+		select {
+		case err := <-result:
+			require.Error(t, err)
+			require.GreaterOrEqual(t, stdtime.Since(started), 29*stdtime.Second)
+			require.Less(t, stdtime.Since(started), 40*stdtime.Second)
+		case <-stdtime.After(45 * stdtime.Second):
+			t.Fatal("compatible migration exceeded its internal 30-second deadline")
+		}
+	}) {
+		return
+	}
 	blocked, cancel := context.WithTimeout(ctx, 200*stdtime.Millisecond)
 	started := stdtime.Now()
 	err = d.UpgradeBucket(blocked, schema)
+	require.ErrorIs(t, blocked.Err(), context.DeadlineExceeded)
 	cancel()
 	require.Error(t, err)
 	require.Less(t, stdtime.Since(started), 2*stdtime.Second)
-	require.NoError(t, lock.Rollback())
 
+	var lockerPID int
+	require.NoError(t, lock.NewSelect().ColumnExpr("pg_backend_pid()").Scan(ctx, &lockerPID))
 	var concurrent errgroup.Group
 	for range 2 {
 		concurrent.Go(func() error { return d.UpgradeBucket(ctx, schema) })
 	}
+	// Observe both callers queued on the lock held above. Merely launching
+	// goroutines could otherwise exercise two sequential, non-overlapping runs.
+	require.Eventually(t, func() bool {
+		var waiting int
+		err := db.NewRaw(`select count(*) from pg_locks blocked
+			join pg_locks held using (locktype, database, classid, objid, objsubid)
+			where blocked.locktype = 'advisory' and not blocked.granted
+			and held.granted and held.pid = ?`, lockerPID).Scan(ctx, &waiting)
+		require.NoError(t, err)
+		return waiting == 2
+	}, 5*stdtime.Second, 10*stdtime.Millisecond)
+	require.NoError(t, lock.Rollback())
 	require.NoError(t, concurrent.Wait())
 	require.NoError(t, d.UpgradeBucket(ctx, schema))
+	completed, err := db.NewSelect().TableExpr("?", bun.Ident(schema+".compatible_migrations")).
+		Where("is_applied and version_id > 0").Count(ctx)
+	require.NoError(t, err)
+	require.Equal(t, 1, completed, "contending upgrades must commit one correction checkpoint")
 	require.Equal(t, before, history(), "repair must retain old duplicate revisions")
 	version, err := mainMigrator.GetLastVersion(ctx)
 	require.NoError(t, err)
