@@ -397,8 +397,10 @@ must implement the same revision; there is no compatibility fallback.
 
 This is an admission-only request-semantic tightening, not a wire-format
 change. Every explicit transaction posting must carry an `amount`. Omitted
-or JSON `null` amounts return HTTP 400 or gRPC `InvalidArgument`, with the
-existing `VALIDATION` reason and message `posting amount is required`.
+amounts return HTTP 400 or gRPC `InvalidArgument`, with the existing
+`VALIDATION` reason and message `posting amount is required`. The transaction
+endpoint also rejects JSON `null` through admission; atomic Apply rejects it
+at its strict JSON decoding boundary.
 Explicit zero remains valid. Clients that previously omitted amounts must
 send zero explicitly when that is their intent. No client regeneration or
 protocol metadata change is needed: revision stays at 40.
@@ -412,10 +414,11 @@ including replay, restore and application by old and new voters. Existing
 business data and audit history from `v3.0.0-rc.1` and later remain valid.
 
 Rolling upgrades from any earlier RC do not require a new peer capability.
-The admission result can differ while binaries coexist: old servers can still
-accept a missing amount. Forwarding through a new server can reject it before
-an old leader receives it. The guarantee that malformed requests are refused
-therefore starts only when all admitting nodes are upgraded.
+The admission result can differ while binaries coexist: the leader's version
+determines whether a missing amount is rejected. A new follower forwards the
+request to an old leader before admission, so that leader can still accept it.
+The guarantee that malformed requests are refused therefore starts only when
+all nodes that may become leader are upgraded.
 
 Rollback needs no data conversion and does not invalidate transactions written
 by the new server. It reopens the old acceptance behavior. It neither removes

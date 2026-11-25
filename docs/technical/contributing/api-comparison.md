@@ -227,14 +227,17 @@ checkpoint projections. See [the contract](../architecture/subsystems/api/ledger
 
 ### Required posting amounts (EN-2945)
 
-`POST /v3/{ledgerName}/transactions` and gRPC `BucketService.Apply` reject
-each explicit posting whose `amount` is absent or JSON `null`. They return
-HTTP 400 or gRPC `InvalidArgument`, with the existing reason `VALIDATION`
-and message `posting amount is required`. Explicit zero remains valid,
-including HTTP `0`, HTTP `"0"`, and a present empty gRPC `Uint256` message.
+`POST /v3/{ledgerName}/transactions`, `POST /v3/_/apply`, and gRPC
+`BucketService.Apply` reject each explicit posting whose `amount` is absent.
+They return HTTP 400 or gRPC `InvalidArgument`, with the existing reason
+`VALIDATION` and message `posting amount is required`. The transaction endpoint
+also rejects JSON `null` through admission; atomic Apply rejects it at its
+strict JSON decoding boundary. Explicit zero remains valid, including HTTP
+`0`, HTTP `"0"`, and a present empty gRPC `Uint256` message.
 Earlier servers accepted missing amounts as zero. Clients must send an amount
 for each posting and must not retry an unchanged validation failure.
-The OpenAPI requirement already existed. No route or protobuf field changes.
+Both posting schemas in OpenAPI require `amount`. No route or protobuf field
+changes.
 Service protocol revision remains 40 under the RC wire freeze. See
 [the rollout and rollback assessment](../architecture/subsystems/api/protocol-compatibility.md#required-posting-amounts-en-2945).
 
