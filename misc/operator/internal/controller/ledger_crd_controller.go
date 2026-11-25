@@ -785,15 +785,10 @@ func nestedFieldNoCopy(obj map[string]any, fields ...string) (any, bool, error) 
 // success, including an idempotent replay of that success. AlreadyExists alone
 // is not proof of ownership: that ledger and its indexes may be external.
 //
-// Narrow orphan window: if the exec response is lost and the operator retries
-// under a new generation (spec edit before recovery), indexes committed by the
-// first batch are not registered in status.appliedIndexes and will not be
-// dropped by a subsequent diffIndexes pass. This requires both a lost response
-// AND a spec edit before recovery — the same ownership class the README
-// already names as a concern for standalone index creates. Closing it would
-// require querying the ledger's actual index set before every creation, or a
-// cross-generation status migration with its own races; document here and keep
-// the operator README acknowledgement in sync.
+// A lost response or status write can leave status.appliedIndexes incomplete.
+// Reconciliation recovers initial ownership from the successful creation batch
+// in audit and the current index creation dates, including across generation
+// changes. AlreadyExists alone remains insufficient evidence of ownership.
 func createLedgerWithExec(ledger *ledgerv1alpha1.Ledger, args []string, exec func(...string) error) error {
 	if err := exec(args...); err != nil {
 		return err

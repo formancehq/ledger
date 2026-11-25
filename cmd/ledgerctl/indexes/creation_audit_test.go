@@ -3,6 +3,7 @@ package indexes
 import (
 	"context"
 	"net"
+	"strings"
 	"testing"
 	"time"
 
@@ -123,8 +124,9 @@ func TestAttributedInitialIndexes(t *testing.T) {
 type creationAuditServer struct {
 	servicepb.UnimplementedBucketServiceServer
 
-	entry *auditpb.AuditEntry
-	mode  string
+	entry    *auditpb.AuditEntry
+	mode     string
+	prefixes chan string
 }
 
 // ListAuditEntries expects the idempotency-key prefix filter that
@@ -134,6 +136,9 @@ func (s *creationAuditServer) ListAuditEntries(req *servicepb.ListAuditEntriesRe
 	if filter == nil || filter.GetField() != commonpb.AuditField_AUDIT_FIELD_IDEMPOTENCY_KEY || filter.GetStringPrefix() == "" {
 		return status.Error(codes.InvalidArgument, "expected idempotency-key prefix filter")
 	}
+	if s.prefixes != nil {
+		s.prefixes <- filter.GetStringPrefix()
+	}
 	if req.GetOptions().GetCursor() == "" {
 		stream.SetTrailer(metadata.Pairs(cmdutil.NextCursorTrailerKey, "page2"))
 
@@ -141,6 +146,9 @@ func (s *creationAuditServer) ListAuditEntries(req *servicepb.ListAuditEntriesRe
 	}
 	if s.mode == "stream error" {
 		return status.Error(codes.Unavailable, "audit unavailable")
+	}
+	if !strings.HasPrefix(s.entry.GetIdempotency().GetKey(), filter.GetStringPrefix()) {
+		return nil
 	}
 	header := proto.Clone(s.entry).(*auditpb.AuditEntry)
 	header.Items = nil
@@ -204,7 +212,8 @@ func TestInitialCreationAuditQuery(t *testing.T) {
 	listener, err := net.Listen("tcp4", "127.0.0.1:0")
 	require.NoError(t, err)
 	server := grpc.NewServer()
-	servicepb.RegisterBucketServiceServer(server, &creationAuditServer{entry: entry})
+	prefixes := make(chan string, 4)
+	servicepb.RegisterBucketServiceServer(server, &creationAuditServer{entry: entry, prefixes: prefixes})
 	go func() { _ = server.Serve(listener) }() // Stop closes the listener.
 	t.Cleanup(server.Stop)
 	conn, err := grpc.NewClient(listener.Addr().String(), grpc.WithTransportCredentials(insecure.NewCredentials()))
@@ -216,4 +225,18 @@ func TestInitialCreationAuditQuery(t *testing.T) {
 	result, err = filterInitialIndexesByCreationKey(t.Context(), servicepb.NewBucketServiceClient(conn), "main", "operator-ledger-create:other-uid:", []*commonpb.Index{idx})
 	require.NoError(t, err)
 	require.Empty(t, result)
+	close(prefixes)
+	require.Equal(t, []string{
+		"operator-ledger-create:resource-uid:", "operator-ledger-create:resource-uid:",
+		"operator-ledger-create:other-uid:", "operator-ledger-create:other-uid:",
+	}, drainPrefixes(prefixes))
+}
+
+func drainPrefixes(prefixes <-chan string) []string {
+	var got []string
+	for prefix := range prefixes {
+		got = append(got, prefix)
+	}
+
+	return got
 }
