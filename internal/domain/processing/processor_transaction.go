@@ -7,6 +7,7 @@ import (
 	"slices"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
+	"github.com/formancehq/ledger/v3/internal/infra/capabilities"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
@@ -391,7 +392,7 @@ func processMetadataOnly(ledger string, order ledgerExecutionOrder, result *prod
 }
 
 func validateTransactionAccountMetadataAddresses(ledger string, metadata map[string]*commonpb.MetadataMap, ctx *Context) domain.Describable {
-	if !ctx.strictTransactionAccountMetadata {
+	if !ctx.hasCapability(capabilities.StrictTransactionAccountMetadata) {
 		return domain.ValidateAccountMetadataAddresses(metadata)
 	}
 	compiled := compiledTypesFor(ctx.CompiledTypes, ledger, ctx.LedgerInfo)

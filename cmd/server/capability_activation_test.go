@@ -95,7 +95,7 @@ func TestControlStateThroughRunAndRestart(t *testing.T) {
 	_, err = client.Apply(ctx, request("drained"))
 	require.Error(t, err)
 	stop()
-	require.Equal(t, []uint32{uint32(capabilities.StrictTransactionAccountMetadata)}, capabilities.ActiveIDs(readPolicy()))
+	require.Equal(t, capabilities.IDsAsUint32(capabilities.SupportedIDs()), capabilities.ActiveIDs(readPolicy()))
 
 	client, cluster, stop = start()
 	require.Eventually(t, func() bool {
@@ -117,7 +117,7 @@ func TestControlStateThroughRunAndRestart(t *testing.T) {
 		require.NoError(t, err)
 	}()
 	policy := readPolicy()
-	require.Equal(t, []uint32{uint32(capabilities.StrictTransactionAccountMetadata)}, capabilities.ActiveIDs(policy))
+	require.Equal(t, capabilities.IDsAsUint32(capabilities.SupportedIDs()), capabilities.ActiveIDs(policy))
 	require.Equal(t, uint64(1), policy.GetRevision())
 	require.Equal(t, uint64(10), policy.GetQueryCheckpointLimit())
 }

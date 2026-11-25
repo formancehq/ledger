@@ -23,7 +23,6 @@ import (
 	"github.com/formancehq/ledger/v3/internal/domain/processing"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
 	"github.com/formancehq/ledger/v3/internal/infra/bloom"
-	"github.com/formancehq/ledger/v3/internal/infra/capabilities"
 	"github.com/formancehq/ledger/v3/internal/pkg/proposals"
 	"github.com/formancehq/ledger/v3/internal/pkg/signal"
 	"github.com/formancehq/ledger/v3/internal/proto/auditpb"
@@ -1616,11 +1615,7 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 	// never re-walks `logs` to rebuild them.
 	var ordersResult *processing.OrdersResult
 	if err == nil {
-		if slices.Contains(proposal.GetRequiredCapabilities(), uint32(capabilities.StrictTransactionAccountMetadata)) {
-			ordersResult, err = fsm.processor.ProcessOrdersWithStrictAccountMetadata(orders, scopeFactory, buffer)
-		} else {
-			ordersResult, err = fsm.processor.ProcessOrders(orders, scopeFactory, buffer)
-		}
+		ordersResult, err = fsm.processor.ProcessOrdersWithCapabilities(orders, scopeFactory, buffer, proposal.GetRequiredCapabilities())
 		if ordersResult != nil {
 			logs = ordersResult.Logs
 		}

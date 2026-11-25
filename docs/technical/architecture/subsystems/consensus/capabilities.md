@@ -149,17 +149,18 @@ Do not add a capability for a bug fix that restores the intended behavior when
 the old behavior was invalid. Add one when valid historical orders need to keep
 their old behavior while new orders use a different rule.
 
-EN-2915 strengthens initial account-type validation in `CreateLedger` without
-registering a capability. RC.4 accepted invalid constraints and conflicting
-patterns; those successful creations remain committed business history. The
-operator-required RC.4-to-RC.5 stopped upgrade drains every member and waits
-for its durable FSM cursor to pass the admission cutoff, so RC.4 business
-entries finish applying under RC.4 before RC.5 starts. RC.5 applies the
-strengthened rule to new orders. Audit replay explicitly uses the historical
-creation rule to reproduce successful old orders; successful new creations
-satisfy both rules and yield the same logs. The proposal payload and capability
-registry remain unchanged. A mixed-version rollout across this boundary is
-unsupported.
+Capability ID 2 (`StrictCreateLedgerAccountTypes`) marks new `CreateLedger`
+proposals. The processor validates segment constraints and conflicting initial
+patterns only when the persisted proposal carries ID 2. Earlier successful
+creations without the marker retain their historical validation during Raft
+recovery and audit replay. A batch containing both a ledger creation and a
+transaction declares both IDs in ascending order. Admission waits for both
+IDs to activate and every member to advertise them before accepting that
+batch. This changes no existing protobuf field or service revision. RC.4
+accepted invalid constraints and conflicting patterns; the RC.4-to-RC.5
+stopped upgrade still drains every RC.4 entry before RC.5 starts. The ID 2
+marker additionally makes the apply rule explicit for future replay and
+mixed-version admission.
 
 Forwarded preload gaps also change apply at the same boundary without a
 capability. RC.4 rejects a keyed batch carrying an order marked

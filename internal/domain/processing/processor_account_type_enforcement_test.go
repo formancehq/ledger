@@ -7,6 +7,7 @@ import (
 	"go.uber.org/mock/gomock"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
+	"github.com/formancehq/ledger/v3/internal/infra/capabilities"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
@@ -135,7 +136,7 @@ send [USD/2 100] (source = @world destination = @users:1)`
 			if test.legacy {
 				result, processErr = processor.ProcessOrders(orders, mockFactory(scope), noopSink{})
 			} else {
-				result, processErr = processor.ProcessOrdersWithStrictAccountMetadata(orders, mockFactory(scope), noopSink{})
+				result, processErr = processor.ProcessOrdersWithCapabilities(orders, mockFactory(scope), noopSink{}, []uint32{uint32(capabilities.StrictTransactionAccountMetadata)})
 			}
 			if test.wantAddress == "" {
 				require.Nil(t, processErr)

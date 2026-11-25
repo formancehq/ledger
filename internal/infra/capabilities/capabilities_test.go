@@ -129,6 +129,27 @@ func TestPrepareProposalMarksTransactionSemantics(t *testing.T) {
 	require.Equal(t, []CapabilityID{StrictTransactionAccountMetadata}, prepared.RequiredCapabilities())
 }
 
+func TestPrepareProposalMarksCreateLedgerAndMixedBatch(t *testing.T) {
+	t.Parallel()
+	create := &raftcmdpb.Order{Type: &raftcmdpb.Order_LedgerScoped{LedgerScoped: &raftcmdpb.LedgerScopedOrder{
+		Payload: &raftcmdpb.LedgerScopedOrder_CreateLedger{CreateLedger: &raftcmdpb.CreateLedgerOrder{}},
+	}}}
+	transaction := &raftcmdpb.Order{Type: &raftcmdpb.Order_LedgerScoped{LedgerScoped: &raftcmdpb.LedgerScopedOrder{
+		Payload: &raftcmdpb.LedgerScopedOrder_Apply{Apply: &raftcmdpb.LedgerApplyOrder{
+			Data: &raftcmdpb.LedgerApplyOrder_CreateTransaction{CreateTransaction: &raftcmdpb.CreateTransactionOrder{}},
+		}},
+	}}}
+	proposal := &raftcmdpb.Proposal{Payload: &raftcmdpb.Proposal_Batch{Batch: &raftcmdpb.ExecutionBatch{Orders: []*raftcmdpb.Order{create, transaction}}}}
+	prepared, err := PrepareProposal(proposal)
+	require.NoError(t, err)
+	require.Equal(t, []CapabilityID{StrictTransactionAccountMetadata, StrictCreateLedgerAccountTypes}, prepared.RequiredCapabilities())
+	require.Equal(t, []uint32{1, 2}, proposal.GetRequiredCapabilities())
+	proposal.GetBatch().Orders = []*raftcmdpb.Order{create}
+	prepared, err = PrepareProposal(proposal)
+	require.NoError(t, err)
+	require.Equal(t, []CapabilityID{StrictCreateLedgerAccountTypes}, prepared.RequiredCapabilities())
+}
+
 func TestStrictTransactionAccountMetadataActivation(t *testing.T) {
 	t.Parallel()
 	member := Member{NodeID: 1, Role: Voter, Reachable: true, Capabilities: SupportedIDs()}

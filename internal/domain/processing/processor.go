@@ -3,6 +3,7 @@ package processing
 import (
 	"errors"
 	"fmt"
+	"slices"
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
 	"github.com/zeebo/blake3"
@@ -12,6 +13,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/domain/accounttype"
 	"github.com/formancehq/ledger/v3/internal/domain/processing/numscript"
+	"github.com/formancehq/ledger/v3/internal/infra/capabilities"
 	"github.com/formancehq/ledger/v3/internal/pkg/proposals"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
@@ -41,12 +43,9 @@ type RequestProcessor struct {
 // apply-child handlers. Per-batch fields (caches) are owned by the
 // *RequestProcessor and live for the lifetime of a ProcessOrders call.
 type Context struct {
-	strictTransactionAccountMetadata bool
+	requiredCapabilities []uint32
 	// auditReplay executes recorded business intent without operational quotas.
 	auditReplay bool
-	// strictCreateLedgerAccountTypes enables strict initial type validation for
-	// new orders. Audit replay retains the historical creation semantics.
-	strictCreateLedgerAccountTypes bool
 
 	// Metadata budget is shared by all orders in one atomic proposal.
 	metadataBudget *commandMetadataBudget
@@ -100,6 +99,10 @@ type Context struct {
 	NumscriptCache *numscript.NumscriptCache
 	CompiledTypes  map[string][]accounttype.CompiledType
 	AssetCache     map[string]cachedAssetPrecision
+}
+
+func (ctx *Context) hasCapability(id capabilities.CapabilityID) bool {
+	return slices.Contains(ctx.requiredCapabilities, uint32(id))
 }
 
 // NewRequestProcessor creates a new RequestProcessor with the given meter.
@@ -235,27 +238,25 @@ func (r *OrdersResult) recordCreatedLog(log *commonpb.Log) bool {
 // coverage map is never mutated. Per-order isolation is therefore
 // structural: order N's scope cannot read keys declared by order M.
 func (p *RequestProcessor) ProcessOrders(orders []*raftcmdpb.Order, scopeFactory ScopeFactory, sink SignalSink) (*OrdersResult, domain.Describable) {
-	return p.processOrders(orders, scopeFactory, sink, false, true, false)
+	return p.processOrders(orders, scopeFactory, sink, false, nil)
 }
 
-func (p *RequestProcessor) ProcessOrdersWithStrictAccountMetadata(orders []*raftcmdpb.Order, scopeFactory ScopeFactory, sink SignalSink) (*OrdersResult, domain.Describable) {
-	return p.processOrders(orders, scopeFactory, sink, false, true, true)
+func (p *RequestProcessor) ProcessOrdersWithCapabilities(orders []*raftcmdpb.Order, scopeFactory ScopeFactory, sink SignalSink, requiredCapabilities []uint32) (*OrdersResult, domain.Describable) {
+	return p.processOrders(orders, scopeFactory, sink, false, requiredCapabilities)
 }
 
-// ProcessAuditedOrders verifies recorded business effects. Operational quotas
-// are live admission/apply concerns, not historical business invariants. Audit
-// items contain orders, and historical creations may contain initial account
-// types that the stricter new-order validation would reject. Successful new
-// creations satisfy the legacy validation and reconstruct the same log.
+// ProcessAuditedOrders replays unmarked historical business effects. Operational
+// quotas are live admission/apply concerns, not historical business invariants.
+// Marked audit entries use ProcessAuditedOrdersWithCapabilities instead.
 func (p *RequestProcessor) ProcessAuditedOrders(orders []*raftcmdpb.Order, scopeFactory ScopeFactory, sink SignalSink) (*OrdersResult, domain.Describable) {
-	return p.processOrders(orders, scopeFactory, sink, true, false, false)
+	return p.processOrders(orders, scopeFactory, sink, true, nil)
 }
 
-func (p *RequestProcessor) ProcessAuditedOrdersWithStrictAccountMetadata(orders []*raftcmdpb.Order, scopeFactory ScopeFactory, sink SignalSink) (*OrdersResult, domain.Describable) {
-	return p.processOrders(orders, scopeFactory, sink, true, false, true)
+func (p *RequestProcessor) ProcessAuditedOrdersWithCapabilities(orders []*raftcmdpb.Order, scopeFactory ScopeFactory, sink SignalSink, requiredCapabilities []uint32) (*OrdersResult, domain.Describable) {
+	return p.processOrders(orders, scopeFactory, sink, true, requiredCapabilities)
 }
 
-func (p *RequestProcessor) processOrders(orders []*raftcmdpb.Order, scopeFactory ScopeFactory, sink SignalSink, auditReplay, strictCreateLedgerAccountTypes, strictTransactionAccountMetadata bool) (*OrdersResult, domain.Describable) {
+func (p *RequestProcessor) processOrders(orders []*raftcmdpb.Order, scopeFactory ScopeFactory, sink SignalSink, auditReplay bool, requiredCapabilities []uint32) (*OrdersResult, domain.Describable) {
 	clear(p.compiledTypesCache)
 	clear(p.assetCache)
 
@@ -264,13 +265,12 @@ func (p *RequestProcessor) processOrders(orders []*raftcmdpb.Order, scopeFactory
 	// per-apply fields (Boundaries, LedgerInfo) are populated by the apply
 	// orchestrators.
 	ctx := &Context{
-		auditReplay:                      auditReplay,
-		strictCreateLedgerAccountTypes:   strictCreateLedgerAccountTypes,
-		strictTransactionAccountMetadata: strictTransactionAccountMetadata,
-		NumscriptCache:                   p.numscriptCache,
-		CompiledTypes:                    p.compiledTypesCache,
-		AssetCache:                       p.assetCache,
-		batchInitialNextTxID:             make(map[string]uint64),
+		auditReplay:          auditReplay,
+		requiredCapabilities: slices.Clone(requiredCapabilities),
+		NumscriptCache:       p.numscriptCache,
+		CompiledTypes:        p.compiledTypesCache,
+		AssetCache:           p.assetCache,
+		batchInitialNextTxID: make(map[string]uint64),
 	}
 
 	ctx.metadataBudget = &commandMetadataBudget{}

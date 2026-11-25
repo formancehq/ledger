@@ -5,7 +5,9 @@
 The EN-2941 account-metadata rule is activated by capability 1 after all
 members advertise support. New CreateTransaction and ExecuteNumscript proposals carry ID 1 in the
 Raft proposal and audit entry; historical proposals without it retain the old
-apply result during recovery and audit replay. The capability foundation's
+apply result during recovery and audit replay. New CreateLedger proposals carry
+ID 2 for strict initial account-type validation; historical creations without
+it retain their original validation. The capability foundation's
 coordinated upgrade procedure remains the deployment requirement until a
 mixed-version rolling validation proves this activation safe from every
 published RC. Do not activate the capability on a partially upgraded cluster.
@@ -126,7 +128,11 @@ stop all RC.4 voters and learners before starting RC.5 on the retained volumes.
 Startup migrates schema 2 to 3 atomically, then synchronizes the WAL before
 recovery, workers or listeners start. No history scan or external reconstruction
 is required. Keep the ordinary `ledger run` flags; there is no activation flag.
-This release registers capability ID 1 for STRICT transaction account metadata.
+This release registers capability ID 1 for STRICT transaction account metadata
+and ID 2 for strict initial account-type validation in CreateLedger. New
+CreateLedger proposals carry ID 2; historical proposals without it keep their
+original validation during recovery and audit replay. Both IDs activate only
+after all current members advertise support.
 
 Once every current member advertises a registered ID, the leader automatically
 commits a single activation control. Ordinary configuration keeps its own

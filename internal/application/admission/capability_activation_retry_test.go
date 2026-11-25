@@ -29,17 +29,17 @@ func TestCapabilityActivationRetryRepreparesBeforeSubmission(t *testing.T) {
 		proposer.EXPECT().Propose(gomock.Any(), gomock.Any()).DoAndReturn(func(_ context.Context, proposal *node.Proposal) (*futures.Future[state.ApplyResult], error) {
 			attempts++
 			if attempts == 1 {
-				require.Empty(t, proposal.RequiredCapabilities())
+				require.Equal(t, []capabilities.CapabilityID{capabilities.StrictCreateLedgerAccountTypes}, proposal.RequiredCapabilities())
 				policy, err := query.ReadClusterPolicy(store)
 				require.NoError(t, err)
-				policy.CapabilityActivations = []*commonpb.CapabilityActivation{{Id: 1, Active: true}}
+				policy.CapabilityActivations = []*commonpb.CapabilityActivation{{Id: uint32(capabilities.StrictCreateLedgerAccountTypes), Active: true}}
 				batch := store.OpenWriteSession()
 				require.NoError(t, state.SaveClusterPolicy(batch, policy))
 				require.NoError(t, batch.Commit())
 
 				return nil, capabilities.ErrActivationPending
 			}
-			require.Empty(t, proposal.RequiredCapabilities())
+			require.Equal(t, []capabilities.CapabilityID{capabilities.StrictCreateLedgerAccountTypes}, proposal.RequiredCapabilities())
 			proposal.Resolve(nil, nil)
 			future := futures.New[state.ApplyResult]()
 			future.Resolve(state.ApplyResult{AppliedIndex: 1}, nil)

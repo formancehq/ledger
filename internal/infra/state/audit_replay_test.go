@@ -11,6 +11,7 @@ import (
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
+	"github.com/formancehq/ledger/v3/internal/infra/capabilities"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
@@ -83,6 +84,13 @@ func TestAuditReplayerPreservesLegacyCreateLedgerAccountTypes(t *testing.T) {
 			require.NoError(t, err)
 			require.Len(t, logs, 1)
 			require.Len(t, logs[0].GetPayload().GetCreateLedger().GetAccountTypes(), len(tc.types))
+			strictReplayer, err := NewAuditReplayer(logging.Testing(), "test-cluster")
+			require.NoError(t, err)
+			t.Cleanup(func() { require.NoError(t, strictReplayer.Close()) })
+			_, err = strictReplayer.Replay(&commonpb.Timestamp{Data: 1}, []*raftcmdpb.Order{
+				createLedgerOrderWithAccountTypes("strict", tc.types),
+			}, uint32(capabilities.StrictCreateLedgerAccountTypes))
+			require.Error(t, err, "the persisted capability must select strict validation during replay")
 		})
 	}
 }

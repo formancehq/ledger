@@ -7,6 +7,7 @@ import (
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/domain/accounttype"
+	"github.com/formancehq/ledger/v3/internal/infra/capabilities"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
@@ -49,7 +50,7 @@ func processCreateLedger(ledger string, order *raftcmdpb.CreateLedgerOrder, ctx 
 	var parsedAccountTypes map[string][]accounttype.PatternSegment
 	if src := order.GetAccountTypes(); len(src) > 0 {
 		canonicalAccountTypes = make(map[string]*commonpb.AccountType, len(src))
-		if ctx.strictCreateLedgerAccountTypes {
+		if ctx.hasCapability(capabilities.StrictCreateLedgerAccountTypes) {
 			parsedAccountTypes = make(map[string][]accounttype.PatternSegment, len(src))
 		}
 	}
@@ -69,7 +70,7 @@ func processCreateLedger(ledger string, order *raftcmdpb.CreateLedgerOrder, ctx 
 		if err != nil {
 			return nil, &domain.ErrInvalidPattern{Pattern: at.GetPattern(), Details: err.Error()}
 		}
-		if ctx.strictCreateLedgerAccountTypes {
+		if ctx.hasCapability(capabilities.StrictCreateLedgerAccountTypes) {
 			if err := accounttype.ValidateSegmentTypes(segments, at.GetSegmentTypes()); err != nil {
 				return nil, &domain.ErrInvalidPattern{Pattern: at.GetPattern(), Details: err.Error()}
 			}
@@ -90,7 +91,7 @@ func processCreateLedger(ledger string, order *raftcmdpb.CreateLedgerOrder, ctx 
 		clone := at.CloneVT()
 		clone.Name = name
 		canonicalAccountTypes[name] = clone
-		if ctx.strictCreateLedgerAccountTypes {
+		if ctx.hasCapability(capabilities.StrictCreateLedgerAccountTypes) {
 			parsedAccountTypes[name] = segments
 		}
 	}

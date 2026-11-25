@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"slices"
 
 	"go.etcd.io/raft/v3/raftpb"
 	"go.opentelemetry.io/otel/metric/noop"
@@ -16,7 +15,6 @@ import (
 	"github.com/formancehq/ledger/v3/internal/domain/processing"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
 	"github.com/formancehq/ledger/v3/internal/infra/cache"
-	"github.com/formancehq/ledger/v3/internal/infra/capabilities"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
@@ -208,11 +206,7 @@ func (r *AuditReplayer) Replay(at *commonpb.Timestamp, orders []*raftcmdpb.Order
 	scope := &auditReplayScope{WriteSet: buffer}
 	var result *processing.OrdersResult
 	var processErr domain.Describable
-	if slices.Contains(requiredCapabilities, uint32(capabilities.StrictTransactionAccountMetadata)) {
-		result, processErr = r.machine.processor.ProcessAuditedOrdersWithStrictAccountMetadata(orders, auditReplayScopeFactory{scope: scope}, buffer)
-	} else {
-		result, processErr = r.machine.processor.ProcessAuditedOrders(orders, auditReplayScopeFactory{scope: scope}, buffer)
-	}
+	result, processErr = r.machine.processor.ProcessAuditedOrdersWithCapabilities(orders, auditReplayScopeFactory{scope: scope}, buffer, requiredCapabilities)
 	if processErr != nil {
 		return nil, fmt.Errorf("processing audited orders: %w", processErr)
 	}

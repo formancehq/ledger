@@ -9,6 +9,7 @@ import (
 	"go.uber.org/mock/gomock"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
+	"github.com/formancehq/ledger/v3/internal/infra/capabilities"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
@@ -52,7 +53,7 @@ func TestProcessCreateLedger_RejectsInvalidInitialAccountTypeConstraints(t *test
 				},
 			},
 		},
-	}, &Context{Scope: mockStore, strictCreateLedgerAccountTypes: true})
+	}, &Context{Scope: mockStore, requiredCapabilities: []uint32{uint32(capabilities.StrictCreateLedgerAccountTypes)}})
 
 	var invalid *domain.ErrInvalidPattern
 	require.ErrorAs(t, derr, &invalid)
@@ -72,7 +73,7 @@ func TestProcessCreateLedger_RejectsConflictingInitialAccountTypes(t *testing.T)
 			"users-by-id":   {Pattern: "users:{id}"},
 			"users-by-name": {Pattern: "users:{name}"},
 		},
-	}, &Context{Scope: mockStore, strictCreateLedgerAccountTypes: true})
+	}, &Context{Scope: mockStore, requiredCapabilities: []uint32{uint32(capabilities.StrictCreateLedgerAccountTypes)}})
 
 	var conflict *domain.ErrAccountTypeConflict
 	require.ErrorAs(t, derr, &conflict)
@@ -94,7 +95,7 @@ func TestProcessCreateLedger_ConflictSelectionUsesFirstProcessedName(t *testing.
 				"z-last":   {Pattern: "users:{group}:123"},
 				"a-first":  {Pattern: "users:alpha:{id}"},
 			},
-		}, &Context{Scope: mockStore, strictCreateLedgerAccountTypes: true})
+		}, &Context{Scope: mockStore, requiredCapabilities: []uint32{uint32(capabilities.StrictCreateLedgerAccountTypes)}})
 
 		var conflict *domain.ErrAccountTypeConflict
 		require.ErrorAs(t, derr, &conflict)
