@@ -252,7 +252,8 @@ func findAccountSchema(path []string, fixedSegments map[string]ChartSegment, var
 	nextSegment := account[0]
 	if segment, ok := fixedSegments[nextSegment]; ok {
 		if len(account) > 1 {
-			return findAccountSchema(append(path, nextSegment), segment.FixedSegments, segment.VariableSegment, account[1:])
+			// Clamp capacity so append copies: ErrInvalidAccount retains path, so siblings must not share its array.
+			return findAccountSchema(append(path[:len(path):len(path)], nextSegment), segment.FixedSegments, segment.VariableSegment, account[1:])
 		} else if segment.Account != nil {
 			return segment.Account, nil
 		} else {
@@ -275,7 +276,7 @@ func findAccountSchema(path []string, fixedSegments map[string]ChartSegment, var
 		}
 		if matches {
 			if len(account) > 1 {
-				return findAccountSchema(append(path, nextSegment), variableSegment.FixedSegments, variableSegment.VariableSegment, account[1:])
+				return findAccountSchema(append(path[:len(path):len(path)], nextSegment), variableSegment.FixedSegments, variableSegment.VariableSegment, account[1:])
 			} else if variableSegment.Account != nil {
 				return variableSegment.Account, nil
 			} else {

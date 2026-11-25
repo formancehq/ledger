@@ -409,6 +409,21 @@ func TestAccountValidation(t *testing.T) {
 	}
 }
 
+func TestFindAccountSchemaDoesNotAliasPath(t *testing.T) {
+	t.Parallel()
+
+	chart := testChart()
+	// Two candidates resolved from one parent path with spare capacity, as a backtracking caller would.
+	parent := make([]string, 0, 4)
+
+	_, usersErr := findAccountSchema(parent, chart, nil, []string{"users", "001", "nope"})
+	_, bankErr := findAccountSchema(parent, chart, nil, []string{"bank", "invalid"})
+
+	require.EqualError(t, usersErr, "segment `nope` is not allowed by the chart of accounts at `users:001`")
+	require.EqualError(t, bankErr, "segment `invalid` defined by the chart of accounts at `bank` does not match the pattern")
+	require.Empty(t, parent[:cap(parent)][0], "findAccountSchema wrote into the caller's path backing array")
+}
+
 func TestPostingValidation(t *testing.T) {
 	t.Parallel()
 
