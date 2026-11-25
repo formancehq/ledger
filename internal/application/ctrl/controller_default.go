@@ -847,6 +847,7 @@ func nextAnalysisTransaction(ctx context.Context, logs cursor.Cursor[*commonpb.L
 			if p.CreatedTransaction.GetTransaction() == nil {
 				continue
 			}
+
 			return analysis.ExtractCompactTransaction(p.CreatedTransaction.GetTransaction()), nil
 		case *commonpb.LedgerLogPayload_RevertedTransaction:
 			if !pass1Done {

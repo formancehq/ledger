@@ -87,10 +87,12 @@ func (c *cancelingAnalysisCursor) Next() (*commonpb.Log, error) {
 	c.reads++
 	if c.reads == 1 {
 		c.cancel()
+
 		return &commonpb.Log{Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_Apply{
 			Apply: &commonpb.ApplyLedgerLog{LedgerName: "other-ledger"},
 		}}}, nil
 	}
+
 	return nil, io.EOF
 }
 
