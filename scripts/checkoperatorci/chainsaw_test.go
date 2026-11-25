@@ -77,7 +77,7 @@ func TestOperatorE2ERecipesPreserveDependencies(t *testing.T) {
 	require.NoError(t, err)
 	require.Contains(t, string(justfile), "\ntest-e2e: _ensure-chainsaw e2e-cluster-up\n    just _e2e-run-tests\n")
 	require.Contains(t, string(justfile), "\ntest-e2e-only: _ensure-chainsaw\n    just _e2e-run-tests\n")
-	require.Equal(t, 2, strings.Count(string(justfile), `"$LEDGER_CHAINSAW_BIN" test`))
+	require.Equal(t, 4, strings.Count(string(justfile), `"$LEDGER_CHAINSAW_BIN" test`))
 	justPath, err := exec.LookPath("just")
 	require.NoError(t, err)
 	command := exec.CommandContext(t.Context(), justPath, "--no-dotenv", "--justfile", filepath.Join("..", "..", "misc", "operator", "justfile"), "--dry-run", "test-e2e")
