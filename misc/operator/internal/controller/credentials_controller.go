@@ -478,8 +478,20 @@ func (r *CredentialsReconciler) ensureCanonicalSecret(ctx context.Context, crede
 	case !apierrors.IsNotFound(err):
 		return nil, fmt.Errorf("reading canonical secret: %w", err)
 	}
-	if credentials.Status.KeyID != "" && len(existingReplicas) == 0 {
-		return nil, fmt.Errorf("canonical seed for Credentials %q is missing and no verified legacy replica can restore key %q", credentials.Name, credentials.Status.KeyID)
+	var adopted map[string][]byte
+	if credentials.Status.KeyID != "" {
+		recoverable := make([]corev1.Secret, 0, len(existingReplicas))
+		for i := range existingReplicas {
+			if validLegacySeed(existingReplicas[i].Data, credentials.Status.KeyID) {
+				recoverable = append(recoverable, existingReplicas[i])
+			}
+		}
+		adopted = adoptSeedFromReplica(recoverable)
+		if adopted == nil {
+			return nil, fmt.Errorf("canonical seed for Credentials %q is missing and no verified legacy replica can restore key %q", credentials.Name, credentials.Status.KeyID)
+		}
+	} else {
+		adopted = adoptSeedFromReplica(existingReplicas)
 	}
 
 	// Not found — mint a new canonical, adopting a legacy replica's seed
@@ -495,7 +507,7 @@ func (r *CredentialsReconciler) ensureCanonicalSecret(ctx context.Context, crede
 		},
 	}
 
-	if adopted := adoptSeedFromReplica(existingReplicas); adopted != nil {
+	if adopted != nil {
 		fresh.Data = adopted
 	} else {
 		seed, pubKey, keyID, err := generateEd25519KeyPair()

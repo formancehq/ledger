@@ -155,6 +155,9 @@ Credentials controller reference with its current UID. A Credentials resource
 recreated under the same name cannot claim the prior incarnation's Secrets.
 When no targets remain, a preserved canonical seed keeps its key ID in status
 so a later reconcile can still verify it.
+If the canonical Secret is missing while status records a key ID, recovery
+requires a replica whose seed, public key, and key ID match that recorded
+identity. Otherwise reconciliation fails without creating a replacement key.
 
 The status and owner-reference writes happen after the Secret read. A conflict
 on a metadata update leaves the old Secret unchanged and reconciliation retries.

@@ -33,6 +33,24 @@ func legacyCredentialsSeed(seedHex string) map[string][]byte {
 	}
 }
 
+func TestCredentialsSecretDeleteRejectsReplacement(t *testing.T) {
+	ns := createTestNamespace(t)
+	secret := &corev1.Secret{ObjectMeta: metav1.ObjectMeta{Name: "credentials-uid-precondition", Namespace: ns}}
+	require.NoError(t, k8sClient.Create(ctx, secret))
+	inspected := &corev1.Secret{}
+	require.NoError(t, k8sClient.Get(ctx, client.ObjectKeyFromObject(secret), inspected))
+	require.NoError(t, k8sClient.Delete(ctx, inspected))
+	replacement := &corev1.Secret{ObjectMeta: metav1.ObjectMeta{Name: secret.Name, Namespace: ns}, Data: map[string][]byte{"marker": []byte("replacement")}}
+	require.NoError(t, k8sClient.Create(ctx, replacement))
+	require.NotEqual(t, inspected.UID, replacement.UID)
+	err := deleteCredentialsSecret(ctx, k8sClient, inspected)
+	require.True(t, apierrors.IsConflict(err), "stale UID must fail against the API server: %v", err)
+	actual := &corev1.Secret{}
+	require.NoError(t, k8sClient.Get(ctx, client.ObjectKeyFromObject(replacement), actual))
+	require.Equal(t, replacement.UID, actual.UID)
+	require.Equal(t, replacement.Data, actual.Data)
+}
+
 func setLegacyCredentialsStatus(t *testing.T, name string, replica *corev1.Secret) {
 	t.Helper()
 	require.NoError(t, retry.RetryOnConflict(retry.DefaultRetry, func() error {
