@@ -3,12 +3,12 @@ package backup
 import (
 	"bytes"
 	"errors"
-	"path/filepath"
 	"testing"
 
 	"github.com/cockroachdb/pebble/v2"
 	"github.com/stretchr/testify/require"
-	"go.opentelemetry.io/otel/metric/noop"
+
+	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
@@ -48,7 +48,7 @@ func TestBackup_LedgerKVRestoreParity(t *testing.T) {
 	const ledger = "kv-restore"
 	const bucket = "kv-restore-bucket"
 
-	source, store, attrs := newSigningParityMachine(t)
+	source, store, attrs := newCreationTestMachine(t)
 	require.NoError(t, applyMetadataCreation(t, source, store, 1,
 		metadataCreationOrder(ledger, commonpb.LedgerMode_LEDGER_MODE_NORMAL, nil))[0].Error)
 	require.NoError(t, applyMetadataCreation(t, source, store, 2,
@@ -56,27 +56,31 @@ func TestBackup_LedgerKVRestoreParity(t *testing.T) {
 	require.NoError(t, store.Flush())
 
 	storage := newInMemoryBackupStorage()
-	full, err := RunBackup(t.Context(), testLogger(), store, storage, bucket, "full")
+	full, err := RunBackup(t.Context(), logging.Testing(), store, storage, bucket, "full")
 	require.NoError(t, err)
 	require.Positive(t, full.LastLogSequence)
-	dstDir := t.TempDir()
-	require.NoError(t, store.Checkpoint(filepath.Join(dstDir, "live")))
+	firstManifest, err := ReadManifest(t.Context(), storage, ManifestKey(bucket))
+	require.NoError(t, err)
+	require.NotNil(t, firstManifest.Checkpoint)
+	firstRestore := restoreAuditKeyCheckpoint(t, storage, firstManifest)
+	require.Equal(t, []byte("checkpoint"), readKVRow(t, firstRestore, ledger, "remove"))
+	require.Nil(t, readKVRow(t, firstRestore, ledger, "binary"))
 
 	require.NoError(t, applyMetadataCreation(t, source, store, 3,
 		kvOrder(ledger, "binary", []byte{0, 255, 1}))[0].Error)
 	require.NoError(t, applyMetadataCreation(t, source, store, 4,
 		deleteKVOrder(ledger, "remove"))[0].Error)
 	require.NoError(t, store.Flush())
-	inc, err := RunIncrementalBackup(t.Context(), testLogger(), store, storage, bucket, 0)
+	second, err := RunBackup(t.Context(), logging.Testing(), store, storage, bucket, "second")
 	require.NoError(t, err)
-	require.Positive(t, inc.LogEntriesExported)
+	require.Greater(t, second.LastLogSequence, full.LastLogSequence)
 	manifest, err := ReadManifest(t.Context(), storage, ManifestKey(bucket))
 	require.NoError(t, err)
+	require.NotNil(t, manifest.Checkpoint)
+	require.Empty(t, manifest.Exports)
 
-	dst, err := dal.NewStore(dstDir, testLogger(), noop.NewMeterProvider().Meter("test"), dal.DefaultConfig())
-	require.NoError(t, err)
-	t.Cleanup(func() { require.NoError(t, dst.Close()) })
-	require.NoError(t, ApplyExportsAndRebuild(t.Context(), testLogger(), storage, dst, manifest))
+	dst := restoreAuditKeyCheckpoint(t, storage, manifest)
+	require.NoError(t, attributes.PrepareForBackup(dst))
 	require.Equal(t, []byte{0, 255, 1}, readKVRow(t, dst, ledger, "binary"))
 	require.Nil(t, readKVRow(t, dst, ledger, "remove"))
 	require.Equal(t, readKVRow(t, store, ledger, "binary"), readKVRow(t, dst, ledger, "binary"))
