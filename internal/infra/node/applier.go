@@ -1149,6 +1149,7 @@ func (a *Applier) startSyncSnapshot(ctx context.Context, leader uint64) {
 		if a.requireJoinConfig && a.fsm.State.LastClusterConfig == nil {
 			a.logger.Infof("Donor checkpoint has no committed cluster config yet; retrying fresh learner synchronization")
 			a.syncProgress.Store(nil)
+
 			return maintenanceTaskResult{syncFailed: true}, nil
 		}
 

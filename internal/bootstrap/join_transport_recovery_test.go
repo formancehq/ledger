@@ -16,6 +16,7 @@ import (
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
 	grpcadp "github.com/formancehq/ledger/v3/internal/adapter/grpc"
+	"github.com/formancehq/ledger/v3/internal/application/ctrl"
 	membershipapp "github.com/formancehq/ledger/v3/internal/application/membership"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
 	"github.com/formancehq/ledger/v3/internal/infra/cache"
@@ -24,6 +25,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/infra/state"
 	"github.com/formancehq/ledger/v3/internal/infra/transport"
 	"github.com/formancehq/ledger/v3/internal/pkg/signal"
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 	"github.com/formancehq/ledger/v3/internal/storage/spool"
 	"github.com/formancehq/ledger/v3/internal/storage/wal"
@@ -83,8 +85,8 @@ func TestJoinPreflightRecoversInitiallyUnavailableLearner(t *testing.T) {
 	learner.start(t, ctx, listener)
 
 	// No registration, restart, or proposal from the test follows listener
-	// startup. The leader's retained loop must deliver the committed log and
-	// the production promotion ticker must observe the catch-up itself.
+	// startup. The learner fetches a donor checkpoint before replaying retained
+	// entries, and the production promotion ticker observes the catch-up.
 	require.Eventually(t, func() bool {
 		status, err := leader.node.GetClusterState(ctx)
 		if err != nil {
@@ -123,6 +125,9 @@ func newJoinRecoveryNode(t *testing.T, id uint64, addr string, peers []node.Peer
 	meters := noop.NewMeterProvider()
 	meter := meters.Meter("join-recovery")
 	store := newTestStore(t)
+	if len(peers) == 0 {
+		seedClusterState(t, store, &commonpb.ClusterConfig{RotationThreshold: 1000})
+	}
 	waldir := t.TempDir()
 	instanceID, err := wal.EnsureInstanceID(waldir)
 	require.NoError(t, err)
@@ -151,13 +156,15 @@ func newJoinRecoveryNode(t *testing.T, id uint64, addr string, peers []node.Peer
 	require.NoError(t, recovery.RecoverState())
 	synchronizer := state.NewSynchronizer(machine, recovery, dal.NewIncomingRestoreFactory(store))
 	responses := node.NewLocalResponses()
-	applier, err := node.NewApplier(machine, recovery, synchronizer, sp, store, w, logger, meter, 1000, 1000, nil, member, responses)
+	fetchers := ctrl.GRPCSnapshotFetcherProvider(tr, logger, id, 1, 1, 1)
+	applier, err := node.NewApplier(machine, recovery, synchronizer, sp, store, w, logger, meter, 1000, 1000, fetchers, member, responses)
 	require.NoError(t, err)
 	cfg := node.NodeConfig{NodeID: id, Peers: peers, Bootstrap: len(peers) == 0, WalDir: waldir, AdvertiseAddr: addr, ServiceAdvertiseAddr: addr, InstanceID: instanceID, TickInterval: 10 * time.Millisecond, ProcessingTickInterval: time.Millisecond, MaintenanceInterval: time.Hour, AutoPromoteThreshold: 1}
 	n, err := node.NewNode(cfg, tr, applier, logger, meter, w, machine, recovery, synchronizer, member, responses)
 	require.NoError(t, err)
 	server := grpc.NewServer()
 	tr.RegisterRaftService(server)
+	grpcadp.RegisterSnapshotService(server, grpcadp.NewSnapshotServiceServer(logger, store, time.Minute, applier))
 	grpcadp.RegisterClusterBootstrapService(server, grpcadp.NewClusterBootstrapServiceServer(n, tr, membershipapp.NewService(n, member, logger, addr, addr), logger, "join-recovery"))
 	t.Cleanup(server.Stop)
 
