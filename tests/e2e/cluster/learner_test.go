@@ -9,6 +9,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/formancehq/ledger/v3/internal/infra/capabilities"
 	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
@@ -70,6 +71,7 @@ var _ = Describe("Learner node", func() {
 				RaftAddress:    raftAddr,
 				ServiceAddress: serviceAddr,
 				InstanceId:     instanceID,
+				Capabilities:   capabilities.IDsAsUint32(capabilities.SupportedIDs()),
 			})
 			Expect(err).To(Succeed())
 
@@ -183,6 +185,7 @@ var _ = Describe("Learner node", func() {
 				RaftAddress:    raftAddr,
 				ServiceAddress: serviceAddr,
 				InstanceId:     instanceID,
+				Capabilities:   capabilities.IDsAsUint32(capabilities.SupportedIDs()),
 			})
 			Expect(err).To(Succeed())
 
@@ -237,6 +240,7 @@ var _ = Describe("Learner node", func() {
 				RaftAddress:    raftAddr,
 				ServiceAddress: serviceAddr,
 				InstanceId:     instanceID,
+				Capabilities:   capabilities.IDsAsUint32(capabilities.SupportedIDs()),
 			})
 			Expect(err).To(Succeed())
 			waitForLearner(servers[lid-1].ClusterClient, lid, 5)
@@ -323,6 +327,7 @@ var _ = Describe("Learner node", func() {
 				RaftAddress:    raftAddr,
 				ServiceAddress: serviceAddr,
 				InstanceId:     instanceID,
+				Capabilities:   capabilities.IDsAsUint32(capabilities.SupportedIDs()),
 			})
 			Expect(err).To(Succeed())
 
@@ -333,6 +338,7 @@ var _ = Describe("Learner node", func() {
 				RaftAddress:    raftAddr,
 				ServiceAddress: serviceAddr,
 				InstanceId:     instanceID,
+				Capabilities:   capabilities.IDsAsUint32(capabilities.SupportedIDs()),
 			})
 			Expect(err).To(HaveOccurred())
 		})
@@ -348,6 +354,7 @@ var _ = Describe("Learner node", func() {
 				RaftAddress:    raftAddr,
 				ServiceAddress: serviceAddr,
 				InstanceId:     instanceID,
+				Capabilities:   capabilities.IDsAsUint32(capabilities.SupportedIDs()),
 			})
 			Expect(err).To(Succeed())
 
