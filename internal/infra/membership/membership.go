@@ -95,6 +95,12 @@ type Membership struct {
 	started bool
 }
 
+// SyncInitialPeers makes lifecycle peer rows durable before the initial Raft
+// snapshot can record voters that have no corresponding peer identity.
+func (m *Membership) SyncInitialPeers() error {
+	return m.store.store.SyncWAL()
+}
+
 // NewMembership loads the in-memory cache from Pebble. The transport +
 // service pool are NOT wired here — see the started field's comment.
 // self is skipped from transport / pool wiring — a node never dials

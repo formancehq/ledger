@@ -4087,6 +4087,9 @@ func registerInitialPeers(m *membership.Membership, cfg NodeConfig, includeSelf 
 			return fmt.Errorf("persisting initial peer %d: %w", p.ID, err)
 		}
 	}
+	if err := m.SyncInitialPeers(); err != nil {
+		return fmt.Errorf("synchronizing initial peer identities: %w", err)
+	}
 
 	return nil
 }

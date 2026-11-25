@@ -20,6 +20,16 @@ A Raft node can be in one of the following states:
 
 Nodes join the cluster as **learners** and are automatically promoted to **voters** (followers) once they catch up. See [Cluster Lifecycle](../../../../ops/cluster-operations.md) for the complete bootstrap/join/promotion flow.
 
+On a fresh bootstrap, restore, or join, the node writes discovered peer
+identities and capability evidence to Pebble, then synchronizes Pebble's WAL
+before creating its initial Raft snapshot. The bootstrap voter has no AddLearner
+entry to reconstruct its identity during replay. If a process crashes before
+maintenance flushes Pebble, the synchronized initial rows still survive and
+`RefreshMembership` can verify the bootstrap voter's identity after a leader
+change. Existing Raft and peer-row formats do not change; rolling upgrades
+must keep the old member rows intact. A replica that already lost the bootstrap
+row before upgrading cannot infer its identity from the historical Raft log.
+
 Every configured member carries a mandatory 16-byte `instanceID`, including
 the bootstrap seed and peers learned through discovery. Membership admission,
 ConfChange apply, persisted-row loading, removal, and promotion all validate
