@@ -40,6 +40,7 @@ func TestHTTPMutationsPreserveIdempotencyKey(t *testing.T) {
 			backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(
 				func(_ context.Context, req *servicepb.ApplyRequest) (*domain.ApplyResult, error) {
 					require.Equal(t, "en-3286-key", req.GetUnsigned().GetIdempotencyKey())
+
 					return &domain.ApplyResult{Logs: []*commonpb.Log{{}}}, nil
 				})
 			srv := newTestServer(t, backend)
