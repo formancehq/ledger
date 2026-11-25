@@ -193,7 +193,10 @@ type listedIndex struct {
 			Key    string `json:"key"`
 		} `json:"metadata"`
 	} `json:"id"`
-	Ledger string `json:"ledger"`
+	Ledger    string `json:"ledger"`
+	CreatedAt *struct {
+		Data json.Number `json:"data"`
+	} `json:"createdAt"`
 }
 
 // parseActualIndexes parses `indexes list --json` stdout into the set of

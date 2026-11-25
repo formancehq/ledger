@@ -38,7 +38,7 @@ cannot establish attribution.
 
 Indexes included in the original ledger-create proposal use a different key:
 `operator-ledger-create:<Ledger CR UID>:<generation>`. The operator also queries
-`indexes list --initial-creation-key-prefix` for that UID. This path accepts
+`audit list --filter 'outcome == success and idempotency_key ^= "operator-ledger-create:<UID>:"' --all --expand --decode-orders --json` for that UID. The audit command returns generic decoded orders; the operator applies the ownership rule. It accepts
 only a successful, fresh batch whose first order creates the named ledger and
 whose remaining orders create supported indexes for that same ledger. The
 orders and log sequences must cover the whole successful batch in order. Each

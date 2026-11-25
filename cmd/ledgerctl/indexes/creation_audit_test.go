@@ -85,42 +85,6 @@ func TestAttributedIndex(t *testing.T) {
 	require.ErrorContains(t, err, "decoding creation audit 2")
 }
 
-func TestAttributedInitialIndexes(t *testing.T) {
-	t.Parallel()
-	entry, idx := creationAuditFixture(t)
-	ledgerOrder := &raftcmdpb.Order{Type: &raftcmdpb.Order_LedgerScoped{LedgerScoped: &raftcmdpb.LedgerScopedOrder{Ledger: "main", Payload: &raftcmdpb.LedgerScopedOrder_CreateLedger{CreateLedger: &raftcmdpb.CreateLedgerOrder{}}}}}
-	ledgerBytes, err := ledgerOrder.MarshalVT()
-	require.NoError(t, err)
-	entry.Idempotency.Key = "operator-ledger-create:resource-uid:3"
-	entry.OrderCount = 2
-	entry.Items = append([]*auditpb.AuditItem{{OrderIndex: 0, SerializedOrder: ledgerBytes, LogSequence: 8}}, entry.GetItems()...)
-	entry.Items[1].OrderIndex = 1
-	entry.GetSuccess().MinLogSequence = 8
-	current := map[string]*commonpb.Index{indexes.Canonical(idx.GetId()): idx}
-	prefix := "operator-ledger-create:resource-uid:"
-	got, err := attributedInitialIndexes(entry, "main", prefix, current)
-	require.NoError(t, err)
-	require.Equal(t, []string{indexes.Canonical(idx.GetId())}, got)
-	for name, mutate := range map[string]func(*auditpb.AuditEntry){
-		"other UID":            func(e *auditpb.AuditEntry) { e.Idempotency.Key = "operator-ledger-create:other-uid:3" },
-		"failed":               func(e *auditpb.AuditEntry) { e.Outcome = &auditpb.AuditEntry_Failure{Failure: &auditpb.AuditFailure{}} },
-		"missing ledger order": func(e *auditpb.AuditEntry) { e.Items[0].SerializedOrder = nil },
-		"replay":               func(e *auditpb.AuditEntry) { e.Items[1].LogSequence = 0 },
-		"missing item":         func(e *auditpb.AuditEntry) { e.Items = e.GetItems()[:1] },
-		"nonconsecutive":       func(e *auditpb.AuditEntry) { e.Items[1].LogSequence = 10; e.GetSuccess().MaxLogSequence = 10 },
-		"replacement":          func(e *auditpb.AuditEntry) { e.Timestamp = &commonpb.Timestamp{Data: 1235} },
-	} {
-		t.Run(name, func(t *testing.T) {
-			t.Parallel()
-			candidate := proto.Clone(entry).(*auditpb.AuditEntry)
-			mutate(candidate)
-			got, err := attributedInitialIndexes(candidate, "main", prefix, current)
-			require.NoError(t, err)
-			require.Empty(t, got)
-		})
-	}
-}
-
 type creationAuditServer struct {
 	servicepb.UnimplementedBucketServiceServer
 
@@ -196,47 +160,4 @@ func TestCreationAuditPagination(t *testing.T) {
 			require.Equal(t, []*commonpb.Index{idx}, result)
 		})
 	}
-}
-
-func TestInitialCreationAuditQuery(t *testing.T) {
-	t.Parallel()
-	entry, idx := creationAuditFixture(t)
-	ledgerOrder := &raftcmdpb.Order{Type: &raftcmdpb.Order_LedgerScoped{LedgerScoped: &raftcmdpb.LedgerScopedOrder{Ledger: "main", Payload: &raftcmdpb.LedgerScopedOrder_CreateLedger{CreateLedger: &raftcmdpb.CreateLedgerOrder{}}}}}
-	data, err := ledgerOrder.MarshalVT()
-	require.NoError(t, err)
-	entry.Idempotency.Key = "operator-ledger-create:resource-uid:3"
-	entry.OrderCount = 2
-	entry.Items = append([]*auditpb.AuditItem{{OrderIndex: 0, SerializedOrder: data, LogSequence: 8}}, entry.GetItems()...)
-	entry.Items[1].OrderIndex = 1
-	entry.GetSuccess().MinLogSequence = 8
-	listener, err := net.Listen("tcp4", "127.0.0.1:0")
-	require.NoError(t, err)
-	server := grpc.NewServer()
-	prefixes := make(chan string, 4)
-	servicepb.RegisterBucketServiceServer(server, &creationAuditServer{entry: entry, prefixes: prefixes})
-	go func() { _ = server.Serve(listener) }() // Stop closes the listener.
-	t.Cleanup(server.Stop)
-	conn, err := grpc.NewClient(listener.Addr().String(), grpc.WithTransportCredentials(insecure.NewCredentials()))
-	require.NoError(t, err)
-	t.Cleanup(func() { require.NoError(t, conn.Close()) })
-	result, err := filterInitialIndexesByCreationKey(t.Context(), servicepb.NewBucketServiceClient(conn), "main", "operator-ledger-create:resource-uid:", []*commonpb.Index{idx})
-	require.NoError(t, err)
-	require.Equal(t, []*commonpb.Index{idx}, result)
-	result, err = filterInitialIndexesByCreationKey(t.Context(), servicepb.NewBucketServiceClient(conn), "main", "operator-ledger-create:other-uid:", []*commonpb.Index{idx})
-	require.NoError(t, err)
-	require.Empty(t, result)
-	close(prefixes)
-	require.Equal(t, []string{
-		"operator-ledger-create:resource-uid:", "operator-ledger-create:resource-uid:",
-		"operator-ledger-create:other-uid:", "operator-ledger-create:other-uid:",
-	}, drainPrefixes(prefixes))
-}
-
-func drainPrefixes(prefixes <-chan string) []string {
-	var got []string
-	for prefix := range prefixes {
-		got = append(got, prefix)
-	}
-
-	return got
 }

@@ -272,7 +272,7 @@ scripting against the CLI predictable across resources.
 | Pagination | `--page-size` | uint32 | Number of items per page (clamped server-side; default `10`). |
 | Pagination | `--cursor` | string | Page token printed by a previous page (`next_cursor` or `previous_cursor`). Pass the same `--reverse` and `--filter` on every page of a walk. See [Page tokens](#page-tokens). |
 | Pagination | `--reverse` | bool | Reverse iteration order. Available on commands whose server endpoint supports it. |
-| Pagination | `--all` | bool | Fetch every page at once (no interactive pagination). Available on `accounts`, `transactions` and `queries execute`. |
+| Pagination | `--all` | bool | Fetch every page at once (no interactive pagination). Available on `accounts`, `transactions`, `audit list` and `queries execute`. |
 
 | Filter | `--filter` | string | Boolean filter expression — textual `filterexpr` grammar OR the structured JSON `QueryFilter` DSL (dual-format, EN-1511). |
 | Filter | `--prefix` | string | Account-address prefix shortcut. Only on `accounts list` (server-side `HardcodedPrefix` optimization). |
@@ -320,7 +320,7 @@ neither `--page-size` nor `--cursor` is set:
 |---|---|---|
 | Interactive page walk | `accounts list`, `transactions list` | Prompt between pages on terminal stdin. On non-terminal stdin, print the first page and cursor hints, then stop. Use `--all` to fetch every page in scripts. |
 | Drain-by-default | `ledgers list`, `numscripts list`, `queries list`, `signing keys list` | Follow the trailer chain to the end and print every page in one shot. Set `--page-size` or `--cursor` to request a single page and print its cursor hints. |
-| Single-page-only | `audit list`, `logs list` | Always print one page and its page hints, even with no flags set. Resume with `--cursor <token>`. These resources commonly hold tens of thousands of rows; defaulting to a single page avoids accidentally streaming the whole history. |
+| Single-page-by-default | `audit list`, `logs list` | Print one page and its page hints by default. Resume with `--cursor <token>`. `audit list --all` explicitly drains all pages. These resources commonly hold tens of thousands of rows, so the default avoids accidentally streaming the whole history. |
 
 All groups expose `--page-size` and `--cursor`; the flagless behavior differs.
 
@@ -953,7 +953,6 @@ ledgerctl indexes list [flags]
 |------|---------|-------------|
 | `--ledger` | *(required)* | Name of the ledger |
 | `--creation-key-prefix` | | Select current indexes supported by a successful singleton audit creation with this key prefix and matching creation date |
-| `--initial-creation-key-prefix` | | Select current indexes supported by a successful ledger-create batch with this key prefix and matching creation date; mutually exclusive with `--creation-key-prefix` |
 | `--timeout` | `10s` | Request timeout |
 
 **Behavior:**
@@ -2479,6 +2478,13 @@ ledgerctl audit list [flags]
 | Flag | Default | Description |
 |------|---------|-------------|
 | `--expand` | `false` | Expand orders within each audit entry |
+| `--all` | `false` | Fetch every audit page; use with a selective filter for bounded output |
+| `--decode-orders` | `false` | With `--expand`, include decoded order JSON in structured output |
+
+With `--expand --decode-orders --json` (or `--yaml`), each result contains
+`entry` (the full audit entry) and `orders` (decoded orders in audit-item order).
+`--decode-orders` requires `--expand` and structured output. A malformed
+serialized order fails the command rather than emitting partial decoded data.
 
 Each entry's header line ends with its batch signing key (`signature=<keyId>`)
 or `unsigned`. With `--expand`, that marker moves to a line above the orders,

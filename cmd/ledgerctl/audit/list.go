@@ -1,6 +1,8 @@
 package audit
 
 import (
+	"encoding/json"
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -8,6 +10,8 @@ import (
 
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
+	"google.golang.org/grpc/metadata"
+	"google.golang.org/protobuf/encoding/protojson"
 
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/cmdutil"
 	"github.com/formancehq/ledger/v3/internal/domain"
@@ -64,7 +68,7 @@ Examples:
 		RunE:              runList,
 	}
 
-	cmdutil.AddPaginationFlags(cmd, cmdutil.PaginationOptions{SupportsReverse: true})
+	cmdutil.AddPaginationFlags(cmd, cmdutil.PaginationOptions{SupportsReverse: true, SupportsAll: true})
 	cmdutil.AddFilterFlags(cmd, cmdutil.FilterOptions{
 		FilterHelp: `Filter expression: textual grammar ("outcome == failure") or JSON DSL ('{"$match":{"outcome":"failure"}}')`,
 	})
@@ -72,6 +76,7 @@ Examples:
 	cmdutil.AddOutputFlags(cmd)
 	cmd.Flags().Duration("timeout", cmdutil.DefaultTimeout, "Request timeout")
 	cmd.Flags().Bool("expand", false, "Expand orders within each audit entry")
+	cmd.Flags().Bool("decode-orders", false, "Include decoded order JSON with expanded structured audit entries")
 
 	return cmd
 }
@@ -88,6 +93,12 @@ func runList(cmd *cobra.Command, _ []string) error {
 	defer cancel()
 
 	expand, _ := cmd.Flags().GetBool("expand")
+	decodeOrders, _ := cmd.Flags().GetBool("decode-orders")
+	jsonOutput, _ := cmd.Flags().GetBool("json")
+	yamlOutput, _ := cmd.Flags().GetBool("yaml")
+	if decodeOrders && (!expand || (!jsonOutput && !yamlOutput)) {
+		return errors.New("--decode-orders requires --expand and --json or --yaml")
+	}
 	pgn := cmdutil.GetPaginationFlags(cmd)
 	flt := cmdutil.GetFilterFlags(cmd)
 	cns := cmdutil.GetConsistencyFlags(cmd)
@@ -97,22 +108,31 @@ func runList(cmd *cobra.Command, _ []string) error {
 		return err
 	}
 
-	stream, err := client.ListAuditEntries(ctx, &servicepb.ListAuditEntriesRequest{
-		Options: cmdutil.BuildListOptions(pgn, cns, filter),
-	})
-	if err != nil {
-		return cmdutil.FormatGRPCError("failed to list audit entries", err)
-	}
+	fetchPage := func(cursor string) ([]*auditpb.AuditEntry, metadata.MD, error) {
+		options := cmdutil.BuildListOptions(pgn, cns, filter)
+		options.Cursor = cursor
+		stream, err := client.ListAuditEntries(ctx, &servicepb.ListAuditEntriesRequest{Options: options})
+		if err != nil {
+			return nil, nil, cmdutil.FormatGRPCError("failed to list audit entries", err)
+		}
+		entries, err := cmdutil.CollectStream(stream)
+		if err != nil {
+			return nil, nil, cmdutil.FormatGRPCError("receiving audit entry", err)
+		}
 
-	// Drain the stream to EOF so the gRPC trailer (x-next-cursor) is
-	// available — the server already caps the stream at pageSize, so reading
-	// to EOF is the canonical way to consume one page.
-	entries, err := cmdutil.CollectStream(stream)
-	if err != nil {
-		return cmdutil.FormatGRPCError("receiving audit entry", err)
+		return entries, stream.Trailer(), nil
 	}
-
-	cursors := cmdutil.CursorsFromTrailer(stream.Trailer())
+	var entries []*auditpb.AuditEntry
+	var trailer metadata.MD
+	if pgn.All {
+		entries, err = cmdutil.DrainAllPages(pgn.Cursor, fetchPage)
+	} else {
+		entries, trailer, err = fetchPage(pgn.Cursor)
+	}
+	if err != nil {
+		return err
+	}
+	cursors := cmdutil.CursorsFromTrailer(trailer)
 
 	if expand {
 		for i, entry := range entries {
@@ -127,7 +147,15 @@ func runList(cmd *cobra.Command, _ []string) error {
 		}
 	}
 
-	if handled, err := cmdutil.EncodeStructured(cmd, entries); handled || err != nil {
+	var output any = entries
+	if decodeOrders {
+		decoded, err := decodeAuditEntries(entries)
+		if err != nil {
+			return err
+		}
+		output = decoded
+	}
+	if handled, err := cmdutil.EncodeStructured(cmd, output); handled || err != nil {
 		// Surface the resume cursor to stderr so --json/--yaml output stays a
 		// pure payload on stdout while scripts can still grep stderr for it.
 		cmdutil.EmitCursorHints(cmd, cursors)
@@ -152,6 +180,36 @@ func runList(cmd *cobra.Command, _ []string) error {
 	cmdutil.EmitCursorHints(cmd, cursors)
 
 	return nil
+}
+
+type decodedAuditEntry struct {
+	Entry  json.RawMessage   `json:"entry"`
+	Orders []json.RawMessage `json:"orders"`
+}
+
+func decodeAuditEntries(entries []*auditpb.AuditEntry) ([]decodedAuditEntry, error) {
+	decoded := make([]decodedAuditEntry, 0, len(entries))
+	for _, entry := range entries {
+		body, err := protojson.Marshal(entry)
+		if err != nil {
+			return nil, fmt.Errorf("encoding audit entry %d: %w", entry.GetSequence(), err)
+		}
+		item := decodedAuditEntry{Entry: body}
+		for _, auditItem := range entry.GetItems() {
+			order := &raftcmdpb.Order{}
+			if err := order.UnmarshalVT(auditItem.GetSerializedOrder()); err != nil {
+				return nil, fmt.Errorf("decoding order %d in audit entry %d: %w", auditItem.GetOrderIndex(), entry.GetSequence(), err)
+			}
+			body, err := protojson.Marshal(order)
+			if err != nil {
+				return nil, fmt.Errorf("encoding order %d in audit entry %d: %w", auditItem.GetOrderIndex(), entry.GetSequence(), err)
+			}
+			item.Orders = append(item.Orders, body)
+		}
+		decoded = append(decoded, item)
+	}
+
+	return decoded, nil
 }
 
 // printAuditEntry prints a single audit entry in a human-readable format.

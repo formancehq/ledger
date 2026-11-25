@@ -118,6 +118,10 @@ func reconcileIndexesWithExec(ctx context.Context, ledger *ledgerv1alpha1.Ledger
 	if err != nil {
 		return false, err
 	}
+	currentDates, err := currentIndexCreationDates(listOut, ledgerName)
+	if err != nil {
+		return false, err
+	}
 
 	attributedOut, err := exec("indexes", "list", "--ledger", ledgerName, "--json", "--creation-key-prefix", creationPrefix)
 	if err != nil {
@@ -128,11 +132,11 @@ func reconcileIndexesWithExec(ctx context.Context, ledger *ledgerv1alpha1.Ledger
 		return false, err
 	}
 	initialPrefix := "operator-ledger-create:" + string(ledger.UID) + ":"
-	initialOut, err := exec("indexes", "list", "--ledger", ledgerName, "--json", "--initial-creation-key-prefix", initialPrefix)
+	initialOut, err := exec("audit", "list", "--filter", "outcome == success and idempotency_key ^= \""+initialPrefix+"\"", "--all", "--expand", "--decode-orders", "--json")
 	if err != nil {
 		return false, err
 	}
-	initial, err := parseActualIndexes(initialOut)
+	initial, err := initialIndexesFromAudit(initialOut, ledgerName, initialPrefix, currentDates)
 	if err != nil {
 		return false, err
 	}

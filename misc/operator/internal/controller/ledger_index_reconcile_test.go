@@ -59,6 +59,11 @@ func TestReconcileIndexes_CreateConflictDoesNotAdopt(t *testing.T) {
 			commands = nil
 			synced, err = reconcileIndexesWithExec(t.Context(), ledger, func(args ...string) (string, error) {
 				commands = append(commands, args)
+				if args[0] == "audit" {
+					require.Equal(t, []string{"audit", "list", "--filter", "outcome == success and idempotency_key ^= \"operator-ledger-create:resource-uid:\"", "--all", "--expand", "--decode-orders", "--json"}, args)
+
+					return "[]", nil
+				}
 				require.Equal(t, []string{"indexes", "list", "--ledger", "L", "--json"}, args[:5])
 				if slices.Contains(args, "--creation-key-prefix") {
 					require.Equal(t, "ledger-operator/index/resource-uid/", args[6])
@@ -66,9 +71,6 @@ func TestReconcileIndexes_CreateConflictDoesNotAdopt(t *testing.T) {
 						return `[{"id":{"txBuiltin":"TX_BUILTIN_INDEX_REFERENCE"}}]`, nil
 					}
 
-					return "[]", nil
-				}
-				if slices.Contains(args, "--initial-creation-key-prefix") {
 					return "[]", nil
 				}
 
