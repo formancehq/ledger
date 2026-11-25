@@ -225,6 +225,19 @@ from unchanged flat creation input. Read rewrite actions model protojson
 configuration counterpart. gRPC revision 29 covers detached current and
 checkpoint projections. See [the contract](../architecture/subsystems/api/ledger-info.md).
 
+### Required posting amounts (EN-2945)
+
+`POST /v3/{ledgerName}/transactions` and gRPC `BucketService.Apply` reject
+each explicit posting whose `amount` is absent or JSON `null`. They return
+HTTP 400 or gRPC `InvalidArgument`, with the existing reason `VALIDATION`
+and message `posting amount is required`. Explicit zero remains valid,
+including HTTP `0`, HTTP `"0"`, and a present empty gRPC `Uint256` message.
+Earlier servers accepted missing amounts as zero. Clients must send an amount
+for each posting and must not retry an unchanged validation failure.
+The OpenAPI requirement already existed. No route or protobuf field changes.
+Service protocol revision remains 40 under the RC wire freeze. See
+[the rollout and rollback assessment](../architecture/subsystems/api/protocol-compatibility.md#required-posting-amounts-en-2945).
+
 ### Prepared-query filter shape validation
 
 Creating or updating a prepared query rejects a filter leaf whose shape can

@@ -40,6 +40,7 @@ not move any validator or change client behavior.
 
 | Rule | Admission | FSM | Notes |
 |------|-----------|-----|-------|
+| Explicit posting amount presence | ✅ | — | EN-2945: every caller-supplied posting must carry a non-nil `amount`. HTTP omission or `null` and an absent gRPC message return `VALIDATION` (HTTP 400 / gRPC `InvalidArgument`). Numeric zero, decimal string `"0"` and a present empty gRPC `Uint256` remain valid. The entire batch is rejected before proposal, without an audit log, transaction, or frozen idempotency result. Historical committed nil amounts retain their zero interpretation during apply and replay. |
 | Account address shape (length, allowed chars) | ✅ | — | `ValidateAccountAddress` (`internal/domain/validation.go`). |
 | Asset code shape and precision range | ✅ | — | `ValidateAsset`. Precision encoded as `uint8` in Pebble keys; admission ensures it fits. |
 | Metadata key shape (non-empty, charset `[a-zA-Z0-9._:/-]`) | ✅ | — | `ValidateMetadataKey`. Characters outside the set — a null byte above all — would break Pebble key boundaries. Shape only: the key's *size* is a separate rule, below. |

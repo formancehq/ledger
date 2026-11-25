@@ -393,6 +393,43 @@ first be rejected by the protocol-version gate (lines 29-35 above) with
 `FailedPrecondition` before reaching identity validation. Clients and servers
 must implement the same revision; there is no compatibility fallback.
 
+## Required posting amounts (EN-2945)
+
+This is an admission-only request-semantic tightening, not a wire-format
+change. Every explicit transaction posting must carry an `amount`. Omitted
+or JSON `null` amounts return HTTP 400 or gRPC `InvalidArgument`, with the
+existing `VALIDATION` reason and message `posting amount is required`.
+Explicit zero remains valid. Clients that previously omitted amounts must
+send zero explicitly when that is their intent. No client regeneration or
+protocol metadata change is needed: revision stays at 40.
+
+The admission error is not serializable and has no new `FailureDetails` arm.
+It never enters Raft, the audit chain or the idempotency store. This avoids
+introducing a persisted failure variant that an earlier RC cannot decode.
+There are no protobuf, storage-schema, backup, snapshot, hash or FSM changes,
+and no data migration. Previously committed nil amounts still apply as zero,
+including replay, restore and application by old and new voters. Existing
+business data and audit history from `v3.0.0-rc.1` and later remain valid.
+
+Rolling upgrades from any earlier RC do not require a new peer capability.
+The admission result can differ while binaries coexist: old servers can still
+accept a missing amount. Forwarding through a new server can reject it before
+an old leader receives it. The guarantee that malformed requests are refused
+therefore starts only when all admitting nodes are upgraded.
+
+Rollback needs no data conversion and does not invalidate transactions written
+by the new server. It reopens the old acceptance behavior. It neither removes
+historical zero transactions nor recovers the caller's missing intent. Correct
+clients first and keep explicit amounts throughout upgrade and rollback.
+Admission validates before idempotency lookup. A retry of a historical request
+with a missing amount is now rejected even if the old server committed it.
+Adding zero changes the request's business intent hash. While the original
+idempotency key is retained, that corrected payload can conflict with the old
+outcome. Read the recorded transaction before deciding whether another write
+is needed. Do not blindly replace the key and duplicate a completed operation.
+Mixed-binary deployment execution remains a separate release validation gate;
+this change's compatibility argument is the unchanged committed execution path.
+
 ## Maintaining the revision
 
 Ledger v3 is in its release-candidate phase. The revision is frozen at `"40"`:

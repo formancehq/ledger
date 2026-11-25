@@ -6948,6 +6948,9 @@ components:
 
     PostingRequest:
       type: object
+      description: |
+        Each posting must supply a non-null amount. An explicit zero is valid.
+        Missing or null amounts are rejected before the transaction is committed.
       required:
         - source
         - destination
