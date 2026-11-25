@@ -476,6 +476,7 @@ message SaveNumscriptRequest {
   string content = 2;
   string version = 3;
   string ledger = 4;
+  string description = 5; // optional, at most 1024 bytes; stored with this version
 }
 
 // GetNumscriptRequest retrieves a numscript by name and version selector.

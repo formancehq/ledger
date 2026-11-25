@@ -55,6 +55,9 @@ cutoff on every member, so RC.4 business entries are applied by RC.4 before
 RC.5 starts. Keep the retained data and WAL volumes; audit replay preserves the
 historical creation rule for previously successful orders. Existing ledgers are
 not rewritten.
+RC.4 also drops the Numscript library version `description` when it applies a
+save, so old and new voters would store different library entries and audit
+bytes for a described save. The stopped boundary prevents that coexistence.
 RC adjacency remains mandatory.
 The `rc.1` to `rc.2` transition rolls one voter at a time with a maintenance
 barrier that pauses writes; it does not stop the whole cluster.

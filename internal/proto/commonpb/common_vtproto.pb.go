@@ -1407,6 +1407,7 @@ func (m *NumscriptInfo) CloneVT() *NumscriptInfo {
 	r.Version = m.Version
 	r.CreatedAt = m.CreatedAt.CloneVT()
 	r.Ledger = m.Ledger
+	r.Description = m.Description
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
 		copy(r.unknownFields, m.unknownFields)
@@ -1442,6 +1443,7 @@ func (m *NumscriptVersionEntry) CloneVT() *NumscriptVersionEntry {
 	r := new(NumscriptVersionEntry)
 	r.Version = m.Version
 	r.CreatedAt = m.CreatedAt.CloneVT()
+	r.Description = m.Description
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
 		copy(r.unknownFields, m.unknownFields)
@@ -3452,6 +3454,24 @@ func (m *FailureDetails_MetadataOnlyReference) CloneVT() isFailureDetails_Kind {
 	return r
 }
 
+func (m *FailureDetails_NumscriptDescriptionTooLong) CloneVT() isFailureDetails_Kind {
+	if m == nil {
+		return (*FailureDetails_NumscriptDescriptionTooLong)(nil)
+	}
+	r := new(FailureDetails_NumscriptDescriptionTooLong)
+	r.NumscriptDescriptionTooLong = m.NumscriptDescriptionTooLong.CloneVT()
+	return r
+}
+
+func (m *FailureDetails_NumscriptDescriptionInvalidChar) CloneVT() isFailureDetails_Kind {
+	if m == nil {
+		return (*FailureDetails_NumscriptDescriptionInvalidChar)(nil)
+	}
+	r := new(FailureDetails_NumscriptDescriptionInvalidChar)
+	r.NumscriptDescriptionInvalidChar = m.NumscriptDescriptionInvalidChar.CloneVT()
+	return r
+}
+
 func (m *AccountAddressEmptyDetails) CloneVT() *AccountAddressEmptyDetails {
 	if m == nil {
 		return (*AccountAddressEmptyDetails)(nil)
@@ -5105,6 +5125,38 @@ func (m *NumscriptCurrencyMismatchDetails) CloneVT() *NumscriptCurrencyMismatchD
 }
 
 func (m *NumscriptCurrencyMismatchDetails) CloneMessageVT() proto.Message {
+	return m.CloneVT()
+}
+
+func (m *NumscriptDescriptionInvalidCharDetails) CloneVT() *NumscriptDescriptionInvalidCharDetails {
+	if m == nil {
+		return (*NumscriptDescriptionInvalidCharDetails)(nil)
+	}
+	r := new(NumscriptDescriptionInvalidCharDetails)
+	if len(m.unknownFields) > 0 {
+		r.unknownFields = make([]byte, len(m.unknownFields))
+		copy(r.unknownFields, m.unknownFields)
+	}
+	return r
+}
+
+func (m *NumscriptDescriptionInvalidCharDetails) CloneMessageVT() proto.Message {
+	return m.CloneVT()
+}
+
+func (m *NumscriptDescriptionTooLongDetails) CloneVT() *NumscriptDescriptionTooLongDetails {
+	if m == nil {
+		return (*NumscriptDescriptionTooLongDetails)(nil)
+	}
+	r := new(NumscriptDescriptionTooLongDetails)
+	if len(m.unknownFields) > 0 {
+		r.unknownFields = make([]byte, len(m.unknownFields))
+		copy(r.unknownFields, m.unknownFields)
+	}
+	return r
+}
+
+func (m *NumscriptDescriptionTooLongDetails) CloneMessageVT() proto.Message {
 	return m.CloneVT()
 }
 
@@ -11401,6 +11453,9 @@ func (this *NumscriptInfo) EqualVT(that *NumscriptInfo) bool {
 	if this.Ledger != that.Ledger {
 		return false
 	}
+	if this.Description != that.Description {
+		return false
+	}
 	return string(this.unknownFields) == string(that.unknownFields)
 }
 
@@ -11440,6 +11495,9 @@ func (this *NumscriptVersionEntry) EqualVT(that *NumscriptVersionEntry) bool {
 		return false
 	}
 	if !this.CreatedAt.EqualVT(that.CreatedAt) {
+		return false
+	}
+	if this.Description != that.Description {
 		return false
 	}
 	return string(this.unknownFields) == string(that.unknownFields)
@@ -16397,6 +16455,56 @@ func (this *FailureDetails_MetadataOnlyReference) EqualVT(thatIface isFailureDet
 	return true
 }
 
+func (this *FailureDetails_NumscriptDescriptionTooLong) EqualVT(thatIface isFailureDetails_Kind) bool {
+	that, ok := thatIface.(*FailureDetails_NumscriptDescriptionTooLong)
+	if !ok {
+		return false
+	}
+	if this == that {
+		return true
+	}
+	if this == nil && that != nil || this != nil && that == nil {
+		return false
+	}
+	if p, q := this.NumscriptDescriptionTooLong, that.NumscriptDescriptionTooLong; p != q {
+		if p == nil {
+			p = &NumscriptDescriptionTooLongDetails{}
+		}
+		if q == nil {
+			q = &NumscriptDescriptionTooLongDetails{}
+		}
+		if !p.EqualVT(q) {
+			return false
+		}
+	}
+	return true
+}
+
+func (this *FailureDetails_NumscriptDescriptionInvalidChar) EqualVT(thatIface isFailureDetails_Kind) bool {
+	that, ok := thatIface.(*FailureDetails_NumscriptDescriptionInvalidChar)
+	if !ok {
+		return false
+	}
+	if this == that {
+		return true
+	}
+	if this == nil && that != nil || this != nil && that == nil {
+		return false
+	}
+	if p, q := this.NumscriptDescriptionInvalidChar, that.NumscriptDescriptionInvalidChar; p != q {
+		if p == nil {
+			p = &NumscriptDescriptionInvalidCharDetails{}
+		}
+		if q == nil {
+			q = &NumscriptDescriptionInvalidCharDetails{}
+		}
+		if !p.EqualVT(q) {
+			return false
+		}
+	}
+	return true
+}
+
 func (this *AccountAddressEmptyDetails) EqualVT(that *AccountAddressEmptyDetails) bool {
 	if this == that {
 		return true
@@ -17962,6 +18070,38 @@ func (this *NumscriptCurrencyMismatchDetails) EqualVT(that *NumscriptCurrencyMis
 
 func (this *NumscriptCurrencyMismatchDetails) EqualMessageVT(thatMsg proto.Message) bool {
 	that, ok := thatMsg.(*NumscriptCurrencyMismatchDetails)
+	if !ok {
+		return false
+	}
+	return this.EqualVT(that)
+}
+func (this *NumscriptDescriptionInvalidCharDetails) EqualVT(that *NumscriptDescriptionInvalidCharDetails) bool {
+	if this == that {
+		return true
+	} else if this == nil || that == nil {
+		return false
+	}
+	return string(this.unknownFields) == string(that.unknownFields)
+}
+
+func (this *NumscriptDescriptionInvalidCharDetails) EqualMessageVT(thatMsg proto.Message) bool {
+	that, ok := thatMsg.(*NumscriptDescriptionInvalidCharDetails)
+	if !ok {
+		return false
+	}
+	return this.EqualVT(that)
+}
+func (this *NumscriptDescriptionTooLongDetails) EqualVT(that *NumscriptDescriptionTooLongDetails) bool {
+	if this == that {
+		return true
+	} else if this == nil || that == nil {
+		return false
+	}
+	return string(this.unknownFields) == string(that.unknownFields)
+}
+
+func (this *NumscriptDescriptionTooLongDetails) EqualMessageVT(thatMsg proto.Message) bool {
+	that, ok := thatMsg.(*NumscriptDescriptionTooLongDetails)
 	if !ok {
 		return false
 	}
@@ -27097,6 +27237,13 @@ func (m *NumscriptInfo) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
+	if len(m.Description) > 0 {
+		i -= len(m.Description)
+		copy(dAtA[i:], m.Description)
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.Description)))
+		i--
+		dAtA[i] = 0x32
+	}
 	if len(m.Ledger) > 0 {
 		i -= len(m.Ledger)
 		copy(dAtA[i:], m.Ledger)
@@ -27210,6 +27357,13 @@ func (m *NumscriptVersionEntry) MarshalToSizedBufferVT(dAtA []byte) (int, error)
 	if m.unknownFields != nil {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
+	}
+	if len(m.Description) > 0 {
+		i -= len(m.Description)
+		copy(dAtA[i:], m.Description)
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.Description)))
+		i--
+		dAtA[i] = 0x1a
 	}
 	if m.CreatedAt != nil {
 		size, err := m.CreatedAt.MarshalToSizedBufferVT(dAtA[:i])
@@ -32000,6 +32154,48 @@ func (m *FailureDetails_MetadataOnlyReference) MarshalToSizedBufferVT(dAtA []byt
 	}
 	return len(dAtA) - i, nil
 }
+func (m *FailureDetails_NumscriptDescriptionTooLong) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *FailureDetails_NumscriptDescriptionTooLong) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	if m.NumscriptDescriptionTooLong != nil {
+		size, err := m.NumscriptDescriptionTooLong.MarshalToSizedBufferVT(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		i--
+		dAtA[i] = 0x9
+		i--
+		dAtA[i] = 0xc2
+	}
+	return len(dAtA) - i, nil
+}
+func (m *FailureDetails_NumscriptDescriptionInvalidChar) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *FailureDetails_NumscriptDescriptionInvalidChar) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	if m.NumscriptDescriptionInvalidChar != nil {
+		size, err := m.NumscriptDescriptionInvalidChar.MarshalToSizedBufferVT(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		i--
+		dAtA[i] = 0x9
+		i--
+		dAtA[i] = 0xca
+	}
+	return len(dAtA) - i, nil
+}
 func (m *AccountAddressEmptyDetails) MarshalVT() (dAtA []byte, err error) {
 	if m == nil {
 		return nil, nil
@@ -35280,6 +35476,72 @@ func (m *NumscriptCurrencyMismatchDetails) MarshalToSizedBufferVT(dAtA []byte) (
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(*m.Expected)))
 		i--
 		dAtA[i] = 0xa
+	}
+	return len(dAtA) - i, nil
+}
+
+func (m *NumscriptDescriptionInvalidCharDetails) MarshalVT() (dAtA []byte, err error) {
+	if m == nil {
+		return nil, nil
+	}
+	size := m.SizeVT()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBufferVT(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *NumscriptDescriptionInvalidCharDetails) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *NumscriptDescriptionInvalidCharDetails) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	if m == nil {
+		return 0, nil
+	}
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if m.unknownFields != nil {
+		i -= len(m.unknownFields)
+		copy(dAtA[i:], m.unknownFields)
+	}
+	return len(dAtA) - i, nil
+}
+
+func (m *NumscriptDescriptionTooLongDetails) MarshalVT() (dAtA []byte, err error) {
+	if m == nil {
+		return nil, nil
+	}
+	size := m.SizeVT()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBufferVT(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *NumscriptDescriptionTooLongDetails) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *NumscriptDescriptionTooLongDetails) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	if m == nil {
+		return 0, nil
+	}
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if m.unknownFields != nil {
+		i -= len(m.unknownFields)
+		copy(dAtA[i:], m.unknownFields)
 	}
 	return len(dAtA) - i, nil
 }
@@ -45721,6 +45983,10 @@ func (m *NumscriptInfo) SizeVT() (n int) {
 	if l > 0 {
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
+	l = len(m.Description)
+	if l > 0 {
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
 	n += len(m.unknownFields)
 	return n
 }
@@ -45751,6 +46017,10 @@ func (m *NumscriptVersionEntry) SizeVT() (n int) {
 	}
 	if m.CreatedAt != nil {
 		l = m.CreatedAt.SizeVT()
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	l = len(m.Description)
+	if l > 0 {
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
 	n += len(m.unknownFields)
@@ -48300,6 +48570,30 @@ func (m *FailureDetails_MetadataOnlyReference) SizeVT() (n int) {
 	}
 	return n
 }
+func (m *FailureDetails_NumscriptDescriptionTooLong) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.NumscriptDescriptionTooLong != nil {
+		l = m.NumscriptDescriptionTooLong.SizeVT()
+		n += 2 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	return n
+}
+func (m *FailureDetails_NumscriptDescriptionInvalidChar) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.NumscriptDescriptionInvalidChar != nil {
+		l = m.NumscriptDescriptionInvalidChar.SizeVT()
+		n += 2 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	return n
+}
 func (m *AccountAddressEmptyDetails) SizeVT() (n int) {
 	if m == nil {
 		return 0
@@ -49448,6 +49742,26 @@ func (m *NumscriptCurrencyMismatchDetails) SizeVT() (n int) {
 		l = len(*m.Got)
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
+	n += len(m.unknownFields)
+	return n
+}
+
+func (m *NumscriptDescriptionInvalidCharDetails) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	n += len(m.unknownFields)
+	return n
+}
+
+func (m *NumscriptDescriptionTooLongDetails) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
 	n += len(m.unknownFields)
 	return n
 }
@@ -61381,6 +61695,38 @@ func (m *NumscriptInfo) UnmarshalVT(dAtA []byte) error {
 			}
 			m.Ledger = string(dAtA[iNdEx:postIndex])
 			iNdEx = postIndex
+		case 6:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Description", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.Description = string(dAtA[iNdEx:postIndex])
+			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
@@ -61586,6 +61932,38 @@ func (m *NumscriptVersionEntry) UnmarshalVT(dAtA []byte) error {
 			if err := m.CreatedAt.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
 				return err
 			}
+			iNdEx = postIndex
+		case 3:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Description", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.Description = string(dAtA[iNdEx:postIndex])
 			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
@@ -71690,6 +72068,88 @@ func (m *FailureDetails) UnmarshalVT(dAtA []byte) error {
 				m.Kind = &FailureDetails_MetadataOnlyReference{MetadataOnlyReference: v}
 			}
 			iNdEx = postIndex
+		case 152:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field NumscriptDescriptionTooLong", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if oneof, ok := m.Kind.(*FailureDetails_NumscriptDescriptionTooLong); ok {
+				if err := oneof.NumscriptDescriptionTooLong.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+					return err
+				}
+			} else {
+				v := &NumscriptDescriptionTooLongDetails{}
+				if err := v.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+					return err
+				}
+				m.Kind = &FailureDetails_NumscriptDescriptionTooLong{NumscriptDescriptionTooLong: v}
+			}
+			iNdEx = postIndex
+		case 153:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field NumscriptDescriptionInvalidChar", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if oneof, ok := m.Kind.(*FailureDetails_NumscriptDescriptionInvalidChar); ok {
+				if err := oneof.NumscriptDescriptionInvalidChar.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+					return err
+				}
+			} else {
+				v := &NumscriptDescriptionInvalidCharDetails{}
+				if err := v.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+					return err
+				}
+				m.Kind = &FailureDetails_NumscriptDescriptionInvalidChar{NumscriptDescriptionInvalidChar: v}
+			}
+			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
@@ -78554,6 +79014,108 @@ func (m *NumscriptCurrencyMismatchDetails) UnmarshalVT(dAtA []byte) error {
 			s := string(dAtA[iNdEx:postIndex])
 			m.Got = &s
 			iNdEx = postIndex
+		default:
+			iNdEx = preIndex
+			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if (skippy < 0) || (iNdEx+skippy) < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.unknownFields = append(m.unknownFields, dAtA[iNdEx:iNdEx+skippy]...)
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *NumscriptDescriptionInvalidCharDetails) UnmarshalVT(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return protohelpers.ErrIntOverflow
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: NumscriptDescriptionInvalidCharDetails: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: NumscriptDescriptionInvalidCharDetails: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		default:
+			iNdEx = preIndex
+			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if (skippy < 0) || (iNdEx+skippy) < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.unknownFields = append(m.unknownFields, dAtA[iNdEx:iNdEx+skippy]...)
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *NumscriptDescriptionTooLongDetails) UnmarshalVT(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return protohelpers.ErrIntOverflow
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: NumscriptDescriptionTooLongDetails: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: NumscriptDescriptionTooLongDetails: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])

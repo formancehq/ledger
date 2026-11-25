@@ -629,9 +629,11 @@ var (
 	// Numscript identifier sentinels stay local: numscript is a
 	// ledger-internal DSL, not part of the Formance-wide invariants in
 	// github.com/formancehq/invariants.
-	ErrNumscriptNameRequired    = NewValidationSentinel("NUMSCRIPT_NAME_REQUIRED", "numscript name is required")
-	ErrNumscriptNameInvalidChar = NewValidationSentinel("NUMSCRIPT_NAME_INVALID_CHAR", "numscript name must contain only printable ASCII (0x20–0x7E)")
-	ErrNumscriptNameTooLong     = NewValidationSentinel("NUMSCRIPT_NAME_TOO_LONG", "numscript name exceeds maximum length of 256 bytes")
+	ErrNumscriptNameRequired           = NewValidationSentinel("NUMSCRIPT_NAME_REQUIRED", "numscript name is required")
+	ErrNumscriptNameInvalidChar        = NewValidationSentinel("NUMSCRIPT_NAME_INVALID_CHAR", "numscript name must contain only printable ASCII (0x20–0x7E)")
+	ErrNumscriptNameTooLong            = NewValidationSentinel("NUMSCRIPT_NAME_TOO_LONG", "numscript name exceeds maximum length of 256 bytes")
+	ErrNumscriptDescriptionTooLong     = NewValidationSentinel("NUMSCRIPT_DESCRIPTION_TOO_LONG", "numscript description exceeds maximum length of 1024 bytes")
+	ErrNumscriptDescriptionInvalidChar = NewValidationSentinel("NUMSCRIPT_DESCRIPTION_INVALID_CHAR", "numscript description must not contain control characters other than newline and tab")
 	// ErrScopedBalanceUnsupported rejects a Numscript that reads or writes a
 	// scope-qualified balance or metadata. Color IS modelled — Ledger volumes are
 	// keyed by (ledger, account, asset, color), so colored reads/writes resolve

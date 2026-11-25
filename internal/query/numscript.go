@@ -129,8 +129,9 @@ func ReadAllNumscriptVersions(
 	for _, entry := range entries {
 		info := entry.Value
 		versions = append(versions, &commonpb.NumscriptVersionEntry{
-			Version:   info.GetVersion(),
-			CreatedAt: info.GetCreatedAt(),
+			Version:     info.GetVersion(),
+			CreatedAt:   info.GetCreatedAt(),
+			Description: info.GetDescription(),
 		})
 	}
 

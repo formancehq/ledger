@@ -2911,6 +2911,7 @@ type SaveNumscriptRequest struct {
 	Content       string                 `protobuf:"bytes,2,opt,name=content,proto3" json:"content,omitempty"`
 	Version       string                 `protobuf:"bytes,3,opt,name=version,proto3" json:"version,omitempty"`
 	Ledger        string                 `protobuf:"bytes,4,opt,name=ledger,proto3" json:"ledger,omitempty"`
+	Description   string                 `protobuf:"bytes,5,opt,name=description,proto3" json:"description,omitempty"` // optional, at most 1024 bytes; stored with this version
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -2969,6 +2970,13 @@ func (x *SaveNumscriptRequest) GetVersion() string {
 func (x *SaveNumscriptRequest) GetLedger() string {
 	if x != nil {
 		return x.Ledger
+	}
+	return ""
+}
+
+func (x *SaveNumscriptRequest) GetDescription() string {
+	if x != nil {
+		return x.Description
 	}
 	return ""
 }
@@ -9347,12 +9355,13 @@ const file_bucket_proto_rawDesc = "" +
 	"\v_end_column\"\x89\x01\n" +
 	"\x18AnalyzeNumscriptResponse\x12.\n" +
 	"\x06inputs\x18\x01 \x03(\v2\x16.ledger.NumscriptInputR\x06inputs\x12=\n" +
-	"\vdiagnostics\x18\x02 \x03(\v2\x1b.ledger.NumscriptDiagnosticR\vdiagnostics\"v\n" +
+	"\vdiagnostics\x18\x02 \x03(\v2\x1b.ledger.NumscriptDiagnosticR\vdiagnostics\"\x98\x01\n" +
 	"\x14SaveNumscriptRequest\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x18\n" +
 	"\acontent\x18\x02 \x01(\tR\acontent\x12\x18\n" +
 	"\aversion\x18\x03 \x01(\tR\aversion\x12\x16\n" +
-	"\x06ledger\x18\x04 \x01(\tR\x06ledger\"\x84\x01\n" +
+	"\x06ledger\x18\x04 \x01(\tR\x06ledger\x12 \n" +
+	"\vdescription\x18\x05 \x01(\tR\vdescription\"\x84\x01\n" +
 	"\x13GetNumscriptRequest\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x18\n" +
 	"\aversion\x18\x02 \x01(\tR\aversion\x12\x16\n" +

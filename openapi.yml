@@ -5662,6 +5662,13 @@ components:
       properties:
         content:
           type: string
+        description:
+          type: string
+          description: |
+            Optional description stored with this version, limited to 1024
+            bytes of UTF-8 (not characters), with no control characters other
+            than newline and tab. A violating value is rejected with reason
+            `VALIDATION`.
         ledger:
           type: string
         name:
@@ -8723,6 +8730,13 @@ components:
             fails if that version already exists. "latest" and partial selectors
             are not accepted for save.
           example: "1.0.0"
+        description:
+          type: string
+          description: |
+            Optional free-text description stored with this version, limited to
+            1024 bytes of UTF-8 (not characters). Control characters other than
+            newline and tab are not allowed. A violating value returns 400 with
+            reason `VALIDATION`. Changing it requires saving a new version.
 
     NumscriptInfo:
       type: object
@@ -8746,6 +8760,9 @@ components:
         ledger:
           type: string
           description: Ledger name this numscript belongs to
+        description:
+          type: string
+          description: Description stored with this version. Omitted when empty.
 
     NumscriptVersionEntry:
       type: object
@@ -8760,6 +8777,9 @@ components:
           type: string
           format: date-time
           description: When this version was stored (ISO 8601 format)
+        description:
+          type: string
+          description: Description stored with this version. Omitted when empty.
 
     ListNumscriptVersionsResponse:
       type: object

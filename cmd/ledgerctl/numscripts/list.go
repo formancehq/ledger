@@ -94,7 +94,7 @@ func runList(cmd *cobra.Command, _ []string) error {
 	}
 
 	tableData := pterm.TableData{
-		{"NAME", "VERSION", "CREATED AT"},
+		{"NAME", "VERSION", "CREATED AT", "DESCRIPTION"},
 	}
 
 	for _, info := range scripts {
@@ -107,6 +107,7 @@ func runList(cmd *cobra.Command, _ []string) error {
 			info.GetName(),
 			info.GetVersion(),
 			createdAt,
+			cmdutil.TerminalSafe(info.GetDescription()),
 		})
 	}
 

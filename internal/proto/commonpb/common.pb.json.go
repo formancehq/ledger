@@ -744,17 +744,19 @@ func (x *PreparedQueryCursor) jsonValue() (any, error) {
 // CreatedTransaction / RevertedTransaction / RevertTransactionPayload.
 func (x *NumscriptInfo) MarshalJSON() ([]byte, error) {
 	return json.Marshal(&struct {
-		Name      string     `json:"name,omitempty"`
-		Content   string     `json:"content,omitempty"`
-		Version   string     `json:"version,omitempty"`
-		CreatedAt *Timestamp `json:"createdAt,omitempty"`
-		Ledger    string     `json:"ledger,omitempty"`
+		Name        string     `json:"name,omitempty"`
+		Content     string     `json:"content,omitempty"`
+		Version     string     `json:"version,omitempty"`
+		CreatedAt   *Timestamp `json:"createdAt,omitempty"`
+		Ledger      string     `json:"ledger,omitempty"`
+		Description string     `json:"description,omitempty"`
 	}{
-		Name:      x.GetName(),
-		Content:   x.GetContent(),
-		Version:   x.GetVersion(),
-		CreatedAt: x.GetCreatedAt(),
-		Ledger:    x.GetLedger(),
+		Name:        x.GetName(),
+		Content:     x.GetContent(),
+		Version:     x.GetVersion(),
+		CreatedAt:   x.GetCreatedAt(),
+		Ledger:      x.GetLedger(),
+		Description: x.GetDescription(),
 	})
 }
 

@@ -21,9 +21,11 @@ func NewSaveCommand() *cobra.Command {
 
 The library is append-only: the version must be an explicit full semver and
 must not already exist. The script content is read from a file (--file) or stdin.
+An optional --description is stored with the version.
 
 Examples:
   ledgerctl numscripts save transfer --ledger myledger --file transfer.num --version 1.0.0
+  ledgerctl numscripts save transfer --ledger myledger --file transfer.num --version 1.1.0 --description "Move funds between users"
   cat transfer.num | ledgerctl numscripts save transfer --ledger myledger --version 1.0.0`,
 		Args:              cobra.ExactArgs(1),
 		ValidArgsFunction: cobra.NoFileCompletions,
@@ -33,6 +35,7 @@ Examples:
 	cmdutil.AddLedgerFlag(cmd)
 	cmd.Flags().String("file", "", "Path to the numscript file (reads stdin if omitted)")
 	cmd.Flags().String("version", "", "Explicit full semver (e.g. 1.0.0); required")
+	cmd.Flags().String("description", "", "Description stored with this version (at most 1024 bytes)")
 	cmd.Flags().Duration("timeout", cmdutil.DefaultTimeout, "Request timeout")
 	_ = cmd.MarkFlagRequired("version")
 
@@ -79,6 +82,7 @@ func runSave(cmd *cobra.Command, args []string) error {
 	defer cancel()
 
 	version, _ := cmd.Flags().GetString("version")
+	description, _ := cmd.Flags().GetString("description")
 
 	spinner := cmdutil.StartSpinner(fmt.Sprintf("Saving numscript %s...", name))
 
@@ -86,10 +90,11 @@ func runSave(cmd *cobra.Command, args []string) error {
 		{
 			Type: &servicepb.Request_SaveNumscript{
 				SaveNumscript: &servicepb.SaveNumscriptRequest{
-					Ledger:  ledgerName,
-					Name:    name,
-					Content: string(content),
-					Version: version,
+					Ledger:      ledgerName,
+					Name:        name,
+					Content:     string(content),
+					Version:     version,
+					Description: description,
 				},
 			},
 		},
@@ -122,6 +127,10 @@ func runSave(cmd *cobra.Command, args []string) error {
 			pterm.Printf("Ledger:  %s\n", pterm.Cyan(ledgerName))
 			pterm.Printf("Name:    %s\n", pterm.Cyan(saved.GetInfo().GetName()))
 			pterm.Printf("Version: %s\n", saved.GetInfo().GetVersion())
+
+			if d := saved.GetInfo().GetDescription(); d != "" {
+				pterm.Printf("Description: %s\n", cmdutil.TerminalSafe(d))
+			}
 
 			return nil
 		}

@@ -21,6 +21,10 @@ func processSaveNumscript(ledger string, order *raftcmdpb.SaveNumscriptOrder, ct
 		return nil, domain.ErrNumscriptContentRequired
 	}
 
+	if err := domain.ValidateNumscriptDescription(order.GetDescription()); err != nil {
+		return nil, err
+	}
+
 	// Validate the script parses correctly (before ledger check, so syntax errors
 	// are reported regardless of ledger existence).
 	if _, err := ctx.NumscriptCache.GetOrParse(order.GetContent()); err != nil {
@@ -56,11 +60,12 @@ func processSaveNumscript(ledger string, order *raftcmdpb.SaveNumscriptOrder, ct
 	}
 
 	info := &commonpb.NumscriptInfo{
-		Name:      order.GetName(),
-		Content:   order.GetContent(),
-		Version:   order.GetVersion(),
-		CreatedAt: s.GetDate().Mutate(),
-		Ledger:    ledger,
+		Name:        order.GetName(),
+		Content:     order.GetContent(),
+		Version:     order.GetVersion(),
+		CreatedAt:   s.GetDate().Mutate(),
+		Ledger:      ledger,
+		Description: order.GetDescription(),
 	}
 
 	// Write the immutable content and advance the latest pointer to the greatest

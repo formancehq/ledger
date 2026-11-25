@@ -3,6 +3,8 @@
 package business
 
 import (
+	"strings"
+
 	"github.com/formancehq/ledger/v3/pkg/actions"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
@@ -105,6 +107,72 @@ var _ = Describe("Numscript Library", Ordered, func() {
 				got[i] = v.GetVersion()
 			}
 			Expect(got).To(Equal([]string{"2.0.0", "1.5.0", "1.0.0"}))
+		})
+	})
+
+	Context("Version descriptions", Ordered, func() {
+		const ledgerName = "numscript-description-ledger"
+
+		BeforeAll(func() {
+			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
+			Expect(err).To(Succeed())
+		})
+
+		It("Should store a description with each version and return it on reads", func() {
+			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("",
+				actions.SaveDescribedNumscriptAction(ledgerName, "pay", script100, "1.0.0", "Credit Alice 1.00 USD"),
+				actions.SaveNumscriptWithVersionAction(ledgerName, "pay", script200, "2.0.0"),
+			))
+			Expect(err).To(Succeed())
+
+			v1, err := sharedClient.GetNumscript(sharedCtx, &servicepb.GetNumscriptRequest{Ledger: ledgerName, Name: "pay", Version: "1.0.0"})
+			Expect(err).To(Succeed())
+			Expect(v1.GetDescription()).To(Equal("Credit Alice 1.00 USD"))
+
+			scripts, err := actions.ListNumscripts(sharedCtx, sharedClient, ledgerName)
+			Expect(err).To(Succeed())
+			Expect(scripts).To(HaveLen(1))
+			Expect(scripts[0].GetVersion()).To(Equal("2.0.0"))
+			Expect(scripts[0].GetDescription()).To(BeEmpty())
+
+			_, versions, err := actions.ListNumscriptVersions(sharedCtx, sharedClient, ledgerName, "pay")
+			Expect(err).To(Succeed())
+			got := map[string]string{}
+			for _, v := range versions {
+				got[v.GetVersion()] = v.GetDescription()
+			}
+			Expect(got).To(Equal(map[string]string{"2.0.0": "", "1.0.0": "Credit Alice 1.00 USD"}))
+		})
+
+		It("Should reject control characters other than newline and tab", func() {
+			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("",
+				actions.SaveDescribedNumscriptAction(ledgerName, "pay", script100, "3.0.0", "\x1b]52;c;cHduZWQ=\x07")))
+			Expect(err).To(HaveOccurred())
+			st, ok := status.FromError(err)
+			Expect(ok).To(BeTrue())
+			Expect(st.Code()).To(Equal(codes.InvalidArgument))
+
+			info := actions.ExtractGRPCErrorInfo(err)
+			Expect(info).NotTo(BeNil())
+			Expect(info.Reason).To(Equal(domain.ErrReasonValidation))
+
+			_, err = sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("",
+				actions.SaveDescribedNumscriptAction(ledgerName, "pay", script100, "3.0.0", "Line one\n\tLine two")))
+			Expect(err).To(Succeed())
+		})
+
+		It("Should reject a description longer than 1024 bytes", func() {
+			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("",
+				actions.SaveDescribedNumscriptAction(ledgerName, "pay", script100, "4.0.0", strings.Repeat("a", domain.MaxNumscriptDescriptionLength+1))))
+			Expect(err).To(HaveOccurred())
+			st, ok := status.FromError(err)
+			Expect(ok).To(BeTrue())
+			Expect(st.Code()).To(Equal(codes.InvalidArgument))
+			Expect(st.Message()).To(ContainSubstring("description"))
+
+			info := actions.ExtractGRPCErrorInfo(err)
+			Expect(info).NotTo(BeNil())
+			Expect(info.Reason).To(Equal(domain.ErrReasonValidation))
 		})
 	})
 

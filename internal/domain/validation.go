@@ -16,6 +16,10 @@ import (
 // invariants).
 const maxNumscriptNameLength = 256
 
+// MaxNumscriptDescriptionLength caps the free-text description stored with a
+// numscript version, in bytes.
+const MaxNumscriptDescriptionLength = 1024
+
 // maxPreparedQueryNameLength caps prepared-query identifiers. Prepared queries
 // are a ledger-internal feature (CQRS read-side); the bound stays local for
 // the same reason as the numscript-name bound above.
@@ -171,6 +175,29 @@ func ValidateNumscriptName(name string) SerializableError {
 
 	if len(name) > maxNumscriptNameLength {
 		return ErrNumscriptNameTooLong
+	}
+
+	return nil
+}
+
+// ValidateNumscriptDescription checks the optional description stored with a
+// numscript version. UTF-8 validity is enforced for every order string at
+// admission. Newline and tab keep multi-line descriptions valid; every other
+// C0, DEL and C1 control character is rejected so stored text cannot carry
+// terminal escape sequences.
+func ValidateNumscriptDescription(description string) SerializableError {
+	if len(description) > MaxNumscriptDescriptionLength {
+		return ErrNumscriptDescriptionTooLong
+	}
+
+	for _, r := range description {
+		if r == '\n' || r == '\t' {
+			continue
+		}
+
+		if r < 0x20 || (r >= 0x7f && r <= 0x9f) {
+			return ErrNumscriptDescriptionInvalidChar
+		}
 	}
 
 	return nil

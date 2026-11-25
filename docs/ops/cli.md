@@ -3561,7 +3561,7 @@ ledgerctl numscripts execute --ledger my-ledger --name transfer --version 1.0.0 
 
 #### numscripts list
 
-List all numscripts in a ledger's library (latest version of each).
+List all numscripts in a ledger's library (latest version of each), with each version's description.
 
 **Aliases:** `ls`
 
@@ -3577,7 +3577,7 @@ ledgerctl numscripts list --ledger <ledger-name> [flags]
 
 #### numscripts versions
 
-List every stored version of a numscript, highest semver first, alongside the current latest pointer (the greatest stored semver).
+List every stored version of a numscript, highest semver first, alongside the current latest pointer (the greatest stored semver). Each row shows the version's description.
 
 ```bash
 ledgerctl numscripts versions <name> --ledger <ledger-name> [flags]
@@ -3597,7 +3597,7 @@ ledgerctl numscripts versions transfer --ledger myledger
 
 #### numscripts get
 
-Get a numscript from the library by name.
+Get a numscript from the library by name. The output includes the version's description when one is stored.
 
 ```bash
 ledgerctl numscripts get <name> --ledger <ledger-name> [flags]
@@ -3622,7 +3622,7 @@ ledgerctl numscripts get transfer --ledger myledger --version 1.0.0
 
 #### numscripts save
 
-Save a new immutable version of a numscript. The version must be an explicit full semver and must not already exist. The library is append-only: existing versions are never overwritten, and the latest pointer advances to the greatest stored semver.
+Save a new immutable version of a numscript. The version must be an explicit full semver and must not already exist. The library is append-only: existing versions are never overwritten, and the latest pointer advances to the greatest stored semver. An optional description is stored with the version; changing it requires a new version.
 
 ```bash
 ledgerctl numscripts save <name> --ledger <ledger-name> --version <semver> [flags]
@@ -3634,11 +3634,15 @@ ledgerctl numscripts save <name> --ledger <ledger-name> --version <semver> [flag
 |------|---------|-------------|
 | `--file` | | Path to the numscript file (reads stdin if omitted) |
 | `--version` | | Explicit full semver (e.g. `1.0.0`); required |
+| `--description` | | Description stored with this version: at most 1024 bytes of UTF-8, with no control characters other than newline and tab. Other values are rejected with reason `VALIDATION`. Human-readable output of `save`, `get`, `list` and `versions` escapes control characters, for example `\n`; the `--json` and `--yaml` output of `get`, `list` and `versions` keeps the stored value. |
 | `--timeout` | `10s` | Request timeout |
 
 **Example:**
 
 ```bash
+# Save from a file with a description
+ledgerctl numscripts save transfer --ledger myledger --file transfer.num --version 1.0.0 --description "Move funds between users"
+
 # Save from a file
 ledgerctl numscripts save transfer --ledger myledger --file transfer.num --version 1.0.0
 

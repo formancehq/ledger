@@ -93,6 +93,28 @@ func TestCheckerNumscript_ContentTamperDetected(t *testing.T) {
 	require.NotEmpty(t, numscriptMismatches(collectCheckErrors(t, e.store, e.attrs)))
 }
 
+// TestCheckerNumscript_DescriptionTamperDetected: the stored description must
+// match the audited SavedNumscript log.
+func TestCheckerNumscript_DescriptionTamperDetected(t *testing.T) {
+	t.Parallel()
+
+	e := newTestEngine(t)
+	e.processAndCommit(createLedgerOrder("main"))
+
+	order := saveNumscriptOrder("main", "pay", numscriptTestContent, "1.0.0")
+	order.GetLedgerScoped().GetSaveNumscript().Description = "Pay out a user"
+	logs := e.processAndCommit(order)
+
+	require.Empty(t, numscriptMismatches(collectCheckErrors(t, e.store, e.attrs)))
+
+	tampered := logs[0].GetPayload().GetSavedNumscript().GetInfo().CloneVT()
+	require.Equal(t, "Pay out a user", tampered.GetDescription())
+	tampered.Description = "Pay out an attacker"
+	tamperNumscriptContent(t, e, tampered)
+
+	require.NotEmpty(t, numscriptMismatches(collectCheckErrors(t, e.store, e.attrs)))
+}
+
 // TestCheckerNumscript_PointerDriftDetected: the stored latest pointer is not
 // the greatest saved semver.
 func TestCheckerNumscript_PointerDriftDetected(t *testing.T) {

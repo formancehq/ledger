@@ -502,6 +502,15 @@ func SaveNumscriptWithVersionAction(ledger, name, content, version string) *serv
 	}
 }
 
+// SaveDescribedNumscriptAction creates an action for saving a numscript version
+// with a description.
+func SaveDescribedNumscriptAction(ledger, name, content, version, description string) *servicepb.Request {
+	req := SaveNumscriptWithVersionAction(ledger, name, content, version)
+	req.GetSaveNumscript().Description = description
+
+	return req
+}
+
 // CreateScriptRefTransactionAction creates a transaction using a script reference
 // from the library. version is required: the literal "latest" or an exact full
 // semver.

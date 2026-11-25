@@ -650,15 +650,17 @@ func (x *AnalyzeNumscriptResponse) MarshalJSON() ([]byte, error) {
 
 func (x *SaveNumscriptRequest) MarshalJSON() ([]byte, error) {
 	return jsonv2.Marshal(struct {
-		Name    string `json:"name"`
-		Content string `json:"content"`
-		Version string `json:"version"`
-		Ledger  string `json:"ledger"`
+		Name        string `json:"name"`
+		Content     string `json:"content"`
+		Version     string `json:"version"`
+		Ledger      string `json:"ledger"`
+		Description string `json:"description"`
 	}{
-		Name:    x.Name,
-		Content: x.Content,
-		Version: x.Version,
-		Ledger:  x.Ledger,
+		Name:        x.Name,
+		Content:     x.Content,
+		Version:     x.Version,
+		Ledger:      x.Ledger,
+		Description: x.Description,
 	})
 }
 

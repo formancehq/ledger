@@ -51,6 +51,46 @@ func TestHandleSaveNumscript_Success(t *testing.T) {
 	require.Equal(t, http.StatusCreated, w.Code)
 }
 
+func TestHandleSaveNumscript_Description(t *testing.T) {
+	t.Parallel()
+
+	var captured *servicepb.SaveNumscriptRequest
+
+	backend := NewMockBackend(gomock.NewController(t))
+	backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(
+		func(_ context.Context, req *servicepb.ApplyRequest) (*domain.ApplyResult, error) {
+			reqs := req.GetUnsigned().GetRequests()
+			require.Len(t, reqs, 1)
+			captured = reqs[0].GetSaveNumscript()
+
+			return &domain.ApplyResult{Logs: []*commonpb.Log{{
+				Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_SavedNumscript{
+					SavedNumscript: &commonpb.SavedNumscriptLog{Info: &commonpb.NumscriptInfo{
+						Name:        captured.GetName(),
+						Version:     captured.GetVersion(),
+						Description: captured.GetDescription(),
+					}},
+				}},
+			}}}, nil
+		}).AnyTimes()
+	srv := newTestServer(t, backend)
+
+	w := httptest.NewRecorder()
+	r := newRequest(t, http.MethodPut, "/ledger1/numscripts/my-script",
+		strings.NewReader(`{"content":"send [USD 100] ( source = @world destination = @alice )","version":"1.0.0","description":"Pay out a user"}`),
+		map[string]string{
+			"ledgerName": "ledger1",
+			"name":       "my-script",
+		})
+
+	srv.handleSaveNumscript(w, r)
+
+	require.Equal(t, http.StatusCreated, w.Code)
+	require.NotNil(t, captured)
+	require.Equal(t, "Pay out a user", captured.GetDescription())
+	require.Contains(t, w.Body.String(), `"description":"Pay out a user"`)
+}
+
 // TestHandleSaveNumscript_LogContractViolations locks in the exact-one typed-log
 // contract: a successful save always emits exactly one non-nil SavedNumscript log
 // (processSaveNumscript returns either an error or that log). Any other
