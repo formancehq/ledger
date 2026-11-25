@@ -25,7 +25,7 @@ func TestCapabilityActivationDirectThroughRaftAfterDrain(t *testing.T) {
 	t.Parallel()
 	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
 	defer cancel()
-	supported := []capabilities.CapabilityID{capabilities.StrictCreateLedgerAccountTypes}
+	supported := []capabilities.CapabilityID{capabilities.StrictAccountTypes}
 	members := []capabilities.Member{{NodeID: 1, Role: capabilities.Voter, Reachable: true, Capabilities: supported}}
 	var store *dal.Store
 	gate := func(_ context.Context, proposal *node.Proposal) error {
@@ -129,6 +129,6 @@ func TestCapabilityActivationDirectThroughRaftAfterDrain(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, uint64(7), policy.GetRevision())
 	require.Equal(t, uint64(42), policy.GetQueryCheckpointLimit())
-	require.Equal(t, []uint32{uint32(capabilities.StrictCreateLedgerAccountTypes)}, capabilities.ActiveIDs(policy))
+	require.Equal(t, []uint32{uint32(capabilities.StrictAccountTypes)}, capabilities.ActiveIDs(policy))
 	require.NoError(t, gate(ctx, proposal))
 }

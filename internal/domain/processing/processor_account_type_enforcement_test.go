@@ -72,7 +72,7 @@ func TestProcessCreateTransactionRejectsAccountOutsideConfiguredTypes(t *testing
 	require.Equal(t, "merchants:shop", notMatching.Address)
 }
 
-func TestProcessOrdersStrictTransactionAccountMetadataCapability(t *testing.T) {
+func TestProcessOrdersStrictAccountTypesCapability(t *testing.T) {
 	t.Parallel()
 	for _, test := range []struct {
 		name         string
@@ -136,7 +136,7 @@ send [USD/2 100] (source = @world destination = @users:1)`
 			if test.legacy {
 				result, processErr = processor.ProcessOrders(orders, mockFactory(scope), noopSink{})
 			} else {
-				result, processErr = processor.ProcessOrdersWithCapabilities(orders, mockFactory(scope), noopSink{}, []uint32{uint32(capabilities.StrictTransactionAccountMetadata)})
+				result, processErr = processor.ProcessOrdersWithCapabilities(orders, mockFactory(scope), noopSink{}, []uint32{uint32(capabilities.StrictAccountTypes)})
 			}
 			if test.wantAddress == "" {
 				require.Nil(t, processErr)

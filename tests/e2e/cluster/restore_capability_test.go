@@ -47,7 +47,7 @@ func waitForRestoredCapabilityEvidence(ctx context.Context, clusterID string, cl
 		g.Expect(err).To(Succeed())
 		for _, peer := range peers.GetPeers() {
 			if peer.GetId() == leaderID {
-				g.Expect(slices.Contains(peer.GetCapabilities(), uint32(capabilities.StrictTransactionAccountMetadata))).To(BeTrue(), "restored leader must commit capability 1 evidence")
+				g.Expect(slices.Contains(peer.GetCapabilities(), uint32(capabilities.StrictAccountTypes))).To(BeTrue(), "restored leader must commit capability 1 evidence")
 				return
 			}
 		}

@@ -33,8 +33,8 @@ func TestProposalCapabilityAdmissionRecoversActiveWithoutIntent(t *testing.T) {
 	t.Parallel()
 	proposal, err := node.NewProposal(1, &raftcmdpb.Proposal{Orders: []*raftcmdpb.Order{{Type: &raftcmdpb.Order_LedgerScoped{LedgerScoped: &raftcmdpb.LedgerScopedOrder{Ledger: "l", Payload: &raftcmdpb.LedgerScopedOrder_CreateLedger{CreateLedger: &raftcmdpb.CreateLedgerOrder{}}}}}}})
 	require.NoError(t, err)
-	policy := &commonpb.ClusterPolicy{CapabilityActivations: []*commonpb.CapabilityActivation{{Id: uint32(capabilities.StrictCreateLedgerAccountTypes), Active: true}}}
-	supported := []capabilities.CapabilityID{capabilities.StrictCreateLedgerAccountTypes}
+	policy := &commonpb.ClusterPolicy{CapabilityActivations: []*commonpb.CapabilityActivation{{Id: uint32(capabilities.StrictAccountTypes), Active: true}}}
+	supported := []capabilities.CapabilityID{capabilities.StrictAccountTypes}
 	members := []capabilities.Member{{NodeID: 1, Role: capabilities.Voter, Reachable: true, Capabilities: supported}}
 	require.NoError(t, validateProposalCapabilityAdmissionWithSupported(policy, proposal, members, supported))
 }
@@ -82,13 +82,13 @@ func TestCapabilityActivationBarrierUntilCommitAfterDrain(t *testing.T) {
 	}}}
 	proposal, err := node.NewProposal(1, command)
 	require.NoError(t, err)
-	supported := []capabilities.CapabilityID{capabilities.StrictCreateLedgerAccountTypes}
+	supported := []capabilities.CapabilityID{capabilities.StrictAccountTypes}
 	for _, role := range []capabilities.MemberRole{capabilities.Voter, capabilities.Learner} {
 		members := []capabilities.Member{{NodeID: 1, Role: capabilities.Voter, Reachable: true, Capabilities: supported}, {NodeID: 2, Role: role, Reachable: true}}
 		require.ErrorIs(t, validateProposalCapabilityAdmissionWithSupported(&commonpb.ClusterPolicy{}, proposal, members, supported), capabilities.ErrCapabilityUnsupported)
 		members[1].Capabilities = supported
 		require.ErrorIs(t, validateProposalCapabilityAdmissionWithSupported(&commonpb.ClusterPolicy{}, proposal, members, supported), capabilities.ErrActivationPending)
-		inactive := &commonpb.ClusterPolicy{CapabilityActivations: []*commonpb.CapabilityActivation{{Id: uint32(capabilities.StrictCreateLedgerAccountTypes)}}}
+		inactive := &commonpb.ClusterPolicy{CapabilityActivations: []*commonpb.CapabilityActivation{{Id: uint32(capabilities.StrictAccountTypes)}}}
 		require.ErrorIs(t, validateProposalCapabilityAdmissionWithSupported(inactive, proposal, members, supported), capabilities.ErrActivationPending)
 		configuration, err := node.NewProposal(2, &raftcmdpb.Proposal{Payload: &raftcmdpb.Proposal_SetClusterPolicy{
 			SetClusterPolicy: &raftcmdpb.SetClusterPolicyProposal{Policy: &commonpb.ClusterPolicy{Revision: 2}, ConfigurationOnly: true},
@@ -96,7 +96,7 @@ func TestCapabilityActivationBarrierUntilCommitAfterDrain(t *testing.T) {
 		require.NoError(t, err)
 		require.NoError(t, validateProposalCapabilityAdmissionWithSupported(inactive, configuration, members, supported))
 		activation, err := node.NewProposal(3, &raftcmdpb.Proposal{Payload: &raftcmdpb.Proposal_CapabilityActivation{
-			CapabilityActivation: &commonpb.CapabilityActivation{Id: uint32(capabilities.StrictCreateLedgerAccountTypes), Active: true},
+			CapabilityActivation: &commonpb.CapabilityActivation{Id: uint32(capabilities.StrictAccountTypes), Active: true},
 		}})
 		require.NoError(t, err)
 		members[1].Capabilities = nil

@@ -89,7 +89,7 @@ func TestAuditReplayerPreservesLegacyCreateLedgerAccountTypes(t *testing.T) {
 			t.Cleanup(func() { require.NoError(t, strictReplayer.Close()) })
 			_, err = strictReplayer.Replay(&commonpb.Timestamp{Data: 1}, []*raftcmdpb.Order{
 				createLedgerOrderWithAccountTypes("strict", tc.types),
-			}, uint32(capabilities.StrictCreateLedgerAccountTypes))
+			}, uint32(capabilities.StrictAccountTypes))
 			require.Error(t, err, "the persisted capability must select strict validation during replay")
 		})
 	}

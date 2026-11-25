@@ -392,7 +392,7 @@ func processMetadataOnly(ledger string, order ledgerExecutionOrder, result *prod
 }
 
 func validateTransactionAccountMetadataAddresses(ledger string, metadata map[string]*commonpb.MetadataMap, ctx *Context) domain.Describable {
-	if !ctx.hasCapability(capabilities.StrictTransactionAccountMetadata) {
+	if !ctx.hasCapability(capabilities.StrictAccountTypes) {
 		return domain.ValidateAccountMetadataAddresses(metadata)
 	}
 	compiled := compiledTypesFor(ctx.CompiledTypes, ledger, ctx.LedgerInfo)

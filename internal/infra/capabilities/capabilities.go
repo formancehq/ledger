@@ -19,8 +19,7 @@ import (
 // The wire representation remains uint32 at protobuf and Raft JSON boundaries.
 type CapabilityID uint32
 
-const StrictTransactionAccountMetadata CapabilityID = 1
-const StrictCreateLedgerAccountTypes CapabilityID = 2
+const StrictAccountTypes CapabilityID = 1
 
 // PreparedProposal is the opaque capability metadata produced while preparing
 // a final proposal. Callers can inspect it through RequiredCapabilities, but
@@ -37,7 +36,7 @@ func (p PreparedProposal) RequiredCapabilities() []CapabilityID {
 
 // SupportedIDs is the immutable capability set implemented by this binary.
 func SupportedIDs() []CapabilityID {
-	return []CapabilityID{StrictTransactionAccountMetadata, StrictCreateLedgerAccountTypes}
+	return []CapabilityID{StrictAccountTypes}
 }
 
 func MembershipRequiredIDs(policy *commonpb.ClusterPolicy) []uint32 {
@@ -120,19 +119,18 @@ func RequiredCapabilities(proposal *raftcmdpb.Proposal) ([]CapabilityID, error) 
 		return nil, fmt.Errorf("%w: nil proposal", ErrInvalidDeclaration)
 	}
 
-	var required []CapabilityID
 	for _, order := range proposals.BatchOrders(proposal) {
-		if order.GetLedgerScoped().GetCreateLedger() != nil {
-			required = append(required, StrictCreateLedgerAccountTypes)
+		ledgerScoped := order.GetLedgerScoped()
+		if ledgerScoped.GetCreateLedger() != nil {
+			return []CapabilityID{StrictAccountTypes}, nil
 		}
-		apply := order.GetLedgerScoped().GetApply()
+		apply := ledgerScoped.GetApply()
 		if apply.GetCreateTransaction() != nil || apply.GetExecuteNumscript() != nil {
-			required = append(required, StrictTransactionAccountMetadata)
+			return []CapabilityID{StrictAccountTypes}, nil
 		}
 	}
-	slices.Sort(required)
 
-	return slices.Compact(required), nil
+	return nil, nil
 }
 
 // PrepareProposal derives and stamps the semantic capability declaration and

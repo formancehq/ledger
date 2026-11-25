@@ -37,7 +37,7 @@ func TestCreateLedgerRejectsInvalidInitialAccountTypesAtApply(t *testing.T) {
 			proposal := makeProposal(1, order)
 			prepared, err := capabilities.PrepareProposal(proposal)
 			require.NoError(t, err)
-			require.Equal(t, []capabilities.CapabilityID{capabilities.StrictCreateLedgerAccountTypes}, prepared.RequiredCapabilities())
+			require.Equal(t, []capabilities.CapabilityID{capabilities.StrictAccountTypes}, prepared.RequiredCapabilities())
 			results, err := machine.ApplyEntries(t.Context(), store, makeEntry(t, 1, proposal))
 			require.NoError(t, err)
 			require.Len(t, results.Results, 1)

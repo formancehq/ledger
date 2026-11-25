@@ -112,8 +112,8 @@ func TestPrepareProposalMarksTransactionSemantics(t *testing.T) {
 	proposal := &raftcmdpb.Proposal{Payload: &raftcmdpb.Proposal_Batch{Batch: &raftcmdpb.ExecutionBatch{Orders: []*raftcmdpb.Order{order}}}}
 	prepared, err := PrepareProposal(proposal)
 	require.NoError(t, err)
-	require.Equal(t, []CapabilityID{StrictTransactionAccountMetadata}, prepared.RequiredCapabilities())
-	require.Equal(t, []uint32{uint32(StrictTransactionAccountMetadata)}, proposal.GetRequiredCapabilities())
+	require.Equal(t, []CapabilityID{StrictAccountTypes}, prepared.RequiredCapabilities())
+	require.Equal(t, []uint32{uint32(StrictAccountTypes)}, proposal.GetRequiredCapabilities())
 	data, err := proposal.MarshalVT()
 	require.NoError(t, err)
 	require.NoError(t, ValidateFinalProposal(data, prepared.RequiredCapabilities()))
@@ -126,7 +126,7 @@ func TestPrepareProposalMarksTransactionSemantics(t *testing.T) {
 	order.GetLedgerScoped().GetApply().Data = &raftcmdpb.LedgerApplyOrder_ExecuteNumscript{ExecuteNumscript: &raftcmdpb.ExecuteNumscriptOrder{}}
 	prepared, err = PrepareProposal(proposal)
 	require.NoError(t, err)
-	require.Equal(t, []CapabilityID{StrictTransactionAccountMetadata}, prepared.RequiredCapabilities())
+	require.Equal(t, []CapabilityID{StrictAccountTypes}, prepared.RequiredCapabilities())
 }
 
 func TestPrepareProposalMarksCreateLedgerAndMixedBatch(t *testing.T) {
@@ -142,23 +142,23 @@ func TestPrepareProposalMarksCreateLedgerAndMixedBatch(t *testing.T) {
 	proposal := &raftcmdpb.Proposal{Payload: &raftcmdpb.Proposal_Batch{Batch: &raftcmdpb.ExecutionBatch{Orders: []*raftcmdpb.Order{create, transaction}}}}
 	prepared, err := PrepareProposal(proposal)
 	require.NoError(t, err)
-	require.Equal(t, []CapabilityID{StrictTransactionAccountMetadata, StrictCreateLedgerAccountTypes}, prepared.RequiredCapabilities())
-	require.Equal(t, []uint32{1, 2}, proposal.GetRequiredCapabilities())
+	require.Equal(t, []CapabilityID{StrictAccountTypes}, prepared.RequiredCapabilities())
+	require.Equal(t, []uint32{1}, proposal.GetRequiredCapabilities())
 	proposal.GetBatch().Orders = []*raftcmdpb.Order{create}
 	prepared, err = PrepareProposal(proposal)
 	require.NoError(t, err)
-	require.Equal(t, []CapabilityID{StrictCreateLedgerAccountTypes}, prepared.RequiredCapabilities())
+	require.Equal(t, []CapabilityID{StrictAccountTypes}, prepared.RequiredCapabilities())
 }
 
-func TestStrictTransactionAccountMetadataActivation(t *testing.T) {
+func TestStrictAccountTypesActivation(t *testing.T) {
 	t.Parallel()
 	member := Member{NodeID: 1, Role: Voter, Reachable: true, Capabilities: SupportedIDs()}
 	state := capabilityState()
-	require.False(t, Evaluate(state, []CapabilityID{StrictTransactionAccountMetadata}, true, []Member{member}).Allowed)
-	state.Activations[StrictTransactionAccountMetadata] = true
-	require.True(t, Evaluate(state, []CapabilityID{StrictTransactionAccountMetadata}, true, []Member{member}).Allowed)
+	require.False(t, Evaluate(state, []CapabilityID{StrictAccountTypes}, true, []Member{member}).Allowed)
+	state.Activations[StrictAccountTypes] = true
+	require.True(t, Evaluate(state, []CapabilityID{StrictAccountTypes}, true, []Member{member}).Allowed)
 	member.Capabilities = nil
-	require.False(t, Evaluate(state, []CapabilityID{StrictTransactionAccountMetadata}, true, []Member{member}).Allowed)
+	require.False(t, Evaluate(state, []CapabilityID{StrictAccountTypes}, true, []Member{member}).Allowed)
 }
 
 func TestFromPolicyRoundTrip(t *testing.T) {

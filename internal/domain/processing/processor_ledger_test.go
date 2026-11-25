@@ -53,7 +53,7 @@ func TestProcessCreateLedger_RejectsInvalidInitialAccountTypeConstraints(t *test
 				},
 			},
 		},
-	}, &Context{Scope: mockStore, requiredCapabilities: []uint32{uint32(capabilities.StrictCreateLedgerAccountTypes)}})
+	}, &Context{Scope: mockStore, requiredCapabilities: []uint32{uint32(capabilities.StrictAccountTypes)}})
 
 	var invalid *domain.ErrInvalidPattern
 	require.ErrorAs(t, derr, &invalid)
@@ -73,7 +73,7 @@ func TestProcessCreateLedger_RejectsConflictingInitialAccountTypes(t *testing.T)
 			"users-by-id":   {Pattern: "users:{id}"},
 			"users-by-name": {Pattern: "users:{name}"},
 		},
-	}, &Context{Scope: mockStore, requiredCapabilities: []uint32{uint32(capabilities.StrictCreateLedgerAccountTypes)}})
+	}, &Context{Scope: mockStore, requiredCapabilities: []uint32{uint32(capabilities.StrictAccountTypes)}})
 
 	var conflict *domain.ErrAccountTypeConflict
 	require.ErrorAs(t, derr, &conflict)
@@ -95,7 +95,7 @@ func TestProcessCreateLedger_ConflictSelectionUsesFirstProcessedName(t *testing.
 				"z-last":   {Pattern: "users:{group}:123"},
 				"a-first":  {Pattern: "users:alpha:{id}"},
 			},
-		}, &Context{Scope: mockStore, requiredCapabilities: []uint32{uint32(capabilities.StrictCreateLedgerAccountTypes)}})
+		}, &Context{Scope: mockStore, requiredCapabilities: []uint32{uint32(capabilities.StrictAccountTypes)}})
 
 		var conflict *domain.ErrAccountTypeConflict
 		require.ErrorAs(t, derr, &conflict)
