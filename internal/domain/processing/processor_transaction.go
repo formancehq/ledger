@@ -403,6 +403,7 @@ func validateTransactionAccountMetadataAddresses(ledger string, metadata map[str
 			return err
 		}
 	}
+
 	return nil
 }
 

@@ -126,7 +126,7 @@ send [USD/2 100] (source = @world destination = @users:1)`
 			}
 			action := &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{CreateTransaction: payload}}
 			if test.execute {
-				action = &servicepb.LedgerAction{Data: &servicepb.LedgerAction_ExecuteNumscript{ExecuteNumscript: &servicepb.ExecuteNumscriptPayload{Script: payload.Script, AccountMetadata: payload.AccountMetadata}}}
+				action = &servicepb.LedgerAction{Data: &servicepb.LedgerAction_ExecuteNumscript{ExecuteNumscript: &servicepb.ExecuteNumscriptPayload{Script: payload.GetScript(), AccountMetadata: payload.GetAccountMetadata()}}}
 			}
 			request := &servicepb.Request{Type: &servicepb.Request_Apply{Apply: &servicepb.LedgerApplyRequest{Ledger: "test-ledger", Action: action}}}
 			orders := []*raftcmdpb.Order{requestToOrder(t, request)}
@@ -143,6 +143,7 @@ send [USD/2 100] (source = @world destination = @users:1)`
 				if test.legacy {
 					require.Contains(t, written, "rogue:1")
 				}
+
 				return
 			}
 			var mismatch *domain.ErrAccountNotMatchingType
