@@ -1,6 +1,8 @@
 package node
 
 import (
+	"context"
+	"os"
 	"testing"
 	"time"
 
@@ -12,12 +14,97 @@ import (
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
+	"github.com/formancehq/ledger/v3/internal/infra/state"
 	"github.com/formancehq/ledger/v3/internal/pkg/commands"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 	"github.com/formancehq/ledger/v3/internal/storage/wal"
 )
+
+type checkpointSequenceProvider struct {
+	paths []string
+	calls int
+}
+
+func (p *checkpointSequenceProvider) GetForPeer(id uint64) (state.SnapshotFetcher, error) {
+	return p.GetForPeers([]uint64{id})
+}
+
+func (p *checkpointSequenceProvider) GetForPeers(_ []uint64) (state.SnapshotFetcher, error) {
+	path := p.paths[p.calls]
+	p.calls++
+
+	return checkpointDirectoryFetcher{path: path}, nil
+}
+
+type checkpointDirectoryFetcher struct{ path string }
+
+func (f checkpointDirectoryFetcher) FetchSnapshot(_ context.Context, targetDir string, _ *state.SyncProgress, _ uint64) (uint64, error) {
+	return 0, os.CopyFS(targetDir, os.DirFS(f.path))
+}
+
+func testJoinCheckpoint(t *testing.T, withConfig bool) string {
+	t.Helper()
+	store, err := dal.NewStore(t.TempDir(), logging.Testing(), noop.NewMeterProvider().Meter("donor"), dal.DefaultConfig())
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, store.Close()) })
+	seedApplierAuditKey(t, store)
+	batch := store.OpenWriteSession()
+	require.NoError(t, state.SetAppliedIndex(batch, 1))
+	if withConfig {
+		require.NoError(t, batch.SetProto([]byte{dal.ZoneGlobal, dal.SubGlobClusterConfig},
+			&commonpb.PersistedClusterState{Config: &commonpb.ClusterConfig{RotationThreshold: 1000}, CacheEpoch: 1}))
+	}
+	require.NoError(t, batch.Commit())
+	id, err := store.CreateSnapshot()
+	require.NoError(t, err)
+	path, err := store.GetCheckpointPath(id)
+	require.NoError(t, err)
+
+	return path
+}
+
+func waitJoinSyncResult(t *testing.T, applier *Applier) gatingResult {
+	t.Helper()
+	select {
+	case result := <-applier.gatingTerminated:
+		return result
+	case <-time.After(5 * time.Second):
+		t.Fatal("checkpoint synchronization did not finish")
+		return gatingResult{}
+	}
+}
+
+func TestFreshJoinRejectsPreConfigCheckpointThenReplaysAfterRetry(t *testing.T) {
+	t.Parallel()
+	setup := newTestApplierSetup(t)
+	provider := &checkpointSequenceProvider{paths: []string{
+		testJoinCheckpoint(t, false), testJoinCheckpoint(t, true),
+	}}
+	setup.applier.snapshotFetcherProvider = provider
+	setup.applier.requireJoinConfig = true
+	entry, _ := makeCreateLedgerEntry(t, 2, "after-join-config")
+	require.NoError(t, setup.spool.AppendCommittedEntries(t.Context(), entry))
+
+	setup.applier.startSyncSnapshot(t.Context(), 2)
+	first := waitJoinSyncResult(t, setup.applier)
+	require.True(t, first.syncFailed, "a checkpoint without ClusterConfig must remain gated")
+	require.False(t, first.taskFailed)
+	require.Equal(t, 1, provider.calls)
+	require.Equal(t, uint64(1), setup.fsm.LastAppliedIndex())
+	require.Nil(t, setup.fsm.State.LastClusterConfig)
+	require.False(t, listLedgerContains(setup.store, "after-join-config"), "failed sync must not replay the spool")
+
+	setup.applier.startSyncSnapshot(t.Context(), 2)
+	second := waitJoinSyncResult(t, setup.applier)
+	require.False(t, second.syncFailed)
+	require.False(t, second.taskFailed)
+	require.Equal(t, 2, provider.calls)
+	require.Equal(t, uint64(2), setup.fsm.LastAppliedIndex())
+	require.NotNil(t, setup.fsm.State.LastClusterConfig)
+	require.True(t, listLedgerContains(setup.store, "after-join-config"), "successful retry must replay the spool")
+}
 
 func seedRecoveredClusterConfig(t *testing.T, setup *testApplierSetup, epoch uint64) {
 	t.Helper()
