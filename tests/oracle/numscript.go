@@ -911,3 +911,28 @@ func (s LedgerState) TemplateUsage(name string) uint64 {
 
 	return n
 }
+
+// TemplateLastUsed returns the greatest timestamp among the first count creates
+// that ran name, in log order: the last_used of a usage counter that folded
+// them. exact is false when one of them has a server-stamped timestamp the
+// model has not learned yet; latest is then only a lower bound, nil when no
+// timestamp is known.
+func (s LedgerState) TemplateLastUsed(name string, count uint64) (latest *commonpb.Timestamp, exact bool) {
+	exact = true
+	for i := 0; i < s.txs.Len() && count > 0; i++ {
+		rec := s.txs.Get(i)
+		if rec.template != name {
+			continue
+		}
+		count--
+
+		switch {
+		case rec.timestamp == nil:
+			exact = false
+		case latest == nil || rec.timestamp.GetData() > latest.GetData():
+			latest = rec.timestamp
+		}
+	}
+
+	return latest, exact
+}

@@ -208,6 +208,51 @@ func TestScript_LibraryVersions(t *testing.T) {
 	require.Equal(t, "other", sameBulk.State.Ledger("L").txs.Get(0).template)
 }
 
+func TestScript_TemplateLastUsed(t *testing.T) {
+	t.Parallel()
+
+	fromWorld := `send [USD 1] (
+	source = @world
+	destination = @b:1
+)`
+	stamped := func(data uint64) *servicepb.Request {
+		return createReq("L", &servicepb.CreateTransactionPayload{
+			ScriptReference: &servicepb.ScriptReference{Name: "w", Version: "latest"},
+			Timestamp:       &commonpb.Timestamp{Data: data},
+		})
+	}
+
+	res := NewGlobalState().Apply(bulkOf(
+		saveReq("L", "w", "1.0.0", fromWorld),
+		stamped(300),
+		scriptReq("L", fromWorld, nil, false),
+		referenceReq("L", "w", "latest", nil),
+		stamped(100),
+	))
+	require.True(t, res.OK)
+
+	ls := res.State.Ledger("L")
+	latest, exact := ls.TemplateLastUsed("w", 0)
+	require.Nil(t, latest)
+	require.True(t, exact)
+
+	latest, exact = ls.TemplateLastUsed("w", 1)
+	require.Equal(t, uint64(300), latest.GetData())
+	require.True(t, exact)
+
+	latest, exact = ls.TemplateLastUsed("w", 3)
+	require.Equal(t, uint64(300), latest.GetData())
+	require.False(t, exact, "the unstamped create's timestamp is not known yet")
+
+	res.State.LearnTxStamps("L", 3, &commonpb.Timestamp{Data: 500}, nil, nil)
+	latest, exact = res.State.Ledger("L").TemplateLastUsed("w", 3)
+	require.Equal(t, uint64(500), latest.GetData())
+	require.True(t, exact)
+
+	latest, _ = res.State.Ledger("L").TemplateLastUsed("w", 2)
+	require.Equal(t, uint64(500), latest.GetData(), "the inline script is not an invocation")
+}
+
 func TestScript_FingerprintDistinguishesLibraries(t *testing.T) {
 	t.Parallel()
 
